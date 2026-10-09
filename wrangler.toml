@@ -51,6 +51,11 @@ NOTIFICATIONS_MODE = "resend"
 # `billing_unavailable` and the app is otherwise unchanged. The yearly id is optional.
 STRIPE_PRICE_TEAM = "price_1UOB9HH7KZijv6AwWF3LPpFr"
 STRIPE_PRICE_TEAM_YEARLY = ""
+# Tax: "on" → every checkout asks Stripe Tax to work out the tax and takes a billing address. Stripe charges
+# tax only where the account holds a tax registration, so with none the total is the price alone. Turn it on
+# only AFTER Stripe Tax is set up in the dashboard (an origin address, a product tax category, the price's
+# tax behaviour set to exclusive): with it on and Stripe Tax not set up, Stripe refuses the checkout.
+STRIPE_TAX = ""
 
 [observability]
 enabled = true
@@ -67,6 +72,7 @@ GITHUB_APP_SLUG = ""
 NOTIFICATIONS_MODE = "local"
 STRIPE_PRICE_TEAM = ""
 STRIPE_PRICE_TEAM_YEARLY = ""
+STRIPE_TAX = ""
 
 [[previews.d1_databases]]
 binding = "DB"

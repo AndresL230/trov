@@ -6,7 +6,7 @@
  *  • mcpSetupModal — that command in a root-level modal, so the tile never grows
  *  • grantListBody — the OAuth connections, capped with "Show all", two-click revoke
  *  • the Get Started guide says the same thing, browser sign-in first
- *  • the bento — one grid, every tile stretched to shared rows: even edges
+ *  • the bento — one twelve-column grid, tiles sized to their content, Sign out in its own tile
  */
 import { describe, it, expect } from "vitest";
 import { grantListBody, mcpAccessSection, mcpSetupModal, MCP_LIST_CAP, PLUGIN_INSTALL, browserConnectCommand, render, initialState } from "../web/src/render";
@@ -180,49 +180,81 @@ describe("Settings › MCP access — the modal opens at the app root and never 
   });
 });
 
-describe("Settings bento — one grid, every tile stretched to shared rows, so every edge is even", () => {
+describe("Settings bento — one twelve-column grid, each tile about as tall as what it holds", () => {
   const settings = () => render({ ...initialState(), view: "app" as const, screen: "settings" as const, me: ME });
   const rule = (sel: string) => css.match(new RegExp(`\\n${sel.replace(/[.]/g, "\\.")} \\{[^}]*\\}`))?.[0] ?? "";
+  const TILES = ["cnpy-set-profile", "cnpy-set-account", "cnpy-set-plan", "cnpy-set-limits", "cnpy-set-orgs-tile", "cnpy-set-mcp", "cnpy-set-appear", "cnpy-set-email", "cnpy-set-session"];
 
-  it("the five tiles are direct children of ONE grid, in the folded order: Profile, Account, Appearance, MCP access, Email", () => {
+  it("the nine tiles are direct children of ONE grid, in the folded order — who I am, the plan, the rest, Sign out last", () => {
     const html = settings();
-    expect(html).not.toContain("cnpy-set-you");
     const grid = html.slice(html.indexOf('<div class="cnpy-set">'));
     const at = (needle: string) => {
-      const i = grid.indexOf(needle);
+      const i = grid.indexOf(`cnpy-tile cnpy-surface ${needle}"`);
       expect(i, `missing ${needle}`).toBeGreaterThan(-1);
       return i;
     };
-    const order = [at(">Profile<"), at(">Account<"), at("cnpy-set-appear"), at("cnpy-set-mcp"), at("cnpy-set-email")];
+    const order = TILES.map(at);
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    // Nothing wraps the tiles between the grid and them: each <section> opens at depth one.
+    // Nothing wraps the tiles between the grid and them, and every tile names its place.
     const inner = grid.slice('<div class="cnpy-set">'.length);
-    expect(inner.trimStart().startsWith('<section class="cnpy-tile cnpy-surface">')).toBe(true);
-    expect(inner.match(/<section class="cnpy-tile cnpy-surface[^"]*"/g)).toHaveLength(5);
+    expect(inner.trimStart().startsWith('<section class="cnpy-tile cnpy-surface cnpy-set-profile">')).toBe(true);
+    expect(inner.match(/<section class="cnpy-tile cnpy-surface[^"]*"/g)).toHaveLength(TILES.length);
   });
 
-  it("three columns; MCP access spans rows 1–2 of the third, Appearance columns 1–2 — and the grid STRETCHES (no align-items)", () => {
-    const set = rule(".cnpy-set");
-    expect(set).toContain("grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr)");
-    expect(rule(".cnpy-set-mcp")).toContain("grid-column:3; grid-row:1 / span 2;");
-    expect(rule(".cnpy-set-appear")).toContain("grid-column:1 / span 2;");
-    // Stretch is the default: no Settings rule may align tiles to their start (the old ragged edges).
+  it("twelve columns, each tile placed by name: Profile | Account | Session over Appearance, Plan | Limits, then full-width rows", () => {
+    expect(rule(".cnpy-set")).toContain("grid-template-columns:repeat(12,minmax(0,1fr))");
+    expect(rule(".cnpy-set-profile")).toContain("grid-column:1 / span 4; grid-row:1 / span 2;");
+    expect(rule(".cnpy-set-account")).toContain("grid-column:5 / span 4; grid-row:1 / span 2;");
+    expect(rule(".cnpy-set-session")).toContain("grid-column:9 / -1; grid-row:1;");
+    expect(rule(".cnpy-set-appear")).toContain("grid-column:9 / -1; grid-row:2;");
+    expect(rule(".cnpy-set-plan")).toContain("grid-column:1 / span 5; grid-row:3;");
+    expect(rule(".cnpy-set-limits")).toContain("grid-column:6 / -1; grid-row:3;");
+    for (const full of [".cnpy-set-orgs-tile", ".cnpy-set-mcp", ".cnpy-set-email"]) expect(rule(full), full).toContain("grid-column:1 / -1;");
+    // Stretch stays the default (every edge lines up); what keeps a tile from looking stretched is
+    // that its row partners hold as much as it does — never aligning tiles to their start.
     expect(css).not.toMatch(/\.cnpy-set[\w-]* \{[^}]*align-(items|self):(start|flex-start)/);
     expect(css).not.toMatch(/\.cnpy-tile \{[^}]*align-self/);
   });
 
-  it("a stretched tile keeps its content on top and pins its foot: Profile's color and Account's sign-in methods", () => {
+  it("a tile keeps its content on top and its closing line at the bottom; a field never runs the width of a wide tile", () => {
     expect(rule(".cnpy-tile")).toContain("display:flex; flex-direction:column;");
     expect(rule(".cnpy-tile-foot")).toContain("margin-top:auto;");
     const html = settings();
-    const section = (label: string) => html.slice(html.indexOf(`>${label}<`), html.indexOf("</section>", html.indexOf(`>${label}<`)));
-    expect(section("Profile")).toMatch(/<div class="cnpy-tile-foot"[^>]*><label[^>]*>Your color</);
-    expect(section("Account")).toMatch(/<div class="cnpy-tile-foot"[^>]*>\s*<div[^>]*>Sign-in methods/);
+    const section = (cls: string) => html.slice(html.indexOf(`cnpy-surface ${cls}"`), html.indexOf("</section>", html.indexOf(`cnpy-surface ${cls}"`)));
+    expect(section("cnpy-set-profile")).toMatch(/<div class="cnpy-tile-foot"[^>]*><label[^>]*>Your color</);
+    expect(section("cnpy-set-profile")).toMatch(/<div class="cnpy-set-name"[^>]*>\s*<input data-act="setDisplayName"/);
+    expect(rule(".cnpy-set-profile .cnpy-set-name")).toContain("max-width:420px;");
+    // Account is the sign-in methods, top-down; who is signed in and Sign out are the Session tile's.
+    expect(section("cnpy-set-account")).toMatch(/Sign-in methods[\s\S]*data-provider="github"[\s\S]*data-provider="google"[\s\S]*cnpy-tile-foot/);
+    expect(section("cnpy-set-account")).not.toContain('data-act="signOut"');
   });
 
-  it("folds: two columns below a 1000px page (Profile | Account, then Appearance and MCP access full width), one on a phone", () => {
-    expect(css).toMatch(/@container cnpy-set \(max-width:999px\) \{\s*\.cnpy-set \{ grid-template-columns:repeat\(2,minmax\(0,1fr\)\); \}\s*\.cnpy-set-appear, \.cnpy-set-mcp \{ grid-column:1 \/ -1; grid-row:auto; \}/);
+  it("Sign out is a labelled button with its icon, in a Session tile of its own — once on the page", () => {
+    const html = settings();
+    expect(html.match(/data-act="signOut"/g)).toHaveLength(1);
+    const tile = html.slice(html.indexOf('cnpy-surface cnpy-set-session"'));
+    expect(tile).toMatch(/>Session<\/div>[\s\S]*Signed in as[\s\S]*<button data-act="signOut" class="cnpy-signout"[^>]*>\s*<svg[\s\S]*?<\/svg>Sign out<\/button>/);
+    expect(tile).toMatch(/data-act="signOut"[^>]*height:36px[^>]*font-weight:600/);
+  });
+
+  it("the last sign-in method can't be unlinked, and says why; with two, either can be", () => {
+    const one = render({ ...initialState(), view: "app" as const, screen: "settings" as const, me: { ...ME, identities: [{ provider: "github" as const, label: "alice", linked_at: "t" }] } });
+    expect(one).toMatch(/data-act="unlinkProvider" data-arg="github" class="cnpy-ghostbtn" disabled title="Link another sign-in method before unlinking this one"/);
+    expect(one).toContain('data-act="linkProvider" data-arg="google"');
+    expect(one).toContain("Your only way in. Link the other one before unlinking it.");
+    const two = render({ ...initialState(), view: "app" as const, screen: "settings" as const, me: { ...ME, identities: [{ provider: "github" as const, label: "alice", linked_at: "t" }, { provider: "google" as const, label: "alice@example.com", linked_at: "t" }] } });
+    expect(two.match(/data-act="unlinkProvider"/g)).toHaveLength(2);
+    expect(two).not.toMatch(/data-act="unlinkProvider"[^>]*disabled/);
+    expect(two).toContain("Either one signs you in to the same account.");
+  });
+
+  it("folds: two columns below a 1000px page (Profile | Account, every other tile full width), one on a phone", () => {
+    expect(css).toMatch(/@container cnpy-set \(max-width:999px\) \{\s*\.cnpy-set \{ grid-template-columns:repeat\(2,minmax\(0,1fr\)\); \}\s*\.cnpy-set-profile, \.cnpy-set-account \{ grid-column:auto; grid-row:auto; \}\s*\.cnpy-set-session, \.cnpy-set-appear, \.cnpy-set-plan, \.cnpy-set-limits, \.cnpy-set-mcp, \.cnpy-set-orgs-tile, \.cnpy-set-email \{ grid-column:1 \/ -1; grid-row:auto; \}/);
     expect(css).toMatch(/@container cnpy-set \(max-width:759px\) \{\s*\.cnpy-set \{[^}]*grid-template-columns:minmax\(0,1fr\); \}/);
+  });
+
+  it("the page is patched in place, not rebuilt, while it stays up: it holds forms (web-ui.md › A repaint REBUILDS a page)", () => {
+    expect(settings()).toMatch(/<main data-morph="settings"/);
   });
 });
 describe("Settings › Appearance — three theme cards in one row", () => {
@@ -235,12 +267,14 @@ describe("Settings › Appearance — three theme cards in one row", () => {
   });
   const appearance = (html: string) => html.match(/<section class="[^"]*cnpy-set-appear[\s\S]*?<\/section>/)?.[0] ?? "";
 
-  it("renders exactly Light, Dark and System, the picked one pressed, then the hint below them", () => {
+  it("renders exactly Light, Dark and System, the picked one pressed", () => {
     const tile = appearance(render(settingsState("dark")));
     const cards = [...tile.matchAll(/<button data-act="setTheme" data-arg="(\w+)" class="cnpy-themecard" aria-pressed="(\w+)"/g)];
     expect(cards.map((m) => m[1])).toEqual(["light", "dark", "system"]);
     expect(cards.map((m) => m[2])).toEqual(["false", "true", "false"]);
-    expect(tile).toMatch(/<div class="cnpy-set-themes">(<button[^]*?<\/button>){3}<\/div>\s*<div[^>]*>System follows/);
+    // Nothing under the cards: the tile is as tall as they are, and "System" explains itself on hover.
+    expect(tile).toMatch(/<div class="cnpy-set-themes">(<button[^]*?<\/button>){3}<\/div>\s*<\/section>/);
+    expect(tile).toMatch(/data-arg="system" class="cnpy-themecard" aria-pressed="false" title="Follows your operating system's appearance"/);
     // Layout is the class's, so the container query can restack it — never inline.
     expect(tile).not.toMatch(/cnpy-themecard"[^>]*style="[^"]*display:flex/);
   });

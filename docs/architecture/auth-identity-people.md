@@ -4,17 +4,18 @@
 
 ## Auth — three classes, two providers in the session class (fully built — don't add a class)
 
-Anyone with a GitHub account can sign in (no org gate since multitenancy — what that person can then do is
-`abuse-limits.md` and `organizations.md`); a Google account needs a pending invite. Three auth classes, kept
-separate:
+Anyone with a GitHub account, or a Google account whose address Google has verified, can sign in and so
+create an account (no org gate since multitenancy, no invitation gate on Google since open sign-up — what
+that person can then do is `abuse-limits.md` and `organizations.md`). Three auth classes, kept separate:
 
 - **Session cookie** (humans, the Hono app): signed cookie; every route except the public auth paths
   passes `sessionGate`. The principal is `{ handle }`. Two providers feed ONE fork (`src/auth/onboard.ts`
   `completeSignIn`): **GitHub** (OAuth + PKCE, no gate) and **Google**
-  (OAuth + PKCE, ID token verified against Google's JWKS, gated to admin **invites**). The fork: known
-  identity → session; verified email matches a person → link + session; invited (or any GitHub account) →
-  onboarding (a sealed 10-minute `onboard` cookie; the person row is created only on `POST /auth/onboard`
-  with handle + color); else denied. Link mode (`?link=1` with a session) attaches a second provider in
+  (OAuth + PKCE, ID token verified against Google's JWKS; an address Google has NOT verified is refused in
+  the callback, `/?denied=unverified`, before the fork). The fork: known identity → session (denied only when
+  the login is on file under a different provider account id); verified email matches a person → link +
+  session; anyone else → onboarding (a sealed 10-minute `onboard` cookie; the person row is created only on
+  `POST /auth/onboard` with handle + color). Link mode (`?link=1` with a session) attaches a second provider in
   Settings; the last identity can't be unlinked.
 - **Bearer token** (agents, `/mcp`): either a pasted per-person `canopy_mcp_` token (stored hashed) or an
   OAuth access token (`canopy_oat_`) obtained through Trov's own OAuth server — both resolve to the same
@@ -60,8 +61,8 @@ separate:
   MCP access lists connections (`GET /auth/oauth-grants`, `POST /auth/oauth-grants/:id/revoke` —
   cookie-only, never MCP). `pruneOAuth` rides the repo cron's `:30` tick and deletes spent or expired
   codes, access tokens a day past expiry, refresh tokens past expiry, and client registrations that never
-  got a grant after 90 days (`UNGRANTED_CLIENT_TTL_MS` — long enough that a person denied at authorize,
-  e.g. not yet invited, still finds their registration on a retry days later) — grants themselves are never
+  got a grant after 90 days (`UNGRANTED_CLIENT_TTL_MS` — long enough that a person who abandons authorize
+  still finds their registration on a retry days later) — grants themselves are never
   deleted. An unknown `client_id` at authorize is an error PAGE naming the Claude Code fix (`/mcp` → trov
   → Clear authentication → Authenticate again), never a silent redirect. Every OAuth endpoint answers an unexpected error
   with `503 { error: "temporarily_unavailable" }` (the authorize pages with a 503 error page), never a 500.

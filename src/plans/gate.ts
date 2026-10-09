@@ -85,6 +85,6 @@ export async function orgPlanView(ctx: TenantContext): Promise<OrgPlanView> {
   const usage = { seats: split.members + split.pending, repositories, environments, artifact_bytes, agent_connections, ai_summaries };
   return {
     plan: def.id, name: def.name, description: def.description, status: state.status, source: state.source, period_end: state.period_end,
-    entitlements, overridden: LIMIT_KEYS.filter((k) => k in state.overrides), usage, seats: split, over: overLimits(entitlements, usage),
+    gift_until: state.gift_until, entitlements, overridden: LIMIT_KEYS.filter((k) => k in state.overrides), usage, seats: split, over: overLimits(entitlements, usage),
   };
 }

@@ -9,8 +9,8 @@ import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow
 import type { QueryResult, QueryPrimary, QueryPointer, Authority, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
-import { queueView, newTicketView, ticketDetailView, ticketDeleteModal, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
-import { sprintCard, newSprintPanel, sprintScreen, nextSprintId } from "./sprints";
+import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
+import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId } from "./sprints";
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
@@ -33,8 +33,9 @@ import { extractOutline } from "./outline";
 import { repoUrl } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
 import { landingView } from "./landing";
+import { skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
-import { maintenanceView, type MaintenanceProps, type AssignKind } from "./maintenance";
+import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type AssignKind } from "./maintenance";
 import type { IdentityProps } from "./identity";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
@@ -56,11 +57,14 @@ import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFro
 // Org settings (org-settings.ts / integrations.ts): the screen, its root overlays and its state.
 import { initialDropdownUi, type DropdownUi } from "./dropdown";
 import { orgSettingsView, orgOverlays, initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-settings";
+import { settingsPlanTile, settingsLimitsTile, settingsOrgsTile } from "./settings-plan";
 import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
 // Organizations as a person meets them (org-picker.ts): the switcher, the picker, the create dialog.
 import { orgSwitcherButton, orgMenu, orgPickerView, createOrgModal, initialOrgsUi, type OrgsUi } from "./org-picker";
 import { billingDonePage, type BillingDoneUi } from "./billing";
 import { isOrgAdmin } from "./org-context";
+import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpEndpoint, mcpStrong, ONE_ORG_NOTE } from "./mcp-connect";
+import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type WelcomeUi } from "./welcome";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
@@ -90,7 +94,9 @@ export type Screen =
   // Help › What's new: the release grid, and each release's notes / patch notes (releases.ts, static data).
   | "releases"
   // Org settings: one screen, five tabs (`#org[/<tab>]`, web/src/org-settings.ts).
-  | "org";
+  | "org"
+  // The guided first-run setup: a full page, no sidebar (`#welcome[/<step>]`, web/src/welcome.ts).
+  | "welcome";
 
 /** Async data slice: a screen's fetched payload plus its load status. */
 export interface Loadable<T> {
@@ -103,10 +109,16 @@ export interface AppState {
   /** `orgs` = signed in, but no org is open: the org picker (`/`, with no org or several). */
   /** `platform` = the superadmin's Platform area at `/platform/`, outside any org (platform.ts `platformPage`). */
   view: "auth" | "app" | "orgs" | "platform";
-  /** `nonmember` = a GitHub sign-in that was refused; `notinvited` = a Google account nobody invited. */
-  authStep: "login" | "verifying" | "nonmember" | "notinvited" | "onboard";
+  /** `nonmember` = a GitHub sign-in that was refused; `unverified` = a Google account whose address Google has not verified. */
+  authStep: "login" | "verifying" | "nonmember" | "unverified" | "onboard";
   /** The landing page's sign-in dialog (authStep "login" only). */
   signInOpen: boolean;
+  /** Which button opened it (landing.ts `SignInMode`): the dialog's title and foot follow. */
+  signInMode: "signin" | "signup";
+  /** The plan picked in the dialog's Get started side. */
+  signInPlan: "free" | "team";
+  /** The landing tour's feature open in its dialog (web/src/site-feature.ts), or none. */
+  siteFeature: import("./site-feature-core").FeatureState | null;
   /** Landing reveal keys that already played (landing-motion.ts records them). */
   landingSeen: Set<string>;
   /** Where "Back to the app" on the #site landing returns to (the route the logo was clicked from). */
@@ -121,6 +133,8 @@ export interface AppState {
   orgMe: Loadable<OrgMeResponse | null>;
   /** The switcher's menu, the picker and the create-organization dialog (org-picker.ts). */
   orgsUi: OrgsUi;
+  /** The guided first-run setup (welcome.ts): its step, and the by-hand disclosure. */
+  welcome: WelcomeUi;
   /** `/billing/done`: the waiting room a buyer lands in after Stripe Checkout (billing.ts). null everywhere else. */
   billingDone: BillingDoneUi | null;
   mywork: Loadable<DashboardData | null>;
@@ -402,7 +416,7 @@ export function syncPropsOf(s: AppState, now: number = Date.now()): SyncProps {
 
 export function initialState(): AppState {
   return {
-    view: "auth", authStep: "login", signInOpen: false, landingSeen: new Set(), siteReturn: null,
+    view: "auth", authStep: "login", signInOpen: false, signInMode: "signin", signInPlan: "free", siteFeature: null, landingSeen: new Set(), siteReturn: null,
     deniedEmail: null,
     onboard: initialOnboard(),
     persons: { status: "idle", data: [] },
@@ -410,6 +424,7 @@ export function initialState(): AppState {
     orgSlug: null,
     orgMe: { status: "idle", data: null },
     orgsUi: initialOrgsUi(),
+    welcome: initialWelcomeUi(),
     billingDone: null,
     screen: "mywork",
     theme: "light", systemDark: true,
@@ -657,12 +672,14 @@ function notice(text: string): string {
 // ── auth states ──────────────────────────────────────────────────────────────
 function authView(s: AppState): string {
   // Signed out → the landing page; its Sign in opens the provider dialog.
-  if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, seen: s.landingSeen });
-  return `<div class="cnpy-authwrap" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
+  if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, signInMode: s.signInMode, signInPlan: s.signInPlan, seen: s.landingSeen, feature: s.siteFeature });
+  // Onboarding is a form: `data-morph` patches it in place per keystroke (morph.ts `paint`) instead of
+  // rebuilding the card and the backdrop behind it. The other auth cards have nothing to type in.
+  return `<div class="cnpy-authwrap"${s.authStep === "onboard" ? ' data-morph="onboard"' : ""} style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
     ${s.authStep === "nonmember" ? nonmemberCard() : ""}
-    ${s.authStep === "notinvited" ? notInvitedCard(s.deniedEmail) : ""}
+    ${s.authStep === "unverified" ? unverifiedCard(s.deniedEmail) : ""}
     ${s.authStep === "verifying" ? verifyingCard() : ""}
-    ${s.authStep === "onboard" ? onboardView(s.onboard) : ""}
+    ${s.authStep === "onboard" ? onboardView(s.onboard, firstRunBackdrop()) : ""}
   </div>`;
 }
 
@@ -686,14 +703,15 @@ function nonmemberCard(): string {
   </div>`;
 }
 
-/** A Google account nobody invited. Google needs an invitation; a GitHub account never does. */
-function notInvitedCard(email: string | null): string {
+/** A Google account whose address Google has not verified — the one Google sign-in Trov refuses:
+ *  a sign-in is matched to a person by that address, so an unverified one is never trusted. */
+function unverifiedCard(email: string | null): string {
   return `<div style="width:400px;max-width:100%">
     <div${surface("padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center", { cls: "cnpy-authcard" })}>
       ${DENIED_SEAL}
       <div>
-        <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">This Google account hasn't been invited yet.</div>
-        <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">Signing in with Google needs an invitation. Ask an admin of your organization to invite <span style="font-family:var(--label);font-size:12.5px;overflow-wrap:anywhere">${esc(email ?? "your address")}</span>, then sign in again. A GitHub account can always sign in, and can create an organization.</div>
+        <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">Google hasn't verified this address yet.</div>
+        <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">Trov signs you in by the address Google confirms, and Google reports <span style="font-family:var(--label);font-size:12.5px;overflow-wrap:anywhere">${esc(email ?? "this address")}</span> as not verified. Verify it with Google and sign in again, or use another account.</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;padding:9px 14px 9px 9px;border:1px solid var(--border);border-radius:999px;max-width:100%">
         <div class="cnpy-av cnpy-av-anon" style="width:26px;height:26px;flex:none;border-radius:50%;${AVATAR};font-size:10px;font-weight:600;color:var(--fg-70)">${esc(initialsOf(email ?? "?"))}</div>
@@ -773,8 +791,8 @@ function headerCrumb(s: AppState): string {
 function header(s: AppState): string {
   const titles: Record<Screen, string> = {
     mywork: "My Work", feed: "Feed", docs: "Docs", roadmap: "Roadmap", review: "Review",
-    maintenance: "Unplaced", search: "Search", settings: "Settings", guide: "Get Started",
-    unsubscribe: "Unsubscribe", site: "Trov",
+    maintenance: "Unplaced", search: "Search", settings: "Settings", guide: "Guide",
+    unsubscribe: "Unsubscribe", site: "Trov", welcome: "Guided setup",
     // The three ticket screens all sit under Tickets; a sprint sits under Roadmap.
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
     repo: "Repo",
@@ -883,6 +901,21 @@ function wrapFeed(s: AppState, inner: string): string {
     <div style="text-align:center;padding:18px 0;font-size:11.5px;color:var(--fg-40);font-family:var(--label)">&mdash; start of recorded history &mdash;</div>`, feedAside(s));
 }
 
+/** An aside box's rows while its read is out: a title line and a meta line per row,
+ *  in the box's own row padding (so the rows land where the bars were). */
+function asideRowsSkeleton(key: string, label: string, n: number): string {
+  return skeleton(key, label, skList(n, (i) => `<div style="padding:9px 18px;border-top:1px solid var(--border)">${skLine(skW(i), 13, 1.45)}<div style="margin-top:3px">${skLine(skW(i + 1, ["44%", "52%", "38%"]), 12, 1.5)}</div></div>`));
+}
+
+/** The Feed's cards while its first read is out: avatar, title, a two-line brief, the byline. */
+function feedSkeleton(): string {
+  const card = (i: number) => skCard(`<div style="display:flex;align-items:flex-start;gap:12px">
+      ${skBox(30, 30, "margin-top:1px")}
+      <div style="flex:1;min-width:0">${skLine(skW(i), 14, 1.5)}<div style="margin-top:5px">${skLines(["100%", skW(i + 1, ["64%", "82%", "46%"])], 13.5, 1.6)}</div><div style="margin-top:12px">${skLine(170, 12, 1.5)}</div></div>
+    </div>`, "padding:16px 18px;margin-bottom:12px");
+  return skeleton("feed", "Loading feed&hellip;", skList(5, card));
+}
+
 function feedAside(s: AppState): string {
   return `${feedWeekBox(s)}${feedReviewBox(s)}`;
 }
@@ -915,7 +948,11 @@ function feedWeekBox(s: AppState): string {
   const sub = `<div style="font-size:12.5px;color:var(--fg-40);padding:0 18px 10px;margin-top:-4px">Whole team, last 7 days</div>`;
   const wrap = (body: string) => `<section${surface(`${RM_CARD};overflow:hidden`, { cls: "cnpy-rise" })} data-screen-label="Feed · This week">${head}${sub}${body}</section>`;
   if (!d) {
-    return wrap(asideNote(st.status === "error" ? "Couldn't load this week's numbers." : "Loading&hellip;"));
+    if (st.status === "error") return wrap(asideNote("Couldn't load this week's numbers."));
+    // The figure, the seven day bars and one chip group — the box's own blocks.
+    return wrap(skeleton("feed-week", "Loading&hellip;", `<div style="display:flex;align-items:center;gap:8px;padding:0 18px 12px">${skBox(34, 24)}${skBar(120, 9)}</div>
+      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;padding:0 18px 14px">${skList(7, () => `<span style="display:flex;flex-direction:column;align-items:center;gap:5px">${skBox("100%", 36)}${skBar(8, 10)}</span>`)}</div>
+      <div style="padding:10px 18px 12px;border-top:1px solid var(--border)">${skBar(60, 8, "margin:4px 0 11px")}<div style="display:flex;gap:6px">${skBox(74, 24)}${skBox(58, 24)}${skBox(86, 24)}</div></div>`));
   }
   if (d.total === 0) return wrap(asideNote("Nothing recorded in the last 7 days."));
 
@@ -967,7 +1004,7 @@ function feedReviewBox(s: AppState): string {
   const head = asideHead("Waiting on review", { act: "goReview", label: "Review" });
   const wrap = (body: string) => `<section${surface(`${RM_CARD};overflow:hidden`, { cls: "cnpy-rise" })} data-screen-label="Feed · Waiting on review">${head}${body}</section>`;
   if (load === "error") return wrap(asideNote("Couldn't load the review queue."));
-  if (load === "pending") return wrap(asideNote("Loading&hellip;"));
+  if (load === "pending") return wrap(asideRowsSkeleton("feed-review", "Loading&hellip;", 2));
   if (items.length === 0) return wrap(asideNote("Nothing waiting on review."));
 
   const proposals = items.filter((i) => i.kind === "proposal").length;
@@ -1056,7 +1093,7 @@ function feedAuthorTag(s: AppState, author: string): string {
 }
 
 function feedView(s: AppState): string {
-  if (s.feed.status === "loading" && s.feed.data.length === 0) return wrapFeed(s, notice("Loading feed&hellip;"));
+  if ((s.feed.status === "loading" || s.feed.status === "idle") && s.feed.data.length === 0) return wrapFeed(s, feedSkeleton());
   if (s.feed.status === "error") return wrapFeed(s, notice("Couldn't load the feed."));
 
   const cards = feedRows(s).map((e) => {
@@ -1135,8 +1172,10 @@ function docTreeRow(s: AppState, doc: DocRow): string {
 function docsView(s: AppState): string {
   // ── tree (left pane) ────────────────────────────────────────────────────────
   let treeHtml: string;
-  if (s.docsList.status === "loading" && s.docsList.data.length === 0) {
-    treeHtml = notice("Loading…");
+  if (slicePending(s.docsList)) {
+    // Two section groups of page rows, in the tree's own row box.
+    const row = (i: number) => `<div class="cnpy-tree"><span class="cnpy-treechev is-empty"></span>${skLine(skW(i, ["64%", "82%", "52%", "74%", "58%"]), 13, 1.5, "flex:1")}</div>`;
+    treeHtml = skeleton("docs-tree", "Loading…", skList(2, (g) => `<div style="margin-bottom:16px"><div class="cnpy-treesec">${skLine(g ? 96 : 72, 10.5, 1.5)}</div><div style="display:flex;flex-direction:column;gap:1px">${skList(g ? 3 : 5, (i) => row(i + g))}</div></div>`));
   } else if (s.docsList.status === "error") {
     treeHtml = notice("Couldn't load docs.");
   } else {
@@ -1174,14 +1213,28 @@ function docsView(s: AppState): string {
   </div>`;
 }
 
+/** The doc page while its read is out: the breadcrumb, title and byline rule, then
+ *  prose — in the reader's own page frame. */
+function docReaderSkeleton(): string {
+  return skeleton("doc", "Loading…", `<div style="margin-bottom:11px">${skLine(150, 11, 1.5)}</div>
+    ${skLine("48%", 29, 1.16)}
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:15px;padding-bottom:17px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:9px">${skBox(24, 24)}${skBar(190, 9)}</div>${skBox(96, 30)}
+    </div>
+    <div style="margin-top:28px">${skLine("34%", 20, 1.4)}<div style="margin-top:12px">${skProse(3)}</div></div>`,
+    "max-width:1080px;margin:0 auto;padding:34px 52px 120px");
+}
+
 /** The reader pane's inner HTML. Extracted so main.ts can load a doc into the
  *  pane in place (updating only #cnpy-reader) without rerendering the tree —
  *  a tree rerender swaps in fresh outline elements and kills their transition. */
 export function docReaderHtml(s: AppState): string {
   const dd = s.docDetail;
 
-  if (dd.status === "loading" || (dd.status === "idle" && s.docSlug !== null)) {
-    return notice("Loading…");
+  // The list's first read being out counts too: its landing opens the first doc, so
+  // "Select a doc" in between would only be a flash.
+  if (dd.status === "loading" || (dd.status === "idle" && (s.docSlug !== null || slicePending(s.docsList)))) {
+    return docReaderSkeleton();
   } else if (dd.status === "error") {
     return notice("Couldn't load this doc.");
   } else if (dd.data === null) {
@@ -1336,9 +1389,30 @@ function roadmapTimelineTab(s: AppState): string {
   </div>`;
 }
 
+/** The Roadmap while the plan's first read is out — in the page frame, under the real tab
+ *  bar, of whichever tab is open: the narrative card and sprint cards beside the aside's
+ *  two boxes, or the Timeline's rows. */
+function roadmapSkeleton(s: AppState): string {
+  const label = "Loading roadmap&hellip;";
+  if (s.roadmapTab !== "narrative") {
+    const row = (i: number) => `<div style="display:grid;grid-template-columns:200px minmax(0,1fr);gap:16px;align-items:center;height:44px;padding:0 18px${i ? ";border-top:1px solid var(--border)" : ""}">${skBar(skW(i, [120, 150, 96, 136]), 10)}<span style="display:block;padding-left:${[6, 22, 38, 14, 46, 30][i % 6]}%">${skBox(skW(i, ["34%", "26%", "42%", "30%"]), 16)}</span></div>`;
+    return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">
+    ${roadmapTabBar(s)}<div${tabPanelAttrs("roadmap-tab", s.roadmapTab)} style="padding-top:20px">${roadmapNewSprint(s)}${skeleton("roadmap-timeline", label, skCard(`<div style="height:38px;border-bottom:1px solid var(--border)"></div>${skList(6, row)}`, "overflow:hidden"))}</div>
+  </div>`;
+  }
+  const sprint = (i: number) => skCard(`<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">${skLine(skW(i, ["46%", "58%", "38%"]), 15, 1.4)}${skBox(64, 20)}</div>
+      <div style="margin-top:6px">${skLines(["92%", skW(i, ["54%", "70%"])], 13, 1.55)}</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:11px">${skBar("100%", 5, "flex:1")}${skBar(46, 8)}</div>`, "padding:16px 18px;margin-bottom:10px");
+  const main = `${roadmapNewSprint(s)}${skeleton("roadmap", label, `${skCard(`${skLine(104, 12, 1.5)}<div style="margin-top:8px">${skLines(["100%", "94%", "62%"], 14.5, 1.7)}</div>`, `${RM_CARD};padding:18px 20px`)}
+      <div style="display:flex;align-items:center;gap:9px;margin:28px 0 12px">${skBox(7, 7)}${skLine(84, 11, 1.5)}</div>${skList(2, sprint)}
+      <div style="display:flex;align-items:center;gap:9px;margin:28px 0 12px">${skBox(7, 7)}${skLine(70, 11, 1.5)}</div>${skList(2, (i) => sprint(i + 2))}`)}`;
+  const aside = `<section${surface(`${RM_CARD};padding:16px 18px`, { cls: "cnpy-rise" })} data-screen-label="Roadmap · Now">${skeleton("roadmap-now", label, `${skLine(40, 11.5, 1.5)}<div style="margin-top:6px">${skLine("62%", 15, 1.4)}</div><div style="margin-top:2px">${skLine("44%", 12.5, 1.5)}</div>${skBar("100%", 4, "margin-top:12px")}`)}</section>${roadmapHappenings(s)}`;
+  return asideColumns(main, aside, { bar: roadmapTabBar(s), panel: tabPanelAttrs("roadmap-tab", s.roadmapTab) });
+}
+
 function roadmapView(s: AppState): string {
-  if (s.roadmap.status === "loading" && s.roadmap.data.sprints.length === 0) {
-    return `<div class="cnpy-scroll" style="max-width:820px;margin:0 auto;padding:32px 40px 100px">${notice("Loading roadmap&hellip;")}</div>`;
+  if ((s.roadmap.status === "loading" || s.roadmap.status === "idle") && s.roadmap.data.sprints.length === 0 && !s.roadmap.data.narrative) {
+    return roadmapSkeleton(s);
   }
   if (s.roadmap.status === "error") {
     return `<div class="cnpy-scroll" style="max-width:820px;margin:0 auto;padding:32px 40px 100px">${notice("Couldn't load the roadmap.")}</div>`;
@@ -1440,9 +1514,13 @@ function roadmapAside(s: AppState): string {
     </section>`;
   })() : `<section${surface(`${RM_CARD};padding:16px 18px`, { cls: "cnpy-rise" })} data-screen-label="Roadmap · Now">${nowLabel}<div style="font-size:13px;color:var(--fg-40);margin-top:6px">No sprint in progress.</div></section>`;
 
-  // ── Recent happenings (the live feed, with GitHub chips) ──
-  // Its OWN unfiltered read (s.roadmapFeed), so a Feed-screen author/tag filter
-  // never narrows it, and a failed read says so instead of "no activity".
+  return `${now}${roadmapHappenings(s)}`;
+}
+
+/** The Narrative aside's second box, "Recent happenings" (the live feed, with GitHub chips).
+ *  Its OWN unfiltered read (s.roadmapFeed), so a Feed-screen author/tag filter never narrows
+ *  it, and a failed read says so instead of "no activity". */
+function roadmapHappenings(s: AppState): string {
   const feed = s.roadmapFeed;
   const entries = feed.data.slice(0, HAPPENINGS_LIMIT);
   const rows = entries.map((e) => {
@@ -1464,10 +1542,9 @@ function roadmapAside(s: AppState): string {
     ${feed.status === "error" ? asideNote("Couldn't load recent activity.")
       : entries.length > 0 ? rows
       : feed.status === "ok" ? asideNote("No recent activity yet.")
-      : asideNote("Loading&hellip;")}
+      : skeleton("roadmap-happenings", "Loading&hellip;", skList(HAPPENINGS_LIMIT, (i) => `<div style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:9px 18px;border-top:1px solid var(--border)">${skLine(26, 12, 1.6)}<span style="display:block;min-width:0">${skLines(["100%", skW(i, ["58%", "74%", "40%", "66%"])], 13, 1.5)}</span></div>`))}
   </section>`;
-
-  return `${now}${happenings}`;
+  return happenings;
 }
 
 // ── search ───────────────────────────────────────────────────────────────────
@@ -1559,8 +1636,10 @@ function searchView(s: AppState): string {
   }).join("");
 
   let body: string;
-  if (s.searchResults.status === "loading") {
-    body = notice("Searching&hellip;");
+  // A re-query (every keystroke is one) keeps the results on screen until the new ones
+  // land; only a search with nothing to show yet gets the skeleton.
+  if (s.searchResults.status === "loading" && primary.length === 0 && pointers.length === 0) {
+    body = skeleton("search", "Searching&hellip;", skList(4, (i) => skCard(`<div style="display:flex;align-items:center;gap:8px">${skBox(46, 18)}${skLine(skW(i, ["52%", "38%", "64%", "46%"]), 14.5, 1.5, "flex:1")}</div><div style="margin-top:8px">${skLines(["100%", skW(i + 1)], 13, 1.6)}</div>`, "padding:16px 18px;margin-bottom:12px")));
   } else if (s.searchResults.status === "ok" && primary.length === 0 && pointers.length === 0) {
     body = notice("No results for that query.");
   } else {
@@ -1632,37 +1711,15 @@ function guideView(s: AppState): string {
   };
   const gPre = (body: string) => `<pre style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:12px 0 0"><code style="font-family:var(--code);font-size:12.5px;line-height:1.6;color:var(--fg-70)">${body}</code></pre>`;
   const body = `<div style="flex:1;min-width:0;max-width:860px">
-    <h1 id="guide-top" class="cnpy-guide-anchor" style="font-size:30px;font-weight:650;letter-spacing:-0.025em;margin:0 0 14px">Get Started</h1>
+    <h1 id="guide-top" class="cnpy-guide-anchor" style="font-size:30px;font-weight:650;letter-spacing:-0.025em;margin:0 0 14px">How Trov works</h1>
     <p style="font-size:16px;line-height:1.8;color:var(--fg-70);margin:0 0 14px">Trov is the team's shared memory: docs, decisions, the roadmap, the ticket queue, and a running record of what shipped, open to people and to their coding agents alike. It has one rule: ${gStrong("agents only ever stage changes, and a person confirms the ones that matter")}. That keeps what Trov says trustworthy no matter how many agents write to it.</p>
-    <p style="${gP}">This page takes you from zero to productive in order: sign in, connect your agent, learn the skills, then the everyday workflows and a tour of every screen. Troubleshooting is at the end.</p>
+    <p style="${gP}">This page is the reference: the skills your agent uses every session, how a change goes from staged to settled, a tour of every screen, how accounts and agent connections work, and troubleshooting.</p>
+    ${viewerOrg(s) ? `<div${surface("display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding:14px 16px;margin:0 0 6px")} data-guide-setup>
+      <div style="flex:1 1 260px;min-width:0"><div style="font-size:13.5px;font-weight:600">Still setting up?</div><div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:1px">The guided setup takes ${esc(viewerOrg(s)!.name)} one step at a time${viewerIsAdmin(s) ? ": a repository, your coding agent, your team" : ": your coding agent, then where things live"}.</div></div>
+      <button type="button" data-act="welcomeOpen" data-field="guideWelcomeOpen" class="cnpy-ghostbtn" style="height:32px;padding:0 13px;border-radius:8px;font-size:12.5px;font-weight:500;white-space:nowrap;border:1px solid var(--border);color:var(--fg);background:transparent">Open the guided setup</button>
+    </div>` : ""}
 
-    ${sec("Step 1", "Sign in", "Sign in")}
-    <ul style="${gList}">
-      <li>${gStrong("Sign in with GitHub.")} Any GitHub account can. If you aren't in an organization yet, you land on a page that lists your invitations and lets you create a Free organization of your own.</li>
-      <li>${gStrong("Or sign in with Google")}, once an admin of your organization has invited that exact address from ${gStrong("Org settings › Members")}.</li>
-      <li>${gStrong("In more than one organization?")} The switcher at the top of the sidebar shows the one you're in and takes you to the others. Each has its own docs, tickets, roadmap and feed.</li>
-      <li>The first time, you pick a ${gStrong("handle")} and a ${gStrong("color")}. The handle starts as your GitHub login, and you can change it later in Settings.</li>
-      <li>Want both? ${gStrong("Settings › Account")} links the second provider, and then either one signs you in.</li>
-    </ul>
-
-    ${sec("Step 2", "Connect your coding agent", "Connect your agent")}
-    <p style="${gP}">Your agent talks to Trov over the ${gStrong("Model Context Protocol")} (MCP). You connect it by signing in to Trov in your browser, once. It acts as you: it sees what you see, and what it writes is recorded as yours.</p>
-
-    ${sub("Claude Code: install the plugin")}
-    <p style="${gP}">The plugin wires up the MCP server and installs every skill below. Three steps, the same ones ${gStrong("Settings › MCP access")} shows:</p>
-    <ol style="${gList}">
-      <li>In Claude Code, install the plugin:
-        ${gPre(PLUGIN_INSTALL)}</li>
-      <li>Run ${gCode("/mcp")}, pick ${gStrong("trov")} and choose ${gStrong("Authenticate")}.</li>
-      <li>Your browser opens Trov: sign in if asked, then click ${gStrong("Allow")}. The connection is listed in ${gStrong("Settings › MCP access")} under ${gStrong("Connected apps")}, where ${gStrong("Revoke")} disconnects it immediately.</li>
-    </ol>
-    <p style="${gP}">Not using the plugin? Open ${gStrong("Set it up without the plugin")} in ${gStrong("Settings › MCP access")} for the command that adds the server by hand. Run it, then do steps 2 and 3. Don't do both, or you'll have two Trov servers.</p>
-
-    ${sub("Other agents")}
-    <p style="${gP}">Any MCP client that can sign in through the browser (OAuth) connects to the same address, ${gCode(esc(mcpEndpoint()))}, and shows up under ${gStrong("Connected apps")} once you approve it. Trov no longer creates access tokens in Settings; a token you already set up (for Codex or CI) keeps working.</p>
-    ${gFig("settings", `${gEm("Settings")}: profile, sign-in methods, MCP access, appearance, and email digests.`)}
-
-    ${sec("Step 3", "Learn the skills", "Learn the skills")}
+    ${sec("Every session", "Orient, work, record", "The skills")}
     <p style="${gP}">The plugin's skills are how your agent keeps Trov current. Three of them form a loop you'll use every session, ${gStrong("orient → work → record")}:</p>
     <ul style="${gList}">
       <li>${gStrong("trov")}: the overview. It explains the whole system and every tool. Ask about it when you're unsure where something lives.</li>
@@ -1748,10 +1805,35 @@ function guideView(s: AppState): string {
     <p style="${gP}">Every release of Trov, newest first. Open one for its notes, or switch to ${gStrong("Patch notes")} for the full list of changes with links to the pull requests.</p>
     ${gFig("releases", `${gEm("What's new")}: one card per release.`)}
 
+    ${sec("Reference", "Accounts and organizations", "Accounts")}
+    <ul style="${gList}">
+      <li>${gStrong("One account, either sign-in.")} Signing in with GitHub or with Google creates your account the first time. ${gStrong("Settings › Account")} links the other one, and then either signs you in.</li>
+      <li>${gStrong("Handle and color.")} You picked them when you signed up; both can be changed in ${gStrong("Settings › Profile")}. The handle is how work is attributed to you everywhere.</li>
+      <li>${gStrong("Organizations.")} Everything in Trov belongs to one. You join by accepting an invitation, or create a Free one of your own (one at a time). The switcher at the top of the sidebar shows the one you're in and takes you to the others; each has its own docs, tickets, roadmap and feed.</li>
+      <li>${gStrong("A repository needs GitHub.")} Connecting one is approved on GitHub, so an owner or admin who signed up with Google links a GitHub account first (the guided setup offers it).</li>
+    </ul>
+
+    ${sec("Reference", "Connecting a coding agent", "Connect an agent")}
+    <p style="${gP}">Your agent talks to Trov over the ${gStrong("Model Context Protocol")} (MCP). You connect it by signing in to Trov in your browser, once. It acts as you: it sees what you see, and what it writes is recorded as yours.</p>
+
+    ${sub("Claude Code: install the plugin")}
+    <p style="${gP}">The plugin wires up the MCP server and installs every skill below. Three steps, the same ones ${gStrong("Settings › MCP access")} shows:</p>
+    <ol style="${gList}">
+      <li>In Claude Code, install the plugin:
+        ${gPre(PLUGIN_INSTALL)}</li>
+      <li>Run ${gCode("/mcp")}, pick ${gStrong("trov")} and choose ${gStrong("Authenticate")}.</li>
+      <li>Your browser opens Trov: sign in if asked, then click ${gStrong("Allow")}. The connection is listed in ${gStrong("Settings › MCP access")} under ${gStrong("Connected apps")}, where ${gStrong("Revoke")} disconnects it immediately.</li>
+    </ol>
+    <p style="${gP}">Not using the plugin? Open ${gStrong("Set it up without the plugin")} in ${gStrong("Settings › MCP access")} for the command that adds the server by hand. Run it, then do steps 2 and 3. Don't do both, or you'll have two Trov servers.</p>
+
+    ${sub("Other agents")}
+    <p style="${gP}">Any MCP client that can sign in through the browser (OAuth) connects to the same address, ${gCode(esc(mcpEndpoint()))}, and shows up under ${gStrong("Connected apps")} once you approve it. Trov no longer creates access tokens in Settings; a token you already set up (for Codex or CI) keeps working.</p>
+    ${gFig("settings", `${gEm("Settings")}: profile, sign-in methods, MCP access, appearance, and email digests.`)}
+
     ${sec("Troubleshooting", "When something doesn't work", "Troubleshooting")}
     <ul style="${gList}">
       <li>${gStrong("You signed in and see no organization.")} Ask an admin of your team's organization to invite your GitHub login or email from ${gStrong("Org settings › Members")}; the invitation appears the next time you open Trov. Or create a Free organization yourself: one you own at a time.</li>
-      <li>${gStrong("Google sign-in says you're not invited.")} Ask an admin of your organization to invite the exact address you signed in with, or sign in with GitHub.</li>
+      <li>${gStrong("Google sign-in says the address isn't verified.")} Trov signs you in by the address Google confirms. Verify it with Google and sign in again, or sign in with GitHub.</li>
       <li>${gStrong("Trov shows as needing authentication in Claude Code.")} Run ${gCode("/mcp")}, pick ${gStrong("trov")} and choose ${gStrong("Authenticate")}. If the browser says Trov doesn't recognise the app, choose ${gStrong("Clear authentication")} first, then Authenticate again. A connection you revoked in Settings needs the same.</li>
       <li>${gStrong("An agent set up with an older access token (Codex, CI) gets 401 Unauthorized.")} The token is missing, mistyped, or revoked. Check that ${gCode("echo $TROV_MCP_TOKEN")} prints it in the terminal you launch the agent from; if you set it in one shell's profile (say ${gCode("~/.zshrc")}) but run another (say fish), that shell never sees it. Settings no longer creates tokens, so if the agent can sign in through the browser, reconnect it that way instead.</li>
       <li>${gStrong("The Trov server doesn't appear in /mcp.")} Restart Claude Code after installing the plugin. Run ${gCode("/plugin")} to check that ${gCode("trov")} is installed and enabled.</li>
@@ -1848,13 +1930,13 @@ export function profileSection(s: AppState): string {
       <span class="cnpy-avbtn-badge" aria-hidden="true" style="border-radius:50%"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg></span>
       ${menu}
     </div>`;
-  return `<section class="cnpy-tile cnpy-surface">
+  return `<section class="cnpy-tile cnpy-surface cnpy-set-profile">
     <div style="${SECTION_LABEL}">Profile</div>
     <div style="display:flex;align-items:flex-start;gap:14px">
       ${photo}
       <div style="flex:1;min-width:0">
         <label style="${FIELD_LABEL}">Display name</label>
-        <div style="display:flex;gap:10px">
+        <div class="cnpy-set-name" style="display:flex;gap:10px">
           <input data-act="setDisplayName" data-field="displayName" value="${attr(s.displayName)}" class="cnpy-input" style="flex:1;min-width:0;height:40px;padding:0 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:14px;outline:none" />
           <button data-act="saveProfile" class="cnpy-accentbtn" style="padding:0 16px;height:40px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600">Save</button>
         </div>
@@ -1865,49 +1947,51 @@ export function profileSection(s: AppState): string {
   </section>`;
 }
 
-/** Settings › Account: who you are signed in as (no avatar — Profile, beside it, already
- *  shows it), Sign out, and — pinned to the tile's foot, so a stretched tile reads as
- *  top and bottom rather than a gap under its content — the sign-in methods
- *  (link/unlink per provider — the last identity can't be unlinked).
+/** Settings › Account: the sign-in methods — GitHub and Google, each linked or not, with Link /
+ *  Unlink (the last identity can't be unlinked, and its button says why). Who is signed in, and
+ *  Sign out, are the Session tile's (`sessionSection`).
  *  Pure over AppState — exported for the pure render test. */
 export function accountSection(s: AppState): string {
   const me = s.me;
   const last = (me?.identities.length ?? 0) <= 1;
-  const org = currentOrg(s);
-  const n = me?.orgs.length ?? 0;
-  const memberLine = org ? `${org.role === "member" ? "Member" : org.role === "owner" ? "Owner" : "Admin"} of ${org.name}${n > 1 ? ` · in ${n} organizations` : ""}` : "Signed in";
   const provRow = (p: "github" | "google", label: string) => {
     const id = me?.identities.find((i) => i.provider === p);
     const btn = id
-      ? `<button data-act="unlinkProvider" data-arg="${p}" class="cnpy-ghostbtn" ${last ? "disabled " : ""}style="font-size:12px;color:var(--fg-40);padding:4px 10px;border-radius:6px;border:1px solid var(--border);${last ? "opacity:.45;cursor:default" : ""}">Unlink</button>`
+      ? `<button data-act="unlinkProvider" data-arg="${p}" class="cnpy-ghostbtn" ${last ? `disabled title="Link another sign-in method before unlinking this one" ` : ""}style="font-size:12px;color:var(--fg-40);padding:4px 10px;border-radius:6px;border:1px solid var(--border);${last ? "opacity:.45;cursor:default" : ""}">Unlink</button>`
       : `<button data-act="linkProvider" data-arg="${p}" class="cnpy-ghostbtn" style="font-size:12px;color:var(--fg-70);padding:4px 10px;border-radius:6px;border:1px solid var(--border-strong)">Link ${label}</button>`;
-    return `<div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--border)"><div style="line-height:1.25"><b style="font-size:13.5px;font-weight:600;display:block">${label}</b><span style="font-family:var(--label);font-size:11.5px;color:${id ? "var(--fg-55)" : "var(--fg-40)"}">${id ? esc(id.label) : "not linked"}</span></div>${btn}</div>`;
+    return `<div data-provider="${p}" style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--border)"><div style="line-height:1.25;min-width:0"><b style="font-size:13.5px;font-weight:600;display:block">${label}</b><span style="font-family:var(--label);font-size:11.5px;color:${id ? "var(--fg-55)" : "var(--fg-40)"};overflow-wrap:anywhere">${id ? esc(id.label) : "not linked"}</span></div>${btn}</div>`;
   };
-  return `<section class="cnpy-tile cnpy-surface">
+  return `<section class="cnpy-tile cnpy-surface cnpy-set-account">
     <div style="${SECTION_LABEL}">Account</div>
-    <div data-account-who style="display:flex;align-items:center;justify-content:space-between;gap:10px 12px;flex-wrap:wrap">
+    <div style="font-size:13px;font-weight:500;margin-bottom:8px">Sign-in methods <span style="font-weight:400;color:var(--fg-40)">· keep one linked</span></div>
+    ${provRow("github", "GitHub")}${provRow("google", "Google")}
+    <div class="cnpy-tile-foot" style="padding-top:12px;border-top:1px solid var(--border);font-size:11.5px;line-height:1.5;color:var(--fg-40)">${last ? "Your only way in. Link the other one before unlinking it." : "Either one signs you in to the same account."}</div>
+  </section>`;
+}
+
+/** Settings › Session: who is signed in on this browser, and SIGN OUT — a labelled button with its
+ *  icon, in a tile of its own at the top right of the page (last on a phone), never a quiet link.
+ *  Pure over AppState — exported for the pure render test. */
+export function sessionSection(s: AppState): string {
+  const me = s.me;
+  const org = currentOrg(s);
+  // (How many organizations, and each one's plan, is the Organizations tile's to say.)
+  const memberLine = org ? `${org.role === "member" ? "Member" : org.role === "owner" ? "Owner" : "Admin"} of ${org.name}` : "Signed in";
+  const icon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5"></path><path d="M21 12H9"></path></svg>`;
+  return `<section class="cnpy-tile cnpy-surface cnpy-set-session">
+    <div style="${SECTION_LABEL}">Session</div>
+    <div data-account-who class="cnpy-set-who">
       <div style="flex:1 1 150px;min-width:0">
         <div style="font-size:13.5px;font-weight:500;line-height:1.35;overflow-wrap:anywhere">Signed in as ${me ? handleLink({ handle: me.handle, name: me.name, color: me.color }, me.handle, 13) : ""}</div>
         <div style="display:flex;align-items:baseline;gap:6px;font-size:11.5px;line-height:1.4;color:var(--green);margin-top:4px"><span style="flex:none;width:6px;height:6px;border-radius:50%;background:var(--green);transform:translateY(-1px)"></span><span style="min-width:0;overflow-wrap:anywhere">${esc(memberLine)}</span></div>
       </div>
-      <button data-act="signOut" class="cnpy-signout" style="flex:none;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500">Sign out</button>
-    </div>
-    <div class="cnpy-tile-foot" style="padding-top:18px">
-      <div style="font-size:13px;font-weight:500;margin-bottom:8px">Sign-in methods <span style="font-weight:400;color:var(--fg-40)">· keep one linked</span></div>
-      ${provRow("github", "GitHub")}${provRow("google", "Google")}
+      <button data-act="signOut" class="cnpy-signout" style="flex:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:600;color:var(--fg)">${icon}Sign out</button>
     </div>
   </section>`;
 }
 
-/** This Trov's own MCP endpoint — the origin the SPA is served from, so a local
- *  `wrangler dev` hands out a local URL and prod hands out prod's. */
-const mcpEndpoint = (): string =>
-  `${typeof location !== "undefined" && location.origin ? location.origin : "https://trov.dev"}/mcp`;
-
-/** The two Claude Code commands that install the Trov plugin — Settings › MCP access
- *  and the Get Started guide both show exactly this. */
-export const PLUGIN_INSTALL = `/plugin marketplace add AndresL230/trov
-/plugin install trov@trov`;
+// The commands and the three sign-in steps live in mcp-connect.ts (the wizard shows them too).
+export { PLUGIN_INSTALL, browserConnectCommand };
 
 /** How many Connected apps rows Settings › MCP access shows before its "Show all N". */
 export const MCP_LIST_CAP = 3;
@@ -1923,6 +2007,10 @@ export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & P
   const count = n ? `<span style="flex:none;font-family:var(--label);font-size:11px;line-height:17px;color:var(--fg-55);background:var(--hover);border-radius:999px;padding:0 7px">${n}</span>` : "";
   const head = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:13px;font-weight:600">Connected apps</span>${count}</div>`;
   const wrap = (inner: string) => `<div class="cnpy-mcp-list" data-list="grants">${head}${inner}</div>`;
+  if (!n && g.status !== "ok" && g.status !== "error") {
+    // One app's row (name over its last-used line, the Revoke button) — the usual list.
+    return wrap(skeleton("grants", "Loading connected apps&hellip;", `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)"><span class="cnpy-skcol">${skLine("46%", 13, 1.35)}${skLine("62%", 12, 1.35)}</span>${skBox(62, 26)}</div>`));
+  }
   if (!n) {
     const note = g.status === "error" ? `Couldn't load connected apps${g.error ? ` &mdash; ${esc(g.error)}` : ""}.`
       : g.status !== "ok" ? "Loading connected apps&hellip;"
@@ -1979,23 +2067,6 @@ export function tokenListBody(s: Pick<AppState, "mcpTokens" | "tokenRevokeArm">,
   </div>`;
 }
 
-/** The by-hand setup: the server with no header — Claude Code then signs in through the
- *  browser on `/mcp` → Authenticate, exactly as the plugin does. Mints nothing. */
-export function browserConnectCommand(url: string = mcpEndpoint()): string {
-  return `claude mcp add --transport http --scope user trov ${url}`;
-}
-
-const mcpCode = (t: string) => `<code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">${t}</code>`;
-const mcpStrong = (t: string) => `<strong style="font-weight:600;color:var(--fg)">${t}</strong>`;
-/** A command with a small Copy icon in its corner, so the text keeps the box's full width —
- *  the MCP tile's install commands and the by-hand setup modal's `claude mcp add`. */
-function copyBox(text: string, act: string, label: string): string {
-  return `<div style="position:relative;margin-top:7px;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:7px 36px 7px 11px">
-        <pre style="margin:0;font-family:var(--code);font-size:11.5px;line-height:1.6;color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere">${esc(text)}</pre>
-        <button data-act="${act}" class="cnpy-copybtn" title="Copy" aria-label="${label}" style="position:absolute;top:5px;right:5px;display:grid;place-items:center;width:26px;height:26px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg);color:var(--fg-55)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg></button>
-      </div>`;
-}
-
 /**
  * Settings › MCP access — OAuth only: Trov no longer mints tokens here (the token routes
  * stay, so a token already in use keeps working). Beside the heading, a quiet link to the
@@ -2006,8 +2077,6 @@ function copyBox(text: string, act: string, label: string): string {
  * Pure over AppState — exported for the pure render test.
  */
 export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" | "grantsAll"> & Partial<Pick<AppState, "mcpTokens" | "tokenRevokeArm" | "orgSlug">>, orgName = ""): string {
-  // The steps read in order on their own — no number badges (the owner's call, 2026-09-27).
-  const step = (body: string) => `<li style="min-width:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${body}</li>`;
   return `<section class="cnpy-tile cnpy-surface cnpy-set-mcp">
     <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;column-gap:12px;row-gap:2px;margin-bottom:14px">
       <div style="${SECTION_LABEL};margin-bottom:0">MCP access</div>
@@ -2016,12 +2085,8 @@ export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" |
     <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you, in one organization.</div>
     <div class="cnpy-mcp-body">
       <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
-      <ol aria-label="Connect Claude Code" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;min-width:0">
-        ${step(`Install the Trov plugin in Claude Code:${copyBox(PLUGIN_INSTALL, "copyPluginInstall", "Copy the install commands")}`)}
-        ${step(`Run ${mcpCode("/mcp")}, choose ${mcpStrong("trov")}, then ${mcpStrong("Authenticate")}.`)}
-        ${step(`Your browser opens Trov. ${orgName ? `Pick the organization to connect (you're in ${mcpStrong(esc(orgName))} now)` : "Pick the organization to connect"}, then click ${mcpStrong("Allow")} &mdash; it shows up under Connected apps.`)}
-      </ol>
-      <div data-mcp-one-org style="font-size:12px;line-height:1.55;color:var(--fg-40);min-width:0">A connection reaches one organization: the one you pick when you allow it. To use Trov with another organization, connect again and pick that one.</div>
+      ${connectSteps(orgName)}
+      <div data-mcp-one-org style="font-size:12px;line-height:1.55;color:var(--fg-40);min-width:0">${ONE_ORG_NOTE}</div>
       </div>
       <div style="min-width:0">
       ${grantListBody(s)}
@@ -2065,25 +2130,38 @@ function settingsView(s: AppState): string {
       : k === "dark"
       ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>`
       : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg>`;
-    return `<button data-act="setTheme" data-arg="${k}" class="cnpy-themecard" aria-pressed="${sel}" style="${style}">${icon}<span style="font-size:13px;font-weight:500;line-height:18px">${label}</span></button>`;
+    // "System" needs its one line of explanation only when asked: it is the card's tooltip, so the
+    // tile is exactly as tall as its three cards (it sits under Session, beside Profile and Account).
+    return `<button data-act="setTheme" data-arg="${k}" class="cnpy-themecard" aria-pressed="${sel}"${k === "system" ? ` title="Follows your operating system's appearance"` : ""} style="${style}">${icon}<span style="font-size:13px;font-weight:500;line-height:18px">${label}</span></button>`;
   }).join("");
 
-  // ONE bento grid (trov.css), every tile stretched to its grid area so every edge lines
-  // up: Profile | Account | MCP access (spanning two rows), Appearance under the first two,
-  // Email notifications at full width. DOM order is the folded order — Profile, Account,
-  // Appearance, then MCP access — so the narrower layouts need no reordering.
+  // ONE bento grid on twelve columns (trov.css), each tile about as tall as what it holds:
+  //   Profile | Account | Session over Appearance
+  //   Plan | Limits
+  //   Organizations
+  //   MCP access
+  //   Email notifications
+  // DOM order is the folded order — who I am, then the plan, then the rest, Sign out last —
+  // and the wide layout places each tile by name, so the narrower ones need no reordering.
+  const org = viewerOrg(s);
+  const plan = { org, plan: s.org.slug === org?.slug ? s.org.plan : { status: "idle" as const, data: null }, billing: s.org.billing };
   return `<div class="cnpy-set-wrap"><div class="cnpy-set">
     ${profileSection(s)}
 
     ${accountSection(s)}
 
+    ${settingsPlanTile(plan)}
+
+    ${settingsLimitsTile(plan)}
+
+    ${settingsOrgsTile({ orgs: s.myOrgs.data, mine: s.me?.orgs ?? [], status: s.myOrgs.status, current: s.orgSlug })}
+
+    ${mcpAccessSection(s, org?.name ?? "")}
+
     <section class="cnpy-tile cnpy-surface cnpy-set-appear">
       <div style="${SECTION_LABEL}">Appearance</div>
       <div class="cnpy-set-themes">${themeCards}</div>
-      <div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">System follows your operating system's appearance.</div>
     </section>
-
-    ${mcpAccessSection(s, viewerOrg(s)?.name ?? "")}
 
     ${emailNotificationsSection({
       prefs: s.notifPrefs.data,
@@ -2092,6 +2170,8 @@ function settingsView(s: AppState): string {
       emailEditing: s.emailEditing,
       emailDraft: s.emailDraft,
     })}
+
+    ${sessionSection(s)}
 
   </div></div>`;
 }
@@ -2229,7 +2309,7 @@ function slicePending(l: Loadable<unknown[]>): boolean {
 
 /** Review screen with slice-level loading/error states around the pure view. */
 function reviewScreen(s: AppState): string {
-  if (slicePending(s.proposals) && slicePending(s.draftAdrs)) return notice("Loading review queue&hellip;");
+  if (slicePending(s.proposals) && slicePending(s.draftAdrs)) return reviewView({ ...reviewProps(s), loading: true });
   if (s.proposals.status === "error" && s.draftAdrs.status === "error") return notice("Couldn't load the review queue.");
   const hint = s.proposals.status === "error" ? mwDegradedHint("Couldn't load doc/decision proposals.")
     : s.draftAdrs.status === "error" ? mwDegradedHint("Couldn't load draft ADRs.")
@@ -2239,7 +2319,7 @@ function reviewScreen(s: AppState): string {
 
 /** The Unplaced queue (the `maintenance` screen) with its slice's loading/error states around the pure view. */
 function maintenanceScreen(s: AppState): string {
-  if (slicePending(s.needsTriage)) return notice("Loading the queue&hellip;");
+  if (slicePending(s.needsTriage)) return maintenanceSkeleton();
   if (s.needsTriage.status === "error" && s.needsTriage.data.length === 0) return notice("Couldn't load the Unplaced queue.");
   return maintenanceView(maintenanceProps(s), s.needsTriage.status === "error" ? mwDegradedHint("Couldn't load the triage queue.") : "");
 }
@@ -2247,7 +2327,6 @@ function maintenanceScreen(s: AppState): string {
 // ── tickets ──────────────────────────────────────────────────────────────────
 /** The queue screen with slice-level loading/error states around the pure view. */
 function ticketsScreen(s: AppState): string {
-  if (slicePending(s.tickets)) return notice("Loading the queue&hellip;");
   if (s.tickets.status === "error") return notice("Couldn't load the ticket queue.");
   // The sprints slice is a SEPARATE fetch: when it fails the queue still renders
   // (every ticket falls into BACKLOG — `queueGroups` never drops one), but say so
@@ -2269,6 +2348,8 @@ function ticketsScreen(s: AppState): string {
     filterOpen: s.qFilterOpen,
     filterCat: s.qFilterCat,
     fmOpening: s.fmOpening,
+    // The first read is out: the toolbar is real, the columns / rows are skeletons.
+    loading: slicePending(s.tickets),
   });
 }
 
@@ -2289,7 +2370,7 @@ function newTicketScreen(s: AppState): string {
 
 function ticketDetailScreen(s: AppState): string {
   const slice = s.ticketDetail;
-  if (slice.status === "loading" && !slice.data) return notice("Loading the ticket&hellip;");
+  if ((slice.status === "loading" || slice.status === "idle") && !slice.data) return ticketDetailSkeleton();
   if (slice.status === "error") return notice("Couldn't load this ticket.");
   if (!slice.data) return notice("That ticket doesn't exist.");
   return ticketDetailView({
@@ -2316,7 +2397,7 @@ function ticketDetailScreen(s: AppState): string {
 /** The sprint screen with slice-level loading/error states around the pure view. */
 function sprintScreenBody(s: AppState): string {
   const slice = s.sprintDetail;
-  if ((slice.status === "loading" || slice.status === "idle") && !slice.data) return notice("Loading the sprint&hellip;");
+  if ((slice.status === "loading" || slice.status === "idle") && !slice.data) return sprintSkeleton();
   if (slice.status === "error") return notice("Couldn't load this sprint.");
   if (!slice.data) return notice("That sprint doesn't exist.");
   return sprintScreen({ detail: slice.data, persons: s.persons.data, resourceDraft: s.linkDraft, deleteArmed: s.sprintDeleteArmed });
@@ -2372,6 +2453,12 @@ function screenBody(s: AppState): string {
   }
 }
 
+/** Project the app state onto the guided setup's props (welcome.ts): Org settings' reads, and MY
+ *  agent connections — the two reads Settings › MCP access makes. */
+export function welcomeProps(s: AppState): WelcomeProps {
+  return { org: currentOrg(s), step: s.welcome.step, me: s.me, ui: s.org, grants: s.grants, tokens: s.mcpTokens, wel: s.welcome, dd: s.dd, backdrop: firstRunBackdrop(s) };
+}
+
 /** Project the app state onto Org settings' props. The current org is `currentOrg` — one place. */
 function orgProps(s: AppState): OrgSettingsProps {
   const status = s.myOrgs.status === "unauth" ? "error" : s.myOrgs.status;
@@ -2424,8 +2511,10 @@ const isArtScreen = (screen: Screen): screen is ArtScreen => screen === "artifac
 function appView(s: AppState): string {
   // Org settings and Platform are patched too: their tab bar is the same element across a tab
   // switch (its underline slides, focus stays on the tab), and only the panel under it is replaced.
+  // Personal Settings too: it holds forms (name, handle, digest address), and a page rebuilt per
+  // keystroke restarts everything in it (web-ui.md › A repaint REBUILDS a page).
   const morphKey = isArtScreen(s.screen) ? `${s.screen}:${JSON.stringify(s.screen === "artifact" ? s.artRoute : null)}`
-    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" ? s.screen : "";
+    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" ? s.screen : "";
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
     ${sidebar(s)}
     <main${morphKey ? ` data-morph="${attr(morphKey)}"` : ""} style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
@@ -2434,6 +2523,20 @@ function appView(s: AppState): string {
     </main>
     <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
   </div>`;
+}
+
+/** Behind a first-run card (onboarding, the org picker): the app itself — its real sidebar, header and
+ *  My Work — in the state it is in before anything has loaded, so every region is its own skeleton.
+ *  It is what the person is about to enter, held still: `inert`, hidden from assistive tech, and
+ *  softened by `.cnpy-fr-bg`. Nothing in it is theirs yet, so nothing in it is data. */
+function firstRunBackdrop(s?: AppState): string {
+  // Inside an organization (the guided setup) it is the REAL My Work — this person's sidebar, org and
+  // data, read while they are in the setup — so "Open Trov" removes the card and changes nothing else.
+  // Before there is an organization (onboarding, the picker) there is nothing of theirs to show.
+  const behind: AppState = s && s.view === "app" && s.orgSlug
+    ? { ...s, screen: "mywork", personCard: null, drawer: false }
+    : { ...initialState(), view: "app", screen: "mywork" };
+  return `<div class="cnpy-fr-bg" aria-hidden="true" inert>${appView(behind)}</div>`;
 }
 
 // The toast pops in, then fades out over its last 400ms. Both delays are offset by the time
@@ -2457,7 +2560,7 @@ function toastBlock(msg: string, elapsed: number, ms: number, action: ToastActio
 export function render(s: AppState): string {
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    ${s.billingDone ? billingDonePage(s.billingDone) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
+    ${s.billingDone ? billingDonePage(s.billingDone, firstRunBackdrop()) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
@@ -2468,6 +2571,7 @@ export function render(s: AppState): string {
     ${s.view !== "auth" && s.orgsUi.create ? createOrgModal(s.orgsUi.create) : ""}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
+    ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}

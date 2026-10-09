@@ -126,7 +126,7 @@ describe("repoView — section states", () => {
 
   it("first load is skeletons; a failed first load is an error with Retry", () => {
     const loading = repoView(props({ repo: { status: "loading", data: null } }));
-    expect(loading).toContain("repo-shimmer");
+    expect(loading).toContain('data-skel="repo-0"');
     expect(loading).not.toContain("Source not connected");
 
     const failed = repoView(props({ repo: { status: "error", data: null } }));
@@ -136,7 +136,7 @@ describe("repoView — section states", () => {
 
   it("a refresh keeps the last payload on screen", () => {
     const html = repoView(props({ tab: "code", repo: { status: "loading", data: repoSample() }, sample: true }));
-    expect(html).not.toContain("repo-shimmer");
+    expect(html).not.toContain("data-skel");
     expect(html).toContain("Batch D1 reads in usage rollup");
   });
 
@@ -1020,7 +1020,7 @@ describe("repoView — product metrics", () => {
     expect(quiet).toContain("No current product reading — the hourly poll of the app&#39;s metrics endpoint has gone quiet.");
     expect(quiet).not.toContain("No product metrics reported yet");
     for (const html of [nc, quiet]) { expect(html).toContain(">Product<"); expect(html).not.toContain("repoProductEnv"); }
-    expect(repoView(props({ tab: "usage", repo: { status: "loading", data: null } }))).toContain("repo-shimmer");
+    expect(repoView(props({ tab: "usage", repo: { status: "loading", data: null } }))).toContain('data-skel="repo-');
     expect(repoView(props({ tab: "usage", repo: { status: "error", data: null } }))).toContain("Couldn't load this section");
   });
 

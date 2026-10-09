@@ -8,7 +8,7 @@
 // page are indistinguishable), caps, the sha no-op, the status machine. What this
 // module adds is only the agent's SHAPE of it:
 //
-//   • absolute links INTO THE TOKEN'S ORG — `url` (the SPA page `<origin>/o/<org>/#artifacts/<slug>`)
+//   • absolute links INTO THE TOKEN'S ORG — `url` (the SPA page `<origin>/<org>/#artifacts/<slug>`)
 //     and `raw_url` (`<origin>/api/o/<org>/raw/a/<slug>@v<n>`), built from the bearer's own org
 //     (./org-links.ts); an absolute `upload_url` / `download_url` (token paths: they name no org);
 //   • `warnings: string[]` on EVERY result — non-empty when text content calls into

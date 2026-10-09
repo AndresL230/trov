@@ -526,7 +526,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
   // not knowledge. The bearer principal is the sender / claimer, never an input.
   // `session` on send_handoff is the replay key (processed_items, item index 0),
   // so a retried call returns the first call's handoff instead of a second row.
-  // A link into the TOKEN'S org (src/tools/org-links.ts): `<origin>/o/<slug>/#handoffs/<number>`.
+  // A link into the TOKEN'S org (src/tools/org-links.ts): `<origin>/<slug>/#handoffs/<number>`.
   const handoffUrl = (id: number) => `${appBase(artifactOrigin(env.PUBLIC_ORIGIN, opts.origin), opts.orgSlug)}/#handoffs/${id}`;
   const handoffLine = (h: HandoffView) => ({
     id: h.id, sender: h.sender, recipient: h.recipient, status: h.status, created_at: h.created_at,
@@ -667,7 +667,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
 }
 
 export async function handleMcp(request: Request, env: Env, exec: ExecutionContext, ctx: TenantContext): Promise<Response> {
-  // The org's slug, for the links tool results carry (`<origin>/o/<slug>/#…`): the org on the token's own row.
+  // The org's slug, for the links tool results carry (`<origin>/<slug>/#…`): the org on the token's own row.
   const server = buildTrovMcpServer(env, ctx, { origin: new URL(request.url).origin, orgSlug: await orgSlugOf(ctx) });
   // createMcpHandler wraps @modelcontextprotocol/sdk over Streamable HTTP, stateless (no McpAgent/DO).
   const handler = createMcpHandler(server, { route: "/mcp" });

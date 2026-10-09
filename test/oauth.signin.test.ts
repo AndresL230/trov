@@ -49,7 +49,7 @@ describe("sign-in returns to a pending authorize", () => {
     const cb = await app.request("/auth/callback?code=c&state=st1", { headers: { cookie: `${await txCookie("st1")}; ${await pending(Q)}` } }, env);
     expect(cb.headers.get("location")).toBe("/#onboard");
     expect(cb.headers.get("set-cookie") ?? "").not.toMatch(/oauth_pending=;/);
-    const onboard = `${ONBOARD_COOKIE}=${await sealOnboard({ provider: "github", subject: "brandnew", label: "brandnew", email: null, name: null, avatar_url: null, suggested_handle: "brandnew", invite_email: null }, "test-cookie-secret")}`;
+    const onboard = `${ONBOARD_COOKIE}=${await sealOnboard({ provider: "github", subject: "brandnew", label: "brandnew", email: null, name: null, avatar_url: null, suggested_handle: "brandnew" }, "test-cookie-secret")}`;
     const res = await app.request("/auth/onboard", {
       method: "POST", headers: { cookie: `${onboard}; ${await pending(Q)}`, "content-type": "application/json" },
       body: JSON.stringify({ handle: "brandnew", name: "B", color: "sky" }),

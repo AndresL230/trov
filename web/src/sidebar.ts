@@ -174,7 +174,7 @@ export function sidebarView(p: SidebarProps): string {
       ${item("review", "goReview", "Review", c.review)}
       ${item("maintenance", "goMaintenance", "Unplaced", c.maintenance)}
       ${section("Help")}
-      ${item("guide", "goGuide", "Get Started")}
+      ${item("guide", "goGuide", "Guide")}
       ${item("releases", "goReleases", "What's new")}
     </nav>
     <div class="cnpy-collapse" data-tip="Expand sidebar">

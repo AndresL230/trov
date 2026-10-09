@@ -15,7 +15,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM billing_subscriptions",
   "DELETE FROM billing_events",
   "DELETE FROM platform_outbox_bodies",
-  "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL",
+  "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL, plan_gift_until = NULL",
   "DELETE FROM abuse_counters",
   // Sync GitHub runs (0046_sync_runs) reference orgs.
   "DELETE FROM sync_runs",
@@ -23,7 +23,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM org_admin_audit",
   "UPDATE orgs SET suspended_at = NULL, suspended_by = NULL, logo_sha = NULL, logo_source = NULL, logo_by = NULL, logo_from = NULL, logo_at = NULL",
   "DELETE FROM org_audit",
-  // Hosting (0048_hosting_providers): parts reference org_environments, so they go before it.
+  // Hosting (0049_hosting_providers): parts reference org_environments, so they go before it.
   "DELETE FROM hosting_poll_state",
   "DELETE FROM hosting_deploys",
   "DELETE FROM org_hosting_connections",

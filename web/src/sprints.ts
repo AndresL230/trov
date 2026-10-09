@@ -25,6 +25,7 @@ import { personChip, personLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { segmented } from "./segmented";
 import { ticketPill, priorityChip, age, avatarStack, tagChip } from "./tickets";
+import { skeleton, skBar, skBox, skLine, skLines, skList, skW } from "./skeleton";
 
 // ── atoms ────────────────────────────────────────────────────────────────────
 
@@ -402,6 +403,24 @@ function deleteBlock(sp: SprintDetail, armed: boolean): string {
       <button data-act="sprintDeleteCancel" class="cnpy-outlinebtn" style="padding:5px 12px;border-radius:7px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg-70)">Cancel</button>
     </div>
   </div>`;
+}
+
+/** The sprint page while its read is out: title, progress bar, the ticket grid and
+ *  the rail, on the sprint page's own grid. */
+export function sprintSkeleton(): string {
+  const card = (i: number) => `<div${surface("padding:12px 13px")}>${skLines([skW(i), "44%"], 13.5, 1.45)}<div style="display:flex;align-items:center;gap:6px;margin-top:10px">${skBar(52, 8)}<span style="margin-left:auto;display:flex">${skBox(18, 18)}</span></div></div>`;
+  const prop = (w: number) => `<div style="${PROP_ROW}">${skBar(44, 8)}${skBar(w, 10)}</div>`;
+  return skeleton("sprint", "Loading the sprint&hellip;", `<div class="cnpy-sprint-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:28px">
+      <div style="min-width:0">
+        ${skLine("46%", 22, 1.3)}
+        <div style="margin-top:9px">${skLine(120, 12, 1.5)}</div>
+        <div style="max-width:640px;margin-top:14px">${skLines(["100%", "92%", "60%"], 13.5, 1.65)}</div>
+        <div style="display:flex;align-items:center;gap:12px;margin:16px 0 26px">${skBar("100%", 6, "flex:1")}${skBar(54, 8)}</div>
+        <div style="padding-bottom:9px;border-bottom:1px solid var(--border-strong)">${skLine(160, 11, 1.5)}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr));gap:10px;margin-top:14px">${skList(6, card)}</div>
+      </div>
+      <div style="border-left:1px solid var(--border);padding-left:22px">${skBar(70, 8, "margin-bottom:14px")}${prop(70)}${prop(96)}${prop(60)}${prop(84)}<div style="margin-top:26px">${skBar(70, 8)}</div>${skList(3, (i) => `<div style="display:flex;align-items:center;gap:9px;padding:4px 0;margin-top:${i ? 6 : 12}px">${skBox(22, 22)}${skBar(skW(i, [110, 84, 96]), 10)}</div>`)}</div>
+    </div>`, DETAIL_SHELL);
 }
 
 export function sprintScreen(p: SprintScreenProps): string {

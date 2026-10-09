@@ -45,6 +45,34 @@ if (mount && doc) {
     theme = resolved() === "light" ? "dark" : "light";
     try { localStorage.setItem("trov.theme", theme); } catch { /* ignore */ }
     paint();
+    spy();
+  });
+  // The contents follow the reader: the section whose heading last crossed the top of the page is the
+  // current one. Read from the DOM on every scroll, so a repaint (the theme toggle) needs no re-wiring.
+  let queued = false;
+  const spy = () => {
+    queued = false;
+    let current = "";
+    for (const sec of mount.querySelectorAll<HTMLElement>(".site-legal-sec")) {
+      if (sec.getBoundingClientRect().top > 120) break;
+      current = sec.id;
+    }
+    for (const a of mount.querySelectorAll<HTMLElement>("[data-legal-toc]")) {
+      if (a.dataset.legalToc === current) a.setAttribute("aria-current", "true");
+      else a.removeAttribute("aria-current");
+    }
+  };
+  window.addEventListener("scroll", () => { if (!queued) { queued = true; requestAnimationFrame(spy); } }, { passive: true });
+  spy();
+  // A contents link glides to its section (and keeps the address shareable); with reduced motion it jumps.
+  mount.addEventListener("click", (e) => {
+    const a = (e.target as Element).closest<HTMLElement>("[data-legal-toc]");
+    const sec = a ? document.getElementById(a.dataset.legalToc ?? "") : null;
+    if (!a || !sec) return;
+    e.preventDefault();
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    sec.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+    history.replaceState(null, "", `#${sec.id}`);
   });
   // A deep link to a section (/privacy#cookies) lands on it once the page has rendered.
   if (location.hash.length > 1) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();

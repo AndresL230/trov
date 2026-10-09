@@ -45,7 +45,10 @@ import { blankDoc, defaultSection } from "./newdoc";
 import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDatesProblem, sprintDatesLabel, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
 import type { SprintDetail } from "@shared/sprints";
 import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash";
-import { mountLandingMotion, unmountLandingMotion } from "./landing-motion";
+import { mountLandingMotion, unmountLandingMotion, noteJump } from "./landing-motion";
+import { createFeatureCtl } from "./site-feature";
+import { TOUR_KEYS } from "./landing";
+import { initFaqAccordion } from "./site-faq";
 import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
   type TicketCategory, type TicketPriority, type TicketStatus,
@@ -58,6 +61,7 @@ import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX
 import { PERSON_COLORS, type PersonColor } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
+import { syncSkeletons } from "./skeleton";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { createPlatform } from "./platform-actions";
@@ -73,11 +77,15 @@ import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
+import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
+import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
+import { currentOrg } from "./org-settings";
 import { createSyncController } from "./sync-actions";
 import { createDropdowns } from "./dropdown";
 import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
 import { SETUP_PARAM, initialBillingDone, startBillingDone } from "./billing";
+import { morphStep } from "./transition";
 import { BILLING_DONE_PATH } from "@shared/billing";
 import { getBillingStatus } from "./api";
 import { setPrimaryRepo } from "./github";
@@ -116,6 +124,23 @@ const orgCtl = createOrgController({
 const orgsCtl = createOrgsController({
   state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
   reloadOrgs: () => loadMyOrgs(), go: (url) => { window.location.assign(url); }, openSettings: () => dispatch("orgGo", null, null),
+  // A first run: the picker has held no org's data, so the org just created or joined is entered in
+  // place and the card morphs into the guided setup — no page load, no flash of a blank page.
+  enterNew: (org, hash) => {
+    if (state.view !== "orgs" || enteredAnOrg || !state.me) return false;
+    if (!state.me.orgs.some((o) => o.slug === org.slug)) state.me.orgs = [...state.me.orgs, org];
+    if (state.myOrgs.data && !state.myOrgs.data.orgs.some((o) => o.slug === org.slug)) state.myOrgs.data = { ...state.myOrgs.data, orgs: [...state.myOrgs.data.orgs, org] };
+    morphStep(() => { state.orgsUi = initialOrgsUi(); enterOrg(org.slug, hash); rerender(); });
+    return true;
+  },
+});
+
+// The guided first-run setup (web/src/welcome-actions.ts): every `welcome…` act, the agent step's
+// re-check, and the note that brings a return from GitHub back to it.
+const welcomeCtl = createWelcomeController({
+  state, mount, rerender: () => rerender(), loadOrg: () => orgCtl.load(), loadHome: () => loadMyWorkIfNeeded(), loadConnections: () => loadGrantsIfNeeded(),
+  reloadConnections: () => { loadGrants(); loadMcpTokens(); }, listGrants: () => listOAuthGrants(),
+  unauth: (e) => unauth(e), go: (url) => { window.location.href = url; },
 });
 
 // The dropdowns (web/src/dropdown.ts): opening, closing (with its exit), the keyboard, and
@@ -124,6 +149,7 @@ const dropdowns = createDropdowns({ state, mount, rerender: () => rerender(), di
 
 // ── persisted client prefs (theme + sidebar only; not backend state) ─────────
 migrateBrowserStorage(); // canopy.* → trov.* (the rename) before the first read
+initFaqAccordion();      // the Questions accordion on the landing page (site-faq.ts): one delegated listener
 try {
   const t = localStorage.getItem("trov.theme");
   if (t === "dark" || t === "light" || t === "system") state.theme = t;
@@ -165,9 +191,9 @@ if (window.matchMedia) {
 
 // ── render with focus/caret + main-pane scroll preservation ──────────────────
 // ── screen-enter motion ──────────────────────────────────────────────────────
-// A screen's entrance (trov.css `[data-enter]`) plays when WHAT IS ON SCREEN
-// changes — a new route, or its data arriving — never on the other rerenders (a
-// keystroke, a hover, a badge landing), which would replay it endlessly.
+// A screen's entrance (trov.css `[data-enter]`) plays when the ROUTE changes —
+// never on the other rerenders (a keystroke, a hover, a badge or a read landing),
+// which would replay it endlessly.
 // rerender() swaps <main> wholesale, so a rerender DURING an entrance would cut
 // it short; instead the clock keeps running and the fresh DOM joins the animation
 // where the old one left off, via a negative animation-delay (`--enter-t`).
@@ -175,58 +201,25 @@ const ENTER_MS = 900;
 let enterKey = "";
 let enterAt = 0;
 let enterTimer: ReturnType<typeof setTimeout> | null = null;
-
-/** Whether the screen's main read has landed — its arrival is an entrance too. */
-function screenSettled(): boolean {
-  const ok = (l: { status: string }) => l.status === "ok" || l.status === "error";
-  switch (state.screen) {
-    case "mywork": return ok(state.mywork);
-    case "feed": return ok(state.feed);
-    case "docs": return ok(state.docsList);
-    case "roadmap": return ok(state.roadmap);
-    case "tickets": return ok(state.tickets);
-    case "ticketdetail": return ok(state.ticketDetail);
-    case "sprint": return ok(state.sprintDetail);
-    case "repo": return state.repo.data !== null || state.repo.status === "error";
-    // A background refresh (after a write) keeps its data, so it never replays the entrance.
-    case "artifacts": return state.art.list.data !== null || ok(state.art.list);
-    case "artifactnew": return true;
-    case "artifact": {
-      const r = state.artRoute;
-      const d = r.slug ? state.art.details[detailKey(r.slug, r.diff ? null : r.v)] : undefined;
-      return !!d && (d.data !== null || d.status === "ok" || d.status === "error" || d.status === "missing");
-    }
-    // These four refetch on every visit and paint what they already hold meanwhile,
-    // so "landed" means "has something to show" (like the Repo dashboard) — else the
-    // cached paint plays the entrance and the refresh landing plays it a second time.
-    case "handoffs": return ok(state.handoffs) || state.handoffs.data.length > 0;
-    case "handoff": return ok(state.handoffDetail) || state.handoffDetail.data !== null;
-    case "prompts": return ok(state.promptList) || state.promptList.data.length > 0;
-    case "prompt": return ok(state.promptDetail) || state.promptDetail.data !== null;
-    default: return true; // search re-queries per keystroke; the rest load nothing
-  }
-}
+/** The next page is one the person was already looking at (My Work behind the guided setup's card):
+ *  it does not enter. Consumed by the next `markEnter`. */
+let skipEnterOnce = false;
 
 function markEnter(): void {
   const root = mount.firstElementChild as HTMLElement | null;
   if (!root || state.view !== "app") return;
-  const settled = screenSettled();
   // An in-page view switch (the header's segmented switch — Roadmap Narrative/Timeline, a
   // release's Release/Patch notes — or a page's tab bar: Roadmap's, Repo's, Org settings'
   // and Platform's tabs) is not a new page: key the entrance on the route WITHOUT it (hash.ts
   // `pageKey`), so flipping the switch swaps the content in place instead of replaying the
   // screen (and the tab bar's underline slides unbroken).
-  const key = `${pageKey(currentRoute())}|${state.repoSample ? "s" : ""}|${settled ? 1 : 0}`;
+  // The entrance belongs to the ROUTE, never to a read: it plays once, when the page opens —
+  // over the loading skeleton if the data is still out — and a read landing later fills the
+  // skeleton's boxes with one short fade (skeleton.ts `syncSkeletons`), not a second
+  // staggered entrance. A read that lands inside the entrance simply joins it (`--enter-t`).
+  const key = `${pageKey(currentRoute())}|${state.repoSample ? "s" : ""}`;
   const now = performance.now();
-  // A still-loading paint does not enter: the entrance plays ONCE, when the screen's
-  // read lands. Playing it for the loading paint too made every first visit (and every
-  // visit to an empty list) enter twice — the "double click" flash.
-  if (!settled) {
-    enterKey = key;
-    enterAt = now - ENTER_MS;
-    root.removeAttribute("data-enter");
-    return;
-  }
+  if (skipEnterOnce) { skipEnterOnce = false; enterKey = key; enterAt = now - ENTER_MS; }
   if (key !== enterKey) { enterKey = key; enterAt = now; }
   const elapsed = now - enterAt;
   if (elapsed >= ENTER_MS) return;
@@ -328,8 +321,11 @@ function rerender(): void {
   syncFavicon(resolvedTheme(), mount.querySelector("[data-cnpy-theme]"));
   restoreScroll(mount, scroll, state.screen);
   markEnter();
+  // Loading skeletons: keep each region's clock across this swap, and fade in what replaced one.
+  syncSkeletons(mount, state.view === "app" ? pageKey(currentRoute()) : state.view);
   orgCtl.afterPaint();
   dropdowns.afterPaint();
+  welcomeCtl.afterPaint();
   syncCtl.afterPaint();
   if (pendingFlash) {
     for (const el of Array.from(mount.querySelectorAll(pendingFlash))) el.classList.add("cnpy-flash");
@@ -394,6 +390,8 @@ window.addEventListener("hashchange", () => {
   // body swaps in place — exactly what clicking the tab does. (Every other screen's loader is
   // already a no-op once its data is in; Platform's reads only what the tab has not got yet.)
   if (r.screen === "org" && cur.screen === "org") { orgCtl.act("orgTab", r.orgTab ?? "integrations", null); return; }
+  // Back / Forward between two steps of the guided setup: its reads are already in.
+  if (r.screen === "welcome" && cur.screen === "welcome") { welcomeCtl.moved(); return; }
   loadForScreen(r.screen);
 });
 
@@ -495,6 +493,8 @@ function currentRoute(): Route {
   if (state.screen === "platform") r.platTab = state.plat.tab;
   if (state.screen === "platformorg" && state.plat.orgSlug) r.platOrg = state.plat.orgSlug;
   if (state.screen === "org") r.orgTab = state.org.tab;
+  // The step ON SCREEN: a member who opens `#welcome` (the admin's first step) is on their own first.
+  if (state.screen === "welcome") r.welcomeStep = effectiveWelcomeStep(state.welcome.step, welcomeStepsFor(currentOrg(state)?.role, state.org));
   return r;
 }
 function applyRoute(r: Route): void {
@@ -521,6 +521,7 @@ function applyRoute(r: Route): void {
   if (r.platTab) state.plat.tab = r.platTab;
   if (r.platOrg) state.plat.orgSlug = r.platOrg;
   if (r.orgTab) state.org.tab = r.orgTab;
+  if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
 }
 
 // Kick off the data load for a screen (mirrors the go* dispatch cases).
@@ -542,13 +543,14 @@ function loadForScreen(screen: Screen): void {
     case "mywork": loadMyWorkIfNeeded(); break;
     case "repo": loadRepoIfNeeded(); break;
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
-    case "settings": loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); break;
+    case "settings": loadSettingsReads(); break;
     case "unsubscribe": runUnsubscribe(); break;
     // Platform has one home, `/platform/` (the org menu links there): an old in-app `#platform…` link goes to it.
     case "platform": case "platformorg":
       if (state.view === "app") { location.replace(`${PLATFORM_PATH}${hashForRoute(currentRoute())}`); break; }
       platform.load(); break;
     case "org": loadOrgAdminExtras(); orgCtl.load(); break;
+    case "welcome": welcomeCtl.enter(); break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
     case "newticket": loadSprintsIfNeeded(); rerender(); break;
@@ -708,6 +710,13 @@ function showPicker(lost: string | null): void {
   rerender();
   window.scrollTo(0, 0);
 }
+/** One first-run card giving way to the picker (transition.ts). The picker's list is read FIRST: morphing
+ *  into a picker that is still loading lands on its short "Loading…" card, which then snaps to full height
+ *  when the list arrives — the card is squeezed and then stretched. Loaded first, it morphs once, to its
+ *  real size. (`loadMyOrgs` never rejects; on an error the picker says so itself.) */
+function morphToPicker(before?: () => void): Promise<void> {
+  return loadMyOrgs().then(() => { morphStep(() => { before?.(); showPicker(null); }); });
+}
 // A tenant request answered 404 and the membership gate confirmed it (api.ts): same place.
 setOrgLostHandler((slug) => { if (state.view === "app" && state.orgSlug === slug) showPicker(slug); });
 
@@ -730,7 +739,10 @@ function enterPlatform(hash: string): void {
 
 /** Open an org: every request from here on is its (`/api/o/<slug>/…`), the address bar says
  *  `/<slug>/` with the hash route after it, and this browser remembers it as last used. */
+/** This page has entered an org (so it holds that org's data): a second one is opened by a page load. */
+let enteredAnOrg = false;
 function enterOrg(slug: string, hash: string): void {
+  enteredAnOrg = true;
   const query = new URLSearchParams(location.search);
   const link = query.get("link");
   // The return from GitHub after connecting the App (src/github-app/connect.ts): `/<slug>/?github=<outcome>#org/repos`.
@@ -740,6 +752,15 @@ function enterOrg(slug: string, hash: string): void {
     const missing = /^[1-9][0-9]{0,5}$/.test(query.get("missing") ?? "") ? Number(query.get("missing")) : undefined;
     state.org.githubNotice = { outcome: github, accounts: (query.get("accounts") ?? "").split(",").filter((a) => GITHUB_LOGIN_RE.test(a)).slice(0, 10), ...(missing ? { missing } : {}) };
   }
+  // A return the guided setup itself sent away — to link a GitHub account, or to connect the GitHub
+  // App — comes back to the setup, not to the screen the server names (welcome-actions.ts). Once.
+  try {
+    const note = parseWelcomeReturn(sessionStorage.getItem(WELCOME_RETURN_KEY));
+    if (note) {
+      sessionStorage.removeItem(WELCOME_RETURN_KEY);
+      hash = welcomeReturnHash(note, { slug, hash, github: isGithubConnectOutcome(github), now: Date.now() }) ?? hash;
+    }
+  } catch { /* no storage: land where the URL says */ }
   state.orgSlug = slug;
   setApiOrg(slug);
   try { localStorage.setItem(LAST_ORG_KEY, slug); } catch { /* ignore */ }
@@ -994,6 +1015,14 @@ function loadGrants(): void {
       state.grants = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerender();
     });
+}
+/** Everything personal Settings reads: my connections, my digest preferences, the plan of the org on
+ *  screen (its Plan and Limits tiles) and my organizations again (each one's plan and my role in it). */
+function loadSettingsReads(): void {
+  loadGrantsIfNeeded();
+  loadNotifPrefsIfNeeded();
+  orgCtl.loadPlan();
+  void loadMyOrgs();
 }
 function loadGrantsIfNeeded(): void {
   if (state.grants.status === "idle") loadGrants();
@@ -1965,6 +1994,8 @@ function scheduleHandleCheck(): void {
   const seq = ++handleCheckSeq;
   const h = state.onboard.handle;
   if (!h) return;
+  // Editing an account that exists: the handle it already has is its own, not "taken".
+  if (state.onboard.edit && h === state.onboard.edit.current) { state.onboard.check = "available"; return; }
   handleCheckTimer = window.setTimeout(() => {
     checkHandle(h)
       .then((r) => { if (seq !== handleCheckSeq) return; state.onboard.check = r.available ? "available" : (r.reason ?? "invalid"); rerender(); })
@@ -2027,10 +2058,41 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     case "onbName": state.onboard.name = value ?? ""; rerender(); return;
     case "onbColor": if (arg && (PERSON_COLORS as readonly string[]).includes(arg)) state.onboard.color = arg as PersonColor; break;
+    // Back from the welcome card to "how you'll appear": the account exists, so the card edits it.
+    case "onbBack": {
+      const me = state.me;
+      if (!me) return;
+      const id = me.identities[0];
+      morphStep(() => {
+        state.onboard = { ...initialOnboard(), prefill: id ? { provider: id.provider, label: id.label, email: null, name: me.name, avatar_url: null, suggested_handle: me.handle } : null,
+          handle: me.handle, name: me.name ?? "", color: me.color, check: "available", edit: { current: me.handle } };
+        state.view = "auth"; state.authStep = "onboard";
+        rerender();
+      });
+      return;
+    }
     case "onbSubmit": {
       const o = state.onboard;
       if (o.check !== "available" || o.submitting) return;
       o.submitting = true; o.error = null; rerender();
+      if (o.edit) {
+        // Save what changed (the same writes Settings › Profile makes), then on to the welcome card.
+        const me = state.me;
+        const name = o.name.trim() || null;
+        const profile = me && (name !== me.name || o.color !== me.color) ? updateMe({ name, color: o.color }) : Promise.resolve(null);
+        profile
+          .then(() => (o.handle !== o.edit!.current ? renameHandle(o.handle) : null))
+          .then(() => getMe())
+          .then((fresh) => { state.me = fresh; state.displayName = fresh.name ?? fresh.handle; return morphToPicker(); })
+          .catch((e) => {
+            o.submitting = false;
+            if (e instanceof ApiError && e.message === "handle_taken") o.check = "taken";
+            else if (e instanceof Unauthorized) o.error = "This sign-in expired. Start again.";
+            else o.error = isRateLimited(e) ? rateLimitText(e) : "Couldn't save that. Try again.";
+            rerender();
+          });
+        return;
+      }
       submitOnboard({ handle: o.handle, name: o.name.trim() || null, color: o.color })
         // A brand-new person lands on Get Started, not My Work: the projection is
         // empty on day one, and this is the one moment they are guaranteed to be
@@ -2038,11 +2100,25 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         // it takes. Every later sign-in goes wherever their hash points.
         // Signed up from an MCP client's authorize link → back to the consent screen
         // (a same-origin path the Worker built); otherwise Get Started, as before.
-        .then((r) => { window.location.href = r.redirect?.startsWith("/oauth/authorize?") ? r.redirect : "/#guide"; })
+        .then((r) => {
+          if (r.redirect?.startsWith("/oauth/authorize?")) { window.location.href = r.redirect; return; }
+          // No reload: read who we now are and morph this card into the next one (the org picker —
+          // a new person is in no org). Anything unexpected falls back to a fresh page.
+          getMe().then((me) => {
+            if (me.orgs.length > 0 || me.superadmin === true) throw new Error("not a first run");
+            // The guided setup that follows an organization is step 3 of this flow (welcome.ts).
+            try { sessionStorage.setItem(FIRST_RUN_KEY, "1"); } catch { /* the count is simply not shown */ }
+            state.welcome.firstRun = true;
+            state.me = me;
+            state.displayName = me.name ?? me.handle;
+            state.plat.superadmin = false;
+            history.replaceState(null, "", "/");
+            return morphToPicker();
+          }).catch(() => { window.location.hash = "#guide"; window.location.reload(); });
+        })
         .catch((e) => {
           o.submitting = false;
           if (e instanceof ApiError && e.message === "handle_taken") { o.check = "taken"; }
-          else if (e instanceof ApiError && e.message === "invite_revoked") { o.error = "This invite was revoked. Ask an admin to invite you again."; }
           else if (e instanceof Unauthorized) { o.error = "This sign-in expired. Start again."; }
           else { o.error = "Couldn't finish sign-up. Try again."; }
           rerender();
@@ -2052,12 +2128,35 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // Landing page (signed out): the Sign in dialog, and in-page jumps. The jumps
     // scroll instead of setting location.hash — the hash is the route and the
     // sign-in return-to, and must survive a browse of the landing page.
-    case "openSignIn":
+    case "openSignIn": {
+      // `arg` says what the visitor came to do ("signup" from a Start-for-free button, or the dialog's own
+      // switch); anything else is the nav's Sign in. Switching inside the open dialog keeps focus on the switch.
+      const switching = state.signInOpen;
+      state.signInMode = arg === "signup" ? "signup" : "signin";
       state.signInOpen = true;
       rerender();
-      mount.querySelector<HTMLElement>('[role="dialog"] [data-act="signIn"]')?.focus();
+      mount.querySelector<HTMLElement>(switching ? '[role="dialog"] [data-field="signInSwitch"]' : '[role="dialog"] [data-act="signIn"]')?.focus();
       return;
+    }
+    case "signInPlan": state.signInPlan = arg === "team" ? "team" : "free"; break;
+    // After payment, "Set up your organization": on to the welcome card IN PLACE (the card morphs into
+    // it), not by loading `/?setup=…`. Anything unexpected falls back to that page load.
+    case "billingSetup": {
+      const fallback = arg && arg.startsWith("/?") ? arg : "/";
+      getMe().then((me) => {
+        state.me = me;
+        state.displayName = me.name ?? me.handle;
+        state.plat.superadmin = me.superadmin === true;
+        history.replaceState(null, "", "/");
+        return morphToPicker(() => { state.billingDone = null; });
+      }).catch(() => { location.assign(fallback); });
+      return;
+    }
     case "closeSignIn": state.signInOpen = false; break;
+    // The tour's dialog (site-feature.ts): a card grows into it, ← / → step through the features.
+    case "openFeature": if (arg) featureCtl.open(arg); return;
+    case "closeFeature": featureCtl.close(); return;
+    case "stepFeature": featureCtl.step(arg === "prev" ? -1 : 1); return;
     // The landing's "Get started": signed in, straight to the guide; signed out, the
     // guide becomes the sign-in return-to (replaceState: no hashchange, no route) and
     // the Sign in dialog opens.
@@ -2075,6 +2174,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     case "siteJump": {
       const behavior: ScrollBehavior = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+      // ONE scroll per click; where it lands is the target's `scroll-margin-top` (trov.css). Sections
+      // passed on the way settle without their entrance (landing-motion.ts).
+      noteJump();
       if (arg === "top") window.scrollTo({ top: 0, behavior });
       else document.getElementById(`site-${arg}`)?.scrollIntoView({ behavior, block: "start" });
       return;
@@ -2115,7 +2217,16 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
 
     // primary navigation
-    case "goMyWork": state.screen = "mywork"; loadMyWorkIfNeeded(); return;
+    case "goMyWork":
+      // Out of the guided setup: My Work is already what stands behind the card (read while the person
+      // was in the setup), so the card simply goes — a morph, and no page entrance replayed over a
+      // screen that was in view the whole time.
+      if (state.view === "app" && state.screen === "welcome") {
+        loadMyWorkIfNeeded();
+        morphStep(() => { state.screen = "mywork"; skipEnterOnce = true; rerender(); });
+        return;
+      }
+      state.screen = "mywork"; loadMyWorkIfNeeded(); return;
     case "mwRepoTab":
       if (!(MW_REPO_TABS as readonly string[]).includes(arg ?? "") || arg === state.mwRepoTab) return;
       state.mwRepoTab = arg as MwRepoTab;
@@ -2742,7 +2853,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       loadNeedsTriageIfNeeded();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3342,7 +3453,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "previewUnsub": state.unsub = { pending: false, error: null, preview: true }; state.screen = "unsubscribe"; break;
-    case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); return;
+    case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadSettingsReads(); return;
 
     // ── Org settings › Notifications (admin) ─────────────────────────────────
     case "policyToggle": {
@@ -3538,6 +3649,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
       // `orgs…` (the switcher, the picker, the create dialog) before `org…` (Org settings).
+      if (act.startsWith("welcome")) { welcomeCtl.act(act, arg); return; }
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }
       if (act.startsWith("org")) { if (act === "orgGo") loadOrgAdminExtras(); orgCtl.act(act, arg, value); return; }
       // Every Artifacts act goes to the one reducer in artifacts.ts.
@@ -4223,6 +4335,10 @@ mount.addEventListener("focusin", (e) => railTip((e.target as Element | null)?.c
 mount.addEventListener("focusout", () => railTip(null));
 mount.addEventListener("mouseleave", () => railTip(null));
 
+// The landing tour's dialog: Escape, ← / →, and Tab kept inside it.
+const featureCtl = createFeatureCtl({ mount, keys: TOUR_KEYS, get: () => state.siteFeature, set: (v) => { state.siteFeature = v; }, rerender: () => rerender() });
+document.addEventListener("keydown", (e) => featureCtl.onKey(e));
+
 // Escape closes the landing page's sign-in dialog, wherever focus is.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || !state.signInOpen || state.view !== "auth") return;
@@ -4237,10 +4353,10 @@ if (params.get("denied") === "1") {
   state.view = "auth";
   state.authStep = "nonmember";
   rerender();
-} else if (params.get("denied") === "invite") {
-  // Google account not invited (or unverified email): /auth/google/callback redirected here
+} else if (params.get("denied") === "unverified") {
+  // A Google account whose address Google has not verified: /auth/google/callback redirected here
   state.view = "auth";
-  state.authStep = "notinvited";
+  state.authStep = "unverified";
   state.deniedEmail = params.get("email");
   rerender();
 } else if (location.pathname === BILLING_DONE_PATH) {
@@ -4296,13 +4412,14 @@ if (params.get("denied") === "1") {
       // `/platform/`: the superadmin's area, whatever orgs they are in (or none). Anyone else falls through to the picker.
       // So does a `#platform…` link opened at `/` by a superadmin with no org to open it in.
       if (me.superadmin === true && (isPlatformPath(location.pathname) || (me.orgs.length === 0 && /^#platform(?:\/|$)/.test(hash)))) { void loadMyOrgs(); enterPlatform(hash); return; }
-      // Sent on from the waiting room (billing.ts `setupHref`): the picker — whatever orgs they are already in —
-      // with the form for the organization they just paid for open. A stale or foreign id opens their oldest grant, or nothing.
+      // Sent on from the waiting room (billing.ts `setupHref`): the picker — whatever orgs they are already
+      // in — where the organization they just paid for is one of the things to do ("You can set up an
+      // organization — Pro. Paid for just now."). Its form is NOT opened for them: it is their next step
+      // to take, on a card that says the payment went through, not a dialog thrown over it.
       const setup = params.get(SETUP_PARAM);
       if (setup !== null && location.pathname === "/") {
         history.replaceState(null, "", "/");
         showPicker(null);
-        void loadMyOrgs().then((mine) => { if (mine?.can_create) orgsCtl.act("orgsCreateOpen", setup, null); });
         return;
       }
       const land = resolveLanding({ pathSlug: orgSlugFromPath(location.pathname), orgs: me.orgs, lastUsed: last, returnOrg: backOrg });
@@ -4314,6 +4431,13 @@ if (params.get("denied") === "1") {
       // Unauthorized or any error → show login
       state.view = "auth";
       state.authStep = "login";
+      // Sent here by the billing route (`/?start=team`: a signed-out buyer who has not picked a provider —
+      // the pricing page's "Choose Pro"): Get started opens on that plan, so the two provider buttons
+      // carry on to payment. The parameter is read once and leaves the address bar.
+      if (params.get("start") === "team") {
+        state.signInOpen = true; state.signInMode = "signup"; state.signInPlan = "team";
+        history.replaceState(null, "", `/${location.hash}`);
+      }
       rerender();
     });
 }

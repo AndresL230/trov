@@ -32,6 +32,16 @@ export const isBillingInterval = (v: unknown): v is BillingInterval => typeof v 
 export const BILLING_START_PATH = "/billing/start";
 export const billingStartHref = (plan: PurchasablePlan, interval: BillingInterval = "month"): string =>
   `${BILLING_START_PATH}?plan=${plan}${interval === "month" ? "" : `&interval=${interval}`}`;
+/** The purchase link with the sign-in provider already picked: the billing route seals the return and goes
+ *  straight on to that provider (src/billing/routes.ts) — what the Get started dialog's Pro buttons use. */
+export const billingViaHref = (plan: PurchasablePlan, via: "github" | "google", interval: BillingInterval = "month"): string =>
+  `${billingStartHref(plan, interval)}&via=${via}`;
+/** Where a signed-out buyer with NO provider picked is sent: the app's landing page, which opens its Get
+ *  started dialog on this plan (`START_PARAM`; web/src/main.ts). */
+export const START_PARAM = "start";
+export const START_INTERVAL_PARAM = "interval";
+export const billingAskHref = (plan: PurchasablePlan, interval: BillingInterval = "month"): string =>
+  `/?${START_PARAM}=${plan}${interval === "month" ? "" : `&${START_INTERVAL_PARAM}=${interval}`}`;
 /** Where Stripe sends the buyer back: the waiting room (`?session_id=…`). */
 export const BILLING_DONE_PATH = "/billing/done";
 /** Where a person who backs out of checkout lands, and where "see the plans" points: the public pricing
@@ -115,8 +125,11 @@ export interface OrgBillingView {
   cancel_at_period_end: boolean;
   /** Trov set this org's plan by hand: it no longer follows the subscription's. */
   pinned: boolean;
-  /** The plans the org can START a subscription on — a Free org's upgrade (`POST …/billing/upgrade`). */
+  /** The plans the org can START a subscription on — a Free org's upgrade (`POST …/billing/upgrade`), and
+   *  what a GIFTED org's owner pays for to keep a plan past the gift's end. */
   upgrade_to: PurchasablePlan[];
+  /** The org's plan is a gift from Trov (`OrgPlanView.gift_until`), not a subscription: nothing is paid yet. */
+  gifted?: boolean;
 }
 
 // ── Platform (superadmin) ────────────────────────────────────────────────────

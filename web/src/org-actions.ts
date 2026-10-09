@@ -49,6 +49,8 @@ export interface OrgController {
   act(act: string, arg: string | null, value: string | null): void;
   /** Load (or refresh) the current org and everything its screen reads. */
   load(): void;
+  /** Load (or refresh) only the current org's plan and use — personal Settings reads nothing else of it. */
+  loadPlan(): void;
   /** After every paint: restore the secret input's live value, place focus, drop a stale form. */
   afterPaint(): void;
 }
@@ -224,15 +226,25 @@ export function createOrgController(host: OrgHost): OrgController {
       });
   }
 
-  function loadSlices(): void {
+  /** Point the slices at the org on screen (a fresh set when it changed). False when there is none. */
+  function adoptOrg(): boolean {
     const o = org();
-    if (!o) return;
+    if (!o) return false;
     if (ui().slug !== o.slug) {
       dropSecret();
       // (What the return from GitHub said arrives before the first load: it is kept.)
       state.org = { ...initialOrgUi(), tab: ui().tab, slug: o.slug, githubNotice: ui().githubNotice };
     }
+    return true;
+  }
+  function loadSlices(): void {
+    if (!adoptOrg()) return;
     loadSettings(); loadMembers(); loadRepos(); loadEnvs(); loadPlan(); loadGithub(); loadAdmin();
+  }
+  /** The plan alone — what personal Settings' Plan and Limits tiles read (settings-plan.ts). */
+  function loadPlanOnly(): void {
+    if (adoptOrg()) loadPlan();
+    rerender();
   }
 
   /** My orgs again (a role change, a rename), then this screen's reads. */
@@ -628,6 +640,7 @@ export function createOrgController(host: OrgHost): OrgController {
         if (state.screen !== "org") { state.screen = "org"; load(); return; }
         break;
       case "orgReload": loadOrgs(loadSlices); break;
+      case "orgPlanReload": loadPlanOnly(); return;
 
       // General
       case "orgNameDraft": u.nameDraft = value ?? ""; u.nameError = null; break;
@@ -823,5 +836,5 @@ export function createOrgController(host: OrgHost): OrgController {
     else if (!e.shiftKey && cur === last) { e.preventDefault(); first.focus(); }
   }, true);
 
-  return { act, load, afterPaint };
+  return { act, load, loadPlan: loadPlanOnly, afterPaint };
 }

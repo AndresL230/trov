@@ -29,6 +29,7 @@ import { segmented } from "./segmented";
 import { confirmModal } from "./confirm";
 import { renderMarkdown, sanitizeSvg } from "./markdown";
 import { collapsedLineDiff } from "./diff";
+import { skeleton, skBar, skBox, skLine, skLines, skList, skW, skCard } from "./skeleton";
 import type { PersonColor } from "@shared/rows";
 import {
   ARTIFACT_KINDS, ARTIFACT_AREAS, ARTIFACT_STATUSES, ARTIFACT_TEXT_EXT, ARTIFACT_SUMMARY_MAX,
@@ -382,7 +383,7 @@ export function artifactsView(p: ArtProps): string {
   if (p.screen === "artifacts") return libraryView(p);
   if (p.screen === "artifactnew") return createView(p);
   const slice = routeDetail(p);
-  if (!slice || slice.status === "idle" || (slice.status === "loading" && !slice.data)) return notice("Loading the artifact&hellip;");
+  if (!slice || slice.status === "idle" || (slice.status === "loading" && !slice.data)) return viewerSkeleton();
   if (slice.status === "missing") return notFoundView(p);
   if (!slice.data) return notice("Couldn't load this artifact.", true);
   return p.route.diff ? diffView(p, slice.data, p.route.diff) : viewerView(p, slice.data);
@@ -454,10 +455,31 @@ function thumb(a: ArtifactSummaryDTO): string {
   return `<div style="position:absolute;inset:0;display:grid;place-items:center;color:var(--fg-40)"><span style="display:flex;flex-direction:column;align-items:center;gap:8px">${I.kind(a.kind, 30)}<span style="${CHIP}color:var(--fg-55);border:1px solid var(--border)">${a.kind.toUpperCase()} · ${esc(fmtKB(a.size_bytes))}</span></span></div>`;
 }
 
+/** The library while its first read is out: the toolbar's row, then cards on the
+ *  library's own grid — a 160px preview over a title and the byline. */
+function librarySkeleton(): string {
+  const card = (i: number) => skCard(`<div style="height:160px;border-bottom:1px solid var(--border);background:var(--bg);flex:none"></div>
+      <div style="display:flex;flex-direction:column;gap:12px;padding:14px 16px;flex:1">${skLine(skW(i), 15, 1.35)}<div style="display:flex;align-items:center;gap:8px;margin-top:auto">${skBox(20, 20)}${skBar(84, 9)}${skBox(52, 18)}${skBar(40, 9, "margin-left:auto")}</div></div>`,
+    "padding:0;display:flex;flex-direction:column;overflow:hidden");
+  return skeleton("artifacts", "Loading artifacts&hellip;", `<div style="display:flex;align-items:center;gap:8px;margin:0 0 4px">${skBox("min(420px,60%)", 34)}${skBox(84, 34)}${skBar(96, 8, "margin-left:auto")}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:14px;margin-top:18px">${skList(6, card)}</div>`, SHELL);
+}
+
+/** One artifact's page while its read is out: the title row and its controls, the
+ *  preview frame, then the details tiles. */
+function viewerSkeleton(): string {
+  return skeleton("artifact", "Loading the artifact&hellip;", `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
+      <div style="flex:1;min-width:0">${skLine("44%", 22, 1.3)}<div style="margin-top:8px">${skLine(260, 12.5, 1.5)}</div></div>
+      <div style="display:flex;gap:8px;flex:none">${skBox(110, 32)}${skBox(96, 32)}${skBox(32, 32)}</div>
+    </div>
+    ${skCard(`<div style="padding:28px 32px">${skLine("38%", 20, 1.4)}<div style="margin-top:14px">${skLines(["100%", "95%", "88%", "60%"], 14.5, 1.75)}</div><div style="margin-top:18px">${skLines(["100%", "92%", "70%"], 14.5, 1.75)}</div></div>`, "margin-top:18px;min-height:480px;overflow:hidden")}
+    <div class="art-bento" style="display:grid;gap:14px;margin-top:18px">${skList(3, (i) => skCard(`${skBar(70, 8)}<div style="margin-top:12px">${skLines([skW(i), "48%"], 13, 1.6)}</div>`, "padding:16px 18px"))}</div>`, SHELL);
+}
+
 function libraryView(p: ArtProps): string {
   const ui = p.ui;
   if (ui.list.status === "error" && !ui.list.data) return notice("Couldn't load artifacts.", true);
-  if (!ui.list.data) return notice("Loading artifacts&hellip;");
+  if (!ui.list.data) return librarySkeleton();
   const all = ui.list.data;
   const rows = libraryRows(p);
   const groups = libraryGroups(p, all);
@@ -854,7 +876,7 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
 
   let body: string;
   if (same) body = `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">Pick two different versions to compare.</div>`;
-  else if (!slice || slice.status === "idle" || (slice.status === "loading" && !dd)) body = `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">Loading the comparison&hellip;</div>`;
+  else if (!slice || slice.status === "idle" || (slice.status === "loading" && !dd)) body = skeleton("artifact-diff", "Loading the comparison&hellip;", skCard(skList(10, (i) => `<div style="padding:2px 16px 2px 12px">${skLine(skW(i, ["62%", "84%", "40%", "72%", "55%", "90%"]), 12.5, 1.75)}</div>`), "overflow:hidden;padding:8px 0;margin-top:18px"));
   else if (!dd) body = `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">Couldn't load this comparison. <button data-act="artRetry" class="cnpy-link" style="font-size:13px;color:var(--accent);padding:0">Try again</button></div>`;
   else if (text) {
     body = rows.length === 0 || rows.every((x) => x.t === "ctx")
@@ -1197,9 +1219,11 @@ export function ticketArtifactsBlock(slice: ArtSlice<ArtifactSummaryDTO[]> | und
       <div style="${EYEBROW};flex:none">Artifacts</div>
       <span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40)">${slice?.data ? arts.length : "–"}</span>
     </div>`;
+  if (!slice?.data && slice?.status !== "error") {
+    return `${head}${skeleton("ticket-artifacts", "Loading artifacts&hellip;", skLine(220, 12, 1.5), "margin-top:10px")}`;
+  }
   if (!slice?.data) {
-    const msg = slice?.status === "error" ? "Couldn't load the artifacts attached here." : "Loading artifacts&hellip;";
-    return `${head}<div style="font-size:12px;color:var(--fg-40);margin-top:10px">${msg}</div>`;
+    return `${head}<div style="font-size:12px;color:var(--fg-40);margin-top:10px">Couldn't load the artifacts attached here.</div>`;
   }
   if (!arts.length) {
     return `${head}<div style="font-size:12px;color:var(--fg-40);margin-top:10px">No artifacts attached. Attach one from its page in <button data-act="goArtifacts" class="cnpy-link" style="font-size:12px;color:var(--accent);padding:0">Artifacts</button>.</div>`;

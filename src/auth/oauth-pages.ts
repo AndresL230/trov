@@ -5,7 +5,7 @@
 // buttons — copied here because the Worker cannot import from web/. Radii are the
 // app's authored values at its `--corner-scale` (.4), since trov.css isn't loaded.
 
-import { trovMark } from "@shared/mark";
+import { TROV_MARK_PATH, trovMark } from "@shared/mark";
 
 export const esc = (s: string): string =>
   s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
@@ -15,14 +15,30 @@ const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com"><link 
 
 // Trov's brand, as the app's light theme has it (web/src/trov.css): the mark's purple on white. ONE
 // palette, no dark variant — the app opens light by default, and its dark theme is not the brand's purple.
+//
+// The card is the app's FIRST-RUN card (web/src/trov.css `.cnpy-orgs-card` / `.cnpy-orgs-banner`): a purple
+// banner — gradient, a soft highlight, a dot grid fading in from the right, the mark large and faint behind
+// the title — then the body, and a quiet foot strip. These pages are steps of the same journeys (connecting
+// an app, signing in to pay), so they must not look like a different product. The markup is unchanged:
+// `.head` IS the banner, and the card pads its other children.
+/** The mark as a CSS image (white), for the banner's large faint mark. */
+const MARK_URI = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="#fff" d="${TROV_MARK_PATH}"/></svg>`)}`;
+
 const CSS = `
 :root{color-scheme:light;--bg:#f6f6f7;--card:#ffffff;--fg:#16161a;--fg-70:#4f4f58;--fg-55:#6e6e78;--fg-40:#8e8e98;--border:rgba(20,20,30,.08);--border-strong:rgba(20,20,30,.15);--hover:rgba(20,20,30,.04);--accent:#5e6ad2;--mark:#616ACB;--accent-fg:#fff;--accent-soft:rgba(94,106,210,.12);--red:#c53030;--red-soft:rgba(197,48,48,.08);--shadow:0 32px 64px -24px rgba(20,20,30,.18),0 4px 12px -4px rgba(20,20,30,.08);--label:'Archivo Narrow',system-ui,sans-serif;--code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:var(--bg);color:var(--fg);font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
-.card{width:min(400px,100%);border:1px solid var(--border-strong);border-radius:5.6px;padding:32px 30px 26px;background:var(--card);box-shadow:var(--shadow)}
-.head{display:flex;align-items:center;justify-content:center;gap:10px}
-.title{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.25}
-.lede{margin:12px 0 0;font-size:14px;color:var(--fg-70);text-align:center;line-height:1.55}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:radial-gradient(55% 60% at 50% 46%,rgba(97,106,203,.2) 0%,rgba(97,106,203,0) 72%),var(--bg);color:var(--fg);font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
+.card{width:min(420px,100%);border:0;border-radius:5.6px;overflow:hidden;background:var(--card);box-shadow:0 0 0 1px rgba(20,22,60,.07),0 1px 2px rgba(20,22,60,.04),0 12px 40px -12px rgba(20,22,60,.18)}
+.card>:not(.head){margin-left:28px;margin-right:28px}
+.card>.head+*{margin-top:22px}
+.card>:last-child{margin-bottom:26px}
+.head{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:flex-start;gap:16px;padding:24px 28px 26px;color:#fff;background:radial-gradient(120% 140% at 100% 0%,rgba(255,255,255,.16) 0%,rgba(255,255,255,0) 55%),linear-gradient(135deg,#6c75d8 0%,#5a64cc 48%,#454fb2 100%)}
+.head::before{content:"";position:absolute;right:-34px;top:-46px;width:190px;height:190px;opacity:.13;transform:rotate(-8deg);pointer-events:none;background:url("${MARK_URI}") center/contain no-repeat}
+.head::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;background-image:radial-gradient(rgba(255,255,255,.22) 1px,transparent 1.2px);background-size:16px 16px;-webkit-mask-image:linear-gradient(90deg,transparent 35%,#000 100%);mask-image:linear-gradient(90deg,transparent 35%,#000 100%)}
+.head>*{position:relative;z-index:1}
+.head svg path{fill:#fff}
+.title{font-size:24px;font-weight:600;letter-spacing:-.02em;line-height:1.2}
+.lede{margin:12px 0 0;font-size:14px;color:var(--fg-70);line-height:1.55}
 .lede strong{color:var(--fg);font-weight:600}
 .lede.sm{margin-top:8px;font-size:12.5px;color:var(--fg-55)}
 .lede.sm strong{font-weight:500;color:var(--fg-70)}
@@ -34,7 +50,8 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;back
 .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .or{display:flex;align-items:center;gap:12px;font-family:var(--label);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-40)}
 .or span{flex:1;height:1px;background:var(--border)}
-.foot{text-align:center;margin-top:20px;font-size:12.5px;color:var(--fg-40);line-height:1.5}
+.foot{text-align:center;margin-top:22px;font-size:12.5px;color:var(--fg-55);line-height:1.5}
+.card>.foot:last-child{margin:22px 0 0;padding:13px 28px;border-top:1px solid var(--border);background:rgba(20,20,30,.045)}
 .app{margin-top:22px;display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:4px;background:var(--hover)}
 .app-ic{flex:none;width:36px;height:36px;border-radius:3.6px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)}
 .app-name{font-size:14px;font-weight:600;overflow-wrap:anywhere}

@@ -71,7 +71,8 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "Settings › MCP access", hint: "Connect Claude Code: sign-in steps and connected apps", keys: "mcp tokens connect agent claude code plugin oauth authenticate", steps: [["goSettings", null]] },
   { label: "Settings › Appearance", hint: "Light, dark or system theme", keys: "theme dark light mode", steps: [["goSettings", null]] },
   { label: "Settings › Email notifications", hint: "Daily and weekly digests", keys: "digest email unsubscribe", steps: [["goSettings", null]] },
-  { label: "Get Started", hint: "The guide to Trov", keys: "guide help onboarding tour", steps: [["goGuide", null]] },
+  { label: "Guide", hint: "How Trov works", keys: "guide help get started onboarding tour reference", steps: [["goGuide", null]] },
+  { label: "Guided setup", hint: "Repository, coding agent and team, one step at a time", keys: "welcome wizard onboarding setup first run connect agent invite", steps: [["welcomeOpen", null]] },
   { label: "Release notes", hint: "What's new in Trov", keys: "whats new changelog releases updates patches", steps: [["goReleases", null]] },
   { label: "Search", hint: "Full results across the store", keys: "find all results", steps: [["goSearch", null]] },
 ];

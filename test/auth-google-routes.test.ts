@@ -51,18 +51,20 @@ describe("GET /auth/google/callback", () => {
     expect(res.headers.get("location")).toBe("/#onboard");
     expect(res.headers.get("set-cookie")).toContain("onboard=");
   });
-  it("not invited → /?denied=invite&email=…", async () => {
+  it("not invited → onboarding all the same: Google sign-up is open", async () => {
     const keys = await makeGoogleKeys();
     const app = appWith(googleFetch(keys, { idToken: await signIdToken(keys, CLAIMS) }).fetchImpl);
     const res = await app.request("/auth/google/callback?code=c&state=st", { headers: { cookie: await tx() } }, env);
-    expect(res.headers.get("location")).toBe("/?denied=invite&email=priya.n%40gmail.com");
+    expect(res.headers.get("location")).toBe("/#onboard");
+    expect(res.headers.get("set-cookie")).toContain("onboard=");
   });
   it("unverified email → denied even when invited", async () => {
     await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
     const keys = await makeGoogleKeys();
     const app = appWith(googleFetch(keys, { idToken: await signIdToken(keys, { ...CLAIMS, email_verified: false }) }).fetchImpl);
     const res = await app.request("/auth/google/callback?code=c&state=st", { headers: { cookie: await tx() } }, env);
-    expect(res.headers.get("location")).toMatch(/^\/\?denied=invite/);
+    expect(res.headers.get("location")).toBe("/?denied=unverified&email=priya.n%40gmail.com");
+    expect(res.headers.get("set-cookie") ?? "").not.toContain("onboard=");
   });
   it("known identity → session cookie + redirect /", async () => {
     await seedPerson("priya");

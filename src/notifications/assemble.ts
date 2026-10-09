@@ -196,9 +196,9 @@ function dateRange(window: Window, timeZone: string): string {
 
 /**
  * The Trov banner, shared by every email: the Trov mark (shared/mark.ts) built
- * as a 3 x 3 grid of table cells because Gmail strips SVG, the wordmark beside it, and an
- * optional subline underneath — all reversed out of a full-bleed accent band,
- * rounded into the top of the card. The band colour is tokenised so the dark
+ * as a 3 x 3 grid of table cells because Gmail strips SVG, the wordmark beside it, and what the mail
+ * says under it (`emailBanner`) — all reversed out of a full-bleed accent band, rounded into the top of
+ * the card. The band colour is tokenised so the dark
  * swap flips it; the ink on top of it is not (see BAND).
  */
 /**
@@ -209,24 +209,68 @@ function dateRange(window: Window, timeZone: string): string {
  */
 const BAND = { ink: "#ffffff", subline: "#e6e8f9", dot: "#bcc1ef" } as const;
 
-/** The mark, `side` px square: one table, a filled cell per block of the mark. */
-function emailMark(side: number): string {
+/** The mark, `side` px square: one table, a filled cell per block of the mark. `ink` is the fill — the
+ *  band's white for the brand, a faint white for the large mark behind the banner's text. */
+function emailMark(side: number, ink: string = BAND.ink, cell = "on"): string {
   const px = TROV_MARK_GRID.tracks.map((t) => Math.round(t * side));
   px[2] = side - px[0]! - px[1]!;
   const rows = TROV_MARK_GRID.filled.map((row, r) =>
     `<tr>` + row.map((on, c) =>
-      `<td${on ? ' data-cell="on"' : ""} width="${px[c]}" height="${px[r]}" style="width:${px[c]}px;height:${px[r]}px;padding:0;font-size:0;line-height:0;${on ? `background-color:${BAND.ink};` : ""}"></td>`).join("") + `</tr>`).join("");
+      `<td${on ? ` data-cell="${cell}"` : ""} width="${px[c]}" height="${px[r]}" style="width:${px[c]}px;height:${px[r]}px;padding:0;font-size:0;line-height:0;${on ? `background-color:${ink};` : ""}"></td>`).join("") + `</tr>`).join("");
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${side}" style="border-collapse:collapse;">${rows}</table>`;
 }
 
-export function emailBanner(sublineHtml?: string): string {
+/**
+ * The mail's card. FLUID up to `EMAIL_WIDTH`: `width="100%"` with a `max-width`, never a fixed pixel
+ * width — a `width="680"` table cannot shrink (a table is at least as wide as its `width`), so on a
+ * phone the whole mail came out 680px wide and the client either scaled it down to unreadable or
+ * scrolled it sideways. Outlook's Word engine ignores `max-width`, so it alone gets a fixed-width
+ * wrapper through a conditional comment.
+ */
+export function emailCardOpen(): string {
+  return `<!--[if mso]><table role="presentation" width="${EMAIL_WIDTH}" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:${EMAIL_WIDTH}px;margin:0 auto;background-color:${C.bg};border:1px solid ${C.border};border-radius:13px;">`;
+}
+export const EMAIL_CARD_CLOSE = `</table><!--[if mso]></td></tr></table><![endif]-->`;
+/** At phone width the banner's faint mark gives its room to the headline, and the page's gutter tightens.
+ *  Clients that drop `<style>` keep the mark, at a size (56px) that still leaves the text its room. */
+export const EMAIL_MOBILE_CSS = `@media (max-width:520px){.tm-art{display:none !important;}.tm-pad{padding:20px 10px !important;}.tm-title{font-size:22px !important;line-height:28px !important;}}`;
+
+/** What the banner says under the brand. Every part is optional; all are already-escaped HTML. */
+export interface EmailBannerText {
+  /** A small uppercase label, top right: what kind of mail this is ("Invitation"). */
+  eyebrow?: string;
+  /** The mail's headline, reversed out of the band (the app's first-run cards do the same). */
+  title?: string;
+  /** One quiet line under it (a digest's "Daily digest · Oct 7"). */
+  lede?: string;
+}
+
+/**
+ * The banner, in the shape of the app's first-run cards (`.cnpy-orgs-banner`, web/src/trov.css): the
+ * brand top left, a label top right, the headline and a quiet line under it — reversed out of the
+ * brand's purple, with a large faint mark behind the right edge. Mail clients decide how much of that
+ * survives, so each layer degrades on its own: the gradient is a `background-image` over the solid
+ * `background-color` (Outlook keeps the solid), and the faint mark is table cells filled with an
+ * `rgba()` (a client without it paints nothing there). A bare string is the quiet line alone.
+ */
+export function emailBanner(text?: string | EmailBannerText): string {
+  const t: EmailBannerText = typeof text === "string" ? { lede: text } : text ?? {};
+  const eyebrow = t.eyebrow ? `<td align="right" style="vertical-align:middle;${SANS}font-size:10.5px;line-height:16px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:${BAND.subline};white-space:nowrap;">${t.eyebrow}</td>` : "";
   return (
-    `<tr><td style="padding:${SP.xl}px 28px ${SP.l}px 28px;background-color:${C.accent};border-radius:13px 13px 0 0;text-align:center;">` +
-    `<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr>` +
-    `<td data-mark="trov" width="22" style="vertical-align:middle;padding-right:11px;">` + emailMark(22) + `</td>` +
-    `<td style="vertical-align:middle;${SANS}font-size:22px;font-weight:600;letter-spacing:-0.02em;line-height:1;color:${BAND.ink};">Trov</td>` +
+    `<tr><td data-banner style="padding:22px 28px 24px 28px;background-color:${C.accent};background-image:linear-gradient(135deg,#6c75d8 0%,#5a64cc 48%,#454fb2 100%);border-radius:13px 13px 0 0;text-align:left;">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>` +
+    `<td style="vertical-align:top;">` +
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>` +
+      `<td data-mark="trov" width="18" style="vertical-align:middle;padding-right:9px;">` + emailMark(18) + `</td>` +
+      `<td style="vertical-align:middle;${SANS}font-size:16px;font-weight:600;letter-spacing:-0.01em;line-height:1;color:${BAND.ink};">Trov</td>` +
+      eyebrow +
+      `</tr></table>` +
+      (t.title ? `<div data-banner-title class="tm-title" style="${SANS}font-size:25px;line-height:31px;font-weight:600;letter-spacing:-0.02em;color:${BAND.ink};padding-top:20px;">${t.title}</div>` : "") +
+      (t.lede ? `<div style="${SANS}font-size:13px;line-height:20px;color:${BAND.subline};padding-top:${t.title ? 6 : SP.s}px;">${t.lede}</div>` : "") +
+    `</td>` +
+    `<td data-banner-art class="tm-art" width="68" align="right" style="vertical-align:top;padding-left:12px;">` + emailMark(56, "rgba(255,255,255,.15)", "art") + `</td>` +
     `</tr></table>` +
-    (sublineHtml ? `<div style="${SANS}font-size:13px;line-height:20px;color:${BAND.subline};padding-top:${SP.s}px;">${sublineHtml}</div>` : "") +
     `</td></tr>`
   );
 }
@@ -241,7 +285,7 @@ export function assembleMessage(opts: {
   window: Window;
   timeZone: string;
   origin: string;
-  /** `<origin>/o/<slug>` of the digest's org (src/tools/org-links.ts) — what deep links hang off. Absent → the origin. */
+  /** `<origin>/<slug>` of the digest's org (src/tools/org-links.ts) — what deep links hang off. Absent → the origin. */
   appBase?: string;
   login: string;
   unsubscribeUrl: string;
@@ -249,7 +293,7 @@ export function assembleMessage(opts: {
   const { sections, window, timeZone, origin, login, unsubscribeUrl } = opts;
   const subject = subjectFor(window, timeZone);
   const range = dateRange(window, timeZone);
-  // A section's deep link opens the org the digest is ABOUT (`<origin>/o/<slug>/#tickets`), not whichever org the browser last had.
+  // A section's deep link opens the org the digest is ABOUT (`<origin>/<slug>/#tickets`), not whichever org the browser last had.
   const link = (s: Section) => `${opts.appBase ?? origin}${s.deepLink}`;
   const label = (s: Section) => s.linkLabel ?? s.heading;
   const host = origin.replace(/^https?:\/\//, "") || "trov";
@@ -273,17 +317,17 @@ export function assembleMessage(opts: {
     `<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">` +
     `<title>${escapeHtml(subject)}</title>` +
     `<link href="${FONTS_HREF}" rel="stylesheet">` +
-    `<style>:root{color-scheme:light dark;}${darkCss()}</style></head>` +
+    `<style>:root{color-scheme:light dark;}${darkCss()}${EMAIL_MOBILE_CSS}</style></head>` +
     `<body style="margin:0;padding:0;background-color:${C.ground};">` +
     (preheader ? `<div style="display:none;max-height:0px;overflow:hidden;">${escapeHtml(preheader)}.</div>` : "") +
-    `<table ${EMAIL_STYLE.table} style="background-color:${C.ground};"><tr><td align="center" style="padding:36px 16px;">` +
-    `<table role="presentation" width="${EMAIL_WIDTH}" cellpadding="0" cellspacing="0" border="0" style="width:${EMAIL_WIDTH}px;max-width:100%;background-color:${C.bg};border:1px solid ${C.border};border-radius:13px;">` +
+    `<table ${EMAIL_STYLE.table} style="background-color:${C.ground};"><tr><td align="center" class="tm-pad" style="padding:36px 16px;">` +
+    emailCardOpen() +
     header(window.cadence, range) +
     blocks.join("") +
     `<tr><td style="padding:${SP.l}px 28px ${SP.l}px 28px;border-top:1px solid ${C.border};${SANS}font-size:12px;line-height:20px;color:${C.fg40};">` +
     `You're getting the ${window.cadence} Trov digest for ${escapeHtml(login)}. <a href="${escapeHtml(unsubscribeUrl)}" style="color:${C.fg40};text-decoration:underline;text-underline-offset:2px;">Unsubscribe</a><br>` +
     `Sent by Trov &middot; ${escapeHtml(host)}</td></tr>` +
-    `</table></td></tr></table></body></html>`;
+    EMAIL_CARD_CLOSE + `</td></tr></table></body></html>`;
 
   const title = `TROV ${window.cadence.toUpperCase()} — ${range.toUpperCase()}`;
   const text = [

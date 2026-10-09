@@ -152,7 +152,7 @@ describe("GET /api/platform/orgs[/:slug]", () => {
       last_activity_at: "2026-10-01T09:30:00.000Z", github_account: null, // 0043_github_app: no App installation
       // 0044_plans: an org from before plans is Enterprise — unlimited seats — and uses members + pending invites.
       plan: {
-        plan: "enterprise", overrides: {}, status: "active", source: "granted", seats_used: 3,
+        plan: "enterprise", overrides: {}, status: "active", source: "granted", seats_used: 3, gift: null, // 0048_plan_gifts
         entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null },
       },
     });

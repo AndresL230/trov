@@ -1,6 +1,6 @@
-# Abuse limits — what a stranger with a GitHub account cannot do
+# Abuse limits — what a stranger with a GitHub or Google account cannot do
 
-Since Phase 4 anyone with a GitHub account can sign in, and (issue #94) anyone signed in can create ONE Free organization they own (`plans.md` › Free; `DEFAULT_ORG_LIMIT = 1`) — anything more takes a superadmin, a grant, or a payment. This is everything that stands
+Since Phase 4 anyone with a GitHub account can sign in — and since open sign-up, anyone with a Google account whose address is verified — and (issue #94) anyone signed in can create ONE Free organization they own (`plans.md` › Free; `DEFAULT_ORG_LIMIT = 1`) — anything more takes a superadmin, a grant, or a payment. This is everything that stands
 between that and Trov being used to send mail, fill storage or look people up. Code: `src/platform/limits.ts`
 (every number), `src/notifications/resend.ts` (the From header). Tests: `test/abuse-limits.test.ts`.
 
@@ -18,7 +18,7 @@ racing requests cannot both take the last unit. D1 only: no Durable Object, no Q
 | `avatar_upload` | 20 / person / UTC day | `POST …/people/me/avatar`, before the body is read |
 | `org_logo_upload` | 20 / person / UTC day | `POST /api/o/:slug/logo` (admin+), before the body is read — across every org the person administers |
 | `checkout` | 10 / person / UTC day | a Stripe Checkout Session started: `GET /billing/start` and `POST /api/o/:slug/billing/upgrade` (`billing.md`). A refusal creates nothing at Stripe and charges nothing |
-| `handle_check` | 60 / caller / UTC hour | `GET /auth/handle-check` — the signed-in person, or `onboard:<provider>:<subject>` while onboarding (a fresh onboard cookie does not reset it) |
+| `handle_check` | 60 / caller / UTC hour | `GET /api/orgs/slug-check` (is an organization's handle free; the signed-in person) and `GET /auth/handle-check` — the signed-in person, or `onboard:<provider>:<subject>` while onboarding (a fresh onboard cookie does not reset it) |
 
 - A refusal is **429** `{ "error": "rate_limited", "retry_after": <seconds> }` with a `Retry-After` header, and
   writes nothing. `retry_after` runs to the end of the UTC day / hour.

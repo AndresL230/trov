@@ -86,7 +86,7 @@ describe("the provider picture has ONE owner", () => {
 
   it("onboarding records the provider the picture came from", async () => {
     await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: "Priya", invitedBy: "AndresL230" });
-    const payload: OnboardPayload = { provider: "google", subject: "g-123", label: "priya.n@gmail.com", email: "priya.n@gmail.com", name: "Priya", avatar_url: GOOGLE_PIC, suggested_handle: "priya-n", invite_email: "priya.n@gmail.com" };
+    const payload: OnboardPayload = { provider: "google", subject: "g-123", label: "priya.n@gmail.com", email: "priya.n@gmail.com", name: "Priya", avatar_url: GOOGLE_PIC, suggested_handle: "priya-n" };
     const res = await app.request("/auth/onboard", {
       method: "POST", headers: { cookie: `${ONBOARD_COOKIE}=${await sealOnboard(payload, "test-cookie-secret")}`, "content-type": "application/json" },
       body: JSON.stringify({ handle: "priya", name: "Priya N", color: "plum" }),

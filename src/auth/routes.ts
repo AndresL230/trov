@@ -14,7 +14,7 @@ import { createSession, setSessionCookie, readSessionCookie, deleteSession, clea
 import { mintToken, listTokens, revokeToken } from "./tokens";
 import { getPerson, listIdentities, findIdentity, handleAvailable, createPerson, HandleTakenError, linkIdentity, unlinkIdentity, updateProfile, renamePerson, soleTitle } from "./persons";
 import { run } from "../data/platform-sql";
-import { completeSignIn, linkSignIn, hasPendingEmailInvite, sealOnboard, openOnboard, ONBOARD_COOKIE, ONBOARD_TTL_S, type ProviderProfile, type ForkResult } from "./onboard";
+import { completeSignIn, linkSignIn, sealOnboard, openOnboard, ONBOARD_COOKIE, ONBOARD_TTL_S, type ProviderProfile, type ForkResult } from "./onboard";
 import { mailOrigin, welcomeFirstJoin } from "../orgs/mail";
 import { takeOAuthPending } from "./oauth-routes";
 import { listGrants, revokeGrant } from "./oauth";
@@ -117,7 +117,9 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     if (!idToken) return c.json({ error: "exchange_failed" }, 401);
     const g = await verifyGoogleIdToken(idToken, { clientId: c.env.GOOGLE_CLIENT_ID ?? "", fetchImpl: f, now: deps.now });
     if (!g) return c.json({ error: "identity_failed" }, 401);
-    const denied = `/?denied=invite&email=${encodeURIComponent(g.email)}`;
+    // The one Google refusal: an address Google has not verified. Everything after this trusts the email
+    // (completeSignIn links on it), so it never goes further.
+    const denied = `/?denied=unverified&email=${encodeURIComponent(g.email)}`;
     if (!g.email_verified) return c.redirect(denied, 302);
     const profile: ProviderProfile = { provider: "google", subject: g.sub, label: g.email, email: g.email, name: g.name, avatar_url: g.picture };
     return finish(c, tx.mode, profile, denied);
@@ -163,8 +165,6 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     }
     const avail = await handleAvailable(c.var.p, parsed.data.handle);
     if (!avail.available) return c.json({ error: avail.reason === "taken" ? "handle_taken" : `handle_${avail.reason}` }, avail.reason === "taken" ? 409 : 400);
-    // A Google account got here on a pending invite (`invite_email`); it must still be pending now.
-    if (p.invite_email && !(await hasPendingEmailInvite(c.var.p, p.invite_email))) return c.json({ error: "invite_revoked" }, 403);
     try {
       await createPerson(c.var.p, { handle: parsed.data.handle, name: parsed.data.name ?? p.name, color: parsed.data.color, avatar_url: p.avatar_url, avatar_source: p.provider, email: p.email });
     } catch (e) {

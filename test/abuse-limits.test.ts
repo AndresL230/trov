@@ -172,7 +172,7 @@ describe("test sends, avatar uploads and handle checks", () => {
     await fill("casey", "handle_check");
     await expectLimited(await check(cookie));
 
-    const payload: OnboardPayload = { provider: "github", subject: "newcomer", label: "newcomer", email: null, name: null, avatar_url: null, suggested_handle: "newcomer", invite_email: null };
+    const payload: OnboardPayload = { provider: "github", subject: "newcomer", label: "newcomer", email: null, name: null, avatar_url: null, suggested_handle: "newcomer" };
     const onboard = `${ONBOARD_COOKIE}=${await sealOnboard(payload, "test-cookie-secret")}`;
     expect((await check(onboard)).status).toBe(200);
     expect(await countOf("onboard:github:newcomer", "handle_check")).toBe(1);

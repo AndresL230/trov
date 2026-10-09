@@ -18,6 +18,7 @@
 
 import { esc, attr, statusBadge } from "./ui";
 import type { OrgRole } from "@shared/orgs";
+import { skRows, skForm, skKey } from "./skeleton";
 
 /** One read: where it is, what it returned, and why it failed. */
 export interface OrgSlice<T> { status: "idle" | "loading" | "ok" | "error"; data: T; error?: string }
@@ -124,15 +125,22 @@ export function orgBanner(title: string, body: string, tone: "amber" | "red" = "
     <div style="min-width:0"><div style="font-size:13px;font-weight:600;color:var(--fg)">${esc(title)}</div><div style="font-size:12.5px;line-height:1.55;color:var(--fg-70);margin-top:2px">${body}</div></div>
   </div>`;
 }
-export const loadingNote = (what: string) => `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0">Loading ${esc(what)}&hellip;</div>`;
+/** A slice's placeholder while its read is out: a skeleton of the rows (or, with `form`,
+ *  the fields) that are coming — skeleton.ts. `what` still reads "Loading <what>…" to a
+ *  screen reader, and names the region. */
+export function loadingNote(what: string, o: { rows?: number; avatar?: number; trail?: number; form?: boolean } = {}): string {
+  const label = `Loading ${esc(what)}&hellip;`;
+  const key = `org-${skKey(what)}`;
+  return o.form ? skForm(key, label, o.rows ?? 3) : skRows(key, label, o.rows ?? 3, { avatar: o.avatar, trail: o.trail ?? 64 });
+}
 export const failedNote = (what: string, act = "orgReload") =>
   `<div role="alert" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--fg-55);padding:10px 0">Couldn't load ${esc(what)}. Check your connection, then ${quietBtn("Try again", act)}</div>`;
 /** A slice's placeholder while it has nothing to show, or "" once it does. */
-export function sliceNote(s: OrgSlice<unknown>, what: string, has: boolean): string {
+export function sliceNote(s: OrgSlice<unknown>, what: string, has: boolean, shape: Parameters<typeof loadingNote>[1] = {}): string {
   if (has) return "";
   if (s.status === "error") return failedNote(what);
   if (s.status === "ok") return "";
-  return loadingNote(what);
+  return loadingNote(what, shape);
 }
 const ROLE_WORD: Record<OrgRole, string> = { owner: "Owner", admin: "Admin", member: "Member" };
 const ROLE_TONE: Record<OrgRole, string> = { owner: "var(--accent)", admin: "var(--blue)", member: "var(--fg-55)" };

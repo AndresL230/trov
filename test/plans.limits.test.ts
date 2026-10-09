@@ -609,6 +609,7 @@ describe("GET /api/o/:slug/plan and PUT /api/platform/orgs/:slug/plan", () => {
     const view = (await call<OrgPlanView>("GET", "/api/o/planview/plan", await loner("pv-mate"))).json;
     expect(view).toEqual({
       plan: "team", name: "Pro", description: "For a team, paid per seat.", status: "active", source: "granted", period_end: null,
+      gift_until: null, // 0048_plan_gifts: this plan is not a gift
       entitlements: PLANS.team.entitlements, overridden: [], seats: { members: 2, pending: 1 },
       usage: { seats: 3, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0 }, over: [],
       billing: null, // a granted org: nothing about payment (0045_billing)
@@ -704,7 +705,7 @@ describe("the functions billing will call (src/plans/billing.ts)", () => {
 
     const moved = await moveOrgToFree(p, "ended");
     // The customer and subscription ids stay (invoices, an upgrade); the period is left as it was.
-    expect(moved).toEqual({ plan: "free", overrides: {}, status: "active", source: "billing", period_end: "2026-11-07T00:00:00.000Z", customer_id: "cus_e", subscription_id: "sub_e" });
+    expect(moved).toEqual({ plan: "free", overrides: {}, status: "active", source: "billing", period_end: "2026-11-07T00:00:00.000Z", customer_id: "cus_e", subscription_id: "sub_e", gift_until: null });
     expect(await one(`SELECT plan, plan_overrides, plan_source, plan_status, plan_changed_by FROM orgs WHERE id = ?`, id))
       .toEqual({ plan: "free", plan_overrides: "{}", plan_source: "billing", plan_status: "active", plan_changed_by: "billing" });
     const audit = await rows<{ action: string; actor: string; target: string; detail: string }>(`SELECT action, actor, target, detail FROM org_admin_audit WHERE org_id = ? AND action LIKE 'plan.%' ORDER BY id`, id);

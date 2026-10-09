@@ -4,6 +4,9 @@
 //                  organization" is the tab's one primary action; Revoke is behind each unused row.
 //   CHANGE PLAN  — on an organization's page: its plan and limits, and the dialog that changes them,
 //                  which says before it is confirmed what happens if the org is over the new limits.
+//   GIFT A PLAN  — beside it: a plan for free until a date (0048_plan_gifts). The dialog picks the plan,
+//                  optionally its seats, and how long; its confirmation says what happens at the end.
+//                  A gifted org then shows "Gifted until <date>" with Extend and End now.
 // The person is named the three ways "Add organization" names an admin (platform.ts `adminField`).
 //
 // Purely presentational: state in, markup out. Acts start with `platGrant…` / `platPlan…` and are run
@@ -11,9 +14,11 @@
 // it — nothing here touches a platform.ts value at module load.)
 
 import {
-  PLANS, PLAN_IDS, FREE_PLAN, LIMIT_KEYS, LIMITS, GRANT_EXPIRY_DAYS, GRANT_NOTE_MAX, formatBytes, formatLimit, formatUse, limitNoun, resolveEntitlements, seatsPhrase,
-  type GrantTarget, type LimitKey, type PlanId, type PlanOverrides, type PlatformGrant, type PlatformOrgPlan,
+  PLANS, PLAN_IDS, FREE_PLAN, LIMIT_KEYS, LIMITS, GRANT_EXPIRY_DAYS, GRANT_NOTE_MAX, GIFT_PRESETS, GIFT_SOON_DAYS, GIFT_MAX_DAYS,
+  formatBytes, formatLimit, formatUse, giftDaysLeft, giftEnd, giftLengthWords, limitNoun, resolveEntitlements, seatsPhrase,
+  type GiftLength, type GrantTarget, type LimitKey, type PlanId, type PlanOverrides, type PlatformGrant, type PlatformOrgPlan,
 } from "@shared/plans";
+import { segmented } from "./segmented";
 import { billingDate, isPast } from "@shared/billing";
 import { esc, attr, relTime, statusBadge, surface } from "./ui";
 import { confirmModal } from "./confirm";
@@ -36,12 +41,39 @@ export interface GrantDraft {
   limitsOpen: boolean;
   note: string;
   expiry: ExpiryChoice;
+  /** "Free for": the org is a gift for this long from its creation, then moves to Free. "none" = no end. */
+  gift: GiftChoice;
   busy: boolean;
   errors: { to?: string; limits?: string; form?: string };
   /** Set once the grant exists: the dialog says what happens next. */
   done: PlatformGrant | null;
 }
-export const blankGrant = (): GrantDraft => ({ kind: "github", value: "", plan: "team", limits: blankLimits(), limitsOpen: false, note: "", expiry: "never", busy: false, errors: {}, done: null });
+export const blankGrant = (): GrantDraft => ({ kind: "github", value: "", plan: "team", limits: blankLimits(), limitsOpen: false, note: "", expiry: "never", gift: "none", busy: false, errors: {}, done: null });
+
+/** A gift's length as the pickers hold it: a preset's days, or (the org dialog only) "date". */
+export type GiftChoice = "none" | `${(typeof GIFT_PRESETS)[number]["days"]}`;
+export const isGiftPreset = (v: unknown): v is Exclude<GiftChoice, "none"> => GIFT_PRESETS.some((p) => String(p.days) === v);
+
+/** "Gift a plan" and "Extend" on an organization's page. */
+export interface GiftDraft {
+  slug: string;
+  name: string;
+  current: PlatformOrgPlan;
+  /** `give`: a plan, its seats and an end. `extend`: only the end of the gift the org already has. */
+  mode: "give" | "extend";
+  plan: PlanId;
+  /** "" = the plan's own seats (or, on the plan it is already on, the seats it has). */
+  seats: string;
+  /** A preset's days, or "date" for the date field. */
+  length: Exclude<GiftChoice, "none"> | "date";
+  /** The date field: "" or YYYY-MM-DD (the gift runs to the end of that day, UTC). */
+  date: string;
+  confirm: boolean;
+  busy: boolean;
+  error: string | null;
+}
+/** The plans a gift can be: every plan Platform offers but Free (which is already free). */
+export const giftPlanFor = (current: PlanId): PlanId => (current !== FREE_PLAN && PLANS[current].offered ? current : "team");
 
 export interface PlanDraft {
   slug: string;
@@ -65,8 +97,12 @@ export interface AccessState {
   revokeArm: number | null;
   revokeBusy: boolean;
   plan: PlanDraft | null;
+  /** "Gift a plan" / "Extend" is open. */
+  gift: GiftDraft | null;
+  /** "End now" is being confirmed. */
+  giftEnd: { busy: boolean } | null;
 }
-export const initialAccess = (): AccessState => ({ grants: { status: "idle", data: [] }, grant: null, revokeArm: null, revokeBusy: false, plan: null });
+export const initialAccess = (): AccessState => ({ grants: { status: "idle", data: [] }, grant: null, revokeArm: null, revokeBusy: false, plan: null, gift: null, giftEnd: null });
 
 // ── the limit fields (pure; the server re-checks) ────────────────────────────
 const GB = 1024 ** 3;
@@ -119,6 +155,12 @@ const planOption = (id: PlanId) => ({ value: id, label: PLANS[id].name, hint: PL
 export const planDropdown = (id: string, act: string, value: PlanId, disabled = false): DropdownProps =>
   ({ id, act, value, options: PLAN_IDS.filter((p) => PLANS[p].offered || p === value).map(planOption), labelledBy: `${id}-l`, fill: true, disabled });
 const EXPIRY_LABEL = (v: ExpiryChoice): string => (v === "never" ? "Never" : `In ${v} days`);
+/** "Free for" on a grant: no end, or one of the gift lengths. Off (no end) for Free, which is already free. */
+export const grantGiftDropdown = (value: GiftChoice, disabled = false): DropdownProps => ({
+  id: "plat-grant-gift", act: "platGrantGift", value, labelledBy: "plat-grant-gift-l", fill: true, disabled,
+  options: [{ value: "none", label: "No end", hint: "The plan lasts until you change it." },
+    ...GIFT_PRESETS.map((p) => ({ value: String(p.days), label: p.label, hint: "Then it moves to Free. Nothing is deleted." }))],
+});
 export const expiryDropdown = (value: ExpiryChoice, disabled = false): DropdownProps => ({
   id: "plat-grant-expiry", act: "platGrantExpiry", value, labelledBy: "plat-grant-expiry-l", fill: true, disabled,
   options: (["never", ...GRANT_EXPIRY_DAYS.map((d) => String(d))] as ExpiryChoice[]).map((v) => ({ value: v, label: EXPIRY_LABEL(v) })),
@@ -162,12 +204,13 @@ function grantRow(g: PlatformGrant): string {
     : g.status === "revoked" ? `revoked ${g.revoked_at ? esc(relTime(g.revoked_at)) : ""}${g.revoked_by ? ` by @${esc(g.revoked_by)}` : ""}`
     : g.status === "expired" ? `expired ${g.expires_at ? esc(shortDate(g.expires_at)) : ""}`
     : g.expires_at ? `expires ${esc(shortDate(g.expires_at))}` : "does not expire";
+  const gift = g.gift_days ? ` &middot; <span data-grant-gift>free for ${esc(giftLengthWords(g.gift_days))}, then Free</span>` : "";
   const mail = g.email ? ` &middot; ${g.mail_status === "sent" ? "email sent" : g.mail_status === "failed" ? `<span style="color:var(--red)">email not sent</span>` : "no email sent"}` : "";
   const canRevoke = g.status === "unused" || g.status === "expired";
   return `<li style="${ROW}" data-grant="${g.id}" data-grant-status="${g.status}">
     <div style="flex:1 1 260px;min-width:0;line-height:1.4">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">${esc(who.name)}</span>${statusBadge(st.text, st.tone)}<span style="font-size:12.5px;font-weight:500;color:var(--fg-70)">${esc(PLANS[g.plan].name)}</span></div>
-      <div style="font-size:12px;color:var(--fg-40);overflow-wrap:anywhere;margin-top:2px">${esc(who.kind)} &middot; granted ${esc(relTime(g.created_at))} by ${g.source === "billing" ? "billing" : `@${esc(g.granted_by)}`} &middot; ${became}${mail}${limits.length ? ` &middot; ${esc(limits.join(", "))}` : ""}</div>
+      <div style="font-size:12px;color:var(--fg-40);overflow-wrap:anywhere;margin-top:2px">${esc(who.kind)} &middot; granted ${esc(relTime(g.created_at))} by ${g.source === "billing" ? "billing" : `@${esc(g.granted_by)}`} &middot; ${became}${gift}${mail}${limits.length ? ` &middot; ${esc(limits.join(", "))}` : ""}</div>
       ${g.note ? `<div style="font-size:12px;color:var(--fg-55);overflow-wrap:anywhere;margin-top:2px">${esc(g.note)}</div>` : ""}
     </div>
     ${canRevoke ? dangerLink("Revoke", "platGrantRevokeArm", { arg: String(g.id), field: `platGrantRevoke:${g.id}`, label: `Revoke the grant for ${who.name}` }) : ""}
@@ -200,7 +243,8 @@ export function grantSentence(g: PlatformGrant): string {
   const plan = PLANS[g.plan].name;
   const told = g.email ? (g.mail_status === "sent" ? "Trov emailed them." : g.mail_status === "failed" ? "The email could not be sent: tell them yourself." : "No email was sent: tell them yourself.")
     : g.github_login ? "No email is sent for a GitHub login: tell them it is waiting." : "They see it the next time they open Trov.";
-  return `${who} can now set up one ${plan} organization. ${told}`;
+  const free = g.gift_days ? ` It is free for ${giftLengthWords(g.gift_days)} from the day they create it, then it moves to Free.` : "";
+  return `${who} can now set up one ${plan} organization.${free} ${told}`;
 }
 export function grantServerError(code: string, d: Pick<GrantDraft, "kind" | "value">): GrantDraft["errors"] {
   if (code === "no_such_person") return { to: `No one has the handle @${d.value.trim().replace(/^@/, "")}. Check the spelling, or grant by GitHub login or email instead.` };
@@ -254,6 +298,11 @@ export function grantModal(d: GrantDraft, dd: DropdownUi = initialDropdownUi()):
         ${dropdown(expiryDropdown(d.expiry, d.busy), dd)}
       </div>
     </div>
+    <div style="margin-top:16px" data-plat-grant-gift>
+      <div id="plat-grant-gift-l" style="${FIELD_LABEL}">Free for <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional)</span></div>
+      ${dropdown(grantGiftDropdown(d.plan === FREE_PLAN ? "none" : d.gift, d.busy || d.plan === FREE_PLAN), dd)}
+      <div style="${QUIET};margin-top:6px;line-height:1.45">${d.plan === FREE_PLAN ? "Free has no end to set." : d.gift === "none" ? "The organization keeps this plan until you change it." : `The clock starts the day they create the organization. After ${esc(giftLengthWords(Number(d.gift)))} it moves to Free by itself; nothing is deleted.`}</div>
+    </div>
     ${e.form ? `<div role="alert" style="font-size:12.5px;line-height:1.5;color:var(--red);margin-top:14px">${esc(e.form)}</div>` : ""}
     <div class="cnpy-cmodal-btns" style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px">
       <button type="button" data-act="platGrantClose" class="cnpy-outlinebtn"${off} style="${OUTLINE}">Cancel</button>
@@ -266,8 +315,9 @@ export function grantModal(d: GrantDraft, dd: DropdownUi = initialDropdownUi()):
 export const seatsCell = (p: PlatformOrgPlan): string => formatUse("seats", p.seats_used, p.entitlements.seats);
 
 /** "paid" / "granted" / "free" (and what Stripe says of a paid one) — the list's word beside the seats. A
- *  paid org whose subscription ended is on Free: "paid, ended". */
+ *  paid org whose subscription ended is on Free: "paid, ended". A gift says when it ends. */
 export function planSourceWord(p: PlatformOrgPlan): string {
+  if (p.gift && p.source !== "billing") return `gift until ${billingDate(p.gift.until)}`;
   const ended = p.status === "canceled" || p.plan === FREE_PLAN || !!p.billing?.ended;
   if (!p.billing) return p.source === "billing" ? (ended ? "paid, ended" : "paid") : p.plan === FREE_PLAN ? "free" : "granted";
   return ended ? "paid, ended" : p.status === "past_due" ? "paid, past due" : p.billing.cancel_at_period_end ? "paid, cancelling" : "paid";
@@ -277,6 +327,7 @@ export function planSourceWord(p: PlatformOrgPlan): string {
  *  and, when the superadmin set a plan the subscription does not pay for, that it is pinned and how to undo it. */
 function billingLine(p: PlatformOrgPlan): string {
   const b = p.billing;
+  if (p.gift && p.source !== "billing") return giftLine(p.gift.until);
   if (!b) return `<div data-plat-billing="granted" style="font-size:12.5px;color:var(--fg-55);margin-top:8px;line-height:1.5">Granted by Trov: nobody pays for this plan through Stripe.</div>`;
   const date = billingDate(b.period_end);
   const ended = b.ended || p.status === "canceled";
@@ -290,6 +341,24 @@ function billingLine(p: PlatformOrgPlan): string {
   return `<div data-plat-billing="${b.pinned ? "pinned" : "paid"}" style="margin-top:8px">
     <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55)">${ended ? "Paid through Stripe until its subscription ended: now on Free" : `Paid through Stripe${every ? `, ${every}` : ""}${seats}`} &middot; Stripe says <strong style="font-weight:500;color:var(--fg-70)">${esc(b.stripe_status.replace(/_/g, " "))}</strong>${when}${b.livemode ? "" : " &middot; test mode"} &middot; <a href="${attr(b.dashboard_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--fg-70)">Open the customer in Stripe</a></div>
     ${pinned}
+  </div>`;
+}
+
+/** How many days a gift has left, in words. */
+export function giftLeftWords(until: string, now: number = Date.now()): string {
+  const left = giftDaysLeft(until, now);
+  return left === null ? "" : left === 0 ? "ending now" : left === 1 ? "1 day left" : `${left} days left`;
+}
+/** A gifted org's state on its page: "Gifted until <date>", what happens then, Extend and End now. */
+function giftLine(until: string, now: number = Date.now()): string {
+  const left = giftDaysLeft(until, now);
+  const soon = left !== null && left <= GIFT_SOON_DAYS;
+  return `<div data-plat-gift="${soon ? "soon" : "on"}" style="margin-top:8px">
+    <div style="font-size:12.5px;line-height:1.5;color:var(--fg-70)"><strong style="font-weight:600;color:${soon ? "var(--amber)" : "var(--fg)"}">Gifted until ${esc(billingDate(until))}</strong> &middot; ${esc(giftLeftWords(until, now))}. Nobody pays for it. Then it moves to Free by itself; nothing is deleted.</div>
+    <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <button type="button" data-act="platGiftExtendOpen" data-field="platGiftExtend" data-plat-gift-extend aria-haspopup="dialog" class="cnpy-outlinebtn" style="${OUTLINE};height:30px">Extend</button>
+      ${dangerLink("End now", "platGiftEndArm", { field: "platGiftEnd", label: "End the gift now" })}
+    </div>
   </div>`;
 }
 
@@ -317,7 +386,10 @@ export function orgPlanSection(o: { slug: string; name: string; plan?: PlatformO
         <div style="font-size:12.5px;color:var(--fg-55);margin-top:2px;line-height:1.5">${esc(def.description)}</div>
         ${billingLine(p)}
       </div>
-      <button type="button" data-act="platPlanOpen" data-plat-plan-trigger class="cnpy-outlinebtn" aria-haspopup="dialog" style="${OUTLINE};height:32px">Change plan</button>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        ${canGift(p) ? `<button type="button" data-act="platGiftOpen" data-plat-gift-trigger class="cnpy-outlinebtn" aria-haspopup="dialog" style="${OUTLINE};height:32px">${p.gift ? "Change gift" : "Gift a plan"}</button>` : ""}
+        <button type="button" data-act="platPlanOpen" data-plat-plan-trigger class="cnpy-outlinebtn" aria-haspopup="dialog" style="${OUTLINE};height:32px">Change plan</button>
+      </div>
     </div>
     <div class="plat-limits" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">${cells}</div>
   </div>`;
@@ -337,8 +409,13 @@ export function planChangeCopy(d: Pick<PlanDraft, "name" | "current" | "plan" | 
   return { title, body: over.length ? `${d.name} will be over the new limits: it has ${over.join(", and ")}. ${rest}` : `${seats} ${rest}` };
 }
 
-/** What Change plan does to an org that PAYS (docs/architecture/billing.md › The superadmin and a paid org). */
+/** A gift is for an org that does not pay through a LIVE subscription (the server's 409 `billed`). */
+export const canGift = (p: PlatformOrgPlan): boolean => !p.billing || p.billing.ended || p.status === "canceled";
+
+/** What Change plan does to an org that PAYS (docs/architecture/billing.md › The superadmin and a paid org) —
+ *  or to one whose plan is a gift: a plan set by hand has no end. */
 export function planModalBillingNote(p: PlatformOrgPlan): string {
+  if (p.gift && p.source !== "billing") return `<p data-plat-plan-gift role="note" class="cnpy-plan-note" style="border-radius:9px;margin:10px 0 0">${esc(`Its plan is a gift until ${billingDate(p.gift.until)}. A plan you set here has no end: the gift is cleared, and nothing moves it to Free. To keep the end, use Change gift or Extend instead.`)}</p>`;
   if (!p.billing) return "";
   const text = p.status === "canceled" || p.billing.ended
     ? "Its subscription has ended. A plan you set here takes the organization back as a granted one: active, and no longer tied to Stripe."
@@ -370,11 +447,103 @@ export function planModal(d: PlanDraft, dd: DropdownUi = initialDropdownUi()): s
     </div>`);
 }
 
+// ── gift a plan ──────────────────────────────────────────────────────────────
+/** The plans a gift can be: the offered ones above Free. */
+export const giftPlanDropdown = (value: PlanId, disabled = false): DropdownProps =>
+  ({ id: "plat-gift-plan", act: "platGiftPlan", value, options: PLAN_IDS.filter((p) => p !== FREE_PLAN && (PLANS[p].offered || p === value)).map(planOption), labelledBy: "plat-gift-plan-l", fill: true, disabled });
+
+/** The draft's length as the API takes it, or the sentence for what is wrong with it. */
+export function giftLengthOf(d: Pick<GiftDraft, "length" | "date">): { length: GiftLength } | { error: string } {
+  if (d.length !== "date") return { length: { days: Number(d.length) } };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date)) return { error: "Pick the date the gift ends." };
+  return { length: { until: d.date } };
+}
+/** The instant the draft's gift would end (what the server will compute), or null when it is not valid.
+ *  Extending counts a preset from the gift's CURRENT end; a date is the end outright. */
+export function giftDraftEnd(d: Pick<GiftDraft, "length" | "date" | "mode" | "current">, now: number = Date.now()): string | null {
+  const len = giftLengthOf(d);
+  if ("error" in len) return null;
+  const from = d.mode === "extend" && d.current.gift ? Date.parse(d.current.gift.until) : now;
+  return giftEnd(len.length, now, from);
+}
+/** The seats field → the overrides to send: blank keeps what the org has on the plan it is already on
+ *  (and the plan's own on another plan); a number sets its seats. */
+export function giftOverrides(d: Pick<GiftDraft, "plan" | "seats" | "current">): { overrides: PlanOverrides | undefined } | { error: string } {
+  const raw = d.seats.trim();
+  if (raw === "") return { overrides: undefined };
+  if (!/^\d{1,7}$/.test(raw) || Number(raw) < LIMITS.seats.min) return { error: "Seats: enter a whole number of at least 1, or leave it blank for the plan's own." };
+  return { overrides: { ...(d.plan === d.current.plan ? d.current.overrides : {}), seats: Number(raw) } };
+}
+/** The confirmation's words: what is given, until when, and what happens when it ends. */
+export function giftCopy(d: Pick<GiftDraft, "name" | "plan" | "mode" | "current" | "seats">, until: string): { title: string; body: string; confirm: string } {
+  const date = billingDate(until);
+  const end = `On ${date} it moves to Free by itself. Nothing is deleted and nobody loses access; anything it has over a Free limit stays, and no more of that kind can be added until it is back under.`;
+  const before = "Until then you can extend the gift or end it, and its owner can start paying to keep a plan.";
+  if (d.mode === "extend") return { title: `Extend ${d.name}'s gift to ${date}?`, body: `It stays on ${PLANS[d.current.plan].name}, free, until then. ${end}`, confirm: "Extend gift" };
+  const seats = d.seats.trim() ? ` with ${d.seats.trim()} ${d.seats.trim() === "1" ? "seat" : "seats"}` : "";
+  return { title: `Give ${d.name} ${PLANS[d.plan].name} free until ${date}?`, body: `It goes on ${PLANS[d.plan].name}${seats} today and nobody pays for it. ${end} ${before}`, confirm: "Give plan" };
+}
+
+/** "Gift a plan" / "Extend": the plan and its seats (give only), how long, then the confirmation. */
+export function giftModal(d: GiftDraft, dd: DropdownUi = initialDropdownUi(), now: number = Date.now()): string {
+  const extend = d.mode === "extend";
+  const until = giftDraftEnd(d, now);
+  if (d.confirm && until) {
+    const copy = giftCopy(d, until);
+    return confirmModal({ id: "plat-gift-confirm", title: copy.title, body: copy.body, confirmLabel: copy.confirm, busyLabel: extend ? "Extending…" : "Giving…", confirmAct: "platGiftGo", cancelAct: "platGiftBack", busy: d.busy, tone: "neutral" });
+  }
+  const tomorrow = new Date(now + 86_400_000).toISOString().slice(0, 10);
+  const last = new Date(now + GIFT_MAX_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const lead = extend
+    ? `Its ${esc(PLANS[d.current.plan].name)} plan is free until ${esc(billingDate(d.current.gift?.until))}. A length is added to that date; a date replaces it.`
+    : `It is on ${esc(PLANS[d.current.plan].name)}${d.current.gift ? `, a gift until ${esc(billingDate(d.current.gift.until))}` : ""}. A gift is a plan nobody pays for, with an end: when the end comes the organization moves to Free by itself.`;
+  return shell("plat-gift", "platGiftClose", "plat-gift-t", `<div id="plat-gift-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em;overflow-wrap:anywhere">${extend ? `Extend ${esc(d.name)}'s gift` : `Gift ${esc(d.name)} a plan`}</div>
+    <p style="margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55)">${lead}</p>
+    ${extend ? "" : `<div class="plat-inline" style="margin-top:16px;align-items:flex-start">
+      <div style="flex:2;min-width:0">
+        <div id="plat-gift-plan-l" style="${FIELD_LABEL}">Plan</div>
+        ${dropdown(giftPlanDropdown(d.plan, d.busy), dd)}
+      </div>
+      <div style="flex:1;min-width:0">
+        <label for="plat-gift-seats" style="${FIELD_LABEL}">Seats <span style="text-transform:none;letter-spacing:0;font-weight:500">(optional)</span></label>
+        <input id="plat-gift-seats" data-act="platGiftSeats" data-field="platGiftSeats" data-enter="platGiftReview" value="${attr(d.seats)}" placeholder="${attr(d.plan === d.current.plan ? formatLimit("seats", d.current.entitlements.seats) : formatLimit("seats", PLANS[d.plan].entitlements.seats))}" inputmode="numeric" autocomplete="off" class="cnpy-input" style="${FIELD}" />
+      </div>
+    </div>`}
+    <div style="margin-top:16px">
+      <div id="plat-gift-len-l" style="${FIELD_LABEL}">${extend ? "Add" : "Free for"}</div>
+      ${segmented({ id: "plat-gift-len", ariaLabel: extend ? "How much longer the gift lasts" : "How long the gift lasts", act: "platGiftLen", value: d.length, size: "sm", fill: true, inertOn: true,
+        options: [...GIFT_PRESETS.map((p) => ({ value: String(p.days), label: p.label.replace(" months", " mo").replace(" month", " mo") , title: p.label })), { value: "date", label: "Date", title: "Until a date you pick" }] })}
+      ${d.length === "date" ? `<div style="margin-top:10px">
+        <label for="plat-gift-date" style="${FIELD_LABEL}">Ends on</label>
+        <input id="plat-gift-date" type="date" class="cnpy-date cnpy-input" data-act="platGiftDate" data-field="platGiftDate" value="${attr(d.date)}" min="${tomorrow}" max="${last}" style="${FIELD};font-family:inherit" />
+      </div>` : ""}
+      <div data-plat-gift-until style="${QUIET};margin-top:8px;line-height:1.45">${until ? `Free until <strong style="font-weight:600;color:var(--fg-70)">${esc(billingDate(until))}</strong>. Then it moves to Free; nothing is deleted.` : d.length === "date" ? "The gift runs to the end of the day you pick (UTC)." : ""}</div>
+    </div>
+    ${d.error ? `<div role="alert" style="font-size:12.5px;line-height:1.5;color:var(--red);margin-top:14px">${esc(d.error)}</div>` : ""}
+    <div class="cnpy-cmodal-btns" style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px">
+      <button type="button" data-act="platGiftClose" class="cnpy-outlinebtn" style="${OUTLINE}">Cancel</button>
+      ${goBtn(extend ? "Review extension" : "Review gift", true, "platGiftReview")}
+    </div>`);
+}
+
+/** "End now": the gift ends at once and the org moves to Free, as it would have at its end. */
+export function giftEndModal(o: { name: string; plan: PlatformOrgPlan }, busy: boolean): string {
+  return confirmModal({
+    id: "plat-gift-end", title: `End ${o.name}'s gift now?`,
+    body: `It moves from ${PLANS[o.plan.plan].name} to Free at once${o.plan.gift ? `, instead of on ${billingDate(o.plan.gift.until)}` : ""}. Nothing is deleted and nobody loses access; anything it has over a Free limit stays, and no more of that kind can be added until it is back under. To keep the plan with no end instead, use Change plan.`,
+    confirmLabel: "End gift", busyLabel: "Ending…", confirmAct: "platGiftEndGo", cancelAct: "platGiftEndCancel", busy,
+  });
+}
+
 /** The dialogs this file owns, and the open dropdown's menu among them (a root overlay, above the dialog). */
-export function accessDialogs(a: AccessState, screen: string, dd: DropdownUi): string {
+export function accessDialogs(a: AccessState, screen: string, dd: DropdownUi, org: { name: string; plan?: PlatformOrgPlan } | null = null): string {
   if (screen === "platformorg" && a.plan) {
     return planModal(a.plan, dd) + (a.plan.confirm ? "" : dropdownMenu([planDropdown("plat-plan-pick", "platPlanPick", a.plan.plan)], dd));
   }
+  if (screen === "platformorg" && a.gift) {
+    return giftModal(a.gift, dd) + (a.gift.confirm || a.gift.mode === "extend" ? "" : dropdownMenu([giftPlanDropdown(a.gift.plan, a.gift.busy)], dd));
+  }
+  if (screen === "platformorg" && a.giftEnd && org?.plan) return giftEndModal({ name: org.name, plan: org.plan }, a.giftEnd.busy);
   if (screen !== "platform") return "";
   if (a.revokeArm !== null) {
     const g = a.grants.data.find((x) => x.id === a.revokeArm);
@@ -384,6 +553,6 @@ export function accessDialogs(a: AccessState, screen: string, dd: DropdownUi): s
       confirmLabel: "Revoke", busyLabel: "Revoking…", confirmAct: "platGrantRevokeGo", cancelAct: "platGrantRevokeCancel", busy: a.revokeBusy,
     });
   }
-  if (a.grant) return grantModal(a.grant, dd) + (a.grant.done ? "" : dropdownMenu([planDropdown("plat-grant-plan", "platGrantPlan", a.grant.plan, a.grant.busy), expiryDropdown(a.grant.expiry, a.grant.busy)], dd));
+  if (a.grant) return grantModal(a.grant, dd) + (a.grant.done ? "" : dropdownMenu([planDropdown("plat-grant-plan", "platGrantPlan", a.grant.plan, a.grant.busy), expiryDropdown(a.grant.expiry, a.grant.busy), grantGiftDropdown(a.grant.plan === FREE_PLAN ? "none" : a.grant.gift, a.grant.busy || a.grant.plan === FREE_PLAN)], dd));
   return "";
 }

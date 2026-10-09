@@ -219,7 +219,7 @@ describe("the welcome mail — a person's FIRST membership of any org", () => {
     expect(sent[0]).toMatchObject({ org_id: ORG_B, to_address: "newc@x.io", subject: "Welcome to Acme on Trov" });
     expect(sent[0].html).toContain("You have joined Acme.");
     expect(sent[0].html).toContain("@newc");
-    expect(sent[0].html).toContain('href="https://trov.test/acme/#guide"');
+    expect(sent[0].html).toContain('href="https://trov.test/acme/#welcome"');
     expect(sent[0].html + sent[0].text).not.toMatch(/sapling/i);
     expect((await call("POST", `/api/invites/${second.id}/accept`, me)).status).toBe(200);
     sent = await bodies();

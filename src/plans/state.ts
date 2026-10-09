@@ -45,14 +45,17 @@ export function assertWithinPlan(state: OrgPlanState, limit: Parameters<typeof p
 export interface OrgPlanRow {
   plan: string; plan_overrides: string; plan_source: string | null; plan_status: string;
   plan_period_end: string | null; billing_customer_id: string | null; billing_subscription_id: string | null;
+  plan_gift_until: string | null;
 }
-export const PLAN_COLS = `plan, plan_overrides, plan_source, plan_status, plan_period_end, billing_customer_id, billing_subscription_id`;
+export const PLAN_COLS = `plan, plan_overrides, plan_source, plan_status, plan_period_end, billing_customer_id, billing_subscription_id, plan_gift_until`;
 
 export interface OrgPlan extends OrgPlanState {
   source: PlanSource | null;
   period_end: string | null;
   customer_id: string | null;
   subscription_id: string | null;
+  /** The plan is a gift that ends at this instant (0048_plan_gifts, ./gifts.ts); null = it is not a gift. */
+  gift_until: string | null;
 }
 
 const oneOf = <T extends string>(list: readonly T[], v: unknown): T | null => (typeof v === "string" && (list as readonly string[]).includes(v) ? (v as T) : null);
@@ -64,6 +67,7 @@ export function planOf(r: OrgPlanRow | null): OrgPlan {
     plan: planDef(r?.plan).id, overrides: storedOverrides(r?.plan_overrides), status: oneOf(PLAN_STATUSES, r?.plan_status) ?? "active",
     source: oneOf(PLAN_SOURCES, r?.plan_source), period_end: r?.plan_period_end ?? null,
     customer_id: r?.billing_customer_id ?? null, subscription_id: r?.billing_subscription_id ?? null,
+    gift_until: r?.plan_gift_until ?? null,
   };
 }
 
@@ -122,8 +126,12 @@ export async function seatGate(p: PlatformContext, orgId: string, use: SeatUse, 
 
 // ── changing a plan (the superadmin today; billing tomorrow) ─────────────────
 
-export type PlanErrorCode = "invalid_plan" | "invalid_overrides" | "invalid_status" | "not_found";
-export const PLAN_ERROR_STATUS: Record<PlanErrorCode, 400 | 404> = { invalid_plan: 400, invalid_overrides: 400, invalid_status: 400, not_found: 404 };
+export type PlanErrorCode = "invalid_plan" | "invalid_overrides" | "invalid_status" | "not_found" | "invalid_gift" | "not_gifted" | "billed";
+export const PLAN_ERROR_STATUS: Record<PlanErrorCode, 400 | 404 | 409> = {
+  invalid_plan: 400, invalid_overrides: 400, invalid_status: 400, not_found: 404,
+  // Gifts (./gifts.ts): a bad length or plan; nothing to extend or end; an org that pays through Stripe.
+  invalid_gift: 400, not_gifted: 409, billed: 409,
+};
 export class PlanError extends Error {
   constructor(readonly code: PlanErrorCode, message?: string) { super(message ?? code); }
 }
@@ -140,10 +148,10 @@ export function cleanOverrides(v: unknown): PlanOverrides {
   return o;
 }
 
-const auditPlan = (p: PlatformContext, orgId: string, action: OrgAuditAction, slug: string, detail: Record<string, unknown>, at: string): Stmt =>
+export const auditPlan = (p: PlatformContext, orgId: string, action: OrgAuditAction, slug: string, detail: Record<string, unknown>, at: string): Stmt =>
   stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, ?, ?, ?, ?)`, orgId, p.actor, action, slug, JSON.stringify(detail), at);
 
-const orgBySlug = async (p: PlatformContext, slug: string): Promise<{ id: string; slug: string }> => {
+export const orgBySlug = async (p: PlatformContext, slug: string): Promise<{ id: string; slug: string }> => {
   const org = await first<{ id: string; slug: string }>(p, `SELECT id, slug FROM orgs WHERE slug = ?`, slug);
   if (!org) throw new PlanError("not_found");
   return org;
@@ -161,6 +169,10 @@ export interface SetOrgPlanInput {
   period_end?: string | null;
   customer_id?: string | null;
   subscription_id?: string | null;
+  /** GIFTS (./gifts.ts `giftOrgPlan`): the plan is free until this instant, then the org moves to Free.
+   *  Omitted or null = the plan is NOT a gift, and any gift the org held is cleared: a plan set by hand
+   *  or paid for through billing has no end of its own. */
+  gift_until?: string | null;
 }
 
 /**
@@ -169,8 +181,12 @@ export interface SetOrgPlanInput {
  *
  * It never deletes or removes anything: an org left OVER a limit by the change keeps every member,
  * invitation, repository, environment and artifact it has, and is refused ADDITIONS of that kind until
- * it is back under (shared/plans.ts `planRefusal`). Audited as `plan.change` (the plan moved) or
- * `plan.overrides` (only the limits did).
+ * it is back under (shared/plans.ts `planRefusal`). Audited as `plan.change` (the plan moved),
+ * `plan.overrides` (only the limits did) or `plan.gift` (it was given until a date).
+ *
+ * Every call also settles the org's GIFT (0048_plan_gifts): `gift_until` makes the plan one, and a call
+ * without it clears whatever gift was there — so an org that starts paying, or whose plan a superadmin
+ * sets by hand, is no longer ended by a date.
  */
 export async function setOrgPlan(p: PlatformContext, slug: string, input: SetOrgPlanInput): Promise<OrgPlan> {
   const org = await orgBySlug(p, slug);
@@ -182,18 +198,22 @@ export async function setOrgPlan(p: PlatformContext, slug: string, input: SetOrg
   if (!PLAN_STATUSES.includes(status)) throw new PlanError("invalid_status");
   const at = nowIso();
   const moved = plan !== before.plan || status !== before.status || source !== before.source;
+  const gift = input.gift_until ?? null;
   await batch(p, [
     stmt(p, `UPDATE orgs SET plan = ?1, plan_overrides = ?2, plan_source = ?3, plan_status = ?4, plan_changed_at = ?5, plan_changed_by = ?6,
                     plan_period_end = CASE WHEN ?7 THEN ?8 ELSE plan_period_end END,
                     billing_customer_id = CASE WHEN ?9 THEN ?10 ELSE billing_customer_id END,
-                    billing_subscription_id = CASE WHEN ?11 THEN ?12 ELSE billing_subscription_id END
+                    billing_subscription_id = CASE WHEN ?11 THEN ?12 ELSE billing_subscription_id END,
+                    plan_gift_until = ?14
               WHERE id = ?13`,
       plan, JSON.stringify(overrides), source, status, at, p.actor,
       input.period_end !== undefined ? 1 : 0, input.period_end ?? null,
       input.customer_id !== undefined ? 1 : 0, input.customer_id ?? null,
-      input.subscription_id !== undefined ? 1 : 0, input.subscription_id ?? null, org.id),
-    auditPlan(p, org.id, moved ? "plan.change" : "plan.overrides", org.slug,
-      { from: before.plan, to: plan, overrides, source, ...(status !== before.status ? { status } : {}) }, at),
+      input.subscription_id !== undefined ? 1 : 0, input.subscription_id ?? null, org.id, gift),
+    auditPlan(p, org.id, gift ? "plan.gift" : moved ? "plan.change" : "plan.overrides", org.slug, {
+      from: before.plan, to: plan, overrides, source, ...(status !== before.status ? { status } : {}),
+      ...(gift ? { until: gift } : before.gift_until ? { gift_cleared: before.gift_until } : {}),
+    }, at),
   ]);
   return orgPlan(p, org.id);
 }

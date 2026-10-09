@@ -104,7 +104,7 @@ describe("the grantee — who a grant is for", () => {
     const other = await loner("someone-else");
     const seen = await mine(late);
     expect(seen.can_create).toBe(true);
-    expect(seen.grants).toEqual([{ id: g.id, plan: "team", plan_name: "Pro", entitlements: PLANS.team.entitlements, granted_by: SUPERADMIN, created_at: g.created_at, expires_at: null } satisfies MyGrant]);
+    expect(seen.grants).toEqual([{ id: g.id, plan: "team", plan_name: "Pro", entitlements: PLANS.team.entitlements, granted_by: SUPERADMIN, created_at: g.created_at, expires_at: null, gift_days: null } satisfies MyGrant]);
     // …and it is invisible to, and unusable by, anyone else — even naming its id. (They may still make a Free org.)
     expect(await mine(other)).toMatchObject(ONLY_FREE);
     const stolen = await call("POST", "/api/orgs", other, { slug: "stolen", name: "Stolen", grant: g.id });

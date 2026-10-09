@@ -10,6 +10,7 @@ import { esc, attr, surface } from "./ui";
 import { tenantHref } from "./api";
 import { O_LABEL, O_HELP, orgHead, orgEmpty, tabLead, quietBtn, chip } from "./org-ui";
 import { segmented } from "./segmented";
+import { skeleton, skBox, skLine, skList, skW, skRows } from "./skeleton";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { PLATFORM_FROM_ADDRESS, PLATFORM_SENDER_NAME, SENDER_NAME_MAX, senderNamePart } from "@shared/sender";
 
@@ -94,6 +95,11 @@ function kindRow(k: PrefsView["kinds"][number]): string {
 
 export function emailNotificationsSection(p: NotifSettingsProps): string {
   const head = `<div style="${SECTION_LABEL}">Email notifications</div>`;
+  if (!p.prefs && p.loading) {
+    // The tile's own rows: the address, the all-off switch, then the digests.
+    const row = (i: number) => `<div style="${TILE_ROW};display:flex;align-items:flex-start;justify-content:space-between;gap:16px"><span class="cnpy-skcol">${skLine(skW(i, ["34%", "46%", "28%", "40%"]), 13.5, 1.4)}<span style="display:block;margin-top:3px">${skLine(skW(i + 1, ["72%", "58%", "66%"]), 12, 1.5)}</span></span>${skBox(i < 2 ? 38 : 150, i < 2 ? 22 : 28)}</div>`;
+    return `<section class="cnpy-tile cnpy-surface cnpy-set-email">${head}${skeleton("email-prefs", "Loading email settings&hellip;", `<div class="cnpy-set-pairs">${skList(4, row)}</div>`)}</section>`;
+  }
   if (!p.prefs) {
     const body = p.loading
       ? `Loading email settings&hellip;`
@@ -192,14 +198,18 @@ export function notifDropdowns(p: Pick<NotifAdminProps, "policy" | "settings">):
   return [...p.policy.map(cadenceDropdown), sched.hour, sched.tz];
 }
 
+/** One digest as a tile of the Digests grid: the name on the left, its default cadence and its
+ *  org-wide switch together on the right, and what it carries underneath. */
 function policyRow(k: PolicyKindView, dd: DropdownUi): string {
-  return `<div class="cnpy-org-row" style="align-items:center;gap:10px 16px">
-    ${switchBtn("policyToggle", k.id, k.enabled).replace("<button ", `<button aria-label="${attr(`${k.label}: send org-wide`)}" `)}
-    <div style="flex:1 1 220px;min-width:0">
-      <div style="font-size:13.5px;font-weight:600;color:${k.enabled ? "var(--fg)" : "var(--fg-55)"}">${esc(k.label)}</div>
-      <div style="font-size:12px;color:var(--fg-40);margin-top:1px">${esc(k.description)}</div>
+  return `<div${surface("padding:16px;display:flex;flex-direction:column;gap:6px;min-width:0", { cls: "cnpy-digest" })} data-digest="${attr(k.id)}">
+    <div style="display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap">
+      <div style="flex:1 1 120px;min-width:0;font-size:13.5px;font-weight:600;overflow-wrap:anywhere;color:${k.enabled ? "var(--fg)" : "var(--fg-55)"}">${esc(k.label)}</div>
+      <div style="display:flex;align-items:center;gap:12px;flex:none">
+        ${dropdown(cadenceDropdown(k), dd)}
+        ${switchBtn("policyToggle", k.id, k.enabled).replace("<button ", `<button aria-label="${attr(`${k.label}: send org-wide`)}" `)}
+      </div>
     </div>
-    ${dropdown(cadenceDropdown(k), dd)}
+    <div style="font-size:12px;line-height:1.5;color:var(--fg-40)">${esc(k.description)}</div>
   </div>`;
 }
 
@@ -247,8 +257,8 @@ export function notificationsAdminSections(p: NotifAdminProps): string {
   const lead = tabLead(`${p.policy.length ? `<strong>${enabled} of ${p.policy.length}</strong> digests on` : "Loading the digests…"}${s ? ` &middot; sent at <strong>${String(s.send_hour).padStart(2, "0")}:00</strong> ${esc(s.timezone)} as <strong>${esc(senderNamePart(s.from_address))}</strong>` : ""}${failed ? ` &middot; <span data-outbox-failed style="color:var(--red);font-weight:500">${failed} recent ${failed === 1 ? "send" : "sends"} failed</span>` : ""}. Each person picks their own cadence in Settings.`);
 
   const policy = p.policy.length
-    ? `<div${surface("overflow:hidden")}>${p.policy.map((k) => policyRow(k, dd)).join("")}</div>`
-    : `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0">Loading policy…</div>`;
+    ? `<div class="cnpy-digests">${p.policy.map((k) => policyRow(k, dd)).join("")}</div>`
+    : skRows("notif-policy", "Loading policy…", 4, { trail: 150 });
 
   const sched = scheduleDropdowns(s);
   const schedule = `<div${surface("padding:16px")}>

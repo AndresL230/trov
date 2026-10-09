@@ -15,7 +15,7 @@ import { loadSettings } from "./cron";
 export interface DeliverOptions {
   delivery: Delivery;
   origin?: string; // absolute origin (the footer's host; the links' base when `appBase` is absent)
-  appBase?: string; // `<origin>/o/<slug>` of the org the digest is about — what its deep links hang off
+  appBase?: string; // `<origin>/<slug>` of the org the digest is about — what its deep links hang off
   /** The https one-click unsubscribe target for a login; defaults to the Settings deep link. */
   unsubscribeUrl?: (login: string) => Promise<string>;
 }

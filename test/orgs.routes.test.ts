@@ -22,8 +22,40 @@ describe("GET /api/orgs — reachable with no org, and with several", () => {
     await ensureMember(SUPERADMIN, "admin", ORG_B);
     const { status, json } = await call<MyOrgsResponse>("GET", "/api/orgs", await cookieFor(SUPERADMIN));
     expect(status).toBe(200);
-    expect(json.orgs).toEqual([{ slug: "acme", name: "Acme", role: "admin", logo_url: null }, { slug: "saplinglearn", name: "SaplingLearn", role: "owner", logo_url: null }]);
+    // Each org carries its plan and whether it PAYS for it (personal Settings' Organizations tile): both seed orgs are granted.
+    expect(json.orgs).toEqual([
+      { slug: "acme", name: "Acme", role: "admin", logo_url: null, plan: "enterprise", paid: false },
+      { slug: "saplinglearn", name: "SaplingLearn", role: "owner", logo_url: null, plan: "enterprise", paid: false },
+    ]);
     expect(json).toMatchObject({ superadmin: true, can_create: false, grants: [], free: { can_create: false, owned: null } }); // a superadmin adds orgs in Platform, not here
+  });
+
+  it("each org says its plan, and `paid` only while a live subscription pays for it", async () => {
+    await ensureMember("payer", "owner", ORG_A);
+    await ensureMember("payer", "member", ORG_B);
+    const read = async () => Object.fromEntries((await call<MyOrgsResponse>("GET", "/api/orgs", await cookieFor("payer"))).json.orgs.map((o) => [o.slug, { plan: o.plan, paid: o.paid }]));
+    const restore = await one<Record<string, unknown>>(`SELECT plan, plan_source, plan_status, billing_subscription_id FROM orgs WHERE id = ?`, ORG_B);
+    try {
+      // Pro through Stripe: paid. The other org (granted) is not.
+      await exec(`UPDATE orgs SET plan = 'team', plan_source = 'billing', plan_status = 'active', billing_subscription_id = 'sub_t' WHERE id = ?`, ORG_B);
+      expect(await read()).toEqual({ acme: { plan: "team", paid: true }, saplinglearn: { plan: "enterprise", paid: false } });
+      // Past due still pays (nothing changes while Stripe retries).
+      await exec(`UPDATE orgs SET plan_status = 'past_due' WHERE id = ?`, ORG_B);
+      expect((await read()).acme).toEqual({ plan: "team", paid: true });
+      // The subscription ended and the org moved to Free: still a billing org, no longer paid.
+      await exec(`UPDATE orgs SET plan = 'free', plan_status = 'active' WHERE id = ?`, ORG_B);
+      expect((await read()).acme).toEqual({ plan: "free", paid: false });
+      // A granted Pro org, and a legacy frozen one: not paid.
+      await exec(`UPDATE orgs SET plan = 'team', plan_source = 'granted', billing_subscription_id = NULL WHERE id = ?`, ORG_B);
+      expect((await read()).acme).toEqual({ plan: "team", paid: false });
+      await exec(`UPDATE orgs SET plan_source = 'billing', plan_status = 'canceled', billing_subscription_id = 'sub_t' WHERE id = ?`, ORG_B);
+      expect((await read()).acme).toEqual({ plan: "team", paid: false });
+      // An unknown plan id reads as the smallest plan, like everywhere else.
+      await exec(`UPDATE orgs SET plan = 'mystery', plan_source = 'granted', plan_status = 'active', billing_subscription_id = NULL WHERE id = ?`, ORG_B);
+      expect((await read()).acme).toEqual({ plan: "personal", paid: false });
+    } finally {
+      await exec(`UPDATE orgs SET plan = ?, plan_source = ?, plan_status = ?, billing_subscription_id = ? WHERE id = ?`, restore!.plan, restore!.plan_source, restore!.plan_status, restore!.billing_subscription_id, ORG_B);
+    }
   });
 
   it("refuses a request carrying an Authorization header", async () => {
@@ -404,5 +436,34 @@ describe("soleTenantGate still guards the legacy routes", () => {
     expect((await call("GET", "/docs", cookie)).status).toBe(409);
     expect((await call("GET", "/api/orgs", cookie)).status).toBe(200);
     expect((await call("GET", "/api/invites", cookie)).status).toBe(200);
+  });
+});
+
+describe("GET /api/orgs/slug-check — is an organization handle free", () => {
+  const check = async (slug: string, cookie: string) => call<{ available: boolean; reason?: string }>("GET", `/api/orgs/slug-check?slug=${encodeURIComponent(slug)}`, cookie);
+
+  it("answers for a person in no org: free, taken (any org's, whatever its case), reserved, invalid", async () => {
+    const cookie = await loner("nomad");
+    expect((await check("brand-new-co", cookie)).json).toEqual({ available: true });
+    expect((await check("acme", cookie)).json).toEqual({ available: false, reason: "taken" });
+    expect((await check(" Acme ", cookie)).json).toEqual({ available: false, reason: "taken" });
+    expect((await check(RESERVED_ORG_SLUGS[0], cookie)).json).toEqual({ available: false, reason: "reserved" });
+    expect((await check("-nope", cookie)).json).toEqual({ available: false, reason: "invalid" });
+    expect((await check("", cookie)).json).toEqual({ available: false, reason: "invalid" });
+  });
+
+  it("says what Create then does: a handle it calls free can be created, and is taken afterwards", async () => {
+    const cookie = await loner("hopeful");
+    expect((await check("hopeful-co", cookie)).json.available).toBe(true);
+    expect((await call("POST", "/api/orgs", cookie, { slug: "hopeful-co", name: "Hopeful Co" })).status).toBe(201);
+    expect((await check("hopeful-co", await loner("nomad"))).json).toEqual({ available: false, reason: "taken" });
+  });
+
+  it("needs a session, and is capped per person with the handle-check allowance", async () => {
+    expect((await call("GET", "/api/orgs/slug-check?slug=acme", "")).status).toBe(401);
+    const cookie = await loner("nomad");
+    await exec(`INSERT INTO abuse_counters (subject, action, bucket, count, last_at) VALUES ('nomad', 'handle_check', strftime('%Y-%m-%dT%H', 'now'), 60, 't')`);
+    const r = await check("acme", cookie);
+    expect(r.status).toBe(429);
   });
 });

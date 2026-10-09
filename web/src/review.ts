@@ -11,6 +11,7 @@ import { esc, attr, statusBadge, selectChip, dashedCard, MONO_LABEL, surface, SU
 import { tenantHref } from "./api";
 import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
+import { skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse } from "./skeleton";
 
 // ── prop shapes (loose for now — reshaped at wire time) ──────────────────────
 export type ReviewKind = "proposal" | "decision";
@@ -57,6 +58,9 @@ export interface ReviewProps {
   /** null → default to the first visible item. */
   selectedId: string | null;
   diffView: DiffViewMode;
+  /** The queue's first read is still out: the frame and filter are real, the list and
+   *  the detail pane hold skeletons (never "Queue is clear" before it is known). */
+  loading?: boolean;
 }
 
 // ── list pane ────────────────────────────────────────────────────────────────
@@ -311,6 +315,27 @@ export function reviewDetail(it: ReviewItem, diffView: DiffViewMode): string {
   </div>`;
 }
 
+/** The list pane while the queue's first read is out: cards in the review card's box. */
+function reviewListSkeleton(): string {
+  const card = (i: number) => `<div class="cnpy-titem ${SURFACE}">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">${skLine(skW(i), 14, 1.5)}${skBox(48, 18)}</div>
+    <div style="margin-top:5px">${skLines(["96%", skW(i + 1, ["54%", "70%"])], 12.5, 1.5)}</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:10px">${skBox(18, 18)}${skLine(150, 11.5, 1.5)}</div>
+  </div>`;
+  return skeleton("review-list", "Loading review queue&hellip;", skList(4, card));
+}
+
+/** The detail pane while the queue's first read is out: the title, byline and verdict
+ *  buttons' row, then the record's card. */
+function reviewDetailSkeleton(): string {
+  return skeleton("review-detail", "Loading review queue&hellip;", `<div class="cnpy-rv-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
+      <div style="min-width:0;flex:1">${skLine("62%", 22, 1.3)}<div style="margin-top:8px">${skLine(220, 12, 1.5)}</div></div>
+      <div style="display:flex;align-items:center;gap:10px;flex:none;padding-top:2px">${skBox(70, 32)}${skBox(86, 32)}</div>
+    </div>
+    <div${surface("padding:24px 28px 26px;margin-top:22px")}>${skBar(120, 8)}<div style="margin-top:18px">${skProse(3)}</div></div>`,
+    "max-width:920px;padding:24px 32px 100px");
+}
+
 export function reviewQueueClear(): string {
   return `<div style="height:100%;display:flex;align-items:center;justify-content:center;padding:40px">
     ${dashedCard("Queue is clear", "Everything an agent produced has been reviewed. New proposals will appear here as sessions finish.", true)}
@@ -325,7 +350,8 @@ export function reviewView(p: ReviewProps): string {
   // with nothing explicitly selected, default to the first visible item.
   const sel = (p.selectedId !== null ? p.items.find((it) => it.id === p.selectedId) : undefined) ?? visible[0] ?? null;
 
-  const list = visible.length > 0
+  const list = p.loading ? reviewListSkeleton()
+    : visible.length > 0
     ? visible.map((it) => reviewCard(it, sel !== null && it.id === sel.id)).join("")
     : reviewListEmpty();
 
@@ -343,7 +369,7 @@ export function reviewView(p: ReviewProps): string {
     </div>
     <div class="cnpy-scroll cnpy-rv-detail" style="flex:1;min-width:0;overflow-y:auto">
       <button data-act="reviewBack" class="cnpy-rv-back">${BACK_ICON}All items</button>
-      ${sel ? reviewDetail(sel, p.diffView) : reviewQueueClear()}
+      ${p.loading ? reviewDetailSkeleton() : sel ? reviewDetail(sel, p.diffView) : reviewQueueClear()}
     </div>
   </div>`;
 }

@@ -1,4 +1,4 @@
-// Links INTO an org's app. The SPA lives at `<origin>/o/<slug>/` with the hash route after it, and a
+// Links INTO an org's app. The SPA lives at `<origin>/<slug>/` with the hash route after it, and a
 // person may belong to several orgs — so a link that is to open one org's ticket, handoff, artifact or
 // digest must carry that org's slug: `<origin>/#handoffs/3` would open whichever org the browser
 // last had. Everything the Worker hands out as a link (MCP tool results, the digest e-mails) is built
@@ -17,7 +17,7 @@ export function orgSlugOf(ctx: TenantContext): Promise<string | null> {
   return hit;
 }
 
-/** `<origin>/o/<slug>` — what a hash route (`/#tickets/12`) is appended to. With no slug (an org that is
+/** `<origin>/<slug>` — what a hash route (`/#tickets/12`) is appended to. With no slug (an org that is
  *  gone, a read that failed) it is the bare origin, whose `/` still routes a signed-in person somewhere. */
 export const appBase = (origin: string, slug: string | null | undefined): string =>
   `${origin.replace(/\/+$/, "")}${slug ? `/${slug}` : ""}`;

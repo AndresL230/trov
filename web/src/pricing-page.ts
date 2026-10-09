@@ -5,10 +5,12 @@
 import "./trov.css";
 import { pricingView } from "./pricing";
 import { mountPricing } from "./pricing-dom";
+import { initFaqAccordion } from "./site-faq";
 import { syncFavicon } from "./favicon";
 import { migrateBrowserStorage } from "./storage-migrate";
 
 migrateBrowserStorage(); // canopy.* → trov.* before the theme is read
+initFaqAccordion();      // the Questions accordion's motion (one delegated listener)
 
 type Theme = "light" | "dark" | "system";
 
