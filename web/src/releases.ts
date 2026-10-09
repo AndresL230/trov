@@ -109,6 +109,7 @@ export const RELEASES: Release[] = [
         "Org settings › General › Plan shows \"Free until <date>, a gift from Trov. After that this organization moves to Free; nothing is deleted.\" (`OrgPlanView.gift_until`), as the amber note in its last 7 days; the owner gets \"Keep Pro by paying\" where billing is set up (#123)",
       ],
       changed: [
+        "Every email's banner takes the shape of the app's first-run card (`emailBanner` in `src/notifications/assemble.ts`): the brand top left, a label top right, and the mail's headline reversed out of the purple band, over a gradient and a large faint mark. The invitation, welcome and grant mails move their headline into it; a digest keeps its \"Daily digest · date\" line there. Each layer degrades alone (solid band without gradients, no faint mark without `rgba`) (#PRNUM)",
         "Help › Get Started is now Help › Guide, titled How Trov works: a reference, not a second onboarding. The numbered Sign in / Connect your agent / Learn the skills steps are gone; the skills come first, then how review works and the tour, then Accounts and organizations and Connecting a coding agent as reference sections. Its sign-in facts match open Google sign-up (#124)",
         "The guided setup closes with Your first session (three lines: start as usual, work, say record this session) and a link to the Guide, in place of the four Where things live cards, which repeated the sidebar (#124)",
         "The welcome e-mail opens the guided setup (`/<org>/#welcome`), where a new person now begins, not the Guide (#124)",
