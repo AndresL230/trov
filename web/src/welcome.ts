@@ -29,7 +29,7 @@ import { dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
 import { githubOf, inviteMailNote, inviteRoleDropdown, inviteSection, type OrgUi } from "./org-settings";
 import { seatsLead } from "./org-plan";
 import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, lostBanner, mismatchBanner, repoPicker, suspendedBanner } from "./github-app";
-import { ONE_ORG_NOTE, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpStrong } from "./mcp-connect";
+import { CONNECTION_NOTE, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpStrong } from "./mcp-connect";
 
 // ── steps and state ──────────────────────────────────────────────────────────
 
@@ -93,9 +93,10 @@ export function githubStepState(ui: Pick<OrgUi, "repos">): StepState {
   if (ui.repos.data.length > 0) return "done"; // rows held from an earlier answer are still rows
   return ui.repos.status === "ok" ? "todo" : "unknown";
 }
-/** MY connections into THIS org: the OAuth grants made into it, and my tokens for it. */
+/** MY connections that can work in THIS org: a manual one allowed to use it, one that follows the
+ *  repository (it works wherever the repository is connected), and my tokens for it. */
 export function agentConnections(p: Pick<WelcomeProps, "grants" | "tokens">, slug: string): { grants: OAuthGrantSummary[]; tokens: McpTokenSummary[] } {
-  return { grants: p.grants.data.filter((g) => g.org.slug === slug), tokens: p.tokens.data };
+  return { grants: p.grants.data.filter((g) => g.mode === "repo" || g.orgs.some((o) => o.slug === slug)), tokens: p.tokens.data };
 }
 /** This person has an agent connection for this org. One found is enough; "none" needs BOTH reads to
  *  have answered — a failed or pending read is not a no. */
@@ -225,7 +226,7 @@ export function agentStatus(p: Pick<WelcomeProps, "grants" | "tokens">, org: Pic
   if (st === "done") {
     const g = mine.grants[0];
     const what = g
-      ? `${mcpStrong(esc(g.client_name))} is connected to ${mcpStrong(esc(org.name))}${mine.grants.length > 1 ? `, and ${mine.grants.length - 1} more` : ""}. Connected ${esc(relTime(g.created_at))} &middot; ${g.last_used_at ? `last used ${esc(relTime(g.last_used_at))}` : "not used yet"}.`
+      ? `${mcpStrong(esc(g.client_name))} ${g.mode === "repo" ? `follows the repository you are in, so it works in ${mcpStrong(esc(org.name))} once a repository is connected here` : `is connected to ${mcpStrong(esc(org.name))}`}${mine.grants.length > 1 ? `, and ${mine.grants.length - 1} more` : ""}. Connected ${esc(relTime(g.created_at))} &middot; ${g.last_used_at ? `last used ${esc(relTime(g.last_used_at))}` : "not used yet"}.`
       : `An access token of yours reaches ${mcpStrong(esc(org.name))}${mine.tokens[0]?.last_used_at ? `, last used ${esc(relTime(mine.tokens[0].last_used_at))}` : ""}.`;
     return box("connected", "var(--green)", `${OK_RING}<div style="min-width:0"><div style="font-size:13px;font-weight:600;color:var(--fg)">Your agent is connected</div><div style="font-size:12.5px;line-height:1.55;color:var(--fg-70);margin-top:1px;overflow-wrap:anywhere">${what}</div></div>`);
   }
@@ -246,7 +247,7 @@ export function agentStep(p: WelcomeProps): string {
   return `${agentStatus(p, org)}
     <div${surface("padding:18px 20px;margin-top:14px")} data-welcome-connect>
       ${connectSteps(org.name, "this page then shows your agent as connected")}
-      <div style="font-size:12px;line-height:1.55;color:var(--fg-40);margin-top:12px">${ONE_ORG_NOTE}</div>
+      <div style="font-size:12px;line-height:1.55;color:var(--fg-40);margin-top:12px">${CONNECTION_NOTE}</div>
     </div>
     <div class="cnpy-wel-quiet">
       <button type="button" data-act="welcomeByHand" data-field="welcomeByHand" aria-expanded="${open}" aria-controls="wel-byhand" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;padding:4px 0;font-size:12.5px;font-weight:500;color:var(--fg-55);text-align:left"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" class="cnpy-xrow-c" style="transform:${open ? "rotate(90deg)" : "none"}"><path d="M9 6l6 6-6 6"></path></svg>Set it up without the plugin</button>

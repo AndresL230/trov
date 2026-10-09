@@ -61,7 +61,8 @@ describe("MCP list_people", () => {
     const people = tools.filter((t) => /person|people|profile|avatar|responsibilit/i.test(t.name));
     expect(people.map((t) => t.name)).toEqual(["list_people"]);
     const tool = people[0];
-    expect(Object.keys(tool.inputSchema.properties ?? {})).toEqual([]);
+    expect(Object.keys(tool.inputSchema.properties ?? {})).toEqual(["repo", "org"]); // no input of its own: only the two every tool takes to say WHICH org (0051)
+    expect(tool.inputSchema.required ?? []).toEqual([]);
     expect(tool.description).toMatch(/create_ticket/);
     expect(tool.description).toMatch(/never guess/i);
   });

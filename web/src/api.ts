@@ -821,6 +821,15 @@ export async function listOAuthGrants(): Promise<OAuthGrantSummary[]> {
 export function revokeOAuthGrant(id: number): Promise<{ ok: true }> {
   return postJson<{ ok: true }>(`/auth/oauth-grants/${id}/revoke`);
 }
+// Settings › MCP access: what one of MY connections can reach. Each answers with my connections as they now stand.
+const grantScope = async (id: number, what: "orgs" | "current" | "mode", body: unknown): Promise<OAuthGrantSummary[]> =>
+  (await postJson<{ ok: true; grants: OAuthGrantSummary[] }>(`/auth/oauth-grants/${id}/${what}`, body)).grants;
+/** Let a manual connection use an organization of mine, or stop it. */
+export const setOAuthGrantOrg = (id: number, org: string, on: boolean) => grantScope(id, "orgs", { org, on });
+/** Switch a manual connection's current organization (one it may already use). */
+export const setOAuthGrantCurrent = (id: number, org: string) => grantScope(id, "current", { org });
+/** Make a connection follow the repository, or manual starting in `org`. */
+export const setOAuthGrantMode = (id: number, mode: "repo" | "manual", org?: string) => grantScope(id, "mode", { mode, org });
 
 // Re-export the row types the UI renders, so screens import shapes from one place.
 export type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow };

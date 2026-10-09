@@ -1,7 +1,7 @@
 ---
 name: prompts
 description: Use when a task matches a reusable team prompt, or a person asks for one from the Trov Prompt Library (triggers — "use the SSE review prompt", "is there a prompt for…", "run the migration review", "save this as a prompt"). Reading and filling prompts is safe; save_prompt only ever stages a version a human must publish.
-allowed-tools: mcp__trov__search_prompts, mcp__trov__get_prompt, mcp__trov__save_prompt
+allowed-tools: mcp__trov__search_prompts, mcp__trov__get_prompt, mcp__trov__save_prompt, mcp__trov__get_connection, Bash(git remote get-url:*)
 ---
 
 # Prompts ← Trov Prompt Library
@@ -26,6 +26,24 @@ Part of the **`trov`** skill set.
 - One-off instructions nobody will reuse — don't stage them.
 - A handoff's own instructions — those go in the handoff's `prompt.body` (the `handoff` skill), not the
   library.
+
+## Which organization — pass `repo` on every call
+
+One Trov connection covers every organization you belong to, so every Trov tool takes the repository
+you are working in. Once per session, run `git remote get-url origin` and reduce it to `owner/name`
+(`git@github.com:acme/app.git` and `https://github.com/acme/app` are both `acme/app`). Pass that as
+`repo` on EVERY Trov call this skill makes. No remote, or not a GitHub one: leave `repo` out.
+
+- A connection that **follows the repository** acts in the organization that has that repository
+  connected. `repo_required` / `not_connected` mean NOTHING was read or written: tell the person this
+  repository is not connected to any of their organizations (Trov › Org settings › Repositories) and
+  stop — never pass a different repository to get an answer. `ambiguous_org` lists the candidates:
+  ask the person which, then pass it as `org`.
+- A **manual** connection ignores `repo` and acts in its current organization. `org_unavailable` /
+  `org_not_allowed` list what it may use: ask the person, never guess, and prefer `org` on the call
+  over `switch_org` (a switch moves every session that shares the connection).
+- Not sure where you are? `get_connection` (same `repo`) answers: the organization this call would
+  act in, the connection's mode, and what it can reach.
 
 ## Procedure
 

@@ -38,7 +38,7 @@ import { pricingSection } from "./pricing";
 import { segmented } from "./segmented";
 import { PLANS, seatsPhrase } from "@shared/plans";
 import { PRICING, canPurchasePlan, formatPrice, purchaseHref } from "@shared/pricing";
-import { ONE_ORG_NOTE, connectSteps } from "./mcp-connect";
+import { CONNECTION_NOTE, connectSteps } from "./mcp-connect";
 import type { FeatureState } from "./site-feature-core";
 import { AGENT_TAG, featureMock, initials, pill } from "./landing-mocks";
 
@@ -728,7 +728,7 @@ function agents(): string {
         <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--border)">
           <div style="${GROUP_LABEL};margin-bottom:12px">Connect in three steps</div>
           ${connectSteps("", "the connection shows up in Settings, under MCP access")}
-          <p style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55);text-wrap:pretty">${ONE_ORG_NOTE}</p>
+          <p style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55);text-wrap:pretty">${CONNECTION_NOTE}</p>
         </div>
         <div style="margin-top:auto;padding-top:18px"><button data-act="siteGuide" class="site-btn site-btn-outline">How Trov works, in the Guide</button></div>
       </div>

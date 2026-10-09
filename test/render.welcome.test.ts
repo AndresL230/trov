@@ -63,7 +63,7 @@ const plan = (id: PlanId = "team", o: Partial<OrgPlanView> = {}): OrgPlanView =>
   plan: id, name: PLANS[id].name, description: PLANS[id].description, status: "active", source: "granted", period_end: null, gift_until: null, entitlements: PLANS[id].entitlements, overridden: [],
   seats: { members: 1, pending: 0 }, usage: { seats: 1, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0 }, over: [], ...o,
 });
-const grant = (slug = "acme", o: Partial<OAuthGrantSummary> = {}): OAuthGrantSummary => ({ id: 3, client_name: "Claude Code", created_at: "2026-10-07T10:00:00.000Z", last_used_at: null, org: { slug, name: slug === "acme" ? "Acme Robotics" : "Other" }, ...o });
+const grant = (slug = "acme", o: Partial<OAuthGrantSummary> = {}): OAuthGrantSummary => ({ id: 3, client_name: "Claude Code", created_at: "2026-10-07T10:00:00.000Z", last_used_at: null, mode: "manual", org: { slug, name: slug === "acme" ? "Acme Robotics" : "Other" }, orgs: [{ slug, name: slug === "acme" ? "Acme Robotics" : "Other" }], ...o });
 const token = (): McpTokenSummary => ({ id: 9, hint: "ab12", created_at: "2026-09-01T10:00:00.000Z", last_used_at: null });
 
 /** An org its owner has just created: every read in, nothing connected, nobody else. */

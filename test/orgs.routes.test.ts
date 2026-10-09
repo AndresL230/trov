@@ -377,6 +377,7 @@ describe("/api/o/:slug — settings, members, invites", () => {
     for (const [org, hash] of [[ORG_B, "h-b"], [ORG_A, "h-a"]]) {
       await exec(`INSERT INTO mcp_tokens (person, token_hash, created_at, org_id) VALUES ('mia', ?, '2026-01-01T00:00:00Z', ?)`, hash, org);
       await exec(`INSERT INTO oauth_grants (person, client_id, client_name, created_at, org_id) VALUES ('mia', 'c1', 'Claude', '2026-01-01T00:00:00Z', ?)`, org);
+      await exec(`INSERT INTO oauth_grant_orgs (grant_id, org_id, person, added_at) SELECT id, org_id, person, created_at FROM oauth_grants WHERE org_id = ? AND person = 'mia'`, org); // as 0051 backfills it
     }
     await exec(`INSERT INTO mcp_tokens (person, token_hash, created_at, org_id) VALUES ('adam', 'h-adam', '2026-01-01T00:00:00Z', ?)`, ORG_B);
     await exec(`INSERT INTO feed (org_id, author, summary, created_at) VALUES (?, 'mia', 'shipped', '2026-01-01T00:00:00Z')`, ORG_B);
@@ -390,6 +391,8 @@ describe("/api/o/:slug — settings, members, invites", () => {
     expect(await rows(`SELECT org_id, revoked_at IS NOT NULL AS revoked, revoked_reason FROM oauth_grants ORDER BY org_id`)).toEqual([
       { org_id: ORG_B, revoked: 1, revoked_reason: "member_removed" }, { org_id: ORG_A, revoked: 0, revoked_reason: null },
     ]);
+    // The connection into the other org keeps its one organization; the revoked one holds none.
+    expect(await rows(`SELECT org_id FROM oauth_grant_orgs WHERE person = 'mia'`)).toEqual([{ org_id: ORG_A }]);
     expect(await one(`SELECT COUNT(*) AS n FROM feed WHERE org_id = ? AND author = 'mia'`, ORG_B)).toEqual({ n: 1 });
     expect((await audit(ORG_B)).at(-1)).toEqual({ actor: "adam", action: "member.remove", target: "mia" });
     // An admin cannot remove an owner.

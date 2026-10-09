@@ -118,6 +118,8 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   const grant = await run(env.DB, `INSERT INTO oauth_grants (person, client_id, client_name, created_at) VALUES (?, 'rename-client', 'C', ?)`, handle, nowIso());
   await run(env.DB, `INSERT INTO oauth_codes (code_hash, client_id, person, grant_id, redirect_uri, code_challenge, created_at, expires_at) VALUES (?, 'rename-client', ?, ?, 'http://localhost/cb', 'x', ?, ?)`,
     `rename-code-${handle}`, handle, grant.meta.last_row_id, nowIso(), nowIso());
+  // oauth_grant_orgs.person (0051): the org that connection may use.
+  await run(env.DB, `INSERT INTO oauth_grant_orgs (grant_id, org_id, person, added_at) VALUES (?, 'org_saplinglearn', ?, ?)`, grant.meta.last_row_id, handle, nowIso());
   // Multitenancy (0042_organizations): every org table that stores a handle — direct inserts; their writers land in
   // later phases. One org the person created, their membership, an invite they sent and answered, an
   // attribution they made, and the integration rows they last touched.

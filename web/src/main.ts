@@ -23,7 +23,7 @@ import {
   getOnboardPrefill, checkHandle, submitOnboard,
   getNotificationPrefs, putNotificationPrefs, getNotificationPolicy, putNotificationPolicy,
   getNotificationSettings, putNotificationSettings, listNotificationOutbox, testSendNotification, type PrefsWrite,
-  listOAuthGrants, revokeOAuthGrant,
+  listOAuthGrants, revokeOAuthGrant, setOAuthGrantOrg, setOAuthGrantCurrent, setOAuthGrantMode, planLimitText,
   listPersons, updateMe, unlinkIdentity, renameHandle,
   getPersonProfile, uploadAvatar, removeAvatar,
   getMyOrgs, getOrgMe, listMcpTokens, revokeMcpToken, setApiOrg, setOrgLostHandler, tenantHref,
@@ -58,7 +58,7 @@ import { QUEUE_FILTER_CATS, type QueueFilterCat } from "./tickets";
 import { initialOnboard, markAvatarFailed, AVATAR_IMG_CLASS } from "./people";
 import { prepareAvatar } from "./avatar";
 import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX } from "./mentions";
-import { PERSON_COLORS, type PersonColor } from "@shared/rows";
+import { PERSON_COLORS, type PersonColor, type OAuthGrantSummary } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
 import { syncSkeletons } from "./skeleton";
@@ -1044,6 +1044,25 @@ function loadSettingsReads(): void {
   orgCtl.loadPlan();
   void loadMyOrgs();
 }
+/** Why a change to a connection's scope was refused, in words (the route answers with a code). */
+const GRANT_SCOPE_REFUSALS: Record<string, string> = {
+  current_org: "That is the organization it is working in. Switch it to another one first.",
+  last_org: "A connection needs at least one organization. Revoke it instead.",
+  not_allowed: "Turn that organization on for this connection first.",
+  not_manual: "This connection follows the repository. Change it to Manual to choose its organizations.",
+  not_found: "That connection, or that organization, is no longer yours to change.",
+};
+/** Settings › MCP access: one change to a connection's scope — the list on screen becomes the answer. */
+function saveGrantScope(change: Promise<OAuthGrantSummary[]>, done: string): void {
+  change
+    .then((data) => { state.grants = { status: "ok", data }; flash(done); rerender(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      flash(planLimitText(e, null) ?? (e instanceof ApiError ? GRANT_SCOPE_REFUSALS[e.message] : undefined) ?? "Could not change the connection", 4200);
+      loadGrants();
+    });
+}
+
 function loadGrantsIfNeeded(): void {
   if (state.grants.status === "idle") loadGrants();
   if (state.mcpTokens.status === "idle") loadMcpTokens();
@@ -3541,7 +3560,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         });
       return;
     }
-    case "revokeGrantArm": state.grantRevokeArm = Number(arg); break;
+    case "revokeGrantArm": state.grantRevokeArm = Number(arg); state.grantScope = null; break;
     case "revokeGrantCancel": state.grantRevokeArm = null; break;
     case "revokeGrant": {
       const id = Number(arg);
@@ -3560,6 +3579,36 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     // Connected apps opens to every row, or folds back to the first few.
     case "mcpShowAll": state.grantsAll = !state.grantsAll; break;
+    // A connection's scope (0051): opened under its row; every change is saved as it is made, and the
+    // server answers with my connections as they now stand.
+    case "grantScopeToggle": {
+      const id = Number(arg);
+      state.grantScope = state.grantScope === id ? null : id;
+      state.grantRevokeArm = null;
+      if (state.grantScope !== null && state.myOrgs.status === "idle") loadMyOrgs();
+      break;
+    }
+    case "grantMode": {
+      // arg = "<grant id>:<repo|manual>". Manual starts in the organization on screen (one of mine), and I add others after.
+      const [rawId, mode] = (arg ?? "").split(":");
+      const start = state.orgSlug ?? state.me?.orgs[0]?.slug;
+      if (mode !== "repo" && (mode !== "manual" || !start)) return;
+      saveGrantScope(setOAuthGrantMode(Number(rawId), mode, mode === "manual" ? start : undefined),
+        mode === "repo" ? "It now follows the repository" : "It now works in the organizations you allow");
+      return;
+    }
+    case "grantOrgToggle": {
+      // arg = "<grant id>:<org slug>:<on|off>".
+      const [rawId, slug, to] = (arg ?? "").split(":");
+      if (!slug || (to !== "on" && to !== "off")) return;
+      saveGrantScope(setOAuthGrantOrg(Number(rawId), slug, to === "on"), to === "on" ? "It may use that organization now" : "It can no longer use that organization");
+      return;
+    }
+    case "grantCurrent": {
+      if (!arg || !value) return;
+      saveGrantScope(setOAuthGrantCurrent(Number(arg), value), "Switched");
+      return;
+    }
     // The by-hand setup is a modal, so the MCP tile never changes height: focus goes into
     // the dialog on open, and back to its link on close (the backdrop, the ×, or Escape).
     case "mcpSetupOpen":

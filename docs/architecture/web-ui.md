@@ -151,7 +151,7 @@ through all seven (wrapping), with the position as text and dots.
 
 Two cards whose content is naturally the same height at desktop width (`.site-agents-row`, 1.65fr / 1fr,
 measured at 1440 and 1100); one column under 900px. The plugin card holds the skills, then `connectSteps()` and
-`ONE_ORG_NOTE` from `mcp-connect.ts`. If a card's content shrinks, re-weight the columns or let the card be
+`CONNECTION_NOTE` from `mcp-connect.ts`. If a card's content shrinks, re-weight the columns or let the card be
 smaller: never pad one out.
 
 ## Sidebar & motion — the `<aside>` outlives rerenders

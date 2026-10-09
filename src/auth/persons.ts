@@ -255,7 +255,7 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["handoffs", "sender"], ["handoffs", "recipient"], ["handoffs", "claimed_by"],
   ["prompts", "author"], ["prompts", "deleted_by"], ["prompt_versions", "author"],
   // MCP OAuth (0029): a rename carries a person's connections and in-flight codes.
-  ["oauth_grants", "person"], ["oauth_codes", "person"],
+  ["oauth_grants", "person"], ["oauth_codes", "person"], ["oauth_grant_orgs", "person"],
   // Multitenancy (0042_organizations): a handle is ONE person across every org, so a rename spans them all.
   ["memberships", "user_id"], ["memberships", "created_by"], ["orgs", "created_by"],
   ["org_invites", "invited_by"], ["org_invites", "responded_by"],
