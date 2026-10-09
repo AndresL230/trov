@@ -26,6 +26,8 @@ export const LIMITS = {
   org_logo_upload: { max: 20, window: "day" },
   /** A Stripe Checkout Session started (`GET /billing/start`, an org's renewal): a Stripe object and a row each. */
   checkout: { max: 10, window: "day" },
+  /** `POST /api/support`: a bug report or support message — a stored row and a mail to the operator. */
+  support: { max: 10, window: "day" },
   /** `GET /auth/handle-check`: is a handle taken. */
   handle_check: { max: 60, window: "hour" },
 } as const satisfies Record<string, Limit>;

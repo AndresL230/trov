@@ -2293,20 +2293,23 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .cnpy-wel-status > button { flex:1 1 100%; min-height:36px; }
 }
 @media (prefers-reduced-motion: reduce) { .cnpy-wel-pulse { animation:none; } .cnpy-wel-stepb { transition:none; } }
-/* A short window: the rail tightens rather than scroll its last rows out of sight. At full size
-   a superadmin's rail (13 entries, Platform, Collapse) needs about 980px; so below that the
-   rows and section labels lose a few pixels each and the tagline steps aside, and below 850px
-   (a laptop at 800) they lose a few more — every entry stays on screen, none scrolls. Never on
-   a phone, whose drawer has its own (larger) touch rows. */
+/* A short window: the rail tightens rather than scroll its last rows out of sight. The rail is 15
+   rows (13 screens and Help's two actions, Report a bug / Contact support) and Collapse. MEASURED
+   (2026-10-09, with transitions off — the rows' padding is animated, so a reading taken right after
+   a step is stale): at full size it needs 994px of window, so from 1000px down the tagline steps
+   aside; below 990px the rows and section labels lose a few pixels each (needs 849px); below 850px
+   (a laptop at 800) they lose a few more (needs 774px) — every entry stays on screen, none scrolls.
+   Adding a row means measuring again. Never on a phone, whose drawer has its own (larger) touch rows. */
+@media (max-height: 1000px) { [data-phone="0"] .cnpy-ghost { display:none; } }
 @media (max-height: 990px) {
   [data-phone="0"] .cnpy-nav-i { padding-top:6px; padding-bottom:6px; }
   [data-phone="0"][data-collapsed="1"] .cnpy-nav-i { padding-top:7px; padding-bottom:7px; }
   [data-phone="0"] .cnpy-navlist { gap:2px; }
-  [data-phone="0"][data-collapsed="0"] .cnpy-sec { height:25px; padding-top:6px; }
-  [data-phone="0"][data-collapsed="0"] .cnpy-sec.is-first { height:26px; padding-top:7px; }
+  [data-phone="0"][data-collapsed="0"] .cnpy-sec { height:24px; padding-top:6px; }
+  [data-phone="0"][data-collapsed="0"] .cnpy-sec.is-first { height:25px; padding-top:7px; }
   [data-phone="0"] .cnpy-ghost { display:none; }
   [data-phone="0"] .cnpy-collapse { padding-bottom:4px; }
-  [data-phone="0"] .cnpy-foot { padding:6px 10px; }
+  [data-phone="0"] .cnpy-foot { padding:5px 10px; }
 }
 @media (max-height: 850px) {
   [data-phone="0"] .cnpy-nav-i { padding-top:5px; padding-bottom:5px; }
@@ -2332,6 +2335,17 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 /* Platform › Access / Change plan (platform-access.ts): the five limits, as fields or as figures. */
 .plat-limits { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px 14px; }
 .plat-usage-grid { grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1.2fr) 48px 62px 44px 54px minmax(0,.95fr) 88px; }
+/* Platform › Support (platform-support.ts): kind · subject · who · organization · when · status. */
+.plat-support-grid { grid-template-columns:76px minmax(0,2.2fr) minmax(0,1.3fr) minmax(0,1fr) 72px 84px; }
+/* What a support report carries besides its message — the dialog's "Sent with your message" block
+   (support.ts) and the same lines on the report in Platform: a label column and the value, which
+   wraps (a user agent is one long word). */
+.cnpy-support-ctx dl { margin:0; display:grid; gap:5px; }
+.cnpy-support-ctx-r { display:grid; grid-template-columns:104px minmax(0,1fr); gap:12px; align-items:baseline; font-size:12.5px; line-height:1.5; }
+.cnpy-support-ctx-r dt { color:var(--fg-40); }
+.cnpy-support-ctx-r dd { margin:0; min-width:0; color:var(--fg-70); overflow-wrap:anywhere; }
+[data-support-dialog] button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+@media (max-width: 520px) { .cnpy-support-ctx-r { grid-template-columns:minmax(0,1fr); gap:0; } }
 .plat-cl { display:none; font-family:var(--label); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-40); margin-bottom:3px; }
 .plat-urow { border-bottom:1px solid var(--border); margin-bottom:-1px; }
 .plat-chev { color:var(--fg-40); transition:transform .2s ease; }

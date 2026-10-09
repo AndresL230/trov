@@ -312,6 +312,15 @@ artifact bytes, tokens and connected apps). Platform › an organization shows t
 Requests are metered, not limited. What IS limited per organization — people, repositories, environments,
 stored artifacts, agent connections per person — is its plan's (`plans.md`).
 
+## 6b. Support reports
+
+Platform › **Support** [`web/src/platform-support.ts`, `GET /api/platform/support`]: the bug reports and
+messages people send from Help › Report a bug / Contact support, with a count of the open ones on the tab.
+Each is also mailed to `SUPPORT_NOTIFY_EMAIL`; replying to that mail, or **Reply by email** on the report,
+answers the person at their verified address. **Resolve** takes it off the open list; **Reopen** puts it
+back. A report holds what its reporter wrote plus the screen, the organization's slug, the app version and
+the browser — nothing read from the organization. All of it: `support.md`.
+
 ## 7. What the superadmin can and cannot see
 
 **Can:** every organization's name, slug, status, creation date and creator; the GitHub account its App
@@ -319,7 +328,8 @@ installation is on, if any; its owners; its members'
 handles, names, roles and titles; its pending invitations (the address or login, and whether the e-mail
 went out); the usage **counts and sizes** above; and the audit trail — who created the organization, added
 or removed whom, changed a role, set or rotated which integration (never a value: at most a credential's
-last four characters and key version).
+last four characters and key version); and the support reports people sent (§6b): their own words and
+where they were when they wrote them.
 
 **Cannot:** open an organization, or read any of its content — docs, tickets, feed, handoffs, prompts,
 artifacts, the Repo dashboard, e-mail bodies — or any stored credential. The Platform routes read no tenant

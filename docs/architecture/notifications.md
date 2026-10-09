@@ -50,6 +50,12 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
   exist until they sign in — nothing Trov holds can reach a new org member before that. No outcome
   column and the result is ignored at the call site: `sendWelcome` never throws, and a mailer problem
   must never cost somebody their sign-up. No address from the provider = no mail.
+- **Support notice** (`src/notifications/support.ts`, `support.md`): the third transactional message, and the
+  only one addressed to the OPERATOR — one per bug report or support message, to the var `SUPPORT_NOTIFY_EMAIL`
+  (unset → not sent, outcome `skipped`). It belongs to no org, so it goes through `platformDeliveryFor` like the
+  grant notice (`src/notifications/grant.ts`); its outcome lands on `support_reports.mail_*`, scrubbed of the
+  provider key before the cut. It is the one mail with a `Reply-To` (`OutboundMessage.replyTo` → Resend's
+  `reply_to`): the reporter's provider-verified address, so a reply answers them. Never throws.
 - **Deferred:** the digest's ledger layout (`EMAIL_CARD.item`) has no avatar chips today, so a person's
   color does not appear in email yet. When a chip is added there, take the color from `persons.color`
   via the light hex set documented in §7 of the identity design doc.

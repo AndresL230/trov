@@ -34,6 +34,7 @@ const isPlatformPath = (path: string): boolean =>
   path.startsWith("/auth/") || path.startsWith("/avatar/") || path.startsWith("/org-logo/") ||
   path === "/api/orgs" || path.startsWith("/api/orgs/") || path === "/api/invites" || path.startsWith("/api/invites/") ||
   path.startsWith("/api/platform/") || path.startsWith("/api/o/") ||
+  path === "/api/support" || // a bug report is a person's, with or without an org (src/platform/support-routes.ts)
   path.startsWith("/billing/") || path.startsWith("/api/billing/"); // a purchase is a person's, before any org (src/billing/routes.ts)
 
 /**

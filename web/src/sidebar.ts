@@ -67,7 +67,10 @@ export interface SidebarProps {
 const ICON = (paths: string): string =>
   `<svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">${paths}</svg>`;
 
-const ICONS: Record<NavKey | "search" | "collapse", string> = {
+const ICONS: Record<NavKey | "bug" | "support" | "search" | "collapse", string> = {
+  // Help's two ACTIONS (not screens: they open the support dialog, support.ts) — a bug, and a lifebuoy.
+  bug: ICON(`<rect x="8" y="7" width="8" height="12" rx="4"></rect><path d="M12 12v7"></path><path d="M9.5 7.5a2.5 2.5 0 0 1 5 0"></path><path d="M4 13h4M16 13h4M5 7l3.2 2.6M19 7l-3.2 2.6M5 20l3.2-2.8M19 20l-3.2-2.8"></path>`),
+  support: ICON(`<circle cx="12" cy="12" r="9"></circle><circle cx="12" cy="12" r="3.5"></circle><path d="m5.6 5.6 3.9 3.9M14.5 14.5l3.9 3.9M18.4 5.6l-3.9 3.9M9.5 14.5l-3.9 3.9"></path>`),
   mywork: ICON(`<path d="M3 12 12 3l9 9"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path>`),
   tickets: ICON(`<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path>`),
   roadmap: ICON(`<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`),
@@ -142,6 +145,14 @@ export function sidebarView(p: SidebarProps): string {
     </div>${sub}`;
   };
 
+  /** A row that DOES something instead of going somewhere (Help's Report a bug / Contact support open
+   *  the support dialog over the screen on show). The same row, marks included, so the rail's rhythm
+   *  and its collapsed pose are a nav row's; never current, since it is not a place. */
+  const action = (name: "bug" | "support", act: string, arg: string, label: string): string =>
+    `<div class="cnpy-navrow n-${name}" data-tip="${attr(label)}">
+      <button data-act="${act}" data-arg="${attr(arg)}" data-support-trigger="${attr(arg)}" class="cnpy-nav-i" aria-label="${attr(label)}" aria-haspopup="dialog">${ICONS[name]}<span class="cnpy-lbl cnpy-nav-t">${esc(label)}</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>`;
+
   const c = p.counts;
   const chipPerson = p.me ? { handle: p.me.handle, name: p.displayName || p.me.name, color: p.me.color, avatar_url: p.me.avatar_url } : null;
 
@@ -176,6 +187,8 @@ export function sidebarView(p: SidebarProps): string {
       ${section("Help")}
       ${item("guide", "goGuide", "Guide")}
       ${item("releases", "goReleases", "What's new")}
+      ${action("bug", "supportOpen", "bug", "Report a bug")}
+      ${action("support", "supportOpen", "question", "Contact support")}
     </nav>
     <div class="cnpy-collapse" data-tip="Expand sidebar">
       <button data-act="toggleCollapse" class="cnpy-nav-i" aria-label="${p.collapsed ? "Expand sidebar" : "Collapse sidebar"}" aria-expanded="${!p.collapsed}">${ICONS.collapse}<span class="cnpy-lbl cnpy-nav-t">Collapse</span></button>

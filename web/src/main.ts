@@ -77,6 +77,8 @@ import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
+import { createSupport } from "./support-actions";
+import { RELEASES } from "./releases";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
 import { currentOrg } from "./org-settings";
@@ -141,6 +143,14 @@ const welcomeCtl = createWelcomeController({
   state, mount, rerender: () => rerender(), loadOrg: () => orgCtl.load(), loadHome: () => loadMyWorkIfNeeded(), loadConnections: () => loadGrantsIfNeeded(),
   reloadConnections: () => { loadGrants(); loadMcpTokens(); }, listGrants: () => listOAuthGrants(),
   unauth: (e) => unauth(e), go: (url) => { window.location.href = url; },
+});
+
+// Help › Report a bug / Contact support (web/src/support-actions.ts): every `support…` act. What it
+// attaches is read when the dialog opens — the route on screen, the org the person is in (none on the
+// picker or the Platform page), the newest release and the browser — and nothing else.
+const supportCtl = createSupport({
+  state, mount, rerender: () => rerender(), unauth: (e) => unauth(e),
+  context: () => ({ route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: RELEASES[0]?.version ?? "", userAgent: navigator.userAgent }),
 });
 
 // The dropdowns (web/src/dropdown.ts): opening, closing (with its exit), the keyboard, and
@@ -490,7 +500,10 @@ function currentRoute(): Route {
     r.promptMode = state.promptMode;
     if (state.promptMode !== "new" && state.promptSlug) r.promptSlug = state.promptSlug;
   }
-  if (state.screen === "platform") r.platTab = state.plat.tab;
+  if (state.screen === "platform") {
+    r.platTab = state.plat.tab;
+    if (state.plat.tab === "support" && state.plat.support.reportId !== null) r.platReport = state.plat.support.reportId;
+  }
   if (state.screen === "platformorg" && state.plat.orgSlug) r.platOrg = state.plat.orgSlug;
   if (state.screen === "org") r.orgTab = state.org.tab;
   // The step ON SCREEN: a member who opens `#welcome` (the admin's first step) is on their own first.
@@ -519,6 +532,8 @@ function applyRoute(r: Route): void {
   if (r.promptSlug) state.promptSlug = r.promptSlug;
   if (r.promptMode) state.promptMode = r.promptMode;
   if (r.platTab) state.plat.tab = r.platTab;
+  // Platform › Support: the report in the address (`#platform/support/<id>`), or the list.
+  if (r.screen === "platform") state.plat.support.reportId = r.platTab === "support" ? r.platReport ?? null : null;
   if (r.platOrg) state.plat.orgSlug = r.platOrg;
   if (r.orgTab) state.org.tab = r.orgTab;
   if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
@@ -3647,6 +3662,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     default:
       // Every Platform (superadmin) act goes to its controller, platform-actions.ts.
       if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
+      // Help › Report a bug / Contact support: its controller repaints the dialog alone (support-actions.ts).
+      // Signed out there is no form (a public one is a spam and mail-abuse surface): the site keeps its `mailto:`.
+      if (act.startsWith("support")) { if (state.view !== "auth") supportCtl.act(act, arg, value); return; }
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
       // `orgs…` (the switcher, the picker, the create dialog) before `org…` (Org settings).
       if (act.startsWith("welcome")) { welcomeCtl.act(act, arg); return; }

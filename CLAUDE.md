@@ -151,5 +151,6 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | plans, limits, grants, the pricing page, the summarizer allowance | `plans.md` |
 | Stripe, checkout, `src/billing/` | `billing.md` |
 | rate limits, the mail sender, what a stranger can do | `abuse-limits.md` |
+| the bug-report / support form, `support_reports`, Platform › Support | `support.md` |
 | secrets, vars, bindings, `REPO_ENVIRONMENTS` | `env.md` |
 | where a file or migration lives | `layout.md` |

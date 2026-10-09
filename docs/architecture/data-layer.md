@@ -85,7 +85,8 @@ The lists are derived from the live schema — every table with an `org_id` colu
 - **Global tables** (no `org_id`): `persons`, `identities`, `sessions`, `invites`, `oauth_clients`,
   `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags`,
   and `org_grants`, `platform_outbox_bodies` (0044_plans — a grant is about a person before any org exists;
-  its `used_org` is deliberately not named `org_id`). An org's plan is columns on `orgs` (`plans.md`).
+  its `used_org` is deliberately not named `org_id`), and `support_reports` (0049 — a person's report to the
+  operator; the org it was sent from is `from_org`, for the same reason: `support.md`). An org's plan is columns on `orgs` (`plans.md`).
 
 ## Writing a statement
 
@@ -209,7 +210,7 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
 | Path | Gate | Tenant |
 |---|---|---|
 | `/api/o/:slug/*` — the tenant routes, the org surface (`src/orgs`, `src/integrations`) and a member's own MCP tokens (`src/auth/token-routes.ts`) | `tenantGate` | the org the path names, if the caller is a member — else 404 `{ error: "not_found" }` (unknown slug, non-member, suspended: all alike) |
-| `/auth/*`, `/avatar/*`, `/org-logo/*`, `/api/orgs`, `/api/invites`, `/api/platform/*` | none (person-level) | none: these read and write the caller's own person, or are `requireSuperadmin`. `/auth/callback` is also where GitHub returns after the App is installed: it binds an installation only for the org and person a sealed cookie names (`github-app.md`) |
+| `/auth/*`, `/avatar/*`, `/org-logo/*`, `/api/orgs`, `/api/invites`, `/api/support`, `/api/platform/*` | none (person-level) | none: these read and write the caller's own person, or are `requireSuperadmin`. `/auth/callback` is also where GitHub returns after the App is installed: it binds an installation only for the org and person a sealed cookie names (`github-app.md`) |
 | every OTHER path | `soleTenantGate` (the cut-over alias) | the caller's ONE org — 409 `{ error: "org_required" }` with none or several, 404 if it is suspended |
 
 `soleTenantGate` is the DEFAULT, so a route added without thought is tenant-gated, never open.

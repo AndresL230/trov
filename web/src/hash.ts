@@ -25,8 +25,9 @@
 //   #releases         → Help › What's new: the grid of releases
 //   #releases/<v>     → one release's notes (<v> = "0.14" or "unreleased"); #releases/<v>/patches
 //                       its patch notes. The legacy #releases/patches opens the newest release's.
-//   #platform         → Platform (superadmin) › Organizations; #platform/usage, /admins, /audit
-//                       its other tabs; #platform/orgs/<slug> one organization
+//   #platform         → Platform (superadmin) › Organizations; #platform/usage, /support, /admins, /audit
+//                       its other tabs; #platform/orgs/<slug> one organization;
+//                       #platform/support/<id> one support report (in the Support tab)
 //   #org              → Org settings › Integrations; #org/repos, #org/environments,
 //                       #org/members, #org/notifications and #org/general its other tabs
 //   #welcome          → the guided first-run setup, at its first step; #welcome/agent,
@@ -79,6 +80,8 @@ export interface Route {
   platTab?: PlatTab;
   /** Set only on `platformorg` (one organization's slug). */
   platOrg?: string;
+  /** Set only on `platform` › Support: the report on screen (`#platform/support/<id>`). */
+  platReport?: number;
   /** Set only on `org` (Org settings' tab). */
   orgTab?: OrgTab;
   /** Set only on `welcome` (the guided setup's step). */
@@ -90,7 +93,7 @@ export function sameRoute(a: Route, b: Route): boolean {
   return a.screen === b.screen && a.ticketId === b.ticketId && a.sprintId === b.sprintId && a.repoTab === b.repoTab
     && a.handoffId === b.handoffId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.roadmapTab === b.roadmapTab
     && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
-    && a.platTab === b.platTab && a.platOrg === b.platOrg
+    && a.platTab === b.platTab && a.platOrg === b.platOrg && a.platReport === b.platReport
     && a.orgTab === b.orgTab && a.welcomeStep === b.welcomeStep
     && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null);
 }
@@ -102,7 +105,7 @@ export function sameRoute(a: Route, b: Route): boolean {
  * screen entrance and nothing to load again (main.ts `markEnter`, the hashchange handler).
  */
 export function pageKey(r: Route): string {
-  return hashForRoute({ ...r, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, platTab: undefined, orgTab: undefined });
+  return hashForRoute({ ...r, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, platTab: undefined, platReport: undefined, orgTab: undefined });
 }
 
 /** A URL path segment decoded, or null when it is malformed. */
@@ -214,6 +217,8 @@ export function parseHash(hash: string): Route {
     // `#platform/orgs` is not canonical (the bare `#platform` is), but it still resolves.
     if (parts.length === 2 && (PLAT_TABS as readonly string[]).includes(parts[1])) return { screen: "platform", ...base, platTab: parts[1] as PlatTab };
     if (parts.length === 3 && parts[1] === "orgs" && ORG_SLUG_RE.test(parts[2])) return { screen: "platformorg", ...base, platOrg: parts[2] };
+    // One support report: still the Support TAB (the same page), with that report in its panel.
+    if (parts.length === 3 && parts[1] === "support" && /^[1-9]\d{0,14}$/.test(parts[2])) return { screen: "platform", ...base, platTab: "support", platReport: Number(parts[2]) };
     return none;
   }
   // Org settings: `#org` is Integrations (the canonical spelling); `#org/integrations` still resolves.
@@ -263,7 +268,7 @@ export function hashForRoute(r: Route): string {
     return `#releases/${encodeURIComponent(r.releaseVersion)}${r.releasePage === "patches" ? "/patches" : ""}`;
   }
   if (r.screen === "maintenance") return "#unplaced";
-  if (r.screen === "platform") return !r.platTab || r.platTab === "orgs" ? "#platform" : `#platform/${r.platTab}`;
+  if (r.screen === "platform") return !r.platTab || r.platTab === "orgs" ? "#platform" : r.platTab === "support" && r.platReport ? `#platform/support/${r.platReport}` : `#platform/${r.platTab}`;
   if (r.screen === "platformorg") return r.platOrg ? `#platform/orgs/${r.platOrg}` : "#platform";
   if (r.screen === "org") return !r.orgTab || r.orgTab === "integrations" ? "#org" : `#org/${r.orgTab}`;
   if (r.screen === "welcome") return !r.welcomeStep || r.welcomeStep === "github" ? "#welcome" : `#welcome/${r.welcomeStep}`;
