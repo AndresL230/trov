@@ -31,10 +31,13 @@ describe("renderInviteEmail", () => {
     expect(m.html).toMatch(/data-mark="trov"[\s\S]*?Trov<\/(span|strong|td)>/);
   });
 
-  it("opens with the editorial headline, above the greeting", () => {
+  it("opens with the headline in the banner, above the greeting", () => {
     const m = renderInviteEmail({ orgName: "Acme Robotics", role: "member", inviteeName: "Priya", inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://trov.test/x", host: "trov.test" });
     expect(m.html).toContain("You&#39;re invited to Acme Robotics on Trov.");
-    expect(m.html).toMatch(/font-size:26px/);
+    // The headline is IN the band, reversed out of it, under an "Invitation" label — the first-run card's shape.
+    expect(m.html).toMatch(/<div data-banner-title style="[^"]*font-size:25px[^"]*color:#ffffff[^"]*">You&#39;re invited to Acme Robotics on Trov\.<\/div>/);
+    expect(m.html).toMatch(/text-transform:uppercase[^>]*>Invitation<\/td>/);
+    expect(m.html.match(/re invited to Acme/g)).toHaveLength(1);
     expect(m.html.indexOf("re invited to Acme")).toBeLessThan(m.html.indexOf("Hi Priya,"));
   });
 
@@ -63,9 +66,9 @@ describe("renderInviteEmail", () => {
     expect(m.text).toContain("You're invited to Acme Robotics on Trov.");
   });
 
-  it("centres that banner the way the digest shell does", () => {
+  it("lays that banner out the way the digest shell does: brand top left", () => {
     const m = renderInviteEmail({ orgName: "Acme Robotics", role: "member", inviteeName: null, inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://trov.test/x", host: "trov.test" });
-    expect(m.html).toMatch(/<td[^>]*text-align:center[^>]*>[\s\S]*?<table[^>]*align="center"[^>]*>[\s\S]*?data-mark="trov"/);
+    expect(m.html).toMatch(/<td data-banner style="[^"]*text-align:left;">[\s\S]*?data-mark="trov"/);
   });
 });
 

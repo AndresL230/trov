@@ -196,9 +196,9 @@ function dateRange(window: Window, timeZone: string): string {
 
 /**
  * The Trov banner, shared by every email: the Trov mark (shared/mark.ts) built
- * as a 3 x 3 grid of table cells because Gmail strips SVG, the wordmark beside it, and an
- * optional subline underneath — all reversed out of a full-bleed accent band,
- * rounded into the top of the card. The band colour is tokenised so the dark
+ * as a 3 x 3 grid of table cells because Gmail strips SVG, the wordmark beside it, and what the mail
+ * says under it (`emailBanner`) — all reversed out of a full-bleed accent band, rounded into the top of
+ * the card. The band colour is tokenised so the dark
  * swap flips it; the ink on top of it is not (see BAND).
  */
 /**
@@ -209,24 +209,52 @@ function dateRange(window: Window, timeZone: string): string {
  */
 const BAND = { ink: "#ffffff", subline: "#e6e8f9", dot: "#bcc1ef" } as const;
 
-/** The mark, `side` px square: one table, a filled cell per block of the mark. */
-function emailMark(side: number): string {
+/** The mark, `side` px square: one table, a filled cell per block of the mark. `ink` is the fill — the
+ *  band's white for the brand, a faint white for the large mark behind the banner's text. */
+function emailMark(side: number, ink: string = BAND.ink, cell = "on"): string {
   const px = TROV_MARK_GRID.tracks.map((t) => Math.round(t * side));
   px[2] = side - px[0]! - px[1]!;
   const rows = TROV_MARK_GRID.filled.map((row, r) =>
     `<tr>` + row.map((on, c) =>
-      `<td${on ? ' data-cell="on"' : ""} width="${px[c]}" height="${px[r]}" style="width:${px[c]}px;height:${px[r]}px;padding:0;font-size:0;line-height:0;${on ? `background-color:${BAND.ink};` : ""}"></td>`).join("") + `</tr>`).join("");
+      `<td${on ? ` data-cell="${cell}"` : ""} width="${px[c]}" height="${px[r]}" style="width:${px[c]}px;height:${px[r]}px;padding:0;font-size:0;line-height:0;${on ? `background-color:${ink};` : ""}"></td>`).join("") + `</tr>`).join("");
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${side}" style="border-collapse:collapse;">${rows}</table>`;
 }
 
-export function emailBanner(sublineHtml?: string): string {
+/** What the banner says under the brand. Every part is optional; all are already-escaped HTML. */
+export interface EmailBannerText {
+  /** A small uppercase label, top right: what kind of mail this is ("Invitation"). */
+  eyebrow?: string;
+  /** The mail's headline, reversed out of the band (the app's first-run cards do the same). */
+  title?: string;
+  /** One quiet line under it (a digest's "Daily digest · Oct 7"). */
+  lede?: string;
+}
+
+/**
+ * The banner, in the shape of the app's first-run cards (`.cnpy-orgs-banner`, web/src/trov.css): the
+ * brand top left, a label top right, the headline and a quiet line under it — reversed out of the
+ * brand's purple, with a large faint mark behind the right edge. Mail clients decide how much of that
+ * survives, so each layer degrades on its own: the gradient is a `background-image` over the solid
+ * `background-color` (Outlook keeps the solid), and the faint mark is table cells filled with an
+ * `rgba()` (a client without it paints nothing there). A bare string is the quiet line alone.
+ */
+export function emailBanner(text?: string | EmailBannerText): string {
+  const t: EmailBannerText = typeof text === "string" ? { lede: text } : text ?? {};
+  const eyebrow = t.eyebrow ? `<td align="right" style="vertical-align:middle;${SANS}font-size:10.5px;line-height:16px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:${BAND.subline};white-space:nowrap;">${t.eyebrow}</td>` : "";
   return (
-    `<tr><td style="padding:${SP.xl}px 28px ${SP.l}px 28px;background-color:${C.accent};border-radius:13px 13px 0 0;text-align:center;">` +
-    `<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr>` +
-    `<td data-mark="trov" width="22" style="vertical-align:middle;padding-right:11px;">` + emailMark(22) + `</td>` +
-    `<td style="vertical-align:middle;${SANS}font-size:22px;font-weight:600;letter-spacing:-0.02em;line-height:1;color:${BAND.ink};">Trov</td>` +
+    `<tr><td data-banner style="padding:22px 28px 24px 28px;background-color:${C.accent};background-image:linear-gradient(135deg,#6c75d8 0%,#5a64cc 48%,#454fb2 100%);border-radius:13px 13px 0 0;text-align:left;">` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>` +
+    `<td style="vertical-align:top;">` +
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>` +
+      `<td data-mark="trov" width="18" style="vertical-align:middle;padding-right:9px;">` + emailMark(18) + `</td>` +
+      `<td style="vertical-align:middle;${SANS}font-size:16px;font-weight:600;letter-spacing:-0.01em;line-height:1;color:${BAND.ink};">Trov</td>` +
+      eyebrow +
+      `</tr></table>` +
+      (t.title ? `<div data-banner-title style="${SANS}font-size:25px;line-height:31px;font-weight:600;letter-spacing:-0.02em;color:${BAND.ink};padding-top:20px;">${t.title}</div>` : "") +
+      (t.lede ? `<div style="${SANS}font-size:13px;line-height:20px;color:${BAND.subline};padding-top:${t.title ? 6 : SP.s}px;">${t.lede}</div>` : "") +
+    `</td>` +
+    `<td data-banner-art width="92" align="right" style="vertical-align:top;padding-left:16px;">` + emailMark(76, "rgba(255,255,255,.15)", "art") + `</td>` +
     `</tr></table>` +
-    (sublineHtml ? `<div style="${SANS}font-size:13px;line-height:20px;color:${BAND.subline};padding-top:${SP.s}px;">${sublineHtml}</div>` : "") +
     `</td></tr>`
   );
 }
