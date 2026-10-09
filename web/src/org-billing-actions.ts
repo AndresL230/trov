@@ -3,13 +3,14 @@
 // same way: the Worker answers a URL on Stripe's own pages and the browser goes there —
 //   orgBillingPortal            Manage billing: card, invoices, seats, cancel
 //   orgBillingSeats             Add a seat / Change seats: the portal, straight to the seat count
+//   orgBillingCancel            Cancel plan: the portal's cancel page, and back here when it is done
 //   orgBillingUpgrade <plan>    a Free org buys Pro (never paid, or its subscription ended): same organization
 // The Members tab's "Add a seat" and "Upgrade to Pro" (at the seat cap) are these same acts. Nothing
 // about the plan changes in this tab — it changes when Stripe's webhook lands; coming back reloads it.
 
 import type { AppState } from "./render";
 import { isPurchasablePlan, type PurchasablePlan } from "@shared/billing";
-import { ApiError, OrgApiError, Unauthorized, openBillingPortal, openBillingSeats, rateLimitText, upgradeBilling } from "./api";
+import { ApiError, OrgApiError, Unauthorized, openBillingCancel, openBillingPortal, openBillingSeats, rateLimitText, upgradeBilling } from "./api";
 import { currentOrg } from "./org-settings";
 
 export interface OrgBillingHost {
@@ -72,6 +73,7 @@ export function createOrgBillingActions(host: OrgBillingHost): { act(name: strin
     switch (name) {
       case "orgBillingPortal": leave("orgBillingPortal", openBillingPortal); break;
       case "orgBillingSeats": leave("orgBillingSeats", openBillingSeats); break;
+      case "orgBillingCancel": leave("orgBillingCancel", openBillingCancel); break;
       case "orgBillingUpgrade": if (plan) leave(`orgBillingUpgrade:${plan}`, (slug) => upgradeBilling(slug, plan)); break;
     }
     return true;

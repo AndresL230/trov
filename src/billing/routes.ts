@@ -232,18 +232,24 @@ async function billedOrg(c: Context<AppEnv>): Promise<{ refused: Response } | { 
 // "Manage billing": card, invoices, seats, cancel — Stripe's own pages, for THIS org's customer.
 // `{ seats: true }` ("Add a seat", at the seat cap): straight to the subscription's update page, where the
 // seat count is changed (the portal must allow quantity updates — billing.md › Owner checklist); a plain
-// portal when there is no live subscription to update.
+// portal when there is no live subscription to update. `{ cancel: true }` ("Cancel plan"): the cancel page.
 orgBillingApp.post("/billing/portal", async (c) => {
   const g = await billedOrg(c);
   if ("refused" in g) return g.refused;
-  const seats = (await body(c)).seats === true && g.plan.status !== "canceled" && g.plan.plan !== FREE_PLAN && !!g.plan.subscription_id;
+  const b = await body(c);
+  const live = g.plan.status !== "canceled" && g.plan.plan !== FREE_PLAN && !!g.plan.subscription_id;
+  const seats = b.seats === true && live;
+  // `{ cancel: true }` ("Cancel plan"): straight to the subscription's cancel page, and — like the seat
+  // change — BACK to Trov when it is done. The plain portal's own cancel ends on Stripe's confirmation
+  // page with only a back link, so a person who cancelled there was left on Stripe.
+  const cancel = !seats && b.cancel === true && live;
+  const flow = seats ? { type: "subscription_update", subscription_update: { subscription: g.plan.subscription_id } }
+    : cancel ? { type: "subscription_cancel", subscription_cancel: { subscription: g.plan.subscription_id } }
+    : null;
   try {
     const session = await stripeCall<{ url?: unknown }>(g.cfg, "POST", "/v1/billing_portal/sessions", {
       customer: g.customer, return_url: g.returnUrl,
-      ...(seats ? { flow_data: {
-        type: "subscription_update", subscription_update: { subscription: g.plan.subscription_id },
-        after_completion: { type: "redirect", redirect: { return_url: g.returnUrl } },
-      } } : {}),
+      ...(flow ? { flow_data: { ...flow, after_completion: { type: "redirect", redirect: { return_url: g.returnUrl } } } } : {}),
     }, { idempotencyKey: portalKey() });
     if (!redirectable(g.cfg, session.url)) throw new StripeError("shape", 200, null, "stripe POST /v1/billing_portal/sessions: no url");
     return c.json({ url: session.url });
