@@ -294,9 +294,9 @@ describe("one release — its notes page and its patches page", () => {
   it("releasesScreen is the index without a version, the page with one", () => {
     expect(releasesScreen(null, "notes")).toContain("cnpy-relgrid");
     expect(releasesScreen("unreleased", "notes", withNext)).toContain("Not deployed yet");
-    // The index says "Not deployed yet" exactly when a batch is pending: never on main (the merging PR cuts
-    // the entry into a version), and on a branch that carries an Unreleased entry until it is cut.
-    expect(releasesScreen(null, "notes").includes("Not deployed yet")).toBe(RELEASES.some((r) => r.unreleased));
+    // The live index shows "Not deployed yet" exactly while the data carries an Unreleased entry (a branch
+    // between its first shipped change and the merge that cuts the version).
+    expect(releasesScreen(null, "notes").includes("Not deployed yet")).toBe(RELEASES[0]?.unreleased === true);
   });
 });
 

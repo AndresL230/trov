@@ -70,6 +70,42 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Embedded checkout: pay inside Trov's own card instead of on Stripe's page. OFF until Trov turns it on.
+  // Not merged yet (#136). The PR that merges it cuts the entry as the header says: `version` to the next 0.N,
+  // `date` to the merge day, drop `unreleased`.
+  {
+    version: "0.28",
+    date: "2026-10-09",
+    title: "Pay without leaving Trov",
+    headline: "Buying Pro can happen on a Trov page, in the same card as the rest of signing up, instead of on Stripe's site.",
+    highlights: [
+      "You can pay for Pro without leaving Trov. The payment form opens on a Trov page; it is still Stripe's own form, so your card details go straight to Stripe and Trov never sees them.",
+      "The form sits in the same card as the rest of signing up, with the same banner, so paying is one more step of setting up your organization and not a trip to another site. Upgrading an organization from Free works the same way.",
+      "Reloading the page, or coming back to it, picks up the same payment where you left it. If you already paid, you are taken to the confirmation and never asked to pay twice.",
+      "If the form cannot load, for example behind a content blocker, the page says so and offers Stripe's own page for the same purchase, and you come back to Trov when it is done.",
+      "Nothing changes until Trov turns this on. Until then, and whenever it is turned off again, buying Pro goes to Stripe's page exactly as before.",
+    ],
+    ops: [
+      "Embedded checkout is OFF until `STRIPE_PUBLISHABLE_KEY` is set in `wrangler.toml` `[vars]` (empty by default; nothing changes for buyers until then). To turn it on: paste the Stripe publishable key of the SAME mode as `STRIPE_SECRET_KEY` (`pk_test_…` beside `sk_test_…`, `pk_live_…` beside `sk_live_…`; Developers › API keys — it is public, never the secret key) and merge. No migration, no secret, no trigger. For Apple Pay, Google Pay and Link in the form, add `trov.dev` under Stripe › Settings › Payments › Payment method domains (per mode). To turn it off: empty the var and merge; checkout is Stripe's hosted page again. `docs/architecture/billing.md` › Owner checklist.",
+    ],
+    patches: {
+      added: [
+        "Embedded checkout (`STRIPE_PUBLISHABLE_KEY`, var; empty = off): `/billing/checkout` (`web/src/billing-checkout.ts`), a payment page in the bannered first-run card with Stripe's embedded form mounted in its body (`data-morph=\"billing-checkout\"`, the mount node `data-keep`, so a repaint never rebuilds Stripe's iframe). States: a skeleton while it loads, the form, \"The payment form did not open\" with Continue on Stripe's page (a hosted session for the same purchase) and Try again, an expired checkout, and a refusal as a sentence. `BillingConfig.embedded` (`src/billing/config.ts`) is the one switch: on only for a `pk_` key of the secret key's mode against the real Stripe API, never with `STRIPE_TEST_API_BASE` (#136)",
+        "`POST /api/billing/checkout` (session cookie only) and `POST /api/o/:slug/billing/upgrade { ui }`: the payment page's call. `startCheckout` makes the same session with `ui_mode: \"embedded\"` and `return_url` in place of `success_url` / `cancel_url` and answers its client secret to the signed-in buyer, `no-store`, never logged or stored; `session_id` resumes an open session (no new Stripe object, no `checkout` unit), answers `complete` for a paid one (the page goes to `/billing/done`) and `expired` for an expired one; `ui: \"hosted\"` is the fallback. `GET /api/billing/config` says `embedded: true` while it is on (#136)",
+        "`web/src/stripe-js.ts`: Stripe.js from `https://js.stripe.com/v3/`, injected by the payment page's boot only (never the landing or the app), no npm dependency, a 15 s timeout; `test/billing.embedded.test.ts`, `test/render.billing-checkout.test.ts`, and a client-secret canary in `test/billing.leak.test.ts` (#136)",
+        "The state preview (`web/src/preview.ts`) never opens a checkout: `/billing/checkout` under a preview shows \"Nothing can be paid in a preview\" and asks the Worker for nothing, and Stripe.js is not loaded (#136)",
+        "`docs/architecture/billing.md` › First real test: the owner's Stripe TEST-mode walk of the embedded form on their own machine (#136)",
+      ],
+      changed: [
+        "With embedded checkout on, `GET /billing/start` (signed in) answers 303 to `/billing/checkout?plan=…` and the org's Upgrade to Pro answers `{ url: \"/billing/checkout?…&org=<slug>\" }`; neither creates a session (the page does). Off, both are the hosted redirect, unchanged. After payment Stripe returns to `/billing/done?session_id=…` either way and the webhook still fulfils (#136)",
+        "Privacy (`web/src/legal.ts`): Stripe's script (Stripe.js) runs on the payment page, and only there, and sets Stripe's own cookies; `updated` stays 2026-10-09 (#136)",
+        "The Stripe client cuts anything shaped like a Checkout Session client secret out of an upstream error before it is logged (`src/billing/stripe.ts` `clean`) (#136)",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [136],
+  },
   // The signed-out site on a phone. Not merged yet (#139): the merging PR cuts this entry as the header says
   // (`version` to the next 0.N, `date` to the merge day, drop `unreleased`).
   {
@@ -118,9 +154,8 @@ export const RELEASES: Release[] = [
   // Review, polished after its first real queue (26 staged docs). Not merged yet (#138): the merging PR cuts
   // this entry as the header says (`version` to the next 0.N, `date` to the merge day, drop `unreleased`).
   {
-    version: "Unreleased",
+    version: "0.26",
     date: "2026-10-09",
-    unreleased: true,
     title: "Review, made for a long queue",
     headline: "Rendered shows a proposed doc the way it will read, and a card you decide on leaves the list in one clear move.",
     highlights: [

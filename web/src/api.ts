@@ -324,7 +324,7 @@ export function removeAvatar(): Promise<{ ok: true; avatar_url: string | null }>
 import type * as OrgT from "@shared/orgs";
 import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView, type PlatformGrant, type GrantTarget, type PlanId, type PlanOverrides, type GiftLength } from "@shared/plans";
 import type * as IntT from "@shared/integrations";
-import type { BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
+import type { BillingCheckoutRequest, BillingCheckoutResponse, BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
 import type * as GhT from "@shared/github-app";
 /** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
  *  `detail` the server's sentence, `field` the input it is about. */
@@ -381,6 +381,11 @@ export function openBillingSeats(slug: string): Promise<{ url: string }> { retur
 export function openBillingCancel(slug: string): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/portal"), { cancel: true }); }
 /** "Upgrade to Pro": a Free org starts a subscription — a Stripe Checkout for the SAME org (owner only). */
 export function upgradeBilling(slug: string, plan: PurchasablePlan): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/upgrade"), { plan }); }
+/** The payment page's own call (billing-checkout.ts): its Checkout Session — a client secret for Stripe's
+ *  embedded form, or Stripe's hosted URL. `slug` = the organization being upgraded; none = a new purchase. */
+export function askBillingCheckout(slug: string | null, req: BillingCheckoutRequest): Promise<BillingCheckoutResponse> {
+  return orgSend("POST", slug ? orgPath(slug, "/billing/upgrade") : "/api/billing/checkout", req);
+}
 /** The waiting room's poll: a checkout THIS person started (a 404 for anyone else's). */
 export function getBillingStatus(sessionId: string): Promise<BillingStatusResponse> { return orgSend("GET", `/api/billing/status?session_id=${encodeURIComponent(sessionId)}`); }
 /** What can be bought, and the caller's own paid organizations (public: the pricing page asks it signed out too). */

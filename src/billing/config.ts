@@ -29,7 +29,25 @@ export interface BillingConfig {
   /** `STRIPE_TAX = "on"`: a checkout asks Stripe Tax for the tax. Stripe charges it only where the account
    *  holds a tax registration, so with none every invoice is the price alone — Trov computes no tax itself. */
   tax: boolean;
+  /** `STRIPE_PUBLISHABLE_KEY` when it is a publishable key (`pk_test_…` / `pk_live_…`), else null. PUBLIC by
+   *  design — the one Stripe value that may reach a browser. */
+  publishableKey: string | null;
+  /**
+   * THE one decision between the two checkouts (routes.ts `startCheckout`, `/billing/start`, the org
+   * upgrade): true → a purchase is paid in Trov's own page with Stripe's embedded form; false → Stripe's
+   * hosted page. On only when the publishable key is set AND is the same mode as the secret key (a test
+   * `pk_` beside a live `sk_` cannot mount the session, so the buyer would meet a dead form) AND the API
+   * is the real Stripe: the loopback stand-in (`STRIPE_TEST_API_BASE`) has no Stripe.js to serve.
+   */
+  embedded: boolean;
 }
+
+/** Which mode a PUBLISHABLE key is, or null for anything that is not one (a secret key pasted here by
+ *  mistake is never treated as publishable, so it can never be sent to a browser). */
+export const publishableKeyMode = (key: string | null | undefined): "test" | "live" | null => {
+  const m = typeof key === "string" ? /^pk_(test|live)_[A-Za-z0-9]+$/.exec(key.trim()) : null;
+  return m ? (m[1] as "test" | "live") : null;
+};
 
 const set = (v: string | undefined): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
 
@@ -49,14 +67,18 @@ export function billingConfig(env: Env): BillingConfig | null {
     const m = set(month), y = set(year);
     return { ...(m ? { month: m } : {}), ...(y ? { year: y } : {}) };
   };
+  // The stand-in (`STRIPE_TEST_API_BASE`): a loopback http origin, and never with a live key (src/platform/loopback.ts).
+  const apiBase = (mode === "test" ? loopbackOrigin(env.STRIPE_TEST_API_BASE) : null) ?? STRIPE_API;
+  const pk = set(env.STRIPE_PUBLISHABLE_KEY);
+  const publishableKey = pk && publishableKeyMode(pk) ? pk : null;
   return {
-    secretKey, webhookSecret, mode,
-    // The stand-in (`STRIPE_TEST_API_BASE`): a loopback http origin, and never with a live key (src/platform/loopback.ts).
-    apiBase: (mode === "test" ? loopbackOrigin(env.STRIPE_TEST_API_BASE) : null) ?? STRIPE_API,
+    secretKey, webhookSecret, mode, apiBase,
     prices: {
       team: price(env.STRIPE_PRICE_TEAM, env.STRIPE_PRICE_TEAM_YEARLY),
     },
     tax: set(env.STRIPE_TAX)?.toLowerCase() === "on",
+    publishableKey,
+    embedded: publishableKey !== null && publishableKeyMode(publishableKey) === mode && apiBase === STRIPE_API,
   };
 }
 
