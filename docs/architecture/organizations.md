@@ -49,7 +49,7 @@ the plan (for Enterprise, its limits; optionally a note and an expiry). They do 
 e-mail grant is told by mail; for a GitHub login, tell them yourself.
 
 When they sign in, the org picker says **You can set up an organization — <Plan>**. They choose its name
-and slug and become its owner, on that plan, and land on the setup checklist [`POST /api/orgs`]. One grant
+and slug and become its owner, on that plan, and land on the guided setup (§2) [`POST /api/orgs`]. One grant
 makes one organization; until it is used you can **Revoke** it, and afterwards the Access tab shows which
 organization it became.
 
@@ -64,6 +64,16 @@ The confirmation says what happens if the organization is over the new limits: n
 loses access; it cannot add more of that kind until it is back under. Everyone in the organization reads its
 plan in Org settings › General; only you change it. The limits, what counts toward each and the seam for
 billing: `plans.md`.
+
+**Gift a plan** gives the organization a plan for free until a date: pick the plan (Pro or Enterprise),
+optionally its seats, and 1 / 2 / 3 / 6 / 12 months or a date [`PUT …/plan { gift }`]. The confirmation says
+what happens at the end: the organization moves to Free by itself, nothing is deleted, and anything over a
+Free limit waits. The section then reads "Gifted until <date>" with **Extend** [`POST …/gift/extend`] and
+**End now** [`POST …/gift/end`]; **Change plan** on a gifted organization clears the gift (the plan you set
+there has no end). The organization's people see "Free until <date>, a gift from Trov…" on their Plan tile,
+and its owner can start paying before then. It is not offered for an organization on a live subscription.
+In Platform › Access, **Grant an organization** has an optional **Free for**: the organization that grant
+becomes is free for that long from the day it is created. All of it: `plans.md` › Gifts.
 
 ### 1c. …or someone buys Pro
 
@@ -81,19 +91,68 @@ events and the owner checklist: `billing.md`. Enterprise is never bought: it is 
 ### 1d. …or someone creates a Free one
 
 Anyone signed in (not a superadmin) can create a **Free** organization from the org picker or the switcher's
-menu — no grant, no payment [`POST /api/orgs`, `src/plans/free.ts`]: up to 3 people, 1 repository, 2
+menu (the dialog asks for a name and a **handle** — the slug, checked for availability as it is typed:
+`GET /api/orgs/slug-check`) — no grant, no payment [`POST /api/orgs`, `src/plans/free.ts`]: up to 3 people, 1 repository, 2
 environments. A person can OWN one Free organization at a time (`DEFAULT_ORG_LIMIT = 1`, `shared/orgs.ts`).
 Its owner upgrades it to Pro from Org settings › General (**Upgrade to Pro**, or the button Members shows at
 the seat cap): a Stripe checkout for that organization, starting at one seat per member and pending
 invitation. It appears in Platform as **free**; you can change its plan like any granted org's. What bounds
 open creation: `abuse-limits.md`.
 
-## 2. The owner signs in, accepts, and lands on the setup checklist
+## 2. The owner signs in, accepts, and lands on the guided setup
 
 The mail links to the site root — never to a token; the invitation is matched to the person's
 provider-verified address (or GitHub login) at sign-in [`src/orgs/repo.ts` `MINE`]. A person with no
 organization lands on the **org picker**, which lists their invitations; **Accept** makes them a member
-[`POST /api/invites/:id/accept`]. A new owner lands on **Org settings**, which opens with
+[`POST /api/invites/:id/accept`].
+
+### The guided setup (`#welcome`)
+
+Creating an organization (Free, granted or paid) and accepting an invitation both land on the **guided
+setup** [`web/src/welcome.ts`, `welcome-actions.ts`; the landing targets are `createLanding` and
+`acceptLanding` in `web/src/org-picker.ts`]: a full page without the sidebar, one step at a time, each
+skippable, with Back, a step indicator and *Skip setup*.
+
+| Who | Steps |
+|---|---|
+| an **owner** or **admin** | 1 connect a repository · 2 connect your coding agent · 3 invite your team · 4 done |
+| a **member** | 1 connect your coding agent · 2 done |
+
+- **It is a route, not server state.** `#welcome` is the first step; `#welcome/agent`, `/team` and `/done`
+  the others, so a reload stays put. Nothing records that a person has seen it, and there is no migration.
+  It is reopened from Org settings' checklist (*Open the guided setup*), from Help › Guide and from
+  quick search.
+- **Every step's state is derived, never stored and never guessed** — from the reads Org settings already
+  makes (repositories, the GitHub App's connection, members, invitations, the plan) and from the person's
+  own agent connections (`GET /auth/oauth-grants` filtered to this organization, plus their MCP tokens for
+  it: the two reads Settings › MCP access makes). A read that is out, or failed, is *not known yet*: the
+  indicator keeps the step's number, and the closing step says so rather than "done" or "skipped". Nothing
+  on the page calls GitHub; the repository list is Org settings' own read.
+- **Step 1** is Repositories' flow in place: *Connect with GitHub*, then the installation's repositories to
+  **Track**. A person with **no GitHub account linked** (they signed in with Google) is shown *Link your
+  GitHub account first* instead — the connect route accepts GitHub's approval only from the GitHub identity
+  linked to that Trov person (`wrong_account`, `github-app.md`). Where the App is not configured, or for a
+  repository it cannot see, the by-name path in Org settings is one quiet link away.
+- **Step 2** shows the same commands and sign-in steps as Settings › MCP access [`web/src/mcp-connect.ts`]
+  and a live line: *Not connected yet* / *Your agent is connected*. While it waits, the page re-reads the
+  person's connections every 5 seconds (and when the tab regains focus), so approving in the browser shows
+  up without a reload. It is per PERSON: every admin and member connects their own.
+- **Step 3** is Members' own invite form [`inviteSection`]: the same call, the same seat gate — at a Free
+  organization's cap the same sentence and, for the owner, **Upgrade to Pro**. A one-person plan has no
+  such step.
+- **The last step** recaps what is done and what was skipped (each with the way back), says where the
+  Feed, Docs, Tickets and Roadmap are, and opens My Work.
+- **Coming back from GitHub.** Linking a GitHub account and connecting the App both leave the app, and the
+  server returns them to Settings and to Org settings › Repositories. When they were started from the
+  setup, a note in the browser's session storage brings that one return back to step 1 instead
+  [`welcomeReturnHash`]; what GitHub answered is shown there.
+
+Org settings' checklist is unchanged and has no "connect your coding agent" item: it is the
+ORGANIZATION's list (*n of 4 done*, gone when all four are), and an agent connection is each person's own.
+
+### The checklist in Org settings
+
+For the steps skipped, **Org settings** opens with
 *Finish setting up <org>* [`web/src/org-settings.ts` `setupChecklist`]:
 
 1. **Connect a repository** — Org settings › Repositories › **Connect with GitHub** [`github-app.md`,
@@ -137,8 +196,8 @@ Org settings › Members › **Invite someone** [`POST /api/o/:slug/invites`, `s
 
 - **By e-mail** (optionally with the person's name): Trov sends the invitation — it names the organization,
   the inviter and the role — and the pending row shows **Email sent** / **Email not sent** with the time and,
-  on a failure, the provider's reason. **Resend email** sends it again. A Google account can only sign in
-  once it is invited.
+  on a failure, the provider's reason. **Resend email** sends it again. The person signs in with GitHub or Google;
+  the invitation is matched to the address that provider verified.
 - **By GitHub login**: no e-mail; the person sees the invitation the next time they sign in with that
   account.
 
@@ -189,6 +248,8 @@ One place: **Org settings**, opened from the switcher at the top of the sidebar 
 | Members | the people directory; for admins also invitations, roles and titles, removal, and **Unmatched logins** — GitHub logins in captured activity to map to a person or discard [`web/src/identity.ts`] | everyone (read), admin+ (write) |
 | Notifications | the e-mail digests: which exist and their default cadence, send hour, timezone and sender name, preview, test send, the outbox [`web/src/notifications.ts`] | admin, owner |
 | General | the image; the name; the slug, read-only; the **Plan** — what it includes and the org's use of each limit [`web/src/org-plan.ts`] | everyone (read), admin+ (image, rename); nobody changes the plan here |
+
+General is a **bento** inside the tab's width (`.cnpy-org-gen` in `trov.css`, Settings' `.cnpy-tile`s on 12 columns; `generalTab` and `planBlock`), so its outer edges are the tab bar's and every other tab's: image + name is the tall tile on the left, Plan (name, billing, who changes it) and Slug the two short ones beside it, and the plan's **Limits** a tile across the page under them, three to a line. A read-only member has no field to make the first tile tall, so the three sit in one row (`.cnpy-org-gen--read`). It folds by the room the TAB has (a container query, as Settings does): under 900px the limits go two to a line, under 760px image + name takes a row and Slug | Plan the next, under 520px one column in DOM order. No tab narrows its own blocks (`test/render.org-settings.test.ts` walks them); a control inside a tile keeps its own measure.
 
 A person's own digest preferences stay in their Settings. The daily queue of things an agent could not
 place is not administration: it is **Triage › Unplaced** in the sidebar (`#unplaced`). Old links —

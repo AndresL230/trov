@@ -4,7 +4,9 @@
 //   GET  /api/platform/grants               every grant, newest first
 //   POST /api/platform/grants               grant a person an organization of their own
 //   POST /api/platform/grants/:id/revoke    revoke an unused one
-//   PUT  /api/platform/orgs/:slug/plan      change an org's plan and its limit overrides
+//   PUT  /api/platform/orgs/:slug/plan      change an org's plan and its limit overrides — with `gift`, for free until a date
+//   POST /api/platform/orgs/:slug/gift/extend   move a gift's end
+//   POST /api/platform/orgs/:slug/gift/end      end a gift now: the org moves to Free
 // An org member reads their org's plan at GET /api/o/:slug/plan (src/orgs/routes.ts).
 import type { Context, Hono } from "hono";
 import type { AppEnv } from "../auth/principal";
@@ -13,6 +15,7 @@ import type { PlatformOrgRow } from "@shared/orgs";
 import { mailOrigin } from "../orgs/mail";
 import { GrantError, GRANT_ERROR_STATUS, createGrant, getGrant, listGrants, mailGrant, revokeGrant } from "./grants";
 import { PlanError, PLAN_ERROR_STATUS, cleanPlan, setOrgPlan } from "./state";
+import { endOrgGift, extendOrgGift, giftOrgPlan } from "./gifts";
 import { platformBillingBySlug, setPlanPinned } from "../billing/store";
 import { paidSeats } from "@shared/billing";
 
@@ -35,7 +38,7 @@ export function registerPlanRoutes(app: Hono<AppEnv>, orgRow: (slug: string, p: 
     const b = await body(c);
     if (!b) return c.json({ error: "invalid payload" }, 400);
     try {
-      const grant = await createGrant(c.var.p, { to: b.to, plan: b.plan, overrides: b.overrides, note: b.note, expires_in_days: b.expires_in_days });
+      const grant = await createGrant(c.var.p, { to: b.to, plan: b.plan, overrides: b.overrides, note: b.note, expires_in_days: b.expires_in_days, gift_days: b.gift_days });
       // An e-mail grant is told by mail; a handle or a GitHub login has no address — the person sees it when they sign in.
       await mailGrant(c.env, c.var.p, grant, mailOrigin(c.env, c.req.url));
       return c.json({ ok: true, grant: (await getGrant(c.var.p, grant.id))! }, 201);
@@ -68,6 +71,11 @@ export function registerPlanRoutes(app: Hono<AppEnv>, orgRow: (slug: string, p: 
         // …with the seats it pays for (Pro is per seat: the quantity is the seat cap).
         await setOrgPlan(c.var.p, slug, { plan: paid.plan, overrides: paidSeats(paid.plan, paid.seats), source: "billing", status: now.status });
         await setPlanPinned(c.var.p, paid.subscription_id, false);
+      } else if (b.gift !== undefined && b.gift !== null) {
+        // A GIFT (0048_plan_gifts, ./gifts.ts): the plan is free until a date, then the org moves to Free. Not for
+        // an org on a live subscription: it pays for its plan, and a date must not end what Stripe charges for.
+        if (paid && now && !paid.ended && now.status !== "canceled") return c.json({ error: "billed", message: "this organization pays through Stripe; a gift is for one that does not" }, 409);
+        await giftOrgPlan(c.var.p, slug, { plan: b.plan, overrides: b.overrides, gift: b.gift });
       } else if (paid && now && !paid.ended && now.status !== "canceled") {
         const plan = cleanPlan(b.plan);
         await setOrgPlan(c.var.p, slug, { plan, overrides: b.overrides, source: "billing", status: now.status });
@@ -75,6 +83,25 @@ export function registerPlanRoutes(app: Hono<AppEnv>, orgRow: (slug: string, p: 
       } else {
         await setOrgPlan(c.var.p, slug, { plan: b.plan, overrides: b.overrides });
       }
+      return c.json({ ok: true, org: (await orgRow(slug, c.var.p))! });
+    } catch (e) { return fail(c, e); }
+  });
+
+  // A gift's end moves (`{ days }` are added to the current end; `{ until }` sets it), or the gift ends now
+  // and the org moves to Free as it would have at its end. 409 `not_gifted` for an org that holds none.
+  app.post("/orgs/:slug/gift/extend", async (c) => {
+    const b = await body(c);
+    if (!b) return c.json({ error: "invalid payload" }, 400);
+    const slug = c.req.param("slug");
+    try {
+      await extendOrgGift(c.var.p, slug, b);
+      return c.json({ ok: true, org: (await orgRow(slug, c.var.p))! });
+    } catch (e) { return fail(c, e); }
+  });
+  app.post("/orgs/:slug/gift/end", async (c) => {
+    const slug = c.req.param("slug");
+    try {
+      await endOrgGift(c.var.p, slug);
       return c.json({ ok: true, org: (await orgRow(slug, c.var.p))! });
     } catch (e) { return fail(c, e); }
   });

@@ -13,7 +13,7 @@ import { systemCtx } from "./helpers/tenant";
 
 const PAYLOAD: OnboardPayload = {
   provider: "github", subject: "priya-gh", label: "priya-gh", email: "priya.n@gmail.com",
-  name: "Priya Natarajan", avatar_url: null, suggested_handle: "priya-gh", invite_email: null,
+  name: "Priya Natarajan", avatar_url: null, suggested_handle: "priya-gh",
 };
 const cookie = async (p: OnboardPayload = PAYLOAD) => `${ONBOARD_COOKIE}=${await sealOnboard(p, "test-cookie-secret")}`;
 const post = (path: string, c: string, body: unknown) =>
@@ -24,14 +24,14 @@ const bodies = () => all<{ idempotency_key: string; to_address: string; subject:
 describe("renderWelcomeEmail", () => {
   const m = renderWelcomeEmail({ name: "Priya Natarajan", handle: "priya", orgName: "Acme Robotics", orgSlug: "acme", origin: "https://trov.test", host: "trov.test" });
 
-  it("greets them, names their handle, and points at Get Started", () => {
+  it("greets them, names their handle, and points at the guided setup", () => {
     expect(m.subject).toBe("Welcome to Acme Robotics on Trov");
     expect(m.html).toContain("You have joined Acme Robotics.");
     expect(m.html + m.text).not.toMatch(/sapling/i);
     expect(m.html).toContain("Hi Priya Natarajan,");
     expect(m.html).toContain("@priya");
-    expect(m.html).toContain('href="https://trov.test/acme/#guide"');
-    expect(m.text).toContain("https://trov.test/acme/#guide");
+    expect(m.html).toContain('href="https://trov.test/acme/#welcome"');
+    expect(m.text).toContain("https://trov.test/acme/#welcome");
     // Settings is where the handle/colour and the digest cadence live.
     expect(m.html).toContain("https://trov.test/acme/#settings");
   });
@@ -49,8 +49,8 @@ describe("renderWelcomeEmail", () => {
     expect(anon.text).toContain("Hi,");
   });
 
-  it("welcomeUrl is the Get Started hash route the app lands a new person on", () => {
-    expect(welcomeUrl("https://trov.test", "acme")).toBe("https://trov.test/acme/#guide");
+  it("welcomeUrl is the guided setup, the route the app lands a new person on", () => {
+    expect(welcomeUrl("https://trov.test", "acme")).toBe("https://trov.test/acme/#welcome");
   });
 });
 

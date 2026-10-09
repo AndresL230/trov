@@ -25,6 +25,7 @@ import { reconcileRepo, type ReconcileResult } from "./github";
 import { HEALTH_ON_DEMAND_BUCKET_MS, pingHealth, pollCloudflare, pollRailway, pollSaplingMetrics } from "./poll";
 import { getSnapshot } from "./store";
 import { expireDueHandoffs, pruneRepoCapture } from "../platform/sweeps";
+import { expireGifts } from "../plans/gifts";
 
 export const REPO_CRON = "*/10 * * * *";
 
@@ -453,7 +454,9 @@ export const PROGRESS_COST_ESTIMATE = 40;
  *
  *   every tick   `health` — one unit per (org, environment): 2 pings
  *                (`pingHealth`), 4 for two environments — and the handoff
- *                expiry sweep (`expireDueHandoffs`, D1 only, cross-org).
+ *                expiry sweep (`expireDueHandoffs`, D1 only, cross-org), and
+ *                the end of gifted plans (`expireGifts`, D1 only: an org whose
+ *                gift has lapsed moves to Free — src/plans/gifts.ts).
  *   :00          `usage` — one unit per (org, environment), and NOTHING else
  *                may run on this tick. Three pollers, each its own guarded arm
  *                (one failing never skips another), each skipped entirely when
@@ -521,6 +524,13 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
   // write-only sweep on the platform context, §4.4). D1 only (no subrequest), so it adds nothing to
   // any tick's budget, and it runs BEFORE the :00 early return so no hour is skipped.
   await safely("handoff expiry", () => expireDueHandoffs(p, scheduledTime));
+  // Every tick too: a plan given for free until a date ends (0048_plan_gifts, src/plans/gifts.ts) — each
+  // org whose gift has lapsed moves to Free, nothing deleted. One read of `orgs`, then one guarded batch
+  // per lapsed org; D1 only, and almost always nothing to do. It never throws and is safe to run late.
+  await safely("plan gifts", async () => {
+    const swept = await expireGifts(p, scheduledTime);
+    if (swept.failed) console.error("repo cron", "plan gifts", `${swept.failed} failed; the next tick retries`);
+  });
 
   if (heavy === "usage") {
     // The hourly polls — and NOTHING else may join this tick: the slot exists

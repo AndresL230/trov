@@ -15,10 +15,11 @@ import { OrgError, createOrg, parseInviteAddress, type OrgRow } from "../orgs/re
 import { sendGrantNotice } from "../notifications/grant";
 import { takeLimit } from "../platform/limits";
 import {
-  planDef, resolveEntitlements, storedOverrides, GRANT_NOTE_MAX, GRANT_EXPIRY_MAX_DAYS,
+  planDef, resolveEntitlements, storedOverrides, giftDays, GIFT_MAX_DAYS, FREE_PLAN, GRANT_NOTE_MAX, GRANT_EXPIRY_MAX_DAYS,
   type MyGrant, type PlatformGrant, type PlanId, type PlanOverrides, type PlanSource, type OrgGrantStatus,
 } from "@shared/plans";
 import { cleanPlan, cleanOverrides, PlanError } from "./state";
+import { grantGiftStmts } from "./gifts";
 
 export type GrantErrorCode = "invalid_grant" | "no_such_person" | "not_found" | "grant_used";
 export const GRANT_ERROR_STATUS: Record<GrantErrorCode, 400 | 404 | 409> = { invalid_grant: 400, no_such_person: 404, not_found: 404, grant_used: 409 };
@@ -31,10 +32,10 @@ interface GrantRow {
   note: string | null; source: string; granted_by: string; created_at: string; expires_at: string | null;
   status: "unused" | "used" | "revoked"; used_at: string | null; used_by: string | null;
   revoked_at: string | null; revoked_by: string | null; mail_status: "sent" | "failed" | null; mail_at: string | null; mail_error: string | null;
-  org_slug: string | null; org_name: string | null;
+  org_slug: string | null; org_name: string | null; gift_days: number | null;
 }
 const GRANT_SELECT = `SELECT g.id, g.person, g.github_login, g.email, g.plan, g.overrides, g.note, g.source, g.granted_by, g.created_at, g.expires_at,
-  g.status, g.used_at, g.used_by, g.revoked_at, g.revoked_by, g.mail_status, g.mail_at, g.mail_error, o.slug AS org_slug, o.name AS org_name
+  g.status, g.used_at, g.used_by, g.revoked_at, g.revoked_by, g.mail_status, g.mail_at, g.mail_error, g.gift_days, o.slug AS org_slug, o.name AS org_name
   FROM org_grants g LEFT JOIN orgs o ON o.id = g.used_org`;
 
 const statusOf = (r: Pick<GrantRow, "status" | "expires_at">, now: string): OrgGrantStatus =>
@@ -43,7 +44,7 @@ const statusOf = (r: Pick<GrantRow, "status" | "expires_at">, now: string): OrgG
 const toGrant = (r: GrantRow, now: string): PlatformGrant => ({
   id: r.id, handle: r.person, github_login: r.github_login, email: r.email, plan: planDef(r.plan).id, overrides: storedOverrides(r.overrides),
   note: r.note, source: r.source === "billing" ? "billing" : "granted", granted_by: r.granted_by, created_at: r.created_at, expires_at: r.expires_at,
-  status: statusOf(r, now), used_at: r.used_at, used_by: r.used_by,
+  gift_days: r.gift_days ?? null, status: statusOf(r, now), used_at: r.used_at, used_by: r.used_by,
   org: r.org_slug ? { slug: r.org_slug, name: r.org_name ?? r.org_slug } : null,
   revoked_at: r.revoked_at, revoked_by: r.revoked_by, mail_status: r.mail_status, mail_at: r.mail_at, mail_error: r.mail_error,
 });
@@ -106,6 +107,19 @@ export interface GrantInput {
   overrides?: unknown;
   note?: unknown;
   expires_in_days?: unknown;
+  /** A GIFT (0048_plan_gifts): the org this grant becomes is free for this many days from the day it is
+   *  created, then moves to Free. A whole number, 1–`GIFT_MAX_DAYS`; null / omitted = the plan has no end. */
+  gift_days?: unknown;
+}
+
+/** `gift_days` from input. Only a grant a person gives, and only on a plan above Free, can be a gift. */
+function giftOf(days: unknown, plan: PlanId, source: PlanSource): number | null {
+  if (days === undefined || days === null) return null;
+  const n = giftDays(days);
+  if (n === null) throw new GrantError("invalid_grant", `gift_days is a whole number from 1 to ${GIFT_MAX_DAYS}, or null for a plan with no end`);
+  if (plan === FREE_PLAN) throw new GrantError("invalid_grant", "Free is already free: a gift is for a plan above it");
+  if (source === "billing") throw new GrantError("invalid_grant", "a paid grant is not a gift");
+  return n;
 }
 
 /**
@@ -128,6 +142,7 @@ export async function createGrant(p: PlatformContext, input: GrantInput, opts: {
     throw e;
   }
   const note = cleanNote(input.note);
+  const gift = giftOf(input.gift_days, plan, opts.source ?? "granted");
   const now = Date.now();
   const expires = expiryOf(input.expires_in_days, now);
   const to = await resolveTarget(p, input.to);
@@ -136,12 +151,12 @@ export async function createGrant(p: PlatformContext, input: GrantInput, opts: {
   let id: number;
   try {
     const [res] = await batch(p, [
-      stmt(p, `INSERT INTO org_grants (person, github_login, email, plan, overrides, note, source, external_ref, granted_by, created_at, expires_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      stmt(p, `INSERT INTO org_grants (person, github_login, email, plan, overrides, note, source, external_ref, granted_by, created_at, expires_at, gift_days)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         "person" in to ? to.person : null, "github_login" in to ? to.github_login : null, "email" in to ? to.email : null,
-        plan, JSON.stringify(overrides), note, opts.source ?? "granted", ref, p.actor, at, expires),
+        plan, JSON.stringify(overrides), note, opts.source ?? "granted", ref, p.actor, at, expires, gift),
       stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (NULL, ?, 'grant.create', 'grant:' || last_insert_rowid(), ?, ?)`,
-        p.actor, JSON.stringify({ to: target, plan, ...(Object.keys(overrides).length ? { overrides } : {}), ...(expires ? { expires_at: expires } : {}) }), at),
+        p.actor, JSON.stringify({ to: target, plan, ...(Object.keys(overrides).length ? { overrides } : {}), ...(expires ? { expires_at: expires } : {}), ...(gift ? { gift_days: gift } : {}) }), at),
     ]);
     id = res.meta.last_row_id;
   } catch (e) {
@@ -160,7 +175,7 @@ export async function createGrant(p: PlatformContext, input: GrantInput, opts: {
  * exempt, as for every limit, and `billing` is not a person — and is skipped, silently, when that is
  * spent. Never throws; the outcome is on the grant's row.
  */
-export async function mailGrant(env: Env, p: PlatformContext, grant: Pick<PlatformGrant, "id" | "email" | "plan" | "source" | "granted_by">, origin: string, fetchImpl?: typeof fetch): Promise<void> {
+export async function mailGrant(env: Env, p: PlatformContext, grant: Pick<PlatformGrant, "id" | "email" | "plan" | "source" | "granted_by"> & Partial<Pick<PlatformGrant, "gift_days">>, origin: string, fetchImpl?: typeof fetch): Promise<void> {
   if (grant.email === null) return;
   const byPerson = grant.source !== "billing";
   try {
@@ -169,7 +184,7 @@ export async function mailGrant(env: Env, p: PlatformContext, grant: Pick<Platfo
     return;
   }
   const def = planDef(grant.plan);
-  await sendGrantNotice(env, p, { grantId: grant.id, email: grant.email, granterHandle: byPerson ? grant.granted_by : null, planName: def.name, planDescription: def.description, origin, fetchImpl });
+  await sendGrantNotice(env, p, { grantId: grant.id, email: grant.email, granterHandle: byPerson ? grant.granted_by : null, planName: def.name, planDescription: def.description, origin, fetchImpl, giftDays: grant.gift_days ?? null });
 }
 
 /** Revoke an UNUSED grant (an expired one too). A used one is 409 `grant_used`: the org exists, and
@@ -204,7 +219,7 @@ export async function usableGrants(p: PlatformContext, handle: string): Promise<
     const def = planDef(r.plan);
     return {
       id: r.id, plan: def.id, plan_name: def.name, entitlements: resolveEntitlements(def.id, storedOverrides(r.overrides)),
-      granted_by: r.granted_by, created_at: r.created_at, expires_at: r.expires_at,
+      granted_by: r.granted_by, created_at: r.created_at, expires_at: r.expires_at, gift_days: r.gift_days ?? null,
     };
   });
 }
@@ -261,7 +276,8 @@ export async function createOrgFromGrant(p: PlatformContext, handle: string, inp
   const mine = await usableGrants(p, handle);
   const wanted = input.grant === undefined || input.grant === null ? mine[0] : mine.find((g) => g.id === input.grant);
   if (!wanted) throw noGrant();
-  const row = (await first<{ plan: string; overrides: string; source: string }>(p, `SELECT plan, overrides, source FROM org_grants WHERE id = ?`, wanted.id))!;
+  const row = (await first<{ plan: string; overrides: string; source: string; gift_days: number | null; granted_by: string }>(p,
+    `SELECT plan, overrides, source, gift_days, granted_by FROM org_grants WHERE id = ?`, wanted.id))!;
   try {
     // Awaited, not returned: workerd reports a refusal thrown before the caller's handler attaches as unhandled.
     return await createOrg(p, {
@@ -272,6 +288,8 @@ export async function createOrgFromGrant(p: PlatformContext, handle: string, inp
         stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, 'grant.use', ?, ?, ?)`,
           orgId, p.actor, `grant:${wanted.id}`, JSON.stringify({ plan: wanted.plan }), at),
         linkPaidOrgStmt(p, wanted.id, orgId),
+        // A gifted grant: the clock starts now, at the org's creation (./gifts.ts).
+        ...(row.source !== "billing" && row.gift_days ? grantGiftStmts(p, { orgId, slug: input.slug, plan: planDef(row.plan).id, days: row.gift_days, by: row.granted_by, grant: wanted.id, at }) : []),
       ],
     });
   } catch (e) {

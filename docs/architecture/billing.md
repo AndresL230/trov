@@ -71,8 +71,8 @@ Pro is sold per seat. A seat is a member or a pending invitation (`plans.md` ›
 1. **Start** — `GET /billing/start?plan=team[&interval=month|year]`, a plain link.
    Signed out → a sealed 10-minute `return_to` cookie holding that exact path (an allowlisted shape built from
    `PURCHASABLE_PLANS`, never a visitor's URL) and a sign-in page; the sign-in tail (`takeOAuthPending` →
-   `takeReturnTo`) comes back here, through onboarding too. The page says it plainly: *any GitHub account can
-   sign in and that creates the account; Google only opens an account that already exists.*
+   `takeReturnTo`) comes back here, through onboarding too. The page says it plainly: *signing in with either
+   GitHub or Google creates the account.*
    Signed in → one unit of the `checkout` limit (10 / person / day), a `billing_checkouts` row binding a
    random `ref` to **the person signed in**, then `POST /v1/checkout/sessions` (mode `subscription`, the
    per-seat price × the starting quantity with `adjustable_quantity`, `client_reference_id` = the handle,
@@ -107,6 +107,8 @@ cap): `POST /api/o/:slug/billing/upgrade` starts a checkout FOR THAT ORG (`billi
 the org's Stripe customer when it has one (an org whose earlier subscription ended) and the quantity at
 members + pending. Fulfilment is `upgradeOrg` (`src/billing/sync.ts`): `setOrgPlan(team, { seats }, source:
 billing, the new ids)` — no grant. A self-served Free org (source `granted`) becomes a billing org here.
+The same route serves an org whose plan is a **gift** (`plans.md` › Gifts): its owner starts paying before
+the gift's end, the paid plan takes over at once, and the gift is cleared — the date then ends nothing.
 
 ## The webhook
 
@@ -202,7 +204,7 @@ its own, so there is one clock and it is the one the customer's e-mails from Str
 | `GET /api/billing/config` | public | `BillingConfigResponse`: `available`, `mode`, `plans[id] = { purchasable, intervals, href }`, `contact`, `signed_in`, `manage[]` (the caller's own paid orgs, ended ones too) |
 | `GET /api/billing/status?session_id=` | session; the caller's own checkout (else 404) | `{ state: "pending", paid }` \| `{ state: "ready", plan, grant }` \| `{ state: "done", org }` \| `{ state: "unpaid" }` \| `{ state: "ended" }` |
 | `POST /api/o/:slug/billing/portal { seats? }` | owner, cookie only, an org with a Stripe customer | `{ url }` (`seats: true` and a live subscription: the subscription-update flow); 403 `forbidden`; 409 `not_billed`; 502 `billing_failed` |
-| `POST /api/o/:slug/billing/upgrade { plan?, interval? }` | owner, cookie only, an org on Free (or a legacy `canceled` one) | `{ url }` (a checkout for this org); 400 `invalid_plan`; 409 `not_free`; 429; 502; 503 |
+| `POST /api/o/:slug/billing/upgrade { plan?, interval? }` | owner, cookie only, an org on Free (or a legacy `canceled` one, or one whose plan is a gift) | `{ url }` (a checkout for this org); 400 `invalid_plan`; 409 `not_free`; 429; 502; 503 |
 | `GET /api/o/:slug/plan` | any member | adds `billing: OrgBillingView \| null` (no id of Stripe's): `subscribed`, `ended`, `customer`, `interval`, `seats`, `cancel_at_period_end`, `pinned`, `upgrade_to`. Present for a billing org and for every Free org |
 | `GET /api/platform/orgs[/:slug]` | superadmin | `plan.billing` for a paid org: ids, Stripe's status, `ended`, `seats`, `pinned`, `dashboard_url` (test or live) |
 | `PUT /api/platform/orgs/:slug/plan` | superadmin | also `{ follow_subscription: true }`; 409 `not_billed` |

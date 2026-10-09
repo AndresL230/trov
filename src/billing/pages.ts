@@ -8,8 +8,8 @@ import { esc, shell, head, GITHUB, GOOGLE } from "../auth/oauth-pages";
 
 const back = `<a class="btn" href="${PRICING_PATH}">Back to the plans</a>`;
 
-/** Signed out: sign in, then the purchase carries on (src/auth/return-to.ts). Any GitHub account can
- *  sign in; Google only opens an account that already exists — said here, before the dead end. */
+/** Signed out: sign in, then the purchase carries on (src/auth/return-to.ts). Any GitHub or Google
+ *  account can sign in, and a first sign-in creates the account. */
 export function billingSignInPage(plan: PlanId): string {
   return shell("Sign in", head("Sign in to continue")
     + `<p class="lede">to get Trov <strong>${esc(PLANS[plan].name)}</strong></p>`
@@ -18,7 +18,7 @@ export function billingSignInPage(plan: PlanId): string {
     + `<div class="or"><span></span>or<span></span></div>`
     + `<a class="btn" href="/auth/google/login">${GOOGLE}Continue with Google</a>`
     + `</div>`
-    + `<div class="foot">New to Trov? Sign in with GitHub: it creates your account. Google works only for an account that already exists. After you sign in, you go on to payment.</div>`);
+    + `<div class="foot">New to Trov? Signing in with either one creates your account. After you sign in, you go on to payment.</div>`);
 }
 
 export function billingNoticePage(o: { title: string; lede: string; foot?: string; action?: { href: string; label: string }; error?: boolean }): string {

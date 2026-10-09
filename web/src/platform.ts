@@ -547,7 +547,7 @@ export function addOrgModal(d: AddOrgDraft, dd: DropdownUi = initialDropdownUi()
  *  and platform-access.ts's (grant, revoke a grant, change plan). `dd` = the open dropdown (`state.dd`). */
 export function platformDialogs(p: PlatState, screen: string, dd: DropdownUi = initialDropdownUi()): string {
   if (p.superadmin !== true || (screen !== "platform" && screen !== "platformorg")) return "";
-  const access = accessDialogs(p.access, screen, dd);
+  const access = accessDialogs(p.access, screen, dd, p.detail.data && p.detail.data.org.slug === p.orgSlug ? p.detail.data.org : null);
   if (access) return access;
   if (screen === "platformorg" && p.suspendArm && p.detail.data) {
     const suspend = p.suspendArm === "suspend";

@@ -2,7 +2,7 @@
 // Ported from the Claude Design project d8f0c2b0-da50-49f8-964f-ee647908406b
 // (`Canopy Site.dc.html`). It replaces the old bare login card: a signed-out
 // visitor lands on the product page, and "Sign in" opens the provider dialog
-// (GitHub for engineers, Google by invitation — both stay reachable).
+// (GitHub or Google — either creates an account).
 //
 // Deltas from the canvas file, all deliberate:
 //   • `style-hover` pseudo-props → the `.site-*` classes in trov.css.
@@ -585,7 +585,7 @@ function agents(): string {
             <div style="white-space:nowrap">${prompt}${cmd2}<span class="site-caret" style="${at(cmd2End + 150)}"></span></div>
           </div>
           <p style="margin:12px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55)">Wires the MCP server and loads all ten skills. Then connect by browser sign-in: run <span style="font-family:var(--label);font-size:11.5px">/mcp</span>, pick trov, and choose Authenticate.</p>
-          <button data-act="siteGuide" class="site-btn site-btn-outline" style="margin-top:16px">Setup steps in Get Started</button>
+          <button data-act="siteGuide" class="site-btn site-btn-outline" style="margin-top:16px">How Trov works, in the Guide</button>
         </div>
       </div>
     </div>
@@ -634,7 +634,7 @@ function signInDialog(): string {
           Continue with Google
         </button>
       </div>
-      <div style="text-align:center;margin-top:20px;font-size:12.5px;color:var(--fg-40);line-height:1.5">Any GitHub account can sign in. A Google account needs an invitation from an organization's admin first.</div>
+      <div style="text-align:center;margin-top:20px;font-size:12.5px;color:var(--fg-40);line-height:1.5">New to Trov? Either one creates your account.</div>
     </div>
   </div>`;
 }

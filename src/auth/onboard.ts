@@ -1,4 +1,4 @@
-import { type PlatformContext, first } from "../data/platform-sql";
+import type { PlatformContext } from "../data/platform-sql";
 import type { IdentityProvider, IdentityRow } from "@shared/rows";
 import { hmacSeal, hmacUnseal, b64uEncode, b64uDecode } from "./crypto";
 import { liveLegacyInvite } from "../data/legacy";
@@ -9,15 +9,11 @@ import { findIdentity, findPersonByVerifiedEmail, linkIdentity, listIdentities, 
 export interface ProviderProfile { provider: IdentityProvider; subject: string; label: string; email: string | null; name: string | null; avatar_url: string | null; uid?: string | null }
 // `exp` is added internally by sealOnboard (not supplied by callers building a payload
 // to hand to it) and is present once a sealed cookie has been opened by openOnboard.
-// `invite_email` is set when onboarding REQUIRES a pending invite for that address — a Google sign-in
-// (below); it is null for GitHub, which needs none.
-export interface OnboardPayload extends ProviderProfile { suggested_handle: string; invite_email: string | null; exp?: number }
+export interface OnboardPayload extends ProviderProfile { suggested_handle: string; exp?: number }
 export const ONBOARD_COOKIE = "onboard";
-// The sealed cookie carries the provider gate result forward for its lifetime below. A GitHub
-// account has no gate (§5.1): anyone with one reaches onboarding. A Google account's gate — a
-// pending invite for its verified email, checked in completeSignIn — IS re-checked in
-// POST /auth/onboard, because an invite can be revoked within the 10-minute window and the
-// person row must not be created for a no-longer-invited address.
+// The sealed cookie carries the provider's answer forward for its lifetime below. Neither provider has
+// a gate (§5.1): anyone with a GitHub account, or a Google account whose address Google has verified,
+// reaches onboarding.
 export const ONBOARD_TTL_S = 600;
 
 export type ForkResult = { kind: "session"; handle: string } | { kind: "onboard"; payload: OnboardPayload } | { kind: "denied" };
@@ -61,26 +57,13 @@ const uidMismatch = (known: IdentityRow, profile: ProviderProfile): boolean =>
   !!known.provider_uid && !!profile.uid && known.provider_uid !== profile.uid;
 
 /**
- * Is there a PENDING invite addressed to this (provider-verified) email — an `org_invites` row of any
- * org that is not suspended, or a live legacy invite (org #1's old `invites` table)? This is what lets a
- * Google account reach onboarding (Q1). It grants nothing by itself: becoming a member is the accept
- * step (or, for a legacy invite, `consumeLegacyInvite`).
- */
-export async function hasPendingEmailInvite(p: PlatformContext, email: string): Promise<boolean> {
-  const org = await first(p,
-    `SELECT 1 AS x FROM org_invites i JOIN orgs o ON o.id = i.org_id
-      WHERE i.email = ? AND i.status = 'pending' AND o.suspended_at IS NULL LIMIT 1`, email.trim().toLowerCase());
-  // MT: the legacy table is read until Phase 7 moves what is left of it onto `org_invites`.
-  return org !== null || (await liveLegacyInvite(p, email)) !== null;
-}
-
-/**
  * The fork both callbacks run once the provider has named the account (§5.1) — sign-in is tied to no
  * GitHub org:
  * 1 known identity → session.
  * 2 the provider-verified email is another identity's verified email → link + session.
- * 3 GitHub → onboard, always. Google → onboard only with a pending invite for the verified email.
- * 4 otherwise (a Google account nobody invited) → denied.
+ * 3 otherwise → onboard: any GitHub account, any Google account (its address is verified — the contract
+ *   below; an unverified one never reaches this function).
+ * The one refusal left is in branch 1: a login on file under a DIFFERENT provider account id.
  * Onboarding creates a PERSON, never a membership: a new person is in no org until they accept an invite
  * or create one (the one exception is a legacy invite — POST /auth/onboard).
  *
@@ -113,11 +96,7 @@ export async function completeSignIn(p: PlatformContext, profile: ProviderProfil
   }
   // MT: a legacy invite still seeds the name the admin typed for the invitee.
   const legacy = profile.email ? await liveLegacyInvite(p, profile.email) : null;
-  const payload = (inviteEmail: string | null): OnboardPayload =>
-    ({ ...profile, name: profile.name ?? legacy?.name ?? null, suggested_handle: suggestHandle(profile), invite_email: inviteEmail });
-  if (profile.provider === "github") return { kind: "onboard", payload: payload(null) };
-  if (profile.email && (legacy || (await hasPendingEmailInvite(p, profile.email)))) return { kind: "onboard", payload: payload(profile.email.trim().toLowerCase()) };
-  return { kind: "denied" };
+  return { kind: "onboard", payload: { ...profile, name: profile.name ?? legacy?.name ?? null, suggested_handle: suggestHandle(profile) } };
 }
 
 /**

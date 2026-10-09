@@ -6,6 +6,8 @@
 //     billing, Change seats. A Free org (never paid, or its subscription ended)
 //     offers its owner "Upgrade to Pro". Each one leaves for Stripe's own pages
 //     (org-billing-actions.ts). A granted org on another plan shows nothing about payment.
+//     A plan that is a GIFT (0048_plan_gifts) says so, with its end and what happens then —
+//     prominently in its last days — and offers its owner the way to keep a plan by paying.
 //   • Org settings › Members — the seats in the lead line, and what replaces the invite form
 //     when no seat is free (or the plan is for one person): the sentence, and for the OWNER the
 //     one thing that fixes it — "Add a seat" (a paid Pro org) or "Upgrade to Pro" (Free).
@@ -13,13 +15,13 @@
 // before a refusal, what the server would say.
 
 import {
-  LIMIT_KEYS, LIMITS, PLANS, UPGRADE_PLAN, formatLimit, formatUse, isSoloPlan, limitNoun, planRefusal, planRefusalSentence,
+  GIFT_SOON_DAYS, LIMIT_KEYS, LIMITS, PLANS, UPGRADE_PLAN, formatLimit, formatUse, giftDaysLeft, isSoloPlan, limitNoun, planRefusal, planRefusalSentence,
   type LimitKey, type OrgPlanView, type PlanNext,
 } from "@shared/plans";
 import { billingDate, isPast, type PurchasablePlan } from "@shared/billing";
 import type { OrgRole } from "@shared/orgs";
 import { esc, surface } from "./ui";
-import { O_ERR, O_HELP, chip, orgHead, quietBtn, sliceNote, type OrgSlice } from "./org-ui";
+import { O_ERR, O_HELP, O_LABEL, chip, quietBtn, sliceNote, type OrgSlice } from "./org-ui";
 
 /** The plan as the state `planRefusal` reads: its resolved limits stand in for plan + overrides. */
 const stateOf = (v: OrgPlanView) => ({ plan: v.plan, overrides: v.entitlements, status: v.status, source: v.source });
@@ -72,7 +74,7 @@ function limitRow(v: OrgPlanView, key: LimitKey): string {
   // A monthly allowance that is used up (AI summaries) is not "over": the row says what happens instead.
   const spent = d.period && d.atCap && cap !== null && v.usage[key] >= cap ? `<div data-limit-spent style="font-size:12px;line-height:1.45;color:var(--fg-70);margin-top:3px">${esc(d.atCap)}</div>` : "";
   return `<li class="cnpy-plan-row" data-limit="${key}"${over ? ' data-over="1"' : ""}>
-    <div style="flex:1 1 200px;min-width:0">
+    <div class="cnpy-plan-what">
       <div style="font-size:13px;font-weight:500;color:var(--fg)">${esc(d.label)}${d.per === "person" ? ` <span style="font-weight:400;color:var(--fg-40)">per person</span>` : ""}</div>
       <div style="font-size:12px;line-height:1.45;color:var(--fg-40);margin-top:1px">${esc(d.counts)}</div>${spent}
     </div>
@@ -90,13 +92,56 @@ export interface OrgBillingUi {
 }
 export const initialOrgBillingUi = (): OrgBillingUi => ({ busy: null, error: null });
 
-interface BillingPart { state: "active" | "past_due" | "cancelling" | "ended" | "free"; chip: string; line: string; actions: string; foot: string }
+interface BillingPart { state: "active" | "past_due" | "cancelling" | "ended" | "free" | "gift"; chip: string; line: string; actions: string; foot: string }
+
+/** The org's plan is a gift from Trov with an end (never a paid org's: paying clears a gift). */
+const giftOf = (v: OrgPlanView): string | null => (v.gift_until && v.source !== "billing" ? v.gift_until : null);
+
+/**
+ * A gifted plan's line in the Plan tile: until when it is free, and what happens then. In its last
+ * `GIFT_SOON_DAYS` days it is the amber note the over-limit sentence uses; before that, plain text.
+ */
+export function giftNote(v: OrgPlanView, now: number = Date.now()): string {
+  const until = giftOf(v);
+  if (!until) return "";
+  const left = giftDaysLeft(until, now);
+  const date = billingDate(until);
+  if (left === null || !date) return "";
+  const text = left === 0
+    ? `The gift from Trov has ended, and this organization is moving to Free. Nothing is deleted.`
+    : `Free until ${date}, a gift from Trov. After that this organization moves to Free; nothing is deleted.`;
+  const soon = left <= GIFT_SOON_DAYS;
+  const lead = soon && left > 0 ? `<strong style="font-weight:600;color:var(--fg)">${left === 1 ? "1 day left." : `${left} days left.`}</strong> ` : "";
+  return soon
+    ? `<p data-plan-gift="soon" role="status" class="cnpy-plan-note" style="border-radius:9px;margin:10px 0 0">${lead}${esc(text)}</p>`
+    : `<p data-plan-gift="on" style="margin:8px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-70)">${esc(text)}</p>`;
+}
 
 /** The chip beside the plan's name, the sentence under it, the owner's actions, the closing line. */
 function billingPart(v: OrgPlanView, role: OrgRole, b: OrgBillingUi): BillingPart | null {
   const bill = v.billing;
   if (!bill) return null;
   const owner = role === "owner";
+  if (bill.gifted) {
+    // A gift: nothing is paid. Its owner may start paying before it ends, so there is no lapse — only
+    // where that can work (Stripe set up, a plan on sale); otherwise the tile says only what `giftNote` does.
+    if (!owner || !bill.available || bill.upgrade_to.length === 0) return null;
+    const pro = PLANS[UPGRADE_PLAN].name;
+    const same = v.plan === UPGRADE_PLAN;
+    const off = b.busy !== null;
+    const actions = bill.upgrade_to.map((to) => {
+      const key = `orgBillingUpgrade:${to}`;
+      const busy = b.busy === key;
+      return quietBtn(busy ? "Opening Stripe…" : v.plan === to ? `Keep ${PLANS[to].name} by paying` : `Pay for ${PLANS[to].name}`, "orgBillingUpgrade", { arg: to, field: key, disabled: off, busy, extra: off ? "" : "color:var(--fg)" });
+    }).join("");
+    return {
+      state: "gift", chip: "", actions,
+      line: same
+        ? `To keep ${pro} after that, start paying before the gift ends. ${pro} is paid per seat, and the paid plan takes over as soon as you pay: the seats you buy are the seats you have.`
+        : `To stay on a paid plan after that, you can move to ${pro}, paid per seat; it takes over as soon as you pay, with ${pro}'s limits. To keep ${v.name}, contact Trov.`,
+      foot: `${pro} is paid through Stripe; you choose the number of seats there. Trov never sees your card.`,
+    };
+  }
   const date = billingDate(v.period_end);
   const every = bill.interval === "year" ? "yearly " : bill.interval === "month" ? "monthly " : "";
   const cancelling = bill.subscribed && bill.cancel_at_period_end;
@@ -134,13 +179,14 @@ function billingPart(v: OrgPlanView, role: OrgRole, b: OrgBillingUi): BillingPar
 }
 
 /**
- * Org settings › General › Plan. The plan's name and what it is for; for a paid org how it pays and
- * (its owner) the ways to change that; each limit with the org's use of it; what being over a limit
- * means (nothing is removed — additions wait); and who changes the plan.
+ * Org settings › General › Plan, as TWO tiles of General's bento (org-settings.ts `generalTab`).
+ * The Plan tile: the plan's name and what it is for; for a paid org how it pays and (its owner) the
+ * ways to change that; who changes the plan. The Limits tile: each limit with the org's use of it,
+ * and what being over a limit means (nothing is removed — additions wait).
  */
 export function planBlock(s: OrgSlice<OrgPlanView | null>, role: OrgRole, b: OrgBillingUi = initialOrgBillingUi()): string {
-  const head = orgHead("Plan", "", null, "org-plan-t");
-  if (!s.data) return `<section aria-labelledby="org-plan-t" style="margin-top:22px">${head}${sliceNote(s, "the plan", false)}</section>`;
+  const eyebrow = (title: string, id: string): string => `<h2 id="${id}" style="${O_LABEL};margin:0 0 12px">${title}</h2>`;
+  if (!s.data) return `<section${surface("", { cls: "cnpy-tile cnpy-org-gen-limits" })} aria-labelledby="org-plan-t">${eyebrow("Plan", "org-plan-t")}${sliceNote(s, "the plan", false)}</section>`;
   const v = s.data;
   const overNames = v.over.map(limitNoun);
   const over = v.status === "canceled"
@@ -149,18 +195,50 @@ export function planBlock(s: OrgSlice<OrgPlanView | null>, role: OrgRole, b: Org
       ? `<div role="status" class="cnpy-plan-note" style="border-radius:9px">This organization is over its plan's ${esc(overNames.join(" and "))}. Nothing was removed and everyone keeps their access; more can be added once it is back under the limit.</div>`
       : "";
   const pay = billingPart(v, role, b);
-  const foot = pay ? pay.foot : role === "owner" ? `To change your plan, contact Trov.` : `An owner of this organization can ask Trov to change the plan.`;
-  return `<section aria-labelledby="org-plan-t" data-org-plan="${v.plan}"${pay ? ` data-org-billing="${pay.state}"` : ""} style="margin-top:22px">
-    ${head}
-    <div${surface("padding:18px 20px")}>
+  const gift = giftNote(v);
+  const foot = pay ? pay.foot : role === "owner" ? (gift ? `To keep or change your plan, contact Trov.` : `To change your plan, contact Trov.`) : `An owner of this organization can ask Trov to change the plan.`;
+  return `<section${surface("", { cls: "cnpy-tile cnpy-org-gen-plan" })} aria-labelledby="org-plan-t" data-org-plan="${v.plan}"${pay ? ` data-org-billing="${pay.state}"` : ""}>
+      ${eyebrow("Plan", "org-plan-t")}
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:15px;font-weight:600;letter-spacing:-0.005em">${esc(v.name)}</span>${STATUS_CHIP[v.status]}${pay?.chip ?? ""}</div>
       <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:2px">${esc(v.description)}</div>
+      ${gift}
       ${pay ? `<p data-plan-billing style="margin:8px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-70)">${esc(pay.line)}</p>` : ""}
       ${pay?.actions ? `<div class="cnpy-plan-actions">${pay.actions}</div>` : ""}
       ${pay && b.error ? `<div role="alert" style="${O_ERR}">${esc(b.error)}</div>` : ""}
+      <div class="cnpy-tile-foot" style="${O_HELP};margin-top:auto;padding-top:14px">${esc(foot)}</div>
+    </section>
+    <section${surface("", { cls: "cnpy-tile cnpy-org-gen-limits" })} aria-labelledby="org-limits-t">
+      ${eyebrow("Limits", "org-limits-t")}
       ${over}
       <ul class="cnpy-plan-rows">${LIMIT_KEYS.map((k) => limitRow(v, k)).join("")}</ul>
-      <div style="${O_HELP};margin-top:14px">${esc(foot)}</div>
-    </div>
-  </section>`;
+    </section>`;
+}
+
+/**
+ * The same plan, in PARTS, for a page that lays it out its own way — personal Settings' Plan tile
+ * (settings-plan.ts). Every word and every button is the Plan block's above (`billingPart`, `giftNote`,
+ * the status chips, the closing line), so the two places can never say different things about one
+ * organization; only the arrangement is the caller's. All of it is trusted markup except `line` and
+ * `foot`, which are plain text.
+ */
+export interface PlanParts {
+  /** How the org pays, as `data-org-billing` names it; null when nothing about payment is shown. */
+  state: BillingPart["state"] | null;
+  /** The chips beside the plan's name: its status, and "Cancelled". */
+  chips: string;
+  /** The gift's line ("Free until …"), or "". */
+  gift: string;
+  /** The sentence about payment, or null. */
+  line: string | null;
+  /** The owner's buttons (`orgBilling…` acts), or "". */
+  actions: string;
+  /** Who changes the plan, and how. */
+  foot: string;
+}
+export function planParts(v: OrgPlanView, role: OrgRole, b: OrgBillingUi = initialOrgBillingUi()): PlanParts {
+  const pay = billingPart(v, role, b);
+  const gift = giftNote(v);
+  // The Plan block's own closing line (`planBlock`, above) — keep the two in step.
+  const foot = pay ? pay.foot : role === "owner" ? (gift ? `To keep or change your plan, contact Trov.` : `To change your plan, contact Trov.`) : `An owner of this organization can ask Trov to change the plan.`;
+  return { state: pay?.state ?? null, chips: `${STATUS_CHIP[v.status]}${pay?.chip ?? ""}`, gift, line: pay?.line ?? null, actions: pay?.actions ?? "", foot };
 }
