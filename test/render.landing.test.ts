@@ -91,9 +91,12 @@ describe("landing — the banner carried through the page", () => {
     // numbers are the pricing data's own.
     expect(signup).toContain('data-signin-plan="free"');
     expect(signup).toMatch(/data-seg="signin-plan"[\s\S]*?>Free<[\s\S]*?>Pro</);
-    expect(signup).toMatch(/<p class="site-signin-plan-what"><b>Free<\/b> &middot; up to 3 people &middot; <a href="\/pricing">Compare plans<\/a><\/p>/);
+    expect(signup).toMatch(/<p class="site-signin-plan-what"><b>Free<\/b> &middot; up to 3 people<\/p>/);
     const pro = landingView({ dark: false, signInOpen: true, signInMode: "signup", signInPlan: "team", seen: new Set() });
-    expect(pro).toMatch(/<p class="site-signin-plan-what"><b>\$10 per seat \/ month<\/b> &middot; up to 50 people &middot; <a href="\/pricing">Compare plans<\/a><\/p>/);
+    expect(pro).toMatch(/<p class="site-signin-plan-what"><b>\$10 per seat \/ month<\/b> &middot; up to 50 people<\/p>/);
+    // The way to the pricing page is in the lede, so the plan's line is nothing but the plan.
+    expect(signup).toContain('Pick a plan to start, or <a href="/pricing" class="site-signin-compare">compare them</a>.');
+    expect(pro).toContain('class="site-signin-compare"');
     // One line either way and no extra note under Pro, so the dialog is the same height on both plans.
     expect(pro).not.toContain("site-signin-note");
     expect(rules).toMatch(/\.site-signin-plan-what \{[^}]*white-space:nowrap;/);

@@ -768,6 +768,10 @@ const SIGNIN_COPY: Record<SignInMode, { title: string; lede: string; foot: strin
   signup: { title: "Get started with Trov", lede: "Pick a plan. You can change it later.", foot: "Already have an account?", other: "signin", switchTo: "Sign in" },
 };
 
+/** Get started WITH a plan to pick: the lede carries the way to the pricing page, so the plan's own line
+ *  under the switch stays one short line on Free and Pro alike. */
+const PLAN_LEDE = `Pick a plan to start, or <a href="/pricing" class="site-signin-compare">compare them</a>.`;
+
 /** The plan a new person starts on, picked in the dialog: Free, or Pro when Pro can be bought on the site. */
 export type SignUpPlan = "free" | "team";
 
@@ -783,7 +787,7 @@ function planChoice(plan: SignUpPlan): string {
   };
   return `<div class="site-signin-plans" data-signin-plan="${plan}">
       ${segmented({ id: "signin-plan", ariaLabel: "Plan", act: "signInPlan", value: plan, size: "sm", fill: true, inertOn: true, options: [{ value: "free", label: PLANS.free.name }, { value: "team", label: PLANS.team.name }] })}
-      <p class="site-signin-plan-what">${line(plan)} &middot; <a href="/pricing">Compare plans</a></p>
+      <p class="site-signin-plan-what">${line(plan)}</p>
     </div>`;
 }
 
@@ -812,7 +816,7 @@ function signInDialog(mode: SignInMode = "signin", plan: SignUpPlan = "free"): s
           </button>
           ${trovMark(30)}
           <h2 id="signin-title" style="margin:14px 0 0;font-size:21px;font-weight:650;letter-spacing:-0.02em">${c.title}</h2>
-          <p style="margin:6px 0 0;max-width:270px;font-size:13.5px;line-height:1.55;color:var(--fg-55);text-wrap:balance">${c.lede}</p>
+          <p style="margin:6px 0 0;max-width:270px;font-size:13.5px;line-height:1.55;color:var(--fg-55);text-wrap:balance">${choosing ? PLAN_LEDE : c.lede}</p>
         </div>
         <div class="site-signin-body">
           ${choosing ? planChoice(plan) : ""}
