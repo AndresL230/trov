@@ -10,6 +10,7 @@
 //     drops a note in sessionStorage (`WELCOME_RETURN_KEY`); main.ts's `enterOrg` reads it once
 //     and lands that one return on the wizard instead (`welcomeReturnHash`, pure).
 
+import { morphStep } from "./transition";
 import type { AppState } from "./render";
 import type { OAuthGrantSummary } from "@shared/rows";
 import { agentStepState, effectiveWelcomeStep, isWelcomeStep, welcomeStepsFor, type WelcomeStep } from "./welcome";
@@ -52,6 +53,9 @@ export interface WelcomeHost {
   rerender(): void;
   /** Org settings' reads for the org on screen (org-actions.ts `load`). */
   loadOrg(): void;
+  /** My Work's reads, if they have not been made: it is what stands behind the card and what "Open Trov"
+   *  reveals, so it is read while the person is still in the setup. */
+  loadHome(): void;
   /** Settings › MCP access's two reads, if they have not been made (main.ts `loadGrantsIfNeeded`). */
   loadConnections(): void;
   /** Both of them again, whatever they hold (after a failure). */
@@ -129,9 +133,8 @@ export function createWelcomeController(h: WelcomeHost): WelcomeController {
   }, true);
 
   function show(to: WelcomeStep): void {
-    state.welcome.step = to;
-    state.welcome.byHand = false;
-    h.rerender();
+    // One step into the next as a morph (transition.ts), not a snap.
+    morphStep(() => { state.welcome.step = to; state.welcome.byHand = false; h.rerender(); });
     window.scrollTo(0, 0);
     // The step's heading takes focus: a keyboard or screen-reader user is at the top of the new step.
     mount.querySelector<HTMLElement>("#wel-t")?.focus({ preventScroll: true });
@@ -141,13 +144,14 @@ export function createWelcomeController(h: WelcomeHost): WelcomeController {
   function enter(): void {
     h.loadOrg();
     h.loadConnections();
+    h.loadHome();
   }
 
   function act(name: string, arg: string | null): void {
     switch (name) {
       case "welcomeOpen":
         state.screen = "welcome"; state.personCard = null;
-        state.welcome = { step: isWelcomeStep(arg) ? arg : "github", byHand: false };
+        state.welcome = { step: isWelcomeStep(arg) ? arg : "github", byHand: false, firstRun: state.welcome.firstRun };
         enter();
         window.scrollTo(0, 0);
         return;

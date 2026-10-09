@@ -91,7 +91,8 @@ events and the owner checklist: `billing.md`. Enterprise is never bought: it is 
 ### 1d. …or someone creates a Free one
 
 Anyone signed in (not a superadmin) can create a **Free** organization from the org picker or the switcher's
-menu — no grant, no payment [`POST /api/orgs`, `src/plans/free.ts`]: up to 3 people, 1 repository, 2
+menu (the dialog asks for a name and a **handle** — the slug, checked for availability as it is typed:
+`GET /api/orgs/slug-check`) — no grant, no payment [`POST /api/orgs`, `src/plans/free.ts`]: up to 3 people, 1 repository, 2
 environments. A person can OWN one Free organization at a time (`DEFAULT_ORG_LIMIT = 1`, `shared/orgs.ts`).
 Its owner upgrades it to Pro from Org settings › General (**Upgrade to Pro**, or the button Members shows at
 the seat cap): a Stripe checkout for that organization, starting at one seat per member and pending
@@ -119,7 +120,7 @@ skippable, with Back, a step indicator and *Skip setup*.
 
 - **It is a route, not server state.** `#welcome` is the first step; `#welcome/agent`, `/team` and `/done`
   the others, so a reload stays put. Nothing records that a person has seen it, and there is no migration.
-  It is reopened from Org settings' checklist (*Open the guided setup*), from Help › Get Started and from
+  It is reopened from Org settings' checklist (*Open the guided setup*), from Help › Guide and from
   quick search.
 - **Every step's state is derived, never stored and never guessed** — from the reads Org settings already
   makes (repositories, the GitHub App's connection, members, invitations, the plan) and from the person's

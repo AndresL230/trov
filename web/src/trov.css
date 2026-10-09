@@ -162,7 +162,7 @@ input, select { font-family: inherit; }
    One easing, one duration, so the pieces move as a single gesture. Labels fade
    FAST on the way out (they would otherwise be seen squeezed) and LATE on the way
    in (they arrive once there is room for them). */
-.cnpy-aside { --side-t:.24s; --side-e:cubic-bezier(.4,0,.2,1); width:244px; flex:none; display:flex; flex-direction:column; border-right:1px solid var(--border); background:var(--bg); transition:width var(--side-t) var(--side-e); position:relative; z-index:2; }
+.cnpy-aside { --side-t:.24s; --side-e:cubic-bezier(.4,0,.2,1); width:228px; flex:none; display:flex; flex-direction:column; border-right:1px solid var(--border); background:var(--bg); transition:width var(--side-t) var(--side-e); position:relative; z-index:2; }
 [data-collapsed="1"] .cnpy-aside { width:64px; }
 .cnpy-aside button:focus-visible, .cnpy-search:focus-within { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
 
@@ -673,22 +673,34 @@ input, select { font-family: inherit; }
   .cnpy-pdetail-rail { flex:none; max-width:none; }
 }
 .cnpy-set-wrap { container:cnpy-set / inline-size; }
-/* Settings is ONE bento grid with even edges: row 1 is Profile | Account | MCP access (MCP
-   spans rows 1–2, down a slightly wider third column — its install command fits on one
-   line), row 2 is Appearance under the first two, row 3 Email notifications at full width.
-   Every tile STRETCHES to its grid area (the default), so tiles in a row share one top and
-   one bottom and the left block ends where MCP access does. The stretch is kept to a few
-   pixels by balancing content, not by sizing tiles: the by-hand setup is a modal (it never
-   grows the MCP tile) and Connected apps shows at most MCP_LIST_CAP rows. */
-.cnpy-set { max-width:1180px; margin:0 auto; padding:24px 32px 32px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr); gap:14px; }
-.cnpy-set-appear { grid-column:1 / span 2; }
-.cnpy-set-mcp { grid-column:3; grid-row:1 / span 2; }
+/* Settings is ONE bento grid on twelve columns, and a tile is about as tall as what it holds:
+   tiles that share a row are ones whose content is naturally the same height, so the grid's
+   stretch (kept: every edge still lines up) is a few pixels, never a half-empty tile.
+     rows 1-2  Profile (4) | Account (4) | Session (4) over Appearance (4)
+     row 3     Plan (5) | Limits (7) — both grow with what the plan has to say
+     row 4     Organizations (a row of them)
+     row 5     MCP access (its steps beside Connected apps)
+     row 6     Email notifications
+   Each tile is placed by NAME here; DOM order is the folded order (Sign out last). */
+.cnpy-set { max-width:1180px; margin:0 auto; padding:24px 32px 32px; display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:14px; }
+.cnpy-set-profile { grid-column:1 / span 4; grid-row:1 / span 2; }
+.cnpy-set-account { grid-column:5 / span 4; grid-row:1 / span 2; }
+.cnpy-set-session { grid-column:9 / -1; grid-row:1; }
+.cnpy-set-appear { grid-column:9 / -1; grid-row:2; }
+.cnpy-set-plan { grid-column:1 / span 5; grid-row:3; }
+.cnpy-set-limits { grid-column:6 / -1; grid-row:3; }
+.cnpy-set-orgs-tile { grid-column:1 / -1; grid-row:4; }
+.cnpy-set-mcp { grid-column:1 / -1; grid-row:5; }
 /* A Settings tile is a surface (class="cnpy-tile cnpy-surface"); this adds its padding, and
-   a column flow so a stretched tile keeps its content at the top — with `.cnpy-tile-foot`
-   (Profile's color swatches, Account's sign-in methods) pinned to the bottom edge. */
+   a column flow so a tile keeps its content at the top — with `.cnpy-tile-foot` (Profile's
+   color swatches, Account's closing line) at the bottom edge. */
 .cnpy-tile { min-width:0; padding:20px 22px; display:flex; flex-direction:column; }
 .cnpy-tile-foot { margin-top:auto; }
-.cnpy-set-email { grid-column:1 / -1; container:cnpy-email / inline-size; }
+/* A field never runs the width of a wide tile (Profile spans the page's half when it folds). */
+.cnpy-set-profile .cnpy-set-name { max-width:420px; }
+/* Session: who is signed in, and Sign out — side by side, the button under the name when narrow. */
+.cnpy-set-who { display:flex; align-items:center; justify-content:space-between; gap:12px 14px; flex-wrap:wrap; }
+.cnpy-set-email { grid-column:1 / -1; grid-row:6; container:cnpy-email / inline-size; }
 .cnpy-set-pairs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:40px; }
 @container cnpy-email (max-width:935px) {
   .cnpy-set-pairs { grid-template-columns:minmax(0,1fr); }
@@ -696,30 +708,62 @@ input, select { font-family: inherit; }
 /* Appearance: Light / Dark / System are ONE row of three equal cards at every width, edge to
    edge of the tile's content box. The row is its own container, so a card's form follows the
    room it actually has (not the viewport): icon beside label, or — once a card is too narrow
-   for that (row < 350px, ~110px a card) — icon stacked over label, still three across. */
+   for that (row < 290px, ~90px a card) — icon stacked over label, still three across. */
 .cnpy-set-themes { container:cnpy-themes / inline-size; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
 .cnpy-themecard { display:flex; align-items:center; justify-content:center; gap:9px; min-width:0; padding:13px 8px; }
 .cnpy-themecard > svg { flex:none; display:block; }
-@container cnpy-themes (max-width:349px) {
+@container cnpy-themes (max-width:289px) {
   .cnpy-themecard { flex-direction:column; gap:6px; padding:12px 6px; }
 }
 .cnpy-set .cnpy-sw.compact { padding:6px 0; }
 /* MCP access: the sign-in steps, then Connected apps — beside them once the tile is wide
-   (it spans the page when the bento folds). The list has no fixed height and no scroller:
-   it shows its first rows and a "Show all N" (render.ts `grantListBody`). */
+   (it runs the width of the page). The list has no fixed height and
+   no scroller: it shows its first rows and a "Show all N" (render.ts `grantListBody`). */
 .cnpy-set-mcp { container:cnpy-mcp / inline-size; }
 .cnpy-mcp-body { display:grid; grid-template-columns:minmax(0,1fr); gap:18px; margin-top:20px; }
 @container cnpy-mcp (min-width:620px) {
   .cnpy-mcp-body { grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:32px; }
 }
-/* Narrower: two columns — Profile | Account in one row (equal heights), Appearance and then
-   MCP access at full width under them; on a phone, one column. */
+/* Plan (settings-plan.ts): the closing line and the way to Org settings sit at the tile's foot. */
+.cnpy-set-planfoot { margin-top:auto; padding-top:14px; display:flex; align-items:baseline; justify-content:space-between; gap:6px 16px; flex-wrap:wrap; }
+.cnpy-set-planfoot > span { flex:1 1 220px; min-width:0; }
+/* Limits: each limit is a name, its use, and a quiet meter under them — three across while the
+   tile has the room (it is its own container), then two, then one. */
+.cnpy-set-limits { container:cnpy-limits / inline-size; }
+.cnpy-set-limits-rows { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px 36px; }
+@container cnpy-limits (max-width:759px) {
+  .cnpy-set-limits-rows { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 28px; }
+}
+@container cnpy-limits (max-width:479px) {
+  .cnpy-set-limits-rows { grid-template-columns:minmax(0,1fr); }
+}
+.cnpy-set-limit { min-width:0; }
+.cnpy-meter { height:4px; margin-top:7px; background:var(--hover); overflow:hidden; }
+.cnpy-meter > span { display:block; height:100%; background:var(--fg-40); }
+.cnpy-meter[data-meter="full"] > span { background:var(--fg-70); }
+.cnpy-meter[data-meter="over"] > span { background:var(--amber); }
+/* Organizations: one card per organization — a link that opens it — as many across as fit, then
+   what I may create. No scroller: more organizations make more rows. */
+.cnpy-set-orgs { list-style:none; margin:0 -8px; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:2px 14px; }
+.cnpy-set-org { display:flex; align-items:center; gap:10px; padding:7px 8px; text-decoration:none; color:inherit; transition:background .12s ease; }
+.cnpy-set-org:hover { background:var(--hover); }
+.cnpy-set-org[aria-current="true"] { background:var(--hover); }
+.cnpy-set-org:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.cnpy-set-orgsfoot { margin-top:auto; padding-top:14px; display:flex; flex-direction:column; gap:10px; }
+.cnpy-set-orgs + .cnpy-set-orgsfoot, .cnpy-skel + .cnpy-set-orgsfoot { border-top:1px solid var(--border); margin-top:14px; }
+/* Narrower: two columns — Profile | Account in one row, then every other tile at full width,
+   in DOM order (Plan, Limits, Organizations, MCP access, Appearance, Email, Session); on a
+   phone, one column. */
 @container cnpy-set (max-width:999px) {
   .cnpy-set { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .cnpy-set-appear, .cnpy-set-mcp { grid-column:1 / -1; grid-row:auto; }
+  .cnpy-set-profile, .cnpy-set-account { grid-column:auto; grid-row:auto; }
+  .cnpy-set-session, .cnpy-set-appear, .cnpy-set-plan, .cnpy-set-limits, .cnpy-set-mcp, .cnpy-set-orgs-tile, .cnpy-set-email { grid-column:1 / -1; grid-row:auto; }
 }
 @container cnpy-set (max-width:759px) {
   .cnpy-set { padding:24px 16px 64px; grid-template-columns:minmax(0,1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cnpy-set-org { transition:none; }
 }
 /* Tickets: the queue's table rows, and the two-column form/detail layouts that
    collapse to one column on a narrow viewport. */
@@ -1129,7 +1173,25 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .cnpy-org-step { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:11px 0; }
 .cnpy-org-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr)); gap:16px 18px; }
 .cnpy-org-addbar { display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap; max-width:640px; }
-.cnpy-org-invite { display:flex; align-items:center; gap:8px; flex-wrap:wrap; max-width:820px; }
+/* The invite bar spans its surface: the address field takes the room, the role and the button sit at the
+   right edge. (It was capped at 820px, which left it stranded on the left of a wide page.) */
+.cnpy-org-invite { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.cnpy-org-invite > #org-invite { flex:3 1 240px !important; }
+/* Members as a table: one grid for the head and every row, so each fact has its column. */
+.cnpy-mem-row { display:grid; grid-template-columns:minmax(0,2.1fr) minmax(0,1.5fr) minmax(0,1.9fr) 104px 128px 62px; align-items:center; gap:0 16px; padding:10px 16px; }
+.cnpy-mem-row.is-ro { grid-template-columns:minmax(0,2.1fr) minmax(0,1.5fr) minmax(0,1.9fr) 104px 128px; }
+.cnpy-mem-head { padding-top:9px; padding-bottom:8px; border-bottom:1px solid var(--border); font-family:var(--label); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-40); }
+.cnpy-mem-handle, .cnpy-mem-title, .cnpy-mem-joined { min-width:0; font-size:12.5px; color:var(--fg-55); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-mem-head > span { font-size:10px; color:var(--fg-40); }
+.cnpy-mem-title[data-empty], .cnpy-mem-joined { color:var(--fg-40); }
+.cnpy-mem-joined { font-variant-numeric:tabular-nums; }
+.cnpy-mem-role { display:flex; align-items:center; gap:7px; min-width:0; }
+.cnpy-mem-act { display:flex; justify-content:flex-end; }
+@media (max-width:980px) {
+  .cnpy-mem-row { grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) minmax(0,1.6fr) 128px 62px; }
+  .cnpy-mem-row.is-ro { grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) minmax(0,1.6fr) 128px; }
+  .cnpy-mem-joined { display:none; }
+}
 .cnpy-org-editor { padding:4px 16px 16px; }
 .cnpy-org-code { display:block; margin:3px 0; font-family:var(--code); font-size:11.5px; color:var(--fg-70); overflow-wrap:anywhere; }
 .cnpy-org-off { cursor:default; opacity:.6; }
@@ -1149,6 +1211,15 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
   /* A checklist step's button drops under its text, in line with it. */
   .cnpy-org-step > button { flex:1 1 100%; margin-left:30px; }
   .cnpy-org-addbar > button, .cnpy-org-invite > button, .cnpy-org-invite > .cnpy-seg, .cnpy-org-invite > .cnpy-dd { flex:1 1 100%; }
+  /* Phone: a member is two lines — who and their role, then handle and title — and the head goes. */
+  .cnpy-mem-head { display:none; }
+  .cnpy-mem-row, .cnpy-mem-row.is-ro { grid-template-columns:minmax(0,1fr) auto auto; gap:4px 10px; }
+  .cnpy-mem-who { grid-column:1; }
+  .cnpy-mem-role { grid-column:2; grid-row:1; }
+  .cnpy-mem-act { grid-column:3; grid-row:1; }
+  .cnpy-mem-handle { grid-column:1 / -1; grid-row:2; padding-left:40px; }
+  .cnpy-mem-title { grid-column:1 / -1; grid-row:3; padding-left:40px; }
+  .cnpy-mem-title[data-empty] { display:none; }
 }
 /* The queue group header's "Open sprint →". */
 .cnpy-grouplink { transition:color .12s ease, background .12s ease; border-radius:6px; }
@@ -1740,6 +1811,10 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    rail is collapsed — and above the phone drawer it was opened from. Radii are inline (the
    corners layer keys them by value). */
 .cnpy-orgslot { flex:none; padding:0 10px 8px; transition:padding var(--side-t) var(--side-e); }
+/* The button HUGS its content (tile, name, count, chevron) and stays left-aligned with the nav rows:
+   a short name gives a short button, a longer one grows it up to the slot's width, and past that the
+   name truncates. `max-width:100%` is also what folds it to the tile in the collapsed rail (its content
+   is always wider than the 44px slot), so the fold rides the rail's own width transition. */
 .cnpy-orgsw-b { display:flex; align-items:center; gap:9px; width:100%; min-width:0; height:38px; box-sizing:border-box; padding:0 9px 0 6.5px; border:1px solid var(--border); background:var(--surface); color:var(--fg); text-align:left; overflow:hidden; transition:background .15s ease, border-color .15s ease, padding var(--side-t) var(--side-e); }
 .cnpy-orgsw-b:hover, .cnpy-orgsw-b.is-open, .cnpy-orgslot.is-active .cnpy-orgsw-b { border-color:var(--border-strong); }
 [data-cnpy-theme="dark"] .cnpy-orgsw-b:hover, [data-cnpy-theme="dark"] .cnpy-orgsw-b.is-open { background:var(--hover); }
@@ -1750,7 +1825,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .cnpy-orgtile { display:inline-grid; place-items:center; flex:none; box-sizing:border-box; background:var(--hover); border:1px solid var(--border-strong); color:var(--fg-70); font-family:'Geist',system-ui,sans-serif; font-weight:600; line-height:1; }
 .cnpy-orgmenu-layer { position:fixed; inset:0; z-index:95; }
 .cnpy-orgmenu-back { position:absolute; inset:0; }
-.cnpy-orgmenu { position:absolute; top:calc(100px + env(safe-area-inset-top)); left:calc(10px + env(safe-area-inset-left)); width:316px; max-width:calc(100vw - 20px); max-height:calc(100dvh - 116px); overflow-y:auto; box-sizing:border-box; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); transform-origin:top left; animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
+.cnpy-orgmenu { position:absolute; top:calc(100px + env(safe-area-inset-top)); left:calc(10px + env(safe-area-inset-left)); width:248px; max-width:calc(100vw - 20px); max-height:calc(100dvh - 116px); overflow-y:auto; box-sizing:border-box; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); transform-origin:top left; animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
 [data-collapsed="1"] .cnpy-orgmenu { top:56px; left:70px; max-height:calc(100dvh - 72px); }
 .cnpy-orgmenu .cnpy-menurow:focus-visible, .cnpy-orgmenu button:focus-visible, .cnpy-orgs a:focus-visible, .cnpy-orgs button:focus-visible, [data-orgs-create] button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
 [data-orgs-create] .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
@@ -1760,6 +1835,41 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    the window is its frame, so a first run never scrolls; only a long list of organizations does. */
 .cnpy-orgs { min-height:100vh; min-height:100dvh; box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:24px; }
 .cnpy-orgs-col { width:100%; max-width:660px; min-width:0; }
+/* Behind a first-run card: the app itself, loading (render.ts `firstRunBackdrop`), softened and washed
+   toward the page so the card in front of it is the one thing to read. */
+.cnpy-fr-bg { position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; user-select:none; background:var(--bg); }
+.cnpy-fr-bg > .cnpy-shell { filter:blur(2.5px); }
+/* The very first card (how you'll appear) is the one with a form to fill in: the app sits further back. */
+.cnpy-onb .cnpy-fr-bg > .cnpy-shell { filter:blur(6px); }
+/* The backdrop is a still picture of the app. It is rendered from the same markup as a real screen, so
+   every rule that animates a screen would match inside it: the page ENTRANCE (`[data-enter] #cnpy-main > *`,
+   `.cnpy-rise`, `.cnpy-stagger`, the header's h1 — set on the root each time the route changes, and each step
+   of the guided setup is a route), the skeleton fade and pulse, and hover transitions. None of them is its
+   to play: nothing behind a first-run card moves, whatever the card in front of it does. */
+.cnpy-fr-bg, .cnpy-fr-bg *, .cnpy-fr-bg *::before, .cnpy-fr-bg *::after { animation:none !important; transition:none !important; }
+.cnpy-fr-bg::after { content:""; position:absolute; inset:0;
+  background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, #616acb 20%, transparent) 0%, transparent 72%), color-mix(in srgb, var(--bg) 34%, transparent); }
+/* One step of a flow morphing into the next (transition.ts): the card keeps its name across both. */
+.cnpy-orgs-card { view-transition-name:first-run-card; }
+::view-transition-group(first-run-card) { animation-duration:.42s; animation-timing-function:cubic-bezier(.22,.9,.24,1); }
+/* The old and new faces keep their own size and are clipped by the moving box, so text never stretches. */
+::view-transition-old(first-run-card), ::view-transition-new(first-run-card) { height:100%; width:100%; object-fit:none; object-position:top center; overflow:clip; animation-duration:.3s; }
+/* The moving box clips its two faces, which would also clip the card's own shadow: it would vanish for the
+   length of the morph and pop back when the real card returned. So the moving box WEARS the card's shadow
+   (a box's own shadow is painted outside its clip): the shadow travels and resizes with it.
+   Keep it in step with `.cnpy-orgs-card`. (No radius here: the pseudo-element lives outside the theme root, so
+   the corners block cannot scale one, and a 4px corner is not seen on a box in motion.) */
+::view-transition-group(first-run-card) { overflow:clip; box-shadow:0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
+/* The backdrop and the card stack inside their own screen, so a dialog opened over it stays on top. */
+.cnpy-orgs, .cnpy-onb { isolation:isolate; }
+.cnpy-orgs-col, .cnpy-onb > .cnpy-orgs-col { position:relative; z-index:1; }
+.cnpy-onb .cnpy-sw.compact { padding:6px 0; }
+.cnpy-onb-step { margin-left:auto; font-family:var(--label); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.78); }
+.cnpy-orgs-body.cnpy-onb-body { display:grid; gap:18px; padding-top:22px; }
+.cnpy-onb-pair { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; align-items:start; }
+@media (max-width:640px) {
+  .cnpy-onb-pair { grid-template-columns:minmax(0, 1fr); }
+}
 .cnpy-orgs-card { box-shadow:0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
 /* The banner is the brand's purple in both themes: it is Trov speaking, not the app's chrome. */
 .cnpy-orgs-banner { position:relative; overflow:hidden; padding:24px 28px 26px; color:#fff;
@@ -1802,9 +1912,12 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* THE GUIDED SETUP (welcome.ts, `#welcome`): the picker's page frame with a wider column — a step
    indicator, ONE step's body, and Back / forward under it. Every radius here is inline (the corners
    block scales it by value); the mark is a small rounded square like every dot in the app. */
-.cnpy-wel-col { max-width:680px; }
-.cnpy-wel-top { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; }
-.cnpy-wel-steps { display:flex; align-items:center; gap:6px; list-style:none; margin:30px 0 34px; padding:0; }
+.cnpy-wel-col { max-width:700px; }
+.cnpy-wel-top { position:relative; display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; }
+.cnpy-orgs-banner .cnpy-mutelink { color:rgba(255,255,255,.82) !important; }
+.cnpy-orgs-banner .cnpy-mutelink:hover { color:#fff !important; }
+.cnpy-orgs-body.cnpy-wel-body { padding-top:4px; }
+.cnpy-wel-steps { display:flex; align-items:center; gap:6px; list-style:none; margin:14px 0 22px; padding:0; }
 .cnpy-wel-step { display:flex; align-items:center; gap:6px; flex:1 1 0; min-width:0; }
 .cnpy-wel-step:first-child { flex:0 0 auto; }
 .cnpy-wel-step + .cnpy-wel-step::before { content:""; flex:1 1 12px; min-width:10px; height:1px; background:var(--border-strong); }
@@ -1819,21 +1932,18 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .cnpy-wel-list { list-style:none; margin:12px 0 0; padding:0; }
 .cnpy-wel-list.is-flush { margin-top:0; }
 .cnpy-wel-row { display:flex; align-items:center; gap:8px 10px; flex-wrap:wrap; min-height:28px; padding:10px 0; border-top:1px solid var(--border); }
-.cnpy-wel-list.is-flush > .cnpy-wel-row:first-child { border-top:0; }
+.cnpy-wel-list.is-flush > .cnpy-wel-row:first-child, .cnpy-wel-first > .cnpy-wel-row:first-child { border-top:0; }
 .cnpy-wel-status { display:flex; align-items:flex-start; gap:10px; flex-wrap:wrap; padding:12px 14px; }
 .cnpy-wel-status > div { flex:1 1 0; min-width:0; }
 .cnpy-wel-pulse { flex:none; width:8px; height:8px; margin:6px 5px 0; background:var(--fg-40); animation:cnpy-blink 1.4s ease-in-out infinite; }
-.cnpy-wel-places { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-.cnpy-wel-place { display:flex; align-items:flex-start; gap:11px; width:100%; height:100%; box-sizing:border-box; padding:14px 16px; text-align:left; }
-.cnpy-wel-nav { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:28px; padding-top:18px; border-top:1px solid var(--border); }
+.cnpy-wel-nav { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .cnpy-wel .cnpy-sechead:first-child { margin-top:0; }
 @media (max-width: 640px) {
-  .cnpy-wel-steps { margin:22px 0 26px; }
+  .cnpy-wel-steps { margin:12px 0 18px; }
   /* Only the step on screen keeps its name; the others are their marks. */
   .cnpy-wel-step:not(.is-cur) .cnpy-wel-stepl { display:none; }
   .cnpy-wel-step:not(.is-cur) .cnpy-wel-stepb { padding:0 6px; }
   .cnpy-wel-stepb { height:40px; }
-  .cnpy-wel-places { grid-template-columns:minmax(0,1fr); }
   .cnpy-wel-nav > span { display:none; }
   .cnpy-wel-nav > button { flex:1 1 0; min-height:40px; }
   .cnpy-wel-acts > button, .cnpy-wel-acts > a { flex:1 1 100%; min-height:40px; }

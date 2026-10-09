@@ -148,6 +148,23 @@ describe("the org switcher — the sidebar's header", () => {
     expect(rules).toContain("@media (max-height: 850px)");
     expect(rules).toMatch(/\.cnpy-orgmenu \.cnpy-menurow:focus-visible[^{]*\{ outline:2px solid/);
   });
+  it("CSS: the button fills the rail's row whatever the name, and the name truncates; its menu is a narrow panel", () => {
+    const rule = (sel: string) => rules.match(new RegExp(`(?:^|\\} )${sel.replace(/[.[\]"=]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+    const btn = rule(".cnpy-orgsw-b");
+    expect(btn).toContain(" width:100%;");          // the owner's ruling: the chip is NOT sized to the name
+    expect(btn).not.toContain("fit-content");
+    expect(btn).toContain("overflow:hidden;");
+    const name = rule(".cnpy-orgsw-n");
+    expect(name).toContain("flex:1;");
+    expect(name).toContain("white-space:nowrap; overflow:hidden; text-overflow:ellipsis;");
+    // The menu the chip opens is 248px (was 316px): a little wider than the chip, not a wide sheet.
+    expect(rule(".cnpy-orgmenu")).toContain(" width:248px; max-width:calc(100vw - 20px);");
+  });
+  it("CSS: the rail is 228px expanded and 64px collapsed; the phone drawer keeps its own width", () => {
+    expect(rules).toMatch(/\.cnpy-aside \{ --side-t:\.24s; [^}]*\bwidth:228px; [^}]*transition:width var\(--side-t\) var\(--side-e\);/);
+    expect(rules).toContain('[data-collapsed="1"] .cnpy-aside { width:64px; }');
+    expect(rules).toMatch(/\[data-phone="1"\] \.cnpy-aside \{[^}]*width:min\(292px, calc\(100vw - 48px\)\);/);
+  });
 });
 
 describe("the switcher's menu", () => {
@@ -300,8 +317,9 @@ describe("the org picker / first run", () => {
   it("render(): view `orgs` is the picker alone — no app shell, no sidebar", () => {
     const html = render({ ...initialState(), view: "orgs", me: me([]), myOrgs: { status: "ok", data: mine({ orgs: [] }) } });
     expect(html).toContain('data-screen-label="Organizations"');
-    expect(html).not.toContain("cnpy-shell");
-    expect(html).not.toContain("cnpy-aside");
+    // The only app shell on the page is the inert backdrop behind the card: no live sidebar.
+    expect((html.match(/class="cnpy-shell"/g) ?? []).length).toBe(1);
+    expect(html).toMatch(/<div class="cnpy-fr-bg" aria-hidden="true" inert><div class="cnpy-shell"/);
     // The create dialog opens over it.
     expect(render({ ...initialState(), view: "orgs", me: me([]), orgsUi: ui({ create: blankCreateOrg() }) })).toContain('data-overlay="orgs-create"');
   });
@@ -320,6 +338,20 @@ describe("the org picker / first run", () => {
     expect(html.slice(banner, body)).toContain("Welcome to Trov");
     expect(html.slice(banner, body)).toContain("<svg");
     expect(html.slice(foot)).toContain('data-act="signOut"');
+    // A first run can step back to "how you'll appear"; someone choosing among their orgs has no such step.
+    expect(html.slice(foot)).toMatch(/data-act="onbBack"[^>]*>Back</);
+    expect(render({ ...initialState(), view: "orgs", me: me([{ slug: "acme", name: "Acme", role: "member", logo_url: null }]) })).not.toContain('data-act="onbBack"');
+    // Behind the card: the app itself, inert and hidden from assistive tech.
+    expect(html).toMatch(/<div class="cnpy-fr-bg" aria-hidden="true" inert><div class="cnpy-shell"/);
+    // The backdrop is the app's own markup, so a screen's entrance, skeleton and hover rules all match
+    // inside it; none may play there (each step of the guided setup re-arms the entrance on the root).
+    expect(rules).toContain(".cnpy-fr-bg, .cnpy-fr-bg *, .cnpy-fr-bg *::before, .cnpy-fr-bg *::after { animation:none !important; transition:none !important; }");
+    // The morphing box wears the card's own shadow, so the shadow resizes with it and never pops in after.
+    const shadow = /\.cnpy-orgs-card \{ box-shadow:([^;]+); \}/.exec(rules)?.[1];
+    expect(shadow).toBeDefined();
+    expect(rules).toContain(`::view-transition-group(first-run-card) { overflow:clip; box-shadow:${shadow}; }`);
+    // Patched in place while it stays this page (morph.ts): a keystroke in the dialog over it rebuilds nothing.
+    expect(html).toMatch(/<div class="cnpy-orgs" data-morph="orgs"/);
     // The window is the card's frame, so a first run does not scroll the page.
     expect(rules).toMatch(/\.cnpy-orgs \{ min-height:100vh; min-height:100dvh; box-sizing:border-box; display:flex; align-items:center; justify-content:center;/);
   });
@@ -337,21 +369,31 @@ describe("create an organization — the Add organization dialog's rules, minus 
     expect(html).not.toContain("Org admin");
   });
   it("validates as the superadmin's dialog does", () => {
-    expect(createOrgErrors({ name: "", slug: "" })).toEqual({ name: "Enter the organization's name.", slug: "Enter a slug. It becomes the organization's address." });
-    expect(createOrgErrors({ name: "Acme", slug: "A B" }).slug).toContain("lowercase letters, digits or hyphens");
-    expect(createOrgErrors({ name: "Acme", slug: "api" }).slug).toBe("“api” is reserved. Pick another slug.");
+    expect(createOrgErrors({ name: "", slug: "" })).toEqual({ name: "Enter the organization's name.", slug: "Enter a handle. It is the organization's address." });
+    expect(createOrgErrors({ name: "Acme", slug: "A B" }).slug).toContain("lowercase letters, digits and hyphens");
+    expect(createOrgErrors({ name: "Acme", slug: "api" }).slug).toBe("“api” is reserved. Pick another handle.");
     expect(createOrgErrors({ name: "Acme", slug: "acme" })).toEqual({});
+    // The live check already said it is taken: Create says so without asking the server again.
+    expect(createOrgErrors({ name: "Acme", slug: "acme", check: "taken" })).toEqual({ slug: "“acme” is taken. Pick another handle." });
+    expect(createOrgErrors({ name: "Acme", slug: "acme", check: "available" })).toEqual({});
   });
   it("puts a server refusal beside the field it is about", () => {
     const d = { slug: "acme" };
-    expect(createOrgServerError("slug_taken", d)).toEqual({ name: undefined, slug: "“acme” is already in use. Pick another slug.", form: undefined });
+    expect(createOrgServerError("slug_taken", d)).toEqual({ slug: "“acme” is taken. Pick another handle." });
     expect(createOrgServerError("reserved_slug", d).slug).toContain("reserved");
     expect(createOrgServerError("invalid_name", d).name).toContain("1 to 80 characters");
     // The grant behind the dialog went (used in another tab, revoked, expired) while it was open.
     expect(createOrgServerError("no_grant", d)).toEqual({ form: NO_GRANT_SENTENCE });
     expect(NO_GRANT_SENTENCE).toContain("Ask Trov if you need one.");
     expect(createOrgServerError("", d).form).toContain("wasn't created");
-    const html = createOrgModal({ ...blankCreateOrg(), name: "Acme", slug: "acme", errors: { slug: "“acme” is already in use. Pick another slug." } });
+    // The field is the organization's HANDLE, with the live answer beside its label.
+    const fresh = createOrgModal({ ...blankCreateOrg(), name: "Acme", slug: "acme", check: "available" });
+    expect(fresh).toContain('<label for="orgs-create-slug"');
+    expect(fresh).toMatch(/>Handle<\/label>\s*<span data-orgs-handle-check="available"[^>]*>available<\/span>/);
+    expect(fresh).not.toContain(">Address<");
+    expect(createOrgModal({ ...blankCreateOrg(), slug: "acme", check: "checking" })).toContain("checking…");
+    expect(createOrgModal(blankCreateOrg())).toMatch(/data-orgs-handle-check="idle"[^>]*><\/span>/);
+    const html = createOrgModal({ ...blankCreateOrg(), name: "Acme", slug: "acme", check: "taken", errors: { slug: "“acme” is taken. Pick another handle." } });
     expect(html).toMatch(/id="orgs-create-slug"[^>]*aria-invalid="true" aria-describedby="orgs-create-slug-err"/);
     expect(html).toContain('<div id="orgs-create-slug-err" role="alert"');
   });
@@ -419,9 +461,10 @@ describe("admin = admin or owner of the org on screen", () => {
     for (const gone of ["testSend", "sched-hour", "policyToggle", "outboxToggle"]) expect(memberMail, gone).not.toContain(gone);
     expect(memberMail).toMatch(/id="org-tab-repos" class="cnpy-tab is-on"/);
   });
-  it("Settings › Account says the role held in the org on screen", () => {
+  it("Settings › Session says the role held in the org on screen (how many orgs is the Organizations tile's to say)", () => {
     const html = render(two("admin", { screen: "settings" }));
-    expect(html).toContain("Admin of Acme Robotics · in 2 organizations");
+    expect(html).toContain("Admin of Acme Robotics");
+    expect(html).not.toContain("in 2 organizations");
     expect(render(app({ screen: "settings" }))).toContain("Member of Acme Robotics");
   });
 });
@@ -437,6 +480,26 @@ describe("Org settings › Members holds what Maintenance › People used to", (
       { id: 10, github_login: null, email: "kai@acme.dev", role: "member", status: "pending", invited_by: "ines", created_at: "2026-10-05T10:00:00.000Z", responded_at: null, responded_by: null, name: null, mail_status: "failed", mail_at: "2026-10-05T10:00:01.000Z", mail_error: "resend 403: domain not verified" },
     ] },
   };
+  it("members are a table: one grid for the head and every row — member, handle, title, joined, role — and the invite bar spans its surface", () => {
+    const html = membersTab(acme("owner"), members, "ines");
+    expect(html).toMatch(/<div class="cnpy-mem-row cnpy-mem-head" aria-hidden="true"><span>Member<\/span><span>Handle<\/span><span>Title<\/span><span class="cnpy-mem-joined">Joined<\/span><span>Role<\/span><span><\/span><\/div>/);
+    const row = /<div class="cnpy-mem-row" data-member="[^"]+">([\s\S]*?)<\/div>\s*(?:<div|<\/li>)/.exec(html)?.[1] ?? "";
+    const order = ["cnpy-mem-who", "cnpy-mem-handle", "cnpy-mem-title", "cnpy-mem-joined", "cnpy-mem-role", "cnpy-mem-act"].map((c) => row.indexOf(c));
+    expect(order.every((n) => n >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // "YOU" sits beside your own name, in the Member column — not over in Role.
+    const mine = /<div class="cnpy-mem-row" data-member="ines">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
+    expect(mine.slice(mine.indexOf("cnpy-mem-who"), mine.indexOf("cnpy-mem-handle"))).toContain(">YOU<");
+    expect(mine.slice(mine.indexOf("cnpy-mem-role"))).not.toContain(">YOU<");
+    // A member (no Edit) gets the same table without the last column.
+    const ro = membersTab(acme("member"), members, "ines");
+    expect(ro).toContain('class="cnpy-mem-row cnpy-mem-head is-ro"');
+    expect(ro).not.toContain("cnpy-mem-act");
+    // The invite bar is no longer capped to the left of a wide page, and its copy matches open sign-up.
+    expect(rules).toContain(".cnpy-org-invite { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }");
+    expect(rules).not.toMatch(/\.cnpy-org-invite \{[^}]*max-width/);
+    expect(membersTab(acme("owner"), { ...members, inviteBy: "email" }, "ines")).not.toContain("can only sign in once it is invited");
+  });
   it("an email invite can be mailed again from any org (the org route), whatever the admin's org count; a GitHub one never is", () => {
     const html = membersTab(acme("owner"), members, "ines");
     expect(html).toMatch(/data-act="orgInviteMail" data-arg="8"[^>]*aria-label="Email the invitation to sam@acme.dev again"[^>]*>Resend email<\/button>/);
@@ -569,9 +632,20 @@ describe("no copy names one organization", () => {
     expect(github).not.toContain("octo-stranger");
     expect(render({ ...initialState(), view: "auth", authStep: "verifying" })).toContain("Signing you in");
   });
-  it("the Get Started guide names Org settings › Members and the switcher", () => {
+  it("the Guide is a reference, not a second onboarding: accounts as facts, Org settings › Members, the switcher", () => {
     const html = render(app({ screen: "guide" }));
-    expect(html).toContain("Any GitHub account can.");
+    expect(html).toContain("How Trov works");
+    // Nothing is a numbered step a signed-in reader has already done, and no sign-in rule is out of date.
+    expect(html).not.toMatch(/>Step [123]</);
+    expect(html).not.toContain("once an admin of your organization has invited that exact address");
+    expect(html).toContain("Signing in with GitHub or with Google creates your account the first time.");
+    // The skills come first; accounts and connecting an agent are reference sections after the tour.
+    const at = (t: string) => html.indexOf(t);
+    expect(at("Orient, work, record")).toBeGreaterThan(-1);
+    expect(at("Orient, work, record")).toBeLessThan(at("Read, propose, confirm"));
+    expect(at("Read, propose, confirm")).toBeLessThan(at("Accounts and organizations"));
+    expect(at("Accounts and organizations")).toBeLessThan(at("Connecting a coding agent"));
+    expect(at("Connecting a coding agent")).toBeLessThan(at("When something doesn"));
     expect(html).toContain("Org settings › Members");
     expect(html).toContain("The switcher at the top of the sidebar");
     expect(html).toContain("You signed in and see no organization.");

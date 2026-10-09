@@ -4,7 +4,7 @@
 //   an OWNER or ADMIN:  connect a repository → connect your coding agent → invite your team → done
 //   a MEMBER:           connect your coding agent → done
 // It is a ROUTE, not server state: a reload stays on the step, and Org settings' checklist and
-// Help › Get Started link back to it. Nothing here is stored.
+// Help › Guide link back to it. Nothing here is stored.
 //
 // Every step's done-state is DERIVED from reads the SPA already makes — Org settings' slices
 // (`OrgUi`: repositories, the GitHub App's connection, members, invitations, the plan) and the
@@ -24,7 +24,6 @@ import type { McpTokenSummary, OAuthGrantSummary } from "@shared/rows";
 import { isSoloPlan } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
 import { O_HELP, accentBtn, chip, failedNote, goLink, quietBtn, roleAtLeast, roleChip } from "./org-ui";
-import { orgTile } from "./org-logo";
 import { skeleton, skLine, skLines, skBox } from "./skeleton";
 import { dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
 import { githubOf, inviteMailNote, inviteRoleDropdown, inviteSection, type OrgUi } from "./org-settings";
@@ -40,8 +39,18 @@ export const isWelcomeStep = (v: unknown): v is WelcomeStep => typeof v === "str
 
 /** What the wizard keeps in AppState (`state.welcome`): the step on screen (the route), and the
  *  agent step's by-hand disclosure. */
-export interface WelcomeUi { step: WelcomeStep; byHand: boolean }
-export const initialWelcomeUi = (): WelcomeUi => ({ step: "github", byHand: false });
+/** Signing up is three steps: how you'll appear, an organization (create or join), and this guided setup.
+ *  The count sits in the top right of each step's card. */
+export const FIRST_RUN_STEPS = 3;
+export const firstRunStepLabel = (n: 1 | 2 | 3): string => `Step ${n} of ${FIRST_RUN_STEPS}`;
+/** Set (per browser tab) when an account is created here, so the guided setup knows it is step 3 of
+ *  that flow and not a later visit from Org settings or Help. */
+export const FIRST_RUN_KEY = "trov:first-run";
+function inFirstRun(): boolean {
+  try { return typeof sessionStorage !== "undefined" && sessionStorage.getItem(FIRST_RUN_KEY) === "1"; } catch { return false; }
+}
+export interface WelcomeUi { step: WelcomeStep; byHand: boolean; /** This visit is the end of signing up. */ firstRun: boolean }
+export const initialWelcomeUi = (): WelcomeUi => ({ step: "github", byHand: false, firstRun: inFirstRun() });
 
 /** A step, read off live data: done, still to do — or not known yet (its read is out, or failed). */
 export type StepState = "done" | "todo" | "unknown";
@@ -50,6 +59,8 @@ export type StepState = "done" | "todo" | "unknown";
 export interface WelcomeRead<T> { status: "idle" | "loading" | "ok" | "error" | "unauth"; data: T; error?: string }
 
 export interface WelcomeProps {
+  /** What sits behind the card: the app itself, loading (render.ts `firstRunBackdrop`). */
+  backdrop?: string;
   /** The org on screen, with MY role in it (null until `me` / `GET /api/orgs` names it). */
   org: MyOrg | null;
   /** The step the route asks for; the view shows `effectiveWelcomeStep` of it. */
@@ -281,21 +292,18 @@ export function teamStep(p: WelcomeProps): string {
 
 // ── the last step ────────────────────────────────────────────────────────────
 
-const PLACES: readonly { act: string; title: string; what: string; icon: string }[] = [
-  { act: "goFeed", title: "Feed", what: "What your team and its agents did, newest first.", icon: `<path d="M4 6h16M4 12h16M4 18h10"></path>` },
-  { act: "goDocs", title: "Docs", what: "How things work and why. Agents propose changes; a person confirms them.", icon: `<path d="M6 3h9l4 4v14H6z"></path><path d="M14 3v5h5"></path>` },
-  { act: "goTickets", title: "Tickets", what: "The queue: what is open, who has it, what is next.", icon: `<rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M8 10h8M8 14h5"></path>` },
-  { act: "goRoadmap", title: "Roadmap", what: "The plan and its sprints, against what actually happened.", icon: `<path d="M4 7h9M4 12h14M4 17h6"></path><circle cx="17" cy="7" r="1.6"></circle>` },
+/** The one thing the setup cannot do for a person: say how a session with Trov goes. Three lines —
+ *  the loop the Guide spells out (orient → work → record) — and nothing the sidebar already shows. */
+const FIRST_SESSION: readonly { title: string; what: string }[] = [
+  { title: "Start as you always do", what: "Before your agent touches an area the team already knows, it reads what Trov has on it. It does this by itself." },
+  { title: "Work", what: "Ask \u201cwhat\u2019s on my plate?\u201d for your tickets. Your agent can update the ones assigned to you." },
+  { title: "Say \u201crecord this session\u201d when you\u2019re done", what: "It stages what shipped: a feed entry, doc changes, decisions. They wait in Review for a person to confirm." },
 ];
-
-/** Where things live — the closing step of both wizards. */
-export function placesGrid(): string {
-  return `<ul class="cnpy-wel-places">${PLACES.map((x) => `<li>
-      <button type="button" data-act="${x.act}" data-field="${attr(`welcomePlace:${x.act}`)}"${surface("", { hover: true, cls: "cnpy-wel-place" })} aria-label="${attr(`Open ${x.title}`)}">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;margin-top:1px">${x.icon}</svg>
-        <span style="min-width:0"><span style="display:block;font-size:13.5px;font-weight:600;color:var(--fg)">${x.title}</span><span style="display:block;font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:1px">${x.what}</span></span>
-      </button>
-    </li>`).join("")}</ul>`;
+export function firstSession(): string {
+  return `<ol${surface("padding:4px 18px;list-style:none;margin:0", { cls: "cnpy-wel-first" })} data-welcome-first>${FIRST_SESSION.map((x, i) => `<li class="cnpy-wel-row" style="align-items:flex-start;flex-wrap:nowrap">
+      <span class="cnpy-wel-mark" aria-hidden="true" style="margin-top:1px">${i + 1}</span>
+      <span style="min-width:0"><span style="display:block;font-size:13.5px;font-weight:600;color:var(--fg)">${x.title}</span><span style="display:block;font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:1px">${x.what}</span></span>
+    </li>`).join("")}</ol>`;
 }
 
 const RECAP: Record<Exclude<WelcomeStep, "done">, Record<StepState, string>> = {
@@ -305,7 +313,7 @@ const RECAP: Record<Exclude<WelcomeStep, "done">, Record<StepState, string>> = {
 };
 
 /** "You're set": what was done and what was skipped (each read off live data, with the way back
- *  to a skipped one), where things live, and the button into the app. */
+ *  to a skipped one), how a first session goes, and the button into the app. */
 export function doneStep(steps: readonly WelcomeStep[], states: Record<WelcomeStep, StepState>): string {
   const recap = steps.filter((s): s is Exclude<WelcomeStep, "done"> => s !== "done").map((s) => {
     const st = states[s];
@@ -313,9 +321,12 @@ export function doneStep(steps: readonly WelcomeStep[], states: Record<WelcomeSt
     return `<li class="cnpy-wel-row" data-welcome-recap="${s}" data-state="${st}">${icon}<span style="flex:1 1 200px;min-width:0;font-size:13px;color:${st === "done" ? "var(--fg)" : "var(--fg-70)"}">${RECAP[s][st]}</span>${st === "todo" ? quietBtn("Do it now", "welcomeGo", { arg: s, field: `welcomeRecap:${s}`, label: `${STEP_LABEL[s]}: do it now` }) : ""}</li>`;
   }).join("");
   return `<div${surface("padding:6px 20px")} data-welcome-recaps><ul class="cnpy-wel-list is-flush">${recap}</ul></div>
-    <h2 style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin:26px 0 9px">Where things live</h2>
-    ${placesGrid()}
-    <div style="${O_HELP};margin-top:14px">My Work is your own page: what is assigned to you and what is waiting on you. This setup stays in Help &rsaquo; Get Started if you want it again.</div>`;
+    <h2 style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin:24px 0 9px">Your first session</h2>
+    ${firstSession()}
+    <div class="cnpy-wel-acts" style="margin-top:14px;align-items:baseline">
+      <span style="${O_HELP};flex:1 1 260px;min-width:0">My Work is your own page: what is assigned to you and what is waiting on you. The Guide explains the rest: review, every screen, troubleshooting.</span>
+      ${quietBtn("Read the Guide", "goGuide", { field: "welcomeGuide" })}
+    </div>`;
 }
 
 // ── the page ─────────────────────────────────────────────────────────────────
@@ -328,22 +339,22 @@ function stepCopy(step: WelcomeStep, org: MyOrg, admin: boolean, states: Record<
     case "team": return { title: "Invite your team", lead: "Each person gets their own sign-in and connects their own agent. They join when they accept." };
     case "done": return {
       title: states.done === "done" ? "You're set" : "You're in",
-      lead: states.done === "done" ? `${org.name} is ready. Here is where things live.`
-        : admin ? `Here is where things live in ${org.name}. What you skipped is still here, and in Org settings, whenever you want it.`
-        : `Here is where things live in ${org.name}. You can connect your agent any time, in Settings.`,
+      lead: states.done === "done" ? `${org.name} is ready. Here is how a session with it goes.`
+        : admin ? `Here is how a session with ${org.name} goes. What you skipped is still here, and in Org settings, whenever you want it.`
+        : `Here is how a session with ${org.name} goes. You can connect your agent any time, in Settings.`,
     };
   }
 }
 
 /** The guided setup, as a full page (no sidebar: there is nothing to navigate to yet). */
 export function welcomeView(p: WelcomeProps): string {
-  const brand = `<div style="display:flex;align-items:center;gap:10px;min-width:0">${trovMark(24)}<span style="font-size:18px;font-weight:600;letter-spacing:-0.02em">Trov</span></div>`;
+  const brand = `<div style="display:flex;align-items:center;gap:9px;min-width:0">${trovMark(20, "currentColor")}<span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Trov</span></div>`;
   if (!p.org) {
     // The org in the address bar is not (yet) known to be this person's: nothing is derived for it.
-    return `<div class="cnpy-orgs cnpy-org cnpy-wel" data-screen-label="Guided setup" data-welcome="loading"><div class="cnpy-orgs-col cnpy-wel-col">
-      <div class="cnpy-wel-top">${brand}</div>
-      ${skeleton("wel-org", "Loading your organization&hellip;", `<div style="margin-top:44px">${skLine(280, 24, 1.25)}${skLines(["92%", "60%"], 14, 1.6)}</div>`)}
-    </div></div>`;
+    return `<div class="cnpy-orgs cnpy-org cnpy-wel" data-morph="welcome" data-screen-label="Guided setup" data-welcome="loading">${p.backdrop ?? ""}<div class="cnpy-orgs-col cnpy-wel-col"><div${surface("overflow:hidden", { cls: "cnpy-orgs-card" })}>
+      <header class="cnpy-orgs-banner"><div class="cnpy-wel-top">${brand}</div></header>
+      <div class="cnpy-orgs-body">${skeleton("wel-org", "Loading your organization&hellip;", `<div style="margin-top:18px">${skLine(280, 24, 1.25)}${skLines(["92%", "60%"], 14, 1.6)}</div>`)}</div>
+    </div></div></div>`;
   }
   const org = p.org;
   const admin = roleAtLeast(org.role, "admin");
@@ -361,26 +372,38 @@ export function welcomeView(p: WelcomeProps): string {
     : states[step] === "done" && step !== "team" ? accentBtn("Continue", "welcomeGo", { arg: next, field: "welcomeNext", extra: "height:36px;padding:0 18px" })
     : quietBtn(states[step] === "done" ? "Continue" : "Skip for now", "welcomeGo", { arg: next, field: "welcomeNext", extra: "height:36px;padding:0 16px;color:var(--fg)" });
   const first = (p.me?.name ?? "").trim().split(/\s+/)[0];
-  const eyebrow = step === "done" ? `Welcome to ${org.name}` : at === 0 ? `Welcome${first ? `, ${first}` : ""} · step 1 of ${steps.length}` : `Step ${at + 1} of ${steps.length}`;
-  return `<div class="cnpy-orgs cnpy-org cnpy-wel" data-screen-label="Guided setup" data-welcome="${admin ? "admin" : "member"}" data-welcome-step="${step}">
-    <div class="cnpy-orgs-col cnpy-wel-col">
-      <div class="cnpy-wel-top">
-        ${brand}
-        <div style="display:flex;align-items:center;gap:8px;min-width:0;margin-left:auto">${orgTile(org.name, 22, org.logo_url)}<span style="font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(org.name)}</span></div>
-        ${next === null ? "" : `<button type="button" data-act="goMyWork" data-field="welcomeExit" class="cnpy-mutelink" style="flex:none;padding:0;font-size:12.5px;font-weight:500;color:var(--fg-55)">Skip setup &rarr;</button>`}
+  // The flow's own count (step 3 of 3) is in the top right; the setup's parts are the stepper below.
+  // So the eyebrow names the organization, and never a second "step n of m".
+  const eyebrow = step === "done" ? `Welcome to ${org.name}` : at === 0 && first ? `Welcome, ${first} · setting up ${org.name}` : `Setting up ${org.name}`;
+  // The same card as onboarding and the org picker before it — banner, body, foot — in front of the same
+  // backdrop: three steps of one flow. The card carries one view-transition name, so a step of a
+  // different height grows or shrinks into the next (transition.ts).
+  return `<div class="cnpy-orgs cnpy-org cnpy-wel" data-morph="welcome" data-screen-label="Guided setup" data-welcome="${admin ? "admin" : "member"}" data-welcome-step="${step}">
+    ${p.backdrop ?? ""}
+    <div class="cnpy-orgs-col cnpy-wel-col"><div${surface("overflow:hidden", { cls: "cnpy-orgs-card" })}>
+      <header class="cnpy-orgs-banner">
+        <span class="cnpy-orgs-art" aria-hidden="true">${trovMark(230, "currentColor")}</span>
+        <div class="cnpy-wel-top">
+          ${brand}
+          <span style="margin-left:auto"></span>
+          ${next === null ? "" : `<button type="button" data-act="goMyWork" data-field="welcomeExit" class="cnpy-mutelink" style="flex:none;padding:0;font-size:12.5px;font-weight:500">Skip setup &rarr;</button>`}
+          ${p.wel.firstRun ? `<span class="cnpy-onb-step" data-flow-step="3" style="margin-left:0">${firstRunStepLabel(3)}</span>` : ""}
+        </div>
+        <div data-welcome-eyebrow style="position:relative;margin-top:20px;font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.78)">${esc(eyebrow)}</div>
+        <h1 id="wel-t" tabindex="-1" style="position:relative;margin:6px 0 0;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.25;overflow-wrap:anywhere;outline:none">${esc(copy.title)}</h1>
+        <p class="cnpy-orgs-lede" style="position:relative;margin:8px 0 0;font-size:13.5px;line-height:1.55;max-width:520px">${esc(copy.lead)}</p>
+      </header>
+      <div class="cnpy-orgs-body cnpy-wel-body">
+        ${welcomeStepper(steps, step, states)}
+        <section class="cnpy-rise" aria-labelledby="wel-t" data-welcome-body="${step}" data-morph-key="wel:${step}">
+          ${body}
+        </section>
       </div>
-      ${welcomeStepper(steps, step, states)}
-      <section class="cnpy-rise" aria-labelledby="wel-t" data-welcome-body="${step}">
-        <div data-welcome-eyebrow style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)">${esc(eyebrow)}</div>
-        <h1 id="wel-t" tabindex="-1" style="margin:8px 0 0;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.25;overflow-wrap:anywhere;outline:none">${esc(copy.title)}</h1>
-        <p style="margin:8px 0 22px;font-size:14px;line-height:1.6;color:var(--fg-55);max-width:600px">${esc(copy.lead)}</p>
-        ${body}
-      </section>
-      <div class="cnpy-wel-nav">
+      <footer class="cnpy-orgs-foot cnpy-wel-nav">
         ${prev ? quietBtn("Back", "welcomeGo", { arg: prev, field: "welcomeBack", extra: "height:36px;padding:0 16px" }) : "<span></span>"}
         ${forward}
-      </div>
-    </div>
+      </footer>
+    </div></div>
   </div>`;
 }
 

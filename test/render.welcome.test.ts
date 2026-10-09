@@ -18,6 +18,7 @@ import css from "../web/src/trov.css?raw";
 import {
   welcomeView, welcomeStepper, welcomeStepsFor, effectiveWelcomeStep, welcomeStates, githubStepState, agentStepState, teamStepState, agentStatus,
   welcomeOverlays, initialWelcomeUi, isWelcomeStep, type WelcomeProps, type WelcomeStep,
+  firstRunStepLabel, FIRST_RUN_STEPS,
 } from "../web/src/welcome";
 import { welcomeReturnHash, parseWelcomeReturn, WELCOME_RETURN_TTL_MS, type WelcomeReturn } from "../web/src/welcome-actions";
 import { initialOrgUi, membersTab, setupChecklist, type OrgUi } from "../web/src/org-settings";
@@ -104,7 +105,9 @@ describe("#welcome — a route, so a reload stays on the step", () => {
 describe("the landing target — the wizard, not Org settings or an empty feed", () => {
   it("creating an organization (Free, granted or paid) lands on the guided setup", () => {
     expect(createLanding("acme")).toBe("/acme/#welcome");
-    expect(src("org-picker-actions.ts")).toContain(".then((org) => h.go(createLanding(org.slug)))");
+    // …in place when the page has held no other org's data (a first run), by a page load otherwise.
+    expect(src("org-picker-actions.ts")).toContain(".then((org) => land(org, createLanding(org.slug)))");
+    expect(src("org-picker-actions.ts")).toContain("if (!h.enterNew?.(org, hash)) h.go(url);");
     expect(src("org-picker-actions.ts")).not.toContain('"#org"');
   });
   it("accepting an invitation lands an owner or admin on its first step, a member on theirs", () => {
@@ -199,9 +202,10 @@ describe("the page — one step at a time, Back, skippable", () => {
   it("is a full page: no sidebar, the picker's frame, the org's name, the step indicator with the current step marked", () => {
     const app: AppState = { ...initialState(), view: "app", screen: "welcome", orgSlug: "acme", me: { handle: "ines", name: "Ines Vidal", avatar_url: null, color: "fern", identities: [{ provider: "github", label: "ines-vidal", linked_at: "t" }], orgs: [org()], superadmin: false, pending_invites: 0 } as Me };
     const html = render(app);
-    expect(html).not.toContain("<aside");
-    expect(html).not.toContain('class="cnpy-shell"');
-    expect(html).toContain('class="cnpy-orgs cnpy-org cnpy-wel"');
+    // The only app shell on the page is the inert backdrop behind the card: no live sidebar.
+    expect((html.match(/class="cnpy-shell"/g) ?? []).length).toBe(1);
+    expect(html).toMatch(/<div class="cnpy-fr-bg" aria-hidden="true" inert><div class="cnpy-shell"/);
+    expect(html).toContain('class="cnpy-orgs cnpy-org cnpy-wel" data-morph="welcome"');
     expect(html).toContain('data-welcome="admin" data-welcome-step="github"');
     expect(html).toContain("Acme Robotics");
     expect(html).toMatch(/data-arg="github" data-field="welcomeGo:github" aria-current="step"/);
@@ -360,7 +364,7 @@ describe("step 2 — connect your coding agent (both versions)", () => {
     const shut = view("agent");
     expect(shut).toMatch(/data-act="welcomeByHand" data-field="welcomeByHand" aria-expanded="false" aria-controls="wel-byhand"/);
     expect(shut).toMatch(/<div id="wel-byhand" hidden/);
-    const open = view("agent", { wel: { step: "agent", byHand: true } });
+    const open = view("agent", { wel: { step: "agent", byHand: true, firstRun: false } });
     expect(open).toMatch(/aria-expanded="true" aria-controls="wel-byhand"/);
     expect(open).not.toMatch(/<div id="wel-byhand" hidden/);
     expect(open).toContain(browserConnectCommand().replace(/&/g, "&amp;"));
@@ -433,12 +437,15 @@ describe("step 3 — invite your team", () => {
 
 // ── the last step ────────────────────────────────────────────────────────────
 describe("the closing step — you're set, and where things live", () => {
-  it("names Feed, Docs, Tickets and Roadmap, each a way in, and the button into the app", () => {
+  it("says how a first session goes (what the setup cannot do for you), points at the Guide, and has the button into the app", () => {
     const html = view("done");
-    for (const [act, title] of [["goFeed", "Feed"], ["goDocs", "Docs"], ["goTickets", "Tickets"], ["goRoadmap", "Roadmap"]]) {
-      expect(html).toMatch(new RegExp(`<button type="button" data-act="${act}"[^>]*aria-label="Open ${title}"`));
-    }
-    expect(html).toContain("Where things live");
+    expect(html).toContain("Your first session");
+    expect((html.match(/class="cnpy-wel-row" style="align-items:flex-start/g) ?? []).length).toBe(3);
+    expect(html).toContain("record this session");
+    expect(html).toMatch(/data-act="goGuide" data-field="welcomeGuide"[^>]*>Read the Guide</);
+    // It does not repeat the sidebar the person sees a moment later.
+    expect(html).not.toContain("Where things live");
+    expect(html).not.toContain('aria-label="Open Roadmap"');
     expect(html).toMatch(/data-act="goMyWork" data-field="welcomeFinish"/);
   });
   it("recaps each step from live data: done, skipped (with the way back), or not known yet", () => {
@@ -458,12 +465,12 @@ describe("the closing step — you're set, and where things live", () => {
     expect(text(html)).toContain("You're set");
     expect(html).not.toContain(">Do it now<");
   });
-  it("a member's closing step: their agent only, the same four places", () => {
+  it("a member's closing step: their agent only, the same first-session primer", () => {
     const html = view("done", { org: org("member") });
     expect(html).toContain('data-welcome-recap="agent"');
     expect(html).not.toContain('data-welcome-recap="github"');
     expect(html).not.toContain('data-welcome-recap="team"');
-    expect(html).toContain('aria-label="Open Roadmap"');
+    expect(html).toContain("data-welcome-first");
     expect(html).toMatch(/data-arg="agent" data-field="welcomeBack"/);
   });
 });
@@ -503,9 +510,36 @@ describe("trov.css — the wizard's rules", () => {
   it("is still under reduced motion, and reflows at phone width", () => {
     expect(rules).toContain("@media (prefers-reduced-motion: reduce) { .cnpy-wel-pulse { animation:none; } .cnpy-wel-stepb { transition:none; } }");
     expect(rules).toMatch(/@media \(max-width: 640px\) \{[^@]*\.cnpy-wel-step:not\(\.is-cur\) \.cnpy-wel-stepl \{ display:none; \}/);
-    expect(rules).toMatch(/@media \(max-width: 640px\) \{[^@]*\.cnpy-wel-places \{ grid-template-columns:minmax\(0,1fr\); \}/);
   });
   it("hand-rolls no switch and no native select", () => {
     expect(src("welcome.ts")).not.toMatch(/<select|window\.confirm|●/);
+  });
+});
+
+describe("the sign-up flow's own count — top right of each card", () => {
+  it("names three steps, and the guided setup is the third only when it ends a sign-up", () => {
+    expect(firstRunStepLabel(1)).toBe("Step 1 of 3");
+    expect(firstRunStepLabel(3)).toBe(`Step 3 of ${FIRST_RUN_STEPS}`);
+    const app = (firstRun: boolean): AppState => ({ ...initialState(), view: "app", screen: "welcome", orgSlug: "acme", me: { handle: "ines", name: "Ines Vidal", avatar_url: null, color: "fern", identities: [{ provider: "github", label: "ines" }], orgs: [{ slug: "acme", name: "Acme Robotics", role: "owner", logo_url: null }] } as AppState["me"], welcome: { step: "github", byHand: false, firstRun } });
+    const first = render(app(true));
+    expect(first).toMatch(/<span class="cnpy-onb-step" data-flow-step="3"[^>]*>Step 3 of 3<\/span>/);
+    // The organization is named in the eyebrow, and there is no second "step n of m" beside the stepper.
+    expect(first).toContain("setting up Acme Robotics");
+    expect(/data-welcome-eyebrow[^>]*>([^<]*)</.exec(first)?.[1]).toBe("Welcome, Ines · setting up Acme Robotics");
+    // Reopened later from Org settings or Help: it is not a step of signing up.
+    expect(render(app(false))).not.toContain('data-flow-step="3"');
+  });
+});
+
+describe("what stands behind the guided setup's card", () => {
+  it("is the REAL My Work of the org on screen — its sidebar, its name — so Open Trov only removes the card", () => {
+    const app: AppState = { ...initialState(), view: "app", screen: "welcome", orgSlug: "acme", me: { handle: "ines", name: "Ines Vidal", avatar_url: null, color: "fern", identities: [{ provider: "github", label: "ines" }], orgs: [{ slug: "acme", name: "Acme Robotics", role: "owner", logo_url: null }] } as AppState["me"] };
+    const html = render(app);
+    const bg = html.slice(html.indexOf('class="cnpy-fr-bg"'), html.indexOf('class="cnpy-orgs-col'));
+    expect(bg).toContain('aria-hidden="true" inert');
+    expect(bg).toContain('<span class="cnpy-lbl cnpy-orgsw-n">Acme Robotics</span>');   // this org's switcher, not a placeholder
+    expect(bg).toContain("Ines");                                                         // My Work greets the person
+    // Leaving the setup for My Work skips the page entrance: the screen was in view the whole time.
+    expect(src("welcome-actions.ts")).toContain("h.loadHome();");
   });
 });

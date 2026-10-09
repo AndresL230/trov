@@ -338,6 +338,10 @@ export function getMyOrgs(): Promise<OrgT.MyOrgsResponse> { return orgSend("GET"
 /** Create an org by USING a grant (`GET /api/orgs`'s `grants`; `grant` = its id, else the oldest) or, with
  *  `plan: "free"` (or holding no grant), on Free: the caller becomes its owner. Refusals: `invalid_slug`,
  *  `reserved_slug`, `slug_taken`, `invalid_name`, `no_grant`, `free_org_limit` (they own a Free org already). */
+/** Is this organization handle (slug) free? Asked as the person types in the create dialog. */
+export function checkOrgSlug(slug: string): Promise<{ available: boolean; reason?: "invalid" | "reserved" | "taken" }> {
+  return getJson(`/api/orgs/slug-check?slug=${encodeURIComponent(slug)}`);
+}
 export function createOrg(body: { slug: string; name: string; grant?: number; plan?: "free" }): Promise<OrgT.MyOrg> {
   return orgSend<{ org: OrgT.MyOrg }>("POST", "/api/orgs", body).then((r) => r.org);
 }

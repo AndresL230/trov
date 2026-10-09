@@ -75,13 +75,14 @@ import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
-import { effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
+import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
 import { currentOrg } from "./org-settings";
 import { createSyncController } from "./sync-actions";
 import { createDropdowns } from "./dropdown";
 import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
 import { SETUP_PARAM, initialBillingDone, startBillingDone } from "./billing";
+import { morphStep } from "./transition";
 import { BILLING_DONE_PATH } from "@shared/billing";
 import { getBillingStatus } from "./api";
 import { setPrimaryRepo } from "./github";
@@ -120,12 +121,21 @@ const orgCtl = createOrgController({
 const orgsCtl = createOrgsController({
   state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
   reloadOrgs: () => loadMyOrgs(), go: (url) => { window.location.assign(url); }, openSettings: () => dispatch("orgGo", null, null),
+  // A first run: the picker has held no org's data, so the org just created or joined is entered in
+  // place and the card morphs into the guided setup — no page load, no flash of a blank page.
+  enterNew: (org, hash) => {
+    if (state.view !== "orgs" || enteredAnOrg || !state.me) return false;
+    if (!state.me.orgs.some((o) => o.slug === org.slug)) state.me.orgs = [...state.me.orgs, org];
+    if (state.myOrgs.data && !state.myOrgs.data.orgs.some((o) => o.slug === org.slug)) state.myOrgs.data = { ...state.myOrgs.data, orgs: [...state.myOrgs.data.orgs, org] };
+    morphStep(() => { state.orgsUi = initialOrgsUi(); enterOrg(org.slug, hash); rerender(); });
+    return true;
+  },
 });
 
 // The guided first-run setup (web/src/welcome-actions.ts): every `welcome…` act, the agent step's
 // re-check, and the note that brings a return from GitHub back to it.
 const welcomeCtl = createWelcomeController({
-  state, mount, rerender: () => rerender(), loadOrg: () => orgCtl.load(), loadConnections: () => loadGrantsIfNeeded(),
+  state, mount, rerender: () => rerender(), loadOrg: () => orgCtl.load(), loadHome: () => loadMyWorkIfNeeded(), loadConnections: () => loadGrantsIfNeeded(),
   reloadConnections: () => { loadGrants(); loadMcpTokens(); }, listGrants: () => listOAuthGrants(),
   unauth: (e) => unauth(e), go: (url) => { window.location.href = url; },
 });
@@ -187,6 +197,9 @@ const ENTER_MS = 900;
 let enterKey = "";
 let enterAt = 0;
 let enterTimer: ReturnType<typeof setTimeout> | null = null;
+/** The next page is one the person was already looking at (My Work behind the guided setup's card):
+ *  it does not enter. Consumed by the next `markEnter`. */
+let skipEnterOnce = false;
 
 function markEnter(): void {
   const root = mount.firstElementChild as HTMLElement | null;
@@ -202,6 +215,7 @@ function markEnter(): void {
   // staggered entrance. A read that lands inside the entrance simply joins it (`--enter-t`).
   const key = `${pageKey(currentRoute())}|${state.repoSample ? "s" : ""}`;
   const now = performance.now();
+  if (skipEnterOnce) { skipEnterOnce = false; enterKey = key; enterAt = now - ENTER_MS; }
   if (key !== enterKey) { enterKey = key; enterAt = now; }
   const elapsed = now - enterAt;
   if (elapsed >= ENTER_MS) return;
@@ -525,7 +539,7 @@ function loadForScreen(screen: Screen): void {
     case "mywork": loadMyWorkIfNeeded(); break;
     case "repo": loadRepoIfNeeded(); break;
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
-    case "settings": loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); break;
+    case "settings": loadSettingsReads(); break;
     case "unsubscribe": runUnsubscribe(); break;
     // Platform has one home, `/platform/` (the org menu links there): an old in-app `#platform…` link goes to it.
     case "platform": case "platformorg":
@@ -714,7 +728,10 @@ function enterPlatform(hash: string): void {
 
 /** Open an org: every request from here on is its (`/api/o/<slug>/…`), the address bar says
  *  `/<slug>/` with the hash route after it, and this browser remembers it as last used. */
+/** This page has entered an org (so it holds that org's data): a second one is opened by a page load. */
+let enteredAnOrg = false;
 function enterOrg(slug: string, hash: string): void {
+  enteredAnOrg = true;
   const query = new URLSearchParams(location.search);
   const link = query.get("link");
   // The return from GitHub after connecting the App (src/github-app/connect.ts): `/<slug>/?github=<outcome>#org/repos`.
@@ -987,6 +1004,14 @@ function loadGrants(): void {
       state.grants = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerender();
     });
+}
+/** Everything personal Settings reads: my connections, my digest preferences, the plan of the org on
+ *  screen (its Plan and Limits tiles) and my organizations again (each one's plan and my role in it). */
+function loadSettingsReads(): void {
+  loadGrantsIfNeeded();
+  loadNotifPrefsIfNeeded();
+  orgCtl.loadPlan();
+  void loadMyOrgs();
 }
 function loadGrantsIfNeeded(): void {
   if (state.grants.status === "idle") loadGrants();
@@ -1958,6 +1983,8 @@ function scheduleHandleCheck(): void {
   const seq = ++handleCheckSeq;
   const h = state.onboard.handle;
   if (!h) return;
+  // Editing an account that exists: the handle it already has is its own, not "taken".
+  if (state.onboard.edit && h === state.onboard.edit.current) { state.onboard.check = "available"; return; }
   handleCheckTimer = window.setTimeout(() => {
     checkHandle(h)
       .then((r) => { if (seq !== handleCheckSeq) return; state.onboard.check = r.available ? "available" : (r.reason ?? "invalid"); rerender(); })
@@ -2020,10 +2047,41 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     case "onbName": state.onboard.name = value ?? ""; rerender(); return;
     case "onbColor": if (arg && (PERSON_COLORS as readonly string[]).includes(arg)) state.onboard.color = arg as PersonColor; break;
+    // Back from the welcome card to "how you'll appear": the account exists, so the card edits it.
+    case "onbBack": {
+      const me = state.me;
+      if (!me) return;
+      const id = me.identities[0];
+      morphStep(() => {
+        state.onboard = { ...initialOnboard(), prefill: id ? { provider: id.provider, label: id.label, email: null, name: me.name, avatar_url: null, suggested_handle: me.handle } : null,
+          handle: me.handle, name: me.name ?? "", color: me.color, check: "available", edit: { current: me.handle } };
+        state.view = "auth"; state.authStep = "onboard";
+        rerender();
+      });
+      return;
+    }
     case "onbSubmit": {
       const o = state.onboard;
       if (o.check !== "available" || o.submitting) return;
       o.submitting = true; o.error = null; rerender();
+      if (o.edit) {
+        // Save what changed (the same writes Settings › Profile makes), then on to the welcome card.
+        const me = state.me;
+        const name = o.name.trim() || null;
+        const profile = me && (name !== me.name || o.color !== me.color) ? updateMe({ name, color: o.color }) : Promise.resolve(null);
+        profile
+          .then(() => (o.handle !== o.edit!.current ? renameHandle(o.handle) : null))
+          .then(() => getMe())
+          .then((fresh) => { state.me = fresh; state.displayName = fresh.name ?? fresh.handle; morphStep(() => showPicker(null)); })
+          .catch((e) => {
+            o.submitting = false;
+            if (e instanceof ApiError && e.message === "handle_taken") o.check = "taken";
+            else if (e instanceof Unauthorized) o.error = "This sign-in expired. Start again.";
+            else o.error = isRateLimited(e) ? rateLimitText(e) : "Couldn't save that. Try again.";
+            rerender();
+          });
+        return;
+      }
       submitOnboard({ handle: o.handle, name: o.name.trim() || null, color: o.color })
         // A brand-new person lands on Get Started, not My Work: the projection is
         // empty on day one, and this is the one moment they are guaranteed to be
@@ -2031,12 +2089,21 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         // it takes. Every later sign-in goes wherever their hash points.
         // Signed up from an MCP client's authorize link → back to the consent screen
         // (a same-origin path the Worker built); otherwise Get Started, as before.
-        // The page is at `/#onboard`, so `/#guide` is a same-document navigation: the hash changes and
-        // nothing loads. Reload, so the boot path runs with the session this request just set.
         .then((r) => {
           if (r.redirect?.startsWith("/oauth/authorize?")) { window.location.href = r.redirect; return; }
-          window.location.hash = "#guide";
-          window.location.reload();
+          // No reload: read who we now are and morph this card into the next one (the org picker —
+          // a new person is in no org). Anything unexpected falls back to a fresh page.
+          getMe().then((me) => {
+            if (me.orgs.length > 0 || me.superadmin === true) throw new Error("not a first run");
+            // The guided setup that follows an organization is step 3 of this flow (welcome.ts).
+            try { sessionStorage.setItem(FIRST_RUN_KEY, "1"); } catch { /* the count is simply not shown */ }
+            state.welcome.firstRun = true;
+            state.me = me;
+            state.displayName = me.name ?? me.handle;
+            state.plat.superadmin = false;
+            history.replaceState(null, "", "/");
+            morphStep(() => showPicker(null));
+          }).catch(() => { window.location.hash = "#guide"; window.location.reload(); });
         })
         .catch((e) => {
           o.submitting = false;
@@ -2113,7 +2180,16 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
 
     // primary navigation
-    case "goMyWork": state.screen = "mywork"; loadMyWorkIfNeeded(); return;
+    case "goMyWork":
+      // Out of the guided setup: My Work is already what stands behind the card (read while the person
+      // was in the setup), so the card simply goes — a morph, and no page entrance replayed over a
+      // screen that was in view the whole time.
+      if (state.view === "app" && state.screen === "welcome") {
+        loadMyWorkIfNeeded();
+        morphStep(() => { state.screen = "mywork"; skipEnterOnce = true; rerender(); });
+        return;
+      }
+      state.screen = "mywork"; loadMyWorkIfNeeded(); return;
     case "mwRepoTab":
       if (!(MW_REPO_TABS as readonly string[]).includes(arg ?? "") || arg === state.mwRepoTab) return;
       state.mwRepoTab = arg as MwRepoTab;
@@ -2740,7 +2816,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       loadNeedsTriageIfNeeded();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3340,7 +3416,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "previewUnsub": state.unsub = { pending: false, error: null, preview: true }; state.screen = "unsubscribe"; break;
-    case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); return;
+    case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadSettingsReads(); return;
 
     // ── Org settings › Notifications (admin) ─────────────────────────────────
     case "policyToggle": {
