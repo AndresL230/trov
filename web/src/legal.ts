@@ -326,10 +326,15 @@ function numbered(title: string): { n: string; text: string } {
   return m ? { n: m[1], text: m[2] } : { n: "", text: title };
 }
 
+const CHEV = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>`;
+
 /** The whole page for one document. `dark` picks the toggle's icon, like the landing's nav. The page is the
  *  site's own: the brand banner carries the title (`.site-banner`, the landing hero's), the contents ride
- *  beside the text and follow the reader (web/src/legal-page.ts marks the section in view). */
-export function legalView(doc: LegalDoc, dark: boolean): string {
+ *  beside the text and follow the reader (web/src/legal-page.ts marks the section in view).
+ *  Under 900px the contents are a box above the text, folded behind a "Contents" disclosure (11 to 13 links
+ *  would otherwise stand between the title and the first paragraph): `tocOpen` is its state, the button
+ *  and the wrapper round the list are what trov.css folds, and a wide screen shows neither. */
+export function legalView(doc: LegalDoc, dark: boolean, tocOpen = false): string {
   const other = doc.kind === "terms" ? PRIVACY : TERMS;
   const toc = doc.sections.map((s) => {
     const t = numbered(s.title);
@@ -371,7 +376,7 @@ export function legalView(doc: LegalDoc, dark: boolean): string {
     </header>
     <main class="site-legal">
       <aside class="site-legal-side">
-        <nav aria-label="Contents" class="site-legal-toc"><div class="site-legal-toc-h">Contents</div><ol>${toc}</ol></nav>
+        <nav aria-label="Contents" class="site-legal-toc" data-open="${tocOpen ? 1 : 0}"><div class="site-legal-toc-h">Contents</div><button type="button" data-legal-tocb aria-expanded="${tocOpen}" aria-controls="site-legal-toc-list" class="site-legal-tocb"><span class="site-legal-toc-h">Contents</span><span class="site-legal-tocb-n">${doc.sections.length} sections</span>${CHEV}</button><div class="site-legal-tocw"><ol id="site-legal-toc-list">${toc}</ol></div></nav>
       </aside>
       <div class="site-legal-text">
         <div class="site-legal-brief" style="border-radius:12px">

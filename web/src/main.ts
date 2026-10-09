@@ -48,6 +48,8 @@ import type { SprintDetail } from "@shared/sprints";
 import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash";
 import { mountLandingMotion, unmountLandingMotion, noteJump } from "./landing-motion";
 import { createFeatureCtl } from "./site-feature";
+import { createMenuCtl } from "./site-menu";
+import { initSiteViewport } from "./site-viewport";
 import { TOUR_KEYS } from "./landing";
 import { initFaqAccordion } from "./site-faq";
 import {
@@ -2334,6 +2336,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // `arg` says what the visitor came to do ("signup" from a Start-for-free button, or the dialog's own
       // switch); anything else is the nav's Sign in. Switching inside the open dialog keeps focus on the switch.
       const switching = state.signInOpen;
+      menuCtl.close({ instant: true, refocus: false }); // opened from the menu: the sign-in sheet takes its place
       state.signInMode = arg === "signup" ? "signup" : "signin";
       state.signInOpen = true;
       rerender();
@@ -2356,6 +2359,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     case "closeSignIn": state.signInOpen = false; break;
     // The tour's dialog (site-feature.ts): a card grows into it, ← / → step through the features.
+    // The menu the nav offers under 900px (site-menu.ts).
+    case "openSiteMenu": menuCtl.open(); return;
+    case "closeSiteMenu": menuCtl.close(); return;
     case "openFeature": if (arg) featureCtl.open(arg); return;
     case "closeFeature": featureCtl.close(); return;
     case "stepFeature": featureCtl.step(arg === "prev" ? -1 : 1); return;
@@ -2378,6 +2384,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const behavior: ScrollBehavior = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
       // ONE scroll per click; where it lands is the target's `scroll-margin-top` (trov.css). Sections
       // passed on the way settle without their entrance (landing-motion.ts).
+      // From the menu: it closes (unlocking the page's scroll at once) and the page scrolls under it as it leaves.
+      menuCtl.close({ refocus: false });
       noteJump();
       if (arg === "top") window.scrollTo({ top: 0, behavior });
       else document.getElementById(`site-${arg}`)?.scrollIntoView({ behavior, block: "start" });
@@ -2411,6 +2419,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       window.scrollTo(0, 0);
       return;
     case "siteBack": {
+      menuCtl.close({ instant: true, refocus: false });
       const back = state.siteReturn ?? parseHash("");
       state.siteReturn = null;
       applyRoute(back);
@@ -4569,6 +4578,17 @@ mount.addEventListener("mouseleave", () => railTip(null));
 // The landing tour's dialog: Escape, ← / →, and Tab kept inside it.
 const featureCtl = createFeatureCtl({ mount, keys: TOUR_KEYS, get: () => state.siteFeature, set: (v) => { state.siteFeature = v; }, rerender: () => rerender() });
 document.addEventListener("keydown", (e) => featureCtl.onKey(e));
+// A phone steps through the tour's dialog by swiping it left or right (site-feature.ts `onSwipe*`).
+mount.addEventListener("pointerdown", (e) => featureCtl.onPointerDown(e));
+mount.addEventListener("pointerup", (e) => featureCtl.onPointerUp(e));
+mount.addEventListener("pointercancel", () => featureCtl.onPointerCancel());
+
+// The landing's menu (under 900px): Escape, Tab kept inside it, and gone when the window outgrows it.
+const menuCtl = createMenuCtl({ mount, get: () => state.siteMenu, set: (v) => { state.siteMenu = v; }, rerender: () => rerender() });
+document.addEventListener("keydown", (e) => menuCtl.onKey(e));
+window.addEventListener("resize", () => menuCtl.onResize());
+// The on-screen keyboard: the site's sheets stay above it (site-viewport.ts sets `--site-kb`).
+initSiteViewport();
 
 // Escape closes the landing page's sign-in dialog, wherever focus is.
 document.addEventListener("keydown", (e) => {

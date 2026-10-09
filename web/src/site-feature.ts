@@ -20,9 +20,14 @@
 // transform and opacity move. `data-moving` on the overlay promotes the moving layers
 // (`will-change`) for the length of a move and is dropped after it.
 //
+// On a phone the dialog is a full-height sheet, and a swipe steps it: left for the next feature, right
+// for the previous one (`swipeStep`). Pointer events, touch only; the panel is `touch-action:pan-y`
+// (trov.css), so a vertical scroll stays the browser's — it cancels the pointer and nothing steps —
+// and a sideways move is ours. Nothing follows the finger: the step plays its own short slide.
+//
 // Nothing here touches the page behind: it is `data-morph="landing"`, so every repaint patches it.
 
-import { FX_EXIT_MS, FX_MOVE_MS, VT_CLASS, VT_NAME, fxMode, stepKey, trapIndex, type FeatureState } from "./site-feature-core";
+import { FX_EXIT_MS, FX_MOVE_MS, VT_CLASS, VT_NAME, fxMode, stepKey, swipeStep, trapIndex, type FeatureState } from "./site-feature-core";
 export * from "./site-feature-core";
 
 /** The focusable controls of a dialog, in order — what Tab cycles through. */
@@ -166,5 +171,23 @@ export function createFeatureCtl(d: FeatureDeps) {
     to.focus();
   }
 
-  return { open, close, step, onKey };
+  // A swipe on the open dialog (touch or pen; a mouse drag selects text and is left alone).
+  let touch: { id: number; x: number; y: number; t: number } | null = null;
+  function onPointerDown(e: PointerEvent): void {
+    touch = null;
+    if (!d.get() || closing || e.pointerType === "mouse" || !e.isPrimary) return;
+    if (!(e.target as Element | null)?.closest?.(".site-fx-panel")) return;
+    touch = { id: e.pointerId, x: e.clientX, y: e.clientY, t: e.timeStamp };
+  }
+  function onPointerUp(e: PointerEvent): void {
+    const from = touch;
+    touch = null;
+    if (!from || from.id !== e.pointerId || !d.get()) return;
+    const dir = swipeStep(e.clientX - from.x, e.clientY - from.y, e.timeStamp - from.t);
+    if (dir) step(dir);
+  }
+  /** The browser took the gesture (a vertical scroll): it is not a swipe. */
+  function onPointerCancel(): void { touch = null; }
+
+  return { open, close, step, onKey, onPointerDown, onPointerUp, onPointerCancel };
 }
