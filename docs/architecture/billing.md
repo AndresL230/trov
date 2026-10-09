@@ -277,6 +277,8 @@ Stripe: `test/helpers/billing.ts` is an in-memory stand-in.
 **Yours to decide:** a yearly price or not; a free trial or not (a trial needs
 `subscription_data[trial_period_days]` in `startCheckout` — one line — and reads as `active` here); tax
 (Stripe Tax on or off; on needs `automatic_tax[enabled]=true` and an address at checkout); promotion codes;
-the refund policy (refunds are made in the Stripe dashboard — Trov has no refund code); Terms / Privacy
-wording for paid plans (`web/src/legal.ts`); and whether the numbers in `shared/plans.ts` are the ones you
+the refund policy (refunds are made in the Stripe dashboard — Trov has no refund code; Terms section 3 in
+`web/src/legal.ts` currently says no refund for a period already started, except where the law requires or
+for a mistake — change the text if you decide otherwise, and the same for its 30 days' notice of a price
+change); and whether the numbers in `shared/plans.ts` are the ones you
 want to sell.

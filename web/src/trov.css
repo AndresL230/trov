@@ -1491,20 +1491,48 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-btn-outline { border:1px solid var(--border-strong); color:var(--fg); }
 .site-btn-outline:hover { background:var(--hover); color:var(--fg); }
 @media (max-width:900px) { .site-hide-sm { display:none !important; } }
-/* The legal pages (/terms, /privacy — web/src/legal.ts): a long single-column text, the
-   landing's type scale. Section anchors clear the 60px sticky nav. */
-.site-legal-lede { margin:28px 0 0; font-size:16.5px; line-height:1.65; color:var(--fg-70); text-wrap:pretty; }
-.site-legal-toc { margin:36px 0 0; padding:18px 22px; border:1px solid var(--border); background:var(--surface); }
+/* The legal pages (/terms, /privacy — web/src/legal.ts). The site's own page: the brand banner carries the
+   title (the landing hero's `.site-banner`), then the text with its contents riding beside it. Under 900px
+   the contents sit above the text as a box. Section anchors clear the 60px sticky nav. */
+.site-legal-band { padding:clamp(34px, 4.6vw, 58px) var(--hero-pad) clamp(36px, 4.8vw, 60px); }
+.site-legal-band > .site-banner-art { width:clamp(220px, 30vw, 400px); aspect-ratio:1; right:clamp(-70px, -4vw, -30px); top:clamp(-90px, -6vw, -50px); }
+.site-legal-band-in { max-width:1060px; margin:0 auto; }
+.site-legal-tabs { display:inline-flex; gap:2px; padding:3px; border-radius:11px; background:rgba(255,255,255,.14); }
+.site-legal-tab { padding:6px 13px; font-size:13px; font-weight:600; color:rgba(255,255,255,.82); text-decoration:none; transition:background .12s ease, color .12s ease; }
+a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-decoration:none; }
+.site-legal-tab[aria-current] { background:#fff; color:#333c8f; }
+[data-cnpy-theme="dark"] .site-legal-tab[aria-current] { color:#3a4620; }
+.site-legal-h { margin:22px 0 0; font-size:clamp(32px, 4.4vw, 50px); line-height:1.08; font-weight:650; letter-spacing:-0.03em; }
+.site-legal-lede { margin:16px 0 0; max-width:680px; font-size:16.5px; line-height:1.62; color:rgba(255,255,255,.86); text-wrap:pretty; }
+.site-legal-date { margin-top:20px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:rgba(255,255,255,.7); }
+.site-legal { max-width:1060px; margin:0 auto; padding:52px 24px 0; display:grid; grid-template-columns:232px minmax(0, 1fr); gap:56px; align-items:start; }
+.site-legal-side { position:sticky; top:84px; max-height:calc(100vh - 108px); overflow:auto; }
+.site-legal-text { max-width:700px; }
 .site-legal-toc-h { font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--fg-40); }
-.site-legal-toc ol { list-style:none; margin:10px 0 0; padding:0; columns:2 220px; column-gap:28px; font-size:14px; line-height:1.9; }
-.site-legal-sec { scroll-margin-top:84px; margin-top:44px; }
-.site-legal-sec h2 { margin:0; font-size:20px; font-weight:650; letter-spacing:-0.015em; }
+.site-legal-toc ol { list-style:none; margin:10px 0 0; padding:0; border-left:1px solid var(--border); }
+.site-legal-toc a { display:block; margin-left:-1px; padding:5px 0 5px 14px; border-left:1px solid transparent; font-size:13.5px; line-height:1.4; color:var(--fg-55); text-decoration:none; transition:color .12s ease, border-color .12s ease; }
+.site-legal-toc a:hover { color:var(--fg); text-decoration:none; }
+.site-legal-toc a[aria-current] { color:var(--fg); font-weight:600; border-left-color:var(--accent); }
+.site-legal-brief { padding:20px 22px; background:var(--surface); box-shadow:0 0 0 1px var(--border); }
+.site-legal-brief ul { list-style:none; margin:12px 0 0; padding:0; display:grid; gap:9px; }
+.site-legal-brief li { position:relative; padding-left:18px; font-size:15px; line-height:1.55; color:var(--fg); text-wrap:pretty; }
+.site-legal-brief li::before { content:""; position:absolute; left:1px; top:.62em; width:6px; height:6px; background:var(--accent); }
+.site-legal-brief p { margin:14px 0 0; font-size:13px; line-height:1.55; color:var(--fg-55); }
+.site-legal-sec { scroll-margin-top:84px; margin-top:46px; }
+.site-legal-sec h2 { margin:0; display:flex; align-items:baseline; gap:12px; font-size:20px; font-weight:650; letter-spacing:-0.015em; }
+.site-legal-n { flex:none; min-width:26px; padding:2px 0; text-align:center; font-family:var(--label); font-size:12.5px; font-weight:600; letter-spacing:.02em; color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, transparent); transform:translateY(-2px); }
 .site-legal-sec p, .site-legal-sec li { font-size:15px; line-height:1.7; color:var(--fg-70); text-wrap:pretty; }
 .site-legal-sec p { margin:12px 0 0; }
 .site-legal-sec ul { margin:12px 0 0; padding-left:22px; }
 .site-legal-sec li + li { margin-top:6px; }
 .site-legal-sec b { color:var(--fg); font-weight:600; }
 .site-legal-sec code { font-family:var(--code); font-size:.86em; padding:1px 5px; background:var(--hover); }
+@media (max-width:900px) {
+  .site-legal { grid-template-columns:minmax(0, 1fr); gap:28px; padding-top:32px; }
+  .site-legal-side { position:static; max-height:none; padding:18px 22px; background:var(--surface); box-shadow:0 0 0 1px var(--border); }
+  .site-legal-toc ol { border-left:0; columns:2 200px; column-gap:28px; }
+  .site-legal-toc a { margin-left:0; padding-left:0; border-left:0; }
+}
 /* phone: the nav's logo, icons and Sign in / Back to the app fit a 360px screen. */
 @media (max-width:480px) { .site-navin { gap:12px !important; padding:0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)) !important; } .site-navin > div:last-child { gap:8px !important; } }
 
@@ -2114,8 +2142,9 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-orgs, .cnpy-onb { isolation:isolate; }
 .cnpy-orgs-col, .cnpy-onb > .cnpy-orgs-col { position:relative; z-index:1; }
 .cnpy-onb .cnpy-sw.compact { padding:6px 0; }
-/* After payment (billing.ts `billingDonePage`): the same card, narrower — it holds a sentence and a button. */
-.cnpy-billdone > .cnpy-orgs-col { max-width:520px; }
+/* After payment (billing.ts `billingDonePage`): the same card at the SAME width as the step it gives way to
+   (the organization picker). A morph between two widths crops both faces sideways while the box travels,
+   which reads as the card being squeezed; with one width only the height moves. */
 .cnpy-orgs-body.cnpy-billdone-body { display:grid; gap:16px; padding-top:22px; }
 .cnpy-billdone-acts { display:flex; flex-wrap:wrap; gap:8px; }
 /* Its actions are buttons the size of their label, not bars the width of the card. */
@@ -2344,6 +2373,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 [data-cnpy-theme] .cnpy-tree,
 [data-cnpy-theme] .cnpy-select,
 [data-cnpy-theme] .site-navlink { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .site-legal-tabs { border-radius:calc(11px * var(--corner-scale)) !important; }
+@media (max-width:900px) { [data-cnpy-theme] .site-legal-side { border-radius:calc(12px * var(--corner-scale)) !important; } }
 [data-cnpy-theme] .site-fxcard::after { border-radius:calc(12px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-search,
 [data-cnpy-theme] .cnpy-sfbar,

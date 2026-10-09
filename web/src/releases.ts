@@ -84,6 +84,9 @@ export const RELEASES: Release[] = [
       "The Claude Code plugin card now shows the two install commands with a Copy button, and the three steps to connect.",
       "Moving through the front page is calmer: sections arrive with a short, small fade, and a link in the top bar scrolls once and stops with the heading just under the bar.",
     ],
+    headsUp: [
+      "The Terms of Service and Privacy Policy changed on October 9, 2026. They now cover paid plans: how Pro is billed, changing seats, cancelling, refunds, what happens when a plan ends, and Stripe as the company that takes payment.",
+    ],
     patches: {
       added: [
         "`.site-banner` (`web/src/trov.css`): the first-run card's banner as ONE definition with `.cnpy-orgs-banner` (gradient, dot grid, the faint tilted mark as `.site-banner-art`), used by the landing's hero, the authority card (`.site-split`) and the sign-in dialog; a step deeper on the dark theme (#134)",
@@ -96,8 +99,11 @@ export const RELEASES: Release[] = [
         "One motion clock on `:root`: `--fx-ease` (`cubic-bezier(0.4, 0, 0.2, 1)`), `--fx-fast` .18s, `--fx-base` .24s, `--fx-slow` .3s. The dialog, the tour cards, the scroll reveals and the mockups' checks, bars and swaps all read it; only transform and opacity move in the dialog, and `will-change` is set only while it moves (`data-moving`) (#134)",
       ],
       changed: [
+        "Terms and Privacy (`web/src/legal.ts`): a new Terms section 3 \"Plans, payment and cancellation\" (numbers from `shared/plans.ts` / `shared/pricing.ts`), a liability cap, Stripe as a processor, billing data, retention and Stripe's cookies in Privacy; `updated` is 2026-10-09 and later Terms sections are renumbered (#134)",
+        "The legal pages open on the site banner (`.site-legal-band`) with a Terms / Privacy switch, an \"In short\" box (`LegalDoc.brief`), numbered headings, and the contents riding beside the text and marking the section in view (`web/src/legal-page.ts`); under 900px the contents are a box above the text (#134)",
+        "The payment confirmation card is the organization picker's width (the 520px override is gone), so the morph between them changes height only and no longer crops both faces sideways (#134)",
         "After payment the card STAYS on \"Payment received\" with its one button (it is the confirmation; it used to jump on at once), and the org picker it leads to no longer opens the Create an organization dialog by itself: the paid-for organization is one of the things to do there. Its button is the size of its label and goes on IN PLACE (`billingSetup`: the card morphs into the picker; it used to load `/?setup=…`) (#134)",
-        "Get started: either plan is one line (\"$10 per seat / month · up to 50 people · Compare plans\") and Pro shows the same two provider buttons with no note under them, so the dialog is the same height on both; the card is 380px (#134)",
+        "Get started: either plan is one line (\"$10 per seat / month · up to 50 people\"), with the pricing link in the lede (\"Pick a plan to start, or compare them.\") and Pro shows the same two provider buttons with no note under them, so the dialog is the same height on both; the card is 380px (#134)",
         "Sign in and Get started open ONE dialog that says which the visitor came for (`SignInMode`, `state.signInMode`), with a switch in its foot between the two. Get started (the nav's accent button and the hero's) opens on a choice of plan (`planChoice`, `state.signInPlan`): Free, then the two providers; or Pro, then the same two providers as links to the billing route with the provider picked (`&via=`), so signing in carries on to payment — shown only while Pro can be bought, with every word and number from `shared/plans.ts` / `shared/pricing.ts`. The nav's Sign in is a quiet button beside it (#134)",
         "Sign-in dialog: a plain card with the mark, the title and the two providers (the neutral solid GitHub button, both reading Continue with …) as a narrow centred pair with an \"or\" rule between them — no banner of its own, since it opens over the hero's. Bannered cards (the first run's, the \"Agents propose\" card) have no border, so no pale frame shows round the banner; their edge is a ring in the shadow (#134)",
         "Dark theme: the banner is a deep olive of the dark accent (the green mark), not purple, on the landing page and the first-run cards alike (one rule); the glows behind the cards take `--mark` from the theme (#134)",
