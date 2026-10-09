@@ -2119,11 +2119,16 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // Landing page (signed out): the Sign in dialog, and in-page jumps. The jumps
     // scroll instead of setting location.hash — the hash is the route and the
     // sign-in return-to, and must survive a browse of the landing page.
-    case "openSignIn":
+    case "openSignIn": {
+      // `arg` says what the visitor came to do ("signup" from a Start-for-free button, or the dialog's own
+      // switch); anything else is the nav's Sign in. Switching inside the open dialog keeps focus on the switch.
+      const switching = state.signInOpen;
+      state.signInMode = arg === "signup" ? "signup" : "signin";
       state.signInOpen = true;
       rerender();
-      mount.querySelector<HTMLElement>('[role="dialog"] [data-act="signIn"]')?.focus();
+      mount.querySelector<HTMLElement>(switching ? '[role="dialog"] [data-field="signInSwitch"]' : '[role="dialog"] [data-act="signIn"]')?.focus();
       return;
+    }
     case "closeSignIn": state.signInOpen = false; break;
     // The tour's dialog (site-feature.ts): a card grows into it, ← / → step through the features.
     case "openFeature": if (arg) featureCtl.open(arg); return;

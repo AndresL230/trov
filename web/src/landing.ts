@@ -166,7 +166,7 @@ function hero(signedIn: boolean): string {
   // account, no invitation needed). Reopened from inside the app, it goes to the Guide instead.
   const primary = signedIn
     ? `<button data-act="siteGuide" class="site-btn site-btn-onb">Open the Guide</button>`
-    : `<button data-act="openSignIn" class="site-btn site-btn-onb">Start for free</button>`;
+    : `<button data-act="openSignIn" data-arg="signup" class="site-btn site-btn-onb">Start for free</button>`;
   return `<header id="site-top" class="site-hero">
     <div class="site-banner site-hero-band" style="border-radius:16px">
       ${BANNER_ART}
@@ -751,8 +751,18 @@ function security(): string {
 // beside the page instead of rebuilding the page under it.
 const GH_24 = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5C5.37.5 0 5.78 0 12.29c0 5.2 3.44 9.6 8.21 11.16.6.11.82-.26.82-.58 0-.29-.01-1.04-.02-2.05-3.34.72-4.04-1.61-4.04-1.61-.55-1.38-1.34-1.75-1.34-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.23 1.84 1.23 1.07 1.83 2.81 1.3 3.49.99.11-.77.42-1.3.76-1.6-2.67-.3-5.47-1.32-5.47-5.87 0-1.3.47-2.36 1.23-3.19-.12-.3-.53-1.51.12-3.15 0 0 1.01-.32 3.3 1.22a11.5 11.5 0 0 1 6 0c2.29-1.54 3.3-1.22 3.3-1.22.65 1.64.24 2.85.12 3.15.77.83 1.23 1.89 1.23 3.19 0 4.56-2.81 5.57-5.49 5.86.43.37.81 1.1.81 2.22 0 1.6-.01 2.89-.01 3.29 0 .32.22.7.83.58A12.01 12.01 0 0 0 24 12.29C24 5.78 18.63.5 12 .5z"></path></svg>`;
 const GOOGLE_24 = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5c-.3 1.5-1.1 2.7-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.7z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.2v3.1C3.2 21.3 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.3 14.3c-.5-1.5-.5-3.1 0-4.6V6.6H1.2c-1.6 3.3-1.6 7.3 0 10.6l4.1-2.9z"/><path fill="#EA4335" d="M12 4.7c1.7 0 3.3.6 4.5 1.7l3.4-3.4C17.9 1.1 15.1 0 12 0 7.3 0 3.2 2.7 1.2 6.6l4.1 3.1c.9-2.9 3.6-5 6.7-5z"/></svg>`;
-function signInDialog(): string {
-  return `<div data-overlay="signin">
+/** Why the dialog was opened. Signing in and signing up are the SAME two buttons (a provider either finds
+ *  your account or creates it), so there is one dialog — but it says what the visitor came to do: "Start
+ *  for free" must not land on a card titled "Sign in". The foot switches between the two. */
+export type SignInMode = "signin" | "signup";
+const SIGNIN_COPY: Record<SignInMode, { title: string; lede: string; foot: string; other: SignInMode; switchTo: string }> = {
+  signin: { title: "Sign in to Trov", lede: "Welcome back. Pick the account you signed up with.", foot: "New to Trov?", other: "signup", switchTo: "Create an account" },
+  signup: { title: "Create your Trov account", lede: "Free to start. Then create an organization for your team, or join one you're invited to.", foot: "Already have an account?", other: "signin", switchTo: "Sign in" },
+};
+
+function signInDialog(mode: SignInMode = "signin"): string {
+  const c = SIGNIN_COPY[mode];
+  return `<div data-overlay="signin" data-signin-mode="${mode}">
     <div data-act="closeSignIn" class="site-signin-back"></div>
     <div class="site-signin-wrap">
       <div role="dialog" aria-modal="true" aria-labelledby="signin-title" class="site-signin-card" style="border-radius:14px">
@@ -761,15 +771,15 @@ function signInDialog(): string {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"></path></svg>
           </button>
           ${trovMark(30)}
-          <h2 id="signin-title" style="margin:14px 0 0;font-size:21px;font-weight:650;letter-spacing:-0.02em">Sign in to Trov</h2>
-          <p style="margin:6px 0 0;max-width:260px;font-size:13.5px;line-height:1.55;color:var(--fg-55);text-wrap:balance">Open your organization, or create one for your team.</p>
+          <h2 id="signin-title" style="margin:14px 0 0;font-size:21px;font-weight:650;letter-spacing:-0.02em">${c.title}</h2>
+          <p style="margin:6px 0 0;max-width:270px;font-size:13.5px;line-height:1.55;color:var(--fg-55);text-wrap:balance">${c.lede}</p>
         </div>
         <div class="site-signin-body">
           <button data-act="signIn" class="site-signin-btn site-btn-solid" style="border-radius:9px">${GH_24}Continue with GitHub</button>
           <div class="site-signin-or" aria-hidden="true"><span></span>or<span></span></div>
           <button data-act="signInGoogle" class="site-signin-btn site-btn-outline" style="border-radius:9px">${GOOGLE_24}Continue with Google</button>
         </div>
-        <div class="site-signin-foot">New to Trov? Either one creates your account.</div>
+        <div class="site-signin-foot">${c.foot} <button type="button" data-act="openSignIn" data-arg="${c.other}" data-field="signInSwitch" class="site-signin-switch">${c.switchTo}</button></div>
       </div>
     </div>
   </div>`;
@@ -779,6 +789,8 @@ export interface LandingProps {
   /** The resolved app theme is not Light (drives the toggle icon, like the app header's). */
   dark: boolean;
   signInOpen: boolean;
+  /** What the visitor came to do: the nav's Sign in, or a "Start for free" button (default: sign in). */
+  signInMode?: SignInMode;
   /** Opened from inside the app (the sidebar logo): the nav offers the way back, not Sign in. */
   signedIn?: boolean;
   /** Reveal keys that already played (landing-motion.ts records them). */
@@ -802,6 +814,6 @@ export function landingView(p: LandingProps): string {
     ${pricingSection({ signedIn: p.signedIn ?? false, rv })}
     ${siteFooter()}
   </div>
-  ${p.signInOpen ? signInDialog() : ""}
+  ${p.signInOpen ? signInDialog(p.signInMode ?? "signin") : ""}
   ${p.feature ? featureDialog(p.feature) : ""}`;
 }

@@ -20,7 +20,7 @@ describe("landing — the facts it states", () => {
     const html = out(true);
     expect(html).toContain("Sign up with GitHub or Google. No invitation needed.</p>");
     expect(html.match(/No invitation needed/g)?.length).toBe(1);
-    expect(html).toContain("New to Trov? Either one creates your account.</div>");
+    expect(html).toMatch(/New to Trov\? <button type="button" data-act="openSignIn" data-arg="signup"[^>]*>Create an account<\/button>/);
     for (const gone of ["restricted to your org", "needs an invitation", "invite-only", "by invitation"]) expect(html).not.toContain(gone);
   });
 
@@ -77,6 +77,16 @@ describe("landing — the banner carried through the page", () => {
     // The dialog opens over the hero, which IS the banner: a plain card, not the same slab twice.
     expect(html).not.toContain("site-signin-banner");
     expect(html).toMatch(/<div class="site-signin-head">[\s\S]*?<h2 id="signin-title"[^>]*>Sign in to Trov<\/h2>/);
+    // ONE dialog for both, but it says what the visitor came to do: the nav's Sign in, or a Start-for-free button.
+    expect(html).toContain('data-overlay="signin" data-signin-mode="signin"');
+    expect(html).toMatch(/<button data-act="openSignIn" data-arg="signup" class="site-btn site-btn-onb">Start for free<\/button>/);
+    const signup = landingView({ dark: false, signInOpen: true, signInMode: "signup", seen: new Set() });
+    expect(signup).toContain('data-signin-mode="signup"');
+    expect(signup).toMatch(/<h2 id="signin-title"[^>]*>Create your Trov account<\/h2>/);
+    expect(signup).not.toContain(">Sign in to Trov<");
+    expect(signup).toMatch(/Already have an account\? <button type="button" data-act="openSignIn" data-arg="signin"[^>]*>Sign in<\/button>/);
+    // The same two providers either way.
+    for (const d of [html, signup]) expect(d).toMatch(/Continue with GitHub<\/button>[\s\S]*Continue with Google<\/button>/);
     expect(out().match(/class="site-banner /g)?.length).toBe(2);
   });
 

@@ -618,7 +618,9 @@ describe("no copy names one organization", () => {
   });
   it("the sign-in copy states the rules: either provider creates an account", () => {
     const landing = render({ ...initialState(), view: "auth", authStep: "login", signInOpen: true });
-    expect(landing).toContain("New to Trov? Either one creates your account.");
+    expect(landing).toContain("New to Trov?");
+    expect(landing).toContain(">Create an account</button>");
+    expect(render({ ...initialState(), view: "auth", authStep: "login", signInOpen: true, signInMode: "signup" })).toContain("Create your Trov account");
     expect(landing).not.toContain("needs an invitation");
     expect(landing).not.toContain("previewNonMember");
     const google = render({ ...initialState(), view: "auth", authStep: "unverified", deniedEmail: "sam@x.io" });
