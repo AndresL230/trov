@@ -769,6 +769,7 @@ function signInDialog(): string {
         </div>
         <div class="site-signin-body">
           <button data-act="signIn" class="site-signin-btn site-btn-solid" style="border-radius:9px">${GH_24}Continue with GitHub</button>
+          <div class="site-signin-or" aria-hidden="true"><span></span>or<span></span></div>
           <button data-act="signInGoogle" class="site-signin-btn site-btn-outline" style="border-radius:9px">${GOOGLE_24}Continue with Google</button>
         </div>
         <div class="site-signin-foot">New to Trov? Either one creates your account.</div>

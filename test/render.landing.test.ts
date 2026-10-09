@@ -126,6 +126,9 @@ describe("landing — a rerender replays nothing", () => {
     expect(html).toMatch(/role="dialog" aria-modal="true" aria-labelledby="signin-title"/);
     expect(html).toMatch(/<button data-act="signIn" [^>]*>.*Continue with GitHub<\/button>/s);
     expect(html).toMatch(/<button data-act="signInGoogle" [^>]*>.*Continue with Google<\/button>/s);
+    // The two buttons are a narrow centred pair with the "or" rule between them (not full-width bars).
+    expect(html).toMatch(/Continue with GitHub<\/button>\s*<div class="site-signin-or" aria-hidden="true"><span><\/span>or<span><\/span><\/div>\s*<button data-act="signInGoogle"/);
+    expect(rules).toContain(".site-signin-body > * { width:100%; max-width:280px; }");
     expect(html).not.toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<button/);
   });
 });
