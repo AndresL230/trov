@@ -12,6 +12,7 @@ import { PRICING, canPurchase, canPurchasePlan, formatPrice, hasYearly, isFreePr
 import { BILLING_INTERVALS, BILLING_START_PATH, PRICING_PATH, PURCHASABLE_PLANS, billingStartHref, isPurchasablePlan } from "../shared/billing";
 import pricingHtml from "../web/pricing.html?raw";
 import viteConfig from "../web/vite.config.ts?raw";
+import trovCssRaw from "../web/src/trov.css?raw";
 import { EVERY_PLAN, FREE_START_HREF, PRICING_TITLE, earlyAccessHref, pricingQuestions, pricingSection, pricingView, talkHref, waitlistHref } from "../web/src/pricing";
 import { landingView } from "../web/src/landing";
 import { siteFooter, SITE_CONTACT } from "../web/src/site-chrome";
@@ -376,6 +377,12 @@ describe("pricing — questions say only what is true today", () => {
     expect(items.slice(1).every((x) => !x.includes(" open"))).toBe(true);
     // Each question is still a heading (inside its summary), and its answer is in the same item.
     expect(html).toMatch(/<summary><h\d>[^<]+<\/h\d><svg class="site-faq-chev"[\s\S]*?<\/summary><p>/);
+    // It spans the page's blocks (no cap of its own), and BOTH opening and closing animate, off under reduced motion.
+    const css = trovCssRaw.replace(/\s+/g, " ");
+    expect(css).toMatch(/\.site-faq \{ margin-top:20px; border-bottom:1px solid var\(--border\); interpolate-size:allow-keywords; \}/);
+    expect(css).toMatch(/\.site-faq > details::details-content \{ block-size:0; opacity:0; overflow:clip; transition:block-size [^;]+, opacity [^;]+, content-visibility \.3s allow-discrete; \}/);
+    expect(css).toContain(".site-faq > details[open]::details-content { block-size:auto; opacity:1; }");
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.site-faq > details::details-content,[^}]*transition:none; \}/);
   });
   const all = text(pricingSection() + pricingSection({ pricing: priced({ team: { yearly: 400 } }) }) + pricingSection({ pricing: unpriced() }));
 
