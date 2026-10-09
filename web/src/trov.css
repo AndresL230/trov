@@ -387,7 +387,19 @@ input, select { font-family: inherit; }
 .cnpy-rv-md .cnpy-rv-blk { display:block; position:relative; text-decoration:none; --rv-chg:var(--green); background:color-mix(in srgb, var(--rv-chg) 9%, transparent); box-shadow:0 0 0 6px color-mix(in srgb, var(--rv-chg) 9%, transparent); }
 .cnpy-rv-md .cnpy-rv-blk[data-chg="del"] { --rv-chg:var(--red); }
 .cnpy-rv-md .cnpy-rv-blk::before { content:""; position:absolute; left:-12px; top:-6px; bottom:-6px; width:2px; background:var(--rv-chg); }
-.cnpy-rv-md .cnpy-rv-blk[data-chg="del"], .cnpy-rv-md .cnpy-rv-blk[data-chg="del"] :is(h1,h2,h3,h4,h5,h6,p,li,td,th,strong,code,a,blockquote) { color:var(--fg-55); text-decoration:line-through; text-decoration-color:color-mix(in srgb, var(--red) 70%, transparent); }
+/* ONE line through removed text: the strike is set on the removed box alone and carries into everything in
+   it. Setting it again on an inline child (a `code`, a `strong`) drew a second line at that child's own
+   size, so "`main`" read as struck twice. Children only take the muted colour. */
+.cnpy-rv-md .cnpy-rv-blk[data-chg="del"] { text-decoration:line-through; text-decoration-color:color-mix(in srgb, var(--red) 70%, transparent); }
+.cnpy-rv-md .cnpy-rv-blk[data-chg="del"], .cnpy-rv-md .cnpy-rv-blk[data-chg="del"] :is(h1,h2,h3,h4,h5,h6,p,li,td,th,strong,code,a,blockquote) { color:var(--fg-55); }
+/* A block EDITED in place (html-words.ts): no tint on the box, an amber rule in the margin, and the words
+   themselves carry the marks — added ones on green, dropped ones struck on red. */
+.cnpy-rv-md .cnpy-rv-blk[data-chg="mix"] { --rv-chg:var(--amber); background:none; box-shadow:none; }
+.cnpy-rv-md ins.cnpy-rv-w { text-decoration:none; color:inherit; background:color-mix(in srgb, var(--green) 22%, transparent); box-shadow:0 0 0 1px color-mix(in srgb, var(--green) 22%, transparent); }
+.cnpy-rv-md del.cnpy-rv-w { color:var(--fg-55); text-decoration:line-through; text-decoration-color:color-mix(in srgb, var(--red) 70%, transparent); background:color-mix(in srgb, var(--red) 13%, transparent); box-shadow:0 0 0 1px color-mix(in srgb, var(--red) 13%, transparent); }
+.cnpy-rv-md del.cnpy-rv-w :is(strong,code,a) { color:var(--fg-55); }
+/* A dropped word and the word that replaces it stand apart ("and" struck, then "then"), never run together. */
+.cnpy-rv-md del.cnpy-rv-w + ins.cnpy-rv-w, .cnpy-rv-md ins.cnpy-rv-w + del.cnpy-rv-w { margin-left:4px; }
 .cnpy-rv-md .cnpy-rv-blk[data-chg="del"] img { opacity:.55; }
 /* The reader trims the first and last block's outer margin; a marked first / last block needs the same. */
 .cnpy-rv-md > .cnpy-rv-blk:first-child > :first-child, .cnpy-rv-md > .cnpy-rv-list:first-child > :first-child > :first-child { margin-top:0; }
@@ -403,7 +415,9 @@ input, select { font-family: inherit; }
 .cnpy-rv-md tr.cnpy-rv-row-add > td:first-child { box-shadow:inset 2px 0 0 var(--green); }
 .cnpy-rv-md tr.cnpy-rv-row-del > td { background:color-mix(in srgb, var(--red) 9%, transparent); }
 .cnpy-rv-md tr.cnpy-rv-row-del > td:first-child { box-shadow:inset 2px 0 0 var(--red); }
-.cnpy-rv-md tr.cnpy-rv-row-del > td, .cnpy-rv-md tr.cnpy-rv-row-del > td :is(strong,code,a) { color:var(--fg-55); text-decoration:line-through; text-decoration-color:color-mix(in srgb, var(--red) 70%, transparent); }
+.cnpy-rv-md tr.cnpy-rv-row-del > td { text-decoration:line-through; text-decoration-color:color-mix(in srgb, var(--red) 70%, transparent); }
+.cnpy-rv-md tr.cnpy-rv-row-del > td, .cnpy-rv-md tr.cnpy-rv-row-del > td :is(strong,code,a) { color:var(--fg-55); }
+.cnpy-rv-md tr.cnpy-rv-row-chg > td:first-child { box-shadow:inset 2px 0 0 var(--amber); }
 /* Review under a tablet's width: the list and the detail take turns (review.ts
    `data-pane`), and the detail's header lets its buttons drop under the title. */
 .cnpy-rv-back { display:none; }

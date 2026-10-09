@@ -279,6 +279,15 @@ rendering, never a second renderer: the proposal's two bodies go through `render
 changed block sits in an `<ins>` / `<del>`; a table is compared row by row and a list item by item;
 a new doc is rendered whole, unmarked, under one note. Body text reaches the page only through
 `renderMarkdown` (`test/render.review-rendered.test.ts`). Unified and Side by side show source.
+Where a block was EDITED rather than replaced, the two renderings are merged word by word
+(`web/src/html-words.ts` `mergeInline`): one block (`data-chg="mix"`, an amber rule) or one table row
+(`tr.cnpy-rv-row-chg`), with the added words in `<ins class="cnpy-rv-w">` and the dropped ones in
+`<del class="cnpy-rv-w">`. Its safety rule is the one to keep if this is ever touched: **a tag is ONE token,
+quoted attribute values included** (a wrapper written inside an attribute would close the value with its own
+quotes and let the rest be parsed as elements), only text tokens are wrapped, no tag of the old rendering is
+kept, and markup the tokenizer cannot account for refuses the merge (the two blocks are then shown whole).
+More than 60% of the words changed is two texts, not one edited: also shown whole. A strike is set ONCE, on
+the removed box — never again on an inline child, which draws a second line.
 
 ## Personal Settings — a bento whose tiles are as tall as what they hold
 

@@ -28,6 +28,7 @@ vi.mock("../web/src/markdown", async () => {
 
 import { renderedDoc, RENDERED_NEW_NOTE, RENDERED_SAME_NOTE } from "../web/src/review-rendered";
 import { markdownBlocks } from "../web/src/md-blocks";
+import { DEL_OPEN, INS_OPEN, htmlTokens, innersOf, mergeInline, replaced, withoutMarks } from "../web/src/html-words";
 import { diffViewer } from "../web/src/review";
 import { proposalReviewItem } from "../web/src/triage-map";
 import reviewRenderedSrc from "../web/src/review-rendered.ts?raw";
@@ -161,32 +162,49 @@ describe("Rendered — an EDIT marks what changed, block by block", () => {
     expect(html).not.toContain("| --- |");
     expect(html).not.toMatch(/(^|>|\n)#{1,6} /);
   });
-  it("a changed paragraph is the old one removed, then the new one added", () => {
-    expect(html).toMatch(/<del class="cnpy-rv-blk" data-chg="del"><!--md--><p>Every write is counted per organization\.<\/p>\s*<!--\/md--><\/del><ins class="cnpy-rv-blk" data-chg="add"><!--md--><p>Every write is counted per organization and per person\.<\/p>/);
+  it("a reworded paragraph is ONE paragraph, edited in place: the new words marked, the dropped ones struck", () => {
+    expect(html).toContain(`<div class="cnpy-rv-blk" data-chg="mix"><!--md--><p>Every write is counted per ${DEL_OPEN}organization.</del>${INS_OPEN}organization and per person.</ins></p>`);
+    // Not the old paragraph whole and then the new one whole.
+    expect(html).not.toContain('<del class="cnpy-rv-blk" data-chg="del"><!--md--><p>Every write');
   });
-  it("a changed heading is marked as a block", () => {
-    expect(html).toMatch(/<del class="cnpy-rv-blk" data-chg="del"><!--md--><h2>What a caller sees<\/h2>/);
-    expect(html).toMatch(/<ins class="cnpy-rv-blk" data-chg="add"><!--md--><h2>What a caller sees over the limit<\/h2>/);
+  it("a reworded heading is edited in place too", () => {
+    expect(html).toContain(`<div class="cnpy-rv-blk" data-chg="mix"><!--md--><h2>What a caller sees${INS_OPEN} over the limit</ins></h2>`);
   });
-  it("a table with one changed row is ONE table: that row removed and added, the others plain", () => {
+  it("a table row with one changed cell is ONE row: the cell's old value struck, its new one marked", () => {
     const table = html.slice(html.indexOf("<table>"), html.indexOf("</table>"));
-    expect(table).toMatch(/<tr class="cnpy-rv-row-del">\s*<td>MCP writes<\/td>\s*<td>120<\/td>/);
-    expect(table).toMatch(/<tr class="cnpy-rv-row-add">\s*<td>MCP writes<\/td>\s*<td>300<\/td>/);
+    expect(table).toContain(`<tr class="cnpy-rv-row-chg">\n<td>MCP writes</td>\n<td>${DEL_OPEN}120</del> ${INS_OPEN}300</ins></td>\n<td>1 minute</td>`);
+    expect(table).not.toContain("cnpy-rv-row-del");
+    expect(table).not.toContain("cnpy-rv-row-add");
     expect(table).toMatch(/<tr>\s*<td>Sign-in mail<\/td>/);
-    expect(table.match(/<tr[ >]/g)?.length).toBe(4);   // the header row and three body rows
+    expect(table.match(/<tr[ >]/g)?.length).toBe(3);   // the header row and two body rows: no row is shown twice
     // The table itself is not wrapped as removed + added.
     expect(html).not.toMatch(/<del class="cnpy-rv-blk" data-chg="del"><!--md--><table>/);
   });
-  it("a changed list item is marked alone; the items around it stay plain", () => {
-    expect(html).toMatch(/<del class="cnpy-rv-blk" data-chg="del"><!--md--><ul>\s*<li>The web app shows a toast\.<\/li>/);
-    expect(html).toMatch(/<ins class="cnpy-rv-blk" data-chg="add"><!--md--><ul>\s*<li>The web app shows a toast and keeps what was typed\.<\/li>/);
+  it("a reworded list item is edited in place; the items around it stay plain", () => {
+    expect(html).toContain(`<div class="cnpy-rv-blk" data-chg="mix"><!--md--><ul>\n<li>The web app shows a ${DEL_OPEN}toast.</del>${INS_OPEN}toast and keeps what was typed.</ins></li>`);
     expect(html).toMatch(/<div class="cnpy-rv-list"><!--md--><ul>\s*<li>The MCP tool returns an error\.<\/li>/);
   });
-  it("reads in the document's order: what was removed sits where it was, before what replaced it", () => {
-    const at = (s: string) => html.indexOf(s);
-    expect(at("<table>")).toBeLessThan(at("<h2>What a caller sees</h2>"));
-    expect(at("<h2>What a caller sees</h2>")).toBeLessThan(at("<h2>What a caller sees over the limit</h2>"));
-    expect(at("<h2>What a caller sees over the limit</h2>")).toBeLessThan(at("The MCP tool returns an error."));
+  it("an edited row is found among rows that were also added: it pairs with the row it shares a cell with", () => {
+    const t = renderedDoc("| Name | Branch | Who |\n| --- | --- | --- |\n| staging | develop | anyone |\n| production | main | admins |\n",
+      "| Name | Branch | Who |\n| --- | --- | --- |\n| staging | develop | anyone |\n| production | main | CI only |\n| preview | any branch | CI only |\n", false);
+    expect(t).toContain(`<tr class="cnpy-rv-row-chg">\n<td>production</td>\n<td>main</td>\n<td>${DEL_OPEN}admins</del> ${INS_OPEN}CI only</ins></td>`);
+    expect(t).toMatch(/<tr class="cnpy-rv-row-add">\s*<td>preview<\/td>/);
+    expect(t).not.toContain("cnpy-rv-row-del");
+    expect(t.match(/<td>production<\/td>/g)?.length).toBe(1);   // the row is shown once
+  });
+  it("rows added or removed outright are still whole rows, and unrelated text is still two blocks", () => {
+    const t = renderedDoc("| A | B |\n| --- | --- |\n| one | 1 |\n", "| A | B |\n| --- | --- |\n| one | 1 |\n| two | 2 |\n", false);
+    expect(t).toMatch(/<tr class="cnpy-rv-row-add">\s*<td>two<\/td>/);
+    expect(t).not.toContain("cnpy-rv-row-chg");
+    const p = renderedDoc("Deploy from your laptop every Friday.\n", "Nobody may ever touch production by hand.\n", false);
+    expect(p).toContain('<del class="cnpy-rv-blk" data-chg="del">');
+    expect(p).toContain('<ins class="cnpy-rv-blk" data-chg="add">');
+    expect(p).not.toContain('data-chg="mix"');
+  });
+  it("reads in the document's order", () => {
+    const at = (x: string) => html.indexOf(x);
+    expect(at("<table>")).toBeLessThan(at("What a caller"));
+    expect(at("What a caller")).toBeLessThan(at("The MCP tool returns an error."));
   });
   it("unchanged blocks are not marked", () => {
     expect(html).toContain("<!--md--><h1>Rate limits</h1>");
@@ -252,7 +270,7 @@ describe("Rendered — the trust boundary: a proposal reaches the page only thro
       const mine = outsideMd(html());
       for (const bad of ["<script", "onerror", "onmouseover", "javascript:", "alert(", "<img", "<b "]) expect(mine, bad).not.toContain(bad);
       // What is left is this module's own constant markup: no text of the document at all.
-      expect(mine.replace(/<[^>]+>/g, "").replace(/added in this proposal|removed \(struck\)/g, "").replace(RENDERED_NEW_NOTE, "").trim()).toBe("");
+      expect(mine.replace(/<[^>]+>/g, "").replace(/added in this proposal|removed \(struck\)|edited in place/g, "").replace(RENDERED_NEW_NOTE, "").trim()).toBe("");
     });
   }
   it("every block of both bodies was handed to the renderer (none dropped, none interpolated)", () => {
@@ -262,6 +280,7 @@ describe("Rendered — the trust boundary: a proposal reaches the page only thro
   });
   it("the one edit made to rendered output inserts a constant: a class on a table row", () => {
     expect(reviewRenderedSrc).toContain('`<tr class="cnpy-rv-row-${t}">`');
+    expect(reviewRenderedSrc).toContain('`<tr class="cnpy-rv-row-chg">${row}`');
     expect(reviewRenderedSrc).not.toMatch(/\besc\(|innerHTML/);       // it escapes nothing itself: it never holds body text to escape
     expect(reviewRenderedSrc).toContain('import { renderMarkdown } from "./markdown"');
     expect(reviewRenderedSrc).not.toMatch(/from "marked"|from "dompurify"/);   // no second renderer
@@ -270,6 +289,57 @@ describe("Rendered — the trust boundary: a proposal reaches the page only thro
     const t = renderedDoc("| A |\n| --- |\n| 1 |\n", "| A |\n| --- |\n| <tr> |\n| 2 |\n", false);
     expect(t).not.toContain("cnpy-rv-row-");
     expect(t.match(/<table>/g)?.length).toBe(2);
+  });
+});
+
+describe("html-words — merging two renderings word by word, without making inert markup live", () => {
+  it("marks added words, strikes dropped ones, and keeps the new rendering's tags exactly", () => {
+    const merged = mergeInline("Run <code>wrangler rollback</code> and tell the team.", "Run <code>wrangler rollback</code>, then tell the whole team.")!;
+    expect(merged).toContain("<code>wrangler rollback</code>");
+    expect(merged).toContain(`${INS_OPEN}whole </ins>`);
+    expect(merged).toContain(`${DEL_OPEN}and</del>${INS_OPEN}then</ins>`);
+    expect(withoutMarks(merged)).toBe("Run <code>wrangler rollback</code>, then tell the whole team.");
+  });
+  it("adjacent added words are one mark", () => {
+    expect(mergeInline("a b c d e f", "a b c d e f g h i")).toBe(`a b c d e f${INS_OPEN} g h i</ins>`);
+  });
+  it("an old tag is never kept: a link removed leaves its text struck, not its element", () => {
+    const merged = mergeInline('see <a href="https://a.example">the old page</a> for the full details here', "see the notes for the full details here")!;
+    expect(merged).not.toContain("<a ");
+    expect(merged).not.toContain("</a>");
+    expect(withoutMarks(merged)).toBe("see the notes for the full details here");
+  });
+  it("refuses two unrelated texts, and text with nothing in common", () => {
+    expect(mergeInline("Deploy from your laptop.", "CI applies database migrations.")).toBeNull();
+    expect(mergeInline("one", "two")).toBeNull();
+  });
+  it("a tag is ONE token whatever its attribute values hold: a `>` or a tag-like string inside quotes ends nothing", () => {
+    const tag = '<a href="https://a.example" title="a > b <img src=x onerror=alert(1)> c">';
+    expect(htmlTokens(`${tag}link</a>`)).toEqual([tag, "link", "</a>"]);
+    // So a wrapper can only ever be written BETWEEN whole tags: here around the new word, after the tag.
+    const next = `read ${tag}this new link</a> before you deploy`;
+    const merged = mergeInline(`read ${tag}this link</a> before you deploy`, next)!;
+    expect(merged.split(tag).length).toBe(2);                    // the tag is intact, once
+    expect(merged.indexOf(INS_OPEN)).toBeGreaterThan(merged.indexOf(tag) + tag.length - 1);
+    expect(withoutMarks(merged)).toBe(next);
+  });
+  it("refuses markup it cannot account for (a `<` that opens nothing, a tag that never closes) — never guesses", () => {
+    expect(htmlTokens("a < b")).toBeNull();
+    expect(htmlTokens('<a title="unterminated>x')).toBeNull();
+    expect(mergeInline("one two three", "one two < three")).toBeNull();
+    expect(replaced("old", '<a title="x')).toBeNull();
+    expect(innersOf('<td>a</td><td title="</td>">b</td>', "td")).toEqual(["a", "b"]);   // a `</td>` inside a quoted value is not a cell's end
+  });
+  it("a whole cell replaced strikes the old text (its tags dropped) and marks the new", () => {
+    expect(replaced("<code>main</code>", "<code>trunk</code>")).toBe(`${DEL_OPEN}main</del> <code>${INS_OPEN}trunk</ins></code>`);
+  });
+  it("whatever it merges, taking the marks back out gives the new rendering, byte for byte", () => {
+    const pairs: [string, string][] = [
+      ["Merges to main deploy automatically.", "Merges to main deploy automatically. Nobody deploys by hand."],
+      ["<strong>Pro</strong> is billed per organization, monthly.", "<strong>Pro</strong> is billed per seat, monthly or yearly."],
+      ["a <em>b</em> c d e f g", "a <em>b</em> <code>c</code> d e f g"],
+    ];
+    for (const [o, n] of pairs) expect(withoutMarks(mergeInline(o, n)!), n).toBe(n);
   });
 });
 
@@ -290,6 +360,19 @@ describe("Rendered — the marks' CSS (trov.css)", () => {
     expect(css).toMatch(/\.cnpy-rv-md \.cnpy-rv-blk\[data-chg="del"\][^{]*\{[^}]*text-decoration:line-through/);
     expect(css).toContain(".cnpy-rv-md tr.cnpy-rv-row-add > td");
     expect(css).toContain(".cnpy-rv-md tr.cnpy-rv-row-del > td");
+  });
+  it("removed text is struck ONCE: the strike is on the removed box, never again on an inline child", () => {
+    // A second `line-through` on a `code` or `strong` inside draws a second line at that child's size.
+    expect(css).toContain('.cnpy-rv-md .cnpy-rv-blk[data-chg="del"] { text-decoration:line-through;');
+    expect(css).toContain(".cnpy-rv-md tr.cnpy-rv-row-del > td { text-decoration:line-through;");
+    expect(css).not.toMatch(/:is\([^)]*code[^)]*\) \{[^}]*text-decoration:line-through/);
+  });
+  it("an edit in place marks the words: added on green, dropped struck on red, an amber rule on the block or row", () => {
+    expect(css).toMatch(/\.cnpy-rv-md ins\.cnpy-rv-w \{ text-decoration:none;[^}]*var\(--green\)/);
+    expect(css).toMatch(/\.cnpy-rv-md del\.cnpy-rv-w \{[^}]*text-decoration:line-through;[^}]*var\(--red\)/);
+    expect(css).toContain('.cnpy-rv-md .cnpy-rv-blk[data-chg="mix"] { --rv-chg:var(--amber);');
+    expect(css).toContain(".cnpy-rv-md tr.cnpy-rv-row-chg > td:first-child { box-shadow:inset 2px 0 0 var(--amber); }");
+    expect(css).toContain(".cnpy-rv-md del.cnpy-rv-w + ins.cnpy-rv-w, .cnpy-rv-md ins.cnpy-rv-w + del.cnpy-rv-w { margin-left:4px; }");
   });
   it("declares no radius (nothing to register in the corners block)", () => {
     const block = css.slice(css.indexOf("/* ── Review › Rendered"), css.indexOf("/* Review under a tablet's width"));
