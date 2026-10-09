@@ -2129,6 +2129,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       mount.querySelector<HTMLElement>(switching ? '[role="dialog"] [data-field="signInSwitch"]' : '[role="dialog"] [data-act="signIn"]')?.focus();
       return;
     }
+    case "signInPlan": state.signInPlan = arg === "team" ? "team" : "free"; break;
     case "closeSignIn": state.signInOpen = false; break;
     // The tour's dialog (site-feature.ts): a card grows into it, ← / → step through the features.
     case "openFeature": if (arg) featureCtl.open(arg); return;

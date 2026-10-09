@@ -115,6 +115,8 @@ export interface AppState {
   signInOpen: boolean;
   /** Which button opened it (landing.ts `SignInMode`): the dialog's title and foot follow. */
   signInMode: "signin" | "signup";
+  /** The plan picked in the dialog's Get started side. */
+  signInPlan: "free" | "team";
   /** The landing tour's feature open in its dialog (web/src/site-feature.ts), or none. */
   siteFeature: import("./site-feature-core").FeatureState | null;
   /** Landing reveal keys that already played (landing-motion.ts records them). */
@@ -414,7 +416,7 @@ export function syncPropsOf(s: AppState, now: number = Date.now()): SyncProps {
 
 export function initialState(): AppState {
   return {
-    view: "auth", authStep: "login", signInOpen: false, signInMode: "signin", siteFeature: null, landingSeen: new Set(), siteReturn: null,
+    view: "auth", authStep: "login", signInOpen: false, signInMode: "signin", signInPlan: "free", siteFeature: null, landingSeen: new Set(), siteReturn: null,
     deniedEmail: null,
     onboard: initialOnboard(),
     persons: { status: "idle", data: [] },
@@ -670,7 +672,7 @@ function notice(text: string): string {
 // ── auth states ──────────────────────────────────────────────────────────────
 function authView(s: AppState): string {
   // Signed out → the landing page; its Sign in opens the provider dialog.
-  if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, signInMode: s.signInMode, seen: s.landingSeen, feature: s.siteFeature });
+  if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, signInMode: s.signInMode, signInPlan: s.signInPlan, seen: s.landingSeen, feature: s.siteFeature });
   // Onboarding is a form: `data-morph` patches it in place per keystroke (morph.ts `paint`) instead of
   // rebuilding the card and the backdrop behind it. The other auth cards have nothing to type in.
   return `<div class="cnpy-authwrap"${s.authStep === "onboard" ? ' data-morph="onboard"' : ""} style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">

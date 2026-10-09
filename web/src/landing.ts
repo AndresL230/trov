@@ -35,6 +35,9 @@ import { esc } from "./ui";
 import { trovMark } from "@shared/mark";
 import { TROV_REPO, siteFooter, siteMark as mark } from "./site-chrome";
 import { pricingSection } from "./pricing";
+import { segmented } from "./segmented";
+import { PLANS, seatsPhrase } from "@shared/plans";
+import { PRICING, canPurchasePlan, formatPrice, purchaseHref } from "@shared/pricing";
 import { ONE_ORG_NOTE, connectSteps } from "./mcp-connect";
 import type { FeatureState } from "./site-feature-core";
 import { AGENT_TAG, featureMock, initials, pill } from "./landing-mocks";
@@ -130,9 +133,9 @@ function nav(dark: boolean, signedIn: boolean): string {
         ${signedIn
           ? `<button data-act="siteBack" class="cnpy-accentbtn" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">Back to the app</button>`
           // Two ways in, said apart: a quiet Sign in for someone with an account, and the page's one accent
-          // button for someone without — the same label as the hero's, opening the same dialog in its mode.
+          // button for someone without (Get started, the hero's label), which opens the dialog on its plan choice.
           : `<button data-act="openSignIn" data-field="navSignIn" class="site-nav-signin" style="border-radius:8px">Sign in</button>
-        <button data-act="openSignIn" data-arg="signup" data-field="navStart" class="cnpy-accentbtn" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">Start for free</button>`}
+        <button data-act="openSignIn" data-arg="signup" data-field="navStart" class="cnpy-accentbtn" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">Get started</button>`}
       </div>
     </div>
   </nav>`;
@@ -171,7 +174,7 @@ function hero(signedIn: boolean): string {
   // account, no invitation needed). Reopened from inside the app, it goes to the Guide instead.
   const primary = signedIn
     ? `<button data-act="siteGuide" class="site-btn site-btn-onb">Open the Guide</button>`
-    : `<button data-act="openSignIn" data-arg="signup" class="site-btn site-btn-onb">Start for free</button>`;
+    : `<button data-act="openSignIn" data-arg="signup" class="site-btn site-btn-onb">Get started</button>`;
   return `<header id="site-top" class="site-hero">
     <div class="site-banner site-hero-band" style="border-radius:16px">
       ${BANNER_ART}
@@ -762,12 +765,40 @@ const GOOGLE_24 = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="
 export type SignInMode = "signin" | "signup";
 const SIGNIN_COPY: Record<SignInMode, { title: string; lede: string; foot: string; other: SignInMode; switchTo: string }> = {
   signin: { title: "Sign in to Trov", lede: "Welcome back. Pick the account you signed up with.", foot: "New to Trov?", other: "signup", switchTo: "Create an account" },
-  signup: { title: "Create your Trov account", lede: "Free to start. Then create an organization for your team, or join one you're invited to.", foot: "Already have an account?", other: "signin", switchTo: "Sign in" },
+  signup: { title: "Get started with Trov", lede: "Pick a plan. You can change it later.", foot: "Already have an account?", other: "signin", switchTo: "Sign in" },
 };
 
-function signInDialog(mode: SignInMode = "signin"): string {
+/** The plan a new person starts on, picked in the dialog: Free, or Pro when Pro can be bought on the site. */
+export type SignUpPlan = "free" | "team";
+
+/** Getting started is a CHOICE of plan before it is a sign-in: Free (sign up, then create a Free
+ *  organization) or Pro (the billing route: sign in there, pay on Stripe, then name the organization).
+ *  Every word and number is the pricing page's own (shared/plans.ts, shared/pricing.ts) — nothing is
+ *  typed here. With Pro not on sale there is nothing to choose, and the dialog is the two providers. */
+function planChoice(plan: SignUpPlan): string {
+  const line = (id: SignUpPlan): string => {
+    const def = PLANS[id], price = PRICING[id];
+    const amount = price.price === 0 ? "Free" : `${formatPrice(price.price ?? 0)} ${price.per}`;
+    return `<b>${esc(amount)}</b> &middot; ${esc(seatsPhrase(def.entitlements.seats))}.`;
+  };
+  return `<div class="site-signin-plans" data-signin-plan="${plan}">
+      ${segmented({ id: "signin-plan", ariaLabel: "Plan", act: "signInPlan", value: plan, size: "sm", fill: true, inertOn: true, options: [{ value: "free", label: PLANS.free.name }, { value: "team", label: PLANS.team.name }] })}
+      <p class="site-signin-plan-what">${line(plan)} <a href="/pricing">Compare plans</a></p>
+    </div>`;
+}
+
+function signInDialog(mode: SignInMode = "signin", plan: SignUpPlan = "free"): string {
   const c = SIGNIN_COPY[mode];
-  return `<div data-overlay="signin" data-signin-mode="${mode}">
+  const sellPro = canPurchasePlan("team", PRICING.team);
+  const choosing = mode === "signup" && sellPro;
+  const pro = choosing && plan === "team";
+  const providers = `<button data-act="signIn" class="site-signin-btn site-btn-solid" style="border-radius:9px">${GH_24}Continue with GitHub</button>
+          <div class="site-signin-or" aria-hidden="true"><span></span>or<span></span></div>
+          <button data-act="signInGoogle" class="site-signin-btn site-btn-outline" style="border-radius:9px">${GOOGLE_24}Continue with Google</button>`;
+  // Pro: one way on — the billing route, which signs the person in and takes them to Stripe.
+  const checkout = sellPro ? `<a href="${purchaseHref("team")}" data-field="signInPro" class="site-signin-btn site-btn-accent" style="border-radius:9px;text-decoration:none">Continue with ${esc(PLANS.team.name)}</a>
+          <p class="site-signin-note">You sign in on the next page, then pay on Stripe. Seats can be changed at any time.</p>` : "";
+  return `<div data-overlay="signin" data-signin-mode="${mode}"${choosing ? ` data-signin-plan="${plan}"` : ""}>
     <div data-act="closeSignIn" class="site-signin-back"></div>
     <div class="site-signin-wrap">
       <div role="dialog" aria-modal="true" aria-labelledby="signin-title" class="site-signin-card" style="border-radius:14px">
@@ -780,9 +811,8 @@ function signInDialog(mode: SignInMode = "signin"): string {
           <p style="margin:6px 0 0;max-width:270px;font-size:13.5px;line-height:1.55;color:var(--fg-55);text-wrap:balance">${c.lede}</p>
         </div>
         <div class="site-signin-body">
-          <button data-act="signIn" class="site-signin-btn site-btn-solid" style="border-radius:9px">${GH_24}Continue with GitHub</button>
-          <div class="site-signin-or" aria-hidden="true"><span></span>or<span></span></div>
-          <button data-act="signInGoogle" class="site-signin-btn site-btn-outline" style="border-radius:9px">${GOOGLE_24}Continue with Google</button>
+          ${choosing ? planChoice(plan) : ""}
+          ${pro ? checkout : providers}
         </div>
         <div class="site-signin-foot">${c.foot} <button type="button" data-act="openSignIn" data-arg="${c.other}" data-field="signInSwitch" class="site-signin-switch">${c.switchTo}</button></div>
       </div>
@@ -794,8 +824,10 @@ export interface LandingProps {
   /** The resolved app theme is not Light (drives the toggle icon, like the app header's). */
   dark: boolean;
   signInOpen: boolean;
-  /** What the visitor came to do: the nav's Sign in, or a "Start for free" button (default: sign in). */
+  /** What the visitor came to do: the nav's Sign in, or a Get started button (default: sign in). */
   signInMode?: SignInMode;
+  /** The plan picked in the dialog's Get started side (default: Free). */
+  signInPlan?: SignUpPlan;
   /** Opened from inside the app (the sidebar logo): the nav offers the way back, not Sign in. */
   signedIn?: boolean;
   /** Reveal keys that already played (landing-motion.ts records them). */
@@ -819,6 +851,6 @@ export function landingView(p: LandingProps): string {
     ${pricingSection({ signedIn: p.signedIn ?? false, rv })}
     ${siteFooter()}
   </div>
-  ${p.signInOpen ? signInDialog(p.signInMode ?? "signin") : ""}
+  ${p.signInOpen ? signInDialog(p.signInMode ?? "signin", p.signInPlan ?? "free") : ""}
   ${p.feature ? featureDialog(p.feature) : ""}`;
 }
