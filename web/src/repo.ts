@@ -26,7 +26,7 @@ import { personChip, personLink, personNameLink } from "./people";
 import type { PersonSummary } from "./api";
 import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
-import { skeleton, skBar, skList, skW } from "./skeleton";
+import { emptyLayout, emptyShapes, skeleton, skBar, skList, skW } from "./skeleton";
 
 export interface RepoProps {
   tab: RepoTab;
@@ -117,23 +117,25 @@ const linkedPerson = (x: RepoPerson, p: Pick<RepoProps, "persons" | "sample">): 
 };
 
 // ── section states ───────────────────────────────────────────────────────────
-type Phase = "loading" | "error" | "ready";
+/** `blank` = the organization has no repository (`GET /me` said so): there is nothing to read, so
+ *  every section keeps its chrome and draws its content empty — whatever the dashboard read says. */
+type Phase = "loading" | "error" | "ready" | "blank";
 const phaseOf = (p: RepoProps): Phase =>
-  p.repo.data ? "ready" : p.repo.status === "error" ? "error" : "loading";
+  p.noRepo && !p.sample ? "blank" : p.repo.data ? "ready" : p.repo.status === "error" ? "error" : "loading";
 
 /** A section while the dashboard's first read is out: bars in the section's own box
  *  (the shared skeleton — skeleton.ts). Every section renders its chrome and grid cell
  *  in every state, so the figures land where the bars were. `sectionNo` numbers the
  *  sections of one paint (reset by `repoView`) — a skeleton region's key must be unique. */
 let sectionNo = 0;
-const sectionSkeleton = (lines = 3): string =>
-  skeleton(`repo-${sectionNo++}`, "Loading&hellip;", `<div style="display:flex;flex-direction:column;gap:10px;justify-content:center;padding:12px 0">${skList(lines, (i) => skBar(skW(i, ["68%", "92%", "54%", "80%", "61%"]), 12))}</div>`);
+/** A section's bars as shapes — its loading skeleton's and (no repository connected) its empty layout's. */
+const sectionBars = (lines = 3): string =>
+  `<div style="display:flex;flex-direction:column;gap:10px;justify-content:center;padding:12px 0">${skList(lines, (i) => skBar(skW(i, ["68%", "92%", "54%", "80%", "61%"]), 12))}</div>`;
+const sectionSkeleton = (lines = 3): string => skeleton(`repo-${sectionNo++}`, "Loading&hellip;", sectionBars(lines));
 
+/** A section that was read and holds nothing in this window: its one sentence (skeleton.ts `emptyLayout`). */
 const emptyBlock = (sub: string): string =>
-  `<div style="display:flex;align-items:center;justify-content:center;padding:14px 0"><div style="border:1px dashed var(--border-strong);border-radius:11px;padding:18px 24px;text-align:center;width:100%">
-    <div style="font-size:13.5px;font-weight:500;color:var(--fg-70)">Nothing here yet</div>
-    <div style="font-size:12.5px;color:var(--fg-40);margin-top:4px">${esc(sub)}</div>
-  </div></div>`;
+  `<div style="padding:14px 0">${emptyLayout(`repo-${sectionNo++}`, { title: "Nothing here yet", text: sub })}</div>`;
 
 const errorBlock = (): string =>
   `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:14px 0">
@@ -161,6 +163,7 @@ const NC_GENERIC = "Nothing has been captured for this section yet.";
 /** Render one section in whichever of its states applies. */
 function sec<T>(p: RepoProps, pick: (d: RepoDashboard) => RepoSection<T>, copy: SectionCopy, live: (data: T) => string): string {
   const phase = phaseOf(p);
+  if (phase === "blank") return emptyShapes(sectionBars(copy.lines));
   if (phase === "loading") return sectionSkeleton(copy.lines);
   if (phase === "error" || !p.repo.data) return errorBlock();
   const s = pick(p.repo.data);
@@ -1049,6 +1052,13 @@ export function repoTabBar(tab: RepoTab): string {
  *  failed, degraded, sample, nothing connected) — only the panel's content changes — so its
  *  line and underline never move; the sample / degraded banner, the "Poll now" strip and the
  *  "not connected" footer all sit under the line, in the labelled panel. */
+/** The dashboard's empty sentences (no repository connected). Both point at Preview with sample
+ *  data — the dashboard's own way to see a full screen. */
+export const REPO_EMPTY = {
+  admin: "Connect the repository this organization ships from, and Trov starts reading its deployments, checks, pull requests and issues. Preview with sample data shows every section filled in.",
+  member: "This organization has no repository connected yet; an admin connects one in Org settings. Preview with sample data shows every section filled in.",
+} as const;
+
 export function repoView(p: RepoProps): string {
   sectionNo = 0;
   const body = p.tab === "overview" ? overviewTab(p) : p.tab === "code" ? codeTab(p) : p.tab === "ci" ? ciTab(p)
@@ -1073,15 +1083,22 @@ export function repoView(p: RepoProps): string {
   if (p.noRepo && !p.sample) {
     // Poll now is still in the header here: its answer — every source "Not connected" — is shown, not swallowed.
     const polled = canPollRepo(p) && p.poll && p.poll.status !== "polling" ? `<div class="repo-panel ${SURFACE}" style="overflow:hidden;margin-top:8px">${pollStrip(p.poll)}</div>` : "";
+    // The dashboard's own frame — its tab bar and, under the sentence, the tab's sections with their
+    // real headings and their content drawn empty (`sec` in the `blank` phase). The full picture is
+    // one click away: Preview with sample data. An admin is also offered the way to connect one.
+    const sampleBtn = `<button type="button" data-act="repoSampleOn" class="cnpy-empty-act">Preview with sample data</button>`;
+    const connectBtn = `<button type="button" data-act="orgGo" data-arg="repos" class="cnpy-accentbtn" style="height:30px;padding:0 13px;border-radius:8px;background:var(--accent);color:var(--accent-fg);border:1px solid transparent;font-size:12.5px;font-weight:600;white-space:nowrap">Open Org settings &rsaquo; Repositories</button>`;
     return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}" data-repo-empty>
-      ${polled}
-      <div style="border:1px dashed var(--border-strong);border-radius:11px;padding:38px 24px;text-align:center;margin-top:8px">
-        <div style="font-size:15px;font-weight:600">No repository connected</div>
-        <div style="font-size:13px;line-height:1.6;color:var(--fg-55);margin:6px auto 0;max-width:520px">${p.admin ? "Connect the repository this organization ships from, and Trov starts reading its deployments, checks, pull requests and issues." : "This organization has no repository connected yet. An admin connects one in Org settings."}</div>
-        <div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:16px">
-          <button type="button" data-act="orgGo" data-arg="repos" class="cnpy-accentbtn" style="height:34px;padding:0 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);border:1px solid transparent;font-size:12.5px;font-weight:600;white-space:nowrap">Open Org settings &rsaquo; Repositories</button>
-          <button type="button" data-act="repoSampleOn" class="cnpy-outlinebtn" style="height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">Preview with sample data</button>
-        </div>
+      ${repoTabBar(p.tab)}
+      <div${tabPanelAttrs("repo-tab", p.tab)} style="padding-top:20px">
+        ${polled}
+        ${emptyLayout("repo", {
+          title: "No repository connected",
+          text: p.admin ? REPO_EMPTY.admin : REPO_EMPTY.member,
+          actionHtml: `${p.admin ? connectBtn : ""}${sampleBtn}`,
+          sayStyle: "margin-bottom:14px",
+        })}
+        <div class="repo-panel ${SURFACE}" style="${PANEL}">${body}</div>
       </div>
     </div>`;
   }

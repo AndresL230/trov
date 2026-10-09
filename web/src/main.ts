@@ -62,6 +62,8 @@ import { PERSON_COLORS, type PersonColor, type OAuthGrantSummary } from "@shared
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
 import { syncSkeletons } from "./skeleton";
+import { parsePreview, previewSearch, withPreview, PREVIEW_BLOCKED, type PreviewMode } from "./preview";
+import { setWriteBlock } from "./api";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { createPlatform } from "./platform-actions";
@@ -99,6 +101,16 @@ if (!root) throw new Error("Trov: #app mount point missing");
 const mount = root;
 
 const state: AppState = initialState();
+
+// The state preview (web/src/preview.ts): `?preview=empty` / `?preview=loading`, read once here
+// and kept in the address bar while it is on (a reload stays in it). While it is on api.ts
+// refuses every write; the refusal is said as a toast AFTER the caller's own "couldn't save"
+// (a timeout, so this is the one that stays).
+function applyPreview(mode: PreviewMode | null): void {
+  state.preview = mode;
+  setWriteBlock(mode ? () => { setTimeout(() => flash(PREVIEW_BLOCKED, 4200), 0); } : null);
+}
+applyPreview(parsePreview(location.search));
 
 // The sidebar's "search everything" dropdown. Its node lives on <body>, outside the
 // mount, so rerender() never touches it; rerender() calls `qs.sync()` to re-anchor it.
@@ -753,7 +765,7 @@ function enterPlatform(hash: string): void {
   state.view = "platform";
   const r = parseHash(hash);
   applyRoute(r.screen === "platform" || r.screen === "platformorg" ? r : { ...r, screen: "platform", platTab: "orgs" });
-  if (!isPlatformPath(location.pathname)) history.replaceState(null, "", `${PLATFORM_PATH}${hashForRoute(currentRoute())}`);
+  if (!isPlatformPath(location.pathname)) history.replaceState(null, "", withPreview(`${PLATFORM_PATH}${hashForRoute(currentRoute())}`, state.preview));
   platform.load();
 }
 
@@ -784,7 +796,7 @@ function enterOrg(slug: string, hash: string): void {
   state.orgSlug = slug;
   setApiOrg(slug);
   try { localStorage.setItem(LAST_ORG_KEY, slug); } catch { /* ignore */ }
-  const want = orgHref(slug, hash);
+  const want = withPreview(orgHref(slug, hash), state.preview);
   if (`${location.pathname}${location.search}${location.hash}` !== want) history.replaceState(null, "", want);
   state.view = "app";
   // Restore the route from the URL hash (reload stays put, including
@@ -2066,6 +2078,14 @@ function scheduleRenameCheck(): void {
 // picker needs it; every other case ignores it.
 function dispatch(act: string, arg: string | null, value: string | null, caret: number | null = null): void {
   switch (act) {
+    // The state preview's banner: switch to the other state, or close it ("" = off). The flag
+    // lives in the address bar, so it is rewritten there; nothing is loaded or sent.
+    case "previewSet": {
+      applyPreview(arg === "empty" || arg === "loading" ? arg : null);
+      history.replaceState(null, "", `${location.pathname}${previewSearch(location.search, state.preview)}${location.hash}`);
+      rerender();
+      return;
+    }
     // auth state navigation (how the screens become reachable)
     case "signIn":
       // Return-to: the hash never reaches the server, so stash it for the boot

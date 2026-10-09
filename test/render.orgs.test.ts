@@ -550,14 +550,23 @@ describe("the repository comes from the org", () => {
   const repoProps = (over: Partial<RepoProps> = {}): RepoProps => ({
     tab: "overview", range: "7d", driftOpen: null, repo: { status: "ok", data: null }, fetchedAt: null, sample: false, admin: true, poll: null, productEnv: null, persons: [], ...over,
   } as RepoProps);
-  it("Repo with no repository connected: one empty state that links to Org settings › Repositories", () => {
+  it("Repo with no repository connected: the dashboard's frame drawn empty, with the way to Org settings › Repositories and to the sample data", () => {
     const admin = repoView(repoProps({ noRepo: true }));
     expect(admin).toContain("data-repo-empty");
     expect(admin).toContain("No repository connected");
     expect(admin).toContain("Connect the repository this organization ships from");
     expect(admin).toMatch(/<button type="button" data-act="orgGo" data-arg="repos"[^>]*>Open Org settings &rsaquo; Repositories<\/button>/);
-    expect(admin).not.toContain("repo-panel");
-    expect(repoView(repoProps({ noRepo: true, admin: false }))).toContain("An admin connects one in Org settings.");
+    // The dashboard's own frame: its tab bar and the tab's sections, their content drawn empty (no skeleton, no "not connected").
+    expect(admin).toContain('role="tablist"');
+    expect(admin).toContain("repo-panel");
+    expect(admin).toContain("cnpy-empty-shapes");
+    expect(admin).not.toContain("data-skel=");
+    expect(admin).not.toContain("Source not connected");
+    expect(admin).toMatch(/<button type="button" data-act="repoSampleOn" class="cnpy-empty-act">Preview with sample data<\/button>/);
+    const member = repoView(repoProps({ noRepo: true, admin: false }));
+    expect(member).toContain("an admin connects one in Org settings.");
+    expect(member).not.toContain('data-act="orgGo"');
+    expect(member).toContain('data-act="repoSampleOn"');
   });
   it("a new handoff defaults to the org's primary repo; with none, the field says so and links to where one is connected", () => {
     expect(blankHandoff("acme/web").repo).toBe("acme/web");

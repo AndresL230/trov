@@ -373,7 +373,7 @@ export function reposTab(org: MyOrg, ui: OrgUi): string {
   const connected = repos.length
     ? `${orgHead("Connected", "", repos.length)}<ul${surface(LIST)}>${rows}</ul>`
     : inst ? ""
-    : orgEmpty("No repository connected", admin ? (offered ? "Connect GitHub and pick the repository your team ships from. Trov reads its deployments, checks, pull requests and issues." : "Add the repository your team ships from. Trov reads its deployments, checks, pull requests and issues.") : "An admin has not connected a repository yet.");
+    : orgEmpty("No repository connected", admin ? (offered ? "Connect GitHub and pick the repository your team ships from. Trov reads its deployments, checks, pull requests and issues." : "Add the repository your team ships from. Trov reads its deployments, checks, pull requests and issues.") : "An admin has not connected a repository yet.", "", 2);
   const picker = admin && inst && live ? repoPicker(ui.githubRepos, inst.account_login, { filter: ui.githubFilter, busy: ui.githubBusy, }) : "";
   const appRow = inst ? `<section aria-labelledby="org-gh-conn" data-org-group="github-app">
       ${orgHead("Connection", "", null, "org-gh-conn")}
@@ -484,7 +484,7 @@ export function environmentsTab(org: MyOrg, ui: OrgUi): string {
   const adding = edit && edit.key === null ? envForm(edit, null, false) : "";
   const addBtn = admin ? accentBtn("Add environment", "orgEnvNew", { field: "orgEnvNew", disabled: !!edit }) : "";
   if (envs.length === 0) {
-    return `${tabLead(`No environments yet.${admin ? " Add the places your app runs, such as staging and production." : READ_ONLY}`, addBtn)}${adding || orgEmpty("No environments yet", admin ? "The Repo dashboard reports on each one you add." : "An admin has not added an environment yet.")}`;
+    return `${tabLead(`No environments yet.${admin ? " Add the places your app runs, such as staging and production." : READ_ONLY}`, addBtn)}${adding || orgEmpty("No environments yet", admin ? "The Repo dashboard reports on each one you add." : "An admin has not added an environment yet.", "", 2)}`;
   }
   const lead = tabLead(`<strong>${envs.length}</strong> ${envs.length === 1 ? "environment" : "environments"}${envs.length > 1 ? ` &middot; drift is measured from <strong>${esc(envs[0].label)}</strong> (the head, first) to <strong>${esc(envs[envs.length - 1].label)}</strong> (the base, last)` : ""}.${admin ? "" : READ_ONLY}`, addBtn);
   const rows = envs.map((e, i) => {

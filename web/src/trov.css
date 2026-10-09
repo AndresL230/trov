@@ -1370,6 +1370,38 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 @media (prefers-reduced-motion: reduce) {
   .cnpy-skel-in, .cnpy-sk, .cnpy-settle { animation:none !important; }
 }
+/* ── empty layouts (web/src/skeleton.ts `emptyLayout`) ───────────────────────
+   A screen that has loaded and holds nothing keeps its shape: the same builders as
+   the loading skeleton, drawn HOLLOW and STILL. Loading is a filled bar that pulses;
+   empty is a hairline outline that does not move, a card is a dashed outline with no
+   fill, and the first slot is a sentence (and one action). So the two are told apart
+   at a glance, in either theme, with or without motion. Theme tokens only. */
+.cnpy-empty { display:block; min-width:0; }
+.cnpy-empty-say { box-sizing:border-box; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:12px; min-width:0; padding:16px 18px; border:1px dashed var(--border-strong); border-radius:10px; }
+.cnpy-empty-say.is-plain { border:0; padding:0; }
+.cnpy-empty-text { margin:0; max-width:64ch; font-size:13.5px; line-height:1.55; color:var(--fg-70); text-wrap:pretty; }
+.cnpy-empty-say.is-plain .cnpy-empty-text { font-size:13px; color:var(--fg-55); }
+.cnpy-empty-words { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.cnpy-empty-title { margin:0; font-size:13.5px; font-weight:600; line-height:1.45; color:var(--fg); }
+.cnpy-empty-words > .cnpy-empty-text { font-size:12.5px; color:var(--fg-55); }
+.cnpy-empty-acts { display:flex; flex-wrap:wrap; gap:8px; }
+.cnpy-empty-act { display:inline-flex; align-items:center; height:30px; padding:0 13px; border:1px solid var(--border-strong); border-radius:8px; font-size:12.5px; font-weight:500; color:var(--fg); white-space:nowrap; transition:background .12s ease, border-color .12s ease; }
+.cnpy-empty-act:hover { background:var(--hover); border-color:var(--fg-40); }
+.cnpy-empty-shapes { display:block; min-width:0; pointer-events:none; user-select:none; }
+.cnpy-empty-shapes.is-contents { display:contents; }
+.cnpy-empty-shapes .cnpy-sk { background:transparent; box-shadow:inset 0 0 0 1px var(--border-strong); animation:none; }
+.cnpy-empty-shapes .cnpy-surface { background:transparent; border-style:dashed; border-color:var(--border-strong); box-shadow:none; }
+@media (prefers-reduced-motion: reduce) { .cnpy-empty-act { transition:none; } }
+/* The state preview's banner (web/src/preview.ts): fixed at the app's lower right, over every
+   screen, for as long as `?preview=` is on. Amber, the app's "this is not live data" tone
+   (the Repo dashboard's sample tag). It does not move. */
+.cnpy-preview { position:fixed; right:16px; bottom:16px; z-index:60; display:flex; align-items:center; gap:10px; max-width:min(560px, calc(100vw - 32px)); padding:9px 10px 9px 13px; border:1px solid color-mix(in srgb,var(--amber) 55%,transparent); border-radius:10px; background:var(--surface); box-shadow:0 8px 30px rgba(0,0,0,.22); font-size:12.5px; line-height:1.45; color:var(--fg-70); }
+.cnpy-preview-dot { flex:none; width:8px; height:8px; border-radius:50%; background:var(--amber); }
+.cnpy-preview-t { min-width:0; }
+.cnpy-preview-t > strong { font-weight:600; color:var(--fg); }
+.cnpy-preview-b { flex:none; height:26px; padding:0 10px; border:1px solid var(--border-strong); border-radius:7px; font-size:12px; font-weight:500; color:var(--fg); white-space:nowrap; }
+.cnpy-preview-b:hover { background:var(--hover); }
+@media (max-width:640px) { .cnpy-preview { left:12px; right:12px; bottom:12px; flex-wrap:wrap; } }
 
 
 /* ── Repo dashboard (web/src/repo.ts) ────────────────────────────────────────── */
@@ -2421,6 +2453,13 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 [data-cnpy-theme] .cnpy-treechev,
 [data-cnpy-theme] .cnpy-sk { border-radius:calc(4px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-platpage-home { border-radius:calc(6px * var(--corner-scale)) !important; }
+/* Empty layouts (skeleton.ts `emptyLayout`): the sentence's dashed card, and its one action. */
+[data-cnpy-theme] .cnpy-empty-say { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-empty-act { border-radius:calc(8px * var(--corner-scale)) !important; }
+/* The state preview's banner (preview.ts). Its dot is a status dot: a small rounded square, like the rest. */
+[data-cnpy-theme] .cnpy-preview { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-preview-b { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-preview-dot { border-radius:min(calc(12px * var(--corner-scale)), 25%) !important; }
 [data-cnpy-theme] .cnpy-qs-hl { border-radius:calc(3px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs-row { border-radius:calc(7px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs { border-radius:calc(12px * var(--corner-scale)) !important; }

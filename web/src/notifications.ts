@@ -169,6 +169,8 @@ export interface NotifAdminProps {
   policy: PolicyKindView[];
   settings: NotificationSettingsRow | null;
   outbox: NotificationOutboxRow[];
+  /** The outbox's first read is still out: its rows are a skeleton, never "No sends yet" (and no count). */
+  outboxLoading?: boolean;
   outboxExpanded: string | null;
   /** Live text of the sender-NAME input while being edited; null = show the stored name. */
   fromDraft: string | null;
@@ -297,7 +299,8 @@ export function notificationsAdminSections(p: NotifAdminProps): string {
     ? `<div${surface("overflow:hidden")}><div class="cnpy-hscroll"><div><div style="${OUTBOX_GRID};padding-top:11px;padding-bottom:8px;border-bottom:1px solid var(--border);${O_LABEL};font-size:10px">
         <div>User</div><div>Cadence</div><div>Window</div><div>Status</div><div style="text-align:right">At</div>
       </div>` + p.outbox.map((o) => outboxRow(o, p.outboxExpanded === o.idempotency_key)).join("") + `</div></div></div>`
-    : orgEmpty("No sends yet", "Runs appear here after the first scheduled window.");
+    : p.outboxLoading ? skRows("notif-outbox", "Loading the outbox…", 3, { trail: 90 })
+    : orgEmpty("No sends yet", "Runs appear here after the first scheduled window.", "", 2);
 
   return `${lead}
     ${orgHead("Digests", "Turning one off removes it from everyone's Settings", null)}
@@ -306,6 +309,6 @@ export function notificationsAdminSections(p: NotifAdminProps): string {
     ${schedule}
     ${orgHead("Preview and test")}
     ${tryIt}
-    ${orgHead("Outbox", "Newest first", p.outbox.length)}
+    ${orgHead("Outbox", "Newest first", p.outboxLoading && !p.outbox.length ? null : p.outbox.length)}
     ${outbox}`;
 }

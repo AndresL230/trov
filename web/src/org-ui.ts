@@ -18,7 +18,7 @@
 
 import { esc, attr, statusBadge } from "./ui";
 import type { OrgRole } from "@shared/orgs";
-import { skRows, skForm, skKey } from "./skeleton";
+import { emptyLayout, skRows, skRowsShape, skForm, skKey } from "./skeleton";
 
 /** One read: where it is, what it returned, and why it failed. */
 export interface OrgSlice<T> { status: "idle" | "loading" | "ok" | "error"; data: T; error?: string }
@@ -109,13 +109,12 @@ export function openRow(o: OpenRowOpts): string {
 }
 /** The chip every status on these pages uses (one size). */
 export const chip = (text: string, tone: string): string => statusBadge(text, tone, "font-size:10.5px;border-radius:5px;padding:2px 7px");
-/** The dashed empty-state card (ui.ts `dashedCard`'s look), with an optional action under it. */
-export function orgEmpty(title: string, sub: string, action = ""): string {
-  return `<div class="cnpy-org-empty" style="border:1px dashed var(--border-strong);border-radius:11px;padding:28px 20px;text-align:center">
-    <div style="font-size:13.5px;font-weight:500;color:var(--fg-70)">${esc(title)}</div>
-    <div style="font-size:12.5px;line-height:1.5;color:var(--fg-40);margin-top:4px">${esc(sub)}</div>
-    ${action ? `<div style="margin-top:14px;display:flex;justify-content:center">${action}</div>` : ""}
-  </div>`;
+/** A settings list (or a whole tab) with nothing in it: its heading and one sentence, the one
+ *  action (TRUSTED markup — these pages build their buttons with `ghostBtn` / `solidBtn`), and,
+ *  for a LIST, `rows` of the rows it will hold, drawn empty (skeleton.ts `emptyLayout`). A notice
+ *  that is not an empty list ("Admins only") passes no rows. */
+export function orgEmpty(title: string, sub: string, action = "", rows = 0, shape: { avatar?: number; trail?: number } = { trail: 64 }): string {
+  return emptyLayout(`org-${skKey(title)}`, { title, text: sub, actionHtml: action, cls: "cnpy-org-empty", sayStyle: rows ? "margin-bottom:4px" : "", shapes: rows ? skRowsShape(rows, shape) : "" });
 }
 /** A banner across a tab: what is wrong and what to do. `tone` picks the token; the words carry the meaning. */
 export function orgBanner(title: string, body: string, tone: "amber" | "red" = "amber"): string {
