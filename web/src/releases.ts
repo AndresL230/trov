@@ -116,6 +116,7 @@ export const RELEASES: Release[] = [
         "Personal Settings is patched in place (`data-morph=\"settings\"`): typing in the name, handle or digest-address field no longer rebuilds the page (#126)",
         "Opening Settings reads the org's plan alone (`orgCtl.loadPlan`, act `orgPlanReload`) and re-reads `GET /api/orgs`, not Org settings' other slices (#126)",
         "Every email's banner takes the shape of the app's first-run card (`emailBanner` in `src/notifications/assemble.ts`): the brand top left, a label top right, and the mail's headline reversed out of the purple band, over a gradient and a large faint mark. The invitation, welcome and grant mails move their headline into it; a digest keeps its \"Daily digest · date\" line there. Each layer degrades alone (solid band without gradients, no faint mark without `rgba`) (#127)",
+        "Org settings › Members: the members are a table (`.cnpy-mem-row`: member, handle, title, joined, role, Edit), one grid for the head and every row; the invite bar spans its surface instead of stopping at 820px; the email invite's help line no longer says a Google account must be invited first (#128)",
         "Help › Get Started is now Help › Guide, titled How Trov works: a reference, not a second onboarding. The numbered Sign in / Connect your agent / Learn the skills steps are gone; the skills come first, then how review works and the tour, then Accounts and organizations and Connecting a coding agent as reference sections. Its sign-in facts match open Google sign-up (#124)",
         "The guided setup closes with Your first session (three lines: start as usual, work, say record this session) and a link to the Guide, in place of the four Where things live cards, which repeated the sidebar (#124)",
         "The welcome e-mail opens the guided setup (`/<org>/#welcome`), where a new person now begins, not the Guide (#124)",
@@ -143,7 +144,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [121, 122, 123, 124, 125, 126, 127],
+    prs: [121, 122, 123, 124, 125, 126, 127, 128],
   },
   // Free and per-seat Pro: self-serve Free organizations, Team renamed Pro and sold per seat, a downgrade to Free (#117).
   {

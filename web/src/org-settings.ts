@@ -632,7 +632,7 @@ export function inviteSection(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDro
         </div>
         ${ui.inviteError ? `<div id="org-invite-e" role="alert" style="${O_ERR}">${esc(ui.inviteError)}</div>` : ""}
         <div id="org-invite-h" style="${O_HELP};margin-top:9px">${ui.inviteBy === "email"
-          ? "Trov emails them the invitation. They join when they sign in with that address and accept. A Google account can only sign in once it is invited."
+          ? "Trov emails them the invitation. They join when they sign in with that address, with Google or GitHub, and accept."
           : "They see the invitation the next time they sign in with that GitHub account, and join when they accept. No email is sent: tell them it is waiting."}</div>
       </div>
     </section>`;
@@ -648,17 +648,25 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
   // Inviting is this tab's primary action (its one accent button).
   const invite = inviteSection(org, ui, dd);
 
+  // The members are a TABLE: each fact in its own column, in the same place on every row — who, their
+  // handle, their title, when they joined, their role — so the list is scanned down a column instead of
+  // read across a run-on line. (A list in the DOM; the columns are one grid shared by head and rows.)
+  const joined = (iso: string): string => {
+    const t = new Date(iso);
+    return Number.isNaN(t.getTime()) ? "&mdash;" : esc(t.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }));
+  };
+  const head = `<div class="cnpy-mem-row cnpy-mem-head${admin ? "" : " is-ro"}" aria-hidden="true"><span>Member</span><span>Handle</span><span>Title</span><span class="cnpy-mem-joined">Joined</span><span>Role</span>${admin ? "<span></span>" : ""}</div>`;
   const rows = members.map((m) => {
     const d = admin && ui.memberEdit && sameHandle(ui.memberEdit.handle, m.handle) ? ui.memberEdit : null;
     const name = m.name ?? m.handle;
     return `<li style="border-bottom:1px solid var(--border);margin-bottom:-1px${d ? ";background:var(--hover)" : ""}">
-      <div class="cnpy-org-row" style="border-bottom:0;margin-bottom:0;align-items:center;padding-top:10px;padding-bottom:10px">
-        <button type="button" data-act="openPerson" data-arg="${attr(m.handle)}" class="cnpy-maint-person" aria-label="Open ${attr(name)}'s card" style="flex:1 1 150px;min-width:0;display:flex;align-items:center;gap:12px;text-align:left;padding:0">${personChip(m, 28, m.handle)}<span style="flex:1;min-width:0;line-height:1.3"><span style="display:block;font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</span><span style="display:flex;align-items:center;gap:8px;min-width:0">${handleTag(m, m.handle, 11.5)}${m.title ? `<span style="font-size:12px;color:var(--fg-40);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">&middot; ${esc(m.title)}</span>` : ""}</span></span></button>
-        <div class="cnpy-org-actions is-inline" style="align-items:center;flex-wrap:nowrap">
-          ${sameHandle(m.handle, me) ? YOU : ""}
-          ${roleChip(m.role)}
-          ${admin ? quietBtn(d ? "Close" : "Edit", d ? "orgMemberCancel" : "orgMemberEdit", { arg: m.handle, label: `${d ? "Close the editor for" : "Edit"} ${name}`, field: `orgMemberEdit:${m.handle}` }) : ""}
-        </div>
+      <div class="cnpy-mem-row${admin ? "" : " is-ro"}" data-member="${attr(m.handle)}">
+        <button type="button" data-act="openPerson" data-arg="${attr(m.handle)}" class="cnpy-maint-person cnpy-mem-who" aria-label="Open ${attr(name)}'s card" style="min-width:0;display:flex;align-items:center;gap:12px;text-align:left;padding:0">${personChip(m, 28, m.handle)}<span style="flex:1;min-width:0;font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</span></button>
+        <span class="cnpy-mem-handle">${handleTag(m, m.handle, 12)}</span>
+        <span class="cnpy-mem-title"${m.title ? "" : ' data-empty="1"'}>${m.title ? esc(m.title) : "&mdash;"}</span>
+        <span class="cnpy-mem-joined">${joined(m.joined_at)}</span>
+        <span class="cnpy-mem-role">${roleChip(m.role)}${sameHandle(m.handle, me) ? YOU : ""}</span>
+        ${admin ? `<span class="cnpy-mem-act">${quietBtn(d ? "Close" : "Edit", d ? "orgMemberCancel" : "orgMemberEdit", { arg: m.handle, label: `${d ? "Close the editor for" : "Edit"} ${name}`, field: `orgMemberEdit:${m.handle}` })}</span>` : ""}
       </div>
       ${d ? memberEditor(m, d, org.role, m.role === "owner" && owners <= 1, dd) : ""}
     </li>`;
@@ -696,7 +704,7 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
   const logins = unmatchedLogins(admin, identity);
   return `${lead}${waiting ? logins : ""}${invite}
     ${orgHead("Members", admin ? "Owners manage owners and the encryption key; admins everything else here" : "", members.length)}
-    <ul${surface(LIST)}>${rows}</ul>
+    <div${surface("overflow:hidden")} data-members-table>${head}<ul style="list-style:none;margin:0;padding:0">${rows}</ul></div>
     ${invitesBlock}
     ${waiting ? "" : logins ? `<div style="margin-top:18px">${logins}</div>` : ""}`;
 }

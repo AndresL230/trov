@@ -480,6 +480,22 @@ describe("Org settings › Members holds what Maintenance › People used to", (
       { id: 10, github_login: null, email: "kai@acme.dev", role: "member", status: "pending", invited_by: "ines", created_at: "2026-10-05T10:00:00.000Z", responded_at: null, responded_by: null, name: null, mail_status: "failed", mail_at: "2026-10-05T10:00:01.000Z", mail_error: "resend 403: domain not verified" },
     ] },
   };
+  it("members are a table: one grid for the head and every row — member, handle, title, joined, role — and the invite bar spans its surface", () => {
+    const html = membersTab(acme("owner"), members, "ines");
+    expect(html).toMatch(/<div class="cnpy-mem-row cnpy-mem-head" aria-hidden="true"><span>Member<\/span><span>Handle<\/span><span>Title<\/span><span class="cnpy-mem-joined">Joined<\/span><span>Role<\/span><span><\/span><\/div>/);
+    const row = /<div class="cnpy-mem-row" data-member="[^"]+">([\s\S]*?)<\/div>\s*(?:<div|<\/li>)/.exec(html)?.[1] ?? "";
+    const order = ["cnpy-mem-who", "cnpy-mem-handle", "cnpy-mem-title", "cnpy-mem-joined", "cnpy-mem-role", "cnpy-mem-act"].map((c) => row.indexOf(c));
+    expect(order.every((n) => n >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // A member (no Edit) gets the same table without the last column.
+    const ro = membersTab(acme("member"), members, "ines");
+    expect(ro).toContain('class="cnpy-mem-row cnpy-mem-head is-ro"');
+    expect(ro).not.toContain("cnpy-mem-act");
+    // The invite bar is no longer capped to the left of a wide page, and its copy matches open sign-up.
+    expect(rules).toContain(".cnpy-org-invite { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }");
+    expect(rules).not.toMatch(/\.cnpy-org-invite \{[^}]*max-width/);
+    expect(membersTab(acme("owner"), { ...members, inviteBy: "email" }, "ines")).not.toContain("can only sign in once it is invited");
+  });
   it("an email invite can be mailed again from any org (the org route), whatever the admin's org count; a GitHub one never is", () => {
     const html = membersTab(acme("owner"), members, "ines");
     expect(html).toMatch(/data-act="orgInviteMail" data-arg="8"[^>]*aria-label="Email the invitation to sam@acme.dev again"[^>]*>Resend email<\/button>/);
