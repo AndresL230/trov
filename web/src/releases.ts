@@ -70,8 +70,8 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // Review, polished after its first real queue (26 staged docs). TODO(PR-NUMBER): replace every `(#PR)`
-  // below with the pull request's number and uncomment `prs`; the merging PR cuts this into 0.26.
+  // Review, polished after its first real queue (26 staged docs). Not merged yet (#138): the merging PR cuts
+  // this entry as the header says (`version` to the next 0.N, `date` to the merge day, drop `unreleased`).
   {
     version: "Unreleased",
     date: "2026-10-09",
@@ -88,27 +88,27 @@ export const RELEASES: Release[] = [
     ],
     patches: {
       added: [
-        "`web/src/review-rendered.ts` + `web/src/md-blocks.ts`: Review's Rendered view renders the two BODIES through `renderMarkdown` (the Docs reader's pipeline: marked, DOMPurify, the code / table / doc-image pass) in `.cnpy-md`. An edit is cut into top-level blocks with marked's lexer, compared with `diffSeq`, and each changed block sits in an `<ins>` / `<del>` (`.cnpy-rv-blk`); a table whose header stayed is ONE table with its changed rows classed (`cnpy-rv-row-add` / `-del`), a list is compared item by item. A new doc (`isNew`: nothing live) is one call, unmarked, under one note (#PR)",
-        "`morph.ts` `data-morph-list`: a keyed child list. Children pair by `data-morph-key` instead of by index, so a row taken out of the middle leaves every other row the element it was. `docs/architecture/web-ui.md` › A row leaving a list is the pattern to reuse (#PR)",
-        "Review's list exit: `state.reviewLeaving` (`{ verdict, gone }` by item id), `reviewVerdict` / `settleReview` / `pruneReviewLeaving` in `main.ts`, `.cnpy-rv-row[data-verdict]` in `trov.css` (the verdict held .13s, then `grid-template-rows:1fr → 0fr` and opacity over `--fx-fast`; `REVIEW_EXIT_MS` 310). The refetch is held until no card is still collapsing; a failed write deletes the entry and restores the selection (#PR)",
-        "`test/render.review-rendered.test.ts`; the switch, title, keyed-list, verdict and reduced-motion cases in `test/render.review.test.ts` (#PR)",
+        "`web/src/review-rendered.ts` + `web/src/md-blocks.ts`: Review's Rendered view renders the two BODIES through `renderMarkdown` (the Docs reader's pipeline: marked, DOMPurify, the code / table / doc-image pass) in `.cnpy-md`. An edit is cut into top-level blocks with marked's lexer, compared with `diffSeq`, and each changed block sits in an `<ins>` / `<del>` (`.cnpy-rv-blk`); a table whose header stayed is ONE table with its changed rows classed (`cnpy-rv-row-add` / `-del`), a list is compared item by item. A new doc (`isNew`: nothing live) is one call, unmarked, under one note (#138)",
+        "`morph.ts` `data-morph-list`: a keyed child list. Children pair by `data-morph-key` instead of by index, so a row taken out of the middle leaves every other row the element it was. `docs/architecture/web-ui.md` › A row leaving a list is the pattern to reuse (#138)",
+        "Review's list exit: `state.reviewLeaving` (`{ verdict, gone }` by item id), `reviewVerdict` / `settleReview` / `pruneReviewLeaving` in `main.ts`, `.cnpy-rv-row[data-verdict]` in `trov.css` (the verdict held .13s, then `grid-template-rows:1fr → 0fr` and opacity over `--fx-fast`; `REVIEW_EXIT_MS` 310). The refetch is held until no card is still collapsing; a failed write deletes the entry and restores the selection (#138)",
+        "`test/render.review-rendered.test.ts`; the switch, title, keyed-list, verdict and reduced-motion cases in `test/render.review.test.ts` (#138)",
       ],
       changed: [
-        "Review is `data-morph=\"review\"`: the page is patched in place, the detail body is keyed by item (`rvd:<id>`) and the diff body by mode (`diff:<mode>`). The list pane keeps its scroll position across a repaint, and the detail pane starts at the top for a new item (`syncReviewDetail`, which also hands focus from a verdict button to the next item's) (#PR)",
-        "Unified / Side by side / Rendered and All / Proposals / Decisions are `segmented()` (`review-diff`, `review-filter`, size `sm`); the filter's options carry counts (`.cnpy-seg-n`), absent while the queue is still being read. `selectChip` is no longer used by Review (#PR)",
-        "`triageCounts().review` leaves out items in `reviewLeaving`, so the sidebar badge drops with the card; it is derived per paint, never stored (#PR)",
-        "`ReviewItem` carries `liveBody`, `proposedBody` and `isNew`; `diffViewer(item, view)` replaces `diffViewer(entries, view, liveLabel)`; `lineDiff` is built on the new `diffSeq` (#PR)",
+        "Review is `data-morph=\"review\"`: the page is patched in place, the detail body is keyed by item (`rvd:<id>`) and the diff body by mode (`diff:<mode>`). The list pane keeps its scroll position across a repaint, and the detail pane starts at the top for a new item (`syncReviewDetail`, which also hands focus from a verdict button to the next item's) (#138)",
+        "Unified / Side by side / Rendered and All / Proposals / Decisions are `segmented()` (`review-diff`, `review-filter`, size `sm`); the filter's options carry counts (`.cnpy-seg-n`), absent while the queue is still being read. `selectChip` is no longer used by Review (#138)",
+        "`triageCounts().review` leaves out items in `reviewLeaving`, so the sidebar badge drops with the card; it is derived per paint, never stored (#138)",
+        "`ReviewItem` carries `liveBody`, `proposedBody` and `isNew`; `diffViewer(item, view)` replaces `diffViewer(entries, view, liveLabel)`; `lineDiff` is built on the new `diffSeq` (#138)",
       ],
       fixed: [
-        "Review › Rendered showed raw markdown: it printed the line-cut diff one escaped line at a time, so no table, list or code fence could ever form, and unchanged runs were collapsed away (#PR)",
-        "Review said its name twice (the header's title and an in-page heading); the in-page `<h1>` is gone and the one-line description stays (#PR)",
-        "Selecting a card rebuilt the whole screen and reset the list's scroll to the top (#PR)",
+        "Review › Rendered showed raw markdown: it printed the line-cut diff one escaped line at a time, so no table, list or code fence could ever form, and unchanged runs were collapsed away (#138)",
+        "Review said its name twice (the header's title and an in-page heading); the in-page `<h1>` is gone and the one-line description stays (#138)",
+        "Selecting a card rebuilt the whole screen and reset the list's scroll to the top (#138)",
       ],
       removed: [
-        "`renderedPreview` and its per-line image handling in `review.ts` (the reader's own doc-image pass does it now) (#PR)",
+        "`renderedPreview` and its per-line image handling in `review.ts` (the reader's own doc-image pass does it now) (#138)",
       ],
     },
-    // prs: [PR],   // TODO(PR-NUMBER)
+    prs: [138],
   },
   // The signed-out landing page, revamped around the first-run card's banner (#134).
   {
