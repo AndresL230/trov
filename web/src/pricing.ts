@@ -128,23 +128,11 @@ function intervalSwitch(): string {
   return `<div class="site-interval" role="radiogroup" aria-label="Billing interval" style="border-radius:9px">${opt("month", "Monthly")}${opt("year", "Yearly")}</div>`;
 }
 
-// ── the comparison ───────────────────────────────────────────────────────────
-// A real table. On a phone each limit becomes a block: its name, then the three plans'
-// values side by side (trov.css) — the roles keep it a table to a screen reader there too.
-function comparison(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>, h: number): string {
-  const rows = LIMIT_KEYS.map((k) => {
-    const d = LIMITS[k];
-    const cells = defs.map((def) => `<td role="cell" data-plan="${attr(def.name)}">${esc(limitValue(def, pricing[def.id], k, formatLimit(k, def.entitlements[k])))}</td>`).join("");
-    return `<tr role="row"><th role="rowheader" scope="row"><span class="site-cmp-label">${esc(d.label)}${d.per === "person" ? ", per person" : ""}${d.period ? `, per ${d.period}` : ""}</span><span class="site-cmp-counts">${esc(d.counts)}</span></th>${cells}</tr>`;
-  }).join("");
+/** Under the cards: which plans' limits are a starting point. (The cards list every limit; the
+ *  side-by-side table that used to repeat them row by row is gone.) */
+function sizedNote(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>): string {
   const sized = defs.filter((def) => !pricing[def.id].selfServe).map((def) => def.name);
-  return `<h${h} class="site-price-h">Limits, side by side</h${h}>
-    <table class="site-cmp" role="table">
-      <caption class="site-vh">What each plan allows</caption>
-      <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col"><span class="site-vh">Limit</span></th>${defs.map((def) => `<th role="columnheader" scope="col">${esc(def.name)}</th>`).join("")}</tr></thead>
-      <tbody role="rowgroup">${rows}</tbody>
-    </table>
-    ${sized.length ? `<p class="site-cmp-foot">${esc(sized.join(" and "))} limits are where an organization starts: each one can be set for the organization.</p>` : ""}`;
+  return sized.length ? `<p class="site-plans-foot">${esc(sized.join(" and "))} limits are where an organization starts: each one can be set for the organization.</p>` : "";
 }
 
 /** What no plan withholds — a plan is a table of limits, never a feature switch. */
@@ -231,8 +219,8 @@ export function pricingSection(p: PricingProps = {}): string {
     <div ${rv("pricing-plans", "rv-static site-plans")}>
       ${defs.map((def, i) => planCard(def, pricing[def.id], i, def.id === accent, signedIn, level + 1)).join("")}
     </div>
+    ${sizedNote(defs, pricing)}
     ${accent === null ? `<div ${rv("pricing-note")}>${notAnnounced(signedIn)}</div>` : ""}
-    <div ${rv("pricing-compare", "site-price-block")}>${comparison(defs, pricing, level + 1)}</div>
     <div ${rv("pricing-all", "site-price-block")}>${everyPlan(level + 1)}</div>
     <div ${rv("pricing-faq", "site-price-block")}>${questions(defs, pricing, level + 1)}</div>
   </section>`;

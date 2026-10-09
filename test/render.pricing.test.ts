@@ -135,10 +135,6 @@ describe("pricing — the plans on offer come from shared/plans.ts", () => {
     expect(card(html, "team")).toContain("<li><b>3,000</b> AI summaries per month</li>");
     expect(card(html, "enterprise")).toContain("<li><b>Unlimited</b> AI summaries</li>");
     expect(html).not.toContain("3000");
-    // The comparison row names the period once, in its header; its cells are the same formatter's values.
-    const row = html.slice(html.indexOf('<span class="site-cmp-label">AI summaries'));
-    expect(row).toContain('<span class="site-cmp-label">AI summaries, per month</span>');
-    expect(row.slice(0, row.indexOf("</tr>"))).toContain('<td role="cell" data-plan="Free">300</td><td role="cell" data-plan="Pro">3,000</td><td role="cell" data-plan="Enterprise">Unlimited</td>');
     // A changed allowance follows, like every other number.
     const out = pricingSection({ plans: { ...PLANS, free: { ...PLANS.free, entitlements: { ...PLANS.free.entitlements, ai_summaries: 1 } }, team: { ...PLANS.team, entitlements: { ...PLANS.team.entitlements, ai_summaries: 1250000 } } } });
     expect(card(out, "free")).toContain("<li><b>1</b> AI summary per month</li>");
@@ -158,9 +154,7 @@ describe("pricing — the plans on offer come from shared/plans.ts", () => {
     expect(c).toContain("<b>1</b> repository</li>");
     expect(c).toContain("<b>3 GB</b> artifact storage</li>");
     expect(c).toContain(">Choose Crew</a>");
-    expect(out).toContain('<td role="cell" data-plan="Crew">Up to 25</td>');
-    expect(out).toContain('<td role="cell" data-plan="Crew">3 GB</td>');
-    expect(out).not.toContain('data-plan="Pro"');
+    expect(out).not.toContain("Choose Pro");
     expect(out).toContain("How does Crew pricing work?");
     expect(out).toContain(", up to 25.");
   });
@@ -170,8 +164,6 @@ describe("pricing — the plans on offer come from shared/plans.ts", () => {
     expect(out).not.toContain("site-plan-free");
     expect(out).toContain('aria-labelledby="site-plan-personal"');
     expect(out.indexOf("site-plan-personal")).toBeLessThan(out.indexOf("site-plan-team"));
-    expect(out).toContain('<th role="columnheader" scope="col">Personal</th>');
-    expect(out).not.toContain('<th role="columnheader" scope="col">Free</th>');
   });
 });
 
@@ -205,8 +197,9 @@ describe("pricing — what ships: Free, Pro per seat, Enterprise by conversation
     expect(html.match(/site-btn-accent/g)).toHaveLength(1);
     expect(html.match(/site-plan is-accent/g)).toHaveLength(1);
     // Only the plan sold per seat reads "Up to": Free's and Enterprise's seats are the plan's own.
-    expect(html).toContain('<td role="cell" data-plan="Free">3</td><td role="cell" data-plan="Pro">Up to 50</td><td role="cell" data-plan="Enterprise">Unlimited</td>');
-    expect(html.match(/Up to /g)).toHaveLength(2); // Pro's card and its column
+    expect(card(html, "free")).not.toContain("Up to");
+    expect(card(html, "enterprise")).not.toContain("Up to");
+    expect(html.match(/Up to /g)).toHaveLength(1); // Pro's card, the one place it is said
     // A plan can be bought, so nothing says prices are coming, and nothing asks for early access.
     expect(html).not.toContain("Prices are not announced yet.");
     expect(html).not.toContain("Get early access");
@@ -235,7 +228,7 @@ describe("pricing — no paid price announced (a test double: Pro without a numb
     // allowance), never a price: with those phrases set aside, nothing else says "per month" or "per year".
     expect(html).not.toContain('class="site-plan-per"');
     const allowance = /AI summar(?:y|ies),? per month/g;
-    expect(text(html).match(allowance)).toHaveLength(3); // the Free and Pro cards, and the comparison row's header
+    expect(text(html).match(allowance)).toHaveLength(2); // the Free and Pro cards
     expect(text(html).replace(allowance, "")).not.toMatch(/\bper (month|year)\b/);
     expect(text(html)).not.toContain("per seat /");
     expect(card(html, "team")).toContain("Pricing to be announced");
@@ -336,28 +329,18 @@ describe("pricing — Enterprise is a conversation", () => {
   });
 });
 
-describe("pricing — the comparison", () => {
+describe("pricing — the limits are said once, on the cards", () => {
   const html = pricingSection();
-  const table = html.slice(html.indexOf("<table"), html.indexOf("</table>"));
 
-  it("is a real table: a column header per offered plan, a row header per limit", () => {
-    for (const id of OFFERED_PLAN_IDS) expect(table).toContain(`<th role="columnheader" scope="col">${PLANS[id].name}</th>`);
-    expect(table.match(/role="columnheader"/g)).toHaveLength(OFFERED_PLAN_IDS.length + 1);
-    expect(table).not.toContain("Personal");
-    for (const k of LIMIT_KEYS) {
-      expect(table).toContain(`<th role="rowheader" scope="row"><span class="site-cmp-label">${LIMITS[k].label}`);
-      expect(table).toContain(`<span class="site-cmp-counts">${LIMITS[k].counts}</span>`);
-    }
-    expect(table.match(/<tr role="row">/g)).toHaveLength(LIMIT_KEYS.length + 1);
-  });
-
-  it("formats every value: counts, MB / GB, and Unlimited for null", () => {
-    expect(table).toContain('<td role="cell" data-plan="Free">1</td>');
-    expect(table).toContain('<td role="cell" data-plan="Free">250 MB</td>');
-    expect(table).toContain('<td role="cell" data-plan="Pro">5 GB</td>');
-    expect(table).toContain('<td role="cell" data-plan="Enterprise">Unlimited</td>');
-    expect(table).not.toContain("null");
-    expect(table).toContain("Agent connections, per person");
+  it("has no side-by-side table repeating them: each card lists every limit, formatted", () => {
+    expect(html).not.toContain("<table");
+    expect(html).not.toContain("Limits, side by side");
+    expect(html).not.toContain("site-cmp");
+    for (const id of OFFERED_PLAN_IDS) expect((card(html, id).match(/<li><b>/g) ?? []).length).toBe(LIMIT_KEYS.length);
+    expect(card(html, "free")).toContain("<b>250 MB</b>");
+    expect(card(html, "team")).toContain("<b>5 GB</b>");
+    expect(card(html, "enterprise")).toContain("<b>Unlimited</b>");
+    expect(html).not.toContain("null");
   });
 
   it("lists what every plan includes, and says the by-conversation plan's limits can be set", () => {
