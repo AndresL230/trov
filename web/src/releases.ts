@@ -160,6 +160,7 @@ export const RELEASES: Release[] = [
         "Dark theme: the sign-in and feature scrims dim with the page's warm black, and the dialog and hero-mockup shadows are neutral (were blue-black) (#134)",
       ],
       fixed: [
+        "A NEW account that signed up to buy Pro was taken through the first run and never reached checkout: `POST /auth/onboard` handed back the purchase path, but the SPA followed only an MCP authorize link. It follows `signInReturnPath` (`shared/billing.ts`: an authorize request or a purchase link, nothing else), and the purchase path's shape is defined once (`isBillingStartPath`) for the Worker's return allowlist and the SPA alike (#168)",
         "A first-run card morphing into the organization picker landed on the picker's short \"Loading…\" card and then snapped to full height when the list arrived (squeezed, then stretched) — after the handle step and after payment alike. The list is read first (`morphToPicker`, `web/src/main.ts`), so the card morphs once, to its real size (#134)",
         "Opening the sign-in dialog rebuilt the whole landing page, restarting the terminal carets and cutting any reveal in flight (#134)",
         "Org settings › Notifications showed \"No sends yet\" and an Outbox count of 0 until the outbox's first read landed. It is a skeleton until then (`outboxLoading`) (#134)",
@@ -167,7 +168,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [134],
+    prs: [134, 168],
   },
   // The guided first-run setup: a new owner, admin or member is walked through it instead of landing on a checklist or an empty feed (#121).
   {
