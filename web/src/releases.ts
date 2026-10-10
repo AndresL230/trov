@@ -70,12 +70,10 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // Review, polished after its first real queue (26 staged docs). Not merged yet (#138): the merging PR cuts
-  // this entry as the header says (`version` to the next 0.N, `date` to the merge day, drop `unreleased`).
+  // Review, polished after its first real queue (26 staged docs) (#138).
   {
-    version: "Unreleased",
-    date: "2026-10-09",
-    unreleased: true,
+    version: "0.26",
+    date: "2026-10-10",
     title: "Review, made for a long queue",
     headline: "Rendered shows a proposed doc the way it will read, and a card you decide on leaves the list in one clear move.",
     highlights: [
