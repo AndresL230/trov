@@ -35,7 +35,7 @@ import { repoUrl } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
 import { landingView } from "./landing";
 import { emptyLayout, CONNECT_AGENT, skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
-import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
+import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
 import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type AssignKind } from "./maintenance";
 import type { IdentityProps } from "./identity";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
@@ -221,6 +221,11 @@ export interface AppState {
   reviewFilter: ReviewFilter;
   reviewSel: string | null;
   reviewDiffView: DiffViewMode;
+  /** Review items a verdict was just given to, by id (main.ts `reviewAccept` / `reviewReject`).
+   *  `gone: false` — the card is on screen, wearing its verdict and collapsing; `gone: true` — it
+   *  has left the list and the write or the refetch that confirms it is still out. Either way the
+   *  item is out of the queue's counts. A failed write deletes the entry, and the card is back. */
+  reviewLeaving: Record<string, { verdict: ReviewVerdict; gone: boolean }>;
   assignOpen: string | null;
   assignKind: AssignKind | null;
   assignSection: string | null;
@@ -473,7 +478,7 @@ export function initialState(): AppState {
     needsTriage: { status: "idle", data: [] },
     identityTasks: { status: "idle", data: [] },
     identityDiscarded: [], identityShowDiscarded: false,
-    reviewFilter: "all", reviewSel: null, reviewDiffView: "unified",
+    reviewFilter: "all", reviewSel: null, reviewDiffView: "unified", reviewLeaving: {},
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
     mapConfirm: null,
     mapPicks: {},
@@ -555,11 +560,15 @@ export function initialState(): AppState {
 
 // ── triage surface data (real reads — the mapping layer lives in triage-map.ts) ──
 export function reviewProps(s: AppState): ReviewProps {
+  const leaving: Record<string, ReviewVerdict> = {};
+  for (const [id, l] of Object.entries(s.reviewLeaving)) if (!l.gone) leaving[id] = l.verdict;
   return {
-    items: reviewItemsFromReads(s.proposals.data, s.draftAdrs.data).map((it) => {
+    // A card that has finished leaving is not in the list, even while the read still holds it.
+    items: reviewItemsFromReads(s.proposals.data, s.draftAdrs.data).filter((it) => !s.reviewLeaving[it.id]?.gone).map((it) => {
       const p = personFor(s, it.agent);
       return p ? { ...it, agentColor: p.color, agentAvatar: p.avatar_url, agentHandle: p.handle, agentName: p.name } : it;
     }),
+    leaving,
     filter: s.reviewFilter,
     selectedId: s.reviewSel,
     diffView: s.reviewDiffView,
@@ -583,8 +592,12 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
 /** Sidebar counts for the two triage entries: Review's two reads, and the Unplaced queue (the
  *  key is still `maintenance`). Unmatched logins are NOT in it — they wait in Org settings. */
 export function triageCounts(s: AppState): { review: number; maintenance: number } {
+  // An item a verdict was just given to is not waiting any more: the badge drops with the card,
+  // not when the refetch lands. It is derived, never stored — a failed write deletes the entry in
+  // `reviewLeaving` and the count is back; the refetch then replaces the reads it is derived from.
+  const left = reviewHeadsFromReads(s.proposals.data, s.draftAdrs.data).filter((it) => s.reviewLeaving[it.id]).length;
   return {
-    review: s.proposals.data.length + s.draftAdrs.data.length,
+    review: s.proposals.data.length + s.draftAdrs.data.length - left,
     maintenance: s.needsTriage.data.length,
   };
 }
@@ -2711,7 +2724,9 @@ function appView(s: AppState): string {
   // Personal Settings too: it holds forms (name, handle, digest address), and a page rebuilt per
   // keystroke restarts everything in it (web-ui.md › A repaint REBUILDS a page).
   const morphKey = isArtScreen(s.screen) ? `${s.screen}:${JSON.stringify(s.screen === "artifact" ? s.artRoute : null)}`
-    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" ? s.screen : "";
+    // Review too: its list is keyed (`data-morph-list`), so a filter or a verdict never rebuilds it —
+    // a card can leave with an animation, and the two switches' indicators slide on the same element.
+    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen : "";
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
     ${sidebar(s)}
     <main${morphKey ? ` data-morph="${attr(morphKey)}"` : ""} style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">

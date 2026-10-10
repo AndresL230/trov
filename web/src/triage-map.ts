@@ -59,6 +59,10 @@ export function proposalReviewItem(p: StagedProposal): ReviewItem {
       : undefined,
     liveVersion: `LIVE (v${p.current_version})`,
     diff: diffEntries(p.promotedBody, p.stagedBody),
+    // Rendered renders the two bodies whole (review-rendered.ts); a doc with nothing live is new.
+    liveBody: p.promotedBody,
+    proposedBody: p.stagedBody,
+    isNew: p.current_version === 0 || p.promotedBody.trim() === "",
   };
 }
 

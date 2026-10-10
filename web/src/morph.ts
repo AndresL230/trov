@@ -11,6 +11,7 @@
 // `data-morph-key` names what an element IS: two paired nodes whose keys differ are different
 // things (one tab's panel and another's), so the new one replaces the old instead of being
 // patched into it — a tab switch swaps the panel whole and leaves the tab bar above it alone.
+// The one exception to "pair by index" is a container marked `data-morph-list` (`morphList`).
 
 /** Make `live`'s attributes equal `next`'s. */
 export function syncAttrs(live: Element, next: Element): void {
@@ -34,12 +35,47 @@ function syncValue(live: Element, next: Element): void {
   }
 }
 
+/**
+ * A KEYED list (`data-morph-list` on the container, `data-morph-key` on each child): children pair
+ * by key, not by index. A child still in the list stays the element it was (patched), a new one is
+ * inserted where it belongs, and one that is gone is removed — so a row taken out of the middle
+ * never turns every row after it into its neighbour. That is what lets a row animate its way out
+ * and the rows under it move up as themselves (web-ui.md › A row leaving a list). Children are
+ * elements only; a child without a key is always replaced.
+ */
+function morphList(live: Element, next: Element): void {
+  const wanted = new Map<string, Element>();
+  for (const c of Array.from(next.children)) {
+    const k = c.getAttribute("data-morph-key");
+    if (k !== null && !wanted.has(k)) wanted.set(k, c);
+  }
+  // First drop what is gone (anything that is not an element, has no key, or whose key the new
+  // list does not hold as the same kind of element). What is left is in the new list, so a child
+  // that only lost a neighbour is never MOVED — a moved element drops its running transition.
+  const byKey = new Map<string, Element>();
+  for (const c of Array.from(live.childNodes)) {
+    const k = c instanceof Element ? c.getAttribute("data-morph-key") : null;
+    if (c instanceof Element && k !== null && !byKey.has(k) && wanted.get(k)?.nodeName === c.nodeName) byKey.set(k, c);
+    else c.remove();
+  }
+  let cursor: ChildNode | null = live.firstChild;   // the live node standing where the next child goes
+  for (const to of Array.from(next.children)) {
+    const k = to.getAttribute("data-morph-key");
+    const from = k !== null && wanted.get(k) === to ? byKey.get(k) : undefined;
+    if (!from) { live.insertBefore(to, cursor); continue; }
+    if (from === cursor) cursor = from.nextSibling;
+    else live.insertBefore(from, cursor);   // a real reorder
+    morph(from, to);
+  }
+}
+
 /** Patch `live` (and its subtree) to match `next`. Both must be the same element type.
  *  A `data-keep` element is owned by script (the collapsed-rail tooltip) and left alone. */
 export function morph(live: Element, next: Element): void {
   if (live.hasAttribute("data-keep")) return;
   syncAttrs(live, next);
   syncValue(live, next);
+  if (next.hasAttribute("data-morph-list")) { morphList(live, next); return; }
   const a = Array.from(live.childNodes);
   const b = Array.from(next.childNodes);
   for (let i = 0; i < b.length; i++) {

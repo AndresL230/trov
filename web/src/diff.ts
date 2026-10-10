@@ -6,22 +6,33 @@
 export type DiffKind = "ctx" | "add" | "del" | "ellipsis";
 
 export type DiffRow = { t: DiffKind; text: string };
-export function lineDiff(oldText: string, newText: string): DiffRow[] {
-  const a = oldText.split("\n"), b = newText.split("\n");
+
+/** One step of an LCS walk over two sequences: kept (`ctx`, in both), removed (`del`, only in
+ *  `a`) or added (`add`, only in `b`), with its index in the sequence it came from. */
+export type SeqOp = { t: "ctx"; a: number; b: number } | { t: "del"; a: number } | { t: "add"; b: number };
+
+/** LCS diff of two sequences of strings: lines for the source views, whole markdown blocks
+ *  for Review's Rendered view (review-rendered.ts). */
+export function diffSeq(a: string[], b: string[]): SeqOp[] {
   const n = a.length, m = b.length;
   const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
     dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-  const out: DiffRow[] = [];
+  const out: SeqOp[] = [];
   let i = 0, j = 0;
   while (i < n && j < m) {
-    if (a[i] === b[j]) { out.push({ t: "ctx", text: a[i] }); i++; j++; }
-    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ t: "del", text: a[i] }); i++; }
-    else { out.push({ t: "add", text: b[j] }); j++; }
+    if (a[i] === b[j]) { out.push({ t: "ctx", a: i, b: j }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ t: "del", a: i }); i++; }
+    else { out.push({ t: "add", b: j }); j++; }
   }
-  while (i < n) out.push({ t: "del", text: a[i++] });
-  while (j < m) out.push({ t: "add", text: b[j++] });
+  while (i < n) out.push({ t: "del", a: i++ });
+  while (j < m) out.push({ t: "add", b: j++ });
   return out;
+}
+
+export function lineDiff(oldText: string, newText: string): DiffRow[] {
+  const a = oldText.split("\n"), b = newText.split("\n");
+  return diffSeq(a, b).map((op): DiffRow => (op.t === "add" ? { t: "add", text: b[op.b] } : { t: op.t, text: a[op.a] }));
 }
 
 /**
