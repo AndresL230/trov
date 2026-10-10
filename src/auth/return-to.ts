@@ -10,14 +10,15 @@ import type { Context } from "hono";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import type { AppEnv } from "./principal";
 import { hmacSeal, hmacUnseal, b64uEncode, b64uDecode } from "./crypto";
-import { PURCHASABLE_PLANS } from "@shared/billing";
+import { isBillingStartPath } from "@shared/billing";
 
 export const RETURN_TO_COOKIE = "return_to";
 const RETURN_TO_TTL_S = 600;
 
-/** Every path a sign-in may return to. Exact shapes, no wildcards over a host or a scheme. */
-const ALLOWED: RegExp[] = [new RegExp(`^/billing/start\\?plan=(?:${PURCHASABLE_PLANS.join("|")})(?:&interval=(?:month|year))?$`)];
-export const isReturnPath = (path: string): boolean => ALLOWED.some((re) => re.test(path));
+/** Every path a sign-in may return to: today, a purchase link. Its exact shape is defined ONCE, in
+ *  shared/billing.ts (`isBillingStartPath`) — the SPA follows the same definition after a sign-UP, so the
+ *  two can never disagree about what counts. No wildcards over a host or a scheme. */
+export const isReturnPath = (path: string): boolean => isBillingStartPath(path);
 
 const seal = (secret: string): string => `return-to:${secret}`;
 
