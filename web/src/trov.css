@@ -392,6 +392,10 @@ input, select { font-family: inherit; }
    size, so "`main`" read as struck twice. Children only take the muted colour. */
 .cnpy-rv-md .cnpy-rv-blk[data-chg="del"] { text-decoration:line-through; text-decoration-color:color-mix(in srgb, var(--red) 70%, transparent); }
 .cnpy-rv-md .cnpy-rv-blk[data-chg="del"], .cnpy-rv-md .cnpy-rv-blk[data-chg="del"] :is(h1,h2,h3,h4,h5,h6,p,li,td,th,strong,code,a,blockquote) { color:var(--fg-55); }
+/* Inline code is smaller than the text around it, so the box's strike crossed it LOW. Code inside removed
+   text is an inline-block — the one thing a strike does not carry into — and draws its own line, through
+   the middle of its own letters. Still one line, now the right one. */
+.cnpy-rv-md .cnpy-rv-blk[data-chg="del"] code, .cnpy-rv-md tr.cnpy-rv-row-del > td code { display:inline-block; text-decoration:line-through; text-decoration-color:color-mix(in srgb, var(--red) 70%, transparent); }
 /* A block EDITED in place (html-words.ts): no tint on the box, an amber rule in the margin, and the words
    themselves carry the marks — added ones on green, dropped ones struck on red. */
 .cnpy-rv-md .cnpy-rv-blk[data-chg="mix"] { --rv-chg:var(--amber); background:none; box-shadow:none; }

@@ -366,6 +366,9 @@ describe("Rendered — the marks' CSS (trov.css)", () => {
     expect(css).toContain('.cnpy-rv-md .cnpy-rv-blk[data-chg="del"] { text-decoration:line-through;');
     expect(css).toContain(".cnpy-rv-md tr.cnpy-rv-row-del > td { text-decoration:line-through;");
     expect(css).not.toMatch(/:is\([^)]*code[^)]*\) \{[^}]*text-decoration:line-through/);
+    // Inline code is the exception that keeps it ONE line and puts it right: as an inline-block it takes no
+    // strike from the box around it (which would cross its smaller letters low) and draws its own.
+    expect(css).toContain('.cnpy-rv-md .cnpy-rv-blk[data-chg="del"] code, .cnpy-rv-md tr.cnpy-rv-row-del > td code { display:inline-block; text-decoration:line-through;');
   });
   it("an edit in place marks the words: added on green, dropped struck on red, an amber rule on the block or row", () => {
     expect(css).toMatch(/\.cnpy-rv-md ins\.cnpy-rv-w \{ text-decoration:none;[^}]*var\(--green\)/);
