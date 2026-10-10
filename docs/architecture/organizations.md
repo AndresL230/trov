@@ -345,6 +345,6 @@ make themselves an owner through *Add another owner*, which is written to the au
 ## Before the first outside organization
 
 `HANDOFF.md` has the deploy runbook. The decisions that are the owner's to make, not the code's, are listed
-there under "Decide before a production deploy" and in `abuse-limits.md` › Residual risks — chiefly that
+in `abuse-limits.md` › Residual risks (mail) and `data-layer.md` › Routes and gates (raw artifacts) — chiefly that
 mail goes out from one platform address under names and organization names strangers choose, and that raw
 artifacts are still served from the app's own origin.

@@ -9,7 +9,10 @@ The roadmap is two layers. **The plan** (narrative + sprints + timeline) is admi
 non-destructively into `plan` (singleton narrative) + `plan_versions` snapshots (`sprints_json`), over
 the `sprints` table. **Sprints ARE the old milestones, renamed in place by 0025** — same rows, same
 ids, plus `dates` / `summary` / `urgency` / `lead` / `domain` alongside the pre-existing `description`
-(now rendered as markdown) and `phase`. Sprint `done` is admin-set here, never event-inferred.
+(now rendered as markdown) and `phase`. Sprint `done` is set by a PERSON, never event-inferred: the plan
+write may set it (admin), and ANY signed-in member completes a sprint with `POST /sprints/:id/complete` or MCP
+`complete_sprint` — sprint writes are open to every member; only the whole-plan rewrite is admin-only
+(`ingestion-gate.md` › Sprints).
 **ONE overdue rule**: `sprintDueState(due, now)` in `shared/sprints-core.ts` — a sprint is due all of its
 (local) due day and overdue from the day AFTER, "due this week" = today through 7 days out — read by the sprint
 cards, the Roadmap's Timeline-tab dot / Now box / single NEXT UP (`nextSprintId`), the Timeline and My Work's ticket due dates.
@@ -43,9 +46,11 @@ SEPARATELY as `SprintView.issues` (null without a cache row), so a mirrored tick
 summed into one number. The ticket half is a live D1 count; the GitHub half is a stored cache (`sprint_progress`,
 keyed `sprint_id`), written as ABSOLUTE `closed`/`total` (so delivery order is irrelevant — the last
 write wins) by two direct writers: the webhook (event-derived, on issue events) and the `scheduled()`
-cron backstop (`recomputeAllProgress`, `GITHUB_SERVICE_TOKEN`, off the render path). `github_ref` is bare
+cron backstop (`recomputeAllProgress`, run per org with that org's GitHub credential from
+`resolveGithubCredential`, off the render path). `github_ref` is bare
 (a GITHUB milestone number — GitHub's own vocabulary, kept deliberately — OR a JSON array of issue
-numbers) resolved against `GITHUB_REPO` — only by those two writers, never at render.
+numbers) resolved against the org's PRIMARY repository (`orgPrimaryRepo`, its `org_repos` row) — only by
+those two writers, never at render.
 
 **My Work** (`GET /me/dashboard`, MCP `get_my_work` → `getMyWork`) is a D1-only projection over captured
 events AND over the ticket queue: three separate lists — `previousActivity` (summarized merged/closed PRs

@@ -48,8 +48,7 @@ orient (load-context)  →   do the work   →   record (record-session)
 > model-invocable (auto-orient); `record-session` **must** be explicit-only (never log on its own).
 > They can't share one `SKILL.md`. This `trov` skill is the umbrella that documents both.
 
-Alongside the loop: **`tickets`** (explicit-only) works the ticket queue and, for an admin, the
-sprints; **`handoff`** (explicit-only) leaves one handoff for the next session; **`prompts`** finds,
+Alongside the loop: **`tickets`** (explicit-only) works the ticket queue and the sprints; **`handoff`** (explicit-only) leaves one handoff for the next session; **`prompts`** finds,
 fills and stages Prompt Library prompts; **`artifacts`** finds, pulls (verified download), spins up,
 links and — when asked — publishes artifact pages; **`my-work`** reads your own plate; **`read-plan`** / **`update-plan`** read and write the
 roadmap plan. Reading tickets, sprints and the roadmap needs no skill — those tools are registered for
@@ -98,7 +97,7 @@ change it in Settings › MCP access):
 - **`manual`.** The call acts in the connection's current organization; `repo` is ignored. `org` picks
   another allowed one for that call; `org_not_allowed` / `org_unavailable` list what it may use.
 
-A pasted token (`trov_mcp_…`) is the old shape: one organization, for good.
+A pasted token (`trov_mcp_…`, or an older `canopy_mcp_…`) is the old shape: one organization, for good.
 
 ## Reading
 
@@ -111,7 +110,8 @@ A pasted token (`trov_mcp_…`) is the old shape: one organization, for good.
 - **`get_feed`** — the activity feed (author / tags / since / limit filters).
 - **`get_roadmap`** — the roadmap plan: an admin-authored narrative + **sprints** (each with `label`,
   `summary`, `phase`, `dates`, `due`, `status`/`active`, `urgency`, `lead`, `domain`) merged with their
-  progress (`closed/total/pct` — the sprint's tickets PLUS its cached GitHub issue counts) and
+  progress (`closed/total/pct` — the sprint's TICKETS only, `closed` = done + declined; the cached GitHub
+  issue counts behind `github_ref` travel separately as `issues`, null when there are none) and
   `members` (the handles assigned to those tickets); no live GitHub at read time.
 - **`list_tickets` / `get_ticket`** — the org-wide ticket queue, read-only: `list_tickets` takes
   `seg` (`open` / `closed` / `all`), `assignee` (`anyone` / `me` / `unassigned`) and `category`;
@@ -164,7 +164,8 @@ assign / discard) is done by a human in the web Triage desk over session-cookie 
 tools. The roadmap plan itself is **admin-authored**, not staged by agents: the `update-plan` skill
 wraps the `update_plan` MCP tool (direct, non-destructively versioned, promote-class; its narrative is a
 short Now / Next / Later of at most 800 characters, over it nothing is written) — agents cannot
-propose a sprint at all (the roadmap-proposal queue was retired), and sprint `done` is admin-set.
+propose a sprint at all (the roadmap-proposal queue was retired), and a sprint's `done` is set by a
+person — any member, with `complete_sprint` or on the web, or an admin in the plan write — never inferred.
 
 ### Tickets and sprints — writes in your own lane
 
@@ -260,7 +261,9 @@ claude plugin install trov@trov
 ```
 
 Then run `/mcp` in Claude Code, choose **trov → Authenticate**, sign in to Trov in the browser and
-click **Allow**. (Headless clients can still use a token from Settings › MCP access.)
+click **Allow**. Browser sign-in is the way to connect: Trov no longer creates access tokens. (A
+`trov_mcp_…` / `canopy_mcp_…` token already in use keeps working, in its one organization, and its owner can
+see and revoke it in Settings › MCP access.)
 
 On the Allow page you choose how the connection picks an organization:
 
@@ -275,12 +278,13 @@ left). You can change the mode, the organizations and the current one any time i
 MCP access; a connection made before this existed is a manual one with its single organization. If you
 leave or are removed from an organization, the connection stops reaching it at once.
 
-**Manual fallback** — wire the MCP server and copy the skills yourself:
+**Without the plugin** — wire the MCP server and copy the skills yourself (the same browser sign-in; no
+token and no header):
 
 ```bash
-claude mcp add --transport http trov https://trov.dev/mcp \
-  --header "Authorization: Bearer trov_mcp_…"
-# then copy the skill folders into another repo / your home dir:
+claude mcp add --transport http --scope user trov https://trov.dev/mcp
+# then /mcp → trov → Authenticate, and Allow in the browser.
+# Copy the skill folders into another repo / your home dir:
 cp -r .claude/skills/{trov,load-context,record-session,my-work,tickets,read-plan,update-plan,handoff,prompts,artifacts} ~/.claude/skills/
 ```
 

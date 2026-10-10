@@ -23,8 +23,9 @@
   Email notifications section), `db.ts` (D1 helpers), `auth/` (`persons.ts` — the identity root;
   `google.ts` — second provider; `onboard.ts` — the sign-in fork + onboarding cookie; `invites.ts`),
   `env.ts`. `repo/` is the repo-capture package behind `tools/repo.ts`: `types.ts` (the `RepoEvent` /
-  `RepoEventRow` / `RepoMetric` shapes), `config.ts` (parses the `REPO_ENVIRONMENTS` var into
-  `RepoEnvConfig[]`, `[]` on absent/malformed), `capture.ts` (PURE delivery→`RepoEvent[]` derivation,
+  `RepoEventRow` / `RepoMetric` shapes), `config.ts` (the org's own configuration: `orgEnvironments` /
+  `orgEnvironment` read `org_environments` into `RepoEnvConfig[]`, `orgPrimaryRepo` its primary `org_repos` row;
+  the legacy `repoEnvironments()` parser of the `REPO_ENVIRONMENTS` var is called only by tests), `capture.ts` (PURE delivery→`RepoEvent[]` derivation,
   `repoEventsFromDelivery` — no DB, no clock, no network, and stores only a SLICE of each payload in `raw`),
   `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the five snapshot kinds —
   `prs_reconciled`, `env_heads`, `drift`, `branches`, `cf_polled`; `putMetric`, the ONE write seam that
@@ -34,7 +35,7 @@
   `product.ts` (Sapling's product metrics: the `sap_c_*` / `sap_t_*` metric naming and the key → group /
   label / format registry — one place, server-side), `reads.ts` (every SELECT over `repo_events` — D1 only, nothing here may fetch — including
   `recordingSince`, the earliest `recorded_at` per kind that the week-over-week deltas gate on, and the ONE
-  non-decisive-conclusion policy at `foldResult`/`checkState`), `github.ts` (service-token GitHub reads —
+  non-decisive-conclusion policy at `foldResult`/`checkState`), `github.ts` (GitHub reads with the token its caller resolved for the org —
   `ghJson` / `ghGraphql`, `reconcileRepo` with its drift and branches arms, `refreshDrift`, `fillFailedJob` —
   never on the render path), `poll.ts` (the four scheduled pulls, none of which may throw: `pingHealth` every tick,
   and the three hourly usage pollers `pollCloudflare`, `pollRailway`, `pollSaplingMetrics`, each returning a
@@ -45,7 +46,7 @@
   usage job on demand; `runRepoRefresh` / `runLockedRepoRefresh`, the on-demand refresh of EVERY source
   behind `POST /admin/poll`, which the cron never calls). A job reads its repo and environments from the
   org's rows (`config.ts`: `orgPrimaryRepo`, `orgEnvironments`) and its credentials through
-  `resolveCredential` — never from `GITHUB_REPO` / `REPO_ENVIRONMENTS` / a Worker secret directly. Retention, the cron schedule and every capture path are
+  `resolveGithubCredential` (GitHub) / `resolveCredential` (every other integration) — never from `GITHUB_REPO` / `REPO_ENVIRONMENTS` / a Worker secret directly. Retention, the cron schedule and every capture path are
   described once, in the Repo dashboard section below.
 - `migrations/` — D1 SQL (`0001_init` … `0010_triage_resolve`, then `0011_fts_recreate`,
   `0012_events_plan` [events / pr_summaries / milestone_progress / people / plan / plan_versions +
@@ -139,7 +140,7 @@
   source (`githubCredentialSource`, `src/github-app/credential.ts`), never of the token alone. The summarizer for an org is chosen ONLY by `orgSummarizers`
   (`src/plans/summaries.ts` — one platform key, each call metered per org, the monthly `ai_summaries` allowance).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
-  Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
+  Settings, the Guide (Help › Guide, `#guide`; it was Get Started), the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
   `web/src/markdown.ts` renders PR summaries, the roadmap narrative and a sprint description as styled HTML;
   `web/src/notifications.ts` holds the Settings › Email notifications and Org settings › Notifications views;

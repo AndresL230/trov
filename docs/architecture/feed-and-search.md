@@ -24,16 +24,20 @@ body's soft target is ~2,500 characters. Pre-0034 entries were filled once by
 ## Read side — FTS5 query engine
 
 `src/tools/reads.ts` exposes a ranked FTS5 `query()` engine (bm25, title/summary weighted) that backs
-both MCP `query` and `GET /search`, over five types: `doc` / `decision` / `feed` / `sprint` / `ticket`. Each
+both MCP `query` and `GET /search`, over five types: `doc` / `decision` / `feed` / `sprint` / `artifact`
+(`QueryType` in `shared/contract.ts`; `DEFAULT_QUERY_TYPES` is all five). Each
 result is authority-flagged: `live` / `staged_pending` / `unpromoted` / `draft`. The doc/feed/ADR index
 lives in `migrations/0008_fts.sql` (recreated in `0011_fts_recreate.sql`); `0013_roadmap_fts.sql` adds a
 standalone `roadmap_fts` over the plan narrative + sprints (refs `plan` / `sprint:<id>`, re-keyed by
-0025) so `query` surfaces the roadmap, and `0024_tickets.sql`'s `tickets_fts` backs the `ticket` type
-(ids `ticket:<id>`, always authority `live` — a ticket is an authored human write with no staged state).
+0025) so `query` surfaces the roadmap. An `artifact` result's id is its slug; candidates come from the
+artifacts repository under the ONE visibility rule (a private page reaches only its author), and its authority
+is `draft` for a draft, `live` once published or ratified. **A ticket is deliberately NOT a query type**:
+`0024_tickets.sql`'s `tickets_fts` stays populated, but it backs quick search (below) and the Tickets screen,
+never the `query` / `/search` fan-out — over MCP tickets are read with `list_tickets` / `get_ticket`.
 `get_doc` is the exact-slug fetch (all versions + live body); `list_tickets` / `get_ticket` /
 `ticket_badge` are the queue's read projections (no N+1 — grouped queries keyed by ticket id). The
 assembled `sprint` body's `Progress: closed/total` line uses the SAME `sprintProgress` rule as the
-Roadmap (tickets + cache), never the cache alone.
+Roadmap — the sprint's tickets only, never the GitHub issue cache.
 
 **The "search everything" dropdown — `GET /search/quick`** (`src/tools/quick-search.ts`, DTO
 `shared/quick-search.ts`, panel `web/src/quicksearch.ts`; session cookie, NEVER MCP). As a person types in
