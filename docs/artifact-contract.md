@@ -93,7 +93,7 @@ the web library's filters: `q` is full text over title / summary / body or a tit
 `{ artifacts: [{ slug, title, kind, status, version, updated_at, url, area, author, visibility }], total,
 truncated }`.
 
-`url` is the page in the Trov web app (`<origin>/#artifacts/<slug>`) — the link to hand a person;
+`url` is the page in the Trov web app, in the organization the call acted in (`<origin>/<org>/#artifacts/<slug>`) — the link to hand a person;
 `upload_url`, `download_url` and `raw_url` are absolute too. **Every result carries `warnings: string[]`** — non-empty when text content calls into
 something only claude.ai provides (`window.claude`, `window.storage`, `api.anthropic.com`). That is a
 warning, never a rejection: the write has already happened, and the page will not work in Trov's
@@ -167,7 +167,8 @@ python3 -m http.server 8000 --bind 127.0.0.1 --directory .trov/artifacts/checkou
 
 ## The raw route
 
-`GET /raw/a/<slug>` (latest), `/raw/a/<slug>@v<n>` or `/raw/a/<slug>/v<n>` serves the bytes with
+`GET /api/o/<org>/raw/a/<slug>` (latest), `…/raw/a/<slug>@v<n>` or `…/raw/a/<slug>/v<n>` (the old `/raw/a/…`
+without the organization is an alias that answers a person with exactly one organization) serves the bytes with
 locked-down headers (a sandboxing CSP, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`,
 `Cache-Control: private`). `?download=1` forces an attachment named `<slug>-v<n>.<ext>`. It is
 **session-cookie only** — it is what the web viewer frames and what `raw_url` points a signed-in browser

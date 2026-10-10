@@ -91,7 +91,7 @@ import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
 import { SETUP_PARAM, initialBillingDone, startBillingDone } from "./billing";
 import { morphStep } from "./transition";
-import { BILLING_DONE_PATH } from "@shared/billing";
+import { BILLING_DONE_PATH, signInReturnPath } from "@shared/billing";
 import { getBillingStatus } from "./api";
 import { setPrimaryRepo } from "./github";
 import { GITHUB_LOGIN_RE, type MyOrgsResponse } from "@shared/orgs";
@@ -2300,10 +2300,13 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         // empty on day one, and this is the one moment they are guaranteed to be
         // new. The boot path restores the route from the hash, so #guide is all
         // it takes. Every later sign-in goes wherever their hash points.
-        // Signed up from an MCP client's authorize link → back to the consent screen
-        // (a same-origin path the Worker built); otherwise Get Started, as before.
+        // Signed up FOR something → on to it, before any of the first run: an MCP client's authorize link
+        // (back to the consent screen), or a purchase (on to checkout — a new buyer names their
+        // organization after paying, not before). A same-origin path the Worker built and
+        // `signInReturnPath` recognises; anything else is ignored. Otherwise the first run, as before.
         .then((r) => {
-          if (r.redirect?.startsWith("/oauth/authorize?")) { window.location.href = r.redirect; return; }
+          const next = signInReturnPath(r.redirect);
+          if (next) { window.location.href = next; return; }
           // No reload: read who we now are and morph this card into the next one (the org picker —
           // a new person is in no org). Anything unexpected falls back to a fresh page.
           getMe().then((me) => {
