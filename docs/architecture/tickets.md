@@ -78,15 +78,16 @@ MCP write is recorded as the person, indistinguishable from a click.
 ## Tickets mirrored from GitHub issues — ADR-007, amended (`src/tools/ticket-mirror.ts`, `0032_ticket_source`)
 
 ADR-007 now reads: **a ticket may link to GitHub work, and may be sourced from a GitHub issue, but is never the
-issue itself.** Every issue of `GITHUB_REPO` is mirrored into a ticket (`source = 'github'`, `source_ref`
+issue itself.** Every issue of the org's PRIMARY repository (its `org_repos` row — the `GITHUB_REPO` var is read by nothing) is mirrored into a ticket (`source = 'github'`, `source_ref`
 `owner/repo#n`, UNIQUE; `source_author` = the raw GitHub login, NOT a handle, so it is not in
 `HANDLE_COLUMNS`). The mirror is a COMPUTED write from a verified delivery — no `consume()`.
 
-- **Where it runs**: `handleGithubWebhook` calls `mirrorIssue` on EVERY verified `issues` delivery (not only
+- **Where it runs**: the webhook capture (`captureDelivery`, `src/webhook.ts`) calls `mirrorIssue` on EVERY verified `issues` delivery (not only
   when `ingestEvent` wrote — a redelivery heals a half-failed mirror), wrapped so a failure never costs the
   `events` capture; `runBackfill` calls the SAME function for OPEN issues, and its reconstructed deliveries
   (and `scripts/backfill-events.mjs`') carry `repository.full_name`. Only an issue whose
-  `repository.full_name === GITHUB_REPO` is mirrored; unset `GITHUB_REPO` mirrors nothing; PRs are skipped.
+  `repository.full_name` equals the org's primary repository (compared without case) is mirrored; an org with
+  no primary repository mirrors nothing; PRs are skipped.
 - **Mapping** (`ticketFromIssue`, pure): the `[P0]`–`[P3]` title tag (else a `P0`–`P3` label) → high / high /
   normal / low, none → normal, stripped from the title; label `bug` / `question` → that category, else
   `other`; the requester is `resolvePersonForLogin(author)` or the system person `github-webhook`; GitHub

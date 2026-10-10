@@ -223,3 +223,11 @@ describe("landing — motion is off under prefers-reduced-motion", () => {
     expect(rules).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.site-signin-back, \.site-signin-card, \.site-signin-x, \.site-signin-btn \{ animation:none !important; transition:none !important; \} \}/);
   });
 });
+
+describe("landing — buying Pro as someone new carries through signing up", () => {
+  it("after onboarding the SPA goes on to what the sign-up was for: an authorize link OR a purchase (it used to follow an authorize link only, so a new buyer's checkout was dropped)", () => {
+    expect(mainSrc).toContain("const next = signInReturnPath(r.redirect);");
+    expect(mainSrc).toContain("if (next) { window.location.href = next; return; }");
+    expect(mainSrc).not.toContain('r.redirect?.startsWith("/oauth/authorize?")');
+  });
+});

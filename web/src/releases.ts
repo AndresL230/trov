@@ -70,12 +70,10 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // The signed-out site on a phone. Not merged yet (#139): the merging PR cuts this entry as the header says
-  // (`version` to the next 0.N, `date` to the merge day, drop `unreleased`).
+  // The signed-out site on a phone (#139).
   {
-    version: "Unreleased",
-    date: "2026-10-09",
-    unreleased: true,
+    version: "0.27",
+    date: "2026-10-10",
     title: "The site on a phone",
     headline: "The front page, pricing, the terms and the sign-in and contact forms are laid out for a phone, not shrunk to fit one.",
     highlights: [
@@ -115,6 +113,46 @@ export const RELEASES: Release[] = [
       removed: [],
     },
     prs: [139],
+  },
+  // Review, polished after its first real queue (26 staged docs) (#138).
+  {
+    version: "0.26",
+    date: "2026-10-10",
+    title: "Review, made for a long queue",
+    headline: "Rendered shows a proposed doc the way it will read, and a card you decide on leaves the list in one clear move.",
+    highlights: [
+      "Rendered now shows the document, not its source. A proposed doc reads the way it will in Docs once promoted: headings, tables, lists, code and images, where before you saw the raw text with its # and | marks.",
+      "For a change to an existing doc, Rendered marks what the proposal adds in green and shows what it removes struck through, inside the text where a sentence, a list item or a table cell was edited, and a whole paragraph, item or row at a time where one was added, removed or rewritten. A brand-new doc is shown plain, with one line saying nothing is live yet.",
+      "When you promote, ratify or reject, the card shows the verdict, folds away, and the next one is already open on the right. The counts drop with it, and you can decide several in a row without waiting. If a decision could not be saved, the card comes back and a message says why.",
+      "The queue's filter and the way a change is shown are now switches like the rest of Trov. All, Proposals and Decisions each say how many are waiting.",
+      "The list keeps its place. Picking a card far down a long queue no longer jumps the list back to the top.",
+      "The screen says Review once, in the top bar, with one line under it.",
+    ],
+    patches: {
+      added: [
+        "`web/src/html-words.ts`: two renderings of one block merged word by word (`mergeInline`), so Rendered marks an edit INSIDE a paragraph, heading, list item or table cell (`<ins class=\"cnpy-rv-w\">` / `<del class=\"cnpy-rv-w\">`, `data-chg=\"mix\"`, `tr.cnpy-rv-row-chg`) instead of showing the old block and then the new one. A tag is one token with its quoted attribute values, only text tokens are wrapped, no old tag is kept, and anything the tokenizer cannot account for refuses the merge; an edited table row pairs with the added row it still shares a cell with (#138)",
+        "`web/src/review-rendered.ts` + `web/src/md-blocks.ts`: Review's Rendered view renders the two BODIES through `renderMarkdown` (the Docs reader's pipeline: marked, DOMPurify, the code / table / doc-image pass) in `.cnpy-md`. An edit is cut into top-level blocks with marked's lexer, compared with `diffSeq`, and each changed block sits in an `<ins>` / `<del>` (`.cnpy-rv-blk`); a table whose header stayed is ONE table with its changed rows classed (`cnpy-rv-row-add` / `-del`), a list is compared item by item. A new doc (`isNew`: nothing live) is one call, unmarked, under one note (#138)",
+        "`morph.ts` `data-morph-list`: a keyed child list. Children pair by `data-morph-key` instead of by index, so a row taken out of the middle leaves every other row the element it was. `docs/architecture/web-ui.md` › A row leaving a list is the pattern to reuse (#138)",
+        "Review's list exit: `state.reviewLeaving` (`{ verdict, gone }` by item id), `reviewVerdict` / `settleReview` / `pruneReviewLeaving` in `main.ts`, `.cnpy-rv-row[data-verdict]` in `trov.css` (the verdict held .13s, then `grid-template-rows:1fr → 0fr` and opacity over `--fx-fast`; `REVIEW_EXIT_MS` 310). The refetch is held until no card is still collapsing; a failed write deletes the entry and restores the selection (#138)",
+        "`test/render.review-rendered.test.ts`; the switch, title, keyed-list, verdict and reduced-motion cases in `test/render.review.test.ts` (#138)",
+      ],
+      changed: [
+        "Review is `data-morph=\"review\"`: the page is patched in place, the detail body is keyed by item (`rvd:<id>`) and the diff body by mode (`diff:<mode>`). The list pane keeps its scroll position across a repaint, and the detail pane starts at the top for a new item (`syncReviewDetail`, which also hands focus from a verdict button to the next item's) (#138)",
+        "Unified / Side by side / Rendered and All / Proposals / Decisions are `segmented()` (`review-diff`, `review-filter`, size `sm`); the filter's options carry counts (`.cnpy-seg-n`), absent while the queue is still being read. `selectChip` is no longer used by Review (#138)",
+        "`triageCounts().review` leaves out items in `reviewLeaving`, so the sidebar badge drops with the card; it is derived per paint, never stored (#138)",
+        "`ReviewItem` carries `liveBody`, `proposedBody` and `isNew`; `diffViewer(item, view)` replaces `diffViewer(entries, view, liveLabel)`; `lineDiff` is built on the new `diffSeq` (#138)",
+      ],
+      fixed: [
+        "Review › Rendered: removed text inside a table row or block was struck twice where it held inline code or bold (the strike was set on the cell and again on the child); it is set once, on the removed box (#138)",
+        "Review › Rendered showed raw markdown: it printed the line-cut diff one escaped line at a time, so no table, list or code fence could ever form, and unchanged runs were collapsed away (#138)",
+        "Review said its name twice (the header's title and an in-page heading); the in-page `<h1>` is gone and the one-line description stays (#138)",
+        "Selecting a card rebuilt the whole screen and reset the list's scroll to the top (#138)",
+      ],
+      removed: [
+        "`renderedPreview` and its per-line image handling in `review.ts` (the reader's own doc-image pass does it now) (#138)",
+      ],
+    },
+    prs: [138],
   },
   // The signed-out landing page, revamped around the first-run card's banner (#134).
   {
@@ -204,8 +242,11 @@ export const RELEASES: Release[] = [
         "Redundancy pass on the landing copy: open sign-up is said once (under the hero buttons); the sign-up clause left Security and the dialog foot; Security's person-only line now covers decisions, artifacts and prompts, and the same claim left the Artifacts row, the Decisions card and the Prompt Library card; the loop's lede, the authority card's second sentence, the plugin card's \"installed in two commands\" and the hero's pricing link and Free-plan claim are gone; the hero button is Start for free, the plan card's own label (#134)",
         "The tour's small Tickets mockup uses the board card's real parts (`#id \u00b7 High|Low`): the invented `P0` / `P2` chips and comment count are gone. Docs' fourth dialog fact is now \"New doc lets you propose one yourself.\" (the labels new / edit / rewrite live on Review, not Docs) (#134)",
         "Dark theme: the sign-in and feature scrims dim with the page's warm black, and the dialog and hero-mockup shadows are neutral (were blue-black) (#134)",
+        "Docs corrected to match the code, no behaviour change: `docs/architecture/env.md` now lists every name in `Env` (the Stripe names and `TROV_KEK` were missing); `repo-dashboard.md` describes the per-org repo cron and its 900-request budget; `notifications.md` (the welcome mail on a first membership, the outbox key with its org, the per-org policy seed), `feed-and-search.md` (`query` types: `artifact`, not `ticket`), `ingestion-gate.md`, `roadmap-my-work.md`, `data-layer.md` (open sign-up), `auth-identity-people.md`, `tickets.md`, `layout.md`, `docs/artifact-contract.md` (links carry the organization) and three sentences of `CLAUDE.md`; `HANDOFF.md` is rewritten as the current deploy runbook (#137)",
+        "Trov plugin 0.8.1 (skill text only): a sprint's `progress` is its tickets alone and its GitHub issue counts are the separate `issues` field; any member completes a sprint; connecting is browser sign-in, with no pasted-token setup step (`trov`, `read-plan`, `update-plan`) (#137)",
       ],
       fixed: [
+        "A NEW account that signed up to buy Pro was taken through the first run and never reached checkout: `POST /auth/onboard` handed back the purchase path, but the SPA followed only an MCP authorize link. It follows `signInReturnPath` (`shared/billing.ts`: an authorize request or a purchase link, nothing else), and the purchase path's shape is defined once (`isBillingStartPath`) for the Worker's return allowlist and the SPA alike (#168)",
         "A first-run card morphing into the organization picker landed on the picker's short \"Loading…\" card and then snapped to full height when the list arrived (squeezed, then stretched) — after the handle step and after payment alike. The list is read first (`morphToPicker`, `web/src/main.ts`), so the card morphs once, to its real size (#134)",
         "Opening the sign-in dialog rebuilt the whole landing page, restarting the terminal carets and cutting any reveal in flight (#134)",
         "Org settings › Notifications showed \"No sends yet\" and an Outbox count of 0 until the outbox's first read landed. It is a skeleton until then (`outboxLoading`) (#134)",
@@ -213,7 +254,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [134],
+    prs: [134, 137, 168],
   },
   // The guided first-run setup: a new owner, admin or member is walked through it instead of landing on a checklist or an empty feed (#121).
   {

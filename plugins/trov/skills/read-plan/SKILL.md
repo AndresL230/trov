@@ -50,11 +50,12 @@ you are working in. Once per session, run `git remote get-url origin` and reduce
 
 1. **`mcp__trov__get_roadmap`** — read the plan: `{narrative, version, updated_at, updated_by,
    sprints:[{id, label, summary, description, phase, dates, due, status, active, urgency, lead,
-   domain, github_ref, progress, members}]}`. A sprint's `progress` (`{closed, total, pct}`) is
-   **ticket-inclusive**: `total` = the tickets in the sprint + the cached, event-derived GitHub issue
-   counts behind `github_ref`; `closed` = the tickets a person marked `done`/`declined` + the cached
-   closed issues. It is **never** a live GitHub read. A sprint with neither reads `0/0`; say so rather
-   than calling it stalled. `members` is the distinct set of person handles assigned to that sprint's
+   domain, github_ref, progress, issues, members}]}`. A sprint's `progress` (`{closed, total, pct}`) is
+   its **tickets only**: `total` = the tickets in the sprint, `closed` = those a person marked
+   `done`/`declined`. A sprint with no tickets reads `0/0`; say so rather than calling it stalled. The
+   GitHub issues behind `github_ref` are NOT in `progress`: each sprint carries them separately as
+   `issues` (`{closed, total}` from a stored, event-derived cache, or null) — **never** a
+   live GitHub read, and never to be added to the ticket numbers. `members` is the distinct set of person handles assigned to that sprint's
    tickets (empty when the sprint holds no assigned tickets — not a staffing claim).
    The `narrative` is meant to be short (Now / Next / Later — `update_plan` refuses one over 800
    characters); one stored before the cap may be longer and still reads whole. If it is over, say so:
@@ -76,9 +77,10 @@ you are working in. Once per session, run `git remote get-url origin` and reduce
 ## Hard rules
 
 - **Read-only.** Never call `update_plan` or any write tool from this skill.
-- **The GitHub half of progress is cached, not live.** Say it came from the stored event-derived
-  cache, not a fresh GitHub read. (The ticket half is a live D1 count, so it is current.)
-- **Progress moving is not the same as a sprint being done.** Tickets closing and issues closing both
-  raise the bar; only an admin sets `status: 'done'`.
+- **A sprint's GitHub issue counts (`issues`) are cached, not live.** Say they came from the stored
+  event-derived cache, not a fresh GitHub read. (`progress` is a live count of the sprint's tickets, so
+  it is current.)
+- **Progress moving is not the same as a sprint being done.** Tickets resolving raise the bar; only a
+  person sets `status: 'done'` (any member can complete a sprint; the plan write is the admin's).
 - Present drift as an observation for the admin to act on (via `update-plan`), never as an
   already-made decision.
