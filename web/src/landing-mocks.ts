@@ -23,7 +23,8 @@
 // theme tokens only, so the dark theme shows the dark app; and its sample data is the page's own
 // fictional team (Maya Chen, Leo Park, Sam Ortiz; tickets #209–#230; PR #142; ADR-0012).
 // Layout lives in trov.css (`.fxm*`): one window that fills the dialog's stage, panes that fold
-// under 640px (`.fxm-wide` is the pane a phone drops).
+// under 640px (`.fxm-wide` is the pane a phone drops; `.fxm-hrow`, `.fxm-staged` and `.fxm-stats` are
+// rows a phone re-lays in "the site on a phone", where every size under 11px is also raised to 11px).
 
 import { TICKET_STATUSES, TICKET_STATUS_LABEL, type TicketStatus } from "@shared/tickets-core";
 import { ARTIFACT_STATUSES } from "@shared/artifacts-core";
@@ -77,7 +78,7 @@ function docsMock(): string {
       ${sec("Decisions")}${row("ADR-0012 · Retry budget")}${row("ADR-0009 · Token bucket per org")}
     </div>`;
   const reader = `<div style="flex:1;min-width:0;padding:14px 18px 16px;overflow:hidden">
-      <div style="${SURF};display:flex;align-items:center;gap:10px;padding:9px 12px">
+      <div class="fxm-staged" style="${SURF};display:flex;align-items:center;gap:10px;padding:9px 12px">
         ${pill("staged", "amber", "9px", "2px 6px")}
         <span style="flex:1;min-width:0;font-size:11.5px;line-height:1.45;color:var(--fg-70)">You're viewing the <b style="font-weight:600;color:var(--fg)">promoted</b> version. A newer proposal is awaiting review.</span>
         <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:500;color:var(--accent);white-space:nowrap">Review proposal ${ARROW}</span>
@@ -206,7 +207,7 @@ function roadmapMock(): string {
       <div style="margin-top:2px;font-size:15px;font-weight:500;letter-spacing:-0.01em">Sprints on the calendar</div>
       <div style="margin-top:8px;display:flex;gap:12px;flex-wrap:wrap;font-size:10.5px;color:var(--fg-55)">${legend("green", "Done")}${legend("accent", "In progress")}${legend("fg-55", "Upcoming")}${legend("red", "Overdue")}<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:2px;height:10px;background:var(--red)"></span>Today</span></div>
       <div style="margin-top:12px;${SURF};display:flex;align-items:stretch;flex-wrap:wrap">
-        <div style="display:flex;gap:14px;padding:11px 12px">${stat("3", "In progress")}${stat("1", "Upcoming")}${stat("1", "Done")}${stat("1", "Overdue", "red")}</div>
+        <div class="fxm-stats" style="display:flex;gap:14px;padding:11px 12px">${stat("3", "In progress")}${stat("1", "Upcoming")}${stat("1", "Done")}${stat("1", "Overdue", "red")}</div>
         <div class="fxm-wide" style="padding:11px 12px;border-left:1px solid var(--border)">${cap("Next due", "8px")}<div style="margin-top:4px;font-size:13px;font-weight:600">Oct 12 <span style="font-size:10.5px;font-weight:400;color:var(--fg-55)">in 3d</span></div><div style="margin-top:2px;font-size:10.5px;color:var(--fg-55)">Hardening the public API</div></div>
         <div style="flex:1 1 190px;min-width:0;padding:11px 12px;border-left:1px solid var(--border);white-space:nowrap;overflow:hidden">${cap("Tickets done · scheduled sprints", "8px")}<div style="margin-top:4px;font-size:13px;font-weight:600">13/23 <span style="font-size:10.5px;font-weight:400;color:var(--fg-55)">57%</span></div><div style="margin-top:6px;height:3px;background:var(--border)"><div style="width:57%;height:100%;background:var(--accent)"></div></div></div>
       </div>
@@ -266,7 +267,7 @@ function myworkMock(): string {
 function handoffsMock(): string {
   const anyone = `<span style="width:18px;height:18px;border-radius:50%;border:1px dashed var(--border-strong);display:grid;place-items:center;font-size:8px;font-weight:600;color:var(--fg-40);flex:none">–</span>`;
   const state = (s: "pending" | "claimed" | "expired") => pill(s, s === "pending" ? "blue" : s === "expired" ? "red" : "fg-55", "8.5px", "2px 6px");
-  const row = (id: number, title: string, prompt: boolean, dir: "From" | "To", who: string, name: string, s: "pending" | "claimed" | "expired", when: string) => `<div style="display:grid;grid-template-columns:minmax(0,2.4fr) minmax(0,1fr) auto 46px;gap:10px;align-items:center;padding:9px 13px;border-top:1px solid var(--border)">
+  const row = (id: number, title: string, prompt: boolean, dir: "From" | "To", who: string, name: string, s: "pending" | "claimed" | "expired", when: string) => `<div class="fxm-hrow" style="display:grid;grid-template-columns:minmax(0,2.4fr) minmax(0,1fr) auto 46px;gap:10px;align-items:center;padding:9px 13px;border-top:1px solid var(--border)">
       <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);flex:none">#${id}</span><span style="font-size:12px;font-weight:${s === "pending" ? 600 : 500};color:var(--${s === "pending" ? "fg" : "fg-55"});overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span>${prompt ? `<span class="fxm-wide" style="font-family:var(--label);font-size:9px;font-weight:600;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 6px;white-space:nowrap;flex:none">+ prompt</span>` : ""}</span>
       <span style="display:flex;align-items:center;gap:6px;min-width:0">${cap(dir, "8.5px")}${who ? initials(who, 18, "7.5px") : anyone}<span style="font-size:11.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span></span>
       ${state(s)}

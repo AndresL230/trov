@@ -27,13 +27,24 @@ const doc = kind ? LEGAL_DOCS[kind] : undefined;
 
 if (mount && doc) {
   let theme = storedTheme();
+  // The contents disclosure a narrow screen shows (trov.css folds it under 900px; a wide one never sees it).
+  let tocOpen = false;
+  const setToc = (open: boolean, instant = false): void => {
+    tocOpen = open;
+    const nav = mount.querySelector<HTMLElement>(".site-legal-toc");
+    if (!nav) return;
+    nav.toggleAttribute("data-instant", instant);
+    nav.dataset.open = open ? "1" : "0";
+    nav.querySelector("[data-legal-tocb]")?.setAttribute("aria-expanded", String(open));
+    if (instant) { void nav.offsetHeight; nav.removeAttribute("data-instant"); }
+  };
   const media = window.matchMedia?.("(prefers-color-scheme: dark)");
   const resolved = (): "light" | "dark" => (theme === "system" ? (media?.matches ? "dark" : "light") : theme);
 
   const paint = () => {
     const t = resolved();
     document.documentElement.style.background = t === "dark" ? "#1c1a16" : "#f6f6f7"; // no white flash past the wrapper
-    mount.innerHTML = `<div data-cnpy-theme="${t}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">${legalView(doc, t === "dark")}</div>`;
+    mount.innerHTML = `<div data-cnpy-theme="${t}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">${legalView(doc, t === "dark", tocOpen)}</div>`;
     syncFavicon(t);
   };
 
@@ -66,10 +77,13 @@ if (mount && doc) {
   spy();
   // A contents link glides to its section (and keeps the address shareable); with reduced motion it jumps.
   mount.addEventListener("click", (e) => {
+    if ((e.target as Element).closest("[data-legal-tocb]")) { setToc(!tocOpen); return; }
     const a = (e.target as Element).closest<HTMLElement>("[data-legal-toc]");
     const sec = a ? document.getElementById(a.dataset.legalToc ?? "") : null;
     if (!a || !sec) return;
     e.preventDefault();
+    // Folded contents sit ABOVE the text: close them at once, so the section is where the scroll expects it.
+    if (tocOpen) setToc(false, true);
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     sec.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
     history.replaceState(null, "", `#${sec.id}`);

@@ -114,7 +114,7 @@ describe("landing — the banner carried through the page", () => {
     expect(signup).not.toContain(">Sign in to Trov<");
     expect(signup).toMatch(/Already have an account\? <button type="button" data-act="openSignIn" data-arg="signin"[^>]*>Sign in<\/button>/);
     // The nav says the two apart as well: a quiet Sign in, and the accent Get started (the hero's label).
-    expect(out()).toMatch(/<button data-act="openSignIn" data-field="navSignIn" class="site-nav-signin"[^>]*>Sign in<\/button>\s*<button data-act="openSignIn" data-arg="signup" data-field="navStart" class="cnpy-accentbtn"[^>]*>Get started<\/button>/);
+    expect(out()).toMatch(/<button data-act="openSignIn" data-field="navSignIn" class="site-nav-signin site-nav-x"[^>]*>Sign in<\/button>\s*<button data-act="openSignIn" data-arg="signup" data-field="navStart" class="cnpy-accentbtn site-nav-cta"[^>]*>Get started<\/button>/);
     expect(out(false, true)).not.toContain("navStart"); // reopened from inside the app: only the way back
     expect(out(false, true)).toContain(">Back to the app</button>");
     // The same two providers either way.

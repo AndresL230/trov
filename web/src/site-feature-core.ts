@@ -25,6 +25,17 @@ export function stepKey<K extends string>(keys: readonly K[], cur: string, dir: 
   return keys[((i < 0 ? 0 : i) + dir + keys.length) % keys.length];
 }
 
+/** A touch that left the dialog: is it a swipe to another feature? `dx` / `dy` are how far the finger
+ *  travelled, `ms` how long it was down. A swipe is mostly sideways (twice as far across as down — the
+ *  sheet scrolls vertically, and a scroll must never step), at least SWIPE_MIN_PX long, and quick.
+ *  Swiping LEFT brings the next feature in from the right (1); swiping right, the previous one (-1). */
+export const SWIPE_MIN_PX = 56;
+export const SWIPE_MAX_MS = 700;
+export function swipeStep(dx: number, dy: number, ms: number): -1 | 0 | 1 {
+  if (ms > SWIPE_MAX_MS || Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) < 2 * Math.abs(dy)) return 0;
+  return dx < 0 ? 1 : -1;
+}
+
 /** Where Tab / Shift+Tab lands inside a trapped set: the next one, wrapping; the first (or last) from outside. */
 export function trapIndex(count: number, at: number, back: boolean): number {
   if (count <= 0) return -1;
