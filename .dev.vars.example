@@ -30,6 +30,9 @@ TROV_KEK=replace-with-openssl-rand-base64-32
 # STRIPE_TEST_API_BASE — Stripe's API, for every billing call (src/billing/config.ts,
 # docs/architecture/billing.md › Configuration). Needs the two Stripe secrets set to TEST values.
 # STRIPE_TEST_API_BASE=http://127.0.0.1:8842
+# (Embedded checkout — STRIPE_PUBLISHABLE_KEY, a `pk_test_…` key — is never on beside this stand-in: it
+#  has no Stripe.js to serve, so a local checkout is always the stand-in's plain hosted page. To see the
+#  embedded form locally, use real Stripe TEST keys with no STRIPE_TEST_API_BASE. docs/architecture/billing.md.)
 # To walk the paid flows with no Stripe account: run `node scripts/dev/stripe-standin.mjs` (it listens on
 # that port, serves a stand-in checkout and portal, and delivers signed webhooks) and set
 # STRIPE_SECRET_KEY=sk_test_local_standin and STRIPE_WEBHOOK_SECRET=whsec_local_standin beside it.

@@ -3,7 +3,7 @@ import { handleMcp } from "./mcp";
 import { handleGithubWebhook, webhookPath } from "./github-hook";
 import { STRIPE_WEBHOOK_PATH, handleStripeWebhook } from "./billing/webhook";
 import { pruneEvents } from "./billing/store";
-import { BILLING_DONE_PATH } from "@shared/billing";
+import { BILLING_CHECKOUT_PATH, BILLING_DONE_PATH } from "@shared/billing";
 import { APP_WEBHOOK_PATH, handleGithubAppWebhook } from "./github-app/webhook";
 import { resolveBearerConnection } from "./data/bearer";
 import { meterMcp, pruneUsage } from "./data/meter";
@@ -94,10 +94,13 @@ export default {
     // shell; what it shows comes from `/api/platform/*`, which 404s everyone who is not a superadmin.
     // `/billing/done` is the waiting room Stripe sends a buyer back to (web/src/billing.ts): the same shell,
     // outside any org — the buyer has none yet. What it shows comes from `/api/billing/status`.
+    // `/billing/checkout` is the payment page of embedded checkout (web/src/billing-checkout.ts): the same shell
+    // again. The shell holds nothing of the buyer's: the session it mounts comes from `POST /api/billing/checkout`
+    // (or the org's upgrade route), which answer the signed-in buyer only.
     const readOnly = request.method === "GET" || request.method === "HEAD";
     const old = readOnly ? /^\/o\/([^/]+)(?:\/.*)?$/.exec(url.pathname) : null;
     if (old && orgSlugProblem(old[1].toLowerCase()) === null) return Response.redirect(new URL(`${orgPath(old[1].toLowerCase())}${url.search}`, url).toString(), 301);
-    const isShellPath = (orgSlugOfPath(url.pathname) !== null && !url.pathname.startsWith("/o/")) || url.pathname === "/platform" || url.pathname.startsWith("/platform/") || url.pathname === BILLING_DONE_PATH;
+    const isShellPath = (orgSlugOfPath(url.pathname) !== null && !url.pathname.startsWith("/o/")) || url.pathname === "/platform" || url.pathname.startsWith("/platform/") || url.pathname === BILLING_DONE_PATH || url.pathname === BILLING_CHECKOUT_PATH;
     if (readOnly && isShellPath) return spaShell(request, env, url);
     return app.fetch(request, env, ctx);
   },

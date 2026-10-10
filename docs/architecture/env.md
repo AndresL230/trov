@@ -79,6 +79,7 @@ so there is no `[ai]` block.
 | `STRIPE_PRICE_TEAM` | var | the Stripe Price id of ONE SEAT of Pro (plan id `team`), monthly | Pro cannot be bought monthly |
 | `STRIPE_PRICE_TEAM_YEARLY` | var | the optional yearly per-seat Price id | Pro is not offered yearly |
 | `STRIPE_TAX` | var | `on` → a checkout asks Stripe Tax to work out the tax and takes a billing address. Turn it on only after Stripe Tax is set up in the dashboard, or Stripe refuses the checkout | anything else: no tax lines |
+| `STRIPE_PUBLISHABLE_KEY` | var | Stripe's PUBLIC key (`pk_test_…` / `pk_live_…`), safe to send to the browser. Set, in the same mode as `STRIPE_SECRET_KEY` and with the real Stripe API, it turns on embedded checkout (`docs/architecture/billing.md` › Embedded checkout) | checkout goes to Stripe's hosted page, as before |
 | `STRIPE_TEST_API_BASE` | local / test only | a stand-in for Stripe's API, honoured ONLY for a loopback `http://` origin and never with a live key (`src/platform/loopback.ts`) | production: unset |
 
 ### Local development only

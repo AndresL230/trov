@@ -63,7 +63,8 @@ export interface Env {
   STRIPE_WEBHOOK_SECRET?: string; // SECRET — the `whsec_…` of the endpoint POST /webhook/stripe; absent → every delivery there is the bare 401
   STRIPE_PRICE_TEAM?: string;            // VAR — the Stripe Price id (`price_…`) of ONE SEAT of Trov Pro (plan id `team`), monthly
   STRIPE_PRICE_TEAM_YEARLY?: string;     // VAR — optional yearly per-seat price; Pro is offered on the intervals it has a price for
-  STRIPE_TAX?: string;                   // VAR — "on" → a checkout asks Stripe Tax to work out the tax (and takes a billing address); anything else → no tax lines
+  STRIPE_PUBLISHABLE_KEY?: string;       // VAR — Stripe's PUBLIC key (`pk_test_…` / `pk_live_…`), sent to the buyer's browser: set → checkout is embedded in Trov's own page (docs/architecture/billing.md › Embedded checkout); empty → Stripe's hosted page
+  STRIPE_TAX?: string;                  // VAR — "on" → a checkout asks Stripe Tax to work out the tax (and takes a billing address); anything else → no tax lines
   // LOCAL / TEST ONLY: a stand-in for api.stripe.com. Honoured ONLY for a loopback http origin (127.0.0.1 /
   // localhost) and ONLY with a key that is not a live one, so production — where it is unset, and where a
   // Worker cannot reach loopback anyway — always talks to api.stripe.com.

@@ -9,6 +9,9 @@ import { app } from "../../src/routes";
 export const STRIPE_KEY = "sk_test_51TrovFakeKeyForTests0000000000000000000000000000000000000000";
 export const WEBHOOK_SECRET = "whsec_test_0123456789abcdef0123456789abcdef";
 export const PRICES = { team: "price_team_m", team_year: "price_team_y" } as const;
+/** A PUBLISHABLE key of the same (test) mode as `STRIPE_KEY`: set it and checkout is embedded. Public by design. */
+export const PUBLISHABLE_KEY = "pk_test_51TrovFakePublishableKeyForTests000000000000000000000000000000";
+export const embeddedEnv = (over: Partial<Env> = {}): Env => billingEnv({ STRIPE_PUBLISHABLE_KEY: PUBLISHABLE_KEY, ...over });
 
 /** The pool's env with billing switched ON (the pool default is off — vitest.config.ts). */
 export const billingEnv = (over: Partial<Env> = {}): Env => ({
@@ -24,6 +27,10 @@ export interface FakeSession {
   metadata: Record<string, string>; price: string; success_url: string; cancel_url: string;
   /** The line item's quantity — the seats a per-seat checkout starts at (the buyer may change it on Stripe's page). */
   quantity: number;
+  /** `hosted` (Stripe's page, a `url`) or `embedded` (Trov's page: a `client_secret` and a `return_url`, no `url`). */
+  ui_mode: "hosted" | "embedded";
+  return_url: string;
+  client_secret: string | null;
 }
 export interface FakeSubscription {
   id: string; customer: string; status: string; cancel_at_period_end: boolean; cancel_at: number | null; current_period_end: number;
@@ -67,6 +74,13 @@ export class FakeStripe {
       const key = c.headers.get("idempotency-key") ?? "";
       const held = [...this.sessions.values()].find((s) => s.metadata.__idem === key);
       if (held) return Response.json(this.sessionJson(held));
+      // Stripe refuses an embedded session that names the hosted page's URLs, and one with nowhere to return to.
+      const ui = c.params.get("ui_mode") ?? "hosted";
+      const bad = (message: string) => Response.json({ error: { type: "invalid_request_error", code: "parameter_invalid", message } }, { status: 400 });
+      if (ui !== "hosted" && ui !== "embedded") return bad(`Invalid ui_mode: ${ui}`);
+      if (ui === "embedded" && (c.params.has("success_url") || c.params.has("cancel_url"))) return bad("You can not pass `success_url` or `cancel_url` in `embedded` mode.");
+      if (ui === "embedded" && !c.params.get("return_url")) return bad("`return_url` is required in `embedded` mode.");
+      if (ui === "hosted" && !c.params.get("success_url")) return bad("`success_url` is required.");
       const id = `cs_test_${++this.n}`;
       const metadata: Record<string, string> = { __idem: key };
       for (const [k, v] of c.params) { const m = /^metadata\[(\w+)\]$/.exec(k); if (m) metadata[m[1]] = v; }
@@ -75,6 +89,8 @@ export class FakeStripe {
         subscription: null, customer: c.params.get("customer"), customer_email: c.params.get("customer_email"), client_reference_id: c.params.get("client_reference_id"),
         metadata, price: c.params.get("line_items[0][price]") ?? "", success_url: c.params.get("success_url") ?? "", cancel_url: c.params.get("cancel_url") ?? "",
         quantity: Number(c.params.get("line_items[0][quantity]") ?? "1"),
+        ui_mode: ui, return_url: c.params.get("return_url") ?? "",
+        client_secret: ui === "embedded" ? `${id}_secret_${[...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, "0")).join("")}` : null,
       };
       this.sessions.set(id, s);
       return Response.json(this.sessionJson(s));
@@ -92,7 +108,8 @@ export class FakeStripe {
 
   sessionJson(s: FakeSession): Record<string, unknown> {
     const { __idem: _idem, ...metadata } = s.metadata;
-    return { id: s.id, object: "checkout.session", url: s.status === "open" ? s.url : null, status: s.status, payment_status: s.payment_status, mode: s.mode,
+    return { id: s.id, object: "checkout.session", url: s.status === "open" && s.ui_mode === "hosted" ? s.url : null, ui_mode: s.ui_mode,
+      client_secret: s.status === "open" ? s.client_secret : null, return_url: s.ui_mode === "embedded" ? s.return_url : null, status: s.status, payment_status: s.payment_status, mode: s.mode,
       subscription: s.subscription, customer: s.customer, customer_email: s.customer_email, client_reference_id: s.client_reference_id, metadata, livemode: false };
   }
   subscriptionJson(s: FakeSubscription): Record<string, unknown> {

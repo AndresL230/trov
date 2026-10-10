@@ -204,7 +204,7 @@ export const PRIVACY: LegalDoc = {
         p("<b>What you and your agents write.</b> Docs and their versions, decisions, feed entries, tickets and comments, sprints, handoffs, prompts, artifacts and the images and files you upload — together with who wrote each one and when."),
         p("<b>Connected repository data.</b> When a team connects a GitHub repository, Trov captures pull requests, issues, pushes, reviews, deployments and CI results from it, including the GitHub usernames of the people involved. That can include people who never signed in to Trov, such as outside contributors; their usernames appear in a list team members can link or discard."),
         p("<b>Agent connections.</b> When you connect an agent we keep a record of the connection (the app's name, when it was created and last used). Access tokens are stored only as one-way hashes."),
-        p("<b>Billing.</b> When you buy a plan, Stripe collects your payment details, billing address and any tax information on its own pages. Trov never receives your card number. We send Stripe your email address and receive back, and keep, the Stripe customer and subscription ids, the plan, its status, the number of seats, the end of the current period and whether it is set to cancel."),
+        p("<b>Billing.</b> When you buy a plan, Stripe collects your payment details, billing address and any tax information in its own form — on Trov's payment page, where the form is Stripe's and is loaded from Stripe, or on Stripe's own pages. Trov never receives your card number. We send Stripe your email address and receive back, and keep, the Stripe customer and subscription ids, the plan, its status, the number of seats, the end of the current period and whether it is set to cancel."),
         p("<b>Bug reports and support messages.</b> When you use Report a bug or Contact support, we store what you wrote together with the screen you were on, your organization, the app version and your browser, and it is read by Trov's operator, who may reply to your verified email address. If you use the Contact form without signing in, we store what you wrote, the page you were on, your browser and the email address you type, which we use only to reply to you."),
         p("<b>Email preferences</b> — which digests you get and how often, and whether you unsubscribed."),
         p("<b>Technical data.</b> Our host, Cloudflare, processes your IP address and request details to serve and protect the service, and keeps operational logs."),
@@ -234,7 +234,7 @@ export const PRIVACY: LegalDoc = {
         ul(
           "<b>Cloudflare</b> — hosting, database and file storage, and request logs;",
           "<b>Google (Gemini API)</b> — the text of captured pull requests and issues is sent to Google to generate summaries;",
-          "<b>Stripe</b> — takes payment, hosts the checkout and billing pages, issues invoices and receipts, and screens for fraud. It receives the buyer's email address, payment details and billing address, and handles them under its own privacy policy;",
+          "<b>Stripe</b> — takes payment, provides the checkout form and hosts the billing pages, issues invoices and receipts, and screens for fraud. Its script (Stripe.js) runs on Trov's payment page, and only there, to show that form. It receives the buyer's email address, payment details and billing address, and — from that script — the device and browser information it uses to prevent fraud, and handles them under its own privacy policy;",
           "<b>Resend</b> — delivers email (your address and the message);",
           "<b>GitHub and Google</b> — sign-in, and for GitHub, the repository data a team connects;",
           "<b>Google Fonts</b> — the site's typefaces load from Google, which receives your IP address when they do.",
@@ -246,7 +246,7 @@ export const PRIVACY: LegalDoc = {
       id: "cookies",
       title: "4. Cookies and local storage",
       body: [
-        p("Trov uses only cookies it needs to work: <code>session</code> keeps you signed in (30 days), and a few short-lived cookies carry a sign-in in progress (about 10 minutes). Your browser's local storage keeps interface preferences such as the theme and the sidebar's state; they never leave your device. There are no analytics, advertising or third-party tracking cookies. Stripe's checkout and billing pages are on Stripe's own site and set Stripe's cookies there, including ones it uses to prevent fraud."),
+        p("Trov uses only cookies it needs to work: <code>session</code> keeps you signed in (30 days), and a few short-lived cookies carry a sign-in in progress (about 10 minutes). Your browser's local storage keeps interface preferences such as the theme and the sidebar's state; they never leave your device. There are no analytics, advertising or third-party tracking cookies. The one exception is the payment page: Stripe's script runs there to show its payment form, and sets Stripe's own cookies, including ones it uses to prevent fraud. It is loaded on that page only — never on the rest of Trov. Stripe's billing pages are on Stripe's own site and set its cookies there."),
       ],
     },
     {
