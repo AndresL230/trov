@@ -13,7 +13,7 @@ itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
-Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Inside a morphed page, a part that must be REPLACED when it becomes a different
 thing (a tab's panel, a wizard's step) names itself with `data-morph-key`. Do not fix a flicker by turning
 animations off in the affected region — that hides one symptom and leaves the rebuild.
@@ -210,7 +210,7 @@ the trigger where the control sits, its menu a root-level overlay (`dropdownMenu
 and closes with an animation — Org settings' role and Notifications pickers.
 
 **Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, the queue's
-Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, form segments. Never
+Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, Review's filter (with counts) and its diff mode, form segments. Never
 hand-roll a segment group. It picks a VALUE or a view; moving between a page's own SECTIONS is the **underline
 tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Org settings' and Platform's tabs, patched in place so a switch replaces
 only the panel (`web/src/morph.ts` `data-morph` / `data-morph-key`); the Roadmap's Narrative / Timeline, `roadmapTabBar` in `render.ts`, the Timeline
@@ -234,6 +234,72 @@ on a keystroke, and never because a read landed: see Loading skeletons below). `
 mid-entrance joins the animation where the old DOM left off. Hooks: `.cnpy-rise` + `--i`, `.cnpy-stagger`
 (lists), `.repo-bar` / `.repo-fill` / `.repo-spark`, `data-count` (count-up). In-place changes use the
 one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
+
+## A row leaving a list — the one exit pattern (Review's queue)
+
+When a person acts on a row and the row should go (a verdict in Review today; the next screen that
+removes a row reuses this, it does not invent another), the row **confirms, collapses, and the rows
+under it move up as the same elements**. Four parts, each in one place:
+
+1. **A keyed list** (`web/src/morph.ts`). The screen is `data-morph`ed, the list's container carries
+   **`data-morph-list`** and every child a **`data-morph-key`**. `morph()` then pairs that container's
+   children by key, not by index: a child still in the list is patched (never moved unless the order
+   really changed, since a moved element drops its running transition), a new one is inserted where
+   it belongs, a gone one is removed. Without it a row removed from the middle turns every row after
+   it into its neighbour and nothing can animate. Children are joined with no whitespace between
+   them; a row's own structure is the same in every state (the selection bar and the verdict label
+   are always emitted, shown by `aria-current` / `data-verdict`).
+2. **State, not DOM, says a row is leaving.** `state.reviewLeaving[id] = { verdict, gone }`. While
+   `gone` is false the view still renders the row, with `data-verdict` and `inert`; the selection
+   and every count already leave it out (`reviewView`'s `waiting`, `triageCounts`). After
+   `REVIEW_EXIT_MS` the entry flips to `gone` and the row is no longer rendered. The entry only
+   HIDES rows of the reads, so it is never a second source of truth: the refetch replaces the reads
+   and the entry is dropped (`settleReview`, `pruneReviewLeaving` in `main.ts`).
+3. **CSS does the motion** (`trov.css` `.cnpy-rv-row`). The row is a one-track grid around its card:
+   `grid-template-rows:1fr` to `0fr` collapses it with no measuring, the inner box clips
+   (`min-height:0`, `overflow:hidden` only while leaving, so a card's hover shadow is never cut).
+   The verdict shows for .13s (the card tinted with the verdict's tone, its content dimmed, the word
+   over it), then height and opacity go over `--fx-fast` on `--fx-ease`: .31s in all, under the
+   350ms budget. The transition sits on the base rule with no delay, so a row that comes back opens
+   at once. `--fx-ease` / `--fx-fast` / `--fx-base` / `--fx-slow` are on `:root`, so they are the
+   app's clock as well as the site's; use them, never a literal curve.
+4. **The write is optimistic and exactly restorable.** The request goes out on the click and the
+   next action is never blocked: the selection has already moved to the next row, so several
+   verdicts in a row just work (a verdict button that had focus hands it to the next item's,
+   `syncReviewDetail`). On failure the entry is deleted, so the row, the counts and the selection
+   it had are back, with the usual error toast. The refetch is held until no row is still
+   collapsing, so a read landing mid-exit never pulls a row out from under its own animation.
+
+Also part of the pattern: the **last** row leaving already has the screen's empty layout under it
+(`emptyLayout`, a keyed child of the same list), which rises as the row collapses, so there is no
+jump; and **reduced motion** means no movement at all: `main.ts` marks the row `gone` at once and
+the CSS has `transition:none`. Away from the screen that shows the list (My Work's review tile
+uses the same acts) the row is `gone` at once too. Check it with `getAnimations()` on the row (two
+transitions, 180ms each, 130ms delay), by sampling the row's height per frame, and by clicking
+several verdicts 90ms apart. Tests: `test/render.review.test.ts` (the keyed list, the verdict
+markup, the CSS and its reduced-motion rule, `REVIEW_EXIT_MS` against `--fx-fast`).
+
+**Review's page** is named once, by the app header (as every screen is: `org-ui.ts` rule 1); the
+list pane starts with one line (`REVIEW_INTRO`) and the filter. All / Proposals / Decisions is a
+`segmented()` switch (one list, three views of it; not a tab bar, since nothing below changes
+section) whose options carry how many are waiting (`.cnpy-seg-n` in an option's `trail`; left out
+while the queue is still being read). Unified / Side by side / Rendered is a second one; the diff
+body under it is keyed by mode (`diff:<mode>`) and the detail body by item (`rvd:<id>`), so a
+switch replaces only that part. **Rendered** (`web/src/review-rendered.ts`) is the Docs reader's
+rendering, never a second renderer: the proposal's two bodies go through `renderMarkdown` in
+`.cnpy-md`; an edit is cut into marked's top-level blocks (`md-blocks.ts`), compared, and each
+changed block sits in an `<ins>` / `<del>`; a table is compared row by row and a list item by item;
+a new doc is rendered whole, unmarked, under one note. Body text reaches the page only through
+`renderMarkdown` (`test/render.review-rendered.test.ts`). Unified and Side by side show source.
+Where a block was EDITED rather than replaced, the two renderings are merged word by word
+(`web/src/html-words.ts` `mergeInline`): one block (`data-chg="mix"`, an amber rule) or one table row
+(`tr.cnpy-rv-row-chg`), with the added words in `<ins class="cnpy-rv-w">` and the dropped ones in
+`<del class="cnpy-rv-w">`. Its safety rule is the one to keep if this is ever touched: **a tag is ONE token,
+quoted attribute values included** (a wrapper written inside an attribute would close the value with its own
+quotes and let the rest be parsed as elements), only text tokens are wrapped, no tag of the old rendering is
+kept, and markup the tokenizer cannot account for refuses the merge (the two blocks are then shown whole).
+More than 60% of the words changed is two texts, not one edited: also shown whole. A strike is set ONCE, on
+the removed box — never again on an inline child, which draws a second line.
 
 ## Personal Settings — a bento whose tiles are as tall as what they hold
 
@@ -385,6 +451,47 @@ then paints its empty layout or its loading skeleton, whatever the organization 
 - The Repo dashboard's own "Preview with sample data" still works under it.
 - Tests: `test/render.empty.test.ts` (no string of the organization's data on any screen in either mode,
   the state object untouched, writes refused before `fetch`).
+
+## The site on a phone
+
+The signed-out site (`landing.ts`, `pricing.ts`, `legal.ts`, the sign-in and Contact dialogs) has ONE block
+in `trov.css`, "the site on a phone", just before the corners block (so it is after every rule it overrides).
+**Nothing in it applies at 961px and up**: every rule is behind `max-width:900px` (the nav's menu, the legal
+contents), `max-width:640px` (the phone layout), `max-width:480px` or `(hover:none)`. The only rules outside a
+query hide what a wide screen never shows, or style the menu, which `min-width:901px` hides. A new phone rule
+goes in that block; a template gets a class hook, never a second copy of its markup.
+`test/render.site-mobile.test.ts` fails on an unguarded rule.
+
+- **The menu.** Under 900px the bar is one row: mark, name, the accent button, Menu. GitHub, the theme toggle
+  and Sign in carry `site-nav-x` and leave it; the menu button is ALWAYS emitted (a stable nav) and shown by
+  CSS. The menu is `menuSheet` in `landing.ts`: a root-level `data-overlay="sitemenu"` drawn from
+  `state.siteMenu`, so opening it, toggling the theme in it and closing it patch the page (`data-morph`) and
+  no reveal replays. `web/src/site-menu.ts` owns the scroll lock, focus (first link on open, the button on
+  close), Esc, the Tab trap and the exit (`data-closing`, `MENU_EXIT_MS` = `--fx-fast`). A section link closes
+  it first, unlocking the scroll at once, then scrolls ONCE; sections carry 84px of top padding on a phone and
+  `scroll-margin-top:-8px`, so the heading lands 16px under the 60px bar. A tablet gets a card under the
+  button, a phone the sheet below.
+- **The sheet pattern.** The app's rule already turns every modal into a sheet under 640px (a full-screen
+  wrapper whose child is `[role="dialog"][aria-modal="true"]`: bottom edge, full width, the safe area as a
+  transparent bottom border, `100dvh`). The site adds: controls of 44px and up, a slide up on the site's clock
+  (`site-sheet-up`, `--fx-slow`), and `--site-kb`, the height the on-screen keyboard covers
+  (`web/src/site-viewport.ts`, from `visualViewport`), which lifts the sign-in and Contact sheets and comes off
+  their `max-height`. Contact keeps Cancel / Send in a sticky row, with `scroll-padding-bottom` so a focused
+  field stops above it. The tour's dialog is the full height; its panel AND its scroller are
+  `touch-action:pan-y`, and a sideways swipe steps it (`swipeStep` in `site-feature-core.ts`), touch and pen
+  only. A touch's action is settled between the element and its nearest scroll container, so `pan-y` on the
+  panel alone does nothing.
+- **The mockup rule.** A mockup on a phone is never a shrunken desktop window. It shows the screen's most
+  telling pane in one column (`site-hide-sm` under 900px, `site-hide-ph` and `.fxm-wide` under 640px drop the
+  rest), and **no text in it renders under 11px**: one rule in the block keys on the inline sizes
+  (`[style*="font-size:9px"]`, the corners block's idiom) inside every mockup scope. A new mockup size under
+  11px needs its key there, and the test names the size that is missing. The hero's Review mockup becomes one
+  unified diff by CSS alone: `site-hero-twin` marks the left pane's lines that the right pane repeats.
+- **Touch.** Hover lifts are off under `(hover:none)` and a press answers instead. A hover-only `title` is
+  never the only label: in the menu the theme and GitHub rows are labelled.
+- **Checking it.** Phone widths are measured in a real phone-sized viewport (Playwright with `isMobile`, or an
+  iframe), at 360, 390 and 430, light and dark, with screenshots that are looked at. The wide layout is proved
+  by rects and computed styles at 1440, 1100 and 961, not by eye.
 
 ## Corners — tighter than the design file
 

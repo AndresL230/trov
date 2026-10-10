@@ -312,7 +312,7 @@ describe("every screen — loading, empty and with data", () => {
     expect(artifacts).toContain('placeholder="Search by title, area, kind or ticket"');
     expect(artifacts).toContain("0 shown · 0 total");
     const review = body(render(emptyState("review")));
-    expect(review).toContain(">Review</h1>");
+    expect(review).toContain("Agent-produced changes waiting for a verdict.");
     expect(review).toContain('data-act="reviewFilter"');
   });
 

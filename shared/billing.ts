@@ -32,6 +32,18 @@ export const isBillingInterval = (v: unknown): v is BillingInterval => typeof v 
 export const BILLING_START_PATH = "/billing/start";
 export const billingStartHref = (plan: PurchasablePlan, interval: BillingInterval = "month"): string =>
   `${BILLING_START_PATH}?plan=${plan}${interval === "month" ? "" : `&interval=${interval}`}`;
+/** Is `path` exactly a purchase link (`billingStartHref`, with or without an explicit interval)? The ONE
+ *  definition of that shape: the Worker's sign-in return allowlist (src/auth/return-to.ts) and the SPA's
+ *  "where to after signing up" (`signInReturnPath`) both use it. No wildcard over a host or a scheme. */
+const BILLING_START_SHAPE = new RegExp(`^${BILLING_START_PATH.replace(/\//g, "\\/")}\\?plan=(?:${PURCHASABLE_PLANS.join("|")})(?:&interval=(?:${BILLING_INTERVALS.join("|")}))?$`);
+export const isBillingStartPath = (path: unknown): path is string => typeof path === "string" && BILLING_START_SHAPE.test(path);
+
+/** What a sign-in or sign-up was started FOR, as the path to go on to — or null. The Worker hands it back
+ *  (`redirect`) once the session exists: an MCP client's authorize request, or a purchase. Anything else,
+ *  whatever sent it, is ignored: the SPA never navigates to a path it does not recognise. */
+export const signInReturnPath = (redirect: unknown): string | null =>
+  typeof redirect === "string" && (redirect.startsWith("/oauth/authorize?") || isBillingStartPath(redirect)) ? redirect : null;
+
 /** The purchase link with the sign-in provider already picked: the billing route seals the return and goes
  *  straight on to that provider (src/billing/routes.ts) — what the Get started dialog's Pro buttons use. */
 export const billingViaHref = (plan: PurchasablePlan, via: "github" | "google", interval: BillingInterval = "month"): string =>

@@ -13,15 +13,19 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
   window against the last pre-window version; progress rows never surface), `ticketq` (the ticket queue, not
   window-scoped: `submitted` tickets with no assignees org-wide + the recipient's own open assigned tickets via
   `listAssignedTickets`, the same read My Work uses). A renderer is a **pure read**
-  (`render(db, login, window)` → `Section | null`; null = nothing to say, dropped). Adding a kind = one entry +
-  one renderer; `notification_policy` is seeded from the registry per isolate (`policy.ts`, INSERT OR IGNORE,
-  never overwrites).
+  (`render(ctx, userId, window)` → `Section | null` — `ctx` is the org's tenant context; null = nothing to say, dropped). Adding a kind = one entry +
+  one renderer; `notification_policy` rows are PER ORG, seeded from the registry: `createOrg` writes one row
+  per kind for a new org, and the digest cron tops each org up with any kind it has no row for
+  (`ensureNotificationPolicySeeded` in `policy.ts`, called by `runOrgNotifications`: INSERT OR IGNORE, never
+  overwrites, memoized per org for the isolate's lifetime). There is no seed at Worker start-up any more.
 - **Cadences are `daily` / `weekly` / `off` — there is NO immediate tier.** Resolution (`resolve.ts`): user pref
   → policy `default_cadence` → registry default; `policy.enabled = 0` short-circuits to `off` before the user
   layer. A pref must be in the kind's `allowedCadences` (validated at write time).
-- **Runs** (`run.ts`): per eligible user (address on file, `email_unsubscribed = 0`) the outbox row is claimed
-  FIRST by `INSERT OR IGNORE` on `user:cadence:window_id` — a conflict skips the user, so a double fire is
-  harmless. Then render, drop nulls, `skipped` on zero sections, else one message → `sent` (with `resend_id`)
+- **Runs** (`run.ts`): one digest per (person, org). Per eligible user (a MEMBER of the org, address on file,
+  `email_unsubscribed = 0`) the outbox row is claimed FIRST by `INSERT OR IGNORE` on `outboxKey`,
+  `org:user:cadence:window_id` — a conflict skips the user, so a double fire is harmless. (A row written
+  under the pre-organizations key `user:cadence:window_id` in the same org counts as the same send:
+  `preOrgOutboxKey`, cut-over code.) Then render, drop nulls, `skipped` on zero sections, else one message → `sent` (with `resend_id`)
   or `failed` (with the error). `retry.ts` re-attempts `failed` rows only. Windows (`window.ts`) are computed
   in the org timezone: daily = previous 24h (72h on Monday), weekly = previous 7 days.
 - **Cron** (`cron.ts`, `wrangler.toml [triggers]`): two hourly triggers (`0 * * * *` daily candidate,
@@ -40,16 +44,21 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
   verified; scope `user:email`), Google from the verified `email` claim on the ID token (unverified
   emails are denied before the fork) — both through `recordSignIn`'s `COALESCE(email, …)` write, which
   never overwrites a user/admin-edited value.
-- **Invite email** (`src/notifications/invite.ts`): one transactional message per invite/resend through
-  `deliveryFor`; not a kind — no cadence, prefs, or window. Outcome lands on `invites.email_*`. No
+- **Invite email** (`src/notifications/invite.ts`, sent by `mailInvite` in `src/orgs/mail.ts`): one
+  transactional message per e-mail invite/resend through `deliveryFor`, as the inviting org; not a kind — no
+  cadence, prefs, or window. Outcome lands on the invite's own row: `org_invites.mail_status` / `mail_at` /
+  `mail_error`. No
   `List-Unsubscribe` headers (they are optional on `OutboundMessage` now, omitted for invites).
-- **Welcome email** (`src/notifications/welcome.ts`): the second transactional message — sent from
-  `POST /auth/onboard` once the person row and session exist, linking the guided setup (`/<org>/#welcome`; it was Get Started, `/#guide`, where a
-  fresh sign-in lands). Also not a kind. It fires THERE and not when someone joins the GitHub org
-  because the address comes from the person's OWN OAuth token (`getPrimaryEmail`), which does not
-  exist until they sign in — nothing Trov holds can reach a new org member before that. No outcome
-  column and the result is ignored at the call site: `sendWelcome` never throws, and a mailer problem
-  must never cost somebody their sign-up. No address from the provider = no mail.
+- **Welcome email** (`src/notifications/welcome.ts`): the second transactional message — sent on a person's
+  FIRST membership of any organization, not at sign-up (onboarding creates a person, never a membership).
+  `welcomeFirstJoin` (`src/orgs/mail.ts`) is called by every path that writes a membership — creating an org
+  (`POST /api/orgs`), accepting an invite (`/api/invites`), the superadmin naming an existing person owner, and
+  `POST /auth/onboard` ONLY when it consumed a live legacy invite — with `firstJoin` from `neverJoined`
+  (`src/orgs/repo.ts`), asked BEFORE the join is written. It links the guided setup of the org joined
+  (`/<org>/#welcome`). Also not a kind. The address is the person's newest provider-VERIFIED one
+  (`welcomeRecipient` → `identities.verified_email`), never the editable `persons.email`; none on file = no
+  mail. No outcome column and the result is ignored at the call site: `sendWelcome` never throws, and a mailer
+  problem must never cost somebody the join.
 - **Support notice** (`src/notifications/support.ts`, `support.md`): the third transactional message, and the
   only one addressed to the OPERATOR — one per bug report or support message, to the var `SUPPORT_NOTIFY_EMAIL`
   (unset → not sent, outcome `skipped`). It belongs to no org, so it goes through `platformDeliveryFor` like the

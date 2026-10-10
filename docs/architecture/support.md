@@ -149,6 +149,6 @@ uses it. Its context is the page and the browser; there is no organization and n
 
 ## Owner steps on deploy
 
-1. The migration is additive; a push applies it (`HANDOFF.md`).
+1. The migration is additive; the merge to `main` applies it (`HANDOFF.md`).
 2. Set `SUPPORT_NOTIFY_EMAIL` in `wrangler.toml` `[vars]` to the inbox that should get the reports. Until
    then reports are stored and shown in Platform, not mailed.

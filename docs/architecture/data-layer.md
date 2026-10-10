@@ -2,7 +2,7 @@
 
 Spec: `canopy-multitenancy.md` §4–§8. Code: `src/data/`, `src/routes.ts`. Phases 3–5 are complete: every statement in `src/` runs
 through a context, every tenant statement names its org, and `test/data-layer.static.test.ts` enforces both.
-What is left (Phase 7 cleanup) and the deploy runbook: `HANDOFF.md`. Rate limits and mail: `abuse-limits.md`.
+What is left for the Phase 7 cleanup: "What is still org #1's alone" below. The deploy runbook: `HANDOFF.md`. Rate limits and mail: `abuse-limits.md`.
 The flow a human operator follows — add an org, name its admin, set it up, invite the team: `organizations.md`.
 
 ## The two contexts
@@ -305,8 +305,9 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
 
 - **Sign-in** (§5.1, `src/auth/onboard.ts`): no GitHub org is checked. A known identity signs in; a new identity
   whose provider-VERIFIED email is another identity's `verified_email` is linked to that person (never
-  `persons.email`, which is an editable notification address); otherwise GitHub always reaches onboarding and
-  Google only with a pending invite for its verified email. `identities.verified_email` is written at every
+  `persons.email`, which is an editable notification address); otherwise the identity reaches onboarding —
+  sign-up is OPEN: any GitHub account, and any Google account whose address Google has verified (an
+  unverified Google address is refused before the fork). No invite is needed (`auth-identity-people.md`). `identities.verified_email` is written at every
   sign-in; `identities.provider_uid` (0042_organizations) pins a GitHub identity to the account's numeric id, and a sign-in
   with the same login but another id is refused.
 - **Onboarding creates a person, never a membership** — a new person accepts an invite (`/api/invites`) or creates

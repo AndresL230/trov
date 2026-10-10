@@ -7,11 +7,12 @@ import "./trov.css";
 import { migrateBrowserStorage } from "./storage-migrate";
 import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments } from "./segmented";
+import { REVIEW_EXIT_MS, type ReviewVerdict } from "./review";
 import { syncTabBars, onTabBarKey } from "./tabs";
 import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, type MwRepoTab } from "./mywork";
 import {
-  render, initialState, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf,
+  render, initialState, reviewProps, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf,
   FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
 } from "./render";
 import {
@@ -47,6 +48,8 @@ import type { SprintDetail } from "@shared/sprints";
 import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash";
 import { mountLandingMotion, unmountLandingMotion, noteJump } from "./landing-motion";
 import { createFeatureCtl } from "./site-feature";
+import { createMenuCtl } from "./site-menu";
+import { initSiteViewport } from "./site-viewport";
 import { TOUR_KEYS } from "./landing";
 import { initFaqAccordion } from "./site-faq";
 import {
@@ -90,7 +93,7 @@ import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
 import { SETUP_PARAM, initialBillingDone, startBillingDone } from "./billing";
 import { morphStep } from "./transition";
-import { BILLING_CHECKOUT_PATH, BILLING_DONE_PATH, PRICING_PATH } from "@shared/billing";
+import { BILLING_CHECKOUT_PATH, BILLING_DONE_PATH, PRICING_PATH, signInReturnPath } from "@shared/billing";
 import { askBillingCheckout, getBillingStatus } from "./api";
 import { BILLING_MOUNT_ID, billingCheckoutHosted, initialBillingCheckout, startBillingCheckout, type BillingCheckoutHost } from "./billing-checkout";
 import { loadStripeEmbedder } from "./stripe-js";
@@ -266,6 +269,24 @@ function markEnter(): void {
   }, ENTER_MS - elapsed + 50);
 }
 
+/** Review's detail pane after a paint: a different item starts at its top (the pane is the same
+ *  element now, so it would keep the last item's scroll), and a verdict button that had focus —
+ *  and went with its item — gives it to the same button of the item now on screen, so Enter,
+ *  Enter, Enter works down a queue. */
+let reviewShown: string | null = null;
+function syncReviewDetail(focusAct: string | null): void {
+  const body = state.view === "app" && state.screen === "review" ? mount.querySelector<HTMLElement>(".cnpy-rv-body[data-morph-key]") : null;
+  const key = body?.getAttribute("data-morph-key") ?? null;
+  if (key !== reviewShown) {
+    reviewShown = key;
+    const pane = body?.closest<HTMLElement>(".cnpy-rv-detail");
+    if (pane) pane.scrollTop = 0;
+  }
+  if (body && (focusAct === "reviewAccept" || focusAct === "reviewReject") && !body.contains(document.activeElement)) {
+    body.querySelector<HTMLElement>(`.cnpy-rv-head [data-act="${focusAct}"]`)?.focus({ preventScroll: true });
+  }
+}
+
 /** Stat figures count up to their value on entrance (`data-count`). */
 function countUp(root: HTMLElement): void {
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
@@ -342,7 +363,10 @@ function rerender(): void {
   // The swap below discards the main scroll pane; keep its position when the
   // screen is unchanged so a button low on a long screen doesn't jump to the top.
   const scroll = captureScroll(mount, state.screen);
+  // Review: a verdict button that had focus hands it to the same button of the item that follows.
+  const rvFocus = active?.closest?.(".cnpy-rv-head") ? active.getAttribute("data-act") : null;
   paint(mount, render(state));
+  syncReviewDetail(rvFocus);
   syncSegments(mount);
   syncTabBars(mount);
   qs.sync();   // the search dropdown lives outside the mount: re-anchor and re-theme it
@@ -1410,16 +1434,18 @@ function loadRoadmapFeed(): void {
 // only the newest in-flight request commit, so a slow earlier response can't
 // overwrite fresher data.
 let proposalsSeq = 0;
-function loadProposals(): void {
+/** `after` runs when THIS read commits, before the paint (Review's verdicts settle there). */
+function loadProposals(after?: () => void): void {
   const seq = ++proposalsSeq;
   state.proposals = { status: "loading", data: state.proposals.data };
   rerender();
   listStagedProposals()
-    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; after?.(); pruneReviewLeaving(); rerender(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== proposalsSeq) return;
       state.proposals = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
+      after?.(); pruneReviewLeaving();
       rerender();
     });
 }
@@ -1429,17 +1455,101 @@ function loadProposalsIfNeeded(): void {
 }
 
 let draftAdrsSeq = 0;
-function loadDraftAdrs(): void {
+function loadDraftAdrs(after?: () => void): void {
   const seq = ++draftAdrsSeq;
   state.draftAdrs = { status: "loading", data: state.draftAdrs.data };
   rerender();
   listAdrs("draft")
-    .then((rows) => { if (seq !== draftAdrsSeq) return; state.draftAdrs = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== draftAdrsSeq) return; state.draftAdrs = { status: "ok", data: rows }; after?.(); pruneReviewLeaving(); rerender(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== draftAdrsSeq) return;
       state.draftAdrs = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
+      after?.(); pruneReviewLeaving();
       rerender();
+    });
+}
+
+// ── Review: a verdict's card leaves the list (web-ui.md › A row leaving a list) ──────────────
+// The write is sent at once and the card is taken out optimistically: it wears its verdict, then
+// collapses (trov.css `.cnpy-rv-row[data-verdict]`), the selection moves to the next card and the
+// counts drop with it. Nothing here is a second source of truth — `state.reviewLeaving` only HIDES
+// rows of the two reads; the refetch replaces the reads and the entry is dropped. A failed write
+// deletes the entry, and the card, the counts and the selection are exactly what they were.
+interface ReviewExit { kind: "doc" | "adr"; selBefore: string | null; selAfter: string | null; timer: ReturnType<typeof setTimeout> | null; ok: boolean }
+const reviewExits = new Map<string, ReviewExit>();
+/** A verdict landed for this kind: its list is refetched once no card is still leaving. */
+const reviewRefetch = { doc: false, adr: false };
+
+/** Refetch what the verdicts changed — held while a card is still collapsing, so a read that
+ *  lands mid-exit never pulls a row out from under its own animation (and several verdicts in a
+ *  row cost one refetch, not one each). */
+function settleReview(): void {
+  if (Object.values(state.reviewLeaving).some((l) => !l.gone)) return;
+  for (const kind of ["doc", "adr"] as const) {
+    if (!reviewRefetch[kind]) continue;
+    reviewRefetch[kind] = false;
+    // Every verdict of this kind the server has confirmed: once THIS read commits, the read is the truth.
+    const done = [...reviewExits].filter(([, x]) => x.kind === kind && x.ok).map(([id]) => id);
+    const after = () => { for (const id of done) { delete state.reviewLeaving[id]; reviewExits.delete(id); } };
+    if (kind === "doc") loadProposals(after); else loadDraftAdrs(after);
+  }
+}
+/** A confirmed verdict whose item no read holds any more has nothing left to hide. */
+function pruneReviewLeaving(): void {
+  const held = new Set([...state.proposals.data.map((p) => `doc:${p.slug}@${p.version}`), ...state.draftAdrs.data.map((a) => `adr:${a.id}`)]);
+  for (const [id, x] of reviewExits) if (x.ok && state.reviewLeaving[id]?.gone && !held.has(id)) { delete state.reviewLeaving[id]; reviewExits.delete(id); }
+}
+
+function reviewVerdict(id: string, accept: boolean): void {
+  const ref = decodeReviewId(id);
+  if (!ref || state.reviewLeaving[id]) return;   // unknown, or already decided (a second click)
+  const verdict: ReviewVerdict = accept ? (ref.kind === "adr" ? "ratified" : "promoted") : "rejected";
+  // The selection follows to the next card still waiting (the one before, at the end of the list).
+  // Only a selection made by hand is moved: with none, the view already shows the first one waiting.
+  const selBefore = state.reviewSel;
+  let selAfter = selBefore;
+  if (selBefore === id) {
+    const p = reviewProps(state);
+    const rows = p.items.filter((it) => (p.filter === "all" || it.kind === p.filter) && (it.id === id || !p.leaving?.[it.id]));
+    const at = rows.findIndex((it) => it.id === id);
+    selAfter = (rows[at + 1] ?? rows[at - 1] ?? null)?.id ?? null;
+  }
+  state.reviewSel = selAfter;
+  // The card is seen leaving only on Review, and only when motion is allowed; otherwise it is gone at once.
+  const animate = state.screen === "review" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  state.reviewLeaving[id] = { verdict, gone: !animate };
+  const exit: ReviewExit = { kind: ref.kind, selBefore, selAfter, timer: null, ok: false };
+  reviewExits.set(id, exit);
+  if (animate) exit.timer = setTimeout(() => {
+    exit.timer = null;
+    const l = state.reviewLeaving[id];
+    if (l && !l.gone) { l.gone = true; rerender(); }
+    settleReview();
+  }, REVIEW_EXIT_MS);
+  rerender();
+
+  const op = ref.kind === "doc"
+    ? (accept ? promoteDoc(ref.slug, ref.version) : rejectDoc(ref.slug, ref.version))
+    : (accept ? ratifyAdr(ref.id) : rejectAdr(ref.id));
+  op.then(() => {
+      exit.ok = true;
+      reviewRefetch[ref.kind] = true;
+      flash(accept
+        ? (ref.kind === "adr" ? "Ratified — the decision is now accepted" : "Promoted — the proposal is live; previous version kept")
+        : "Rejected — parked, nothing changed");
+      // Refetch the affected list — the read stays the truth (the counts are derived from it).
+      settleReview();
+    })
+    .catch((e) => {
+      // The write did not happen: the card is back where it was, with the selection it had.
+      if (exit.timer !== null) clearTimeout(exit.timer);
+      reviewExits.delete(id);
+      delete state.reviewLeaving[id];
+      if (state.reviewSel === exit.selAfter) state.reviewSel = exit.selBefore;
+      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      flash(e instanceof ApiError ? e.message : "Action failed");
+      settleReview();
     });
 }
 function loadDraftAdrsIfNeeded(): void {
@@ -2194,10 +2304,13 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         // empty on day one, and this is the one moment they are guaranteed to be
         // new. The boot path restores the route from the hash, so #guide is all
         // it takes. Every later sign-in goes wherever their hash points.
-        // Signed up from an MCP client's authorize link → back to the consent screen
-        // (a same-origin path the Worker built); otherwise Get Started, as before.
+        // Signed up FOR something → on to it, before any of the first run: an MCP client's authorize link
+        // (back to the consent screen), or a purchase (on to checkout — a new buyer names their
+        // organization after paying, not before). A same-origin path the Worker built and
+        // `signInReturnPath` recognises; anything else is ignored. Otherwise the first run, as before.
         .then((r) => {
-          if (r.redirect?.startsWith("/oauth/authorize?")) { window.location.href = r.redirect; return; }
+          const next = signInReturnPath(r.redirect);
+          if (next) { window.location.href = next; return; }
           // No reload: read who we now are and morph this card into the next one (the org picker —
           // a new person is in no org). Anything unexpected falls back to a fresh page.
           getMe().then((me) => {
@@ -2228,6 +2341,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // `arg` says what the visitor came to do ("signup" from a Start-for-free button, or the dialog's own
       // switch); anything else is the nav's Sign in. Switching inside the open dialog keeps focus on the switch.
       const switching = state.signInOpen;
+      menuCtl.close({ instant: true, refocus: false }); // opened from the menu: the sign-in sheet takes its place
       state.signInMode = arg === "signup" ? "signup" : "signin";
       state.signInOpen = true;
       rerender();
@@ -2252,6 +2366,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "billingHosted": void billingCheckoutHosted(billingCheckoutHost); return;
     case "closeSignIn": state.signInOpen = false; break;
     // The tour's dialog (site-feature.ts): a card grows into it, ← / → step through the features.
+    // The menu the nav offers under 900px (site-menu.ts).
+    case "openSiteMenu": menuCtl.open(); return;
+    case "closeSiteMenu": menuCtl.close(); return;
     case "openFeature": if (arg) featureCtl.open(arg); return;
     case "closeFeature": featureCtl.close(); return;
     case "stepFeature": featureCtl.step(arg === "prev" ? -1 : 1); return;
@@ -2274,6 +2391,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const behavior: ScrollBehavior = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
       // ONE scroll per click; where it lands is the target's `scroll-margin-top` (trov.css). Sections
       // passed on the way settle without their entrance (landing-motion.ts).
+      // From the menu: it closes (unlocking the page's scroll at once) and the page scrolls under it as it leaves.
+      menuCtl.close({ refocus: false });
       noteJump();
       if (arg === "top") window.scrollTo({ top: 0, behavior });
       else document.getElementById(`site-${arg}`)?.scrollIntoView({ behavior, block: "start" });
@@ -2307,6 +2426,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       window.scrollTo(0, 0);
       return;
     case "siteBack": {
+      menuCtl.close({ instant: true, refocus: false });
       const back = state.siteReturn ?? parseHash("");
       state.siteReturn = null;
       applyRoute(back);
@@ -3018,29 +3138,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (arg === "unified" || arg === "split" || arg === "rendered") state.reviewDiffView = arg;
       break;
     case "reviewAccept":
-    case "reviewReject": {
-      if (!arg) return;
-      const ref = decodeReviewId(arg);
-      if (!ref) return;
-      const accept = act === "reviewAccept";
-      const op = ref.kind === "doc"
-        ? (accept ? promoteDoc(ref.slug, ref.version) : rejectDoc(ref.slug, ref.version))
-        : (accept ? ratifyAdr(ref.id) : rejectAdr(ref.id));
-      op.then(() => {
-          state.reviewSel = null; // fall back to the first visible item
-          flash(accept
-            ? (ref.kind === "adr" ? "Ratified — the decision is now accepted" : "Promoted — the proposal is live; previous version kept")
-            : "Rejected — parked, nothing changed");
-          // Refetch the affected list — never locally decrement (badge drift is worse).
-          if (ref.kind === "doc") loadProposals();
-          else loadDraftAdrs();
-        })
-        .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-          flash(e instanceof ApiError ? e.message : "Action failed");
-        });
+    case "reviewReject":
+      if (arg) reviewVerdict(arg, act === "reviewAccept");
       return;
-    }
 
     // docs navigation. Clicking the whole row toggles the outline like the chevron:
     // if it's the doc you're already reading, collapse/expand its outline; otherwise
@@ -4485,6 +4585,17 @@ mount.addEventListener("mouseleave", () => railTip(null));
 // The landing tour's dialog: Escape, ← / →, and Tab kept inside it.
 const featureCtl = createFeatureCtl({ mount, keys: TOUR_KEYS, get: () => state.siteFeature, set: (v) => { state.siteFeature = v; }, rerender: () => rerender() });
 document.addEventListener("keydown", (e) => featureCtl.onKey(e));
+// A phone steps through the tour's dialog by swiping it left or right (site-feature.ts `onSwipe*`).
+mount.addEventListener("pointerdown", (e) => featureCtl.onPointerDown(e));
+mount.addEventListener("pointerup", (e) => featureCtl.onPointerUp(e));
+mount.addEventListener("pointercancel", () => featureCtl.onPointerCancel());
+
+// The landing's menu (under 900px): Escape, Tab kept inside it, and gone when the window outgrows it.
+const menuCtl = createMenuCtl({ mount, get: () => state.siteMenu, set: (v) => { state.siteMenu = v; }, rerender: () => rerender() });
+document.addEventListener("keydown", (e) => menuCtl.onKey(e));
+window.addEventListener("resize", () => menuCtl.onResize());
+// The on-screen keyboard: the site's sheets stay above it (site-viewport.ts sets `--site-kb`).
+initSiteViewport();
 
 // Escape closes the landing page's sign-in dialog, wherever focus is.
 document.addEventListener("keydown", (e) => {

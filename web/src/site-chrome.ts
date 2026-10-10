@@ -29,16 +29,20 @@ export function siteFooter(contact: "dialog" | "link" = "link"): string {
   const link = contact === "dialog"
     ? `<button type="button" data-act="supportOpen" data-arg="question" data-support-trigger="question" data-field="supportOpen:question" aria-haspopup="dialog" style="padding:0;font:inherit;color:inherit;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--border-strong);cursor:pointer">Contact</button>`
     : `<a href="${CONTACT_HREF}">Contact</a>`;
-  return `<footer style="margin-top:150px;border-top:1px solid var(--border)">
-    <div style="max-width:1120px;margin:0 auto;padding:44px 24px 56px;display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+  // A phone stacks the links as a tappable list (trov.css `.site-foot*`): the line's separators and its
+  // licence are bare text, which the list drops (`font-size:0` on the line, restored on each link), and the
+  // licence is said again after the copyright in a span only a phone shows. Nothing is added to what a
+  // wide screen lays out.
+  return `<footer class="site-foot" style="margin-top:150px;border-top:1px solid var(--border)">
+    <div class="site-foot-in" style="max-width:1120px;margin:0 auto;padding:44px 24px 56px;display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
       <div style="display:flex;align-items:center;gap:9px">
         ${siteMark(18)}
         <span style="font-size:14.5px;font-weight:650">Trov</span>
       </div>
-      <div style="margin-left:auto;display:flex;flex-direction:column;gap:6px;text-align:right;font-size:13px;color:var(--fg-55)">
+      <div class="site-foot-r" style="margin-left:auto;display:flex;flex-direction:column;gap:6px;text-align:right;font-size:13px;color:var(--fg-55)">
         <span>A shared working memory for teams and their coding agents.</span>
-        <span>${link} · <a href="/pricing">Pricing</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="${TROV_REPO}" target="_blank" rel="noopener">GitHub</a> · Licensed under AGPL-3.0</span>
-        <span>© 2026 TrovLabs, Inc.</span>
+        <span class="site-foot-links">${link} · <a href="/pricing">Pricing</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="${TROV_REPO}" target="_blank" rel="noopener">GitHub</a> · Licensed under AGPL-3.0</span>
+        <span>© 2026 TrovLabs, Inc.<span class="site-foot-lic"> · Licensed under AGPL-3.0</span></span>
       </div>
     </div>
   </footer>`;
