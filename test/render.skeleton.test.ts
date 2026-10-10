@@ -232,7 +232,10 @@ describe("Review, Unplaced, Search — loading", () => {
   it("Review keeps its frame and filter; the list and the detail pane hold skeletons, never “Queue is clear”", () => {
     const html = body(render(app("review", { proposals: { status: "loading", data: [] }, draftAdrs: { status: "loading", data: [] } })));
     expect(keys(html)).toEqual(["review-list", "review-detail"]);
-    expect(html).toContain(">Review</h1>");
+    // The frame: the one line under the header's title (the page has no heading of its own) and the filter.
+    expect(html).toContain("Agent-produced changes waiting for a verdict.");
+    expect(html).not.toContain("<h1");
+    expect(html).toContain('data-seg="review-filter"');
     expect(html).not.toContain("Nothing is waiting for review.");
     expect(html).not.toContain("data-empty=");
     const clear = body(render(app("review", { proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] } })));
