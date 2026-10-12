@@ -54,7 +54,10 @@ describe("the confirmation modal's typed field (confirm.ts)", () => {
   });
 
   it("the field's focus ring shows, the wide box scrolls rather than run off a phone", () => {
-    expect(css).toMatch(/\.cnpy-cm-typed \.cnpy-input:focus-visible \{[^}]*box-shadow:0 0 0 3px var\(--accent-soft\)/);
+    // The typed field takes every field's focus ring (trov.css, the field `:focus-visible` rule): nothing of its own
+    // takes the outline away, and it is a bordered `.cnpy-input`, not a `border:none` field the ring skips.
+    expect(css).not.toMatch(/\.cnpy-cm-typed[^{]*:focus(-visible)? \{[^}]*outline:none/);
+    expect(css).toMatch(/\[data-cnpy-theme\] :is\(input:not\([^)]*\)[^{]*:focus-visible \{ border-color:var\(--focus\) !important;/);
     expect(css).toMatch(/\.cnpy-cmodal-box--wide \{[^}]*max-height:calc\(100dvh - 32px\); overflow:auto;/);
   });
 });

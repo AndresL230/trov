@@ -1066,7 +1066,7 @@ input, select { font-family: inherit; }
 .cnpy-cm-detail ul { margin:0; padding:0 0 0 18px; display:flex; flex-direction:column; gap:6px; }
 .cnpy-cm-detail strong { color:var(--fg); font-weight:600; }
 .cnpy-cm-typed { margin-top:14px; }
-.cnpy-cm-typed .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); outline:none; }
+/* The typed field's focus ring is every field's (the `:focus-visible` rule after the tokens). */
 .cnpy-del-blockers { margin:10px 0 0; padding:0 0 0 18px; display:flex; flex-direction:column; gap:6px; font-size:12.5px; line-height:1.5; color:var(--fg-70); }
 .cnpy-toast-act:hover { text-decoration:underline; text-underline-offset:3px; }
 .cnpy-rejectbtn:active { transform:translateY(1px); }
@@ -1725,7 +1725,7 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-docs-code-h { display:flex; align-items:center; gap:10px; padding:5px 6px 5px 14px; border-bottom:1px solid var(--border); font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--fg-40); }
 .site-docs-copy { margin-left:auto; padding:3px 10px; border:1px solid var(--border); background:var(--bg); font-family:inherit; font-size:11px; font-weight:600; letter-spacing:.04em; color:var(--fg-55); cursor:pointer; }
 .site-docs-copy:hover { color:var(--fg); border-color:var(--border-strong); }
-.site-docs-copy:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-docs-copy:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .site-docs-code pre { margin:0; padding:12px 14px; overflow-x:auto; }
 .site-docs-text .site-legal-sec .site-docs-code code { padding:0; background:none; font-size:12.5px; line-height:1.65; color:var(--fg); white-space:pre; }
 .site-docs-table { margin:14px 0 0; overflow-x:auto; }
