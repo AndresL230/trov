@@ -399,7 +399,7 @@ function deleteBlock(sp: SprintDetail, armed: boolean): string {
   return `<div style="margin-top:28px;padding-top:14px;border-top:1px solid var(--border)">
     <div style="font-size:12px;line-height:1.5;color:var(--fg-70);margin-bottom:10px">Delete <strong style="color:var(--fg);font-weight:600">${esc(sp.label)}</strong> for good? ${fate}</div>
     <div style="display:flex;gap:7px">
-      <button data-act="sprintDelete" style="padding:5px 12px;border-radius:7px;background:var(--red);color:#fff;font-size:12px;font-weight:600">Delete</button>
+      <button data-act="sprintDelete" style="padding:5px 12px;border-radius:7px;background:var(--red);color:var(--red-fg);font-size:12px;font-weight:600">Delete</button>
       <button data-act="sprintDeleteCancel" class="cnpy-outlinebtn" style="padding:5px 12px;border-radius:7px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg-70)">Cancel</button>
     </div>
   </div>`;

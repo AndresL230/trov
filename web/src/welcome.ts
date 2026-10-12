@@ -390,7 +390,7 @@ export function welcomeView(p: WelcomeProps): string {
           ${next === null ? "" : `<button type="button" data-act="goMyWork" data-field="welcomeExit" class="cnpy-mutelink" style="flex:none;padding:0;font-size:12.5px;font-weight:500">Skip setup &rarr;</button>`}
           ${p.wel.firstRun ? `<span class="cnpy-onb-step" data-flow-step="3" style="margin-left:0">${firstRunStepLabel(3)}</span>` : ""}
         </div>
-        <div data-welcome-eyebrow style="position:relative;margin-top:20px;font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.78)">${esc(eyebrow)}</div>
+        <div data-welcome-eyebrow style="position:relative;margin-top:20px;font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.92)">${esc(eyebrow)}</div>
         <h1 id="wel-t" tabindex="-1" style="position:relative;margin:6px 0 0;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.25;overflow-wrap:anywhere;outline:none">${esc(copy.title)}</h1>
         <p class="cnpy-orgs-lede" style="position:relative;margin:8px 0 0;font-size:13.5px;line-height:1.55;max-width:520px">${esc(copy.lead)}</p>
       </header>

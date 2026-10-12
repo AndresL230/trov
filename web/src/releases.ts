@@ -87,6 +87,7 @@ export const RELEASES: Release[] = [
       "In the dark theme the site opens dark, with no white flash first.",
       "New public docs at trov.dev/docs: setting up, connecting Claude Code, Claude Desktop, Cursor, VS Code, Codex or Windsurf (with the config to copy), how Trov decides what is settled, every MCP tool, and the changelog. Each page is also plain Markdown, and trov.dev/llms.txt lists them for AI assistants.",
       "The Unsubscribe link at the bottom of a Trov email works without signing in. It opens a page that says whose email it stops and what still arrives, and nothing changes until you press Unsubscribe.",
+      "Trov no longer contacts anyone else when you open it: its typefaces and the diagram renderer come from trov.dev itself, not Google Fonts or a CDN. Text, links, status labels and form fields meet the WCAG AA contrast guidelines in both themes, and every button, link, menu item and field shows where keyboard focus is.",
     ],
     headsUp: [
       "The home page's headline no longer fades in: it is there at once and settles into place.",
@@ -96,6 +97,8 @@ export const RELEASES: Release[] = [
       "The welcome email now says what was always true: email digests are on from the start, and when they arrive. It has an Unsubscribe link, like the digests, and someone who has unsubscribed is not sent one.",
       "Settings › Email notifications says exactly what still arrives after you unsubscribe: an invitation, a test digest you send yourself, and word that an organization you were given or paid for is ready. Invitation and organization emails now say why they came.",
       "The old in-app unsubscribe address now opens Settings and changes nothing. Before, opening it turned off email for whoever was signed in.",
+      "Some colors are a little deeper so they are easier to read: quiet grey text, links, the green, amber, blue and red labels, and the purple banner in the light theme; quiet text and red in the dark theme. Text fields have a clearer edge.",
+      "In the dark theme, the initials on a colored avatar and the label of a red Delete button are now dark rather than white.",
     ],
     ops: [
       "`wrangler.toml` `[assets]` gains `run_worker_first = [\"/\"]`: `/` is answered by the Worker (the prerendered landing, or the app shell with a session cookie). It ships with the Worker; nothing to run.",
@@ -105,6 +108,7 @@ export const RELEASES: Release[] = [
       "One-time, Cloudflare dashboard (`HANDOFF.md` › 10, AI crawlers): AI Crawl Control must not block the search and assistant crawlers (\"Block AI bots\" is on by default for new zones), the managed robots.txt must be off (it would prepend its own rules), and Bot Fight Mode / WAF rules must not challenge them. Check `curl -s https://trov.dev/robots.txt | head` starts with `# trov.dev:`.",
       "`shared/mcp-tools.generated.ts` is written by `npm run build:web` from the MCP server's own registrations; commit it whenever a tool changes (`test/mcp-catalog.test.ts` fails until you do). Nothing to run at deploy: the build regenerates it.",
       "New reserved paths: the docs live under `/docs/<page>` (`docs` was already a reserved slug); `/llms.txt`, `/llms-full.txt`, `/pricing.md` and `/docs/<page>.md` are static files.",
+      "New dependency `mermaid` (exact `11.17.2`): `npm ci` picks it up; nothing to configure. New reserved organization slug `fonts`: before deploying, `npx wrangler d1 execute trov --remote --command \"SELECT slug FROM orgs WHERE slug = 'fonts'\"` must return nothing.",
     ],
     patches: {
       added: [
@@ -125,6 +129,11 @@ export const RELEASES: Release[] = [
         "`shared/email-unsubscribe.ts`: what unsubscribing stops and what still arrives (`STILL_SENT`), one wording for Settings and the `/u/` page (#N)",
         "`emailHead` / `emailFooter` (`src/notifications/assemble.ts`): every non-digest mail's `<head>` (no link) and last row (why it came; the Unsubscribe link on a notification) (#N)",
         "`test/notifications.unsubscribe.test.ts`, `test/notifications.email-kinds.test.ts`: the page and both POSTs, forged tokens; per-kind flag, link and header behavior; no web font in any rendered mail (#N)",
+        "Self-hosted fonts: `web/src/fonts/` (Geist latin + latin-ext, Archivo Narrow latin — the variable woff2 subsets Google Fonts serves — with their SIL OFL 1.1 texts), `@font-face` at the top of `trov.css` (`font-weight:100 900`, `swap`, Google's `unicode-range`), `shared/fonts.ts`, and `FONT_PRELOAD` (Geist latin) in every built document; Vite hashes the files into `/assets/` (#N)",
+        "`'Geist Fallback'`: local Arial / Helvetica / Liberation Sans with `size-adjust` and ascent / descent overrides measured against Geist (three weight bands), after `'Geist'` in every stack, so the `swap` barely moves prerendered text (#N)",
+        "The build writes the fonts and licenses at stable paths, `/fonts/<file>`, for the Worker's own pages (OAuth, billing notices); `fonts` joins `RESERVED_ORG_SLUGS` (#N)",
+        "Tokens `--border-input`, `--focus`, `--red-fg`, `--p-ink`; `test/render.contrast.test.ts` computes every text / control token pair of both themes (text 4.5:1 on `--bg`, `--surface` and its own 12% chip; field edges and focus 3:1; the banner's text at its two light points) and fails under WCAG AA (#N)",
+        "`test/render.focus.test.ts` (no `:focus` rule removes the outline; every ring is 2px in an allowed colour; fields are covered) and `test/render.fonts.test.ts` (no third party in any document, the preload, the faces, the licenses, mermaid pinned) (#N)",
       ],
       changed: [
         "`X-Robots-Tag: noindex` on every GET / HEAD the Worker answers but `/robots.txt`, `/sitemap.xml` and the landing, and on everything on a host other than `PUBLIC_ORIGIN`'s; `_headers` adds it to every static file on `*.workers.dev`, and to `/app` and `/404` (#N)",
@@ -140,6 +149,10 @@ export const RELEASES: Release[] = [
         "The welcome is a NOTIFICATION: `welcomeFirstJoin` sends none to a person with `email_unsubscribed = 1`, and it carries the unsubscribe link (footer + `List-Unsubscribe`); its digest line comes from the joined org's policy and send hour (`welcomeDigests`, `digestSentence`). Invitations and grant / paid notices stay transactional, with a footer saying why they came (#N)",
         "`List-Unsubscribe` is the https one-click link alone (`unsubscribeHeaders`): the `mailto:` alternative is gone, since nothing processed it (#N)",
         "Every mail is set in a system font stack (`EMAIL_FONT_STACK`); `FONTS_HREF` and every Google Fonts `<link>` are gone from mail (#N)",
+        "Mermaid is the `mermaid` npm dependency pinned to `11.17.2`, loaded by `import(\"mermaid\")` (lazy Vite chunks on Trov's origin; `securityLevel: \"strict\"` unchanged) instead of `cdn.jsdelivr.net/npm/mermaid@11` (unpinned) (#N)",
+        "WCAG AA token values, hue kept: light `--fg-40` #8e8e98 → #70707a, `--accent` #5e6ad2 → #525cc3 (and `--accent-soft`), `--green` → #007545, `--amber` → #945800, `--blue` → #2467af, `--red` → #c22231, `--purple` → #804db7, `--p-moss` → #607a29, `--p-ochre` → #966800; dark `--fg-40` .40 → .52, `--red` #cc6262 → #df7372; the banner gradient one step deeper in both themes, its highlight .16 → .10 (light), its text ≥ 92% white. `src/auth/oauth-pages.ts` copies the light values (#N)",
+        "Every text field's edge is `--border-input` and its focus a 2px `--focus` ring — one `!important` rule in `trov.css`, since the fields' borders and `outline:none` are inline; a borderless field inside a box colours the box (`:has`). Focus rings use `var(--focus)` (was the accent at 70%) (#N)",
+        "The OAuth / billing pages' CSP is `font-src 'self'` (was Google Fonts); `scripts/og/render.mjs` inlines the vendored Geist and needs no network (the PNGs come out byte-identical) (#N)",
       ],
       fixed: [
         "Search Console's \"Duplicate without user-selected canonical\" on `/`: the home page carries a canonical, and no other address serves its HTML — the app shell at `/<org>/`, `/platform` and `/billing/*` was `index.html`, byte-identical to `/`, with no canonical anywhere (#N)",
@@ -150,10 +163,13 @@ export const RELEASES: Release[] = [
         "A digest's footer Unsubscribe link (`GET /u/<token>`) redirected to `/#unsubscribe` and dropped the token, so it needed a sign-in and then turned off mail for whoever was signed in — not the person the mail was for (#N)",
         "The welcome email said digests were off until a cadence was picked; they are on by default (#N)",
         "Settings › Email notifications said nothing of any kind sends after unsubscribing; invitations, grant notices and test sends do, and now it says so (#N)",
+        "The avatar menu's rows, `dropdown()` options and the filter bar's button showed keyboard focus only as a faint hover tint; the New sprint form and the New doc body showed none, and no inline-styled field ever showed `.cnpy-input:focus` (#N)",
+        "Weight 640 (`trov.css`) rendered as 650: the static Google weights are replaced by the variable axis (#N)",
       ],
       removed: [
         "`web/index.html`, `web/pricing.html`, `web/terms.html`, `web/privacy.html` (generated now) (#N)",
         "The in-app `#unsubscribe` screen (`unsubscribeView`, `runUnsubscribe`, Settings' \"Preview the unsubscribe page\"): `#unsubscribe` now parses to Settings and changes nothing (#N)",
+        "Google Fonts from every built page, the app shell and the OAuth / billing pages (stylesheet, preconnects, CSP), and jsDelivr from the app (#N)",
       ],
     },
   },

@@ -2,18 +2,21 @@
 <!-- The Open Graph card for trov.dev's public pages: 1200 × 630, rendered by scripts/og/render.mjs.
      It is the site's brand banner (`.site-banner` in web/src/trov.css — the landing hero, the pricing
      page's top plan and the legal pages' title band): the same purple gradient, top-right highlight,
-     dot field and faint tilted mark, in white type, at a size that still reads as a thumbnail.
-     render.mjs fills the three double-brace slots below (the mark from shared/mark.ts, the copy, the URL);
+     dot field and faint tilted mark, in white type, at a size that still reads as a thumbnail. (The stops
+     below are the banner's before 2026-10, when the site's went one step deeper for WCAG AA text contrast;
+     the committed PNGs were rendered with these. To follow the site, change them and re-render.)
+     render.mjs fills the four double-brace slots below (the vendored Geist file, the mark from shared/mark.ts, the copy, the URL);
      nothing else changes per page. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=1200">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <!-- Geist, the site's face (web/index.html loads it the same way). Variable, so one file covers every weight. -->
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&display=block" rel="stylesheet">
   <style>
+    /* Geist, the site's face: the SAME vendored file the site serves (web/src/fonts/geist-latin.woff2, SIL OFL 1.1),
+       inlined by render.mjs as a data: URL, so rendering needs no network. Variable: one file, every weight. */
+    @font-face { font-family: 'Geist'; font-style: normal; font-weight: 100 900; font-display: block;
+      src: url({{geist}}) format("woff2");
+      unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
     body { width: 1200px; height: 630px; overflow: hidden; background: #454fb2;

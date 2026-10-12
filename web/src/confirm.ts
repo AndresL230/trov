@@ -63,7 +63,7 @@ export function confirmModal(p: ConfirmModalProps): string {
   const argA = p.arg !== undefined ? ` data-arg="${attr(p.arg)}"` : "";
   const dis = p.busy ? " disabled" : "";
   const neutral = p.tone === "neutral";
-  const go = neutral ? "background:var(--accent);color:var(--accent-fg)" : "background:var(--red);color:#fff";
+  const go = neutral ? "background:var(--accent);color:var(--accent-fg)" : "background:var(--red);color:var(--red-fg)";
   return `<div data-overlay="confirm-${attr(p.id)}" data-confirm-layer data-confirm-tone="${neutral ? "neutral" : "danger"}" class="cnpy-cmodal">
     <div data-act="${attr(p.cancelAct)}"${argA} class="cnpy-cmodal-back" aria-hidden="true"></div>
     <div class="cnpy-cmodal-wrap">

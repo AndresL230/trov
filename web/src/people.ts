@@ -56,7 +56,7 @@ export function personChip(p: { handle: string; name?: string | null; color: Per
   const img = url
     ? `<img class="${AVATAR_IMG_CLASS}" src="${attr(url)}" width="${size}" height="${size}" alt="" decoding="async" style="position:absolute;inset:0;display:block;width:100%;height:100%;border-radius:50%;object-fit:cover" />`
     : "";
-  return `<div class="cnpy-av" title="${attr(p.name ?? p.handle)}" style="--c:var(--p-${p.color});position:relative;width:${size}px;height:${size}px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:${font}px;font-weight:600;color:#fff;flex:none;overflow:hidden">${esc(initialsOfName(p.name, p.handle))}${img}</div>`;
+  return `<div class="cnpy-av" title="${attr(p.name ?? p.handle)}" style="--c:var(--p-${p.color});position:relative;width:${size}px;height:${size}px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:${font}px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">${esc(initialsOfName(p.name, p.handle))}${img}</div>`;
 }
 
 /** A person's photo and name as ONE chip: the whole thing is the button that opens their

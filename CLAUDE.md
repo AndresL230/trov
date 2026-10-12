@@ -145,7 +145,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | artifacts, doc images, R2 | `artifacts.md` (+ `docs/artifact-contract.md`) |
 | handoffs, the Prompt Library | `handoffs-prompts.md` |
 | `src/notifications/`, digests, invite/welcome mail | `notifications.md` |
-| sidebar, morph, segmented, tab bars, entrances, corners; the public pages (`site-pages.ts`, prerender, robots/sitemap, noindex, 404), the public docs + llms.txt, error hints | `web-ui.md` |
+| sidebar, morph, segmented, tab bars, entrances, corners; the public pages (`site-pages.ts`, prerender, robots/sitemap, noindex, 404), the public docs + llms.txt, error hints; fonts, contrast tokens, focus rings | `web-ui.md` |
 | `src/data/`, contexts, tenant vs platform SQL, bearer → org, background jobs | `data-layer.md` |
 | orgs, memberships, roles, invites, superadmin, how an org is set up | `organizations.md` |
 | `src/github-app/`, the install flow, installation tokens, the App webhook | `github-app.md` |
