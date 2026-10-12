@@ -6,10 +6,11 @@
 import { trovMark } from "@shared/mark";
 import type { Me, StagedProposal, IdentityTask, DiscardedIdentity, PersonSummary, PersonProfile } from "./api";
 import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary, McpTokenSummary } from "@shared/rows";
-import type { QueryResult, QueryPrimary, QueryPointer, Authority, SprintView, SprintDetail, PlanView } from "./api";
+import type { QueryResult, QueryPrimary, QueryPointer, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
-import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
+import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
+import { agentMark, authorityMark, markShape, stateMark } from "./marks";
 import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId } from "./sprints";
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline, timelineShapes } from "./timeline";
@@ -1077,7 +1078,6 @@ function feedReviewBox(s: AppState): string {
   const rows = items.slice(0, FEED_REVIEW_LIMIT).map((it) => `<div class="mw-row ${HITBOX}" style="display:block;width:100%;text-align:left;padding:9px 18px;border-top:1px solid var(--border);font-size:13px">
       <span style="display:block;color:var(--fg);font-weight:500;line-height:1.45;overflow-wrap:anywhere">${esc(it.title)}</span>
       <span style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:3px;font-size:12px;color:var(--fg-40)">
-        <span style="width:7px;height:7px;border-radius:50%;background:${it.badgeColor};flex:none"></span>
         <span style="color:var(--fg-55)">${it.kind === "decision" ? "Decision" : "Proposal"}</span>
         <span>·</span>${handleLink(personFor(s, it.agent), it.agent, 11.5)}
         <span>·</span><span style="white-space:nowrap">${esc(it.time)}</span>
@@ -1173,7 +1173,7 @@ function feedView(s: AppState): string {
           ${s.feedView === "reading" ? feedBrief(e.brief) : feedBody(e.body)}
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px">
             <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-55)">${feedAuthorTag(s, e.author)}</div>
-            <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 5px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="11" rx="2"></rect><path d="M12 8V4M8 13h.01M16 13h.01"></path></svg>agent</span>
+            ${agentMark()}
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
             <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>
             <div style="flex:1"></div>
@@ -1330,7 +1330,7 @@ export function docReaderHtml(real: AppState): string {
     const hasStaged = versions.some((v) => v.status === "staged" && v.version > doc.current_version);
 
     const stagedBanner = hasStaged ? `<div${surface("display:flex;align-items:center;gap:14px;padding:12px 14px;margin-bottom:26px")}>
-      <span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;font-family:var(--label);letter-spacing:.04em;color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 45%,transparent);background:color-mix(in srgb,var(--amber) 12%,transparent);border-radius:5px;padding:3px 7px;flex:none">STAGED</span>
+      ${markShape("ring", "var(--amber)", 10)}
       <div style="flex:1;font-size:12.5px;color:var(--fg-70);line-height:1.45">You're viewing the <strong style="font-weight:600;color:var(--fg)">promoted</strong> version. A newer proposal is awaiting review.</div>
       <button data-act="goReview" class="cnpy-link" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--accent);white-space:nowrap;flex:none">Review proposal<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
     </div>` : "";
@@ -1340,7 +1340,7 @@ export function docReaderHtml(real: AppState): string {
         <span style="font-family:var(--label);font-size:12px;font-weight:600;color:var(--fg);width:26px">v${v.version}</span>
         <span style="flex:1;font-size:12.5px;color:var(--fg-70)">${esc(v.summary ?? "")}</span>
         <span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--fg-40)">${personLink(personFor(s, v.created_by), v.created_by, 16, { html: handleTag(personFor(s, v.created_by), v.created_by, 11) }, "", 6)} · ${relTime(v.created_at)}</span>
-        ${v.version === doc.current_version ? `<span style="font-size:9.5px;font-weight:600;font-family:var(--label);color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);background:var(--accent-soft);border-radius:4px;padding:2px 6px">PROMOTED</span>` : ""}
+        ${v.version === doc.current_version ? stateMark("Promoted", "var(--accent)", "check", 11.5, "The live version: what everyone reads.") : ""}
       </div>`).join("")}
     </div>` : "";
 
@@ -1657,25 +1657,12 @@ const SEARCH_TYPE_ICON: Record<string, string> = { feed: "M4 5h16M4 12h16M4 19h1
 // reading "Roadmap" — the screen it navigates to.
 const SEARCH_TYPE_LABEL: Record<string, string> = { doc: "Doc", feed: "Feed", decision: "Decision", sprint: "Roadmap", artifact: "Artifact" };
 
-// Authority → badge. /search is live-only, so humans normally see LIVE / PENDING;
-// the others are mapped for completeness. Reuses the status badge styling.
-function authorityBadge(a: Authority): string {
-  const map: Record<Authority, { label: string; color: string }> = {
-    live: { label: "LIVE", color: "var(--green)" },
-    staged_pending: { label: "PENDING", color: "var(--amber)" },
-    unpromoted: { label: "UNPROMOTED", color: "var(--amber)" },
-    draft: { label: "DRAFT", color: "var(--blue)" },
-  };
-  const { label, color } = map[a];
-  return `<span style="font-size:9.5px;font-weight:600;font-family:var(--label);letter-spacing:.03em;color:${color};border:1px solid color-mix(in srgb,${color} 45%,transparent);background:color-mix(in srgb,${color} 12%,transparent);border-radius:5px;padding:2px 6px;white-space:nowrap">${label}</span>`;
-}
-
-function searchTypeBadge(type: string): string {
-  const color = type === "decision" ? "var(--blue)" : type === "feed" ? "var(--fg-70)" : "var(--accent)";
-  const border = type === "decision" ? "color-mix(in srgb,var(--blue) 45%,transparent)" : type === "feed" ? "var(--border-strong)" : "color-mix(in srgb,var(--accent) 45%,transparent)";
+// A hit's kind as its icon and word, and its authority as a mark only when it is not live
+// (`authorityMark`, marks.ts: /search is live-only, so a person normally sees no mark at all).
+function searchTypeLabel(type: string): string {
   const label = SEARCH_TYPE_LABEL[type] ?? type;
   const icon = SEARCH_TYPE_ICON[type] ?? SEARCH_TYPE_ICON["doc"];
-  return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;font-family:var(--label);letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;color:${color};border:1px solid ${border}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${icon}"></path></svg>${label}</span>`;
+  return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--fg-55);white-space:nowrap"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="${icon}"></path></svg>${esc(label)}</span>`;
 }
 
 // Highlight the active query term inside a body of text.
@@ -1702,7 +1689,7 @@ function searchOpenAttr(type: string, id: string): string | null {
 
 function primaryCard(r: QueryPrimary, sq: string): string {
   const preview = r.body.replace(/\s+/g, " ").trim().slice(0, 280);
-  const inner = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap">${searchTypeBadge(r.type)}${authorityBadge(r.authority)}</div>
+  const inner = `<div style="display:flex;align-items:center;gap:12px;margin-bottom:7px;flex-wrap:wrap">${searchTypeLabel(r.type)}${authorityMark(r.authority)}</div>
     <div style="font-size:14.5px;font-weight:500;letter-spacing:-0.01em;margin-bottom:6px">${esc(r.title)}</div>
     <div style="font-size:13px;line-height:1.6;color:var(--fg-55)">${highlight(preview, sq)}${r.body.length > 280 ? "…" : ""}</div>`;
   const act = searchOpenAttr(r.type, r.id);
@@ -1712,7 +1699,7 @@ function primaryCard(r: QueryPrimary, sq: string): string {
 }
 
 function pointerRow(r: QueryPointer, sq: string): string {
-  const inner = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">${searchTypeBadge(r.type)}${authorityBadge(r.authority)}<span style="font-size:13px;font-weight:500;letter-spacing:-0.01em">${esc(r.title)}</span></div>
+  const inner = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap"><span style="font-size:13px;font-weight:500;letter-spacing:-0.01em">${esc(r.title)}</span>${searchTypeLabel(r.type)}${authorityMark(r.authority)}</div>
     <div style="font-size:12.5px;line-height:1.55;color:var(--fg-55)">${highlight(r.snippet, sq)}</div>`;
   const act = searchOpenAttr(r.type, r.id);
   return act

@@ -265,16 +265,16 @@ describe("Settings › Organizations — every org I belong to, and what I may c
   const tile = (orgs: MyOrgsResponse | null, o: Partial<Parameters<typeof settingsOrgsTile>[0]> = {}) => settingsOrgsTile({ orgs, mine: [], status: orgs ? "ok" : "loading", current: "acme", ...o });
   const rowOf = (html: string, slug: string) => html.match(new RegExp(`<li><a href="/${slug}/"[\\s\\S]*?</a></li>`))?.[0] ?? "";
 
-  it("one row per org: a LINK that opens it, my role, its plan's chip; the one on screen is marked", () => {
+  it("one row per org: a LINK that opens it, my role, its plan's name; the one on screen is marked", () => {
     const html = tile(mine());
     expect([...html.matchAll(/<a href="\/([a-z]+)\/" class="cnpy-set-org" data-org="\1"/g)].map((m) => m[1])).toEqual(["acme", "birch", "cedar", "dune"]);
     expect(rowOf(html, "acme")).toMatch(/aria-current="true"/);
     expect(rowOf(html, "acme")).toMatch(/data-org-role[^>]*>Owner &middot; open now/);
     expect(rowOf(html, "birch")).not.toContain("aria-current");
-    expect(rowOf(html, "birch")).toMatch(/data-org-plan="team"[^>]*><span[^>]*>Pro</);
+    expect(rowOf(html, "birch")).toMatch(/data-org-plan="team"[^>]*>Pro</);
     expect(rowOf(html, "cedar")).toMatch(/data-org-role[^>]*>Admin</);
-    expect(rowOf(html, "cedar")).toMatch(/data-org-plan="free"[^>]*><span[^>]*>Free</);
-    expect(rowOf(html, "dune")).toMatch(/data-org-plan="enterprise"[^>]*><span[^>]*>Enterprise</);
+    expect(rowOf(html, "cedar")).toMatch(/data-org-plan="free"[^>]*>Free</);
+    expect(rowOf(html, "dune")).toMatch(/data-org-plan="enterprise"[^>]*>Enterprise</);
     // A row is a link, never a button holding one.
     expect(html).not.toMatch(/<button[^>]*>[^<]*<a /);
   });

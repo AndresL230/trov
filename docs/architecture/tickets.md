@@ -16,7 +16,9 @@ tickets nest exactly ONE level (`set_ticket_parent`'s four rejections).
 
 **The ticket board** (the queue's DEFAULT view, `web/src/tickets.ts` `boardView`; the Table is the other).
 Statuses are `submitted` (Triage) / `in_progress` / `testing` / `done` / `declined` — `testing` (0033) is an
-optional step, not a gate. Every move is FREE (the owner's call, 2026-09-27): ANY status may move to any other —
+optional step, not a gate. On every screen a status is its glyph and word (`ticketStatusMark` in `web/src/marks.ts`: a
+ring that fills — dashed, half, three quarters, a check — and a cross for declined) and a priority is
+signal bars (`priorityMark`), never a pill (`web-ui.md` › Status marks). Every move is FREE (the owner's call, 2026-09-27): ANY status may move to any other —
 Triage straight to Done, and `done` / `declined` back to an open status (nothing is terminal; only a move to the
 status a ticket already has is a 409). The OPEN statuses are `OPEN_STATUSES`, spelled `OPEN_STATUS_SQL` in every
 SQL reader (My Work, the badge, the Repo tile, `seg=open`). Each column is in

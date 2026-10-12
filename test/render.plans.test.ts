@@ -329,7 +329,7 @@ describe("Platform › Access — the grants", () => {
       pg({ id: 14, github_login: null, email: "buyer@shop.io", source: "billing", granted_by: "billing", mail_status: "failed" }),
     ] } }));
     expect(html).toContain("<strong>6</strong> grants &middot; <strong>3</strong> unused.");
-    for (const word of ["UNUSED", "USED", "REVOKED", "EXPIRED"]) expect(html).toContain(`>${word}<`);
+    for (const word of ["Unused", "Used", "Revoked", "Expired"]) expect(html).toContain(`>${word}</span>`);
     expect(html).toContain("GitHub login &middot; granted");
     expect(html).toContain("by @andres &middot; does not expire");
     expect(html).toMatch(/cto@bigco\.io[\s\S]*?Enterprise[\s\S]*?Email &middot;[\s\S]*?email sent &middot; seats 40[\s\S]*?Annual contract/);
@@ -422,7 +422,7 @@ describe("Platform — an organization's plan", () => {
     expect(html).toMatch(/data-limit="artifact_bytes"[\s\S]*?2 GB used[\s\S]*?unlimited/);
     expect(html).toMatch(/<button type="button" data-act="platPlanOpen" data-plat-plan-trigger class="cnpy-outlinebtn" aria-haspopup="dialog"[^>]*>Change plan<\/button>/);
     expect(orgPlanSection(row({ plan: orgPlan("personal", { seats_used: 4 }) }), null)).toContain("over the limit");
-    expect(orgPlanSection(row({ plan: orgPlan("team", { status: "canceled" }) }), null)).toContain(">ENDED<");
+    expect(orgPlanSection(row({ plan: orgPlan("team", { status: "canceled" }) }), null)).toContain(">Ended</span>");
   });
   it("the limit fields: blank is the plan's own, a number or “unlimited” overrides, storage is in GB", () => {
     expect(parseLimitDraft(blankLimits())).toEqual({ overrides: {} });

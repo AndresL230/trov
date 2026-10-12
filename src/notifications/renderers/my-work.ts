@@ -29,7 +29,7 @@ function prItem(pr: ReturnType<typeof toMyWorkPr>, first: boolean): string {
   }
   if (pr.impact) rows.push(K.row("Impact", K.prose(escapeHtml(pr.impact))));
   const into = pr.baseRef ? `<span style="padding-left:8px;">into <span style="${EMAIL_FONT.label}">${escapeHtml(pr.baseRef)}</span></span>` : "";
-  return K.item({ title: escapeHtml(pr.displayTitle ?? pr.title), number: pr.number, url: escapeHtml(pr.url), rows, footer: `${K.chip("MERGED", "green")}${into}`, first });
+  return K.item({ title: escapeHtml(pr.displayTitle ?? pr.title), number: pr.number, url: escapeHtml(pr.url), rows, footer: `${K.mark("Merged", "green")}${into}`, first });
 }
 
 /** An assigned-issue item, mirroring todoCard: Summary / Sprint / Next step rows, priority + label chips. */
@@ -41,10 +41,9 @@ function issueItem(i: Awaited<ReturnType<typeof listOpenAssignedIssues>>[number]
     rows.push(K.row("Sprint", `${escapeHtml(i.sprint.title)}${due}`));
   }
   if (i.nextStep) rows.push(K.row("Next step", K.prose(escapeHtml(i.nextStep)), "accent"));
-  const chips = [
-    i.priority ? K.chip(escapeHtml(i.priority), "amber") : "",
-    ...i.labels.slice(0, 3).map((l) => K.chip(escapeHtml(l), "muted")),
-  ].filter(Boolean).join(" ");
+  // The priority is a mark (an amber square and its word); the labels are plain words, never chips.
+  const labels = i.labels.slice(0, 3).map((l) => `<span>${escapeHtml(l)}</span>`).join(" &middot; ");
+  const chips = [i.priority ? K.mark(escapeHtml(i.priority), "amber") : "", labels].filter(Boolean).join(`<span style="padding-left:10px;"></span>`);
   return K.item({ title: escapeHtml(i.displayTitle ?? i.title), number: i.number, url: escapeHtml(i.url), rows, footer: chips || undefined, first });
 }
 

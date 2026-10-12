@@ -34,9 +34,9 @@ const asMember = (members = directory, over: Partial<OrgUi> = {}) => membersTab(
 const asAdmin = (members = directory, over: Partial<OrgUi> = {}) => membersTab({ slug: "acme", name: "Acme", role: "admin" }, membersUi(members, over), "AndresL230");
 
 describe("Org settings › Members — the directory", () => {
-  it("lists everyone in the org with colored chips; the viewer's row carries YOU", () => {
+  it("lists everyone in the org with colored chips; the viewer's row says (you)", () => {
     for (const html of [asMember(), asAdmin()]) {
-      expect(html).toContain("YOU");
+      expect(html).toContain(">(you)<");
       expect(html).toContain("@AndresL230");
       expect(html).toContain("var(--p-plum)");
       expect(html).toContain("Priya Natarajan");
@@ -119,13 +119,13 @@ describe("the person card (a click on a name — there is no People screen)", ()
     expect(html).not.toContain("github.com");
   });
 
-  it("the detail read adds joined, GitHub and the admin badge — for the same person only", () => {
+  it("the detail read adds joined, GitHub and Admin — for the same person only", () => {
     const html = card(profile({ admin: true }));
     expect(html).toContain(joinedLabel("2026-06-03T10:00:00Z").replace("Joined ", ""));
     expect(html).toContain('href="https://github.com/priya-n"');
-    expect(html).toContain("ADMIN");
+    expect(html).toContain(">Admin</span>");
     // A stale detail for someone else never decorates this card.
-    expect(card(profile({ handle: "meilin", admin: true }))).not.toContain("ADMIN");
+    expect(card(profile({ handle: "meilin", admin: true }))).not.toContain(">Admin</span>");
   });
 
   it("NEVER renders responsibilities, and has no tickets, sessions, docs or role editor", () => {

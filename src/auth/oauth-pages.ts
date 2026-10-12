@@ -89,7 +89,7 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;back
 .mode-text{min-width:0;display:flex;flex-direction:column;gap:3px}
 .mode-sub{font-size:12.5px;font-weight:400;line-height:1.5;color:var(--fg-55)}
 .mode-sub strong{font-weight:600;color:var(--fg-70)}
-.rec{margin-left:8px;font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);border-radius:2.4px;padding:1px 6px;vertical-align:1px}
+.rec{margin-left:8px;font-size:12px;font-weight:500;color:var(--accent);background:var(--accent-soft);border-radius:2.4px;padding:2px 7px;vertical-align:1px}
 .orgs.pick{margin-top:14px}
 .card:has(input[name=mode][value=repo]:checked) .orgs.pick{display:none}
 .orgs.pick .org{cursor:default;gap:12px}

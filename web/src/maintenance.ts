@@ -17,13 +17,14 @@ import { esc, attr, primaryBtn, surface } from "./ui";
 import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skLines, skList, skW } from "./skeleton";
+import { stateMark } from "./marks";
 
 // ── prop shapes ──────────────────────────────────────────────────────────────
 export interface UnplacedItem {
   id: string;
   title: string;
   snippet: string;
-  reason: string; // "AGENT FLAGGED" / "LOW CONFIDENCE"
+  reason: string; // "Flagged by an agent" / "Low confidence" — the gate's bucket, in words
   meta: string; // e.g. "AndresL230 · 2h ago"
   reasonNote: string;
   /** The handle that produced it (null when the gate recorded none). */
@@ -138,7 +139,7 @@ function unplacedTab(p: MaintenanceProps): string {
     <div class="cnpy-scroll" style="flex:1 1 260px;min-width:0;max-width:100%;box-shadow:1px 0 0 var(--border);overflow-y:auto;overflow-x:hidden;max-height:640px">${list}</div>
     <div style="flex:2 1 380px;min-width:0;display:flex;flex-direction:column;padding:24px 28px;box-shadow:0 -1px 0 var(--border)">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--fg-55)">
-        <span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-55);border:1px solid var(--border-strong);border-radius:5px;padding:2px 6px;white-space:nowrap">${esc(sel.reason)}</span>
+        ${stateMark(sel.reason, "var(--amber)", "triangle", 12)}
         <span style="display:inline-flex;white-space:nowrap;min-width:0">${personLink(chipPerson(au), sel.author ?? "?", 18, au?.name ?? sel.author ?? "unknown", "min-width:0;overflow:hidden;text-overflow:ellipsis", 6)}</span>
         <span style="color:var(--fg-40);white-space:nowrap">&middot; ${esc(sel.when ?? "")}</span>
         <span style="flex:1"></span>

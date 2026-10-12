@@ -11,6 +11,10 @@ export const ARTIFACT_TEXT_KINDS = ["html", "markdown", "svg", "mermaid"] as con
 export const ARTIFACT_BINARY_KINDS = ["image", "pdf", "file"] as const;
 export const ARTIFACT_KINDS = [...ARTIFACT_TEXT_KINDS, ...ARTIFACT_BINARY_KINDS] as const;
 export const ARTIFACT_STATUSES = ["draft", "published", "ratified"] as const;
+/** A kind as a reader says it: the acronyms in capitals, the rest a word ("Markdown"). */
+export function artifactKindLabel(k: string): string {
+  return ["html", "svg", "pdf"].includes(k) ? k.toUpperCase() : k.charAt(0).toUpperCase() + k.slice(1);
+}
 export const ARTIFACT_VISIBILITIES = ["org", "private"] as const;
 export const ARTIFACT_LINK_TYPES = ["ticket", "sprint", "pr", "issue"] as const;
 /** The design's areas. */

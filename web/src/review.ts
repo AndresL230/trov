@@ -7,7 +7,8 @@
 // Interactions dispatch via data-act / data-arg handled in main.ts. No fetching,
 // no inline data.
 
-import { esc, attr, statusBadge, MONO_LABEL, surface, SURFACE } from "./ui";
+import { esc, attr, MONO_LABEL, surface, SURFACE } from "./ui";
+import { LOW_CONFIDENCE, kindMark } from "./marks";
 import { segmented } from "./segmented";
 import { renderedDoc } from "./review-rendered";
 import { personChip, personLink, handleTag } from "./people";
@@ -36,8 +37,6 @@ export interface ReviewItem {
   id: string;
   kind: ReviewKind;
   eyebrow: string;
-  badge: string;
-  badgeColor: string; // CSS var expression, e.g. "var(--amber)"
   title: string;
   summary: string;
   agent: string;
@@ -50,7 +49,9 @@ export interface ReviewItem {
   agentHandle?: string;
   agentName?: string | null;
   time: string;
-  /** Gate's scrutinize signal: staged with low_confidence = 1. Rendered as a small marker. */
+  /** Gate's scrutinize signal: staged with low_confidence = 1. The one state a card names
+   *  ("Low confidence", `LOW_CONFIDENCE`): everything in the queue is waiting, and the
+   *  Promote / Ratify and Reject buttons already say so, so there is no state tag. */
   flagged?: boolean;
   stale?: boolean;
   staleNote?: string;
@@ -95,9 +96,10 @@ export function reviewFilterSwitch(filter: ReviewFilter, counts: Record<ReviewFi
   })}</div>`;
 }
 
-/** One review queue row — mirrors the detail header: title first, status badge
- *  up-right on the title row, 2-line summary, then a byline that folds the
- *  record type · identifier (label-face) into the author · date. */
+/** One review queue row — mirrors the detail header: title first, the low-confidence mark
+ *  up-right on the title row when the gate set it (nothing otherwise: every row here is
+ *  waiting), 2-line summary, then a byline that folds the record type · identifier
+ *  (label-face) into the author · date. */
 export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVerdict | null = null): string {
   const { type, id } = splitEyebrow(it.eyebrow);
   const dot = `<span style="color:var(--fg-40)">·</span>`;
@@ -110,7 +112,7 @@ export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVer
     <div class="cnpy-rv-card-in" style="position:relative">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
         <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">${esc(it.title)}</div>
-        <div style="display:flex;align-items:center;gap:6px;flex:none">${statusBadge(it.badge, it.badgeColor)}${it.flagged ? statusBadge("FLAGGED", "var(--amber)") : ""}</div>
+        ${it.flagged ? `<div style="flex:none;margin-top:1px">${LOW_CONFIDENCE(12)}</div>` : ""}
       </div>
       <div style="font-size:12.5px;color:var(--fg-55);margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(it.summary)}</div>
       <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:10px;font-size:11.5px;color:var(--fg-55)">
@@ -151,9 +153,9 @@ export function reviewListEmpty(all = true): string {
 
 // ── detail pane pieces ───────────────────────────────────────────────────────
 export function staleBaseWarning(note: string): string {
-  return `<div${surface("border-left:2px solid var(--amber);padding:11px 15px;margin-top:18px;display:flex;gap:10px;align-items:baseline")}>
-    <div style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--amber);flex:none">STALE BASE</div>
-    <div style="font-size:12.5px;color:var(--fg-70)">${esc(note)}</div>
+  return `<div${surface("padding:11px 15px;margin-top:18px;display:flex;gap:6px 12px;align-items:baseline;flex-wrap:wrap")}>
+    <div style="flex:none">${kindMark("Stale base", "warn", 12.5, "The live doc changed after this proposal was written.")}</div>
+    <div style="font-size:12.5px;color:var(--fg-70);min-width:0">${esc(note)}</div>
   </div>`;
 }
 
@@ -277,7 +279,6 @@ function splitEyebrow(eyebrow: string): { type: string; id: string } {
 
 // The header's status chips and its two buttons are ONE height, so the row reads as a set.
 const HEAD_BTN = "box-sizing:border-box;height:34px;display:inline-flex;align-items:center;border-radius:8px;font-size:12.5px";
-const HEAD_CHIP = "box-sizing:border-box;height:34px;display:inline-flex;align-items:center;border-radius:8px;padding:0 12px;font-size:11.5px";
 
 export function reviewDetail(it: ReviewItem, diffView: DiffViewMode): string {
   const acceptLabel = it.kind === "decision" ? "Ratify" : "Promote";
@@ -300,7 +301,7 @@ export function reviewDetail(it: ReviewItem, diffView: DiffViewMode): string {
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex:none;padding-top:2px">
-        ${statusBadge(it.badge, it.badgeColor, HEAD_CHIP)}${it.flagged ? statusBadge("FLAGGED FOR REVIEW", "var(--amber)", HEAD_CHIP) : ""}
+        ${it.flagged ? `<span style="margin-right:4px">${LOW_CONFIDENCE()}</span>` : ""}
         <button data-act="reviewReject" data-arg="${attr(it.id)}" class="cnpy-rejectbtn" style="${HEAD_BTN};background:transparent;border:1px solid var(--border-strong);padding:0 14px;font-weight:500;color:var(--fg-70);transition:all .12s ease">Reject</button>
         <button data-act="reviewAccept" data-arg="${attr(it.id)}" class="cnpy-accentbtn" style="${HEAD_BTN};background:var(--accent);color:var(--accent-fg);border:1px solid var(--accent);padding:0 17px;font-weight:600">${acceptLabel}</button>
       </div>

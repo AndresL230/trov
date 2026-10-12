@@ -11,6 +11,7 @@
 import type { MyWorkTicket } from "@shared/dashboard";
 import type { RepoDashboard, RepoTone } from "@shared/repo";
 import { TICKET_STATUS_LABEL } from "@shared/tickets-core";
+import { ticketStatusIcon, kindMark } from "./marks";
 import type { HandoffView } from "@shared/handoffs";
 import type { ReviewHead } from "./triage-map";
 import { segmented } from "./segmented";
@@ -89,7 +90,6 @@ const tile = (area: string, span: number, label: string, inner: string, extra = 
   `<section${surface(`${TILE};--span:${span}${extra}`, { cls: "mw-tile cnpy-rise" })} data-mw="${area}" data-screen-label="My Work · ${attr(label)}">${inner}</section>`;
 
 const TONE: Record<RepoTone, string> = { good: "var(--green)", warn: "var(--amber)", bad: "var(--red)", neutral: "var(--fg-40)" };
-const TICKET_DOT: Record<MyWorkTicket["status"], string> = { submitted: "var(--blue)", in_progress: "var(--accent)", testing: "var(--amber)" };
 /** Priority keeps Trov's monochrome rule (weight, not hue, carries it). */
 const PRIO_COLOR: Record<MyWorkTicket["priority"], string> = { high: "var(--fg)", normal: "var(--fg-55)", low: "var(--fg-40)" };
 const prioLabel = (text: string, color: string): string =>
@@ -108,7 +108,7 @@ export function mwTicketRow(t: MyWorkTicket, due: MwDue | null = null): string {
     <span style="flex:1;min-width:0;display:block">
       <span style="${ROW_TITLE}">${esc(t.title)}</span>
       <span style="${META}">
-        <span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">${dot(TICKET_DOT[t.status])}${esc(TICKET_STATUS_LABEL[t.status])}</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">${ticketStatusIcon(t.status, 12, false)}${esc(TICKET_STATUS_LABEL[t.status])}</span>
         ${sep}<span style="white-space:nowrap">${esc(t.sprint?.label ?? "Backlog")}</span>
         ${due ? `${sep}<span style="white-space:nowrap;color:${due.overdue ? "var(--red)" : due.soon ? "var(--amber)" : "var(--fg-40)"}">${due.overdue ? "overdue" : "due"} ${esc(due.label)}</span>` : ""}
       </span>
@@ -182,8 +182,7 @@ export function reviewTile(items: ReviewHead[], load: MwLoad, span: number): str
       <button data-act="mwOpenReview" data-arg="${attr(it.id)}" style="flex:1;min-width:0;display:block;text-align:left;padding:0">
         <span style="${ROW_TITLE}">${esc(it.title)}</span>
         <span style="${META};margin-top:4px">
-          <span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">${dot(it.badgeColor)}<span style="font-family:var(--label);font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase">${esc(it.badge)}</span></span>
-          ${sep}<span style="white-space:nowrap;color:var(--fg-55)">${it.kind === "decision" ? "Decision" : "Proposal"}</span>
+          <span style="white-space:nowrap;color:var(--fg-55)">${it.kind === "decision" ? "Decision" : "Proposal"}</span>
           ${sep}<span style="white-space:nowrap">${esc(it.time)}</span>
         </span>
       </button>
@@ -291,7 +290,7 @@ export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTa
   // Sample data (the Repo screen's "Preview with sample data", session-only)
   // replaces `state.repo` wholesale — there is no live payload left to show
   // instead — so it stays on the tile, but never unlabelled.
-  const sampleTag = repo?.sample ? `<span class="mw-repo-sample" style="font-family:var(--label);font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 45%,transparent);background:color-mix(in srgb,var(--amber) 12%,transparent);border-radius:5px;padding:1px 6px;white-space:nowrap">Sample data</span>` : "";
+  const sampleTag = repo?.sample ? `<span class="mw-repo-sample">${kindMark("Sample data", "warn", 11.5, "Placeholder values from the Repo screen's preview, not this repository's.")}</span>` : "";
   const name = repo?.repo || sampleTag ? `<span style="display:inline-flex;align-items:center;gap:8px;min-width:0">${sampleTag}${repo?.repo ? `<span style="font-family:var(--label);font-size:12px;color:var(--fg-40)">${esc(repo.repo)}</span>` : ""}</span>` : "";
   const head = tileHead("Repo", { act: "goRepo", label: "Dashboard" }, name);
   const tabs = `<div style="padding:10px 16px 12px">${segmented({

@@ -18,7 +18,8 @@ import {
   SUPPORT_KINDS, SUPPORT_KIND_LABEL, supportMailSubject,
   type SupportKind, type SupportKindFilter, type SupportReport, type SupportStatusFilter,
 } from "@shared/support-core";
-import { esc, attr, relTime, statusBadge, surface } from "./ui";
+import { esc, attr, relTime, surface } from "./ui";
+import { kindMark } from "./marks";
 import { segmented } from "./segmented";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { tabLead } from "./org-ui";
@@ -60,9 +61,9 @@ export const isSupportKindFilter = (v: unknown): v is SupportKindFilter => v ===
 const LABEL = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap";
 const QUIET = "font-size:11.5px;color:var(--fg-40)";
 const BTN = "height:32px;padding:0 13px;border-radius:8px;font-size:12.5px;white-space:nowrap";
-const KIND_TONE: Record<SupportKind, string> = { bug: "var(--red)", question: "var(--blue)", feedback: "var(--accent)" };
-const kindChip = (k: SupportKind): string => statusBadge(SUPPORT_KIND_LABEL[k].toUpperCase(), KIND_TONE[k]);
-const statusChip = (s: SupportReport["status"]): string => (s === "open" ? statusBadge("OPEN", "var(--amber)") : statusBadge("RESOLVED", "var(--green)"));
+/** A report's kind is a fact: its word, plain. Its status is a mark (marks.ts `kindMark`). */
+const kindChip = (k: SupportKind): string => `<span style="font-size:12.5px;color:var(--fg-70);white-space:nowrap">${esc(SUPPORT_KIND_LABEL[k])}</span>`;
+const statusChip = (s: SupportReport["status"]): string => (s === "open" ? kindMark("Open", "waiting", 12, "Nobody has resolved it yet.") : kindMark("Resolved", "done"));
 const dateTitle = (iso: string | null): string => (iso ? ` title="${attr(new Date(iso).toLocaleString("en-US"))}"` : "");
 const retry = (what: string): string =>
   `<div role="alert" style="font-size:13px;color:var(--fg-70);padding:10px 0">Couldn't load ${esc(what)}. <button type="button" data-act="platReload" class="cnpy-mutelink" style="padding:0;font-size:13px;font-weight:500;color:var(--accent)">Try again</button></div>`;
@@ -86,7 +87,7 @@ export const supportReplyAddress = (r: Pick<SupportReport, "reporter" | "contact
 /** A report sent from the public site: no account behind it, and an address nobody verified. */
 export const SIGNED_OUT = "Signed out";
 export const UNVERIFIED = "unverified, as typed";
-const anonChip = (): string => statusBadge("SIGNED OUT", "var(--fg-55)");
+const anonChip = (): string => `<span style="font-size:12px;color:var(--fg-55);white-space:nowrap">${SIGNED_OUT}</span>`;
 
 /** `mailto:` the reporter with the subject prefilled — the same subject the notice was mailed under. */
 export function supportReplyHref(r: Pick<SupportReport, "kind" | "subject" | "reporter" | "contact_email">): string | null {

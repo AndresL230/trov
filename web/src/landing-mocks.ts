@@ -26,7 +26,9 @@
 // under 640px (`.fxm-wide` is the pane a phone drops; `.fxm-hrow`, `.fxm-staged` and `.fxm-stats` are
 // rows a phone re-lays in "the site on a phone", where every size under 11px is also raised to 11px).
 
-import { TICKET_STATUSES, TICKET_STATUS_LABEL, type TicketStatus } from "@shared/tickets-core";
+import { TICKET_STATUSES, TICKET_STATUS_LABEL, type TicketStatus, type TicketPriority } from "@shared/tickets-core";
+import { agentMark, handoffMark, markShape, ticketStatusIcon, ticketStatusMark, priorityMark } from "./marks";
+import { stateTag as sprintStateMark, type TlState } from "./timeline";
 import { ARTIFACT_STATUSES } from "@shared/artifacts-core";
 
 export const MOCK_KEYS = ["docs", "feed", "tickets", "roadmap", "mywork", "handoffs", "artifacts"] as const;
@@ -34,19 +36,14 @@ export type MockKey = (typeof MOCK_KEYS)[number];
 
 // ── shared pieces (the page's small mockups use these too) ───────────────────
 const LBL = "font-family:var(--label);font-weight:600;letter-spacing:.08em;text-transform:uppercase";
-/** A label-face status pill; `c` is a color var name (green / amber / blue / red / fg-55). */
-export function pill(text: string, c: string, size = "8.5px", pad = "1.5px 5px"): string {
-  const edge = c === "fg-55" ? "var(--border-strong)" : `color-mix(in srgb, var(--${c}) 45%, transparent)`;
-  const fill = c === "fg-55" ? "transparent" : `color-mix(in srgb, var(--${c}) 11%, transparent)`;
-  return `<span style="font-family:var(--label);font-size:${size};font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--${c});border:1px solid ${edge};background:${fill};border-radius:4px;padding:${pad};flex:none;white-space:nowrap">${text}</span>`;
-}
 /** A person's initials tile. The page's people: MC (Maya Chen), LP (Leo Park), SO (Sam Ortiz). */
 const PERSON_COLOR: Record<string, string> = { MC: "accent", LP: "blue", SO: "amber" };
 export function initials(text: string, size = 26, font = "10px"): string {
   const c = PERSON_COLOR[text] ?? "accent";
   return `<span style="width:${size}px;height:${size}px;border-radius:50%;background:color-mix(in srgb, var(--${c}) 16%, transparent);color:var(--${c});font-size:${font};font-weight:600;display:grid;place-items:center;flex:none">${text}</span>`;
 }
-export const AGENT_TAG = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 5px;white-space:nowrap"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="11" rx="2"></rect><path d="M12 8V4M8 13h.01M16 13h.01"></path></svg>agent</span>`;
+/** "An agent wrote this" as the Feed draws it (`agentMark`, marks.ts): the glyph and the word, no box. */
+export const AGENT_TAG = agentMark(11);
 const GH = `<svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style="flex:none;color:var(--fg-40)"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.19 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path></svg>`;
 const ARROW = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>`;
 const DOT = (c: string, size = 7) => `<span style="width:${size}px;height:${size}px;border-radius:2px;background:var(--${c});flex:none"></span>`;
@@ -79,7 +76,7 @@ function docsMock(): string {
     </div>`;
   const reader = `<div style="flex:1;min-width:0;padding:14px 18px 16px;overflow:hidden">
       <div class="fxm-staged" style="${SURF};display:flex;align-items:center;gap:10px;padding:9px 12px">
-        ${pill("staged", "amber", "9px", "2px 6px")}
+        ${markShape("ring", "var(--amber)", 10)}
         <span style="flex:1;min-width:0;font-size:11.5px;line-height:1.45;color:var(--fg-70)">You're viewing the <b style="font-weight:600;color:var(--fg)">promoted</b> version. A newer proposal is awaiting review.</span>
         <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:500;color:var(--accent);white-space:nowrap">Review proposal ${ARROW}</span>
       </div>
@@ -113,7 +110,7 @@ function feedMock(): string {
       </div>
     </div>`;
   const asideHead = (t: string, link: string) => `<div style="display:flex;align-items:baseline;gap:10px;padding:11px 13px 0"><span style="font-size:12.5px;font-weight:600;white-space:nowrap">${t}</span><span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--fg-40);white-space:nowrap">${link} ${ARROW}</span></div>`;
-  const waiting = (title: string, kind: string, c: string, who: string, when: string) => `<div style="padding:8px 13px;border-top:1px solid var(--border)"><div style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</div><div style="margin-top:3px;display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--fg-55)">${DOT(c, 6)}${kind}${SEP}${who}${SEP}${when}</div></div>`;
+  const waiting = (title: string, kind: string, who: string, when: string) => `<div style="padding:8px 13px;border-top:1px solid var(--border)"><div style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</div><div style="margin-top:3px;display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--fg-55)">${kind}${SEP}${who}${SEP}${when}</div></div>`;
   const body = `<div style="display:flex;gap:12px;padding:14px;height:100%;box-sizing:border-box">
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">
         ${entry("LP", "@leo", "blue", "Rate limiting shipped on the public API", "Each organization now has its own request budget. A caller that goes over is told when to try again.", "1d ago", true, `${ref("PR", "#142")}${ref("commit", "3f2a9c1")}${ref("issue", "#128")}`)}
@@ -129,8 +126,8 @@ function feedMock(): string {
         </div>
         <div style="${SURF};overflow:hidden">${asideHead("Waiting on review", "Review")}
           <div style="padding:3px 13px 10px;font-size:10.5px;color:var(--fg-55)"><b style="color:var(--fg);font-weight:600">2</b> waiting · 1 proposal, 1 decision</div>
-          ${waiting("Deploy process", "Proposal", "amber", "@maya", "2h")}
-          ${waiting("ADR-0012 · Retry budget", "Decision", "blue", "@leo", "1d")}
+          ${waiting("Deploy process", "Proposal", "@maya", "2h")}
+          ${waiting("ADR-0012 · Retry budget", "Decision", "@leo", "1d")}
         </div>
       </div>
     </div>`;
@@ -138,12 +135,11 @@ function feedMock(): string {
 }
 
 // ── Tickets: the board (a column per status) over the table (grouped by sprint) ──
-const STATUS_COLOR: Record<TicketStatus, string> = { submitted: "blue", in_progress: "accent", testing: "amber", done: "fg-55", declined: "fg-55" };
 function ticketsMock(): string {
   const nobody = `<span style="font-size:10.5px;color:var(--fg-40);font-style:italic">Unassigned</span>`;
   const card = (title: string, id: number, prio: "" | "High" | "Low", who: string, mirrored = false) => `<div style="${SURF};padding:8px 9px">
       <div style="font-size:11.5px;font-weight:600;line-height:1.35">${title}</div>
-      <div style="margin-top:7px;display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--fg-40);min-height:18px">#${id}${prio ? `${SEP}<span style="font-weight:${prio === "High" ? "600;color:var(--fg)" : "500"}">${prio}</span>` : ""}${mirrored ? GH : ""}<span style="margin-left:auto;display:flex">${who ? initials(who, 18, "7.5px") : nobody}</span></div>
+      <div style="margin-top:7px;display:flex;align-items:center;flex-wrap:wrap;gap:4px 5px;font-size:10.5px;color:var(--fg-40);min-height:18px">#${id}${prio ? `${SEP}${priorityMark(prio === "High" ? "high" : "low", 10.5)}` : ""}${mirrored ? GH : ""}<span style="margin-left:auto;display:flex">${who ? initials(who, 18, "7.5px") : nobody}</span></div>
     </div>`;
   const cards: Record<TicketStatus, string[]> = {
     submitted: [card("Email digest lands twice on Mondays", 218, "", ""), card("Onboarding checklist is stale", 230, "Low", "SO", true)],
@@ -153,17 +149,17 @@ function ticketsMock(): string {
     declined: [card("Per-user rate limits", 205, "", "")],
   };
   const column = (s: TicketStatus, i: number) => `<div${i > 2 ? ` class="fxm-wide"` : ""} style="min-width:0;display:flex;flex-direction:column;gap:6px">
-      <div style="display:flex;align-items:center;padding-bottom:5px;border-bottom:1px solid var(--border)">${cap(TICKET_STATUS_LABEL[s], "8.5px", STATUS_COLOR[s])}<span style="margin-left:auto;font-size:10px;color:var(--fg-40)">${cards[s].length}</span></div>
+      <div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600">${ticketStatusIcon(s, 12, false)}${TICKET_STATUS_LABEL[s]}<span style="margin-left:auto;font-size:10px;color:var(--fg-40)">${cards[s].length}</span></div>
       ${cards[s].join("")}
     </div>`;
   const board = `<div class="fxm-board">${TICKET_STATUSES.map(column).join("")}</div>`;
 
-  const COLS = "minmax(0,2.3fr) 62px 88px minmax(0,1fr)";
+  const COLS = "minmax(0,2.3fr) 66px 96px minmax(0,1fr)";
   const group = (name: string, meta: string, count: string, active: boolean) => `<div style="display:flex;align-items:center;gap:8px;padding:10px 14px 4px">${DOT(active ? "accent" : "border-strong")}${cap(name, "9px", active ? "accent" : "fg-55")}<span style="font-size:10px;color:var(--fg-40);white-space:nowrap">${meta}</span><span style="flex:1;height:1px;background:var(--border)"></span><span style="font-size:10px;color:var(--fg-40);white-space:nowrap">${count}</span></div>`;
-  const trow = (title: string, chip: string, prio: string, s: TicketStatus, who: string) => `<div style="display:grid;grid-template-columns:${COLS};gap:10px;align-items:center;padding:6px 14px">
-      <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span>${chip ? `<span style="font-size:9.5px;color:var(--fg-55);border:1px solid var(--border);border-radius:4px;padding:1px 6px;white-space:nowrap;flex:none">${chip}</span>` : ""}</span>
-      <span>${pill(prio, prio === "high" ? "fg" : "fg-55")}</span>
-      <span>${pill(TICKET_STATUS_LABEL[s], s === "done" || s === "declined" ? "fg-55" : s === "in_progress" ? "accent" : STATUS_COLOR[s])}</span>
+  const trow = (title: string, chip: string, prio: TicketPriority, s: TicketStatus, who: string) => `<div style="display:grid;grid-template-columns:${COLS};gap:10px;align-items:center;padding:6px 14px">
+      <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span>${chip ? `<span style="font-size:10.5px;color:var(--fg-55);white-space:nowrap;flex:none">${chip}</span>` : ""}</span>
+      <span>${priorityMark(prio, 11)}</span>
+      <span>${ticketStatusMark(s, 11)}</span>
       <span style="display:flex;align-items:center;gap:6px;min-width:0;font-size:11.5px;color:var(--fg-70)">${who ? `${initials(who, 18, "7.5px")}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${who === "LP" ? "Leo" : who === "MC" ? "Maya" : "Sam"}</span>` : nobody}</span>
     </div>`;
   const table = `<div style="${SURF};overflow:hidden;margin:0 12px 12px">
@@ -187,11 +183,13 @@ function roadmapMock(): string {
   const month = (label: string, left: number) => `<span style="position:absolute;left:${left}%;font-size:10px;font-weight:500;color:var(--fg-40)">${label}</span>`;
   const lane = (label: string, n: number, c: string) => `<div style="display:flex;align-items:center;gap:7px;margin-top:10px">${DOT(c, 6)}${cap(label, "9px", "fg-70")}<span style="font-size:10px;color:var(--fg-40)">${n}</span></div>`;
   const TONE: Record<string, [string, string]> = { Overdue: ["red", "red"], "In progress": ["accent", "accent"], Ready: ["accent", "accent"], Upcoming: ["fg-55", "fg-55"], Done: ["green", "green"] };
+  /** The word on a row → the Timeline's state, whose mark (glyph + word) the row wears. */
+  const STATE: Record<keyof typeof TONE & string, TlState> = { Overdue: "overdue", "In progress": "active", Ready: "ready", Upcoming: "upcoming", Done: "done" };
   const sprint = (who: string, tag: keyof typeof TONE & string, when: string, range: string, name: string, left: number, width: number, pct: number, count: string, side: "l" | "r" = "r") => {
     const [c] = TONE[tag];
     const label = `<span class="fxm-lab" style="position:absolute;top:0;bottom:0;display:flex;align-items:center;font-size:11px;font-weight:600;white-space:nowrap;${side === "r" ? `left:calc(${left + width}% + 7px)` : `right:calc(${100 - left}% + 7px)`}">${name}</span>`;
     return `<div class="fxm-sprint" style="display:flex;align-items:center;gap:10px;margin-top:7px">
-      <div class="fxm-wide" style="width:150px;flex:none;display:flex;align-items:center;gap:8px">${initials(who, 20, "8px")}<div style="min-width:0"><div style="display:flex;align-items:center;gap:6px">${pill(tag, c, "8px", "1px 5px")}<span style="font-size:10.5px;font-weight:500;color:var(--${tag === "Overdue" ? "red" : "fg-70"});white-space:nowrap">${when}</span></div><div style="margin-top:3px;font-size:10px;color:var(--fg-40);white-space:nowrap">${range}</div></div></div>
+      <div class="fxm-wide" style="width:150px;flex:none;display:flex;align-items:center;gap:8px">${initials(who, 20, "8px")}<div style="min-width:0"><div style="display:flex;align-items:center;gap:6px">${sprintStateMark(STATE[tag], tag, 10.5)}<span style="font-size:10.5px;font-weight:500;color:var(--${tag === "Overdue" ? "red" : "fg-70"});white-space:nowrap">${when}</span></div><div style="margin-top:3px;font-size:10px;color:var(--fg-40);white-space:nowrap">${range}</div></div></div>
       <div style="position:relative;flex:1;height:26px">
         <div style="position:absolute;left:${left}%;width:${width}%;top:0;bottom:0;border:1px solid color-mix(in srgb, var(--${c}) 50%, transparent);background:color-mix(in srgb, var(--${c}) 9%, transparent);border-radius:6px;overflow:hidden">
           <span style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:color-mix(in srgb, var(--${c}) 26%, transparent)"></span>
@@ -231,8 +229,8 @@ function roadmapMock(): string {
 function myworkMock(): string {
   const tileHead = (title: string, link: string, dot = false) => `<div style="display:flex;align-items:baseline;padding:11px 13px 0"><span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600">${dot ? DOT("accent", 6) : ""}${title}</span><span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--fg-40);white-space:nowrap">${link} ${ARROW}</span></div>`;
   const sub = (html: string) => `<div style="padding:3px 13px 10px;font-size:10.5px;color:var(--fg-55)">${html}</div>`;
-  const ticket = (prio: string, title: string, status: TicketStatus, sprint: string, due: string, c: string) => `<div style="display:flex;gap:10px;padding:8px 13px;border-top:1px solid var(--border)"><span style="width:38px;flex:none;font-size:10.5px;font-weight:${prio === "High" ? 600 : 500};color:var(--${prio === "High" ? "fg" : "fg-40"});padding-top:1px">${prio}</span><span style="min-width:0"><span style="display:block;font-size:12px;font-weight:600;line-height:1.35">${title}</span><span style="margin-top:3px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:10.5px;color:var(--fg-55)">${DOT(STATUS_COLOR[status], 6)}${TICKET_STATUS_LABEL[status]}${SEP}${sprint}${SEP}<span style="color:var(--${c})">${due}</span></span></span></div>`;
-  const review = (title: string, badge: string, c: string, kind: string, when: string, accept: string) => `<div style="display:flex;align-items:center;gap:8px;padding:8px 13px;border-top:1px solid var(--border)"><span style="flex:1;min-width:0"><span style="display:block;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span><span style="margin-top:3px;display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--fg-55)">${DOT(c, 6)}<span style="${LBL};font-size:9.5px;letter-spacing:.04em">${badge}</span>${SEP}${kind}${SEP}${when}</span></span><span style="height:22px;padding:0 8px;border:1px solid var(--border);border-radius:6px;font-size:10.5px;font-weight:500;color:var(--fg-70);display:inline-flex;align-items:center">Reject</span><span style="height:22px;padding:0 8px;border-radius:6px;background:var(--accent);color:var(--accent-fg);font-size:10.5px;font-weight:500;display:inline-flex;align-items:center">${accept}</span></div>`;
+  const ticket = (prio: string, title: string, status: TicketStatus, sprint: string, due: string, c: string) => `<div style="display:flex;gap:10px;padding:8px 13px;border-top:1px solid var(--border)"><span style="width:38px;flex:none;font-size:10.5px;font-weight:${prio === "High" ? 600 : 500};color:var(--${prio === "High" ? "fg" : "fg-40"});padding-top:1px">${prio}</span><span style="min-width:0"><span style="display:block;font-size:12px;font-weight:600;line-height:1.35">${title}</span><span style="margin-top:3px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:10.5px;color:var(--fg-55)">${ticketStatusIcon(status, 11, false)}${TICKET_STATUS_LABEL[status]}${SEP}${sprint}${SEP}<span style="color:var(--${c})">${due}</span></span></span></div>`;
+  const review = (title: string, kind: string, when: string, accept: string) => `<div style="display:flex;align-items:center;gap:8px;padding:8px 13px;border-top:1px solid var(--border)"><span style="flex:1;min-width:0"><span style="display:block;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span><span style="margin-top:3px;display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--fg-55)">${kind}${SEP}${when}</span></span><span style="height:22px;padding:0 8px;border:1px solid var(--border);border-radius:6px;font-size:10.5px;font-weight:500;color:var(--fg-70);display:inline-flex;align-items:center">Reject</span><span style="height:22px;padding:0 8px;border-radius:6px;background:var(--accent);color:var(--accent-fg);font-size:10.5px;font-weight:500;display:inline-flex;align-items:center">${accept}</span></div>`;
   const session = (title: string, when: string) => `<div style="display:flex;align-items:baseline;gap:10px;padding:8px 13px;border-top:1px solid var(--border)"><span style="flex:1;min-width:0;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span><span style="font-size:10.5px;color:var(--fg-40);white-space:nowrap">${when}</span></div>`;
   const pr = (title: string, ref: string, when: string, c: string) => `<div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 13px;border-top:1px solid var(--border)">${DOT(c, 6)}<span style="min-width:0;display:flex;align-items:baseline;gap:7px"><span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span><span style="font-family:var(--label);font-size:10.5px;color:var(--fg-40);flex:none">${ref}</span></span><span style="font-size:10.5px;color:var(--fg-40);white-space:nowrap">${when}</span></div>`;
   const body = `<div class="fxm-mywork" style="padding:16px 16px 14px">
@@ -245,8 +243,8 @@ function myworkMock(): string {
         </div>
         <div style="${SURF};overflow:hidden">${tileHead("Needs your review", "View all", true)}
           <div style="display:flex;align-items:baseline;gap:8px;padding:2px 13px 10px"><span style="font-size:22px;font-weight:650;line-height:1.1">2</span><span style="font-size:10.5px;color:var(--fg-55)">1 to promote, 1 to ratify</span></div>
-          ${review("Deploy process", "Staged", "amber", "Proposal", "2h", "Promote")}
-          ${review("ADR-0012 · Retry budget", "Draft", "blue", "Decision", "1d", "Ratify")}
+          ${review("Deploy process", "Proposal", "2h", "Promote")}
+          ${review("ADR-0012 · Retry budget", "Decision", "1d", "Ratify")}
         </div>
         <div style="${SURF};overflow:hidden">${tileHead("Your sessions", "Feed")}${sub("1 handoff waiting for a fresh session")}
           ${session("Email digests de-duplicate on Mondays", "Oct 4")}
@@ -266,9 +264,9 @@ function myworkMock(): string {
 // ── Handoffs: the list, and one opened to "Where it stands" ──────────────────
 function handoffsMock(): string {
   const anyone = `<span style="width:18px;height:18px;border-radius:50%;border:1px dashed var(--border-strong);display:grid;place-items:center;font-size:8px;font-weight:600;color:var(--fg-40);flex:none">–</span>`;
-  const state = (s: "pending" | "claimed" | "expired") => pill(s, s === "pending" ? "blue" : s === "expired" ? "red" : "fg-55", "8.5px", "2px 6px");
+  const state = (s: "pending" | "claimed" | "expired") => handoffMark(s, 11);
   const row = (id: number, title: string, prompt: boolean, dir: "From" | "To", who: string, name: string, s: "pending" | "claimed" | "expired", when: string) => `<div class="fxm-hrow" style="display:grid;grid-template-columns:minmax(0,2.4fr) minmax(0,1fr) auto 46px;gap:10px;align-items:center;padding:9px 13px;border-top:1px solid var(--border)">
-      <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);flex:none">#${id}</span><span style="font-size:12px;font-weight:${s === "pending" ? 600 : 500};color:var(--${s === "pending" ? "fg" : "fg-55"});overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span>${prompt ? `<span class="fxm-wide" style="font-family:var(--label);font-size:9px;font-weight:600;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 6px;white-space:nowrap;flex:none">+ prompt</span>` : ""}</span>
+      <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);flex:none">#${id}</span><span style="font-size:12px;font-weight:${s === "pending" ? 600 : 500};color:var(--${s === "pending" ? "fg" : "fg-55"});overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span>${prompt ? `<span class="fxm-wide" style="font-size:10.5px;color:var(--fg-40);white-space:nowrap;flex:none">+ prompt</span>` : ""}</span>
       <span style="display:flex;align-items:center;gap:6px;min-width:0">${cap(dir, "8.5px")}${who ? initials(who, 18, "7.5px") : anyone}<span style="font-size:11.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span></span>
       ${state(s)}
       <span style="font-size:10.5px;color:var(--fg-40);text-align:right;white-space:nowrap">${when}</span>

@@ -34,13 +34,13 @@ export function diffEntries(promotedBody: string, stagedBody: string): { t: "ctx
  *  "Waiting on review") — no diff, no summary, so it is cheap enough to build on every
  *  paint. The full ReviewItem below spreads it, so the two can never disagree on id,
  *  badge or who staged it (`agent`). */
-export type ReviewHead = Pick<ReviewItem, "id" | "kind" | "title" | "badge" | "badgeColor" | "time" | "agent">;
+export type ReviewHead = Pick<ReviewItem, "id" | "kind" | "title" | "time" | "agent">;
 
 function proposalHead(p: StagedProposal): ReviewHead {
-  return { id: `doc:${p.slug}@${p.version}`, kind: "proposal", title: p.title, badge: "STAGED", badgeColor: "var(--amber)", time: relTime(p.created_at), agent: p.author };
+  return { id: `doc:${p.slug}@${p.version}`, kind: "proposal", title: p.title, time: relTime(p.created_at), agent: p.author };
 }
 function adrHead(a: AdrRow): ReviewHead {
-  return { id: `adr:${a.id}`, kind: "decision", title: a.title, badge: "DRAFT", badgeColor: "var(--blue)", time: relTime(a.created_at), agent: a.created_by };
+  return { id: `adr:${a.id}`, kind: "decision", title: a.title, time: relTime(a.created_at), agent: a.created_by };
 }
 
 export function proposalReviewItem(p: StagedProposal): ReviewItem {
@@ -166,7 +166,7 @@ export function unplacedFromRow(r: NeedsTriageRow): UnplacedItem {
     id: String(r.id),
     title,
     snippet: clip(snippet, 280),
-    reason: r.reason.toLowerCase().startsWith("low confidence") ? "LOW CONFIDENCE" : "AGENT FLAGGED",
+    reason: r.reason.toLowerCase().startsWith("low confidence") ? "Low confidence" : "Flagged by an agent",
     meta: `${r.source_author ?? "unknown"} · ${relTime(r.created_at)}`,
     reasonNote: r.reason,
     author: r.source_author ?? null,
@@ -185,7 +185,7 @@ export function identityFromTask(t: IdentityTask): IdentityGroup {
     meta: `first seen ${relTime(t.first_seen)}`,
     countLabel: "recent activity",
     sample: t.sample.map((s) => ({
-      kind: s.event_type === "issue" ? "ISSUE" : "PR",
+      kind: s.event_type === "issue" ? "Issue" : "PR",
       text: `#${s.ref_number} ${s.title ?? "(no title)"}`,
       when: relTime(s.occurred_at),
     })),

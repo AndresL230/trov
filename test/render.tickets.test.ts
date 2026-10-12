@@ -31,7 +31,7 @@ vi.mock("../web/src/markdown", () => ({
 import { render, initialState, type AppState } from "../web/src/render";
 import {
   queueView, queueRows, newTicketView, ticketDetailView, ticketDeleteModal, relCandidates, queueGroups,
-  ticketPill, priorityChip, age, avatarStack, SEG_STATUSES,
+  age, avatarStack, SEG_STATUSES,
   type QueueProps, type NewTicketProps, type TicketDetailProps,
 } from "../web/src/tickets";
 import type { TicketListItem, TicketDetail, TicketLinkRow, TicketCommentRow, TicketEventRow } from "@shared/tickets";
@@ -39,6 +39,7 @@ import { TICKET_STATUS_LABEL, TICKET_STATUSES, type TicketStatus } from "@shared
 import type { SprintView } from "@shared/sprints";
 import type { PersonSummary } from "../web/src/api";
 import { WORK_SHELL, DETAIL_SHELL } from "../web/src/ui";
+import { ticketStatusIcon, ticketStatusMark, priorityIcon, priorityMark, PRIORITY_LABEL, TICKET_STATUS_TONE } from "../web/src/marks";
 
 /** The one `.cnpy-sfbar` (search + Filter) element in `html`, balanced by its divs — or null. */
 function sfbar(html: string): string | null {
@@ -146,28 +147,32 @@ function appState(o: Partial<AppState> = {}): AppState {
 
 // ── atoms ────────────────────────────────────────────────────────────────────
 
-describe("ticketPill / priorityChip / age (design call #5)", () => {
-  it("tints Triage blue, In progress accent, Done muted, Declined red at reduced opacity", () => {
-    expect(ticketPill("submitted")).toContain("var(--blue)");
-    expect(ticketPill("submitted")).toContain("TRIAGE");
-    expect(ticketPill("in_progress")).toContain("var(--accent)");
-    expect(ticketPill("in_progress")).toContain("IN PROGRESS");
-    expect(ticketPill("done")).toContain("color:var(--fg-55);border:1px solid var(--border-strong)");
-    expect(ticketPill("done")).not.toContain("var(--blue)");
-    expect(ticketPill("declined")).toContain("var(--red)");
-    expect(ticketPill("declined")).toContain("opacity:.75");
+describe("status and priority marks (marks.ts) / age", () => {
+  it("draws a status as its glyph and its sentence-case word — never an uppercase pill", () => {
+    for (const st of TICKET_STATUSES) {
+      const html = ticketStatusMark(st);
+      expect(html).toContain(`>${TICKET_STATUS_LABEL[st]}</span>`);
+      expect(html).toContain(`color:${TICKET_STATUS_TONE[st]}`);
+      expect(html).toMatch(/<svg[^>]*aria-hidden="true"/);
+      expect(html).not.toMatch(/text-transform|letter-spacing|border:/);
+      expect(html).not.toContain(TICKET_STATUS_LABEL[st].toUpperCase() + "<");
+    }
+    // Each status has its own shape, so the glyph reads without its colour.
+    expect(new Set(TICKET_STATUSES.map((st) => ticketStatusIcon(st).replace(/color:[^;"]+/, ""))).size).toBe(TICKET_STATUSES.length);
+    // Alone, the glyph names itself — an accessible name, and a tooltip that says what the status means.
+    expect(ticketStatusIcon("in_progress")).toContain('role="img" aria-label="In progress" data-mtip="In progress. Someone is working on it."');
+    expect(ticketStatusIcon("in_progress")).not.toContain("<title>");
   });
 
-  it("keeps priority chips MONOCHROME — no accent/blue/red/amber anywhere", () => {
+  it("keeps priority MONOCHROME — bars, never a hue — and says the word", () => {
     for (const p of ["low", "normal", "high"] as const) {
-      const html = priorityChip(p);
-      expect(html).toContain(p.toUpperCase());
+      const html = priorityMark(p);
+      expect(html).toContain(`>${PRIORITY_LABEL[p]}</span>`);
       expect(html).not.toMatch(/var\(--accent\)|var\(--blue\)|var\(--red\)|var\(--amber\)|var\(--green\)/);
     }
-    // ...and they are distinguishable from one another by weight alone.
-    expect(priorityChip("high")).toContain("color:var(--fg);");
-    expect(priorityChip("normal")).toContain("color:var(--fg-55);");
-    expect(priorityChip("low")).toContain("color:var(--fg-40);");
+    // As many bars lit as the priority is high.
+    const dim = (p: "low" | "normal" | "high") => priorityIcon(p).match(/opacity="\.25"/g)?.length ?? 0;
+    expect([dim("high"), dim("normal"), dim("low")]).toEqual([0, 1, 2]);
   });
 
   it("renders the design's short age form", () => {
@@ -537,7 +542,7 @@ describe("tickets — cards are the shared surface", () => {
     expect(card.slice(0, card.indexOf(">"))).not.toContain("border-radius");
     expect(html).not.toContain(OLD_FILL);
   });
-  it("the table is ONE surface: 20px sides, no row hairlines, plain category and priority", () => {
+  it("the table is ONE surface: 20px sides, no row hairlines, nothing boxed in a row", () => {
     const rows = [ticket({ id: 1, title: "A" }), ticket({ id: 2, title: "B" })];
     const html = queueView(queueProps({ view: "table", seg: "all", tickets: rows }));
     expect(html.match(/cnpy-surface/g)).toHaveLength(1);
@@ -552,9 +557,11 @@ describe("tickets — cards are the shared surface", () => {
     expect(html).toMatch(/class="cnpy-thead" style="[^"]*padding:14px 20px 10px/);
     expect(html).toMatch(/class="cnpy-tgrp" style="[^"]*padding:18px 20px 6px/);
     expect(html).toContain("cnpy-stagger cnpy-tgroup"); // trov.css draws the one hairline between groups
-    // Only the status pill is boxed; category and priority are plain text.
+    // Nothing in a row is boxed: category is plain text, status and priority are marks (glyph + word).
     const row = html.slice(html.indexOf('class="cnpy-trow'), html.indexOf('class="cnpy-hit"', html.indexOf('class="cnpy-trow')));
-    expect((row.match(/border:1px solid/g) ?? []).length).toBe(1);
+    expect(row).not.toMatch(/border:1px solid/);
+    expect(row).toContain(ticketStatusMark("submitted"));
+    expect(row).toContain(priorityMark("normal"));
     expect(html).not.toContain(OLD_FILL);
   });
   it("the new-ticket form card and the comment composer are surfaces", () => {
@@ -575,23 +582,22 @@ describe("queueView — board columns follow the segment", () => {
     ticket({ id: 4, title: "X", status: "declined" }),
   ];
   const columnLabels = (html: string) =>
-    (html.match(/letter-spacing:\.08em;white-space:nowrap;color:var\(--(?:accent|blue|amber|fg-40)\)">([A-Z ]+)</g) ?? [])
-      .map((m) => m.replace(/.*">/, "").replace(/<$/, ""));
+    [...html.matchAll(/gap:7px;font-size:13px;font-weight:600;color:var\(--fg\);white-space:nowrap"><svg[\s\S]*?<\/svg>([A-Za-z ]+)</g)].map((m) => m[1]);
 
   it("open → TRIAGE + IN PROGRESS + TESTING", () => {
     const html = queueView(queueProps({ tickets: rows, view: "board", seg: "open" }));
-    expect(columnLabels(html)).toEqual(["TRIAGE", "IN PROGRESS", "TESTING"]);
+    expect(columnLabels(html)).toEqual(["Triage", "In progress", "Testing"]);
     expect(SEG_STATUSES.open).toEqual(["submitted", "in_progress", "testing"]);
   });
 
   it("closed → DONE + DECLINED", () => {
     const html = queueView(queueProps({ tickets: rows, view: "board", seg: "closed" }));
-    expect(columnLabels(html)).toEqual(["DONE", "DECLINED"]);
+    expect(columnLabels(html)).toEqual(["Done", "Declined"]);
   });
 
   it("all → five columns in status order, Testing between In progress and Done", () => {
     const html = queueView(queueProps({ tickets: rows, view: "board", seg: "all" }));
-    expect(columnLabels(html)).toEqual(["TRIAGE", "IN PROGRESS", "TESTING", "DONE", "DECLINED"]);
+    expect(columnLabels(html)).toEqual(["Triage", "In progress", "Testing", "Done", "Declined"]);
     expect(html).toContain("grid-template-columns:repeat(5,minmax(0,1fr))");
   });
 
@@ -607,10 +613,11 @@ describe("queueView — board columns follow the segment", () => {
     expect(order).toEqual([14, 12, 13, 11]);
   });
 
-  it("colors the headers per the design and shows a dashed placeholder for an empty column", () => {
+  it("heads each column with its status's glyph and word and shows a dashed placeholder for an empty column", () => {
     const html = queueView(queueProps({ tickets: [rows[0]], view: "board", seg: "open" }));
-    expect(html).toContain("color:var(--blue)\">TRIAGE");
-    expect(html).toContain("color:var(--accent)\">IN PROGRESS");
+    expect(html).toContain(`${ticketStatusIcon("submitted", 14, false)}Triage</span>`);
+    expect(html).toContain(`${ticketStatusIcon("in_progress", 14, false)}In progress</span>`);
+    expect(html).not.toContain(">TRIAGE<");
     expect(html).toContain("border:1px dashed var(--border)");
     expect(html).toContain("Nothing here");
     expect(html.match(/Nothing here/g)?.length).toBe(2);   // IN PROGRESS and TESTING are empty
@@ -638,7 +645,8 @@ describe("queueView — the row", () => {
     expect(html).toContain("↳ sub-ticket");
     // Three rows, two relation chips.
     expect(html.match(/data-act="openTicket"/g)?.length).toBe(3);
-    expect(html.match(/font-size:9\.5px/g)?.length).toBe(2);
+    expect(html.match(/font-size:11\.5px;color:var\(--fg-55\);white-space:nowrap;flex:none/g)?.length).toBe(2);
+    expect(html).not.toMatch(/2 sub<\/span>[^<]*border|border[^>]*>2 sub/);
   });
 
   it("writes the assignee cell as italic Unassigned, a full name, or First +N", () => {
@@ -816,19 +824,19 @@ describe("ticketDetailView — the body is markdown", () => {
 });
 
 describe("ticketDetailView — the status control (design call #7)", () => {
-  it("the trigger IS the pill — no outlined box around it", () => {
+  it("the trigger is the status's mark — glyph, word, chevron — on no box of its own", () => {
     const html = ticketDetailView(detailProps(detail({ id: 1, title: "T", status: "submitted" }), { stMenu: null }));
     const triggers = html.match(/<button data-act="ticketStatusMenu"[^>]*>/g) ?? [];
     expect(triggers).toHaveLength(1);
     for (const t of triggers) {
       expect(t).toContain('class="cnpy-statusbtn"');
       expect(t).not.toContain("cnpy-outlinebtn");
-      expect(t).not.toContain("var(--border-strong)"); // the old box's border
-      expect(t).toContain("var(--blue)"); // tinted as the status itself
+      expect(t).not.toMatch(/border:|background:/); // no box, no tint: the hover fill is CSS
       expect(t).toContain('aria-expanded="false"');
     }
     const open = ticketDetailView(detailProps(detail({ id: 1, title: "T", status: "submitted" }), { stMenu: "rail" }));
     expect(open).toContain('data-arg="rail" title="Set status" aria-haspopup="menu" aria-expanded="true"');
+    expect(html).toContain(`${ticketStatusIcon("submitted", 14, false)}Triage`);
   });
 
   const props = (status: TicketStatus, stMenu: "rail" | null = null) =>
@@ -860,7 +868,8 @@ describe("ticketDetailView — the status control (design call #7)", () => {
     for (const st of ["testing", "done", "declined", "submitted"]) expect(prog).toContain(`data-act="ticketStatus" data-arg="${st}"`);
     const test = ticketDetailView(props("testing", "rail"));
     for (const st of ["done", "in_progress", "declined", "submitted"]) expect(test).toContain(`data-act="ticketStatus" data-arg="${st}"`);
-    expect(test).toContain("TESTING");
+    expect(test).toContain(ticketStatusMark("testing"));
+    expect(test).not.toContain("TESTING");
   });
 
   it("a resolved status is still a control — every other status can be set from it", () => {
@@ -868,7 +877,7 @@ describe("ticketDetailView — the status control (design call #7)", () => {
       const html = ticketDetailView(props(status, "rail"));
       expect(html).toContain('data-act="ticketStatusMenu"');
       for (const st of TICKET_STATUSES.filter((s) => s !== status)) expect(html).toContain(`data-act="ticketStatus" data-arg="${st}"`);
-      expect(html).toContain(TICKET_STATUS_LABEL[status].toUpperCase());
+      expect(html).toContain(`${ticketStatusIcon(status, 14, false)}${TICKET_STATUS_LABEL[status]}`);
     }
   });
 
@@ -990,7 +999,8 @@ describe("relCandidates — the sub-ticket add menu's filter", () => {
     })));
     expect(withRel).toContain("PARENT TICKET");
     expect(withRel).toContain("Parent ticket");
-    expect(withRel).toContain("SUB-TICKET · TRIAGE");
+    expect(withRel).toContain(">SUB-TICKET</span>");
+    expect(withRel).toContain(ticketStatusIcon("submitted")); // the child's status, named by its glyph
     expect(withRel).toContain('data-act="openTicket" data-arg="4"');
     expect(withRel).toContain('data-act="openTicket" data-arg="5"');
     expect(withRel).not.toContain("No linked tickets");
@@ -1297,8 +1307,9 @@ describe("ticketDetailView — the rails", () => {
     expect(html).toContain(">STATUS</div>");
     expect(html).toContain(">CATEGORY</div>");
     expect(html).toContain(">PRIORITY</div>");
-    expect(html).toContain(">access</span>");
-    expect(html).toContain(">HIGH</span>");
+    expect(html).toContain(">access</div>");
+    expect(html).toContain(priorityMark("high"));
+    expect(html).toContain(`${ticketStatusIcon("in_progress", 14, false)}In progress`);
   });
 });
 

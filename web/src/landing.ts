@@ -49,7 +49,9 @@ import { MCP_TOOL_GROUPS, mcpToolCountPhrase } from "@shared/mcp-tools-core";
 import { productQuestions } from "./site-questions";
 import type { FeatureState } from "./site-feature-core";
 import { pagePath } from "@shared/site-pages";
-import { AGENT_TAG, featureMock, initials, pill } from "./landing-mocks";
+import { AGENT_TAG, featureMock, initials } from "./landing-mocks";
+import { LOW_CONFIDENCE, artifactStatusMark, authorityMark, handoffMark } from "./marks";
+import { artifactKindLabel } from "@shared/artifacts-core";
 
 
 // Who says what, ONCE (the 2026-10 redundancy pass — keep it that way):
@@ -291,8 +293,7 @@ function hero(signedIn: boolean): string {
           <div class="site-hero-pad" style="padding:22px 26px;overflow:hidden">
             <div class="site-hero-trow" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
               <span style="font-size:21px;font-weight:650;letter-spacing:-0.015em">Deploy process</span>
-              ${pill("edit", "blue", "9px", "2px 6px")}
-              ${pill("low confidence", "amber", "9px", "2px 6px")}
+              ${LOW_CONFIDENCE(12)}
               <span class="site-hero-verdict" style="margin-left:auto;display:flex;gap:8px">
                 <span class="site-dim" style="border:1px solid var(--border-strong);color:var(--fg-70);font-size:12px;font-weight:600;padding:6px 14px;border-radius:8px;${at(DONE)}">Reject</span>
                 <span class="site-ring site-press site-swap" style="background:var(--accent);color:var(--accent-fg);font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;--ring:${RING}ms;--press:${PRESS}ms;${at(DONE)}"><span>Promote</span><span>Promoted ✓</span></span>
@@ -360,14 +361,16 @@ function loop(): string {
   // 01 · orient
   let b = 0;
   const [search, searchEnd] = typed("rate limiting", b + 550, 45);
-  const hit = (title: string, badge: string, meta: string, first: boolean, start: number) => `<div class="site-st" style="padding:10px 12px;${first ? "" : "border-top:1px solid var(--border);"}display:flex;flex-direction:column;gap:3px;${at(start)}">
-      <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:500"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span><span style="margin-left:auto">${badge}</span></div>
-      <div style="font-size:11px;color:var(--fg-55)">${meta}</div>
+  // A hit as the Search screen draws one: live is the normal state and has no mark; a hit that is
+  // not settled yet says so in words (`authorityMark`, marks.ts).
+  const hit = (title: string, meta: string, state: string, first: boolean, start: number) => `<div class="site-st" style="padding:10px 12px;${first ? "" : "border-top:1px solid var(--border);"}display:flex;flex-direction:column;gap:3px;${at(start)}">
+      <div style="font-size:12px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</div>
+      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:3px 10px;font-size:11px;color:var(--fg-55)"><span>${meta}</span>${state}</div>
     </div>`;
   const orient = `<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
       <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);font-family:var(--label);font-size:11.5px;color:var(--fg-55)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>${search}</div>
-      ${hit("Rate limiting on the public API", pill("Live", "green"), "Doc · Technical / API", true, searchEnd + 200)}
-      ${hit("Retry budget for webhook callers", pill("Pending", "amber"), "Decision · ADR-0012", false, searchEnd + 360)}
+      ${hit("Rate limiting on the public API", "Doc · Technical / API", "", true, searchEnd + 200)}
+      ${hit("Retry budget for webhook callers", "Decision · ADR-0012", authorityMark("staged_pending", 11), false, searchEnd + 360)}
     </div>`;
 
   // 02 · work
@@ -421,7 +424,6 @@ function authority(): string {
       <div class="site-split-body">
         <div class="site-st" style="display:flex;align-items:center;gap:12px;${at(260)}">
           <span style="font-size:17px;font-weight:650">Deploy process</span>
-          ${pill("staged", "amber", "10px", "2px 7px")}
         </div>
         <div class="site-st" style="margin-top:8px;font-size:12.5px;line-height:1.5;color:var(--fg-55);${at(340)}">Waiting for a verdict since Tuesday.</div>
         <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
@@ -592,7 +594,7 @@ function tourItems(): TourItem[] {
 
   const tileHead = (title: string, sub: string) => `<div style="padding:11px 13px 9px"><div style="font-size:12px;font-weight:600">${title}</div><div style="margin-top:2px;font-size:10px;color:var(--fg-55)">${sub}</div></div>`;
   const tRow = (i: number, title: string, meta: string) => `<div class="site-st st-l" style="padding:8px 13px;border-top:1px solid var(--border);${at(S + 200 + i * 120)}"><div style="font-size:11px;font-weight:600;line-height:1.35">${title}</div><div style="margin-top:3px;font-size:9.5px;color:var(--fg-55)">${meta}</div></div>`;
-  const rRow = (i: number, title: string, kind: string, btn: string) => `<div class="site-st st-l" style="display:flex;align-items:center;gap:8px;padding:8px 13px;border-top:1px solid var(--border);${at(S + 320 + i * 120)}"><div style="min-width:0;flex:1"><div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</div><div style="margin-top:3px">${kind}</div></div><span style="flex:none;background:var(--accent);color:var(--accent-fg);font-size:9.5px;font-weight:600;padding:3px 8px;border-radius:5px">${btn}</span></div>`;
+  const rRow = (i: number, title: string, kind: string, btn: string) => `<div class="site-st st-l" style="display:flex;align-items:center;gap:8px;padding:8px 13px;border-top:1px solid var(--border);${at(S + 320 + i * 120)}"><div style="min-width:0;flex:1"><div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</div><div style="margin-top:3px;font-size:9.5px;color:var(--fg-55)">${kind}</div></div><span style="flex:none;background:var(--accent);color:var(--accent-fg);font-size:9.5px;font-weight:600;padding:3px 8px;border-radius:5px">${btn}</span></div>`;
   const tileBox = "min-width:0;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg)";
   const mywork = `
       <div class="site-st" style="font-size:17px;font-weight:650;letter-spacing:-0.015em;${at(S)}">Good morning, Maya</div>
@@ -605,8 +607,8 @@ function tourItems(): TourItem[] {
         </div>
         <div style="${tileBox}">
           ${tileHead("Needs your review", "1 to promote, 1 to ratify")}
-          ${rRow(0, "Deploy process", pill("staged", "amber"), "Promote")}
-          ${rRow(1, "ADR-0012 · Retry budget", pill("draft", "blue"), "Ratify")}
+          ${rRow(0, "Deploy process", "Proposal · 2h", "Promote")}
+          ${rRow(1, "ADR-0012 · Retry budget", "Decision · 1d", "Ratify")}
         </div>
       </div>`;
 
@@ -618,7 +620,7 @@ function tourItems(): TourItem[] {
       <div style="display:flex;align-items:center;gap:9px;padding:12px 16px;border-bottom:1px solid var(--border)">
         <span style="font-family:var(--label);font-size:11px;color:var(--fg-40)">#17</span>
         <span style="font-size:12.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Retry-After is wired, the tests aren't</span>
-        <span class="site-swap" style="margin-left:auto;${at(S + 1500)}">${pill("pending", "blue")}${pill("claimed", "green")}</span>
+        <span class="site-swap" style="margin-left:auto;${at(S + 1500)}">${handoffMark("pending", 11)}${handoffMark("claimed", 11)}</span>
       </div>
       <div style="padding:12px 16px 16px">
         <div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--fg-55);flex-wrap:wrap">${initials("LP", 20, "8px")}Leo Park → Maya Chen<span style="font-family:var(--label);font-size:10px;color:var(--fg-40);margin-left:auto">feat/retry-after</span></div>
@@ -631,7 +633,7 @@ function tourItems(): TourItem[] {
         </div>
       </div>`;
 
-  const kindTag = (k: string) => `<span style="font-family:var(--label);font-size:9px;color:var(--fg-40);border:1px solid var(--border);border-radius:4px;padding:1px 5px">${k}</span>`;
+  const kindTag = (k: string) => `<span style="font-size:10.5px;color:var(--fg-55)">${artifactKindLabel(k)}</span>`;
   const bars = (ws: number[]) => ws.map((w) => `<span style="display:block;height:5px;width:${w}%;border-radius:3px;background:var(--border-strong);margin-top:5px"></span>`).join("");
   const artCard = (i: number, preview: string, title: string, kind: string, badge: string) => `<div class="site-st st-pop" style="border:1px solid var(--border);border-radius:9px;overflow:hidden;${at(S + 150 + i * 110)}">
       <div style="height:62px;padding:10px 12px;background:var(--hover)">${preview}</div>
@@ -647,9 +649,9 @@ function tourItems(): TourItem[] {
         <span style="margin-left:auto;font-family:var(--label);font-size:10px;color:var(--fg-40)">ticket #212 · 3 pages</span>
       </div>
       <div class="site-art-grid" style="padding:14px 16px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:10px">
-        ${artCard(0, bars([70, 45, 88, 30]), "Rate limit headers: design", "html", `<span class="site-swap" style="${at(S + 1300)}">${pill("published", "blue")}${pill("ratified", "green")}</span>`)}
-        ${artCard(1, flow, "Digest pipeline", "svg", pill("published", "blue"))}
-        ${artCard(2, bars([55, 80, 62]), "429 rates by org, last 7 days", "markdown", pill("draft", "fg-55"))}
+        ${artCard(0, bars([70, 45, 88, 30]), "Rate limit headers: design", "html", `<span class="site-swap" style="${at(S + 1300)}">${artifactStatusMark("published", 10.5)}${artifactStatusMark("ratified", 10.5)}</span>`)}
+        ${artCard(1, flow, "Digest pipeline", "svg", artifactStatusMark("published", 10.5))}
+        ${artCard(2, bars([55, 80, 62]), "429 rates by org, last 7 days", "markdown", artifactStatusMark("draft", 10.5))}
       </div>`;
 
   return [
@@ -743,10 +745,9 @@ function agents(): string {
   // The tool chips cascade in, group after group, as one continuous stagger.
   let n = 0;
   const chips = (names: string[], admin = false) => {
-    const st = admin
-      ? "font-family:var(--label);font-size:11px;border:1px dashed var(--border-strong);border-radius:6px;padding:3px 8px;color:var(--fg-55)"
-      : "font-family:var(--label);font-size:11px;border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--fg-70)";
-    return `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${names.map((name) => `<span class="site-st st-pop" style="${st};${at(300 + n++ * 28)}">${name}</span>`).join("")}</div>`;
+    // Tool names are identifiers, so they are set in the code face — a list of names, not chips.
+    const st = `font-family:var(--code);font-size:12px;color:var(--${admin ? "fg-55" : "fg-70"})`;
+    return `<div style="margin-top:8px;display:flex;gap:4px 14px;flex-wrap:wrap">${names.map((name) => `<span class="site-st st-pop" style="${st};${at(300 + n++ * 28)}">${name}</span>`).join("")}</div>`;
   };
   const group = (label: string, names: string[], admin = false) => `<div>
       <div style="${GROUP_LABEL}">${label}</div>

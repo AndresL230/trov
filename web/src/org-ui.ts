@@ -10,13 +10,13 @@
 //      attention, with the tab's ONE primary action (the only accent button) at its right.
 //   4. a SECTION (`orgHead`): the uppercase eyebrow, 10.5px / 600 / fg-40, with a count and a
 //      quiet aside. It is the only heading level inside a tab.
-//   5. a ROW inside one surface per section: its name at 13.5px / 600 and its status chip
+//   5. a ROW inside one surface per section: its name at 13.5px / 600 and its status mark
 //      first, quiet 12px metadata after, one quiet action. Everything else about it — what it
 //      is for, how to get it, its less-used and its destructive actions — is behind the row
 //      (`openRow`) or in its dialog.
 // Destructive actions are text (`dangerLink`), last in their cluster, never beside the primary.
 
-import { esc, attr, statusBadge } from "./ui";
+import { esc, attr } from "./ui";
 import type { OrgRole } from "@shared/orgs";
 import { emptyLayout, skRows, skRowsShape, skForm, skKey } from "./skeleton";
 
@@ -81,7 +81,7 @@ export interface OpenRowOpts {
   act: string;
   /** What a screen reader hears for the toggle ("GitHub token, set"). */
   label: string;
-  /** Markup inside the toggle: the name and its status chip. */
+  /** Markup inside the toggle: the name and its status mark (`kindMark`, marks.ts). */
   head: string;
   /** Quiet metadata at the head's right (markup; hidden first when room runs out). */
   meta?: string;
@@ -107,8 +107,6 @@ export function openRow(o: OpenRowOpts): string {
     <div id="${attr(id)}" class="cnpy-xrow-b"${o.open ? "" : " hidden"}>${o.body}</div>
   </li>`;
 }
-/** The chip every status on these pages uses (one size). */
-export const chip = (text: string, tone: string): string => statusBadge(text, tone, "font-size:10.5px;border-radius:5px;padding:2px 7px");
 /** A settings list (or a whole tab) with nothing in it: its heading and one sentence, the one
  *  action (TRUSTED markup — these pages build their buttons with `ghostBtn` / `solidBtn`), and,
  *  for a LIST, `rows` of the rows it will hold, drawn empty (skeleton.ts `emptyLayout`). A notice
@@ -141,9 +139,10 @@ export function sliceNote(s: OrgSlice<unknown>, what: string, has: boolean, shap
   if (s.status === "ok") return "";
   return loadingNote(what, shape);
 }
-const ROLE_WORD: Record<OrgRole, string> = { owner: "Owner", admin: "Admin", member: "Member" };
-const ROLE_TONE: Record<OrgRole, string> = { owner: "var(--accent)", admin: "var(--blue)", member: "var(--fg-55)" };
-export const roleChip = (role: OrgRole): string => chip(ROLE_WORD[role], ROLE_TONE[role]);
+export const ROLE_WORD: Record<OrgRole, string> = { owner: "Owner", admin: "Admin", member: "Member" };
+/** A role is a fact, not an alert: its word in plain muted text, never a chip (web-ui.md › Status marks). */
+export const roleWord = (role: OrgRole): string =>
+  `<span data-role="${role}" style="font-size:12.5px;color:var(--fg-55);white-space:nowrap;flex:none">${ROLE_WORD[role]}</span>`;
 /** What a role can do, in one line each (docs/architecture/organizations.md §4) — said beside
  *  the role wherever one is picked. Each builds on the one before it. */
 export const ROLE_HINT: Record<OrgRole, string> = {
@@ -154,7 +153,8 @@ export const ROLE_HINT: Record<OrgRole, string> = {
 /** A role as a dropdown's option (dropdown.ts): its name, and what it can do under it. */
 export const roleOption = (role: OrgRole, shown?: string): { value: OrgRole; label: string; shown?: string; hint: string } =>
   ({ value: role, label: ROLE_WORD[role], ...(shown ? { shown } : {}), hint: ROLE_HINT[role] });
-export const YOU = `<span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:2px 6px;flex:none">YOU</span>`;
+/** "(you)" after your own name — plain text beside it, never a chip. */
+export const YOU = `<span style="font-size:13px;font-weight:400;color:var(--fg-55);white-space:nowrap;flex:none">(you)</span>`;
 export const sameHandle = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 
 /** A labelled text field: a real <label>, the input, an optional help line, and the field's

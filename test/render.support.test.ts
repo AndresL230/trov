@@ -430,7 +430,7 @@ describe("Platform › Support — the list", () => {
     expect(html).toContain("<strong>1</strong> open report.");
     expect(html.match(/data-act="platSupportOpen"/g)).toHaveLength(2);
     expect(html).toMatch(/<button type="button" data-act="platSupportOpen" data-arg="7"[^>]*class="plat-row plat-support-grid"/);
-    for (const part of [">BUG<", ">QUESTION<", "Maya Ortiz", "@maya", ">acme<", ">OPEN<", ">RESOLVED<", "@sam", "&mdash;"]) expect(html, part).toContain(part);
+    for (const part of [">Bug<", ">Question<", "Maya Ortiz", "@maya", ">acme<", ">Open</span>", ">Resolved</span>", "@sam", "&mdash;"]) expect(html, part).toContain(part);
     expect(html).toContain("How do &lt;i&gt;plans&lt;/i&gt; work?");
     expect(html).not.toContain("<i>plans</i>");
     // The list shows no message body and no address: those are the report's.
@@ -494,7 +494,7 @@ describe("Platform › Support — one report", () => {
     const done = open({ status: "resolved", resolved_by: "andres", resolved_at: "2026-10-09T11:00:00.000Z" });
     expect(done).toMatch(/data-act="platSupportReopen"[^>]*>Reopen</);
     expect(done).toContain("resolved by @andres");
-    expect(done).toContain(">RESOLVED<");
+    expect(done).toContain(">Resolved</span>");
     expect(open({}, { busy: true })).toMatch(/data-act="platSupportResolve"[^>]* disabled aria-busy="true"[^>]*>Resolving…</);
     expect(open({}, { actionError: "The report wasn't resolved. Check your connection and try again." })).toContain(`role="alert"`);
   });
@@ -545,10 +545,10 @@ describe("Platform › Support — one report", () => {
 describe("Platform › Support — a report sent signed out", () => {
   const anonReport = (over: Partial<SupportReport> = {}) => report({ id: 9, kind: "question", subject: "Do you have SSO?", reporter: null, contact_email: "visitor@example.test", org: null, route: "/pricing", app_version: null, ...over });
 
-  it("the list tells it apart: a SIGNED OUT badge and the typed address where the person would be", () => {
+  it("the list tells it apart: Signed out and the typed address where the person would be", () => {
     const html = supportTab(tab({ list: { status: "ok", data: [anonReport(), report()] }, open: 2 }));
     expect(html.match(/data-support-anon/g)).toHaveLength(1);
-    expect(html).toMatch(/data-support-anon[^>]*>.*?>SIGNED OUT<\/span>.*?visitor@example\.test/s);
+    expect(html).toMatch(/data-support-anon[^>]*>.*?>Signed out<\/span>.*?visitor@example\.test/s);
     expect(html).toContain(`from a signed-out visitor, open — open`);
     expect(html).toContain("@maya"); // the signed-in row is as it was
   });
@@ -556,7 +556,7 @@ describe("Platform › Support — a report sent signed out", () => {
   it("the report says Signed out, shows the address labelled unverified, and Reply by email uses it", () => {
     const r = anonReport();
     const html = supportTab(tab({ reportId: 9, detail: { status: "ok", data: r } }));
-    expect(html).toContain(">SIGNED OUT<");
+    expect(html).toContain(">Signed out</span>");
     expect(html).toContain("Signed out: sent from the public site, with no account");
     expect(html).toMatch(/visitor@example\.test <span data-support-unverified[^>]*>\(unverified, as typed\)<\/span>/);
     expect(UNVERIFIED).toBe("unverified, as typed");

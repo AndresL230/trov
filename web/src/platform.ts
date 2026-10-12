@@ -21,7 +21,8 @@ import {
   type PlatformOrgRow, type PlatformOrgDetail, type PlatformAdmin, type PlatformAuditRow, type PlatformUsageResponse,
   type AdminAssignment, type AdminTarget, type OrgRole, type OrgInvite,
 } from "@shared/orgs";
-import { esc, attr, relTime, statusBadge, surface } from "./ui";
+import { esc, attr, relTime, surface } from "./ui";
+import { kindMark } from "./marks";
 import { trovMark } from "@shared/mark";
 import { orgTile } from "./org-logo";
 import { tabBar, tabPanelAttrs } from "./tabs";
@@ -33,7 +34,7 @@ import type { AccountDeletionPreview, OrgDeletionPreview } from "@shared/deletio
 /** The Platform org page's Delete confirmation (deletion.ts `orgDeleteModal`, with Platform's acts). */
 export const PLAT_ORG_DELETE_ID = "plat-org-delete-confirm";
 import { usageView, orgUsageBlock, type UsageWindow } from "./platform-usage";
-import { tabLead, leadFlag, dangerLink } from "./org-ui";
+import { tabLead, leadFlag, dangerLink, roleWord, YOU } from "./org-ui";
 import { emptyLayout, skRows, skRowsShape, skKey } from "./skeleton";
 // Plans and grants (shared/plans.ts): the Access tab, an org's Plan section, their dialogs.
 import { PLANS, type PlanId } from "@shared/plans";
@@ -247,9 +248,8 @@ const shortDate = (iso: string): string => {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 const orgStatus = (o: Pick<PlatformOrgRow, "status">): string =>
-  o.status === "suspended" ? statusBadge("SUSPENDED", "var(--red)") : statusBadge("ACTIVE", "var(--green)");
-const ROLE_TONE: Record<OrgRole, string> = { owner: "var(--accent)", admin: "var(--blue)", member: "var(--fg-55)" };
-const roleBadge = (r: OrgRole): string => statusBadge(r.toUpperCase(), ROLE_TONE[r]);
+  o.status === "suspended" ? kindMark("Suspended", "stopped", 12, "Its members cannot open it until it is unsuspended.") : kindMark("Active", "good");
+const roleBadge = (r: OrgRole): string => roleWord(r);
 
 /** The standing note: what a superadmin is, and is not. */
 export const NOT_A_MEMBER = "You are not a member of this organization. As superadmin you can manage it and see its sizes and counts, but you cannot open or read its content.";
@@ -317,7 +317,7 @@ export function orgsTab(p: Pick<PlatState, "orgs">): string {
 function inviteRow(i: OrgInvite): string {
   return `<div style="${ROW};flex-wrap:wrap">
     <div style="flex:1;min-width:0;line-height:1.35"><div style="font-size:13.5px;font-weight:500;color:var(--fg-70);overflow-wrap:anywhere">${esc(i.github_login ?? i.email ?? "")}</div><div style="${QUIET}">${i.github_login ? "GitHub login" : "Email"} · invited ${esc(relTime(i.created_at))} by @${esc(i.invited_by)}${i.email ? ` · ${i.mail_status === "sent" ? "email sent" : i.mail_status === "failed" ? "email not sent" : "no email sent"}` : ""}</div></div>
-    ${roleBadge(i.role)}${statusBadge("PENDING", "var(--amber)")}
+    ${roleBadge(i.role)}${kindMark("Pending", "waiting", 12, "Invited, not accepted yet.")}
   </div>`;
 }
 
@@ -411,7 +411,7 @@ export function adminsTab(p: PlatState, me: string | null): string {
     : p.admins.status !== "ok" && !p.admins.data.length ? loadingLine("superadmins")
     : `<div${surface("overflow:hidden")}>${p.admins.data.map((a) => `<div style="${ROW}">
         <div style="flex:1;min-width:0;line-height:1.35"><div style="font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name ?? a.handle)}</div><div style="${QUIET};overflow-wrap:anywhere">${handleText(a.handle)} · granted ${esc(relTime(a.granted_at))} by @${esc(a.granted_by)}</div></div>
-        ${me && a.handle.toLowerCase() === me.toLowerCase() ? `<span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:2px 6px">YOU</span>` : ""}
+        ${me && a.handle.toLowerCase() === me.toLowerCase() ? YOU : ""}
         ${dangerLink("Remove", "platRevokeArm", { arg: a.handle, field: `platRevoke:${a.handle}`, label: `Remove @${a.handle} as superadmin` }).replace("<button ", `<button${p.revokeArm === a.handle ? " data-confirm-trigger" : ""} `)}
       </div>`).join("")}</div>`;
   const canGrant = !p.grantBusy && cleanHandle(p.grantDraft) !== "";

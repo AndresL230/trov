@@ -175,7 +175,10 @@ because deploy rows are never pruned. **The pill is a verdict about CHECKS, with
 `HEALTHY` needs checks captured on the branch head, none failing, and no failed part; a deploy that landed
 with NO checks captured reads `UNKNOWN`; a failed part is a fact on its own, so `FAILING` does not wait for
 checks; failing head checks read `DEGRADED`; `DOWN` OUTRANKS everything — a fresh health ping saying the
-environment is unreachable is the headline. Whether the `environments` section is CONNECTED is a separate
+environment is unreachable is the headline. On screen the verdict is a status mark, never a pill
+(`ENV_VERDICT` in `web/src/repo.ts` over `kindMark`: Healthy / Degraded / Failing / Down / Unknown, with what
+each means in its tooltip — `web-ui.md` › Status marks); a PR's state is the progress glyphs (Draft → In
+review → Approved → Merged, Closed the cross), and a stale branch (no commit in 14 days) a warning mark. Whether the `environments` section is CONNECTED is a separate
 question: it is `ok` once any part has a result, any head check is captured, OR a fresh health ping landed —
 a ping alone connects the card but never makes it `HEALTHY`. **`deploys` is gated on a narrower flag** (a
 part with a result OR head checks — health EXCLUDED): a ping is not grounds for "No deploys recorded", so

@@ -76,7 +76,7 @@ async function render(ctx: TenantContext, _login: string, window: Window): Promi
 
   const html =
     `<table ${S.table} style="margin-top:${SP.m}px;">` +
-    lines.map((l) => `<tr><td width="96" style="vertical-align:top;padding:${SP.xs}px 8px ${SP.xs}px 0;">${K.chip(l.label.toUpperCase(), PLAN_TONE[l.label])}</td><td style="${S.body}">${escapeHtml(l.text)}</td></tr>`).join("") +
+    lines.map((l) => `<tr><td width="96" style="vertical-align:top;padding:${SP.xs}px 8px ${SP.xs}px 0;">${K.mark(l.label.charAt(0).toUpperCase() + l.label.slice(1), PLAN_TONE[l.label])}</td><td style="${S.body}">${escapeHtml(l.text)}</td></tr>`).join("") +
     `</table>`;
   const text = lines.map((l) => `  ${l.label.padEnd(10)} ${l.text}`).join("\n");
   const n = lines.length;

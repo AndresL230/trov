@@ -23,7 +23,7 @@ import type { MyOrg, OrgRole } from "@shared/orgs";
 import type { McpTokenSummary, OAuthGrantSummary } from "@shared/rows";
 import { isSoloPlan } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
-import { O_HELP, accentBtn, chip, failedNote, goLink, quietBtn, roleAtLeast, roleChip } from "./org-ui";
+import { O_HELP, accentBtn, failedNote, goLink, quietBtn, roleAtLeast, roleWord } from "./org-ui";
 import { skeleton, skLine, skLines, skBox } from "./skeleton";
 import { dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
 import { githubOf, inviteMailNote, inviteRoleDropdown, inviteSection, type OrgUi } from "./org-settings";
@@ -173,7 +173,7 @@ export function githubStep(p: WelcomeProps): string {
   const byName = goLink("Add a repository by name instead", "orgGo", "repos");
 
   if (repos.length > 0) {
-    const rows = repos.map((r) => `<li class="cnpy-wel-row" data-welcome-repo="${attr(r.repo_full_name)}">${OK_RING}<span style="flex:1 1 200px;min-width:0;font-family:var(--code);font-size:12.5px;color:var(--fg);overflow-wrap:anywhere">${esc(r.repo_full_name)}</span>${r.is_primary ? chip("Primary", "var(--accent)") : ""}</li>`).join("");
+    const rows = repos.map((r) => `<li class="cnpy-wel-row" data-welcome-repo="${attr(r.repo_full_name)}">${OK_RING}<span style="flex:1 1 200px;min-width:0;font-family:var(--code);font-size:12.5px;color:var(--fg);overflow-wrap:anywhere">${esc(r.repo_full_name)}</span>${r.is_primary ? `<span style="font-size:12px;font-weight:500;color:var(--fg-55);flex:none">Primary</span>` : ""}</li>`).join("");
     return `${notice}<div${surface("padding:18px 20px")} data-welcome-github="tracked">
       <div style="${CARD_T}">${repos.length === 1 ? "Your repository is connected" : `${repos.length} repositories are connected`}</div>
       <p style="${P};margin-top:5px">Trov reads ${repos.length === 1 ? "its" : "the primary one's"} pull requests, issues, checks and deployments${inst ? ` ${appLeadPhrase(inst)}` : ""}.</p>
@@ -283,7 +283,7 @@ export function teamStep(p: WelcomeProps): string {
     const mail = inviteMailNote(i);
     return `<li class="cnpy-wel-row" data-welcome-invite="${i.id}">
       <span style="flex:1 1 200px;min-width:0;line-height:1.35"><span style="display:block;font-size:13.5px;font-weight:600;color:var(--fg-70);overflow-wrap:anywhere">${esc(i.name ? `${i.name} · ${who}` : who)}</span><span style="display:block;font-size:12px;color:${mail.bad ? "var(--red)" : "var(--fg-40)"}">${esc(mail.text)}</span></span>
-      ${roleChip(i.role)}
+      ${roleWord(i.role)}
     </li>`;
   }).join("");
   const waiting = pending.length ? `<div${surface("padding:6px 20px;margin-top:16px")} data-welcome-pending><ul class="cnpy-wel-list is-flush">${rows}</ul></div>` : "";

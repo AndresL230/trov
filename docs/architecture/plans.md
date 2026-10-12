@@ -235,18 +235,18 @@ A plan belongs to an ORGANIZATION and its owner pays for every seat; everyone in
     actually charged** (`planPriceWords`: a live subscription on an interval `PRICING` has a price for —
     "$10 per seat / month"; a granted, gifted, pinned or yearly-without-a-yearly-price plan says nothing, and
     Enterprise says the pricing page's "Custom pricing"; a Free org also reads "Pro is $10 per seat / month.");
-    the status chips, the gift line and the payment sentence; and **the Plan block's own buttons** for an
+    the status marks (`kindMark`: Payment past due, Ended, Cancelled — `web-ui.md` › Status marks), the gift line and the payment sentence; and **the Plan block's own buttons** for an
     owner — Upgrade to Pro, Change seats, Manage billing, Keep Pro by paying — the same `orgBilling…` acts and
     `state.org.billing`. Anyone else gets no button: the Plan block's sentence naming who can change it, and a
     link to Org settings › General. "Compare plans" opens `/pricing`. All of it comes through `planParts`
-    (`org-plan.ts`), which returns the Plan block's chips / gift / sentence / buttons / closing line in parts;
+    (`org-plan.ts`), which returns the Plan block's marks (`chips`) / gift / sentence / buttons / closing line in parts;
     the one sentence this tile words itself is a never-paid Free org's (the Plan block's says the limits are
     "below", and here they are beside it).
   - **Limits** (`settingsLimitsTile`): every `LIMIT_KEYS` row as "used of limit" with a quiet meter
     (`role="meter"`), what it counts, "yours" on the per-person one and "this month" on the allowance; "Over
     the limit" in amber and the spent-allowance sentence as in Org settings. A use that is not a number is
     **"—" with an empty meter, never 0** (the route always sends numbers today; the tile does not assume it).
-  - **Organizations** (`settingsOrgsTile`): every org I belong to — my role, its plan's chip, a link that
+  - **Organizations** (`settingsOrgsTile`): every org I belong to — my role, its plan's name (plain text, accent when paid), a link that
     opens it — from `GET /api/orgs`, whose rows carry `plan` and `paid` (`listMyOrgs`, `src/orgs/repo.ts`:
     `paid` = `plan_source = 'billing'` with a subscription, not Free, not `canceled`; so also on `/auth/me`).
     Who pays is said only when `paid`: "you manage its billing" to an owner, "paid for by its owners" to

@@ -212,7 +212,7 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   name — the ticket rail's people, Feed authors, quick search's person hits, Org settings › Members' rows — opens the
   **person card** (`personCardModal`, `web/src/profile.ts`): a modal in the confirm modal's `.cnpy-cmodal` shell,
   rendered at the app root (`state.personCard`), with the large avatar, name, handle and role painted at once from
-  `GET /persons`, then joined / GitHub / the admin badge when `GET /api/people/:handle` lands; the backdrop, × and
+  `GET /persons`, then joined / GitHub / "Admin" (plain text) when `GET /api/people/:handle` lands; the backdrop, × and
   Escape close it, and one's OWN card links to Settings (photo, name). Role + responsibilities are edited in ONE place: Org settings › Members, where
   an admin's "Edit" opens `memberEditor` (`web/src/org-settings.ts`) under that row. Settings › Profile uploads a photo (center-cropped, ≤ 512px, WebP/PNG in the browser before
   the POST — so a GIF loses its animation) and removes one (shown only for an `/avatar/` URL) — both from a small

@@ -30,9 +30,11 @@ import { confirmModal } from "./confirm";
 import { renderMarkdown, sanitizeSvg } from "./markdown";
 import { collapsedLineDiff } from "./diff";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skLines, skList, skW, skCard } from "./skeleton";
+import { ticketStatusMark, artifactStatusMark, stateMark } from "./marks";
+import { TICKET_STATUSES, TICKET_STATUS_LABEL, type TicketStatus } from "@shared/tickets-core";
 import type { PersonColor } from "@shared/rows";
 import {
-  ARTIFACT_KINDS, ARTIFACT_AREAS, ARTIFACT_STATUSES, ARTIFACT_TEXT_EXT, ARTIFACT_SUMMARY_MAX,
+  ARTIFACT_KINDS, ARTIFACT_AREAS, ARTIFACT_STATUSES, ARTIFACT_TEXT_EXT, ARTIFACT_SUMMARY_MAX, artifactKindLabel,
   artifactCap, isBinaryKind, isTextKind, kindForFilename, claudeOnlyHits, isBundledExport, canRatify, parseSlugVersion,
   type ArtifactKind, type ArtifactStatus, type ArtifactVisibility, type ArtifactLinkType,
   type ArtifactSummaryDTO, type ArtifactDetailDTO, type ArtifactVersionDTO, type ArtifactDiffDTO,
@@ -183,17 +185,12 @@ const KIND_ICON: Record<ArtifactKind, string> = {
 };
 const BINARY_EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "application/pdf": "pdf" };
 
-const CHIP = "font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;border-radius:5px;padding:2px 6px;white-space:nowrap;flex:none;";
-const tint = (c: string): string => `${CHIP}color:${c};border:1px solid color-mix(in srgb,${c} 45%,transparent);background:color-mix(in srgb,${c} 12%,transparent)`;
-const STATUS: Record<ArtifactStatus, [string, string]> = {
-  draft: ["DRAFT", tint("var(--amber)")], published: ["PUBLISHED", tint("var(--blue)")], ratified: ["RATIFIED", tint("var(--accent)")],
-};
-const TSTATUS: Record<string, [string, string]> = {
-  submitted: ["SUBMITTED", tint("var(--blue)")], in_progress: ["IN PROGRESS", tint("var(--accent)")],
-  done: ["DONE", CHIP + "color:var(--fg-55);border:1px solid var(--border-strong)"],
-  declined: ["DECLINED", CHIP + "color:var(--red);border:1px solid color-mix(in srgb,var(--red) 35%,transparent);opacity:.75"],
-};
-const NEUTRAL = CHIP + "color:var(--fg-55);border:1px solid var(--border-strong)";
+/** Metadata beside a title (an area, a kind): muted text, no box. */
+const metaText = (text: string, size = 12): string => `<span style="font-size:${size}px;color:var(--fg-55);white-space:nowrap;flex:none">${esc(text)}</span>`;
+/** A ticket's status as it comes over the wire (a string): the tickets' own word and mark when it is
+ *  one of theirs — Triage, never the stored "submitted" — else the raw value, plainly. */
+const isTicketStatus = (s: string): s is TicketStatus => (TICKET_STATUSES as readonly string[]).includes(s);
+const ticketStatusWord = (s: string): string => (isTicketStatus(s) ? TICKET_STATUS_LABEL[s] : s);
 const MONO_VAL = "font-family:var(--label);font-size:11.5px;color:var(--fg-70)";
 const EYEBROW = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)";
 const SHELL = "width:100%;max-width:1440px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px";
@@ -452,7 +449,7 @@ function thumb(a: ArtifactSummaryDTO): string {
     return `<div style="padding:16px 20px;font-size:11.5px;line-height:1.6;color:var(--fg-55);white-space:pre-wrap;${a.kind === "mermaid" ? "font-family:var(--code)" : ""}">${esc(text)}</div>`;
   }
   // pdf / file: the kind's icon.
-  return `<div style="position:absolute;inset:0;display:grid;place-items:center;color:var(--fg-40)"><span style="display:flex;flex-direction:column;align-items:center;gap:8px">${I.kind(a.kind, 30)}<span style="${CHIP}color:var(--fg-55);border:1px solid var(--border)">${a.kind.toUpperCase()} · ${esc(fmtKB(a.size_bytes))}</span></span></div>`;
+  return `<div style="position:absolute;inset:0;display:grid;place-items:center;color:var(--fg-40)"><span style="display:flex;flex-direction:column;align-items:center;gap:8px">${I.kind(a.kind, 30)}<span style="font-size:12px;color:var(--fg-55)">${a.kind.toUpperCase()} · ${esc(fmtKB(a.size_bytes))}</span></span></div>`;
 }
 
 /** The library's card grid — the real cards', the loading skeleton's and the empty layout's. */
@@ -527,8 +524,8 @@ function libraryView(p: ArtProps): string {
         <div style="font-size:15px;font-weight:600;letter-spacing:-0.01em;line-height:1.35;color:var(--fg);text-wrap:pretty;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(a.title)}</div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:auto;min-width:0">
           <span style="display:flex;min-width:76px;flex:0 1 auto">${personLink(personIn(p, a.author_id), a.author_id, 20, au.name, "min-width:0;font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap", 8)}</span>
-          <span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-55);border:1px solid var(--border);border-radius:5px;padding:2px 6px;white-space:nowrap;flex:none">${esc(a.area)}</span>
-          ${a.visibility === "private" ? `<span style="${tint("var(--purple)")}">PRIVATE</span>` : ""}
+          ${metaText(a.area)}
+          ${a.visibility === "private" ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--purple);white-space:nowrap;flex:none">${I.lock()}Private</span>` : ""}
           <span style="font-size:11.5px;color:var(--fg-40);margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto">${esc(relTime(a.updated_at))}</span>
         </div>
       </div>
@@ -620,14 +617,13 @@ export function renderPendingMermaid(root: ParentNode): void {
   }
 }
 
-function banner(tag: string, tagSt: string, body: string, actions: string): string {
+/** A notice above the page: its sentence and its actions — the sentence names the state, so there is no tag. */
+function banner(body: string, actions: string): string {
   return `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--border);border-radius:9px;margin-bottom:22px">
-    <span style="font-size:10.5px;font-weight:600;font-family:var(--label);letter-spacing:.04em;${tagSt};border-radius:5px;padding:3px 7px;flex:none">${tag}</span>
     <div style="flex:1;min-width:220px;font-size:12.5px;color:var(--fg-70);line-height:1.45">${body}</div>
     ${actions}
   </div>`;
 }
-const tagTint = (c: string): string => `color:${c};border:1px solid color-mix(in srgb,${c} 45%,transparent);background:color-mix(in srgb,${c} 12%,transparent)`;
 
 function ratifyHint(d: ArtifactDetailDTO, isLatest: boolean, p: ArtProps): string {
   if (d.status === "draft") return "Publish before ratifying";
@@ -707,7 +703,7 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
   const cmpBase = isLatest ? versions[versions.length - 2] : ver;
   const vArg = (n: number) => (n === latestNo ? d.slug : `${d.slug}@v${n}`);
 
-  const oldBanner = !isLatest ? banner(`V${ver.version_no}`, tagTint("var(--blue)"),
+  const oldBanner = !isLatest ? banner(
     `You're viewing an <strong style="font-weight:600;color:var(--fg)">older version</strong> from ${esc(relTime(ver.created_at))}. The latest is v${latestNo}.`,
     `<button data-act="artDiff" data-arg="${attr(`${d.slug}:${ver.version_no}..${latestNo}`)}" class="cnpy-link" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--fg-55);white-space:nowrap;flex:none">Compare with v${latestNo}</button>
      <button data-act="artOpen" data-arg="${attr(d.slug)}" class="cnpy-link" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--accent);white-space:nowrap;flex:none">View latest${I.arrow()}</button>`) : "";
@@ -790,8 +786,8 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
     <div style="min-width:0;display:flex;align-items:center;gap:8px">${v}</div>
   </div>`;
   const props = [
-    propRow("KIND", `<span style="${NEUTRAL}">${d.kind.toUpperCase()}</span>`),
-    propRow("AREA", `<span style="${CHIP}color:var(--fg-40);border:1px solid var(--border)">${esc(d.area)}</span>`),
+    propRow("KIND", `<span style="font-size:12.5px;color:var(--fg-70)">${artifactKindLabel(d.kind)}</span>`),
+    propRow("AREA", `<span style="font-size:12.5px;color:var(--fg-70)">${esc(d.area)}</span>`),
     propRow("REPO", d.repo ? `<a href="https://github.com/${attr(d.repo)}" target="_blank" rel="noopener" style="${MONO_VAL};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.repo)}</a>` : `<span style="${MONO_VAL};color:var(--fg-40)">—</span>`),
     propRow("AUTHOR", personLink(personIn(p, d.author_id), d.author_id, 20, { html: `${esc(author.name)} <span style="font-family:var(--sans);font-size:11px;color:var(--p-${author.color})">@${esc(author.handle)}</span>` }, "min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--fg-70)", 8)),
     propRow("UPDATED", `<span style="font-size:12.5px;color:var(--fg-70)">v${latest.version_no} · ${esc(relTime(latest.created_at))} by ${personNameLink(personIn(p, latest.created_by), `@${latest.created_by}`)}</span>`),
@@ -805,7 +801,7 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
   const byType = (t: ArtifactLinkType) => d.links.filter((l) => l.target_type === t);
   const tix = byType("ticket").map((l) => {
     const t = p.tickets.find((x) => String(x.id) === l.target_ref);
-    const status = t ? TSTATUS[t.status]?.[0] ?? t.status.toUpperCase() : l.meta?.toUpperCase() ?? "";
+    const status = t ? ticketStatusWord(t.status).toUpperCase() : l.meta?.toUpperCase() ?? "";
     return `<button data-act="openTicket" data-arg="${attr(l.target_ref)}"${linkCard(I.ticket(), l.label ?? t?.title ?? `Ticket #${l.target_ref}`, `TICKET #${l.target_ref}${status ? ` · ${status}` : ""}`)}</button>`;
   });
   const spr = byType("sprint").map((l) => {
@@ -871,7 +867,7 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
   const side = (x: ArtifactVersionDTO | undefined, n: number, tag: string, color: string) => {
     const w = x ? who(p, x.created_by) : null;
     return `<div${surface("padding:12px 14px")}>
-      <div style="display:flex;align-items:center;gap:8px"><span style="${CHIP}color:${color};border:1px solid color-mix(in srgb,${color} 38%,transparent)">${tag}</span><span style="font-family:var(--label);font-size:12px;font-weight:600">v${n}</span></div>
+      <div style="display:flex;align-items:center;gap:8px">${stateMark(tag, color, "dot", 12)}<span style="font-family:var(--label);font-size:12px;font-weight:600">v${n}</span></div>
       ${x && w ? `<div style="font-size:13px;color:var(--fg-70);margin-top:7px">${esc(x.summary || "No summary")}</div>
       <div style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11.5px;color:var(--fg-40)">${personLink(personIn(p, x.created_by), x.created_by, 16, `@${w.handle}`, `font-family:var(--sans);font-size:11px;font-weight:500;color:var(--p-${w.color})`, 6)} · ${esc(relTime(x.created_at))}</div>` : `<div style="font-size:13px;color:var(--fg-40);margin-top:7px">No such version.</div>`}
     </div>`;
@@ -924,7 +920,7 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
       <span style="flex:1"></span>
       <button data-act="artOpen" data-arg="${attr(openArg)}" class="cnpy-ghostbtn" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;color:var(--fg-70);border:1px solid var(--border);border-radius:7px;padding:5px 11px;white-space:nowrap">Open v${pair.b}</button>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:10px;margin-top:18px">${side(va, pair.a, "BASE", "var(--red)")}${side(vb, pair.b, "COMPARED", "var(--green)")}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:10px;margin-top:18px">${side(va, pair.a, "Base", "var(--red)")}${side(vb, pair.b, "Compared", "var(--green)")}</div>
     ${body}
   </div>`;
 }
@@ -946,14 +942,14 @@ function contentChecks(text: string, bytes: number, kind: ArtifactKind): string 
     ${I.alert()}<div><strong style="font-weight:600;color:var(--red)">Over the ${capLabel(kind)} cap.</strong> This content is ${fmtKB(bytes)}. ${binary ? "Compress or split the file, then try again." : "Split it into smaller pages or strip inlined assets, then try again."}</div>
   </div>` : ""}
   ${hits.length ? `<div style="display:flex;align-items:flex-start;gap:14px;margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:9px">
-    <span style="font-size:10.5px;font-weight:600;font-family:var(--label);letter-spacing:.04em;${tagTint("var(--amber)")};border-radius:5px;padding:3px 7px;flex:none">CLAUDE.AI ONLY</span>
+    <span style="flex:none;margin-top:1px">${stateMark("Claude.ai only", "var(--amber)", "triangle")}</span>
     <div style="flex:1;font-size:12.5px;color:var(--fg-70);line-height:1.55">
       This page calls features that only exist inside claude.ai. Trov renders artifacts in a sandbox with no network, so these calls will fail and parts of the page may render empty. You can still upload it.
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${hits.map((h) => `<code style="font-family:var(--code);font-size:11px;color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent);border:1px solid var(--border);border-radius:5px;padding:1.5px 6px">${esc(h)}</code>`).join("")}</div>
     </div>
   </div>` : ""}
   ${bundled ? `<div style="display:flex;align-items:flex-start;gap:14px;margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:9px">
-    <span style="font-size:10.5px;font-weight:600;font-family:var(--label);letter-spacing:.04em;${tagTint("var(--amber)")};border-radius:5px;padding:3px 7px;flex:none">FLATTEN FIRST</span>
+    <span style="flex:none;margin-top:1px">${stateMark("Flatten first", "var(--amber)", "triangle")}</span>
     <div style="flex:1;font-size:12.5px;color:var(--fg-70);line-height:1.55">
       This is a bundled Claude Design export (a hi-fi clickable prototype). It loads its scripts from blob: URLs and compiles code at runtime, which Trov's sandbox blocks, so it will render blank. Flatten it first, with every script inline and no eval, then upload that. You can still upload it as is.
     </div>
@@ -1140,12 +1136,11 @@ export function artifactsDialogs(p: ArtProps): string {
       ${rows.map((t) => {
         const attached = linked.has(String(t.id));
         const on = pick === t.id;
-        const [pl, ps] = TSTATUS[t.status] ?? [t.status.toUpperCase(), NEUTRAL];
         return `<button data-act="artAttachPick" data-arg="${t.id}" style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:7px;font-size:13px;font-weight:500;text-align:left;width:100%;transition:all .12s ease;border:1px solid ${on ? "var(--accent)" : "var(--border)"};color:${on ? "var(--accent)" : attached ? "var(--fg-40)" : "var(--fg-70)"};background:${on ? "var(--accent-soft)" : "transparent"};cursor:${attached ? "default" : "pointer"};flex:none">
           <span style="font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-55);min-width:28px;flex:none">#${t.id}</span>
           <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.title)}</span>
-          ${attached ? `<span style="font-family:var(--label);font-size:9.5px;font-weight:600;letter-spacing:.05em;color:var(--fg-40);flex:none">ATTACHED</span>` : ""}
-          <span style="${ps}">${esc(pl)}</span>
+          ${attached ? `<span style="font-size:12px;color:var(--fg-40);flex:none">Attached</span>` : ""}
+          ${isTicketStatus(t.status) ? ticketStatusMark(t.status, 12) : `<span style="font-size:12px;color:var(--fg-55);flex:none">${esc(t.status)}</span>`}
         </button>`;
       }).join("")}
       ${rows.length ? "" : loading
@@ -1236,11 +1231,10 @@ export function ticketArtifactsBlock(slice: ArtSlice<ArtifactSummaryDTO[]> | und
     return `${head}<div style="font-size:12px;color:var(--fg-40);margin-top:10px">No artifacts attached. Attach one from its page in <button data-act="goArtifacts" class="cnpy-link" style="font-size:12px;color:var(--accent);padding:0">Artifacts</button>.</div>`;
   }
   return `${head}<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${arts.map((a) => {
-    const [sl, ss] = STATUS[a.status];
     return `<button data-act="artOpen" data-arg="${attr(a.slug)}" class="cnpy-card" style="display:inline-flex;align-items:center;gap:9px;padding:7px 13px 7px 10px;border:1px solid var(--border);border-radius:9px;text-align:left;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
       <span style="flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:6px;color:var(--fg-70);background:color-mix(in srgb,var(--fg) 6%,transparent)">${I.kind(a.kind)}</span>
       <span style="min-width:0"><span style="display:block;font-size:12.5px;font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px">${esc(a.title)}</span><span style="display:block;font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--fg-40);margin-top:1px;white-space:nowrap">${a.kind.toUpperCase()} · V${a.current_version} · @${esc(a.author_id.toUpperCase())}</span></span>
-      <span style="${ss}">${sl}</span>
+      ${artifactStatusMark(a.status)}
     </button>`;
   }).join("")}</div>`;
 }

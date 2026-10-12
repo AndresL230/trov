@@ -24,28 +24,19 @@ import { esc, attr, DETAIL_SHELL, SURFACE, surface, hitArea, HITBOX } from "./ui
 import { personChip, personLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { segmented } from "./segmented";
-import { ticketPill, priorityChip, age, avatarStack, tagChip } from "./tickets";
+import { age, avatarStack, metaWord } from "./tickets";
+import { ticketStatusMark, priorityIcon, priorityMark, stateMark, glyphMark, PRIORITY_LABEL } from "./marks";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skLines, skList, skW } from "./skeleton";
 
 // ── atoms ────────────────────────────────────────────────────────────────────
 
-/** The design's `tagBase` — the label-face chip every sprint tag is drawn from. */
-const TAG_BASE =
-  "font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;border-radius:5px;padding:2px 7px;white-space:nowrap;flex:none;";
-/** The design's `tint(c)` — colored text, 45% border, 12% fill. */
-const tint = (c: string): string =>
-  `${TAG_BASE}color:${c};border:1px solid color-mix(in srgb,${c} 45%,transparent);background:color-mix(in srgb,${c} 12%,transparent)`;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-const tag = (text: string, style: string): string => `<span style="${style}">${esc(text)}</span>`;
-
-const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-
-/** The design's due strings are short and shouty ("SEP 26"); the DTO carries an
- *  ISO date. Anything unparseable falls through uppercased rather than showing
- *  "Invalid Date". */
+/** A due date, short ("Sep 26"); the DTO carries an ISO date. Anything unparseable
+ *  falls through as written rather than showing "Invalid Date". */
 export function shortDue(due: string): string {
   const m = due.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return due.toUpperCase();
+  if (!m) return due;
   return `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}`;
 }
 
@@ -62,18 +53,15 @@ const nameOf = (persons: PersonSummary[], handle: string): string => person(pers
 const firstNameOf = (persons: PersonSummary[], handle: string): string => nameOf(persons, handle).split(" ")[0];
 
 /**
- * The design's `sprTagsOf`: exactly one urgency tag (▲ HIGH amber / NORMAL /
- * LOW muted), then DUE when the sprint has a due date, then the DOMAIN in blue.
- * The order is load-bearing — it is the card's reading order.
+ * The design's `sprTagsOf`, as marks (marks.ts) — never tags: the urgency as the tickets'
+ * priority bars and its word (monochrome), then "Due Sep 26" when the sprint has a due date,
+ * then the domain, as plain text. The order is load-bearing — it is the card's reading order.
  */
 export function sprintTags(sp: Pick<SprintView, "urgency" | "due" | "domain">): string {
-  const tags: string[] = [];
-  if (sp.urgency === "high") tags.push(tag("▲ HIGH", tint("var(--amber)")));
-  else if (sp.urgency === "low") tags.push(tag("LOW", `${TAG_BASE}color:var(--fg-40);border:1px solid var(--border)`));
-  else tags.push(tag("NORMAL", `${TAG_BASE}color:var(--fg-55);border:1px solid var(--border)`));
-  if (sp.due) tags.push(tag(`DUE ${shortDue(sp.due)}`, `${TAG_BASE}color:var(--fg-55);border:1px solid var(--border-strong)`));
-  if (sp.domain) tags.push(tag(sp.domain.toUpperCase(), tint("var(--blue)")));
-  return tags.join("");
+  const parts = [urgencyMark(sp.urgency, 12)];
+  if (sp.due) parts.push(metaWord(`Due ${shortDue(sp.due)}`, 12));
+  if (sp.domain) parts.push(metaWord(sp.domain, 12));
+  return parts.join("");
 }
 
 /** The lead block: avatar + first name + " · lead", one chip that opens the lead's person
@@ -83,10 +71,11 @@ function leadBlock(lead: string | null, persons: PersonSummary[]): string {
   return `<span style="display:inline-flex;flex:none">${personLink(person(persons, lead), lead, 18, `${firstNameOf(persons, lead)} · lead`, "font-size:11px;font-weight:500;color:var(--fg-55);white-space:nowrap", 6)}</span>`;
 }
 
-const NEXT_UP_STYLE =
-  "font-size:9.5px;font-weight:700;font-family:var(--label);letter-spacing:.06em;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);border-radius:5px;padding:1px 6px";
-const OVERDUE_STYLE =
-  "font-size:9.5px;font-weight:700;font-family:var(--label);letter-spacing:.06em;color:var(--red);border:1px solid color-mix(in srgb,var(--red) 45%,transparent);border-radius:5px;padding:1px 6px";
+/** The one next sprint, and a late one: marks, as the Timeline draws them (marks.ts). */
+const NEXT_UP = stateMark("Next up", "var(--accent)", "ring", 12, "The next sprint to come due.");
+const OVERDUE = glyphMark("warn", "var(--red)", "Overdue", 12, "Past its due date with tickets still open.");
+/** A sprint's urgency is drawn as the tickets' priority bars; its tooltip says which it is. */
+const urgencyMark = (u: SprintView["urgency"], size = 12.5): string => priorityMark(u, size, `${PRIORITY_LABEL[u]} urgency`);
 
 // ── the Roadmap Timeline card ────────────────────────────────────────────────
 
@@ -173,8 +162,8 @@ export function sprintCard(sp: SprintView, persons: PersonSummary[], opts: Sprin
   return `<div${surface("padding:14px 16px;margin-bottom:8px")}>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
       <span style="font-size:14.5px;font-weight:600;letter-spacing:-0.01em">${esc(sp.label)}</span>
-      ${nextUp ? `<span style="${NEXT_UP_STYLE}">NEXT UP</span>` : ""}
-      ${overdue ? `<span style="${OVERDUE_STYLE}">OVERDUE</span>` : ""}
+      ${nextUp ? NEXT_UP : ""}
+      ${overdue ? OVERDUE : ""}
       <span style="flex:1"></span>
       ${sprintTags(sp)}
       ${leadBlock(sp.lead, persons)}
@@ -300,12 +289,10 @@ export function newSprintToggle(open: boolean): string {
 
 const PROP_ROW = "display:grid;grid-template-columns:74px 1fr;gap:10px;align-items:center;height:30px";
 const PROP_LABEL = "font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40)";
-const PROP_CHIP =
-  "font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--fg-55);border:1px solid var(--border-strong);border-radius:5px;padding:2px 6px;white-space:nowrap";
+/** A property's value: plain text, no box. */
+const PROP_VALUE = "font-size:12.5px;color:var(--fg-70);white-space:nowrap";
 const RAIL_EYEBROW =
   "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)";
-const ACTIVE_CHIP =
-  "font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);background:var(--accent-soft);border-radius:5px;padding:2px 7px;white-space:nowrap";
 
 /** The resource-chip icons — the SAME three the ticket detail's linked-work chips use. */
 const RESOURCE_ICON: Record<string, string> = {
@@ -344,8 +331,8 @@ function sprintTicketCard(t: SprintTicketRow, persons: PersonSummary[]): string 
   return `<div class="cnpy-tcard ${SURFACE} ${HITBOX}" style="display:flex;flex-direction:column;gap:10px;min-width:0;min-height:132px;text-align:left;padding:14px 15px 13px;${closed ? "opacity:.6;" : ""}">
     <div style="display:flex;align-items:center;gap:8px;width:100%;min-width:0">
       <span style="font-family:var(--label);font-size:11px;color:var(--fg-40);flex:none">#${t.id}</span>
-      ${tagChip(t.category)}
-      <span style="margin-left:auto;flex:none">${ticketPill(t.status)}</span>
+      ${metaWord(t.category)}
+      <span style="margin-left:auto;flex:none">${ticketStatusMark(t.status, 12)}</span>
     </div>
     <div style="width:100%;min-width:0">
       <div style="font-size:13.5px;font-weight:600;line-height:1.4;letter-spacing:-0.005em;color:var(--fg);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(t.title)}</div>
@@ -353,7 +340,7 @@ function sprintTicketCard(t: SprintTicketRow, persons: PersonSummary[]): string 
     </div>
     <div style="display:flex;align-items:center;gap:8px;width:100%;margin-top:auto">
       ${who}
-      <span style="margin-left:auto;flex:none">${priorityChip(t.priority)}</span>
+      <span style="margin-left:auto;flex:none">${priorityIcon(t.priority)}</span>
       <span style="font-size:11.5px;color:var(--fg-40);font-family:var(--label);flex:none">${esc(age(t.created_at))}</span>
     </div>
     ${hitArea("openTicket", String(t.id), `#${t.id} ${t.title}`)}
@@ -430,7 +417,7 @@ export function sprintSkeleton(): string {
 
 export function sprintScreen(p: SprintScreenProps): string {
   const sp = p.detail;
-  const activeChip = sp.active ? `<span style="${ACTIVE_CHIP}">ACTIVE</span>` : "";
+  const activeChip = sp.active ? stateMark("Active", "var(--accent)", "dot", 12, "The sprint the team is working in now.") : "";
   const activeBtn = sp.status === "done"
     ? ""
     : `<button data-act="sprintActive" data-arg="${sp.active ? "0" : "1"}" class="cnpy-outlinebtn" style="padding:4px 11px;border-radius:7px;border:1px solid var(--border-strong);font-size:11.5px;font-weight:500;color:var(--fg-70);flex:none">${sp.active ? "Mark inactive" : "Mark active"}</button>`;
@@ -478,10 +465,10 @@ export function sprintScreen(p: SprintScreenProps): string {
       <div style="border-left:1px solid var(--border);padding-left:22px">
         <div style="${RAIL_EYEBROW};margin-bottom:8px">Properties</div>
         <div style="display:flex;flex-direction:column">
-          ${prop("DATES", `<span style="${PROP_CHIP}">${esc(sprintDatesLabel(sp) ?? "—")}</span>`)}
-          ${prop("DUE", `<span style="${PROP_CHIP}">${esc(sp.due ? shortDue(sp.due) : "—")}</span>`)}
-          ${prop("URGENCY", sprintTags({ urgency: sp.urgency, due: null, domain: null }))}
-          ${prop("DOMAIN", sp.domain ? tag(sp.domain.toUpperCase(), tint("var(--blue)")) : `<span style="${PROP_CHIP}">—</span>`)}
+          ${prop("DATES", `<span style="${PROP_VALUE}">${esc(sprintDatesLabel(sp) ?? "—")}</span>`)}
+          ${prop("DUE", `<span style="${PROP_VALUE}">${esc(sp.due ? shortDue(sp.due) : "—")}</span>`)}
+          ${prop("URGENCY", urgencyMark(sp.urgency))}
+          ${prop("DOMAIN", `<span style="${PROP_VALUE}">${esc(sp.domain ?? "—")}</span>`)}
           ${prop("LEAD", sp.lead
             ? `<div style="display:flex;min-width:0">${personLink(person(p.persons, sp.lead), sp.lead, 20, nameOf(p.persons, sp.lead), "min-width:0;font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}</div>`
             : `<span style="font-size:12.5px;color:var(--fg-40)">Unassigned</span>`)}

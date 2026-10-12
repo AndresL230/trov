@@ -23,7 +23,8 @@ vi.mock("../web/src/markdown", () => ({
 }));
 
 import { lineDiff, collapsedLineDiff } from "../web/src/diff";
-import { reviewView, reviewDetail, reviewCard, reviewFilterSwitch, diffViewer, unifiedDiff, splitDiffRows, REVIEW_EXIT_MS, REVIEW_INTRO, type ReviewItem, type ReviewProps } from "../web/src/review";
+import { reviewView, reviewDetail, reviewCard, reviewFilterSwitch, diffViewer, unifiedDiff, splitDiffRows, staleBaseWarning, REVIEW_EXIT_MS, REVIEW_INTRO, type ReviewItem, type ReviewProps } from "../web/src/review";
+import { LOW_CONFIDENCE } from "../web/src/marks";
 import css from "../web/src/trov.css?raw";
 import morphSrc from "../web/src/morph.ts?raw";
 import { maintenanceView, assignPanel, fileHint, type MaintenanceProps, type UnplacedItem } from "../web/src/maintenance";
@@ -107,8 +108,6 @@ function makeItem(overrides: Partial<ReviewItem> = {}): ReviewItem {
     id: "p1",
     kind: "proposal",
     eyebrow: "PROPOSAL · DOCS / TEST",
-    badge: "STAGED",
-    badgeColor: "var(--amber)",
     title: "Test Proposal",
     summary: "A summary",
     agent: "agent · session 0000",
@@ -142,7 +141,7 @@ describe("reviewView — populated", () => {
 
   it("labels the accept action Ratify for decisions and renders the ADR record", () => {
     const item = makeItem({
-      id: "d1", kind: "decision", badge: "DRAFT", badgeColor: "var(--blue)",
+      id: "d1", kind: "decision",
       diff: undefined, adr: [{ h: "Context", p: "Why." }, { h: "Decision", p: "What." }],
     });
     const html = reviewView(makeReviewProps({ items: [item] }));
@@ -154,8 +153,8 @@ describe("reviewView — populated", () => {
 
   it("shows the stale-base warning only when stale", () => {
     const stale = makeItem({ stale: true, staleNote: "Proposed from v6 — live is v8." });
-    expect(reviewView(makeReviewProps({ items: [stale] }))).toContain("STALE BASE");
-    expect(reviewView(makeReviewProps())).not.toContain("STALE BASE");
+    expect(reviewView(makeReviewProps({ items: [stale] }))).toContain(">Stale base</span>");
+    expect(reviewView(makeReviewProps())).not.toContain("Stale base");
   });
 
   it("filter hides non-matching kinds from the list", () => {
@@ -185,7 +184,9 @@ describe("reviewView — surface cards", () => {
     expect(adr).toMatch(/class="cnpy-surface" style="padding:24px 28px 26px"/);
     expect(adr).not.toContain("border-left:2px solid var(--green)"); // no accent edge on the record
     const stale = reviewDetail(makeItem({ stale: true, staleNote: "Proposed from v6." }), "unified");
-    expect(stale).toMatch(/class="cnpy-surface" style="border-left:2px solid var\(--amber\)/);
+    expect(stale).toMatch(/class="cnpy-surface" style="padding:11px 15px;margin-top:18px/);
+    expect(staleBaseWarning("Proposed from v6.")).not.toContain("border-left"); // a warning mark, never a coloured edge
+    expect(stale).toContain(">Stale base</span>");
   });
 });
 
@@ -218,7 +219,7 @@ describe("reviewView — diff view modes", () => {
 
 describe("reviewDetail — restructured header", () => {
   const decision = () => makeItem({
-    id: "d1", kind: "decision", eyebrow: "DECISION · ADR-005", badge: "DRAFT", badgeColor: "var(--blue)",
+    id: "d1", kind: "decision", eyebrow: "DECISION · ADR-005",
     title: "Append-only feed as the record", agent: "AndresL230", time: "Jun 25",
     diff: undefined, adr: [{ h: "Context", p: "Why." }],
   });
@@ -237,27 +238,28 @@ describe("reviewDetail — restructured header", () => {
     expect(html.indexOf("Append-only feed as the record")).toBeLessThan(html.indexOf(">Decision<"));
   });
 
-  it("moves the status badge up-right, next to the verdict controls", () => {
+  it("wears no state tag — the verdict buttons say it is waiting — and the low-confidence mark beside them when set", () => {
     const html = reviewDetail(decision(), "unified");
-    expect(html).toContain("DRAFT");
-    // Badge sits on the title's row (after the title) and beside the buttons (before Reject).
-    expect(html.indexOf("Append-only feed as the record")).toBeLessThan(html.indexOf("DRAFT"));
-    expect(html.indexOf("DRAFT")).toBeLessThan(html.indexOf("Reject"));
+    expect(html).not.toMatch(/>DRAFT<|>STAGED<|Low confidence/);
     expect(html.indexOf("Reject")).toBeLessThan(html.indexOf("Ratify"));
+    const flagged = reviewDetail({ ...decision(), flagged: true }, "unified");
+    expect(flagged).toContain(LOW_CONFIDENCE());
+    expect(flagged.indexOf("Append-only feed as the record")).toBeLessThan(flagged.indexOf("Low confidence"));
+    expect(flagged.indexOf("Low confidence")).toBeLessThan(flagged.indexOf("Reject"));
   });
 });
 
 describe("reviewCard — restructured to match the detail header", () => {
-  it("leads with the title, badge up-right, folds type/id/author/date into one byline", () => {
+  it("leads with the title, no state tag, folds type/id/author/date into one byline", () => {
     const html = reviewCard(makeItem({
-      eyebrow: "DECISION · ADR-005", badge: "DRAFT", badgeColor: "var(--blue)",
+      eyebrow: "DECISION · ADR-005",
       title: "A decision card title", agent: "AndresL230", time: "Jun 25",
     }), false);
     // The uppercase eyebrow line above the title is gone.
     expect(html).not.toContain("DECISION · ADR-005");
     // Title is first — before the byline record type and before the badge.
     expect(html.indexOf("A decision card title")).toBeLessThan(html.indexOf(">Decision<"));
-    expect(html.indexOf("A decision card title")).toBeLessThan(html.indexOf("DRAFT"));
+    expect(html).not.toMatch(/>DRAFT<|>STAGED</);
     // Byline folds type/id/author/date; identifier in the label face.
     expect(html).toContain(">Decision<");
     expect(html).toMatch(/font-family:var\(--label\)[^>]*>ADR-005</);
@@ -323,9 +325,11 @@ describe("diff viewer — ellipsis rows (collapsed unchanged runs)", () => {
 });
 
 describe("reviewView — flagged marker (low-confidence scrutiny signal)", () => {
-  it("renders FLAGGED only for flagged items", () => {
-    expect(reviewView(makeReviewProps({ items: [makeItem({ flagged: true })] }))).toContain("FLAGGED");
-    expect(reviewView(makeReviewProps())).not.toContain("FLAGGED");
+  it("marks Low confidence only on flagged items — an amber triangle and the words, never a tag", () => {
+    const flagged = reviewView(makeReviewProps({ items: [makeItem({ flagged: true })] }));
+    expect(flagged).toContain(LOW_CONFIDENCE(12));
+    expect(flagged).not.toContain("FLAGGED");
+    expect(reviewView(makeReviewProps())).not.toContain("Low confidence");
   });
 });
 
@@ -382,7 +386,7 @@ describe("XSS: review item fields are escaped in text and attributes", () => {
 
 function makeUnplaced(overrides: Partial<UnplacedItem> = {}): UnplacedItem {
   return {
-    id: "u1", title: "Loose thing", snippet: "A snippet.", reason: "AGENT FLAGGED",
+    id: "u1", title: "Loose thing", snippet: "A snippet.", reason: "Flagged by an agent",
     meta: "agent · session 0000 · 1h ago", reasonNote: "Could not place.", ...overrides,
   };
 }

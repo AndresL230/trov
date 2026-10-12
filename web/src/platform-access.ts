@@ -20,7 +20,8 @@ import {
 } from "@shared/plans";
 import { segmented } from "./segmented";
 import { billingDate, isPast } from "@shared/billing";
-import { esc, attr, relTime, statusBadge, surface } from "./ui";
+import { esc, attr, relTime, surface } from "./ui";
+import { kindMark, type StateKind } from "./marks";
 import { confirmModal } from "./confirm";
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { tabLead, dangerLink, orgEmpty, loadingNote } from "./org-ui";
@@ -184,11 +185,11 @@ function limitFields(o: { idPrefix: string; act: string; plan: PlanId; limits: L
 }
 
 // ── ACCESS: the grants ───────────────────────────────────────────────────────
-const GRANT_STATUS: Record<PlatformGrant["status"], { text: string; tone: string }> = {
-  unused: { text: "UNUSED", tone: "var(--amber)" },
-  used: { text: "USED", tone: "var(--green)" },
-  revoked: { text: "REVOKED", tone: "var(--fg-55)" },
-  expired: { text: "EXPIRED", tone: "var(--fg-55)" },
+const GRANT_STATUS: Record<PlatformGrant["status"], { text: string; kind: StateKind; hint: string }> = {
+  unused: { text: "Unused", kind: "waiting", hint: "Nobody has set up an organization with it yet." },
+  used: { text: "Used", kind: "done", hint: "An organization was set up with it." },
+  revoked: { text: "Revoked", kind: "off", hint: "Withdrawn by a superadmin." },
+  expired: { text: "Expired", kind: "off", hint: "Not used before it expired." },
 };
 /** Who a grant is for, and how they were named. */
 export const grantWho = (g: Pick<PlatformGrant, "handle" | "github_login" | "email">): { name: string; kind: string } =>
@@ -209,7 +210,7 @@ function grantRow(g: PlatformGrant): string {
   const canRevoke = g.status === "unused" || g.status === "expired";
   return `<li style="${ROW}" data-grant="${g.id}" data-grant-status="${g.status}">
     <div style="flex:1 1 260px;min-width:0;line-height:1.4">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">${esc(who.name)}</span>${statusBadge(st.text, st.tone)}<span style="font-size:12.5px;font-weight:500;color:var(--fg-70)">${esc(PLANS[g.plan].name)}</span></div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">${esc(who.name)}</span>${kindMark(st.text, st.kind, 12, st.hint)}<span style="font-size:12.5px;font-weight:500;color:var(--fg-70)">${esc(PLANS[g.plan].name)}</span></div>
       <div style="font-size:12px;color:var(--fg-40);overflow-wrap:anywhere;margin-top:2px">${esc(who.kind)} &middot; granted ${esc(relTime(g.created_at))} by ${g.source === "billing" ? "billing" : `@${esc(g.granted_by)}`} &middot; ${became}${gift}${mail}${limits.length ? ` &middot; ${esc(limits.join(", "))}` : ""}</div>
       ${g.note ? `<div style="font-size:12px;color:var(--fg-55);overflow-wrap:anywhere;margin-top:2px">${esc(g.note)}</div>` : ""}
     </div>
@@ -367,7 +368,7 @@ export function orgPlanSection(o: { slug: string; name: string; plan?: PlatformO
   const p = o.plan;
   if (!p) return "";
   const def = PLANS[p.plan];
-  const status = p.status === "canceled" ? statusBadge("ENDED", "var(--red)") : p.status === "past_due" ? statusBadge("PAST DUE", "var(--amber)") : "";
+  const status = p.status === "canceled" ? kindMark("Ended", "stopped", 12, "The paid plan ended.") : p.status === "past_due" ? kindMark("Past due", "warn", 12, "Stripe could not take the last payment.") : "";
   const use: Partial<Record<LimitKey, number>> = { seats: p.seats_used, ...(artifactBytes === null ? {} : { artifact_bytes: artifactBytes }) };
   const cells = LIMIT_KEYS.map((k) => {
     const cap = p.entitlements[k];

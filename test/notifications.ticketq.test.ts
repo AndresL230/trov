@@ -140,7 +140,8 @@ describe("ticketq renderer", () => {
 
     // each line carries category, priority, requester and age
     expect(s.html).toContain("request");
-    expect(s.html).toContain("HIGH");
+    expect(s.html).toContain("High priority");
+    expect(s.html).not.toContain("data-chip"); // priority is words, never a chip
     expect(s.html).toContain("Meilin Zhao"); // the requester, by name
     expect(s.html).toContain("3d"); // 2026-09-08 → window end 2026-09-11
     expect(s.text).toContain("Older unassigned ask");
