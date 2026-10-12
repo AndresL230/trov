@@ -1,7 +1,8 @@
 # The GitHub App — how an organization connects its repositories
 
-Issue #95. Code: `src/github-app/`, `src/auth/tx.ts`, `shared/github-app.ts`, `web/src/github-app.ts`.
-Migration: `0043_github_app`. Tests: `test/github-app.*.test.ts`, `test/render.github-app.test.ts`.
+Issues #95, #170. Code: `src/github-app/`, `src/auth/tx.ts`, `shared/github-app.ts`, `web/src/github-app.ts`.
+Migrations: `0043_github_app`, `0053_installation_repos`. Tests: `test/github-app.*.test.ts`
+(`github-app.shared.test.ts` for one installation in several orgs), `test/render.github-app.test.ts`.
 
 Trov is ONE GitHub App. It signs people in (its client id and secret are `GITHUB_CLIENT_ID` /
 `GITHUB_CLIENT_SECRET`), and an organization connects its repositories by **installing** it: no token to
@@ -15,20 +16,72 @@ account it is on (login, numeric id, `User` / `Organization`), `all` / `selected
 connected it and when, `suspended_at`, `removed_at` + `removed_reason`, `last_used_at`, `last_error`.
 A row is never deleted; ending a binding sets `removed_at`.
 
-- **An installation belongs to at most one org, and an org has at most one live installation** — two partial
-  unique indexes (`WHERE removed_at IS NULL`). One installation is one GitHub account, so an org connects
-  one account at a time. Connecting a DIFFERENT installation replaces the current one (below): the old
-  binding is ended as `disconnected` in the same batch the new one is written in. That is the simplest rule that is correct today: an org's GitHub credential is a
-  single value and only its primary repository is captured, so a second account could be listed but not
-  read. Lifting it means dropping the org index and resolving the credential per repository owner.
-- `org_repos.connection` is `app` for a repository the installation can see and `manual` otherwise;
-  `org_repos.access_lost_at` marks an `app` repository the installation stopped seeing.
-- **The same repository in two orgs.** An App-connected repository belongs to one installation, and an
-  installation to one org — so it is tracked by one org, by construction. A repository added by name
-  (`manual`) is unchanged: two orgs may each track it with their own token and webhook, as before. No
-  new unique index was needed, and none was added.
+- **An org has at most one live installation** — a partial unique index (`WHERE removed_at IS NULL`). One
+  installation is one GitHub account, so an org connects one account at a time. Connecting a DIFFERENT
+  installation replaces the current one (below): the old binding is ended as `disconnected` in the same
+  batch the new one is written in. That is the simplest rule that is correct today: an org's GitHub
+  credential is a single value and only its primary repository is captured, so a second account could be
+  listed but not read. Lifting it means dropping the org index and resolving the credential per
+  repository owner.
+- **An installation may be bound by several orgs** (0053; "One installation, several orgs" below). Each
+  has its own row; none can read another's.
+- **A binding reaches all of its installation, or part of it** — `org_github_installations.repo_access`.
+  `all`: the admin who connected it could read every repository the installation covers (every binding
+  made before 0053). `selected`: it reaches only the repositories listed for it in
+  `org_github_installation_repos` (GitHub's id, the name, private or not) — the ones that admin could
+  read. The list is emptied when the binding ends.
+- `org_repos.connection` is `app` for a repository the org reaches through the installation and `manual`
+  otherwise; `org_repos.access_lost_at` marks an `app` repository the installation stopped seeing.
+- **A repository may be tracked by several orgs**, through the App or by hand. Nothing in the database
+  limits it to one.
 
 No token is ever stored: not the user's, not an installation's. Nothing in these tables is secret.
+
+## One installation, several orgs (#170, `0053_installation_repos`)
+
+Two things used to be true and are not any more: an installation belonged to ONE Trov org, and only
+someone who could read EVERY repository it covers could connect it. On a large GitHub account that
+meant one org, connected by an owner. Now several teams can each keep their own Trov org on the same
+account, track the same repository if they both work on it, and connect with whatever they can read.
+
+- **Binding.** Any org may bind an installation another org already holds. Its admin goes through every
+  check of `verifyAndBind`. Nothing about the other org is read, shown or changed.
+- **What a binding reaches** is what the admin who connected it could read on GitHub (check 5):
+  everything → `all`; part → `selected`, that part and no more. A `selected` org is cut to its list
+  everywhere the App acts for it — one rule, three places:
+  - the picker and `POST …/github/repositories` (`visibleRepos` returns only the list; anything else is
+    404 `not_visible`, and its name is never shown);
+  - the webhook's routing (`installationRepoOrgs`): an org that typed the name of a repository outside
+    its list gets none of its events;
+  - the token (`credential.ts` `answeringInstallation` → `repoAllowed`): the installation's token is
+    never minted for a repository outside the list, whatever name is asked for. Such a repository
+    tracked by hand is read with the org's stored token, or not at all.
+- **Connecting again never narrows.** An `all` binding stays `all`. A `selected` one ADDS what the person
+  connecting now can read (two admins who read different repositories do not take each other's away);
+  someone who reads everything turns it into `all`. Repositories offers "Connect again" on a `selected`
+  binding for exactly this: access gained on GitHub since. Only ending the binding (Disconnect,
+  uninstall) empties the list.
+- **A repository several orgs track** is each org's own: its events are captured once per org
+  (The webhook, below), each org reads it with a token minted for that org's request, and nothing in
+  one org says who else tracks it.
+- **The installation's own events** (uninstall, suspend, repositories added or removed) reach every org
+  bound to it; each is told in its own audit log, of its own binding and repositories only.
+- **Plans** are unchanged: `repositories` is per org.
+- **An agent connection set to Follow the repository** resolves by repository (`data-layer.md` ›
+  Bearer). When a person is in two orgs that track the same repository the call is refused as ambiguous
+  and names them: pass `org`.
+
+The cross-org reads this needs live in `src/platform/jobs.ts` (`installationOrgs`,
+`installationRepoOrgs`): names and ids, never another org's content.
+
+**Not done here:** capture for an org's non-primary repositories (the capture keys still carry no
+repository — a follow-up).
+
+**Limits worth knowing.** The read check is made when connecting, not again: access a person later
+loses on GitHub stays in the binding until it is disconnected (as an `all` binding always worked).
+A `selected` list holds names as GitHub gave them then; a repository renamed since needs "Connect
+again". A repository newly added to the installation reaches an `all` org at once and a `selected` org
+only after "Connect again".
 
 ## The connect flow
 
@@ -72,14 +125,16 @@ ALL of these hold; a failure at any step writes nothing:
    account cannot reach stops here — before Trov asks the App anything about it.
 5. **No escalation.** `GET /user/installations` lists an installation for anyone with access to at least
    one of its repositories, so step 4 alone would let a collaborator on one repository attach an
-   organization's whole installation. The account must be able to read EVERY repository the installation
-   covers — see "The no-escalation check" below.
-6. **One org per installation.** No other org holds it (`installationOrg`, a platform read — it sees a
-   suspended org's binding too); the unique index says so again at the write. **A different installation
-   for an org that already has one REPLACES it** (`bindInstallation(ctx, info, replace)`): the admin went
+   organization's whole installation. The binding reaches only what the account can read: all of the
+   installation (`all`), or exactly the repositories it reads (`selected`) — see "The no-escalation
+   check" below. An account that reads none of it connects nothing (`no_access`).
+6. **One installation per org.** Another org holding the same installation is no obstacle (above).
+   **A different installation for an org that already has one REPLACES it**
+   (`bindInstallation(ctx, info, replace)`): the admin went
    through every check above for the new one, so the old binding is ended (`disconnected`, audited with
    `replaced_by`), its repositories go back to `manual`, and the new row is written — one batch, so the org
-   never holds two and never none. No manual Disconnect is needed to move to another GitHub account.
+   never holds two and never none. No manual Disconnect is needed to move to another GitHub account. Two connects racing
+   for one org meet the org's unique index: the loser is told `conflict`, and nothing of it is written.
 
 The installation's account comes from GitHub **as the App** (`GET /app/installations/:id`), never from
 the URL or the user's list. The user token is used for those reads and then revoked (below).
@@ -97,23 +152,26 @@ Two lists of repository **ids**, each read to its end, 100 a page:
 - what the connecting account can read of it — `GET /user/installations/:id/repositories`, with the
   user token. GitHub's 404 on the first page means "none".
 
-The installation is bound only when **every id of the first list is in the second**. Ids, not counts: two
-counts can agree while the repositories differ (the account reads two repositories, the installation
-covers two, and only one is the same), and a count taken from one page says nothing of the others.
+**Every id of the first list is in the second** → the binding is `all`. Ids, not counts: two counts
+can agree while the repositories differ (the account reads two repositories, the installation covers
+two, and only one is the same), and a count taken from one page says nothing of the others.
 
-- A refusal says HOW MANY repositories the account cannot read (`?github=partial_access&missing=<n>`),
-  never which — their names are exactly what the person may not be allowed to see.
+**Otherwise** the binding is `selected`, and its list is the repositories of the second list whose id
+is in the first (id, name, private) — stored in `org_github_installation_repos` in the same batch as
+the binding. An empty list → `no_access`, nothing bound.
+
 - **It fails closed.** A page that is not a 200, a thrown fetch, a body with no `total_count` or no list,
   a row with no numeric id, a short page that is not the last, more rows than the count, a 404 anywhere
   but the user's first page → `github_failed`, nothing bound.
-- **The cap: `REPO_ID_PAGES` = 10 pages, 1,000 repositories.** An installation that covers more is not
-  checked at all (GitHub's own `total_count` says so on the first page, so it costs one request):
-  `too_many_repos`, and the sentence tells the admin to choose **Only select repositories** for the Trov
-  App on GitHub and connect again. The cap bounds the check at 20 requests — a Worker invocation's
-  subrequests are limited, and the rest of the flow spends about a dozen. Raising it is a constant.
+- **The cap: `REPO_ID_PAGES` = 10 pages, 1,000 repositories**, on each list. An INSTALLATION that covers
+  more cannot be shown to be read in full (GitHub's own `total_count` says so on the first page, so it
+  costs one request): the binding is `selected`, with what the account reads, taken as GitHub scopes it
+  to the installation. An ACCOUNT that reads more than the cap is refused — `too_many_repos`, and the
+  sentence tells the admin to choose **Only select repositories** for the Trov App on GitHub and connect
+  again. The cap bounds the check at 20 requests — a Worker invocation's subrequests are limited, and
+  the rest of the flow spends about a dozen. Raising it is a constant.
 - **No exemption for a personal account.** Its owner can read every repository of their own account, so
-  they pass the same check as anyone; the earlier special case (skip the check when the installation's
-  account IS the connecting account) saved two requests and was one more branch to get wrong.
+  they get `all` by the same check as anyone; a collaborator on one of its repositories gets that one.
 
 ### The user token is revoked (`dropUserToken`)
 
@@ -166,8 +224,8 @@ only form GitHub documents as carrying `state` back; `installations/select_targe
 
 `GET /api/o/:slug/github/install?existing=1[&account=<login>]` runs an ORDINARY authorization
 (`/login/oauth/authorize`, our `state` + PKCE, `beginTx(c, "connect")`), then finds the installation from
-`GET /user/installations`: exactly one that is free → the same checks 2–6 and the binding; several →
-`?github=choose&accounts=…`, and the page offers each account. It exists because GitHub's install page
+`GET /user/installations`: exactly one → the same checks 2–6 and the binding; several →
+`?github=choose&accounts=…`, and the page offers each account (one another org is bound to as well). It exists because GitHub's install page
 does not have to redirect back for an App that is already installed (it was installed from GitHub's side,
 or Trov was disconnected and the App left in place).
 
@@ -197,7 +255,7 @@ shows one sentence (`connectNoticeCopy`) and rewrites the address bar.
   Never in D1, never logged. A 401 on a read made with it forgets THAT token; the next use mints again.
   The binding ending, a suspension or `new_permissions_accepted` forgets every token of the installation.
 - **The credential order** (`credential.ts` `resolveGithubCredential`): (a) the org's live, unsuspended
-  installation — for a repository its account owns; (b) the org's stored `github_token`; (c) for
+  installation — for a repository its account owns and no other org holds through the App; (b) the org's stored `github_token`; (c) for
   SaplingLearn alone, the Worker's `GITHUB_SERVICE_TOKEN`. It throws for an MCP (bearer) context and for
   a member, like `getSecret`. `githubCredentialSource` answers WHERE that order would get it from
   (`app` / `token` / null) without minting — what Sync GitHub's status asks (`sync.md` › The
@@ -237,15 +295,20 @@ before the per-repo hook's path).
 1. HMAC-SHA256 over the raw body against `GITHUB_APP_WEBHOOK_SECRET`, constant time. No secret
    configured, no signature, a bad one → the same bare `401 {"error":"unauthorized"}` the per-repo hook
    gives, nothing written.
-2. `installation.id` → the org of its LIVE binding. Unknown installation, or none in the payload → `202
-   ignored`, no rows.
+2. `installation.id` → the orgs with a LIVE binding of it (`installationOrgs`). Unknown installation,
+   or none in the payload → `202 ignored`, no rows.
 3. `installation` — `deleted` ends the binding (`uninstalled`), `suspend` / `unsuspend` mark it,
    `new_permissions_accepted` is recorded; `created` binds nothing. `installation_repositories` —
-   `added` / `removed` re-mark the org's repositories and update the selection. All audited with the
-   actor `github-webhook`.
-4. Any other event is a repository's: it must be one THAT org tracks, and its **primary** — otherwise
-   `202 ignored`. Then `captureDelivery` runs as that org's system tenant, exactly as the per-repo hook
-   runs it, with the installation token resolved lazily for follow-up reads.
+   `added` / `removed` re-mark the org's repositories and update the selection. These are about the
+   installation itself, so they are applied to EVERY org bound to it, oldest binding first, each as its
+   own system tenant. All audited with the actor `github-webhook`.
+4. Any other event is a repository's, routed by the REPOSITORY (`installationRepoOrgs`) to EVERY org
+   that is bound to the installation, tracks the repository, and whose binding reaches it (`all`, or
+   `selected` with the repository in its list). In each it must be that org's **primary** and the org
+   not suspended; with no such org → `202 ignored`. `captureDelivery` then runs once per org, as that
+   org's system tenant, exactly as the per-repo hook runs it, with the installation token resolved
+   lazily for follow-up reads. Each org's rows are its own (the capture's keys are per org), one org's
+   failure does not cost another its capture, and GitHub is answered with the worst of them.
 
 **Capture is still the primary repository only.** The capture's keys (`gh:pr:<n>:…`) carry no
 repository, so a second repository's PR #7 would collide with the first's. Other tracked repositories
@@ -256,6 +319,9 @@ org's old per-repo (or legacy) webhook. The capture's keys are per org, so the s
 nothing (`test/github-app.webhook.test.ts` › "one event through BOTH paths").
 
 ## Uninstall, suspend, disconnect
+
+An org's row below is that org's alone. Disconnect touches one org; what happens on GitHub (uninstall,
+suspend, a repository removed) reaches every org bound to the installation, each for its own rows.
 
 | | Binding | Repositories | Reads |
 |---|---|---|---|
@@ -351,7 +417,7 @@ when this was written). The full list as first written:
 - that `GET /user/installations/:id/repositories` lists, for an owner of the account (an organization's
   owner AND the owner of a personal account, which no longer skips the check), every repository
   `GET /installation/repositories` lists, with the same ids. If GitHub leaves one out for a legitimate
-  owner, connecting is refused with "cannot read N of the repositories" — it fails closed;
+  owner, their binding is `selected` instead of `all` — it never reaches more than GitHub listed;
 - that GitHub accepts the scoped mint body exactly as sent — `{ "repositories": ["<name>"], "permissions":
   { "metadata": "read", "contents": "read", "pull_requests": "read", "issues": "read", "actions": "read",
   "checks": "read", "deployments": "read", "statuses": "read" } }`, and `{ "permissions": { "metadata":

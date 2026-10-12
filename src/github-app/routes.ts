@@ -108,7 +108,8 @@ export const githubAppRoutes = (() => {
   }));
 
   // Track a repository the installation can see. The name is checked against GitHub's own list — a
-  // typed name the installation cannot see is refused here (the manual `POST /repos` still takes one).
+  // typed name the installation cannot see, or one this org's binding does not reach (`visibleRepos`
+  // is already cut to it), is refused here (the manual `POST /repos` still takes one).
   r.post("/github/repositories", (c) => guard(c, async () => {
     const ctx = c.var.ctx;
     requireRole(ctx, "admin");

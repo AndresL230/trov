@@ -1,7 +1,8 @@
 /**
- * Migration 0043_github_app, as the schema it leaves (the pool applies every migration in order): the
- * binding's two rules are enforced by the database itself, and what it added to `org_repos` defaults to
- * what every existing repository already was.
+ * Migration 0043_github_app, as the schema it leaves (the pool applies every migration in order): an
+ * org's one live binding is enforced by the database itself, and what it added to `org_repos` defaults
+ * to what every existing repository already was. 0053_installation_repos lifted "one org per
+ * installation" (test/github-app.shared.test.ts): several orgs may bind one.
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
@@ -12,7 +13,7 @@ import { addOrgRepo } from "./helpers/org-config";
 import { seedInstallation } from "./helpers/github-app";
 import { HANDLE_COLUMNS } from "../src/auth/persons";
 import { InstallationConflictError, bindInstallation, endInstallation, liveInstallation } from "../src/github-app/store";
-import { installationOrg } from "../src/platform/jobs";
+import { installationOrgs } from "../src/platform/jobs";
 import { platformCtx } from "./helpers/tenant";
 import { RESET_STATEMENTS } from "../scripts/seed/reset.mjs";
 
@@ -38,9 +39,9 @@ describe("0043_github_app — the file", () => {
 });
 
 describe("0043_github_app — the rules the database keeps", () => {
-  it("an installation belongs to at most ONE org", async () => {
+  it("an installation may be bound by more than one org (0053_installation_repos)", async () => {
     await insert(ORG_A, 501);
-    await expect(insert(ORG_B, 501)).rejects.toThrow(/UNIQUE/);
+    await insert(ORG_B, 501);
   });
   it("an org has at most ONE live installation", async () => {
     await insert(ORG_A, 501);
@@ -89,19 +90,23 @@ describe("0043_github_app — the code that goes with it", () => {
     await expect(bindInstallation(a, info(503, "third-co"), old)).rejects.toBeInstanceOf(InstallationConflictError);
     expect(await all(env.DB, `SELECT action FROM org_admin_audit WHERE org_id = ? AND action LIKE 'github.%'`, ORG_A)).toHaveLength(3);
   });
-  it("the binding's two writers: a second org, or a second installation, loses with a conflict and writes nothing", async () => {
+  it("the binding's writers: a second installation for the org loses with a conflict and writes nothing; a second ORG gets its own row", async () => {
     const a = await tenantCtx("AndresL230");
     const b = await tenantCtx("bob", "admin", { orgId: ORG_B });
     expect(await bindInstallation(a, info(501))).toBe("connected");
-    await expect(bindInstallation(b, info(501))).rejects.toBeInstanceOf(InstallationConflictError);
     await expect(bindInstallation(a, info(502))).rejects.toBeInstanceOf(InstallationConflictError);
     expect(await bindInstallation(a, info(501, "acme-renamed"))).toBe("refreshed");
     expect(await all(env.DB, `SELECT org_id, installation_id, account_login FROM org_github_installations`)).toEqual([{ org_id: ORG_A, installation_id: 501, account_login: "acme-renamed" }]);
     expect(await all(env.DB, `SELECT action FROM org_admin_audit WHERE action LIKE 'github.%'`)).toEqual([{ action: "github.connect" }]); // one connect, no row for a refused one
-    // Org B never reads org A's binding.
+    // Org B never reads org A's binding — before it binds the same installation, or after.
     expect(await liveInstallation(b)).toBeNull();
-    expect(await installationOrg(platformCtx(), 501)).toEqual({ org_id: ORG_A, org_slug: "saplinglearn", org_suspended: 0 });
-    expect(await installationOrg(platformCtx(), 999)).toBeNull();
+    expect(await installationOrgs(platformCtx(), 501)).toEqual([{ org_id: ORG_A, org_slug: "saplinglearn", org_suspended: 0 }]);
+    expect(await installationOrgs(platformCtx(), 999)).toEqual([]);
+    expect(await bindInstallation(b, info(501))).toBe("connected");
+    expect((await liveInstallation(b))!.connected_by).toBe("bob");
+    expect((await liveInstallation(a))!.account_login).toBe("acme-renamed");
+    expect((await installationOrgs(platformCtx(), 501)).map((o) => o.org_id)).toEqual([ORG_A, ORG_B]);
+    expect(await all(env.DB, `SELECT org_id, action FROM org_admin_audit WHERE action LIKE 'github.%' ORDER BY id`)).toEqual([{ org_id: ORG_A, action: "github.connect" }, { org_id: ORG_B, action: "github.connect" }]);
   });
   it("ending a binding twice changes nothing the second time, and frees only THAT org's repositories", async () => {
     await addOrgRepo("acme/app", ORG_A);

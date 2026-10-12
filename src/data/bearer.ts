@@ -159,7 +159,7 @@ export async function resolveCall(conn: BearerConnection, args: { repo?: unknown
 
   if (args.repo === undefined || args.repo === null || args.repo === "") {
     return refuse("repo_required",
-      `This connection follows the repository you are working in: pass \`repo\` as owner/name (from \`git remote get-url origin\`) on every call. ${NOTHING}`);
+      `This connection follows the repository you are working in: pass \`repo\` as owner/name (from \`git remote get-url origin\`) on every call. With no checkout, ask the person which repository they mean, or they can switch this connection to Manual in Trov › Settings › MCP access. ${NOTHING}`);
   }
   const repo = normalizeRepoRef(args.repo);
   if (!repo) return refuse("bad_request", `\`repo\` must be a GitHub repository as owner/name. ${NOTHING}`);

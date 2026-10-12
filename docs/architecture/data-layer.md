@@ -184,7 +184,7 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 | Where | Why |
 |---|---|
 | `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture`, `pruneSyncRuns`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
-| `src/platform/jobs.ts` (`org_repos`, `org_environments`, `org_github_installations`) | the cron's unit lists, the webhook's hook lookup and the GitHub App's installation → org lookup (`installationOrg`), before any org is known — ids, an environment key and a repo name |
+| `src/platform/jobs.ts` (`org_repos`, `org_environments`, `org_github_installations`) | the cron's unit lists, the webhook's hook lookup and the GitHub App's lookups before any org is known, or past one (`installationOrgs`, `installationRepoOrgs` — 0053: which orgs an installation serves, and which of them a repository's delivery goes to) — ids, an environment key and a repo name |
 | `src/platform/repo.ts` `listPlatformOrgs` (`org_github_installations`) | the superadmin's org list: the GitHub account an org's installation is on — a name |
 | `src/auth/tokens.ts` `resolveToken`; `src/auth/oauth.ts` `resolveOAuthAccessToken`, `exchangeAuthorizationCode`, `refreshAccessToken`, `revokeOAuthToken`, `grantRefusal`, `GRANT_STANDING` | credential lookup by HASH before any org is known (the row names the grant), its standing over the orgs it can reach, and the revoke of the one grant just found |
 | `src/auth/oauth.ts` `listGrants`, `revokeGrant`, `ownGrant`, `setGrantMode` | Connected apps is user-level: a person's own grants across their orgs, keyed by id AND person |
@@ -206,7 +206,7 @@ belongs to) through `src/platform/jobs.ts`, then does its work as that org's `sy
 | repo cron `handleRepoCron` (`src/repo/cron.ts`) | `listEnvUnits` / `listRepoUnits` — every non-suspended org | `systemTenant(p, org, "system")` per unit |
 | digest crons `handleNotificationCron` (`src/notifications/cron.ts`) | `listActiveOrgIds` | the same, per org |
 | `POST /webhook/github/:hookId`, legacy `/webhook/github` (`src/github-hook.ts`) | `hookRepo(p, id)` / `legacyHookRepo(p)` | `systemTenant(p, row.org_id, "github-webhook")` |
-| `POST /webhook/github/app` — the GitHub App's one endpoint (`src/github-app/webhook.ts`, `github-app.md`) | `installationOrg(p, <the delivery's installation id>)` | the same |
+| `POST /webhook/github/app` — the GitHub App's one endpoint (`src/github-app/webhook.ts`, `github-app.md`) | `installationOrgs(p, <the delivery's installation id>)` for the installation's own events, `installationRepoOrgs(p, <installation id>, <repository>)` for a repository's | the same |
 | Poll now / Poll usage / Sync GitHub (`runLockedRepoRefresh`, `runUsagePolls`, `runBackfill`, `runReconcileJob`) | the caller's `ctx` | `jobTenant(env, ctx)` — that org's system tenant; a bearer context is refused |
 
 **The rotation dispatcher** (`src/repo/dispatch.ts`). The repo trigger keeps its cadence — `health` every

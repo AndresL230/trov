@@ -807,8 +807,7 @@ function enterOrg(slug: string, hash: string): void {
   // Read once, here — the address bar is rewritten below, so a reload does not say it again.
   const github = query.get("github");
   if (isGithubConnectOutcome(github)) {
-    const missing = /^[1-9][0-9]{0,5}$/.test(query.get("missing") ?? "") ? Number(query.get("missing")) : undefined;
-    state.org.githubNotice = { outcome: github, accounts: (query.get("accounts") ?? "").split(",").filter((a) => GITHUB_LOGIN_RE.test(a)).slice(0, 10), ...(missing ? { missing } : {}) };
+    state.org.githubNotice = { outcome: github, accounts: (query.get("accounts") ?? "").split(",").filter((a) => GITHUB_LOGIN_RE.test(a)).slice(0, 10) };
   }
   // A return the guided setup itself sent away — to link a GitHub account, or to connect the GitHub
   // App — comes back to the setup, not to the screen the server names (welcome-actions.ts). Once.

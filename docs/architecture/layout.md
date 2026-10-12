@@ -127,6 +127,9 @@
   quantity): `docs/architecture/billing.md`.
   A plan given for free until a date (`src/plans/gifts.ts`, `0048_plan_gifts` — `orgs.plan_gift_until`,
   `org_grants.gift_days`; expired by the repo cron's every tick): `docs/architecture/plans.md` › Gifts.
+  One GitHub App installation in several orgs, each reaching what its admin can read
+  (`0053_installation_repos` — the installation index is no longer unique; `repo_access` and
+  `org_github_installation_repos`; the cross-org lookups in `src/platform/jobs.ts`): `docs/architecture/github-app.md` › One installation, several orgs.
   Which organization an MCP call acts in (`0051_mcp_connection_orgs` — `oauth_grants.mode`, the tenant table
   `oauth_grant_orgs`; `src/data/bearer.ts` holds the rule, `shared/repo-ref.ts` the one spelling of a
   repository, `src/mcp.ts` `buildConnectionMcpServer` the per-call resolution; Settings › MCP access in

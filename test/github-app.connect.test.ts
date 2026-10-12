@@ -73,6 +73,9 @@ async function everything(): Promise<string> {
     identities: await all(env.DB, `SELECT * FROM identities ORDER BY provider, subject`),
   });
 }
+/** What ORG_B's `selected` binding reaches. */
+const reach = () => all<{ repo_full_name: string; private: number }>(env.DB,
+  `SELECT repo_full_name, private FROM org_github_installation_repos WHERE org_id = ? ORDER BY repo_full_name`, ORG_B);
 const bindings = () => all<{ org_id: string; installation_id: number; account_login: string; connected_by: string; removed_at: string | null }>(env.DB,
   `SELECT org_id, installation_id, account_login, connected_by, removed_at FROM org_github_installations ORDER BY id`);
 
@@ -145,7 +148,7 @@ describe("GET /auth/callback — GitHub's return after an install", () => {
       { org_id: ORG_B, installation_id: INSTALL, account_login: "acme-gh", account_id: "77", account_type: "Organization", repository_selection: "all", connected_by: "olive", suspended_at: null, removed_at: null },
     ]);
     expect(await all(env.DB, `SELECT org_id, actor, action, target, detail FROM org_admin_audit WHERE action LIKE 'github.%'`)).toEqual([
-      { org_id: ORG_B, actor: "olive", action: "github.connect", target: "acme-gh", detail: JSON.stringify({ installation_id: INSTALL, account_type: "Organization", repository_selection: "all" }) },
+      { org_id: ORG_B, actor: "olive", action: "github.connect", target: "acme-gh", detail: JSON.stringify({ installation_id: INSTALL, account_type: "Organization", repository_selection: "all", repo_access: "all" }) },
     ]);
     // The org's repositories: the one the installation can see is now `app`; the other is untouched.
     expect(await all(env.DB, `SELECT repo_full_name, connection FROM org_repos WHERE org_id = ? ORDER BY repo_full_name`, ORG_B)).toEqual([
@@ -265,35 +268,39 @@ describe("GET /auth/callback — GitHub's return after an install", () => {
     expect(await everything()).toBe(before);
   });
 
-  it("an installation already connected to ANOTHER Trov org is refused; a different one for THIS org replaces its connection", async () => {
+  it("an installation already connected to ANOTHER Trov org is bound here too, through every check; a different one for THIS org replaces its connection", async () => {
     const cookie = await olive();
     const gh = world();
     gh.world.installations[502] = { account: { login: "olive", id: 9001, type: "User" }, repos: [{ full_name: "olive/dotfiles" }] };
     gh.world.reachable = [INSTALL, 502];
     await seedInstallation(ORG_A, INSTALL, "acme-gh");
+    // The other org holding it buys no shortcut: someone who reads none of it is refused exactly as before.
     const before = await everything();
-    const a = await start(cookie);
-    expect(landed(await callback(gh, { code: "abc", installation_id: String(INSTALL), setup_action: "install", state: stateOf(a.res) }, [cookie, a.install]))).toBe(repos("taken"));
+    gh.world.userRepos = { [INSTALL]: [] };
+    const r = await start(cookie);
+    expect(landed(await callback(gh, { code: "abc", installation_id: String(INSTALL), setup_action: "install", state: stateOf(r.res) }, [cookie, r.install]))).toBe(repos("no_access"));
     expect(await everything()).toBe(before);
-    // Even while the org that holds it is suspended.
-    await run(env.DB, `UPDATE orgs SET suspended_at = '2026-10-07T00:00:00Z', suspended_by = 'x' WHERE id = ?`, ORG_A);
-    const b = await start(cookie);
-    expect(landed(await callback(gh, { code: "abc", installation_id: String(INSTALL), setup_action: "install", state: stateOf(b.res) }, [cookie, b.install]))).toBe(repos("taken"));
-    await run(env.DB, `UPDATE orgs SET suspended_at = NULL, suspended_by = NULL WHERE id = ?`, ORG_A);
-    // This org connects another one; a different installation then takes its place (the admin chose
-    // another GitHub account) — the old binding is ended as `disconnected`, never left beside the new.
+    gh.world.userRepos = {};
+    // One GitHub account's installation, two Trov orgs (0053_installation_repos): each has its own row,
+    // and the first org's is untouched.
+    const a = await start(cookie);
+    expect(landed(await callback(gh, { code: "abc", installation_id: String(INSTALL), setup_action: "install", state: stateOf(a.res) }, [cookie, a.install]))).toBe(repos("connected"));
+    expect((await bindings()).map((x) => [x.org_id, x.installation_id, x.removed_at])).toEqual([[ORG_A, INSTALL, null], [ORG_B, INSTALL, null]]);
+    // A different installation then takes its place IN THIS ORG (the admin chose another GitHub
+    // account) — the old binding is ended as `disconnected`, never left beside the new; org A keeps its own.
     const c = await start(cookie);
     expect(landed(await callback(gh, { code: "abc", installation_id: "502", setup_action: "install", state: stateOf(c.res) }, [cookie, c.install]))).toBe(repos("connected"));
+    expect((await bindings()).map((x) => [x.org_id, x.installation_id, x.removed_at === null])).toEqual([[ORG_A, INSTALL, true], [ORG_B, INSTALL, false], [ORG_B, 502, true]]);
     await run(env.DB, `UPDATE org_github_installations SET removed_at = '2026-10-07T00:00:00Z', removed_reason = 'disconnected' WHERE org_id = ?`, ORG_A);
     const d = await start(cookie);
     expect(landed(await callback(gh, { code: "abc", installation_id: String(INSTALL), setup_action: "install", state: stateOf(d.res) }, [cookie, d.install]))).toBe(repos("connected"));
     expect((await bindings()).filter((r) => r.removed_at === null)).toEqual([{ org_id: ORG_B, installation_id: INSTALL, account_login: "acme-gh", connected_by: "olive", removed_at: null }]);
-    expect(await all(env.DB, `SELECT installation_id, removed_reason FROM org_github_installations WHERE org_id = ? AND removed_at IS NOT NULL`, ORG_B)).toEqual([{ installation_id: 502, removed_reason: "disconnected" }]);
-    expect((await all<{ action: string }>(env.DB, `SELECT action FROM org_admin_audit WHERE org_id = ? AND action LIKE 'github.%' ORDER BY id`, ORG_B)).map((r) => r.action)).toEqual(["github.connect", "github.disconnect", "github.connect"]);
+    expect(await all(env.DB, `SELECT installation_id, removed_reason FROM org_github_installations WHERE org_id = ? AND removed_at IS NOT NULL`, ORG_B)).toEqual([{ installation_id: INSTALL, removed_reason: "disconnected" }, { installation_id: 502, removed_reason: "disconnected" }]);
+    expect((await all<{ action: string }>(env.DB, `SELECT action FROM org_admin_audit WHERE org_id = ? AND action LIKE 'github.%' ORDER BY id`, ORG_B)).map((r) => r.action)).toEqual(["github.connect", "github.disconnect", "github.connect", "github.disconnect", "github.connect"]);
     // The same installation again (an "update" return) refreshes it: still one live row, no further audit row.
     const f = await start(cookie);
     expect(landed(await callback(gh, { code: "abc", installation_id: String(INSTALL), setup_action: "update", state: stateOf(f.res) }, [cookie, f.install]))).toBe(repos("connected"));
-    expect(await all(env.DB, `SELECT action FROM org_admin_audit WHERE org_id = ? AND action = 'github.connect'`, ORG_B)).toHaveLength(2);
+    expect(await all(env.DB, `SELECT action FROM org_admin_audit WHERE org_id = ? AND action = 'github.connect'`, ORG_B)).toHaveLength(3);
   });
 
   it("GitHub not answering, a suspended installation, or App credentials GitHub refuses — nothing is connected", async () => {
@@ -380,24 +387,32 @@ describe("no escalation: the installation's repository ids must ALL be ones the 
     expect(gh.seen.find((s) => s.url.includes(`/user/installations/${INSTALL}/repositories`))!.auth).toBe(`Bearer ${USER_TOKEN}`);
   });
 
-  it("a missing id is refused with a COUNT and no repository's name; nothing is written", async () => {
+  it("reading NONE of it is refused and nothing is written; reading SOME binds exactly those (`selected`)", async () => {
     const cookie = await olive();
     const before = await everything();
-    const to = await attempt(cookie, world({ userRepos: { [INSTALL]: ["acme-gh/app"] } })); // a collaborator on one of the two
-    expect(to).toBe(repos("partial_access&missing=1"));
-    expect(to).not.toMatch(/docs|acme-gh/);
     // GitHub's 404 for the user's view means they read none of it.
-    expect(await attempt(cookie, world({ userRepos: { [INSTALL]: [] } }))).toBe(repos("partial_access&missing=2"));
+    expect(await attempt(cookie, world({ userRepos: { [INSTALL]: [] } }))).toBe(repos("no_access"));
     expect(await everything()).toBe(before);
+    const to = await attempt(cookie, world({ userRepos: { [INSTALL]: ["acme-gh/app"] } })); // a collaborator on one of the two
+    expect(to).toBe(repos("connected"));
+    expect(await all(env.DB, `SELECT repo_access FROM org_github_installations WHERE org_id = ?`, ORG_B)).toEqual([{ repo_access: "selected" }]);
+    expect(await reach()).toEqual([{ repo_full_name: "acme-gh/app", private: 0 }]);
+    const audit = await first<{ detail: string }>(env.DB, `SELECT detail FROM org_admin_audit WHERE action = 'github.connect'`);
+    expect(JSON.parse(audit!.detail)).toMatchObject({ repo_access: "selected", repositories: 1 });
+    // Connecting again as someone who reads the OTHER one adds it: nothing the binding reached is taken away.
+    expect(await attempt(cookie, world({ userRepos: { [INSTALL]: ["acme-gh/docs"] } }))).toBe(repos("connected"));
+    expect(await reach()).toEqual([{ repo_full_name: "acme-gh/app", private: 0 }, { repo_full_name: "acme-gh/docs", private: 1 }]);
   });
 
-  it("EQUAL COUNTS, different repositories: refused — the case a count comparison lets through", async () => {
+  it("EQUAL COUNTS, different repositories: never `all` — the case a count comparison lets through", async () => {
     const cookie = await olive();
     const before = await everything();
-    // Two of the installation's, two the account reads — but one of the account's is some other repository.
-    expect(await attempt(cookie, world({ userRepos: { [INSTALL]: ["acme-gh/app", 31337] } }))).toBe(repos("partial_access&missing=1"));
-    expect(await attempt(cookie, world({ userRepos: { [INSTALL]: [31337, 31338] } }))).toBe(repos("partial_access&missing=2"));
+    // Two of the installation's, two the account reads — but neither of the account's is the installation's.
+    expect(await attempt(cookie, world({ userRepos: { [INSTALL]: [31337, 31338] } }))).toBe(repos("no_access"));
     expect(await everything()).toBe(before);
+    // One of the account's is some other repository: the binding reaches the one that is the installation's.
+    expect(await attempt(cookie, world({ userRepos: { [INSTALL]: ["acme-gh/app", 31337] } }))).toBe(repos("connected"));
+    expect(await reach()).toEqual([{ repo_full_name: "acme-gh/app", private: 0 }]);
   });
 
   it("both lists are read to the end, page by page", async () => {
@@ -412,18 +427,27 @@ describe("no escalation: the installation's repository ids must ALL be ones the 
     await run(env.DB, `DELETE FROM org_admin_audit WHERE action LIKE 'github.%'`);
     const short = world({ installations: big(250) });
     short.world.userRepos[INSTALL] = short.world.installations[INSTALL].repos.slice(0, 249).map((r) => r.full_name);
-    expect(await attempt(cookie, short)).toBe(repos("partial_access&missing=1"));
-    expect(await bindings()).toEqual([]);
+    expect(await attempt(cookie, short)).toBe(repos("connected"));
+    expect(await all(env.DB, `SELECT repo_access FROM org_github_installations WHERE org_id = ?`, ORG_B)).toEqual([{ repo_access: "selected" }]);
+    expect(await reach()).toHaveLength(249);
   });
 
-  it(`the cap: ${REPO_ID_PAGES} pages (1,000 repositories) are checked; one more is refused with what to do, after ONE request`, async () => {
+  it(`the cap: ${REPO_ID_PAGES} pages (1,000 repositories) are checked; an account that reads more is refused with what to do, after ONE request of each list`, async () => {
     const cookie = await olive();
     const before = await everything();
     const over = world({ installations: big(REPO_ID_PAGES * 100 + 1) });
     expect(await attempt(cookie, over)).toBe(repos("too_many_repos"));
     expect(pagesOf(over, "/installation/repositories")).toEqual(["?per_page=100&page=1"]); // GitHub's own count said so
-    expect(over.seen.some((s) => s.url.includes(`/user/installations/${INSTALL}/repositories`))).toBe(false);
+    expect(pagesOf(over, `/user/installations/${INSTALL}/repositories`)).toEqual(["?per_page=100&page=1"]);
     expect(await everything()).toBe(before);
+    // An installation past the cap cannot be shown to be read in full — but an account that reads a
+    // few of its repositories is bound to those.
+    const few = world({ installations: big(REPO_ID_PAGES * 100 + 1) });
+    few.world.userRepos[INSTALL] = ["acme-gh/r0", "acme-gh/r7"];
+    expect(await attempt(cookie, few)).toBe(repos("connected"));
+    expect(await reach()).toEqual([{ repo_full_name: "acme-gh/r0", private: 1 }, { repo_full_name: "acme-gh/r7", private: 1 }]);
+    await run(env.DB, `DELETE FROM org_github_installation_repos`);
+    await run(env.DB, `DELETE FROM org_github_installations`);
     // A list that keeps going past the cap without ever reaching its count is refused the same way.
     const endless = (async (input: RequestInfo | URL) => {
       const page = Number(new URL(String(input)).searchParams.get("page"));
@@ -463,9 +487,9 @@ describe("no escalation: the installation's repository ids must ALL be ones the 
     expect(await everything()).toBe(before);
     // The two lists themselves, directly.
     const stub = (body: unknown, status = 200) => (async () => new Response(JSON.stringify(body), { status })) as typeof fetch;
-    expect(await installationRepoIds("t", stub({ total_count: 0, repositories: [] }))).toEqual({ ok: true, ids: new Set() });
+    expect(await installationRepoIds("t", stub({ total_count: 0, repositories: [] }))).toEqual({ ok: true, ids: new Set(), repos: [] });
     expect(await installationRepoIds("t", stub({}, 404))).toEqual({ ok: false, reason: "failed" });
-    expect(await userInstallationRepoIds("t", 9, stub({}, 404))).toEqual({ ok: true, ids: new Set() });
+    expect(await userInstallationRepoIds("t", 9, stub({}, 404))).toEqual({ ok: true, ids: new Set(), repos: [] });
     expect(await userInstallationRepoIds("t", 9, stub({}, 403))).toEqual({ ok: false, reason: "failed" });
   });
 
@@ -476,10 +500,14 @@ describe("no escalation: the installation's repository ids must ALL be ones the 
     gh.world.reachable = [502];
     const before = await everything();
     gh.world.userRepos[502] = ["olive/dotfiles"]; // (what GitHub would say of a collaborator on one of them)
-    expect(await attempt(cookie, gh, 502)).toBe(repos("partial_access&missing=1"));
-    expect(await everything()).toBe(before);
+    expect(await attempt(cookie, gh, 502)).toBe(repos("connected"));
+    expect(await everything()).not.toBe(before);
+    expect(await reach()).toEqual([{ repo_full_name: "olive/dotfiles", private: 0 }]);
+    // Connecting again as someone who reads all of it widens the binding, and the list is dropped.
     gh.world.userRepos = {};
     expect(await attempt(cookie, gh, 502)).toBe(repos("connected"));
+    expect(await all(env.DB, `SELECT repo_access FROM org_github_installations WHERE org_id = ?`, ORG_B)).toEqual([{ repo_access: "all" }]);
+    expect(await reach()).toEqual([]);
     expect(gh.seen.some((s) => s.url.includes("/user/installations/502/repositories"))).toBe(true); // no exemption: it was asked
   });
 });
@@ -516,18 +544,15 @@ describe("the GitHub user token is revoked once the decision is made", () => {
     const cookie = await olive();
     const boss = await cookieFor("boss", { member: false });
     await ensureMember("boss", "owner", ORG_B);
-    await seedInstallation(ORG_A, 503, "taken-co");
     const before = await everything();
-    const taken = { account: { login: "taken-co", id: 79, type: "Organization" as const }, repos: [{ full_name: "taken-co/x" }] };
     const cases: [string, FakeApp, string, string?, ((c: string, install: string | null) => (string | null)[])?][] = [
       ["wrong_person", world(), "wrong_person", undefined, (_c, install) => [boss, install]],
       ["wrong_account", world({ user: { login: "mallory", id: 666 } }), "wrong_account"],
       ["GitHub does not list installations", world({ intercept: (s) => (s.url.includes("/user/installations?") ? new Response("{}", { status: 502 }) : undefined) }), "github_failed"],
       ["not_yours", world(), "not_yours", "777"],
-      ["taken", world({ installations: { 503: taken }, reachable: [503] }), "taken", "503"],
       ["suspended", world({ installations: { [INSTALL]: { ...structuredClone(ACME), suspended: true } } }), "suspended"],
       ["the App's credentials refused", world({ badAppCredentials: true }), "not_configured"],
-      ["partial_access", world({ userRepos: { [INSTALL]: ["acme-gh/app"] } }), "partial_access&missing=1"],
+      ["no_access", world({ userRepos: { [INSTALL]: [] } }), "no_access"],
       ["too_many_repos", world({ installations: { [INSTALL]: { ...structuredClone(ACME), repos: Array.from({ length: 1001 }, (_, i) => ({ full_name: `acme-gh/r${i}` })) } } }), "too_many_repos"],
       ["a thrown fetch mid-flow", world({ intercept: (s) => { if (s.url.endsWith("/user")) throw new Error("boom"); return undefined; } }), "github_failed"],
     ];
@@ -668,7 +693,7 @@ describe("linking an installation that already exists (?existing=1)", () => {
     expect(typeof exchange.redirect_uri).toBe("string");
   });
 
-  it("none reachable, all taken, several to choose from, and a chosen account", async () => {
+  it("none reachable, several to choose from, and a chosen account — one another org holds is as good as a free one", async () => {
     const cookie = await olive();
     expect(landed(await link(cookie, world({ reachable: [] })))).toBe(repos("none_found"));
     const gh = world();
@@ -677,20 +702,21 @@ describe("linking an installation that already exists (?existing=1)", () => {
     expect(landed(await link(cookie, gh))).toBe(`/acme/?github=choose&accounts=acme-gh,olive#org/repos`);
     expect(await bindings()).toEqual([]);
     expect(landed(await link(cookie, gh, "&account=nobody"))).toBe(repos("none_found"));
-    // One of the two belongs to another org: the free one is the only candidate.
+    // One of the two is connected to another org too: it is still offered, and still bindable.
     await seedInstallation(ORG_A, INSTALL, "acme-gh");
-    expect(landed(await link(cookie, gh, "&account=acme-gh"))).toBe(repos("taken"));
-    expect(landed(await link(cookie, gh))).toBe(repos("connected"));
-    expect((await bindings()).filter((r) => r.org_id === ORG_B)).toEqual([{ org_id: ORG_B, installation_id: 502, account_login: "olive", connected_by: "olive", removed_at: null }]);
+    expect(landed(await link(cookie, gh))).toBe(`/acme/?github=choose&accounts=acme-gh,olive#org/repos`);
+    expect(landed(await link(cookie, gh, "&account=acme-gh"))).toBe(repos("connected"));
+    expect((await bindings()).filter((r) => r.org_id === ORG_B)).toEqual([{ org_id: ORG_B, installation_id: INSTALL, account_login: "acme-gh", connected_by: "olive", removed_at: null }]);
+    expect((await bindings()).filter((r) => r.org_id === ORG_A && r.removed_at === null)).toHaveLength(1);
   });
 
-  it("the wrong person, the wrong GitHub account and a partial reader are refused here too; a connect transaction without our cookie binds nothing", async () => {
+  it("the wrong person, the wrong GitHub account and someone who reads none of it are refused here too; a connect transaction without our cookie binds nothing", async () => {
     const cookie = await olive();
     const other = await cookieFor("boss", { member: false });
     await ensureMember("boss", "owner", ORG_B);
     const before = await everything();
     expect(landed(await link(cookie, world({ user: { login: "mallory", id: 666 } })))).toBe(repos("wrong_account"));
-    expect(landed(await link(cookie, world({ userRepos: { [INSTALL]: ["acme-gh/app"] } })))).toBe(repos("partial_access&missing=1"));
+    expect(landed(await link(cookie, world({ userRepos: { [INSTALL]: [] } })))).toBe(repos("no_access"));
     const gh = world();
     const s = await start(cookie, "?existing=1");
     const state = new URL(landed(s.res)).searchParams.get("state")!;

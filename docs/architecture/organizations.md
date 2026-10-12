@@ -171,10 +171,12 @@ For the steps skipped, **Org settings** opens with
 4. **Invite your team** — next section.
 
 **Who can connect it, and what can go wrong.** An admin or an owner, with the GitHub account linked to
-their Trov account, which must be able to read every repository the installation covers. If a GitHub
+their Trov account, which must be able to read at least one repository the installation covers: the
+organization can then use exactly the repositories that person can read (all of them, for an owner of the
+GitHub account). If a GitHub
 organization's owner has to approve the App first, Repositories says the request is pending and nothing is
-connected until they do. An organization connects one GitHub account at a time; an installation belongs to
-one Trov organization. *Disconnect* ends it in Trov and leaves the App installed on GitHub. If the App is
+connected until they do. An organization connects one GitHub account at a time; several Trov organizations may
+connect the same GitHub account, and track the same repository. *Disconnect* ends it in Trov and leaves the App installed on GitHub. If the App is
 suspended or uninstalled on GitHub, or stops seeing a tracked repository, Org settings says so. Events are
 captured for the **primary** repository only.
 

@@ -169,6 +169,7 @@ describe("which org — and only that org", () => {
     await twoOrgs();
     // B lets its installation go; A's is untouched. The freed installation is then connected by A's neighbour… to nobody yet.
     await run(env.DB, `UPDATE org_github_installations SET removed_at = ?, removed_reason = 'disconnected' WHERE org_id = ?`, nowIso(), ORG_B);
+    await run(env.DB, `UPDATE org_repos SET connection = 'manual' WHERE org_id = ?`, ORG_B); // as `endInstallation` leaves them: held by hand
     const before = await everything();
     expect((await deliver("pull_request", pr(REPO_B, INST_B))).status).toBe(202); // an ended binding is no binding
     expect(await everything()).toBe(before);

@@ -70,6 +70,53 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // One GitHub account, several Trov organizations: repositories split between orgs (#170).
+  {
+    version: "0.29",
+    date: "2026-10-11",
+    title: "One GitHub account, several organizations",
+    headline: "Several Trov organizations can connect the same GitHub account, track the same repository, and connect with whatever repositories their admin can read.",
+    highlights: [
+      "More than one organization can connect the same GitHub account through the Trov App. Before, the first organization to connect an account kept it, and a second one had to paste a token and add a webhook by hand.",
+      "Several organizations can track the same repository. Each gets its own copy of that repository's pull requests, checks and deploys, and nothing in one organization says who else tracks it.",
+      "You no longer need to read every repository of a GitHub account to connect it. Connect with the repositories you can read: your organization can then use exactly those. An owner of the GitHub account still gets all of them.",
+      "When an organization is connected with part of an account, Repositories lists only that part and says whose access it is. Got access to more on GitHub since? Choose Connect again to add them.",
+      "Disconnecting GitHub in one organization leaves the others connected. Uninstalling the Trov App on GitHub ends the connection for every organization that used it, and each is told.",
+      "Getting ready for Claude on the web: connecting from claude.ai preselects Manual, so the connection works in the organization you pick, and handoffs, prompts and artifacts no longer assume a code repository. An agent with no shell can open and add image, PDF and file artifacts up to 1 MB.",
+    ],
+    headsUp: [
+      "An organization still captures events for its primary repository only. Other tracked repositories are listed and resolve links, as before.",
+      "What an organization can read is checked when its admin connects, not again later. To drop access someone no longer has on GitHub, disconnect and connect again.",
+      "Claude on the web has not been tried against Trov yet. There, a file over 1 MB can be linked but not opened or uploaded, and a picture you attach in the chat usually cannot be passed on to Trov.",
+      "A connection that says \"cannot read N of the repositories\" no longer happens: it now connects with the repositories you can read. With none, it says so and connects nothing.",
+    ],
+    ops: [
+      "Migration `0053_installation_repos` (applied on merge): the index on an installation stops being unique, `org_github_installations` gains `repo_access` (default `all`, which is what every existing connection is), and the table `org_github_installation_repos` is added. No table is rebuilt and no row changes. Rollback is in the file's header. No secret, no trigger, no change on GitHub.",
+    ],
+    patches: {
+      added: [
+        "`0053_installation_repos`: `idx_org_github_installations_installation` is no longer unique (several orgs may bind one installation; `idx_org_github_installations_org` stays); `org_github_installations.repo_access` (`all` | `selected`); `org_github_installation_repos` (what a `selected` binding reaches: GitHub's id, the name, private or not) (#171)",
+        "`src/platform/jobs.ts`: `installationOrgs` (every org bound to an installation) and `installationRepoOrgs` (every bound org that tracks a repository and whose binding reaches it). `installationOrg` is gone (#171)",
+        "`src/github-app/store.ts`: `allowedRepos` / `repoAllowed`, and `bindInstallation` takes what the connect flow found readable; connecting again adds to a `selected` list or widens it to `all`, never narrows (#171)",
+        "`GithubInstallationDTO.repo_access`; Repositories says whose access a `selected` connection carries and links Connect again (`web/src/github-app.ts`) (#171)",
+        "`content_base64` on `upload_asset` (artifact and doc image) and `artifact_update`, and `include_file` on `artifact_get` (an image block or an embedded resource; `file` says what happened): binary bytes inside the call, ≤ `ARTIFACT_INLINE_BINARY_MAX` (1 MB), through the same token mint and consume as a PUT (`src/tools/artifacts-agent.ts`, `src/mcp.ts`) (#171)",
+        "`test/github-app.shared.test.ts`: two orgs on one installation and on one repository, and a `selected` org through the webhook, the picker, Disconnect and the token (#171)",
+      ],
+      changed: [
+        "The connect flow no longer refuses an installation another org holds, nor an account that reads only part of it: check 5 now decides `all` or `selected` (the readable repositories, by id), and refuses only an account that reads none (`no_access`, which replaces `partial_access`). `?existing=1` offers every reachable installation (`src/github-app/connect.ts`) (#171)",
+        "An installation past 1,000 repositories is connected as `selected` when the account reads 1,000 or fewer of them; `too_many_repos` is now about what the ACCOUNT reads (#171)",
+        "`POST /webhook/github/app`: `installation` and `installation_repositories` events are applied to every org bound to the installation; a repository's event is captured once in every org that tracks it as its primary and reaches it (`src/github-app/webhook.ts`) (#171)",
+        "`visibleRepos`, and so the picker, `POST …/github/repositories` and `syncRepoAccess`, are cut to what the org's binding reaches (`src/github-app/repos.ts`) (#171)",
+        "`resolveGithubCredential` / `githubCredentialSource`: the installation does not answer for a repository outside a `selected` binding's list; the stored token does, if there is one (`src/github-app/credential.ts`) (#171)",
+        "The connect outcome `taken` is replaced by `conflict` (two connects racing for one org) (#171)",
+        "The MCP consent page preselects and recommends Manual for a client that returns to `claude.ai` / `claude.com` (`isWebClient`, `src/auth/oauth-pages.ts`): such an app is in no repository to follow (#171)",
+        "Tool descriptions say what to do with no checkout and no shell: `send_handoff`, `claim_handoff`, `save_prompt`, `artifact_get`, `upload_asset`, the shared `repo` argument, and the `repo_required` refusal (`src/mcp.ts`, `src/data/bearer.ts`) (#171)",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [171],
+  },
   // Embedded checkout: pay inside Trov's own card instead of on Stripe's page. OFF until Trov turns it on (#136).
   {
     version: "0.28",

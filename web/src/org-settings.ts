@@ -43,6 +43,7 @@ import { notificationsAdminSections, notifDropdowns, type NotifAdminProps } from
 import { orgLogoSection, initialOrgLogoUi, type OrgLogoUi } from "./org-logo";
 import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, githubAppRow, githubLink, lostBanner, mismatchBanner, repoPicker, suspendedBanner, type GithubNotice } from "./github-app";
 import type { GithubAppStatusDTO, GithubReposDTO } from "@shared/github-app";
+import { githubInstallHref } from "./api";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -374,7 +375,10 @@ export function reposTab(org: MyOrg, ui: OrgUi): string {
     ? `${orgHead("Connected", "", repos.length)}<ul${surface(LIST)}>${rows}</ul>`
     : inst ? ""
     : orgEmpty("No repository connected", admin ? (offered ? "Connect GitHub and pick the repository your team ships from. Trov reads its deployments, checks, pull requests and issues." : "Add the repository your team ships from. Trov reads its deployments, checks, pull requests and issues.") : "An admin has not connected a repository yet.", "", 2);
-  const picker = admin && inst && live ? repoPicker(ui.githubRepos, inst.account_login, { filter: ui.githubFilter, busy: ui.githubBusy, }) : "";
+  const picker = admin && inst && live ? repoPicker(ui.githubRepos, inst.account_login, {
+    filter: ui.githubFilter, busy: ui.githubBusy,
+    ...(inst.repo_access === "selected" ? { selected: { by: inst.connected_by, href: githubInstallHref(org.slug, { existing: true, account: inst.account_login }) } } : {}),
+  }) : "";
   const appRow = inst ? `<section aria-labelledby="org-gh-conn" data-org-group="github-app">
       ${orgHead("Connection", "", null, "org-gh-conn")}
       <ul${surface(LIST)}>${githubAppRow(inst, { open: ui.openRows.includes("github-app"), admin, tracked: repos.filter(viaApp).length, test: ui.tests.github_app, busy: ui.confirm?.what === "github" })}</ul>

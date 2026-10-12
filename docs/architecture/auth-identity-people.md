@@ -79,7 +79,9 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   PKCE, a server-rendered consent page shown on EVERY authorization (CSRF = HMAC over session + request).
   **The consent page asks how the connection picks an organization** (0051; `consentPage`, no script — the
   org list shows and hides on which mode radio is checked): *Follow the repository* (recommended and
-  preselected when the person has several orgs: "works in whichever of your organizations has the repository
+  preselected when the person has several orgs — except for a client in a browser tab, `isWebClient`: a
+  redirect to `claude.ai` / `claude.com`, a claude.ai custom connector, which is in no repository, so
+  *Manual* is preselected and recommended there and the row says why: "works in whichever of your organizations has the repository
   you are in connected; anywhere else it reads and writes nothing") or *Manual* (a tick per organization — all
   ticked up to `CONSENT_TICK_ALL_MAX`, at least one required — and which one it "starts here"; with one org it
   is named and sent hidden). Above the choice the page says WHO is approving — "Signed in as <name>

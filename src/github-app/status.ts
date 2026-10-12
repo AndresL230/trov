@@ -13,6 +13,7 @@ const installationDTO = (row: InstallationRow, admin: boolean): GithubInstallati
   account_login: row.account_login,
   account_type: row.account_type,
   repository_selection: row.repository_selection,
+  repo_access: row.repo_access,
   connected_by: row.connected_by,
   connected_at: row.connected_at,
   suspended_at: row.suspended_at,

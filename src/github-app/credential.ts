@@ -21,7 +21,7 @@ import type { Env } from "../env";
 import { Secret, SecretAccessError, markSecretUsed, recordSecretOutcome, resolveCredential, type Revealed } from "../data/secrets";
 import type { TenantContext } from "../data/sql";
 import { INSTALLATION_SCOPE, appCanSign, forgetInstallationToken, installationToken, repoScope, type AppRefusal, type TokenScope } from "./api";
-import { endInstallation, liveInstallation, markInstallationUsed, recordInstallationOutcome, setInstallationSuspended, type InstallationRow } from "./store";
+import { endInstallation, liveInstallation, markInstallationUsed, recordInstallationOutcome, repoAllowed, setInstallationSuspended, type InstallationRow } from "./store";
 
 export type GithubCredentialSource = "app" | "token";
 export type CredentialOutcome = { ok: true } | { ok: false; message: string; revealed: Revealed };
@@ -95,10 +95,16 @@ function tokenCredential(ctx: TenantContext, token: Secret): GithubCredential {
 }
 
 /** Step 1 of the order, before any token is asked for: the org's live, unsuspended installation, when
- *  the App can sign and the installation's account owns `repo`. */
+ *  the App can sign, the installation's account owns `repo` — and the org's binding reaches that
+ *  repository (0053_installation_repos: a `selected` binding reaches only what the admin who connected
+ *  it could read, so the installation's token is never minted for anything else, whatever name is
+ *  typed). A repository outside it may still be read with the org's stored token, as a repository of
+ *  any other account is. */
 async function answeringInstallation(ctx: TenantContext, env: Env, repo: string | null | undefined): Promise<InstallationRow | null> {
   const row = appCanSign(env) ? await liveInstallation(ctx) : null;
-  return row && row.suspended_at === null && covers(row, repo) ? row : null;
+  if (!row || row.suspended_at !== null || !covers(row, repo)) return null;
+  if (repo && !(await repoAllowed(ctx, row, repo))) return null;
+  return row;
 }
 
 /**

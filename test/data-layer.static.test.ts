@@ -101,7 +101,7 @@ const PLATFORM_ALLOW: Allow[] = [
   // Background work is per org (§8.3, §8.5): the cron's dispatcher lists its units — (org, environment)
   // and org-with-a-primary-repo — and a webhook delivery finds its org by hook id, BEFORE any org is
   // known. Ids, an environment key and a repo name only; everything after runs as that org's tenant.
-  { file: "src/platform/jobs.ts", fn: "*", tables: ["org_repos", "org_environments", "org_github_installations"], why: "the cron's unit lists, the webhook's hook lookup and the GitHub App's installation → org lookup — ids and a repo name, no content, no secret" },
+  { file: "src/platform/jobs.ts", fn: "*", tables: ["org_repos", "org_environments", "org_github_installations", "org_github_installation_repos"], why: "the cron's unit lists, the webhook's hook lookup and the GitHub App's lookups (which orgs an installation serves, and which of them a repository's delivery goes to) — ids and a repo name, no content, no secret" },
   // The superadmin's org list says which GitHub account each org's App installation is on (0043_github_app): a name.
   { file: "src/platform/repo.ts", fn: "listPlatformOrgs", tables: ["org_github_installations"], why: "the superadmin's org list: the GitHub account an org is connected through — a name, no token exists in the table" },
   // Removing a member revokes that person's tokens for the org in the same batch as the membership row.

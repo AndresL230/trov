@@ -55,23 +55,41 @@ export function legacyHookRepo(p: PlatformContext): Promise<HookRepo | null> {
       WHERE r.legacy_hook = 1 AND o.suspended_at IS NULL ORDER BY r.created_at, r.id LIMIT 1`);
 }
 
-// ── the GitHub App: which org an installation is connected to (0043_github_app) ──
+// ── the GitHub App: which orgs an installation is connected to (0043_github_app, 0053_installation_repos) ──
 
 export interface InstallationOrg { org_id: string; org_slug: string; org_suspended: number }
 
 /**
- * The org a LIVE binding of GitHub installation `installationId` belongs to, or null — the App
- * webhook's and the connect callback's lookup, before any org is known. It returns the org and whether
- * it is suspended, nothing else: the binding itself is then read as that org's tenant
- * (src/github-app/store.ts). A suspended org's binding IS returned (flagged): the connect flow must
- * still see that the installation is taken, and an uninstall on GitHub must still end it — a delivery
- * to CAPTURE is dropped by the caller.
+ * The orgs that hold a LIVE binding of GitHub installation `installationId`, oldest binding first — the
+ * App webhook's lookup, before any org is known. One installation is one GitHub account, and several
+ * orgs may bind it (0053). It returns each org and whether it is
+ * suspended, nothing else: the binding itself is then read as that org's tenant
+ * (src/github-app/store.ts). A suspended org's binding IS returned (flagged): an uninstall on GitHub
+ * must still end it — a delivery to CAPTURE is dropped by the caller.
  */
-export function installationOrg(p: PlatformContext, installationId: number): Promise<InstallationOrg | null> {
-  return first<InstallationOrg>(p,
+export function installationOrgs(p: PlatformContext, installationId: number): Promise<InstallationOrg[]> {
+  return all<InstallationOrg>(p,
     `SELECT i.org_id, o.slug AS org_slug, (o.suspended_at IS NOT NULL) AS org_suspended
        FROM org_github_installations i JOIN orgs o ON o.id = i.org_id
-      WHERE i.installation_id = ? AND i.removed_at IS NULL`, installationId);
+      WHERE i.installation_id = ? AND i.removed_at IS NULL ORDER BY i.id`, installationId);
+}
+
+export interface InstallationRepoOrg extends InstallationOrg { repo_full_name: string; is_primary: number }
+
+/**
+ * The orgs a repository's delivery from installation `installationId` goes to, oldest binding first —
+ * a delivery is routed by its REPOSITORY, to EVERY org that is bound to the installation, tracks
+ * `repo`, and whose binding reaches it: an `all` binding, or a `selected` one that lists the repository
+ * (0053). An org that merely typed the name of a repository its admin cannot read gets nothing.
+ */
+export function installationRepoOrgs(p: PlatformContext, installationId: number, repo: string): Promise<InstallationRepoOrg[]> {
+  return all<InstallationRepoOrg>(p,
+    `SELECT i.org_id, o.slug AS org_slug, (o.suspended_at IS NOT NULL) AS org_suspended, r.repo_full_name, r.is_primary
+       FROM org_github_installations i JOIN orgs o ON o.id = i.org_id JOIN org_repos r ON r.org_id = i.org_id
+      WHERE i.installation_id = ? AND i.removed_at IS NULL AND r.repo_full_name = ?
+        AND (i.repo_access = 'all' OR EXISTS (SELECT 1 FROM org_github_installation_repos a
+              WHERE a.org_id = i.org_id AND a.binding_id = i.id AND a.repo_full_name = r.repo_full_name))
+      ORDER BY i.id`, installationId, repo);
 }
 
 // ── the rotation cursor (`cron_cursor`, 0042_organizations) ──────────────────

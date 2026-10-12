@@ -145,12 +145,21 @@ export const CONSENT_TICK_ALL_MAX = 4;
 
 export interface ConsentChoice { mode: "manual" | "repo"; orgs: string[]; current: string }
 
+/** Where a client that runs in a browser tab sends the person back: claude.ai's custom connectors. Such
+ *  an app has no code checkout, so "the repository you are in" means nothing to it. */
+const WEB_CLIENT_HOSTS = ["claude.ai", "claude.com"];
+export const isWebClient = (redirectHost: string): boolean => {
+  const host = redirectHost.toLowerCase();
+  return WEB_CLIENT_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+};
+
 /** What the page preselects: follow the repository for a person in several organizations (one
- *  connection then works in each of their repositories), manual for a person in one; every organization
- *  ticked when there are few, only the first when there are many; starting in the first. */
-export function defaultConsentChoice(orgs: { slug: string }[]): ConsentChoice {
+ *  connection then works in each of their repositories), manual for a person in one — and for a `web`
+ *  client (`isWebClient`), which has no repository to follow; every organization ticked when there are
+ *  few, only the first when there are many; starting in the first. */
+export function defaultConsentChoice(orgs: { slug: string }[], web = false): ConsentChoice {
   return {
-    mode: orgs.length > 1 ? "repo" : "manual",
+    mode: orgs.length > 1 && !web ? "repo" : "manual",
     orgs: (orgs.length <= CONSENT_TICK_ALL_MAX ? orgs : orgs.slice(0, 1)).map((o) => o.slug),
     current: orgs[0]?.slug ?? "",
   };
@@ -175,7 +184,9 @@ export function consentPage(p: {
   hidden: Record<string, string>; csrf: string; choice?: ConsentChoice; error?: string;
 }): string {
   const one = p.orgs.length === 1 ? p.orgs[0] : null;
-  const choice = p.choice ?? defaultConsentChoice(p.orgs);
+  const web = isWebClient(p.redirectHost);
+  const choice = p.choice ?? defaultConsentChoice(p.orgs, web);
+  const rec = `<span class="rec">Recommended</span>`;
   const inputs = Object.entries({ ...p.hidden, csrf: p.csrf, ...(one ? { org: one.slug, current: one.slug } : {}) })
     .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("");
   const modeRow = (value: "repo" | "manual", title: string, sub: string, badge = "") =>
@@ -183,11 +194,13 @@ export function consentPage(p: {
     + `<span class="mode-text"><span class="org-name">${title}${badge}</span><span class="mode-sub">${sub}</span></span></label>`;
   const modes = `<fieldset class="orgs"><legend class="label">How it picks an organization</legend>`
     + modeRow("repo", "Follow the repository",
-      "Works in whichever of your organizations has the repository you are in connected; anywhere else it reads and writes nothing.",
-      one ? "" : `<span class="rec">Recommended</span>`)
+      web ? "For an agent working inside a code repository. This app is not in one, so it would have to be told the repository each time."
+        : "Works in whichever of your organizations has the repository you are in connected; anywhere else it reads and writes nothing.",
+      one || web ? "" : rec)
     + modeRow("manual", "Manual",
       one ? `Works in <strong>${esc(one.name)}</strong>. If you join another organization, you add it in Settings.`
-        : "Works in the organizations you tick, one at a time. You, or the agent, switch between them.")
+        : "Works in the organizations you tick, one at a time. You, or the agent, switch between them.",
+      web && !one ? rec : "")
     + `</fieldset>`;
   const picker = one ? "" : `<fieldset class="orgs pick"><legend class="label">It may use</legend>`
     + p.orgs.map((o) => `<div class="org"><label class="org-tick"><input type="checkbox" name="org" value="${esc(o.slug)}" form="consent"${choice.orgs.includes(o.slug) ? " checked" : ""}>`

@@ -87,7 +87,15 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   up to `ARTIFACT_INLINE_MAX` = 64 KB — over it `content: null` + `content_omitted: true` unless
   `include_content: true`, and `query`'s assembled body is a one-line pointer instead; `warnings` still see
   the full text; for every kind a `download_url` + `sha256` + `size_bytes` to verify), `upload_asset` / `artifact_update`
-  (text inline; binary returns an absolute `upload_url` the agent PUTs to). All carry `warnings` (never a
+  (text inline; binary returns an absolute `upload_url` the agent PUTs to). **For a client with no shell**
+  (a chat on the web — claude.ai's connector) the bytes travel INSIDE the call, capped at
+  `ARTIFACT_INLINE_BINARY_MAX` (1 MB; a call lands whole in the model's context): `content_base64` on
+  `upload_asset` (an artifact or a doc image) and `artifact_update` is hashed in `artifacts-agent.ts`
+  (`inlineBytes`) and landed through the SAME `mintUploadToken` → `consumeUploadToken` as a PUT, so no rule
+  of the upload is skipped; `artifact_get { include_file: true }` returns the stored bytes beside the
+  metadata — an `image` content block for an image, an embedded `resource` otherwise — read through
+  `readRawByPageId` with the caller as viewer, and `file` says `included` / `too_large` / `text` /
+  `unavailable`. Off by default: Claude Code keeps using `download_url`. All carry `warnings` (never a
   rejection) for `window.claude` / `window.storage` / `api.anthropic.com`, and for a bundled Claude Design
   export (`isBundledExport` — its `blob:` scripts and `new Function` are refused by the raw CSP, so it must be
   flattened; the web create screen shows the same warning as FLATTEN FIRST). `query` has an `artifact` type

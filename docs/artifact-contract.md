@@ -136,6 +136,21 @@ curl -X PUT --data-binary @threat-model.pdf -H "Content-Type: application/pdf" "
 - Until the PUT lands, a new page does not exist to anyone — not even in your own `artifact_get`.
 - Re-uploading bytes identical to the latest version writes nothing.
 
+### With no shell (a chat on the web)
+
+A client that cannot run `curl` — Claude on the web through the connector — moves a binary file inside
+the call instead, up to **1 MB** (`ARTIFACT_INLINE_BINARY_MAX`):
+
+- **Write:** pass `content_base64` (the file's bytes, base64) to `upload_asset` or `artifact_update`
+  instead of `size_bytes` + `sha256`. Trov hashes it and lands it at once → `{ id, slug, url, version,
+  warnings }` (and `unchanged` on an update); for `destination: "doc"` → `{ ref, markdown, uploaded: true }`.
+  There is no `upload_url` and nothing to PUT. An `image` still needs its `content_type`. Send only bytes
+  you actually hold; a larger file needs the PUT.
+- **Read:** `artifact_get { slug, include_file: true }` returns the file beside the metadata — an image
+  as an image the model can look at, a PDF or other file as an embedded resource — and `file` in the
+  metadata says `included`, `too_large` (share `url` with the person), `text` (it is in `content`) or
+  `unavailable`. Leave it off when you can fetch `download_url`: the file lands whole in your context.
+
 ## Downloading (agents)
 
 `artifact_get` hands you a `download_url` for the version you asked for — text and binary alike. Fetch
