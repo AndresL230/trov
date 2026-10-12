@@ -11,7 +11,7 @@
 import type { MyWorkTicket } from "@shared/dashboard";
 import type { RepoDashboard, RepoTone } from "@shared/repo";
 import { TICKET_STATUS_LABEL } from "@shared/tickets-core";
-import { ticketStatusIcon } from "./marks";
+import { ticketStatusIcon, kindMark } from "./marks";
 import type { HandoffView } from "@shared/handoffs";
 import type { ReviewHead } from "./triage-map";
 import { segmented } from "./segmented";
@@ -290,7 +290,7 @@ export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTa
   // Sample data (the Repo screen's "Preview with sample data", session-only)
   // replaces `state.repo` wholesale — there is no live payload left to show
   // instead — so it stays on the tile, but never unlabelled.
-  const sampleTag = repo?.sample ? `<span class="mw-repo-sample" style="font-family:var(--label);font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 45%,transparent);background:color-mix(in srgb,var(--amber) 12%,transparent);border-radius:5px;padding:1px 6px;white-space:nowrap">Sample data</span>` : "";
+  const sampleTag = repo?.sample ? `<span class="mw-repo-sample">${kindMark("Sample data", "warn", 11.5, "Placeholder values from the Repo screen's preview, not this repository's.")}</span>` : "";
   const name = repo?.repo || sampleTag ? `<span style="display:inline-flex;align-items:center;gap:8px;min-width:0">${sampleTag}${repo?.repo ? `<span style="font-family:var(--label);font-size:12px;color:var(--fg-40)">${esc(repo.repo)}</span>` : ""}</span>` : "";
   const head = tileHead("Repo", { act: "goRepo", label: "Dashboard" }, name);
   const tabs = `<div style="padding:10px 16px 12px">${segmented({

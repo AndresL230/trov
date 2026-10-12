@@ -9,7 +9,8 @@ import { detectVars } from "@shared/handoffs";
 import { TAGS } from "@shared/vocabulary";
 import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import type { PersonSummary } from "./api";
-import { esc, attr, relTime, statusBadge, surface, WORK_SHELL, hitArea, HITBOX } from "./ui";
+import { esc, attr, relTime, surface, WORK_SHELL, hitArea, HITBOX } from "./ui";
+import { stateMark } from "./marks";
 import { personLink, handleTag } from "./people";
 import { collapsedLineDiff } from "./diff";
 import { unifiedDiff } from "./review";
@@ -24,19 +25,25 @@ const personOf = (persons: PersonSummary[], h: string): PersonSummary | null =>
 const MONO_EYEBROW = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap";
 const notice = (text: string): string => `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">${esc(text)}</div>`;
 
-/** STAGED (amber) / DRAFT (blue) — the triage badges — and PUBLISHED in the docs' accent. */
+/** A version's status as a mark (marks.ts): a draft and a staged version are waiting (an open
+ *  ring), a published one is settled by a person (check). Each says what it means in its tooltip. */
+const PROMPT_MARK: Record<PromptStatus, { word: string; tone: string; shape: "ring" | "check"; hint: string }> = {
+  draft: { word: "Draft", tone: "var(--fg-55)", shape: "ring", hint: "Saved, not published." },
+  staged: { word: "Staged", tone: "var(--amber)", shape: "ring", hint: "An agent saved this version. A person publishes it." },
+  published: { word: "Published", tone: "var(--accent)", shape: "check", hint: "Live in the library." },
+};
 export function promptBadge(status: PromptStatus): string {
-  if (status === "staged") return statusBadge("STAGED", "var(--amber)");
-  if (status === "draft") return statusBadge("DRAFT", "var(--blue)");
-  return statusBadge("PUBLISHED", "var(--accent)");
+  const m = PROMPT_MARK[status];
+  return stateMark(m.word, m.tone, m.shape, 12, m.hint);
 }
 
 export { detectVars };
 /** A slug from a title: lowercase, non-alphanumerics → "-", trimmed, ≤ 60. */
 export const slugify = (t: string): string => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 
-const tagPill = (t: string) =>
-  `<span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:2px 6px;white-space:nowrap;flex:none">${esc(t)}</span>`;
+/** A library card's tags: one line of plain muted words — labels, not chips (the prompt page's tags
+ *  are the controls). "#" is left to numbers, which is what it means everywhere else in Trov. */
+const tagLine = (tags: string[]) => (tags.length ? `<span style="font-size:12px;color:var(--fg-40);overflow-wrap:anywhere">${tags.map(esc).join(" · ")}</span>` : "");
 
 // ── library ──────────────────────────────────────────────────────────────────
 export type PromptFilterCat = "tag" | "sort";
@@ -94,11 +101,11 @@ function promptCard(x: PromptSummary, persons: PersonSummary[]): string {
   return `<div class="cnpy-surface cnpy-card ${HITBOX}" style="display:flex;flex-direction:column;text-align:left;width:100%;min-width:0;padding:16px 18px">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;width:100%">
       <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">${esc(x.title)}</div>
-      ${promptBadge(x.status)}
+      ${x.status === "published" ? "" : `<span style="flex:none;margin-top:1px">${promptBadge(x.status)}</span>`}
     </div>
     <div style="font-family:var(--sans);font-size:11px;color:var(--fg-40);margin-top:3px">${esc(x.slug)}</div>
     <div style="font-size:12.5px;color:var(--fg-55);margin-top:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%">${esc(x.excerpt)}</div>
-    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:12px">${x.tags.map(tagPill).join("")}</div>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:12px">${tagLine(x.tags)}</div>
     <div style="flex:1"></div>
     <div style="display:flex;align-items:center;gap:7px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border);width:100%">
       ${personLink(au, x.author, 18, { html: handleTag(au, x.author, 11.5) }, "")}
@@ -247,7 +254,7 @@ export function promptDetailView(p: PromptDetailProps): string {
         ${opts.length ? "" : `<div style="padding:6px 9px;font-size:11.5px;color:var(--fg-40)">${p.tagDraft.trim() ? "Already added" : "Type to create a tag"}</div>`}
       </div>`
     : "";
-  const tags = x.tags.map((t) => `<span style="display:inline-flex;align-items:center;gap:3px;font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-55);border:1px solid var(--border-strong);border-radius:5px;padding:2px 3px 2px 6px;white-space:nowrap;flex:none">${esc(t)}<button data-act="promptTagRemove" data-arg="${attr(t)}" class="cnpy-xbtn" aria-label="Remove tag" title="Remove" style="width:14px;height:14px;display:grid;place-items:center;border-radius:3px;color:var(--fg-40)"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 5l14 14M19 5 5 19"></path></svg></button></span>`).join("");
+  const tags = x.tags.map((t) => `<span style="display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--fg-70);border:1px solid var(--border-strong);border-radius:5px;padding:1px 3px 1px 7px;white-space:nowrap;flex:none">${esc(t)}<button data-act="promptTagRemove" data-arg="${attr(t)}" class="cnpy-xbtn" aria-label="Remove tag" title="Remove" style="width:14px;height:14px;display:grid;place-items:center;border-radius:3px;color:var(--fg-40)"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 5l14 14M19 5 5 19"></path></svg></button></span>`).join("");
   const addTagSt = `display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:500;color:${p.tagMenu ? "var(--fg)" : "var(--fg-40)"};border:1px dashed var(--border-strong);border-radius:5px;padding:2px 7px;white-space:nowrap;background:${p.tagMenu ? "var(--hover)" : "transparent"}`;
 
   const versions = p.versions.map((v) => {

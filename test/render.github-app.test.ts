@@ -267,7 +267,7 @@ describe("Repositories — suspended, a repository no longer visible, and a bind
     expect(html).not.toContain("data-org-github-picker");
     expect(html).not.toContain("data-org-lasterror"); // the banner and the chip already say it
     expect(html).toContain('data-act="orgGithubTest"');
-    expect(installationStatus(app.installation!)).toEqual({ word: "Suspended", tone: "var(--amber)" });
+    expect(installationStatus(app.installation!)).toMatchObject({ word: "Suspended", kind: "warn" });
   });
   it("a repository the installation can no longer see is marked on its row, in its details and in the lead", () => {
     const html = page(ui(status({ installation: inst() }), {

@@ -23,7 +23,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 
 import { lineDiff, collapsedLineDiff } from "../web/src/diff";
-import { reviewView, reviewDetail, reviewCard, reviewFilterSwitch, diffViewer, unifiedDiff, splitDiffRows, REVIEW_EXIT_MS, REVIEW_INTRO, type ReviewItem, type ReviewProps } from "../web/src/review";
+import { reviewView, reviewDetail, reviewCard, reviewFilterSwitch, diffViewer, unifiedDiff, splitDiffRows, staleBaseWarning, REVIEW_EXIT_MS, REVIEW_INTRO, type ReviewItem, type ReviewProps } from "../web/src/review";
 import { LOW_CONFIDENCE } from "../web/src/marks";
 import css from "../web/src/trov.css?raw";
 import morphSrc from "../web/src/morph.ts?raw";
@@ -153,8 +153,8 @@ describe("reviewView — populated", () => {
 
   it("shows the stale-base warning only when stale", () => {
     const stale = makeItem({ stale: true, staleNote: "Proposed from v6 — live is v8." });
-    expect(reviewView(makeReviewProps({ items: [stale] }))).toContain("STALE BASE");
-    expect(reviewView(makeReviewProps())).not.toContain("STALE BASE");
+    expect(reviewView(makeReviewProps({ items: [stale] }))).toContain(">Stale base</span>");
+    expect(reviewView(makeReviewProps())).not.toContain("Stale base");
   });
 
   it("filter hides non-matching kinds from the list", () => {
@@ -184,7 +184,9 @@ describe("reviewView — surface cards", () => {
     expect(adr).toMatch(/class="cnpy-surface" style="padding:24px 28px 26px"/);
     expect(adr).not.toContain("border-left:2px solid var(--green)"); // no accent edge on the record
     const stale = reviewDetail(makeItem({ stale: true, staleNote: "Proposed from v6." }), "unified");
-    expect(stale).toMatch(/class="cnpy-surface" style="border-left:2px solid var\(--amber\)/);
+    expect(stale).toMatch(/class="cnpy-surface" style="padding:11px 15px;margin-top:18px/);
+    expect(staleBaseWarning("Proposed from v6.")).not.toContain("border-left"); // a warning mark, never a coloured edge
+    expect(stale).toContain(">Stale base</span>");
   });
 });
 

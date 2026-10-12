@@ -21,7 +21,8 @@ import {
 import { billingDate, isPast, type PurchasablePlan } from "@shared/billing";
 import type { OrgRole } from "@shared/orgs";
 import { esc, surface } from "./ui";
-import { O_ERR, O_HELP, O_LABEL, chip, quietBtn, sliceNote, type OrgSlice } from "./org-ui";
+import { O_ERR, O_HELP, O_LABEL, quietBtn, sliceNote, type OrgSlice } from "./org-ui";
+import { kindMark } from "./marks";
 
 /** The plan as the state `planRefusal` reads: its resolved limits stand in for plan + overrides. */
 const stateOf = (v: OrgPlanView) => ({ plan: v.plan, overrides: v.entitlements, status: v.status, source: v.source });
@@ -59,10 +60,11 @@ export function seatsLead(v: OrgPlanView | null): string {
   return `<strong>${v.usage.seats}</strong> of <strong>${v.entitlements.seats}</strong> ${v.entitlements.seats === 1 ? "seat" : "seats"} used`;
 }
 
+/** The plan's state as a mark (marks.ts `kindMark`); nothing while it is active. */
 const STATUS_CHIP: Record<OrgPlanView["status"], string> = {
   active: "",
-  past_due: chip("Payment past due", "var(--amber)"),
-  canceled: chip("Ended", "var(--red)"),
+  past_due: kindMark("Payment past due", "warn", 12, "Stripe could not take the last payment."),
+  canceled: kindMark("Ended", "stopped", 12, "The paid plan ended."),
 };
 
 function limitRow(v: OrgPlanView, key: LimitKey): string {
@@ -177,7 +179,7 @@ function billingPart(v: OrgPlanView, role: OrgRole, b: OrgBillingUi): BillingPar
     : `${pro} is paid through Stripe; you choose the number of seats there. Trov never sees your card.`;
   return {
     state: bill.subscribed ? (cancelling ? "cancelling" : v.status === "past_due" ? "past_due" : "active") : bill.ended ? "ended" : "free",
-    chip: cancelling ? chip("Cancelled", "var(--amber)") : "", line, actions, foot,
+    chip: cancelling ? kindMark("Cancelled", "warn", 12, "It stays on its plan until the end of the period it is paid for.") : "", line, actions, foot,
   };
 }
 

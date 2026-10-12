@@ -439,7 +439,7 @@ describe("Platform — a paid organization", () => {
     expect(live).toContain('href="https://dashboard.stripe.com/customers/cus_123"');
     expect(live).toContain(">past due</strong>");
     expect(live).not.toContain("test mode");
-    expect(live).toContain(">PAST DUE<");
+    expect(live).toContain(">Past due</span>");
     expect(section(plan({ billing: paid({ cancel_at_period_end: true }) }))).toContain("ends 15 January 2027");
     // Ended: the org is on Free, and the line says so (no seats, no renewal).
     const ended = section(plan({ plan: "free", entitlements: PLANS.free.entitlements, billing: paid({ ended: true, stripe_status: "canceled", period_end: "2026-03-02T00:00:00.000Z" }) }));

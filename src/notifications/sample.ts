@@ -8,14 +8,14 @@ const pr = (n: number, title: string, what: string, why: string | null, impact: 
   K.item({
     title, number: n, url: `https://github.com/SaplingLearn/sapling/pull/${n}`,
     rows: [K.row("What changed", K.prose(what)), ...(why ? [K.row("Why", K.prose(why))] : []), ...(impact ? [K.row("Impact", K.prose(impact))] : [])],
-    footer: `${K.chip("MERGED", "green")}<span style="padding-left:8px;">into <span style="font-family:'Archivo Narrow',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">main</span></span>`,
+    footer: `${K.mark("Merged", "green")}<span style="padding-left:8px;">into <span style="font-family:'Archivo Narrow',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">main</span></span>`,
     first,
   });
 const issue = (n: number, title: string, summary: string, sprint: string | null, next: string | null, prio: string | null, labels: string[], first = false) =>
   K.item({
     title, number: n, url: `https://github.com/SaplingLearn/sapling/issues/${n}`,
     rows: [K.row("Summary", K.prose(summary)), ...(sprint ? [K.row("Sprint", sprint)] : []), ...(next ? [K.row("Next step", K.prose(next), "accent")] : [])],
-    footer: [prio ? K.chip(prio, "amber") : "", ...labels.map((l) => K.chip(l, "muted"))].filter(Boolean).join(" ") || undefined,
+    footer: [prio ? K.mark(prio, "amber") : "", labels.map((l) => `<span>${l}</span>`).join(" &middot; ")].filter(Boolean).join(`<span style="padding-left:10px;"></span>`) || undefined,
     first,
   });
 const review = (kind: "proposal" | "decision", title: string, summary: string, meta: string, low = false, first = false) =>
@@ -38,7 +38,7 @@ const assigned = (title: string, status: string, tone: "accent" | "amber" | "mut
     first,
   });
 const plan = (label: "added" | "changed" | "reordered" | "done", t: string) =>
-  `<tr><td width="96" style="vertical-align:top;padding:${SP.xs}px 8px ${SP.xs}px 0;">${K.chip(label.toUpperCase(), { added: "green", changed: "blue", reordered: "muted", done: "accent" }[label] as "green" | "blue" | "muted" | "accent")}</td><td style="${S.body}">${t}</td></tr>`;
+  `<tr><td width="96" style="vertical-align:top;padding:${SP.xs}px 8px ${SP.xs}px 0;">${K.mark(label.charAt(0).toUpperCase() + label.slice(1), { added: "green", changed: "blue", reordered: "muted", done: "accent" }[label] as "green" | "blue" | "muted" | "accent")}</td><td style="${S.body}">${t}</td></tr>`;
 
 export function sampleSections(): Section[] {
   return [

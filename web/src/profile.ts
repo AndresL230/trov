@@ -14,7 +14,7 @@
 // `data-overlay` so morph keeps it across rerenders. The backdrop, the × and Escape close it.
 
 import type { PersonSummary, PersonProfile } from "@shared/people";
-import { esc, attr, statusBadge } from "./ui";
+import { esc, attr } from "./ui";
 import { personChip, handleTag } from "./people";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -65,7 +65,7 @@ export function personCardModal(p: PersonCardProps): string {
           <div style="min-width:0;flex:1">
             <div style="display:flex;align-items:center;gap:8px;min-width:0">
               <div id="person-card-t" style="min-width:0;font-size:18px;font-weight:600;letter-spacing:-0.015em;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>
-              ${d?.admin ? `<span style="flex:none">${statusBadge("ADMIN", "var(--accent)")}</span>` : ""}
+              ${d?.admin ? `<span style="flex:none;font-size:12.5px;font-weight:500;color:var(--fg-55)">Admin</span>` : ""}
             </div>
             <div style="margin-top:5px">${handleTag(x, x.handle, 12)}</div>
           </div>

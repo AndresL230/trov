@@ -8,7 +8,8 @@ import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
 import { esc, attr, surface } from "./ui";
 import { tenantHref } from "./api";
-import { O_LABEL, O_HELP, orgHead, orgEmpty, tabLead, quietBtn, chip } from "./org-ui";
+import { O_LABEL, O_HELP, orgHead, orgEmpty, tabLead, quietBtn } from "./org-ui";
+import { kindMark } from "./marks";
 import { segmented } from "./segmented";
 import { skeleton, skBox, skLine, skList, skW, skRows } from "./skeleton";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
@@ -80,7 +81,7 @@ function kindRow(k: PrefsView["kinds"][number]): string {
     options: k.allowedCadences.map((c) => ({ value: c, label: cadCap(c), arg: `${k.id}:${c}` })),
   });
   const marker = k.inherited
-    ? `<span style="font-size:10px;font-weight:600;${LABEL};letter-spacing:.05em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:2px 6px">ORG DEFAULT</span>`
+    ? `<span data-mtip="Your organization's setting. Pick another cadence to set your own." style="font-size:12px;color:var(--fg-40);white-space:nowrap">Org default</span>`
     : `<button data-act="resetKind" data-arg="${attr(k.id)}" style="font-size:11.5px;font-weight:500;color:var(--accent);text-decoration:underline;text-underline-offset:3px;padding:0">Reset to default</button>`;
   return `<div style="display:flex;align-items:center;gap:18px;${TILE_ROW}">
     <div style="flex:1;min-width:0">
@@ -226,7 +227,7 @@ function fmtWhen(iso: string | null): string {
 const OUTBOX_GRID = "display:grid;grid-template-columns:1.1fr .6fr 1fr .9fr .9fr;gap:12px;align-items:center;padding:10px 16px";
 function outboxRow(o: NotificationOutboxRow, expanded: boolean): string {
   const failed = o.status === "failed";
-  const status = o.status === "sent" ? chip("Sent", "var(--green)") : failed ? chip("Failed", "var(--red)") : chip(o.status === "pending" ? "Queued" : o.status, "var(--fg-55)");
+  const status = o.status === "sent" ? kindMark("Sent", "good") : failed ? kindMark("Failed", "bad", 12, "It was not sent. Open the row to see why.") : kindMark(o.status === "pending" ? "Queued" : o.status, "waiting");
   const cells = `<div style="font-size:12.5px;font-weight:500;color:var(--fg-70);min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(o.user_id)}</div>
     <div style="font-size:12.5px;color:var(--fg-55)">${esc(o.cadence)}</div>
     <div style="font-size:12px;color:var(--fg-55)">${esc(o.window_id)}</div>

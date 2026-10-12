@@ -4,6 +4,7 @@
 // still render their Phase-1 mock until their task lands.
 
 import "./trov.css";
+import { installMarkTips } from "./tip";
 import { migrateBrowserStorage } from "./storage-migrate";
 import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments } from "./segmented";
@@ -4580,6 +4581,9 @@ mount.addEventListener("mouseover", (e) => railTip((e.target as Element | null)?
 mount.addEventListener("focusin", (e) => railTip((e.target as Element | null)?.closest?.<HTMLElement>(".cnpy-aside [data-tip]") ?? null));
 mount.addEventListener("focusout", () => railTip(null));
 mount.addEventListener("mouseleave", () => railTip(null));
+
+// A status mark's tooltip (`data-mtip`, marks.ts): one styled bubble on <body>, placed by tip.ts.
+installMarkTips(mount);
 
 // The landing tour's dialog: Escape, ← / →, and Tab kept inside it.
 const featureCtl = createFeatureCtl({ mount, keys: TOUR_KEYS, get: () => state.siteFeature, set: (v) => { state.siteFeature = v; }, rerender: () => rerender() });

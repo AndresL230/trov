@@ -39,13 +39,13 @@ describe("emailNotificationsSection", () => {
     expect(view).toContain('data-act="emailSave"');
   });
 
-  it("renders one row per kind with segment buttons from allowedCadences, ORG DEFAULT when inherited, Reset when overridden", () => {
+  it("renders one row per kind with segment buttons from allowedCadences, Org default when inherited, Reset when overridden", () => {
     const view = emailNotificationsSection({ prefs: prefs(), loading: false, error: null, emailEditing: false, emailDraft: "" });
     expect(view).toContain('data-act="setKindCadence" data-arg="my_work:weekly"');
     expect(view).toContain('data-act="setKindCadence" data-arg="review_queue:off"');
     expect(view).not.toContain('data-arg="review_queue:weekly"');
     expect(view).toContain('data-act="resetKind" data-arg="my_work"');
-    expect(view.match(/ORG DEFAULT/g)).toHaveLength(1);
+    expect(view.match(/>Org default</g)).toHaveLength(1);
     expect(view).toContain("Kinds turned off org-wide don't appear here at all");
   });
 
@@ -89,7 +89,7 @@ describe("emailNotificationsSection — the Ticket queue row (registry-driven)",
     inherited: true,
   };
 
-  it("renders a Ticket queue row with Daily/Weekly/Off segments and the ORG DEFAULT marker", () => {
+  it("renders a Ticket queue row with Daily/Weekly/Off segments and the Org default marker", () => {
     const view = emailNotificationsSection({
       prefs: prefs({ kinds: [{ ...ticketq, allowedCadences: [...ticketq.allowedCadences] }] }),
       loading: false, error: null, emailEditing: false, emailDraft: "",
@@ -99,7 +99,7 @@ describe("emailNotificationsSection — the Ticket queue row (registry-driven)",
     expect(view).toContain('data-act="setKindCadence" data-arg="ticketq:daily"');
     expect(view).toContain('data-act="setKindCadence" data-arg="ticketq:weekly"');
     expect(view).toContain('data-act="setKindCadence" data-arg="ticketq:off"');
-    expect(view).toContain("ORG DEFAULT");
+    expect(view).toContain(">Org default<");
     expect(view).not.toContain('data-act="resetKind" data-arg="ticketq"'); // inherited → nothing to reset
   });
 

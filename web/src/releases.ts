@@ -34,6 +34,7 @@
 
 import { esc, attr, surface } from "./ui";
 import { segmented } from "./segmented";
+import { stateMark } from "./marks";
 
 
 export interface ReleasePatches {
@@ -76,21 +77,26 @@ export const RELEASES: Release[] = [
     date: "2026-10-12",
     unreleased: true,
     title: "Calmer status, fewer tags",
-    headline: "Tickets, Review, the Roadmap, handoffs, artifacts and search show a state with a small shape and a plain word, not a coloured capitals tag on every row.",
+    headline: "Every screen shows a state with a small shape and a plain word, not a coloured capitals tag on every row, and hovering one tells you what it means.",
     highlights: [
       "A ticket's status is a circle that fills as the work moves along: dashed for Triage, half for In progress, three quarters for Testing, a check for Done. Priority is a set of signal bars. Both say their name when you hover.",
       "Review shows no status tag. Everything in it is waiting, and the Promote, Ratify and Reject buttons already say so. A proposal the agent was unsure about says Low confidence next to a small amber triangle.",
       "Search no longer marks every result Live. Only a result that is not settled yet says so, for example Awaiting review.",
       "Sprints on the Roadmap use the same circles as tickets. A late sprint shows a red warning triangle.",
-      "Handoffs, artifacts, the doc you are reading and the email digests show their state the same way: a small shape and the word.",
+      "Handoffs, artifacts, the doc you are reading, the Repo screen, Settings and the email digests show their state the same way: a small shape and the word.",
+      "Hover a state to see what it means. Testing says \"Built, and being checked before it is done.\" and a stale branch says it has had no commit in 14 days.",
     ],
     headsUp: [
       "States now read in sentence case, for example \"In progress\" instead of \"IN PROGRESS\".",
+      "A pull request's state on the Repo screen is a circle too: dashed for Draft, filling through In review and Approved, a check for Merged.",
+      "Roles, \"(you)\", a plan's name and other plain facts are plain text now, not coloured chips.",
     ],
     patches: {
       added: [
         "`web/src/marks.ts`: the one place a state is drawn. Progress glyphs (`glyph`, `ticketStatusIcon`, `priorityIcon`), shape-and-word marks (`stateMark`, `handoffMark`, `artifactStatusMark`, `authorityMark`, `LOW_CONFIDENCE`), `agentMark`, and the tone tables (`TICKET_STATUS_TONE`, `HANDOFF_MARK`, `ARTIFACT_MARK`, `AUTHORITY_MARK`) (#173)",
-        "`EMAIL_CARD.mark` (`src/notifications/assemble.ts`): a small square and the word, for the digests (#173)",
+        "`EMAIL_CARD.mark` (`src/notifications/assemble.ts`): a small square and the word in its own face, for the digests (#173)",
+        "`web/src/tip.ts`: one styled tooltip bubble (`.cnpy-mtip`) for every mark's `data-mtip`, placed by script so no container clips it; `placeTip` is pure and tested; off on touch and in the tour mocks (#173)",
+        "`kindMark` / `STATE_KIND` (`marks.ts`): a state by what it means (good, waiting, warn, bad, stopped, done, off) for settings, billing, the Repo verdicts and the platform pages; `roleWord` and `(you)` in `org-ui.ts` (#173)",
         "`artifactKindLabel` (`shared/artifacts-core.ts`): HTML / SVG / PDF / Markdown / …, shared by the viewer and the site (#173)",
         "`test/render.marks.test.ts`: the marks are never a pill, and the signed-out site and every tour mock draw no pill and take their states from `marks.ts` (#173)",
       ],
@@ -102,12 +108,20 @@ export const RELEASES: Release[] = [
         "Handoffs, artifacts (status, kind, area, Private, the compare sides, the upload warnings) and the doc page (the proposal notice, Promoted in history) use marks; the old-version banner has no tag (#173)",
         "The signed-out site and the tour mocks draw every state through `marks.ts`; `pill()` is removed from `landing-mocks.ts`. The pricing badge is a soft label and the tool names in For agents are set in the code face (#173)",
         "Ticket and review digests: status is a mark, priority is words, and the kind is a word instead of a chip (#173)",
+        "Repo: an environment's verdict is `kindMark` over `ENV_VERDICT` (Healthy / Degraded / Failing / Down / Unknown) with what it means as its tooltip, the header's dots explain themselves the same way, a PR's state is the progress glyphs, Stale and Sample data are marks, and Due and the drift groups are plain text (#173)",
+        "Settings and Org settings: roles are `roleWord`, your own row says (you), Primary / Private / the plan's name / Admin on a person card are plain text, and every status (integrations, the GitHub App, delivery, billing, a repository the App lost) is a `kindMark` (#173)",
+        "Prompts: a version's status is a mark (Draft, Staged, Published), a published prompt's card shows none, and its tags are one line of plain words (#173)",
+        "Platform: an org's status, invites, grants, a plan's billing and a support report's status are `kindMark`s; roles, a report's kind and Signed out are plain text (#173)",
+        "Review's stale-base notice is a warning mark on a plain surface (no coloured left edge); What's new marks Unreleased; the MCP consent page's Recommended is a soft label; Unplaced's activity kinds and Notifications' Org default are plain text (#173)",
+        "My Work and roadmap digests: Merged and the plan changes (Added / Changed / Reordered / Done) are marks, and a GitHub issue's labels are plain words (#173)",
       ],
       fixed: [
+        "A mark in an email took the mail client's serif default where its cell set no face (#173)",
         "The artifact attach picker called a Triage ticket SUBMITTED and showed a Testing ticket as a plain grey tag (#173)",
         "Email digests coloured ticket statuses differently from the app (#173)",
       ],
       removed: [
+        "`statusBadge` (`ui.ts`), `chip` / `roleChip` (`org-ui.ts`), `EMAIL_CARD.chip`, `.cnpy-rel-tag`, and native `<title>` tooltips on the glyphs (#173)",
         "`ticketPill`, `priorityChip`, `tagChip`, `handoffPill` and the per-file `CHIP_BASE` / `TAG_BASE` copies; the unused `ticketPill` / `priorityChip` import in `render.ts` (#173)",
       ],
     },
@@ -1642,7 +1656,7 @@ const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : 
 /** "v0.14 · Sep 26, 2026", or the Unreleased tag. */
 function metaRow(r: Release): string {
   const inner = r.unreleased
-    ? `<span class="cnpy-rel-tag">Unreleased</span><span>Not deployed yet</span>`
+    ? `${stateMark("Unreleased", "var(--accent)", "ring", 12, "Merged, not deployed yet.")}<span aria-hidden="true">·</span><span>Not deployed yet</span>`
     : `<span class="cnpy-rel-ver">v${esc(r.version)}</span><span aria-hidden="true">·</span><time datetime="${attr(r.date)}">${esc(releaseDate(r.date))}</time>`;
   return `<div class="cnpy-rel-meta">${inner}</div>`;
 }

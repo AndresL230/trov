@@ -19,7 +19,7 @@ import { ORG_NAME_MAX, orgSlugProblem, type MyInvite, type MyOrg, type MyOrgsRes
 import { PLANS, FREE_PLAN, UPGRADE_PLAN, giftLengthWords, seatsPhrase, type MyGrant } from "@shared/plans";
 import { BILLING_GRANTER } from "@shared/billing";
 import { esc, attr, relTime, surface } from "./ui";
-import { accentBtn, quietBtn, orgBanner, roleChip } from "./org-ui";
+import { accentBtn, quietBtn, orgBanner, roleWord } from "./org-ui";
 import { nameError, addOrgServerError } from "./platform";
 import { orgHref } from "./org-context";
 import { orgTile } from "./org-logo";
@@ -187,7 +187,7 @@ export function orgMenu(p: OrgMenuProps): string {
     return `<li><a href="${attr(orgHref(o.slug))}" data-act="orgsSwitch" data-arg="${attr(o.slug)}" data-orgs-item class="cnpy-menurow${here ? " is-active" : ""}"${here ? ' aria-current="true"' : ""} style="${MENU_ROW};text-decoration:none;box-sizing:border-box">
       ${orgTile(o.name, 24, o.logo_url)}
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)">${esc(o.name)}</span>
-      ${roleChip(o.role)}
+      ${roleWord(o.role)}
       <span style="width:14px;flex:none;display:grid;place-items:center">${here ? CHECK : ""}</span>
     </a></li>`;
   }).join("");
@@ -306,7 +306,7 @@ export function orgPickerView(p: OrgPickerProps): string {
           <span style="display:block;font-size:14px;font-weight:600;overflow-wrap:anywhere">${esc(o.name)}</span>
           <span style="display:block;font-family:var(--code);font-size:11.5px;color:var(--fg-40);overflow-wrap:anywhere">/${esc(o.slug)}/</span>
         </span>
-        ${roleChip(o.role)}
+        ${roleWord(o.role)}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;color:var(--fg-40)"><path d="M9 6l6 6-6 6"></path></svg>
       </a>
     </li>`).join("");

@@ -159,8 +159,9 @@ describe("status and priority marks (marks.ts) / age", () => {
     }
     // Each status has its own shape, so the glyph reads without its colour.
     expect(new Set(TICKET_STATUSES.map((st) => ticketStatusIcon(st).replace(/color:[^;"]+/, ""))).size).toBe(TICKET_STATUSES.length);
-    // Alone, the glyph names itself: a tooltip and an accessible name.
-    expect(ticketStatusIcon("in_progress")).toContain('role="img" aria-label="In progress"><title>In progress</title>');
+    // Alone, the glyph names itself — an accessible name, and a tooltip that says what the status means.
+    expect(ticketStatusIcon("in_progress")).toContain('role="img" aria-label="In progress" data-mtip="In progress. Someone is working on it."');
+    expect(ticketStatusIcon("in_progress")).not.toContain("<title>");
   });
 
   it("keeps priority MONOCHROME — bars, never a hue — and says the word", () => {

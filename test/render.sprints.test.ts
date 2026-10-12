@@ -35,7 +35,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 
 import { sprintCard, newSprintPanel, newSprintToggle, sprintScreen, sprintTags, shortDue, nextSprintId, type NewSprintState } from "../web/src/sprints";
-import { priorityMark, stateMark } from "../web/src/marks";
+import { priorityMark, stateMark, PRIORITY_LABEL } from "../web/src/marks";
 import { sprintDueState } from "@shared/sprints-core";
 import { placeSprint } from "../web/src/timeline";
 import { render, initialState, type AppState } from "../web/src/render";
@@ -137,8 +137,8 @@ describe("sprintCard — the design's sprTagsOf, as marks (never tags)", () => {
   it("shows the urgency as the tickets' priority bars and its word — one, the sprint's own, monochrome", () => {
     for (const u of ["high", "normal", "low"] as const) {
       const html = sprintCard(sprint({ id: 1, label: "S", urgency: u }), PERSONS);
-      expect(html).toContain(priorityMark(u, 12));
-      for (const other of (["high", "normal", "low"] as const).filter((x) => x !== u)) expect(html).not.toContain(priorityMark(other, 12));
+      expect(html).toContain(priorityMark(u, 12, `${PRIORITY_LABEL[u]} urgency`));
+      for (const other of (["high", "normal", "low"] as const).filter((x) => x !== u)) expect(html).not.toContain(priorityMark(other, 12, `${PRIORITY_LABEL[other]} urgency`));
     }
     expect(sprintTags({ urgency: "high", due: null, domain: null })).not.toMatch(/var\(--amber\)|▲|border:/);
   });
@@ -546,7 +546,7 @@ describe("sprintScreen", () => {
     expect(off).toContain("Mark active");
 
     const on = sprintScreen({ detail: detail({ id: 3, label: "S", status: "in_progress", active: true }), persons: PERSONS, resourceDraft: "" });
-    expect(on).toContain(stateMark("Active", "var(--accent)", "dot", 12));
+    expect(on).toContain(stateMark("Active", "var(--accent)", "dot", 12, "The sprint the team is working in now."));
     expect(on).toContain('data-act="sprintActive" data-arg="0"');
     expect(on).toContain("Mark inactive");
 
@@ -562,7 +562,7 @@ describe("sprintScreen", () => {
     });
     expect(html).toContain("SEP 22 – OCT 3");
     expect(html).toContain("Oct 17");
-    expect(html).toContain(priorityMark("high"));
+    expect(html).toContain(priorityMark("high", 12.5, "High urgency"));
     expect(html).toContain(">tickets</span>");
     expect(html).toContain("Jose Alvarez");
     expect(html).toContain("4/7 done");

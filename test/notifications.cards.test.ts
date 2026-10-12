@@ -41,7 +41,7 @@ const issueStub = (s: IssueSummary): Summarizer<IssueSummary> => ({ model: "stub
 describe("My Work items (ledger layout)", () => {
   const kind = () => getKind("my_work")!;
 
-  it("renders a merged PR as a ledger item: title with the #number pill far right, What changed / Why / Impact rows, MERGED chip into main", async () => {
+  it("renders a merged PR as a ledger item: title with the #number pill far right, What changed / Why / Impact rows, Merged mark into main", async () => {
     await ingestEvent(systemCtx(), platformCtx(), prEvent(10, IN_WINDOW, "Raw ten"), "github-webhook");
     await storePrSummary(systemCtx(), prStub({ title: "Humanized ten", what: "Did the thing", why: "Because reasons", impact: "Users win" }), { semantic_key: "gh:pr:10:merged", pr_number: 10, title: "Raw ten", body: "b" });
     const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
@@ -53,8 +53,8 @@ describe("My Work items (ledger layout)", () => {
     expect(s.html).toMatch(/What changed[\s\S]*Did the thing/);
     expect(s.html).toMatch(/Why[\s\S]*Because reasons/);
     expect(s.html).toMatch(/Impact[\s\S]*Users win/);
-    expect(s.html).toMatch(/>MERGED<[\s\S]*into <span[^>]*>main</); // base ref in the label face, like the app
-    expect(s.html).toContain(THEME.green.light); // the MERGED chip colour comes from the token map
+    expect(s.html).toMatch(/>Merged<[\s\S]*into <span[^>]*>main</); // base ref in the label face, like the app
+    expect(s.html).toContain(THEME.green.light); // the Merged mark's colour comes from the token map
     expect(s.text).toMatch(/What changed:\s+Did the thing/);
   });
 
@@ -70,7 +70,7 @@ describe("My Work items (ledger layout)", () => {
   it("caps merged PRs at five with a '+N more' line", async () => {
     for (let n = 1; n <= 7; n++) await ingestEvent(systemCtx(), platformCtx(), prEvent(100 + n, IN_WINDOW, `PR ${100 + n}`), "github-webhook");
     const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
-    expect((s.html.match(/>MERGED<\/span>/g) ?? []).length).toBe(5); // 5 chips (the group label is a div, not a chip)
+    expect((s.html.match(/>Merged<\/span>/g) ?? []).length).toBe(5); // 5 marks (the group label is a div, not a mark)
     expect(s.html).toContain("+2 more in My Work");
   });
 
@@ -114,7 +114,7 @@ describe("Review queue rows", () => {
 });
 
 describe("Roadmap plan chips", () => {
-  it("labels are coloured chips: ADDED green, DONE purple, CHANGED blue", async () => {
+  it("labels are marks: Added green, Done purple, Changed blue", async () => {
     const r = await write_plan(systemCtx(), { narrative: "n", sprints: [
       { label: "Ship it", due: "2026-10-01", status: "in_progress" },
       { label: "Old name", due: "2026-10-15", status: "upcoming" },
@@ -129,8 +129,9 @@ describe("Roadmap plan chips", () => {
     ] }, "admin");
     await run(env.DB, `UPDATE plan_versions SET created_at = ? WHERE version = (SELECT MAX(version) FROM plan_versions)`, IN_WINDOW);
     const s = (await getKind("roadmap_plan")!.render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.html).toMatch(new RegExp(`color:${THEME.green.light}[^>]*>ADDED<`));
-    expect(s.html).toMatch(new RegExp(`color:${THEME.accentText.light}[^>]*>DONE<`));
-    expect(s.html).toMatch(new RegExp(`color:${THEME.blue.light}[^>]*>CHANGED<`));
+    expect(s.html).toContain(EMAIL_CARD.mark("Added", "green"));
+    expect(s.html).toContain(EMAIL_CARD.mark("Done", "accent"));
+    expect(s.html).toContain(EMAIL_CARD.mark("Changed", "blue"));
+    expect(s.html).not.toMatch(/>ADDED<|>DONE<|>CHANGED</);
   });
 });

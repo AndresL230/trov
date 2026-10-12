@@ -208,7 +208,7 @@ describe("identityFromTask", () => {
   it("maps event kinds (pr_* → PR, issue → ISSUE) and composes #ref + title with a null fallback", () => {
     const g = identityFromTask(makeIdentityTask());
     expect(g.sample[0]).toMatchObject({ kind: "PR", text: "#412 Fix pagination" });
-    expect(g.sample[1]).toMatchObject({ kind: "ISSUE", text: "#398 (no title)" });
+    expect(g.sample[1]).toMatchObject({ kind: "Issue", text: "#398 (no title)" });
   });
 });
 

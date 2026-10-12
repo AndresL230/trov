@@ -8,8 +8,9 @@
 // answers with a redirect to GitHub. Acts are dispatched in main.ts to org-actions.ts.
 
 import { esc, attr, relTime, surface } from "./ui";
-import { O_FIELD, O_HELP, chip, dangerLink, failedNote, leadFlag, loadingNote, openRow, orgBanner, orgHead, quietBtn, type OrgSlice } from "./org-ui";
+import { O_FIELD, O_HELP, dangerLink, failedNote, leadFlag, loadingNote, openRow, orgBanner, orgHead, quietBtn, type OrgSlice } from "./org-ui";
 import { githubInstallHref } from "./api";
+import { kindMark, type StateKind } from "./marks";
 import type { GithubAppStatusDTO, GithubConnectOutcome, GithubInstallationDTO, GithubRepoOptionDTO, GithubReposDTO } from "@shared/github-app";
 import type { TestState } from "./integrations";
 
@@ -115,10 +116,10 @@ export function suspendedBanner(i: GithubInstallationDTO | null): string {
 
 // ── the installation's one row ───────────────────────────────────────────────
 
-export function installationStatus(i: GithubInstallationDTO): { word: string; tone: string } {
-  if (i.suspended_at) return { word: "Suspended", tone: "var(--amber)" };
-  if (i.last_error) return { word: "Error", tone: "var(--red)" };
-  return { word: "Connected", tone: "var(--green)" };
+export function installationStatus(i: GithubInstallationDTO): { word: string; kind: StateKind; hint?: string } {
+  if (i.suspended_at) return { word: "Suspended", kind: "warn", hint: "Suspended on GitHub. Trov reads nothing through it until it is unsuspended." };
+  if (i.last_error) return { word: "Error", kind: "bad", hint: "The last call to GitHub failed. Open the row to see the error." };
+  return { word: "Connected", kind: "good" };
 }
 
 const OK_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg>`;
@@ -137,7 +138,7 @@ export function githubAppRow(i: GithubInstallationDTO, o: AppRowOpts): string {
   const running = o.test?.status === "running";
   const answer = o.test && o.test.status === "done"
     ? `<div role="status" aria-live="polite" data-org-test="${o.test.ok ? "ok" : "failed"}" style="${box(o.test.ok ? "var(--green)" : "var(--red)")};margin-top:10px">${o.test.ok ? OK_ICON : FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">${o.test.ok ? "Connection works." : "Test failed."}</strong> ${esc(o.test.detail)}</div></div>` : "";
-  // A suspension is said by the chip and the tab's banner; its token error would only repeat it.
+  // A suspension is said by the mark and the tab's banner; its token error would only repeat it.
   const error = i.last_error && !i.suspended_at
     ? `<div data-org-lasterror style="${box("var(--red)")}">${FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">Last error.</strong> ${esc(i.last_error)}</div></div>` : "";
   // What THIS organization reaches: a `selected` binding is cut to what its admin could read.
@@ -149,7 +150,7 @@ export function githubAppRow(i: GithubInstallationDTO, o: AppRowOpts): string {
     </div>` : "";
   return openRow({
     key: "github-app", open: o.open, act: "orgRowToggle", label: `GitHub App on ${i.account_login}, ${st.word.toLowerCase()}`,
-    head: `<span>GitHub App <span style="font-weight:500;color:var(--fg-55)">&middot; ${esc(i.account_login)}</span></span>${chip(st.word, st.tone)}`,
+    head: `<span>GitHub App <span style="font-weight:500;color:var(--fg-55)">&middot; ${esc(i.account_login)}</span></span>${kindMark(st.word, st.kind, 12, st.hint ?? null)}`,
     meta: `${o.tracked === 0 ? "No repository tracked yet" : `${o.tracked} ${o.tracked === 1 ? "repository" : "repositories"}`} &middot; connected by ${esc(i.connected_by)}`,
     action: o.admin ? quietBtn(running ? "Testing…" : "Test connection", "orgGithubTest", { disabled: running, busy: running, label: "Test the GitHub App connection", field: "orgGithubTest" }) : "",
     always: error || answer ? `${error}${answer}` : "",
@@ -193,7 +194,7 @@ export function repoPicker(slice: OrgSlice<GithubReposDTO | null>, account: stri
   const row = (r: GithubRepoOptionDTO): string => {
     const busy = o.busy === r.full_name;
     return `<li class="cnpy-org-row" style="align-items:center;padding-top:9px;padding-bottom:9px" data-org-github-repo="${attr(r.full_name)}">
-      <div style="flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:13.5px;font-weight:500;overflow-wrap:anywhere">${esc(r.full_name)}</span>${r.private ? chip("Private", "var(--fg-55)") : ""}</div>
+      <div style="flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:13.5px;font-weight:500;overflow-wrap:anywhere">${esc(r.full_name)}</span>${r.private ? `<span style="font-size:12px;color:var(--fg-55)">Private</span>` : ""}</div>
       <div class="cnpy-org-actions is-inline" style="align-items:center">${quietBtn(busy ? "Adding…" : "Track", "orgGithubTrack", { arg: r.full_name, disabled: o.busy !== null, busy, label: `Track ${r.full_name}`, field: `orgGithubTrack:${r.full_name}` })}</div>
     </li>`;
   };

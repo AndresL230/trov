@@ -120,7 +120,8 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
   - Every radius is scaled in ONE block at the end of `trov.css`; a new radius value needs a line there
     (`test/render.corners.test.ts`). Status dots are elements, never `●`.
   - A state is a mark from `web/src/marks.ts` (a glyph, or a small shape and a sentence-case word; nothing for
-    the normal state) — never a bordered, tinted or UPPERCASE pill, in the app, the site or its mocks.
+    the normal state; its `data-mtip` tooltip says what it means) — never a bordered, tinted or UPPERCASE
+    pill, in the app, the site or its mocks. A fact (a role, a kind, a category) is plain text.
   - Confirmations use `confirmModal` (`web/src/confirm.ts`), never `window.confirm`.
   - A clickable person goes through `web/src/people.ts`; a picture always through `avatarSrc`.
   - Never a button inside a button — use `hitArea`.

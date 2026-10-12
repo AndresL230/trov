@@ -116,16 +116,16 @@ describe("Organizations", () => {
     expect(html).toContain("Maya Ortiz");
     expect(html).toContain("@maya");
     expect(html).toContain("Sep 1, 2026");
-    expect(html).toContain("ACTIVE");
+    expect(html).toContain(">Active</span>");
     // An org whose invited owner has not accepted yet says so; no activity reads "Never".
     expect(html).toContain("No owner yet — invite pending");
     expect(html).toContain("Never");
     expect(html).toContain("Beta &lt;Co&gt;");
     expect(html).toMatch(/<strong>2<\/strong> organizations &middot; <span class="cnpy-lead-flag"[^>]*>[\s\S]*?1 with no owner yet<\/span>\. Select one to manage it\./);
   });
-  it("marks a suspended org clearly: a red badge, a muted name, and it is said in the row's name and the count", () => {
+  it("marks a suspended org clearly: a red mark, a muted name, and it is said in the row's name and the count", () => {
     const html = orgsTab({ orgs: { status: "ok", data: [org({ status: "suspended", suspended_at: "2026-10-02T10:00:00.000Z", suspended_by: "andres" })] } });
-    expect(html).toContain("SUSPENDED");
+    expect(html).toContain(">Suspended</span>");
     expect(html).toContain("var(--red)");
     expect(html).toContain('class="plat-row plat-orgs-grid is-suspended" aria-label="Acme, suspended — open"');
     expect(html).toContain("<strong>1</strong> organization");
@@ -257,13 +257,13 @@ describe("one organization", () => {
   it("shows the header, members and pending invites in one People list, usage and audit; adding an owner is behind a button", () => {
     const html = platformOrgView(open());
     expect(html).toContain(">Acme</h2>");
-    expect(html).toContain("ACTIVE");
+    expect(html).toContain(">Active</span>");
     expect(html).toContain("created Sep 1, 2026 by @andres");
     expect(html).toContain("Maya Ortiz");
-    expect(html).toContain("OWNER");
-    expect(html).toContain("MEMBER");
+    expect(html).toContain(">Owner</span>");
+    expect(html).toContain(">Member</span>");
     expect(html).toContain("octocat");
-    expect(html).toContain("PENDING");
+    expect(html).toContain(">Pending</span>");
     expect(html).not.toContain("old@acme.example");
     expect(html).toMatch(/<h2[^>]*>People<\/h2><span class="cnpy-badge" data-n="\d+">/);
     expect(html).toContain('data-act="platOwnerToggle" data-field="platOwnerToggle" aria-expanded="false"');
@@ -291,7 +291,7 @@ describe("one organization", () => {
     // Suspend is text until pointed at (`cnpy-org-danger`), never a button at the weight of the page's actions.
     expect(active).toMatch(/<button data-confirm-trigger aria-expanded="false" aria-controls="plat-suspend-confirm" type="button" data-act="platSuspendArm" data-arg="suspend"[^>]*class="cnpy-org-danger" aria-haspopup="dialog"[^>]*>Suspend<\/button>/);
     const sus = platformOrgView(open({ detail: { status: "ok", data: detailOf({ org: org({ status: "suspended", suspended_at: "2026-10-02T10:00:00.000Z", suspended_by: "andres" }) }) } }));
-    expect(sus).toContain("SUSPENDED");
+    expect(sus).toContain(">Suspended</span>");
     expect(sus).toContain("by @andres");
     expect(sus).toContain("No data was deleted.");
     expect(sus).toContain('data-act="platSuspendArm" data-arg="unsuspend"');
@@ -354,7 +354,7 @@ describe("Usage", () => {
     expect(html.indexOf('data-arg="acme"')).toBeLessThan(html.indexOf('data-arg="beta"'));
     expect(html).toContain('aria-label="Acme: API requests per day: 420 in total, 120 on the busiest day"');
     expect(html).toContain('aria-label="Acme: MCP tool calls per day: 64 in total, 20 on the busiest day"');
-    expect(html).toContain("SUSPENDED");
+    expect(html).toContain(">Suspended</span>");
     expect(html).toContain("3.0 MB");
     expect(html).toContain("Never");
     expect(html).toContain('aria-expanded="false" aria-controls="plat-usage-acme"');
@@ -486,7 +486,7 @@ describe("Admins & limits", () => {
     const html = adminsTab(admins(), "Andres");
     expect(html).toContain("@andres");
     expect(html).toContain("by @migration");
-    expect((html.match(/>YOU</g) ?? []).length).toBe(1);
+    expect((html.match(/>\(you\)</g) ?? []).length).toBe(1);
     expect(html).toContain('data-act="platRevokeArm" data-arg="maya"');
     expect(html).toContain('aria-label="Remove @maya as superadmin"');
   });

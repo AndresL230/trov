@@ -91,6 +91,14 @@ const STATE_TAG: Record<TlState, string> = {
 /** The state's glyph (marks.ts): the ring fills as the sprint moves along — the tickets' shapes —
  *  and a late one is a warning triangle. */
 const STATE_GLYPH: Record<TlState, Glyph> = { upcoming: "todo", active: "half", ready: "most", done: "done", overdue: "warn" };
+/** What each state means — the tooltip on its mark. */
+const STATE_HINT: Record<TlState, string> = {
+  upcoming: "Not started yet.",
+  active: "Running now.",
+  ready: "Every ticket is closed. A person confirms it done.",
+  done: "Confirmed done.",
+  overdue: "Past its due date with tickets still open.",
+};
 /** The state's colour — theme vars only. Upcoming is the neutral fg family. */
 const STATE_COLOR: Record<TlState, string> = {
   done: "var(--green)", ready: "var(--accent)", overdue: "var(--red)", active: "var(--accent)", upcoming: "var(--fg-55)",
@@ -319,7 +327,7 @@ function dot(color: string): string {
 /** A sprint's state as its glyph and word — a mark, never a tag (`marks.ts`). The site's
  *  Roadmap mock draws its rows with this too. */
 export function stateTag(state: TlState, label = STATE_TAG[state], size = 12): string {
-  return `<span class="tl-tag" style="display:inline-flex;flex:none">${glyphMark(STATE_GLYPH[state], STATE_COLOR[state], label, size)}</span>`;
+  return `<span class="tl-tag" style="display:inline-flex;flex:none">${glyphMark(STATE_GLYPH[state], STATE_COLOR[state], label, size, STATE_HINT[state])}</span>`;
 }
 
 function popover(p: Placed, persons: PersonSummary[], center: number, up: boolean, when: string): string {

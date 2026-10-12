@@ -13,7 +13,7 @@ import { LIMIT_KEYS, LIMITS, PLANS, UPGRADE_PLAN, formatLimit, limitNoun, type L
 import { PRICING, canPurchasePlan, formatPrice } from "@shared/pricing";
 import type { MyOrg, MyOrgsResponse, OrgRole } from "@shared/orgs";
 import { attr, esc } from "./ui";
-import { O_ERR, chip, goLink, quietBtn, type OrgSlice } from "./org-ui";
+import { O_ERR, goLink, quietBtn, type OrgSlice } from "./org-ui";
 import { planParts, initialOrgBillingUi, type OrgBillingUi } from "./org-plan";
 import { FREE_TAKEN_SENTENCE } from "./org-picker";
 import { orgHref } from "./org-context";
@@ -208,7 +208,7 @@ function orgRow(o: MyOrg, here: boolean): string {
       <span style="display:block;font-size:13.5px;font-weight:500;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.name)}</span>
       <span data-org-role style="display:block;${FINE};overflow-wrap:anywhere">${ROLE_WORD[o.role]}${here ? " &middot; open now" : ""}${pays ? ` &middot; ${pays}` : ""}</span>
     </span>
-    ${plan ? `<span data-org-plan="${plan.id}" style="flex:none;display:inline-flex">${chip(plan.name, o.paid ? "var(--accent)" : "var(--fg-55)")}</span>` : ""}
+    ${plan ? `<span data-org-plan="${plan.id}" style="flex:none;display:inline-flex;font-size:12.5px;font-weight:500;color:var(${o.paid ? "--accent" : "--fg-55"})">${esc(plan.name)}</span>` : ""}
   </a></li>`;
 }
 

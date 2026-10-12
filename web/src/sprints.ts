@@ -25,7 +25,7 @@ import { personChip, personLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { segmented } from "./segmented";
 import { age, avatarStack, metaWord } from "./tickets";
-import { ticketStatusMark, priorityIcon, priorityMark, stateMark, glyphMark } from "./marks";
+import { ticketStatusMark, priorityIcon, priorityMark, stateMark, glyphMark, PRIORITY_LABEL } from "./marks";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skLines, skList, skW } from "./skeleton";
 
 // ── atoms ────────────────────────────────────────────────────────────────────
@@ -58,7 +58,7 @@ const firstNameOf = (persons: PersonSummary[], handle: string): string => nameOf
  * then the domain, as plain text. The order is load-bearing — it is the card's reading order.
  */
 export function sprintTags(sp: Pick<SprintView, "urgency" | "due" | "domain">): string {
-  const parts = [priorityMark(sp.urgency, 12)];
+  const parts = [urgencyMark(sp.urgency, 12)];
   if (sp.due) parts.push(metaWord(`Due ${shortDue(sp.due)}`, 12));
   if (sp.domain) parts.push(metaWord(sp.domain, 12));
   return parts.join("");
@@ -72,8 +72,10 @@ function leadBlock(lead: string | null, persons: PersonSummary[]): string {
 }
 
 /** The one next sprint, and a late one: marks, as the Timeline draws them (marks.ts). */
-const NEXT_UP = stateMark("Next up", "var(--accent)", "ring", 12);
-const OVERDUE = glyphMark("warn", "var(--red)", "Overdue", 12);
+const NEXT_UP = stateMark("Next up", "var(--accent)", "ring", 12, "The next sprint to come due.");
+const OVERDUE = glyphMark("warn", "var(--red)", "Overdue", 12, "Past its due date with tickets still open.");
+/** A sprint's urgency is drawn as the tickets' priority bars; its tooltip says which it is. */
+const urgencyMark = (u: SprintView["urgency"], size = 12.5): string => priorityMark(u, size, `${PRIORITY_LABEL[u]} urgency`);
 
 // ── the Roadmap Timeline card ────────────────────────────────────────────────
 
@@ -415,7 +417,7 @@ export function sprintSkeleton(): string {
 
 export function sprintScreen(p: SprintScreenProps): string {
   const sp = p.detail;
-  const activeChip = sp.active ? stateMark("Active", "var(--accent)", "dot", 12) : "";
+  const activeChip = sp.active ? stateMark("Active", "var(--accent)", "dot", 12, "The sprint the team is working in now.") : "";
   const activeBtn = sp.status === "done"
     ? ""
     : `<button data-act="sprintActive" data-arg="${sp.active ? "0" : "1"}" class="cnpy-outlinebtn" style="padding:4px 11px;border-radius:7px;border:1px solid var(--border-strong);font-size:11.5px;font-weight:500;color:var(--fg-70);flex:none">${sp.active ? "Mark inactive" : "Mark active"}</button>`;
@@ -465,7 +467,7 @@ export function sprintScreen(p: SprintScreenProps): string {
         <div style="display:flex;flex-direction:column">
           ${prop("DATES", `<span style="${PROP_VALUE}">${esc(sprintDatesLabel(sp) ?? "—")}</span>`)}
           ${prop("DUE", `<span style="${PROP_VALUE}">${esc(sp.due ? shortDue(sp.due) : "—")}</span>`)}
-          ${prop("URGENCY", priorityMark(sp.urgency))}
+          ${prop("URGENCY", urgencyMark(sp.urgency))}
           ${prop("DOMAIN", `<span style="${PROP_VALUE}">${esc(sp.domain ?? "—")}</span>`)}
           ${prop("LEAD", sp.lead
             ? `<div style="display:flex;min-width:0">${personLink(person(p.persons, sp.lead), sp.lead, 20, nameOf(p.persons, sp.lead), "min-width:0;font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}</div>`

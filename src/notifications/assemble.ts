@@ -103,7 +103,7 @@ export const EMAIL_STYLE = {
   table: `role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"`,
 };
 
-/** Chip palette names → (text, fill, line) tokens. `muted` is an outline-only chip. */
+/** Tone names → (text, fill, line) tokens; a mark (`EMAIL_CARD.mark`) paints its square with the text token. */
 export type ChipTone = "green" | "blue" | "amber" | "accent" | "muted";
 const CHIP_TONES: Record<ChipTone, { fg: string; bg: string; bd: string }> = {
   green: { fg: C.green, bg: C.greenSoft, bd: C.greenLine },
@@ -120,21 +120,18 @@ const CHIP_TONES: Record<ChipTone, { fg: string; bg: string; bd: string }> = {
  * link, in the app's accent pill style) far right on the same line, the
  * labelled rows and chip footer flush beneath, a hairline between items. Nested tables + inline styles only; every colour is a
  * THEME token so the dark swap applies. Callers escape their own text. The
- * `data-item*` / `data-row*` / `data-chip` / `data-pill` attributes are inert
+ * `data-item*` / `data-row*` / `data-mark` / `data-pill` attributes are inert
  * hooks for the admin preview; mail clients ignore them.
  */
 export const EMAIL_CARD = {
-  /** Small label chip, e.g. MERGED / P1 / ADDED — callers pass the case they want (status chips uppercase, labels as-is). */
-  chip(text: string, tone: ChipTone): string {
-    const t = CHIP_TONES[tone];
-    return `<span data-chip style="display:inline-block;${LABEL}font-size:9.5px;font-weight:600;letter-spacing:.04em;color:${t.fg};background-color:${t.bg};border:1px solid ${t.bd};border-radius:5px;padding:2px 6px;white-space:nowrap;vertical-align:middle;">${text}</span>`;
-  },
   /** A state as the app shows it (web/src/marks.ts): a small square in the tone and the word in
    *  sentence case, on no box. A client that drops the square still shows the word, which carries
    *  the meaning. Callers escape `word`. */
   mark(word: string, tone: ChipTone): string {
     const t = CHIP_TONES[tone];
-    return `<span data-mark style="white-space:nowrap;"><span style="display:inline-block;width:7px;height:7px;border-radius:2px;background-color:${t.fg};vertical-align:middle;margin-right:6px;"></span><span style="vertical-align:middle;color:${C.fg70};">${word}</span></span>`;
+    // Its own face and size: a mark sits in a footer, a table cell or a bare row, and a mail client
+    // falls back to its serif default wherever none is set.
+    return `<span data-mark style="${SANS}font-size:12px;line-height:20px;font-weight:400;white-space:nowrap;"><span style="display:inline-block;width:7px;height:7px;border-radius:2px;background-color:${t.fg};vertical-align:middle;margin-right:6px;"></span><span style="vertical-align:middle;color:${C.fg70};">${word}</span></span>`;
   },
   /** One labelled row: 96px label + body; `tone` colours the label (Next step is accent). */
   row(label: string, body: string, tone: "muted" | "accent" = "muted"): string {

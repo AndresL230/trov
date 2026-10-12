@@ -185,7 +185,7 @@ export function identityFromTask(t: IdentityTask): IdentityGroup {
     meta: `first seen ${relTime(t.first_seen)}`,
     countLabel: "recent activity",
     sample: t.sample.map((s) => ({
-      kind: s.event_type === "issue" ? "ISSUE" : "PR",
+      kind: s.event_type === "issue" ? "Issue" : "PR",
       text: `#${s.ref_number} ${s.title ?? "(no title)"}`,
       when: relTime(s.occurred_at),
     })),

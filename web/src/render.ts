@@ -1333,7 +1333,7 @@ export function docReaderHtml(real: AppState): string {
         <span style="font-family:var(--label);font-size:12px;font-weight:600;color:var(--fg);width:26px">v${v.version}</span>
         <span style="flex:1;font-size:12.5px;color:var(--fg-70)">${esc(v.summary ?? "")}</span>
         <span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--fg-40)">${personLink(personFor(s, v.created_by), v.created_by, 16, { html: handleTag(personFor(s, v.created_by), v.created_by, 11) }, "", 6)} · ${relTime(v.created_at)}</span>
-        ${v.version === doc.current_version ? stateMark("Promoted", "var(--accent)", "check", 11.5) : ""}
+        ${v.version === doc.current_version ? stateMark("Promoted", "var(--accent)", "check", 11.5, "The live version: what everyone reads.") : ""}
       </div>`).join("")}
     </div>` : "";
 

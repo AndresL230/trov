@@ -25,8 +25,9 @@ import { isSoloPlan, type OrgPlanView } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
 import {
   O_LABEL, O_FIELD, O_HELP, O_ERR, YOU, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgEmpty, orgBanner, loadingNote, failedNote,
-  sliceNote, roleChip, roleOption, roleAtLeast, sameHandle, textField, tabLead, leadFlag, openRow, chip, type OrgSlice,
+  sliceNote, roleWord, ROLE_WORD, roleOption, roleAtLeast, sameHandle, textField, tabLead, leadFlag, openRow, type OrgSlice,
 } from "./org-ui";
+import { kindMark } from "./marks";
 export { roleAtLeast };
 export type { OrgSlice };
 import { tabBar, tabPanelAttrs } from "./tabs";
@@ -271,7 +272,7 @@ export function generalTab(org: MyOrg, ui: OrgUi): string {
     ? `${textField({ id: "org-name", label: "Name", act: "orgNameDraft", field: "orgName", value: draft, max: ORG_NAME_MAX, enter: "orgNameSave", error: ui.nameError, help: "Changing it does not change the slug or any link." })}
        <div style="display:flex;gap:8px;margin-top:14px">${accentBtn(ui.nameSaving ? "Saving…" : "Save name", "orgNameSave", { disabled: !changed || ui.nameSaving, busy: ui.nameSaving })}${ui.nameDraft !== null && !ui.nameSaving ? quietBtn("Cancel", "orgNameCancel") : ""}</div>`
     : `<div style="${O_LABEL}">Name</div><div style="font-size:14px;margin-top:7px;overflow-wrap:anywhere">${esc(stored)}</div>`;
-  return `${tabLead(`Created ${esc(relTime(s.data.org.created_at))} by <strong>${esc(s.data.org.created_by)}</strong> &middot; you are ${org.role === "member" ? "a" : "an"} ${roleChip(org.role)} here${canEdit ? "" : ". Only an admin or an owner can rename the org."}`)}
+  return `${tabLead(`Created ${esc(relTime(s.data.org.created_at))} by <strong>${esc(s.data.org.created_by)}</strong> &middot; you are ${org.role === "member" ? "a" : "an"} <strong>${ROLE_WORD[org.role].toLowerCase()}</strong> here${canEdit ? "" : ". Only an admin or an owner can rename the org."}`)}
     <div class="cnpy-org-gen-wrap"><div class="cnpy-org-gen${canEdit ? "" : " cnpy-org-gen--read"}">
     <section${surface("", { cls: "cnpy-tile cnpy-org-gen-id" })} aria-label="Image and name">
       ${orgLogoSection({ name: stored, logo: s.data.org.logo, canEdit, ui: ui.logo, repo: ui.repos.data.find((r) => r.is_primary)?.repo_full_name ?? null })}
@@ -364,7 +365,7 @@ export function reposTab(org: MyOrg, ui: OrgUi): string {
     const key = `repo:${r.repo_full_name}`;
     return openRow({
       key, open: ui.openRows.includes(key), act: "orgRowToggle", label: `${r.repo_full_name}${r.is_primary ? ", primary" : ""}${through && r.access_lost ? ", no longer visible to the App" : ""}`,
-      head: `<span>${esc(r.repo_full_name)}</span>${r.is_primary ? chip("Primary", "var(--accent)") : ""}${through && r.access_lost ? chip("No longer visible", "var(--amber)") : ""}`,
+      head: `<span>${esc(r.repo_full_name)}</span>${r.is_primary ? `<span style="font-size:12px;font-weight:500;color:var(--fg-55)">Primary</span>` : ""}${through && r.access_lost ? kindMark("No longer visible", "warn", 12, "The GitHub App can no longer see this repository.") : ""}`,
       meta: !admin ? `Added ${esc(relTime(r.created_at))}` : through ? (r.access_lost ? "Not visible to the App" : "Through the GitHub App") : `Webhook secret ${r.webhook_secret_configured ? "set" : "not set"}`,
       body: `<div>Added ${esc(relTime(r.created_at))} by ${esc(r.created_by)}.${locked && admin ? " To remove it, make another repository the primary first." : ""}</div>${how}${capture}${hook}${actions}`,
       attrs: ` data-org-repo="${attr(r.repo_full_name)}" data-connection="${through ? "app" : "manual"}"`,
@@ -509,7 +510,7 @@ export function environmentsTab(org: MyOrg, ui: OrgUi): string {
         <div style="flex:1 1 260px;min-width:0">
           <div style="display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap">
             <span style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">${esc(e.label)}</span>
-            ${role ? chip(role, "var(--fg-55)") : ""}
+            ${role ? `<span style="font-size:12px;color:var(--fg-55)">${esc(role)}</span>` : ""}
             <code style="font-family:var(--code);font-size:11.5px;color:var(--fg-40)">${esc(e.key)}</code>
             ${e.note ? `<span style="font-size:12px;color:var(--fg-40)">${esc(e.note)}</span>` : ""}
           </div>
@@ -669,7 +670,7 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
         <span class="cnpy-mem-handle">${handleTag(m, m.handle, 12)}</span>
         <span class="cnpy-mem-title"${m.title ? "" : ' data-empty="1"'}>${m.title ? esc(m.title) : "&mdash;"}</span>
         <span class="cnpy-mem-joined">${joined(m.joined_at)}</span>
-        <span class="cnpy-mem-role">${roleChip(m.role)}</span>
+        <span class="cnpy-mem-role">${roleWord(m.role)}</span>
         ${admin ? `<span class="cnpy-mem-act">${quietBtn(d ? "Close" : "Edit", d ? "orgMemberCancel" : "orgMemberEdit", { arg: m.handle, label: `${d ? "Close the editor for" : "Edit"} ${name}`, field: `orgMemberEdit:${m.handle}` })}</span>` : ""}
       </div>
       ${d ? memberEditor(m, d, org.role, m.role === "owner" && owners <= 1, dd) : ""}
@@ -687,7 +688,7 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
         <div style="font-size:12px;color:var(--fg-40);overflow-wrap:anywhere">Invited ${esc(relTime(i.created_at))} by ${esc(i.invited_by)} &middot; <span data-invite-mail="${i.mail_status ?? "none"}" style="color:${mail.bad ? "var(--red)" : "inherit"}">${esc(mail.text)}${mail.bad && i.mail_error ? `: ${esc(i.mail_error)}` : ""}</span></div>
       </div>
       <div class="cnpy-org-actions" style="align-items:center">
-        ${roleChip(i.role)}
+        ${roleWord(i.role)}
         ${i.email ? quietBtn(ui.mailBusy === i.id ? "Sending…" : "Resend email", "orgInviteMail", { arg: String(i.id), disabled: ui.mailBusy !== null, busy: ui.mailBusy === i.id, label: `Email the invitation to ${who} again` }) : ""}
         ${dangerLink("Revoke", "orgInviteRevoke", { arg: String(i.id), label: `Revoke the invite for ${who}` })}
       </div>

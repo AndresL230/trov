@@ -39,7 +39,7 @@ describe("repoView — section states", () => {
     for (const [tab] of REPO_TABS) {
       const html = repoView(props({ tab, repo: { status: "ok", data }, sample: true }));
       expect(html, tab).not.toMatch(/undefined|NaN|\[object/);
-      expect(html, tab).toContain("sample data");
+      expect(html, tab).toContain("Sample data");
     }
   });
 
@@ -168,7 +168,7 @@ describe("repoView — live content", () => {
     expect(html).toContain("&lt;img src=x onerror=1&gt;");
     expect(html).not.toContain("<img src=x");
     expect(html).not.toContain("javascript:");
-    expect(html).toContain("MERGED");
+    expect(html).toContain(">Merged</span>");
   });
 
   // Task 12: the Branches block was built ahead of the capture landing — this
@@ -194,7 +194,7 @@ describe("repoView — live content", () => {
     expect(html).toContain("+4 / −0 vs develop");
     expect(html).toContain("+7 / −31 vs develop");
     expect(html).not.toContain("vs main");
-    expect(html).toContain("STALE");
+    expect(html).toContain(">Stale</span>");
     expect(html).toContain("1 active · 1 stale");
   });
 
@@ -472,7 +472,7 @@ describe("repoView — live content", () => {
     const data = live({ sprint: { status: "ok", data: { id: 3, label: "Notifications GA", due: "2026-10-02", closed: 21, total: 34, pct: 62 } } });
     const html = repoView(props({ tab: "planning", repo: { status: "ok", data } }));
     expect(html).toContain('data-act="openSprint" data-arg="3"');
-    expect(html).toContain("DUE OCT 2");
+    expect(html).toContain(">Due Oct 2</span>");
     expect(html).toContain("21 closed · 13 open");
     expect(html).toContain("width:62%");
   });
@@ -488,11 +488,12 @@ describe("repo header chrome", () => {
     expect(repoCrumb(props({ repo: { status: "loading", data: null } }))).toBe("");
   });
 
-  it("shows environment pills only when environments are connected", () => {
+  it("shows environment dots only when environments are connected, each explained in its tooltip", () => {
     expect(repoControls(props())).not.toContain("staging");
     const withEnvs = repoControls(props({ repo: { status: "ok", data: repoSample() } }));
-    expect(withEnvs).toContain("staging — degraded");
-    expect(withEnvs).toContain("production — healthy");
+    expect(withEnvs).toContain('data-mtip="staging: Degraded. Checks are failing on the branch head."');
+    expect(withEnvs).toContain('data-mtip="production: Healthy.');
+    expect(withEnvs).not.toMatch(/title="(?:staging|production)/); // the styled tooltip, never a native one
   });
 
   it("labels freshness, and says so while a request is out", () => {
@@ -595,7 +596,7 @@ describe("Repo — the tab bar heading the page (the sidebar has no sub-page lis
     const h = header(app({ repoTab: "usage", repo: { status: "ok", data: repoSample() } }));
     expect(h).toContain(">Repo</h1>");
     expect(h).toContain("acme/web");   // the sample set names no real organization
-    for (const needle of ["staging — degraded", "data-repo-updated", 'data-act="repoPollNow"', 'data-act="repoRefresh"']) expect(h, needle).toContain(needle);
+    for (const needle of ["staging: Degraded.", "data-repo-updated", 'data-act="repoPollNow"', 'data-act="repoRefresh"']) expect(h, needle).toContain(needle);
     // The range picker stays on the Usage tab, under the line — not in the bar.
     const body = main(app({ repoTab: "usage" }));
     expect(body.indexOf('data-seg="repo-range"')).toBeGreaterThan(body.indexOf('id="repo-tab-panel"'));

@@ -289,6 +289,16 @@ input, select { font-family: inherit; }
 .cnpy-tip { position:fixed; left:72px; top:0; z-index:60; padding:6px 10px; border-radius:7px; border:1px solid var(--border-strong); background:var(--bg); color:var(--fg); font-size:12.5px; font-weight:500; white-space:nowrap; box-shadow:0 8px 24px rgba(0,0,0,.28); pointer-events:none; opacity:0; transform:translate(-4px,-50%); transition:opacity .12s ease, transform .16s var(--side-e); }
 .cnpy-tip[data-on="1"] { opacity:1; transform:translate(0,-50%); }
 
+/* A status mark's tooltip (web/src/tip.ts, marks.ts `data-mtip`): ONE bubble on <body>, placed by
+   script and fixed to the viewport, so no scroll container or overflow:hidden surface clips it. It
+   carries the theme attribute of the mark it explains (its tokens resolve on itself). The rail tip's
+   look; wraps at 260px; never on a touch screen. Its radius is in the corners block. */
+.cnpy-mtip { position:fixed; left:0; top:0; z-index:1000; box-sizing:border-box; max-width:260px; padding:6px 9px; border:1px solid var(--border-strong); background:var(--bg); color:var(--fg); font-family:var(--sans); font-size:12px; font-weight:500; line-height:1.45; text-align:left; white-space:normal; box-shadow:0 8px 24px rgba(0,0,0,.22); pointer-events:none; opacity:0; visibility:hidden; transform:translateY(3px); transition:opacity .12s ease, transform .14s var(--fx-ease), visibility 0s linear .12s; }
+.cnpy-mtip[data-below="1"] { transform:translateY(-3px); }
+.cnpy-mtip[data-on="1"] { opacity:1; visibility:visible; transform:none; transition:opacity .12s ease, transform .14s var(--fx-ease), visibility 0s; }
+@media (hover:none) { .cnpy-mtip { display:none; } }
+@media (prefers-reduced-motion: reduce) { .cnpy-mtip, .cnpy-mtip[data-on="1"], .cnpy-mtip[data-below="1"] { transition:none; transform:none; } }
+
 /* ── phone: the rail becomes a drawer ─────────────────────────────────────────
    At phone width (main.ts `state.phone`, ≤ 640px) even the 64px rail starves the screen,
    so the <aside> leaves the layout: it is the FULL rail (render.ts `railCollapsed` is false
@@ -609,7 +619,6 @@ input, select { font-family: inherit; }
 
 .cnpy-rel-meta { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:12.5px; color:var(--fg-40); }
 .cnpy-rel-ver { font-family:var(--label); font-size:12.5px; font-weight:600; color:var(--fg-70); font-variant-numeric:tabular-nums; }
-.cnpy-rel-tag { font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); background:var(--accent-soft); padding:2px 7px; }
 .cnpy-rel-h3 { display:flex; align-items:center; gap:8px; margin:0 0 16px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
 .cnpy-rel-n { margin-left:auto; font-weight:500; color:var(--fg-40); letter-spacing:0; font-variant-numeric:tabular-nums; }
 .cnpy-rel-list { margin:0; padding-left:20px; display:flex; flex-direction:column; gap:10px; font-size:15px; line-height:1.6; color:var(--fg-70); }
@@ -2843,6 +2852,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 [data-cnpy-theme] .cnpy-tree,
 [data-cnpy-theme] .cnpy-select,
 [data-cnpy-theme] .site-navlink { border-radius:calc(7px * var(--corner-scale)) !important; }
+/* The mark tooltip carries the theme attribute itself (it lives on <body>), so its rule keys on it. */
+[data-cnpy-theme].cnpy-mtip { border-radius:calc(7px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .site-legal-tabs { border-radius:calc(11px * var(--corner-scale)) !important; }
 @media (max-width:900px) { [data-cnpy-theme] .site-legal-side { border-radius:calc(12px * var(--corner-scale)) !important; } }
 [data-cnpy-theme] .site-fxcard::after { border-radius:calc(12px * var(--corner-scale)) !important; }

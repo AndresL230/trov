@@ -8,7 +8,7 @@
 // no inline data.
 
 import { esc, attr, MONO_LABEL, surface, SURFACE } from "./ui";
-import { LOW_CONFIDENCE } from "./marks";
+import { LOW_CONFIDENCE, kindMark } from "./marks";
 import { segmented } from "./segmented";
 import { renderedDoc } from "./review-rendered";
 import { personChip, personLink, handleTag } from "./people";
@@ -153,9 +153,9 @@ export function reviewListEmpty(all = true): string {
 
 // ── detail pane pieces ───────────────────────────────────────────────────────
 export function staleBaseWarning(note: string): string {
-  return `<div${surface("border-left:2px solid var(--amber);padding:11px 15px;margin-top:18px;display:flex;gap:10px;align-items:baseline")}>
-    <div style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--amber);flex:none">STALE BASE</div>
-    <div style="font-size:12.5px;color:var(--fg-70)">${esc(note)}</div>
+  return `<div${surface("padding:11px 15px;margin-top:18px;display:flex;gap:6px 12px;align-items:baseline;flex-wrap:wrap")}>
+    <div style="flex:none">${kindMark("Stale base", "warn", 12.5, "The live doc changed after this proposal was written.")}</div>
+    <div style="font-size:12.5px;color:var(--fg-70);min-width:0">${esc(note)}</div>
   </div>`;
 }
 
