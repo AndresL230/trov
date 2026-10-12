@@ -70,7 +70,7 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // States drawn as marks instead of tags (the 2026-10 tag audit).
+  // States drawn as marks instead of tags: the 2026-10 tag audit (#173).
   {
     version: "Unreleased",
     date: "2026-10-12",
@@ -89,28 +89,29 @@ export const RELEASES: Release[] = [
     ],
     patches: {
       added: [
-        "`web/src/marks.ts`: the one place a state is drawn. Progress glyphs (`glyph`, `ticketStatusIcon`, `priorityIcon`), shape-and-word marks (`stateMark`, `handoffMark`, `artifactStatusMark`, `authorityMark`, `LOW_CONFIDENCE`), `agentMark`, and the tone tables (`TICKET_STATUS_TONE`, `HANDOFF_MARK`, `ARTIFACT_MARK`, `AUTHORITY_MARK`)",
-        "`EMAIL_CARD.mark` (`src/notifications/assemble.ts`): a small square and the word, for the digests",
-        "`artifactKindLabel` (`shared/artifacts-core.ts`): HTML / SVG / PDF / Markdown / …, shared by the viewer and the site",
-        "`test/render.marks.test.ts`: the marks are never a pill, and the signed-out site and every tour mock draw no pill and take their states from `marks.ts`",
+        "`web/src/marks.ts`: the one place a state is drawn. Progress glyphs (`glyph`, `ticketStatusIcon`, `priorityIcon`), shape-and-word marks (`stateMark`, `handoffMark`, `artifactStatusMark`, `authorityMark`, `LOW_CONFIDENCE`), `agentMark`, and the tone tables (`TICKET_STATUS_TONE`, `HANDOFF_MARK`, `ARTIFACT_MARK`, `AUTHORITY_MARK`) (#173)",
+        "`EMAIL_CARD.mark` (`src/notifications/assemble.ts`): a small square and the word, for the digests (#173)",
+        "`artifactKindLabel` (`shared/artifacts-core.ts`): HTML / SVG / PDF / Markdown / …, shared by the viewer and the site (#173)",
+        "`test/render.marks.test.ts`: the marks are never a pill, and the signed-out site and every tour mock draw no pill and take their states from `marks.ts` (#173)",
       ],
       changed: [
-        "Tickets: the table, board column heads, the status control and its menu, the rail, sub-ticket rows, sprint cards and the artifact attach picker draw `ticketStatusMark` / `priorityMark`; category, relation and source are plain text (`metaWord`)",
-        "Review and Unplaced: no STAGED / DRAFT / FLAGGED tags; `ReviewItem` loses `badge` / `badgeColor`; a low-confidence proposal wears `LOW_CONFIDENCE`; the triage reason reads Low confidence / Flagged by an agent",
-        "Search: the kind is an icon and a word, and `authorityMark` shows nothing for `live`. The feed's agent chip is `agentMark`",
-        "Roadmap: Timeline rows and popovers use the progress glyphs (`stateTag`), Today is plain red text, and sprint cards show Next up, Overdue, the urgency bars, Due and the domain as marks and plain text. `shortDue` reads \"Sep 26\"",
-        "Handoffs, artifacts (status, kind, area, Private, the compare sides, the upload warnings) and the doc page (the proposal notice, Promoted in history) use marks; the old-version banner has no tag",
-        "The signed-out site and the tour mocks draw every state through `marks.ts`; `pill()` is removed from `landing-mocks.ts`. The pricing badge is a soft label and the tool names in For agents are set in the code face",
-        "Ticket and review digests: status is a mark, priority is words, and the kind is a word instead of a chip",
+        "Tickets: the table, board column heads, the status control and its menu, the rail, sub-ticket rows, sprint cards and the artifact attach picker draw `ticketStatusMark` / `priorityMark`; category, relation and source are plain text (`metaWord`) (#173)",
+        "Review and Unplaced: no STAGED / DRAFT / FLAGGED tags; `ReviewItem` loses `badge` / `badgeColor`; a low-confidence proposal wears `LOW_CONFIDENCE`; the triage reason reads Low confidence / Flagged by an agent (#173)",
+        "Search: the kind is an icon and a word, and `authorityMark` shows nothing for `live`. The feed's agent chip is `agentMark` (#173)",
+        "Roadmap: Timeline rows and popovers use the progress glyphs (`stateTag`), Today is plain red text, and sprint cards show Next up, Overdue, the urgency bars, Due and the domain as marks and plain text. `shortDue` reads \"Sep 26\" (#173)",
+        "Handoffs, artifacts (status, kind, area, Private, the compare sides, the upload warnings) and the doc page (the proposal notice, Promoted in history) use marks; the old-version banner has no tag (#173)",
+        "The signed-out site and the tour mocks draw every state through `marks.ts`; `pill()` is removed from `landing-mocks.ts`. The pricing badge is a soft label and the tool names in For agents are set in the code face (#173)",
+        "Ticket and review digests: status is a mark, priority is words, and the kind is a word instead of a chip (#173)",
       ],
       fixed: [
-        "The artifact attach picker called a Triage ticket SUBMITTED and showed a Testing ticket as a plain grey tag",
-        "Email digests coloured ticket statuses differently from the app",
+        "The artifact attach picker called a Triage ticket SUBMITTED and showed a Testing ticket as a plain grey tag (#173)",
+        "Email digests coloured ticket statuses differently from the app (#173)",
       ],
       removed: [
-        "`ticketPill`, `priorityChip`, `tagChip`, `handoffPill` and the per-file `CHIP_BASE` / `TAG_BASE` copies; the unused `ticketPill` / `priorityChip` import in `render.ts`",
+        "`ticketPill`, `priorityChip`, `tagChip`, `handoffPill` and the per-file `CHIP_BASE` / `TAG_BASE` copies; the unused `ticketPill` / `priorityChip` import in `render.ts` (#173)",
       ],
     },
+    prs: [173],
   },
   // One GitHub account, several Trov organizations: repositories split between orgs (#170).
   {
