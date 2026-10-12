@@ -16,7 +16,11 @@
 //     Design export that must be flattened (`isBundledExport`). A warning, never a
 //     rejection: the write has already happened;
 //   • the input split between the text path (content / old_str+new_str) and the
-//     binary path (size_bytes + sha256 → a single-use, 5-minute upload URL).
+//     binary path (size_bytes + sha256 → a single-use, 5-minute upload URL);
+//   • the binary path for a client with NO SHELL (a chat on the web): `content_base64` on a write
+//     (the bytes inside the call — hashed here, then landed through the SAME token mint + consume as
+//     a PUT, so every rule of the upload still runs) and `include_file` on artifact_get (the bytes
+//     back as MCP content). Both capped at ARTIFACT_INLINE_BINARY_MAX.
 //
 // There is deliberately NO ratify here and no path to `ratify()`: ratifying is a
 // human act over a session-cookie route (POST /api/artifacts/:slug/ratify), exactly
@@ -25,13 +29,13 @@
 
 import type { TenantContext } from "../data/sql";
 import {
-  ArtifactError, addLink, addTextVersion, createPage, getPage, listPages, mintUploadToken, versionFilename, writablePageKind,
+  ArtifactError, addLink, addTextVersion, consumeUploadToken, createPage, getPage, listPages, mintUploadToken, readRawByPageId, versionFilename, writablePageKind,
 } from "./artifacts";
 import { downloadFilename, mintDownloadToken } from "../artifacts/download";
-import { mintDocImageUpload } from "./doc-images";
+import { consumeDocImageToken, mintDocImageUpload } from "./doc-images";
 import { apiBase, appBase } from "./org-links";
 import {
-  ARTIFACT_INLINE_MAX, claudeOnlyHits, isBinaryKind, isBundledExport, isTextKind, parseSlugVersion,
+  ARTIFACT_IMAGE_TYPES, ARTIFACT_INLINE_BINARY_MAX, ARTIFACT_INLINE_MAX, claudeOnlyHits, isBinaryKind, isBundledExport, isTextKind, parseSlugVersion,
   type ArtifactArea, type ArtifactDetailDTO, type ArtifactKind, type ArtifactLinkInput, type ArtifactLinkType,
   type ArtifactStatus, type ArtifactTextKind, type ArtifactVisibility,
 } from "@shared/artifacts";
@@ -48,6 +52,8 @@ export interface ArtifactAgentCtx {
   orgSlug?: string | null;
   /** COOKIE_SECRET — the root the download-URL key is DERIVED from (src/artifacts/download.ts). Absent → no download_url. */
   downloadSecret?: string;
+  /** Where binary bytes live. Absent → no `content_base64` write and no `include_file` read. */
+  bucket?: R2Bucket;
 }
 
 /** `PUBLIC_ORIGIN` wins; else the request's own origin; else "" (relative links). */
@@ -78,7 +84,35 @@ export function artifactWarnings(content: string | null | undefined): string[] {
   return warnings;
 }
 
-const BINARY_FIELDS = ["size_bytes", "sha256", "content_type", "filename"] as const;
+const BINARY_FIELDS = ["size_bytes", "sha256", "content_type", "filename", "content_base64"] as const;
+
+// ── bytes inside the call ────────────────────────────────────────────────────
+
+const hex = (buf: ArrayBuffer): string => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+function toBase64(bytes: Uint8Array): string {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+const streamOf = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
+  new ReadableStream({ start(c) { c.enqueue(bytes); c.close(); } });
+
+/** `content_base64` as bytes with their size and SHA-256 — what a shell would have computed. A
+ *  `data:…;base64,` prefix and whitespace are dropped; anything that is not base64, is empty, or is
+ *  over ARTIFACT_INLINE_BINARY_MAX is refused before anything is written. */
+async function inlineBytes(ctx: ArtifactAgentCtx, input: { content_base64?: string; size_bytes?: number; sha256?: string }): Promise<{ bytes: Uint8Array; size_bytes: number; sha256: string; bucket: R2Bucket }> {
+  if (input.size_bytes !== undefined || input.sha256 !== undefined) throw bad("give content_base64 OR size_bytes and sha256, not both");
+  if (!ctx.bucket) throw bad("content_base64 is not available here — pass size_bytes and sha256, then PUT the bytes");
+  const b64 = String(input.content_base64).replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+  // Checked on the text first: four characters are three bytes, so nothing oversized is even decoded.
+  if (b64.length > Math.ceil(ARTIFACT_INLINE_BINARY_MAX / 3) * 4) {
+    throw new ArtifactError("too_large", `content_base64 carries at most ${ARTIFACT_INLINE_BINARY_MAX} bytes — a larger file is uploaded: pass size_bytes and sha256, then PUT the bytes to upload_url`);
+  }
+  let bytes: Uint8Array;
+  try { bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0)); } catch { throw bad("content_base64 is not valid base64"); }
+  if (bytes.byteLength === 0) throw bad("content_base64 is empty");
+  return { bytes, size_bytes: bytes.byteLength, sha256: hex(await crypto.subtle.digest("SHA-256", bytes)), bucket: ctx.bucket };
+}
 
 // ── upload_asset (was artifact_create) ───────────────────────────────────
 // ONE tool for everything an agent puts into Trov's asset stores, split by
@@ -102,6 +136,8 @@ export interface AgentCreateInput {
   sha256?: string;
   content_type?: string;
   filename?: string;
+  /** A binary file's bytes, base64 — instead of size_bytes + sha256 + a PUT (≤ ARTIFACT_INLINE_BINARY_MAX). */
+  content_base64?: string;
 }
 
 export type AgentCreateResult =
@@ -119,8 +155,13 @@ export async function agentUploadAsset(ctx: ArtifactAgentCtx, input: AgentCreate
     if (input.kind !== undefined && input.kind !== "image") throw bad(`destination "doc" is for images — kind must be "image" (or omitted)`);
     const extra = PAGE_FIELDS.filter((f) => input[f] !== undefined);
     if (extra.length) throw bad(`${extra.join(", ")} are for artifact pages — a doc image takes only size_bytes, sha256 and content_type`);
-    const m = await mintDocImageUpload(ctx.tenant, input, ctx.handle);
+    const inline = input.content_base64 !== undefined ? await inlineBytes(ctx, input) : null;
+    const m = await mintDocImageUpload(ctx.tenant, inline ? { size_bytes: inline.size_bytes, sha256: inline.sha256, content_type: input.content_type } : input, ctx.handle);
     const markdown = `![<describe the image>](${m.ref})`;
+    if (inline && !m.uploaded) {
+      await consumeDocImageToken(ctx.tenant, inline.bucket, m.token, streamOf(inline.bytes));
+      return { destination: "doc", ref: m.ref, markdown, sha256: m.sha256, uploaded: true, warnings: [] };
+    }
     return m.uploaded
       ? { destination: "doc", ref: m.ref, markdown, sha256: m.sha256, uploaded: true, warnings: [] }
       : { destination: "doc", ref: m.ref, markdown, sha256: m.sha256, uploaded: false, upload_url: absolute(ctx, m.upload_url), expires_at: m.expires_at, warnings: [] };
@@ -146,14 +187,19 @@ async function createArtifact(
     return { id: d.id, slug: d.slug, url: pageUrl(ctx, d.slug), version: d.current_version, warnings: artifactWarnings(d.content) };
   }
   if (!isBinaryKind(input.kind)) throw bad("unknown kind");
-  if (input.content !== undefined) throw bad(`a ${input.kind} artifact is uploaded, not inlined — pass size_bytes and sha256 instead of content`);
-  if (input.size_bytes === undefined || input.sha256 === undefined) {
-    throw bad(`a ${input.kind} artifact needs size_bytes and sha256 (e.g. \`shasum -a 256 <file>\`)`);
+  if (input.content !== undefined) throw bad(`a ${input.kind} artifact is uploaded, not inlined — pass size_bytes and sha256 (or content_base64) instead of content`);
+  const inline = input.content_base64 !== undefined ? await inlineBytes(ctx, input) : null;
+  if (!inline && (input.size_bytes === undefined || input.sha256 === undefined)) {
+    throw bad(`a ${input.kind} artifact needs size_bytes and sha256 (e.g. \`shasum -a 256 <file>\`), or content_base64`);
   }
   const t = await mintUploadToken(ctx.tenant, {
-    ...page, kind: input.kind, size_bytes: input.size_bytes, sha256: input.sha256,
+    ...page, kind: input.kind, size_bytes: inline ? inline.size_bytes : input.size_bytes!, sha256: inline ? inline.sha256 : input.sha256!,
     content_type: input.content_type, filename: input.filename, summary: input.summary,
   }, ctx.handle);
+  if (inline) {
+    const r = await consumeUploadToken(ctx.tenant, inline.bucket, t.token, streamOf(inline.bytes));
+    return { id: r.page.id, slug: r.page.slug, url: pageUrl(ctx, r.page.slug), version: r.version_no, warnings: [] };
+  }
   return { id: t.id, slug: t.slug, url: pageUrl(ctx, t.slug), upload_url: absolute(ctx, t.upload_url), expires_at: t.expires_at, warnings: [] };
 }
 
@@ -169,6 +215,7 @@ export interface AgentUpdateInput {
   sha256?: string;
   content_type?: string;
   filename?: string;
+  content_base64?: string;
 }
 
 export type AgentUpdateResult =
@@ -201,12 +248,17 @@ export async function agentArtifactUpdate(ctx: ArtifactAgentCtx, input: AgentUpd
     };
   }
   if (!isBinaryKind(kind)) throw bad("unknown kind");
-  if (hasText) throw bad(`this is a ${kind} artifact — upload a new file with size_bytes and sha256, not text`);
-  if (input.size_bytes === undefined || input.sha256 === undefined) throw bad(`a new ${kind} version needs size_bytes and sha256`);
+  if (hasText) throw bad(`this is a ${kind} artifact — upload a new file with size_bytes and sha256 (or content_base64), not text`);
+  const inline = input.content_base64 !== undefined ? await inlineBytes(ctx, input) : null;
+  if (!inline && (input.size_bytes === undefined || input.sha256 === undefined)) throw bad(`a new ${kind} version needs size_bytes and sha256, or content_base64`);
   const t = await mintUploadToken(ctx.tenant, {
-    slug: input.slug, kind, size_bytes: input.size_bytes, sha256: input.sha256,
+    slug: input.slug, kind, size_bytes: inline ? inline.size_bytes : input.size_bytes!, sha256: inline ? inline.sha256 : input.sha256!,
     content_type: input.content_type, filename: input.filename, summary: input.summary,
   }, ctx.handle);
+  if (inline) {
+    const r = await consumeUploadToken(ctx.tenant, inline.bucket, t.token, streamOf(inline.bytes));
+    return { id: r.page.id, slug: r.page.slug, url: pageUrl(ctx, r.page.slug), version: r.version_no, unchanged: r.unchanged, warnings: [] };
+  }
   return { id: t.id, slug: t.slug, url: pageUrl(ctx, t.slug), upload_url: absolute(ctx, t.upload_url), expires_at: t.expires_at, warnings: [] };
 }
 
@@ -268,6 +320,31 @@ export async function agentArtifactGet(
     download_filename: downloadFilename({ slug: d.slug, version_no: v.version_no, kind: d.kind, content_type: v.content_type, filename }),
     warnings: artifactWarnings(d.content),
   };
+}
+
+/** Whether artifact_get's `include_file` put the file in the result, or why not. */
+export type ArtifactFileState = "included" | "text" | "too_large" | "unavailable";
+export type ArtifactFileBlock =
+  | { type: "image"; data: string; mimeType: string }
+  | { type: "resource"; resource: { uri: string; mimeType: string; blob: string } };
+
+/**
+ * The bytes of the version `d` describes, as MCP content — for a client that cannot fetch
+ * `download_url`. An image the model can look at is an `image` block; a PDF or any other file an
+ * embedded `resource`. A text kind has its `content` already (`text`); a file over
+ * ARTIFACT_INLINE_BINARY_MAX is not read at all (`too_large`). Read through the repository with the
+ * caller as viewer, exactly as the signed download re-checks it.
+ */
+export async function agentArtifactFile(ctx: ArtifactAgentCtx, d: AgentGetResult): Promise<{ state: ArtifactFileState; block: ArtifactFileBlock | null }> {
+  if (!isBinaryKind(d.kind)) return { state: "text", block: null };
+  if (!ctx.bucket) return { state: "unavailable", block: null };
+  if (d.size_bytes > ARTIFACT_INLINE_BINARY_MAX) return { state: "too_large", block: null };
+  const raw = await readRawByPageId(ctx.tenant, ctx.bucket, d.id, d.version.version_no, ctx.handle);
+  if (!raw.object) return { state: "unavailable", block: null };
+  const data = toBase64(new Uint8Array(await raw.object.arrayBuffer()));
+  const mimeType = raw.content_type || "application/octet-stream";
+  const image = (ARTIFACT_IMAGE_TYPES as readonly string[]).includes(mimeType);
+  return { state: "included", block: image ? { type: "image", data, mimeType } : { type: "resource", resource: { uri: d.url, mimeType, blob: data } } };
 }
 
 // ── artifact_list ────────────────────────────────────────────────────────────

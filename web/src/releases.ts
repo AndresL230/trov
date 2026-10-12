@@ -83,12 +83,12 @@ export const RELEASES: Release[] = [
       "You no longer need to read every repository of a GitHub account to connect it. Connect with the repositories you can read: your organization can then use exactly those. An owner of the GitHub account still gets all of them.",
       "When an organization is connected with part of an account, Repositories lists only that part and says whose access it is. Got access to more on GitHub since? Choose Connect again to add them.",
       "Disconnecting GitHub in one organization leaves the others connected. Uninstalling the Trov App on GitHub ends the connection for every organization that used it, and each is told.",
-      "Getting ready for Claude on the web: when you connect Trov from claude.ai, the approval page now preselects Manual, so the connection works in the organization you pick. Handoffs, the Prompt Library and text artifacts no longer assume the agent is inside a code repository.",
+      "Getting ready for Claude on the web: connecting from claude.ai preselects Manual, so the connection works in the organization you pick, and handoffs, prompts and artifacts no longer assume a code repository. An agent with no shell can open and add image, PDF and file artifacts up to 1 MB.",
     ],
     headsUp: [
       "An organization still captures events for its primary repository only. Other tracked repositories are listed and resolve links, as before.",
       "What an organization can read is checked when its admin connects, not again later. To drop access someone no longer has on GitHub, disconnect and connect again.",
-      "Claude on the web has not been tried against Trov yet, and it cannot upload or download images, PDFs or other files there: those still need a shell.",
+      "Claude on the web has not been tried against Trov yet. There, a file over 1 MB can be linked but not opened or uploaded, and a picture you attach in the chat usually cannot be passed on to Trov.",
       "A connection that says \"cannot read N of the repositories\" no longer happens: it now connects with the repositories you can read. With none, it says so and connects nothing.",
     ],
     ops: [
@@ -100,6 +100,7 @@ export const RELEASES: Release[] = [
         "`src/platform/jobs.ts`: `installationOrgs` (every org bound to an installation) and `installationRepoOrgs` (every bound org that tracks a repository and whose binding reaches it). `installationOrg` is gone",
         "`src/github-app/store.ts`: `allowedRepos` / `repoAllowed`, and `bindInstallation` takes what the connect flow found readable; connecting again adds to a `selected` list or widens it to `all`, never narrows",
         "`GithubInstallationDTO.repo_access`; Repositories says whose access a `selected` connection carries and links Connect again (`web/src/github-app.ts`)",
+        "`content_base64` on `upload_asset` (artifact and doc image) and `artifact_update`, and `include_file` on `artifact_get` (an image block or an embedded resource; `file` says what happened): binary bytes inside the call, ≤ `ARTIFACT_INLINE_BINARY_MAX` (1 MB), through the same token mint and consume as a PUT (`src/tools/artifacts-agent.ts`, `src/mcp.ts`)",
         "`test/github-app.shared.test.ts`: two orgs on one installation and on one repository, and a `selected` org through the webhook, the picker, Disconnect and the token",
       ],
       changed: [

@@ -33,7 +33,7 @@ import { FEED_BRIEF_MAX, IngestPayload, QueryType } from "@shared/contract";
 import { ArtifactError } from "./tools/artifacts";
 import { PlanFeatureError, PlanLimitError } from "./plans/state";
 import {
-  agentUploadAsset, agentArtifactUpdate, agentArtifactGet, agentArtifactList, artifactsForTicket, artifactOrigin,
+  agentUploadAsset, agentArtifactUpdate, agentArtifactGet, agentArtifactFile, agentArtifactList, artifactsForTicket, artifactOrigin,
 } from "./tools/artifacts-agent";
 import {
   ARTIFACT_AREAS, ARTIFACT_KINDS, ARTIFACT_STATUSES, ARTIFACT_SUMMARY_MAX, ARTIFACT_TITLE_MAX, ARTIFACT_VISIBILITIES,
@@ -54,9 +54,9 @@ const asText = (value: unknown) => ({ content: [{ type: "text" as const, text: J
 // on its own merits (vocab/confidence/content-hash dedupe still apply).
 const ephemeralLedger = () => ({ sessionId: crypto.randomUUID(), itemIndex: 0 });
 
-async function runTool(fn: () => Promise<unknown>) {
+async function runTool<T>(fn: () => Promise<T>, render: (value: T) => { content: unknown[] } | Promise<{ content: unknown[] }> = asText) {
   try {
-    return asText(await fn());
+    return (await render(await fn())) as ReturnType<typeof asText>;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // A TicketError's CODE is the actionable half for an agent, so it travels with
@@ -88,6 +88,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
   // COOKIE_SECRET is only the ROOT of the download-URL key (derived with a purpose label).
   const artifactCtx = {
     tenant: ctx, handle: principal.handle, origin: artifactOrigin(env.PUBLIC_ORIGIN, opts.origin), orgSlug: opts.orgSlug, downloadSecret: env.COOKIE_SECRET,
+    bucket: env.ARTIFACTS_BUCKET,
   };
 
   server.tool(
@@ -412,6 +413,8 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
     sha256: z.string().optional(),
     content_type: z.string().max(255).optional(),
     filename: z.string().max(255).optional(),
+    // No .max: over the cap is the adapter's too_large, with what to do instead.
+    content_base64: z.string().optional(),
   };
 
   server.tool(
@@ -419,7 +422,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
     "Put something into Trov: an ARTIFACT page, or an IMAGE for a doc. `destination` picks which (default \"artifact\").\n\n" +
       "destination \"doc\" — an image a doc embeds. Pass `sha256` (hex, `shasum -a 256 img.png`), `size_bytes` and `content_type` (image/png | image/jpeg | image/gif | image/webp; ≤ 10 MB); `kind` may be omitted (it is always image) and page fields (title, area, …) are refused. → { destination, ref: \"/img/<sha256>\", markdown, sha256, uploaded }. uploaded: true = that exact image is already stored, nothing to PUT. Otherwise also { upload_url, expires_at }: PUT the exact bytes (single use, 5 minutes, e.g. `curl -X PUT --data-binary @img.png -H \"Content-Type: image/png\" \"<upload_url>\"`). THEN reference it in the doc body as `![what it shows](/img/<sha256>)` and propose the doc (propose_doc_update / record_session). The doc gate REFUSES a body whose image is not uploaded yet, and any other image source (an external URL, a data: URI) — upload first, then propose. Images are immutable: a new picture is a new sha256.\n\n" +
       "destination \"artifact\" (default) — create an artifact page (v1, status draft): a rendered HTML page, markdown doc, SVG, mermaid diagram, image, PDF or file the team keeps and versions. Needs `title`, `kind`, `area`, `repo`, `visibility`. Text kinds (html | markdown | svg | mermaid; ≤ 750 KB): pass `content` → { id, slug, url, version }. Binary kinds (image | pdf | file; ≤ 10 MB): pass `size_bytes` and `sha256`, NOT content → { id, slug, url, upload_url, expires_at }; then PUT the exact bytes to upload_url (single use, 5 minutes) — the page does not exist to anyone until that PUT lands. `area` is one of auth | architecture | infra | api | ui | data; `repo` is owner/repo or \"\"; `visibility` org (the whole org) or private (only you). Optional `links` ([{target_type: ticket|sprint|pr|issue, target_ref}]) and `summary`. You author it; a PERSON ratifies it on the web — there is no ratify tool. Contract: docs/artifact-contract.md.\n\n" +
-      "With no shell (a chat on the web) only the text kinds can be created: a binary upload needs the file's hash and a PUT of its bytes. Every result has `warnings` — non-empty when artifact content calls something only claude.ai has (window.claude, window.storage, api.anthropic.com); the page is still created.",
+      "With no shell (a chat on the web), a binary file — for either destination — goes INSIDE the call instead: pass `content_base64` (the file's bytes, base64, ≤ 1 MB; `content_type` still required for an image) and NOT size_bytes / sha256 → the same result with `version` (an artifact) or `uploaded: true` (a doc image) and no upload_url: nothing is left to PUT. Use it only for bytes you actually hold; a larger file needs the PUT. Every result has `warnings` — non-empty when artifact content calls something only claude.ai has (window.claude, window.storage, api.anthropic.com); the page is still created.",
     {
       destination: z.enum(["artifact", "doc"]).optional(),
       title: artifactPageShape.title.optional(),
@@ -437,7 +440,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
 
   server.tool(
     "artifact_update",
-    "Add a version to an artifact you can see (any org page, or your own private one). A new version is `published` and clears any ratification. Text kinds: pass `content` (the whole new body) OR `old_str` + `new_str` (an exact edit of the latest version — old_str must occur EXACTLY once) → { id, slug, url, version, unchanged } (unchanged: true = identical to the latest, nothing written). Binary kinds: pass `size_bytes` + `sha256` (+ optional content_type / filename) → { id, slug, url, upload_url, expires_at }, then PUT the bytes (single use, 5 minutes). `summary` says what changed. Every result has `warnings` (claude.ai-only calls in the content — a warning, never a rejection). An unknown or private-to-someone-else slug is { error: \"not_found\", code: \"not_found\" }.",
+    "Add a version to an artifact you can see (any org page, or your own private one). A new version is `published` and clears any ratification. Text kinds: pass `content` (the whole new body) OR `old_str` + `new_str` (an exact edit of the latest version — old_str must occur EXACTLY once) → { id, slug, url, version, unchanged } (unchanged: true = identical to the latest, nothing written). Binary kinds: pass `size_bytes` + `sha256` (+ optional content_type / filename) → { id, slug, url, upload_url, expires_at }, then PUT the bytes (single use, 5 minutes); with no shell, pass `content_base64` instead (≤ 1 MB) → { id, slug, url, version, unchanged }, nothing to PUT. `summary` says what changed. Every result has `warnings` (claude.ai-only calls in the content — a warning, never a rejection). An unknown or private-to-someone-else slug is { error: \"not_found\", code: \"not_found\" }.",
     {
       slug: z.string().min(1),
       summary: z.string().max(ARTIFACT_SUMMARY_MAX),
@@ -451,9 +454,13 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
 
   server.tool(
     "artifact_get",
-    "Read one artifact: metadata (title, kind, area, repo, author, status draft | published | ratified, visibility, versions, links, ratified_version) plus, for text kinds, `content` of the requested version (binary kinds: `content` is null). A text version over 64 KB is NOT inlined: `content` is null and `content_omitted` is true — pull it with `download_url` and grep / read the slices you need, or pass `include_content: true` only when you genuinely need the whole text in context (`content_omitted` is false on every other result). To get the FILE — any kind, binary included — use `download_url`: absolute, signed for you, reusable for 5 minutes (`download_expires_at`), no header needed: `curl -fsSL \"$download_url\" -o <path>` returns the exact stored bytes as an attachment named `download_filename`. Verify it against `sha256` / `size_bytes` (this version's; `shasum -a 256 <path>`). Expired → HTTP 410: call artifact_get again. With no shell (a chat on the web): read a text kind from `content`; a binary kind cannot be fetched there — give the person `url`. `raw_url` is the browser view (signed-in session only — it does not take your bearer). `slug` may name a version (`slug@v3` or `slug/v3`), or pass `version`; default the latest. `url` is the page in the Trov web app — share that when a person just wants the link. `warnings` flags claude.ai-only calls in the content. Only `ratified` is team-confirmed; draft / published are one person's word. An unknown, private-to-someone-else or not-yet-uploaded slug is { error: \"not_found\", code: \"not_found\" }.",
-    { slug: z.string().min(1), version: z.number().int().min(1).optional(), include_content: z.boolean().optional() },
-    async (input) => runTool(() => agentArtifactGet(artifactCtx, input)),
+    "Read one artifact: metadata (title, kind, area, repo, author, status draft | published | ratified, visibility, versions, links, ratified_version) plus, for text kinds, `content` of the requested version (binary kinds: `content` is null). A text version over 64 KB is NOT inlined: `content` is null and `content_omitted` is true — pull it with `download_url` and grep / read the slices you need, or pass `include_content: true` only when you genuinely need the whole text in context (`content_omitted` is false on every other result). To get the FILE — any kind, binary included — use `download_url`: absolute, signed for you, reusable for 5 minutes (`download_expires_at`), no header needed: `curl -fsSL \"$download_url\" -o <path>` returns the exact stored bytes as an attachment named `download_filename`. Verify it against `sha256` / `size_bytes` (this version's; `shasum -a 256 <path>`). Expired → HTTP 410: call artifact_get again. With no shell (a chat on the web): read a text kind from `content`; for a binary kind pass `include_file: true` — the file itself comes back beside the metadata (an image you can look at; a PDF or other file as an embedded resource) when it is ≤ 1 MB, and `file` says what happened: \"included\", \"too_large\" (give the person `url`), \"text\" (it is in `content`) or \"unavailable\". Leave it off when you can use `download_url`: the file lands whole in your context. `raw_url` is the browser view (signed-in session only — it does not take your bearer). `slug` may name a version (`slug@v3` or `slug/v3`), or pass `version`; default the latest. `url` is the page in the Trov web app — share that when a person just wants the link. `warnings` flags claude.ai-only calls in the content. Only `ratified` is team-confirmed; draft / published are one person's word. An unknown, private-to-someone-else or not-yet-uploaded slug is { error: \"not_found\", code: \"not_found\" }.",
+    { slug: z.string().min(1), version: z.number().int().min(1).optional(), include_content: z.boolean().optional(), include_file: z.boolean().optional() },
+    async (input) => runTool(() => agentArtifactGet(artifactCtx, input), async (d) => {
+      if (input.include_file !== true) return asText(d);
+      const file = await agentArtifactFile(artifactCtx, d);
+      return { content: [...asText({ ...d, file: file.state }).content, ...(file.block ? [file.block] : [])] };
+    }),
   );
 
   server.tool(
