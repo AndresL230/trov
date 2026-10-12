@@ -151,7 +151,11 @@ Cloudflare cron weekdays are 1–7 or SUN–SAT, never 0. `REPO_CRON` in `src/re
   lost, and it refuses once a second organization exists).
 - **Data:** D1 Time Travel. Note a bookmark BEFORE a risky change (`npx wrangler d1 time-travel info trov`),
   and restore with `npx wrangler d1 time-travel restore trov --bookmark=<bookmark>` inside its window. It
-  restores the WHOLE database, every organization's writes since included.
+  restores the WHOLE database, every organization's writes since included — and every account or
+  organization DELETED since the bookmark comes back. Re-apply those deletions before anyone signs in:
+  `docs/architecture/organizations.md` › §8 "After a restore" (the `person.delete` / `org.delete` rows of
+  `org_admin_audit` from the current database, before restoring; `scripts/deletion-refs.mjs` matches a
+  person's `ref`).
 - **A secret:** put the previous value back (`wrangler secret put`); that redeploys (section 4).
 
 ## 8. Live state as of release 0.25 (2026-10-09)

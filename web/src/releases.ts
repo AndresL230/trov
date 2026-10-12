@@ -70,6 +70,50 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Self-serve deletion: one's own account (Settings), an organization (its owner, Org settings), and both from Platform.
+  {
+    version: "Unreleased",
+    date: "2026-10-12",
+    unreleased: true,
+    title: "Delete your account or an organization",
+    headline: "You can delete your own account, and an owner can delete an organization, without writing to us — and each says exactly what goes and what stays.",
+    highlights: [
+      "You can delete your account in Settings. Your sign-ins, sessions, agent connections, email settings, photo and support messages are deleted, and you are signed out everywhere.",
+      "What you wrote in organizations that carry on stays for the people you worked with, credited to “Deleted user” instead of you. Signing in again with the same GitHub or Google account starts a new, empty account.",
+      "An organization's owner can delete it in Org settings › General. Everything in it goes, for everyone in it; its members keep their Trov accounts and their other organizations.",
+      "If the organization pays for Pro, deleting it cancels the subscription at Stripe right away. The time already paid for is not refunded, and its invoices stay available from Stripe.",
+      "Before anything is deleted you type your handle or the organization's slug, and Trov tells you what is in the way first: being the only owner of a team that has other people in it, or paying for a team that carries on.",
+      "Trov's operators can delete an organization or an account from Platform, under the same rules, and each deletion is recorded.",
+    ],
+    headsUp: [
+      "A deletion can't be undone. An organization nobody else is in is deleted together with your account, and the confirmation names it.",
+      "If you pay for a team that carries on, cancel its plan first (it stays Pro until the end of the period already paid), or ask us to move the billing to another owner.",
+    ],
+    ops: [
+      "No migration, no new secret, no trigger. Deletion is live on merge.",
+      "Before relying on it: (1) check D1 Time Travel's retention in the Cloudflare dashboard — a deleted account or organization stays restorable from it until that window passes, and the Privacy Policy should say so; (2) a Time Travel restore across a deletion brings it back: re-apply the deletions it undid (`scripts/deletion-refs.mjs`, and `docs/architecture/organizations.md` › After a restore); (3) the Stripe webhook needs no change — the cancel a deletion makes sends `customer.subscription.deleted`, which Trov acknowledges and ignores.",
+      "The Terms and the Privacy Policy (`web/src/legal.ts`) still tell people to email for deletion and do not describe what is kept. They are for a later change: `docs/architecture/organizations.md` › What deletion removes and what it keeps is written to be turned into that text.",
+    ],
+    patches: {
+      added: [
+        "`src/deletion/`: ONE core per deletion. `org.ts` `deleteOrganization` — Stripe first (`src/billing/cancel.ts`: open Checkout Sessions expired, every live subscription cancelled with `DELETE /v1/subscriptions/:id`, Stripe's defaults: no proration, no final invoice), then one D1 batch with foreign keys deferred, then R2. `person.ts` `deleteAccount` — the guard rails, the orgs nobody else is in deleted with the account, then one batch: personal rows deleted and the handle rewritten to a `deleted-<random>` tombstone through `HANDLE_COLUMNS`",
+        "`src/deletion/tables.ts` `ORG_TABLES`: every table with an `org_id` column, deleted by `org_id`; a manual connection that can still reach another org moves there. `test/deletion.org.test.ts` fails when a migration adds an `org_id` table it does not list",
+        "`src/deletion/r2.ts` `sweepR2`: after the commit, an `artifacts/`, `doc-images/`, `org-logos/` or `avatars/` object is deleted only when no row anywhere (and no unexpired upload token) still points at its sha",
+        "Routes, cookie only, never MCP: `GET /auth/me/deletion`, `POST /auth/me/delete { confirm }`; `GET /api/o/:slug/deletion`, `POST /api/o/:slug/delete { confirm }` (owner only); `GET|POST /api/platform/orgs/:slug/deletion|delete`, `GET|POST /api/platform/persons/:handle/deletion|delete` (superadmin; never a superadmin's account or one's own)",
+        "Audit: `org.delete` (a platform row, the slug as target, the Stripe ids a refund would need) and `person.delete` (the tombstone as target, `ref` = a keyed hash of the old handle so a restored database can be matched); every org the person left gets `member.leave`. `scripts/deletion-refs.mjs` matches refs after a restore",
+        "Web: Settings › Delete account, Org settings › General › Delete organization (owners), Platform › an organization › Delete, Platform › Admins › Accounts (`web/src/deletion.ts`, `deletion-actions.ts`); `confirmModal` gains a typed confirmation field, `detail`, `error` and a wide box (`web/src/confirm.ts`); the landing says `?deleted=account|org` once",
+        "`shared/deletion-core.ts`: the previews' DTOs, the guard-rail codes and every sentence the screens use; `test/deletion.{org,account,platform}.test.ts`, `test/render.deletion.test.ts`",
+      ],
+      changed: [
+        "`deleted-…` handles are reserved: no sign-up or rename can take one (`handleAvailable`)",
+        "The handoff sentence Trov writes into the feed (\"<sender> left a handoff for <recipient>\") names the tombstone once its person is deleted; text people typed is never rewritten",
+        "`stripeCall` takes `DELETE` (no idempotency key: Stripe ignores one there); the Stripe stand-ins (`scripts/dev/stripe-standin.mjs`, `test/helpers/billing.ts`) answer the cancel and the session expiry",
+        "CLAUDE.md invariant 11: accounts and organizations are hard-deleted, and only through `src/deletion/`",
+      ],
+      fixed: [],
+      removed: [],
+    },
+  },
   // One GitHub account, several Trov organizations: repositories split between orgs (#170).
   {
     version: "0.29",

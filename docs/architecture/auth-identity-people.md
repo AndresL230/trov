@@ -146,6 +146,15 @@ Every `recorded_by` / `created_by` / `user_id` is a handle. Migrated GitHub user
 overwritten by edits or promotions (`updated_by` is the last promoter) — listed in `HANDLE_COLUMNS`; there is no
 route to change it yet.
 
+**Deleting an account** (Settings › Delete account; `src/deletion/person.ts`; the whole rule, the guard rails
+and what is kept: `organizations.md` §8) reuses `HANDLE_COLUMNS`: the person's own rows — identities, sessions,
+MCP tokens, OAuth connections, notification prefs and outbox, memberships, attribution map, superadmin role —
+are deleted, and every other column holding the handle is rewritten to a TOMBSTONE, `deleted-<random>`, in one
+batch; the `persons` row itself becomes that tombstone ("Deleted user", no e-mail, photo or profile). So a new
+column holding a handle must be in `HANDLE_COLUMNS` for a rename AND a deletion to reach it. `deleted-…`
+handles are reserved (`handleAvailable` answers `reserved`), so no new person can take one. After a deletion,
+the same GitHub or Google account signs in as a NEW person (no identity, no verified address left to link on).
+
 ## People profiles — an avatar, a role, responsibilities (`0036_person_profiles`; contract `shared/people.ts`)
 
 Three nullable person fields, written directly (no gate, no staging) by `src/tools/people.ts`:
@@ -166,7 +175,8 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   sha256 via Web Crypto, bytes in R2 (`ARTIFACTS_BUCKET`) at `avatars/<sha256>` with R2's own sha256 check and the
   SNIFFED type as `httpMetadata.contentType` — skipped when that object already exists. Returns `{ ok, avatar_url }`.
   `POST /api/people/me/avatar/remove` only clears `avatar_sha` (returns the picture that now shows); the bytes are
-  immutable and never deleted, like doc images. There is no avatars table: the R2 object's metadata is the type.
+  immutable and stay, like doc images — until the account is DELETED, when they go if no other person's
+  `avatar_sha` is the same bytes (`src/deletion/r2.ts`). There is no avatars table: the R2 object's metadata is the type.
 - **Serving** `GET /avatar/<sha>` (session-gated, beside `/img/<sha>` and exactly like it): `nosniff`,
   `default-src 'none'; sandbox`, `Cache-Control: private, max-age=31536000, immutable`; 404 for a malformed sha,
   no object, or a stored type outside `AVATAR_TYPES`.

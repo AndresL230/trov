@@ -316,11 +316,15 @@ beside short ones (the old MCP tile did, and Profile and Account were padded out
 | 4 | Organizations (12): a card per org, as many across as fit |
 | 5 | MCP access (12): the steps beside Connected apps |
 | 6 | Email notifications (12) |
+| 7, 8 | Help (12), then Delete account (12): slim tiles of their own |
 
 - Each tile is placed by NAME (`.cnpy-set-profile`, `-account`, `-session`, `-appear`, `-plan`, `-limits`,
-  `-orgs-tile`, `-mcp`, `-email`); DOM order is the folded order — Profile, Account, Plan, Limits,
-  Organizations, MCP access, Appearance, Email, Session. Below 1000px of page: Profile | Account, every other
+  `-orgs-tile`, `-mcp`, `-email`, `-help`, `-delete`); DOM order is the folded order — Profile, Account, Plan, Limits,
+  Organizations, MCP access, Appearance, Email, Help, Delete account, Session. Below 1000px of page: Profile | Account, every other
   tile full width; below 760px one column, **Sign out last**.
+- **Delete account** (`web/src/deletion.ts` `accountDeleteTile`): one sentence, the quiet destructive trigger
+  (`dangerTrigger`) — or, when a guard rail stands in the way (`organizations.md` §8), its sentences as a list and
+  a disabled button `aria-describedby` them. Never blame: it says what to do first.
 - **Sign out** is the Session tile's: a labelled button with its icon, at the top right of the page. It is the
   only `signOut` on the screen, and never a quiet link.
 - Adding a tile: give it a row partner of the same natural height, or its own row. Measure (`align-self:start`
@@ -329,6 +333,22 @@ beside short ones (the old MCP tile did, and Profile and Account were padded out
 - A limit's meter (`.cnpy-meter`) is a 4px bar with no radius, no animation and no transition, described once
   by its `role="meter"`; the page is `data-morph="settings"`, so typing in a field patches it in place.
 - Tests: `test/render.connect.test.ts` (the grid, Session, sign-in methods), `test/render.settings-plan.test.ts`.
+
+## A typed confirmation — irreversible deletions (`web/src/confirm.ts`, `web/src/deletion.ts`)
+
+Deleting an account or an organization confirms in THE confirmation modal (`confirmModal`, the same root-level
+`data-overlay`, keyboard contract and exit), with four optional props that a plain delete never uses (without
+them the markup is byte-for-byte the old dialog): `detail` (what is deleted, what is kept and why, as a list —
+the sentences of `shared/deletion-core.ts`), `typed` (a LABELLED field the handle or slug is typed into; it, not
+the red button, takes the focus on open, and the button stays `disabled` until it matches, case and outer
+spaces aside — Enter in the field confirms only a match, the reducer re-checks, the server re-checks), `error`
+(`role="alert"`, the server's sentence) and `wide` (`.cnpy-cmodal-box--wide`, 540px, scrolling inside the window
+on a short screen). The field has a visible focus ring (`.cnpy-cm-typed .cnpy-input:focus-visible`), and the
+modal's Tab trap includes it (`main.ts`). Where it opens: Settings (the person), Org settings › General (an
+owner — a quiet `dangerLink`, Org settings' rule for a destructive act), Platform's organization page and
+Admins › Accounts (a superadmin). Each repaints with a plain `rerender()`: all three host pages are
+`data-morph`ed, and the overlay is patched in place, so typing keeps the focus. Tests:
+`test/render.deletion.test.ts`.
 
 ## Full pages without the sidebar
 

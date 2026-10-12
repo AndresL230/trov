@@ -257,6 +257,42 @@ the new subscription's id — and changes nothing.
 | **Free**, `active`, still a billing org | the subscription ended (cancelled, or retries exhausted) | **on Free's limits** (`moveOrgToFree`): every member keeps access and reads everything; tickets, docs, the feed, agents and existing connections carry on; members can be removed. Anything **over a Free limit** is refused (402, `next: "upgrade"`) — a new invitation or member, repository, environment, artifact version, MCP token or connected app — until the org is back under or upgrades again. Nothing is deleted. AI summaries continue on Free's allowance. The Stripe customer is kept: Manage billing still opens its invoices |
 | `canceled` (legacy) | a frozen org from before Free (billing no longer writes it) | readable and working; every addition a limit governs refused until a plan is set |
 
+## Deleting an organization or an account
+
+The one thing in Trov that ends a subscription EARLY (`src/billing/cancel.ts`, called by `src/deletion/`;
+the whole flow: `organizations.md` §8). The owner's policy: **cancel any time, Pro runs to the end of the paid
+period, no refunds for partial periods (except where the law requires)** — so a plan the owner cancels runs to
+its end, but deleting the organization it pays for cannot leave it running for nothing:
+
+- **What is ended, before anything is deleted.** Every subscription Trov knows paid for the organization —
+  the one on its row, an upgrade's (`billing_checkouts.for_org`), the purchase its grant came from — whose
+  Stripe status is not `canceled` / `incomplete_expired` (no mirror row: Stripe is asked) is cancelled NOW:
+  `GET` it, then `DELETE /v1/subscriptions/<id>` with no `prorate` and no `invoice_now` (Stripe's defaults: no
+  credit for the unused time, no final invoice), then `GET` it again if the answer was lost — a cancel that
+  landed counts. A Stripe 404 (no such subscription in this account and mode) is nothing to cancel. Every
+  Checkout Session for it still OPEN (Stripe's 24 hours) is expired (`POST /v1/checkout/sessions/<id>/expire`);
+  one that was paid meanwhile answers its subscription, which is cancelled too. An account's deletion does the
+  same for the organizations deleted with it, for its unused paid grants and for every open checkout the person
+  started — all of it before ANY row is deleted.
+- **A Stripe failure deletes nothing**: 502 `billing_failed`, "Trov couldn't reach Stripe to cancel the
+  subscription, so nothing was deleted…" A live subscription on a deployment with no keys: 503
+  `billing_unavailable` (and the preview's `billing_ready: false` says so before the button).
+- **What Trov keeps afterwards**: nothing of the organization's billing — its `billing_subscriptions` and
+  `billing_checkouts` rows and the grant go with it. The `billing_events` ledger stays (event id, type, outcome,
+  no payload; 90 days): it is what makes a re-delivered event a no-op. The `org.delete` audit row keeps the
+  customer and subscription ids, for a dispute or a refund by hand.
+- **What Stripe keeps**: the customer, its invoices and payments, and the cancelled subscription — Stripe's
+  records, for tax and accounting. Stripe e-mails its own receipts and cancellation notices per the dashboard's
+  settings. A refund "where the law requires" is made by hand in the dashboard.
+- **A webhook afterwards** (`customer.subscription.deleted` from the cancel itself, a late `invoice.*`, a
+  replayed `checkout.session.completed`): `syncSubscription` finds no mirror row → `unknown_subscription`;
+  `fulfilCheckout` finds no checkout row → `unknown_checkout`. Acknowledged (200), nothing written, no org,
+  grant or plan resurrected (`test/deletion.org.test.ts`).
+- **The buyer leaving a team that carries on** is refused (`billing_buyer`) while the subscription still
+  renews: their card would go on paying for a team they left. Once the owner cancels the plan (it runs to the
+  period's end, `cancel_at_period_end`), the buyer may delete their account and nothing is cut short; the
+  mirror's `person` becomes the tombstone.
+
 **Past-due grace.** `plans.md` says past-due enforces nothing, and that stands: the grace period is
 Stripe's own retry schedule (Smart Retries, about three weeks by default). When it runs out Stripe marks
 the subscription `canceled` or `unpaid` — whichever the owner chose under *Billing › Subscriptions and
@@ -305,6 +341,7 @@ its own, so there is one clock and it is the one the customer's e-mails from Str
 | `GET /api/platform/orgs[/:slug]` | superadmin | `plan.billing` for a paid org: ids, Stripe's status, `ended`, `seats`, `pinned`, `dashboard_url` (test or live) |
 | `PUT /api/platform/orgs/:slug/plan` | superadmin | also `{ follow_subscription: true }`; 409 `not_billed` |
 | `POST /webhook/stripe` | Stripe's signature | 200 / 401 / 500 |
+| `POST /api/o/:slug/delete`, `POST /auth/me/delete`, `POST /api/platform/{orgs/:slug,persons/:handle}/delete` | owner / the person / a superadmin, cookie only (`organizations.md` §8) | cancels at Stripe first (above); 502 `billing_failed` / 503 `billing_unavailable` and nothing deleted |
 
 ## Safety
 
@@ -429,8 +466,9 @@ A subscription created while it was off stays untaxed until `automatic_tax` is e
 **Yours to decide:** a yearly price or not; a free trial or not (a trial needs
 `subscription_data[trial_period_days]` in `startCheckout` — one line — and reads as `active` here); tax
 (Stripe Tax on or off: the `STRIPE_TAX` var, above); promotion codes;
-the refund policy (refunds are made in the Stripe dashboard — Trov has no refund code; Terms section 3 in
-`web/src/legal.ts` currently says no refund for a period already started, except where the law requires or
-for a mistake — change the text if you decide otherwise, and the same for its 30 days' notice of a price
+the refund policy — decided (2026-10-12): cancel any time, Pro runs to the end of the paid period, no refund for
+a partial period except where the law requires (refunds are made by hand in the Stripe dashboard — Trov has no
+refund code; deleting an organization cancels at once with no refund, above; Terms section 3 in
+`web/src/legal.ts` says the same — keep them together, and the same for its 30 days' notice of a price
 change); and whether the numbers in `shared/plans.ts` are the ones you
 want to sell.
