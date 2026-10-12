@@ -4,7 +4,7 @@
  * #00A859 / #f2f2f2 look from the original email mockup is gone.
  */
 import { describe, it, expect } from "vitest";
-import { assembleMessage, EMAIL_STYLE, EMAIL_SPACE, EMAIL_WIDTH, THEME, emailBanner } from "../src/notifications/assemble";
+import { assembleMessage, EMAIL_FONT_STACK, EMAIL_STYLE, EMAIL_SPACE, EMAIL_WIDTH, THEME, emailBanner } from "../src/notifications/assemble";
 import { renderInviteEmail } from "../src/notifications/invite";
 import { sampleSections } from "../src/notifications/sample";
 
@@ -31,15 +31,16 @@ describe("email shell — site theming", () => {
     const { html } = msg();
     expect(html).not.toContain("#00A859");
     expect(html).not.toContain("#f2f2f2");
-    expect(html).not.toContain("font-family:Helvetica"); // the old bare stack; Geist stack may still fall back to it
+    expect(html).not.toContain("font-family:Helvetica"); // the old bare stack; the system stack may still fall back to it
     expect(html).not.toContain("Courier New");
   });
 
-  it("uses the site type stack: Geist with a system fallback, Archivo Narrow for labels", () => {
+  it("uses the reader's system fonts and links no web font: opening a mail asks no third party for anything", () => {
     const { html } = msg();
-    expect(html).toContain("fonts.googleapis.com/css2?family=Geist");
-    expect(EMAIL_STYLE.body).toMatch(/font-family:Geist,/);
-    expect(EMAIL_STYLE.label).toMatch(/font-family:'Archivo Narrow',/);
+    expect(html).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com|<link\b|@import|@font-face/i);
+    expect(html).not.toMatch(/Geist|Archivo/);
+    expect(EMAIL_STYLE.body).toContain(`font-family:${EMAIL_FONT_STACK};`);
+    expect(EMAIL_STYLE.label).toContain(`font-family:${EMAIL_FONT_STACK};`);
     expect(EMAIL_STYLE.label).toContain("text-transform:uppercase");
   });
 

@@ -283,7 +283,7 @@ describe("noindex on everything else the Worker serves", () => {
   it("the API, sign-in, OAuth, MCP and the signed links carry X-Robots-Tag: noindex — JSON and redirects too", async () => {
     for (const [path, status] of [
       ["/api/orgs", 401], ["/api/o/acme/docs", 401], ["/docs", 401], ["/auth/me", 401], ["/auth/login", 302],
-      ["/oauth/authorize", 400], ["/mcp", 401], ["/u/not-a-token", 302], ["/o/acme/", 301], ["/billing/start?plan=team", 503 /* billing is off in the pool */],
+      ["/oauth/authorize", 400], ["/mcp", 401], ["/u/not-a-token", 404], ["/o/acme/", 301], ["/billing/start?plan=team", 503 /* billing is off in the pool */],
       ["/.well-known/oauth-authorization-server", 200],
     ] as const) {
       const res = await get(path, site().env);

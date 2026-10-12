@@ -80,10 +80,16 @@ export const EMAIL_SPACE = { xs: 4, s: 8, m: 16, l: 24, xl: 32 } as const;
 export const EMAIL_WIDTH = 680;
 const SP = EMAIL_SPACE;
 
-const SANS = "font-family:Geist,-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;";
-const LABEL = "font-family:'Archivo Narrow',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;";
+/**
+ * The reader's own system fonts, and nothing else. No mail links a web font (or any stylesheet, image
+ * or script from elsewhere): a mail client that fetched one — Google Fonts, say — would hand that third
+ * party the reader's IP address and the moment they opened the mail. Labels share the stack; the site's
+ * Archivo Narrow is not on readers' machines either.
+ */
+export const EMAIL_FONT_STACK = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+const SANS = `font-family:${EMAIL_FONT_STACK};`;
+const LABEL = SANS;
 const CODE = "font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;";
-export const FONTS_HREF = "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Archivo+Narrow:wght@500;600&display=swap";
 export const EMAIL_FONT = { sans: SANS, label: LABEL } as const;
 
 /** Shared inline-style tokens for the section renderers (mirrors the app's text tiers). */
@@ -236,6 +242,29 @@ export const EMAIL_CARD_CLOSE = `</table><!--[if mso]></td></tr></table><![endif
  *  Clients that drop `<style>` keep the mark, at a size (56px) that still leaves the text its room. */
 export const EMAIL_MOBILE_CSS = `@media (max-width:520px){.tm-art{display:none !important;}.tm-pad{padding:20px 10px !important;}.tm-title{font-size:22px !important;line-height:28px !important;}}`;
 
+/** The `<head>` of every mail but the digest (invite, welcome, grant, support notice): its title and the
+ *  phone CSS, and NO link to anything — no web font, no stylesheet (see `EMAIL_FONT_STACK`). The digest
+ *  writes its own, which adds the dark swap. */
+export function emailHead(subject: string): string {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(subject)}</title><style>${EMAIL_MOBILE_CSS}</style></head>`;
+}
+
+/**
+ * The quiet last row of every mail but the digest (whose own footer names the cadence): why this mail
+ * came, then `Sent by Trov · host`. A NOTIFICATION (`unsubscribeUrl` given: the welcome) ends its reason
+ * with the Unsubscribe link — the same signed link as its List-Unsubscribe header. A TRANSACTIONAL mail
+ * (invite, grant) has none, and its `why` says what one-off thing it answers. The operator's support
+ * notice has no `why`. `why` is already-escaped HTML.
+ */
+export function emailFooter(o: { why?: string; host: string; unsubscribeUrl?: string }): string {
+  const unsub = o.unsubscribeUrl
+    ? `<a href="${escapeHtml(o.unsubscribeUrl)}" style="color:${C.fg40};text-decoration:underline;text-underline-offset:2px;">Unsubscribe</a>`
+    : "";
+  const reason = [o.why ?? "", unsub].filter(Boolean).join(" ");
+  return `<tr><td style="padding:16px 28px;border-top:1px solid ${C.border};${SANS}font-size:12px;line-height:20px;color:${C.fg40};">` +
+    `${reason ? `${reason}<br>` : ""}Sent by Trov &middot; ${escapeHtml(o.host)}</td></tr>`;
+}
+
 /** What the banner says under the brand. Every part is optional; all are already-escaped HTML. */
 export interface EmailBannerText {
   /** A small uppercase label, top right: what kind of mail this is ("Invitation"). */
@@ -316,7 +345,6 @@ export function assembleMessage(opts: {
     `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">` +
     `<title>${escapeHtml(subject)}</title>` +
-    `<link href="${FONTS_HREF}" rel="stylesheet">` +
     `<style>:root{color-scheme:light dark;}${darkCss()}${EMAIL_MOBILE_CSS}</style></head>` +
     `<body style="margin:0;padding:0;background-color:${C.ground};">` +
     (preheader ? `<div style="display:none;max-height:0px;overflow:hidden;">${escapeHtml(preheader)}.</div>` : "") +

@@ -3,7 +3,7 @@ import { type TenantContext, all } from "../../data/sql";
 import { listOpenAssignedIssues, toMyWorkPr, type PrEventJoinRow } from "../../tools/mywork";
 import { memberPerson, memberGithubLogins } from "../../auth/persons";
 import { escapeHtml, isoOf } from "../html";
-import { EMAIL_STYLE as S, EMAIL_CARD as K, EMAIL_SPACE as SP } from "../assemble";
+import { EMAIL_STYLE as S, EMAIL_CARD as K, EMAIL_SPACE as SP, EMAIL_FONT } from "../assemble";
 
 const DEEP_LINK = "/#mywork";
 
@@ -28,7 +28,7 @@ function prItem(pr: ReturnType<typeof toMyWorkPr>, first: boolean): string {
     rows.push(K.row("What changed", "No summary recorded for this PR."));
   }
   if (pr.impact) rows.push(K.row("Impact", K.prose(escapeHtml(pr.impact))));
-  const into = pr.baseRef ? `<span style="padding-left:8px;">into <span style="font-family:'Archivo Narrow',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">${escapeHtml(pr.baseRef)}</span></span>` : "";
+  const into = pr.baseRef ? `<span style="padding-left:8px;">into <span style="${EMAIL_FONT.label}">${escapeHtml(pr.baseRef)}</span></span>` : "";
   return K.item({ title: escapeHtml(pr.displayTitle ?? pr.title), number: pr.number, url: escapeHtml(pr.url), rows, footer: `${K.chip("MERGED", "green")}${into}`, first });
 }
 

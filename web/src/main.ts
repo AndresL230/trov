@@ -606,7 +606,6 @@ function loadForScreen(screen: Screen): void {
     case "repo": loadRepoIfNeeded(); break;
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
     case "settings": loadSettingsReads(); break;
-    case "unsubscribe": runUnsubscribe(); break;
     // Platform has one home, `/platform/` (the org menu links there): an old in-app `#platform…` link goes to it.
     case "platform": case "platformorg":
       if (state.view === "app") { location.replace(`${PLATFORM_PATH}${hashForRoute(currentRoute())}`); break; }
@@ -1203,24 +1202,6 @@ function writeSettings(body: Parameters<typeof putNotificationSettings>[0], done
       rerender();
     });
 }
-/**
- * The #unsubscribe screen (the footer link's GET /u/<token> redirects here):
- * flips email_unsubscribed through the cookie-gated prefs route, then shows
- * the confirmation. A Settings "preview" shows the same screen without a flip.
- */
-function runUnsubscribe(): void {
-  if (state.unsub.preview) { rerender(); return; }
-  state.unsub = { pending: true, error: null, preview: false };
-  rerender();
-  putNotificationPrefs({ unsubscribed: true })
-    .then((data) => { state.notifPrefs = { status: "ok", data }; state.unsub = { pending: false, error: null, preview: false }; rerender(); })
-    .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-      state.unsub = { pending: false, error: e instanceof ApiError ? e.message : "Something went wrong.", preview: false };
-      rerender();
-    });
-}
-
 function loadDoc(slug: string): void {
   state.docDetail = { status: "loading", data: null };
   rerender();
@@ -3074,7 +3055,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       loadNeedsTriageIfNeeded();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3653,8 +3634,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       writePrefs({ unsubscribed: next }, next ? "Email is off" : "Email is back on");
       return;
     }
-    case "previewUnsub": state.unsub = { pending: false, error: null, preview: true }; state.screen = "unsubscribe"; break;
-    case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadSettingsReads(); return;
 
     // ── Org settings › Notifications (admin) ─────────────────────────────────
     case "policyToggle": {

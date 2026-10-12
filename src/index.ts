@@ -13,8 +13,7 @@ import { pruneLimits } from "./platform/limits";
 import { mcpUnauthorized, oauthOrigin } from "./auth/oauth";
 import { DAILY_CRON, WEEKLY_CRON, handleNotificationCron } from "./notifications/cron";
 import { REPO_CRON, handleRepoCron } from "./repo/cron";
-import { verifyUnsubscribeToken } from "./notifications/unsubscribe";
-import { run } from "./data/platform-sql";
+import { UNSUBSCRIBE_PREFIX, handleUnsubscribe } from "./notifications/unsubscribe";
 import { handleArtifactUpload, isUploadRequest } from "./artifacts/upload";
 import { handleArtifactDownload, isDownloadRequest } from "./artifacts/download";
 import type { Env } from "./env";
@@ -59,18 +58,12 @@ async function serve(request: Request, env: Env, ctx: ExecutionContext, url: URL
   if (request.method === "POST" && url.pathname === APP_WEBHOOK_PATH) return handleGithubAppWebhook(request, env, { waitUntil: (p) => ctx.waitUntil(p) });
   const hook = request.method === "POST" ? webhookPath(url.pathname) : null;
   if (hook) return handleGithubWebhook(request, env, { hookId: hook.hookId, waitUntil: (p) => ctx.waitUntil(p) });
-  // Signed one-click unsubscribe (canopy-email.md §7): the single token
-  // exception. POST (what List-Unsubscribe-Post mail clients send) verifies the
-  // HMAC and can ONLY set email_unsubscribed = 1 for the login it names. A
-  // human GET (the footer link) is redirected to the cookie-gated in-app screen
-  // and flips nothing. Never touches sessionGate.
-  if (url.pathname.startsWith("/u/")) {
-    if (request.method !== "POST") return Response.redirect(new URL("/#unsubscribe", url).toString(), 302);
-    const login = await verifyUnsubscribeToken(url.pathname.slice(3), env.COOKIE_SECRET);
-    if (!login) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json" } });
-    await run(platform(env, login), `UPDATE persons SET email_unsubscribed = 1 WHERE handle = ?`, login);
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
-  }
+  // Signed unsubscribe (canopy-email.md §7): the single token exception. The HMAC token names ONE person
+  // and can ONLY set email_unsubscribed = 1 for them, whoever is signed in here (src/notifications/
+  // unsubscribe.ts). A GET (the footer link — and every mail scanner's prefetch) is a page that changes
+  // nothing; its button POSTs the token back. A POST without the page's marker is the RFC 8058 one-click
+  // List-Unsubscribe-Post mail clients send. Never touches sessionGate.
+  if (url.pathname.startsWith(UNSUBSCRIBE_PREFIX)) return handleUnsubscribe(request, env, url);
   // Artifact binary upload (issue #52): the single-use token minted by
   // POST /api/artifacts/upload-url IS the auth — no session, so it is dispatched
   // here, before the app and its sessionGate (src/artifacts/upload.ts).
