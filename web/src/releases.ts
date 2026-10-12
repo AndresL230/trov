@@ -72,9 +72,8 @@ export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 export const RELEASES: Release[] = [
   // One GitHub account, several Trov organizations: repositories split between orgs (#170).
   {
-    version: "Unreleased",
-    date: "2026-10-10",
-    unreleased: true,
+    version: "0.29",
+    date: "2026-10-11",
     title: "One GitHub account, several organizations",
     headline: "Several Trov organizations can connect the same GitHub account, track the same repository, and connect with whatever repositories their admin can read.",
     highlights: [
