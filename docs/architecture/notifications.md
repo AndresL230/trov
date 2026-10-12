@@ -128,7 +128,7 @@ a row here, and the user-facing words of what still arrives live in ONE place, `
 | Welcome (`welcome.ts`, `welcomeFirstJoin`) | notification | yes — none sent | footer + headers |
 | Test send (`POST …/notifications/test-send`) | transactional: the admin's own request, to their own address | no | footer + headers (it is a digest) |
 | Invitation / owner invitation (`invite.ts`) | transactional: an admin invited this address | no | none; footer says why |
-| Grant notice / paid confirmation (`grant.ts`) | transactional: a grant or a purchase | no | none; footer says why |
+| Grant notice / paid confirmation (`grant.ts`) | transactional: a grant or a purchase | no | none; footer says why. The PAID one also carries the renewal and cancellation terms (`paidTermsText`: monthly on the anniversary, $10 per seat plus tax, until cancelled from Billing; Pro to the end of the paid period; no partial refunds except where the law requires) with links to `/refunds` and `/terms` |
 | Support notice (`support.ts`) | internal, to the operator | n/a | none |
 
 Stripe's own receipts and invoices are Stripe's mail, under Stripe's settings. There is no Trov mail about

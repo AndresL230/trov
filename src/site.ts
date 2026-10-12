@@ -14,6 +14,7 @@
 //     workers.dev address), on everything. No session is read here: a cookie's presence is a hint for
 //     which public page to send, never an authorization, so this is not a fourth auth class.
 import { APP_SHELL_PATH, DOCS_HOME, NOT_FOUND_PAGE, SITE_ORIGIN, SITE_PAGES, siteUrl } from "@shared/site-pages";
+import { SOURCE_PATH, sourceUrl } from "@shared/legal-core";
 import { SESSION_COOKIE } from "./auth/session";
 import { ONBOARD_COOKIE } from "./auth/onboard";
 import type { Env } from "./env";
@@ -174,6 +175,9 @@ export async function sitePublic(request: Request, env: Env, url: URL): Promise<
     const res = new Response(null, { status: 302, headers: { Location: DOCS_HOME, "Cache-Control": "no-store", Vary: "Cookie, Accept" } });
     return canonical ? res : noindex(res);
   }
+  // `/source` (AGPL-3.0 §13): the assets binding's `_redirects` sends it to the deployed commit before this
+  // Worker runs. Should that rule be missing, it still goes somewhere true — the repository.
+  if (url.pathname === SOURCE_PATH) return noindex(new Response(null, { status: 302, headers: { Location: sourceUrl(null), "Cache-Control": "no-store" } }));
   if (url.pathname !== "/") return null;
   // Never the same HTML at two addresses: the shell is a different document (no landing, no canonical) and
   // is `noindex` here and at every other address it is served from.

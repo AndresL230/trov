@@ -61,7 +61,7 @@ describe("robots.txt and sitemap.xml", () => {
     const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
     expect(locs).toEqual(SITE_PAGES.filter((p) => p.indexed).map((p) => siteUrl(p.path)));
     expect(locs).toEqual([
-      "https://trov.dev/", "https://trov.dev/pricing", "https://trov.dev/terms", "https://trov.dev/privacy",
+      "https://trov.dev/", "https://trov.dev/pricing", "https://trov.dev/terms", "https://trov.dev/privacy", "https://trov.dev/refunds",
       "https://trov.dev/docs/setup", "https://trov.dev/docs/connect", "https://trov.dev/docs/concepts", "https://trov.dev/docs/mcp-tools", "https://trov.dev/docs/changelog",
     ]);
     expect(xml).not.toContain(NOT_FOUND_PAGE.path);

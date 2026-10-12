@@ -21,10 +21,11 @@
 // organizations.md). No refunds, trials, discounts or compliance claims: none exist.
 
 import { LIMIT_KEYS, LIMITS, PLAN_IDS, PLANS, formatLimit, limitNoun, limitPhrase, type PlanDef, type PlanId } from "@shared/plans";
-import { PRICING, canPurchase, canPurchasePlan, formatPrice, hasYearly, isFreePrice, purchaseHref, type PlanPricing } from "@shared/pricing";
+import { CHECKOUT_TAX, PRICING, RENEWAL_TERMS, canPurchase, canPurchasePlan, formatPrice, hasYearly, isFreePrice, purchaseHref, seatMath, type PlanPricing } from "@shared/pricing";
+import { REFUNDS_PATH, TERMS_PATH } from "@shared/legal-core";
 import { trovMark } from "@shared/mark";
 import { esc, attr } from "./ui";
-import { SITE_CONTACT, TROV_REPO, siteFooter, siteMark } from "./site-chrome";
+import { SITE_CONTACT, TROV_REPO, siteFooter, siteMark, skipLink } from "./site-chrome";
 import { SITE_ORIGIN } from "@shared/site-pages";
 
 export interface PricingProps {
@@ -99,11 +100,25 @@ const perSeat = (def: PlanDef, price: PlanPricing): boolean => canPurchasePlan(d
 const limitValue = (def: PlanDef, price: PlanPricing, k: (typeof LIMIT_KEYS)[number], value: string): string =>
   k === "seats" && perSeat(def, price) && def.entitlements.seats !== null ? `Up to ${value}` : value;
 
+/** What a buyer is told beside "Choose Pro", before anything is paid: the per-seat math (an example: the
+ *  seats are chosen at checkout), tax, automatic renewal and how to stop it, and the Terms and the refund
+ *  policy one click away. The words are shared/pricing.ts's own, the same everywhere Pro is bought. A plan
+ *  that is not bought here says nothing. */
+export const EXAMPLE_SEATS = 3;
+export function planTerms(def: PlanDef, price: PlanPricing): string {
+  if (!canPurchasePlan(def.id, price)) return "";
+  const math = seatMath(EXAMPLE_SEATS, price);
+  return `<div class="site-plan-terms" data-plan-terms>
+        <p>${math ? `For example, ${esc(math)}. ` : ""}${esc(CHECKOUT_TAX)} ${esc(RENEWAL_TERMS)}</p>
+        <p><a href="${TERMS_PATH}">Terms</a> · <a href="${REFUNDS_PATH}">Refund policy</a></p>
+      </div>`;
+}
+
 /** The faint tilted mark the site's banners carry (`.site-banner-art`, trov.css). */
 const BANNER_ART = `<span class="site-banner-art" aria-hidden="true">${trovMark(100, "currentColor")}</span>`;
 
 /** `top`: the plan above the ones with a price — it wears the site's banner (`.site-banner`), so the row
- *  climbs from a plain card (Free) through the accented one (the plan most teams buy) to the banner. */
+ *  climbs from a plain card (Free) through the accented one (the plan on sale) to the banner. */
 function planCard(def: PlanDef, price: PlanPricing, i: number, accent: boolean, signedIn: boolean, h: number, top = false): string {
   const limits = LIMIT_KEYS.map((k) => {
     // The value, then what it counts: "3" + "seats", "5 GB" + "artifact storage", "3,000" + "AI summaries per month".
@@ -118,7 +133,7 @@ function planCard(def: PlanDef, price: PlanPricing, i: number, accent: boolean, 
       </div>
       <p class="site-plan-for">${esc(def.description)}</p>
       <div class="site-plan-pricebox">${priceSlot(price)}</div>
-      <div class="site-plan-ctabox">${planCta(def, price, accent, signedIn)}</div>
+      <div class="site-plan-ctabox">${planCta(def, price, accent, signedIn)}${planTerms(def, price)}</div>
       <ul class="site-plan-limits" aria-label="${attr(def.name)} limits">${limits}</ul>
     </article>`;
 }
@@ -181,14 +196,14 @@ export function pricingQuestions(all: PlanDef[], pricing: Record<PlanId, PlanPri
   if (paid && free) qs.push({ q: `What does ${esc(paid.name)} add?`, a: proAdds(paid, free) });
   if (paid) {
     const p = pricing[paid.id];
-    qs.push({ q: `How does ${esc(paid.name)} pricing work?`, a: `${esc(paid.name)} is bought per seat, at ${esc(formatPrice(p.price as number))} ${esc(p.per)}. There is no minimum, so a person on their own can buy a single seat. You choose how many at checkout, and add more from Org settings › General when you invite more people${seatCap === null ? "" : `, up to ${seatCap}`}. The seats you pay for are the seats the organization has.` });
+    qs.push({ q: `How does ${esc(paid.name)} pricing work?`, a: `${esc(paid.name)} is bought per seat, at ${esc(formatPrice(p.price as number))} ${esc(p.per)}. There is no minimum, so a person on their own can buy a single seat. You choose how many at checkout, and add more from Org settings › General when you invite more people${seatCap === null ? "" : `, up to ${seatCap}`}. The seats you pay for are the seats the organization has. Prices do not include tax, which Stripe calculates at checkout where it applies. ${esc(paid.name)} renews monthly until you cancel, and an owner can cancel any time from Billing: it stays until the end of the period already paid, with no refunds for partial periods (<a href="${REFUNDS_PATH}">refund policy</a>).` });
   }
   qs.push(
     { q: "What happens if we go over a limit?", a: "Nothing is deleted and nobody is removed. Everyone can still read everything. Adding more of that one thing is refused until the organization is back under the limit, and the rest of Trov carries on." },
     paid
       ? { q: "Can we change plans?", a: `Yes.${free ? ` Anyone signed in can create a ${esc(free.name)} organization (one they own at a time), and its owner upgrades it to ${esc(paid.name)} from Org settings › General.` : ""} An owner manages seats, the card and invoices there too. If ${esc(paid.name)} is cancelled, the organization moves to ${free ? esc(free.name) : "a smaller plan"} when the paid period ends, and the answer above applies.` }
       : { q: "Can we change plans?", a: `Yes. Until paid plans are available, a plan is changed by us: write to <a href="${attr(mailHref("Changing our Trov plan"))}">${SITE_CONTACT}</a>. If the new plan is smaller than what the organization uses, the answer above applies.` },
-    { q: "Is our data separate from other organizations?", a: "Yes. Everything in Trov belongs to one organization, and only its members and the agents they connect can read it." },
+    { q: "Is our data separate from other organizations?", a: "Yes. Everything in Trov belongs to one organization, and in Trov only its members and the agents they connect can read its content. The people who run Trov see an organization's name, members and usage, not its content, and step in only for support, security or legal reasons; the services Trov runs on process it for us (<a href=\"/privacy\">Privacy Policy</a>)." },
     { q: "Can we read the source, or run Trov ourselves?", a: `Yes. Trov's source is <a href="${TROV_REPO}" target="_blank" rel="noopener">published on GitHub</a> under AGPL-3.0, and it runs on Cloudflare: one Worker, with D1 for the data and R2 for files, so you can deploy your own copy to your own Cloudflare account. A copy you run is yours to operate: there is no self-hosting guide, and no support for one. The plans on this page are for the hosted service.` },
   );
   if (byTalk) qs.push({ q: `How does ${byTalk.name} work?`, a: `<a href="${attr(talkHref(byTalk))}">Talk to us about ${esc(byTalk.name)}</a>. Its ${list} are each set for your organization, and can be changed later.` });
@@ -281,7 +296,8 @@ export function pricingMarkdown(p: Pick<PricingProps, "plans" | "pricing"> = {})
     if (price.price === null) return price.selfServe ? "Pricing to be announced." : `Custom pricing: [talk to us](${talkHref(def)}).`;
     if (price.price === 0) return `Free. Anyone signed in can create one (one they own at a time).`;
     const yearly = hasYearly(price) ? `, or ${formatPrice(price.yearly as number)} ${price.yearlyPer}` : "";
-    return `${formatPrice(price.price)} ${price.per}${yearly}.`;
+    const math = canPurchasePlan(def.id, price) ? seatMath(EXAMPLE_SEATS, price) : null;
+    return `${formatPrice(price.price)} ${price.per}${yearly}.${math ? ` For example, ${math}. ${CHECKOUT_TAX} ${RENEWAL_TERMS} Terms: ${SITE_ORIGIN}${TERMS_PATH}. Refund policy: ${SITE_ORIGIN}${REFUNDS_PATH}.` : ""}`;
   };
   const plan = (def: PlanDef): string => [
     `## ${def.name}${pricing[def.id].badge ? ` (${pricing[def.id].badge})` : ""}`,
@@ -311,7 +327,8 @@ const MOON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke
  *  nav's "Open Trov" goes to `/`, which is the app when signed in and the landing when not. */
 export function pricingView(dark: boolean, p: Pick<PricingProps, "plans" | "pricing"> = {}): string {
   return `<div class="cnpy-site">
-    <nav class="site-nav" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
+    ${skipLink()}
+    <nav class="site-nav" aria-label="Site" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
       <div class="site-navin" style="max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px">
         <a href="/" aria-label="Trov home" style="display:flex;align-items:center;gap:9px;color:var(--fg);text-decoration:none">
           ${siteMark(20)}
@@ -323,7 +340,7 @@ export function pricingView(dark: boolean, p: Pick<PricingProps, "plans" | "pric
         </div>
       </div>
     </nav>
-    <main>${pricingSection({ ...p, level: 1 })}</main>
+    <main id="site-main" tabindex="-1">${pricingSection({ ...p, level: 1 })}</main>
     ${siteFooter()}
   </div>`;
 }

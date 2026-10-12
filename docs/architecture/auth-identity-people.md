@@ -17,6 +17,14 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   session; anyone else → onboarding (a sealed 10-minute `onboard` cookie; the person row is created only on
   `POST /auth/onboard` with handle + color). Link mode (`?link=1` with a session) attaches a second provider in
   Settings; the last identity can't be unlinked.
+- **Consent at sign-up** (the compliance pass, 2026-10-12; words in `shared/legal-core.ts`): every place a
+  provider button can create an account says "By continuing you agree to the Terms of Service and Privacy
+  Policy, and confirm you are 16 or older" (`consentHtml`) — the landing's sign-in / Get started dialog, the
+  refused-Google card, the MCP OAuth sign-in page — and onboarding, where the person row IS created, has an
+  unchecked, required checkbox (`onbAgree`, `OnboardState.agreed`; never pre-ticked) that Continue waits for.
+  Editing an existing account from the welcome card asks nothing. The agreement is enforced in the SPA only:
+  `POST /auth/onboard` neither requires nor records it (recording the time and the Terms version is an owner's
+  decision). Age is 16+ (`MIN_AGE`), confirmed, never verified.
 - **Bearer token** (agents, `/mcp`): either a pasted per-person `trov_mcp_` token (stored hashed) or an
   OAuth access token (`trov_oat_`) obtained through Trov's own OAuth server (the prefixes minted before the
   rename, `canopy_mcp_` / `canopy_oat_`, still resolve) — both resolve to a

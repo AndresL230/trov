@@ -389,8 +389,8 @@ describe("Stripe.js — from js.stripe.com, on the payment page only", () => {
   it("the Privacy Policy says Stripe's script runs on the payment page, only there, and sets Stripe's cookies", () => {
     const text = JSON.stringify(PRIVACY);
     expect(text).toContain("Stripe.js");
-    expect(text).toMatch(/Its script \(Stripe\.js\) runs on Trov's payment page, and only there/);
-    expect(text).toMatch(/Stripe's script runs there to show its payment form, and sets Stripe's own cookies/);
-    expect(PRIVACY.updated).toBe("2026-10-09");
+    expect(text).toMatch(/Stripe's script \(Stripe\.js\) runs on that page, and only there, and sets Stripe's own cookies/);
+    expect(text).toMatch(/The one other party that sets cookies is Stripe, on its own pages and on Trov's payment page/);
+    expect(PRIVACY.updated).toBe("2026-10-12");
   });
 });

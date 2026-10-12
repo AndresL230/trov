@@ -16,7 +16,7 @@ import { Marked, type Token, type Tokens } from "marked";
 import { DOCS_PAGES, siteUrl, LLMS_TXT, type SitePage } from "@shared/site-pages";
 import { trovMark } from "@shared/mark";
 import { esc, attr } from "./ui";
-import { siteFooter, siteMark } from "./site-chrome";
+import { siteFooter, siteMark, skipLink } from "./site-chrome";
 
 const escHtml = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -123,7 +123,8 @@ export function docsView(page: SitePage, markdown: string): string {
   const toc = doc.sections.map((s) => `<li><a href="#${s.id}" data-docs-toc="${s.id}"><span>${inlineMarkdown(s.title)}</span></a></li>`).join("");
   const sections = doc.sections.map((s) => `<section id="${s.id}" class="site-legal-sec">${s.html.replace(/^<h2 id="[^"]+">/, "<h2>")}</section>`).join("");
   return `<div class="cnpy-site site-docs">
-    <nav class="site-nav" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
+    ${skipLink()}
+    <nav class="site-nav" aria-label="Site" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
       <div class="site-navin" style="max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px">
         <a href="/" aria-label="Trov home" style="display:flex;align-items:center;gap:9px;color:var(--fg);text-decoration:none">
           ${siteMark(20)}
@@ -147,7 +148,7 @@ export function docsView(page: SitePage, markdown: string): string {
         </div>
       </div>
     </header>
-    <main class="site-legal">
+    <main id="site-main" tabindex="-1" class="site-legal">
       <aside class="site-legal-side">
         <nav aria-label="Contents" class="site-legal-toc" data-open="0"><div class="site-legal-toc-h">On this page</div><button type="button" data-docs-tocb aria-expanded="false" aria-controls="site-docs-toc-list" class="site-legal-tocb"><span class="site-legal-toc-h">On this page</span><span class="site-legal-tocb-n">${doc.sections.length} sections</span>${CHEV}</button><div class="site-legal-tocw"><ol id="site-docs-toc-list">${toc}</ol></div></nav>
       </aside>

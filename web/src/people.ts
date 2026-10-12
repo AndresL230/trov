@@ -4,6 +4,7 @@
 import { PERSON_COLORS, type PersonColor } from "@shared/rows";
 import { trovMark } from "@shared/mark";
 import { esc, attr, initialsOf, surface } from "./ui";
+import { agreeHtml } from "@shared/legal-core";
 import type { OnboardPrefill } from "./api";
 
 export const COLOR_NAMES: readonly PersonColor[] = PERSON_COLORS;
@@ -15,9 +16,12 @@ export interface OnboardState {
   submitting: boolean; error: string | null;
   /** Came BACK from the welcome card: the account exists, so this edits it (`current` = the handle it has now). */
   edit?: { current: string } | null;
+  /** The Terms / Privacy / age checkbox, ticked by the person (never pre-ticked). Creating the account
+   *  (Continue) waits for it; an account that already exists (`edit`) is not asked again. */
+  agreed?: boolean;
 }
 export function initialOnboard(): OnboardState {
-  return { prefill: null, handle: "", name: "", color: "moss", check: "idle", submitting: false, error: null };
+  return { prefill: null, handle: "", name: "", color: "moss", check: "idle", submitting: false, error: null, agreed: false };
 }
 
 /** Initials from a display name ("Priya Natarajan" → "PN"), falling back to the login rule. */
@@ -101,9 +105,9 @@ export function handleLink(p: { handle: string; name?: string | null; color: Per
     : handleTag(null, fallback, size);
 }
 
-export function swatches(act: string, selected: PersonColor, compact = false): string {
-  return `<div role="radiogroup" style="display:grid;grid-template-columns:repeat(${compact ? 10 : 5},1fr);gap:${compact ? 4 : 10}px">${COLOR_NAMES.map((c) =>
-    `<button type="button" role="radio" aria-checked="${c === selected}" data-act="${attr(act)}" data-arg="${c}" class="cnpy-sw${c === selected ? " is-on" : ""}${compact ? " compact" : ""}" style="--c:var(--p-${c})"><i></i><span>${c}</span></button>`).join("")}</div>`;
+export function swatches(act: string, selected: PersonColor, compact = false, labelledBy = ""): string {
+  return `<div role="radiogroup"${labelledBy ? ` aria-labelledby="${attr(labelledBy)}"` : ""} style="display:grid;grid-template-columns:repeat(${compact ? 10 : 5},1fr);gap:${compact ? 4 : 10}px">${COLOR_NAMES.map((c) =>
+    `<button type="button" role="radio" aria-checked="${c === selected}" aria-label="${c}" data-act="${attr(act)}" data-arg="${c}" class="cnpy-sw${c === selected ? " is-on" : ""}${compact ? " compact" : ""}" style="--c:var(--p-${c})"><i></i><span>${c}</span></button>`).join("")}</div>`;
 }
 
 export function feedPreviewRow(p: { name: string; handle: string; color: PersonColor }): string {
@@ -122,9 +126,12 @@ const STATUS: Record<OnboardState["check"], { text: string; color: string }> = {
 
 export function onboardView(o: OnboardState, backdrop = ""): string {
   const st = STATUS[o.check];
-  const canSubmit = o.check === "available" && !o.submitting;
+  // A new account needs the agreement ticked; editing one that exists does not ask again.
+  const canSubmit = o.check === "available" && !o.submitting && (!!o.edit || o.agreed === true);
   const signedAs = o.prefill ? `Signed in with ${o.prefill.provider === "google" ? "Google" : "GitHub"} as <span style="font-family:var(--label);color:var(--fg-55)">${esc(o.prefill.label)}</span>` : "";
-  const field = (label: string, inner: string, help = "") => `<div><label style="display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);margin-bottom:7px">${label}</label>${inner}${help ? `<div style="font-size:12px;color:var(--fg-40);margin-top:7px;line-height:1.5">${help}</div>` : ""}</div>`;
+  // Every field is named by its label (`for` = the input's id), and its help is its description. A group
+  // with no single input (the color swatches) is named by the label's id instead.
+  const field = (label: string, inner: string, help = "", id = "") => `<div>${id ? `<label for="${id}"` : `<div id="onb-color-l"`} style="display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);margin-bottom:7px">${label}${id ? "</label>" : "</div>"}${inner}${help ? `<div id="${id}-help" style="font-size:12px;color:var(--fg-40);margin-top:7px;line-height:1.5">${help}</div>` : ""}</div>`;
   const row = "display:flex;align-items:center;border:1px solid var(--border-strong);border-radius:9px;background:var(--bg);overflow:hidden";
   const input = "flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--fg);font-size:14px;padding:11px 12px";
   // The same card as the org picker that follows it (one banner, the things to fill in, a foot), in
@@ -140,15 +147,16 @@ export function onboardView(o: OnboardState, backdrop = ""): string {
     </header>
     <div class="cnpy-orgs-body cnpy-onb-body">
       <div class="cnpy-onb-pair">
-        ${field("Handle", `<div style="${row}"><span style="font-family:var(--sans);font-size:14px;color:var(--fg-40);padding-left:12px">@</span><input data-act="onbHandle" data-field="onbHandle" value="${attr(o.handle)}" autocomplete="off" spellcheck="false" maxlength="24" class="cnpy-input" style="${input};padding-left:4px;font-family:var(--label)" /><span style="font-family:var(--label);font-size:11px;padding:0 12px;white-space:nowrap;color:${st.color}">${esc(st.text)}</span></div>`,
-        "2 to 24 characters. Lowercase letters, numbers and hyphens. Starts with a letter.")}
-        ${field("Display name", `<div style="${row}"><input data-act="onbName" data-field="onbName" value="${attr(o.name)}" maxlength="120" class="cnpy-input" style="${input}" /></div>`)}
+        ${field("Handle", `<div style="${row}"><span style="font-family:var(--sans);font-size:14px;color:var(--fg-40);padding-left:12px">@</span><input id="onb-handle" aria-describedby="onb-handle-help onb-handle-status" data-act="onbHandle" data-field="onbHandle" value="${attr(o.handle)}" autocomplete="off" spellcheck="false" maxlength="24" class="cnpy-input" style="${input};padding-left:4px;font-family:var(--label)" /><span id="onb-handle-status" aria-live="polite" style="font-family:var(--label);font-size:11px;padding:0 12px;white-space:nowrap;color:${st.color}">${esc(st.text)}</span></div>`,
+        "2 to 24 characters. Lowercase letters, numbers and hyphens. Starts with a letter.", "onb-handle")}
+        ${field("Display name", `<div style="${row}"><input id="onb-name" data-act="onbName" data-field="onbName" value="${attr(o.name)}" maxlength="120" autocomplete="name" class="cnpy-input" style="${input}" /></div>`, "", "onb-name")}
       </div>
-      ${field("Your color", swatches("onbColor", o.color, true))}
+      ${field("Your color", swatches("onbColor", o.color, true, "onb-color-l"))}
       <div${surface("padding:12px 14px")}>
         <div style="font-family:var(--label);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg-40);margin-bottom:10px">How you'll appear in the feed</div>
         ${feedPreviewRow({ name: o.name, handle: o.handle, color: o.color })}
       </div>
+      ${o.edit ? "" : `<label class="cnpy-onb-agree" style="display:flex;gap:10px;align-items:flex-start;font-size:12.5px;line-height:1.55;color:var(--fg-70)"><input type="checkbox" id="onb-agree" data-act="onbAgree" data-field="onbAgree" required${o.agreed ? " checked" : ""} style="flex:none;margin:3px 0 0;width:15px;height:15px;accent-color:var(--accent)" /><span>${agreeHtml('style="color:var(--fg)"')}</span></label>`}
       ${o.error ? `<div role="alert" style="font-size:12.5px;color:var(--red)">${esc(o.error)}</div>` : ""}
     </div>
     <footer class="cnpy-orgs-foot">

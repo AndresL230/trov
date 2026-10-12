@@ -36,7 +36,9 @@ export const PRICING: Record<PlanId, PlanPricing> = {
   free: { price: 0, per: "", yearly: null, yearlyPer: "", badge: null, selfServe: true },
   // Legacy: no longer sold, and not shown (shared/plans.ts `offered`).
   personal: { price: null, per: "per month", yearly: null, yearlyPer: "per year", badge: null, selfServe: false },
-  team: { price: 10, per: "per seat / month", yearly: null, yearlyPer: "per seat / year", badge: "Most teams start here", selfServe: true },
+  // No badge: "Most teams start here" read as a statistic Trov cannot show (compliance pass, 2026-10-12).
+  // The accent still falls on Pro, the one plan on sale (web/src/pricing.ts `accentPlan`).
+  team: { price: 10, per: "per seat / month", yearly: null, yearlyPer: "per seat / year", badge: null, selfServe: true },
   enterprise: { price: null, per: "per month", yearly: null, yearlyPer: "per year", badge: null, selfServe: false },
 };
 
@@ -55,6 +57,25 @@ export const hasYearly = (p: PlanPricing): boolean => canPurchase(p) && p.yearly
 export function formatPrice(amount: number, currency: string = PRICE_CURRENCY): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: Number.isInteger(amount) ? 0 : 2, maximumFractionDigits: 2 }).format(amount);
 }
+
+// ── what a buyer is told before paying (the pricing card, Get started, the upgrade buttons, the payment
+// page, the paid confirmation mail) — ONE wording, so no two places can promise different things. The
+// policy behind it is the owner's (2026-10-12) and is written out in full on /refunds (web/src/legal.ts). ──
+
+/** "3 seats × $10 = $30 per month": what a per-seat plan costs each month for `seats` seats, before tax.
+ *  The display price only (Trov holds no amount: Stripe's page shows the real total); null for a plan
+ *  that is not bought on the site. A count under 1 is 1 (a purchase is at least one seat). */
+export function seatMath(seats: number, p: PlanPricing = PRICING.team): string | null {
+  if (!canPurchase(p) || p.price === null) return null;
+  const n = Math.max(1, Math.floor(Number.isFinite(seats) ? seats : 1));
+  return `${n} ${n === 1 ? "seat" : "seats"} × ${formatPrice(p.price)} = ${formatPrice(Math.round(p.price * n * 100) / 100)} per month`;
+}
+/** Tax is Stripe Tax's, worked out on Stripe's page (wrangler.toml `STRIPE_TAX`). */
+export const CHECKOUT_TAX = "Plus applicable tax, calculated at checkout.";
+/** Auto-renewal and how to stop it, in one line. "Billing" is the Plan block's Manage billing / Cancel plan. */
+export const RENEWAL_TERMS = "Renews monthly until you cancel; cancel any time from Billing.";
+/** What cancelling means for the money, in one line (the full policy is /refunds). */
+export const CANCEL_TERMS = "Pro stays active until the end of the period already paid. No refunds for partial periods, except where the law requires one.";
 
 /**
  * THE purchase link: a plain navigation (no fetch) to the billing route, which handles sign-in

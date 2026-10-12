@@ -37,11 +37,12 @@
 
 import { esc } from "./ui";
 import { trovMark } from "@shared/mark";
-import { TROV_REPO, siteFooter, siteMark as mark } from "./site-chrome";
+import { TROV_REPO, siteFooter, siteMark as mark, skipLink } from "./site-chrome";
 import { pricingSection } from "./pricing";
 import { segmented } from "./segmented";
 import { PLANS, seatsPhrase } from "@shared/plans";
-import { PRICING, canPurchasePlan, formatPrice, purchaseHref } from "@shared/pricing";
+import { CHECKOUT_TAX, PRICING, RENEWAL_TERMS, canPurchasePlan, formatPrice, purchaseHref } from "@shared/pricing";
+import { REFUNDS_PATH, consentHtml } from "@shared/legal-core";
 import { CONNECTION_NOTE, connectSteps } from "./mcp-connect";
 import { MCP_TOOL_NAMES } from "@shared/mcp-tools.generated";
 import { MCP_TOOL_GROUPS, mcpToolCountPhrase } from "@shared/mcp-tools-core";
@@ -136,7 +137,7 @@ const GO = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="
 // always emitted (the nav's structure never changes); trov.css shows it under 900px only.
 function nav(dark: boolean, signedIn: boolean, menuOpen = false): string {
   const link = ([arg, label]: readonly [string, string]) => `<button data-act="siteJump" data-arg="${arg}" class="site-navlink">${label}</button>`;
-  return `<nav class="site-nav" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
+  return `<nav class="site-nav" aria-label="Site" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
     <div class="site-navin" style="max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px">
       <button data-act="siteJump" data-arg="top" class="site-nav-home" style="display:flex;align-items:center;gap:9px;padding:0;color:var(--fg)">
         ${mark(20)}
@@ -146,8 +147,8 @@ function nav(dark: boolean, signedIn: boolean, menuOpen = false): string {
         ${SECTIONS.map(link).join("")}
       </div>
       <div class="site-nav-r" style="margin-left:auto;display:flex;align-items:center;gap:10px">
-        <a href="${TROV_REPO}" target="_blank" rel="noopener" title="GitHub" class="site-iconbtn site-nav-x">${GH_MARK(17)}</a>
-        <button data-act="cycleTheme" title="Toggle theme" class="site-iconbtn site-nav-x" style="border:1px solid var(--border)">${dark ? MOON : SUN}</button>
+        <a href="${TROV_REPO}" target="_blank" rel="noopener" title="GitHub" aria-label="Trov's source on GitHub" class="site-iconbtn site-nav-x">${GH_MARK(17)}</a>
+        <button data-act="cycleTheme" title="Toggle theme" aria-label="Toggle theme" class="site-iconbtn site-nav-x" style="border:1px solid var(--border)">${dark ? MOON : SUN}</button>
         ${signedIn
           ? `<button data-act="siteBack" class="cnpy-accentbtn site-nav-cta" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">Back to the app</button>`
           // Two ways in, said apart: a quiet Sign in for someone with an account, and the page's one accent
@@ -415,7 +416,7 @@ function authority(): string {
       <div class="site-banner site-split-banner">
         ${BANNER_ART}
         <h2>Agents propose, people decide.</h2>
-        <p>No agent tool can approve, promote, or reject anything. Those actions only exist in the signed-in web app. Rejected proposals and old versions are kept, never deleted.</p>
+        <p>No agent tool can approve, promote, or reject anything. Those actions only exist in the signed-in web app. Rejecting a proposal doesn't erase it, and every earlier version stays in the history.</p>
       </div>
       <div class="site-split-body">
         <div class="site-st" style="display:flex;align-items:center;gap:12px;${at(260)}">
@@ -809,7 +810,7 @@ function security(): string {
       ${row(0, "Agents connect by browser sign-in; only hashes of their tokens are stored.")}
       ${row(1, "Agents write as their person and can't claim another author.")}
       ${row(2, "Agents can only change tickets assigned to their person.")}
-      ${row(3, "Tickets and sprints are never closed automatically.")}
+      ${row(3, "Only a person closes a ticket or completes a sprint. A ticket mirrored from a GitHub issue follows that issue.")}
       ${row(4, "Only a person can ratify a decision or an artifact, or publish a prompt.")}
       ${row(5, "Artifact pages run in a sandbox, cut off from your session.")}
       ${row(6, "GitHub webhooks are signature-verified.")}
@@ -885,6 +886,8 @@ function signInDialog(mode: SignInMode = "signin", plan: SignUpPlan = "free"): s
         <div class="site-signin-body">
           ${choosing ? planChoice(plan) : ""}
           ${pro ? checkout : providers}
+          ${pro ? `<p class="site-signin-note" data-signin-terms>${esc(CHECKOUT_TAX)} ${esc(RENEWAL_TERMS)} <a href="${REFUNDS_PATH}">Refund policy</a></p>` : ""}
+          <p class="site-signin-note" data-consent>${consentHtml()}</p>
         </div>
         <div class="site-signin-foot">${c.foot} <button type="button" data-act="openSignIn" data-arg="${c.other}" data-field="signInSwitch" class="site-signin-switch">${c.switchTo}</button></div>
       </div>
@@ -912,8 +915,11 @@ export interface LandingProps {
 
 export function landingView(p: LandingProps): string {
   seen = p.seen;
+  // The skip link is the page's first stop for a keyboard; it lands on `<main>`, past the nav.
   return `<div class="cnpy-site" data-morph="landing">
+    ${skipLink()}
     ${nav(p.dark, p.signedIn ?? false, p.menuOpen ?? false)}
+    <main id="site-main" tabindex="-1">
     ${hero(p.signedIn ?? false)}
     ${problem()}
     ${loop()}
@@ -923,6 +929,7 @@ export function landingView(p: LandingProps): string {
     ${agents()}
     ${security()}
     ${pricingSection({ signedIn: p.signedIn ?? false, rv, lead: productQuestions() })}
+    </main>
     ${siteFooter("dialog")}
   </div>
   ${p.signInOpen ? signInDialog(p.signInMode ?? "signin", p.signInPlan ?? "free") : ""}

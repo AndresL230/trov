@@ -468,7 +468,26 @@ A subscription created while it was off stays untaxed until `automatic_tax` is e
 (Stripe Tax on or off: the `STRIPE_TAX` var, above); promotion codes;
 the refund policy — decided (2026-10-12): cancel any time, Pro runs to the end of the paid period, no refund for
 a partial period except where the law requires (refunds are made by hand in the Stripe dashboard — Trov has no
-refund code; deleting an organization cancels at once with no refund, above; Terms section 3 in
-`web/src/legal.ts` says the same — keep them together, and the same for its 30 days' notice of a price
-change); and whether the numbers in `shared/plans.ts` are the ones you
-want to sell.
+refund code; deleting an organization cancels at once with no refund, above; the Refund and Cancellation
+Policy at `/refunds` (`REFUNDS` in `web/src/legal.ts`) and Terms sections 5–7 say the same — keep them together,
+and the same for its 30 days' notice of a price change); and whether the numbers in `shared/plans.ts` are the
+ones you want to sell.
+
+**What the buyer is told, and where** (the compliance pass, 2026-10-12; `plans.md` › The pricing page): the price,
+the per-seat math for the seats being bought, "Plus applicable tax, calculated at checkout", "Renews monthly until
+you cancel; cancel any time from Billing" and links to the Terms and the refund policy — beside every button that
+starts a payment (the Pro card, Get started's Pro side, Upgrade to Pro, the embedded payment card's foot). The
+paid confirmation mail (`paidTermsText` in `src/notifications/grant.ts`) repeats the renewal and cancellation
+terms with links to `/refunds` and `/terms`. Renewal is on the subscription's ANNIVERSARY (no
+`billing_cycle_anchor` is sent), which is what the Terms say.
+
+**In the Stripe dashboard (test and live), for the texts to be true — the code cannot check these:**
+- Settings › Business › Public details: the Terms of Service, Privacy Policy and refund policy URLs
+  (`https://trov.dev/terms`, `/privacy`, `/refunds`), so Stripe's hosted pages and receipts link them.
+- Customer Portal: cancellation **at the end of the billing period** (the Terms promise Pro runs to its end),
+  resuming a cancelled subscription allowed (the refund policy says it can be undone before the end), and the
+  proration you want on seat changes (the texts say Stripe shows the cost or credit before confirming).
+- Emails: successful-payment receipts on (the texts say Stripe sends receipts).
+- Not sent today: Checkout's `consent_collection[terms_of_service]=required` and `custom_text` (a Terms
+  checkbox and the renewal sentence on Stripe's own page). Both need the public Terms URL set first; adding them
+  is one change in `startCheckout` (`src/billing/routes.ts`) and the owner's call.

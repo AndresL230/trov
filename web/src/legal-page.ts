@@ -1,4 +1,4 @@
-// The DOM boot for the legal pages (/terms, /privacy: `legal` pages of shared/site-pages.ts,
+// The DOM boot for the legal pages (/terms, /privacy, /refunds: `legal` pages of shared/site-pages.ts,
 // whose HTML the build writes and PRERENDERS — web/src/site-prerender.ts). The page says which
 // document it is (`data-doc` on #legal) and its <title> is the page list's; everything it renders
 // comes from the pure web/src/legal.ts, the same markup the build put there. The theme follows
@@ -7,7 +7,7 @@
 import "./trov.css";
 import { LEGAL_DOCS, legalView, type LegalKind } from "./legal";
 import { syncFavicon } from "./favicon";
-import { siteRoot } from "./site-chrome";
+import { followSkipLink, siteRoot } from "./site-chrome";
 import { paintRoot } from "./morph";
 import { migrateBrowserStorage } from "./storage-migrate";
 
@@ -54,6 +54,7 @@ if (mount && doc) {
   paint();
   media?.addEventListener?.("change", () => { if (theme === "system") paint(); });
   mount.addEventListener("click", (e) => {
+    if (followSkipLink(e)) return;
     if (!(e.target as Element).closest("[data-legal-theme]")) return;
     theme = resolved() === "light" ? "dark" : "light";
     try { localStorage.setItem("trov.theme", theme); } catch { /* ignore */ }

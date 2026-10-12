@@ -258,8 +258,8 @@ export function newSprintPanel(s: NewSprintState, persons: PersonSummary[]): str
   return `<div${surface("padding:18px 20px;margin:14px 0 6px")}>
     <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:end">
       <div style="min-width:0">
-        <label style="${NS_LABEL}">Sprint name</label>
-        <input data-act="nsField" data-arg="name" data-field="ns-name" value="${attr(s.name)}" placeholder="Sprint 14" style="${NS_INPUT}" />
+        <label for="ns-name" style="${NS_LABEL}">Sprint name</label>
+        <input id="ns-name" data-act="nsField" data-arg="name" data-field="ns-name" value="${attr(s.name)}" placeholder="Sprint 14" style="${NS_INPUT}" />
       </div>
       <div>
         <label style="${NS_LABEL}">Urgency</label>
@@ -277,8 +277,8 @@ export function newSprintPanel(s: NewSprintState, persons: PersonSummary[]): str
       </div>
     </div>
     <div id="ns-date-error" data-ns-error role="alert" style="font-size:12px;color:var(--red);margin-top:7px${s.error ? "" : ";display:none"}">${esc(s.error ?? "")}</div>
-    <label style="${NS_LABEL};margin:15px 0 7px">Goal <span style="font-weight:400;color:var(--fg-40)">— what this sprint is for</span></label>
-    <input data-act="nsField" data-arg="desc" data-field="ns-desc" value="${attr(s.desc)}" placeholder="One sentence describing the sprint's goal" style="${NS_INPUT}" />
+    <label for="ns-desc" style="${NS_LABEL};margin:15px 0 7px">Goal <span style="font-weight:400;color:var(--fg-40)">— what this sprint is for</span></label>
+    <input id="ns-desc" data-act="nsField" data-arg="desc" data-field="ns-desc" value="${attr(s.desc)}" placeholder="One sentence describing the sprint's goal" style="${NS_INPUT}" />
     <label style="${NS_LABEL};margin:15px 0 7px">Lead</label>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${leadChips}</div>
     <label style="${NS_LABEL};margin:15px 0 7px">Codebase domain</label>

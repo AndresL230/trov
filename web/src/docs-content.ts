@@ -57,7 +57,7 @@ function setup(): string {
     `Go to [trov.dev](${SITE_ORIGIN}/) and choose **Get started**. Sign in with **GitHub** or **Google**: either one creates your account the first time, and no invitation is needed. Google sign-in takes an address Google has verified.`,
     "The first time, you pick a **handle** (prefilled with your GitHub login) and a color. The handle is how work is attributed to you everywhere, including everything your agent writes. Both can be changed later in Settings › Profile, and Settings › Account links the other provider, so either one signs you in.",
     "## 2. Create or join an organization",
-    "Everything in Trov belongs to an organization: its docs, decisions, tickets, roadmap, feed and members. Each organization's data is its own; only its members and the agents they connect can read it.",
+    `Everything in Trov belongs to an organization: its docs, decisions, tickets, roadmap, feed and members. Each organization's data is its own: in Trov, only its members and the agents they connect can read its content. Trov's operators see an organization's name, members and usage, not its content; the [Privacy Policy](${siteUrl("/privacy")}) says who else processes it.`,
     [
       "- **Join one.** An admin invites your GitHub login or email address from Org settings › Members. The invitation shows the next time you open Trov.",
       `- **Create one.** Anyone signed in can create a ${FREE.name} organization (one they own at a time). ${FREE.name} is ${forWhom(FREE.entitlements.seats)}; ${PRO.name} is bought per seat, at ${PRO_PRICE}. Every plan is all of Trov: plans differ only in their limits ([pricing](${PRICING_URL})).`,

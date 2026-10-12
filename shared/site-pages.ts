@@ -14,6 +14,7 @@
 import { OFFERED_PLAN_IDS, PLANS, seatsPhrase, type PlanId } from "./plans";
 import { PRICE_CURRENCY, PRICING, formatPrice } from "./pricing";
 import { isPurchasablePlan } from "./billing";
+import { NOTICES_PATH, SOURCE_PATH, sourceUrl } from "./legal-core";
 
 /** The canonical origin: every canonical link, og:url, og:image and sitemap entry. It is wrangler.toml's
  *  PUBLIC_ORIGIN (test/site.test.ts pins the two together). */
@@ -86,6 +87,12 @@ export const SITE_PAGES: readonly SitePage[] = [
     title: `Privacy Policy · ${SITE_NAME}`,
     description: "This policy explains what Trov collects, why, who processes it, how long it is kept and what you can ask for.",
     image: { path: "/og/privacy.png", alt: `${SITE_NAME} Privacy Policy` },
+  },
+  {
+    key: "refunds", path: "/refunds", kind: "legal", indexed: true,
+    title: `Refund and Cancellation Policy · ${SITE_NAME}`,
+    description: "This policy explains how to cancel a paid Trov plan, what happens when you do, and when a payment is refunded.",
+    image: { path: "/og/refunds.png", alt: `${SITE_NAME} Refund and Cancellation Policy` },
   },
   // The public docs (web/src/docs-content.ts): each page is ONE Markdown text — served as-is at `markdown`
   // and rendered to the HTML page — so the two cannot say different things. Under /docs/<page>: `/docs`
@@ -166,13 +173,22 @@ export const APP_SHELL_PATH = "/app";
  *  for a file; the query string is kept. The binding takes relative rules only, so `www.` and plain http
  *  are the Worker's for what it serves (src/site.ts `canonicalRedirect`, `/` included) and the zone's for
  *  the files (a Redirect Rule and "Always Use HTTPS" in the Cloudflare dashboard: HANDOFF.md). */
-export function assetRedirects(): string {
+export function assetRedirects(commit: string | null = null): string {
   const rules: string[] = [];
   for (const p of SITE_PAGES.filter((pg) => pg.indexed)) {
     const from = p.path === "/" ? ["/index", "/index.html"] : [`${p.path}.html`, `${p.path}/`];
     for (const f of from) rules.push(`${f} ${p.path} 301`);
   }
+  rules.push(sourceRedirect(commit));
   return `# Written by the build from shared/site-pages.ts (assetRedirects): do not edit.\n${rules.join("\n")}\n`;
+}
+
+/** AGPL-3.0 §13: `/source` (shared/legal-core.ts `SOURCE_PATH`, which every surface links) goes to the source
+ *  of THIS deployment — the commit Workers Builds built (`WORKERS_CI_COMMIT_SHA`, read by web/site-build.ts),
+ *  or the repository when the build did not know it (a local build). A 302: the next deploy points it
+ *  elsewhere, so no browser may cache it. */
+export function sourceRedirect(commit: string | null = null): string {
+  return `${SOURCE_PATH} ${sourceUrl(commit)} 302`;
 }
 
 /** `_headers`: `noindex` on the static files nobody should find in a search — the app shell and the
@@ -190,7 +206,7 @@ export function assetHeaders(): string {
     noindex(APP_SHELL_PATH),
     ...SITE_PAGES.filter((p) => !p.indexed).map((p) => noindex(p.path)),
     ...MARKDOWN_PAGES.map((p) => `${p.markdown}\n  Content-Type: text/markdown; charset=utf-8\n  Link: <${siteUrl(p.path)}>; rel="canonical"`),
-    ...[LLMS_TXT, LLMS_FULL_TXT].map((f) => `${f}\n  Content-Type: text/plain; charset=utf-8`),
+    ...[LLMS_TXT, LLMS_FULL_TXT, NOTICES_PATH].map((f) => `${f}\n  Content-Type: text/plain; charset=utf-8`),
     "",
   ].join("\n");
 }

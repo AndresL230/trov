@@ -176,7 +176,7 @@ smaller: never pad one out.
 
 ## The public pages, for crawlers (`shared/site-pages.ts`, `web/site-build.ts`, `src/site.ts`)
 
-`/`, `/pricing`, `/terms`, `/privacy` and the docs (`/docs/setup`, `/docs/connect`, `/docs/concepts`,
+`/`, `/pricing`, `/terms`, `/privacy`, `/refunds` and the docs (`/docs/setup`, `/docs/connect`, `/docs/concepts`,
 `/docs/mcp-tools`, `/docs/changelog`) arrive as real HTML — their words, a unique title and description, a
 canonical link, Open Graph and Twitter tags, JSON-LD on `/` and `/pricing` — before any script runs, and the
 script then takes over the SAME markup. Everything else is the app, and is never indexed.
@@ -187,7 +187,7 @@ script then takes over the SAME markup. Everything else is the app, and is never
   head tags (`siteHead`), the `/sitemap.xml` line, the reserved org slug (`shared/orgs.ts` spreads
   `SITE_PAGE_SEGMENTS`), and the 301s for its other spellings (`_redirects`). **Adding a page** is one entry
   plus its content: a `kind` that renders it (a new legal document is a `legal` entry whose `key` is its key in
-  `LEGAL_DOCS`; the legal pages' tab row names Terms and Privacy itself), and its 1200 × 630 image in
+  `LEGAL_DOCS`; the legal pages' tab row is `legalTabs`, built from `LEGAL_ORDER`, so it follows), and its 1200 × 630 image in
   `scripts/og/render.mjs`'s own list (an entry without `image` gets no `og:image` and a `summary` card).
   A reserved slug shadows any org already using it: check before adding a page at a new path.
 - **Copy is the page's own.** A description is a sentence the page says (the landing's hero lede, a legal
@@ -308,6 +308,55 @@ client and an AGENTS.md / CLAUDE.md snippet), Concepts (the authority model), MC
   Markdown on the page; raw HTML escaped; the reference against the generated list; the changelog without ops or
   patches; llms.txt's format; the FAQPage against the visible accordion), `test/mcp-catalog.test.ts` (the
   generated list against the live registration), `test/site.test.ts` (`/docs` and robots).
+
+## Legal pages, consent and the source (`web/src/legal.ts`, `shared/legal-core.ts`)
+
+The compliance pass of 2026-10-12. **Not legal advice**: the texts were written from the code and the owner's
+facts, and a lawyer should review them. Open decisions (governing law, the Gemini project's tier, the Stripe
+dashboard, retention windows to verify) are listed in the release's `ops` and in `billing.md` › Owner checklist.
+
+- **Three documents, one renderer.** `LEGAL_DOCS` = Terms (`/terms`), Privacy (`/privacy`) and the Refund and
+  Cancellation Policy (`/refunds`), each a `legal` page of `SITE_PAGES` with its Open Graph card. `legalView`
+  draws the banner, the tab row (`legalTabs`, from `LEGAL_ORDER`: short names "Terms · Privacy · Refunds"), the
+  contents rail, an "In short" box and the sections; tables use the docs' `.site-docs-table` frame (a focusable
+  region, so a keyboard can scroll it on a phone). The date line reads "Effective and last updated". Every fact
+  in them is the code's (the header of `legal.ts` names where each comes from); numbers come from `PLANS` /
+  `PRICING`; who runs Trov (`LEGAL_ENTITY` TrovLabs, Inc., `LEGAL_STATE` New Jersey), the address, the age (16)
+  and the paths from `shared/legal-core.ts`. Change the code, change the text, bump `updated`.
+  `test/render.legal.test.ts` holds the facts most likely to drift (cookies and lifetimes, retention, processors,
+  no Vercel / Netlify, no `read:org`, the refund policy's four rules).
+- **Consent wherever an account can be made** — `consentHtml()`: "By continuing you agree to the Terms of Service
+  and Privacy Policy, and confirm you are 16 or older." Under the landing's sign-in / Get started dialog (every
+  mode and plan, `.site-signin-note`), on the refused-Google card, on the MCP OAuth sign-in page; onboarding (where
+  the account is created) has an unchecked, required checkbox (`agreeHtml`) that Continue waits for. No box is
+  ever pre-ticked. `auth-identity-people.md` › Consent at sign-up.
+- **Before paying** — the per-seat math, tax at checkout, monthly renewal until cancelled, "cancel any time from
+  Billing", the Terms and the refund policy, beside every button that starts a payment (`plans.md` › The pricing
+  page). The Pro side of Get started carries one more note than Free (`data-signin-terms`): the one place the
+  two sides of the dialog differ in height, on purpose.
+- **The footer** (`siteFooter`): Contact · hello@trov.dev · Pricing · Terms · Privacy · Refunds · Source (AGPL-3.0) ·
+  Licenses, then `copyrightLine()` — "© <year> TrovLabs, Inc. · New Jersey". On a phone the links are the 44px
+  two-column list (bare separators dropped by `font-size:0`); keep every item a link or a button.
+- **The source (AGPL-3.0 §13)** is `/source` (`SOURCE_PATH`): a 302 the BUILD writes into `_redirects` from Workers
+  Builds' `WORKERS_CI_COMMIT_SHA` (`sourceRedirect`, `env.md`) — the deployed commit's tree on GitHub, or the
+  repository when the build knew none; `src/site.ts` answers it the same way should the rule be missing. Every
+  surface links that one path, so none needs the commit and no render path asks GitHub anything: the footer,
+  Settings › Help (`legalLinksRow`), Help › What's new, the Terms, the OAuth and billing pages the Worker renders
+  (`LEGAL_FOOT` in `src/auth/oauth-pages.ts` `shell`), and the MCP server's `instructions` (`mcpInstructions`).
+  `source` is a reserved org slug. `/third-party-notices.txt` (`NOTICES_PATH`) is `THIRD-PARTY-NOTICES.txt`,
+  generated by `scripts/licenses/notices.mjs`: what the browser bundle and the Worker actually contain (Rollup's
+  chunks, esbuild's metafile), with licence texts, the fonts' OFL and Lucide's ISC (several inline icons are
+  Lucide's paths). Rerun it after a dependency change.
+- **Accessibility basics.** Every page starts with a skip link (`skipLink`, `.site-skip`: out of sight until
+  focused) to `#site-main` (the app: `#cnpy-main`), followed WITHOUT writing the hash (`followSkipLink`; the hash is
+  the route and the sign-in return-to). Site navs are labelled landmarks; links inside legal and docs text are
+  underlined (WCAG 1.4.1); the sign-in dialog traps Tab (`main.ts`); onboarding's fields have `<label for>`s,
+  their help as `aria-describedby` and the colours as a named radiogroup; Guide screenshots carry `GUIDE_ALT`.
+  Checked 2026-10-12 with axe-core 4.10 (WCAG 2.0/2.1 A + AA and best practice) in Playwright's Chromium against
+  `wrangler dev`: `/`, `/pricing`, `/terms`, `/privacy`, `/refunds`, `/docs/setup`, the 404, the sign-in dialog
+  and the phone menu at 390px had no violations; plus a scripted keyboard pass (skip link, the dialog's trap and
+  Escape, the FAQ with Enter, the legal tabs, the phone menu, the onboarding checkbox with Space). axe-core is not
+  a dependency: the check was run from outside the repository.
 
 ## Errors an agent can act on (`shared/error-hints.ts`, `src/error-hints.ts`)
 
@@ -705,9 +754,11 @@ goes in that block; a template gets a class hook, never a second copy of its mar
   `web/src/artifacts.ts`: Vite makes it lazy chunks on Trov's origin (fetched when a diagram first opens, never
   in the main bundle). No CDN. The OG image generator (`scripts/og/render.mjs`) inlines the vendored Geist, so
   it needs no network either.
-- **Not covered here:** the e-mails still link Google Fonts (`src/notifications/assemble.ts` `FONTS_HREF`), and
-  the artifact sandbox's CSP still lets an HTML artifact's OWN scripts load from cdnjs / jsdelivr
-  (`src/artifacts/raw.ts`; an opaque origin, no cookies — `artifacts.md`).
+- **Still third-party, and said so in the Privacy Policy (§5):** the artifact sandbox's CSP lets an HTML
+  artifact's OWN scripts load from cdnjs / jsdelivr and its styles from Google Fonts (`src/artifacts/raw.ts`; an
+  opaque origin, no cookies — `artifacts.md`); GitHub and Google profile pictures are hot-linked (`avatarSrc`:
+  an uploaded photo wins, else the provider's URL); an image a doc links from another site loads from it. The
+  e-mails use system fonts and load nothing (`notifications.md` › No web font).
 
 ### Contrast — WCAG AA, computed from the tokens (`test/render.contrast.test.ts`)
 

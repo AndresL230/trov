@@ -35,6 +35,8 @@ export const RESERVED_ORG_SLUGS: readonly string[] = [
   "index", "pricing", "privacy", "terms", "guide", "favicon", "robots", "sitemap", "billing", "og",
   // `fonts`: the self-hosted fonts' stable copies and licenses (shared/fonts.ts `FONTS_PATH`, written by the build).
   "fonts",
+  // `source`: the AGPL source link, redirected to the deployed commit (shared/legal-core.ts `SOURCE_PATH`).
+  "source",
   ...SITE_PAGE_SEGMENTS,
   // Root routes of the Hono app (src/routes.ts and the routers mounted at "/"), and screen names kept
   // free so a path can never be mistaken for one.

@@ -7,6 +7,7 @@
 
 import { TROV_MARK_PATH, trovMark } from "@shared/mark";
 import { stableFontFaceCss } from "@shared/fonts";
+import { LEGAL_LINKS, consentHtml, copyrightLine } from "@shared/legal-core";
 
 export const esc = (s: string): string =>
   s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
@@ -102,6 +103,12 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;back
 .pick-note{margin:2px 0 0;font-size:12px;line-height:1.5;color:var(--fg-55)}
 .row{display:flex;gap:10px;margin-top:24px}
 .row .btn{flex:1}
+.page{width:min(420px,100%);display:flex;flex-direction:column;align-items:center;gap:16px}
+.page>.card{width:100%}
+.legal{font-size:12px;line-height:1.7;color:var(--fg-55);text-align:center}
+.legal a,.consent a{color:var(--fg-70);text-decoration:underline;text-underline-offset:2px}
+.legal a:focus-visible,.consent a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.consent{margin:18px 0 0;font-size:12px;line-height:1.55;color:var(--fg-55);text-align:center}
 .err{margin-top:20px;padding:12px 14px;border-radius:4px;background:var(--red-soft);border:1px solid var(--border);color:var(--red);font-size:13.5px;line-height:1.55;overflow-wrap:anywhere}`;
 
 /** The Trov mark (shared/mark.ts), in the page's own `--mark`. */
@@ -111,9 +118,14 @@ export const GOOGLE = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidd
 const APP = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="m7 9 3 3-3 3M13 15h4"></path></svg>`;
 const CHECK = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>`;
 
+/** Under the card on every page the Worker renders itself (these, and the billing notices): the legal pages
+ *  and the source of the version running (AGPL-3.0 §13 — `/source` is the deployed commit), as plain links
+ *  on Trov's own origin. Nothing here asks anyone for anything. */
+export const LEGAL_FOOT = `<nav class="legal" aria-label="Legal and source">${LEGAL_LINKS.map((l) => `<a href="${l.path}">${esc(l.label)}</a>`).join(" · ")}<br>${esc(copyrightLine())}</nav>`;
+
 export function shell(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">`
-    + `<title>${esc(title)} · Trov</title><style>${FONT_FACES}${CSS}</style></head><body><main class="card">${body}</main></body></html>`;
+    + `<title>${esc(title)} · Trov</title><style>${FONT_FACES}${CSS}</style></head><body><div class="page"><main class="card">${body}</main>${LEGAL_FOOT}</div></body></html>`;
 }
 
 export const head = (title: string) => `<div class="head">${MARK}<span class="title">${esc(title)}</span></div>`;
@@ -132,6 +144,8 @@ export function signInPage(clientName: string): string {
     + `<div class="or"><span></span>or<span></span></div>`
     + `<a class="btn" href="/auth/google/login">${GOOGLE}Continue with Google</a>`
     + `</div>`
+    // Signing in here can create the account (onboarding follows, with its own checkbox): say what it agrees to.
+    + `<p class="consent" data-consent>${consentHtml()}</p>`
     + `<div class="foot">After you sign in, Trov asks you to confirm before anything is connected.</div>`);
 }
 

@@ -52,7 +52,7 @@ describe("landing — the facts it states", () => {
     expect(html.match(/only exist in the signed-in web app/g)?.length).toBe(1);
     expect(html).not.toContain("Only a signed-in person sees these buttons");
     // Whose data it is: the pricing Questions answer it, so Security does not.
-    expect(html.match(/only its members and the agents they connect can read it/g)?.length).toBe(1);
+    expect(html.match(/only its members and the agents they connect can read its content/g)?.length).toBe(1);
     const security = html.slice(html.indexOf('id="site-security"'), html.indexOf('id="site-pricing"'));
     expect(security).not.toMatch(/its members|sign up|Sign-in with/i);
     expect(security.match(/class="site-check"/g)?.length).toBe(7);
@@ -99,8 +99,13 @@ describe("landing — the banner carried through the page", () => {
     // The way to the pricing page is in the lede, so the plan's line is nothing but the plan.
     expect(signup).toContain('Pick a plan to start, or <a href="/pricing" class="site-signin-compare">compare them</a>.');
     expect(pro).toContain('class="site-signin-compare"');
-    // One line either way and no extra note under Pro, so the dialog is the same height on both plans.
-    expect(pro).not.toContain("site-signin-note");
+    // The plan's line is one line either way. Under the buttons, both sides say what continuing agrees to; Pro
+    // also says, before anything is paid, that tax is added at checkout, that it renews until cancelled, and
+    // where the refund policy is (the compliance pass, 2026-10-12: the one place the two sides differ in height).
+    expect(signup).toContain('<p class="site-signin-note" data-consent>By continuing you agree to the <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>, and confirm you are 16 or older.</p>');
+    expect(signup).not.toContain("data-signin-terms");
+    expect(pro).toContain("data-consent");
+    expect(pro).toContain('<p class="site-signin-note" data-signin-terms>Plus applicable tax, calculated at checkout. Renews monthly until you cancel; cancel any time from Billing. <a href="/refunds">Refund policy</a></p>');
     expect(rules).toMatch(/\.site-signin-plan-what \{[^}]*white-space:nowrap;/);
     // Pro is the same two buttons: each is the billing route with the provider already picked, so signing in
     // carries straight on to payment.

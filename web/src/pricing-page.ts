@@ -5,7 +5,7 @@
 // legal-page.ts), and the toggle flips Light ⇄ Dark and stores it, so the app and this page agree.
 import "./trov.css";
 import { pricingView } from "./pricing";
-import { siteRoot } from "./site-chrome";
+import { followSkipLink, siteRoot } from "./site-chrome";
 import { paintRoot } from "./morph";
 import { mountPricing } from "./pricing-dom";
 import { initFaqAccordion } from "./site-faq";
@@ -44,6 +44,7 @@ if (mount) {
   paint();
   media?.addEventListener?.("change", () => { if (theme === "system") paint(); });
   mount.addEventListener("click", (e) => {
+    if (followSkipLink(e)) return;
     if (!(e.target as Element).closest("[data-site-theme]")) return;
     theme = resolved() === "light" ? "dark" : "light";
     try { localStorage.setItem("trov.theme", theme); } catch { /* ignore */ }

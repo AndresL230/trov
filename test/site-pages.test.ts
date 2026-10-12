@@ -42,13 +42,13 @@ const ldOf = (html: string): Record<string, unknown>[] =>
 const unesc = (s: string): string => s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
 
 describe("the one list", () => {
-  it("holds /, /pricing, /terms, /privacy, the five docs pages (indexed) and the 404 page (not), each key and path once", () => {
-    expect(indexed.map((p) => p.path)).toEqual(["/", "/pricing", "/terms", "/privacy", "/docs/setup", "/docs/connect", "/docs/concepts", "/docs/mcp-tools", "/docs/changelog"]);
+  it("holds /, /pricing, /terms, /privacy, /refunds, the five docs pages (indexed) and the 404 page (not), each key and path once", () => {
+    expect(indexed.map((p) => p.path)).toEqual(["/", "/pricing", "/terms", "/privacy", "/refunds", "/docs/setup", "/docs/connect", "/docs/concepts", "/docs/mcp-tools", "/docs/changelog"]);
     expect(NOT_FOUND_PAGE.indexed).toBe(false);
     expect(new Set(SITE_PAGES.map((p) => p.key)).size).toBe(SITE_PAGES.length);
     expect(new Set(SITE_PAGES.map((p) => p.path)).size).toBe(SITE_PAGES.length);
     expect(SITE_PAGES.map(sitePageFile)).toEqual([
-      "index.html", "pricing.html", "terms.html", "privacy.html",
+      "index.html", "pricing.html", "terms.html", "privacy.html", "refunds.html",
       "docs/setup.html", "docs/connect.html", "docs/concepts.html", "docs/mcp-tools.html", "docs/changelog.html", "404.html",
     ]);
     expect(SITE_ORIGIN).toBe("https://trov.dev");
@@ -61,7 +61,7 @@ describe("the one list", () => {
     // the hero's lede, word for word
     expect(landingView({ dark: false, signInOpen: false, seen: new Set() })).toContain(`<p class="site-st site-hero-lede" style="--d:520ms;">${page("/").description}</p>`);
     // the legal ledes, as each document opens
-    for (const kind of ["terms", "privacy"] as const) {
+    for (const kind of ["terms", "privacy", "refunds"] as const) {
       const p = page(`/${kind}`);
       expect(p.title).toBe(`${LEGAL_DOCS[kind].title} · Trov`);
       expect(LEGAL_DOCS[kind].lede.startsWith(p.description.replace(/\.$/, ""))).toBe(true);
@@ -149,6 +149,7 @@ describe("the built documents", () => {
       "/pricing": ["One product, three sizes.", ">Choose Pro</a>", "What counts as a seat?"],
       "/terms": ["<h1 class=\"site-legal-h\">Terms of Service</h1>", "The service</span>"],
       "/privacy": ["<h1 class=\"site-legal-h\">Privacy Policy</h1>", "What we collect</span>"],
+      "/refunds": ["<h1 class=\"site-legal-h\">Refund and Cancellation Policy</h1>", "How to cancel</span>", "No refunds for partial periods."],
       "/404": ["Page not found", "Go to the home page"],
       "/docs/setup": ['<h1 class="site-legal-h">Set up Trov</h1>', "<h2>1. Sign in</h2>", "/plugin install trov@trov"],
       "/docs/connect": ["<h2>Cursor</h2>", "<h2>VS Code</h2>", "<h2>OpenAI Codex CLI</h2>", "<h2>Windsurf</h2>", "claude mcp add --transport http --scope user trov https://trov.dev/mcp"],
@@ -157,7 +158,7 @@ describe("the built documents", () => {
       "/docs/changelog": ['<h1 class="site-legal-h">Changelog</h1>'],
     };
     const boot: Record<string, string | null> = {
-      "/": "/src/main.ts", "/pricing": "/src/pricing-page.ts", "/terms": "/src/legal-page.ts", "/privacy": "/src/legal-page.ts", "/404": null,
+      "/": "/src/main.ts", "/pricing": "/src/pricing-page.ts", "/terms": "/src/legal-page.ts", "/privacy": "/src/legal-page.ts", "/refunds": "/src/legal-page.ts", "/404": null,
       ...Object.fromEntries(DOCS_PAGES.map((p) => [p.path, "/src/docs-page.ts"])),
     };
     for (const p of SITE_PAGES) {
@@ -235,9 +236,16 @@ describe("what the assets binding is told", () => {
       "/pricing.html /pricing 301", "/pricing/ /pricing 301",
       "/terms.html /terms 301", "/terms/ /terms 301",
       "/privacy.html /privacy 301", "/privacy/ /privacy 301",
+      "/refunds.html /refunds 301", "/refunds/ /refunds 301",
       ...DOCS_PAGES.flatMap((p) => [`${p.path}.html ${p.path} 301`, `${p.path}/ ${p.path} 301`]),
+      // AGPL-3.0 §13: the source link goes to the repository when the build knows no commit…
+      "/source https://github.com/AndresL230/trov 302",
     ]);
     for (const r of rules) expect(r.startsWith("/"), r).toBe(true); // the binding skips an absolute source
+    // …and to the deployed commit's tree when Workers Builds gives one (WORKERS_CI_COMMIT_SHA); junk is ignored.
+    const sha = "0123456789abcdef0123456789abcdef01234567";
+    expect(assetRedirects(sha)).toContain(`\n/source https://github.com/AndresL230/trov/tree/${sha} 302\n`);
+    expect(assetRedirects("not a sha; rm -rf")).toContain("\n/source https://github.com/AndresL230/trov 302\n");
   });
 
   it("_headers: noindex on the app shell, the 404 page, and everything on a workers.dev address", () => {

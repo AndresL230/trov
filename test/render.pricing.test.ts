@@ -40,7 +40,8 @@ describe("shared/pricing.ts", () => {
     expect(PRICING.free).toMatchObject({ price: 0, yearly: null, badge: null, selfServe: true });
     expect(isFreePrice(PRICING.free)).toBe(true);
     expect(canPurchase(PRICING.free)).toBe(false);
-    expect(PRICING.team).toMatchObject({ price: 10, per: "per seat / month", yearly: null, yearlyPer: "per seat / year", badge: "Most teams start here", selfServe: true });
+    // No badge: "Most teams start here" read as a statistic nobody can show (compliance pass, 2026-10-12).
+    expect(PRICING.team).toMatchObject({ price: 10, per: "per seat / month", yearly: null, yearlyPer: "per seat / year", badge: null, selfServe: true });
     expect(canPurchase(PRICING.team)).toBe(true);
     expect(isFreePrice(PRICING.team)).toBe(false);
     expect(PRICING.personal).toMatchObject({ price: null, selfServe: false });
@@ -196,7 +197,13 @@ describe("pricing — what ships: Free, Pro per seat, Enterprise by conversation
   it("Pro is $10 per seat a month, up to 50 seats, and its button is the page's one accent: the purchase link", () => {
     const pro = card(html, "team");
     expect(pro).toContain(">Pro</h3>");
-    expect(pro).toContain("Most teams start here");
+    expect(pro).not.toContain("site-plan-badge");
+    // Beside Choose Pro, before anything is paid: the per-seat math, tax, renewal, the Terms and the refund policy.
+    expect(pro).toContain("<p>For example, 3 seats × $10 = $30 per month. Plus applicable tax, calculated at checkout. Renews monthly until you cancel; cancel any time from Billing.</p>");
+    expect(pro).toContain('<p><a href="/terms">Terms</a> · <a href="/refunds">Refund policy</a></p>');
+    expect(pro.indexOf(">Choose Pro</a>")).toBeLessThan(pro.indexOf("data-plan-terms"));
+    expect(card(html, "free")).not.toContain("data-plan-terms");
+    expect(card(html, "enterprise")).not.toContain("data-plan-terms");
     expect(pro).toContain('<p class="site-plan-price"><span class="site-plan-amt">$10</span> <span class="site-plan-per">per seat / month</span></p>');
     expect(pro).toContain('<a href="/billing/start?plan=team" class="site-btn site-btn-accent site-plan-cta"');
     expect(pro).toContain(">Choose Pro</a>");
@@ -284,12 +291,12 @@ describe("pricing — prices announced", () => {
     expect(html).not.toContain("Prices are not announced yet.");
   });
 
-  it("has ONE accent action: the badged plan's", () => {
+  it("has ONE accent action: the plan on sale (no plan wears a badge)", () => {
     const html = pricingSection({ pricing: priced() });
     expect(html.match(/site-btn-accent/g)).toHaveLength(1);
     expect(html.match(/site-plan is-accent/g)).toHaveLength(1);
     expect(html).toMatch(/class="site-st site-plan is-accent"[^>]*aria-labelledby="site-plan-team"/);
-    expect(card(html, "team")).toContain("Most teams start here");
+    expect(card(html, "team")).not.toContain("site-plan-badge");
   });
 
   it("monthly only: no interval switch, no yearly link", () => {
@@ -444,9 +451,13 @@ describe("pricing — questions say only what is true today", () => {
   });
 
   it("promises nothing the product does not do", () => {
-    for (const claim of [/refund/i, /\btrial/i, /\bSLA\b/, /discount/i, /\btax/i, /money.back/i, /SOC ?2/i, /GDPR/i, /HIPAA/i, /uptime/i, /guarantee/i, /free (for ?ever|of charge)/i, /cancel any ?time/i]) {
+    for (const claim of [/\btrial/i, /\bSLA\b/, /discount/i, /money.back/i, /SOC ?2/i, /GDPR/i, /HIPAA/i, /uptime/i, /guarantee/i, /free (for ?ever|of charge)/i]) {
       expect(all).not.toMatch(claim);
     }
+    // Tax, renewal, cancelling and refunds are the owner's policy now (2026-10-12): said, and only with the policy one link away.
+    expect(all).toMatch(/Plus applicable tax, calculated at checkout\. Renews monthly until you cancel; cancel any time from Billing\./);
+    expect(all).toMatch(/no refunds for partial periods/);
+    expect(all).not.toMatch(/full refund|refund(s|ed)? (on|upon) request/i);
     for (const word of [/seamless/i, /powerful/i, /unlock/i, /lorem/i, /\$X\b/]) expect(all).not.toMatch(word);
   });
 });

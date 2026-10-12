@@ -1,4 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { PRIVACY_PATH, SOURCE_PATH, TERMS_PATH } from "@shared/legal-core";
+import { SITE_ORIGIN } from "@shared/site-pages";
 import { createMcpHandler } from "agents/mcp";
 import { z } from "zod";
 import type { Env } from "./env";
@@ -727,8 +729,16 @@ export interface McpServerOpts {
  * is listed when the person is an admin in ANY organization the connection can reach, and refused
  * (`forbidden`) on a call that resolves to one where they are not.
  */
+/** What the server tells a client when it connects (`initialize` → `instructions`): the authority model in
+ *  one line, and — AGPL-3.0 §13 — where the source of the running version is, with the terms it is used
+ *  under. Paths on the origin the client connected to (`/source` is the deployed commit: shared/legal-core.ts). */
+export function mcpInstructions(origin: string = SITE_ORIGIN): string {
+  return `Trov is a team's shared memory. You act as the person who connected you: what you write is recorded as theirs, and anything that becomes official (a doc change, a decision) is staged until a person approves it in the Trov web app. Trov is open source under AGPL-3.0: the source of this version is at ${origin}${SOURCE_PATH}. Use is under the Terms (${origin}${TERMS_PATH}) and the Privacy Policy (${origin}${PRIVACY_PATH}).`;
+}
+
 export function buildConnectionMcpServer(env: Env, conn: BearerConnection, opts: McpServerOpts = {}): McpServer {
-  const server = new McpServer({ name: "trov", version: "1.0.0" });
+  const origin = opts.origin ?? SITE_ORIGIN;
+  const server = new McpServer({ name: "trov", version: "1.0.0", websiteUrl: origin }, { instructions: mcpInstructions(origin) });
   const toolsFor = (o: OrgTenant) => orgTools(env, o.ctx, { origin: opts.origin, orgSlug: o.slug || undefined });
   const template = conn.orgs.find((o) => hasRole(o.ctx, "admin")) ?? conn.current ?? conn.orgs[0];
 

@@ -18,6 +18,8 @@
 // Pure markup (`billingCheckoutPage`) + a small controller (`startBillingCheckout`, `billingCheckoutHosted`).
 
 import { PLANS } from "@shared/plans";
+import { CHECKOUT_TAX, RENEWAL_TERMS } from "@shared/pricing";
+import { REFUNDS_PATH, TERMS_PATH } from "@shared/legal-core";
 import {
   BILLING_DONE_PATH, PRICING_PATH, billingCheckoutHref, billingStartHref, isBillingInterval, isPurchasablePlan, orgBillingHref,
   type BillingCheckoutRequest, type BillingCheckoutResponse, type BillingInterval, type PurchasablePlan,
@@ -116,9 +118,11 @@ function copyOf(s: BillingCheckoutUi): Copy {
     default:
       return {
         title: s.org ? `Upgrade to ${plan}` : `Pay for ${plan}`,
+        // Before the pay button: per seat, tax, automatic renewal and how to stop it (shared/pricing.ts), and
+        // the Terms and refund policy in the card's foot.
         lede: s.org
-          ? `${plan} is paid per seat. The form starts at the seats this organization uses now; you can change the number there.`
-          : `${plan} is paid per seat. Choose the number of seats in the form; you name your organization next.`,
+          ? `${plan} is paid per seat. The form starts at the seats this organization uses now; you can change the number there. ${CHECKOUT_TAX} ${RENEWAL_TERMS}`
+          : `${plan} is paid per seat. Choose the number of seats in the form; you name your organization next. ${CHECKOUT_TAX} ${RENEWAL_TERMS}`,
         note: "", actions: "",
       };
   }
@@ -152,7 +156,7 @@ export function billingCheckoutPage(s: BillingCheckoutUi, backdrop = ""): string
             <p role="status" style="margin:0;font-size:12.5px;line-height:1.5;color:var(--red)"${s.hostedError ? "" : " hidden"}>${esc(s.hostedError ?? "")}</p>
           </div>
         </div>
-        <footer class="cnpy-orgs-foot"><span>${BILLING_FOOT}</span><a class="cnpy-mutelink" data-billing-back href="${attr(billingCheckoutBackHref(s))}" style="font-size:12.5px;font-weight:500;text-decoration:none;color:var(--fg-55)">Back</a></footer>
+        <footer class="cnpy-orgs-foot"><span>${BILLING_FOOT}</span><span data-billing-terms style="margin-right:auto"><a class="cnpy-mutelink" href="${TERMS_PATH}" target="_blank" rel="noopener" style="color:var(--fg-55);text-decoration:underline;text-underline-offset:2px">Terms</a> · <a class="cnpy-mutelink" href="${REFUNDS_PATH}" target="_blank" rel="noopener" style="color:var(--fg-55);text-decoration:underline;text-underline-offset:2px">Refund policy</a></span><a class="cnpy-mutelink" data-billing-back href="${attr(billingCheckoutBackHref(s))}" style="font-size:12.5px;font-weight:500;text-decoration:none;color:var(--fg-55)">Back</a></footer>
       </main>
     </div>
   </div>`;

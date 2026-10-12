@@ -1712,6 +1712,9 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
    every radius is inline (the corners block scales it). */
 .site-docs-text .site-legal-sec strong { color:var(--fg); font-weight:600; }
 .site-docs-text .site-legal-sec a { color:var(--accent); text-underline-offset:3px; }
+/* A link in running text is underlined, not told apart by colour alone (WCAG 1.4.1; axe link-in-text-block):
+   the legal pages, their summary box, and the docs, which share these classes. */
+.site-legal-sec :is(p, li, td) a, .site-legal-brief p a { text-decoration:underline; text-underline-offset:3px; text-decoration-color:color-mix(in srgb, var(--accent) 50%, transparent); }
 .site-docs-text .site-legal-sec ol { margin:12px 0 0; padding-left:22px; }
 .site-docs-text .site-legal-sec h3 { margin:30px 0 0; font-size:16px; font-weight:650; letter-spacing:-0.01em; color:var(--fg); scroll-margin-top:84px; }
 .site-docs-text .site-legal-sec h3 code { font-size:.95em; }
@@ -1748,6 +1751,12 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
    keys on them). The Monthly / Yearly switch is two native radios: `:has(:checked)`
    shows one of each `.is-month` / `.is-year` pair, so it needs no script. */
 .site-vh { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
+/* The skip link (site-chrome.ts `skipLink`): every page's first stop for a keyboard, out of sight until it
+   has focus, then a chip at the top left over everything. No motion, so nothing to switch off. Its radius
+   is inline (8px), for the corners block. The target is `#site-main` (tabindex -1: it takes the focus
+   without becoming a tab stop). */
+.site-skip { position:fixed; top:10px; left:10px; z-index:2000; padding:9px 14px; background:var(--accent); color:var(--accent-fg) !important; font-size:13.5px; font-weight:600; line-height:1.3; text-decoration:none !important; transform:translateY(calc(-100% - 24px)); }
+.site-skip:focus, .site-skip:focus-visible { transform:none; outline:2px solid var(--focus); outline-offset:2px; }
 .site-pricing { max-width:1120px; margin:0 auto; padding:150px 24px 0; }
 .site-pricing.is-page { padding-top:72px; }
 .site-pricing a:focus-visible, .site-pricing button:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
@@ -1800,7 +1809,15 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-plan-amt { font-size:34px; line-height:1; font-weight:650; letter-spacing:-0.025em; font-variant-numeric:tabular-nums; }
 .site-plan-per { font-size:13.5px; color:var(--fg-55); }
 .site-plan-tba { font-size:14.5px; color:var(--fg-55); }
-.site-plan-ctabox { margin-top:18px; display:flex; }
+/* The button, and under it (a purchase only) its terms: one subgrid row, so the cards stay aligned. Top-aligned,
+   so a card without terms keeps its button at its own height. */
+.site-plan-ctabox { margin-top:18px; display:flex; flex-wrap:wrap; align-items:flex-start; align-content:flex-start; }
+/* What a buyer is told beside "Choose Pro" (pricing.ts `planTerms`): the seat math, tax, renewal, the Terms
+   and the refund policy. Quiet, but never a hover or a click away. */
+.site-plan-terms { flex:1 0 100%; margin-top:10px; font-size:12px; line-height:1.5; color:var(--fg-55); }
+.site-plan-terms p { margin:0; }
+.site-plan-terms p + p { margin-top:4px; }
+.site-plan-terms a { color:var(--fg-70); text-decoration:underline; text-underline-offset:2px; text-decoration-color:var(--border-strong); }
 .site-plan-cta { flex:1; }
 .site-plan-limits { list-style:none; margin:24px 0 0; padding:20px 0 0; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:9px; font-size:13.5px; line-height:1.45; color:var(--fg-70); }
 .site-plan-limits b { color:var(--fg); font-weight:600; }
@@ -2191,7 +2208,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .site-nav-signin:hover { color:var(--fg); background:var(--hover); }
 .site-nav-signin:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 /* The foot is a clearly grey strip under the white card (it was 2% black: barely there). */
-.site-signin-foot { padding:13px 28px; text-align:center; border-top:1px solid var(--border); font-size:12.5px; line-height:1.5; color:var(--fg-55); background:color-mix(in srgb, var(--fg) 6%, var(--surface)); }
+.site-signin-foot { padding:13px 28px; text-align:center; border-top:1px solid var(--border); font-size:12.5px; line-height:1.5; color:var(--fg-70); background:color-mix(in srgb, var(--fg) 6%, var(--surface)); }
 .site-signin-switch { padding:0; font:inherit; font-weight:600; color:var(--fg); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }
 .site-signin-switch:hover { text-decoration-color:currentColor; }
 .site-signin-switch:focus-visible { outline:2px solid var(--focus); outline-offset:3px; }
@@ -2643,7 +2660,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
      on-screen keyboard by `--site-kb` (site-viewport.ts), with 44px controls and the safe area under it;
    • a mockup is never a shrunken desktop window: a phone gets the screen's most telling pane, drawn in one
      column, and no type in it renders under 11px. */
-.site-iconbtn.site-menubtn, .site-hero-tabs-ph, .site-legal-tocb, .site-foot-lic { display:none; }
+.site-iconbtn.site-menubtn, .site-hero-tabs-ph, .site-legal-tocb { display:none; }
 
 /* the menu (landing.ts `menuSheet`, site-menu.ts): a card under its button on a tablet, a sheet on a phone */
 .site-menu-back { position:fixed; inset:0; z-index:64; touch-action:none; background:rgba(14,14,26,.5); animation:site-fade var(--fx-slow) var(--fx-ease) both; }
@@ -2885,10 +2902,9 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .site-foot { margin-top:96px !important; }
   .site-foot-in { flex-direction:column; gap:14px !important; padding:36px 20px calc(36px + env(safe-area-inset-bottom)) !important; }
   .site-foot-r { box-sizing:border-box; width:100%; margin-left:0 !important; gap:12px !important; text-align:left !important; font-size:14px !important; line-height:1.5; }
-  /* font-size:0 drops the line's bare text (its separators, the licence); each link restores its own */
+  /* font-size:0 drops the line's bare text (its separators); each link restores its own */
   .site-foot-links { display:flex; flex-wrap:wrap; padding:6px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); font-size:0; }
   .site-foot-links > a, .site-foot-links > button { flex:0 0 50%; box-sizing:border-box; display:flex; align-items:center; min-height:44px; font-size:15px !important; color:var(--fg) !important; text-decoration:none !important; text-align:left; }
-  .site-foot-lic { display:inline; }
   .site-foot-r > :last-child { font-size:13px; }
 }
 @media (max-width:480px) {

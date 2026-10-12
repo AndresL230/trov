@@ -13,6 +13,17 @@ import { platformDeliveryFor } from "./resend";
 import { inviteSignInUrl } from "./invite";
 import { getPerson } from "../auth/persons";
 import { giftLengthWords } from "@shared/plans";
+import { PRICING, formatPrice } from "@shared/pricing";
+import { REFUNDS_PATH, TERMS_PATH } from "@shared/legal-core";
+
+/** A paid confirmation's renewal and cancellation terms (the owner's policy, /refunds): it renews by itself,
+ *  when, at what, until when, and how to stop it. Plain text. */
+export function paidTermsText(planName: string): string {
+  const price = PRICING.team.price;
+  return `${planName} renews automatically each month, on the day of the month you subscribed${price ? `, at ${formatPrice(price)} per seat plus any applicable tax` : ""}, until you cancel. `
+    + `An owner can cancel any time in Trov, from Billing (Org settings › General › Plan › Cancel plan, or Manage billing): ${planName} stays active until the end of the period already paid, and there are no refunds for partial periods, except where the law requires one. `
+    + `Seats, the card and invoices are in Manage billing too.`;
+}
 
 export interface GrantEmailInput {
   /** Who granted it, as a display name; null for a grant nobody made by hand (billing). */
@@ -37,6 +48,12 @@ export function renderGrantEmail(o: GrantEmailInput): { subject: string; html: s
   const plan = `${o.planName}: ${o.planDescription}`;
   const about = "Trov is a team's shared memory: what everyone is working on, the docs and decisions behind it, and what ships next.";
   const forWhom = `This is for ${o.email}. If you weren't expecting it, you can ignore this email.`;
+  // A purchase's renewal and cancellation terms, with the policy and the Terms one click away (absolute:
+  // this is mail). The org is not named yet, so Billing is described, not linked.
+  let origin = `https://${o.host}`;
+  try { origin = new URL(o.signInUrl).origin; } catch { /* keep the host */ }
+  const terms = o.paid ? paidTermsText(o.planName) : "";
+  const termsLinks = o.paid ? { refunds: `${origin}${REFUNDS_PATH}`, terms: `${origin}${TERMS_PATH}` } : null;
   // Transactional: it answers a grant or a purchase, so it goes out whatever the address's unsubscribe
   // says, and carries no unsubscribe link — the footer says why it came (shared/email-unsubscribe.ts).
   const why = `You're getting this because ${o.paid ? `this address paid for Trov's ${o.planName} plan` : o.granterName ? `${o.granterName} gave this address an organization on Trov` : "this address was given an organization on Trov"}: a one-off email, not a mailing list.`;
@@ -52,6 +69,7 @@ export function renderGrantEmail(o: GrantEmailInput): { subject: string; html: s
     `<div style="${p}color:${C.fg};">Hi,</div>` +
     `<div style="${p}">${escapeHtml(what)}</div>` +
     `<div style="${p}">${escapeHtml(plan)}</div>` +
+    (termsLinks ? `<div data-paid-terms style="${p}">${escapeHtml(terms)} <a href="${escapeHtml(termsLinks.refunds)}" style="color:${C.accentText};">Refund and cancellation policy</a> · <a href="${escapeHtml(termsLinks.terms)}" style="color:${C.accentText};">Terms</a></div>` : "") +
     `<div style="${EMAIL_FONT.sans}font-size:13px;line-height:20px;color:${C.fg55};padding:0 0 ${SP.l}px 0;">${about}</div>` +
     `<div style="text-align:center;padding:0 0 ${SP.l}px 0;"><a href="${escapeHtml(o.signInUrl)}" style="${button}">Sign in to Trov</a></div>` +
     `<div style="${EMAIL_FONT.sans}font-size:12.5px;line-height:20px;color:${C.fg55};padding-bottom:24px;">This is for <span style="${EMAIL_FONT.sans}font-weight:500;color:${C.fg70};">${escapeHtml(o.email)}</span>. If you weren't expecting it, you can ignore this email.</div></td></tr>` +
@@ -63,6 +81,7 @@ export function renderGrantEmail(o: GrantEmailInput): { subject: string; html: s
     "Hi,", "",
     what, "",
     plan, "",
+    ...(termsLinks ? [terms, "", `Refund and cancellation policy: ${termsLinks.refunds}`, `Terms: ${termsLinks.terms}`, ""] : []),
     about, "",
     "Sign in to Trov:", "",
     `  ${o.signInUrl}`, "",

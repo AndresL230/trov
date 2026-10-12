@@ -221,7 +221,7 @@ describe("Settings bento — one twelve-column grid, each tile about as tall as 
     expect(rule(".cnpy-tile-foot")).toContain("margin-top:auto;");
     const html = settings();
     const section = (cls: string) => html.slice(html.indexOf(`cnpy-surface ${cls}"`), html.indexOf("</section>", html.indexOf(`cnpy-surface ${cls}"`)));
-    expect(section("cnpy-set-profile")).toMatch(/<div class="cnpy-tile-foot"[^>]*><label[^>]*>Your color</);
+    expect(section("cnpy-set-profile")).toMatch(/<div class="cnpy-tile-foot"[^>]*><div id="set-color-l"[^>]*>Your color</);
     expect(section("cnpy-set-profile")).toMatch(/<div class="cnpy-set-name"[^>]*>\s*<input data-act="setDisplayName"/);
     expect(rule(".cnpy-set-profile .cnpy-set-name")).toContain("max-width:420px;");
     // Account is the sign-in methods, top-down; who is signed in and Sign out are the Session tile's.

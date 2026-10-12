@@ -41,6 +41,7 @@ export function llmsTxt(): string {
       `- [Everything above in one file](${siteUrl(LLMS_FULL_TXT)}): every page linked here, in full, as Markdown.`,
       link(byKey("terms")),
       link(byKey("privacy")),
+      link(byKey("refunds")),
       `- [Source code](${TROV_REPO}): the Cloudflare Worker, the web app and the Claude Code plugin, under AGPL-3.0.`,
     ].join("\n")}`,
   ].join("\n\n") + "\n";

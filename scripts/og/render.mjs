@@ -27,17 +27,19 @@ const OUT_DIR = process.env.OG_OUT_DIR ?? join(ROOT, "web", "public", "og");
 const W = 1200, H = 630;
 const SIZE_BUDGET = 150 * 1024; // a soft cap: some crawlers drop large previews
 
-// The tabs over /terms and /privacy (web/src/legal.ts `legalView`), the page's own one filled.
-const LEGAL_TABS = ["Terms of Service", "Privacy Policy"];
+// The tabs over /terms, /privacy and /refunds (web/src/legal.ts `legalTabs`: each document's `tab`), the
+// page's own one (`tab`) filled.
+const LEGAL_TABS = ["Terms", "Privacy", "Refunds"];
 
 // One line per page. name → web/public/og/<name>.png. `path` is printed under the copy as trov.dev<path>.
-//   eyebrow: a small label over the title · tabs: a tab row over it (the current one = `title`)
+//   eyebrow: a small label over the title · tabs: a tab row over it (the current one = `tab`, else `title`)
 //   lede: one line under it · plans: true lists the offered plans and their prices (shared/)
 const PAGES = [
   { name: "home", path: "", title: "Shared memory for your team and its coding agents.", lede: "Agents load what your team already decided, record what actually shipped, and wait for a person to approve anything that becomes official." },
   { name: "pricing", path: "/pricing", eyebrow: "Pricing", title: "One product, three sizes.", lede: "Every plan is all of Trov.", plans: true },
-  { name: "terms", path: "/terms", tabs: LEGAL_TABS, title: "Terms of Service", lede: "These terms cover your use of Trov, the shared context store for teams and their coding agents." },
-  { name: "privacy", path: "/privacy", tabs: LEGAL_TABS, title: "Privacy Policy", lede: "This policy explains what Trov collects, why, who processes it, how long it is kept and what you can ask for." },
+  { name: "terms", path: "/terms", tabs: LEGAL_TABS, tab: "Terms", title: "Terms of Service", lede: "These terms cover your use of Trov, the shared context store for teams and their coding agents." },
+  { name: "privacy", path: "/privacy", tabs: LEGAL_TABS, tab: "Privacy", title: "Privacy Policy", lede: "This policy explains what Trov collects, why, who processes it, how long it is kept and what you can ask for." },
+  { name: "refunds", path: "/refunds", tabs: LEGAL_TABS, tab: "Refunds", title: "Refund and Cancellation Policy", lede: "This policy explains how to cancel a paid Trov plan, what happens when you do, and when a payment is refunded." },
   // The public docs (web/src/docs-content.ts): each page's title and its lede, its description in
   // shared/site-pages.ts, word for word. Re-render a card when its page's first lines change.
   { name: "docs-setup", path: "/docs/setup", eyebrow: "Docs", title: "Set up Trov", lede: "Sign in, create an organization, connect GitHub and connect your coding agent: everything from a new account to a first session." },
@@ -78,7 +80,7 @@ function plansRow({ PLANS, OFFERED_PLAN_IDS, PRICING, canPurchase, formatPrice }
 
 function cardBody(page, shared) {
   const tabs = page.tabs
-    ? `<div class="tabs">${page.tabs.map((t) => `<span class="tab${t === page.title ? " on" : ""}">${esc(t)}</span>`).join("")}</div>`
+    ? `<div class="tabs">${page.tabs.map((t) => `<span class="tab${t === (page.tab ?? page.title) ? " on" : ""}">${esc(t)}</span>`).join("")}</div>`
     : "";
   return [
     page.eyebrow ? `<div class="eyebrow">${esc(page.eyebrow)}</div>` : "",

@@ -34,6 +34,7 @@
 
 import { esc, attr, surface } from "./ui";
 import { segmented } from "./segmented";
+import { SOURCE_PATH, TROV_SOURCE_REPO } from "@shared/legal-core";
 
 
 export interface ReleasePatches {
@@ -66,7 +67,7 @@ export interface Release {
   prs?: number[];
 }
 
-export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
+export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
@@ -74,19 +75,21 @@ export const RELEASES: Release[] = [
   // sitemap, canonical links, noindex on the app, a real 404; then public docs, llms.txt, Markdown versions and
   // errors an agent can act on. PR number not known yet: replace (#N) and add `prs`.
   // Also: self-serve deletion — one's own account (Settings), an organization (its owner, Org settings), and both from Platform.
+  // Also: the compliance pass — the Terms, Privacy and a new Refund and Cancellation Policy, consent at sign-up, billing
+  // terms before checkout, the footer's business details, the AGPL source link, accessibility basics, third-party notices.
   {
     version: "Unreleased",
     date: "2026-10-12",
     unreleased: true,
-    title: "Readable by search engines and agents, and yours to delete",
+    title: "Readable by search engines and agents, yours to delete, and plain about the terms",
     headline: "The public site and new docs arrive with their words on the page for search engines and AI assistants; Trov loads nothing from anyone else; and you can delete your account, or an owner an organization, without writing to us.",
     highlights: [
       "The site's pages open with their words already there, each under one address search engines can find, with a preview card when a link is shared. Your organization's pages, sign-in and the API stay out of search results.",
       "New public docs at trov.dev/docs: setting up, connecting Claude Code, Claude Desktop, Cursor, VS Code, Codex or Windsurf (with the config to copy), how Trov decides what is settled, every MCP tool, and the changelog. Each page is also plain Markdown, and trov.dev/llms.txt lists them for AI assistants.",
       "Trov no longer contacts anyone else when you open it: its typefaces and the diagram renderer come from trov.dev itself, not Google Fonts or a CDN. Text, links, status labels and form fields meet the WCAG AA contrast guidelines in both themes, and every button, link, menu item and field shows where keyboard focus is.",
       "The Unsubscribe link at the bottom of a Trov email works without signing in. It opens a page that says whose email it stops and what still arrives, and nothing changes until you press Unsubscribe.",
-      "You can delete your account in Settings. Your sign-ins, sessions, agent connections, email settings, photo and support messages are deleted, and you are signed out everywhere. What you wrote in organizations that carry on stays for the people you worked with, credited to “Deleted user”.",
-      "An organization's owner can delete it in Org settings › General: everything in it goes, and if it pays for Pro the subscription is cancelled at Stripe right away, with no refund for time already paid. Trov's operators can delete an organization or an account from Platform, under the same rules, and each deletion is recorded.",
+      "You can delete your account in Settings, and an organization's owner can delete it in Org settings › General. An account takes its sign-ins, sessions, agent connections, email settings, photo and support messages, and signs you out everywhere; what you wrote in organizations that carry on stays, credited to “Deleted user”. An organization goes whole, and if it pays for Pro its subscription is cancelled at Stripe right away, with no refund for time already paid. Trov's operators can delete either from Platform, under the same rules, and each deletion is recorded.",
+      "New Terms of Service and Privacy Policy, and a Refund and Cancellation Policy at trov.dev/refunds. They say who runs Trov (TrovLabs, Inc., a New Jersey corporation), what is collected and why, which services process it, every cookie, how long things are kept and what deletion keeps; and that Pro renews monthly until you cancel, stays active until the end of the period paid, and is not refunded for partial periods except where the law requires.",
     ],
     headsUp: [
       "The home page's headline no longer fades in: it is there at once and settles into place.",
@@ -105,6 +108,11 @@ export const RELEASES: Release[] = [
       "Signing in again with the same GitHub or Google account after deleting your account starts a new, empty account.",
       "A deletion can't be undone. An organization nobody else is in is deleted together with your account, and the confirmation names it.",
       "If you pay for a team that carries on, cancel its plan first (it stays Pro until the end of the period already paid), or ask us to move the billing to another owner.",
+      "Creating an account now asks you to tick a box agreeing to the Terms of Service and the Privacy Policy and confirming you are 16 or older. The sign-in screens, including the one an agent opens to connect, say what continuing agrees to.",
+      "Before you pay for Pro — on the pricing page, in Get started, beside Upgrade to Pro and on the payment page — Trov shows the per-seat total, that tax is added at checkout, that Pro renews monthly until you cancel and that you can cancel any time from Billing, with links to the Terms and the refund policy. The email after a purchase says the same.",
+      "The pricing page no longer labels Pro “Most teams start here”. The home page no longer says tickets are never closed automatically (a ticket mirrored from a GitHub issue follows that issue), and the pricing questions and the docs now say what Trov's operators can see.",
+      "Every page's footer names TrovLabs, Inc. of New Jersey and hello@trov.dev, and links the Terms, Privacy, Refunds, the source code and the third-party licences. Settings › Help, What's new, the agent sign-in pages and the MCP server link the source code of the version you are using.",
+      "A Skip to content link is the first thing the keyboard reaches on every page. The sign-up form, New doc, New handoff, New sprint and the artifact forms label every field, the Guide's screenshots describe themselves, links in the legal pages and docs are underlined, and the sign-in dialog keeps the keyboard inside it.",
     ],
     ops: [
       "`wrangler.toml` `[assets]` gains `run_worker_first = [\"/\"]`: `/` is answered by the Worker (the prerendered landing, or the app shell with a session cookie). It ships with the Worker; nothing to run.",
@@ -117,7 +125,11 @@ export const RELEASES: Release[] = [
       "New dependency `mermaid` (exact `11.17.2`): `npm ci` picks it up; nothing to configure. New reserved organization slug `fonts`: before deploying, `npx wrangler d1 execute trov --remote --command \"SELECT slug FROM orgs WHERE slug = 'fonts'\"` must return nothing.",
       "No migration, no new secret, no trigger. Deletion is live on merge.",
       "Before relying on it: (1) check D1 Time Travel's retention in the Cloudflare dashboard — a deleted account or organization stays restorable from it until that window passes, and the Privacy Policy should say so; (2) a Time Travel restore across a deletion brings it back: re-apply the deletions it undid (`scripts/deletion-refs.mjs`, and `docs/architecture/organizations.md` › After a restore); (3) the Stripe webhook needs no change — the cancel a deletion makes sends `customer.subscription.deleted`, which Trov acknowledges and ignores.",
-      "The Terms and the Privacy Policy (`web/src/legal.ts`) still tell people to email for deletion and do not describe what is kept. They are for a later change: `docs/architecture/organizations.md` › What deletion removes and what it keeps is written to be turned into that text.",
+      "New reserved organization slug `source` (and `refunds`, a page of `SITE_PAGES`): before deploying, `npx wrangler d1 execute trov --remote --command \"SELECT slug FROM orgs WHERE slug IN ('source','refunds')\"` must return nothing.",
+      "`/source` (the AGPL source link) is a `_redirects` rule the build writes from Workers Builds' `WORKERS_CI_COMMIT_SHA`: nothing to configure. A build that knows no commit (local) points it at the repository; so does the Worker, should the rule be missing.",
+      "Stripe dashboard, test and live (the Terms and refund policy describe these; the code cannot check them): Settings › Public details: the Terms of Service (`https://trov.dev/terms`), Privacy (`https://trov.dev/privacy`) and refund policy (`https://trov.dev/refunds`) URLs; Customer Portal: cancel AT THE END OF THE PERIOD, allow resuming, and the proration you want on seat changes; Emails: successful-payment receipts on. Checkout's own `consent_collection` / `custom_text` are not sent (they need the Terms URL set first): the owner's call.",
+      "`THIRD-PARTY-NOTICES.txt` (served at `/third-party-notices.txt`) is generated: after a dependency change run `node scripts/licenses/notices.mjs` and commit the file.",
+      "Human decisions this pass left open (no deploy step): governing law and venue (the Terms say New Jersey), whether the Gemini key's Google project is a paid one (the Privacy Policy says only that Google handles the text under the Gemini API terms that apply), the D1 Time Travel and Workers Logs retention to verify against \"up to 30 days\" and \"a few days\", and a lawyer's review of all three texts.",
     ],
     patches: {
       added: [
@@ -150,6 +162,14 @@ export const RELEASES: Release[] = [
         "Audit: `org.delete` (a platform row, the slug as target, the Stripe ids a refund would need) and `person.delete` (the tombstone as target, `ref` = a keyed hash of the old handle so a restored database can be matched); every org the person left gets `member.leave`. `scripts/deletion-refs.mjs` matches refs after a restore",
         "Web: Settings › Delete account, Org settings › General › Delete organization (owners), Platform › an organization › Delete, Platform › Admins › Accounts (`web/src/deletion.ts`, `deletion-actions.ts`); `confirmModal` gains a typed confirmation field, `detail`, `error` and a wide box (`web/src/confirm.ts`); the landing says `?deleted=account|org` once",
         "`shared/deletion-core.ts`: the previews' DTOs, the guard-rail codes and every sentence the screens use; `test/deletion.{org,account,platform}.test.ts`, `test/render.deletion.test.ts`",
+        "`/refunds`: the Refund and Cancellation Policy, a `legal` page of `SITE_PAGES` (`REFUNDS` in `web/src/legal.ts`, `LEGAL_DOCS` / `LEGAL_ORDER`), with its Open Graph card (`scripts/og/render.mjs refunds`), sitemap line, 301s and reserved slug; the legal tab row is `legalTabs`, built from `LEGAL_ORDER` (#N)",
+        "`shared/legal-core.ts`: the operator (`LEGAL_ENTITY` TrovLabs, Inc., `LEGAL_STATE` New Jersey), `LEGAL_EMAIL`, `MIN_AGE` (16), the legal paths, `SOURCE_PATH` / `sourceUrl`, `NOTICES_PATH`, `copyrightLine`, the consent sentence (`consentHtml`, `agreeHtml`) and `LEGAL_LINKS` — one copy for the site, the app, the Worker's pages, the mail and MCP (#N)",
+        "Consent: `consentHtml()` under the landing's sign-in / Get started dialog (every mode and plan), on the refused-Google card and on the MCP OAuth sign-in page; onboarding has an unchecked, required checkbox (`onbAgree`, `OnboardState.agreed`) that Continue waits for — not asked again when editing an account (#N)",
+        "Billing terms before payment: `seatMath` + `CHECKOUT_TAX` / `RENEWAL_TERMS` / `CANCEL_TERMS` (`shared/pricing.ts`) on the Pro card (`planTerms`, inside `.site-plan-ctabox` so the subgrid holds), the Pro side of Get started, the Plan block and Settings › Plan (`upgradeLine` with the org's own seats, `checkoutTerms` / `cancelTerms`), the Members tab's Upgrade to Pro, the embedded payment card, and the paid confirmation mail (`paidTermsText`) (#N)",
+        "AGPL §13: `/source` → the deployed commit (`assetRedirects(commit)` / `sourceRedirect` in `shared/site-pages.ts`, `WORKERS_CI_COMMIT_SHA` read by `web/site-build.ts`; `src/site.ts` answers it too), linked from the footer, Settings › Help (`legalLinksRow`), What's new, the OAuth / billing pages (`LEGAL_FOOT` in `oauth-pages.ts` `shell`), the Terms, and the MCP server's `instructions` (`mcpInstructions`) with `serverInfo.websiteUrl` (#N)",
+        "`THIRD-PARTY-NOTICES.txt` + `scripts/licenses/notices.mjs` (what the browser bundle and the Worker actually contain, from Rollup's chunks and esbuild's metafile, with licence texts; the fonts' OFL; Lucide's ISC for the inline icons), served at `/third-party-notices.txt` (`text/plain; charset=utf-8`) (#N)",
+        "Skip links (`skipLink` / `followSkipLink` in `site-chrome.ts`, `.site-skip`) on every public page and the app shell (`#cnpy-main`), never writing the hash; a Tab trap for the sign-in dialog; `role=\"main\"` on the sign-up card's wrapper (#N)",
+        "`test/render.legal.test.ts` (rewritten), `test/legal.compliance.test.ts`, `test/legal.worker.test.ts` (#N)",
       ],
       changed: [
         "`X-Robots-Tag: noindex` on every GET / HEAD the Worker answers but `/robots.txt`, `/sitemap.xml` and the landing, and on everything on a host other than `PUBLIC_ORIGIN`'s; `_headers` adds it to every static file on `*.workers.dev`, and to `/app` and `/404` (#N)",
@@ -173,6 +193,10 @@ export const RELEASES: Release[] = [
         "The handoff sentence Trov writes into the feed (\"<sender> left a handoff for <recipient>\") names the tombstone once its person is deleted; text people typed is never rewritten",
         "`stripeCall` takes `DELETE` (no idempotency key: Stripe ignores one there); the Stripe stand-ins (`scripts/dev/stripe-standin.mjs`, `test/helpers/billing.ts`) answer the cancel and the session expiry",
         "CLAUDE.md invariant 11: accounts and organizations are hard-deleted, and only through `src/deletion/`",
+        "The Terms and the Privacy Policy are rewritten from the code (effective 2026-10-12): TrovLabs, Inc. of New Jersey, eligibility 16+, agents act as the person, per-seat billing, Stripe Tax, anniversary-date renewal, cancellation and refunds (pointing at `/refunds`), deletion and what it keeps, the six cookies, a retention table, rights, transfers, governing law; the legal tab row shows Terms · Privacy · Refunds and the date reads \"Effective and last updated\" (#N)",
+        "The site footer: Contact · hello@trov.dev · Pricing · Terms · Privacy · Refunds · Source (AGPL-3.0) · Licenses, then `© <year> TrovLabs, Inc. · New Jersey` (`copyrightLine`); the bare \"Licensed under AGPL-3.0\" text and `.site-foot-lic` are gone (#N)",
+        "`PRICING.team.badge` is null (no \"Most teams start here\"); the accent still falls on Pro, so the pricing card and its OG image are unchanged (#N)",
+        "Labels: onboarding Handle / Display name (`for` / `id`, help and status as `aria-describedby`, the colors a named radiogroup, swatches named), New doc, New handoff, New sprint, the artifact forms; Guide screenshots get `GUIDE_ALT` text; site navs are named landmarks; links in `.site-legal-sec` text and the legal summary are underlined; `.site-signin-foot` text is `--fg-70` (axe contrast) (#N)",
       ],
       fixed: [
         "Search Console's \"Duplicate without user-selected canonical\" on `/`: the home page carries a canonical, and no other address serves its HTML — the app shell at `/<org>/`, `/platform` and `/billing/*` was `index.html`, byte-identical to `/`, with no canonical anywhere (#N)",
@@ -185,6 +209,8 @@ export const RELEASES: Release[] = [
         "Settings › Email notifications said nothing of any kind sends after unsubscribing; invitations, grant notices and test sends do, and now it says so (#N)",
         "The avatar menu's rows, `dropdown()` options and the filter bar's button showed keyboard focus only as a faint hover tint; the New sprint form and the New doc body showed none, and no inline-styled field ever showed `.cnpy-input:focus` (#N)",
         "Weight 640 (`trov.css`) rendered as 650: the static Google weights are replaced by the variable axis (#N)",
+        "Legal and marketing claims the code did not back: the GitHub `read:org` scope (sign-in asks `read:user user:email`); \"seats cannot be reduced below the number of people\"; \"charged at the start of each month\" (it is the subscription's anniversary); \"expired and revoked tokens are cleared\" (pasted tokens and revoked grants are kept); content visible \"to nobody else\" (operators and processors); Google Fonts as a processor; \"tickets and sprints are never closed automatically\" (mirrored tickets follow their issue); \"rejected proposals and old versions are kept, never deleted\"; the retention the Privacy Policy left out (usage counts 400 days, audit trail, support reports, invitations, the email log, expired sessions) (#N)",
+        "The landing's sign-in dialog let Tab wander onto the page behind it (#N)",
       ],
       removed: [
         "`web/index.html`, `web/pricing.html`, `web/terms.html`, `web/privacy.html` (generated now) (#N)",
@@ -1748,7 +1774,7 @@ export function releasesIndex(releases: readonly Release[] = RELEASES): string {
   return `<div class="cnpy-relidx">
     <div class="cnpy-relidx-head">
       <h1 class="cnpy-relidx-title">What's new in Trov</h1>
-      <p class="cnpy-relidx-intro">Every release, newest first. Open one for its notes, and switch to Patch notes for the full list of changes with links to the pull requests on <a href="${attr(TROV_REPO_URL)}" target="_blank" rel="noopener noreferrer" class="cnpy-rel-pr">GitHub</a>.</p>
+      <p class="cnpy-relidx-intro">Every release, newest first. Open one for its notes, and switch to Patch notes for the full list of changes with links to the pull requests on <a href="${attr(TROV_REPO_URL)}" target="_blank" rel="noopener noreferrer" class="cnpy-rel-pr">GitHub</a>. Trov is open source under AGPL-3.0: <a href="${SOURCE_PATH}" target="_blank" rel="noopener" class="cnpy-rel-pr" data-source-link>the source code of the version you are using</a>.</p>
     </div>
     <div class="cnpy-relgrid">${releases.map(indexCard).join("")}</div>
   </div>`;

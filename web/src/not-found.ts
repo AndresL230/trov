@@ -5,7 +5,7 @@
 // still paints it in the visitor's stored theme. The site's own look: the legal pages' banner header
 // (`.site-legal-band`, trov.css) and the shared footer.
 import { trovMark } from "@shared/mark";
-import { siteFooter, siteMark } from "./site-chrome";
+import { siteFooter, siteMark, skipLink } from "./site-chrome";
 
 export const NOT_FOUND_TITLE = "Page not found";
 export const NOT_FOUND_LEDE = "There is no page at this address. The link may be mistyped, or the page may have moved.";
@@ -14,7 +14,8 @@ const BANNER_ART = `<span class="site-banner-art" aria-hidden="true">${trovMark(
 
 export function notFoundView(): string {
   return `<div class="cnpy-site">
-    <nav class="site-nav" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
+    ${skipLink()}
+    <nav class="site-nav" aria-label="Site" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
       <div class="site-navin" style="max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px">
         <a href="/" aria-label="Trov home" style="display:flex;align-items:center;gap:9px;color:var(--fg);text-decoration:none">
           ${siteMark(20)}
@@ -26,7 +27,7 @@ export function notFoundView(): string {
         </div>
       </div>
     </nav>
-    <main class="site-hero">
+    <main id="site-main" tabindex="-1" class="site-hero">
       <div class="site-banner site-legal-band" style="border-radius:16px">
         ${BANNER_ART}
         <div class="site-legal-band-in">

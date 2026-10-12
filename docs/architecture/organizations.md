@@ -425,7 +425,7 @@ old handle is free.
 
 ### What deletion removes and what it keeps (and why)
 
-Written to be turned into the Privacy Policy's text. "Removed" means hard-deleted from Trov's database (or R2)
+Turned into the Privacy Policy's text (`web/src/legal.ts` › 9. Deleting your account or an organization, and the retention table in 8; 2026-10-12): change one, change the other. "Removed" means hard-deleted from Trov's database (or R2)
 at once; "kept" says why.
 
 **An organization**

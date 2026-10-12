@@ -992,7 +992,7 @@ function createView(p: ArtProps): string {
         </div>${binary ? "" : prePreview(10)}`;
   } else {
     source = `<div style="display:flex;gap:8px">
-        <input data-act="artCUrl" data-field="artCUrl" data-enter="artCFetch" class="cnpy-input" value="${attr(c.url)}" placeholder="https://…/page.html" style="flex:1;min-width:0;height:40px;padding:0 12px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:12.5px;font-family:var(--label);outline:none">
+        <input data-act="artCUrl" data-field="artCUrl" aria-label="The page's URL" data-enter="artCFetch" class="cnpy-input" value="${attr(c.url)}" placeholder="https://…/page.html" style="flex:1;min-width:0;height:40px;padding:0 12px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:12.5px;font-family:var(--label);outline:none">
         <button data-act="artCFetch" class="cnpy-outlinebtn" style="padding:0 16px;border-radius:9px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)">${c.fetching ? "Fetching…" : "Fetch"}</button>
       </div>
       <div style="font-size:12px;color:var(--fg-40);margin-top:7px">Trov fetches the page once and stores a copy. Later changes at the URL don't update the artifact.</div>
@@ -1016,7 +1016,7 @@ function createView(p: ArtProps): string {
       <div style="display:flex;flex-direction:column;gap:22px;min-width:0">
         <div>
           ${label("Title")}
-          <input data-act="artCTitle" data-field="artCTitle" class="cnpy-input" value="${attr(c.title)}" placeholder="e.g. Google sign-in design page" style="${inputSt}">
+          <input data-act="artCTitle" data-field="artCTitle" aria-label="Title" class="cnpy-input" value="${attr(c.title)}" placeholder="e.g. Google sign-in design page" style="${inputSt}">
           <div style="font-family:var(--sans);font-size:11px;color:var(--fg-40);margin-top:7px">${esc(p.host)}/#artifacts/${esc(slugifyTitle(c.title) || "…")}</div>
         </div>
         <div>${label("Kind")}${segmented({
@@ -1043,7 +1043,7 @@ function createView(p: ArtProps): string {
         <div>
           ${label("Links")}
           <div style="display:flex;gap:8px">
-            <input data-act="artCLinkDraft" data-field="artCLinkDraft" data-enter="artCLinkAdd" class="cnpy-input" value="${attr(c.linkDraft)}" placeholder="#10, Sprint 14, or a GitHub PR / issue URL" style="flex:1;min-width:0;height:36px;padding:0 12px;border:1px solid var(--border-strong);border-radius:8px;background:transparent;color:var(--fg);font-size:12.5px;font-family:var(--label);outline:none">
+            <input data-act="artCLinkDraft" data-field="artCLinkDraft" aria-label="Add a link: a ticket, a sprint, or a GitHub pull request or issue URL" data-enter="artCLinkAdd" class="cnpy-input" value="${attr(c.linkDraft)}" placeholder="#10, Sprint 14, or a GitHub PR / issue URL" style="flex:1;min-width:0;height:36px;padding:0 12px;border:1px solid var(--border-strong);border-radius:8px;background:transparent;color:var(--fg);font-size:12.5px;font-family:var(--label);outline:none">
             <button data-act="artCLinkAdd" class="cnpy-outlinebtn" style="padding:0 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)">Link</button>
           </div>
           ${c.links.length ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${c.links.map((l, i) => `<span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;border:1px solid var(--border);border-radius:6px;padding:3px 4px 3px 8px;color:var(--fg-70)"><span style="color:var(--fg-40)">${esc(l.kind)}</span><span style="font-family:var(--label);font-weight:500">${esc(l.label)}</span><button data-act="artCLinkRemove" data-arg="${i}" aria-label="Remove link" class="cnpy-xbtn" style="width:16px;height:16px;display:grid;place-items:center;color:var(--fg-40)">${I.x()}</button></span>`).join("")}</div>` : ""}
@@ -1206,8 +1206,8 @@ function newVersionDialog(p: ArtProps, d: ArtifactDetailDTO, nv: ArtNewVersion):
       </div>
       ${source}
       ${contentChecks(text, bytes, d.kind)}
-      <label style="display:block;font-size:13px;font-weight:500;margin:18px 0 8px">What changed <span style="font-weight:400;color:var(--fg-40)">(optional)</span></label>
-      <input data-act="artNvSummary" data-field="artNvSummary" class="cnpy-input" value="${attr(nv.summary)}" maxlength="${ARTIFACT_SUMMARY_MAX}" placeholder="Flattened the export so it renders in Trov" style="width:100%;height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:13.5px;outline:none">
+      <label for="art-nv-summary" style="display:block;font-size:13px;font-weight:500;margin:18px 0 8px">What changed <span style="font-weight:400;color:var(--fg-40)">(optional)</span></label>
+      <input id="art-nv-summary" data-act="artNvSummary" data-field="artNvSummary" class="cnpy-input" value="${attr(nv.summary)}" maxlength="${ARTIFACT_SUMMARY_MAX}" placeholder="Flattened the export so it renders in Trov" style="width:100%;height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:13.5px;outline:none">
     </div>
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:16px 24px 20px;border-top:1px solid var(--border);margin-top:16px;flex-wrap:wrap">
       <span style="flex:1;min-width:200px;font-size:12px;color:var(--fg-40)">Saves as v${next}. ${after}</span>

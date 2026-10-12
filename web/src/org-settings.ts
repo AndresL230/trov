@@ -20,7 +20,7 @@
 //
 // "The current org" is ONE function, `currentOrg`: the org the page's path names.
 
-import { planBlock, inviteGate, seatCapAction, seatsLead, initialOrgBillingUi, type OrgBillingUi } from "./org-plan";
+import { planBlock, inviteGate, seatCapAction, seatsLead, initialOrgBillingUi, checkoutTerms, type OrgBillingUi } from "./org-plan";
 import { isSoloPlan, type OrgPlanView } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
 import {
@@ -628,7 +628,7 @@ export function inviteSection(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDro
   return !admin || gate.kind === "solo" ? ""
     : gate.kind !== "open" ? `<section aria-labelledby="org-invite-t" data-invite-gate="${gate.kind}">
       ${orgHead("Invite someone", "", null, "org-invite-t")}
-      <div${surface("padding:14px 16px")}><p role="status" style="margin:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${esc(gate.sentence)}${gate.kind === "full" ? " Removing a member or revoking a pending invite frees a seat." : ""}</p>${fix ? `<div class="cnpy-plan-actions" data-seat-fix="${gate.next ?? ""}">${fix}</div>` : ""}${fix && ui.billing.error ? `<div role="alert" style="${O_ERR}">${esc(ui.billing.error)}</div>` : ""}</div>
+      <div${surface("padding:14px 16px")}><p role="status" style="margin:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${esc(gate.sentence)}${gate.kind === "full" ? " Removing a member or revoking a pending invite frees a seat." : ""}</p>${fix ? `<div class="cnpy-plan-actions" data-seat-fix="${gate.next ?? ""}">${fix}</div>${gate.next === "upgrade" ? checkoutTerms() : ""}` : ""}${fix && ui.billing.error ? `<div role="alert" style="${O_ERR}">${esc(ui.billing.error)}</div>` : ""}</div>
     </section>`
     : `<section aria-labelledby="org-invite-t">
       ${orgHead("Invite someone", "", null, "org-invite-t")}

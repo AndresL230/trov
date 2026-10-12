@@ -82,6 +82,14 @@ so there is no `[ai]` block.
 | `STRIPE_PUBLISHABLE_KEY` | var | Stripe's PUBLIC key (`pk_test_…` / `pk_live_…`), safe to send to the browser. Set, in the same mode as `STRIPE_SECRET_KEY` and with the real Stripe API, it turns on embedded checkout (`docs/architecture/billing.md` › Embedded checkout) | checkout goes to Stripe's hosted page, as before |
 | `STRIPE_TEST_API_BASE` | local / test only | a stand-in for Stripe's API, honoured ONLY for a loopback `http://` origin and never with a live key (`src/platform/loopback.ts`) | production: unset |
 
+### Build-time only (Workers Builds sets it; not a Worker var)
+
+`WORKERS_CI_COMMIT_SHA` — the commit Workers Builds is building. `web/site-build.ts` reads it (`process.env`, while
+`npm run build:web` runs) and writes `/source <github>/tree/<sha> 302` into `web/dist/_redirects`: the AGPL source
+link every surface uses (`shared/legal-core.ts` `SOURCE_PATH`; `web-ui.md` › Legal pages, consent and the source).
+Unset (a local build) → the rule points at the repository root. Anything that is not 7–40 hex characters is
+ignored. The Worker itself never reads it.
+
 ### Local development only
 
 `DEV_LOGIN` and `STRIPE_TEST_API_BASE` (above), and `LOCAL_UPSTREAM` — a loopback http stand-in for GitHub and

@@ -64,7 +64,7 @@ import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX
 import { PERSON_COLORS, type PersonColor, type OAuthGrantSummary } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
-import { syncPageBackground } from "./site-chrome";
+import { followSkipLink, syncPageBackground } from "./site-chrome";
 import { syncSkeletons } from "./skeleton";
 import { parsePreview, previewSearch, withPreview, PREVIEW_BLOCKED, type PreviewMode } from "./preview";
 import { setWriteBlock } from "./api";
@@ -2259,6 +2259,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "onbName": state.onboard.name = value ?? ""; rerender(); return;
+    // The Terms / Privacy / age checkbox (people.ts): ticked by the person, never by default.
+    case "onbAgree": state.onboard.agreed = value === "1"; rerender(); return;
     case "onbColor": if (arg && (PERSON_COLORS as readonly string[]).includes(arg)) state.onboard.color = arg as PersonColor; break;
     // Back from the welcome card to "how you'll appear": the account exists, so the card edits it.
     case "onbBack": {
@@ -2275,7 +2277,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     case "onbSubmit": {
       const o = state.onboard;
-      if (o.check !== "available" || o.submitting) return;
+      if (o.check !== "available" || o.submitting || (!o.edit && !o.agreed)) return;
       o.submitting = true; o.error = null; rerender();
       if (o.edit) {
         // Save what changed (the same writes Settings › Profile makes), then on to the welcome card.
@@ -4068,6 +4070,9 @@ document.addEventListener("keydown", (e) => {
 });
 
 mount.addEventListener("click", (e) => {
+  // The skip link (site-chrome.ts `skipLink`): focus the main content without writing the hash, which is
+  // the app's route and the sign-in return-to.
+  if (followSkipLink(e)) return;
   const target = e.target as Element;
   // Textareas carry data-act too (the description / comment drafts); clicking
   // into one must place the caret, not dispatch the act with a null value.
@@ -4344,6 +4349,8 @@ mount.addEventListener("keydown", (e) => {
 mount.addEventListener("input", (e) => {
   const el = e.target as HTMLElement;
   if ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && el.dataset.act) {
+    // A checkbox's value is whether it is ticked ("1" or ""), not its constant `value`.
+    if (el instanceof HTMLInputElement && el.type === "checkbox") { dispatch(el.dataset.act, el.dataset.arg ?? null, el.checked ? "1" : ""); return; }
     // The caret rides along: "ticketComment" needs it to decide whether the
     // cursor is inside an @mention token. Every other case ignores it.
     dispatch(el.dataset.act, el.dataset.arg ?? null, el.value, el.selectionStart);
@@ -4599,6 +4606,21 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || !state.signInOpen || state.view !== "auth") return;
   state.signInOpen = false;
   rerender();
+});
+// …and Tab stays inside it (it is `aria-modal`): from the last stop — the consent's links — back to the
+// first, and the reverse, so a keyboard never wanders onto the page behind (the compliance pass's keyboard check).
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || !state.signInOpen || state.view !== "auth") return;
+  const dialog = document.querySelector<HTMLElement>('[data-overlay="signin"] [role="dialog"]');
+  if (!dialog) return;
+  const stops = [...dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => el.offsetParent !== null || el === document.activeElement);
+  if (!stops.length) return;
+  const first = stops[0], last = stops[stops.length - 1];
+  const at = document.activeElement as HTMLElement | null;
+  if (!at || !dialog.contains(at)) { e.preventDefault(); first.focus(); return; }
+  if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
 });
 
 // The payment page (`/billing/checkout`, embedded checkout). Stripe.js is loaded from here and nowhere

@@ -15,6 +15,8 @@ import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline, timelineShapes } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
 import { initialOnboard, onboardView, personChip, personLink, personAvatarLink, handleTag, handleLink, swatches, type OnboardState } from "./people";
+import { skipLink } from "./site-chrome";
+import { LEGAL_LINKS, NOTICES_PATH, consentHtml } from "@shared/legal-core";
 import { personCardModal } from "./profile";
 import { AVATAR_TYPES } from "@shared/people";
 import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
@@ -711,7 +713,9 @@ function authView(s: AppState): string {
   if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, signInMode: s.signInMode, signInPlan: s.signInPlan, seen: s.landingSeen, feature: s.siteFeature, menuOpen: s.siteMenu });
   // Onboarding is a form: `data-morph` patches it in place per keystroke (morph.ts `paint`) instead of
   // rebuilding the card and the backdrop behind it. The other auth cards have nothing to type in.
-  return `<div class="cnpy-authwrap"${s.authStep === "onboard" ? ' data-morph="onboard"' : ""} style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
+  // The page's main landmark (a div with the role: the onboarding card's backdrop is the app's own markup,
+  // `<main>` included, inert and hidden from assistive tech — a second `<main>` element may not wrap it).
+  return `<div role="main" class="cnpy-authwrap"${s.authStep === "onboard" ? ' data-morph="onboard"' : ""} style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
     ${s.authStep === "nonmember" ? nonmemberCard() : ""}
     ${s.authStep === "unverified" ? unverifiedCard(s.deniedEmail) : ""}
     ${s.authStep === "verifying" ? verifyingCard() : ""}
@@ -757,6 +761,7 @@ function unverifiedCard(email: string | null): string {
         <button data-act="signIn" class="cnpy-accentbtn" style="width:100%;padding:11px 16px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600">Sign in with GitHub</button>
         <button data-act="signInGoogleSwitch" class="cnpy-outlinebtn" style="width:100%;padding:11px 16px;border-radius:9px;border:1px solid var(--border-strong);font-size:13.5px;font-weight:500">Try a different Google account</button>
       </div>
+      <p class="cnpy-consent" data-consent style="margin:0;font-size:12px;line-height:1.5;color:var(--fg-55)">${consentHtml()}</p>
     </div>
   </div>`;
 }
@@ -1768,6 +1773,33 @@ function searchView(s: AppState): string {
 }
 
 // ── get started / guide ──────────────────────────────────────────────────────
+/** What each Guide screenshot shows (web/public/guide/<name>-<theme>.png), as its text alternative. Generic
+ *  on purpose: the screen, not what one capture holds — the captures will be retaken. */
+export const GUIDE_ALT: Record<string, string> = {
+  mywork: "The My Work screen: your open tickets, what needs your review, and recent activity",
+  docs: "The Docs screen: the library tree beside an open document",
+  feed: "The Feed: a timeline of what people and agents shipped",
+  tickets: "The Tickets screen as a table, grouped by sprint",
+  board: "The ticket board, one column per status",
+  ticket: "A ticket opened: its description, status, assignees and comments",
+  roadmap: "The Roadmap's narrative: the plan beside its sprint cards",
+  timeline: "The Roadmap's timeline: each sprint as a bar on a calendar",
+  sprint: "A sprint opened: its tickets and progress",
+  handoffs: "The Handoffs screen: handoffs left for the next session",
+  artifacts: "The Artifacts library",
+  artifact: "An artifact opened in the viewer",
+  prompts: "The Prompt Library",
+  review: "The Review screen: staged proposals waiting for a person's verdict",
+  maintenance: "The Unplaced screen: entries waiting to be placed or discarded",
+  repo: "The Repo dashboard: environments, deploys and CI",
+  "repo-usage": "The Repo dashboard's usage view",
+  search: "Search results across docs, tickets and the feed",
+  quicksearch: "Quick search, open over the app",
+  settings: "The Settings screen",
+  releases: "The What's new screen",
+};
+export const guideAlt = (name: string): string => GUIDE_ALT[name] ?? "A screenshot of Trov";
+
 function guideView(s: AppState): string {
   // Screenshots are captured per theme (dark/light) by scripts/capture-guide.mjs;
   // pick the variant that matches the viewer's active theme so the figures never clash
@@ -1785,9 +1817,11 @@ function guideView(s: AppState): string {
   // image loading mid-jump can't push the table-of-contents target down the page.
   // Each figure is a button that opens it in the lightbox (web/src/lightbox.ts),
   // titled and captioned from its own figcaption.
+  // Each figure's text alternative says which screen it shows, in general terms (`GUIDE_ALT`: the captures
+  // will be retaken, so it never describes what one capture happens to hold); the button's name repeats it.
   const gFig = (name: string, cap: string) => `<figure style="margin:18px 0 4px">
-      <button data-act="guideZoom" data-arg="${name}" class="cnpy-guide-shot" aria-label="Expand screenshot">
-        <img src="/guide/${name}-${th}.png" alt="" loading="lazy" width="2560" height="1600" />
+      <button data-act="guideZoom" data-arg="${name}" class="cnpy-guide-shot" aria-label="${attr(`Expand screenshot: ${guideAlt(name)}`)}">
+        <img src="/guide/${name}-${th}.png" alt="${attr(guideAlt(name))}" loading="lazy" width="2560" height="1600" />
       </button>
       <figcaption style="font-size:12px;color:var(--fg-40);margin-top:8px">${cap}</figcaption>
     </figure>`;
@@ -2040,7 +2074,7 @@ export function profileSection(s: AppState): string {
         ${handleRow}
       </div>
     </div>
-    <div class="cnpy-tile-foot" style="padding-top:20px"><label style="${FIELD_LABEL}">Your color</label>${swatches("setMyColor", me?.color ?? "stone", true)}</div>
+    <div class="cnpy-tile-foot" style="padding-top:20px"><div id="set-color-l" style="${FIELD_LABEL}">Your color</div>${swatches("setMyColor", me?.color ?? "stone", true, "set-color-l")}</div>
   </section>`;
 }
 
@@ -2078,7 +2112,17 @@ export function helpSection(): string {
       </div>
       <button data-act="supportOpen" data-arg="question" data-support-trigger="question" data-field="supportOpen:question" aria-haspopup="dialog" class="cnpy-ghostbtn" style="flex:none;display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:600;color:var(--fg)">Contact support</button>
     </div>
+    ${legalLinksRow()}
   </section>`;
+}
+
+/** The legal pages, the source of the version running (AGPL-3.0 §13: `/source`, the deployed commit) and the
+ *  third-party notices — in Settings › Help and on Help › What's new. Static pages, so they open beside the app. */
+export function legalLinksRow(): string {
+  const links = [...LEGAL_LINKS, { label: "Third-party notices", path: NOTICES_PATH }]
+    .map((l) => `<a href="${l.path}" target="_blank" rel="noopener" class="cnpy-mutelink" style="color:var(--fg-55)">${esc(l.label)}</a>`)
+    .join(`<span aria-hidden="true"> · </span>`);
+  return `<nav class="cnpy-legal-links" aria-label="Legal and source" data-legal-links style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;line-height:1.7;color:var(--fg-40)">${links}</nav>`;
 }
 
 /** Settings › Session: who is signed in on this browser, and SIGN OUT — a labelled button with its
@@ -2737,11 +2781,14 @@ function appView(s: AppState): string {
     // Review too: its list is keyed (`data-morph-list`), so a filter or a verdict never rebuilds it —
     // a card can leave with an animation, and the two switches' indicators slide on the same element.
     : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen : "";
+  // The skip link is the shell's first child (a fixed chip, out of the flex row): past the sidebar and the
+  // header, to the screen itself. morph.ts patches the aside and swaps <main>; it never touches this.
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+    ${skipLink("cnpy-main")}
     ${sidebar(s)}
     <main${morphKey ? ` data-morph="${attr(morphKey)}"` : ""} style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
       ${header(s)}
-      <div id="cnpy-main" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0">${screenBody(s)}</div>
+      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0">${screenBody(s)}</div>
     </main>
     <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
   </div>`;

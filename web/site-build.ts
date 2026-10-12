@@ -18,6 +18,7 @@ import { createServer, type Plugin } from "vite";
 import { APP_SHELL_PATH, SITE_PAGES, assetHeaders, assetRedirects, sitePageFile } from "../shared/site-pages";
 import { generatedToolsModule, type McpToolDoc } from "../shared/mcp-tools-core";
 import { FONTS_PATH, FONT_FILES, FONT_LICENSES } from "../shared/fonts";
+import { NOTICES_PATH } from "../shared/legal-core";
 
 const WEB = __dirname;
 const ROOT = path.join(WEB, "..");
@@ -99,9 +100,14 @@ export function sitePages(): Plugin {
     // What the assets binding is told about these pages: their other spellings (301 to the one URL) and
     // the files never to index — both from the same list — and the text files beside the pages.
     generateBundle() {
-      this.emitFile({ type: "asset", fileName: "_redirects", source: assetRedirects() });
+      // `/source` points at the commit being built (Workers Builds sets WORKERS_CI_COMMIT_SHA for the build
+      // command); a local build, which knows none, points it at the repository (shared/legal-core.ts).
+      this.emitFile({ type: "asset", fileName: "_redirects", source: assetRedirects(process.env.WORKERS_CI_COMMIT_SHA ?? null) });
       this.emitFile({ type: "asset", fileName: "_headers", source: assetHeaders() });
       for (const [fileName, source] of Object.entries(files)) this.emitFile({ type: "asset", fileName, source });
+      // The third-party notices (THIRD-PARTY-NOTICES.txt at the repository's root: what the browser bundle and
+      // the Worker include, with their licences), served beside the pages at NOTICES_PATH.
+      this.emitFile({ type: "asset", fileName: NOTICES_PATH.slice(1), source: readFileSync(path.join(ROOT, "THIRD-PARTY-NOTICES.txt")) });
       // The self-hosted fonts at a stable path, with their licenses (shared/fonts.ts): the pages the Worker
       // renders itself (OAuth, billing notices) cannot know the hashed /assets/ names trov.css resolves to.
       for (const f of [...FONT_FILES.map((x) => x.file), ...FONT_LICENSES]) {

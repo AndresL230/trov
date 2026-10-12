@@ -427,6 +427,18 @@ like `/terms`, linked from the footer — `web-ui.md` › The public pages, for 
 - Its sentences (what every plan includes, the questions — among them how Pro's per-seat pricing works and
   that a cancelled Pro org moves to Free) describe what the product does today. A change to seats, limits or
   how a plan is changed is a change to that copy.
+- **What a buyer is told before paying** (the compliance pass, 2026-10-12; one wording in `shared/pricing.ts`):
+  beside "Choose Pro" (`planTerms`, inside `.site-plan-ctabox` so the cards' subgrid rows still line up) an
+  example of the per-seat math (`seatMath(3)` → "3 seats × $10 = $30 per month"), `CHECKOUT_TAX` ("Plus applicable
+  tax, calculated at checkout."), `RENEWAL_TERMS` ("Renews monthly until you cancel; cancel any time from
+  Billing.") and links to `/terms` and `/refunds`. The same words, with the org's OWN seat count (members +
+  pending invitations, what checkout starts at: `upgradeLine` / `checkoutTerms` in `web/src/org-plan.ts`), sit
+  beside Upgrade to Pro in the Plan block, Settings › Plan and the Members tab's seat cap, and on the Pro side of
+  Get started and the embedded payment card; a live subscription's Cancel plan carries `CANCEL_TERMS` and the
+  policy (`cancelTerms`). The pricing questions say the policy too. Nothing pre-ticked, no upsell, no
+  confirmshaming: "Cancel plan", "Keep Pro by paying", "Upgrade to Pro" are the whole vocabulary.
+- **No badge.** `PRICING.team.badge` is null: "Most teams start here" read as a statistic nobody could show. The
+  accent action falls back to the plan on sale (`accentPlan`), so nothing on the page or its OG card moved.
 
 ## The billing seam
 
