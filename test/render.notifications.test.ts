@@ -1,13 +1,15 @@
 /**
  * Render tests — the email-notification surfaces from Canopy.dc.html:
- * Settings › Email notifications, Maintenance › NOTIFICATIONS (policy /
- * schedule / outbox), and the unsubscribe confirmation view. Pure functions,
+ * Settings › Email notifications and Maintenance › NOTIFICATIONS (policy /
+ * schedule / outbox). Pure functions,
  * mock-fed props, HTML-string assertions (pattern: render.review.test.ts).
  */
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { describe, it, expect, afterEach } from "vitest";
 import { setApiOrg } from "../web/src/api";
-import { emailNotificationsSection, notificationsAdminSections, notifDropdowns, unsubscribeView } from "../web/src/notifications";
+import { emailNotificationsSection, notificationsAdminSections, notifDropdowns } from "../web/src/notifications";
+import { esc } from "../web/src/ui";
+import { STILL_SENT, STILL_SENT_SENTENCE, UNSUBSCRIBE_STOPS } from "@shared/email-unsubscribe";
 import type { PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
 
@@ -109,21 +111,21 @@ describe("emailNotificationsSection — the Ticket queue row (registry-driven)",
   });
 });
 
-describe("unsubscribeView", () => {
-  it("confirms with the address and offers Settings", () => {
-    const v = unsubscribeView({ email: "jose@sapling.dev", pending: false, error: null });
-    expect(v).toContain("Email is off.");
-    expect(v).toContain("jose@sapling.dev");
-    expect(v).toContain('data-act="unsubGoSettings"');
+describe("emailNotificationsSection — what Unsubscribe stops, and what still arrives", () => {
+  it("says it stops every digest, and names exactly the one-off mail that still arrives and why — never \"nothing of any kind\"", () => {
+    const view = emailNotificationsSection({ prefs: prefs(), loading: false, error: null, emailEditing: false, emailDraft: "" });
+    expect(view).toContain("Unsubscribe from Trov email");
+    expect(view).toContain(esc(UNSUBSCRIBE_STOPS));
+    expect(view).toContain(esc(STILL_SENT_SENTENCE));
+    for (const item of STILL_SENT) expect(view).toContain(esc(item));
+    expect(view).not.toMatch(/nothing of any kind/i);
+    expect(STILL_SENT_SENTENCE).toBe("Still sent, because each is a one-off about something you or an admin just did: an invitation to join an organization, a test digest you send yourself and word that an organization you were given or paid for is ready.");
   });
-  it("shows a pending state while the flip is in flight", () => {
-    expect(unsubscribeView({ email: null, pending: true, error: null })).toContain("Turning email off");
-  });
-  it("the confirmation card is the shared surface, not an inline bordered box", () => {
-    const v = unsubscribeView({ email: "jose@sapling.dev", pending: false, error: null });
-    expect(v).toContain('class="cnpy-surface"');
-    expect(v).not.toContain("border-radius:14px");
-    expect(v).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
+
+  it("no longer links an in-app unsubscribe screen: the email's link opens the Worker's page", () => {
+    const view = emailNotificationsSection({ prefs: prefs(), loading: false, error: null, emailEditing: false, emailDraft: "" });
+    expect(view).not.toContain("previewUnsub");
+    expect(view).toContain("works without signing in");
   });
 });
 

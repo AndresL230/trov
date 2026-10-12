@@ -26,8 +26,8 @@
   the two digest crons by exact cron expression — each runs for EVERY active org, `docs/architecture/data-layer.md`
   › Background jobs), `routes.ts` (Hono HTTP), `mcp.ts` (MCP
   tools), `consumer.ts` (THE GATE), `webhook.ts` (GitHub event capture), `tools/` (`writes.ts`, `reads.ts`,
-  `plan.ts`, `tickets.ts`, `sprints.ts`, `mywork.ts`, `repo.ts`, `repo-agent.ts`, `progress.ts`, `summarize.ts`), `notifications/` (email digests — see the
-  Email notifications section), `db.ts` (D1 helpers), `auth/` (`persons.ts` — the identity root;
+  `plan.ts`, `tickets.ts`, `sprints.ts`, `mywork.ts`, `repo.ts`, `repo-agent.ts`, `progress.ts`, `summarize.ts`), `notifications/` (every email, and the `/u/`
+  unsubscribe page — see notifications.md), `db.ts` (D1 helpers), `auth/` (`persons.ts` — the identity root;
   `google.ts` — second provider; `onboard.ts` — the sign-in fork + onboarding cookie; `invites.ts`),
   `env.ts`. `repo/` is the repo-capture package behind `tools/repo.ts`: `types.ts` (the `RepoEvent` /
   `RepoEventRow` / `RepoMetric` shapes), `config.ts` (the org's own configuration: `orgEnvironments` /
@@ -151,7 +151,9 @@
   (`src/plans/summaries.ts` — one platform key, each call metered per org, the monthly `ai_summaries` allowance).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, the Guide (Help › Guide, `#guide`; it was Get Started), the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
-  the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
+  the five-tab Repo dashboard) served via the ASSETS binding (an email's Unsubscribe link is NOT a screen
+  here: it is the Worker's own page at `/u/<token>`, `src/notifications/unsubscribe-page.ts`; the old
+  `#unsubscribe` address opens Settings);
   `web/src/markdown.ts` renders PR summaries, the roadmap narrative and a sprint description as styled HTML;
   `web/src/review.ts` is the Review screen (the queue, the detail, the source diff views), `web/src/review-rendered.ts`
   its Rendered view (the proposed doc through that same renderer, changed blocks marked, edits marked word by word by `web/src/html-words.ts`) over `web/src/md-blocks.ts`

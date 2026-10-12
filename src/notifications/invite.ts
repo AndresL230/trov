@@ -9,7 +9,7 @@ import type { Env } from "../env";
 import { type TenantContext, nowIso } from "../data/sql";
 import { type PlatformContext, run as platformRun } from "../data/platform-sql";
 import { escapeHtml } from "./html";
-import { EMAIL_COLORS as C, EMAIL_FONT, FONTS_HREF, EMAIL_STYLE, EMAIL_SPACE as SP, emailBanner, emailCardOpen, EMAIL_CARD_CLOSE, EMAIL_MOBILE_CSS } from "./assemble";
+import { EMAIL_COLORS as C, EMAIL_FONT, EMAIL_STYLE, EMAIL_SPACE as SP, emailHead, emailBanner, emailFooter, emailCardOpen, EMAIL_CARD_CLOSE } from "./assemble";
 import { deliveryFor } from "./resend";
 import { loadSettings } from "./cron";
 import { getPerson } from "../auth/persons";
@@ -48,10 +48,15 @@ export function renderInviteEmail(o: InviteEmailInput): { subject: string; html:
     : `${o.inviterName} invited you to join ${o.orgName} as ${ROLE_PHRASE[o.role]}. Sign in with this address and accept the invitation to get started.`;
   const about = "Trov is a team's shared memory: what everyone is working on, the docs and decisions behind it, and what ships next.";
   const forWhom = `This invitation is for ${o.email}. If you weren't expecting it, you can ignore this email.`;
+  // Transactional: it answers an admin's action, so it goes out whatever the address's unsubscribe says,
+  // and carries no unsubscribe link — the footer says why it came instead (shared/email-unsubscribe.ts).
+  const why = owner
+    ? `You're getting this because ${o.inviterName} named this address the owner of ${o.orgName}: a one-off email, not a mailing list.`
+    : `You're getting this because ${o.inviterName} invited this address to ${o.orgName}: a one-off email, not a mailing list.`;
   const p = `${EMAIL_FONT.sans}font-size:14px;line-height:20px;color:${C.fg70};padding:0 0 12px 0;`;
   const button = `display:inline-block;${EMAIL_FONT.sans}font-size:14px;line-height:20px;font-weight:600;color:#ffffff;background-color:${C.accent};text-decoration:none;padding:10px 18px;border-radius:9px;`;
   const html =
-    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(subject)}</title><link href="${FONTS_HREF}" rel="stylesheet"><style>${EMAIL_MOBILE_CSS}</style></head>` +
+    emailHead(subject) +
     `<body style="margin:0;padding:0;background-color:${C.ground};">` +
     `<table ${EMAIL_STYLE.table} style="background-color:${C.ground};"><tr><td align="center" class="tm-pad" style="padding:36px 16px;">` +
     emailCardOpen() +
@@ -62,7 +67,7 @@ export function renderInviteEmail(o: InviteEmailInput): { subject: string; html:
     `<div style="${EMAIL_FONT.sans}font-size:13px;line-height:20px;color:${C.fg55};padding:0 0 ${SP.l}px 0;">${about}</div>` +
     `<div style="text-align:center;padding:0 0 ${SP.l}px 0;"><a href="${escapeHtml(o.signInUrl)}" style="${button}">Sign in to Trov</a></div>` +
     `<div style="${EMAIL_FONT.sans}font-size:12.5px;line-height:20px;color:${C.fg55};padding-bottom:24px;">This invitation is for <span style="${EMAIL_FONT.sans}font-weight:500;color:${C.fg70};">${escapeHtml(o.email)}</span>. If you weren't expecting it, you can ignore this email.</div></td></tr>` +
-    `<tr><td style="padding:16px 28px;border-top:1px solid ${C.border};${EMAIL_FONT.sans}font-size:12px;line-height:20px;color:${C.fg40};">Sent by Trov &middot; ${escapeHtml(o.host)}</td></tr>` +
+    emailFooter({ why: escapeHtml(why), host: o.host }) +
     EMAIL_CARD_CLOSE + `</td></tr></table></body></html>`;
   const text = [
     subject, "=".repeat(subject.length), "",
@@ -72,7 +77,8 @@ export function renderInviteEmail(o: InviteEmailInput): { subject: string; html:
     about, "",
     "Sign in to Trov:", "",
     `  ${o.signInUrl}`, "",
-    forWhom,
+    forWhom, "",
+    why,
     `Sent by Trov — ${o.host}`, "",
   ].join("\n");
   return { subject, html, text };

@@ -1,9 +1,8 @@
 // Email-notification surfaces (canopy-email.md §8), componentized from
 // Canopy.dc.html: Settings › Email notifications (a person's own), Org settings ›
 // Notifications (the org's policy / schedule / outbox — an admin's; it sat under
-// Maintenance › People until 2026-10-06), and the unsubscribe confirmation view. Pure
-// presentational functions over props — no fetch, no state.
-import { trovMark } from "@shared/mark";
+// Maintenance › People until 2026-10-06). Pure presentational functions over props — no fetch, no state.
+import { STILL_SENT_SENTENCE, UNSUBSCRIBE_STOPS } from "@shared/email-unsubscribe";
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
 import { esc, attr, surface } from "./ui";
@@ -119,49 +118,21 @@ export function emailNotificationsSection(p: NotifSettingsProps): string {
       ${emailRow(p, v.email)}
       <div style="${TILE_ROW};display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
         <div style="min-width:0">
-          <div style="font-size:13.5px;font-weight:600">Unsubscribe from all email</div>
-          <div style="font-size:12px;color:var(--fg-55);margin-top:3px;line-height:1.5">Overrides every digest below &mdash; nothing of any kind sends while this is on.</div>
+          <div style="font-size:13.5px;font-weight:600">Unsubscribe from Trov email</div>
+          <div data-unsub-scope style="font-size:12px;color:var(--fg-55);margin-top:3px;line-height:1.5">${esc(UNSUBSCRIBE_STOPS)} ${esc(STILL_SENT_SENTENCE)}</div>
         </div>
         ${switchBtn("toggleAllOff", null, v.unsubscribed)}
       </div>
     </div>
     <div class="cnpy-set-pairs" style="${listStyle}">${rows || `<div style="${TILE_ROW};font-size:12.5px;color:var(--fg-40)">No digests are enabled org-wide right now.</div>`}</div>
-    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding-top:12px;border-top:1px solid var(--border)">
-      <div style="font-size:11.5px;color:var(--fg-40);line-height:1.5">Digests send once per window, at the org's send hour. Cadence options vary per digest. Kinds turned off org-wide don't appear here at all.</div>
-      <button data-act="previewUnsub" style="flex:none;font-size:11.5px;color:var(--fg-40);text-decoration:underline;text-underline-offset:3px">Preview the unsubscribe page</button>
+    <div style="padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:11.5px;color:var(--fg-40);line-height:1.5">Digests send once per window, at the org's send hour. Cadence options vary per digest. Kinds turned off org-wide don't appear here at all. The Unsubscribe link at the bottom of every digest works without signing in.</div>
     </div>
   </section>`;
 }
 
-// ── Unsubscribe confirmation (full-screen, no chrome) ────────────────────────
-
-export function unsubscribeView(p: { email: string | null; pending: boolean; error: string | null }): string {
-  const title = p.pending ? "Turning email off&hellip;" : p.error ? "Couldn't turn email off." : "Email is off.";
-  const sub = p.pending
-    ? "One moment."
-    : p.error
-    ? esc(p.error)
-    : `No more digests will be sent${p.email ? ` to <span style="font-weight:500">${esc(p.email)}</span>` : ""}. Nothing else about your account changed.`;
-  return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px;background:var(--bg);color:var(--fg)">
-    <div style="width:400px;max-width:100%">
-      <div style="display:flex;align-items:center;justify-content:center;gap:11px;margin-bottom:36px">
-        ${trovMark(26)}
-        <span style="font-size:22px;font-weight:600;letter-spacing:-0.02em">Trov</span>
-      </div>
-      <div${surface("padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center")}>
-        <div class="cnpy-seal" style="width:52px;height:52px;border-radius:50%;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--accent)">
-          ${p.pending ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="animation:cnpy-spin .8s linear infinite"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"></path></svg>` : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"></path></svg>`}
-        </div>
-        <div>
-          <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">${title}</div>
-          <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">${sub}</div>
-        </div>
-        <button data-act="unsubGoSettings" class="cnpy-accentbtn" style="width:100%;padding:12px 16px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:14px;font-weight:600">Go to Settings</button>
-      </div>
-      <div style="text-align:center;margin-top:22px;font-size:12.5px;color:var(--fg-40);line-height:1.5">Turn email back on any time in Settings.</div>
-    </div>
-  </div>`;
-}
+// (The email's Unsubscribe link opens a page the Worker serves, `/u/<token>` — src/notifications/
+// unsubscribe-page.ts — not a screen of this app: it needs no sign-in, and a GET of it changes nothing.)
 
 // ── Org settings › Notifications (admin) ─────────────────────────────────────
 

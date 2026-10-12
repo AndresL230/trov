@@ -24,9 +24,13 @@ describe("parseHash", () => {
   });
 
   it("still parses every pre-existing plain screen", () => {
-    for (const s of ["mywork", "feed", "docs", "review", "search", "settings", "guide", "unsubscribe", "handoffs", "prompts"]) {
+    for (const s of ["mywork", "feed", "docs", "review", "search", "settings", "guide", "handoffs", "prompts"]) {
       expect(parseHash(`#${s}`)).toEqual({ screen: s, ticketId: null, sprintId: null });
     }
+    // The old in-app unsubscribe screen (which turned email off on arrival) is gone: its address opens
+    // Settings, and arriving there changes nothing. An email's link is the Worker's /u/ page.
+    expect(parseHash("#unsubscribe")).toEqual({ screen: "settings", ticketId: null, sprintId: null });
+    expect(parseHash("#unsubscribe/x")).toEqual(parseHash("#nope"));
     expect(parseHash("#roadmap")).toEqual({ screen: "roadmap", ticketId: null, sprintId: null, roadmapTab: "narrative" });
     // Triage › Unplaced: the screen is still `maintenance`; its address is `#unplaced`.
     expect(parseHash("#unplaced")).toEqual({ screen: "maintenance", ticketId: null, sprintId: null });

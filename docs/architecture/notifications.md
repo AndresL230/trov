@@ -33,11 +33,37 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
   `notification_settings.send_hour` + `timezone` at fire time (static crons cannot read D1 or follow DST).
 - **Delivery gate** (`resend.ts`): `NOTIFICATIONS_MODE` absent/`local` → bodies go to the dev-only
   `notification_outbox_bodies` table and Resend is NEVER called; `resend` requires `RESEND_API_KEY` (a config
-  error otherwise, never a silent fallback). Headers: `List-Unsubscribe` (mailto + https) and
-  `List-Unsubscribe-Post: List-Unsubscribe=One-Click`.
-- **Unsubscribe** (`unsubscribe.ts`): `/u/<login.sig>` (HMAC over the login with `COOKIE_SECRET`) is the
-  single signed-token exception — handled in `src/index.ts` outside `sessionGate`; POST can ONLY set
-  `email_unsubscribed = 1`; GET redirects to the cookie-gated `#unsubscribe` screen. Prefs survive unsubscribe.
+  error otherwise, never a silent fallback). A message with an `unsubscribeUrl` (a NOTIFICATION — see Who
+  gets what) gets `List-Unsubscribe: <https://…/u/<token>>` and `List-Unsubscribe-Post:
+  List-Unsubscribe=One-Click` (`unsubscribeHeaders`): RFC 8058 one-click, the https link ALONE. There is no
+  `mailto:` alternative on purpose — nothing reads the sending mailbox for unsubscribe requests, and an
+  advertised way out must work by itself. (Re-adding one needs inbound processing or a mailbox runbook.)
+- **Unsubscribe** (`unsubscribe.ts`, page `unsubscribe-page.ts`): `/u/<handle.sig>` (HMAC over the handle with
+  `COOKIE_SECRET`, namespaced `unsub:`) is the single signed-token exception for mail — handled in
+  `src/index.ts` (`handleUnsubscribe`) outside `sessionGate`. The token is the whole authority: it names ONE
+  person and can ONLY set their `email_unsubscribed = 1`, whoever is signed in in that browser (a session is
+  never read). It is both the footer link and the `List-Unsubscribe` target of every notification.
+  - **GET / HEAD changes nothing** — mail scanners and link previews fetch every link. It is a server page
+    (no SPA, no sign-in): who the link is for (name, `@handle`, the digest address masked `u•••@domain`),
+    what unsubscribing stops and what still arrives (`shared/email-unsubscribe.ts`, the same words as
+    Settings), and a button — a form POSTing to `/u/<token>?confirm=1`. Already unsubscribed: says so, no
+    button, and points at Settings to turn email back on. Every state links Settings (`/#settings`, behind
+    sign-in) for finer control. The page loads NOTHING (system fonts, no script, image or stylesheet);
+    headers: CSP `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors
+    'none'`, `Referrer-Policy: no-referrer` (the token is in the URL), `Cache-Control: no-store`,
+    `X-Robots-Tag: noindex` plus a `robots` meta.
+  - **POST `?confirm=1`** (the page's button): sets the flag, then `303` back to `/u/<token>`.
+  - **POST without it** is a mail client's RFC 8058 one-click: sets the flag, `200 { ok: true }` (unchanged).
+  - A token that does not verify (another key, a session-style seal, a swapped handle, garbage) writes
+    nothing: GET is a "This link doesn't work" page (404), either POST is `401`. A genuine token for a handle
+    nobody holds any more (renamed since) is the same 404 page. Other methods `405`. A D1 failure is a 503
+    (page or `{ error }`), never a 500, logged scrubbed.
+  - Prefs and the address survive unsubscribe; Settings › Email notifications' switch turns it back on.
+    The in-app `#unsubscribe` screen is gone (it turned the SIGNED-IN person's mail off on arrival, so a
+    link to it unsubscribed whoever clicked): the old address now just opens Settings (`web/src/hash.ts`).
+  - Known edge: handles are renameable and a freed handle can be taken, so an OLD mail's token names
+    whoever holds that handle now. The page shows who it names; the one-click cannot. Binding tokens to
+    something stabler than the handle would need a new token format (old links must keep working).
 - **HTTP** (`routes.ts`, mounted at `/api/notifications`, session-cookie only, NEVER MCP): `prefs` (GET/PUT,
   own row only), admin-only `policy`, `settings`, `outbox`, `persons/:handle`.
 - **Address**: seeded at first sign-in, per provider — GitHub from `GET /user/emails` (primary +
@@ -48,8 +74,17 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
   transactional message per e-mail invite/resend through `deliveryFor`, as the inviting org; not a kind — no
   cadence, prefs, or window. Outcome lands on the invite's own row: `org_invites.mail_status` / `mail_at` /
   `mail_error`. No
-  `List-Unsubscribe` headers (they are optional on `OutboundMessage` now, omitted for invites).
-- **Welcome email** (`src/notifications/welcome.ts`): the second transactional message — sent on a person's
+  `List-Unsubscribe` headers (they are optional on `OutboundMessage` now, omitted for invites). It goes
+  whatever the address's flag says, and its footer says why it came ("…invited this address to <org>: a
+  one-off email, not a mailing list").
+- **Welcome email** (`src/notifications/welcome.ts`): a NOTIFICATION, not transactional mail — it carries the
+  person's unsubscribe link (footer + headers), and `welcomeFirstJoin` sends none to a person whose
+  `email_unsubscribed = 1`. It is where a new member learns digests are ON, so it says so, as the joined org
+  has them (`welcomeDigests`: every registry kind resolved through the org's policy with no prefs — a new
+  member has none — plus its send hour and timezone; `digestSentence`): "Email digests are on: Trov emails you
+  one each weekday at 08:00 (America/New_York) when there is something for you, and a weekly one on
+  Mondays", or "off in <org> for now" when the policy turns every kind off. (It used to say digests were
+  off until you picked a cadence; they never were.) Sent on a person's
   FIRST membership of any organization, not at sign-up (onboarding creates a person, never a membership).
   `welcomeFirstJoin` (`src/orgs/mail.ts`) is called by every path that writes a membership — creating an org
   (`POST /api/orgs`), accepting an invite (`/api/invites`), the superadmin naming an existing person owner, and
@@ -59,7 +94,7 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
   (`welcomeRecipient` → `identities.verified_email`), never the editable `persons.email`; none on file = no
   mail. No outcome column and the result is ignored at the call site: `sendWelcome` never throws, and a mailer
   problem must never cost somebody the join.
-- **Support notice** (`src/notifications/support.ts`, `support.md`): the third transactional message, and the
+- **Support notice** (`src/notifications/support.ts`, `support.md`): a transactional message, and the
   only one addressed to the OPERATOR — one per bug report or support message, to the var `SUPPORT_NOTIFY_EMAIL`
   (unset → not sent, outcome `skipped`). It belongs to no org, so it goes through `platformDeliveryFor` like the
   grant notice (`src/notifications/grant.ts`); its outcome lands on `support_reports.mail_*`, scrubbed of the
@@ -70,6 +105,42 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
   color does not appear in email yet. When a chip is added there, take the color from `persons.color`
   via the light hex set documented in §7 of the identity design doc.
 - Tests assert on outbox/bodies rows, never mocks (`test/notifications.*.test.ts`, `test/render.notifications.test.ts`).
+
+## Who gets what — notification or transactional
+
+`persons.email_unsubscribed` ("Unsubscribe from Trov email", Settings › Email notifications; the `/u/` page)
+is ONE flag per person, across every org. A NOTIFICATION respects it and carries the person's signed link
+twice — the footer's Unsubscribe and the `List-Unsubscribe` / `List-Unsubscribe-Post` headers. TRANSACTIONAL
+mail is a one-off that answers something a person did: it goes whatever the flag says, carries no unsubscribe,
+and its footer says why it came. Nothing Trov sends is marketing; keep it that way — a new kind of mail picks
+a row here, and the user-facing words of what still arrives live in ONE place, `shared/email-unsubscribe.ts`
+(`STILL_SENT`), shown by Settings and by the `/u/` page. `test/notifications.email-kinds.test.ts` pins every row.
+
+| Mail | Class | Respects the flag | Unsubscribe link / header |
+| --- | --- | --- | --- |
+| Daily digest (`run.ts`) | notification | yes — eligibility gate | footer + headers |
+| Weekly digest | notification | yes | footer + headers |
+| Digest retry (`retry.ts`) | notification | yes — re-checked per row | footer + headers |
+| Welcome (`welcome.ts`, `welcomeFirstJoin`) | notification | yes — none sent | footer + headers |
+| Test send (`POST …/notifications/test-send`) | transactional: the admin's own request, to their own address | no | footer + headers (it is a digest) |
+| Invitation / owner invitation (`invite.ts`) | transactional: an admin invited this address | no | none; footer says why |
+| Grant notice / paid confirmation (`grant.ts`) | transactional: a grant or a purchase | no | none; footer says why |
+| Support notice (`support.ts`) | internal, to the operator | n/a | none |
+
+Stripe's own receipts and invoices are Stripe's mail, under Stripe's settings. There is no Trov mail about
+an OAuth connection (an agent connecting): Settings › MCP access lists connections, nothing is mailed.
+
+## No web font, nothing remote
+
+No mail links a web font, a stylesheet, a script or a remote image: a mail client that fetched one (Google
+Fonts, say) would hand that third party the reader's IP address and the moment they opened the mail. Every
+mail is set in the reader's own system fonts (`EMAIL_FONT_STACK` in `assemble.ts`: `-apple-system`,
+`BlinkMacSystemFont`, `Segoe UI`, Roboto, Helvetica, Arial; labels share it). The non-digest mails take their
+`<head>` from `emailHead` and their last row from `emailFooter` (why it came, the Unsubscribe link for a
+notification, `Sent by Trov · host`), so none can grow a `<link>` on its own.
+`test/notifications.email-kinds.test.ts` renders every template and variant, and what went through the
+delivery gate, and fails on `fonts.googleapis.com`, `fonts.gstatic.com`, `<link`, `@import`, `@font-face`,
+`<script` or `<img`. The `/u/` page loads nothing either.
 
 ## The banner
 

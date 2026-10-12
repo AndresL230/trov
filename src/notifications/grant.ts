@@ -8,7 +8,7 @@
 import type { Env } from "../env";
 import { type PlatformContext, run, nowIso } from "../data/platform-sql";
 import { escapeHtml } from "./html";
-import { EMAIL_COLORS as C, EMAIL_FONT, FONTS_HREF, EMAIL_STYLE, EMAIL_SPACE as SP, emailBanner, emailCardOpen, EMAIL_CARD_CLOSE, EMAIL_MOBILE_CSS } from "./assemble";
+import { EMAIL_COLORS as C, EMAIL_FONT, EMAIL_STYLE, EMAIL_SPACE as SP, emailHead, emailBanner, emailFooter, emailCardOpen, EMAIL_CARD_CLOSE } from "./assemble";
 import { platformDeliveryFor } from "./resend";
 import { inviteSignInUrl } from "./invite";
 import { getPerson } from "../auth/persons";
@@ -37,10 +37,13 @@ export function renderGrantEmail(o: GrantEmailInput): { subject: string; html: s
   const plan = `${o.planName}: ${o.planDescription}`;
   const about = "Trov is a team's shared memory: what everyone is working on, the docs and decisions behind it, and what ships next.";
   const forWhom = `This is for ${o.email}. If you weren't expecting it, you can ignore this email.`;
+  // Transactional: it answers a grant or a purchase, so it goes out whatever the address's unsubscribe
+  // says, and carries no unsubscribe link — the footer says why it came (shared/email-unsubscribe.ts).
+  const why = `You're getting this because ${o.paid ? `this address paid for Trov's ${o.planName} plan` : o.granterName ? `${o.granterName} gave this address an organization on Trov` : "this address was given an organization on Trov"}: a one-off email, not a mailing list.`;
   const p = `${EMAIL_FONT.sans}font-size:14px;line-height:20px;color:${C.fg70};padding:0 0 12px 0;`;
   const button = `display:inline-block;${EMAIL_FONT.sans}font-size:14px;line-height:20px;font-weight:600;color:#ffffff;background-color:${C.accent};text-decoration:none;padding:10px 18px;border-radius:9px;`;
   const html =
-    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(subject)}</title><link href="${FONTS_HREF}" rel="stylesheet"><style>${EMAIL_MOBILE_CSS}</style></head>` +
+    emailHead(subject) +
     `<body style="margin:0;padding:0;background-color:${C.ground};">` +
     `<table ${EMAIL_STYLE.table} style="background-color:${C.ground};"><tr><td align="center" class="tm-pad" style="padding:36px 16px;">` +
     emailCardOpen() +
@@ -52,7 +55,7 @@ export function renderGrantEmail(o: GrantEmailInput): { subject: string; html: s
     `<div style="${EMAIL_FONT.sans}font-size:13px;line-height:20px;color:${C.fg55};padding:0 0 ${SP.l}px 0;">${about}</div>` +
     `<div style="text-align:center;padding:0 0 ${SP.l}px 0;"><a href="${escapeHtml(o.signInUrl)}" style="${button}">Sign in to Trov</a></div>` +
     `<div style="${EMAIL_FONT.sans}font-size:12.5px;line-height:20px;color:${C.fg55};padding-bottom:24px;">This is for <span style="${EMAIL_FONT.sans}font-weight:500;color:${C.fg70};">${escapeHtml(o.email)}</span>. If you weren't expecting it, you can ignore this email.</div></td></tr>` +
-    `<tr><td style="padding:16px 28px;border-top:1px solid ${C.border};${EMAIL_FONT.sans}font-size:12px;line-height:20px;color:${C.fg40};">Sent by Trov &middot; ${escapeHtml(o.host)}</td></tr>` +
+    emailFooter({ why: escapeHtml(why), host: o.host }) +
     EMAIL_CARD_CLOSE + `</td></tr></table></body></html>`;
   const text = [
     subject, "=".repeat(subject.length), "",
@@ -63,7 +66,8 @@ export function renderGrantEmail(o: GrantEmailInput): { subject: string; html: s
     about, "",
     "Sign in to Trov:", "",
     `  ${o.signInUrl}`, "",
-    forWhom,
+    forWhom, "",
+    why,
     `Sent by Trov — ${o.host}`, "",
   ].join("\n");
   return { subject, html, text };

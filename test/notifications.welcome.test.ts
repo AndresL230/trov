@@ -3,7 +3,8 @@ import { env } from "cloudflare:test";
 import { app } from "../src/routes";
 import { all, first } from "./helpers/db";
 import { sealOnboard, ONBOARD_COOKIE, type OnboardPayload } from "../src/auth/onboard";
-import { renderWelcomeEmail, welcomeUrl, sendWelcome } from "../src/notifications/welcome";
+import { renderWelcomeEmail, welcomeUrl, sendWelcome, digestSentence, welcomeDigests, type WelcomeDigests } from "../src/notifications/welcome";
+import { verifyUnsubscribeToken } from "../src/notifications/unsubscribe";
 import type { PersonRow } from "@shared/rows";
 
 import { systemCtx } from "./helpers/tenant";
@@ -21,8 +22,17 @@ const post = (path: string, c: string, body: unknown) =>
 const bodies = () => all<{ idempotency_key: string; to_address: string; subject: string; html: string; text: string }>(
   env.DB, `SELECT * FROM notification_outbox_bodies ORDER BY created_at`);
 
+/** What a new member of an org with the registry's defaults gets: daily (My Work, Review queue, Ticket
+ *  queue) and weekly (Roadmap plan changes), at the default send hour. */
+const DEFAULT_DIGESTS: WelcomeDigests = { daily: true, weekly: true, sendHour: 8, timeZone: "America/New_York" };
+const UNSUB = "https://trov.test/u/priya.sig";
+const input = (o: Partial<Parameters<typeof renderWelcomeEmail>[0]> = {}) => ({
+  name: "Priya Natarajan", handle: "priya", orgName: "Acme Robotics", orgSlug: "acme", origin: "https://trov.test", host: "trov.test",
+  digests: DEFAULT_DIGESTS, unsubscribeUrl: UNSUB, ...o,
+});
+
 describe("renderWelcomeEmail", () => {
-  const m = renderWelcomeEmail({ name: "Priya Natarajan", handle: "priya", orgName: "Acme Robotics", orgSlug: "acme", origin: "https://trov.test", host: "trov.test" });
+  const m = renderWelcomeEmail(input());
 
   it("greets them, names their handle, and points at the guided setup", () => {
     expect(m.subject).toBe("Welcome to Acme Robotics on Trov");
@@ -36,15 +46,27 @@ describe("renderWelcomeEmail", () => {
     expect(m.html).toContain("https://trov.test/acme/#settings");
   });
 
-  it("is transactional — no unsubscribe, and the digests' banner", () => {
-    expect(m.html).not.toContain("Unsubscribe");
+  it("says digests are ON — as they are by default — and when they come; never that they are off until you pick", () => {
+    for (const body of [m.html, m.text]) {
+      expect(body).toContain("Email digests are on: Trov emails you one each weekday at 08:00 (America/New_York) when there is something for you, and a weekly one on Mondays.");
+      expect(body).not.toMatch(/off until/i);
+    }
+    expect(digestSentence({ ...DEFAULT_DIGESTS, weekly: false }, "Acme")).toBe("Email digests are on: Trov emails you one each weekday at 08:00 (America/New_York) when there is something for you.");
+    expect(digestSentence({ ...DEFAULT_DIGESTS, daily: false, sendHour: 17, timeZone: "UTC" }, "Acme")).toBe("Email digests are on: Trov emails you one each Monday at 17:00 (UTC) when there is something for you.");
+    expect(digestSentence({ ...DEFAULT_DIGESTS, daily: false, weekly: false }, "Acme")).toBe("Email digests are off in Acme for now: its admin has turned them off.");
+  });
+
+  it("is a notification: its footer says why it came and carries the Unsubscribe link; the digests' banner", () => {
+    expect(m.html).toContain(`You&#39;re getting this because you joined Acme Robotics on Trov. <a href="${UNSUB}"`);
+    expect(m.html).toMatch(/>Unsubscribe<\/a>/);
+    expect(m.text).toContain(`Unsubscribe: ${UNSUB}`);
     expect(m.html).not.toContain("<svg");
     expect(m.html).toContain('data-mark="trov"');
     expect((m.html.match(/data-cell="on"/g) ?? []).length).toBe(5);
   });
 
   it("drops the name when there isn't one", () => {
-    const anon = renderWelcomeEmail({ name: null, handle: "priya", orgName: "Acme Robotics", orgSlug: "acme", origin: "https://trov.test", host: "trov.test" });
+    const anon = renderWelcomeEmail(input({ name: null }));
     expect(anon.html).toContain("Hi,");
     expect(anon.text).toContain("Hi,");
   });
@@ -55,7 +77,7 @@ describe("renderWelcomeEmail", () => {
 });
 
 describe("sendWelcome", () => {
-  it("writes the rendered body in local mode and reports sent", async () => {
+  it("writes the rendered body in local mode and reports sent; its Unsubscribe link names the person", async () => {
     const r = await sendWelcome(env, systemCtx(), { email: "p@x.io", name: "P", handle: "priya", orgName: "Acme Robotics", orgSlug: "acme", origin: "https://trov.test" });
     expect(r.status).toBe("sent");
     const rows = await bodies();
@@ -63,6 +85,18 @@ describe("sendWelcome", () => {
     expect(rows[0].to_address).toBe("p@x.io");
     expect(rows[0].subject).toBe("Welcome to Acme Robotics on Trov");
     expect(rows[0].idempotency_key).toContain("welcome:priya:");
+    const token = /Unsubscribe: https:\/\/trov\.test\/u\/(\S+)/.exec(rows[0].text)?.[1];
+    expect(token).toBeTruthy();
+    expect(await verifyUnsubscribeToken(token!, "test-cookie-secret")).toBe("priya");
+  });
+
+  it("states the org's digests as its policy has them: the registry's defaults, then an admin's change", async () => {
+    expect(await welcomeDigests(systemCtx())).toEqual({ daily: true, weekly: true, sendHour: 8, timeZone: "America/New_York" });
+    await env.DB.prepare(`INSERT INTO notification_policy (org_id, kind, default_cadence, enabled, updated_at, updated_by) VALUES ('org_saplinglearn', 'roadmap_plan', 'weekly', 0, 'x', 'x')
+      ON CONFLICT(org_id, kind) DO UPDATE SET enabled = 0`).run();
+    expect(await welcomeDigests(systemCtx())).toMatchObject({ daily: true, weekly: false });
+    await sendWelcome(env, systemCtx(), { email: "p@x.io", name: "P", handle: "priya", orgName: "Acme Robotics", orgSlug: "acme", origin: "https://trov.test" });
+    expect((await bodies())[0].text).toContain("Email digests are on: Trov emails you one each weekday at 08:00 (America/New_York) when there is something for you. To change");
   });
 
   it("never throws on a misconfigured mode — it reports failed", async () => {

@@ -283,7 +283,7 @@ describe("the From header: an org's display name, the platform's address — nev
         for (const m of sent) {
           expect(m.from, JSON.stringify(stored)).toBe(from);
           expect(m.subject).not.toMatch(/[\r\n]/);
-          if (m.headers) expect(m.headers["List-Unsubscribe"]).toContain("<mailto:hello@trov.dev?subject=unsubscribe>");
+          if (m.headers) expect(m.headers["List-Unsubscribe"]).toMatch(/^<https:\/\/trov\.test\/u\/[^>\s]+>$/);
         }
       }
       expect(sent.some((m) => m.subject.startsWith("Mallory Bcc: victim@example.com invited you"))).toBe(true); // flattened, not dropped

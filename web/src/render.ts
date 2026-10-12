@@ -44,7 +44,7 @@ import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal,
 import { newDocView, blankDoc, type NewDocDraft } from "./newdoc";
 import type { HandoffView, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
-import { emailNotificationsSection, unsubscribeView, switchBtn, type NotifAdminProps } from "./notifications";
+import { emailNotificationsSection, switchBtn, type NotifAdminProps } from "./notifications";
 import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow } from "./api";
 import { sidebarView, NAV_CLOSED, type NavOpen } from "./sidebar";
 import { repoView, repoControls, repoCrumb, type RepoProps, type RepoPollState } from "./repo";
@@ -75,7 +75,7 @@ import { previewBanner, previewState, type PreviewMode } from "./preview";
 export type DocSpace = string;
 
 export type Screen =
-  | "mywork" | "feed" | "docs" | "roadmap" | "review" | "maintenance" | "search" | "settings" | "guide" | "unsubscribe"
+  | "mywork" | "feed" | "docs" | "roadmap" | "review" | "maintenance" | "search" | "settings" | "guide"
   // The landing page reopened from inside the app (sidebar logo). Full-screen, no chrome.
   | "site"
   // Tickets (Phase 5): the queue, one ticket, the new-ticket form, and a sprint.
@@ -274,8 +274,6 @@ export interface AppState {
   fromDraft: string | null;
   /** Why the typed sender name was refused (shared/sender.ts `SENDER_NAME_HELP`, or the server's answer). */
   fromError: string | null;
-  /** The #unsubscribe screen: the flip in flight, its error, or a Settings preview (no flip). */
-  unsub: { pending: boolean; error: string | null; preview: boolean };
   confirmedSprints: Record<string, boolean>;
   // ── Tickets (Phase 5) ──────────────────────────────────────────────────────
   /** The queue list for the CURRENT filters (the server applies seg/assignee/category). */
@@ -512,7 +510,6 @@ export function initialState(): AppState {
     outboxExpanded: null,
     fromDraft: null,
     fromError: null,
-    unsub: { pending: false, error: null, preview: false },
     confirmedSprints: {},
     // Tickets — defaults transcribed from the design's `state` block: the queue
     // opens on Open / Any assignee / All categories in the Table view, and the
@@ -826,7 +823,7 @@ function header(s: AppState): string {
   const titles: Record<Screen, string> = {
     mywork: "My Work", feed: "Feed", docs: "Docs", roadmap: "Roadmap", review: "Review",
     maintenance: "Unplaced", search: "Search", settings: "Settings", guide: "Guide",
-    unsubscribe: "Unsubscribe", site: "Trov", welcome: "Guided setup",
+    site: "Trov", welcome: "Guided setup",
     // The three ticket screens all sit under Tickets; a sprint sits under Roadmap.
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
     repo: "Repo",
@@ -2786,7 +2783,7 @@ export function render(real: AppState): string {
   const s = shownState(real);
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    ${s.billingCheckout ? billingCheckoutPage(s.billingCheckout, firstRunBackdrop()) : s.billingDone ? billingDonePage(s.billingDone, firstRunBackdrop()) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null, s.dd) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature, menuOpen: s.siteMenu }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
+    ${s.billingCheckout ? billingCheckoutPage(s.billingCheckout, firstRunBackdrop()) : s.billingDone ? billingDonePage(s.billingDone, firstRunBackdrop()) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null, s.dd) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature, menuOpen: s.siteMenu }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
