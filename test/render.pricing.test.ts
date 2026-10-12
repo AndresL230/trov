@@ -10,8 +10,9 @@ import { describe, it, expect } from "vitest";
 import { OFFERED_PLAN_IDS, PLANS, PLAN_IDS, LIMIT_KEYS, LIMITS, formatLimit, type PlanDef, type PlanId } from "../shared/plans";
 import { PRICING, canPurchase, canPurchasePlan, formatPrice, hasYearly, isFreePrice, purchaseHref, type PlanPricing } from "../shared/pricing";
 import { BILLING_INTERVALS, BILLING_START_PATH, PRICING_PATH, PURCHASABLE_PLANS, billingStartHref, isPurchasablePlan } from "../shared/billing";
-import pricingHtml from "../web/pricing.html?raw";
 import viteConfig from "../web/vite.config.ts?raw";
+import { SITE_PAGES, sitePageFile } from "../shared/site-pages";
+import { sitePageHtml } from "../web/src/site-prerender";
 import trovCssRaw from "../web/src/trov.css?raw";
 import faqSrc from "../web/src/site-faq.ts?raw";
 import pricingPageSrc from "../web/src/pricing-page.ts?raw";
@@ -64,9 +65,13 @@ describe("shared/pricing.ts", () => {
     }
     expect(PRICING_PATH).toBe("/pricing");
     expect(siteFooter()).toContain(`<a href="${PRICING_PATH}">Pricing</a>`);
-    // the page PRICING_PATH names is a real build input (web/vite.config.ts → dist/pricing.html)
-    expect(viteConfig).toMatch(/pricing: path\.join\(__dirname, "pricing\.html"\)/);
-    expect(pricingHtml).toContain("/src/pricing-page.ts");
+    // the page PRICING_PATH names is a real build input: a page of the site's one list, which
+    // web/vite.config.ts builds (`siteInputs()` → dist/pricing.html), booted by pricing-page.ts
+    const page = SITE_PAGES.find((p) => p.path === PRICING_PATH);
+    expect(page?.kind).toBe("pricing");
+    expect(sitePageFile(page!)).toBe("pricing.html");
+    expect(viteConfig).toContain("input: siteInputs()");
+    expect(sitePageHtml(page!)).toContain('<script type="module" src="/src/pricing-page.ts"></script>');
     // the plans the page may sell are exactly the ones billing sells; the only other self-serve plan is Free
     for (const id of PLAN_IDS) {
       expect(canPurchasePlan(id, PRICING[id]), id).toBe(isPurchasablePlan(id));

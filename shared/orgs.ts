@@ -3,6 +3,7 @@
 import type { PersonColor } from "./rows";
 import { AVATAR_MAX_BYTES, AVATAR_TYPES } from "./people";
 import type { MyGrant, PlanId, PlatformOrgPlan } from "./plans";
+import { SITE_PAGE_SEGMENTS } from "./site-pages";
 
 export type OrgRole = "owner" | "admin" | "member";
 export type OrgStatus = "active" | "suspended";
@@ -27,8 +28,12 @@ export const RESERVED_ORG_SLUGS: readonly string[] = [
   "api", "o", "orgs", "org", "auth", "oauth", "mcp", "new", "settings", "admin", "platform", "raw", "img",
   "avatar", "u", "webhook", "static", "assets", "www", "app", "trov", "canopy", "invites", "invite", "me",
   "help", "support", "docs", "login", "logout", "signup", "system",
-  // Static pages and files at the root (web/*.html, web/public/).
-  "index", "pricing", "privacy", "terms", "guide", "favicon", "robots", "sitemap", "billing",
+  // Static pages and files at the root (the built pages, web/public/): every page of the public site is
+  // added from its ONE list (shared/site-pages.ts `SITE_PAGE_SEGMENTS`), so a new page reserves its own
+  // path; the four named here predate it. `app` (the app shell, web/app.html) is above; `og` holds the
+  // pages' Open Graph images. test/site.test.ts fails on a page or a web/public entry not listed.
+  "index", "pricing", "privacy", "terms", "guide", "favicon", "robots", "sitemap", "billing", "og",
+  ...SITE_PAGE_SEGMENTS,
   // Root routes of the Hono app (src/routes.ts and the routers mounted at "/"), and screen names kept
   // free so a path can never be mistaken for one.
   "feed", "doc", "adr", "adrs", "roadmap", "search", "tickets", "ticket", "sprints", "sprint", "repo", "repos",

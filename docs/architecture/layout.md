@@ -14,8 +14,15 @@
   the SPA imports as a VALUE (`canTransition` / `legalMoves` / `TICKET_STATUS_LABEL` / `isOpenStatus`,
   the status/urgency/domain tuples) lives in the zod-free core so the browser bundle never drags zod in;
   the zod module re-exports it, so the server still has one definition.
-- `src/` — the Worker. `index.ts` (fetch entry: `/mcp` by bearer, `/webhook/github[/:hookId]` by HMAC
-  (`github-hook.ts`), everything else to the Hono app; plus `scheduled()`, which dispatches the repo cron and
+  `site-pages.ts` is the public site's ONE page list (`SITE_PAGES`: path, kind, title, description, Open Graph
+  image) with the head tags and JSON-LD it implies and the assets binding's generated `_redirects` / `_headers` —
+  read by the build, the Worker's sitemap and the reserved slugs (`web-ui.md` › The public pages, for crawlers).
+- `src/` — the Worker. `index.ts` (fetch entry: first `site.ts` — www / http redirects, `/robots.txt`,
+  `/sitemap.xml`, and `/` as the prerendered landing signed out or the app shell with a session cookie — then
+  `/mcp` by bearer, `/webhook/github[/:hookId]` by HMAC (`github-hook.ts`), the app shell for `/<slug>/`,
+  `/platform` and `/billing/done|checkout`, the 404 page for an address no route answers (`isAppRoute` in
+  `routes.ts`), everything else to the Hono app; every response but `site.ts`'s public ones is `X-Robots-Tag:
+  noindex`; plus `scheduled()`, which dispatches the repo cron and
   the two digest crons by exact cron expression — each runs for EVERY active org, `docs/architecture/data-layer.md`
   › Background jobs), `routes.ts` (Hono HTTP), `mcp.ts` (MCP
   tools), `consumer.ts` (THE GATE), `webhook.ts` (GitHub event capture), `tools/` (`writes.ts`, `reads.ts`,
@@ -163,6 +170,11 @@
   plays its scroll reveals; played keys live in `state.landingSeen` so a rerender never replays them.
   Its last section is **Pricing** (`web/src/pricing.ts`, also the static `/pricing` page; prices in
   `shared/pricing.ts`, `null` = not announced) — `docs/architecture/plans.md` › The pricing page.
+  There is NO hand-written `.html` in `web/`: `web/site-build.ts` (a Vite plugin) writes every input — one per
+  page of `shared/site-pages.ts` (`index.html` = the landing, `pricing.html`, `terms.html`, `privacy.html`,
+  `404.html`), each PRERENDERED by `web/src/site-prerender.ts` from the code that boots it, and `app.html`, the
+  empty app shell — plus `_redirects` and `_headers` (`web-ui.md` › The public pages, for crawlers).
+  `web/src/not-found.ts` is the 404 page (no script).
   `web/src/releases.ts` is Help › **What's new**: `#releases` a grid of release cards; each release has TWO pages,
   `#releases/<v>` (release notes — for USERS: no PRs, no migrations) and `#releases/<v>/patches` (patch notes — for
   builders: `ops` upgrade notes, Added / Changed / Fixed / Removed, PR links), flipped by a `segmented()` switch;

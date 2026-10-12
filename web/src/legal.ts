@@ -1,7 +1,7 @@
 // ── Legal: the Terms of Service and Privacy Policy pages ────────────────────
-// Two PUBLIC static pages, `/terms` and `/privacy` (web/terms.html, web/privacy.html —
-// extra Vite inputs, served by the assets binding before the Worker, so no session is
-// ever asked for). They are paths, not hash routes, on purpose: the hash is the app's
+// Two PUBLIC static pages, `/terms` and `/privacy` (`legal` pages of shared/site-pages.ts,
+// whose HTML the build writes and prerenders — served by the assets binding before the
+// Worker, so no session is ever asked for; a new document here is one entry there). They are paths, not hash routes, on purpose: the hash is the app's
 // route AND the sign-in return-to, and a legal page must open signed out, from the
 // landing's footer, from an email or from an OAuth consent screen.
 //

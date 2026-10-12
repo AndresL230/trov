@@ -1780,6 +1780,10 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-st.st-word { display:inline-block; --from:0 .3em; }
 .site-st.st-pop { --from:0 3px; scale:.96; }
 .site-rv.is-play, .site-rv.is-done, .is-play .site-st, .is-done .site-st { opacity:1; translate:none; scale:none; }
+/* The hero's copy is the exception: the page's first words, prerendered, are never hidden — they are
+   rendered settled and rise by transform alone, from the first paint, with no script (landing.ts `hero`). */
+.site-hero-in .site-st { animation:site-rise var(--fx-slow) var(--fx-ease) var(--d, 0ms) backwards; }
+@keyframes site-rise { from { translate:var(--from); } }
 .site-rv.is-play, .is-play .site-st {
   transition: opacity var(--fx-slow) var(--fx-ease) var(--d, 0ms), translate var(--fx-slow) var(--fx-ease) var(--d, 0ms), scale var(--fx-slow) var(--fx-ease) var(--d, 0ms),
               transform var(--fx-slow) var(--fx-ease);
@@ -2918,6 +2922,16 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 @media (prefers-reduced-motion: reduce) {
   .site-rv, .site-st { opacity:1 !important; translate:none !important; scale:none !important; }
   .cnpy-site *, .cnpy-site *::before, .cnpy-site *::after { transition:none !important; animation:none !important; }
+}
+/* No script: the landing page is PRERENDERED (web/src/site-prerender.ts) with its reveals hidden, as the
+   script renders them, so the script takes the page over without a flash. With scripting off nothing will
+   play them: everything shows at once, settled — the words a reader or a crawler came for. */
+@media (scripting: none) {
+  .site-rv, .site-st { opacity:1 !important; translate:none !important; scale:none !important; }
+  .site-type { clip-path:none !important; }
+  .site-caret { opacity:1 !important; }
+  .site-check path { stroke-dashoffset:0 !important; }
+  .site-bar { scale:none !important; }
 }
 
 /* ── Sync GitHub: the header control and the panel it opens (web/src/sync.ts) ──

@@ -70,6 +70,57 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // The public site, readable by search engines and share cards: prerendered pages, robots.txt, sitemap,
+  // canonical links, noindex on the app, a real 404. PR number not known yet: replace (#N) and add `prs`.
+  {
+    version: "Unreleased",
+    date: "2026-10-12",
+    unreleased: true,
+    title: "A site search engines can read",
+    headline: "The home page, pricing, terms and privacy arrive with their words already on the page, each with its own title, description and share card.",
+    highlights: [
+      "The site's pages open with their words already there. The home page no longer shows \"Signing you in…\" to someone who is signed out, and its headline is on screen from the first moment.",
+      "A link to Trov shared in a chat or on social media shows a preview card: the page's title, a short description and an image.",
+      "Search engines can find and read the home page, pricing, terms and privacy, each under one address. Your organization's pages, sign-in and the API are kept out of search results.",
+      "An address that does not exist shows a Page not found page with a way back, instead of asking you to sign in.",
+      "In the dark theme the site opens dark, with no white flash first.",
+    ],
+    headsUp: [
+      "The home page's headline no longer fades in: it is there at once and settles into place.",
+    ],
+    ops: [
+      "`wrangler.toml` `[assets]` gains `run_worker_first = [\"/\"]`: `/` is answered by the Worker (the prerendered landing, or the app shell with a session cookie). It ships with the Worker; nothing to run.",
+      "The build now writes `web/dist/_redirects` and `web/dist/_headers` (Workers Static Assets reads both): no setting to change. The build command is unchanged (`npm run build:web`).",
+      "New reserved organization slugs `og` and `404` (and, from now on, the path of every page in `shared/site-pages.ts`). Before deploying: `npx wrangler d1 execute trov --remote --command \"SELECT slug FROM orgs WHERE slug IN ('og','404')\"` must return nothing.",
+      "One-time, outside the repo (`HANDOFF.md` › 10): Always Use HTTPS on, a www → apex Redirect Rule, optionally the workers.dev route off; verify `trov.dev` in Google Search Console as a Domain property (DNS TXT) and submit `https://trov.dev/sitemap.xml`.",
+    ],
+    patches: {
+      added: [
+        "`shared/site-pages.ts`: the public site's ONE page list (`SITE_PAGES`) — titles, descriptions, Open Graph images; `siteHead` (canonical, Open Graph, Twitter), `softwareApplicationLd` (Free and Pro from `PLANS` / `PRICING`, Pro per seat per month as a `UnitPriceSpecification`; Enterprise has no price, so no Offer), and the generated `_redirects` / `_headers`. A new page is one entry (#N)",
+        "`web/site-build.ts` (a Vite plugin) and `web/src/site-prerender.ts`: every input is generated and prerendered from the code that boots it — `index.html`, `pricing.html`, `terms.html`, `privacy.html`, `404.html` — plus the empty app shell `app.html`; `THEME_BOOT` paints the stored theme before the page is parsed (#N)",
+        "`src/site.ts`: `GET /robots.txt`, `GET /sitemap.xml`, `/` as the landing (no `session` / `onboard` cookie) or the app shell (`Vary: Cookie`; `?denied=` and `DEV_LOGIN` get the shell), `canonicalRedirect` (www and plain http → `https://` + the public host, 301), `noindex`, `notFound` (#N)",
+        "`isAppRoute` (`src/routes.ts`): an address no handler answers (by method and path; `use()` middleware does not count) is a 404 before the session gate — the built page, or `{ error: \"not_found\" }` under `/api` and for other methods (#N)",
+        "`web/src/not-found.ts`: the 404 page, no script (#N)",
+        "`test/site.test.ts`, `test/site-pages.test.ts` (#N)",
+      ],
+      changed: [
+        "`X-Robots-Tag: noindex` on every GET / HEAD the Worker answers but `/robots.txt`, `/sitemap.xml` and the landing, and on everything on a host other than `PUBLIC_ORIGIN`'s; `_headers` adds it to every static file on `*.workers.dev`, and to `/app` and `/404` (#N)",
+        "The app shell is `/app` (`web/app.html`: `noindex`, no canonical, no landing), served for `/<org>/`, `/platform`, `/billing/done`, `/billing/checkout` and `/` with a session — no longer the landing's `index.html` (#N)",
+        "`main.ts`: on the prerendered landing the boot paints it at once (a morph, nothing rebuilt) and asks no `/auth/me`; the hero copy is rendered settled with a transform-only CSS rise (`site-rise`); `@media (scripting: none)` shows every reveal; `pricing-page.ts` / `legal-page.ts` patch their prerendered root (`paintRoot`); `syncPageBackground` keeps `<html>` in the theme (#N)",
+        "`/index`, `/index.html`, `/<page>.html` and `/<page>/` answer 301 to the clean URL (were the assets binding's 307) (#N)",
+        "`RESERVED_ORG_SLUGS` gains `og`, `404` and every page of `SITE_PAGES` (#N)",
+        "An unknown address is a 404 instead of the session gate's 401 (`test/spa-shell.test.ts`, `test/billing.signature.test.ts` follow); a real cookie route is unchanged (#N)",
+      ],
+      fixed: [
+        "Search Console's \"Duplicate without user-selected canonical\" on `/`: the home page carries a canonical, and no other address serves its HTML — the app shell at `/<org>/`, `/platform` and `/billing/*` was `index.html`, byte-identical to `/`, with no canonical anywhere (#N)",
+        "`/robots.txt` and `/sitemap.xml` answered the session gate's 401 (#N)",
+        "`/pricing`'s description named the retired Personal and Team plans; it is built from the plan tables now (#N)",
+      ],
+      removed: [
+        "`web/index.html`, `web/pricing.html`, `web/terms.html`, `web/privacy.html` (generated now) (#N)",
+      ],
+    },
+  },
   // One GitHub account, several Trov organizations: repositories split between orgs (#170).
   {
     version: "0.29",

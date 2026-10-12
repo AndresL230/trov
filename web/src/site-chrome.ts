@@ -17,6 +17,22 @@ export function siteMark(size: number): string {
   return trovMark(size);
 }
 
+/** The page's own background (`<html>`, behind every root) in a theme's `--bg`, so an overscroll or the
+ *  instant before a paint is never a white band. Set only when it changes. */
+export const PAGE_BG = { light: "#f6f6f7", dark: "#1c1a16" } as const;
+let pageBg: "light" | "dark" | null = null;
+export function syncPageBackground(html: HTMLElement, theme: "light" | "dark"): void {
+  if (pageBg === theme) return;
+  pageBg = theme;
+  html.style.background = PAGE_BG[theme];
+}
+
+/** The themed root a static page paints into its mount (pricing-page.ts, legal-page.ts) — and what the
+ *  build prerenders there (site-prerender.ts), so the boot script repaints the same markup. */
+export function siteRoot(theme: "light" | "dark", inner: string): string {
+  return `<div data-cnpy-theme="${theme}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">${inner}</div>`;
+}
+
 // Shared with the legal pages (web/src/legal.ts) and the pricing page (web/src/pricing.ts).
 // Pricing, Terms and Privacy are PATHS (/pricing, /terms, /privacy — static pages,
 // readable signed out), never hash routes.

@@ -1,8 +1,9 @@
 // ── Pricing: the plans on offer, as the public site shows them ───────────────
 // ONE render (`pricingSection`) in two places: the last section of the landing page
 // (web/src/landing.ts, nav link "Pricing") and the standalone `/pricing` page
-// (`pricingView` — web/pricing.html, booted by web/src/pricing-page.ts; a static page
-// like /terms, readable signed out and linked from the footer).
+// (`pricingView` — a page of shared/site-pages.ts, prerendered at build and booted by
+// web/src/pricing-page.ts; a static page like /terms, readable signed out and linked from
+// the footer).
 //
 // PURE, and it restates nothing: names, descriptions and every limit come from
 // shared/plans.ts, every price from shared/pricing.ts — change a number there and this

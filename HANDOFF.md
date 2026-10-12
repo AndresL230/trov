@@ -134,6 +134,16 @@ Cloudflare cron weekdays are 1–7 or SUN–SAT, never 0. `REPO_CRON` in `src/re
    `docs/architecture/github-app.md` › Verify after deploy; for billing, `billing.md` › Owner checklist.
 7. The Worker's logs in the dashboard (`[observability]` is on in `wrangler.toml`) show no new error after the first cron tick
    (every ten minutes).
+8. **The public pages** (`docs/architecture/web-ui.md` › The public pages, for crawlers): `/robots.txt` and
+   `/sitemap.xml` answer 200; `/` signed out carries `<link rel="canonical" href="https://trov.dev/">` and no
+   `X-Robots-Tag`; `/platform`, `/billing/done` and any `/<org>/` answer the app shell with
+   `X-Robots-Tag: noindex` and no canonical; `/pricing.html` and `/pricing/` answer 301 to `/pricing`:
+
+   ```bash
+   curl -s https://trov.dev/ | grep -o '<link rel="canonical"[^>]*>'
+   for p in /platform /billing/done /some-org/; do curl -sI "https://trov.dev$p" | grep -i '^x-robots-tag'; done
+   curl -sI https://trov.dev/pricing.html | grep -iE '^(HTTP|location)'
+   ```
 
 ## 7. Rollback
 
@@ -191,3 +201,21 @@ relying on any of them.
   token prefixes.
 - Do not activate Cloudflare Queues or Vectorize (deferred seams, `CLAUDE.md`).
 - Do not run `npm run build:web` under a running `wrangler dev` (it empties `web/dist`).
+
+## 10. Search engines and the zone (one-time, outside the repo)
+
+What the Worker cannot do for the public site (`docs/architecture/web-ui.md` › The public pages, for crawlers):
+
+- **www → apex and http → https for the static files.** The Worker redirects both for what it serves (`/`
+  included), but the assets binding answers static files before it and takes only relative redirect rules.
+  In the Cloudflare dashboard for `trov.dev`: SSL/TLS › Edge Certificates › **Always Use HTTPS** on, and,
+  if `www.trov.dev` resolves at all, Rules › **Redirect Rules**: hostname `www.trov.dev` → dynamic
+  `concat("https://trov.dev", http.request.uri.path)`, 301, preserve query string.
+- **The workers.dev address.** Production also answers at `trov.<account>.workers.dev` unless `workers_dev =
+  false`; every response there is `noindex` (`_headers`, `src/site.ts`). Turning it off (Workers › trov ›
+  Settings › Domains & Routes) removes the duplicate host entirely.
+- **Google Search Console.** Verify `trov.dev` as a **Domain property** with the DNS TXT record Search Console
+  gives (add it in Cloudflare DNS) — it covers https, http, www and every path, and needs no file or meta tag
+  in the build. Then Sitemaps › submit `https://trov.dev/sitemap.xml`, and URL Inspection › `https://trov.dev/`
+  › Request indexing. Bing Webmaster Tools can import the property from Search Console.
+

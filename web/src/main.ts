@@ -64,6 +64,7 @@ import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX
 import { PERSON_COLORS, type PersonColor, type OAuthGrantSummary } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
+import { syncPageBackground } from "./site-chrome";
 import { syncSkeletons } from "./skeleton";
 import { parsePreview, previewSearch, withPreview, PREVIEW_BLOCKED, type PreviewMode } from "./preview";
 import { setWriteBlock } from "./api";
@@ -372,6 +373,9 @@ function rerender(): void {
   qs.sync();   // the search dropdown lives outside the mount: re-anchor and re-theme it
   // The tab icon follows the app's resolved theme (a no-op until it changes).
   syncFavicon(resolvedTheme(), mount.querySelector("[data-cnpy-theme]"));
+  // The page behind the app (an overscroll, the instant before a paint) in the app's theme: the build's
+  // theme boot set it for the first paint (site-prerender.ts), and a theme change must not leave it behind.
+  syncPageBackground(document.documentElement, resolvedTheme());
   restoreScroll(mount, scroll, state.screen);
   markEnter();
   // Loading skeletons: keep each region's clock across this swap, and fade in what replaced one.
@@ -4661,6 +4665,13 @@ if (params.get("denied") === "1") {
       history.replaceState(null, "", "/");
       rerender();
     });
+} else if (mount.querySelector(':scope > * > [data-morph="landing"]')) {
+  // The PRERENDERED landing page: the Worker sends it for `/` only to a request with no session cookie
+  // (src/site.ts — the app shell otherwise, and always with the local DEV_LOGIN), and the build made it
+  // from this very render (web/src/site-prerender.ts). So there is nobody to ask about: no "Signing you
+  // in…" card and no /auth/me, which could only answer unauthorized. This paint MORPHS the markup already
+  // on screen (`data-morph="landing"`, morph.ts): nothing is rebuilt or flashes, and the reveals play.
+  showSignedOut();
 } else {
   // Show "verifying" while we check if a session cookie exists
   state.view = "auth";
@@ -4710,23 +4721,25 @@ if (params.get("denied") === "1") {
       if (back && back !== location.hash) history.replaceState(null, "", `${location.pathname}${back}`);
       showPicker(land.lost);
     })
-    .catch(() => {
-      // Unauthorized or any error → show login
-      state.view = "auth";
-      state.authStep = "login";
-      // Sent here by the billing route (`/?start=team`: a signed-out buyer who has not picked a provider —
-      // the pricing page's "Choose Pro"): Get started opens on that plan, so the two provider buttons
-      // carry on to payment. The parameter is read once and leaves the address bar.
-      if (params.get("start") === "team") {
-        state.signInOpen = true; state.signInMode = "signup"; state.signInPlan = "team";
-        history.replaceState(null, "", `/${location.hash}`);
-      }
-      rerender();
-      // Sent here by Contact in the footer of a static page (pricing, terms, privacy — site-chrome.ts
-      // `CONTACT_HREF`): the Contact form opens over the landing page. Read once; it leaves the address bar.
-      if (params.get("contact") === "1") {
-        history.replaceState(null, "", `/${location.hash}`);
-        supportCtl.open("question");
-      }
-    });
+    .catch(() => showSignedOut()); // Unauthorized or any error → the landing page
+}
+
+/** Signed out: the landing page — with what a link to it asked for. */
+function showSignedOut(): void {
+  state.view = "auth";
+  state.authStep = "login";
+  // Sent here by the billing route (`/?start=team`: a signed-out buyer who has not picked a provider —
+  // the pricing page's "Choose Pro"): Get started opens on that plan, so the two provider buttons
+  // carry on to payment. The parameter is read once and leaves the address bar.
+  if (params.get("start") === "team") {
+    state.signInOpen = true; state.signInMode = "signup"; state.signInPlan = "team";
+    history.replaceState(null, "", `/${location.hash}`);
+  }
+  rerender();
+  // Sent here by Contact in the footer of a static page (pricing, terms, privacy — site-chrome.ts
+  // `CONTACT_HREF`): the Contact form opens over the landing page. Read once; it leaves the address bar.
+  if (params.get("contact") === "1") {
+    history.replaceState(null, "", `/${location.hash}`);
+    supportCtl.open("question");
+  }
 }

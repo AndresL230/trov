@@ -95,9 +95,10 @@ describe("POST /webhook/stripe refuses uniformly", () => {
     expect((await postWebhook(junk, { "stripe-signature": await signature(junk) })).json).toEqual({ ok: true, ignored: "not_an_event" });
   });
 
-  it("only POST is the webhook: a GET there is just an unauthenticated app route", async () => {
+  it("only POST is the webhook: a GET there is an address nothing answers (the 404 page, never indexed)", async () => {
     const worker = (await import("../src/index")).default;
     const res = await worker.fetch(new Request("https://trov.test/webhook/stripe"), billingEnv(), { waitUntil() { /* */ }, passThroughOnException() { /* */ } } as unknown as ExecutionContext);
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(404);
+    expect(res.headers.get("x-robots-tag")).toBe("noindex");
   });
 });

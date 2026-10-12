@@ -397,9 +397,9 @@ person before any org exists. `org_grants.used_org` is deliberately not named `o
 ## The pricing page
 
 The public face of the plans is ONE pure render, `pricingSection` (`web/src/pricing.ts`), shown twice: as the
-landing page's last section (nav link "Pricing") and as the static page `/pricing` (`web/pricing.html`, booted
-by `web/src/pricing-page.ts`; an extra Vite input served by the assets binding like `/terms`, linked from the
-footer). It restates nothing: names, descriptions and limits come from `PLANS`, prices from `PRICING` in
+landing page's last section (nav link "Pricing") and as the static page `/pricing` (a page of
+`shared/site-pages.ts`, prerendered at build and booted by `web/src/pricing-page.ts`; served by the assets binding
+like `/terms`, linked from the footer — `web-ui.md` › The public pages, for crawlers). It restates nothing: names, descriptions and limits come from `PLANS`, prices from `PRICING` in
 `shared/pricing.ts`. It shows the OFFERED plans only — Free, Pro, Enterprise. Tests:
 `test/render.pricing.test.ts`.
 

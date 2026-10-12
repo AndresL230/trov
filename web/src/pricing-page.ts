@@ -1,9 +1,12 @@
-// The DOM boot for the public pricing page (web/pricing.html). Everything it renders comes
-// from the pure web/src/pricing.ts. The theme follows the app's own stored choice
-// (`trov.theme`, the same key and reading as web/src/main.ts and legal-page.ts), and the
-// toggle flips Light ⇄ Dark and stores it, so the app and this page always agree.
+// The DOM boot for the public pricing page (/pricing: the `pricing` page of shared/site-pages.ts,
+// whose HTML the build writes and PRERENDERS — web/src/site-prerender.ts). Everything it renders
+// comes from the pure web/src/pricing.ts, the same markup the build put there. The theme follows
+// the app's own stored choice (`trov.theme`, the same key and reading as web/src/main.ts and
+// legal-page.ts), and the toggle flips Light ⇄ Dark and stores it, so the app and this page agree.
 import "./trov.css";
 import { pricingView } from "./pricing";
+import { siteRoot } from "./site-chrome";
+import { paintRoot } from "./morph";
 import { mountPricing } from "./pricing-dom";
 import { initFaqAccordion } from "./site-faq";
 import { syncFavicon } from "./favicon";
@@ -33,7 +36,7 @@ if (mount) {
   const paint = () => {
     const t = resolved();
     document.documentElement.style.background = t === "dark" ? "#1c1a16" : "#f6f6f7"; // no white flash past the wrapper
-    mount.innerHTML = `<div data-cnpy-theme="${t}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">${pricingView(t === "dark")}</div>`;
+    paintRoot(mount, siteRoot(t, pricingView(t === "dark")));
     mountPricing(mount);
     syncFavicon(t);
   };

@@ -26,7 +26,7 @@ const NOTE = "font-size:12.5px;line-height:1.55;color:var(--fg-55)";
 const FINE = "font-size:11.5px;line-height:1.5;color:var(--fg-40)";
 const ROLE_WORD: Record<OrgRole, string> = { owner: "Owner", admin: "Admin", member: "Member" };
 
-/** The public pricing page (web/pricing.html) — a static page, so it opens beside the app. */
+/** The public pricing page (/pricing, a page of shared/site-pages.ts) — a static page, so it opens beside the app. */
 export const PRICING_HREF = "/pricing";
 
 export interface SettingsPlanProps {

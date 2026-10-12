@@ -105,7 +105,10 @@ a fourth banner or a second texture (the tour's dialog has none: its stage is th
 - **Reveals** (`rv()` / `data-rv`, `landing-motion.ts`) are short and small: 6 to 14px over `--fx-slow`, played
   once (the observer unobserves), 6% of the viewport before the element enters. While a nav jump is carrying
   the page (`noteJump()` until just after `scrollend`), what comes into view is settled with no motion
-  (`revealClass`), so a jump never ends on a section that is still sliding.
+  (`revealClass`), so a jump never ends on a section that is still sliding. **The hero's copy is the one
+  exception**: the page's first words are never hidden — it is rendered settled (`is-done`, no `data-rv`) and
+  rises by `translate` alone, in CSS from the first paint (`.site-hero-in .site-st`, `site-rise`), so it waits
+  on no script. With scripting off, `@media (scripting: none)` shows every other reveal settled.
 - **Nav jumps** (`siteJump`) are one `scrollIntoView` per click, instant under reduced motion; where one lands
   is the target's `scroll-margin-top` (`section[id^="site-"]`, -58px: the heading about 32px under the sticky
   nav). Nothing else moves the scroll position: both dialogs take and return focus with `preventScroll`.
@@ -167,6 +170,68 @@ measured at 1440 and 1100); one column under 900px. The plugin card holds the sk
 `grantScopeDialog` in `render.ts`, a root `data-overlay` in the `.cnpy-cmodal` shell, never a panel under the
 row: `auth-identity-people.md`.) If a card's content shrinks, re-weight the columns or let the card be
 smaller: never pad one out.
+
+## The public pages, for crawlers (`shared/site-pages.ts`, `web/site-build.ts`, `src/site.ts`)
+
+`/`, `/pricing`, `/terms` and `/privacy` arrive as real HTML — their words, a unique title and description, a
+canonical link, Open Graph and Twitter tags, JSON-LD on `/` and `/pricing` — before any script runs, and the
+script then takes over the SAME markup. Everything else is the app, and is never indexed.
+
+- **One list.** `SITE_PAGES` (`shared/site-pages.ts`) is every public page: path, `kind` (`landing`, `pricing`,
+  `legal`, `not-found`), title, description, Open Graph image. Everything follows from an entry: the Vite input
+  and its prerendered document (`web/site-build.ts` writes every input — there is no `.html` in `web/`), the
+  head tags (`siteHead`), the `/sitemap.xml` line, the reserved org slug (`shared/orgs.ts` spreads
+  `SITE_PAGE_SEGMENTS`), and the 301s for its other spellings (`_redirects`). **Adding a page** is one entry
+  plus its content: a `kind` that renders it (a new legal document is a `legal` entry whose `key` is its key in
+  `LEGAL_DOCS`; the legal pages' tab row names Terms and Privacy itself), and its 1200 × 630 image in
+  `scripts/og/render.mjs`'s own list (an entry without `image` gets no `og:image` and a `summary` card).
+  A reserved slug shadows any org already using it: check before adding a page at a new path.
+- **Copy is the page's own.** A description is a sentence the page says (the landing's hero lede, a legal
+  document's opening line); the pricing one and the JSON-LD offers are built from `PLANS` / `PRICING`, never
+  typed (Free $0, Pro $10 per seat / month as a `UnitPriceSpecification`; Enterprise has no price, so no
+  Offer; no rating or review, which Trov does not have). `test/site-pages.test.ts` holds each to the render.
+- **Prerendered from the code that boots it** (`web/src/site-prerender.ts`, loaded in Node through Vite's own
+  module server at build time). The landing is `render(initialState())` — exactly main.ts's signed-out paint —
+  so its first paint MORPHS it (`data-morph="landing"`); `/pricing`, `/terms` and `/privacy` are `siteRoot(…)` of
+  their boot script's own render and patch in place too (`paintRoot`, morph.ts). On the prerendered landing
+  main.ts paints the landing at once and asks nothing: no "Signing you in…" card, no `/auth/me` (the Worker only
+  sends that page to a request with no session cookie). Pages are built in the light theme; `THEME_BOOT`, an
+  inline script that is each root's first child (and in the app shell's head), paints `<html>` and the root in
+  the stored theme before the rest of the page is parsed; the boot's first paint drops it, and main.ts keeps
+  `<html>`'s background in step (`syncPageBackground`).
+- **`/` is two documents** (`run_worker_first = ["/"]`, `sitePublic` in `src/site.ts`): the prerendered landing
+  to a request with no `session` / `onboard` cookie, the app shell (`web/app.html`, served at `/app`) to one
+  with, after a refused sign-in (`?denied=`), or with the local `DEV_LOGIN`; both `Vary: Cookie`. The cookie's
+  PRESENCE picks a public page; it authorizes nothing (no fourth auth class). The shell is never the home
+  page's HTML: no landing words, no canonical, `noindex` in a meta tag and the header — at `/`, `/<org>/`,
+  `/platform`, `/billing/done`, `/billing/checkout` and `/app` alike. (Before, all of those served `index.html`,
+  byte-identical to `/`, with no canonical anywhere: the likely cause of Search Console's "Duplicate without
+  user-selected canonical" on `/`.)
+- **One address per page.** Every canonical is absolute and fixed in the file, so a query (`?ref=`, `utm_*`,
+  `?contact=1`, `?start=team`) cannot change it. `_redirects` (generated, `assetRedirects`) sends `/index`,
+  `/index.html`, `/<page>.html` and `/<page>/` to the page for good (301) — the binding's own html handling would
+  answer 307. The Worker 301s `www.` and plain http on the public host to `https://` + the public host for what it
+  serves (`canonicalRedirect`); the binding takes relative rules only, so the static files on www / http are the
+  zone's to redirect (a Redirect Rule and "Always Use HTTPS" — `HANDOFF.md`).
+- **`noindex`** (`X-Robots-Tag`): every GET / HEAD the Worker answers except `/robots.txt`, `/sitemap.xml` and
+  the landing — the API, sign-in, OAuth, MCP, the signed links, every app shell, every redirect; a POST is left
+  alone (a webhook's bare 401 stays bare). On a host that is not PUBLIC_ORIGIN's (a Preview) the Worker tags
+  everything, and `_headers` (`assetHeaders`) tags every static file on a `*.workers.dev` address, plus `/app`
+  and `/404` anywhere. Loopback counts as the public host, so `wrangler dev` answers as production does.
+- **robots.txt** disallows only the API, sign-in and token endpoints and the session-gated bytes
+  (`ROBOTS_DISALLOW`). The app's pages are deliberately NOT disallowed: a crawler that may not fetch a URL
+  never sees its `noindex` (nor that it is no longer the home page's HTML), and a disallowed URL can still be
+  indexed from a link. `/sitemap.xml` is `SITE_PAGES`' indexed pages by canonical URL.
+- **404.** An address no route answers is the built not-found page (`web/src/not-found.ts`, no script), status
+  404, `noindex` — JSON `{ error: "not_found" }` under `/api` or for any other method — decided in
+  `src/index.ts` BEFORE the session gate by `isAppRoute` (`src/routes.ts`: every handler of the Hono app by
+  method and path; its `use()` middleware wildcards make nothing known). A real cookie route still answers 401
+  signed out. One exception, on purpose: a single path segment that is a valid, unreserved slug (`/blog`) is
+  an org's page and gets the app shell (with `noindex`) whether or not that org exists — answering 404 there
+  would tell a stranger which organizations do.
+- Tests: `test/site.test.ts` (the Worker: robots, sitemap, `/`, redirects, `noindex`, 404 vs 401, reserved
+  slugs), `test/site-pages.test.ts` (the list, the head tags, the JSON-LD, the documents, `_redirects` /
+  `_headers`), `test/spa-shell.test.ts`.
 
 ## Sidebar & motion — the `<aside>` outlives rerenders
 

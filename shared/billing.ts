@@ -64,7 +64,8 @@ export const BILLING_CHECKOUT_PATH = "/billing/checkout";
 export const billingCheckoutHref = (plan: PurchasablePlan, interval: BillingInterval = "month", o: { org?: string | null; session?: string | null } = {}): string =>
   `${BILLING_CHECKOUT_PATH}?plan=${plan}${interval === "month" ? "" : `&interval=${interval}`}${o.org ? `&org=${encodeURIComponent(o.org)}` : ""}${o.session ? `&session=${encodeURIComponent(o.session)}` : ""}`;
 /** Where a person who backs out of checkout lands, and where "see the plans" points: the public pricing
- *  page (web/pricing.html, a Vite input; test/render.pricing.test.ts holds the two together). */
+ *  page (a page of shared/site-pages.ts, built to dist/pricing.html; test/render.pricing.test.ts holds the
+ *  two together). */
 export const PRICING_PATH = "/pricing";
 /** An organization's Plan block (Org settings › General) — where its owner manages billing. */
 export const orgBillingHref = (slug: string): string => `/${encodeURIComponent(slug)}/#org/general`;

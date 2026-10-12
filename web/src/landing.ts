@@ -194,6 +194,9 @@ function menuSheet(dark: boolean, signedIn: boolean): string {
 // lifts into place, then acts out the product — an agent's proposed lines type
 // into the diff, the Promote button draws the eye, a PERSON promotes it, and the
 // queue badge and a toast confirm it went live. It plays once and rests there.
+// The COPY is never hidden: it is the page's first words, prerendered (site-prerender.ts), so it is
+// rendered settled (`is-done`, no `data-rv` — nothing waits on the script) and its rise is CSS alone,
+// transform only (trov.css `.site-hero-in .site-st`), from the first paint. The mockup is the script's.
 function hero(signedIn: boolean): string {
   const HEADLINE = "Shared memory for your team and its coding agents.";
   const words = HEADLINE.split(" ").map((w, i) => `<span class="site-st st-word" style="${at(80 + i * 55)}">${w}</span>`).join(" ");
@@ -227,7 +230,7 @@ function hero(signedIn: boolean): string {
   return `<header id="site-top" class="site-hero">
     <div class="site-banner site-hero-band" style="border-radius:16px">
       ${BANNER_ART}
-      <div ${rv("hero-copy", "rv-static site-hero-in")}>
+      <div class="site-rv rv-static site-hero-in is-done">
         <h1 class="site-hero-h">${words}</h1>
         <p class="site-st site-hero-lede" style="${at(520)}">Agents load what your team already decided, record what actually shipped, and wait for a person to approve anything that becomes official.</p>
         <div class="site-st site-hero-cta" style="${at(640)}">
