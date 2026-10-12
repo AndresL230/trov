@@ -304,9 +304,12 @@ export async function listUserInstallations(userToken: string, fetchImpl?: typeo
  *  requests — the installation's list and the user's). */
 export const REPO_ID_PAGES = 10;
 
-/** Every repository id of a list, or why not: `too_many` = still more after `REPO_ID_PAGES`; `failed` =
- *  GitHub did not answer in full. Neither is ever a yes. */
-export type RepoIds = { ok: true; ids: Set<number> } | { ok: false; reason: "too_many" | "failed" };
+/** One repository of such a list. */
+export interface ListedRepo { id: number; full_name: string; private: boolean }
+/** Every repository id of a list (and, where GitHub named them, the repositories), or why not:
+ *  `too_many` = still more after `REPO_ID_PAGES`; `failed` = GitHub did not answer in full. Neither is
+ *  ever a yes. */
+export type RepoIds = { ok: true; ids: Set<number>; repos: ListedRepo[] } | { ok: false; reason: "too_many" | "failed" };
 
 /**
  * Page a `{ total_count, repositories }` list to its END and return the repositories' numeric ids.
@@ -316,23 +319,26 @@ export type RepoIds = { ok: true; ids: Set<number> } | { ok: false; reason: "too
  */
 async function repoIds(url: string, auth: string, fetchImpl: typeof fetch | undefined, missingIsEmpty: boolean): Promise<RepoIds> {
   const ids = new Set<number>();
+  const repos: ListedRepo[] = [];
   try {
     for (let page = 1; page <= REPO_ID_PAGES; page++) {
       const res = await pick(fetchImpl)(`${url}?per_page=${PER_PAGE}&page=${page}`, { headers: headers(auth), signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (!res.ok) {
         await res.body?.cancel().catch(() => undefined);
-        return missingIsEmpty && res.status === 404 && page === 1 ? { ok: true, ids } : { ok: false, reason: "failed" };
+        return missingIsEmpty && res.status === 404 && page === 1 ? { ok: true, ids, repos } : { ok: false, reason: "failed" };
       }
       const body = record(await res.json());
       const total = body.total_count;
       if (!Array.isArray(body.repositories) || typeof total !== "number" || !Number.isSafeInteger(total) || total < 0) return { ok: false, reason: "failed" };
       if (total > REPO_ID_PAGES * PER_PAGE) return { ok: false, reason: "too_many" }; // known from the first page: no point reading on
       for (const r of body.repositories) {
-        const id = record(r).id;
+        const row = record(r);
+        const id = row.id;
         if (typeof id !== "number" || !Number.isSafeInteger(id)) return { ok: false, reason: "failed" };
+        if (!ids.has(id) && typeof row.full_name === "string") repos.push({ id, full_name: row.full_name, private: row.private === true });
         ids.add(id);
       }
-      if (ids.size >= total) return ids.size === total ? { ok: true, ids } : { ok: false, reason: "failed" };
+      if (ids.size >= total) return ids.size === total ? { ok: true, ids, repos } : { ok: false, reason: "failed" };
       if (body.repositories.length < PER_PAGE) return { ok: false, reason: "failed" }; // a short page that is not the last
     }
   } catch {

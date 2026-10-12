@@ -53,7 +53,7 @@ const repo = (name: string, o: Partial<OrgRepoDTO> = {}): OrgRepoDTO => ({
   created_at: "2026-10-01T10:00:00.000Z", created_by: "ines", ...o,
 });
 const inst = (o: Partial<GithubInstallationDTO> = {}): GithubInstallationDTO => ({
-  installation_id: 5551234, account_login: "acme-gh", account_type: "Organization", repository_selection: "selected", connected_by: "ines",
+  installation_id: 5551234, account_login: "acme-gh", account_type: "Organization", repository_selection: "selected", repo_access: "all", connected_by: "ines",
   connected_at: "2026-10-05T10:00:00.000Z", suspended_at: null, last_used_at: null, last_error: null, manage_url: "https://github.com/organizations/acme-gh/settings/installations/5551234", ...o,
 });
 const gh = (o: Partial<GithubAppStatusDTO> = {}): GithubAppStatusDTO => ({ configured: true, installation: null, lost: null, mismatch: null, ...o });
