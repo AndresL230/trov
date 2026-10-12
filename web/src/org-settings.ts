@@ -34,6 +34,8 @@ import { segmented } from "./segmented";
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { personChip, handleTag } from "./people";
 import { confirmModal } from "./confirm";
+import { initialDeleteUi, orgDeleteModal, orgDeleteTile, type DeleteUi } from "./deletion";
+import type { OrgDeletionPreview } from "@shared/deletion-core";
 import { ROLE_MAX, RESPONSIBILITIES_MAX } from "@shared/people";
 import { ORG_NAME_MAX, INVITE_NAME_MAX, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, type MyOrg, type MyOrgsResponse, type OrgInvite, type OrgMember, type OrgRole, type OrgSettings } from "@shared/orgs";
 import type { IntegrationDTO, IntegrationKind, IntegrationsListDTO, OrgAuditDTO, OrgEnvironmentDTO, OrgRepoDTO } from "@shared/integrations";
@@ -151,6 +153,8 @@ export interface OrgUi {
   confirm: OrgConfirm | null;
   /** General › Plan's billing actions (org-plan.ts, org-billing-actions.ts). */
   billing: OrgBillingUi;
+  /** General › Delete organization (an owner's; deletion.ts, deletion-actions.ts). */
+  del: DeleteUi<OrgDeletionPreview>;
 }
 
 export function initialOrgUi(): OrgUi {
@@ -163,6 +167,7 @@ export function initialOrgUi(): OrgUi {
     github: idle(null), githubRepos: idle(null), githubNotice: null, githubFilter: "", githubBusy: null,
     envEdit: null, envBusy: false,
     secretForm: null, tests: {}, auditOpen: false, openRows: [], confirm: null, billing: initialOrgBillingUi(),
+    del: initialDeleteUi<OrgDeletionPreview>(),
   };
 }
 
@@ -283,6 +288,7 @@ export function generalTab(org: MyOrg, ui: OrgUi): string {
       <div class="cnpy-tile-foot" style="${O_HELP};margin-top:auto;padding-top:12px">The org's permanent address in links and in the API. It cannot be changed.</div>
     </section>
     ${planBlock(ui.plan, org.role, ui.billing)}
+    ${org.role === "owner" ? orgDeleteTile(org, ui.del) : ""}
   </div></div>`;
 }
 
@@ -811,6 +817,7 @@ export function orgOverlays(p: OrgSettingsProps): string {
     const i = ui.integrations.data?.integrations.find((x) => x.kind === f.kind && x.scope === f.scope);
     if (i) return menu + secretFormModal(i, f);
   }
+  if (ui.del.open && p.org.role === "owner") return menu + orgDeleteModal(ui.del);
   return menu;
 }
 

@@ -29,6 +29,8 @@ import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { releasesScreen, findRelease, type ReleasePage } from "./releases";
 import { supportDialog, initialSupport, type SupportDraft } from "./support";
+import { accountDeleteModal, accountDeleteTile, initialDeleteUi, type DeleteUi } from "./deletion";
+import type { AccountDeletionPreview } from "@shared/deletion-core";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { repoUrl } from "./github";
@@ -262,6 +264,8 @@ export interface AppState {
   handleEdit: boolean;
   handleDraft: string;
   handleCheck: "idle" | "checking" | "available" | "invalid" | "reserved" | "taken" | "same";
+  /** Settings › Delete account (deletion.ts, deletion-actions.ts): what it would do, and its confirmation. */
+  acctDelete: DeleteUi<AccountDeletionPreview>;
   // Email notifications (Settings) — the user's resolved prefs + the address edit form.
   notifPrefs: Loadable<PrefsView | null>;
   emailEditing: boolean;
@@ -503,6 +507,7 @@ export function initialState(): AppState {
     handleEdit: false,
     handleDraft: "",
     handleCheck: "idle",
+    acctDelete: initialDeleteUi<AccountDeletionPreview>(),
     notifPrefs: { status: "idle", data: null },
     emailEditing: false,
     emailDraft: "",
@@ -2388,6 +2393,8 @@ function settingsView(s: AppState): string {
 
     ${helpSection()}
 
+    ${accountDeleteTile(s.acctDelete)}
+
     ${sessionSection(s)}
 
   </div></div>`;
@@ -2797,6 +2804,7 @@ export function render(real: AppState): string {
     ${s.view !== "auth" && s.orgsUi.create ? createOrgModal(s.orgsUi.create) : ""}
     ${supportDialog(s.support)}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
+    ${s.view === "app" && s.screen === "settings" ? accountDeleteModal(s.acctDelete) : ""}
     ${s.view === "app" && s.screen === "settings" ? grantScopeDialog(s) : ""}
     ${s.view === "app" && s.screen === "settings" && s.dd.open ? dropdownMenu(grantDropdowns(s), s.dd) : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}

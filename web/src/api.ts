@@ -996,6 +996,24 @@ export function getPlatformUsage(days: number): Promise<PlatformUsageResponse> {
   return getJson<PlatformUsageResponse>(`/api/platform/usage?days=${days}`);
 }
 
+// ── deletion (shared/deletion-core.ts; src/deletion/; docs/architecture/organizations.md › What deletion
+// removes and what it keeps). Every one is a cookie route; a refusal is an `OrgApiError` whose `detail` is the
+// server's sentence (`blocked`, `billing_failed`, `billing_unavailable`, `confirm_mismatch`).
+import type { AccountDeletionPreview, OrgDeletionPreview } from "@shared/deletion-core";
+/** What deleting MY account would do, and what stands in the way. */
+export function getAccountDeletion(): Promise<AccountDeletionPreview> { return orgSend("GET", "/auth/me/deletion"); }
+/** Delete MY account (`confirm` = my handle, typed). The session cookie is cleared by the answer. */
+export function deleteMyAccount(confirm: string): Promise<{ ok: true }> { return orgSend("POST", "/auth/me/delete", { confirm }); }
+/** What deleting this organization would do (its owner). */
+export function getOrgDeletion(slug: string): Promise<OrgDeletionPreview> { return orgSend("GET", orgPath(slug, "/deletion")); }
+/** Delete this organization (its owner; `confirm` = its slug, typed). */
+export function deleteOrg(slug: string, confirm: string): Promise<{ ok: true; slug: string }> { return orgSend("POST", orgPath(slug, "/delete"), { confirm }); }
+/** Platform (a superadmin): the same, for any organization, and for a person's account by handle. */
+export function getPlatformOrgDeletion(slug: string): Promise<OrgDeletionPreview> { return orgSend("GET", `/api/platform/orgs/${encodeURIComponent(slug)}/deletion`); }
+export function deletePlatformOrg(slug: string, confirm: string): Promise<{ ok: true; slug: string }> { return orgSend("POST", `/api/platform/orgs/${encodeURIComponent(slug)}/delete`, { confirm }); }
+export function getPlatformPersonDeletion(handle: string): Promise<AccountDeletionPreview> { return orgSend("GET", `/api/platform/persons/${encodeURIComponent(handle)}/deletion`); }
+export function deletePlatformPerson(handle: string, confirm: string): Promise<{ ok: true; orgs_deleted: string[] }> { return orgSend("POST", `/api/platform/persons/${encodeURIComponent(handle)}/delete`, { confirm }); }
+
 // ── support reports (0049_support_reports; docs/architecture/support.md) ─────
 // Sending one is a PERSON's (`/api/support`, never an org's route — it works with no org at all);
 // reading them is the superadmin's (`/api/platform/support…`, 404 for anyone else).

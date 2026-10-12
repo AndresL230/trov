@@ -83,6 +83,7 @@ import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
+import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
 import { RELEASES } from "./releases";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
@@ -173,6 +174,16 @@ const supportCtl = createSupport({
   context: () => (state.view === "auth"
     ? { route: `${location.pathname}${location.hash}`, org: null, version: "", userAgent: navigator.userAgent }
     : { route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: RELEASES[0]?.version ?? "", userAgent: navigator.userAgent }),
+});
+
+// Deleting one's account (Settings) and an organization (Org settings › General, its owner) — web/src/deletion-actions.ts.
+// A success is a page load: everything this page holds belonged to what was deleted.
+const deletionCtl = createDeletion({
+  state, mount, rerender: () => rerender(), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+  leave: (href) => {
+    try { if (state.orgSlug && localStorage.getItem(LAST_ORG_KEY) === state.orgSlug) localStorage.removeItem(LAST_ORG_KEY); } catch { /* ignore */ }
+    location.replace(href);
+  },
 });
 
 // The dropdowns (web/src/dropdown.ts): opening, closing (with its exit), the keyboard, and
@@ -1080,6 +1091,7 @@ function loadSettingsReads(): void {
   loadNotifPrefsIfNeeded();
   orgCtl.loadPlan();
   void loadMyOrgs();
+  void deletionCtl.loadAccount(); // what Delete account would do, and anything in its way (deletion.ts)
 }
 /** Why a change to a connection's scope was refused, in words (the route answers with a code). */
 const GRANT_SCOPE_REFUSALS: Record<string, string> = {
@@ -3881,6 +3893,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
       // The support form, signed in or out: its controller repaints the dialog alone (support-actions.ts).
       if (act.startsWith("support")) { supportCtl.act(act, arg, value); return; }
+      // Deleting one's account or an organization (deletion-actions.ts) — before `org…` below.
+      if (act.startsWith("acctDel") || act.startsWith("orgDel")) { deletionCtl.act(act, arg, value); return; }
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
       // `orgs…` (the switcher, the picker, the create dialog) before `org…` (Org settings).
       if (act.startsWith("welcome")) { welcomeCtl.act(act, arg); return; }
@@ -4538,7 +4552,8 @@ document.addEventListener("keydown", (e) => {
   if (what === "confirm") dispatch(dlg.getAttribute("data-confirm-act") ?? "", arg, null);
   else if (what === "cancel") dispatch(dlg.getAttribute("data-confirm-cancel") ?? "", arg, null);
   else if (what === "trap") {
-    const items = Array.from(dlg.querySelectorAll<HTMLElement>("button:not([disabled])"));
+    // Its buttons, and a deletion's typed confirmation field (confirm.ts `typed`).
+    const items = Array.from(dlg.querySelectorAll<HTMLElement>("input:not([disabled]), button:not([disabled])"));
     if (!items.length) { dlg.focus(); return; }
     const at = items.indexOf(document.activeElement as HTMLElement);
     const next = at < 0 ? (e.shiftKey ? items.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length;
@@ -4672,6 +4687,11 @@ if (params.get("denied") === "1") {
       state.displayName = me.name ?? me.handle;
       // The Platform entry and its screens hang on this; `GET /api/orgs` confirms it.
       state.plat.superadmin = me.superadmin === true;
+      // Sent here by an organization's deletion (deletion-actions.ts): say it happened, once, wherever this lands.
+      if (params.get(DELETED_PARAM) === "org") {
+        history.replaceState(null, "", `${location.pathname}${location.hash}`);
+        flash(DELETED_SENTENCE.org, 6000);
+      }
       // Return-to after sign-in (see "signIn"): the stashed hash and org, once.
       let back: string | null = null, backOrg: string | null = null, last: string | null = null;
       try {
@@ -4722,6 +4742,11 @@ if (params.get("denied") === "1") {
         history.replaceState(null, "", `/${location.hash}`);
       }
       rerender();
+      // Sent here by deleting one's own account (deletion-actions.ts): signed out, on the site, told so once.
+      if (params.get(DELETED_PARAM) === "account") {
+        history.replaceState(null, "", "/");
+        flash(DELETED_SENTENCE.account, 8000);
+      }
       // Sent here by Contact in the footer of a static page (pricing, terms, privacy — site-chrome.ts
       // `CONTACT_HREF`): the Contact form opens over the landing page. Read once; it leaves the address bar.
       if (params.get("contact") === "1") {
