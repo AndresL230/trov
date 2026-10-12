@@ -104,6 +104,10 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
 - **Deferred:** the digest's ledger layout (`EMAIL_CARD.item`) has no avatar chips today, so a person's
   color does not appear in email yet. When a chip is added there, take the color from `persons.color`
   via the light hex set documented in §7 of the identity design doc.
+- **Deletion** (`organizations.md` §8): an organization's deletion removes its policy, settings, every member's
+  prefs for it and its outbox (with the dev-only bodies); an account's deletion removes that person's prefs in
+  every org and every outbox row addressed to them (and local/dev bodies sent to their addresses). Nothing is
+  mailed about either. A mail already delivered stays where it was delivered (and in Resend's logs).
 - Tests assert on outbox/bodies rows, never mocks (`test/notifications.*.test.ts`, `test/render.notifications.test.ts`).
 
 ## Who gets what — notification or transactional

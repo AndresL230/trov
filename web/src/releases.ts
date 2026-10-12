@@ -73,21 +73,20 @@ export const RELEASES: Release[] = [
   // The public site, readable by search engines, share cards and AI assistants: prerendered pages, robots.txt,
   // sitemap, canonical links, noindex on the app, a real 404; then public docs, llms.txt, Markdown versions and
   // errors an agent can act on. PR number not known yet: replace (#N) and add `prs`.
+  // Also: self-serve deletion — one's own account (Settings), an organization (its owner, Org settings), and both from Platform.
   {
     version: "Unreleased",
     date: "2026-10-12",
     unreleased: true,
-    title: "A site search engines and AI assistants can read",
-    headline: "The home page, pricing, terms, privacy and the new docs arrive with their words already on the page, each with its own title, description and share card, and a plain-text version for AI assistants.",
+    title: "Readable by search engines and agents, and yours to delete",
+    headline: "The public site and new docs arrive with their words on the page for search engines and AI assistants; Trov loads nothing from anyone else; and you can delete your account, or an owner an organization, without writing to us.",
     highlights: [
-      "The site's pages open with their words already there. The home page no longer shows \"Signing you in…\" to someone who is signed out, and its headline is on screen from the first moment.",
-      "A link to Trov shared in a chat or on social media shows a preview card: the page's title, a short description and an image.",
-      "Search engines can find and read the home page, pricing, terms and privacy, each under one address. Your organization's pages, sign-in and the API are kept out of search results.",
-      "An address that does not exist shows a Page not found page with a way back, instead of asking you to sign in.",
-      "In the dark theme the site opens dark, with no white flash first.",
+      "The site's pages open with their words already there, each under one address search engines can find, with a preview card when a link is shared. Your organization's pages, sign-in and the API stay out of search results.",
       "New public docs at trov.dev/docs: setting up, connecting Claude Code, Claude Desktop, Cursor, VS Code, Codex or Windsurf (with the config to copy), how Trov decides what is settled, every MCP tool, and the changelog. Each page is also plain Markdown, and trov.dev/llms.txt lists them for AI assistants.",
-      "The Unsubscribe link at the bottom of a Trov email works without signing in. It opens a page that says whose email it stops and what still arrives, and nothing changes until you press Unsubscribe.",
       "Trov no longer contacts anyone else when you open it: its typefaces and the diagram renderer come from trov.dev itself, not Google Fonts or a CDN. Text, links, status labels and form fields meet the WCAG AA contrast guidelines in both themes, and every button, link, menu item and field shows where keyboard focus is.",
+      "The Unsubscribe link at the bottom of a Trov email works without signing in. It opens a page that says whose email it stops and what still arrives, and nothing changes until you press Unsubscribe.",
+      "You can delete your account in Settings. Your sign-ins, sessions, agent connections, email settings, photo and support messages are deleted, and you are signed out everywhere. What you wrote in organizations that carry on stays for the people you worked with, credited to “Deleted user”.",
+      "An organization's owner can delete it in Org settings › General: everything in it goes, and if it pays for Pro the subscription is cancelled at Stripe right away, with no refund for time already paid. Trov's operators can delete an organization or an account from Platform, under the same rules, and each deletion is recorded.",
     ],
     headsUp: [
       "The home page's headline no longer fades in: it is there at once and settles into place.",
@@ -99,6 +98,13 @@ export const RELEASES: Release[] = [
       "The old in-app unsubscribe address now opens Settings and changes nothing. Before, opening it turned off email for whoever was signed in.",
       "Some colors are a little deeper so they are easier to read: quiet grey text, links, the green, amber, blue and red labels, and the purple banner in the light theme; quiet text and red in the dark theme. Text fields have a clearer edge.",
       "In the dark theme, the initials on a colored avatar and the label of a red Delete button are now dark rather than white.",
+      "The home page no longer shows \"Signing you in…\" to someone who is signed out.",
+      "An address that does not exist shows a Page not found page with a way back, instead of asking you to sign in.",
+      "In the dark theme the site opens dark, with no white flash first.",
+      "Before anything is deleted you type your handle or the organization's slug, and Trov tells you what is in the way first: being the only owner of a team that has other people in it, or paying for a team that carries on.",
+      "Signing in again with the same GitHub or Google account after deleting your account starts a new, empty account.",
+      "A deletion can't be undone. An organization nobody else is in is deleted together with your account, and the confirmation names it.",
+      "If you pay for a team that carries on, cancel its plan first (it stays Pro until the end of the period already paid), or ask us to move the billing to another owner.",
     ],
     ops: [
       "`wrangler.toml` `[assets]` gains `run_worker_first = [\"/\"]`: `/` is answered by the Worker (the prerendered landing, or the app shell with a session cookie). It ships with the Worker; nothing to run.",
@@ -109,6 +115,9 @@ export const RELEASES: Release[] = [
       "`shared/mcp-tools.generated.ts` is written by `npm run build:web` from the MCP server's own registrations; commit it whenever a tool changes (`test/mcp-catalog.test.ts` fails until you do). Nothing to run at deploy: the build regenerates it.",
       "New reserved paths: the docs live under `/docs/<page>` (`docs` was already a reserved slug); `/llms.txt`, `/llms-full.txt`, `/pricing.md` and `/docs/<page>.md` are static files.",
       "New dependency `mermaid` (exact `11.17.2`): `npm ci` picks it up; nothing to configure. New reserved organization slug `fonts`: before deploying, `npx wrangler d1 execute trov --remote --command \"SELECT slug FROM orgs WHERE slug = 'fonts'\"` must return nothing.",
+      "No migration, no new secret, no trigger. Deletion is live on merge.",
+      "Before relying on it: (1) check D1 Time Travel's retention in the Cloudflare dashboard — a deleted account or organization stays restorable from it until that window passes, and the Privacy Policy should say so; (2) a Time Travel restore across a deletion brings it back: re-apply the deletions it undid (`scripts/deletion-refs.mjs`, and `docs/architecture/organizations.md` › After a restore); (3) the Stripe webhook needs no change — the cancel a deletion makes sends `customer.subscription.deleted`, which Trov acknowledges and ignores.",
+      "The Terms and the Privacy Policy (`web/src/legal.ts`) still tell people to email for deletion and do not describe what is kept. They are for a later change: `docs/architecture/organizations.md` › What deletion removes and what it keeps is written to be turned into that text.",
     ],
     patches: {
       added: [
@@ -134,6 +143,13 @@ export const RELEASES: Release[] = [
         "The build writes the fonts and licenses at stable paths, `/fonts/<file>`, for the Worker's own pages (OAuth, billing notices); `fonts` joins `RESERVED_ORG_SLUGS` (#N)",
         "Tokens `--border-input`, `--focus`, `--red-fg`, `--p-ink`; `test/render.contrast.test.ts` computes every text / control token pair of both themes (text 4.5:1 on `--bg`, `--surface` and its own 12% chip; field edges and focus 3:1; the banner's text at its two light points) and fails under WCAG AA (#N)",
         "`test/render.focus.test.ts` (no `:focus` rule removes the outline; every ring is 2px in an allowed colour; fields are covered) and `test/render.fonts.test.ts` (no third party in any document, the preload, the faces, the licenses, mermaid pinned) (#N)",
+        "`src/deletion/`: ONE core per deletion. `org.ts` `deleteOrganization` — Stripe first (`src/billing/cancel.ts`: open Checkout Sessions expired, every live subscription cancelled with `DELETE /v1/subscriptions/:id`, Stripe's defaults: no proration, no final invoice), then one D1 batch with foreign keys deferred, then R2. `person.ts` `deleteAccount` — the guard rails, the orgs nobody else is in deleted with the account, then one batch: personal rows deleted and the handle rewritten to a `deleted-<random>` tombstone through `HANDLE_COLUMNS`",
+        "`src/deletion/tables.ts` `ORG_TABLES`: every table with an `org_id` column, deleted by `org_id`; a manual connection that can still reach another org moves there. `test/deletion.org.test.ts` fails when a migration adds an `org_id` table it does not list",
+        "`src/deletion/r2.ts` `sweepR2`: after the commit, an `artifacts/`, `doc-images/`, `org-logos/` or `avatars/` object is deleted only when no row anywhere (and no unexpired upload token) still points at its sha",
+        "Routes, cookie only, never MCP: `GET /auth/me/deletion`, `POST /auth/me/delete { confirm }`; `GET /api/o/:slug/deletion`, `POST /api/o/:slug/delete { confirm }` (owner only); `GET|POST /api/platform/orgs/:slug/deletion|delete`, `GET|POST /api/platform/persons/:handle/deletion|delete` (superadmin; never a superadmin's account or one's own)",
+        "Audit: `org.delete` (a platform row, the slug as target, the Stripe ids a refund would need) and `person.delete` (the tombstone as target, `ref` = a keyed hash of the old handle so a restored database can be matched); every org the person left gets `member.leave`. `scripts/deletion-refs.mjs` matches refs after a restore",
+        "Web: Settings › Delete account, Org settings › General › Delete organization (owners), Platform › an organization › Delete, Platform › Admins › Accounts (`web/src/deletion.ts`, `deletion-actions.ts`); `confirmModal` gains a typed confirmation field, `detail`, `error` and a wide box (`web/src/confirm.ts`); the landing says `?deleted=account|org` once",
+        "`shared/deletion-core.ts`: the previews' DTOs, the guard-rail codes and every sentence the screens use; `test/deletion.{org,account,platform}.test.ts`, `test/render.deletion.test.ts`",
       ],
       changed: [
         "`X-Robots-Tag: noindex` on every GET / HEAD the Worker answers but `/robots.txt`, `/sitemap.xml` and the landing, and on everything on a host other than `PUBLIC_ORIGIN`'s; `_headers` adds it to every static file on `*.workers.dev`, and to `/app` and `/404` (#N)",
@@ -153,6 +169,10 @@ export const RELEASES: Release[] = [
         "WCAG AA token values, hue kept: light `--fg-40` #8e8e98 → #70707a, `--accent` #5e6ad2 → #525cc3 (and `--accent-soft`), `--green` → #007545, `--amber` → #945800, `--blue` → #2467af, `--red` → #c22231, `--purple` → #804db7, `--p-moss` → #607a29, `--p-ochre` → #966800; dark `--fg-40` .40 → .52, `--red` #cc6262 → #df7372; the banner gradient one step deeper in both themes, its highlight .16 → .10 (light), its text ≥ 92% white. `src/auth/oauth-pages.ts` copies the light values (#N)",
         "Every text field's edge is `--border-input` and its focus a 2px `--focus` ring — one `!important` rule in `trov.css`, since the fields' borders and `outline:none` are inline; a borderless field inside a box colours the box (`:has`). Focus rings use `var(--focus)` (was the accent at 70%) (#N)",
         "The OAuth / billing pages' CSP is `font-src 'self'` (was Google Fonts); `scripts/og/render.mjs` inlines the vendored Geist and needs no network (the PNGs come out byte-identical) (#N)",
+        "`deleted-…` handles are reserved: no sign-up or rename can take one (`handleAvailable`)",
+        "The handoff sentence Trov writes into the feed (\"<sender> left a handoff for <recipient>\") names the tombstone once its person is deleted; text people typed is never rewritten",
+        "`stripeCall` takes `DELETE` (no idempotency key: Stripe ignores one there); the Stripe stand-ins (`scripts/dev/stripe-standin.mjs`, `test/helpers/billing.ts`) answer the cancel and the session expiry",
+        "CLAUDE.md invariant 11: accounts and organizations are hard-deleted, and only through `src/deletion/`",
       ],
       fixed: [
         "Search Console's \"Duplicate without user-selected canonical\" on `/`: the home page carries a canonical, and no other address serves its HTML — the app shell at `/<org>/`, `/platform` and `/billing/*` was `index.html`, byte-identical to `/`, with no canonical anywhere (#N)",

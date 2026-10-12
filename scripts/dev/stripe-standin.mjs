@@ -106,8 +106,24 @@ createServer(async (req, res) => {
     }
     let m = /^\/v1\/checkout\/sessions\/([^/]+)$/.exec(url.pathname);
     if (method === "GET" && m) return db.sessions[m[1]] ? json(res, 200, sessionJson(db.sessions[m[1]])) : notFound(res);
+    // A deletion (src/billing/cancel.ts): an open checkout is expired, a subscription ended NOW. No webhook is
+    // sent for either (Stripe's would find no row left in Trov and change nothing).
+    m = /^\/v1\/checkout\/sessions\/([^/]+)\/expire$/.exec(url.pathname);
+    if (method === "POST" && m) {
+      const s = db.sessions[m[1]];
+      if (!s) return notFound(res);
+      if (s.status !== "open") return json(res, 400, { error: { type: "invalid_request_error", message: "This Checkout Session is not open." } });
+      s.status = "expired"; save();
+      return json(res, 200, sessionJson(s));
+    }
     m = /^\/v1\/subscriptions\/([^/]+)$/.exec(url.pathname);
     if (method === "GET" && m) return db.subscriptions[m[1]] ? json(res, 200, subscriptionJson(db.subscriptions[m[1]])) : notFound(res);
+    if (method === "DELETE" && m) {
+      const sub = db.subscriptions[m[1]];
+      if (!sub) return notFound(res);
+      Object.assign(sub, { status: "canceled", cancel_at_period_end: false, cancel_at: null }); save();
+      return json(res, 200, subscriptionJson(sub));
+    }
     if (method === "POST" && url.pathname === "/v1/billing_portal/sessions") {
       const pid = id("bps");
       db.portals[pid] = {

@@ -809,6 +809,9 @@ input, select { font-family: inherit; }
 .cnpy-set-mcp { grid-column:1 / -1; grid-row:5; }
 /* Help (Contact support): a slim tile on a row of its own, after Email notifications. */
 .cnpy-set-help { grid-column:1 / -1; }
+/* Delete account (deletion.ts): a slim tile on a row of its own, after Help — and before Session in DOM
+   order, so Sign out stays last when the page folds. */
+.cnpy-set-delete { grid-column:1 / -1; }
 /* A Settings tile is a surface (class="cnpy-tile cnpy-surface"); this adds its padding, and
    a column flow so a tile keeps its content at the top — with `.cnpy-tile-foot` (Profile's
    color swatches, Account's closing line) at the bottom edge. */
@@ -1055,6 +1058,16 @@ input, select { font-family: inherit; }
   .cnpy-cmodal-btns > button { flex:1; padding-top:11px !important; padding-bottom:11px !important; }
 }
 @media (prefers-reduced-motion: reduce) { .cnpy-cmodal-back, .cnpy-cmodal-box, .cnpy-cmodal[data-closing] .cnpy-cmodal-back, .cnpy-cmodal[data-closing] .cnpy-cmodal-box { animation:none !important; } }
+/* The deletion confirmations (deletion.ts): wider, a list of what goes and what stays, and a TYPED field — the
+   handle or the slug — with a focus ring that shows (the field takes the focus on open). A tall one scrolls
+   inside the window rather than off it. */
+.cnpy-cmodal-box--wide { width:min(540px, 100%); max-height:calc(100dvh - 32px); overflow:auto; }
+.cnpy-cm-detail { margin-top:12px; font-size:12.5px; line-height:1.55; color:var(--fg-70); }
+.cnpy-cm-detail ul { margin:0; padding:0 0 0 18px; display:flex; flex-direction:column; gap:6px; }
+.cnpy-cm-detail strong { color:var(--fg); font-weight:600; }
+.cnpy-cm-typed { margin-top:14px; }
+.cnpy-cm-typed .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); outline:none; }
+.cnpy-del-blockers { margin:10px 0 0; padding:0 0 0 18px; display:flex; flex-direction:column; gap:6px; font-size:12.5px; line-height:1.5; color:var(--fg-70); }
 .cnpy-toast-act:hover { text-decoration:underline; text-underline-offset:3px; }
 .cnpy-rejectbtn:active { transform:translateY(1px); }
 .cnpy-issuechip { transition:border-color .12s ease, color .12s ease; }
@@ -1199,6 +1212,8 @@ input, select { font-family: inherit; }
 .cnpy-org-gen-plan { grid-column:8 / -1; grid-row:1; }
 .cnpy-org-gen-slug { grid-column:8 / -1; grid-row:2; }
 .cnpy-org-gen-limits { grid-column:1 / -1; }
+/* Delete organization (deletion.ts; owners only): the last tile, across the page. */
+.cnpy-org-gen-delete { grid-column:1 / -1; }
 .cnpy-org-gen .cnpy-org-field { max-width:600px; }
 .cnpy-org-gen-limits .cnpy-plan-rows { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); column-gap:32px; margin-top:0; }
 .cnpy-org-gen-limits .cnpy-plan-what { flex-basis:130px; }

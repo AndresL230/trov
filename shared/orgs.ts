@@ -89,6 +89,10 @@ export const ORG_AUDIT_ACTIONS = [
   // A person created a Free organization of their own (src/plans/free.ts): the row is also the guard that
   // keeps them to one owned Free org at a time.
   "org.create_free",
+  // Deletion (src/deletion/): an organization deleted by its owner or a superadmin — a PLATFORM row (org_id
+  // NULL, the org is gone), its slug as the target; a person's account deleted — the target is the tombstone
+  // handle their content now carries, never the handle they had.
+  "org.delete", "person.delete",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 

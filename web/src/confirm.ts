@@ -56,7 +56,25 @@ export interface ConfirmModalProps {
   /** `danger` (the default): the red, destructive confirm. `neutral`: the accent button, for an
    *  action that restores rather than removes. The keyboard contract is the same. */
   tone?: "danger" | "neutral";
+  /** Markup between the explanation and the buttons (what is deleted and what is kept). The CALLER
+   *  escapes it: it is inserted as is. */
+  detail?: string;
+  /** A TYPED confirmation (an irreversible deletion): a labelled field the person types `expected` into.
+   *  The destructive button stays disabled until it matches (case and surrounding spaces aside), and the
+   *  field — not the button — takes the focus on open, so Enter there confirms only a match (the caller's
+   *  confirm act re-checks). `act` receives every keystroke's value. */
+  typed?: { label: string; expected: string; value: string; act: string };
+  /** Why the last attempt failed, in a sentence (role="alert"), above the buttons. */
+  error?: string | null;
+  /** Wider than a one-line question: the deletion dialogs, which list what goes and what stays. */
+  wide?: boolean;
+  /** The confirm cannot go ahead whatever is typed (the `error` says why). */
+  confirmDisabled?: boolean;
 }
+
+/** Does the typed confirmation match? (shared/deletion-core.ts `confirms` says the same on the server.) */
+export const typedMatches = (t: { expected: string; value: string } | undefined): boolean =>
+  !t || t.value.trim().toLowerCase() === t.expected.toLowerCase();
 
 /** The modal: a root-level `data-overlay` — backdrop (a click cancels) + the centered dialog. */
 export function confirmModal(p: ConfirmModalProps): string {
@@ -64,15 +82,23 @@ export function confirmModal(p: ConfirmModalProps): string {
   const dis = p.busy ? " disabled" : "";
   const neutral = p.tone === "neutral";
   const go = neutral ? "background:var(--accent);color:var(--accent-fg)" : "background:var(--red);color:var(--red-fg)";
+  const t = p.typed;
+  const goDis = p.busy || p.confirmDisabled || !typedMatches(t) ? " disabled" : "";
+  const typedField = t ? `<div class="cnpy-cm-typed">
+          <label for="${attr(p.id)}-typed" style="display:block;font-size:12.5px;font-weight:500;line-height:1.45;color:var(--fg-70)">${esc(t.label)}</label>
+          <input id="${attr(p.id)}-typed" data-act="${attr(t.act)}" data-field="${attr(t.act)}" data-confirm-focus value="${attr(t.value)}"${p.busy ? " disabled" : ""} autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="${attr(p.id)}-d" class="cnpy-input" style="display:block;width:100%;box-sizing:border-box;height:36px;margin-top:6px;padding:0 11px;border:1px solid var(--border-input);border-radius:8px;background:var(--surface);color:var(--fg);font-size:13.5px;font-family:var(--code)" />
+        </div>` : "";
   return `<div data-overlay="confirm-${attr(p.id)}" data-confirm-layer data-confirm-tone="${neutral ? "neutral" : "danger"}" class="cnpy-cmodal">
     <div data-act="${attr(p.cancelAct)}"${argA} class="cnpy-cmodal-back" aria-hidden="true"></div>
     <div class="cnpy-cmodal-wrap">
-      <div id="${attr(p.id)}" role="alertdialog" aria-modal="true" aria-labelledby="${attr(p.id)}-t" aria-describedby="${attr(p.id)}-d" tabindex="-1" data-confirm-dialog data-confirm-act="${attr(p.confirmAct)}" data-confirm-cancel="${attr(p.cancelAct)}"${argA}${p.busy ? " data-busy" : ""} class="cnpy-surface cnpy-cmodal-box">
+      <div id="${attr(p.id)}" role="alertdialog" aria-modal="true" aria-labelledby="${attr(p.id)}-t" aria-describedby="${attr(p.id)}-d" tabindex="-1" data-confirm-dialog data-confirm-act="${attr(p.confirmAct)}" data-confirm-cancel="${attr(p.cancelAct)}"${argA}${p.busy ? " data-busy" : ""} class="cnpy-surface cnpy-cmodal-box${p.wide ? " cnpy-cmodal-box--wide" : ""}">
         <div id="${attr(p.id)}-t" style="font-size:16px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);line-height:1.35;overflow-wrap:anywhere">${esc(p.title)}</div>
-        <div id="${attr(p.id)}-d" style="font-size:13px;line-height:1.55;color:var(--fg-70);margin-top:7px">${esc(p.body)}</div>
+        <div id="${attr(p.id)}-d" style="font-size:13px;line-height:1.55;color:var(--fg-70);margin-top:7px">${esc(p.body)}</div>${p.detail ? `
+        <div class="cnpy-cm-detail">${p.detail}</div>` : ""}${typedField}${p.error ? `
+        <div role="alert" style="font-size:12.5px;line-height:1.5;color:var(--red);margin-top:12px">${esc(p.error)}</div>` : ""}
         <div class="cnpy-cmodal-btns" style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
           <button type="button" data-act="${attr(p.cancelAct)}"${argA} class="cnpy-outlinebtn"${dis} style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:500;color:var(--fg-70)">Cancel</button>
-          <button type="button" data-act="${attr(p.confirmAct)}"${argA} data-confirm-focus class="cnpy-confirm-go${neutral ? " cnpy-confirm-go--neutral" : ""}"${dis}${p.busy ? ' aria-busy="true"' : ""} style="padding:8px 16px;border-radius:8px;${go};font-size:13px;font-weight:600;white-space:nowrap">${esc(p.busy ? p.busyLabel ?? "Deleting…" : p.confirmLabel ?? "Delete")}</button>
+          <button type="button" data-act="${attr(p.confirmAct)}"${argA}${t ? "" : " data-confirm-focus"} class="cnpy-confirm-go${neutral ? " cnpy-confirm-go--neutral" : ""}"${goDis}${p.busy ? ' aria-busy="true"' : ""} style="padding:8px 16px;border-radius:8px;${go};font-size:13px;font-weight:600;white-space:nowrap">${esc(p.busy ? p.busyLabel ?? "Deleting…" : p.confirmLabel ?? "Delete")}</button>
         </div>
       </div>
     </div>

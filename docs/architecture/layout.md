@@ -152,6 +152,15 @@
   `src/platform/support.ts` + `support-routes.ts`, the operator's mail in `src/notifications/support.ts`, the
   dialog in `web/src/support.ts` + `support-actions.ts`, Platform › Support in `web/src/platform-support*.ts`;
   `POST /api/support` for any signed-in person, the public `POST /api/support/public` for the site's Contact form, `/api/platform/support…` for a superadmin): `docs/architecture/support.md`.
+  Deleting an account or an organization (no migration): `src/deletion/` — `org.ts` (the org's preview,
+  its Stripe settlement and the one D1 batch), `person.ts` (the account: guard rails, the tombstone handle
+  through `HANDLE_COLUMNS`, the person batch), `tables.ts` (`ORG_TABLES`, every `org_id` table — a test fails
+  on a new one left out), `r2.ts` (the content-addressed sweep after the commit); `src/billing/cancel.ts`
+  (cancel a subscription now / expire a checkout); the copy and DTOs in `shared/deletion-core.ts`; the
+  views in `web/src/deletion.ts` + `deletion-actions.ts`; `scripts/deletion-refs.mjs` re-finds deleted
+  people after a D1 restore. Routes: `/api/auth/me/deletion|delete`, `/api/orgs/:slug/deletion|delete`
+  (owner), `/api/platform/orgs/:slug/…` and `/api/platform/persons/:handle/…` (superadmin) —
+  `docs/architecture/organizations.md` §8.
   Sync GitHub as a recorded run (`0046_sync_runs`, `src/sync/runs.ts`, `GET /sync`, the panel's every sentence in
   `shared/sync.ts`): `docs/architecture/sync.md` — whether a sync can start is asked of the ONE GitHub credential
   source (`githubCredentialSource`, `src/github-app/credential.ts`), never of the token alone. The summarizer for an org is chosen ONLY by `orgSummarizers`

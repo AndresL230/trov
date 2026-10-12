@@ -106,6 +106,15 @@ const PLATFORM_ALLOW: Allow[] = [
   { file: "src/platform/repo.ts", fn: "listPlatformOrgs", tables: ["org_github_installations"], why: "the superadmin's org list: the GitHub account an org is connected through — a name, no token exists in the table" },
   // Removing a member revokes that person's tokens for the org in the same batch as the membership row.
   { file: "src/orgs/repo.ts", fn: "removeMember", tables: ["mcp_tokens", "oauth_grants", "oauth_grant_orgs"], why: "member removal ends the person's credentials' reach into that org, atomically: tokens revoked, each connection's row for the org dropped, a connection left with no org revoked" },
+  // Deleting an ACCOUNT (src/deletion/person.ts) is a person's act across every org they are in: their own
+  // credentials, connections, digests and e-mail preferences go wherever they are — keyed by the person, never by an org.
+  { file: "src/deletion/person.ts", fn: "personStmts", tables: ["oauth_grants", "oauth_codes", "oauth_grant_orgs", "mcp_tokens", "notification_outbox_bodies", "notification_outbox", "notification_prefs", "org_login_map", "feed", "feed_fts"],
+    why: "an account's deletion removes the person's OWN rows in every org, in one batch — by person, never reading an org's content; the handoff sentence Trov generated with their handle names the tombstone" },
+  { file: "src/deletion/person.ts", fn: "addressesOf", tables: ["org_login_map"], why: "the GitHub logins orgs attribute to the person being deleted, so the audit trail can be scrubbed of them — logins only" },
+  // R2 after a deletion (src/deletion/r2.ts): content-addressed objects are shared across orgs, so whether ANY
+  // row still points at an object is a cross-org yes/no — no content column is read.
+  { file: "src/deletion/r2.ts", fn: "stillReferenced", tables: ["artifact_versions", "artifact_upload_tokens", "doc_images", "doc_image_upload_tokens"],
+    why: "does any org's row (or an upload in flight) still reference this sha before its R2 object is deleted — a yes/no per sha" },
 ];
 
 /**
@@ -117,6 +126,10 @@ const INTERPOLATED_ALLOW: (Allow & { surface: Surface })[] = [
     why: "`tickets WHERE number` or `sprints WHERE id`, picked from a two-value literal — … = ? AND org_id = ?" },
   { file: "src/auth/persons.ts", fn: "renamePerson", surface: "platform",
     why: "the HANDLE_COLUMNS update: a rename MUST rewrite the handle in every org's rows (C-14)" },
+  { file: "src/deletion/person.ts", fn: "personStmts", surface: "platform",
+    why: "the HANDLE_COLUMNS update to a deleted account's tombstone: like a rename, it spans every org's rows" },
+  { file: "src/deletion/tables.ts", fn: "orgRowDeletes", surface: "tenant",
+    why: "`DELETE FROM ${t} WHERE org_id = ?` over ORG_TABLES (every org-keyed table, held to the schema by test/deletion.org.test.ts), bound from the org's own system context" },
 ];
 
 /** Rule 2 — upsert targets that cannot name the org. */

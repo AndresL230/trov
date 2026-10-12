@@ -371,6 +371,10 @@ migration.
 4. **Revoked / expired** — `POST /api/platform/grants/:id/revoke` for an unused one (409 `grant_used` after).
    `expires_in_days` is optional (1–365; the default is never); "expired" is derived, the row is not
    rewritten.
+5. **Deleted with what it became** (`organizations.md` §8) — deleting an organization deletes the grant it was
+   created from (`used_org`); deleting an account revokes every UNUSED grant addressed to the person (a paid
+   one's subscription is cancelled first) and rewrites every grant that named them to the tombstone, with no
+   login or address. A person who deletes their Free organization may create another (it no longer counts).
 
 Every step is in `org_admin_audit`: `grant.create`, `grant.revoke`, `grant.use`, and for an org's plan
 `plan.change`, `plan.overrides`, `plan.status`, `plan.gift`, `plan.gift_end`.
