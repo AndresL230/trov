@@ -24,6 +24,10 @@ import { hasRole, isSuperadmin, resolveSoleTenant, resolveTenant } from "../data
 import { consumeLegacyInvite } from "../data/legacy";
 import { listMyOrgs, listMyInvites } from "../orgs/repo";
 import { rateLimited } from "../platform/limits";
+import { cookieOnly } from "../orgs/routes";
+import { accountDeletionPreview, deleteAccount } from "../deletion/person";
+import { confirmMismatch, deletionRefusal } from "../deletion/org";
+import { confirms } from "@shared/deletion-core";
 
 export interface AuthDeps { fetchImpl?: typeof fetch; now?: () => number }
 export { callbackUrl }; // the transaction's own helpers live in ./tx.ts
@@ -261,6 +265,30 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
   authApp.post("/logout", async (c) => {
     const id = await readSessionCookie(c, c.env.COOKIE_SECRET);
     if (id) await deleteSession(c.var.p, id);
+    clearSessionCookie(c);
+    return c.json({ ok: true });
+  });
+  // ── Deleting one's own account (src/deletion/person.ts; docs/architecture/organizations.md › What deletion
+  // removes and what it keeps). A person's act — session cookie only, never a token's (invariant 2): the POST
+  // refuses a request carrying an Authorization header, and nothing reachable from src/mcp.ts imports the
+  // deletion core. The preview says what would happen and what stands in the way; the POST re-checks it.
+  authApp.get("/me/deletion", async (c) => {
+    const me = c.get("principal").handle;
+    const preview = await accountDeletionPreview(c.var.p, me, { by: "self", actor: me });
+    return preview ? c.json(preview, 200, { "cache-control": "no-store" }) : c.json({ error: "not_found" }, 404);
+  });
+  authApp.post("/me/delete", cookieOnly, async (c) => {
+    const me = c.get("principal").handle;
+    const b = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!confirms(b?.confirm, me)) return c.json(confirmMismatch("handle"), 400);
+    try {
+      await deleteAccount(c.env, c.var.p, me, { by: "self", actor: me }, f);
+    } catch (e) {
+      const refused = deletionRefusal(e);
+      if (refused) return c.json(refused.body, refused.status);
+      throw e;
+    }
+    // Every session of theirs is gone with the account; this browser's cookie goes too.
     clearSessionCookie(c);
     return c.json({ ok: true });
   });

@@ -89,6 +89,17 @@ describe("billing is not an agent's", () => {
   });
 });
 
+describe("deletion is a person's, never an agent's (invariant 2)", () => {
+  it("nothing reachable from src/mcp.ts imports the deletion core, the Stripe cancel, or a deletion route", () => {
+    const fromMcp = reachable("src/mcp.ts");
+    expect(SOURCES.has("src/deletion/person.ts") && SOURCES.has("src/deletion/org.ts")).toBe(true);
+    // The walker finds it from where it IS used: the HTTP app.
+    expect(reachable("src/routes.ts").has("src/deletion/person.ts")).toBe(true);
+    expect([...fromMcp].filter((f) => f.startsWith("src/deletion/") || f === "src/billing/cancel.ts")).toEqual([]);
+    for (const file of fromMcp) expect(SOURCES.get(file), file).not.toMatch(/\b(deleteAccount|deleteOrganization|cancelSubscriptionNow)\s*\(/);
+  });
+});
+
 describe("a bearer context", () => {
   it("cannot read a secret, whatever its role — neither the stored one nor the legacy fallback", async () => {
     await setSecret(await tenantCtx("AndresL230"), "github_token", "", "tok_0123456789abcdef0123456789abcdef");

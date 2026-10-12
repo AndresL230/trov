@@ -97,8 +97,24 @@ export class FakeStripe {
     }
     let m = /^\/v1\/checkout\/sessions\/([^/]+)$/.exec(c.path);
     if (c.method === "GET" && m) { const s = this.sessions.get(m[1]); return s ? Response.json(this.sessionJson(s)) : notFound(); }
+    // Expire an open session (a deletion: nobody pays for what is gone). Stripe refuses one that is not open.
+    m = /^\/v1\/checkout\/sessions\/([^/]+)\/expire$/.exec(c.path);
+    if (c.method === "POST" && m) {
+      const s = this.sessions.get(m[1]);
+      if (!s) return notFound();
+      if (s.status !== "open") return Response.json({ error: { type: "invalid_request_error", code: "checkout_session_not_open", message: "This Checkout Session is not open." } }, { status: 400 });
+      s.status = "expired";
+      return Response.json(this.sessionJson(s));
+    }
     m = /^\/v1\/subscriptions\/([^/]+)$/.exec(c.path);
     if (c.method === "GET" && m) { const s = this.subscriptions.get(m[1]); return s ? Response.json(this.subscriptionJson(s)) : notFound(); }
+    // Cancel NOW (no prorate, no invoice_now — Stripe's defaults): the subscription ends at once.
+    if (c.method === "DELETE" && m) {
+      const s = this.subscriptions.get(m[1]);
+      if (!s) return notFound();
+      Object.assign(s, { status: "canceled", cancel_at_period_end: false });
+      return Response.json(this.subscriptionJson(s));
+    }
     if (c.method === "POST" && c.path === "/v1/billing_portal/sessions") {
       this.portals.push({ customer: c.params.get("customer") ?? "", return_url: c.params.get("return_url") ?? "", flow: c.params });
       return Response.json({ id: `bps_${++this.n}`, object: "billing_portal.session", url: `https://billing.stripe.com/p/session/test_${this.n}` });

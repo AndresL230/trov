@@ -3,7 +3,8 @@
 // `orgs` is a global table; a function that acts inside one org also takes the caller's TenantContext.
 //
 // An image is the person photo's sibling (src/tools/people.ts): content-addressed and immutable, bytes
-// in R2 (`ARTIFACTS_BUCKET`) at `org-logos/<sha256>`, never deleted, checked by the SAME code
+// in R2 (`ARTIFACTS_BUCKET`) at `org-logos/<sha256>`, never deleted while an org shows it (the org's own
+// deletion frees it if no other org does: src/deletion/r2.ts), checked by the SAME code
 // (`checkedImage` — type allowlist, no SVG; the magic bytes; `AVATAR_MAX_BYTES`). `orgs.logo_sha` says
 // which one an org shows, `orgs.logo_source` where it came from:
 //   'upload'  an admin's or owner's (`setOrgLogo`); `logo_by` is who.

@@ -298,13 +298,16 @@ const TENANT: Record<string, Row> = {
   // ever made here, and the customer a session would be for is read from the PATH's org row, never from a body.
   "POST /billing/portal": { body: {}, allow: [503] },
   "POST /billing/upgrade": { body: { plan: "team" }, allow: [503] },
+  // src/orgs/routes.ts — deleting the organization in the PATH (src/deletion/org.ts): its owner only. The body
+  // names A's slug, so B's own owner is refused (400 confirm_mismatch) and B's member gets the 403; A is never touched.
+  "GET /deletion": {}, "POST /delete": J({ confirm: "saplinglearn" }),
 };
 
 /** The org surface (src/orgs, src/integrations) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under
  *  `/api/o/:slug`; every other tenant route also has an alias at its old path. The tokens' old paths are not twins of
  *  these — `/auth/mcp-token…` is person-level and resolves the caller's one org itself (PLATFORM, below). */
 const NO_ALIAS = (suffix: string): boolean =>
-  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens", "/billing", "/github"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
+  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens", "/billing", "/github", "/deletion", "/delete"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
 
 /** Old paths whose `/api/o/:slug` form is a DIFFERENT route (or none): behind `soleTenantGate`, exercised in their own test below. */
 const LEGACY_ONLY: Record<string, Row> = {
@@ -327,6 +330,8 @@ const PLATFORM: Record<string, string> = {
   "POST /auth/me/handle": "the caller's own handle",
   "POST /auth/identities/:provider/unlink": "the caller's own identities",
   "POST /auth/logout": "the caller's own session",
+  "GET /auth/me/deletion": "the caller's OWN account: what deleting it would do (their orgs by name and slug, the guard rails) — counts and names of orgs they are in, nothing else",
+  "POST /auth/me/delete": "deletes the caller's OWN account, cookie only, with their handle typed; every guard rail re-checked (test/deletion.account.test.ts)",
   "POST /auth/mcp-token": "cut-over alias of POST /api/o/:slug/mcp-tokens: resolves the caller's ONE org itself (409 org_required with none or several, 404 suspended)",
   "GET /auth/mcp-tokens": "cut-over alias: the caller's own tokens for their one org (same refusals)",
   "POST /auth/mcp-tokens/:id/revoke": "cut-over alias: the caller's own token for their one org — someone else's id, or their own for another org, is 404",
@@ -357,6 +362,9 @@ const PLATFORM: Record<string, string> = {
   "GET /api/platform/orgs": "requireSuperadmin", "POST /api/platform/orgs": "requireSuperadmin", "GET /api/platform/orgs/:slug": "requireSuperadmin",
   "POST /api/platform/orgs/:slug/admin": "requireSuperadmin", "POST /api/platform/orgs/:slug/suspend": "requireSuperadmin",
   "POST /api/platform/orgs/:slug/unsuspend": "requireSuperadmin",
+  // Deletion (src/deletion/): an org with no membership needed, an account with the guard rails (test/deletion.platform.test.ts).
+  "GET /api/platform/orgs/:slug/deletion": "requireSuperadmin", "POST /api/platform/orgs/:slug/delete": "requireSuperadmin",
+  "GET /api/platform/persons/:handle/deletion": "requireSuperadmin", "POST /api/platform/persons/:handle/delete": "requireSuperadmin",
   // Plans and grants (0044_plans, src/plans/routes.ts): registered on the same app, behind the same gate.
   "PUT /api/platform/orgs/:slug/plan": "requireSuperadmin",
   // 0048_plan_gifts: a gift's end moved, or the gift ended now (test/plans.gifts.test.ts holds the 404 for anyone else).
