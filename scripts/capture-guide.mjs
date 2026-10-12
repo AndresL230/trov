@@ -4,16 +4,26 @@
 // this one knows the guide's surface list and the framing each shot needs (a hash route,
 // a sub-page to open, a query to type, a section to scroll to).
 //
-//   1. seed + run the app:   npm run seed && npm run dev   (DEV_LOGIN=AndresL230 in .dev.vars)
-//   2. capture every figure:  node scripts/capture-guide.mjs  (first creates the sample
-//      artifacts in fixtures/dev/artifacts.json when the local store has none)
+// The figures are published, so they show the made-up Guide demo dataset (scripts/seed/guide-demo.mjs:
+// the team Maya Chen, Jonas Weber, Priya Raman, Tomás Ortega, Amina Yusuf and Kofi Mensah in the
+// organization "Mossgrove"), never the dev seed's people.
+//
+//   1. a migrated local D1:  npm run db:migrate:local
+//   2. the demo dataset:     node scripts/seed-dev.mjs --guide-demo
+//   3. .dev.vars:            COOKIE_SECRET=<any random string> and DEV_LOGIN=maya-chen
+//   4. run the app:          npm run dev   (or `npm run build:web` and `npx wrangler dev --port <p>`)
+//   5. capture every figure:  node scripts/capture-guide.mjs  (first creates the sample
+//      artifacts in fixtures/dev/artifacts.json when the local store has none; TROV_URL for
+//      another port, e.g. TROV_URL=http://127.0.0.1:8794)
+//
+// Then look at every image (no real name, no loading skeleton, the right theme) before committing.
 //
 // Writes web/public/guide/<name>-<theme>.png for each surface × theme (dark/light),
 // so the guide can show the variant matching the viewer's active theme. Override the target
 // dir with TROV_SHOT_DIR, the base URL with TROV_URL, or the theme list with
 // TROV_THEMES (comma-separated). `node scripts/capture-guide.mjs docs search` captures
 // only those figures.
-import { mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -40,15 +50,39 @@ async function forgeCookie() {
 
 const click = (page, sel) => page.locator(sel).first().click();
 
+// Playwright's own Chromium, else TROV_CHROMIUM, else the newest one under PLAYWRIGHT_BROWSERS_PATH
+// (as scripts/og/render.mjs does), so a Playwright newer than the installed browser still runs.
+async function launch() {
+  try {
+    return await chromium.launch(process.env.TROV_CHROMIUM ? { executablePath: process.env.TROV_CHROMIUM } : {});
+  } catch (err) {
+    const dir = process.env.PLAYWRIGHT_BROWSERS_PATH;
+    const found = dir && existsSync(dir)
+      ? readdirSync(dir).filter((d) => /^chromium-\d+$/.test(d)).sort().reverse()
+          .map((d) => join(dir, d, "chrome-linux", "chrome")).find((p) => existsSync(p))
+      : null;
+    if (!found) throw err;
+    return chromium.launch({ executablePath: found });
+  }
+}
+
+// My Work's Repo tile reads the same dashboard as the Repo screen. The demo org has no repository,
+// so switch that screen to its labelled sample set (as the repo figures below do) and come back.
+const sampleRepoThen = async (p, hash) => {
+  await click(p, "[data-act=repoSampleOn]");
+  await p.waitForLoadState("networkidle");
+  await p.waitForTimeout(400);
+  await p.evaluate((h) => { location.hash = h; }, hash);
+  await p.waitForLoadState("networkidle");
+};
+
 // Each figure: a name, the hash route to open, an optional step once it has loaded, and
 // how long to let async fetches + the entrance animation settle.
 const SHOTS = [
-  { name: "mywork", hash: "#mywork" },
-  // The Board is the queue's default view; the Table is the other.
-  { name: "tickets", hash: "#tickets",
-    step: (p) => click(p, '[data-act=navSub][data-arg="tickets:queue"]') },
-  { name: "board", hash: "#tickets",
-    step: (p) => click(p, '[data-act=navSub][data-arg="tickets:board"]') },
+  { name: "mywork", hash: "#repo", step: (p) => sampleRepoThen(p, "#mywork") },
+  // The Board is the queue's default view; the Table is the other (the header's Board / Table switch).
+  { name: "tickets", hash: "#tickets", step: (p) => click(p, "[data-act=queueTable]") },
+  { name: "board", hash: "#tickets", step: (p) => click(p, "[data-act=queueBoard]") },
   { name: "ticket", hash: "#tickets/3" },
   { name: "roadmap", hash: "#roadmap" },
   { name: "timeline", hash: "#roadmap/timeline" },
@@ -59,7 +93,7 @@ const SHOTS = [
   { name: "repo-usage", hash: "#repo/usage", step: (p) => click(p, "[data-act=repoSampleOn]") },
   { name: "handoffs", hash: "#handoffs" },
   { name: "feed", hash: "#feed" },
-  // Docs opens on the Technical space and auto-selects the first doc (sapling-architecture)
+  // Docs opens on the Technical space and auto-selects the first doc (mossgrove-architecture)
   // with its heading outline expanded and the "proposal awaiting review" banner.
   { name: "docs", hash: "#docs", settle: 1900 },
   // Artifacts come from fixtures/dev/artifacts.json via prepareArtifacts() below.
@@ -69,13 +103,18 @@ const SHOTS = [
     dress: (p) => p.evaluate(() => {
       const walk = document.createTreeWalker(document.querySelector("main") ?? document.body, NodeFilter.SHOW_TEXT);
       for (let n = walk.nextNode(); n; n = walk.nextNode()) {
-        n.nodeValue = n.nodeValue.replace(/(https?:\/\/)?localhost:\d+/g, "canopy.saplinglearn.com");
+        n.nodeValue = n.nodeValue.replace(/(https?:\/\/)?(localhost|127\.0\.0\.1):\d+/g, "trov.dev");
       }
     }) },
   { name: "prompts", hash: "#prompts" },
   // The sidebar box's "search everything" dropdown paints once typing PAUSES (1s).
-  { name: "quicksearch", hash: "#mywork", settle: 2400,
-    step: async (p) => { await p.locator("input.cnpy-search-in").first().click(); await p.keyboard.type("token", { delay: 60 }); } },
+  { name: "quicksearch", hash: "#repo", settle: 2400,
+    step: async (p) => {
+      await sampleRepoThen(p, "#mywork");
+      await p.waitForTimeout(1000);
+      await p.locator("input.cnpy-search-in").first().click();
+      await p.keyboard.type("token", { delay: 60 });
+    } },
   { name: "search", hash: "#search",
     step: async (p) => { await p.locator("input[data-act=setSearch]").first().fill("gate"); } },
   { name: "review", hash: "#review" },
@@ -115,11 +154,26 @@ async function prepareArtifacts(context) {
   await page.close();
 }
 
+// Chromium's PNG filters each row adaptively, which costs a flat UI about a quarter more bytes than no
+// filter at all. Re-encode LOSSLESSLY (same pixels, checked) with sharp — miniflare's own dependency,
+// so present wherever wrangler is — and keep Chromium's bytes if it is missing or the result is larger.
+let sharp = null;
+try { sharp = (await import("sharp")).default; } catch { /* keep Chromium's encoding */ }
+async function savePng(path, png) {
+  let out = png;
+  if (sharp) {
+    const smaller = await sharp(png).png({ compressionLevel: 9, adaptiveFiltering: false }).toBuffer();
+    const same = (await sharp(png).raw().toBuffer()).equals(await sharp(smaller).raw().toBuffer());
+    if (same && smaller.length < png.length) out = smaller;
+  }
+  writeFileSync(path, out);
+}
+
 const only = process.argv.slice(2);
 const shots = only.length ? SHOTS.filter((s) => only.includes(s.name)) : SHOTS;
 
 mkdirSync(OUT_DIR, { recursive: true });
-const browser = await chromium.launch();
+const browser = await launch();
 const cookie = await forgeCookie();
 {
   const context = await browser.newContext();
@@ -146,11 +200,13 @@ for (const theme of THEMES) {
     if (shot.step) {
       await shot.step(page);
       await page.waitForLoadState("networkidle");
+      // Park the pointer on the empty middle of the header bar, so nothing a step clicked stays hovered.
+      await page.mouse.move(700, 22);
     }
     await page.waitForTimeout(shot.settle ?? 1400);
     if (shot.dress) await shot.dress(page);
     const path = join(OUT_DIR, `${shot.name}-${theme}.png`);
-    await page.screenshot({ path });
+    await savePng(path, await page.screenshot());
     process.stdout.write(`${path}\n`);
     if (shot.after) await shot.after(page);
     await page.close();

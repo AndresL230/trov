@@ -138,7 +138,7 @@ describe("6 · private / pending / missing — byte-identical everywhere", () =>
     const org = await wf("/api/artifacts/orgpage", jsonInit("PATCH", { visibility: "private" }, other));
     expect(org.status).toBe(403);
     const body = await org.json() as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["error", "message"]);
+    expect(Object.keys(body).sort()).toEqual(["error", "hint", "message"]);
     expect(body.error).toBe("forbidden");
     for (const slug of [...HIDDEN, "missing"]) {
       const r = await wf(`/api/artifacts/${slug}`, jsonInit("PATCH", { visibility: "private" }, other));

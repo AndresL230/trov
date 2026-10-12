@@ -5,8 +5,10 @@ full developer notes for this repository are in `CLAUDE.md`.
 
 ## Connect
 
-Trov speaks MCP at `<origin>/mcp` with a personal bearer token (web app → Settings → *Get connection
-command*). Every write you make is recorded as the person who owns the token.
+Trov speaks MCP at `<origin>/mcp` (`https://trov.dev/mcp`), and a client connects by signing its person in
+through the browser (OAuth; a `trov_mcp_` token made before still works as a bearer header). Every write you
+make is recorded as that person. Setup for each client: https://trov.dev/docs/connect; every tool, its
+arguments and its errors: https://trov.dev/docs/mcp-tools (generated from `src/mcp.ts`).
 
 ## Use the trov skill
 

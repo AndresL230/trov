@@ -17,6 +17,14 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   session; anyone else → onboarding (a sealed 10-minute `onboard` cookie; the person row is created only on
   `POST /auth/onboard` with handle + color). Link mode (`?link=1` with a session) attaches a second provider in
   Settings; the last identity can't be unlinked.
+- **Consent at sign-up** (the compliance pass, 2026-10-12; words in `shared/legal-core.ts`): every place a
+  provider button can create an account says "By continuing you agree to the Terms of Service and Privacy
+  Policy, and confirm you are 16 or older" (`consentHtml`) — the landing's sign-in / Get started dialog, the
+  refused-Google card, the MCP OAuth sign-in page — and onboarding, where the person row IS created, has an
+  unchecked, required checkbox (`onbAgree`, `OnboardState.agreed`; never pre-ticked) that Continue waits for.
+  Editing an existing account from the welcome card asks nothing. The agreement is enforced in the SPA only:
+  `POST /auth/onboard` neither requires nor records it (recording the time and the Terms version is an owner's
+  decision). Age is 16+ (`MIN_AGE`), confirmed, never verified.
 - **Bearer token** (agents, `/mcp`): either a pasted per-person `trov_mcp_` token (stored hashed) or an
   OAuth access token (`trov_oat_`) obtained through Trov's own OAuth server (the prefixes minted before the
   rename, `canopy_mcp_` / `canopy_oat_`, still resolve) — both resolve to a
@@ -71,7 +79,11 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   | Account, then Appearance and MCP access at full width), and a phone is one column. `/mcp` is **bearer-only**; its `401` carries
   `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource"` (plus
   `error="invalid_token"` when a token was presented), which is how Claude Code and claude.ai discover
-  sign-in. A fresh `McpServer` is constructed per request
+  sign-in; its JSON body is `{ error: "unauthorized", hint }`, the hint saying how to sign in (the same words for
+  every refused token, so it tells nothing about one — `shared/error-hints.ts`, `web-ui.md` › Errors an agent can
+  act on). Which clients that serves, and their config, is the public `/docs/connect` (`web/src/docs-content.ts`):
+  the OAuth server takes only https and loopback-http redirects, so a client registering a custom scheme (an
+  older Cursor's `cursor://`) is refused at registration — say so there if that changes. A fresh `McpServer` is constructed per request
   (SDK ≥1.26 guards against reuse); `createMcpHandler` is stateless (no Durable Object / McpAgent).
 - **MCP OAuth** (`src/auth/oauth.ts` core, `oauth-routes.ts` HTTP, `oauth-pages.ts` pages; spec
   `docs/superpowers/specs/2026-09-24-mcp-oauth-design.md`; migration `0029_oauth`): RFC 9728/8414 metadata,
@@ -146,6 +158,15 @@ Every `recorded_by` / `created_by` / `user_id` is a handle. Migrated GitHub user
 overwritten by edits or promotions (`updated_by` is the last promoter) — listed in `HANDLE_COLUMNS`; there is no
 route to change it yet.
 
+**Deleting an account** (Settings › Delete account; `src/deletion/person.ts`; the whole rule, the guard rails
+and what is kept: `organizations.md` §8) reuses `HANDLE_COLUMNS`: the person's own rows — identities, sessions,
+MCP tokens, OAuth connections, notification prefs and outbox, memberships, attribution map, superadmin role —
+are deleted, and every other column holding the handle is rewritten to a TOMBSTONE, `deleted-<random>`, in one
+batch; the `persons` row itself becomes that tombstone ("Deleted user", no e-mail, photo or profile). So a new
+column holding a handle must be in `HANDLE_COLUMNS` for a rename AND a deletion to reach it. `deleted-…`
+handles are reserved (`handleAvailable` answers `reserved`), so no new person can take one. After a deletion,
+the same GitHub or Google account signs in as a NEW person (no identity, no verified address left to link on).
+
 ## People profiles — an avatar, a role, responsibilities (`0036_person_profiles`; contract `shared/people.ts`)
 
 Three nullable person fields, written directly (no gate, no staging) by `src/tools/people.ts`:
@@ -166,7 +187,8 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   sha256 via Web Crypto, bytes in R2 (`ARTIFACTS_BUCKET`) at `avatars/<sha256>` with R2's own sha256 check and the
   SNIFFED type as `httpMetadata.contentType` — skipped when that object already exists. Returns `{ ok, avatar_url }`.
   `POST /api/people/me/avatar/remove` only clears `avatar_sha` (returns the picture that now shows); the bytes are
-  immutable and never deleted, like doc images. There is no avatars table: the R2 object's metadata is the type.
+  immutable and stay, like doc images — until the account is DELETED, when they go if no other person's
+  `avatar_sha` is the same bytes (`src/deletion/r2.ts`). There is no avatars table: the R2 object's metadata is the type.
 - **Serving** `GET /avatar/<sha>` (session-gated, beside `/img/<sha>` and exactly like it): `nosniff`,
   `default-src 'none'; sandbox`, `Cache-Control: private, max-age=31536000, immutable`; 404 for a malformed sha,
   no object, or a stored type outside `AVATAR_TYPES`.

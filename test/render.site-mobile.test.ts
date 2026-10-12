@@ -115,7 +115,7 @@ describe("the site's menu — what the bar drops under 900px", () => {
   });
 
   it("the CSS: hidden on a wide screen, a card under the button on a tablet, the app's sheet on a phone, still under reduced motion", () => {
-    expect(block).toContain(".site-iconbtn.site-menubtn, .site-hero-tabs-ph, .site-legal-tocb, .site-foot-lic { display:none; }");
+    expect(block).toContain(".site-iconbtn.site-menubtn, .site-hero-tabs-ph, .site-legal-tocb { display:none; }");
     expect(block).toContain("@media (min-width:901px) { .site-menu { display:none; } }");
     const tablet = media("(max-width:900px)");
     expect(tablet).toContain(".site-nav-x { display:none; }");
@@ -141,7 +141,7 @@ describe("the phone block — nothing in it reaches a wide screen", () => {
     const top = topLevel(block);
     expect(top.length).toBeGreaterThan(20);
     for (const [prelude, body] of top) {
-      if (prelude === ".site-iconbtn.site-menubtn, .site-hero-tabs-ph, .site-legal-tocb, .site-foot-lic") { expect(body).toBe("display:none;"); continue; }
+      if (prelude === ".site-iconbtn.site-menubtn, .site-hero-tabs-ph, .site-legal-tocb") { expect(body).toBe("display:none;"); continue; }
       expect(prelude, `unguarded rule in the phone block: ${prelude}`).toMatch(allowed);
     }
   });
@@ -287,15 +287,16 @@ describe("pricing, the plugin card and the footer on a phone", () => {
     expect(touch).toContain(".site-fxcard:active::after { opacity:1; }");
   });
 
-  it("the footer: the wide line is unchanged; a phone drops its bare text, lists the links as 44px rows and says the licence after the copyright", () => {
+  it("the footer: one line of links (Source is the AGPL link), the business details last; a phone drops the bare separators and lists the links as 44px rows", () => {
     for (const html of [siteFooter(), siteFooter("dialog")]) {
-      expect(html).toContain(' · <a href="/pricing">Pricing</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · ');
-      expect(html).toContain('</a> · Licensed under AGPL-3.0</span>');
-      expect(html).toContain('<span>© 2026 TrovLabs, Inc.<span class="site-foot-lic"> · Licensed under AGPL-3.0</span></span>');
+      expect(html).toContain(' · <a href="/pricing">Pricing</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="/refunds">Refunds</a> · <a href="/source">Source (AGPL-3.0)</a> · ');
+      expect(html).toMatch(/<span class="site-foot-biz">© \d{4} TrovLabs, Inc\. · New Jersey<\/span>/);
+      // No bare text between the links but their separators: a phone's list drops those (font-size:0).
+      const line = /<span class="site-foot-links">([\s\S]*?)<\/span>\n/.exec(html)![1];
+      expect(line.replace(/<(a|button)\b[\s\S]*?<\/\1>/g, "").replace(/ · /g, "").trim()).toBe("");
     }
     expect(phone).toMatch(/\.site-foot-links \{ display:flex; flex-wrap:wrap;[^}]*font-size:0; \}/);
     expect(phone).toMatch(/\.site-foot-links > a, \.site-foot-links > button \{ flex:0 0 50%;[^}]*min-height:44px;/);
-    expect(phone).toContain(".site-foot-lic { display:inline; }");
     expect(phone).toMatch(/\.site-foot-r \{[^}]*text-align:left !important;/);
   });
 });

@@ -1,4 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { PRIVACY_PATH, SOURCE_PATH, TERMS_PATH } from "@shared/legal-core";
+import { SITE_ORIGIN } from "@shared/site-pages";
 import { createMcpHandler } from "agents/mcp";
 import { z } from "zod";
 import type { Env } from "./env";
@@ -45,8 +47,17 @@ import {
 } from "./tools/handoffs";
 import { listPrompts, getPrompt, recordPromptUse, savePrompt, PromptSaveInput, PromptError } from "./tools/prompts";
 import { detectVars, fillVars, firstLine, type HandoffView } from "@shared/handoffs";
+import { mcpErrorHint } from "@shared/error-hints";
 
 const asText = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }] });
+
+/** A tool error: `{ error, code?, …, hint }` as text, `isError: true`. EVERY tool error goes through here, so
+ *  each carries a `hint` — what went wrong and what to do next — chosen by its code alone
+ *  (shared/error-hints.ts): an unknown id and someone else's private one still read the same. */
+const toolError = (body: { error: string; code?: string } & Record<string, unknown>) => ({
+  content: [{ type: "text" as const, text: JSON.stringify({ ...body, hint: mcpErrorHint(body.code) }) }],
+  isError: true as const,
+});
 
 // Each MCP write tool is a one-item batch with an ephemeral session id, so it
 // funnels through the SAME reconciling gate as /ingest — no second write path.
@@ -69,10 +80,7 @@ async function runTool<T>(fn: () => Promise<T>, render: (value: T) => { content:
     // { error: "not_found", code: "not_found" } — the check is never an existence oracle.
     // A plan refusal (0044_plans, e.g. the org's artifact storage is full) reads `code: "plan_limit"`: no retry helps.
     const code = err instanceof TicketError || err instanceof PersonError || err instanceof SprintError || err instanceof ArtifactError || err instanceof HandoffError || err instanceof PromptError || err instanceof PlanLimitError || err instanceof PlanFeatureError ? err.code : undefined;
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify(code ? { error: message, code } : { error: message }) }],
-      isError: true as const,
-    };
+    return toolError(code ? { error: message, code } : { error: message });
   }
 }
 
@@ -198,7 +206,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
     async ({ id }) =>
       runTool(async () => {
         const ticket = await get_ticket(ctx, id);
-        if (!ticket) throw new Error(`no such ticket: ${id}`);
+        if (!ticket) throw new TicketError("not_found", `no such ticket: ${id}`);
         return { ...ticket, artifacts: await artifactsForTicket(ctx, id, principal.handle) };
       }),
   );
@@ -217,7 +225,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
     async ({ id }) =>
       runTool(async () => {
         const sprint = await get_sprint(ctx, id);
-        if (!sprint) throw new Error(`no such sprint: ${id}`);
+        if (!sprint) throw new SprintError("not_found", `no such sprint: ${id}`);
         return sprint;
       }),
   );
@@ -596,8 +604,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
       } catch (err) {
         if (err instanceof HandoffError) {
           const current = await getHandoff(ctx, id);
-          const body = { error: err.message, code: err.code, ...(current ? { status: current.status, claimed_by: current.claimed_by } : {}) };
-          return { content: [{ type: "text" as const, text: JSON.stringify(body) }], isError: true as const };
+          return toolError({ error: err.message, code: err.code, ...(current ? { status: current.status, claimed_by: current.claimed_by } : {}) });
         }
         return runTool(async () => { throw err; });
       }
@@ -699,10 +706,7 @@ const REPO_ARG = z.string().optional().describe(
 const ORG_ARG = z.string().optional().describe(
   "An organization's slug, to act there for THIS call only — one this connection is allowed to use (see get_connection). Omit it to act in the connection's organization.");
 
-const scopeError = (r: ScopeRefusal): ToolOutput => ({
-  content: [{ type: "text", text: JSON.stringify({ error: r.message, code: r.code, ...(r.orgs ? { orgs: r.orgs } : {}) }) }],
-  isError: true,
-});
+const scopeError = (r: ScopeRefusal): ToolOutput => toolError({ error: r.message, code: r.code, ...(r.orgs ? { orgs: r.orgs } : {}) });
 
 /** How a result names an organization. A pinned context knows only its id until asked. */
 async function orgLabel(o: OrgTenant): Promise<{ slug: string; name: string }> {
@@ -725,8 +729,16 @@ export interface McpServerOpts {
  * is listed when the person is an admin in ANY organization the connection can reach, and refused
  * (`forbidden`) on a call that resolves to one where they are not.
  */
+/** What the server tells a client when it connects (`initialize` → `instructions`): the authority model in
+ *  one line, and — AGPL-3.0 §13 — where the source of the running version is, with the terms it is used
+ *  under. Paths on the origin the client connected to (`/source` is the deployed commit: shared/legal-core.ts). */
+export function mcpInstructions(origin: string = SITE_ORIGIN): string {
+  return `Trov is a team's shared memory. You act as the person who connected you: what you write is recorded as theirs, and anything that becomes official (a doc change, a decision) is staged until a person approves it in the Trov web app. Trov is open source under AGPL-3.0: the source of this version is at ${origin}${SOURCE_PATH}. Use is under the Terms (${origin}${TERMS_PATH}) and the Privacy Policy (${origin}${PRIVACY_PATH}).`;
+}
+
 export function buildConnectionMcpServer(env: Env, conn: BearerConnection, opts: McpServerOpts = {}): McpServer {
-  const server = new McpServer({ name: "trov", version: "1.0.0" });
+  const origin = opts.origin ?? SITE_ORIGIN;
+  const server = new McpServer({ name: "trov", version: "1.0.0", websiteUrl: origin }, { instructions: mcpInstructions(origin) });
   const toolsFor = (o: OrgTenant) => orgTools(env, o.ctx, { origin: opts.origin, orgSlug: o.slug || undefined });
   const template = conn.orgs.find((o) => hasRole(o.ctx, "admin")) ?? conn.current ?? conn.orgs[0];
 
@@ -739,11 +751,11 @@ export function buildConnectionMcpServer(env: Env, conn: BearerConnection, opts:
       try {
         await admitCall(conn, target.org);
       } catch (err) {
-        if (err instanceof PlanLimitError) return { content: [{ type: "text" as const, text: JSON.stringify({ error: err.message, code: err.code }) }], isError: true as const };
+        if (err instanceof PlanLimitError) return toolError({ error: err.message, code: err.code });
         throw err;
       }
       const tool = toolsFor(target.org).get(name);
-      if (!tool) return { content: [{ type: "text" as const, text: JSON.stringify({ error: `${name} is for an organization's admins, and you are not one in "${target.org.slug}". Nothing was read or written.`, code: "forbidden" }) }], isError: true as const };
+      if (!tool) return toolError({ error: `${name} is for an organization's admins, and you are not one in "${target.org.slug}". Nothing was read or written.`, code: "forbidden" });
       opts.exec?.waitUntil(meterMcpTool(env, target.org.ctx, name));
       const { org: _org, repo, ...rest } = args;
       // Where `repo` is the tool's own argument, a connection that follows the repository hands it the

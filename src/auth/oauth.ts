@@ -17,6 +17,7 @@ import { requirePlan } from "../plans/gate";
 import { type PlatformContext, all, first, run, stmt, batch } from "../data/platform-sql";
 import { type TenantContext, first as tenantFirst, run as tenantRun } from "../data/sql";
 import { randomToken, sha256Hex, pkceChallenge } from "./crypto";
+import { MCP_INVALID_TOKEN_HINT, MCP_UNAUTHORIZED_HINT } from "@shared/error-hints";
 import type { OAuthGrantSummary } from "@shared/rows";
 
 export const ACCESS_PREFIX = "trov_oat_";
@@ -536,10 +537,11 @@ export async function pruneOAuth(p: PlatformContext, nowMs: number): Promise<voi
   ]);
 }
 
-/** /mcp's 401: tells an MCP client where to start OAuth (RFC 9728 §5.1). */
+/** /mcp's 401: tells an MCP client where to start OAuth (RFC 9728 §5.1), and an agent reading the body
+ *  what to do (`hint`, shared/error-hints.ts — the same words whether or not the token ever existed). */
 export function mcpUnauthorized(origin: string, invalidToken: boolean): Response {
   const meta = `${origin}/.well-known/oauth-protected-resource`;
-  return new Response(JSON.stringify({ error: "unauthorized" }), {
+  return new Response(JSON.stringify({ error: "unauthorized", hint: invalidToken ? MCP_INVALID_TOKEN_HINT : MCP_UNAUTHORIZED_HINT }), {
     status: 401,
     headers: {
       "content-type": "application/json",

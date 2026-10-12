@@ -64,6 +64,7 @@ import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX
 import { PERSON_COLORS, type PersonColor, type OAuthGrantSummary } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
+import { followSkipLink, syncPageBackground } from "./site-chrome";
 import { syncSkeletons } from "./skeleton";
 import { parsePreview, previewSearch, withPreview, PREVIEW_BLOCKED, type PreviewMode } from "./preview";
 import { setWriteBlock } from "./api";
@@ -83,6 +84,7 @@ import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
+import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
 import { RELEASES } from "./releases";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
@@ -173,6 +175,16 @@ const supportCtl = createSupport({
   context: () => (state.view === "auth"
     ? { route: `${location.pathname}${location.hash}`, org: null, version: "", userAgent: navigator.userAgent }
     : { route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: RELEASES[0]?.version ?? "", userAgent: navigator.userAgent }),
+});
+
+// Deleting one's account (Settings) and an organization (Org settings › General, its owner) — web/src/deletion-actions.ts.
+// A success is a page load: everything this page holds belonged to what was deleted.
+const deletionCtl = createDeletion({
+  state, mount, rerender: () => rerender(), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+  leave: (href) => {
+    try { if (state.orgSlug && localStorage.getItem(LAST_ORG_KEY) === state.orgSlug) localStorage.removeItem(LAST_ORG_KEY); } catch { /* ignore */ }
+    location.replace(href);
+  },
 });
 
 // The dropdowns (web/src/dropdown.ts): opening, closing (with its exit), the keyboard, and
@@ -372,6 +384,9 @@ function rerender(): void {
   qs.sync();   // the search dropdown lives outside the mount: re-anchor and re-theme it
   // The tab icon follows the app's resolved theme (a no-op until it changes).
   syncFavicon(resolvedTheme(), mount.querySelector("[data-cnpy-theme]"));
+  // The page behind the app (an overscroll, the instant before a paint) in the app's theme: the build's
+  // theme boot set it for the first paint (site-prerender.ts), and a theme change must not leave it behind.
+  syncPageBackground(document.documentElement, resolvedTheme());
   restoreScroll(mount, scroll, state.screen);
   markEnter();
   // Loading skeletons: keep each region's clock across this swap, and fade in what replaced one.
@@ -602,7 +617,6 @@ function loadForScreen(screen: Screen): void {
     case "repo": loadRepoIfNeeded(); break;
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
     case "settings": loadSettingsReads(); break;
-    case "unsubscribe": runUnsubscribe(); break;
     // Platform has one home, `/platform/` (the org menu links there): an old in-app `#platform…` link goes to it.
     case "platform": case "platformorg":
       if (state.view === "app") { location.replace(`${PLATFORM_PATH}${hashForRoute(currentRoute())}`); break; }
@@ -1080,6 +1094,7 @@ function loadSettingsReads(): void {
   loadNotifPrefsIfNeeded();
   orgCtl.loadPlan();
   void loadMyOrgs();
+  void deletionCtl.loadAccount(); // what Delete account would do, and anything in its way (deletion.ts)
 }
 /** Why a change to a connection's scope was refused, in words (the route answers with a code). */
 const GRANT_SCOPE_REFUSALS: Record<string, string> = {
@@ -1199,24 +1214,6 @@ function writeSettings(body: Parameters<typeof putNotificationSettings>[0], done
       rerender();
     });
 }
-/**
- * The #unsubscribe screen (the footer link's GET /u/<token> redirects here):
- * flips email_unsubscribed through the cookie-gated prefs route, then shows
- * the confirmation. A Settings "preview" shows the same screen without a flip.
- */
-function runUnsubscribe(): void {
-  if (state.unsub.preview) { rerender(); return; }
-  state.unsub = { pending: true, error: null, preview: false };
-  rerender();
-  putNotificationPrefs({ unsubscribed: true })
-    .then((data) => { state.notifPrefs = { status: "ok", data }; state.unsub = { pending: false, error: null, preview: false }; rerender(); })
-    .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-      state.unsub = { pending: false, error: e instanceof ApiError ? e.message : "Something went wrong.", preview: false };
-      rerender();
-    });
-}
-
 function loadDoc(slug: string): void {
   state.docDetail = { status: "loading", data: null };
   rerender();
@@ -2262,6 +2259,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "onbName": state.onboard.name = value ?? ""; rerender(); return;
+    // The Terms / Privacy / age checkbox (people.ts): ticked by the person, never by default.
+    case "onbAgree": state.onboard.agreed = value === "1"; rerender(); return;
     case "onbColor": if (arg && (PERSON_COLORS as readonly string[]).includes(arg)) state.onboard.color = arg as PersonColor; break;
     // Back from the welcome card to "how you'll appear": the account exists, so the card edits it.
     case "onbBack": {
@@ -2278,7 +2277,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     case "onbSubmit": {
       const o = state.onboard;
-      if (o.check !== "available" || o.submitting) return;
+      if (o.check !== "available" || o.submitting || (!o.edit && !o.agreed)) return;
       o.submitting = true; o.error = null; rerender();
       if (o.edit) {
         // Save what changed (the same writes Settings › Profile makes), then on to the welcome card.
@@ -3070,7 +3069,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       loadNeedsTriageIfNeeded();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3649,8 +3648,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       writePrefs({ unsubscribed: next }, next ? "Email is off" : "Email is back on");
       return;
     }
-    case "previewUnsub": state.unsub = { pending: false, error: null, preview: true }; state.screen = "unsubscribe"; break;
-    case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadSettingsReads(); return;
 
     // ── Org settings › Notifications (admin) ─────────────────────────────────
     case "policyToggle": {
@@ -3881,6 +3878,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
       // The support form, signed in or out: its controller repaints the dialog alone (support-actions.ts).
       if (act.startsWith("support")) { supportCtl.act(act, arg, value); return; }
+      // Deleting one's account or an organization (deletion-actions.ts) — before `org…` below.
+      if (act.startsWith("acctDel") || act.startsWith("orgDel")) { deletionCtl.act(act, arg, value); return; }
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
       // `orgs…` (the switcher, the picker, the create dialog) before `org…` (Org settings).
       if (act.startsWith("welcome")) { welcomeCtl.act(act, arg); return; }
@@ -4071,6 +4070,9 @@ document.addEventListener("keydown", (e) => {
 });
 
 mount.addEventListener("click", (e) => {
+  // The skip link (site-chrome.ts `skipLink`): focus the main content without writing the hash, which is
+  // the app's route and the sign-in return-to.
+  if (followSkipLink(e)) return;
   const target = e.target as Element;
   // Textareas carry data-act too (the description / comment drafts); clicking
   // into one must place the caret, not dispatch the act with a null value.
@@ -4347,6 +4349,8 @@ mount.addEventListener("keydown", (e) => {
 mount.addEventListener("input", (e) => {
   const el = e.target as HTMLElement;
   if ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && el.dataset.act) {
+    // A checkbox's value is whether it is ticked ("1" or ""), not its constant `value`.
+    if (el instanceof HTMLInputElement && el.type === "checkbox") { dispatch(el.dataset.act, el.dataset.arg ?? null, el.checked ? "1" : ""); return; }
     // The caret rides along: "ticketComment" needs it to decide whether the
     // cursor is inside an @mention token. Every other case ignores it.
     dispatch(el.dataset.act, el.dataset.arg ?? null, el.value, el.selectionStart);
@@ -4538,7 +4542,8 @@ document.addEventListener("keydown", (e) => {
   if (what === "confirm") dispatch(dlg.getAttribute("data-confirm-act") ?? "", arg, null);
   else if (what === "cancel") dispatch(dlg.getAttribute("data-confirm-cancel") ?? "", arg, null);
   else if (what === "trap") {
-    const items = Array.from(dlg.querySelectorAll<HTMLElement>("button:not([disabled])"));
+    // Its buttons, and a deletion's typed confirmation field (confirm.ts `typed`).
+    const items = Array.from(dlg.querySelectorAll<HTMLElement>("input:not([disabled]), button:not([disabled])"));
     if (!items.length) { dlg.focus(); return; }
     const at = items.indexOf(document.activeElement as HTMLElement);
     const next = at < 0 ? (e.shiftKey ? items.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length;
@@ -4602,6 +4607,21 @@ document.addEventListener("keydown", (e) => {
   state.signInOpen = false;
   rerender();
 });
+// …and Tab stays inside it (it is `aria-modal`): from the last stop — the consent's links — back to the
+// first, and the reverse, so a keyboard never wanders onto the page behind (the compliance pass's keyboard check).
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || !state.signInOpen || state.view !== "auth") return;
+  const dialog = document.querySelector<HTMLElement>('[data-overlay="signin"] [role="dialog"]');
+  if (!dialog) return;
+  const stops = [...dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => el.offsetParent !== null || el === document.activeElement);
+  if (!stops.length) return;
+  const first = stops[0], last = stops[stops.length - 1];
+  const at = document.activeElement as HTMLElement | null;
+  if (!at || !dialog.contains(at)) { e.preventDefault(); first.focus(); return; }
+  if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+});
 
 // The payment page (`/billing/checkout`, embedded checkout). Stripe.js is loaded from here and nowhere
 // else, and only when that page asks for it (stripe-js.ts).
@@ -4661,6 +4681,13 @@ if (params.get("denied") === "1") {
       history.replaceState(null, "", "/");
       rerender();
     });
+} else if (mount.querySelector(':scope > * > [data-morph="landing"]')) {
+  // The PRERENDERED landing page: the Worker sends it for `/` only to a request with no session cookie
+  // (src/site.ts — the app shell otherwise, and always with the local DEV_LOGIN), and the build made it
+  // from this very render (web/src/site-prerender.ts). So there is nobody to ask about: no "Signing you
+  // in…" card and no /auth/me, which could only answer unauthorized. This paint MORPHS the markup already
+  // on screen (`data-morph="landing"`, morph.ts): nothing is rebuilt or flashes, and the reveals play.
+  showSignedOut();
 } else {
   // Show "verifying" while we check if a session cookie exists
   state.view = "auth";
@@ -4672,6 +4699,11 @@ if (params.get("denied") === "1") {
       state.displayName = me.name ?? me.handle;
       // The Platform entry and its screens hang on this; `GET /api/orgs` confirms it.
       state.plat.superadmin = me.superadmin === true;
+      // Sent here by an organization's deletion (deletion-actions.ts): say it happened, once, wherever this lands.
+      if (params.get(DELETED_PARAM) === "org") {
+        history.replaceState(null, "", `${location.pathname}${location.hash}`);
+        flash(DELETED_SENTENCE.org, 6000);
+      }
       // Return-to after sign-in (see "signIn"): the stashed hash and org, once.
       let back: string | null = null, backOrg: string | null = null, last: string | null = null;
       try {
@@ -4710,23 +4742,30 @@ if (params.get("denied") === "1") {
       if (back && back !== location.hash) history.replaceState(null, "", `${location.pathname}${back}`);
       showPicker(land.lost);
     })
-    .catch(() => {
-      // Unauthorized or any error → show login
-      state.view = "auth";
-      state.authStep = "login";
-      // Sent here by the billing route (`/?start=team`: a signed-out buyer who has not picked a provider —
-      // the pricing page's "Choose Pro"): Get started opens on that plan, so the two provider buttons
-      // carry on to payment. The parameter is read once and leaves the address bar.
-      if (params.get("start") === "team") {
-        state.signInOpen = true; state.signInMode = "signup"; state.signInPlan = "team";
-        history.replaceState(null, "", `/${location.hash}`);
-      }
-      rerender();
-      // Sent here by Contact in the footer of a static page (pricing, terms, privacy — site-chrome.ts
-      // `CONTACT_HREF`): the Contact form opens over the landing page. Read once; it leaves the address bar.
-      if (params.get("contact") === "1") {
-        history.replaceState(null, "", `/${location.hash}`);
-        supportCtl.open("question");
-      }
-    });
+    .catch(() => showSignedOut()); // Unauthorized or any error → the landing page
+}
+
+/** Signed out: the landing page — with what a link to it asked for. */
+function showSignedOut(): void {
+  state.view = "auth";
+  state.authStep = "login";
+  // Sent here by the billing route (`/?start=team`: a signed-out buyer who has not picked a provider —
+  // the pricing page's "Choose Pro"): Get started opens on that plan, so the two provider buttons
+  // carry on to payment. The parameter is read once and leaves the address bar.
+  if (params.get("start") === "team") {
+    state.signInOpen = true; state.signInMode = "signup"; state.signInPlan = "team";
+    history.replaceState(null, "", `/${location.hash}`);
+  }
+  rerender();
+  // Sent here by deleting one's own account (deletion-actions.ts): signed out, on the site, told so once.
+  if (params.get(DELETED_PARAM) === "account") {
+    history.replaceState(null, "", "/");
+    flash(DELETED_SENTENCE.account, 8000);
+  }
+  // Sent here by Contact in the footer of a static page (pricing, terms, privacy — site-chrome.ts
+  // `CONTACT_HREF`): the Contact form opens over the landing page. Read once; it leaves the address bar.
+  if (params.get("contact") === "1") {
+    history.replaceState(null, "", `/${location.hash}`);
+    supportCtl.open("question");
+  }
 }

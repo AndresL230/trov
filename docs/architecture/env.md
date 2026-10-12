@@ -22,7 +22,7 @@ Integrations, envelope-encrypted under `TROV_KEK` (`data-layer.md` › Configura
 | Name | What it is | Missing → |
 |---|---|---|
 | `DB` | D1, database `trov`. Reached only through a context, inside `src/data/` (`data-layer.md`) | nothing works |
-| `ASSETS` | the static assets binding over `web/dist` (the SPA and the public pages) | no page is served |
+| `ASSETS` | the static assets binding over `web/dist` (the prerendered public pages, the app shell `app.html`, the scripts and images, and the generated `_redirects` / `_headers`). It serves a file BEFORE the Worker runs, except `/`, which `run_worker_first = ["/"]` sends to the Worker first (the landing or the app shell, `web-ui.md` › The public pages, for crawlers) | no page is served |
 | `ARTIFACTS_BUCKET` | R2, bucket `trov-artifacts`: binary artifact bodies at `artifacts/<sha256>`, doc images, and uploaded avatars and organization images (`avatars/<sha256>`, `org-logos/<sha256>`) — `artifacts.md` | **the bucket must exist before the first deploy that carries the binding** (`wrangler r2 bucket create trov-artifacts`), or the deploy fails |
 
 Capture-time summaries call Gemini over REST (`GEMINI_API_KEY`), never at render — not a Cloudflare binding,
@@ -37,7 +37,7 @@ so there is no `[ai]` block.
 | `GOOGLE_CLIENT_ID` | secret | the Google OAuth client id (the second sign-in provider) | `/auth/google/login` answers 503 |
 | `GOOGLE_CLIENT_SECRET` | secret | its client secret | the redirect still happens, the exchange fails and `/auth/google/callback` 401s `exchange_failed` |
 | `COOKIE_SECRET` | secret | the HMAC key for the session cookie, the sealed onboarding / OAuth-transaction cookies, the unsubscribe token (`/u/…`), artifact download links, and the hashed client address of a signed-out support report | no session can be made or read |
-| `DEV_LOGIN` | local only (`.dev.vars`) | bypasses OAuth and acts as this seeded user | — never set in production |
+| `DEV_LOGIN` | local only (`.dev.vars`) | bypasses OAuth and acts as this seeded user; with it set, `/` is the app shell, never the prerendered landing | — never set in production |
 
 ### The GitHub App (`github-app.md`)
 
@@ -54,7 +54,7 @@ so there is no `[ai]` block.
 |---|---|---|---|
 | `NOTIFICATIONS_MODE` | var | the delivery gate. `resend` (production) = mail is really sent, from the one platform address; `local` = rendered bodies go to a table and nothing is sent | absent reads as `local` |
 | `RESEND_API_KEY` | secret | the Resend API key | needed only in `resend` mode, where every send is then a configuration error — never a silent fallback to `local` |
-| `PUBLIC_ORIGIN` | var | the absolute origin for links Trov hands out: mail deep links and unsubscribe, MCP tool results (artifact and handoff URLs), webhook URLs shown in Org settings | a request-driven path uses the request's own origin; the digest cron, which has no request, writes relative links |
+| `PUBLIC_ORIGIN` | var | the absolute origin for links Trov hands out: mail deep links and unsubscribe, MCP tool results (artifact and handoff URLs), webhook URLs shown in Org settings. Its host is also the deployment's public host (`src/site.ts`): on any other host (a Preview) every Worker response is `noindex`, and `www.` / plain http on it are redirected there. The pages' canonical links and the sitemap use `SITE_ORIGIN` (`shared/site-pages.ts`), which a test pins to this value | a request-driven path uses the request's own origin; the digest cron, which has no request, writes relative links; the public host is `SITE_ORIGIN`'s |
 | `SUPPORT_NOTIFY_EMAIL` | var | where each bug report / support message is mailed — the operator's inbox; not a secret | empty or absent: the report is stored and shown in Platform › Support but NOT mailed (mail outcome `skipped`) |
 
 ### Summaries
@@ -81,6 +81,14 @@ so there is no `[ai]` block.
 | `STRIPE_TAX` | var | `on` → a checkout asks Stripe Tax to work out the tax and takes a billing address. Turn it on only after Stripe Tax is set up in the dashboard, or Stripe refuses the checkout | anything else: no tax lines |
 | `STRIPE_PUBLISHABLE_KEY` | var | Stripe's PUBLIC key (`pk_test_…` / `pk_live_…`), safe to send to the browser. Set, in the same mode as `STRIPE_SECRET_KEY` and with the real Stripe API, it turns on embedded checkout (`docs/architecture/billing.md` › Embedded checkout) | checkout goes to Stripe's hosted page, as before |
 | `STRIPE_TEST_API_BASE` | local / test only | a stand-in for Stripe's API, honoured ONLY for a loopback `http://` origin and never with a live key (`src/platform/loopback.ts`) | production: unset |
+
+### Build-time only (Workers Builds sets it; not a Worker var)
+
+`WORKERS_CI_COMMIT_SHA` — the commit Workers Builds is building. `web/site-build.ts` reads it (`process.env`, while
+`npm run build:web` runs) and writes `/source <github>/tree/<sha> 302` into `web/dist/_redirects`: the AGPL source
+link every surface uses (`shared/legal-core.ts` `SOURCE_PATH`; `web-ui.md` › Legal pages, consent and the source).
+Unset (a local build) → the rule points at the repository root. Anything that is not 7–40 hex characters is
+ignored. The Worker itself never reads it.
 
 ### Local development only
 

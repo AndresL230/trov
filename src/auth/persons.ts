@@ -2,6 +2,7 @@ import { type PlatformContext, first, all, run, stmt, batch, nowIso } from "../d
 import { type TenantContext, first as tenantFirst, all as tenantAll } from "../data/sql";
 import { PERSON_COLORS, type PersonColor, type PersonRow, type IdentityRow, type IdentityProvider } from "@shared/rows";
 import { avatarSrc, type PersonSummary } from "@shared/people";
+import { isTombstoneHandle } from "@shared/deletion-core";
 
 export const HANDLE_RE = /^[a-z][a-z0-9-]{1,23}$/;
 export const RESERVED_HANDLES: readonly string[] = ["github-webhook", "system", "admin", "canopy", "trov", "me"];
@@ -138,7 +139,9 @@ export async function soleTitle(p: PlatformContext, handle: string): Promise<str
 
 export async function handleAvailable(p: PlatformContext, handle: string): Promise<{ available: boolean; reason?: HandleProblem }> {
   if (!isValidHandle(handle)) return { available: false, reason: "invalid" };
-  if (RESERVED_HANDLES.includes(handle)) return { available: false, reason: "reserved" };
+  // `deleted-…` is a deleted account's tombstone (src/deletion/person.ts): never a new person's handle, so no
+  // one can take one and inherit the work it is credited with.
+  if (RESERVED_HANDLES.includes(handle) || isTombstoneHandle(handle)) return { available: false, reason: "reserved" };
   if (await getPerson(p, handle)) return { available: false, reason: "taken" };
   return { available: true };
 }

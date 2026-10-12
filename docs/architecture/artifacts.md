@@ -36,7 +36,9 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   version's `created_at` (a v1 published by PATCH never recorded when, so that is a lower bound).
 - **Delete is SOFT** (0035 PART D; `deletePage` / `restorePage` in `src/tools/artifacts.ts`):
   `POST /api/artifacts/:slug/delete` stamps `deleted_at` / `deleted_by` and drops the page's `artifacts_fts` row in
-  ONE batch — every version, every `artifact_links` row and the R2 bytes stay, so restore is lossless. Only the
+  ONE batch — every version, every `artifact_links` row and the R2 bytes stay, so restore is lossless. (Only
+  the deletion of the whole ORGANIZATION hard-deletes its artifacts, soft-deleted ones included, and frees their
+  bytes when no other org shares them: `organizations.md` §8.) Only the
   page's AUTHOR (case-insensitive) or an org ADMIN / owner, and only on a page they can SEE (an admin gets the plain
   404 on someone's private page); anyone else is 403 with nothing written. `VISIBLE_SQL` carries `p.deleted_at IS
   NULL`, so a deleted page is the ONE byte-identical not-found on EVERY surface — library, detail, diff, raw, MCP
@@ -83,6 +85,11 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   `Cache-Control: private`; html alone gets the injected `trov:height` postMessage script (never on
   `?download=1`). The SPA frames html as `<iframe src="/raw/…" sandbox="allow-scripts">` — never `srcdoc`, never
   `allow-same-origin` — and inlines svg ONLY through `sanitizeSvg` (DOMPurify, `web/src/markdown.ts`).
+  A mermaid page is drawn in the SPA itself (`renderPendingMermaid`, `securityLevel: "strict"`) by the `mermaid`
+  npm dependency, pinned to an EXACT version in `package.json` and loaded with a dynamic `import()`: Vite splits it
+  into its own chunks on Trov's origin, fetched the first time a diagram opens, never in the main bundle. No CDN
+  is contacted (it was `cdn.jsdelivr.net/npm/mermaid@11`, unpinned, before 2026-10). The raw CSP's cdnjs /
+  jsdelivr allowance above is for an HTML artifact's OWN scripts, inside the sandbox — not for mermaid.
 - **MCP** (every principal, `src/tools/artifacts-agent.ts`): `artifact_list`, `artifact_get` (text content inline
   up to `ARTIFACT_INLINE_MAX` = 64 KB — over it `content: null` + `content_omitted: true` unless
   `include_content: true`, and `query`'s assembled body is a one-line pointer instead; `warnings` still see
@@ -113,7 +120,10 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
 
 A doc embeds an image as `![alt](/img/<sha256>)`. `0031_doc_images`: one `doc_images` row per sha256 (png /
 jpeg / gif / webp, ≤ 10 MB), bytes in R2 (`ARTIFACTS_BUCKET`) at `doc-images/<sha256>` — immutable, never
-deleted, so a promoted version renders the same forever. The reference format and the body scan live ONCE
+deleted while any organization's row points at them, so a promoted version renders the same forever. The one
+thing that deletes bytes is an ORGANIZATION's deletion (`organizations.md` §8, `src/deletion/r2.ts`): after its
+rows are gone, each `doc-images/` and `artifacts/` object it pointed at is deleted unless another org's row (or an
+unexpired upload token) still points at the same sha — the objects are content-addressed and shared. The reference format and the body scan live ONCE
 in `shared/doc-images.ts` (`scanDocImages`, zod-free); the repository is `src/tools/doc-images.ts`.
 
 - **Upload is the artifact upload's twin, through ONE tool**: MCP `upload_asset` (was `artifact_create`)
@@ -131,4 +141,5 @@ in `shared/doc-images.ts` (`scanDocImages`, zod-free); the repository is `src/to
 - **Web**: `markdown.ts` `enhance()` wraps each `/img/` image in a `.cnpy-md-img` zoom button (`docImgZoom`
   → `web/src/lightbox.ts`, the lightbox the guide uses); Review's Rendered view (`renderedPreview`) shows a
   line's images outlined green (added) / red and dimmed (removed); unified and split diffs show the text.
-- There is no web upload yet (agents only, by decision) and no garbage collection.
+- There is no web upload yet (agents only, by decision) and no garbage collection — except an organization's
+  deletion, above.

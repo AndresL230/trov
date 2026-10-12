@@ -316,18 +316,22 @@ describe("the matrix covers the registry", () => {
   });
 });
 
+// Each matrix drives every tool through a real MCP client (~3.5s alone): the default 5s is too tight when
+// the machine is busy, so they say their own budget.
+const MATRIX_TIMEOUT = 20_000;
+
 describe("one person, two orgs, one token each", () => {
   it("dana's org-B token: every tool, given org A's ids, stays in B", async () => {
     await runMatrix(await ctxOf(FX[ORG_B].token), FX[ORG_B], FX[ORG_A], true);
-  });
+  }, MATRIX_TIMEOUT);
 
   it("dana's org-A token: every tool, given org B's ids, stays in A", async () => {
     await runMatrix(await ctxOf(FX[ORG_A].token), FX[ORG_A], FX[ORG_B], true);
-  });
+  }, MATRIX_TIMEOUT);
 
   it("bob, a member of B only: every tool, given org A's ids, stays in B", async () => {
     await runMatrix(await ctxOf((await mintTokenFor("bob", ORG_B)).raw), FX[ORG_B], FX[ORG_A], false);
-  });
+  }, MATRIX_TIMEOUT);
 
   it("list_people, get_my_work and query answer for the token's org and no other", async () => {
     for (const org of [ORG_A, ORG_B] as const) {

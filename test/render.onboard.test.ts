@@ -12,7 +12,9 @@ describe("onboardView", () => {
     expect(html).toContain("@priya-n");
     expect(html).toContain('data-act="onbSubmit"');
     expect(html).toMatch(/data-act="onbSubmit"[^>]*disabled/);
-    const ok = onboardView({ ...s, check: "available" });
+    // An available handle is not enough: the Terms / Privacy / age box must be ticked first (never pre-ticked).
+    expect(onboardView({ ...s, check: "available" })).toMatch(/data-act="onbSubmit"[^>]*disabled/);
+    const ok = onboardView({ ...s, check: "available", agreed: true });
     expect(ok).not.toMatch(/data-act="onbSubmit"[^>]*disabled/);
     expect(ok).toContain("available");
     expect(onboardView({ ...s, check: "taken" })).toContain("taken");

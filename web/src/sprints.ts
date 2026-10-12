@@ -258,8 +258,8 @@ export function newSprintPanel(s: NewSprintState, persons: PersonSummary[]): str
   return `<div${surface("padding:18px 20px;margin:14px 0 6px")}>
     <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:end">
       <div style="min-width:0">
-        <label style="${NS_LABEL}">Sprint name</label>
-        <input data-act="nsField" data-arg="name" data-field="ns-name" value="${attr(s.name)}" placeholder="Sprint 14" style="${NS_INPUT}" />
+        <label for="ns-name" style="${NS_LABEL}">Sprint name</label>
+        <input id="ns-name" data-act="nsField" data-arg="name" data-field="ns-name" value="${attr(s.name)}" placeholder="Sprint 14" style="${NS_INPUT}" />
       </div>
       <div>
         <label style="${NS_LABEL}">Urgency</label>
@@ -277,8 +277,8 @@ export function newSprintPanel(s: NewSprintState, persons: PersonSummary[]): str
       </div>
     </div>
     <div id="ns-date-error" data-ns-error role="alert" style="font-size:12px;color:var(--red);margin-top:7px${s.error ? "" : ";display:none"}">${esc(s.error ?? "")}</div>
-    <label style="${NS_LABEL};margin:15px 0 7px">Goal <span style="font-weight:400;color:var(--fg-40)">— what this sprint is for</span></label>
-    <input data-act="nsField" data-arg="desc" data-field="ns-desc" value="${attr(s.desc)}" placeholder="One sentence describing the sprint's goal" style="${NS_INPUT}" />
+    <label for="ns-desc" style="${NS_LABEL};margin:15px 0 7px">Goal <span style="font-weight:400;color:var(--fg-40)">— what this sprint is for</span></label>
+    <input id="ns-desc" data-act="nsField" data-arg="desc" data-field="ns-desc" value="${attr(s.desc)}" placeholder="One sentence describing the sprint's goal" style="${NS_INPUT}" />
     <label style="${NS_LABEL};margin:15px 0 7px">Lead</label>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${leadChips}</div>
     <label style="${NS_LABEL};margin:15px 0 7px">Codebase domain</label>
@@ -399,7 +399,7 @@ function deleteBlock(sp: SprintDetail, armed: boolean): string {
   return `<div style="margin-top:28px;padding-top:14px;border-top:1px solid var(--border)">
     <div style="font-size:12px;line-height:1.5;color:var(--fg-70);margin-bottom:10px">Delete <strong style="color:var(--fg);font-weight:600">${esc(sp.label)}</strong> for good? ${fate}</div>
     <div style="display:flex;gap:7px">
-      <button data-act="sprintDelete" style="padding:5px 12px;border-radius:7px;background:var(--red);color:#fff;font-size:12px;font-weight:600">Delete</button>
+      <button data-act="sprintDelete" style="padding:5px 12px;border-radius:7px;background:var(--red);color:var(--red-fg);font-size:12px;font-weight:600">Delete</button>
       <button data-act="sprintDeleteCancel" class="cnpy-outlinebtn" style="padding:5px 12px;border-radius:7px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg-70)">Cancel</button>
     </div>
   </div>`;

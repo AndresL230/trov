@@ -11,7 +11,7 @@
 import type { Env } from "../env";
 import { type PlatformContext, nowIso } from "../data/platform-sql";
 import { escapeHtml } from "./html";
-import { EMAIL_COLORS as C, EMAIL_FONT, FONTS_HREF, EMAIL_STYLE, EMAIL_SPACE as SP, emailBanner, emailCardOpen, EMAIL_CARD_CLOSE, EMAIL_MOBILE_CSS } from "./assemble";
+import { EMAIL_COLORS as C, EMAIL_FONT, EMAIL_STYLE, EMAIL_SPACE as SP, emailHead, emailBanner, emailFooter, emailCardOpen, EMAIL_CARD_CLOSE } from "./assemble";
 import { platformDeliveryFor } from "./resend";
 import { scrubbedMessage } from "../repo/github";
 import { recordReportMail } from "../platform/support";
@@ -64,7 +64,7 @@ export function renderSupportEmail(o: SupportEmailInput): { subject: string; htm
     ? `Reply to this email to answer ${escapeHtml(whoShort)} at <span style="${EMAIL_FONT.sans}font-weight:500;color:${C.fg70};">${escapeHtml(replyTo)}</span>${anon ? " — an address typed into the public form, which nobody verified" : ""}.`
     : `No provider-verified address is on file for ${escapeHtml(whoShort)}, so a reply to this email reaches nobody.`;
   const html =
-    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(subject)}</title><link href="${FONTS_HREF}" rel="stylesheet"><style>${EMAIL_MOBILE_CSS}</style></head>` +
+    emailHead(subject) +
     `<body style="margin:0;padding:0;background-color:${C.ground};">` +
     `<table ${EMAIL_STYLE.table} style="background-color:${C.ground};"><tr><td align="center" class="tm-pad" style="padding:36px 16px;">` +
     emailCardOpen() +
@@ -76,7 +76,7 @@ export function renderSupportEmail(o: SupportEmailInput): { subject: string; htm
     `</td></tr></table>` +
     `<div style="text-align:center;padding:${SP.s}px 0 ${SP.l}px 0;"><a href="${escapeHtml(o.reportUrl)}" style="${button}">Open in Platform</a></div>` +
     `<div style="${EMAIL_FONT.sans}font-size:12.5px;line-height:20px;color:${C.fg55};padding-bottom:24px;">${reply}</div></td></tr>` +
-    `<tr><td style="padding:16px 28px;border-top:1px solid ${C.border};${EMAIL_FONT.sans}font-size:12px;line-height:20px;color:${C.fg40};">Sent by Trov &middot; ${escapeHtml(o.host)}</td></tr>` +
+    emailFooter({ host: o.host }) +
     EMAIL_CARD_CLOSE + `</td></tr></table></body></html>`;
   const text = [
     subject, "=".repeat(Math.min(subject.length, 72)), "",

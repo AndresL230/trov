@@ -158,3 +158,17 @@ export function paint(mount: HTMLElement, html: string): void {
   }
   mount.innerHTML = html;
 }
+
+/** A static page's paint (pricing-page.ts, legal-page.ts): `html` is one root element. The first paint
+ *  lands on the markup the build PRERENDERED there (site-prerender.ts), so it is patched in place — never
+ *  wiped and rebuilt — once the build's theme boot (an inline script, the root's first child) is gone. A
+ *  later paint (the theme toggle) patches too. */
+export function paintRoot(mount: HTMLElement, html: string): void {
+  const live = mount.firstElementChild;
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  const next = tpl.content.firstElementChild;
+  if (!live || !next || live.nodeName !== next.nodeName) { mount.innerHTML = html; return; }
+  live.querySelector(":scope > script")?.remove();
+  morph(live, next);
+}

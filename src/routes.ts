@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { inspectRoutes } from "hono/dev";
+import { TrieRouter } from "hono/router/trie-router";
 import type { Context } from "hono";
 import { z } from "zod";
 import { IngestPayload, QueryType } from "@shared/contract";
@@ -1152,3 +1154,18 @@ app.route("/api/o/:org", tenantApi);
 app.route("/", tenantRoot);
 app.route("/api", tenantApi);
 app.route("/", legacyOnly);
+
+// ── Does any route answer this address? (src/index.ts, before the session gate) ──
+// An address no route of this app answers is a 404 for everyone (src/site.ts `notFound`), never the
+// session gate's 401: a crawler, or a mistyped link, meets "Page not found" instead of "unauthorized".
+// A REAL cookie route still answers 401 signed out — the SPA relies on that — because it is matched here.
+// Matched by method (HEAD as GET) and path, against every handler; the `use()` middleware (the gates,
+// `cookieOnly`, the raw headers) is not a route, so its wildcards do not make every path "known".
+let knownRoutes: TrieRouter<true> | null = null;
+export function isAppRoute(method: string, path: string): boolean {
+  if (!knownRoutes) {
+    knownRoutes = new TrieRouter<true>();
+    for (const r of inspectRoutes(app)) if (r.method !== "ALL" || !r.isMiddleware) knownRoutes.add(r.method, r.path, true);
+  }
+  return knownRoutes.match(method === "HEAD" ? "GET" : method, path)[0].length > 0;
+}

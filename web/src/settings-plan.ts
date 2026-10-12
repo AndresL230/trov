@@ -14,7 +14,7 @@ import { PRICING, canPurchasePlan, formatPrice } from "@shared/pricing";
 import type { MyOrg, MyOrgsResponse, OrgRole } from "@shared/orgs";
 import { attr, esc } from "./ui";
 import { O_ERR, chip, goLink, quietBtn, type OrgSlice } from "./org-ui";
-import { planParts, initialOrgBillingUi, type OrgBillingUi } from "./org-plan";
+import { planParts, initialOrgBillingUi, upgradeLine, type OrgBillingUi } from "./org-plan";
 import { FREE_TAKEN_SENTENCE } from "./org-picker";
 import { orgHref } from "./org-context";
 import { orgTile } from "./org-logo";
@@ -26,7 +26,7 @@ const NOTE = "font-size:12.5px;line-height:1.55;color:var(--fg-55)";
 const FINE = "font-size:11.5px;line-height:1.5;color:var(--fg-40)";
 const ROLE_WORD: Record<OrgRole, string> = { owner: "Owner", admin: "Admin", member: "Member" };
 
-/** The public pricing page (web/pricing.html) — a static page, so it opens beside the app. */
+/** The public pricing page (/pricing, a page of shared/site-pages.ts) — a static page, so it opens beside the app. */
 export const PRICING_HREF = "/pricing";
 
 export interface SettingsPlanProps {
@@ -89,11 +89,12 @@ export function settingsPlanTile(p: SettingsPlanProps): string {
   const role = p.org.role;
   const parts = planParts(v, role, b);
   const price = planPriceWords(v);
-  const upsell = upgradePriceWords(v);
+  // A Free org's line already says the price and its own seat math (`upgradeLine`): no second price.
+  const upsell = parts.state === "free" ? "" : upgradePriceWords(v);
   // A Free org that never paid: the Plan block's sentence points at the limits "below" it, and here
   // they are in the tile beside this one — so this tile says the same thing without the direction.
   const pro = PLANS[UPGRADE_PLAN].name;
-  const line = parts.state === "free" ? `${pro} is paid per seat: one for each member or pending invitation. It raises every limit.` : parts.line;
+  const line = parts.state === "free" ? `${upgradeLine(v)} It raises every limit.` : parts.line;
   // Not an owner: no buttons — who changes it (the Plan block's own sentence), and the way there.
   const where = goLink(role === "owner" ? "Plan and limits in Org settings" : "Org settings", "orgGo", "general");
   return `${open} data-set-plan="${v.plan}" data-set-role="${role}"${parts.state ? ` data-set-billing="${parts.state}"` : ""}>
@@ -108,6 +109,7 @@ export function settingsPlanTile(p: SettingsPlanProps): string {
     ${parts.gift}
     ${line ? `<p data-plan-billing style="margin:8px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-70)">${esc(line)}${upsell ? ` <span data-plan-upsell>${esc(upsell)}</span>` : ""}</p>` : upsell ? `<p data-plan-upsell style="margin:8px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-70)">${esc(upsell)}</p>` : ""}
     ${parts.actions ? `<div class="cnpy-plan-actions" data-plan-actions>${parts.actions}</div>` : ""}
+    ${parts.terms}
     ${parts.actions && b.error ? `<div role="alert" style="${O_ERR}">${esc(b.error)}</div>` : ""}
     <div class="cnpy-set-planfoot">
       <span data-plan-foot style="${FINE}">${esc(parts.foot)}</span>

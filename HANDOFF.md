@@ -134,6 +134,16 @@ Cloudflare cron weekdays are 1–7 or SUN–SAT, never 0. `REPO_CRON` in `src/re
    `docs/architecture/github-app.md` › Verify after deploy; for billing, `billing.md` › Owner checklist.
 7. The Worker's logs in the dashboard (`[observability]` is on in `wrangler.toml`) show no new error after the first cron tick
    (every ten minutes).
+8. **The public pages** (`docs/architecture/web-ui.md` › The public pages, for crawlers): `/robots.txt` and
+   `/sitemap.xml` answer 200; `/` signed out carries `<link rel="canonical" href="https://trov.dev/">` and no
+   `X-Robots-Tag`; `/platform`, `/billing/done` and any `/<org>/` answer the app shell with
+   `X-Robots-Tag: noindex` and no canonical; `/pricing.html` and `/pricing/` answer 301 to `/pricing`:
+
+   ```bash
+   curl -s https://trov.dev/ | grep -o '<link rel="canonical"[^>]*>'
+   for p in /platform /billing/done /some-org/; do curl -sI "https://trov.dev$p" | grep -i '^x-robots-tag'; done
+   curl -sI https://trov.dev/pricing.html | grep -iE '^(HTTP|location)'
+   ```
 
 ## 7. Rollback
 
@@ -151,7 +161,11 @@ Cloudflare cron weekdays are 1–7 or SUN–SAT, never 0. `REPO_CRON` in `src/re
   lost, and it refuses once a second organization exists).
 - **Data:** D1 Time Travel. Note a bookmark BEFORE a risky change (`npx wrangler d1 time-travel info trov`),
   and restore with `npx wrangler d1 time-travel restore trov --bookmark=<bookmark>` inside its window. It
-  restores the WHOLE database, every organization's writes since included.
+  restores the WHOLE database, every organization's writes since included — and every account or
+  organization DELETED since the bookmark comes back. Re-apply those deletions before anyone signs in:
+  `docs/architecture/organizations.md` › §8 "After a restore" (the `person.delete` / `org.delete` rows of
+  `org_admin_audit` from the current database, before restoring; `scripts/deletion-refs.mjs` matches a
+  person's `ref`).
 - **A secret:** put the previous value back (`wrangler secret put`); that redeploys (section 4).
 
 ## 8. Live state as of release 0.25 (2026-10-09)
@@ -191,3 +205,40 @@ relying on any of them.
   token prefixes.
 - Do not activate Cloudflare Queues or Vectorize (deferred seams, `CLAUDE.md`).
 - Do not run `npm run build:web` under a running `wrangler dev` (it empties `web/dist`).
+
+## 10. Search engines and the zone (one-time, outside the repo)
+
+What the Worker cannot do for the public site (`docs/architecture/web-ui.md` › The public pages, for crawlers):
+
+- **www → apex and http → https for the static files.** The Worker redirects both for what it serves (`/`
+  included), but the assets binding answers static files before it and takes only relative redirect rules.
+  In the Cloudflare dashboard for `trov.dev`: SSL/TLS › Edge Certificates › **Always Use HTTPS** on, and,
+  if `www.trov.dev` resolves at all, Rules › **Redirect Rules**: hostname `www.trov.dev` → dynamic
+  `concat("https://trov.dev", http.request.uri.path)`, 301, preserve query string.
+- **The workers.dev address.** Production also answers at `trov.<account>.workers.dev` unless `workers_dev =
+  false`; every response there is `noindex` (`_headers`, `src/site.ts`). Turning it off (Workers › trov ›
+  Settings › Domains & Routes) removes the duplicate host entirely.
+- **Google Search Console.** Verify `trov.dev` as a **Domain property** with the DNS TXT record Search Console
+  gives (add it in Cloudflare DNS) — it covers https, http, www and every path, and needs no file or meta tag
+  in the build. Then Sitemaps › submit `https://trov.dev/sitemap.xml`, and URL Inspection › `https://trov.dev/`
+  › Request indexing. Bing Webmaster Tools can import the property from Search Console.
+
+- **AI crawlers and agents** (`web-ui.md` › The public pages, for crawlers; the Worker allows them in
+  `/robots.txt` by name, and the training crawlers by one switch, `AI_TRAINING_CRAWLERS` in `src/site.ts`).
+  Cloudflare can block them before the Worker runs, whatever robots.txt says. In the dashboard for `trov.dev`:
+  - **AI Crawl Control** (Security › Bots, formerly AI Audit): every crawler you want reading the site must be
+    *Allow*, not *Block*. **Block AI bots** is ON by default for zones created since mid-2025: turn it off (or
+    allow at least the search and assistant crawlers: OAI-SearchBot, ChatGPT-User, Claude-SearchBot,
+    Claude-User, PerplexityBot, Perplexity-User). **Pay per crawl**, if offered, off.
+  - **Managed robots.txt** ("Instruct AI bot traffic with robots.txt" / Content Signals): when on, Cloudflare
+    PREPENDS its own rules (Disallow for the training crawlers, and a Content-Signals policy) to the Worker's
+    robots.txt, overriding `AI_TRAINING_CRAWLERS`. Off, so the repo is the one source. Check with
+    `curl -s https://trov.dev/robots.txt | head` — it must start with `# trov.dev:`.
+  - **Bot Fight Mode** (Free) / **Super Bot Fight Mode** (Pro and up): "definitely automated" traffic is
+    challenged, which a crawler cannot pass; keep verified bots allowed, and with Super Bot Fight Mode set
+    "AI bots" / "Verified bots" to Allow.
+  - **WAF custom rules, rate limiting rules, Security Level / I'm Under Attack, Browser Integrity Check**: none
+    may challenge or block on these user agents or on `/`, `/docs/*`, `/pricing`, `/llms.txt`, `/llms-full.txt`,
+    `/robots.txt`, `/sitemap.xml`, `/*.md`.
+  - Then check from outside: `curl -s -o /dev/null -w "%{http_code}\n" -A "GPTBot/1.1" https://trov.dev/llms.txt`
+    (and the other agents) answers 200, and Security › Events shows no block for them.

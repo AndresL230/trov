@@ -18,6 +18,7 @@ import {
   MCP_NOT_FOUND, NOT_FOUND, cookieFor, createBinary, createText, get, jsonInit, mcpCall, mcpToolNames, put, seedPerson, uniqueBytes,
   sha256Hex, uploadUrl, wf,
 } from "./helpers/artifacts";
+import { apiErrorHint } from "@shared/error-hints";
 import { systemCtx, platformCtx } from "./helpers/tenant";
 
 const AUTHOR = "adel-author";
@@ -238,7 +239,7 @@ describe("POST /api/artifacts/:slug/restore", () => {
   it("a live page is 409 not deleted; an unknown one the one 404", async () => {
     const res = await restore(AUTHOR);
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "conflict", message: "artifact is not deleted" });
+    expect(await res.json()).toEqual({ error: "conflict", message: "artifact is not deleted", hint: apiErrorHint(409, "conflict") });
     await expect(restorePage(systemCtx(), "no-such-page", AUTHOR, false)).rejects.toMatchObject({ code: "not_found" });
   });
 });
