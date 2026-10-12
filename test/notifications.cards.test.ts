@@ -13,7 +13,7 @@ import { promote_doc } from "../src/tools/writes";
 import { storePrSummary, storeIssueSummary, type Summarizer, type PrSummary, type IssueSummary } from "../src/tools/summarize";
 import { write_plan } from "../src/tools/plan";
 import { getKind } from "../src/notifications/registry";
-import { THEME } from "../src/notifications/assemble";
+import { THEME, EMAIL_CARD } from "../src/notifications/assemble";
 import type { Window } from "@shared/notifications";
 import type { CapturedEvent } from "@shared/contract";
 
@@ -92,22 +92,23 @@ describe("My Work items (ledger layout)", () => {
 });
 
 describe("Review queue rows", () => {
-  it("each item carries a PROPOSAL or DECISION kind chip, the summary line, and 'by <author> · <confidence> confidence'", async () => {
+  it("each item names its kind in words (Proposal / Decision), the summary line, and 'by <author> · <confidence> confidence'", async () => {
     await ingestDocProposal(systemCtx(), { slug: "auth-flow", section: "reference", title: "Auth flow", body: "v1", change_summary: "init", confidence: "high" }, "agent");
     await promote_doc(systemCtx(), "auth-flow", 1, "human");
     await ingestDocProposal(systemCtx(), { slug: "auth-flow", section: "reference", title: "Auth flow", body: "v2 proposed", change_summary: "clarify token rotation", confidence: "high" }, "mei");
     await ingestAdrDraft(systemCtx(), { title: "Use D1 for outbox", context: "c", decision: "d", rationale: "r", confidence: "high" }, "dev");
     const s = (await getKind("review_queue")!.render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.html).toMatch(/>PROPOSAL<[\s\S]*Reference \/ Auth flow[\s\S]*clarify token rotation[\s\S]*by mei · high confidence/);
-    expect(s.html).toMatch(/>DECISION<[\s\S]*ADR-\d+[\s\S]*Use D1 for outbox[\s\S]*by dev/);
+    expect(s.html).toMatch(/>Proposal<[\s\S]*Reference \/ Auth flow[\s\S]*clarify token rotation[\s\S]*by mei · high confidence/);
+    expect(s.html).toMatch(/>Decision<[\s\S]*ADR-\d+[\s\S]*Use D1 for outbox[\s\S]*by dev/);
+    expect(s.html).not.toContain("data-chip");
   });
 
-  it("a low-confidence proposal gets an amber LOW CONFIDENCE chip", async () => {
+  it("a low-confidence proposal gets an amber Low confidence mark", async () => {
     await ingestDocProposal(systemCtx(), { slug: "shaky", section: "reference", title: "Shaky", body: "v1", change_summary: "init", confidence: "high" }, "agent");
     await promote_doc(systemCtx(), "shaky", 1, "human");
     await ingestDocProposal(systemCtx(), { slug: "shaky", section: "reference", title: "Shaky", body: "v2", change_summary: "guess", confidence: "low" }, "agent");
     const s = (await getKind("review_queue")!.render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.html).toMatch(/LOW CONFIDENCE/);
+    expect(s.html).toContain(EMAIL_CARD.mark("Low confidence", "amber"));
     expect(s.html).toContain(THEME.amber.light);
   });
 });

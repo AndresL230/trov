@@ -105,7 +105,7 @@ input, select { font-family: inherit; }
 .tl-axis { position:relative; height:58px; overflow:hidden; }
 .tl-major { position:absolute; top:2px; box-sizing:border-box; padding-left:6px; font-size:12px; font-weight:600; color:var(--fg-70); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .tl-tick { position:absolute; top:22px; padding-left:5px; font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.04em; color:var(--fg-40); white-space:nowrap; }
-.tl-todaytag { position:absolute; bottom:1px; width:44px; box-sizing:border-box; text-align:center; font-family:var(--label); font-size:9.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; line-height:14px; color:var(--red); background:color-mix(in srgb,var(--red) 12%,var(--surface)); border:1px solid color-mix(in srgb,var(--red) 40%,transparent); }
+.tl-todaytag { position:absolute; bottom:1px; width:44px; box-sizing:border-box; text-align:center; font-size:11px; font-weight:600; line-height:14px; color:var(--red); background:var(--surface); }
 .tl-body { position:relative; padding-bottom:6px; }
 .tl-layer { position:absolute; top:0; bottom:0; left:var(--tl-lab); right:0; pointer-events:none; }
 .tl-band { position:absolute; top:0; bottom:0; background:var(--hover); }
@@ -961,11 +961,11 @@ input, select { font-family: inherit; }
 .cnpy-outlinebtn:hover { background:var(--hover); color:var(--fg); }
 /* The ticket status trigger is the status pill itself (tickets.ts statusControl):
    no box around it — the ring takes the pill's own colour. */
-.cnpy-statusbtn { transition:box-shadow .14s ease, filter .14s ease; }
-.cnpy-statusbtn:hover, .cnpy-statusbtn[aria-expanded="true"] { box-shadow:0 0 0 3px color-mix(in srgb, currentColor 16%, transparent); filter:brightness(1.12); }
-.cnpy-statusbtn:focus-visible { outline:none; box-shadow:0 0 0 3px color-mix(in srgb, currentColor 30%, transparent); }
-.cnpy-statusbtn svg { transition:transform .16s ease; }
-.cnpy-statusbtn[aria-expanded="true"] svg { transform:rotate(180deg); }
+.cnpy-statusbtn { transition:background .14s ease; }
+.cnpy-statusbtn:hover, .cnpy-statusbtn[aria-expanded="true"] { background:var(--hover); }
+.cnpy-statusbtn:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.cnpy-statusbtn svg:last-child { transition:transform .16s ease; }
+.cnpy-statusbtn[aria-expanded="true"] svg:last-child { transform:rotate(180deg); }
 /* A ticket body is markdown, but a typed single line break still breaks. */
 .cnpy-td-body p { white-space:pre-line; }
 .cnpy-ghostbtn { transition:all .12s ease; }
@@ -1572,7 +1572,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
   .cnpy-aside, .cnpy-aside *, .cnpy-aside *::before, .cnpy-aside *::after { transition:none !important; }
   [data-enter] *, .cnpy-flash, .cnpy-flash *, .repo-pulse, .repo-pollbtn svg { animation:none !important; }
   .repo-tip, .repo-dot, .repo-row, .repo-chev, .repo-rank-l { transition:none !important; }
-  .cnpy-statusbtn, .cnpy-statusbtn svg { transition:none !important; }
+  .cnpy-statusbtn, .cnpy-statusbtn svg:last-child { transition:none !important; }
   .cnpy-avbtn-veil, .cnpy-avbtn-veil svg { transition:none !important; animation:none !important; }
 }
 
@@ -1681,7 +1681,7 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-plan:hover { translate:0 -3px; }
 .site-plan.is-accent { background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 11%, var(--surface)) 0%, var(--surface) 52%);
   box-shadow:0 0 0 1.5px color-mix(in srgb, var(--accent) 70%, transparent), 0 1px 2px rgba(20,22,60,.05), 0 22px 44px -22px color-mix(in srgb, var(--accent) 55%, transparent); }
-.site-plan.is-accent .site-plan-badge { border-color:transparent; background:var(--accent); color:var(--accent-fg); font-weight:600; }
+.site-plan.is-accent .site-plan-badge { background:var(--accent-soft); color:var(--accent); }
 .site-plan.is-top { box-shadow:0 1px 2px rgba(20,22,60,.08), 0 24px 48px -22px color-mix(in srgb, var(--mark, #616acb) 70%, transparent); }
 .site-plan.is-top > .site-banner-art { width:230px; aspect-ratio:1; right:-58px; top:-64px; opacity:.14; }
 .site-plan.is-top .site-plan-name { color:rgba(255,255,255,.78); }
@@ -1697,7 +1697,8 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 @media (prefers-reduced-motion: reduce) { .site-plan { transition:none; } .site-plan:hover { translate:none; } }
 .site-plan-head { display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; min-height:24px; }
 .site-plan-name { margin:0; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); }
-.site-plan-badge { margin-left:auto; padding:2px 7px; border:1px solid var(--border); font-size:11px; font-weight:500; color:var(--fg-55); white-space:nowrap; }
+/* One soft label in sentence case (the tag audit): a fill, no border, no capitals. */
+.site-plan-badge { margin-left:auto; padding:3px 8px; font-size:12px; font-weight:500; color:var(--fg-70); background:var(--hover); white-space:nowrap; }
 .site-plan-for { margin:12px 0 0; font-size:20px; line-height:1.3; font-weight:650; letter-spacing:-0.015em; text-wrap:balance; }
 .site-plan-pricebox { margin-top:22px; display:flex; align-items:flex-end; }
 .site-plan-price { margin:0; display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 8px; }

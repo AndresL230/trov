@@ -28,6 +28,7 @@ import { render, initialState } from "../web/src/render";
 import type { ArtifactSummaryDTO, ArtifactDetailDTO, ArtifactVersionDTO, ArtifactKind, ArtifactDiffDTO } from "@shared/artifacts-core";
 import { ARTIFACT_TEXT_CAP } from "@shared/artifacts-core";
 import { canDeleteArtifact } from "../web/src/artifacts";
+import { artifactStatusMark } from "../web/src/marks";
 import { setApiOrg } from "../web/src/api";
 
 // A raw page is loaded from the CURRENT org's route (`/api/o/<org>/raw/a/…`); the API's `raw_url` is its suffix.
@@ -312,7 +313,7 @@ describe("artifacts — reducer", () => {
   it("attaches a ticket once, as a POST link", () => {
     const p = viewer(detail("a", "html", { links: [{ target_type: "ticket", target_ref: "10", label: null, meta: null }] }));
     artifactsAct(p.ui, ctx(p), "artAttachOpen", null, null);
-    expect(artifactsDialogs(p)).toContain("ATTACHED");
+    expect(artifactsDialogs(p)).toContain(">Attached</span>");
     artifactsAct(p.ui, ctx(p), "artAttachPick", "10", null); // already attached
     expect(p.ui.attachPick).toBeNull();
     artifactsAct(p.ui, ctx(p), "artAttachPick", "7", null);
@@ -454,7 +455,7 @@ describe("artifacts — new version", () => {
 
     const bundled = `<html><script type="__bundler/manifest">{}</script></html>`;
     artAcceptNvFile(p.ui, "html", { name: "export.html", size: bundled.length, text: bundled, blob: null });
-    expect(artifactsDialogs(p)).toContain("FLATTEN FIRST");
+    expect(artifactsDialogs(p)).toContain(">Flatten first</span>");
     expect(artifactsAct(p.ui, ctx(p), "artNvSubmit", null, null)).toMatchObject({ write: { op: "version", body: { content: bundled, summary: "" } } });
   });
 
@@ -543,17 +544,17 @@ describe("artifacts — new artifact", () => {
     expect(artifactsView(p)).toContain("Over the 750 KB cap.");
     expect(artifactsAct(p.ui, ctx(p), "artCSubmit", null, null)).toBeNull();
     p.ui.c.paste = "<script>window.claude.complete('x')</script>";
-    expect(artifactsView(p)).toContain("CLAUDE.AI ONLY");
+    expect(artifactsView(p)).toContain(">Claude.ai only</span>");
   });
 
   it("warns that a bundled Claude Design export must be flattened, and still lets it upload", () => {
     const p = props("artifactnew");
     p.ui.c.title = "Restyle";
     p.ui.c.paste = `<html><body><script>/* loader */</script><script type="__bundler/manifest">{}</script></body></html>`;
-    expect(artifactsView(p)).toContain("FLATTEN FIRST");
+    expect(artifactsView(p)).toContain(">Flatten first</span>");
     expect(artifactsAct(p.ui, ctx(p), "artCSubmit", null, null)).not.toBeNull();
     p.ui.c.paste = "<html><body><script>render()</script></body></html>";
-    expect(artifactsView(p)).not.toContain("FLATTEN FIRST");
+    expect(artifactsView(p)).not.toContain(">Flatten first</span>");
   });
 
   it("a picked file sets the kind from its extension; a binary one is sent multipart", () => {
@@ -609,7 +610,7 @@ describe("artifacts — on the ticket detail", () => {
     const html = ticketArtifactsBlock({ status: "ok", data: [LIST[0]] });
     expect(html).toContain('data-act="artOpen" data-arg="google-signin-design"');
     expect(html).toContain("HTML · V3 · @JOSE-GAEL-CRUZ-LOPEZ");
-    expect(html).toContain("PUBLISHED");
+    expect(html).toContain(artifactStatusMark("published"));
     expect(ticketArtifactsBlock({ status: "ok", data: [] })).toContain("No artifacts attached.");
     expect(ticketArtifactsBlock(undefined)).toContain("Loading artifacts");
   });

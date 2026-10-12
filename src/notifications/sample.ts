@@ -20,21 +20,21 @@ const issue = (n: number, title: string, summary: string, sprint: string | null,
   });
 const review = (kind: "proposal" | "decision", title: string, summary: string, meta: string, low = false, first = false) =>
   `<tr><td style="padding:${first ? 0 : SP.m - SP.xs}px 0 ${SP.m - SP.xs}px 0;${first ? "" : `border-top:1px solid ${THEME.border.light};`}">` +
-  `<div>${K.chip(kind.toUpperCase(), kind === "proposal" ? "accent" : "blue")}${low ? ` ${K.chip("LOW CONFIDENCE", "amber")}` : ""}<span style="${S.body}font-weight:500;padding-left:8px;">${title}</span></div>` +
+  `<div><span style="${S.muted}">${kind === "proposal" ? "Proposal" : "Decision"}</span><span style="${S.body}font-weight:500;padding-left:8px;">${title}</span>${low ? `<span style="padding-left:10px;">${K.mark("Low confidence", "amber")}</span>` : ""}</div>` +
   `<div style="${S.muted}padding-top:${SP.xs}px;">${summary}</div><div style="${S.muted}font-size:12px;line-height:16px;padding-top:${SP.xs}px;">${meta}</div></td></tr>`;
 /** A ticketq card, mirroring renderers/ticket-queue.ts's two halves exactly. */
 const unassigned = (title: string, category: string, prio: string, requester: string, old: string, first = false) =>
   K.item({
     title, number: null, url: null,
     rows: [K.row("Category", category), K.row("Requester", requester)],
-    footer: `${K.chip(prio, "muted")}<span style="padding-left:8px;">opened ${old} ago</span>`,
+    footer: `${prio}<span style="padding-left:10px;">opened ${old} ago</span>`,
     first,
   });
-const assigned = (title: string, status: string, tone: "green" | "blue", prio: string, sprint: string, updated: string, first = false) =>
+const assigned = (title: string, status: string, tone: "accent" | "amber" | "muted", prio: string, sprint: string, updated: string, first = false) =>
   K.item({
     title, number: null, url: null,
     rows: [K.row("Sprint", sprint)],
-    footer: `${K.chip(status, tone)} ${K.chip(prio, "muted")}<span style="padding-left:8px;">updated ${updated} ago</span>`,
+    footer: `${K.mark(status, tone)}<span style="padding-left:10px;">${prio}</span><span style="padding-left:10px;">updated ${updated} ago</span>`,
     first,
   });
 const plan = (label: "added" | "changed" | "reordered" | "done", t: string) =>
@@ -90,10 +90,10 @@ export function sampleSections(): Section[] {
       deepLink: "/#tickets",
       html:
         `<div style="${S.label}padding-top:${SP.l}px;padding-bottom:${SP.s}px;">UNASSIGNED</div>` +
-        unassigned("Gradebook export comes back empty", "bug", "HIGH", "Meilin Zhao", "3h", true) +
-        unassigned("Access to the staging analytics dashboard", "access", "NORMAL", "Sana Okafor", "2d") +
+        unassigned("Gradebook export comes back empty", "bug", "High priority", "Meilin Zhao", "3h", true) +
+        unassigned("Access to the staging analytics dashboard", "access", "Normal priority", "Sana Okafor", "2d") +
         `<div style="${S.label}padding-top:${SP.l}px;padding-bottom:${SP.s}px;">ASSIGNED TO YOU</div>` +
-        assigned("Roster import drops middle names", "In progress", "green", "NORMAL", "Ticket queue", "6h", true),
+        assigned("Roster import drops middle names", "In progress", "accent", "Normal priority", "Ticket queue", "6h", true),
       text:
         "  unassigned  #214  Gradebook export comes back empty\n" +
         "                    bug · high · filed by Meilin Zhao · 3h old\n" +

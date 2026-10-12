@@ -493,6 +493,40 @@ goes in that block; a template gets a class hook, never a second copy of its mar
   iframe), at 360, 390 and 430, light and dark, with screenshots that are looked at. The wide layout is proved
   by rects and computed styles at 1440, 1100 and 961, not by eye.
 
+## Status marks — a state is a shape and a word, never a pill (`web/src/marks.ts`)
+
+Trov used to paint every state as a small bordered, tinted, letter-spaced UPPERCASE pill (`LIVE`, `STAGED`,
+`IN PROGRESS`, `ADMIN`…): about 160 of them from 34 hand-copied helpers. A pill on every row is noise, its
+border reads as a control, and the recipe is the stock look of generated UI (the 2026-10 tag audit; the
+research behind it: Carbon's status-indicator pattern, Polaris Badge, the 2026 Atlassian lozenge, Linear).
+**A state goes through `marks.ts`**, with the lightest treatment that does the job:
+
+1. **Nothing for the normal state**, and nothing where the screen already says it. A live search hit has no
+   mark (`AUTHORITY_MARK.live` is null); Review has no state tag, since everything in it is waiting and its
+   Promote / Ratify / Reject buttons say so; a doc's proposal notice is its sentence and a ring, not a tag.
+2. **A glyph whose SHAPE carries the meaning** (`glyph`): a ring that fills as work moves along — `todo`
+   (dashed), `half`, `most`, `done` (a check), `declined` (a cross) — and `warn` (a triangle) for late.
+   Ticket statuses (`ticketStatusIcon`, tones in `TICKET_STATUS_TONE`) and sprint states (`stateTag` in
+   `timeline.ts`) read the SAME glyphs, so a shape means one thing everywhere. Priority (and a sprint's
+   urgency) is `priorityIcon`: three signal bars, monochrome (design call #5). Beside the word
+   (`ticketStatusMark`, `priorityMark`, `glyphMark`) the glyph is `aria-hidden`; alone it is
+   `role="img"` with an `aria-label` and a `<title>` tooltip.
+3. **A small shape and a sentence-case word** (`stateMark`) for a state worth flagging: each meaning has its
+   own shape (dot = fine, ring = waiting, triangle = warning, diamond = failing, square = stopped, check =
+   settled by a person) so it reads without colour; the hue is on the shape and the word stays in
+   `--fg-70` for contrast. The tables: `HANDOFF_MARK`, `ARTIFACT_MARK`, `AUTHORITY_MARK`, `LOW_CONFIDENCE`.
+4. **One soft label** — a fill, no border, sentence case, 12px / 500 — only where the state is the page's
+   headline (the recommended plan on pricing, `.site-plan-badge`).
+
+Never a bordered pill, never `text-transform:uppercase` on a state, never a `●` character (every shape is an
+SVG element with no border-radius, so the corners block leaves it alone). Metadata beside a title (a
+category, a relation, an area, a kind) is plain muted text (`metaWord` in `tickets.ts`), not a chip. A link
+chip (a PR / commit / issue reference) and a filter chip are controls and may keep their hairline. **The
+signed-out site and its tour mocks draw their states with the same helpers** — `landing-mocks.ts` has no
+pill of its own — so the site cannot drift from the app. The digests (`EMAIL_CARD.mark`) use a small square
+and the word, since mail clients render SVG unreliably. Tests: `test/render.marks.test.ts` (no pill in a
+mark, on the page or in any mock; the site imports `marks.ts`), and each screen's own tests pin its marks.
+
 ## Corners — tighter than the design file
 
 Every radius renders at `--corner-scale` (`.4`) of its authored value: ONE block at the end of

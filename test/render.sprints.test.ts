@@ -3,14 +3,14 @@
  *
  * Pure functions from web/src/sprints.ts plus `render()` over a hand-built
  * AppState (no D1, no DOM), the idiom of test/render.tickets.test.ts:
- *  • sprintCard — the design's tag set (▲ HIGH / NORMAL / LOW, DUE, DOMAIN),
- *    the lead's FIRST name, NEXT UP only on THE next sprint (`nextSprintId`), the progress
+ *  • sprintCard — the design's tag set, as marks (urgency bars, Due, domain),
+ *    the lead's FIRST name, Next up only on THE next sprint (`nextSprintId`), the progress
  *    text "closed/total done" + the bar width, "Open sprint →"
  *  • the Roadmap Timeline's grouping: active → In Progress, upcoming →
  *    Upcoming, done → Done
  *  • newSprintPanel — closed by default, opens off state, Create inert until a name
  *  • sprintScreen — the markdown description, tickets as grid boxes (a sub-ticket names its parent),
- *    the resources list, the members list, the ACTIVE chip
+ *    the resources list, the members list, the Active mark
  *  • parseHash("#sprints/7")
  *  • the ONE due-date rule (`sprintDueState`, shared/sprints-core) with an injected
  *    clock, and every surface — card, the Roadmap's Timeline-tab dot, Timeline — agreeing on it
@@ -35,6 +35,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 
 import { sprintCard, newSprintPanel, newSprintToggle, sprintScreen, sprintTags, shortDue, nextSprintId, type NewSprintState } from "../web/src/sprints";
+import { priorityMark, stateMark } from "../web/src/marks";
 import { sprintDueState } from "@shared/sprints-core";
 import { placeSprint } from "../web/src/timeline";
 import { render, initialState, type AppState } from "../web/src/render";
@@ -132,45 +133,36 @@ function sprintScreenState(d: SprintDetail, over: Partial<AppState> = {}): AppSt
 
 // ── sprintCard ───────────────────────────────────────────────────────────────
 
-describe("sprintCard — tags (the design's sprTagsOf)", () => {
-  it("shows ▲ HIGH in amber ONLY for a high-urgency sprint", () => {
-    const high = sprintCard(sprint({ id: 1, label: "S", urgency: "high" }), PERSONS);
-    expect(high).toContain("▲ HIGH");
-    expect(high).toContain("var(--amber)");
-    expect(high).not.toContain(">NORMAL<");
-    expect(sprintCard(sprint({ id: 1, label: "S", urgency: "normal" }), PERSONS)).not.toContain("▲ HIGH");
-    expect(sprintCard(sprint({ id: 1, label: "S", urgency: "low" }), PERSONS)).not.toContain("▲ HIGH");
+describe("sprintCard — the design's sprTagsOf, as marks (never tags)", () => {
+  it("shows the urgency as the tickets' priority bars and its word — one, the sprint's own, monochrome", () => {
+    for (const u of ["high", "normal", "low"] as const) {
+      const html = sprintCard(sprint({ id: 1, label: "S", urgency: u }), PERSONS);
+      expect(html).toContain(priorityMark(u, 12));
+      for (const other of (["high", "normal", "low"] as const).filter((x) => x !== u)) expect(html).not.toContain(priorityMark(other, 12));
+    }
+    expect(sprintTags({ urgency: "high", due: null, domain: null })).not.toMatch(/var\(--amber\)|▲|border:/);
   });
 
-  it("shows exactly one urgency tag, and it is the sprint's own", () => {
-    expect(sprintTags({ urgency: "normal", due: null, domain: null })).toBe(
-      sprintTags({ urgency: "normal", due: null, domain: null })
-    );
-    expect(sprintCard(sprint({ id: 1, label: "S", urgency: "low" }), PERSONS)).toContain(">LOW<");
-    expect(sprintCard(sprint({ id: 1, label: "S", urgency: "normal" }), PERSONS)).toContain(">NORMAL<");
-  });
-
-  it("renders DUE <short date> and hides the tag entirely when there is no due date", () => {
+  it("renders Due <short date> and leaves it out when there is no due date", () => {
     const due = sprintCard(sprint({ id: 1, label: "S", due: "2026-10-17" }), PERSONS);
-    expect(due).toContain("DUE OCT 17");
+    expect(due).toContain(">Due Oct 17</span>");
     const none = sprintCard(sprint({ id: 1, label: "S", due: null }), PERSONS);
-    expect(none).not.toContain("DUE ");
+    expect(none).not.toContain(">Due ");
   });
 
-  it("uppercases the domain in a blue tint, and omits the tag when there is none", () => {
+  it("names the domain in plain text, and omits it when there is none", () => {
     const dom = sprintCard(sprint({ id: 1, label: "S", domain: "notifications" }), PERSONS);
-    expect(dom).toContain(">NOTIFICATIONS<");
-    expect(dom).toContain("var(--blue)");
-    expect(sprintCard(sprint({ id: 1, label: "S", domain: null }), PERSONS)).not.toContain("var(--blue)");
+    expect(dom).toContain(">notifications</span>");
+    expect(dom).not.toContain("NOTIFICATIONS");
   });
 
-  it("shortDue falls through unparseable input uppercased rather than 'Invalid Date'", () => {
-    expect(shortDue("2026-01-05")).toBe("JAN 5");
-    expect(shortDue("soon")).toBe("SOON");
+  it("shortDue falls through unparseable input as written rather than 'Invalid Date'", () => {
+    expect(shortDue("2026-01-05")).toBe("Jan 5");
+    expect(shortDue("soon")).toBe("soon");
   });
 });
 
-describe("sprintCard — lead, NEXT UP, progress, open", () => {
+describe("sprintCard — lead, Next up, progress, open", () => {
   it("names the lead by FIRST name with the '· lead' suffix; nothing when there is no lead", () => {
     const led = sprintCard(sprint({ id: 1, label: "S", lead: "sanaok" }), PERSONS);
     expect(led).toContain("Sana · lead");
@@ -178,14 +170,14 @@ describe("sprintCard — lead, NEXT UP, progress, open", () => {
     expect(sprintCard(sprint({ id: 1, label: "S", lead: null }), PERSONS)).not.toContain("· lead");
   });
 
-  it("badges NEXT UP only when told it is THE next sprint, and NEVER on an active or done one", () => {
-    expect(sprintCard(sprint({ id: 1, label: "S", status: "upcoming", active: false }), PERSONS, { nextUp: true })).toContain("NEXT UP");
+  it("marks Next up only when told it is THE next sprint, and NEVER on an active or done one", () => {
+    expect(sprintCard(sprint({ id: 1, label: "S", status: "upcoming", active: false }), PERSONS, { nextUp: true })).toContain(">Next up</span>");
     // not yet running is not enough on its own — that was every upcoming card
-    expect(sprintCard(sprint({ id: 1, label: "S", status: "upcoming", active: false }), PERSONS)).not.toContain("NEXT UP");
-    expect(sprintCard(sprint({ id: 1, label: "S", status: "in_progress", active: true }), PERSONS, { nextUp: true })).not.toContain("NEXT UP");
-    expect(sprintCard(sprint({ id: 1, label: "S", status: "done", active: false }), PERSONS, { nextUp: true })).not.toContain("NEXT UP");
+    expect(sprintCard(sprint({ id: 1, label: "S", status: "upcoming", active: false }), PERSONS)).not.toContain(">Next up</span>");
+    expect(sprintCard(sprint({ id: 1, label: "S", status: "in_progress", active: true }), PERSONS, { nextUp: true })).not.toContain(">Next up</span>");
+    expect(sprintCard(sprint({ id: 1, label: "S", status: "done", active: false }), PERSONS, { nextUp: true })).not.toContain(">Next up</span>");
     // an optimistic Confirm-done also suppresses it
-    expect(sprintCard(sprint({ id: 1, label: "S", status: "upcoming", active: false }), PERSONS, { done: true, nextUp: true })).not.toContain("NEXT UP");
+    expect(sprintCard(sprint({ id: 1, label: "S", status: "upcoming", active: false }), PERSONS, { done: true, nextUp: true })).not.toContain(">Next up</span>");
   });
 
   it("reads 'closed/total done' with the bar at pct%", () => {
@@ -220,8 +212,8 @@ describe("sprintCard — lead, NEXT UP, progress, open", () => {
 
   it("a legacy non-ISO due still renders (raw text, no overdue claim)", () => {
     const html = sprintCard(sprint({ id: 1, label: "S", dates: null, start: null, due: "Oct 17" }), PERSONS, { now: Date.parse("2027-01-01T12:00:00") });
-    expect(html).toContain("DUE OCT 17");
-    expect(html).not.toContain("OVERDUE");
+    expect(html).toContain(">Due Oct 17</span>");
+    expect(html).not.toContain("Overdue");
   });
 
   it("stacks one avatar per member", () => {
@@ -547,14 +539,14 @@ describe("sprintScreen", () => {
     expect(html).toContain("Everyone assigned to a ticket in this sprint.");
   });
 
-  it("shows the ACTIVE chip ONLY on an active sprint, and flips the Mark active/inactive control", () => {
+  it("marks Active ONLY on an active sprint, and flips the Mark active/inactive control", () => {
     const off = sprintScreen({ detail: detail({ id: 3, label: "S", status: "upcoming", active: false }), persons: PERSONS, resourceDraft: "" });
-    expect(off).not.toContain(">ACTIVE<");
+    expect(off).not.toContain(">Active</span>");
     expect(off).toContain('data-act="sprintActive" data-arg="1"');
     expect(off).toContain("Mark active");
 
     const on = sprintScreen({ detail: detail({ id: 3, label: "S", status: "in_progress", active: true }), persons: PERSONS, resourceDraft: "" });
-    expect(on).toContain(">ACTIVE<");
+    expect(on).toContain(stateMark("Active", "var(--accent)", "dot", 12));
     expect(on).toContain('data-act="sprintActive" data-arg="0"');
     expect(on).toContain("Mark inactive");
 
@@ -569,9 +561,9 @@ describe("sprintScreen", () => {
       persons: PERSONS, resourceDraft: "",
     });
     expect(html).toContain("SEP 22 – OCT 3");
-    expect(html).toContain("OCT 17");
-    expect(html).toContain("▲ HIGH");
-    expect(html).toContain(">TICKETS<");
+    expect(html).toContain("Oct 17");
+    expect(html).toContain(priorityMark("high"));
+    expect(html).toContain(">tickets</span>");
     expect(html).toContain("Jose Alvarez");
     expect(html).toContain("4/7 done");
     expect(html).toContain("width:57%");
@@ -643,26 +635,26 @@ describe("every sprint surface flips to overdue on the SAME day", () => {
 
   it("due today: no surface says overdue", () => {
     const sp = late(localIso(0));
-    expect(sprintCard(sp, PERSONS)).not.toContain(">OVERDUE<");
+    expect(sprintCard(sp, PERSONS)).not.toContain(">Overdue</span>");
     expect(render(roadmapState([sp], { roadmapTab: "timeline" }))).not.toContain(RED_DOT);
     expect(placeSprint(sp, {}, Date.now())?.state).toBe("active");
   });
 
   it("due yesterday: every surface says overdue", () => {
     const sp = late(localIso(-1));
-    expect(sprintCard(sp, PERSONS)).toContain(">OVERDUE<");
+    expect(sprintCard(sp, PERSONS)).toContain(">Overdue</span>");
     expect(render(roadmapState([sp], { roadmapTab: "timeline" }))).toContain(RED_DOT);
     expect(placeSprint(sp, {}, Date.now())?.state).toBe("overdue");
   });
 
   it("the card takes the injected clock", () => {
     const sp = late("2026-09-14");
-    expect(sprintCard(sp, PERSONS, { now: new Date(2026, 8, 14, 23, 59).getTime() })).not.toContain(">OVERDUE<");
-    expect(sprintCard(sp, PERSONS, { now: new Date(2026, 8, 15, 0, 0).getTime() })).toContain(">OVERDUE<");
+    expect(sprintCard(sp, PERSONS, { now: new Date(2026, 8, 14, 23, 59).getTime() })).not.toContain(">Overdue</span>");
+    expect(sprintCard(sp, PERSONS, { now: new Date(2026, 8, 15, 0, 0).getTime() })).toContain(">Overdue</span>");
   });
 });
 
-describe("nextSprintId / NEXT UP — exactly one card", () => {
+describe("nextSprintId / Next up — exactly one card", () => {
   const now = new Date(2026, 8, 15, 12).getTime();
   const up = (id: number, due: string | null, o: Partial<SprintView> = {}) =>
     sprint({ id, label: `S${id}`, status: "upcoming", active: false, due, ...o });
@@ -676,14 +668,14 @@ describe("nextSprintId / NEXT UP — exactly one card", () => {
     expect(nextSprintId([up(3, "2026-09-14"), up(4, null)], {}, now)).toBeNull();
   });
 
-  it("the Roadmap paints NEXT UP on one card among several upcoming ones", () => {
+  it("the Roadmap marks Next up on one card among several upcoming ones", () => {
     const html = render(roadmapState([
       sprint({ id: 1, label: "Running", status: "in_progress", active: true }),
       up(2, localIso(20)), up(3, localIso(5)), up(4, localIso(40)), up(5, null),
     ]));
-    expect(html.match(/>NEXT UP</g)?.length).toBe(1);
+    expect(html.match(/>Next up</g)?.length).toBe(1);
     // …and it is the soonest one (S3)
-    const at = html.indexOf(">NEXT UP<");
+    const at = html.indexOf(">Next up<");
     expect(html.lastIndexOf(">S3<", at)).toBeGreaterThan(html.lastIndexOf(">S2<", at));
   });
 });

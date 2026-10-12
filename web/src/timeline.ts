@@ -57,6 +57,7 @@ import { isoDayKey, localDayKey, sprintDueState } from "@shared/sprints-core";
 import type { PersonSummary } from "./api";
 import { esc, attr, surface } from "./ui";
 import { personAvatarLink } from "./people";
+import { glyphMark, type Glyph } from "./marks";
 
 const DAY = 86_400_000;
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -87,6 +88,9 @@ const STATE_LABEL: Record<TlState, string> = {
 const STATE_TAG: Record<TlState, string> = {
   done: "Done", ready: "Ready", overdue: "Overdue", active: "In progress", upcoming: "Upcoming",
 };
+/** The state's glyph (marks.ts): the ring fills as the sprint moves along — the tickets' shapes —
+ *  and a late one is a warning triangle. */
+const STATE_GLYPH: Record<TlState, Glyph> = { upcoming: "todo", active: "half", ready: "most", done: "done", overdue: "warn" };
 /** The state's colour — theme vars only. Upcoming is the neutral fg family. */
 const STATE_COLOR: Record<TlState, string> = {
   done: "var(--green)", ready: "var(--accent)", overdue: "var(--red)", active: "var(--accent)", upcoming: "var(--fg-55)",
@@ -312,9 +316,10 @@ function dot(color: string): string {
   return `<span style="width:7px;height:7px;border-radius:999px;background:${color};flex:none"></span>`;
 }
 
-function stateTag(state: TlState): string {
-  const c = STATE_COLOR[state];
-  return `<span class="tl-tag" style="${LABEL_FACE};font-size:9.5px;letter-spacing:.06em;color:${c};border:1px solid color-mix(in srgb,${c} 45%,transparent);background:color-mix(in srgb,${c} 10%,transparent);border-radius:5px;padding:1px 6px;white-space:nowrap;flex:none">${esc(STATE_TAG[state])}</span>`;
+/** A sprint's state as its glyph and word — a mark, never a tag (`marks.ts`). The site's
+ *  Roadmap mock draws its rows with this too. */
+export function stateTag(state: TlState, label = STATE_TAG[state], size = 12): string {
+  return `<span class="tl-tag" style="display:inline-flex;flex:none">${glyphMark(STATE_GLYPH[state], STATE_COLOR[state], label, size)}</span>`;
 }
 
 function popover(p: Placed, persons: PersonSummary[], center: number, up: boolean, when: string): string {
@@ -340,7 +345,7 @@ function popover(p: Placed, persons: PersonSummary[], center: number, up: boolea
   return `<div class="tl-pop" id="tl-pop-${sp.id}" role="tooltip" style="border-radius:8px;${side};left:clamp(0px, calc(${pct(center)} - 140px), calc(100% - 280px))">
     <div style="display:flex;align-items:flex-start;gap:8px">
       <span style="flex:1;min-width:0;font-size:13.5px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);overflow-wrap:anywhere">${esc(sp.label)}</span>
-      <span style="${LABEL_FACE};font-size:9.5px;letter-spacing:.06em;color:${c};border:1px solid color-mix(in srgb,${c} 45%,transparent);border-radius:5px;padding:1px 6px;white-space:nowrap;flex:none">${esc(STATE_LABEL[state])}</span>
+      ${stateTag(state, STATE_LABEL[state])}
     </div>
     <div style="font-size:11.5px;color:var(--fg-55);margin-top:3px;font-family:var(--label)">${esc(range)}${when ? ` · <span style="color:${state === "overdue" ? "var(--red)" : "var(--fg-70)"}">${esc(when)}</span>` : ""}</div>
     ${progress}
@@ -492,7 +497,7 @@ export function roadmapTimeline(p: TimelineProps): string {
       .map((t) => `<span class="tl-tick${t.alt ? " tl-alt" : ""}" style="left:${pct(at(t.t))}">${esc(t.label!)}</span>`)
       .join("");
     const todayTag = showToday
-      ? `<span class="tl-todaytag" style="left:clamp(0px, calc(${pct(todayAt)} - 22px), calc(100% - 44px));border-radius:4px">Today</span>`
+      ? `<span class="tl-todaytag" style="left:clamp(0px, calc(${pct(todayAt)} - 22px), calc(100% - 44px))">Today</span>`
       : "";
     const bands = axis.major
       .map((m, i) => (i % 2 === 1 ? `<span class="tl-band" style="left:${pct(at(m.from))};width:${pct(at(m.to) - at(m.from))}"></span>` : ""))

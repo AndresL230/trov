@@ -41,11 +41,11 @@ describe("proposalReviewItem", () => {
     expect(decodeReviewId(item.id)).toEqual({ kind: "doc", slug: "deploy-runbook", version: 7 });
   });
 
-  it("derives the eyebrow from real space/section and fixes kind/badge", () => {
+  it("derives the eyebrow from real space/section and fixes the kind — no state tag (the queue is all waiting)", () => {
     const item = proposalReviewItem(makeProposal());
     expect(item.kind).toBe("proposal");
     expect(item.eyebrow).toBe("PROPOSAL · TECHNICAL / REFERENCE");
-    expect(item.badge).toBe("STAGED");
+    expect(item).not.toHaveProperty("badge");
     expect(item.liveVersion).toBe("LIVE (v6)");
   });
 
@@ -104,11 +104,11 @@ describe("adrReviewItem", () => {
     expect(decodeReviewId(item.id)).toEqual({ kind: "adr", id: 14 });
   });
 
-  it("formats the eyebrow from the numeric id and fixes kind/badge", () => {
+  it("formats the eyebrow from the numeric id and fixes the kind — no state tag", () => {
     const item = adrReviewItem(makeAdr());
     expect(item.kind).toBe("decision");
     expect(item.eyebrow).toBe("DECISION · ADR-014");
-    expect(item.badge).toBe("DRAFT");
+    expect(item).not.toHaveProperty("badge");
   });
 
   it("builds Context / Decision / Rationale sections, skipping nulls", () => {
@@ -162,13 +162,13 @@ describe("unplacedFromRow", () => {
     expect(u.id).toBe("7");
     expect(u.title).toBe("Notes on connection pool sizing");
     expect(u.snippet).toContain("Pool exhaustion");
-    expect(u.reason).toBe("AGENT FLAGGED");
+    expect(u.reason).toBe("Flagged by an agent");
     expect(u.reasonNote).toBe("out-of-vocab section: runbooks");
   });
 
-  it("buckets low-confidence gate reasons into the LOW CONFIDENCE chip", () => {
+  it("buckets low-confidence gate reasons into the Low confidence mark", () => {
     const u = unplacedFromRow(makeTriageRow({ reason: "low confidence doc proposal" }));
-    expect(u.reason).toBe("LOW CONFIDENCE");
+    expect(u.reason).toBe("Low confidence");
     expect(u.reasonNote).toBe("low confidence doc proposal");
   });
 

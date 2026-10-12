@@ -30,68 +30,29 @@ import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
 import { dangerTrigger, confirmModal } from "./confirm";
 import { skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse, emptyLayout, emptyShapes } from "./skeleton";
+import { ticketStatusIcon, ticketStatusMark, priorityMark } from "./marks";
 
 // ── shared atoms ─────────────────────────────────────────────────────────────
 
-/** The design's `pill()` / `prioSt()` base: label-face, 10px, bordered, non-shrinking. */
-const CHIP_BASE =
-  "font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;border-radius:5px;padding:2px 6px;white-space:nowrap;flex:none;";
-
-/** Tinted pill styling for one status — design call #5: Triage blue,
- *  In progress green (accent), Done muted, Declined red at reduced opacity. */
-function ticketPillStyle(status: TicketStatus): string {
-  const tint = (c: string) =>
-    `${CHIP_BASE}color:${c};border:1px solid color-mix(in srgb,${c} 45%,transparent);background:color-mix(in srgb,${c} 12%,transparent)`;
-  if (status === "in_progress") return tint("var(--accent)");
-  if (status === "submitted") return tint("var(--blue)");
-  if (status === "testing") return tint("var(--amber)");
-  if (status === "done") return `${CHIP_BASE}color:var(--fg-55);border:1px solid var(--border-strong)`;
-  return `${CHIP_BASE}color:var(--red);border:1px solid color-mix(in srgb,var(--red) 35%,transparent);opacity:.75`;
+/** A small piece of metadata beside a title (category, relation, source): muted text, no box —
+ *  a word the reader may want, never a chip that competes with the title. */
+export function metaWord(text: string, size = 11.5): string {
+  return `<span style="font-size:${size}px;color:var(--fg-55);white-space:nowrap;flex:none">${esc(text)}</span>`;
 }
 
-/** The status pill (design call #5). The ONE place a ticket status is painted. */
-export function ticketPill(status: TicketStatus): string {
-  return `<span style="${ticketPillStyle(status)}">${esc(TICKET_STATUS_LABEL[status].toUpperCase())}</span>`;
-}
-
-/** The priority chip — MONOCHROME by design call #5 (weight, not hue, carries it). */
-export function priorityChip(p: TicketPriority): string {
-  const st = p === "high"
-    ? `${CHIP_BASE}color:var(--fg);border:1px solid var(--border-strong)`
-    : p === "normal"
-      ? `${CHIP_BASE}color:var(--fg-55);border:1px solid var(--border)`
-      : `${CHIP_BASE}color:var(--fg-40);border:1px solid var(--border)`;
-  return `<span style="${st}">${esc(p.toUpperCase())}</span>`;
-}
-
-/** A small label-face chip (category / sprint tag / relation marker). */
-export function tagChip(
-  text: string,
-  opts: { color?: string; border?: string; size?: number; spacing?: string; pad?: string } = {}
-): string {
-  const { color = "var(--fg-40)", border = "var(--border)", size = 10, spacing = ".05em", pad = "2px 6px" } = opts;
-  return `<span style="font-family:var(--label);font-size:${size}px;font-weight:600;letter-spacing:${spacing};color:${color};border:1px solid ${border};border-radius:5px;padding:${pad};white-space:nowrap;flex:none">${esc(text)}</span>`;
-}
-
-const categoryChip = (c: string) => tagChip(c, { color: "var(--fg-55)", border: "var(--border-strong)" });
-
-/** The table's category and priority: plain text, no box — inside the table's one surface
- *  only the status pill (whose hue means something) keeps an outline. Priority stays
- *  MONOCHROME (design call #5): weight and tone, not hue. */
-const tableCategory = (c: string) =>
-  `<span style="font-size:12.5px;color:var(--fg-55);white-space:nowrap">${esc(c)}</span>`;
-const tablePriority = (p: TicketPriority) =>
-  `<span style="font-family:var(--label);font-size:10.5px;letter-spacing:.05em;white-space:nowrap;${p === "high" ? "font-weight:700;color:var(--fg)" : p === "normal" ? "font-weight:600;color:var(--fg-55)" : "font-weight:600;color:var(--fg-40)"}">${esc(p.toUpperCase())}</span>`;
+/** The table's category: plain text, no box. Status and priority are marks (`marks.ts`): a
+ *  glyph and the word, never a pill. */
+const tableCategory = (c: string) => metaWord(c, 12.5);
 
 /** The system requester of a mirrored ticket whose issue author maps to no person
  *  (0032). Not in the people directory, so it gets its own display name. */
 const MIRROR_HANDLE = "github-webhook";
 
-/** "GITHUB #214" on a ticket mirrored from a GitHub issue; nothing on a native one. */
+/** "GitHub #214" on a ticket mirrored from a GitHub issue; nothing on a native one. */
 export function sourceChip(t: { source: TicketSource; source_ref: string | null }): string {
   if (t.source !== "github") return "";
   const n = sourceIssueNumber(t.source_ref);
-  return tagChip(n !== null ? `GitHub #${n}` : "GitHub", { size: 9.5, pad: "1px 6px" });
+  return metaWord(n !== null ? `GitHub #${n}` : "GitHub");
 }
 
 /** Short age from an ISO timestamp: "42m" / "6h" / "3d" (the design's `age()`).
@@ -321,8 +282,8 @@ function filterRow(p: QueueProps, shown: number): string {
 
 /** The relation marker: "N sub" on a parent, "↳ sub-ticket" on a child, else nothing. */
 function relationChip(t: TicketListItem): string {
-  if (t.sub_count > 0) return tagChip(`${t.sub_count} sub`, { size: 9.5, pad: "1px 6px" });
-  if (t.parent_id !== null) return tagChip("↳ sub-ticket", { size: 9.5, pad: "1px 6px" });
+  if (t.sub_count > 0) return metaWord(`${t.sub_count} sub`);
+  if (t.parent_id !== null) return metaWord("↳ sub-ticket");
   return "";
 }
 
@@ -337,8 +298,8 @@ function tableRow(t: TicketListItem, persons: PersonSummary[]): string {
     <div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="min-width:0;font-size:13.5px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>${relationChip(t)}${sourceChip(t)}</div>
     <div style="display:flex;min-width:0">${personLink(linkable(persons, t.requester), t.requester, 20, nameOf(persons, t.requester), "min-width:0;font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap")}</div>
     <div>${tableCategory(t.category)}</div>
-    <div>${tablePriority(t.priority)}</div>
-    <div>${ticketPill(t.status)}</div>
+    <div>${priorityMark(t.priority)}</div>
+    <div>${ticketStatusMark(t.status)}</div>
     <div style="display:flex;align-items:center;gap:7px;min-width:0">${avatarStack(t.assignees, persons, 20, true)}<span style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${asgStyle}">${esc(asgText)}</span></div>
     <div style="font-size:11.5px;color:var(--fg-40);text-align:right;font-family:var(--label)">${esc(age(t.created_at))}</div>
     ${hitArea("openTicket", String(t.id), `#${t.id} ${t.title}`)}
@@ -449,15 +410,14 @@ function tableView(p: QueueProps): string {
  *  photo opens their person card. */
 function boardCard(t: TicketListItem, persons: PersonSummary[]): string {
   const canMove = legalMoves(t.status).length > 0;
-  const prio = t.priority === "normal" ? ""
-    : `<span style="font-size:11.5px;font-weight:${t.priority === "high" ? "600;color:var(--fg)" : "500;color:var(--fg-40)"}">${t.priority === "high" ? "High" : "Low"}</span>`;
+  const prio = t.priority === "normal" ? "" : priorityMark(t.priority, 11.5);
   const sep = `<span style="color:var(--fg-40);font-size:11.5px">·</span>`;
   const asg = t.assignees.length
     ? avatarStack(t.assignees, persons, 18, true)
     : `<span style="font-size:11.5px;color:var(--fg-40);font-style:italic">Unassigned</span>`;
   return `<div${canMove ? ` data-tdrag="${t.id}" data-status="${t.status}"` : ""} class="cnpy-tcard ${SURFACE} cnpy-card${needsAttention(t) ? NEEDS_ATTENTION_CLASS : ""} ${HITBOX}" style="display:block;width:100%;text-align:left;padding:11px 12px;margin-bottom:8px;cursor:${canMove ? "grab" : "pointer"}">
     <div style="font-size:13.5px;font-weight:600;letter-spacing:-0.005em;line-height:1.4;color:var(--fg);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${esc(t.title)}</div>
-    <div style="display:flex;align-items:center;gap:6px;margin-top:9px;min-height:18px">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px 6px;margin-top:9px;min-height:18px">
       <span style="font-size:11.5px;color:var(--fg-40)">#${t.id}</span>
       ${prio ? `${sep}${prio}` : ""}
       ${sourceMark(t)}
@@ -502,7 +462,6 @@ function boardView(p: QueueProps, rows: TicketListItem[]): string {
     // A column is in its saved board order (`boardOrder`, tickets-core — the order
     // `move_ticket` places into), not the table's newest-first.
     const cards = rows.filter((t) => t.status === st).sort(boardOrder);
-    const headColor = st === "in_progress" ? "color:var(--accent)" : st === "submitted" ? "color:var(--blue)" : st === "testing" ? "color:var(--amber)" : "color:var(--fg-40)";
     const empty = p.loading ? ""
       : blank ? (ci === 0
         ? emptyLayout("tickets-board", { text: QUEUE_EMPTY, action: QUEUE_EMPTY_ACTION, sayStyle: "margin-bottom:8px", shapes: boardCardShapes(1) })
@@ -512,8 +471,8 @@ function boardView(p: QueueProps, rows: TicketListItem[]): string {
       : "";
     // The whole column (down to the grid's floor) is the drop target.
     return `<div data-tdrop="${st}" class="cnpy-tcol" style="min-width:0;display:flex;flex-direction:column;border-radius:12px;padding:0 6px 6px;margin:0 -6px">
-      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding-bottom:9px;border-bottom:1px solid var(--border-strong);margin-bottom:10px">
-        <span style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;white-space:nowrap;${headColor}">${esc(TICKET_STATUS_LABEL[st].toUpperCase())}</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-bottom:9px;border-bottom:1px solid var(--border-strong);margin-bottom:10px">
+        <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--fg);white-space:nowrap">${ticketStatusIcon(st, 14, false)}${esc(TICKET_STATUS_LABEL[st])}</span>
         <span style="font-size:12px;color:var(--fg-40);white-space:nowrap;flex:none">${p.loading ? "" : cards.length}</span>
       </div>
       <div class="cnpy-stagger">${p.loading ? boardColumnSkeleton(st) : cards.map((t) => boardCard(t, p.persons)).join("")}</div>
@@ -754,7 +713,7 @@ function sprintMenuBox(sprints: SprintView[], current: number | null, act: strin
 export type StatusMenuAnchor = "rail";
 
 /** THE status control. A status is a property a person SETS, so it is rendered
- *  as the pill you click, not as a row of action buttons: the old "Start" +
+ *  as the status you click, not as a row of action buttons: the old "Start" +
  *  "Decline" pair read as an accept/reject gate on the assignment, which is not
  *  what a status is (and assignment never gated anything — `toggle_assignee`
  *  does not touch status). The menu lists the statuses in pipeline order with
@@ -762,25 +721,23 @@ export type StatusMenuAnchor = "rail";
  *  allows every move), done and declined included. */
 function statusControl(status: TicketStatus, open: boolean, anchor: StatusMenuAnchor): string {
   const moves = legalMoves(status);
-  if (moves.length === 0) return ticketPill(status);
-  // A row is the PILL itself — `ticketPill` already spells the status out, so a
-  // label beside it would just say it twice.
+  if (moves.length === 0) return ticketStatusMark(status);
+  // A row is the status's mark — glyph and word — so a label beside it would say it twice.
   const rows = TICKET_STATUSES.filter((s) => s === status || moves.includes(s)).map((s) => {
     const on = s === status;
     const row = "display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left;padding:7px 10px;border-radius:7px;white-space:nowrap";
     return on
-      ? `<div style="${row}">${ticketPill(s)}${checkMark(true)}</div>`
-      : `<button data-act="ticketStatus" data-arg="${s}" class="${MENU_ROW_CLASS}" style="${row}">${ticketPill(s)}${checkMark(false)}</button>`;
+      ? `<div style="${row}">${ticketStatusMark(s)}${checkMark(true)}</div>`
+      : `<button data-act="ticketStatus" data-arg="${s}" class="${MENU_ROW_CLASS}" style="${row}">${ticketStatusMark(s)}${checkMark(false)}</button>`;
   }).join("");
   const menu = open ? `${MENU_BACKDROP}<div style="${MENU_BOX};width:172px;min-width:100%">${rows}</div>` : "";
-  // The trigger IS the pill — same tint as `ticketPill`, with the chevron inside
-  // it. It used to be the pill nested in an outlined button, which read as a chip
-  // sitting in a box; the affordance is now the chevron plus a ring in the
-  // status's own colour on hover / while open (`.cnpy-statusbtn`).
+  // The trigger is the mark itself — glyph, word, chevron — on no box of its own: a quiet
+  // button whose hover fill and turning chevron are the affordance (`.cnpy-statusbtn`). The
+  // negative margin keeps the glyph on the rail's left edge, under its neighbours' values.
   return `<div style="position:relative;display:inline-flex">
-    <button data-act="ticketStatusMenu" data-arg="${anchor}" title="Set status" aria-haspopup="menu" aria-expanded="${open ? "true" : "false"}" class="cnpy-statusbtn" style="${ticketPillStyle(status)};display:inline-flex;align-items:center;gap:5px;padding:3px 6px 3px 8px;cursor:pointer">
-      ${esc(TICKET_STATUS_LABEL[status].toUpperCase())}
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none;opacity:.7"><path d="m6 9 6 6 6-6"></path></svg>
+    <button data-act="ticketStatusMenu" data-arg="${anchor}" title="Set status" aria-haspopup="menu" aria-expanded="${open ? "true" : "false"}" class="cnpy-statusbtn" style="display:inline-flex;align-items:center;gap:6px;margin:-4px 0 -4px -6px;padding:4px 6px;border-radius:6px;font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;cursor:pointer">
+      ${ticketStatusIcon(status, 14, false)}${esc(TICKET_STATUS_LABEL[status])}
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none;color:var(--fg-40)"><path d="m6 9 6 6 6-6"></path></svg>
     </button>${menu}
   </div>`;
 }
@@ -1038,7 +995,8 @@ function relationsRail(p: TicketDetailProps): string {
   const childRows = t.children.map((c) =>
     `<button data-act="openTicket" data-arg="${c.id}" style="${RAIL_ROW}">
       <span style="${RAIL_BOX}">↳</span>
-      <span style="flex:1;min-width:0"><span style="${RAIL_TITLE}">${esc(c.title)}</span><span style="${RAIL_META}">SUB-TICKET · ${esc(TICKET_STATUS_LABEL[c.status].toUpperCase())}</span></span>
+      <span style="flex:1;min-width:0"><span style="${RAIL_TITLE}">${esc(c.title)}</span><span style="${RAIL_META}">SUB-TICKET</span></span>
+      ${ticketStatusIcon(c.status)}
       ${RAIL_ARROW}
     </button>`).join("");
   const empty = !t.parent && t.children.length === 0
@@ -1106,8 +1064,8 @@ export function ticketDetailView(p: TicketDetailProps): string {
         <div>
           <div style="${RAIL_SECTION_HEAD}"><div style="${MONO_EYEBROW}">Properties</div></div>
           <div style="${PROP_ROW}"><div style="${PROP_LABEL}">STATUS</div><div style="min-width:0">${statusControl(t.status, p.stMenu === "rail", "rail")}</div></div>
-          <div style="${PROP_ROW}"><div style="${PROP_LABEL}">CATEGORY</div><div>${categoryChip(t.category)}</div></div>
-          <div style="${PROP_ROW}"><div style="${PROP_LABEL}">PRIORITY</div><div>${priorityChip(t.priority)}</div></div>
+          <div style="${PROP_ROW}"><div style="${PROP_LABEL}">CATEGORY</div><div style="font-size:12.5px;color:var(--fg-70)">${esc(t.category)}</div></div>
+          <div style="${PROP_ROW}"><div style="${PROP_LABEL}">PRIORITY</div><div>${priorityMark(t.priority)}</div></div>
           <div style="${PROP_ROW}"><div style="${PROP_LABEL}">REQUESTER</div><div style="display:flex;min-width:0">${personLink(linkable(p.persons, t.requester), t.requester, 20, t.requester === MIRROR_HANDLE && t.source_author ? `@${t.source_author}` : nameOf(p.persons, t.requester), "min-width:0;font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}</div></div>
           ${sourceRow(t)}
           <div style="${PROP_ROW}"><div style="${PROP_LABEL}">OPENED</div><div style="font-size:12.5px;color:var(--fg-70);white-space:nowrap">${esc(relTime(t.created_at))}</div></div>

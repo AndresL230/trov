@@ -150,7 +150,7 @@ describe("list tiles — the design's height", () => {
 
 describe("reviewTile", () => {
   const item = (id: string, kind: "proposal" | "decision"): ReviewItem => ({
-    id, kind, eyebrow: "", badge: "Staged", badgeColor: "var(--amber)", title: `Item ${id}`, summary: "",
+    id, kind, eyebrow: "", title: `Item ${id}`, summary: "",
     agent: "kai", agentInitials: "KA", time: "1h ago",
   });
 

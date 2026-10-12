@@ -11,16 +11,11 @@ import { personChip, personLink, personNameLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
 import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skList, skW, skDetail } from "./skeleton";
+import { handoffMark } from "./marks";
 
 // ── atoms ────────────────────────────────────────────────────────────────────
-const CHIP_BASE = "font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;border-radius:5px;padding:2px 6px;white-space:nowrap;flex:none";
-
-/** PENDING (blue tint) / CLAIMED (quiet outline) / EXPIRED (faded red) — the ticket pill, mapped onto handoff status. */
-export function handoffPill(status: HandoffStatus): string {
-  if (status === "pending") return `<span style="${CHIP_BASE};color:var(--blue);border:1px solid color-mix(in srgb,var(--blue) 45%,transparent);background:color-mix(in srgb,var(--blue) 12%,transparent)">PENDING</span>`;
-  if (status === "claimed") return `<span style="${CHIP_BASE};color:var(--fg-55);border:1px solid var(--border-strong)">CLAIMED</span>`;
-  return `<span style="${CHIP_BASE};color:var(--red);border:1px solid color-mix(in srgb,var(--red) 35%,transparent);opacity:.75">EXPIRED</span>`;
-}
+/** Pending / Claimed / Expired — a mark (marks.ts `HANDOFF_MARK`), never a pill. */
+export const handoffStatusMark = (status: HandoffStatus, size = 12.5): string => handoffMark(status, size);
 
 /** The dashed "–" avatar that stands for Anyone (the tickets' Unassigned avatar). */
 export function anyoneAvatar(size: number): string {
@@ -75,7 +70,7 @@ function listRow(h: HandoffView, p: HandoffsListProps): string {
   const pending = h.status === "pending";
   const titleSt = `min-width:0;font-size:13.5px;font-weight:${pending ? 600 : 500};letter-spacing:-0.005em;color:${pending ? "var(--fg)" : "var(--fg-55)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap`;
   const promptChip = h.prompt
-    ? `<span class="cnpy-hrow-chip" style="font-family:var(--label);font-size:9.5px;font-weight:600;letter-spacing:.05em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 6px;white-space:nowrap;flex:none">+ prompt</span>`
+    ? `<span class="cnpy-hrow-chip" style="font-size:11.5px;color:var(--fg-40);white-space:nowrap;flex:none">+ prompt</span>`
     : "";
   const when = relTime(pending ? h.created_at : (h.claimed_at ?? h.created_at));
   return `<div class="cnpy-trow cnpy-hrow${pending ? " cnpy-attn" : ""} ${HITBOX}" style="display:grid;grid-template-columns:minmax(0,2.6fr) minmax(0,1.1fr) minmax(0,1.3fr) auto 64px;gap:12px;align-items:center;width:100%;text-align:left;padding:12px 16px;border-bottom:1px solid var(--border);transition:background .12s ease">
@@ -84,7 +79,7 @@ function listRow(h: HandoffView, p: HandoffsListProps): string {
       ? `${anyoneAvatar(20)}<span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Anyone</span>`
       : personLink(personOf(p.persons, other), other, 20, nameOf(p.persons, other), "min-width:0;font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap")}</div>
     <div class="cnpy-hrow-ref" style="min-width:0"><div style="font-family:var(--label);font-size:11.5px;font-weight:500;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.context.branch)}</div><div style="font-family:var(--label);font-size:10px;color:var(--fg-40);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.context.repo)}</div></div>
-    <div>${handoffPill(h.status)}</div>
+    <div>${handoffStatusMark(h.status)}</div>
     <div style="font-size:11.5px;color:var(--fg-40);text-align:right;font-family:var(--label);white-space:nowrap">${esc(when)}</div>
     ${hitArea("openHandoff", String(h.id), `#${h.id} ${firstLine(h.body)}`)}
   </div>`;
@@ -201,7 +196,7 @@ export function handoffDetailView(p: HandoffDetailProps): string {
       <div style="flex:1;min-width:0">
         <h2 style="margin:0;max-width:620px;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.28;text-wrap:pretty">${esc(firstLine(h.body))}</h2>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--fg-55)">
-          ${handoffPill(h.status)}
+          ${handoffStatusMark(h.status)}
           <span style="font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-40)">#${h.id}</span>
           <span style="white-space:nowrap">${whoLink(h.sender)} → ${whoLink(h.recipient)}</span>
           <span style="color:var(--fg-40);white-space:nowrap">· ${esc(relTime(h.created_at))}</span>

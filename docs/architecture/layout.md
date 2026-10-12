@@ -150,7 +150,9 @@
   its Rendered view (the proposed doc through that same renderer, changed blocks marked, edits marked word by word by `web/src/html-words.ts`) over `web/src/md-blocks.ts`
   (a body cut into marked's top-level blocks) and `web/src/diff.ts` (`diffSeq`, the line diff);
   `web/src/notifications.ts` holds the Settings › Email notifications and Org settings › Notifications views;
-  `web/src/tickets.ts` + `web/src/sprints.ts` are the (purely presentational) tickets/sprint components, and
+  `web/src/tickets.ts` + `web/src/sprints.ts` are the (purely presentational) tickets/sprint components;
+  `web/src/marks.ts` is the ONE place a state is drawn (status glyphs, priority bars, a shape and a word —
+  never a pill; `web-ui.md` › Status marks), read by every screen, the site and its tour mocks; and
   `web/src/hash.ts` is the hash-route seam (`parseHash` / `hashForRoute` — `#tickets/7`, `#sprints/3`,
   `#repo/<tab>`). `web/src/repo.ts` is the Repo dashboard (ported from the Claude Design `Trov Repo
   Dashboard.dc.html`), `web/src/repo-sample.ts` its design-placeholder set (a dynamic import, never in the main
