@@ -19,6 +19,8 @@ import {
   type LimitKey, type OrgPlanView, type PlanNext,
 } from "@shared/plans";
 import { billingDate, isPast, type PurchasablePlan } from "@shared/billing";
+import { CANCEL_TERMS, CHECKOUT_TAX, PRICING, RENEWAL_TERMS, formatPrice, seatMath } from "@shared/pricing";
+import { REFUNDS_PATH, TERMS_PATH } from "@shared/legal-core";
 import type { OrgRole } from "@shared/orgs";
 import { esc, surface } from "./ui";
 import { O_ERR, O_HELP, O_LABEL, quietBtn, sliceNote, type OrgSlice } from "./org-ui";
@@ -86,6 +88,32 @@ function limitRow(v: OrgPlanView, key: LimitKey): string {
 
 // ── billing: how a paid org pays ─────────────────────────────────────────────
 
+/** The seats a checkout for this organization starts at: its members and pending invitations, at least one
+ *  (billing.md › Seats). The buyer can change the number on Stripe's page. */
+export const checkoutSeats = (v: OrgPlanView): number => Math.max(1, Number.isFinite(v.usage.seats) ? v.usage.seats : 1);
+
+/** Before an upgrade: the price and THIS organization's per-seat math — "Pro is <price> per seat each month, …:
+ *  4 seats × <price> = <total> per month for this organization now." Plain text. The amount is the pricing table's
+ *  (shared/pricing.ts); Stripe's page shows the real total, with tax. */
+export function upgradeLine(v: OrgPlanView): string {
+  const p = PRICING[UPGRADE_PLAN];
+  const math = seatMath(checkoutSeats(v), p);
+  const price = p.price === null ? "" : ` is ${formatPrice(p.price)} per seat each month`;
+  return `${PLANS[UPGRADE_PLAN].name}${price || " is paid per seat"}, one seat for each member or pending invitation${math ? `: ${math} for this organization now` : ""}. You can change the number at checkout.`;
+}
+
+const TERMS_STYLE = "margin:8px 0 0;font-size:12px;line-height:1.55;color:var(--fg-55)";
+const termsLink = (href: string, text: string): string => `<a href="${href}" target="_blank" rel="noopener" class="cnpy-mutelink" style="color:var(--fg-70);text-decoration:underline;text-underline-offset:2px">${text}</a>`;
+/** Beside a button that starts a payment (Upgrade to Pro, Pay for Pro): tax, automatic renewal and how to
+ *  stop it, the Terms and the refund policy. Trusted markup; the words are shared/pricing.ts's. */
+export function checkoutTerms(): string {
+  return `<p data-plan-terms="checkout" style="${TERMS_STYLE}">${esc(CHECKOUT_TAX)} ${esc(RENEWAL_TERMS)} ${termsLink(TERMS_PATH, "Terms")} · ${termsLink(REFUNDS_PATH, "Refund policy")}</p>`;
+}
+/** Beside Cancel plan on a live subscription: what cancelling means for the money, and the policy. */
+export function cancelTerms(): string {
+  return `<p data-plan-terms="cancel" style="${TERMS_STYLE}">${esc(CANCEL_TERMS)} ${termsLink(REFUNDS_PATH, "Refund and cancellation policy")}</p>`;
+}
+
 /** The Plan block's billing actions, as Org settings holds them (`OrgUi.billing`). */
 export interface OrgBillingUi {
   /** The action on its way to Stripe, as `<act>` or `<act>:<plan>` (its button says so; the others wait). */
@@ -94,7 +122,7 @@ export interface OrgBillingUi {
 }
 export const initialOrgBillingUi = (): OrgBillingUi => ({ busy: null, error: null });
 
-interface BillingPart { state: "active" | "past_due" | "cancelling" | "ended" | "free" | "gift"; chip: string; line: string; actions: string; foot: string }
+interface BillingPart { state: "active" | "past_due" | "cancelling" | "ended" | "free" | "gift"; chip: string; line: string; actions: string; foot: string; /** Trusted markup under the buttons: the payment terms, or "". */ terms: string }
 
 /** The org's plan is a gift from Trov with an end (never a paid org's: paying clears a gift). */
 const giftOf = (v: OrgPlanView): string | null => (v.gift_until && v.source !== "billing" ? v.gift_until : null);
@@ -137,7 +165,7 @@ function billingPart(v: OrgPlanView, role: OrgRole, b: OrgBillingUi): BillingPar
       return quietBtn(busy ? "Opening Stripe…" : v.plan === to ? `Keep ${PLANS[to].name} by paying` : `Pay for ${PLANS[to].name}`, "orgBillingUpgrade", { arg: to, field: key, disabled: off, busy, extra: off ? "" : "color:var(--fg)" });
     }).join("");
     return {
-      state: "gift", chip: "", actions,
+      state: "gift", chip: "", actions, terms: checkoutTerms(),
       line: same
         ? `To keep ${pro} after that, start paying before the gift ends. ${pro} is paid per seat, and the paid plan takes over as soon as you pay: the seats you buy are the seats you have.`
         : `To stay on a paid plan after that, you can move to ${pro}, paid per seat; it takes over as soon as you pay, with ${pro}'s limits. To keep ${v.name}, contact Trov.`,
@@ -154,7 +182,7 @@ function billingPart(v: OrgPlanView, role: OrgRole, b: OrgBillingUi): BillingPar
   // Ended: the org moved to Free (a legacy org frozen as `canceled` says only that it ended).
   if (bill.ended) line = v.status === "canceled" ? `The subscription ended${ended}.`
     : `The ${pro} subscription ended${ended}, so this organization is on ${v.name} now. Nothing was removed; anything over a ${v.name} limit waits until it is back under.`;
-  else if (!bill.subscribed) line = `${pro} is paid per seat: one for each member or pending invitation. It raises every limit below.`;
+  else if (!bill.subscribed) line = `${upgradeLine(v)} It raises every limit below.`;
   else if (cancelling) line = `Cancelled: the plan ends${date ? ` on ${date}` : " at the end of the paid period"}, and then this organization moves to Free. Until then everything works as before.${owner ? " To keep it, resume the subscription in Manage billing." : ""}`;
   else if (v.status === "past_due") line = `The last payment did not go through. Stripe is trying the card again, and nothing changes while it does; if it keeps failing, the organization moves to Free.${date ? ` The current period runs to ${date}.` : ""}${owner ? " Update the card in Manage billing." : ""}`;
   else line = `${seats}${date ? `Renews on ${date}. ` : ""}Billed ${every}through Stripe.`;
@@ -177,9 +205,13 @@ function billingPart(v: OrgPlanView, role: OrgRole, b: OrgBillingUi): BillingPar
     : !bill.available ? "Billing is not available right now, so these are off. Your plan is unchanged."
     : bill.subscribed ? "Card, invoices, seats and cancelling are on Stripe's pages. Trov never sees your card."
     : `${pro} is paid through Stripe; you choose the number of seats there. Trov never sees your card.`;
+  // The terms go where a payment can start (an upgrade) or stop (Cancel plan): an owner's buttons only.
+  const terms = !owner || !bill.available ? ""
+    : !bill.subscribed ? (bill.upgrade_to.length ? checkoutTerms() : "")
+    : !cancelling && !bill.pinned ? cancelTerms() : "";
   return {
     state: bill.subscribed ? (cancelling ? "cancelling" : v.status === "past_due" ? "past_due" : "active") : bill.ended ? "ended" : "free",
-    chip: cancelling ? kindMark("Cancelled", "warn", 12, "It stays on its plan until the end of the period it is paid for.") : "", line, actions, foot,
+    chip: cancelling ? kindMark("Cancelled", "warn", 12, "It stays on its plan until the end of the period it is paid for.") : "", line, actions, foot, terms,
   };
 }
 
@@ -209,6 +241,7 @@ export function planBlock(s: OrgSlice<OrgPlanView | null>, role: OrgRole, b: Org
       ${gift}
       ${pay ? `<p data-plan-billing style="margin:8px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-70)">${esc(pay.line)}</p>` : ""}
       ${pay?.actions ? `<div class="cnpy-plan-actions">${pay.actions}</div>` : ""}
+      ${pay?.actions ? pay.terms : ""}
       ${pay && b.error ? `<div role="alert" style="${O_ERR}">${esc(b.error)}</div>` : ""}
       <div class="cnpy-tile-foot" style="${O_HELP};margin-top:auto;padding-top:14px">${esc(foot)}</div>
     </section>
@@ -239,11 +272,13 @@ export interface PlanParts {
   actions: string;
   /** Who changes the plan, and how. */
   foot: string;
+  /** Trusted markup under the buttons: the payment or cancellation terms (`checkoutTerms` / `cancelTerms`), or "". */
+  terms: string;
 }
 export function planParts(v: OrgPlanView, role: OrgRole, b: OrgBillingUi = initialOrgBillingUi()): PlanParts {
   const pay = billingPart(v, role, b);
   const gift = giftNote(v);
   // The Plan block's own closing line (`planBlock`, above) — keep the two in step.
   const foot = pay ? pay.foot : role === "owner" ? (gift ? `To keep or change your plan, contact Trov.` : `To change your plan, contact Trov.`) : `An owner of this organization can ask Trov to change the plan.`;
-  return { state: pay?.state ?? null, chips: `${STATUS_CHIP[v.status]}${pay?.chip ?? ""}`, gift, line: pay?.line ?? null, actions: pay?.actions ?? "", foot };
+  return { state: pay?.state ?? null, chips: `${STATUS_CHIP[v.status]}${pay?.chip ?? ""}`, gift, line: pay?.line ?? null, actions: pay?.actions ?? "", foot, terms: pay?.actions ? pay.terms : "" };
 }

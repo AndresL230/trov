@@ -6,15 +6,16 @@
 // app's authored values at its `--corner-scale` (.4), since trov.css isn't loaded.
 
 import { TROV_MARK_PATH, trovMark } from "@shared/mark";
+import { stableFontFaceCss } from "@shared/fonts";
+import { LEGAL_LINKS, consentHtml, copyrightLine } from "@shared/legal-core";
 
 export const esc = (s: string): string =>
   s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 
-const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`
-  + `<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;650&family=Archivo+Narrow:wght@400;500;600&display=swap" rel="stylesheet">`;
-
 // Trov's brand, as the app's light theme has it (web/src/trov.css): the mark's purple on white. ONE
 // palette, no dark variant — the app opens light by default, and its dark theme is not the brand's purple.
+// The tokens are trov.css's light values, the WCAG AA ones (2026-10: --fg-40, --accent, --accent-soft and the
+// banner's gradient moved with it) — change them together.
 //
 // The card is the app's FIRST-RUN card (web/src/trov.css `.cnpy-orgs-card` / `.cnpy-orgs-banner`): a purple
 // banner — gradient, a soft highlight, a dot grid fading in from the right, the mark large and faint behind
@@ -24,15 +25,19 @@ const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com"><link 
 /** The mark as a CSS image (white), for the banner's large faint mark. */
 const MARK_URI = `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="#fff" d="${TROV_MARK_PATH}"/></svg>`)}`;
 
+// Geist and Archivo Narrow from Trov's own origin: the build's stable copies (shared/fonts.ts), so the page's
+// CSP needs only `font-src 'self'` and no third party is asked for anything.
+const FONT_FACES = stableFontFaceCss();
+
 const CSS = `
-:root{color-scheme:light;--bg:#f6f6f7;--card:#ffffff;--fg:#16161a;--fg-70:#4f4f58;--fg-55:#6e6e78;--fg-40:#8e8e98;--border:rgba(20,20,30,.08);--border-strong:rgba(20,20,30,.15);--hover:rgba(20,20,30,.04);--accent:#5e6ad2;--mark:#616ACB;--accent-fg:#fff;--accent-soft:rgba(94,106,210,.12);--red:#c53030;--red-soft:rgba(197,48,48,.08);--shadow:0 32px 64px -24px rgba(20,20,30,.18),0 4px 12px -4px rgba(20,20,30,.08);--label:'Archivo Narrow',system-ui,sans-serif;--code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+:root{color-scheme:light;--bg:#f6f6f7;--card:#ffffff;--fg:#16161a;--fg-70:#4f4f58;--fg-55:#6e6e78;--fg-40:#70707a;--border:rgba(20,20,30,.08);--border-strong:rgba(20,20,30,.15);--hover:rgba(20,20,30,.04);--accent:#525cc3;--mark:#616ACB;--accent-fg:#fff;--accent-soft:rgba(82,92,195,.12);--red:#c53030;--red-soft:rgba(197,48,48,.08);--shadow:0 32px 64px -24px rgba(20,20,30,.18),0 4px 12px -4px rgba(20,20,30,.08);--label:'Archivo Narrow',system-ui,sans-serif;--code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:radial-gradient(55% 60% at 50% 46%,rgba(97,106,203,.2) 0%,rgba(97,106,203,0) 72%),var(--bg);color:var(--fg);font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
 .card{width:min(420px,100%);border:0;border-radius:5.6px;overflow:hidden;background:var(--card);box-shadow:0 0 0 1px rgba(20,22,60,.07),0 1px 2px rgba(20,22,60,.04),0 12px 40px -12px rgba(20,22,60,.18)}
 .card>:not(.head){margin-left:28px;margin-right:28px}
 .card>.head+*{margin-top:22px}
 .card>:last-child{margin-bottom:26px}
-.head{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:flex-start;gap:16px;padding:24px 28px 26px;color:#fff;background:radial-gradient(120% 140% at 100% 0%,rgba(255,255,255,.16) 0%,rgba(255,255,255,0) 55%),linear-gradient(135deg,#6c75d8 0%,#5a64cc 48%,#454fb2 100%)}
+.head{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:flex-start;gap:16px;padding:24px 28px 26px;color:#fff;background:radial-gradient(120% 140% at 100% 0%,rgba(255,255,255,.1) 0%,rgba(255,255,255,0) 55%),linear-gradient(135deg,#5e66c7 0%,#4d55bb 48%,#3940a2 100%)}
 .head::before{content:"";position:absolute;right:-34px;top:-46px;width:190px;height:190px;opacity:.13;transform:rotate(-8deg);pointer-events:none;background:url("${MARK_URI}") center/contain no-repeat}
 .head::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;background-image:radial-gradient(rgba(255,255,255,.22) 1px,transparent 1.2px);background-size:16px 16px;-webkit-mask-image:linear-gradient(90deg,transparent 35%,#000 100%);mask-image:linear-gradient(90deg,transparent 35%,#000 100%)}
 .head>*{position:relative;z-index:1}
@@ -98,6 +103,12 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;back
 .pick-note{margin:2px 0 0;font-size:12px;line-height:1.5;color:var(--fg-55)}
 .row{display:flex;gap:10px;margin-top:24px}
 .row .btn{flex:1}
+.page{width:min(420px,100%);display:flex;flex-direction:column;align-items:center;gap:16px}
+.page>.card{width:100%}
+.legal{font-size:12px;line-height:1.7;color:var(--fg-55);text-align:center}
+.legal a,.consent a{color:var(--fg-70);text-decoration:underline;text-underline-offset:2px}
+.legal a:focus-visible,.consent a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.consent{margin:18px 0 0;font-size:12px;line-height:1.55;color:var(--fg-55);text-align:center}
 .err{margin-top:20px;padding:12px 14px;border-radius:4px;background:var(--red-soft);border:1px solid var(--border);color:var(--red);font-size:13.5px;line-height:1.55;overflow-wrap:anywhere}`;
 
 /** The Trov mark (shared/mark.ts), in the page's own `--mark`. */
@@ -107,9 +118,14 @@ export const GOOGLE = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidd
 const APP = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="m7 9 3 3-3 3M13 15h4"></path></svg>`;
 const CHECK = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>`;
 
+/** Under the card on every page the Worker renders itself (these, and the billing notices): the legal pages
+ *  and the source of the version running (AGPL-3.0 §13 — `/source` is the deployed commit), as plain links
+ *  on Trov's own origin. Nothing here asks anyone for anything. */
+export const LEGAL_FOOT = `<nav class="legal" aria-label="Legal and source">${LEGAL_LINKS.map((l) => `<a href="${l.path}">${esc(l.label)}</a>`).join(" · ")}<br>${esc(copyrightLine())}</nav>`;
+
 export function shell(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">`
-    + `<title>${esc(title)} · Trov</title>${FONTS}<style>${CSS}</style></head><body><main class="card">${body}</main></body></html>`;
+    + `<title>${esc(title)} · Trov</title><style>${FONT_FACES}${CSS}</style></head><body><div class="page"><main class="card">${body}</main>${LEGAL_FOOT}</div></body></html>`;
 }
 
 export const head = (title: string) => `<div class="head">${MARK}<span class="title">${esc(title)}</span></div>`;
@@ -128,6 +144,8 @@ export function signInPage(clientName: string): string {
     + `<div class="or"><span></span>or<span></span></div>`
     + `<a class="btn" href="/auth/google/login">${GOOGLE}Continue with Google</a>`
     + `</div>`
+    // Signing in here can create the account (onboarding follows, with its own checkbox): say what it agrees to.
+    + `<p class="consent" data-consent>${consentHtml()}</p>`
     + `<div class="foot">After you sign in, Trov asks you to confirm before anything is connected.</div>`);
 }
 

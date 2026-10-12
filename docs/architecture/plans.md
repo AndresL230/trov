@@ -371,6 +371,10 @@ migration.
 4. **Revoked / expired** — `POST /api/platform/grants/:id/revoke` for an unused one (409 `grant_used` after).
    `expires_in_days` is optional (1–365; the default is never); "expired" is derived, the row is not
    rewritten.
+5. **Deleted with what it became** (`organizations.md` §8) — deleting an organization deletes the grant it was
+   created from (`used_org`); deleting an account revokes every UNUSED grant addressed to the person (a paid
+   one's subscription is cancelled first) and rewrites every grant that named them to the tombstone, with no
+   login or address. A person who deletes their Free organization may create another (it no longer counts).
 
 Every step is in `org_admin_audit`: `grant.create`, `grant.revoke`, `grant.use`, and for an org's plan
 `plan.change`, `plan.overrides`, `plan.status`, `plan.gift`, `plan.gift_end`.
@@ -397,9 +401,9 @@ person before any org exists. `org_grants.used_org` is deliberately not named `o
 ## The pricing page
 
 The public face of the plans is ONE pure render, `pricingSection` (`web/src/pricing.ts`), shown twice: as the
-landing page's last section (nav link "Pricing") and as the static page `/pricing` (`web/pricing.html`, booted
-by `web/src/pricing-page.ts`; an extra Vite input served by the assets binding like `/terms`, linked from the
-footer). It restates nothing: names, descriptions and limits come from `PLANS`, prices from `PRICING` in
+landing page's last section (nav link "Pricing") and as the static page `/pricing` (a page of
+`shared/site-pages.ts`, prerendered at build and booted by `web/src/pricing-page.ts`; served by the assets binding
+like `/terms`, linked from the footer — `web-ui.md` › The public pages, for crawlers). It restates nothing: names, descriptions and limits come from `PLANS`, prices from `PRICING` in
 `shared/pricing.ts`. It shows the OFFERED plans only — Free, Pro, Enterprise. Tests:
 `test/render.pricing.test.ts`.
 
@@ -423,6 +427,18 @@ footer). It restates nothing: names, descriptions and limits come from `PLANS`, 
 - Its sentences (what every plan includes, the questions — among them how Pro's per-seat pricing works and
   that a cancelled Pro org moves to Free) describe what the product does today. A change to seats, limits or
   how a plan is changed is a change to that copy.
+- **What a buyer is told before paying** (the compliance pass, 2026-10-12; one wording in `shared/pricing.ts`):
+  beside "Choose Pro" (`planTerms`, inside `.site-plan-ctabox` so the cards' subgrid rows still line up) an
+  example of the per-seat math (`seatMath(3)` → "3 seats × $10 = $30 per month"), `CHECKOUT_TAX` ("Plus applicable
+  tax, calculated at checkout."), `RENEWAL_TERMS` ("Renews monthly until you cancel; cancel any time from
+  Billing.") and links to `/terms` and `/refunds`. The same words, with the org's OWN seat count (members +
+  pending invitations, what checkout starts at: `upgradeLine` / `checkoutTerms` in `web/src/org-plan.ts`), sit
+  beside Upgrade to Pro in the Plan block, Settings › Plan and the Members tab's seat cap, and on the Pro side of
+  Get started and the embedded payment card; a live subscription's Cancel plan carries `CANCEL_TERMS` and the
+  policy (`cancelTerms`). The pricing questions say the policy too. Nothing pre-ticked, no upsell, no
+  confirmshaming: "Cancel plan", "Keep Pro by paying", "Upgrade to Pro" are the whole vocabulary.
+- **No badge.** `PRICING.team.badge` is null: "Most teams start here" read as a statistic nobody could show. The
+  accent action falls back to the plan on sale (`accentPlan`), so nothing on the page or its OG card moved.
 
 ## The billing seam
 

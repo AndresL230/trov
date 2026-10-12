@@ -134,8 +134,9 @@ describe("dropdown — the styles (trov.css)", () => {
     expect(dd).toMatch(/\[data-cnpy-theme="light"\] \{ --menu-shadow:[^}]+\}\n\[data-cnpy-theme="dark"\] \{ --menu-shadow:[^}]+\}/);
   });
   it("shows where the keyboard is, on the trigger and on a row, and what is disabled", () => {
-    expect(dd).toContain(".cnpy-dd:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }");
-    expect(dd).toContain(".cnpy-dd-opt:focus-visible { outline:none; background:var(--hover); }");
+    expect(dd).toContain(".cnpy-dd:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }");
+    // A row draws the ring inside itself (the menu clips), over the hover tint — a tint alone was too faint (WCAG 2.4.7).
+    expect(dd).toContain(".cnpy-dd-opt:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; background:var(--hover); }");
     expect(dd).toMatch(/\.cnpy-dd:disabled \{ cursor:default;[^}]*opacity:\.7; \}/);
   });
 });

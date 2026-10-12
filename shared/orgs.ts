@@ -3,6 +3,7 @@
 import type { PersonColor } from "./rows";
 import { AVATAR_MAX_BYTES, AVATAR_TYPES } from "./people";
 import type { MyGrant, PlanId, PlatformOrgPlan } from "./plans";
+import { SITE_PAGE_SEGMENTS } from "./site-pages";
 
 export type OrgRole = "owner" | "admin" | "member";
 export type OrgStatus = "active" | "suspended";
@@ -27,8 +28,16 @@ export const RESERVED_ORG_SLUGS: readonly string[] = [
   "api", "o", "orgs", "org", "auth", "oauth", "mcp", "new", "settings", "admin", "platform", "raw", "img",
   "avatar", "u", "webhook", "static", "assets", "www", "app", "trov", "canopy", "invites", "invite", "me",
   "help", "support", "docs", "login", "logout", "signup", "system",
-  // Static pages and files at the root (web/*.html, web/public/).
-  "index", "pricing", "privacy", "terms", "guide", "favicon", "robots", "sitemap", "billing",
+  // Static pages and files at the root (the built pages, web/public/): every page of the public site is
+  // added from its ONE list (shared/site-pages.ts `SITE_PAGE_SEGMENTS`), so a new page reserves its own
+  // path; the four named here predate it. `app` (the app shell, web/app.html) is above; `og` holds the
+  // pages' Open Graph images. test/site.test.ts fails on a page or a web/public entry not listed.
+  "index", "pricing", "privacy", "terms", "guide", "favicon", "robots", "sitemap", "billing", "og",
+  // `fonts`: the self-hosted fonts' stable copies and licenses (shared/fonts.ts `FONTS_PATH`, written by the build).
+  "fonts",
+  // `source`: the AGPL source link, redirected to the deployed commit (shared/legal-core.ts `SOURCE_PATH`).
+  "source",
+  ...SITE_PAGE_SEGMENTS,
   // Root routes of the Hono app (src/routes.ts and the routers mounted at "/"), and screen names kept
   // free so a path can never be mistaken for one.
   "feed", "doc", "adr", "adrs", "roadmap", "search", "tickets", "ticket", "sprints", "sprint", "repo", "repos",
@@ -82,6 +91,10 @@ export const ORG_AUDIT_ACTIONS = [
   // A person created a Free organization of their own (src/plans/free.ts): the row is also the guard that
   // keeps them to one owned Free org at a time.
   "org.create_free",
+  // Deletion (src/deletion/): an organization deleted by its owner or a superadmin — a PLATFORM row (org_id
+  // NULL, the org is gone), its slug as the target; a person's account deleted — the target is the tombstone
+  // handle their content now carries, never the handle they had.
+  "org.delete", "person.delete",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 

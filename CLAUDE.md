@@ -47,7 +47,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
   `consumer.ts` (**the gate**), `webhook.ts` / `github-hook.ts`, `data/` (the ONLY place D1 is reached),
   `tools/` (one module per domain; writers in `tools/writes.ts`), `auth/`, `repo/` (Repo-dashboard capture),
   `github-app/`, `sync/`, `orgs/`, `platform/`, `plans/`, `billing/`, `integrations/`, `artifacts/`,
-  `notifications/`.
+  `notifications/`, `deletion/` (deleting an account or an org).
 - `migrations/` — numbered, append-only D1 SQL; each file's header says what it does. Multi-part migrations
   use marker lines that tests cut on. `0042_organizations` is all-or-nothing and must stay under 100 KB; its
   rollback is GENERATED (`scripts/mt/build-rollback.py`, CI fails if stale).
@@ -94,7 +94,12 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 10. **Handles, not logins.** `persons.handle` is identity; every `*_by` / owner column is a handle and must
     be listed in `HANDLE_COLUMNS` so a rename rewrites it. GitHub logins map through `identities`.
 11. **Soft by default.** Doc/ADR reject, triage exits, prompt and artifact delete are soft and restorable; a
-    deleted slug stays reserved. Hard deletes exist only for tickets and sprints.
+    deleted slug stays reserved. Hard deletes exist only for tickets and sprints — and for an ACCOUNT or an
+    ORGANIZATION, only through `src/deletion/` (Settings › Delete account, Org settings › Delete organization
+    by an owner, and Platform for a superadmin): an org's every `org_id` row goes in one batch
+    (`ORG_TABLES`, held to the schema by a test), a person's own rows go and their handle becomes a
+    `deleted-…` tombstone through `HANDLE_COLUMNS`; Stripe is cancelled first, R2 freed after the commit.
+    A new table with an `org_id` or a handle column must be added to `ORG_TABLES` / `HANDLE_COLUMNS`.
 12. **Credentials go through their one resolver; secrets never reach logs or responses.** A GitHub read
     uses `resolveGithubCredential`, any other integration `resolveCredential` — never a Worker secret or
     var directly. Scrub (`scrubbedMessage` / `scrubbedLog`) BEFORE any cut. Nothing reachable from
@@ -148,9 +153,9 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | artifacts, doc images, R2 | `artifacts.md` (+ `docs/artifact-contract.md`) |
 | handoffs, the Prompt Library | `handoffs-prompts.md` |
 | `src/notifications/`, digests, invite/welcome mail | `notifications.md` |
-| sidebar, morph, segmented, tab bars, entrances, corners | `web-ui.md` |
+| sidebar, morph, segmented, tab bars, entrances, corners; the public pages (`site-pages.ts`, prerender, robots/sitemap, noindex, 404), the public docs + llms.txt, error hints; fonts, contrast tokens, focus rings | `web-ui.md` |
 | `src/data/`, contexts, tenant vs platform SQL, bearer → org, background jobs | `data-layer.md` |
-| orgs, memberships, roles, invites, superadmin, how an org is set up | `organizations.md` |
+| orgs, memberships, roles, invites, superadmin, how an org is set up; deleting an account or an org (`src/deletion/`) | `organizations.md` |
 | `src/github-app/`, the install flow, installation tokens, the App webhook | `github-app.md` |
 | Sync GitHub, `src/sync/`, the sync panel's copy | `sync.md` |
 | plans, limits, grants, the pricing page, the summarizer allowance | `plans.md` |

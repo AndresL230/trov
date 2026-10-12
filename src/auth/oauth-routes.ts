@@ -78,9 +78,10 @@ async function consentSession(c: Context<AppEnv>): Promise<{ id: string; handle:
   return handle ? { id, handle } : null;
 }
 
-// Geist comes from Google Fonts, like the SPA's index.html; nothing else loads.
+// The page's type is Trov's own (the build's stable copies under /fonts/, shared/fonts.ts); nothing else
+// loads, and no third party is asked for anything.
 // form-action stays LAST: the consent page appends the app's redirect origin to it.
-export const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'; form-action 'self'";
+export const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; form-action 'self'";
 
 export interface OAuthDeps { now?: () => number }
 

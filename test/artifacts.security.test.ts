@@ -12,6 +12,7 @@ import {
   cookieFor, createBinary, createText, get, jsonInit, mcpCall, mcpRpc, mcpToolNames, multipart, put, sha256Hex,
   uniqueBytes, uploadUrl, wf,
 } from "./helpers/artifacts";
+import { mcpErrorHint } from "@shared/error-hints";
 import { platformCtx, mintTokenFor, ORG_A } from "./helpers/tenant";
 
 const ME = "sec-author";
@@ -70,7 +71,7 @@ describe("1 · per-kind caps", () => {
     const ok = await mcpCall(ME, "upload_asset", { ...base, title: "Mcp cap", content: atCap4 });
     expect(ok.isError).toBe(false);
     const over = await mcpCall(ME, "upload_asset", { ...base, title: "Mcp over", content: overCap2 });
-    expect(over.body).toEqual({ error: expect.any(String), code: "too_large" });
+    expect(over.body).toEqual({ error: expect.any(String), code: "too_large", hint: mcpErrorHint("too_large") });
     const up = await mcpCall(ME, "artifact_update", { slug: "mcp-cap", content: overCap4, summary: "x" });
     expect(up.body.code).toBe("too_large");
     const upOk = await mcpCall(ME, "artifact_update", { slug: "mcp-cap", content: atCap2, summary: "x" });

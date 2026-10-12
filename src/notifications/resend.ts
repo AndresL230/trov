@@ -39,15 +39,22 @@ export function platformFrom(orgFrom: string): string {
 /** A header value on one line: control characters (CR / LF included) become spaces. */
 export const oneLine = (s: string): string => s.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ").trim();
 
+/**
+ * The unsubscribe headers of a NOTIFICATION mail (one with an `unsubscribeUrl`; transactional mail has
+ * none): RFC 8058 one-click — the https link alone, which a mail client POSTs to and which works with no
+ * sign-in (src/notifications/unsubscribe.ts). There is no `mailto:` alternative on purpose: nothing reads
+ * the sending mailbox for unsubscribe requests, and an advertised way out must work by itself.
+ */
+export function unsubscribeHeaders(unsubscribeUrl: string): Record<string, string> {
+  return { "List-Unsubscribe": `<${unsubscribeUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" };
+}
+
 export function resendDelivery(opts: { apiKey: string; from: string; fetchImpl?: typeof fetch }): Delivery {
   const fetchImpl = opts.fetchImpl ?? fetch;
-  const mailto = `mailto:${bareAddress(opts.from)}?subject=unsubscribe`;
   return {
     mode: "resend",
     async send(msg) {
-      const headers = msg.unsubscribeUrl
-        ? { "List-Unsubscribe": `<${mailto}>, <${msg.unsubscribeUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" }
-        : undefined;
+      const headers = msg.unsubscribeUrl ? unsubscribeHeaders(msg.unsubscribeUrl) : undefined;
       const res = await fetchImpl(RESEND_URL, {
         method: "POST",
         headers: { authorization: `Bearer ${opts.apiKey}`, "content-type": "application/json" },

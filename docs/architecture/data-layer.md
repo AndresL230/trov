@@ -9,7 +9,7 @@ The flow a human operator follows — add an org, name its admin, set it up, inv
 
 | | Type | Built by | Query surface |
 |---|---|---|---|
-| Tenant data | `TenantContext { orgId, userId, role, via }` | `resolveTenant` (slug + membership), `resolveTenantById` (a credential that names its org), `resolveSoleTenant` (cut-over alias: the caller's one org), `liveTenants` (a bearer connection's reach — `src/data/bearer.ts` picks one per call), `systemTenant(p, orgId, actor)` | `src/data/sql.ts` |
+| Tenant data | `TenantContext { orgId, userId, role, via }` | `resolveTenant` (slug + membership), `resolveTenantById` (a credential that names its org), `resolveSoleTenant` (cut-over alias: the caller's one org), `liveTenants` (a bearer connection's reach — `src/data/bearer.ts` picks one per call), `systemTenant(p, orgId, actor)`, `catalogTenant(role)` (NO org and NO database — any read through it throws; only `src/mcp-catalog.ts`, which registers the MCP tools to describe them) | `src/data/sql.ts` |
 | Platform data | `PlatformContext { actor }` | `platform(env, actor)` | `src/data/platform-sql.ts` |
 
 Both surfaces export the same helpers — `first`, `all`, `run`, `stmt`, `batch`, `fanOut`, plus `nowIso`, `ph`,
@@ -128,7 +128,9 @@ org of the context that produced it.
 
 ## Which tables are which
 
-The lists are derived from the live schema — every table with an `org_id` column is **org-keyed**.
+The lists are derived from the live schema — every table with an `org_id` column is **org-keyed**. Every one
+of them is also in `ORG_TABLES` (`src/deletion/tables.ts`), what an organization's deletion deletes by
+`org_id`: `test/deletion.org.test.ts` fails when a migration adds an `org_id` table that list does not name.
 
 - **Tenant tables**: every org-keyed table except the five below. That includes all content tables and their
   FTS tables, the per-user-per-org tables (`mcp_tokens`, `oauth_grants`, `oauth_codes`, `notification_*`), and an
@@ -192,6 +194,9 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 | `src/artifacts/upload.ts` `uploadTokenOrg` | upload-token lookup by hash, returning only its `org_id` |
 | `src/platform/usage.ts` (whole file); `src/platform/repo.ts` `listAudit` (`org_audit`) | the superadmin's cross-org counts and merged audit trail — no content, no secret |
 | `src/orgs/repo.ts` `removeMember` | ends the removed person's credentials' reach into that org, in the same batch (tokens revoked, each grant's row for the org dropped, a grant left with no org revoked) |
+| `src/deletion/person.ts` `personStmts` (also interpolated), `addressesOf` | an ACCOUNT's deletion (`organizations.md` §8): the person's own tokens, connections, digests, prefs and attribution rows in every org, by person; the handoff feed line that names them; the `HANDLE_COLUMNS` rewrite to the tombstone, like a rename |
+| `src/deletion/r2.ts` `stillReferenced` | before an R2 object is deleted: does ANY org's row (or upload token) still point at its sha — a yes/no |
+| `src/deletion/tables.ts` `orgRowDeletes` (interpolated, tenant) | `DELETE FROM <t> WHERE org_id = ?` over `ORG_TABLES`, on the org's own system context |
 | `src/auth/persons.ts` `renamePerson` (interpolated) | the `HANDLE_COLUMNS` update — a rename must span every org |
 | `src/tools/artifacts.ts` `normalizeLinkRef` (interpolated, tenant) | `tickets WHERE number` or `sprints WHERE id` from a two-value literal, with `org_id = ?` |
 | `src/tools/progress.ts` upsert on `sprint_progress` | its PK is `sprint_id` alone; guarded by `WHERE sprint_progress.org_id = excluded.org_id` (asserted) |

@@ -37,13 +37,18 @@
 
 import { esc } from "./ui";
 import { trovMark } from "@shared/mark";
-import { TROV_REPO, siteFooter, siteMark as mark } from "./site-chrome";
+import { TROV_REPO, siteFooter, siteMark as mark, skipLink } from "./site-chrome";
 import { pricingSection } from "./pricing";
 import { segmented } from "./segmented";
 import { PLANS, seatsPhrase } from "@shared/plans";
-import { PRICING, canPurchasePlan, formatPrice, purchaseHref } from "@shared/pricing";
+import { CHECKOUT_TAX, PRICING, RENEWAL_TERMS, canPurchasePlan, formatPrice, purchaseHref } from "@shared/pricing";
+import { REFUNDS_PATH, consentHtml } from "@shared/legal-core";
 import { CONNECTION_NOTE, connectSteps } from "./mcp-connect";
+import { MCP_TOOL_NAMES } from "@shared/mcp-tools.generated";
+import { MCP_TOOL_GROUPS, mcpToolCountPhrase } from "@shared/mcp-tools-core";
+import { productQuestions } from "./site-questions";
 import type { FeatureState } from "./site-feature-core";
+import { pagePath } from "@shared/site-pages";
 import { AGENT_TAG, featureMock, initials } from "./landing-mocks";
 import { LOW_CONFIDENCE, artifactStatusMark, authorityMark, handoffMark } from "./marks";
 import { artifactKindLabel } from "@shared/artifacts-core";
@@ -134,7 +139,7 @@ const GO = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="
 // always emitted (the nav's structure never changes); trov.css shows it under 900px only.
 function nav(dark: boolean, signedIn: boolean, menuOpen = false): string {
   const link = ([arg, label]: readonly [string, string]) => `<button data-act="siteJump" data-arg="${arg}" class="site-navlink">${label}</button>`;
-  return `<nav class="site-nav" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
+  return `<nav class="site-nav" aria-label="Site" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
     <div class="site-navin" style="max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px">
       <button data-act="siteJump" data-arg="top" class="site-nav-home" style="display:flex;align-items:center;gap:9px;padding:0;color:var(--fg)">
         ${mark(20)}
@@ -144,8 +149,8 @@ function nav(dark: boolean, signedIn: boolean, menuOpen = false): string {
         ${SECTIONS.map(link).join("")}
       </div>
       <div class="site-nav-r" style="margin-left:auto;display:flex;align-items:center;gap:10px">
-        <a href="${TROV_REPO}" target="_blank" rel="noopener" title="GitHub" class="site-iconbtn site-nav-x">${GH_MARK(17)}</a>
-        <button data-act="cycleTheme" title="Toggle theme" class="site-iconbtn site-nav-x" style="border:1px solid var(--border)">${dark ? MOON : SUN}</button>
+        <a href="${TROV_REPO}" target="_blank" rel="noopener" title="GitHub" aria-label="Trov's source on GitHub" class="site-iconbtn site-nav-x">${GH_MARK(17)}</a>
+        <button data-act="cycleTheme" title="Toggle theme" aria-label="Toggle theme" class="site-iconbtn site-nav-x" style="border:1px solid var(--border)">${dark ? MOON : SUN}</button>
         ${signedIn
           ? `<button data-act="siteBack" class="cnpy-accentbtn site-nav-cta" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">Back to the app</button>`
           // Two ways in, said apart: a quiet Sign in for someone with an account, and the page's one accent
@@ -196,6 +201,9 @@ function menuSheet(dark: boolean, signedIn: boolean): string {
 // lifts into place, then acts out the product — an agent's proposed lines type
 // into the diff, the Promote button draws the eye, a PERSON promotes it, and the
 // queue badge and a toast confirm it went live. It plays once and rests there.
+// The COPY is never hidden: it is the page's first words, prerendered (site-prerender.ts), so it is
+// rendered settled (`is-done`, no `data-rv` — nothing waits on the script) and its rise is CSS alone,
+// transform only (trov.css `.site-hero-in .site-st`), from the first paint. The mockup is the script's.
 function hero(signedIn: boolean): string {
   const HEADLINE = "Shared memory for your team and its coding agents.";
   const words = HEADLINE.split(" ").map((w, i) => `<span class="site-st st-word" style="${at(80 + i * 55)}">${w}</span>`).join(" ");
@@ -229,7 +237,7 @@ function hero(signedIn: boolean): string {
   return `<header id="site-top" class="site-hero">
     <div class="site-banner site-hero-band" style="border-radius:16px">
       ${BANNER_ART}
-      <div ${rv("hero-copy", "rv-static site-hero-in")}>
+      <div class="site-rv rv-static site-hero-in is-done">
         <h1 class="site-hero-h">${words}</h1>
         <p class="site-st site-hero-lede" style="${at(520)}">Agents load what your team already decided, record what actually shipped, and wait for a person to approve anything that becomes official.</p>
         <div class="site-st site-hero-cta" style="${at(640)}">
@@ -411,7 +419,7 @@ function authority(): string {
       <div class="site-banner site-split-banner">
         ${BANNER_ART}
         <h2>Agents propose, people decide.</h2>
-        <p>No agent tool can approve, promote, or reject anything. Those actions only exist in the signed-in web app. Rejected proposals and old versions are kept, never deleted.</p>
+        <p>No agent tool can approve, promote, or reject anything. Those actions only exist in the signed-in web app. Rejecting a proposal doesn't erase it, and every earlier version stays in the history.</p>
       </div>
       <div class="site-split-body">
         <div class="site-st" style="display:flex;align-items:center;gap:12px;${at(260)}">
@@ -745,14 +753,19 @@ function agents(): string {
       <div style="${GROUP_LABEL}">${label}</div>
       ${chips(names, admin)}
     </div>`;
-  const tools = `
-          ${group("Read", ["query", "get_doc", "list_docs", "get_feed", "get_roadmap", "get_my_work", "get_events", "get_repo_dashboard"])}
-          ${group("Contribute", ["append_feed", "propose_doc_update", "record_session"])}
-          ${group("Tickets", ["list_tickets", "get_ticket", "create_ticket", "edit_ticket", "transition_ticket", "add_ticket_comment", "add_ticket_link", "set_ticket_sprint", "set_ticket_parent"])}
-          ${group("Sprints", ["list_sprints", "get_sprint", "create_sprint", "set_sprint_active", "complete_sprint", "add_sprint_resource", "delete_sprint"])}
-          ${group("Handoffs and prompts", ["send_handoff", "list_handoffs", "get_handoff", "claim_handoff", "expire_handoff", "search_prompts", "get_prompt", "save_prompt"])}
-          ${group("Artifacts and doc images", ["upload_asset", "artifact_update", "artifact_get", "artifact_list"])}
-          ${group("Admin", ["update_plan"], true)}`;
+  // The tools are the SERVER'S (shared/mcp-tools.generated.ts, written by the build from src/mcp.ts), in the
+  // site's groups (shared/mcp-tools-core.ts): a chip, the count beside the title and the reference page
+  // (/docs/mcp-tools) can never name a tool the server does not register, or miss one it does.
+  // The two smallest groups (the connection's own tools, and the admin's) share one row, so the card stays
+  // as tall as the plugin card beside it (web-ui.md › For agents: measured, never padded).
+  const registered = new Map(MCP_TOOL_NAMES.map((t) => [t.name, t]));
+  const groupOf = (g: (typeof MCP_TOOL_GROUPS)[number]): string => {
+    const names = g.tools.filter((n) => registered.has(n));
+    return names.length ? group(g.label, names, names.every((n) => registered.get(n)?.admin)) : "";
+  };
+  const paired = new Set(["connection", "admin"]);
+  const tools = MCP_TOOL_GROUPS.filter((g) => !paired.has(g.key)).map(groupOf).join("")
+    + `<div class="site-agents-pair" style="display:flex;flex-wrap:wrap;gap:16px 36px">${MCP_TOOL_GROUPS.filter((g) => paired.has(g.key)).map(groupOf).join("")}</div>`;
   n = 0;
   const skills = chips(["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "prompts", "artifacts", "read-plan", "update-plan"]);
 
@@ -766,7 +779,8 @@ function agents(): string {
       <div ${rv("agents-mcp", "site-agent-card")} style="border:1px solid var(--border);border-radius:13px;padding:26px 28px">
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
           <span style="font-size:17px;font-weight:650">MCP server</span>
-          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">39 tools, plus 1 admin-only</span>
+          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">${mcpToolCountPhrase(MCP_TOOL_NAMES)}</span>
+          <a href="${pagePath("docs-mcp-tools")}" class="site-agents-ref" style="margin-left:auto;font-size:12.5px;color:var(--fg-55)">Reference</a>
         </div>
         <div style="margin-top:20px;display:flex;flex-direction:column;gap:16px">${tools}
         </div>
@@ -780,7 +794,7 @@ function agents(): string {
         <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--border)">
           <div style="${GROUP_LABEL};margin-bottom:12px">Connect in three steps</div>
           ${connectSteps("", "the connection shows up in Settings, under MCP access")}
-          <p style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55);text-wrap:pretty">${CONNECTION_NOTE}</p>
+          <p class="site-agents-more" style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55);text-wrap:pretty">${CONNECTION_NOTE} <a href="${pagePath("docs-connect")}">Other clients, step by step</a>.</p>
         </div>
         <div style="margin-top:auto;padding-top:18px"><button data-act="siteGuide" class="site-btn site-btn-outline">How Trov works, in the Guide</button></div>
       </div>
@@ -797,7 +811,7 @@ function security(): string {
       ${row(0, "Agents connect by browser sign-in; only hashes of their tokens are stored.")}
       ${row(1, "Agents write as their person and can't claim another author.")}
       ${row(2, "Agents can only change tickets assigned to their person.")}
-      ${row(3, "Tickets and sprints are never closed automatically.")}
+      ${row(3, "Only a person closes a ticket or completes a sprint. A ticket mirrored from a GitHub issue follows that issue.")}
       ${row(4, "Only a person can ratify a decision or an artifact, or publish a prompt.")}
       ${row(5, "Artifact pages run in a sandbox, cut off from your session.")}
       ${row(6, "GitHub webhooks are signature-verified.")}
@@ -873,6 +887,8 @@ function signInDialog(mode: SignInMode = "signin", plan: SignUpPlan = "free"): s
         <div class="site-signin-body">
           ${choosing ? planChoice(plan) : ""}
           ${pro ? checkout : providers}
+          ${pro ? `<p class="site-signin-note" data-signin-terms>${esc(CHECKOUT_TAX)} ${esc(RENEWAL_TERMS)} <a href="${REFUNDS_PATH}">Refund policy</a></p>` : ""}
+          <p class="site-signin-note" data-consent>${consentHtml()}</p>
         </div>
         <div class="site-signin-foot">${c.foot} <button type="button" data-act="openSignIn" data-arg="${c.other}" data-field="signInSwitch" class="site-signin-switch">${c.switchTo}</button></div>
       </div>
@@ -900,8 +916,11 @@ export interface LandingProps {
 
 export function landingView(p: LandingProps): string {
   seen = p.seen;
+  // The skip link is the page's first stop for a keyboard; it lands on `<main>`, past the nav.
   return `<div class="cnpy-site" data-morph="landing">
+    ${skipLink()}
     ${nav(p.dark, p.signedIn ?? false, p.menuOpen ?? false)}
+    <main id="site-main" tabindex="-1">
     ${hero(p.signedIn ?? false)}
     ${problem()}
     ${loop()}
@@ -910,7 +929,8 @@ export function landingView(p: LandingProps): string {
     ${extras()}
     ${agents()}
     ${security()}
-    ${pricingSection({ signedIn: p.signedIn ?? false, rv })}
+    ${pricingSection({ signedIn: p.signedIn ?? false, rv, lead: productQuestions() })}
+    </main>
     ${siteFooter("dialog")}
   </div>
   ${p.signInOpen ? signInDialog(p.signInMode ?? "signin", p.signInPlan ?? "free") : ""}

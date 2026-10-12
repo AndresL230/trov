@@ -2,6 +2,9 @@
 // Local-only seed loader. Reads fixtures/dev/*.json, builds escaped SQL via the
 // shared builder, and applies it to LOCAL D1 through wrangler. Never touches
 // remote D1 — it refuses --remote outright.
+//
+// `--guide-demo` loads the Guide screenshots' made-up dataset instead (scripts/seed/guide-demo.mjs:
+// the same fixtures with a fictional team, organization and product); sign in as DEV_LOGIN=maya-chen.
 import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +12,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { buildSeedStatements, targetsRemote } from "./seed/build.mjs";
 import { platformDevStatements } from "./seed/platform-dev.mjs";
+import { guideDemoStatements, DEMO_LOGIN } from "./seed/guide-demo.mjs";
 
 const argv = process.argv.slice(2);
 if (targetsRemote(argv)) {
@@ -32,7 +36,9 @@ const fx = {
 };
 
 // …plus the Platform (superadmin) screens' demo rows: usage for both seed orgs, Acme's owner, audit.
-const statements = [...buildSeedStatements(fx), ...platformDevStatements()];
+// The Guide demo has no superadmin, so it leaves those out.
+const guideDemo = argv.includes("--guide-demo");
+const statements = guideDemo ? guideDemoStatements(fx) : [...buildSeedStatements(fx), ...platformDevStatements()];
 
 // Applied 8 statements at a time, by the D1 BINDING: one file holding the whole seed is refused
 // by the local execute (SQLITE_TOOBIG), and the database's name has changed before.
@@ -43,4 +49,4 @@ for (let i = 0; i < statements.length; i += CHUNK) {
   writeFileSync(file, statements.slice(i, i + CHUNK).map((s) => s + ";").join("\n"), "utf8");
   execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", `--file=${file}`], { stdio: ["ignore", "ignore", "inherit"] });
 }
-console.log("seed-dev: done — local D1 seeded for every surface. Set DEV_LOGIN=AndresL230 and run `npm run dev`.");
+console.log(`seed-dev: done — local D1 seeded for every surface${guideDemo ? " with the Guide demo dataset" : ""}. Set DEV_LOGIN=${guideDemo ? DEMO_LOGIN : "AndresL230"} and run \`npm run dev\`.`);

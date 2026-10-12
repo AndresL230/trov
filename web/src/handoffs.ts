@@ -293,9 +293,9 @@ export function personPickStyle(on: boolean): string {
 export function newHandoffView(p: NewHandoffProps): string {
   const n = p.draft;
   const input = (field: keyof NewHandoffDraft, placeholder: string, style: string) =>
-    `<input data-act="nhField" data-arg="${field}" data-field="nh-${field}" value="${attr(String(n[field]))}" class="cnpy-input" placeholder="${attr(placeholder)}" style="${style}">`;
+    `<input id="nh-${field}" data-act="nhField" data-arg="${field}" data-field="nh-${field}" value="${attr(String(n[field]))}" class="cnpy-input" placeholder="${attr(placeholder)}" style="${style}">`;
   const area = (field: keyof NewHandoffDraft, placeholder: string, style: string) =>
-    `<textarea data-act="nhField" data-arg="${field}" data-field="nh-${field}" placeholder="${attr(placeholder)}" style="${style}">${esc(String(n[field]))}</textarea>`;
+    `<textarea id="nh-${field}" data-act="nhField" data-arg="${field}" data-field="nh-${field}" placeholder="${attr(placeholder)}" style="${style}">${esc(String(n[field]))}</textarea>`;
 
   const first = n.body.trim() ? firstLine(n.body) : "";
   const others = p.persons.filter((x) => x.handle.toLowerCase() !== p.me.toLowerCase());
@@ -307,16 +307,16 @@ export function newHandoffView(p: NewHandoffProps): string {
 
   const ctx = n.ctxOpen ? `
     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:10px">
-      <div><label style="${MONO_FIELD_LABEL()}">REPO</label>${input("repo", p.primaryRepo || "owner/repo", `width:100%;height:38px;padding:0 12px;${FIELD};font-size:12.5px;font-family:var(--label)`)}${p.primaryRepo === null ? `<div data-nh-norepo style="font-size:11.5px;line-height:1.5;color:var(--fg-40);margin-top:6px">No repository is connected to this organization, so type it. <button type="button" data-act="orgGo" data-arg="repos" class="cnpy-mutelink" style="padding:0;font-size:11.5px;font-weight:500;color:var(--fg-55);text-decoration:underline;text-underline-offset:2px">Org settings &rsaquo; Repositories</button></div>` : ""}</div>
-      <div><label style="${MONO_FIELD_LABEL()}">BRANCH</label>${input("branch", "feat/…", `width:100%;height:38px;padding:0 12px;${FIELD};font-size:12.5px;font-family:var(--label)`)}</div>
+      <div><label for="nh-repo" style="${MONO_FIELD_LABEL()}">REPO</label>${input("repo", p.primaryRepo || "owner/repo", `width:100%;height:38px;padding:0 12px;${FIELD};font-size:12.5px;font-family:var(--label)`)}${p.primaryRepo === null ? `<div data-nh-norepo style="font-size:11.5px;line-height:1.5;color:var(--fg-40);margin-top:6px">No repository is connected to this organization, so type it. <button type="button" data-act="orgGo" data-arg="repos" class="cnpy-mutelink" style="padding:0;font-size:11.5px;font-weight:500;color:var(--fg-55);text-decoration:underline;text-underline-offset:2px">Org settings &rsaquo; Repositories</button></div>` : ""}</div>
+      <div><label for="nh-branch" style="${MONO_FIELD_LABEL()}">BRANCH</label>${input("branch", "feat/…", `width:100%;height:38px;padding:0 12px;${FIELD};font-size:12.5px;font-family:var(--label)`)}</div>
     </div>
-    <label style="${MONO_FIELD_LABEL()};margin:14px 0 6px">TASK</label>
+    <label for="nh-task" style="${MONO_FIELD_LABEL()};margin:14px 0 6px">TASK</label>
     ${input("task", "One line: what is this session in the middle of?", `width:100%;height:38px;padding:0 12px;${FIELD};font-size:13.5px`)}
     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px">
-      <div><label style="${MONO_FIELD_LABEL("var(--green)")}">DONE <span style="color:var(--fg-40);font-weight:500;letter-spacing:0">· one per line</span></label>${area("done", "", `width:100%;min-height:96px;padding:9px 12px;${FIELD};font-size:13px;line-height:1.55;resize:vertical;font-family:inherit`)}</div>
-      <div><label style="${MONO_FIELD_LABEL("var(--accent)")}">NEXT <span style="color:var(--fg-40);font-weight:500;letter-spacing:0">· one per line</span></label>${area("next", "", `width:100%;min-height:96px;padding:9px 12px;${FIELD};font-size:13px;line-height:1.55;resize:vertical;font-family:inherit`)}</div>
+      <div><label for="nh-done" style="${MONO_FIELD_LABEL("var(--green)")}">DONE <span style="color:var(--fg-40);font-weight:500;letter-spacing:0">· one per line</span></label>${area("done", "", `width:100%;min-height:96px;padding:9px 12px;${FIELD};font-size:13px;line-height:1.55;resize:vertical;font-family:inherit`)}</div>
+      <div><label for="nh-next" style="${MONO_FIELD_LABEL("var(--accent)")}">NEXT <span style="color:var(--fg-40);font-weight:500;letter-spacing:0">· one per line</span></label>${area("next", "", `width:100%;min-height:96px;padding:9px 12px;${FIELD};font-size:13px;line-height:1.55;resize:vertical;font-family:inherit`)}</div>
     </div>
-    <label style="${MONO_FIELD_LABEL()};margin:14px 0 6px">FILES TOUCHED <span style="font-weight:500;letter-spacing:0">· one per line</span></label>
+    <label for="nh-files" style="${MONO_FIELD_LABEL()};margin:14px 0 6px">FILES TOUCHED <span style="font-weight:500;letter-spacing:0">· one per line</span></label>
     ${area("files", "backend/routes/documents.py", `width:100%;min-height:76px;padding:9px 12px;${FIELD};font-size:12.5px;line-height:1.6;resize:vertical;font-family:var(--label)`)}` : "";
 
   const canSend = !!n.body.trim();

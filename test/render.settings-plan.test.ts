@@ -57,9 +57,13 @@ describe("Settings › Plan — whose plan, which plan, and what I can do about 
     expect(buttons(html)).toEqual(["orgBillingUpgrade:Upgrade to Pro"]);
     expect(html).toMatch(/data-act="orgBillingUpgrade" data-arg="team"/);
     // The limits sit BESIDE this tile, so its sentence does not point "below" (Org settings' does).
-    expect(html).toContain("Pro is paid per seat: one for each member or pending invitation. It raises every limit.");
+    // The price with this organization's own seat math (members + pending invitations), said once.
+    expect(html).toMatch(/Pro is \$10 per seat each month, one seat for each member or pending invitation: \d+ seats? × \$10 = \$\d+ per month for this organization now\. You can change the number at checkout\. It raises every limit\./);
     expect(html).not.toContain("every limit below");
-    expect(html).toMatch(/data-plan-upsell>Pro is \$10 per seat \/ month\.</);
+    expect(html).not.toContain("data-plan-upsell");
+    // Beside the button: tax, renewal, the Terms and the refund policy.
+    expect(html).toContain('data-plan-terms="checkout"');
+    expect(html).toContain('href="/refunds"');
     expect(html).toContain("Pro is paid through Stripe; you choose the number of seats there. Trov never sees your card.");
   });
 

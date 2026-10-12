@@ -12,7 +12,8 @@
 // `not_found` here, exactly like an unknown handle. The photo is the person's own, in every org.
 //
 // An avatar is content-addressed and immutable, like a doc image: bytes in R2
-// (`ARTIFACTS_BUCKET`) at `avatars/<sha256>`, never deleted — "remove" only clears
+// (`ARTIFACTS_BUCKET`) at `avatars/<sha256>`, kept until the ACCOUNT is deleted (and then only
+// if no one else's photo is the same bytes: src/deletion/r2.ts) — "remove" only clears
 // `persons.avatar_sha`, so the provider picture shows again. There is no avatars table:
 // the R2 object's own `httpMetadata.contentType` (the SNIFFED type) is what is served.
 

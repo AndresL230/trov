@@ -74,7 +74,12 @@ describe("Org settings › General — the Plan block of an org that pays, or ca
   it("Free, never paid: what Pro is, and the owner's one button — Upgrade to Pro — with no Manage billing (there is no customer)", () => {
     const html = block(view("free", { source: "granted", period_end: null }));
     expect(html).toContain('data-org-billing="free"');
-    expect(html).toContain("Pro is paid per seat: one for each member or pending invitation. It raises every limit below.");
+    // The price and this organization's own seat math, then — beside the button — tax, renewal, the Terms and the refund policy.
+    expect(html).toMatch(/Pro is \$10 per seat each month, one seat for each member or pending invitation: \d+ seats? × \$10 = \$\d+ per month for this organization now\. You can change the number at checkout\. It raises every limit below\./);
+    expect(html).toContain('data-plan-terms="checkout"');
+    expect(html).toContain("Plus applicable tax, calculated at checkout. Renews monthly until you cancel; cancel any time from Billing.");
+    expect(html).toContain('href="/terms"');
+    expect(html).toContain('href="/refunds"');
     expect(buttons(html)).toEqual(["Upgrade to Pro|orgBillingUpgrade:team"]);
     expect(html).toMatch(/data-field="orgBillingUpgrade:team"/);
     expect(html).toContain("Pro is paid through Stripe; you choose the number of seats there. Trov never sees your card.");
@@ -82,6 +87,7 @@ describe("Org settings › General — the Plan block of an org that pays, or ca
       const other = block(view("free", { source: "granted", period_end: null }), role);
       expect(buttons(other)).toEqual([]);
       expect(other).toContain("An owner of this organization can upgrade it to Pro.");
+      expect(other).not.toContain("data-plan-terms"); // the terms go beside a button that can start a payment
     }
     // Billing off on the deployment: the button is there, disabled, and says why.
     const off = block(view("free", { billing: freeBill({ available: false }) }));

@@ -316,7 +316,7 @@ describe("the page itself", () => {
       expect(res.status, path).toBe(200);
       expect(await res.text(), path).toContain("id=app");
     }
-    expect(asked).toEqual(["/index.html", "/index.html"]);
+    expect(asked).toEqual(["/app", "/app"]); // the app shell (web/app.html) by its clean path — never the landing page
     expect(stripe.calls).toHaveLength(0);
   });
 });

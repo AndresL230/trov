@@ -47,18 +47,18 @@ export function newDocView(p: NewDocProps): string {
   <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)")}>
     <div class="cnpy-nt-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:32px;flex:1;min-height:0">
       <div style="min-width:0;display:flex;flex-direction:column">
-        <label style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Title</label>
-        <input data-act="ndField" data-arg="title" data-field="nd-title" value="${attr(d.title)}" class="cnpy-input" placeholder="What is this doc about?" style="width:100%;height:40px;padding:0 13px;${FIELD};font-size:14px">
-        <label style="display:block;font-size:13px;font-weight:500;margin:20px 0 8px">Body <span style="font-weight:400;color:var(--fg-40)">— markdown</span></label>
-        <textarea data-act="ndField" data-arg="body" data-field="nd-body" style="width:100%;flex:1;min-height:300px;padding:12px 14px;${FIELD};font-size:12.5px;line-height:1.65;resize:vertical;font-family:var(--code)">${esc(d.body)}</textarea>
+        <label for="nd-title" style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Title</label>
+        <input id="nd-title" data-act="ndField" data-arg="title" data-field="nd-title" value="${attr(d.title)}" class="cnpy-input" placeholder="What is this doc about?" style="width:100%;height:40px;padding:0 13px;${FIELD};font-size:14px">
+        <label for="nd-body" style="display:block;font-size:13px;font-weight:500;margin:20px 0 8px">Body <span style="font-weight:400;color:var(--fg-40)">— markdown</span></label>
+        <textarea id="nd-body" data-act="ndField" data-arg="body" data-field="nd-body" style="width:100%;flex:1;min-height:300px;padding:12px 14px;${FIELD};font-size:12.5px;line-height:1.65;resize:vertical;font-family:var(--code)">${esc(d.body)}</textarea>
       </div>
       <div style="min-width:0;border-left:1px solid var(--border);padding-left:26px">
         <label style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Space</label>
         ${segmented({ id: "nd-space", ariaLabel: "Space", act: "ndSpace", value: d.space, options: p.spaces.map((s) => ({ value: s.key, label: s.label })) })}
         <label style="display:block;font-size:13px;font-weight:500;margin:20px 0 8px">Section</label>
         <div style="display:flex;gap:6px;flex-wrap:wrap">${sections.map((s) => `<button data-act="ndSection" data-arg="${attr(s)}" class="cnpy-pickchip${d.section === s ? " is-on" : ""}" style="${pickStyle(d.section === s)}">${esc(s)}</button>`).join("")}</div>
-        <label style="display:block;font-size:13px;font-weight:500;margin:20px 0 8px">Summary <span style="font-weight:400;color:var(--fg-40)">— optional</span></label>
-        <input data-act="ndField" data-arg="summary" data-field="nd-summary" value="${attr(d.summary)}" class="cnpy-input" placeholder="One line for the Review queue" style="width:100%;height:38px;padding:0 12px;${FIELD};font-size:12.5px">
+        <label for="nd-summary" style="display:block;font-size:13px;font-weight:500;margin:20px 0 8px">Summary <span style="font-weight:400;color:var(--fg-40)">— optional</span></label>
+        <input id="nd-summary" data-act="ndField" data-arg="summary" data-field="nd-summary" value="${attr(d.summary)}" class="cnpy-input" placeholder="One line for the Review queue" style="width:100%;height:38px;padding:0 12px;${FIELD};font-size:12.5px">
         <div style="font-size:11.5px;color:var(--fg-40);margin-top:14px;line-height:1.5">Lands in Review as a staged proposal, the same as an agent's. Nothing goes live until it's promoted.</div>
       </div>
     </div>

@@ -27,6 +27,8 @@ import {
   listOrgInvites, createInvite, revokeInvite, resendableInvite, getOrgInvite, neverJoined,
 } from "./repo";
 import { mailInvite, mailOrigin, welcomeFirstJoin } from "./mail";
+import { confirmMismatch, deleteOrganization, deletionRefusal, orgDeletionPreview, orgForDeletion } from "../deletion/org";
+import { confirms } from "@shared/deletion-core";
 
 /** Refuse a bearer-shaped caller before anything else runs (the artifact-ratify rule). */
 export const cookieOnly: MiddlewareHandler<AppEnv> = async (c, next) =>
@@ -110,7 +112,7 @@ myInvitesApp.post("/:id/decline", respond(false));
 // ── /api/o/:slug ─────────────────────────────────────────────────────────────
 // `tenantGate` (mounted on /api/o/:slug/* in src/routes.ts) has already resolved `c.var.ctx`.
 export const orgTenantApp = new Hono<AppEnv>();
-for (const path of ["/me", "/settings", "/plan", "/logo", "/logo/*", "/members", "/members/*", "/invites", "/invites/*"]) orgTenantApp.use(path, cookieOnly);
+for (const path of ["/me", "/settings", "/plan", "/logo", "/logo/*", "/members", "/members/*", "/invites", "/invites/*", "/deletion", "/delete"]) orgTenantApp.use(path, cookieOnly);
 
 orgTenantApp.get("/me", async (c) => {
   const [row, repos] = await Promise.all([orgMe(c.var.p, c.var.ctx), listRepoRows(c.var.ctx)]);
@@ -220,4 +222,32 @@ orgTenantApp.post("/invites/:id/revoke", async (c) => {
     await revokeInvite(c.var.p, c.var.ctx, id);
     return c.json({ ok: true });
   } catch (e) { return orgFail(c, e); }
+});
+
+// ── deleting the organization (src/deletion/org.ts) ─────────────────────────────
+// An OWNER's act: it ends the org for every member and cancels what it pays for, and an admin can neither
+// remove an owner nor manage billing — so an admin cannot delete it either (403, like any role refusal; a
+// non-member never gets here: `tenantGate`'s 404). Cookie only (above). The preview is what the confirmation
+// says; the POST must carry the slug, typed, and deletes nothing unless Stripe agreed first.
+const ownerOnly = (c: Context<AppEnv>) => c.json({ error: "forbidden", message: "Only an owner can delete this organization." }, 403);
+orgTenantApp.get("/deletion", async (c) => {
+  if (!hasRole(c.var.ctx, "owner")) return ownerOnly(c);
+  const org = await orgForDeletion(c.var.p, { id: c.var.ctx.orgId });
+  if (!org) return c.json({ error: "not_found" }, 404);
+  return c.json(await orgDeletionPreview(c.env, c.var.p, org), 200, { "cache-control": "no-store" });
+});
+orgTenantApp.post("/delete", async (c) => {
+  if (!hasRole(c.var.ctx, "owner")) return ownerOnly(c);
+  const b = await body(c);
+  const org = await orgForDeletion(c.var.p, { id: c.var.ctx.orgId });
+  if (!org) return c.json({ error: "not_found" }, 404);
+  if (!confirms(b?.confirm, org.slug)) return c.json(confirmMismatch("slug"), 400);
+  try {
+    await deleteOrganization(c.env, c.var.p, org, { by: "self", actor: c.get("principal").handle });
+  } catch (e) {
+    const refused = deletionRefusal(e);
+    if (refused) return c.json(refused.body, refused.status);
+    throw e;
+  }
+  return c.json({ ok: true, slug: org.slug });
 });
