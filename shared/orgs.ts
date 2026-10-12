@@ -33,6 +33,8 @@ export const RESERVED_ORG_SLUGS: readonly string[] = [
   // path; the four named here predate it. `app` (the app shell, web/app.html) is above; `og` holds the
   // pages' Open Graph images. test/site.test.ts fails on a page or a web/public entry not listed.
   "index", "pricing", "privacy", "terms", "guide", "favicon", "robots", "sitemap", "billing", "og",
+  // `fonts`: the self-hosted fonts' stable copies and licenses (shared/fonts.ts `FONTS_PATH`, written by the build).
+  "fonts",
   ...SITE_PAGE_SEGMENTS,
   // Root routes of the Hono app (src/routes.ts and the routers mounted at "/"), and screen names kept
   // free so a path can never be mistaken for one.

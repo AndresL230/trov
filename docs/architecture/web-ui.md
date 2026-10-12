@@ -229,9 +229,12 @@ script then takes over the SAME markup. Everything else is the app, and is never
   signed out. One exception, on purpose: a single path segment that is a valid, unreserved slug (`/blog`) is
   an org's page and gets the app shell (with `noindex`) whether or not that org exists — answering 404 there
   would tell a stranger which organizations do.
+- **The shared head** (`documentHtml`) links nothing off-site: the icons, and `FONT_PRELOAD` (Geist latin,
+  self-hosted — "Fonts" below). The build also writes `/fonts/` (the fonts' stable copies) beside `_redirects`
+  and `_headers`.
 - Tests: `test/site.test.ts` (the Worker: robots, sitemap, `/`, redirects, `noindex`, 404 vs 401, reserved
   slugs), `test/site-pages.test.ts` (the list, the head tags, the JSON-LD, the documents, `_redirects` /
-  `_headers`), `test/spa-shell.test.ts`.
+  `_headers`), `test/spa-shell.test.ts`, `test/render.fonts.test.ts` (no third party in any document).
 
 ## Sidebar & motion — the `<aside>` outlives rerenders
 
@@ -557,6 +560,72 @@ goes in that block; a template gets a class hook, never a second copy of its mar
 - **Checking it.** Phone widths are measured in a real phone-sized viewport (Playwright with `isMobile`, or an
   iframe), at 360, 390 and 430, light and dark, with screenshots that are looked at. The wide layout is proved
   by rects and computed styles at 1440, 1100 and 961, not by eye.
+
+## Fonts, contrast and focus — nothing from a third party, AA in both themes
+
+### Fonts — self-hosted (`web/src/fonts/`, `shared/fonts.ts`)
+
+- **No page asks a third party for anything.** Geist (latin + latin-ext) and Archivo Narrow (latin, the sidebar's
+  face) are vendored in `web/src/fonts/` — the variable woff2 subsets Google Fonts serves (Geist v5, Archivo
+  Narrow v35), SIL Open Font License 1.1, each family's `*-OFL.txt` beside the files. `trov.css` declares them at
+  its top (`@font-face`, `font-weight` = the variable axis, so 640 is 640; `font-display:swap`; Google's
+  `unicode-range`, held equal to `shared/fonts.ts` by `test/render.fonts.test.ts`); Vite hashes them into
+  `/assets/`. latin-ext and Archivo Narrow are fetched only when a page draws a character in their range.
+- **One preload.** Every built document — the four public pages, the 404 and the app shell — carries
+  `FONT_PRELOAD` (`web/src/site-prerender.ts`): Geist latin, `as="font" crossorigin`. Vite rewrites its href to
+  the same hashed file the stylesheet's `url()` resolves to, so it is one download. Nothing else is preloaded.
+- **`'Geist Fallback'`** follows `'Geist'` in every stack: the system Arial (Helvetica, Liberation Sans) with
+  `size-adjust` and ascent / descent overrides measured against Geist over the prerendered pages' own text, in
+  three weight bands (400, 500, bold), so text set before Geist arrives wraps where Geist will put it. A new
+  font stack names it too (the test fails otherwise).
+- **The Worker's own pages** (OAuth sign-in and consent, the billing notices: `src/auth/oauth-pages.ts`) cannot
+  know a hashed name, so the build also writes each font and license at a stable path, `/fonts/<file>`
+  (`web/site-build.ts`; `fonts` is a reserved org slug). Their CSP is `font-src 'self'`.
+- **Mermaid** is the `mermaid` npm dependency at an EXACT version, loaded by `import("mermaid")` in
+  `web/src/artifacts.ts`: Vite makes it lazy chunks on Trov's origin (fetched when a diagram first opens, never
+  in the main bundle). No CDN. The OG image generator (`scripts/og/render.mjs`) inlines the vendored Geist, so
+  it needs no network either.
+- **Not covered here:** the e-mails still link Google Fonts (`src/notifications/assemble.ts` `FONTS_HREF`), and
+  the artifact sandbox's CSP still lets an HTML artifact's OWN scripts load from cdnjs / jsdelivr
+  (`src/artifacts/raw.ts`; an opaque origin, no cookies — `artifacts.md`).
+
+### Contrast — WCAG AA, computed from the tokens (`test/render.contrast.test.ts`)
+
+The test parses both theme blocks of `trov.css` and fails on any pair under AA, so a retuned token cannot
+regress silently:
+
+| Pair | Minimum |
+| --- | --- |
+| every text token (`--fg`, `--fg-70`, `--fg-55`, `--fg-40`, `--accent`, the five tones, the ten `--p-*` handle colors) on `--bg` and `--surface` | 4.5:1 |
+| each tone (and `--accent`) on its own chip — the `tint` idiom, the tone at 12% over the ground — and `--accent` on `--accent-soft` | 4.5:1 |
+| the ink of a filled control on its fill: `--accent-fg` / `--accent`, `--red-fg` / `--red`, `--p-ink` / every `--p-*` (avatar initials) | 4.5:1 |
+| `--border-input` (a text field's edge) and `--focus` (the ring) on `--bg` and `--surface` | 3:1 |
+| white text on the brand banner, at its two light points (the first gradient stop; the highlight's peak over the middle stop) | 4.5:1 |
+
+- **Fixed at the token, hue kept, the least that passes** (2026-10): light `--fg-40` #8e8e98 → #70707a, `--accent`
+  #5e6ad2 → #525cc3 (and `--accent-soft`), `--green` #2f9e6b → #007545, `--amber` #c98a1a → #945800, `--blue`
+  #4c8ed9 → #2467af, `--red` #e5484d → #c22231, `--purple` #8e5cc7 → #804db7, `--p-moss` / `--p-ochre`; dark
+  `--fg-40` .40 → .52, `--red` #cc6262 → #df7372. The banner's gradient went one step deeper in both themes and
+  its text is at least 92% white. `--fg-55` is unchanged, so light `--fg-55` and `--fg-40` now sit close
+  (4.67 / 4.53 on `--bg`).
+- **New tokens, split where a value served two jobs:** `--border-input` (fields) beside `--border-strong`
+  (cards, dividers, the empty layouts' hollow shapes — still quiet); `--red-fg` (text on a filled red button:
+  white on light, the dark ink on dark, as `--accent-fg`); `--p-ink` (avatar initials); `--focus` (= `--accent`).
+- **A text field's edge is `--border-input` whatever its template wrote.** Field borders are inline
+  `var(--border-strong)`, so one `!important` rule in `trov.css` recolours every `input` (not checkbox / radio /
+  file / …) and `textarea`; an `aria-invalid` field keeps its red edge. A borderless field inside a bordered box
+  (`@` + handle, `prompts/` + slug, tags, Search) colours the box (`:has()`). The sidebar's and the board's
+  search boxes keep their quiet `--border` (an icon and a placeholder name them).
+
+### Focus — every focusable element draws a ring (`test/render.focus.test.ts`)
+
+- A ring is `outline:2px solid var(--focus)` (or `--accent`; `--red` on a destructive confirm; white on the
+  banner) with an offset — never `outline:none` in a `:focus` rule, never a hover tint alone. Menu and option
+  rows (the avatar menu, `dropdown()` options, the filter bar's button) draw it inset (`outline-offset:-2px`).
+- **Text fields**: focused, the edge turns `--focus` and doubles (`box-shadow:0 0 0 1px`), `!important` because
+  their `outline:none` is inline. The palette search's bar shows a 2px `--focus` line on its lower edge.
+- Rules use `:focus-visible`, so a mouse click on a button draws nothing new; a text field shows its ring on
+  click too, as browsers do for fields.
 
 ## Corners — tighter than the design file
 

@@ -1,12 +1,15 @@
 // The public pages at build time (docs/architecture/web-ui.md › The public pages, for crawlers). Every
 // page of shared/site-pages.ts, and the app shell, is a Vite input whose HTML this plugin WRITES: there is
 // no .html file in web/ to keep in step, so adding a page is one entry in that list. It also writes the
-// assets binding's `_redirects` and `_headers` from the same list. The documents come
+// assets binding's `_redirects` and `_headers` from the same list, and the self-hosted fonts' stable copies
+// under /fonts/ (shared/fonts.ts) for the pages the Worker renders itself. The documents come
 // from web/src/site-prerender.ts — the app's real renderers, run in Node through Vite's own module loader
 // (the same `@shared` alias), so a page is prerendered from exactly the code that boots it.
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createServer, type Plugin } from "vite";
 import { APP_SHELL_PATH, SITE_PAGES, assetHeaders, assetRedirects, sitePageFile } from "../shared/site-pages";
+import { FONTS_PATH, FONT_FILES, FONT_LICENSES } from "../shared/fonts";
 
 const WEB = __dirname;
 /** The app shell's input, served at APP_SHELL_PATH. */
@@ -62,6 +65,11 @@ export function sitePages(): Plugin {
     generateBundle() {
       this.emitFile({ type: "asset", fileName: "_redirects", source: assetRedirects() });
       this.emitFile({ type: "asset", fileName: "_headers", source: assetHeaders() });
+      // The self-hosted fonts at a stable path, with their licenses (shared/fonts.ts): the pages the Worker
+      // renders itself (OAuth, billing notices) cannot know the hashed /assets/ names trov.css resolves to.
+      for (const f of [...FONT_FILES.map((x) => x.file), ...FONT_LICENSES]) {
+        this.emitFile({ type: "asset", fileName: `${FONTS_PATH.slice(1)}/${f}`, source: readFileSync(path.join(WEB, "src", "fonts", f)) });
+      }
     },
   };
 }

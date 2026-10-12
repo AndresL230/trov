@@ -7,6 +7,26 @@
    as real CSS (the canvas runtime applied those inline; plain CSS needs rules).
    ─────────────────────────────────────────────────────────────────────────── */
 
+/* ── type: self-hosted (docs/architecture/web-ui.md › Fonts) ─────────────────────
+   Geist (Copyright 2024 The Geist Project Authors) and Archivo Narrow (Copyright 2019 The Archivo Narrow
+   Project Authors), both under the SIL Open Font License 1.1 — the license texts are beside the files,
+   web/src/fonts/*-OFL.txt. The files are the variable woff2 subsets Google Fonts serves (Geist v5, Archivo
+   Narrow v35), vendored so a page asks no third party for its type; Vite hashes them into /assets/. One file
+   per subset covers every weight (`font-weight` is the axis range, so 640 is 640, not 650). Geist latin is
+   preloaded by every page (web/src/site-prerender.ts); latin-ext and Archivo Narrow (the sidebar's face) are
+   fetched only when a page draws a character in their range. */
+@font-face { font-family:'Geist'; font-style:normal; font-weight:100 900; font-display:swap; src:url("./fonts/geist-latin.woff2") format("woff2"); unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family:'Geist'; font-style:normal; font-weight:100 900; font-display:swap; src:url("./fonts/geist-latin-ext.woff2") format("woff2"); unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family:'Archivo Narrow'; font-style:normal; font-weight:400 700; font-display:swap; src:url("./fonts/archivo-narrow-latin.woff2") format("woff2"); unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+/* 'Geist Fallback': the system Arial (Helvetica on Apple, Liberation Sans on Linux — the same widths) scaled to
+   Geist's metrics, next after 'Geist' in every stack, so the prerendered text set in it before Geist arrives
+   (`swap`) wraps and sits where Geist will put it, and the swap moves nothing. Measured in Chromium over the
+   prerendered pages' own text: Geist is 2.0% wider than Arial at 400 and 4.3% at 500, and as wide as Arial Bold
+   at 600–700; its ascent is 1005/1000, descent 295, no line gap (the overrides are those, ÷ size-adjust). */
+@font-face { font-family:'Geist Fallback'; font-style:normal; font-weight:100 449; src:local("Arial"), local("ArialMT"), local("Helvetica"), local("Liberation Sans"); size-adjust:102%; ascent-override:98.53%; descent-override:28.92%; line-gap-override:0%; }
+@font-face { font-family:'Geist Fallback'; font-style:normal; font-weight:450 549; src:local("Arial"), local("ArialMT"), local("Helvetica"), local("Liberation Sans"); size-adjust:104.3%; ascent-override:96.36%; descent-override:28.28%; line-gap-override:0%; }
+@font-face { font-family:'Geist Fallback'; font-style:normal; font-weight:550 900; src:local("Arial Bold"), local("Arial-BoldMT"), local("Helvetica Bold"), local("Helvetica-Bold"), local("Liberation Sans Bold"), local("LiberationSans-Bold"); size-adjust:100.3%; ascent-override:100.2%; descent-override:29.41%; line-gap-override:0%; }
+
 /* ── verbatim from Canopy.dc.html ──────────────────────────────────────────── */
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -26,10 +46,18 @@ input, select { font-family: inherit; }
 .cnpy-toast { animation: cnpy-pop .25s ease both, cnpy-toast-out .4s ease forwards; }
 @media (prefers-reduced-motion: reduce) { .cnpy-toast { animation: none; } }
 
-[data-cnpy-theme="dark"] { --mark:#9aab65; --bg:#1c1a16; --surface:#221f1b; --shadow:0 1px 2px rgba(0,0,0,0.35); --fg:#ede9e2; --fg-70:rgba(237,233,226,0.72); --fg-55:rgba(237,233,226,0.55); --fg-40:rgba(237,233,226,0.40); --border:rgba(237,233,226,0.11); --border-strong:rgba(237,233,226,0.20); --hover:rgba(237,233,226,0.07); --accent:#9aab65; --accent-fg:#131a07; --accent-soft:rgba(154,171,101,0.14); --green:#5ab86c; --amber:#d98a52; --blue:#6aa8c4; --red:#cc6262; --purple:#a98bd6; --sans:'Geist',system-ui,-apple-system,sans-serif; --label:'Geist',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+[data-cnpy-theme="dark"] { --mark:#9aab65; --bg:#1c1a16; --surface:#221f1b; --shadow:0 1px 2px rgba(0,0,0,0.35); --fg:#ede9e2; --fg-70:rgba(237,233,226,0.72); --fg-55:rgba(237,233,226,0.55); --fg-40:rgba(237,233,226,0.52); --border:rgba(237,233,226,0.11); --border-strong:rgba(237,233,226,0.20); --border-input:rgba(237,233,226,0.38); --hover:rgba(237,233,226,0.07); --accent:#9aab65; --accent-fg:#131a07; --accent-soft:rgba(154,171,101,0.14); --focus:var(--accent); --green:#5ab86c; --amber:#d98a52; --blue:#6aa8c4; --red:#df7372; --red-fg:#1c1a16; --purple:#a98bd6; --sans:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --label:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 /* Light = the palette of the Claude Design `Canopy Restyled.dc.html` (2026-09-26): a cool neutral
    ground, white surfaces with a hairline shadow, an indigo accent. Trov's fonts stay. */
-[data-cnpy-theme="light"] { --mark:#616ACB; --bg:#f6f6f7; --surface:#ffffff; --fg:#16161a; --fg-70:#4f4f58; --fg-55:#6e6e78; --fg-40:#8e8e98; --border:rgba(20,20,30,0.08); --border-strong:rgba(20,20,30,0.15); --hover:rgba(20,20,30,0.04); --accent:#5e6ad2; --accent-fg:#ffffff; --accent-soft:rgba(94,106,210,0.12); --green:#2f9e6b; --amber:#c98a1a; --blue:#4c8ed9; --red:#e5484d; --purple:#8e5cc7; --shadow:0 1px 2px rgba(20,20,30,0.05); --sans:'Geist',system-ui,-apple-system,sans-serif; --label:'Geist',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+/* WCAG AA (2026-10, docs/architecture/web-ui.md › Contrast): every token used for TEXT reads at 4.5:1 or more
+   on --bg and --surface, and a tone also on its own chip (the `tint` idiom: the tone at 12% over the ground);
+   --border-input (the edge of a text field) and --focus (the focus ring) at 3:1. test/render.contrast.test.ts computes
+   every pair from this file. The design file's values, moved the least that passes, hue kept:
+   light --fg-40 #8e8e98, --accent #5e6ad2 (and --accent-soft), --green #2f9e6b, --amber #c98a1a, --blue #4c8ed9,
+   --red #e5484d, --purple #8e5cc7; dark --fg-40 at .40, --red #cc6262. --red-fg is the text on a filled red
+   button (white on light; on dark the dark ink, as --accent-fg is). --border-strong stays the quiet edge of
+   cards and dividers; only a field's edge is --border-input. */
+[data-cnpy-theme="light"] { --mark:#616ACB; --bg:#f6f6f7; --surface:#ffffff; --fg:#16161a; --fg-70:#4f4f58; --fg-55:#6e6e78; --fg-40:#70707a; --border:rgba(20,20,30,0.08); --border-strong:rgba(20,20,30,0.15); --border-input:rgba(20,20,30,0.47); --hover:rgba(20,20,30,0.04); --accent:#525cc3; --accent-fg:#ffffff; --accent-soft:rgba(82,92,195,0.12); --focus:var(--accent); --green:#007545; --amber:#945800; --blue:#2467af; --red:#c22231; --red-fg:#ffffff; --purple:#804db7; --shadow:0 1px 2px rgba(20,20,30,0.05); --sans:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --label:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 
 /* ── My Work (web/src/mywork.ts) ──────────────────────────────────────────────
    The Claude Design bento on a 12-column grid (each tile says its own --span).
@@ -119,6 +147,7 @@ input, select { font-family: inherit; }
 .tl-barwrap { container:tlbar / inline-size; position:absolute; top:0; bottom:0; min-width:10px; }
 .tl-bar { position:absolute; inset:0; width:100%; padding:0; overflow:hidden; cursor:pointer; text-align:left; transition:box-shadow .12s ease; }
 .tl-barwrap:hover .tl-bar, .tl-bar:focus-visible { box-shadow:0 0 0 3px color-mix(in srgb,var(--tl-c) 25%,transparent); }
+.tl-bar:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .tl-fill { position:absolute; top:0; bottom:0; left:0; transform-origin:0 50%; }
 [data-enter] .tl-fill, [data-enter] .tl-sumfill { animation:cnpy-grow-x .7s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(var(--i, 0) * 40ms + 200ms + var(--enter-t, 0ms)); }
 .tl-sumfill { transform-origin:0 50%; }
@@ -164,7 +193,7 @@ input, select { font-family: inherit; }
    in (they arrive once there is room for them). */
 .cnpy-aside { --side-t:.24s; --side-e:cubic-bezier(.4,0,.2,1); width:228px; flex:none; display:flex; flex-direction:column; border-right:1px solid var(--border); background:var(--bg); transition:width var(--side-t) var(--side-e); position:relative; z-index:2; }
 [data-collapsed="1"] .cnpy-aside { width:64px; }
-.cnpy-aside button:focus-visible, .cnpy-search:focus-within { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
+.cnpy-aside button:focus-visible, .cnpy-search:focus-within { outline:2px solid var(--focus); outline-offset:-2px; }
 
 /* anything that only exists in the expanded rail */
 .cnpy-lbl { transition:opacity .16s ease .1s; }
@@ -680,7 +709,7 @@ input, select { font-family: inherit; }
 @keyframes cnpy-lb-panel-in { from { opacity:0; transform:scale(.965) translateY(8px); } to { opacity:1; transform:none; } }
 @keyframes cnpy-lb-out { from { opacity:1; } to { opacity:0; } }
 @keyframes cnpy-lb-panel-out { from { opacity:1; transform:none; } to { opacity:0; transform:scale(.975) translateY(6px); } }
-.cnpy-lightbox { position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center; padding:clamp(16px, 4vw, 48px); background:rgba(12,11,9,.66); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); font-family:'Geist',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; animation:cnpy-lb-in .2s ease both; }
+.cnpy-lightbox { position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center; padding:clamp(16px, 4vw, 48px); background:rgba(12,11,9,.66); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; animation:cnpy-lb-in .2s ease both; }
 /* The panel is as wide as the SMALLER of the width and height budgets allow, so the
    frame keeps its ratio (a max-height on the frame alone clamps its height while its
    width stays 100%, stretching the box). 16:10 is the default (the guide's captures);
@@ -701,6 +730,20 @@ input, select { font-family: inherit; }
 .cnpy-lightbox--closing { animation:cnpy-lb-out .17s ease both; }
 .cnpy-lightbox--closing .cnpy-lightbox-panel { animation:cnpy-lb-panel-out .17s ease both; }
 @media (prefers-reduced-motion: reduce) { .cnpy-lightbox, .cnpy-lightbox-panel, .cnpy-guide-shot { animation:none !important; transition:none !important; transform:none !important; } }
+
+/* ── text fields: their edge and their focus, whatever the template wrote inline ─────────────────────────
+   WCAG 1.4.11 / 2.4.7 (2026-10, docs/architecture/web-ui.md › Focus). Nearly every field's border and
+   `outline:none` are INLINE styles, which only `!important` outranks — the reason `.cnpy-input:focus` alone
+   never showed. So: a field's edge is --border-input (3:1), and a focused field draws a 2px --focus ring (its
+   border plus a 1px shadow); a field marked `aria-invalid` keeps its red edge and doubles it. A borderless
+   field inside a bordered box (`@` + handle, `prompts/` + slug, tags, search) puts both on the box, and the
+   class-styled search inputs (.cnpy-search-in, .cnpy-qs-in) leave both to their box's own rule. Buttons,
+   checkboxes and radios are not fields: they keep their own `:focus-visible` rules (or the browser's ring). */
+[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in):not([aria-invalid="true"]) { border-color:var(--border-input) !important; }
+[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in):not([aria-invalid="true"]):focus-visible { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
+[data-cnpy-theme] :is(input, textarea)[aria-invalid="true"]:not([style*="border:none"]):focus-visible { box-shadow:0 0 0 1px var(--red) !important; }
+[data-cnpy-theme] :is(div, label, span):has(> :is(input, textarea)[style*="border:none"]) { border-color:var(--border-input) !important; }
+[data-cnpy-theme] :is(div, label, span):has(> :is(input, textarea)[style*="border:none"]:focus-visible) { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
 
 /* ── hover / focus utility layer (reproduces dc-runtime style-* pseudo-props) ─ */
 .cnpy-select { appearance:none; -webkit-appearance:none; padding:5px 28px 5px 11px; border-radius:7px; font-size:12.5px; font-weight:500; border:1px solid var(--border); color:var(--fg-70); cursor:pointer; background:var(--bg) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23888' stroke-width='2'><path d='M2 4l4 4 4-4'/></svg>") no-repeat right 9px center; }
@@ -943,7 +986,7 @@ input, select { font-family: inherit; }
 /* Its menu pops out of the avatar once — on the paint that opens it (main.ts adds
    .cnpy-flash), never on a later rerender. */
 .cnpy-avmenu { transform-origin:top left; }
-.cnpy-avmenu .cnpy-menurow:focus-visible { outline:none; background:var(--hover); }
+.cnpy-avmenu .cnpy-menurow:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; background:var(--hover); }
 .cnpy-avmenu.cnpy-flash { animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
 .cnpy-mention:hover { text-decoration:underline; text-underline-offset:2px; }
 .cnpy-personlink:hover, .cnpy-maint-person:hover > span > span:first-child { text-decoration:underline; text-underline-offset:2px; }
@@ -963,7 +1006,7 @@ input, select { font-family: inherit; }
    no box around it — the ring takes the pill's own colour. */
 .cnpy-statusbtn { transition:box-shadow .14s ease, filter .14s ease; }
 .cnpy-statusbtn:hover, .cnpy-statusbtn[aria-expanded="true"] { box-shadow:0 0 0 3px color-mix(in srgb, currentColor 16%, transparent); filter:brightness(1.12); }
-.cnpy-statusbtn:focus-visible { outline:none; box-shadow:0 0 0 3px color-mix(in srgb, currentColor 30%, transparent); }
+.cnpy-statusbtn:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .cnpy-statusbtn svg { transition:transform .16s ease; }
 .cnpy-statusbtn[aria-expanded="true"] svg { transform:rotate(180deg); }
 /* A ticket body is markdown, but a typed single line break still breaks. */
@@ -992,7 +1035,7 @@ input, select { font-family: inherit; }
 .cnpy-dangerbtn:hover, .cnpy-dangerbtn:focus-visible, .cnpy-dangerbtn[aria-expanded="true"] { border-color:color-mix(in srgb, var(--red) 55%, transparent) !important; color:var(--red) !important; background:color-mix(in srgb, var(--red) 8%, transparent); }
 .cnpy-confirm-go { transition:filter .12s ease; }
 .cnpy-confirm-go:hover { filter:brightness(1.1); }
-.cnpy-confirm-go:focus-visible { outline:2px solid color-mix(in srgb, var(--red) 55%, transparent); outline-offset:2px; }
+.cnpy-confirm-go:focus-visible { outline:2px solid var(--red); outline-offset:2px; }
 .cnpy-confirm-go:disabled, .cnpy-cmodal button:disabled { opacity:.6; cursor:default; }
 .cnpy-cmodal { position:fixed; inset:0; z-index:80; }
 .cnpy-cmodal-back { position:absolute; inset:0; background:rgba(0,0,0,.5); animation:cnpy-cm-fade .16s ease both; }
@@ -1090,7 +1133,7 @@ input, select { font-family: inherit; }
 .cnpy-tab { position:relative; flex:none; display:inline-flex; align-items:center; gap:7px; height:40px; padding:0 2px; font-size:13.5px; font-weight:500; white-space:nowrap; color:var(--fg-55); transition:color .15s ease; }
 .cnpy-tab:not(.is-on):hover { color:var(--fg); }
 .cnpy-tab.is-on { color:var(--fg); box-shadow:inset 0 -2px 0 var(--accent); }
-.cnpy-tab:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
+.cnpy-tab:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
 .cnpy-tabs.is-live > .cnpy-tab.is-on { box-shadow:none; }
 .cnpy-tabs-ind { position:absolute; z-index:1; left:0; bottom:0; width:0; height:2px; background:var(--accent); opacity:0; pointer-events:none; }
 .cnpy-tabs.is-live > .cnpy-tabs-ind { opacity:1; }
@@ -1107,7 +1150,7 @@ input, select { font-family: inherit; }
 .cnpy-dd:hover:not(:disabled) { border-color:var(--fg-40); }
 .cnpy-dd.is-open { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
 .cnpy-dd.is-open .cnpy-dd-caret { transform:rotate(180deg); }
-.cnpy-dd:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+.cnpy-dd:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .cnpy-dd:disabled { cursor:default; background:var(--hover); color:var(--fg-40); opacity:.7; }
 /* The menu: a root-level layer (a click on its backdrop closes), the popover fixed against the
    trigger by dropdown.ts. The entrance is the link menu's pop, from the trigger's corner, on
@@ -1127,7 +1170,7 @@ input, select { font-family: inherit; }
 .cnpy-dd-opt { display:flex; align-items:center; justify-content:space-between; gap:14px; flex:none; width:100%; box-sizing:border-box; padding:7px 10px; text-align:left; font-size:12.5px; font-weight:500; color:var(--fg-70); }
 .cnpy-dd-opt.is-on { color:var(--fg); }
 /* The keyboard's row is painted like the hovered one (`.cnpy-menurow`). */
-.cnpy-dd-opt:focus-visible { outline:none; background:var(--hover); }
+.cnpy-dd-opt:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; background:var(--hover); }
 .cnpy-dd-optt { display:flex; flex-direction:column; gap:1px; min-width:0; }
 .cnpy-dd-optl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .cnpy-dd-opth { font-size:11.5px; font-weight:400; line-height:1.4; color:var(--fg-55); }
@@ -1271,7 +1314,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .cnpy-org-code { display:block; margin:3px 0; font-family:var(--code); font-size:11.5px; color:var(--fg-70); overflow-wrap:anywhere; }
 .cnpy-org-off { cursor:default; opacity:.6; }
 /* Every control here shows where the keyboard is. */
-.cnpy-org button:focus-visible, .cnpy-org select:focus-visible, .cnpy-org-secret button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+.cnpy-org button:focus-visible, .cnpy-org select:focus-visible, .cnpy-org-secret button:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .cnpy-org .cnpy-input:focus-visible, .cnpy-org-secret .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
 .cnpy-org-secret { width:min(820px, 100%); max-height:calc(100vh - 32px); overflow-y:auto; }
 .cnpy-org-secretgrid { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,1fr); gap:24px; margin-top:18px; }
@@ -1376,9 +1419,12 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .cnpy-md tbody tr:last-child td { border-bottom:none; }
 .cnpy-md th:first-child, .cnpy-md td:first-child { padding-left:2px; }
 
-/* ── person colors (0023): stored by name; one set per theme ── */
-[data-cnpy-theme="light"] { --p-moss:#6f8a3a; --p-fern:#2f7d57; --p-sky:#3e6f8a; --p-slate:#5b6b8c; --p-plum:#7a4f8f; --p-rose:#a84a68; --p-rust:#b4562c; --p-ochre:#a8791e; --p-clay:#8c5a3c; --p-stone:#6b665e; }
-[data-cnpy-theme="dark"] { --p-moss:#9aab65; --p-fern:#5ab88a; --p-sky:#6aa8c4; --p-slate:#8d9bc0; --p-plum:#b48ac8; --p-rose:#d47a97; --p-rust:#d98a52; --p-ochre:#d4a84a; --p-clay:#c2895f; --p-stone:#9a958d; }
+/* ── person colors (0023): stored by name; one set per theme ──
+   Each is a person's @handle text (4.5:1 on --bg and --surface) and their avatar's fill, whose initials are
+   --p-ink (4.5:1 on every color): white on light; on dark the dark ink, since the dark set is pale. WCAG AA
+   (2026-10): light moss was #6f8a3a and ochre #a8791e; dark initials were white (test/render.contrast.test.ts). */
+[data-cnpy-theme="light"] { --p-moss:#607a29; --p-fern:#2f7d57; --p-sky:#3e6f8a; --p-slate:#5b6b8c; --p-plum:#7a4f8f; --p-rose:#a84a68; --p-rust:#b4562c; --p-ochre:#966800; --p-clay:#8c5a3c; --p-stone:#6b665e; --p-ink:#ffffff; }
+[data-cnpy-theme="dark"] { --p-moss:#9aab65; --p-fern:#5ab88a; --p-sky:#6aa8c4; --p-slate:#8d9bc0; --p-plum:#b48ac8; --p-rose:#d47a97; --p-rust:#d98a52; --p-ochre:#d4a84a; --p-clay:#c2895f; --p-stone:#9a958d; --p-ink:#1c1a16; }
 .cnpy-sw { display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 6px 8px; border-radius:10px; border:1px solid transparent; transition:border-color .12s ease, background .12s ease; }
 .cnpy-sw:hover { background:var(--hover); }
 .cnpy-sw i { width:28px; height:28px; border-radius:50%; background:var(--c); display:block; box-shadow:0 0 0 2px var(--bg), 0 0 0 3px transparent; }
@@ -1503,7 +1549,8 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 
 .repo-gdot { display:inline-block; width:.6em; height:.6em; border-radius:50%; background:currentColor; vertical-align:.05em; }
 .repo-dot { transition:box-shadow .15s ease, transform .15s ease; }
-.repo-dot:hover, .repo-dot:focus-visible { box-shadow:0 0 0 3px color-mix(in srgb,var(--fg) 12%,transparent); outline:none; }
+.repo-dot:hover, .repo-dot:focus-visible { box-shadow:0 0 0 3px color-mix(in srgb,var(--fg) 12%,transparent); }
+.repo-dot:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 [data-enter] .repo-dot { animation:cnpy-dot .3s cubic-bezier(.34,1.56,.64,1) both; animation-delay:calc(var(--i, 0) * 30ms + 140ms + var(--enter-t, 0ms)); }
 .repo-tip { position:absolute; bottom:24px; left:50%; z-index:30; display:block; background:var(--bg); border:1px solid var(--border-strong); border-radius:9px; padding:9px 12px; box-shadow:0 8px 30px rgba(0,0,0,.35); white-space:nowrap; pointer-events:none; opacity:0; visibility:hidden; transform:translate(-50%,6px) scale(.98); transition:opacity .15s ease, transform .15s ease, visibility 0s .15s; }
 .repo-dotwrap:hover .repo-tip, .repo-dot:focus-visible + .repo-tip { opacity:1; visibility:visible; transform:translate(-50%,0); transition-delay:0s; }
@@ -1605,13 +1652,13 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-legal-band > .site-banner-art { width:clamp(220px, 30vw, 400px); aspect-ratio:1; right:clamp(-70px, -4vw, -30px); top:clamp(-90px, -6vw, -50px); }
 .site-legal-band-in { max-width:1060px; margin:0 auto; }
 .site-legal-tabs { display:inline-flex; gap:2px; padding:3px; border-radius:11px; background:rgba(255,255,255,.14); }
-.site-legal-tab { padding:6px 13px; font-size:13px; font-weight:600; color:rgba(255,255,255,.82); text-decoration:none; transition:background .12s ease, color .12s ease; }
+.site-legal-tab { padding:6px 13px; font-size:13px; font-weight:600; color:rgba(255,255,255,.92); text-decoration:none; transition:background .12s ease, color .12s ease; }
 a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-decoration:none; }
 .site-legal-tab[aria-current] { background:#fff; color:#333c8f; }
 [data-cnpy-theme="dark"] .site-legal-tab[aria-current] { color:#3a4620; }
 .site-legal-h { margin:22px 0 0; font-size:clamp(32px, 4.4vw, 50px); line-height:1.08; font-weight:650; letter-spacing:-0.03em; }
-.site-legal-lede { margin:16px 0 0; max-width:680px; font-size:16.5px; line-height:1.62; color:rgba(255,255,255,.86); text-wrap:pretty; }
-.site-legal-date { margin-top:20px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:rgba(255,255,255,.7); }
+.site-legal-lede { margin:16px 0 0; max-width:680px; font-size:16.5px; line-height:1.62; color:rgba(255,255,255,.94); text-wrap:pretty; }
+.site-legal-date { margin-top:20px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:rgba(255,255,255,.92); }
 .site-legal { max-width:1060px; margin:0 auto; padding:52px 24px 0; display:grid; grid-template-columns:232px minmax(0, 1fr); gap:56px; align-items:start; }
 .site-legal-side { position:sticky; top:84px; max-height:calc(100vh - 108px); overflow:auto; }
 .site-legal-text { max-width:700px; }
@@ -1654,7 +1701,7 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-vh { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
 .site-pricing { max-width:1120px; margin:0 auto; padding:150px 24px 0; }
 .site-pricing.is-page { padding-top:72px; }
-.site-pricing a:focus-visible, .site-pricing button:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-pricing a:focus-visible, .site-pricing button:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .site-price-top { display:flex; align-items:flex-end; flex-wrap:wrap; gap:24px 40px; }
 .site-price-intro { flex:1 1 420px; min-width:0; }
 .site-price-eyebrow { margin-bottom:12px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); }
@@ -1668,7 +1715,7 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-interval input { position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:pointer; }
 .site-interval label:hover { color:var(--fg); }
 .site-interval label:has(:checked) { color:var(--fg); background:var(--hover); box-shadow:inset 0 0 0 1px var(--border-strong); }
-.site-interval label:has(:focus-visible) { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-interval label:has(:focus-visible) { outline:2px solid var(--focus); outline-offset:2px; }
 .site-pricing:not(:has(input[name="site-interval"][value="year"]:checked)) .is-year { display:none; }
 .site-pricing:has(input[name="site-interval"][value="year"]:checked) .is-month { display:none; }
 .site-plans { margin-top:48px; display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:16px; }
@@ -1684,14 +1731,14 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-plan.is-accent .site-plan-badge { border-color:transparent; background:var(--accent); color:var(--accent-fg); font-weight:600; }
 .site-plan.is-top { box-shadow:0 1px 2px rgba(20,22,60,.08), 0 24px 48px -22px color-mix(in srgb, var(--mark, #616acb) 70%, transparent); }
 .site-plan.is-top > .site-banner-art { width:230px; aspect-ratio:1; right:-58px; top:-64px; opacity:.14; }
-.site-plan.is-top .site-plan-name { color:rgba(255,255,255,.78); }
+.site-plan.is-top .site-plan-name { color:rgba(255,255,255,.92); }
 .site-plan.is-top .site-plan-for { color:#fff; }
-.site-plan.is-top .site-plan-tba, .site-plan.is-top .site-plan-per { color:rgba(255,255,255,.82); }
+.site-plan.is-top .site-plan-tba, .site-plan.is-top .site-plan-per { color:rgba(255,255,255,.92); }
 .site-plan.is-top .site-plan-tba { font-size:20px; font-weight:600; letter-spacing:-0.01em; color:#fff; }
 .site-plan.is-top .site-plan-cta, .site-plan.is-top .site-plan-cta:hover { border-color:transparent; background:#fff; color:#333c8f; }
 .site-plan.is-top .site-plan-cta:hover { filter:brightness(.96); }
 [data-cnpy-theme="dark"] .site-plan.is-top .site-plan-cta, [data-cnpy-theme="dark"] .site-plan.is-top .site-plan-cta:hover { color:#3a4620; }
-.site-plan.is-top .site-plan-limits { border-color:rgba(255,255,255,.24); color:rgba(255,255,255,.84); }
+.site-plan.is-top .site-plan-limits { border-color:rgba(255,255,255,.24); color:rgba(255,255,255,.92); }
 .site-plan.is-top .site-plan-limits b { color:#fff; }
 .site-plan.is-top .site-plan-limits li::before { background:#fff; }
 @media (prefers-reduced-motion: reduce) { .site-plan { transition:none; } .site-plan:hover { translate:none; } }
@@ -1738,7 +1785,7 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-faq summary { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 0; cursor:pointer; list-style:none; }
 .site-faq summary::-webkit-details-marker { display:none; }
 .site-faq summary:hover h3, .site-faq summary:hover h4 { color:var(--accent); }
-.site-faq summary:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:4px; }
+.site-faq summary:focus-visible { outline:2px solid var(--focus); outline-offset:4px; }
 .site-faq h3, .site-faq h4 { margin:0; font-size:14.5px; font-weight:600; transition:color .15s ease; }
 .site-faq-chev { flex:none; color:var(--fg-40); transition:transform .38s cubic-bezier(.4, 0, .2, 1), color .15s ease; }
 .site-faq summary:hover .site-faq-chev { color:var(--fg-70); }
@@ -1852,10 +1899,10 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 /* On the dark page the site's banners sit a step deeper, so a slab this size does not glare; same hue. */
 /* Dark: the banner follows the theme's accent. The dark app's accent is the green mark (`--mark` #9aab65), so a
    purple banner over it read as a second brand. Same gradient, highlight, dots and faint mark — in a deep
-   olive of that green, with the white headline at the same contrast the purple gives it (about 4:1 at the
-   lightest corner, 5.7:1 mid-slab, 8:1 at the deep end).
+   olive of that green, with the white headline at the same contrast the purple gives it (5:1 at the lightest
+   corner since 2026-10, when both gradients went one step deeper for WCAG AA; was #73844a → #5d6d37 → #485628).
    One rule for the site's banners AND the first-run cards', so they cannot drift. */
-[data-cnpy-theme="dark"] .site-banner, [data-cnpy-theme="dark"] .cnpy-orgs-banner { background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #73844a 0%, #5d6d37 48%, #485628 100%); }
+[data-cnpy-theme="dark"] .site-banner, [data-cnpy-theme="dark"] .cnpy-orgs-banner { background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #65753c 0%, #4f5f29 48%, #3b481a 100%); }
 [data-cnpy-theme="dark"] .site-banner ::selection { color:#3a4620; }
 [data-cnpy-theme="dark"] .site-btn-onb, [data-cnpy-theme="dark"] .site-btn-onb:hover { color:#3a4620; }
 .site-banner > * { position:relative; z-index:1; }
@@ -1870,9 +1917,9 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-hero-band > .site-banner-art { width:clamp(280px, 44vw, 600px); aspect-ratio:1; right:clamp(-90px, -5vw, -40px); top:clamp(-110px, -7vw, -60px); }
 .site-hero-in { max-width:1060px; margin:0 auto; }
 .site-hero-h { margin:0; max-width:780px; font-size:clamp(36px, 5.4vw, 62px); line-height:1.06; font-weight:650; letter-spacing:-0.032em; text-wrap:balance; }
-.site-hero-lede { margin:22px 0 0; max-width:600px; font-size:17.5px; line-height:1.6; color:rgba(255,255,255,.86); text-wrap:pretty; }
+.site-hero-lede { margin:22px 0 0; max-width:600px; font-size:17.5px; line-height:1.6; color:rgba(255,255,255,.94); text-wrap:pretty; }
 .site-hero-cta { margin-top:32px; display:flex; gap:12px; flex-wrap:wrap; }
-.site-hero-note { margin:18px 0 0; font-size:13.5px; line-height:1.55; color:rgba(255,255,255,.74); }
+.site-hero-note { margin:18px 0 0; font-size:13.5px; line-height:1.55; color:rgba(255,255,255,.92); }
 .site-hero-note a { color:#fff; text-decoration:underline; text-decoration-color:rgba(255,255,255,.45); text-underline-offset:3px; }
 .site-hero-note a:hover { color:#fff; text-decoration-color:#fff; }
 .site-btn-onb { background:#fff; color:#333c8f; }
@@ -1898,7 +1945,7 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-split-banner { padding:clamp(30px, 4.6vw, 56px) clamp(24px, 4.4vw, 52px); display:flex; flex-direction:column; justify-content:center; }
 .site-split-banner > .site-banner-art { width:clamp(220px, 26vw, 330px); aspect-ratio:1; right:-56px; top:-70px; }
 .site-split-banner h2 { margin:0; font-size:clamp(28px, 3.4vw, 38px); line-height:1.12; font-weight:650; letter-spacing:-0.025em; text-wrap:balance; }
-.site-split-banner p { margin:16px 0 0; max-width:480px; font-size:15.5px; line-height:1.65; color:rgba(255,255,255,.86); text-wrap:pretty; }
+.site-split-banner p { margin:16px 0 0; max-width:480px; font-size:15.5px; line-height:1.65; color:rgba(255,255,255,.94); text-wrap:pretty; }
 .site-split-body { display:flex; flex-direction:column; justify-content:center; padding:clamp(26px, 4vw, 44px) clamp(22px, 4vw, 44px); }
 @media (max-width:860px) { .site-split { grid-template-columns:minmax(0, 1fr); } }
 
@@ -1929,7 +1976,7 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-fxcard:hover::after { opacity:1; }
 .site-explore { display:inline-flex; align-items:center; gap:7px; margin:16px 0 0 -10px; padding:7px 10px; font-size:13.5px; font-weight:600; color:var(--accent); }
 .site-explore:hover { background:var(--accent-soft); }
-.site-explore:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-explore:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .site-explore svg { transition:transform var(--fx-base) var(--fx-ease); }
 .site-explore:hover svg { transform:translate(1px, -1px); }
 
@@ -1942,7 +1989,7 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
   box-shadow:0 1px 2px rgba(20,22,60,.06), 0 40px 90px -30px rgba(10,12,40,.55); }
 .site-fx-x { position:absolute; z-index:3; top:12px; right:12px; width:34px; height:34px; display:grid; place-items:center; color:var(--fg-55); background:var(--surface); border:1px solid var(--border); }
 .site-fx-x:hover { color:var(--fg); background:var(--hover); }
-.site-fx-panel button:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-fx-panel button:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .site-fx-main { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0, 1.5fr) minmax(280px, 1fr); grid-template-rows:auto minmax(0, 1fr); grid-template-areas:"stage titles" "stage facts"; }
 .site-fx-titles { grid-area:titles; padding:44px 64px 0 34px; }
 .site-fx-titles h2 { margin:10px 0 0; font-size:26px; line-height:1.15; font-weight:650; letter-spacing:-0.02em; text-wrap:balance; }
@@ -2080,7 +2127,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .site-signin-or > span { flex:1; height:1px; background:var(--border); }
 @media (max-width:640px) { .site-signin-body > * { max-width:none; } }
 .site-signin-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; box-sizing:border-box; padding:12px 16px; font-family:inherit; font-size:14px; line-height:20px; font-weight:600; transition:filter .12s ease, background .12s ease; }
-.site-signin-btn:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-signin-btn:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 /* Get started: the plan choice above the way in (landing.ts `planChoice`). */
 .site-signin-plans { display:flex; flex-direction:column; gap:10px; }
 /* The plan's line is one short line on Free and Pro alike, so picking one never changes the dialog's height
@@ -2091,12 +2138,12 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .site-signin-note { margin:0; font-size:12px; line-height:1.5; color:var(--fg-40); text-align:center; text-wrap:balance; }
 .site-nav-signin { padding:7px 10px; font-size:13.5px; font-weight:500; color:var(--fg-70); white-space:nowrap; transition:color .12s ease, background .12s ease; }
 .site-nav-signin:hover { color:var(--fg); background:var(--hover); }
-.site-nav-signin:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-nav-signin:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 /* The foot is a clearly grey strip under the white card (it was 2% black: barely there). */
 .site-signin-foot { padding:13px 28px; text-align:center; border-top:1px solid var(--border); font-size:12.5px; line-height:1.5; color:var(--fg-55); background:color-mix(in srgb, var(--fg) 6%, var(--surface)); }
 .site-signin-switch { padding:0; font:inherit; font-weight:600; color:var(--fg); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }
 .site-signin-switch:hover { text-decoration-color:currentColor; }
-.site-signin-switch:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:3px; }
+.site-signin-switch:focus-visible { outline:2px solid var(--focus); outline-offset:3px; }
 @keyframes site-fade { from { opacity:0; } to { opacity:1; } }
 /* Dark: the scrims dim with the page's own warm black, not the light theme's blue-black. */
 [data-cnpy-theme="dark"] .site-signin-back { background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 18%, transparent) 0%, transparent 72%), rgba(10,9,7,.62); }
@@ -2120,13 +2167,14 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
    clip — the Filter popover hangs below it. The input shrinks; the button never wraps. */
 .cnpy-sfbar { position:relative; display:flex; align-items:stretch; flex:1 1 260px; max-width:480px; min-width:0; height:34px; box-sizing:border-box; border:1px solid var(--border); border-radius:8px; background:var(--surface); box-shadow:var(--shadow); transition:border-color .12s ease; }
 .cnpy-sfbar:hover { border-color:var(--border-strong); }
-.cnpy-sfbar:focus-within { border-color:var(--border-strong); outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
+.cnpy-sfbar:focus-within { border-color:var(--border-strong); outline:2px solid var(--focus); outline-offset:-2px; }
 .cnpy-sfbar-q { flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:9px; padding:0 11px; color:var(--fg-40); cursor:text; transition:color .12s ease; }
 .cnpy-sfbar-q:focus-within { color:var(--fg-70); }
 .cnpy-sfbar-div { flex:none; width:1px; margin:7px 0; background:var(--border); }
 .cnpy-sfbar > [data-hover-menu] { flex:none; }
 .cnpy-sfbar .fm-btn { border-radius:0 7px 7px 0; }
-.cnpy-sfbar .fm-btn:hover, .cnpy-sfbar .fm-btn:focus-visible { background:var(--hover); color:var(--fg) !important; outline:none; }
+.cnpy-sfbar .fm-btn:hover, .cnpy-sfbar .fm-btn:focus-visible { background:var(--hover); color:var(--fg) !important; }
+.cnpy-sfbar .fm-btn:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
 /* The popover spans the whole control, border included (the bar is its positioned parent). */
 .cnpy-sfbar .fm-pop:not(.is-right) { left:-1px !important; right:-1px !important; }
 .fm-pop { transform-origin:top left; }
@@ -2194,7 +2242,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 @keyframes cnpy-qs-out { from { opacity:1; transform:none; } to { opacity:0; transform:translateY(-4px) scale(.985); } }
 @keyframes cnpy-qs-fade { from { opacity:0; } to { opacity:1; } }
 @keyframes cnpy-qs-fade-out { from { opacity:1; } to { opacity:0; } }
-.cnpy-qs-layer { position:fixed; inset:0; z-index:150; display:none; pointer-events:none; font-family:'Geist',system-ui,-apple-system,sans-serif; font-size:14px; line-height:1.45; color:var(--fg); -webkit-font-smoothing:antialiased; }
+.cnpy-qs-layer { position:fixed; inset:0; z-index:150; display:none; pointer-events:none; font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; font-size:14px; line-height:1.45; color:var(--fg); -webkit-font-smoothing:antialiased; }
 .cnpy-qs-layer[data-open] { display:block; }
 .cnpy-qs-layer[data-mode="palette"] { pointer-events:auto; background:rgba(12,11,9,.42); animation:cnpy-qs-fade .14s ease both; }
 .cnpy-qs { position:absolute; pointer-events:auto; display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--border-strong); border-radius:12px; box-shadow:var(--lift-shadow); overflow:hidden; transform-origin:top center; animation:cnpy-qs-in .2s cubic-bezier(.2,.7,.2,1) both; transition:height .22s cubic-bezier(.2,.7,.2,1); }
@@ -2206,6 +2254,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-qs-layer[data-mode="palette"] .cnpy-qs { left:0; right:0; top:12vh; margin:0 auto; width:min(480px, calc(100vw - 32px)); max-height:min(520px, 76vh); }
 .cnpy-qs-inbar { display:none; flex:none; align-items:center; gap:9px; height:44px; padding:0 12px; border-bottom:1px solid var(--border); color:var(--fg-40); }
 .cnpy-qs-layer[data-mode="palette"] .cnpy-qs-inbar { display:flex; }
+/* The palette's field shows focus as the tab bars do: a 2px --focus line on its lower edge. */
+.cnpy-qs-inbar:focus-within { box-shadow:inset 0 -2px 0 var(--focus); }
 .cnpy-qs-in { flex:1; min-width:0; padding:0; border:none; outline:none; background:none; color:var(--fg); font-size:15px; font-family:inherit; }
 .cnpy-qs-in::placeholder { color:var(--fg-40); }
 .cnpy-qs-list { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; padding:4px; }
@@ -2256,16 +2306,16 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-orgsw-b { display:flex; align-items:center; gap:9px; width:100%; min-width:0; height:38px; box-sizing:border-box; padding:0 9px 0 6.5px; border:1px solid var(--border); background:var(--surface); color:var(--fg); text-align:left; overflow:hidden; transition:background .15s ease, border-color .15s ease, padding var(--side-t) var(--side-e); }
 .cnpy-orgsw-b:hover, .cnpy-orgsw-b.is-open, .cnpy-orgslot.is-active .cnpy-orgsw-b { border-color:var(--border-strong); }
 [data-cnpy-theme="dark"] .cnpy-orgsw-b:hover, [data-cnpy-theme="dark"] .cnpy-orgsw-b.is-open { background:var(--hover); }
-.cnpy-orgsw-n { flex:1; min-width:0; font-family:'Geist',system-ui,sans-serif; font-size:13px; font-weight:600; letter-spacing:-0.005em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-orgsw-n { flex:1; min-width:0; font-family:'Geist','Geist Fallback',system-ui,sans-serif; font-size:13px; font-weight:600; letter-spacing:-0.005em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .cnpy-orgsw-b .cnpy-dot { display:none; }
 [data-collapsed="1"] .cnpy-orgsw-b { padding:0 0 0 9px; border-color:transparent; background:transparent; }
 [data-collapsed="1"] .cnpy-orgsw-b:hover, [data-collapsed="1"] .cnpy-orgsw-b.is-open { background:var(--hover); }
-.cnpy-orgtile { display:inline-grid; place-items:center; flex:none; box-sizing:border-box; background:var(--hover); border:1px solid var(--border-strong); color:var(--fg-70); font-family:'Geist',system-ui,sans-serif; font-weight:600; line-height:1; }
+.cnpy-orgtile { display:inline-grid; place-items:center; flex:none; box-sizing:border-box; background:var(--hover); border:1px solid var(--border-strong); color:var(--fg-70); font-family:'Geist','Geist Fallback',system-ui,sans-serif; font-weight:600; line-height:1; }
 .cnpy-orgmenu-layer { position:fixed; inset:0; z-index:95; }
 .cnpy-orgmenu-back { position:absolute; inset:0; }
 .cnpy-orgmenu { position:absolute; top:calc(100px + env(safe-area-inset-top)); left:calc(10px + env(safe-area-inset-left)); width:248px; max-width:calc(100vw - 20px); max-height:calc(100dvh - 116px); overflow-y:auto; box-sizing:border-box; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); transform-origin:top left; animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
 [data-collapsed="1"] .cnpy-orgmenu { top:56px; left:70px; max-height:calc(100dvh - 72px); }
-.cnpy-orgmenu .cnpy-menurow:focus-visible, .cnpy-orgmenu button:focus-visible, .cnpy-orgs a:focus-visible, .cnpy-orgs button:focus-visible, [data-orgs-create] button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
+.cnpy-orgmenu .cnpy-menurow:focus-visible, .cnpy-orgmenu button:focus-visible, .cnpy-orgs a:focus-visible, .cnpy-orgs button:focus-visible, [data-orgs-create] button:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
 [data-orgs-create] .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
 .cnpy-orgs-inv { display:flex; align-items:center; gap:10px 12px; flex-wrap:wrap; }
 /* THE PICKER: one calm column, the app's surfaces. */
@@ -2337,7 +2387,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .cnpy-billco-skel { grid-template-columns:minmax(0, 1fr); gap:24px; padding:16px 14px 8px; }
   .cnpy-billco-note { padding:18px 20px 20px; }
 }
-.cnpy-onb-step { margin-left:auto; font-family:var(--label); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.78); }
+.cnpy-onb-step { margin-left:auto; font-family:var(--label); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.92); }
 .cnpy-orgs-body.cnpy-onb-body { display:grid; gap:18px; padding-top:22px; }
 .cnpy-onb-pair { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; align-items:start; }
 @media (max-width:640px) {
@@ -2352,15 +2402,18 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-orgs-card { box-shadow:0 0 0 1px rgba(20,22,60,.07), 0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
 /* The banner is the brand's purple in both themes: it is Trov speaking, not the app's chrome. */
 /* `.site-banner` is the same banner on the signed-out site (landing.ts: the hero, "Agents propose, people
-   decide" and the sign-in dialog). ONE definition, so the site and the first run never drift apart. */
+   decide" and the sign-in dialog). ONE definition, so the site and the first run never drift apart.
+   WCAG AA (2026-10): the gradient sits one step deeper (it was #6c75d8 → #5a64cc → #454fb2, highlight .16) and
+   text on it is at least 92% white, so it reads at 4.5:1 at the banner's two light points — the first stop
+   (top left) and the highlight's peak over the middle stop (top right). test/render.contrast.test.ts computes both. */
 .cnpy-orgs-banner { padding:24px 28px 26px; }
 .cnpy-orgs-banner, .site-banner { position:relative; overflow:hidden; color:#fff;
-  background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #6c75d8 0%, #5a64cc 48%, #454fb2 100%); }
+  background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.1) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #5e66c7 0%, #4d55bb 48%, #3940a2 100%); }
 .cnpy-orgs-banner::after, .site-banner::after { content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
   background-image:radial-gradient(rgba(255,255,255,.22) 1px, transparent 1.2px); background-size:16px 16px;
   -webkit-mask-image:linear-gradient(90deg, transparent 35%, #000 100%); mask-image:linear-gradient(90deg, transparent 35%, #000 100%); }
 .cnpy-orgs-art { position:absolute; right:-34px; top:-46px; display:block; color:#fff; opacity:.13; transform:rotate(-8deg); pointer-events:none; }
-.cnpy-orgs-lede { color:rgba(255,255,255,.84); }
+.cnpy-orgs-lede { color:rgba(255,255,255,.92); }
 .cnpy-orgs-body { padding:6px 28px 24px; }
 .cnpy-orgs-body > h2:first-child { margin-top:16px !important; }
 .cnpy-orgs-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:12px 28px; border-top:1px solid var(--border); font-size:12.5px; color:var(--fg-55); background:color-mix(in srgb, var(--hover) 55%, transparent); }
@@ -2374,7 +2427,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-platpage-r { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .cnpy-platpage-home { display:inline-flex; align-items:center; gap:8px; flex:none; color:var(--fg); text-decoration:none; font-size:15px; font-weight:600; letter-spacing:-0.02em; border-radius:6px; }
 .cnpy-platpage-t { margin:0; font-size:15px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; flex:none; }
-.cnpy-platpage a:focus-visible, .cnpy-platpage-hdr button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+.cnpy-platpage a:focus-visible, .cnpy-platpage-hdr button:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 @media (max-width: 640px) {
   .cnpy-platpage-hdr { padding:max(10px, env(safe-area-inset-top)) 16px 10px; }
   .cnpy-platpage-r { width:100%; }
@@ -2396,7 +2449,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
    block scales it by value); the mark is a small rounded square like every dot in the app. */
 .cnpy-wel-col { max-width:700px; }
 .cnpy-wel-top { position:relative; display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; }
-.cnpy-orgs-banner .cnpy-mutelink { color:rgba(255,255,255,.82) !important; }
+.cnpy-orgs-banner .cnpy-mutelink { color:rgba(255,255,255,.92) !important; }
 .cnpy-orgs-banner .cnpy-mutelink:hover { color:#fff !important; }
 .cnpy-orgs-body.cnpy-wel-body { padding-top:4px; }
 .cnpy-wel-steps { display:flex; align-items:center; gap:6px; list-style:none; margin:14px 0 22px; padding:0; }
@@ -2459,8 +2512,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 }
 /* The confirmation modal's NEUTRAL confirm (confirm.ts `tone: "neutral"`): an action that undoes
    or restores — Unsuspend — is the accent button, not the destructive red. */
-.cnpy-confirm-go--neutral:focus-visible { outline-color:color-mix(in srgb, var(--accent) 60%, transparent); }
-.plat button:focus-visible, .plat select:focus-visible, [data-plat-dialog] button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+.cnpy-confirm-go--neutral:focus-visible { outline-color:var(--focus); }
+.plat button:focus-visible, .plat select:focus-visible, [data-plat-dialog] button:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .plat .plat-row:focus-visible { outline-offset:-2px; }
 .plat-table, .plat-cq { container-type:inline-size; }
 .plat-thead { display:grid; gap:12px; align-items:center; font-family:var(--label); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-40); white-space:nowrap; }
@@ -2487,7 +2540,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 /* The honeypot: off screen for everyone — never `display:none`, which a script can test for. */
 .cnpy-support-hp { position:absolute !important; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden; }
 [data-support-dialog] a { color:var(--fg-70); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }
-[data-support-dialog] button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+[data-support-dialog] button:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 @media (max-width: 520px) { .cnpy-support-ctx-r { grid-template-columns:minmax(0,1fr); gap:0; } }
 .plat-cl { display:none; font-family:var(--label); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-40); margin-bottom:3px; }
 .plat-urow { border-bottom:1px solid var(--border); margin-bottom:-1px; }
@@ -2561,7 +2614,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .site-menu-ways > .site-btn { justify-content:center; min-height:48px; padding:0 12px; font-size:15px; }
 .site-menu-ways > :only-child { grid-column:1 / -1; }
 .site-menu-x:hover, .site-menu-link:hover, .site-menu-tool:hover, .site-menu-link:active, .site-menu-tool:active { background:var(--hover); color:var(--fg); text-decoration:none; }
-.site-menu-sheet :is(button, a):focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:-2px; }
+.site-menu-sheet :is(button, a):focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
 .site-menu[data-closing] .site-menu-back { animation:site-fx-fade-out var(--fx-fast) var(--fx-ease) both; }
 .site-menu[data-closing] .site-menu-sheet { animation:site-menu-out var(--fx-fast) var(--fx-ease) both; }
 @keyframes site-menu-in { from { opacity:0; transform:translateY(-6px) scale(.98); } to { opacity:1; transform:none; } }
@@ -2588,7 +2641,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .site-legal-tocb-n { margin-left:auto; font-size:13px; color:var(--fg-55); }
   .site-legal-tocb svg { flex:none; color:var(--fg-40); transition:transform var(--fx-slow) var(--fx-ease); }
   .site-legal-toc[data-open="1"] .site-legal-tocb svg { transform:rotate(180deg); }
-  .site-legal-tocb:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+  .site-legal-tocb:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
   .site-legal-tocw { display:grid; grid-template-rows:0fr; transition:grid-template-rows var(--fx-slow) var(--fx-ease); }
   .site-legal-toc[data-open="1"] .site-legal-tocw { grid-template-rows:1fr; }
   .site-legal-toc .site-legal-tocw > ol { min-height:0; margin:0; overflow:hidden; visibility:hidden; transition:visibility 0s linear var(--fx-slow); }
@@ -2941,7 +2994,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
    sheet pinned to the bottom edge, like the filter menu's. No colour here is not a token. */
 .sync-slot { display:flex; align-items:center; gap:10px; flex:none; }
 .sync-slot:empty { display:none; }
-.sync-btn:focus-visible, .sync-panel button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+.sync-btn:focus-visible, .sync-panel button:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .sync-btn[aria-expanded="true"] { background:var(--hover); color:var(--fg) !important; }
 .sync-spin { animation:cnpy-spin .8s linear infinite; }
 [data-narrow="1"] .sync-sub, [data-phone="1"] .sync-sub { display:none; }

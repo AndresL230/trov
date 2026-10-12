@@ -83,6 +83,11 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   `Cache-Control: private`; html alone gets the injected `trov:height` postMessage script (never on
   `?download=1`). The SPA frames html as `<iframe src="/raw/…" sandbox="allow-scripts">` — never `srcdoc`, never
   `allow-same-origin` — and inlines svg ONLY through `sanitizeSvg` (DOMPurify, `web/src/markdown.ts`).
+  A mermaid page is drawn in the SPA itself (`renderPendingMermaid`, `securityLevel: "strict"`) by the `mermaid`
+  npm dependency, pinned to an EXACT version in `package.json` and loaded with a dynamic `import()`: Vite splits it
+  into its own chunks on Trov's origin, fetched the first time a diagram opens, never in the main bundle. No CDN
+  is contacted (it was `cdn.jsdelivr.net/npm/mermaid@11`, unpinned, before 2026-10). The raw CSP's cdnjs /
+  jsdelivr allowance above is for an HTML artifact's OWN scripts, inside the sandbox — not for mermaid.
 - **MCP** (every principal, `src/tools/artifacts-agent.ts`): `artifact_list`, `artifact_get` (text content inline
   up to `ARTIFACT_INLINE_MAX` = 64 KB — over it `content: null` + `content_omitted: true` unless
   `include_content: true`, and `query`'s assembled body is a one-line pointer instead; `warnings` still see

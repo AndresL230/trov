@@ -1,0 +1,70 @@
+/**
+ * Every interactive element shows where keyboard focus is (WCAG 2.4.7), with a ring of 3:1 or more against
+ * what it sits on (1.4.11; --focus's ratio is held by test/render.contrast.test.ts). docs/architecture/web-ui.md
+ * › Focus. Text fields are the hard case: their border and `outline:none` are INLINE styles in the templates,
+ * which only `!important` outranks — so the ring is one rule in trov.css that every field matches.
+ */
+import { describe, it, expect } from "vitest";
+import css from "../web/src/trov.css?raw";
+import { newDocView, blankDoc } from "../web/src/newdoc";
+import { newSprintPanel, type NewSprintState } from "../web/src/sprints";
+
+const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+/** [selector, declarations] of every top-level or nested rule. */
+const rules = [...stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]] as const);
+const focusRules = rules.filter(([sel]) => /:focus(-visible|-within)?\b/.test(sel));
+const FIELD_TYPES_SKIPPED = ["checkbox", "radio", "range", "file", "color", "hidden", "button", "submit", "reset", "image"];
+
+describe("focus — every focusable element shows a ring", () => {
+  it("no :focus rule takes the outline away", () => {
+    const bare = focusRules.filter(([, body]) => /outline:\s*(none|0)\b/.test(body)).map(([sel]) => sel);
+    expect(bare).toEqual([]);
+  });
+
+  it("every focus ring is a 2px line in a colour that holds 3:1 where it is drawn", () => {
+    const OK = /^(var\(--focus\)|var\(--accent\)|var\(--red\)|#fff|#faf8f3)$/;
+    for (const [sel, body] of focusRules) {
+      const outline = /(?:^|;)\s*outline:\s*([^;]+)/.exec(body)?.[1];
+      if (outline) {
+        const m = /^(\d+)px solid (.+)$/.exec(outline.trim());
+        expect(m, `${sel}: outline:${outline}`).not.toBeNull();
+        expect(Number(m![1]), sel).toBeGreaterThanOrEqual(2);
+        expect(m![2].trim(), sel).toMatch(OK);
+      }
+      const color = /outline-color:\s*([^;]+)/.exec(body)?.[1];
+      if (color) expect(color.trim(), sel).toMatch(OK);
+    }
+  });
+
+  it("the three menu / option rows that only tinted now draw the ring", () => {
+    for (const sel of [".cnpy-avmenu .cnpy-menurow:focus-visible", ".cnpy-dd-opt:focus-visible", ".cnpy-sfbar .fm-btn:focus-visible"]) {
+      const r = focusRules.find(([s]) => s === sel);
+      expect(r, sel).toBeDefined();
+      expect(r![1]).toMatch(/outline:2px solid var\(--focus\)/);
+    }
+  });
+
+  it("text fields: --border-input edge and a --focus ring, both !important (their styles are inline)", () => {
+    const field = rules.find(([sel, body]) => sel.includes(":is(input:not(") && sel.endsWith(":not([aria-invalid=\"true\"])") && body.includes("border-color:var(--border-input) !important"));
+    const focused = rules.find(([sel, body]) => sel.includes(":is(input:not(") && sel.endsWith(":focus-visible") && body.includes("border-color:var(--focus) !important") && body.includes("box-shadow:0 0 0 1px var(--focus) !important"));
+    expect(field).toBeDefined();
+    expect(focused).toBeDefined();
+    for (const t of FIELD_TYPES_SKIPPED) expect(field![0]).toContain(`[type="${t}"]`);
+    // A borderless field inside a bordered box puts the edge and the ring on the box.
+    expect(rules.some(([sel, body]) => sel.includes(':has(> :is(input, textarea)[style*="border:none"]:focus-visible)') && body.includes("box-shadow:0 0 0 1px var(--focus) !important"))).toBe(true);
+  });
+
+  it("the New sprint form and the New doc body are fields the ring covers (they had none)", () => {
+    const NS: NewSprintState = { open: true, name: "", start: "", desc: "", urgency: "normal", due: "", lead: null, domain: null, error: null };
+    const doc = newDocView({ draft: blankDoc("product", "reference"), spaces: [{ key: "product", label: "Product" }], sections: ["reference"] });
+    const fields = [...newSprintPanel(NS, []).matchAll(/<(input|textarea)\b[^>]*>/g), ...doc.matchAll(/<(input|textarea)\b[^>]*>/g)].map((m) => m[0]);
+    expect(fields.some((f) => f.includes('data-arg="body"'))).toBe(true);
+    expect(fields.some((f) => f.includes('data-arg="name"'))).toBe(true);
+    for (const f of fields) {
+      const type = /\stype="([^"]+)"/.exec(f)?.[1];
+      if (type) expect(FIELD_TYPES_SKIPPED, f).not.toContain(type);
+      expect(f, "a bordered field, so the field rule (not the box rule) draws its ring").not.toContain("border:none");
+      expect(f).toMatch(/border:1px solid var\(--border-strong\)/); // the inline edge the !important rule recolours
+    }
+  });
+});

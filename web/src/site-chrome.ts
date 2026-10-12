@@ -30,7 +30,7 @@ export function syncPageBackground(html: HTMLElement, theme: "light" | "dark"): 
 /** The themed root a static page paints into its mount (pricing-page.ts, legal-page.ts) — and what the
  *  build prerenders there (site-prerender.ts), so the boot script repaints the same markup. */
 export function siteRoot(theme: "light" | "dark", inner: string): string {
-  return `<div data-cnpy-theme="${theme}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">${inner}</div>`;
+  return `<div data-cnpy-theme="${theme}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">${inner}</div>`;
 }
 
 // Shared with the legal pages (web/src/legal.ts) and the pricing page (web/src/pricing.ts).

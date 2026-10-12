@@ -13,7 +13,7 @@
 //             matching e.source to the frame). NEVER srcdoc, NEVER allow-same-origin.
 //   • svg   → inline, only after DOMPurify's svg profile (sanitizeSvg).
 //   • markdown → renderMarkdown (marked + DOMPurify).
-//   • mermaid  → the CDN build, rendered post-paint and cached per version + theme.
+//   • mermaid  → the pinned `mermaid` package (a lazy chunk), rendered post-paint and cached per version + theme.
 //   • image → <img>; pdf → an UNsandboxed <iframe> (see the pdf case); file → a card with Download.
 //
 // Shape: pure views over props (render.ts calls them), plus ONE reducer,
@@ -265,7 +265,7 @@ const personIn = (p: Pick<ArtProps, "persons">, handle: string): ArtPerson | nul
   p.persons.find((x) => sameHandle(x.handle, handle)) ?? null;
 /** The design's rounded-square avatar (it scales with --corner-scale like every other radius). */
 const av = (w: Who, size: number): string =>
-  `<span style="width:${size}px;height:${size}px;border-radius:${size >= 24 ? 12 : size >= 18 ? 11 : 10}px;background:var(--p-${w.color});display:grid;place-items:center;font-size:${Math.max(8, Math.round(size * 0.42))}px;font-weight:600;color:#fff;flex:none">${esc(w.ini)}</span>`;
+  `<span style="width:${size}px;height:${size}px;border-radius:${size >= 24 ? 12 : size >= 18 ? 11 : 10}px;background:var(--p-${w.color});display:grid;place-items:center;font-size:${Math.max(8, Math.round(size * 0.42))}px;font-weight:600;color:var(--p-ink);flex:none">${esc(w.ini)}</span>`;
 
 /** A version's download name: the stored filename when the API sends one, else `<slug>-v<n>.<ext>`. */
 export function artFileName(slug: string, kind: ArtifactKind, v: ArtifactVersionDTO): string {
@@ -571,8 +571,10 @@ export function setArtFrameHeight(key: string, h: number): number {
 
 // Mermaid: rendered post-paint (renderPendingMermaid, called by main.ts after each
 // paint) into a module cache keyed `slug@v|theme`, so a rerender inlines the SVG
-// at once and only a miss shows "Rendering diagram…".
-const MERMAID_URL = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+// at once and only a miss shows "Rendering diagram…". The library is the `mermaid`
+// dependency (an EXACT version in package.json), loaded by a dynamic import(): Vite
+// makes it its own chunks, served from Trov's origin, fetched the first time a
+// diagram is opened and never part of the main bundle. No CDN is contacted.
 const mermaidSvgs = new Map<string, string>();
 const mermaidFailed = new Set<string>();
 const mermaidPending = new Map<string, string>();
@@ -585,8 +587,7 @@ let mermaidLib: Promise<MermaidApi> | null = null;
 let mermaidSeq = 0;
 function loadMermaid(): Promise<MermaidApi> {
   if (!mermaidLib) {
-    const url = MERMAID_URL;
-    mermaidLib = (import(/* @vite-ignore */ url) as Promise<{ default: MermaidApi }>).then((m) => m.default);
+    mermaidLib = import("mermaid").then((m) => m.default as unknown as MermaidApi);
     mermaidLib.catch(() => { mermaidLib = null; });
   }
   return mermaidLib;

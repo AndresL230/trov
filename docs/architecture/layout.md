@@ -17,6 +17,8 @@
   `site-pages.ts` is the public site's ONE page list (`SITE_PAGES`: path, kind, title, description, Open Graph
   image) with the head tags and JSON-LD it implies and the assets binding's generated `_redirects` / `_headers` —
   read by the build, the Worker's sitemap and the reserved slugs (`web-ui.md` › The public pages, for crawlers).
+  `fonts.ts` names the self-hosted font files (`web/src/fonts/`, with their OFL licenses), their unicode ranges and
+  the stable `/fonts/` copies the Worker's own pages load (`web-ui.md` › Fonts, contrast and focus).
 - `src/` — the Worker. `index.ts` (fetch entry: first `site.ts` — www / http redirects, `/robots.txt`,
   `/sitemap.xml`, and `/` as the prerendered landing signed out or the app shell with a session cookie — then
   `/mcp` by bearer, `/webhook/github[/:hookId]` by HMAC (`github-hook.ts`), the app shell for `/<slug>/`,
@@ -173,7 +175,8 @@
   There is NO hand-written `.html` in `web/`: `web/site-build.ts` (a Vite plugin) writes every input — one per
   page of `shared/site-pages.ts` (`index.html` = the landing, `pricing.html`, `terms.html`, `privacy.html`,
   `404.html`), each PRERENDERED by `web/src/site-prerender.ts` from the code that boots it, and `app.html`, the
-  empty app shell — plus `_redirects` and `_headers` (`web-ui.md` › The public pages, for crawlers).
+  empty app shell — plus `_redirects`, `_headers` and `fonts/` (`web-ui.md` › The public pages, for crawlers).
+  `web/src/fonts/` holds the vendored Geist and Archivo Narrow woff2 files and their `*-OFL.txt` licenses.
   `web/src/not-found.ts` is the 404 page (no script).
   `web/src/releases.ts` is Help › **What's new**: `#releases` a grid of release cards; each release has TWO pages,
   `#releases/<v>` (release notes — for USERS: no PRs, no migrations) and `#releases/<v>/patches` (patch notes — for

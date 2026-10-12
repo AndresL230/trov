@@ -6,9 +6,10 @@
 //   node scripts/og/render.mjs pricing terms   just the named ones
 //
 // Run from anywhere (paths are relative to this file). Needs the `playwright` devDependency with a Chromium
-// (`npx playwright install chromium`, or point OG_CHROMIUM at a Chrome/Chromium binary) and network access to
-// fonts.googleapis.com / fonts.gstatic.com for Geist, the site's face (SIL Open Font License 1.1): the run
-// fails rather than render in a fallback font. Output dir: OG_OUT_DIR overrides web/public/og.
+// (`npx playwright install chromium`, or point OG_CHROMIUM at a Chrome/Chromium binary). No network: Geist, the
+// site's face (SIL Open Font License 1.1), is the site's own vendored file (web/src/fonts/geist-latin.woff2),
+// inlined into the card; the run fails rather than render in a fallback font. Output dir: OG_OUT_DIR overrides
+// web/public/og.
 //
 // ADDING A PAGE is one line in PAGES. The copy is the page's own words — its headline / lede as the page
 // shows them — never a claim, number or quote the page itself does not make. Prices come from
@@ -109,6 +110,9 @@ if (unknown.length) throw new Error(`unknown page(s): ${unknown.join(", ")} — 
 
 const shared = await loadShared();
 const template = readFileSync(join(HERE, "template.html"), "utf8");
+// Geist's latin subset, as the site serves it (shared/fonts.ts), as a data: URL — a page set with setContent
+// may not load file: URLs.
+const GEIST = `data:font/woff2;base64,${readFileSync(join(ROOT, "web", "src", "fonts", "geist-latin.woff2")).toString("base64")}`;
 mkdirSync(OUT_DIR, { recursive: true });
 
 const browser = await launch();
@@ -116,7 +120,7 @@ try {
   const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 1, colorScheme: "light" });
   const tab = await ctx.newPage();
   for (const page of pages) {
-    const slots = { mark: shared.TROV_MARK_PATH, body: cardBody(page, shared), url: esc(`trov.dev${page.path}`) };
+    const slots = { mark: shared.TROV_MARK_PATH, body: cardBody(page, shared), url: esc(`trov.dev${page.path}`), geist: GEIST };
     const html = template.replace(/\{\{(\w+)\}\}/g, (_, k) => {
       if (!(k in slots)) throw new Error(`template.html: unknown slot {{${k}}}`);
       return slots[k];
@@ -128,7 +132,7 @@ try {
       await document.fonts.ready;
       return faces.length > 0 && faces.every((f) => f.status === "loaded");
     });
-    if (!fontOk) throw new Error("Geist did not load from fonts.googleapis.com (offline, or blocked?) — refusing to render a fallback font");
+    if (!fontOk) throw new Error("Geist did not load from web/src/fonts/geist-latin.woff2 — refusing to render a fallback font");
     // Nothing may run past the card: the copy block must fit its space, every line inside the frame.
     const overflow = await tab.evaluate(({ W, H }) => {
       const main = document.querySelector(".main");

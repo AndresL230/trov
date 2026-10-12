@@ -44,10 +44,17 @@ interface DocumentParts {
   extraHead?: string;
 }
 
+/** The one font file every page preloads: Geist's latin subset, self-hosted (trov.css `@font-face`). Vite
+ *  rewrites this href to the same hashed `/assets/` file the stylesheet's `url()` resolves to, so the preload
+ *  and the face are one download. `crossorigin` because a font is always fetched in CORS mode — without it
+ *  the preload would not match and the file would be fetched twice. */
+export const FONT_PRELOAD = `<link rel="preload" href="/src/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin />`;
+
 // The head every page shares. viewport-fit=cover: the app draws edge to edge on a notched phone and keeps
 // its own content clear with env(safe-area-inset-*) (trov.css, the phone rules). favicon.ico is for
 // browsers without SVG favicons (Safari); the SVG, listed last, wins everywhere else — before JS runs it
 // follows prefers-color-scheme, and once the app paints web/src/favicon.ts repoints it at the app's theme.
+// Type comes from Trov's own origin (FONT_PRELOAD): no page asks a third party for anything.
 function documentHtml(d: DocumentParts): string {
   return `<!doctype html>
 <html lang="en">
@@ -58,9 +65,7 @@ function documentHtml(d: DocumentParts): string {
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;650;700&family=Archivo+Narrow:wght@400;500;600;700&display=swap" rel="stylesheet" />${d.extraHead ? `\n    ${d.extraHead}` : ""}
+    ${FONT_PRELOAD}${d.extraHead ? `\n    ${d.extraHead}` : ""}
   </head>
   <body>
     ${d.body}${d.script ? `\n    <script type="module" src="${d.script}"></script>` : ""}
