@@ -15,3 +15,8 @@ interface ImportMeta {
   // …and the lazy glob, read for its KEYS only (test/site.test.ts lists web/public without loading a file).
   glob(pattern: string): Record<string, () => Promise<unknown>>;
 }
+// …and a source file's own text (test/mcp-catalog.test.ts holds the generated tool list to its writer).
+declare module "*.ts?raw" {
+  const content: string;
+  export default content;
+}

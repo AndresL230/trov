@@ -7,8 +7,9 @@ import { describe, it, expect } from "vitest";
 import { env, createExecutionContext } from "cloudflare:test";
 import worker from "../src/index";
 import { app, isAppRoute } from "../src/routes";
-import { ROBOTS_DISALLOW, robotsTxt, sitemapXml } from "../src/site";
-import { APP_SHELL_PATH, NOT_FOUND_PAGE, SITE_ORIGIN, SITE_PAGES, SITE_PAGE_SEGMENTS, siteUrl } from "@shared/site-pages";
+import { AI_TRAINING_CRAWLERS, ROBOTS_DISALLOW, SEARCH_CRAWLERS, TRAINING_CRAWLERS, robotsTxt, sitemapXml } from "../src/site";
+import { APP_SHELL_PATH, DOCS_HOME, DOCS_PAGES, NOT_FOUND_PAGE, SITE_ORIGIN, SITE_PAGES, SITE_PAGE_SEGMENTS, siteUrl } from "@shared/site-pages";
+import { apiErrorHint } from "@shared/error-hints";
 import { ORG_SLUG_RE, RESERVED_ORG_SLUGS } from "@shared/orgs";
 import { cookieFor } from "./helpers/persons";
 import wranglerToml from "../wrangler.toml?raw";
@@ -59,7 +60,10 @@ describe("robots.txt and sitemap.xml", () => {
     expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')).toBe(true);
     const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
     expect(locs).toEqual(SITE_PAGES.filter((p) => p.indexed).map((p) => siteUrl(p.path)));
-    expect(locs).toEqual(["https://trov.dev/", "https://trov.dev/pricing", "https://trov.dev/terms", "https://trov.dev/privacy"]);
+    expect(locs).toEqual([
+      "https://trov.dev/", "https://trov.dev/pricing", "https://trov.dev/terms", "https://trov.dev/privacy",
+      "https://trov.dev/docs/setup", "https://trov.dev/docs/connect", "https://trov.dev/docs/concepts", "https://trov.dev/docs/mcp-tools", "https://trov.dev/docs/changelog",
+    ]);
     expect(xml).not.toContain(NOT_FOUND_PAGE.path);
   });
 
@@ -78,6 +82,119 @@ describe("robots.txt and sitemap.xml", () => {
     const vars = wranglerToml.slice(wranglerToml.indexOf("[vars]"), wranglerToml.indexOf("[observability]"));
     expect(/^PUBLIC_ORIGIN = "([^"]+)"$/m.exec(vars)?.[1]).toBe(SITE_ORIGIN);
     expect(wranglerToml).toMatch(/^\[assets\][\s\S]*?^run_worker_first = \["\/"\]$/m);
+  });
+});
+
+// ── robots.txt, read the way crawlers read it ──────────────────────────────────
+/** RFC 9309 groups: consecutive User-agent lines open a group, its rules follow; comments and blank
+ *  lines end nothing. */
+function robotsGroups(txt: string): { agents: string[]; rules: string[] }[] {
+  const groups: { agents: string[]; rules: string[] }[] = [];
+  let open = false;
+  for (const raw of txt.split("\n")) {
+    const line = raw.replace(/#.*$/, "").trim();
+    if (!line) continue;
+    const at = line.indexOf(":");
+    const key = line.slice(0, at).trim().toLowerCase();
+    const value = line.slice(at + 1).trim();
+    if (key === "user-agent") {
+      if (!open) groups.push({ agents: [], rules: [] });
+      groups[groups.length - 1].agents.push(value);
+      open = true;
+    } else {
+      if (key === "allow" || key === "disallow") groups[groups.length - 1].rules.push(`${key === "allow" ? "Allow" : "Disallow"}: ${value}`);
+      open = false;
+    }
+  }
+  return groups;
+}
+/** Which group a crawler obeys: the one naming it, else `*` (case-insensitive product token). */
+const groupFor = (groups: ReturnType<typeof robotsGroups>, agent: string) =>
+  groups.find((g) => g.agents.some((a) => a.toLowerCase() === agent.toLowerCase())) ?? groups.find((g) => g.agents.includes("*"))!;
+/** Google's reading (the longest matching rule wins, Allow on a tie) and Python's urllib.robotparser's
+ *  (the first matching rule wins): a well-ordered group answers the same under both. */
+function allowed(rules: string[], path: string, how: "longest" | "first"): boolean {
+  const hits = rules.map((r) => { const [k, v] = r.split(": "); return { allow: k === "Allow", v }; }).filter((r) => r.v !== "" && path.startsWith(r.v));
+  if (!hits.length) return true;
+  if (how === "first") return hits[0].allow;
+  const best = Math.max(...hits.map((h) => h.v.length));
+  return hits.some((h) => h.v.length === best && h.allow);
+}
+
+describe("robots.txt: AI search and assistants by name, training crawlers behind one switch", () => {
+  const disallow = ROBOTS_DISALLOW.map((p) => `Disallow: ${p}`);
+
+  it("every named group repeats the `*` group's rules (a crawler that matches a name ignores `*`), then allows the rest", () => {
+    const groups = robotsGroups(robotsTxt());
+    expect(groups[0]).toEqual({ agents: ["*"], rules: disallow });
+    for (const g of groups.slice(1)) expect(g.rules, g.agents.join(", ")).toEqual([...disallow, "Allow: /"]);
+    // each crawler is named once, so which group it obeys is never a guess
+    const named = groups.slice(1).flatMap((g) => g.agents.map((a) => a.toLowerCase()));
+    expect(new Set(named).size).toBe(named.length);
+  });
+
+  it("names the AI search, assistant and search-engine crawlers asked for, and the training ones", () => {
+    const groups = robotsGroups(robotsTxt());
+    const named = groups.flatMap((g) => g.agents);
+    for (const a of ["OAI-SearchBot", "ChatGPT-User", "PerplexityBot", "Perplexity-User", "Claude-SearchBot", "Claude-User", "Googlebot", "Bingbot"]) expect(named, a).toContain(a);
+    for (const a of ["GPTBot", "ClaudeBot", "Google-Extended", "CCBot", "Applebot-Extended"]) expect(named, a).toContain(a);
+    expect(SEARCH_CRAWLERS.flatMap((g) => g.agents)).not.toEqual(expect.arrayContaining(TRAINING_CRAWLERS.flatMap((g) => g.agents)));
+  });
+
+  it("each crawler, by its real user-agent string, may read every public page and the text files, and not the API", () => {
+    const groups = robotsGroups(robotsTxt());
+    const pages = [...SITE_PAGES.filter((p) => p.indexed).map((p) => p.path), ...SITE_PAGES.flatMap((p) => (p.markdown ? [p.markdown] : [])), "/llms.txt", "/llms-full.txt", "/og/home.png"];
+    for (const [ua, token] of [
+      ["OAI-SearchBot/1.0; +https://openai.com/searchbot", "OAI-SearchBot"],
+      ["Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot", "ChatGPT-User"],
+      ["PerplexityBot/1.0", "PerplexityBot"], ["Claude-SearchBot/1.0", "Claude-SearchBot"], ["Claude-User/1.0", "Claude-User"],
+      ["Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)", "Googlebot"], ["GPTBot/1.1", "GPTBot"], ["ClaudeBot/1.0", "ClaudeBot"],
+    ] as const) {
+      expect(ua).toContain(token);
+      const { rules } = groupFor(groups, token);
+      for (const how of ["longest", "first"] as const) {
+        for (const p of pages) expect(allowed(rules, p, how), `${token} ${how} ${p}`).toBe(true);
+        for (const p of ["/api/orgs", "/mcp", "/auth/me", "/oauth/authorize"]) expect(allowed(rules, p, how), `${token} ${how} ${p}`).toBe(false);
+      }
+    }
+  });
+
+  it("training crawlers: allowed by default (as they were through `*`); ONE switch shuts them out and nothing else", () => {
+    expect(AI_TRAINING_CRAWLERS).toBe("allow");
+    expect(robotsTxt()).toBe(robotsTxt("allow"));
+    const off = robotsGroups(robotsTxt("disallow"));
+    for (const t of TRAINING_CRAWLERS.flatMap((g) => g.agents)) expect(groupFor(off, t).rules, t).toEqual(["Disallow: /"]);
+    for (const s of SEARCH_CRAWLERS.flatMap((g) => g.agents)) expect(groupFor(off, s).rules, s).toEqual([...disallow, "Allow: /"]);
+    expect(groupFor(off, "SomeOtherBot").rules).toEqual(disallow);
+    expect(robotsTxt("disallow")).toContain('AI_TRAINING_CRAWLERS = "disallow"');
+  });
+
+  it("points crawlers at the docs and the language-model index", () => {
+    expect(robotsTxt()).toContain(`# Docs for people and agents: ${siteUrl(DOCS_HOME)} (an index for language models: ${siteUrl("/llms.txt")}).`);
+  });
+});
+
+describe("the docs' address: /docs is the app's cookie route, so a browser that types it is sent to the first page", () => {
+  it("/docs/ for anyone, and /docs for a signed-out browser, go to the first docs page (302: it depends on who asks)", async () => {
+    for (const [path, init] of [["/docs/", {}], ["/docs/", { headers: { cookie: "session=x" } }], ["/docs", { headers: { accept: "text/html,application/xhtml+xml,*/*;q=0.8" } }]] as const) {
+      const s = site();
+      const res = await get(path, s.env, init as RequestInit);
+      expect(res.status, path).toBe(302);
+      expect(res.headers.get("location"), path).toBe(DOCS_HOME);
+      expect(res.headers.get("vary"), path).toBe("Cookie, Accept");
+      expect(s.asked, path).toEqual([]);
+    }
+    expect(DOCS_HOME).toBe(DOCS_PAGES[0].path);
+  });
+
+  it("the route itself is untouched: a fetch (no text/html) gets its 401, with a hint; signed in, its JSON", async () => {
+    const res = await get("/docs", site().env, { headers: { accept: "*/*" } });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "unauthorized", hint: apiErrorHint(401, "unauthorized") });
+    const cookie = await cookieFor("AndresL230");
+    const signedIn = await get("/docs", site().env, { headers: { cookie, accept: "text/html" } });
+    expect(signedIn.status).toBe(200);
+    expect(signedIn.headers.get("content-type")).toContain("application/json");
   });
 });
 
@@ -199,7 +316,8 @@ describe("an address no route answers is a 404 — a real cookie route is still 
       const res = await get(path, site().env, { method });
       expect(res.status, `${method} ${path}`).toBe(404);
       expect(res.headers.get("x-robots-tag"), path).toBe("noindex");
-      expect(await res.json(), path).toEqual({ error: "not_found" });
+      // …with what to do about it (src/error-hints.ts): the code and status unchanged.
+      expect(await res.json(), path).toEqual({ error: "not_found", hint: apiErrorHint(404, "not_found") });
     }
     const none = { ...env, ASSETS: { fetch: async () => new Response("nope", { status: 404 }) } as unknown as Fetcher };
     const bare = await get("/no/where", none);

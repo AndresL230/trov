@@ -1643,6 +1643,40 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
   .site-legal-toc ol { border-left:0; columns:2 200px; column-gap:28px; }
   .site-legal-toc a { margin-left:0; padding-left:0; border-left:0; break-inside:avoid; }
 }
+
+/* ── the public docs (web/src/docs.ts: /docs/<page>) ────────────────────────
+   The legal pages' layout above (banner, contents, reading column), and what a docs page has that a
+   legal one does not: subsections, ordered lists, code blocks with a Copy button, tables. Tokens only;
+   every radius is inline (the corners block scales it). */
+.site-docs-text .site-legal-sec strong { color:var(--fg); font-weight:600; }
+.site-docs-text .site-legal-sec a { color:var(--accent); text-underline-offset:3px; }
+.site-docs-text .site-legal-sec ol { margin:12px 0 0; padding-left:22px; }
+.site-docs-text .site-legal-sec h3 { margin:30px 0 0; font-size:16px; font-weight:650; letter-spacing:-0.01em; color:var(--fg); scroll-margin-top:84px; }
+.site-docs-text .site-legal-sec h3 code { font-size:.95em; }
+.site-docs-text .site-legal-sec blockquote { margin:12px 0 0; padding:2px 0 2px 16px; border-left:2px solid var(--border-strong); }
+.site-docs-text .site-legal-sec blockquote p { margin:0; }
+.site-docs-text .site-legal-sec hr { margin:28px 0 0; border:0; border-top:1px solid var(--border); }
+.site-docs-text > .site-legal-sec:first-child { margin-top:0; }
+.site-docs .site-legal-lede a, .site-docs .site-legal-lede code { color:inherit; }
+.site-docs .site-legal-lede a { text-decoration:underline; text-decoration-color:rgba(255,255,255,.5); text-underline-offset:3px; }
+.site-docs-code { margin:14px 0 0; border:1px solid var(--border); background:var(--surface); overflow:hidden; }
+.site-docs-code-h { display:flex; align-items:center; gap:10px; padding:5px 6px 5px 14px; border-bottom:1px solid var(--border); font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--fg-40); }
+.site-docs-copy { margin-left:auto; padding:3px 10px; border:1px solid var(--border); background:var(--bg); font-family:inherit; font-size:11px; font-weight:600; letter-spacing:.04em; color:var(--fg-55); cursor:pointer; }
+.site-docs-copy:hover { color:var(--fg); border-color:var(--border-strong); }
+.site-docs-copy:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-docs-code pre { margin:0; padding:12px 14px; overflow-x:auto; }
+.site-docs-text .site-legal-sec .site-docs-code code { padding:0; background:none; font-size:12.5px; line-height:1.65; color:var(--fg); white-space:pre; }
+.site-docs-table { margin:14px 0 0; overflow-x:auto; }
+.site-docs-table table { border-collapse:collapse; min-width:100%; font-size:14px; line-height:1.55; }
+.site-docs-table th, .site-docs-table td { padding:8px 12px; border:1px solid var(--border); text-align:left; vertical-align:top; color:var(--fg-70); }
+.site-docs-table th { color:var(--fg); font-weight:600; background:var(--surface); }
+.site-docs-alt a { color:inherit; text-underline-offset:3px; }
+.site-docs-moon { display:none; }
+[data-cnpy-theme="dark"] .site-docs-sun { display:none; }
+[data-cnpy-theme="dark"] .site-docs-moon { display:inline; }
+.site-docs-sun, .site-docs-moon { line-height:0; }
+.site-docs-tabs { flex-wrap:wrap; }
+
 /* phone: the nav's logo, icons and Sign in / Back to the app fit a 360px screen. */
 @media (max-width:480px) { .site-navin { gap:12px !important; padding:0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)) !important; } .site-navin > div:last-child { gap:8px !important; } }
 
@@ -1914,6 +1948,8 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
    1440 and 1100: 603px of tools beside 576px of plugin) so the pair ends on one line with nothing to pad;
    the few pixels left over sit above the plugin card's last button. One column under 900px. */
 .site-agents-row { margin-top:48px; display:grid; grid-template-columns:minmax(0, 1.65fr) minmax(0, 1fr); gap:16px; align-items:stretch; }
+.site-agents-ref, .site-agents-more a { color:var(--fg-55); text-decoration:underline; text-decoration-color:var(--border-strong); text-underline-offset:3px; }
+.site-agents-ref:hover, .site-agents-more a:hover { color:var(--fg); }
 @media (max-width:900px) { .site-agents-row { grid-template-columns:minmax(0, 1fr); } }
 
 /* ── the tour, explorable ─────────────────────────────────────────────────────
@@ -2760,6 +2796,11 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .site-legal-band > .site-banner-art { width:240px; right:-84px; top:auto; bottom:-70px; opacity:.1; }
   .site-legal-tabs { display:flex; }
   .site-legal-tab { flex:1 1 0; padding:12px 10px; font-size:14px; line-height:20px; text-align:center; }
+  /* the docs have five tabs: each as wide as its name, wrapping onto a second row */
+  .site-docs-tabs { flex-wrap:wrap; }
+  .site-docs-tabs .site-legal-tab { flex:1 1 auto; padding:10px 12px; }
+  .site-docs-code-h { min-height:44px; }
+  .site-docs-copy { min-height:36px; padding:0 14px; }
   .site-legal-h { margin-top:22px; font-size:clamp(30px, 8.6vw, 36px); }
   .site-legal-lede { margin-top:14px; font-size:16px; line-height:1.6; }
   .site-legal { padding:20px 20px 0; gap:20px; }

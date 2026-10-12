@@ -71,7 +71,11 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   | Account, then Appearance and MCP access at full width), and a phone is one column. `/mcp` is **bearer-only**; its `401` carries
   `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource"` (plus
   `error="invalid_token"` when a token was presented), which is how Claude Code and claude.ai discover
-  sign-in. A fresh `McpServer` is constructed per request
+  sign-in; its JSON body is `{ error: "unauthorized", hint }`, the hint saying how to sign in (the same words for
+  every refused token, so it tells nothing about one — `shared/error-hints.ts`, `web-ui.md` › Errors an agent can
+  act on). Which clients that serves, and their config, is the public `/docs/connect` (`web/src/docs-content.ts`):
+  the OAuth server takes only https and loopback-http redirects, so a client registering a custom scheme (an
+  older Cursor's `cursor://`) is refused at registration — say so there if that changes. A fresh `McpServer` is constructed per request
   (SDK ≥1.26 guards against reuse); `createMcpHandler` is stateless (no Durable Object / McpAgent).
 - **MCP OAuth** (`src/auth/oauth.ts` core, `oauth-routes.ts` HTTP, `oauth-pages.ts` pages; spec
   `docs/superpowers/specs/2026-09-24-mcp-oauth-design.md`; migration `0029_oauth`): RFC 9728/8414 metadata,

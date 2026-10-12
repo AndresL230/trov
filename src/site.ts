@@ -1,17 +1,19 @@
 // The public site, as the Worker answers for it (docs/architecture/web-ui.md › The public pages, for
 // crawlers). The assets binding serves every built file BEFORE this Worker runs — /pricing, /terms,
-// /privacy, the scripts, the images — except `/`, which wrangler.toml sends here first
-// (`run_worker_first`). So this module answers:
+// /privacy, the docs pages and their Markdown, /llms.txt, the scripts, the images — except `/`, which
+// wrangler.toml sends here first (`run_worker_first`). So this module answers:
 //   • /robots.txt and /sitemap.xml, before any session check (the sitemap is SITE_PAGES' indexed pages);
 //   • `/`: the prerendered landing page to a visitor with no session, and the app shell to one with
 //     (`Vary: Cookie`), so a signed-in person never sees the landing before their organization;
+//   • `/docs/` and a browser's signed-out `/docs`: the first docs page (`/docs` itself stays the app's
+//     cookie route — the old alias of an organization's docs list);
 //   • the 404 page, for an address nothing answers (src/index.ts decides that);
 //   • one address per page: `www.` and plain http are redirected for good to the public origin;
 //   • `X-Robots-Tag: noindex` on everything else the Worker serves — the app shell, the API, sign-in,
 //     MCP, the webhooks, the signed links — and, on a host that is not PUBLIC_ORIGIN's (a Preview's
 //     workers.dev address), on everything. No session is read here: a cookie's presence is a hint for
 //     which public page to send, never an authorization, so this is not a fourth auth class.
-import { APP_SHELL_PATH, NOT_FOUND_PAGE, SITE_ORIGIN, SITE_PAGES, siteUrl } from "@shared/site-pages";
+import { APP_SHELL_PATH, DOCS_HOME, NOT_FOUND_PAGE, SITE_ORIGIN, SITE_PAGES, siteUrl } from "@shared/site-pages";
 import { SESSION_COOKIE } from "./auth/session";
 import { ONBOARD_COOKIE } from "./auth/onboard";
 import type { Env } from "./env";
@@ -29,13 +31,59 @@ export const ROBOTS_DISALLOW: readonly string[] = [
   "/api/", "/auth/", "/oauth/", "/mcp", "/webhook/", "/u/", "/raw/", "/img/", "/avatar/", "/org-logo/",
 ];
 
-export function robotsTxt(): string {
+// ── robots.txt: who may read what ────────────────────────────────────────────
+// A crawler that matches a group BY NAME obeys only that group and ignores `User-agent: *` (RFC 9309
+// §2.2.1). So every named group below repeats the same Disallow lines, then says `Allow: /` — Disallow
+// first, for the parsers that take the first matching line rather than the longest. A group may name
+// several user agents (one operator's crawlers share it).
+
+/** AI TRAINING crawlers — the ONE switch. "allow" is today's behaviour (they were allowed through
+ *  `User-agent: *`, and now by name with the same rules as everyone); "disallow" keeps them out of the
+ *  whole site (`Disallow: /`) while search and assistants keep reading it. Change it here and deploy. */
+export const AI_TRAINING_CRAWLERS: "allow" | "disallow" = "allow";
+
+export interface CrawlerGroup { who: string; agents: readonly string[] }
+
+/** Search engines, AI search and AI assistants fetching a page a person asked about: allowed, by name. */
+export const SEARCH_CRAWLERS: readonly CrawlerGroup[] = [
+  { who: "OpenAI: ChatGPT search, and pages a ChatGPT user asks for", agents: ["OAI-SearchBot", "ChatGPT-User"] },
+  { who: "Anthropic: Claude's search, and pages a Claude user asks for", agents: ["Claude-SearchBot", "Claude-User"] },
+  { who: "Perplexity: its search index, and pages a Perplexity user asks for", agents: ["PerplexityBot", "Perplexity-User"] },
+  { who: "Google Search", agents: ["Googlebot"] },
+  { who: "Microsoft Bing (and the search behind Copilot)", agents: ["Bingbot"] },
+  { who: "Apple: Siri and Spotlight search", agents: ["Applebot"] },
+  { who: "DuckDuckGo: DuckAssist answers", agents: ["DuckAssistBot"] },
+];
+
+/** Crawlers that collect pages to TRAIN models (each operator's search crawler above is a different
+ *  agent, untouched by this list). Governed by AI_TRAINING_CRAWLERS. */
+export const TRAINING_CRAWLERS: readonly CrawlerGroup[] = [
+  { who: "OpenAI: model training", agents: ["GPTBot"] },
+  { who: "Anthropic: model training", agents: ["ClaudeBot"] },
+  { who: "Google: Gemini training (a robots.txt token only; Googlebot and Search are not affected)", agents: ["Google-Extended"] },
+  { who: "Apple: model training (a robots.txt token only; Applebot and Siri are not affected)", agents: ["Applebot-Extended"] },
+  { who: "Common Crawl: an open corpus many models are trained on", agents: ["CCBot"] },
+];
+
+const group = (agents: readonly string[], rules: readonly string[]): string[] => [...agents.map((a) => `User-agent: ${a}`), ...rules];
+
+export function robotsTxt(training: "allow" | "disallow" = AI_TRAINING_CRAWLERS): string {
+  const disallow = ROBOTS_DISALLOW.map((p) => `Disallow: ${p}`);
+  const named = [...disallow, "Allow: /"];
   return [
     `# ${SITE_ORIGIN.replace("https://", "")}: the public pages are in the sitemap. Everything else is the app,`,
     "# which answers with `X-Robots-Tag: noindex`; the paths below are its API, sign-in and token endpoints.",
+    `# Docs for people and agents: ${siteUrl(DOCS_HOME)} (an index for language models: ${siteUrl("/llms.txt")}).`,
+    "# A crawler named in a group obeys only that group, so each group repeats the same rules.",
     "User-agent: *",
-    ...ROBOTS_DISALLOW.map((p) => `Disallow: ${p}`),
+    ...disallow,
     "",
+    "# Search engines, AI search and AI assistants: every public page.",
+    ...SEARCH_CRAWLERS.flatMap((g) => [`# ${g.who}`, ...group(g.agents, named), ""]),
+    training === "allow"
+      ? "# AI training crawlers: ALLOWED, with the same rules as everyone (src/site.ts AI_TRAINING_CRAWLERS = \"allow\";\n# set it to \"disallow\" to keep them out of the whole site)."
+      : "# AI training crawlers: NOT ALLOWED anywhere (src/site.ts AI_TRAINING_CRAWLERS = \"disallow\"; set it to \"allow\"\n# to let them read the public pages again). Search and assistants above are not affected.",
+    ...TRAINING_CRAWLERS.flatMap((g) => [`# ${g.who}`, ...group(g.agents, training === "allow" ? named : ["Disallow: /"]), ""]),
     `Sitemap: ${siteUrl("/sitemap.xml")}`,
     "",
   ].join("\n");
@@ -99,6 +147,15 @@ export function carriesSession(request: Request, env: Pick<Env, "DEV_LOGIN">): b
   return [SESSION_COOKIE, ONBOARD_COOKIE].some((name) => new RegExp(`(?:^|;)\\s*${name}=[^;]`).test(cookie));
 }
 
+/** Where someone typing the docs' address is sent: the first docs page. `/docs/` is no route at all; `/docs`
+ *  is the app's cookie route (the old alias of an organization's docs list, JSON) — so only a BROWSER'S
+ *  navigation there (it accepts text/html) with no session cookie is sent on. The SPA's own fetch, an old
+ *  client and anyone signed in still reach the route and its 401 / JSON exactly as before. */
+function docsEntry(request: Request, env: Pick<Env, "DEV_LOGIN">, url: URL): boolean {
+  if (url.pathname === "/docs/") return true;
+  return url.pathname === "/docs" && !carriesSession(request, env) && /\btext\/html\b/i.test(request.headers.get("accept") ?? "");
+}
+
 const text = (body: string, type: string, method: string): Response =>
   new Response(method === "HEAD" ? null : body, { headers: { "Content-Type": type, "Cache-Control": "public, max-age=3600" } });
 
@@ -113,6 +170,10 @@ export async function sitePublic(request: Request, env: Env, url: URL): Promise<
   const tag = (res: Response) => (canonical ? res : noindex(res));
   if (url.pathname === "/robots.txt") return tag(text(robotsTxt(), "text/plain; charset=utf-8", request.method));
   if (url.pathname === "/sitemap.xml") return tag(text(sitemapXml(), "application/xml; charset=utf-8", request.method));
+  if (docsEntry(request, env, url)) {
+    const res = new Response(null, { status: 302, headers: { Location: DOCS_HOME, "Cache-Control": "no-store", Vary: "Cookie, Accept" } });
+    return canonical ? res : noindex(res);
+  }
   if (url.pathname !== "/") return null;
   // Never the same HTML at two addresses: the shell is a different document (no landing, no canonical) and
   // is `noindex` here and at every other address it is served from.

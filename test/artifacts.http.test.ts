@@ -15,6 +15,7 @@ import { RAW_CSP_ACTIVE, RAW_CSP_PASSIVE, HEIGHT_SCRIPT, injectHeightScript } fr
 import { checkFetchUrl, expandIpv6, fetchArtifactUrl, FetchUrlError, inferFetchedKind } from "../src/artifacts/fetch-url";
 import { ARTIFACT_BINARY_CAP, ARTIFACT_TEXT_CAP, type ArtifactDetailDTO } from "@shared/artifacts";
 import { cookieFor } from "./helpers/persons";
+import { apiErrorHint } from "@shared/error-hints";
 import { platformCtx, mintTokenFor, ORG_A } from "./helpers/tenant";
 
 const ME = "AndresL230";
@@ -404,7 +405,7 @@ describe("upload-url + the token PUT", () => {
 
     const unknown = await workerFetch(`/api/artifacts/upload/${"A".repeat(43)}`, { method: "PUT", body: "abc" });
     expect(unknown.status).toBe(404);
-    expect(await unknown.text()).toBe(JSON.stringify({ error: "not_found" }));
+    expect(await unknown.text()).toBe(JSON.stringify({ error: "not_found", hint: apiErrorHint(404, "not_found") }));
 
     const big = await workerFetch(`/api/artifacts/upload/${"B".repeat(43)}`, { method: "PUT", body: "abc", headers: { "content-length": String(ARTIFACT_BINARY_CAP + 1) } });
     expect(big.status).toBe(413);

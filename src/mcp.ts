@@ -45,8 +45,17 @@ import {
 } from "./tools/handoffs";
 import { listPrompts, getPrompt, recordPromptUse, savePrompt, PromptSaveInput, PromptError } from "./tools/prompts";
 import { detectVars, fillVars, firstLine, type HandoffView } from "@shared/handoffs";
+import { mcpErrorHint } from "@shared/error-hints";
 
 const asText = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }] });
+
+/** A tool error: `{ error, code?, …, hint }` as text, `isError: true`. EVERY tool error goes through here, so
+ *  each carries a `hint` — what went wrong and what to do next — chosen by its code alone
+ *  (shared/error-hints.ts): an unknown id and someone else's private one still read the same. */
+const toolError = (body: { error: string; code?: string } & Record<string, unknown>) => ({
+  content: [{ type: "text" as const, text: JSON.stringify({ ...body, hint: mcpErrorHint(body.code) }) }],
+  isError: true as const,
+});
 
 // Each MCP write tool is a one-item batch with an ephemeral session id, so it
 // funnels through the SAME reconciling gate as /ingest — no second write path.
@@ -69,10 +78,7 @@ async function runTool<T>(fn: () => Promise<T>, render: (value: T) => { content:
     // { error: "not_found", code: "not_found" } — the check is never an existence oracle.
     // A plan refusal (0044_plans, e.g. the org's artifact storage is full) reads `code: "plan_limit"`: no retry helps.
     const code = err instanceof TicketError || err instanceof PersonError || err instanceof SprintError || err instanceof ArtifactError || err instanceof HandoffError || err instanceof PromptError || err instanceof PlanLimitError || err instanceof PlanFeatureError ? err.code : undefined;
-    return {
-      content: [{ type: "text" as const, text: JSON.stringify(code ? { error: message, code } : { error: message }) }],
-      isError: true as const,
-    };
+    return toolError(code ? { error: message, code } : { error: message });
   }
 }
 
@@ -198,7 +204,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
     async ({ id }) =>
       runTool(async () => {
         const ticket = await get_ticket(ctx, id);
-        if (!ticket) throw new Error(`no such ticket: ${id}`);
+        if (!ticket) throw new TicketError("not_found", `no such ticket: ${id}`);
         return { ...ticket, artifacts: await artifactsForTicket(ctx, id, principal.handle) };
       }),
   );
@@ -217,7 +223,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
     async ({ id }) =>
       runTool(async () => {
         const sprint = await get_sprint(ctx, id);
-        if (!sprint) throw new Error(`no such sprint: ${id}`);
+        if (!sprint) throw new SprintError("not_found", `no such sprint: ${id}`);
         return sprint;
       }),
   );
@@ -596,8 +602,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
       } catch (err) {
         if (err instanceof HandoffError) {
           const current = await getHandoff(ctx, id);
-          const body = { error: err.message, code: err.code, ...(current ? { status: current.status, claimed_by: current.claimed_by } : {}) };
-          return { content: [{ type: "text" as const, text: JSON.stringify(body) }], isError: true as const };
+          return toolError({ error: err.message, code: err.code, ...(current ? { status: current.status, claimed_by: current.claimed_by } : {}) });
         }
         return runTool(async () => { throw err; });
       }
@@ -699,10 +704,7 @@ const REPO_ARG = z.string().optional().describe(
 const ORG_ARG = z.string().optional().describe(
   "An organization's slug, to act there for THIS call only — one this connection is allowed to use (see get_connection). Omit it to act in the connection's organization.");
 
-const scopeError = (r: ScopeRefusal): ToolOutput => ({
-  content: [{ type: "text", text: JSON.stringify({ error: r.message, code: r.code, ...(r.orgs ? { orgs: r.orgs } : {}) }) }],
-  isError: true,
-});
+const scopeError = (r: ScopeRefusal): ToolOutput => toolError({ error: r.message, code: r.code, ...(r.orgs ? { orgs: r.orgs } : {}) });
 
 /** How a result names an organization. A pinned context knows only its id until asked. */
 async function orgLabel(o: OrgTenant): Promise<{ slug: string; name: string }> {
@@ -739,11 +741,11 @@ export function buildConnectionMcpServer(env: Env, conn: BearerConnection, opts:
       try {
         await admitCall(conn, target.org);
       } catch (err) {
-        if (err instanceof PlanLimitError) return { content: [{ type: "text" as const, text: JSON.stringify({ error: err.message, code: err.code }) }], isError: true as const };
+        if (err instanceof PlanLimitError) return toolError({ error: err.message, code: err.code });
         throw err;
       }
       const tool = toolsFor(target.org).get(name);
-      if (!tool) return { content: [{ type: "text" as const, text: JSON.stringify({ error: `${name} is for an organization's admins, and you are not one in "${target.org.slug}". Nothing was read or written.`, code: "forbidden" }) }], isError: true as const };
+      if (!tool) return toolError({ error: `${name} is for an organization's admins, and you are not one in "${target.org.slug}". Nothing was read or written.`, code: "forbidden" });
       opts.exec?.waitUntil(meterMcpTool(env, target.org.ctx, name));
       const { org: _org, repo, ...rest } = args;
       // Where `repo` is the tool's own argument, a connection that follows the repository hands it the

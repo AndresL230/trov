@@ -387,31 +387,42 @@ describe("pricing — questions say only what is true today", () => {
   });
   const all = text(pricingSection() + pricingSection({ pricing: priced({ team: { yearly: 400 } }) }) + pricingSection({ pricing: unpriced() }));
 
-  it("answers seats, Pro's per-seat price, going over, changing plans, isolation, the source and Enterprise", () => {
+  it("answers seats, what Pro adds, Pro's per-seat price, going over, changing plans, isolation, the source and Enterprise", () => {
     expect(qs.map((x) => x.q)).toEqual([
       "What counts as a seat?",
+      "What does Pro add?",
       "How does Pro pricing work?",
       "What happens if we go over a limit?",
       "Can we change plans?",
       "Is our data separate from other organizations?",
-      "Can we read the source?",
+      "Can we read the source, or run Trov ourselves?",
       "How does Enterprise work?",
     ]);
     expect(qs[0].a).toContain("an invitation that has not been answered yet");
+    // What Pro adds is room, from the two plans' own tables (no plan gates a feature today), never a typed number.
+    const adds = qs[1].a;
+    expect(adds).toContain("Pro is all of Trov, as Free is: no plan turns a feature on or off. What it adds is room: ");
+    for (const k of LIMIT_KEYS) if (PLANS.team.entitlements[k] !== PLANS.free.entitlements[k]) expect(adds).toContain(`(Free: ${formatLimit(k, PLANS.free.entitlements[k])})`);
+    expect(adds).toContain("50 seats (Free: 3)");
+    expect(adds).toContain("5 GB of artifact storage (Free: 250 MB)");
+    expect(adds).not.toContain("$");
     // Per seat: the price and its interval from shared/pricing.ts, no minimum, more seats from Org settings, up to the cap.
-    expect(qs[1].a).toContain(`Pro is bought per seat, at ${formatPrice(10)} per seat / month.`);
-    expect(qs[1].a).not.toContain("for each one");
-    expect(qs[1].a).toContain("There is no minimum, so a person on their own can buy a single seat.");
-    expect(qs[1].a).toContain("You choose how many at checkout, and add more from Org settings › General when you invite more people, up to 50.");
-    expect(qs[2].a).toContain("Nothing is deleted and nobody is removed");
+    expect(qs[2].a).toContain(`Pro is bought per seat, at ${formatPrice(10)} per seat / month.`);
+    expect(qs[2].a).not.toContain("for each one");
+    expect(qs[2].a).toContain("There is no minimum, so a person on their own can buy a single seat.");
+    expect(qs[2].a).toContain("You choose how many at checkout, and add more from Org settings › General when you invite more people, up to 50.");
+    expect(qs[3].a).toContain("Nothing is deleted and nobody is removed");
     // Changing plans: Free is created one at a time and upgraded from Org settings; cancelling Pro moves to Free.
-    expect(qs[3].a).toContain("Anyone signed in can create a Free organization (one they own at a time), and its owner upgrades it to Pro from Org settings › General.");
-    expect(qs[3].a).toContain("An owner manages seats, the card and invoices there too.");
-    expect(qs[3].a).toContain("If Pro is cancelled, the organization moves to Free when the paid period ends");
-    expect(qs[3].a).not.toContain("mailto:");
-    expect(qs[3].a).not.toMatch(/downgrade|any ?time|instantly/i);
-    expect(qs[5].a).toContain("AGPL-3.0");
-    expect(qs[6].a).toContain(talkHref(PLANS.enterprise));
+    expect(qs[4].a).toContain("Anyone signed in can create a Free organization (one they own at a time), and its owner upgrades it to Pro from Org settings › General.");
+    expect(qs[4].a).toContain("An owner manages seats, the card and invoices there too.");
+    expect(qs[4].a).toContain("If Pro is cancelled, the organization moves to Free when the paid period ends");
+    expect(qs[4].a).not.toContain("mailto:");
+    expect(qs[4].a).not.toMatch(/downgrade|any ?time|instantly/i);
+    // The source, and running it: what the repository is and runs on, and that no self-hosting is supported.
+    expect(qs[6].a).toContain("AGPL-3.0");
+    expect(qs[6].a).toContain("one Worker, with D1 for the data and R2 for files");
+    expect(qs[6].a).toContain("there is no self-hosting guide, and no support for one");
+    expect(qs[7].a).toContain(talkHref(PLANS.enterprise));
   });
 
   it("with nothing purchasable there is no per-seat question, and a plan is changed by writing to Trov", () => {
@@ -421,15 +432,15 @@ describe("pricing — questions say only what is true today", () => {
       "What happens if we go over a limit?",
       "Can we change plans?",
       "Is our data separate from other organizations?",
-      "Can we read the source?",
+      "Can we read the source, or run Trov ourselves?",
       "How does Enterprise work?",
     ]);
     expect(none[2].a).toContain("Until paid plans are available, a plan is changed by us: write to <a href=\"mailto:");
     expect(none[2].a).not.toMatch(/upgrade|downgrade|any ?time|instantly|yourself/i);
     // a per-seat plan with no seat cap promises no "up to"
     const uncapped = pricingQuestions(defs.map((d) => (d.id === "team" ? { ...d, entitlements: { ...d.entitlements, seats: null } } : d)), PRICING);
-    expect(uncapped[1].a).toContain("when you invite more people. The seats you pay for");
-    expect(uncapped[1].a).not.toContain("up to");
+    expect(uncapped[2].a).toContain("when you invite more people. The seats you pay for");
+    expect(uncapped[2].a).not.toContain("up to");
   });
 
   it("promises nothing the product does not do", () => {

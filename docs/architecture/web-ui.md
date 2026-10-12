@@ -165,20 +165,24 @@ through all seven (wrapping), with the position as text and dots.
 ### For agents
 
 Two cards whose content is naturally the same height at desktop width (`.site-agents-row`, 1.65fr / 1fr,
-measured at 1440 and 1100); one column under 900px. The plugin card holds the skills, then `connectSteps()` and
-`CONNECTION_NOTE` from `mcp-connect.ts`. (Settings › MCP access changes a connection in a dialog —
+measured at 1440 and 1100); one column under 900px. The MCP card's count and chips are the server's own tool list
+(`shared/mcp-tools.generated.ts`, in `MCP_TOOL_GROUPS` order) with a link to the reference; its two smallest groups
+(Connection, Admin) share one row, which keeps it the plugin card's height (605 / 600px at both widths, 2026-10-12,
+with 43 + 1 tools). The plugin card holds the skills, then `connectSteps()` and `CONNECTION_NOTE` from `mcp-connect.ts`,
+whose line ends with a link to the other clients' setup (/docs/connect). (Settings › MCP access changes a connection in a dialog —
 `grantScopeDialog` in `render.ts`, a root `data-overlay` in the `.cnpy-cmodal` shell, never a panel under the
 row: `auth-identity-people.md`.) If a card's content shrinks, re-weight the columns or let the card be
 smaller: never pad one out.
 
 ## The public pages, for crawlers (`shared/site-pages.ts`, `web/site-build.ts`, `src/site.ts`)
 
-`/`, `/pricing`, `/terms` and `/privacy` arrive as real HTML — their words, a unique title and description, a
+`/`, `/pricing`, `/terms`, `/privacy` and the docs (`/docs/setup`, `/docs/connect`, `/docs/concepts`,
+`/docs/mcp-tools`, `/docs/changelog`) arrive as real HTML — their words, a unique title and description, a
 canonical link, Open Graph and Twitter tags, JSON-LD on `/` and `/pricing` — before any script runs, and the
 script then takes over the SAME markup. Everything else is the app, and is never indexed.
 
 - **One list.** `SITE_PAGES` (`shared/site-pages.ts`) is every public page: path, `kind` (`landing`, `pricing`,
-  `legal`, `not-found`), title, description, Open Graph image. Everything follows from an entry: the Vite input
+  `legal`, `docs`, `not-found`), title, description, Open Graph image, and its Markdown (`markdown`, below). Everything follows from an entry: the Vite input
   and its prerendered document (`web/site-build.ts` writes every input — there is no `.html` in `web/`), the
   head tags (`siteHead`), the `/sitemap.xml` line, the reserved org slug (`shared/orgs.ts` spreads
   `SITE_PAGE_SEGMENTS`), and the 301s for its other spellings (`_redirects`). **Adding a page** is one entry
@@ -222,6 +226,17 @@ script then takes over the SAME markup. Everything else is the app, and is never
   (`ROBOTS_DISALLOW`). The app's pages are deliberately NOT disallowed: a crawler that may not fetch a URL
   never sees its `noindex` (nor that it is no longer the home page's HTML), and a disallowed URL can still be
   indexed from a link. `/sitemap.xml` is `SITE_PAGES`' indexed pages by canonical URL.
+  **Crawlers by name** (`src/site.ts`): a crawler that matches a group by name obeys ONLY that group and
+  ignores `User-agent: *` (RFC 9309), so every named group repeats the `*` group's Disallow lines, then
+  `Allow: /` — Disallow first, because Python's `urllib.robotparser` takes the first matching line, not the
+  longest. `SEARCH_CRAWLERS` (allowed): OAI-SearchBot + ChatGPT-User, Claude-SearchBot + Claude-User,
+  PerplexityBot + Perplexity-User, Googlebot, Bingbot, Applebot, DuckAssistBot — one group per operator, each
+  agent named once. `TRAINING_CRAWLERS` (GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, CCBot) follow
+  ONE switch, `AI_TRAINING_CRAWLERS`: `"allow"` (the default — what they had through `*` before) gives them the
+  same rules as everyone, `"disallow"` gives them `Disallow: /` and leaves search untouched. Flipping it is a
+  one-line change and a deploy. The file's comments point at the docs and `/llms.txt`.
+  What can still block a crawler outside the repo (Cloudflare's AI Crawl Control, its managed robots.txt, Bot
+  Fight Mode, WAF rules) is `HANDOFF.md` › 10.
 - **404.** An address no route answers is the built not-found page (`web/src/not-found.ts`, no script), status
   404, `noindex` — JSON `{ error: "not_found" }` under `/api` or for any other method — decided in
   `src/index.ts` BEFORE the session gate by `isAppRoute` (`src/routes.ts`: every handler of the Hono app by
@@ -229,9 +244,94 @@ script then takes over the SAME markup. Everything else is the app, and is never
   signed out. One exception, on purpose: a single path segment that is a valid, unreserved slug (`/blog`) is
   an org's page and gets the app shell (with `noindex`) whether or not that org exists — answering 404 there
   would tell a stranger which organizations do.
-- Tests: `test/site.test.ts` (the Worker: robots, sitemap, `/`, redirects, `noindex`, 404 vs 401, reserved
-  slugs), `test/site-pages.test.ts` (the list, the head tags, the JSON-LD, the documents, `_redirects` /
-  `_headers`), `test/spa-shell.test.ts`.
+- Tests: `test/site.test.ts` (the Worker: robots and its named groups, sitemap, `/`, `/docs`, redirects,
+  `noindex`, 404 vs 401, reserved slugs), `test/site-pages.test.ts` (the list, the head tags, the JSON-LD, the
+  documents, the docs and their Markdown, llms.txt, the FAQPage, `_redirects` / `_headers`), `test/spa-shell.test.ts`.
+
+## Docs for people and agents (`/docs/<page>`, their Markdown, `/llms.txt`)
+
+The public docs are five `docs` pages of `SITE_PAGES`: Setup, Connect a client (copy-paste MCP config per
+client and an AGENTS.md / CLAUDE.md snippet), Concepts (the authority model), MCP tools and Changelog.
+
+- **Where.** Under `/docs/<page>`. `/docs` ITSELF is the app's cookie route — the cut-over alias of an
+  organization's docs list, which old clients and the SPA's fetch still call — so there is no page at
+  `/docs` and no `docs.html` or `docs/index.html` (either would make the assets binding answer `/docs` before
+  the Worker). `src/site.ts` `docsEntry` sends `/docs/` (no route) and a BROWSER's signed-out `/docs` (it
+  accepts `text/html`, no session cookie) to the first page with a 302; a fetch, anyone signed in and every
+  other method still reach the route exactly as before. `docs` was already a reserved org slug.
+- **One text per page.** Each page is ONE Markdown string (`web/src/docs-content.ts` `docsMarkdown`):
+  `# title`, the lede (= its `description`, word for word), an optional intro, `## ` sections. The build serves
+  it at `markdown` (`/docs/<page>.md`, `text/markdown; charset=utf-8`, with an HTTP `Link: <page>; rel=
+  "canonical"` so search engines index the page, not its source) and RENDERS the HTML page from it
+  (`web/src/docs.ts`: marked, with raw HTML escaped, `## ` → a `.site-legal-sec`, the contents list from the
+  `## ` headings, a tool's heading anchored by its own name). The page's `<head>` links it as
+  `<link rel="alternate" type="text/markdown">`. Links to the site are absolute in the Markdown and relative on
+  the page. The docs borrow the legal pages' layout (`.site-legal-*`) and add `.site-docs-*` for code blocks
+  (with Copy), tables and subsections; their script (`docs-page.ts`, ~2 KB) only flips the theme, copies, and
+  follows the contents — it never repaints, so the client bundle carries none of the docs' text.
+- **Nothing typed that can drift.** The endpoint is `SITE_ORIGIN`'s, the plugin commands are
+  `mcp-connect.ts`'s, prices and limits are `PLANS` / `PRICING`, the changelog is `releases.ts`'s `highlights` and
+  `headsUp` only (never `ops` or `patches`, never an `unreleased` entry), and the MCP reference is GENERATED:
+  `web/site-build.ts` first loads `src/mcp-catalog.ts` in Node (Vite's SSR loader, `agents/mcp` stubbed — the
+  transport adapter is not part of registration), which builds the real server for an admin and a member
+  (`catalogTenant`: no org, no database) and lists `tools/list` through the SDK's client; the result is written
+  to `shared/mcp-tools.generated.ts` (only when it changed) BEFORE anything reads it. The landing's MCP card (its
+  count — "43 tools, plus 1 admin-only" — and its chips) reads the same file, grouped by `MCP_TOOL_GROUPS`
+  (`shared/mcp-tools-core.ts`). **A new or changed tool**: `npm run build:web` rewrites the file, and a new tool
+  needs a line in `MCP_TOOL_GROUPS`; `test/mcp-catalog.test.ts` fails on either until done.
+- **Client configs** (Connect): Claude Code (plugin, and `claude mcp add --transport http --scope user`), Claude
+  Desktop / claude.ai (custom connector), Cursor (`mcpServers.url`), VS Code (`servers` + `"type": "http"`,
+  `inputs` for a token), Codex (`[mcp_servers.trov]`, `codex mcp add --url` / `codex mcp login`,
+  `bearer_token_env_var`), Windsurf (`serverUrl`), and a generic block. Checked on 2026-10-12: Codex against its
+  source (`openai/codex`), VS Code against `microsoft/vscode-docs`, Claude's connectors against Anthropic's help
+  centre (search results); Cursor and Windsurf from third-party guides (their docs sites were unreachable).
+  Trov's OAuth server takes only https and loopback-http redirects, so the page says an older Cursor (`cursor://`)
+  cannot sign in. Recheck these when a client changes its format.
+- **llms.txt** (`web/src/llms.ts`, llmstxt.org): `# Trov`, a one-line `>` summary, a paragraph of context, then
+  `## Docs`, `## Pricing`, `## Changelog`, `## Optional` — links to the Markdown versions, each with its page's
+  description. **llms-full.txt** is that head plus every Markdown page in full (with its source URL). Both are
+  static files written by the build (`text/plain; charset=utf-8` by `_headers`), so the assets binding serves
+  them before the Worker, with no session check. `/pricing.md` is `pricingMarkdown` (`pricing.ts`): the same
+  tables and questions as the page.
+- **The landing's FAQ** is the Questions accordion (`pricingSection`'s `lead`): the product questions
+  (`web/src/site-questions.ts`: what Trov is, README / wiki, MCP clients) before the pricing ones (`pricingQuestions`,
+  which now also answers what Pro adds — from the two plans' tables — and whether you can run Trov yourself: AGPL,
+  Cloudflare Workers + D1 + R2, no self-hosting guide or support). The landing's head carries that SAME list as
+  schema.org `FAQPage` (`faqPageLd`, passed to `siteHead` by the prerender); `/pricing` shows part of it unmarked,
+  since a question is marked up on one page only.
+- **The home page's first words** (after the nav) stay the hero: "Shared memory for your team and its coding
+  agents." and its one-sentence lede — what Trov is, who it is for, and how it behaves (a test holds this).
+- Tests: `test/site-pages.test.ts` (each page's Markdown shape; every heading, code block and paragraph of the
+  Markdown on the page; raw HTML escaped; the reference against the generated list; the changelog without ops or
+  patches; llms.txt's format; the FAQPage against the visible accordion), `test/mcp-catalog.test.ts` (the
+  generated list against the live registration), `test/site.test.ts` (`/docs` and robots).
+
+## Errors an agent can act on (`shared/error-hints.ts`, `src/error-hints.ts`)
+
+Every JSON error the Worker answers, and every MCP tool error, carries a `hint`: what went wrong and what to do
+next. Nothing else changes — the `error` code, any `message`, the status and the headers stay exactly as they
+were (the SPA and the tests read them).
+
+- **One table** (`shared/error-hints.ts`): `API_ERROR_HINTS` by the HTTP `error` code (the older sentence codes —
+  `"admin only"`, `"not found"`, `"invalid payload"` — included), `STATUS_HINTS` by status for any other code,
+  `MCP_ERROR_HINTS` by an MCP tool error's `code` (`not_found`, `forbidden`, `conflict`, `bad_request`,
+  `too_large`, `gone`, `plan_limit`, `plan_feature`, and the connection's `repo_required`, `not_connected`,
+  `ambiguous_org`, `org_unavailable`, `org_not_allowed`), and the two /mcp 401 hints. The MCP reference prints the
+  MCP table, so the docs and the server say the same words.
+- **Chosen by code and status ALONE** — never by the path, the id, the caller or anything read — so two answers
+  that were byte-identical stay identical (an unknown id and another organization's; a missing org and one you
+  are not in: invariants 4 and 12), and a hint names no organization, slug or secret (`test/error-hints.test.ts`).
+- **HTTP**: `withErrorHint` (`src/error-hints.ts`) is applied in `src/index.ts` to what the Hono app, the artifact
+  upload / download token routes and the 404 answer: a JSON object with a string `error`, status ≥ 400, no
+  `hint` yet, not a HEAD — the body is re-written with `hint` added, every header kept (but the length). A
+  webhook's bare 401 and the unsubscribe POST are NOT passed through it. `/mcp`'s 401 (`mcpUnauthorized`) carries
+  its own hint: how to sign in, or (a refused token) what a refusal can mean — the same words for every token.
+- **MCP**: every tool error goes through `toolError` in `src/mcp.ts` (`runTool`, the connection's scope refusals,
+  the plan's agent-connection refusal, `update_plan` for a non-admin, a lost `claim_handoff`). `get_ticket` and
+  `get_sprint` now throw a coded `not_found` (their sentence unchanged). The SDK's own input-validation error
+  (`MCP error -32602: Input validation error: …`, before a tool runs) is left as the SDK writes it: it already
+  names the argument, and its text is private to the SDK. The MCP server has no rate limit.
+- A new error code gets a line in the table if it needs more than its status's hint.
 
 ## Sidebar & motion — the `<aside>` outlives rerenders
 

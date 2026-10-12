@@ -9,7 +9,7 @@ The flow a human operator follows — add an org, name its admin, set it up, inv
 
 | | Type | Built by | Query surface |
 |---|---|---|---|
-| Tenant data | `TenantContext { orgId, userId, role, via }` | `resolveTenant` (slug + membership), `resolveTenantById` (a credential that names its org), `resolveSoleTenant` (cut-over alias: the caller's one org), `liveTenants` (a bearer connection's reach — `src/data/bearer.ts` picks one per call), `systemTenant(p, orgId, actor)` | `src/data/sql.ts` |
+| Tenant data | `TenantContext { orgId, userId, role, via }` | `resolveTenant` (slug + membership), `resolveTenantById` (a credential that names its org), `resolveSoleTenant` (cut-over alias: the caller's one org), `liveTenants` (a bearer connection's reach — `src/data/bearer.ts` picks one per call), `systemTenant(p, orgId, actor)`, `catalogTenant(role)` (NO org and NO database — any read through it throws; only `src/mcp-catalog.ts`, which registers the MCP tools to describe them) | `src/data/sql.ts` |
 | Platform data | `PlatformContext { actor }` | `platform(env, actor)` | `src/data/platform-sql.ts` |
 
 Both surfaces export the same helpers — `first`, `all`, `run`, `stmt`, `batch`, `fanOut`, plus `nowIso`, `ph`,

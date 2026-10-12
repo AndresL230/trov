@@ -43,7 +43,11 @@ import { segmented } from "./segmented";
 import { PLANS, seatsPhrase } from "@shared/plans";
 import { PRICING, canPurchasePlan, formatPrice, purchaseHref } from "@shared/pricing";
 import { CONNECTION_NOTE, connectSteps } from "./mcp-connect";
+import { MCP_TOOL_NAMES } from "@shared/mcp-tools.generated";
+import { MCP_TOOL_GROUPS, mcpToolCountPhrase } from "@shared/mcp-tools-core";
+import { productQuestions } from "./site-questions";
 import type { FeatureState } from "./site-feature-core";
+import { pagePath } from "@shared/site-pages";
 import { AGENT_TAG, featureMock, initials, pill } from "./landing-mocks";
 
 
@@ -747,14 +751,19 @@ function agents(): string {
       <div style="${GROUP_LABEL}">${label}</div>
       ${chips(names, admin)}
     </div>`;
-  const tools = `
-          ${group("Read", ["query", "get_doc", "list_docs", "get_feed", "get_roadmap", "get_my_work", "get_events", "get_repo_dashboard"])}
-          ${group("Contribute", ["append_feed", "propose_doc_update", "record_session"])}
-          ${group("Tickets", ["list_tickets", "get_ticket", "create_ticket", "edit_ticket", "transition_ticket", "add_ticket_comment", "add_ticket_link", "set_ticket_sprint", "set_ticket_parent"])}
-          ${group("Sprints", ["list_sprints", "get_sprint", "create_sprint", "set_sprint_active", "complete_sprint", "add_sprint_resource", "delete_sprint"])}
-          ${group("Handoffs and prompts", ["send_handoff", "list_handoffs", "get_handoff", "claim_handoff", "expire_handoff", "search_prompts", "get_prompt", "save_prompt"])}
-          ${group("Artifacts and doc images", ["upload_asset", "artifact_update", "artifact_get", "artifact_list"])}
-          ${group("Admin", ["update_plan"], true)}`;
+  // The tools are the SERVER'S (shared/mcp-tools.generated.ts, written by the build from src/mcp.ts), in the
+  // site's groups (shared/mcp-tools-core.ts): a chip, the count beside the title and the reference page
+  // (/docs/mcp-tools) can never name a tool the server does not register, or miss one it does.
+  // The two smallest groups (the connection's own tools, and the admin's) share one row, so the card stays
+  // as tall as the plugin card beside it (web-ui.md › For agents: measured, never padded).
+  const registered = new Map(MCP_TOOL_NAMES.map((t) => [t.name, t]));
+  const groupOf = (g: (typeof MCP_TOOL_GROUPS)[number]): string => {
+    const names = g.tools.filter((n) => registered.has(n));
+    return names.length ? group(g.label, names, names.every((n) => registered.get(n)?.admin)) : "";
+  };
+  const paired = new Set(["connection", "admin"]);
+  const tools = MCP_TOOL_GROUPS.filter((g) => !paired.has(g.key)).map(groupOf).join("")
+    + `<div class="site-agents-pair" style="display:flex;flex-wrap:wrap;gap:16px 36px">${MCP_TOOL_GROUPS.filter((g) => paired.has(g.key)).map(groupOf).join("")}</div>`;
   n = 0;
   const skills = chips(["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "prompts", "artifacts", "read-plan", "update-plan"]);
 
@@ -768,7 +777,8 @@ function agents(): string {
       <div ${rv("agents-mcp", "site-agent-card")} style="border:1px solid var(--border);border-radius:13px;padding:26px 28px">
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
           <span style="font-size:17px;font-weight:650">MCP server</span>
-          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">39 tools, plus 1 admin-only</span>
+          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">${mcpToolCountPhrase(MCP_TOOL_NAMES)}</span>
+          <a href="${pagePath("docs-mcp-tools")}" class="site-agents-ref" style="margin-left:auto;font-size:12.5px;color:var(--fg-55)">Reference</a>
         </div>
         <div style="margin-top:20px;display:flex;flex-direction:column;gap:16px">${tools}
         </div>
@@ -782,7 +792,7 @@ function agents(): string {
         <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--border)">
           <div style="${GROUP_LABEL};margin-bottom:12px">Connect in three steps</div>
           ${connectSteps("", "the connection shows up in Settings, under MCP access")}
-          <p style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55);text-wrap:pretty">${CONNECTION_NOTE}</p>
+          <p class="site-agents-more" style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55);text-wrap:pretty">${CONNECTION_NOTE} <a href="${pagePath("docs-connect")}">Other clients, step by step</a>.</p>
         </div>
         <div style="margin-top:auto;padding-top:18px"><button data-act="siteGuide" class="site-btn site-btn-outline">How Trov works, in the Guide</button></div>
       </div>
@@ -912,7 +922,7 @@ export function landingView(p: LandingProps): string {
     ${extras()}
     ${agents()}
     ${security()}
-    ${pricingSection({ signedIn: p.signedIn ?? false, rv })}
+    ${pricingSection({ signedIn: p.signedIn ?? false, rv, lead: productQuestions() })}
     ${siteFooter("dialog")}
   </div>
   ${p.signInOpen ? signInDialog(p.signInMode ?? "signin", p.signInPlan ?? "free") : ""}

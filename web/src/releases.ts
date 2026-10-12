@@ -70,29 +70,36 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // The public site, readable by search engines and share cards: prerendered pages, robots.txt, sitemap,
-  // canonical links, noindex on the app, a real 404. PR number not known yet: replace (#N) and add `prs`.
+  // The public site, readable by search engines, share cards and AI assistants: prerendered pages, robots.txt,
+  // sitemap, canonical links, noindex on the app, a real 404; then public docs, llms.txt, Markdown versions and
+  // errors an agent can act on. PR number not known yet: replace (#N) and add `prs`.
   {
     version: "Unreleased",
     date: "2026-10-12",
     unreleased: true,
-    title: "A site search engines can read",
-    headline: "The home page, pricing, terms and privacy arrive with their words already on the page, each with its own title, description and share card.",
+    title: "A site search engines and AI assistants can read",
+    headline: "The home page, pricing, terms, privacy and the new docs arrive with their words already on the page, each with its own title, description and share card, and a plain-text version for AI assistants.",
     highlights: [
       "The site's pages open with their words already there. The home page no longer shows \"Signing you in…\" to someone who is signed out, and its headline is on screen from the first moment.",
       "A link to Trov shared in a chat or on social media shows a preview card: the page's title, a short description and an image.",
       "Search engines can find and read the home page, pricing, terms and privacy, each under one address. Your organization's pages, sign-in and the API are kept out of search results.",
       "An address that does not exist shows a Page not found page with a way back, instead of asking you to sign in.",
       "In the dark theme the site opens dark, with no white flash first.",
+      "New public docs at trov.dev/docs: setting up, connecting Claude Code, Claude Desktop, Cursor, VS Code, Codex or Windsurf (with the config to copy), how Trov decides what is settled, every MCP tool, and the changelog. Each page is also plain Markdown, and trov.dev/llms.txt lists them for AI assistants.",
     ],
     headsUp: [
       "The home page's headline no longer fades in: it is there at once and settles into place.",
+      "When a call fails, the error your agent gets now says what to do next, for example that a ticket must be assigned to you first, or that the repository is not connected.",
+      "The home page's Questions also answer what Trov is, how it differs from a README or a wiki, which MCP clients work, what Pro adds, and whether you can run Trov yourself.",
     ],
     ops: [
       "`wrangler.toml` `[assets]` gains `run_worker_first = [\"/\"]`: `/` is answered by the Worker (the prerendered landing, or the app shell with a session cookie). It ships with the Worker; nothing to run.",
       "The build now writes `web/dist/_redirects` and `web/dist/_headers` (Workers Static Assets reads both): no setting to change. The build command is unchanged (`npm run build:web`).",
       "New reserved organization slugs `og` and `404` (and, from now on, the path of every page in `shared/site-pages.ts`). Before deploying: `npx wrangler d1 execute trov --remote --command \"SELECT slug FROM orgs WHERE slug IN ('og','404')\"` must return nothing.",
       "One-time, outside the repo (`HANDOFF.md` › 10): Always Use HTTPS on, a www → apex Redirect Rule, optionally the workers.dev route off; verify `trov.dev` in Google Search Console as a Domain property (DNS TXT) and submit `https://trov.dev/sitemap.xml`.",
+      "One-time, Cloudflare dashboard (`HANDOFF.md` › 10, AI crawlers): AI Crawl Control must not block the search and assistant crawlers (\"Block AI bots\" is on by default for new zones), the managed robots.txt must be off (it would prepend its own rules), and Bot Fight Mode / WAF rules must not challenge them. Check `curl -s https://trov.dev/robots.txt | head` starts with `# trov.dev:`.",
+      "`shared/mcp-tools.generated.ts` is written by `npm run build:web` from the MCP server's own registrations; commit it whenever a tool changes (`test/mcp-catalog.test.ts` fails until you do). Nothing to run at deploy: the build regenerates it.",
+      "New reserved paths: the docs live under `/docs/<page>` (`docs` was already a reserved slug); `/llms.txt`, `/llms-full.txt`, `/pricing.md` and `/docs/<page>.md` are static files.",
     ],
     patches: {
       added: [
@@ -102,6 +109,13 @@ export const RELEASES: Release[] = [
         "`isAppRoute` (`src/routes.ts`): an address no handler answers (by method and path; `use()` middleware does not count) is a 404 before the session gate — the built page, or `{ error: \"not_found\" }` under `/api` and for other methods (#N)",
         "`web/src/not-found.ts`: the 404 page, no script (#N)",
         "`test/site.test.ts`, `test/site-pages.test.ts` (#N)",
+        "Public docs (`kind: \"docs\"` in `SITE_PAGES`): `/docs/setup`, `/docs/connect`, `/docs/concepts`, `/docs/mcp-tools`, `/docs/changelog` — each ONE Markdown text (`web/src/docs-content.ts`, `docs-tools.ts`, `docs-changelog.ts`) served at `/docs/<page>.md` and rendered into the page (`web/src/docs.ts`, raw HTML escaped); `<link rel=\"alternate\" type=\"text/markdown\">` in each head; script `docs-page.ts` (theme, Copy, contents) (#N)",
+        "`/llms.txt` and `/llms-full.txt` (`web/src/llms.ts`, llmstxt.org), `/pricing.md` (`pricingMarkdown`), written by the build; `_headers` gives the Markdown `text/markdown; charset=utf-8` and `Link: <page>; rel=\"canonical\"`, the two text files `text/plain; charset=utf-8` (#N)",
+        "The MCP tools reference is generated: `src/mcp-catalog.ts` lists the real registered tools (admin and member, through the SDK client) and `web/site-build.ts` writes `shared/mcp-tools.generated.ts` before prerendering; groups in `shared/mcp-tools-core.ts`; `catalogTenant` (`src/data/context.ts`, no database); `test/mcp-catalog.test.ts` (#N)",
+        "`hint` on errors: `shared/error-hints.ts` (one table by code and status), `withErrorHint` (`src/error-hints.ts`) on the Worker's JSON errors (the app, the artifact token routes, the 404), `toolError` in `src/mcp.ts` for every tool error, and `/mcp`'s 401 body; `test/error-hints.test.ts` (#N)",
+        "robots.txt names the AI search and assistant crawlers (OAI-SearchBot, ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, Googlebot, Bingbot, Applebot, DuckAssistBot) and the training ones (GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, CCBot) in groups that repeat every Disallow; the training ones follow ONE switch, `AI_TRAINING_CRAWLERS` in `src/site.ts` (default `\"allow\"`, as before) (#N)",
+        "FAQPage JSON-LD on `/` from the landing's own Questions (`web/src/site-questions.ts` + `pricingQuestions`, `faqPageLd`); new questions: what Trov is, README / wiki, MCP clients, what Pro adds (from `PLANS`), running Trov yourself (#N)",
+        "Open Graph cards for the five docs pages (`scripts/og/render.mjs`) (#N)",
       ],
       changed: [
         "`X-Robots-Tag: noindex` on every GET / HEAD the Worker answers but `/robots.txt`, `/sitemap.xml` and the landing, and on everything on a host other than `PUBLIC_ORIGIN`'s; `_headers` adds it to every static file on `*.workers.dev`, and to `/app` and `/404` (#N)",
@@ -110,11 +124,17 @@ export const RELEASES: Release[] = [
         "`/index`, `/index.html`, `/<page>.html` and `/<page>/` answer 301 to the clean URL (were the assets binding's 307) (#N)",
         "`RESERVED_ORG_SLUGS` gains `og`, `404` and every page of `SITE_PAGES` (#N)",
         "An unknown address is a 404 instead of the session gate's 401 (`test/spa-shell.test.ts`, `test/billing.signature.test.ts` follow); a real cookie route is unchanged (#N)",
+        "`/docs/` and a browser's signed-out `/docs` (accepts `text/html`, no session cookie) 302 to `/docs/setup`; `/docs` stays the cookie route for a fetch and for anyone signed in (#N)",
+        "The landing's MCP card counts and lists the tools from the generated list (43 tools, plus 1 admin-only), with links to the reference and the client setup; pricing's \"Can we read the source?\" now also says what running your own copy takes (#N)",
+        "`get_ticket` / `get_sprint` on an unknown id answer `code: \"not_found\"` (same sentence as before, now with its code) (#N)",
+        "`test/isolation.mcp.test.ts`: the three every-tool matrices (~3.5s each alone) take a 20s budget instead of 5s, so a busy machine no longer times them out (#N)",
       ],
       fixed: [
         "Search Console's \"Duplicate without user-selected canonical\" on `/`: the home page carries a canonical, and no other address serves its HTML — the app shell at `/<org>/`, `/platform` and `/billing/*` was `index.html`, byte-identical to `/`, with no canonical anywhere (#N)",
         "`/robots.txt` and `/sitemap.xml` answered the session gate's 401 (#N)",
         "`/pricing`'s description named the retired Personal and Team plans; it is built from the plan tables now (#N)",
+        "The landing said \"39 tools, plus 1 admin-only\"; the server registers 43, plus 1 (#N)",
+        "`AGENTS.md` sent agents to a token screen Settings no longer has; it points at the browser sign-in and the docs (#N)",
       ],
       removed: [
         "`web/index.html`, `web/pricing.html`, `web/terms.html`, `web/privacy.html` (generated now) (#N)",

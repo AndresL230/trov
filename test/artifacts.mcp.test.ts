@@ -14,6 +14,7 @@ import { create_ticket } from "../src/tools/tickets";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { app } from "../src/routes";
 import { ARTIFACT_INLINE_BINARY_MAX, ARTIFACT_INLINE_MAX } from "@shared/artifacts";
+import { mcpErrorHint } from "@shared/error-hints";
 import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const ME = "arti-author";
@@ -170,7 +171,7 @@ describe("text artifacts", () => {
     }
     expect((await call(ME, "artifact_get", { slug: "auth-flow" })).body.content).toBe("v2 body");
     expect((await call(ME, "artifact_get", { slug: "auth-flow@v1", version: 2 })).body.code).toBe("bad_request");
-    expect((await call(ME, "artifact_get", { slug: "auth-flow@v9" })).text).toBe(JSON.stringify({ error: "not_found", code: "not_found" }));
+    expect((await call(ME, "artifact_get", { slug: "auth-flow@v9" })).text).toBe(JSON.stringify({ error: "not_found", code: "not_found", hint: mcpErrorHint("not_found") }));
   });
 
   it("a text cap breach is too_large", async () => {
@@ -325,7 +326,7 @@ describe("binary artifacts — the upload_url flow", () => {
     const mine = await call(ME, "artifact_update", { slug: "dump", size_bytes: 4, sha256: "c".repeat(64), summary: "retry" });
     expect(mine.body.upload_url).toBeTruthy();
     const theirs = await call(YOU, "artifact_update", { slug: "dump", size_bytes: 4, sha256: "c".repeat(64), summary: "x" });
-    expect(theirs.text).toBe(JSON.stringify({ error: "not_found", code: "not_found" }));
+    expect(theirs.text).toBe(JSON.stringify({ error: "not_found", code: "not_found", hint: mcpErrorHint("not_found") }));
   });
 });
 
@@ -334,7 +335,7 @@ describe("binary artifacts — the upload_url flow", () => {
 describe("private and missing are the same not_found", () => {
   it("get / update on another person's private page read exactly like a missing slug; the author sees it", async () => {
     await call(ME, "upload_asset", textArgs({ title: "Secret plan", visibility: "private" }));
-    const NF = JSON.stringify({ error: "not_found", code: "not_found" });
+    const NF = JSON.stringify({ error: "not_found", code: "not_found", hint: mcpErrorHint("not_found") });
     for (const [name, args] of [
       ["artifact_get", { slug: "secret-plan" }],
       ["artifact_get", { slug: "secret-plan@v1" }],
@@ -540,7 +541,7 @@ describe("binary artifacts with no shell — content_base64 in, include_file out
     const theirs = await raw(YOU, "artifact_get", { slug: mine.body.slug, include_file: true });
     expect(theirs.isError).toBe(true);
     expect(theirs.content).toHaveLength(1);
-    expect(JSON.parse(theirs.content[0].text)).toEqual({ error: "not_found", code: "not_found" });
+    expect(JSON.parse(theirs.content[0].text)).toEqual({ error: "not_found", code: "not_found", hint: mcpErrorHint("not_found") });
   });
 
   it("artifact_update takes content_base64 for a new binary version; the same bytes again change nothing", async () => {

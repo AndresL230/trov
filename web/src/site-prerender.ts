@@ -14,12 +14,16 @@
 // Prerendered in the light theme. THEME_BOOT, an inline script that is the root's first child, turns the
 // root dark — and `<html>` behind it — before the page below it is even parsed when the visitor's stored
 // theme is dark, so a dark visitor never sees a light page first; the boot script's first paint drops it.
-import { siteHead, type SitePage } from "@shared/site-pages";
+import { LLMS_FULL_TXT, LLMS_TXT, faqPageLd, siteHead, type SitePage } from "@shared/site-pages";
 import { initialState, render } from "./render";
 import { pricingView } from "./pricing";
 import { LEGAL_DOCS, legalView, type LegalKind } from "./legal";
 import { notFoundView } from "./not-found";
 import { PAGE_BG, siteRoot } from "./site-chrome";
+import { docsView } from "./docs";
+import { docsMarkdown, markdownFooter } from "./docs-content";
+import { landingQuestions } from "./site-questions";
+import { llmsFullTxt, llmsTxt, markdownPages } from "./llms";
 
 /** The stored theme, read as main.ts / pricing-page.ts / legal-page.ts read it (`trov.theme`, or the
  *  pre-rename `canopy.theme`; Midnight is Dark; System follows the OS). It paints `<html>` in that theme's
@@ -82,14 +86,36 @@ function pageBody(page: SitePage): Pick<DocumentParts, "body" | "script" | "extr
       if (!doc) throw new Error(`site-prerender: no legal document "${page.key}" in web/src/legal.ts LEGAL_DOCS`);
       return { body: `<div id="legal" data-doc="${doc.kind}">${withThemeBoot(siteRoot("light", legalView(doc, false)))}</div>`, script: "/src/legal-page.ts" };
     }
+    case "docs":
+      // Complete as built: its script (docs-page.ts) switches the theme and copies code, and repaints nothing.
+      return { body: withThemeBoot(siteRoot("light", docsView(page, docsMarkdown(page)))), script: "/src/docs-page.ts" };
     case "not-found":
       return { body: withThemeBoot(siteRoot("light", notFoundView())), extraHead: `<link rel="stylesheet" href="/src/trov.css" />` };
   }
 }
 
+/** Structured data a page's own content makes, beside its head's: the landing's questions as FAQPage —
+ *  the very list its Questions accordion shows (site-questions.ts `landingQuestions`). */
+function pageLd(page: SitePage): Record<string, unknown>[] {
+  return page.kind === "landing" ? [faqPageLd(landingQuestions())] : [];
+}
+
 /** The whole HTML document of a public page. */
 export function sitePageHtml(page: SitePage): string {
-  return documentHtml({ head: siteHead(page), ...pageBody(page) });
+  return documentHtml({ head: siteHead(page, { ld: pageLd(page) }), ...pageBody(page) });
+}
+
+/** The text files beside the pages, by their path in the build (no leading slash): each page's Markdown
+ *  (a docs page's is the very text its HTML was rendered from), /llms.txt and /llms-full.txt. */
+export function siteFiles(): Record<string, string> {
+  const files: Record<string, string> = {};
+  for (const { page, markdown } of markdownPages()) {
+    if (!page.markdown) throw new Error(`site-prerender: ${page.key} has Markdown but no \`markdown\` path`);
+    files[page.markdown.slice(1)] = `${markdown.trim()}\n${markdownFooter(page)}`;
+  }
+  files[LLMS_TXT.slice(1)] = llmsTxt();
+  files[LLMS_FULL_TXT.slice(1)] = llmsFullTxt();
+  return files;
 }
 
 /** The app shell (web/app.html): every org page, /platform, /billing/done and /billing/checkout, and `/`

@@ -219,3 +219,22 @@ What the Worker cannot do for the public site (`docs/architecture/web-ui.md` ›
   in the build. Then Sitemaps › submit `https://trov.dev/sitemap.xml`, and URL Inspection › `https://trov.dev/`
   › Request indexing. Bing Webmaster Tools can import the property from Search Console.
 
+- **AI crawlers and agents** (`web-ui.md` › The public pages, for crawlers; the Worker allows them in
+  `/robots.txt` by name, and the training crawlers by one switch, `AI_TRAINING_CRAWLERS` in `src/site.ts`).
+  Cloudflare can block them before the Worker runs, whatever robots.txt says. In the dashboard for `trov.dev`:
+  - **AI Crawl Control** (Security › Bots, formerly AI Audit): every crawler you want reading the site must be
+    *Allow*, not *Block*. **Block AI bots** is ON by default for zones created since mid-2025: turn it off (or
+    allow at least the search and assistant crawlers: OAI-SearchBot, ChatGPT-User, Claude-SearchBot,
+    Claude-User, PerplexityBot, Perplexity-User). **Pay per crawl**, if offered, off.
+  - **Managed robots.txt** ("Instruct AI bot traffic with robots.txt" / Content Signals): when on, Cloudflare
+    PREPENDS its own rules (Disallow for the training crawlers, and a Content-Signals policy) to the Worker's
+    robots.txt, overriding `AI_TRAINING_CRAWLERS`. Off, so the repo is the one source. Check with
+    `curl -s https://trov.dev/robots.txt | head` — it must start with `# trov.dev:`.
+  - **Bot Fight Mode** (Free) / **Super Bot Fight Mode** (Pro and up): "definitely automated" traffic is
+    challenged, which a crawler cannot pass; keep verified bots allowed, and with Super Bot Fight Mode set
+    "AI bots" / "Verified bots" to Allow.
+  - **WAF custom rules, rate limiting rules, Security Level / I'm Under Attack, Browser Integrity Check**: none
+    may challenge or block on these user agents or on `/`, `/docs/*`, `/pricing`, `/llms.txt`, `/llms-full.txt`,
+    `/robots.txt`, `/sitemap.xml`, `/*.md`.
+  - Then check from outside: `curl -s -o /dev/null -w "%{http_code}\n" -A "GPTBot/1.1" https://trov.dev/llms.txt`
+    (and the other agents) answers 200, and Security › Events shows no block for them.

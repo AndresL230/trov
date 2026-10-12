@@ -25,6 +25,7 @@ import { PRICING, canPurchase, canPurchasePlan, formatPrice, hasYearly, isFreePr
 import { trovMark } from "@shared/mark";
 import { esc, attr } from "./ui";
 import { SITE_CONTACT, TROV_REPO, siteFooter, siteMark } from "./site-chrome";
+import { SITE_ORIGIN } from "@shared/site-pages";
 
 export interface PricingProps {
   /** Opened from inside the app: a plan with no price offers the way back, not a waitlist. */
@@ -36,6 +37,9 @@ export interface PricingProps {
   /** The plans and prices to show. Defaults: THE definitions; a test passes its own. */
   plans?: Record<PlanId, PlanDef>;
   pricing?: Record<PlanId, PlanPricing>;
+  /** Questions asked before the pricing ones: the landing's about the product (site-questions.ts). The
+   *  landing's whole list is also its FAQPage structured data (site-prerender.ts), so it shows them all. */
+  lead?: readonly PricingQuestion[];
 }
 
 const settled = (_key: string, extra = "") => `class="site-rv is-done${extra ? ` ${extra}` : ""}"`;
@@ -174,6 +178,7 @@ export function pricingQuestions(all: PlanDef[], pricing: Record<PlanId, PlanPri
   const qs: PricingQuestion[] = [
     { q: "What counts as a seat?", a: "A member of the organization, or an invitation that has not been answered yet. A pending invitation holds its seat, so an organization can never accept more people than it has seats." },
   ];
+  if (paid && free) qs.push({ q: `What does ${esc(paid.name)} add?`, a: proAdds(paid, free) });
   if (paid) {
     const p = pricing[paid.id];
     qs.push({ q: `How does ${esc(paid.name)} pricing work?`, a: `${esc(paid.name)} is bought per seat, at ${esc(formatPrice(p.price as number))} ${esc(p.per)}. There is no minimum, so a person on their own can buy a single seat. You choose how many at checkout, and add more from Org settings › General when you invite more people${seatCap === null ? "" : `, up to ${seatCap}`}. The seats you pay for are the seats the organization has.` });
@@ -184,13 +189,26 @@ export function pricingQuestions(all: PlanDef[], pricing: Record<PlanId, PlanPri
       ? { q: "Can we change plans?", a: `Yes.${free ? ` Anyone signed in can create a ${esc(free.name)} organization (one they own at a time), and its owner upgrades it to ${esc(paid.name)} from Org settings › General.` : ""} An owner manages seats, the card and invoices there too. If ${esc(paid.name)} is cancelled, the organization moves to ${free ? esc(free.name) : "a smaller plan"} when the paid period ends, and the answer above applies.` }
       : { q: "Can we change plans?", a: `Yes. Until paid plans are available, a plan is changed by us: write to <a href="${attr(mailHref("Changing our Trov plan"))}">${SITE_CONTACT}</a>. If the new plan is smaller than what the organization uses, the answer above applies.` },
     { q: "Is our data separate from other organizations?", a: "Yes. Everything in Trov belongs to one organization, and only its members and the agents they connect can read it." },
-    { q: "Can we read the source?", a: `Yes. Trov's source is <a href="${TROV_REPO}" target="_blank" rel="noopener">published on GitHub</a> under AGPL-3.0. The plans on this page are for the hosted service.` },
+    { q: "Can we read the source, or run Trov ourselves?", a: `Yes. Trov's source is <a href="${TROV_REPO}" target="_blank" rel="noopener">published on GitHub</a> under AGPL-3.0, and it runs on Cloudflare: one Worker, with D1 for the data and R2 for files, so you can deploy your own copy to your own Cloudflare account. A copy you run is yours to operate: there is no self-hosting guide, and no support for one. The plans on this page are for the hosted service.` },
   );
   if (byTalk) qs.push({ q: `How does ${byTalk.name} work?`, a: `<a href="${attr(talkHref(byTalk))}">Talk to us about ${esc(byTalk.name)}</a>. Its ${list} are each set for your organization, and can be changed later.` });
   return qs;
 }
 
-function questions(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>, h: number): string {
+/** What the paid plan adds over Free, from the two plans' own tables: room, never a feature — while no
+ *  plan includes a feature another lacks (`FEATURE_KEYS` is empty), which is what makes "all of Trov" true. */
+function proAdds(paid: PlanDef, free: PlanDef): string {
+  const same = paid.features.length === free.features.length && paid.features.every((f) => free.features.includes(f));
+  const rows = LIMIT_KEYS.filter((k) => paid.entitlements[k] !== free.entitlements[k]).map((k) => {
+    const [value, what] = limitPhrase(k, paid.entitlements[k]);
+    const was = formatLimit(k, free.entitlements[k]);
+    return `${esc(LIMITS[k].unit === "bytes" ? `${value} of ${what}` : `${value} ${what}`)} (${esc(free.name)}: ${esc(was)})`;
+  });
+  const list = rows.length < 2 ? rows.join("") : `${rows.slice(0, -1).join(", ")} and ${rows[rows.length - 1]}`;
+  return `${same ? `${esc(paid.name)} is all of Trov, as ${esc(free.name)} is: no plan turns a feature on or off. What it adds is room: ` : `${esc(paid.name)} raises the limits: `}${list}.`;
+}
+
+function questions(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>, h: number, lead: readonly PricingQuestion[] = []): string {
   // Two columns: the heading and a way to ask something else on the left, the accordion on the right.
   // (A single full-width column left every question hugging the left edge of a wide page.)
   return `<div class="site-faq-wrap">
@@ -198,7 +216,7 @@ function questions(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>, h: num
       <h${h} class="site-price-h">Questions</h${h}>
       <p>Something this doesn't answer? <a href="${attr(mailHref("A question about Trov pricing"))}">Ask us</a>.</p>
     </div>
-    <div class="site-faq" data-keep>${pricingQuestions(defs, pricing).map((x, i) =>
+    <div class="site-faq" data-keep>${[...lead, ...pricingQuestions(defs, pricing)].map((x, i) =>
       // An accordion: each question is a native `<details>` (it works with no script); site-faq.ts takes
       // the click over to animate the answer's box open and shut and to keep one open at a time. The
       // first starts open. `data-keep`: which one is open is the visitor's, so a repaint leaves it alone.
@@ -238,8 +256,50 @@ export function pricingSection(p: PricingProps = {}): string {
     ${sizedNote(defs, pricing)}
     ${accent === null ? `<div ${rv("pricing-note")}>${notAnnounced(signedIn)}</div>` : ""}
     <div ${rv("pricing-all", "site-price-block")}>${everyPlan(level + 1)}</div>
-    <div ${rv("pricing-faq", "site-price-block")}>${questions(defs, pricing, level + 1)}</div>
+    <div ${rv("pricing-faq", "site-price-block")}>${questions(defs, pricing, level + 1, p.lead)}</div>
   </section>`;
+}
+
+// ── the same page as Markdown (/pricing.md, and in /llms-full.txt) ───────────
+// For a language model: the plans, limits, every-plan list and questions above, from the same tables and
+// the same question list, in plain Markdown (a question's links become Markdown links). No buttons.
+
+/** Authored answer HTML (this file's own: text, `<a href>`, `&amp;`-style entities) as Markdown. */
+export function answerMarkdown(html: string): string {
+  return html
+    .replace(/<a\s[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/g, (_m, href: string, text: string) => `[${text}](${href.startsWith("/") ? `${SITE_ORIGIN}${href}` : href})`)
+    .replace(/<[^>]+>/g, "")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+}
+
+export function pricingMarkdown(p: Pick<PricingProps, "plans" | "pricing"> = {}): string {
+  const plans = p.plans ?? PLANS;
+  const pricing = p.pricing ?? PRICING;
+  const defs = PLAN_IDS.filter((id) => plans[id].offered).map((id) => plans[id]);
+  const priceLine = (def: PlanDef): string => {
+    const price = pricing[def.id];
+    if (price.price === null) return price.selfServe ? "Pricing to be announced." : `Custom pricing: [talk to us](${talkHref(def)}).`;
+    if (price.price === 0) return `Free. Anyone signed in can create one (one they own at a time).`;
+    const yearly = hasYearly(price) ? `, or ${formatPrice(price.yearly as number)} ${price.yearlyPer}` : "";
+    return `${formatPrice(price.price)} ${price.per}${yearly}.`;
+  };
+  const plan = (def: PlanDef): string => [
+    `## ${def.name}${pricing[def.id].badge ? ` (${pricing[def.id].badge})` : ""}`,
+    `${def.description} ${priceLine(def)}`,
+    LIMIT_KEYS.map((k) => {
+      const [value, what] = limitPhrase(k, def.entitlements[k]);
+      return `- ${limitValue(def, pricing[def.id], k, value)} ${what}`;
+    }).join("\n"),
+  ].join("\n\n");
+  const note = defs.filter((def) => !pricing[def.id].selfServe).map((def) => def.name);
+  return [
+    `# Pricing\n\n${PRICING_TITLE} ${PRICING_LEDE}`,
+    ...defs.map(plan),
+    ...(note.length ? [`${note.join(" and ")} limits are where an organization starts: each one can be set for the organization.`] : []),
+    `## In every plan\n\n${EVERY_PLAN.map((t) => `- ${t}`).join("\n")}`,
+    `## Questions\n\n${pricingQuestions(defs, pricing).map((x) => `### ${answerMarkdown(x.q)}\n\n${answerMarkdown(x.a)}`).join("\n\n")}`,
+    `Something this doesn't answer? Write to ${SITE_CONTACT}.`,
+  ].join("\n\n") + "\n";
 }
 
 // ── the standalone page (/pricing) ───────────────────────────────────────────

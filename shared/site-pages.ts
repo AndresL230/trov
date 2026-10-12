@@ -21,10 +21,11 @@ export const SITE_ORIGIN = "https://trov.dev";
 export const SITE_NAME = "Trov";
 
 /** How a page is built (web/src/site-prerender.ts): its mount, its boot script and its renderer. */
-export type SitePageKind = "landing" | "pricing" | "legal" | "not-found";
+export type SitePageKind = "landing" | "pricing" | "legal" | "docs" | "not-found";
 
 export interface SitePage {
-  /** Unique: the Vite input's name. For a `legal` page it is also the document's key in `LEGAL_DOCS`. */
+  /** Unique: the Vite input's name. For a `legal` page it is also the document's key in `LEGAL_DOCS`; for a
+   *  `docs` page, its key in web/src/docs-content.ts `DOCS`. */
   key: string;
   /** "/" or "/<name>". The assets binding serves it from `<name>.html` (`index.html` for "/"). */
   path: string;
@@ -39,6 +40,11 @@ export interface SitePage {
   image?: { path: string; alt: string };
   /** Carries the SoftwareApplication JSON-LD (`softwareApplicationLd`): the product and its prices. */
   structuredData?: boolean;
+  /** The page as Markdown (a path the build writes beside it), linked from its head as
+   *  `<link rel="alternate" type="text/markdown">` and listed in /llms.txt. */
+  markdown?: string;
+  /** A `docs` page: its short name in the docs' own tabs ("Setup"). */
+  nav?: string;
 }
 
 /** The hero's lede on the landing page (web/src/landing.ts `hero`), word for word. */
@@ -64,7 +70,7 @@ export const SITE_PAGES: readonly SitePage[] = [
     image: { path: "/og/home.png", alt: `${SITE_NAME}: shared memory for your team and its coding agents.` },
   },
   {
-    key: "pricing", path: "/pricing", kind: "pricing", indexed: true, structuredData: true,
+    key: "pricing", path: "/pricing", kind: "pricing", indexed: true, structuredData: true, markdown: "/pricing.md",
     title: `Pricing · ${SITE_NAME}`,
     description: `${PLANS_PHRASE}. Every plan is all of ${SITE_NAME}.`,
     image: { path: "/og/pricing.png", alt: `${SITE_NAME} pricing: ${PLANS_PHRASE}.` },
@@ -81,6 +87,41 @@ export const SITE_PAGES: readonly SitePage[] = [
     description: "This policy explains what Trov collects, why, who processes it, how long it is kept and what you can ask for.",
     image: { path: "/og/privacy.png", alt: `${SITE_NAME} Privacy Policy` },
   },
+  // The public docs (web/src/docs-content.ts): each page is ONE Markdown text — served as-is at `markdown`
+  // and rendered to the HTML page — so the two cannot say different things. Under /docs/<page>: `/docs`
+  // itself is the app's cookie route (the old alias of an organization's docs list), so there is no page
+  // AT /docs; src/site.ts sends a browser that types it, signed out, to the first one (DOCS_HOME).
+  // The description is each page's own lede.
+  {
+    key: "docs-setup", path: "/docs/setup", kind: "docs", indexed: true, markdown: "/docs/setup.md", nav: "Setup",
+    title: `Set up Trov · ${SITE_NAME} docs`,
+    description: "Sign in, create an organization, connect GitHub and connect your coding agent: everything from a new account to a first session.",
+    image: { path: "/og/docs-setup.png", alt: `${SITE_NAME} docs: set up Trov.` },
+  },
+  {
+    key: "docs-connect", path: "/docs/connect", kind: "docs", indexed: true, markdown: "/docs/connect.md", nav: "Connect a client",
+    title: `Connect an MCP client · ${SITE_NAME} docs`,
+    description: "Trov is a remote MCP server at https://trov.dev/mcp. Setup to copy for Claude Code, Claude Desktop, Cursor, VS Code, Codex, Windsurf and any other client.",
+    image: { path: "/og/docs-connect.png", alt: `${SITE_NAME} docs: connect an MCP client.` },
+  },
+  {
+    key: "docs-concepts", path: "/docs/concepts", kind: "docs", indexed: true, markdown: "/docs/concepts.md", nav: "Concepts",
+    title: `Concepts · ${SITE_NAME} docs`,
+    description: "Agents propose and people decide: how Trov keeps what agents read trustworthy, and what live, staged, unpromoted and draft mean.",
+    image: { path: "/og/docs-concepts.png", alt: `${SITE_NAME} docs: concepts.` },
+  },
+  {
+    key: "docs-mcp-tools", path: "/docs/mcp-tools", kind: "docs", indexed: true, markdown: "/docs/mcp-tools.md", nav: "MCP tools",
+    title: `MCP tools reference · ${SITE_NAME} docs`,
+    description: "Every tool Trov's MCP server gives an agent, generated from the server's own registrations: what each does, its arguments, and its errors.",
+    image: { path: "/og/docs-mcp-tools.png", alt: `${SITE_NAME} docs: MCP tools reference.` },
+  },
+  {
+    key: "docs-changelog", path: "/docs/changelog", kind: "docs", indexed: true, markdown: "/docs/changelog.md", nav: "Changelog",
+    title: `Changelog · ${SITE_NAME} docs`,
+    description: "What changed in Trov, release by release, newest first.",
+    image: { path: "/og/docs-changelog.png", alt: `${SITE_NAME} docs: changelog.` },
+  },
   // The page the Worker answers an unknown address with, status 404 (src/site.ts `notFound`). Built like
   // the others; never listed, never indexed.
   {
@@ -95,9 +136,25 @@ export const siteUrl = (path: string): string => `${SITE_ORIGIN}${path}`;
 /** The built file the assets binding serves the page from: `index.html` for "/", else `<name>.html`. */
 export const sitePageFile = (page: Pick<SitePage, "path">): string => (page.path === "/" ? "index.html" : `${page.path.slice(1)}.html`);
 /** The first path segment each page takes at the root ("" for "/") — reserved as org slugs (shared/orgs.ts). */
-export const SITE_PAGE_SEGMENTS: readonly string[] = SITE_PAGES.map((p) => p.path.split("/")[1] ?? "").filter((s) => s !== "");
+export const SITE_PAGE_SEGMENTS: readonly string[] = [...new Set(SITE_PAGES.map((p) => p.path.split("/")[1] ?? "").filter((s) => s !== ""))];
 /** The page the Worker serves for an unknown address. */
 export const NOT_FOUND_PAGE: SitePage = SITE_PAGES.find((p) => p.kind === "not-found") as SitePage;
+/** The docs pages, in their tabs' order. */
+export const DOCS_PAGES: readonly SitePage[] = SITE_PAGES.filter((p) => p.kind === "docs");
+/** A public page's path, by its key: a link to a page is never a typed address. */
+export function pagePath(key: string): string {
+  const p = SITE_PAGES.find((x) => x.key === key);
+  if (!p) throw new Error(`site-pages: no page "${key}"`);
+  return p.path;
+}
+/** Where the docs start (src/site.ts sends `/docs/` there). */
+export const DOCS_HOME: string = DOCS_PAGES[0].path;
+/** The text files the build writes beside the pages: every page's Markdown, and the index for language
+ *  models (llms.txt, llms-full.txt — https://llmstxt.org). Each is served by the assets binding, before
+ *  the Worker, with its own type (`assetHeaders`). */
+export const LLMS_TXT = "/llms.txt";
+export const LLMS_FULL_TXT = "/llms-full.txt";
+export const MARKDOWN_PAGES: readonly SitePage[] = SITE_PAGES.filter((p) => p.markdown);
 /** The app shell (web/app.html): its clean path, which the assets binding answers without a redirect. */
 export const APP_SHELL_PATH = "/app";
 
@@ -121,7 +178,10 @@ export function assetRedirects(): string {
 /** `_headers`: `noindex` on the static files nobody should find in a search — the app shell and the
  *  not-found page when asked for by their own path (each also says so in a meta tag), and EVERY file on a
  *  workers.dev address (a Preview, `<version>-trov.<account>.workers.dev`, or production's own workers.dev
- *  alias): the site is SITE_ORIGIN. The Worker says the same for what it serves (src/site.ts). */
+ *  alias): the site is SITE_ORIGIN. The Worker says the same for what it serves (src/site.ts).
+ *  And the text files' types, said outright (UTF-8 — the binding's guess for `.md` names no charset): a
+ *  page's Markdown is `text/markdown` with an HTTP `Link` naming the HTML page as canonical, so a search
+ *  engine indexes the page and not its source; llms.txt and llms-full.txt are `text/plain`. */
 export function assetHeaders(): string {
   const noindex = (rule: string) => `${rule}\n  X-Robots-Tag: noindex`;
   return [
@@ -129,6 +189,8 @@ export function assetHeaders(): string {
     noindex("https://:version.:account.workers.dev/*"),
     noindex(APP_SHELL_PATH),
     ...SITE_PAGES.filter((p) => !p.indexed).map((p) => noindex(p.path)),
+    ...MARKDOWN_PAGES.map((p) => `${p.markdown}\n  Content-Type: text/markdown; charset=utf-8\n  Link: <${siteUrl(p.path)}>; rel="canonical"`),
+    ...[LLMS_TXT, LLMS_FULL_TXT].map((f) => `${f}\n  Content-Type: text/plain; charset=utf-8`),
     "",
   ].join("\n");
 }
@@ -172,14 +234,29 @@ export function softwareApplicationLd(): Record<string, unknown> {
   };
 }
 
+/** A visible list of questions as schema.org FAQPage — on the ONE page that shows them all (the landing;
+ *  /pricing repeats some, unmarked, as the guidelines ask). `a` is the answer's own HTML, as shown. */
+export function faqPageLd(questions: readonly { q: string; a: string }[]): Record<string, unknown> {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: questions.map((x) => ({ "@type": "Question", name: x.q, acceptedAnswer: { "@type": "Answer", text: x.a } })),
+  };
+}
+
+/** Structured data for the head: `<` is escaped inside the JSON so no string in it can close the script. */
+export const ldScript = (ld: Record<string, unknown>): string => `<script type="application/ld+json">${JSON.stringify(ld).replace(/</g, "\\u003c")}</script>`;
+
 /** Everything a page's `<head>` says about it, in the order a reader expects: title, description, robots,
- *  canonical, Open Graph, Twitter, structured data. An unindexed page gets `noindex` and nothing to share. */
-export function siteHead(page: SitePage): string {
+ *  canonical, its Markdown, Open Graph, Twitter, structured data. An unindexed page gets `noindex` and
+ *  nothing to share. `ld`: more structured data the page's own content makes (the landing's FAQPage). */
+export function siteHead(page: SitePage, extra: { ld?: readonly Record<string, unknown>[] } = {}): string {
   const tags = [`<title>${escAttr(page.title)}</title>`, `<meta name="description" content="${escAttr(page.description)}" />`];
   if (!page.indexed) return [...tags, `<meta name="robots" content="noindex" />`].join("\n    ");
   const url = siteUrl(page.path);
   tags.push(
     `<link rel="canonical" href="${url}" />`,
+    ...(page.markdown ? [`<link rel="alternate" type="text/markdown" href="${siteUrl(page.markdown)}" />`] : []),
     `<meta property="og:type" content="website" />`,
     `<meta property="og:site_name" content="${SITE_NAME}" />`,
     `<meta property="og:title" content="${escAttr(page.title)}" />`,
@@ -202,7 +279,7 @@ export function siteHead(page: SitePage): string {
     `<meta name="twitter:description" content="${escAttr(page.description)}" />`,
   );
   if (page.image) tags.push(`<meta name="twitter:image" content="${siteUrl(page.image.path)}" />`, `<meta name="twitter:image:alt" content="${escAttr(page.image.alt)}" />`);
-  // `<` is escaped inside the JSON so no string in it can close the script element.
-  if (page.structuredData) tags.push(`<script type="application/ld+json">${JSON.stringify(softwareApplicationLd()).replace(/</g, "\\u003c")}</script>`);
+  if (page.structuredData) tags.push(ldScript(softwareApplicationLd()));
+  for (const ld of extra.ld ?? []) tags.push(ldScript(ld));
   return tags.join("\n    ");
 }

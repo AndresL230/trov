@@ -20,6 +20,7 @@ import { handleArtifactDownload, isDownloadRequest } from "./artifacts/download"
 import type { Env } from "./env";
 import { orgPath, orgSlugOfPath, orgSlugProblem } from "@shared/orgs";
 import { APP_SHELL_PATH, assetPage, canonicalRedirect, noindex, notFound, sitePublic } from "./site";
+import { withErrorHint } from "./error-hints";
 
 /** The app shell (web/app.html, asked for at its clean path `/app`) from the assets binding — never the
  *  landing page, which is `/` signed out (src/site.ts). */
@@ -73,12 +74,13 @@ async function serve(request: Request, env: Env, ctx: ExecutionContext, url: URL
   // Artifact binary upload (issue #52): the single-use token minted by
   // POST /api/artifacts/upload-url IS the auth — no session, so it is dispatched
   // here, before the app and its sessionGate (src/artifacts/upload.ts).
-  if (isUploadRequest(request.method, url.pathname)) return handleArtifactUpload(request, env);
+  // (These two, the API and the 404 answer an agent too: each JSON error carries a `hint` — src/error-hints.ts.)
+  if (isUploadRequest(request.method, url.pathname)) return withErrorHint(request, await handleArtifactUpload(request, env));
   // Artifact agent download (issue #52 · Track F): the signed, 5-minute URL that
   // artifact_get mints IS the auth — no session, dispatched here before the app. The
   // page is re-checked for the token's principal at download time
   // (src/artifacts/download.ts).
-  if (isDownloadRequest(url.pathname)) return handleArtifactDownload(request, env);
+  if (isDownloadRequest(url.pathname)) return withErrorHint(request, await handleArtifactDownload(request, env));
   // The SPA lives at `/<slug>/` (hash routing after it): a GET for `/<slug>` or `/<slug>/`, where the
   // segment is a valid org slug that is NOT reserved (shared/orgs.ts `orgSlugOfPath` — every route and
   // static page at the root is reserved, so an org can never shadow one), is the app shell, asked of the
@@ -101,8 +103,8 @@ async function serve(request: Request, env: Env, ctx: ExecutionContext, url: URL
   // (a real cookie route keeps that: src/routes.ts `isAppRoute`). A single segment that is a valid,
   // unreserved slug never gets here: it is an org's page above, whether or not that org exists, and
   // finding out would mean telling a stranger which organizations do.
-  if (!isAppRoute(request.method, url.pathname)) return notFound(request, env, url);
-  return app.fetch(request, env, ctx);
+  if (!isAppRoute(request.method, url.pathname)) return withErrorHint(request, await notFound(request, env, url));
+  return withErrorHint(request, await app.fetch(request, env, ctx));
 }
 
 export default {
