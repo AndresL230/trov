@@ -227,16 +227,20 @@ export function setupSteps(ui: OrgUi): SetupStep[] | null {
   // A one-person plan has no team to invite: the step would never be done, so it is not asked. (A Pro
   // org that bought one seat is not one: it invites by adding a seat.)
   const solo = ui.plan.data?.entitlements.seats === 1 && isSoloPlan(ui.plan.data.plan);
-  // GitHub is connected by the App's installation or, by hand, by a token: either satisfies the step.
+  // GitHub is connected by the App's installation or, by hand, by a token (the fallback).
   const app = githubOf(ui);
   const offered = app?.configured === true;
   const connected = !!app?.installation || (!!token && (token.configured || token.legacy_fallback));
+  const repos = ui.repos.data.length > 0;
+  // Where the App is offered, connecting a repository IS connecting GitHub (installing the App and picking the
+  // repository), so there is no separate GitHub step and no token to set: the repository step is done once a
+  // repository is connected AND GitHub can be read. Only a Trov with no App asks for the token.
   const steps: SetupStep[] = [
-    { key: "repo", title: "Connect a repository", why: "Trov reads its deployments, checks, pull requests and issues.", tab: "repos", go: "Open Repositories", done: ui.repos.data.length > 0 },
-    { key: "env", title: "Add an environment", why: "The Repo dashboard reports on each one: staging, production.", tab: "environments", go: "Open Environments", done: ui.envs.data.length > 0 },
     offered
-      ? { key: "token", title: "Connect GitHub", why: "Install the Trov App on GitHub so Trov can read the repository. A token also works.", tab: "repos", go: "Open Repositories", done: connected }
-      : { key: "token", title: "Set the GitHub token", why: "Without it Trov cannot read the repository.", tab: "integrations", go: "Open Integrations", done: connected },
+      ? { key: "repo", title: "Connect a repository", why: "Install the Trov App on GitHub and pick the repository: Trov reads its deployments, checks, pull requests and issues.", tab: "repos", go: "Open Repositories", done: repos && connected }
+      : { key: "repo", title: "Connect a repository", why: "Trov reads its deployments, checks, pull requests and issues.", tab: "repos", go: "Open Repositories", done: repos },
+    { key: "env", title: "Add an environment", why: "The Repo dashboard reports on each one: staging, production.", tab: "environments", go: "Open Environments", done: ui.envs.data.length > 0 },
+    ...(offered ? [] : [{ key: "token", title: "Set the GitHub token", why: "Without it Trov cannot read the repository.", tab: "integrations", go: "Open Integrations", done: connected } as SetupStep]),
     { key: "team", title: "Invite your team", why: "By GitHub login or email; they join when they accept.", tab: "members", go: "Open Members", done: ui.members.data.length > 1 || ui.invites.data.some((i) => i.status === "pending") },
   ];
   return solo ? steps.filter((s) => s.key !== "team") : steps;

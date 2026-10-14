@@ -161,14 +161,18 @@ For the steps skipped, **Org settings** opens with
    team ships from. The first is the primary; a bare `#214` anywhere in the app resolves against it.
 2. **Add an environment** — Org settings › Environments: a key (`staging`, `production`), the branch it
    deploys from, its web and API URLs. The Repo dashboard reports on each.
-3. **Connect GitHub** — done by step 1: an installation needs no token and no webhook. Trov reads through
-   it with tokens GitHub issues for an hour at a time, and GitHub delivers events itself. Org settings ›
-   Integrations shows it as one row — the account, who connected it, *Test connection*, *Manage on GitHub*,
-   *Disconnect*. The other integrations are optional: Cloudflare analytics, and per environment the
-   Railway token and the app-metrics token; each is **write-only** — once saved only its last four
-   characters are ever shown, to anyone [`src/data/secrets.ts`, envelope-encrypted under the deployment's
-   `TROV_KEK`].
-4. **Invite your team** — next section.
+3. **Invite your team** — next section.
+
+There is **no GitHub or token step** where the App is offered (`GithubAppStatusDTO.configured`): step 1 is
+connecting GitHub — an installation needs no token and no webhook — and is done only once a repository is
+connected AND GitHub can be read (the installation, or a stored token, the fallback). Trov reads through the
+installation with tokens GitHub issues for an hour at a time, and GitHub delivers events itself. Org settings ›
+Integrations shows it as one row — the account, who connected it, *Test connection*, *Manage on GitHub*,
+*Disconnect*. The other integrations are optional: Cloudflare analytics, and per environment the Railway token
+and the app-metrics token; each is **write-only** — once saved only its last four characters are ever shown, to
+anyone [`src/data/secrets.ts`, envelope-encrypted under the deployment's `TROV_KEK`]. A Trov with NO App (a
+self-hosted copy) asks for the token instead: **Set the GitHub token**, in Integrations, between the
+environment and the team.
 
 **Who can connect it, and what can go wrong.** An admin or an owner, with the GitHub account linked to
 their Trov account, which must be able to read at least one repository the installation covers: the
