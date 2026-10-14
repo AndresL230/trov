@@ -1,10 +1,32 @@
 import type { SprintRow, SprintProgressRow } from "@shared/rows";
 import { type TenantContext, all, run, nowIso } from "../data/sql";
-import { progressFromIssueEvent } from "../webhook";
 import { isIssueGone } from "./issue-gone";
 
 const GH_API = "application/vnd.github+json";
 const USER_AGENT = "trov";
+
+// ---------------------------------------------------------------------------
+// PURE: the absolute progress this issue event implies for its GitHub issue
+// GROUP — `groupNumber` is the number on the group the issue belongs to, which a
+// sprint's `github_ref` may point at — or null when the issue is in no group.
+// total = open + closed (GitHub's own counts), so ordering of deliveries is
+// irrelevant — later writes just overwrite. Lives here, not in src/webhook.ts
+// (which re-exports it): this module is reachable from src/mcp.ts, and the
+// webhook reaches the model client.
+// ---------------------------------------------------------------------------
+export function progressFromIssueEvent(
+  payload: unknown
+): { groupNumber: number; closed: number; total: number } | null {
+  if (payload === null || typeof payload !== "object") return null;
+  const issue = (payload as { issue?: { milestone?: { number: number; open_issues?: number; closed_issues?: number } | null } }).issue;
+  const m = issue?.milestone; // GitHub's own key — not Trov vocabulary
+  if (!m || m.open_issues == null || m.closed_issues == null) return null;
+  return {
+    groupNumber: m.number,
+    closed: m.closed_issues,
+    total: m.open_issues + m.closed_issues,
+  };
+}
 
 /**
  * Live progress for a sprint's `github_ref`, computed from GitHub. `ref` is JSON:

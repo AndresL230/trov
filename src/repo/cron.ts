@@ -340,7 +340,7 @@ export async function runUsagePolls(env: Env, caller: TenantContext, now: number
  *   `pruneRepoCapture`      maintenance, not a refresh — nothing on screen
  *                           changes because old rows were deleted.
  *   `runBackfill`/summaries that is "Sync GitHub": My Work's capture, with its
- *                           own Gemini budget loop. It is ALSO the only
+ *                           own summary allowance. It is ALSO the only
  *                           non-webhook writer of the `events` issue snapshots,
  *                           so the Overview's Open issues / Open bugs tiles and
  *                           deltas, Planning's issues by label and the feed's

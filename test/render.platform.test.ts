@@ -437,7 +437,7 @@ describe("Usage", () => {
     expect(t).toContain("AI summaries Attempted 52 Succeeded 46 Fell back to an excerpt 9 last 7 days, all organizations");
     // The six tiles are untouched: the strip is not a seventh.
     expect(html.match(/class="plat-tile-n"/g)).toHaveLength(6);
-    expect(html).not.toContain("GEMINI_API_KEY");
+    expect(html).not.toContain("ANTHROPIC_API_KEY");
   });
   it("AI summaries per org: attempted, succeeded, fell back and this month against the plan — in the opened row, 'unlimited' for no cap", () => {
     const open = (slug: string) => words(usageView({ status: "ok", usage: report([busy, free]), days: 7, open: slug }));
@@ -452,7 +452,7 @@ describe("Usage", () => {
   });
   it("with no summaries key the page says so ONCE, quietly — no rows of zeros, in the totals or in any org's row", () => {
     const html = usageView({ status: "ok", usage: { ...report([usageOf(), free]), summaries_enabled: false }, days: 7, open: "acme" });
-    expect(html.match(/AI summaries are off on this deployment \(no GEMINI_API_KEY\)\./g)).toHaveLength(1);
+    expect(html.match(/AI summaries are off on this deployment \(no ANTHROPIC_API_KEY\)\./g)).toHaveLength(1);
     expect(html.match(/data-usage-summaries/g)).toHaveLength(1);
     expect(words(html)).not.toContain("Attempted");
     expect(words(html)).not.toContain("Fell back");
@@ -462,14 +462,14 @@ describe("Usage", () => {
   });
   it("an organization's own page says the same when the deployment has no key: one sentence, no figures", () => {
     const off = orgUsageBlock(busy, 30, false);
-    expect(off.match(/AI summaries are off on this deployment \(no GEMINI_API_KEY\)\./g)).toHaveLength(1);
+    expect(off.match(/AI summaries are off on this deployment \(no ANTHROPIC_API_KEY\)\./g)).toHaveLength(1);
     expect(off.match(/data-usage-summaries/g)).toHaveLength(1);
     expect(words(off)).not.toContain("Attempted");
     expect(words(off)).not.toContain("This month");
     expect(off).not.toContain('role="alert"');
     // Through the page: `PlatformOrgDetail.summaries_enabled` decides it.
     const open = (on: boolean) => platformOrgView(plat({ orgSlug: "acme", detail: { status: "ok", data: detailOf({ usage: busy, summaries_enabled: on }) }, orgAudit: { status: "ok", data: [] } }));
-    expect(open(false)).toContain("AI summaries are off on this deployment (no GEMINI_API_KEY).");
+    expect(open(false)).toContain("AI summaries are off on this deployment (no ANTHROPIC_API_KEY).");
     expect(words(open(false))).not.toContain("Attempted 40");
     expect(words(open(true))).toContain("AI summaries Attempted 40 Succeeded 34 Fell back to an excerpt 9 This month 38 of 100");
     expect(open(true)).not.toContain("AI summaries are off");

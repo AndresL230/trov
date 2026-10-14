@@ -93,7 +93,7 @@ const GB = 1024 * MB;
 // `seats` override holds the seats it pays for. Enterprise's repositories and environments are the
 // platform's caps from before plans (10 each: the repo cron's budget is shared), so an existing org sees
 // no change. `ai_summaries` (per calendar month) are sized so that one org cannot run up the platform's
-// one Gemini bill, not from measured use (plans.md › AI summaries).
+// one Anthropic bill, not from measured use (plans.md › AI summaries).
 export const PLANS: Record<PlanId, PlanDef> = {
   free: {
     id: "free", name: "Free", description: "For a small team trying Trov out.",

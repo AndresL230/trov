@@ -96,7 +96,7 @@ export function summariesFigures(s: UsageSummaries, month?: { month_used: number
     month ? FIGURE("This month", month.cap === null ? `${formatNumber(month.month_used)} (unlimited)` : `${formatNumber(month.month_used)} of ${formatNumber(month.cap)}`) : ""}`;
 }
 /** Said ONCE on the page when the deployment has no summaries key, instead of rows of zeros. */
-export const SUMMARIES_OFF = "AI summaries are off on this deployment (no GEMINI_API_KEY).";
+export const SUMMARIES_OFF = "AI summaries are off on this deployment (no ANTHROPIC_API_KEY).";
 
 /** `summaries` (one organization's) adds its AI summaries line; `"off"` says the deployment has no
  *  summaries key, in Platform › Usage's own sentence; null / absent leaves the line out. */

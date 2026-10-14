@@ -39,7 +39,7 @@ const USER_AGENT = "trov";
 // Kept small (5) so each /admin/backfill returns quickly and the browser sees
 // progress between batches rather than one long stall — the frontend auto-loops
 // up to MAX_BACKFILL_BATCHES (web/src/main.ts). Even in the pathological case
-// where every call times out (GEMINI_TIMEOUT_MS), a batch is bounded to
+// where every call times out (SUMMARY_TIMEOUT_MS), a batch is bounded to
 // ~5 × timeout and still completes via the excerpt fallback.
 const SUMMARY_BATCH_LIMIT = SYNC_SUMMARIES_PER_BATCH; // 5 — shared with the Sync panel, which says how many a run attempts
 const SUMMARY_CALL_DELAY_MS = 500;
@@ -224,8 +224,8 @@ export async function runBackfill(
     issueSummarizer?: Summarizer<IssueSummary> | null;
     summaryBatchLimit?: number;
     summaryCallDelayMs?: number;
-    /** The org summarizer's Gemini call (its fetch, stubbed in tests) and the clock its month is read from. */
-    gemini?: OrgSummarizersOpts["gemini"];
+    /** The org summarizer's model call (its fetch, stubbed in tests) and the clock its month is read from. */
+    ai?: OrgSummarizersOpts["ai"];
     now?: Date;
     /** Told where the batch stands: at every phase change, and at most once a second inside one. */
     onProgress?: (p: BackfillProgress) => void | Promise<void>;
@@ -275,7 +275,7 @@ export async function runBackfill(
   // allowance, every call counted against the admin who pressed Sync), read once for the batch and
   // asked per item — it turns null the moment the allowance is spent. An explicit `opts` summarizer
   // (null included) is a test's own and bypasses it.
-  const sums = await orgSummarizers(env, ctx, { actor: principalLogin, gemini: opts?.gemini, now: opts?.now });
+  const sums = await orgSummarizers(env, ctx, { actor: principalLogin, ai: opts?.ai, now: opts?.now });
   const prSummarizer = (): Summarizer<PrSummary> | null => (opts?.summarizer !== undefined ? opts.summarizer : sums.pr());
   const issueSummarizerNow = (): Summarizer<IssueSummary> | null => (opts?.issueSummarizer !== undefined ? opts.issueSummarizer : sums.issue());
   const summaryBatchLimit = opts?.summaryBatchLimit ?? SUMMARY_BATCH_LIMIT;

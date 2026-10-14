@@ -1,6 +1,6 @@
 // Sync GitHub as a RUN (docs/architecture/sync.md; 0046_sync_runs): what each batch reports, the run
 // record from start to end, the lock, the read every member has, and that nothing a run keeps or
-// answers with is upstream text or a credential. GitHub and Gemini are stubs — never the network.
+// answers with is upstream text or a credential. GitHub and Anthropic are stubs — never the network.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
@@ -273,7 +273,7 @@ describe("GET /sync and POST /admin/backfill over HTTP", () => {
     expect(member.json).toMatchObject({
       repo: "o/r", admin: false, blocked: null, running: null, refreshed_at: "2026-10-07T09:01:10.000Z",
       last: { by: "admin-user", status: "partial", batch: 3, failures: [{ code: "reconcile:checks" }], counts: { prs_new: 12, issues_changed: 4, summaries_written: 9, summaries_failed: 2, tickets_created: 0, repo_written: 30 } },
-      // The pool has no GEMINI_API_KEY: summaries are off on this deployment — a state, not an error.
+      // The pool has no ANTHROPIC_API_KEY: summaries are off on this deployment — a state, not an error.
       summaries: { status: "off", used: 0, cap: null, remaining: null, pending: 0, per_run: 50 },
     });
     expect((await get("/api/o/saplinglearn/sync", await cookieFor("admin-user"))).json.admin).toBe(true);
@@ -311,10 +311,10 @@ describe("GET /sync and POST /admin/backfill over HTTP", () => {
     // One pull request with a real summary; then three more and an assigned issue captured with no summarizer: four excerpts.
     await runBackfill(e(), systemCtx(), "admin-user", { fetchImpl: github([pr(9)], []), summarizer: summarizer(), summaryCallDelayMs: 0 });
     await runBackfill(e(), systemCtx(), "admin-user", { fetchImpl: github([pr(1), pr(2), pr(3), pr(9)], [issue(5)]), summaryCallDelayMs: 0 });
-    const keyed = e({ GEMINI_API_KEY: "AIzaFAKE" });
+    const keyed = e({ ANTHROPIC_API_KEY: "sk-ant-FAKE" });
     const { json } = await get("/api/o/saplinglearn/sync", await cookieFor("plain-member"), keyed);
     expect(json.summaries).toEqual({ status: "on", used: 14, cap: 20, remaining: 6, pending: 4, per_run: 50 });
-    expect(JSON.stringify(json)).not.toContain("AIzaFAKE");
+    expect(JSON.stringify(json)).not.toContain("sk-ant-FAKE");
   });
 
   it("a member cannot start one; the route's answer never carries a secret", async () => {
@@ -349,17 +349,17 @@ describe("retention, and the local stand-in", () => {
       expect(localUpstreamFetch({ LOCAL_UPSTREAM: "http://localhost:8862" })).toBeTypeOf("function");
     });
 
-    it("sends GitHub and Gemini to the stand-in and leaves every other request alone", async () => {
+    it("sends GitHub and Anthropic to the stand-in and leaves every other request alone", async () => {
       const seen: string[] = [];
       vi.stubGlobal("fetch", async (input: unknown) => { seen.push(String(input)); return json({}); });
       const f = localUpstreamFetch({ LOCAL_UPSTREAM: "http://127.0.0.1:8862/ignored" })!;
       await f("https://api.github.com/repos/o/r/pulls?state=closed&per_page=100");
-      await f("https://generativelanguage.googleapis.com/v1beta/models/m:generateContent");
+      await f("https://api.anthropic.com/v1/messages");
       await f("https://api.cloudflare.com/client/v4/graphql");
       await f("http://127.0.0.1:8862/github/next-page");
       expect(seen).toEqual([
         "http://127.0.0.1:8862/github/repos/o/r/pulls?state=closed&per_page=100",
-        "http://127.0.0.1:8862/gemini/v1beta/models/m:generateContent",
+        "http://127.0.0.1:8862/anthropic/v1/messages",
         "https://api.cloudflare.com/client/v4/graphql",
         "http://127.0.0.1:8862/github/next-page",
       ]);
