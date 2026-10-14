@@ -445,9 +445,10 @@ describe("the setup checklist", () => {
     expect(setupSteps(byToken)!.find((s) => s.key === "repo")!.done).toBe(true);
     expect(setupSteps(byToken)!.some((s) => s.key === "token")).toBe(false);
   });
-  it("where it is not, the step is the token's, as before", () => {
+  it("where it is not, there is still no token step: the token is part of Connect a repository", () => {
     const off = status({ configured: false });
-    expect(setupSteps(ui(off))!.find((s) => s.key === "token")).toMatchObject({ title: "Set the GitHub token", tab: "integrations", done: false });
+    expect(setupSteps(ui(off))!.some((s) => s.key === "token")).toBe(false);
+    expect(setupSteps(ui(off))!.find((s) => s.key === "repo")!.why).toContain("set a GitHub token");
     expect(githubOf(ui(off))).toEqual(off);
   });
 });

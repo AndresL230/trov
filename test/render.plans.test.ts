@@ -285,10 +285,10 @@ describe("Org settings › Members — seats", () => {
   });
   it("the setup checklist does not ask a one-person org to invite its team", () => {
     const ready: Partial<OrgUi> = { repos: { status: "ok", data: [] }, envs: { status: "ok", data: [] }, integrations: { status: "ok", data: { integrations: [], key: null } as never } };
-    expect(setupSteps(orgUi(view(), ready))!.map((s) => s.key)).toEqual(["repo", "env", "token", "team"]);
-    expect(setupSteps(orgUi(view("personal"), ready))!.map((s) => s.key)).toEqual(["repo", "env", "token"]);
+    expect(setupSteps(orgUi(view(), ready))!.map((s) => s.key)).toEqual(["repo", "env", "team"]);
+    expect(setupSteps(orgUi(view("personal"), ready))!.map((s) => s.key)).toEqual(["repo", "env"]);
     // A Pro org that bought ONE seat is not a one-person plan: it invites by adding a seat, so the step stays.
-    expect(setupSteps(orgUi(paidPro(1), ready))!.map((s) => s.key)).toEqual(["repo", "env", "token", "team"]);
+    expect(setupSteps(orgUi(paidPro(1), ready))!.map((s) => s.key)).toEqual(["repo", "env", "team"]);
   });
 });
 
