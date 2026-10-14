@@ -799,7 +799,8 @@ picker, a doc's Tags row and the tab all draw from it):
   with a meter), for admins Suggested by agents ("2 waiting") and Jev (the switch, a checks meter, and "What is
   sent": a small popover with the one sentence on what is sent, to whom and the way back; a click outside or
   Escape closes it) —
-  then New tag (a button over the list, at the right; disabled at the plan's cap, saying why) and the list, and the
+  then the list — its head row (52px, the column names, and for an admin New tag in the actions column at the
+  top right; disabled at the plan's cap, saying why; under 860px the head keeps only New tag) — and the
   retired tags behind a disclosure (Restore). **New tag** opens a modal (`tagAddModal`, built on `confirmModal`:
   Enter adds, Escape closes, Tab stays inside): name, what it is for, the colour (a `segmented()` of squares, the
   first colour no live tag uses), and — when Jev may look — "Find the items that fit it now", ON by default (the

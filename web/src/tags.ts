@@ -313,9 +313,12 @@ export function tagsTab(org: MyOrg, p: TagsTabProps): string {
   const cols = ["minmax(0, 176px)", "minmax(0, 1fr)", "44px", ...(jev ? ["150px"] : []), ...(admin ? ["116px"] : [])].join(" ");
   // Not `overflow:hidden`: a row's ⋯ menu opens over the rows below it.
   const ul = (extra: string) => surface(`list-style:none;padding:0;--tagcols:${cols};${extra}`);
-  const head = `<div class="cnpy-tagrow cnpy-taghead" aria-hidden="true">
-      <div data-col="tag">Tag</div><div data-col="desc">What it is for</div><div data-col="n">Items</div>
-      ${jev ? `<div data-col="jev">Added by Jev</div>` : ""}${admin ? `<div data-col="acts"></div>` : ""}
+  // The head: the column names (for sighted readers — each row says the same in its own words), and for an
+  // admin New tag in the actions column, at the top right of the table.
+  const newTag = `<button type="button" data-act="tagNew" data-field="tagNew" aria-haspopup="dialog" class="cnpy-accentbtn cnpy-tagnew-btn"${full ? ` disabled title="The list holds ${list.cap ?? 0} tags on this plan. Retire or merge one to add another."` : ""} style="border-radius:8px"><svg width="12" height="12" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.6"/></svg>New tag</button>`;
+  const head = `<div class="cnpy-tagrow cnpy-taghead">
+      <div data-col="tag" aria-hidden="true">Tag</div><div data-col="desc" aria-hidden="true">What it is for</div><div data-col="n" aria-hidden="true">Items</div>
+      ${jev ? `<div data-col="jev" aria-hidden="true">Added by Jev</div>` : ""}${admin ? `<div data-col="acts" class="cnpy-tagrow-acts">${newTag}</div>` : ""}
     </div>`;
   const rows = (ts: OrgTagDTO[]) => ts.map((t) => tagRow(t, admin, ui, list)).join("");
   const retiredBlock = retired.length ? `<div style="margin-top:18px" data-org-tags-retired>
@@ -325,7 +328,6 @@ export function tagsTab(org: MyOrg, p: TagsTabProps): string {
 
   return `${head0}
     <section aria-label="The tag list" data-org-group="tags">
-      <div class="cnpy-tagsbar">${admin ? `<button type="button" data-act="tagNew" data-field="tagNew" aria-haspopup="dialog" class="cnpy-accentbtn cnpy-tagsbar-new"${full ? ` disabled title="The list holds ${list.cap ?? 0} tags on this plan. Retire or merge one to add another."` : ""} style="border-radius:8px"><svg width="12" height="12" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.6"/></svg>New tag</button>` : ""}</div>
       <ul${ul("margin:0")}>${head}${rows(live)}${admin ? list.suggestions.map((sg) => suggestionRow(sg, ui, list, jev)).join("") : ""}</ul>
       ${retiredBlock}
       <p style="${O_HELP};max-width:680px;margin-top:14px">The six starter tags come with every organization and can be renamed, not removed. A retired tag stays on what already has it and can no longer be picked.</p>

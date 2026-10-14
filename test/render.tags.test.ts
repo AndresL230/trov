@@ -101,9 +101,12 @@ describe("Org settings › Tags", () => {
     const html = tab("admin");
     expect(html).toContain("<strong>7</strong> of 30 tags");
     expect(html).toContain("One list for everything in Acme Robotics");
-    // Adding a tag is a button over the list (at the right) that opens a modal — no form on the page.
-    expect(html).toMatch(/<div class="cnpy-tagsbar"><button type="button" data-act="tagNew" data-field="tagNew" aria-haspopup="dialog"/);
-    expect(html.indexOf(`data-act="tagNew"`)).toBeLessThan(html.indexOf("cnpy-taghead"));
+    // Adding a tag is a button in the table's head row, in its actions column (the top right), that opens a modal.
+    const headRow = html.slice(html.indexOf(`class="cnpy-tagrow cnpy-taghead"`), html.indexOf("cnpy-tagrow-wrap"));
+    expect(headRow).toMatch(/<div data-col="acts" class="cnpy-tagrow-acts"><button type="button" data-act="tagNew" data-field="tagNew" aria-haspopup="dialog"/);
+    expect(headRow).not.toMatch(/class="cnpy-tagrow cnpy-taghead" aria-hidden/);   // the button stays reachable
+    expect(css).toMatch(/\.cnpy-taghead \{ min-height:52px; font-size:12\.5px; font-weight:600;/);
+    expect(tab("member")).not.toContain(`data-act="tagNew"`);
     expect(html).not.toContain(`data-act="tagNameDraft"`);
     const modal = tagAddModal({ ...initialTagsUi(), addOpen: true, nameDraft: "billing", addColor: "rust" }, list());
     expect(modal).toContain(`role="alertdialog"`);
@@ -594,7 +597,7 @@ describe("tags added by Jev, on the Tags tab (the owner's call: no review step)"
   it("in the tab: each row's Jev cell under an \"Added by Jev\" head; a member sees none of it", () => {
     const html = tab("admin", list({ ai: ai(), runs: { onboarding: run(), auth: run({ status: "running" }) } }));
     expect(html).toContain(`data-org-group="tag-ai"`);
-    expect(html).toContain(`<div data-col="jev">Added by Jev</div>`);
+    expect(html).toContain(`<div data-col="jev" aria-hidden="true">Added by Jev</div>`);
     expect(piece(html, `data-org-tag="onboarding"`)).toContain(">7 added<");
     expect(piece(html, `data-org-tag="auth"`)).toContain(">Starting…<");
     const member = tab("member", list({ ai: ai(), runs: { onboarding: run() } }));

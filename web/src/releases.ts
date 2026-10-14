@@ -97,7 +97,7 @@ export const RELEASES: Release[] = [
       "While Trov looks, the tag's row shows a progress bar and a count of the items checked and tagged; the bar takes the tag's colour when it added the tag to something. Afterwards the row keeps the count, with Undo. A tag whose words match nothing still gets the newest items checked.",
       "The tag list is one even line per tag. Click what a tag is for to change it, or its square to change its colour; Rename, Merge into… and Retire are in each row's ⋯ menu. After you change a tag's words, Trov offers to look for items again.",
       "Tags an agent suggests now sit at the bottom of the tag list, shaded and marked Suggested, with Approve on the row.",
-      "New tag, at the top right of the list, opens a short form: a name, what it is for, a colour, and whether Jev should find the items that fit it now.",
+      "New tag, at the top right of the tag table, opens a short form: a name, what it is for, a colour, and whether Jev should find the items that fit it now.",
       "Org settings no longer asks a new organization for a GitHub token: connecting a repository through the Trov App is the GitHub step. A Trov without the App still asks for the token.",
       "Tags are now each organization's own list, in Org settings › Tags. It starts with the six you know; an admin can add a tag, rename one, merge two or retire one, and give each a description and a colour.",
       "A feed entry with a tag that is not on your list is no longer held in Unplaced. It is posted without the tag, and the tag waits in Org settings › Tags, where an admin adds it, points it at a tag you already have, or dismisses it.",
