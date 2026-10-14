@@ -30,21 +30,21 @@ describe("gate functions (consumer.ts) enforce the vocabulary/confidence gate", 
     expect(triage.length).toBe(0);
   });
 
-  it("ingestFeedEntry: an out-of-vocab tag routes the whole entry to needs_triage and writes no feed row", async () => {
+  it("ingestFeedEntry: a tag that is not on the org's list is left off and suggested; the entry is written, nothing triaged (0054_org_tags)", async () => {
     const r = await ingestFeedEntry(
       systemCtx(),
       { summary: "bad", body: "b", tags: ["not-a-real-tag"], artifacts: { prs: [], commits: [], issues: [] } },
       AUTHOR
     );
-    expect(r.outcome).toBe("triaged");
+    expect(r).toMatchObject({ outcome: "written", tags: [], suggested_tags: ["not-a-real-tag"] });
 
     const feed = await get_feed(systemCtx(), {});
-    expect(feed.length).toBe(0);
+    expect(feed.length).toBe(1);
+    expect(feed[0].tags).toEqual([]);
 
-    const triage = await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`);
-    expect(triage.length).toBe(1);
-    expect(triage[0].reason).toContain("not-a-real-tag");
-    expect(triage[0].source_author).toBe(AUTHOR);
+    expect(await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`)).toEqual([]);
+    expect(await all<{ tag: string; suggested_by: string; source: string }>(env.DB, `SELECT tag, suggested_by, source FROM org_tag_suggestions`))
+      .toEqual([{ tag: "not-a-real-tag", suggested_by: AUTHOR, source: "agent" }]);
   });
 
   it("ingestDocProposal: in-vocab high-confidence stages a version (non-destructive), nothing triaged", async () => {

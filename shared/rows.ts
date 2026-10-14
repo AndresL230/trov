@@ -65,6 +65,8 @@ export interface FeedRow {
   body: string | null;
   artifacts: string | null;
   created_at: string;
+  /** The entry's tags, by name (`entry_tags`, 0054_org_tags) — set by `get_feed`; not a column. */
+  tags?: string[];
 }
 
 export interface AdrRow {

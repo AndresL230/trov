@@ -3132,3 +3132,46 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
   /* Still plainly "no total": a dashed track, not a moving one. */
   .sync-bar.is-open > span { animation:none !important; width:100%; border-radius:0; opacity:.5; background:repeating-linear-gradient(90deg, var(--accent) 0 6px, transparent 6px 12px); }
 }
+
+/* ── tags (web/src/tags.ts, marks.ts `tagMark` / `tagWords`) ───────────────────
+   A tag is a small SQUARE and a word, or — in a list — the word alone. No rule here draws a box
+   round one and none declares a radius: a tag is never a pill. */
+.cnpy-taglink { padding:0; font:inherit; color:inherit; cursor:pointer; text-align:left; }
+.cnpy-taglink:hover, .cnpy-taglink:focus-visible { color:var(--fg); text-decoration:underline; text-underline-offset:3px; }
+.cnpy-tagwords .cnpy-taglink:hover, .cnpy-tagwords .cnpy-taglink:focus-visible { color:var(--fg-70); }
+/* Above a card's `hitArea`, like a person's name. */
+.cnpy-tagwords, .cnpy-tagmark { position:relative; z-index:1; }
+/* Org settings › Tags: one row per tag — tag, what it is for, three counts, actions. */
+.cnpy-tagrow { display:grid; grid-template-columns:minmax(120px, 1.1fr) minmax(0, 2.1fr) 52px 52px 76px minmax(0, auto); gap:6px 14px; align-items:center; padding:9px 16px; }
+.cnpy-tagrow > [data-col="small"] { display:none; }
+.cnpy-tagrow-wrap + .cnpy-tagrow-wrap, .cnpy-taghead + .cnpy-tagrow-wrap, .cnpy-tagsug + .cnpy-tagsug, .cnpy-tagitem + .cnpy-tagitem { border-top:1px solid var(--border); }
+.cnpy-taghead { font-size:11.5px; font-weight:500; color:var(--fg-40); padding-top:10px; padding-bottom:8px; }
+.cnpy-tagrow-acts { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; min-width:0; }
+.cnpy-tagrow-wrap[data-retired] .cnpy-tagrow > [data-col="desc"] { color:var(--fg-40) !important; }
+.cnpy-tagedit { padding:4px 16px 16px; }
+.cnpy-tagedit-fields { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 2fr); gap:12px; max-width:720px; }
+.cnpy-tagadd { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 2fr) auto; gap:8px; align-items:center; max-width:760px; margin-bottom:12px; }
+.cnpy-tagsug { display:flex; align-items:flex-start; justify-content:space-between; gap:12px 20px; flex-wrap:wrap; padding:14px 16px; }
+.cnpy-tagsug > :first-child { flex:1 1 300px; }
+.cnpy-tagsug-acts { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+/* One tag's page: an item is its title (a button) and one line under it. */
+.cnpy-tagitem { padding:12px 16px; }
+.cnpy-tagitem-t { padding:0; font-size:14px; font-weight:500; line-height:1.45; color:var(--fg); text-align:left; cursor:pointer; overflow-wrap:anywhere; }
+.cnpy-tagitem-t:hover, .cnpy-tagitem-t:focus-visible { text-decoration:underline; text-underline-offset:3px; }
+/* The Tags row on an item's own page: each tag (square, word) with its small remove button, then the picker. */
+.cnpy-itemtags { display:flex; align-items:center; flex-wrap:wrap; gap:8px 14px; margin-top:14px; }
+.cnpy-itemtag { display:inline-flex; align-items:center; gap:4px; }
+.cnpy-itemtag-x { display:grid; place-items:center; width:18px; height:18px; color:var(--fg-40); cursor:pointer; }
+.cnpy-itemtag-x:hover, .cnpy-itemtag-x:focus-visible { color:var(--fg); }
+.cnpy-itemtag-x:disabled { opacity:.5; cursor:default; }
+.cnpy-tagpage button:focus-visible, .cnpy-itemtags button:focus-visible, .cnpy-taglink:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+@media (max-width:860px) {
+  /* Narrow: the three count columns fold into one line of words under the description. */
+  .cnpy-tagrow { grid-template-columns:minmax(0, 1fr) auto; }
+  .cnpy-tagrow > [data-col="n"] { display:none; }
+  .cnpy-tagrow > [data-col="desc"], .cnpy-tagrow > [data-col="small"] { grid-column:1 / -1; display:block; }
+  .cnpy-tagrow > [data-col="tag"] { grid-column:1; grid-row:1; }
+  .cnpy-tagrow > [data-col="acts"] { grid-column:2; grid-row:1; }
+  .cnpy-taghead { display:none; }
+  .cnpy-tagadd, .cnpy-tagedit-fields { grid-template-columns:minmax(0, 1fr); }
+}

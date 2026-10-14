@@ -153,9 +153,9 @@ describe("route, hash and sidebar", () => {
 
 describe("who sees what — admin vs member", () => {
   it("Integrations and Notifications are admin+; a member's picked tab falls to the first they may open", () => {
-    expect(orgTabsFor("owner")).toEqual(["integrations", "repos", "environments", "members", "notifications", "general"]);
+    expect(orgTabsFor("owner")).toEqual(["integrations", "repos", "environments", "members", "tags", "notifications", "general"]);
     expect(orgTabsFor("admin")).toEqual(orgTabsFor("owner"));
-    expect(orgTabsFor("member")).toEqual(["repos", "environments", "members", "general"]);
+    expect(orgTabsFor("member")).toEqual(["repos", "environments", "members", "tags", "general"]);
     expect(effectiveOrgTab("integrations", "member")).toBe("repos");
     expect(effectiveOrgTab("notifications", "member")).toBe("repos");
     expect(effectiveOrgTab("integrations", "admin")).toBe("integrations");

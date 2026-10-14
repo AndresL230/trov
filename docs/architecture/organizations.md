@@ -432,7 +432,7 @@ at once; "kept" says why.
 
 | | Removed |
 |---|---|
-| Content | docs and every version (staged, rejected and older ones included), decisions (ADRs), the feed and its tags, the triage queue, the agent-ingest ledger, the roadmap plan and its versions, sprints (resources, progress), tickets (assignees, links, comments, status history — mirrored ones too), handoffs, prompts and versions, artifacts (pages, versions, links, pending uploads — soft-deleted ones too), doc images, and every search index over them |
+| Content | docs and every version (staged, rejected and older ones included), decisions (ADRs), the feed and its tags, the org's tag list and what agents suggested for it (`org_tags`, `org_tag_suggestions`), the triage queue, the agent-ingest ledger, the roadmap plan and its versions, sprints (resources, progress), tickets (assignees, links, comments, status history — mirrored ones too), handoffs, prompts and versions, artifacts (pages, versions, links, pending uploads — soft-deleted ones too), doc images, and every search index over them |
 | Captured from GitHub | pull request and issue events and their AI summaries, unmatched-login tasks, the Repo dashboard's events, snapshots and metrics, Sync runs |
 | Configuration and credentials | repositories, environments, every integration secret (encrypted) and the keys that sealed them, integration settings and their change history, the GitHub App binding and its repository list, the login-to-person attribution map |
 | People and access | memberships, invitations (any status), MCP tokens for it, OAuth codes and connections that could act only there (with their access and refresh tokens; a connection that can act elsewhere only loses this organization), each member's e-mail preferences for it |

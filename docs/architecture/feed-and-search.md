@@ -21,6 +21,48 @@ boot-loaded proposals + draft ADRs as `reviewHeadsFromReads` heads (no diff), ea
 body's soft target is ~2,500 characters. Pre-0034 entries were filled once by
 `scripts/backfill-feed-briefs.mjs` (local, Gemini, dry run by default, `--apply` only `WHERE brief IS NULL`).
 
+## Tags — ONE list per organization (`0054_org_tags`, phase 1)
+
+Each org has its own tag list (`org_tags`: `name`, a one-line `description`, a `color` from
+`shared/tags-core.ts` `TAG_COLORS`, `starter`, `retired_at`, `merged_into`). It starts as the six STARTER tags
+(`STARTER_TAGS` = the names of `shared/vocabulary.ts` `TAGS` and `0002_seed_vocab.sql`): 0054 seeded them for
+the orgs that existed, `createOrg` (`src/orgs/repo.ts`) seeds them for a new one, and `tagRows` gives them to
+an org that has NO row at all (one a pre-0054 Worker created). **Phase 1 puts tags on feed entries, docs and
+decisions** (`entry_tags.entry_type` = `feed` / `doc` / `adr`; ids: the entry's number, the doc's slug, the
+decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are untouched — phase 2.
+
+- **Stored by NAME.** `entry_tags(org_id, tag, entry_type, entry_id)` holds the tag's name; 0054 rebuilt the
+  table without its reference to the global `tags` table (which stays, unread: it names the starters) and
+  added NO reference to `org_tags` — what may be stored is the gate's rule and `setItemTags`'s, so the Worker
+  from before 0054 keeps working. A name is lowercase letters, digits and hyphens, ≤ 32 (`normalizeTagName`).
+- **Only an org ADMIN changes the list** (`src/tools/tags.ts`, each `requireRole(ctx, "admin")` with an
+  `org_admin_audit` row `tag.*` in the same batch; cookie routes in `src/tags/routes.ts`, which refuse any
+  request carrying an `Authorization` header — NEVER MCP): `addTag`; `editTag` (rename and/or description,
+  colour — a rename rewrites `entry_tags` in the batch, so every tagged item stays tagged; a starter may be
+  renamed); `mergeTag` (the source's items move to the target, the source is retired with
+  `merged_into`, and an agent that still sends it gets the target; a starter cannot be merged away);
+  `retireTag` (soft: stays on what has it, can no longer be picked, name stays reserved; never a starter) and
+  `restoreTag`. Nothing is hard-deleted.
+- **The plan caps the list**: `tags` in `PLANS` (`plans.md`), `requirePlan(ctx, "tags")` on add, restore and
+  accepting a suggestion (402 `plan_limit`). Live tags count; retired ones do not.
+- **Suggestions** (`org_tag_suggestions`): one row per ITEM and suggested tag — `source` (`agent` now; `model`
+  later, issues #154–#158), `state` (`open` / `accepted` / `dismissed` / `superseded`), nullable `confidence`,
+  `reason`, `model`, `prompt_version`, who suggested and who resolved. A suggestion is never the tag itself:
+  the item's tags are `entry_tags`. Phase 1 writes only agent rows — a tag the gate could not use
+  (`ingestion-gate.md`). `listTags` groups the open rows whose tag is NOT live by tag text (who sent it, on
+  what, how many, a look-alike on the list) — admins only. `resolveSuggestion`: **accept** (the tag joins
+  the list — or is restored — and every item that carried it gets it), **map** (`into` an existing live tag:
+  the items get that one; rows are `accepted` with `resolved_to` = it), **dismiss** (nothing tagged; a later
+  use is a new suggestion). Adding or renaming a tag TO a suggested name settles those rows the same way.
+- **Any member** reads the list (`GET /api/o/:slug/tags` → `TagListDTO`: tags with per-type counts, `used`,
+  `cap`; suggestions `[]` unless admin), one tag's page (`GET /tags/:name` → `TagPageDTO`: feed entries, docs,
+  decisions, newest 50 each, what it is seen with, who writes about it) and sets one item's tags
+  (`POST /item-tags` `{ type, id, tags }` → `setItemTags`: an authored, direct write; each tag must be live or
+  already on the item, at most 12). Reads answer 503 `{ error }` on failure, never a 500.
+- **Agents** read the list with MCP **`list_tags`** (live tags + descriptions) and can only USE it.
+  `get_feed` (MCP and HTTP) returns each entry's `tags`; `GET /doc/:slug` the doc's.
+- Screens: `web-ui.md` › Tags.
+
 ## Read side — FTS5 query engine
 
 `src/tools/reads.ts` exposes a ranked FTS5 `query()` engine (bm25, title/summary weighted) that backs

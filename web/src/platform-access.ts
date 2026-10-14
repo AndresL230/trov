@@ -30,7 +30,7 @@ import { adminField, adminError, adminTarget, type AdminKind } from "./platform"
 // ── state ────────────────────────────────────────────────────────────────────
 /** The five limits as the dialogs' text fields: "" = the plan's own value. */
 export type LimitDraft = Record<LimitKey, string>;
-export const blankLimits = (): LimitDraft => ({ seats: "", repositories: "", environments: "", artifact_bytes: "", agent_connections: "", ai_summaries: "" });
+export const blankLimits = (): LimitDraft => ({ seats: "", repositories: "", environments: "", artifact_bytes: "", agent_connections: "", ai_summaries: "", tags: "" });
 
 export type ExpiryChoice = "never" | `${(typeof GRANT_EXPIRY_DAYS)[number]}`;
 export interface GrantDraft {

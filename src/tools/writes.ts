@@ -1,6 +1,8 @@
 import type { DocRow, DocVersionRow, AdrRow, NeedsTriageRow, IdentityTaskRow } from "@shared/rows";
 import { DocProposal, AdrDraft, FeedEntry } from "@shared/contract";
-import { isSection, isTag } from "@shared/vocabulary";
+import { isSection } from "@shared/vocabulary";
+import { normalizeTagName } from "@shared/tags-core";
+import { liveTagNames } from "./tags";
 import { type TenantContext, first, run, stmt, batch, nowIso } from "../data/sql";
 import type { PlatformContext } from "../data/platform-sql";
 import { memberPerson, resolvePersonForLogin } from "../auth/persons";
@@ -487,9 +489,15 @@ export async function assign_triage(
     if (r.outcome === "triaged") throw new Error(`could not place decision: ${r.reason}`);
     assigned_ref = `adr:${r.id}`;
   } else {
+    // Tags the PERSON picked must be on the org's list (the picker offers nothing else). With none
+    // picked, the item's own tags go to the gate as they came: it keeps the ones on the list and
+    // records the rest as suggestions, exactly as it would have on the way in.
+    if (target.tags) {
+      const live = await liveTagNames(ctx);
+      const unknown = target.tags.filter((t) => { const n = normalizeTagName(t); return !n || !live.includes(n); });
+      if (unknown.length > 0) throw new Error(`unknown tag: ${unknown.join(", ")} — pick tags from this organization's list`);
+    }
     const entry = FeedEntry.parse({ ...raw, tags: target.tags ?? (raw.tags as string[] | undefined) ?? [] });
-    const unknown = entry.tags.filter((t) => !isTag(t));
-    if (unknown.length > 0) throw new Error(`unknown tag: ${unknown.join(", ")} — pick valid tags to place this`);
     const r = await ingestFeedEntry(ctx, entry, by, ledger);
     if (r.outcome === "triaged") throw new Error(`could not place feed entry: ${r.reason}`);
     assigned_ref = r.outcome === "written" ? `feed:${r.id}` : "feed:unchanged";

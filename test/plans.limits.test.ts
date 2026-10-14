@@ -70,18 +70,18 @@ describe("entitlements — the plan's defaults with the org's overrides on top",
   it("Free is exactly what a person gets with no grant; Pro is `team`, sold per seat; Personal is legacy — kept, offered to nobody", () => {
     expect(PLANS.free).toEqual({
       id: "free", name: "Free", description: "For a small team trying Trov out.",
-      entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300 },
+      entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, tags: 30 },
       features: [], offered: true, billing: null,
     });
     expect(PLANS.team).toEqual({
       id: "team", name: "Pro", description: "For a team, paid per seat.",
-      entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000 },
+      entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, tags: 30 },
       features: [], offered: true, billing: null,
     });
     // An org or grant already on Personal keeps its limits.
     expect(PLANS.personal).toEqual({
       id: "personal", name: "Personal", description: "One person's own organization.",
-      entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300 },
+      entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, tags: 30 },
       features: [], offered: false, billing: null,
     });
     expect(PLANS.enterprise).toMatchObject({ name: "Enterprise", offered: true, entitlements: { seats: null, repositories: 10, environments: 10 } });
@@ -611,7 +611,7 @@ describe("GET /api/o/:slug/plan and PUT /api/platform/orgs/:slug/plan", () => {
       plan: "team", name: "Pro", description: "For a team, paid per seat.", status: "active", source: "granted", period_end: null,
       gift_until: null, // 0048_plan_gifts: this plan is not a gift
       entitlements: PLANS.team.entitlements, overridden: [], seats: { members: 2, pending: 1 },
-      usage: { seats: 3, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0 }, over: [],
+      usage: { seats: 3, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0, tags: 6 }, over: [],
       billing: null, // a granted org: nothing about payment (0045_billing)
     });
     expect((await call("GET", "/api/o/planview/plan", await loner("outsider"))).status).toBe(404);

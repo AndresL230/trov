@@ -219,7 +219,9 @@ describe("ASSIGN_OPTIONS", () => {
     expect(ASSIGN_OPTIONS.kinds.map((k) => k.key)).toEqual(["doc", "adr", "feed"]);
     expect(ASSIGN_OPTIONS.sections).toEqual(["reference", "context", "decisions"]); // never needs-triage
     expect(ASSIGN_OPTIONS.spaces).toEqual(["technical", "product"]);
-    expect(ASSIGN_OPTIONS.tags).toContain("auth");
+    // A feed entry's tags are the organization's own list (0054_org_tags): render.ts fills them in
+    // from the list it read; nothing is fixed here.
+    expect(ASSIGN_OPTIONS.tags).toEqual([]);
   });
 });
 

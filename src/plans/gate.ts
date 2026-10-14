@@ -34,6 +34,8 @@ const USE: Record<TenantLimit, (ctx: TenantContext) => Promise<number>> = {
           + (SELECT COUNT(*) FROM oauth_grant_orgs WHERE org_id = ?1 AND person = ?2 COLLATE NOCASE) AS n`, ctx.orgId, ctx.userId),
   // PER CALENDAR MONTH (UTC): summarizer calls ATTEMPTED since the 1st, by the webhook and by Sync.
   ai_summaries: (ctx) => summariesUsed(ctx),
+  // The org's LIVE tags (0054_org_tags): a retired tag does not count.
+  tags: (ctx) => count(ctx, `SELECT COUNT(*) AS n FROM org_tags WHERE org_id = ? AND retired_at IS NULL`, ctx.orgId),
 };
 
 /** `(org_id, day, metric, actor)` is the table's primary key, so this is one range read of the org's
@@ -75,17 +77,17 @@ export async function requireFeature(ctx: TenantContext, feature: FeatureKey): P
 
 /** `GET /api/o/:slug/plan` — any member: the plan, what it includes, and the org's use of each limit. */
 export async function orgPlanView(ctx: TenantContext): Promise<OrgPlanView> {
-  const [state, ai_summaries, seats, repositories, environments, artifact_bytes, agent_connections] = await Promise.all([
+  const [state, ai_summaries, seats, repositories, environments, artifact_bytes, agent_connections, tags] = await Promise.all([
     planFor(ctx), limitUse(ctx, "ai_summaries"),
     first<{ members: number; pending: number }>(ctx,
       `SELECT (SELECT COUNT(*) FROM memberships WHERE org_id = ?1) AS members,
               (SELECT COUNT(*) FROM org_invites WHERE org_id = ?1 AND status = 'pending') AS pending`, ctx.orgId),
-    limitUse(ctx, "repositories"), limitUse(ctx, "environments"), limitUse(ctx, "artifact_bytes"), limitUse(ctx, "agent_connections"),
+    limitUse(ctx, "repositories"), limitUse(ctx, "environments"), limitUse(ctx, "artifact_bytes"), limitUse(ctx, "agent_connections"), limitUse(ctx, "tags"),
   ]);
   const def = planDef(state.plan);
   const entitlements = resolveEntitlements(state.plan, state.overrides);
   const split = { members: seats?.members ?? 0, pending: seats?.pending ?? 0 };
-  const usage = { seats: split.members + split.pending, repositories, environments, artifact_bytes, agent_connections, ai_summaries };
+  const usage = { seats: split.members + split.pending, repositories, environments, artifact_bytes, agent_connections, ai_summaries, tags };
   return {
     plan: def.id, name: def.name, description: def.description, status: state.status, source: state.source, period_end: state.period_end,
     gift_until: state.gift_until, entitlements, overridden: LIMIT_KEYS.filter((k) => k in state.overrides), usage, seats: split, over: overLimits(entitlements, usage),

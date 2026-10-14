@@ -2,7 +2,7 @@
 name: record-session
 description: Use when a person explicitly asks to wrap up, record, log, or capture the current Claude Code session into Trov (triggers — "record this session", "session-end", "log this to Trov", "save what we did"). Explicit invocation only — must never auto-fire at a natural stopping point.
 disable-model-invocation: true
-allowed-tools: Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh issue view:*), Bash(uuidgen:*), mcp__trov__query, mcp__trov__get_doc, mcp__trov__record_session, mcp__trov__upload_asset, Bash(shasum -a 256:*), Bash(sha256sum:*), Bash(wc -c:*), Bash(curl -X PUT:*), mcp__trov__get_connection, Bash(git remote get-url:*)
+allowed-tools: Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh issue view:*), Bash(uuidgen:*), mcp__trov__query, mcp__trov__get_doc, mcp__trov__record_session, mcp__trov__list_tags, mcp__trov__upload_asset, Bash(shasum -a 256:*), Bash(sha256sum:*), Bash(wc -c:*), Bash(curl -X PUT:*), mcp__trov__get_connection, Bash(git remote get-url:*)
 ---
 
 # Record Session → Trov
@@ -56,7 +56,8 @@ you are working in. Once per session, run `git remote get-url origin` and reduce
 ### 1. Inventory + classify
 
 Observe what shipped and sort it into target types. Classify placement with the controlled vocab
-(see Vocabulary); if nothing fits, that is the LOW-confidence signal (step 3), not license to coin a tag.
+(see Vocabulary). Feed tags come from the ORGANIZATION's own list — read it with `list_tags` before
+tagging. If no tag on the list fits, send the entry with the ones that do (or none): do not force one.
 
 | Need | Command (copy values verbatim) |
 |------|--------------------------------|
@@ -85,7 +86,8 @@ not a blind overwrite:
 - **HIGH** — an in-vocab placement truly fits and the change is grounded. The gate stages/appends it.
 - **LOW** — no fitting placement, or you're guessing. Set it low and let the gate route it to
   `needs_triage` for a human to place. **Routing to triage is the correct outcome for an uncertain
-  entry, not a failure.** Do not force an unrelated in-vocab tag/section to fake a clean write.
+  entry, not a failure.** Do not force an unrelated section to fake a clean write. (A feed entry's
+  TAGS never send it to triage: see Vocabulary.)
 
 ### 4. One feeder block per type (emit the contract object)
 
@@ -192,12 +194,19 @@ body:
 A bad brief, and why: `Added index_status + sweeper (#658), retries 3x with lease backoff` — that is the
 body's first line; it names internals and says nothing about who was hurt before.
 
-## Vocabulary — source of truth is `shared/vocabulary.ts` (verify before tagging)
+## Vocabulary (verify before tagging)
 
-- **Feed tags:** `auth`, `architecture`, `infra`, `api`, `ui`, `data`.
-- **Doc sections** (`doc_proposals` only): `reference`, `context`, `decisions`.
-- A feed entry has **no section** — tags alone place it. No tag fits → that's the LOW signal, not
-  license to coin a tag.
+- **Feed tags: the organization's own list.** Call `list_tags` (same `repo`) and pick from what it
+  returns — each tag comes with a line on what it is for. Every organization starts with `auth`,
+  `architecture`, `infra`, `api`, `ui`, `data`, and its admins add, rename, merge and retire tags, so
+  never assume the list: read it.
+- A tag that is NOT on the list does not block the entry. The entry is written with the tags that
+  are, and the result lists the other under `suggested_tags`: it waits for an admin, who adds it to
+  the list, maps it to an existing tag, or dismisses it. You cannot add a tag yourself. Suggest one
+  only when the work truly has no home on the list — say so in the summary you give the person.
+- **Doc sections** (`doc_proposals` only): `reference`, `context`, `decisions` — fixed
+  (`shared/vocabulary.ts`). An unknown section still routes the proposal to `needs_triage`.
+- A feed entry has **no section** — tags alone place it.
 
 ## Hard rules (invariants)
 
@@ -216,7 +225,8 @@ body's first line; it names internals and says nothing about who was hurt before
 - Composing a doc body from memory instead of reading the live doc first (step 2) — you lose the base
   and risk a stale rewrite.
 - Listing a commit/PR/issue `git`/`gh` does not show → fabricated artifact.
-- Forcing an in-vocab tag/section onto work it doesn't describe → should have been low/triage.
+- Forcing a tag or section onto work it doesn't describe → leave the tag off (or suggest one); a doc with no fitting section is low/triage.
+- Tagging from memory instead of `list_tags` → the organization's list is its own and changes.
 - Auto-firing at a natural stopping point instead of waiting for an explicit ask.
 - Writing a feed entry as a report — tables, pasted logs, several subjects in one body. Pick one
   type, open with its labelled lines, stay near 2,500 characters, and split the rest into more

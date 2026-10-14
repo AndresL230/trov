@@ -6,6 +6,7 @@ import {
   type PlatformContext, type Stmt, first, all, run, stmt, batch, nowIso,
 } from "../data/platform-sql";
 import { stmt as tenantStmt } from "../data/sql";
+import { starterTagStmts } from "../tools/tags";
 import { systemTenant, isSuperadmin, requireRole, hasRole, type TenantContext } from "../data/context";
 import { REGISTRY } from "../notifications/registry";
 import { DEFAULT_SETTINGS } from "../notifications/cron";
@@ -83,7 +84,7 @@ export interface CreateOrgInput {
 /**
  * THE way an org comes to exist: the `orgs` row, its owner's membership, and every per-org singleton a
  * working org reads — what 0042_organizations seeded for SaplingLearn: the `plan` row, `notification_settings`,
- * one `notification_policy` row per registry kind, and both `org_counters` — in ONE batch, on the plan
+ * one `notification_policy` row per registry kind, both `org_counters`, and the six starter tags (0054_org_tags) — in ONE batch, on the plan
  * `input.plan` names. `p.actor` is recorded as `created_by`. WHO may create one is the caller's to
  * enforce: a superadmin (src/platform `createOrgWithAdmin`), a person using a grant
  * (src/plans/grants.ts `createOrgFromGrant`, whose consuming statement rides in `extra`), or a person
@@ -120,6 +121,8 @@ export async function createOrg(p: PlatformContext, input: CreateOrgInput): Prom
     ...REGISTRY.map((k) => tenantStmt(sys,
       `INSERT INTO notification_policy (org_id, kind, default_cadence, enabled, updated_at, updated_by) VALUES (?, ?, ?, 1, ?, 'registry')`,
       sys.orgId, k.id, k.defaultCadence, at)),
+    // The six starter tags (0054_org_tags): the org's own list from its first day.
+    ...starterTagStmts(sys, at),
     auditStmt(p, id, "org.create", slug, { name, owner: input.owner, plan: input.plan.id }, at),
   ];
   if (input.owner) {

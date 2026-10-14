@@ -144,6 +144,11 @@
   One GitHub App installation in several orgs, each reaching what its admin can read
   (`0053_installation_repos` — the installation index is no longer unique; `repo_access` and
   `org_github_installation_repos`; the cross-org lookups in `src/platform/jobs.ts`): `docs/architecture/github-app.md` › One installation, several orgs.
+- **One tag list per organization, phase 1** (`0054_org_tags` — `org_tags`, `org_tag_suggestions`, and `entry_tags`
+  rebuilt without its reference to the global `tags`; 0052 is reserved by another branch): `shared/tags-core.ts`
+  (palette, starters, DTOs, `normalizeTagName`), `src/tools/tags.ts` (the rules and the gate's helpers),
+  `src/tags/routes.ts` (cookie routes), `web/src/tags.ts` + `tags-actions.ts` (Org settings › Tags, a tag's page,
+  a doc's Tags row), `tagMark` / `tagWords` in `web/src/marks.ts`: `docs/architecture/feed-and-search.md` › Tags.
   Which organization an MCP call acts in (`0051_mcp_connection_orgs` — `oauth_grants.mode`, the tenant table
   `oauth_grant_orgs`; `src/data/bearer.ts` holds the rule, `shared/repo-ref.ts` the one spelling of a
   repository, `src/mcp.ts` `buildConnectionMcpServer` the per-call resolution; Settings › MCP access in

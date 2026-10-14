@@ -72,9 +72,11 @@ export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
   // States drawn as marks instead of tags: the 2026-10 tag audit (#173).
+  // Also: one tag list per organization, phase 1 (feed entries, docs, decisions) — no pull request yet,
+  // so its patch lines carry no `(#N)`.
   {
     version: "Unreleased",
-    date: "2026-10-12",
+    date: "2026-10-13",
     unreleased: true,
     title: "Calmer status, fewer tags",
     headline: "Every screen shows a state with a small shape and a plain word, not a coloured capitals tag on every row, and hovering one tells you what it means.",
@@ -90,6 +92,15 @@ export const RELEASES: Release[] = [
       "States now read in sentence case, for example \"In progress\" instead of \"IN PROGRESS\".",
       "A pull request's state on the Repo screen is a circle too: dashed for Draft, filling through In review and Approved, a check for Merged.",
       "Roles, \"(you)\", a plan's name and other plain facts are plain text now, not coloured chips.",
+      "Tags are now each organization's own list, in Org settings › Tags. It starts with the six you know; an admin can add a tag, rename one, merge two or retire one, and give each a description and a colour.",
+      "A feed entry with a tag that is not on your list is no longer held in Unplaced. It is posted without the tag, and the tag waits in Org settings › Tags, where an admin adds it, points it at a tag you already have, or dismisses it.",
+      "Click a tag to open its page: every feed entry, doc and decision that carries it. Docs have a Tags row of their own.",
+      "A tag list holds up to 30 tags. Retired tags do not count.",
+    ],
+    ops: [
+      "Apply `0054_org_tags` (the deploy does it). It adds `org_tags` and `org_tag_suggestions`, gives every organization the six starter tags, and REBUILDS `entry_tags` without its reference to the global `tags` table: same columns and rows, a guard fails the migration if a row would be lost. Safe on the Worker from before it. Check first that every stored tag is one of the six: `SELECT tag, COUNT(*) FROM entry_tags WHERE tag NOT IN (SELECT tag FROM tags) GROUP BY tag` must return nothing. The by-hand rollback is in the file's header.",
+      "The per-organization tag cap is a placeholder (30 on every plan, `shared/plans.ts` `TAGS_PLACEHOLDER`): confirm the numbers before this ships.",
+      "Trov plugin 0.8.2 (skill text only): feed tags come from the organization's list (`list_tags`), and an unknown tag is a suggestion, not a triage item. Update the plugin from the marketplace.",
     ],
     patches: {
       added: [
@@ -99,6 +110,12 @@ export const RELEASES: Release[] = [
         "`kindMark` / `STATE_KIND` (`marks.ts`): a state by what it means (good, waiting, warn, bad, stopped, done, off) for settings, billing, the Repo verdicts and the platform pages; `roleWord` and `(you)` in `org-ui.ts` (#173)",
         "`artifactKindLabel` (`shared/artifacts-core.ts`): HTML / SVG / PDF / Markdown / …, shared by the viewer and the site (#173)",
         "`test/render.marks.test.ts`: the marks are never a pill, and the signed-out site and every tour mock draw no pill and take their states from `marks.ts` (#173)",
+        "`0054_org_tags`: `org_tags` (the org's own list: name, description, colour, `starter`, `retired_at`, `merged_into`) and `org_tag_suggestions` (one row per item and suggested tag: `source`, `confidence`, `reason`, `model`, `prompt_version`, `state`); `entry_tags` rebuilt without `REFERENCES tags(tag)`. No pull request yet",
+        "`src/tools/tags.ts`: the list's rules (add, rename with its items, merge, retire, restore, settle a suggestion), each `requireRole(admin)` with an `org_admin_audit` row (`tag.*`); `setItemTags` for a member; `sortAgentTags` / `recordTagSuggestions` for the gate",
+        "`src/tags/routes.ts`: `GET /api/o/:slug/tags[/:name]`, `POST /tags`, `PUT /tags/:name`, `POST /tags/:name/merge|retire|restore`, `POST /tags/suggestions/:name/resolve`, `POST /item-tags`. Cookie only: a request with an `Authorization` header is refused",
+        "MCP `list_tags` (read-only): the organization's live tags and what each is for. 44 tools for every member",
+        "The `tags` limit in `PLANS` (`LIMIT_KEYS`, `requirePlan(ctx, \"tags\")`): 30 on every plan, a placeholder",
+        "Web: Org settings › Tags (`web/src/tags.ts`, `tags-actions.ts`), a tag's page at `#tags/<name>`, a doc's Tags row, and `tagMark` / `tagWords` in `marks.ts` (a square and the word; plain words in a list, three then \"and N more\")",
       ],
       changed: [
         "Tickets: the table, board column heads, the status control and its menu, the rail, sub-ticket rows, sprint cards and the artifact attach picker draw `ticketStatusMark` / `priorityMark`; category, relation and source are plain text (`metaWord`) (#173)",
@@ -114,6 +131,10 @@ export const RELEASES: Release[] = [
         "Platform: an org's status, invites, grants, a plan's billing and a support report's status are `kindMark`s; roles, a report's kind and Signed out are plain text (#173)",
         "Review's stale-base notice is a warning mark on a plain surface (no coloured left edge); What's new marks Unreleased; the MCP consent page's Recommended is a soft label; Unplaced's activity kinds and Notifications' Org default are plain text (#173)",
         "My Work and roadmap digests: Merged and the plan changes (Added / Changed / Reordered / Done) are marks, and a GitHub issue's labels are plain words (#173)",
+        "The gate (`ingestFeedEntry`) reads the ORG's live tag list instead of `shared/vocabulary.ts` `TAGS`: known tags are written, an unknown one is recorded in `org_tag_suggestions` and the entry is written without it, never sent to `needs_triage` for that. `append_feed` / `record_session` answer `suggested_tags`. Replay ledger, section and confidence routing unchanged",
+        "`get_feed` (HTTP and MCP) carries each entry's `tags`; `GET /doc/:slug` carries the doc's. The Feed's tag filter and Unplaced's tag picker read the org's list",
+        "`createOrg` seeds the six starter tags; `shared/vocabulary.ts` `TAGS` and `0002_seed_vocab` now name the STARTER set, not the gate's vocabulary",
+        "`assign_triage` (feed): a picked tag must be on the org's list; with none picked, the item's own tags go through the gate as they came",
       ],
       fixed: [
         "A mark in an email took the mail client's serif default where its cell set no face (#173)",

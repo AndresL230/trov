@@ -63,6 +63,7 @@ import { getPersonProfile, writePersonProfile, setAvatar, clearAvatar, readAvata
 import { AVATAR_MAX_BYTES } from "@shared/people";
 import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
+import { tagsApp, itemTagsApp } from "./tags/routes";
 
 export const app = new Hono<AppEnv>();
 
@@ -188,6 +189,9 @@ app.route("/", billingApp);
 // it lives in src/index.ts, outside the gate, and can only turn email off.
 tenantApi.route("/artifacts", artifactsApp);
 tenantApi.route("/notifications", notificationsApp);
+// The org's tag list (0054_org_tags): any member reads, an admin changes it, a member tags one item.
+tenantApi.route("/tags", tagsApp);
+tenantApi.route("/item-tags", itemTagsApp);
 
 // ── Confirm verbs (§6.3, D6): a signed-in person's action, never a token's ────
 // Promote / reject a doc version, ratify / reject an ADR, publish a prompt (artifact ratify does the same

@@ -768,6 +768,37 @@ hairline**: a link chip (a PR / commit / issue reference), a filter chip, a remo
 switch. Never `text-transform:uppercase` on a state, never a `●` character (every shape is an SVG element
 with no border-radius, so the corners block leaves it alone), never a coloured left edge on a card.
 
+### Tags — a square and a word, or the word alone (`marks.ts` `tagMark` / `tagWords`)
+
+A tag is a FACT about an item, not a state, and `marks.ts` is the one place it is drawn ("option C"):
+
+- **In a LIST** an item's tags are plain muted words joined by " · ", at most three and then "and N more"
+  (`tagWords`; `shared/tags-core.ts` `tagLineParts`) — no colour, no shape, so a row never grows because of its
+  tags. The Feed's cards and a tag page's items use it.
+- **On an item's OWN page, in a tag picker and in Org settings** a tag is a small coloured SQUARE and the word
+  (`tagMark`, `tagSquare`): 8px, square corners, the tag's colour from the person palette's variables
+  (`var(--p-<key>)`, `TAG_COLORS`). The square is deliberate: circles, rings and triangles mean a state.
+- Never a pill, never uppercase, no box round a tag; the tags block of `trov.css` declares no radius
+  (`test/render.tags.test.ts`). A tag's word is a `tagOpen` button to its page unless `link: false`.
+
+**Screens** (`web/src/tags.ts` views, `web/src/tags-actions.ts` controller — every act starts with `tag`;
+`state.tags` is the org's list, read at boot and after every write, because the Feed's filter, Unplaced's
+picker, a doc's Tags row and the tab all draw from it):
+- **Org settings › Tags** (`#org/tags`, every member; `tagsTab`): the lead ("7 of 30 tags"), for admins
+  **Suggested by agents** above the list (each: who sent it, on what, a look-alike; Add to the list / Use an
+  existing tag — a `dropdown()` — / Dismiss), the add row, the list (square, name, what it is for, Feed / Docs /
+  Decisions counts, actions: Edit or — a starter — Rename, Merge into… as a `dropdown()`, Retire) and the
+  retired tags behind a disclosure (Restore). The editor's colour is a `segmented()` whose options are the
+  squares. Retire, merge and dismiss ask in `confirmModal`. The tab is inside Org settings' `data-morph`, so
+  typing in its fields patches the page.
+- **One tag's page** (`#tags/<name>`, screen `tag`, a child of Org settings › Tags in the header; `tagPageView`):
+  the square and name, what it is for, a `tabBar()` (All / Feed / Docs / Decisions with counts), then Docs,
+  Decisions, Recent in the feed; under All, "Often seen with" and "Who writes about it". A decision has no
+  screen, so its row opens Search on its title.
+- **A doc's Tags row** (`itemTagsRow`): each tag as `tagMark` with a remove button, and an Add a tag
+  `dropdown()` of the live tags it lacks. Feed entries and decisions have no page of their own, so they have
+  no picker yet (`POST /item-tags` accepts them).
+
 **Tooltips.** A mark carries `data-mtip`: a sentence on what its state means ("Built, and being checked
 before it is done."), not the word again; a glyph alone puts its name first ("Testing. Built, …"). ONE
 bubble shows it — `web/src/tip.ts` (`installMarkTips`, wired once in `main.ts`): the rail tooltip's look

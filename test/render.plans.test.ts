@@ -29,7 +29,7 @@ const picker = (orgs: MyOrgsResponse) => orgPickerView({ me, mine: orgs.orgs, or
 const view = (plan: PlanId = "team", o: Partial<OrgPlanView> = {}): OrgPlanView => ({
   plan, name: PLANS[plan].name, description: PLANS[plan].description, status: "active", source: "granted", period_end: null, gift_until: null,
   entitlements: PLANS[plan].entitlements, overridden: [], seats: { members: 5, pending: 2 },
-  usage: { seats: 7, repositories: 1, environments: 2, artifact_bytes: 1024 ** 3, agent_connections: 1, ai_summaries: 0 }, over: [], ...o,
+  usage: { seats: 7, repositories: 1, environments: 2, artifact_bytes: 1024 ** 3, agent_connections: 1, ai_summaries: 0, tags: 6 }, over: [], ...o,
 });
 /** An org's billing view (shared/billing.ts): by default a Free org that never paid and can upgrade to Pro. */
 const bill = (o: Partial<OrgBillingView> = {}): OrgBillingView => ({

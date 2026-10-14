@@ -198,8 +198,8 @@ export function listDocMeta(): Promise<DocMetaRow[]> {
   return getJson<{ docs: DocMetaRow[] }>("/docs?fields=meta").then((r) => r.docs);
 }
 
-export function getDoc(slug: string): Promise<{ doc: DocRow; versions: DocVersionRow[] }> {
-  return getJson<{ doc: DocRow; versions: DocVersionRow[] }>(`/doc/${encodeURIComponent(slug)}`).catch((e) => {
+export function getDoc(slug: string): Promise<{ doc: DocRow; versions: DocVersionRow[]; tags?: string[] }> {
+  return getJson<{ doc: DocRow; versions: DocVersionRow[]; tags?: string[] }>(`/doc/${encodeURIComponent(slug)}`).catch((e) => {
     if (e instanceof ApiError && e.status === 404) throw new NotFound(slug);
     throw e;
   });
@@ -326,6 +326,7 @@ import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView,
 import type * as IntT from "@shared/integrations";
 import type { BillingCheckoutRequest, BillingCheckoutResponse, BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
 import type * as GhT from "@shared/github-app";
+import type * as TagT from "@shared/tags-core";
 /** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
  *  `detail` the server's sentence, `field` the input it is about. */
 export class OrgApiError extends ApiError {
@@ -1043,3 +1044,21 @@ export function getPlatformSupportReport(id: number): Promise<SupportReport> {
 export function setPlatformSupportStatus(id: number, status: "open" | "resolved"): Promise<SupportReport> {
   return postJson<{ ok: true; report: SupportReport }>(`/api/platform/support/${id}/${status === "resolved" ? "resolve" : "reopen"}`).then((r) => r.report);
 }
+
+// ── the organization's tag list (0054_org_tags; src/tags/routes.ts) ──────────
+// Paths are the tenant alias (`/api/tags…`): `call` prefixes them with the org on screen.
+const tagPath = (name: string, rest = ""): string => `/api/tags/${encodeURIComponent(name)}${rest}`;
+/** The list, its counts and the plan's cap; an admin also gets what agents suggested. */
+export function listOrgTags(): Promise<TagT.TagListDTO> { return orgSend("GET", "/api/tags"); }
+/** One tag and everything that carries it. A 404 = no such tag. */
+export function getTagPage(name: string): Promise<TagT.TagPageDTO> { return orgSend("GET", tagPath(name)); }
+export function addOrgTag(body: { name: string; description?: string; color?: TagT.TagColor }): Promise<{ ok: true; name: string }> { return orgSend("POST", "/api/tags", body); }
+export function editOrgTag(name: string, body: { name?: string; description?: string; color?: TagT.TagColor }): Promise<{ ok: true; name: string }> { return orgSend("PUT", tagPath(name), body); }
+export function mergeOrgTag(name: string, into: string): Promise<{ ok: true; name: string; moved: number }> { return orgSend("POST", tagPath(name, "/merge"), { into }); }
+export function retireOrgTag(name: string): Promise<{ ok: true; name: string }> { return orgSend("POST", tagPath(name, "/retire")); }
+export function restoreOrgTag(name: string): Promise<{ ok: true; name: string }> { return orgSend("POST", tagPath(name, "/restore")); }
+export function resolveTagSuggestion(name: string, body: { resolution: TagT.SuggestionResolution; into?: string }): Promise<{ ok: true; name: string; applied_to: number; tag: string | null }> {
+  return orgSend("POST", `/api/tags/suggestions/${encodeURIComponent(name)}/resolve`, body);
+}
+/** Replace the tags of one feed entry, doc or decision (any member). */
+export function setItemTags(type: TagT.TagItemType, id: string, tags: string[]): Promise<{ ok: true; tags: string[] }> { return orgSend("POST", "/api/item-tags", { type, id, tags }); }

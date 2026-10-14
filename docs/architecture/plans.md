@@ -25,6 +25,12 @@ means unlimited. Plan ids are stored and never renamed: **`team` is the plan use
 | `agent_connections` | 5 | 10 | unlimited | 5 | PER PERSON: that person's live MCP tokens for the org + their connected apps that hold a row for it (`oauth_grant_orgs`) — see below | `mintToken`, `issueAuthorization` (the OAuth consent), `setGrantOrg` / `setGrantMode` (Settings), `admitGrantOrg` (a follow-the-repository connection's first call into the org) |
 | `ai_summaries` | 300 | 3,000 | unlimited | 300 | PER CALENDAR MONTH (UTC): summarizer calls attempted for the org | `orgSummarizers` (`src/plans/summaries.ts`) — it refuses nothing: past it an item shows its excerpt (below) |
 
+| `tags` | 30 | 30 | 30 | 30 | LIVE `org_tags` rows (a retired tag does not count) | `addTag`, `restoreTag`, `resolveSuggestion` accept (`src/tools/tags.ts`) |
+
+**Tags (0054_org_tags).** 30 on every plan is a PLACEHOLDER (`TAGS_PLACEHOLDER` in `shared/plans.ts`): the owner
+has not chosen the numbers. An override may not go below 6 (`LIMITS.tags.min`): every org has six starter
+tags that are never removed. The limit shows with the others in the Plan block and Settings › Limits.
+
 **How one connection counts when it can reach several organizations** (0051). The limit stays per organization,
 per person, and one rule covers both modes: *a connected app counts once in every organization that holds a
 row for it*, and a row is only ever written through `requirePlan` in THAT organization.
