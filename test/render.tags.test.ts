@@ -14,7 +14,7 @@ vi.mock("../web/src/markdown", () => ({
 import css from "../web/src/trov.css?raw";
 import { render, initialState, feedTagNames, type AppState } from "../web/src/render";
 import { tagMark, tagSquare, tagWords } from "../web/src/marks";
-import { tagsTab, tagPageView, tagWeeks, isTagPageTab, type TagPageTab, itemTagsRow, tagConfirmModal, initialTagsUi, tagDraftProblem, countsPhrase, aiSection, jevCell, type TagsUi } from "../web/src/tags";
+import { tagsTab, tagPageView, tagWeeks, isTagPageTab, type TagPageTab, itemTagsRow, tagConfirmModal, initialTagsUi, tagDraftProblem, countsPhrase, aiSection, jevCell, tagAddModal, nextTagColor, type TagsUi } from "../web/src/tags";
 import { orgTabsFor, ORG_TABS } from "../web/src/org-settings";
 import { parseHash, hashForRoute } from "../web/src/hash";
 import { STARTER_TAGS, TAG_COLORS, tagLineParts, similarTag, normalizeTagName, type OrgTagDTO, type TagListDTO, type TagPageDTO, type TagSuggestionDTO, type TagAiDTO, type TagRunDTO } from "@shared/tags-core";
@@ -97,18 +97,25 @@ describe("Org settings › Tags", () => {
     expect(parseHash("#tags")).toMatchObject({ screen: "org", orgTab: "tags" });
   });
 
-  it("an admin sees the count against the plan, the add row, the list with counts, and each tag's actions in a ⋯ menu", () => {
+  it("an admin sees the count against the plan, New tag over the list, the list with counts, and each tag's actions in a ⋯ menu", () => {
     const html = tab("admin");
     expect(html).toContain("<strong>7</strong> of 30 tags");
     expect(html).toContain("One list for everything in Acme Robotics");
-    expect(html).toContain(`data-act="tagNameDraft"`);
-    expect(html).toContain(`data-enter="tagAdd"`);
-    expect(html).toContain("Add tag");
-    // Adding is the list's FIRST row, on the same columns (not a form above it).
-    const head = html.indexOf("cnpy-taghead");
-    expect(html.indexOf("data-org-tag-add")).toBeGreaterThan(head);
-    expect(html.indexOf("data-org-tag-add")).toBeLessThan(html.indexOf(`data-org-tag="auth"`));
-    expect(piece(html, "data-org-tag-add")).toMatch(/<div class="cnpy-tagrow">[\s\S]*data-col="tag"[\s\S]*id="org-tag-name"[\s\S]*data-col="desc"[\s\S]*id="org-tag-desc"[\s\S]*data-col="acts"[\s\S]*data-act="tagAdd"/);
+    // Adding a tag is a button over the list (at the right) that opens a modal — no form on the page.
+    expect(html).toMatch(/<div class="cnpy-tagsbar"><button type="button" data-act="tagNew" data-field="tagNew" aria-haspopup="dialog"/);
+    expect(html.indexOf(`data-act="tagNew"`)).toBeLessThan(html.indexOf("cnpy-taghead"));
+    expect(html).not.toContain(`data-act="tagNameDraft"`);
+    const modal = tagAddModal({ ...initialTagsUi(), addOpen: true, nameDraft: "billing", addColor: "rust" }, list());
+    expect(modal).toContain(`role="alertdialog"`);
+    expect(modal).toContain(">New tag<");
+    expect(modal).toMatch(/id="tag-new-name" data-act="tagNameDraft"[^>]*data-confirm-focus/);
+    expect(modal).toContain(`id="tag-new-desc" data-act="tagDescDraft"`);
+    expect((modal.match(/data-act="tagNewColor"/g) ?? []).length).toBe(TAG_COLORS.length);
+    expect(modal).toMatch(/class="cnpy-seg-btn is-on"[^>]*data-arg="rust"/);
+    expect(modal).toContain(`data-act="tagAdd"`);
+    expect(modal).toContain(`data-act="tagNewCancel"`);
+    expect(tagAddModal(initialTagsUi(), list())).toBe("");                      // closed
+    expect(nextTagColor([{ color: "moss", retired: false }, { color: "fern", retired: false }])).toBe("sky");
 
     const row = piece(html, `data-org-tag="onboarding"`);
     expect(row).toContain(tagSquare("ochre"));
@@ -230,9 +237,11 @@ describe("Org settings › Tags", () => {
   });
 
   it("at the plan's cap the add button is off and the page says why; a bad draft says what a tag is", () => {
-    const full = tab("admin", list({ used: 30, cap: 30 }), { nameDraft: "new-one" });
-    expect(full).toMatch(/data-act="tagAdd"[^>]* disabled/);
-    expect(full).toMatch(/data-org-tag-full>The list holds 30 tags on this plan/);
+    const full = tab("admin", list({ used: 30, cap: 30 }));
+    expect(full).toMatch(/data-act="tagNew"[^>]* disabled title="The list holds 30 tags on this plan\. Retire or merge one to add another\."/);
+    const bad = tagAddModal({ ...initialTagsUi(), addOpen: true, nameDraft: "Bad Name!" }, list());
+    expect(bad).toMatch(/id="tag-new-e" role="alert" class="cnpy-tagnew-err">A tag is up to/);
+    expect(bad).toMatch(/class="cnpy-confirm-go cnpy-confirm-go--neutral" disabled/);
     expect(tagDraftProblem("Bad Name!", list().tags)).toMatch(/lowercase letters, digits and hyphens/);
     expect(tagDraftProblem("Auth", list().tags)).toBe("“auth” is already on the list.");
     expect(tagDraftProblem("legacy", list().tags)).toMatch(/retired/);

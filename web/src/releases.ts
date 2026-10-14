@@ -97,6 +97,7 @@ export const RELEASES: Release[] = [
       "While Trov looks, the tag's row shows a progress bar and a count of the items checked and tagged; the bar takes the tag's colour when it added the tag to something. Afterwards the row keeps the count, with Undo. A tag whose words match nothing still gets the newest items checked.",
       "The tag list is one even line per tag. Click what a tag is for to change it, or its square to change its colour; Rename, Merge into… and Retire are in each row's ⋯ menu. After you change a tag's words, Trov offers to look for items again.",
       "Tags an agent suggests now sit at the bottom of the tag list, shaded and marked Suggested, with Approve on the row.",
+      "New tag, at the top right of the list, opens a short form: a name, what it is for, a colour, and whether Jev should find the items that fit it now.",
       "Tags are now each organization's own list, in Org settings › Tags. It starts with the six you know; an admin can add a tag, rename one, merge two or retire one, and give each a description and a colour.",
       "A feed entry with a tag that is not on your list is no longer held in Unplaced. It is posted without the tag, and the tag waits in Org settings › Tags, where an admin adds it, points it at a tag you already have, or dismisses it.",
       "Click a tag to open its page: every feed entry, doc and decision that carries it, side by side, with when it was used, who writes about it, what it is often seen with, and which items Jev added. Docs have a Tags row of their own.",
@@ -146,7 +147,7 @@ export const RELEASES: Release[] = [
         "`org_ai_settings` (OFF by default; `PUT /api/o/:slug/tag-settings`), `POST /tags/:name/find-items`; the `jev_checks` monthly limit in `PLANS`",
         "A run, live: `org_tag_runs.checked` / `added` written as the run goes; `GET /api/o/:slug/tags/:name/run` (admins), polled every 600 ms while it runs; `web/src/fit-run.ts` draws ONE bar (fill = checked / candidates, eased, never ahead) whose colour says how it ended",
         "No review step (the owner's call, overriding issue 154's \"suggestions, never actions\" for this one feature): a fit at 0.7 or more ADDS the tag — the `entry_tags` row and its `org_tag_suggestions` provenance (`accepted`, resolved by `jev`, `run_id`) in one batch, one `tag.fit` audit row per run; `POST /tags/:name/undo-run` removes exactly that run's tags (`undone`); a person removing one is remembered (`removed`) and never re-added. The review list and `GET /tags/:name/fits`, `POST /tags/:name/fits/resolve` are removed; `jev` is a reserved handle",
-        "Fewer than 20 keyword matches: the newest other items top the run up to 20; a topped-up fit's reason is `Jev rates it a fit (N%)`; an empty org ends the run with nothing checked, said plainly; the add row nudges for a description",
+        "Fewer than 20 keyword matches: the newest other items top the run up to 20; a topped-up fit's reason is `Jev rates it a fit (N%)`; an empty org ends the run with nothing checked, said plainly; the New tag modal says a description helps",
         "Web: Org settings › Tags (`web/src/tags.ts`, `tags-actions.ts`), a tag's page at `#tags/<name>`, a doc's Tags row, and `tagMark` / `tagWords` in `marks.ts` (a square and the word; plain words in a list, three then \"and N more\")",
       ],
       changed: [

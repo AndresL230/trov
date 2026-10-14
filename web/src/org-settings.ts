@@ -30,7 +30,7 @@ import {
   sliceNote, roleWord, ROLE_WORD, roleOption, roleAtLeast, sameHandle, textField, tabLead, leadFlag, openRow, type OrgSlice,
 } from "./org-ui";
 import { kindMark } from "./marks";
-import { tagsTab, tagConfirmModal, initialTagsUi, type TagsTabProps } from "./tags";
+import { tagsTab, tagConfirmModal, tagAddModal, initialTagsUi, type TagsTabProps } from "./tags";
 export { roleAtLeast };
 export type { OrgSlice };
 import { tabBar, tabPanelAttrs } from "./tabs";
@@ -816,6 +816,7 @@ export function orgOverlays(p: OrgSettingsProps): string {
   const ui = p.ui;
   const menu = p.dd?.open ? dropdownMenu(orgDropdowns(p), p.dd) : "";
   if (p.tags?.ui.confirm && roleAtLeast(p.org.role, "admin")) return menu + tagConfirmModal(p.tags.ui.confirm, p.tags.list.data);
+  if (p.tags?.ui.addOpen && roleAtLeast(p.org.role, "admin")) return menu + tagAddModal(p.tags.ui, p.tags.list.data);
   if (ui.confirm) {
     const copy = orgConfirmCopy(ui.confirm, p.org, ui);
     if (copy) return menu + confirmModal({ id: "org-confirm", ...copy, confirmAct: "orgConfirmGo", cancelAct: "orgConfirmCancel", busy: ui.confirm.busy });

@@ -799,7 +799,11 @@ picker, a doc's Tags row and the tab all draw from it):
   with a meter), for admins Suggested by agents ("2 waiting") and Jev (the switch, a checks meter, and "What is
   sent": a small popover with the one sentence on what is sent, to whom and the way back; a click outside or
   Escape closes it) —
-  then the add row, the list and the retired tags behind a disclosure (Restore). The list is ONE line per tag, every row the same height, on
+  then New tag (a button over the list, at the right; disabled at the plan's cap, saying why) and the list, and the
+  retired tags behind a disclosure (Restore). **New tag** opens a modal (`tagAddModal`, built on `confirmModal`:
+  Enter adds, Escape closes, Tab stays inside): name, what it is for, the colour (a `segmented()` of squares, the
+  first colour no live tag uses), and — when Jev may look — "Find the items that fit it now", ON by default (the
+  button says "Add and find items"); off, the tag is added to nothing ("Add tag"). A bad name is said in the modal. The list is ONE line per tag, every row the same height, on
   ONE column template the list sets (`--tagcols`) so the head and every row line up: square and name ("Starter"
   beside a starter), what it is for, Items (the total; its tooltip says by type), for admins "Added by Jev" (below)
   and the actions — Find items as quiet text (it repeats on every row) and a ⋯ menu (`rowMenu`: Rename, and for a

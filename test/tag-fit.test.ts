@@ -418,6 +418,8 @@ describe("routes", () => {
     expect((await call("POST", `${BASE}/tags/auth/find-items`, owner, {})).json).toEqual({ ok: true, status: "no_key" });
     expect((await call("POST", `${BASE}/tags/auth/find-items`, member, {})).status).toBe(403);
     expect((await call("POST", `${BASE}/tags`, owner, { name: "billing" })).json).toMatchObject({ ok: true, name: "billing", fit: "no_key" });
+    // The New tag modal's switch off: the tag is added and nothing is looked for.
+    expect((await call("POST", `${BASE}/tags`, owner, { name: "invoices", scan: false })).json).toMatchObject({ ok: true, name: "invoices", fit: "skipped" });
     expect((await call("GET", `${BASE}/tags/billing/run`, owner)).json).toEqual({ run: null });
     expect((await call("GET", `${BASE}/tags/billing/run`, member)).status).toBe(403);
     expect((await call("POST", `${BASE}/tags/billing/undo-run`, member, {})).status).toBe(403);

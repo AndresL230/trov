@@ -96,8 +96,10 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
     found nothing to judge. When the keyword search yields fewer than 20, the newest other items (not tagged, not
     dismissed or open for it) fill the list up to 20, so Jev — the part that understands meaning — judges them.
     `CANDIDATE_CAP` stays 60 and the threshold 0.7. With nothing at all (an empty org) the run ends with
-    `candidates = 0` and no call, and the row says "Nothing in this organization to check yet." The add row nudges
-    for a description ("A one-line description helps find the right items"); it is never required.
+    `candidates = 0` and no call, and the row says "Nothing in this organization to check yet." The New tag modal
+    says a plain description helps Jev find the right items; it is never required. Its "Find the items that fit it
+    now" switch (on by default while Jev may look) sends `scan: false` on `POST /tags` when turned off: the tag is
+    added and no run starts (`fit: "skipped"`); Find items on its row looks later.
   - **Live progress**: the run writes `candidates`, `calls`, `checked` and `added` on `org_tag_runs` AS IT GOES —
     one small UPDATE per answer (≤ 60), and each confident "fits" adds the tag the moment it is answered.
     `GET /api/o/:slug/tags/:name/run` (admins; `{ run: TagRunDTO | null }`) is the cheap read the Tags tab polls.

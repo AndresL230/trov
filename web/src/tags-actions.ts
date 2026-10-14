@@ -9,7 +9,7 @@ import {
   findTagItems, undoTagRun, setTagSuggestions, getTagRun,
 } from "./api";
 import { currentOrg, roleAtLeast } from "./org-settings";
-import { isTagPageTab, tagDraftProblem } from "./tags";
+import { isTagPageTab, nextTagColor, tagDraftProblem } from "./tags";
 import { isTagColor, normalizeTagName } from "@shared/tags-core";
 import { POLL_MS, applyAnswer, barFill, barState, newLive, runCounter, shouldPoll, shownAt, type LiveRun } from "./fit-run";
 
@@ -243,12 +243,15 @@ export function createTagsController(host: TagsHost): TagsController {
     if (!name) return;
     u.addBusy = true; u.addError = null;
     rerender();
-    addOrgTag({ name, description: u.descDraft.trim() })
+    const ai = list.ai;
+    const scan = u.addScan && !!ai && ai.enabled && ai.available && !ai.spent;
+    addOrgTag({ name, description: u.descDraft.trim(), color: u.addColor, scan })
       .then((r) => {
-        u.addBusy = false; u.nameDraft = ""; u.descDraft = "";
-        host.flash(`Added the tag ${name}`);
+        u.addBusy = false; u.addOpen = false; u.nameDraft = ""; u.descDraft = "";
+        host.flash(r.fit === "started" ? `Added ${name}. Jev is looking for items that fit it.` : `Added the tag ${name}`);
         if (r.fit === "started") watch(name);
         load(); host.planChanged();
+        mount.querySelector<HTMLElement>(`[data-field="tagNew"]`)?.focus();
       })
       .catch((e) => { u.addBusy = false; if (fail(e)) return; u.addError = errorText(e, "Couldn't add the tag."); rerender(); });
   }
@@ -390,6 +393,22 @@ export function createTagsController(host: TagsHost): TagsController {
       case "tagNameDraft": u.nameDraft = value ?? ""; u.addError = null; break;
       case "tagDescDraft": u.descDraft = value ?? ""; break;
       case "tagAdd": add(); return;
+      // The New tag modal
+      case "tagNew": {
+        const list = state.tags.data;
+        if (!admin() || !list) return;
+        u.addOpen = true; u.addError = null; u.addColor = nextTagColor(list.tags); u.addScan = true;
+        u.menu = null; u.colorOpen = null; u.aiInfo = false;
+        rerender();
+        mount.querySelector<HTMLElement>("#tag-new-name")?.focus();
+        return;
+      }
+      case "tagNewCancel":
+        if (u.addBusy) return;
+        host.confirmOut(() => { u.addOpen = false; u.addError = null; rerender(); mount.querySelector<HTMLElement>(`[data-field="tagNew"]`)?.focus(); });
+        return;
+      case "tagNewColor": if (isTagColor(arg)) u.addColor = arg; break;
+      case "tagNewScan": u.addScan = !u.addScan; break;
 
       // A row's ⋯ menu
       case "tagMenu": u.menu = u.menu === arg ? null : (arg ?? null); u.menuMerge = false; u.colorOpen = null; break;

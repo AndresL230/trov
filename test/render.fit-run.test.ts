@@ -9,7 +9,7 @@ import css from "../web/src/trov.css?raw";
 import {
   POLL_MAX, EASE_MS, easeToward, applyAnswer, shownAt, shouldPoll, barFill, barState, shownAdded, runCounter, resultWords, fitCell, newLive, type LiveRun,
 } from "../web/src/fit-run";
-import { tagsTab, initialTagsUi } from "../web/src/tags";
+import { tagsTab, tagAddModal, initialTagsUi } from "../web/src/tags";
 import { STARTER_TAGS, type OrgTagDTO, type TagListDTO, type TagRunDTO } from "@shared/tags-core";
 
 const run = (o: Partial<TagRunDTO> = {}): TagRunDTO => ({ id: 1, status: "running", started_at: "t", ended_at: null, candidates: 40, checked: 0, added: 0, undone_at: null, ...o });
@@ -133,13 +133,20 @@ describe("the markup and the CSS", () => {
     expect(row).toMatch(/data-act="tagFind" data-arg="desktop"[^>]* disabled/);
   });
 
-  it("the add row nudges for a description once a name is typed — it never requires one", () => {
-    const org = { slug: "acme", name: "Acme", role: "owner" as const };
-    const l: TagListDTO = { tags: STARTER_TAGS.map((t) => ({ name: t.name, description: t.description, color: t.color, starter: true, retired: false, counts: { feed: 0, doc: 0, adr: 0 } })), used: 6, cap: 30, suggestions: [] };
-    const typed = tagsTab(org, { list: { status: "ok", data: l }, ui: { ...initialTagsUi(), nameDraft: "desktop" } });
-    expect(typed).toMatch(/style="[^"]*"\s+data-org-tag-nudge>A one-line description helps find the right items\./);
-    expect(typed).toMatch(/data-act="tagAdd"(?![^>]*disabled)/);
-    const described = tagsTab(org, { list: { status: "ok", data: l }, ui: { ...initialTagsUi(), nameDraft: "desktop", descDraft: "The Electron app" } });
-    expect(described).toMatch(/ hidden data-org-tag-nudge>/);
+  it("the New tag modal: Find the items that fit it now is ON by default when Jev may look, and says why when it can't", () => {
+    const tagRow = (t: (typeof STARTER_TAGS)[number]) => ({ name: t.name, description: t.description, color: t.color, starter: true, retired: false, counts: { feed: 0, doc: 0, adr: 0 } });
+    const l = (ai?: TagListDTO["ai"]): TagListDTO => ({ tags: STARTER_TAGS.map(tagRow), used: 6, cap: 30, suggestions: [], ...(ai ? { ai } : {}) });
+    const on = tagAddModal({ ...initialTagsUi(), addOpen: true, nameDraft: "desktop" }, l({ enabled: true, available: true, used: 0, cap: 300, spent: false }));
+    expect(on).toMatch(/data-act="tagNewScan"[^>]*role="switch" aria-checked="true"/);
+    expect(on).toContain(">Add and find items<");
+    const off = tagAddModal({ ...initialTagsUi(), addOpen: true, nameDraft: "desktop", addScan: false }, l({ enabled: true, available: true, used: 0, cap: 300, spent: false }));
+    expect(off).toMatch(/aria-checked="false"/);
+    expect(off).toContain(">Add tag<");
+    expect(off).toContain("Off: the tag is added to nothing.");
+    const noKey = tagAddModal({ ...initialTagsUi(), addOpen: true }, l({ enabled: true, available: false, used: 0, cap: 300, spent: false }));
+    expect(noKey).toContain("This Trov has no TypeSafe AI key set.");
+    expect(noKey).toMatch(/<button [^>]*disabled[^>]*data-act="tagNewScan"/);
+    expect(tagAddModal({ ...initialTagsUi(), addOpen: true }, l())).not.toContain("tagNewScan"); // a member's list carries no ai
   });
+
 });

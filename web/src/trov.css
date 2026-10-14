@@ -3167,13 +3167,21 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 .cnpy-tagdesc-btn:hover, .cnpy-tagdesc-btn:focus-visible { background:var(--hover); }
 .cnpy-taginline { display:block; box-sizing:border-box; width:calc(100% + 9px); height:30px; margin:0 0 0 -9px; padding:0 8px; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg); font-family:var(--sans); font-size:13px; line-height:28px; outline:none; }
 .cnpy-taginline:focus { border-color:var(--accent); }
-/* The add row's fields rest as quiet text boxes (a faint border), and take the edit field's look on hover/focus. */
-.cnpy-tagaddrow .cnpy-tagcolor-btn { color:var(--fg-40); cursor:default; }
-.cnpy-tagaddrow .cnpy-tagcolor-btn:hover { background:none; }
-.cnpy-tagadd-in { border-color:var(--border); background:transparent; transition:border-color .12s ease, background .12s ease; }
-.cnpy-tagadd-in:hover { border-color:var(--border-strong); }
-.cnpy-tagadd-in:focus { background:var(--surface); }
-.cnpy-tagadd-in::placeholder { color:var(--fg-40); }
+/* The bar over the list: New tag, at the right. Its radius is inline (the corners block). */
+.cnpy-tagsbar { display:flex; justify-content:flex-end; align-items:center; min-height:32px; margin-bottom:10px; }
+.cnpy-tagsbar-new { display:inline-flex; align-items:center; gap:7px; height:32px; padding:0 13px; background:var(--accent); color:var(--accent-fg); font-size:12.5px; font-weight:600; white-space:nowrap; cursor:pointer; }
+.cnpy-tagsbar-new:disabled { background:transparent; color:var(--fg-40); box-shadow:inset 0 0 0 1px var(--border); cursor:default; }
+.cnpy-tagsbar-new:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+/* The New tag modal's form (web/src/tags.ts tagAddModal), in confirmModal's detail slot. */
+.cnpy-tagnew { display:flex; flex-direction:column; gap:14px; margin-top:16px; }
+.cnpy-tagnew-l { display:block; margin-bottom:6px; font-size:12.5px; font-weight:500; color:var(--fg-70); }
+.cnpy-tagnew-in { display:block; width:100%; box-sizing:border-box; height:36px; padding:0 11px; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg); font-size:13.5px; font-family:var(--sans); outline:none; }
+.cnpy-tagnew-in:focus { border-color:var(--accent); }
+.cnpy-tagnew-in[aria-invalid="true"] { border-color:var(--red); }
+.cnpy-tagnew-help { margin-top:5px; font-size:12px; line-height:1.45; color:var(--fg-40); }
+.cnpy-tagnew-scan { display:flex; align-items:flex-start; gap:12px; padding-top:14px; border-top:1px solid var(--border); }
+.cnpy-tagnew-scan[data-off] .cnpy-tagnew-l { color:var(--fg-40); }
+.cnpy-tagnew-err { font-size:12.5px; line-height:1.5; color:var(--red); }
 .cnpy-tagrow-name .cnpy-taginline { width:calc(100% + 9px); font-size:13.5px; }
 .cnpy-tagcolor { position:relative; flex:none; display:inline-flex; align-self:center; }
 .cnpy-tagcolor-btn { display:grid; place-items:center; width:20px; height:20px; margin:-6px 0 -6px -6px; cursor:pointer; transition:background .12s ease; }

@@ -90,8 +90,10 @@ export const tagsApp = (() => {
   });
 
   r.post("/", (c) => guard(c, async () => {
-    const added = await addTag(c.var.ctx, await body(c));
-    return c.json({ ok: true, ...added, fit: await fitInBackground(c, added.name) }, 201);
+    const b = await body(c);
+    const added = await addTag(c.var.ctx, b);
+    // `scan: false` (the New tag modal's switch turned off): add the tag and look for nothing.
+    return c.json({ ok: true, ...added, fit: b.scan === false ? "skipped" : await fitInBackground(c, added.name) }, 201);
   }));
   r.post("/:name/find-items", (c) => guard(c, async () => {
     requireRole(c.var.ctx, "admin");

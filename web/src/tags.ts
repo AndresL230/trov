@@ -39,6 +39,10 @@ export interface TagsUi {
   descDraft: string;
   addBusy: boolean;
   addError: string | null;
+  /** The New tag modal is open, with the colour and the "find items now" choice it holds. */
+  addOpen: boolean;
+  addColor: TagColor;
+  addScan: boolean;
   /** The tag being edited in place (its row shows the editor). */
   edit: TagEdit | null;
   /** The tag or suggestion a write is out for (its buttons wait). */
@@ -62,7 +66,7 @@ export interface TagsUi {
   aiInfo: boolean;
 }
 export const initialTagsUi = (): TagsUi => ({
-  nameDraft: "", descDraft: "", addBusy: false, addError: null, edit: null, busy: null, confirm: null, showRetired: false, pageTab: "all", itemBusy: false,
+  nameDraft: "", descDraft: "", addBusy: false, addError: null, addOpen: false, addColor: "moss", addScan: true, edit: null, busy: null, confirm: null, showRetired: false, pageTab: "all", itemBusy: false,
   aiBusy: false, live: {}, menu: null, menuMerge: false, colorOpen: null, aiInfo: false,
 });
 
@@ -314,23 +318,6 @@ export function tagsTab(org: MyOrg, p: TagsTabProps): string {
       ${jev ? `<div data-col="jev">Added by Jev</div>` : ""}${admin ? `<div data-col="acts"></div>` : ""}
     </div>`;
   const rows = (ts: OrgTagDTO[]) => ts.map((t) => tagRow(t, admin, ui, list)).join("");
-  // Adding a tag is the list's FIRST row, on the same columns: its name and what it is for are fields in the same
-  // 30px boxes the rows edit in place, Add tag where a row's actions are. What is wrong with a draft is said under
-  // the list (one row never grows a second line).
-  const problem = tagDraftProblem(ui.nameDraft, list.tags);
-  const addErr = ui.addError ?? (problem || null);
-  const addRow = admin ? `<li class="cnpy-tagrow-wrap cnpy-tagaddrow" data-org-tag-add>
-      <div class="cnpy-tagrow">
-        <div data-col="tag" class="cnpy-tagrow-name"><span class="cnpy-tagcolor"><span class="cnpy-tagcolor-btn" aria-hidden="true" style="border-radius:5px"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.5"/></svg></span></span><input id="org-tag-name" data-act="tagNameDraft" data-field="tagName" data-enter="tagAdd" value="${attr(ui.nameDraft)}" maxlength="${TAG_NAME_MAX}" placeholder="New tag" aria-label="New tag name" autocomplete="off" autocapitalize="off" spellcheck="false"${addErr ? ' aria-invalid="true" aria-describedby="org-tag-e"' : ""} class="cnpy-input cnpy-taginline cnpy-tagadd-in" style="border-radius:6px" /></div>
-        <div data-col="desc" class="cnpy-tagrow-desc"><input id="org-tag-desc" data-act="tagDescDraft" data-field="tagDesc" data-enter="tagAdd" value="${attr(ui.descDraft)}" maxlength="${TAG_DESCRIPTION_MAX}" placeholder="What it is for (one line)" aria-label="What the new tag is for" autocomplete="off" class="cnpy-input cnpy-taginline cnpy-tagadd-in" style="border-radius:6px" /></div>
-        <div data-col="n"></div>
-        ${jev ? `<div data-col="jev"></div>` : ""}
-        <div data-col="acts" class="cnpy-tagrow-acts"><button type="button" data-act="tagAdd" class="cnpy-tagfind cnpy-tagapprove"${ui.addBusy || full || problem !== null ? " disabled" : ""}${full ? ` title="The list is full on this plan"` : ""}>${ui.addBusy ? "Adding…" : "Add tag"}</button></div>
-      </div>
-    </li>` : "";
-  const addNotes = admin ? `<div id="org-tag-e" role="alert" style="${O_ERR};margin:8px 0 0"${addErr ? "" : " hidden"}>${esc(addErr ?? "")}</div>
-    <div style="${O_HELP};margin-top:8px"${ui.nameDraft.trim() && !ui.descDraft.trim() && !addErr ? "" : " hidden"} data-org-tag-nudge>A one-line description helps find the right items.</div>
-    <div style="${O_HELP};margin-top:8px"${full && !addErr ? "" : " hidden"} data-org-tag-full>The list holds ${list.cap ?? 0} tags on this plan. Retire or merge one to add another.</div>` : "";
   const retiredBlock = retired.length ? `<div style="margin-top:18px" data-org-tags-retired>
       <button type="button" data-act="tagShowRetired" data-field="tagShowRetired" aria-expanded="${ui.showRetired}" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;padding:4px 0;font-size:12.5px;font-weight:500;color:var(--fg-55)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="transform:${ui.showRetired ? "rotate(90deg)" : "none"};transition:transform .15s ease"><path d="M9 6l6 6-6 6"></path></svg>${plural(retired.length, "retired tag", "retired tags")}</button>
       <ul${ul("margin:8px 0 0")}${ui.showRetired ? "" : " hidden"}>${rows(retired)}</ul>
@@ -338,11 +325,54 @@ export function tagsTab(org: MyOrg, p: TagsTabProps): string {
 
   return `${head0}
     <section aria-label="The tag list" data-org-group="tags">
-      <ul${ul("margin:0")}>${head}${addRow}${rows(live)}${admin ? list.suggestions.map((sg) => suggestionRow(sg, ui, list, jev)).join("") : ""}</ul>
-      ${addNotes}
+      <div class="cnpy-tagsbar">${admin ? `<button type="button" data-act="tagNew" data-field="tagNew" aria-haspopup="dialog" class="cnpy-accentbtn cnpy-tagsbar-new"${full ? ` disabled title="The list holds ${list.cap ?? 0} tags on this plan. Retire or merge one to add another."` : ""} style="border-radius:8px"><svg width="12" height="12" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.6"/></svg>New tag</button>` : ""}</div>
+      <ul${ul("margin:0")}>${head}${rows(live)}${admin ? list.suggestions.map((sg) => suggestionRow(sg, ui, list, jev)).join("") : ""}</ul>
       ${retiredBlock}
       <p style="${O_HELP};max-width:680px;margin-top:14px">The six starter tags come with every organization and can be renamed, not removed. A retired tag stays on what already has it and can no longer be picked.</p>
     </section>`;
+}
+
+/** The colour a new tag starts with: the first one no live tag uses yet, else the next in turn. */
+export function nextTagColor(tags: readonly Pick<OrgTagDTO, "color" | "retired">[]): TagColor {
+  const used = new Set(tags.filter((t) => !t.retired).map((t) => t.color));
+  return TAG_COLORS.find((c) => !used.has(c)) ?? TAG_COLORS[tags.length % TAG_COLORS.length];
+}
+
+/** The New tag modal (opened by the bar's New tag): name, what it is for, the colour, and — when Jev may look —
+ *  a switch to find the existing items that fit it now (on by default; off adds the tag and looks for nothing).
+ *  Built on `confirmModal` (its keyboard: Enter adds, Escape closes, Tab stays inside). "" when closed. */
+export function tagAddModal(ui: TagsUi, list: TagListDTO | null): string {
+  if (!ui.addOpen || !list) return "";
+  const problem = tagDraftProblem(ui.nameDraft, list.tags);
+  const err = ui.addError ?? (problem || null);
+  const ai = list.ai;
+  const can = canFind(ai);
+  const why = !ai ? "" : !ai.available ? "This Trov has no TypeSafe AI key set." : !ai.enabled ? "Jev is off for this organization (the switch above the list)." : ai.spent ? "This month's checks are used up." : "";
+  const scan = can && ui.addScan;
+  const label = (forId: string, text: string) => `<label for="${forId}" class="cnpy-tagnew-l">${text}</label>`;
+  const detail = `<div class="cnpy-tagnew">
+      <div>${label("tag-new-name", "Name")}
+        <input id="tag-new-name" data-act="tagNameDraft" data-field="tagName" data-confirm-focus value="${attr(ui.nameDraft)}" maxlength="${TAG_NAME_MAX}" placeholder="billing" autocomplete="off" autocapitalize="off" spellcheck="false"${err ? ' aria-invalid="true" aria-describedby="tag-new-e"' : ""}${ui.addBusy ? " disabled" : ""} class="cnpy-input cnpy-tagnew-in" style="border-radius:8px" />
+        <div class="cnpy-tagnew-help">Lowercase letters, digits and hyphens.</div></div>
+      <div>${label("tag-new-desc", "What it is for")}
+        <input id="tag-new-desc" data-act="tagDescDraft" data-field="tagDesc" value="${attr(ui.descDraft)}" maxlength="${TAG_DESCRIPTION_MAX}" placeholder="One line, in the team's words" autocomplete="off"${ui.addBusy ? " disabled" : ""} class="cnpy-input cnpy-tagnew-in" style="border-radius:8px" />
+        <div class="cnpy-tagnew-help">${can ? "Jev reads it to find the right items, so a plain line helps." : "Shown beside the tag in the list."}</div></div>
+      <div><span id="tag-new-color-l" class="cnpy-tagnew-l">Colour</span>${segmented({
+        id: "tag-new-color", ariaLabel: "Colour", value: ui.addColor, act: "tagNewColor", size: "sm",
+        options: TAG_COLORS.map((c) => ({ value: c, label: "", icon: `<span role="img" aria-label="${c}" style="display:grid;place-items:center;width:14px;height:14px">${tagSquare(c, 10)}</span>`, title: c[0].toUpperCase() + c.slice(1) })),
+      })}</div>
+      ${ai ? `<div class="cnpy-tagnew-scan"${can ? "" : ' data-off="1"'}>
+        <span style="flex:none">${switchBtn("tagNewScan", null, scan).replace("<button ", `<button aria-label="Find the items that fit it now" aria-describedby="tag-new-scan-d"${can && !ui.addBusy ? "" : " disabled"} `)}</span>
+        <div style="min-width:0"><div class="cnpy-tagnew-l" style="margin:0">Find the items that fit it now</div>
+          <div id="tag-new-scan-d" class="cnpy-tagnew-help" style="margin-top:2px">${can ? (scan ? "Jev checks the existing feed entries, docs and decisions and adds the tag where it fits. You can undo the run." : "Off: the tag is added to nothing. Find items on its row looks later.") : esc(why)}</div></div>
+      </div>` : ""}
+      <div id="tag-new-e" role="alert" class="cnpy-tagnew-err"${err ? "" : " hidden"}>${esc(err ?? "")}</div>
+    </div>`;
+  return confirmModal({
+    id: "tag-new", title: "New tag", body: "One list for everything: the same tag finds a feed entry, a doc and a decision.",
+    detail, confirmAct: "tagAdd", cancelAct: "tagNewCancel", tone: "neutral", busy: ui.addBusy,
+    confirmLabel: scan ? "Add and find items" : "Add tag", busyLabel: "Adding…", confirmDisabled: problem !== null,
+  });
 }
 
 /** The tab's confirmation modal, or "". */
