@@ -12,8 +12,10 @@ import { aiEligibility } from "../src/ai/eligibility";
 import { newBudget } from "../src/repo/dispatch";
 import { handleRepoCron } from "../src/repo/cron";
 import { PLANS } from "@shared/plans";
+import { AiUsageSchema } from "@shared/ai";
+import { platformUsage } from "../src/platform/usage";
 import { all, first, run } from "./helpers/db";
-import { ORG_A, ORG_B, systemCtx } from "./helpers/tenant";
+import { ORG_A, ORG_B, platformCtx, systemCtx } from "./helpers/tenant";
 import { setOrgEnvironments } from "./helpers/org-config";
 import { ENVS } from "./helpers/repo";
 import { FAKE_ANTHROPIC_KEY, errorResponse, messageResponse } from "./helpers/anthropic";
@@ -265,5 +267,28 @@ describe("aiEligibility", () => {
       await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, ?, ?, 'seed', 999, ?)`, ORG_A, DAY, m, `${DAY}T01:00:00.000Z`);
     }
     expect(await aiEligibility(ctx, keyed(), NOW)).toBe("ok");
+  });
+});
+
+describe("Platform › Usage — AI runs and tokens (OrgUsage.ai, PlatformUsageResponse.ai)", () => {
+  it("are read from the pass's metrics per org and in total, only when a key is set; the pass is never an active person", async () => {
+    await pass(stub({ ok: false }), [fakeJob((org) => (org === ORG_A ? 2 : 0))]);
+    await setPlan("free", ORG_B);
+    await seedRuns(250, ORG_B);
+    await pass(stub(), [fakeJob((org) => (org === ORG_B ? 1 : 0))]);
+    const p = platformCtx();
+    const on = await platformUsage(p, 30, NOW, { aiEnabled: true });
+    const a = on.orgs.find((o) => o.slug === "saplinglearn")!;
+    const b = on.orgs.find((o) => o.slug === "acme")!;
+    expect(AiUsageSchema.parse(a.ai)).toEqual({ runs: 2, failed: 2, capped: 0, tokensIn: 0, tokensOut: 0, tokensCached: 0 });
+    expect(b.ai).toEqual({ runs: 250, failed: 0, capped: 1, tokensIn: 0, tokensOut: 0, tokensCached: 0 }); // the seeded `ai_run:seed` counts as runs
+    expect(on.ai).toEqual({ runs: 252, failed: 2, capped: 1, tokensIn: 0, tokensOut: 0, tokensCached: 0 });
+    // Not a person's request: no active people, no "last activity".
+    expect(a.activity.active_people).toBe(0);
+    expect(a.last_activity_at).toBeNull();
+    // No key: the field is not there at all (Platform says AI is off, as for summaries).
+    const off = await platformUsage(p, 30, NOW);
+    expect(off).not.toHaveProperty("ai");
+    expect(off.orgs.every((o) => !("ai" in o))).toBe(true);
   });
 });
