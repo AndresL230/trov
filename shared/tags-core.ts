@@ -96,6 +96,7 @@ export interface TagSuggestionDTO {
 
 /** A run of "which existing items fit this tag?" (src/tools/tag-fit.ts). */
 export interface TagRunDTO {
+  id: number;
   status: "running" | "done" | "capped" | "failed";
   started_at: string;
   ended_at: string | null;
@@ -103,19 +104,10 @@ export interface TagRunDTO {
   candidates: number;
   /** Items the model has answered about so far. */
   checked: number;
-  /** Of those, the ones stored as "may fit". */
-  suggested: number;
-}
-
-/** One open MODEL suggestion that an item fits a tag — never drawn as a tag the item has. */
-export interface TagFitDTO {
-  type: TagItemType;
-  id: string;
-  title: string;
-  /** One sentence: why the model thinks it fits. */
-  reason: string;
-  confidence: number;
-  suggested_at: string;
+  /** Of those, the items the run ADDED the tag to (Jev judged them a fit at 0.7 or more). */
+  added: number;
+  /** An admin undid the run: the tags it added were removed. */
+  undone_at: string | null;
 }
 
 /** The org's switch for model suggestions, and where the month's allowance stands — admins only. */
@@ -134,8 +126,8 @@ export interface TagListDTO {
   tags: OrgTagDTO[];
   /** Admins only (absent for a member): the AI switch and allowance. */
   ai?: TagAiDTO;
-  /** Admins only: per live tag, how many items MAY fit it (open model suggestions) and its latest run. */
-  fits?: Record<string, { open: number; run: TagRunDTO | null }>;
+  /** Admins only: per live tag, its latest run of "which existing items fit". */
+  runs?: Record<string, TagRunDTO>;
   /** Live tags, of the plan's `cap` (null = no cap). Retired tags do not count. */
   used: number;
   cap: number | null;
@@ -175,7 +167,7 @@ export type SuggestionResolution = (typeof SUGGESTION_RESOLUTIONS)[number];
 export type TagAuditAction = "tag.add" | "tag.rename" | "tag.edit" | "tag.merge" | "tag.retire" | "tag.restore"
   | "tag.suggestion.accept" | "tag.suggestion.map" | "tag.suggestion.dismiss"
   // The model's suggestions (src/tools/tag-fit.ts): the org's switch, and an admin settling them.
-  | "ai.enable" | "ai.disable" | "tag.fit.accept" | "tag.fit.dismiss";
+  | "ai.enable" | "ai.disable" | "tag.fit" | "tag.fit.undo";
 
 /** A live tag one edit away from `name`, or one that `name` extends ("authn" → "auth"). */
 export function similarTag(name: string, live: readonly string[]): string | null {

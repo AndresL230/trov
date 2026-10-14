@@ -1064,12 +1064,8 @@ export function resolveTagSuggestion(name: string, body: { resolution: TagT.Sugg
 export function findTagItems(name: string): Promise<{ ok: true; status: "started" | "off" | "no_key" | "busy" | "capped" | "not_found" }> { return orgSend("POST", tagPath(name, "/find-items")); }
 /** The latest run for a tag, live (admin): what the Tags tab polls while it goes. */
 export function getTagRun(name: string): Promise<TagT.TagRunDTO | null> { return orgSend<{ run: TagT.TagRunDTO | null }>("GET", tagPath(name, "/run")).then((r) => r.run); }
-/** What the model suggested may fit a tag (admin). */
-export function listTagFits(name: string): Promise<TagT.TagFitDTO[]> { return orgSend<{ fits: TagT.TagFitDTO[] }>("GET", tagPath(name, "/fits")).then((r) => r.fits); }
-/** Accept or dismiss model suggestions for a tag: some items, or (none named) all of them. */
-export function resolveTagFits(name: string, resolution: "accept" | "dismiss", items?: { type: TagT.TagItemType; id: string }[]): Promise<{ ok: true; resolved: number }> {
-  return orgSend("POST", tagPath(name, "/fits/resolve"), items ? { resolution, items } : { resolution });
-}
+/** Undo a tag's latest run (admin): take the tag off exactly the items that run tagged. */
+export function undoTagRun(name: string): Promise<{ ok: true; removed: number }> { return orgSend("POST", tagPath(name, "/undo-run"), {}); }
 /** The org's switch for model suggestions (admin). */
 export function setTagSuggestions(enabled: boolean): Promise<{ ok: true; enabled: boolean }> { return orgSend("PUT", "/api/tag-settings", { enabled }); }
 /** Replace the tags of one feed entry, doc or decision (any member). */

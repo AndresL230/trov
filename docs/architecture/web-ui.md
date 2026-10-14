@@ -798,27 +798,23 @@ picker, a doc's Tags row and the tab all draw from it):
 - **A doc's Tags row** (`itemTagsRow`): each tag as `tagMark` with a remove button, and an Add a tag
   `dropdown()` of the live tags it lacks. Feed entries and decisions have no page of their own, so they have
   no picker yet (`POST /item-tags` accepts them).
-- **What may fit** (admins, on the Tags tab; `aiSection`, `fitsPanel`): the switch (`switchBtn`, OFF by default)
-  with ONE sentence on what is sent and to whom, and where the month's checks stand. Under a tag's row: "N items
-  may fit" (opens the review list), "Looking for items that fit…" while a run goes (the controller re-reads the
-  list every 3 s, at most 40 times), why a run stopped, and Find items. The review list is visibly a
-  SUGGESTION (#157): a dashed frame, each item's title (a link to it), "May fit:" and the reason — Trov's evidence,
-  the passage that matched (Jev writes no text) — Accept / Dismiss, and Accept all behind `confirmModal` — never the tag's square on the item.
+- **Tagging existing items** (admins, on the Tags tab; `aiSection`, `fitLine`): the switch (`switchBtn`, OFF by
+  default) with ONE sentence on what is sent, to whom, and that the tag is ADDED (with the way back), and where the
+  month's checks stand. Under a tag's row, the latest run's result: "Added to 7 items." with Undo (a `confirmModal`
+  that says exactly what it takes back), "Checked 20 — none fit.", "Nothing in this organization to check yet.",
+  why a run stopped, "Undone: …" — and Find items. There is no review list: the owner chose no review step
+  (`feed-and-search.md` › Tags).
 - **A run, live** (`web/src/fit-run.ts`, the controller in `tags-actions.ts`): while a run goes, its row polls
   `GET …/tags/:name/run` every 600 ms (stops when the run ends, while the tab is hidden — resuming when shown — and
-  after 300 reads) and draws it from those REAL numbers only. The candidates are small squares (6px, square
-  corners, at most 40 — one per candidate) queued on the left of a short track; each one the server reports as
-  checked travels along it and settles into a "may fit" group on the right in the tag's colour, or fades out
-  mid-track; a counter says "Checked 23 of 40 · 5 may fit". Which square fits is not known item by item: each
-  batch of newly checked squares gets as many fits as the server's count grew by, and keeps them
-  (`assignOutcomes`). Between answers ONE `requestAnimationFrame` loop eases toward the latest numbers
-  (`easeToward`, never past them) and writes each square's CSS variables (`--x`, `--y`, opacity) and `data-kind`
-  straight into the row's FIXED set of elements — transform and opacity only, no repaint per frame; the markup
-  is the same structure on every paint (`fitRunView`). The line keeps one height (`.cnpy-tagfitline` min-height
-  28px), so nothing jumps when a run starts or ends. At the end it resolves into the row's "N items may fit" and
-  opens the review list, its rows entering one after another (`.is-fresh`, staggered); "Checked 40 — none fit."
-  or "Nothing in this organization to check yet." when there is nothing. Under `prefers-reduced-motion` the track
-  is hidden, a plain bar shows the same count, nothing moves and no frame loop runs.
+  after 300 reads) and draws it from those REAL numbers only: ONE bar whose fill is exactly `checked / candidates`
+  (a `scaleX` transform) and a counter beside it ("Checked 23 of 40 · 5 added"). Between answers one
+  `requestAnimationFrame` loop eases the fill toward the latest answer (`easeToward`, never past it) and writes it
+  straight into the row's elements — no repaint per frame; the markup is the same structure on every paint
+  (`fitRunView`), its state an attribute. When the run ends and the bar has caught up, it changes colour
+  (`data-state`): the tag's own colour when it added the tag to something, a quiet tone when not — a short colour
+  transition. After a moment the row shows the result line. The line keeps one height (`.cnpy-tagfitline`
+  min-height 28px), so nothing jumps when a run starts or ends. Under `prefers-reduced-motion` the fill jumps to
+  each answer (no frame loop) and the colour change is instant.
 
 **Tooltips.** A mark carries `data-mtip`: a sentence on what its state means ("Built, and being checked
 before it is done."), not the word again; a glyph alone puts its name first ("Testing. Built, …"). ONE

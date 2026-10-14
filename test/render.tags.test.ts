@@ -14,10 +14,10 @@ vi.mock("../web/src/markdown", () => ({
 import css from "../web/src/trov.css?raw";
 import { render, initialState, feedTagNames, type AppState } from "../web/src/render";
 import { tagMark, tagSquare, tagWords } from "../web/src/marks";
-import { tagsTab, tagPageView, itemTagsRow, tagConfirmModal, tagsDropdowns, initialTagsUi, tagDraftProblem, countsPhrase, aiSection, fitsPanel, type TagsUi } from "../web/src/tags";
+import { tagsTab, tagPageView, itemTagsRow, tagConfirmModal, tagsDropdowns, initialTagsUi, tagDraftProblem, countsPhrase, aiSection, fitLine, type TagsUi } from "../web/src/tags";
 import { orgTabsFor, ORG_TABS } from "../web/src/org-settings";
 import { parseHash, hashForRoute } from "../web/src/hash";
-import { STARTER_TAGS, TAG_COLORS, tagLineParts, similarTag, normalizeTagName, type OrgTagDTO, type TagListDTO, type TagPageDTO, type TagSuggestionDTO, type TagAiDTO, type TagFitDTO } from "@shared/tags-core";
+import { STARTER_TAGS, TAG_COLORS, tagLineParts, similarTag, normalizeTagName, type OrgTagDTO, type TagListDTO, type TagPageDTO, type TagSuggestionDTO, type TagAiDTO, type TagRunDTO } from "@shared/tags-core";
 import type { MyOrg, OrgRole } from "@shared/orgs";
 import type { FeedRow } from "@shared/rows";
 
@@ -356,81 +356,62 @@ describe("shared helpers", () => {
   });
 });
 
-describe("what Trov's model thinks may fit a tag (issues #154–#158)", () => {
+describe("tags added by Jev, on the Tags tab (the owner's call: no review step)", () => {
   const ai = (o: Partial<TagAiDTO> = {}): TagAiDTO => ({ enabled: true, available: true, used: 12, cap: 300, spent: false, ...o });
-  const fit = (id: string, title: string, o: Partial<TagFitDTO> = {}): TagFitDTO => ({ type: "feed", id, title, reason: "It is about what a customer pays.", confidence: 0.9, suggested_at: "2026-10-13T10:00:00Z", ...o });
+  const run = (o: Partial<TagRunDTO> = {}): TagRunDTO => ({ id: 4, status: "done", started_at: "t", ended_at: "t", candidates: 20, checked: 20, added: 7, undone_at: null, ...o });
+  const t = (name: string): OrgTagDTO => tag(name, { color: "ochre" });
 
-  it("the switch: OFF by default, one plain sentence on what is sent and to whom, and where the month stands", () => {
+  it("the switch: OFF by default, one plain sentence on what is sent, to whom, and that the tag is ADDED — with the way back", () => {
     const off = aiSection(ai({ enabled: false }), initialTagsUi());
     expect(off).toContain(`role="switch" aria-checked="false"`);
-    expect(off).toContain(`aria-label="Suggest items for a new tag"`);
-    expect(off).toContain("to Jev, TypeSafe AI's decision model");
+    expect(off).toContain(`aria-label="Tag existing items for a new tag"`);
+    expect(off).toContain("to Jev, TypeSafe AI's decision model, and adds the tag to each item Jev judges a fit.");
+    expect(off).toContain("You can undo a run, or take the tag off any item.");
+    expect(off).not.toContain("until you accept");
     expect(off).toContain("first 400 characters");
-    expect(off).toContain("Nothing is tagged until you accept.");
     expect(off).toContain("Off: nothing is sent.");
     expect(aiSection(ai(), initialTagsUi())).toContain("12 of 300 checks used this month.");
     expect(aiSection(ai({ spent: true, used: 300 }), initialTagsUi())).toContain("This month&#39;s checks are used up");
     const nokey = aiSection(ai({ available: false, enabled: false }), initialTagsUi());
-    expect(nokey).toContain("no TypeSafe AI key set");
+    expect(nokey).toContain("no TypeSafe AI key set, so nothing is sent and nothing is tagged");
     expect(nokey).toMatch(/role="switch"[^>]*disabled|disabled[^>]*role="switch"/);
   });
 
-  it("a tag row says how many items may fit, a run in progress, or why it stopped — and offers Find items while the switch is on", () => {
-    const l = list({ ai: ai(), fits: { onboarding: { open: 3, run: { status: "done", started_at: "t", ended_at: "t", candidates: 9, checked: 9, suggested: 3 } }, auth: { open: 0, run: { status: "running", started_at: "t", ended_at: null, candidates: 9, checked: 2, suggested: 0 } }, ui: { open: 0, run: { status: "capped", started_at: "t", ended_at: "t", candidates: 9, checked: 4, suggested: 0 } } } });
-    const html = tab("admin", l);
-    expect(html).toContain(`data-org-group="tag-ai"`);
-    expect(piece(html, `data-org-tag="onboarding"`)).toContain(`data-act="tagFitsOpen" data-arg="onboarding"`);
-    expect(piece(html, `data-org-tag="onboarding"`)).toContain("3 items may fit");
-    expect(piece(html, `data-org-tag="auth"`)).toContain("Looking for items that fit…");
-    expect(piece(html, `data-org-tag="auth"`)).not.toContain(`data-act="tagFind"`);
-    expect(piece(html, `data-org-tag="ui"`)).toContain("Stopped: this month's checks are used up.");
-    expect(piece(html, `data-org-tag="data"`)).toContain(`data-act="tagFind" data-arg="data"`);
-    // Switch off: no Find items anywhere; a member sees none of it.
-    expect(tab("admin", list({ ai: ai({ enabled: false }), fits: {} }))).not.toContain(`data-act="tagFind"`);
-    const member = tab("member", list({ ai: ai(), fits: { onboarding: { open: 3, run: null } } }));
-    expect(member).not.toContain("tag-ai");
-    expect(member).not.toContain("may fit");
-    noPill(html);
+  it("after a run the row says what it did: \"Added to 7 items\" with Undo (confirmModal); none fit; nothing to check; undone; stopped", () => {
+    const added = fitLine(t("onboarding"), run(), ai(), initialTagsUi());
+    expect(added).toContain("Added to 7 items.");
+    expect(added).toContain(`data-act="tagConfirm" data-arg="undoRun:onboarding"`);
+    expect(added).toContain(`data-act="tagFind" data-arg="onboarding"`);
+    expect(added).not.toMatch(/Accept|Dismiss|may fit/);
+    expect(fitLine(t("x"), run({ added: 1 }), ai(), initialTagsUi())).toContain("Added to 1 item.");
+    expect(fitLine(t("x"), run({ added: 0 }), ai(), initialTagsUi())).toContain("Checked 20 — none fit.");
+    expect(fitLine(t("x"), run({ added: 0, candidates: 0, checked: 0 }), ai(), initialTagsUi())).toContain("Nothing in this organization to check yet.");
+    const undone = fitLine(t("x"), run({ undone_at: "t" }), ai(), initialTagsUi());
+    expect(undone).toContain("Undone: the 7 items this run tagged no longer have it.");
+    expect(undone).not.toContain("undoRun");
+    expect(fitLine(t("x"), run({ status: "capped", checked: 9, added: 2 }), ai(), initialTagsUi())).toContain("Stopped at 9 of 20: this month&#39;s checks are used up. Added to 2 items.");
+    expect(fitLine(t("x"), run({ status: "running" }), ai(), initialTagsUi())).toContain("Looking for items that fit…");
+    expect(fitLine(t("x"), run({ status: "running" }), ai(), initialTagsUi())).not.toContain("tagFind");
+    // The switch off: no Find items; a member never sees any of it (the tab passes no `ai`).
+    expect(fitLine(t("x"), undefined, ai({ enabled: false }), initialTagsUi())).toBe("");
+    expect(fitLine(t("x"), run(), undefined, initialTagsUi())).toBe("");
   });
 
-  it("the review list: each item's title linking to it, the reason, Accept and Dismiss — never the tag's square on the item", () => {
-    const ui: TagsUi = { ...initialTagsUi(), fitsOpen: "onboarding", fits: { status: "ok", data: [fit("41", "Invoices show seats"), fit("how-to", "How sign-up works", { type: "doc" }), fit("7", "Sessions in a cookie", { type: "adr" })] } };
-    const panel = fitsPanel("onboarding", ui);
-    expect(panel).toContain("These may fit <strong");
-    expect(panel).toContain("each shows the passage that matched");
-    expect(panel).toContain("Nothing is tagged until you accept.");
-    expect(panel).toContain(`data-act="goFeed" data-arg="41"`);
-    expect(panel).toContain(`data-act="openDocFrom" data-arg="how-to"`);
-    expect(panel).toContain(`data-act="tagOpenDecision" data-arg="Sessions in a cookie"`);
-    expect(panel).toContain("Feed entry · May fit:</span> It is about what a customer pays.");
-    expect(panel).toContain(`data-act="tagFitAccept" data-arg="feed:41"`);
-    expect(panel).toContain(`data-act="tagFitDismiss" data-arg="doc:how-to"`);
-    expect(panel).toContain(`data-act="tagConfirm" data-arg="acceptAll:onboarding"`);
-    expect(panel).not.toContain("cnpy-tagsq");              // a suggestion is not drawn as a tag the item has
-    expect(panel).not.toContain("<button type=\"button\" data-act=\"tagFitAccept\"><button");
-    noPill(panel);
-    // In the tab, under its row.
-    const html = tab("admin", list({ ai: ai(), fits: { onboarding: { open: 3, run: null } } }), ui);
-    expect(piece(html, `data-org-tag="onboarding"`)).toContain(`data-tag-fits="onboarding"`);
-    expect(fitsPanel("onboarding", { ...ui, fits: { status: "ok", data: [] } })).toContain("Nothing left to review.");
-    expect(fitsPanel("onboarding", { ...ui, fits: { status: "error", data: [] } })).toContain(`data-act="tagFitsReload"`);
-  });
-
-  it("Accept all asks first, in confirmModal", () => {
-    const m = tagConfirmModal({ what: "acceptAll", name: "onboarding", busy: false }, list({ fits: { onboarding: { open: 3, run: null } } }));
-    expect(m).toContain("Tag 3 items onboarding?");
+  it("Undo asks first, and says exactly what it takes back", () => {
+    const m = tagConfirmModal({ what: "undoRun", name: "onboarding", busy: false }, list({ runs: { onboarding: run() } }));
+    expect(m).toContain("Undo the last run for onboarding?");
+    expect(m).toContain("onboarding comes off the 7 items that run tagged. Nothing else changes, and Trov will not add it to them again.");
     expect(m).toContain(`data-act="tagConfirmGo"`);
-    expect(m).toContain("Accept all");
   });
 
-  it("the tab with the review list open is inside Org settings' data-morph, so the page is patched, not rebuilt", () => {
-    const s: AppState = initialState();
-    s.view = "app"; s.screen = "org"; s.orgSlug = "acme"; s.org.tab = "tags";
-    s.me = { handle: "andres", name: "Andres", color: "moss", avatar_url: null, orgs: [org("owner")], pending_invites: 0 } as unknown as AppState["me"];
-    s.tags = { status: "ok", data: list({ ai: ai(), fits: { onboarding: { open: 1, run: null } } }) };
-    s.tagsUi = { ...initialTagsUi(), fitsOpen: "onboarding", fits: { status: "ok", data: [fit("41", "Invoices show seats")] } };
-    const html = render(s);
-    expect(html).toContain(`data-morph="org"`);
-    expect(html).toContain(`data-tag-fits="onboarding"`);
+  it("in the tab: the result under each row; a member sees none of it", () => {
+    const html = tab("admin", list({ ai: ai(), runs: { onboarding: run(), auth: run({ status: "running" }) } }));
+    expect(html).toContain(`data-org-group="tag-ai"`);
+    expect(html.slice(html.indexOf(`data-org-tag="onboarding"`))).toContain("Added to 7 items.");
+    expect(html.slice(html.indexOf(`data-org-tag="auth"`))).toContain("Looking for items that fit…");
+    const member = tab("member", list({ ai: ai(), runs: { onboarding: run() } }));
+    expect(member).not.toContain("tag-ai");
+    expect(member).not.toContain("Added to");
+    noPill(html);
   });
 });

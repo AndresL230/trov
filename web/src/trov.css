@@ -3175,35 +3175,17 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
   .cnpy-taghead { display:none; }
   .cnpy-tagadd, .cnpy-tagedit-fields { grid-template-columns:minmax(0, 1fr); }
 }
-/* What the model thinks may fit a tag: a line under the tag's row, and the review list it opens. A
-   suggestion is words and buttons — never the tag's square on the item. */
-.cnpy-tagfitline { display:flex; align-items:center; flex-wrap:wrap; gap:6px 14px; padding:0 16px 10px; }
-.cnpy-tagfits { margin:0 16px 14px; padding:12px 14px; border:1px dashed var(--border-strong); }
-.cnpy-tagfit { display:flex; align-items:flex-start; justify-content:space-between; gap:8px 16px; flex-wrap:wrap; padding:9px 0; }
-.cnpy-tagfit + .cnpy-tagfit { border-top:1px solid var(--border); }
-.cnpy-tagfit > :first-child { flex:1 1 280px; min-width:0; }
-.cnpy-tagfit-acts { display:flex; gap:8px; align-items:center; }
-/* The line keeps one height whether it holds the buttons or a run drawn live, so nothing jumps when a run
-   starts or ends. */
-.cnpy-tagfitline { min-height:28px; }
-/* A run, live (web/src/fit-run.ts): squares on a short track, moved by transform only — their place is the
-   CSS variables --x (0–1 across the track) and --y (px), written per frame; a square that fits takes the tag's
-   colour (--fit-c). Square corners, no box. */
-.cnpy-fitrun { --track-w:240px; display:flex; align-items:center; gap:12px; height:28px; min-width:0; width:100%; }
-.cnpy-fitrun-track { position:relative; flex:none; width:var(--track-w); height:20px; overflow:hidden; border-bottom:1px solid var(--border); }
-.cnpy-fp { position:absolute; left:0; top:0; width:6px; height:6px; background:currentColor; color:var(--fg-40); transform:translate(calc(var(--x, 0) * (var(--track-w) - 6px)), var(--y, 0px)); will-change:transform, opacity; }
-.cnpy-fp[data-kind="move"] { color:var(--fg-55); }
-.cnpy-fp[data-kind="fit"] { color:var(--fit-c); }
-.cnpy-fitrun-bar { display:none; flex:none; width:var(--track-w); height:4px; background:var(--hover); overflow:hidden; }
-.cnpy-fitrun-bar > span { display:block; height:100%; background:var(--fit-c, var(--accent)); transform-origin:left center; }
+/* A tag row's line about the model (web/src/tags.ts fitLine): the latest run's result, Undo, Find items. It keeps
+   one height whether it holds those or a run drawn live, so nothing jumps when a run starts or ends. */
+.cnpy-tagfitline { display:flex; align-items:center; flex-wrap:wrap; gap:6px 14px; padding:0 16px 10px; min-height:28px; }
+/* A run, live (web/src/fit-run.ts): ONE bar whose fill is checked / candidates (a transform), and the counter. Its
+   colour says how it ended: the tag's own (--fit-c) when it added the tag to something, a quiet tone when not. */
+.cnpy-fitrun { --track-w:220px; display:flex; align-items:center; gap:12px; height:28px; min-width:0; width:100%; }
+.cnpy-fitrun-bar { position:relative; flex:none; width:var(--track-w); height:6px; background:var(--hover); overflow:hidden; }
+.cnpy-fitrun-bar > span { position:absolute; inset:0; background:var(--accent); transform-origin:left center; transition:background-color .45s cubic-bezier(0.4, 0, 0.2, 1); }
+.cnpy-fitrun[data-state="added"] .cnpy-fitrun-bar > span { background:var(--fit-c, var(--accent)); }
+.cnpy-fitrun[data-state="none"] .cnpy-fitrun-bar > span { background:var(--fg-40); }
 .cnpy-fitrun-n { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--fg-55); font-variant-numeric:tabular-nums; }
-/* At the end of a run the review list's rows enter one after another. */
-.cnpy-tagfits .is-fresh > .cnpy-tagfit { animation:cnpy-fit-in .32s cubic-bezier(0.4, 0, 0.2, 1) both; animation-delay:calc(var(--i, 0) * 70ms); }
-@keyframes cnpy-fit-in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
-@media (max-width:640px) { .cnpy-fitrun { --track-w:140px; } }
-/* Reduced motion: no squares and no entrance — a plain bar and the same counter. */
-@media (prefers-reduced-motion: reduce) {
-  .cnpy-fitrun-track { display:none; }
-  .cnpy-fitrun-bar { display:block; }
-  .cnpy-tagfits .is-fresh > .cnpy-tagfit { animation:none; }
-}
+@media (max-width:640px) { .cnpy-fitrun { --track-w:120px; } }
+/* Reduced motion: the bar jumps to each answer (no frame loop runs) and its colour changes at once. */
+@media (prefers-reduced-motion: reduce) { .cnpy-fitrun-bar > span { transition:none; } }

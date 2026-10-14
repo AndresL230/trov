@@ -61,17 +61,29 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   already on the item, at most 12). Reads answer 503 `{ error }` on failure, never a 500.
 - **Agents** read the list with MCP **`list_tags`** (live tags + descriptions) and can only USE it.
   `get_feed` (MCP and HTTP) returns each entry's `tags`; `GET /doc/:slug` the doc's.
-- **What may fit — the model's suggestions** (issues #154–#158, #166; `src/tools/classify.ts`, `src/tools/tag-fit.ts`).
+- **Tagging existing items — Jev ADDS the tag** (issues #154–#158, #166; `src/tools/classify.ts`, `src/tools/tag-fit.ts`).
   When an admin adds a tag (or accepts a suggested one), and on "Find items", Trov asks a model which of the
-  org's EXISTING items fit it. The model is **TypeSafe AI's Jev** (`POST https://api.typesafe.ai/v1/systemone`,
-  `TYPESAFE_API_KEY`), a NON-generative decision model: ONE request per candidate item, the item's text as
-  `state` and one `noul` (yes/no) question keyed `fits` with `criteria` built from the tag's name and description,
-  at most 4 in flight. Its answer is a probability: "fits" at 0.5 or more, the confidence that probability.
-  Summaries stay on Gemini. The rules: suggestions, never actions (a run writes `org_tag_suggestions` rows with
-  `source = 'model'`, `confidence`, `reason`, `model` — the version Jev reports, e.g. `jev-1.13.0` — and
-  `prompt_version` `jev-fit-1`; never `entry_tags`); never on a render path (the route starts the run and hands its
-  work to `waitUntil`); a fixed set of answers (a `noul` must be a number 0–1, anything else is no judgement);
-  only "fits" at `FIT_THRESHOLD` (0.7) or above is stored; metered (`ai_suggestions`, one per request, `plans.md`).
+  org's EXISTING items fit it, and **adds the tag to each item it judges a fit** (≥ `FIT_THRESHOLD`, 0.7). The model
+  is **TypeSafe AI's Jev** (`POST https://api.typesafe.ai/v1/systemone`, `TYPESAFE_API_KEY`), a NON-generative
+  decision model: ONE request per candidate item, the item's text as `state` and one `noul` (yes/no) question keyed
+  `fits` with `criteria` built from the tag's name and description, at most 4 in flight. Its answer is a
+  probability: "fits" at 0.5 or more, the confidence that probability. Summaries stay on Gemini.
+  - **A deliberate exception to #154's "suggestions, never actions" — the owner's call (2026-10-14)**: no review
+    step. It is SCOPED: only a run an ADMIN starts (adding a tag, accepting a suggested one, Find items), only with
+    the org's switch on, only that org's items, and it only ever ADDS that one tag — it never removes or changes
+    anything else. Every other rule holds: never on a render path (the route starts the run and hands its work to
+    `waitUntil`); a fixed set of answers (a `noul` must be a number 0–1, anything else is no judgement); metered
+    (`ai_suggestions`, one per request, `plans.md`).
+  - **Provenance**: each tag a run adds keeps an `org_tag_suggestions` row — `source = 'model'`, `confidence`,
+    `reason`, `model` (the version Jev reports, e.g. `jev-1.13.0`), `prompt_version` `jev-fit-1`, `state =
+    'accepted'`, `resolved_by = 'jev'` (a reserved handle) and the run's `run_id` — written in the SAME batch as
+    the `entry_tags` row (`INSERT … WHERE changes() > 0`, so a row exists only for a tag the run really added).
+    One `tag.fit` row in `org_admin_audit` per run (counts only).
+  - **The way back**: `POST /api/o/:slug/tags/:name/undo-run` (admins, cookie; `undoTagFit`) removes EXACTLY the tags
+    that run added and that are still there — never one a person or another run added — marks those rows
+    `undone` and the run `undone_at`, audited `tag.fit.undo`. A PERSON taking a tag off one item (`setItemTags`)
+    marks a run's row for it `removed` in the same batch. A later run skips an item whose row is `undone`,
+    `removed`, `dismissed` or `open`, so it never adds a tag back that someone took off.
   - **The reason is Trov's EVIDENCE, never the model's**: Jev writes no text, and #157 shows no suggestion without
     a reason, so the reason is the full-text snippet around the match that made the item a candidate
     (`evidenceOf`: `Mentions “…session cookie…”`, scrubbed like the excerpt) — or "Matches the tag's description"
@@ -83,10 +95,9 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
     `CANDIDATE_CAP` stays 60 and the threshold 0.7. With nothing at all (an empty org) the run ends with
     `candidates = 0` and no call, and the row says "Nothing in this organization to check yet." The add row nudges
     for a description ("A one-line description helps find the right items"); it is never required.
-  - **Live progress**: the run writes `candidates`, `calls`, `checked` and `suggested` on `org_tag_runs` AS IT GOES —
-    one small UPDATE per answer (≤ 60), and each confident "fits" is stored the moment it is answered.
-    `GET /api/o/:slug/tags/:name/run` (admins; `{ run: TagRunDTO | null }`) is the cheap read the Tags tab polls;
-    `GET …/fits` carries the same `run` beside the list.
+  - **Live progress**: the run writes `candidates`, `calls`, `checked` and `added` on `org_tag_runs` AS IT GOES —
+    one small UPDATE per answer (≤ 60), and each confident "fits" adds the tag the moment it is answered.
+    `GET /api/o/:slug/tags/:name/run` (admins; `{ run: TagRunDTO | null }`) is the cheap read the Tags tab polls.
   - **Errors** (`jevClassifier`): a 422, a body that is not JSON, a bad answer, a timeout (10 s) or a network
     error → no judgement for that item, the run goes on; a 429 or 529 → one retry after 1.5 s, then the run stops;
     a 401 or any other status → the run stops (`failed`). Nothing surfaces to a person.
@@ -100,17 +111,15 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
     per item its title (≤ 200) and an excerpt of ≤ 400 characters (topped-up items alike) (`excerptOf`: code blocks, inline code, link targets, URLs, markup and anything shaped like
     a credential removed). Candidates are picked WITHOUT the model: the org's own FTS (`feed_fts`, `docs_fts` —
     live docs —, `adrs_fts` — not rejected) over the tag's name and description words, items that do not carry
-    the tag and have no dismissed or open suggestion of it, newest first, at most 60, one request each. Every
+    the tag and that no one has said no to (no dismissed, open, undone or removed row), newest first, at most 60,
+    one request each. Every
     statement binds the org; another org's items are never read.
   - **Runs**: `org_tag_runs`, ONE running row per tag (`busy` otherwise; a row running for 15 minutes is let go).
-    A run supersedes the tag's open model suggestions first (`state = 'superseded'`). Retiring or merging a tag
-    supersedes its open model suggestions; a rename takes them along.
-  - **Review** (admins, `GET /tags/:name/fits`, `POST /tags/:name/fits/resolve` `{ resolution, items? }`): accept
-    writes `entry_tags` as the admin (an ordinary authored write) and marks the row `accepted`; dismiss marks it
-    `dismissed`, which the next run skips. Audited `tag.fit.accept` / `tag.fit.dismiss`. `GET /tags` gives an
-    admin `ai` (switch, key, allowance) and `fits` (per tag: open suggestions, latest run).
-  - Not built: the content-hash cache of #155, the per-kind test set and the accept/dismiss rates in Platform of
-    #158, retention of dismissed rows.
+    A run that is still going cannot be undone yet (409 `run_running`). `GET /tags` gives an admin `ai` (switch,
+    key, allowance) and `runs` (per tag: its latest run).
+  - **The "Suggested by agents" queue is separate and unchanged**: an AGENT's unknown tag still waits (`open`) for
+    an admin to add, map or dismiss it.
+  - Not built: the content-hash cache of #155, the per-kind test set and the rates in Platform of #158.
 - Screens: `web-ui.md` › Tags.
 
 ## Read side — FTS5 query engine

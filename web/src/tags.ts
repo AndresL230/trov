@@ -9,7 +9,7 @@
 import {
   TAG_COLORS, TAG_DESCRIPTION_MAX, TAG_ITEM_LABEL, TAG_ITEM_TYPES, TAG_NAME_MAX, normalizeTagName,
   type OrgTagDTO, type TagColor, type TagCounts, type TagItemType, type TagListDTO, type TagPageDTO, type TagPageItem, type TagRef, type TagSuggestionDTO,
-  type TagAiDTO, type TagFitDTO, type TagRunDTO,
+  type TagAiDTO, type TagRunDTO,
 } from "@shared/tags-core";
 import { switchBtn } from "./notifications";
 import { fitRunView, type LiveRun } from "./fit-run";
@@ -26,7 +26,7 @@ import { confirmModal } from "./confirm";
 
 export interface TagEdit { name: string; nameDraft: string; descDraft: string; color: TagColor; saving: boolean; error: string | null }
 /** The open confirmation: retire `name`, merge `name` into `into`, or dismiss the suggestion `name`. */
-export interface TagConfirm { what: "retire" | "merge" | "dismiss" | "acceptAll"; name: string; into?: string; busy: boolean }
+export interface TagConfirm { what: "retire" | "merge" | "dismiss" | "undoRun"; name: string; into?: string; busy: boolean }
 export type TagPageTab = "all" | TagItemType;
 export const TAG_PAGE_TABS: readonly TagPageTab[] = ["all", ...TAG_ITEM_TYPES];
 export const isTagPageTab = (v: unknown): v is TagPageTab => typeof v === "string" && (TAG_PAGE_TABS as readonly string[]).includes(v);
@@ -46,21 +46,14 @@ export interface TagsUi {
   pageTab: TagPageTab;
   /** A doc's tags are being written. */
   itemBusy: boolean;
-  /** The tag whose "may fit" review list is open, and that list (`GET …/tags/:name/fits`). */
-  fitsOpen: string | null;
-  fits: OrgSlice<TagFitDTO[]>;
-  /** The `<type>:<id>` of a suggestion being accepted or dismissed. */
-  fitBusy: string | null;
   /** The AI switch is being written. */
   aiBusy: boolean;
   /** Runs drawn live, by tag (web/src/fit-run.ts): from Find items / a new tag until the list has its result. */
   live: Record<string, LiveRun>;
-  /** The tag whose review list just opened at the end of a run: its rows enter one after another. */
-  freshFits: string | null;
 }
 export const initialTagsUi = (): TagsUi => ({
   nameDraft: "", descDraft: "", addBusy: false, addError: null, edit: null, busy: null, confirm: null, showRetired: false, pageTab: "all", itemBusy: false,
-  fitsOpen: null, fits: { status: "idle", data: [] }, fitBusy: null, aiBusy: false, live: {}, freshFits: null,
+  aiBusy: false, live: {},
 });
 
 /** Can this draft be added? A name that normalizes, not already on the list. */
@@ -165,83 +158,54 @@ function editor(e: TagEdit): string {
 
 const num = (n: number): string => (n > 0 ? String(n) : "—");
 
-// ── what the model thinks may fit (issues #154–#158) ──────────────────────────
+// ── Jev tagging existing items (issues #154–#158; no review step, the owner's call) ──
 
 /** The AI switch and where the month's allowance stands — one plain sentence on what is sent and to whom. */
 export function aiSection(ai: TagAiDTO, ui: TagsUi): string {
   const allowance = ai.cap === null ? `${ai.used.toLocaleString("en-US")} checks used this month.`
     : `${ai.used.toLocaleString("en-US")} of ${ai.cap.toLocaleString("en-US")} checks used this month.`;
-  const state = !ai.available ? "This Trov has no TypeSafe AI key set, so nothing is sent and no suggestions are made."
+  const state = !ai.available ? "This Trov has no TypeSafe AI key set, so nothing is sent and nothing is tagged."
     : !ai.enabled ? "Off: nothing is sent."
     : ai.spent ? "This month's checks are used up: Trov stops looking for items until next month."
     : allowance;
   return `<section aria-labelledby="org-tags-ai" data-org-group="tag-ai" data-ai="${ai.enabled ? "on" : "off"}" style="margin-bottom:26px">
-      ${orgHead("Suggest items for a new tag", "", null, "org-tags-ai")}
+      ${orgHead("Tag existing items for a new tag", "", null, "org-tags-ai")}
       <div${surface("display:flex;align-items:flex-start;gap:14px;padding:14px 16px")}>
-        <span style="flex:none;margin-top:1px">${switchBtn("tagAiToggle", null, ai.enabled).replace("<button ", `<button aria-label="Suggest items for a new tag"${ui.aiBusy || !ai.available ? " disabled" : ""} `)}</span>
+        <span style="flex:none;margin-top:1px">${switchBtn("tagAiToggle", null, ai.enabled).replace("<button ", `<button aria-label="Tag existing items for a new tag"${ui.aiBusy || !ai.available ? " disabled" : ""} `)}</span>
         <div style="min-width:0">
-          <div style="font-size:13px;line-height:1.55;color:var(--fg-70)">When it is on and you add a tag, Trov sends the tag's name and description, and the title and first 400 characters of each feed entry, doc and decision that may fit it — code removed — to Jev, TypeSafe AI's decision model, which scores how well each one fits. Nothing is tagged until you accept.</div>
+          <div style="font-size:13px;line-height:1.55;color:var(--fg-70)">When it is on and you add a tag (or press Find items), Trov sends the tag's name and description, and the title and first 400 characters of each feed entry, doc and decision that may fit it — code removed — to Jev, TypeSafe AI's decision model, and adds the tag to each item Jev judges a fit. You can undo a run, or take the tag off any item.</div>
           <div data-ai-state style="font-size:12px;color:var(--fg-40);margin-top:5px">${esc(state)}</div>
         </div>
       </div>
     </section>`;
 }
 
-const FIT_OPEN: Record<TagItemType, string> = { feed: "goFeed", doc: "openDocFrom", adr: "tagOpenDecision" };
-const FIT_KIND: Record<TagItemType, string> = { feed: "Feed entry", doc: "Doc", adr: "Decision" };
-
-/** The review list under a tag's row: each item that may fit, why, and Accept / Dismiss. Visibly a
- *  SUGGESTION — the words "May fit" and a reason, never the tag's square on the item (#157). */
-export function fitsPanel(tag: string, ui: TagsUi): string {
-  const f = ui.fits;
-  const items = f.data;
-  const body = f.status === "error" ? failedNote("the suggestions", "tagFitsReload")
-    : f.status !== "ok" && items.length === 0 ? loadingNote("the suggestions", { rows: 3 })
-    : items.length === 0 ? `<div style="${O_HELP}">Nothing left to review.</div>`
-    : `<ul style="list-style:none;margin:0;padding:0"${ui.freshFits === tag ? ` class="is-fresh"` : ""}>${items.map((it, k) => {
-        const key = `${it.type}:${it.id}`;
-        const busy = ui.fitBusy === key;
-        return `<li class="cnpy-tagfit" data-tag-fit="${attr(key)}" style="--i:${Math.min(k, 12)}">
-          <div style="min-width:0">
-            <button type="button" data-act="${FIT_OPEN[it.type]}" data-arg="${attr(it.type === "adr" ? it.title : it.id)}" class="cnpy-tagitem-t" style="font-size:13.5px">${esc(it.title)}</button>
-            <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:3px"><span style="color:var(--fg-40)">${FIT_KIND[it.type]} · May fit:</span> ${esc(it.reason)}</div>
-          </div>
-          <div class="cnpy-tagfit-acts">
-            ${quietBtn(busy ? "Accepting…" : "Accept", "tagFitAccept", { arg: key, disabled: !!ui.fitBusy, busy, label: `Tag ${it.title} ${tag}` })}
-            ${quietBtn("Dismiss", "tagFitDismiss", { arg: key, disabled: !!ui.fitBusy, label: `Dismiss: ${it.title} does not get ${tag}` })}
-          </div>
-        </li>`;
-      }).join("")}</ul>`;
-  return `<div class="cnpy-tagfits" data-tag-fits="${attr(tag)}" data-morph-key="fits:${attr(tag)}">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-        <div style="font-size:12.5px;color:var(--fg-55)">These may fit <strong style="font-weight:600;color:var(--fg)">${esc(tag)}</strong>, by Jev's score; each shows the passage that matched. Nothing is tagged until you accept.</div>
-        ${items.length > 1 ? accentBtn("Accept all", "tagConfirm", { arg: `acceptAll:${tag}`, disabled: !!ui.fitBusy, field: `tagConfirm:acceptAll:${tag}` }) : ""}
-      </div>
-      ${body}
-    </div>`;
-}
-
-/** A tag row's line about the model: how many items may fit, a run in progress, or why it stopped. */
-function fitLine(t: OrgTagDTO, fit: { open: number; run: TagRunDTO | null } | undefined, ai: TagAiDTO | undefined, ui: TagsUi): string {
+/** A tag row's line about the model: a run drawn live; else the latest run's result ("Added to 7 items",
+ *  with Undo; "Checked 20 — none fit."; why it stopped) and Find items. */
+export function fitLine(t: OrgTagDTO, last: TagRunDTO | undefined, ai: TagAiDTO | undefined, ui: TagsUi): string {
   if (!ai || t.retired) return "";
-  const open = fit?.open ?? 0;
   // A run drawn live: its view is the whole line until the list has its result.
   const live = ui.live[t.name];
   if (live) return `<div class="cnpy-tagfitline" data-tag-fitline="${attr(t.name)}">${fitRunView(t.name, t.color, live)}</div>`;
-  const running = fit?.run?.status === "running";
+  const running = last?.status === "running";
   const parts: string[] = [];
-  if (open > 0) {
-    const shown = ui.fitsOpen === t.name;
-    parts.push(`<button type="button" data-act="tagFitsOpen" data-arg="${attr(t.name)}" data-field="tagFitsOpen:${attr(t.name)}" aria-expanded="${shown}" class="cnpy-mutelink" style="padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">${open} ${open === 1 ? "item may fit" : "items may fit"}</button>`);
+  const say = (state: string, words: string) => parts.push(`<span data-fit-run="${state}" style="font-size:12px;color:var(--fg-55)">${esc(words)}</span>`);
+  const n = (k: number) => `${k} ${k === 1 ? "item" : "items"}`;
+  if (running) say("running", "Looking for items that fit…");
+  else if (last) {
+    const stopped = last.status === "capped" ? `Stopped at ${last.checked} of ${last.candidates}: this month's checks are used up.`
+      : last.status === "failed" ? `Stopped at ${last.checked} of ${last.candidates}: the model did not answer.` : "";
+    if (last.undone_at) say("undone", `Undone: the ${n(last.added)} this run tagged no longer have it.`);
+    else if (last.added > 0) {
+      say("added", `${stopped ? `${stopped} ` : ""}Added to ${n(last.added)}.`);
+      parts.push(quietBtn(ui.busy === `undo:${t.name}` ? "Undoing…" : "Undo", "tagConfirm", {
+        arg: `undoRun:${t.name}`, disabled: !!ui.busy, label: `Undo: take ${t.name} off the ${n(last.added)} this run tagged`, field: `tagConfirm:undoRun:${t.name}`,
+        extra: "height:26px;padding:0 9px;font-size:12px",
+      }));
+    } else if (stopped) say(last.status, stopped);
+    else say("none", last.candidates === 0 ? "Nothing in this organization to check yet." : `Checked ${last.checked} — none fit.`);
   }
-  if (running) parts.push(`<span data-fit-run="running" style="font-size:12px;color:var(--fg-40)">Looking for items that fit…</span>`);
-  else if (fit?.run?.status === "capped") parts.push(`<span data-fit-run="capped" style="font-size:12px;color:var(--fg-40)">Stopped: this month's checks are used up.</span>`);
-  else if (fit?.run?.status === "done" && open === 0) {
-    const r = fit.run;
-    const said = r.candidates === 0 ? "Nothing in this organization to check yet." : `Checked ${r.checked} — none fit.`;
-    parts.push(`<span data-fit-run="done" style="font-size:12px;color:var(--fg-40)">${esc(said)}</span>`);
-  }
-  if (ai.enabled && ai.available && !ai.spent && !running) parts.push(quietBtn(ui.busy === `find:${t.name}` ? "Looking…" : "Find items", "tagFind", { arg: t.name, disabled: !!ui.busy, label: `Find existing items that fit ${t.name}`, extra: "height:26px;padding:0 9px;font-size:12px" }));
+  if (ai.enabled && ai.available && !ai.spent && !running) parts.push(quietBtn(ui.busy === `find:${t.name}` ? "Looking…" : "Find items", "tagFind", { arg: t.name, disabled: !!ui.busy, label: `Find existing items that fit ${t.name} and tag them`, extra: "height:26px;padding:0 9px;font-size:12px" }));
   return parts.length ? `<div class="cnpy-tagfitline" data-tag-fitline="${attr(t.name)}">${parts.join("")}</div>` : "";
 }
 
@@ -262,8 +226,7 @@ function tagRow(t: OrgTagDTO, admin: boolean, ui: TagsUi, dds: DropdownProps[], 
         <div data-col="small" style="font-size:12px;color:var(--fg-40)">${small ? esc(small) : "Not used yet"}</div>
         <div data-col="acts" class="cnpy-tagrow-acts">${acts}</div>
       </div>
-      ${admin ? fitLine(t, list?.fits?.[t.name], list?.ai, ui) : ""}
-      ${admin && ui.fitsOpen === t.name && !t.retired ? fitsPanel(t.name, ui) : ""}
+      ${admin ? fitLine(t, list?.runs?.[t.name], list?.ai, ui) : ""}
       ${editing ? editor(editing) : ""}
     </li>`;
 }
@@ -336,16 +299,16 @@ export function tagConfirmModal(c: TagConfirm | null, list: TagListDTO | null): 
       title: `Merge ${c.name} into ${c.into ?? ""}?`,
       body: `${n ? `The ${plural(n, "item", "items")} tagged ${c.name} ${n === 1 ? "is" : "are"} tagged ${c.into ?? ""} instead` : `Nothing is tagged ${c.name} yet`}, and ${c.name} leaves the list. An agent that still sends ${c.name} gets ${c.into ?? ""}. Items cannot be moved back in one step.`,
       confirmLabel: "Merge tags", busyLabel: "Merging…",
-    } : c.what === "acceptAll" ? {
-      title: `Tag ${(list?.fits?.[c.name]?.open ?? 0) === 1 ? "1 item" : `${list?.fits?.[c.name]?.open ?? 0} items`} ${c.name}?`,
-      body: `Every item Trov's model suggested for ${c.name} gets the tag, as if you had added it to each one. You can take it off an item later.`,
-      confirmLabel: "Accept all", busyLabel: "Tagging…",
+    } : c.what === "undoRun" ? {
+      title: `Undo the last run for ${c.name}?`,
+      body: `${c.name} comes off the ${(list?.runs?.[c.name]?.added ?? 0) === 1 ? "1 item" : `${list?.runs?.[c.name]?.added ?? 0} items`} that run tagged. Nothing else changes, and Trov will not add it to them again.`,
+      confirmLabel: "Undo run", busyLabel: "Undoing…",
     } : {
       title: `Dismiss ${c.name}?`,
       body: `The items that carried it stay as they are, without it. If an agent sends ${c.name} again, it is suggested again.`,
       confirmLabel: "Dismiss", busyLabel: "Dismissing…",
     };
-  return confirmModal({ id: "tag-confirm", ...copy, confirmAct: "tagConfirmGo", cancelAct: "tagConfirmCancel", busy: c.busy, ...(c.what === "dismiss" || c.what === "acceptAll" ? { tone: "neutral" as const } : {}) });
+  return confirmModal({ id: "tag-confirm", ...copy, confirmAct: "tagConfirmGo", cancelAct: "tagConfirmCancel", busy: c.busy, ...(c.what === "dismiss" ? { tone: "neutral" as const } : {}) });
 }
 
 // ── one tag's page ───────────────────────────────────────────────────────────

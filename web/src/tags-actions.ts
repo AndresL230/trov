@@ -6,12 +6,12 @@ import type { AppState } from "./render";
 import {
   ApiError, OrgApiError, Unauthorized, planLimitText,
   listOrgTags, getTagPage, addOrgTag, editOrgTag, mergeOrgTag, retireOrgTag, restoreOrgTag, resolveTagSuggestion, setItemTags,
-  findTagItems, listTagFits, resolveTagFits, setTagSuggestions, getTagRun,
+  findTagItems, undoTagRun, setTagSuggestions, getTagRun,
 } from "./api";
 import { currentOrg, roleAtLeast } from "./org-settings";
 import { isTagPageTab, tagDraftProblem } from "./tags";
 import { isTagColor, normalizeTagName } from "@shared/tags-core";
-import { POLL_MS, applyAnswer, newLive, particleFrame, particleStyle, runCounter, shouldPoll, shownAt, type LiveRun } from "./fit-run";
+import { POLL_MS, applyAnswer, barFill, barState, newLive, runCounter, shouldPoll, shownAt, type LiveRun } from "./fit-run";
 
 export interface TagsHost {
   state: AppState;
@@ -74,8 +74,8 @@ export function createTagsController(host: TagsHost): TagsController {
   // ── a run, live (web/src/fit-run.ts) ───────────────────────────────────────
   // While a run goes (in the background, after the request that started it), its row reads
   // `GET …/tags/:name/run` every POLL_MS and draws what it says; between two answers one animation frame
-  // loop eases the squares and the counter toward the latest numbers, writing their style straight into
-  // the row's FIXED set of elements (the page is not repainted per frame). Reading stops when the run ends,
+  // loop eases the bar and the counter toward the latest numbers, writing them straight into the row's
+  // elements (the page is not repainted per frame). Reading stops when the run ends,
   // while the tab is hidden (it resumes when it is shown), and after POLL_MAX reads.
   const reduced = (): boolean => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
   const hidden = (): boolean => typeof document !== "undefined" && document.hidden;
@@ -129,16 +129,17 @@ export function createTagsController(host: TagsHost): TagsController {
     };
     frame = requestAnimationFrame(step);
   }
-  /** Write one run's frame into its row: the squares' style and kind, the bar, the counter. */
+  /** Write one run's frame into its row: the bar's fill and state (its colour), the counter. */
   function paintRun(tag: string, live: LiveRun): void {
     const box = mount.querySelector<HTMLElement>(`[data-fitrun="${CSS.escape(tag)}"]`);
     if (!box) return;
-    const parts = particleFrame(live.candidates, live.outcomes, live.shown);
-    const nodes = box.querySelectorAll<HTMLElement>(".cnpy-fp");
-    if (nodes.length !== parts.length) { rerender(); return; }
-    parts.forEach((p, i) => { nodes[i].setAttribute("style", particleStyle(p)); nodes[i].dataset.kind = p.kind; });
-    const bar = box.querySelector<HTMLElement>(".cnpy-fitrun-bar > span");
-    if (bar) bar.style.transform = `scaleX(${live.candidates ? Math.min(1, live.shown / live.candidates).toFixed(4) : 0})`;
+    const state = barState(live, live.shown);
+    if (box.dataset.state !== state) box.dataset.state = state;
+    const bar = box.querySelector<HTMLElement>(".cnpy-fitrun-bar");
+    bar?.setAttribute("aria-valuenow", String(Math.floor(live.shown)));
+    bar?.setAttribute("aria-valuemax", String(live.candidates));
+    const fill = bar?.querySelector<HTMLElement>("span");
+    if (fill) fill.style.transform = `scaleX(${barFill(live, live.shown).toFixed(4)})`;
     const n = box.querySelector<HTMLElement>("[data-fitrun-n]");
     const words = runCounter(live, live.shown);
     if (n && n.textContent !== words) n.textContent = words;
@@ -146,18 +147,16 @@ export function createTagsController(host: TagsHost): TagsController {
   const finishing = new Set<string>();
   function finish(tag: string, live: LiveRun): void {
     finishing.add(tag);
-    // Let the last square settle, then the list takes over: the row shows "N items may fit", and the
-    // review list opens with its rows entering one after another.
+    // Let the bar show its end (its colour) a moment, then the list takes over: the row says
+    // "Added to N items" (with Undo), "Checked N — none fit", or why it stopped.
     setTimeout(() => {
       finishing.delete(tag);
-      const fits = live.suggested > 0;
       listOrgTags().then((data) => {
         state.tags = { status: "ok", data };
         delete ui().live[tag];
-        if (fits && data.fits?.[tag]?.open) { ui().fitsOpen = tag; ui().freshFits = tag; loadFits(tag); return; }
         rerender();
       }).catch((e) => { if (fail(e)) return; delete ui().live[tag]; load(); });
-    }, live.candidates === 0 || live.checked === 0 ? 1200 : 700);
+    }, 1400);
   }
   if (typeof document !== "undefined") {
     document.addEventListener("visibilitychange", () => {
@@ -174,10 +173,7 @@ export function createTagsController(host: TagsHost): TagsController {
         if (mine !== seq) return;
         state.tags = { status: "ok", data };
         // A run that is going (started here, or by another admin): draw it live.
-        for (const [tag, f] of Object.entries(data.fits ?? {})) if (f.run?.status === "running" && !ui().live[tag]) watch(tag);
-        // The open review list follows what the run found.
-        const open = ui().fitsOpen;
-        if (open && !(data.fits?.[open]?.open)) ui().fitsOpen = null;
+        for (const [tag, r] of Object.entries(data.runs ?? {})) if (r.status === "running" && !ui().live[tag]) watch(tag);
         rerender();
       })
       .catch((e) => { if (fail(e) || mine !== seq) return; state.tags = { status: "error", data: state.tags.data, error: String(e) }; rerender(); });
@@ -275,8 +271,8 @@ export function createTagsController(host: TagsHost): TagsController {
     c.busy = true;
     rerender();
     const done = (msg: string) => { ui().confirm = null; host.flash(msg); load(); host.planChanged(); };
-    if (c.what === "acceptAll") {
-      resolveTagFits(c.name, "accept").then((r) => { ui().fitsOpen = null; done(applied(r.resolved, c.name)); }).catch((e) => failed(e, "Couldn't tag them."));
+    if (c.what === "undoRun") {
+      undoTagRun(c.name).then((r) => done(`Took ${c.name} off ${r.removed} ${r.removed === 1 ? "item" : "items"}`)).catch((e) => failed(e, "Couldn't undo the run."));
       return;
     }
     const failed = (e: unknown, fallback: string) => { ui().confirm = null; if (fail(e)) return; host.flash(errorText(e, fallback), 6000); load(); };
@@ -289,17 +285,9 @@ export function createTagsController(host: TagsHost): TagsController {
 
   const applied = (n: number, tag: string): string => `Tagged ${n} ${n === 1 ? "item" : "items"} ${tag}`;
 
-  // ── what the model thinks may fit ──────────────────────────────────────────
-  function loadFits(tag: string): void {
-    const u = ui();
-    u.fits = { status: "loading", data: u.fitsOpen === tag ? u.fits.data : [] };
-    rerender();
-    listTagFits(tag)
-      .then((data) => { if (ui().fitsOpen !== tag) return; ui().fits = { status: "ok", data }; rerender(); })
-      .catch((e) => { if (fail(e) || ui().fitsOpen !== tag) return; ui().fits = { status: "error", data: [], error: String(e) }; rerender(); });
-  }
+  // ── Jev tagging existing items ─────────────────────────────────────────────
   const FIND_SAID: Record<string, string> = {
-    started: "Looking for items that fit. Suggestions appear here when it is done.",
+    started: "Looking for items that fit, and tagging them.",
     off: "Suggestions are off. Turn them on above first.",
     no_key: "This Trov has no TypeSafe AI key set, so it cannot look for items.",
     busy: "Trov is already looking for items for this tag.",
@@ -313,27 +301,13 @@ export function createTagsController(host: TagsHost): TagsController {
     findTagItems(tag)
       .then((r) => {
         ui().busy = null;
-        if (r.status === "started") { ui().fitsOpen = ui().fitsOpen === tag ? null : ui().fitsOpen; watch(tag); rerender(); return; }
+        if (r.status === "started") { watch(tag); rerender(); return; }
         host.flash(FIND_SAID[r.status] ?? FIND_SAID.started, 6000);
         load();
       })
       .catch((e) => { ui().busy = null; if (fail(e)) return; host.flash(errorText(e, "Couldn't start looking."), 6000); rerender(); });
   }
-  function settleFit(tag: string, key: string, resolution: "accept" | "dismiss"): void {
-    const cut = key.indexOf(":");
-    const type = key.slice(0, cut), id = key.slice(cut + 1);
-    if (!admin() || ui().fitBusy || cut < 0 || (type !== "feed" && type !== "doc" && type !== "adr")) return;
-    ui().fitBusy = key;
-    rerender();
-    resolveTagFits(tag, resolution, [{ type, id }])
-      .then(() => {
-        ui().fitBusy = null;
-        ui().fits = { ...ui().fits, data: ui().fits.data.filter((f) => `${f.type}:${f.id}` !== key) };
-        if (resolution === "accept") host.flash(`Tagged it ${tag}`);
-        load();
-      })
-      .catch((e) => { ui().fitBusy = null; if (fail(e)) return; host.flash(tagErrorText(e, "Couldn't save that."), 6000); loadFits(tag); });
-  }
+
 
   /** The doc on screen: its Tags row writes through `POST /item-tags`. */
   function setDocTags(next: (has: string[]) => string[]): void {
@@ -399,7 +373,7 @@ export function createTagsController(host: TagsHost): TagsController {
       case "tagConfirm": {
         const at = (arg ?? "").indexOf(":");
         const what = (arg ?? "").slice(0, at);
-        if (!admin() || at < 0 || (what !== "retire" && what !== "dismiss" && what !== "acceptAll")) return;
+        if (!admin() || at < 0 || (what !== "retire" && what !== "dismiss" && what !== "undoRun")) return;
         u.confirm = { what, name: (arg ?? "").slice(at + 1), busy: false };
         rerender();
         mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
@@ -429,7 +403,7 @@ export function createTagsController(host: TagsHost): TagsController {
         return;
       }
 
-      // What the model thinks may fit
+      // Jev tagging existing items: the switch, Find items
       case "tagAiToggle": {
         const ai = state.tags.data?.ai;
         if (!admin() || !ai || u.aiBusy) return;
@@ -441,17 +415,6 @@ export function createTagsController(host: TagsHost): TagsController {
         return;
       }
       case "tagFind": if (arg) find(arg); return;
-      case "tagFitsOpen":
-        if (!arg) return;
-        u.freshFits = null;
-        if (u.fitsOpen === arg) { u.fitsOpen = null; break; }
-        u.fitsOpen = arg;
-        loadFits(arg);
-        return;
-      case "tagFitsReload": if (u.fitsOpen) loadFits(u.fitsOpen); return;
-      case "tagFitAccept": if (arg && u.fitsOpen) settleFit(u.fitsOpen, arg, "accept"); return;
-      case "tagFitDismiss": if (arg && u.fitsOpen) settleFit(u.fitsOpen, arg, "dismiss"); return;
-
       // A doc's Tags row
       case "tagItemAdd": if (value) setDocTags((has) => (has.includes(value) ? has : [...has, value])); return;
       case "tagItemRemove": if (arg) setDocTags((has) => has.filter((t) => t !== arg)); return;

@@ -19,7 +19,7 @@ import { requireRole, hasRole } from "../data/context";
 import { all, batch, fanOut, first, nowIso, stmt, type Stmt, type TenantContext } from "../data/sql";
 import { planFor, requirePlan } from "../plans/gate";
 import { resolveEntitlements } from "@shared/plans";
-import { aiEnabled, fitSummary, suggestAllowance } from "./tag-fit";
+import { aiEnabled, fitSummary, rememberRemovalStmt, suggestAllowance } from "./tag-fit";
 
 /** A refused tag write. `message` is fixed text: it names the rule, never more than the tag's own name. */
 export class TagError extends Error {
@@ -128,12 +128,11 @@ export async function listTags(ctx: TenantContext, opts: { aiAvailable?: boolean
   const liveNames = rows.filter(live).map((r) => r.name);
   const out: TagListDTO = { tags, used: liveNames.length, cap: resolveEntitlements(plan.plan, plan.overrides).tags, suggestions: [] };
   if (!hasRole(ctx, "admin")) return out;
-  // What only an admin acts on: what agents suggested, the AI switch, and what the model thinks may fit.
+  // What only an admin acts on: what agents suggested, the AI switch, and each tag's latest run (Jev tagging items).
   const [suggestions, enabled, allowance, summary] = await Promise.all([pendingSuggestions(ctx, liveNames), aiEnabled(ctx), suggestAllowance(ctx), fitSummary(ctx)]);
   out.suggestions = suggestions;
   out.ai = { enabled, available: opts.aiAvailable === true, ...allowance };
-  out.fits = Object.fromEntries(liveNames.filter((n) => summary.fits.has(n) || summary.runs.has(n))
-    .map((n) => [n, { open: summary.fits.get(n) ?? 0, run: summary.runs.get(n) ?? null }]));
+  out.runs = Object.fromEntries(liveNames.filter((n) => summary.runs.has(n)).map((n) => [n, summary.runs.get(n)!]));
   return out;
 }
 
@@ -261,8 +260,13 @@ export async function setItemTags(ctx: TenantContext, type: unknown, id: unknown
   const has = held.get(id) ?? [];
   const stranger = want.find((n) => !liveNames.includes(n) && !has.includes(n));
   if (stranger) throw new TagError("unknown_tag", 400, `"${stranger}" is not one of this organization's tags`, "tags");
+  const at = nowIso();
   const stmts: Stmt[] = [
-    ...has.filter((n) => !want.includes(n)).map((n) => stmt(ctx, `DELETE FROM entry_tags WHERE org_id = ? AND tag = ? AND entry_type = ? AND entry_id = ?`, ctx.orgId, n, type, id)),
+    ...has.filter((n) => !want.includes(n)).flatMap((n) => [
+      stmt(ctx, `DELETE FROM entry_tags WHERE org_id = ? AND tag = ? AND entry_type = ? AND entry_id = ?`, ctx.orgId, n, type, id),
+      // A tag a run had added, removed by a person: no later run adds it back.
+      rememberRemovalStmt(ctx, n, type, id, at),
+    ]),
     ...want.filter((n) => !has.includes(n)).map((n) => stmt(ctx, `INSERT OR IGNORE INTO entry_tags (org_id, tag, entry_type, entry_id) VALUES (?, ?, ?, ?)`, ctx.orgId, n, type, id)),
   ];
   if (stmts.length > 0) await batch(ctx, stmts);

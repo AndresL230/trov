@@ -117,7 +117,7 @@ describe("0054_org_tags", () => {
     expect((await q(`SELECT 1 FROM org_tag_suggestions`)).length).toBe(3);
     await expect(db().prepare(`UPDATE org_tag_suggestions SET state = 'pending'`).run()).rejects.toThrow(/CHECK/i);
     expect((await q<{ name: string }>(`SELECT name FROM pragma_table_info('org_tag_suggestions')`)).map((r) => r.name)).toEqual([
-      "id", "org_id", "entry_type", "entry_id", "tag", "source", "confidence", "reason", "model", "prompt_version", "suggested_by", "suggested_at", "state", "resolved_to", "resolved_at", "resolved_by",
+      "id", "org_id", "entry_type", "entry_id", "tag", "source", "confidence", "reason", "model", "prompt_version", "suggested_by", "suggested_at", "state", "resolved_to", "resolved_at", "resolved_by", "run_id",
     ]);
   });
 });

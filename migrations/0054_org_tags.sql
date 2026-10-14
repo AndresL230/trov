@@ -103,10 +103,12 @@ INSERT OR IGNORE INTO org_tags (org_id, name, description, color, starter, creat
 --     new tag fits (`source = 'model'`; issues #154–#158, #166 — nothing writes these yet). The
 --     columns it needs are here now so that work lands without a rebuild: `confidence`, a one-sentence
 --     `reason`, the `model` and `prompt_version` that produced it, and `superseded` for a re-run.
--- A suggestion is NEVER the tag itself (#156): the item's tags are entry_tags, set by a person or by
--- the gate from the org's list. Accepting is an ordinary authored write by the admin who accepts:
--- it writes entry_tags and marks the row. `resolved_to` is the tag the item was given — the suggested
--- one, or another the admin mapped it to. `state`, as #156: open | accepted | dismissed | superseded.
+-- A row is never the tag itself (#156): the item's tags are entry_tags. An AGENT's row waits (`open`) until an
+-- admin accepts (an authored write into entry_tags), maps or dismisses it. A MODEL row is written by a run
+-- that has just added the tag (the owner's call, 2026-10-14: no review step) — `accepted`, resolved by 'jev',
+-- with its `run_id`, in the same batch as the entry_tags row: its provenance. `undone` = an admin undid that
+-- run; `removed` = a person took the tag off that item since. A later run skips both. `resolved_to` is the tag
+-- the item was given. `state`: open | accepted | dismissed | superseded | undone | removed.
 CREATE TABLE IF NOT EXISTS org_tag_suggestions (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   org_id         TEXT NOT NULL REFERENCES orgs(id),
@@ -120,10 +122,11 @@ CREATE TABLE IF NOT EXISTS org_tag_suggestions (
   prompt_version TEXT,
   suggested_by   TEXT NOT NULL,               -- the person whose agent sent it; 'system' for a model
   suggested_at   TEXT NOT NULL,
-  state          TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'accepted', 'dismissed', 'superseded')),
+  state          TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'accepted', 'dismissed', 'superseded', 'undone', 'removed')),
   resolved_to    TEXT,
   resolved_at    TEXT,
-  resolved_by    TEXT
+  resolved_by    TEXT,                       -- a handle, or 'jev' for a tag a run added (src/tools/tag-fit.ts)
+  run_id         INTEGER                     -- the org_tag_runs row that wrote it (a model row): what Undo removes
 );
 -- At most ONE open suggestion of a tag on an item per source: a replay records nothing new, and a
 -- re-run supersedes the old row before writing its own. Settled rows are history and may repeat.
@@ -148,7 +151,7 @@ CREATE TABLE IF NOT EXISTS org_ai_settings (
 -- ── one run of "which existing items fit this tag" ───────────────────────────
 -- Started when an admin adds a tag (or accepts a suggested one) and by "Find items" — in the background,
 -- never on a page load. ONE running row per tag (the partial unique index): a second start while one runs
--- is refused. A run supersedes the tag's open MODEL suggestions, then writes its own (source = 'model').
+-- is refused. A run ADDS the tag to each item the model judges a fit, with a `source = 'model'` row as provenance.
 -- `status`: running → done | capped (the month's `ai_suggestions` allowance ran out) | failed.
 CREATE TABLE IF NOT EXISTS org_tag_runs (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -161,9 +164,11 @@ CREATE TABLE IF NOT EXISTS org_tag_runs (
   candidates  INTEGER NOT NULL DEFAULT 0,   -- items pre-selected without the model (the org's own FTS)
   calls       INTEGER NOT NULL DEFAULT 0,   -- model calls made (each counted against the allowance; a retry is a call)
   checked     INTEGER NOT NULL DEFAULT 0,   -- candidates the model has answered about (or failed on) so far
-  suggested   INTEGER NOT NULL DEFAULT 0    -- "fits" judgements stored as suggestions
-  -- candidates / calls / checked / suggested are written AS THE RUN GOES (one small UPDATE per answer), so
-  -- the Tags tab can show it live (GET …/tags/:name/run).
+  added       INTEGER NOT NULL DEFAULT 0,   -- items the run ADDED the tag to (a "fits" at 0.7 or more)
+  undone_at   TEXT,                         -- an admin undid the run: the tags it added were removed
+  undone_by   TEXT
+  -- candidates / calls / checked / added are written AS THE RUN GOES (one small UPDATE per answer), so the Tags
+  -- tab can show it live (GET …/tags/:name/run).
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_org_tag_runs_running ON org_tag_runs(org_id, tag) WHERE status = 'running';
 CREATE INDEX IF NOT EXISTS idx_org_tag_runs_tag ON org_tag_runs(org_id, tag, id);

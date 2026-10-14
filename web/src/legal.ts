@@ -184,16 +184,16 @@ export const TERMS: LegalDoc = {
       title: "10. AI-generated summaries",
       body: [
         p("Trov uses an AI model (Google Gemini) to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete: they are a convenience, not a record. Check the pull request or issue before relying on one."),
-        // DRAFT (2026-10-14, tag suggestions) — for the owner's review before it ships.
-        p("If an admin of your organization turns on tag suggestions in Org settings › Tags, Trov uses Jev, a decision model from TypeSafe AI, to suggest which of the organization's existing feed entries, docs and decisions fit a tag. Jev only scores how well an item fits; the reason shown beside a suggestion is the passage of the item that matched the tag, quoted by Trov. A suggestion is only a suggestion: nothing is tagged until a person accepts it, and a suggestion can be wrong. An admin can turn it off at any time, and nothing is sent while it is off."),
+        // DRAFT (2026-10-14, automatic tagging) — for the owner's review before it ships.
+        p("If an admin of your organization turns on automatic tagging in Org settings › Tags, then whenever an admin adds a tag or asks Trov to find items for one, Trov uses Jev, a decision model from TypeSafe AI, to judge which of the organization's existing feed entries, docs and decisions fit that tag, and adds the tag to each item Jev judges a fit. No person reviews each one first, and a judgement can be wrong. It only ever adds that one tag; it never removes or changes anything else. An admin can undo a run, which takes the tag off exactly the items that run tagged, and anyone can take a tag off an item; Trov does not add it to that item again. An admin can turn it off at any time, and nothing is sent while it is off."),
       ],
     },
     {
       id: "third-parties",
       title: "11. Third-party services",
       body: [
-        // DRAFT (2026-10-14, tag suggestions): "TypeSafe AI for tag suggestions…" — for the owner's review.
-        p("Trov depends on other services: GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Stripe for payments, Google Gemini for summaries, TypeSafe AI for tag suggestions where an organization turns them on, and Resend for email. An organization can also connect Railway, Cloudflare Analytics and its own metrics endpoint, with tokens its admins provide. The agent clients you connect (Claude Code, Cursor and others) are yours, not ours. Each of these is governed by its own terms, and its availability is outside our control."),
+        // DRAFT (2026-10-14, automatic tagging): "TypeSafe AI for automatic tagging…" — for the owner's review.
+        p("Trov depends on other services: GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Stripe for payments, Google Gemini for summaries, TypeSafe AI for automatic tagging where an organization turns it on, and Resend for email. An organization can also connect Railway, Cloudflare Analytics and its own metrics endpoint, with tokens its admins provide. The agent clients you connect (Claude Code, Cursor and others) are yours, not ours. Each of these is governed by its own terms, and its availability is outside our control."),
       ],
     },
     {
@@ -331,8 +331,8 @@ export const PRIVACY: LegalDoc = {
           "to provide Trov — store, search, show and attribute your team's content, and let connected agents read and propose changes as you;",
           "to take payment for a paid plan, keep an organization on the plan it paid for, and apply each plan's limits;",
           "to summarize captured pull requests and issues;",
-          // DRAFT (2026-10-14, tag suggestions): for the owner's review.
-          "where an admin of an organization turns them on, to suggest which of that organization's feed entries, docs and decisions fit one of its tags (with TypeSafe AI's Jev model);",
+          // DRAFT (2026-10-14, automatic tagging): for the owner's review.
+          "where an admin of an organization turns it on, to add one of the organization's tags to its feed entries, docs and decisions that TypeSafe AI's Jev model judges fit it, when an admin adds that tag or asks for it;",
           "to send the emails described in section 7;",
           "to answer support messages, and to run, debug and protect the service.",
         ),
@@ -350,8 +350,8 @@ export const PRIVACY: LegalDoc = {
           ["Cloudflare", "Hosting, the database, file storage, logs", "Every request (with your IP address) and everything stored in Trov"],
           ["GitHub", "Sign-in; the repository data an organization connects", "Your sign-in; Trov's read-only requests for the connected repositories"],
           ["Google", "Sign-in; summaries (Gemini API)", "Your sign-in; the title and description (up to 8,000 characters) of each captured pull request and issue"],
-          // DRAFT (2026-10-14, tag suggestions): a new processor, for the owner's review.
-          ["TypeSafe AI", "Tag suggestions, where an organization turns them on (the Jev model)", "The tag's name and description and, for each of the organization's feed entries, docs and decisions that may fit it, its title and up to 400 characters of its text, with code and anything that looks like a password or key removed"],
+          // DRAFT (2026-10-14, automatic tagging): a new processor, for the owner's review.
+          ["TypeSafe AI", "Automatic tagging, where an organization turns it on (the Jev model)", "The tag's name and description and, for each of the organization's feed entries, docs and decisions that may fit it, its title and up to 400 characters of its text, with code and anything that looks like a password or key removed"],
           ["Stripe", "Payments, invoices and receipts, fraud checks, tax calculation", "The buyer's email, handle, payment details and billing address, and the organization's address for an upgrade"],
           ["Resend", "Delivers Trov's email", "Each email's recipient, subject and body (a digest contains your organization's content: ticket titles, summaries)"],
         ]),
