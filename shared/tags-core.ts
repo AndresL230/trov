@@ -128,6 +128,8 @@ export interface TagListDTO {
   ai?: TagAiDTO;
   /** Admins only: per live tag, its latest run of "which existing items fit". */
   runs?: Record<string, TagRunDTO>;
+  /** Admins only: per live tag, how many of Sift's suggestions (60–85% sure) wait for a person. */
+  review?: Record<string, number>;
   /** Live tags, of the plan's `cap` (null = no cap). Retired tags do not count. */
   used: number;
   cap: number | null;
@@ -161,6 +163,9 @@ export interface TagPageDTO {
   authors: { handle: string; count: number }[];
   /** How many of the items carrying the tag have it because Jev added it (all of them, not just those listed). */
   jev_added: number;
+  /** Items Sift SUGGESTED for the tag (60–85% sure) that nobody settled yet, surest first (at most
+   *  `TAG_PAGE_LIMIT`): each with `jev` = how sure and why. Any member adds or dismisses one. */
+  review: TagPageItem[];
 }
 export const TAG_PAGE_LIMIT = 50;
 

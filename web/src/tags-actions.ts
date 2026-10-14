@@ -6,11 +6,11 @@ import type { AppState } from "./render";
 import {
   ApiError, OrgApiError, Unauthorized, planLimitText,
   listOrgTags, getTagPage, addOrgTag, editOrgTag, mergeOrgTag, retireOrgTag, restoreOrgTag, resolveTagSuggestion, setItemTags,
-  findTagItems, undoTagRun, setTagSuggestions, getTagRun,
+  findTagItems, undoTagRun, setTagSuggestions, getTagRun, settleTagReview,
 } from "./api";
 import { currentOrg, roleAtLeast } from "./org-settings";
-import { isTagPageTab, nextTagColor, tagDraftProblem } from "./tags";
-import { isTagColor, normalizeTagName } from "@shared/tags-core";
+import { isTagPageTab, nextTagColor, tagDraftProblem, type TagPageTab } from "./tags";
+import { isTagColor, isTagItemType, normalizeTagName } from "@shared/tags-core";
 import { POLL_MS, applyAnswer, barFill, barState, newLive, runCounter, shouldPoll, shownAt, type LiveRun } from "./fit-run";
 
 export interface TagsHost {
@@ -214,11 +214,11 @@ export function createTagsController(host: TagsHost): TagsController {
         rerender();
       });
   }
-  function open(name: string): void {
+  function open(name: string, tab: TagPageTab = "all"): void {
     state.screen = "tag";
     state.tagName = name;
     state.personCard = null;
-    ui().pageTab = "all";
+    ui().pageTab = tab;
     loadIfNeeded();
     loadPage(name);
   }
@@ -383,6 +383,22 @@ export function createTagsController(host: TagsHost): TagsController {
     switch (name) {
       // Navigation
       case "tagOpen": if (arg) open(arg); return;
+      case "tagReviewOpen": if (arg) open(arg, "review"); return;
+      // One of Sift's suggestions on the To review tab (any member): add the tag to the item, or dismiss it.
+      case "tagReviewAdd":
+      case "tagReviewDismiss": {
+        const cut = (arg ?? "").indexOf(":");
+        const type = (arg ?? "").slice(0, cut), id = (arg ?? "").slice(cut + 1);
+        const tag = state.tagName;
+        if (cut < 1 || !tag || u.busy || !isTagItemType(type)) return;
+        const add = name === "tagReviewAdd";
+        u.busy = `review:${arg}`;
+        rerender();
+        settleTagReview(tag, { type, id }, add)
+          .then(() => { u.busy = null; host.flash(add ? `Added ${tag}` : "Dismissed"); loadPage(tag); if (state.tags.status === "ok") load(); })
+          .catch((e) => { u.busy = null; if (fail(e)) return; host.flash(errorText(e, add ? "Couldn't add the tag." : "Couldn't dismiss it."), 6000); loadPage(tag); });
+        return;
+      }
       case "tagPageReload": if (state.tagName) loadPage(state.tagName); return;
       case "tagPageTab": if (isTagPageTab(arg)) u.pageTab = arg; break;
       case "tagOpenDecision": if (arg) host.search(arg); return;

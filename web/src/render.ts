@@ -2728,7 +2728,7 @@ function screenBody(s: AppState): string {
     case "platform": return platformView(s.plat, s.me?.handle ?? null);
     case "platformorg": return platformOrgView(s.plat);
     case "tag": return tagPageView({
-      name: s.tagName, page: { ...s.tagPage, status: s.tagPage.status === "unauth" ? "error" : s.tagPage.status }, tab: s.tagsUi.pageTab,
+      name: s.tagName, page: { ...s.tagPage, status: s.tagPage.status === "unauth" ? "error" : s.tagPage.status }, tab: s.tagsUi.pageTab, busy: s.tagsUi.busy,
       orgName: currentOrg(s)?.name ?? "this organization", who: (h) => handleLink(personFor(s, h), h),
     });
     case "newdoc": return newDocView({ draft: s.nd, spaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })), sections: ASSIGN_OPTIONS.sections });

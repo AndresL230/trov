@@ -140,8 +140,9 @@ describe("the list", () => {
   });
 
   it("the plan caps the list (PLANS → requirePlan): at the cap add, restore and accept are 402s; a retired tag frees a place", async () => {
-    // The placeholder: the same number on every plan, and never below the six starters.
-    expect(Object.values(PLANS).map((p) => p.entitlements.tags)).toEqual([30, 30, 30, 30]);
+    // The owner's numbers (2026-10-14): Free and Personal 30, Pro 50, Enterprise unlimited; never below the six starters.
+    expect(Object.fromEntries(Object.entries(PLANS).map(([id, p]) => [id, p.entitlements.tags]))).toEqual({ free: 30, personal: 30, team: 50, enterprise: null });
+    expect(Object.fromEntries(Object.entries(PLANS).map(([id, p]) => [id, p.entitlements.jev_checks]))).toEqual({ free: 1000, personal: 1000, team: 10000, enterprise: null });
     expect(LIMITS.tags.min).toBe(6);
 
     await env.DB.prepare(`UPDATE orgs SET plan_overrides = ? WHERE id = ?`).bind(JSON.stringify({ tags: 7 }), ORG_A).run();
@@ -159,7 +160,7 @@ describe("the list", () => {
     await addTag(ctx, { name: "eighth" });
     expect(await code(restoreTag(ctx, "seventh"))).toBe("plan_limit");
     // Another org's cap is its own.
-    expect((await listTags(systemCtx(ORG_B)))).toMatchObject({ used: 6, cap: 30 });
+    expect((await listTags(systemCtx(ORG_B)))).toMatchObject({ used: 6, cap: null }); // no override: its Enterprise plan, unlimited
   });
 });
 
@@ -303,7 +304,7 @@ describe("cookie routes", () => {
     const asMember = await call<TagListDTO>("GET", `${BASE}/tags`, member);
     expect(asMember.status).toBe(200);
     expect(asMember.json.tags.length).toBe(6);
-    expect(asMember.json).toMatchObject({ used: 6, cap: 30, suggestions: [] });
+    expect(asMember.json).toMatchObject({ used: 6, cap: null, suggestions: [] }); // the seed org is Enterprise: no cap
     expect((await call<TagListDTO>("GET", `${BASE}/tags`, owner)).json.suggestions.map((s) => s.name)).toEqual(["wanted"]);
     expect((await call<TagPageDTO>("GET", `${BASE}/tags/auth`, member)).json.tag.name).toBe("auth");
     expect((await call("GET", `${BASE}/tags/nope`, member)).status).toBe(404);

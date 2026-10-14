@@ -1052,6 +1052,10 @@ const tagPath = (name: string, rest = ""): string => `/api/tags/${encodeURICompo
 export function listOrgTags(): Promise<TagT.TagListDTO> { return orgSend("GET", "/api/tags"); }
 /** One tag and everything that carries it. A 404 = no such tag. */
 export function getTagPage(name: string): Promise<TagT.TagPageDTO> { return orgSend("GET", tagPath(name)); }
+/** Settle one of Sift's suggestions for `name` (any member): add the tag to the item, or dismiss it. */
+export function settleTagReview(name: string, item: { type: TagT.TagItemType; id: string }, add: boolean): Promise<{ ok: true; tagged: boolean }> {
+  return orgSend("POST", tagPath(name, add ? "/review/add" : "/review/dismiss"), item);
+}
 export function addOrgTag(body: { name: string; description?: string; color?: TagT.TagColor; scan?: boolean }): Promise<{ ok: true; name: string; fit?: string }> { return orgSend("POST", "/api/tags", body); }
 export function editOrgTag(name: string, body: { name?: string; description?: string; color?: TagT.TagColor }): Promise<{ ok: true; name: string }> { return orgSend("PUT", tagPath(name), body); }
 export function mergeOrgTag(name: string, into: string): Promise<{ ok: true; name: string; moved: number }> { return orgSend("POST", tagPath(name, "/merge"), { into }); }

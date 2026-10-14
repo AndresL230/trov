@@ -27,7 +27,7 @@ import type { AppEnv } from "../auth/principal";
 import { RoleError, requireRole } from "../data/context";
 import { PlanFeatureError, PlanLimitError } from "../plans/state";
 import { TagError, addTag, editTag, listTags, mergeTag, resolveSuggestion, restoreTag, retireTag, setItemTags, tagPage } from "../tools/tags";
-import { continueTagFit, setAiEnabled, startTagFit, tagRun, undoTagFit, type FitStart } from "../tools/tag-fit";
+import { continueTagFit, setAiEnabled, settleFitSuggestion, startTagFit, tagRun, undoTagFit, type FitStart } from "../tools/tag-fit";
 
 /**
  * Start a model run for `tag` and hand its work to the request's `waitUntil` — never on the response's
@@ -101,6 +101,9 @@ export const tagsApp = (() => {
   }));
   // The live run, small and cheap: what the Tags tab polls (every ~600 ms) while a run goes.
   r.get("/:name/run", (c) => guard(c, async () => c.json({ run: await tagRun(c.var.ctx, c.req.param("name")) })));
+  // One of Sift's suggestions (60–85% sure), settled by a person — any member: `{ type, id }`.
+  r.post("/:name/review/add", (c) => guard(c, async () => { const b = await body(c); return c.json(await settleFitSuggestion(c.var.ctx, c.req.param("name"), b.type, b.id, true)); }));
+  r.post("/:name/review/dismiss", (c) => guard(c, async () => { const b = await body(c); return c.json(await settleFitSuggestion(c.var.ctx, c.req.param("name"), b.type, b.id, false)); }));
   r.post("/:name/undo-run", (c) => guard(c, async () => c.json({ ok: true, ...(await undoTagFit(c.var.ctx, c.req.param("name"), (await body(c)).run)) })));
   r.put("/:name", (c) => guard(c, async () => c.json({ ok: true, ...(await editTag(c.var.ctx, c.req.param("name"), await body(c))) })));
   r.post("/:name/merge", (c) => guard(c, async () => c.json({ ok: true, ...(await mergeTag(c.var.ctx, c.req.param("name"), (await body(c)).into)) })));

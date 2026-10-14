@@ -5,10 +5,11 @@ import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
 import { jevClassifier, noulOf, JEV_URL, JEV_MODEL, CLASSIFY_PROMPT_VERSION, type ClassifyRequest, type ClassifyItem } from "../src/tools/classify";
 import {
-  FIT_THRESHOLD, CANDIDATE_CAP, NO_SNIPPET_REASON, excerptOf, evidenceOf, fitQuery, fitCandidates, startTagFit, continueTagFit, runTagFit,
+  FIT_APPLY, FIT_SUGGEST, settleFitSuggestion, CANDIDATE_CAP, NO_SNIPPET_REASON, excerptOf, evidenceOf, fitQuery, fitCandidates, startTagFit, continueTagFit, runTagFit,
   setAiEnabled, aiEnabled, suggestAllowance, undoTagFit, JEV_ACTOR,
 } from "../src/tools/tag-fit";
-import { addTag, listTags, setItemTags } from "../src/tools/tags";
+import { addTag, listTags, setItemTags, tagPage } from "../src/tools/tags";
+import type { TagPageDTO } from "@shared/tags-core";
 import { append_feed } from "../src/tools/writes";
 import { RoleError } from "../src/data/context";
 import { all, first } from "./helpers/db";
@@ -212,17 +213,17 @@ describe("a run", () => {
     expect(j.sent).toEqual([]);
   });
 
-  it("ADDS the tag to each item Jev judges a fit (≥ 0.7) — entry_tags and its provenance in one go, one audit row per run; counts each request; sends only this org's items", async () => {
+  it("ADDS the tag to each item judged a fit at 0.85 or more — entry_tags and its provenance in one go, one audit row per run; counts each request; sends only this org's items", async () => {
     const { invoice } = await seedBilling();
     await billingTag();
-    const j = jev((s) => (s.startsWith("Invoices") ? 0.95 : FIT_THRESHOLD - 0.01));
+    const j = jev((s) => (s.startsWith("Invoices") ? 0.95 : FIT_SUGGEST - 0.01));
     expect(await runTagFit(KEYED, systemCtx(), "billing", { jev: { fetchImpl: j.fetchImpl, retryDelayMs: 0 } })).toBe("done");
     const rows = await modelRows();
     const runId = (await first<{ id: number }>(env.DB, `SELECT id FROM org_tag_runs`))!.id;
     expect(rows).toEqual([{ entry_type: "feed", entry_id: String(invoice), tag: "billing", state: "accepted", confidence: 0.95,
       reason: expect.stringMatching(/^Mentions “…/), model: "jev-1.13.0", prompt_version: CLASSIFY_PROMPT_VERSION, suggested_by: "system", resolved_by: JEV_ACTOR, run_id: runId }]);
     expect(JEV_ACTOR).toBe("jev");
-    // The tag is ON the item now — and only on the one at or above the threshold (the other was 0.69).
+    // The tag is ON the item now — and only on the one at or above 0.85 (the others were 0.59: nothing at all).
     expect(await tagged("billing")).toEqual([String(invoice)]);
     expect(await fitAudit()).toEqual([{ actor: "system", action: "tag.fit", target: "billing", detail: JSON.stringify({ run: runId, status: "done", candidates: 3, calls: 3, added: 1 }) }]);
     expect(CLASSIFY_PROMPT_VERSION).toBe("jev-fit-1");
@@ -383,6 +384,54 @@ describe("the way back", () => {
     expect(await tagged("billing")).toEqual([String(other)]);
   });
 
+  it("the two bands: 0.85+ adds the tag; 0.60–0.85 is SUGGESTED (open, not tagged) for a person; below, nothing", async () => {
+    expect([FIT_APPLY, FIT_SUGGEST]).toEqual([0.85, 0.6]);
+    const { invoice, seats, other } = await seedBilling();
+    await billingTag();
+    const j = jev((s) => (s.startsWith("Invoices") ? 0.9 : s.startsWith("Seat") ? 0.72 : 0.55));
+    expect(await runTagFit(KEYED, systemCtx(), "billing", { classifier: j.classifier })).toBe("done");
+    expect(await tagged("billing")).toEqual([String(invoice)]);
+    const rows = await modelRows();
+    expect(rows.map((r) => [r.entry_id, r.state, r.confidence]).sort()).toEqual([[String(invoice), "accepted", 0.9], [String(seats), "open", 0.72]].sort());
+    expect(rows.some((r) => r.entry_id === String(other))).toBe(false);
+    const admin = await tenantCtx(OWNER);
+    expect((await listTags(admin, { aiAvailable: true })).review).toEqual({ billing: 1 });
+    const page = (await tagPage(admin, "billing")) as TagPageDTO;
+    expect(page.review).toEqual([expect.objectContaining({ type: "feed", id: String(seats), title: "Seat billing for Pro", jev: expect.objectContaining({ confidence: 0.72 }) })]);
+    expect(page.jev_added).toBe(1);
+  });
+
+  it("a person ADDS a suggestion (any member): the tag goes on, it is theirs — not Sift's — and no Undo takes it; DISMISS is remembered", async () => {
+    const { invoice, seats } = await seedBilling();
+    await billingTag();
+    await runTagFit(KEYED, systemCtx(), "billing", { classifier: jev((s) => (s.startsWith("Invoices") || s.startsWith("Seat") ? 0.7 : 0.05)).classifier });
+    const member = await tenantCtx("casey", "member");
+    expect(await settleFitSuggestion(member, "billing", "feed", String(invoice), true)).toEqual({ ok: true, tagged: true });
+    expect(await settleFitSuggestion(member, "billing", "feed", String(seats), false)).toEqual({ ok: true, tagged: false });
+    expect(await tagged("billing")).toEqual([String(invoice)]);
+    expect((await modelRows()).map((r) => [r.entry_id, r.state, r.resolved_by]).sort()).toEqual([[String(invoice), "accepted", "casey"], [String(seats), "dismissed", "casey"]].sort());
+    const admin = await tenantCtx(OWNER);
+    expect(((await tagPage(admin, "billing")) as TagPageDTO).jev_added).toBe(0);       // a person added it
+    expect(await undoTagFit(admin, "billing")).toEqual({ removed: 0 });
+    expect(await tagged("billing")).toEqual([String(invoice)]);
+    await expect(settleFitSuggestion(member, "billing", "feed", String(seats), true)).rejects.toMatchObject({ code: "not_found" }); // settled already
+    await expect(settleFitSuggestion(member, "billing", "nope", "1", true)).rejects.toMatchObject({ code: "invalid" });
+    // A later run neither re-suggests the dismissed one nor asks about it.
+    const j = jev(fitsIf("illing", 0.7));
+    await runTagFit(KEYED, systemCtx(), "billing", { classifier: j.classifier });
+    expect(JSON.stringify(j.sent)).not.toContain("Seat billing for Pro");
+  });
+
+  it("Undo also withdraws what that run only suggested", async () => {
+    await seedBilling();
+    await billingTag();
+    await runTagFit(KEYED, systemCtx(), "billing", { classifier: jev((s) => (s.startsWith("Seat") ? 0.7 : 0.05)).classifier });
+    expect((await modelRows()).map((r) => r.state)).toEqual(["open"]);
+    await undoTagFit(await tenantCtx(OWNER), "billing");
+    expect((await modelRows()).map((r) => r.state)).toEqual(["undone"]);
+    expect((await listTags(await tenantCtx(OWNER), { aiAvailable: true })).review).toEqual({});
+  });
+
   it("a person removing a run's tag from ONE item is remembered: no later run adds it back", async () => {
     const { invoice, seats } = await tagRun();
     const admin = await tenantCtx("casey", "member");
@@ -418,6 +467,9 @@ describe("routes", () => {
     expect((await call("POST", `${BASE}/tags/auth/find-items`, owner, {})).json).toEqual({ ok: true, status: "no_key" });
     expect((await call("POST", `${BASE}/tags/auth/find-items`, member, {})).status).toBe(403);
     expect((await call("POST", `${BASE}/tags`, owner, { name: "billing" })).json).toMatchObject({ ok: true, name: "billing", fit: "no_key" });
+    // A suggestion is settled by any member, over the cookie only; unknown → not_found.
+    expect((await call("POST", `${BASE}/tags/auth/review/add`, member, { type: "feed", id: "999" })).json).toMatchObject({ error: "not_found" });
+    expect((await call("POST", `${BASE}/tags/auth/review/dismiss`, member, { type: "feed", id: "999" }, { headers: { authorization: "Bearer x" } })).status).toBe(403);
     // The New tag modal's switch off: the tag is added and nothing is looked for.
     expect((await call("POST", `${BASE}/tags`, owner, { name: "invoices", scan: false })).json).toMatchObject({ ok: true, name: "invoices", fit: "skipped" });
     expect((await call("GET", `${BASE}/tags/billing/run`, owner)).json).toEqual({ run: null });

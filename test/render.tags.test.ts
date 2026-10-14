@@ -298,6 +298,7 @@ describe("one tag's page", () => {
     seen_with: [{ name: "api", count: 17 }, { name: "ui", count: 9 }],
     authors: [{ handle: "mara", count: 23 }],
     jev_added: 1,
+    review: [],
     ...o,
   });
   const NOW = Date.parse("2026-10-14T12:00:00Z");
@@ -429,6 +430,26 @@ describe("one tag's page", () => {
     expect(block).not.toMatch(/\.cnpy-tagpage-tile[^{]*\{[^}]*(min-height|max-height|height:auto)/);
   });
 
+  it("To review: a tab only while Sift has open suggestions (60–85% sure); each item with how sure, its reason, Add and Dismiss", () => {
+    expect(view(page())).not.toContain(`data-arg="review"`);                    // nothing to review: no tab
+    const withReview = page({ review: [{ type: "feed", id: "52", title: "Passkeys on the login page", note: "A second way in.", by: "ines", at: "2026-10-13T10:00:00Z", tags: [],
+      jev: { confidence: 0.72, reason: "Mentions “…login…”", at: "2026-10-14T09:00:00Z" } }] });
+    const all = view(withReview);
+    expect(all).toMatch(/data-arg="review"[\s\S]*?To review[\s\S]*?data-n="1"/);
+    const html = view(withReview, "review");
+    const item = html.slice(html.indexOf(`data-tag-review="feed:52"`), html.indexOf("</li>", html.indexOf(`data-tag-review="feed:52"`)));
+    expect(item).toContain("Passkeys on the login page");
+    expect(item).toContain("Sift is 72% sure");
+    expect(item).toContain(`data-mtip="Mentions “…login…”"`);
+    expect(item).toContain(`data-act="tagReviewAdd" data-arg="feed:52"`);
+    expect(item).toContain(`data-act="tagReviewDismiss" data-arg="feed:52"`);
+    expect(html).toMatch(/data-size="full" data-tag-group="review"/);
+    // Settled everything: the tab still shows while picked, and says so.
+    expect(view(page(), "review")).toContain("Nothing to review");
+    // A write out: its buttons wait.
+    expect(tagPageView({ name: "auth", page: { status: "ok", data: withReview }, tab: "review", orgName: "Acme", who: (h) => h, now: NOW, busy: "review:feed:52" })).toContain("Adding…");
+  });
+
   it("the tab picked is the tab shown — every tab the bar offers, an empty type too (Decisions used to snap back to All)", () => {
     const p = page({ tag: tag("auth", { color: "plum", counts: { feed: 2, doc: 1, adr: 0 } }), items: { ...page().items, adr: [] } });
     const offered = [...view(p).matchAll(/data-act="tagPageTab" data-arg="([a-z]+)"/g)].map((m) => m[1]);
@@ -549,7 +570,7 @@ describe("tags added by Jev, on the Tags tab (the owner's call: no review step)"
     const sentence = openTab.slice(openTab.indexOf(`id="org-tags-ai-info"`), openTab.indexOf("</p>", openTab.indexOf(`id="org-tags-ai-info"`)));
     expect(sentence).toContain(`role="dialog" aria-label="What is sent"`);
     expect(openTab).toContain(`data-act="tagAiInfoClose"`);
-    expect(sentence).toContain("Sift sends the tag's name and description, and the title and first 400 characters of each item that may fit (code removed), to a model from TypeSafe AI, then adds the tag where it fits.");
+    expect(sentence).toContain("Sift sends the tag's name and description, and the title and first 400 characters of each item that may fit (code removed), to a model from TypeSafe AI. It adds the tag where it is sure, and suggests it where it is less sure, for a person to decide.");
     expect(sentence).toContain("You can undo a run or take the tag off any item.");
     expect(sentence).not.toContain("Jev");
     expect(sentence).not.toContain("until you accept");
@@ -578,6 +599,10 @@ describe("tags added by Jev, on the Tags tab (the owner's call: no review step)"
     expect(jevCell(t("x"), run({ status: "running" }), u)).not.toContain("undoRun");
     expect(jevCell(t("x"), undefined, u)).toContain(`data-state="idle"`);
     expect(jevCell(tag("old", { retired: true }), run(), u)).toBe(`<div data-col="jev"></div>`);
+    // What Sift only suggested: "N to review", a link to the tag page's To review tab — never while a run is drawn.
+    expect(jevCell(t("x"), run(), u, 3)).toContain(`data-act="tagReviewOpen" data-arg="x"`);
+    expect(jevCell(t("x"), run(), u, 3)).toContain(">3 to review<");
+    expect(jevCell(t("x"), run(), u, 0)).not.toContain("tagReviewOpen");
   });
 
   it("Find items sits on the row while the switch is on; it waits while a run goes; off or used up, it is not there", () => {
@@ -585,9 +610,9 @@ describe("tags added by Jev, on the Tags tab (the owner's call: no review step)"
     expect(piece(tab("admin", list({ ai: ai(), runs: { onboarding: run({ status: "running" }) } })), `data-org-tag="onboarding"`)).toMatch(/data-act="tagFind" data-arg="onboarding"[^>]* disabled/);
     expect(tab("admin", list({ ai: ai({ enabled: false }) }))).not.toContain(`data-act="tagFind"`);
     expect(tab("admin", list({ ai: ai({ spent: true }) }))).not.toContain(`data-act="tagFind"`);
-    expect(tab("admin", list({ ai: ai() }))).toMatch(/--tagcols:minmax\(0, 176px\) minmax\(0, 1fr\) 64px 150px 116px;/);
+    expect(tab("admin", list({ ai: ai() }))).toMatch(/--tagcols:minmax\(0, 176px\) minmax\(0, 1fr\) 64px 190px 116px;/);
     // The switch never moves a column: the same template on or off, and the checks meter keeps its place.
-    expect(tab("admin", list({ ai: ai({ enabled: false }) }))).toMatch(/--tagcols:minmax\(0, 176px\) minmax\(0, 1fr\) 64px 150px 116px;/);
+    expect(tab("admin", list({ ai: ai({ enabled: false }) }))).toMatch(/--tagcols:minmax\(0, 176px\) minmax\(0, 1fr\) 64px 190px 116px;/);
     expect(aiSection(ai({ enabled: false }), initialTagsUi())).toContain(`class="cnpy-tagshead-meterwrap" data-off="1"`);
   });
 

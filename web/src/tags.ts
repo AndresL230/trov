@@ -29,8 +29,9 @@ export interface TagEdit { name: string; field: "name" | "desc"; nameDraft: stri
 /** The open confirmation: retire `name`, merge `name` into `into`, or dismiss the suggestion `name`. */
 /** `rerun`: after a tag's name or description changed, offer Find items again (`changed` says which). */
 export interface TagConfirm { what: "retire" | "merge" | "dismiss" | "undoRun" | "rerun"; name: string; into?: string; changed?: "name" | "desc"; busy: boolean }
-export type TagPageTab = "all" | TagItemType;
-export const TAG_PAGE_TABS: readonly TagPageTab[] = ["all", ...TAG_ITEM_TYPES];
+/** `review`: what Sift suggested (60–85% sure) and nobody settled — a tab only while there is any. */
+export type TagPageTab = "all" | TagItemType | "review";
+export const TAG_PAGE_TABS: readonly TagPageTab[] = ["all", ...TAG_ITEM_TYPES, "review"];
 export const isTagPageTab = (v: unknown): v is TagPageTab => typeof v === "string" && (TAG_PAGE_TABS as readonly string[]).includes(v);
 
 /** Everything the tag screens keep in AppState (`state.tagsUi`). */
@@ -151,7 +152,7 @@ export function aiSection(ai: TagAiDTO, ui: TagsUi): string {
 
 /** The popover: what is sent, to whom, and the way back. */
 function aiInfo(): string {
-  return `<p id="org-tags-ai-info" role="dialog" aria-label="What is sent" class="cnpy-tagshead-info" style="border-radius:11px">Sift sends the tag's name and description, and the title and first 400 characters of each item that may fit (code removed), to a model from TypeSafe AI, then adds the tag where it fits. You can undo a run or take the tag off any item.</p>`;
+  return `<p id="org-tags-ai-info" role="dialog" aria-label="What is sent" class="cnpy-tagshead-info" style="border-radius:11px">Sift sends the tag's name and description, and the title and first 400 characters of each item that may fit (code removed), to a model from TypeSafe AI. It adds the tag where it is sure, and suggests it where it is less sure, for a person to decide. You can undo a run or take the tag off any item.</p>`;
 }
 
 /** Can Jev look for items right now (the switch on, a key set, checks left this month)? */
@@ -159,14 +160,18 @@ const canFind = (ai: TagAiDTO | undefined): boolean => !!ai && ai.enabled && ai.
 
 /** A tag row's "Added by Jev" cell: the latest run's result ("7 added", with Undo; "None fit"; why it stopped),
  *  or the run drawn live. The same cell either way (web/src/fit-run.ts `fitCell`), so the row never changes shape. */
-export function jevCell(t: OrgTagDTO, last: TagRunDTO | undefined, ui: TagsUi): string {
+export function jevCell(t: OrgTagDTO, last: TagRunDTO | undefined, ui: TagsUi, review = 0): string {
   if (t.retired) return `<div data-col="jev"></div>`;
   const live = ui.live[t.name] ?? null;
   const n = (k: number) => `${k} ${k === 1 ? "item" : "items"}`;
   const undo = !live && last && last.status !== "running" && last.added > 0 && !last.undone_at
     ? `<button type="button" class="cnpy-tagjev-undo" data-act="tagConfirm" data-arg="${attr(`undoRun:${t.name}`)}" data-field="${attr(`tagConfirm:undoRun:${t.name}`)}" aria-haspopup="dialog" aria-label="${attr(`Undo: take ${t.name} off the ${n(last.added)} this run tagged`)}"${ui.busy ? " disabled" : ""}>${ui.busy === `undo:${t.name}` ? "Undoing…" : "Undo"}</button>`
     : "";
-  return fitCell(t.name, t.color, live, last, undo);
+  // What Sift only suggested (60–85% sure) and nobody settled: a link to the tag page's To review tab.
+  const toReview = !live && review > 0
+    ? `<button type="button" class="cnpy-tagjev-undo cnpy-tagjev-review" data-act="tagReviewOpen" data-arg="${attr(t.name)}" aria-label="${attr(`${review} of Sift's suggestions for ${t.name} to review`)}">${review} to review</button>`
+    : "";
+  return fitCell(t.name, t.color, live, last, undo + toReview);
 }
 
 const DOTS = `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="19" cy="12" r="1.7"></circle></svg>`;
@@ -271,7 +276,7 @@ function tagRow(t: OrgTagDTO, admin: boolean, ui: TagsUi, list: TagListDTO | nul
         ${descCell(t, admin, editing)}
         <div data-col="n" class="cnpy-tagrow-n" title="${attr(where)}"${all ? "" : ' data-zero="1"'}>${all || "—"}</div>
         <div data-col="small" class="cnpy-tagrow-small" title="${attr(where)}">${all ? plural(all, "item", "items") : "Not used yet"}</div>
-        ${ai ? jevCell(t, last, ui) : ""}
+        ${ai ? jevCell(t, last, ui, list?.review?.[t.name] ?? 0) : ""}
         ${admin ? `<div data-col="acts" class="cnpy-tagrow-acts">${acts}</div>` : ""}
       </div>
     </li>`;
@@ -310,7 +315,7 @@ export function tagsTab(org: MyOrg, p: TagsTabProps): string {
   // ONE column template for the head and every row (fixed widths but the description), so every row lines up. It
   // does not depend on the Jev switch: turning it on or off never moves a column.
   const jev = admin && !!list.ai;
-  const cols = ["minmax(0, 176px)", "minmax(0, 1fr)", "64px", ...(jev ? ["150px"] : []), ...(admin ? ["116px"] : [])].join(" ");
+  const cols = ["minmax(0, 176px)", "minmax(0, 1fr)", "64px", ...(jev ? ["190px"] : []), ...(admin ? ["116px"] : [])].join(" ");
   // Not `overflow:hidden`: a row's ⋯ menu opens over the rows below it.
   const ul = (extra: string) => surface(`list-style:none;padding:0;--tagcols:${cols};${extra}`);
   // The head: the column names (for sighted readers — each row says the same in its own words), and for an
@@ -417,6 +422,8 @@ export interface TagPageProps {
   who: (handle: string) => string;
   /** "Now" for the activity chart (a test pins it); the clock when absent. */
   now?: number;
+  /** The write out (a review item's buttons wait: `review:<type>:<id>`). */
+  busy?: string | null;
 }
 
 // The page (web-ui.md › Tags › One tag's page): a hero (square, name, what it is for, the counts by type and their
@@ -426,7 +433,7 @@ export interface TagPageProps {
 // or shrinks with what it holds: its body scrolls. The tag's own colour (`--tag-c`) draws every chart on the page.
 
 const ITEM_ACT: Record<TagItemType, string> = { feed: "goFeed", doc: "openDocFrom", adr: "tagOpenDecision" };
-const TAB_LABEL: Record<TagPageTab, string> = { all: "All", feed: "Feed", doc: "Docs", adr: "Decisions" };
+const TAB_LABEL: Record<TagPageTab, string> = { all: "All", feed: "Feed", doc: "Docs", adr: "Decisions", review: "To review" };
 const GROUP_TITLE: Record<TagItemType, string> = { doc: "Docs", adr: "Decisions", feed: "Recent in the feed" };
 /** What the team knows first (docs, decisions), then what happened (the feed). */
 const PAGE_ORDER: readonly TagItemType[] = ["doc", "adr", "feed"];
@@ -462,6 +469,30 @@ function pageItem(it: TagPageItem, who: TagPageProps["who"]): string {
       <button type="button" data-act="${ITEM_ACT[it.type]}" data-arg="${attr(it.type === "adr" ? it.title : it.id)}" class="cnpy-tagitem-t">${esc(it.title)}</button>
       ${it.type === "feed" && it.note ? `<div class="cnpy-tagitem-note">${esc(it.note)}</div>` : ""}
       ${meta ? `<div class="cnpy-tagitem-meta">${meta}</div>` : ""}
+    </li>`;
+}
+
+/** One of Sift's suggestions on the To review tab: the item, how sure Sift was and why, and Add / Dismiss. */
+function reviewItem(it: TagPageItem, tag: string, who: TagPageProps["who"], busy: string | null): string {
+  const key = `${it.type}:${it.id}`;
+  const waiting = busy === `review:${key}`;
+  const sure = it.jev ? `Sift is ${Math.round(it.jev.confidence * 100)}% sure` : "";
+  const meta = [
+    `<span style="white-space:nowrap">${esc(capFirst(TAG_ITEM_LABEL[it.type].one))}</span>`,
+    it.by ? who(it.by) : "",
+    it.at ? `<time datetime="${attr(it.at)}" style="white-space:nowrap">${esc(relTime(it.at))}</time>` : "",
+    sure ? `<span${it.jev?.reason ? ` data-mtip="${attr(it.jev.reason)}"` : ""} style="white-space:nowrap;color:var(--fg-55)">${esc(sure)}</span>` : "",
+  ].filter(Boolean).join(`<span aria-hidden="true">·</span>`);
+  return `<li class="cnpy-tagitem cnpy-tagreview" data-tag-review="${attr(key)}">
+      <div style="min-width:0">
+        <button type="button" data-act="${ITEM_ACT[it.type]}" data-arg="${attr(it.type === "adr" ? it.title : it.id)}" class="cnpy-tagitem-t">${esc(it.title)}</button>
+        ${it.type === "feed" && it.note ? `<div class="cnpy-tagitem-note">${esc(it.note)}</div>` : ""}
+        <div class="cnpy-tagitem-meta">${meta}</div>
+      </div>
+      <div class="cnpy-tagreview-acts">
+        ${accentBtn(waiting ? "Adding…" : "Add tag", "tagReviewAdd", { arg: key, disabled: !!busy, busy: waiting, label: `Add ${tag} to “${it.title}”`, extra: "height:30px;padding:0 11px;font-size:12.5px" })}
+        ${quietBtn("Dismiss", "tagReviewDismiss", { arg: key, disabled: !!busy, label: `Dismiss Sift's suggestion of ${tag} for “${it.title}”`, extra: "height:30px;padding:0 11px;font-size:12.5px" })}
+      </div>
     </li>`;
 }
 
@@ -598,13 +629,18 @@ export function tagPageView(p: TagPageProps): string {
   const tab = p.tab;
   const bar = tabBar({
     id: "tag-tab", ariaLabel: `What is tagged ${tag.name}`, act: "tagPageTab", value: tab,
-    tabs: TAG_PAGE_TABS.map((t) => {
-      const n = t === "all" ? sum : tag.counts[t];
+    tabs: TAG_PAGE_TABS.filter((t) => t !== "review" || d.review.length > 0 || tab === "review").map((t) => {
+      const n = t === "all" ? sum : t === "review" ? d.review.length : tag.counts[t];
       return { value: t, label: TAB_LABEL[t], trail: `<span class="cnpy-badge" data-n="${n}">${n}</span>` };
     }),
   });
   let body: string;
-  if (tab === "all") {
+  if (tab === "review") {
+    const list = d.review.length
+      ? `<ul class="cnpy-tagpage-list">${d.review.map((it) => reviewItem(it, tag.name, p.who, p.busy ?? null)).join("")}</ul>`
+      : `<p class="cnpy-tagpage-none">Nothing to review: every item Sift suggested for ${esc(tag.name)} has been added or dismissed.</p>`;
+    body = `<div class="cnpy-tagpage-grid">${tile(tileHead("Suggested by Sift", "tag-g-review", d.review.length || undefined, `<span class="cnpy-tagpage-sub">Sift was 60–85% sure: add the tag where it fits, or dismiss it.</span>`), list, 12, 12, "full", ` data-tag-group="review" aria-labelledby="tag-g-review"`)}</div>`;
+  } else if (tab === "all") {
     // Every tile is there whatever the tag holds — an empty one says so in its own, same-sized box.
     const none = sum === 0 && PAGE_ORDER.every((t) => items[t].length === 0);
     const emptyOf = (t: TagItemType) => none && t === "feed"

@@ -118,34 +118,28 @@ const GB = 1024 * MB;
 // platform's caps from before plans (10 each: the repo cron's budget is shared), so an existing org sees
 // no change. `ai_summaries` (per calendar month) are sized so that one org cannot run up the platform's
 // one Anthropic bill, not from measured use (plans.md › AI summaries); `ai_runs` likewise (ai.md).
-/** How many tags an org's list may hold. A PLACEHOLDER, the same on every plan: the owner has not
- *  chosen the numbers yet (docs/architecture/plans.md › Tags). */
-const TAGS_PLACEHOLDER = 30;
-/** Jev checks per calendar month — PLACEHOLDERS equal to each plan's `ai_summaries` (plans.md › Tag checks);
- *  the owner has not chosen them. */
-const SUGGEST_FREE = 300;
-const SUGGEST_PRO = 3000;
+// Tags and Sift's checks: the owner's numbers (2026-10-14). Personal follows Free, as everywhere.
 
 export const PLANS: Record<PlanId, PlanDef> = {
   free: {
     id: "free", name: "Free", description: "For a small team trying Trov out.",
-    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: SUGGEST_FREE, tags: TAGS_PLACEHOLDER },
+    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, tags: 30 },
     features: [], offered: true, billing: null,
   },
   // LEGACY: no longer offered or sold. An org or grant already on it keeps these limits.
   personal: {
     id: "personal", name: "Personal", description: "One person's own organization.",
-    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: SUGGEST_FREE, tags: TAGS_PLACEHOLDER },
+    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, tags: 30 },
     features: [], offered: false, billing: null,
   },
   team: {
     id: "team", name: "Pro", description: "For a team, paid per seat.",
-    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: SUGGEST_PRO, tags: TAGS_PLACEHOLDER },
+    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, tags: 50 },
     features: [], offered: true, billing: null,
   },
   enterprise: {
     id: "enterprise", name: "Enterprise", description: "Limits set for the organization by Trov.",
-    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_runs: null, jev_checks: null, tags: TAGS_PLACEHOLDER },
+    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_runs: null, jev_checks: null, tags: null },
     features: [], offered: true, billing: null,
   },
 };

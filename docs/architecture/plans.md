@@ -33,16 +33,16 @@ Limits list `LISTED_LIMIT_KEYS` (every key but the unlisted) instead of `LIMIT_K
 carries `ai_runs` (this month's `ai_run:*`). To list it: drop the flag (`test/render.pricing.test.ts`,
 `render.plans.test.ts`, `render.settings-plan.test.ts` pin that it is absent today).
 
-| `jev_checks` | 300 | 3,000 | unlimited | 300 | PER CALENDAR MONTH (UTC): requests made to the tag-check model (TypeSafe AI's Jev — ONE request per candidate item; `org_usage_daily` metric `ai_suggest`) | `startTagFit` / `continueTagFit` (`src/tools/tag-fit.ts`) — it refuses nothing with a 402: past it a run stops (`capped`) and the Tags tab says so |
-| `tags` | 30 | 30 | 30 | 30 | LIVE `org_tags` rows (a retired tag does not count) | `addTag`, `restoreTag`, `resolveSuggestion` accept (`src/tools/tags.ts`) |
+| `jev_checks` | 1,000 | 10,000 | unlimited | 1,000 | PER CALENDAR MONTH (UTC): Sift's checks (requests to TypeSafe AI's Jev — ONE request per candidate item; `org_usage_daily` metric `ai_suggest`) | `startTagFit` / `continueTagFit` (`src/tools/tag-fit.ts`) — it refuses nothing with a 402: past it a run stops (`capped`) and the Tags tab says so |
+| `tags` | 30 | 50 | unlimited | 30 | LIVE `org_tags` rows (a retired tag does not count) | `addTag`, `restoreTag`, `resolveSuggestion` accept (`src/tools/tags.ts`) |
 
-**Tag checks (`jev_checks`).** The numbers are PLACEHOLDERS equal to each plan's `ai_summaries` (`SUGGEST_FREE`,
-`SUGGEST_PRO` in `shared/plans.ts`); the owner has not chosen them. A run asks Jev about ONE item per request, so a
+**Tag checks (`jev_checks`).** The owner's numbers (2026-10-14): 1,000 a month on Free and Personal, 10,000 on Pro,
+unlimited on Enterprise. A run asks Jev about ONE item per request, so a
 run costs up to 60 (its candidates). Each request counts BEFORE it is made, and the allowance is checked before
 each one (one at a time, though four are in flight), so a run never passes the cap.
 
-**Tags (0056_org_tags).** 30 on every plan is a PLACEHOLDER (`TAGS_PLACEHOLDER` in `shared/plans.ts`): the owner
-has not chosen the numbers. An override may not go below 6 (`LIMITS.tags.min`): every org has six starter
+**Tags (0056_org_tags).** The owner's numbers (2026-10-14): 30 on Free and Personal, 50 on Pro, unlimited on
+Enterprise. An override may not go below 6 (`LIMITS.tags.min`): every org has six starter
 tags that are never removed. The limit shows with the others in the Plan block and Settings › Limits.
 
 **How one connection counts when it can reach several organizations** (0051). The limit stays per organization,

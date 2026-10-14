@@ -72,7 +72,14 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   are internal and keep the name.
 - **Tagging existing items — Jev ADDS the tag** (issues #154–#158, #166; `src/tools/classify.ts`, `src/tools/tag-fit.ts`).
   When an admin adds a tag (or accepts a suggested one), and on "Find items", Trov asks a model which of the
-  org's EXISTING items fit it, and **adds the tag to each item it judges a fit** (≥ `FIT_THRESHOLD`, 0.7). The model
+  org's EXISTING items fit it, and **adds the tag to each item it is sure fits** (≥ `FIT_APPLY`, 0.85) and **suggests
+  it** for each it is less sure about (≥ `FIT_SUGGEST`, 0.60, below 0.85) — an `open` model row in
+  `org_tag_suggestions` with the run's `run_id`, listed on the tag page's **To review** tab (`TagPageDTO.review`,
+  surest first) and counted on the Tags tab (`TagListDTO.review`, "N to review"). Any member settles one
+  (`settleFitSuggestion`; `POST /api/o/:slug/tags/:name/review/add|dismiss` `{ type, id }`, cookie only): **add**
+  puts the tag on the item and marks the row `accepted` BY THAT PERSON (so it is theirs — never "Added by Sift",
+  and no run's Undo takes it; `ITEM_TAGS_MAX` holds), **dismiss** marks it `dismissed` (no later run asks again).
+  Undo withdraws the run's open suggestions too (`undone`), and a new run supersedes the tag's open ones. The model
   is **TypeSafe AI's Jev** (`POST https://api.typesafe.ai/v1/systemone`, `TYPESAFE_API_KEY`), a NON-generative
   decision model: ONE request per candidate item, the item's text as `state` and one `noul` (yes/no) question keyed
   `fits` with `criteria` built from the tag's name and description, at most 4 in flight. Its answer is a
@@ -101,7 +108,7 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   - **Too few matches → top up** (`TOP_UP_TO` = 20): a tag with no description, or words nothing uses (`desktop`),
     found nothing to judge. When the keyword search yields fewer than 20, the newest other items (not tagged, not
     dismissed or open for it) fill the list up to 20, so Jev — the part that understands meaning — judges them.
-    `CANDIDATE_CAP` stays 60 and the threshold 0.7. With nothing at all (an empty org) the run ends with
+    `CANDIDATE_CAP` stays 60 and the bands 0.85 / 0.60. With nothing at all (an empty org) the run ends with
     `candidates = 0` and no call, and the row says "Nothing in this organization to check yet." The New tag modal
     says a plain description helps Jev find the right items; it is never required. Its "Find the items that fit it
     now" switch (on by default while Jev may look) sends `scan: false` on `POST /tags` when turned off: the tag is

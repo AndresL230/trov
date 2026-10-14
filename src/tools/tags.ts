@@ -19,7 +19,7 @@ import { requireRole, hasRole } from "../data/context";
 import { all, batch, fanOut, first, nowIso, stmt, type Stmt, type TenantContext } from "../data/sql";
 import { planFor, requirePlan } from "../plans/gate";
 import { resolveEntitlements } from "@shared/plans";
-import { aiEnabled, fitSummary, rememberRemovalStmt, suggestAllowance } from "./tag-fit";
+import { JEV_ACTOR, aiEnabled, fitSummary, rememberRemovalStmt, reviewCounts, suggestAllowance } from "./tag-fit";
 
 /** A refused tag write. `message` is fixed text: it names the rule, never more than the tag's own name. */
 export class TagError extends Error {
@@ -129,10 +129,11 @@ export async function listTags(ctx: TenantContext, opts: { aiAvailable?: boolean
   const out: TagListDTO = { tags, used: liveNames.length, cap: resolveEntitlements(plan.plan, plan.overrides).tags, suggestions: [] };
   if (!hasRole(ctx, "admin")) return out;
   // What only an admin acts on: what agents suggested, the AI switch, and each tag's latest run (Jev tagging items).
-  const [suggestions, enabled, allowance, summary] = await Promise.all([pendingSuggestions(ctx, liveNames), aiEnabled(ctx), suggestAllowance(ctx), fitSummary(ctx)]);
+  const [suggestions, enabled, allowance, summary, review] = await Promise.all([pendingSuggestions(ctx, liveNames), aiEnabled(ctx), suggestAllowance(ctx), fitSummary(ctx), reviewCounts(ctx)]);
   out.suggestions = suggestions;
   out.ai = { enabled, available: opts.aiAvailable === true, ...allowance };
   out.runs = Object.fromEntries(liveNames.filter((n) => summary.runs.has(n)).map((n) => [n, summary.runs.get(n)!]));
+  out.review = Object.fromEntries(liveNames.filter((n) => review.has(n)).map((n) => [n, review.get(n)!]));
   return out;
 }
 
@@ -152,7 +153,7 @@ export async function tagPage(ctx: TenantContext, rawName: string): Promise<TagP
   if (!name) return null;
   const row = (await tagRows(ctx)).find((r) => r.name === name);
   if (!row) return null;
-  const [feed, docs, adrs, counts, seen, authors, byJev] = await Promise.all([
+  const [feed, docs, adrs, counts, seen, authors, byJev, suggested] = await Promise.all([
     all<{ id: number; summary: string; brief: string | null; author: string; created_at: string }>(ctx,
       `SELECT f.id, f.summary, f.brief, f.author, f.created_at FROM feed f
          JOIN entry_tags et ON et.org_id = ? AND et.entry_type = 'feed' AND et.entry_id = CAST(f.id AS TEXT) AND et.tag = ?
@@ -192,8 +193,19 @@ export async function tagPage(ctx: TenantContext, rawName: string): Promise<TagP
       `SELECT s.entry_type, s.entry_id, MAX(s.confidence) AS confidence, MAX(s.reason) AS reason, MAX(s.resolved_at) AS at
          FROM org_tag_suggestions s
          JOIN entry_tags et ON et.org_id = ? AND et.entry_type = s.entry_type AND et.entry_id = s.entry_id AND et.tag = ?
-        WHERE s.org_id = ? AND s.tag = ? AND s.source = 'model' AND s.state = 'accepted'
+        WHERE s.org_id = ? AND s.tag = ? AND s.source = 'model' AND s.state = 'accepted' AND s.resolved_by = '${JEV_ACTOR}'
         GROUP BY s.entry_type, s.entry_id`, ctx.orgId, name, ctx.orgId, name),
+    // What Sift only SUGGESTED (60–85% sure) and nobody settled yet, surest first, with the item itself.
+    all<{ entry_type: string; entry_id: string; confidence: number | null; reason: string | null; at: string; title: string | null; note: string | null; by: string | null; item_at: string | null }>(ctx,
+      `SELECT s.entry_type, s.entry_id, s.confidence, s.reason, s.suggested_at AS at,
+              COALESCE(f.summary, d.title, a.title) AS title, COALESCE(f.brief, d.section, a.status) AS note,
+              COALESCE(f.author, d.updated_by, a.created_by) AS by, COALESCE(f.created_at, d.updated_at, a.created_at) AS item_at
+         FROM org_tag_suggestions s
+         LEFT JOIN feed f ON s.entry_type = 'feed' AND f.org_id = s.org_id AND CAST(f.id AS TEXT) = s.entry_id
+         LEFT JOIN docs d ON s.entry_type = 'doc' AND d.org_id = s.org_id AND d.slug = s.entry_id
+         LEFT JOIN adrs a ON s.entry_type = 'adr' AND a.org_id = s.org_id AND CAST(a.id AS TEXT) = s.entry_id
+        WHERE s.org_id = ? AND s.tag = ? AND s.source = 'model' AND s.state = 'open'
+        ORDER BY s.confidence DESC, s.id LIMIT ${TAG_PAGE_LIMIT}`, ctx.orgId, name),
   ]);
   const jev = new Map(byJev.map((r) => [`${r.entry_type}:${r.entry_id}`, { confidence: r.confidence ?? 0, reason: r.reason, at: r.at ?? "" }]));
   const withJev = (it: TagPageItem): TagPageItem => {
@@ -213,7 +225,11 @@ export async function tagPage(ctx: TenantContext, rawName: string): Promise<TagP
     doc: docs.map((d) => withJev({ type: "doc", id: d.slug, title: d.title, note: d.section, by: d.updated_by, at: d.updated_at, tags: others(docTags, d.slug) })),
     adr: adrs.map((a) => withJev({ type: "adr", id: String(a.id), title: a.title, note: a.status, by: a.created_by, at: a.created_at, tags: others(adrTags, String(a.id)) })),
   };
-  return { tag: { ...refOf(row), starter: row.starter === 1, counts: c }, items, seen_with: seen, authors, jev_added: byJev.length };
+  const review: TagPageItem[] = suggested.filter((r) => r.title !== null && isTagItemType(r.entry_type)).map((r) => ({
+    type: r.entry_type as TagItemType, id: r.entry_id, title: r.title ?? "", note: r.note, by: r.by, at: r.item_at, tags: [],
+    jev: { confidence: r.confidence ?? 0, reason: r.reason, at: r.at },
+  }));
+  return { tag: { ...refOf(row), starter: row.starter === 1, counts: c }, items, seen_with: seen, authors, jev_added: byJev.length, review };
 }
 
 // ── the gate's side (src/consumer.ts) ────────────────────────────────────────

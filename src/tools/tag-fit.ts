@@ -16,7 +16,10 @@
 //   • A FIXED SET OF ANSWERS: "fits" / "does not fit", through the one classify call (./classify.ts) —
 //     TypeSafe AI's Jev, a non-generative decision model: a yes/no probability per item, and no text. The
 //     REASON a suggestion shows is Trov's own evidence: the full-text snippet that made the item a candidate.
-//   • NEVER GUESS ON READ. Only "fits" at or above `FIT_THRESHOLD` adds the tag; anything else leaves no row.
+//   • TWO BANDS (the owner's numbers, 2026-10-14). A "fits" at `FIT_APPLY` (0.85) or more ADDS the tag on its own;
+//     from `FIT_SUGGEST` (0.6) up to it, the item is SUGGESTED — an `open` model row a person adds or dismisses
+//     (`settleFitSuggestion`, any member: putting a tag on an item is any member's act) — and below, nothing.
+//     A suggestion a person adds is theirs (`resolved_by` = them), never "added by Sift", and no Undo takes it.
 //   • METERED. Every model call counts against the month's `jev_checks` (shared/plans.ts); past it the
 //     run stops (`capped`) and the Tags tab says so.
 //   • CONSENT. Nothing is sent unless an admin turned the org's switch on (`org_ai_settings`, kind
@@ -24,7 +27,7 @@
 //     `EXCERPT_MAX` characters — code blocks, inline code and anything shaped like a credential removed —
 //     of THIS org's items only, picked without the model first by the org's own full-text index.
 import type { Env } from "../env";
-import { normalizeTagName, type TagItemType, type TagRunDTO } from "@shared/tags-core";
+import { ITEM_TAGS_MAX, isTagItemType, normalizeTagName, type TagItemType, type TagRunDTO } from "@shared/tags-core";
 import { planRefusal, resolveEntitlements } from "@shared/plans";
 import { platform, requireRole, type TenantContext } from "../data/context";
 import { METRIC_AI_SUGGEST, meter } from "../data/meter";
@@ -37,8 +40,10 @@ export const TAG_FIT_KIND = "tag.fit";
 /** Who a run's tags are recorded as resolved by: the model, never a person. A reserved word, not a handle. */
 export const JEV_ACTOR = "jev";
 export const FIT_ANSWERS = ["fits", "does not fit"] as const satisfies readonly [string, string];
-/** Only a "fits" this sure is stored. */
-export const FIT_THRESHOLD = 0.7;
+/** A "fits" this sure adds the tag on its own. */
+export const FIT_APPLY = 0.85;
+/** A "fits" this sure (and below `FIT_APPLY`) is suggested for a person to add or dismiss; below, nothing. */
+export const FIT_SUGGEST = 0.6;
 /** At most this many items are pre-selected for one run (one model request each). */
 export const CANDIDATE_CAP = 60;
 /** When the tag's words find fewer than this, the newest other items top the list up to it — so a tag with
@@ -293,7 +298,16 @@ export async function continueTagFit(env: Env, ctx: TenantContext, runId: number
         // and its provenance in ONE batch — and the run's counts move on.
         onItem: async (it, j) => {
           checked++;
-          if (j && j.answer === FIT_ANSWERS[0] && j.confidence >= FIT_THRESHOLD) {
+          const fits = !!j && j.answer === FIT_ANSWERS[0];
+          if (j && fits && j.confidence >= FIT_SUGGEST && j.confidence < FIT_APPLY) {
+            // Not sure enough to add on its own: suggested, for a person to add or dismiss.
+            const c = list[Number(it.id)];
+            await run(ctx,
+              `INSERT OR IGNORE INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, confidence, reason, model, prompt_version, suggested_by, suggested_at, state, run_id)
+               VALUES (?, ?, ?, ?, 'model', ?, ?, ?, ?, 'system', ?, 'open', ?)`,
+              ctx.orgId, c.type, c.id, tag, j.confidence, j.reason ?? scoreReason(j.confidence), j.model, classifier.promptVersion, nowIso(), runId);
+          }
+          if (j && fits && j.confidence >= FIT_APPLY) {
             const c = list[Number(it.id)];
             const at = nowIso();
             const [tagged] = await batch(ctx, [
@@ -370,13 +384,15 @@ export async function undoTagFit(ctx: TenantContext, rawTag: unknown, runId?: un
   if (!r) throw new TagError("not_found", 404, "no such run");
   if (r.status === "running") throw new TagError("run_running", 409, "wait for the run to finish, then undo it");
   const rows = await all<{ id: number; entry_type: string; entry_id: string }>(ctx,
-    `SELECT id, entry_type, entry_id FROM org_tag_suggestions WHERE org_id = ? AND tag = ? AND source = 'model' AND run_id = ? AND state = 'accepted'`, ctx.orgId, tag, r.id);
+    `SELECT id, entry_type, entry_id FROM org_tag_suggestions WHERE org_id = ? AND tag = ? AND source = 'model' AND run_id = ? AND state = 'accepted' AND resolved_by = '${JEV_ACTOR}'`, ctx.orgId, tag, r.id);
   const at = nowIso();
   await batch(ctx, [
     ...rows.flatMap((x) => [
       stmt(ctx, `DELETE FROM entry_tags WHERE org_id = ? AND tag = ? AND entry_type = ? AND entry_id = ?`, ctx.orgId, tag, x.entry_type, x.entry_id),
       stmt(ctx, `UPDATE org_tag_suggestions SET state = 'undone', resolved_at = ?, resolved_by = ? WHERE org_id = ? AND id = ? AND state = 'accepted'`, at, ctx.userId, ctx.orgId, x.id),
     ]),
+    // What the run only SUGGESTED and nobody settled goes with it.
+    stmt(ctx, `UPDATE org_tag_suggestions SET state = 'undone', resolved_at = ?, resolved_by = ? WHERE org_id = ? AND tag = ? AND source = 'model' AND run_id = ? AND state = 'open'`, at, ctx.userId, ctx.orgId, tag, r.id),
     stmt(ctx, `UPDATE org_tag_runs SET undone_at = COALESCE(undone_at, ?), undone_by = COALESCE(undone_by, ?) WHERE org_id = ? AND id = ?`, at, ctx.userId, ctx.orgId, r.id),
     auditStmt(ctx, "tag.fit.undo", tag, { run: r.id, items: rows.length }, at),
   ]);
@@ -388,3 +404,39 @@ export async function undoTagFit(ctx: TenantContext, rawTag: unknown, runId?: un
 export const rememberRemovalStmt = (ctx: TenantContext, tag: string, type: TagItemType, id: string, at: string): Stmt =>
   stmt(ctx, `UPDATE org_tag_suggestions SET state = 'removed', resolved_at = ?, resolved_by = ? WHERE org_id = ? AND tag = ? AND entry_type = ? AND entry_id = ? AND source = 'model' AND state = 'accepted'`,
     at, ctx.userId, ctx.orgId, tag, type, id);
+
+/**
+ * A person settles one of Sift's suggestions (any member — putting a tag on an item is any member's act; a cookie
+ * route, never MCP): ADD puts the tag on the item and marks the row `accepted` by THEM (so it is theirs, not "added
+ * by Sift", and no run's Undo takes it); DISMISS marks it `dismissed`, so no later run suggests it again.
+ */
+export async function settleFitSuggestion(ctx: TenantContext, rawTag: unknown, type: unknown, id: unknown, add: boolean): Promise<{ ok: true; tagged: boolean }> {
+  const tag = normalizeTagName(rawTag);
+  if (!tag) throw new TagError("not_found", 404, "no such tag");
+  if (!isTagItemType(type)) throw new TagError("invalid", 400, "type must be feed, doc or adr", "type");
+  if (typeof id !== "string" || !id || id.length > 200) throw new TagError("invalid", 400, "id must be the item's id", "id");
+  const row = await first<{ id: number }>(ctx,
+    `SELECT id FROM org_tag_suggestions WHERE org_id = ? AND tag = ? AND entry_type = ? AND entry_id = ? AND source = 'model' AND state = 'open'`, ctx.orgId, tag, type, id);
+  if (!row) throw new TagError("not_found", 404, "no such suggestion");
+  const at = nowIso();
+  if (!add) {
+    await run(ctx, `UPDATE org_tag_suggestions SET state = 'dismissed', resolved_at = ?, resolved_by = ? WHERE org_id = ? AND id = ? AND state = 'open'`, at, ctx.userId, ctx.orgId, row.id);
+    return { ok: true, tagged: false };
+  }
+  const liveTag = await first<{ n: number }>(ctx, `SELECT 1 AS n FROM org_tags WHERE org_id = ? AND name = ? AND retired_at IS NULL`, ctx.orgId, tag);
+  if (!liveTag) throw new TagError("not_found", 404, "that tag is not on the list any more");
+  const has = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM entry_tags WHERE org_id = ? AND entry_type = ? AND entry_id = ?`, ctx.orgId, type, id);
+  if ((has?.n ?? 0) >= ITEM_TAGS_MAX) throw new TagError("invalid", 400, `an item carries at most ${ITEM_TAGS_MAX} tags`, "tags");
+  await batch(ctx, [
+    stmt(ctx, `INSERT OR IGNORE INTO entry_tags (org_id, tag, entry_type, entry_id) VALUES (?, ?, ?, ?)`, ctx.orgId, tag, type, id),
+    stmt(ctx, `UPDATE org_tag_suggestions SET state = 'accepted', resolved_to = ?, resolved_at = ?, resolved_by = ? WHERE org_id = ? AND id = ? AND state = 'open'`, tag, at, ctx.userId, ctx.orgId, row.id),
+  ]);
+  return { ok: true, tagged: true };
+}
+
+/** Per live tag: how many of Sift's suggestions wait for a person (the Tags tab's "N to review"). */
+export async function reviewCounts(ctx: TenantContext): Promise<Map<string, number>> {
+  const rows = await all<{ tag: string; n: number }>(ctx,
+    `SELECT tag, COUNT(*) AS n FROM org_tag_suggestions WHERE org_id = ? AND source = 'model' AND state = 'open' GROUP BY tag`, ctx.orgId);
+  return new Map(rows.map((r) => [r.tag, r.n]));
+}
