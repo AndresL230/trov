@@ -79,7 +79,7 @@ export const tagsApp = (() => {
 
   // Reads back a screen: a failed read is a 503 `{ error }`, never a 500.
   r.get("/", async (c) => {
-    try { return c.json(await listTags(c.var.ctx, { aiAvailable: !!c.env.GEMINI_API_KEY })); }
+    try { return c.json(await listTags(c.var.ctx, { aiAvailable: !!c.env.TYPESAFE_API_KEY })); }
     catch (e) { console.error("tags read failed", e instanceof Error ? e.name : "error"); return c.json({ error: "Couldn't read the tags" }, 503); }
   });
   r.get("/:name", async (c) => {

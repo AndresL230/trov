@@ -26,9 +26,10 @@ Integrations, envelope-encrypted under `TROV_KEK` (`data-layer.md` › Configura
 | `ARTIFACTS_BUCKET` | R2, bucket `trov-artifacts`: binary artifact bodies at `artifacts/<sha256>`, doc images, and uploaded avatars and organization images (`avatars/<sha256>`, `org-logos/<sha256>`) — `artifacts.md` | **the bucket must exist before the first deploy that carries the binding** (`wrangler r2 bucket create trov-artifacts`), or the deploy fails |
 
 Capture-time summaries call Gemini over REST (`GEMINI_API_KEY`), never at render — not a Cloudflare binding,
-so there is no `[ai]` block. The same key serves the model suggestions (`src/tools/classify.ts`,
-`src/tools/tag-fit.ts`: which existing items fit a new tag) — only for an organization whose admin turned them on,
-in the background, each call counted against `ai_suggestions` (`feed-and-search.md` › Tags › What may fit).
+so there is no `[ai]` block. Tag suggestions (which existing items fit a new tag: `src/tools/classify.ts`,
+`src/tools/tag-fit.ts`) use a DIFFERENT provider and key: TypeSafe AI's Jev over REST (`TYPESAFE_API_KEY`) — only
+for an organization whose admin turned them on, in the background, each request counted against `ai_suggestions`
+(`feed-and-search.md` › Tags › What may fit).
 
 ### Sign-in and sessions
 
@@ -63,7 +64,8 @@ in the background, each call counted against `ai_suggestions` (`feed-and-search.
 
 | Name | Kind | What it is | Missing → |
 |---|---|---|---|
-| `GEMINI_API_KEY` | secret | the ONE Google Gemini key that serves every organization's capture-time PR / issue summaries, each call counted against that organization's monthly allowance (`plans.md` › AI summaries, `sync.md`); and, where an org's admin turned them on, the tag suggestions (`ai_suggestions`) | the excerpt fallback: an item shows its excerpt, and a later Sync fills it in. Tag suggestions: none (Find items answers `no_key`, the Tags tab says so) |
+| `GEMINI_API_KEY` | secret | the ONE Google Gemini key that serves every organization's capture-time PR / issue summaries, each call counted against that organization's monthly allowance (`plans.md` › AI summaries, `sync.md`) | the excerpt fallback: an item shows its excerpt, and a later Sync fills it in |
+| `TYPESAFE_API_KEY` | secret | TypeSafe AI's key for Jev (`POST https://api.typesafe.ai/v1/systemone`, `Authorization: Bearer`), the classifier behind tag suggestions — used only for an org whose admin turned them on, each request counted against that org's monthly `ai_suggestions` (`plans.md`) | no tag suggestions: nothing is sent, Find items and a new tag answer `no_key`, and the Tags tab says no key is set. Nothing else is affected |
 
 ### Stored credentials
 

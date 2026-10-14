@@ -166,7 +166,7 @@ const num = (n: number): string => (n > 0 ? String(n) : "—");
 export function aiSection(ai: TagAiDTO, ui: TagsUi): string {
   const allowance = ai.cap === null ? `${ai.used.toLocaleString("en-US")} checks used this month.`
     : `${ai.used.toLocaleString("en-US")} of ${ai.cap.toLocaleString("en-US")} checks used this month.`;
-  const state = !ai.available ? "This Trov has no model key set, so nothing is sent and no suggestions are made."
+  const state = !ai.available ? "This Trov has no TypeSafe AI key set, so nothing is sent and no suggestions are made."
     : !ai.enabled ? "Off: nothing is sent."
     : ai.spent ? "This month's checks are used up: Trov stops looking for items until next month."
     : allowance;
@@ -175,7 +175,7 @@ export function aiSection(ai: TagAiDTO, ui: TagsUi): string {
       <div${surface("display:flex;align-items:flex-start;gap:14px;padding:14px 16px")}>
         <span style="flex:none;margin-top:1px">${switchBtn("tagAiToggle", null, ai.enabled).replace("<button ", `<button aria-label="Suggest items for a new tag"${ui.aiBusy || !ai.available ? " disabled" : ""} `)}</span>
         <div style="min-width:0">
-          <div style="font-size:13px;line-height:1.55;color:var(--fg-70)">When it is on and you add a tag, Trov sends the tag's name and description, and the title and first 400 characters of the feed entries, docs and decisions that may fit it — code removed — to Google's Gemini model, which suggests the ones that do. Nothing is tagged until you accept.</div>
+          <div style="font-size:13px;line-height:1.55;color:var(--fg-70)">When it is on and you add a tag, Trov sends the tag's name and description, and the title and first 400 characters of each feed entry, doc and decision that may fit it — code removed — to Jev, TypeSafe AI's decision model, which scores how well each one fits. Nothing is tagged until you accept.</div>
           <div data-ai-state style="font-size:12px;color:var(--fg-40);margin-top:5px">${esc(state)}</div>
         </div>
       </div>
@@ -209,7 +209,7 @@ export function fitsPanel(tag: string, ui: TagsUi): string {
       }).join("")}</ul>`;
   return `<div class="cnpy-tagfits" data-tag-fits="${attr(tag)}" data-morph-key="fits:${attr(tag)}">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-        <div style="font-size:12.5px;color:var(--fg-55)">Trov's model thinks these may fit <strong style="font-weight:600;color:var(--fg)">${esc(tag)}</strong>. Nothing is tagged until you accept.</div>
+        <div style="font-size:12.5px;color:var(--fg-55)">These may fit <strong style="font-weight:600;color:var(--fg)">${esc(tag)}</strong>, by Jev's score; each shows the passage that matched. Nothing is tagged until you accept.</div>
         ${items.length > 1 ? accentBtn("Accept all", "tagConfirm", { arg: `acceptAll:${tag}`, disabled: !!ui.fitBusy, field: `tagConfirm:acceptAll:${tag}` }) : ""}
       </div>
       ${body}

@@ -211,7 +211,7 @@ export function createTagsController(host: TagsHost): TagsController {
   const FIND_SAID: Record<string, string> = {
     started: "Looking for items that fit. Suggestions appear here when it is done.",
     off: "Suggestions are off. Turn them on above first.",
-    no_key: "This Trov has no model key set, so it cannot look for items.",
+    no_key: "This Trov has no TypeSafe AI key set, so it cannot look for items.",
     busy: "Trov is already looking for items for this tag.",
     capped: "This month's checks are used up. Trov can look again next month.",
     not_found: "That tag is not on the list any more. Reload the page.",

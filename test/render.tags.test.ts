@@ -364,14 +364,14 @@ describe("what Trov's model thinks may fit a tag (issues #154–#158)", () => {
     const off = aiSection(ai({ enabled: false }), initialTagsUi());
     expect(off).toContain(`role="switch" aria-checked="false"`);
     expect(off).toContain(`aria-label="Suggest items for a new tag"`);
-    expect(off).toContain("to Google's Gemini model");
+    expect(off).toContain("to Jev, TypeSafe AI's decision model");
     expect(off).toContain("first 400 characters");
     expect(off).toContain("Nothing is tagged until you accept.");
     expect(off).toContain("Off: nothing is sent.");
     expect(aiSection(ai(), initialTagsUi())).toContain("12 of 300 checks used this month.");
     expect(aiSection(ai({ spent: true, used: 300 }), initialTagsUi())).toContain("This month&#39;s checks are used up");
     const nokey = aiSection(ai({ available: false, enabled: false }), initialTagsUi());
-    expect(nokey).toContain("no model key set");
+    expect(nokey).toContain("no TypeSafe AI key set");
     expect(nokey).toMatch(/role="switch"[^>]*disabled|disabled[^>]*role="switch"/);
   });
 
@@ -396,7 +396,8 @@ describe("what Trov's model thinks may fit a tag (issues #154–#158)", () => {
   it("the review list: each item's title linking to it, the reason, Accept and Dismiss — never the tag's square on the item", () => {
     const ui: TagsUi = { ...initialTagsUi(), fitsOpen: "onboarding", fits: { status: "ok", data: [fit("41", "Invoices show seats"), fit("how-to", "How sign-up works", { type: "doc" }), fit("7", "Sessions in a cookie", { type: "adr" })] } };
     const panel = fitsPanel("onboarding", ui);
-    expect(panel).toContain("Trov's model thinks these may fit <strong");
+    expect(panel).toContain("These may fit <strong");
+    expect(panel).toContain("each shows the passage that matched");
     expect(panel).toContain("Nothing is tagged until you accept.");
     expect(panel).toContain(`data-act="goFeed" data-arg="41"`);
     expect(panel).toContain(`data-act="openDocFrom" data-arg="how-to"`);
