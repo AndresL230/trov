@@ -159,6 +159,24 @@ export function createTagsController(host: TagsHost): TagsController {
     }, 1400);
   }
   if (typeof document !== "undefined") {
+    // Escape closes a row's ⋯ menu and gives focus back to its button.
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      const u = ui();
+      if (u.edit && (e.target as Element | null)?.closest?.("[data-tag-inline]")) { e.preventDefault(); cancelEdit(); return; }
+      if (u.aiInfo) { u.aiInfo = false; rerender(); mount.querySelector<HTMLElement>(`[data-field="tagAiInfo"]`)?.focus(); return; }
+      const open = u.menu ?? u.colorOpen;
+      if (!open) return;
+      const field = u.menu ? `tagMenu:${open}` : `tagColor:${open}`;
+      u.menu = null; u.menuMerge = false; u.colorOpen = null;
+      rerender();
+      mount.querySelector<HTMLElement>(`[data-field="${CSS.escape(field)}"]`)?.focus();
+    });
+    // Leaving a field edited in place saves it (Enter does too; Escape puts the words back first).
+    mount.addEventListener("focusout", (e) => {
+      if (!(e.target as Element | null)?.closest?.("[data-tag-inline]")) return;
+      setTimeout(() => { if (ui().edit && !ui().edit?.saving && document.activeElement?.id !== "tag-inline") saveEdit(); }, 0);
+    });
     document.addEventListener("visibilitychange", () => {
       if (hidden()) return;
       for (const [tag, live] of Object.entries(ui().live)) if (live.status === "running") schedule(tag, 0);
@@ -235,24 +253,51 @@ export function createTagsController(host: TagsHost): TagsController {
       .catch((e) => { u.addBusy = false; if (fail(e)) return; u.addError = errorText(e, "Couldn't add the tag."); rerender(); });
   }
 
+  /** Save the field edited in place. Unchanged: it simply closes. A changed name or description then offers
+   *  Find items again (a `confirmModal`), when Jev may look. */
   function saveEdit(): void {
     const e = ui().edit;
     if (!admin() || !e || e.saving) return;
+    const t = state.tags.data?.tags.find((x) => x.name === e.name);
     const name = normalizeTagName(e.nameDraft);
-    if (!name) { e.error = "A tag is lowercase letters, digits and hyphens."; rerender(); return; }
+    if (!name) { e.error = "A tag is lowercase letters, digits and hyphens."; host.flash(e.error, 6000); rerender(); return; }
+    const description = e.descDraft.trim();
+    const changed: "name" | "desc" | null = name !== e.name ? "name" : t && description !== t.description ? "desc" : null;
+    if (!changed) { ui().edit = null; rerender(); return; }
     e.saving = true; e.error = null;
     rerender();
     const from = e.name;
-    editOrgTag(from, { name, description: e.descDraft.trim(), color: e.color })
+    editOrgTag(from, { name, description, color: e.color })
       .then((r) => {
         ui().edit = null;
-        host.flash(r.name !== from ? `Renamed ${from} to ${r.name}` : `Saved ${r.name}`);
         // A rename moves the tag's page and the Feed's filter with it.
         if (state.feedTag === from) state.feedTag = r.name;
         if (state.tagName === from) state.tagName = r.name;
-        load();
+        const ai = state.tags.data?.ai;
+        if (ai && ai.enabled && ai.available && !ai.spent) {
+          ui().confirm = { what: "rerun", name: r.name, changed, busy: false };
+          load();
+          mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
+        } else {
+          host.flash(r.name !== from ? `Renamed ${from} to ${r.name}` : `Saved ${r.name}`);
+          load();
+        }
       })
-      .catch((err) => { e.saving = false; if (fail(err)) return; e.error = errorText(err, "Couldn't save the tag."); rerender(); });
+      .catch((err) => {
+        e.saving = false;
+        if (fail(err)) return;
+        e.error = errorText(err, "Couldn't save the tag.");
+        host.flash(e.error, 6000);
+        rerender();
+        mount.querySelector<HTMLInputElement>("#tag-inline")?.focus();
+      });
+  }
+  function cancelEdit(): void {
+    const e = ui().edit;
+    if (!e || e.saving) return;
+    ui().edit = null;
+    rerender();
+    mount.querySelector<HTMLElement>(`[data-field="${e.field === "name" ? `tagMenu:${CSS.escape(e.name)}` : `tagEdit:${CSS.escape(e.name)}`}"]`)?.focus();
   }
 
   function closeConfirm(): void {
@@ -271,6 +316,7 @@ export function createTagsController(host: TagsHost): TagsController {
     c.busy = true;
     rerender();
     const done = (msg: string) => { ui().confirm = null; host.flash(msg); load(); host.planChanged(); };
+    if (c.what === "rerun") { ui().confirm = null; find(c.name); return; }
     if (c.what === "undoRun") {
       undoTagRun(c.name).then((r) => done(`Took ${c.name} off ${r.removed} ${r.removed === 1 ? "item" : "items"}`)).catch((e) => failed(e, "Couldn't undo the run."));
       return;
@@ -297,15 +343,18 @@ export function createTagsController(host: TagsHost): TagsController {
   function find(tag: string): void {
     if (!admin() || ui().busy) return;
     ui().busy = `find:${tag}`;
+    // The bar shows at once ("Starting…"), in the row's Jev cell; it goes again if the run does not start.
+    if (!ui().live[tag]) ui().live[tag] = newLive(Date.now());
     rerender();
     findTagItems(tag)
       .then((r) => {
         ui().busy = null;
         if (r.status === "started") { watch(tag); rerender(); return; }
+        delete ui().live[tag];
         host.flash(FIND_SAID[r.status] ?? FIND_SAID.started, 6000);
         load();
       })
-      .catch((e) => { ui().busy = null; if (fail(e)) return; host.flash(errorText(e, "Couldn't start looking."), 6000); rerender(); });
+      .catch((e) => { ui().busy = null; delete ui().live[tag]; if (fail(e)) return; host.flash(errorText(e, "Couldn't start looking."), 6000); rerender(); });
   }
 
 
@@ -342,38 +391,83 @@ export function createTagsController(host: TagsHost): TagsController {
       case "tagDescDraft": u.descDraft = value ?? ""; break;
       case "tagAdd": add(); return;
 
-      // …edit in place
-      case "tagEdit": {
-        const t = state.tags.data?.tags.find((x) => x.name === arg);
-        if (!admin() || !t) return;
-        u.edit = { name: t.name, nameDraft: t.name, descDraft: t.description, color: t.color, saving: false, error: null };
+      // A row's ⋯ menu
+      case "tagMenu": u.menu = u.menu === arg ? null : (arg ?? null); u.menuMerge = false; u.colorOpen = null; break;
+      case "tagMenuClose": {
+        const back = u.menu;
+        u.menu = null; u.menuMerge = false;
         rerender();
-        mount.querySelector<HTMLInputElement>("#tag-edit-name")?.focus();
+        if (back) mount.querySelector<HTMLElement>(`[data-field="tagMenu:${CSS.escape(back)}"]`)?.focus();
         return;
       }
-      case "tagEditName": if (u.edit) { u.edit.nameDraft = value ?? ""; u.edit.error = null; } break;
-      case "tagEditDesc": if (u.edit) u.edit.descDraft = value ?? ""; break;
-      case "tagEditColor": if (u.edit && isTagColor(arg)) u.edit.color = arg; break;
-      case "tagEditCancel": {
-        const back = u.edit ? `tagEdit:${u.edit.name}` : null;
-        u.edit = null;
+      // Merge into…: the open menu turns into the list of tags; a pick asks first.
+      case "tagMergeOpen":
+        if (!admin() || u.menu !== arg) return;
+        u.menuMerge = true;
         rerender();
-        if (back) mount.querySelector<HTMLElement>(`[data-field="${back}"]`)?.focus();
+        mount.querySelector<HTMLElement>(".cnpy-tagmenu-box [role=menuitem]")?.focus();
         return;
-      }
-      case "tagEditSave": saveEdit(); return;
-
-      // …merge, retire, restore
-      case "tagMergePick":
-        if (!admin() || !arg || !value) return;
-        u.confirm = { what: "merge", name: arg, into: value, busy: false };
+      // A suggestion's "Use an existing tag…": the same, a list of the tags to give its items.
+      case "tagSugMapOpen":
+        if (!admin() || u.menu !== `sug:${arg}`) return;
+        u.menuMerge = true;
+        rerender();
+        mount.querySelector<HTMLElement>(".cnpy-tagmenu-box [role=menuitem]")?.focus();
+        return;
+      case "tagMergeTo": {
+        const cut = (arg ?? "").indexOf(">");
+        if (!admin() || cut < 1) return;
+        u.menu = null; u.menuMerge = false;
+        u.confirm = { what: "merge", name: (arg ?? "").slice(0, cut), into: (arg ?? "").slice(cut + 1), busy: false };
         rerender();
         mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
         return;
+      }
+
+      // …edit in place: what it is for (a click on it), the name (the menu's Rename), the colour (its square)
+      case "tagEdit":
+      case "tagRename": {
+        const t = state.tags.data?.tags.find((x) => x.name === arg);
+        u.menu = null; u.colorOpen = null;
+        if (!admin() || !t || t.retired) { rerender(); return; }
+        u.edit = { name: t.name, field: name === "tagRename" ? "name" : "desc", nameDraft: t.name, descDraft: t.description, color: t.color, saving: false, error: null };
+        rerender();
+        const input = mount.querySelector<HTMLInputElement>("#tag-inline");
+        input?.focus();
+        input?.setSelectionRange(input.value.length, input.value.length);
+        return;
+      }
+      case "tagEditName": if (u.edit) { u.edit.nameDraft = value ?? ""; u.edit.error = null; } return; // the field holds its own text: no repaint per key
+      case "tagEditDesc": if (u.edit) { u.edit.descDraft = value ?? ""; u.edit.error = null; } return;
+      case "tagEditCancel": cancelEdit(); return;
+      case "tagEditSave": saveEdit(); return;
+      case "tagColorOpen": u.colorOpen = u.colorOpen === arg ? null : (arg ?? null); u.menu = null; break;
+      case "tagColorClose": {
+        const back = u.colorOpen;
+        u.colorOpen = null;
+        rerender();
+        if (back) mount.querySelector<HTMLElement>(`[data-field="tagColor:${CSS.escape(back)}"]`)?.focus();
+        return;
+      }
+      case "tagColorPick": {
+        const t = state.tags.data?.tags.find((x) => x.name === u.colorOpen);
+        if (!admin() || !t || !isTagColor(arg)) return;
+        u.colorOpen = null;
+        if (arg === t.color) { rerender(); return; }
+        t.color = arg; // shown at once; the list reloads after the write
+        rerender();
+        editOrgTag(t.name, { name: t.name, description: t.description, color: arg })
+          .then(() => load())
+          .catch((e) => { if (fail(e)) return; host.flash(errorText(e, "Couldn't change the colour."), 6000); load(); });
+        return;
+      }
+
+      // …retire, restore
       case "tagConfirm": {
         const at = (arg ?? "").indexOf(":");
         const what = (arg ?? "").slice(0, at);
         if (!admin() || at < 0 || (what !== "retire" && what !== "dismiss" && what !== "undoRun")) return;
+        u.menu = null;
         u.confirm = { what, name: (arg ?? "").slice(at + 1), busy: false };
         rerender();
         mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
@@ -390,6 +484,7 @@ export function createTagsController(host: TagsHost): TagsController {
       // …what agents suggested
       case "tagSugAccept":
         if (!admin() || !arg) return;
+        u.menu = null; u.menuMerge = false;
         write(arg, () => resolveTagSuggestion(arg, { resolution: "accept" }).then((r) => `Added ${arg}. ${applied(r.applied_to, arg)}`), `Couldn't add ${arg}.`);
         return;
       case "tagSugUse":
@@ -399,6 +494,7 @@ export function createTagsController(host: TagsHost): TagsController {
         const sug = name === "tagSugUse" ? (arg ?? "").slice(0, cut) : arg ?? "";
         const into = name === "tagSugUse" ? (arg ?? "").slice(cut + 1) : value ?? "";
         if (!admin() || !sug || !into || (name === "tagSugUse" && cut < 0)) return;
+        u.menu = null; u.menuMerge = false;
         write(sug, () => resolveTagSuggestion(sug, { resolution: "map", into }).then((r) => applied(r.applied_to, into)), `Couldn't use ${into}.`);
         return;
       }
@@ -415,6 +511,12 @@ export function createTagsController(host: TagsHost): TagsController {
         return;
       }
       case "tagFind": if (arg) find(arg); return;
+      case "tagAiInfo": u.aiInfo = !u.aiInfo; break;
+      case "tagAiInfoClose":
+        u.aiInfo = false;
+        rerender();
+        mount.querySelector<HTMLElement>(`[data-field="tagAiInfo"]`)?.focus();
+        return;
       // A doc's Tags row
       case "tagItemAdd": if (value) setDocTags((has) => (has.includes(value) ? has : [...has, value])); return;
       case "tagItemRemove": if (arg) setDocTags((has) => has.filter((t) => t !== arg)); return;

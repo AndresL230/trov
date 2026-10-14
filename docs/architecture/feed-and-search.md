@@ -56,7 +56,10 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   use is a new suggestion). Adding or renaming a tag TO a suggested name settles those rows the same way.
 - **Any member** reads the list (`GET /api/o/:slug/tags` → `TagListDTO`: tags with per-type counts, `used`,
   `cap`; suggestions `[]` unless admin), one tag's page (`GET /tags/:name` → `TagPageDTO`: feed entries, docs,
-  decisions, newest 50 each, what it is seen with, who writes about it) and sets one item's tags
+  decisions, newest 50 each, what it is seen with, who writes about it — authors across the three types, a doc
+  counting for its last editor — and Jev's share: an item a run added the tag to carries `jev` { confidence,
+  reason, at } from its `source = 'model'`, `accepted` provenance row while it still has the tag, and
+  `jev_added` counts them all) and sets one item's tags
   (`POST /item-tags` `{ type, id, tags }` → `setItemTags`: an authored, direct write; each tag must be live or
   already on the item, at most 12). Reads answer 503 `{ error }` on failure, never a 500.
 - **Agents** read the list with MCP **`list_tags`** (live tags + descriptions) and can only USE it.
@@ -117,8 +120,9 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   - **Runs**: `org_tag_runs`, ONE running row per tag (`busy` otherwise; a row running for 15 minutes is let go).
     A run that is still going cannot be undone yet (409 `run_running`). `GET /tags` gives an admin `ai` (switch,
     key, allowance) and `runs` (per tag: its latest run).
-  - **The "Suggested by agents" queue is separate and unchanged**: an AGENT's unknown tag still waits (`open`) for
-    an admin to add, map or dismiss it.
+  - **Agents' suggestions are separate and unchanged**: an AGENT's unknown tag (sent on a feed entry through the
+    gate, `recordTagSuggestions`) still waits (`open`) for an admin to approve, map or dismiss it. They are drawn
+    as suggested rows at the top of the tag list (`web-ui.md` › Tags).
   - Not built: the content-hash cache of #155, the per-kind test set and the rates in Platform of #158.
 - Screens: `web-ui.md` › Tags.
 

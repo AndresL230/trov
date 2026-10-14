@@ -2,11 +2,12 @@
 //
 // When an admin adds a tag or presses Find items, Jev checks the run's candidates one by one in the background
 // (src/tools/tag-fit.ts) and the tag is added to each one it judges a fit. The tag's row shows it as it
-// happens: ONE bar whose fill is exactly `checked / candidates`, and a counter beside it ("Checked 23 of 40 ·
+// happens: ONE bar whose fill is exactly `checked / candidates`, and a counter beside it ("23 of 40 ·
 // 5 added"). When the run ends the bar takes the tag's own colour if it added the tag to anything, a quiet
 // tone if not.
 //
-// It is drawn from REAL progress only: `GET …/tags/:name/run` (polled every `POLL_MS` while a run goes) says how
+// The bar is a thin line under the words of the row's "Added by Jev" cell; at rest (no run drawn) it is hidden
+// and the cell holds the latest result ("7 added", with Undo). It is drawn from REAL progress only: `GET …/tags/:name/run` (polled every `POLL_MS` while a run goes) says how
 // many are checked and how many were tagged. Between two answers the bar eases toward the latest numbers and
 // never runs ahead of them. Pure: everything here is a function of the run and the time, tested without a DOM.
 // The markup is the same structure on every paint (the fill is a transform, the state an attribute). Under
@@ -77,24 +78,43 @@ export const shownAdded = (live: Pick<LiveRun, "checked" | "added">, shown: numb
 
 const items = (n: number): string => `${n} ${n === 1 ? "item" : "items"}`;
 
-/** The counter's words. */
-export function runCounter(live: Pick<LiveRun, "status" | "candidates" | "checked" | "added">, shown: number): string {
-  const c = Math.floor(shown + 1e-9);
-  const ended = live.status !== "running" && c >= live.checked;
-  if (live.status === "running" && live.candidates === 0) return "Picking items to check…";
-  if (live.status !== "running" && live.candidates === 0) return "Nothing in this organization to check yet.";
-  if (ended && live.status === "capped") return `Stopped at ${live.checked} of ${live.candidates}: this month's checks are used up.${live.added ? ` Added to ${items(live.added)}.` : ""}`;
-  if (ended && live.status === "failed") return `Stopped at ${live.checked} of ${live.candidates}: the model did not answer.${live.added ? ` Added to ${items(live.added)}.` : ""}`;
-  if (ended && live.added === 0) return `Checked ${live.checked} — none fit.`;
-  if (ended) return `Added to ${items(live.added)}.`;
-  return `Checked ${c} of ${live.candidates} · ${shownAdded(live, shown)} added`;
+/** A run's result in a few words (they sit in one narrow column) and the whole sentence (the cell's tooltip). */
+export function resultWords(r: Pick<TagRunDTO, "status" | "candidates" | "checked" | "added"> & { undone?: boolean }): { text: string; full: string } {
+  if (r.undone) return { text: "Undone", full: `Undone: the ${items(r.added)} this run tagged no longer have it.` };
+  if (r.candidates === 0) return { text: "Nothing to check", full: "Nothing in this organization to check yet." };
+  const stop = r.status === "capped" ? `Stopped at ${r.checked} of ${r.candidates}: this month's checks are used up.`
+    : r.status === "failed" ? `Stopped at ${r.checked} of ${r.candidates}: the model did not answer.` : "";
+  if (stop) return { text: r.added ? `Stopped · ${r.added} added` : "Stopped", full: r.added ? `${stop} Added to ${items(r.added)}.` : stop };
+  if (r.added === 0) return { text: "None fit", full: `Checked ${r.checked} — none fit.` };
+  return { text: `${r.added} added`, full: `Added to ${items(r.added)}.` };
 }
 
-/** The live view in a tag's row: the bar and the counter. */
-export function fitRunView(tag: string, color: string, live: LiveRun): string {
-  const shown = live.shown;
-  return `<div class="cnpy-fitrun" data-fitrun="${attr(tag)}" data-state="${barState(live, shown)}" data-morph-key="fitrun:${attr(tag)}" style="--fit-c:${tagTone(color)}">
-      <div class="cnpy-fitrun-bar" role="progressbar" aria-label="${attr(`Items checked for ${tag}`)}" aria-valuemin="0" aria-valuemax="${live.candidates}" aria-valuenow="${Math.floor(shown)}"><span style="transform:scaleX(${barFill(live, shown).toFixed(4)})"></span></div>
-      <span class="cnpy-fitrun-n" role="status" aria-live="polite" data-fitrun-n>${esc(runCounter(live, shown))}</span>
+/** The counter's words: "12 of 40 · 3 added" while it goes, then the result's own words — the SAME words the
+ *  row keeps once the list has the result, so nothing changes in the cell when the live view hands over. */
+export function runCounter(live: Pick<LiveRun, "status" | "candidates" | "checked" | "added">, shown: number): string {
+  const c = Math.floor(shown + 1e-9);
+  if (live.status === "running" && live.candidates === 0) return "Starting…";
+  if (live.status !== "running" && c >= live.checked) return resultWords(live).text;
+  return `${c} of ${live.candidates} · ${shownAdded(live, shown)} added`;
+}
+
+/** A tag row's Jev cell (Org settings › Tags), live or at rest. ONE structure for both — the words, the Undo
+ *  slot, and the bar — so the live view and the list's result morph into each other in place: when a run ends
+ *  the bar takes its colour, then fades (`data-live` goes), and Undo fades in beside the same words.
+ *  `last` is the latest run from the list; `undo` the Undo button's markup, or "". */
+export function fitCell(tag: string, color: string, live: LiveRun | null, last: TagRunDTO | undefined, undo = ""): string {
+  const shown = live?.shown ?? 0;
+  const state = live ? barState(live, shown)
+    : !last ? "idle"
+    : last.status === "running" ? "running"
+    : last.added > 0 && !last.undone_at ? "added" : "none";
+  const words = live ? { text: runCounter(live, shown), full: "" }
+    : !last ? { text: "—", full: "Not looked for yet" }
+    : last.status === "running" ? { text: "Starting…", full: "" }
+    : resultWords({ ...last, undone: !!last.undone_at });
+  const fill = live ? barFill(live, shown) : last ? 1 : 0;
+  return `<div data-col="jev" class="cnpy-tagjev" data-fitrun="${attr(tag)}" data-state="${state}"${live ? ' data-live="1"' : ""} data-morph-key="fitrun:${attr(tag)}" style="--fit-c:${tagTone(color)}">
+      <span class="cnpy-tagjev-t" role="status" aria-live="polite" data-fitrun-n${words.full ? ` title="${attr(words.full)}"` : ""}>${esc(words.text)}</span>${undo}
+      <div class="cnpy-fitrun-bar" role="progressbar" aria-label="${attr(`Items checked for ${tag}`)}" aria-valuemin="0" aria-valuemax="${live?.candidates ?? last?.candidates ?? 0}" aria-valuenow="${Math.floor(live ? shown : last?.checked ?? 0)}"${live ? "" : ' aria-hidden="true"'}><span style="transform:scaleX(${fill.toFixed(4)})"></span></div>
     </div>`;
 }

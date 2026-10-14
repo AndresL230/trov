@@ -152,7 +152,7 @@ export async function tagPage(ctx: TenantContext, rawName: string): Promise<TagP
   if (!name) return null;
   const row = (await tagRows(ctx)).find((r) => r.name === name);
   if (!row) return null;
-  const [feed, docs, adrs, counts, seen, authors] = await Promise.all([
+  const [feed, docs, adrs, counts, seen, authors, byJev] = await Promise.all([
     all<{ id: number; summary: string; brief: string | null; author: string; created_at: string }>(ctx,
       `SELECT f.id, f.summary, f.brief, f.author, f.created_at FROM feed f
          JOIN entry_tags et ON et.org_id = ? AND et.entry_type = 'feed' AND et.entry_id = CAST(f.id AS TEXT) AND et.tag = ?
@@ -171,11 +171,35 @@ export async function tagPage(ctx: TenantContext, rawName: string): Promise<TagP
       `SELECT o.tag AS name, COUNT(*) AS count FROM entry_tags t
          JOIN entry_tags o ON o.org_id = ? AND o.entry_type = t.entry_type AND o.entry_id = t.entry_id AND o.tag <> t.tag
         WHERE t.org_id = ? AND t.tag = ? GROUP BY o.tag ORDER BY count DESC, o.tag LIMIT 6`, ctx.orgId, ctx.orgId, name),
+    // Who wrote what carries it, across the three types (a doc counts for its last editor).
     all<{ handle: string; count: number }>(ctx,
-      `SELECT f.author AS handle, COUNT(*) AS count FROM feed f
-         JOIN entry_tags et ON et.org_id = ? AND et.entry_type = 'feed' AND et.entry_id = CAST(f.id AS TEXT) AND et.tag = ?
-        WHERE f.org_id = ? GROUP BY f.author ORDER BY count DESC, f.author LIMIT 6`, ctx.orgId, name, ctx.orgId),
+      `SELECT handle, COUNT(*) AS count FROM (
+         SELECT f.author AS handle FROM feed f
+           JOIN entry_tags et ON et.org_id = ? AND et.entry_type = 'feed' AND et.entry_id = CAST(f.id AS TEXT) AND et.tag = ?
+          WHERE f.org_id = ?
+         UNION ALL
+         SELECT d.updated_by AS handle FROM docs d
+           JOIN entry_tags et ON et.org_id = ? AND et.entry_type = 'doc' AND et.entry_id = d.slug AND et.tag = ?
+          WHERE d.org_id = ? AND d.updated_by IS NOT NULL
+         UNION ALL
+         SELECT a.created_by AS handle FROM adrs a
+           JOIN entry_tags et ON et.org_id = ? AND et.entry_type = 'adr' AND et.entry_id = CAST(a.id AS TEXT) AND et.tag = ?
+          WHERE a.org_id = ? AND a.status != 'rejected'
+       ) GROUP BY handle ORDER BY count DESC, handle LIMIT 8`,
+      ctx.orgId, name, ctx.orgId, ctx.orgId, name, ctx.orgId, ctx.orgId, name, ctx.orgId),
+    // The items Jev added the tag to that still have it: a run's provenance row (src/tools/tag-fit.ts).
+    all<{ entry_type: string; entry_id: string; confidence: number | null; reason: string | null; at: string | null }>(ctx,
+      `SELECT s.entry_type, s.entry_id, MAX(s.confidence) AS confidence, MAX(s.reason) AS reason, MAX(s.resolved_at) AS at
+         FROM org_tag_suggestions s
+         JOIN entry_tags et ON et.org_id = ? AND et.entry_type = s.entry_type AND et.entry_id = s.entry_id AND et.tag = ?
+        WHERE s.org_id = ? AND s.tag = ? AND s.source = 'model' AND s.state = 'accepted'
+        GROUP BY s.entry_type, s.entry_id`, ctx.orgId, name, ctx.orgId, name),
   ]);
+  const jev = new Map(byJev.map((r) => [`${r.entry_type}:${r.entry_id}`, { confidence: r.confidence ?? 0, reason: r.reason, at: r.at ?? "" }]));
+  const withJev = (it: TagPageItem): TagPageItem => {
+    const j = jev.get(`${it.type}:${it.id}`);
+    return j ? { ...it, jev: j } : it;
+  };
   const [feedTags, docTags, adrTags] = await Promise.all([
     tagsOfItems(ctx, "feed", feed.map((f) => String(f.id))),
     tagsOfItems(ctx, "doc", docs.map((d) => d.slug)),
@@ -185,11 +209,11 @@ export async function tagPage(ctx: TenantContext, rawName: string): Promise<TagP
   const c = zeroCounts();
   for (const r of counts) if (isTagItemType(r.entry_type)) c[r.entry_type] = r.n;
   const items: Record<TagItemType, TagPageItem[]> = {
-    feed: feed.map((f) => ({ type: "feed", id: String(f.id), title: f.summary, note: f.brief, by: f.author, at: f.created_at, tags: others(feedTags, String(f.id)) })),
-    doc: docs.map((d) => ({ type: "doc", id: d.slug, title: d.title, note: d.section, by: d.updated_by, at: d.updated_at, tags: others(docTags, d.slug) })),
-    adr: adrs.map((a) => ({ type: "adr", id: String(a.id), title: a.title, note: a.status, by: a.created_by, at: a.created_at, tags: others(adrTags, String(a.id)) })),
+    feed: feed.map((f) => withJev({ type: "feed", id: String(f.id), title: f.summary, note: f.brief, by: f.author, at: f.created_at, tags: others(feedTags, String(f.id)) })),
+    doc: docs.map((d) => withJev({ type: "doc", id: d.slug, title: d.title, note: d.section, by: d.updated_by, at: d.updated_at, tags: others(docTags, d.slug) })),
+    adr: adrs.map((a) => withJev({ type: "adr", id: String(a.id), title: a.title, note: a.status, by: a.created_by, at: a.created_at, tags: others(adrTags, String(a.id)) })),
   };
-  return { tag: { ...refOf(row), starter: row.starter === 1, counts: c }, items, seen_with: seen, authors };
+  return { tag: { ...refOf(row), starter: row.starter === 1, counts: c }, items, seen_with: seen, authors, jev_added: byJev.length };
 }
 
 // ── the gate's side (src/consumer.ts) ────────────────────────────────────────

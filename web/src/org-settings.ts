@@ -30,7 +30,7 @@ import {
   sliceNote, roleWord, ROLE_WORD, roleOption, roleAtLeast, sameHandle, textField, tabLead, leadFlag, openRow, type OrgSlice,
 } from "./org-ui";
 import { kindMark } from "./marks";
-import { tagsTab, tagsDropdowns, tagConfirmModal, initialTagsUi, type TagsTabProps } from "./tags";
+import { tagsTab, tagConfirmModal, initialTagsUi, type TagsTabProps } from "./tags";
 export { roleAtLeast };
 export type { OrgSlice };
 import { tabBar, tabPanelAttrs } from "./tabs";
@@ -737,7 +737,7 @@ export function notificationsTab(org: MyOrg, notif: NotifAdminProps | null | und
 /** Every dropdown on the tab that is showing, with the props its trigger was rendered from —
  *  what `orgOverlays` renders the open one's menu from (dropdown.ts). */
 export function orgDropdowns(p: OrgSettingsProps): DropdownProps[] {
-  if (p.org && effectiveOrgTab(p.ui.tab, p.org.role) === "tags") return p.tags && roleAtLeast(p.org.role, "admin") ? tagsDropdowns(p.tags.list.data, p.tags.ui) : [];
+  if (p.org && effectiveOrgTab(p.ui.tab, p.org.role) === "tags") return []; // its picks are row menus (web/src/tags.ts)
   if (!p.org || !roleAtLeast(p.org.role, "admin")) return [];
   const tab = effectiveOrgTab(p.ui.tab, p.org.role);
   if (tab === "notifications") return p.notif ? notifDropdowns(p.notif) : [];

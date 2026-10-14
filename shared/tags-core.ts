@@ -146,6 +146,9 @@ export interface TagPageItem {
   at: string | null;
   /** The item's other tags, by name. */
   tags: string[];
+  /** Present only when Jev (a run, src/tools/tag-fit.ts) added this tag to the item and it still has it:
+   *  how sure it was (0–1), its one-sentence reason, and when. Absent = a person or their agent put it there. */
+  jev?: { confidence: number; reason: string | null; at: string };
 }
 
 export interface TagPageDTO {
@@ -154,8 +157,10 @@ export interface TagPageDTO {
   items: Record<TagItemType, TagPageItem[]>;
   /** Tags most often on the same items, most first. */
   seen_with: { name: string; count: number }[];
-  /** Who wrote the tagged feed entries, most first. */
+  /** Who wrote the tagged items, most first: a feed entry's author, a doc's last editor, a decision's author. */
   authors: { handle: string; count: number }[];
+  /** How many of the items carrying the tag have it because Jev added it (all of them, not just those listed). */
+  jev_added: number;
 }
 export const TAG_PAGE_LIMIT = 50;
 

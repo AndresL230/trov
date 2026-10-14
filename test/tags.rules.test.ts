@@ -260,7 +260,21 @@ describe("a tag's page and an item's tags", () => {
     expect(page.items.doc).toEqual([{ type: "doc", id: "how-sign-in-works", title: "How sign-in works", note: "reference", by: OWNER, at: "2026-10-01T00:00:00Z", tags: [] }]);
     expect(page.items.adr).toMatchObject([{ type: "adr", id: String(adr), title: "Sessions live in a cookie", note: "draft", tags: ["data"] }]);
     expect(page.seen_with).toEqual([{ name: "data", count: 1 }, { name: "ui", count: 1 }]);
-    expect(page.authors).toEqual([{ handle: "casey", count: 1 }]);
+    // Who wrote what carries it, across the types: the doc's last editor and the decision's author too.
+    expect(page.authors).toEqual([{ handle: OWNER, count: 2 }, { handle: "casey", count: 1 }]);
+    expect(page.jev_added).toBe(0);
+    expect(page.items.doc[0].jev).toBeUndefined();
+
+    // An item Jev added the tag to says so (a run's provenance row), and only while it still has the tag.
+    await env.DB.prepare(`INSERT INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, confidence, reason, suggested_by, suggested_at, state, resolved_to, resolved_at, resolved_by)
+      VALUES (?, 'doc', 'how-sign-in-works', 'auth', 'model', 0.86, 'It explains sign-in.', 'system', '2026-10-13T00:00:00Z', 'accepted', 'auth', '2026-10-13T00:00:00Z', 'jev')`).bind(ORG_A).run();
+    await env.DB.prepare(`INSERT INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, confidence, suggested_by, suggested_at, state, resolved_to, resolved_at, resolved_by)
+      VALUES (?, 'doc', 'gone', 'auth', 'model', 0.9, 'system', '2026-10-13T00:00:00Z', 'accepted', 'auth', '2026-10-13T00:00:00Z', 'jev')`).bind(ORG_A).run();
+    const withJev = (await tagPage(ctx, "auth")) as TagPageDTO;
+    expect(withJev.jev_added).toBe(1);
+    expect(withJev.items.doc[0].jev).toEqual({ confidence: 0.86, reason: "It explains sign-in.", at: "2026-10-13T00:00:00Z" });
+    expect(withJev.items.feed[0].jev).toBeUndefined();
+    expect(((await tagPage(systemCtx(ORG_B), "auth")) as TagPageDTO).jev_added).toBe(0);
     expect(await tagPage(ctx, "nope")).toBeNull();
     // Another org's page of the same starter tag is empty.
     expect(((await tagPage(systemCtx(ORG_B), "auth")) as TagPageDTO).tag.counts).toEqual({ feed: 0, doc: 0, adr: 0 });

@@ -7,16 +7,16 @@
 // How a tag is DRAWN is not decided here: `tagMark` (the square and the word) and `tagWords` (plain
 // words in a list) in marks.ts are the one place.
 import {
-  TAG_COLORS, TAG_DESCRIPTION_MAX, TAG_ITEM_LABEL, TAG_ITEM_TYPES, TAG_NAME_MAX, normalizeTagName,
+  TAG_COLORS, TAG_DESCRIPTION_MAX, TAG_ITEM_LABEL, TAG_ITEM_TYPES, TAG_NAME_MAX, TAG_PAGE_LIMIT, normalizeTagName,
   type OrgTagDTO, type TagColor, type TagCounts, type TagItemType, type TagListDTO, type TagPageDTO, type TagPageItem, type TagRef, type TagSuggestionDTO,
   type TagAiDTO, type TagRunDTO,
 } from "@shared/tags-core";
 import { switchBtn } from "./notifications";
-import { fitRunView, type LiveRun } from "./fit-run";
+import { fitCell, type LiveRun } from "./fit-run";
 import type { MyOrg } from "@shared/orgs";
-import { esc, attr, relTime, surface } from "./ui";
+import { esc, attr, relTime, surface, ASIDE_ARROW, WORK_SHELL } from "./ui";
 import { O_FIELD, O_HELP, O_ERR, accentBtn, quietBtn, dangerLink, orgHead, orgEmpty, tabLead, sliceNote, roleAtLeast, loadingNote, failedNote, type OrgSlice } from "./org-ui";
-import { tagMark, tagSquare, tagWords } from "./marks";
+import { tagMark, tagSquare, tagWords, tagTone, kindMark, authorityMark } from "./marks";
 import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
@@ -24,9 +24,11 @@ import { confirmModal } from "./confirm";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
-export interface TagEdit { name: string; nameDraft: string; descDraft: string; color: TagColor; saving: boolean; error: string | null }
+/** A tag being edited IN PLACE in its row: its name (from the ⋯ menu's Rename) or what it is for (a click on it). */
+export interface TagEdit { name: string; field: "name" | "desc"; nameDraft: string; descDraft: string; color: TagColor; saving: boolean; error: string | null }
 /** The open confirmation: retire `name`, merge `name` into `into`, or dismiss the suggestion `name`. */
-export interface TagConfirm { what: "retire" | "merge" | "dismiss" | "undoRun"; name: string; into?: string; busy: boolean }
+/** `rerun`: after a tag's name or description changed, offer Find items again (`changed` says which). */
+export interface TagConfirm { what: "retire" | "merge" | "dismiss" | "undoRun" | "rerun"; name: string; into?: string; changed?: "name" | "desc"; busy: boolean }
 export type TagPageTab = "all" | TagItemType;
 export const TAG_PAGE_TABS: readonly TagPageTab[] = ["all", ...TAG_ITEM_TYPES];
 export const isTagPageTab = (v: unknown): v is TagPageTab => typeof v === "string" && (TAG_PAGE_TABS as readonly string[]).includes(v);
@@ -50,10 +52,18 @@ export interface TagsUi {
   aiBusy: boolean;
   /** Runs drawn live, by tag (web/src/fit-run.ts): from Find items / a new tag until the list has its result. */
   live: Record<string, LiveRun>;
+  /** The tag whose row's ⋯ menu (Edit, Merge into…, Retire) is open. */
+  menu: string | null;
+  /** The open menu shows the tags to merge into, instead of its actions. */
+  menuMerge: boolean;
+  /** The tag whose colour picker (its square, clicked) is open. */
+  colorOpen: string | null;
+  /** The "What is sent" popover by the Jev switch is open. */
+  aiInfo: boolean;
 }
 export const initialTagsUi = (): TagsUi => ({
   nameDraft: "", descDraft: "", addBusy: false, addError: null, edit: null, busy: null, confirm: null, showRetired: false, pageTab: "all", itemBusy: false,
-  aiBusy: false, live: {},
+  aiBusy: false, live: {}, menu: null, menuMerge: false, colorOpen: null, aiInfo: false,
 });
 
 /** Can this draft be added? A name that normalizes, not already on the list. */
@@ -84,203 +94,252 @@ export interface TagsTabProps {
 }
 
 const liveOf = (list: TagListDTO | null): OrgTagDTO[] => (list ? list.tags.filter((t) => !t.retired) : []);
-const mergeId = (name: string): string => `tag-merge:${name}`;
 const mapId = (name: string): string => `tag-map:${name}`;
 
-/** Every dropdown of the tab: a row's "Merge into", a suggestion's "Use an existing tag". The SAME
- *  list renders the triggers and (through Org settings' overlays) the open one's menu. */
-export function tagsDropdowns(list: TagListDTO | null, ui: TagsUi): DropdownProps[] {
-  if (!list) return [];
-  const live = liveOf(list);
-  const targets = (but: string) => live.filter((t) => t.name !== but).map((t) => ({ value: t.name, label: t.name, hint: t.description || undefined }));
-  return [
-    ...list.suggestions.map((s): DropdownProps => ({
-      id: mapId(s.name), act: "tagSugMapPick", arg: s.name, value: "", size: "sm", disabled: ui.busy === s.name || live.length === 0,
-      ariaLabel: `Give the items that carried ${s.name} an existing tag`,
-      options: [{ value: "", label: "Use an existing tag" }, ...targets("")],
-    })),
-    ...list.tags.filter((t) => !t.retired && !t.starter).map((t): DropdownProps => ({
-      id: mergeId(t.name), act: "tagMergePick", arg: t.name, value: "", size: "sm", disabled: ui.busy === t.name || live.length < 2,
-      ariaLabel: `Merge ${t.name} into another tag`,
-      options: [{ value: "", label: "Merge into…" }, ...targets(t.name)],
-    })),
-  ];
-}
-
-function suggestionRow(s: TagSuggestionDTO, ui: TagsUi, dds: DropdownProps[], dd: DropdownUi): string {
-  const busy = ui.busy === s.name;
-  const who = s.by.length ? `, first by @${esc(s.by[0])}${s.by.length > 1 ? ` and ${plural(s.by.length - 1, "other", "others")}` : ""}` : "";
-  const map = dds.find((d) => d.id === mapId(s.name));
-  const like = s.similar ? ` Looks like <strong style="font-weight:600;color:var(--fg)">${esc(s.similar)}</strong>, which is already on the list.` : "";
-  return `<li class="cnpy-tagsug" data-tag-suggestion="${attr(s.name)}">
-      <div style="min-width:0">
-        <div style="font-size:13.5px;font-weight:600;color:var(--fg);overflow-wrap:anywhere">${esc(s.name)}</div>
-        <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:3px">Sent on ${esc(countsPhrase(s.counts))}${who}. ${s.uses === 1 ? "That item is" : "Those items are"} saved without it until you decide.${like}</div>
-      </div>
-      <div class="cnpy-tagsug-acts">
-        ${s.similar
-          ? `${accentBtn(`Use ${s.similar}`, "tagSugUse", { arg: `${s.name}>${s.similar}`, disabled: busy, busy })}${quietBtn("Add as its own tag", "tagSugAccept", { arg: s.name, disabled: busy })}`
-          : accentBtn(busy ? "Adding…" : "Add to the list", "tagSugAccept", { arg: s.name, disabled: busy, busy })}
-        ${map ? dropdown(map, dd) : ""}
-        ${dangerLink("Dismiss", "tagConfirm", { arg: `dismiss:${s.name}`, disabled: busy, label: `Dismiss the suggestion ${s.name}`, field: `tagConfirm:dismiss:${s.name}` })}
-      </div>
-    </li>`;
-}
-
-/** The colour switch of the editor: `segmented()` whose options are the squares themselves. */
-function colorSwitch(value: TagColor): string {
+/** A row's colour picker, opened by clicking its square: a `segmented()` whose options are the squares. A pick
+ *  saves at once. */
+function colorSwitch(t: OrgTagDTO): string {
   return segmented({
-    id: "tag-color", ariaLabel: "Colour", value, act: "tagEditColor", size: "sm",
+    id: `tag-color:${t.name}`, ariaLabel: `Colour of ${t.name}`, value: t.color, act: "tagColorPick", size: "sm",
     options: TAG_COLORS.map((c) => ({ value: c, label: "", icon: `<span role="img" aria-label="${c}" style="display:grid;place-items:center;width:14px;height:14px">${tagSquare(c, 10)}</span>`, title: c[0].toUpperCase() + c.slice(1) })),
   });
 }
 
-function editor(e: TagEdit): string {
-  const nameBad = e.nameDraft.trim() !== "" && normalizeTagName(e.nameDraft) === null;
-  return `<div class="cnpy-tagedit" data-tag-edit="${attr(e.name)}">
-      <div class="cnpy-tagedit-fields">
-        <label style="display:block;min-width:0"><span style="display:block;font-size:12px;font-weight:500;color:var(--fg-55);margin-bottom:5px">Name</span>
-          <input id="tag-edit-name" data-act="tagEditName" data-field="tagEditName" data-enter="tagEditSave" value="${attr(e.nameDraft)}" maxlength="${TAG_NAME_MAX}" autocomplete="off" autocapitalize="off" spellcheck="false"${nameBad ? ' aria-invalid="true"' : ""} class="cnpy-input" style="${O_FIELD};height:32px;font-size:13px" /></label>
-        <label style="display:block;min-width:0"><span style="display:block;font-size:12px;font-weight:500;color:var(--fg-55);margin-bottom:5px">What it is for</span>
-          <input id="tag-edit-desc" data-act="tagEditDesc" data-field="tagEditDesc" data-enter="tagEditSave" value="${attr(e.descDraft)}" maxlength="${TAG_DESCRIPTION_MAX}" autocomplete="off" class="cnpy-input" style="${O_FIELD};height:32px;font-size:13px" /></label>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px">
-        <span id="tag-color-l" style="font-size:12px;font-weight:500;color:var(--fg-55)">Colour</span>${colorSwitch(e.color)}
-      </div>
-      <div style="${O_HELP}">Renaming keeps the tag on everything that has it.</div>
-      <div role="alert" style="${O_ERR}"${e.error ? "" : " hidden"}>${esc(e.error ?? "")}</div>
-      <div style="display:flex;gap:8px;margin-top:12px">
-        ${accentBtn(e.saving ? "Saving…" : "Save", "tagEditSave", { disabled: e.saving || nameBad || !e.nameDraft.trim(), busy: e.saving })}
-        ${quietBtn("Cancel", "tagEditCancel", { disabled: e.saving })}
-      </div>
-    </div>`;
+/** The field that takes a cell's place while it is edited in place: Enter or leaving it saves, Escape puts the
+ *  words back (web/src/tags-actions.ts). Same height as the words it replaces, so the row does not move. */
+function inlineField(e: TagEdit): string {
+  const name = e.field === "name";
+  const bad = name && e.nameDraft.trim() !== "" && normalizeTagName(e.nameDraft) === null;
+  return `<input id="tag-inline" data-tag-inline="${attr(e.name)}" data-act="${name ? "tagEditName" : "tagEditDesc"}" data-field="tagInline" data-enter="tagEditSave"
+      value="${attr(name ? e.nameDraft : e.descDraft)}" maxlength="${name ? TAG_NAME_MAX : TAG_DESCRIPTION_MAX}" autocomplete="off"${name ? ' autocapitalize="off" spellcheck="false"' : ""}
+      placeholder="${name ? "Tag name" : "What it is for (one line)"}" aria-label="${attr(name ? `New name for ${e.name}` : `What ${e.name} is for`)}"${bad || e.error ? ` aria-invalid="true" title="${attr(e.error ?? "Lowercase letters, digits and hyphens.")}"` : ""}${e.saving ? " readonly" : ""}
+      class="cnpy-input cnpy-taginline" style="border-radius:6px" />`;
 }
-
-const num = (n: number): string => (n > 0 ? String(n) : "—");
 
 // ── Jev tagging existing items (issues #154–#158; no review step, the owner's call) ──
 
-/** The AI switch and where the month's allowance stands — one plain sentence on what is sent and to whom. */
+const meter = (used: number, cap: number | null, label: string): string => cap === null || cap <= 0 ? ""
+  : `<div class="cnpy-tagshead-meter" role="meter" aria-label="${attr(label)}" aria-valuemin="0" aria-valuemax="${cap}" aria-valuenow="${Math.min(used, cap)}"${used >= cap ? ' data-full="1"' : ""}><span style="transform:scaleX(${Math.min(1, used / cap).toFixed(4)})"></span></div>`;
+
+/** The Jev cell of the tab's header: the switch, what it does in a few words, and the month's checks. What is
+ *  SENT is one plain sentence in a small popover from "What is sent" (`aiInfo`; a click outside or Escape closes it). */
 export function aiSection(ai: TagAiDTO, ui: TagsUi): string {
-  const allowance = ai.cap === null ? `${ai.used.toLocaleString("en-US")} checks used this month.`
+  const checks = ai.cap === null ? `${ai.used.toLocaleString("en-US")} checks used this month.`
     : `${ai.used.toLocaleString("en-US")} of ${ai.cap.toLocaleString("en-US")} checks used this month.`;
   const state = !ai.available ? "This Trov has no TypeSafe AI key set, so nothing is sent and nothing is tagged."
     : !ai.enabled ? "Off: nothing is sent."
     : ai.spent ? "This month's checks are used up: Trov stops looking for items until next month."
-    : allowance;
-  return `<section aria-labelledby="org-tags-ai" data-org-group="tag-ai" data-ai="${ai.enabled ? "on" : "off"}" style="margin-bottom:26px">
-      ${orgHead("Tag existing items for a new tag", "", null, "org-tags-ai")}
-      <div${surface("display:flex;align-items:flex-start;gap:14px;padding:14px 16px")}>
-        <span style="flex:none;margin-top:1px">${switchBtn("tagAiToggle", null, ai.enabled).replace("<button ", `<button aria-label="Tag existing items for a new tag"${ui.aiBusy || !ai.available ? " disabled" : ""} `)}</span>
-        <div style="min-width:0">
-          <div style="font-size:13px;line-height:1.55;color:var(--fg-70)">When it is on and you add a tag (or press Find items), Trov sends the tag's name and description, and the title and first 400 characters of each feed entry, doc and decision that may fit it — code removed — to Jev, TypeSafe AI's decision model, and adds the tag to each item Jev judges a fit. You can undo a run, or take the tag off any item.</div>
-          <div data-ai-state style="font-size:12px;color:var(--fg-40);margin-top:5px">${esc(state)}</div>
+    : checks;
+  return `<div class="cnpy-tagshead-cell cnpy-tagshead-jev" data-org-group="tag-ai" data-ai="${ai.enabled ? "on" : "off"}">
+      <div class="cnpy-tagshead-k" id="org-tags-ai">Jev</div>
+      <div class="cnpy-tagshead-jevrow">
+        <span style="flex:none">${switchBtn("tagAiToggle", null, ai.enabled).replace("<button ", `<button aria-label="Tag existing items for a new tag"${ui.aiBusy || !ai.available ? " disabled" : ""} `)}</span>
+        <span class="cnpy-tagshead-v">${ai.enabled ? "Tags existing items" : "Off"}</span>
+      </div>
+      <div class="cnpy-tagshead-meterwrap"${ai.enabled && ai.available ? "" : ' data-off="1"'}>${meter(ai.used, ai.cap, "Checks used this month")}</div>
+      <div class="cnpy-tagshead-sub"><span data-ai-state>${esc(state)}</span>
+        <span class="cnpy-tagshead-pop">
+          <button type="button" data-act="tagAiInfo" data-field="tagAiInfo" aria-expanded="${ui.aiInfo}" aria-haspopup="dialog"${ui.aiInfo ? ' aria-controls="org-tags-ai-info"' : ""} class="cnpy-tagfind cnpy-tagshead-more">What is sent</button>
+          ${ui.aiInfo ? `<div data-act="tagAiInfoClose" class="cnpy-tagmenu-back"></div>${aiInfo()}` : ""}
+        </span></div>
+    </div>`;
+}
+
+/** The popover: what is sent, to whom, and the way back. */
+function aiInfo(): string {
+  return `<p id="org-tags-ai-info" role="dialog" aria-label="What is sent" class="cnpy-tagshead-info" style="border-radius:11px">Jev, TypeSafe AI's model, gets the tag's name and description, and the title and first 400 characters of each item that may fit, with code removed. It adds the tag where it fits. You can undo a run or take the tag off any item.</p>`;
+}
+
+/** Can Jev look for items right now (the switch on, a key set, checks left this month)? */
+const canFind = (ai: TagAiDTO | undefined): boolean => !!ai && ai.enabled && ai.available && !ai.spent;
+
+/** A tag row's "Added by Jev" cell: the latest run's result ("7 added", with Undo; "None fit"; why it stopped),
+ *  or the run drawn live. The same cell either way (web/src/fit-run.ts `fitCell`), so the row never changes shape. */
+export function jevCell(t: OrgTagDTO, last: TagRunDTO | undefined, ui: TagsUi): string {
+  if (t.retired) return `<div data-col="jev"></div>`;
+  const live = ui.live[t.name] ?? null;
+  const n = (k: number) => `${k} ${k === 1 ? "item" : "items"}`;
+  const undo = !live && last && last.status !== "running" && last.added > 0 && !last.undone_at
+    ? `<button type="button" class="cnpy-tagjev-undo" data-act="tagConfirm" data-arg="${attr(`undoRun:${t.name}`)}" data-field="${attr(`tagConfirm:undoRun:${t.name}`)}" aria-haspopup="dialog" aria-label="${attr(`Undo: take ${t.name} off the ${n(last.added)} this run tagged`)}"${ui.busy ? " disabled" : ""}>${ui.busy === `undo:${t.name}` ? "Undoing…" : "Undo"}</button>`
+    : "";
+  return fitCell(t.name, t.color, live, last, undo);
+}
+
+const DOTS = `<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="19" cy="12" r="1.7"></circle></svg>`;
+const menuRow = (inner: string, act: string, arg: string, o: { field?: string; danger?: boolean; label?: string } = {}): string =>
+  `<button type="button" role="menuitem" data-act="${act}" data-arg="${attr(arg)}"${o.field ? ` data-field="${attr(o.field)}"` : ""}${o.label ? ` aria-label="${attr(o.label)}"` : ""}${o.danger ? ' aria-haspopup="dialog"' : ""} class="cnpy-menurow cnpy-tagmenu-row"${o.danger ? ' data-danger="1"' : ""} style="border-radius:7px">${inner}</button>`;
+
+/** A row's ⋯ button and, open, its menu (`key` is what `ui.menu` holds when it is open). */
+function menuShell(key: string, label: string, menuLabel: string, items: string, open: boolean, disabled: boolean): string {
+  return `<div class="cnpy-tagmenu">
+      <button type="button" data-act="tagMenu" data-arg="${attr(key)}" data-field="${attr(`tagMenu:${key}`)}" aria-label="${attr(label)}" title="More" aria-haspopup="menu" aria-expanded="${open}"${disabled ? " disabled" : ""} class="cnpy-iconbtn cnpy-tagmenu-btn" style="border-radius:7px">${DOTS}</button>
+      ${open ? `<div data-act="tagMenuClose" class="cnpy-tagmenu-back"></div><div role="menu" aria-label="${attr(menuLabel)}" class="cnpy-tagmenu-box" style="border-radius:11px">${items}</div>` : ""}
+    </div>`;
+}
+/** The menu's list of tags to pick from (Merge into…, Use an existing tag…): each its square and name. */
+const pickList = (head: string, tags: readonly OrgTagDTO[], act: string, arg: (t: OrgTagDTO) => string, label: (t: OrgTagDTO) => string): string =>
+  `<div class="cnpy-tagmenu-head">${head}</div><div class="cnpy-tagmenu-list">${tags.map((x) =>
+    menuRow(`${tagSquare(x.color)}<span>${esc(x.name)}</span>`, act, arg(x), { label: label(x), danger: act === "tagMergeTo" })).join("")}</div>`;
+
+/** A row's ⋯ menu: what an admin does to a tag now and then — Rename (in place); and, for a tag that is not a
+ *  starter, Merge into… (the menu turns into the list of tags to merge into; a pick asks first) and Retire (asks
+ *  first). What it is for and the colour are edited by clicking them; Find items, the frequent one, is on the row. */
+function rowMenu(t: OrgTagDTO, ui: TagsUi, live: readonly OrgTagDTO[], disabled: boolean): string {
+  const open = ui.menu === t.name && !disabled;
+  const targets = live.filter((x) => x.name !== t.name);
+  const items = ui.menuMerge && !t.starter
+    ? pickList(`Merge ${esc(t.name)} into`, targets, "tagMergeTo", (x) => `${t.name}>${x.name}`, (x) => `Merge ${t.name} into ${x.name}`)
+    : `${menuRow("Rename", "tagRename", t.name)}${t.starter ? "" : `${targets.length ? menuRow("Merge into…", "tagMergeOpen", t.name) : ""}<div class="cnpy-tagmenu-sep"></div>${
+        menuRow("Retire", "tagConfirm", `retire:${t.name}`, { field: `tagConfirm:retire:${t.name}`, danger: true })}`}`;
+  return menuShell(t.name, `More for ${t.name}`, ui.menuMerge ? `Merge ${t.name} into` : t.name, items, open, disabled);
+}
+
+/** What an agent suggested, as a row at the BOTTOM of the same list in a suggested state — the whole row tinted
+ *  in the accent — with a hollow square, the name muted,
+ *  "Suggested" (a `waiting` mark), who sent it on what. Approve is on the row and puts it on the list (the row
+ *  then draws like any other tag); its ⋯ menu gives the items a tag that is already on the list instead (the
+ *  look-alike first), or dismisses it. */
+function suggestionRow(s: TagSuggestionDTO, ui: TagsUi, list: TagListDTO, jev: boolean): string {
+  const key = `sug:${s.name}`;
+  const busy = ui.busy === s.name;
+  const open = ui.menu === key && !busy;
+  const live = liveOf(list);
+  const whoText = s.by.length ? `, first by @${s.by[0]}${s.by.length > 1 ? ` and ${plural(s.by.length - 1, "other", "others")}` : ""}` : "";
+  const like = s.similar ? ` Looks like <strong style="font-weight:600;color:var(--fg-70)">${esc(s.similar)}</strong>.` : "";
+  const items = ui.menuMerge
+    ? pickList(`Give its items`, live, "tagSugUse", (x) => `${s.name}>${x.name}`, (x) => `Tag the items that carried ${s.name} ${x.name} instead`)
+    : `${s.similar ? menuRow(`Use ${esc(s.similar)} instead`, "tagSugUse", `${s.name}>${s.similar}`) : ""}${live.length ? menuRow("Use an existing tag…", "tagSugMapOpen", s.name) : ""}<div class="cnpy-tagmenu-sep"></div>${
+      menuRow("Dismiss", "tagConfirm", `dismiss:${s.name}`, { field: `tagConfirm:dismiss:${s.name}`, danger: true })}`;
+  const on = plural(s.uses, "item", "items");
+  return `<li class="cnpy-tagrow-wrap" data-tag-suggestion="${attr(s.name)}" data-suggested="1">
+      <div class="cnpy-tagrow">
+        <div data-col="tag" class="cnpy-tagrow-name"><span class="cnpy-tagsug-sq" aria-hidden="true"></span><span class="cnpy-tagsug-name">${esc(s.name)}</span>${kindMark("Suggested", "waiting", 12, "An agent sent this tag. It is not on the list until an admin approves it.")}</div>
+        <div data-col="desc" class="cnpy-tagrow-desc cnpy-tagsug-desc" title="${attr(`Sent on ${countsPhrase(s.counts)}${whoText}. ${s.uses === 1 ? "That item is" : "Those items are"} saved without it until you approve.`)}">${s.by.length ? `From @${esc(s.by[0])}${s.by.length > 1 ? ` and ${plural(s.by.length - 1, "other", "others")}` : ""}` : "From an agent"}, on ${esc(countsPhrase(s.counts))}.${like}</div>
+        <div data-col="n" class="cnpy-tagrow-n" data-zero="1" title="${attr(`Waiting on ${on}`)}">${s.uses}</div>
+        <div data-col="small" class="cnpy-tagrow-small">Waiting on ${on}</div>
+        ${jev ? `<div data-col="jev"></div>` : ""}
+        <div data-col="acts" class="cnpy-tagrow-acts">
+          <button type="button" data-act="tagSugAccept" data-arg="${attr(s.name)}" aria-label="${attr(`Approve ${s.name}: add it to the list and to the ${on} it was sent on`)}" class="cnpy-tagfind cnpy-tagapprove"${busy ? " disabled" : ""}>${busy ? "Adding…" : "Approve"}</button>
+          ${menuShell(key, `More for the suggestion ${s.name}`, ui.menuMerge ? `Give the items of ${s.name} a tag` : s.name, items, open, busy)}
         </div>
       </div>
-    </section>`;
+    </li>`;
 }
 
-/** A tag row's line about the model: a run drawn live; else the latest run's result ("Added to 7 items",
- *  with Undo; "Checked 20 — none fit."; why it stopped) and Find items. */
-export function fitLine(t: OrgTagDTO, last: TagRunDTO | undefined, ai: TagAiDTO | undefined, ui: TagsUi): string {
-  if (!ai || t.retired) return "";
-  // A run drawn live: its view is the whole line until the list has its result.
-  const live = ui.live[t.name];
-  if (live) return `<div class="cnpy-tagfitline" data-tag-fitline="${attr(t.name)}">${fitRunView(t.name, t.color, live)}</div>`;
-  const running = last?.status === "running";
-  const parts: string[] = [];
-  const say = (state: string, words: string) => parts.push(`<span data-fit-run="${state}" style="font-size:12px;color:var(--fg-55)">${esc(words)}</span>`);
-  const n = (k: number) => `${k} ${k === 1 ? "item" : "items"}`;
-  if (running) say("running", "Looking for items that fit…");
-  else if (last) {
-    const stopped = last.status === "capped" ? `Stopped at ${last.checked} of ${last.candidates}: this month's checks are used up.`
-      : last.status === "failed" ? `Stopped at ${last.checked} of ${last.candidates}: the model did not answer.` : "";
-    if (last.undone_at) say("undone", `Undone: the ${n(last.added)} this run tagged no longer have it.`);
-    else if (last.added > 0) {
-      say("added", `${stopped ? `${stopped} ` : ""}Added to ${n(last.added)}.`);
-      parts.push(quietBtn(ui.busy === `undo:${t.name}` ? "Undoing…" : "Undo", "tagConfirm", {
-        arg: `undoRun:${t.name}`, disabled: !!ui.busy, label: `Undo: take ${t.name} off the ${n(last.added)} this run tagged`, field: `tagConfirm:undoRun:${t.name}`,
-        extra: "height:26px;padding:0 9px;font-size:12px",
-      }));
-    } else if (stopped) say(last.status, stopped);
-    else say("none", last.candidates === 0 ? "Nothing in this organization to check yet." : `Checked ${last.checked} — none fit.`);
-  }
-  if (ai.enabled && ai.available && !ai.spent && !running) parts.push(quietBtn(ui.busy === `find:${t.name}` ? "Looking…" : "Find items", "tagFind", { arg: t.name, disabled: !!ui.busy, label: `Find existing items that fit ${t.name} and tag them`, extra: "height:26px;padding:0 9px;font-size:12px" }));
-  return parts.length ? `<div class="cnpy-tagfitline" data-tag-fitline="${attr(t.name)}">${parts.join("")}</div>` : "";
+/** The tag's square and name. For an admin the square is a button that opens its colour picker. */
+function nameCell(t: OrgTagDTO, admin: boolean, ui: TagsUi, editing: TagEdit | null): string {
+  const note = `${t.starter ? `<span class="cnpy-tagrow-note">Starter</span>` : ""}${t.retired ? `<span class="cnpy-tagrow-note">Retired</span>` : ""}`;
+  // Editing the name: the same square button (inert) before the field, so the name stays exactly where it was.
+  if (editing?.field === "name") return `<div data-col="tag" class="cnpy-tagrow-name"><span class="cnpy-tagcolor"><span class="cnpy-tagcolor-btn" aria-hidden="true" style="border-radius:5px">${tagSquare(t.color)}</span></span>${inlineField(editing)}</div>`;
+  if (!admin || t.retired) return `<div data-col="tag" class="cnpy-tagrow-name">${tagMark(t, { size: 13.5, retired: t.retired })}${note}</div>`;
+  const open = ui.colorOpen === t.name;
+  return `<div data-col="tag" class="cnpy-tagrow-name">
+      <span class="cnpy-tagcolor">
+        <button type="button" data-act="tagColorOpen" data-arg="${attr(t.name)}" data-field="${attr(`tagColor:${t.name}`)}" aria-label="${attr(`Colour of ${t.name}: ${t.color}`)}" title="Change the colour" aria-haspopup="true" aria-expanded="${open}" class="cnpy-tagcolor-btn" style="border-radius:5px">${tagSquare(t.color)}</button>
+        ${open ? `<div data-act="tagColorClose" class="cnpy-tagmenu-back"></div><div class="cnpy-tagcolor-box" style="border-radius:11px">${colorSwitch(t)}</div>` : ""}
+      </span>${tagMark(t, { size: 13.5 }).replace(/<svg class="cnpy-tagsq"[\s\S]*?<\/svg>/, "")}${note}
+    </div>`;
 }
 
-function tagRow(t: OrgTagDTO, admin: boolean, ui: TagsUi, dds: DropdownProps[], dd: DropdownUi, list: TagListDTO | null = null): string {
+/** What it is for. For an admin a click on it edits it in place. */
+function descCell(t: OrgTagDTO, admin: boolean, editing: TagEdit | null): string {
+  const words = t.description ? esc(t.description) : `<span style="color:var(--fg-40)">${admin && !t.retired ? "Add what it is for" : "No description"}</span>`;
+  if (editing?.field === "desc") return `<div data-col="desc" class="cnpy-tagrow-desc">${inlineField(editing)}</div>`;
+  if (!admin || t.retired) return `<div data-col="desc" class="cnpy-tagrow-desc">${words}</div>`;
+  return `<div data-col="desc" class="cnpy-tagrow-desc"><button type="button" data-act="tagEdit" data-arg="${attr(t.name)}" data-field="${attr(`tagEdit:${t.name}`)}" aria-label="${attr(`Edit what ${t.name} is for`)}" title="Click to edit" class="cnpy-tagdesc-btn" style="border-radius:6px">${words}</button></div>`;
+}
+
+function tagRow(t: OrgTagDTO, admin: boolean, ui: TagsUi, list: TagListDTO | null = null): string {
   const editing = ui.edit?.name === t.name ? ui.edit : null;
   const busy = ui.busy === t.name;
-  const merge = dds.find((d) => d.id === mergeId(t.name));
+  const ai = admin ? list?.ai : undefined;
+  const last = list?.runs?.[t.name];
+  const running = !!ui.live[t.name] || last?.status === "running";
   const acts = !admin ? ""
     : t.retired ? quietBtn(busy ? "Restoring…" : "Restore", "tagRestore", { arg: t.name, disabled: busy, busy, label: `Restore ${t.name}` })
-    : `${quietBtn(t.starter ? "Rename" : "Edit", "tagEdit", { arg: t.name, disabled: busy || !!editing, label: `${t.starter ? "Rename" : "Edit"} ${t.name}`, field: `tagEdit:${t.name}` })}${
-        t.starter ? "" : `${merge ? dropdown(merge, dd) : ""}${dangerLink("Retire", "tagConfirm", { arg: `retire:${t.name}`, disabled: busy, label: `Retire ${t.name}`, field: `tagConfirm:retire:${t.name}` })}`}`;
-  const small = TAG_ITEM_TYPES.filter((k) => t.counts[k] > 0).map((k) => plural(t.counts[k], TAG_ITEM_LABEL[k].one, TAG_ITEM_LABEL[k].many)).join(" · ");
-  return `<li class="cnpy-tagrow-wrap" data-org-tag="${attr(t.name)}"${t.retired ? ' data-retired="1"' : ""}${t.starter ? ' data-starter="1"' : ""}>
+    : `${canFind(ai) ? `<button type="button" data-act="tagFind" data-arg="${attr(t.name)}" aria-label="${attr(`Find existing items that fit ${t.name} and tag them`)}" class="cnpy-tagfind"${ui.busy || running ? " disabled" : ""}>Find items</button>` : ""}${
+        rowMenu(t, ui, liveOf(list), busy || !!editing)}`;
+  const all = total(t.counts);
+  const where = all ? countsPhrase(t.counts) : "Not used yet";
+  return `<li class="cnpy-tagrow-wrap" data-org-tag="${attr(t.name)}"${t.retired ? ' data-retired="1"' : ""}${t.starter ? ' data-starter="1"' : ""}${editing ? ` data-editing="${editing.field}"` : ""}>
       <div class="cnpy-tagrow">
-        <div data-col="tag" style="min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${tagMark(t, { size: 13.5, retired: t.retired })}${t.starter ? `<span style="font-size:12px;color:var(--fg-40);white-space:nowrap">Starter tag</span>` : ""}${t.retired ? `<span style="font-size:12px;color:var(--fg-40);white-space:nowrap">Retired</span>` : ""}</div>
-        <div data-col="desc" style="min-width:0;font-size:13px;color:var(--fg-55);overflow-wrap:anywhere">${t.description ? esc(t.description) : `<span style="color:var(--fg-40)">No description</span>`}</div>
-        ${TAG_ITEM_TYPES.map((k) => `<div data-col="n" data-n="${k}" title="${attr(plural(t.counts[k], TAG_ITEM_LABEL[k].one, TAG_ITEM_LABEL[k].many))}" style="font-size:13px;color:${t.counts[k] ? "var(--fg-70)" : "var(--fg-40)"};font-variant-numeric:tabular-nums;text-align:right">${num(t.counts[k])}</div>`).join("")}
-        <div data-col="small" style="font-size:12px;color:var(--fg-40)">${small ? esc(small) : "Not used yet"}</div>
-        <div data-col="acts" class="cnpy-tagrow-acts">${acts}</div>
+        ${nameCell(t, admin, ui, editing)}
+        ${descCell(t, admin, editing)}
+        <div data-col="n" class="cnpy-tagrow-n" title="${attr(where)}"${all ? "" : ' data-zero="1"'}>${all || "—"}</div>
+        <div data-col="small" class="cnpy-tagrow-small" title="${attr(where)}">${all ? plural(all, "item", "items") : "Not used yet"}</div>
+        ${ai ? jevCell(t, last, ui) : ""}
+        ${admin ? `<div data-col="acts" class="cnpy-tagrow-acts">${acts}</div>` : ""}
       </div>
-      ${admin ? fitLine(t, list?.runs?.[t.name], list?.ai, ui) : ""}
-      ${editing ? editor(editing) : ""}
     </li>`;
 }
 
 /** Org settings › Tags. Any member reads the list; an admin changes it and settles suggestions. */
 export function tagsTab(org: MyOrg, p: TagsTabProps): string {
   const admin = roleAtLeast(org.role, "admin");
-  const dd = p.dd ?? initialDropdownUi();
   const note = sliceNote(p.list, "tags", p.list.data !== null, { rows: 6, trail: 96 });
   if (note) return note;
   const list = p.list.data;
   if (!list) return loadingNote("tags", { rows: 6, trail: 96 });
   const ui = p.ui;
-  const dds = tagsDropdowns(list, ui);
   const live = list.tags.filter((t) => !t.retired);
   const retired = list.tags.filter((t) => t.retired);
   const full = list.cap !== null && list.used >= list.cap;
-  const of = list.cap === null ? `<strong>${list.used}</strong> ${list.used === 1 ? "tag" : "tags"}` : `<strong>${list.used}</strong> of ${list.cap} tags`;
-  const lead = tabLead(`${of}. One list for everything in ${esc(org.name)}: the same tag finds a feed entry, a doc and a decision. ${admin
-    ? "Agents pick from it and can suggest a new one, which waits here until you decide."
-    : "Agents pick from it. An admin or an owner decides what is on it."}`);
+  // The header: how full the list is, what agents suggested (admins), and Jev (admins) — one card of cells.
+  const waiting = admin ? list.suggestions.length : 0;
+  const head0 = `<section aria-label="Tags in ${attr(org.name)}"${surface("", { cls: "cnpy-tagshead" })}>
+      <div class="cnpy-tagshead-cells">
+        <div class="cnpy-tagshead-cell">
+          <div class="cnpy-tagshead-k">Tags</div>
+          <div class="cnpy-tagshead-v"><strong>${list.used}</strong>${list.cap === null ? ` ${list.used === 1 ? "tag" : "tags"}` : ` of ${list.cap} tags`}</div>
+          ${meter(list.used, list.cap, "Tags on the list")}
+          <div class="cnpy-tagshead-sub">One list for everything in ${esc(org.name)}: the same tag finds a feed entry, a doc and a decision. ${admin ? "" : "An admin or an owner decides what is on it."}</div>
+        </div>
+        ${admin ? `<div class="cnpy-tagshead-cell">
+          <div class="cnpy-tagshead-k">Suggested by agents</div>
+          <div class="cnpy-tagshead-v"><strong>${waiting}</strong> waiting</div>
+          <div class="cnpy-tagshead-sub">${waiting ? "At the bottom of the list. Approve one to add it, or give its items a tag you have." : "When an agent sends a tag that is not on the list, it waits at the bottom for you."}</div>
+        </div>` : ""}
+        ${admin && list.ai ? aiSection(list.ai, ui) : ""}
+      </div>
+    </section>`;
 
-  const suggestions = admin && list.suggestions.length ? `<section aria-labelledby="org-tags-sug" data-org-group="tag-suggestions" style="margin-bottom:26px">
-      ${orgHead("Suggested by agents", "", list.suggestions.length, "org-tags-sug")}
-      <ul${surface("overflow:hidden;list-style:none;margin:0;padding:0")}>${list.suggestions.map((s) => suggestionRow(s, ui, dds, dd)).join("")}</ul>
-    </section>` : "";
-
+  // ONE column template for the head and every row (fixed widths but the description), so every row lines up. It
+  // does not depend on the Jev switch: turning it on or off never moves a column.
+  const jev = admin && !!list.ai;
+  const cols = ["minmax(0, 176px)", "minmax(0, 1fr)", "44px", ...(jev ? ["150px"] : []), ...(admin ? ["116px"] : [])].join(" ");
+  // Not `overflow:hidden`: a row's ⋯ menu opens over the rows below it.
+  const ul = (extra: string) => surface(`list-style:none;padding:0;--tagcols:${cols};${extra}`);
+  const head = `<div class="cnpy-tagrow cnpy-taghead" aria-hidden="true">
+      <div data-col="tag">Tag</div><div data-col="desc">What it is for</div><div data-col="n">Items</div>
+      ${jev ? `<div data-col="jev">Added by Jev</div>` : ""}${admin ? `<div data-col="acts"></div>` : ""}
+    </div>`;
+  const rows = (ts: OrgTagDTO[]) => ts.map((t) => tagRow(t, admin, ui, list)).join("");
+  // Adding a tag is the list's FIRST row, on the same columns: its name and what it is for are fields in the same
+  // 30px boxes the rows edit in place, Add tag where a row's actions are. What is wrong with a draft is said under
+  // the list (one row never grows a second line).
   const problem = tagDraftProblem(ui.nameDraft, list.tags);
   const addErr = ui.addError ?? (problem || null);
-  const add = admin ? `<div class="cnpy-tagadd" data-org-tag-add>
-      <input id="org-tag-name" data-act="tagNameDraft" data-field="tagName" data-enter="tagAdd" value="${attr(ui.nameDraft)}" maxlength="${TAG_NAME_MAX}" placeholder="New tag name" aria-label="New tag name" autocomplete="off" autocapitalize="off" spellcheck="false"${addErr ? ' aria-invalid="true" aria-describedby="org-tag-e"' : ""} class="cnpy-input" style="${O_FIELD};height:32px;font-size:13px" />
-      <input id="org-tag-desc" data-act="tagDescDraft" data-field="tagDesc" data-enter="tagAdd" value="${attr(ui.descDraft)}" maxlength="${TAG_DESCRIPTION_MAX}" placeholder="What it is for (one line)" aria-label="What the new tag is for" autocomplete="off" class="cnpy-input" style="${O_FIELD};height:32px;font-size:13px" />
-      ${accentBtn(ui.addBusy ? "Adding…" : "Add tag", "tagAdd", { disabled: ui.addBusy || full || problem !== null, busy: ui.addBusy, title: full ? "The list is full on this plan" : undefined })}
-    </div>
-    <div id="org-tag-e" role="alert" style="${O_ERR};margin:8px 0 0"${addErr ? "" : " hidden"}>${esc(addErr ?? "")}</div>
-    <div style="${O_HELP};margin:-4px 0 12px"${ui.nameDraft.trim() && !ui.descDraft.trim() && !addErr ? "" : " hidden"} data-org-tag-nudge>A one-line description helps find the right items.</div>
-    <div style="${O_HELP};margin-bottom:16px"${full && !addErr ? "" : " hidden"} data-org-tag-full>The list holds ${list.cap ?? 0} tags on this plan. Retire or merge one to add another.</div>` : "";
-
-  const head = `<div class="cnpy-tagrow cnpy-taghead" aria-hidden="true">
-      <div data-col="tag">Tag</div><div data-col="desc">What it is for</div>
-      ${TAG_ITEM_TYPES.map((k) => `<div data-col="n" style="text-align:right">${k === "feed" ? "Feed" : k === "doc" ? "Docs" : "Decisions"}</div>`).join("")}
-      <div data-col="small"></div><div data-col="acts"></div>
-    </div>`;
-  const rows = (ts: OrgTagDTO[]) => ts.map((t) => tagRow(t, admin, ui, dds, dd, list)).join("");
+  const addRow = admin ? `<li class="cnpy-tagrow-wrap cnpy-tagaddrow" data-org-tag-add>
+      <div class="cnpy-tagrow">
+        <div data-col="tag" class="cnpy-tagrow-name"><span class="cnpy-tagcolor"><span class="cnpy-tagcolor-btn" aria-hidden="true" style="border-radius:5px"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.5"/></svg></span></span><input id="org-tag-name" data-act="tagNameDraft" data-field="tagName" data-enter="tagAdd" value="${attr(ui.nameDraft)}" maxlength="${TAG_NAME_MAX}" placeholder="New tag" aria-label="New tag name" autocomplete="off" autocapitalize="off" spellcheck="false"${addErr ? ' aria-invalid="true" aria-describedby="org-tag-e"' : ""} class="cnpy-input cnpy-taginline cnpy-tagadd-in" style="border-radius:6px" /></div>
+        <div data-col="desc" class="cnpy-tagrow-desc"><input id="org-tag-desc" data-act="tagDescDraft" data-field="tagDesc" data-enter="tagAdd" value="${attr(ui.descDraft)}" maxlength="${TAG_DESCRIPTION_MAX}" placeholder="What it is for (one line)" aria-label="What the new tag is for" autocomplete="off" class="cnpy-input cnpy-taginline cnpy-tagadd-in" style="border-radius:6px" /></div>
+        <div data-col="n"></div>
+        ${jev ? `<div data-col="jev"></div>` : ""}
+        <div data-col="acts" class="cnpy-tagrow-acts"><button type="button" data-act="tagAdd" class="cnpy-tagfind cnpy-tagapprove"${ui.addBusy || full || problem !== null ? " disabled" : ""}${full ? ` title="The list is full on this plan"` : ""}>${ui.addBusy ? "Adding…" : "Add tag"}</button></div>
+      </div>
+    </li>` : "";
+  const addNotes = admin ? `<div id="org-tag-e" role="alert" style="${O_ERR};margin:8px 0 0"${addErr ? "" : " hidden"}>${esc(addErr ?? "")}</div>
+    <div style="${O_HELP};margin-top:8px"${ui.nameDraft.trim() && !ui.descDraft.trim() && !addErr ? "" : " hidden"} data-org-tag-nudge>A one-line description helps find the right items.</div>
+    <div style="${O_HELP};margin-top:8px"${full && !addErr ? "" : " hidden"} data-org-tag-full>The list holds ${list.cap ?? 0} tags on this plan. Retire or merge one to add another.</div>` : "";
   const retiredBlock = retired.length ? `<div style="margin-top:18px" data-org-tags-retired>
       <button type="button" data-act="tagShowRetired" data-field="tagShowRetired" aria-expanded="${ui.showRetired}" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;padding:4px 0;font-size:12.5px;font-weight:500;color:var(--fg-55)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="transform:${ui.showRetired ? "rotate(90deg)" : "none"};transition:transform .15s ease"><path d="M9 6l6 6-6 6"></path></svg>${plural(retired.length, "retired tag", "retired tags")}</button>
-      <ul${surface("overflow:hidden;list-style:none;margin:8px 0 0;padding:0")}${ui.showRetired ? "" : " hidden"}>${rows(retired)}</ul>
+      <ul${ul("margin:8px 0 0")}${ui.showRetired ? "" : " hidden"}>${rows(retired)}</ul>
     </div>` : "";
 
-  return `${lead}${suggestions}${admin && list.ai ? aiSection(list.ai, ui) : ""}
-    <section aria-labelledby="org-tags-list" data-org-group="tags">
-      ${orgHead("Tags", "", null, "org-tags-list")}
-      ${add}
-      <ul${surface("overflow:hidden;list-style:none;margin:0;padding:0")}>${head}${rows(live)}</ul>
+  return `${head0}
+    <section aria-label="The tag list" data-org-group="tags">
+      <ul${ul("margin:0")}>${head}${addRow}${rows(live)}${admin ? list.suggestions.map((sg) => suggestionRow(sg, ui, list, jev)).join("") : ""}</ul>
+      ${addNotes}
       ${retiredBlock}
       <p style="${O_HELP};max-width:680px;margin-top:14px">The six starter tags come with every organization and can be renamed, not removed. A retired tag stays on what already has it and can no longer be picked.</p>
     </section>`;
@@ -303,12 +362,16 @@ export function tagConfirmModal(c: TagConfirm | null, list: TagListDTO | null): 
       title: `Undo the last run for ${c.name}?`,
       body: `${c.name} comes off the ${(list?.runs?.[c.name]?.added ?? 0) === 1 ? "1 item" : `${list?.runs?.[c.name]?.added ?? 0} items`} that run tagged. Nothing else changes, and Trov will not add it to them again.`,
       confirmLabel: "Undo run", busyLabel: "Undoing…",
+    } : c.what === "rerun" ? {
+      title: `Find items for ${c.name} again?`,
+      body: `You changed ${c.changed === "name" ? "its name" : "what it is for"}. Jev can check the organization again with the new words and add ${c.name} to each item it judges a fit. Nothing that has it now loses it.`,
+      confirmLabel: "Find items", busyLabel: "Starting…",
     } : {
       title: `Dismiss ${c.name}?`,
       body: `The items that carried it stay as they are, without it. If an agent sends ${c.name} again, it is suggested again.`,
       confirmLabel: "Dismiss", busyLabel: "Dismissing…",
     };
-  return confirmModal({ id: "tag-confirm", ...copy, confirmAct: "tagConfirmGo", cancelAct: "tagConfirmCancel", busy: c.busy, ...(c.what === "dismiss" ? { tone: "neutral" as const } : {}) });
+  return confirmModal({ id: "tag-confirm", ...copy, confirmAct: "tagConfirmGo", cancelAct: "tagConfirmCancel", busy: c.busy, ...(c.what === "dismiss" || c.what === "rerun" ? { tone: "neutral" as const } : {}) });
 }
 
 // ── one tag's page ───────────────────────────────────────────────────────────
@@ -320,57 +383,230 @@ export interface TagPageProps {
   orgName: string;
   /** A person's handle as the app draws it (a link to their card). */
   who: (handle: string) => string;
+  /** "Now" for the activity chart (a test pins it); the clock when absent. */
+  now?: number;
 }
 
+// The page (web-ui.md › Tags › One tag's page): a hero (square, name, what it is for, the counts by type and their
+// split), the type tabs, then a bento of FIXED-size tiles (`TagTileSize`) — under All, Docs over Decisions beside
+// the feed, then Activity, Who tagged it, Who writes about it and Often seen with in one row; under a type's tab
+// that type's whole list beside a rail of its own activity (with Jev's share) and its people. A tile never grows
+// or shrinks with what it holds: its body scrolls. The tag's own colour (`--tag-c`) draws every chart on the page.
+
 const ITEM_ACT: Record<TagItemType, string> = { feed: "goFeed", doc: "openDocFrom", adr: "tagOpenDecision" };
-const KIND_WORD: Record<TagItemType, string> = { feed: "Feed", doc: "Doc", adr: "Decision" };
+const TAB_LABEL: Record<TagPageTab, string> = { all: "All", feed: "Feed", doc: "Docs", adr: "Decisions" };
 const GROUP_TITLE: Record<TagItemType, string> = { doc: "Docs", adr: "Decisions", feed: "Recent in the feed" };
+/** What the team knows first (docs, decisions), then what happened (the feed). */
+const PAGE_ORDER: readonly TagItemType[] = ["doc", "adr", "feed"];
+/** Rows a type's tile holds under All — it scrolls inside its fixed height; its tab lists them all. */
+const TILE_ROWS = 10;
+const WEEKS = 12;
+const WEEK_MS = 7 * 86_400_000;
+const capFirst = (s: string): string => s[0].toUpperCase() + s.slice(1);
+/** "Sep 14" (UTC, so a date reads the same everywhere). */
+const dayDate = (iso: string): string => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+/** A decision's state as a mark: ratified is settled by a person (check), a draft is not yet (open ring). */
+const decisionMark = (status: string | null): string => status === "ratified"
+  ? kindMark("Ratified", "done", 12, "A person ratified this decision.")
+  : authorityMark("draft", 12);
+
+/** "Added by Jev" on an item a run tagged: a FACT about how the tag got there, so plain words; its tooltip is
+ *  Jev's reason and how sure it was. No such words = a person or their agent put it there. */
+function jevNote(j: NonNullable<TagPageItem["jev"]>): string {
+  const tip = `${j.reason ? `${j.reason} ` : ""}Jev, TypeSafe AI's model, was ${Math.round(j.confidence * 100)}% sure${j.at ? ` (${dayDate(j.at)})` : ""}.`;
+  return `<span data-jev data-mtip="${attr(tip)}" style="white-space:nowrap;color:var(--fg-55)">Added by Jev</span>`;
+}
 
 function pageItem(it: TagPageItem, who: TagPageProps["who"]): string {
   const meta = [
-    it.type === "feed" ? "" : esc(it.type === "adr" ? (it.note === "ratified" ? "Ratified" : "Draft") : it.note ?? ""),
+    it.type === "adr" ? decisionMark(it.note) : it.type === "doc" && it.note ? `<span style="color:var(--fg-55)">${esc(capFirst(it.note))}</span>` : "",
     it.by ? who(it.by) : "",
-    it.at ? `<span style="white-space:nowrap">${esc(relTime(it.at))}</span>` : "",
+    it.at ? `<time datetime="${attr(it.at)}" style="white-space:nowrap">${esc(relTime(it.at))}</time>` : "",
+    it.jev ? jevNote(it.jev) : "",
     tagWords(it.tags),
   ].filter(Boolean).join(`<span aria-hidden="true">·</span>`);
-  return `<li class="cnpy-tagitem" data-tag-item="${it.type}:${attr(it.id)}">
+  return `<li class="cnpy-tagitem" data-tag-item="${it.type}:${attr(it.id)}"${it.jev ? ' data-by-jev="1"' : ""}>
       <button type="button" data-act="${ITEM_ACT[it.type]}" data-arg="${attr(it.type === "adr" ? it.title : it.id)}" class="cnpy-tagitem-t">${esc(it.title)}</button>
-      ${it.type === "feed" && it.note ? `<div style="font-size:13px;line-height:1.55;color:var(--fg-55);margin-top:3px;overflow-wrap:anywhere">${esc(it.note)}</div>` : ""}
-      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:5px;font-size:12px;color:var(--fg-40)"><span style="color:var(--fg-55)">${KIND_WORD[it.type]}</span><span aria-hidden="true">·</span>${meta}</div>
+      ${it.type === "feed" && it.note ? `<div class="cnpy-tagitem-note">${esc(it.note)}</div>` : ""}
+      ${meta ? `<div class="cnpy-tagitem-meta">${meta}</div>` : ""}
     </li>`;
 }
 
-/** `#tags/<name>`: the tag (square, name, what it is for), a tab per type, and the items. */
+/** A tile's FIXED height (trov.css `.cnpy-tagpage-tile[data-size]`), whatever it holds — 0 items, 1 or 50, or its
+ *  empty sentence: what does not fit scrolls inside its body. `half` + gap + `half` = `tall` (Docs and Decisions
+ *  beside the feed; a type's list), `row` (the second row; the rail's Activity), `rest` = `tall` − `row` − gap. */
+export type TagTileSize = "half" | "tall" | "row" | "rest";
+/** A tile: a surface on the page's 12-column grid — `span` / `md` are its columns wide and under a mid-width page —
+ *  with its title row, and its body (which scrolls) under it. */
+const tile = (head: string, body: string, span: number, md: number, size: TagTileSize, attrs = ""): string =>
+  `<section${surface(`--span:${span};--md:${md}`, { cls: "cnpy-tagpage-tile" })} data-size="${size}"${attrs}>${head}<div class="cnpy-tagpage-body cnpy-scroll">${body}</div></section>`;
+/** A tile's title row: the title, a count, and on the right a quiet link. */
+function tileHead(title: string, id: string, count: number | null = null, more = ""): string {
+  return `<div class="cnpy-tagpage-th"><h3 id="${attr(id)}">${esc(title)}</h3>${count === null ? "" : `<span class="cnpy-badge" data-n="${count}">${count}</span>`}${more ? `<span class="cnpy-tagpage-more">${more}</span>` : ""}</div>`;
+}
+const tileNote = (text: string): string => `<p class="cnpy-tagpage-none">${text}</p>`;
+/** Name and number per row, with a bar in the tag's colour scaled to the largest. `label` is markup. */
+function meters(rows: readonly { label: string; n: number }[]): string {
+  const peak = Math.max(1, ...rows.map((r) => r.n));
+  return `<ul class="cnpy-tagpage-meters">${rows.map((r) => `<li><span class="cnpy-tagpage-ml">${r.label}</span><span class="cnpy-tagpage-meter" aria-hidden="true"><span style="width:${Math.max(4, Math.round((r.n / peak) * 100))}%"></span></span><span class="cnpy-tagpage-mn">${r.n}</span></li>`).join("")}</ul>`;
+}
+
+/** Items per week, oldest first, for the last `WEEKS` weeks before `now`. */
+export function tagWeeks(items: readonly Pick<TagPageItem, "at">[], now: number): number[] {
+  const out = new Array<number>(WEEKS).fill(0);
+  for (const it of items) {
+    const t = it.at ? Date.parse(it.at) : NaN;
+    if (Number.isNaN(t)) continue;
+    const ago = Math.floor((now - t) / WEEK_MS);
+    if (ago >= 0 && ago < WEEKS) out[WEEKS - 1 - ago]++;
+  }
+  return out;
+}
+
+/** The hero: the square and the name, what it is for, the counts by type and how they split. */
+function pageHero(d: TagPageDTO): string {
+  const { tag } = d;
+  const sum = total(tag.counts);
+  const facts = [
+    tag.starter ? `<span>Starter tag</span>` : "",
+    tag.retired ? `${kindMark("Retired", "off", 12.5, "Nobody can pick it any more.")}<span>It stays on what has it and can no longer be picked.</span>` : "",
+  ].filter(Boolean).join("");
+  const fig = (label: string, n: number, type = "") => `<div class="cnpy-tagpage-fig"${type ? ` data-type="${type}"` : ""}><dt>${type ? `<span class="cnpy-tagpage-sw" aria-hidden="true"></span>` : ""}${esc(label)}</dt><dd>${n}</dd></div>`;
+  const split = sum ? `<div class="cnpy-tagpage-split">${PAGE_ORDER.filter((t) => tag.counts[t] > 0).map((t) => `<span data-type="${t}" style="flex-grow:${tag.counts[t]}" title="${attr(plural(tag.counts[t], TAG_ITEM_LABEL[t].one, TAG_ITEM_LABEL[t].many))}"></span>`).join("")}</div>` : "";
+  return `<header class="cnpy-tagpage-hero">
+      <div class="cnpy-tagpage-id">
+        <h2 class="cnpy-tagpage-name">${tagSquare(tag.color, 16)}<span>${esc(tag.name)}</span></h2>
+        <p class="cnpy-tagpage-desc"${tag.description ? "" : " data-none"}>${tag.description ? esc(tag.description) : "No description yet."}</p>
+        ${facts ? `<div class="cnpy-tagpage-facts">${facts}</div>` : ""}
+      </div>
+      <div class="cnpy-tagpage-count">
+        <dl class="cnpy-tagpage-figs">${fig(sum === 1 ? "Item" : "Items", sum)}${PAGE_ORDER.map((t) => fig(capFirst(tag.counts[t] === 1 ? TAG_ITEM_LABEL[t].one : TAG_ITEM_LABEL[t].many), tag.counts[t], t)).join("")}</dl>
+        ${split}
+      </div>
+    </header>`;
+}
+
+/** A type's tile under All: its newest rows, and a link to its tab when it has more. */
+function typeTile(t: TagItemType, d: TagPageDTO, who: TagPageProps["who"], span: number, md: number, size: TagTileSize, empty: string): string {
+  const n = d.tag.counts[t];
+  const rows = d.items[t].slice(0, TILE_ROWS);
+  const more = n > rows.length ? `<button type="button" data-act="tagPageTab" data-arg="${t}" class="mw-more" aria-label="All ${attr(plural(n, TAG_ITEM_LABEL[t].one, TAG_ITEM_LABEL[t].many))}">All ${n}${ASIDE_ARROW}</button>` : "";
+  const body = rows.length ? `<ul class="cnpy-tagpage-list">${rows.map((it) => pageItem(it, who)).join("")}</ul>` : tileNote(empty);
+  return tile(tileHead(GROUP_TITLE[t], `tag-g-${t}`, n, more), body, span, md, size, ` data-tag-group="${t}" aria-labelledby="tag-g-${t}"`);
+}
+
+/** Activity: when the items were written — the last twelve weeks as bars, the newest and the oldest. */
+function activityTile(list: readonly TagPageItem[], d: TagPageDTO, now: number, span: number, md: number, jev: number | null = null): string {
+  const weeks = tagWeeks(list, now);
+  const peak = Math.max(1, ...weeks);
+  const recent = weeks.reduce((a, b) => a + b, 0);
+  const dated = list.map((i) => i.at).filter((x): x is string => !!x && !Number.isNaN(Date.parse(x))).sort();
+  const newest = dated[dated.length - 1] ?? null;
+  const oldest = dated[0] ?? null;
+  const bars = weeks.map((n, i) => {
+    const start = new Date(now - (WEEKS - i) * WEEK_MS + 1).toISOString();
+    return `<span class="cnpy-tagpage-wk"${n ? "" : " data-zero"} style="--h:${Math.round((n / peak) * 100)}%" title="${attr(`${i === WEEKS - 1 ? "This week" : `Week of ${dayDate(start)}`}: ${plural(n, "item", "items")}`)}"></span>`;
+  }).join("");
+  const cut = PAGE_ORDER.some((t) => d.tag.counts[t] > d.items[t].length);
+  const fact = (k: string, v: string) => `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>`;
+  return tile(tileHead("Activity", "tag-g-activity"), `
+      <dl class="cnpy-tagpage-facts2">
+        ${fact("Newest", newest ? `<time datetime="${attr(newest)}">${esc(relTime(newest))}</time>` : "—")}
+        ${fact("Oldest listed", oldest ? `<time datetime="${attr(oldest)}">${esc(dayDate(oldest))}</time>` : "—")}
+        ${fact("Last 12 weeks", String(recent))}
+        ${jev === null ? "" : fact("Added by Jev", String(jev))}
+      </dl>
+      <div class="cnpy-tagpage-weeks" role="img" aria-label="${attr(`${plural(recent, "item", "items")} in the last 12 weeks, by week`)}">${bars}</div>
+      <div class="cnpy-tagpage-axis" aria-hidden="true"><span>12 weeks ago</span><span>This week</span></div>
+      ${cut ? `<p class="cnpy-tagpage-foot">From the newest ${TAG_PAGE_LIMIT} of each type.</p>` : ""}`, span, md, "row", ` data-tag-tile="activity" aria-labelledby="tag-g-activity"`);
+}
+
+/** Who put the tag there: how many Jev added and how many people and their agents did, and Jev's latest. */
+function jevTile(d: TagPageDTO, span: number, md: number): string {
+  const sum = total(d.tag.counts);
+  const jev = Math.min(d.jev_added, sum);
+  const people = sum - jev;
+  const latest = PAGE_ORDER.flatMap((t) => d.items[t]).filter((i) => i.jev).sort((a, b) => (b.jev?.at ?? "").localeCompare(a.jev?.at ?? "")).slice(0, 3);
+  const body = sum === 0 ? tileNote("Nothing carries it yet, so nobody has tagged anything with it.")
+    : jev === 0
+    ? tileNote(`Jev, TypeSafe AI's model, has not added ${esc(d.tag.name)} to anything: ${sum === 1 ? "the item here was" : "everything here was"} tagged by a person or their agent.`)
+    : `<div class="cnpy-tagpage-who">
+          <div><b>${jev}</b><span>by Jev</span></div><div><b>${people}</b><span>by people and their agents</span></div>
+        </div>
+        <div class="cnpy-tagpage-split cnpy-tagpage-split--jev" aria-hidden="true"><span data-by="jev" style="flex-grow:${jev}"></span>${people ? `<span data-by="people" style="flex-grow:${people}"></span>` : ""}</div>
+        ${latest.length ? `<ul class="cnpy-tagpage-jevs">${latest.map((it) => `<li><button type="button" data-act="${ITEM_ACT[it.type]}" data-arg="${attr(it.type === "adr" ? it.title : it.id)}" class="cnpy-tagitem-t">${esc(it.title)}</button><span>${Math.round((it.jev?.confidence ?? 0) * 100)}% sure</span></li>`).join("")}</ul>` : ""}`;
+  return tile(tileHead("Who tagged it", "tag-g-jev"), body, span, md, "row", ` data-tag-tile="jev" aria-labelledby="tag-g-jev"`);
+}
+
+function peopleTile(rows: readonly { handle: string; count: number }[], who: TagPageProps["who"], span: number, md: number, size: TagTileSize): string {
+  const body = rows.length ? meters(rows.map((a) => ({ label: who(a.handle), n: a.count }))) : tileNote("Nobody yet.");
+  return tile(tileHead("Who writes about it", "tag-g-people"), body, span, md, size, ` data-tag-tile="people" aria-labelledby="tag-g-people"`);
+}
+
+function seenTile(d: TagPageDTO, span: number, md: number): string {
+  const body = d.seen_with.length ? meters(d.seen_with.map((s) => ({ label: tagWords([s.name], { size: 13 }), n: s.count }))) : tileNote("It is not on anything with another tag.");
+  return tile(tileHead("Often seen with", "tag-g-seen"), body, span, md, "row", ` data-tag-tile="seen" aria-labelledby="tag-g-seen"`);
+}
+
+/** `#tags/<name>`: the hero, a tab per type (All first), and the bento under it. */
 export function tagPageView(p: TagPageProps): string {
-  const shell = (inner: string) => `<div data-screen-label="Tag" class="cnpy-org cnpy-tagpage" style="width:100%;max-width:1040px;margin:0 auto;padding:22px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">${inner}</div>`;
+  // The work screens' frame (ui.ts WORK_SHELL: fluid to 1440px — the queue's, the Artifacts'), the widest in the app.
+  const shell = (inner: string, tone = "") => `<div data-screen-label="Tag" class="cnpy-org cnpy-tagpage" style="${WORK_SHELL};box-sizing:border-box${tone ? `;--tag-c:${tone}` : ""}">${inner}</div>`;
   if (p.page.status === "error") return shell(failedNote("this tag", "tagPageReload"));
   if (!p.page.data) {
     if (p.page.status === "ok") return shell(orgEmpty("No such tag", `${p.name ? `“${p.name}” is not one of ${p.orgName}'s tags.` : "That tag does not exist."} The list is in Org settings › Tags.`, quietBtn("Open the tag list", "tagsGo")));
     return shell(loadingNote("this tag", { rows: 5 }));
   }
-  const { tag, items, seen_with, authors } = p.page.data;
+  const d = p.page.data;
+  const { tag, items } = d;
+  const now = p.now ?? Date.now();
   const sum = total(tag.counts);
-  const tab = p.tab !== "all" && tag.counts[p.tab] === 0 ? "all" : p.tab;
-  const head = `<header style="margin-bottom:18px">
-      <h2 style="display:flex;align-items:center;gap:10px;font-size:22px;font-weight:600;letter-spacing:-0.015em;margin:0">${tagSquare(tag.color, 12)}<span style="overflow-wrap:anywhere">${esc(tag.name)}</span>${tag.retired ? `<span style="font-size:13px;font-weight:400;color:var(--fg-40)">Retired</span>` : ""}</h2>
-      <p style="font-size:13.5px;line-height:1.55;color:var(--fg-55);margin:6px 0 0">${tag.description ? `${esc(tag.description)} · ` : ""}${plural(sum, "item", "items")}${tag.retired ? " · It stays on what has it and can no longer be picked." : ""}</p>
-    </header>`;
+  // The tab picked is the tab shown — every tab the bar offers, an empty type included (it says it is empty).
+  const tab = p.tab;
   const bar = tabBar({
     id: "tag-tab", ariaLabel: `What is tagged ${tag.name}`, act: "tagPageTab", value: tab,
-    tabs: TAG_PAGE_TABS.map((t) => ({ value: t, label: t === "all" ? "All" : t === "feed" ? "Feed" : t === "doc" ? "Docs" : "Decisions", trail: `<span class="cnpy-badge" data-n="${t === "all" ? sum : tag.counts[t]}">${t === "all" ? sum : tag.counts[t]}</span>` })),
+    tabs: TAG_PAGE_TABS.map((t) => {
+      const n = t === "all" ? sum : tag.counts[t];
+      return { value: t, label: TAB_LABEL[t], trail: `<span class="cnpy-badge" data-n="${n}">${n}</span>` };
+    }),
   });
-  // What the team knows first (docs, decisions), then what happened (the feed).
-  const order: TagItemType[] = ["doc", "adr", "feed"];
-  const groups = order.filter((t) => (tab === "all" || tab === t) && items[t].length > 0).map((t) => `<section data-tag-group="${t}" style="margin-top:22px">
-      ${orgHead(GROUP_TITLE[t], "", tag.counts[t])}
-      <ul${surface("overflow:hidden;list-style:none;margin:0;padding:0")}>${items[t].map((it) => pageItem(it, p.who)).join("")}</ul>
-      ${tag.counts[t] > items[t].length ? `<div style="${O_HELP}">Showing the newest ${items[t].length} of ${tag.counts[t]}.</div>` : ""}
-    </section>`).join("");
-  const empty = groups ? "" : `<div style="margin-top:22px">${orgEmpty("Nothing carries this tag yet", "An agent's feed entry carries it when the session picks it; a person adds it on a doc's page.", "", 3)}</div>`;
-  const side = (title: string, rows: string) => rows ? `<section style="margin-top:22px">${orgHead(title)}<div style="display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13px;color:var(--fg-70)">${rows}</div></section>` : "";
-  const seen = side("Often seen with", seen_with.map((s) => `<span style="display:inline-flex;align-items:baseline;gap:6px">${tagWords([s.name], { size: 13 })}<span style="color:var(--fg-40);font-variant-numeric:tabular-nums">${s.count}</span></span>`).join(""));
-  const writers = side("Who writes about it", authors.map((a) => `<span style="display:inline-flex;align-items:baseline;gap:6px">${p.who(a.handle)}<span style="color:var(--fg-40);font-variant-numeric:tabular-nums">${a.count}</span></span>`).join(""));
-  return shell(`${head}${bar}<div${tabPanelAttrs("tag-tab", tab)}>${groups}${empty}${tab === "all" ? `${seen}${writers}` : ""}</div>`);
+  let body: string;
+  if (tab === "all") {
+    // Every tile is there whatever the tag holds — an empty one says so in its own, same-sized box.
+    const none = sum === 0 && PAGE_ORDER.every((t) => items[t].length === 0);
+    const emptyOf = (t: TagItemType) => none && t === "feed"
+      ? "Nothing carries this tag yet. An agent's feed entry carries it when the session picks it; a person adds it on a doc's page."
+      : `No ${TAG_ITEM_LABEL[t].many} carry it yet.`;
+    // Row 1: what the team knows (docs, decisions — two half-height tiles) in one column, the feed (one tall
+    // tile) beside it. Row 2: Activity, Who tagged it, Who writes about it, Often seen with — one height.
+    body = `<div class="cnpy-tagpage-grid cnpy-stagger">
+          <div class="cnpy-tagpage-col" style="--span:5;--md:6">${typeTile("doc", d, p.who, 12, 12, "half", emptyOf("doc"))}${typeTile("adr", d, p.who, 12, 12, "half", emptyOf("adr"))}</div>
+          ${typeTile("feed", d, p.who, 7, 6, "tall", emptyOf("feed"))}
+          ${activityTile(PAGE_ORDER.flatMap((t) => items[t]), d, now, 3, 6)}${jevTile(d, 3, 6)}${peopleTile(d.authors, p.who, 3, 6, "row")}${seenTile(d, 3, 6)}
+        </div>`;
+  } else {
+    const list = items[tab];
+    const n = tag.counts[tab];
+    const words = TAG_ITEM_LABEL[tab];
+    const listBody = list.length
+      ? `<ul class="cnpy-tagpage-list">${list.map((it) => pageItem(it, p.who)).join("")}</ul>
+         ${n > list.length ? `<p class="cnpy-tagpage-foot" style="margin-bottom:12px">Showing the newest ${list.length} of ${n}.</p>` : ""}`
+      : tileNote(`No ${words.many} are tagged ${esc(tag.name)} yet. When ${tab === "adr" ? "a decision" : tab === "doc" ? "a doc" : "a feed entry"} gets the tag, it shows here.`);
+    // This type's people, from its listed items.
+    const by = new Map<string, number>();
+    for (const it of list) if (it.by) by.set(it.by, (by.get(it.by) ?? 0) + 1);
+    const people = [...by].map(([handle, count]) => ({ handle, count })).sort((a, b) => b.count - a.count || a.handle.localeCompare(b.handle)).slice(0, 8);
+    // The list is one tall tile; the rail beside it (Activity, then its people) ends on the same line.
+    body = `<div class="cnpy-tagpage-grid">
+        ${tile(tileHead(capFirst(words.many), `tag-g-${tab}`, n), listBody, 8, 12, "tall", ` data-tag-group="${tab}" aria-labelledby="tag-g-${tab}"`)}
+        <div class="cnpy-tagpage-rail cnpy-stagger" style="--span:4;--md:12">
+          ${activityTile(list, d, now, 12, 12, list.filter((i) => i.jev).length)}
+          ${peopleTile(people, p.who, 12, 12, "rest")}
+        </div>
+      </div>`;
+  }
+  return shell(`${pageHero(d)}${bar}<div${tabPanelAttrs("tag-tab", tab)} class="cnpy-tagpage-panel">${body}</div>`, tagTone(tag.color));
 }
 
 // ── the Tags row on an item's own page ───────────────────────────────────────

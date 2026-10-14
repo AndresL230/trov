@@ -1,12 +1,13 @@
 /**
  * A run tagging the items, drawn live (web/src/fit-run.ts; Org settings › Tags): ONE bar whose fill is the real
- * `checked / candidates`, eased between polls and never ahead of the server, a counter beside it, and a colour
- * that says how the run ended. Pure tests, plus the CSS rules (reduced motion, no radius, the fixed height).
+ * `checked / candidates`, eased between polls and never ahead of the server, the words above it, and a colour
+ * that says how the run ended — all inside the row's "Added by Jev" cell, which is the same structure live and at
+ * rest. Pure tests, plus the CSS rules (reduced motion, no radius, the bar out of the flow).
  */
 import { describe, it, expect } from "vitest";
 import css from "../web/src/trov.css?raw";
 import {
-  POLL_MAX, EASE_MS, easeToward, applyAnswer, shownAt, shouldPoll, barFill, barState, shownAdded, runCounter, fitRunView, newLive, type LiveRun,
+  POLL_MAX, EASE_MS, easeToward, applyAnswer, shownAt, shouldPoll, barFill, barState, shownAdded, runCounter, resultWords, fitCell, newLive, type LiveRun,
 } from "../web/src/fit-run";
 import { tagsTab, initialTagsUi } from "../web/src/tags";
 import { STARTER_TAGS, type OrgTagDTO, type TagListDTO, type TagRunDTO } from "@shared/tags-core";
@@ -58,56 +59,67 @@ describe("the bar — real progress only", () => {
 });
 
 describe("the counter", () => {
-  it("says what the bar shows — never ahead", () => {
+  it("says what the bar shows — never ahead — in few words (it sits in one narrow column)", () => {
     const l = live({ checked: 20, added: 5 });
-    expect(runCounter(l, 20)).toBe("Checked 20 of 40 · 5 added");
-    expect(runCounter(l, 10.4)).toBe(`Checked 10 of 40 · ${shownAdded(l, 10.4)} added`);
+    expect(runCounter(l, 20)).toBe("20 of 40 · 5 added");
+    expect(runCounter(l, 10.4)).toBe(`10 of 40 · ${shownAdded(l, 10.4)} added`);
     expect(shownAdded(l, 10.4)).toBeLessThanOrEqual(5);
-    expect(runCounter(live({ candidates: 0 }), 0)).toBe("Picking items to check…");
+    expect(runCounter(live({ candidates: 0 }), 0)).toBe("Starting…");
   });
-  it("at the end: what it added, none fit, an empty organization, a stop", () => {
-    expect(runCounter(live({ status: "done", checked: 40, added: 7 }), 40)).toBe("Added to 7 items.");
-    expect(runCounter(live({ status: "done", checked: 40, added: 1 }), 40)).toBe("Added to 1 item.");
-    expect(runCounter(live({ status: "done", checked: 40, added: 0 }), 40)).toBe("Checked 40 — none fit.");
-    expect(runCounter(live({ status: "done", candidates: 0 }), 0)).toBe("Nothing in this organization to check yet.");
-    expect(runCounter(live({ status: "capped", checked: 12, added: 1 }), 12)).toBe("Stopped at 12 of 40: this month's checks are used up. Added to 1 item.");
-    expect(runCounter(live({ status: "failed", checked: 3 }), 3)).toBe("Stopped at 3 of 40: the model did not answer.");
+  it("at the end: the result's own words — the same the row keeps at rest — and the whole sentence for the tooltip", () => {
+    expect(runCounter(live({ status: "done", checked: 40, added: 7 }), 40)).toBe("7 added");
+    expect(runCounter(live({ status: "done", checked: 40, added: 0 }), 40)).toBe("None fit");
+    expect(runCounter(live({ status: "done", candidates: 0 }), 0)).toBe("Nothing to check");
+    expect(runCounter(live({ status: "capped", checked: 12, added: 1 }), 12)).toBe("Stopped · 1 added");
+    expect(runCounter(live({ status: "failed", checked: 3 }), 3)).toBe("Stopped");
+    expect(resultWords({ status: "done", candidates: 40, checked: 40, added: 1 }).full).toBe("Added to 1 item.");
+    expect(resultWords({ status: "done", candidates: 40, checked: 40, added: 0 }).full).toBe("Checked 40 — none fit.");
+    expect(resultWords({ status: "capped", candidates: 40, checked: 12, added: 1 }).full).toBe("Stopped at 12 of 40: this month's checks are used up. Added to 1 item.");
+    expect(resultWords({ status: "failed", candidates: 40, checked: 3, added: 0 }).full).toBe("Stopped at 3 of 40: the model did not answer.");
+    expect(resultWords({ status: "done", candidates: 40, checked: 40, added: 7, undone: true })).toEqual({ text: "Undone", full: "Undone: the 7 items this run tagged no longer have it." });
   });
 });
 
 describe("the markup and the CSS", () => {
-  it("one bar (a progressbar, filled by a transform) and a live counter; the same structure while running and at the end", () => {
-    const a = fitRunView("billing", "ochre", live({ checked: 5, shown: 2.4 }));
-    const b = fitRunView("billing", "ochre", live({ status: "done", checked: 40, added: 3, shown: 40 }));
-    const structure = (h: string) => h.replace(/ (style|data-state|aria-valuenow|aria-valuemax)="[^"]*"/g, "").replace(/>[^<]*</g, "><");
+  it("one cell, the SAME structure live and at rest: the words, then the bar (a progressbar filled by a transform)", () => {
+    const a = fitCell("billing", "ochre", live({ checked: 5, shown: 2.4 }), undefined);
+    const b = fitCell("billing", "ochre", live({ status: "done", checked: 40, added: 3, shown: 40 }), undefined);
+    const rest = fitCell("billing", "ochre", null, run({ status: "done", checked: 40, added: 3 }));
+    const structure = (h: string) => h.replace(/ (style|data-state|data-live|title|aria-hidden|aria-valuenow|aria-valuemax)="[^"]*"/g, "").replace(/>[^<]*</g, "><");
     expect(structure(a)).toBe(structure(b));
-    expect(a).toContain(`data-state="running"`);
-    expect(b).toContain(`data-state="added"`);
-    expect(fitRunView("x", "ochre", live({ status: "done", checked: 40, shown: 40 }))).toContain(`data-state="none"`);
+    expect(structure(a)).toBe(structure(rest));
+    expect(a).toContain(`data-state="running" data-live="1"`);
+    expect(b).toContain(`data-state="added" data-live="1"`);
+    expect(rest).toContain(`data-state="added" data-morph-key`);   // at rest: no data-live, so the bar is hidden
+    expect(rest).toContain(">3 added<");
+    expect(b).toContain(">3 added<");                               // the words do not change when the list takes over
+    expect(fitCell("x", "ochre", live({ status: "done", checked: 40, shown: 40 }), undefined)).toContain(`data-state="none"`);
+    expect(fitCell("x", "ochre", null, undefined)).toContain(`data-state="idle"`);
     expect(a).toContain(`role="progressbar"`);
     expect(a).toContain(`aria-valuemax="40" aria-valuenow="2"`);
     expect(a).toContain("transform:scaleX(0.0600)");
     expect(a).toContain("--fit-c:var(--p-ochre)");
     expect(a).toContain(`role="status" aria-live="polite"`);
-    expect(a).not.toContain("cnpy-fp"); // no particles
+    expect(a).toContain(`data-morph-key="fitrun:billing"`);
     expect(a).not.toMatch(/border-radius|●/);
   });
 
-  it("CSS: the fill is a transform, its colour by state (the tag's own when added, quiet when not), a short colour transition — instant under reduced motion; no radius; the line keeps its height", () => {
-    const at = css.indexOf("/* A run, live (web/src/fit-run.ts)");
+  it("CSS: the bar is out of the flow and shown only while live; fill a transform, colour by state, instant under reduced motion; no radius", () => {
+    const at = css.indexOf(`/* A row's "Added by Jev" cell`);
     expect(at).toBeGreaterThan(-1);
-    const block = css.slice(at);
+    const block = css.slice(at, css.indexOf("\n", css.indexOf("@media (prefers-reduced-motion: reduce) { .cnpy-fitrun-bar", at)));
     expect(block).not.toMatch(/border-radius/);
+    expect(block).toMatch(/\.cnpy-tagjev \.cnpy-fitrun-bar \{ position:absolute;[^}]*opacity:0;/);
+    expect(block).toMatch(/\.cnpy-tagjev\[data-live\] \.cnpy-fitrun-bar \{ opacity:1;/);
     expect(block).toMatch(/\.cnpy-fitrun-bar > span \{[^}]*transform-origin:left center; transition:background-color \.45s/);
-    expect(block).toMatch(/\.cnpy-fitrun\[data-state="added"\] \.cnpy-fitrun-bar > span \{ background:var\(--fit-c/);
-    expect(block).toMatch(/\.cnpy-fitrun\[data-state="none"\] \.cnpy-fitrun-bar > span \{ background:var\(--fg-40\)/);
-    expect(block).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-fitrun-bar > span \{ transition:none; \} \}/);
+    expect(block).toMatch(/\.cnpy-tagjev\[data-state="added"\] \.cnpy-fitrun-bar > span \{ background:var\(--fit-c/);
+    expect(block).toMatch(/\.cnpy-tagjev\[data-state="none"\] \.cnpy-fitrun-bar > span \{ background:var\(--fg-40\)/);
+    expect(block).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-fitrun-bar > span, \.cnpy-tagjev \.cnpy-fitrun-bar \{ transition:none; \} \.cnpy-tagjev-undo \{ animation:none; \} \}/);
     expect(css).not.toContain(".cnpy-fp");
-    expect(css).toMatch(/\.cnpy-tagfitline \{[^}]*min-height:28px/);
-    expect(block).toMatch(/\.cnpy-fitrun \{[^}]*height:28px/);
+    expect(css).not.toContain(".cnpy-tagfitline");                  // no second line under a row any more
   });
 
-  it("in the tag's row: the live view replaces the line while the run is drawn", () => {
+  it("in the tag's row: the live view is the Jev cell, and Find items waits while the run goes", () => {
     const tag = (name: string): OrgTagDTO => ({ name, description: "", color: "sky", starter: false, retired: false, counts: { feed: 0, doc: 0, adr: 0 } });
     const list: TagListDTO = {
       tags: [...STARTER_TAGS.map((t) => ({ ...tag(t.name), starter: true, color: t.color })), tag("desktop")], used: 7, cap: 30, suggestions: [],
@@ -117,8 +129,8 @@ describe("the markup and the CSS", () => {
     const html = tagsTab({ slug: "acme", name: "Acme", role: "owner" }, { list: { status: "ok", data: list }, ui });
     const row = html.slice(html.indexOf(`data-org-tag="desktop"`));
     expect(row).toContain(`data-fitrun="desktop"`);
-    expect(row).toContain("Checked 4 of 20 · 1 added");
-    expect(row).not.toContain(`data-act="tagFind" data-arg="desktop"`);
+    expect(row).toContain("4 of 20 · 1 added");
+    expect(row).toMatch(/data-act="tagFind" data-arg="desktop"[^>]* disabled/);
   });
 
   it("the add row nudges for a description once a name is typed — it never requires one", () => {
