@@ -101,7 +101,7 @@ function lanePicked(t: AiThemes, ui: AiUi): AiThemeLane | null {
 function chart(t: AiThemes, picked: AiThemeLane | null): string {
   const n = t.weeks.length;
   const max = Math.max(0, ...t.lanes.flatMap((l) => l.counts));
-  const cols = `grid-template-columns:190px repeat(${n},minmax(0,1fr))`;
+  const cols = `grid-template-columns:var(--lane-w,190px) repeat(${n},minmax(0,1fr))`;
   const head = `<div class="repo-themes-row" aria-hidden="true" style="display:grid;${cols};gap:6px;font-size:12px;color:var(--fg-55);padding:0 4px 4px;border-bottom:1px solid var(--border)"><span></span>${t.weeks.map((w) => `<span style="text-align:center;white-space:nowrap">${esc(weekLabel(w))}</span>`).join("")}</div>`;
   const rows = t.lanes.map((l) => {
     const on = picked?.id === l.id;

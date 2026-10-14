@@ -608,3 +608,26 @@ the same of a `null` INSIDE an `ok` section (`usage[].requests`, a `product` val
 reported. A projection throw is the degraded empty payload, not an MCP error. The view is per-call and only
 serialized — it SHARES structure with the projection, it is not a deep copy. Output: `{ repo, generatedAt,
 degraded, tab, range, sections }`.
+
+## Written by Trov: State and Where the work went (`web/src/repo-ai.ts`)
+
+Two OPTIONAL fields of the dashboard read, not `RepoSection`s (`shared/repo.ts`): `state?` (`AiRepoState`) and
+`themes?` (`Record<AiThemeRange, AiThemes>`). Each is drawn as its own card ABOVE the tab's one panel (the
+mock's layout), only on a live dashboard (never on sample data, never with no repository connected), and only
+when present — absent, the tab is byte-for-byte what it was (`test/render.ai-absent.test.ts`).
+
+- **Overview › State**: an 18px headline; three wrapping columns — Shipped recently (the done glyph, green), In
+  flight (the half glyph, blue), Needs attention (the warning glyph, amber) — each line with its sources; "Written
+  by Trov from N events, 2h ago" (no "from N events" when `eventCount` is null) and "Wrong?". Empty: "Trov writes
+  this after your next merge: what shipped, what is in flight, and what needs attention, each linked to its
+  source." Capped: the headline and "this state is from <day> and resumes <day>".
+- **Planning › Where the work went**: title, caption, "Themes and caption written by Trov from N pull requests",
+  an 8 weeks / Quarter `segmented()` switching between `themes["8w"]` and `themes.quarter` client-side
+  (`state.ai.themesRange`), and Edit themes for admins (it goes to the proposed themes; with none it says editing
+  is not available yet). A lane per theme in `--p-<colorKey>`, a band per week sized against the busiest week in
+  view (zero = no band), weeks labelled "Aug 24". Picking a lane (`aria-pressed`) fades the others and shows its
+  description and pull requests under the chart. **Proposed** lanes (`status: "proposed"`) are suggestions:
+  "Trov suggests these themes", each an `aiSuggestionChip` with Accept / Rename (an inline field, then accept
+  with `{ value: { name } }`) / Remove (dismiss) for admins; a member reads "Waiting for an admin to accept
+  themes". A 409 `not_available` shows "Not available yet". Empty: "Themes appear once this repo has 15 merged
+  pull requests."

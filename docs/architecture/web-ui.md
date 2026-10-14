@@ -798,6 +798,45 @@ and the word, since mail clients render SVG unreliably; `EMAIL_CARD` has no chip
 `test/render.marks.test.ts` (no pill in a mark, on the page or in any mock; the site imports `marks.ts`;
 every mark explains itself; `placeTip`), and each screen's own tests pin its marks.
 
+## The AI kit — what Trov wrote, and how it says so (`web/src/ai-ui.ts`)
+
+Four screens show something Trov WROTE (shared/ai-core.ts; `docs/superpowers/specs/2026-10-14-ai-screens-mock.md`):
+My Work › Your brief, Repo › Overview › State, Repo › Planning › Where the work went, and Feed entries written by
+Trov. **Each is drawn ONLY when its read carries the field** (`DashboardData.brief`, `RepoDashboard.state` /
+`themes`, `FeedRow.ai`); off is the field missing, never a state, and with it absent the screen is byte-for-byte
+what it was (`test/render.ai-absent.test.ts`, snapshots written before the kit existed). Production omits every
+field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills them from `shared/ai-fixtures.ts`.
+
+- **The mark** is `aiMark` (`marks.ts`): the mock's pennant (`M4 4h16v6l-4 4h-4v6H8v-6L4 10z`, 24×24) in
+  `--accent`. It is NOT the brand logo (`shared/mark.ts` `trovMark`): it marks a thing Trov wrote, as the robot
+  (`agentMark`) marks a thing an agent wrote. Its `data-mtip` says what it was written from and ends "Not
+  official; check the sources." (`AI_TIP`, `AI_NOT_OFFICIAL`).
+- **Every written item** carries `aiByline` ("Written by Trov, 12m ago" — the app's `relTime`; "from 6 events"
+  when the server counted them, never a guessed 0), its sources (`aiCite`: a GitHub URL opens in a new tab, an
+  in-app route stays, anything else is text, never a link) and **"Wrong?"** (`aiWrongBtn`): it POSTs
+  `/ai/feedback` and hides the item for that person at once (`state.ai.hidden`), back with a toast if the write
+  fails. Nothing written is ever shown without the mark.
+- **Capped and empty** are the screen's own words (`aiCapped`, `AI_EMPTY`): "Monthly AI allowance used; <what>
+  resumes Nov 1." with "Upgrade to Pro" (to Org settings › General, where the plan is changed) only when
+  `upgrade` is true.
+- **The suggestion chip** (`aiSuggestionChip`, #157): "Suggested: X, because…" with Accept and Dismiss. It is
+  never styled like a value a person set: a dashed `--border-strong` outline, the mark, muted words. The
+  reason is a real disclosure button (`aria-expanded`, works on touch), the chip a container of buttons (never
+  a button itself), and it wraps, so it fits a row, a card, a detail pane and a phone. A 409 `not_available`
+  (no accept handler for its kind yet — every kind today) replaces the buttons with "Not available yet". On a
+  live screen only the proposed themes use it so far.
+- **Acts** are `ai…`, in `web/src/ai-actions.ts`. The themes' Rename field keeps its draft WITHOUT a repaint
+  (the Repo screen is rebuilt on a paint, not morphed), so typing never rebuilds the page.
+- **Where the work went** draws lanes as `aria-pressed` buttons (no button inside: the proposals' actions sit in
+  their own list), a band per week sized against the busiest week in view (a zero week draws none), the chart
+  scrolling inside its box at phone width (`overflow-x:auto`, a min-width inner grid; the label column narrows
+  to 136px under 640px through `--lane-w`).
+- **Labels** in the brief's Now / Recently / Next and State's heading use `var(--label)` — the existing label
+  style, which is Geist outside the sidebar (Archivo Narrow stays the sidebar's face only).
+- Radii are inline, at values the corners block already scales; nothing new needed a line there.
+- Tests: `test/render.ai.test.ts` (every screen in ready / empty / capped, themes proposed, admin vs member, the
+  chip, the cites, Org settings › AI, Platform's AI line), `test/render.ai-absent.test.ts`.
+
 ## Fonts, contrast and focus — nothing from a third party, AA in both themes
 
 ### Fonts — self-hosted (`web/src/fonts/`, `shared/fonts.ts`)

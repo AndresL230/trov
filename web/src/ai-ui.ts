@@ -125,7 +125,7 @@ export function aiByline(generatedAt: string | null, tip: string, o: { from?: st
   const words = generatedAt
     ? `${esc(o.lead ?? "Written by Trov")}${o.from ? ` from ${esc(o.from)}` : ""}${when ? `, ${esc(when)}` : ""}`
     : esc(o.lead ?? "Written by Trov");
-  return `<span data-mtip="${attr(tip)}" class="cnpy-ai-by" style="display:inline-flex;align-items:center;gap:6px;color:var(--fg-55);font-size:${size}px;white-space:nowrap">${aiMark(Math.round(size - 0.5))}${words}</span>`;
+  return `<span data-mtip="${attr(tip)}" class="cnpy-ai-by" style="display:inline-flex;align-items:center;gap:6px;color:var(--fg-55);font-size:${size}px;min-width:0">${aiMark(Math.round(size - 0.5))}${words}</span>`;
 }
 
 /** What "Wrong?" sends: the item and how it was written. `promptVersion` is the server's to know. */

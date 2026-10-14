@@ -27,6 +27,17 @@ written for, its sources). An entry with no `ai` is an agent's — every entry t
 by `created_at` (respecting `author` / `tags` / `since` / `limit`) under `wrangler dev` only, never over MCP
 (`ai.md`).
 
+**Entries written by Trov** (`FeedRow.ai?`, `AiFeedMeta`). An entry with no `ai`, or `ai.origin === "agent"`, is an
+agent's and renders as before. One with `origin: "ai"` takes the AI mark as its avatar, "Trov" as the name and
+"for <subject>" (the subject through `people.ts`), its brief, then "From #173, 65b9f1f, a1c04e2 and 2 more" and
+"Wrong?" (hidden for that person at once). Only when at least one LOADED entry carries `ai` does the header gain a
+**Source** `segmented()` (All / Agents / Trov, `state.ai.feedSource`, client-side, beside For reading / For
+agents), and the list a one-time note above the first Trov entry on screen ("Trov now writes entries from your
+commits, about 45 minutes after your last push. Your agents can stick to decisions and findings." + AI settings
+→ Org settings › AI), dismissed per person with "Got it" (`trov.aiFeedNote`, a JSON list of handles in this
+browser's localStorage). With no `ai` anywhere the Feed is byte-for-byte what it was
+(`test/render.ai-absent.test.ts`).
+
 ## Read side — FTS5 query engine
 
 `src/tools/reads.ts` exposes a ranked FTS5 `query()` engine (bm25, title/summary weighted) that backs

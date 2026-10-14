@@ -277,7 +277,7 @@ describe("Repo › Planning › Where the work went", () => {
     expect(weekLabel("2026-08-24")).toBe("Aug 24");
     const eight = themesSection(themes("ready"), rp());
     const q = themesSection(themes("ready"), rp({ ui: ui({ themesRange: "quarter" }) }));
-    const cols = (h: string) => Number(h.match(/grid-template-columns:190px repeat\((\d+),/)![1]);
+    const cols = (h: string) => Number(h.match(/grid-template-columns:var\(--lane-w,190px\) repeat\((\d+),/)![1]);
     expect(cols(eight)).toBe(8);
     expect(cols(q)).toBe(13);
     expect(eight).toContain("overflow-x:auto");

@@ -104,6 +104,7 @@ input, select { font-family: inherit; }
 .repo-lane[data-on="0"]:hover { opacity:.8 !important; }
 .repo-themes-proposed:focus-visible { outline:2px solid var(--focus); outline-offset:4px; }
 @media (prefers-reduced-motion: reduce) { .repo-lane { transition:none; } }
+@media (max-width:640px) { .repo-themes-chart { --lane-w:136px; } }
 
 /* ── Two columns + a sticky aside (ui.ts `asideColumns`) — Roadmap › Narrative (the
    narrative beside Now + Recent happenings) and the Feed (entries beside This week +

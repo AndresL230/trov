@@ -92,6 +92,7 @@ export const RELEASES: Release[] = [
       "A pull request's state on the Repo screen is a circle too: dashed for Draft, filling through In review and Approved, a check for Merged.",
       "Roles, \"(you)\", a plan's name and other plain facts are plain text now, not coloured chips.",
       "The Terms of Service and the Privacy Policy now name Anthropic, which writes the summaries, in place of Google.",
+      "Org settings has an AI tab: whether Trov's AI is on for your organization, how many AI runs it has used this month against your plan, and exactly what is sent to Anthropic and what never is. An admin turns it on or off.",
     ],
     ops: [
       "Set the `ANTHROPIC_API_KEY` secret before merging (`wrangler secret put ANTHROPIC_API_KEY`). Without it summaries fall back to excerpts and nothing breaks.",
@@ -122,6 +123,10 @@ export const RELEASES: Release[] = [
         "`LOCAL_AI_PREVIEW` (`src/ai/preview.ts`): the fixtures on `/me/dashboard`, `/repo/dashboard` and `/feed`, honoured only for a request to a loopback `http://` origin and never beside a live Stripe key; never over MCP (#177)",
         "`docs/architecture/ai.md`: where a model may be called (the summary seams and the AI pass only), the job registry, eligibility, the allowance, suggestions and the preview (#177)",
         "`test/ai.pass.test.ts`, `test/ai.routes.test.ts`, `test/ai.preview.test.ts` (#177)",
+        "The AI kit (`web/src/ai-ui.ts`): the Trov AI mark (`aiMark` in `marks.ts`, the mock's pennant in the accent), the \"Written by Trov\" byline with its not-official tooltip, source links (`AiCite`), \"Wrong?\" (`POST /ai/feedback`, hidden at once for the person, back on a failure), the suggestion chip (#157: dashed outline, the mark, a \"because…\" disclosure, Accept / Dismiss, \"Not available yet\" on a 409 `not_available`) and the capped / empty lines; acts in `web/src/ai-actions.ts`",
+        "Four AI screens, each drawn ONLY when its read carries the field (production omits them all, so nothing shows yet): My Work › Your brief (`briefTile`, `brief?`), Repo › Overview › State and Repo › Planning › Where the work went (`web/src/repo-ai.ts`, `state?` / `themes?`: lanes, weekly bands, 8 weeks / Quarter, proposed themes with Accept / Rename / Remove), and Feed entries written by Trov (`FeedRow.ai?`) with a Source switch (All / Agents / Trov) and a one-time note (`trov.aiFeedNote`, per person on this browser). `test/render.ai-absent.test.ts` pins each screen's field-absent markup byte for byte; `test/render.ai.test.ts` covers every state",
+        "Org settings › AI (`web/src/org-ai.ts`, `#org/ai`): the switch (admin; `PUT /ai/settings`), this month's runs against the allowance, and what is sent to Anthropic; the web API client gains `getAiSettings` / `putAiSettings` / `acceptAiSuggestion` / `dismissAiSuggestion` / `sendAiFeedback` (`AI_ROUTES`)",
+        "Platform › Usage: AI runs, failures, capped runs and tokens per organization and in total, from `OrgUsage.ai` / `PlatformUsageResponse.ai` (nothing drawn when absent)",
       ],
       changed: [
         "Platform › Usage: `OrgUsage.ai` and `PlatformUsageResponse.ai` carry AI runs, failures, caps and tokens when a key is set; AI metrics are never \"active people\" or an org's last activity (#177)",
@@ -134,6 +139,7 @@ export const RELEASES: Release[] = [
         "The signed-out site and the tour mocks draw every state through `marks.ts`; `pill()` is removed from `landing-mocks.ts`. The pricing badge is a soft label and the tool names in For agents are set in the code face (#173)",
         "Ticket and review digests: status is a mark, priority is words, and the kind is a word instead of a chip (#173)",
         "Repo: an environment's verdict is `kindMark` over `ENV_VERDICT` (Healthy / Degraded / Failing / Down / Unknown) with what it means as its tooltip, the header's dots explain themselves the same way, a PR's state is the progress glyphs, Stale and Sample data are marks, and Due and the drift groups are plain text (#173)",
+        "`switchBtn` (`web/src/notifications.ts`) takes an optional accessible name and a busy state; without them its markup is unchanged",
         "Settings and Org settings: roles are `roleWord`, your own row says (you), Primary / Private / the plan's name / Admin on a person card are plain text, and every status (integrations, the GitHub App, delivery, billing, a repository the App lost) is a `kindMark` (#173)",
         "Prompts: a version's status is a mark (Draft, Staged, Published), a published prompt's card shows none, and its tags are one line of plain words (#173)",
         "Platform: an org's status, invites, grants, a plan's billing and a support report's status are `kindMark`s; roles, a report's kind and Signed out are plain text (#173)",

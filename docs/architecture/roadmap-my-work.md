@@ -88,3 +88,12 @@ its fallback is a content-less marker row (`model='excerpt'`, null structured co
 that renders a "No summary recorded" placeholder. Stored as columns on `pr_summaries` /
 `issue_summaries` and regenerable via Sync (a row is "done" only when
 `model != 'excerpt' AND title IS NOT NULL`) — never truth, never generated at render.
+
+**Your brief** (`DashboardData.brief?`, `AiBrief` in `shared/ai-core.ts`; `briefTile` in `web/src/mywork.ts`) is
+My Work's FIRST card, full width — drawn ONLY when the dashboard carries `brief` (off, no key, or nothing
+written: the field is absent and the bento is exactly its five tiles). Ready: Now / Recently (each a sentence and
+its sources) and Next — rows that are real items (Failing = the app's failing mark, Handoff = an arrow, a
+ticket = its `#N`, Due soon = the warning mark), the title the item's own and linked to `cites[0]`, the model's
+one muted "why". Empty: "Trov writes your brief after your next push or when something is assigned to you. It
+reads your sessions, pull requests, tickets and handoffs." Capped: the last brief's lines, then the allowance
+line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `get_my_work` carries the same `brief?`.
