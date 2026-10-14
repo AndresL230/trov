@@ -492,7 +492,7 @@ at once; "kept" says why.
 - **Cloudflare Workers Logs** (`[observability] enabled`): request URLs (which can hold a handle or a slug,
   e.g. `/api/platform/persons/<handle>/delete`) and the Worker's scrubbed log lines, kept for the plan's log
   retention (verify in the dashboard). Not deletable per person from code.
-- **Stripe, Resend, Google (Gemini)** keep what they were sent under their own terms: Stripe's records above;
+- **Stripe, Resend, Anthropic (and Google, for summaries made before 2026-10-14)** keep what they were sent under their own terms: Stripe's records above;
   Resend's sent-mail logs; PR and issue text sent for summaries earlier.
 - **Elsewhere**: agents' local copies (MCP clients, `.trov/` artifact pulls), and the person's own browser
   (the last organization's slug and display preferences in local storage).

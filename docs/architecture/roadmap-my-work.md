@@ -73,9 +73,10 @@ unmapped login yields an empty EVENT projection (`degraded:false`) — but the t
 identity fork and is keyed on the person HANDLE (`COLLATE NOCASE`, like `persons.handle`), so a person with
 no GitHub identity at all (a Google-only filer) still gets their tickets; any D1 failure yields empty
 `degraded:true` — never a 500. Completed PRs and assigned issues are each summarized ONCE, at capture time
-(`tools/summarize.ts`: Google Gemini `gemini-2.5-flash-lite` via `GEMINI_API_KEY` — a REST
-`generateContent` call, not a Cloudflare binding — emits one validated JSON object — PR:
-title/what/why/impact; issue: title/summary/next_step). On AI failure the **issue**
+(`tools/summarize.ts`: Anthropic Claude `claude-haiku-5-5` via `ANTHROPIC_API_KEY`, through the one model
+client `src/ai/client.ts` — structured outputs over the Messages API, not a Cloudflare binding — emits one
+JSON object, checked again by its zod schema — PR: title/what/why/impact; issue: title/summary/next_step; a
+refusal or an answer cut off at `max_tokens` is no answer). On AI failure the **issue**
 path writes a deterministic prose excerpt (`issue_summaries.summary`); the **PR** path
 is structured-only (the prose `pr_summaries.summary` column was dropped in `0019`), so
 its fallback is a content-less marker row (`model='excerpt'`, null structured columns)

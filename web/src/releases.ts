@@ -72,9 +72,10 @@ export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
   // States drawn as marks instead of tags: the 2026-10 tag audit (#173).
+  // Also: capture-time summaries move from Google Gemini to Anthropic's Claude, behind one model client.
   {
     version: "Unreleased",
-    date: "2026-10-12",
+    date: "2026-10-14",
     unreleased: true,
     title: "Calmer status, fewer tags",
     headline: "Every screen shows a state with a small shape and a plain word, not a coloured capitals tag on every row, and hovering one tells you what it means.",
@@ -82,14 +83,20 @@ export const RELEASES: Release[] = [
       "A ticket's status is a circle that fills as the work moves along: dashed for Triage, half for In progress, three quarters for Testing, a check for Done. Priority is a set of signal bars. Both say their name when you hover.",
       "Review shows no status tag. Everything in it is waiting, and the Promote, Ratify and Reject buttons already say so. A proposal the agent was unsure about says Low confidence next to a small amber triangle.",
       "Search no longer marks every result Live. Only a result that is not settled yet says so, for example Awaiting review.",
-      "Sprints on the Roadmap use the same circles as tickets. A late sprint shows a red warning triangle.",
-      "Handoffs, artifacts, the doc you are reading, the Repo screen, Settings and the email digests show their state the same way: a small shape and the word.",
+      "Sprints on the Roadmap use the same circles as tickets, and a late sprint shows a red warning triangle. Handoffs, artifacts, the doc you are reading, the Repo screen, Settings and the email digests show their state the same way: a small shape and the word.",
       "Hover a state to see what it means. Testing says \"Built, and being checked before it is done.\" and a stale branch says it has had no commit in 14 days.",
+      "Pull request and issue summaries are now written by Anthropic's Claude.",
     ],
     headsUp: [
       "States now read in sentence case, for example \"In progress\" instead of \"IN PROGRESS\".",
       "A pull request's state on the Repo screen is a circle too: dashed for Draft, filling through In review and Approved, a check for Merged.",
       "Roles, \"(you)\", a plan's name and other plain facts are plain text now, not coloured chips.",
+      "The Terms of Service and the Privacy Policy now name Anthropic, which writes the summaries, in place of Google.",
+    ],
+    ops: [
+      "Set the `ANTHROPIC_API_KEY` secret before merging (`wrangler secret put ANTHROPIC_API_KEY`). Without it summaries fall back to excerpts and nothing breaks.",
+      "Delete `GEMINI_API_KEY` (`wrangler secret delete GEMINI_API_KEY`) once summaries land with model `claude-haiku-5-5` (`SELECT model, COUNT(*) FROM pr_summaries GROUP BY model`). Existing Gemini rows stay; nothing is resummarized.",
+      "Local development: `.dev.vars` takes `ANTHROPIC_API_KEY` in place of `GEMINI_API_KEY`; a `LOCAL_UPSTREAM` stand-in now answers `POST /anthropic/v1/messages` in the Messages API shape instead of `/gemini/…`.",
     ],
     patches: {
       added: [
@@ -101,6 +108,9 @@ export const RELEASES: Release[] = [
         "`test/render.marks.test.ts`: the marks are never a pill, and the signed-out site and every tour mock draw no pill and take their states from `marks.ts` (#173)",
         "Docs for Claude on the web: `/docs/connect` walks through adding Trov as a custom connector and gains \"In a chat, with no repository\" (what to ask, what differs with no checkout, the 1 MB file limit) with `CHAT_SNIPPET`, the agent rules for a claude.ai Project's instructions; `/docs/setup` steps 4 and 5 point to it (`web/src/docs-content.ts`) (#174)",
         "`otherClientsLink` (`web/src/mcp-connect.ts`): \"Not using Claude Code?\" links the guided setup's agent step, Settings › MCP access and the Guide to `/docs/connect`; the Guide's Other agents says how Claude on the web connects (#174)",
+        "`src/ai/client.ts`: the one model client. `providerFor(kind)` (the `AiKind` union, today `summary_pr` / `summary_issue`, every kind mapped to Claude) hands out an `AiProvider` whose `structured()` sends `claude-haiku-5-5` a system prompt, an optional cached prefix and an input with `output_config.format` `json_schema`, checks the answer with the same zod schema, reports `AiUsage` (tokens, cached tokens, characters) through `onCall`, and never throws: a refusal, `max_tokens`, an API error, a timeout or a bad parse is `null`",
+        "`src/ai/schema.ts`: `toClaudeSchema`, a zod schema's JSON Schema with what structured outputs reject stripped (lengths, bounds, `minItems` above 1, `$schema`) and every object closed",
+        "`test/ai.client.test.ts`, `test/ai.schema.test.ts` and `test/helpers/anthropic.ts` (Messages API bodies for every summary test); `test/secrets.mcp.test.ts` checks that nothing reachable from `src/mcp.ts` imports `src/ai/`",
       ],
       changed: [
         "Tickets: the table, board column heads, the status control and its menu, the rail, sub-ticket rows, sprint cards and the artifact attach picker draw `ticketStatusMark` / `priorityMark`; category, relation and source are plain text (`metaWord`) (#173)",
@@ -116,6 +126,11 @@ export const RELEASES: Release[] = [
         "Platform: an org's status, invites, grants, a plan's billing and a support report's status are `kindMark`s; roles, a report's kind and Signed out are plain text (#173)",
         "Review's stale-base notice is a warning mark on a plain surface (no coloured left edge); What's new marks Unreleased; the MCP consent page's Recommended is a soft label; Unplaced's activity kinds and Notifications' Org default are plain text (#173)",
         "My Work and roadmap digests: Merged and the plan changes (Added / Changed / Reordered / Done) are marks, and a GitHub issue's labels are plain words (#173)",
+        "Summaries: `makeGeminiSummarizer` is `makeClaudeSummarizer` on `structured()` behind the unchanged `Summarizer` interface (10s timeout, same prompts, `capSummaryBody`, excerpt fallback and storage; rows record `model = 'claude-haiku-5-5'`); `geminiPrSummarizer` / `geminiIssueSummarizer` / `GeminiOpts` are `claudePrSummarizer` / `claudeIssueSummarizer` / `AiOpts`, and the answers are the zod `PrSummarySchema` / `IssueSummarySchema`",
+        "The `gemini` seam option is `ai` in `orgSummarizers`, `captureDelivery`, `runBackfill` and `runSyncBatch`; `GEMINI_API_KEY` is `ANTHROPIC_API_KEY` in `env.ts`, the Platform pages' `summaries_enabled` and off sentence, `vitest.config.ts` and `.dev.vars.example`",
+        "`LOCAL_UPSTREAM` sends `api.anthropic.com` to `<base>/anthropic/…` in place of the Gemini host",
+        "Terms › AI-generated summaries and Third-party services name Anthropic Claude; Privacy splits the Google row (sign-in only) from a new Anthropic row (summaries) and names Anthropic's Commercial Terms of Service; both are dated 2026-10-14",
+        "`progressFromIssueEvent` moves from `src/webhook.ts` (which re-exports it) to `src/tools/progress.ts`, so `src/mcp.ts` no longer reaches the webhook, or the model client, through the sprint reads",
       ],
       fixed: [
         "The docs' page tabs reloaded the whole page: `docs-page.ts` now fetches the other page's prerendered HTML (prefetched on hover) and swaps its band and body in, with Back / Forward, the head's title and links, and focus on the new title; the contents column no longer shows a scrollbar (#174)",
@@ -127,6 +142,7 @@ export const RELEASES: Release[] = [
       removed: [
         "`statusBadge` (`ui.ts`), `chip` / `roleChip` (`org-ui.ts`), `EMAIL_CARD.chip`, `.cnpy-rel-tag`, and native `<title>` tooltips on the glyphs (#173)",
         "`ticketPill`, `priorityChip`, `tagChip`, `handoffPill` and the per-file `CHIP_BASE` / `TAG_BASE` copies; the unused `ticketPill` / `priorityChip` import in `render.ts` (#173)",
+        "The Gemini REST call (`generateContent`), `parseStructuredJson` and the hand-written `validatePrSummary` / `validateIssueSummary`",
       ],
     },
     prs: [173, 174, 175],

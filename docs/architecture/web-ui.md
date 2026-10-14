@@ -323,7 +323,7 @@ client and an AGENTS.md / CLAUDE.md snippet), Concepts (the authority model), MC
 ## Legal pages, consent and the source (`web/src/legal.ts`, `shared/legal-core.ts`)
 
 The compliance pass of 2026-10-12. **Not legal advice**: the texts were written from the code and the owner's
-facts, and a lawyer should review them. Open decisions (governing law, the Gemini project's tier, the Stripe
+facts, and a lawyer should review them. Open decisions (governing law, the Anthropic account's data terms, the Stripe
 dashboard, retention windows to verify) are listed in the release's `ops` and in `billing.md` › Owner checklist.
 
 - **Three documents, one renderer.** `LEGAL_DOCS` = Terms (`/terms`), Privacy (`/privacy`) and the Refund and
