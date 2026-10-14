@@ -282,6 +282,15 @@ describe("a tag's page and an item's tags", () => {
     // Replacing an item's tags removes the ones left out.
     expect(await setItemTags(member, "adr", String(adr), [])).toEqual([]);
     expect(((await tagPage(ctx, "auth")) as TagPageDTO).items.adr).toEqual([]);
+
+    // A rename keeps what Sift added under the new name: its credit stays, and so would its Undo.
+    await editTag(ctx, "auth", { name: "signin" });
+    const renamed = (await tagPage(ctx, "signin")) as TagPageDTO;
+    expect(renamed.jev_added).toBe(1);
+    expect(renamed.items.doc[0].jev).toMatchObject({ confidence: 0.86 });
+    expect(await all(env.DB, `SELECT tag, resolved_to FROM org_tag_suggestions WHERE org_id = ? AND source = 'model' ORDER BY entry_id`, ORG_A)).toEqual([
+      { tag: "signin", resolved_to: "signin" }, { tag: "signin", resolved_to: "signin" },
+    ]);
   });
 });
 

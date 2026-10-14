@@ -379,8 +379,9 @@ export async function editTag(ctx: TenantContext, rawName: unknown, input: { nam
         stmt(ctx, `UPDATE OR IGNORE entry_tags SET tag = ? WHERE org_id = ? AND tag = ?`, next, ctx.orgId, row.name),
         stmt(ctx, `DELETE FROM entry_tags WHERE org_id = ? AND tag = ?`, ctx.orgId, row.name), // only a row the UPDATE could not move: the item already had the new name
         stmt(ctx, `UPDATE org_tags SET merged_into = ? WHERE org_id = ? AND merged_into = ?`, next, ctx.orgId, row.name),
-        // What the model suggested for the tag goes with it (and so does its run history).
-        stmt(ctx, `UPDATE org_tag_suggestions SET tag = ? WHERE org_id = ? AND tag = ? AND source = 'model' AND state = 'open'`, next, ctx.orgId, row.name),
+        // What the model suggested or ADDED for the tag goes with it — every state, so a renamed tag keeps its
+        // "Added by Sift" credit and its runs can still be undone — and so does its run history.
+        stmt(ctx, `UPDATE OR IGNORE org_tag_suggestions SET tag = ?, resolved_to = CASE WHEN resolved_to = ? THEN ? ELSE resolved_to END WHERE org_id = ? AND tag = ? AND source = 'model'`, next, row.name, next, ctx.orgId, row.name),
         stmt(ctx, `UPDATE org_tag_runs SET tag = ? WHERE org_id = ? AND tag = ?`, next, ctx.orgId, row.name),
         // Agents that already asked for the new name were asking for this tag.
         ...settleStmts(ctx, next, next, at),

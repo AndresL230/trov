@@ -38,7 +38,8 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
 - **Only an org ADMIN changes the list** (`src/tools/tags.ts`, each `requireRole(ctx, "admin")` with an
   `org_admin_audit` row `tag.*` in the same batch; cookie routes in `src/tags/routes.ts`, which refuse any
   request carrying an `Authorization` header — NEVER MCP): `addTag`; `editTag` (rename and/or description,
-  colour — a rename rewrites `entry_tags` in the batch, so every tagged item stays tagged; a starter may be
+  colour — a rename rewrites `entry_tags` in the batch, so every tagged item stays tagged, and moves every
+  `source = 'model'` row and `org_tag_runs` with it, so Sift's credit and a run's Undo survive; a starter may be
   renamed); `mergeTag` (the source's items move to the target, the source is retired with
   `merged_into`, and an agent that still sends it gets the target; a starter cannot be merged away);
   `retireTag` (soft: stays on what has it, can no longer be picked, name stays reserved; never a starter) and
