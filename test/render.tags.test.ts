@@ -146,7 +146,7 @@ describe("Org settings › Tags", () => {
     expect(html).not.toContain("data-dd=");
 
     // Every row and the head share ONE column template, so they line up.
-    expect(html).toMatch(/--tagcols:minmax\(0, 176px\) minmax\(0, 1fr\) 44px 116px;/);
+    expect(html).toMatch(/--tagcols:minmax\(0, 176px\) minmax\(0, 1fr\) 64px 116px;/);
     expect(html).not.toContain("cnpy-tagfitline");
 
     // A starter is renamed, never retired or merged away.
@@ -205,7 +205,7 @@ describe("Org settings › Tags", () => {
     expect(html).toContain("An admin or an owner decides what is on it.");
     expect(html).toContain(`data-org-tag="onboarding"`);
     for (const act of ["tagAdd", "tagNameDraft", "tagEdit", "tagConfirm", "tagRestore", "tagSugAccept", "tag-merge:", "tagMenu", "tagFind"]) expect(html, act).not.toContain(act);
-    expect(html).toMatch(/--tagcols:minmax\(0, 176px\) minmax\(0, 1fr\) 44px;/);
+    expect(html).toMatch(/--tagcols:minmax\(0, 176px\) minmax\(0, 1fr\) 64px;/);
     expect(html).not.toContain("data-tag-suggestion");
   });
 
@@ -581,9 +581,9 @@ describe("tags added by Jev, on the Tags tab (the owner's call: no review step)"
     expect(piece(tab("admin", list({ ai: ai(), runs: { onboarding: run({ status: "running" }) } })), `data-org-tag="onboarding"`)).toMatch(/data-act="tagFind" data-arg="onboarding"[^>]* disabled/);
     expect(tab("admin", list({ ai: ai({ enabled: false }) }))).not.toContain(`data-act="tagFind"`);
     expect(tab("admin", list({ ai: ai({ spent: true }) }))).not.toContain(`data-act="tagFind"`);
-    expect(tab("admin", list({ ai: ai() }))).toMatch(/--tagcols:minmax\(0, 176px\) minmax\(0, 1fr\) 44px 150px 116px;/);
+    expect(tab("admin", list({ ai: ai() }))).toMatch(/--tagcols:minmax\(0, 176px\) minmax\(0, 1fr\) 64px 150px 116px;/);
     // The switch never moves a column: the same template on or off, and the checks meter keeps its place.
-    expect(tab("admin", list({ ai: ai({ enabled: false }) }))).toMatch(/--tagcols:minmax\(0, 176px\) minmax\(0, 1fr\) 44px 150px 116px;/);
+    expect(tab("admin", list({ ai: ai({ enabled: false }) }))).toMatch(/--tagcols:minmax\(0, 176px\) minmax\(0, 1fr\) 64px 150px 116px;/);
     expect(aiSection(ai({ enabled: false }), initialTagsUi())).toContain(`class="cnpy-tagshead-meterwrap" data-off="1"`);
   });
 

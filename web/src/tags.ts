@@ -310,7 +310,7 @@ export function tagsTab(org: MyOrg, p: TagsTabProps): string {
   // ONE column template for the head and every row (fixed widths but the description), so every row lines up. It
   // does not depend on the Jev switch: turning it on or off never moves a column.
   const jev = admin && !!list.ai;
-  const cols = ["minmax(0, 176px)", "minmax(0, 1fr)", "44px", ...(jev ? ["150px"] : []), ...(admin ? ["116px"] : [])].join(" ");
+  const cols = ["minmax(0, 176px)", "minmax(0, 1fr)", "64px", ...(jev ? ["150px"] : []), ...(admin ? ["116px"] : [])].join(" ");
   // Not `overflow:hidden`: a row's ⋯ menu opens over the rows below it.
   const ul = (extra: string) => surface(`list-style:none;padding:0;--tagcols:${cols};${extra}`);
   // The head: the column names (for sighted readers — each row says the same in its own words), and for an
