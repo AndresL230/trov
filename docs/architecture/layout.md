@@ -173,8 +173,8 @@
   "Wrong?" — cookie only, `/api/o/:slug/ai/…`), `src/ai/suggestions.ts` (`AI_ACCEPT_HANDLERS`, empty),
   `src/ai/preview.ts` (`LOCAL_AI_PREVIEW`, `wrangler dev` only); the tables' one repository `src/data/ai.ts`;
   the screens' contracts `shared/ai-core.ts` (zod-free) + `shared/ai.ts` and the preview's
-  `shared/ai-fixtures.ts`. Migrations `0055_ai_automation` (`orgs.ai_automation`, the switch) and
-  `0056_ai_suggestions` (`ai_suggestions`, `ai_feedback`); the monthly `ai_runs` allowance is in `PLANS`
+  `shared/ai-fixtures.ts`. Migration `0055_ai` (`orgs.ai_automation`, the switch, and
+  `ai_suggestions`, `ai_feedback`); the monthly `ai_runs` allowance is in `PLANS`
   (not listed on the pricing page yet).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, the Guide (Help › Guide, `#guide`; it was Get Started), the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —

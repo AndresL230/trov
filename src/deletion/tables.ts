@@ -42,7 +42,7 @@ export const ORG_TABLES = [
   "handoffs", "prompt_versions", "prompts", "prompts_fts",
   // What was captured from GitHub, the Repo dashboard, Sync runs.
   "pr_summaries", "issue_summaries", "events", "identity_tasks", "repo_events", "repo_snapshots", "repo_metrics", "sync_runs",
-  // What the model suggested and the "Wrong?" people pressed (0056_ai_suggestions).
+  // What the model suggested and the "Wrong?" people pressed (0055_ai).
   "ai_suggestions", "ai_feedback",
   // Email: the outbox (and its dev-only bodies), each member's preferences, the org's policy and settings.
   "notification_outbox_bodies", "notification_outbox", "notification_prefs", "notification_policy", "notification_settings",

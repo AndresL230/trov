@@ -21,7 +21,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM abuse_counters",
   // Sync GitHub runs (0046_sync_runs) reference orgs.
   "DELETE FROM sync_runs",
-  // AI (0056_ai_suggestions): suggestions and "Wrong?" reference orgs.
+  // AI (0055_ai): suggestions and "Wrong?" reference orgs.
   "DELETE FROM ai_suggestions",
   "DELETE FROM ai_feedback",
   "DELETE FROM org_usage_daily",

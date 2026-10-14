@@ -102,7 +102,7 @@ export async function fillOrg(orgId: string, author: string, tag: string): Promi
   await run(env.DB, `INSERT INTO repo_snapshots (org_id, kind, json, computed_at) VALUES (?, 'branches', '{}', ?)`, orgId, T);
   await run(env.DB, `INSERT INTO repo_metrics (org_id, metric, env, part, value, at) VALUES (?, 'health', 'staging', '', 1, ?)`, orgId, T);
   await run(env.DB, `INSERT INTO sync_runs (org_id, repo, started_by, started_at, updated_at, status) VALUES (?, 'o/r', ?, ?, ?, 'ok')`, orgId, author, T, T);
-  // AI (0056_ai_suggestions): a suggestion someone dismissed, and a "Wrong?".
+  // AI (0055_ai): a suggestion someone dismissed, and a "Wrong?".
   await run(env.DB, `INSERT INTO ai_suggestions (org_id, item_type, item_ref, kind, value_json, reason, state, created_at, decided_by, decided_at) VALUES (?, 'ticket', '1', 'category', '"bug"', ?, 'dismissed', ?, ?, ?)`, orgId, `${tag} reason`, T, author, T);
   await run(env.DB, `INSERT INTO ai_feedback (org_id, handle, item_type, item_ref, kind, created_at) VALUES (?, ?, 'brief', ?, 'brief', ?)`, orgId, author, `${tag}-brief`, T);
   // People and access

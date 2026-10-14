@@ -74,7 +74,7 @@ them into `OrgUsage.ai` and `PlatformUsageResponse.ai` (`src/platform/usage.ts`)
 without one, as summaries say they are off — and none of them is a person's request (not "active people", not
 "last activity").
 
-## Suggestions and "Wrong?" (0056)
+## Suggestions and "Wrong?" (0055)
 
 - **`ai_suggestions`** — a suggested value for one field of one item, with a REQUIRED reason, its cites, model and
   prompt version; `open` → `accepted` | `dismissed` (a person's decision, remembered) | `superseded` (a re-run of

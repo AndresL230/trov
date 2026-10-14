@@ -1,6 +1,6 @@
 // The AI tables' one repository (docs/architecture/ai.md): the org's switch (`orgs.ai_automation`,
-// 0055_ai_automation), what the model suggested (`ai_suggestions`) and the "Wrong?" people pressed
-// (`ai_feedback`, 0056_ai_suggestions). A TENANT module: every statement names `org_id = ?`, bound from the
+// 0055_ai), what the model suggested (`ai_suggestions`) and the "Wrong?" people pressed
+// (`ai_feedback`, 0055_ai). A TENANT module: every statement names `org_id = ?`, bound from the
 // caller's context (test/data-layer.static.test.ts). Nothing here calls a model, and nothing reachable
 // from src/mcp.ts imports it.
 import type { AiCite, AiFeedbackBody, AiSuggestion, AiSuggestionState } from "@shared/ai";

@@ -123,7 +123,7 @@ async function seed(): Promise<Fx> {
   await mintTokenFor(ALICE, ORG_A);
   const tokenId = (await first<{ id: number }>(env.DB, `SELECT id FROM mcp_tokens WHERE org_id = ? AND person = ?`, ORG_A, ALICE))!.id;
   await run(env.DB, `INSERT INTO notification_prefs (org_id, user_id, kind, cadence, updated_at) VALUES (?, ?, 'my_work', 'daily', ?)`, ORG_A, ALICE, T);
-  // AI (0056_ai_suggestions): an OPEN suggestion of A's, and a "Wrong?" of Alice's.
+  // AI (0055_ai): an OPEN suggestion of A's, and a "Wrong?" of Alice's.
   const suggestionId = (await putSuggestion(A(), { itemType: "ticket", itemRef: String(ticketId), kind: "category", value: "bug", confidence: 0.9, reason: `${CANARY} reason`, cites: [], model: "m", promptVersion: "1" }))!;
   await recordFeedback(A(), ALICE, { itemType: "brief", itemRef: `${CANARY}-brief`, kind: "brief", model: null, promptVersion: null });
 

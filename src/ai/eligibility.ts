@@ -1,7 +1,7 @@
 // May Trov make a model call for this org NOW? (docs/architecture/ai.md › Eligibility.) The one answer the
 // AI pass (./pass.ts) asks before every org and Org settings › AI shows (./routes.ts):
 //   • `no_key` — the deployment has no `ANTHROPIC_API_KEY`: nothing runs anywhere;
-//   • `off`    — the org's admin switched it off (`orgs.ai_automation = 0`, 0055_ai_automation);
+//   • `off`    — the org's admin switched it off (`orgs.ai_automation = 0`, 0055_ai);
 //   • `capped` — the org has used its month's `ai_runs` (shared/plans.ts), or its plan has ended;
 //   • `ok`.
 // The plan, the switch and the month's `ai_run:*` count are read in ONE statement (`planAndAiRuns`, as

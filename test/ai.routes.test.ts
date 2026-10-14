@@ -1,5 +1,5 @@
 // Org settings › AI and the answers to what Trov wrote (src/ai/routes.ts, docs/architecture/ai.md): the switch
-// (0055_ai_automation), suggestions and "Wrong?" (0056_ai_suggestions). Cookie routes only — none is an MCP tool.
+// (0055_ai), suggestions and "Wrong?" (0055_ai). Cookie routes only — none is an MCP tool.
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
