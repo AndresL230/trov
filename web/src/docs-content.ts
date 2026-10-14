@@ -18,6 +18,7 @@
 import { DOCS_PAGES, SITE_ORIGIN, siteUrl, type SitePage } from "@shared/site-pages";
 import { PLANS, FREE_PLAN, UPGRADE_PLAN, seatsPhrase } from "@shared/plans";
 import { PRICING, formatPrice } from "@shared/pricing";
+import { ARTIFACT_INLINE_BINARY_MAX } from "@shared/artifacts-core";
 import { PLUGIN_INSTALL, CONNECTION_NOTE, browserConnectCommand } from "./mcp-connect";
 import { TROV_REPO } from "./site-chrome";
 import { mcpToolsMarkdown } from "./docs-tools";
@@ -79,12 +80,14 @@ function setup(): string {
     "Then run `/mcp`, choose **trov**, then **Authenticate**. Your browser opens Trov: choose how the connection picks an organization, then click **Allow**. The connection is listed in Settings › MCP access under Connected apps, where **Revoke** disconnects it at once.",
     CONNECTION_NOTE,
     `Any other MCP client (Claude Desktop and claude.ai, Cursor, VS Code, Codex, Windsurf) connects to the same address, \`${MCP_URL}\`: setup to copy for each is in ${to("docs-connect", "Connect an MCP client")}.`,
+    `In a chat (claude.ai on the web, Claude Desktop) Trov is a custom connector. There is no plugin and no repository there, so the Allow page suggests **manual**: you tick the organizations it may use and where it starts. ${to("docs-connect", "Connect an MCP client")} › ${CHAT_SECTION} says what a chat can and cannot do.`,
     "## 5. Your first session",
     [
       "1. **Start as you always do.** Before your agent touches an area the team already knows, it reads what Trov has on it (the `load-context` skill does this by itself, and lists any handoffs waiting for you).",
       "2. **Work.** Ask “what’s on my plate?” for your tickets. Your agent can update the tickets assigned to you.",
       "3. **Say “record this session” when you’re done.** It stages what shipped: feed entries, doc changes and decisions. They wait in **Triage › Review** until a person promotes them.",
     ].join("\n"),
+    `In a chat there are no skills, so ask in words: “what’s on my plate in Trov?”, “what does Trov say about billing?”, “any handoffs waiting for me?”. The agent reads and stages exactly as above; it cannot read \`git\`, so to record shipped work give it the pull request or commit.`,
     `Not using Claude Code's plugin? Put the snippet from ${to("docs-connect", "Connect an MCP client")} › Tell your agent how to use Trov in your project's \`AGENTS.md\` or \`CLAUDE.md\`, so any agent follows the same loop.`,
   ].join("\n\n");
 }
@@ -94,18 +97,48 @@ function setup(): string {
 /** What an agent should know to use Trov well, for a project's AGENTS.md / CLAUDE.md. The rules are the
  *  plugin's own skills', in short: load-context (orient, handoffs, trust live), record-session (explicit,
  *  observed from git / gh, one batch), trov (stage, never confirm; lanes; repo on every call). */
+const RULE_LIVE = "- **Trust only `live`.** Every result is flagged `live`, `staged_pending`, `unpromoted` or `draft`. Only `live` is settled; never present the others as fact.";
+const RULE_STAGE = "- **Stage, never confirm.** Doc changes, decisions and feed entries you write are proposals that a person promotes in the Trov web app; you cannot promote, ratify, reject or publish. Do not resolve a ticket or complete a sprint unless the person asks.";
+const RULE_TICKETS = "- **Tickets: your lane only.** You may file tickets (`create_ticket`, after `list_people` to pick assignees). Every other ticket write needs the ticket to be assigned to the person you work for.";
+const ruleOrient = (lead: string): string =>
+  `- **${lead}** Before changing an area the team already knows, search Trov with \`query\` (a short, specific \`q\`; narrow with \`types\` and \`section\`) and read the top results; open a doc with \`get_doc\`. Always do this before proposing a doc change, and pass the doc's \`current_version\` as \`base_version\`.`;
+
 export const AGENT_SNIPPET = [
   "## Trov: the team's memory",
   "",
   `This team keeps its docs, decisions, roadmap, tickets and a feed of what shipped in Trov, through the \`trov\` MCP server (${MCP_URL}).`,
   "",
-  "- **Orient before you work.** Before changing an area the team already knows, search Trov with `query` (a short, specific `q`; narrow with `types` and `section`) and read the top results; open a doc with `get_doc`. Always do this before proposing a doc change, and pass the doc's `current_version` as `base_version`.",
-  "- **Trust only `live`.** Every result is flagged `live`, `staged_pending`, `unpromoted` or `draft`. Only `live` is settled; never present the others as fact.",
+  ruleOrient("Orient before you work."),
+  RULE_LIVE,
   "- **Say which repository.** Pass `repo` (owner/name, from `git remote get-url origin`) on every Trov call. Unsure where you are? Call `get_connection` and tell the person which organization you are in.",
   "- **At the start of a session,** call `list_handoffs` and `get_my_work`, and tell the person what is waiting. Claim a handoff only after they pick it.",
-  "- **Stage, never confirm.** Doc changes, decisions and feed entries you write are proposals that a person promotes in the Trov web app; you cannot promote, ratify, reject or publish. Do not resolve a ticket or complete a sprint unless the person asks.",
-  "- **Tickets: your lane only.** You may file tickets (`create_ticket`, after `list_people` to pick assignees). Every other ticket write needs the ticket to be assigned to the person you work for.",
+  RULE_STAGE,
+  RULE_TICKETS,
   "- **Record at the end, only when asked.** When the person says “record this session”, send ONE `record_session` batch: what actually shipped, copied from `git` and `gh` output (never from memory), and doc changes written against the version you read.",
+].join("\n");
+
+/** The heading of Connect's section for a client in no repository — Setup links to it by name. */
+export const CHAT_SECTION = "In a chat, with no repository";
+/** "1 MB": the largest binary file that travels inside an MCP call (shared/artifacts-core.ts). */
+const INLINE_MAX = `${ARTIFACT_INLINE_BINARY_MAX / (1024 * 1024)} MB`;
+
+/** AGENT_SNIPPET for a client with no checkout and no shell (a claude.ai Project's instructions): the same
+ *  rules, with what src/mcp.ts's descriptions say to do there — no `repo` to pass, nothing to read from git,
+ *  files inside the call. */
+export const CHAT_SNIPPET = [
+  "## Trov: the team's memory",
+  "",
+  `This team keeps its docs, decisions, roadmap, tickets and a feed of what shipped in Trov, through the Trov connector (${MCP_URL}). This chat is in no code repository.`,
+  "",
+  "- **Say where you are.** At the start of a chat, call `get_connection` and tell the person which organization you are in. When they name another one, pass `org` on that call, or use `switch_org` and say that it changes the organization for every chat on this connection.",
+  ruleOrient("Orient before you answer."),
+  RULE_LIVE,
+  "- **Never invent a repository.** Leave `repo`, branch and files out unless the person names them; when a call needs a repository, ask which one they mean.",
+  "- **At the start of a chat,** also call `list_handoffs` and `get_my_work`, and tell the person what is waiting. Claim a handoff only after they pick it. You cannot change code here: say what the handoff asks, and do the parts that need no repository.",
+  RULE_STAGE,
+  RULE_TICKETS,
+  "- **Record only when asked.** Send ONE `record_session` batch with what was decided or written in this chat, and doc changes written against the version you read. You cannot read `git` here: record shipped work only from a pull request or commit the person gives you, never from memory.",
+  `- **Files travel inside the call.** An image, PDF or file artifact of up to ${INLINE_MAX} goes as \`content_base64\` (\`upload_asset\`, \`artifact_update\`) and comes back with \`include_file\` (\`artifact_get\`). For a larger one, give the person its link.`,
 ].join("\n");
 
 function connect(): string {
@@ -130,8 +163,34 @@ function connect(): string {
     fence("bash", `claude mcp add --transport http --scope user trov ${MCP_URL} --header "${tokenHeader}"`),
     "Use one or the other, not both, or your agent sees every tool twice (`claude mcp remove trov` drops the manual one).",
     "## Claude Desktop and claude.ai",
-    `Add Trov as a **custom connector**: Settings › Connectors › **Add custom connector**, name it Trov and enter \`${MCP_URL}\`. Claude opens Trov's sign-in when you connect; click **Allow**. On a Team or Enterprise plan, an owner adds the connector for the organization and each member connects it. A conversation on the web is in no repository, so the Allow page suggests **manual** there.`,
-    "Custom connectors use browser sign-in only; there is no field for a token.",
+    "Trov is a **custom connector** there. There is no plugin, and no field for a token: custom connectors sign in through the browser only.",
+    [
+      `1. Open Settings › Connectors, choose **Add custom connector**, name it Trov and enter \`${MCP_URL}\`.`,
+      "2. Choose **Connect**. Trov's sign-in opens in the browser.",
+      "3. On the Allow page, **manual** is already chosen, because a chat is in no repository to follow. Tick the organizations the connection may use, pick the one it starts in, and click **Allow**.",
+      "4. In a chat, ask “call `get_connection`”. It answers who you are and which organization you are in.",
+    ].join("\n"),
+    "On a Team or Enterprise plan, an owner adds the connector for the organization and each member connects it. The connection shows up in Trov under Settings › MCP access › Connected apps, like any other.",
+    `## ${CHAT_SECTION}`,
+    "A chat (claude.ai on the web, Claude Desktop, or any client outside a code checkout) gets all of Trov's tools, but it has no repository, no shell and none of the Claude Code plugin's skills. Nothing orients or records by itself: you ask.",
+    "**Things to ask in a first chat:**",
+    [
+      "- “What’s on my plate in Trov?” Your open tickets and assigned issues, and your recent pull requests (`get_my_work`).",
+      "- “What does Trov say about the billing flow?” A search of the docs, decisions and feed (`query`), then the doc itself (`get_doc`).",
+      "- “File a ticket for this and assign it to me.” Tickets are written at once; after that the agent can change only the tickets assigned to you.",
+      "- “Propose this as a change to the onboarding doc.” It is staged, and waits in **Triage › Review** until a person promotes it.",
+      "- “Save this as a prompt”, or “make this an artifact”. A prompt is staged until a person publishes it.",
+      "- “Leave a handoff for my next coding session.” It says where the task stands; your agent in the repository lists it when it starts.",
+    ].join("\n"),
+    "**What is different with no repository:**",
+    [
+      "- **Which organization.** A manual connection acts in its current organization. Say “switch to <organization>” (`switch_org`, which changes it for every chat on that connection), or change it in Settings › MCP access. A connection set to follow the repository reads and writes nothing in a chat unless a call names the repository: switch it to manual in Settings › MCP access.",
+      "- **Nothing reads `git`.** A handoff written in a chat carries no repository, branch or files. An agent that claims a handoff asking for code changes cannot make them: it tells you what is asked and does the parts that need no repository.",
+      "- **Recording.** “Record this chat” stages the decisions and doc changes made in it. The agent cannot see what shipped, so give it the pull request or commit to record shipped work.",
+      `- **Files.** With no shell there is nothing to upload or download with, so an image, PDF or file artifact travels inside the call, up to ${INLINE_MAX}. A larger one can be linked, but not opened or uploaded. A picture you attach to the chat usually cannot be passed on to Trov. Text artifacts (HTML, Markdown, SVG, Mermaid) are sent as text.`,
+    ].join("\n"),
+    "**Tell the agent once.** In a claude.ai Project, put this in the project's instructions, so every chat in it follows the same rules:",
+    fence("markdown", CHAT_SNIPPET),
     "## Cursor",
     "In `.cursor/mcp.json` (this project) or `~/.cursor/mcp.json` (every project):",
     json({ mcpServers: { trov: { url: MCP_URL } } }),
@@ -166,7 +225,7 @@ function connect(): string {
     "## Check the connection",
     "Ask your agent to call `get_connection`. It answers who you are, the connection's mode, and which organization a call would act in; `organization: null` means a call would read and write nothing, and `unresolved` says why. Every failed call carries a `hint` saying what to do next (" + to("docs-mcp-tools", "MCP tools") + " › Errors).",
     "## Tell your agent how to use Trov",
-    "The Claude Code plugin's skills already follow this loop. For any other agent, or to make it explicit, add this to your project's `AGENTS.md` or `CLAUDE.md`:",
+    `The Claude Code plugin's skills already follow this loop. For any other agent that works in a repository, or to make it explicit, add this to your project's \`AGENTS.md\` or \`CLAUDE.md\` (for a chat, use the one under ${CHAT_SECTION}):`,
     fence("markdown", AGENT_SNIPPET),
   ].join("\n\n");
 }

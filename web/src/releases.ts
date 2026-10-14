@@ -99,6 +99,8 @@ export const RELEASES: Release[] = [
         "`kindMark` / `STATE_KIND` (`marks.ts`): a state by what it means (good, waiting, warn, bad, stopped, done, off) for settings, billing, the Repo verdicts and the platform pages; `roleWord` and `(you)` in `org-ui.ts` (#173)",
         "`artifactKindLabel` (`shared/artifacts-core.ts`): HTML / SVG / PDF / Markdown / …, shared by the viewer and the site (#173)",
         "`test/render.marks.test.ts`: the marks are never a pill, and the signed-out site and every tour mock draw no pill and take their states from `marks.ts` (#173)",
+        "Docs for Claude on the web: `/docs/connect` walks through adding Trov as a custom connector and gains \"In a chat, with no repository\" (what to ask, what differs with no checkout, the 1 MB file limit) with `CHAT_SNIPPET`, the agent rules for a claude.ai Project's instructions; `/docs/setup` steps 4 and 5 point to it (`web/src/docs-content.ts`) (#174)",
+        "`otherClientsLink` (`web/src/mcp-connect.ts`): \"Not using Claude Code?\" links the guided setup's agent step, Settings › MCP access and the Guide to `/docs/connect`; the Guide's Other agents says how Claude on the web connects (#174)",
       ],
       changed: [
         "Tickets: the table, board column heads, the status control and its menu, the rail, sub-ticket rows, sprint cards and the artifact attach picker draw `ticketStatusMark` / `priorityMark`; category, relation and source are plain text (`metaWord`) (#173)",
@@ -116,6 +118,7 @@ export const RELEASES: Release[] = [
         "My Work and roadmap digests: Merged and the plan changes (Added / Changed / Reordered / Done) are marks, and a GitHub issue's labels are plain words (#173)",
       ],
       fixed: [
+        "The docs' page tabs reloaded the whole page: `docs-page.ts` now fetches the other page's prerendered HTML (prefetched on hover) and swaps its band and body in, with Back / Forward, the head's title and links, and focus on the new title; the contents column no longer shows a scrollbar (#174)",
         "A mark in an email took the mail client's serif default where its cell set no face (#173)",
         "The artifact attach picker called a Triage ticket SUBMITTED and showed a Testing ticket as a plain grey tag (#173)",
         "Email digests coloured ticket statuses differently from the app (#173)",
@@ -125,7 +128,7 @@ export const RELEASES: Release[] = [
         "`ticketPill`, `priorityChip`, `tagChip`, `handoffPill` and the per-file `CHIP_BASE` / `TAG_BASE` copies; the unused `ticketPill` / `priorityChip` import in `render.ts` (#173)",
       ],
     },
-    prs: [173],
+    prs: [173, 174],
   },
   // The public site, readable by search engines, share cards and AI assistants: prerendered pages, robots.txt,
   // sitemap, canonical links, noindex on the app, a real 404; then public docs, llms.txt, Markdown versions and

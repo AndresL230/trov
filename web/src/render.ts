@@ -70,7 +70,7 @@ import { orgSwitcherButton, orgMenu, orgPickerView, createOrgModal, initialOrgsU
 import { billingDonePage, type BillingDoneUi } from "./billing";
 import { billingCheckoutPage, type BillingCheckoutUi } from "./billing-checkout";
 import { isOrgAdmin } from "./org-context";
-import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpEndpoint, mcpStrong, CONNECTION_NOTE } from "./mcp-connect";
+import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpEndpoint, mcpStrong, otherClientsLink, CONNECTION_NOTE } from "./mcp-connect";
 import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type WelcomeUi } from "./welcome";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 import { previewBanner, previewState, type PreviewMode } from "./preview";
@@ -1946,6 +1946,7 @@ function guideView(s: AppState): string {
 
     ${sub("Other agents")}
     <p style="${gP}">Any MCP client that can sign in through the browser (OAuth) connects to the same address, ${gCode(esc(mcpEndpoint()))}, and shows up under ${gStrong("Connected apps")} once you approve it. Trov no longer creates access tokens in Settings; a token you already set up (for Codex or CI) keeps working.</p>
+    <p style="${gP}">${gStrong("Claude on the web and Claude Desktop")} take Trov as a custom connector: in Claude's Settings › Connectors, choose ${gStrong("Add custom connector")} and enter that address. A chat is in no repository, so on the Allow page pick ${gStrong("Manual")} and the organizations it may use. There are no skills there: ask in words (“what's on my plate in Trov?”). ${otherClientsLink()}</p>
     ${gFig("settings", `${gEm("Settings")}: profile, sign-in methods, MCP access, appearance, and email digests.`)}
 
     ${sec("Troubleshooting", "When something doesn't work", "Troubleshooting")}
@@ -2334,7 +2335,7 @@ export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" |
     <div class="cnpy-mcp-body">
       <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
       ${connectSteps(orgName)}
-      <div data-mcp-one-org style="font-size:12px;line-height:1.55;color:var(--fg-40);min-width:0">${CONNECTION_NOTE}</div>
+      <div data-mcp-one-org style="font-size:12px;line-height:1.55;color:var(--fg-40);min-width:0">${CONNECTION_NOTE} Not using Claude Code? ${otherClientsLink()}</div>
       </div>
       <div style="min-width:0">
       ${grantListBody(s)}

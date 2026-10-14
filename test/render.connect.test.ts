@@ -36,6 +36,12 @@ describe("Get Started guide — Connect your agent", () => {
     expect(html).toContain("Set it up without the plugin");
   });
 
+  it("says how Claude on the web connects, and links every other client's setup", () => {
+    const html = render(guideState());
+    expect(html).toContain("Add custom connector");
+    expect(html).toContain('<a href="/docs/connect" target="_blank" rel="noopener" data-mcp-other-clients');
+  });
+
   it("never sends anyone to mint a token in Settings, or to the retired connection command", () => {
     const html = render(guideState());
     expect(html).not.toContain("Get connection command");
