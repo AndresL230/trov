@@ -24,6 +24,14 @@ means unlimited. Plan ids are stored and never renamed: **`team` is the plan use
 | `artifact_bytes` | 250 MB | 5 GB | unlimited | 250 MB | `SUM(artifact_versions.size_bytes)` — every stored version, deleted pages included | `writeVersion`, `insertPage`, `mintUploadToken`, `consumeUploadToken` (`src/tools/artifacts.ts`) — so HTTP, the upload link and the MCP artifact tools alike |
 | `agent_connections` | 5 | 10 | unlimited | 5 | PER PERSON: that person's live MCP tokens for the org + their connected apps that hold a row for it (`oauth_grant_orgs`) — see below | `mintToken`, `issueAuthorization` (the OAuth consent), `setGrantOrg` / `setGrantMode` (Settings), `admitGrantOrg` (a follow-the-repository connection's first call into the org) |
 | `ai_summaries` | 300 | 3,000 | unlimited | 300 | PER CALENDAR MONTH (UTC): summarizer calls attempted for the org | `orgSummarizers` (`src/plans/summaries.ts`) — it refuses nothing: past it an item shows its excerpt (below) |
+| `ai_runs` | 250 | 2,000 | unlimited | 250 | PER CALENDAR MONTH (UTC): model calls the AI pass attempted for the org (`ai_run:*`) | the AI pass (`src/ai/pass.ts`, via `aiEligibility`) — it refuses nothing: past it no call is made (`ai.md`). **Not listed yet** (below) |
+
+**A limit that is not listed** (`LimitDef.listed: false`): `ai_runs` is a limit like any other — resolved,
+overridable per org in Platform's limit fields, enforced — but nothing uses it yet (the AI pass has no job), so
+the pricing page's cards, its questions and its markdown, the Plan block (Org settings › General) and Settings ›
+Limits list `LISTED_LIMIT_KEYS` (every key but the unlisted) instead of `LIMIT_KEYS`. `OrgPlanView.usage` still
+carries `ai_runs` (this month's `ai_run:*`). To list it: drop the flag (`test/render.pricing.test.ts`,
+`render.plans.test.ts`, `render.settings-plan.test.ts` pin that it is absent today).
 
 **How one connection counts when it can reach several organizations** (0051). The limit stays per organization,
 per person, and one rule covers both modes: *a connected app counts once in every organization that holds a
@@ -387,7 +395,7 @@ person before any org exists. `org_grants.used_org` is deliberately not named `o
 
 | Route | Gate | Answers |
 |---|---|---|
-| `GET /api/o/:slug/plan` | any member | `OrgPlanView`: plan, name, status, `gift_until`, entitlements, `usage` (seats = members + pending; `agent_connections` = the caller's own; `ai_summaries` = this month's), `over` |
+| `GET /api/o/:slug/plan` | any member | `OrgPlanView`: plan, name, status, `gift_until`, entitlements, `usage` (seats = members + pending; `agent_connections` = the caller's own; `ai_summaries` and `ai_runs` = this month's), `over` |
 | `GET /api/o/:slug/sync` | any member | `SyncStatusView` — its `summaries` is the allowance: status, used, cap, remaining, pending (`sync.md`) |
 | `GET /api/orgs` | signed in | each org with its `plan` and `paid`; adds `grants: MyGrant[]`, `can_create`, `free: { can_create, owned }` |
 | `POST /api/orgs` | holds a usable grant, or may own a Free org | 201 the org; 403 `no_grant` (a grant that is not theirs, a superadmin); 403 `free_org_limit` |

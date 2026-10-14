@@ -7,7 +7,7 @@
  * purchase link.
  */
 import { describe, it, expect } from "vitest";
-import { OFFERED_PLAN_IDS, PLANS, PLAN_IDS, LIMIT_KEYS, LIMITS, formatLimit, type PlanDef, type PlanId } from "../shared/plans";
+import { OFFERED_PLAN_IDS, PLANS, PLAN_IDS, LISTED_LIMIT_KEYS, LIMITS, formatLimit, type PlanDef, type PlanId } from "../shared/plans";
 import { PRICING, canPurchase, canPurchasePlan, formatPrice, hasYearly, isFreePrice, purchaseHref, type PlanPricing } from "../shared/pricing";
 import { BILLING_INTERVALS, BILLING_START_PATH, PRICING_PATH, PURCHASABLE_PLANS, billingStartHref, isPurchasablePlan } from "../shared/billing";
 import viteConfig from "../web/vite.config.ts?raw";
@@ -17,7 +17,7 @@ import trovCssRaw from "../web/src/trov.css?raw";
 import faqSrc from "../web/src/site-faq.ts?raw";
 import pricingPageSrc from "../web/src/pricing-page.ts?raw";
 import mainSrc from "../web/src/main.ts?raw";
-import { EVERY_PLAN, FREE_START_HREF, PRICING_TITLE, earlyAccessHref, pricingQuestions, pricingSection, pricingView, talkHref, waitlistHref } from "../web/src/pricing";
+import { EVERY_PLAN, FREE_START_HREF, PRICING_TITLE, earlyAccessHref, pricingMarkdown, pricingQuestions, pricingSection, pricingView, talkHref, waitlistHref } from "../web/src/pricing";
 import { landingView } from "../web/src/landing";
 import { siteFooter, SITE_CONTACT } from "../web/src/site-chrome";
 import { LEGAL_CONTACT } from "../web/src/legal";
@@ -125,7 +125,7 @@ describe("pricing — the plans on offer come from shared/plans.ts", () => {
       const c = card(html, id);
       expect(c).toContain(`>${PLANS[id].name}</h3>`);
       expect(c).toContain(`<p class="site-plan-for">${PLANS[id].description.replace(/'/g, "&#39;")}</p>`);
-      for (const k of LIMIT_KEYS) {
+      for (const k of LISTED_LIMIT_KEYS) {
         const v = formatLimit(k, PLANS[id].entitlements[k]);
         // a plan sold per seat (Pro) shows its seat cap as the most it can buy
         expect(c).toContain(`<b>${id === "team" && k === "seats" ? `Up to ${v}` : v}</b>`);
@@ -351,11 +351,21 @@ describe("pricing — the limits are said once, on the cards", () => {
     expect(html).not.toContain("<table");
     expect(html).not.toContain("Limits, side by side");
     expect(html).not.toContain("site-cmp");
-    for (const id of OFFERED_PLAN_IDS) expect((card(html, id).match(/<li><b>/g) ?? []).length).toBe(LIMIT_KEYS.length);
+    for (const id of OFFERED_PLAN_IDS) expect((card(html, id).match(/<li><b>/g) ?? []).length).toBe(LISTED_LIMIT_KEYS.length);
     expect(card(html, "free")).toContain("<b>250 MB</b>");
     expect(card(html, "team")).toContain("<b>5 GB</b>");
     expect(card(html, "enterprise")).toContain("<b>Unlimited</b>");
     expect(html).not.toContain("null");
+  });
+
+  it("does not list `ai_runs` yet: a limit nothing uses is on no card, in no question and not in llms.txt's plans", () => {
+    expect(LIMITS.ai_runs.listed).toBe(false);
+    expect(LISTED_LIMIT_KEYS).not.toContain("ai_runs");
+    expect(LISTED_LIMIT_KEYS).toContain("ai_summaries");
+    expect(html).not.toMatch(/AI runs?/);
+    expect(JSON.stringify(pricingQuestions(Object.values(PLANS), PRICING))).not.toMatch(/AI runs?/);
+    expect(pricingMarkdown()).not.toMatch(/AI runs?/);
+    for (const page of SITE_PAGES) expect(sitePageHtml(page), page.path).not.toMatch(/AI runs?/);
   });
 
   it("lists what every plan includes, and says the by-conversation plan's limits can be set", () => {
@@ -409,7 +419,7 @@ describe("pricing — questions say only what is true today", () => {
     // What Pro adds is room, from the two plans' own tables (no plan gates a feature today), never a typed number.
     const adds = qs[1].a;
     expect(adds).toContain("Pro is all of Trov, as Free is: no plan turns a feature on or off. What it adds is room: ");
-    for (const k of LIMIT_KEYS) if (PLANS.team.entitlements[k] !== PLANS.free.entitlements[k]) expect(adds).toContain(`(Free: ${formatLimit(k, PLANS.free.entitlements[k])})`);
+    for (const k of LISTED_LIMIT_KEYS) if (PLANS.team.entitlements[k] !== PLANS.free.entitlements[k]) expect(adds).toContain(`(Free: ${formatLimit(k, PLANS.free.entitlements[k])})`);
     expect(adds).toContain("50 seats (Free: 3)");
     expect(adds).toContain("5 GB of artifact storage (Free: 250 MB)");
     expect(adds).not.toContain("$");

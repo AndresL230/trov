@@ -97,6 +97,8 @@ export const RELEASES: Release[] = [
       "Set the `ANTHROPIC_API_KEY` secret before merging (`wrangler secret put ANTHROPIC_API_KEY`). Without it summaries fall back to excerpts and nothing breaks.",
       "Delete `GEMINI_API_KEY` (`wrangler secret delete GEMINI_API_KEY`) once summaries land with model `claude-haiku-5-5` (`SELECT model, COUNT(*) FROM pr_summaries GROUP BY model`). Existing Gemini rows stay; nothing is resummarized.",
       "Local development: `.dev.vars` takes `ANTHROPIC_API_KEY` in place of `GEMINI_API_KEY`; a `LOCAL_UPSTREAM` stand-in now answers `POST /anthropic/v1/messages` in the Messages API shape instead of `/gemini/…`.",
+      "Apply migration 0055 before merging (`npm run db:migrate:remote`): `0055_ai` adds `orgs.ai_automation` (on for every org) and the `ai_suggestions` and `ai_feedback` tables. It is additive; the Worker from before it names none of them.",
+      "Local development: `LOCAL_AI_PREVIEW=ready` (or `empty`, `capped`, `proposed`) in `.dev.vars` shows the AI screens' sample content under `wrangler dev` only (`docs/architecture/ai.md`). Never set it on a deployed Worker.",
     ],
     patches: {
       added: [
@@ -111,8 +113,19 @@ export const RELEASES: Release[] = [
         "`src/ai/client.ts`: the one model client. `providerFor(kind)` (the `AiKind` union, today `summary_pr` / `summary_issue`, every kind mapped to Claude) hands out an `AiProvider` whose `structured()` sends `claude-haiku-5-5` a system prompt, an optional cached prefix and an input with `output_config.format` `json_schema`, checks the answer with the same zod schema, reports `AiUsage` (tokens, cached tokens, characters) through `onCall`, and never throws: a refusal, `max_tokens`, an API error, a timeout or a bad parse is `null` (#176)",
         "`src/ai/schema.ts`: `toClaudeSchema`, a zod schema's JSON Schema with what structured outputs reject stripped (lengths, bounds, `minItems` above 1, `$schema`) and every object closed (#176)",
         "`test/ai.client.test.ts`, `test/ai.schema.test.ts` and `test/helpers/anthropic.ts` (Messages API bodies for every summary test); `test/secrets.mcp.test.ts` checks that nothing reachable from `src/mcp.ts` imports `src/ai/` (#176)",
+        "The AI contracts: `shared/ai-core.ts` (zod-free) and `shared/ai.ts` type the brief, the repo State, entries written by Trov, \"Where the work went\", AI settings, suggestions, \"Wrong?\" and usage; `shared/ai-fixtures.ts` holds the preview's sample DTOs. `brief?`, `state?`, `themes?` and `FeedRow.ai?` are optional on the existing reads and omitted in production: nothing produces them yet (#177)",
+        "The `ai_runs` allowance (`shared/plans.ts`): 250 a month on Free and Personal, 2,000 on Pro, unlimited on Enterprise, counted from `ai_run:*`; `LimitDef.listed: false` and `LISTED_LIMIT_KEYS` keep it off the pricing page, the Plan block and Settings › Limits until something uses it (#177)",
+        "`0055_ai`: `orgs.ai_automation`, the org's AI switch; `GET` / `PUT /api/o/:slug/ai/settings` (any member reads, admin+ writes, audited `org.ai`, cookie only) in `src/ai/routes.ts` (#177)",
+        "`aiEligibility` (`src/ai/eligibility.ts`): `ok` / `off` / `no_key` / `capped` from one statement (`planAndAiRuns`: the plan, the switch and the month's runs) (#177)",
+        "`src/ai/pass.ts`: the AI pass, after the health pings on every repo tick with no heavy job, on the cron's own budget. Its job registry `AI_JOBS` is empty, so it reads and fetches nothing; with a job it rotates orgs on `cron_cursor` (`ai_pass`), makes at most `AI_RUNS_PER_TICK` = 12 calls a tick, never overspends an org's allowance, and meters `ai_run:<kind>` before each call, then `ai_run_failed:<kind>`, `ai_run_capped:<kind>` and `ai_tokens_in` / `_out` / `_cached` (#177)",
+        "`0055_ai`: `ai_suggestions` and `ai_feedback` (in `ORG_TABLES`, `HANDLE_COLUMNS` and the reset seed; data in `src/data/ai.ts`). `POST /api/o/:slug/ai/suggestions/:id/accept` runs a per-kind handler from `AI_ACCEPT_HANDLERS` (empty: every accept is 409 `not_available`) as the signed-in person, `…/dismiss` is any member's, and `POST /api/o/:slug/ai/feedback` records \"Wrong?\" once per person and item (`hiddenFor`) (#177)",
+        "`LOCAL_AI_PREVIEW` (`src/ai/preview.ts`): the fixtures on `/me/dashboard`, `/repo/dashboard` and `/feed`, honoured only for a request to a loopback `http://` origin and never beside a live Stripe key; never over MCP (#177)",
+        "`docs/architecture/ai.md`: where a model may be called (the summary seams and the AI pass only), the job registry, eligibility, the allowance, suggestions and the preview (#177)",
+        "`test/ai.pass.test.ts`, `test/ai.routes.test.ts`, `test/ai.preview.test.ts` (#177)",
       ],
       changed: [
+        "Platform › Usage: `OrgUsage.ai` and `PlatformUsageResponse.ai` carry AI runs, failures, caps and tokens when a key is set; AI metrics are never \"active people\" or an org's last activity (#177)",
+        "`get_repo_dashboard` carries `state` with the overview tab and `themes` with planning when the dashboard has them (never today) (#177)",
         "Tickets: the table, board column heads, the status control and its menu, the rail, sub-ticket rows, sprint cards and the artifact attach picker draw `ticketStatusMark` / `priorityMark`; category, relation and source are plain text (`metaWord`) (#173)",
         "Review and Unplaced: no STAGED / DRAFT / FLAGGED tags; `ReviewItem` loses `badge` / `badgeColor`; a low-confidence proposal wears `LOW_CONFIDENCE`; the triage reason reads Low confidence / Flagged by an agent (#173)",
         "Search: the kind is an icon and a word, and `authorityMark` shows nothing for `live`. The feed's agent chip is `agentMark` (#173)",
@@ -145,7 +158,7 @@ export const RELEASES: Release[] = [
         "The Gemini REST call (`generateContent`), `parseStructuredJson` and the hand-written `validatePrSummary` / `validateIssueSummary`",
       ],
     },
-    prs: [173, 174, 175, 176],
+    prs: [173, 174, 175, 176, 177],
   },
   // The public site, readable by search engines, share cards and AI assistants: prerendered pages, robots.txt,
   // sitemap, canonical links, noindex on the app, a real 404; then public docs, llms.txt, Markdown versions and

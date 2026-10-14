@@ -282,6 +282,8 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["sync_runs", "started_by"],
   // Support reports (0049_support_reports): who sent one, and the superadmin who resolved it.
   ["support_reports", "reporter"], ["support_reports", "resolved_by"],
+  // AI (0055_ai): who accepted or dismissed a suggestion, and who pressed "Wrong?".
+  ["ai_suggestions", "decided_by"], ["ai_feedback", "handle"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

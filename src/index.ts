@@ -126,7 +126,9 @@ export default {
   //    usage polls at :00; and, every 6th hour, the sprint-progress cache
   //    backstop at :10, the GitHub reconcile (deploys/checks/runs/branches/
   //    drift/open-PRs) at :20 and the capture prune at :30 — see the subrequest
-  //    budget at that dispatcher.
+  //    budget at that dispatcher. On every tick with no heavy job the AI pass
+  //    (src/ai/pass.ts) follows the health pings on the same budget; its job
+  //    registry is empty, so today it does nothing.
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     if (controller.cron === DAILY_CRON || controller.cron === WEEKLY_CRON) {
       await pruneUsage(platform(env, "system")).catch(() => undefined); // org_usage_daily retention (400 days)

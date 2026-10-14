@@ -74,6 +74,9 @@ export default defineConfig({
           RAILWAY_TOKEN_STAGING: "",
           RAILWAY_TOKEN_PRODUCTION: "",
           SAPLING_METRICS_TOKEN: "",
+          // The AI screens' local preview (src/ai/preview.ts): unset, as in production — every AI field is
+          // omitted. A test that previews passes its own value.
+          LOCAL_AI_PREVIEW: "",
           PUBLIC_ORIGIN: "https://trov.test",
           // A FIXED key-encryption key (32 bytes, base64) for per-org secrets (src/data/secrets.ts), so the
           // suite never depends on a developer's `.dev.vars`; TROV_KEK_PREVIOUS is blanked for the same reason.

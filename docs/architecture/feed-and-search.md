@@ -21,6 +21,12 @@ boot-loaded proposals + draft ADRs as `reviewHeadsFromReads` heads (no diff), ea
 body's soft target is ~2,500 characters. Pre-0034 entries were filled once by
 `scripts/backfill-feed-briefs.mjs` (local, Gemini, dry run by default, `--apply` only `WHERE brief IS NULL`).
 
+**Entries written by Trov** (`FeedRow.ai?`, `shared/ai-core.ts` `AiFeedMeta`: `origin: "ai"`, the person it was
+written for, its sources). An entry with no `ai` is an agent's — every entry today: nothing writes one yet, so
+`/feed` and `get_feed` carry no `ai` in production. `LOCAL_AI_PREVIEW` merges two sample entries into `/feed`
+by `created_at` (respecting `author` / `tags` / `since` / `limit`) under `wrangler dev` only, never over MCP
+(`ai.md`).
+
 ## Read side — FTS5 query engine
 
 `src/tools/reads.ts` exposes a ranked FTS5 `query()` engine (bm25, title/summary weighted) that backs

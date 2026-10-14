@@ -62,7 +62,7 @@ so there is no `[ai]` block.
 
 | Name | Kind | What it is | Missing → |
 |---|---|---|---|
-| `ANTHROPIC_API_KEY` | secret | the ONE Anthropic API key that serves every organization's capture-time PR / issue summaries (Claude Haiku, `claude-haiku-5-5`; `src/ai/client.ts`), each call counted against that organization's monthly allowance (`plans.md` › AI summaries, `sync.md`) | the excerpt fallback: an item shows its excerpt, and a later Sync fills it in |
+| `ANTHROPIC_API_KEY` | secret | the ONE Anthropic API key that serves every organization's capture-time PR / issue summaries (Claude Haiku, `claude-haiku-5-5`; `src/ai/client.ts`), each call counted against that organization's monthly allowance (`plans.md` › AI summaries, `sync.md`); and the AI pass (`src/ai/pass.ts`, `ai.md`), which has no job yet. Without it the pass reads nothing and every org's AI eligibility is `no_key` | the excerpt fallback: an item shows its excerpt, and a later Sync fills it in |
 
 ### Stored credentials
 
@@ -96,6 +96,11 @@ ignored. The Worker itself never reads it.
 `DEV_LOGIN` and `STRIPE_TEST_API_BASE` (above), and `LOCAL_UPSTREAM` — a loopback http stand-in for GitHub and
 Anthropic during a Sync (`src/sync/local-upstream.ts`); ignored unless it is `http://127.0.0.1` or
 `http://localhost`, and never honoured beside a live Stripe key. The two stand-ins are described in `.dev.vars.example`.
+`LOCAL_AI_PREVIEW` — `ready` | `empty` | `capped` | `proposed`: the AI screens' sample content (`src/ai/preview.ts`,
+`ai.md`) on `/me/dashboard`, `/repo/dashboard` and `/feed`, before anything writes it. The same rule as the stand-ins:
+honoured only for a request to a loopback `http://` origin (what `wrangler dev` serves on; a deployed Worker is never
+reached there) and never beside a live Stripe key; any other value is ignored, and MCP never sees it. Blank in the
+test pool (`vitest.config.ts`); a deployed Worker must not set it.
 
 ### Legacy — SaplingLearn's fallback, and two vars nothing reads
 
