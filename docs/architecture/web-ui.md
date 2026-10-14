@@ -270,8 +270,12 @@ client and an AGENTS.md / CLAUDE.md snippet), Concepts (the authority model), MC
   `## ` headings, a tool's heading anchored by its own name). The page's `<head>` links it as
   `<link rel="alternate" type="text/markdown">`. Links to the site are absolute in the Markdown and relative on
   the page. The docs borrow the legal pages' layout (`.site-legal-*`) and add `.site-docs-*` for code blocks
-  (with Copy), tables and subsections; their script (`docs-page.ts`, ~2 KB) only flips the theme, copies, and
-  follows the contents — it never repaints, so the client bundle carries none of the docs' text.
+  (with Copy), tables and subsections; their script (`docs-page.ts`, ~3 KB) only flips the theme, copies,
+  follows the contents, and switches docs pages IN PLACE: a tab (or Back / Forward) fetches the other page's
+  prerendered HTML (prefetched on hover) and swaps in its band and `#site-main`, the title, description,
+  canonical and Markdown links, and moves focus to the new title; a failed fetch falls back to a plain
+  navigation. It never renders text itself, so the client bundle carries none of the docs' text. The contents
+  column (`.site-legal-side`, legal pages too) scrolls with no visible scrollbar.
 - **Nothing typed that can drift.** The endpoint is `SITE_ORIGIN`'s, the plugin commands are
   `mcp-connect.ts`'s, prices and limits are `PLANS` / `PRICING`, the changelog is `releases.ts`'s `highlights` and
   `headsUp` only (never `ops` or `patches`, never an `unreleased` entry), and the MCP reference is GENERATED:
@@ -290,6 +294,13 @@ client and an AGENTS.md / CLAUDE.md snippet), Concepts (the authority model), MC
   centre (search results); Cursor and Windsurf from third-party guides (their docs sites were unreachable).
   Trov's OAuth server takes only https and loopback-http redirects, so the page says an older Cursor (`cursor://`)
   cannot sign in. Recheck these when a client changes its format.
+- **A chat, with no repository** (Connect › `CHAT_SECTION`): claude.ai and Claude Desktop get numbered connector
+  steps, then one section for any client outside a checkout: what to ask, what differs (the organization is
+  the manual connection's, nothing reads `git`, files travel inside the call up to
+  `ARTIFACT_INLINE_BINARY_MAX`), and `CHAT_SNIPPET` — `AGENT_SNIPPET` for a claude.ai Project's instructions,
+  sharing its orient / live / stage / tickets lines. It restates what `src/mcp.ts`'s descriptions and
+  `scopeError`'s hints say about "no checkout"; change them together. In the app, `otherClientsLink`
+  (`mcp-connect.ts`) is the one link there: the guided setup's agent step, Settings › MCP access, the Guide.
 - **llms.txt** (`web/src/llms.ts`, llmstxt.org): `# Trov`, a one-line `>` summary, a paragraph of context, then
   `## Docs`, `## Pricing`, `## Changelog`, `## Optional` — links to the Markdown versions, each with its page's
   description. **llms-full.txt** is that head plus every Markdown page in full (with its source URL). Both are

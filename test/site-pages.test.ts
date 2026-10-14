@@ -19,7 +19,7 @@ import { landingView } from "../web/src/landing";
 import { pricingView } from "../web/src/pricing";
 import { LEGAL_DOCS, legalView, type LegalKind } from "../web/src/legal";
 import { NOT_FOUND_LEDE, notFoundView } from "../web/src/not-found";
-import { AGENT_SNIPPET, MCP_URL, docsMarkdown, markdownFooter } from "../web/src/docs-content";
+import { AGENT_SNIPPET, CHAT_SECTION, CHAT_SNIPPET, MCP_URL, docsMarkdown, markdownFooter } from "../web/src/docs-content";
 import { docsView, renderDocs } from "../web/src/docs";
 import { mcpToolsMarkdown } from "../web/src/docs-tools";
 import { changelogMarkdown, publicReleases } from "../web/src/docs-changelog";
@@ -344,6 +344,24 @@ describe("the docs pages: the HTML is the Markdown, rendered", () => {
     // the agent's rules: orient, trust live, stage never confirm, record only when asked
     for (const needle of ["`query`", "`live`", "`record_session`", "Stage, never confirm", "only when asked", "`list_handoffs`"]) expect(AGENT_SNIPPET, needle).toContain(needle);
     expect(connect).toContain(AGENT_SNIPPET);
+  });
+
+  it("a chat with no repository has its own walkthrough and its own rules for the agent", () => {
+    const setup = docsMarkdown(docsPage("docs-setup"));
+    const connect = docsMarkdown(docsPage("docs-connect"));
+    expect(connect).toContain(`## ${CHAT_SECTION}`);
+    expect(setup).toContain(CHAT_SECTION);
+    // the connector steps end on the check, and the section says what differs
+    for (const needle of ["Add custom connector", "**manual** is already chosen", "`get_connection`", "`switch_org`", "Nothing reads `git`", "up to 1 MB"]) expect(connect, needle).toContain(needle);
+    expect(connect).toContain(CHAT_SNIPPET);
+    // the chat's rules never tell an agent to read a checkout it does not have
+    expect(CHAT_SNIPPET).not.toContain("git remote");
+    expect(CHAT_SNIPPET).not.toContain("on every Trov call");
+    for (const needle of ["`get_connection`", "`switch_org`", "Never invent a repository", "`content_base64`", "`include_file`", "only when asked"]) expect(CHAT_SNIPPET, needle).toContain(needle);
+    // and keep the rules that hold anywhere, word for word
+    const shared = (md: string) => md.split("\n").filter((l) => /^- \*\*(Trust only|Stage, never confirm|Tickets: your lane)/.test(l));
+    expect(shared(AGENT_SNIPPET)).toHaveLength(3);
+    expect(shared(CHAT_SNIPPET)).toEqual(shared(AGENT_SNIPPET));
   });
 
   it("the concepts page names every authority flag a read returns", () => {

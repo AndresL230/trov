@@ -360,6 +360,9 @@ describe("step 2 — connect your coding agent (both versions)", () => {
   it("the status is a live region", () => {
     expect(agentStatus({ grants: ok([]), tokens: ok([]) }, org())).toMatch(/role="status" aria-live="polite" data-welcome-agent="waiting"/);
   });
+  it("someone not on Claude Code is sent to every other client's setup", () => {
+    expect(view("agent")).toMatch(/Not using Claude Code\? <a href="\/docs\/connect" target="_blank" rel="noopener" data-mcp-other-clients/);
+  });
   it("the by-hand command is behind a real toggle, closed until asked for", () => {
     const shut = view("agent");
     expect(shut).toMatch(/data-act="welcomeByHand" data-field="welcomeByHand" aria-expanded="false" aria-controls="wel-byhand"/);
