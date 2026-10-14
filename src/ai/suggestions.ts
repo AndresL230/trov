@@ -25,10 +25,9 @@ export const AI_ACCEPT_HANDLERS: Readonly<Record<string, AcceptHandler>> = {};
 
 export type SuggestionAnswer =
   | { ok: true; suggestion: AiSuggestion }
-  | { ok: false; status: 403 | 404 | 409; error: AiSuggestionError }
-  | { ok: false; status: 400; error: "invalid" };
+  | { ok: false; status: 400 | 403 | 404 | 409; error: AiSuggestionError };
 
-const STATUS: Record<AiSuggestionError, 403 | 404 | 409> = { not_found: 404, not_open: 409, not_available: 409, forbidden: 403 };
+const STATUS: Record<AiSuggestionError, 400 | 403 | 404 | 409> = { not_found: 404, not_open: 409, not_available: 409, forbidden: 403, invalid: 400 };
 const refuse = (error: AiSuggestionError): SuggestionAnswer => ({ ok: false, status: STATUS[error], error });
 
 /**

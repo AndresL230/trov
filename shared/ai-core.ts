@@ -173,6 +173,17 @@ export interface AiSuggestion {
 export const AI_ITEM_TYPES = ["brief", "repo_state", "feed", "themes", "suggestion"] as const;
 export type AiItemType = (typeof AI_ITEM_TYPES)[number];
 
+/** The `itemRef` "Wrong?" sends for each item type — ONE definition for the screen that sends it and
+ *  the reads that hide what a person flagged. A written item is identified by what it is about and
+ *  when it was written, so flagging one version never hides the next. */
+export const aiItemRef = {
+  brief: (generatedAt: string): string => generatedAt,
+  repoState: (repo: string, generatedAt: string): string => `${repo}@${generatedAt}`,
+  themes: (repo: string, range: AiThemeRange, generatedAt: string): string => `${repo}:${range}@${generatedAt}`,
+  feed: (id: number): string => String(id),
+  suggestion: (id: number): string => String(id),
+} as const;
+
 /** `POST /ai/feedback` — hides the item for the person who pressed it; never edits the record. */
 export interface AiFeedbackBody {
   itemType: AiItemType;
@@ -185,9 +196,10 @@ export interface AiFeedbackBody {
 /** `POST /ai/suggestions/:id/accept` — `value` replaces the suggested value (Rename). */
 export interface AiAcceptBody { value?: unknown }
 
-/** Refusal codes the suggestion routes answer with (409 `{ error }`). `not_available`: no accept
- *  handler is registered for the suggestion's kind yet (every kind, today). */
-export const AI_SUGGESTION_ERRORS = ["not_found", "not_open", "not_available", "forbidden"] as const;
+/** Refusal codes the suggestion routes answer with (`{ error }`): `not_found` 404, `not_open` and
+ *  `not_available` 409 (no accept handler is registered for the suggestion's kind yet — every kind,
+ *  today), `forbidden` 403, `invalid` 400 (a body the schema refuses). */
+export const AI_SUGGESTION_ERRORS = ["not_found", "not_open", "not_available", "forbidden", "invalid"] as const;
 export type AiSuggestionError = (typeof AI_SUGGESTION_ERRORS)[number];
 
 /** Tenant routes (cookie only, under `/api/o/:slug`). */
@@ -197,6 +209,11 @@ export const AI_ROUTES = {
   dismiss: (id: number) => `/ai/suggestions/${id}/dismiss`, // POST {}
   feedback: "/ai/feedback",                       // POST AiFeedbackBody
 } as const;
+
+/** The first day of next month (UTC), `YYYY-MM-DD` — when a capped monthly allowance resumes. */
+export function nextMonthStart(now: Date): string {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
+}
 
 // ── Org settings › AI ───────────────────────────────────────────────────────
 export const AI_ELIGIBILITY = ["ok", "off", "no_key", "capped"] as const;

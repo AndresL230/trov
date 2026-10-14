@@ -54,3 +54,13 @@ describe("AI contracts", () => {
     expect(nextMonthStart(new Date("2026-12-31T23:00:00Z"))).toBe("2027-01-01");
   });
 });
+
+describe("aiItemRef", () => {
+  it("names a written item by what it is about and when it was written", async () => {
+    const { aiItemRef } = await import("@shared/ai-core");
+    expect(aiItemRef.brief("2026-10-14T12:00:00.000Z")).toBe("2026-10-14T12:00:00.000Z");
+    expect(aiItemRef.repoState("o/r", "t")).toBe("o/r@t");
+    expect(aiItemRef.themes("o/r", "quarter", "t")).toBe("o/r:quarter@t");
+    expect(aiItemRef.feed(7)).toBe("7");
+  });
+});

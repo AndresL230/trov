@@ -8,8 +8,7 @@
 // `planAndSummaries` reads the summaries' allowance). Nothing here calls a model, and nothing reachable
 // from src/mcp.ts imports it.
 import type { Env } from "../env";
-import type { AiEligibility } from "@shared/ai";
-import { nextMonthStart } from "@shared/ai-fixtures";
+import { nextMonthStart, type AiEligibility } from "@shared/ai";
 import { planRefusal, resolveEntitlements } from "@shared/plans";
 import type { TenantContext } from "../data/context";
 import { planAndAiRuns } from "../plans/gate";

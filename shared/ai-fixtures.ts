@@ -6,9 +6,11 @@
 
 import type { FeedRow } from "./rows";
 import {
-  AI_MODEL, AI_THEME_RANGE_WEEKS,
+  AI_MODEL, AI_THEME_RANGE_WEEKS, nextMonthStart,
   type AiBrief, type AiRepoState, type AiThemes, type AiThemeLane, type AiThemeRange, type AiCite, type AiState,
 } from "./ai-core";
+
+export { nextMonthStart };
 
 /** What `LOCAL_AI_PREVIEW` may be set to. `proposed` is the themes' proposed state; the other
  *  screens show `ready` under it. Anything else in the var is ignored (no preview). */
@@ -30,12 +32,6 @@ const ago = (now: Date, ms: number): string => new Date(now.getTime() - ms).toIS
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
-
-/** The first day of next month (UTC), `YYYY-MM-DD` — when a capped allowance resumes. */
-export function nextMonthStart(now: Date): string {
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  return d.toISOString().slice(0, 10);
-}
 
 /** The Monday (UTC) of `now`'s week, minus `back` weeks, `YYYY-MM-DD`. */
 function monday(now: Date, back: number): string {
