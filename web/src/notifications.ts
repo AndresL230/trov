@@ -20,9 +20,11 @@ const trackStyle = (on: boolean): string =>
   `width:36px;height:21px;border-radius:999px;border:1px solid ${on ? "var(--accent)" : "var(--border-strong)"};background:${on ? "var(--accent)" : "transparent"};position:relative;flex:none;padding:0;transition:all .15s ease;display:inline-block`;
 const knobStyle = (on: boolean): string =>
   `position:absolute;top:2px;left:${on ? "17px" : "2px"};width:15px;height:15px;border-radius:50%;background:${on ? "var(--accent-fg)" : "var(--fg-40)"};transition:left .15s ease,background .15s ease;display:block`;
-/** THE on/off switch (a `role="switch"` button): Settings' notification toggles and a connection's organizations. */
-export const switchBtn = (act: string, arg: string | null, on: boolean): string =>
-  `<button data-act="${act}"${arg ? ` data-arg="${attr(arg)}"` : ""} role="switch" aria-checked="${on ? "true" : "false"}" style="${trackStyle(on)}"><span style="${knobStyle(on)}"></span></button>`;
+/** THE on/off switch (a `role="switch"` button): Settings' notification toggles, a connection's organizations
+ *  and Org settings › AI. `label` names it when no visible label is bound to it; `busy` holds it while a
+ *  write is out. Without either the markup is unchanged. */
+export const switchBtn = (act: string, arg: string | null, on: boolean, label?: string, busy = false): string =>
+  `<button data-act="${act}"${arg ? ` data-arg="${attr(arg)}"` : ""} role="switch" aria-checked="${on ? "true" : "false"}"${label ? ` aria-label="${attr(label)}"` : ""}${busy ? ' disabled aria-busy="true"' : ""} style="${trackStyle(on)}"><span style="${knobStyle(on)}"></span></button>`;
 
 const INPUT = `height:40px;padding:0 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:13.5px;${LABEL};outline:none`;
 const ACCENT_BTN = `padding:0 18px;height:40px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600`;

@@ -21,6 +21,7 @@ import { sidebarView, navKeyOf, NAV_CLOSED } from "../web/src/sidebar";
 import { parseHash, hashForRoute } from "../web/src/hash";
 import type { IntegrationDTO, IntegrationKind, OrgEnvironmentDTO, OrgRepoDTO, OrgAuditDTO } from "@shared/integrations";
 import type { MyOrg, MyOrgsResponse, OrgInvite, OrgMember, OrgRole } from "@shared/orgs";
+import { AI_NEVER_SENT, AI_SENDS, type AiSettings } from "@shared/ai-core";
 
 const SECRET = "ghp_THIS_IS_THE_SECRET_VALUE_1a2b";
 const HOOK = "hook_0123456789abcdef0123456789abcdef01234567";
@@ -92,6 +93,7 @@ function fullUi(over: Partial<OrgUi> = {}): OrgUi {
       { id: "s2", actor: "mira", action: "secret.rotate", target: "github_token:", detail: { hint_last4: "1a2b", key_version: 1 }, at: "2026-10-05T11:00:00.000Z" },
       { id: "s1", actor: "andres", action: "secret.set", target: "github_token:", detail: { hint_last4: "0000", key_version: 1 }, at: "2026-10-05T10:00:00.000Z" },
     ]),
+    ai: ok<AiSettings>({ enabled: true, canEdit: true, eligibility: "ok", runs: { used: 12, cap: 300, resumesOn: null }, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT }),
     ...over,
   });
 }
@@ -153,9 +155,9 @@ describe("route, hash and sidebar", () => {
 
 describe("who sees what — admin vs member", () => {
   it("Integrations and Notifications are admin+; a member's picked tab falls to the first they may open", () => {
-    expect(orgTabsFor("owner")).toEqual(["integrations", "repos", "environments", "members", "notifications", "general"]);
+    expect(orgTabsFor("owner")).toEqual(["integrations", "repos", "environments", "members", "notifications", "ai", "general"]);
     expect(orgTabsFor("admin")).toEqual(orgTabsFor("owner"));
-    expect(orgTabsFor("member")).toEqual(["repos", "environments", "members", "general"]);
+    expect(orgTabsFor("member")).toEqual(["repos", "environments", "members", "ai", "general"]);
     expect(effectiveOrgTab("integrations", "member")).toBe("repos");
     expect(effectiveOrgTab("notifications", "member")).toBe("repos");
     expect(effectiveOrgTab("integrations", "admin")).toBe("integrations");
@@ -756,7 +758,7 @@ describe("phone width and accessibility hooks", () => {
 });
 
 describe("the hierarchy every tab keeps (org-ui.ts)", () => {
-  const TABS = ["integrations", "repos", "environments", "members", "notifications", "general"] as const;
+  const TABS = ["integrations", "repos", "environments", "members", "notifications", "ai", "general"] as const;
   const notif = { policy: [], settings: null, outbox: [], outboxExpanded: null, fromDraft: null };
   const page = (tab: OrgUi["tab"], role: OrgRole = "owner") => orgSettingsView({ ...props({ ...fullUi(), tab }, role), notif: role === "member" ? null : notif });
   const panel = (html: string) => html.slice(html.indexOf('role="tabpanel"'));

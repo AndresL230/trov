@@ -10,7 +10,7 @@ import type { QueryResult, QueryPrimary, QueryPointer, SprintView, SprintDetail,
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
 import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
-import { agentMark, authorityMark, markShape, stateMark } from "./marks";
+import { agentMark, aiMark, authorityMark, markShape, stateMark } from "./marks";
 import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId } from "./sprints";
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline, timelineShapes } from "./timeline";
@@ -23,7 +23,7 @@ import { AVATAR_TYPES } from "@shared/people";
 import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
 import {
-  myWorkLayout, mwSpans, ticketsTile, reviewTile, sessionsTile, repoTile, libraryStrip, handoffsForMe,
+  myWorkLayout, mwSpans, ticketsTile, reviewTile, sessionsTile, repoTile, libraryStrip, handoffsForMe, briefTile,
   type MwLoad, type MwSession, type MwHandoff, type MwLibrary, type MwRepoTab, type MwDue,
 } from "./mywork";
 import { TAGS } from "@shared/vocabulary";
@@ -74,6 +74,7 @@ import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, 
 import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type WelcomeUi } from "./welcome";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 import { previewBanner, previewState, type PreviewMode } from "./preview";
+import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, type AiUi } from "./ai-ui";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
 // Technical | Product). Values come from the data, not a fixed union.
@@ -433,6 +434,8 @@ export interface AppState {
   /** The state preview (`?preview=empty` / `?preview=loading`, web/src/preview.ts): every screen
    *  paints its empty layout or its loading skeleton instead of its data. null = off. */
   preview: PreviewMode | null;
+  /** The AI screens (ai-ui.ts): what "Wrong?" hid, the Feed's Source, the themes' range and lane. */
+  ai: AiUi;
 }
 
 /** Project the app state onto the Sync GitHub control and panel (sync.ts never sees AppState). */
@@ -566,6 +569,7 @@ export function initialState(): AppState {
     myOrgs: { status: "idle", data: null },
     org: initialOrgUi(),
     preview: null,
+    ai: initialAiUi(),
   };
 }
 
@@ -855,6 +859,8 @@ function header(s: AppState): string {
     id: "feed-view", ariaLabel: "Feed view", act: "setFeedView", value: s.feedView, inertOn: true,
     options: [{ value: "reading", label: "For reading" }, { value: "agents", label: "For agents" }],
   }) : "";
+  // The Source switch (All / Agents / Trov) sits beside it — only once a loaded entry carries `ai`.
+  const feedSourceSwitch = s.screen === "feed" && feedHasAi(s) ? feedSourceSeg(s) : "";
   const feedMenu = s.screen === "feed" ? feedFilterMenu(s) : null;
   const feedControls = feedMenu
     ? `<div style="position:relative;display:flex;align-items:stretch;height:32px">${filterMenuBackdrop(feedMenu)}${filterMenu(feedMenu)}</div>`
@@ -936,7 +942,7 @@ function header(s: AppState): string {
       ${art ? art.crumb : crumb}
     </div>
     <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
-      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedViewSwitch}${bugBtn}${themeBtn}
+      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedSourceSwitch}${feedViewSwitch}${bugBtn}${themeBtn}
     </div>
   </header>`;
 }
@@ -1154,11 +1160,73 @@ function feedAuthorTag(s: AppState, author: string): string {
   return handleLink(personFor(s, author), author);
 }
 
+// ── the Feed's entries written by Trov (ai-ui.ts) ────────────────────────────
+/** An entry Trov wrote. One with `ai.origin === "agent"` (or no `ai`) is an agent's, as before. */
+const isTrovEntry = (e: FeedRow): e is FeedRow & { ai: NonNullable<FeedRow["ai"]> } => e.ai?.origin === "ai";
+/** Any loaded entry carries `ai`: only then are the Source switch and the note drawn. */
+export const feedHasAi = (s: AppState): boolean => s.feed.data.some((e) => e.ai !== undefined);
+const feedNoteSeen = (s: AppState): boolean => !!s.me && s.ai.noteSeen.some((h) => h.toLowerCase() === s.me!.handle.toLowerCase());
+/** The rows on screen: the time filter, then the Source switch, then whatever "Wrong?" hid. */
+export function feedShown(s: AppState): FeedRow[] {
+  const rows = feedRows(s);
+  if (!feedHasAi(s)) return rows;
+  const src = s.ai.feedSource;
+  return rows.filter((e) => (src === "trov" ? isTrovEntry(e) : src === "agents" ? !isTrovEntry(e) : true)
+    && !(isTrovEntry(e) && aiIsHidden(s.ai, "feed", String(e.id))));
+}
+function feedSourceSeg(s: AppState): string {
+  return segmented({
+    id: "feed-source", ariaLabel: "Source", act: "aiFeedSource", value: s.ai.feedSource, inertOn: true,
+    options: [{ value: "all", label: "All" }, { value: "agents", label: "Agents" }, { value: "trov", label: "Trov" }],
+  });
+}
+/** Said once, above the first entry Trov wrote, until this person presses "Got it". */
+export const FEED_AI_NOTE = "Trov now writes entries from your commits, about 45 minutes after your last push. Your agents can stick to decisions and findings.";
+function feedAiNote(): string {
+  return `<aside aria-label="New" class="cnpy-ai-note" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 22%,transparent);border-radius:10px;padding:12px 16px;margin-bottom:12px">
+      <p style="margin:0;flex:1 1 320px;font-size:13.5px;line-height:1.55">${esc(FEED_AI_NOTE)} <button type="button" data-act="orgGo" data-arg="ai" class="cnpy-mutelink" style="padding:0;font:inherit;font-weight:500;color:var(--accent)">AI settings</button></p>
+      <button type="button" data-act="aiNoteGotIt" class="cnpy-ghostbtn" style="font-size:13px;font-weight:500;border:1px solid var(--border-strong);background:var(--surface);border-radius:6px;padding:5px 12px;min-height:32px">Got it</button>
+    </aside>`;
+}
+/** An entry Trov wrote: the AI mark as its avatar, "Trov" as the name, "for <subject>", and the
+ *  sources it was written from with "Wrong?" under the brief. */
+function feedTrovCard(s: AppState, e: FeedRow & { ai: NonNullable<FeedRow["ai"]> }): string {
+  const a = e.ai;
+  const tip = aiFeedTip(a.sources, a.moreCount);
+  const avatar = `<span aria-hidden="true" class="cnpy-ai-av" style="width:30px;height:30px;border-radius:7px;background:var(--accent-soft);display:inline-flex;align-items:center;justify-content:center;flex:none">${aiMark(15)}</span>`;
+  const subject = a.subject ? `<span data-mtip="${attr(tip)}" style="font-size:12px;color:var(--fg-55)">for ${handleLink(personFor(s, a.subject), a.subject)}</span>` : `<span data-mtip="${attr(tip)}" style="font-size:12px;color:var(--fg-55)">written by Trov</span>`;
+  const from = aiFromLine(a.sources, a.moreCount);
+  return `<div${surface("padding:16px 18px;margin-bottom:12px", { cls: "cnpy-ai-entry" })} data-ai="feed" data-feed-id="${e.id}">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div style="margin-top:1px">${avatar}</div>
+        <div style="flex:1;min-width:0">
+          <div class="cnpy-md-inline" style="font-size:14px;font-weight:500;line-height:1.5;letter-spacing:-0.005em">${renderMarkdownInline(e.summary)}</div>
+          ${s.feedView === "reading" ? feedBrief(e.brief) : feedBody(e.body) || feedBrief(e.brief)}
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px">
+            <span style="font-size:12px;font-weight:600;color:var(--fg)">Trov</span>
+            ${subject}
+            <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
+            <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>
+          </div>
+          <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-55)">
+            ${from || "<span></span>"}${aiWrongBtn(aiFeedback("feed", String(e.id), "feed", a.model), 12.5)}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
 function feedView(s: AppState): string {
   if ((s.feed.status === "loading" || s.feed.status === "idle") && s.feed.data.length === 0) return wrapFeed(s, feedSkeleton());
   if (s.feed.status === "error") return wrapFeed(s, notice("Couldn't load the feed."));
 
-  const cards = feedRows(s).map((e) => {
+  // Entries written by Trov (`ai.origin === "ai"`) get their own byline and footer; the Source switch
+  // and "Wrong?" narrow what is shown; the one-time note sits above the first of them on screen.
+  const shown = feedShown(s);
+  const noteAt = feedHasAi(s) && !feedNoteSeen(s) ? shown.findIndex(isTrovEntry) : -1;
+  const cards = shown.map((e, i) => {
+    const note = i === noteAt ? feedAiNote() : "";
+    if (isTrovEntry(e)) return note + feedTrovCard(s, e);
     const artifacts = feedArtifacts(e.artifacts);
     const artifactRow = artifacts.length
       ? `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">
@@ -1189,7 +1257,7 @@ function feedView(s: AppState): string {
   if (s.feed.status === "ok" && s.feed.data.length === 0 && s.feedAuthor === "all" && s.feedTag === "all") {
     return wrapFeed(s, emptyLayout("feed", { text: FEED_EMPTY, action: CONNECT_AGENT, sayStyle: "margin-bottom:12px", shapes: skList(3, feedCardShape) }), false);
   }
-  const empty = s.feed.status === "ok" && feedRows(s).length === 0 ? notice("No entries match this filter.") : "";
+  const empty = s.feed.status === "ok" && shown.length === 0 ? notice("No entries match this filter.") : "";
   return wrapFeed(s, `<div class="cnpy-stagger">${cards}</div>${empty}`);
 }
 
@@ -2549,7 +2617,8 @@ function myWorkView(s: AppState): string {
   return myWorkLayout({
     greeting: `${greetingFor()}, ${esc(s.displayName || s.me?.name || s.me?.handle || "there")}`,
     dateLine: stat ? `${esc(today)} · ${esc(stat)}` : esc(today),
-    tiles: [...order, ...strips].map((k) => tile[k]()),
+    // Your brief (written by Trov) leads — ONLY when the dashboard carries one (mywork.ts `briefTile`).
+    tiles: [...(d?.brief ? [briefTile(d.brief, aiIsHidden(s.ai, "brief", d.brief.generatedAt ?? "brief"))] : []), ...[...order, ...strips].map((k) => tile[k]())],
   });
 }
 
@@ -2739,6 +2808,7 @@ function repoProps(s: AppState): RepoProps {
     tab: s.repoTab, range: s.repoRange, driftOpen: s.repoDriftOpen, repo: s.repo, fetchedAt: s.repoFetchedAt, sample: s.repoSample,
     admin: viewerIsAdmin(s), noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, poll: s.repoPoll, productEnv: s.repoProductEnv, persons: s.persons.data,
     synced: syncRepoLabel(s.sync, Date.now()),
+    ai: { ui: s.ai, admin: viewerIsAdmin(s), repo: s.repo.data?.repo ?? "" },
   };
 }
 

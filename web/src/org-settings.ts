@@ -1,5 +1,5 @@
 // Org settings — the ONE place an org is administered from (canopy-multitenancy.md §5.3,
-// §8.7): six tabs under one screen, `#org[/<tab>]`.
+// §8.7): seven tabs under one screen, `#org[/<tab>]`.
 //   INTEGRATIONS  — the org's credentials (web/src/integrations.ts). Admin+ only.
 //   REPOSITORIES  — connected repos, one primary.
 //   ENVIRONMENTS  — the environments the Repo dashboard reports on, in drift order.
@@ -9,6 +9,8 @@
 //   NOTIFICATIONS — the e-mail digests: which exist and their default cadence, the send hour,
 //                   timezone and sender name, preview and test send, the outbox
 //                   (web/src/notifications.ts — under Maintenance › People until then). Admin+ only.
+//   AI            — the switch for what Trov writes, this month's AI runs, what is sent to Anthropic
+//                   (web/src/org-ai.ts). Everyone reads it; an admin or an owner flips the switch.
 //   GENERAL       — the org's name; its slug, read-only.
 // A member who is not an admin sees what the API lets them read: no Integrations and no
 // Notifications tab, and the other four read-only. Above the tabs an admin of a new org gets a setup checklist,
@@ -47,13 +49,15 @@ import { orgLogoSection, initialOrgLogoUi, type OrgLogoUi } from "./org-logo";
 import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, githubAppRow, githubLink, lostBanner, mismatchBanner, repoPicker, suspendedBanner, type GithubNotice } from "./github-app";
 import type { GithubAppStatusDTO, GithubReposDTO } from "@shared/github-app";
 import { githubInstallHref } from "./api";
+import type { AiSettings } from "@shared/ai-core";
+import { aiTab } from "./org-ai";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
-export type OrgTab = "integrations" | "repos" | "environments" | "members" | "notifications" | "general";
-export const ORG_TABS: readonly OrgTab[] = ["integrations", "repos", "environments", "members", "notifications", "general"];
+export type OrgTab = "integrations" | "repos" | "environments" | "members" | "notifications" | "ai" | "general";
+export const ORG_TABS: readonly OrgTab[] = ["integrations", "repos", "environments", "members", "notifications", "ai", "general"];
 export const isOrgTab = (v: unknown): v is OrgTab => typeof v === "string" && (ORG_TABS as readonly string[]).includes(v);
-const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", members: "Members", notifications: "Notifications", general: "General" };
+const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", members: "Members", notifications: "Notifications", ai: "AI", general: "General" };
 /** The tabs only an admin or an owner may open (their APIs are admin+). */
 const ADMIN_TABS: readonly OrgTab[] = ["integrations", "notifications"];
 
@@ -156,6 +160,10 @@ export interface OrgUi {
   billing: OrgBillingUi;
   /** General › Delete organization (an owner's; deletion.ts, deletion-actions.ts). */
   del: DeleteUi<OrgDeletionPreview>;
+  /** AI (org-ai.ts): the switch, this month's runs, what is sent — everyone reads it; an admin flips it. */
+  ai: OrgSlice<AiSettings | null>;
+  /** The switch's write is out. */
+  aiSaving: boolean;
 }
 
 export function initialOrgUi(): OrgUi {
@@ -169,6 +177,7 @@ export function initialOrgUi(): OrgUi {
     envEdit: null, envBusy: false,
     secretForm: null, tests: {}, auditOpen: false, openRows: [], confirm: null, billing: initialOrgBillingUi(),
     del: initialDeleteUi<OrgDeletionPreview>(),
+    ai: idle(null), aiSaving: false,
   };
 }
 
@@ -857,6 +866,7 @@ export function orgSettingsView(p: OrgSettingsProps): string {
     : tab === "environments" ? environmentsTab(p.org, p.ui)
     : tab === "members" ? membersTab(p.org, p.ui, p.me, p.identity ?? null, p.dd)
     : tab === "notifications" ? notificationsTab(p.org, p.notif, p.dd)
+    : tab === "ai" ? aiTab(p.org, p.ui.ai, p.ui.aiSaving)
     : generalTab(p.org, p.ui);
   const logins = roleAtLeast(p.org.role, "admin") ? p.identity?.groups.length ?? 0 : 0;
   // The checklist's slot is always there (empty once setup is done), so the tab bar under it is

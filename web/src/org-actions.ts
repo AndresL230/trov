@@ -15,7 +15,7 @@ import {
   resendOrgInvite, getOrgSettings, putOrgSettings, listOrgMembers, updateOrgMember, removeOrgMember, listOrgInvites, createOrgInvite, revokeOrgInvite,
   listOrgRepos, addOrgRepo, removeOrgRepo, listOrgEnvironments, putOrgEnvironment, reorderOrgEnvironments, deleteOrgEnvironment,
   listOrgIntegrations, setOrgIntegration, rotateOrgIntegration, deleteOrgIntegration, putOrgIntegrationConfig, testOrgIntegration, rotateOrgKey, listOrgAudit,
-  getOrgGithub, listOrgGithubRepos, trackOrgGithubRepo, testOrgGithub, disconnectOrgGithub,
+  getOrgGithub, listOrgGithubRepos, trackOrgGithubRepo, testOrgGithub, disconnectOrgGithub, getAiSettings, putAiSettings,
   type OrgEnvironmentWrite,
 } from "./api";
 import {
@@ -146,6 +146,30 @@ export function createOrgController(host: OrgHost): OrgController {
   const loadEnvs = () => read(() => ui().envs, (v) => { ui().envs = v; }, listOrgEnvironments);
   const loadIntegrations = () => read(() => ui().integrations, (v) => { ui().integrations = v; }, listOrgIntegrations);
   const loadAudit = () => read(() => ui().audit, (v) => { ui().audit = v; }, (slug) => listOrgAudit(slug));
+  /** AI (org-ai.ts): the switch, this month's runs, what is sent — every member reads it. */
+  const loadAi = () => read(() => ui().ai, (v) => { ui().ai = v; }, getAiSettings);
+  /** The switch: an admin's write. The answer is the settings as they now stand. */
+  function toggleAi(): void {
+    const o = org();
+    const u = ui();
+    const cur = u.ai.data;
+    if (!o || !cur || !cur.canEdit || u.aiSaving) return;
+    u.aiSaving = true;
+    rerender();
+    putAiSettings(o.slug, !cur.enabled)
+      .then((next) => {
+        u.aiSaving = false;
+        if (ui().slug !== o.slug) return;
+        u.ai = { status: "ok", data: next };
+        host.flash(next.enabled ? "Trov's AI is on for this organization" : "Trov's AI is off for this organization");
+      })
+      .catch((e) => {
+        u.aiSaving = false;
+        if (fail(e)) return;
+        host.flash(orgErrorText(e, "Couldn't change the AI setting."), 6000);
+        rerender();
+      });
+  }
   /** The org's plan and its use of each limit — read again after any write a limit counts. */
   const loadPlan = () => read(() => ui().plan, (v) => { ui().plan = v; }, getOrgPlan);
   /** A refusal as words: the plan's one sentence when the plan refused (a 402), else `orgErrorText`. */
@@ -239,7 +263,7 @@ export function createOrgController(host: OrgHost): OrgController {
   }
   function loadSlices(): void {
     if (!adoptOrg()) return;
-    loadSettings(); loadMembers(); loadRepos(); loadEnvs(); loadPlan(); loadGithub(); loadAdmin();
+    loadSettings(); loadMembers(); loadRepos(); loadEnvs(); loadPlan(); loadGithub(); loadAdmin(); loadAi();
   }
   /** The plan alone — what personal Settings' Plan and Limits tiles read (settings-plan.ts). */
   function loadPlanOnly(): void {
@@ -641,6 +665,9 @@ export function createOrgController(host: OrgHost): OrgController {
         break;
       case "orgReload": loadOrgs(loadSlices); break;
       case "orgPlanReload": loadPlanOnly(); return;
+
+      // AI
+      case "orgAiToggle": toggleAi(); return;
 
       // General
       case "orgNameDraft": u.nameDraft = value ?? ""; u.nameError = null; break;

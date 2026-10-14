@@ -83,6 +83,7 @@ import {
 import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
+import { createAiController, readNoteSeen } from "./ai-actions";
 import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
 import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
@@ -141,6 +142,9 @@ const orgCtl = createOrgController({
   state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
   reloadOrgs: () => loadMyOrgs(), leaveOrg: () => showPicker(null),
 });
+// Trov's AI screens (web/src/ai-actions.ts): every `ai…` act — "Wrong?", the Feed's Source switch and
+// note, the themes' range and lane, Accept / Rename / Remove on a suggestion.
+const aiCtl = createAiController({ state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e) });
 // Organizations as a person meets them (web/src/org-picker-actions.ts): the switcher's menu, the
 // picker, the create dialog — every `orgs…` act. Opening an org is a page load.
 const orgsCtl = createOrgsController({
@@ -199,6 +203,7 @@ try {
   const t = localStorage.getItem("trov.theme");
   if (t === "dark" || t === "light" || t === "system") state.theme = t;
   else if (t === "midnight") state.theme = "dark"; // Midnight was retired (2026-09-26) — its closest theme
+  state.ai.noteSeen = readNoteSeen();
   const fv = localStorage.getItem("trov.feedView");
   if (fv === "reading" || fv === "agents") state.feedView = fv;
   const pv = localStorage.getItem("trov.promptView");
@@ -3886,6 +3891,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("welcome")) { welcomeCtl.act(act, arg); return; }
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }
       if (act.startsWith("org")) { if (act === "orgGo") loadOrgAdminExtras(); orgCtl.act(act, arg, value); return; }
+      // Every AI act (ai-actions.ts), which rerenders itself.
+      if (act.startsWith("ai")) { aiCtl.act(act, arg, value); return; }
       // Every Artifacts act goes to the one reducer in artifacts.ts.
       if (act.startsWith("art")) {
         const screen = state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact" ? state.screen : null;

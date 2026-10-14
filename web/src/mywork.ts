@@ -17,6 +17,8 @@ import type { ReviewHead } from "./triage-map";
 import { segmented } from "./segmented";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skList, skW, type EmptyAction } from "./skeleton";
 import { esc, attr, relTime, surface } from "./ui";
+import type { AiBrief, AiBriefNextItem, AiLine } from "@shared/ai-core";
+import { AI_EMPTY, AI_TIP, aiByline, aiCapped, aiCite, aiCites, aiDay, aiEmpty, aiFeedback, aiWrongBtn } from "./ai-ui";
 
 export type MwRepoTab = "prs" | "ci" | "deploys";
 export const MW_REPO_TABS: readonly MwRepoTab[] = ["prs", "ci", "deploys"];
@@ -379,6 +381,66 @@ export function mwSpans(order: string[], strips: string[]): Record<string, numbe
   for (let i = 2; i < order.length; i += 3) split(order.slice(i, i + 3));
   if (strips.length) split(strips);
   return spans;
+}
+
+// ── Your brief (written by Trov) ─────────────────────────────────────────────
+// The first card, shown ONLY when the dashboard carries `brief` (shared/ai-core.ts): with the field
+// absent My Work is exactly the five tiles above. Now / Recently / Next, each line with its sources;
+// a Next row is a real item (its title is the item's own, from its row) with the model's one muted
+// "why". The kit's pieces (ai-ui.ts) say who wrote it and offer "Wrong?".
+
+const BRIEF_LABEL = "font-family:var(--label);font-weight:600;color:var(--fg-55);font-size:13.5px;padding-top:1px";
+const ARROW_MARK = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="flex:none"><path d="M4 12h12M12 6l6 6-6 6"></path></svg>`;
+const TICKET_BOX = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="flex:none"><rect x="4" y="5" width="16" height="14" rx="2"></rect></svg>`;
+const kindWord = (icon: string, word: string): string =>
+  `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--fg-70);white-space:nowrap">${icon}${esc(word)}</span>`;
+
+/** A Next row's lead: Failing (the app's failing mark), Handoff (an arrow), the ticket's `#N`, or Due soon. */
+export function briefNextMark(it: AiBriefNextItem): string {
+  if (it.kind === "failing") return kindMark("Failing", "bad", 12.5, "Its last CI run failed.");
+  if (it.kind === "due") return kindMark("Due soon", "warn", 12.5, "In a sprint that is due within the week.");
+  if (it.kind === "handoff") return kindWord(ARROW_MARK, "Handoff");
+  return kindWord(TICKET_BOX, it.cites[0]?.label ?? "Ticket");
+}
+
+function briefLine(line: AiLine): string {
+  return `<div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+      <p style="margin:0;line-height:1.55;overflow-wrap:anywhere">${esc(line.text)}</p>
+      ${line.cites.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px">${aiCites(line.cites)}</div>` : ""}
+    </div>`;
+}
+function briefNextRow(it: AiBriefNextItem): string {
+  const c = it.cites[0];
+  const title = c ? aiCite({ ...c, label: it.title }, "color:var(--fg);font-weight:500") : `<span style="color:var(--fg);font-weight:500">${esc(it.title)}</span>`;
+  return `<li class="mw-brief-next" style="display:flex;gap:12px;align-items:baseline;min-width:0">
+      <span style="flex:0 0 auto;min-width:76px">${briefNextMark(it)}</span>
+      <div style="display:flex;flex-direction:column;min-width:0">${title}<span style="color:var(--fg-55);font-size:13px;line-height:1.5">${esc(it.why)}</span></div>
+    </li>`;
+}
+
+/** My Work's first card. `hidden` = this person pressed "Wrong?" on it: nothing is drawn. */
+export function briefTile(b: AiBrief, hidden = false): string {
+  if (hidden) return "";
+  const written = b.generatedAt !== null;
+  const wrong = written && b.state !== "empty" ? aiWrongBtn(aiFeedback("brief", b.generatedAt ?? "brief", "brief", b.model)) : "";
+  const head = `<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px">
+      <h2 id="mw-brief-h" style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.01em">Your brief</h2>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">${aiByline(b.generatedAt, AI_TIP.brief)}${wrong}</div>
+    </div>`;
+  let body: string;
+  if (b.state === "empty") body = aiEmpty(AI_EMPTY.brief);
+  else if (b.state === "capped") {
+    const last = [b.now, b.recently].filter((l): l is AiLine => l !== null)
+      .map((l) => `<p style="margin:0;color:var(--fg-70);line-height:1.55;overflow-wrap:anywhere">${esc(l.text)}</p>`).join("");
+    body = `<div style="display:flex;flex-direction:column;gap:8px">${last}${aiCapped(b, `your brief resumes ${aiDay(b.resumesOn)}`)}</div>`;
+  } else {
+    const rows: string[] = [];
+    if (b.now) rows.push(`<div style="${BRIEF_LABEL}">Now</div>${briefLine(b.now)}`);
+    if (b.recently) rows.push(`<div style="${BRIEF_LABEL}">Recently</div>${briefLine(b.recently)}`);
+    if (b.next.items.length) rows.push(`<div style="${BRIEF_LABEL}">Next</div><ol style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;min-width:0">${b.next.items.map(briefNextRow).join("")}</ol>`);
+    body = rows.length ? `<div class="mw-brief-grid">${rows.join("")}</div>` : aiEmpty(AI_EMPTY.brief);
+  }
+  return `<section${surface("--span:12;padding:20px 22px;display:flex;flex-direction:column;gap:16px;min-width:0", { cls: "mw-tile mw-brief cnpy-rise" })} data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}${body}</section>`;
 }
 
 // ── the page ─────────────────────────────────────────────────────────────────

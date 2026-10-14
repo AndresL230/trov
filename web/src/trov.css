@@ -89,6 +89,22 @@ input, select { font-family: inherit; }
   .mw-libdiv { width:100%; height:1px; }
 }
 
+/* ── Written by Trov (web/src/ai-ui.ts; mywork.ts `briefTile`, repo-ai.ts, the Feed's Trov entries) ──
+   Drawn only when a read carries its AI field. Every radius is inline (values the corners block
+   already scales); nothing here declares one. */
+.mw-brief-grid { display:grid; grid-template-columns:92px minmax(0,1fr); column-gap:18px; row-gap:16px; min-width:0; }
+@container mwmain (max-width: 560px) {
+  .mw-brief-grid { grid-template-columns:minmax(0,1fr); row-gap:4px; }
+  .mw-brief-grid > :nth-child(2n):not(:last-child) { margin-bottom:12px; }
+}
+.repo-state-cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr)); gap:20px; }
+.cnpy-ai-cite:hover { text-decoration:underline; text-underline-offset:2px; }
+.cnpy-ai-cite:focus-visible, .repo-lane:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.repo-lane { transition:opacity .15s var(--fx-ease), background-color .15s var(--fx-ease); }
+.repo-lane[data-on="0"]:hover { opacity:.8 !important; }
+.repo-themes-proposed:focus-visible { outline:2px solid var(--focus); outline-offset:4px; }
+@media (prefers-reduced-motion: reduce) { .repo-lane { transition:none; } }
+
 /* ── Two columns + a sticky aside (ui.ts `asideColumns`) — Roadmap › Narrative (the
    narrative beside Now + Recent happenings) and the Feed (entries beside This week +
    Waiting on review): the main column on the left, a sticky 360px aside on the right,

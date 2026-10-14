@@ -326,6 +326,7 @@ import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView,
 import type * as IntT from "@shared/integrations";
 import type { BillingCheckoutRequest, BillingCheckoutResponse, BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
 import type * as GhT from "@shared/github-app";
+import { AI_ROUTES, type AiAcceptBody, type AiFeedbackBody, type AiSettings } from "@shared/ai-core";
 /** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
  *  `detail` the server's sentence, `field` the input it is about. */
 export class OrgApiError extends ApiError {
@@ -391,6 +392,21 @@ export function getBillingStatus(sessionId: string): Promise<BillingStatusRespon
 /** What can be bought, and the caller's own paid organizations (public: the pricing page asks it signed out too). */
 export function getBillingConfig(): Promise<BillingConfigResponse> { return orgSend("GET", "/api/billing/config"); }
 export function getOrgSettings(slug: string): Promise<{ org: OrgT.OrgSettings; can_edit: boolean }> { return orgSend("GET", orgPath(slug, "/settings")); }
+
+// ── Trov's AI (shared/ai-core.ts `AI_ROUTES`; cookie only, never MCP) ─────────
+/** Org settings › AI: the switch, this month's runs against the allowance, what is sent (any member). */
+export function getAiSettings(slug: string): Promise<AiSettings> { return orgSend("GET", orgPath(slug, AI_ROUTES.settings)); }
+/** Flip the switch (admin). Answers the settings as they now stand. */
+export function putAiSettings(slug: string, enabled: boolean): Promise<AiSettings> { return orgSend("PUT", orgPath(slug, AI_ROUTES.settings), { enabled }); }
+/** Accept a suggestion; `value` replaces the suggested one (a renamed theme: `{ name }`). A kind with no
+ *  accept handler yet answers 409 `not_available` (`OrgApiError.message`), which the screen says. */
+export function acceptAiSuggestion(id: number, value?: unknown): Promise<unknown> {
+  const body: AiAcceptBody = value === undefined ? {} : { value };
+  return orgSend("POST", AI_ROUTES.accept(id), body);
+}
+export function dismissAiSuggestion(id: number): Promise<unknown> { return orgSend("POST", AI_ROUTES.dismiss(id), {}); }
+/** "Wrong?": hides the item for this person from now on; never edits the record. */
+export function sendAiFeedback(body: AiFeedbackBody): Promise<unknown> { return orgSend("POST", AI_ROUTES.feedback, body); }
 export function putOrgSettings(slug: string, name: string): Promise<{ ok: true; org: OrgT.OrgSettings }> { return orgSend("PUT", orgPath(slug, "/settings"), { name }); }
 /** Upload the org's image (multipart `file`; the caller crops and downsizes it first — avatar.ts). Admin+.
  *  Refusals: `invalid_image` (400), `too_large` (413), `rate_limited` (429). Answers with the image that shows now. */

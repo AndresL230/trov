@@ -213,6 +213,20 @@ export function agentMark(size = 12): string {
   return `<span data-mtip="Written by an agent session, recorded as this person." style="display:inline-flex;align-items:center;gap:4px;font-size:${size}px;color:var(--fg-55);white-space:nowrap">${svg(Math.round(size), BOT, null, "currentColor", "0 0 24 24")}agent</span>`;
 }
 
+/** The Trov AI glyph (the AI screens' mock, docs/superpowers/specs/2026-10-14-ai-screens-mock.md): a
+ *  plain pennant, filled in the accent. Not the brand logo (`shared/mark.ts` `trovMark`): it marks a
+ *  thing Trov WROTE, the way the robot marks a thing an agent wrote. */
+export const AI_GLYPH = `<path d="M4 4h16v6l-4 4h-4v6H8v-6L4 10z" fill="currentColor"/>`;
+/** The sentence every written thing's tooltip ends with. */
+export const AI_NOT_OFFICIAL = "Not official; check the sources.";
+
+/** "Trov wrote this": the AI glyph in the accent. `tip` (escaped here) says what it was written from —
+ *  "Written by Trov from your sessions, … Not official; check the sources." — and is the mark's
+ *  tooltip; `label` names it when it stands alone with no words beside it. */
+export function aiMark(size = 12, tip: string | null = null, label: string | null = null): string {
+  return svg(size, AI_GLYPH, label === null ? null : esc(label), "var(--accent)", "0 0 24 24", tip === null ? null : esc(tip));
+}
+
 // ── search authority ─────────────────────────────────────────────────────────
 
 /** A search hit's authority. Live is the normal state, so it has no mark; the rest are not

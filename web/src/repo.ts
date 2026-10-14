@@ -28,6 +28,7 @@ import type { PersonSummary } from "./api";
 import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { emptyLayout, emptyShapes, skeleton, skBar, skList, skW } from "./skeleton";
+import { repoStateSection, themesSection, type RepoAiProps } from "./repo-ai";
 
 export interface RepoProps {
   tab: RepoTab;
@@ -50,6 +51,9 @@ export interface RepoProps {
   persons?: PersonSummary[];
   /** Sync GitHub's line beside "updated …" (sync.ts `syncRepoLabel`: "synced 12m ago by @andres"); "" / absent = none. */
   synced?: string;
+  /** The AI screens' state (repo-ai.ts): Overview's State and Planning's Where the work went are drawn
+   *  only when the dashboard carries `state` / `themes` AND this is given. */
+  ai?: RepoAiProps;
 }
 
 /** "Poll now" (POST /admin/poll): in flight, its per-source outcomes, a 409 (another refresh holds the lock), or a failed request. */
@@ -1075,6 +1079,16 @@ export const REPO_EMPTY = {
   member: "This organization has no repository connected yet; an admin connects one in Org settings. Preview with sample data shows every section filled in.",
 } as const;
 
+/** The tab's section Trov wrote (repo-ai.ts), above the panel: Overview's State, Planning's Where the
+ *  work went. "" unless the live dashboard carries the field — never on sample data. */
+function repoAiSection(p: RepoProps): string {
+  const d = p.repo.data;
+  if (!p.ai || p.sample || !d) return "";
+  if (p.tab === "overview" && d.state) return repoStateSection(d.state, p.ai);
+  if (p.tab === "planning" && d.themes) return themesSection(d.themes, p.ai);
+  return "";
+}
+
 export function repoView(p: RepoProps): string {
   sectionNo = 0;
   const body = p.tab === "overview" ? overviewTab(p) : p.tab === "code" ? codeTab(p) : p.tab === "ci" ? ciTab(p)
@@ -1122,7 +1136,7 @@ export function repoView(p: RepoProps): string {
   return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}">
     ${repoTabBar(p.tab)}
     <div${tabPanelAttrs("repo-tab", p.tab)} style="padding-top:20px">
-      ${banner}
+      ${banner}${repoAiSection(p)}
       <div class="repo-panel ${SURFACE}" style="${PANEL}">${canPollRepo(p) ? pollStrip(p.poll) : ""}${body}</div>
       ${footer}
     </div>
