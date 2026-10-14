@@ -260,7 +260,7 @@ const COOKIES: string[][] = [
 ];
 
 const STORAGE: string[][] = [
-  [`${code("trov.theme")}, ${code("trov.collapsed")}, ${code("trov.navOpen")}, ${code("trov.feedView")}, ${code("trov.promptView")}`, "Local storage", "Your theme and how you left the sidebar, the feed and the prompt library."],
+  [`${code("trov.theme")}, ${code("trov.collapsed")}, ${code("trov.navOpen")}, ${code("trov.feedView")}, ${code("trov.promptView")}, ${code("trov.aiFeedNote")}`, "Local storage", "Your theme, how you left the sidebar, the feed and the prompt library, and whether you dismissed the Feed's note about entries written by Trov."],
   [code("trov.org"), "Local storage", "The organization you last opened, so Trov opens it next time."],
   [`${code("trov.returnHash")}, ${code("trov.returnOrg")}, ${code("trov.welcomeReturn")}, ${code("trov:first-run")}`, "Session storage (gone when you close the tab)", "Where to bring you back after signing in or connecting GitHub, and the setup's step counter."],
 ];

@@ -17,7 +17,7 @@ import type { ReviewHead } from "./triage-map";
 import { segmented } from "./segmented";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skList, skW, type EmptyAction } from "./skeleton";
 import { esc, attr, relTime, surface } from "./ui";
-import type { AiBrief, AiBriefNextItem, AiLine } from "@shared/ai-core";
+import { aiItemRef, type AiBrief, type AiBriefNextItem, type AiLine } from "@shared/ai-core";
 import { AI_EMPTY, AI_TIP, aiByline, aiCapped, aiCite, aiCites, aiDay, aiEmpty, aiFeedback, aiWrongBtn } from "./ai-ui";
 
 export type MwRepoTab = "prs" | "ci" | "deploys";
@@ -422,7 +422,7 @@ function briefNextRow(it: AiBriefNextItem): string {
 export function briefTile(b: AiBrief, hidden = false): string {
   if (hidden) return "";
   const written = b.generatedAt !== null;
-  const wrong = written && b.state !== "empty" ? aiWrongBtn(aiFeedback("brief", b.generatedAt ?? "brief", "brief", b.model)) : "";
+  const wrong = written && b.state !== "empty" ? aiWrongBtn(aiFeedback("brief", aiItemRef.brief(b.generatedAt ?? "brief"), "brief", b.model)) : "";
   const head = `<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px">
       <h2 id="mw-brief-h" style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.01em">Your brief</h2>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">${aiByline(b.generatedAt, AI_TIP.brief)}${wrong}</div>

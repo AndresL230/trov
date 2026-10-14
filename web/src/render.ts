@@ -74,6 +74,7 @@ import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, 
 import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type WelcomeUi } from "./welcome";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 import { previewBanner, previewState, type PreviewMode } from "./preview";
+import { aiItemRef } from "@shared/ai-core";
 import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, type AiUi } from "./ai-ui";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
@@ -1172,7 +1173,7 @@ export function feedShown(s: AppState): FeedRow[] {
   if (!feedHasAi(s)) return rows;
   const src = s.ai.feedSource;
   return rows.filter((e) => (src === "trov" ? isTrovEntry(e) : src === "agents" ? !isTrovEntry(e) : true)
-    && !(isTrovEntry(e) && aiIsHidden(s.ai, "feed", String(e.id))));
+    && !(isTrovEntry(e) && aiIsHidden(s.ai, "feed", aiItemRef.feed(e.id))));
 }
 function feedSourceSeg(s: AppState): string {
   return segmented({
@@ -1209,7 +1210,7 @@ function feedTrovCard(s: AppState, e: FeedRow & { ai: NonNullable<FeedRow["ai"]>
             <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>
           </div>
           <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-55)">
-            ${from || "<span></span>"}${aiWrongBtn(aiFeedback("feed", String(e.id), "feed", a.model), 12.5)}
+            ${from || "<span></span>"}${aiWrongBtn(aiFeedback("feed", aiItemRef.feed(e.id), "feed", a.model), 12.5)}
           </div>
         </div>
       </div>
@@ -2618,7 +2619,7 @@ function myWorkView(s: AppState): string {
     greeting: `${greetingFor()}, ${esc(s.displayName || s.me?.name || s.me?.handle || "there")}`,
     dateLine: stat ? `${esc(today)} · ${esc(stat)}` : esc(today),
     // Your brief (written by Trov) leads — ONLY when the dashboard carries one (mywork.ts `briefTile`).
-    tiles: [...(d?.brief ? [briefTile(d.brief, aiIsHidden(s.ai, "brief", d.brief.generatedAt ?? "brief"))] : []), ...[...order, ...strips].map((k) => tile[k]())],
+    tiles: [...(d?.brief ? [briefTile(d.brief, aiIsHidden(s.ai, "brief", aiItemRef.brief(d.brief.generatedAt ?? "brief")))] : []), ...[...order, ...strips].map((k) => tile[k]())],
   });
 }
 

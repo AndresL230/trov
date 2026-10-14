@@ -15,7 +15,7 @@
 // and its sections are untouched. Pure markup; the acts are ai-actions.ts's.
 
 import type { AiLine, AiRepoState, AiThemeLane, AiThemeRange, AiThemes } from "@shared/ai-core";
-import { AI_THEME_RANGES, AI_THEME_RANGE_LABELS } from "@shared/ai-core";
+import { AI_THEME_RANGES, AI_THEME_RANGE_LABELS, aiItemRef } from "@shared/ai-core";
 import { esc, attr, surface } from "./ui";
 import { glyph } from "./marks";
 import { segmented } from "./segmented";
@@ -48,7 +48,7 @@ function stateLine(l: AiLine): string {
 
 /** Overview's first section. "" when this person pressed "Wrong?" on it. */
 export function repoStateSection(st: AiRepoState, p: RepoAiProps): string {
-  const ref = `${p.repo}@${st.generatedAt ?? "state"}`;
+  const ref = aiItemRef.repoState(p.repo, st.generatedAt ?? "state");
   if (aiIsHidden(p.ui, "repo_state", ref)) return "";
   const from = st.eventCount === null ? undefined : `${st.eventCount} ${st.eventCount === 1 ? "event" : "events"}`;
   const head = `<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px">
@@ -162,7 +162,7 @@ export function themesSection(all: Record<AiThemeRange, AiThemes>, p: RepoAiProp
   const range = p.ui.themesRange;
   const t = all[range] ?? all["8w"];
   if (!t) return "";
-  const ref = `${p.repo}:${range}@${t.generatedAt ?? "themes"}`;
+  const ref = aiItemRef.themes(p.repo, range, t.generatedAt ?? "themes");
   if (aiIsHidden(p.ui, "themes", ref)) return "";
   const proposed = t.lanes.filter((l) => l.status === "proposed");
   const switcher = segmented({
