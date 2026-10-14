@@ -1,0 +1,14 @@
+-- 0055_ai_automation: the organization's AI switch (docs/architecture/ai.md, organizations.md › Org settings › AI).
+-- An admin turns it off in Org settings › AI (`PUT /api/o/:slug/ai/settings`, a cookie route — never MCP);
+-- while it is off the AI pass (src/ai/pass.ts) makes no model call for the org and the screens show
+-- nothing it would write. It does NOT govern the capture-time PR / issue summaries, which have their own
+-- allowance (`ai_summaries`, plans.md › AI summaries).
+--
+-- ADDITIVE ONLY: one column on `orgs`, ON for every org (existing and new). No row is rewritten, and a
+-- Worker from before it keeps working (it never names the column).
+--
+-- ROLLBACK (by hand, with `wrangler rollback` to the Worker from before it). It loses only the choices
+-- admins made:
+--   ALTER TABLE orgs DROP COLUMN ai_automation;
+--   DELETE FROM d1_migrations WHERE name = '0055_ai_automation.sql';
+ALTER TABLE orgs ADD COLUMN ai_automation INTEGER NOT NULL DEFAULT 1;

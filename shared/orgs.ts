@@ -96,6 +96,8 @@ export const ORG_AUDIT_ACTIONS = [
   // NULL, the org is gone), its slug as the target; a person's account deleted — the target is the tombstone
   // handle their content now carries, never the handle they had.
   "org.delete", "person.delete",
+  // The organization's AI switch (0055_ai_automation, Org settings › AI): an admin turned it on or off.
+  "org.ai",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 

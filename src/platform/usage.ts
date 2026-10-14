@@ -10,7 +10,10 @@ import {
   METRIC_API_READ, METRIC_API_WRITE, METRIC_MCP_REQUEST, METRIC_MCP_TOOL_PREFIX, USAGE_RETENTION_DAYS,
   METRIC_SUMMARY, METRIC_SUMMARY_CAPPED, METRIC_SUMMARY_CHARS_IN, METRIC_SUMMARY_CHARS_OUT, METRIC_SUMMARY_FAILED,
   METRIC_SUMMARY_TOKENS_IN, METRIC_SUMMARY_TOKENS_OUT, SUMMARY_METRIC_GLOB,
+  AI_METRIC_GLOB, METRIC_AI_RUN_CAPPED_PREFIX, METRIC_AI_RUN_FAILED_PREFIX, METRIC_AI_RUN_PREFIX,
+  METRIC_AI_TOKENS_CACHED, METRIC_AI_TOKENS_IN, METRIC_AI_TOKENS_OUT,
 } from "../data/meter";
+import type { AiUsage } from "@shared/ai-core";
 import { orgLogoSrc, type OrgUsage, type PlatformUsageResponse, type UsageActivity, type UsageCreated, type UsageDay, type UsageSizes, type UsageSummaries } from "@shared/orgs";
 import { monthStartDay, resolveEntitlements, storedOverrides } from "@shared/plans";
 
@@ -75,7 +78,17 @@ const SUMMARY_FIELD: Record<string, "attempted" | "failed" | "capped" | "chars_i
   [METRIC_SUMMARY_CHARS_IN]: "chars_in", [METRIC_SUMMARY_CHARS_OUT]: "chars_out",
   [METRIC_SUMMARY_TOKENS_IN]: "tokens_in", [METRIC_SUMMARY_TOKENS_OUT]: "tokens_out",
 };
+// AI runs (docs/architecture/ai.md): `ai_run:*` / `ai_run_failed:*` / `ai_run_capped:*` by prefix, tokens by name.
+const zeroAi = (): AiUsage => ({ runs: 0, failed: 0, capped: 0, tokensIn: 0, tokensOut: 0, tokensCached: 0 });
+const AI_TOKEN_FIELD: Record<string, "tokensIn" | "tokensOut" | "tokensCached"> = {
+  [METRIC_AI_TOKENS_IN]: "tokensIn", [METRIC_AI_TOKENS_OUT]: "tokensOut", [METRIC_AI_TOKENS_CACHED]: "tokensCached",
+};
+const aiField = (metric: string): keyof AiUsage | null =>
+  metric.startsWith(METRIC_AI_RUN_PREFIX) ? "runs" : metric.startsWith(METRIC_AI_RUN_FAILED_PREFIX) ? "failed"
+    : metric.startsWith(METRIC_AI_RUN_CAPPED_PREFIX) ? "capped" : AI_TOKEN_FIELD[metric] ?? null;
 const derived = (s: UsageSummaries): UsageSummaries => ({ ...s, succeeded: Math.max(0, s.attempted - s.failed), fell_back: s.failed + s.capped });
+/** A metric that is a person's request: not a summary's, not the AI pass's. */
+const PERSON_METRIC = `metric NOT GLOB '${SUMMARY_METRIC_GLOB}' AND metric NOT GLOB '${AI_METRIC_GLOB}'`;
 const topTools = (m: Map<string, number>) =>
   [...m].map(([tool, count]) => ({ tool, count })).sort((a, b) => b.count - a.count || a.tool.localeCompare(b.tool)).slice(0, 10);
 
@@ -84,7 +97,7 @@ const topTools = (m: Map<string, number>) =>
  * today. One D1 batch. `series` is zero-filled, oldest first, exactly `days` long — in every org row and
  * in the totals.
  */
-export async function platformUsage(p: PlatformContext, days: number = USAGE_DEFAULT_DAYS, now: Date = new Date(), opts: { summariesEnabled?: boolean } = {}): Promise<PlatformUsageResponse> {
+export async function platformUsage(p: PlatformContext, days: number = USAGE_DEFAULT_DAYS, now: Date = new Date(), opts: { summariesEnabled?: boolean; aiEnabled?: boolean } = {}): Promise<PlatformUsageResponse> {
   const until = dayOf(now.getTime());
   const since = dayOf(now.getTime() - (days - 1) * DAY_MS);
   const sinceIso = `${since}T00:00:00.000Z`;
@@ -98,11 +111,11 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
     stmt(p, TICKETS_SQL),
     stmt(p, EMAILS_SQL, sinceIso),
     stmt(p, `SELECT org_id, day, metric, SUM(count) AS n FROM org_usage_daily WHERE day >= ? GROUP BY org_id, day, metric`, since),
-    // The summary counters are the platform's own calls, not a person's requests: they are neither
+    // The summary and AI counters are the platform's own calls, not a person's requests: they are neither
     // "active people" nor an org's "last activity".
-    stmt(p, `SELECT org_id, COUNT(DISTINCT lower(actor)) AS n FROM org_usage_daily WHERE day >= ? AND metric NOT GLOB '${SUMMARY_METRIC_GLOB}' GROUP BY org_id`, since),
-    stmt(p, `SELECT COUNT(DISTINCT lower(actor)) AS n FROM org_usage_daily WHERE day >= ? AND metric NOT GLOB '${SUMMARY_METRIC_GLOB}'`, since),
-    stmt(p, `SELECT org_id, MAX(last_at) AS at FROM org_usage_daily WHERE metric NOT GLOB '${SUMMARY_METRIC_GLOB}' GROUP BY org_id`),
+    stmt(p, `SELECT org_id, COUNT(DISTINCT lower(actor)) AS n FROM org_usage_daily WHERE day >= ? AND ${PERSON_METRIC} GROUP BY org_id`, since),
+    stmt(p, `SELECT COUNT(DISTINCT lower(actor)) AS n FROM org_usage_daily WHERE day >= ? AND ${PERSON_METRIC}`, since),
+    stmt(p, `SELECT org_id, MAX(last_at) AS at FROM org_usage_daily WHERE ${PERSON_METRIC} GROUP BY org_id`),
     ...sizeKeys.map((k) => stmt(p, SIZE_SQL[k])),
     ...createdKeys.map((k) => stmt(p, CREATED_SQL[k], sinceIso)),
     // AI summaries: each org's attempts this CALENDAR MONTH (what its allowance counts), and its plan.
@@ -139,12 +152,15 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
     const series = new Map<string, UsageDay>(dayList.map((day) => [day, { day, requests: 0, mcp_calls: 0 }]));
     const tools = new Map<string, number>();
     const sm = zeroSummaries();
+    const ai = zeroAi();
     for (const u of usage) {
       if (u.org_id !== o.id) continue;
       const n = Number(u.n) || 0;
       const point = series.get(u.day);
       const field = SUMMARY_FIELD[u.metric];
       if (field) { sm[field] += n; continue; }
+      const af = aiField(u.metric);
+      if (af) { ai[af] += n; continue; }
       if (u.metric === METRIC_API_READ) a.api_reads += n;
       else if (u.metric === METRIC_API_WRITE) a.api_writes += n;
       else if (u.metric === METRIC_MCP_REQUEST) a.mcp_requests += n;
@@ -162,8 +178,12 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
       slug: o.slug, name: o.name, logo_url: orgLogoSrc(o), status: o.suspended_at ? "suspended" : "active", created_at: o.created_at,
       last_activity_at: lastAt.get(o.id) ?? null, sizes: s, activity: a, series: [...series.values()],
       summaries: { ...derived(sm), month_used: monthUsed.get(o.id) ?? 0, cap: caps.get(o.id) ?? null },
+      // With no key nothing runs: the field is left out, as Platform says summaries are off (`summaries_enabled`).
+      ...(opts.aiEnabled ? { ai } : {}),
     };
   });
+  const tAi = zeroAi();
+  for (const o of out) if (o.ai) for (const k of Object.keys(tAi) as (keyof AiUsage)[]) tAi[k] += o.ai[k];
   const tSummaries = zeroSummaries();
   for (const o of out) for (const k of Object.keys(tSummaries) as (keyof UsageSummaries)[]) tSummaries[k] += o.summaries[k];
 
@@ -195,6 +215,7 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
 
   return {
     summaries_enabled: opts.summariesEnabled === true, summaries: tSummaries,
+    ...(opts.aiEnabled ? { ai: tAi } : {}),
     days, since, until, generated_at: now.toISOString(),
     totals: {
       orgs: out.length, suspended_orgs: out.filter((o) => o.status === "suspended").length, persons,

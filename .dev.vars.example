@@ -38,6 +38,14 @@ TROV_KEK=replace-with-openssl-rand-base64-32
 # that port, serves a stand-in checkout and portal, and delivers signed webhooks) and set
 # STRIPE_SECRET_KEY=sk_test_local_standin and STRIPE_WEBHOOK_SECRET=whsec_local_standin beside it.
 #
+# LOCAL_AI_PREVIEW — the AI screens with sample content (src/ai/preview.ts, docs/architecture/ai.md), before
+# anything writes them: My Work's brief, Repo › Overview's State, Repo › Planning's "Where the work went"
+# and two Feed entries written by Trov. One of: ready, empty, capped, proposed (the themes' proposed lanes;
+# the rest show `ready`). Anything else is ignored. Honoured ONLY for a request to a loopback http origin
+# (what `wrangler dev` serves on) and never beside a live Stripe key — the same rule as the stand-ins above.
+# No key is needed; MCP never sees it.
+# LOCAL_AI_PREVIEW=ready
+#
 # Summaries are off without a key (docs/architecture/plans.md › AI summaries). With LOCAL_UPSTREAM set,
 # any non-empty value turns them on against the stand-in.
 # ANTHROPIC_API_KEY=your-anthropic-key

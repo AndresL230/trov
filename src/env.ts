@@ -23,6 +23,7 @@ export interface Env {
   DEV_LOGIN?: string;     // LOCAL DEV ONLY (set in .dev.vars): bypass OAuth, act as this seeded user. Never set in prod.
   ANTHROPIC_API_KEY?: string; // Anthropic API key for capture-time PR/issue summaries (src/ai/client.ts, Claude Haiku); absent → excerpt fallback.
   LOCAL_UPSTREAM?: string; // LOCAL DEV ONLY (.dev.vars): a loopback http stand-in for GitHub + Anthropic during a Sync (src/sync/local-upstream.ts). Ignored unless http://127.0.0.1 or http://localhost, and always beside a live Stripe key (src/platform/loopback.ts).
+  LOCAL_AI_PREVIEW?: string; // LOCAL DEV ONLY (.dev.vars): `ready` | `empty` | `capped` | `proposed` — the AI screens' sample content (src/ai/preview.ts). Honoured only for a request to a loopback http origin (`wrangler dev`), never beside a live Stripe key; anything else is ignored.
   GITHUB_SERVICE_TOKEN?: string; // LEGACY: SaplingLearn's `github_token` fallback until its admin stores one (`resolveCredential`); no other org ever reads it
   PUBLIC_ORIGIN?: string; // absolute origin for links in email (deep links, unsubscribe); absent → relative links
   NOTIFICATIONS_MODE?: "local" | "resend"; // delivery gate; absent → local (bodies to the dev table, Resend never called)
