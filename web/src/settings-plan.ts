@@ -9,7 +9,7 @@
 //
 // Pure markup: nothing here reads the network, and a number that was not read is "—", never 0.
 
-import { LIMIT_KEYS, LIMITS, PLANS, UPGRADE_PLAN, formatLimit, limitNoun, type LimitKey, type OrgPlanView } from "@shared/plans";
+import { LISTED_LIMIT_KEYS, LIMITS, PLANS, UPGRADE_PLAN, formatLimit, limitNoun, type LimitKey, type OrgPlanView } from "@shared/plans";
 import { PRICING, canPurchasePlan, formatPrice } from "@shared/pricing";
 import type { MyOrg, MyOrgsResponse, OrgRole } from "@shared/orgs";
 import { attr, esc } from "./ui";
@@ -165,7 +165,7 @@ export function settingsLimitsTile(p: SettingsPlanProps): string {
     // One limit's row: its name and its use on a line, the meter under it — six of them.
     const row = (i: number) => `<div class="cnpy-set-limit"><div style="display:flex;justify-content:space-between;gap:10px">${skLine(skW(i, [84, 112, 96, 124, 132, 92]), 13, 1.5)}${skLine(56, 12.5, 1.5)}</div>${skBar("100%", 4, "margin-top:7px")}<div style="margin-top:5px">${skLine(skW(i, ["62%", "48%", "70%"]), 11.5, 1.5)}</div></div>`;
     const body = p.plan.status === "error" ? failed("this organization's limits", "orgPlanReload")
-      : skeleton("set-limits", "Loading the limits&hellip;", `<div class="cnpy-set-limits-rows">${skList(LIMIT_KEYS.length, row)}</div>`);
+      : skeleton("set-limits", "Loading the limits&hellip;", `<div class="cnpy-set-limits-rows">${skList(LISTED_LIMIT_KEYS.length, row)}</div>`);
     return `${open}>${top}${body}</section>`;
   }
   const overNames = v.over.map(limitNoun);
@@ -178,7 +178,7 @@ export function settingsLimitsTile(p: SettingsPlanProps): string {
   return `${open}>
     ${top}
     ${note}
-    <ul class="cnpy-set-limits-rows">${LIMIT_KEYS.map((k) => meterRow(v, k)).join("")}</ul>
+    <ul class="cnpy-set-limits-rows">${LISTED_LIMIT_KEYS.map((k) => meterRow(v, k)).join("")}</ul>
   </section>`;
 }
 

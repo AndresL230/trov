@@ -96,6 +96,27 @@ export const METRIC_SUMMARY_TOKENS_OUT = "summary_tokens_out";
 /** Every metric above starts with this: none of them is a PERSON's request (src/platform/usage.ts). */
 export const SUMMARY_METRIC_GLOB = "summary*";
 
+// ── AI runs (docs/architecture/ai.md) ────────────────────────────────────────
+// The AI pass (src/ai/pass.ts) counts each model call it makes for an org the same way, with actor
+// `ai-pass`: the attempt BEFORE the call, its outcome and size after. A `kind` is the job's `AiKind`.
+/** `ai_run:<kind>` — an attempted call: what the monthly allowance (`ai_runs`) counts. */
+export const METRIC_AI_RUN_PREFIX = "ai_run:";
+/** `ai_run_failed:<kind>` — an attempt that wrote nothing. */
+export const METRIC_AI_RUN_FAILED_PREFIX = "ai_run_failed:";
+/** `ai_run_capped:<kind>` — a job had work but the org's allowance (or an ended plan) let no call start. */
+export const METRIC_AI_RUN_CAPPED_PREFIX = "ai_run_capped:";
+/** The provider's own token counts, summed per day: uncached input, output, and input read from the cache. */
+export const METRIC_AI_TOKENS_IN = "ai_tokens_in";
+export const METRIC_AI_TOKENS_OUT = "ai_tokens_out";
+export const METRIC_AI_TOKENS_CACHED = "ai_tokens_cached";
+/** What `ai_runs` sums: `ai_run:*` only (GLOB has no single-character wildcard, so `ai_run_failed:*` is not matched). */
+export const AI_RUN_METRIC_GLOB = "ai_run:*";
+/** Every AI metric above: none of them is a PERSON's request (src/platform/usage.ts). */
+export const AI_METRIC_GLOB = "ai_*";
+export const aiRunMetric = (kind: string): string => METRIC_AI_RUN_PREFIX + kind;
+export const aiRunFailedMetric = (kind: string): string => METRIC_AI_RUN_FAILED_PREFIX + kind;
+export const aiRunCappedMetric = (kind: string): string => METRIC_AI_RUN_CAPPED_PREFIX + kind;
+
 const UPSERT_BY = `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, ?, ?, ?, ?, ?)
   ON CONFLICT(org_id, day, metric, actor) DO UPDATE SET count = count + excluded.count, last_at = excluded.last_at`;
 
