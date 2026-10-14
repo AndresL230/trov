@@ -46,6 +46,11 @@ export function initials(text: string, size = 26, font = "10px"): string {
 export const AGENT_TAG = agentMark(11);
 const GH = `<svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style="flex:none;color:var(--fg-40)"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.19 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path></svg>`;
 const ARROW = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>`;
+/** The Docs tree's disclosure chevron as `docTreeRow` (render.ts) draws it: a stroked chevron pointing right,
+ *  turned 90° when the doc's outline is open, muted (`--fg-40`) unless its row is the open doc, which takes the
+ *  accent. Static: a mock never moves. The page's Docs teaser (landing.ts) uses it too. */
+export const treeChev = (open: boolean, on = false) =>
+  `<span style="flex:none;display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;color:var(--${on ? "accent" : "fg-40"})${open ? ";transform:rotate(90deg)" : ""}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span>`;
 const DOT = (c: string, size = 7) => `<span style="width:${size}px;height:${size}px;border-radius:2px;background:var(--${c});flex:none"></span>`;
 const SEP = `<span style="color:var(--fg-40)">·</span>`;
 const cap = (text: string, size = "9.5px", color = "fg-40") => `<span style="${LBL};font-size:${size};color:var(--${color})">${text}</span>`;
@@ -67,7 +72,7 @@ const SURF = "border:1px solid var(--border);background:var(--surface);border-ra
 // ── Docs: the tree with the open doc's outline, the reader, the staged banner ──
 function docsMock(): string {
   const sec = (t: string, top = 14) => `<div style="padding:${top}px 6px 5px">${cap(t, "9px")}</div>`;
-  const row = (t: string, on = false, open = false) => `<div style="padding:4px 6px;font-size:11.5px;${on ? "color:var(--accent);font-weight:500" : "color:var(--fg-70)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${open ? "▾" : "▸"} ${t}</div>`;
+  const row = (t: string, on = false, open = false) => `<div style="display:flex;align-items:center;gap:4px;padding:4px 6px;font-size:11.5px;${on ? "color:var(--accent);font-weight:500" : "color:var(--fg-70)"}">${treeChev(open, on)}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</span></div>`;
   const sub = (t: string, on = false) => `<div style="padding:3px 6px 3px 22px;font-size:11px;color:var(--${on ? "accent" : "fg-55"})">${t}</div>`;
   const tree = `<div class="fxm-wide" style="width:176px;flex:none;border-right:1px solid var(--border);padding:2px 8px 12px;overflow:hidden">
       ${sec("Operations", 10)}${row("Deploy process", true, true)}${sub("Before you merge")}${sub("Migrations", true)}${sub("Rollbacks")}${row("Onboarding checklist")}${row("Incident runbook")}

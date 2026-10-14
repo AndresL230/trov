@@ -122,13 +122,14 @@ export const RELEASES: Release[] = [
         "A mark in an email took the mail client's serif default where its cell set no face (#173)",
         "The artifact attach picker called a Triage ticket SUBMITTED and showed a Testing ticket as a plain grey tag (#173)",
         "Email digests coloured ticket statuses differently from the app (#173)",
+        "The site's Docs mockups drew the tree's disclosure chevrons as text triangles (▾ / ▸); they are the app's stroked chevron now (`treeChev` in `landing-mocks.ts`), muted and turned for an open doc (#175)",
       ],
       removed: [
         "`statusBadge` (`ui.ts`), `chip` / `roleChip` (`org-ui.ts`), `EMAIL_CARD.chip`, `.cnpy-rel-tag`, and native `<title>` tooltips on the glyphs (#173)",
         "`ticketPill`, `priorityChip`, `tagChip`, `handoffPill` and the per-file `CHIP_BASE` / `TAG_BASE` copies; the unused `ticketPill` / `priorityChip` import in `render.ts` (#173)",
       ],
     },
-    prs: [173, 174],
+    prs: [173, 174, 175],
   },
   // The public site, readable by search engines, share cards and AI assistants: prerendered pages, robots.txt,
   // sitemap, canonical links, noindex on the app, a real 404; then public docs, llms.txt, Markdown versions and

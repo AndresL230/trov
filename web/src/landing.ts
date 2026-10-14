@@ -49,7 +49,7 @@ import { MCP_TOOL_GROUPS, mcpToolCountPhrase } from "@shared/mcp-tools-core";
 import { productQuestions } from "./site-questions";
 import type { FeatureState } from "./site-feature-core";
 import { pagePath } from "@shared/site-pages";
-import { AGENT_TAG, featureMock, initials } from "./landing-mocks";
+import { AGENT_TAG, featureMock, initials, treeChev } from "./landing-mocks";
 import { LOW_CONFIDENCE, artifactStatusMark, authorityMark, handoffMark } from "./marks";
 import { artifactKindLabel } from "@shared/artifacts-core";
 
@@ -490,6 +490,10 @@ export const TOUR_FACTS: Record<TourKey, readonly string[]> = {
 function tourItems(): TourItem[] {
   const S = 160; // mockup contents start once the mockup has arrived (its own reveal is --fx-slow)
   const treeHead = (label: string, top: string) => `<div style="font-family:var(--label);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40);padding:${top} 6px 6px">${label}</div>`;
+  // A page row: the disclosure chevron (`treeChev`, as the Docs tree draws it) beside the title.
+  const TREE_ROW = "display:flex;align-items:center;gap:4px;padding:4px 6px;font-size:11.5px";
+  // One line, cut with an ellipsis: a long title never wraps under its chevron.
+  const treeTitle = (t: string) => `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</span>`;
   const tree = (i: number, style: string, text: string) => `<div class="site-st st-l" style="${style};${at(S + i * 70)}">${text}</div>`;
   const docs = `
       <div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)">
@@ -497,14 +501,14 @@ function tourItems(): TourItem[] {
         <span style="margin-left:auto;display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:10.5px;font-weight:500">${segTab("Technical", true)}${segTab("Product", false, true)}</span>
       </div>
       <div style="display:flex;min-height:250px">
-        <div class="site-hide-sm" style="width:180px;flex:none;border-right:1px solid var(--border);padding:12px 10px">
+        <div class="site-hide-sm" style="width:180px;flex:none;border-right:1px solid var(--border);padding:12px 8px">
           ${treeHead("Operations", "0")}
-          ${tree(0, "padding:4px 6px;font-size:11.5px;font-weight:500;color:var(--accent)", "▾ Deploy process")}
-          ${tree(1, "padding:2px 6px 2px 18px;font-size:10.5px;color:var(--fg-55)", "Rollbacks")}
-          ${tree(2, "padding:2px 6px 2px 18px;font-size:10.5px;color:var(--accent)", "Migrations")}
-          ${tree(3, "padding:4px 6px;font-size:11.5px;color:var(--fg-55)", "▸ Onboarding checklist")}
+          ${tree(0, `${TREE_ROW};font-weight:500;color:var(--accent)`, `${treeChev(true, true)}${treeTitle("Deploy process")}`)}
+          ${tree(1, "padding:2px 6px 2px 22px;font-size:10.5px;color:var(--fg-55)", "Rollbacks")}
+          ${tree(2, "padding:2px 6px 2px 22px;font-size:10.5px;color:var(--accent)", "Migrations")}
+          ${tree(3, `${TREE_ROW};color:var(--fg-55)`, `${treeChev(false)}${treeTitle("Onboarding checklist")}`)}
           ${treeHead("Decisions", "12px")}
-          ${tree(4, "padding:4px 6px;font-size:11.5px;color:var(--fg-55)", "▸ ADR-0012 · Retry budget")}
+          ${tree(4, `${TREE_ROW};color:var(--fg-55)`, `${treeChev(false)}${treeTitle("ADR-0012 · Retry budget")}`)}
         </div>
         <div style="flex:1;min-width:0;padding:16px 20px">
           <div style="font-family:var(--label);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--fg-40)">Technical / Operations</div>
