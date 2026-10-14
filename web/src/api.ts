@@ -1052,7 +1052,7 @@ const tagPath = (name: string, rest = ""): string => `/api/tags/${encodeURICompo
 export function listOrgTags(): Promise<TagT.TagListDTO> { return orgSend("GET", "/api/tags"); }
 /** One tag and everything that carries it. A 404 = no such tag. */
 export function getTagPage(name: string): Promise<TagT.TagPageDTO> { return orgSend("GET", tagPath(name)); }
-export function addOrgTag(body: { name: string; description?: string; color?: TagT.TagColor }): Promise<{ ok: true; name: string }> { return orgSend("POST", "/api/tags", body); }
+export function addOrgTag(body: { name: string; description?: string; color?: TagT.TagColor }): Promise<{ ok: true; name: string; fit?: string }> { return orgSend("POST", "/api/tags", body); }
 export function editOrgTag(name: string, body: { name?: string; description?: string; color?: TagT.TagColor }): Promise<{ ok: true; name: string }> { return orgSend("PUT", tagPath(name), body); }
 export function mergeOrgTag(name: string, into: string): Promise<{ ok: true; name: string; moved: number }> { return orgSend("POST", tagPath(name, "/merge"), { into }); }
 export function retireOrgTag(name: string): Promise<{ ok: true; name: string }> { return orgSend("POST", tagPath(name, "/retire")); }
@@ -1060,5 +1060,15 @@ export function restoreOrgTag(name: string): Promise<{ ok: true; name: string }>
 export function resolveTagSuggestion(name: string, body: { resolution: TagT.SuggestionResolution; into?: string }): Promise<{ ok: true; name: string; applied_to: number; tag: string | null }> {
   return orgSend("POST", `/api/tags/suggestions/${encodeURIComponent(name)}/resolve`, body);
 }
+/** Look for existing items that fit a tag (admin; a model run in the background). `status` says whether it started. */
+export function findTagItems(name: string): Promise<{ ok: true; status: "started" | "off" | "no_key" | "busy" | "capped" | "not_found" }> { return orgSend("POST", tagPath(name, "/find-items")); }
+/** What the model suggested may fit a tag (admin). */
+export function listTagFits(name: string): Promise<TagT.TagFitDTO[]> { return orgSend<{ fits: TagT.TagFitDTO[] }>("GET", tagPath(name, "/fits")).then((r) => r.fits); }
+/** Accept or dismiss model suggestions for a tag: some items, or (none named) all of them. */
+export function resolveTagFits(name: string, resolution: "accept" | "dismiss", items?: { type: TagT.TagItemType; id: string }[]): Promise<{ ok: true; resolved: number }> {
+  return orgSend("POST", tagPath(name, "/fits/resolve"), items ? { resolution, items } : { resolution });
+}
+/** The org's switch for model suggestions (admin). */
+export function setTagSuggestions(enabled: boolean): Promise<{ ok: true; enabled: boolean }> { return orgSend("PUT", "/api/tag-settings", { enabled }); }
 /** Replace the tags of one feed entry, doc or decision (any member). */
 export function setItemTags(type: TagT.TagItemType, id: string, tags: string[]): Promise<{ ok: true; tags: string[] }> { return orgSend("POST", "/api/item-tags", { type, id, tags }); }

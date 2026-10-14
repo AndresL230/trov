@@ -184,13 +184,15 @@ export const TERMS: LegalDoc = {
       title: "10. AI-generated summaries",
       body: [
         p("Trov uses an AI model (Google Gemini) to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete: they are a convenience, not a record. Check the pull request or issue before relying on one."),
+        // DRAFT (2026-10-14, tag suggestions) — for the owner's review before it ships.
+        p("If an admin of your organization turns on tag suggestions in Org settings › Tags, Trov also uses Google Gemini to suggest which of the organization's existing feed entries, docs and decisions fit a tag. A suggestion is only a suggestion: nothing is tagged until a person accepts it, and a suggestion can be wrong. An admin can turn it off at any time, and nothing is sent while it is off."),
       ],
     },
     {
       id: "third-parties",
       title: "11. Third-party services",
       body: [
-        p("Trov depends on other services: GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Stripe for payments, Google Gemini for summaries and Resend for email. An organization can also connect Railway, Cloudflare Analytics and its own metrics endpoint, with tokens its admins provide. The agent clients you connect (Claude Code, Cursor and others) are yours, not ours. Each of these is governed by its own terms, and its availability is outside our control."),
+        p("Trov depends on other services: GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Stripe for payments, Google Gemini for summaries and, where an organization turns them on, tag suggestions, and Resend for email. An organization can also connect Railway, Cloudflare Analytics and its own metrics endpoint, with tokens its admins provide. The agent clients you connect (Claude Code, Cursor and others) are yours, not ours. Each of these is governed by its own terms, and its availability is outside our control."),
       ],
     },
     {
@@ -328,6 +330,7 @@ export const PRIVACY: LegalDoc = {
           "to provide Trov — store, search, show and attribute your team's content, and let connected agents read and propose changes as you;",
           "to take payment for a paid plan, keep an organization on the plan it paid for, and apply each plan's limits;",
           "to summarize captured pull requests and issues;",
+          "where an admin of an organization turns them on, to suggest which of that organization's feed entries, docs and decisions fit one of its tags;",
           "to send the emails described in section 7;",
           "to answer support messages, and to run, debug and protect the service.",
         ),
@@ -344,11 +347,11 @@ export const PRIVACY: LegalDoc = {
         table("Service providers", ["Provider", "What it does", "What it receives"], [
           ["Cloudflare", "Hosting, the database, file storage, logs", "Every request (with your IP address) and everything stored in Trov"],
           ["GitHub", "Sign-in; the repository data an organization connects", "Your sign-in; Trov's read-only requests for the connected repositories"],
-          ["Google", "Sign-in; summaries (Gemini API)", "Your sign-in; the title and description (up to 8,000 characters) of each captured pull request and issue"],
+          ["Google", "Sign-in; summaries and, where an organization turns them on, tag suggestions (Gemini API)", "Your sign-in; the title and description (up to 8,000 characters) of each captured pull request and issue; for tag suggestions, the tag's name and description and, for each of the organization's feed entries, docs and decisions that may fit it, its title and up to 400 characters of its text, with code and anything that looks like a password or key removed"],
           ["Stripe", "Payments, invoices and receipts, fraud checks, tax calculation", "The buyer's email, handle, payment details and billing address, and the organization's address for an upgrade"],
           ["Resend", "Delivers Trov's email", "Each email's recipient, subject and body (a digest contains your organization's content: ticket titles, summaries)"],
         ]),
-        p("Google handles the text sent for summaries under the Gemini API terms that apply to Trov's account. Railway, Cloudflare Analytics and an organization's own endpoint receive only Trov's requests with the token its admins saved, and send back figures. The agent clients you connect (Claude Code, Cursor and others) receive what they read on your behalf; they are your tools, under their own terms, not our processors."),
+        p("Google handles the text sent for summaries and tag suggestions under the Gemini API terms that apply to Trov's account. Railway, Cloudflare Analytics and an organization's own endpoint receive only Trov's requests with the token its admins saved, and send back figures. The agent clients you connect (Claude Code, Cursor and others) receive what they read on your behalf; they are your tools, under their own terms, not our processors."),
         p("We may also disclose data if the law requires it, or to protect the rights and safety of people and the service. If TrovLabs is part of a merger or acquisition, personal data may pass to the new owner under this policy. <b>We do not sell or rent personal data</b>, and we do not share it for advertising."),
       ],
     },
@@ -409,7 +412,7 @@ export const PRIVACY: LegalDoc = {
           "What you wrote in organizations that carry on — docs, tickets, comments, history — stays for the people you worked with, credited to \"Deleted user\" (a placeholder with no personal data) instead of your handle. Text other people typed that mentions you is not rewritten.",
           "Your GitHub username in repository activity Trov captured, because it is a copy of that repository's history on GitHub.",
           "One record of each deletion: who asked, when, and for an organization its address, member count and Stripe ids (for billing disputes). For an account it holds a one-way code, not your handle.",
-          "Stripe keeps its records of payments and invoices for tax and accounting law; Resend keeps its delivery logs; Google may have the text sent earlier for summaries — each under its own terms.",
+          "Stripe keeps its records of payments and invoices for tax and accounting law; Resend keeps its delivery logs; Google may have the text sent earlier for summaries or tag suggestions — each under its own terms.",
           "Cloudflare's database history (up to 30 days) and logs (a few days) keep deleted data until they age out.",
         ),
       ],

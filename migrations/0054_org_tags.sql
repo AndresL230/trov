@@ -11,6 +11,10 @@
 --            org_tag_suggestions             a tag someone thinks an item should carry — one row per
 --                                            item. Phase 1: a tag an agent sent that is not on the
 --                                            list, until an admin accepts, maps or dismisses it
+--            org_ai_settings                 an organization's switches for model suggestions (issue
+--                                            #158): one row per kind, OFF unless an admin turned it on
+--            org_tag_runs                    each run of "which existing items fit this tag" (the
+--                                            model's side of org_tag_suggestions): one at a time per tag
 --            entry_tags                      the same table and rows, WITHOUT the reference to `tags`:
 --                                            what may be stored is the gate's rule (src/tools/tags.ts),
 --                                            read from org_tags
@@ -49,6 +53,7 @@
 --   DROP TABLE entry_tags; ALTER TABLE entry_tags_old RENAME TO entry_tags;
 --   CREATE INDEX idx_entry_tags_lookup ON entry_tags(entry_type, entry_id);
 --   PRAGMA defer_foreign_keys = false;
+--   DROP TABLE IF EXISTS org_tag_runs; DROP TABLE IF EXISTS org_ai_settings;
 --   DROP TABLE IF EXISTS org_tag_suggestions; DROP TABLE IF EXISTS org_tags;
 --   DELETE FROM org_admin_audit WHERE action LIKE 'tag.%';
 --   DELETE FROM d1_migrations WHERE name = '0054_org_tags.sql';
@@ -125,6 +130,40 @@ CREATE TABLE IF NOT EXISTS org_tag_suggestions (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_org_tag_suggestions_open ON org_tag_suggestions(org_id, source, entry_type, entry_id, tag) WHERE state = 'open';
 CREATE INDEX IF NOT EXISTS idx_org_tag_suggestions_tag ON org_tag_suggestions(org_id, state, tag);
 CREATE INDEX IF NOT EXISTS idx_org_tag_suggestions_item ON org_tag_suggestions(org_id, entry_type, entry_id, state);
+
+-- ── the organization's switches for model suggestions (issue #158) ───────────
+-- OFF unless an admin of the org turned the kind on: no row, or `enabled = 0`, means nothing of the org's
+-- is ever sent to a model for that kind. Phase 1 has one kind, `tag.fit` ("does this item fit this tag?",
+-- src/tools/tag-fit.ts). Capture-time PR / issue summaries are NOT behind this switch (they predate it
+-- and the Privacy Policy names them separately).
+CREATE TABLE IF NOT EXISTS org_ai_settings (
+  org_id     TEXT NOT NULL REFERENCES orgs(id),
+  kind       TEXT NOT NULL,
+  enabled    INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+  updated_at TEXT NOT NULL,
+  updated_by TEXT NOT NULL,
+  PRIMARY KEY (org_id, kind)
+);
+
+-- ── one run of "which existing items fit this tag" ───────────────────────────
+-- Started when an admin adds a tag (or accepts a suggested one) and by "Find items" — in the background,
+-- never on a page load. ONE running row per tag (the partial unique index): a second start while one runs
+-- is refused. A run supersedes the tag's open MODEL suggestions, then writes its own (source = 'model').
+-- `status`: running → done | capped (the month's `ai_suggestions` allowance ran out) | failed.
+CREATE TABLE IF NOT EXISTS org_tag_runs (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  org_id      TEXT NOT NULL REFERENCES orgs(id),
+  tag         TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'done', 'capped', 'failed')),
+  started_by  TEXT NOT NULL,
+  started_at  TEXT NOT NULL,
+  ended_at    TEXT,
+  candidates  INTEGER NOT NULL DEFAULT 0,   -- items pre-selected without the model (the org's own FTS)
+  calls       INTEGER NOT NULL DEFAULT 0,   -- model calls made (each counted against the allowance)
+  suggested   INTEGER NOT NULL DEFAULT 0    -- "fits" judgements stored as suggestions
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_org_tag_runs_running ON org_tag_runs(org_id, tag) WHERE status = 'running';
+CREATE INDEX IF NOT EXISTS idx_org_tag_runs_tag ON org_tag_runs(org_id, tag, id);
 
 -- ── entry_tags without the reference to the global `tags` ────────────────────
 PRAGMA defer_foreign_keys = true;

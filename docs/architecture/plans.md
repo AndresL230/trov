@@ -25,7 +25,12 @@ means unlimited. Plan ids are stored and never renamed: **`team` is the plan use
 | `agent_connections` | 5 | 10 | unlimited | 5 | PER PERSON: that person's live MCP tokens for the org + their connected apps that hold a row for it (`oauth_grant_orgs`) — see below | `mintToken`, `issueAuthorization` (the OAuth consent), `setGrantOrg` / `setGrantMode` (Settings), `admitGrantOrg` (a follow-the-repository connection's first call into the org) |
 | `ai_summaries` | 300 | 3,000 | unlimited | 300 | PER CALENDAR MONTH (UTC): summarizer calls attempted for the org | `orgSummarizers` (`src/plans/summaries.ts`) — it refuses nothing: past it an item shows its excerpt (below) |
 
+| `ai_suggestions` | 300 | 3,000 | unlimited | 300 | PER CALENDAR MONTH (UTC): model calls made for suggestions (`org_usage_daily` metric `ai_suggest`) | `startTagFit` / `continueTagFit` (`src/tools/tag-fit.ts`) — it refuses nothing with a 402: past it a run stops (`capped`) and the Tags tab says so |
 | `tags` | 30 | 30 | 30 | 30 | LIVE `org_tags` rows (a retired tag does not count) | `addTag`, `restoreTag`, `resolveSuggestion` accept (`src/tools/tags.ts`) |
+
+**AI suggestions.** The numbers are PLACEHOLDERS equal to each plan's `ai_summaries` (`SUGGEST_FREE`,
+`SUGGEST_PRO` in `shared/plans.ts`); the owner has not chosen them. Every model call counts BEFORE it is made, and
+a run checks the allowance before each call, so it stops between batches.
 
 **Tags (0054_org_tags).** 30 on every plan is a PLACEHOLDER (`TAGS_PLACEHOLDER` in `shared/plans.ts`): the owner
 has not chosen the numbers. An override may not go below 6 (`LIMITS.tags.min`): every org has six starter

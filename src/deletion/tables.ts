@@ -37,7 +37,7 @@ export const ORG_TABLES = [
   "artifact_upload_tokens", "artifact_links", "artifact_versions", "artifact_pages", "artifacts_fts",
   "doc_image_upload_tokens", "doc_images",
   // Knowledge: docs, decisions, the feed, triage and the ingest ledger — and the org's tag list with what agents suggested for it.
-  "doc_versions", "docs", "docs_fts", "entry_tags", "org_tag_suggestions", "org_tags", "feed", "feed_fts", "adrs", "adrs_fts", "needs_triage", "processed_items",
+  "doc_versions", "docs", "docs_fts", "entry_tags", "org_tag_suggestions", "org_tag_runs", "org_tags", "org_ai_settings", "feed", "feed_fts", "adrs", "adrs_fts", "needs_triage", "processed_items",
   // Handoffs and the Prompt Library.
   "handoffs", "prompt_versions", "prompts", "prompts_fts",
   // What was captured from GitHub, the Repo dashboard, Sync runs.

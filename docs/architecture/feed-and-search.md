@@ -61,6 +61,32 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   already on the item, at most 12). Reads answer 503 `{ error }` on failure, never a 500.
 - **Agents** read the list with MCP **`list_tags`** (live tags + descriptions) and can only USE it.
   `get_feed` (MCP and HTTP) returns each entry's `tags`; `GET /doc/:slug` the doc's.
+- **What may fit — the model's suggestions** (issues #154–#158, #166; `src/tools/classify.ts`, `src/tools/tag-fit.ts`).
+  When an admin adds a tag (or accepts a suggested one), and on "Find items", Trov asks a model which of the
+  org's EXISTING items fit it. The rules: suggestions, never actions (a run writes `org_tag_suggestions` rows with
+  `source = 'model'`, `confidence`, a one-sentence `reason`, `model`, `prompt_version` — never `entry_tags`); never
+  on a render path (the route starts the run and hands its work to `waitUntil`); a fixed set of answers ("fits" /
+  "does not fit", through ONE classify call that validates the model's JSON and discards anything else — a timeout
+  or an error is no suggestion, never surfaced); only "fits" at `FIT_THRESHOLD` (0.7) or above is stored; metered
+  (`ai_suggestions`, `plans.md`).
+  - **Consent**: `org_ai_settings` (kind `tag.fit`), OFF by default, an admin's switch in Org settings › Tags
+    (`PUT /api/o/:slug/tag-settings`, audited `ai.enable` / `ai.disable`). Off, or no `GEMINI_API_KEY` → nothing
+    is sent (`startTagFit` answers `off` / `no_key`); turning it off mid-run stops the next call.
+  - **What is sent**: the tag's name and description, and per item an index, its title (≤ 200) and an excerpt of
+    ≤ 400 characters (`excerptOf`: code blocks, inline code, link targets, URLs, markup and anything shaped like
+    a credential removed). Candidates are picked WITHOUT the model: the org's own FTS (`feed_fts`, `docs_fts` —
+    live docs —, `adrs_fts` — not rejected) over the tag's name and description words, items that do not carry
+    the tag and have no dismissed or open suggestion of it, newest first, at most 60, sent 20 per call. Every
+    statement binds the org; another org's items are never read.
+  - **Runs**: `org_tag_runs`, ONE running row per tag (`busy` otherwise; a row running for 15 minutes is let go).
+    A run supersedes the tag's open model suggestions first (`state = 'superseded'`). Retiring or merging a tag
+    supersedes its open model suggestions; a rename takes them along.
+  - **Review** (admins, `GET /tags/:name/fits`, `POST /tags/:name/fits/resolve` `{ resolution, items? }`): accept
+    writes `entry_tags` as the admin (an ordinary authored write) and marks the row `accepted`; dismiss marks it
+    `dismissed`, which the next run skips. Audited `tag.fit.accept` / `tag.fit.dismiss`. `GET /tags` gives an
+    admin `ai` (switch, key, allowance) and `fits` (per tag: open suggestions, latest run).
+  - Not built: the content-hash cache of #155, the per-kind test set and the accept/dismiss rates in Platform of
+    #158, retention of dismissed rows.
 - Screens: `web-ui.md` › Tags.
 
 ## Read side — FTS5 query engine

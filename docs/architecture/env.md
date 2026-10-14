@@ -26,7 +26,9 @@ Integrations, envelope-encrypted under `TROV_KEK` (`data-layer.md` › Configura
 | `ARTIFACTS_BUCKET` | R2, bucket `trov-artifacts`: binary artifact bodies at `artifacts/<sha256>`, doc images, and uploaded avatars and organization images (`avatars/<sha256>`, `org-logos/<sha256>`) — `artifacts.md` | **the bucket must exist before the first deploy that carries the binding** (`wrangler r2 bucket create trov-artifacts`), or the deploy fails |
 
 Capture-time summaries call Gemini over REST (`GEMINI_API_KEY`), never at render — not a Cloudflare binding,
-so there is no `[ai]` block.
+so there is no `[ai]` block. The same key serves the model suggestions (`src/tools/classify.ts`,
+`src/tools/tag-fit.ts`: which existing items fit a new tag) — only for an organization whose admin turned them on,
+in the background, each call counted against `ai_suggestions` (`feed-and-search.md` › Tags › What may fit).
 
 ### Sign-in and sessions
 
@@ -61,7 +63,7 @@ so there is no `[ai]` block.
 
 | Name | Kind | What it is | Missing → |
 |---|---|---|---|
-| `GEMINI_API_KEY` | secret | the ONE Google Gemini key that serves every organization's capture-time PR / issue summaries, each call counted against that organization's monthly allowance (`plans.md` › AI summaries, `sync.md`) | the excerpt fallback: an item shows its excerpt, and a later Sync fills it in |
+| `GEMINI_API_KEY` | secret | the ONE Google Gemini key that serves every organization's capture-time PR / issue summaries, each call counted against that organization's monthly allowance (`plans.md` › AI summaries, `sync.md`); and, where an org's admin turned them on, the tag suggestions (`ai_suggestions`) | the excerpt fallback: an item shows its excerpt, and a later Sync fills it in. Tag suggestions: none (Find items answers `no_key`, the Tags tab says so) |
 
 ### Stored credentials
 

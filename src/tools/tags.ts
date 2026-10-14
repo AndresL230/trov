@@ -19,6 +19,7 @@ import { requireRole, hasRole } from "../data/context";
 import { all, batch, fanOut, first, nowIso, stmt, type Stmt, type TenantContext } from "../data/sql";
 import { planFor, requirePlan } from "../plans/gate";
 import { resolveEntitlements } from "@shared/plans";
+import { aiEnabled, fitSummary, suggestAllowance } from "./tag-fit";
 
 /** A refused tag write. `message` is fixed text: it names the rule, never more than the tag's own name. */
 export class TagError extends Error {
@@ -97,10 +98,10 @@ async function pendingSuggestions(ctx: TenantContext, liveNames: readonly string
   const [byType, byPerson] = await Promise.all([
     all<{ name: string; entry_type: string; n: number; first_at: string; last_at: string }>(ctx,
       `SELECT tag AS name, entry_type, COUNT(*) AS n, MIN(suggested_at) AS first_at, MAX(suggested_at) AS last_at
-         FROM org_tag_suggestions WHERE org_id = ? AND state = 'open' GROUP BY tag, entry_type`, ctx.orgId),
+         FROM org_tag_suggestions WHERE org_id = ? AND state = 'open' AND source = 'agent' GROUP BY tag, entry_type`, ctx.orgId),
     all<{ name: string; suggested_by: string }>(ctx,
       `SELECT tag AS name, suggested_by, MIN(suggested_at) AS first_at FROM org_tag_suggestions
-        WHERE org_id = ? AND state = 'open' GROUP BY tag, suggested_by ORDER BY first_at, suggested_by`, ctx.orgId),
+        WHERE org_id = ? AND state = 'open' AND source = 'agent' GROUP BY tag, suggested_by ORDER BY first_at, suggested_by`, ctx.orgId),
   ]);
   const out = new Map<string, TagSuggestionDTO>();
   for (const r of byType) {
@@ -120,15 +121,20 @@ async function pendingSuggestions(ctx: TenantContext, liveNames: readonly string
 
 /** `GET …/tags` — any member: the list (retired tags last) with how many items carry each, the plan's
  *  cap, and — for an admin only — what agents suggested. */
-export async function listTags(ctx: TenantContext): Promise<TagListDTO> {
+export async function listTags(ctx: TenantContext, opts: { aiAvailable?: boolean } = {}): Promise<TagListDTO> {
   const [rows, counts, plan] = await Promise.all([tagRows(ctx), countsByTag(ctx), planFor(ctx)]);
   const tags: OrgTagDTO[] = rows.map((r) => ({ ...refOf(r), starter: r.starter === 1, counts: counts.get(r.name) ?? zeroCounts() }));
   tags.sort((a, b) => Number(a.retired) - Number(b.retired));
   const liveNames = rows.filter(live).map((r) => r.name);
-  return {
-    tags, used: liveNames.length, cap: resolveEntitlements(plan.plan, plan.overrides).tags,
-    suggestions: hasRole(ctx, "admin") ? await pendingSuggestions(ctx, liveNames) : [],
-  };
+  const out: TagListDTO = { tags, used: liveNames.length, cap: resolveEntitlements(plan.plan, plan.overrides).tags, suggestions: [] };
+  if (!hasRole(ctx, "admin")) return out;
+  // What only an admin acts on: what agents suggested, the AI switch, and what the model thinks may fit.
+  const [suggestions, enabled, allowance, summary] = await Promise.all([pendingSuggestions(ctx, liveNames), aiEnabled(ctx), suggestAllowance(ctx), fitSummary(ctx)]);
+  out.suggestions = suggestions;
+  out.ai = { enabled, available: opts.aiAvailable === true, ...allowance };
+  out.fits = Object.fromEntries(liveNames.filter((n) => summary.fits.has(n) || summary.runs.has(n))
+    .map((n) => [n, { open: summary.fits.get(n) ?? 0, run: summary.runs.get(n) ?? null }]));
+  return out;
 }
 
 /** The tags of several items of one type, by item id (names in list order). */
@@ -278,14 +284,14 @@ async function rowByName(ctx: TenantContext, rawName: unknown): Promise<TagRow> 
 const settleStmts = (ctx: TenantContext, name: string, to: string | null, at: string): Stmt[] => [
   ...(to === null ? [] : [stmt(ctx,
     `INSERT OR IGNORE INTO entry_tags (org_id, tag, entry_type, entry_id)
-       SELECT ?, ?, s.entry_type, s.entry_id FROM org_tag_suggestions s WHERE s.org_id = ? AND s.tag = ? AND s.state = 'open'`,
+       SELECT ?, ?, s.entry_type, s.entry_id FROM org_tag_suggestions s WHERE s.org_id = ? AND s.tag = ? AND s.state = 'open' AND s.source = 'agent'`,
     ctx.orgId, to, ctx.orgId, name)]),
-  stmt(ctx, `UPDATE org_tag_suggestions SET state = ?, resolved_to = ?, resolved_at = ?, resolved_by = ? WHERE org_id = ? AND tag = ? AND state = 'open'`,
+  stmt(ctx, `UPDATE org_tag_suggestions SET state = ?, resolved_to = ?, resolved_at = ?, resolved_by = ? WHERE org_id = ? AND tag = ? AND state = 'open' AND source = 'agent'`,
     to === null ? "dismissed" : "accepted", to, at, ctx.userId, ctx.orgId, name),
 ];
 
 const pendingUses = async (ctx: TenantContext, name: string): Promise<number> =>
-  (await first<{ n: number }>(ctx, `SELECT COUNT(DISTINCT entry_type || ':' || entry_id) AS n FROM org_tag_suggestions WHERE org_id = ? AND tag = ? AND state = 'open'`, ctx.orgId, name))?.n ?? 0;
+  (await first<{ n: number }>(ctx, `SELECT COUNT(DISTINCT entry_type || ':' || entry_id) AS n FROM org_tag_suggestions WHERE org_id = ? AND tag = ? AND state = 'open' AND source = 'agent'`, ctx.orgId, name))?.n ?? 0;
 
 function parseColor(raw: unknown): TagColor | undefined {
   if (raw === undefined || raw === null) return undefined;
@@ -345,6 +351,9 @@ export async function editTag(ctx: TenantContext, rawName: unknown, input: { nam
         stmt(ctx, `UPDATE OR IGNORE entry_tags SET tag = ? WHERE org_id = ? AND tag = ?`, next, ctx.orgId, row.name),
         stmt(ctx, `DELETE FROM entry_tags WHERE org_id = ? AND tag = ?`, ctx.orgId, row.name), // only a row the UPDATE could not move: the item already had the new name
         stmt(ctx, `UPDATE org_tags SET merged_into = ? WHERE org_id = ? AND merged_into = ?`, next, ctx.orgId, row.name),
+        // What the model suggested for the tag goes with it (and so does its run history).
+        stmt(ctx, `UPDATE org_tag_suggestions SET tag = ? WHERE org_id = ? AND tag = ? AND source = 'model' AND state = 'open'`, next, ctx.orgId, row.name),
+        stmt(ctx, `UPDATE org_tag_runs SET tag = ? WHERE org_id = ? AND tag = ?`, next, ctx.orgId, row.name),
         // Agents that already asked for the new name were asking for this tag.
         ...settleStmts(ctx, next, next, at),
         auditStmt(ctx, "tag.rename", next, { from: row.name }, at),
@@ -388,6 +397,7 @@ export async function mergeTag(ctx: TenantContext, rawFrom: unknown, rawInto: un
     stmt(ctx, `UPDATE OR IGNORE entry_tags SET tag = ? WHERE org_id = ? AND tag = ?`, into.name, ctx.orgId, from.name),
     stmt(ctx, `DELETE FROM entry_tags WHERE org_id = ? AND tag = ?`, ctx.orgId, from.name), // items that already had both
     stmt(ctx, `UPDATE org_tags SET merged_into = ? WHERE org_id = ? AND merged_into = ?`, into.name, ctx.orgId, from.name),
+    supersedeModelStmt(ctx, from.name, at),
     stmt(ctx, `UPDATE org_tags SET retired_at = COALESCE(retired_at, ?), retired_by = COALESCE(retired_by, ?), merged_into = ?, updated_at = ?, updated_by = ? WHERE org_id = ? AND id = ?`,
       at, ctx.userId, into.name, at, ctx.userId, ctx.orgId, from.id),
     auditStmt(ctx, "tag.merge", from.name, { into: into.name, moved }, at),
@@ -405,10 +415,15 @@ export async function retireTag(ctx: TenantContext, rawName: unknown): Promise<{
   const at = nowIso();
   await batch(ctx, [
     stmt(ctx, `UPDATE org_tags SET retired_at = ?, retired_by = ?, updated_at = ?, updated_by = ? WHERE org_id = ? AND id = ? AND retired_at IS NULL`, at, ctx.userId, at, ctx.userId, ctx.orgId, row.id),
+    supersedeModelStmt(ctx, row.name, at),
     auditStmt(ctx, "tag.retire", row.name, {}, at),
   ]);
   return { name: row.name };
 }
+
+/** A tag that can no longer be picked has nothing left to suggest: its open MODEL suggestions are superseded. */
+const supersedeModelStmt = (ctx: TenantContext, tag: string, at: string): Stmt =>
+  stmt(ctx, `UPDATE org_tag_suggestions SET state = 'superseded', resolved_at = ? WHERE org_id = ? AND tag = ? AND source = 'model' AND state = 'open'`, at, ctx.orgId, tag);
 
 const restoreStmt = (ctx: TenantContext, id: number, at: string): Stmt =>
   stmt(ctx, `UPDATE org_tags SET retired_at = NULL, retired_by = NULL, merged_into = NULL, updated_at = ?, updated_by = ? WHERE org_id = ? AND id = ?`, at, ctx.userId, ctx.orgId, id);

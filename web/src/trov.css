@@ -3175,3 +3175,11 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
   .cnpy-taghead { display:none; }
   .cnpy-tagadd, .cnpy-tagedit-fields { grid-template-columns:minmax(0, 1fr); }
 }
+/* What the model thinks may fit a tag: a line under the tag's row, and the review list it opens. A
+   suggestion is words and buttons — never the tag's square on the item. */
+.cnpy-tagfitline { display:flex; align-items:center; flex-wrap:wrap; gap:6px 14px; padding:0 16px 10px; }
+.cnpy-tagfits { margin:0 16px 14px; padding:12px 14px; border:1px dashed var(--border-strong); }
+.cnpy-tagfit { display:flex; align-items:flex-start; justify-content:space-between; gap:8px 16px; flex-wrap:wrap; padding:9px 0; }
+.cnpy-tagfit + .cnpy-tagfit { border-top:1px solid var(--border); }
+.cnpy-tagfit > :first-child { flex:1 1 280px; min-width:0; }
+.cnpy-tagfit-acts { display:flex; gap:8px; align-items:center; }

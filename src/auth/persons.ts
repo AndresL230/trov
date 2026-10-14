@@ -285,6 +285,8 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   // The org's tag list (0054_org_tags): who added, changed and retired a tag; who sent and settled a suggestion.
   ["org_tags", "created_by"], ["org_tags", "updated_by"], ["org_tags", "retired_by"],
   ["org_tag_suggestions", "suggested_by"], ["org_tag_suggestions", "resolved_by"],
+  // Model suggestions: who turned the org's switch on or off, and who started a run.
+  ["org_ai_settings", "updated_by"], ["org_tag_runs", "started_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

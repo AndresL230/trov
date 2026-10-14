@@ -80,6 +80,8 @@ export async function meterMcpTool(env: Env, ctx: TenantContext, tool: string): 
 // from the webhook (actor `github-webhook`) and from Sync GitHub (actor = the admin). Counts and sizes
 // only: no title, no body, no summary text ever reaches this table.
 export type SummaryKind = "pr" | "issue";
+/** One model call for a suggestion (src/tools/tag-fit.ts) — what the monthly `ai_suggestions` allowance counts. */
+export const METRIC_AI_SUGGEST = "ai_suggest";
 /** An attempted summarizer call — what the monthly allowance (`ai_summaries`) counts. */
 export const METRIC_SUMMARY: Record<SummaryKind, string> = { pr: "summary:pr", issue: "summary:issue" };
 /** An attempt that produced no summary (the item fell back to its excerpt). */

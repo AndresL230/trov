@@ -9,7 +9,9 @@
 import {
   TAG_COLORS, TAG_DESCRIPTION_MAX, TAG_ITEM_LABEL, TAG_ITEM_TYPES, TAG_NAME_MAX, normalizeTagName,
   type OrgTagDTO, type TagColor, type TagCounts, type TagItemType, type TagListDTO, type TagPageDTO, type TagPageItem, type TagRef, type TagSuggestionDTO,
+  type TagAiDTO, type TagFitDTO, type TagRunDTO,
 } from "@shared/tags-core";
+import { switchBtn } from "./notifications";
 import type { MyOrg } from "@shared/orgs";
 import { esc, attr, relTime, surface } from "./ui";
 import { O_FIELD, O_HELP, O_ERR, accentBtn, quietBtn, dangerLink, orgHead, orgEmpty, tabLead, sliceNote, roleAtLeast, loadingNote, failedNote, type OrgSlice } from "./org-ui";
@@ -23,7 +25,7 @@ import { confirmModal } from "./confirm";
 
 export interface TagEdit { name: string; nameDraft: string; descDraft: string; color: TagColor; saving: boolean; error: string | null }
 /** The open confirmation: retire `name`, merge `name` into `into`, or dismiss the suggestion `name`. */
-export interface TagConfirm { what: "retire" | "merge" | "dismiss"; name: string; into?: string; busy: boolean }
+export interface TagConfirm { what: "retire" | "merge" | "dismiss" | "acceptAll"; name: string; into?: string; busy: boolean }
 export type TagPageTab = "all" | TagItemType;
 export const TAG_PAGE_TABS: readonly TagPageTab[] = ["all", ...TAG_ITEM_TYPES];
 export const isTagPageTab = (v: unknown): v is TagPageTab => typeof v === "string" && (TAG_PAGE_TABS as readonly string[]).includes(v);
@@ -43,9 +45,17 @@ export interface TagsUi {
   pageTab: TagPageTab;
   /** A doc's tags are being written. */
   itemBusy: boolean;
+  /** The tag whose "may fit" review list is open, and that list (`GET …/tags/:name/fits`). */
+  fitsOpen: string | null;
+  fits: OrgSlice<TagFitDTO[]>;
+  /** The `<type>:<id>` of a suggestion being accepted or dismissed. */
+  fitBusy: string | null;
+  /** The AI switch is being written. */
+  aiBusy: boolean;
 }
 export const initialTagsUi = (): TagsUi => ({
   nameDraft: "", descDraft: "", addBusy: false, addError: null, edit: null, busy: null, confirm: null, showRetired: false, pageTab: "all", itemBusy: false,
+  fitsOpen: null, fits: { status: "idle", data: [] }, fitBusy: null, aiBusy: false,
 });
 
 /** Can this draft be added? A name that normalizes, not already on the list. */
@@ -150,7 +160,80 @@ function editor(e: TagEdit): string {
 
 const num = (n: number): string => (n > 0 ? String(n) : "—");
 
-function tagRow(t: OrgTagDTO, admin: boolean, ui: TagsUi, dds: DropdownProps[], dd: DropdownUi): string {
+// ── what the model thinks may fit (issues #154–#158) ──────────────────────────
+
+/** The AI switch and where the month's allowance stands — one plain sentence on what is sent and to whom. */
+export function aiSection(ai: TagAiDTO, ui: TagsUi): string {
+  const allowance = ai.cap === null ? `${ai.used.toLocaleString("en-US")} checks used this month.`
+    : `${ai.used.toLocaleString("en-US")} of ${ai.cap.toLocaleString("en-US")} checks used this month.`;
+  const state = !ai.available ? "This Trov has no model key set, so nothing is sent and no suggestions are made."
+    : !ai.enabled ? "Off: nothing is sent."
+    : ai.spent ? "This month's checks are used up: Trov stops looking for items until next month."
+    : allowance;
+  return `<section aria-labelledby="org-tags-ai" data-org-group="tag-ai" data-ai="${ai.enabled ? "on" : "off"}" style="margin-bottom:26px">
+      ${orgHead("Suggest items for a new tag", "", null, "org-tags-ai")}
+      <div${surface("display:flex;align-items:flex-start;gap:14px;padding:14px 16px")}>
+        <span style="flex:none;margin-top:1px">${switchBtn("tagAiToggle", null, ai.enabled).replace("<button ", `<button aria-label="Suggest items for a new tag"${ui.aiBusy || !ai.available ? " disabled" : ""} `)}</span>
+        <div style="min-width:0">
+          <div style="font-size:13px;line-height:1.55;color:var(--fg-70)">When it is on and you add a tag, Trov sends the tag's name and description, and the title and first 400 characters of the feed entries, docs and decisions that may fit it — code removed — to Google's Gemini model, which suggests the ones that do. Nothing is tagged until you accept.</div>
+          <div data-ai-state style="font-size:12px;color:var(--fg-40);margin-top:5px">${esc(state)}</div>
+        </div>
+      </div>
+    </section>`;
+}
+
+const FIT_OPEN: Record<TagItemType, string> = { feed: "goFeed", doc: "openDocFrom", adr: "tagOpenDecision" };
+const FIT_KIND: Record<TagItemType, string> = { feed: "Feed entry", doc: "Doc", adr: "Decision" };
+
+/** The review list under a tag's row: each item that may fit, why, and Accept / Dismiss. Visibly a
+ *  SUGGESTION — the words "May fit" and a reason, never the tag's square on the item (#157). */
+export function fitsPanel(tag: string, ui: TagsUi): string {
+  const f = ui.fits;
+  const items = f.data;
+  const body = f.status === "error" ? failedNote("the suggestions", "tagFitsReload")
+    : f.status !== "ok" && items.length === 0 ? loadingNote("the suggestions", { rows: 3 })
+    : items.length === 0 ? `<div style="${O_HELP}">Nothing left to review.</div>`
+    : `<ul style="list-style:none;margin:0;padding:0">${items.map((it) => {
+        const key = `${it.type}:${it.id}`;
+        const busy = ui.fitBusy === key;
+        return `<li class="cnpy-tagfit" data-tag-fit="${attr(key)}">
+          <div style="min-width:0">
+            <button type="button" data-act="${FIT_OPEN[it.type]}" data-arg="${attr(it.type === "adr" ? it.title : it.id)}" class="cnpy-tagitem-t" style="font-size:13.5px">${esc(it.title)}</button>
+            <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:3px"><span style="color:var(--fg-40)">${FIT_KIND[it.type]} · May fit:</span> ${esc(it.reason)}</div>
+          </div>
+          <div class="cnpy-tagfit-acts">
+            ${quietBtn(busy ? "Accepting…" : "Accept", "tagFitAccept", { arg: key, disabled: !!ui.fitBusy, busy, label: `Tag ${it.title} ${tag}` })}
+            ${quietBtn("Dismiss", "tagFitDismiss", { arg: key, disabled: !!ui.fitBusy, label: `Dismiss: ${it.title} does not get ${tag}` })}
+          </div>
+        </li>`;
+      }).join("")}</ul>`;
+  return `<div class="cnpy-tagfits" data-tag-fits="${attr(tag)}" data-morph-key="fits:${attr(tag)}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+        <div style="font-size:12.5px;color:var(--fg-55)">Trov's model thinks these may fit <strong style="font-weight:600;color:var(--fg)">${esc(tag)}</strong>. Nothing is tagged until you accept.</div>
+        ${items.length > 1 ? accentBtn("Accept all", "tagConfirm", { arg: `acceptAll:${tag}`, disabled: !!ui.fitBusy, field: `tagConfirm:acceptAll:${tag}` }) : ""}
+      </div>
+      ${body}
+    </div>`;
+}
+
+/** A tag row's line about the model: how many items may fit, a run in progress, or why it stopped. */
+function fitLine(t: OrgTagDTO, fit: { open: number; run: TagRunDTO | null } | undefined, ai: TagAiDTO | undefined, ui: TagsUi): string {
+  if (!ai || t.retired) return "";
+  const open = fit?.open ?? 0;
+  const running = fit?.run?.status === "running";
+  const parts: string[] = [];
+  if (open > 0) {
+    const shown = ui.fitsOpen === t.name;
+    parts.push(`<button type="button" data-act="tagFitsOpen" data-arg="${attr(t.name)}" data-field="tagFitsOpen:${attr(t.name)}" aria-expanded="${shown}" class="cnpy-mutelink" style="padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">${open} ${open === 1 ? "item may fit" : "items may fit"}</button>`);
+  }
+  if (running) parts.push(`<span data-fit-run="running" style="font-size:12px;color:var(--fg-40)">Looking for items that fit…</span>`);
+  else if (fit?.run?.status === "capped") parts.push(`<span data-fit-run="capped" style="font-size:12px;color:var(--fg-40)">Stopped: this month's checks are used up.</span>`);
+  else if (fit?.run?.status === "done" && open === 0) parts.push(`<span data-fit-run="done" style="font-size:12px;color:var(--fg-40)">No other items look like they fit.</span>`);
+  if (ai.enabled && ai.available && !ai.spent && !running) parts.push(quietBtn(ui.busy === `find:${t.name}` ? "Looking…" : "Find items", "tagFind", { arg: t.name, disabled: !!ui.busy, label: `Find existing items that fit ${t.name}`, extra: "height:26px;padding:0 9px;font-size:12px" }));
+  return parts.length ? `<div class="cnpy-tagfitline" data-tag-fitline="${attr(t.name)}">${parts.join("")}</div>` : "";
+}
+
+function tagRow(t: OrgTagDTO, admin: boolean, ui: TagsUi, dds: DropdownProps[], dd: DropdownUi, list: TagListDTO | null = null): string {
   const editing = ui.edit?.name === t.name ? ui.edit : null;
   const busy = ui.busy === t.name;
   const merge = dds.find((d) => d.id === mergeId(t.name));
@@ -167,6 +250,8 @@ function tagRow(t: OrgTagDTO, admin: boolean, ui: TagsUi, dds: DropdownProps[], 
         <div data-col="small" style="font-size:12px;color:var(--fg-40)">${small ? esc(small) : "Not used yet"}</div>
         <div data-col="acts" class="cnpy-tagrow-acts">${acts}</div>
       </div>
+      ${admin ? fitLine(t, list?.fits?.[t.name], list?.ai, ui) : ""}
+      ${admin && ui.fitsOpen === t.name && !t.retired ? fitsPanel(t.name, ui) : ""}
       ${editing ? editor(editing) : ""}
     </li>`;
 }
@@ -209,13 +294,13 @@ export function tagsTab(org: MyOrg, p: TagsTabProps): string {
       ${TAG_ITEM_TYPES.map((k) => `<div data-col="n" style="text-align:right">${k === "feed" ? "Feed" : k === "doc" ? "Docs" : "Decisions"}</div>`).join("")}
       <div data-col="small"></div><div data-col="acts"></div>
     </div>`;
-  const rows = (ts: OrgTagDTO[]) => ts.map((t) => tagRow(t, admin, ui, dds, dd)).join("");
+  const rows = (ts: OrgTagDTO[]) => ts.map((t) => tagRow(t, admin, ui, dds, dd, list)).join("");
   const retiredBlock = retired.length ? `<div style="margin-top:18px" data-org-tags-retired>
       <button type="button" data-act="tagShowRetired" data-field="tagShowRetired" aria-expanded="${ui.showRetired}" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;padding:4px 0;font-size:12.5px;font-weight:500;color:var(--fg-55)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="transform:${ui.showRetired ? "rotate(90deg)" : "none"};transition:transform .15s ease"><path d="M9 6l6 6-6 6"></path></svg>${plural(retired.length, "retired tag", "retired tags")}</button>
       <ul${surface("overflow:hidden;list-style:none;margin:8px 0 0;padding:0")}${ui.showRetired ? "" : " hidden"}>${rows(retired)}</ul>
     </div>` : "";
 
-  return `${lead}${suggestions}
+  return `${lead}${suggestions}${admin && list.ai ? aiSection(list.ai, ui) : ""}
     <section aria-labelledby="org-tags-list" data-org-group="tags">
       ${orgHead("Tags", "", null, "org-tags-list")}
       ${add}
@@ -238,12 +323,16 @@ export function tagConfirmModal(c: TagConfirm | null, list: TagListDTO | null): 
       title: `Merge ${c.name} into ${c.into ?? ""}?`,
       body: `${n ? `The ${plural(n, "item", "items")} tagged ${c.name} ${n === 1 ? "is" : "are"} tagged ${c.into ?? ""} instead` : `Nothing is tagged ${c.name} yet`}, and ${c.name} leaves the list. An agent that still sends ${c.name} gets ${c.into ?? ""}. Items cannot be moved back in one step.`,
       confirmLabel: "Merge tags", busyLabel: "Merging…",
+    } : c.what === "acceptAll" ? {
+      title: `Tag ${(list?.fits?.[c.name]?.open ?? 0) === 1 ? "1 item" : `${list?.fits?.[c.name]?.open ?? 0} items`} ${c.name}?`,
+      body: `Every item Trov's model suggested for ${c.name} gets the tag, as if you had added it to each one. You can take it off an item later.`,
+      confirmLabel: "Accept all", busyLabel: "Tagging…",
     } : {
       title: `Dismiss ${c.name}?`,
       body: `The items that carried it stay as they are, without it. If an agent sends ${c.name} again, it is suggested again.`,
       confirmLabel: "Dismiss", busyLabel: "Dismissing…",
     };
-  return confirmModal({ id: "tag-confirm", ...copy, confirmAct: "tagConfirmGo", cancelAct: "tagConfirmCancel", busy: c.busy, ...(c.what === "dismiss" ? { tone: "neutral" as const } : {}) });
+  return confirmModal({ id: "tag-confirm", ...copy, confirmAct: "tagConfirmGo", cancelAct: "tagConfirmCancel", busy: c.busy, ...(c.what === "dismiss" || c.what === "acceptAll" ? { tone: "neutral" as const } : {}) });
 }
 
 // ── one tag's page ───────────────────────────────────────────────────────────

@@ -90,6 +90,8 @@ export const RESET_STATEMENTS = [
   "DELETE FROM entry_tags",
   // The org's tag list (0054_org_tags): suggestions go, and each seed org is back to the six starters below.
   "DELETE FROM org_tag_suggestions",
+  "DELETE FROM org_tag_runs",
+  "DELETE FROM org_ai_settings",
   "DELETE FROM org_tags",
   "DELETE FROM adrs",
   "DELETE FROM needs_triage",

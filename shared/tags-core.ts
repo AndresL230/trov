@@ -94,8 +94,43 @@ export interface TagSuggestionDTO {
   similar: string | null;
 }
 
+/** A run of "which existing items fit this tag?" (src/tools/tag-fit.ts). */
+export interface TagRunDTO {
+  status: "running" | "done" | "capped" | "failed";
+  started_at: string;
+  ended_at: string | null;
+  suggested: number;
+}
+
+/** One open MODEL suggestion that an item fits a tag — never drawn as a tag the item has. */
+export interface TagFitDTO {
+  type: TagItemType;
+  id: string;
+  title: string;
+  /** One sentence: why the model thinks it fits. */
+  reason: string;
+  confidence: number;
+  suggested_at: string;
+}
+
+/** The org's switch for model suggestions, and where the month's allowance stands — admins only. */
+export interface TagAiDTO {
+  /** The org's switch (`org_ai_settings`, kind `tag.fit`). */
+  enabled: boolean;
+  /** The platform can call a model at all (its key is set). */
+  available: boolean;
+  used: number;
+  /** null = unlimited. */
+  cap: number | null;
+  spent: boolean;
+}
+
 export interface TagListDTO {
   tags: OrgTagDTO[];
+  /** Admins only (absent for a member): the AI switch and allowance. */
+  ai?: TagAiDTO;
+  /** Admins only: per live tag, how many items MAY fit it (open model suggestions) and its latest run. */
+  fits?: Record<string, { open: number; run: TagRunDTO | null }>;
   /** Live tags, of the plan's `cap` (null = no cap). Retired tags do not count. */
   used: number;
   cap: number | null;
@@ -133,7 +168,9 @@ export type SuggestionResolution = (typeof SUGGESTION_RESOLUTIONS)[number];
 
 /** `org_admin_audit.action` for the tag list (src/tools/tags.ts). */
 export type TagAuditAction = "tag.add" | "tag.rename" | "tag.edit" | "tag.merge" | "tag.retire" | "tag.restore"
-  | "tag.suggestion.accept" | "tag.suggestion.map" | "tag.suggestion.dismiss";
+  | "tag.suggestion.accept" | "tag.suggestion.map" | "tag.suggestion.dismiss"
+  // The model's suggestions (src/tools/tag-fit.ts): the org's switch, and an admin settling them.
+  | "ai.enable" | "ai.disable" | "tag.fit.accept" | "tag.fit.dismiss";
 
 /** A live tag one edit away from `name`, or one that `name` extends ("authn" → "auth"). */
 export function similarTag(name: string, live: readonly string[]): string | null {

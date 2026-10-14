@@ -798,6 +798,12 @@ picker, a doc's Tags row and the tab all draw from it):
 - **A doc's Tags row** (`itemTagsRow`): each tag as `tagMark` with a remove button, and an Add a tag
   `dropdown()` of the live tags it lacks. Feed entries and decisions have no page of their own, so they have
   no picker yet (`POST /item-tags` accepts them).
+- **What may fit** (admins, on the Tags tab; `aiSection`, `fitsPanel`): the switch (`switchBtn`, OFF by default)
+  with ONE sentence on what is sent and to whom, and where the month's checks stand. Under a tag's row: "N items
+  may fit" (opens the review list), "Looking for items that fit…" while a run goes (the controller re-reads the
+  list every 3 s, at most 40 times), why a run stopped, and Find items. The review list is visibly a
+  SUGGESTION (#157): a dashed frame, each item's title (a link to it), "May fit:" and the model's one-sentence
+  reason, Accept / Dismiss, and Accept all behind `confirmModal` — never the tag's square on the item.
 
 **Tooltips.** A mark carries `data-mtip`: a sentence on what its state means ("Built, and being checked
 before it is done."), not the word again; a glyph alone puts its name first ("Testing. Built, …"). ONE

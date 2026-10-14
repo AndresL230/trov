@@ -9,7 +9,13 @@
 //   PUT  /tags/:name                        admin+: rename and/or edit description, colour
 //   POST /tags/:name/merge|retire|restore   admin+
 //   POST /tags/suggestions/:name/resolve    admin+: accept | map | dismiss
+//   POST /tags/:name/find-items             admin+: look for existing items that fit the tag (a model run,
+//                                           in the background — src/tools/tag-fit.ts); answers at once
+//   GET  /tags/:name/fits                   admin+: what the model suggested may fit, with each reason
+//   POST /tags/:name/fits/resolve           admin+: accept | dismiss, some items or all of them
+//   PUT  /tag-settings                      admin+: the org's switch for model suggestions (OFF by default)
 //   POST /item-tags                         any member: replace the tags of one feed entry, doc or decision
+// Adding a tag (or accepting a suggested one) also starts a model run, when the org's switch is on.
 //
 // Cookie only, NEVER a token and never an MCP tool: changing the list is a person's decision (agents
 // stage, humans confirm). A request carrying an `Authorization` header is refused outright, like the
@@ -18,9 +24,25 @@
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import type { AppEnv } from "../auth/principal";
-import { RoleError } from "../data/context";
+import { RoleError, requireRole } from "../data/context";
 import { PlanFeatureError, PlanLimitError } from "../plans/state";
 import { TagError, addTag, editTag, listTags, mergeTag, resolveSuggestion, restoreTag, retireTag, setItemTags, tagPage } from "../tools/tags";
+import { continueTagFit, listFits, resolveFits, setAiEnabled, startTagFit, type FitStart } from "../tools/tag-fit";
+
+/**
+ * Start a model run for `tag` and hand its work to the request's `waitUntil` — never on the response's
+ * path, never on a page load. Without an ExecutionContext (a test calling the app directly) the run is
+ * finished before answering. Nothing happens when the platform has no key or the org's switch is off.
+ */
+async function fitInBackground(c: C, tag: string): Promise<FitStart["status"]> {
+  const s = await startTagFit(c.env, c.var.ctx, tag);
+  if (s.status !== "started") return s.status;
+  const work = continueTagFit(c.env, c.var.ctx, s.run, tag);
+  let waitUntil: ((p: Promise<unknown>) => void) | null = null;
+  try { const exec = c.executionCtx; waitUntil = (p) => exec.waitUntil(p); } catch { waitUntil = null; } // Hono throws with no ExecutionContext
+  if (waitUntil) waitUntil(work); else await work;
+  return "started";
+}
 
 type C = Context<AppEnv>;
 
@@ -57,7 +79,7 @@ export const tagsApp = (() => {
 
   // Reads back a screen: a failed read is a 503 `{ error }`, never a 500.
   r.get("/", async (c) => {
-    try { return c.json(await listTags(c.var.ctx)); }
+    try { return c.json(await listTags(c.var.ctx, { aiAvailable: !!c.env.GEMINI_API_KEY })); }
     catch (e) { console.error("tags read failed", e instanceof Error ? e.name : "error"); return c.json({ error: "Couldn't read the tags" }, 503); }
   });
   r.get("/:name", async (c) => {
@@ -67,12 +89,33 @@ export const tagsApp = (() => {
     } catch (e) { console.error("tag read failed", e instanceof Error ? e.name : "error"); return c.json({ error: "Couldn't read that tag" }, 503); }
   });
 
-  r.post("/", (c) => guard(c, async () => c.json({ ok: true, ...(await addTag(c.var.ctx, await body(c))) }, 201)));
+  r.post("/", (c) => guard(c, async () => {
+    const added = await addTag(c.var.ctx, await body(c));
+    return c.json({ ok: true, ...added, fit: await fitInBackground(c, added.name) }, 201);
+  }));
+  r.post("/:name/find-items", (c) => guard(c, async () => {
+    requireRole(c.var.ctx, "admin");
+    return c.json({ ok: true, status: await fitInBackground(c, c.req.param("name")) });
+  }));
+  r.get("/:name/fits", (c) => guard(c, async () => c.json({ fits: await listFits(c.var.ctx, c.req.param("name")) })));
+  r.post("/:name/fits/resolve", (c) => guard(c, async () => c.json({ ok: true, ...(await resolveFits(c.var.ctx, c.req.param("name"), await body(c))) })));
   r.put("/:name", (c) => guard(c, async () => c.json({ ok: true, ...(await editTag(c.var.ctx, c.req.param("name"), await body(c))) })));
   r.post("/:name/merge", (c) => guard(c, async () => c.json({ ok: true, ...(await mergeTag(c.var.ctx, c.req.param("name"), (await body(c)).into)) })));
   r.post("/:name/retire", (c) => guard(c, async () => c.json({ ok: true, ...(await retireTag(c.var.ctx, c.req.param("name"))) })));
   r.post("/:name/restore", (c) => guard(c, async () => c.json({ ok: true, ...(await restoreTag(c.var.ctx, c.req.param("name"))) })));
-  r.post("/suggestions/:name/resolve", (c) => guard(c, async () => c.json({ ok: true, ...(await resolveSuggestion(c.var.ctx, c.req.param("name"), await body(c))) })));
+  r.post("/suggestions/:name/resolve", (c) => guard(c, async () => {
+    const res = await resolveSuggestion(c.var.ctx, c.req.param("name"), await body(c));
+    // A suggested tag that joined the list: look for the other items that fit it too.
+    return c.json({ ok: true, ...res, ...(res.resolution === "accept" && res.tag ? { fit: await fitInBackground(c, res.tag) } : {}) });
+  }));
+  return r;
+})();
+
+/** `PUT /tag-settings` `{ enabled }` — admin+: the org's switch for model suggestions. */
+export const tagSettingsApp = (() => {
+  const r = new Hono<AppEnv>();
+  r.use("*", personOnly);
+  r.put("/", (c) => guard(c, async () => c.json({ ok: true, ...(await setAiEnabled(c.var.ctx, (await body(c)).enabled)) })));
   return r;
 })();
 

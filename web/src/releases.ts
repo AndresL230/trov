@@ -92,6 +92,7 @@ export const RELEASES: Release[] = [
       "States now read in sentence case, for example \"In progress\" instead of \"IN PROGRESS\".",
       "A pull request's state on the Repo screen is a circle too: dashed for Draft, filling through In review and Approved, a check for Merged.",
       "Roles, \"(you)\", a plan's name and other plain facts are plain text now, not coloured chips.",
+      "An admin can let Trov suggest which existing feed entries, docs and decisions fit a new tag. It is off until an admin turns it on in Org settings › Tags; each suggestion says why, and nothing is tagged until an admin accepts it.",
       "Tags are now each organization's own list, in Org settings › Tags. It starts with the six you know; an admin can add a tag, rename one, merge two or retire one, and give each a description and a colour.",
       "A feed entry with a tag that is not on your list is no longer held in Unplaced. It is posted without the tag, and the tag waits in Org settings › Tags, where an admin adds it, points it at a tag you already have, or dismisses it.",
       "Click a tag to open its page: every feed entry, doc and decision that carries it. Docs have a Tags row of their own.",
@@ -100,6 +101,7 @@ export const RELEASES: Release[] = [
     ops: [
       "Apply `0054_org_tags` (the deploy does it). It adds `org_tags` and `org_tag_suggestions`, gives every organization the six starter tags, and REBUILDS `entry_tags` without its reference to the global `tags` table: same columns and rows, a guard fails the migration if a row would be lost. Safe on the Worker from before it. Check first that every stored tag is one of the six: `SELECT tag, COUNT(*) FROM entry_tags WHERE tag NOT IN (SELECT tag FROM tags) GROUP BY tag` must return nothing. The by-hand rollback is in the file's header.",
       "The per-organization tag cap is a placeholder (30 on every plan, `shared/plans.ts` `TAGS_PLACEHOLDER`): confirm the numbers before this ships.",
+      "Model tag suggestions use the existing `GEMINI_API_KEY`; nothing to set. They are OFF for every organization until one of its admins turns them on. The monthly allowance `ai_suggestions` is a placeholder equal to `ai_summaries` (300 / 3,000 / unlimited): confirm it. The Privacy Policy and Terms carry DRAFT lines on them (`web/src/legal.ts`, marked) for review before this ships; their effective date was not bumped.",
       "Trov plugin 0.8.2 (skill text only): feed tags come from the organization's list (`list_tags`), and an unknown tag is a suggestion, not a triage item. Update the plugin from the marketplace.",
     ],
     patches: {
@@ -115,6 +117,9 @@ export const RELEASES: Release[] = [
         "`src/tags/routes.ts`: `GET /api/o/:slug/tags[/:name]`, `POST /tags`, `PUT /tags/:name`, `POST /tags/:name/merge|retire|restore`, `POST /tags/suggestions/:name/resolve`, `POST /item-tags`. Cookie only: a request with an `Authorization` header is refused",
         "MCP `list_tags` (read-only): the organization's live tags and what each is for. 44 tools for every member",
         "The `tags` limit in `PLANS` (`LIMIT_KEYS`, `requirePlan(ctx, \"tags\")`): 30 on every plan, a placeholder",
+        "`src/tools/classify.ts`: the one classify call (issue 155 on GitHub) — a kind, a question, the allowed answers and items in; per item an answer from the list, a confidence and a one-sentence reason out; validated, and a timeout or error is no judgement",
+        "`src/tools/tag-fit.ts`: which existing items fit a tag — candidates from the org's own FTS (≤ 60, newest first), 20 per call, ≤ 400-character excerpts with code and credential-shaped text removed; \"fits\" at 0.7 or more stored as `source = 'model'` suggestions; one run per tag (`org_tag_runs`), a re-run supersedes; started in the background after a tag is added and by Find items",
+        "`org_ai_settings` (OFF by default; `PUT /api/o/:slug/tag-settings`), `GET /tags/:name/fits`, `POST /tags/:name/fits/resolve`, `POST /tags/:name/find-items`; the `ai_suggestions` monthly limit in `PLANS`",
         "Web: Org settings › Tags (`web/src/tags.ts`, `tags-actions.ts`), a tag's page at `#tags/<name>`, a doc's Tags row, and `tagMark` / `tagWords` in `marks.ts` (a square and the word; plain words in a list, three then \"and N more\")",
       ],
       changed: [

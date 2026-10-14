@@ -14,10 +14,10 @@ vi.mock("../web/src/markdown", () => ({
 import css from "../web/src/trov.css?raw";
 import { render, initialState, feedTagNames, type AppState } from "../web/src/render";
 import { tagMark, tagSquare, tagWords } from "../web/src/marks";
-import { tagsTab, tagPageView, itemTagsRow, tagConfirmModal, tagsDropdowns, initialTagsUi, tagDraftProblem, countsPhrase, type TagsUi } from "../web/src/tags";
+import { tagsTab, tagPageView, itemTagsRow, tagConfirmModal, tagsDropdowns, initialTagsUi, tagDraftProblem, countsPhrase, aiSection, fitsPanel, type TagsUi } from "../web/src/tags";
 import { orgTabsFor, ORG_TABS } from "../web/src/org-settings";
 import { parseHash, hashForRoute } from "../web/src/hash";
-import { STARTER_TAGS, TAG_COLORS, tagLineParts, similarTag, normalizeTagName, type OrgTagDTO, type TagListDTO, type TagPageDTO, type TagSuggestionDTO } from "@shared/tags-core";
+import { STARTER_TAGS, TAG_COLORS, tagLineParts, similarTag, normalizeTagName, type OrgTagDTO, type TagListDTO, type TagPageDTO, type TagSuggestionDTO, type TagAiDTO, type TagFitDTO } from "@shared/tags-core";
 import type { MyOrg, OrgRole } from "@shared/orgs";
 import type { FeedRow } from "@shared/rows";
 
@@ -41,7 +41,8 @@ const piece = (html: string, marker: string): string => {
 };
 /** No tag is a pill. (Org settings' own section headings are small caps: they are not tags, and are set aside.) */
 const noPill = (page: string): void => {
-  const html = page.replace(/<div class="cnpy-sechead">[\s\S]*?<\/div>/g, "");
+  // (The on/off switch is the app's one switch control, round by design — not a tag.)
+  const html = page.replace(/<div class="cnpy-sechead">[\s\S]*?<\/div>/g, "").replace(/<button[^>]*role="switch"[^>]*>/g, "");
   expect(html).not.toMatch(/text-transform:\s*uppercase/);
   expect(html).not.toMatch(/border-radius:\s*999/);
   expect(html).not.toContain("●");
@@ -352,5 +353,83 @@ describe("shared helpers", () => {
     expect(countsPhrase({ feed: 4, doc: 1, adr: 0 })).toBe("4 feed entries and 1 doc");
     expect(countsPhrase({ feed: 1, doc: 2, adr: 3 })).toBe("1 feed entry, 2 docs and 3 decisions");
     expect(countsPhrase({ feed: 0, doc: 0, adr: 0 })).toBe("nothing yet");
+  });
+});
+
+describe("what Trov's model thinks may fit a tag (issues #154–#158)", () => {
+  const ai = (o: Partial<TagAiDTO> = {}): TagAiDTO => ({ enabled: true, available: true, used: 12, cap: 300, spent: false, ...o });
+  const fit = (id: string, title: string, o: Partial<TagFitDTO> = {}): TagFitDTO => ({ type: "feed", id, title, reason: "It is about what a customer pays.", confidence: 0.9, suggested_at: "2026-10-13T10:00:00Z", ...o });
+
+  it("the switch: OFF by default, one plain sentence on what is sent and to whom, and where the month stands", () => {
+    const off = aiSection(ai({ enabled: false }), initialTagsUi());
+    expect(off).toContain(`role="switch" aria-checked="false"`);
+    expect(off).toContain(`aria-label="Suggest items for a new tag"`);
+    expect(off).toContain("to Google's Gemini model");
+    expect(off).toContain("first 400 characters");
+    expect(off).toContain("Nothing is tagged until you accept.");
+    expect(off).toContain("Off: nothing is sent.");
+    expect(aiSection(ai(), initialTagsUi())).toContain("12 of 300 checks used this month.");
+    expect(aiSection(ai({ spent: true, used: 300 }), initialTagsUi())).toContain("This month&#39;s checks are used up");
+    const nokey = aiSection(ai({ available: false, enabled: false }), initialTagsUi());
+    expect(nokey).toContain("no model key set");
+    expect(nokey).toMatch(/role="switch"[^>]*disabled|disabled[^>]*role="switch"/);
+  });
+
+  it("a tag row says how many items may fit, a run in progress, or why it stopped — and offers Find items while the switch is on", () => {
+    const l = list({ ai: ai(), fits: { onboarding: { open: 3, run: { status: "done", started_at: "t", ended_at: "t", suggested: 3 } }, auth: { open: 0, run: { status: "running", started_at: "t", ended_at: null, suggested: 0 } }, ui: { open: 0, run: { status: "capped", started_at: "t", ended_at: "t", suggested: 0 } } } });
+    const html = tab("admin", l);
+    expect(html).toContain(`data-org-group="tag-ai"`);
+    expect(piece(html, `data-org-tag="onboarding"`)).toContain(`data-act="tagFitsOpen" data-arg="onboarding"`);
+    expect(piece(html, `data-org-tag="onboarding"`)).toContain("3 items may fit");
+    expect(piece(html, `data-org-tag="auth"`)).toContain("Looking for items that fit…");
+    expect(piece(html, `data-org-tag="auth"`)).not.toContain(`data-act="tagFind"`);
+    expect(piece(html, `data-org-tag="ui"`)).toContain("Stopped: this month's checks are used up.");
+    expect(piece(html, `data-org-tag="data"`)).toContain(`data-act="tagFind" data-arg="data"`);
+    // Switch off: no Find items anywhere; a member sees none of it.
+    expect(tab("admin", list({ ai: ai({ enabled: false }), fits: {} }))).not.toContain(`data-act="tagFind"`);
+    const member = tab("member", list({ ai: ai(), fits: { onboarding: { open: 3, run: null } } }));
+    expect(member).not.toContain("tag-ai");
+    expect(member).not.toContain("may fit");
+    noPill(html);
+  });
+
+  it("the review list: each item's title linking to it, the reason, Accept and Dismiss — never the tag's square on the item", () => {
+    const ui: TagsUi = { ...initialTagsUi(), fitsOpen: "onboarding", fits: { status: "ok", data: [fit("41", "Invoices show seats"), fit("how-to", "How sign-up works", { type: "doc" }), fit("7", "Sessions in a cookie", { type: "adr" })] } };
+    const panel = fitsPanel("onboarding", ui);
+    expect(panel).toContain("Trov's model thinks these may fit <strong");
+    expect(panel).toContain("Nothing is tagged until you accept.");
+    expect(panel).toContain(`data-act="goFeed" data-arg="41"`);
+    expect(panel).toContain(`data-act="openDocFrom" data-arg="how-to"`);
+    expect(panel).toContain(`data-act="tagOpenDecision" data-arg="Sessions in a cookie"`);
+    expect(panel).toContain("Feed entry · May fit:</span> It is about what a customer pays.");
+    expect(panel).toContain(`data-act="tagFitAccept" data-arg="feed:41"`);
+    expect(panel).toContain(`data-act="tagFitDismiss" data-arg="doc:how-to"`);
+    expect(panel).toContain(`data-act="tagConfirm" data-arg="acceptAll:onboarding"`);
+    expect(panel).not.toContain("cnpy-tagsq");              // a suggestion is not drawn as a tag the item has
+    expect(panel).not.toContain("<button type=\"button\" data-act=\"tagFitAccept\"><button");
+    noPill(panel);
+    // In the tab, under its row.
+    const html = tab("admin", list({ ai: ai(), fits: { onboarding: { open: 3, run: null } } }), ui);
+    expect(piece(html, `data-org-tag="onboarding"`)).toContain(`data-tag-fits="onboarding"`);
+    expect(fitsPanel("onboarding", { ...ui, fits: { status: "ok", data: [] } })).toContain("Nothing left to review.");
+    expect(fitsPanel("onboarding", { ...ui, fits: { status: "error", data: [] } })).toContain(`data-act="tagFitsReload"`);
+  });
+
+  it("Accept all asks first, in confirmModal", () => {
+    const m = tagConfirmModal({ what: "acceptAll", name: "onboarding", busy: false }, list({ fits: { onboarding: { open: 3, run: null } } }));
+    expect(m).toContain("Tag 3 items onboarding?");
+    expect(m).toContain(`data-act="tagConfirmGo"`);
+    expect(m).toContain("Accept all");
+  });
+
+  it("the tab with the review list open is inside Org settings' data-morph, so the page is patched, not rebuilt", () => {
+    const s: AppState = initialState();
+    s.view = "app"; s.screen = "org"; s.orgSlug = "acme"; s.org.tab = "tags";
+    s.me = { handle: "andres", name: "Andres", color: "moss", avatar_url: null, orgs: [org("owner")], pending_invites: 0 } as unknown as AppState["me"];
+    s.tags = { status: "ok", data: list({ ai: ai(), fits: { onboarding: { open: 1, run: null } } }) };
+    s.tagsUi = { ...initialTagsUi(), fitsOpen: "onboarding", fits: { status: "ok", data: [fit("41", "Invoices show seats")] } };
+    const html = render(s);
+    expect(html).toContain(`data-morph="org"`);
+    expect(html).toContain(`data-tag-fits="onboarding"`);
   });
 });

@@ -239,11 +239,11 @@ describe("pricing — no paid price announced (a test double: Pro without a numb
     expect(html).not.toMatch(/[$€£¥]/);
     expect(html.match(/site-plan-amt/g)).toHaveLength(1);
     expect(card(html, "free")).toContain('<span class="site-plan-amt">Free</span>');
-    // No price interval anywhere. The one "per month" on the page is a LIMIT's period (the AI-summaries
-    // allowance), never a price: with those phrases set aside, nothing else says "per month" or "per year".
+    // No price interval anywhere. The "per month" on the page is a LIMIT's period (the AI-summaries and
+    // AI-suggestion allowances), never a price: with those phrases set aside, nothing else says "per month" or "per year".
     expect(html).not.toContain('class="site-plan-per"');
-    const allowance = /AI summar(?:y|ies),? per month/g;
-    expect(text(html).match(allowance)).toHaveLength(2); // the Free and Pro cards
+    const allowance = /AI (?:summar(?:y|ies)|suggestion checks?),? per month/g;
+    expect(text(html).match(allowance)).toHaveLength(4); // each allowance on the Free and Pro cards
     expect(text(html).replace(allowance, "")).not.toMatch(/\bper (month|year)\b/);
     expect(text(html)).not.toContain("per seat /");
     expect(card(html, "team")).toContain("Pricing to be announced");

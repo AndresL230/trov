@@ -17,7 +17,7 @@ export type PlanId = (typeof PLAN_IDS)[number];
 export const isPlanId = (v: unknown): v is PlanId => typeof v === "string" && (PLAN_IDS as readonly string[]).includes(v);
 
 /** Every limit a plan sets. `null` as a value means UNLIMITED. */
-export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections", "ai_summaries", "tags"] as const;
+export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections", "ai_summaries", "ai_suggestions", "tags"] as const;
 export type LimitKey = (typeof LIMIT_KEYS)[number];
 export type Entitlements = Record<LimitKey, number | null>;
 /** Per-org exceptions: a key that is present replaces the plan's value (null = unlimited); absent = the plan's. */
@@ -53,6 +53,12 @@ export const LIMITS: Record<LimitKey, LimitDef> = {
   ai_summaries: {
     label: "AI summaries", one: "AI summary", many: "AI summaries", counts: "Summaries of pull requests and issues attempted this calendar month (UTC).",
     per: "org", unit: "count", min: 0, period: "month", atCap: "New pull requests and issues show an excerpt until next month.",
+  },
+  // Model suggestions (issues #154–#158; src/tools/tag-fit.ts): each model call — today, "which existing items fit
+  // this tag?" — counts, per calendar month (UTC). Past it a run simply stops; nothing is refused with a 402.
+  ai_suggestions: {
+    label: "AI suggestions", one: "AI suggestion check", many: "AI suggestion checks", counts: "Model calls made to suggest tags for existing items, this calendar month (UTC).",
+    per: "org", unit: "count", min: 0, period: "month", atCap: "Trov stops looking for items that fit a tag until next month.",
   },
   // The organization's tag list (0054_org_tags; src/tools/tags.ts). min 6: the starters are never removed.
   tags: { label: "Tags", one: "tag", many: "tags", counts: "Tags on the list. Retired tags do not count.", per: "org", unit: "count", min: 6 },
@@ -99,27 +105,31 @@ const GB = 1024 * MB;
 /** How many tags an org's list may hold. A PLACEHOLDER, the same on every plan: the owner has not
  *  chosen the numbers yet (docs/architecture/plans.md › Tags). */
 const TAGS_PLACEHOLDER = 30;
+/** Model calls for suggestions per calendar month — PLACEHOLDERS equal to each plan's `ai_summaries` (plans.md
+ *  › AI suggestions); the owner has not chosen them. */
+const SUGGEST_FREE = 300;
+const SUGGEST_PRO = 3000;
 
 export const PLANS: Record<PlanId, PlanDef> = {
   free: {
     id: "free", name: "Free", description: "For a small team trying Trov out.",
-    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, tags: TAGS_PLACEHOLDER },
+    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_suggestions: SUGGEST_FREE, tags: TAGS_PLACEHOLDER },
     features: [], offered: true, billing: null,
   },
   // LEGACY: no longer offered or sold. An org or grant already on it keeps these limits.
   personal: {
     id: "personal", name: "Personal", description: "One person's own organization.",
-    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, tags: TAGS_PLACEHOLDER },
+    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_suggestions: SUGGEST_FREE, tags: TAGS_PLACEHOLDER },
     features: [], offered: false, billing: null,
   },
   team: {
     id: "team", name: "Pro", description: "For a team, paid per seat.",
-    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, tags: TAGS_PLACEHOLDER },
+    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_suggestions: SUGGEST_PRO, tags: TAGS_PLACEHOLDER },
     features: [], offered: true, billing: null,
   },
   enterprise: {
     id: "enterprise", name: "Enterprise", description: "Limits set for the organization by Trov.",
-    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, tags: TAGS_PLACEHOLDER },
+    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_suggestions: null, tags: TAGS_PLACEHOLDER },
     features: [], offered: true, billing: null,
   },
 };

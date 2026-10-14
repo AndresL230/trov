@@ -60,6 +60,9 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     handle
   ); // org_tag_suggestions.suggested_by
   await run(env.DB, `UPDATE org_tag_suggestions SET state = 'dismissed', resolved_at = ?, resolved_by = ? WHERE suggested_by = ?`, nowIso(), handle, handle);
+  // Model suggestions: the org's switch and a run the person started.
+  await run(env.DB, `INSERT INTO org_ai_settings (org_id, kind, enabled, updated_at, updated_by) VALUES ('org_saplinglearn', ?, 1, ?, ?)`, `rename-${handle}`, nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_tag_runs (org_id, tag, status, started_by, started_at) VALUES ('org_saplinglearn', ?, 'done', ?, ?)`, `rename-${handle}`, handle, nowIso());
   await run(env.DB, `INSERT INTO org_tags (org_id, name, created_at, created_by, updated_at, updated_by, retired_at, retired_by) VALUES ('org_saplinglearn', ?, ?, ?, ?, ?, ?, ?)`,
     `rename-${handle}`, nowIso(), handle, nowIso(), handle, nowIso(), handle);
   await ensure_identity_task(systemCtx(), platformCtx(), "unmapped-login-1");
