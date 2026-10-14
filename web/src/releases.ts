@@ -92,7 +92,8 @@ export const RELEASES: Release[] = [
       "States now read in sentence case, for example \"In progress\" instead of \"IN PROGRESS\".",
       "A pull request's state on the Repo screen is a circle too: dashed for Draft, filling through In review and Approved, a check for Merged.",
       "Roles, \"(you)\", a plan's name and other plain facts are plain text now, not coloured chips.",
-      "An admin can let Trov suggest which existing feed entries, docs and decisions fit a new tag, scored by TypeSafe AI's Jev model. It is off until an admin turns it on in Org settings › Tags; each suggestion shows the passage that matched, and nothing is tagged until an admin accepts it.",
+      "An admin can let Trov suggest which existing feed entries, docs and decisions fit a new tag, scored by TypeSafe AI's Jev model. It is off until an admin turns it on in Org settings › Tags; each suggestion shows the passage that matched (or Jev's score when nothing matched), and nothing is tagged until an admin accepts it.",
+      "While Trov looks, the tag's row shows the items being checked one by one: the ones that may fit gather on the right in the tag's colour, with a count. A tag whose words match nothing still gets the newest items checked.",
       "Tags are now each organization's own list, in Org settings › Tags. It starts with the six you know; an admin can add a tag, rename one, merge two or retire one, and give each a description and a colour.",
       "A feed entry with a tag that is not on your list is no longer held in Unplaced. It is posted without the tag, and the tag waits in Org settings › Tags, where an admin adds it, points it at a tag you already have, or dismisses it.",
       "Click a tag to open its page: every feed entry, doc and decision that carries it. Docs have a Tags row of their own.",
@@ -120,6 +121,8 @@ export const RELEASES: Release[] = [
         "`src/tools/classify.ts`: the one classify call (issue 155 on GitHub), on TypeSafe AI's Jev (`POST /v1/systemone`): one request per item, one `noul` question, at most 4 in flight; the probability is the answer and its confidence; 429/529 retried once then the run stops, 401 stops it, 422 / timeout / bad answer is no judgement for that item",
         "`src/tools/tag-fit.ts`: which existing items fit a tag — candidates from the org's own FTS (≤ 60, newest first), ≤ 400-character excerpts with code and credential-shaped text removed; \"fits\" at 0.7 or more stored as `source = 'model'` suggestions with Jev's reported model and `jev-fit-1`; the reason shown is the FTS snippet that matched (`evidenceOf`), since Jev writes no text; one run per tag (`org_tag_runs`), a re-run supersedes; started in the background after a tag is added and by Find items",
         "`org_ai_settings` (OFF by default; `PUT /api/o/:slug/tag-settings`), `GET /tags/:name/fits`, `POST /tags/:name/fits/resolve`, `POST /tags/:name/find-items`; the `ai_suggestions` monthly limit in `PLANS`",
+        "A run, live: `org_tag_runs.checked` and the counts written as the run goes; `GET /api/o/:slug/tags/:name/run` (admins), polled every 600 ms while it runs; `web/src/fit-run.ts` draws it from those numbers (squares moved by transform, a plain bar under reduced motion)",
+        "Fewer than 20 keyword matches: the newest other items top the run up to 20; a topped-up fit's reason is `Jev rates it a fit (N%)`; an empty org ends the run with nothing checked, said plainly; the add row nudges for a description",
         "Web: Org settings › Tags (`web/src/tags.ts`, `tags-actions.ts`), a tag's page at `#tags/<name>`, a doc's Tags row, and `tagMark` / `tagWords` in `marks.ts` (a square and the word; plain words in a list, three then \"and N more\")",
       ],
       changed: [

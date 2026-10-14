@@ -170,20 +170,21 @@ describe("what is sent, and the reason shown", () => {
     expect(fitQuery("x", "")).toBeNull();
   });
 
-  it("candidates: this org's matching items, not already tagged, not dismissed — newest first, capped — each with its evidence", async () => {
+  it("candidates: this org's matching items first, not already tagged, not dismissed; too few → topped up with the newest others (no evidence); capped", async () => {
     const { invoice, seats, other } = await seedBilling();
     await billingTag();
     await env.DB.prepare(`INSERT INTO entry_tags (org_id, tag, entry_type, entry_id) VALUES (?, 'billing', 'feed', ?)`).bind(ORG_A, String(invoice)).run();
     let list = await fitCandidates(systemCtx(), "billing", "Invoices, seats and payments");
-    expect(list.map((c) => c.id)).toEqual([String(seats)]);
-    expect(list.map((c) => c.id)).not.toContain(String(other));
+    // The keyword match first, then — fewer than TOP_UP_TO matched — the newest others, with NO evidence.
+    expect(list.map((c) => [c.id, c.evidence === null])).toEqual([[String(seats), false], [String(other), true]]);
     expect(JSON.stringify(list)).not.toContain(CANARY_B);
     expect(list[0].text).not.toContain("sk_live");
     expect(list[0].text).not.toContain("ghp_");
     expect(list[0].evidence).toMatch(/^Mentions “….*[Bb]illing.*…”$/);
     expect(list[0].evidence).not.toContain("ghp_");
     await env.DB.prepare(`INSERT INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, suggested_by, suggested_at, state) VALUES (?, 'feed', ?, 'billing', 'model', 'system', 't', 'dismissed')`).bind(ORG_A, String(seats)).run();
-    expect(await fitCandidates(systemCtx(), "billing", "Invoices, seats and payments")).toEqual([]);
+    // A dismissal is remembered — by the top-up too.
+    expect((await fitCandidates(systemCtx(), "billing", "Invoices, seats and payments")).map((c) => c.id)).toEqual([String(other)]);
 
     for (let i = 0; i < CANDIDATE_CAP + 5; i++) await append_feed(systemCtx(), { author: OWNER, summary: `billing note ${i}`, body: "billing" });
     list = await fitCandidates(systemCtx(), "billing", "");
@@ -218,15 +219,15 @@ describe("a run", () => {
     expect(rows).toEqual([{ entry_type: "feed", entry_id: String(invoice), tag: "billing", state: "open", confidence: 0.95,
       reason: expect.stringMatching(/^Mentions “…/), model: "jev-1.13.0", prompt_version: CLASSIFY_PROMPT_VERSION, suggested_by: "system" }]);
     expect(CLASSIFY_PROMPT_VERSION).toBe("jev-fit-1");
-    expect(await calls()).toBe(2);                                  // one per candidate
-    expect(j.sent.length).toBe(2);
+    expect(await calls()).toBe(3);                                  // one per candidate (2 matched + 1 topped up)
+    expect(j.sent.length).toBe(3);
     expect(j.sent[0].headers.authorization).toBe("Bearer test-typesafe-key");
     const all2 = JSON.stringify(j.sent);
     expect(all2).not.toContain(CANARY_B);
     expect(all2).not.toContain("sk_live");
     expect(j.sent[0].body.questions.fits.instructions).toContain(`"billing"`);
     expect(j.sent[0].body.questions.fits.criteria.true).toBe("The item is about billing: Invoices, seats and payments.");
-    expect(await first(env.DB, `SELECT status, candidates, calls, suggested FROM org_tag_runs`)).toEqual({ status: "done", candidates: 2, calls: 2, suggested: 1 });
+    expect(await first(env.DB, `SELECT status, candidates, calls, checked, suggested FROM org_tag_runs`)).toEqual({ status: "done", candidates: 3, calls: 3, checked: 3, suggested: 1 });
     expect(await all(env.DB, `SELECT 1 FROM entry_tags WHERE tag = 'billing'`)).toEqual([]);
     expect((await listTags(await tenantCtx(OWNER), { aiAvailable: true })).fits).toMatchObject({ billing: { open: 1, run: { status: "done", suggested: 1 } } });
   });
@@ -301,6 +302,50 @@ describe("a run", () => {
   });
 });
 
+describe("a run, live, and the experience of an empty match (#2 of the owner's notes)", () => {
+  it("writes candidates, checked and suggested AS IT GOES — seen mid-run — and the run route answers them", async () => {
+    for (let i = 0; i < 8; i++) await append_feed(systemCtx(), { author: OWNER, summary: `billing ${i}`, body: "billing" });
+    await billingTag();
+    const seen: unknown[] = [];
+    let n = 0;
+    const fetchImpl = (async () => {
+      n++;
+      // What a poll would read now, before this answer is stored.
+      seen.push(await first(env.DB, `SELECT status, candidates, checked, suggested FROM org_tag_runs ORDER BY id DESC LIMIT 1`));
+      return new Response(JSON.stringify({ model: "jev-1.13.0", answers: { fits: { type: "noul", noul: n % 2 ? 0.9 : 0.1 } } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    expect(await runTagFit(KEYED, systemCtx(), "billing", { jev: { fetchImpl, concurrency: 1, retryDelayMs: 0 } })).toBe("done");
+    expect(seen[0]).toEqual({ status: "running", candidates: 8, checked: 0, suggested: 0 });
+    expect(seen[3]).toEqual({ status: "running", candidates: 8, checked: 3, suggested: 2 });
+    expect(seen[7]).toEqual({ status: "running", candidates: 8, checked: 7, suggested: 4 });
+    const owner = await cookieFor(OWNER);
+    const { run } = (await call<{ run: Record<string, unknown> }>("GET", "/api/o/saplinglearn/tags/billing/run", owner)).json;
+    expect(run).toEqual({ status: "done", started_at: expect.any(String), ended_at: expect.any(String), candidates: 8, checked: 8, suggested: 4 });
+  });
+
+  it("a tag whose words match nothing (no description) is still judged: the newest items, each fit's reason honestly the model's score", async () => {
+    await append_feed(systemCtx(), { author: OWNER, summary: "Electron app opens on login", body: "The tray app starts with the OS." });
+    await append_feed(systemCtx(), { author: OWNER, summary: "Sidebar polish", body: "Fonts." });
+    const admin = await tenantCtx(OWNER);
+    await addTag(admin, { name: "desktop" });
+    await setAiEnabled(admin, true);
+    const j = jev((s) => (s.includes("Electron") ? 0.87 : 0.1));
+    expect(await runTagFit(KEYED, systemCtx(), "desktop", { classifier: j.classifier })).toBe("done");
+    expect(j.sent.length).toBe(2);
+    expect((await modelRows()).map((r) => r.reason)).toEqual(["Jev rates it a fit (87%)"]);
+    expect(await first(env.DB, `SELECT candidates, checked, suggested FROM org_tag_runs`)).toEqual({ candidates: 2, checked: 2, suggested: 1 });
+  });
+
+  it("an empty organization: nothing to check, said plainly — a run that ends with 0 candidates and no call", async () => {
+    await billingTag();
+    const j = jev(() => 0.9);
+    expect(await runTagFit(KEYED, systemCtx(), "billing", { classifier: j.classifier })).toBe("done");
+    expect(j.sent).toEqual([]);
+    expect(await calls()).toBe(0);
+    expect((await listTags(await tenantCtx(OWNER), { aiAvailable: true })).fits?.billing.run).toMatchObject({ status: "done", candidates: 0, checked: 0, suggested: 0 });
+  });
+});
+
 describe("review", () => {
   async function suggested(): Promise<{ invoice: number; seats: number }> {
     const ids = await seedBilling();
@@ -363,7 +408,9 @@ describe("routes", () => {
     expect((await call("POST", `${BASE}/tags/auth/find-items`, owner, {})).json).toEqual({ ok: true, status: "no_key" });
     expect((await call("POST", `${BASE}/tags/auth/find-items`, member, {})).status).toBe(403);
     expect((await call("POST", `${BASE}/tags`, owner, { name: "billing" })).json).toMatchObject({ ok: true, name: "billing", fit: "no_key" });
-    expect((await call("GET", `${BASE}/tags/billing/fits`, owner)).json).toEqual({ fits: [] });
+    expect((await call("GET", `${BASE}/tags/billing/fits`, owner)).json).toEqual({ fits: [], run: null });
+    expect((await call("GET", `${BASE}/tags/billing/run`, owner)).json).toEqual({ run: null });
+    expect((await call("GET", `${BASE}/tags/billing/run`, member)).status).toBe(403);
     expect((await call("GET", `${BASE}/tags/billing/fits`, member)).status).toBe(403);
     expect((await call("POST", `${BASE}/tags/billing/fits/resolve`, owner, { resolution: "accept" })).json).toMatchObject({ error: "not_found" });
     const list = (await call<{ ai: unknown }>("GET", `${BASE}/tags`, owner)).json;

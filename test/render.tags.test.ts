@@ -376,7 +376,7 @@ describe("what Trov's model thinks may fit a tag (issues #154–#158)", () => {
   });
 
   it("a tag row says how many items may fit, a run in progress, or why it stopped — and offers Find items while the switch is on", () => {
-    const l = list({ ai: ai(), fits: { onboarding: { open: 3, run: { status: "done", started_at: "t", ended_at: "t", suggested: 3 } }, auth: { open: 0, run: { status: "running", started_at: "t", ended_at: null, suggested: 0 } }, ui: { open: 0, run: { status: "capped", started_at: "t", ended_at: "t", suggested: 0 } } } });
+    const l = list({ ai: ai(), fits: { onboarding: { open: 3, run: { status: "done", started_at: "t", ended_at: "t", candidates: 9, checked: 9, suggested: 3 } }, auth: { open: 0, run: { status: "running", started_at: "t", ended_at: null, candidates: 9, checked: 2, suggested: 0 } }, ui: { open: 0, run: { status: "capped", started_at: "t", ended_at: "t", candidates: 9, checked: 4, suggested: 0 } } } });
     const html = tab("admin", l);
     expect(html).toContain(`data-org-group="tag-ai"`);
     expect(piece(html, `data-org-tag="onboarding"`)).toContain(`data-act="tagFitsOpen" data-arg="onboarding"`);

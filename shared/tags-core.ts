@@ -99,6 +99,11 @@ export interface TagRunDTO {
   status: "running" | "done" | "capped" | "failed";
   started_at: string;
   ended_at: string | null;
+  /** Items picked to be checked (0 until they are picked; 0 at the end = there was nothing to check). */
+  candidates: number;
+  /** Items the model has answered about so far. */
+  checked: number;
+  /** Of those, the ones stored as "may fit". */
   suggested: number;
 }
 

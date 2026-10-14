@@ -804,6 +804,21 @@ picker, a doc's Tags row and the tab all draw from it):
   list every 3 s, at most 40 times), why a run stopped, and Find items. The review list is visibly a
   SUGGESTION (#157): a dashed frame, each item's title (a link to it), "May fit:" and the reason — Trov's evidence,
   the passage that matched (Jev writes no text) — Accept / Dismiss, and Accept all behind `confirmModal` — never the tag's square on the item.
+- **A run, live** (`web/src/fit-run.ts`, the controller in `tags-actions.ts`): while a run goes, its row polls
+  `GET …/tags/:name/run` every 600 ms (stops when the run ends, while the tab is hidden — resuming when shown — and
+  after 300 reads) and draws it from those REAL numbers only. The candidates are small squares (6px, square
+  corners, at most 40 — one per candidate) queued on the left of a short track; each one the server reports as
+  checked travels along it and settles into a "may fit" group on the right in the tag's colour, or fades out
+  mid-track; a counter says "Checked 23 of 40 · 5 may fit". Which square fits is not known item by item: each
+  batch of newly checked squares gets as many fits as the server's count grew by, and keeps them
+  (`assignOutcomes`). Between answers ONE `requestAnimationFrame` loop eases toward the latest numbers
+  (`easeToward`, never past them) and writes each square's CSS variables (`--x`, `--y`, opacity) and `data-kind`
+  straight into the row's FIXED set of elements — transform and opacity only, no repaint per frame; the markup
+  is the same structure on every paint (`fitRunView`). The line keeps one height (`.cnpy-tagfitline` min-height
+  28px), so nothing jumps when a run starts or ends. At the end it resolves into the row's "N items may fit" and
+  opens the review list, its rows entering one after another (`.is-fresh`, staggered); "Checked 40 — none fit."
+  or "Nothing in this organization to check yet." when there is nothing. Under `prefers-reduced-motion` the track
+  is hidden, a plain bar shows the same count, nothing moves and no frame loop runs.
 
 **Tooltips.** A mark carries `data-mtip`: a sentence on what its state means ("Built, and being checked
 before it is done."), not the word again; a glyph alone puts its name first ("Testing. Built, …"). ONE

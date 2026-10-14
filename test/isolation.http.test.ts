@@ -273,7 +273,7 @@ const TENANT: Record<string, Row> = {
   "GET /tags": {}, "GET /tags/:name": {}, "POST /tags": J({ name: "hijacked" }), "PUT /tags/:name": J({ name: "hijacked" }),
   "POST /tags/:name/merge": J({ into: "ui" }), "POST /tags/:name/retire": J({}), "POST /tags/:name/restore": J({}),
   "POST /tags/suggestions/:name/resolve": J({ resolution: "accept" }), "POST /item-tags": J({ type: "feed", id: "1", tags: ["auth"] }),
-  "POST /tags/:name/find-items": J({}), "GET /tags/:name/fits": {}, "POST /tags/:name/fits/resolve": J({ resolution: "accept" }),
+  "POST /tags/:name/find-items": J({}), "GET /tags/:name/fits": {}, "GET /tags/:name/run": {}, "POST /tags/:name/fits/resolve": J({ resolution: "accept" }),
   "PUT /tag-settings": J({ enabled: true }),
   "GET /people/:handle": {}, "POST /people/me/avatar": J({}), "POST /people/me/avatar/remove": J({}),
   // src/artifacts/raw.ts — the bytes of A's artifact, by slug (`:ref`, `:slug/:ver`); the alias is `/raw/a/…`

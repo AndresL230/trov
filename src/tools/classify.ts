@@ -29,10 +29,11 @@ export interface ClassifyItem {
   id: string;
   /** What the model reads (`state`): already cut and scrubbed by the caller. */
   text: string;
-  /** Trov's own evidence for the item — the reason a suggestion shows. */
-  evidence: string;
+  /** Trov's own evidence for the item — the reason a suggestion shows — or null when Trov has none (the
+   *  caller then says honestly that it is the model's score, never an invented quote). */
+  evidence: string | null;
 }
-export interface Judgement { id: string; answer: string; confidence: number; reason: string; model: string }
+export interface Judgement { id: string; answer: string; confidence: number; reason: string | null; model: string }
 
 export interface ClassifyRequest {
   /** What is being judged, e.g. `tag.fit`. */
@@ -49,6 +50,9 @@ export interface ClassifyRequest {
 export interface ClassifyHooks {
   /** Asked before EACH request — may it be made? (It counts the call when it says yes.) */
   gate?: () => Promise<boolean>;
+  /** Told when an item is done — its judgement, or null when there is none — so the caller can store it and
+   *  show progress as the run goes. Not called for an item the run stopped before finishing. */
+  onItem?: (item: ClassifyItem, judgement: Judgement | null) => Promise<void>;
 }
 
 export interface ClassifyResult {
@@ -149,6 +153,9 @@ export function jevClassifier(apiKey: string, opts: ClassifierOpts = {}): Classi
         lock = turn.catch(() => false);
         return turn.catch(() => false);
       };
+      const done = async (item: ClassifyItem, j: Judgement | null): Promise<void> => {
+        try { await hooks.onItem?.(item, j); } catch { /* progress is best-effort; the judgement stands */ }
+      };
       const worker = async (): Promise<void> => {
         while (!stopped && next < req.items.length) {
           const item = req.items[next++];
@@ -163,17 +170,19 @@ export function jevClassifier(apiKey: string, opts: ClassifierOpts = {}): Classi
             r = await ask(req, item);
           }
           if (!r.ok) {
-            if (r.status === 422 || r.status === 0) continue;    // this item only
+            if (r.status === 422 || r.status === 0) { await done(item, null); continue; } // this item only
             stopped ??= "provider";                              // 401, 429/529 twice, anything else
             return;
           }
           const n = noulOf(r.body);
-          if (!n) continue;
+          if (!n) { await done(item, null); continue; }
           const yes = n.p >= 0.5;
-          judgements.push({
+          const j: Judgement = {
             id: item.id, answer: yes ? req.answers[0] : req.answers[1], confidence: yes ? n.p : 1 - n.p,
             reason: item.evidence, model: n.model ?? JEV_MODEL,
-          });
+          };
+          judgements.push(j);
+          await done(item, j);
         }
       };
       try {

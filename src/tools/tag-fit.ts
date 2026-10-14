@@ -33,6 +33,12 @@ export const FIT_ANSWERS = ["fits", "does not fit"] as const satisfies readonly 
 export const FIT_THRESHOLD = 0.7;
 /** At most this many items are pre-selected for one run (one model request each). */
 export const CANDIDATE_CAP = 60;
+/** When the tag's words find fewer than this, the newest other items top the list up to it — so a tag with
+ *  no description (or words nothing uses) still gets the model's judgement on something. */
+export const TOP_UP_TO = 20;
+/** The reason of a suggestion whose item had no matching passage (a top-up): the model's score, said as
+ *  such — never a quote Trov did not find. */
+export const scoreReason = (confidence: number): string => `Jev rates it a fit (${Math.round(confidence * 100)}%)`;
 /** The reason shown when an item's match left no usable snippet. */
 export const NO_SNIPPET_REASON = "Matches the tag's description";
 /** The most of an item's text that is sent (its title goes whole, up to `TITLE_MAX`). */
@@ -109,8 +115,9 @@ export function fitQuery(name: string, description: string): string | null {
 
 export interface FitCandidate {
   type: TagItemType; id: string; title: string; text: string; at: string;
-  /** Why it is a candidate, in Trov's words: the snippet of its text around the match. */
-  evidence: string;
+  /** Why it is a candidate, in Trov's words: the snippet of its text around the match — null for an item
+   *  added only to top the list up (`TOP_UP_TO`). */
+  evidence: string | null;
 }
 
 const SNIP = `'', '', '…', 12`;
@@ -127,10 +134,44 @@ export function evidenceOf(snippet: string | null | undefined): string {
  */
 export async function fitCandidates(ctx: TenantContext, tag: string, description: string): Promise<FitCandidate[]> {
   const q = fitQuery(tag, description);
-  if (!q) return [];
-  const notTagged = (type: TagItemType, idExpr: string) =>
-    `NOT EXISTS (SELECT 1 FROM entry_tags et WHERE et.org_id = ? AND et.entry_type = '${type}' AND et.entry_id = ${idExpr} AND et.tag = ?)
-     AND NOT EXISTS (SELECT 1 FROM org_tag_suggestions s WHERE s.org_id = ? AND s.entry_type = '${type}' AND s.entry_id = ${idExpr} AND s.tag = ? AND s.state IN ('dismissed', 'open'))`;
+  const matched = q ? await keywordCandidates(ctx, tag, q) : [];
+  if (matched.length >= TOP_UP_TO) return matched;
+  // Too few matched the tag's words: the newest other items, so the model still judges something.
+  const more = await newestCandidates(ctx, tag, TOP_UP_TO);
+  const held = new Set(matched.map((c) => `${c.type}:${c.id}`));
+  return [...matched, ...more.filter((c) => !held.has(`${c.type}:${c.id}`))].slice(0, Math.max(TOP_UP_TO, matched.length));
+}
+
+/** `NOT EXISTS` clauses: the item does not carry the tag, and has no dismissed or open suggestion of it. */
+const notTagged = (type: TagItemType, idExpr: string) =>
+  `NOT EXISTS (SELECT 1 FROM entry_tags et WHERE et.org_id = ? AND et.entry_type = '${type}' AND et.entry_id = ${idExpr} AND et.tag = ?)
+   AND NOT EXISTS (SELECT 1 FROM org_tag_suggestions s WHERE s.org_id = ? AND s.entry_type = '${type}' AND s.entry_id = ${idExpr} AND s.tag = ? AND s.state IN ('dismissed', 'open'))`;
+const byNewest = (a: FitCandidate, b: FitCandidate): number => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0);
+
+/** The newest feed entries, live docs and decisions of THIS org that are not tagged and not dismissed for it. */
+async function newestCandidates(ctx: TenantContext, tag: string, limit: number): Promise<FitCandidate[]> {
+  const o = ctx.orgId;
+  const [feed, docs, adrs] = await Promise.all([
+    all<{ id: number; summary: string; brief: string | null; body: string | null; created_at: string }>(ctx,
+      `SELECT f.id, f.summary, f.brief, f.body, f.created_at FROM feed f WHERE f.org_id = ? AND ${notTagged("feed", "CAST(f.id AS TEXT)")}
+        ORDER BY f.created_at DESC, f.id DESC LIMIT ${limit}`, o, o, tag, o, tag),
+    all<{ slug: string; title: string; body: string; updated_at: string | null }>(ctx,
+      `SELECT d.slug, d.title, d.body, d.updated_at FROM docs d WHERE d.org_id = ? AND d.current_version > 0 AND ${notTagged("doc", "d.slug")}
+        ORDER BY d.updated_at DESC, d.slug LIMIT ${limit}`, o, o, tag, o, tag),
+    all<{ id: number; title: string; decision: string | null; created_at: string }>(ctx,
+      `SELECT a.id, a.title, a.decision, a.created_at FROM adrs a WHERE a.org_id = ? AND a.status != 'rejected' AND ${notTagged("adr", "CAST(a.id AS TEXT)")}
+        ORDER BY a.created_at DESC, a.id DESC LIMIT ${limit}`, o, o, tag, o, tag),
+  ]);
+  const cut = (s: string) => excerptOf(s, TITLE_MAX);
+  return [
+    ...feed.map((f) => ({ type: "feed" as const, id: String(f.id), title: cut(f.summary), text: excerptOf(f.brief ?? f.body), at: f.created_at, evidence: null })),
+    ...docs.map((d) => ({ type: "doc" as const, id: d.slug, title: cut(d.title), text: excerptOf(d.body), at: d.updated_at ?? "", evidence: null })),
+    ...adrs.map((a) => ({ type: "adr" as const, id: String(a.id), title: cut(a.title), text: excerptOf(a.decision), at: a.created_at, evidence: null })),
+  ].sort(byNewest).slice(0, limit);
+}
+
+/** The items whose text the org's full-text index matches against the tag's words. */
+async function keywordCandidates(ctx: TenantContext, tag: string, q: string): Promise<FitCandidate[]> {
   const o = ctx.orgId;
   const [feed, docs, adrs] = await Promise.all([
     all<{ id: number; summary: string; brief: string | null; body: string | null; created_at: string; snip: string | null }>(ctx,
@@ -152,7 +193,7 @@ export async function fitCandidates(ctx: TenantContext, tag: string, description
     ...docs.map((d) => ({ type: "doc" as const, id: d.slug, title: cut(d.title), text: excerptOf(d.body), at: d.updated_at ?? "", evidence: evidenceOf(d.snip) })),
     ...adrs.map((a) => ({ type: "adr" as const, id: String(a.id), title: cut(a.title), text: excerptOf(a.decision), at: a.created_at, evidence: evidenceOf(a.snip) })),
   ];
-  return out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).slice(0, CANDIDATE_CAP);
+  return out.sort(byNewest).slice(0, CANDIDATE_CAP);
 }
 
 // ── a run ────────────────────────────────────────────────────────────────────
@@ -210,6 +251,12 @@ export async function continueTagFit(env: Env, ctx: TenantContext, runId: number
     await run(ctx, `UPDATE org_tag_suggestions SET state = 'superseded', resolved_at = ? WHERE org_id = ? AND tag = ? AND source = 'model' AND state = 'open'`, nowIso(), ctx.orgId, tag);
     const list = await fitCandidates(ctx, tag, desc);
     candidates = list.length;
+    // The run, as it goes: what the Tags tab draws live (`GET …/tags/:name/run`).
+    let checked = 0;
+    const progress = (): Promise<unknown> =>
+      run(ctx, `UPDATE org_tag_runs SET candidates = ?, calls = ?, checked = ?, suggested = ? WHERE org_id = ? AND id = ? AND status = 'running'`,
+        candidates, calls, checked, suggested, ctx.orgId, runId).catch(() => undefined);
+    await progress();
     const classifier = opts.classifier ?? (env.TYPESAFE_API_KEY ? jevClassifier(env.TYPESAFE_API_KEY, opts.jev) : null);
     if (!classifier) status = "failed";
     else if (list.length) {
@@ -230,31 +277,33 @@ export async function continueTagFit(env: Env, ctx: TenantContext, runId: number
           if (!(await aiEnabled(ctx))) return false;
           if ((await suggestAllowance(ctx)).spent) { capped = true; return false; }
           await meter(platform(env, ctx.userId), ctx.orgId, ctx.userId, METRIC_AI_SUGGEST);
+          calls++;
           return true;
+        },
+        // Each answer as it comes: a confident "fits" is stored at once, and the run's counts move on.
+        onItem: async (it, j) => {
+          checked++;
+          if (j && j.answer === FIT_ANSWERS[0] && j.confidence >= FIT_THRESHOLD) {
+            const c = list[Number(it.id)];
+            const res = await run(ctx,
+              `INSERT OR IGNORE INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, confidence, reason, model, prompt_version, suggested_by, suggested_at)
+               VALUES (?, ?, ?, ?, 'model', ?, ?, ?, ?, 'system', ?)`,
+              ctx.orgId, c.type, c.id, tag, j.confidence, j.reason ?? scoreReason(j.confidence), j.model, classifier.promptVersion, nowIso());
+            suggested += res.meta.changes ?? 0;
+          }
+          await progress();
         },
       });
       calls = result.calls;
       if (capped) status = "capped";
       else if (result.stopped === "provider") status = "failed";
-      const at = nowIso();
-      const keep = result.judgements.filter((j) => j.answer === FIT_ANSWERS[0] && j.confidence >= FIT_THRESHOLD);
-      if (keep.length) {
-        await batch(ctx, keep.map((j) => {
-          const c = list[Number(j.id)];
-          return stmt(ctx,
-            `INSERT OR IGNORE INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, confidence, reason, model, prompt_version, suggested_by, suggested_at)
-             VALUES (?, ?, ?, ?, 'model', ?, ?, ?, ?, 'system', ?)`,
-            ctx.orgId, c.type, c.id, tag, j.confidence, j.reason, j.model, classifier.promptVersion, at);
-        }));
-        suggested = keep.length;
-      }
     }
   } catch (e) {
     status = "failed";
     console.error("tag fit run failed", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
   }
-  await run(ctx, `UPDATE org_tag_runs SET status = ?, ended_at = ?, candidates = ?, calls = ?, suggested = ? WHERE org_id = ? AND id = ?`,
-    status, nowIso(), candidates, calls, suggested, ctx.orgId, runId).catch(() => undefined);
+  await run(ctx, `UPDATE org_tag_runs SET status = ?, ended_at = ?, candidates = ?, calls = ?, checked = MAX(checked, ?), suggested = MAX(suggested, ?) WHERE org_id = ? AND id = ?`,
+    status, nowIso(), candidates, calls, 0, suggested, ctx.orgId, runId).catch(() => undefined);
   return status;
 }
 
@@ -271,13 +320,22 @@ export async function fitSummary(ctx: TenantContext): Promise<{ fits: Map<string
   const [counts, runs] = await Promise.all([
     all<{ tag: string; n: number }>(ctx, `SELECT tag, COUNT(*) AS n FROM org_tag_suggestions WHERE org_id = ? AND source = 'model' AND state = 'open' GROUP BY tag`, ctx.orgId),
     all<TagRunDTO & { tag: string }>(ctx,
-      `SELECT r.tag, r.status, r.started_at, r.ended_at, r.suggested FROM org_tag_runs r
+      `SELECT r.tag, r.status, r.started_at, r.ended_at, r.candidates, r.checked, r.suggested FROM org_tag_runs r
         WHERE r.org_id = ? AND r.id = (SELECT MAX(x.id) FROM org_tag_runs x WHERE x.org_id = ? AND x.tag = r.tag)`, ctx.orgId, ctx.orgId),
   ]);
   return {
     fits: new Map(counts.map((c) => [c.tag, c.n])),
     runs: new Map(runs.map(({ tag, ...r }) => [tag, r])),
   };
+}
+
+/** The latest run for `tag` (admin+), live while it runs — what the Tags tab polls to draw it. null = none. */
+export async function tagRun(ctx: TenantContext, rawTag: unknown): Promise<TagRunDTO | null> {
+  requireRole(ctx, "admin");
+  const tag = normalizeTagName(rawTag);
+  if (!tag) throw new TagError("not_found", 404, "no such tag");
+  return first<TagRunDTO>(ctx,
+    `SELECT status, started_at, ended_at, candidates, checked, suggested FROM org_tag_runs WHERE org_id = ? AND tag = ? ORDER BY id DESC LIMIT 1`, ctx.orgId, tag);
 }
 
 /** The open model suggestions for `tag` (admin+): each item's title, the reason, how sure. */

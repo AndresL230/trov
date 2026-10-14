@@ -1062,6 +1062,8 @@ export function resolveTagSuggestion(name: string, body: { resolution: TagT.Sugg
 }
 /** Look for existing items that fit a tag (admin; a model run in the background). `status` says whether it started. */
 export function findTagItems(name: string): Promise<{ ok: true; status: "started" | "off" | "no_key" | "busy" | "capped" | "not_found" }> { return orgSend("POST", tagPath(name, "/find-items")); }
+/** The latest run for a tag, live (admin): what the Tags tab polls while it goes. */
+export function getTagRun(name: string): Promise<TagT.TagRunDTO | null> { return orgSend<{ run: TagT.TagRunDTO | null }>("GET", tagPath(name, "/run")).then((r) => r.run); }
 /** What the model suggested may fit a tag (admin). */
 export function listTagFits(name: string): Promise<TagT.TagFitDTO[]> { return orgSend<{ fits: TagT.TagFitDTO[] }>("GET", tagPath(name, "/fits")).then((r) => r.fits); }
 /** Accept or dismiss model suggestions for a tag: some items, or (none named) all of them. */

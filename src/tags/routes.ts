@@ -11,7 +11,8 @@
 //   POST /tags/suggestions/:name/resolve    admin+: accept | map | dismiss
 //   POST /tags/:name/find-items             admin+: look for existing items that fit the tag (a model run,
 //                                           in the background — src/tools/tag-fit.ts); answers at once
-//   GET  /tags/:name/fits                   admin+: what the model suggested may fit, with each reason
+//   GET  /tags/:name/fits                   admin+: what the model suggested may fit, with each reason, and the run
+//   GET  /tags/:name/run                    admin+: the latest run, live (candidates, checked, suggested)
 //   POST /tags/:name/fits/resolve           admin+: accept | dismiss, some items or all of them
 //   PUT  /tag-settings                      admin+: the org's switch for model suggestions (OFF by default)
 //   POST /item-tags                         any member: replace the tags of one feed entry, doc or decision
@@ -27,7 +28,7 @@ import type { AppEnv } from "../auth/principal";
 import { RoleError, requireRole } from "../data/context";
 import { PlanFeatureError, PlanLimitError } from "../plans/state";
 import { TagError, addTag, editTag, listTags, mergeTag, resolveSuggestion, restoreTag, retireTag, setItemTags, tagPage } from "../tools/tags";
-import { continueTagFit, listFits, resolveFits, setAiEnabled, startTagFit, type FitStart } from "../tools/tag-fit";
+import { continueTagFit, listFits, resolveFits, setAiEnabled, startTagFit, tagRun, type FitStart } from "../tools/tag-fit";
 
 /**
  * Start a model run for `tag` and hand its work to the request's `waitUntil` — never on the response's
@@ -97,7 +98,12 @@ export const tagsApp = (() => {
     requireRole(c.var.ctx, "admin");
     return c.json({ ok: true, status: await fitInBackground(c, c.req.param("name")) });
   }));
-  r.get("/:name/fits", (c) => guard(c, async () => c.json({ fits: await listFits(c.var.ctx, c.req.param("name")) })));
+  r.get("/:name/fits", (c) => guard(c, async () => {
+    const [fits, run] = await Promise.all([listFits(c.var.ctx, c.req.param("name")), tagRun(c.var.ctx, c.req.param("name"))]);
+    return c.json({ fits, run });
+  }));
+  // The live run, small and cheap: what the Tags tab polls (every ~600 ms) while a run goes.
+  r.get("/:name/run", (c) => guard(c, async () => c.json({ run: await tagRun(c.var.ctx, c.req.param("name")) })));
   r.post("/:name/fits/resolve", (c) => guard(c, async () => c.json({ ok: true, ...(await resolveFits(c.var.ctx, c.req.param("name"), await body(c))) })));
   r.put("/:name", (c) => guard(c, async () => c.json({ ok: true, ...(await editTag(c.var.ctx, c.req.param("name"), await body(c))) })));
   r.post("/:name/merge", (c) => guard(c, async () => c.json({ ok: true, ...(await mergeTag(c.var.ctx, c.req.param("name"), (await body(c)).into)) })));

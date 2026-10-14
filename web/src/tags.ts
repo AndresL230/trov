@@ -12,6 +12,7 @@ import {
   type TagAiDTO, type TagFitDTO, type TagRunDTO,
 } from "@shared/tags-core";
 import { switchBtn } from "./notifications";
+import { fitRunView, type LiveRun } from "./fit-run";
 import type { MyOrg } from "@shared/orgs";
 import { esc, attr, relTime, surface } from "./ui";
 import { O_FIELD, O_HELP, O_ERR, accentBtn, quietBtn, dangerLink, orgHead, orgEmpty, tabLead, sliceNote, roleAtLeast, loadingNote, failedNote, type OrgSlice } from "./org-ui";
@@ -52,10 +53,14 @@ export interface TagsUi {
   fitBusy: string | null;
   /** The AI switch is being written. */
   aiBusy: boolean;
+  /** Runs drawn live, by tag (web/src/fit-run.ts): from Find items / a new tag until the list has its result. */
+  live: Record<string, LiveRun>;
+  /** The tag whose review list just opened at the end of a run: its rows enter one after another. */
+  freshFits: string | null;
 }
 export const initialTagsUi = (): TagsUi => ({
   nameDraft: "", descDraft: "", addBusy: false, addError: null, edit: null, busy: null, confirm: null, showRetired: false, pageTab: "all", itemBusy: false,
-  fitsOpen: null, fits: { status: "idle", data: [] }, fitBusy: null, aiBusy: false,
+  fitsOpen: null, fits: { status: "idle", data: [] }, fitBusy: null, aiBusy: false, live: {}, freshFits: null,
 });
 
 /** Can this draft be added? A name that normalizes, not already on the list. */
@@ -193,10 +198,10 @@ export function fitsPanel(tag: string, ui: TagsUi): string {
   const body = f.status === "error" ? failedNote("the suggestions", "tagFitsReload")
     : f.status !== "ok" && items.length === 0 ? loadingNote("the suggestions", { rows: 3 })
     : items.length === 0 ? `<div style="${O_HELP}">Nothing left to review.</div>`
-    : `<ul style="list-style:none;margin:0;padding:0">${items.map((it) => {
+    : `<ul style="list-style:none;margin:0;padding:0"${ui.freshFits === tag ? ` class="is-fresh"` : ""}>${items.map((it, k) => {
         const key = `${it.type}:${it.id}`;
         const busy = ui.fitBusy === key;
-        return `<li class="cnpy-tagfit" data-tag-fit="${attr(key)}">
+        return `<li class="cnpy-tagfit" data-tag-fit="${attr(key)}" style="--i:${Math.min(k, 12)}">
           <div style="min-width:0">
             <button type="button" data-act="${FIT_OPEN[it.type]}" data-arg="${attr(it.type === "adr" ? it.title : it.id)}" class="cnpy-tagitem-t" style="font-size:13.5px">${esc(it.title)}</button>
             <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:3px"><span style="color:var(--fg-40)">${FIT_KIND[it.type]} · May fit:</span> ${esc(it.reason)}</div>
@@ -220,6 +225,9 @@ export function fitsPanel(tag: string, ui: TagsUi): string {
 function fitLine(t: OrgTagDTO, fit: { open: number; run: TagRunDTO | null } | undefined, ai: TagAiDTO | undefined, ui: TagsUi): string {
   if (!ai || t.retired) return "";
   const open = fit?.open ?? 0;
+  // A run drawn live: its view is the whole line until the list has its result.
+  const live = ui.live[t.name];
+  if (live) return `<div class="cnpy-tagfitline" data-tag-fitline="${attr(t.name)}">${fitRunView(t.name, t.color, live)}</div>`;
   const running = fit?.run?.status === "running";
   const parts: string[] = [];
   if (open > 0) {
@@ -228,7 +236,11 @@ function fitLine(t: OrgTagDTO, fit: { open: number; run: TagRunDTO | null } | un
   }
   if (running) parts.push(`<span data-fit-run="running" style="font-size:12px;color:var(--fg-40)">Looking for items that fit…</span>`);
   else if (fit?.run?.status === "capped") parts.push(`<span data-fit-run="capped" style="font-size:12px;color:var(--fg-40)">Stopped: this month's checks are used up.</span>`);
-  else if (fit?.run?.status === "done" && open === 0) parts.push(`<span data-fit-run="done" style="font-size:12px;color:var(--fg-40)">No other items look like they fit.</span>`);
+  else if (fit?.run?.status === "done" && open === 0) {
+    const r = fit.run;
+    const said = r.candidates === 0 ? "Nothing in this organization to check yet." : `Checked ${r.checked} — none fit.`;
+    parts.push(`<span data-fit-run="done" style="font-size:12px;color:var(--fg-40)">${esc(said)}</span>`);
+  }
   if (ai.enabled && ai.available && !ai.spent && !running) parts.push(quietBtn(ui.busy === `find:${t.name}` ? "Looking…" : "Find items", "tagFind", { arg: t.name, disabled: !!ui.busy, label: `Find existing items that fit ${t.name}`, extra: "height:26px;padding:0 9px;font-size:12px" }));
   return parts.length ? `<div class="cnpy-tagfitline" data-tag-fitline="${attr(t.name)}">${parts.join("")}</div>` : "";
 }
@@ -287,6 +299,7 @@ export function tagsTab(org: MyOrg, p: TagsTabProps): string {
       ${accentBtn(ui.addBusy ? "Adding…" : "Add tag", "tagAdd", { disabled: ui.addBusy || full || problem !== null, busy: ui.addBusy, title: full ? "The list is full on this plan" : undefined })}
     </div>
     <div id="org-tag-e" role="alert" style="${O_ERR};margin:8px 0 0"${addErr ? "" : " hidden"}>${esc(addErr ?? "")}</div>
+    <div style="${O_HELP};margin:-4px 0 12px"${ui.nameDraft.trim() && !ui.descDraft.trim() && !addErr ? "" : " hidden"} data-org-tag-nudge>A one-line description helps find the right items.</div>
     <div style="${O_HELP};margin-bottom:16px"${full && !addErr ? "" : " hidden"} data-org-tag-full>The list holds ${list.cap ?? 0} tags on this plan. Retire or merge one to add another.</div>` : "";
 
   const head = `<div class="cnpy-tagrow cnpy-taghead" aria-hidden="true">

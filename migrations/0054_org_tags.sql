@@ -159,8 +159,11 @@ CREATE TABLE IF NOT EXISTS org_tag_runs (
   started_at  TEXT NOT NULL,
   ended_at    TEXT,
   candidates  INTEGER NOT NULL DEFAULT 0,   -- items pre-selected without the model (the org's own FTS)
-  calls       INTEGER NOT NULL DEFAULT 0,   -- model calls made (each counted against the allowance)
+  calls       INTEGER NOT NULL DEFAULT 0,   -- model calls made (each counted against the allowance; a retry is a call)
+  checked     INTEGER NOT NULL DEFAULT 0,   -- candidates the model has answered about (or failed on) so far
   suggested   INTEGER NOT NULL DEFAULT 0    -- "fits" judgements stored as suggestions
+  -- candidates / calls / checked / suggested are written AS THE RUN GOES (one small UPDATE per answer), so
+  -- the Tags tab can show it live (GET …/tags/:name/run).
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_org_tag_runs_running ON org_tag_runs(org_id, tag) WHERE status = 'running';
 CREATE INDEX IF NOT EXISTS idx_org_tag_runs_tag ON org_tag_runs(org_id, tag, id);

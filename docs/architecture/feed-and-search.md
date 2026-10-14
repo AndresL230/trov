@@ -75,7 +75,18 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   - **The reason is Trov's EVIDENCE, never the model's**: Jev writes no text, and #157 shows no suggestion without
     a reason, so the reason is the full-text snippet around the match that made the item a candidate
     (`evidenceOf`: `Mentions “…session cookie…”`, scrubbed like the excerpt) — or "Matches the tag's description"
-    when the match left no usable snippet. Nothing is invented.
+    when the match left no usable snippet. A TOPPED-UP item (below) matched nothing, so its reason is the model's
+    score said as such: `Jev rates it a fit (87%)` (`scoreReason`). Nothing is invented, and no quote is faked.
+  - **Too few matches → top up** (`TOP_UP_TO` = 20): a tag with no description, or words nothing uses (`desktop`),
+    found nothing to judge. When the keyword search yields fewer than 20, the newest other items (not tagged, not
+    dismissed or open for it) fill the list up to 20, so Jev — the part that understands meaning — judges them.
+    `CANDIDATE_CAP` stays 60 and the threshold 0.7. With nothing at all (an empty org) the run ends with
+    `candidates = 0` and no call, and the row says "Nothing in this organization to check yet." The add row nudges
+    for a description ("A one-line description helps find the right items"); it is never required.
+  - **Live progress**: the run writes `candidates`, `calls`, `checked` and `suggested` on `org_tag_runs` AS IT GOES —
+    one small UPDATE per answer (≤ 60), and each confident "fits" is stored the moment it is answered.
+    `GET /api/o/:slug/tags/:name/run` (admins; `{ run: TagRunDTO | null }`) is the cheap read the Tags tab polls;
+    `GET …/fits` carries the same `run` beside the list.
   - **Errors** (`jevClassifier`): a 422, a body that is not JSON, a bad answer, a timeout (10 s) or a network
     error → no judgement for that item, the run goes on; a 429 or 529 → one retry after 1.5 s, then the run stops;
     a 401 or any other status → the run stops (`failed`). Nothing surfaces to a person.
@@ -86,7 +97,7 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
     (`PUT /api/o/:slug/tag-settings`, audited `ai.enable` / `ai.disable`). Off, or no `TYPESAFE_API_KEY` → nothing
     is sent (`startTagFit` answers `off` / `no_key`); turning it off mid-run stops the next call.
   - **What is sent** (to TypeSafe AI only): the tag's name and description (in the question and its criteria), and
-    per item its title (≤ 200) and an excerpt of ≤ 400 characters (`excerptOf`: code blocks, inline code, link targets, URLs, markup and anything shaped like
+    per item its title (≤ 200) and an excerpt of ≤ 400 characters (topped-up items alike) (`excerptOf`: code blocks, inline code, link targets, URLs, markup and anything shaped like
     a credential removed). Candidates are picked WITHOUT the model: the org's own FTS (`feed_fts`, `docs_fts` —
     live docs —, `adrs_fts` — not rejected) over the tag's name and description words, items that do not carry
     the tag and have no dismissed or open suggestion of it, newest first, at most 60, one request each. Every

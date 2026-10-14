@@ -6,11 +6,12 @@ import type { AppState } from "./render";
 import {
   ApiError, OrgApiError, Unauthorized, planLimitText,
   listOrgTags, getTagPage, addOrgTag, editOrgTag, mergeOrgTag, retireOrgTag, restoreOrgTag, resolveTagSuggestion, setItemTags,
-  findTagItems, listTagFits, resolveTagFits, setTagSuggestions,
+  findTagItems, listTagFits, resolveTagFits, setTagSuggestions, getTagRun,
 } from "./api";
 import { currentOrg, roleAtLeast } from "./org-settings";
 import { isTagPageTab, tagDraftProblem } from "./tags";
 import { isTagColor, normalizeTagName } from "@shared/tags-core";
+import { POLL_MS, applyAnswer, newLive, particleFrame, particleStyle, runCounter, shouldPoll, shownAt, type LiveRun } from "./fit-run";
 
 export interface TagsHost {
   state: AppState;
@@ -69,15 +70,102 @@ export function createTagsController(host: TagsHost): TagsController {
   };
 
   let seq = 0;
-  // While a model run is going (it runs in the background, after the request that started it), the list
-  // is read again every few seconds — the row then shows how many items may fit. At most POLL_MAX reads.
-  const POLL_MS = 3000, POLL_MAX = 40;
-  let polls = 0, pollTimer: ReturnType<typeof setTimeout> | null = null;
-  const running = (): boolean => Object.values(state.tags.data?.fits ?? {}).some((f) => f.run?.status === "running");
-  function poll(): void {
-    if (pollTimer || polls >= POLL_MAX || !running() || state.view !== "app") return;
-    pollTimer = setTimeout(() => { pollTimer = null; polls++; load(); }, POLL_MS);
+
+  // ── a run, live (web/src/fit-run.ts) ───────────────────────────────────────
+  // While a run goes (in the background, after the request that started it), its row reads
+  // `GET …/tags/:name/run` every POLL_MS and draws what it says; between two answers one animation frame
+  // loop eases the squares and the counter toward the latest numbers, writing their style straight into
+  // the row's FIXED set of elements (the page is not repainted per frame). Reading stops when the run ends,
+  // while the tab is hidden (it resumes when it is shown), and after POLL_MAX reads.
+  const reduced = (): boolean => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const hidden = (): boolean => typeof document !== "undefined" && document.hidden;
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  let frame: number | null = null;
+  /** Runs painted at least once since their row was (re)drawn. */
+  const painted = new Set<string>();
+
+  function watch(tag: string): void {
+    if (!ui().live[tag]) ui().live[tag] = newLive(Date.now());
+    schedule(tag, 0);
   }
+  function schedule(tag: string, delay: number): void {
+    if (timers.has(tag)) return;
+    timers.set(tag, setTimeout(() => { timers.delete(tag); pollRun(tag); }, delay));
+  }
+  function pollRun(tag: string): void {
+    const live = ui().live[tag];
+    if (!live || !shouldPoll(live, hidden())) return;
+    getTagRun(tag)
+      .then((run) => {
+        const cur = ui().live[tag];
+        if (!cur) return;
+        if (!run) { delete ui().live[tag]; rerender(); return; }
+        const now = Date.now();
+        const next = applyAnswer({ ...cur, shown: shownAt(cur, now, reduced()) }, run, now);
+        ui().live[tag] = next;
+        if (cur.candidates !== next.candidates || cur.status !== next.status || reduced()) { painted.delete(tag); rerender(); } // the square count or the words changed
+        if (next.status === "running") { if (shouldPoll(next, hidden())) schedule(tag, POLL_MS); }
+        animate();
+      })
+      .catch((e) => { if (fail(e)) return; if (ui().live[tag]) schedule(tag, POLL_MS * 3); });
+  }
+  /** One loop for every live run: ease toward the latest answer, then — once a run has ended and the view
+   *  has caught up — hand it to the list (the review list opens when something fits). */
+  function animate(): void {
+    if (frame !== null || typeof requestAnimationFrame !== "function") return;
+    const step = (): void => {
+      frame = null;
+      const now = Date.now();
+      let again = false;
+      for (const [tag, live] of Object.entries(ui().live)) {
+        const was = live.shown;
+        live.shown = shownAt(live, now, reduced());
+        if (live.shown !== was || !painted.has(tag)) { paintRun(tag, live); painted.add(tag); } // nothing moved: nothing to write
+        const caughtUp = live.shown >= live.checked;
+        if (!caughtUp || live.status === "running") again = true;
+        else if (!finishing.has(tag)) finish(tag, live);
+      }
+      if (again && !reduced()) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+  }
+  /** Write one run's frame into its row: the squares' style and kind, the bar, the counter. */
+  function paintRun(tag: string, live: LiveRun): void {
+    const box = mount.querySelector<HTMLElement>(`[data-fitrun="${CSS.escape(tag)}"]`);
+    if (!box) return;
+    const parts = particleFrame(live.candidates, live.outcomes, live.shown);
+    const nodes = box.querySelectorAll<HTMLElement>(".cnpy-fp");
+    if (nodes.length !== parts.length) { rerender(); return; }
+    parts.forEach((p, i) => { nodes[i].setAttribute("style", particleStyle(p)); nodes[i].dataset.kind = p.kind; });
+    const bar = box.querySelector<HTMLElement>(".cnpy-fitrun-bar > span");
+    if (bar) bar.style.transform = `scaleX(${live.candidates ? Math.min(1, live.shown / live.candidates).toFixed(4) : 0})`;
+    const n = box.querySelector<HTMLElement>("[data-fitrun-n]");
+    const words = runCounter(live, live.shown);
+    if (n && n.textContent !== words) n.textContent = words;
+  }
+  const finishing = new Set<string>();
+  function finish(tag: string, live: LiveRun): void {
+    finishing.add(tag);
+    // Let the last square settle, then the list takes over: the row shows "N items may fit", and the
+    // review list opens with its rows entering one after another.
+    setTimeout(() => {
+      finishing.delete(tag);
+      const fits = live.suggested > 0;
+      listOrgTags().then((data) => {
+        state.tags = { status: "ok", data };
+        delete ui().live[tag];
+        if (fits && data.fits?.[tag]?.open) { ui().fitsOpen = tag; ui().freshFits = tag; loadFits(tag); return; }
+        rerender();
+      }).catch((e) => { if (fail(e)) return; delete ui().live[tag]; load(); });
+    }, live.candidates === 0 || live.checked === 0 ? 1200 : 700);
+  }
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (hidden()) return;
+      for (const [tag, live] of Object.entries(ui().live)) if (live.status === "running") schedule(tag, 0);
+    });
+  }
+
   function load(): void {
     const mine = ++seq;
     if (state.tags.status !== "ok") state.tags = { status: "loading", data: state.tags.data };
@@ -85,7 +173,8 @@ export function createTagsController(host: TagsHost): TagsController {
       .then((data) => {
         if (mine !== seq) return;
         state.tags = { status: "ok", data };
-        if (running()) poll(); else polls = 0;
+        // A run that is going (started here, or by another admin): draw it live.
+        for (const [tag, f] of Object.entries(data.fits ?? {})) if (f.run?.status === "running" && !ui().live[tag]) watch(tag);
         // The open review list follows what the run found.
         const open = ui().fitsOpen;
         if (open && !(data.fits?.[open]?.open)) ui().fitsOpen = null;
@@ -143,8 +232,9 @@ export function createTagsController(host: TagsHost): TagsController {
     addOrgTag({ name, description: u.descDraft.trim() })
       .then((r) => {
         u.addBusy = false; u.nameDraft = ""; u.descDraft = "";
-        host.flash(r.fit === "started" ? `Added the tag ${name}. Looking for existing items that fit it.` : `Added the tag ${name}`);
-        polls = 0; load(); host.planChanged();
+        host.flash(`Added the tag ${name}`);
+        if (r.fit === "started") watch(name);
+        load(); host.planChanged();
       })
       .catch((e) => { u.addBusy = false; if (fail(e)) return; u.addError = errorText(e, "Couldn't add the tag."); rerender(); });
   }
@@ -221,7 +311,12 @@ export function createTagsController(host: TagsHost): TagsController {
     ui().busy = `find:${tag}`;
     rerender();
     findTagItems(tag)
-      .then((r) => { ui().busy = null; host.flash(FIND_SAID[r.status] ?? FIND_SAID.started, 6000); polls = 0; load(); })
+      .then((r) => {
+        ui().busy = null;
+        if (r.status === "started") { ui().fitsOpen = ui().fitsOpen === tag ? null : ui().fitsOpen; watch(tag); rerender(); return; }
+        host.flash(FIND_SAID[r.status] ?? FIND_SAID.started, 6000);
+        load();
+      })
       .catch((e) => { ui().busy = null; if (fail(e)) return; host.flash(errorText(e, "Couldn't start looking."), 6000); rerender(); });
   }
   function settleFit(tag: string, key: string, resolution: "accept" | "dismiss"): void {
@@ -348,6 +443,7 @@ export function createTagsController(host: TagsHost): TagsController {
       case "tagFind": if (arg) find(arg); return;
       case "tagFitsOpen":
         if (!arg) return;
+        u.freshFits = null;
         if (u.fitsOpen === arg) { u.fitsOpen = null; break; }
         u.fitsOpen = arg;
         loadFits(arg);
