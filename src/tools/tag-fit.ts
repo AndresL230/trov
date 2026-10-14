@@ -17,7 +17,7 @@
 //     TypeSafe AI's Jev, a non-generative decision model: a yes/no probability per item, and no text. The
 //     REASON a suggestion shows is Trov's own evidence: the full-text snippet that made the item a candidate.
 //   • NEVER GUESS ON READ. Only "fits" at or above `FIT_THRESHOLD` adds the tag; anything else leaves no row.
-//   • METERED. Every model call counts against the month's `ai_suggestions` (shared/plans.ts); past it the
+//   • METERED. Every model call counts against the month's `jev_checks` (shared/plans.ts); past it the
 //     run stops (`capped`) and the Tags tab says so.
 //   • CONSENT. Nothing is sent unless an admin turned the org's switch on (`org_ai_settings`, kind
 //     `tag.fit`), and the platform has a key (`TYPESAFE_API_KEY`). What is sent, one item per request: a title and an excerpt of at most
@@ -83,8 +83,8 @@ export async function setAiEnabled(ctx: TenantContext, on: unknown, kind = TAG_F
 /** Where the month's allowance stands, and whether a call may be made now. */
 export async function suggestAllowance(ctx: TenantContext): Promise<{ used: number; cap: number | null; spent: boolean }> {
   const [plan, used] = await Promise.all([planFor(ctx), suggestionsUsed(ctx)]);
-  // The one question (shared/plans.ts): may this org make one more `ai_suggestions` call?
-  return { used, cap: resolveEntitlements(plan.plan, plan.overrides).ai_suggestions, spent: planRefusal(plan, "ai_suggestions", used, 1) !== null };
+  // The one question (shared/plans.ts): may this org make one more `jev_checks` call?
+  return { used, cap: resolveEntitlements(plan.plan, plan.overrides).jev_checks, spent: planRefusal(plan, "jev_checks", used, 1) !== null };
 }
 
 // ── what is sent ─────────────────────────────────────────────────────────────

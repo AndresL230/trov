@@ -1045,7 +1045,7 @@ export function setPlatformSupportStatus(id: number, status: "open" | "resolved"
   return postJson<{ ok: true; report: SupportReport }>(`/api/platform/support/${id}/${status === "resolved" ? "resolve" : "reopen"}`).then((r) => r.report);
 }
 
-// ── the organization's tag list (0054_org_tags; src/tags/routes.ts) ──────────
+// ── the organization's tag list (0056_org_tags; src/tags/routes.ts) ──────────
 // Paths are the tenant alias (`/api/tags…`): `call` prefixes them with the org on screen.
 const tagPath = (name: string, rest = ""): string => `/api/tags/${encodeURIComponent(name)}${rest}`;
 /** The list, its counts and the plan's cap; an admin also gets what agents suggested. */

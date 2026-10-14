@@ -1,6 +1,6 @@
 // Controlled vocabulary. These values MUST match migrations/0002_seed_vocab.sql.
 //   SECTIONS — the gate's source of truth for a doc's section (fixed, the same for every org).
-//   TAGS     — the six STARTER tags every organization begins with (0054_org_tags; shared/tags-core.ts
+//   TAGS     — the six STARTER tags every organization begins with (0056_org_tags; shared/tags-core.ts
 //              STARTER_TAGS adds each one's description and colour). NOT the gate's tag vocabulary: a
 //              feed entry's tags are checked against the ORG's own list (src/tools/tags.ts), which an
 //              admin may have renamed or added to.

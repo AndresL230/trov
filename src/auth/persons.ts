@@ -283,10 +283,12 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["sync_runs", "started_by"],
   // Support reports (0049_support_reports): who sent one, and the superadmin who resolved it.
   ["support_reports", "reporter"], ["support_reports", "resolved_by"],
-  // The org's tag list (0054_org_tags): who added, changed and retired a tag; who sent and settled a suggestion.
+  // AI (0055_ai): who accepted or dismissed a suggestion, and who pressed "Wrong?".
+  ["ai_suggestions", "decided_by"], ["ai_feedback", "handle"],
+  // The org's tag list (0056_org_tags): who added, changed and retired a tag; who sent and settled a suggestion.
   ["org_tags", "created_by"], ["org_tags", "updated_by"], ["org_tags", "retired_by"],
   ["org_tag_suggestions", "suggested_by"], ["org_tag_suggestions", "resolved_by"],
-  // Model suggestions: who turned the org's switch on or off, and who started a run.
+  // Jev tagging: who turned the org's switch on or off, and who started a run.
   ["org_ai_settings", "updated_by"], ["org_tag_runs", "started_by"], ["org_tag_runs", "undone_by"],
 ];
 

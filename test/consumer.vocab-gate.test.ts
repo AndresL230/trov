@@ -10,7 +10,7 @@ import type { NeedsTriageRow, DocVersionRow } from "@shared/rows";
 const session = { id: "sess-vocab", author: "andres", ended_at: "2026-06-24T00:00:00Z", skill_version: "1.0" };
 
 describe("vocabulary gate", () => {
-  // 0054_org_tags: a tag that is not on the org's list no longer sends the entry to triage. The entry
+  // 0056_org_tags: a tag that is not on the org's list no longer sends the entry to triage. The entry
   // is written without it and the tag waits as a suggestion (test/tags.gate.test.ts has the detail).
   it("writes feed entries with the tags on the org's list; an unknown tag is a suggestion, never a triage item", async () => {
     const payload = IngestPayload.parse({

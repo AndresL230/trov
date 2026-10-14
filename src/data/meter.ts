@@ -80,7 +80,7 @@ export async function meterMcpTool(env: Env, ctx: TenantContext, tool: string): 
 // from the webhook (actor `github-webhook`) and from Sync GitHub (actor = the admin). Counts and sizes
 // only: no title, no body, no summary text ever reaches this table.
 export type SummaryKind = "pr" | "issue";
-/** One model call for a suggestion (src/tools/tag-fit.ts) — what the monthly `ai_suggestions` allowance counts. */
+/** One model call for a suggestion (src/tools/tag-fit.ts) — what the monthly `jev_checks` allowance counts. */
 export const METRIC_AI_SUGGEST = "ai_suggest";
 /** An attempted summarizer call — what the monthly allowance (`ai_summaries`) counts. */
 export const METRIC_SUMMARY: Record<SummaryKind, string> = { pr: "summary:pr", issue: "summary:issue" };
@@ -92,11 +92,32 @@ export const METRIC_SUMMARY_CAPPED: Record<SummaryKind, string> = { pr: "summary
 /** Characters sent (prompt + title + body) and received, summed per day — for estimating cost. */
 export const METRIC_SUMMARY_CHARS_IN = "summary_chars_in";
 export const METRIC_SUMMARY_CHARS_OUT = "summary_chars_out";
-/** The provider's own token counts, when its answer carried them (Gemini's `usageMetadata`). */
+/** The provider's own token counts, when its answer carried them (Anthropic's `usage`: `input_tokens` / `output_tokens`). */
 export const METRIC_SUMMARY_TOKENS_IN = "summary_tokens_in";
 export const METRIC_SUMMARY_TOKENS_OUT = "summary_tokens_out";
 /** Every metric above starts with this: none of them is a PERSON's request (src/platform/usage.ts). */
 export const SUMMARY_METRIC_GLOB = "summary*";
+
+// ── AI runs (docs/architecture/ai.md) ────────────────────────────────────────
+// The AI pass (src/ai/pass.ts) counts each model call it makes for an org the same way, with actor
+// `ai-pass`: the attempt BEFORE the call, its outcome and size after. A `kind` is the job's `AiKind`.
+/** `ai_run:<kind>` — an attempted call: what the monthly allowance (`ai_runs`) counts. */
+export const METRIC_AI_RUN_PREFIX = "ai_run:";
+/** `ai_run_failed:<kind>` — an attempt that wrote nothing. */
+export const METRIC_AI_RUN_FAILED_PREFIX = "ai_run_failed:";
+/** `ai_run_capped:<kind>` — a job had work but the org's allowance (or an ended plan) let no call start. */
+export const METRIC_AI_RUN_CAPPED_PREFIX = "ai_run_capped:";
+/** The provider's own token counts, summed per day: uncached input, output, and input read from the cache. */
+export const METRIC_AI_TOKENS_IN = "ai_tokens_in";
+export const METRIC_AI_TOKENS_OUT = "ai_tokens_out";
+export const METRIC_AI_TOKENS_CACHED = "ai_tokens_cached";
+/** What `ai_runs` sums: `ai_run:*` only (GLOB has no single-character wildcard, so `ai_run_failed:*` is not matched). */
+export const AI_RUN_METRIC_GLOB = "ai_run:*";
+/** Every AI metric above: none of them is a PERSON's request (src/platform/usage.ts). */
+export const AI_METRIC_GLOB = "ai_*";
+export const aiRunMetric = (kind: string): string => METRIC_AI_RUN_PREFIX + kind;
+export const aiRunFailedMetric = (kind: string): string => METRIC_AI_RUN_FAILED_PREFIX + kind;
+export const aiRunCappedMetric = (kind: string): string => METRIC_AI_RUN_CAPPED_PREFIX + kind;
 
 const UPSERT_BY = `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, ?, ?, ?, ?, ?)
   ON CONFLICT(org_id, day, metric, actor) DO UPDATE SET count = count + excluded.count, last_at = excluded.last_at`;

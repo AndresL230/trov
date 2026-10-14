@@ -16,7 +16,7 @@ import { planBlock, planParts } from "../web/src/org-plan";
 import { FREE_TAKEN_SENTENCE } from "../web/src/org-picker";
 import { render, initialState } from "../web/src/render";
 import { esc } from "../web/src/ui";
-import { LIMIT_KEYS, LIMITS, PLANS, type MyGrant, type OrgPlanView, type PlanId } from "@shared/plans";
+import { LISTED_LIMIT_KEYS, LIMITS, PLANS, type MyGrant, type OrgPlanView, type PlanId } from "@shared/plans";
 import type { MyOrg, MyOrgsResponse, OrgRole } from "@shared/orgs";
 import type { OrgBillingView } from "@shared/billing";
 import css from "../web/src/trov.css?raw";
@@ -24,7 +24,7 @@ import css from "../web/src/trov.css?raw";
 const view = (plan: PlanId = "team", o: Partial<OrgPlanView> = {}): OrgPlanView => ({
   plan, name: PLANS[plan].name, description: PLANS[plan].description, status: "active", source: "granted", period_end: null, gift_until: null,
   entitlements: PLANS[plan].entitlements, overridden: [], seats: { members: 2, pending: 0 },
-  usage: { seats: 2, repositories: 1, environments: 2, artifact_bytes: 1024 ** 2 * 50, agent_connections: 1, ai_summaries: 12, ai_suggestions: 0, tags: 6 }, over: [], ...o,
+  usage: { seats: 2, repositories: 1, environments: 2, artifact_bytes: 1024 ** 2 * 50, agent_connections: 1, ai_summaries: 12, ai_runs: 0, jev_checks: 0, tags: 6 }, over: [], ...o,
 });
 const bill = (o: Partial<OrgBillingView> = {}): OrgBillingView => ({
   available: true, subscribed: false, ended: false, customer: false, interval: null, seats: null, cancel_at_period_end: false, pinned: false, upgrade_to: ["team"], ...o,
@@ -190,12 +190,13 @@ describe("Settings › Limits — every limit, with the use of it", () => {
 
   it("one row per limit, in the plan's order, each 'used of limit' with a meter and what it counts", () => {
     const html = limits(free());
-    expect([...html.matchAll(/data-limit="(\w+)"/g)].map((m) => m[1])).toEqual([...LIMIT_KEYS]);
+    expect([...html.matchAll(/data-limit="(\w+)"/g)].map((m) => m[1])).toEqual([...LISTED_LIMIT_KEYS]);
+    expect(html).not.toContain(`data-limit="ai_runs"`); // a limit nothing uses yet is not listed (LimitDef.listed)
     expect(row(html, "seats")).toMatch(/data-limit-use[^>]*>2 of 3</);
     expect(row(html, "artifact_bytes")).toMatch(/data-limit-use[^>]*>50 MB of 250 MB</);
     expect(row(html, "ai_summaries")).toMatch(/AI summaries <span[^>]*>this month<\/span>/);
     expect(row(html, "ai_summaries")).toMatch(/data-limit-use[^>]*>12 of 300</);
-    for (const k of LIMIT_KEYS) expect(row(html, k), k).toContain(LIMITS[k].counts);
+    for (const k of LISTED_LIMIT_KEYS) expect(row(html, k), k).toContain(LIMITS[k].counts);
     // The meter: a real role with its numbers, filled to the share used.
     expect(row(html, "seats")).toMatch(/class="cnpy-meter" data-meter="ok" role="meter" aria-label="Seats" aria-valuemin="0" aria-valuemax="3" aria-valuenow="2" aria-valuetext="2 of 3"><span style="width:67%">/);
     expect(row(html, "environments")).toMatch(/data-meter="full"[\s\S]*width:100%/);
@@ -240,7 +241,7 @@ describe("Settings › Limits — every limit, with the use of it", () => {
   it("not read yet: six skeleton rows; a failed read: a sentence and Try again", () => {
     const loading = settingsLimitsTile({ org: org(), plan: { status: "idle", data: null } });
     expect(loading).toMatch(/data-skel="set-limits" aria-busy="true"/);
-    expect(loading.match(/class="cnpy-set-limit"/g)).toHaveLength(LIMIT_KEYS.length);
+    expect(loading.match(/class="cnpy-set-limit"/g)).toHaveLength(LISTED_LIMIT_KEYS.length);
     const failed = settingsLimitsTile({ org: org(), plan: { status: "error", data: null } });
     expect(failed).toMatch(/Couldn't load this organization&#39;s limits\./);
     expect(failed).toMatch(/data-act="orgPlanReload"/);

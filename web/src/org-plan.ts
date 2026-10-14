@@ -15,7 +15,7 @@
 // before a refusal, what the server would say.
 
 import {
-  GIFT_SOON_DAYS, LIMIT_KEYS, LIMITS, PLANS, UPGRADE_PLAN, formatLimit, formatUse, giftDaysLeft, isSoloPlan, limitNoun, planRefusal, planRefusalSentence,
+  GIFT_SOON_DAYS, LISTED_LIMIT_KEYS, LIMITS, PLANS, UPGRADE_PLAN, formatLimit, formatUse, giftDaysLeft, isSoloPlan, limitNoun, planRefusal, planRefusalSentence,
   type LimitKey, type OrgPlanView, type PlanNext,
 } from "@shared/plans";
 import { billingDate, isPast, type PurchasablePlan } from "@shared/billing";
@@ -248,7 +248,7 @@ export function planBlock(s: OrgSlice<OrgPlanView | null>, role: OrgRole, b: Org
     <section${surface("", { cls: "cnpy-tile cnpy-org-gen-limits" })} aria-labelledby="org-limits-t">
       ${eyebrow("Limits", "org-limits-t")}
       ${over}
-      <ul class="cnpy-plan-rows">${LIMIT_KEYS.map((k) => limitRow(v, k)).join("")}</ul>
+      <ul class="cnpy-plan-rows">${LISTED_LIMIT_KEYS.map((k) => limitRow(v, k)).join("")}</ul>
     </section>`;
 }
 

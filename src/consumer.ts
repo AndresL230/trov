@@ -109,7 +109,7 @@ async function ledgerRecord(
 /** Feed: append-only; the ledger is the only replay guard (content repeats are legal, which is exactly
  *  why feed needs the ledger).
  *
- *  TAGS (0054_org_tags) are read against the ORG's own live list, never a constant. A tag on the list is
+ *  TAGS (0056_org_tags) are read against the ORG's own live list, never a constant. A tag on the list is
  *  written; a tag that is not does NOT hold the entry back — the entry is written with the tags it may
  *  have, and each other one is recorded as a SUGGESTION for the org's admins (who sent it, on which
  *  entry). Nothing here adds a tag to the list: only an admin does, over a cookie route. A replay is

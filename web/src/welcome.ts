@@ -29,7 +29,7 @@ import { dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
 import { githubOf, inviteMailNote, inviteRoleDropdown, inviteSection, type OrgUi } from "./org-settings";
 import { seatsLead } from "./org-plan";
 import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, lostBanner, mismatchBanner, repoPicker, suspendedBanner } from "./github-app";
-import { CONNECTION_NOTE, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpStrong } from "./mcp-connect";
+import { CONNECTION_NOTE, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpStrong, otherClientsLink } from "./mcp-connect";
 
 // ── steps and state ──────────────────────────────────────────────────────────
 
@@ -240,7 +240,8 @@ export function agentStatus(p: Pick<WelcomeProps, "grants" | "tokens">, org: Pic
 }
 
 /** Connect your coding agent — the SAME three steps Settings › MCP access shows (mcp-connect.ts),
- *  under a live line saying whether this person is connected to this org. Both wizards use it. */
+ *  under a live line saying whether this person is connected to this org (any client's connection
+ *  counts, so one made from a chat on claude.ai ticks the step too). Both wizards use it. */
 export function agentStep(p: WelcomeProps): string {
   const org = p.org!;
   const open = p.wel.byHand;
@@ -248,6 +249,7 @@ export function agentStep(p: WelcomeProps): string {
     <div${surface("padding:18px 20px;margin-top:14px")} data-welcome-connect>
       ${connectSteps(org.name, "this page then shows your agent as connected")}
       <div style="font-size:12px;line-height:1.55;color:var(--fg-40);margin-top:12px">${CONNECTION_NOTE}</div>
+      <div style="font-size:12px;line-height:1.55;color:var(--fg-40);margin-top:6px">Not using Claude Code? ${otherClientsLink()}</div>
     </div>
     <div class="cnpy-wel-quiet">
       <button type="button" data-act="welcomeByHand" data-field="welcomeByHand" aria-expanded="${open}" aria-controls="wel-byhand" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;padding:4px 0;font-size:12.5px;font-weight:500;color:var(--fg-55);text-align:left"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" class="cnpy-xrow-c" style="transform:${open ? "rotate(90deg)" : "none"}"><path d="M9 6l6 6-6 6"></path></svg>Set it up without the plugin</button>

@@ -391,6 +391,6 @@ describe("Stripe.js — from js.stripe.com, on the payment page only", () => {
     expect(text).toContain("Stripe.js");
     expect(text).toMatch(/Stripe's script \(Stripe\.js\) runs on that page, and only there, and sets Stripe's own cookies/);
     expect(text).toMatch(/The one other party that sets cookies is Stripe, on its own pages and on Trov's payment page/);
-    expect(PRIVACY.updated).toBe("2026-10-12");
+    expect(PRIVACY.updated).toBe("2026-10-14");
   });
 });

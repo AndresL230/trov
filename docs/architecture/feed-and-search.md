@@ -21,20 +21,20 @@ boot-loaded proposals + draft ADRs as `reviewHeadsFromReads` heads (no diff), ea
 body's soft target is ~2,500 characters. Pre-0034 entries were filled once by
 `scripts/backfill-feed-briefs.mjs` (local, Gemini, dry run by default, `--apply` only `WHERE brief IS NULL`).
 
-## Tags — ONE list per organization (`0054_org_tags`, phase 1)
+## Tags — ONE list per organization (`0056_org_tags`, phase 1)
 
 Each org has its own tag list (`org_tags`: `name`, a one-line `description`, a `color` from
 `shared/tags-core.ts` `TAG_COLORS`, `starter`, `retired_at`, `merged_into`). It starts as the six STARTER tags
-(`STARTER_TAGS` = the names of `shared/vocabulary.ts` `TAGS` and `0002_seed_vocab.sql`): 0054 seeded them for
+(`STARTER_TAGS` = the names of `shared/vocabulary.ts` `TAGS` and `0002_seed_vocab.sql`): 0056 seeded them for
 the orgs that existed, `createOrg` (`src/orgs/repo.ts`) seeds them for a new one, and `tagRows` gives them to
-an org that has NO row at all (one a pre-0054 Worker created). **Phase 1 puts tags on feed entries, docs and
+an org that has NO row at all (one a pre-0056 Worker created). **Phase 1 puts tags on feed entries, docs and
 decisions** (`entry_tags.entry_type` = `feed` / `doc` / `adr`; ids: the entry's number, the doc's slug, the
 decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are untouched — phase 2.
 
-- **Stored by NAME.** `entry_tags(org_id, tag, entry_type, entry_id)` holds the tag's name; 0054 rebuilt the
+- **Stored by NAME.** `entry_tags(org_id, tag, entry_type, entry_id)` holds the tag's name; 0056 rebuilt the
   table without its reference to the global `tags` table (which stays, unread: it names the starters) and
   added NO reference to `org_tags` — what may be stored is the gate's rule and `setItemTags`'s, so the Worker
-  from before 0054 keeps working. A name is lowercase letters, digits and hyphens, ≤ 32 (`normalizeTagName`).
+  from before 0056 keeps working. A name is lowercase letters, digits and hyphens, ≤ 32 (`normalizeTagName`).
 - **Only an org ADMIN changes the list** (`src/tools/tags.ts`, each `requireRole(ctx, "admin")` with an
   `org_admin_audit` row `tag.*` in the same batch; cookie routes in `src/tags/routes.ts`, which refuse any
   request carrying an `Authorization` header — NEVER MCP): `addTag`; `editTag` (rename and/or description,
@@ -70,13 +70,13 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   is **TypeSafe AI's Jev** (`POST https://api.typesafe.ai/v1/systemone`, `TYPESAFE_API_KEY`), a NON-generative
   decision model: ONE request per candidate item, the item's text as `state` and one `noul` (yes/no) question keyed
   `fits` with `criteria` built from the tag's name and description, at most 4 in flight. Its answer is a
-  probability: "fits" at 0.5 or more, the confidence that probability. Summaries stay on Gemini.
+  probability: "fits" at 0.5 or more, the confidence that probability. Summaries are on Anthropic (`ai.md`).
   - **A deliberate exception to #154's "suggestions, never actions" — the owner's call (2026-10-14)**: no review
     step. It is SCOPED: only a run an ADMIN starts (adding a tag, accepting a suggested one, Find items), only with
     the org's switch on, only that org's items, and it only ever ADDS that one tag — it never removes or changes
     anything else. Every other rule holds: never on a render path (the route starts the run and hands its work to
     `waitUntil`); a fixed set of answers (a `noul` must be a number 0–1, anything else is no judgement); metered
-    (`ai_suggestions`, one per request, `plans.md`).
+    (`jev_checks`, one per request, `plans.md`).
   - **Provenance**: each tag a run adds keeps an `org_tag_suggestions` row — `source = 'model'`, `confidence`,
     `reason`, `model` (the version Jev reports, e.g. `jev-1.13.0`), `prompt_version` `jev-fit-1`, `state =
     'accepted'`, `resolved_by = 'jev'` (a reserved handle) and the run's `run_id` — written in the SAME batch as
@@ -125,6 +125,12 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
     as suggested rows at the top of the tag list (`web-ui.md` › Tags).
   - Not built: the content-hash cache of #155, the per-kind test set and the rates in Platform of #158.
 - Screens: `web-ui.md` › Tags.
+
+**Entries written by Trov** (`FeedRow.ai?`, `shared/ai-core.ts` `AiFeedMeta`: `origin: "ai"`, the person it was
+written for, its sources). An entry with no `ai` is an agent's — every entry today: nothing writes one yet, so
+`/feed` and `get_feed` carry no `ai` in production. `LOCAL_AI_PREVIEW` merges two sample entries into `/feed`
+by `created_at` (respecting `author` / `tags` / `since` / `limit`) under `wrangler dev` only, never over MCP
+(`ai.md`).
 
 ## Read side — FTS5 query engine
 

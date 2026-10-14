@@ -17,10 +17,13 @@ export const RESET_STATEMENTS = [
   "DELETE FROM platform_outbox_bodies",
   // Support reports (0049_support_reports): a global table — no FK in or out.
   "DELETE FROM support_reports",
-  "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL, plan_gift_until = NULL",
+  "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL, plan_gift_until = NULL, ai_automation = 1",
   "DELETE FROM abuse_counters",
   // Sync GitHub runs (0046_sync_runs) reference orgs.
   "DELETE FROM sync_runs",
+  // AI (0055_ai): suggestions and "Wrong?" reference orgs.
+  "DELETE FROM ai_suggestions",
+  "DELETE FROM ai_feedback",
   "DELETE FROM org_usage_daily",
   "DELETE FROM org_admin_audit",
   "UPDATE orgs SET suspended_at = NULL, suspended_by = NULL, logo_sha = NULL, logo_source = NULL, logo_by = NULL, logo_from = NULL, logo_at = NULL",
@@ -88,7 +91,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM docs",
   "DELETE FROM feed",
   "DELETE FROM entry_tags",
-  // The org's tag list (0054_org_tags): suggestions go, and each seed org is back to the six starters below.
+  // The org's tag list (0056_org_tags): suggestions go, and each seed org is back to the six starters below.
   "DELETE FROM org_tag_suggestions",
   "DELETE FROM org_tag_runs",
   "DELETE FROM org_ai_settings",
@@ -136,7 +139,7 @@ export const RESET_STATEMENTS = [
   // The two seed orgs (multitenancy): SaplingLearn holds the six persons above — what 0042_organizations produces from
   // them, AndresL230 its owner — and `org_b` (Acme) is the empty neighbour the isolation suite fills.
   "INSERT OR IGNORE INTO orgs (id, slug, name, created_at, created_by, plan, plan_source) VALUES ('org_saplinglearn', 'saplinglearn', 'SaplingLearn', '2026-10-06T00:00:00.000Z', 'migration', 'enterprise', 'granted'), ('org_b', 'acme', 'Acme', '2026-10-06T00:00:00.000Z', 'migration', 'enterprise', 'granted')",
-  // …each with the six starter tags (0054_org_tags; the rows of shared/tags-core.ts STARTER_TAGS — test/tags.migration.test.ts compares them).
+  // …each with the six starter tags (0056_org_tags; the rows of shared/tags-core.ts STARTER_TAGS — test/tags.migration.test.ts compares them).
   "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'auth', 'Sign-in, sessions, tokens, permissions', 'plum', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
   "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'architecture', 'How the system is put together', 'slate', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
   "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'infra', 'Deploys, hosting, CI', 'rust', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",

@@ -10,20 +10,22 @@ import {
   storePrSummary,
   storeIssueSummary,
   excerptSummary,
-  parseStructuredJson,
-  validatePrSummary,
-  validateIssueSummary,
+  PrSummarySchema,
+  IssueSummarySchema,
   SUMMARIZER_SYSTEM_PROMPT,
   ISSUE_SUMMARIZER_SYSTEM_PROMPT,
-  geminiPrSummarizer,
-  geminiIssueSummarizer,
+  claudePrSummarizer,
+  claudeIssueSummarizer,
   capSummaryBody,
   SUMMARY_BODY_MAX,
+  SUMMARY_MAX_TOKENS,
+  type AiUsage,
 } from "../src/tools/summarize";
 import type { Summarizer } from "../src/tools/summarize";
 import { handleGithubWebhook } from "./helpers/org-config";
 import prMerged from "./fixtures/gh-pr-merged.json";
 import issueAssigned from "./fixtures/gh-issue-assigned.json";
+import { errorResponse, messageResponse, sentInput, sentMessage } from "./helpers/anthropic";
 
 const SECRET = "test-webhook-secret"; // matches vitest.config.ts binding
 
@@ -194,7 +196,7 @@ describe("webhook → summarize wiring", () => {
     expect(rows.length).toBe(0);
   });
 
-  it("with no explicit summarizer and GEMINI_API_KEY unset in tests, the webhook resolves it to null → excerpt (never throws, never hits the network)", async () => {
+  it("with no explicit summarizer and ANTHROPIC_API_KEY unset in tests, the webhook resolves it to null → excerpt (never throws, never hits the network)", async () => {
     const res = await postWebhook("pull_request", prMerged);
     expect(res.status).toBe(200);
     const rows = await all<PrSummaryRow>(env.DB, `SELECT * FROM pr_summaries WHERE semantic_key = ?`, "gh:pr:42:merged");
@@ -203,58 +205,41 @@ describe("webhook → summarize wiring", () => {
   });
 });
 
-describe("parseStructuredJson", () => {
-  it("parses a bare JSON object", () => {
-    expect(parseStructuredJson('{"a": 1}')).toEqual({ a: 1 });
-  });
-  it("strips a ```json fence", () => {
-    expect(parseStructuredJson('```json\n{"a": 1}\n```')).toEqual({ a: 1 });
-  });
-  it("returns null for prose, malformed JSON, arrays, and null", () => {
-    expect(parseStructuredJson("Just prose.")).toBeNull();
-    expect(parseStructuredJson('{"a": ')).toBeNull();
-    expect(parseStructuredJson("[1,2]")).toBeNull();
-    expect(parseStructuredJson("null")).toBeNull();
-  });
-  it("tolerates leading prose before the object", () => {
-    expect(parseStructuredJson('Here you go:\n{"a": 1}')).toEqual({ a: 1 });
-  });
-  it("tolerates trailing prose after the object", () => {
-    expect(parseStructuredJson('{"a": 1}\n\nHope this helps!')).toEqual({ a: 1 });
-  });
-  it("tolerates a fence plus surrounding prose on both sides", () => {
-    expect(parseStructuredJson('Sure!\n```json\n{"a": 1, "b": "x"}\n```\nDone.')).toEqual({ a: 1, b: "x" });
-  });
-});
-
-describe("validatePrSummary", () => {
+// The answer's zod schema checks what the model wrote, after the parse (src/ai/client.ts): structured
+// outputs constrain the shape, these keep the old coercion rules — required = non-empty after trim,
+// nullable = trimmed with '' → null, anything else rejects the whole answer.
+describe("PrSummarySchema", () => {
+  const parse = (o: unknown) => { const r = PrSummarySchema.safeParse(o); return r.success ? r.data : null; };
   it("accepts a full object, trimming every field", () => {
-    expect(validatePrSummary({ title: " T ", what: " W ", why: " Y ", impact: " I " }))
+    expect(parse({ title: " T ", what: " W ", why: " Y ", impact: " I " }))
       .toEqual({ title: "T", what: "W", why: "Y", impact: "I" });
   });
-  it("coerces empty/absent nullable fields to null", () => {
-    expect(validatePrSummary({ title: "T", what: "W", why: "", impact: undefined }))
+  it("coerces empty nullable fields to null", () => {
+    expect(parse({ title: "T", what: "W", why: "", impact: "  " }))
+      .toEqual({ title: "T", what: "W", why: null, impact: null });
+    expect(parse({ title: "T", what: "W", why: null, impact: null }))
       .toEqual({ title: "T", what: "W", why: null, impact: null });
   });
   it("rejects a missing or empty required field", () => {
-    expect(validatePrSummary({ what: "W" })).toBeNull();
-    expect(validatePrSummary({ title: "  ", what: "W" })).toBeNull();
-    expect(validatePrSummary({ title: "T", what: "" })).toBeNull();
+    expect(parse({ what: "W", why: null, impact: null })).toBeNull();
+    expect(parse({ title: "  ", what: "W", why: null, impact: null })).toBeNull();
+    expect(parse({ title: "T", what: "", why: null, impact: null })).toBeNull();
   });
   it("rejects non-string junk in any field", () => {
-    expect(validatePrSummary({ title: "T", what: "W", why: 7, impact: null })).toBeNull();
-    expect(validatePrSummary({ title: 3, what: "W" })).toBeNull();
+    expect(parse({ title: "T", what: "W", why: 7, impact: null })).toBeNull();
+    expect(parse({ title: 3, what: "W", why: null, impact: null })).toBeNull();
   });
 });
 
-describe("validateIssueSummary", () => {
+describe("IssueSummarySchema", () => {
+  const parse = (o: unknown) => { const r = IssueSummarySchema.safeParse(o); return r.success ? r.data : null; };
   it("accepts a full object and coerces empty next_step to null", () => {
-    expect(validateIssueSummary({ title: "T", summary: "S", next_step: "" }))
+    expect(parse({ title: "T", summary: "S", next_step: "" }))
       .toEqual({ title: "T", summary: "S", next_step: null });
   });
   it("rejects a missing required field or junk next_step", () => {
-    expect(validateIssueSummary({ title: "T" })).toBeNull();
-    expect(validateIssueSummary({ title: "T", summary: "S", next_step: 4 })).toBeNull();
+    expect(parse({ title: "T", next_step: null })).toBeNull();
+    expect(parse({ title: "T", summary: "S", next_step: 4 })).toBeNull();
   });
 });
 
@@ -279,10 +264,11 @@ describe("ISSUE_SUMMARIZER_SYSTEM_PROMPT", () => {
   });
 });
 
-// Gemini's generateContent nests the model text under
-// candidates[0].content.parts[0].text. geminiPrSummarizer must extract+validate
-// exactly that shape, and degrade to null (→ excerpt) on a non-2xx response, a
-// missing candidate, prose instead of JSON, or a thrown fetch — a mismatch here
+// The summarizers call Claude through the shared client (src/ai/client.ts) with
+// structured outputs; the answer is the first text block of a Messages API
+// response. They must extract+validate exactly that shape, and degrade to null
+// (→ excerpt) on a non-2xx response, a refusal, an answer cut off at max_tokens,
+// text that is not the schema's JSON, or a thrown fetch — a mismatch here
 // silently produces model:'excerpt' forever, exactly the bug this suite exists to
 // catch. Every case injects a stubbed fetchImpl; the network is never touched.
 describe("the description sent is capped at 8,000 characters (one platform key pays for every org)", () => {
@@ -301,14 +287,13 @@ describe("the description sent is capped at 8,000 characters (one platform key p
     const sent: string[] = [];
     const sizes: number[] = [];
     const fetchImpl = (async (_url: unknown, init?: RequestInit) => {
-      const body = JSON.parse(String(init?.body)) as { contents: { parts: { text: string }[] }[] };
-      sent.push(body.contents[0].parts[0].text);
-      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "not json" }] } }] }), { status: 200 });
+      sent.push(sentInput(init));
+      return messageResponse("not json");
     }) as unknown as typeof fetch;
     const title = "T".repeat(300);
     const body = "B".repeat(8000) + "OVERFLOW".repeat(2000);
-    await geminiPrSummarizer("k", { fetchImpl, onCall: (s) => sizes.push(s.inputChars) }).summarize({ title, body });
-    await geminiIssueSummarizer("k", { fetchImpl, onCall: (s) => sizes.push(s.inputChars) }).summarize({ title, body });
+    await claudePrSummarizer("k", { fetchImpl, onCall: (s) => sizes.push(s.inputChars) }).summarize({ title, body });
+    await claudeIssueSummarizer("k", { fetchImpl, onCall: (s) => sizes.push(s.inputChars) }).summarize({ title, body });
     for (const text of sent) {
       expect(text).toBe(`Title: ${title}\n\nBody: ${"B".repeat(8000)}`);
       expect(text).not.toContain("OVERFLOW");
@@ -317,74 +302,117 @@ describe("the description sent is capped at 8,000 characters (one platform key p
   });
 });
 
-describe("geminiPrSummarizer — Gemini response handling", () => {
+describe("claudePrSummarizer — Messages API response handling", () => {
   const PR_JSON = '{"title": "T", "what": "W", "why": null, "impact": null}';
-  const geminiResponse = (text: string) => ({ candidates: [{ content: { parts: [{ text }] } }] });
-  const stubFetch = (body: unknown, status = 200): typeof fetch =>
-    (async () =>
-      new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
+  const stubFetch = (res: () => Response): typeof fetch => (async () => res()) as unknown as typeof fetch;
+  const summarize = (fetchImpl: typeof fetch) => claudePrSummarizer("k", { fetchImpl }).summarize({ title: "Fix", body: "Fixes a bug" });
 
-  it("extracts and validates JSON from candidates[0].content.parts[0].text", async () => {
-    const result = await geminiPrSummarizer("k", { fetchImpl: stubFetch(geminiResponse(PR_JSON)) })
-      .summarize({ title: "Fix", body: "Fixes a bug" });
-    expect(result).toEqual({ title: "T", what: "W", why: null, impact: null });
+  it("extracts and validates the JSON of the first text block, after any thinking block", async () => {
+    expect(await summarize(stubFetch(() => messageResponse(PR_JSON)))).toEqual({ title: "T", what: "W", why: null, impact: null });
+    const thought = { type: "thinking", thinking: "", signature: "sig" };
+    expect(await summarize(stubFetch(() => messageResponse(PR_JSON, { before: [thought] })))).toEqual({ title: "T", what: "W", why: null, impact: null });
+  });
+
+  it("sends claude-haiku-5-5 a json_schema output format through the injected fetch, with the key and the PR prompt", async () => {
+    let url: string | undefined;
+    let init: RequestInit | undefined;
+    const capturing = (async (u: string | URL | Request, i?: RequestInit) => {
+      url = String(u);
+      init = i;
+      return messageResponse(PR_JSON);
+    }) as unknown as typeof fetch;
+    const s = claudePrSummarizer("secret-key", { fetchImpl: capturing });
+    expect(s.model).toBe("claude-haiku-5-5");
+    await s.summarize({ title: "t", body: "b" });
+    expect(url).toBe("https://api.anthropic.com/v1/messages");
+    expect(new Headers(init?.headers).get("x-api-key")).toBe("secret-key");
+    const sent = sentMessage(init);
+    expect(sent.model).toBe("claude-haiku-5-5");
+    expect(sent.max_tokens).toBe(SUMMARY_MAX_TOKENS);
+    expect(sent.system[0].text).toBe(SUMMARIZER_SYSTEM_PROMPT);
+    expect(sent.messages).toEqual([{ role: "user", content: [{ type: "text", text: "Title: t\n\nBody: b" }] }]);
+    expect(sent.output_config.format.type).toBe("json_schema");
+    // The schema is the zod schema's, made acceptable to the API: closed, every field required, no length keywords.
+    expect(sent.output_config.format.schema).toMatchObject({ type: "object", additionalProperties: false, required: ["title", "what", "why", "impact"] });
+    expect(JSON.stringify(sent.output_config.format.schema)).not.toMatch(/minLength|\$schema/);
   });
 
   it("returns null on a non-2xx response (never reads the error body as a summary)", async () => {
-    const result = await geminiPrSummarizer("k", { fetchImpl: stubFetch({ error: "quota exceeded" }, 429) })
-      .summarize({ title: "Fix", body: "Fixes a bug" });
-    expect(result).toBeNull();
+    expect(await summarize(stubFetch(() => errorResponse(429, "quota exceeded")))).toBeNull();
+    expect(await summarize(stubFetch(() => errorResponse(500)))).toBeNull();
   });
 
-  it("returns null when the candidate shape is absent (e.g. a safety block)", async () => {
-    const result = await geminiPrSummarizer("k", { fetchImpl: stubFetch({ promptFeedback: { blockReason: "SAFETY" } }) })
-      .summarize({ title: "Fix", body: "Fixes a bug" });
-    expect(result).toBeNull();
+  it("returns null on a refusal, even when the text parses", async () => {
+    expect(await summarize(stubFetch(() => messageResponse(PR_JSON, { stop_reason: "refusal" })))).toBeNull();
+  });
+
+  it("returns null on an answer cut off at max_tokens, even when the text parses", async () => {
+    expect(await summarize(stubFetch(() => messageResponse(PR_JSON, { stop_reason: "max_tokens" })))).toBeNull();
   });
 
   it("returns null when fetch throws", async () => {
     const throwingFetch = (async () => {
       throw new Error("network down");
     }) as unknown as typeof fetch;
-    const result = await geminiPrSummarizer("k", { fetchImpl: throwingFetch })
-      .summarize({ title: "Fix", body: "Fixes a bug" });
-    expect(result).toBeNull();
+    expect(await summarize(throwingFetch)).toBeNull();
   });
 
-  it("returns null for an empty/whitespace-only candidate text", async () => {
-    const result = await geminiPrSummarizer("k", { fetchImpl: stubFetch(geminiResponse("   ")) })
-      .summarize({ title: "Fix", body: "Fixes a bug" });
-    expect(result).toBeNull();
+  it("returns null for an empty text, prose, a body that is not JSON, or JSON the schema rejects", async () => {
+    expect(await summarize(stubFetch(() => messageResponse("   ")))).toBeNull();
+    expect(await summarize(stubFetch(() => messageResponse("This PR fixes a bug in the login flow.")))).toBeNull();
+    expect(await summarize(stubFetch(() => new Response("<html>bad gateway</html>", { status: 200, headers: { "content-type": "text/html" } })))).toBeNull();
+    expect(await summarize(stubFetch(() => messageResponse('{"title": "", "what": "W", "why": null, "impact": null}')))).toBeNull();
   });
 
-  it("returns null when the candidate text is prose instead of JSON", async () => {
-    const result = await geminiPrSummarizer("k", { fetchImpl: stubFetch(geminiResponse("This PR fixes a bug in the login flow.")) })
-      .summarize({ title: "Fix", body: "Fixes a bug" });
-    expect(result).toBeNull();
-  });
-
-  it("sends the key as x-goog-api-key and targets the configured model's generateContent endpoint", async () => {
-    let capturedUrl: string | undefined;
-    let capturedHeaders: Record<string, string> | undefined;
-    const capturingFetch = (async (url: string | URL | Request, init?: RequestInit) => {
-      capturedUrl = String(url);
-      capturedHeaders = init?.headers as Record<string, string>;
-      return new Response(JSON.stringify(geminiResponse(PR_JSON)), { status: 200 });
-    }) as unknown as typeof fetch;
-    await geminiPrSummarizer("secret-key", { model: "gemini-2.5-flash-lite", fetchImpl: capturingFetch })
-      .summarize({ title: "t", body: "b" });
-    expect(capturedUrl).toContain("gemini-2.5-flash-lite:generateContent");
-    expect(capturedHeaders?.["x-goog-api-key"]).toBe("secret-key");
+  it("reports the tokens of every answer that came back — a refusal included — and zero tokens when none did", async () => {
+    const seen: AiUsage[] = [];
+    const run = (fetchImpl: typeof fetch) => claudePrSummarizer("k", { fetchImpl, onCall: (u) => seen.push(u) }).summarize({ title: "t", body: "b" });
+    await run(stubFetch(() => messageResponse(PR_JSON, { usage: { input_tokens: 10, output_tokens: 4, cache_read_input_tokens: 2 } })));
+    await run(stubFetch(() => messageResponse(PR_JSON, { stop_reason: "refusal", usage: { input_tokens: 11, output_tokens: 1 } })));
+    await run(stubFetch(() => errorResponse(500)));
+    expect(seen.map((u) => [u.inputTokens, u.outputTokens, u.cachedTokens])).toEqual([[10, 4, 2], [11, 1, 0], [0, 0, 0]]);
+    expect(seen.every((u) => u.inputChars === SUMMARIZER_SYSTEM_PROMPT.length + "Title: t\n\nBody: b".length)).toBe(true);
+    expect(seen.map((u) => u.outputChars)).toEqual([PR_JSON.length, PR_JSON.length, 0]);
   });
 });
 
+describe("storePrSummary / storeIssueSummary over the Claude summarizer", () => {
+  const ISSUE_JSON = '{"title": "Issue T", "summary": "Issue S", "next_step": null}';
+  const fetchOf = (res: () => Response): typeof fetch => (async () => res()) as unknown as typeof fetch;
+
+  it("stores the answer under model claude-haiku-5-5", async () => {
+    await seedEvent("gh:pr:70:merged", 70);
+    const row = await storePrSummary(systemCtx(), claudePrSummarizer("k", { fetchImpl: fetchOf(() => messageResponse('{"title":"T","what":"W","why":"Y","impact":null}')) }), {
+      semantic_key: "gh:pr:70:merged", pr_number: 70, title: "A PR", body: "Body",
+    });
+    expect(row).toMatchObject({ model: "claude-haiku-5-5", title: "T", what: "W", why: "Y", impact: null });
+    const issue = await storeIssueSummary(systemCtx(), claudeIssueSummarizer("k", { fetchImpl: fetchOf(() => messageResponse(ISSUE_JSON)) }), { issue_number: 70, title: "An issue", body: "Body" });
+    expect(issue).toMatchObject({ model: "claude-haiku-5-5", summary: "Issue S", title: "Issue T", next_step: null });
+    expect(await all<{ model: string }>(env.DB, `SELECT model FROM pr_summaries WHERE pr_number = 70`)).toEqual([{ model: "claude-haiku-5-5" }]);
+  });
+
+  for (const stop_reason of ["refusal", "max_tokens"] as const) {
+    it(`a ${stop_reason} answer falls back to the excerpt`, async () => {
+      await seedEvent(`gh:pr:71:${stop_reason}`, 71);
+      const pr = await storePrSummary(systemCtx(), claudePrSummarizer("k", { fetchImpl: fetchOf(() => messageResponse('{"title":"T","what":"W","why":null,"impact":null}', { stop_reason })) }), {
+        semantic_key: `gh:pr:71:${stop_reason}`, pr_number: 71, title: "A PR", body: "Body text here",
+      });
+      expect(pr).toMatchObject({ model: "excerpt", title: null, what: null, why: null, impact: null });
+      const issue = await storeIssueSummary(systemCtx(), claudeIssueSummarizer("k", { fetchImpl: fetchOf(() => messageResponse(ISSUE_JSON, { stop_reason })) }), { issue_number: 71, title: "An issue", body: "Body text here" });
+      expect(issue).toMatchObject({ model: "excerpt", summary: excerptSummary("An issue", "Body text here"), title: null, next_step: null });
+      const rows = await all<IssueSummaryRow>(env.DB, `SELECT model, summary FROM issue_summaries WHERE issue_number = 71`);
+      expect(rows).toEqual([{ model: "excerpt", summary: "Body text here" }]);
+    });
+  }
+});
+
 // The summarizer runs INLINE on the webhook/backfill request the browser waits
-// on, so a hung Gemini call must never wedge capture. The summarizer races the
-// fetch against an injectable timeout and aborts the in-flight request on
-// timeout (real fetch rejects when its AbortSignal fires — the hanging stubs
-// below model that), resolving to null so the deterministic excerpt fallback
-// fires and the request always completes.
-describe("geminiSummarizer — timeout guard", () => {
+// on, so a hung call must never wedge capture. The client gives the SDK the
+// injectable timeout; the SDK aborts the in-flight request when it passes (real
+// fetch rejects when its AbortSignal fires — the hanging stubs below model that),
+// and the call resolves to null so the deterministic excerpt fallback fires and
+// the request always completes.
+describe("claudeSummarizer — timeout guard", () => {
   // A fetch that never resolves on its own — only the AbortSignal firing ends it,
   // exactly as a real fetch rejects with an AbortError when its signal aborts.
   const hangingFetch = ((_url: string | URL | Request, init?: RequestInit) =>
@@ -393,18 +421,18 @@ describe("geminiSummarizer — timeout guard", () => {
     })) as unknown as typeof fetch;
 
   it("resolves the PR summarizer to null when fetch never resolves, within the injected timeout", async () => {
-    const result = await geminiPrSummarizer("k", { timeoutMs: 50, fetchImpl: hangingFetch }).summarize({ title: "Fix", body: "Fixes a bug" });
+    const result = await claudePrSummarizer("k", { timeoutMs: 50, fetchImpl: hangingFetch }).summarize({ title: "Fix", body: "Fixes a bug" });
     expect(result).toBeNull();
   }, 1500);
 
   it("resolves the issue summarizer to null when fetch never resolves, within the injected timeout", async () => {
-    const result = await geminiIssueSummarizer("k", { timeoutMs: 50, fetchImpl: hangingFetch }).summarize({ title: "Fix", body: "Fixes a bug" });
+    const result = await claudeIssueSummarizer("k", { timeoutMs: 50, fetchImpl: hangingFetch }).summarize({ title: "Fix", body: "Fixes a bug" });
     expect(result).toBeNull();
   }, 1500);
 
-  it("storePrSummary falls back to excerpt (never hangs) when the Gemini call hangs past the timeout", async () => {
+  it("storePrSummary falls back to excerpt (never hangs) when the call hangs past the timeout", async () => {
     await seedEvent("gh:pr:99:merged", 99);
-    const row = await storePrSummary(systemCtx(), geminiPrSummarizer("k", { timeoutMs: 50, fetchImpl: hangingFetch }), {
+    const row = await storePrSummary(systemCtx(), claudePrSummarizer("k", { timeoutMs: 50, fetchImpl: hangingFetch }), {
       semantic_key: "gh:pr:99:merged",
       pr_number: 99,
       title: "A PR",
@@ -414,8 +442,8 @@ describe("geminiSummarizer — timeout guard", () => {
     expect(row).toMatchObject({ title: null, what: null, why: null, impact: null });
   }, 1500);
 
-  it("storeIssueSummary falls back to excerpt (never hangs) when the Gemini call hangs past the timeout", async () => {
-    const row = await storeIssueSummary(systemCtx(), geminiIssueSummarizer("k", { timeoutMs: 50, fetchImpl: hangingFetch }), {
+  it("storeIssueSummary falls back to excerpt (never hangs) when the call hangs past the timeout", async () => {
+    const row = await storeIssueSummary(systemCtx(), claudeIssueSummarizer("k", { timeoutMs: 50, fetchImpl: hangingFetch }), {
       issue_number: 99,
       title: "An issue",
       body: "Body text here",
@@ -426,8 +454,8 @@ describe("geminiSummarizer — timeout guard", () => {
   }, 1500);
 
   // Only WAITING for the fetch is bounded by the timer; a timed-out call would keep
-  // its subrequest alive, so the summarizer aborts the AbortSignal on timeout to
-  // actually cancel the in-flight request.
+  // its subrequest alive, so the in-flight request's AbortSignal is aborted on
+  // timeout to actually cancel it.
   it("aborts the in-flight fetch via its AbortSignal when the timeout fires", async () => {
     let captured: AbortSignal | undefined;
     const capturingFetch = ((_url: string | URL | Request, init?: RequestInit) => {
@@ -436,7 +464,7 @@ describe("geminiSummarizer — timeout guard", () => {
         init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
       });
     }) as unknown as typeof fetch;
-    const result = await geminiPrSummarizer("k", { timeoutMs: 50, fetchImpl: capturingFetch }).summarize({ title: "t", body: "b" });
+    const result = await claudePrSummarizer("k", { timeoutMs: 50, fetchImpl: capturingFetch }).summarize({ title: "t", body: "b" });
     expect(result).toBeNull();
     expect(captured).toBeInstanceOf(AbortSignal);
     expect(captured?.aborted).toBe(true);
@@ -446,11 +474,9 @@ describe("geminiSummarizer — timeout guard", () => {
     let captured: AbortSignal | undefined;
     const fastFetch = ((_url: string | URL | Request, init?: RequestInit) => {
       captured = init?.signal ?? undefined;
-      return Promise.resolve(
-        new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"title":"T","what":"W","why":null,"impact":null}' }] } }] }), { status: 200 })
-      );
+      return Promise.resolve(messageResponse('{"title":"T","what":"W","why":null,"impact":null}'));
     }) as unknown as typeof fetch;
-    const result = await geminiPrSummarizer("k", { timeoutMs: 50, fetchImpl: fastFetch }).summarize({ title: "t", body: "b" });
+    const result = await claudePrSummarizer("k", { timeoutMs: 500, fetchImpl: fastFetch }).summarize({ title: "t", body: "b" });
     expect(result).toEqual({ title: "T", what: "W", why: null, impact: null });
     expect(captured).toBeInstanceOf(AbortSignal);
     expect(captured?.aborted).toBe(false);

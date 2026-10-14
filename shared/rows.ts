@@ -7,6 +7,7 @@ export type {
   TicketRow, TicketAssigneeRow, TicketLinkRow, TicketCommentRow, TicketEventRow,
   TicketCategory, TicketPriority, TicketStatus, TicketLinkKind,
 } from "./tickets";
+import type { AiFeedMeta } from "./ai-core";
 
 // Sprints (the table 0025_sprints.sql renamed in place) are defined ONCE, as Zod
 // schemas in shared/sprints.ts, and re-exported here for the same reason.
@@ -65,8 +66,10 @@ export interface FeedRow {
   body: string | null;
   artifacts: string | null;
   created_at: string;
-  /** The entry's tags, by name (`entry_tags`, 0054_org_tags) — set by `get_feed`; not a column. */
+  /** The entry's tags, by name (`entry_tags`, 0056_org_tags) — set by `get_feed`; not a column. */
   tags?: string[];
+  /** Set only on an entry written by Trov (shared/ai-core.ts); absent on every agent entry. */
+  ai?: AiFeedMeta;
 }
 
 export interface AdrRow {

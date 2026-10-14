@@ -1,6 +1,6 @@
 // AI summaries, per org (docs/architecture/plans.md › AI summaries): every attempted summarizer call is
 // counted in `org_usage_daily`, and the plan's monthly allowance (`ai_summaries`) turns the summarizer
-// off when it is used up. The Gemini call is ALWAYS a stub here — never the network.
+// off when it is used up. The model call is ALWAYS a stub here (Messages API bodies) — never the network.
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
@@ -15,28 +15,26 @@ import { captureDelivery } from "../src/webhook";
 import { platformUsage } from "../src/platform/usage";
 import prMerged from "./fixtures/gh-pr-merged.json";
 import issueAssigned from "./fixtures/gh-issue-assigned.json";
+import { FAKE_ANTHROPIC_KEY, errorResponse, messageResponse, sentMessage } from "./helpers/anthropic";
 
-const KEY = "AIzaFAKE_gemini_key_for_tests_0123456789";
-const keyed = (over: Partial<Env> = {}): Env => ({ ...(env as unknown as Env), GEMINI_API_KEY: KEY, GITHUB_SERVICE_TOKEN: "svc-token", GITHUB_REPO: "o/r", ...over });
+const KEY = FAKE_ANTHROPIC_KEY;
+const keyed = (over: Partial<Env> = {}): Env => ({ ...(env as unknown as Env), ANTHROPIC_API_KEY: KEY, GITHUB_SERVICE_TOKEN: "svc-token", GITHUB_REPO: "o/r", ...over });
 const CANARY = "CANARY-SUMMARY-TEXT";
 
-/** A Gemini `generateContent` stand-in. `ok: false` answers 500; `tokens` adds `usageMetadata`. */
-function gemini(o: { ok?: boolean; tokens?: boolean } = {}): { fetchImpl: typeof fetch; calls: number; bodies: string[] } {
+/** A Messages API stand-in. `ok: false` answers 500; `tokens: false` leaves the `usage` block out. */
+function claude(o: { ok?: boolean; tokens?: boolean } = {}): { fetchImpl: typeof fetch; calls: number; bodies: string[] } {
   const g = {
     calls: 0, bodies: [] as string[],
     fetchImpl: (async (url: string | URL | Request, init?: RequestInit) => {
       g.calls++;
       g.bodies.push(String(init?.body ?? ""));
-      expect(String(url)).toContain("generativelanguage.googleapis.com");
-      if (o.ok === false) return new Response("upstream said no", { status: 500 });
+      expect(String(url)).toBe("https://api.anthropic.com/v1/messages");
+      if (o.ok === false) return errorResponse(500);
       const isIssue = String(init?.body ?? "").includes("personal to-do list");
       const text = JSON.stringify(isIssue
         ? { title: `${CANARY} issue`, summary: `${CANARY} summary`, next_step: null }
         : { title: `${CANARY} pr`, what: `${CANARY} what`, why: null, impact: null });
-      return new Response(JSON.stringify({
-        candidates: [{ content: { parts: [{ text }] } }],
-        ...(o.tokens === false ? {} : { usageMetadata: { promptTokenCount: 321, candidatesTokenCount: 45, totalTokenCount: 366 } }),
-      }), { status: 200, headers: { "content-type": "application/json" } });
+      return messageResponse(text, o.tokens === false ? { usage: false } : {});
     }) as unknown as typeof fetch,
   };
   return g;
@@ -133,13 +131,13 @@ describe("orgSummarizers — THE summarizer for an org, and its metering", () =>
 
   it("counts every attempt with its outcome and size — and never the text", async () => {
     await setPlan("team");
-    const ok = gemini();
-    const s = await orgSummarizers(keyed(), systemCtx(), { actor: "admin-user", gemini: { fetchImpl: ok.fetchImpl }, now: NOW });
+    const ok = claude();
+    const s = await orgSummarizers(keyed(), systemCtx(), { actor: "admin-user", ai: { fetchImpl: ok.fetchImpl }, now: NOW });
     const out = await s.pr()!.summarize(input);
     expect(out).toMatchObject({ title: `${CANARY} pr` });
     await s.issue()!.summarize(input);
-    const bad = gemini({ ok: false });
-    const s2 = await orgSummarizers(keyed(), systemCtx(), { actor: "admin-user", gemini: { fetchImpl: bad.fetchImpl }, now: NOW });
+    const bad = claude({ ok: false });
+    const s2 = await orgSummarizers(keyed(), systemCtx(), { actor: "admin-user", ai: { fetchImpl: bad.fetchImpl }, now: NOW });
     expect(await s2.pr()!.summarize(input)).toBeNull();
 
     const rows = await usage();
@@ -148,9 +146,9 @@ describe("orgSummarizers — THE summarizer for an org, and its metering", () =>
     expect(by["summary:issue"]).toBe(1);
     expect(by["summary_failed:pr"]).toBe(1);
     expect(by["summary_failed:issue"]).toBeUndefined();
-    // Sizes: characters always (prompt + title + body in, the model's text out); tokens from usageMetadata.
-    const sent = ok.bodies.concat(bad.bodies).map((b) => JSON.parse(b) as { system_instruction: { parts: { text: string }[] }; contents: { parts: { text: string }[] }[] });
-    expect(by["summary_chars_in"]).toBe(sent.reduce((n, b) => n + b.system_instruction.parts[0].text.length + b.contents[0].parts[0].text.length, 0));
+    // Sizes: characters always (prompt + title + body in, the model's text out); tokens from the answer's `usage`.
+    const sent = ok.bodies.concat(bad.bodies).map((b) => sentMessage({ body: b }));
+    expect(by["summary_chars_in"]).toBe(sent.reduce((n, b) => n + b.system[0].text.length + b.messages[0].content[0].text.length, 0));
     expect(by["summary_chars_out"]).toBeGreaterThan(0);
     expect(by["summary_tokens_in"]).toBe(2 * 321);
     expect(by["summary_tokens_out"]).toBe(2 * 45);
@@ -161,9 +159,9 @@ describe("orgSummarizers — THE summarizer for an org, and its metering", () =>
     expect(s.allowance()).toMatchObject({ status: "on", used: 2 });
   });
 
-  it("an answer without usageMetadata records characters and no tokens", async () => {
-    const g = gemini({ tokens: false });
-    const s = await orgSummarizers(keyed(), systemCtx(), { actor: "admin-user", gemini: { fetchImpl: g.fetchImpl } });
+  it("an answer without a usage block records characters and no tokens", async () => {
+    const g = claude({ tokens: false });
+    const s = await orgSummarizers(keyed(), systemCtx(), { actor: "admin-user", ai: { fetchImpl: g.fetchImpl } });
     await s.pr()!.summarize(input);
     expect(await metric("summary_chars_in")).toBeGreaterThan(0);
     expect(await metric("summary_tokens_in")).toBe(0);
@@ -173,8 +171,8 @@ describe("orgSummarizers — THE summarizer for an org, and its metering", () =>
   it("spends what was left when it was read and no more: the answer turns null, and a summarizer held from before attempts nothing", async () => {
     await setPlan("team", { ai_summaries: 3 });
     await seedUsed(1, today);
-    const g = gemini();
-    const s = await orgSummarizers(keyed(), systemCtx(), { actor: "admin-user", gemini: { fetchImpl: g.fetchImpl }, now: NOW });
+    const g = claude();
+    const s = await orgSummarizers(keyed(), systemCtx(), { actor: "admin-user", ai: { fetchImpl: g.fetchImpl }, now: NOW });
     const held = s.pr()!;
     expect(await held.summarize(input)).not.toBeNull();
     expect(await s.issue()!.summarize(input)).not.toBeNull();
@@ -186,7 +184,7 @@ describe("orgSummarizers — THE summarizer for an org, and its metering", () =>
     expect(await summariesUsed(systemCtx(), NOW)).toBe(3);
     expect(await metric("summary_capped:pr")).toBe(1);
     // …and the next reader sees it used up before making any call.
-    const next = await orgSummarizers(keyed(), systemCtx(), { actor: "github-webhook", gemini: { fetchImpl: g.fetchImpl }, now: NOW });
+    const next = await orgSummarizers(keyed(), systemCtx(), { actor: "github-webhook", ai: { fetchImpl: g.fetchImpl }, now: NOW });
     expect(next.pr()).toBeNull();
     expect(g.calls).toBe(2);
   });
@@ -194,35 +192,35 @@ describe("orgSummarizers — THE summarizer for an org, and its metering", () =>
   it("overshoots only by what simultaneous readers were each allowed: one call per reader that read before the others wrote", async () => {
     await setPlan("team", { ai_summaries: 2 });
     await seedUsed(1, today);
-    const g = gemini();
+    const g = claude();
     // Three webhook deliveries read the allowance at the same moment: each sees 1 left and makes its one call.
-    const readers = await Promise.all([1, 2, 3].map(() => orgSummarizers(keyed(), systemCtx(), { actor: "github-webhook", gemini: { fetchImpl: g.fetchImpl }, now: NOW })));
+    const readers = await Promise.all([1, 2, 3].map(() => orgSummarizers(keyed(), systemCtx(), { actor: "github-webhook", ai: { fetchImpl: g.fetchImpl }, now: NOW })));
     await Promise.all(readers.map((r) => r.pr()!.summarize(input)));
     expect(g.calls).toBe(3);
     expect(await summariesUsed(systemCtx(), NOW)).toBe(4); // cap 2 + (3 readers - 1)
     // None of them can make a second call, and nobody who reads after them makes any: no runaway.
     expect(readers.map((r) => r.pr())).toEqual([null, null, null]);
-    expect((await orgSummarizers(keyed(), systemCtx(), { actor: "github-webhook", gemini: { fetchImpl: g.fetchImpl }, now: NOW })).pr()).toBeNull();
+    expect((await orgSummarizers(keyed(), systemCtx(), { actor: "github-webhook", ai: { fetchImpl: g.fetchImpl }, now: NOW })).pr()).toBeNull();
     expect(g.calls).toBe(3);
   });
 
   it("hands metering to waitUntil when there is one, and awaits it when there is not", async () => {
-    const g = gemini();
+    const g = claude();
     const deferred: Promise<unknown>[] = [];
-    const s = await orgSummarizers(keyed(), systemCtx(), { actor: "github-webhook", gemini: { fetchImpl: g.fetchImpl }, waitUntil: (p) => { deferred.push(p); } });
+    const s = await orgSummarizers(keyed(), systemCtx(), { actor: "github-webhook", ai: { fetchImpl: g.fetchImpl }, waitUntil: (p) => { deferred.push(p); } });
     await s.pr()!.summarize(input);
     expect(deferred.length).toBe(2); // the attempt, then its outcome
     await Promise.all(deferred);
     expect(await metric("summary:pr")).toBe(1);
     // No execution context (Sync, a job): written by the time the call returns.
-    const s2 = await orgSummarizers(keyed(), systemCtx(), { actor: "admin-user", gemini: { fetchImpl: g.fetchImpl } });
+    const s2 = await orgSummarizers(keyed(), systemCtx(), { actor: "admin-user", ai: { fetchImpl: g.fetchImpl } });
     await s2.pr()!.summarize(input);
     expect(await metric("summary:pr")).toBe(2);
   });
 
   it("a metering write that fails never fails the summary", async () => {
-    const g = gemini();
-    const s = await orgSummarizers(keyed(), systemCtx(), { actor: "x".repeat(10), gemini: { fetchImpl: g.fetchImpl } });
+    const g = claude();
+    const s = await orgSummarizers(keyed(), systemCtx(), { actor: "x".repeat(10), ai: { fetchImpl: g.fetchImpl } });
     await run(env.DB, `ALTER TABLE org_usage_daily RENAME TO org_usage_daily_gone`);
     try {
       expect(await s.pr()!.summarize(input)).toMatchObject({ title: `${CANARY} pr` });
@@ -239,9 +237,9 @@ describe("the webhook path (captureDelivery)", () => {
     captureDelivery(hook(), e, scope, name, JSON.stringify(payload), opts);
 
   it("counts a merged pull request's and an assigned issue's summary against the org, as github-webhook, through waitUntil", async () => {
-    const g = gemini();
+    const g = claude();
     const deferred: Promise<unknown>[] = [];
-    const opts = { gemini: { fetchImpl: g.fetchImpl }, waitUntil: (p: Promise<unknown>) => { deferred.push(p); } };
+    const opts = { ai: { fetchImpl: g.fetchImpl }, waitUntil: (p: Promise<unknown>) => { deferred.push(p); } };
     expect((await (await deliver(keyed(), "pull_request", prMerged, opts)).json() as { captured: number }).captured).toBe(1);
     expect((await (await deliver(keyed(), "issues", issueAssigned, opts)).json() as { captured: number }).captured).toBe(1);
     await Promise.all(deferred);
@@ -258,20 +256,20 @@ describe("the webhook path (captureDelivery)", () => {
   });
 
   it("with no execution context the count is written before the delivery returns", async () => {
-    const g = gemini();
-    await deliver(keyed(), "pull_request", prMerged, { gemini: { fetchImpl: g.fetchImpl } });
+    const g = claude();
+    await deliver(keyed(), "pull_request", prMerged, { ai: { fetchImpl: g.fetchImpl } });
     expect(await metric("summary:pr")).toBe(1);
   });
 
   it("at the cap nothing errors: the item is stored with the excerpt fallback, nothing is attempted, and the fallback is counted", async () => {
     await setPlan("personal", { ai_summaries: 1 });
     await seedUsed(1, monthStartDay());
-    const g = gemini();
-    const res = await deliver(keyed(), "pull_request", prMerged, { gemini: { fetchImpl: g.fetchImpl } });
+    const g = claude();
+    const res = await deliver(keyed(), "pull_request", prMerged, { ai: { fetchImpl: g.fetchImpl } });
     expect(res.status).toBe(200);
     expect(g.calls).toBe(0);
     expect(await first<PrSummaryRow>(env.DB, `SELECT model, title, what FROM pr_summaries WHERE pr_number = 42`)).toEqual({ model: "excerpt", title: null, what: null });
-    await deliver(keyed(), "issues", issueAssigned, { gemini: { fetchImpl: g.fetchImpl } });
+    await deliver(keyed(), "issues", issueAssigned, { ai: { fetchImpl: g.fetchImpl } });
     const issue = await first<IssueSummaryRow>(env.DB, `SELECT model, summary FROM issue_summaries WHERE issue_number = 17`);
     expect(issue?.model).toBe("excerpt");
     expect(issue?.summary.length).toBeGreaterThan(0); // the excerpt of its own body, exactly as without a key
@@ -302,8 +300,8 @@ describe("the Sync path (runBackfill)", () => {
   const models = async () => (await all<PrSummaryRow>(env.DB, `SELECT pr_number, model FROM pr_summaries ORDER BY pr_number`)).map((r) => r.model);
 
   it("counts each attempt against the admin who pressed Sync — with no execution context", async () => {
-    const g = gemini();
-    const res = await runBackfill(keyed(), "admin-user", { fetchImpl: github([pr(1), pr(2)], [issue]), gemini: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0 });
+    const g = claude();
+    const res = await runBackfill(keyed(), "admin-user", { fetchImpl: github([pr(1), pr(2)], [issue]), ai: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0 });
     expect(res).toMatchObject({ ok: true, summarized: 3, summariesWritten: 3, summariesFailed: 0, summariesSkipped: 0, summariesPending: 0 });
     expect(g.calls).toBe(3);
     const rows = (await usage()).filter((r) => r.metric.startsWith("summary:"));
@@ -312,21 +310,21 @@ describe("the Sync path (runBackfill)", () => {
   });
 
   it("a failed call is counted as attempted and failed, the item keeps its excerpt, and the next Sync tries again", async () => {
-    const bad = gemini({ ok: false });
-    const one = await runBackfill(keyed(), "admin-user", { fetchImpl: github([pr(1)], []), gemini: { fetchImpl: bad.fetchImpl }, summaryCallDelayMs: 0 });
+    const bad = claude({ ok: false });
+    const one = await runBackfill(keyed(), "admin-user", { fetchImpl: github([pr(1)], []), ai: { fetchImpl: bad.fetchImpl }, summaryCallDelayMs: 0 });
     expect(one).toMatchObject({ summarized: 1, summariesWritten: 0, summariesFailed: 1, summariesPending: 1 });
     expect(await models()).toEqual(["excerpt"]);
-    const ok = gemini();
-    const two = await runBackfill(keyed(), "admin-user", { fetchImpl: github([pr(1)], []), gemini: { fetchImpl: ok.fetchImpl }, summaryCallDelayMs: 0 });
+    const ok = claude();
+    const two = await runBackfill(keyed(), "admin-user", { fetchImpl: github([pr(1)], []), ai: { fetchImpl: ok.fetchImpl }, summaryCallDelayMs: 0 });
     expect(two).toMatchObject({ summariesWritten: 1, summariesPending: 0 });
     expect([await metric("summary:pr"), await metric("summary_failed:pr")]).toEqual([2, 1]);
   });
 
   it("reaching the cap mid-batch: what is left is summarized, the rest get their excerpt once, and the run ends", async () => {
     await setPlan("personal", { ai_summaries: 2 });
-    const g = gemini();
+    const g = claude();
     const fetchImpl = github([pr(1), pr(2), pr(3), pr(4)], []);
-    const one = await runBackfill(keyed(), "admin-user", { fetchImpl, gemini: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0 });
+    const one = await runBackfill(keyed(), "admin-user", { fetchImpl, ai: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0 });
     expect(one).toMatchObject({ ok: true, summarized: 2, summariesWritten: 2, summariesSkipped: 2, summariesPending: 2, summaryBudgetExhausted: false });
     expect(one.allowance).toEqual({ status: "capped", used: 2, cap: 2, remaining: 0 });
     expect(await models()).toEqual([expect.not.stringMatching("excerpt"), expect.not.stringMatching("excerpt"), "excerpt", "excerpt"]);
@@ -335,7 +333,7 @@ describe("the Sync path (runBackfill)", () => {
 
     // Another Sync in the same month: nothing is attempted, nothing is rewritten, nothing is counted twice.
     const stamps = await all<PrSummaryRow>(env.DB, `SELECT pr_number, created_at FROM pr_summaries ORDER BY pr_number`);
-    const two = await runBackfill(keyed(), "admin-user", { fetchImpl, gemini: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0 });
+    const two = await runBackfill(keyed(), "admin-user", { fetchImpl, ai: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0 });
     expect(two).toMatchObject({ ok: true, summarized: 0, summariesSkipped: 0, summariesPending: 2, summaryBudgetExhausted: false });
     expect(g.calls).toBe(2);
     expect(await metric("summary_capped:pr")).toBe(2);
@@ -343,7 +341,7 @@ describe("the Sync path (runBackfill)", () => {
 
     // Once allowed again — the cap raised here; a new month does the same — a Sync fills the excerpts in.
     await setPlan("personal", { ai_summaries: 10 });
-    const three = await runBackfill(keyed(), "admin-user", { fetchImpl, gemini: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0 });
+    const three = await runBackfill(keyed(), "admin-user", { fetchImpl, ai: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0 });
     expect(three).toMatchObject({ summariesWritten: 2, summariesPending: 0 });
     expect((await models()).includes("excerpt")).toBe(false);
     expect(await summariesUsed(systemCtx())).toBe(4);
@@ -351,29 +349,29 @@ describe("the Sync path (runBackfill)", () => {
 
   it("a new month refills excerpts left at the cap, bounded by the batch — never the whole backlog in one batch", async () => {
     await setPlan("personal", { ai_summaries: 1 });
-    const g = gemini();
+    const g = claude();
     const prs = Array.from({ length: 9 }, (_, i) => pr(i + 1));
     const sept = new Date("2026-09-30T22:00:00.000Z");
-    const a = await runBackfill(keyed(), "admin-user", { fetchImpl: github(prs, []), gemini: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0, now: sept });
+    const a = await runBackfill(keyed(), "admin-user", { fetchImpl: github(prs, []), ai: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0, now: sept });
     expect(a).toMatchObject({ summariesWritten: 1, summariesSkipped: 8, summaryBudgetExhausted: false });
     // October, with a larger allowance: one batch attempts its five, and says more are waiting.
     await setPlan("personal", { ai_summaries: 100 });
     const oct = new Date("2026-10-01T00:05:00.000Z");
-    const b = await runBackfill(keyed(), "admin-user", { fetchImpl: github(prs, []), gemini: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0, now: oct });
+    const b = await runBackfill(keyed(), "admin-user", { fetchImpl: github(prs, []), ai: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0, now: oct });
     expect(b).toMatchObject({ summarized: 5, summariesWritten: 5, summariesPending: 3, summaryBudgetExhausted: true });
     expect(b.allowance).toMatchObject({ status: "on", used: 5, cap: 100, remaining: 95 });
   });
 
   it("an ended plan summarizes nothing; no platform key counts nothing", async () => {
     await setPlan("team", {}, "canceled");
-    const g = gemini();
-    const res = await runBackfill(keyed(), "admin-user", { fetchImpl: github([pr(1)], []), gemini: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0 });
+    const g = claude();
+    const res = await runBackfill(keyed(), "admin-user", { fetchImpl: github([pr(1)], []), ai: { fetchImpl: g.fetchImpl }, summaryCallDelayMs: 0 });
     expect(res).toMatchObject({ ok: true, summarized: 0, summariesSkipped: 1 });
     expect(res.allowance?.status).toBe("ended");
     expect(g.calls).toBe(0);
     await run(env.DB, `DELETE FROM org_usage_daily`);
     await run(env.DB, `DELETE FROM pr_summaries`);
-    const off = await runBackfill({ ...keyed(), GEMINI_API_KEY: "" }, "admin-user", { fetchImpl: github([pr(1)], []), summaryCallDelayMs: 0 });
+    const off = await runBackfill({ ...keyed(), ANTHROPIC_API_KEY: "" }, "admin-user", { fetchImpl: github([pr(1)], []), summaryCallDelayMs: 0 });
     expect(off).toMatchObject({ ok: true, summarized: 0, summariesSkipped: 1 });
     expect(off.allowance?.status).toBe("off");
     expect(await usage()).toEqual([]);

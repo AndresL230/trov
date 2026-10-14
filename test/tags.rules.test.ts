@@ -1,5 +1,5 @@
 // The organization's tag list — its rules (src/tools/tags.ts) and its cookie routes (src/tags/routes.ts).
-// 0054_org_tags; docs/architecture/feed-and-search.md › Tags.
+// 0056_org_tags; docs/architecture/feed-and-search.md › Tags.
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { PLANS, LIMITS } from "@shared/plans";

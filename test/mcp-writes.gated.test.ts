@@ -30,7 +30,7 @@ describe("gate functions (consumer.ts) enforce the vocabulary/confidence gate", 
     expect(triage.length).toBe(0);
   });
 
-  it("ingestFeedEntry: a tag that is not on the org's list is left off and suggested; the entry is written, nothing triaged (0054_org_tags)", async () => {
+  it("ingestFeedEntry: a tag that is not on the org's list is left off and suggested; the entry is written, nothing triaged (0056_org_tags)", async () => {
     const r = await ingestFeedEntry(
       systemCtx(),
       { summary: "bad", body: "b", tags: ["not-a-real-tag"], artifacts: { prs: [], commits: [], issues: [] } },

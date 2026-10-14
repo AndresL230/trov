@@ -136,14 +136,15 @@ of them is also in `ORG_TABLES` (`src/deletion/tables.ts`), what an organization
   FTS tables, the per-user-per-org tables (`mcp_tokens`, `oauth_grants`, `oauth_codes`, `notification_*`), and an
   org's own configuration: `org_repos`, `org_environments`, `org_integration_config`, `org_login_map`,
   `org_secrets`, `org_keys`, `org_audit` (read through a tenant ctx by `src/integrations/*`, `src/data/secrets.ts`)
-  and `org_github_installations` (0043_github_app — the org's GitHub App installation, `src/github-app/store.ts`),
-  and `org_tags`, `org_tag_suggestions` (0054_org_tags — the org's tag list and what was suggested for it,
+  and `org_github_installations` (0043_github_app — the org's GitHub App installation, `src/github-app/store.ts`), and the
+  AI tables `ai_suggestions` / `ai_feedback` (0055, read and written by `src/data/ai.ts`),
+  and `org_tags`, `org_tag_suggestions` (0056_org_tags — the org's tag list and what was suggested for it,
   `src/tools/tags.ts`; `feed-and-search.md` › Tags).
 - **Platform-owned org-keyed tables**: `memberships`, `org_invites`, `org_counters`, `org_usage_daily`,
   `org_admin_audit` — an org's place on the platform, written by `src/orgs`, `src/platform`, `src/data/meter.ts`.
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.
 - **Global tables** (no `org_id`): `persons`, `identities`, `sessions`, `invites`, `oauth_clients`,
-  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags` (since 0054 only the STARTER tags' names: nothing reads it, an org's tags are `org_tags`),
+  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags` (since 0056 only the STARTER tags' names: nothing reads it, an org's tags are `org_tags`),
   and `org_grants`, `platform_outbox_bodies` (0044_plans — a grant is about a person before any org exists;
   its `used_org` is deliberately not named `org_id`), and `support_reports` (0049 — a person's report to the
   operator; the org it was sent from is `from_org`, for the same reason: `support.md`). An org's plan is columns on `orgs` (`plans.md`).
@@ -212,6 +213,7 @@ belongs to) through `src/platform/jobs.ts`, then does its work as that org's `sy
 |---|---|---|
 | repo cron `handleRepoCron` (`src/repo/cron.ts`) | `listEnvUnits` / `listRepoUnits` — every non-suspended org | `systemTenant(p, org, "system")` per unit |
 | digest crons `handleNotificationCron` (`src/notifications/cron.ts`) | `listActiveOrgIds` | the same, per org |
+| the AI pass `runAiPass` (`src/ai/pass.ts`, from the repo cron on every tick with no heavy job — `ai.md`) | `listActiveOrgIds`, rotated on `cron_cursor` job `ai_pass` — and NOTHING is read while its job registry is empty (today) | `systemTenant(p, org, "system")` per org; meter rows as actor `ai-pass` |
 | `POST /webhook/github/:hookId`, legacy `/webhook/github` (`src/github-hook.ts`) | `hookRepo(p, id)` / `legacyHookRepo(p)` | `systemTenant(p, row.org_id, "github-webhook")` |
 | `POST /webhook/github/app` — the GitHub App's one endpoint (`src/github-app/webhook.ts`, `github-app.md`) | `installationOrgs(p, <the delivery's installation id>)` for the installation's own events, `installationRepoOrgs(p, <installation id>, <repository>)` for a repository's | the same |
 | Poll now / Poll usage / Sync GitHub (`runLockedRepoRefresh`, `runUsagePolls`, `runBackfill`, `runReconcileJob`) | the caller's `ctx` | `jobTenant(env, ctx)` — that org's system tenant; a bearer context is refused |
@@ -225,6 +227,9 @@ that job, while the unit's worst-case cost still fits `CRON_SUBREQUEST_BUDGET` (
 really spent is counted through the budget's own `fetch`) and `CRON_WALL_BUDGET_MS` (8 min) is not spent;
 then it stores the last key served (`''` once every unit was served — so with few orgs the cursor is never
 written). `health` goes first and may use at most half the budget on a tick that also has a heavy job.
+On a tick with NO heavy job the AI pass (`src/ai/pass.ts`, `ai.md`) runs after the health pings on what they left
+of the same budget — at most `AI_RUNS_PER_TICK` (12) model calls across every org, one subrequest each — with its
+own cursor (`ai_pass`, one unit per org, keyed `<org>`), written only when a tick stops before the last org.
 Queues stay a deferred seam: a unit runner (`runEnvJob(env, orgId, envKey, job, now)`,
 `runOrgJob(env, orgId, job, now)`) is what a consumer would call, unchanged.
 

@@ -28,6 +28,7 @@ import { create_sprint, add_sprint_resource } from "../src/tools/sprints";
 import { createHandoff } from "../src/tools/handoffs";
 import { savePrompt } from "../src/tools/prompts";
 import { createPage, sha256Hex } from "../src/tools/artifacts";
+import { putSuggestion, recordFeedback } from "../src/data/ai";
 import { all, first, run } from "./helpers/db";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import { ORG_A, ORG_B, ensureMember, mintTokenFor, platformCtx, systemCtx } from "./helpers/tenant";
@@ -51,7 +52,7 @@ interface Fx {
   docSlug: string; promptSlug: string; artifactSlug: string;
   adrId: number; triageId: number; ticketId: number; subTicketId: number; linkId: number; sprintId: number; handoffId: number;
   inviteId: number; hookId: string; envKey: string; imgSha: string; login: string; tokenId: number;
-  bTicketId: number;
+  bTicketId: number; suggestionId: number;
 }
 
 const doc = (slug: string, text: string) =>
@@ -122,6 +123,9 @@ async function seed(): Promise<Fx> {
   await mintTokenFor(ALICE, ORG_A);
   const tokenId = (await first<{ id: number }>(env.DB, `SELECT id FROM mcp_tokens WHERE org_id = ? AND person = ?`, ORG_A, ALICE))!.id;
   await run(env.DB, `INSERT INTO notification_prefs (org_id, user_id, kind, cadence, updated_at) VALUES (?, ?, 'my_work', 'daily', ?)`, ORG_A, ALICE, T);
+  // AI (0055_ai): an OPEN suggestion of A's, and a "Wrong?" of Alice's.
+  const suggestionId = (await putSuggestion(A(), { itemType: "ticket", itemRef: String(ticketId), kind: "category", value: "bug", confidence: 0.9, reason: `${CANARY} reason`, cites: [], model: "m", promptVersion: "1" }))!;
+  await recordFeedback(A(), ALICE, { itemType: "brief", itemRef: `${CANARY}-brief`, kind: "brief", model: null, promptVersion: null });
 
   // ── org B: its own content under the SAME slugs, and a ticket for the cross-org edges ──
   await propose_doc_update(B(), doc("iso-doc", "B-own"), "boss");
@@ -132,7 +136,7 @@ async function seed(): Promise<Fx> {
   return {
     cookies, alice: await cookieFor(ALICE), ownerA,
     docSlug: "iso-doc", promptSlug: "iso-prompt", artifactSlug, adrId, triageId, ticketId, subTicketId, linkId, sprintId, handoffId,
-    inviteId, hookId, envKey, imgSha, login, tokenId, bTicketId,
+    inviteId, hookId, envKey, imgSha, login, tokenId, bTicketId, suggestionId,
   };
 }
 
@@ -193,7 +197,8 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
     case "slug": return under("/doc") ? fx.docSlug : under("/prompts") ? fx.promptSlug : fx.artifactSlug;
     case "id": return String(
       under("/tickets") ? fx.ticketId : under("/sprints") ? fx.sprintId : under("/handoffs") ? fx.handoffId : under("/adr") ? fx.adrId
-        : under("/needs-triage") ? fx.triageId : under("/invites") ? fx.inviteId : under("/mcp-tokens") ? fx.tokenId : fx.hookId);
+        : under("/needs-triage") ? fx.triageId : under("/invites") ? fx.inviteId : under("/mcp-tokens") ? fx.tokenId
+        : under("/ai") ? fx.suggestionId : fx.hookId);
     case "linkId": return String(fx.linkId);
     case "login": return fx.login;
     case "handle": return ALICE;
@@ -269,7 +274,7 @@ const TENANT: Record<string, Row> = {
   "POST /prompts/:slug/tags": J({ tags: ["review"] }), "POST /prompts/:slug/used": J({}), "POST /prompts/:slug/publish": J({ version: 1 }),
   "POST /prompts/:slug/delete": J({}), "POST /prompts/:slug/restore": J({}),
   "POST /docs/propose": J({ title: "From the matrix", section: "reference", space: "technical", body: "b" }),
-  // src/tags/routes.ts — the org's tag list (0054_org_tags): every statement binds the org the gate resolved
+  // src/tags/routes.ts — the org's tag list (0056_org_tags): every statement binds the org the gate resolved
   "GET /tags": {}, "GET /tags/:name": {}, "POST /tags": J({ name: "hijacked" }), "PUT /tags/:name": J({ name: "hijacked" }),
   "POST /tags/:name/merge": J({ into: "ui" }), "POST /tags/:name/retire": J({}), "POST /tags/:name/restore": J({}),
   "POST /tags/suggestions/:name/resolve": J({ resolution: "accept" }), "POST /item-tags": J({ type: "feed", id: "1", tags: ["auth"] }),
@@ -308,13 +313,18 @@ const TENANT: Record<string, Row> = {
   // src/orgs/routes.ts — deleting the organization in the PATH (src/deletion/org.ts): its owner only. The body
   // names A's slug, so B's own owner is refused (400 confirm_mismatch) and B's member gets the 403; A is never touched.
   "GET /deletion": {}, "POST /delete": J({ confirm: "saplinglearn" }),
+  // src/ai/routes.ts — Org settings › AI (the PATH's org's switch and month), and the answers to A's suggestion by
+  // its row id: B's members get `not_found`, and a "Wrong?" is written in B, for the caller.
+  "GET /ai/settings": {}, "PUT /ai/settings": J({ enabled: false }),
+  "POST /ai/suggestions/:id/accept": J({}), "POST /ai/suggestions/:id/dismiss": J({}),
+  "POST /ai/feedback": J({ itemType: "brief", itemRef: "x", kind: "brief", model: null, promptVersion: null }),
 };
 
-/** The org surface (src/orgs, src/integrations) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under
+/** The org surface (src/orgs, src/integrations, Org settings › AI in src/ai/routes.ts) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under
  *  `/api/o/:slug`; every other tenant route also has an alias at its old path. The tokens' old paths are not twins of
  *  these — `/auth/mcp-token…` is person-level and resolves the caller's one org itself (PLATFORM, below). */
 const NO_ALIAS = (suffix: string): boolean =>
-  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens", "/billing", "/github", "/deletion", "/delete"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
+  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens", "/billing", "/github", "/deletion", "/delete", "/ai"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
 
 /** Old paths whose `/api/o/:slug` form is a DIFFERENT route (or none): behind `soleTenantGate`, exercised in their own test below. */
 const LEGACY_ONLY: Record<string, Row> = {

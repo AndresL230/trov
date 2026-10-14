@@ -74,7 +74,7 @@ describe("registered MCP append_feed tool carries prs/commits through the gate",
     expect(artifacts.issues).toEqual([7]);
   });
 
-  // 0054_org_tags: the gate reads the ORG's tag list. A tag that is not on it no longer holds the
+  // 0056_org_tags: the gate reads the ORG's tag list. A tag that is not on it no longer holds the
   // entry back — it is written without the tag, which is recorded as a suggestion by the bearer.
   it("a tag that is not on the org's list is reported as suggested; the entry is still written (the gate decides, on the real tool)", async () => {
     const res = await callTool("append_feed", { summary: "bad", tags: ["not-a-real-tag"], prs: ["1"] });

@@ -109,8 +109,8 @@ binding = "DB"
 database_name = "trov-preview"
 database_id = "b8e88540-be00-4938-9f71-1eac4a8e7232"
 
-# Capture-time PR/issue summaries come from Google Gemini over REST (GEMINI_API_KEY
-# secret), a plain fetch(), not a Cloudflare binding, so no [ai] block is needed.
+# Capture-time PR/issue summaries come from Anthropic Claude (ANTHROPIC_API_KEY
+# secret, src/ai/client.ts) over a plain fetch(), not a Cloudflare binding, so no [ai] block is needed.
 
 # Cron triggers, dispatched by expression in src/index.ts scheduled():
 #   "*/10 * * * *"     repo dashboard: health pings every tick; hourly pollers at :00;

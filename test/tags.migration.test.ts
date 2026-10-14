@@ -1,5 +1,5 @@
 /**
- * 0054_org_tags against REAL workerd D1: `MT_DB` (the second, empty database of vitest.config.ts) is
+ * 0056_org_tags against REAL workerd D1: `MT_DB` (the second, empty database of vitest.config.ts) is
  * wiped, migrated to 0053, loaded with two orgs and tagged feed entries, and then given the migration.
  * The assertions are the header's claims: every org has the six starters, every stored tag survives and
  * is on its org's list, entry_tags no longer references the global `tags`, and the statements the
@@ -10,9 +10,9 @@ import { env, applyD1Migrations } from "cloudflare:test";
 import { STARTER_TAGS, TAG_COLORS } from "@shared/tags-core";
 import { TAGS } from "@shared/vocabulary";
 import { RESET_STATEMENTS } from "../scripts/seed/reset.mjs";
-import migrationSql from "../migrations/0054_org_tags.sql?raw";
+import migrationSql from "../migrations/0056_org_tags.sql?raw";
 
-const MIGRATION = "0054_org_tags.sql";
+const MIGRATION = "0056_org_tags.sql";
 const db = () => env.MT_DB;
 const before = () => env.TEST_MIGRATIONS.filter((m) => m.name < MIGRATION);
 const own = () => env.TEST_MIGRATIONS.filter((m) => m.name === MIGRATION);
@@ -48,7 +48,7 @@ beforeEach(async () => {
   await db().batch(SEED.map((s) => db().prepare(s)));
 });
 
-describe("0054_org_tags", () => {
+describe("0056_org_tags", () => {
   it("before it, an org's own word cannot be stored: entry_tags references the six global tags", async () => {
     await expect(db().prepare(`INSERT INTO entry_tags (org_id, tag, entry_type, entry_id) VALUES ('org_two', 'billing', 'feed', '2')`).run()).rejects.toThrow(/FOREIGN KEY/i);
   });
@@ -128,7 +128,7 @@ describe("the starter set is defined once in each place, and the places agree", 
     for (const t of STARTER_TAGS) {
       expect(TAG_COLORS).toContain(t.color);
       const row = `'${t.name}', '${t.description}', '${t.color}', 1,`;
-      expect(migrationSql, `0054 seeds ${t.name}`).toContain(row);
+      expect(migrationSql, `0056 seeds ${t.name}`).toContain(row);
       expect(RESET_STATEMENTS.some((s: string) => s.includes(row)), `reset.mjs seeds ${t.name}`).toBe(true);
     }
   });

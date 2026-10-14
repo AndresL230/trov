@@ -1,4 +1,4 @@
--- 0054_org_tags — ONE tag list per organization, phase 1 (docs/architecture/feed-and-search.md › Tags).
+-- 0056_org_tags — ONE tag list per organization, phase 1 (docs/architecture/feed-and-search.md › Tags).
 --
 -- Until now a feed entry's tags came from six words fixed for every org: the global `tags` table
 -- (0001, seeded by 0002_seed_vocab) that `entry_tags.tag` REFERENCES. An org could not have a tag of
@@ -56,7 +56,7 @@
 --   DROP TABLE IF EXISTS org_tag_runs; DROP TABLE IF EXISTS org_ai_settings;
 --   DROP TABLE IF EXISTS org_tag_suggestions; DROP TABLE IF EXISTS org_tags;
 --   DELETE FROM org_admin_audit WHERE action LIKE 'tag.%';
---   DELETE FROM d1_migrations WHERE name = '0054_org_tags.sql';
+--   DELETE FROM d1_migrations WHERE name = '0056_org_tags.sql';
 -- A starter tag an admin RENAMED is, to the old Worker, an unknown word: its rows are the ones the first
 -- statement deletes. Rename it back before rolling back to keep them.
 

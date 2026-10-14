@@ -266,10 +266,10 @@ describe("a run", () => {
     expect((await startTagFit(KEYED, systemCtx(), "billing")).status).toBe("started");
   });
 
-  it("the month's allowance (ai_suggestions) is checked before every request: the run stops at it, and a new one is refused", async () => {
+  it("the month's allowance (jev_checks) is checked before every request: the run stops at it, and a new one is refused", async () => {
     for (let i = 0; i < 10; i++) await append_feed(systemCtx(), { author: OWNER, summary: `billing ${i}`, body: "billing" });
     await billingTag();
-    await env.DB.prepare(`UPDATE orgs SET plan_overrides = ? WHERE id = ?`).bind(JSON.stringify({ ai_suggestions: 3 }), ORG_A).run();
+    await env.DB.prepare(`UPDATE orgs SET plan_overrides = ? WHERE id = ?`).bind(JSON.stringify({ jev_checks: 3 }), ORG_A).run();
     const j = jev(fitsIf("billing"));
     expect(await runTagFit(KEYED, systemCtx(), "billing", { classifier: j.classifier })).toBe("capped");
     expect(j.sent.length).toBe(3);                                 // never past the cap, with 4 in flight

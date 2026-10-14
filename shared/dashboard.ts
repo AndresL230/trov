@@ -4,6 +4,7 @@
 // (src/) and the web build (web/) agree on the shape.
 
 import type { TicketCategory, TicketPriority, TicketStatus } from "./tickets-core";
+import type { AiBrief } from "./ai-core";
 
 export interface MyWorkPr {
   number: number;
@@ -66,4 +67,7 @@ export interface DashboardData {
   tickets: MyWorkTicket[]; // open tickets assigned to the person, native AND mirrored, capped (6)
   ticketsTotal: number; // the uncapped count of that same list — the "N open" figure
   degraded: boolean; // D1 projection unavailable
+  /** The written brief (shared/ai-core.ts). Absent when the org's AI is off, the deployment has no key,
+   *  or nothing produces one yet — the screen then renders exactly as before. */
+  brief?: AiBrief;
 }

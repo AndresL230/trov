@@ -242,26 +242,11 @@ export function eventsFromDelivery(eventName: string, payload: unknown): Capture
   return [];
 }
 
-// ---------------------------------------------------------------------------
-// PURE: the absolute progress this issue event implies for its GitHub issue
-// GROUP — `groupNumber` is the number on the group the issue belongs to, which a
-// sprint's `github_ref` may point at — or null when the issue is in no group.
-// total = open + closed (GitHub's own counts), so ordering of deliveries is
-// irrelevant — later writes just overwrite.
-// ---------------------------------------------------------------------------
-export function progressFromIssueEvent(
-  payload: unknown
-): { groupNumber: number; closed: number; total: number } | null {
-  if (payload === null || typeof payload !== "object") return null;
-  const issue = (payload as IssuePayload).issue;
-  const m = issue?.milestone; // GitHub's own key — not Trov vocabulary
-  if (!m || m.open_issues == null || m.closed_issues == null) return null;
-  return {
-    groupNumber: m.number,
-    closed: m.closed_issues,
-    total: m.open_issues + m.closed_issues,
-  };
-}
+// The PURE progress an issue event implies for its GitHub issue GROUP lives in
+// src/tools/progress.ts (`progressFromIssueEvent`), re-exported here: progress.ts
+// is reachable from src/mcp.ts (through sprints.ts) and must not import this
+// module, which reaches the model client (src/ai/client.ts).
+export { progressFromIssueEvent } from "./tools/progress";
 
 // ---------------------------------------------------------------------------
 // Downstream projections, hung off each NEWLY-WRITTEN event. Both seams are
@@ -272,7 +257,7 @@ export function progressFromIssueEvent(
 
 // Task 4: parse the PR event's own `raw` (its title/body — nothing else) and
 // store a capture-time summary. `summarizer` is already resolved by the
-// caller (an explicit `opts.summarizer` — null included — else the env's Gemini one, else null);
+// caller (an explicit `opts.summarizer` — null included — else the env's Claude one, else null);
 // storePrSummary itself never throws, so a summary failure never fails capture.
 async function summarizePrSeam(ctx: TenantContext, summarizer: Summarizer<PrSummary> | null, event: CapturedEvent): Promise<void> {
   const parsed = JSON.parse(event.raw) as { pr: { number: number; title: string; body: string | null } };
@@ -343,8 +328,8 @@ export interface DeliveryOpts {
   waitUntil?: (p: Promise<unknown>) => void;
   /** The ticket mirror (injectable so a test can make it throw). */
   mirror?: typeof mirrorIssue;
-  /** The org summarizer's Gemini call (its fetch, stubbed in tests — never the network). */
-  gemini?: OrgSummarizersOpts["gemini"];
+  /** The org summarizer's model call (its fetch, stubbed in tests — never the network). */
+  ai?: OrgSummarizersOpts["ai"];
 }
 
 export async function captureDelivery(
@@ -374,7 +359,7 @@ export async function captureDelivery(
   // a summary. Metering rides `waitUntil` when the delivery has one.
   let chosen: Promise<OrgSummarizers> | null = null;
   const summarizers = (): Promise<OrgSummarizers> =>
-    (chosen ??= orgSummarizers(env, ctx, { actor: "github-webhook", waitUntil: opts?.waitUntil, gemini: opts?.gemini }));
+    (chosen ??= orgSummarizers(env, ctx, { actor: "github-webhook", waitUntil: opts?.waitUntil, ai: opts?.ai }));
 
   let captured = 0;
   let unchanged = 0;

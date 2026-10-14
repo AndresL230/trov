@@ -113,7 +113,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
   every org begins with. A feed entry's tags are checked against the ORG's own list (`org_tags`), never `TAGS`.
 - **Tests** use real Miniflare D1; `scripts/seed/reset.mjs` truncates data tables before each test and is
   the canonical seed: two orgs (`org_saplinglearn` with six persons — four GitHub engineers + Google-only
-  `meilin` / `sanaok` — and an empty `org_b`). **Add every new table there.** GitHub I/O, Gemini and other
+  `meilin` / `sanaok` — and an empty `org_b`). **Add every new table there.** GitHub I/O, the model client (Anthropic) and other
   network clients are dependency-injected (`fetchImpl`, `summarizer`) — stub at the `Response` level, never
   hit the network. `vitest.config.ts` blanks every network secret from `.dev.vars`; a test that needs one
   passes its own env.
@@ -160,6 +160,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | `src/github-app/`, the install flow, installation tokens, the App webhook | `github-app.md` |
 | Sync GitHub, `src/sync/`, the sync panel's copy | `sync.md` |
 | plans, limits, grants, the pricing page, the summarizer allowance | `plans.md` |
+| `src/ai/`, where a model may be called, the AI pass, `ai_runs`, the AI switch, suggestions / "Wrong?", `LOCAL_AI_PREVIEW` | `ai.md` |
 | Stripe, checkout, `src/billing/` | `billing.md` |
 | rate limits, the mail sender, what a stranger can do | `abuse-limits.md` |
 | the bug-report / support form, `support_reports`, Platform › Support | `support.md` |

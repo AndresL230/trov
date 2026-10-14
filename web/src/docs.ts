@@ -9,8 +9,8 @@
 // passed through (a tool's description says `<slug>`, and must show it).
 //
 // PURE: the build prerenders it (site-prerender.ts) and a test reads it. The page's script
-// (web/src/docs-page.ts) only switches the theme, copies a code block and follows the contents — it never
-// re-renders, so the client bundle carries none of the docs' text.
+// (web/src/docs-page.ts) only switches the theme, copies a code block, follows the contents and swaps in
+// another docs page's prerendered HTML — it never renders text, so the client bundle carries none of the docs'.
 
 import { Marked, type Token, type Tokens } from "marked";
 import { DOCS_PAGES, siteUrl, LLMS_TXT, type SitePage } from "@shared/site-pages";

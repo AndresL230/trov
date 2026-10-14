@@ -33,7 +33,9 @@
   › Background jobs), `routes.ts` (Hono HTTP), `mcp.ts` (MCP
   tools; `mcp-catalog.ts` lists them for the docs at build time and is never imported by the Worker),
   `error-hints.ts` (adds `hint` to the Worker's JSON errors), `consumer.ts` (THE GATE), `webhook.ts` (GitHub event capture), `tools/` (`writes.ts`, `reads.ts`,
-  `plan.ts`, `tickets.ts`, `sprints.ts`, `mywork.ts`, `repo.ts`, `repo-agent.ts`, `progress.ts`, `summarize.ts`), `notifications/` (every email, and the `/u/`
+  `plan.ts`, `tickets.ts`, `sprints.ts`, `mywork.ts`, `repo.ts`, `repo-agent.ts`, `progress.ts`, `summarize.ts`), `ai/` (the one model client: `client.ts` — `providerFor(kind)` and
+  `structured()`, Claude over the Messages API with structured outputs, never throwing; `schema.ts` —
+  `toClaudeSchema`; imported only by `tools/summarize.ts`, never reachable from `mcp.ts`), `notifications/` (every email, and the `/u/`
   unsubscribe page — see notifications.md), `db.ts` (D1 helpers), `auth/` (`persons.ts` — the identity root;
   `google.ts` — second provider; `onboard.ts` — the sign-in fork + onboarding cookie; `invites.ts`),
   `env.ts`. `repo/` is the repo-capture package behind `tools/repo.ts`: `types.ts` (the `RepoEvent` /
@@ -144,7 +146,7 @@
   One GitHub App installation in several orgs, each reaching what its admin can read
   (`0053_installation_repos` — the installation index is no longer unique; `repo_access` and
   `org_github_installation_repos`; the cross-org lookups in `src/platform/jobs.ts`): `docs/architecture/github-app.md` › One installation, several orgs.
-- **One tag list per organization, phase 1** (`0054_org_tags` — `org_tags`, `org_tag_suggestions`, and `entry_tags`
+- **One tag list per organization, phase 1** (`0056_org_tags` — `org_tags`, `org_tag_suggestions`, and `entry_tags`
   rebuilt without its reference to the global `tags`; 0052 is reserved by another branch): `shared/tags-core.ts`
   (palette, starters, DTOs, `normalizeTagName`), `src/tools/tags.ts` (the rules and the gate's helpers),
   `src/tags/routes.ts` (cookie routes), `web/src/tags.ts` + `tags-actions.ts` (Org settings › Tags, a tag's page,
@@ -170,6 +172,15 @@
   `shared/sync.ts`): `docs/architecture/sync.md` — whether a sync can start is asked of the ONE GitHub credential
   source (`githubCredentialSource`, `src/github-app/credential.ts`), never of the token alone. The summarizer for an org is chosen ONLY by `orgSummarizers`
   (`src/plans/summaries.ts` — one platform key, each call metered per org, the monthly `ai_summaries` allowance).
+  AI (`docs/architecture/ai.md`): `src/ai/client.ts` (THE model client, `providerFor`) and `src/ai/schema.ts`;
+  `src/ai/pass.ts` (the AI pass in the repo tick — its job registry `AI_JOBS` is empty), `src/ai/eligibility.ts`
+  (`aiEligibility`: ok / off / no_key / capped), `src/ai/routes.ts` (Org settings › AI, accept / dismiss,
+  "Wrong?" — cookie only, `/api/o/:slug/ai/…`), `src/ai/suggestions.ts` (`AI_ACCEPT_HANDLERS`, empty),
+  `src/ai/preview.ts` (`LOCAL_AI_PREVIEW`, `wrangler dev` only); the tables' one repository `src/data/ai.ts`;
+  the screens' contracts `shared/ai-core.ts` (zod-free) + `shared/ai.ts` and the preview's
+  `shared/ai-fixtures.ts`. Migration `0055_ai` (`orgs.ai_automation`, the switch, and
+  `ai_suggestions`, `ai_feedback`); the monthly `ai_runs` allowance is in `PLANS`
+  (not listed on the pricing page yet).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, the Guide (Help › Guide, `#guide`; it was Get Started), the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard) served via the ASSETS binding (an email's Unsubscribe link is NOT a screen

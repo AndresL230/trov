@@ -7,7 +7,7 @@
 // may not include is the other question, `requireFeature(ctx, feature)` — `PlanFeatureError` when no.
 import { type TenantContext, first } from "../data/sql";
 import { LIMIT_KEYS, monthStartDay, overLimits, planDef, planFeatureRefusal, resolveEntitlements, type FeatureKey, type LimitKey, type OrgPlanView } from "@shared/plans";
-import { METRIC_AI_SUGGEST, METRIC_SUMMARY } from "../data/meter";
+import { AI_RUN_METRIC_GLOB, METRIC_AI_SUGGEST, METRIC_SUMMARY } from "../data/meter";
 import { PLAN_COLS, PlanFeatureError, assertWithinPlan, planOf, type OrgPlan, type OrgPlanRow } from "./state";
 
 /** The limits this file counts (everything but seats). */
@@ -34,9 +34,11 @@ const USE: Record<TenantLimit, (ctx: TenantContext) => Promise<number>> = {
           + (SELECT COUNT(*) FROM oauth_grant_orgs WHERE org_id = ?1 AND person = ?2 COLLATE NOCASE) AS n`, ctx.orgId, ctx.userId),
   // PER CALENDAR MONTH (UTC): summarizer calls ATTEMPTED since the 1st, by the webhook and by Sync.
   ai_summaries: (ctx) => summariesUsed(ctx),
-  // PER CALENDAR MONTH (UTC): model calls made for suggestions (src/tools/tag-fit.ts).
-  ai_suggestions: (ctx) => suggestionsUsed(ctx),
-  // The org's LIVE tags (0054_org_tags): a retired tag does not count.
+  // PER CALENDAR MONTH (UTC): model calls the AI pass attempted since the 1st (docs/architecture/ai.md).
+  ai_runs: (ctx) => aiRunsUsed(ctx),
+  // PER CALENDAR MONTH (UTC): calls to Jev (src/tools/tag-fit.ts).
+  jev_checks: (ctx) => suggestionsUsed(ctx),
+  // The org's LIVE tags (0056_org_tags): a retired tag does not count.
   tags: (ctx) => count(ctx, `SELECT COUNT(*) AS n FROM org_tags WHERE org_id = ? AND retired_at IS NULL`, ctx.orgId),
 };
 
@@ -57,6 +59,21 @@ export const summariesUsed = (ctx: TenantContext, now: Date = new Date()): Promi
 export async function planAndSummaries(ctx: TenantContext, now: Date = new Date()): Promise<{ plan: OrgPlan; used: number }> {
   const row = await first<OrgPlanRow & { used: number }>(ctx, `SELECT ${PLAN_COLS}, (${SUMMARIES_USED}) AS used FROM orgs WHERE id = ?1`, ctx.orgId, monthStartDay(now));
   return { plan: planOf(row), used: Number(row?.used ?? 0) };
+}
+
+/** `ai_run:*` since the 1st — the same range read, for the AI pass's allowance. */
+const AI_RUNS_USED = `SELECT COALESCE(SUM(count), 0) AS n FROM org_usage_daily WHERE org_id = ?1 AND day >= ?2 AND metric GLOB '${AI_RUN_METRIC_GLOB}'`;
+
+/** AI runs attempted for the org this calendar month (UTC). */
+export const aiRunsUsed = (ctx: TenantContext, now: Date = new Date()): Promise<number> =>
+  count(ctx, AI_RUNS_USED, ctx.orgId, monthStartDay(now));
+
+/** The org's plan, its AI switch (`orgs.ai_automation`, 0055) and its AI runs this month, in ONE statement —
+ *  what `aiEligibility` reads (src/ai/eligibility.ts). An org that is not there reads as switched off. */
+export async function planAndAiRuns(ctx: TenantContext, now: Date = new Date()): Promise<{ plan: OrgPlan; enabled: boolean; used: number }> {
+  const row = await first<OrgPlanRow & { ai_automation: number; used: number }>(ctx,
+    `SELECT ${PLAN_COLS}, ai_automation, (${AI_RUNS_USED}) AS used FROM orgs WHERE id = ?1`, ctx.orgId, monthStartDay(now));
+  return { plan: planOf(row), enabled: !!row && Number(row.ai_automation) !== 0, used: Number(row?.used ?? 0) };
 }
 
 export const limitUse = (ctx: TenantContext, limit: TenantLimit): Promise<number> => USE[limit](ctx);
@@ -83,17 +100,17 @@ export async function requireFeature(ctx: TenantContext, feature: FeatureKey): P
 
 /** `GET /api/o/:slug/plan` — any member: the plan, what it includes, and the org's use of each limit. */
 export async function orgPlanView(ctx: TenantContext): Promise<OrgPlanView> {
-  const [state, ai_summaries, seats, repositories, environments, artifact_bytes, agent_connections, tags, ai_suggestions] = await Promise.all([
-    planFor(ctx), limitUse(ctx, "ai_summaries"),
+  const [state, ai_summaries, ai_runs, seats, repositories, environments, artifact_bytes, agent_connections, tags, jev_checks] = await Promise.all([
+    planFor(ctx), limitUse(ctx, "ai_summaries"), limitUse(ctx, "ai_runs"),
     first<{ members: number; pending: number }>(ctx,
       `SELECT (SELECT COUNT(*) FROM memberships WHERE org_id = ?1) AS members,
               (SELECT COUNT(*) FROM org_invites WHERE org_id = ?1 AND status = 'pending') AS pending`, ctx.orgId),
-    limitUse(ctx, "repositories"), limitUse(ctx, "environments"), limitUse(ctx, "artifact_bytes"), limitUse(ctx, "agent_connections"), limitUse(ctx, "tags"), limitUse(ctx, "ai_suggestions"),
+    limitUse(ctx, "repositories"), limitUse(ctx, "environments"), limitUse(ctx, "artifact_bytes"), limitUse(ctx, "agent_connections"), limitUse(ctx, "tags"), limitUse(ctx, "jev_checks"),
   ]);
   const def = planDef(state.plan);
   const entitlements = resolveEntitlements(state.plan, state.overrides);
   const split = { members: seats?.members ?? 0, pending: seats?.pending ?? 0 };
-  const usage = { seats: split.members + split.pending, repositories, environments, artifact_bytes, agent_connections, ai_summaries, ai_suggestions, tags };
+  const usage = { seats: split.members + split.pending, repositories, environments, artifact_bytes, agent_connections, ai_summaries, ai_runs, jev_checks, tags };
   return {
     plan: def.id, name: def.name, description: def.description, status: state.status, source: state.source, period_end: state.period_end,
     gift_until: state.gift_until, entitlements, overridden: LIMIT_KEYS.filter((k) => k in state.overrides), usage, seats: split, over: overLimits(entitlements, usage),

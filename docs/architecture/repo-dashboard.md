@@ -111,7 +111,9 @@ on. An org with no environment and no primary repository has no unit and costs n
   rides the same unit: `reconcileCost`; logs `failed` when non-empty); `:30` `pruneRepoCapture` + `pruneOAuth`
   (D1 only, cross-org). `:10` and `:20` skip, without a word, an org with no primary repository or no GitHub
   credential; `:30` and the pings run regardless.
-- `:40` / `:50`, and `:10`–`:30` of any other hour, ping health and nothing else.
+- `:40` / `:50`, and `:10`–`:30` of any other hour, ping health and nothing else — and then the AI pass
+  (`src/ai/pass.ts`, `ai.md`) on what the pings left of the budget, on every tick with no heavy job. Its job
+  registry is empty, so today it reads and fetches nothing.
 
 **The budget.** One invocation may spend `CRON_SUBREQUEST_BUDGET` = **900** outbound requests (Workers Paid
 allows 1,000 an invocation; D1 does not count) and `CRON_WALL_BUDGET_MS` = 8 minutes of wall clock. `health`
@@ -350,7 +352,7 @@ github arm is SKIPPED and says so (`failed: ["skipped: would exceed the subreque
 risk the invocation, while health and usage still run. **Deliberately excluded**: `recomputeAllProgress`
 (UNBOUNDED — the reason it has a tick of its own — and it feeds the Roadmap, not this dashboard),
 `pruneRepoCapture` (maintenance, not a refresh) and `runBackfill` / summaries (that is Sync GitHub: My Work's
-capture, with its own Gemini budget loop). **That last exclusion has a visible cost**: `runBackfill` is also
+capture, with its own summary allowance). **That last exclusion has a visible cost**: `runBackfill` is also
 the ONLY non-webhook writer of the `events` issue snapshots, so the Overview's Open issues / Open bugs tiles
 and their deltas, Planning's Issues by label and the activity feed's issue lines do NOT move on a poll — they
 refresh with Sync GitHub, and the button's title says so. **Idempotent with the cron**: the pollers key on the HOUR FLOOR,
@@ -581,6 +583,13 @@ HOURLY usage metrics (`cf_*` / `rw_*` / `active_users_*`) older than 100 days; a
 older than **7 days, EXCEPT the rows stamped exactly 00:00 UTC, kept 100 days** (the daily totals the trend
 reads — `sap_*` and the usage globs never match each other's names). `pr` / `push` / `deploy` /
 `run` / `review` rows and `coverage` / `bundle_kb` / `todo_count` match no rule and are kept forever.
+
+**Written by Trov — `state` and `themes`** (`shared/repo.ts`, typed in `shared/ai-core.ts`): Overview's first
+block ("State") and Planning's ("Where the work went", per range). They are NOT sections, so `REPO_TAB_SECTIONS`
+does not name them, and absent means off / nothing written — never a `not_connected` section. **Nothing writes
+them yet: production omits both** (`GET /repo/dashboard` and `get_repo_dashboard`); `LOCAL_AI_PREVIEW` fills
+them from the fixtures under `wrangler dev` only, never over MCP (`ai.md`). When the dashboard has them,
+`get_repo_dashboard` carries `state` with `tab: overview` (or no tab) and `themes` with `planning` (or no tab).
 
 **`get_repo_dashboard` is the Repo dashboard's read over MCP, for every principal too** — it exposes nothing
 a signed-in member cannot see at `#repo`, and nothing per-user. `src/tools/repo-agent.ts` is a VIEW over

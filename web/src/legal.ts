@@ -13,7 +13,7 @@
 // 2026-10-12, re-checked against this tree): the cookie names and lifetimes (src/auth/session.ts, tx.ts,
 // onboard.ts, oauth-routes.ts, return-to.ts, src/github-app/connect.ts), the OAuth scopes
 // (src/auth/github.ts, src/auth/google.ts) and the GitHub App's read-only permissions
-// (docs/architecture/github-app.md), the processors (Cloudflare, GitHub, Google, Stripe, Resend — no font
+// (docs/architecture/github-app.md), the processors (Cloudflare, GitHub, Google, Anthropic, Stripe, Resend — no font
 // or script CDN: the fonts and Mermaid are self-hosted), the retention rules (the sweeps in src/index.ts and
 // src/repo/cron.ts, the soft deletes), deletion (docs/architecture/organizations.md §8, which this text
 // follows), the e-mails (docs/architecture/notifications.md › Who gets what) and how a paid plan is billed,
@@ -76,6 +76,8 @@ const FREE_SEATS = PLANS.free.entitlements.seats;
 
 /** The effective date of all three documents (they were rewritten together). */
 const EFFECTIVE = "2026-10-12";
+/** Terms and Privacy: summaries moved from Google Gemini to Anthropic Claude. */
+const SUMMARIES_PROVIDER_UPDATED = "2026-10-14";
 
 // ── Terms of Service ─────────────────────────────────────────────────────────
 
@@ -83,7 +85,7 @@ export const TERMS: LegalDoc = {
   kind: "terms",
   title: "Terms of Service",
   tab: "Terms",
-  updated: EFFECTIVE,
+  updated: SUMMARIES_PROVIDER_UPDATED,
   lede: `These terms cover your use of Trov, the shared context store for teams and their coding agents, and are the agreement between you and ${LEGAL_OPERATOR}. You accept them when you create an account, and by using Trov.`,
   brief: [
     "Your content stays yours. We host and process it only to run Trov for you and your team.",
@@ -183,7 +185,7 @@ export const TERMS: LegalDoc = {
       id: "ai",
       title: "10. AI-generated summaries",
       body: [
-        p("Trov uses an AI model (Google Gemini) to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete: they are a convenience, not a record. Check the pull request or issue before relying on one."),
+        p("Trov uses an AI model (Anthropic Claude) to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete: they are a convenience, not a record. Check the pull request or issue before relying on one."),
         // DRAFT (2026-10-14, automatic tagging) — for the owner's review before it ships.
         p("If an admin of your organization turns on automatic tagging in Org settings › Tags, then whenever an admin adds a tag or asks Trov to find items for one, Trov uses Jev, a decision model from TypeSafe AI, to judge which of the organization's existing feed entries, docs and decisions fit that tag, and adds the tag to each item Jev judges a fit. No person reviews each one first, and a judgement can be wrong. It only ever adds that one tag; it never removes or changes anything else. An admin can undo a run, which takes the tag off exactly the items that run tagged, and anyone can take a tag off an item; Trov does not add it to that item again. An admin can turn it off at any time, and nothing is sent while it is off."),
       ],
@@ -193,7 +195,7 @@ export const TERMS: LegalDoc = {
       title: "11. Third-party services",
       body: [
         // DRAFT (2026-10-14, automatic tagging): "TypeSafe AI for automatic tagging…" — for the owner's review.
-        p("Trov depends on other services: GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Stripe for payments, Google Gemini for summaries, TypeSafe AI for automatic tagging where an organization turns it on, and Resend for email. An organization can also connect Railway, Cloudflare Analytics and its own metrics endpoint, with tokens its admins provide. The agent clients you connect (Claude Code, Cursor and others) are yours, not ours. Each of these is governed by its own terms, and its availability is outside our control."),
+        p("Trov depends on other services: GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Stripe for payments, Anthropic Claude for summaries, TypeSafe AI for automatic tagging where an organization turns it on, and Resend for email. An organization can also connect Railway, Cloudflare Analytics and its own metrics endpoint, with tokens its admins provide. The agent clients you connect (Claude Code, Cursor and others) are yours, not ours. Each of these is governed by its own terms, and its availability is outside our control."),
       ],
     },
     {
@@ -289,7 +291,7 @@ export const PRIVACY: LegalDoc = {
   kind: "privacy",
   title: "Privacy Policy",
   tab: "Privacy",
-  updated: EFFECTIVE,
+  updated: SUMMARIES_PROVIDER_UPDATED,
   lede: `This policy explains what Trov collects, why, who processes it, how long it is kept and what you can ask for. Trov is run by ${LEGAL_OPERATOR}, which is responsible for the personal data described here.`,
   brief: [
     "We don't sell personal data, show ads, or use analytics or tracking cookies.",
@@ -349,13 +351,14 @@ export const PRIVACY: LegalDoc = {
         table("Service providers", ["Provider", "What it does", "What it receives"], [
           ["Cloudflare", "Hosting, the database, file storage, logs", "Every request (with your IP address) and everything stored in Trov"],
           ["GitHub", "Sign-in; the repository data an organization connects", "Your sign-in; Trov's read-only requests for the connected repositories"],
-          ["Google", "Sign-in; summaries (Gemini API)", "Your sign-in; the title and description (up to 8,000 characters) of each captured pull request and issue"],
+          ["Google", "Sign-in", "Your sign-in"],
+          ["Anthropic", "Summaries (Claude API)", "The title and description (up to 8,000 characters) of each captured pull request and issue"],
           // DRAFT (2026-10-14, automatic tagging): a new processor, for the owner's review.
           ["TypeSafe AI", "Automatic tagging, where an organization turns it on (the Jev model)", "The tag's name and description and, for each of the organization's feed entries, docs and decisions that may fit it, its title and up to 400 characters of its text, with code and anything that looks like a password or key removed"],
           ["Stripe", "Payments, invoices and receipts, fraud checks, tax calculation", "The buyer's email, handle, payment details and billing address, and the organization's address for an upgrade"],
           ["Resend", "Delivers Trov's email", "Each email's recipient, subject and body (a digest contains your organization's content: ticket titles, summaries)"],
         ]),
-        p("Google handles the text sent for summaries under the Gemini API terms that apply to Trov's account. Railway, Cloudflare Analytics and an organization's own endpoint receive only Trov's requests with the token its admins saved, and send back figures. The agent clients you connect (Claude Code, Cursor and others) receive what they read on your behalf; they are your tools, under their own terms, not our processors."),
+        p("Anthropic handles the text sent for summaries under Anthropic's Commercial Terms of Service, which apply to Trov's API account. Railway, Cloudflare Analytics and an organization's own endpoint receive only Trov's requests with the token its admins saved, and send back figures. The agent clients you connect (Claude Code, Cursor and others) receive what they read on your behalf; they are your tools, under their own terms, not our processors."),
         p("We may also disclose data if the law requires it, or to protect the rights and safety of people and the service. If TrovLabs is part of a merger or acquisition, personal data may pass to the new owner under this policy. <b>We do not sell or rent personal data</b>, and we do not share it for advertising."),
       ],
     },
@@ -416,7 +419,7 @@ export const PRIVACY: LegalDoc = {
           "What you wrote in organizations that carry on — docs, tickets, comments, history — stays for the people you worked with, credited to \"Deleted user\" (a placeholder with no personal data) instead of your handle. Text other people typed that mentions you is not rewritten.",
           "Your GitHub username in repository activity Trov captured, because it is a copy of that repository's history on GitHub.",
           "One record of each deletion: who asked, when, and for an organization its address, member count and Stripe ids (for billing disputes). For an account it holds a one-way code, not your handle.",
-          "Stripe keeps its records of payments and invoices for tax and accounting law; Resend keeps its delivery logs; Google may have the text sent earlier for summaries — each under its own terms.",
+          "Stripe keeps its records of payments and invoices for tax and accounting law; Resend keeps its delivery logs; Anthropic, and Google for summaries made before October 14, 2026, may have the text sent earlier for summaries — each under its own terms.",
           "Cloudflare's database history (up to 30 days) and logs (a few days) keep deleted data until they age out.",
         ),
       ],

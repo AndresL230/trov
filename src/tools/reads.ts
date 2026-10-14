@@ -23,7 +23,7 @@ export async function get_doc(
     ctx.orgId,
     slug
   );
-  // The doc's tags (0054_org_tags), set by a person on the doc's page.
+  // The doc's tags (0056_org_tags), set by a person on the doc's page.
   const tags = (await tagsOfItems(ctx, "doc", [slug])).get(slug) ?? [];
   return { doc, versions, tags };
 }

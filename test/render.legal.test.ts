@@ -28,7 +28,8 @@ describe("legal pages", () => {
       it("renders the title, the effective date, a contents list and every section with its anchor", () => {
         expect(html).toContain(`>${doc.title}</h1>`);
         expect(html).toContain(`Effective and last updated ${legalDate(doc.updated)}`);
-        expect(doc.updated).toBe("2026-10-12");
+        // Terms and Privacy were updated when summaries moved to Anthropic; Refunds is as rewritten.
+        expect(doc.updated).toBe(doc.kind === "refunds" ? "2026-10-12" : "2026-10-14");
         for (const s of doc.sections) {
           expect(html).toContain(`<section id="${s.id}" class="site-legal-sec">`);
           expect(html).toContain(`<a href="#${s.id}" data-legal-toc="${s.id}"><span class="site-legal-toc-n">`);
@@ -77,7 +78,7 @@ describe("legal pages", () => {
 
   it("names every processor that receives personal data, and no service Trov does not use", () => {
     const privacy = text(PRIVACY);
-    for (const name of ["Cloudflare", "Stripe", "Gemini", "Resend", "GitHub", "Google", "Railway", "Cloudflare Analytics"]) expect(privacy).toContain(name);
+    for (const name of ["Cloudflare", "Stripe", "Anthropic", "Resend", "GitHub", "Google", "Railway", "Cloudflare Analytics"]) expect(privacy).toContain(name);
     // Not integrated: never named in any legal text.
     for (const doc of ALL) expect(text(doc)).not.toMatch(/Vercel|Netlify/i);
   });

@@ -1,4 +1,4 @@
-// The organization's tag list on screen (0054_org_tags; docs/architecture/web-ui.md › Tags):
+// The organization's tag list on screen (0056_org_tags; docs/architecture/web-ui.md › Tags):
 //   • `tagsTab`      — Org settings › Tags: what agents suggested (admins), the add row, the list.
 //   • `tagPageView`  — one tag's page (`#tags/<name>`): everything that carries it, by type.
 //   • `itemTagsRow`  — the Tags row on an item's own page (a doc): its tags and the picker.

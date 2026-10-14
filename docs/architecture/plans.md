@@ -24,16 +24,24 @@ means unlimited. Plan ids are stored and never renamed: **`team` is the plan use
 | `artifact_bytes` | 250 MB | 5 GB | unlimited | 250 MB | `SUM(artifact_versions.size_bytes)` — every stored version, deleted pages included | `writeVersion`, `insertPage`, `mintUploadToken`, `consumeUploadToken` (`src/tools/artifacts.ts`) — so HTTP, the upload link and the MCP artifact tools alike |
 | `agent_connections` | 5 | 10 | unlimited | 5 | PER PERSON: that person's live MCP tokens for the org + their connected apps that hold a row for it (`oauth_grant_orgs`) — see below | `mintToken`, `issueAuthorization` (the OAuth consent), `setGrantOrg` / `setGrantMode` (Settings), `admitGrantOrg` (a follow-the-repository connection's first call into the org) |
 | `ai_summaries` | 300 | 3,000 | unlimited | 300 | PER CALENDAR MONTH (UTC): summarizer calls attempted for the org | `orgSummarizers` (`src/plans/summaries.ts`) — it refuses nothing: past it an item shows its excerpt (below) |
+| `ai_runs` | 250 | 2,000 | unlimited | 250 | PER CALENDAR MONTH (UTC): model calls the AI pass attempted for the org (`ai_run:*`) | the AI pass (`src/ai/pass.ts`, via `aiEligibility`) — it refuses nothing: past it no call is made (`ai.md`). **Not listed yet** (below) |
 
-| `ai_suggestions` | 300 | 3,000 | unlimited | 300 | PER CALENDAR MONTH (UTC): requests made to the suggestion model (TypeSafe AI's Jev — ONE request per candidate item; `org_usage_daily` metric `ai_suggest`) | `startTagFit` / `continueTagFit` (`src/tools/tag-fit.ts`) — it refuses nothing with a 402: past it a run stops (`capped`) and the Tags tab says so |
+**A limit that is not listed** (`LimitDef.listed: false`): `ai_runs` is a limit like any other — resolved,
+overridable per org in Platform's limit fields, enforced — but nothing uses it yet (the AI pass has no job), so
+the pricing page's cards, its questions and its markdown, the Plan block (Org settings › General) and Settings ›
+Limits list `LISTED_LIMIT_KEYS` (every key but the unlisted) instead of `LIMIT_KEYS`. `OrgPlanView.usage` still
+carries `ai_runs` (this month's `ai_run:*`). To list it: drop the flag (`test/render.pricing.test.ts`,
+`render.plans.test.ts`, `render.settings-plan.test.ts` pin that it is absent today).
+
+| `jev_checks` | 300 | 3,000 | unlimited | 300 | PER CALENDAR MONTH (UTC): requests made to the tag-check model (TypeSafe AI's Jev — ONE request per candidate item; `org_usage_daily` metric `ai_suggest`) | `startTagFit` / `continueTagFit` (`src/tools/tag-fit.ts`) — it refuses nothing with a 402: past it a run stops (`capped`) and the Tags tab says so |
 | `tags` | 30 | 30 | 30 | 30 | LIVE `org_tags` rows (a retired tag does not count) | `addTag`, `restoreTag`, `resolveSuggestion` accept (`src/tools/tags.ts`) |
 
-**AI suggestions.** The numbers are PLACEHOLDERS equal to each plan's `ai_summaries` (`SUGGEST_FREE`,
+**Tag checks (`jev_checks`).** The numbers are PLACEHOLDERS equal to each plan's `ai_summaries` (`SUGGEST_FREE`,
 `SUGGEST_PRO` in `shared/plans.ts`); the owner has not chosen them. A run asks Jev about ONE item per request, so a
 run costs up to 60 (its candidates). Each request counts BEFORE it is made, and the allowance is checked before
 each one (one at a time, though four are in flight), so a run never passes the cap.
 
-**Tags (0054_org_tags).** 30 on every plan is a PLACEHOLDER (`TAGS_PLACEHOLDER` in `shared/plans.ts`): the owner
+**Tags (0056_org_tags).** 30 on every plan is a PLACEHOLDER (`TAGS_PLACEHOLDER` in `shared/plans.ts`): the owner
 has not chosen the numbers. An override may not go below 6 (`LIMITS.tags.min`): every org has six starter
 tags that are never removed. The limit shows with the others in the Plan block and Settings › Limits.
 
@@ -144,12 +152,13 @@ its paid seats lowered, or an override lowered. Then, and always:
 
 ## AI summaries: one key, counted per org, capped per plan
 
-Capture-time summaries of pull requests and assigned issues come from Gemini, and **one** platform key
-(`GEMINI_API_KEY`) pays for every org. So each org's calls are counted, and each plan has a monthly
+Capture-time summaries of pull requests and assigned issues come from Anthropic's Claude (`claude-haiku-5-5`, through
+the one model client `src/ai/client.ts`), and **one** platform key
+(`ANTHROPIC_API_KEY`) pays for every org. So each org's calls are counted, and each plan has a monthly
 allowance. Code: `src/plans/summaries.ts`, `src/data/meter.ts`; tests: `test/summaries.cap.test.ts`.
 
 **The one choice.** `orgSummarizers(env, ctx, …)` is the only place a summarizer is chosen for an org — the
-webhook (`src/webhook.ts`) and Sync GitHub (`src/tools/backfill.ts`) both ask it. It answers the Gemini
+webhook (`src/webhook.ts`) and Sync GitHub (`src/tools/backfill.ts`) both ask it. It answers the Claude
 summarizer, or `null` when the deployment has no key (`off`), the org's plan is canceled (`ended`), or the
 org has used its month's allowance (`capped`). The comparison is `planRefusal(state, "ai_summaries", used)`,
 like every other limit.
@@ -170,7 +179,7 @@ click; the Sync panel says how many a run will attempt and how many are left bef
 | `summary_failed:pr`, `summary_failed:issue` | attempts that produced no summary (the item kept its excerpt) |
 | `summary_capped:pr`, `summary_capped:issue` | items given an excerpt because nothing could be attempted (the allowance, an ended plan); counted once, when the excerpt row is first written |
 | `summary_chars_in`, `summary_chars_out` | characters sent (prompt + title + body) and received |
-| `summary_tokens_in`, `summary_tokens_out` | Gemini's own `usageMetadata` counts, when its answer carried them |
+| `summary_tokens_in`, `summary_tokens_out` | the provider's own counts (`usage.input_tokens` / `output_tokens`), when its answer carried them — a refusal or an unparseable answer included, since it was billed |
 
 Counts and sizes only: no title, body or summary text is ever written there. The attempt is written
 *before* the call and its outcome after it. Metering follows the request-metering rule — it rides
@@ -223,14 +232,14 @@ SELECT org_id, metric, SUM(count) FROM org_usage_daily
  WHERE day >= '2026-10-01' AND metric GLOB 'summary*' GROUP BY org_id, metric;
 ```
 
-Cost ≈ `tokens_in × input price + tokens_out × output price` for the model in use (`GEMINI_MODEL` in
-`src/tools/summarize.ts`, `gemini-2.5-flash-lite`); where tokens were not recorded, characters ÷ 4 is the
+Cost ≈ `tokens_in × input price + tokens_out × output price` for the model in use (`CLAUDE_MODEL` in
+`src/ai/client.ts`, `claude-haiku-5-5`); where tokens were not recorded, characters ÷ 4 is the
 usual approximation. Input dominates and scales with the description, so at most its first **8,000
 characters** are sent (`SUMMARY_BODY_MAX`, `capSummaryBody` — the title always goes whole; a cut never
 splits a surrogate pair); sizes are recorded, not just calls. Check the provider's current prices; none is
 stored here.
 
-**Owner step.** Summaries are **off** until the key is set: `wrangler secret put GEMINI_API_KEY`. From then
+**Owner step.** Summaries are **off** until the key is set: `wrangler secret put ANTHROPIC_API_KEY`. From then
 on every org's new pull requests and assigned issues are summarized on capture (webhook) and on Sync, each
 call is counted, and each org's plan allowance applies. Existing excerpt rows fill in at each org's next
 Sync GitHub. Removing the secret turns it all off again; nothing else changes.
@@ -398,7 +407,7 @@ person before any org exists. `org_grants.used_org` is deliberately not named `o
 
 | Route | Gate | Answers |
 |---|---|---|
-| `GET /api/o/:slug/plan` | any member | `OrgPlanView`: plan, name, status, `gift_until`, entitlements, `usage` (seats = members + pending; `agent_connections` = the caller's own; `ai_summaries` = this month's), `over` |
+| `GET /api/o/:slug/plan` | any member | `OrgPlanView`: plan, name, status, `gift_until`, entitlements, `usage` (seats = members + pending; `agent_connections` = the caller's own; `ai_summaries` and `ai_runs` = this month's), `over` |
 | `GET /api/o/:slug/sync` | any member | `SyncStatusView` — its `summaries` is the allowance: status, used, cap, remaining, pending (`sync.md`) |
 | `GET /api/orgs` | signed in | each org with its `plan` and `paid`; adds `grants: MyGrant[]`, `can_create`, `free: { can_create, owned }` |
 | `POST /api/orgs` | holds a usable grant, or may own a Free org | 201 the org; 403 `no_grant` (a grant that is not theirs, a superadmin); 403 `free_org_limit` |

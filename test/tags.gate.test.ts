@@ -1,4 +1,4 @@
-// The gate and the organization's tag list (0054_org_tags; docs/architecture/ingestion-gate.md).
+// The gate and the organization's tag list (0056_org_tags; docs/architecture/ingestion-gate.md).
 //
 // A feed entry's tags are read against the ORG's own live list. A tag on it is written; one that is
 // not no longer sends the entry to needs_triage — the entry is written with the tags it may have, and
@@ -127,7 +127,7 @@ describe("the gate reads the org's tag list", () => {
     expect(r).toMatchObject({ outcome: "written", tags: ["auth"], suggested_tags: ["onboarding"] });
   });
 
-  it("an org with no tag rows (created by the Worker from before 0054) is given the starters on first read", async () => {
+  it("an org with no tag rows (created by the Worker from before 0056) is given the starters on first read", async () => {
     await env.DB.prepare(`DELETE FROM org_tags WHERE org_id = ?`).bind(ORG_B).run();
     const r = await ingestFeedEntry(systemCtx(ORG_B), entry("first", ["infra"]), "andres");
     expect(r).toMatchObject({ outcome: "written", tags: ["infra"] });

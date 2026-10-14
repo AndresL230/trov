@@ -52,7 +52,7 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   // (src/consumer.ts ingestAdrDraft), not a direct insert — this is the actual writer of
   // that column on every triage-routing path.
   await ingestAdrDraft(systemCtx(), { title: "unsure", context: "c", decision: "d", rationale: "r", confidence: "low" }, handle); // needs_triage.source_author
-  // The org's tag list (0054_org_tags). org_tag_suggestions.suggested_by through the REAL gate: a feed
+  // The org's tag list (0056_org_tags). org_tag_suggestions.suggested_by through the REAL gate: a feed
   // entry with a tag that is not on the list. The rest are an admin's writes — direct inserts here.
   await ingestFeedEntry(
     systemCtx(),
@@ -165,6 +165,9 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   // 0049_support_reports: a report the person sent, and one they resolved (the real writers take the
   // principal from the session: test/support.routes.test.ts renames through them).
   await run(env.DB, `INSERT INTO support_reports (kind, subject, message, reporter, status, resolved_by, resolved_at, created_at) VALUES ('bug', 's', 'm', ?, 'resolved', ?, ?, ?)`, handle, handle, nowIso(), nowIso());
+  // 0055_ai: a suggestion the person dismissed, and a "Wrong?" they pressed.
+  await run(env.DB, `INSERT INTO ai_suggestions (org_id, item_type, item_ref, kind, value_json, reason, state, created_at, decided_by, decided_at) VALUES (?, 'ticket', '1', 'category', '"bug"', 'r', 'dismissed', ?, ?, ?)`, org, nowIso(), handle, nowIso());
+  await run(env.DB, `INSERT INTO ai_feedback (org_id, handle, item_type, item_ref, kind, created_at) VALUES (?, ?, 'brief', 'person:x', 'brief', ?)`, org, handle, nowIso());
 }
 
 describe("renamePerson", () => {

@@ -1,4 +1,4 @@
-// The organization's tag list over HTTP (0054_org_tags; docs/architecture/feed-and-search.md › Tags) —
+// The organization's tag list over HTTP (0056_org_tags; docs/architecture/feed-and-search.md › Tags) —
 // mounted on the tenant API at `/tags` and `/item-tags`: `/api/o/:slug/tags…` for the org the path names,
 // and `/api/tags…` as the alias for a person with one org.
 //

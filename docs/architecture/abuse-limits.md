@@ -129,7 +129,7 @@ changes. The cost is that an address can be on two people's rows; nothing reads 
    now (0042_organizations), not only SaplingLearn's, so this is live for any org anyone creates. The WELCOME goes only to a
    provider-verified address of the person who just joined, so it cannot be aimed at a third party.
 6. **Shared platform resources.** Summaries for every org's Sync GitHub and webhook use the Worker's one
-   `GEMINI_API_KEY` — capped per org per month by its plan (Free 300) and per call (8,000 characters of a
+   `ANTHROPIC_API_KEY` — capped per org per month by its plan (Free 300) and per call (8,000 characters of a
    description); the repo cron's 900-subrequest budget is shared by rotation, so many orgs with environments
    slow everyone's health pings (a Free org has at most 2); `/mcp` and the tenant routes are metered
    (`org_usage_daily`) but not limited; artifact storage is capped per org by plan, but D1 rows are not.

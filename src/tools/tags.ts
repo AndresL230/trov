@@ -1,4 +1,4 @@
-// The organization's tag list (0054_org_tags; docs/architecture/feed-and-search.md › Tags).
+// The organization's tag list (0056_org_tags; docs/architecture/feed-and-search.md › Tags).
 //
 // ONE list per org (`org_tags`), starting from the six starters. Three kinds of caller:
 //   • an ADMIN changes the list — add, rename, edit, merge, retire, restore, and settle what agents
@@ -42,7 +42,7 @@ const auditStmt = (ctx: TenantContext, action: TagAuditAction, target: string, d
     ctx.orgId, ctx.userId, action, target, JSON.stringify(detail), at);
 
 /** The six starters, as statements for `ctx`'s org — what src/orgs/repo.ts `createOrg` puts in the batch
- *  that creates an org (0054 did the same for the orgs that existed then). */
+ *  that creates an org (0056 did the same for the orgs that existed then). */
 export function starterTagStmts(ctx: TenantContext, at: string): Stmt[] {
   return STARTER_TAGS.map((t) => stmt(ctx,
     `INSERT OR IGNORE INTO org_tags (org_id, name, description, color, starter, created_at, created_by) VALUES (?, ?, ?, ?, 1, ?, 'system')`,
@@ -54,7 +54,7 @@ const readRows = (ctx: TenantContext): Promise<TagRow[]> =>
 
 /**
  * Every tag row of the org, oldest first. An org with NO row at all was created by a Worker from
- * before 0054 (in the minutes between the migration and its deploy): it is given the six starters
+ * before 0056 (in the minutes between the migration and its deploy): it is given the six starters
  * here, once — a starter is never removed, so "no rows" can only mean "never seeded".
  */
 async function tagRows(ctx: TenantContext): Promise<TagRow[]> {

@@ -16,8 +16,8 @@ export default defineConfig({
   plugins: [
     cloudflareTest(async () => ({
       wrangler: { configPath: "./wrangler.toml" },
-      // No remote bindings: capture-time summaries go to Gemini over a plain
-      // fetch() (not a Cloudflare binding), and GEMINI_API_KEY is BLANKED in the
+      // No remote bindings: capture-time summaries go to Anthropic over a plain
+      // fetch() (not a Cloudflare binding), and ANTHROPIC_API_KEY is BLANKED in the
       // bindings below (a local `.dev.vars` would otherwise leak it into the pool),
       // so both summarizer construction sites resolve to null → the excerpt
       // fallback. Summarizer behavior is exercised via dependency-injected stubs
@@ -61,12 +61,12 @@ export default defineConfig({
           SUPPORT_NOTIFY_EMAIL: "", // no operator inbox by default (a support report's mail is `skipped`); a test that mails passes its own
           // The pool loads `.dev.vars` through the wrangler config, so every secret
           // a developer keeps there would reach the tests — and each of these makes
-          // the code under test resolve a REAL network client (Gemini summaries,
+          // the code under test resolve a REAL network client (Claude summaries,
           // GitHub service reads, Resend, the Cloudflare / Railway / Sapling
           // pollers). Blanked here so the POOL default is "unset": the suite stays
           // hermetic and fixture text never leaves the machine. A test that needs
           // one passes its own value through a per-test env object.
-          GEMINI_API_KEY: "",
+          ANTHROPIC_API_KEY: "",
           // The tag-suggestion classifier (TypeSafe AI's Jev): blanked like Gemini; tests inject a stub fetch.
           TYPESAFE_API_KEY: "",
           GITHUB_SERVICE_TOKEN: "",
@@ -76,6 +76,9 @@ export default defineConfig({
           RAILWAY_TOKEN_STAGING: "",
           RAILWAY_TOKEN_PRODUCTION: "",
           SAPLING_METRICS_TOKEN: "",
+          // The AI screens' local preview (src/ai/preview.ts): unset, as in production — every AI field is
+          // omitted. A test that previews passes its own value.
+          LOCAL_AI_PREVIEW: "",
           PUBLIC_ORIGIN: "https://trov.test",
           // A FIXED key-encryption key (32 bytes, base64) for per-org secrets (src/data/secrets.ts), so the
           // suite never depends on a developer's `.dev.vars`; TROV_KEK_PREVIOUS is blanked for the same reason.

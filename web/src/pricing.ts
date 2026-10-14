@@ -20,7 +20,7 @@
 // Every sentence below describes what Trov does today (docs/architecture/plans.md,
 // organizations.md). No refunds, trials, discounts or compliance claims: none exist.
 
-import { LIMIT_KEYS, LIMITS, PLAN_IDS, PLANS, formatLimit, limitNoun, limitPhrase, type PlanDef, type PlanId } from "@shared/plans";
+import { LISTED_LIMIT_KEYS, LIMITS, PLAN_IDS, PLANS, formatLimit, limitNoun, limitPhrase, type LimitKey, type PlanDef, type PlanId } from "@shared/plans";
 import { CHECKOUT_TAX, PRICING, RENEWAL_TERMS, canPurchase, canPurchasePlan, formatPrice, hasYearly, isFreePrice, purchaseHref, seatMath, type PlanPricing } from "@shared/pricing";
 import { REFUNDS_PATH, TERMS_PATH } from "@shared/legal-core";
 import { trovMark } from "@shared/mark";
@@ -97,7 +97,7 @@ function planCta(def: PlanDef, price: PlanPricing, accent: boolean, signedIn: bo
 
 /** A plan sold per seat shows its seat cap as the most it can buy: "Up to 50". */
 const perSeat = (def: PlanDef, price: PlanPricing): boolean => canPurchasePlan(def.id, price);
-const limitValue = (def: PlanDef, price: PlanPricing, k: (typeof LIMIT_KEYS)[number], value: string): string =>
+const limitValue = (def: PlanDef, price: PlanPricing, k: LimitKey, value: string): string =>
   k === "seats" && perSeat(def, price) && def.entitlements.seats !== null ? `Up to ${value}` : value;
 
 /** What a buyer is told beside "Choose Pro", before anything is paid: the per-seat math (an example: the
@@ -120,7 +120,7 @@ const BANNER_ART = `<span class="site-banner-art" aria-hidden="true">${trovMark(
 /** `top`: the plan above the ones with a price — it wears the site's banner (`.site-banner`), so the row
  *  climbs from a plain card (Free) through the accented one (the plan on sale) to the banner. */
 function planCard(def: PlanDef, price: PlanPricing, i: number, accent: boolean, signedIn: boolean, h: number, top = false): string {
-  const limits = LIMIT_KEYS.map((k) => {
+  const limits = LISTED_LIMIT_KEYS.map((k) => {
     // The value, then what it counts: "3" + "seats", "5 GB" + "artifact storage", "3,000" + "AI summaries per month".
     const [value, what] = limitPhrase(k, def.entitlements[k]);
     return `<li><b>${esc(limitValue(def, price, k, value))}</b> ${esc(what)}</li>`;
@@ -187,7 +187,7 @@ export function pricingQuestions(all: PlanDef[], pricing: Record<PlanId, PlanPri
   const byTalk = defs.find((def) => !pricing[def.id].selfServe);
   const free = defs.find((def) => isFreePrice(pricing[def.id]));
   const paid = defs.find((def) => canPurchasePlan(def.id, pricing[def.id]));
-  const limitNames = LIMIT_KEYS.map(limitNoun);
+  const limitNames = LISTED_LIMIT_KEYS.map(limitNoun);
   const list = `${limitNames.slice(0, -1).join(", ")} and ${limitNames[limitNames.length - 1]}`;
   const seatCap = paid?.entitlements.seats ?? null;
   const qs: PricingQuestion[] = [
@@ -214,7 +214,7 @@ export function pricingQuestions(all: PlanDef[], pricing: Record<PlanId, PlanPri
  *  plan includes a feature another lacks (`FEATURE_KEYS` is empty), which is what makes "all of Trov" true. */
 function proAdds(paid: PlanDef, free: PlanDef): string {
   const same = paid.features.length === free.features.length && paid.features.every((f) => free.features.includes(f));
-  const rows = LIMIT_KEYS.filter((k) => paid.entitlements[k] !== free.entitlements[k]).map((k) => {
+  const rows = LISTED_LIMIT_KEYS.filter((k) => paid.entitlements[k] !== free.entitlements[k]).map((k) => {
     const [value, what] = limitPhrase(k, paid.entitlements[k]);
     const was = formatLimit(k, free.entitlements[k]);
     return `${esc(LIMITS[k].unit === "bytes" ? `${value} of ${what}` : `${value} ${what}`)} (${esc(free.name)}: ${esc(was)})`;
@@ -302,7 +302,7 @@ export function pricingMarkdown(p: Pick<PricingProps, "plans" | "pricing"> = {})
   const plan = (def: PlanDef): string => [
     `## ${def.name}${pricing[def.id].badge ? ` (${pricing[def.id].badge})` : ""}`,
     `${def.description} ${priceLine(def)}`,
-    LIMIT_KEYS.map((k) => {
+    LISTED_LIMIT_KEYS.map((k) => {
       const [value, what] = limitPhrase(k, def.entitlements[k]);
       return `- ${limitValue(def, pricing[def.id], k, value)} ${what}`;
     }).join("\n"),

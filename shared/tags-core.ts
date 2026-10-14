@@ -1,4 +1,4 @@
-// The organization's tag list (0054_org_tags; docs/architecture/feed-and-search.md › Tags). Zod-free and
+// The organization's tag list (0056_org_tags; docs/architecture/feed-and-search.md › Tags). Zod-free and
 // dependency-free: the Worker, the gate and the SPA all read it.
 //
 // Every org has ONE list of tags. It starts as the six STARTER tags (shared/vocabulary.ts `TAGS`, the
@@ -39,7 +39,7 @@ export function cleanTagDescription(raw: unknown): string | null {
 }
 
 export interface StarterTag { name: (typeof TAGS)[number]; description: string; color: TagColor }
-/** The six tags every organization starts with — the SAME rows 0054_org_tags seeds for the orgs that
+/** The six tags every organization starts with — the SAME rows 0056_org_tags seeds for the orgs that
  *  existed then (a test compares the two). They can be renamed, never retired or merged away. */
 export const STARTER_TAGS: readonly StarterTag[] = [
   { name: "auth", description: "Sign-in, sessions, tokens, permissions", color: "plum" },

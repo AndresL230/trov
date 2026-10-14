@@ -1,0 +1,132 @@
+// The AI contracts, zod half: schemas for the shapes in ./ai-core (the zod-free value
+// half, which the SPA imports) — the Worker validates what it stores and returns
+// against these, and the preview fixtures are checked against them in tests. Every
+// value and type in ./ai-core is re-exported, so `@shared/ai` is the one server-side
+// import path.
+
+import { z } from "zod";
+import {
+  AI_STATES, AI_NEXT_KINDS, AI_ORIGINS, AI_THEME_RANGES, AI_THEME_COLORS, AI_THEME_STATUSES,
+  AI_SUGGESTION_STATES, AI_ITEM_TYPES, AI_ELIGIBILITY, AI_LIST_MAX,
+  type AiCite, type AiLine, type AiBrief, type AiRepoState, type AiFeedMeta, type AiThemes,
+  type AiThemeLane, type AiSuggestion, type AiFeedbackBody, type AiAcceptBody, type AiSettings, type AiUsage,
+} from "./ai-core";
+
+export * from "./ai-core";
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+export const AiCiteSchema = z.object({
+  ref: z.string().min(1).max(200),
+  label: z.string().min(1).max(200),
+  href: z.string().max(2000).nullable(),
+}) satisfies z.ZodType<AiCite>;
+
+export const AiLineSchema = z.object({
+  text: z.string().min(1).max(600),
+  cites: z.array(AiCiteSchema).max(20),
+}) satisfies z.ZodType<AiLine>;
+
+const meta = {
+  state: z.enum(AI_STATES),
+  generatedAt: z.string().nullable(),
+  model: z.string().nullable(),
+  resumesOn: isoDay.nullable(),
+  upgrade: z.boolean(),
+};
+
+export const AiBriefSchema = z.object({
+  ...meta,
+  now: AiLineSchema.nullable(),
+  recently: AiLineSchema.nullable(),
+  next: z.object({
+    items: z.array(z.object({
+      ref: z.string().min(1).max(200),
+      kind: z.enum(AI_NEXT_KINDS),
+      title: z.string().min(1).max(300),
+      why: z.string().min(1).max(300),
+      cites: z.array(AiCiteSchema).min(1).max(10),
+    })).max(AI_LIST_MAX),
+  }),
+}) satisfies z.ZodType<AiBrief>;
+
+export const AiRepoStateSchema = z.object({
+  ...meta,
+  headline: z.string().min(1).max(300).nullable(),
+  shipped: z.array(AiLineSchema).max(AI_LIST_MAX),
+  inFlight: z.array(AiLineSchema).max(AI_LIST_MAX),
+  attention: z.array(AiLineSchema).max(AI_LIST_MAX),
+  eventCount: z.number().int().min(0).nullable(),
+}) satisfies z.ZodType<AiRepoState>;
+
+export const AiFeedMetaSchema = z.object({
+  origin: z.enum(AI_ORIGINS),
+  subject: z.string().nullable(),
+  sources: z.array(AiCiteSchema).max(10),
+  moreCount: z.number().int().min(0),
+  generatedAt: z.string().nullable(),
+  model: z.string().nullable(),
+}) satisfies z.ZodType<AiFeedMeta>;
+
+export const AiThemeLaneSchema = z.object({
+  id: z.string().min(1).max(60),
+  name: z.string().min(1).max(80),
+  colorKey: z.enum(AI_THEME_COLORS),
+  description: z.string().max(400),
+  counts: z.array(z.number().int().min(0)),
+  prs: z.array(AiCiteSchema).max(50),
+  status: z.enum(AI_THEME_STATUSES),
+  suggestionId: z.number().int().positive().nullable(),
+}) satisfies z.ZodType<AiThemeLane>;
+
+export const AiThemesSchema = z.object({
+  ...meta,
+  caption: z.string().min(1).max(400).nullable(),
+  prCount: z.number().int().min(0).nullable(),
+  range: z.enum(AI_THEME_RANGES),
+  weeks: z.array(isoDay),
+  lanes: z.array(AiThemeLaneSchema).max(8),
+}).refine((t) => t.lanes.every((l) => l.counts.length === t.weeks.length), "every lane has one count per week") satisfies z.ZodType<AiThemes>;
+
+export const AiSuggestionSchema = z.object({
+  id: z.number().int().positive(),
+  itemType: z.string().min(1),
+  itemRef: z.string().min(1),
+  kind: z.string().min(1),
+  value: z.unknown(),
+  label: z.string().min(1),
+  reason: z.string().min(1),
+  confidence: z.number().min(0).max(1).nullable(),
+  cites: z.array(AiCiteSchema),
+  state: z.enum(AI_SUGGESTION_STATES),
+}) satisfies z.ZodType<AiSuggestion>;
+
+export const AiFeedbackBodySchema = z.object({
+  itemType: z.enum(AI_ITEM_TYPES),
+  itemRef: z.string().min(1).max(200),
+  kind: z.string().min(1).max(60),
+  model: z.string().max(80).nullable(),
+  promptVersion: z.string().max(40).nullable(),
+}) satisfies z.ZodType<AiFeedbackBody>;
+
+export const AiAcceptBodySchema = z.object({ value: z.unknown().optional() }) satisfies z.ZodType<AiAcceptBody>;
+
+export const AiSettingsPutSchema = z.object({ enabled: z.boolean() });
+
+export const AiSettingsSchema = z.object({
+  enabled: z.boolean(),
+  canEdit: z.boolean(),
+  eligibility: z.enum(AI_ELIGIBILITY),
+  runs: z.object({ used: z.number().int().min(0), cap: z.number().int().min(0).nullable(), resumesOn: isoDay.nullable() }),
+  sends: z.array(z.object({ what: z.string(), for: z.string() })),
+  neverSent: z.string(),
+}) satisfies z.ZodType<AiSettings>;
+
+export const AiUsageSchema = z.object({
+  runs: z.number().int().min(0),
+  failed: z.number().int().min(0),
+  capped: z.number().int().min(0),
+  tokensIn: z.number().int().min(0),
+  tokensOut: z.number().int().min(0),
+  tokensCached: z.number().int().min(0),
+}) satisfies z.ZodType<AiUsage>;
