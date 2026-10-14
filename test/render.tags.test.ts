@@ -404,17 +404,20 @@ describe("one tag's page", () => {
     expect(tiles(view(withN(0)))).toEqual(["doc:half:--span:12;--md:12", "adr:half:--span:12;--md:12", "feed:tall:--span:7;--md:6", "activity:row:--span:3;--md:6", "jev:row:--span:3;--md:6", "people:row:--span:3;--md:6", "seen:row:--span:3;--md:6"]);
   });
 
-  it("the tile sizes are fixed heights in trov.css: half + gap + half = tall, row + gap + rest = tall; only the body scrolls", () => {
+  it("the tile sizes are fixed heights in trov.css: half + gap + half = tall, row + gap + rest = full (the room under the tabs); only the body scrolls", () => {
     const rules = (sel: string): string => {
       const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       return [...css.matchAll(new RegExp(`(?:^|\\n)${esc} \\{([^}]*)\\}`, "g"))].map((m) => m[1]).join(";");
     };
     const vars = rules(".cnpy-tagpage");
     expect(vars).toContain("--tp-tall:calc(var(--tp-half) * 2 + var(--tp-gap))");
-    expect(vars).toContain("--tp-rest:calc(var(--tp-tall) - var(--tp-row) - var(--tp-gap))");
-    expect(vars).toMatch(/--tp-half:\d+px/);
-    expect(vars).toMatch(/--tp-row:\d+px/);
-    for (const [size, v] of [["half", "--tp-half"], ["tall", "--tp-tall"], ["row", "--tp-row"], ["rest", "--tp-rest"]]) {
+    expect(vars).toContain("--tp-full:var(--tp-fit)");
+    expect(vars).toContain("--tp-rest:calc(var(--tp-full) - var(--tp-row) - var(--tp-gap))");
+    // Sized from the window (the room under the tabs), clamped so a tall window keeps 272 / 320 and a short one scrolls.
+    expect(vars).toContain("--tp-fit:clamp(520px, calc(100dvh - 252px), 888px)");
+    expect(vars).toContain("--tp-row:clamp(204px, calc(var(--tp-fit) * 0.38), 320px)");
+    expect(vars).toContain("--tp-half:calc((var(--tp-fit) - var(--tp-row) - var(--tp-gap) * 2) / 2)");
+    for (const [size, v] of [["half", "--tp-half"], ["tall", "--tp-tall"], ["row", "--tp-row"], ["rest", "--tp-rest"], ["full", "--tp-full"]]) {
       expect(rules(`.cnpy-tagpage-tile[data-size="${size}"]`), size).toBe(` height:var(${v}); `);
     }
     expect(rules(".cnpy-tagpage-tile")).toContain("overflow:hidden");
@@ -437,7 +440,7 @@ describe("one tag's page", () => {
     const decisions = view(p, "adr");
     expect(decisions).toContain(`data-tag-group="adr"`);
     expect(decisions).toContain("No decisions are tagged auth yet");
-    expect(decisions).toMatch(/data-size="tall" data-tag-group="adr"/);   // the empty list keeps the list's box
+    expect(decisions).toMatch(/data-size="full" data-tag-group="adr"/);   // the empty list keeps the list's box
     expect(decisions).not.toContain(`data-tag-group="feed"`);
   });
 
@@ -446,7 +449,7 @@ describe("one tag's page", () => {
     expect(feedOnly).toContain(`data-tag-group="feed"`);
     expect(feedOnly).not.toContain(`data-tag-group="doc"`);
     expect(feedOnly).not.toContain("Often seen with");
-    expect(feedOnly).toMatch(/style="--span:8;--md:12" data-size="tall" data-tag-group="feed"/);
+    expect(feedOnly).toMatch(/style="--span:8;--md:12" data-size="full" data-tag-group="feed"/);
     expect(feedOnly).toMatch(/data-size="row" data-tag-tile="activity"/);
     expect(feedOnly).toMatch(/data-size="rest" data-tag-tile="people"/);
     expect(feedOnly).toContain(`data-tag-tile="activity"`);

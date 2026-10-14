@@ -468,7 +468,7 @@ function pageItem(it: TagPageItem, who: TagPageProps["who"]): string {
 /** A tile's FIXED height (trov.css `.cnpy-tagpage-tile[data-size]`), whatever it holds — 0 items, 1 or 50, or its
  *  empty sentence: what does not fit scrolls inside its body. `half` + gap + `half` = `tall` (Docs and Decisions
  *  beside the feed; a type's list), `row` (the second row; the rail's Activity), `rest` = `tall` − `row` − gap. */
-export type TagTileSize = "half" | "tall" | "row" | "rest";
+export type TagTileSize = "half" | "tall" | "row" | "rest" | "full";
 /** A tile: a surface on the page's 12-column grid — `span` / `md` are its columns wide and under a mid-width page —
  *  with its title row, and its body (which scrolls) under it. */
 const tile = (head: string, body: string, span: number, md: number, size: TagTileSize, attrs = ""): string =>
@@ -631,7 +631,7 @@ export function tagPageView(p: TagPageProps): string {
     const people = [...by].map(([handle, count]) => ({ handle, count })).sort((a, b) => b.count - a.count || a.handle.localeCompare(b.handle)).slice(0, 8);
     // The list is one tall tile; the rail beside it (Activity, then its people) ends on the same line.
     body = `<div class="cnpy-tagpage-grid">
-        ${tile(tileHead(capFirst(words.many), `tag-g-${tab}`, n), listBody, 8, 12, "tall", ` data-tag-group="${tab}" aria-labelledby="tag-g-${tab}"`)}
+        ${tile(tileHead(capFirst(words.many), `tag-g-${tab}`, n), listBody, 8, 12, "full", ` data-tag-group="${tab}" aria-labelledby="tag-g-${tab}"`)}
         <div class="cnpy-tagpage-rail cnpy-stagger" style="--span:4;--md:12">
           ${activityTile(list, d, now, 12, 12, list.filter((i) => i.jev).length)}
           ${peopleTile(people, p.who, 12, 12, "rest")}

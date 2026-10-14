@@ -3194,7 +3194,7 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
    say their own width (--span, and --md under a mid-width page); one column under an 820px page. The tag's own
    colour (--tag-c, set on the page) draws every chart. No rule here declares a radius: the tiles are surfaces. */
 .cnpy-tagpage { container:tagpage / inline-size; }
-.cnpy-tagpage-hero { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:20px 44px; align-items:end; padding:6px 0 24px; }
+.cnpy-tagpage-hero { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:20px 44px; align-items:end; padding:4px 0 16px; }
 .cnpy-tagpage-name { display:flex; align-items:center; gap:12px; margin:0; font-size:30px; font-weight:600; letter-spacing:-0.02em; line-height:1.15; color:var(--fg); }
 .cnpy-tagpage-name > span { min-width:0; overflow-wrap:anywhere; }
 .cnpy-tagpage-desc { margin:10px 0 0; max-width:62ch; font-size:15px; line-height:1.55; color:var(--fg-70); }
@@ -3215,12 +3215,16 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 .cnpy-tagpage-fig[data-type="feed"] .cnpy-tagpage-sw, .cnpy-tagpage-split > [data-type="feed"] { background:color-mix(in srgb, var(--tag-c) 22%, transparent); box-shadow:inset 0 0 0 1px var(--tag-c); }
 .cnpy-tagpage-split--jev { height:6px; gap:2px; margin:12px 16px 2px; }
 .cnpy-tagpage-split--jev > [data-by="people"] { background:var(--fg-40); opacity:.4; }
-.cnpy-tagpage-panel { padding-top:18px; }
+.cnpy-tagpage-panel { padding-top:14px; }
 /* Every tile has a FIXED height, whatever it holds (0 items, 1 or 50, or its empty sentence), and its body scrolls:
    a tile never grows or shrinks with its content, and tiles in a row end on one line. half + gap + half = tall (Docs
    over Decisions beside the feed; a type's list), row (the second row; the rail's Activity), and rest = tall − row −
-   gap (the rail's people), so the rail ends where the list does. */
-.cnpy-tagpage { --tp-gap:12px; --tp-half:272px; --tp-tall:calc(var(--tp-half) * 2 + var(--tp-gap)); --tp-row:320px; --tp-rest:calc(var(--tp-tall) - var(--tp-row) - var(--tp-gap)); }
+   gap (the rail's people), so the rail ends where the list does.
+   The sizes come from the WINDOW, not the content: --tp-fit is the room under the tabs (the window less the app
+   header, the tag's hero and the tabs — about 252px), so the All tab's two rows end at the bottom of the screen —
+   the second row about 38% of it. Clamped: never taller than 556 + 12 + 320 (a tall window keeps those sizes),
+   never shorter than 520 (a short one scrolls the page instead of crushing the tiles). */
+.cnpy-tagpage { --tp-gap:12px; --tp-fit:clamp(520px, calc(100dvh - 252px), 888px); --tp-row:clamp(204px, calc(var(--tp-fit) * 0.38), 320px); --tp-half:calc((var(--tp-fit) - var(--tp-row) - var(--tp-gap) * 2) / 2); --tp-tall:calc(var(--tp-half) * 2 + var(--tp-gap)); --tp-full:var(--tp-fit); --tp-rest:calc(var(--tp-full) - var(--tp-row) - var(--tp-gap)); }
 .cnpy-tagpage-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:var(--tp-gap); align-items:start; }
 .cnpy-tagpage-grid > * { grid-column:span var(--span, 12); min-width:0; }
 .cnpy-tagpage-rail, .cnpy-tagpage-col { display:flex; flex-direction:column; gap:var(--tp-gap); }
@@ -3229,6 +3233,9 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 .cnpy-tagpage-tile[data-size="tall"] { height:var(--tp-tall); }
 .cnpy-tagpage-tile[data-size="row"] { height:var(--tp-row); }
 .cnpy-tagpage-tile[data-size="rest"] { height:var(--tp-rest); }
+/* A type's tab (Feed, Docs, Decisions): its list takes ALL the room under the tabs; the rail beside it (Activity,
+   then its people — rest) ends on the same line. */
+.cnpy-tagpage-tile[data-size="full"] { height:var(--tp-full); }
 .cnpy-tagpage-body { flex:1 1 0; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding-bottom:4px; }
 .cnpy-tagpage-th { flex:none; display:flex; align-items:center; gap:8px; min-height:20px; padding:14px 16px 10px; }
 .cnpy-tagpage-th h3 { margin:0; font-size:14px; font-weight:500; color:var(--fg); }
@@ -3246,10 +3253,10 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 .cnpy-tagpage-tile .cnpy-tagitem-note { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .cnpy-tagitem-meta { display:flex; align-items:center; flex-wrap:wrap; gap:4px 6px; margin-top:5px; font-size:12px; color:var(--fg-40); }
 /* Activity: three facts, then a bar per week for twelve weeks (an empty week is a hairline). */
-.cnpy-tagpage-facts2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(104px, 1fr)); gap:10px 16px; margin:0; padding:0 16px 16px; }
+.cnpy-tagpage-facts2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(76px, 1fr)); gap:10px 14px; margin:0; padding:0 16px 14px; }
 .cnpy-tagpage-facts2 dt { font-size:12px; color:var(--fg-55); }
 .cnpy-tagpage-facts2 dd { margin:3px 0 0; font-size:17px; font-weight:600; letter-spacing:-0.01em; font-variant-numeric:tabular-nums; color:var(--fg); }
-.cnpy-tagpage-weeks { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:4px; align-items:end; height:84px; padding:0 16px; }
+.cnpy-tagpage-weeks { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:4px; align-items:end; height:clamp(40px, calc(var(--tp-row) - 150px), 84px); padding:0 16px; }
 .cnpy-tagpage-wk { display:block; height:var(--h); min-height:2px; background:var(--tag-c); transform-origin:bottom; }
 .cnpy-tagpage-wk[data-zero] { height:1px; min-height:1px; background:var(--border-strong); }
 .cnpy-tagpage-axis { display:flex; justify-content:space-between; padding:6px 16px 0; font-size:11.5px; color:var(--fg-40); }

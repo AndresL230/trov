@@ -826,14 +826,17 @@ picker, a doc's Tags row and the tab all draw from it):
   `tabBar()` (All / Feed / Docs / Decisions with counts), then a bento on a 12-column grid (`.cnpy-tagpage-grid`;
   each tile says its width in `--span`, and `--md` under a 1000px page; ONE column under an 820px page — a container
   query on `.cnpy-tagpage`). **Every tile has a FIXED height** (`data-size`: `half`, `tall` = half + gap + half,
-  `row`, `rest` = tall − row − gap; the `--tp-*` variables) whatever it holds — none, one or fifty items, or its
+  `row`, `full`, `rest` = full − row − gap; the `--tp-*` variables) whatever it holds — none, one or fifty items, or its
   empty sentence — and its body scrolls inside it, so tiles in a row always end on one line; the empty tag keeps
-  the whole bento, each tile saying it is empty. Under **All**: Docs over Decisions (two `half` tiles) beside
+  the whole bento, each tile saying it is empty. The heights come from the WINDOW: `--tp-fit` is the room under
+  the tabs (`100dvh` less about 252px, clamped 520–888px), so every tab ends at the bottom of the screen — All's
+  second row about 38% of it, a type's list (`full`) all of it; a short window scrolls instead of crushing the
+  tiles. Under **All**: Docs over Decisions (two `half` tiles) beside
   **Recent in the feed** (`tall`), each type's tile its newest ten and an "All N →" link to its tab; then one row of
-  **Activity** (newest, oldest listed, the last 12 weeks as one bar per week — `tagWeeks`), **Who tagged it** (Jev
-  against people and their agents, from `jev_added`, and Jev's latest with how sure it was), **Who writes about
+  **Activity** (newest, oldest listed, the last 12 weeks as one bar per week — `tagWeeks`), **Who tagged it** (Sift
+  against people and their agents, from `jev_added`, and Sift's latest with how sure it was), **Who writes about
   it** (authors across the three types) and **Often seen with**, the last two as name-number-bar rows. Under a
-  **type's tab**: that type's whole list (`tall`) beside a rail of its own Activity (`row`, with how many Jev
+  **type's tab**: that type's whole list (`full`) beside a rail of its own Activity (`row`, with how many Jev
   added) and its people (`rest`), an empty type in the same boxes. The tab picked is ALWAYS the tab shown — the
   view never swaps a picked tab for All (it once did for a type with no items, so Decisions snapped back). An item:
   its title, a feed entry's brief (two lines in a tile), then a doc's section, a decision's state as a mark
