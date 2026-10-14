@@ -65,9 +65,9 @@ const answer = (c: Context<AppEnv>, a: SuggestionAnswer) => (a.ok ? c.json({ ok:
 aiApp.post("/ai/suggestions/:id/accept", async (c) => {
   const id = suggestionId(c);
   if (id === null) return c.json({ error: "not_found" }, 404);
+  // An empty or unreadable body is `{}`; one the contract refuses is answered only after the id is found.
   const parsed = AiAcceptBodySchema.safeParse((await c.req.json().catch(() => null)) ?? {});
-  if (!parsed.success) return c.json({ error: "invalid" }, 400);
-  return answer(c, await acceptSuggestion(c.var.ctx, id, parsed.data));
+  return answer(c, await acceptSuggestion(c.var.ctx, id, parsed.success ? parsed.data : null));
 });
 
 aiApp.post("/ai/suggestions/:id/dismiss", async (c) => {

@@ -114,6 +114,8 @@ describe("suggestions — accept and dismiss", () => {
         expect(await call("POST", `${BASE}${AI_ROUTES.dismiss(id)}`, member, {}), String(id)).toEqual({ status: 404, json: { error: "not_found" } });
       }
       expect((await call("POST", `${BASE}/ai/suggestions/abc/accept`, member, {})).status).toBe(404);
+      // …a body the contract refuses included: the id is answered first.
+      expect(await call("POST", `${BASE}${AI_ROUTES.accept(999_999)}`, member, [1])).toEqual({ status: 404, json: { error: "not_found" } });
     });
     expect((await row(theirs))!.state).toBe("open");
   });
@@ -128,6 +130,8 @@ describe("suggestions — accept and dismiss", () => {
     await withHandler("category", handler, async () => {
       expect(await call("POST", `${BASE}${AI_ROUTES.accept(id)}`, await cookieFor(MEMBER), {})).toEqual({ status: 403, json: { error: "forbidden" } });
       expect(seen).toEqual([]);
+      expect(await call("POST", `${BASE}${AI_ROUTES.accept(id)}`, await cookieFor(FIXTURE_ADMIN), [1])).toEqual({ status: 400, json: { error: "invalid" } });
+      expect((await row(id))!.state).toBe("open");
       const r = await call<{ ok: true; suggestion: unknown }>("POST", `${BASE}${AI_ROUTES.accept(id)}`, await cookieFor(FIXTURE_ADMIN), { value: "feature" });
       expect(r.status).toBe(200);
       expect(AiSuggestionSchema.parse(r.json.suggestion)).toMatchObject({ id, state: "accepted", kind: "category", reason: "The body describes a crash." });

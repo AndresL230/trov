@@ -81,7 +81,7 @@ without one, as summaries say they are off — and none of them is a person's re
   the same kind for the same item replaces the OPEN one: `putSuggestion`, `src/data/ai.ts`). Nothing writes one yet.
 - **Accept** — `POST /ai/suggestions/:id/accept { value? }` (`:id` is the row id; another org's id is
   `not_found`). In order: `not_found` (404) → `not_open` (409) → `not_available` (409: no handler for the kind) →
-  `forbidden` (403: below the handler's role). Then the row is claimed by one guarded UPDATE, the handler writes the
+  `forbidden` (403: below the handler's role) → `invalid` (400: a body the contract refuses). Then the row is claimed by one guarded UPDATE, the handler writes the
   real field AS the cookie person, and on its throw the claim is undone. `AI_ACCEPT_HANDLERS` (`src/ai/suggestions.ts`)
   is EMPTY, so today every accept is `not_available`. **A handler names its `role`**: `member` (anyone in the org)
   or `admin`; **dismiss is open to every member** (`POST /ai/suggestions/:id/dismiss`). Theme accept / rename /

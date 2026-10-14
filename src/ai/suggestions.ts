@@ -25,20 +25,22 @@ export const AI_ACCEPT_HANDLERS: Readonly<Record<string, AcceptHandler>> = {};
 
 export type SuggestionAnswer =
   | { ok: true; suggestion: AiSuggestion }
-  | { ok: false; status: 403 | 404 | 409; error: AiSuggestionError };
+  | { ok: false; status: 403 | 404 | 409; error: AiSuggestionError }
+  | { ok: false; status: 400; error: "invalid" };
 
 const STATUS: Record<AiSuggestionError, 403 | 404 | 409> = { not_found: 404, not_open: 409, not_available: 409, forbidden: 403 };
 const refuse = (error: AiSuggestionError): SuggestionAnswer => ({ ok: false, status: STATUS[error], error });
 
 /**
  * Accept suggestion `id` (its global row id) as `ctx`'s person. In this order: an id that is not this org's
- * is `not_found` (before anything else is said about it); a decided one `not_open`; a kind with no handler
- * `not_available`; a person below the handler's role `forbidden`. Then the row is CLAIMED (one guarded
+ * is `not_found` (before anything else is said about it, a bad body included); a decided one `not_open`; a
+ * kind with no handler `not_available`; a person below the handler's role `forbidden`; a body the contract
+ * refuses (`body` null) `invalid`. Then the row is CLAIMED (one guarded
  * UPDATE, so two people pressing at once cannot both apply it), the handler writes, and on its throw the
  * claim is undone.
  */
 export async function acceptSuggestion(
-  ctx: TenantContext, id: number, body: { value?: unknown }, handlers: Readonly<Record<string, AcceptHandler>> = AI_ACCEPT_HANDLERS,
+  ctx: TenantContext, id: number, body: { value?: unknown } | null, handlers: Readonly<Record<string, AcceptHandler>> = AI_ACCEPT_HANDLERS,
 ): Promise<SuggestionAnswer> {
   const row = await getSuggestion(ctx, id);
   if (!row) return refuse("not_found");
@@ -46,6 +48,7 @@ export async function acceptSuggestion(
   const handler = Object.hasOwn(handlers, row.kind) ? handlers[row.kind] : undefined;
   if (!handler) return refuse("not_available");
   if (handler.role === "admin" && !hasRole(ctx, "admin")) return refuse("forbidden");
+  if (!body) return { ok: false, status: 400, error: "invalid" };
   const at = nowIso();
   if (!(await decideSuggestion(ctx, id, "accepted", ctx.userId, at))) return refuse("not_open");
   let value: unknown = body.value;
