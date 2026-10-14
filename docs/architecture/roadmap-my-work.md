@@ -52,6 +52,11 @@ cron backstop (`recomputeAllProgress`, run per org with that org's GitHub creden
 numbers) resolved against the org's PRIMARY repository (`orgPrimaryRepo`, its `org_repos` row) — only by
 those two writers, never at render.
 
+**Your brief** (`DashboardData.brief?`, `shared/ai-core.ts` `AiBrief`) is what Trov would WRITE for the person
+— now, recently, what is next. Nothing produces one yet, so `/me/dashboard` and `get_my_work` omit it in
+production; `LOCAL_AI_PREVIEW` shows the sample on the screen under `wrangler dev` only, never over MCP
+(`ai.md`). Absent = the screen renders exactly as before.
+
 **My Work** (`GET /me/dashboard`, MCP `get_my_work` → `getMyWork`) is a D1-only projection over captured
 events AND over the ticket queue: three separate lists — `previousActivity` (summarized merged/closed PRs
 where the person is the subject, 5 most recent), `todo` (their open assigned issues, 5 most recently
