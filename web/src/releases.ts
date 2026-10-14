@@ -145,7 +145,7 @@ export const RELEASES: Release[] = [
         "The Gemini REST call (`generateContent`), `parseStructuredJson` and the hand-written `validatePrSummary` / `validateIssueSummary`",
       ],
     },
-    prs: [173, 174, 175],
+    prs: [173, 174, 175, 176],
   },
   // The public site, readable by search engines, share cards and AI assistants: prerendered pages, robots.txt,
   // sitemap, canonical links, noindex on the app, a real 404; then public docs, llms.txt, Markdown versions and
