@@ -7,6 +7,7 @@
 // (`not_connected`). The projection is D1-only; anything it cannot read from D1
 // is `not_connected`, never guessed.
 
+import type { AiRepoState, AiThemes, AiThemeRange } from "./ai-core";
 import type { PersonColor } from "./rows";
 
 export const REPO_TABS = [
@@ -249,6 +250,12 @@ export interface RepoDashboard {
   contributors: RepoSection<RepoContributor[]>;
   labels: RepoSection<RepoLabels>;
   todos: RepoSection<RepoTodos>;
+
+  // ── Written by Trov (shared/ai-core.ts) — NOT sections: absent = off / nothing written ──
+  /** Overview's first section, "State". */
+  state?: AiRepoState;
+  /** Planning's first section, "Where the work went", per range (the screen switches client-side). */
+  themes?: Record<AiThemeRange, AiThemes>;
 }
 
 // ── Which section belongs to which tab — ONE mapping, two readers ────────────

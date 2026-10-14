@@ -1,6 +1,7 @@
 // Orgs, memberships, invites and the superadmin surface (canopy-multitenancy.md §5.3, §5.4) — the ONE
 // contract the Worker and the SPA share. Zod-free: the SPA imports the slug rule and these types as-is.
 import type { PersonColor } from "./rows";
+import type { AiUsage } from "./ai-core";
 import { AVATAR_MAX_BYTES, AVATAR_TYPES } from "./people";
 import type { MyGrant, PlanId, PlatformOrgPlan } from "./plans";
 import { SITE_PAGE_SEGMENTS } from "./site-pages";
@@ -319,6 +320,8 @@ export interface OrgUsage {
   series: UsageDay[];
   /** AI summaries in the window, and this calendar month against the plan's allowance. */
   summaries: UsageSummaries & { month_used: number; cap: number | null };
+  /** AI runs and tokens in the window (shared/ai-core.ts). */
+  ai?: AiUsage;
 }
 
 /** AI summary calls in the window (`org_usage_daily`, src/data/meter.ts). Counts and sizes only. */
@@ -345,6 +348,8 @@ export interface PlatformUsageResponse {
   summaries_enabled: boolean;
   /** Every org's summaries in the window, summed. */
   summaries: UsageSummaries;
+  /** Every org's AI runs and tokens in the window, summed. */
+  ai?: AiUsage;
   days: number;
   since: string;       // first day of the window, 'YYYY-MM-DD' (UTC)
   until: string;       // last day (today, UTC)
