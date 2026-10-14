@@ -187,7 +187,7 @@ export const TERMS: LegalDoc = {
       body: [
         p("Trov uses an AI model (Anthropic Claude) to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete: they are a convenience, not a record. Check the pull request or issue before relying on one."),
         // DRAFT (2026-10-14, automatic tagging) — for the owner's review before it ships.
-        p("If an admin of your organization turns on automatic tagging in Org settings › Tags, then whenever an admin adds a tag or asks Trov to find items for one, Trov uses Jev, a decision model from TypeSafe AI, to judge which of the organization's existing feed entries, docs and decisions fit that tag, and adds the tag to each item Jev judges a fit. No person reviews each one first, and a judgement can be wrong. It only ever adds that one tag; it never removes or changes anything else. An admin can undo a run, which takes the tag off exactly the items that run tagged, and anyone can take a tag off an item; Trov does not add it to that item again. An admin can turn it off at any time, and nothing is sent while it is off."),
+        p("If an admin of your organization turns on automatic tagging in Org settings › Tags, then whenever an admin adds a tag or asks Trov to find items for one, Trov's automatic tagging, Sift, uses a decision model from TypeSafe AI to judge which of the organization's existing feed entries, docs and decisions fit that tag, and adds the tag to each item judged a fit. No person reviews each one first, and a judgement can be wrong. It only ever adds that one tag; it never removes or changes anything else. An admin can undo a run, which takes the tag off exactly the items that run tagged, and anyone can take a tag off an item; Trov does not add it to that item again. An admin can turn it off at any time, and nothing is sent while it is off."),
       ],
     },
     {
@@ -334,7 +334,7 @@ export const PRIVACY: LegalDoc = {
           "to take payment for a paid plan, keep an organization on the plan it paid for, and apply each plan's limits;",
           "to summarize captured pull requests and issues;",
           // DRAFT (2026-10-14, automatic tagging): for the owner's review.
-          "where an admin of an organization turns it on, to add one of the organization's tags to its feed entries, docs and decisions that TypeSafe AI's Jev model judges fit it, when an admin adds that tag or asks for it;",
+          "where an admin of an organization turns it on, to add one of the organization's tags to its feed entries, docs and decisions that Sift, using a TypeSafe AI model, judges fit it, when an admin adds that tag or asks for it;",
           "to send the emails described in section 7;",
           "to answer support messages, and to run, debug and protect the service.",
         ),
@@ -354,7 +354,7 @@ export const PRIVACY: LegalDoc = {
           ["Google", "Sign-in", "Your sign-in"],
           ["Anthropic", "Summaries (Claude API)", "The title and description (up to 8,000 characters) of each captured pull request and issue"],
           // DRAFT (2026-10-14, automatic tagging): a new processor, for the owner's review.
-          ["TypeSafe AI", "Automatic tagging, where an organization turns it on (the Jev model)", "The tag's name and description and, for each of the organization's feed entries, docs and decisions that may fit it, its title and up to 400 characters of its text, with code and anything that looks like a password or key removed"],
+          ["TypeSafe AI", "Automatic tagging (Sift), where an organization turns it on", "The tag's name and description and, for each of the organization's feed entries, docs and decisions that may fit it, its title and up to 400 characters of its text, with code and anything that looks like a password or key removed"],
           ["Stripe", "Payments, invoices and receipts, fraud checks, tax calculation", "The buyer's email, handle, payment details and billing address, and the organization's address for an upgrade"],
           ["Resend", "Delivers Trov's email", "Each email's recipient, subject and body (a digest contains your organization's content: ticket titles, summaries)"],
         ]),

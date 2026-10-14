@@ -135,7 +135,7 @@ export function aiSection(ai: TagAiDTO, ui: TagsUi): string {
     : ai.spent ? "This month's checks are used up: Trov stops looking for items until next month."
     : checks;
   return `<div class="cnpy-tagshead-cell cnpy-tagshead-jev" data-org-group="tag-ai" data-ai="${ai.enabled ? "on" : "off"}">
-      <div class="cnpy-tagshead-k" id="org-tags-ai">Jev</div>
+      <div class="cnpy-tagshead-k" id="org-tags-ai">Sift</div>
       <div class="cnpy-tagshead-jevrow">
         <span style="flex:none">${switchBtn("tagAiToggle", null, ai.enabled).replace("<button ", `<button aria-label="Tag existing items for a new tag"${ui.aiBusy || !ai.available ? " disabled" : ""} `)}</span>
         <span class="cnpy-tagshead-v">${ai.enabled ? "Tags existing items" : "Off"}</span>
@@ -151,7 +151,7 @@ export function aiSection(ai: TagAiDTO, ui: TagsUi): string {
 
 /** The popover: what is sent, to whom, and the way back. */
 function aiInfo(): string {
-  return `<p id="org-tags-ai-info" role="dialog" aria-label="What is sent" class="cnpy-tagshead-info" style="border-radius:11px">Jev, TypeSafe AI's model, gets the tag's name and description, and the title and first 400 characters of each item that may fit, with code removed. It adds the tag where it fits. You can undo a run or take the tag off any item.</p>`;
+  return `<p id="org-tags-ai-info" role="dialog" aria-label="What is sent" class="cnpy-tagshead-info" style="border-radius:11px">Sift sends the tag's name and description, and the title and first 400 characters of each item that may fit (code removed), to a model from TypeSafe AI, then adds the tag where it fits. You can undo a run or take the tag off any item.</p>`;
 }
 
 /** Can Jev look for items right now (the switch on, a key set, checks left this month)? */
@@ -318,7 +318,7 @@ export function tagsTab(org: MyOrg, p: TagsTabProps): string {
   const newTag = `<button type="button" data-act="tagNew" data-field="tagNew" aria-haspopup="dialog" class="cnpy-accentbtn cnpy-tagnew-btn"${full ? ` disabled title="The list holds ${list.cap ?? 0} tags on this plan. Retire or merge one to add another."` : ""} style="border-radius:8px"><svg width="12" height="12" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.6"/></svg>New tag</button>`;
   const head = `<div class="cnpy-tagrow cnpy-taghead">
       <div data-col="tag" aria-hidden="true">Tag</div><div data-col="desc" aria-hidden="true">What it is for</div><div data-col="n" aria-hidden="true">Items</div>
-      ${jev ? `<div data-col="jev" aria-hidden="true">Added by Jev</div>` : ""}${admin ? `<div data-col="acts" class="cnpy-tagrow-acts">${newTag}</div>` : ""}
+      ${jev ? `<div data-col="jev" aria-hidden="true">Added by Sift</div>` : ""}${admin ? `<div data-col="acts" class="cnpy-tagrow-acts">${newTag}</div>` : ""}
     </div>`;
   const rows = (ts: OrgTagDTO[]) => ts.map((t) => tagRow(t, admin, ui, list)).join("");
   const retiredBlock = retired.length ? `<div style="margin-top:18px" data-org-tags-retired>
@@ -349,7 +349,7 @@ export function tagAddModal(ui: TagsUi, list: TagListDTO | null): string {
   const err = ui.addError ?? (problem || null);
   const ai = list.ai;
   const can = canFind(ai);
-  const why = !ai ? "" : !ai.available ? "This Trov has no TypeSafe AI key set." : !ai.enabled ? "Jev is off for this organization (the switch above the list)." : ai.spent ? "This month's checks are used up." : "";
+  const why = !ai ? "" : !ai.available ? "This Trov has no TypeSafe AI key set." : !ai.enabled ? "Sift is off for this organization (the switch above the list)." : ai.spent ? "This month's checks are used up." : "";
   const scan = can && ui.addScan;
   const label = (forId: string, text: string) => `<label for="${forId}" class="cnpy-tagnew-l">${text}</label>`;
   const detail = `<div class="cnpy-tagnew">
@@ -358,7 +358,7 @@ export function tagAddModal(ui: TagsUi, list: TagListDTO | null): string {
         <div class="cnpy-tagnew-help">Lowercase letters, digits and hyphens.</div></div>
       <div>${label("tag-new-desc", "What it is for")}
         <input id="tag-new-desc" data-act="tagDescDraft" data-field="tagDesc" value="${attr(ui.descDraft)}" maxlength="${TAG_DESCRIPTION_MAX}" placeholder="One line, in the team's words" autocomplete="off"${ui.addBusy ? " disabled" : ""} class="cnpy-input cnpy-tagnew-in" style="border-radius:8px" />
-        <div class="cnpy-tagnew-help">${can ? "Jev reads it to find the right items, so a plain line helps." : "Shown beside the tag in the list."}</div></div>
+        <div class="cnpy-tagnew-help">${can ? "Sift reads it to find the right items, so a plain line helps." : "Shown beside the tag in the list."}</div></div>
       <div><span id="tag-new-color-l" class="cnpy-tagnew-l">Colour</span>${segmented({
         id: "tag-new-color", ariaLabel: "Colour", value: ui.addColor, act: "tagNewColor", size: "sm",
         options: TAG_COLORS.map((c) => ({ value: c, label: "", icon: `<span role="img" aria-label="${c}" style="display:grid;place-items:center;width:14px;height:14px">${tagSquare(c, 10)}</span>`, title: c[0].toUpperCase() + c.slice(1) })),
@@ -366,7 +366,7 @@ export function tagAddModal(ui: TagsUi, list: TagListDTO | null): string {
       ${ai ? `<div class="cnpy-tagnew-scan"${can ? "" : ' data-off="1"'}>
         <span style="flex:none">${switchBtn("tagNewScan", null, scan).replace("<button ", `<button aria-label="Find the items that fit it now" aria-describedby="tag-new-scan-d"${can && !ui.addBusy ? "" : " disabled"} `)}</span>
         <div style="min-width:0"><div class="cnpy-tagnew-l" style="margin:0">Find the items that fit it now</div>
-          <div id="tag-new-scan-d" class="cnpy-tagnew-help" style="margin-top:2px">${can ? (scan ? "Jev checks the existing feed entries, docs and decisions and adds the tag where it fits. You can undo the run." : "Off: the tag is added to nothing. Find items on its row looks later.") : esc(why)}</div></div>
+          <div id="tag-new-scan-d" class="cnpy-tagnew-help" style="margin-top:2px">${can ? (scan ? "Sift checks the existing feed entries, docs and decisions and adds the tag where it fits. You can undo the run." : "Off: the tag is added to nothing. Find items on its row looks later.") : esc(why)}</div></div>
       </div>` : ""}
       <div id="tag-new-e" role="alert" class="cnpy-tagnew-err"${err ? "" : " hidden"}>${esc(err ?? "")}</div>
     </div>`;
@@ -396,7 +396,7 @@ export function tagConfirmModal(c: TagConfirm | null, list: TagListDTO | null): 
       confirmLabel: "Undo run", busyLabel: "Undoing…",
     } : c.what === "rerun" ? {
       title: `Find items for ${c.name} again?`,
-      body: `You changed ${c.changed === "name" ? "its name" : "what it is for"}. Jev can check the organization again with the new words and add ${c.name} to each item it judges a fit. Nothing that has it now loses it.`,
+      body: `You changed ${c.changed === "name" ? "its name" : "what it is for"}. Sift can check the organization again with the new words and add ${c.name} to each item it judges a fit. Nothing that has it now loses it.`,
       confirmLabel: "Find items", busyLabel: "Starting…",
     } : {
       title: `Dismiss ${c.name}?`,
@@ -446,8 +446,8 @@ const decisionMark = (status: string | null): string => status === "ratified"
 /** "Added by Jev" on an item a run tagged: a FACT about how the tag got there, so plain words; its tooltip is
  *  Jev's reason and how sure it was. No such words = a person or their agent put it there. */
 function jevNote(j: NonNullable<TagPageItem["jev"]>): string {
-  const tip = `${j.reason ? `${j.reason} ` : ""}Jev, TypeSafe AI's model, was ${Math.round(j.confidence * 100)}% sure${j.at ? ` (${dayDate(j.at)})` : ""}.`;
-  return `<span data-jev data-mtip="${attr(tip)}" style="white-space:nowrap;color:var(--fg-55)">Added by Jev</span>`;
+  const tip = `${j.reason ? `${j.reason} ` : ""}Sift was ${Math.round(j.confidence * 100)}% sure${j.at ? ` (${dayDate(j.at)})` : ""}.`;
+  return `<span data-jev data-mtip="${attr(tip)}" style="white-space:nowrap;color:var(--fg-55)">Added by Sift</span>`;
 }
 
 function pageItem(it: TagPageItem, who: TagPageProps["who"]): string {
@@ -547,7 +547,7 @@ function activityTile(list: readonly TagPageItem[], d: TagPageDTO, now: number, 
         ${fact("Newest", newest ? `<time datetime="${attr(newest)}">${esc(relTime(newest))}</time>` : "—")}
         ${fact("Oldest listed", oldest ? `<time datetime="${attr(oldest)}">${esc(dayDate(oldest))}</time>` : "—")}
         ${fact("Last 12 weeks", String(recent))}
-        ${jev === null ? "" : fact("Added by Jev", String(jev))}
+        ${jev === null ? "" : fact("Added by Sift", String(jev))}
       </dl>
       <div class="cnpy-tagpage-weeks" role="img" aria-label="${attr(`${plural(recent, "item", "items")} in the last 12 weeks, by week`)}">${bars}</div>
       <div class="cnpy-tagpage-axis" aria-hidden="true"><span>12 weeks ago</span><span>This week</span></div>
@@ -562,9 +562,9 @@ function jevTile(d: TagPageDTO, span: number, md: number): string {
   const latest = PAGE_ORDER.flatMap((t) => d.items[t]).filter((i) => i.jev).sort((a, b) => (b.jev?.at ?? "").localeCompare(a.jev?.at ?? "")).slice(0, 3);
   const body = sum === 0 ? tileNote("Nothing carries it yet, so nobody has tagged anything with it.")
     : jev === 0
-    ? tileNote(`Jev, TypeSafe AI's model, has not added ${esc(d.tag.name)} to anything: ${sum === 1 ? "the item here was" : "everything here was"} tagged by a person or their agent.`)
+    ? tileNote(`Sift has not added ${esc(d.tag.name)} to anything: ${sum === 1 ? "the item here was" : "everything here was"} tagged by a person or their agent.`)
     : `<div class="cnpy-tagpage-who">
-          <div><b>${jev}</b><span>by Jev</span></div><div><b>${people}</b><span>by people and their agents</span></div>
+          <div><b>${jev}</b><span>by Sift</span></div><div><b>${people}</b><span>by people and their agents</span></div>
         </div>
         <div class="cnpy-tagpage-split cnpy-tagpage-split--jev" aria-hidden="true"><span data-by="jev" style="flex-grow:${jev}"></span>${people ? `<span data-by="people" style="flex-grow:${people}"></span>` : ""}</div>
         ${latest.length ? `<ul class="cnpy-tagpage-jevs">${latest.map((it) => `<li><button type="button" data-act="${ITEM_ACT[it.type]}" data-arg="${attr(it.type === "adr" ? it.title : it.id)}" class="cnpy-tagitem-t">${esc(it.title)}</button><span>${Math.round((it.jev?.confidence ?? 0) * 100)}% sure</span></li>`).join("")}</ul>` : ""}`;

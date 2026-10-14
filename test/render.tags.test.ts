@@ -352,9 +352,9 @@ describe("one tag's page", () => {
     expect(doc).not.toContain("<svg");
     // Jev added this one: plain words (a fact, not a state), its reason and how sure in the tooltip.
     expect(doc).toContain(`data-by-jev="1"`);
-    expect(doc).toContain("Added by Jev");
-    expect(doc).toContain("It explains how people sign in. Jev, TypeSafe AI&#39;s model, was 86% sure (Oct 13).");
-    expect(piece(html, `data-tag-item="feed:41"`)).not.toContain("Added by Jev");
+    expect(doc).toContain("Added by Sift");
+    expect(doc).toContain("It explains how people sign in. Sift was 86% sure (Oct 13).");
+    expect(piece(html, `data-tag-item="feed:41"`)).not.toContain("Added by Sift");
     expect(piece(html, `data-tag-item="feed:41"`)).toContain("Picking the second account used to send them back.");
     // A decision's state is a mark from marks.ts.
     expect(piece(html, `data-tag-item="adr:7"`)).toContain("Ratified");
@@ -362,7 +362,7 @@ describe("one tag's page", () => {
     expect(piece(html, `data-tag-item="adr:7"`)).toContain(`data-act="tagOpenDecision" data-arg="Sessions live in a cookie"`);
     // Who tagged it: Jev against people and their agents.
     const who = html.slice(at(`data-tag-tile="jev"`), at(`data-tag-tile="people"`)).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-    expect(who).toContain("1 by Jev 3 by people and their agents");
+    expect(who).toContain("1 by Sift 3 by people and their agents");
     expect(who).toContain("How sign-in works 86% sure");
     // Activity: twelve weekly bars, the newest and the oldest.
     expect((html.match(/class="cnpy-tagpage-wk"/g) ?? []).length).toBe(12);
@@ -546,8 +546,9 @@ describe("tags added by Jev, on the Tags tab (the owner's call: no review step)"
     const sentence = openTab.slice(openTab.indexOf(`id="org-tags-ai-info"`), openTab.indexOf("</p>", openTab.indexOf(`id="org-tags-ai-info"`)));
     expect(sentence).toContain(`role="dialog" aria-label="What is sent"`);
     expect(openTab).toContain(`data-act="tagAiInfoClose"`);
-    expect(sentence).toContain("Jev, TypeSafe AI&#39;s model, gets the tag&#39;s name and description, and the title and first 400 characters of each item that may fit, with code removed.".replace(/&#39;/g, "'"));
-    expect(sentence).toContain("It adds the tag where it fits. You can undo a run or take the tag off any item.");
+    expect(sentence).toContain("Sift sends the tag's name and description, and the title and first 400 characters of each item that may fit (code removed), to a model from TypeSafe AI, then adds the tag where it fits.");
+    expect(sentence).toContain("You can undo a run or take the tag off any item.");
+    expect(sentence).not.toContain("Jev");
     expect(sentence).not.toContain("until you accept");
     expect(aiSection(ai(), initialTagsUi())).toContain(`role="meter" aria-label="Checks used this month" aria-valuemin="0" aria-valuemax="300" aria-valuenow="12"`);
     expect(aiSection(ai(), initialTagsUi())).toContain("12 of 300 checks used this month.");
@@ -597,13 +598,14 @@ describe("tags added by Jev, on the Tags tab (the owner's call: no review step)"
   it("in the tab: each row's Jev cell under an \"Added by Jev\" head; a member sees none of it", () => {
     const html = tab("admin", list({ ai: ai(), runs: { onboarding: run(), auth: run({ status: "running" }) } }));
     expect(html).toContain(`data-org-group="tag-ai"`);
-    expect(html).toContain(`<div data-col="jev" aria-hidden="true">Added by Jev</div>`);
+    expect(html).toContain(`<div data-col="jev" aria-hidden="true">Added by Sift</div>`);
+    expect(html).not.toMatch(/>[^<]*\bJev\b[^<]*</);                        // the model's own name is never on screen
     expect(piece(html, `data-org-tag="onboarding"`)).toContain(">7 added<");
     expect(piece(html, `data-org-tag="auth"`)).toContain(">Starting…<");
     const member = tab("member", list({ ai: ai(), runs: { onboarding: run() } }));
     expect(member).not.toContain("tag-ai");
     expect(member).not.toContain("data-fitrun");
-    expect(member).not.toContain("Added by Jev");
+    expect(member).not.toContain("Added by Sift");
     noPill(html);
   });
 });

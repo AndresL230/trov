@@ -64,6 +64,11 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   already on the item, at most 12). Reads answer 503 `{ error }` on failure, never a 500.
 - **Agents** read the list with MCP **`list_tags`** (live tags + descriptions) and can only USE it.
   `get_feed` (MCP and HTTP) returns each entry's `tags`; `GET /doc/:slug` the doc's.
+- **Its name on screen is Sift** (the owner's call, 2026-10-14): every screen, flash and release note says
+  *Sift* — "Added by Sift", "Sift checks…", "Sift rates it a fit (87%)" — and never the model's own name. The
+  legal pages name the provider, **TypeSafe AI**, because the privacy policy must name who receives the text
+  (not the model). Code identifiers (`jevCell`, `jev_checks`, the reserved `jev` handle on provenance rows)
+  are internal and keep the name.
 - **Tagging existing items — Jev ADDS the tag** (issues #154–#158, #166; `src/tools/classify.ts`, `src/tools/tag-fit.ts`).
   When an admin adds a tag (or accepts a suggested one), and on "Find items", Trov asks a model which of the
   org's EXISTING items fit it, and **adds the tag to each item it judges a fit** (≥ `FIT_THRESHOLD`, 0.7). The model
@@ -91,7 +96,7 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
     a reason, so the reason is the full-text snippet around the match that made the item a candidate
     (`evidenceOf`: `Mentions “…session cookie…”`, scrubbed like the excerpt) — or "Matches the tag's description"
     when the match left no usable snippet. A TOPPED-UP item (below) matched nothing, so its reason is the model's
-    score said as such: `Jev rates it a fit (87%)` (`scoreReason`). Nothing is invented, and no quote is faked.
+    score said as such: `Sift rates it a fit (87%)` (`scoreReason`). Nothing is invented, and no quote is faked.
   - **Too few matches → top up** (`TOP_UP_TO` = 20): a tag with no description, or words nothing uses (`desktop`),
     found nothing to judge. When the keyword search yields fewer than 20, the newest other items (not tagged, not
     dismissed or open for it) fill the list up to 20, so Jev — the part that understands meaning — judges them.

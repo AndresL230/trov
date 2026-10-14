@@ -338,7 +338,7 @@ describe("a run, live, and the experience of an empty match (#2 of the owner's n
     const j = jev((s) => (s.includes("Electron") ? 0.87 : 0.1));
     expect(await runTagFit(KEYED, systemCtx(), "desktop", { classifier: j.classifier })).toBe("done");
     expect(j.sent.length).toBe(2);
-    expect((await modelRows()).map((r) => r.reason)).toEqual(["Jev rates it a fit (87%)"]);
+    expect((await modelRows()).map((r) => r.reason)).toEqual(["Sift rates it a fit (87%)"]);
     expect(await first(env.DB, `SELECT candidates, checked, added FROM org_tag_runs`)).toEqual({ candidates: 2, checked: 2, added: 1 });
     expect((await tagged("desktop")).length).toBe(1);
   });

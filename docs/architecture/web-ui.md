@@ -806,7 +806,7 @@ picker, a doc's Tags row and the tab all draw from it):
   first colour no live tag uses), and — when Jev may look — "Find the items that fit it now", ON by default (the
   button says "Add and find items"); off, the tag is added to nothing ("Add tag"). A bad name is said in the modal. The list is ONE line per tag, every row the same height, on
   ONE column template the list sets (`--tagcols`) so the head and every row line up: square and name ("Starter"
-  beside a starter), what it is for, Items (the total; its tooltip says by type), for admins "Added by Jev" (below)
+  beside a starter), what it is for, Items (the total; its tooltip says by type), for admins "Added by Sift" (below)
   and the actions — Find items as quiet text (it repeats on every row) and a ⋯ menu (`rowMenu`: Rename, and for a
   non-starter Merge into… and Retire; Escape or a click outside closes it). Nothing ever adds a second line under
   a row, and there is no editor panel: an admin edits IN PLACE — a click on what it is for (or the menu's Rename)
@@ -837,7 +837,7 @@ picker, a doc's Tags row and the tab all draw from it):
   added) and its people (`rest`), an empty type in the same boxes. The tab picked is ALWAYS the tab shown — the
   view never swaps a picked tab for All (it once did for a type with no items, so Decisions snapped back). An item:
   its title, a feed entry's brief (two lines in a tile), then a doc's section, a decision's state as a mark
-  (Ratified `kindMark` done, Draft `authorityMark`), who, when, "Added by Jev" (plain words, a fact — the tooltip
+  (Ratified `kindMark` done, Draft `authorityMark`), who, when, "Added by Sift" (plain words, a fact — the tooltip
   holds Jev's reason and how sure; `TagPageItem.jev`, from the run's provenance row) and its other tags as
   `tagWords`. The tag's colour (`--tag-c`) draws every chart; nothing declares a radius (the tiles are
   `surface()`s); the week bars grow in on entry, not under reduced motion. A decision has no screen, so its row
@@ -847,7 +847,7 @@ picker, a doc's Tags row and the tab all draw from it):
   no picker yet (`POST /item-tags` accepts them).
 - **Tagging existing items** (admins, on the Tags tab; `aiSection`, `jevCell`): the switch (`switchBtn`, OFF by
   default) in the header's Jev cell, with ONE sentence on what is sent, to whom, and that the tag is ADDED (with the
-  way back), and where the month's checks stand. A row's "Added by Jev" cell holds the latest run's result in a few words, the whole
+  way back), and where the month's checks stand. A row's "Added by Sift" cell holds the latest run's result in a few words, the whole
   sentence as its tooltip (`resultWords`): "7 added" with Undo (a `confirmModal` that says exactly what it takes
   back), "None fit", "Nothing to check", "Stopped · 2 added", "Undone", or "—" before any run. Find items (on the
   row, while the switch is on and checks are left) waits while a run goes. There is no review list: the owner chose

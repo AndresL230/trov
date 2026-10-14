@@ -69,7 +69,7 @@ export const LIMITS: Record<LimitKey, LimitDef> = {
   // counts, per calendar month (UTC). Past it a run simply stops; nothing is refused with a 402. Separate from
   // `ai_runs` (Anthropic, the AI pass): another provider, another bill.
   jev_checks: {
-    label: "Tag checks", one: "tag check", many: "tag checks", counts: "Calls to Jev that check whether an existing item fits a tag, this calendar month (UTC).",
+    label: "Tag checks", one: "tag check", many: "tag checks", counts: "Checks Sift made of whether an existing item fits a tag, this calendar month (UTC).",
     per: "org", unit: "count", min: 0, period: "month", atCap: "Trov stops looking for items that fit a tag until next month.",
   },
   // The organization's tag list (0056_org_tags; src/tools/tags.ts). min 6: the starters are never removed.

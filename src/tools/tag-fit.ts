@@ -46,7 +46,7 @@ export const CANDIDATE_CAP = 60;
 export const TOP_UP_TO = 20;
 /** The reason of a suggestion whose item had no matching passage (a top-up): the model's score, said as
  *  such — never a quote Trov did not find. */
-export const scoreReason = (confidence: number): string => `Jev rates it a fit (${Math.round(confidence * 100)}%)`;
+export const scoreReason = (confidence: number): string => `Sift rates it a fit (${Math.round(confidence * 100)}%)`;
 /** The reason shown when an item's match left no usable snippet. */
 export const NO_SNIPPET_REASON = "Matches the tag's description";
 /** The most of an item's text that is sent (its title goes whole, up to `TITLE_MAX`). */

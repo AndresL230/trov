@@ -248,7 +248,7 @@ export function createTagsController(host: TagsHost): TagsController {
     addOrgTag({ name, description: u.descDraft.trim(), color: u.addColor, scan })
       .then((r) => {
         u.addBusy = false; u.addOpen = false; u.nameDraft = ""; u.descDraft = "";
-        host.flash(r.fit === "started" ? `Added ${name}. Jev is looking for items that fit it.` : `Added the tag ${name}`);
+        host.flash(r.fit === "started" ? `Added ${name}. Sift is looking for items that fit it.` : `Added the tag ${name}`);
         if (r.fit === "started") watch(name);
         load(); host.planChanged();
         mount.querySelector<HTMLElement>(`[data-field="tagNew"]`)?.focus();
