@@ -1,8 +1,8 @@
 // THE summarizer for an org, right now (docs/architecture/plans.md › AI summaries).
 //
-// One platform key (`GEMINI_API_KEY`) pays for every org's capture-time summaries, so the choice of
+// One platform key (`ANTHROPIC_API_KEY`) pays for every org's capture-time summaries, so the choice of
 // summarizer is made in ONE place — `orgSummarizers` — for both capture paths (the webhook,
-// src/webhook.ts; Sync GitHub, src/tools/backfill.ts). It answers the Gemini summarizer, or null when
+// src/webhook.ts; Sync GitHub, src/tools/backfill.ts). It answers the Claude summarizer (src/ai/client.ts), or null when
 //   • the deployment has no key            (`off`    — nothing is counted, nothing is capped),
 //   • the org's plan has ended             (`ended`),
 //   • the org has used its month's allowance (`capped` — the `ai_summaries` limit, shared/plans.ts).
@@ -21,8 +21,8 @@ import {
   METRIC_SUMMARY_TOKENS_IN, METRIC_SUMMARY_TOKENS_OUT, meterBy, type SummaryKind,
 } from "../data/meter";
 import {
-  geminiIssueSummarizer, geminiPrSummarizer,
-  type GeminiOpts, type IssueSummary, type PrSummary, type SummaryCallSize, type Summarizer,
+  claudeIssueSummarizer, claudePrSummarizer,
+  type AiOpts, type AiUsage, type IssueSummary, type PrSummary, type Summarizer,
 } from "../tools/summarize";
 import { planAndSummaries } from "./gate";
 
@@ -54,16 +54,16 @@ export interface OrgSummarizersOpts {
   /** The request's `waitUntil`, when it has one (the webhook): metering then never delays the
    *  capture. Without one (Sync, a job) each write is awaited — and never throws. */
   waitUntil?: (p: Promise<unknown>) => void;
-  /** Test seams: the Gemini call's fetch / model / timeout, and the clock the month is read from. */
-  gemini?: Omit<GeminiOpts, "onCall">;
+  /** Test seams: the model call's fetch / model / timeout, and the clock the month is read from. */
+  ai?: Omit<AiOpts, "onCall">;
   now?: Date;
 }
 
 const OFF: SummaryAllowance = { status: "off", used: 0, cap: null, remaining: null };
 
 /** Where an org's allowance stands — the read the Sync panel shows before a run. Never throws. */
-export async function summaryAllowance(env: Pick<Env, "GEMINI_API_KEY">, ctx: TenantContext, now: Date = new Date()): Promise<SummaryAllowance> {
-  if (!env.GEMINI_API_KEY) return OFF;
+export async function summaryAllowance(env: Pick<Env, "ANTHROPIC_API_KEY">, ctx: TenantContext, now: Date = new Date()): Promise<SummaryAllowance> {
+  if (!env.ANTHROPIC_API_KEY) return OFF;
   const { plan, used } = await planAndSummaries(ctx, now);
   const cap = resolveEntitlements(plan.plan, plan.overrides).ai_summaries;
   const remaining = cap === null ? null : Math.max(0, cap - used);
@@ -80,7 +80,7 @@ export async function summaryAllowance(env: Pick<Env, "GEMINI_API_KEY">, ctx: Te
  * `SYNC_SUMMARIES_PER_BATCH` per Sync batch). A failed read answers `off`: no summary, no bill.
  */
 export async function orgSummarizers(env: Env, ctx: TenantContext, opts: OrgSummarizersOpts): Promise<OrgSummarizers> {
-  const key = env.GEMINI_API_KEY;
+  const key = env.ANTHROPIC_API_KEY;
   let state: SummaryAllowance = OFF;
   if (key) {
     try {
@@ -101,7 +101,7 @@ export async function orgSummarizers(env: Env, ctx: TenantContext, opts: OrgSumm
     return true;
   };
 
-  const metered = <T>(kind: SummaryKind, make: (apiKey: string, o: GeminiOpts) => Summarizer<T>): (() => Summarizer<T> | null) => {
+  const metered = <T>(kind: SummaryKind, make: (apiKey: string, o: AiOpts) => Summarizer<T>): (() => Summarizer<T> | null) => {
     const model = key ? make(key, {}).model : "";
     const summarizer: Summarizer<T> = {
       model,
@@ -110,14 +110,14 @@ export async function orgSummarizers(env: Env, ctx: TenantContext, opts: OrgSumm
         if (!key || !spend()) { await write([[METRIC_SUMMARY_CAPPED[kind], 1]]); return null; }
         // The attempt is counted BEFORE the call, so a concurrent reader sees it for the call's whole length.
         await write([[METRIC_SUMMARY[kind], 1]]);
-        let size: SummaryCallSize | null = null;
+        let size: AiUsage | null = null;
         let result: T | null = null;
         try {
-          result = await make(key, { ...opts.gemini, onCall: (s) => { size = s; } }).summarize(input);
+          result = await make(key, { ...opts.ai, onCall: (s) => { size = s; } }).summarize(input);
         } catch {
           result = null;
         }
-        const s = size as SummaryCallSize | null;
+        const s = size as AiUsage | null;
         await write([
           [METRIC_SUMMARY_FAILED[kind], result === null ? 1 : 0],
           [METRIC_SUMMARY_CHARS_IN, s?.inputChars ?? 0], [METRIC_SUMMARY_CHARS_OUT, s?.outputChars ?? 0],
@@ -130,8 +130,8 @@ export async function orgSummarizers(env: Env, ctx: TenantContext, opts: OrgSumm
   };
 
   return {
-    pr: metered("pr", geminiPrSummarizer),
-    issue: metered("issue", geminiIssueSummarizer),
+    pr: metered("pr", claudePrSummarizer),
+    issue: metered("issue", claudeIssueSummarizer),
     skipped: (kind) => (state.status === "off" ? Promise.resolve() : write([[METRIC_SUMMARY_CAPPED[kind], 1]])),
     allowance: () => state,
   };

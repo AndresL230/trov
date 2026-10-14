@@ -6,7 +6,7 @@
  *   active → summarizes; past due → still summarizes (past due limits nothing); ended → the org is on Free
  *   and summarizes on Free's allowance; upgraded again → Pro's; a superadmin's pinned plan moves the
  *   allowance; a legacy frozen (`canceled`) org does not summarize.
- * Gemini is a stub — never the network.
+ * The model call is a stub (Messages API bodies) — never the network.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Env } from "../src/env";
@@ -19,22 +19,23 @@ import { orgSummarizers, summaryAllowance } from "../src/plans/summaries";
 import { cookieFor } from "./helpers/persons";
 import { call, one, SUPERADMIN } from "./helpers/orgs";
 import { FakeStripe, PERIOD_2, bcall, billingEnv, deliver, event } from "./helpers/billing";
+import { FAKE_ANTHROPIC_KEY, messageResponse } from "./helpers/anthropic";
 
-const KEY = "AIzaFAKE_gemini_key_for_tests_0123456789";
-const keyed = (): Env => ({ ...billingEnv(), GEMINI_API_KEY: KEY });
+const KEY = FAKE_ANTHROPIC_KEY;
+const keyed = (): Env => ({ ...billingEnv(), ANTHROPIC_API_KEY: KEY });
 
 let stripe: FakeStripe;
 beforeEach(() => { stripe = new FakeStripe(); vi.stubGlobal("fetch", stripe.fetch); });
 afterEach(() => { vi.unstubAllGlobals(); });
 
-/** A Gemini `generateContent` stand-in that counts its calls. */
-function gemini(): { fetchImpl: typeof fetch; calls: number } {
+/** A Messages API stand-in that counts its calls. */
+function claude(): { fetchImpl: typeof fetch; calls: number } {
   const g = {
     calls: 0,
     fetchImpl: (async (url: string | URL | Request) => {
       g.calls++;
-      expect(String(url)).toContain("generativelanguage.googleapis.com");
-      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ title: "t", what: "w", why: null, impact: null }) }] } }] }), { status: 200, headers: { "content-type": "application/json" } });
+      expect(String(url)).toBe("https://api.anthropic.com/v1/messages");
+      return messageResponse(JSON.stringify({ title: "t", what: "w", why: null, impact: null }));
     }) as unknown as typeof fetch,
   };
   return g;
@@ -56,8 +57,8 @@ const ctxOf = (orgId: string) => systemTenant(platform(keyed(), "system"), orgId
 const allowance = (orgId: string) => summaryAllowance(keyed(), ctxOf(orgId));
 /** Ask THE choice for a pull request's summarizer and, when it hands one out, make the one call. */
 async function summarize(orgId: string): Promise<{ offered: boolean; calls: number; status: string }> {
-  const g = gemini();
-  const sums = await orgSummarizers(keyed(), ctxOf(orgId), { actor: "github-webhook", gemini: { fetchImpl: g.fetchImpl } });
+  const g = claude();
+  const sums = await orgSummarizers(keyed(), ctxOf(orgId), { actor: "github-webhook", ai: { fetchImpl: g.fetchImpl } });
   const s = sums.pr();
   if (s) await s.summarize({ title: "Add export", body: "The body." });
   return { offered: s !== null, calls: g.calls, status: sums.allowance().status };
@@ -176,8 +177,8 @@ describe("the summarizer choice reads the plan state billing writes", () => {
 
   it("with no platform key nothing is summarized or counted, whatever the plan's state", async () => {
     const { orgId } = await paidOrg("maya", "maya-co");
-    const g = gemini();
-    const sums = await orgSummarizers(billingEnv(), systemTenant(platform(billingEnv(), "system"), orgId, "system"), { actor: "github-webhook", gemini: { fetchImpl: g.fetchImpl } });
+    const g = claude();
+    const sums = await orgSummarizers(billingEnv(), systemTenant(platform(billingEnv(), "system"), orgId, "system"), { actor: "github-webhook", ai: { fetchImpl: g.fetchImpl } });
     expect(sums.pr()).toBeNull();
     expect(sums.allowance().status).toBe("off");
     expect(g.calls).toBe(0);

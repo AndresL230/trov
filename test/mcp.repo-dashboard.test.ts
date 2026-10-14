@@ -36,7 +36,7 @@ const SECRETS = {
   RAILWAY_TOKEN_STAGING: "rwstg-1a2b3c4d-5e6f-7a8b-9c0d-e1f2a3b4c5d6",
   RAILWAY_TOKEN_PRODUCTION: "rwprd-6d5c4b3a-2f1e-0d9c-8b7a-6f5e4d3c2b1a",
   SAPLING_METRICS_TOKEN: `sap-${LONG_TOKEN.toUpperCase()}`,
-  GEMINI_API_KEY: "AIzaFAKE_gemini_key_0123456789_abcdefghij",
+  ANTHROPIC_API_KEY: "sk-ant-FAKE_anthropic_key_0123456789_abcdefghij",
   RESEND_API_KEY: "re_FAKE_resend_key_abcdefghijklmnop012345",
 } as const;
 

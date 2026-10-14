@@ -25,7 +25,8 @@ Integrations, envelope-encrypted under `TROV_KEK` (`data-layer.md` › Configura
 | `ASSETS` | the static assets binding over `web/dist` (the prerendered public pages, the app shell `app.html`, the scripts and images, and the generated `_redirects` / `_headers`). It serves a file BEFORE the Worker runs, except `/`, which `run_worker_first = ["/"]` sends to the Worker first (the landing or the app shell, `web-ui.md` › The public pages, for crawlers) | no page is served |
 | `ARTIFACTS_BUCKET` | R2, bucket `trov-artifacts`: binary artifact bodies at `artifacts/<sha256>`, doc images, and uploaded avatars and organization images (`avatars/<sha256>`, `org-logos/<sha256>`) — `artifacts.md` | **the bucket must exist before the first deploy that carries the binding** (`wrangler r2 bucket create trov-artifacts`), or the deploy fails |
 
-Capture-time summaries call Gemini over REST (`GEMINI_API_KEY`), never at render — not a Cloudflare binding,
+Capture-time summaries call Anthropic's Messages API (`ANTHROPIC_API_KEY`, through the one model client
+`src/ai/client.ts`), never at render — not a Cloudflare binding,
 so there is no `[ai]` block.
 
 ### Sign-in and sessions
@@ -61,7 +62,7 @@ so there is no `[ai]` block.
 
 | Name | Kind | What it is | Missing → |
 |---|---|---|---|
-| `GEMINI_API_KEY` | secret | the ONE Google Gemini key that serves every organization's capture-time PR / issue summaries, each call counted against that organization's monthly allowance (`plans.md` › AI summaries, `sync.md`) | the excerpt fallback: an item shows its excerpt, and a later Sync fills it in |
+| `ANTHROPIC_API_KEY` | secret | the ONE Anthropic API key that serves every organization's capture-time PR / issue summaries (Claude Haiku, `claude-haiku-5-5`; `src/ai/client.ts`), each call counted against that organization's monthly allowance (`plans.md` › AI summaries, `sync.md`) | the excerpt fallback: an item shows its excerpt, and a later Sync fills it in |
 
 ### Stored credentials
 
@@ -93,7 +94,7 @@ ignored. The Worker itself never reads it.
 ### Local development only
 
 `DEV_LOGIN` and `STRIPE_TEST_API_BASE` (above), and `LOCAL_UPSTREAM` — a loopback http stand-in for GitHub and
-Gemini during a Sync (`src/sync/local-upstream.ts`); ignored unless it is `http://127.0.0.1` or
+Anthropic during a Sync (`src/sync/local-upstream.ts`); ignored unless it is `http://127.0.0.1` or
 `http://localhost`, and never honoured beside a live Stripe key. The two stand-ins are described in `.dev.vars.example`.
 
 ### Legacy — SaplingLearn's fallback, and two vars nothing reads

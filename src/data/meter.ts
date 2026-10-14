@@ -90,7 +90,7 @@ export const METRIC_SUMMARY_CAPPED: Record<SummaryKind, string> = { pr: "summary
 /** Characters sent (prompt + title + body) and received, summed per day — for estimating cost. */
 export const METRIC_SUMMARY_CHARS_IN = "summary_chars_in";
 export const METRIC_SUMMARY_CHARS_OUT = "summary_chars_out";
-/** The provider's own token counts, when its answer carried them (Gemini's `usageMetadata`). */
+/** The provider's own token counts, when its answer carried them (Anthropic's `usage`: `input_tokens` / `output_tokens`). */
 export const METRIC_SUMMARY_TOKENS_IN = "summary_tokens_in";
 export const METRIC_SUMMARY_TOKENS_OUT = "summary_tokens_out";
 /** Every metric above starts with this: none of them is a PERSON's request (src/platform/usage.ts). */

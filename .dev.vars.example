@@ -21,9 +21,10 @@ TROV_KEK=replace-with-openssl-rand-base64-32
 # STRIPE_SECRET_KEY is a live key (sk_live_… / rk_live_…). Never set either as a deployed secret: a
 # deployed Worker ignores them (and could not reach loopback if it did not).
 #
-# LOCAL_UPSTREAM — GitHub and Gemini, during a Sync GitHub and its closing refresh
+# LOCAL_UPSTREAM — GitHub and Anthropic, during a Sync GitHub and its closing refresh
 # (src/sync/local-upstream.ts, docs/architecture/sync.md › Trying it locally). Requests to
-# api.github.com go to <base>/github/… and to generativelanguage.googleapis.com to <base>/gemini/….
+# api.github.com go to <base>/github/… and to api.anthropic.com to <base>/anthropic/… (a summary is
+# POST <base>/anthropic/v1/messages, answered in the Messages API shape: content [{type:"text", text:<JSON>}]).
 # The webhook, the cron and sign-in are not rerouted.
 # LOCAL_UPSTREAM=http://127.0.0.1:8862
 #
@@ -39,4 +40,4 @@ TROV_KEK=replace-with-openssl-rand-base64-32
 #
 # Summaries are off without a key (docs/architecture/plans.md › AI summaries). With LOCAL_UPSTREAM set,
 # any non-empty value turns them on against the stand-in.
-# GEMINI_API_KEY=your-gemini-key
+# ANTHROPIC_API_KEY=your-anthropic-key

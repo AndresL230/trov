@@ -33,7 +33,9 @@
   › Background jobs), `routes.ts` (Hono HTTP), `mcp.ts` (MCP
   tools; `mcp-catalog.ts` lists them for the docs at build time and is never imported by the Worker),
   `error-hints.ts` (adds `hint` to the Worker's JSON errors), `consumer.ts` (THE GATE), `webhook.ts` (GitHub event capture), `tools/` (`writes.ts`, `reads.ts`,
-  `plan.ts`, `tickets.ts`, `sprints.ts`, `mywork.ts`, `repo.ts`, `repo-agent.ts`, `progress.ts`, `summarize.ts`), `notifications/` (every email, and the `/u/`
+  `plan.ts`, `tickets.ts`, `sprints.ts`, `mywork.ts`, `repo.ts`, `repo-agent.ts`, `progress.ts`, `summarize.ts`), `ai/` (the one model client: `client.ts` — `providerFor(kind)` and
+  `structured()`, Claude over the Messages API with structured outputs, never throwing; `schema.ts` —
+  `toClaudeSchema`; imported only by `tools/summarize.ts`, never reachable from `mcp.ts`), `notifications/` (every email, and the `/u/`
   unsubscribe page — see notifications.md), `db.ts` (D1 helpers), `auth/` (`persons.ts` — the identity root;
   `google.ts` — second provider; `onboard.ts` — the sign-in fork + onboarding cookie; `invites.ts`),
   `env.ts`. `repo/` is the repo-capture package behind `tools/repo.ts`: `types.ts` (the `RepoEvent` /
