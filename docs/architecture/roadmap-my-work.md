@@ -52,10 +52,20 @@ cron backstop (`recomputeAllProgress`, run per org with that org's GitHub creden
 numbers) resolved against the org's PRIMARY repository (`orgPrimaryRepo`, its `org_repos` row) — only by
 those two writers, never at render.
 
-**Your brief** (`DashboardData.brief?`, `shared/ai-core.ts` `AiBrief`) is what Trov would WRITE for the person
-— now, recently, what is next. Nothing produces one yet, so `/me/dashboard` and `get_my_work` omit it in
-production; `LOCAL_AI_PREVIEW` shows the sample on the screen under `wrangler dev` only, never over MCP
-(`ai.md`). Absent = the screen renders exactly as before.
+**Your brief** (`DashboardData.brief?`, `shared/ai-core.ts` `AiBrief`) is what Trov WROTE for the person — now,
+recently, what is next — by the AI pass's `brief.person` job (`src/ai/brief.ts`; `ai.md` › The brief), stored in
+`person_brief` (0063, the last 5 versions). `getMyWork` reads the NEWEST row (`storedBrief`, `src/tools/mywork.ts`,
+through `src/data/person-brief.ts` — plain D1, no model, nothing from `src/ai/`), so `/me/dashboard` and
+`get_my_work` carry the same one — and the digest e-mail will (Phase E). The field is ABSENT when the org's AI
+switch is off, nothing is stored, the stored row fails `AiBriefSchema`, or the person pressed "Wrong?" on that very
+version (`aiItemRef.brief(generatedAt)`; the next version shows again); `state` is `capped` (the last brief, its
+`resumesOn`, `upgrade` on Free) when the org's `ai_runs` are spent, `empty` for a version the pass wrote with no
+model when nothing was left to say. A failed brief read never degrades the rest of My Work. `GET /me/dashboard`
+also records `memberships.mywork_opened_at` (0063; at most one write an hour, never a model call; MCP's
+`get_my_work` does not count) — a brief is written only for someone who opened My Work in the last 14 days or who
+receives the digest. `LOCAL_AI_PREVIEW` replaces it with the sample on the screen under `wrangler dev` only, never
+over MCP; the local dev seed stores a real one for AndresL230 (`scripts/seed/brief-dev.mjs`). Absent = the screen
+renders exactly as before.
 
 **My Work** (`GET /me/dashboard`, MCP `get_my_work` → `getMyWork`) is a D1-only projection over captured
 events AND over the ticket queue: three separate lists — `previousActivity` (summarized merged/closed PRs

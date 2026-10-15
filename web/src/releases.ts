@@ -89,6 +89,7 @@ export const RELEASES: Release[] = [
     ops: [
       "Apply `0058_ai_dirty` (the deploy does it). ADDITIVE: the `ai_dirty` table (the AI router writes it from `0059` on) and `orgs.ai_chat_auto` (on for every organization). Safe on the Worker from before it; the by-hand rollback is in the file's header.",
       "Apply `0059_ai_batches` (the deploy does it) AFTER `0058`. ADDITIVE: the platform tables `ai_batches` / `ai_batch_requests` (empty: no batch job exists yet) and `ai_dirty.marked_at` / `ai_dirty.urgent`. From this deploy every write path marks `ai_dirty` rows for orgs with AI on (rows only — no model runs: the pass's registry is empty). Safe on the Worker from before it; the by-hand rollback is in the file's header.",
+      "Apply `0063_person_brief` (the deploy does it). ADDITIVE: the `person_brief` table (each member's last 5 briefs, written by the AI pass) and `memberships.mywork_opened_at` (NULL for everyone until they next open My Work). Safe on the Worker from before it; the by-hand rollback is in the migration's header and loses only stored briefs and those timestamps.",
     ],
     patches: {
       added: [
@@ -110,9 +111,14 @@ export const RELEASES: Release[] = [
         "Section isolation (`src/ai/sections.ts`: `sections`, `each`, `keep`): an answer is checked one section (or list item) at a time, so a bad one drops alone (#178)",
         "Metering per provider: Jev requests from the pass count as `ai_suggest` (the `jev_checks` allowance, as Sift's do) with Jev's tokens in `ai_jev_tokens_in` / `_out`; Platform › Usage shows them as Sift checks and tokens when the read carries them (#178)",
         "`test/ai.harness.test.ts`: the pass harness — ten pushes plus a merge give ONE repo call, 25 ticket cards give 25 Jev requests and zero Haiku calls, a non-substantive burst gives one Jev call and no Haiku call — and the measured spend of a tick for 1, 10 and 50 orgs (#178)",
+        "My Work's brief, the first AI producer (Phase D, `brief.person` in `KIND_PROVIDER` and `AI_JOBS`; `src/ai/brief.ts`, `src/ai/brief-core.ts`): one Haiku call per person on `person:<handle>`, led by the cached org prefix — Now (their open PRs, the runs and checks failing on them, their latest `Status:` note), Recently (7 days of session notes and merged-PR cards, never a raw PR body), Next (ONLY server-offered items in the server's order: overdue, blocked, someone waiting, due soon, assigned; the model writes one \"why\" each, an unoffered item is dropped, titles are the items' own). A cite not in the input is dropped and a line without one is not written; a ref or an ungrounded number in the text drops the line; `refusal` / `max_tokens` write nothing; an unchanged input calls nothing (#178)",
+        "`0063_person_brief`: `person_brief` (the last 5 versions per member; in `ORG_TABLES`, `HANDLE_COLUMNS` and the reset seed; `src/data/person-brief.ts`) and `memberships.mywork_opened_at` — `GET /me/dashboard` records it at most once an hour, and a brief is written only for someone who opened My Work in 14 days or receives the digest (#178)",
+        "`GET /me/dashboard` and MCP `get_my_work` carry the newest stored brief (`storedBrief`, `src/tools/mywork.ts`: plain D1, nothing from `src/ai/`): absent when the org's AI is off, none is stored, or the person pressed \"Wrong?\" on that version; `capped` keeps the last one with the day it resumes (#178)",
+        "The brief's eval set (`test/ai-evals/brief.person/`: 10 cases from Personal Dev's real rows, graded by rules), its live runner (`scripts/ai-evals/brief-live.ts`, by hand) and the recorded answers replayed in CI (`test/ai-evals.brief.test.ts`); the local dev seed stores a brief for AndresL230 (`scripts/seed/brief-dev.mjs`) (#178)",
       ],
       changed: [
         "Deleting an account also deletes the AI router's scopes keyed on the person (their brief, their GitHub sessions) (#178)",
+        "Deleting an account also deletes the person's stored briefs (`person_brief`), in every organization (#178)",
         "`switchBtn` (`web/src/notifications.ts`) takes an optional accessible name and a busy state; without them its markup is unchanged (#178)",
         "My Work › Queued handoffs: the button is Claim & copy (`mwHandoffClaim`): it copies the newest handoff as a prompt and claims it, as the handoff screen's Claim does (#178)",
         "My Work: the date sits top right of the greeting, and the line under the greeting is only what is waiting on you (`myWorkLayout` takes `date` and `stat`) (#178)",
