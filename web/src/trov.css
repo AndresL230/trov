@@ -2473,8 +2473,6 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .fm-ai-err { margin:6px 6px 0; font-size:12px; line-height:1.45; color:var(--red); }
 .fm-ai-note { margin:6px 6px 2px; font-size:11.5px; line-height:1.45; color:var(--fg-55); }
 .fm-pop.is-opening .fm-ai-opt { animation:fm-opt-drop .38s cubic-bezier(.22,.8,.26,1) both; animation-delay:90ms; }
-/* The bar's own focus ring is for its search box and Filter button — not for a filter typed in its popover. */
-.cnpy-sfbar:has(.fm-pop:focus-within) { outline:none; }
 @keyframes fm-in { from { opacity:0; transform:translateY(-6px) scale(.96); } to { opacity:1; transform:none; } }
 @keyframes fm-out { to { opacity:0; transform:translateY(-4px) scale(.98); } }
 @keyframes fm-rise { from { opacity:0; transform:translateX(5px); } to { opacity:1; transform:none; } }
