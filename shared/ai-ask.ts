@@ -7,7 +7,7 @@ import {
   ASK_ACTION_KINDS, ASK_ACTION_STATES, ASK_ACTIVITY_ICONS, ASK_ATTACH_FILES_MAX, ASK_ATTACH_KINDS, ASK_CHART_QUERIES, ASK_COMMANDS,
   ASK_DIAGRAM_NODES_MAX, ASK_DRAFT_MAX, ASK_ERROR_CODES, ASK_FOLLOWUPS_MAX, ASK_INSTRUCTIONS_MAX, ASK_MARKS, ASK_MODE_IDS, ASK_ORIGINS,
   ASK_PEEK_MAX, ASK_REF_TYPES, ASK_REFS_MAX, ASK_TEXT_MAX, ASK_THREAD_GROUPS, ASK_TITLE_MAX, ASK_TONES, ASK_WRONG_REASONS,
-  type AskAction, type AskActionPreview, type AskAttachment, type AskBlock, type AskEventMap, type AskEventName, type AskMessage,
+  type AskAction, type AskActionPreview, type AskAttachment, type AskBlock, type AskCancelBody, type AskConfirmBody, type AskEventMap, type AskEventName, type AskMessage,
   type AskRequest, type AskSaveBody, type AskSearchHit, type AskSettings, type AskSettingsPut, type AskState, type AskThreadDetail,
   type AskThreadPatch, type AskThreadSummary, type PeekResult, type RefView,
 } from "./ai-ask-core";
@@ -73,7 +73,8 @@ export const AskActionSchema = z.object({
 
 const tokens = z.object({ in: z.number(), out: z.number(), cached: z.number() });
 const actionResult = z.object({
-  id: z.number().int(), groupId: z.string().nullable(), state: z.enum(["confirmed", "auto", "undone", "cancelled", "failed"]),
+  id: z.number().int(), groupId: z.string().nullable(), tool: z.string(), kind: z.enum(ASK_ACTION_KINDS), preview: AskActionPreviewSchema,
+  state: z.enum(["confirmed", "auto", "undone", "cancelled", "failed"]),
   result: z.unknown(), ref: z.string().nullable(), undo: z.boolean(), at: z.string(),
 });
 
@@ -94,7 +95,7 @@ export const AskEventSchemas = {
   action_result: actionResult,
   artifact_saved: saved,
   followups: z.object({ items: z.array(z.string()).max(ASK_FOLLOWUPS_MAX) }),
-  done: z.object({ messageId: z.number().int(), cites: z.array(RefViewSchema), tokens, stopped: z.boolean().optional() }),
+  done: z.object({ messageId: z.number().int(), questionId: z.number().int().optional(), cites: z.array(RefViewSchema), tokens, stopped: z.boolean().optional() }),
   error: z.object({ code: z.enum(ASK_ERROR_CODES), message: z.string() }),
 } satisfies { [K in AskEventName]: z.ZodType<AskEventMap[K]> };
 
@@ -128,7 +129,8 @@ export const AskSaveBodySchema = z.strictObject({
   visibility: z.enum(["private", "org"]).optional(),
 }) satisfies z.ZodType<AskSaveBody>;
 
-export const AskConfirmBodySchema = z.strictObject({ args: z.record(z.string(), z.unknown()).optional(), only: z.boolean().optional() });
+export const AskConfirmBodySchema = z.strictObject({ args: z.record(z.string(), z.unknown()).optional(), only: z.boolean().optional() }) satisfies z.ZodType<AskConfirmBody>;
+export const AskCancelBodySchema = z.strictObject({ only: z.boolean().optional() }) satisfies z.ZodType<AskCancelBody>;
 export const AskWrongBodySchema = z.strictObject({ reason: z.enum(ASK_WRONG_REASONS) });
 
 export const AskSettingsPutSchema = z.strictObject({
@@ -150,6 +152,7 @@ export const AskStateSchema = z.object({
   autoAllowed: z.boolean(),
   attach: z.object({ maxFiles: z.number().int(), maxBytes: z.number().int(), kinds: z.array(z.enum(ASK_ATTACH_KINDS)) }),
   starters: z.array(z.string()).min(1).max(6),
+  proPerSeat: z.number().int().min(1).nullable(),
 }) satisfies z.ZodType<AskState>;
 
 export const AskAttachmentSchema = z.object({
@@ -173,7 +176,11 @@ export const AskMessageSchema = z.object({
   context: z.array(z.string()), blocks: z.array(AskBlockSchema),
   activity: z.array(z.object({ step: z.number().int(), tool: z.string(), icon: z.enum(ASK_ACTIVITY_ICONS), label: z.string(), results: z.array(z.string()), resultLine: z.string().nullable() })),
   followups: z.array(z.string()), thinking: z.object({ seconds: z.number(), summary: z.string() }).nullable(), cites: z.array(RefViewSchema),
-  attachments: z.array(AskAttachmentSchema), actions: z.array(AskActionSchema), stopped: z.boolean(), model: z.string().nullable(),
+  attachments: z.array(AskAttachmentSchema), actions: z.array(AskActionSchema),
+  parts: z.array(z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("text"), md: z.string() }), z.object({ kind: z.literal("block"), index: z.number().int().min(0) }), z.object({ kind: z.literal("action"), id: z.number().int() }),
+  ])).optional(),
+  stopped: z.boolean(), model: z.string().nullable(),
   units: z.number().int(), createdAt: z.string(),
 }) satisfies z.ZodType<AskMessage>;
 

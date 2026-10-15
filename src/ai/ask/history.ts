@@ -10,6 +10,7 @@ import type { TenantContext } from "../../data/sql";
 import { listActions, setThreadSummary, type ChatActionRow, type ChatMessageRow, type ChatThreadRow } from "../../data/ask";
 import { providerFor } from "../client";
 import { fence } from "./prompt";
+import type { AskMessagePart } from "@shared/ai-ask-core";
 
 /** Past this many characters of older turns, the oldest are compacted (about 15k tokens). */
 export const COMPACT_AT_CHARS = 60_000;
@@ -30,6 +31,8 @@ export interface StoredContent {
   thinking?: { seconds: number; summary: string } | null;
   /** A question's attachments, by id and name: later turns carry this one line, not the file. */
   attached?: { id: number; title: string }[];
+  /** An answer's parts in streamed order (`AskMessage.parts`); absent on rows stored before it. */
+  parts?: AskMessagePart[];
 }
 
 export const contentOf = (m: Pick<ChatMessageRow, "content_json">): StoredContent => {

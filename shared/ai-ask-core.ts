@@ -8,6 +8,7 @@
 // SSE transcript per design scenario, and the dev-only replay route streams them.
 
 import type { AiEligibility } from "./ai-core";
+import type { RepoFacts } from "./repo-facts-core";
 
 // ── Modes (#12 §2.1) — THE table ─────────────────────────────────────────────
 
@@ -156,8 +157,22 @@ export interface RefView {
   href: string | null;
   /** What the hover card shows. ticket: { priority, assignees, sprint }; pr: { author, head, base, checks };
    *  doc: { space, version, owner, excerpt }; person: { role?, workingOn? }; sprint: { due, progress };
-   *  handoff: { from, to, task }; artifact: { kind, visibility, version }; repo: { ci, lastDeploy }. */
+   *  handoff: { from, to, task }; artifact: { kind, visibility, version }; repo: { facts: AskRepoFacts | null }. */
   extra: Record<string, unknown>;
+}
+
+/** A repo ref's `extra.facts` (#186): the Repo Overview's ONE projection (`RepoFacts`, src/tools/repo-facts.ts, as
+ *  `getRepoDashboard` reads it), cut to what a chip, the hover card and the inspector draw — the apps, environments
+ *  and parts (each part's history down to its newest deploy), out-of-step, CI per environment, the release, what
+ *  needs attention and the week's figures. Its status is never a word of Ask's own: the client derives it with the
+ *  Overview's `envVerdict` (web/src/repo-verdict.ts) and draws it with `stateMark` — so `RefView.status` is null for
+ *  a repo. null facts = not read (Unknown, never "Healthy" and never zero). */
+export type AskRepoFacts = Pick<RepoFacts, "repo" | "app" | "apps" | "envs" | "parts" | "outOfStep" | "ci" | "release" | "attention" | "week">;
+export function askRepoFacts(f: RepoFacts): AskRepoFacts {
+  return {
+    repo: f.repo, app: f.app, apps: f.apps, envs: f.envs, outOfStep: f.outOfStep, ci: f.ci, release: f.release, attention: f.attention, week: f.week,
+    parts: f.parts.map((p) => ({ ...p, history: p.history.slice(-1) })),
+  };
 }
 /** What peek answers for an item the person cannot see (or that is not there): the same for both. */
 export interface HiddenRef { ref: string; hidden: true }
@@ -298,10 +313,14 @@ export interface AskEventMap {
   text: { delta: string };
   block: AskBlock;
   action: Pick<AskAction, "id" | "groupId" | "tool" | "kind" | "preview" | "fields" | "editable" | "note"> & { state: "proposed" | "waiting" };
-  action_result: { id: number; groupId: string | null; state: "confirmed" | "auto" | "undone" | "cancelled" | "failed"; result: unknown; ref: string | null; undo: boolean; at: string };
+  /** A card's decision. It names the write itself (`tool`, `kind`, the card's `preview`), so an Auto write — a result
+   *  with no card before it — says what it did ("Created ticket #30", not "Changed ticket #30") with no re-read. */
+  action_result: { id: number; groupId: string | null; tool: string; kind: AskActionKind; preview: AskActionPreview; state: "confirmed" | "auto" | "undone" | "cancelled" | "failed"; result: unknown; ref: string | null; undo: boolean; at: string };
   artifact_saved: { slug: string; title: string; visibility: "private" | "org"; url: string };
   followups: { items: string[] };
-  done: { messageId: number; cites: RefView[]; tokens: AskTokens; stopped?: boolean };
+  /** `questionId`: the stored id of the question this answers (edit-and-resend needs no read first); absent on a
+   *  stream recorded before it was added. */
+  done: { messageId: number; questionId?: number; cites: RefView[]; tokens: AskTokens; stopped?: boolean };
   error: { code: AskErrorCode; message: string };
 }
 export type AskEvent = { [K in AskEventName]: { event: K; data: AskEventMap[K] } }[AskEventName];
@@ -323,6 +342,7 @@ export const ASK_ROUTES = {
   cancel: (id: number) => `/ask/actions/${id}/cancel`,                // POST { only? } → AskActionAnswer
   undo: (id: number) => `/ask/actions/${id}/undo`,                    // POST → AskActionAnswer
   attachments: "/ask/attachments",                                    // POST multipart (file × ≤5, threadId?) → AskAttachmentUpload
+  attachment: (id: number) => `/ask/attachments/${id}`,               // DELETE (never sent: hard-deleted) → { ok }; 409 sent / published / referenced
   wrong: (messageId: number) => `/ask/messages/${messageId}/wrong`,   // POST { reason } → { ok }
   settings: "/ask/settings",                                          // GET → AskSettings; PUT AskSettingsPut
 } as const;
@@ -365,6 +385,9 @@ export interface AskState {
   autoAllowed: boolean;
   attach: { maxFiles: number; maxBytes: number; kinds: AskAttachKind[] };
   starters: string[];
+  /** Pro's questions a month PER SEAT (`PLANS.team`, `perSeat`): the upsell's number, read from the server, never a
+   *  client copy of the plans; null when Pro has no cap. */
+  proPerSeat: number | null;
 }
 
 export const ASK_THREAD_GROUPS = ["pinned", "today", "week", "earlier"] as const;
@@ -419,11 +442,16 @@ export interface AskMessage {
   cites: RefView[];
   attachments: AskAttachment[];
   actions: AskAction[];
+  /** An answer's parts in the order they STREAMED (text runs, blocks by their index in `blocks`, write cards by id),
+   *  so a reload draws what the live answer drew. Absent on rows stored before it: text, then blocks, then cards. */
+  parts?: AskMessagePart[];
   stopped: boolean;
   model: string | null;
   units: number;
   createdAt: string;
 }
+
+export type AskMessagePart = { kind: "text"; md: string } | { kind: "block"; index: number } | { kind: "action"; id: number };
 
 export interface AskThreadDetail {
   thread: AskThreadSummary & { draft: string };
@@ -444,6 +472,10 @@ export interface AskSaveBody {
 /** Confirm / Cancel / Undo answer: every card it touched (a group moves together). Refusals: `not_found` 404;
  *  `not_proposed` / `expired` / `no_undo` / `already` / `changed` (Undo: "Changed since. Undo it by hand.") 409;
  *  `invalid` 400 (edited args the schema refuses). A write's own refusal is `state: "failed"`. */
+/** `POST /ask/actions/:id/confirm`'s body: edited fields (the card's `editable` only), and `only` = this card, not
+ *  its whole group. `cancel` takes `{ only }`. (The zod schemas in shared/ai-ask.ts are pinned to these.) */
+export interface AskConfirmBody { args?: Record<string, unknown>; only?: boolean }
+export interface AskCancelBody { only?: boolean }
 export interface AskActionAnswer {
   results: AskEventMap["action_result"][];
   artifact?: AskEventMap["artifact_saved"];

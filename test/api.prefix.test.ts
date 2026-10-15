@@ -45,6 +45,8 @@ const any: unknown = new Proxy(function () { /* callable */ }, {
 const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText", "planLimitText", "githubInstallHref", "setWriteBlock", "isWriteMethod", "PreviewBlocked"]);
 /** Functions whose arguments must be real values (a Blob for a multipart body). */
 const SPECIAL: Record<string, unknown[]> = {
+  // THE sender (Ask's SSE client reads the response itself): a tenant path like every other call.
+  apiFetch: ["/ask/state"],
   uploadAvatar: [new Blob(["x"]), "a.png"],
   uploadOrgLogo: ["x", new Blob(["x"]), "logo.png"],
   listArtifacts: [{ area: "ui", q: "x" }],

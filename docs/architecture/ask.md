@@ -1,8 +1,8 @@
 # Ask Trov — the chat backend
 
 The decided design: `docs/superpowers/specs/2026-10-15-server-ai-build.md` › Phase F, **amended by Trov handoff #12 §2**
-(the delta the finished Claude Design needs; where they disagree, #12 wins). The frontend is not built here (it waits
-on the design session); this file is the backend, the contract and the fixtures. Where AI calls may happen at all,
+(the delta the finished Claude Design needs; where they disagree, #12 wins). This file is the backend, the contract and
+the fixtures, then the screen (§ The screen, at the end). Where AI calls may happen at all,
 the allowances and the switches: `ai.md`.
 
 ## Shape
@@ -42,8 +42,10 @@ JSON refusals before the stream: `400 invalid`, `404 not_found` (another person'
 mode_unavailable`. Then SSE, in order: `thread` (again once the first exchange names it) → an attachment notice per
 file the model could not take (an `activity` line, run then done at once — › Attachments) → `thinking` run/done
 (Thinking only; the SUMMARY, never raw thinking) → `activity` run then done (`results` refs, `resultLine`) → `text`
-deltas → `block` → `action` / `action_result` / `artifact_saved` → `followups` → `done { messageId, cites, tokens,
-stopped? }`. `error { code: capped | off | no_key | timeout | too_large | failed }` ends it early.
+deltas → `block` → `action` / `action_result` / `artifact_saved` → `followups` → `action_result` carries the write itself (`tool`, `kind`, the card's `preview`) beside its decision. `done { messageId, questionId, cites, tokens,
+stopped? }` (`questionId`: the stored question this answers). The answer is stored with its `parts` in the order they
+streamed (`{ text md } | { block index } | { action id }` in `content_json`; `AskMessage.parts`), so a reload draws the
+live order — a row stored before it has none and reads as text, blocks, cards. `error { code: capped | off | no_key | timeout | too_large | failed }` ends it early.
 
 - **The gate**, inside the stream: no key → `no_key`; `orgs.ai_automation` off → `off`; `planRefusal(ai_chat,
   countsAs)` → `capped`. Nothing is stored or counted when it refuses.
@@ -78,7 +80,11 @@ stopped? }`. `error { code: capped | off | no_key | timeout | too_large | failed
   `resolveViews` from Trov's rows, permission-checked (another person's private artifact, a deleted page, an unknown
   id: absent). Status words are the design's over the existing vocabularies (Triage / In progress / Testing / Done /
   Declined; Draft / In review / Approved / Merged / Closed; Live / "Staged, not approved"; "N days late"; Pending;
-  CI failing; Private / Org). `POST /ask/peek { refs }` answers `{ ref, hidden: true }` for what the person can't
+  Private / Org). A **repo** ref (#186) is the Repo Overview's facts: `extra.facts` = `askRepoFacts(getRepoDashboard(…).facts)`
+  (`AskRepoFacts`, shared/ai-ask-core.ts: apps, environments, parts with their newest deploy, out-of-step, CI per
+  environment, release, attention, the week; `null` when the read failed) and `status: null` — the client draws its
+  state with the Overview's `envVerdict` and `stateMark` (Healthy only when the branch head's checks pass; Live with
+  none captured; Unknown with nothing seen), never a word of Ask's own. `POST /ask/peek { refs }` answers `{ ref, hidden: true }` for what the person can't
   see; `GET /ask/item/:ref` is the inspector's read where no per-type route exists.
 - With nothing found the model shows `show_not_found({ query, tries })`; the server fills "What I searched" from this
   turn's search calls with counts it computes.
@@ -174,7 +180,11 @@ is replaced.
 - "Wrong?" (`POST /ask/messages/:id/wrong { reason }`): `ai_feedback` (item type `ask`, `detail_json`: reason, mode,
   messageId, cites). "A source is wrong" / "It is out of date" also add one `ask_flags` row per cited item — the
   reason only, no handle, no thread, no text — which Review reads (`askFlags` on `GET /proposals` and `GET /adrs`).
-- Settings › Trov: `GET / PUT /ask/settings` — instructions (≤ 500) and the default mode (Pro).
+- Settings › Trov: `GET / PUT /ask/settings` — instructions (≤ 500) and the default mode (Pro). The screen is three tiles
+  of personal Settings (`web/src/ask-settings.ts`, controller `ask-settings-actions.ts`, acts `trovSet…`): its modes and
+  their words come from `GET /ask/state`, the default mode is sent only when the plan offers a choice, and "What Trov
+  can see" is the design's copy, held to this file's Tools section — change one, check the other. Where something is
+  connected links its Org settings tab (`orgGo`: Integrations, Repositories, Hosting, Environments; the off line, AI).
 - `GET /ask/state`: `{ enabled, eligibility, plan, modes, defaultMode, allowance { used, cap, resetsAt, low }, autoAllowed,
   attach { maxFiles, maxBytes, kinds }, starters }` — starters by plain rules (the person's top assigned ticket, the
   active sprint, what is waiting on them), the design's four as the fallback. `allowance.cap` is the cap the gate
@@ -197,6 +207,15 @@ artifacts ever hard-deleted (CLAUDE.md invariant 11): every version, link, pendi
 page goes in ONE batch with the thread's (or account's) rows, and the R2 bytes are freed AFTER the commit, only when
 no row anywhere still points at the same sha (`src/deletion/r2.ts`).
 
+- **Saving from a follow-up** (`save_artifact`, `saveTarget` in routes.ts): the answer saved — by the Save form's
+  `messageId` and by Auto's `scope: "answer"` — is the one the model names (`which: "this" | "previous"`), else THIS
+  answer when it has content of its own (a block, or 280+ characters), else the most recent earlier answer that has:
+  "save this as a doc" after an answer saves that answer, not the one-line reply.
+- **`DELETE /ask/attachments/:id`** (`deleteUnsentAttachment`, `src/deletion/ask.ts`): the composer removing an
+  uploaded chip before it was sent deletes that one attachment the same way (its page's rows and its `chat_artifacts`
+  link in ONE batch, re-checked inside it; R2 after the commit when nothing else holds the bytes). Refused with nothing
+  deleted: not the person's (404), already sent (`sent`), published (`published`), or referred to by a ticket or a doc
+  (`referenced`) — 409 each. A never-sent attachment also goes with its thread (`deleteAskThread`).
 - **`DELETE /ask/threads/:id`** (`deleteAskThread`, `src/deletion/ask.ts`) deletes the thread and its attachments,
   EXCEPT a file something still refers to (`planThreadAttachments`). "Referenced" is what the schema actually links:
   - **a ticket** — an `artifact_links` row to a ticket (the library's Links, MCP `artifact_update`, `record_session`'s
@@ -242,3 +261,101 @@ lane, Auto and its cap, Confirm-only writes, Publish, Undo and "changed since", 
 /search, ⌘J, state, settings, account deletion), `test/ask.parity.test.ts`, `test/ask.contract.test.ts` (every
 fixture against the schemas, the transcript files, the replay's guard), `test/secrets.mcp.test.ts` (the boundary).
 The Anthropic stream is stubbed at the `Response` level (`test/helpers/ask.ts`) — never the network.
+
+## The screen (`web/src/ask-*.ts`)
+
+Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) and `#ask/<id>`; the page is
+`data-morph="ask"`. The design and the per-scenario map: `docs/superpowers/specs/ask-trov.dc.html` and
+`ask-trov-inventory.md`. One file per part, each with its own `/* ── Ask: <part> ── */` block in trov.css:
+
+- **Foundation**: `ask-state.ts` (`AppState.ask`, `AskCtx` — the ONLY way a part reads or writes, `AskPart`),
+  `ask-controller.ts` (main.ts hands it every `ask…` act, routed by the two-letter part code; it owns the reads, one
+  stream per conversation with Stop, batched `POST /ask/peek`, the inspector stack, the hover card, ⌘J, the Escape
+  stack, the resize edge; nothing on a render path fetches), `ask-api.ts` (the typed client), `ask-sse.ts` +
+  `ask-stream.ts` (the SSE reader and the reducer, tested on every recorded transcript), `ask-refs.ts` (the chip, the
+  status cell, the hover card — one `RefView` per ref), `ask-screen.ts` + `ask-layout.ts` (header, the three columns
+  and their breakpoints, the inspector's frame), `ask-threads.ts` (the thread list), `ask-escape.ts`,
+  `ask-icons.ts`, `ask-motion.ts` (the motion hooks: inventory §12), `ask-replay.ts` (the dev replay).
+- **Parts** (stubs with their interface in the file header): `ask-conversation.ts`, `ask-composer.ts`,
+  `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
+  Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
+- **The ⌘J panel** (`ask-cmdj.ts`): 420px on the right over any page (full screen on a phone), its own conversation
+  (`AskUi.panel`) and the composer in panel form; the page's item (`pageRef`: a ticket, sprint, handoff or artifact)
+  is the context chip, so the first send makes a normal thread with `origin: panel` and that `context_ref`. Another
+  item starts a fresh panel thread; the same item reopens the same one. "Open as thread" moves the conversation, the
+  draft and an open inspector to `#ask/<id>` (a history entry). **Painting**: the pages it opens over are not
+  `data-morph`ed, so while Ask is not the screen the controller's paint repaints Ask's root overlays alone
+  (`cmdjRepaint`: the panel and the hover card, morphed / inserted / removed) and never rebuilds the page behind
+  it per keystroke or streamed word. **Keys**: ⌘J on a Mac, Ctrl+J elsewhere (`isCmdjKey`; never with Shift or Alt
+  — DevTools' chords —, never mid-composition, never while another `aria-modal` dialog is up), toggles it; on the
+  Ask screen it focuses the composer. Escape closes the panel's own inspector first, then the panel; Tab stays in
+  the panel; closing hands focus back to its opener. The Tickets page's one change is the header's "Ask about
+  this ⌘J" (`cmdjHeaderButton`). `?askReplay=cmdj#tickets/14` plays the scenario over the ticket (the replay starts
+  from the controller's after-paint for a panel plan, since the Ask screen never enters there).
+- **Composer** (`ask-composer.ts`, one per conversation): every limit and flag from `GET /ask/state` (modes, the
+  allowance and its usage line under a fifth left, `autoAllowed`, `attach { maxFiles, maxBytes, kinds }`) — none in
+  the UI. Files upload ON ATTACH (`POST /ask/attachments`; a new conversation's first upload makes its thread, and
+  the question goes there); a file over `maxBytes` stays as a red "Too large" chip and is never sent. `@` searches
+  the org through the app's quick search (`AskApi.searchRefs`; PRs are not in it — only PRs Trov already shows
+  are offered), rows drawn from RefViews; `/` is the five commands, sent as `command` with the rest as the text.
+  The mode (only when the plan offers more than one) and the Auto switch are remembered per thread
+  (`PATCH /ask/threads/:id { mode | auto }`); Auto is never sent while an admin has it off. Unsent words are kept
+  per thread (here, and `PATCH … { draft }`, read back from the thread's detail; cleared on send). On a phone the box's
+  bottom row is the phone part's `phoneComposerBar` and its ONE + menu, which drives these controls (the file input, the
+  box through a real `input` event, `setMode` / `setAuto`). Tests: `test/render.ask-composer.test.ts`.
+- **Conversation** (`ask-conversation.ts`, `test/render.ask-conversation.test.ts`): the answer draws in stream order —
+  steps (a `show_*` / `save_artifact` step stays quiet), thinking, then the parts — with its own small markdown
+  reader (headings, lists, code, tables split outside ref tokens so `[[ticket:14|status]]` is one cell). Edit-and-resend
+  and regenerate go through `replaceFrom`; a question streamed this session gets its id from `done.questionId`
+  (`withQuestionId`; read back from `GET /ask/threads/:id` only after an answer that ended in an error). Save as
+  artifact and Wrong? are the actions part's acts, their args built by `saveFormArg` (`askAcSaveForm`
+  `<answerKey>[|<block>]`) and `askAcWrong` `<answerKey>`. A block or a question's file
+  opens in the inspector as a conversation-held ref, `askcv:<where>:<key>:<kind>:<n>` (`ask-cvref.ts`): primed as
+  hidden so it is never peeked, resolved by `cvItem`, drawn bigger with `chartFigure` / `themesFigure` /
+  `diagramFigure` / `tableView`.
+- **Write cards, Save, Wrong?** (`ask-actions.ts`): a pending card (or a group's pending cards, one frame) with Edit
+  of its `editable` fields only — Confirm sends just the changed ones as `args` (each edited card alone, then the
+  rest of the group in one call) — and Cancel; a Publish whose `canPublish` is false shows Open in Review, never
+  Confirm. A decided card is a line per outcome (done linked to `ref` with a time and Undo; Cancelled / Undone /
+  Expired / Didn't work); Undo's `changed` keeps the line and says "Changed since. Undo it by hand." with a link. An
+  Auto result names its own write (`action_result { tool, kind, preview }`), so its line says what was done with no
+  read back; nothing on the client ever decides a card. An Undo of a ticket write calls `ctx.refreshTickets` (main.ts
+  `loadTickets`, only once the queue was loaded) so an open board drops a declined ticket with its exit. `saveButton` / `wrongButton` are the footer's and a block's
+  buttons (acts `askAcSaveForm`, `askAcWrong`). Tests: `test/render.ask-actions.test.ts` (every scenario from its
+  transcript) and `test/ask.actions-hookup.test.ts` (the real routes into the real screen, the §4 guards).
+- **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on
+  `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written.
+- Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`, `test/render.ask-cmdj.test.ts`.
+- Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`.
+- **Phone** (`ask-phone.ts`, ≤ 640px; `test/render.ask-phone.test.ts`): the header's Open threads + New thread (the
+  app's nav button stays; bug and theme leave the Ask header); the thread list is a modal side drawer (focus in, Tab
+  kept in, Escape / scrim / Close / a pick close it through its exit, focus back — it opts out of the app's phone
+  modal-as-bottom-sheet rule); the composer renders `phoneComposerBar(v)` in place of its toolbar: the + menu drives
+  the composer's OWN controls (Attach clicks its file input, Mention / Run a command type `@` / `/` into its box as a
+  real `input` event, Mode / Changes write `ComposerUi.mode / .auto`, from `ask/state` only) and the meta line reads
+  "Smart · Asks first"; the inspector is the shell's frame as a full-height sheet (`data-sheet="1"`) with focus kept in
+  it. Every phone control is ≥ 44px.
+- **Inspector** (`ask-inspector.ts`): one view per type (ticket, PR, doc, sprint, repo, handoff, feed, person,
+  artifact, plus an upload and a chart) under the shell's frame. The header of each is the RefView; the rest is
+  `GET /ask/item/:ref`, read once per ref after paint (a skeleton until then; a 404 and a peek `hidden` both show
+  one sentence and nothing of the item). A repository draws RepoFacts with the Overview's verdicts and marks; its
+  State is the Repo dashboard's own read (`GET /repo/dashboard`, `state`). An artifact's preview is the viewer's
+  sandboxed frame (`artifacts.ts` `artifactFrame`); Publish to org is offered to its author only, and writes
+  `PATCH /artifacts/:slug { visibility: "org" }`. A question's file and an answer's block have no RefView: there is ONE
+  kind of local ref for them, the conversation's `askcv:` (the dev replay's `insp:upload` / `insp:chart` register
+  theirs in `inspectorUi.local` under `askcv:page:replay:…`); the frame names them (`inspectorLocalHead`) and the
+  controller never peeks them. The conversation's "Open in inspector" pushes `askcv:<where>:<key>:<kind>:<n>` (`ask-cvref.ts`, primed hidden so nothing peeks it): the
+  inspector reads it with the conversation's `cvItem` and draws it with its `chartFigure` (larger, under the
+  Chart / Table switch), `themesFigure`, `diagramFigure` and `tableView`; a question's file is the upload view. Every detail is the
+  server's own projection — no client math: a sprint's forecast is `SprintDetail.forecast` (`sprintForecast`, the
+  Roadmap's) in the Roadmap's words (`forecastWords`); a staged doc's excerpt is `detail.staged.body` (the version
+  waiting in Review), the live `body` beside it; a feed entry is the Feed's projection (`ai` on one Trov wrote — its
+  origin and model —, Sift's `importance`, its tags; a feed entry has no kind column, so no "Shipped" is guessed); a
+  pull request's changed files are what Repo setups' capture stored (`pr_files`: `files` when the read was complete,
+  `filePaths`, `filesComplete`) and its added / deleted lines, stored nowhere, stay null and are not drawn.
+- **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on
+  `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written. The
+  inspector's details come from `web/src/ask-inspector-fixtures.ts` (loaded on demand).
+- Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`, `test/render.ask-inspector.test.ts`,
+  `test/ask.inspector-contract.test.ts`; where the parts meet and the contract gaps the build closed:
+  `test/render.ask-integration.test.ts` (client) and `test/ask.gaps.test.ts` (server).

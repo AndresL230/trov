@@ -91,12 +91,14 @@ import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createAiController, readNoteSeen } from "./ai-actions";
+import { createAskController } from "./ask-controller";
 import { createAiFilterController } from "./ai-filter-actions";
 import type { AiFilterSnapshot } from "./ai-filter";
 import type { AiFilterByScreen, AiFilterScreen, ArtifactsAiFilter, FeedAiFilter, TicketsAiFilter } from "@shared/ai-filter-core";
 import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
 import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
+import { createTrovPrefs } from "./ask-settings-actions";
 import { RELEASES } from "./releases";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
@@ -174,6 +176,10 @@ const aiCtl = createAiController({
     else if (state.screen === "roadmap") loadRoadmap();
   },
 });
+// Ask Trov (web/src/ask-controller.ts): every `ask…` act, the screen's reads and streams, ⌘J over any page,
+// the hover cards, the inspector's edge, and the dev replay (`?askReplay=<scenario>`).
+const askCtl = createAskController({ state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
+  refreshTickets: () => { if (state.tickets.status !== "idle") loadTickets(); } });
 // The plain-language filter (web/src/ai-filter-actions.ts, #162): every `aiFilter…` act. Its answer is applied
 // to each screen's OWN filter state here — the same fields the Filter menu, the switch and the search box set.
 const aiFilterCtl = createAiFilterController({
@@ -276,6 +282,9 @@ const deletionCtl = createDeletion({
     location.replace(href);
   },
 });
+
+// Settings › Trov (ask-settings-actions.ts): my Ask instructions and default mode in the org on screen.
+const trovPrefsCtl = createTrovPrefs({ state, rerender: () => rerender(), unauth: (e) => unauth(e), flash: (m, ms) => flash(m, ms) });
 
 // The dropdowns (web/src/dropdown.ts): opening, closing (with its exit), the keyboard, and
 // placing the open menu against its trigger. A pick is dispatched as the dropdown's own act.
@@ -486,6 +495,7 @@ function rerender(): void {
   dropdowns.afterPaint();
   welcomeCtl.afterPaint();
   syncCtl.afterPaint();
+  askCtl.afterPaint();
   if (pendingFlash) {
     for (const el of Array.from(mount.querySelectorAll(pendingFlash))) el.classList.add("cnpy-flash");
     pendingFlash = null;
@@ -551,6 +561,8 @@ window.addEventListener("hashchange", () => {
   if (r.screen === "org" && cur.screen === "org") { orgCtl.act("orgTab", r.orgTab ?? "integrations", "route"); return; }
   // Back / Forward between two steps of the guided setup: its reads are already in.
   if (r.screen === "welcome" && cur.screen === "welcome") { welcomeCtl.moved(); return; }
+  // Back from a thread to the bare `#ask`: a new thread, as the header's "Trov" does.
+  if (r.screen === "ask" && cur.screen === "ask" && !r.askThread) { askCtl.act("askShNew", null, null); return; }
   loadForScreen(r.screen);
 });
 
@@ -663,6 +675,7 @@ function currentRoute(): Route {
     if (state.org.tab === "repos" && state.org.repoPage) r.orgRepo = state.org.repoPage;
   }
   if (state.screen === "tag" && state.tagName) r.tagName = state.tagName;
+  if (state.screen === "ask" && state.ask.page.threadId !== null) r.askThread = state.ask.page.threadId;
   // The step ON SCREEN: a member who opens `#welcome` (the admin's first step) is on their own first.
   if (state.screen === "welcome") r.welcomeStep = effectiveWelcomeStep(state.welcome.step, welcomeStepsFor(currentOrg(state)?.role, state.org));
   return r;
@@ -705,8 +718,12 @@ function applyRoute(r: Route): void {
   // Org settings › Repositories: one repository's Apps page, or the list.
   if (r.screen === "org") state.org.repoPage = r.orgRepo ?? null;
   if (r.tagName) state.tagName = r.tagName;
+  if (r.screen === "ask") askRoute = r.askThread ?? null;
   if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
 }
+
+/** The thread `#ask/<id>` named on arrival (applyRoute), handed to the Ask controller by loadForScreen. */
+let askRoute: number | null = null;
 
 // Kick off the data load for a screen (mirrors the go* dispatch cases).
 function loadForScreen(screen: Screen): void {
@@ -735,6 +752,7 @@ function loadForScreen(screen: Screen): void {
       platform.load(); break;
     case "org": loadOrgAdminExtras(); orgCtl.load(); break;
     case "welcome": welcomeCtl.enter(); break;
+    case "ask": askCtl.enter(askRoute); askRoute = null; break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
     case "newticket": loadSprintsIfNeeded(); rerender(); break;
@@ -1242,6 +1260,7 @@ function loadSettingsReads(): void {
   orgCtl.loadPlan();
   void loadMyOrgs();
   void deletionCtl.loadAccount(); // what Delete account would do, and anything in its way (deletion.ts)
+  void trovPrefsCtl.load(); // Settings › Trov: my Ask instructions and default mode here (ask-settings.ts)
 }
 /** Why a change to a connection's scope was refused, in words (the route answers with a code). */
 const GRANT_SCOPE_REFUSALS: Record<string, string> = {
@@ -2836,6 +2855,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "goRoadmap": state.screen = "roadmap"; state.sprintId = null; loadRoadmapIfNeeded(); loadRoadmapFeed(); return;
 
     // ── Tickets: navigation ──────────────────────────────────────────────────
+    case "goAsk": state.screen = "ask"; askCtl.enter(null); return;
     case "goTickets": state.screen = "tickets"; state.ticketId = null; loadSprintsIfNeeded(); loadTicketsIfNeeded(); return;
     case "newTicket":
       state.screen = "newticket";
@@ -4182,11 +4202,15 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
       // The support form, signed in or out: its controller repaints the dialog alone (support-actions.ts).
       if (act.startsWith("support")) { supportCtl.act(act, arg, value); return; }
+      // Settings › Trov (ask-settings-actions.ts).
+      if (act.startsWith("trovSet")) { trovPrefsCtl.act(act, arg, value); return; }
       // Deleting one's account or an organization (deletion-actions.ts) — before `org…` below.
       if (act.startsWith("acctDel") || act.startsWith("orgDel")) { deletionCtl.act(act, arg, value); return; }
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
       // `orgs…` (the switcher, the picker, the create dialog) before `org…` (Org settings).
       if (act.startsWith("welcome")) { welcomeCtl.act(act, arg); return; }
+      // Ask Trov (ask-controller.ts routes each `ask<Part>…` act to its part), which repaints itself.
+      if (act.startsWith("ask") && askCtl.act(act, arg, value)) return;
       // The org's tag list, a tag's page, a doc's Tags row (tags-actions.ts).
       if (act.startsWith("tag")) { tagsCtl.act(act, arg, value); return; }
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }

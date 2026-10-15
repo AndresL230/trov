@@ -1,0 +1,278 @@
+/**
+ * Ask Trov's shell (FOUNDATION): the route, the Trov row in the sidebar, the three columns and their
+ * breakpoints, the Escape stack's order, and the motion hooks every part inherits (web/src/ask-motion.ts:
+ * entrances of new keyed children only, exits through state, height tweens, all off under reduced motion).
+ */
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, renderMarkdownInline: (t: string) => t }));
+import { render, initialState, type AppState } from "../web/src/render";
+import { sidebarView, navKeyOf, NAV_CLOSED } from "../web/src/sidebar";
+import { parseHash, hashForRoute, pageKey } from "../web/src/hash";
+import { askLayout, clampInspector, layoutBucket } from "../web/src/ask-layout";
+import { ESC_LAYERS, closeTop, topLayer, type EscEntry } from "../web/src/ask-escape";
+import { askEnterNew, askTweenHeights, closingAttr } from "../web/src/ask-motion";
+import { replayFromLocation, replayPlan, replayRoute } from "../web/src/ask-replay";
+import { emptyConvo } from "../web/src/ask-stream";
+import { askThreadsFixture, askRefFixtures, askStateFixture } from "@shared/ai-fixtures";
+import css from "../web/src/trov.css?raw";
+
+const NOW = new Date("2026-10-15T12:00:00Z");
+const ME = { handle: "andres", name: "Andres Lopez", avatar_url: null, color: "moss" as const, identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "owner" as const }], superadmin: false, pending_invites: 0 };
+function askState(over: (s: AppState) => void = () => undefined): AppState {
+  const s = initialState();
+  s.view = "app"; s.screen = "ask"; s.orgSlug = "saplinglearn";
+  (s as { me: unknown }).me = ME;
+  s.ask.vw = 1440;
+  s.ask.state = { status: "ok", data: askStateFixture("pro", NOW) };
+  s.ask.threads = { status: "ok", data: askThreadsFixture(NOW) };
+  s.ask.refViews = askRefFixtures(NOW);
+  over(s);
+  return s;
+}
+
+describe("route — #ask and #ask/<id>", () => {
+  it("parses and writes back both, and nothing else under #ask", () => {
+    expect(parseHash("#ask")).toEqual({ screen: "ask", ticketId: null, sprintId: null });
+    expect(parseHash("#ask/12")).toMatchObject({ screen: "ask", askThread: 12 });
+    expect(parseHash("#ask/abc").screen).toBe("mywork");
+    expect(parseHash("#ask/1/2").screen).toBe("mywork");
+    expect(hashForRoute(parseHash("#ask"))).toBe("#ask");
+    expect(hashForRoute(parseHash("#ask/12"))).toBe("#ask/12");
+  });
+  it("a thread is not a page: opening one (or naming a new one) never replays the screen's entrance", () => {
+    expect(pageKey(parseHash("#ask/12"))).toBe(pageKey(parseHash("#ask")));
+    expect(pageKey(parseHash("#ask/12"))).toBe(pageKey(parseHash("#ask/40")));
+  });
+});
+
+describe("sidebar — the Trov row", () => {
+  const props = { collapsed: false, navOpen: { ...NAV_CLOSED }, qView: "table" as const, roadmapTab: "timeline" as const, docSpace: "technical", docSpaces: [],
+    counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "" };
+  it("sits in Workspace right after My Work, lit on the Ask screen", () => {
+    const html = sidebarView({ ...props, screen: "ask" });
+    const acts = [...html.matchAll(/data-act="(go[A-Za-z]+)"/g)].map((m) => m[1]);
+    expect(acts.indexOf("goAsk")).toBe(acts.indexOf("goMyWork") + 1);
+    expect(navKeyOf("ask")).toBe("ask");
+    expect(html).toMatch(/data-act="goAsk"[^>]*>[\s\S]*?Trov/);
+  });
+});
+
+describe("layout — the three columns' rules", () => {
+  it("thread list 260px under its breakpoints; the header toggle overrides; a phone has neither column", () => {
+    expect(askLayout({ vw: 1440, phone: false, threadsForced: null, inspectorOpen: false })).toEqual({ threads: "column", inspector: "closed" });
+    expect(askLayout({ vw: 1179, phone: false, threadsForced: null, inspectorOpen: false }).threads).toBe("hidden");
+    expect(askLayout({ vw: 1600, phone: false, threadsForced: null, inspectorOpen: true })).toEqual({ threads: "hidden", inspector: "column" });
+    expect(askLayout({ vw: 1640, phone: false, threadsForced: null, inspectorOpen: true }).threads).toBe("column");
+    expect(askLayout({ vw: 1000, phone: false, threadsForced: true, inspectorOpen: false }).threads).toBe("column");
+    expect(askLayout({ vw: 1440, phone: false, threadsForced: false, inspectorOpen: false }).threads).toBe("hidden");
+    expect(askLayout({ vw: 390, phone: true, threadsForced: true, inspectorOpen: true })).toEqual({ threads: "hidden", inspector: "sheet" });
+  });
+  it("the inspector resizes between 380 and 720; a resize repaints only across a breakpoint", () => {
+    expect(clampInspector(100)).toBe(380);
+    expect(clampInspector(900)).toBe(720);
+    expect(clampInspector(512.4)).toBe(512);
+    expect(layoutBucket(1179)).not.toBe(layoutBucket(1180));
+    expect(layoutBucket(1300)).toBe(layoutBucket(1600));
+  });
+});
+
+describe("the screen — renders end to end with the parts' stubs", () => {
+  it("a new thread: the header's Trov is a New thread button, the three columns, the starters and the composer", () => {
+    const html = render(askState());
+    expect(html).toContain(`data-morph="ask"`);
+    expect(html).toMatch(/<h1 class="ask-h1"><button type="button" data-act="askShNew"[^>]*>Trov<\/button><\/h1>/);
+    expect(html).toContain(`class="ask-screen"`);
+    expect(html).toMatch(/<aside class="ask-threads" aria-label="Threads">/);
+    expect(html).toContain(`data-ask-scroll="page"`);
+    expect(html).toContain(`data-ask-input="page"`);
+    expect(html).toContain("Ask anything about your team's work");
+    expect(html).toContain(`class="ask-insp-slot"></div>`);
+    // The thread list: grouped, keyed rows that enter once (ask-motion.ts rule 2).
+    expect(html).toMatch(/<div class="ask-th-list" data-morph-list data-ask-enter="rise"><div class="ask-th" data-morph-key="th:\d+">/);
+    expect(html).toContain(">Pinned<");
+  });
+
+  it("the thread list stays in the DOM when it is shut (it slides by its width), inert", () => {
+    const html = render(askState((s) => { s.ask.vw = 1000; }));
+    expect(html).toContain(`data-threads="hidden"`);
+    expect(html).toMatch(/<aside class="ask-threads" aria-label="Threads" inert aria-hidden="true"><div class="ask-threads-in">/);
+  });
+
+  it("a thread being read is a skeleton inside the conversation's own column, keyed by the conversation", () => {
+    const html = render(askState((s) => { s.ask.page = { ...emptyConvo(), uid: "c9", threadId: 3, status: "loading" }; }));
+    expect(html).toContain(`<div class="ask-col" data-morph-key="cv:c9"><div data-morph-key="sk">`);
+    expect(html).toContain(`aria-busy="true"`);
+    expect(html).not.toContain("Ask anything about your team's work");
+  });
+
+  it("an open item: the inspector's frame carries its width for the slide, and data-closing while it leaves", () => {
+    const open = (closing: boolean) => render(askState((s) => {
+      s.ask.inspector = { ...s.ask.inspector, stack: ["ticket:14"], idx: 0 };
+      if (closing) s.ask.closing = { inspector: true };
+    }));
+    expect(open(false)).toMatch(/<aside class="ask-insp-frame"[^>]*data-dragging="0" style="width:480px;--ask-insp-w:480px">/);
+    expect(open(true)).toMatch(/<aside class="ask-insp-frame"[^>]*data-closing="1"/);
+    // Under 1640px the list makes room for it.
+    expect(open(false)).toContain(`data-threads="hidden"`);
+  });
+
+  it("the hover card is a root overlay keyed by its ref (another chip's card pops in again)", () => {
+    const html = render(askState((s) => { s.ask.hover = { ref: "ticket:14", at: { x: 10, y: 10 } }; }));
+    expect(html).toMatch(/data-overlay="ask-hc"[^>]*>\s*<div class="ask-hc"[^>]*data-morph-key="hc:ticket:14"/);
+    expect(render(askState((s) => { s.ask.hover = { ref: "ticket:14", at: { x: 10, y: 10 } }; s.ask.closing = { hover: true }; })))
+      .toMatch(/data-overlay="ask-hc" class="ask-hc-layer" data-closing="1"/);
+  });
+
+  it("the ⌘J panel is a root overlay over another screen, and the Tickets page gains Ask about this", () => {
+    const html = render(askState((s) => { s.screen = "ticketdetail"; s.ticketId = 14; s.ask.cmdj = { open: true, contextRef: "ticket:14" }; }));
+    expect(html).toContain(`data-overlay="ask-panel"`);
+    expect(html).toContain(`data-act="askCjOpen"`);
+    expect(html).toContain(`data-ask-input="panel"`);
+  });
+});
+
+describe("Escape — one layer at a time, in the design's order", () => {
+  it("picker → menu → hover card → ⌘J → inspector", () => {
+    expect([...ESC_LAYERS]).toEqual(["picker", "menu", "hovercard", "cmdj", "inspector"]);
+    const open = new Set(["inspector", "menu", "hovercard"]);
+    const closed: string[] = [];
+    const entries: EscEntry<null>[] = ESC_LAYERS.map((layer) => ({ layer, isOpen: () => open.has(layer), close: () => { open.delete(layer); closed.push(layer); } }));
+    expect(topLayer(entries, null)).toBe("menu");
+    while (closeTop(entries, null)) { /* one per Escape */ }
+    expect(closed).toEqual(["menu", "hovercard", "inspector"]);
+  });
+});
+
+describe("the dev replay — the recipe's flags", () => {
+  it("reads ?askReplay and ?askSpeed, and every design scenario has a plan", () => {
+    expect(replayFromLocation("?askReplay=answer&askSpeed=4")).toEqual({ scenario: "answer", speed: 4 });
+    expect(replayFromLocation("?askReplay=composer:autoOff")).toEqual({ scenario: "composer:autoOff", speed: 1 });
+    expect(replayFromLocation("?askReplay=%3Cx%3E")).toBeNull();
+    expect(replayFromLocation("")).toBeNull();
+    expect(replayPlan("answer").play).toEqual(["answer"]);
+    expect(replayPlan("cmdj").where).toBe("panel");
+    expect(replayPlan("live").play).toEqual([]);
+    expect(replayRoute("What's blocking the hosting work?")).toBe("answer");
+  });
+});
+
+// ── motion ──────────────────────────────────────────────────────────────────
+
+/** Just enough DOM for the motion hooks: elements with keys, children, attributes, a height and animate(). */
+class El {
+  attrs: Record<string, string>;
+  children: El[] = [];
+  anims: unknown[] = [];
+  offsetHeight = 0;
+  constructor(attrs: Record<string, string> = {}, kids: El[] = []) { this.attrs = attrs; this.children = kids; }
+  getAttribute(n: string): string | null { return n in this.attrs ? this.attrs[n] : null; }
+  animate(frames: unknown, opts: unknown): void { this.anims.push([frames, opts]); }
+  querySelectorAll(sel: string): El[] {
+    const attr = sel.slice(1, -1);
+    const out: El[] = [];
+    const walk = (e: El) => { for (const c of e.children) { if (c.getAttribute(attr) !== null) out.push(c); walk(c); } };
+    walk(this);
+    return out;
+  }
+}
+
+describe("motion — the hooks every part inherits (web/src/ask-motion.ts)", () => {
+  it("a keyed list's first paint animates nothing; later only the NEW keys enter, once", () => {
+    const row = (k: string) => new El({ "data-morph-key": k });
+    const a = row("th:1"), b = row("th:2");
+    const list = new El({ "data-ask-enter": "rise", "data-morph-list": "" }, [a, b]);
+    const root = new El({}, [list]);
+    expect(askEnterNew(root as unknown as ParentNode, false)).toBe(0);
+    const c = row("th:3");
+    list.children = [c, a, b];
+    expect(askEnterNew(root as unknown as ParentNode, false)).toBe(1);
+    expect(c.anims.length).toBe(1);
+    expect(a.anims.length + b.anims.length).toBe(0);
+    // A repaint with the same keys replays nothing.
+    expect(askEnterNew(root as unknown as ParentNode, false)).toBe(0);
+    // Reduced motion: nothing moves, but the keys are still learned.
+    list.children = [row("th:4"), c, a, b];
+    expect(askEnterNew(root as unknown as ParentNode, true)).toBe(0);
+    expect(askEnterNew(root as unknown as ParentNode, false)).toBe(0);
+  });
+
+  it("a swapped card tweens its height from the last paint's; not under reduced motion", () => {
+    const card = new El({ "data-ask-tween": "" });
+    const root = new El({}, [card]);
+    card.offsetHeight = 120;
+    expect(askTweenHeights(root as unknown as ParentNode, false)).toBe(0);
+    card.offsetHeight = 34;
+    expect(askTweenHeights(root as unknown as ParentNode, false)).toBe(1);
+    card.offsetHeight = 120;
+    expect(askTweenHeights(root as unknown as ParentNode, true)).toBe(0);
+  });
+
+  it("an exit is an attribute the renderer emits from state", () => {
+    expect(closingAttr({ inspector: true }, "inspector")).toBe(` data-closing="1"`);
+    expect(closingAttr({}, "inspector")).toBe("");
+  });
+
+  // Every Ask rule that animates or transitions is switched off by the one reduced-motion block: its base class
+  // is listed there with `!important`, which beats every variant (`[data-closing]`, `[data-sheet]`).
+  const ask = css.slice(css.indexOf("/* ══ Ask Trov"), css.indexOf("/* ── the site on a phone")).replace(/\/\*[\s\S]*?\*\//g, "");
+  const reduce = ask.slice(ask.indexOf("@media (prefers-reduced-motion: reduce)"));
+  const reduceSel = new Set(reduce.slice(0, reduce.indexOf("\n}\n")).split(/[{},]/).map((x) => x.trim()));
+  const baseClass = (sel: string): string => (sel.trim().split(/\s+/).pop()!.match(/^\.[a-z][\w-]*(\.[a-z][\w-]*)?(::[a-z-]+)?/)?.[0] ?? "");
+  it.each(["animation", "transition"] as const)("every Ask %s is off under prefers-reduced-motion", (prop) => {
+    const body = ask.replace(/@keyframes[^{]+\{(?:[^{}]*\{[^}]*\})*[^}]*\}/g, "");
+    // A colour or border easing on hover is not motion (the app keeps those); anything that MOVES or resizes is.
+    const moves = (b: string) => prop === "animation" || /transition:[^;]*\b(width|height|grid-template-rows|transform|margin|opacity|top|left|right)\b/.test(b);
+    const rules = [...body.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(([, , b]) => new RegExp(`(^|;|\\s)${prop}:(?!\\s*none)`).test(b) && moves(b));
+    expect(rules.length).toBeGreaterThan(prop === "animation" ? 10 : 2);
+    for (const [, sels] of rules) {
+      for (const sel of sels.split(",")) {
+        if (/prefers-reduced-motion/.test(sel)) continue;
+        const cls = baseClass(sel);
+        if (!cls.startsWith(".ask-")) continue;
+        expect(reduceSel.has(cls) || [...reduceSel].some((r) => r.endsWith(cls)), `${sel.trim()}: ${prop} not off under reduced motion`).toBe(true);
+      }
+    }
+  });
+});
+
+// ── a repository (#186): the Overview's facts, its verdict and its marks ─────
+import { repoScenario, SCENARIO_KEYS, SCENARIO_VARIANTS } from "../web/src/repo-sample";
+import { envVerdict, VERDICT } from "../web/src/repo-verdict";
+import { stateMark } from "../web/src/marks";
+import { hoverCard, repoFactsOf, repoMark, repoVerdicts } from "../web/src/ask-refs";
+import { askRepoFacts, type RefView } from "@shared/ai-ask-core";
+
+describe("a repo ref — RepoFacts, the Overview's verdict, stateMark (#186)", () => {
+  const view = (facts: unknown): RefView => ({ ref: "repo:AndresL230/trov", type: "repo", title: "AndresL230/trov", status: null, href: "#repo", extra: { facts } });
+  const look = { views: {}, persons: [] };
+
+  it.each(SCENARIO_KEYS.flatMap((k) => SCENARIO_VARIANTS[k].map((v) => [k, v] as const)))("scenario %s/%s: every environment's mark is the Overview's", (k, variant) => {
+    const facts = askRepoFacts(repoScenario(k, variant, { now: NOW.getTime() }));
+    const v = view(facts);
+    expect(repoFactsOf(v)).toEqual(facts);
+    const rows = repoVerdicts(facts);
+    expect(rows.map((r) => r.verdict)).toEqual([...facts.envs].sort((a, b) => a.position - b.position).map((e) => envVerdict(facts, e.key)));
+    for (const { verdict, env } of rows) {
+      // Healthy only when the branch head's checks PASS; otherwise never Healthy.
+      if (verdict.key === "healthy") expect(facts.ci.find((c) => c.env === env.key)?.state).toBe("pass");
+    }
+    const card = hoverCard(v, look, { x: 0, y: 0 });
+    for (const { env, verdict } of rows.slice(0, 3)) {
+      expect(card).toContain(esc(env.name));
+      expect(card).toContain(stateMark(verdict.word, verdict.tone, verdict.shape, 12, verdict.tip));
+    }
+    // No provider id stands in for a host, and no part history beyond the newest deploy rides along.
+    expect(facts.parts.every((p) => p.history.length <= 1)).toBe(true);
+  });
+
+  it("no facts is Unknown — never Healthy, never zero", () => {
+    expect(repoMark(null)).toBe(stateMark(VERDICT.unknown.word, VERDICT.unknown.tone, VERDICT.unknown.shape, 12.5, VERDICT.unknown.tip));
+    const card = hoverCard(view(null), look, { x: 0, y: 0 });
+    expect(card).toContain("Unknown");
+    expect(card).toContain("Trov has no reading of this repository yet.");
+    expect(card).not.toContain("Healthy");
+  });
+});
+
+function esc(s: string): string { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }

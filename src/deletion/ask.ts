@@ -25,7 +25,7 @@
 // "The artifact's address" is `artifacts/<slug>` (the app's `#artifacts/<slug>`, the API's `/api/artifacts/<slug>`),
 // `raw/a/<slug>` (its bytes), or an Ask ref token `[[artifact:<slug>`, followed by anything that cannot continue a
 // slug — matched with GLOB, so `<slug>-2` never keeps `<slug>`.
-import { type TenantContext, type Stmt, all, first, stmt, chunked, ph } from "../data/sql";
+import { type TenantContext, type Stmt, all, batch, first, stmt, chunked, ph } from "../data/sql";
 import type { PlatformContext } from "../data/context";
 import { deleteThread } from "../data/ask";
 import { artifactShas, noCandidates, sweepR2, type R2Sweep } from "./r2";
@@ -82,11 +82,12 @@ export async function planThreadAttachments(ctx: TenantContext, handle: string, 
 
 /** The statements that hard-delete these pages (still private, still the person's) with everything that hangs off
  *  them. Part of the thread's own batch. */
-export function attachmentDeletes(ctx: TenantContext, handle: string, ids: readonly number[]): Stmt[] {
+export function attachmentDeletes(ctx: TenantContext, handle: string, ids: readonly number[], guard: { sql: string; binds: unknown[] } | null = null): Stmt[] {
   return chunked(ids).flatMap((chunk) => {
-    // Re-checked inside the batch: a page published since the plan was read stays whole.
-    const mine = `SELECT id FROM artifact_pages WHERE org_id = ? AND visibility = 'private' AND author_id = ? COLLATE NOCASE AND id IN (${ph(chunk.length)})`;
-    const binds = [ctx.orgId, handle, ...chunk];
+    // Re-checked inside the batch: a page published since the plan was read stays whole (and `guard`, a caller's own
+    // condition on `artifact_pages`, likewise).
+    const mine = `SELECT id FROM artifact_pages WHERE org_id = ? AND visibility = 'private' AND author_id = ? COLLATE NOCASE AND id IN (${ph(chunk.length)})${guard ? ` ${guard.sql}` : ""}`;
+    const binds = [ctx.orgId, handle, ...chunk, ...(guard?.binds ?? [])];
     return [
       stmt(ctx, `DELETE FROM artifact_upload_tokens WHERE org_id = ? AND page_id IN (${mine})`, ctx.orgId, ...binds),
       stmt(ctx, `DELETE FROM artifact_links WHERE org_id = ? AND page_id IN (${mine})`, ctx.orgId, ...binds),
@@ -108,4 +109,39 @@ export async function deleteAskThread(ctx: TenantContext, p: PlatformContext, bu
   if (!(await deleteThread(ctx, handle, threadId, attachmentDeletes(ctx, handle, plan.going)))) return null;
   const r2 = await sweepR2(p, bucket, { ...noCandidates(), artifacts: artifactShas(plan.r2Keys) });
   return { attachments: { deleted: plan.going.length, kept: plan.kept }, r2 };
+}
+
+export type UnsentRefusal = "not_found" | "sent" | "published" | "referenced";
+export type DeletedAttachment = { ok: true; r2: R2Sweep } | { ok: false; why: UnsentRefusal };
+
+/**
+ * Delete ONE of `handle`'s attachments that was never sent (`DELETE /ask/attachments/:id`, the composer removing an
+ * uploaded chip) — the owner's ruling for a thread's attachments, applied to one: the same statements as a thread's
+ * (`attachmentDeletes`) and its `chat_artifacts` link, in ONE batch, then the R2 bytes when nothing else holds them.
+ * Refused, with nothing deleted: another person's / an unknown id (`not_found`), one already sent with a question
+ * (`sent`), one moved out of private (`published`), one a ticket or a doc refers to (`referenced`).
+ */
+export async function deleteUnsentAttachment(ctx: TenantContext, p: PlatformContext, bucket: R2Bucket | undefined, handle: string, attachmentId: number): Promise<DeletedAttachment> {
+  const row = await first<{ link: number; message_id: number | null; page: number; slug: string; visibility: string; author_id: string; elsewhere: number }>(ctx,
+    `SELECT ca.id AS link, ca.message_id, pg.id AS page, pg.slug, pg.visibility, pg.author_id,
+            EXISTS (SELECT 1 FROM chat_artifacts o WHERE o.org_id = ca.org_id AND o.artifact_id = ca.artifact_id AND o.id <> ca.id) AS elsewhere
+       FROM chat_artifacts ca
+       JOIN chat_threads t ON t.id = ca.thread_id AND t.org_id = ca.org_id AND t.handle = ? COLLATE NOCASE
+       JOIN artifact_pages pg ON pg.id = ca.artifact_id AND pg.org_id = ca.org_id
+      WHERE ca.org_id = ? AND ca.id = ? AND ca.role = 'attachment'`, handle, ctx.orgId, attachmentId);
+  if (!row || row.author_id.toLowerCase() !== handle.toLowerCase()) return { ok: false, why: "not_found" };
+  if (row.message_id !== null) return { ok: false, why: "sent" };
+  if (row.visibility !== "private") return { ok: false, why: "published" };
+  const ref = await first<{ ticket: number; doc: number }>(ctx, REFERENCE_SQL, ctx.orgId, ...addressGlobs(row.slug), row.page);
+  if (ref?.ticket || ref?.doc || row.elsewhere) return { ok: false, why: "referenced" };
+  const keys = await all<{ r2_key: string | null }>(ctx, `SELECT r2_key FROM artifact_versions WHERE org_id = ? AND page_id = ?`, ctx.orgId, row.page);
+  await batch(ctx, [
+    // Re-checked inside the batch: an attachment sent meanwhile keeps everything (its page, then its link).
+    ...attachmentDeletes(ctx, handle, [row.page], {
+      sql: `AND NOT EXISTS (SELECT 1 FROM chat_artifacts s WHERE s.org_id = artifact_pages.org_id AND s.artifact_id = artifact_pages.id AND s.message_id IS NOT NULL)`, binds: [],
+    }),
+    stmt(ctx, `DELETE FROM chat_artifacts WHERE id = ? AND org_id = ? AND message_id IS NULL`, row.link, ctx.orgId),
+  ]);
+  const r2 = await sweepR2(p, bucket, { ...noCandidates(), artifacts: artifactShas(keys.map((k) => k.r2_key).filter((k): k is string => !!k)) });
+  return { ok: true, r2 };
 }

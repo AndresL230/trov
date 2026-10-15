@@ -10,13 +10,13 @@ import { platform, type TenantContext } from "../../data/context";
 import { all, first } from "../../data/sql";
 import { meterBy, METRIC_AI_CHAT, METRIC_AI_TOKENS_CACHED, METRIC_AI_TOKENS_IN, METRIC_AI_TOKENS_OUT } from "../../data/meter";
 import { planAndAiSettings } from "../../plans/gate";
-import { planRefusal, resolveEntitlements } from "@shared/plans";
+import { PLANS, planRefusal, resolveEntitlements } from "@shared/plans";
 import { nextMonthStart } from "@shared/ai-core";
 import {
   ASK_ATTACH_BYTES_MAX, ASK_ATTACH_FILES_MAX, ASK_ATTACH_KINDS, ASK_DEFAULT_MODE, ASK_FLAG_REASONS, ASK_LOW_SHARE, ASK_MODES, ASK_ROUTES,
-  ASK_STARTERS_FALLBACK, askMode, askModesFor, AskConfirmBodySchema, AskPeekBodySchema, AskRequestSchema, AskSaveBodySchema, AskSettingsPutSchema,
+  ASK_STARTERS_FALLBACK, askMode, askModesFor, AskCancelBodySchema, AskConfirmBodySchema, AskPeekBodySchema, AskRequestSchema, AskSaveBodySchema, AskSettingsPutSchema,
   AskThreadPatchSchema, AskWrongBodySchema, parseAskRef,
-  type AskAction, type AskActionAnswer, type AskAttachment, type AskBlock, type AskCommand, type AskEventMap, type AskMessage, type AskMode,
+  type AskAction, type AskActionAnswer, type AskAttachment, type AskBlock, type AskCommand, type AskEventMap, type AskMessage, type AskMessagePart, type AskMode,
   type AskSaveForm, type AskSearchHit, type AskSettings, type AskState, type AskThreadDetail, type AskThreadGroup, type AskThreadSummary,
   type PeekResult, type RefView,
 } from "@shared/ai-ask";
@@ -27,7 +27,10 @@ import {
   type ActionWithTurn, type ChatActionRow, type ChatMessageRow, type ChatThreadRow,
 } from "../../data/ask";
 import { orgIdentityOf, appBase } from "../../tools/org-links";
-import { buildMatch, get_ticket, get_doc, get_sprint } from "../../tools/reads";
+import { buildMatch, get_ticket, get_doc, get_sprint, withImportance } from "../../tools/reads";
+import { withAiMeta, type FeedDbRow } from "../../tools/feed-ai";
+import { prFilesFor } from "../../repo/pr-files-store";
+import { tagsOfItems } from "../../tools/tags";
 import { quickSearch } from "../../tools/quick-search";
 import { createPage, deletePage, getPage } from "../../tools/artifacts";
 import { getHandoff } from "../../tools/handoffs";
@@ -43,7 +46,7 @@ import { linkAnswer, normalRef, resolveViews } from "./refs";
 import { AttachError, attachmentBlocks, attachmentsOf, checkFiles, storeAttachments, type UploadFile } from "./attachments";
 import { partsHtml, partsMarkdown, type SavedPart } from "./render";
 import { shortDay } from "./charts";
-import { deleteAskThread } from "../../deletion/ask";
+import { deleteAskThread, deleteUnsentAttachment } from "../../deletion/ask";
 
 /** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock. */
 export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () => number } = {};
@@ -127,6 +130,8 @@ askApp.get(ASK_ROUTES.state, async (c) => {
       autoAllowed: st.chatAuto,
       attach: { maxFiles: ASK_ATTACH_FILES_MAX, maxBytes: ASK_ATTACH_BYTES_MAX, kinds: [...ASK_ATTACH_KINDS] },
       starters: await starters(c.var.ctx, me(c)),
+      // The upsell's number: Pro's questions per seat, from the one plan table (the client keeps no copy of it).
+      proPerSeat: PLANS.team.entitlements.ai_chat,
     };
     return c.json(body);
   } catch (e) {
@@ -169,17 +174,44 @@ askApp.get("/ask/item/:ref", async (c) => {
     case "pr": {
       const s = await first<{ what: string | null; why: string | null; impact: string | null }>(ctx, `SELECT what, why, impact FROM pr_summaries WHERE org_id = ? AND pr_number = ?`, ctx.orgId, Number(p.key));
       const linked = await all<{ number: number }>(ctx, `SELECT DISTINCT t.number FROM ticket_links l JOIN tickets t ON t.id = l.ticket_id AND t.org_id = l.org_id WHERE l.org_id = ? AND l.url LIKE ?`, ctx.orgId, `%/pull/${p.key}`);
-      detail = { what: s?.what ?? null, why: s?.why ?? null, impact: s?.impact ?? null, linkedTo: linked.map((l) => `ticket:${l.number}`), files: null, additions: null, deletions: null };
+      // Changed files: what Repo setups' capture stored (`pr_files`, 0073 — paths only, read by the gate's PR-files arm),
+      // a count only when that read was complete. Added / deleted LINES are stored nowhere, so they stay null (hidden):
+      // a read never calls GitHub (CLAUDE.md invariant 7).
+      const at = await first<{ repo: string }>(ctx, `SELECT repo FROM repo_events WHERE org_id = ? AND kind = 'pr' AND number = ? ORDER BY occurred_at DESC LIMIT 1`, ctx.orgId, Number(p.key));
+      const pf = at ? (await prFilesFor(ctx, at.repo, [Number(p.key)])).get(Number(p.key)) ?? null : null;
+      detail = {
+        what: s?.what ?? null, why: s?.why ?? null, impact: s?.impact ?? null, linkedTo: linked.map((l) => `ticket:${l.number}`),
+        files: pf && pf.complete ? pf.paths.length : null, filePaths: pf ? pf.paths.slice(0, 30) : [], filesComplete: pf ? pf.complete : null,
+        additions: null, deletions: null,
+      };
       break;
     }
     case "doc": {
       const d = await get_doc(ctx, p.key);
-      detail = d ? { body: d.doc.body, versions: d.versions.map((v) => ({ version: v.version, status: v.status, created_by: v.created_by, created_at: v.created_at })) } : {};
+      // A doc with a change waiting in Review: its excerpt is the STAGED version's body (what the person asked about),
+      // the live body beside it; `staged` is null when nothing waits.
+      const live = d ? d.versions.filter((v) => v.status === "promoted").reduce((m, v) => Math.max(m, v.version), 0) : 0;
+      const waiting = d ? [...d.versions].reverse().find((v) => v.status === "staged" && v.version > live) ?? null : null;
+      detail = d ? {
+        body: d.doc.body, staged: waiting ? { version: waiting.version, body: waiting.body, created_by: waiting.created_by, created_at: waiting.created_at } : null,
+        versions: d.versions.map((v) => ({ version: v.version, status: v.status, created_by: v.created_by, created_at: v.created_at })),
+      } : {};
       break;
     }
     case "sprint": detail = { sprint: await get_sprint(ctx, Number(p.key)) }; break;
     case "handoff": detail = { handoff: await getHandoff(ctx, Number(p.key)) }; break;
-    case "feed": detail = { entry: await first(ctx, `SELECT id, author, summary, brief, body, artifacts, created_at FROM feed WHERE org_id = ? AND id = ?`, ctx.orgId, Number(p.key)) }; break;
+    case "feed": {
+      // The entry as the Feed reads it (`get_feed`'s projection): who wrote it — Trov's own carries `ai` (origin,
+      // model, subject, sources) — Sift's `importance` when rated, and its tags. A feed entry has no kind column: the
+      // inspector shows these, never a guessed "Shipped".
+      const row = await first<FeedDbRow>(ctx, `SELECT * FROM feed WHERE org_id = ? AND id = ?`, ctx.orgId, Number(p.key));
+      if (row) {
+        const [withAi] = await withAiMeta(ctx, [row]);
+        const { origin: _o, model: _m, subject: _s, ...plain } = withImportance(withAi) as FeedDbRow;
+        detail = { entry: { ...plain, tags: (await tagsOfItems(ctx, "feed", [String(row.id)])).get(String(row.id)) ?? [] } };
+      } else detail = { entry: null };
+      break;
+    }
     case "person": {
       const logins = await all<{ github_login: string }>(ctx, `SELECT github_login FROM org_login_map WHERE org_id = ? AND person = ? COLLATE NOCASE`, ctx.orgId, p.key);
       const prs = logins.length ? await all<{ number: number }>(ctx,
@@ -292,7 +324,30 @@ interface Conversation {
   signal: AbortSignal;
 }
 
-async function converse(c: C, v: Conversation): Promise<void> {
+/** What the answer SHOWED, in the order it streamed — text runs (merged deltas), blocks (their index among the
+ *  answer's blocks), write cards (by id, once) — stored with the answer so a reload draws the live order. */
+function recordParts(emit: Emit): { emit: Emit; parts: AskMessagePart[] } {
+  const parts: AskMessagePart[] = [];
+  let blocks = 0;
+  const cards = new Set<number>();
+  const rec: Emit = async (event, data) => {
+    if (event === "text") {
+      const delta = (data as AskEventMap["text"]).delta;
+      const last = parts[parts.length - 1];
+      if (last?.kind === "text") last.md += delta; else parts.push({ kind: "text", md: delta });
+    } else if (event === "block") parts.push({ kind: "block", index: blocks++ });
+    else if (event === "action" || event === "action_result") {
+      const id = (data as AskEventMap["action"]).id;
+      if (!cards.has(id)) { cards.add(id); parts.push({ kind: "action", id }); }
+    }
+    return emit(event, data);
+  };
+  return { emit: rec, parts };
+}
+
+async function converse(c: C, outer: Conversation): Promise<void> {
+  const rec = recordParts(outer.emit);
+  const v: Conversation = { ...outer, emit: rec.emit };
   const { ctx } = c.var;
   const handle = me(c);
   const env = c.env;
@@ -338,12 +393,14 @@ async function converse(c: C, v: Conversation): Promise<void> {
     const content: StoredContent = { text: v.text, command: v.req.command ?? null, context, refs: context, attached: attachments.map((a) => ({ id: a.id, title: a.title })) };
     const id = await insertMessage(ctx, thread.id, { role: "user", mode, content, attachments });
     await markAttachmentsSent(ctx, pending.map((p) => p.id), id);
+    // The words were sent: the thread keeps no draft of them (a reload or another device opens an empty box).
+    if (thread.draft) await patchThread(ctx, handle, thread.id, { draft: "" });
     question = (await getMessage(ctx, handle, id))!;
   }
   const qc = contentOf(question);
   const seen = seenRefs([...earlier, question]);
 
-  if (search) return answerSearch(c, v, thread, turn, question, qc.text ?? "", seen);
+  if (search) return answerSearch(c, v, thread, turn, question, qc.text ?? "", seen, rec.parts);
 
   // The question counts BEFORE the model is called (an attempt, like every AI allowance) — and still counts if stopped.
   const p = platform(env, handle);
@@ -382,7 +439,7 @@ async function converse(c: C, v: Conversation): Promise<void> {
   const failed = out.ended === "failed" || out.ended === "refused";
   const cites = failed ? [] : await linkAnswer(ctx, handle, out.text, seen, nowDate());
   const stopped = out.ended === "stopped" || out.ended === "timeout";
-  const messageId = await storeAnswer(ctx, thread.id, turn, mode, out, seen, cites, stopped || failed, def.countsAs);
+  const messageId = await storeAnswer(ctx, thread.id, turn, mode, out, seen, cites, stopped || failed, def.countsAs, rec.parts, lastAnswerWithContent(earlier));
   if (failed) return v.emit("error", { code: "failed", message: out.ended === "refused" ? "Trov can't answer that." : "Something went wrong. Nothing was changed. Try again." });
 
   const title = thread.title || out.title || fallbackTitle(qc.text ?? "");
@@ -392,16 +449,39 @@ async function converse(c: C, v: Conversation): Promise<void> {
     await v.emit("thread", { id: thread.id, title, mode, auto, origin: thread.origin, contextRef: thread.context_ref });
   }
   if (out.autosave && !stopped) {
-    await autoSave(c, thread, turn, messageId, out.autosave, title, v.emit);
+    await autoSave(c, thread, turn, messageId, saveTarget(out, messageId, lastAnswerWithContent(earlier)), out.autosave, title, v.emit);
   }
   if (out.ended === "timeout") return v.emit("error", { code: "timeout", message: "Ask Trov ran out of time for this answer. What it said so far is kept." });
   if (out.followups.length && !stopped) await v.emit("followups", { items: out.followups });
-  await v.emit("done", { messageId, cites, tokens: out.tokens, ...(stopped ? { stopped: true } : {}) });
+  await v.emit("done", { messageId, questionId: question.id, cites, tokens: out.tokens, ...(stopped ? { stopped: true } : {}) });
 }
 
-async function storeAnswer(ctx: TenantContext, threadId: number, turn: number, mode: AskMode, out: TurnResult, seen: Set<string>, cites: RefView[], stopped: boolean, countsAs: number): Promise<number> {
+/** The most recent earlier answer that has content (text or a block other than a save form), or null. */
+function lastAnswerWithContent(rows: readonly ChatMessageRow[]): number | null {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i];
+    if (r.role !== "assistant") continue;
+    const c = contentOf(r);
+    if ((c.text ?? "").trim() || ((c.blocks ?? []) as AskBlock[]).some((b) => b.kind !== "save_form")) return r.id;
+  }
+  return null;
+}
+/** Answers shorter than this, with no block of their own, are a reply to "save that", not content to save. */
+const SAVE_CONTENT_CHARS = 280;
+/** The answer `save_artifact` saves: the one the model named (`which`), else THIS answer when it has content of its
+ *  own (a block, or more than a line or two), else the most recent earlier answer that has — "save this as a doc"
+ *  asked after an answer saves THAT answer, not the one-line reply. */
+function saveTarget(out: Pick<TurnResult, "text" | "blocks" | "saveWhich">, current: number, previous: number | null): number {
+  if (out.saveWhich === "this") return current;
+  if (out.saveWhich === "previous") return previous ?? current;
+  const own = out.blocks.some((b) => b.kind !== "save_form") || out.text.trim().length >= SAVE_CONTENT_CHARS;
+  return own || previous === null ? current : previous;
+}
+
+async function storeAnswer(ctx: TenantContext, threadId: number, turn: number, mode: AskMode, out: TurnResult, seen: Set<string>, cites: RefView[], stopped: boolean, countsAs: number, parts?: AskMessagePart[], previous: number | null = null): Promise<number> {
   const content: StoredContent = {
     text: out.text, refs: [...seen], blocks: out.blocks, activity: out.activity, followups: stopped ? [] : out.followups, thinking: out.thinking,
+    ...(parts ? { parts } : {}),
   };
   const id = await insertMessage(ctx, threadId, {
     role: "assistant", mode, content, cites, model: out.model, tokensIn: out.tokens.in, tokensOut: out.tokens.out, tokensCached: out.tokens.cached,
@@ -409,7 +489,8 @@ async function storeAnswer(ctx: TenantContext, threadId: number, turn: number, m
   });
   // A save form names the answer it saves.
   if (out.blocks.some((b) => b.kind === "save_form")) {
-    content.blocks = out.blocks.map((b) => (b.kind === "save_form" ? { ...b, form: { ...b.form, messageId: id } } : b));
+    const target = saveTarget(out, id, previous);
+    content.blocks = out.blocks.map((b) => (b.kind === "save_form" ? { ...b, form: { ...b.form, messageId: target } } : b));
     await setMessageContent(ctx, id, content);
   }
   await attachActionsToMessage(ctx, threadId, turn, id);
@@ -417,7 +498,7 @@ async function storeAnswer(ctx: TenantContext, threadId: number, turn: number, m
 }
 
 /** `/search <q>`: item cards from Trov's own search — no model call, nothing counted. */
-async function answerSearch(c: C, v: Conversation, thread: ChatThreadRow, turn: number, question: ChatMessageRow, q: string, seen: Set<string>): Promise<void> {
+async function answerSearch(c: C, v: Conversation, thread: ChatThreadRow, turn: number, question: ChatMessageRow, q: string, seen: Set<string>, parts: AskMessagePart[]): Promise<void> {
   const ctx = c.var.ctx;
   await v.emit("activity", { step: 1, tool: "search", icon: "search", label: `Searched Trov for '${q}'`, state: "run" });
   const res = await quickSearch(ctx, q, me(c), { limit: 4 });
@@ -436,16 +517,15 @@ async function answerSearch(c: C, v: Conversation, thread: ChatThreadRow, turn: 
   for (const i of items) seen.add(i.ref);
   const out: TurnResult = {
     text, title: null, followups: [], blocks: items.length ? [block] : [], activity: [{ step: 1, tool: "search", icon: "search", label: `Searched Trov for '${q}'`, results: items.map((i) => i.ref), resultLine: `${items.length} results` }],
-    thinking: null, model: "", tokens: { in: 0, out: 0, cached: 0 }, ended: "done", called: false, autosave: null,
+    thinking: null, model: "", tokens: { in: 0, out: 0, cached: 0 }, ended: "done", called: false, autosave: null, saveWhich: null,
   };
-  const messageId = await storeAnswer(ctx, thread.id, turn, v.req.mode, out, seen, items, false, 0);
+  const messageId = await storeAnswer(ctx, thread.id, turn, v.req.mode, out, seen, items, false, 0, parts);
   if (!thread.title) {
     const title = fallbackTitle(`Search: ${q}`);
     await setThreadTitle(ctx, thread.id, title);
     await v.emit("thread", { id: thread.id, title, mode: v.req.mode, auto: thread.auto_mode === 1, origin: thread.origin, contextRef: thread.context_ref });
   }
-  void question;
-  await v.emit("done", { messageId, cites: items, tokens: out.tokens });
+  await v.emit("done", { messageId, questionId: question.id, cites: items, tokens: out.tokens });
 }
 
 // ── saving answers as artifacts ──────────────────────────────────────────────
@@ -481,21 +561,21 @@ async function saveFromThread(c: C, thread: ChatThreadRow, s: SaveAsk): Promise<
 }
 
 /** `save_artifact` in Auto: saved as private at once, as a card with Undo (state `auto`). */
-async function autoSave(c: C, thread: ChatThreadRow, turn: number, messageId: number, a: NonNullable<TurnResult["autosave"]>, threadTitle: string, emit: Emit): Promise<void> {
+async function autoSave(c: C, thread: ChatThreadRow, turn: number, messageId: number, target: number, a: NonNullable<TurnResult["autosave"]>, threadTitle: string, emit: Emit): Promise<void> {
   const ctx = c.var.ctx;
   const title = a.title ?? `${threadTitle}, ${shortDay(nowDate().toISOString().slice(0, 10))}`;
   const preview = { title: `Save "${title}" as an artifact`, lines: [{ label: "Visibility", value: "Private" }], item: null };
   const id = await insertAction(ctx, { threadId: thread.id, turn, tool: "save_artifact", kind: "other", groupId: a.groupId, toolUseId: "", args: a, preview, state: "running" });
   try {
-    const saved = await saveFromThread(c, thread, { messageId: a.scope === "thread" ? null : messageId, block: null, title, kind: a.kind, visibility: "private" });
+    const saved = await saveFromThread(c, thread, { messageId: a.scope === "thread" ? null : target, block: null, title, kind: a.kind, visibility: "private" });
     await finishAction(ctx, id, "auto", saved, { slug: saved.slug });
     await attachActionsToMessage(ctx, thread.id, turn, messageId);
-    await emit("action_result", { id, groupId: a.groupId, state: "auto", result: saved, ref: `artifact:${saved.slug}`, undo: true, at: nowDate().toISOString() });
+    await emit("action_result", { id, groupId: a.groupId, tool: "save_artifact", kind: "other", preview, state: "auto", result: saved, ref: `artifact:${saved.slug}`, undo: true, at: nowDate().toISOString() });
     await emit("artifact_saved", saved);
   } catch (e) {
     const body = errorBody(e);
     await finishAction(ctx, id, "failed", body, null);
-    await emit("action_result", { id, groupId: a.groupId, state: "failed", result: body, ref: null, undo: false, at: nowDate().toISOString() });
+    await emit("action_result", { id, groupId: a.groupId, tool: "save_artifact", kind: "other", preview, state: "failed", result: body, ref: null, undo: false, at: nowDate().toISOString() });
   }
 }
 
@@ -559,7 +639,7 @@ function messageOf(m: ChatMessageRow, actions: ChatActionRow[]): AskMessage {
     id: m.id, role: m.role, mode: m.mode, text: content.text ?? "", command: (content.command ?? null) as AskCommand | null, context: content.context ?? [],
     blocks: (content.blocks ?? []) as AskBlock[], activity: (content.activity ?? []) as AskMessage["activity"], followups: content.followups ?? [],
     thinking: content.thinking ?? null, cites: parseJson<RefView[]>(m.cites_json, []), attachments: parseJson<AskAttachment[]>(m.attachments_json, []),
-    actions: actions.filter((a) => a.message_id === m.id).map(actionOf), stopped: m.stopped === 1, model: m.model, units: m.units, createdAt: m.created_at,
+    actions: actions.filter((a) => a.message_id === m.id).map(actionOf), ...(content.parts ? { parts: content.parts } : {}), stopped: m.stopped === 1, model: m.model, units: m.units, createdAt: m.created_at,
   };
 }
 
@@ -681,7 +761,7 @@ async function targets(c: C, a: ActionWithTurn, only: boolean): Promise<ActionWi
 }
 
 const result = (a: ChatActionRow, state: AskEventMap["action_result"]["state"], res: unknown, ref: string | null, undo: boolean): AskEventMap["action_result"] =>
-  ({ id: a.id, groupId: a.group_id, state, result: res, ref, undo, at: nowDate().toISOString() });
+  ({ id: a.id, groupId: a.group_id, tool: a.tool, kind: a.kind as AskAction["kind"], preview: parseJson(a.preview_json, { title: a.tool, lines: [], item: null }), state, result: res, ref, undo, at: nowDate().toISOString() });
 
 askApp.post("/ask/actions/:id/confirm", async (c) => {
   const a = await actionOr404(c);
@@ -737,9 +817,10 @@ askApp.post("/ask/actions/:id/confirm", async (c) => {
 askApp.post("/ask/actions/:id/cancel", async (c) => {
   const a = await actionOr404(c);
   if (a instanceof Response) return a;
-  const body = (await c.req.json().catch(() => null)) as { only?: unknown } | null;
+  const parsed = AskCancelBodySchema.safeParse((await c.req.json().catch(() => null)) ?? {});
+  if (!parsed.success) return c.json({ error: "invalid", issues: parsed.error.issues }, 400);
   const results: AskEventMap["action_result"][] = [];
-  for (const one of await targets(c, a, body?.only === true)) {
+  for (const one of await targets(c, a, parsed.data.only === true)) {
     if (await moveAction(c.var.ctx, one.id, ["proposed", "waiting"], "cancelled")) results.push(result(one, "cancelled", null, null, false));
     else if (one.id === a.id) return c.json({ error: a.state === "expired" ? "expired" : "not_proposed", message: `This card is ${a.state}.` }, 409);
   }
@@ -814,6 +895,19 @@ askApp.post(ASK_ROUTES.attachments, async (c) => {
     const b = errorBody(e);
     return c.json({ error: b.code ?? "failed", message: b.error }, b.code === "plan_limit" ? 402 : b.code === "too_large" ? 413 : 400);
   }
+});
+
+/** Remove an uploaded attachment that was never sent (the composer's chip ✕): a HARD delete through src/deletion/
+ *  (the owner's ruling, CLAUDE.md invariant 11) — refused when it was sent, published, referred to, or not theirs. */
+askApp.delete("/ask/attachments/:id", async (c) => {
+  const id = positiveId(c.req.param("id"));
+  if (id === null) return c.json({ error: "not_found" }, 404);
+  const r = await deleteUnsentAttachment(c.var.ctx, platform(c.env, me(c)), c.env.ARTIFACTS_BUCKET, me(c), id);
+  if (r.ok) return c.json({ ok: true });
+  const message = r.why === "sent" ? "It was sent with a question: it stays with the thread."
+    : r.why === "published" ? "It is in Artifacts for the org now: delete it there."
+    : r.why === "referenced" ? "A ticket or a doc refers to it: it stays." : "Not found.";
+  return c.json({ error: r.why, message }, r.why === "not_found" ? 404 : 409);
 });
 
 // ── "Wrong?" ─────────────────────────────────────────────────────────────────

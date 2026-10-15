@@ -9,6 +9,9 @@
 import { all, fanOut, first, type TenantContext } from "../../data/sql";
 import { askRefTokens, parseAskRef, type AskRefType, type RefStatus, type RefView } from "@shared/ai-ask-core";
 import { TICKET_STATUS_LABEL, type TicketStatus } from "@shared/tickets-core";
+import { askRepoFacts } from "@shared/ai-ask-core";
+import { getRepoDashboard } from "../../tools/repo";
+import { orgRepoConfig } from "../../tools/repo-agent";
 
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
@@ -146,8 +149,6 @@ const ARTIFACT_VIS: Record<string, RefStatus> = {
   private: { mark: "ring", tone: "muted", word: "Private", tip: "Only you can see it." },
   org: { mark: "dot", tone: "blue", word: "Org", tip: "Everyone in the org can see it." },
 };
-const CI_FAILING: RefStatus = { mark: "diamond", tone: "red", word: "CI failing", tip: "Checks are failing on main." };
-const CI_PASSING: RefStatus = { mark: "dot", tone: "green", word: "CI passing", tip: "Checks pass on main." };
 
 // ── resolution ───────────────────────────────────────────────────────────────
 
@@ -300,15 +301,16 @@ export async function resolveViews(ctx: TenantContext, viewer: string, refs: rea
         break;
       }
       case "repo": {
+        // #186: a repository is what the Repo Overview says it is — its ONE projection, RepoFacts (the dashboard's
+        // own read: D1 only, nothing external). Its state is drawn by the client from the facts with the
+        // Overview's verdict and marks; a failed read is `facts: null` (Unknown), never a guess.
+        const { envs } = await orgRepoConfig(ctx);
         for (const repo of keys) {
           const known = await first<{ repo_full_name: string }>(ctx, `SELECT repo_full_name FROM org_repos WHERE org_id = ? AND repo_full_name = ? COLLATE NOCASE`, ctx.orgId, repo);
           if (!known) continue;
-          const run = await first<{ state: string; name: string | null; number: number; occurred_at: string }>(ctx,
-            `SELECT state, name, number, occurred_at FROM repo_events WHERE org_id = ? AND repo = ? AND kind = 'run' AND ref IN ('main', 'master') ORDER BY occurred_at DESC LIMIT 1`,
-            ctx.orgId, known.repo_full_name);
-          const failing = run ? run.state === "failure" || run.state === "timed_out" : null;
-          put({ ref: `repo:${repo}`, type, title: known.repo_full_name, status: failing === null ? null : failing ? CI_FAILING : CI_PASSING, href: "#repo",
-            updated: run?.occurred_at ?? null, extra: { ci: run ? { state: run.state, name: run.name, run: run.number, at: run.occurred_at } : null } });
+          const d = await getRepoDashboard(ctx, known.repo_full_name, now.getTime(), envs).catch(() => null);
+          const facts = d?.facts ? askRepoFacts(d.facts) : null;
+          put({ ref: `repo:${repo}`, type, title: known.repo_full_name, status: null, href: "#repo", updated: d?.generatedAt ?? null, extra: { facts } });
         }
         break;
       }

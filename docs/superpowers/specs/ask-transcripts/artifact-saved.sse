@@ -59,7 +59,7 @@ event: text
 data: {"delta":"save."}
 
 event: done
-data: {"messageId":8,"cites":[],"tokens":{"in":21300,"out":160,"cached":20900}}
+data: {"messageId":8,"questionId":7,"cites":[],"tokens":{"in":21300,"out":160,"cached":20900}}
 
 event: artifact_saved
 data: {"slug":"hosting-status-oct-15","title":"Hosting status, Oct 15","visibility":"private","url":"#artifacts/hosting-status-oct-15"}
