@@ -76,7 +76,7 @@ import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 import { previewBanner, previewState, type PreviewMode } from "./preview";
 import { aiItemRef } from "@shared/ai-core";
-import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, type AiUi } from "./ai-ui";
+import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, AI_NOTE_LEAVING, type AiUi } from "./ai-ui";
 import { aiFilterBox, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
@@ -1202,13 +1202,14 @@ const isTrovEntry = (e: FeedRow): e is FeedRow & { ai: NonNullable<FeedRow["ai"]
 /** Any loaded entry carries `ai`: only then are the Source switch and the note drawn. */
 export const feedHasAi = (s: AppState): boolean => s.feed.data.some((e) => e.ai !== undefined);
 const feedNoteSeen = (s: AppState): boolean => !!s.me && s.ai.noteSeen.some((h) => h.toLowerCase() === s.me!.handle.toLowerCase());
-/** The rows on screen: the time filter, then the Source switch, then whatever "Wrong?" hid. */
-export function feedShown(s: AppState): FeedRow[] {
-  const rows = feedRows(s);
+/** The rows on screen: the time filter, then the Source switch, then whatever "Wrong?" hid — an entry
+ *  still LEAVING (ai-ui.ts › Leaving) stays until its exit is over. */
+export function feedShown(s: AppState, now = Date.now()): FeedRow[] {
+  const rows = feedRows(s, now);
   if (!feedHasAi(s)) return rows;
   const src = s.ai.feedSource;
   return rows.filter((e) => (src === "trov" ? isTrovEntry(e) : src === "agents" ? !isTrovEntry(e) : true)
-    && !(isTrovEntry(e) && aiIsHidden(s.ai, "feed", aiItemRef.feed(e.id))));
+    && !(isTrovEntry(e) && aiIsHidden(s.ai, "feed", aiItemRef.feed(e.id)) && aiLeavingT(s.ai, aiHiddenKey("feed", aiItemRef.feed(e.id)), now) === null));
 }
 function feedSourceSeg(s: AppState): string {
   return segmented({
@@ -1258,11 +1259,17 @@ function feedView(s: AppState): string {
 
   // Entries written by Trov (`ai.origin === "ai"`) get their own byline and footer; the Source switch
   // and "Wrong?" narrow what is shown; the one-time note sits above the first of them on screen.
-  const shown = feedShown(s);
-  const noteAt = feedHasAi(s) && !feedNoteSeen(s) ? shown.findIndex(isTrovEntry) : -1;
+  const now = Date.now();
+  const shown = feedShown(s, now);
+  // "Got it" and "Wrong?" take the note and an entry out with the one exit (ai-ui.ts › Leaving).
+  const noteT = aiLeavingT(s.ai, AI_NOTE_LEAVING, now);
+  const noteAt = feedHasAi(s) && (!feedNoteSeen(s) || noteT !== null) ? shown.findIndex(isTrovEntry) : -1;
   const cards = shown.map((e, i) => {
-    const note = i === noteAt ? feedAiNote() : "";
-    if (isTrovEntry(e)) return note + feedTrovCard(s, e);
+    const note = i === noteAt ? (noteT === null ? feedAiNote() : aiLeave(feedAiNote(), noteT)) : "";
+    if (isTrovEntry(e)) {
+      const t = aiLeavingT(s.ai, aiHiddenKey("feed", aiItemRef.feed(e.id)), now);
+      return note + (t === null ? feedTrovCard(s, e) : aiLeave(feedTrovCard(s, e), t));
+    }
     const artifacts = feedArtifacts(e.artifacts);
     const artifactRow = artifacts.length
       ? `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">
