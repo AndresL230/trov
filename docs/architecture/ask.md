@@ -192,6 +192,19 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **Parts** (stubs with their interface in the file header): `ask-conversation.ts`, `ask-composer.ts`,
   `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
   Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
+- **The ⌘J panel** (`ask-cmdj.ts`): 420px on the right over any page (full screen on a phone), its own conversation
+  (`AskUi.panel`) and the composer in panel form; the page's item (`pageRef`: a ticket, sprint, handoff or artifact)
+  is the context chip, so the first send makes a normal thread with `origin: panel` and that `context_ref`. Another
+  item starts a fresh panel thread; the same item reopens the same one. "Open as thread" moves the conversation, the
+  draft and an open inspector to `#ask/<id>` (a history entry). **Painting**: the pages it opens over are not
+  `data-morph`ed, so while Ask is not the screen the controller's paint repaints Ask's root overlays alone
+  (`cmdjRepaint`: the panel and the hover card, morphed / inserted / removed) and never rebuilds the page behind
+  it per keystroke or streamed word. **Keys**: ⌘J on a Mac, Ctrl+J elsewhere (`isCmdjKey`; never with Shift or Alt
+  — DevTools' chords —, never mid-composition, never while another `aria-modal` dialog is up), toggles it; on the
+  Ask screen it focuses the composer. Escape closes the panel's own inspector first, then the panel; Tab stays in
+  the panel; closing hands focus back to its opener. The Tickets page's one change is the header's "Ask about
+  this ⌘J" (`cmdjHeaderButton`). `?askReplay=cmdj#tickets/14` plays the scenario over the ticket (the replay starts
+  from the controller's after-paint for a panel plan, since the Ask screen never enters there).
 - **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on
   `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written.
-- Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`.
+- Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`, `test/render.ask-cmdj.test.ts`.
