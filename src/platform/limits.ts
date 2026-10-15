@@ -35,6 +35,8 @@ export const LIMITS = {
   support_anon_all: { max: 50, window: "day" },
   /** `GET /auth/handle-check`: is a handle taken. */
   handle_check: { max: 60, window: "hour" },
+  /** `POST /api/o/:slug/ai/filter`: a plain-language filter — one model call each, from the org's `ai_runs`. */
+  ai_filter: { max: 60, window: "hour" },
 } as const satisfies Record<string, Limit>;
 
 export type LimitedAction = keyof typeof LIMITS;

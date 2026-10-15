@@ -36,7 +36,9 @@ follows the pointer, a slot the other cards slide around (FLIP) marks where it w
 HELD for the whole drag, and the click a drag's release fires is swallowed. Mouse and pen only — touch
 scrolls. The queue's search box and Filter menu (Assignee incl. any one person, Category, Priority, Sprint)
 are the Artifacts library's; Assignee (anyone / me / unassigned) and Category filter server-side, a person,
-Priority, Sprint and search narrow the loaded rows (`queueRows`).
+Priority, Sprint and search narrow the loaded rows (`queueRows`). With the org's AI on, a plain-language filter box
+sits above them (`ai.md` › The plain-language filter): its answer sets these same controls — the Open / Closed / All
+switch, Assignee or one person, Category, Priority, Sprint and the search — replacing what was set, with Undo.
 
 **The writer is a PERSON — over a cookie, or over their own bearer token.** Eight of those writers are also
 MCP tools (`src/tools/tickets-agent.ts`, the read side below), scoped so an agent writes only inside its

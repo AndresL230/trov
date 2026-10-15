@@ -36,6 +36,8 @@ export const KIND_PROVIDER = {
   summary_issue: "claude",
   // Sift: "does this item fit this tag?" (src/ai/sift.ts).
   "tag.fit": "jev",
+  // The plain-language filter (#162): a person's request → the screen's own filter fields (src/ai/filter.ts).
+  filter: "claude",
 } as const satisfies Record<string, AiProviderName>;
 
 /** What a call is for. */

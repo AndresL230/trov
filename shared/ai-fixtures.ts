@@ -10,6 +10,7 @@ import {
   type AiBrief, type AiRepoState, type AiThemes, type AiThemeLane, type AiThemeRange, type AiCite, type AiState,
   type AiAllowanceKey, type AiAllowanceUse, type AiSettings,
 } from "./ai-core";
+import type { AiFilterScreen } from "./ai-filter-core";
 
 export { nextMonthStart };
 
@@ -202,4 +203,19 @@ export function aiPreviewFixtures(mode: AiPreviewMode, now: Date = new Date()) {
     themes: { "8w": themesFixture(mode, "8w", now), quarter: themesFixture(mode, "quarter", now) } as Record<AiThemeRange, AiThemes>,
     settings: aiSettingsFixture(mode, now),
   };
+}
+
+// ── The plain-language filter (#162) ────────────────────────────────────────
+/** What the preview answers on `POST /ai/filter`, per screen, in the model's shape (`{ filter, unmatched }`). The
+ *  route checks it exactly as it checks a model's answer (src/ai/filter.ts `resolveFilter`): "me" becomes the
+ *  person asking, and a word in `unmatched` is shown only when the request typed it ("my overdue tickets").
+ *  `empty` answers nothing (the screen's "couldn't turn that into a filter"); `capped` never gets here (the
+ *  route answers the allowance's 402 first). */
+export function aiFilterFixture(screen: AiFilterScreen, mode: AiPreviewMode): { filter: Record<string, string>; unmatched: string[] } | null {
+  if (mode === "empty" || mode === "capped") return null;
+  switch (screen) {
+    case "tickets": return { filter: { status: "open", assignee: "me", priority: "high", category: "bug" }, unmatched: ["overdue"] };
+    case "feed": return { filter: { author: "me", range: "7d" }, unmatched: ["about deploys"] };
+    case "artifacts": return { filter: { status: "published", kind: "html", text: "checkout" }, unmatched: [] };
+  }
 }

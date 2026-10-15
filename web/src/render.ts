@@ -77,6 +77,7 @@ import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, ty
 import { previewBanner, previewState, type PreviewMode } from "./preview";
 import { aiItemRef } from "@shared/ai-core";
 import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, type AiUi } from "./ai-ui";
+import { aiFilterBox, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
 // Technical | Product). Values come from the data, not a fixed union.
@@ -451,6 +452,8 @@ export interface AppState {
   preview: PreviewMode | null;
   /** The AI screens (ai-ui.ts): what "Wrong?" hid, the Feed's Source, the themes' range and lane. */
   ai: AiUi;
+  /** The plain-language filter's box on Tickets, the Feed and Artifacts (ai-filter.ts; #162). */
+  aiFilter: AiFilterUi;
 }
 
 /** Project the app state onto the Sync GitHub control and panel (sync.ts never sees AppState). */
@@ -589,6 +592,7 @@ export function initialState(): AppState {
     org: initialOrgUi(),
     preview: null,
     ai: initialAiUi(),
+    aiFilter: initialAiFilterUi(),
   };
 }
 
@@ -975,7 +979,7 @@ function header(s: AppState): string {
 /** The Feed page: the entries (`inner`) beside the sticky aside — This week + Waiting on
  *  review — in the Roadmap Narrative's two columns (ui.ts `asideColumns`). */
 function wrapFeed(s: AppState, inner: string, history = true): string {
-  return asideColumns(`${inner}
+  return asideColumns(`${aiFilterBox("feed", s.aiFilter)}${inner}
     ${history ? `<div style="text-align:center;padding:18px 0;font-size:11.5px;color:var(--fg-40);font-family:var(--label)">&mdash; start of recorded history &mdash;</div>` : ""}`, feedAside(s));
 }
 
@@ -2718,6 +2722,7 @@ function ticketsScreen(s: AppState): string {
     filterOpen: s.qFilterOpen,
     filterCat: s.qFilterCat,
     fmOpening: s.fmOpening,
+    aiFilter: aiFilterBox("tickets", s.aiFilter),
     // The first read is out: the toolbar is real, the columns / rows are skeletons.
     loading: slicePending(s.tickets),
   });
@@ -2872,6 +2877,7 @@ function repoProps(s: AppState): RepoProps {
 function artProps(s: AppState, screen: ArtScreen): ArtProps {
   return {
     screen, route: s.artRoute, ui: s.art, me: s.me?.handle ?? "", admin: viewerIsAdmin(s), fmOpening: s.fmOpening,
+    aiFilter: screen === "artifacts" ? aiFilterBox("artifacts", s.aiFilter) : "",
     orgName: viewerOrg(s)?.name ?? "", repos: s.orgMe.data?.repos.all ?? [],
     persons: s.persons.data, host: `${typeof location !== "undefined" ? location.host : "trov"}${s.orgSlug ? `/${s.orgSlug}` : ""}`,
     theme: resolved(s),

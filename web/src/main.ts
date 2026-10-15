@@ -85,6 +85,9 @@ import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createAiController, readNoteSeen } from "./ai-actions";
+import { createAiFilterController } from "./ai-filter-actions";
+import type { AiFilterSnapshot } from "./ai-filter";
+import type { AiFilterByScreen, AiFilterScreen, ArtifactsAiFilter, FeedAiFilter, TicketsAiFilter } from "@shared/ai-filter-core";
 import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
 import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
@@ -152,6 +155,62 @@ const tagsCtl = createTagsController({
 // Trov's AI screens (web/src/ai-actions.ts): every `ai…` act — "Wrong?", the Feed's Source switch and
 // note, the themes' range and lane, Accept / Rename / Remove on a suggestion.
 const aiCtl = createAiController({ state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e) });
+// The plain-language filter (web/src/ai-filter-actions.ts, #162): every `aiFilter…` act. Its answer is applied
+// to each screen's OWN filter state here — the same fields the Filter menu, the switch and the search box set.
+const aiFilterCtl = createAiFilterController({
+  state, rerender: () => rerender(), unauth: (e) => unauth(e),
+  role: () => currentOrg(state)?.role ?? null,
+  snapshot: (screen) => aiFilterSnapshot(screen),
+  apply: (screen, filter) => applyAiFilter(screen, filter),
+  restore: (screen, snap) => restoreAiFilter(screen, snap),
+  names: () => ({
+    me: state.me?.handle ?? "",
+    person: (h) => state.persons.data.find((p) => p.handle.toLowerCase() === h.toLowerCase())?.name || h,
+    sprint: (id) => state.sprints.data.find((x) => String(x.id) === id)?.label ?? `Sprint #${id}`,
+  }),
+});
+/** One screen's filter state, as Undo puts it back. */
+function aiFilterSnapshot(screen: AiFilterScreen): AiFilterSnapshot {
+  if (screen === "tickets") return { qSeg: state.qSeg, qAssignee: state.qAssignee, qPerson: state.qPerson, qCategory: state.qCategory, qPrio: state.qPrio, qSprint: state.qSprint, qQ: state.qQ };
+  if (screen === "feed") return { feedAuthor: state.feedAuthor, feedTag: state.feedTag, feedRange: state.feedRange };
+  return { q: state.art.q, f: { ...state.art.f } };
+}
+/** Put a screen's filter state back, and reload what the server filters. */
+function restoreAiFilter(screen: AiFilterScreen, snap: AiFilterSnapshot): void {
+  if (screen === "tickets") { Object.assign(state, snap); loadTickets(); return; }
+  if (screen === "feed") { Object.assign(state, snap); loadFeed(); return; }
+  Object.assign(state.art, snap);
+}
+/** Set a screen's filters to EXACTLY the answer: a field it leaves out is "no filter" (what Clear all sets),
+ *  so the screen shows what the sentence asked for and nothing left over from before. */
+function applyAiFilter<S extends AiFilterScreen>(screen: S, filter: AiFilterByScreen[S]): void {
+  if (screen === "tickets") {
+    const f = filter as TicketsAiFilter;
+    state.qSeg = f.status ?? "all";
+    // One person is `anyone` fetched and narrowed here, as the menu's `@handle` does.
+    state.qPerson = f.person ?? "";
+    state.qAssignee = f.person ? "anyone" : f.assignee ?? "anyone";
+    state.qCategory = f.category ?? "all";
+    state.qPrio = f.priority ?? "all";
+    state.qSprint = f.sprint ?? "all";
+    state.qQ = f.text ?? "";
+    loadTickets();
+    return;
+  }
+  if (screen === "feed") {
+    const f = filter as FeedAiFilter;
+    state.feedAuthor = f.author ?? "all";
+    state.feedTag = f.tag ?? "all";
+    state.feedRange = f.range ?? "all";
+    // The Author menu lists the authors of the unfiltered feed: the one picked is offered even when it is not.
+    if (f.author && !state.feedAuthors.includes(f.author)) state.feedAuthors = [...state.feedAuthors, f.author];
+    loadFeed();
+    return;
+  }
+  const f = filter as ArtifactsAiFilter;
+  state.art.q = f.text ?? "";
+  state.art.f = { area: f.area ?? "all", kind: f.kind ?? "all", author: f.author ?? "all", status: f.status ?? "all", sprint: f.sprint ?? "all" };
+}
 // Organizations as a person meets them (web/src/org-picker-actions.ts): the switcher's menu, the
 // picker, the create dialog — every `orgs…` act. Opening an org is a page load.
 const orgsCtl = createOrgsController({
@@ -951,6 +1010,7 @@ function loadFeed(): void {
     });
 }
 function loadFeedIfNeeded(): void {
+  aiFilterCtl.ensure(); // the plain-language filter's switch, once per org (no model)
   if (state.feed.status === "idle") loadFeed();
   else rerender();
 }
@@ -1653,6 +1713,7 @@ function loadTickets(): void {
     });
 }
 function loadTicketsIfNeeded(): void {
+  aiFilterCtl.ensure(); // the plain-language filter's switch, once per org (no model)
   if (state.tickets.status === "idle" || state.tickets.status === "error") loadTickets();
   else rerender();
 }
@@ -1939,7 +2000,7 @@ function loadAttachTickets(): void {
  *  on screen) — used on navigation and after a write; a plain rerender never refetches. */
 function loadArtifactsIfNeeded(fresh = false): void {
   const r = state.artRoute;
-  if (state.screen === "artifacts") { loadArtifactList(fresh); loadSprintsIfNeeded(); loadAttachTickets(); }
+  if (state.screen === "artifacts") { aiFilterCtl.ensure(); loadArtifactList(fresh); loadSprintsIfNeeded(); loadAttachTickets(); }
   else if (state.screen === "artifactnew") loadSprintsIfNeeded();
   else if (state.screen === "artifact" && r.slug) {
     loadSprintsIfNeeded();
@@ -3933,6 +3994,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }
       if (act.startsWith("org")) { if (act === "orgGo") loadOrgAdminExtras(); orgCtl.act(act, arg, value); return; }
       // Every AI act (ai-actions.ts), which rerenders itself.
+      if (act.startsWith("aiFilter")) { aiFilterCtl.act(act, arg, value); return; }
       if (act.startsWith("ai")) { aiCtl.act(act, arg, value); return; }
       // Every Artifacts act goes to the one reducer in artifacts.ts.
       if (act.startsWith("art")) {

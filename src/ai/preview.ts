@@ -9,7 +9,8 @@
 // (shared/ai-fixtures.ts): `/me/dashboard` → `brief`, `/repo/dashboard` → `state` + `themes`, and `/feed`
 // → the two entries written by Trov, merged by `created_at`, and `/ai/settings` → all four allowances' numbers
 // and the eligibility (the switches stay the org's real ones; what is sent names both providers in every
-// mode). MCP never: the preview is for the screens.
+// mode). And `POST /ai/filter` answers from the screen's filter fixture (src/ai/filter.ts `previewAiFilter`). MCP
+// never: the preview is for the screens.
 //
 // Production omits every AI field: nothing produces one yet.
 import type { Env } from "../env";

@@ -9,7 +9,8 @@ and the decided system, `docs/superpowers/specs/2026-10-15-server-ai-build.md` (
 ever written, and every AI field on the existing reads is omitted in production. What exists is the base: the
 client with both providers, the allowances, the switches, the pass's skeleton, the router's table (`ai_dirty`,
 nothing writes it yet), the suggestion and "Wrong?" tables and routes, the screens' contracts, and a local preview.
-Sift (tagging existing items, `feed-and-search.md` › Tags) is the one AI feature that runs today.
+Sift (tagging existing items, `feed-and-search.md` › Tags) and the plain-language filter (below, #162) are the AI
+features that run today.
 
 ## THE client, and the two providers (`src/ai/client.ts`)
 
@@ -18,7 +19,7 @@ A caller names a KIND, never a model. `KIND_PROVIDER` is the ONE table from a ki
 
 | Provider | Model | Kinds today | What it does |
 |---|---|---|---|
-| `claude` | `claude-haiku-5-5` (Anthropic, `ANTHROPIC_API_KEY`) | `summary_pr`, `summary_issue` | `structured()`: one call, a system prompt and a text in, a zod-checked value out. It writes words. |
+| `claude` | `claude-haiku-5-5` (Anthropic, `ANTHROPIC_API_KEY`) | `summary_pr`, `summary_issue`, `filter` | `structured()`: one call, a system prompt and a text in, a zod-checked value out. It writes words. |
 | `jev` | `jev-latest` (TypeSafe AI's Jev, `TYPESAFE_API_KEY`) | `tag.fit` | `classify()`: a run of one yes/no question over many items; `ask()`: several `noul` / `choice` / `score` questions about ONE item in ONE request. Numbers only, no text. |
 
 - **The Jev provider is `src/tools/classify.ts`**, the ONLY file in `src/` and `shared/` that names TypeSafe's URL,
@@ -36,7 +37,7 @@ A caller names a KIND, never a model. `KIND_PROVIDER` is the ONE table from a ki
 
 ## Where a model call may happen
 
-ONLY in three places, all behind THE client:
+ONLY in these places, all behind THE client (the decided build adds Ask Trov's route as the fifth):
 
 1. **The capture-time summary seams** — `src/tools/summarize.ts`, chosen per org by `orgSummarizers`
    (`src/plans/summaries.ts`), from the webhook and Sync GitHub. Kinds `summary_pr` / `summary_issue` (Claude).
@@ -46,11 +47,14 @@ ONLY in three places, all behind THE client:
    (`waitUntil`). Kind `tag.fit` (Jev). Everything about Sift that is NOT a call — candidates, the switches' read,
    Undo, review counts — is `src/tools/tag-fit.ts`, which imports no client (MCP reaches it through
    `src/tools/tags.ts`). The decided build moves this run into the pass (Phase C).
+4. **The plain-language filter route** — `POST /api/o/:slug/ai/filter` (`src/ai/routes.ts` → `src/ai/filter.ts`), on
+   a person's request only (Enter in the filter box). Kind `filter` (Claude). See "The plain-language filter" below.
 
 Never on a render path (a read that backs a screen calls no model), and never from MCP: nothing reachable from
 `src/mcp.ts` imports `src/ai/` or the Jev provider (`test/secrets.mcp.test.ts` walks the import graph, and pins that
-only those three files import the client; that only `src/ai/eligibility.ts`, `src/ai/pass.ts`,
-`src/plans/summaries.ts` and `src/platform/routes.ts` read `ANTHROPIC_API_KEY`; and that only `src/ai/sift.ts` and
+only those four files import the client, and that only `src/ai/routes.ts` imports the filter; that only
+`src/ai/eligibility.ts`, `src/ai/filter.ts`, `src/ai/pass.ts`, `src/plans/summaries.ts` and `src/platform/routes.ts`
+read `ANTHROPIC_API_KEY`; and that only `src/ai/sift.ts` and
 `src/tags/routes.ts` read `TYPESAFE_API_KEY`).
 
 **The org switch covers every AI feature, Sift included.** A Sift run starts, and each of its requests is made, only
@@ -124,6 +128,42 @@ them into `OrgUsage.ai` and `PlatformUsageResponse.ai` (`src/platform/usage.ts`)
 without one, as summaries say they are off — and none of them is a person's request (not "active people", not
 "last activity").
 
+## The plain-language filter (#162; `src/ai/filter.ts`)
+
+"Show my open high-priority bugs" becomes the screen's OWN filter controls, filled in — **filters, never results**:
+the model cannot invent an item, because it returns no item. Three screens: Tickets, the Feed, Artifacts.
+
+- **One schema per screen, defined once** (`shared/ai-filter.ts`, values in the zod-free `shared/ai-filter-core.ts`),
+  from the controls the screen really has: Tickets — `status` (the Open / Closed / All switch), `assignee`
+  (anyone / me / unassigned) or one `person`, `category`, `priority`, `sprint` ("backlog" or an id), `text` (the
+  search box); the Feed — `author`, `tag`, `range` (24h / 7d / all; it has no search box); Artifacts — `area`,
+  `kind`, `author`, `status`, `sprint`, `text`. No "overdue" or "label": the screens filter by neither.
+- **`POST /api/o/:slug/ai/filter { screen, text }`** (cookie only, any member; `text` ≤ 300). Gates in order, each
+  refusing before anything is spent: the body (400 `invalid`); the org switch (403 `off`); the key (503 `no_key`);
+  the month's `ai_runs` (the house 402 `plan_limit`, and one `ai_run_capped:filter`); the person's `ai_filter` rate
+  (60 an hour, 429 — `abuse-limits.md`). A failed read is 503 `{ error }`.
+- **ONE Haiku call** (kind `filter`, effort low, no temperature), counted `ai_run:filter` BEFORE it (actor
+  `ai-filter`), then `ai_run_failed:filter` when no answer came and the provider's token counts. Its output format IS
+  the screen's schema with each field made forgiving (`catch`, which adds no JSON Schema keyword), so one bad field
+  cannot sink the rest; plus `unmatched`. The input lists the org's members (handle, name), sprints (id, title) or
+  tags — only this org's — and the request between nonce-delimited markers, read as data.
+- **The server checks every field again** (`resolveFilter`, pure): each is parsed on its own against the schema (a
+  value it refuses, or a key it does not have, is dropped); a NAME must be a real row of the org — `me` is the
+  caller, a handle or tag name matches exactly (case aside), a sprint matches its id or its exact title (one), never
+  by likeness — or it is dropped. `unmatched` keeps only phrases quoted from the request (a dropped name too, when
+  the request said it): the screen shows them as "Not a filter here: “overdue”", never model prose.
+- **Unreadable**: nothing left to set, a `refusal`, an answer cut at `max_tokens`, no JSON, or an error → 422
+  `{ error: "unreadable", message }` in plain words (naming the request's words that were no filter here).
+- **The box** (`web/src/ai-filter.ts`, acts in `web/src/ai-filter-actions.ts`; `web-ui.md`): above each screen's
+  toolbar, shown only when `GET /ai/settings` (read once per org on entering the screen) says the switch is on and
+  there is a key — off is no box. Typing keeps a draft without a repaint; Enter or Apply calls the route; the answer
+  REPLACES the screen's filter state (`applyAiFilter` in `main.ts` — a field left out is "no filter"), so the
+  result is what the person would get setting those filters by hand, each visible in the Filter menu. A line says
+  what was set and what was not a filter here, with Undo back to the filters set by hand.
+- **`LOCAL_AI_PREVIEW`** answers from `aiFilterFixture` (`shared/ai-fixtures.ts`), checked by `resolveFilter` like a
+  model's answer, with no key, no call and no count; `empty` is unreadable, `capped` the 402. The switch still holds.
+- Tests: `test/ai.filter.test.ts` (the call, the gates, the checks, the preview), `test/render.ai-filter.test.ts`.
+
 ## Suggestions and "Wrong?" (0055)
 
 - **`ai_suggestions`** — a suggested value for one field of one item, with a REQUIRED reason, its cites, model and
@@ -157,7 +197,8 @@ AI's numbers (`aiSettingsFixture`: all four allowances and the eligibility of a 
 month in `ready` / `proposed`, nothing used in `empty`, every allowance used up in `capped`; the switches stay the
 org's real ones, and what is sent names both providers in every mode) — when it names a mode (`ready` / `empty` /
 `capped` / `proposed`), the request came to a loopback `http://` origin (what `wrangler dev` serves on; no deployed
-Worker is reached there) and no live Stripe key is set. Never over MCP.
+Worker is reached there) and no live Stripe key is set. Never over MCP. It also answers the plain-language filter route
+from its fixtures (above).
 
 ## The router's table (0058, Phase B)
 
@@ -175,4 +216,5 @@ dismiss, "Wrong?"), `test/ai.preview.test.ts` (fields absent in production, the 
 `test/ai.client.test.ts` (Claude's `structured`), `test/ai.jev.test.ts` (the kind table, Jev's `ask` and its
 parsing), `test/tag-fit.test.ts` (Sift: the run, its switches — the org's included, mid-run — and the allowance),
 `test/secrets.mcp.test.ts` (the call sites, the MCP boundary, TypeSafe's URL in one file),
-`test/plans.limits.test.ts` (`ai_chat`, per seat on Pro).
+`test/plans.limits.test.ts` (`ai_chat`, per seat on Pro), `test/ai.filter.test.ts` and `test/render.ai-filter.test.ts`
+(the plain-language filter).

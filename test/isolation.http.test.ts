@@ -325,6 +325,9 @@ const TENANT: Record<string, Row> = {
   "GET /ai/settings": {}, "PUT /ai/settings": J({ enabled: false }),
   "POST /ai/suggestions/:id/accept": J({}), "POST /ai/suggestions/:id/dismiss": J({}),
   "POST /ai/feedback": J({ itemType: "brief", itemRef: "x", kind: "brief", model: null, promptVersion: null }),
+  // The plain-language filter: the switch, the allowance and the candidates (members, sprints, tags) are the PATH's
+  // org's. The pool has no model key, so B's members get the documented 503 `no_key` and no call is ever made.
+  "POST /ai/filter": { body: { screen: "tickets", text: "CANARY" }, allow: [503] },
 };
 
 /** The org surface (src/orgs, src/integrations, src/hosting, Org settings › AI in src/ai/routes.ts) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under
