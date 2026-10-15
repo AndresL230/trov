@@ -114,7 +114,7 @@ function chart(t: AiThemes, picked: AiThemeLane | null): string {
       const h = bandHeight(l.counts[i] ?? 0, max);
       return `<span style="display:flex;align-items:center;justify-content:center;height:40px">${h === null ? "" : `<span class="repo-band" style="display:block;width:100%;height:${h}px;border-radius:4px;background:var(--p-${l.colorKey})"></span>`}</span>`;
     }).join("");
-    return `<button type="button" data-act="aiThemesLane" data-arg="${attr(l.id)}" aria-pressed="${on}" aria-label="${attr(`${l.name}: ${total} merged pull ${total === 1 ? "request" : "requests"}${l.status === "proposed" ? ", proposed" : ""}`)}" class="repo-lane" data-on="${on ? "1" : "0"}" style="display:grid;${cols};gap:6px;align-items:center;width:100%;text-align:left;border-radius:8px;padding:6px 4px;min-height:52px;${on ? "background:var(--hover)" : "opacity:.55"}">
+    return `<button type="button" data-act="aiThemesLane" data-arg="${attr(l.id)}" aria-pressed="${on}" aria-label="${attr(`${l.name}: ${total} merged pull ${total === 1 ? "request" : "requests"}${l.status === "proposed" ? ", proposed" : ""}`)}" data-field="aiThemesLane:${attr(l.id)}" class="repo-lane" data-on="${on ? "1" : "0"}" style="display:grid;${cols};gap:6px;align-items:center;width:100%;text-align:left;border-radius:8px;padding:6px 4px;min-height:52px;${on ? "background:var(--hover)" : "opacity:.55"}">
         <span style="display:flex;align-items:center;gap:8px;padding-left:6px;font-weight:500;font-size:13.5px;min-width:0"><span style="display:inline-flex;align-items:center;gap:8px;min-width:0">${chip(l)}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.name)}</span></span></span>${cells}
       </button>`;
   }).join("");

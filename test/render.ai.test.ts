@@ -129,6 +129,16 @@ describe("the suggestion chip (#157)", () => {
     expect(text(open)).toContain("because it touches checkout and the plan block.");
     expect(open).toContain(">#136</a>");
   });
+  // e2e § 6 K (Phase H): pressed from the keyboard, the screen's rebuild dropped focus to <body> (ticket detail,
+  // Unplaced, the themes' lanes) — a keyboard user could not press it again or move on from it. The rerender puts
+  // focus back on the element with the same `data-field` (main.ts), so each such control names one.
+  it("the because… disclosure and a theme lane keep keyboard focus across the rebuild (a data-field each)", () => {
+    expect(chip()).toMatch(/data-act="aiReason" data-arg="s-7" aria-expanded="false" aria-controls="ai-why-s-7" data-field="aiReason:s-7"/);
+    const h = themesSection(themes("ready"), rp());
+    const lanes = [...h.matchAll(/data-act="aiThemesLane" data-arg="([^"]+)"[^>]*data-field="aiThemesLane:([^"]+)"/g)];
+    expect(lanes.length).toBeGreaterThan(1);
+    for (const m of lanes) expect(m[2]).toBe(m[1]);
+  });
   it("Accept and Dismiss for whoever may act; a busy write holds them; 'Not available yet' after a 409", () => {
     expect(chip()).toContain('data-act="aiAccept" data-arg="7"');
     expect(chip()).toContain('data-act="aiDismiss" data-arg="7"');

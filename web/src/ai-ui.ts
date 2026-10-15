@@ -228,7 +228,7 @@ const CHIP_BTN = "font-size:12px;font-weight:500;border-radius:6px;padding:2px 9
  *  phone's column (it wraps). */
 export function aiSuggestionChip(c: AiChip, o: AiChipOpts): string {
   const rid = `ai-why-${c.key.replace(/[^A-Za-z0-9_-]/g, "-")}`;
-  const why = `<button type="button" data-act="aiReason" data-arg="${attr(c.key)}" aria-expanded="${o.open}" aria-controls="${attr(rid)}" class="cnpy-mutelink" style="padding:0;font:inherit;color:var(--fg-55);text-decoration:underline dotted;text-underline-offset:3px">because&hellip;</button>`;
+  const why = `<button type="button" data-act="aiReason" data-arg="${attr(c.key)}" aria-expanded="${o.open}" aria-controls="${attr(rid)}" data-field="aiReason:${attr(c.key)}" class="cnpy-mutelink" style="padding:0;font:inherit;color:var(--fg-55);text-decoration:underline dotted;text-underline-offset:3px">because&hellip;</button>`;
   const acts = o.unavailable
     ? `<span role="status" style="font-size:12px;color:var(--fg-55);white-space:nowrap">Not available yet</span>`
     : o.canAct

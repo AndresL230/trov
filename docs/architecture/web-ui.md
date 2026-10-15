@@ -918,7 +918,9 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   `upgrade` is true.
 - **The suggestion chip** (`aiSuggestionChip`, #157): "Suggested: X, because…" with Accept and Dismiss. It is
   never styled like a value a person set: a dashed `--border-strong` outline, the mark, muted words. The
-  reason is a real disclosure button (`aria-expanded`, works on touch), the chip a container of buttons (never
+  reason is a real disclosure button (`aria-expanded`, works on touch; `data-field="aiReason:<key>"`, so a page rebuilt
+  on the press gives it back its keyboard focus — the themes' lanes carry `aiThemesLane:<id>` for the same reason), the
+  chip a container of buttons (never
   a button itself), and it wraps, so it fits a row, a card, a detail pane and a phone. A 409 `not_available`
   (no accept handler for its kind) replaces the buttons with "Not available yet". It is used by Phase C's cards
   (the ticket detail, Unplaced, Review's risk line — `web/src/ai-cards.ts`), the proposed themes and the Roadmap's
