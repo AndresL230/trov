@@ -178,7 +178,8 @@ const aiCtl = createAiController({
 });
 // Ask Trov (web/src/ask-controller.ts): every `ask…` act, the screen's reads and streams, ⌘J over any page,
 // the hover cards, the inspector's edge, and the dev replay (`?askReplay=<scenario>`).
-const askCtl = createAskController({ state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e) });
+const askCtl = createAskController({ state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
+  refreshTickets: () => { if (state.tickets.status !== "idle") loadTickets(); } });
 // The plain-language filter (web/src/ai-filter-actions.ts, #162): every `aiFilter…` act. Its answer is applied
 // to each screen's OWN filter state here — the same fields the Filter menu, the switch and the search box set.
 const aiFilterCtl = createAiFilterController({

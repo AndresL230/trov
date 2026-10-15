@@ -105,7 +105,7 @@ describe("`answer` — the whole answer, in stream order", () => {
     expect(html).toContain(`data-mtip="${views["ticket:14"].status!.tip}"`);
     expect(html).toMatch(/<td><span data-mtip="[^"]*"[^>]*>.*In progress<\/span><\/td>/);
     // A table is a rich block: Save (the answer is stored) and Open in inspector on hover.
-    expect(html).toMatch(/<div class="ask-rich" data-rich="table"><div class="ask-tools" role="toolbar" aria-label="Block actions"><button type="button" class="ask-tool" data-act="askAcSaveForm" data-arg="page:ak1"/);
+    expect(html).toMatch(/<div class="ask-rich" data-rich="table"><div class="ask-tools" role="toolbar" aria-label="Block actions"><button type="button" class="ask-tool" data-act="askAcSaveForm" data-arg="ak1"/);
     expect(html).toContain(`data-act="askCvOpen" data-arg="askcv:page:ak1:table:0.0"`);
   });
 
@@ -145,7 +145,7 @@ describe("`answer` — the whole answer, in stream order", () => {
     expect(html).toContain(`data-act="askCvCopy" data-arg="page:ak1"`);
     expect(html).toContain(`data-act="askCvRegen" data-arg="page:ak1"`);
     expect(html).toContain(`data-act="askCvRegenMenu" data-arg="page:ak1" aria-label="Regenerate with another mode" aria-haspopup="menu" aria-expanded="false"`);
-    expect(html).toContain(`data-act="askAcSaveForm" data-arg="page:ak1"`);
+    expect(html).toContain(`data-act="askAcSaveForm" data-arg="ak1"`);
     expect(html).toContain(`data-act="askAcWrong" data-arg="ak1" aria-expanded="false">Wrong?`);
   });
 

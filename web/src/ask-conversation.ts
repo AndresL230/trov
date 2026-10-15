@@ -12,7 +12,7 @@
 //                  cards and Save forms (ask-actions.ts), with a soft cursor while it streams; Stopped / the error
 //   the footer     the Trov mark + the mode word, "N sources" (a numbered list), Copy, Regenerate (+ "Regenerate
 //                  with" the modes), Save as artifact and Wrong? (the actions part's acts: `askAcSaveForm`,
-//                  `askAcWrong`), then the follow-ups under the last answer only
+//                  `askAcWrong`, their args from ask-actions.ts `saveFormArg` / `wrongIsOpen`), then the follow-ups under the last answer only
 //
 // THE INTERFACE (the shell and the ⌘J panel call these): ConversationUi / initialConversationUi(), conversationView(v),
 // emptyView(v), conversationPart (acts `askCv…`, the "menu" Escape layer, afterPaint). For the inspector: `cvItem(ui,
@@ -33,7 +33,7 @@ import {
 } from "./ask-refs";
 import { askIcon, askSpinner, ACTIVITY_ICON, REF_ICON, trovMark } from "./ask-icons";
 import { shownParts, turnLive, type AskAnswer, type AskQuestion, type AskStep, type AskTurn, type AskShownPart } from "./ask-stream";
-import { actionGroupView, feedbackView, saveFormView } from "./ask-actions";
+import { actionGroupView, feedbackView, saveFormArg, saveFormView, wrongIsOpen } from "./ask-actions";
 import {
   ASK_STARTERS_FALLBACK, askMode, isAskMode,
   type AskAttachment, type AskChart, type AskDiagram, type AskMode, type AskNotFound, type AskThemesBlock, type RefView,
@@ -367,7 +367,7 @@ function rich(v: Pick<AskView, "app">, kind: string, inner: string, save: string
 
 function blockView(v: AskView, a: AskAnswer, p: Extract<AskShownPart, { kind: "block" }>): string {
   const b = p.block;
-  const save = a.turn.messageId !== null ? `${v.where}:${a.key}:${p.index}` : null;
+  const save = a.turn.messageId !== null ? saveFormArg(a, p.index) : null;   // the actions part's format
   const open = (kind: "chart" | "themes" | "diagram") => cvRef(v.where, a.key, kind, p.index);
   switch (b.kind) {
     case "items": {
@@ -482,8 +482,8 @@ function footer(v: AskView, a: AskAnswer): string {
     <button type="button" class="ask-fb" data-act="askCvCopy" data-arg="${attr(id)}">${askIcon("copy", 13, null, 2)}<span>${v.ui.conversation.copied === id ? "Copied" : "Copy"}</span></button>
     ${stored ? `<span class="ask-regen"><button type="button" class="ask-fb${modes.length > 1 ? " ask-fb--l" : ""}" data-act="askCvRegen" data-arg="${attr(id)}"${busy ? " disabled" : ""}>${askIcon("regen", 13, null, 2)}<span>Regenerate</span></button>${modes.length > 1
       ? `<button type="button" class="ask-fb ask-fb--r" data-act="askCvRegenMenu" data-arg="${attr(id)}" aria-label="Regenerate with another mode" aria-haspopup="menu" aria-expanded="${regenOpen}"${busy ? " disabled" : ""}>${askIcon("chevDown", 10, null, 2.6)}</button>${menu}` : ""}</span>` : ""}
-    ${stored ? `<button type="button" class="ask-fb" data-act="askAcSaveForm" data-arg="${attr(id)}">${askIcon("saveArtifact", 13, null, 1.9)}<span>Save as artifact</span></button>` : ""}
-    ${stored ? `<button type="button" class="ask-fb" data-act="askAcWrong" data-arg="${attr(k)}" aria-expanded="${v.ui.actions.wrongOpen[k] === true}">Wrong?</button>` : ""}
+    ${stored ? `<button type="button" class="ask-fb" data-act="askAcSaveForm" data-arg="${attr(saveFormArg(a))}">${askIcon("saveArtifact", 13, null, 1.9)}<span>Save as artifact</span></button>` : ""}
+    ${stored ? `<button type="button" class="ask-fb" data-act="askAcWrong" data-arg="${attr(a.key)}" aria-expanded="${wrongIsOpen(v, a)}">Wrong?</button>` : ""}
   </div>`;
   const sources = srcOpen ? `<div class="ask-src"${closingAttr(v.ui.closing, `cv:${k}:src`)}>${t.cites.map((c, i) => itemRow(v, c.ref, i + 1)).join("")}</div>` : "";
   // One tweened wrapper: the sources list (and the Wrong? row) opening or closing glides the thread under it.
@@ -493,7 +493,7 @@ function footer(v: AskView, a: AskAnswer): string {
 function partView(v: AskView, a: AskAnswer, p: AskShownPart, i: number, cur: boolean): string {
   const key = `p${i}`;
   if (p.kind === "text") {
-    const save = a.turn.messageId !== null ? `${v.where}:${a.key}` : null;
+    const save = a.turn.messageId !== null ? saveFormArg(a) : null;
     return `<div class="ask-text" data-morph-key="${key}">${mdView(v, p.md, cur, (k, inner) => rich(v, "table", inner, save, cvRef(v.where, a.key, "table", `${i}.${k}`)))}</div>`;
   }
   if (p.kind === "actions") return `<div class="ask-part" data-morph-key="${key}" data-ask-tween>${actionGroupView(v, a, p.ids)}</div>`;

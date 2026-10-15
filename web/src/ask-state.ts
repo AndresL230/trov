@@ -165,6 +165,9 @@ export interface AskCtx {
   exit(key: string, apply: () => void, ms?: number): void;
   /** Keep `key`: stop its exit (and drop the flag) without running `apply`. */
   cancelExit(key: string): void;
+  /** Refetch the Tickets queue when it is already loaded in this session (an Ask Undo declined a ticket it made:
+   *  an open board drops the card with its exit). Optional so a part's test ctx need not provide it. */
+  refreshTickets?(): void;
 }
 
 /** One part, as the controller knows it (ask-controller.ts `PARTS`). Everything is optional. */
