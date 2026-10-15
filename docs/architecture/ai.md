@@ -36,7 +36,7 @@ A caller names a KIND, never a model. `KIND_PROVIDER` is the ONE table from a ki
 
 ## Where a model call may happen
 
-ONLY in three places, all behind THE client:
+ONLY in these places, all behind THE client (the fourth, Ask Trov, is `ask.md`):
 
 1. **The capture-time summary seams** — `src/tools/summarize.ts`, chosen per org by `orgSummarizers`
    (`src/plans/summaries.ts`), from the webhook and Sync GitHub. Kinds `summary_pr` / `summary_issue` (Claude).
@@ -46,12 +46,17 @@ ONLY in three places, all behind THE client:
    (`waitUntil`). Kind `tag.fit` (Jev). Everything about Sift that is NOT a call — candidates, the switches' read,
    Undo, review counts — is `src/tools/tag-fit.ts`, which imports no client (MCP reaches it through
    `src/tools/tags.ts`). The decided build moves this run into the pass (Phase C).
+4. **Ask Trov** — `POST /api/o/:slug/ask` (`src/ai/ask/routes.ts`, cookie only): the turn (`src/ai/ask/turn.ts`,
+   `askChatClient` — kinds `ask.fast` / `ask.smart` / `ask.thinking`, streamed with tools) and the one-time compaction
+   of a long thread (`src/ai/ask/history.ts`, kind `ask.compact`). Gated by the org switch and `ai_chat` (questions,
+   by the mode). Everything else about it: `ask.md`.
 
 Never on a render path (a read that backs a screen calls no model), and never from MCP: nothing reachable from
 `src/mcp.ts` imports `src/ai/` or the Jev provider (`test/secrets.mcp.test.ts` walks the import graph, and pins that
-only those three files import the client; that only `src/ai/eligibility.ts`, `src/ai/pass.ts`,
-`src/plans/summaries.ts` and `src/platform/routes.ts` read `ANTHROPIC_API_KEY`; and that only `src/ai/sift.ts` and
-`src/tags/routes.ts` read `TYPESAFE_API_KEY`).
+only those files import the client — the summary seams, the pass, the Sift run, and Ask's turn and history; that only
+`src/ai/eligibility.ts`, `src/ai/pass.ts`, `src/plans/summaries.ts`, `src/platform/routes.ts` and Ask's routes, turn and
+history read `ANTHROPIC_API_KEY`; that nothing under `src/ai/ask/` reaches secrets, the GitHub App, billing or
+`src/mcp.ts`; and that only `src/ai/sift.ts` and `src/tags/routes.ts` read `TYPESAFE_API_KEY`).
 
 **The org switch covers every AI feature, Sift included.** A Sift run starts, and each of its requests is made, only
 while BOTH `orgs.ai_automation` (Org settings › AI) and Sift's own switch (`org_ai_settings`, kind `tag.fit`, the

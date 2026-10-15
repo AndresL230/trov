@@ -53,6 +53,7 @@ interface Fx {
   adrId: number; triageId: number; ticketId: number; subTicketId: number; linkId: number; sprintId: number; handoffId: number;
   inviteId: number; hookId: string; envKey: string; imgSha: string; login: string; tokenId: number;
   bTicketId: number; suggestionId: number;
+  askThreadId: number; askMessageId: number; askActionId: number;
 }
 
 const doc = (slug: string, text: string) =>
@@ -126,6 +127,12 @@ async function seed(): Promise<Fx> {
   // AI (0055_ai): an OPEN suggestion of A's, and a "Wrong?" of Alice's.
   const suggestionId = (await putSuggestion(A(), { itemType: "ticket", itemRef: String(ticketId), kind: "category", value: "bug", confidence: 0.9, reason: `${CANARY} reason`, cites: [], model: "m", promptVersion: "1" }))!;
   await recordFeedback(A(), ALICE, { itemType: "brief", itemRef: `${CANARY}-brief`, kind: "brief", model: null, promptVersion: null });
+  // Ask Trov (0066_ask): Alice's thread in A, a question and an answer that carry the canary, a proposed card.
+  const askThreadId = Number((await run(env.DB, `INSERT INTO chat_threads (org_id, handle, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, ORG_A, ALICE, `${CANARY} thread`, T, T)).meta.last_row_id);
+  await run(env.DB, `INSERT INTO chat_messages (org_id, thread_id, role, mode, content_json, created_at) VALUES (?, ?, 'user', 'smart', ?, ?)`, ORG_A, askThreadId, JSON.stringify({ text: `${CANARY} question` }), T);
+  const askMessageId = Number((await run(env.DB, `INSERT INTO chat_messages (org_id, thread_id, role, mode, content_json, created_at) VALUES (?, ?, 'assistant', 'smart', ?, ?)`, ORG_A, askThreadId, JSON.stringify({ text: `${CANARY} answer` }), T)).meta.last_row_id);
+  const askActionId = Number((await run(env.DB, `INSERT INTO chat_actions (org_id, thread_id, message_id, turn, tool, kind, args_json, preview_json, state, created_at) VALUES (?, ?, ?, 0, 'create_ticket', 'ticket', ?, ?, 'proposed', ?)`,
+    ORG_A, askThreadId, askMessageId, JSON.stringify({ title: `${CANARY} card` }), JSON.stringify({ title: `${CANARY} card`, lines: [], item: null }), T)).meta.last_row_id);
 
   // ── org B: its own content under the SAME slugs, and a ticket for the cross-org edges ──
   await propose_doc_update(B(), doc("iso-doc", "B-own"), "boss");
@@ -136,7 +143,7 @@ async function seed(): Promise<Fx> {
   return {
     cookies, alice: await cookieFor(ALICE), ownerA,
     docSlug: "iso-doc", promptSlug: "iso-prompt", artifactSlug, adrId, triageId, ticketId, subTicketId, linkId, sprintId, handoffId,
-    inviteId, hookId, envKey, imgSha, login, tokenId, bTicketId, suggestionId,
+    inviteId, hookId, envKey, imgSha, login, tokenId, bTicketId, suggestionId, askThreadId, askMessageId, askActionId,
   };
 }
 
@@ -198,7 +205,8 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
     case "id": return String(
       under("/tickets") ? fx.ticketId : under("/sprints") ? fx.sprintId : under("/handoffs") ? fx.handoffId : under("/adr") ? fx.adrId
         : under("/needs-triage") ? fx.triageId : under("/invites") ? fx.inviteId : under("/mcp-tokens") ? fx.tokenId
-        : under("/ai") ? fx.suggestionId : fx.hookId);
+        : under("/ai") ? fx.suggestionId : under("/ask/threads") ? fx.askThreadId : under("/ask/messages") ? fx.askMessageId
+        : under("/ask/actions") ? fx.askActionId : fx.hookId);
     case "linkId": return String(fx.linkId);
     case "login": return fx.login;
     case "handle": return ALICE;
@@ -208,7 +216,8 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
     case "kind": return "github_token";
     case "a": case "b": return "nope"; // never `test`: Test connection would reach for the network
     case "email": return encodeURIComponent(INVITED);
-    case "ref": return fx.artifactSlug;
+    case "ref": return under("/ask/item") ? encodeURIComponent(`ticket:${fx.ticketId}`) : fx.artifactSlug;
+    case "scenario": return "answer";
     case "part": return "web";
     case "provider": return "vercel"; // never `test` against a configured credential: B has none, and A's is never B's
     case "name": return "auth"; // a tag: every org has the starter of that name, each its own row
@@ -325,13 +334,25 @@ const TENANT: Record<string, Row> = {
   "GET /ai/settings": {}, "PUT /ai/settings": J({ enabled: false }),
   "POST /ai/suggestions/:id/accept": J({}), "POST /ai/suggestions/:id/dismiss": J({}),
   "POST /ai/feedback": J({ itemType: "brief", itemRef: "x", kind: "brief", model: null, promptVersion: null }),
+  // Ask Trov's dev-only replay (src/ai/routes.ts): 404 without LOCAL_AI_PREVIEW under `wrangler dev` — always, here.
+  "GET /ai/ask-replay": {}, "GET /ai/ask-replay/:scenario": {},
+  // src/ai/ask/routes.ts — Ask Trov: a thread, message, card or attachment is its OWNER's (Alice's, in A). B's members
+  // get `not_found` for every A id; what they write lands in B, for themselves. No key in the pool: a stream is `no_key`.
+  "POST /ask": { body: (fx: Fx) => ({ text: "hijack", mode: "smart", threadId: fx.askThreadId }) },
+  "GET /ask/state": {}, "POST /ask/peek": { body: (fx: Fx) => ({ refs: [`ticket:${fx.ticketId}`, `artifact:${fx.artifactSlug}`, `doc:${fx.docSlug}`] }) },
+  "GET /ask/item/:ref": {},
+  "GET /ask/threads": { query: "?q=CANARY" }, "GET /ask/threads/:id": {}, "PATCH /ask/threads/:id": J({ title: "hijacked" }), "DELETE /ask/threads/:id": {},
+  "GET /ask/threads/:id/export": {}, "POST /ask/threads/:id/stop": J({}), "POST /ask/threads/:id/save": J({}),
+  "POST /ask/messages/:id/save-form": J({}), "POST /ask/messages/:id/wrong": J({ reason: "source_wrong" }),
+  "POST /ask/actions/:id/confirm": J({}), "POST /ask/actions/:id/cancel": J({}), "POST /ask/actions/:id/undo": J({}),
+  "POST /ask/attachments": J({}), "GET /ask/settings": {}, "PUT /ask/settings": J({ instructions: "hijacked" }),
 };
 
 /** The org surface (src/orgs, src/integrations, src/hosting, Org settings › AI in src/ai/routes.ts) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under
  *  `/api/o/:slug`; every other tenant route also has an alias at its old path. The tokens' old paths are not twins of
  *  these — `/auth/mcp-token…` is person-level and resolves the caller's one org itself (PLATFORM, below). */
 const NO_ALIAS = (suffix: string): boolean =>
-  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/hosting", "/mcp-tokens", "/billing", "/github", "/deletion", "/delete", "/ai"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
+  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/hosting", "/mcp-tokens", "/billing", "/github", "/deletion", "/delete", "/ai", "/ask"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
 
 /** Old paths whose `/api/o/:slug` form is a DIFFERENT route (or none): behind `soleTenantGate`, exercised in their own test below. */
 const LEGACY_ONLY: Record<string, Row> = {

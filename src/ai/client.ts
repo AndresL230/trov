@@ -21,6 +21,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { toClaudeSchema } from "./schema";
 import { jevProvider, type JevProvider } from "../tools/classify";
+import { askMode, type AskMode } from "@shared/ai-ask-core";
 
 export type {
   JevProvider, JevQuestion, JevAnswer, JevAsk, Classifier, ClassifyItem, ClassifyRequest, ClassifyHooks, ClassifyResult, Judgement,
@@ -36,6 +37,12 @@ export const KIND_PROVIDER = {
   summary_issue: "claude",
   // Sift: "does this item fit this tag?" (src/ai/sift.ts).
   "tag.fit": "jev",
+  // Ask Trov (src/ai/ask/): one streamed, tool-using answer per mode (`askChatClient`), and the one-time
+  // compaction of a long thread's older turns (Fast, through `structured`).
+  "ask.fast": "claude",
+  "ask.smart": "claude",
+  "ask.thinking": "claude",
+  "ask.compact": "claude",
 } as const satisfies Record<string, AiProviderName>;
 
 /** What a call is for. */
@@ -164,4 +171,32 @@ function claudeProvider(apiKey: string, opts: AiProviderOpts): ClaudeProvider {
 
 function count(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0;
+}
+
+// ── Ask Trov's streamed chat (docs/architecture/ask.md) ──────────────────────
+// The one other shape of a Claude call: a streamed, tool-using conversation. Ask's turn loop
+// (src/ai/ask/turn.ts) drives the stream itself — it forwards deltas as they arrive, runs tools between
+// iterations and stops on the person's Stop — so this hands it the SDK client bound to the platform key and
+// the MODE's model, and nothing else. The house rules still hold: no retries (`maxRetries: 0`), an injected
+// `fetchImpl` in tests, and the caller logs a failure's name and status only.
+
+/** The Ask kinds, one per mode. */
+export type AskKind = "ask.fast" | "ask.smart" | "ask.thinking";
+export const ASK_KIND: Record<AskMode, AskKind> = { fast: "ask.fast", smart: "ask.smart", thinking: "ask.thinking" };
+
+export interface AskChatClient {
+  readonly kind: AskKind;
+  /** The mode's model (`ASK_MODES`, shared/ai-ask-core.ts) — what an answer records as its provenance. */
+  readonly model: string;
+  readonly client: Anthropic;
+}
+
+/** The client for one Ask mode, or null without a key (the route then answers `no_key`). */
+export function askChatClient(mode: AskMode, opts: AiProviderOpts): AskChatClient | null {
+  if (!opts.apiKey) return null;
+  const kind = ASK_KIND[mode];
+  if (KIND_PROVIDER[kind] !== "claude") return null;
+  // The turn's own deadline aborts the stream; this is only the SDK's ceiling for one request.
+  const client = new Anthropic({ apiKey: opts.apiKey, fetch: opts.fetchImpl, timeout: opts.timeoutMs ?? 120_000, maxRetries: 0 });
+  return { kind, model: opts.model ?? askMode(mode).model, client };
 }

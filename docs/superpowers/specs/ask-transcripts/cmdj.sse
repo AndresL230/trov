@@ -1,0 +1,129 @@
+event: thread
+data: {"id":10,"title":"","mode":"smart","auto":false,"origin":"panel","contextRef":"ticket:14"}
+
+event: activity
+data: {"step":1,"tool":"get_ticket","icon":"tickets","label":"Read ticket #14","state":"run"}
+
+event: activity
+data: {"step":1,"state":"done","results":["ticket:14","ticket:23","person:jon"]}
+
+event: activity
+data: {"step":2,"tool":"get_events","icon":"pr","label":"Read PR #176","state":"run"}
+
+event: activity
+data: {"step":2,"state":"done","results":["pr:176"]}
+
+event: text
+data: {"delta":"Two "}
+
+event: text
+data: {"delta":"of "}
+
+event: text
+data: {"delta":"three "}
+
+event: text
+data: {"delta":"sub-tickets "}
+
+event: text
+data: {"delta":"are "}
+
+event: text
+data: {"delta":"open. "}
+
+event: text
+data: {"delta":"[[pr:176]] "}
+
+event: text
+data: {"delta":"needs "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"connect "}
+
+event: text
+data: {"delta":"test "}
+
+event: text
+data: {"delta":"fixed "}
+
+event: text
+data: {"delta":"first.\n\n"}
+
+event: text
+data: {"delta":"- "}
+
+event: text
+data: {"delta":"Fix "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"connect "}
+
+event: text
+data: {"delta":"test "}
+
+event: text
+data: {"delta":"on "}
+
+event: text
+data: {"delta":"main. "}
+
+event: text
+data: {"delta":"[[person:andres]] "}
+
+event: text
+data: {"delta":"said "}
+
+event: text
+data: {"delta":"today.\n"}
+
+event: text
+data: {"delta":"- "}
+
+event: text
+data: {"delta":"Merge "}
+
+event: text
+data: {"delta":"[[pr:176]].\n"}
+
+event: text
+data: {"delta":"- "}
+
+event: text
+data: {"delta":"Write "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"empty "}
+
+event: text
+data: {"delta":"state "}
+
+event: text
+data: {"delta":"for "}
+
+event: text
+data: {"delta":"#23 "}
+
+event: text
+data: {"delta":"with "}
+
+event: text
+data: {"delta":"[[person:jon]]."}
+
+event: followups
+data: {"items":["Draft a handoff for the connect test"]}
+
+event: thread
+data: {"id":10,"title":"What's left on #14","mode":"smart","auto":false,"origin":"panel","contextRef":"ticket:14"}
+
+event: done
+data: {"messageId":14,"cites":[{"ref":"pr:176","type":"pr","num":176,"title":"Netlify connect step for guided setup","status":{"mark":"ring","tone":"blue","word":"In review","tip":"Waiting on a review."},"owner":"maya","updated":"2026-10-15T11:20:00.000Z","href":"https://github.com/AndresL230/trov/pull/176","extra":{"author":"maya","head":"maya/netlify-connect","base":"main","repo":"AndresL230/trov","checks":[{"name":"build","state":"success"},{"name":"typecheck","state":"success"},{"name":"netlify-connect.test","state":"failure"},{"name":"lint","state":"success"}]}},{"ref":"person:andres","type":"person","title":"Andres Lopez","status":null,"owner":"andres","href":null,"extra":{"handle":"andres","role":"Founder. Hosting and the gate.","workingOn":["ticket:18","ticket:29"]}},{"ref":"person:jon","type":"person","title":"Jon Park","status":null,"owner":"jon","href":null,"extra":{"handle":"jon","role":"Designer. Onboarding.","workingOn":["ticket:23"]}}],"tokens":{"in":5400,"out":260,"cached":4300}}
+

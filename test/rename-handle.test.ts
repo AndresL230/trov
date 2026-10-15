@@ -173,6 +173,9 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   // 0055_ai: a suggestion the person dismissed, and a "Wrong?" they pressed.
   await run(env.DB, `INSERT INTO ai_suggestions (org_id, item_type, item_ref, kind, value_json, reason, state, created_at, decided_by, decided_at) VALUES (?, 'ticket', '1', 'category', '"bug"', 'r', 'dismissed', ?, ?, ?)`, org, nowIso(), handle, nowIso());
   await run(env.DB, `INSERT INTO ai_feedback (org_id, handle, item_type, item_ref, kind, created_at) VALUES (?, ?, 'brief', 'person:x', 'brief', ?)`, org, handle, nowIso());
+  // 0066_ask: an Ask Trov thread the person owns, and their Ask settings.
+  await run(env.DB, `INSERT INTO chat_threads (org_id, handle, created_at, updated_at) VALUES (?, ?, ?, ?)`, org, handle, nowIso(), nowIso());
+  await run(env.DB, `INSERT INTO person_ask_settings (org_id, handle, instructions, updated_at) VALUES (?, ?, 'short', ?)`, org, handle, nowIso());
 }
 
 describe("renamePerson", () => {

@@ -166,6 +166,34 @@ export async function savePrompt(
   return (await getPrompt(ctx, input.slug))!;
 }
 
+/**
+ * Ask Trov's Undo of a `save_prompt` it ran (docs/architecture/ask.md): drop THAT staged version — only while it
+ * is still the prompt's latest, still `staged` (nobody published it) and the actor's own. A new prompt's v1 is
+ * the whole prompt, so it is soft-deleted instead (its slug stays reserved, like every deleted prompt's). Anything
+ * else is `conflict` and nothing is written.
+ */
+export async function dropStagedVersion(ctx: TenantContext, slug: string, version: number, actor: string): Promise<{ slug: string; version: number }> {
+  const v = await first<{ status: string; author: string; current_version: number; deleted_at: string | null }>(ctx,
+    `SELECT v.status, v.author, p.current_version, p.deleted_at FROM prompt_versions v JOIN prompts p ON p.slug = v.slug AND p.org_id = v.org_id
+      WHERE v.org_id = ? AND v.slug = ? AND v.version = ?`, ctx.orgId, slug, version);
+  if (!v || v.deleted_at) throw new PromptError("not_found", "prompt not found");
+  if (v.status !== "staged" || v.current_version !== version || v.author.toLowerCase() !== actor.toLowerCase()) {
+    throw new PromptError("conflict", "that version is no longer the staged latest one — nothing to undo");
+  }
+  if (version === 1) {
+    await deletePrompt(ctx, slug, actor, false);
+    return { slug, version };
+  }
+  const res = await batch(ctx, [
+    stmt(ctx, `UPDATE prompts SET current_version = ?, updated_at = ? WHERE slug = ? AND org_id = ? AND current_version = ?`, version - 1, nowIso(), slug, ctx.orgId, version),
+    stmt(ctx, `DELETE FROM prompt_versions WHERE org_id = ? AND slug = ? AND version = ? AND status = 'staged'
+                AND EXISTS (SELECT 1 FROM prompts p WHERE p.slug = prompt_versions.slug AND p.org_id = prompt_versions.org_id AND p.current_version = ?)`,
+      ctx.orgId, slug, version, version - 1),
+  ]);
+  if (!res[0].meta.changes) throw new PromptError("conflict", "that version is no longer the latest one — nothing to undo");
+  return { slug, version };
+}
+
 /** The 409 for a slug a deleted prompt still holds. */
 const reservedMessage = (slug: string): string =>
   `slug ${slug} belongs to a deleted prompt — restore it instead of reusing the slug`;

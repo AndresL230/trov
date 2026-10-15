@@ -34,7 +34,11 @@ const LIVE = {
 
 describe("providerFor: one table from a kind to its provider", () => {
   it("tag.fit is Jev's; the summaries are Claude's; no key → null", () => {
-    expect(KIND_PROVIDER).toEqual({ summary_pr: "claude", summary_issue: "claude", "tag.fit": "jev" });
+    expect(KIND_PROVIDER).toEqual({
+      summary_pr: "claude", summary_issue: "claude", "tag.fit": "jev",
+      // Ask Trov (Phase F): one kind per mode, and the compaction of a long thread.
+      "ask.fast": "claude", "ask.smart": "claude", "ask.thinking": "claude", "ask.compact": "claude",
+    });
     expect(providerFor("tag.fit", { apiKey: "k" })?.name).toBe("jev");
     expect(providerFor("tag.fit", { apiKey: "k" })?.model).toBe("jev-latest");
     expect(providerFor("summary_pr", { apiKey: "k" })?.name).toBe("claude");

@@ -341,8 +341,8 @@ describe("over HTTP: a member of B only", () => {
     expect(await (await get("/docs")).json()).toEqual({ docs: [] });
     expect((await get("/doc/http-doc")).status).toBe(404);
     expect(await (await get("/feed")).json()).toEqual({ feed: [] });
-    expect(await (await get("/proposals")).json()).toEqual({ proposals: [] });
-    expect(await (await get("/adrs")).json()).toEqual({ adrs: [] });
+    expect(await (await get("/proposals")).json()).toEqual({ proposals: [], askFlags: [] });
+    expect(await (await get("/adrs")).json()).toEqual({ adrs: [], askFlags: [] });
     expect(await (await get("/needs-triage")).json()).toEqual({ items: [] });
     expect(await (await get("/search?q=wombat")).json()).toMatchObject({ result: { primary: [], pointers: [] } });
     expect(await (await get("/search/quick?q=wombat")).json()).toMatchObject({ result: { groups: [] } });

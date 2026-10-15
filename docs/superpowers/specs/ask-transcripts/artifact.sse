@@ -1,0 +1,63 @@
+event: thread
+data: {"id":1,"title":"Hosting status","mode":"smart","auto":false,"origin":"page","contextRef":null}
+
+event: activity
+data: {"step":1,"tool":"save_artifact","icon":"read","label":"Prepared a save form","state":"run"}
+
+event: block
+data: {"kind":"save_form","form":{"messageId":null,"block":null,"title":"Hosting status, Oct 15","kind":"html","visibility":"private","saved":null}}
+
+event: activity
+data: {"step":1,"state":"done"}
+
+event: text
+data: {"delta":"Here "}
+
+event: text
+data: {"delta":"it "}
+
+event: text
+data: {"delta":"is "}
+
+event: text
+data: {"delta":"as "}
+
+event: text
+data: {"delta":"an "}
+
+event: text
+data: {"delta":"artifact. "}
+
+event: text
+data: {"delta":"Change "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"title "}
+
+event: text
+data: {"delta":"or "}
+
+event: text
+data: {"delta":"who "}
+
+event: text
+data: {"delta":"can "}
+
+event: text
+data: {"delta":"see "}
+
+event: text
+data: {"delta":"it, "}
+
+event: text
+data: {"delta":"then "}
+
+event: text
+data: {"delta":"save."}
+
+event: done
+data: {"messageId":8,"cites":[],"tokens":{"in":21300,"out":160,"cached":20900}}
+

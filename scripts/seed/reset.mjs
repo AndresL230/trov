@@ -26,6 +26,14 @@ export const RESET_STATEMENTS = [
   "DELETE FROM ai_feedback",
   // AI (0058_ai_dirty): the router's stale scopes reference orgs.
   "DELETE FROM ai_dirty",
+  // Ask Trov (0066_ask): cards, attachment links and messages hang off threads (chat_fts follows its messages by trigger).
+  "DELETE FROM chat_actions",
+  "DELETE FROM chat_artifacts",
+  "DELETE FROM chat_messages",
+  "DELETE FROM chat_fts",
+  "DELETE FROM chat_threads",
+  "DELETE FROM person_ask_settings",
+  "DELETE FROM ask_flags",
   "DELETE FROM org_usage_daily",
   "DELETE FROM org_admin_audit",
   "UPDATE orgs SET suspended_at = NULL, suspended_by = NULL, logo_sha = NULL, logo_source = NULL, logo_by = NULL, logo_from = NULL, logo_at = NULL",

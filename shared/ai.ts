@@ -14,6 +14,9 @@ import {
 } from "./ai-core";
 
 export * from "./ai-core";
+// Ask Trov's modes (#12 §2.1): THE one table to retune — model, tools, call limit and what an answer counts as.
+// Defined zod-free in ./ai-ask-core (the SPA's mode menu reads it); re-exported here as the server-side path.
+export { ASK_MODES, ASK_DEFAULT_MODE, askMode, askModesFor, type AskModeDef, type AskMode } from "./ai-ask-core";
 
 const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
