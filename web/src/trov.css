@@ -3441,3 +3441,36 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 .cnpy-tagjev[data-state="none"] .cnpy-fitrun-bar > span { background:var(--fg-40); }
 /* Reduced motion: the bar jumps to each answer (no frame loop runs); colour, fades and Undo's entrance are instant. */
 @media (prefers-reduced-motion: reduce) { .cnpy-fitrun-bar > span, .cnpy-tagjev .cnpy-fitrun-bar { transition:none; } .cnpy-tagjev-undo { animation:none; } }
+
+/* ── repo-overview (web/src/repo-overview.ts): the Overview drawn from facts ─────────────────────────────────
+   Every block sits in a `.repo-block` wrapper (its name in `data-repo-block`); one that drew nothing takes no
+   room. Blocks are divided by hairlines inside the one panel, like the rest of the dashboard. */
+.repo-block:empty { display:none; }
+.repo-block + .repo-block:not(:empty) { border-top:1px solid var(--border); }
+.repo-block[data-repo-block="attention"] + .repo-block { border-top:0; }
+.repo-links { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); margin:-1px 0 0 -1px; overflow:hidden; }
+.repo-link-cell { display:flex; flex-direction:column; align-items:flex-start; gap:3px; min-width:0; padding:14px 22px; text-align:left; border-left:1px solid var(--border); border-top:1px solid var(--border); transition:background .12s ease; cursor:pointer; }
+.repo-link-cell:hover { background:var(--hover); }
+.repo-link-cell:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
+@media (prefers-reduced-motion: reduce) { .repo-link-cell { transition:none; } }
+
+/* ── repo-attention (web/src/repo-attention.ts): Needs attention, first under the state slot ──────────────── */
+.repo-att { padding:14px 22px 6px; background:color-mix(in srgb, var(--accent) 4%, var(--surface)); border-bottom:1px solid var(--border); }
+.repo-att-row { display:flex; align-items:center; gap:8px 12px; padding:10px 0; flex-wrap:wrap; }
+.repo-att-act { cursor:pointer; }
+.repo-att-act:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+
+/* ── repo-connect (web/src/repo-connect.ts): the connect card above the opener (its radius is inline) ──────── */
+.repo-connect { padding:18px 22px; }
+.repo-connect-card { border:1px dashed color-mix(in srgb, var(--accent) 45%, transparent); padding:18px 20px; background:color-mix(in srgb, var(--accent) 4%, transparent); display:flex; align-items:center; gap:12px 20px; flex-wrap:wrap; }
+
+/* ── repo-week (web/src/repo-week.ts): this week's figures ───────────────────────────────────────────────── */
+.repo-week { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); margin:-1px 0 0 -1px; overflow:hidden; }
+.repo-week-tile { padding:16px 22px; min-width:0; border-left:1px solid var(--border); border-top:1px solid var(--border); }
+
+/* ── repo-header (web/src/repo-header.ts): the repository / App menus, the pills, Group by ────────────────── */
+.repo-scope-dd { display:inline-flex; min-width:0; max-width:260px; }
+.repo-groupby { display:flex; align-items:center; justify-content:flex-end; gap:10px 16px; margin-bottom:12px; flex-wrap:wrap; }
+/* The design offers Group by on a wide screen only: a phone draws the opener the rules picked. */
+[data-phone="1"] .repo-groupby { display:none; }
+.repo-sample-switch { display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; }
