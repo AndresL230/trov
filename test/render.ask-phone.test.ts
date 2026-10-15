@@ -62,7 +62,7 @@ describe("phone — the screen (`phone`)", () => {
   });
 
   it("the bug and theme buttons leave the header on Ask (the design); every phone control is ≥ 44px", () => {
-    expect(ask).toMatch(/\[data-phone="1"\]\[data-screen="ask"\] \.cnpy-hdr-r > \[data-act="supportOpen"\],\s*\[data-phone="1"\]\[data-screen="ask"\] \.cnpy-hdr-r > \[data-act="cycleTheme"\] \{ display:none; \}/);
+    expect(ask).toMatch(/\[data-phone="1"\]\[data-screen="ask"\] \.cnpy-hdr-r > \[data-act="supportOpen"\],\s*\[data-phone="1"\]\[data-screen="ask"\] \.cnpy-hdr-r > \[data-act="cycleTheme"\] \{ display:none !important; \}/);
     for (const sel of [".ask-ph-hbtn", ".ask-ph-plusbtn", ".ask-ph-send"]) expect(rule(sel), sel).toMatch(/width:44px; height:44px/);
     for (const sel of [".ask-ph-row", ".ask-ph-seg > .cnpy-seg-btn", ".ask-drawer .ask-th-b", ".ask-drawer .ask-menu > button"]) expect(rule(sel), sel).toMatch(/min-height:44px/);
     expect(rule(".ask-drawer .ask-th-more")).toMatch(/width:44px; height:44px; opacity:1/);
@@ -159,7 +159,7 @@ describe("phone — the + menu (`phone-plus`)", () => {
     expect(html).toMatch(/data-act="askPhAuto" data-arg="page:auto"[^>]*>Auto<\/button>/);
     // The Thinking hint carries #12's copy change.
     expect(plus((s) => { s.ask.composer.page.mode = "thinking"; })).toContain("Works through harder questions first. Slower. Counts as 5 questions.");
-    expect(rule(".ask-ph-plusbtn[aria-expanded=\"true\"]")).toContain("transform:rotate(45deg)");
+    expect(rule(".ask-ph-plusbtn[aria-expanded=\"true\"] > svg")).toContain("transform:rotate(45deg)");
   });
 
   it("Free: no Mode (one mode, no switcher); Auto off by an admin: the switch locked with the design's note", () => {
@@ -259,6 +259,7 @@ describe("phone — motion", () => {
     const reduce = ask.slice(ask.indexOf("@media (prefers-reduced-motion: reduce)"));
     const block = reduce.slice(0, reduce.indexOf("\n}\n"));
     for (const sel of [".ask-ph-plus", ".ask-ph-plus[data-closing]", ".ask-drawer", ".ask-drawer-scrim", ".ask-insp-frame"]) expect(block).toContain(sel);
-    expect(block).toMatch(/\.ask-ph-plusbtn \{ transition:none !important; \}/);
+    expect(block).toMatch(/\.ask-ph-plusbtn > svg \{ transition:none !important; \}/);
+    expect(rule(".ask-ph-plusbtn > svg")).toMatch(/transition:transform/);
   });
 });

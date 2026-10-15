@@ -2881,7 +2881,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-line, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
   /* phone: the + menu's pop and its + turning, the sheet (`.ask-insp-frame` above covers its variants) */
   .ask-ph-plus, .ask-ph-plus[data-closing] { animation:none !important; }
-  .ask-ph-plusbtn { transition:none !important; }
+  .ask-ph-plusbtn > svg { transition:none !important; }
 }
 
 /* ── Ask: threads ── (ask-threads.ts; the shell's) */
@@ -3017,7 +3017,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
    target here is ≥ 44px (the design draws 40 / 34). */
 /* The header: Open threads + New thread on the right; the bug and theme buttons leave on Ask (the design). */
 [data-phone="1"][data-screen="ask"] .cnpy-hdr-r > [data-act="supportOpen"],
-[data-phone="1"][data-screen="ask"] .cnpy-hdr-r > [data-act="cycleTheme"] { display:none; }
+[data-phone="1"][data-screen="ask"] .cnpy-hdr-r > [data-act="cycleTheme"] { display:none !important; }   /* (their display is inline) */
 .ask-ph-hbtn { display:grid; place-items:center; flex:none; width:44px; height:44px; border-radius:8px; color:var(--fg-70); cursor:pointer; transition:background .12s ease, color .12s ease; }
 .ask-ph-hbtn:hover { background:var(--hover); color:var(--fg); }
 .ask-ph-hbtn--outline { border:1px solid var(--border); color:var(--fg-55); }
@@ -3026,12 +3026,17 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-drawer-layer { position:fixed; inset:0; z-index:85; }
 .ask-drawer-scrim { position:absolute; inset:0; background:rgba(0,0,0,.45); animation:ask-fade-in .26s ease both; -webkit-tap-highlight-color:transparent; }
 .ask-drawer { position:absolute; top:0; bottom:0; left:0; display:flex; flex-direction:column; width:min(300px, calc(100% - 48px)); box-sizing:border-box; padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); background:var(--bg); box-shadow:0 0 48px rgba(0,0,0,.32); animation:ask-drawer-in .26s var(--fx-ease) both; }
+/* (a side drawer, not the app's phone modal-as-bottom-sheet: `[role="dialog"][aria-modal="true"]` at ≤ 640px) */
+[data-cnpy-theme] .ask-drawer[role="dialog"][aria-modal="true"] { width:min(300px, calc(100% - 48px)) !important; max-height:none !important; border-bottom:0 !important; }
 .ask-drawer-head { display:flex; align-items:center; justify-content:space-between; gap:8px; flex:none; height:56px; box-sizing:border-box; padding:0 6px 0 16px; border-bottom:1px solid var(--border); }
 .ask-drawer-t { margin:0; font-size:15px; font-weight:600; letter-spacing:-0.01em; }
 .ask-drawer .ask-threads-in { flex:1; width:100%; height:auto; }
 .ask-drawer .ask-th-new, .ask-drawer .ask-th-search, .ask-drawer .ask-th-rename { height:44px; }
 .ask-drawer .ask-th-new, .ask-drawer .ask-th-search input, .ask-drawer .ask-th-rename { font-size:14px; }
+.ask-drawer .ask-th-search { height:46px; }
+.ask-drawer .ask-th-search input { align-self:stretch; }   /* the field itself is the 44px target, inside the box's border */
 .ask-drawer .ask-th-clear { width:44px; height:44px; margin-right:-8px; }
+.ask-drawer .ask-th { grid-template-columns:minmax(0, 1fr); }   /* a long title ellipsizes instead of widening the row */
 .ask-drawer .ask-th-b { min-height:44px; padding-right:46px; font-size:14px; }
 /* Nothing hovers on a phone: a row's ⋯ is always there (44×44 at its right), and its time stays beside it. */
 .ask-drawer .ask-th-more { top:0; right:0; width:44px; height:44px; opacity:1; }
@@ -3046,9 +3051,11 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 /* The composer on a phone: + · the meta line · Send, and the + menu over the box (positioned on the composer). */
 [data-phone="1"] .ask-composer { position:relative; }
 .ask-ph-bar { display:flex; align-items:center; gap:8px; padding:2px 6px 6px; }
-.ask-ph-plusbtn { display:grid; place-items:center; flex:none; width:44px; height:44px; box-sizing:border-box; border:1px solid var(--border); border-radius:10px; color:var(--fg-70); cursor:pointer; transition:transform .2s var(--fx-ease), background .12s ease; }
+.ask-ph-plusbtn { display:grid; place-items:center; flex:none; width:44px; height:44px; box-sizing:border-box; border:1px solid var(--border); border-radius:10px; color:var(--fg-70); cursor:pointer; transition:background .12s ease; }
 .ask-ph-plusbtn:hover { background:var(--hover); }
-.ask-ph-plusbtn[aria-expanded="true"] { transform:rotate(45deg); }
+/* Open, the + turns into an × (the glyph turns, not the box — a turned box would be a diamond). */
+.ask-ph-plusbtn > svg { transition:transform .2s var(--fx-ease); }
+.ask-ph-plusbtn[aria-expanded="true"] > svg { transform:rotate(45deg); }
 .ask-ph-meta { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--fg-55); }
 .ask-ph-send { display:grid; place-items:center; flex:none; width:44px; height:44px; border-radius:10px; background:var(--hover); color:var(--fg-40); cursor:pointer; transition:background .15s ease, color .15s ease; }
 .ask-ph-send.is-on { background:var(--accent); color:var(--accent-fg); }
