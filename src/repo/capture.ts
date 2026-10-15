@@ -84,7 +84,8 @@ function fromCheckRun(p: Obj): RepoEvent[] {
     kind: "check", number: id, sha, ref, name,
     state: action === "completed" ? (str(cr.conclusion) ?? "neutral") : "pending",
     url: str(cr.details_url),
-    raw: JSON.stringify({ app: str(obj(cr.app)?.slug), status: str(cr.status) }),
+    // `output_title`: a failed check's one-line summary — the failure reason of a `github` part's deploy.
+    raw: JSON.stringify({ app: str(obj(cr.app)?.slug), status: str(cr.status), output_title: str(obj(cr.output)?.title)?.split(/\r?\n/)[0].slice(0, 200) ?? null }),
     provenance: "webhook", occurred_at: at,
   }];
 }

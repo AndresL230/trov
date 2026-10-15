@@ -10,6 +10,8 @@ import { orgEnvironments } from "./repo/config";
 import { putMetric } from "./repo/store";
 import { fillFailedJob, refreshDrift, scrubbedMessage } from "./repo/github";
 import { mirrorIssue } from "./tools/ticket-mirror";
+import { writeGithubDeploys } from "./hosting/github-deploys";
+import { checkRollback } from "./hosting/rollback";
 
 // The GitHub webhook is Trov's THIRD auth class. Unlike the session cookie
 // (humans) and the bearer token (agents), a delivery authenticates itself by an
@@ -443,6 +445,12 @@ export async function captureDelivery(
           const res = await ingestRepoEvent(ctx, ev);
           if (res.outcome !== "written") { repo.unchanged++; continue; }
           repo.captured++;
+          // A `github` part's deploys come from these signals — ONLY through the part's own setting
+          // (src/hosting/github-deploys.ts). Its own failure never costs the capture.
+          if (ev.kind === "deploy" || ev.kind === "check" || ev.kind === "run") {
+            await writeGithubDeploys(ctx, ev, Date.now(), async (part, id) => { await checkRollback(ctx, part, id, gh); })
+              .catch((e) => console.error("repo capture: github deploys", scrubbedMessage(e, token ?? ""), `org=${ctx.orgId}`));
+          }
           if (ev.kind === "run" && (ev.state === "failure" || ev.state === "timed_out") && ev.number) {
             const ghOpts = await gh();
             if (ghOpts) {
