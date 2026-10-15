@@ -23,6 +23,7 @@ import { inspectorBody } from "./ask-inspector";
 import { cmdjOverlay } from "./ask-cmdj";
 import { threadsDrawer } from "./ask-phone";
 import { closingAttr } from "./ask-motion";
+import { cvRefWord, isCvRef } from "./ask-cvref";
 
 /** The inspector's frame for the conversation in `v.where` ("" when it is closed or belongs to the other one). */
 export function inspectorFrame(v: AskView): string {
@@ -31,7 +32,7 @@ export function inspectorFrame(v: AskView): string {
   if (!ref || ins.where !== v.where) return "";
   const view = viewOf(v.look, ref);
   const trail = ins.stack.slice(0, ins.idx).map((r) => { const x = viewOf(v.look, r); return x ? refShort(x) : refFallbackText(r); });
-  const typeWord = view ? refTypeWord(view) : "";
+  const typeWord = view ? refTypeWord(view) : isCvRef(ref) ? cvRefWord(ref) : "";     // a conversation block / file (ask-cvref.ts)
   const sheet = v.app.phone;
   // Opening slides it in from its edge (the column under it makes room smoothly); closing is `data-closing`
   // (ask-motion.ts rule 3); `data-dragging` drops the width transition while the edge follows the pointer.

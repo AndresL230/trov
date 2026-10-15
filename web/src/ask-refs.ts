@@ -20,6 +20,7 @@ import { glyph, markShape, priorityIcon, stateMark, type Glyph, type MarkShape }
 import { VERDICT, ciLine, envVerdict, type EnvVerdict } from "./repo-verdict";
 import { personChip } from "./people";
 import { askIcon, REF_ICON } from "./ask-icons";
+import { cvRefWord, isCvRef } from "./ask-cvref";
 
 /** What the ref renderers read: the views by ref, and the org's people (avatars, names, colors). */
 export interface RefLook {
@@ -100,6 +101,7 @@ export function refCtxWord(v: RefView): string {
 }
 /** What a ref token shows when its item is not linked (not cited, hidden, not loaded): plain words from the key. */
 export function refFallbackText(ref: string): string {
+  if (isCvRef(ref)) return cvRefWord(ref);     // a block or a file of the conversation (ask-cvref.ts)
   const p = parseAskRef(ref);
   if (!p) return ref;
   if (p.type === "ticket" || p.type === "pr" || p.type === "handoff") return /^\d+$/.test(p.key) ? `#${p.key}` : p.key;

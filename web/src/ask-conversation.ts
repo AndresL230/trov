@@ -1,91 +1,532 @@
-// Ask Trov — the conversation (SEAM: a sibling agent replaces this stub; inventory §1b, §2).
+// Ask Trov — the conversation (inventory §1b, §2; ask-trov.dc.html L299–L650; scenarios `live`, `streaming`,
+// `thinking`, `answer`, `notfound` and the stream parts of `search` and `answer-pr`).
 //
-// TODO(conversation): build to the design — the question bubble (files, image thumbs, context chips, Edit on
-// the last question → edit-and-resend), activity steps (expandable result rows), thinking ("Thinking… Ns" →
-// "Thought for Ns"), the answer's markdown (headings, lists, tables with status cells, ref chips), the rich
-// blocks (item cards, bar chart, theme strip, dependency chain, not found) with their hover toolbar, the soft
-// cursor, Stopped / error rows, the footer (mode word, N sources, Copy, Regenerate + "Regenerate with", Save as
-// artifact, Wrong?) and the follow-ups under the last answer. The empty state (headline + starters) is yours too.
+//   the question   a right-aligned bubble; image files as 136px cards (the thumbnail, else a striped placeholder),
+//                  other files as chips, context chips; Edit on hover over the LAST question (always on a phone)
+//                  opens an edit box ("Sending replaces the answer below.") whose Send goes through `replaceFrom`
+//   the answer     in stream order: activity steps (each with results opens to "N results", whose rows open in the
+//                  inspector; `show_*` / `save_artifact` steps stay quiet; the oversized-image notice is an ordinary
+//                  step), thinking ("Thinking… Ns" the client counts → "Thought for Ns", which opens to the summary),
+//                  then the parts: markdown (headings, lists, tables with `[[ticket:14|status]]` cells, ref chips),
+//                  rich blocks (item cards, the bar chart, the theme strip, the dependency chain, not found), write
+//                  cards and Save forms (ask-actions.ts), with a soft cursor while it streams; Stopped / the error
+//   the footer     the Trov mark + the mode word, "N sources" (a numbered list), Copy, Regenerate (+ "Regenerate
+//                  with" the modes), Save as artifact and Wrong? (the actions part's acts: `askAcSaveForm`,
+//                  `askAcWrong`), then the follow-ups under the last answer only
 //
-// THE INTERFACE (keep it; the shell and the ⌘J panel call these):
-//   ConversationUi / initialConversationUi()   your state, at `AppState.ask.conversation`
-//   conversationView(v)                         the scroller's contents for `v.where` (page or panel)
-//   emptyView(v)                                a thread with no messages yet (above the composer)
-//   conversationPart                            your acts (`askCv…`), Escape layers, afterPaint (scroll stick)
-// Data: `convoOf(v).messages` (ask-stream.ts AskMsg: questions + AskTurn answers), `shownParts(turn)` for the
-// answer in order (text / block / grouped actions), `v.look` for every ref (ask-refs.ts refChip, statusCell,
-// splitRefTokens), `v.ui.state.data` for modes. Cards, done lines, Save forms and Wrong? are ask-actions.ts's:
-// call `actionGroupView`, `saveFormView`, `feedbackView`. Send through `ctx.send`, regenerate with
-// `ctx.send({ text: <its question>, replaceFrom: turn.messageId })`, open items with `ctx.openRef`.
-// CSS: your block in trov.css is `/* ── Ask: conversation ── */`.
+// THE INTERFACE (the shell and the ⌘J panel call these): ConversationUi / initialConversationUi(), conversationView(v),
+// emptyView(v), conversationPart (acts `askCv…`, the "menu" Escape layer, afterPaint). For the inspector: `cvItem(ui,
+// ref)` resolves a conversation-held ref (ask-cvref.ts) and `chartFigure` / `themesFigure` / `diagramFigure` /
+// `tableView` draw a block bigger without a second copy.
+//
+// Motion (ask-motion.ts): every message, part and step is a keyed child of a `data-ask-enter` list (streamed parts rise
+// in once, a text part only grows); a disclosure (a step's results, the thinking summary, the sources) opens with a
+// CSS entrance inside a `data-ask-tween` wrapper (the height glides) and closes through `ctx.exit` (`cv:<key>`); the
+// bars grow, the lanes wipe and the chain's nodes rise once, on insertion. All of it off under reduced motion.
 
-import { esc, attr } from "./ui";
-import type { AskCtx, AskPart, AskView } from "./ask-state";
+import { esc, attr, hitArea, HITBOX, relTime } from "./ui";
+import type { AskCtx, AskPart, AskView, AskWhere } from "./ask-state";
 import { convoOf } from "./ask-state";
-import { refChip, splitRefTokens, statusCell } from "./ask-refs";
-import { askIcon, askSpinner, ACTIVITY_ICON, trovMark } from "./ask-icons";
-import { shownParts, turnLive, type AskAnswer, type AskQuestion, type AskTurn } from "./ask-stream";
+import {
+  refChip, splitRefTokens, statusCell, viewOf, isHiddenRef, refFallbackText, refLabel, refShort, refTypeWord, refStatusMark,
+  repoFactsOf, repoHeadEnv, repoMark, personName, refAvatar,
+} from "./ask-refs";
+import { askIcon, askSpinner, ACTIVITY_ICON, REF_ICON, trovMark } from "./ask-icons";
+import { shownParts, turnLive, type AskAnswer, type AskQuestion, type AskStep, type AskTurn, type AskShownPart } from "./ask-stream";
 import { actionGroupView, feedbackView, saveFormView } from "./ask-actions";
-import { ASK_STARTERS_FALLBACK, askMode } from "@shared/ai-ask-core";
+import {
+  ASK_STARTERS_FALLBACK, askMode, isAskMode,
+  type AskAttachment, type AskChart, type AskDiagram, type AskMode, type AskNotFound, type AskThemesBlock, type RefView,
+} from "@shared/ai-ask-core";
 import { skeleton, skLine, skLines } from "./skeleton";
+import { markShape, tagSquare, tagTone } from "./marks";
+import { ciLine } from "./repo-verdict";
+import { aiDay } from "./ai-ui";
+import { closingAttr } from "./ask-motion";
+import { cvRef, parseCvRef } from "./ask-cvref";
 
 export interface ConversationUi {
   /** Disclosures by key (`<answerKey>:s<step>`, `<answerKey>:think`, `<answerKey>:src`). */
   open: Record<string, boolean>;
   /** Stick to the bottom while an answer streams (false once the person scrolls up). */
   stick: boolean;
+  /** The answer whose Copy reads "Copied" for a moment (`<where>:<answerKey>`). */
+  copied: string | null;
+  /** The answer whose "Regenerate with" menu is open (`<where>:<answerKey>`). */
+  regen: string | null;
+  /** Edit-and-resend: the question being edited and its draft. */
+  editing: { where: AskWhere; key: string; text: string } | null;
 }
-export const initialConversationUi = (): ConversationUi => ({ open: {}, stick: true });
+export const initialConversationUi = (): ConversationUi => ({ open: {}, stick: true, copied: null, regen: null, editing: null });
 
-/** Text with its ref tokens as chips (the stub keeps the markdown as plain text). */
-function inline(v: AskView, md: string): string {
-  return splitRefTokens(md).map((s) => ("text" in s ? esc(s.text) : s.status ? statusCell(s.ref, v.look) : refChip(s.ref, v.look))).join("");
+// ── markdown (the answer's text: headings, lists, tables, code; tolerant of a half-streamed line) ─────────────
+
+export type MdNode =
+  | { t: "h"; text: string }
+  | { t: "p"; lines: string[] }
+  | { t: "ul"; items: string[] }
+  | { t: "ol"; items: string[]; start: number }
+  | { t: "table"; head: string[] | null; rows: string[][] }
+  | { t: "code"; text: string };
+
+const LIST_RE = /^\s*([-*+]|\d{1,3}[.)])\s+(.*)$/;
+const isTableLine = (l: string): boolean => /^\s*\|/.test(l);
+const isSepRow = (l: string): boolean => /^\s*\|?[\s:|-]*-[\s:|-]*$/.test(l);
+const isBlockStart = (l: string): boolean => /^\s*```/.test(l) || /^\s{0,3}#{1,6}\s/.test(l) || isTableLine(l) || LIST_RE.test(l);
+
+/** A table row's cells, split on `|` outside ref tokens (`[[ticket:14|status]]` keeps its bar). */
+export function splitRow(line: string): string[] {
+  const s = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+  const cells: string[] = [];
+  let cur = "";
+  let depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s.startsWith("[[", i)) { depth++; cur += "[["; i++; continue; }
+    if (s.startsWith("]]", i) && depth > 0) { depth--; cur += "]]"; i++; continue; }
+    if (s[i] === "|" && depth === 0) { cells.push(cur.trim()); cur = ""; continue; }
+    cur += s[i];
+  }
+  cells.push(cur.trim());
+  return cells;
 }
 
-function question(v: AskView, q: AskQuestion): string {
-  const chips = q.context.map((r) => refChip(r, v.look, { size: "tag" })).join("");
-  const files = q.attachments.map((f) => `<span class="ask-file">${askIcon(f.kind === "image" ? "image" : "file", 14, "var(--fg-55)")}${esc(f.title)}</span>`).join("");
-  return `<div class="ask-q" data-morph-key="q:${attr(q.key)}">
-    <div class="ask-q-col">${chips || files ? `<div class="ask-q-att">${files}${chips}</div>` : ""}<div class="ask-q-bubble">${esc(q.text)}</div></div>
+export function parseMd(md: string): MdNode[] {
+  const lines = md.replace(/\r\n?/g, "\n").split("\n");
+  const out: MdNode[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+    if (/^\s*```/.test(line)) {
+      const body: string[] = [];
+      i++;
+      while (i < lines.length && !/^\s*```/.test(lines[i])) body.push(lines[i++]);
+      i++;
+      out.push({ t: "code", text: body.join("\n") });
+      continue;
+    }
+    const h = line.match(/^\s{0,3}#{1,6}\s+(.*)$/);
+    if (h) { out.push({ t: "h", text: h[1].replace(/\s+#+\s*$/, "") }); i++; continue; }
+    if (isTableLine(line)) {
+      const rows: string[] = [];
+      while (i < lines.length && isTableLine(lines[i])) rows.push(lines[i++]);
+      // The first row heads the table once the separator follows it (or while it is the only row streamed yet).
+      const headed = rows.length === 1 || isSepRow(rows[1]);
+      const head = headed ? splitRow(rows[0]) : null;
+      const body = (headed ? rows.slice(1) : rows).filter((r) => !isSepRow(r)).map(splitRow);
+      out.push({ t: "table", head, rows: body });
+      continue;
+    }
+    const li = line.match(LIST_RE);
+    if (li) {
+      const ordered = /\d/.test(li[1]);
+      const items: string[] = [];
+      while (i < lines.length) {
+        const m = lines[i].match(LIST_RE);
+        if (m && /\d/.test(m[1]) === ordered) { items.push(m[2]); i++; continue; }
+        if (items.length && /^\s{2,}\S/.test(lines[i]) && !m) { items[items.length - 1] += ` ${lines[i].trim()}`; i++; continue; }
+        break;
+      }
+      out.push(ordered ? { t: "ol", items, start: Number(li[1].replace(/\D/g, "")) || 1 } : { t: "ul", items });
+      continue;
+    }
+    const para: string[] = [];
+    while (i < lines.length && lines[i].trim() && !isBlockStart(lines[i])) para.push(lines[i++].trim());
+    out.push({ t: "p", lines: para });
+  }
+  return out;
+}
+
+/** Bold, italics, code and links on ESCAPED text (placeholders for the chips pass through untouched). */
+function emphasis(html: string): string {
+  return html
+    .split(/(`[^`]+`)/)
+    .map((p) => (p.length > 2 && p.startsWith("`") && p.endsWith("`")
+      ? `<code class="ask-code">${p.slice(1, -1)}</code>`
+      : p
+        .replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/(^|[^*\w])\*(?!\s)([^*]+?)\*(?!\*)/g, "$1<em>$2</em>")
+        .replace(/(^|[^\w])_(?!\s)([^_]+?)_(?!\w)/g, "$1<em>$2</em>")
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, `<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>`)))
+    .join("");
+}
+
+/** A run of answer text: its ref tokens as chips (status tokens as the item's live mark), its markdown inline. */
+export function inline(v: AskView, md: string, size: "inline" | "cell" = "inline"): string {
+  const chips: string[] = [];
+  const text = splitRefTokens(md).map((s) => {
+    if ("text" in s) return esc(s.text);
+    chips.push(s.status ? statusCell(s.ref, v.look, size === "cell" ? 12.5 : 13) : refChip(s.ref, v.look, { size }));
+    return `\u0000${chips.length - 1}\u0000`;
+  }).join("");
+  return emphasis(text).replace(/\u0000(\d+)\u0000/g, (_, n: string) => chips[Number(n)] ?? "");
+}
+
+const CURSOR = `<span class="ask-cursor" aria-hidden="true"></span>`;
+
+/** One table, scrolling inside its block. */
+export function tableView(v: AskView, head: string[] | null, rows: string[][]): string {
+  return `<div class="ask-tbl-scroll"><table class="ask-tbl">${head ? `<thead><tr>${head.map((h) => `<th scope="col">${inline(v, h, "cell")}</th>`).join("")}</tr></thead>` : ""}<tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(v, c, "cell")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+
+/** A text part as markup; `cur` puts the soft cursor at the end of its last line. `tableTools(k)` wraps table k. */
+function mdView(v: AskView, md: string, cur: boolean, tableTools: (k: number, inner: string) => string): string {
+  const nodes = parseMd(md);
+  let tables = 0;
+  return nodes.map((n, i) => {
+    const c = cur && i === nodes.length - 1 ? CURSOR : "";
+    switch (n.t) {
+      case "h": return `<h3 class="ask-h">${inline(v, n.text)}${c}</h3>`;
+      case "p": return `<p class="ask-p">${n.lines.map((l) => inline(v, l)).join("<br>")}${c}</p>`;
+      case "ul": return `<ul class="ask-ul">${n.items.map((it, k) => `<li>${inline(v, it)}${k === n.items.length - 1 ? c : ""}</li>`).join("")}</ul>`;
+      case "ol": return `<ol class="ask-ul"${n.start !== 1 ? ` start="${n.start}"` : ""}>${n.items.map((it, k) => `<li>${inline(v, it)}${k === n.items.length - 1 ? c : ""}</li>`).join("")}</ol>`;
+      case "code": return `<pre class="ask-pre"><code>${esc(n.text)}</code></pre>${c}`;
+      case "table": return `${tableTools(tables++, tableView(v, n.head, n.rows))}${c}`;
+    }
+  }).join("");
+}
+
+/** The answer's words as plain text (Copy): ref tokens as their names, status tokens as their words. */
+export function plainText(v: Pick<AskView, "look">, md: string): string {
+  return splitRefTokens(md).map((s) => {
+    if ("text" in s) return s.text;
+    const view = viewOf(v.look, s.ref);
+    if (s.status) return view?.status?.word ?? "—";
+    return view ? refShort(view) : refFallbackText(s.ref);
+  }).join("");
+}
+
+// ── marks and names ──────────────────────────────────────────────────────────
+
+/** An item's state as a mark: a repository's is the Overview's verdict (#186), anything else its RefStatus. */
+function statusOf(view: RefView | null, size: number): string {
+  if (!view) return "";
+  if (view.type === "repo") return repoMark(repoFactsOf(view), size);
+  return view.status ? refStatusMark(view.status, size) : "";
+}
+
+/** A row's meta: "Doc · Oct 12"; a repository's head-environment checks ("2 of 9 checks failing on a1c9e2f"). */
+function rowMeta(view: RefView): string {
+  if (view.type === "repo") {
+    const f = repoFactsOf(view);
+    const head = f ? repoHeadEnv(f) : null;
+    const ci = f && head ? ciLine(f.ci.find((c) => c.env === head.key)) : null;
+    if (ci) return ci.text;
+  }
+  const day = view.updated ? aiDay(view.updated) : "";
+  return `${refTypeWord(view)}${day ? ` · ${day}` : ""}`;
+}
+
+/** One found item (a step's result, a source): opens in the inspector. Hidden items are left out. */
+function itemRow(v: AskView, ref: string, n: number | null): string {
+  if (isHiddenRef(v.look, ref)) return "";
+  const view = viewOf(v.look, ref);
+  const num = n === null ? "" : `<span class="ask-src-n">${n}</span>`;
+  if (!view) return `<div class="${n === null ? "ask-res" : "ask-src-r"} is-wait">${num}<span class="ask-res-t">${esc(refFallbackText(ref))}</span></div>`;
+  const icon = askIcon(REF_ICON[view.type], 14, "var(--fg-40)");
+  return n === null
+    ? `<button type="button" class="ask-res" data-act="askShOpen" data-arg="${attr(ref)}">${icon}<span class="ask-res-t">${esc(refLabel(view))}</span><span class="ask-res-m">${esc(rowMeta(view))}</span></button>`
+    : `<button type="button" class="ask-src-r" data-act="askShOpen" data-arg="${attr(ref)}">${num}${icon}<span class="ask-src-t">${esc(refLabel(view))}</span><span style="flex:1"></span><span class="ask-src-m">${esc(rowMeta(view))}</span></button>`;
+}
+
+const chev = (open: boolean, down = false): string =>
+  `<span class="ask-chev${down ? " ask-chev--down" : ""}${open ? " is-open" : ""}" aria-hidden="true">${askIcon(down ? "chevDown" : "chevRight", down ? 10 : 11, null, down ? 2.6 : 2.4)}</span>`;
+
+const fmtSize = (n: number): string => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1).replace(/\.0$/, "")} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+
+// ── the rich blocks ──────────────────────────────────────────────────────────
+
+const dataFoot = (): string => `<div class="ask-fig-foot">${trovMark(10)}<span>Data from Trov</span></div>`;
+
+/** The bar chart: "Data from Trov" and the total; `barH` is the bars' area (150 in the thread, bigger in the inspector). */
+export function chartFigure(c: AskChart, o: { barH?: number } = {}): string {
+  const area = o.barH ?? 150;
+  const max = Math.max(1, ...c.rows.map((r) => r.value));
+  const n = c.rows.length;
+  const weekly = /_by_week$/.test(c.query);
+  const total = weekly ? `${c.total} in ${n} ${n === 1 ? "week" : "weeks"}` : `${c.total} in all`;
+  const aria = `${c.title}. ${c.rows.map((r) => `${r.label}: ${r.value}`).join(", ")}. ${c.total} ${c.unit} in all.`;
+  const bars = c.rows.map((r, i) => {
+    const h = r.value > 0 ? Math.max(2, Math.round((r.value / max) * (area - 26))) : 0;
+    return `<div class="ask-bar"><span class="ask-bar-v">${r.value}</span><div class="ask-bar-b" style="height:${h}px;animation-delay:${i * 45}ms"></div></div>`;
+  }).join("");
+  return `<figure class="ask-fig" data-fig="chart">
+    <figcaption class="ask-fig-cap"><span class="ask-fig-t">${esc(c.title)}</span><span class="ask-fig-s">${esc(total)}</span></figcaption>
+    <div class="ask-fig-scroll"><div class="ask-bars" role="img" aria-label="${attr(aria)}" style="height:${area}px">${bars}</div>
+    <div class="ask-bar-ls" aria-hidden="true">${c.rows.map((r) => `<span>${esc(r.label)}</span>`).join("")}</div></div>
+    ${dataFoot()}
+  </figure>`;
+}
+
+const share = (v: number): number => Math.max(0, Math.min(1, Number.isFinite(v) ? v : 0));
+/** A theme cell's words: "Hosting, week of Sep 14: 70% of capacity" (0 → "none"). */
+export const themeTip = (theme: string, week: string, v: number): string =>
+  `${theme}, week of ${week}: ${share(v) > 0 ? `${Math.round(share(v) * 100)}% of capacity` : "none"}`;
+
+/** The theme strip: a lane per theme, a cell per week tinted by its share; the server's caption says what it counts. */
+export function themesFigure(t: AskThemesBlock): string {
+  const cols = `grid-template-columns:112px repeat(${t.weeks.length},minmax(0,1fr))`;
+  const aria = `${t.title}. ${t.caption}. ${t.lanes.map((l) => `${l.theme}: ${t.weeks.map((w, k) => `${w} ${Math.round(share(l.values[k] ?? 0) * 100)}%`).join(", ")}`).join("; ")}.`;
+  const head = `<div class="ask-tg" style="${cols}" aria-hidden="true"><span></span>${t.weeks.map((w) => `<span class="ask-tw">${esc(w)}</span>`).join("")}</div>`;
+  const lanes = t.lanes.map((l, i) => {
+    const cells = t.weeks.map((w, k) => {
+      const v = share(l.values[k] ?? 0);
+      const bg = v > 0 ? `color-mix(in srgb, ${tagTone(l.color)} ${Math.round(14 + v * 76)}%, transparent)` : "var(--hover)";
+      return `<span class="ask-tc" data-mtip="${attr(themeTip(l.theme, w, v))}" style="background:${bg}"></span>`;
+    }).join("");
+    return `<div class="ask-tg ask-tl" style="${cols};animation-delay:${i * 90}ms"><span class="ask-tl-n">${tagSquare(l.color, 8)}<span>${esc(l.theme)}</span></span>${cells}</div>`;
+  }).join("");
+  return `<figure class="ask-fig" data-fig="themes">
+    <figcaption class="ask-fig-cap"><span class="ask-fig-t">${esc(t.title)}</span><span class="ask-fig-s">${esc(t.caption)}</span></figcaption>
+    <div class="ask-fig-scroll" role="img" aria-label="${attr(aria)}">${head}${lanes}</div>
+    ${dataFoot()}
+  </figure>`;
+}
+
+/** The nodes in chain order when the edges make one simple chain (a → b → c), else null (a branching graph). */
+export function chainOrder(d: Pick<AskDiagram, "nodes" | "edges">): AskDiagram["nodes"] | null {
+  if (d.nodes.length < 2 || d.edges.length !== d.nodes.length - 1) return d.nodes.length === 1 && !d.edges.length ? d.nodes : null;
+  const next = new Map<string, string>();
+  const into = new Set<string>();
+  for (const [a, b] of d.edges) {
+    if (next.has(a) || into.has(b) || a === b) return null;
+    next.set(a, b);
+    into.add(b);
+  }
+  const byId = new Map(d.nodes.map((n) => [n.id, n]));
+  let at = d.nodes.find((n) => !into.has(n.id))?.id;
+  const out: AskDiagram["nodes"] = [];
+  while (at !== undefined && out.length <= d.nodes.length) {
+    const n = byId.get(at);
+    if (!n) return null;
+    out.push(n);
+    at = next.get(at);
+  }
+  return out.length === d.nodes.length ? out : null;
+}
+
+const ARROW = `<svg class="ask-dn-arrow" width="30" height="16" viewBox="0 0 30 16" fill="none" aria-hidden="true"><path d="M3 8h22" stroke="currentColor" stroke-width="1.4"></path><path d="M21 4l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>`;
+
+/** The dependency chain (v1 draws chains; a branching graph, or `layout: "list"`, is a list). A node with a ref opens it. */
+export function diagramFigure(v: Pick<AskView, "look">, d: AskDiagram): string {
+  const order = d.layout === "chain" ? chainOrder(d) : null;
+  const nodes = order ?? d.nodes;
+  const node = (n: AskDiagram["nodes"][number], i: number): string => {
+    const view = n.view ?? (n.ref ? viewOf(v.look, n.ref) : null);
+    const st = statusOf(view, 11.5);
+    const eyebrow = n.eyebrow ?? (view ? refTypeWord(view) : "");
+    const inner = `${eyebrow ? `<span class="ask-dn-eb">${esc(eyebrow)}</span>` : ""}<span class="ask-dn-l">${esc(n.label)}</span>${st ? `<span class="ask-dn-st">${st}</span>` : ""}`;
+    const delay = `animation-delay:${i * 60}ms`;
+    return n.ref && view
+      ? `<button type="button" class="ask-dn" data-act="askShOpen" data-arg="${attr(n.ref)}" style="${delay}">${inner}</button>`
+      : `<div class="ask-dn" style="${delay}">${inner}</div>`;
+  };
+  const body = order
+    ? `<div class="ask-chain" role="list" aria-label="${attr(`${d.title}: ${nodes.map((n) => n.label).join(", then ")}`)}">${nodes.map((n, i) => `${i ? ARROW : ""}<div role="listitem" class="ask-chain-i">${node(n, i)}</div>`).join("")}</div>`
+    : `<div class="ask-dlist" role="list" aria-label="${attr(d.title)}">${nodes.map((n, i) => `<div role="listitem">${node(n, i)}</div>`).join("")}</div>`;
+  return `<figure class="ask-fig" data-fig="diagram" data-layout="${order ? "chain" : "list"}">
+    <figcaption class="ask-fig-cap"><span class="ask-fig-t">${esc(d.title)}</span>${d.caption ? `<span class="ask-fig-s">${esc(d.caption)}</span>` : ""}</figcaption>
+    <div class="ask-fig-scroll">${body}</div>
+  </figure>`;
+}
+
+/** One item card (a `hitArea` card: the owner's avatar sits on it, the whole card opens the item). */
+function itemCard(v: AskView, it: RefView): string {
+  const view = viewOf(v.look, it.ref) ?? it;
+  const num = view.num != null && (view.type === "ticket" || view.type === "pr" || view.type === "handoff") ? ` #${view.num}` : "";
+  const st = statusOf(view, 12);
+  const owner = view.owner ?? null;
+  return `<div class="ask-ci ${HITBOX}">${hitArea("askShOpen", view.ref, `${refTypeWord(view)}${num}: ${view.title}`)}
+    <span class="ask-ci-eb">${askIcon(REF_ICON[view.type], 13, "var(--fg-40)")}${esc(refTypeWord(view) + num)}</span>
+    <span class="ask-ci-t">${esc(view.title)}</span>
+    ${st ? `<span class="ask-ci-st">${st}</span>` : ""}
+    <span class="ask-ci-ft">${owner ? `${refAvatar(v.look, owner, 16)}<span class="ask-ci-o">${esc(personName(v.look, owner))}</span>` : ""}<span style="flex:1"></span>${view.updated ? `<span class="ask-ci-up">${esc(relTime(view.updated))}</span>` : ""}</span>
   </div>`;
 }
+
+function notFoundView(nf: AskNotFound): string {
+  return `<div class="ask-nf">
+    <div class="ask-nf-h">${askIcon("searchMinus", 16, "var(--fg-55)")}<span>I couldn't find that in Trov.</span></div>
+    <p class="ask-p">Nothing you can see mentions “${esc(nf.query)}”. It may live somewhere Trov doesn't read, like email or a call. Try asking about something Trov keeps, or name an item:</p>
+    ${nf.tries.length ? `<div class="ask-nf-tries">${nf.tries.map((t) => `<button type="button" class="ask-nf-try" data-act="askCvSend" data-arg="${attr(t)}">${askIcon("arrow", 12, null, 2)}<span>${esc(t)}</span></button>`).join("")}</div>` : ""}
+    ${nf.searched.length ? `<div class="ask-nf-card"><div class="ask-nf-head">What I searched</div>${nf.searched.map((s) =>
+      `<div class="ask-nf-row">${markShape("ring", "var(--fg-40)", 9)}<span class="ask-nf-a">${esc(s.area)}</span><span class="ask-nf-s">${esc(s.scope)}</span><span style="flex:1"></span><span class="ask-nf-none">No matches</span></div>`).join("")}</div>` : ""}
+  </div>`;
+}
+
+/** A rich block's frame: on hover (or focus inside) Save as artifact — once the answer is stored — and Open in inspector. */
+function rich(kind: string, inner: string, save: string | null, open: string | null): string {
+  const tools = [
+    save ? `<button type="button" class="ask-tool" data-act="askAcSaveForm" data-arg="${attr(save)}" aria-label="Save as artifact" data-mtip="Save as artifact">${askIcon("saveArtifact", 13, null, 1.9)}</button>` : "",
+    open ? `<button type="button" class="ask-tool" data-act="askCvOpen" data-arg="${attr(open)}" aria-label="Open in inspector" data-mtip="Open in inspector">${askIcon("openBeside", 13, null, 1.9)}</button>` : "",
+  ].join("");
+  return `<div class="ask-rich" data-rich="${kind}">${tools ? `<div class="ask-tools" role="toolbar" aria-label="Block actions">${tools}</div>` : ""}${inner}</div>`;
+}
+
+function blockView(v: AskView, a: AskAnswer, p: Extract<AskShownPart, { kind: "block" }>): string {
+  const b = p.block;
+  const save = a.turn.messageId !== null ? `${v.where}:${a.key}:${p.index}` : null;
+  const open = (kind: "chart" | "themes" | "diagram") => cvRef(v.where, a.key, kind, p.index);
+  switch (b.kind) {
+    case "items": {
+      const items = b.items.filter((it) => !isHiddenRef(v.look, it.ref));
+      if (!items.length) return "";
+      // Cards open themselves: no Open in inspector.
+      return rich("items", `<div class="ask-cards" style="--n:${Math.min(items.length, 3)}">${items.map((it) => itemCard(v, it)).join("")}</div>`, save, null);
+    }
+    case "chart": return rich("chart", chartFigure(b.chart), save, open("chart"));
+    case "themes": return rich("themes", themesFigure(b.themes), save, open("themes"));
+    case "diagram": return rich("diagram", diagramFigure(v, b.diagram), save, open("diagram"));
+    case "not_found": return notFoundView(b.notFound);
+    case "save_form": return saveFormView(v, a, b, p.index);
+  }
+}
+
+// ── the question ─────────────────────────────────────────────────────────────
+
+function fileView(where: AskWhere, q: AskQuestion, f: AskAttachment): string {
+  const ref = cvRef(where, q.key, "upload", f.id);
+  if (f.kind === "image") {
+    return `<button type="button" class="ask-qimg" data-act="askCvOpen" data-arg="${attr(ref)}" aria-label="${attr(`Open ${f.title}`)}">${f.thumbUrl
+      ? `<img src="${attr(f.thumbUrl)}" alt="" loading="lazy" decoding="async">`
+      : `<span class="ask-qimg-ph" aria-hidden="true">Image · ${esc(fmtSize(f.size))}</span>`}<span class="ask-qimg-f">${askIcon("image", 13, "var(--fg-55)")}<span class="ask-qimg-n">${esc(f.title)}</span></span></button>`;
+  }
+  const icon = /\.csv$/i.test(f.title) ? "csv" : "file";
+  return `<button type="button" class="ask-qfile" data-act="askCvOpen" data-arg="${attr(ref)}" aria-label="${attr(`Open ${f.title}`)}">${askIcon(icon, 14, "var(--fg-55)")}<span>${esc(f.title)}</span><span class="ask-qfile-s">${esc(fmtSize(f.size))}</span></button>`;
+}
+
+function question(v: AskView, q: AskQuestion, last: boolean): string {
+  const busy = convoOf(v).busy;
+  const ed = v.ui.conversation.editing;
+  const editing = ed !== null && ed.where === v.where && ed.key === q.key;
+  const canEdit = last && !busy;
+  const files = q.attachments.map((f) => fileView(v.where, q, f)).join("");
+  const ctx = q.context.map((r) => refChip(r, v.look, { size: "tag" })).join("");
+  const edit = canEdit && !editing
+    ? `<button type="button" class="ask-q-edit" data-act="askCvEdit" data-arg="${attr(`${v.where}:${q.key}`)}" aria-label="Edit message">${askIcon("rename", 13)}<span>Edit</span></button>` : "";
+  const body = editing && canEdit && ed
+    ? `<div class="ask-q-editbox">
+        <textarea class="ask-q-ta" rows="3" data-act="askCvEditText" data-field="askCvEdit:${attr(v.where)}" data-ask-edit aria-label="Edit your message">${esc(ed.text)}</textarea>
+        <div class="ask-q-editbar"><span class="ask-q-edithint">Sending replaces the answer below.</span>
+          <button type="button" class="ask-btn" data-act="askCvEditCancel">Cancel</button>
+          <button type="button" class="ask-btn ask-btn--accent" data-act="askCvEditSend"${ed.text.trim() ? "" : " disabled"}>Send</button></div>
+      </div>`
+    : `<div class="ask-q-col">${files || ctx ? `<div class="ask-q-att">${files}${ctx}</div>` : ""}<div class="ask-q-bubble">${esc(q.text)}</div></div>`;
+  // `data-ask-tween`: the bubble ↔ the edit box glides instead of jumping.
+  return `<div class="ask-q${canEdit ? " can-edit" : ""}" data-morph-key="q:${attr(q.key)}" data-ask-tween>${edit}${body}</div>`;
+}
+
+// ── the answer ───────────────────────────────────────────────────────────────
+
+/** The show tools and the save form's step are what the answer SHOWS — the design lists no step for them. */
+export const quietStep = (s: Pick<AskStep, "tool">): boolean => /^show_/.test(s.tool) || s.tool === "save_artifact";
+
+function stepView(v: AskView, a: AskAnswer, s: AskStep): string {
+  const key = `${a.key}:s${s.step}`;
+  const results = s.results.filter((r) => !isHiddenRef(v.look, r));
+  const has = results.length > 0;
+  const open = has && v.ui.conversation.open[key] === true;
+  const run = s.state === "run" ? " is-run" : "";
+  const icon = s.state === "run" ? askSpinner(13) : askIcon(ACTIVITY_ICON[s.icon] ?? "search", 14, "var(--fg-40)");
+  const found = s.resultLine ?? (has ? `${results.length} ${results.length === 1 ? "result" : "results"}` : null);
+  const line = found ? `<span class="ask-step-n">· ${esc(found)}</span>` : "";
+  const head = has
+    ? `<button type="button" class="ask-step${run}" data-act="askCvToggle" data-arg="${attr(key)}" aria-expanded="${open}"><span class="ask-step-i">${icon}</span><span class="ask-step-l">${esc(s.label)}</span>${line}${chev(open)}</button>`
+    : `<div class="ask-step${run}"><span class="ask-step-i">${icon}</span><span class="ask-step-l">${esc(s.label)}</span>${line}</div>`;
+  const det = open ? `<div class="ask-step-det"${closingAttr(v.ui.closing, `cv:${key}`)}>${results.map((r) => itemRow(v, r, null)).join("")}</div>` : "";
+  return `<div class="ask-step-w" data-morph-key="s:${s.step}" data-ask-tween>${head}${det}</div>`;
+}
+
+/** "Thinking… Ns" — the CLIENT counts from the run event (afterPaint ticks the number between paints). */
+export const thinkingLabel = (startedAt: number, now = Date.now()): string => `Thinking… ${Math.max(0, Math.floor((now - startedAt) / 1000))}s`;
+
+function thinkView(v: AskView, a: AskAnswer): string {
+  const th = a.turn.thinking;
+  if (!th) return "";
+  const clock = `<span class="ask-step-i">${askIcon("clock", 14, "var(--fg-40)")}</span>`;
+  if (th.state === "run") {
+    return `<div class="ask-think" data-ask-tween><div class="ask-step is-run" role="status">${clock}<span class="ask-think-l" data-ask-think="${th.startedAt}">${thinkingLabel(th.startedAt)}</span></div></div>`;
+  }
+  const key = `${a.key}:think`;
+  const open = v.ui.conversation.open[key] === true;
+  return `<div class="ask-think" data-ask-tween>
+    <button type="button" class="ask-step" data-act="askCvToggle" data-arg="${attr(key)}" aria-expanded="${open}">${clock}<span class="ask-step-l">Thought for ${th.seconds}s</span>${chev(open)}</button>
+    ${open ? `<div class="ask-think-sum"${closingAttr(v.ui.closing, `cv:${key}`)}>${esc(th.summary)}</div>` : ""}
+  </div>`;
+}
+
+/** The modes "Regenerate with" offers: `ask/state`'s (never a UI constant). */
+const modesOf = (v: AskView): { id: AskMode; label: string; hint: string }[] => v.ui.state.data?.modes ?? [];
+const modeLabel = (v: AskView, m: AskMode): string => modesOf(v).find((x) => x.id === m)?.label ?? askMode(m).label;
+
+function footer(v: AskView, a: AskAnswer): string {
+  const t = a.turn;
+  const k = a.key;
+  const id = `${v.where}:${k}`;
+  const n = t.cites.length;
+  const srcOpen = n > 0 && v.ui.conversation.open[`${k}:src`] === true;
+  const modes = modesOf(v);
+  const regenOpen = v.ui.conversation.regen === id;
+  const busy = convoOf(v).busy;
+  const stored = t.messageId !== null;
+  const menu = regenOpen ? `<div class="ask-menu ask-regen-menu" role="menu" aria-label="Regenerate with"${closingAttr(v.ui.closing, "menu")}>
+      <div class="ask-menu-head" aria-hidden="true">Regenerate with</div>
+      ${modes.map((m) => `<button type="button" role="menuitemradio" aria-checked="${m.id === t.mode}" data-act="askCvRegenWith" data-arg="${attr(`${id}:${m.id}`)}"><span class="ask-mi"><span class="ask-mi-l">${esc(m.label)}</span><span class="ask-mi-h">${esc(m.hint)}</span></span>${m.id === t.mode ? askIcon("check", 14, "var(--accent)", 2.4) : ""}</button>`).join("")}
+    </div>` : "";
+  const row = `<div class="ask-foot">
+    <span class="ask-foot-mode" data-mtip="Written by Trov">${trovMark(13)}<span>${esc(modeLabel(v, t.mode))}</span></span>
+    <span class="ask-foot-sep" aria-hidden="true"></span>
+    ${n ? `<button type="button" class="ask-fb" data-act="askCvToggle" data-arg="${attr(`${k}:src`)}" aria-expanded="${srcOpen}">${n} ${n === 1 ? "source" : "sources"}${chev(srcOpen, true)}</button>` : `<span class="ask-fb is-static">No sources</span>`}
+    <button type="button" class="ask-fb" data-act="askCvCopy" data-arg="${attr(id)}">${askIcon("copy", 13, null, 2)}<span>${v.ui.conversation.copied === id ? "Copied" : "Copy"}</span></button>
+    ${stored ? `<span class="ask-regen"><button type="button" class="ask-fb${modes.length > 1 ? " ask-fb--l" : ""}" data-act="askCvRegen" data-arg="${attr(id)}"${busy ? " disabled" : ""}>${askIcon("regen", 13, null, 2)}<span>Regenerate</span></button>${modes.length > 1
+      ? `<button type="button" class="ask-fb ask-fb--r" data-act="askCvRegenMenu" data-arg="${attr(id)}" aria-label="Regenerate with another mode" aria-haspopup="menu" aria-expanded="${regenOpen}"${busy ? " disabled" : ""}>${askIcon("chevDown", 10, null, 2.6)}</button>${menu}` : ""}</span>` : ""}
+    ${stored ? `<button type="button" class="ask-fb" data-act="askAcSaveForm" data-arg="${attr(id)}">${askIcon("saveArtifact", 13, null, 1.9)}<span>Save as artifact</span></button>` : ""}
+    ${stored ? `<button type="button" class="ask-fb" data-act="askAcWrong" data-arg="${attr(k)}" aria-expanded="${v.ui.actions.wrongOpen[k] === true}">Wrong?</button>` : ""}
+  </div>`;
+  const sources = srcOpen ? `<div class="ask-src"${closingAttr(v.ui.closing, `cv:${k}:src`)}>${t.cites.map((c, i) => itemRow(v, c.ref, i + 1)).join("")}</div>` : "";
+  // One tweened wrapper: the sources list (and the Wrong? row) opening or closing glides the thread under it.
+  return `<div class="ask-foot-w" data-ask-tween>${row}${feedbackView(v, a)}${sources}</div>`;
+}
+
+function partView(v: AskView, a: AskAnswer, p: AskShownPart, i: number, cur: boolean): string {
+  const key = `p${i}`;
+  if (p.kind === "text") {
+    const save = a.turn.messageId !== null ? `${v.where}:${a.key}` : null;
+    return `<div class="ask-text" data-morph-key="${key}">${mdView(v, p.md, cur, (k, inner) => rich("table", inner, save, cvRef(v.where, a.key, "table", `${i}.${k}`)))}</div>`;
+  }
+  if (p.kind === "actions") return `<div class="ask-part" data-morph-key="${key}" data-ask-tween>${actionGroupView(v, a, p.ids)}</div>`;
+  if (p.block.kind === "save_form") return `<div class="ask-part" data-morph-key="${key}" data-ask-tween>${blockView(v, a, p)}</div>`;
+  return `<div class="ask-part" data-morph-key="${key}" data-block="${attr(p.block.kind)}">${blockView(v, a, p)}</div>`;
+}
+
+const STOP_SQ = `<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true" style="flex:none;color:var(--fg-40)"><rect x=".8" y=".8" width="8.4" height="8.4" rx="1.2" fill="currentColor"></rect></svg>`;
 
 function answer(v: AskView, a: AskAnswer, last: boolean): string {
   const t: AskTurn = a.turn;
   const live = turnLive(t);
-  const steps = t.activity.map((s) =>
-    `<div class="ask-step${s.state === "run" ? " is-run" : ""}" data-morph-key="s:${attr(String(s.step))}">${s.state === "run" ? askSpinner(13) : askIcon(ACTIVITY_ICON[s.icon], 14, "var(--fg-40)")}<span>${esc(s.label)}</span>${s.resultLine ? `<span class="ask-step-n">· ${esc(s.resultLine)}</span>` : ""}</div>`).join("");
-  const think = t.thinking
-    ? `<div class="ask-step">${askIcon("clock", 14, "var(--fg-40)")}<span>${t.thinking.state === "run" ? "Thinking…" : `Thought for ${t.thinking.seconds}s`}</span></div>`
-    : "";
+  const steps = t.activity.filter((s) => !quietStep(s)).map((s) => stepView(v, a, s)).join("");
+  const think = thinkView(v, a);
+  const parts = shownParts(t);
+  const end = parts.length - 1;
+  const cursorIn = live && parts[end]?.kind === "text";
   // MOTION (ask-motion.ts): every part is a keyed child of a `data-ask-enter` list, so a streamed block or card
-  // rises in once and a text part only grows in place; an action group / save form is `data-ask-tween`, so its
-  // card collapsing to a done line glides. Keep the keys stable per part (`p<i>`).
-  const body = shownParts(t).map((p, i) => {
-    const key = `p${i}`;
-    if (p.kind === "text") return `<div class="ask-text" data-morph-key="${key}">${inline(v, p.md)}</div>`;
-    if (p.kind === "actions") return `<div class="ask-part" data-morph-key="${key}" data-ask-tween>${actionGroupView(v, a, p.ids)}</div>`;
-    if (p.block.kind === "save_form") return `<div class="ask-part" data-morph-key="${key}" data-ask-tween>${saveFormView(v, a, p.block, p.index)}</div>`;
-    // TODO(conversation): the rich blocks. The stub names each one.
-    return `<div class="ask-block-stub" data-morph-key="${key}" data-block="${attr(p.block.kind)}">${esc(p.block.kind.replace("_", " "))} block</div>`;
-  }).join("");
-  const cursor = live ? `<span class="ask-cursor" aria-hidden="true"></span>` : "";
-  const err = t.error ? `<div class="ask-err">Something went wrong. <span style="color:var(--fg-55)">Nothing was changed.</span></div>` : "";
-  const stopped = t.stopped ? `<div class="ask-stopped">Stopped. The answer above is partial.</div>` : "";
-  const foot = t.done && !t.error
-    ? `<div class="ask-foot">${trovMark(13)}<span>${esc(askMode(t.mode).label)}</span><span>· ${t.cites.length ? `${t.cites.length} source${t.cites.length === 1 ? "" : "s"}` : "No sources"}</span></div>${feedbackView(v, a)}`
-    : "";
-  const follow = last && t.done && !convoOf(v).busy && t.followups.length
-    ? `<div class="ask-follow">${t.followups.map((f) => `<button type="button" data-act="askCvSend" data-arg="${attr(f)}">${askIcon("arrow", 14, "var(--fg-40)")}<span>${esc(f)}</span></button>`).join("")}</div>`
+  // rises in once and a text part only grows; a write card / save form is `data-ask-tween` (its swap glides).
+  const body = parts.map((p, i) => partView(v, a, p, i, cursorIn && i === end)).join("");
+  const curAlone = live && !cursorIn && (parts.length > 0 || (!steps && !think));
+  const err = t.error ? `<div class="ask-err" role="alert">${markShape("diamond", "var(--red)", 10)}<span class="ask-err-t">Something went wrong.</span><span class="ask-err-s">Nothing was changed.</span><span style="flex:1"></span><button type="button" class="ask-btn ask-btn--sm" data-act="askCvRetry" data-arg="${attr(`${v.where}:${a.key}`)}">Try again</button></div>` : "";
+  const stopped = t.stopped ? `<div class="ask-stopped">${STOP_SQ}<span>Stopped. The answer above is partial.</span></div>` : "";
+  const foot = t.done && !t.error ? footer(v, a) : "";
+  const follow = last && t.done && !t.error && !convoOf(v).busy && t.followups.length
+    ? `<div class="ask-follow" role="list" aria-label="Follow-up questions">${t.followups.map((f) => `<div role="listitem"><button type="button" class="ask-fu" data-act="askCvSend" data-arg="${attr(f)}">${askIcon("followUp", 14, "var(--fg-40)")}<span>${esc(f)}</span></button></div>`).join("")}</div>`
     : "";
   // The answer is itself a keyed list: what comes and goes under it (the cursor, Stopped, the error, the footer,
   // the follow-ups) fades in once where it belongs instead of being paired with its neighbour by index.
   const kids: [string, string][] = [
     ["steps", steps || think ? `<div class="ask-steps" data-morph-list data-ask-enter="fade">${steps}${think ? `<div data-morph-key="think">${think}</div>` : ""}</div>` : ""],
     ["parts", `<div class="ask-parts" data-morph-list data-ask-enter="rise">${body}</div>`],
-    ["cursor", cursor], ["err", err], ["stopped", stopped], ["foot", foot ? `<div>${foot}</div>` : ""], ["follow", follow],
+    ["cursor", curAlone ? `<div class="ask-cur-alone">${CURSOR}</div>` : ""], ["err", err], ["stopped", stopped], ["foot", foot], ["follow", follow],
   ];
-  return `<div class="ask-a" data-morph-key="a:${attr(a.key)}" data-morph-list data-ask-enter="fade">${kids.filter(([, h]) => h).map(([k, h]) => h.replace(/^<(\w+)/, `<$1 data-morph-key="${k}"`)).join("")}</div>`;
+  return `<div class="ask-a" data-morph-key="a:${attr(a.key)}" data-morph-list data-ask-enter="fade"${live ? ` aria-busy="true"` : ""}>${kids.filter(([, h]) => h).map(([k, h]) => h.replace(/^<(\w+)/, `<$1 data-morph-key="${k}"`)).join("")}</div>`;
 }
 
 /** The scroller's contents: every message of the conversation in `v.where`. */
@@ -99,8 +540,10 @@ export function conversationView(v: AskView): string {
     return col(`<div data-morph-key="sk">${skeleton("ask-thread", "Loading the thread…", `<div class="ask-q"><div class="ask-q-col" style="width:min(420px,70%)">${skLine("100%", 14.5, 1.55)}</div></div>${skLines(["92%", "84%", "88%", "60%"], 14.5, 1.7)}`)}</div>`);
   }
   if (c.status === "error" && !c.messages.length) return col(`<div class="ask-loading" data-morph-key="err">Couldn't open this thread.</div>`);
-  const lastA = c.messages.map((m) => m.role).lastIndexOf("assistant");
-  return col(`<div class="ask-msgs" data-morph-key="msgs" data-morph-list data-ask-enter="rise">${c.messages.map((m, i) => (m.role === "user" ? question(v, m) : answer(v, m, i === lastA))).join("")}</div>`);
+  const roles = c.messages.map((m) => m.role);
+  const lastA = roles.lastIndexOf("assistant");
+  const lastQ = roles.lastIndexOf("user");
+  return col(`<div class="ask-msgs" data-morph-key="msgs" data-morph-list data-ask-enter="rise">${c.messages.map((m, i) => (m.role === "user" ? question(v, m, i === lastQ) : answer(v, m, i === lastA))).join("")}</div>`);
 }
 
 /** A new thread: the mark, the headline, the starters (from `ask/state`, the design's four as the fallback). */
@@ -115,14 +558,210 @@ export function emptyView(v: AskView): string {
   </div>`;
 }
 
+// ── a conversation-held item, for the inspector (ask-cvref.ts) ───────────────
+
+export type CvItem =
+  | { kind: "chart"; chart: AskChart }
+  | { kind: "themes"; themes: AskThemesBlock }
+  | { kind: "diagram"; diagram: AskDiagram }
+  | { kind: "items"; items: RefView[] }
+  | { kind: "table"; head: string[] | null; rows: string[][] }
+  | { kind: "upload"; attachment: AskAttachment };
+
+/** What a `askcv:` ref names, read from the conversation on screen (null once it is gone). */
+export function cvItem(ui: Pick<AskView["ui"], "page" | "panel">, ref: string): CvItem | null {
+  const p = parseCvRef(ref);
+  if (!p) return null;
+  const m = ui[p.where].messages.find((x) => x.key === p.key);
+  if (!m) return null;
+  if (p.kind === "upload") {
+    const f = m.role === "user" ? m.attachments.find((x) => String(x.id) === p.n) : undefined;
+    return f ? { kind: "upload", attachment: f } : null;
+  }
+  if (m.role !== "assistant") return null;
+  const parts = shownParts(m.turn);
+  if (p.kind === "table") {
+    const [pi, ti] = p.n.split(".").map(Number);
+    const part = parts[pi];
+    if (part?.kind !== "text") return null;
+    const tb = parseMd(part.md).filter((n): n is Extract<MdNode, { t: "table" }> => n.t === "table")[ti];
+    return tb ? { kind: "table", head: tb.head, rows: tb.rows } : null;
+  }
+  const part = parts.find((x): x is Extract<AskShownPart, { kind: "block" }> => x.kind === "block" && x.index === Number(p.n));
+  const b = part?.block;
+  if (!b) return null;
+  if (b.kind === "chart" && p.kind === "chart") return { kind: "chart", chart: b.chart };
+  if (b.kind === "themes" && p.kind === "themes") return { kind: "themes", themes: b.themes };
+  if (b.kind === "diagram" && p.kind === "diagram") return { kind: "diagram", diagram: b.diagram };
+  if (b.kind === "items" && p.kind === "items") return { kind: "items", items: b.items };
+  return null;
+}
+
+// ── acts ─────────────────────────────────────────────────────────────────────
+
+const whereOf = (s: string | undefined): AskWhere => (s === "panel" ? "panel" : "page");
+
+/** The answer `key` in `where`, and the question it answers. */
+function exchange(ctx: AskCtx, where: AskWhere, key: string): { a: AskAnswer; q: AskQuestion | null; qi: number } | null {
+  const ms = ctx.ui[where].messages;
+  const i = ms.findIndex((m) => m.key === key);
+  const a = ms[i];
+  if (!a || a.role !== "assistant") return null;
+  for (let j = i - 1; j >= 0; j--) { const m = ms[j]; if (m.role === "user") return { a, q: m, qi: j }; }
+  return { a, q: null, qi: -1 };
+}
+
+/** Open, or close with its exit (ask-motion.ts rule 3), one disclosure. */
+function toggle(ctx: AskCtx, key: string): void {
+  const ui = ctx.ui.conversation;
+  if (ui.open[key]) {
+    ctx.exit(`cv:${key}`, () => { const { [key]: _gone, ...rest } = ctx.ui.conversation.open; ctx.ui.conversation.open = rest; }, 140);
+    return;
+  }
+  ctx.cancelExit(`cv:${key}`);
+  ui.open = { ...ui.open, [key]: true };
+  ctx.paint();
+}
+
+const closeRegen = (ctx: AskCtx): void => ctx.exit("menu", () => { ctx.ui.conversation.regen = null; }, 120);
+
+/** What to focus after the next paint (the edit box, the menu's checked mode). */
+let focusNext: "edit" | "regen" | null = null;
+
+/** Ask question `qi` of `where` again, as `text`: through `replaceFrom` (its stored id, read back from the thread
+ *  when it streamed this session — `done` names only the answer); a question the server never stored (no thread
+ *  yet, or the replay) is dropped here and asked fresh. */
+async function resend(ctx: AskCtx, where: AskWhere, qKey: string, text: string): Promise<void> {
+  let c = ctx.ui[where];
+  const qi = c.messages.findIndex((m) => m.key === qKey);
+  const q = c.messages[qi];
+  if (!q || q.role !== "user" || c.busy) return;
+  let id = q.id;
+  if (id === null && c.threadId !== null && !ctx.replay) {
+    try {
+      const d = await ctx.api.getThread(c.threadId);
+      const stored = [...d.messages].reverse().find((m) => m.role === "user");
+      id = stored ? stored.id : null;
+    } catch (e) {
+      ctx.fail(e, "Couldn't send that again.");
+      return;
+    }
+    c = ctx.ui[where];
+    if (id === null || c.busy) { ctx.flash("Couldn't send that again."); return; }
+    ctx.ui[where] = { ...c, messages: c.messages.map((m) => (m.key === qKey && m.role === "user" ? { ...m, id } : m)) };
+  } else if (id === null) {
+    ctx.ui[where] = { ...c, messages: c.messages.slice(0, qi) };
+  }
+  ctx.send({ text, where, context: q.context, replaceFrom: id ?? undefined });
+}
+
+let copyTimer: ReturnType<typeof setTimeout> | null = null;
+let ticker: ReturnType<typeof setInterval> | null = null;
+let docWired = false;
 /** Scrollers already listening (a WeakSet: morph would strip a marker attribute). */
 const wired = new WeakSet<HTMLElement>();
 
 export const conversationPart: AskPart = {
   code: "Cv",
-  act(ctx: AskCtx, name, arg) {
-    // A starter, a follow-up, a rephrase chip: send its words as the next question.
-    if (name === "askCvSend" && arg) ctx.send({ text: arg, where: ctx.ui.cmdj.open && ctx.app.screen !== "ask" ? "panel" : "page" });
+  act(ctx, name, arg, value) {
+    const ui = ctx.ui.conversation;
+    const [w, key, extra] = (arg ?? "").split(":");
+    switch (name) {
+      // A starter, a follow-up, a rephrase chip: send its words as the next question.
+      case "askCvSend": if (arg) ctx.send({ text: arg, where: ctx.ui.cmdj.open && ctx.app.screen !== "ask" ? "panel" : "page" }); return;
+      case "askCvToggle": if (arg) toggle(ctx, arg); return;
+      // A block or a file of the conversation, beside the thread: primed as hidden so no peek ever names it.
+      case "askCvOpen": {
+        const p = arg ? parseCvRef(arg) : null;
+        if (!p || !arg) return;
+        if (!(arg in ctx.ui.refViews)) ctx.ui.refViews = { ...ctx.ui.refViews, [arg]: { ref: arg, hidden: true } };
+        ctx.openRef(arg, p.where);
+        return;
+      }
+      case "askCvCopy": {
+        const ex = key ? exchange(ctx, whereOf(w), key) : null;
+        if (!ex || !arg) return;
+        const look = ctx.look();
+        const text = ex.a.turn.parts.filter((p): p is { kind: "text"; md: string } => p.kind === "text").map((p) => plainText({ look }, p.md)).join("").trim();
+        try { void navigator.clipboard?.writeText(text).catch(() => undefined); } catch { /* no clipboard: the label still says so */ }
+        ui.copied = arg;
+        if (copyTimer) clearTimeout(copyTimer);
+        copyTimer = setTimeout(() => { if (ctx.ui.conversation.copied === arg) { ctx.ui.conversation.copied = null; ctx.paint(); } }, 1600);
+        ctx.paint();
+        return;
+      }
+      case "askCvRegenMenu":
+        if (!arg) return;
+        if (ui.regen === arg) { closeRegen(ctx); return; }
+        ctx.cancelExit("menu");
+        ui.regen = arg;
+        focusNext = "regen";
+        ctx.paint();
+        return;
+      case "askCvRegen": case "askCvRegenWith": {
+        const where = whereOf(w);
+        const ex = key ? exchange(ctx, where, key) : null;
+        ui.regen = null;
+        if (!ex?.q || ex.a.turn.messageId === null || ctx.ui[where].busy) { ctx.paint(); return; }
+        const mode = name === "askCvRegenWith" && isAskMode(extra) ? extra : ex.a.turn.mode;
+        ctx.send({ text: ex.q.text, where, context: ex.q.context, mode, replaceFrom: ex.a.turn.messageId });
+        return;
+      }
+      // Try again after an error: ask the same question again in place of the failed answer.
+      case "askCvRetry": {
+        const where = whereOf(w);
+        const ex = key ? exchange(ctx, where, key) : null;
+        if (!ex?.q || ctx.ui[where].busy) return;
+        if (ex.a.turn.messageId !== null) ctx.send({ text: ex.q.text, where, context: ex.q.context, mode: ex.a.turn.mode, replaceFrom: ex.a.turn.messageId });
+        else void resend(ctx, where, ex.q.key, ex.q.text);
+        return;
+      }
+      case "askCvEdit": {
+        const where = whereOf(w);
+        const q = ctx.ui[where].messages.find((m) => m.key === key);
+        if (!q || q.role !== "user" || ctx.ui[where].busy) return;
+        ui.editing = { where, key: q.key, text: q.text };
+        focusNext = "edit";
+        ctx.paint();
+        return;
+      }
+      case "askCvEditText": {
+        if (!ui.editing) return;
+        const was = ui.editing.text.trim() === "";
+        ui.editing = { ...ui.editing, text: value ?? "" };
+        if (was !== (ui.editing.text.trim() === "")) ctx.paint();      // Send's disabled state flips
+        return;
+      }
+      case "askCvEditCancel": ui.editing = null; ctx.paint(); return;
+      case "askCvEditSend": {
+        const ed = ui.editing;
+        if (!ed || !ed.text.trim()) return;
+        ui.editing = null;
+        void resend(ctx, ed.where, ed.key, ed.text.trim());
+        return;
+      }
+    }
+  },
+  escape: [{ layer: "menu", isOpen: (ctx) => ctx.ui.conversation.regen !== null, close: (ctx) => closeRegen(ctx) }],
+  onKeyDown(ctx, e) {
+    const t = e.target as Element | null;
+    // The edit box: ⌘/Ctrl+Enter sends, Escape cancels.
+    if (t?.closest?.("[data-ask-edit]")) {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); conversationPart.act?.(ctx, "askCvEditSend", null, null); return true; }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); ctx.ui.conversation.editing = null; ctx.paint(); return true; }
+      return false;
+    }
+    // "Regenerate with": ↑ / ↓ / Home / End move between the modes.
+    const menu = t?.closest?.<HTMLElement>(".ask-regen-menu");
+    if (menu && ["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+      const items = Array.from(menu.querySelectorAll<HTMLElement>("[role=menuitemradio]"));
+      const at = items.indexOf(t as HTMLElement);
+      const next = e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : (at + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+      e.preventDefault();
+      items[next]?.focus();
+      return true;
+    }
+    return false;
   },
   afterPaint(ctx, mount) {
     // Stick to the bottom while an answer streams, unless the person scrolled up (the scroller says so).
@@ -132,6 +771,29 @@ export const conversationPart: AskPart = {
         sc.addEventListener("scroll", () => { ctx.ui.conversation.stick = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 60; }, { passive: true });
       }
       if (ctx.ui.conversation.stick) sc.scrollTop = sc.scrollHeight;
+    }
+    // "Thinking… Ns" counts between paints (the label alone; the next paint writes the same number).
+    if (!ticker && mount.querySelector("[data-ask-think]")) {
+      ticker = setInterval(() => {
+        const els = Array.from(mount.querySelectorAll<HTMLElement>("[data-ask-think]"));
+        if (!els.length) { if (ticker) clearInterval(ticker); ticker = null; return; }
+        for (const el of els) el.textContent = thinkingLabel(Number(el.dataset.askThink));
+      }, 500);
+    }
+    if (focusNext === "edit") {
+      const ta = mount.querySelector<HTMLTextAreaElement>("[data-ask-edit]");
+      if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+    } else if (focusNext === "regen") {
+      const menu = mount.querySelector<HTMLElement>(".ask-regen-menu");
+      (menu?.querySelector<HTMLElement>('[aria-checked="true"]') ?? menu?.querySelector<HTMLElement>("[role=menuitemradio]"))?.focus();
+    }
+    focusNext = null;
+    // A press outside "Regenerate with" closes it.
+    if (!docWired && typeof document !== "undefined") {
+      docWired = true;
+      document.addEventListener("pointerdown", (e) => {
+        if (ctx.ui.conversation.regen !== null && !(e.target as Element | null)?.closest?.(".ask-regen")) closeRegen(ctx);
+      }, true);
     }
   },
 };
