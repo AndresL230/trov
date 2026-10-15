@@ -542,7 +542,7 @@ export function environmentsTab(org: MyOrg, ui: OrgUi): string {
     </li>`;
   }).join("");
   return `${lead}${adding}
-    ${orgHead("In drift order", admin ? goLink("What each one runs is in Hosting", "orgTab", "hosting") : "", envs.length)}
+    ${orgHead("In drift order", admin ? goLink("What each one runs is set per app in Repositories", "orgTab", "repos") : "", envs.length)}
     <ol${surface(LIST)}>${rows}</ol>`;
 }
 

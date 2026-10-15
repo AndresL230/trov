@@ -600,6 +600,9 @@ describe("Environments", () => {
   it("lists them in order and says what the order means; reorder is up / down buttons", () => {
     const html = tabView(fullUi(), "environments");
     expect(html.indexOf(">Staging<")).toBeLessThan(html.indexOf(">Production<"));
+    // What each environment runs is set per app in Repositories (Phase D) — Hosting only points there (e2e E1b).
+    expect(html).toMatch(/data-act="orgTab" data-arg="repos"[^>]*>What each one runs is set per app in Repositories/);
+    expect(html).not.toContain("What each one runs is in Hosting");
     expect(html).toContain("drift is measured from <strong>Staging</strong> (the head, first) to <strong>Production</strong> (the base, last)");
     // Add environment is the tab's one accent button; Delete is in the edit form, not on every row.
     expect(html.match(/cnpy-accentbtn/g)?.length).toBe(1);
