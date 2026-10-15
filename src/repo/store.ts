@@ -347,10 +347,15 @@ export async function hostingReads(ctx: TenantContext, sinceIso: string, perPart
                           'by', actor, 'at', created_at, 'ready_at', ready_at, 'url', url, 'inspect_url', inspect_url) AS j,
               ROW_NUMBER() OVER (PARTITION BY env, part, provider ORDER BY created_at DESC, id DESC) AS rn
          FROM hosting_deploys WHERE org_id = ? AND created_at >= ?
+          -- A production part's PREVIEWS (repo setups) are not its deploys: a preview row is left out of a part that
+          -- has any non-preview row. A part that reads only previews (a staging = previews-of-main part) keeps them.
+          AND NOT (target = 'preview' AND EXISTS (
+            SELECT 1 FROM hosting_deploys h2 WHERE h2.org_id = ? AND h2.env = hosting_deploys.env AND h2.part = hosting_deploys.part
+              AND h2.provider = hosting_deploys.provider AND (h2.target IS NULL OR h2.target <> 'preview')))
      ) WHERE rn <= ?
      UNION ALL
      SELECT 'config', kind, scope, '', config FROM org_integration_config WHERE org_id = ? AND scope = ''`,
-    ctx.orgId, ctx.orgId, since, perPart, ctx.orgId);
+    ctx.orgId, ctx.orgId, since, ctx.orgId, perPart, ctx.orgId);
   const out: HostingReads = { states: [], deploys: [], config: new Map() };
   for (const r of rows) {
     const j = jsonRecord(r.j);

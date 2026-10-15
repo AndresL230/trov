@@ -93,7 +93,7 @@ describe("netlify — descriptor", () => {
     expect(netlify.orgConfigFields).toEqual([]);
     expect(netlify.capabilities).toEqual({ deploys: true, metrics: [] });
     expect(netlify.planNote).toMatch(/no usage or analytics API/);
-    expect(netlify.pollCost).toBe(1);
+    expect(netlify.pollCost).toBe(2); // the production list + the unfiltered one its previews come from
   });
 
   it("offers OAuth first (needing the operator's app), then a pasted personal access token", () => {
@@ -217,13 +217,15 @@ describe("netlify — probe", () => {
 });
 
 describe("netlify — poll", () => {
-  it("production: ONE read of the production deploys, every state mapped, newest first", async () => {
+  it("production: ONE read of the production deploys (then one for the previews), every state mapped, newest first", async () => {
     const f = stub(() => json(deploysProduction));
     const res = await netlify.poll(ctx(f), part());
     expect(f.calls.length).toBeLessThanOrEqual(netlify.pollCost);
-    expect(f.calls).toHaveLength(1);
+    expect(f.calls).toHaveLength(2);
     expectAuthedGet(f.calls[0], `/api/v1/sites/${SITE_ID}/deploys`);
     expect([...f.calls[0].url.searchParams.entries()]).toEqual([["per_page", "20"], ["production", "true"]]);
+    // The second, unfiltered list is read for previews only: production rows in it are not repeated.
+    expect([...f.calls[1].url.searchParams.entries()]).toEqual([["per_page", "20"]]);
 
     expect(res.deploys.map((d) => [d.id, d.state])).toEqual([
       ["6703f2c41b8a9e0008d4c7a1", "queued"],   // new
@@ -267,8 +269,18 @@ describe("netlify — poll", () => {
     expect(res.covered).toBeNull();
     expect(res.unavailable).toEqual(metricsForRole("web").map((metric) => ({ metric, reason: NO_USAGE })));
     expect(res.unavailable.map((u) => u.metric).sort()).toEqual(["bandwidth_bytes", "errors", "latency_p50_ms", "latency_p95_ms", "requests"]);
-    // Only the deploys endpoint was asked — no analytics endpoint, however the window falls.
-    expect(f.calls.map((c) => c.url.pathname)).toEqual([`/api/v1/sites/${SITE_ID}/deploys`]);
+    // Only the deploys endpoint was asked (production, then previews) — no analytics endpoint, however the window falls.
+    expect(f.calls.map((c) => c.url.pathname)).toEqual([`/api/v1/sites/${SITE_ID}/deploys`, `/api/v1/sites/${SITE_ID}/deploys`]);
+  });
+
+  it("a production part also reads the site's previews: every non-production context, as target preview, with its branch", async () => {
+    const f = stub((c) => json(c.url.searchParams.has("production") ? deploysProduction : deploysBranch));
+    const res = await netlify.poll(ctx(f), part());
+    const previews = res.deploys.filter((d) => d.target === "preview");
+    expect(previews.length).toBe(9);
+    expect(previews.every((d) => d.branch !== null)).toBe(true);
+    expect(res.deploys.filter((d) => d.target === "production")).toHaveLength(9);
+    expect(new Set(res.deploys.map((d) => d.id)).size).toBe(res.deploys.length);
   });
 
   it("a service part (a role Netlify cannot serve): its metrics unavailable, deploys still read", async () => {

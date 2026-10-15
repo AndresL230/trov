@@ -4,7 +4,8 @@
 //   deploys   YES — `GET /sites/{site_id}/deploys`, ≤ 20 newest first: state, commit, branch, deploy context,
 //             title, permalink. A part reads EITHER the site's production deploys (`production=true`) OR one
 //             branch's (`branch=<b>`: its branch deploys and the deploy previews of PRs from it) — the
-//             `context` part setting. ONE request per poll (`pollCost` 1).
+//             `context` part setting. A PRODUCTION part also reads the site's previews (repo setups): a second
+//             list with no filter, every non-production context kept (`pollCost` 2).
 //   metrics   NO — Netlify publishes no usage or analytics API: Observability is dashboard-only and the
 //             analytics endpoints its dashboard calls are undocumented, so building on them would be guessing
 //             at a shape that can change under us. Every web metric is `unavailable` with that reason, `covered`
@@ -259,6 +260,13 @@ function deploysUrl(siteId: string, reads: Reads): string {
   return u.toString();
 }
 
+/** The site's newest deploys of every context — what a production part reads its previews from. */
+function previewsUrl(siteId: string): string {
+  const u = new URL(`${API}/sites/${encodeURIComponent(siteId)}/deploys`);
+  u.searchParams.set("per_page", String(DEPLOYS_PER_POLL));
+  return u.toString();
+}
+
 // ── the provider ─────────────────────────────────────────────────────────────
 
 export const netlify: HostingProvider = {
@@ -291,7 +299,8 @@ export const netlify: HostingProvider = {
   partSettings: PART_SETTINGS,
   capabilities: { deploys: true, metrics: [] },
   planNote: "Netlify publishes no usage or analytics API (Observability is dashboard-only), so a Netlify part shows its deploys but no traffic.",
-  pollCost: 1,
+  // The production (or branch) list, and — for a production part — the unfiltered list for its previews.
+  pollCost: 2,
 
   // Both an OAuth grant ("Authorized applications") and a personal access token are listed — and revoked — on
   // the person's Applications page; Netlify documents no API for either.
@@ -336,19 +345,25 @@ export const netlify: HostingProvider = {
     const unavailable = metricsForRole(part.role).map((metric) => ({ metric, reason: part.role === "web" ? NO_USAGE_API : NOT_A_SERVICE }));
     const siteId = siteIdOf(part);
     const reads = readsOf(part);
-    const body = await getJson(pc, deploysUrl(siteId, reads), "netlify deploys", SITE_HINTS);
-    if (!Array.isArray(body)) throw new HostingError("netlify deploys: the response is not a list of deploys");
     const partSiteName = siteName(part.settings.site_name);
-    const seen = new Set<string>();
-    const deploys: HostingDeploy[] = [];
-    for (const item of body) {
-      const d = toDeploy(item, partSiteName);
-      if (!d || seen.has(d.id)) continue;
-      seen.add(d.id);
-      deploys.push(d);
-    }
-    deploys.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-    return { deploys: deploys.slice(0, DEPLOYS_PER_POLL), points: [], unavailable, covered: null };
+    const list = async (url: string, keep: (d: HostingDeploy) => boolean): Promise<HostingDeploy[]> => {
+      const body = await getJson(pc, url, "netlify deploys", SITE_HINTS);
+      if (!Array.isArray(body)) throw new HostingError("netlify deploys: the response is not a list of deploys");
+      const seen = new Set<string>();
+      const out: HostingDeploy[] = [];
+      for (const item of body) {
+        const d = toDeploy(item, partSiteName);
+        if (!d || seen.has(d.id) || !keep(d)) continue;
+        seen.add(d.id);
+        out.push(d);
+      }
+      out.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+      return out.slice(0, DEPLOYS_PER_POLL);
+    };
+    const deploys = await list(deploysUrl(siteId, reads), () => true);
+    // A production part also reads the site's previews: the unfiltered list, every non-production context kept.
+    const previews = reads.production ? await list(previewsUrl(siteId), (d) => d.target === "preview") : [];
+    return { deploys: [...deploys, ...previews], points: [], unavailable, covered: null };
   },
 
   install: {
