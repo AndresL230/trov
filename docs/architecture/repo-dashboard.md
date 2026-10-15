@@ -169,7 +169,7 @@ on. An org with no environment and no primary repository has no unit and costs n
 - **every 6th hour** (UTC hour % 6 = 0) — `:10` `progress`: `recomputeAllProgress` per org, UNBOUNDED (one
   request per issue number of every array-ref sprint; budgeted as an estimate, `PROGRESS_COST_ESTIMATE`);
   `:20` `reconcile`: `runReconcileJob` per org (`reconcileRepo`, 18 + 2N worst case for N environments,
-  below — plus one request when an App installation token has to be minted, and the org image's import that
+  below, + the repo scan's `SCAN_COST` — plus one request when an App installation token has to be minted, and the org image's import that
   rides the same unit: `reconcileCost`; logs `failed` when non-empty); `:30` `pruneRepoCapture` + `pruneOAuth`
   (D1 only, cross-org). `:10` and `:20` skip, without a word, an org with no primary repository or no GitHub
   credential; `:30` and the pings run regardless.
@@ -334,7 +334,10 @@ a GitHub credential (`resolveGithubCredential`: its App installation's token, el
 Its arms, each in its own `safely`
 block: open PRs (+ the `prs_reconciled` marker), closed PRs, the pre-capture commit window,
 completed workflow runs, the failing-job label pass, the environment heads, each environment's head checks,
-the `canopy/*` commit statuses, PR reviews, branches, drift. It returns `{ written, unchanged, failed: string[] }` — `failed` NAMES every arm that threw
+the `canopy/*` commit statuses, PR reviews, branches, drift — and, when the caller asks (`runReconcileJob`'s
+`scan`: the cron and Sync GitHub, not Poll now), the repo scan (`scan`: one tree read, and only when the default
+branch's root tree sha changed, one GraphQL file batch + ≤ 1 describe per connected host — `hosting-providers.md` ›
+The repo scan). It returns `{ written, unchanged, failed: string[] }` — `failed` NAMES every arm that threw
 (`"runs"`, `"checks"`, …); `/admin/backfill` passes that through as its `repo` object and the cron logs
 it.
 - **The failing-job label pass reads the BACKLOG, not this run's writes**: the ≤5 newest `run` rows of the

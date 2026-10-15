@@ -83,7 +83,7 @@ export const RELEASES: Release[] = [
       "The Repo screen's Overview takes the shape of the repository — its apps and environments — and opens with what needs attention, in plain sentences: a deploy that failed and what is still serving, an app that is down, a rollback, a check failing, commits merged and not yet live.",
       "A repository with several apps gets an App menu that narrows every tab to one app; an organization with several repositories gets a repository menu. Each environment's state sits in the header, and Group by switches between environment cards and a table of apps (an admin can make either the default).",
       "Every deploy shows the commit it shipped, or says it doesn't know; a failed deploy says why, a production deploy that went back to an older commit is marked as a rollback, and Vercel and Netlify previews are read with their branch.",
-      "An app deployed by GitHub Actions — or on a host Trov cannot read yet — can be a part too: pick GitHub deployments as its host. Render, Railway and Fly.io are now detected from what they report to GitHub.",
+      "An app deployed by GitHub Actions — or on a host Trov cannot read yet — can be a part too: pick GitHub deployments as its host. Render, Railway and Fly.io are now detected from what they report to GitHub. Trov also reads a repository's deploy files (Cloudflare, Vercel, Netlify, Fly.io, Render and Railway configs, monorepo workspaces…) and the deploys GitHub has seen, and suggests its apps — nothing changes until an admin accepts one, and an accept can be undone.",
       "Org settings › Hosting shows one card per host, and a host's status reads the same everywhere. Railway's old per-environment tokens no longer pose as two extra connections: the card counts them and offers to remove them.",
       "Integrations is for GitHub and the other integrations; hosting and app-metrics tokens live on Hosting, beside the parts that use them. Preview with sample data gains a switch over fourteen kinds of repository.",
     ],
@@ -93,12 +93,18 @@ export const RELEASES: Release[] = [
       "Optional, for Cloudflare deploys' commits: give the Cloudflare API token a third permission, Account › Workers CI › Read (it must be a USER token — My Profile › API Tokens). Without it the Cloudflare part's state says \"commit: the token needs Workers CI Read\" and the commit is matched from GitHub when it can be. UNVERIFIED: that Read (not Edit) suffices.",
       "The hosting job's cost per part grows by one (the possible GitHub compare for a rollback), and Cloudflare, Vercel and Netlify each make one more request per poll — still inside the `:40` budget; no trigger change.",
       "Apply `migrations/0071_repo_settings.sql` (merging to main applies it): ADDITIVE — the `repo_settings` table (an admin's per-repository Overview default). Rollback: `DROP TABLE repo_settings; DELETE FROM org_admin_audit WHERE action = 'repo.settings';`.",
+      "Apply `migrations/0072_repo_scans.sql` (merging to main applies it): ADDITIVE — `repo_scans` and `repo_app_suggestions`. The `:20` reconcile unit now budgets the repo scan (`SCAN_COST` = 5: a tree read, and only when the default branch's tree changed a GraphQL file batch + one describe per connected Vercel / Render / Netlify) — no trigger change.",
     ],
     headsUp: [
       "Hosting tokens and app metrics tokens moved from Integrations to Hosting. Nothing was reset: every token you saved is still there.",
     ],
     patches: {
       added: [
+        "Migration `0072_repo_scans`; `src/repo/scan.ts` — the repo scan as a guarded `reconcileRepo` arm (`scan`; the cron and Sync GitHub, not Poll now): one tree read, then ONLY when the root tree sha changed one GraphQL batch of ≤ 24 files and ≤ 1 `describe` per connected host (`SCAN_COST`, in `reconcileCost`)",
+        "`src/repo/detect/`: the detector registry (workspaces, wrangler, vercel, netlify, fly, render, railway, amplify, `.do/app.yaml`, Procfile, Dockerfile + a deploying workflow), safe TOML / YAML / JSONC subset parsers, the signal token rules (exactly one candidate per signal)",
+        "`HostingProvider.describe` (optional): Vercel `rootDirectory` + `link.repo`, Render `rootDir`, Netlify `build_settings.base` — one list call each, in the scan only",
+        "`src/repo/signals.ts` `seenSignals`; `src/repo/scan-reads.ts` (`readFound`, `readUnseen`, `listSuggestions`, `readScan` — secret-free); `src/repo/scan-store.ts` (`acceptSuggestion` / `ignoreSuggestion` / `undoAccept` / `runScanNow`); `POST /api/o/:slug/repos/:owner/:name/scan`, `…/suggestions/:id/accept|ignore`, `…/suggestions/undo` (admin, cookie only)",
+        "Tests: `test/repo-detect.test.ts`, `test/repo-scan.test.ts` (fixtures in `fixtures/repo-scan/`)",
         "`shared/hosting-status-core.ts`: THE status function (`hostingStatus`, `providerStatus`, `orgConnection`) — the provider card, part rows, checklist, lead, Test this part and the Repo dashboard's not-connected copy all read it.",
         "`DELETE /api/o/:slug/hosting/:provider/leftovers` (admin, cookie only): removes a provider's credentials stored under a non-empty scope, audited `hosting.leftovers_removed` (+ `secret.delete` reason `leftover`); \"Remove old tokens\" in the provider's Manage dialog, behind the page's confirmation.",
         "`HostingSetupDTO.leftovers` and `HostingEnvironmentDTO.app_metrics`; `RepoProviderPart.connection` (the part's provider status, from `org_secrets` metadata and `org_hosting_connections` — never a value).",
