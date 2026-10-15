@@ -12,9 +12,11 @@ import { parseHash, hashForRoute, pageKey } from "../web/src/hash";
 import { askLayout, clampInspector, layoutBucket } from "../web/src/ask-layout";
 import { ESC_LAYERS, closeTop, topLayer, type EscEntry } from "../web/src/ask-escape";
 import { askEnterNew, askTweenHeights, closingAttr } from "../web/src/ask-motion";
-import { replayFromLocation, replayPlan, replayRoute } from "../web/src/ask-replay";
+import { createReplayApi, replayFromLocation, replayPlan, replayRoute } from "../web/src/ask-replay";
+import type { AskReplayIndex } from "../web/src/ask-api";
+import { setApiOrg } from "../web/src/api";
 import { emptyConvo } from "../web/src/ask-stream";
-import { askThreadsFixture, askRefFixtures, askStateFixture } from "@shared/ai-fixtures";
+import { askThreadsFixture, askRefFixtures, askStateFixture, askTranscript, askTranscriptSse } from "@shared/ai-fixtures";
 import css from "../web/src/trov.css?raw";
 
 const NOW = new Date("2026-10-15T12:00:00Z");
@@ -154,6 +156,34 @@ describe("the dev replay — the recipe's flags", () => {
     expect(replayPlan("cmdj").where).toBe("panel");
     expect(replayPlan("live").play).toEqual([]);
     expect(replayRoute("What's blocking the hosting work?")).toBe("answer");
+  });
+
+  // e2e AU-24 streaming: the transcript is recorded mid-answer (no `done`); the route ends the HTTP stream there, and
+  // the client took that end as a failed turn ("Something went wrong.") instead of the design's held answer
+  // (busy, the soft cursor, Stop). The replay holds it until Stop aborts the request.
+  it("holds a transcript that ends mid-answer until Stop aborts it", async () => {
+    const sse = askTranscriptSse(askTranscript("streaming", NOW));
+    vi.stubGlobal("fetch", async () => new Response(sse, { headers: { "content-type": "text/event-stream" } }));
+    setApiOrg("saplinglearn");
+    try {
+      const index = { scenarios: [], questions: {}, state: { pro: askStateFixture("pro", NOW), free: askStateFixture("free", NOW) }, settings: {}, threads: [], search: { q: "", hits: [] }, refs: {} } as unknown as AskReplayIndex;
+      const api = createReplayApi(index, replayPlan("streaming"), 0);
+      const ctl = new AbortController();
+      const seen: string[] = [];
+      let settled: "pending" | "resolved" | "aborted" = "pending";
+      const run = api.ask({ text: "x", mode: "smart", auto: false, context: [], attachments: [] }, { signal: ctl.signal, onEvent: (e) => seen.push(e.event) })
+        .then(() => { settled = "resolved"; }, (e: unknown) => { settled = e instanceof Error && e.name === "AbortError" ? "aborted" : "resolved"; });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(seen.at(-1)).toBe("text");
+      expect(seen).not.toContain("done");
+      expect(settled).toBe("pending");
+      ctl.abort();
+      await run;
+      expect(settled).toBe("aborted");
+    } finally {
+      vi.unstubAllGlobals();
+      setApiOrg(null);
+    }
   });
 });
 

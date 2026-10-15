@@ -143,7 +143,17 @@ export function createReplayApi(index: AskReplayIndex, plan: ReplayPlan, speed: 
     stopThread: async () => undefined,
     async ask(req, o) {
       const scenario = queue.shift() ?? replayRoute(req.text);
-      await streamReplay(scenario, speed, { onEvent: (e: AskEvent) => { note(e); o.onEvent(e); }, signal: o.signal });
+      let ended = false;
+      await streamReplay(scenario, speed, { onEvent: (e: AskEvent) => { if (e.event === "done" || e.event === "error") ended = true; note(e); o.onEvent(e); }, signal: o.signal });
+      // A transcript recorded mid-answer (`streaming`: no `done`) is HELD as the design shows it — busy, the soft
+      // cursor, Stop — until Stop aborts the request; the route itself ends the HTTP stream with the last event.
+      const signal = o.signal;
+      if (!ended && signal) {
+        await new Promise<never>((_, reject) => {
+          const abort = () => reject(new DOMException("Aborted", "AbortError"));
+          if (signal.aborted) abort(); else signal.addEventListener("abort", abort, { once: true });
+        });
+      }
     },
     peek: async (refs) => refs.map(peekOne),
     // The composer's @ picker over the fixtures' items (the replay's org is not the seed's).
