@@ -853,7 +853,7 @@ function endDrag(ctx: AskCtx, where: AskWhere): void {
 
 const wired = new WeakSet<HTMLElement>();
 function wire(ctx: AskCtx, mount: HTMLElement): void {
-  if (wired.has(mount)) return;
+  if (wired.has(mount) || typeof document === "undefined") return;
   wired.add(mount);
   // The file picker's choice (the click delegate does not carry a file input's change).
   mount.addEventListener("change", (e) => {
@@ -893,9 +893,9 @@ function grow(el: HTMLTextAreaElement, ui: ComposerUi): void {
 }
 
 function afterPaintWhere(ctx: AskCtx, mount: HTMLElement, where: AskWhere): void {
+  if (syncThread(ctx, where)) ctx.paint();
   const el = mount.querySelector<HTMLTextAreaElement>(`[data-ask-input="${where}"]`);
   if (!el) return;
-  if (syncThread(ctx, where)) { ctx.paint(); }
   const ui = ctx.ui.composer[where];
   ctx.want(ui.context);
   // A focused box is never value-synced by morph (web/src/morph.ts): words set here (a pick, a send) land now.
