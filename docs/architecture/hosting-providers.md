@@ -19,7 +19,7 @@ host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free �
 - **Connection** — how an org is connected: `install` (Vercel's Integration: projects picked at install, uninstall
   webhook), `oauth` (Netlify — no scopes on Netlify's side), `token` (every provider; the narrowest scope it has,
   said plainly — Render keys have none, Fly's is a READ-ONLY org token, Vercel has no read-only token, Railway's is a
-  workspace token sent as Bearer, Cloudflare's needs Account Analytics Read + Workers Scripts Read), `assume_role`
+  workspace token sent as Bearer, Cloudflare's needs Account Analytics Read + Workers Scripts Read, and optionally Workers CI Read for each deploy's commit), `assume_role`
   (AWS, later). The secret is an ordinary write-only `org_secrets` row (kinds `vercel` / `render` / `netlify` / `fly` /
   `aws`; Cloudflare and Railway keep `cloudflare_analytics` / `railway` — `HOSTING_INTEGRATION_KIND`); an install / OAuth
   grant also writes `org_hosting_connections` (method, provider-side installation id, account). EVERY provider is
@@ -133,17 +133,16 @@ matched narrowly (a false "Detected" is worse than none):
 - **check runs** — every check run is captured (`fromCheckRun`) with its name, its details URL and, in `raw.app`,
   the slug of the GitHub App that posted it: `vercel`, `netlify`, `cloudflare-workers-and-pages` (also a details
   link to the host, or a name only that host uses — `netlify/…`, `Workers Builds: …`, `Vercel …`);
-- **deployments** — GitHub `deployment_status` deliveries are NOT captured any more (an environment's deploys come
-  from its provider); rows captured before 0057, with the creator's login (`railway-app[bot]`, `render[bot]`,
-  `vercel[bot]`) and log link, still count while inside the window.
+- **deployments** — GitHub `deployment` / `deployment_status` deliveries, captured again (repo setups, Phase A) as
+  UNTAGGED `deploy` rows (`raw.signal = 'deployment'`; rows from before 0057 count too): the creator's login
+  (`railway-app[bot]`, `render[bot]`, `vercel[bot]`) and the log / environment link;
+- **commit statuses** — every context other than `canopy/*`, captured as untagged `deploy` rows
+  (`raw.signal = 'status'`), matched by CONTEXT only (`Vercel…`, `netlify/…`, exactly `Render`, `Workers Builds…`) —
+  never by who posted it.
 
-So it is exactly as good as that capture: Vercel, Netlify and Cloudflare Workers Builds are seen as soon as GitHub
-is connected and a check run arrives; Render, Railway and Fly.io report to GitHub through deployments (or not at
-all), which are not captured — they are NOT detected. Closing that gap needs NEW capture, none of it built: (a)
-capture `deployment_status` deliveries again, untagged (creator login + environment name, no env key — and a
-retention for them); (b) keep commit `status` contexts other than `canopy/*` (`Vercel`,
-`netlify/…`, `Render`); (c) a root-file probe in the reconcile (`vercel.json`, `netlify.toml`, `fly.toml`,
-`render.yaml`, `wrangler.toml` — one contents read each, in the cron, never on a render path). The screen shows a
+So Vercel, Netlify and Cloudflare Workers Builds are seen as soon as a check run or status arrives, and Render,
+Railway (and Fly.io, by a link to its hosts) as soon as they report a deployment. Still not built: a root-file
+probe (`vercel.json`, `netlify.toml`, `fly.toml`, …) — that is the repo scan, Phase D of repo setups. The screen shows a
 suggestion only for an `available` provider no part uses yet (`shownDetections`); it preselects the provider in
 the part editor and connects nothing — the credential is still the admin's to give. A dismissal is per browser
 (`localStorage` `trov.hosting.dismissed.<slug>`).
@@ -162,6 +161,58 @@ a FLOW — New org, Looking, Found, Parts added, Connecting, Live, Broken, Locke
 Netlify + Fly.io, Cloudflare + Railway, All on Render, All on Railway, Vercel only, Five hosts. Every combination is
 a whole `HostingSetupDTO` built from the real catalogue; detection follows what Trov can see (a stack of only Render
 / Railway / Fly.io finds nothing). `test/hosting.sample.test.ts` holds every combination to the providers' own checks.
+
+## GitHub deployments, the commit on every deploy, rollbacks, previews (repo setups, Phase A)
+
+**The `github` provider** (`src/hosting/providers/github.ts`, label "GitHub deployments") is a part whose deploys
+Trov learns from GITHUB: an app deployed by GitHub Actions, or a host Trov has no credential for. It has NO credential
+of its own (`credential: "github_app"` on the provider, `via_github: true` on the DTO — the SPA never branches on the
+id): no connection method, no card on Org settings › Hosting, no checklist step, no Integrations slot, and its parts
+read `connected`. The poll framework never resolves a credential for it and never runs its `poll` (`pollCost` 0; its
+state says "deploys come from GitHub — nothing to poll"). Its part settings are EXACTLY one of (`checkSettings`,
+enforced on the part write): a deployment environment (`environment`, exactly as GitHub names it), a check run
+(`check_app` + `check_name`), or a workflow file (`workflow`). `src/hosting/github-deploys.ts` writes its deploys
+from the webhook capture (`source = 'github'`, `sha_source = 'provider'`) when a newly captured signal matches the
+part's OWN setting on the environment's branch (`signalMatchesPart` — THE guard: an untagged signal never sets a
+part's deploy without a matching setting): a deployment status with that environment name (a branch ref must be the
+environment's; a sha ref says nothing), a check run of that app and name on the branch, a completed workflow run of
+that file on the branch. A failed one's `reason` is the deployment's description or the check's `output.title`.
+
+**`hosting_deploys` columns (0070):** `source` (`provider` | `github`), `reason` (a failure reason, scrubbed BEFORE
+it is cut to 140 — Netlify `error_message`, Vercel `errorMessage` else the alias error's message, Render's failed
+status in words; kept for an `error` deploy only — `validatePoll`), `sha_source` (`provider` | `joined` | NULL) and
+`rolled_back_from`. The upsert lives in `src/hosting/deploy-store.ts` (secret-free — the webhook's capture calls it);
+a provider sha replaces a joined one, never the reverse.
+
+**The commit join** (`src/hosting/sha-join.ts`): after a poll, each of the part's provider deploys with NO sha (not a
+preview, created in the last 2 days, ≤ 10) looks for GitHub signals on the environment's branch that FINISHED in the
+10 minutes before its creation — a completed check run, a completed workflow run, a settled deployment status whose
+ref is the branch, a settled commit status listing the branch. EXACTLY ONE distinct sha → it is the deploy's
+(`sha_source = 'joined'`); none or several → NULL (`joinCandidate`, THE guard). App attribution is the branch alone
+until `commit_paths` (Phase E). **Cloudflare** reads the newest deployment's commit from the Workers Builds API
+instead (step 0 confirmed the data): `GET /accounts/{id}/builds/builds?version_ids=<the version at 100 %>` — one more
+fetch (`pollCost` 3), exactly one build with a commit or nothing; refused (it needs Workers CI Read on a USER token)
+it adds the note "commit: the token needs Workers CI Read" to the poll state (`PollResult.notes`) and the join
+takes over. Fly.io and Railway (when `meta` lacks `commitHash`) rely on the join.
+
+**Rollback** (`src/hosting/rollback.ts`): when a write creates or changes a part's NEWEST non-preview `ready` deploy
+and its sha differs from the previous ready one's, ONE GitHub `compare` (previous...new, through the org's GitHub
+credential — `resolveGithubCredential` on the poll path, the webhook entry point's token on the capture path; never
+on a render path). `behind` → `rolled_back_from` = the previous sha; `ahead` / `identical` / `diverged`, a failed
+compare or no credential → nothing. A hosting unit costs its provider's `pollCost` + `ROLLBACK_COMPARE_COST` (1) for
+every provider that reports deploys (`providerPollCost`).
+
+**Previews:** a Vercel or Netlify PRODUCTION part also reads the project's / site's previews — a second list
+(`pollCost` 2 each), stored as `target = 'preview'` rows of that part with their branch (matched to open PRs at read
+time, Phase B). Render is not: a Render preview is a SEPARATE service with its own id (its provider's own notes),
+so a production service's deploys never include one. Until the facts read uses them, `hostingReads` leaves a
+production part's previews out of its strips (a part that reads ONLY previews keeps them).
+
+**Apps** (`repo_apps`, 0070; `src/repo/apps.ts`): an app is a part key with a home — repository, folder, kind (Site /
+Service / Worker / Job / Package; the role follows the kind, `shared/repo-apps-core.ts`), watch globs. 0070 wrote a
+row per existing part key; `listRepoApps` synthesises one for any key with no row (the primary repository's root,
+kind from the role), so nothing existing breaks. The admin writers (`putRepoApp` / `deleteRepoApp`, audited
+`app.set` / `app.delete`) have no screen yet (Phase D).
 
 ## The screens
 
@@ -251,7 +302,7 @@ only. Render tests: `test/render.hosting.test.ts`, `test/render.repo-hosting.tes
 
 The `hosting` job (`src/repo/cron.ts`; the cron itself is described in `repo-dashboard.md` › The repo cron): one
 unit per (org, environment, STORED part) from `listPartUnits` (`src/platform/jobs.ts`), each costing its provider's
-`pollCost` (≤ 6), served by rotation like the other jobs; health keeps half the budget on this tick only when some
+`pollCost` (≤ 6) + 1 for the possible rollback compare (a `github` part: 0), served by rotation like the other jobs; health keeps half the budget on this tick only when some
 org has a stored part. Cloudflare and Railway are polled here like every other provider; the `:00` usage job reads
 only the app-metrics endpoint. Background-job tenancy (the
 unit runs as its org's system tenant) is in `data-layer.md`.

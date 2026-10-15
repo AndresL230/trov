@@ -58,7 +58,8 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   `resolveGithubCredential` — run by an admin's Sync GitHub and Poll now and by the repo cron, never on the
   render path) — never through `/ingest` or `record_session`.
   `src/webhook.ts`'s `WORK_EVENT_NAMES` (`pull_request` / `issues`) and `REPO_EVENT_NAMES` (`pull_request` /
-  `push` / `pull_request_review` / `check_run` / `workflow_run` / `status`)
+  `push` / `pull_request_review` / `check_run` / `workflow_run` / `status` / `deployment_status` / `deployment` —
+  the last two, and a non-`canopy/*` status, as untagged GitHub deploy signals through `ingestRepoEvent`)
   independently gate which deliveries feed which capture; a repo-capture failure is caught and logged, never
   costing the My Work capture, and the webhook's response body carries `repo: { captured, unchanged }`
   alongside the existing `captured` / `unchanged`. PR-close and issue capture into `events` is unchanged by

@@ -51,9 +51,18 @@ issue's subject, not who merged/closed, so the feed never claims an actor it doe
 - **The target repo's GitHub webhook must be SUBSCRIBED to every name in `REPO_EVENT_NAMES`**
   (`src/webhook.ts`; for an org connected through the GitHub App the subscription is the App's own event
   list, set once on the App — `github-app.md`): `pull_request`, `push`, `pull_request_review`, `check_run`,
-  `workflow_run`, `status`. Every capture arm exists, but GitHub delivers only what the hook subscribes to.
-  (`deployment_status` is no longer read — a delivery is verified and ignored: an environment's deploys come
-  from its hosting provider, `hosting-providers.md`.) Without `check_run` / `workflow_run`, reconcile is the
+  `workflow_run`, `status`, `deployment_status`, `deployment`. Every capture arm exists, but GitHub delivers only
+  what the hook subscribes to. The App is ALSO subscribed to `release`, `create` and `workflow_job`
+  (`LATER_EVENT_NAMES`: verified, acknowledged, not captured yet). **GitHub deploy signals** (repo setups,
+  Phase A — `src/repo/capture.ts`): a `deployment` / `deployment_status` delivery and every commit status whose
+  context is NOT `canopy/*` become `repo_events` rows of kind `deploy`, UNTAGGED (`env` / `part` NULL), with
+  `raw.signal` = `deployment` | `status` — creator login, environment name exactly as the host spells it, state,
+  sha, ref, description, log / environment / target link, the workflow file of an Actions deployment, a status's
+  `branches` — through the gate's `ingestRepoEvent` (content-hash dedupe as every repo event), kept 90 days
+  (`DEPLOY_SIGNAL_RETENTION_DAYS`; a `deploy` row tagged with an environment from before 0057 is kept). They
+  feed detection (`hosting-providers.md` › Detection), a `github` part's deploys (only through its own setting,
+  `src/hosting/github-deploys.ts`) and the commit join (`src/hosting/sha-join.ts`) — never an environment's
+  deploys by name. Without `check_run` / `workflow_run`, reconcile is the
   ONLY source of checks and runs (up to 6 hours late). The same now holds for `pull_request_review` and `status`: without them the
   reconcile's `reviews` and `statuses` arms are the only source (up to 6 hours late, or an admin's Poll now),
   and a review on a PR outside the 30 most recently updated OPEN ones, or older than that PR's last 10, is
