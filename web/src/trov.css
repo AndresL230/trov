@@ -3139,10 +3139,10 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-menu { animation:ask-pop-in .14s cubic-bezier(.2,.9,.3,1.2) both; }
 .ask-menu[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
 @media (prefers-reduced-motion: reduce) {
-  .ask-threads, .ask-insp-frame, .ask-insp-resize::after, .ask-th, .ask-send, .ask-chip, .ask-starters > button { transition:none !important; }
+  .ask-threads, .ask-insp-frame, .ask-insp-resize::after, .ask-th, .ask-th-more, .ask-th-at, .ask-send, .ask-chip, .ask-starters > button { transition:none !important; }
   .ask-insp-frame, .ask-insp-frame[data-closing], .ask-insp-body, .ask-menu, .ask-menu[data-closing], .ask-hc, .ask-hc-layer[data-closing] .ask-hc,
   .ask-panel, .ask-scrim, .ask-panel-layer[data-closing] .ask-panel, .ask-panel-layer[data-closing] .ask-scrim, .ask-drawer, .ask-drawer-scrim,
-  .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
+  .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-line, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
 }
 
 /* ── Ask: threads ── (ask-threads.ts; the shell's) */

@@ -390,6 +390,9 @@ export function createAskController(host: AskHost): AskController {
   }
 
   // ── arrival ──────────────────────────────────────────────────────────────
+  // The replay flag is read ONCE, when the controller is made (main.ts module load): the boot rewrites the
+  // address to the org's canonical href (`?askReplay` would be gone by the time the Ask screen enters).
+  const bootReplay = replayFromLocation(host.search ? host.search() : typeof location !== "undefined" ? location.search : "");
   let replayStarted = false;
   async function startReplay(r: { scenario: string; speed: number }): Promise<void> {
     replayStarted = true;
@@ -432,7 +435,7 @@ export function createAskController(host: AskHost): AskController {
   }
 
   function enter(threadId: number | null): void {
-    const r = replayFromLocation(host.search ? host.search() : typeof location !== "undefined" ? location.search : "");
+    const r = bootReplay;
     if (r && !replayStarted) { void startReplay(r); if (threadId) openThread(threadId); paint(); return; }
     if (!ui().replay) load();
     if (threadId !== null && threadId !== ui().page.threadId) openThread(threadId);
