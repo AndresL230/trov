@@ -65,6 +65,8 @@ import { AVATAR_MAX_BYTES } from "@shared/people";
 import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
 import { aiApp } from "./ai/routes";
+import { askApp } from "./ai/ask/routes";
+import { askFlagsFor } from "./data/ask";
 import { aiPreview, withPreviewFeed } from "./ai/preview";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
 
@@ -317,7 +319,11 @@ tenantRoot.get("/search/quick", async (c) => {
 
 tenantRoot.get("/needs-triage", async (c) => c.json({ items: await list_needs_triage(c.var.ctx) }));
 
-tenantRoot.get("/adrs", async (c) => c.json({ adrs: await list_adrs(c.var.ctx, c.req.query("status")) }));
+tenantRoot.get("/adrs", async (c) => {
+  const adrs = await list_adrs(c.var.ctx, c.req.query("status"));
+  // "Flagged in Ask" (docs/architecture/ask.md): the reason and a count per decision — never thread text or who.
+  return c.json({ adrs, askFlags: await askFlagsFor(c.var.ctx, adrs.map((a) => `decision:${a.id}`)) });
+});
 
 // ── Review group (session-cookie only, NEVER MCP): Proposals (staged doc
 // versions) + Decisions (ADR drafts) — GET /proposals, GET /adrs, and their
@@ -326,7 +332,11 @@ tenantRoot.get("/adrs", async (c) => c.json({ adrs: await list_adrs(c.var.ctx, c
 // The Proposals queue (Phase 3): staged doc versions newer than their live doc,
 // not rejected, server-joined with both bodies + reconciler metadata. Kills the
 // old web N+1 (audit G9) and is the data source Phase 4's detail pane renders.
-tenantRoot.get("/proposals", async (c) => c.json({ proposals: await list_proposals(c.var.ctx) }));
+tenantRoot.get("/proposals", async (c) => {
+  const proposals = await list_proposals(c.var.ctx);
+  // "Flagged in Ask" (docs/architecture/ask.md): the reason and a count per doc — never thread text or who.
+  return c.json({ proposals, askFlags: await askFlagsFor(c.var.ctx, proposals.map((p) => `doc:${p.slug}`)) });
+});
 
 // ── Handoffs + Prompt Library (session-cookie; the MCP tools are the agent side) ──
 // A handoff is an addressed message, not knowledge: its writers are direct (NOT
@@ -1173,6 +1183,7 @@ app.route("/api/o/:slug", hostingApp); // Org settings › Hosting: parts, conne
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
 app.route("/api/o/:slug", orgBillingApp); // an owner's billing for this org: the Stripe portal, a plan switch, a renewal (src/billing/routes.ts)
 app.route("/api/o/:slug", aiApp); // Org settings › AI, and the answers to a suggestion and to "Wrong?" — cookie only (src/ai/routes.ts)
+app.route("/api/o/:slug", askApp); // Ask Trov: the stream, threads, write cards, attachments, Settings › Trov — cookie only (src/ai/ask/routes.ts)
 // The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of
 // their own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name
 // twice. Nothing reads `:org` — `tenantGate` (mounted on `/api/o/:slug/*` above) resolved the org from

@@ -132,9 +132,11 @@ describe("the model client is the summary seams', the AI pass's, the Sift run's 
     expect([...fromMcp].filter((f) => f.startsWith("src/ai/"))).toEqual([]);
     expect(fromMcp.has("src/tools/classify.ts")).toBe(false);
     // THE call sites (ai.md › Where a model call may happen): the summary seams, the AI pass (with its batch half
-    // and its job interface — types only), the Sift run, the filter route.
+    // and its job interface — types only), the Sift run, the filter route — and the Ask route (docs/architecture/ask.md):
+    // its turn (the streamed answer) and its history (the one-time compaction of a long thread, by Fast).
     const importers = [...SOURCES.keys()].filter((f) => f !== "src/ai/client.ts" && reachableDirect(f).has("src/ai/client.ts")).sort();
-    expect(importers).toEqual(["src/ai/batches.ts", "src/ai/filter.ts", "src/ai/jobs.ts", "src/ai/pass.ts", "src/ai/sift.ts", "src/tools/summarize.ts"]);
+    expect(importers).toEqual(["src/ai/ask/history.ts", "src/ai/ask/turn.ts", "src/ai/batches.ts", "src/ai/filter.ts", "src/ai/jobs.ts", "src/ai/pass.ts", "src/ai/sift.ts", "src/tools/summarize.ts"]);
+    expect(reachable("src/routes.ts").has("src/ai/ask/turn.ts")).toBe(true);
     // The filter's ONE way in is its cookie route (src/ai/routes.ts `POST /ai/filter`): nothing else imports it.
     expect(reachable("src/routes.ts").has("src/ai/filter.ts")).toBe(true);
     expect([...SOURCES.keys()].filter((f) => reachableDirect(f).has("src/ai/filter.ts") && f !== "src/ai/filter.ts")).toEqual(["src/ai/routes.ts"]);
@@ -148,7 +150,10 @@ describe("the model client is the summary seams', the AI pass's, the Sift run's 
     // The key is read where summaries are chosen, where AI eligibility is answered, the pass starts and the filter calls (and
     // where Platform says whether they are on) — nowhere else.
     const readers = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /\.ANTHROPIC_API_KEY\b/.test(text)).map(([f]) => f).sort();
-    expect(readers).toEqual(["src/ai/eligibility.ts", "src/ai/filter.ts", "src/ai/pass.ts", "src/plans/summaries.ts", "src/platform/routes.ts"]);
+    expect(readers).toEqual([
+      "src/ai/ask/history.ts", "src/ai/ask/routes.ts", "src/ai/ask/turn.ts",
+      "src/ai/eligibility.ts", "src/ai/filter.ts", "src/ai/pass.ts", "src/plans/summaries.ts", "src/platform/routes.ts",
+    ]);
     // TypeSafe's key: the Sift run and the AI pass (its Jev jobs and gates) send with it; the Tags list says whether one is set.
     const jevReaders = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /\.TYPESAFE_API_KEY\b/.test(text)).map(([f]) => f).sort();
     expect(jevReaders).toEqual(["src/ai/pass.ts", "src/ai/sift.ts", "src/tags/routes.ts"]);
@@ -164,6 +169,29 @@ describe("the model client is the summary seams', the AI pass's, the Sift run's 
       .glob(["../web/src/**/*.ts"], { query: "?raw", import: "default", eager: true });
     expect(Object.keys(web).length).toBeGreaterThan(20);
     expect(Object.entries(web).filter(([, text]) => /typesafe\.ai/i.test(text)).map(([f]) => f)).toEqual([]);
+  });
+});
+
+describe("Ask Trov's import boundary (docs/architecture/ask.md › Never reachable from Ask)", () => {
+  const askFiles = () => [...SOURCES.keys()].filter((f) => f.startsWith("src/ai/ask/"));
+
+  it("src/ai/ask/** reaches no secret, no GitHub App credential, no billing — and never src/mcp.ts", () => {
+    expect(askFiles().length).toBeGreaterThan(8);
+    for (const entry of askFiles()) {
+      const reach = reachable(entry);
+      expect(reach.has("src/data/secrets.ts"), `${entry} reaches src/data/secrets.ts`).toBe(false);
+      expect([...reach].filter((f) => f.startsWith("src/github-app/")), `${entry} reaches src/github-app/`).toEqual([]);
+      expect([...reach].filter((f) => f.startsWith("src/billing/")), `${entry} reaches src/billing/`).toEqual([]);
+      expect(reach.has("src/mcp.ts"), `${entry} reaches src/mcp.ts`).toBe(false);
+      expect([...reach].filter((f) => f.startsWith("src/integrations/") || f === "src/deletion/person.ts" || f === "src/deletion/org.ts"), entry).toEqual([]);
+    }
+    // …and no Ask file so much as names a decrypt path or the audit log.
+    for (const f of askFiles()) expect(SOURCES.get(f), f).not.toMatch(/\b(getSecret|resolveCredential|resolveGithubCredential|installationToken)\s*\(|\borg_audit\b|\borg_admin_audit\b/);
+  });
+
+  it("the walker finds Ask from the HTTP app, and MCP still reaches nothing under src/ai/", () => {
+    expect(reachable("src/routes.ts").has("src/ai/ask/routes.ts")).toBe(true);
+    expect([...reachable("src/mcp.ts")].filter((f) => f.startsWith("src/ai/"))).toEqual([]);
   });
 });
 

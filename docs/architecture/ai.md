@@ -44,7 +44,7 @@ A caller names a KIND, never a model. `KIND_PROVIDER` is the ONE table from a ki
 
 ## Where a model call may happen
 
-ONLY in these places, all behind THE client (the decided build adds Ask Trov's route as the fifth):
+ONLY in these places, all behind THE client (the fifth, Ask Trov, is `ask.md`):
 
 1. **The capture-time summary seams** — `src/tools/summarize.ts`, chosen per org by `orgSummarizers`
    (`src/plans/summaries.ts`), from the webhook and Sync GitHub. Kinds `summary_pr` / `summary_issue` (Claude).
@@ -57,15 +57,20 @@ ONLY in these places, all behind THE client (the decided build adds Ask Trov's r
    `src/tools/tags.ts`). The decided build moves this run into the pass (Phase C).
 4. **The plain-language filter route** — `POST /api/o/:slug/ai/filter` (`src/ai/routes.ts` → `src/ai/filter.ts`), on
    a person's request only (Enter in the filter box). Kind `filter` (Claude). See "The plain-language filter" below.
+5. **Ask Trov** — `POST /api/o/:slug/ask` (`src/ai/ask/routes.ts`, cookie only): the turn (`src/ai/ask/turn.ts`,
+   `askChatClient` — kinds `ask.fast` / `ask.smart` / `ask.thinking`, streamed with tools) and the one-time compaction
+   of a long thread (`src/ai/ask/history.ts`, kind `ask.compact`). Gated by the org switch and `ai_chat` (questions,
+   by the mode). Everything else about it: `ask.md`.
 
 Never on a render path (a read that backs a screen calls no model), and never from MCP: nothing reachable from
 `src/mcp.ts` imports `src/ai/` or the Jev provider (`test/secrets.mcp.test.ts` walks the import graph, and pins that
 only those call sites import the client — `src/tools/summarize.ts`, `src/ai/sift.ts`, the filter's `src/ai/filter.ts`
-(imported only by `src/ai/routes.ts`), and the pass's `src/ai/pass.ts`, `src/ai/batches.ts` and `src/ai/jobs.ts`
-(types only); that only `src/ai/eligibility.ts`, `src/ai/filter.ts`, `src/ai/pass.ts`, `src/plans/summaries.ts` and
-`src/platform/routes.ts` read `ANTHROPIC_API_KEY`; that only `src/ai/pass.ts`, `src/ai/sift.ts` and
-`src/tags/routes.ts` read `TYPESAFE_API_KEY`; and that the ROUTER, which MCP's writers reach, imports nothing from
-`src/ai/`).
+(imported only by `src/ai/routes.ts`), the pass's `src/ai/pass.ts`, `src/ai/batches.ts` and `src/ai/jobs.ts` (types
+only), and Ask's `src/ai/ask/turn.ts` and `history.ts`; that only `src/ai/eligibility.ts`, `src/ai/filter.ts`,
+`src/ai/pass.ts`, `src/plans/summaries.ts`, `src/platform/routes.ts` and Ask's routes, turn and history read
+`ANTHROPIC_API_KEY`; that only `src/ai/pass.ts`, `src/ai/sift.ts` and `src/tags/routes.ts` read `TYPESAFE_API_KEY`;
+that nothing under `src/ai/ask/` reaches secrets, the GitHub App, billing or `src/mcp.ts`; and that the ROUTER, which
+MCP's writers reach, imports nothing from `src/ai/`).
 
 **The org switch covers every AI feature, Sift included.** A Sift run starts, and each of its requests is made, only
 while BOTH `orgs.ai_automation` (Org settings › AI) and Sift's own switch (`org_ai_settings`, kind `tag.fit`, the

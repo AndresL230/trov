@@ -1,0 +1,207 @@
+event: thread
+data: {"id":1,"title":"Hosting status","mode":"smart","auto":false,"origin":"page","contextRef":null}
+
+event: activity
+data: {"step":1,"tool":"query","icon":"search","label":"Searched docs for 'hosting'","state":"run"}
+
+event: activity
+data: {"step":1,"state":"done","results":["doc:hosting-connections","doc:performance-plan","doc:release-0-30-notes"],"resultLine":"3 results"}
+
+event: activity
+data: {"step":2,"tool":"get_ticket","icon":"tickets","label":"Read ticket #14","state":"run"}
+
+event: activity
+data: {"step":2,"state":"done","results":["ticket:14","sprint:7","person:maya","person:andres"]}
+
+event: activity
+data: {"step":3,"tool":"get_repo_dashboard","icon":"ci","label":"Checked CI on AndresL230/trov","state":"run"}
+
+event: activity
+data: {"step":3,"state":"done","results":["repo:AndresL230/trov"],"resultLine":"1 result"}
+
+event: activity
+data: {"step":4,"tool":"get_events","icon":"pr","label":"Read PR #176","state":"run"}
+
+event: activity
+data: {"step":4,"state":"done","results":["pr:176","pr:173"]}
+
+event: activity
+data: {"step":5,"tool":"get_sprint","icon":"sprint","label":"Looked at the Hosting sprint","state":"run"}
+
+event: activity
+data: {"step":5,"state":"done","results":["sprint:7","ticket:18","ticket:19"]}
+
+event: text
+data: {"delta":"Most "}
+
+event: text
+data: {"delta":"of "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"hosting "}
+
+event: text
+data: {"delta":"work "}
+
+event: text
+data: {"delta":"is "}
+
+event: text
+data: {"delta":"moving. "}
+
+event: text
+data: {"delta":"What "}
+
+event: text
+data: {"delta":"blocks "}
+
+event: text
+data: {"delta":"it "}
+
+event: text
+data: {"delta":"is "}
+
+event: text
+data: {"delta":"narrow: "}
+
+event: text
+data: {"delta":"[[ticket:14]] "}
+
+event: text
+data: {"delta":"waits "}
+
+event: text
+data: {"delta":"on "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"Netlify "}
+
+event: text
+data: {"delta":"connect "}
+
+event: text
+data: {"delta":"step, "}
+
+event: text
+data: {"delta":"and "}
+
+event: text
+data: {"delta":"that "}
+
+event: text
+data: {"delta":"step "}
+
+event: text
+data: {"delta":"can't "}
+
+event: text
+data: {"delta":"merge "}
+
+event: text
+data: {"delta":"while "}
+
+event: text
+data: {"delta":"one "}
+
+event: text
+data: {"delta":"test "}
+
+event: text
+data: {"delta":"fails "}
+
+event: text
+data: {"delta":"on "}
+
+event: text
+data: {"delta":"main.\n\n"}
+
+event: text
+data: {"delta":"## "}
+
+event: text
+data: {"delta":"What "}
+
+event: text
+data: {"delta":"is "}
+
+event: text
+data: {"delta":"blocking\n\n"}
+
+event: text
+data: {"delta":"- "}
+
+event: text
+data: {"delta":"The "}
+
+event: text
+data: {"delta":"Netlify "}
+
+event: text
+data: {"delta":"connect "}
+
+event: text
+data: {"delta":"test "}
+
+event: text
+data: {"delta":"fails "}
+
+event: text
+data: {"delta":"on "}
+
+event: text
+data: {"delta":"main "}
+
+event: text
+data: {"delta":"since "}
+
+event: text
+data: {"delta":"[[pr:173]] "}
+
+event: text
+data: {"delta":"changed "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"status "}
+
+event: text
+data: {"delta":"marks "}
+
+event: text
+data: {"delta":"it "}
+
+event: text
+data: {"delta":"checks.\n"}
+
+event: text
+data: {"delta":"- "}
+
+event: text
+data: {"delta":"[[person:andres]] "}
+
+event: text
+data: {"delta":"owns "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"fix. "}
+
+event: text
+data: {"delta":"It "}
+
+event: text
+data: {"delta":"isn't "}
+
+event: text
+data: {"delta":"filed "}
+
