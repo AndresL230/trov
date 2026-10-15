@@ -35,6 +35,7 @@ import { releasesScreen, findRelease, type ReleasePage } from "./releases";
 import { supportDialog, initialSupport, type SupportDraft } from "./support";
 import { accountDeleteModal, accountDeleteTile, initialDeleteUi, type DeleteUi } from "./deletion";
 import type { AccountDeletionPreview } from "@shared/deletion-core";
+import { trovSettingsTiles, initialTrovPrefs, type TrovPrefsUi } from "./ask-settings";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { repoUrl } from "./github";
@@ -306,6 +307,8 @@ export interface AppState {
   handleCheck: "idle" | "checking" | "available" | "invalid" | "reserved" | "taken" | "same";
   /** Settings › Delete account (deletion.ts, deletion-actions.ts): what it would do, and its confirmation. */
   acctDelete: DeleteUi<AccountDeletionPreview>;
+  /** Settings › Trov (ask-settings.ts): my Ask instructions and default mode in the org on screen. */
+  trovPrefs: TrovPrefsUi;
   // Email notifications (Settings) — the user's resolved prefs + the address edit form.
   notifPrefs: Loadable<PrefsView | null>;
   emailEditing: boolean;
@@ -559,6 +562,7 @@ export function initialState(): AppState {
     handleDraft: "",
     handleCheck: "idle",
     acctDelete: initialDeleteUi<AccountDeletionPreview>(),
+    trovPrefs: initialTrovPrefs(),
     notifPrefs: { status: "idle", data: null },
     emailEditing: false,
     emailDraft: "",
@@ -2543,6 +2547,7 @@ function settingsView(s: AppState): string {
   //   Plan | Limits
   //   Organizations
   //   MCP access
+  //   Trov: How Trov should answer you | Default mode, then What Trov can see (ask-settings.ts)
   //   Email notifications
   // DOM order is the folded order — who I am, then the plan, then the rest, Sign out last —
   // and the wide layout places each tile by name, so the narrower ones need no reordering.
@@ -2560,6 +2565,8 @@ function settingsView(s: AppState): string {
     ${settingsOrgsTile({ orgs: s.myOrgs.data, mine: s.me?.orgs ?? [], status: s.myOrgs.status, current: s.orgSlug })}
 
     ${mcpAccessSection(s, org?.name ?? "")}
+
+    ${trovSettingsTiles(s.trovPrefs, s.orgSlug)}
 
     <section class="cnpy-tile cnpy-surface cnpy-set-appear">
       <div style="${SECTION_LABEL}">Appearance</div>

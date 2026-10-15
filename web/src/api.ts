@@ -332,6 +332,7 @@ import type { BillingCheckoutRequest, BillingCheckoutResponse, BillingConfigResp
 import type * as GhT from "@shared/github-app";
 import { AI_ROUTES, type AiAcceptBody, type AiFeedbackBody, type AiSettings, type AiSettingsPut, type AiSuggestion } from "@shared/ai-core";
 import { AI_FILTER_ROUTE, type AiFilterAnswer, type AiFilterBody } from "@shared/ai-filter-core";
+import { ASK_ROUTES, type AskSettings, type AskSettingsPut, type AskState } from "@shared/ai-ask-core";
 import type * as TagT from "@shared/tags-core";
 /** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
  *  `detail` the server's sentence, `field` the input it is about. */
@@ -421,6 +422,13 @@ export function sendAiFeedback(body: AiFeedbackBody): Promise<unknown> { return 
 /** The plain-language filter (#162): a sentence → the screen's own filter fields, checked by the server. A refusal
  *  is an `OrgApiError` whose `detail` is the sentence to show (`unreadable`, `off`, `no_key`), or the house 402 / 429. */
 export function runAiFilter(slug: string, body: AiFilterBody): Promise<AiFilterAnswer> { return orgSend("POST", orgPath(slug, AI_FILTER_ROUTE), body); }
+// ── Ask Trov: Settings › Trov (shared/ai-ask-core.ts `ASK_ROUTES`; cookie only) ──
+/** The composer's standing: the org's switch, the plan and the modes it offers (with their words). */
+export function getAskState(slug: string): Promise<AskState> { return orgSend("GET", orgPath(slug, ASK_ROUTES.state)); }
+/** My instructions and default mode in this org. */
+export function getAskSettings(slug: string): Promise<AskSettings> { return orgSend("GET", orgPath(slug, ASK_ROUTES.settings)); }
+/** Save them. A default mode the plan does not offer is refused (403 `mode_unavailable`). */
+export function putAskSettings(slug: string, body: AskSettingsPut): Promise<AskSettings> { return orgSend("PUT", orgPath(slug, ASK_ROUTES.settings), body); }
 export function putOrgSettings(slug: string, name: string): Promise<{ ok: true; org: OrgT.OrgSettings }> { return orgSend("PUT", orgPath(slug, "/settings"), { name }); }
 /** Upload the org's image (multipart `file`; the caller crops and downsizes it first — avatar.ts). Admin+.
  *  Refusals: `invalid_image` (400), `too_large` (413), `rate_limited` (429). Answers with the image that shows now. */

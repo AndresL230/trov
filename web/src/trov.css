@@ -869,7 +869,8 @@ input, select { font-family: inherit; }
      row 3     Plan (5) | Limits (7) — both grow with what the plan has to say
      row 4     Organizations (a row of them)
      row 5     MCP access (its steps beside Connected apps)
-     row 6     Email notifications
+     rows 6-7  Trov: How Trov should answer you (7) | Default mode (5), then What Trov can see (ask-settings.ts)
+     row 8     Email notifications
    Each tile is placed by NAME here; DOM order is the folded order (Sign out last). */
 .cnpy-set { max-width:1180px; margin:0 auto; padding:24px 32px 32px; display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:14px; }
 .cnpy-set-profile { grid-column:1 / span 4; grid-row:1 / span 2; }
@@ -894,7 +895,7 @@ input, select { font-family: inherit; }
 .cnpy-set-profile .cnpy-set-name { max-width:420px; }
 /* Session: who is signed in, and Sign out — side by side, the button under the name when narrow. */
 .cnpy-set-who { display:flex; align-items:center; justify-content:space-between; gap:12px 14px; flex-wrap:wrap; }
-.cnpy-set-email { grid-column:1 / -1; grid-row:6; container:cnpy-email / inline-size; }
+.cnpy-set-email { grid-column:1 / -1; grid-row:8; container:cnpy-email / inline-size; }
 .cnpy-set-pairs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:40px; }
 @container cnpy-email (max-width:935px) {
   .cnpy-set-pairs { grid-template-columns:minmax(0,1fr); }
@@ -958,6 +959,36 @@ input, select { font-family: inherit; }
 }
 @media (prefers-reduced-motion: reduce) {
   .cnpy-set-org { transition:none; }
+}
+/* ── Ask: Settings › Trov ── (web/src/ask-settings.ts) Three tiles of the Settings bento, after MCP access:
+   my instructions (7) beside the default mode (5), then What Trov can see across the page with Save at its foot.
+   Narrower, each runs the width; its two lists stack once the tile is too narrow for them side by side. */
+.cnpy-set-trov-instr { grid-column:1 / span 7; grid-row:6; }
+.cnpy-set-trov-mode { grid-column:8 / -1; grid-row:6; }
+.cnpy-set-trov-see { grid-column:1 / -1; grid-row:7; container:cnpy-trov-see / inline-size; }
+.cnpy-trov-see { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 28px; margin-top:16px; }
+@container cnpy-trov-see (max-width:619px) {
+  .cnpy-trov-see { grid-template-columns:minmax(0,1fr); }
+}
+.cnpy-trov-foot { display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
+.cnpy-set-trov-instr textarea::placeholder { color:var(--fg-40); }
+/* Motion (web-ui.md › Sidebar & motion): the tiles enter with the page (`[data-enter] #cnpy-main > *`), like the rest
+   of the bento; the loading skeletons settle into the content (skeleton.ts). What changes in place eases: the counter's
+   colour as it nears the limit, Save's fill as it goes quiet / comes back, "Saved" rising once when a save lands, and a
+   refusal's sentence fading in. The page is morphed, so none of it replays on a rerender; all of it is off under
+   reduced motion. */
+.cnpy-trov-count { transition:color var(--fx-base) var(--fx-ease); }
+.cnpy-trov-save { transition:opacity var(--fx-fast) var(--fx-ease), background-color var(--fx-fast) var(--fx-ease); }
+.cnpy-trov-saved { display:inline-block; animation:cnpy-fade var(--fx-base) var(--fx-ease) both; }
+.cnpy-trov-err:not([hidden]) { animation:cnpy-fade var(--fx-base) var(--fx-ease) both; }
+.cnpy-set-trov-instr textarea { transition:border-color var(--fx-fast) var(--fx-ease); }
+.cnpy-set-trov-instr textarea[aria-invalid="true"] { border-color:var(--red) !important; }
+@media (prefers-reduced-motion: reduce) {
+  .cnpy-trov-count, .cnpy-trov-save, .cnpy-set-trov-instr textarea { transition:none; }
+  .cnpy-trov-saved, .cnpy-trov-err:not([hidden]) { animation:none; }
+}
+@container cnpy-set (max-width:999px) {
+  .cnpy-set-trov-instr, .cnpy-set-trov-mode, .cnpy-set-trov-see { grid-column:1 / -1; grid-row:auto; }
 }
 /* Tickets: the queue's table rows, and the two-column form/detail layouts that
    collapse to one column on a narrow viewport. */

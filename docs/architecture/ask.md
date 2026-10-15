@@ -145,7 +145,11 @@ is replaced.
 - "Wrong?" (`POST /ask/messages/:id/wrong { reason }`): `ai_feedback` (item type `ask`, `detail_json`: reason, mode,
   messageId, cites). "A source is wrong" / "It is out of date" also add one `ask_flags` row per cited item — the
   reason only, no handle, no thread, no text — which Review reads (`askFlags` on `GET /proposals` and `GET /adrs`).
-- Settings › Trov: `GET / PUT /ask/settings` — instructions (≤ 500) and the default mode (Pro).
+- Settings › Trov: `GET / PUT /ask/settings` — instructions (≤ 500) and the default mode (Pro). The screen is three tiles
+  of personal Settings (`web/src/ask-settings.ts`, controller `ask-settings-actions.ts`, acts `trovSet…`): its modes and
+  their words come from `GET /ask/state`, the default mode is sent only when the plan offers a choice, and "What Trov
+  can see" is the design's copy, held to this file's Tools section — change one, check the other. Where something is
+  connected links its Org settings tab (`orgGo`: Integrations, Repositories, Hosting, Environments; the off line, AI).
 - `GET /ask/state`: `{ enabled, eligibility, plan, modes, defaultMode, allowance { used, cap, resetsAt, low }, autoAllowed,
   attach { maxFiles, maxBytes, kinds }, starters }` — starters by plain rules (the person's top assigned ticket, the
   active sprint, what is waiting on them), the design's four as the fallback.

@@ -97,6 +97,7 @@ import type { AiFilterByScreen, AiFilterScreen, ArtifactsAiFilter, FeedAiFilter,
 import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
 import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
+import { createTrovPrefs } from "./ask-settings-actions";
 import { RELEASES } from "./releases";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
@@ -282,6 +283,9 @@ const deletionCtl = createDeletion({
     location.replace(href);
   },
 });
+
+// Settings › Trov (ask-settings-actions.ts): my Ask instructions and default mode in the org on screen.
+const trovPrefsCtl = createTrovPrefs({ state, rerender: () => rerender(), unauth: (e) => unauth(e), flash: (m, ms) => flash(m, ms) });
 
 // The dropdowns (web/src/dropdown.ts): opening, closing (with its exit), the keyboard, and
 // placing the open menu against its trigger. A pick is dispatched as the dropdown's own act.
@@ -1257,6 +1261,7 @@ function loadSettingsReads(): void {
   orgCtl.loadPlan();
   void loadMyOrgs();
   void deletionCtl.loadAccount(); // what Delete account would do, and anything in its way (deletion.ts)
+  void trovPrefsCtl.load(); // Settings › Trov: my Ask instructions and default mode here (ask-settings.ts)
 }
 /** Why a change to a connection's scope was refused, in words (the route answers with a code). */
 const GRANT_SCOPE_REFUSALS: Record<string, string> = {
@@ -4170,6 +4175,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
       // The support form, signed in or out: its controller repaints the dialog alone (support-actions.ts).
       if (act.startsWith("support")) { supportCtl.act(act, arg, value); return; }
+      // Settings › Trov (ask-settings-actions.ts).
+      if (act.startsWith("trovSet")) { trovPrefsCtl.act(act, arg, value); return; }
       // Deleting one's account or an organization (deletion-actions.ts) — before `org…` below.
       if (act.startsWith("acctDel") || act.startsWith("orgDel")) { deletionCtl.act(act, arg, value); return; }
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
