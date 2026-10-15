@@ -10,7 +10,7 @@
 // so each part can be built and screenshotted without a key. A part that needs more set-up for its scenario
 // adds it to `replayPlan`'s `setup` (one case per scenario — merge-friendly).
 
-import { askRepoFacts, type AskActionAnswer, type AskEvent, type AskEventMap, type AskState, type PeekResult, type RefView } from "@shared/ai-ask-core";
+import { askRepoFacts, type AskActionAnswer, type AskAttachment, type AskEvent, type AskEventMap, type AskState, type PeekResult, type RefView } from "@shared/ai-ask-core";
 import { getReplayIndex, streamReplay, type AskApi, type AskReplayIndex } from "./ask-api";
 import type { AskCtx, AskWhere } from "./ask-state";
 import { COMPOSER_STATES, composerReplaySetup, type ComposerForced } from "./ask-composer";
@@ -112,6 +112,13 @@ const sample = (ids: number[], state: AskEventMap["action_result"]["state"], gro
   // The card is already on screen (its `action` event): the result keeps its tool, kind and preview.
   ({ results: ids.map((id) => ({ id, groupId: groups.get(id) ?? null, tool: "", kind: "other" as const, preview: { title: "", lines: [], item: null }, state, result: state === "confirmed" ? REPLAY_WRITES[id]?.result ?? { sample: true } : { sample: true },
     ref: state === "confirmed" ? REPLAY_WRITES[id]?.ref ?? null : null, undo: state === "confirmed", at: now() })) });
+
+const SAMPLE_TYPE = { image: "image/png", pdf: "application/pdf", text: "text/plain" } as const;
+/** A scenario question's files as the composer would hold them (the question's file cards while it streams): sample
+ *  rows, never uploaded — the replay writes nothing. */
+export function replayQuestionFiles(q: AskReplayIndex["questions"][string] | null | undefined): AskAttachment[] {
+  return (q?.attachments ?? []).map((a, i) => ({ id: 950 + i, slug: `sample-file-${i}`, title: a.title, kind: a.kind, contentType: SAMPLE_TYPE[a.kind], size: a.size, sha256: "" }));
+}
 
 /** A transcript's own repo views carry no facts (the recorded fixtures leave them out; `loadReplayIndex` fills the
  *  INDEX's from the Overview's sample), so a diagram node or a cite on a repository would draw "Unknown" where the

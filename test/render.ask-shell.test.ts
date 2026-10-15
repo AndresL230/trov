@@ -12,7 +12,7 @@ import { parseHash, hashForRoute, pageKey } from "../web/src/hash";
 import { askLayout, clampInspector, layoutBucket } from "../web/src/ask-layout";
 import { ESC_LAYERS, closeTop, topLayer, type EscEntry } from "../web/src/ask-escape";
 import { askEnterNew, askTweenHeights, closingAttr } from "../web/src/ask-motion";
-import { createReplayApi, replayFromLocation, replayPlan, replayRoute } from "../web/src/ask-replay";
+import { createReplayApi, replayFromLocation, replayPlan, replayQuestionFiles, replayRoute } from "../web/src/ask-replay";
 import type { AskReplayIndex } from "../web/src/ask-api";
 import { setApiOrg } from "../web/src/api";
 import { emptyConvo } from "../web/src/ask-stream";
@@ -181,6 +181,14 @@ describe("the dev replay — the recipe's flags", () => {
       vi.unstubAllGlobals();
       setApiOrg(null);
     }
+  });
+
+  // e2e AU-24 streaming / answer: the design's question carries its file (ci-failure.png, an image card above the
+  // bubble); the replay sent only the text and the context chip, dropping the scenario's attachments.
+  it("sends a scenario question's files with it (the question's file card)", () => {
+    const files = replayQuestionFiles({ text: "x", context: [], attachments: [{ title: "ci-failure.png", kind: "image", size: 421_888 }] });
+    expect(files).toEqual([expect.objectContaining({ title: "ci-failure.png", kind: "image", size: 421_888, contentType: "image/png" })]);
+    expect(replayQuestionFiles(null)).toEqual([]);
   });
 
   it("holds a transcript that ends mid-answer until Stop aborts it", async () => {
