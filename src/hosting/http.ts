@@ -222,3 +222,25 @@ export const sane = (v: unknown, max: number): number | null => {
   const n = typeof v === "string" && /^\d+(\.\d+)?$/.test(v.trim()) ? Number(v) : v;
   return typeof n === "number" && Number.isFinite(n) && n >= 0 && n < max ? n : null;
 };
+
+// ── describe() helpers (repo setups, Phase D) ────────────────────────────────
+/** `owner/name` (lower-cased) from what a host stores for a linked repository: `https://github.com/o/r(.git)`,
+ *  `git@github.com:o/r.git`, or `o/r` — GitHub only; anything else is null. */
+export function githubRepoOf(v: unknown): string | null {
+  const s = str(v)?.trim();
+  if (!s) return null;
+  const m = /^(?:https:\/\/(?:www\.)?github\.com\/|git@github\.com:)?([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?\/?$/.exec(s);
+  return m ? `${m[1]}/${m[2]}`.toLowerCase() : null;
+}
+/** A host's build folder (`apps/web`, `./apps/web/`, '', null) as a repository folder: '/' for the root, null when
+ *  it climbs out (`..`). */
+export function describedFolder(v: unknown): string | null {
+  const s = (typeof v === "string" ? v : "").trim().replace(/\\/g, "/");
+  const parts: string[] = [];
+  for (const seg of s.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") return null;
+    parts.push(seg);
+  }
+  return parts.length ? parts.join("/") : "/";
+}
