@@ -143,6 +143,9 @@ async function call(path: string, init: RequestInit = {}): Promise<Response> {
   if (res.status === 404 && url.startsWith("/api/o/") && !url.endsWith("/me")) probeOrg();
   return res;
 }
+/** THE sender, for a module that reads the response itself (Ask's SSE stream, web/src/ask-api.ts): the same
+ *  prefix, cookie, 401 and org-gate handling as every other call. */
+export const apiFetch = (path: string, init: RequestInit = {}): Promise<Response> => call(path, init);
 /** A refused call's error code: the body's `error`, else the status. */
 async function refusal(res: Response): Promise<ApiError> {
   let msg = String(res.status);
