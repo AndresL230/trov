@@ -404,6 +404,10 @@ export function createTagsController(host: TagsHost): TagsController {
         // The row slides out NOW (only this one; the others stay usable); the write and the refresh follow in
         // the background. Refused: the row comes back and the page says why.
         u.reviewLeaving = [...u.reviewLeaving, key];
+        // …and the app's confirmation (the checkmark toast at the bottom) says what happened, at once.
+        const title = state.tagPage.data?.review.find((r) => `${r.type}:${r.id}` === key)?.title;
+        const what = title ? `“${title.length > 60 ? `${title.slice(0, 59)}…` : title}”` : "the item";
+        host.flash(add ? `Added ${tag} to ${what}` : `Dismissed ${tag} for ${what}`);
         rerender();
         const settled = () => { u.reviewLeaving = u.reviewLeaving.filter((k) => k !== key); };
         settleTagReview(tag, { type, id }, add)
