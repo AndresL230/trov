@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   trovSettingsTiles, initialTrovPrefs, counterTone, oneModeLine,
-  TROV_TRY, TROV_SEES, TROV_DOES_NOT, TROV_GATE, TROV_OFF, TROV_SAVED, type TrovPrefsUi,
+  TROV_TRY, TROV_SEES, TROV_DOES_NOT, TROV_GATE, TROV_OFF, TROV_SAVED, TROV_WHERE, type TrovPrefsUi,
 } from "../web/src/ask-settings";
 import { createTrovPrefs, appendTry } from "../web/src/ask-settings-actions";
 import { render, initialState } from "../web/src/render";
@@ -31,7 +31,7 @@ const ui = (plan: "pro" | "free", o: Partial<TrovPrefsUi> = {}, settings: Partia
 });
 const tiles = (u: TrovPrefsUi) => trovSettingsTiles(u, "acme");
 const count = (html: string) => html.match(/data-trov-count="(\w+)"[^>]*>([^<]*)</)?.slice(1);
-const saveBtn = (html: string) => html.match(/<button type="button" data-act="trovSetSave"[^>]*>[^<]*<\/button>/)?.[0] ?? "";
+const saveBtn = (html: string) => html.match(/<button type="button" data-act="trovSetSave"[^>]*>.*?<\/button>/)?.[0] ?? "";
 
 describe("Settings › Trov on Pro", () => {
   it("offers the plan's modes as ONE segmented switch, the picked one's hint under it, and the Free line at the foot", () => {
@@ -54,7 +54,7 @@ describe("Settings › Trov on Pro", () => {
   it("a picked-but-unsaved mode shows as picked; Save reads Saving… while it goes, Saved after", () => {
     expect(tiles(ui("pro", { draftMode: "fast" }))).toContain('class="cnpy-seg-btn is-on" aria-pressed="true">Fast<');
     expect(saveBtn(tiles(ui("pro", { saving: true })))).toMatch(/disabled[^>]*>Saving&hellip;</);
-    expect(saveBtn(tiles(ui("pro", { saved: true })))).toMatch(/>Saved</);
+    expect(saveBtn(tiles(ui("pro", { saved: true })))).toMatch(/>Saved<\/span><\/button>$/);
     expect(saveBtn(tiles(ui("pro")))).toMatch(/>Save</);
     expect(saveBtn(tiles(ui("pro")))).not.toContain("disabled");
   });
@@ -88,7 +88,10 @@ describe("Ask switched off for the org", () => {
   it("says so in the design's words and keeps the form (the instructions apply once it is on)", () => {
     const html = tiles(ui("pro", {}, {}, { enabled: false, eligibility: "off" }));
     expect(html).toContain("data-trov-off");
-    expect(html).toContain(esc(TROV_OFF));
+    // The design's words, "Org settings › AI" opening that tab.
+    expect(TROV_OFF).toBe("Ask Trov is off for this org. An admin can turn it on in Org settings › AI.");
+    expect(html).toContain('Ask Trov is off for this org. An admin can turn it on in <button type="button" data-act="orgGo" data-arg="ai"');
+    expect(html).toMatch(/data-arg="ai"[^>]*>Org settings &rsaquo; AI<\/button>\./);
     expect(html).toContain('id="trov-instr"');
     expect(saveBtn(html)).not.toContain("disabled");
     expect(tiles(ui("pro"))).not.toContain("data-trov-off");
@@ -117,7 +120,7 @@ describe("the 500-character counter", () => {
   });
 
   it("is always emitted, so typing patches the page in place (and it is announced politely)", () => {
-    expect(tiles(ui("pro"))).toMatch(/id="trov-instr-count" data-trov-count="quiet" aria-live="polite"[^>]*>0 \/ 500</);
+    expect(tiles(ui("pro"))).toMatch(/id="trov-instr-count" class="cnpy-trov-count" data-trov-count="quiet" aria-live="polite"[^>]*>0 \/ 500</);
     expect(tiles(ui("pro"))).toContain('aria-describedby="trov-instr-count"');
   });
 });
@@ -134,6 +137,10 @@ describe("the design's copy and the states around it", () => {
     expect(html).toContain(">It does not<");
     for (const t of [...TROV_SEES, ...TROV_DOES_NOT]) expect(html).toContain(esc(t));
     expect(html).toContain(esc(TROV_GATE));
+    // Where what it reads is connected: each Org settings tab a link (#186's split).
+    expect(TROV_WHERE.map((w) => w.tab)).toEqual(["integrations", "repos", "hosting", "environments"]);
+    for (const w of TROV_WHERE) expect(html).toMatch(new RegExp(`data-act="orgGo" data-arg="${w.tab}"[^>]*>${w.label}</button>`));
+    expect(html).toContain("GitHub, hosts and environments are connected in Org settings &rsaquo; ");
     // The lists' marks are shapes (marks.ts), never a pill or a ● character.
     expect(html).not.toContain("●");
   });
@@ -142,6 +149,9 @@ describe("the design's copy and the states around it", () => {
     const loading = tiles({ ...initialTrovPrefs(), slug: "acme", settings: { status: "loading", data: null } });
     expect(loading).not.toContain('id="trov-instr"');
     expect(loading).toContain("cnpy-sk");
+    // The house skeletons (skeleton.ts): a clock per region, and the content settles in when the read lands.
+    expect(loading).toContain('data-skel="trov-instr"');
+    expect(loading).toContain('data-skel="trov-mode"');
     expect(saveBtn(loading)).toContain("disabled");
     const failed = tiles({ ...initialTrovPrefs(), slug: "acme", settings: { status: "error", data: null }, state: { status: "error", data: null } });
     expect(failed).toContain("Couldn&#39;t load your Trov settings.");
@@ -172,6 +182,21 @@ describe("the design's copy and the states around it", () => {
     expect(at("cnpy-set-trov-see")).toBeGreaterThan(at("cnpy-set-trov-mode"));
     for (const cls of ["cnpy-set-trov-instr", "cnpy-set-trov-mode", "cnpy-set-trov-see"]) expect(css).toMatch(new RegExp(`\\.${cls} \\{ grid-column:`));
     expect(css).toContain("/* ── Ask: Settings › Trov ── */".slice(0, 26));
+  });
+});
+
+describe("motion (web-ui.md › Sidebar & motion)", () => {
+  it("eases what changes in place, \"Saved\" rises once as its own node, and all of it is off under reduced motion", () => {
+    expect(tiles(ui("pro"))).toContain('class="cnpy-trov-count"');
+    expect(saveBtn(tiles(ui("pro")))).toContain("cnpy-trov-save");
+    expect(saveBtn(tiles(ui("pro", { saved: true })))).toContain('<span class="cnpy-trov-saved">Saved</span>');
+    expect(tiles(ui("pro", { error: "No." }))).toContain('class="cnpy-trov-err"');
+    const block = css.slice(css.indexOf("/* ── Ask: Settings › Trov ──"));
+    expect(block).toMatch(/\.cnpy-trov-count \{ transition:color var\(--fx-base\)/);
+    expect(block).toMatch(/\.cnpy-trov-saved \{[^}]*animation:cnpy-fade/);
+    const reduced = block.slice(block.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reduced).toMatch(/\.cnpy-trov-count, \.cnpy-trov-save[^{]*\{ transition:none; \}/);
+    expect(reduced).toMatch(/\.cnpy-trov-saved, \.cnpy-trov-err:not\(\[hidden\]\) \{ animation:none; \}/);
   });
 });
 

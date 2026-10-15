@@ -972,6 +972,21 @@ input, select { font-family: inherit; }
 }
 .cnpy-trov-foot { display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
 .cnpy-set-trov-instr textarea::placeholder { color:var(--fg-40); }
+/* Motion (web-ui.md › Sidebar & motion): the tiles enter with the page (`[data-enter] #cnpy-main > *`), like the rest
+   of the bento; the loading skeletons settle into the content (skeleton.ts). What changes in place eases: the counter's
+   colour as it nears the limit, Save's fill as it goes quiet / comes back, "Saved" rising once when a save lands, and a
+   refusal's sentence fading in. The page is morphed, so none of it replays on a rerender; all of it is off under
+   reduced motion. */
+.cnpy-trov-count { transition:color var(--fx-base) var(--fx-ease); }
+.cnpy-trov-save { transition:opacity var(--fx-fast) var(--fx-ease), background-color var(--fx-fast) var(--fx-ease); }
+.cnpy-trov-saved { display:inline-block; animation:cnpy-fade var(--fx-base) var(--fx-ease) both; }
+.cnpy-trov-err:not([hidden]) { animation:cnpy-fade var(--fx-base) var(--fx-ease) both; }
+.cnpy-set-trov-instr textarea { transition:border-color var(--fx-fast) var(--fx-ease); }
+.cnpy-set-trov-instr textarea[aria-invalid="true"] { border-color:var(--red) !important; }
+@media (prefers-reduced-motion: reduce) {
+  .cnpy-trov-count, .cnpy-trov-save, .cnpy-set-trov-instr textarea { transition:none; }
+  .cnpy-trov-saved, .cnpy-trov-err:not([hidden]) { animation:none; }
+}
 @container cnpy-set (max-width:999px) {
   .cnpy-set-trov-instr, .cnpy-set-trov-mode, .cnpy-set-trov-see { grid-column:1 / -1; grid-row:auto; }
 }
