@@ -71,6 +71,7 @@ import { askApp } from "./ai/ask/routes";
 import { askFlagsFor } from "./data/ask";
 import { repoSettingsApp } from "./repo/settings-routes";
 import { aiPreview, previewFeedRows, withPreviewFeed } from "./ai/preview";
+import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions } from "./ai/attach";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
 
 export const app = new Hono<AppEnv>();
@@ -320,10 +321,11 @@ tenantRoot.get("/search/quick", async (c) => {
 
 // SEAM: POST /ask — retrieve via query(), synthesize a grounded, slug-citing answer. Out of scope.
 
-tenantRoot.get("/needs-triage", async (c) => c.json({ items: await list_needs_triage(c.var.ctx) }));
+// Each item carries Trov's open `unplaced.destination` as `ai` when it has one (src/ai/attach.ts; Phase C).
+tenantRoot.get("/needs-triage", async (c) => c.json({ items: await withUnplacedSuggestions(c, await list_needs_triage(c.var.ctx)) }));
 
 tenantRoot.get("/adrs", async (c) => {
-  const adrs = await list_adrs(c.var.ctx, c.req.query("status"));
+  const adrs = (await withReviewSuggestions(c, [], await list_adrs(c.var.ctx, c.req.query("status")))).adrs;
   // "Flagged in Ask" (docs/architecture/ask.md): the reason and a count per decision — never thread text or who.
   return c.json({ adrs, askFlags: await askFlagsFor(c.var.ctx, adrs.map((a) => `decision:${a.id}`)) });
 });
@@ -335,8 +337,9 @@ tenantRoot.get("/adrs", async (c) => {
 // The Proposals queue (Phase 3): staged doc versions newer than their live doc,
 // not rejected, server-joined with both bodies + reconciler metadata. Kills the
 // old web N+1 (audit G9) and is the data source Phase 4's detail pane renders.
+// Each proposal (and each drafted decision on `/adrs`) carries Trov's open `review.risk` as `ai` (src/ai/attach.ts).
 tenantRoot.get("/proposals", async (c) => {
-  const proposals = await list_proposals(c.var.ctx);
+  const proposals = (await withReviewSuggestions(c, await list_proposals(c.var.ctx), [])).proposals;
   // "Flagged in Ask" (docs/architecture/ask.md): the reason and a count per doc — never thread text or who.
   return c.json({ proposals, askFlags: await askFlagsFor(c.var.ctx, proposals.map((p) => `doc:${p.slug}`)) });
 });
@@ -932,7 +935,8 @@ tenantRoot.get("/tickets/:id", async (c) => {
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const ticket = await get_ticket(c.var.ctx, id);
   if (!ticket) return c.json({ error: "not found" }, 404);
-  return c.json(ticket);
+  // Trov's open suggestions for it, as `ai` (src/ai/attach.ts; Phase C) — this cookie read only, never MCP's get_ticket.
+  return c.json(await withTicketSuggestions(c, ticket));
 });
 
 // Edit the title and/or body — a mirrored ticket's too (seeded from the issue at

@@ -20,6 +20,9 @@ export interface AiHost {
   unauth(e: unknown): void;
   /** Re-read the Repo dashboard (after a proposed theme is decided, so the lane shows what it became). */
   reloadRepo?(): void;
+  /** A suggestion was accepted or dismissed: the screen it was on re-reads what changed (Phase C — the ticket, the
+   *  Unplaced queue, Review). */
+  decided?(id: number, how: "accept" | "dismiss"): void;
 }
 export interface AiController {
   act(act: string, arg: string | null, value: string | null): void;
@@ -80,6 +83,7 @@ export function createAiController(host: AiHost): AiController {
         rerender();
         // A theme's answer changes the chart (proposed → active, merged or gone): read it again.
         if (Object.values(host.state.repo.data?.themes ?? {}).some((t) => t.lanes.some((l) => l.suggestionId === id))) host.reloadRepo?.();
+        host.decided?.(id, how);
       })
       .catch((e) => {
         u.busy = without(u.busy, id);

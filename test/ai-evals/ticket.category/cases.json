@@ -1,0 +1,534 @@
+{
+ "kind": "ticket.category",
+ "source": "Personal Dev tickets (Trov MCP list_tickets, read-only) + this repo's other GitHub issues; labels by hand",
+ "cases": [
+  {
+   "id": "t32",
+   "source": "Personal Dev #32 (AndresL230/trov#183)",
+   "ticket": {
+    "number": 32,
+    "title": "Plugin skills marked disable-model-invocation can't be used when a person asks in words (handoff, record-session, tickets, update-plan)",
+    "body": "## What happened\n\nOn 2026-10-14 the owner asked a Claude Code session, in plain words, to \"send a handoff to get that stuff in\". The session tried to load the `trov:handoff` skill, and Claude Code refused:\n\n> Skill trov:handoff cannot be used with Skill tool due to disable-model-invocation. Ask the user to run /trov:handoff themselves — it cannot be invoked via the Skill tool. Do not replicate this skill's workflow by other means\n\nSo the session told the owner it couldn't send handoffs, and gave them a prompt to paste into another chat instead. The owner had to push back (\"you can send handoffs, what do you mean\") before the session called `send_handoff` over MCP directly (handoff #7). That worked first time, but without the skill's guidance on the context shape, the 300-word body or the session id.\n\n## Why\n\n`plugins/trov/skills/handoff/SKILL.md` sets `disable-model-invocation: true`. The intent, per its description, is \"explicit invocation only — must never auto-fire at a natural stopping point\". But the flag blocks every case where the model loads the skill, including a person asking for it **in words**. Only a typed `/trov:handoff` gets through. The harness then tells the model not to do the work by other means, so the most likely outcome is a refusal, even though the MCP tool is right there.\n\nThe same flag is on `record-session`, `tickets` and `update-plan`, so \"record this session\", \"file a ticket for that\" and \"update the plan\" hit the same wall.\n\n## Done when\n\n- Asking in plain words (\"send a handoff\", \"record the session\", \"file a ticket\", \"update the plan\") gets th"
+   },
+   "expected": "bug",
+   "rationale": "a skill refuses to run when asked in words: something behaves wrongly"
+  },
+  {
+   "id": "t31",
+   "source": "Personal Dev #31 (AndresL230/trov#181)",
+   "ticket": {
+    "number": 31,
+    "title": "Repo dashboard: log ingestion (errors and log volume per environment)",
+    "body": "Ingest application logs so the Repo dashboard can show errors and log volume next to deploys and health, not only request counts and error rates.\n\n## Scope\n\nPull logs, or a summary of them, from where each environment already runs: Cloudflare Workers (Logpush or Workers Logs / Observability), Railway, and, once #97 lands, the hosting providers (Vercel, Render, Netlify, Fly.io). The org admin enters the credential in Org settings › Integrations, the same way Cloudflare analytics and Railway are set up today.\n\nStore aggregates and the top recurring errors, not raw log lines: error counts per environment per hour, the most frequent messages (grouped and scrubbed), and the first time each was seen.\n\n## Done when\n\n- An admin can connect a log source for an environment, and Test connection passes against the real API.\n- The Repo dashboard shows that environment's error volume and its top recurring errors, and links each one to the deploy it started after.\n- Nothing on a render path calls the provider: reads come from D1, and capture happens in the cron or Poll now.\n- Credentials go only to the provider's own API host, log text is scrubbed before it is stored, and an org with no log source costs no requests.\n- Retention is bounded, the same way `hx_*` metrics are pruned.\n\nDepends on #97 for the non-Cloudflare and non-Railway hosts.\n"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t29",
+   "source": "Personal Dev #29 (AndresL230/trov#169)",
+   "ticket": {
+    "number": 29,
+    "title": "Let a person delete their own account from Settings",
+    "body": "## Problem\n\nThere is no way to delete an account in the app. The Terms and the Privacy Policy both say to write to hello@trov.dev, so today it is a manual job for the operator, and a person who wants out has no button.\n\n## Wanted\n\nA \"Delete account\" action in the personal Settings screen (the Session tile, away from Sign out), behind a confirmation that names what will happen and asks the person to type their handle.\n\n## What deleting has to deal with\n\n1. **Organizations the person OWNS.**\n   - With other members: ownership must go to someone else first, or the delete is refused with a list of those organizations and a link to each one's Members tab.\n   - With nobody else in it: the organization goes too. Say so, by name, in the confirmation.\n   - With a live subscription: refused until it is cancelled. The Terms already say deleting an account does not cancel a subscription; here it must be impossible to leave one running with no owner.\n2. **Organizations the person is only a member of.** They are removed, which frees a seat, exactly as an admin removing them does.\n3. **What they wrote.** The Privacy Policy says content written in a team's workspace may stay with that team, attributed to the handle. Decide between keeping the handle on that content, or replacing it with a neutral \"deleted account\" marker. The second is the stronger privacy answer and needs every handle column (`HANDLE_COLUMNS`) rewritten, the way a rename does.\n4. **What is removed outright:** the person row, identities (GitHub / Google links), sessions, agent connections and tokens, the uploaded avatar, n"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t30",
+   "source": "Personal Dev #30 (AndresL230/trov#170)",
+   "ticket": {
+    "number": 30,
+    "title": "One GitHub account, several Trov organizations: connect different repositories to different orgs",
+    "body": "## Problem\n\nPeople want different Trov organizations for different repositories — a personal org for one project, a client's org for another — while all of those repositories live under ONE GitHub account. Today that cannot be set up through the GitHub App.\n\n`docs/architecture/github-app.md` states the rule: **\"An installation belongs to at most one org, and an org has at most one live installation.\"** An installation is one GitHub account (a user or a GitHub organization). So once the Trov App on `AndresL230` is bound to one Trov organization, no second Trov organization can use it, whatever repositories that account holds. The second org is left with the manual path: a pasted token and a hand-made webhook.\n\nA related limit sits beside it: **an organization captures only its primary repository.** The plan table already sells more (Free 1, Pro 5 repositories), and a second repository can be listed, but its pull requests, CI and deploys are not captured.\n\n## Wanted\n\n1. **One installation, many organizations — split by repository.** The same GitHub account's App installation can be used by more than one Trov organization, each bound to the specific repositories it was given. Repository A is tracked by org X, repository B by org Y.\n2. **Still exactly one organization per repository.** A repository's events land in one organization, never two. That guarantee is what keeps one team's pull requests out of another's dashboard; it moves from \"one org per installation\" to \"one org per repository\".\n3. **Who may claim a repository.** Binding a repository to an organization needs BOTH:"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t28",
+   "source": "Personal Dev #28 (AndresL230/trov#167)",
+   "ticket": {
+    "number": 28,
+    "title": "Instant intelligence · use: a reading list when someone claims a handoff",
+    "body": "Part of #154. Depends on the building blocks.\n\nWhen a handoff is claimed, show a short 'read these first' list: the docs and decisions that bear on the task.\n\n**Why:** it shortens the first ten minutes of a session.\n\n**Careful:** this is mostly retrieval over what Trov already indexes, ranked; say so, and never present it as complete.\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; an item with no suggestion simply has none.\n- **Metered.** Calls count against a per-organization allowance in `PLANS`."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t27",
+   "source": "Personal Dev #27 (AndresL230/trov#166)",
+   "ticket": {
+    "number": 27,
+    "title": "Instant intelligence · use: tags for artifacts and docs",
+    "body": "Part of #154. Depends on the building blocks.\n\nSuggest tags from the fixed vocabulary (auth, architecture, infra, api, ui, data) for an artifact or a doc, as suggestions a person accepts.\n\n**Why:** cheap, low-risk, and it makes search and the libraries better.\n\n**Careful:** the vocabulary is the gate's source of truth and stays fixed; a suggestion never adds a tag outside it.\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; an item with no suggestion simply has none.\n- **Metered.** Calls count against a per-organization allowance in `PLANS`."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t26",
+   "source": "Personal Dev #26 (AndresL230/trov#165)",
+   "ticket": {
+    "number": 26,
+    "title": "Instant intelligence · use: ticket intake — category, priority, duplicates, who should take it",
+    "body": "Part of #154. Depends on the building blocks.\n\nOn a new ticket: suggest its category and priority, warn 'this looks like #212', and suggest an assignee from people's listed role and responsibilities.\n\n**Why:** small, frequent, and each answer is from a short list.\n\n**Careful:** an assignee suggestion is about a person, so it must cite the responsibility it matched and never assign; a duplicate warning links, it never closes.\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; an item with no suggestion simply has none.\n- **Metered.** Calls count against a per-organization allowance in `PLANS`."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t25",
+   "source": "Personal Dev #25 (AndresL230/trov#164)",
+   "ticket": {
+    "number": 25,
+    "title": "Instant intelligence · use: feed entries with a priority, and digests that lead with what matters",
+    "body": "Part of #154. Depends on the building blocks.\n\nGive each feed entry a kind and an importance when it is written (a breaking change, a decision needed, routine), let the Feed be filtered or ordered by it, and let digest emails open with the three entries that matter to that person.\n\n**Why:** the feed is the highest-volume thing in Trov and the easiest to stop reading.\n\n**Careful:** importance is relative to a person's area, so decide whether it is one label per entry or per reader.\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; an item with no suggestion simply has none.\n- **Metered.** Calls count against a per-organization allowance in `PLANS`."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t24",
+   "source": "Personal Dev #24 (AndresL230/trov#163)",
+   "ticket": {
+    "number": 24,
+    "title": "Instant intelligence · use: My Work ordered by what needs you first",
+    "body": "Part of #154. Depends on the building blocks.\n\nOrder the items within My Work's tiles and add one line on where to start, from what is already there: due dates, who is waiting, what is blocked.\n\n**Why:** it is the screen everyone opens.\n\n**Careful:** much of this is plain rules (overdue first), and a model should only add what rules cannot; the reason is always shown; one control returns it to the plain order.\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; an item with no suggestion simply has none.\n- **Metered.** Calls count against a per-organization allowance in `PLANS`."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t23",
+   "source": "Personal Dev #23 (AndresL230/trov#162)",
+   "ticket": {
+    "number": 23,
+    "title": "Instant intelligence · use: filters from plain language",
+    "body": "Part of #154. Depends on the building blocks.\n\n'High priority tickets about auth from last week' becomes the screen's existing filter controls, filled in and editable.\n\n**Why:** the most visible of the set, and safe by construction: the model outputs a filter, never results, so it cannot invent anything.\n\n**Careful:** only filters the screen already has; an unrecognised request says so instead of guessing; needs the suggested-value kinds (priority, topic) to exist before it can filter by them.\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; an item with no suggestion simply has none.\n- **Metered.** Calls count against a per-organization allowance in `PLANS`."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t22",
+   "source": "Personal Dev #22 (AndresL230/trov#161)",
+   "ticket": {
+    "number": 22,
+    "title": "Instant intelligence · use: notice when a doc and recent work disagree",
+    "body": "Part of #154. Depends on the building blocks.\n\nA scheduled check: 'this doc says deploys are manual; three recent feed entries say CI deploys'. It stages a doc proposal (or a note on the doc) for review.\n\n**Why:** it is Trov's own loop — keep the memory true — running without being asked.\n\n**Careful:** the most expensive of the set (it compares texts, not one item); it goes through the gate like any proposal and must cite what it compared.\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; an item with no suggestion simply has none.\n- **Metered.** Calls count against a per-organization allowance in `PLANS`."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t21",
+   "source": "Personal Dev #21 (AndresL230/trov#160)",
+   "ticket": {
+    "number": 21,
+    "title": "Instant intelligence · use: order Review by risk",
+    "body": "Part of #154. Depends on the building blocks.\n\nLabel each proposal — changes a decision, contradicts an existing doc, changes a process, or routine — and let the queue be ordered so the risky ones come first, with the reason on the card.\n\n**Why:** with dozens of proposals waiting, the order is the whole experience.\n\n**Careful:** a label never promotes or rejects anything; 'routine' must never mean 'safe to skip', so say what it is based on.\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; an item with no suggestion simply has none.\n- **Metered.** Calls count against a per-organization allowance in `PLANS`."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t20",
+   "source": "Personal Dev #20 (AndresL230/trov#159)",
+   "ticket": {
+    "number": 20,
+    "title": "Instant intelligence · use: suggest where an Unplaced item belongs",
+    "body": "Part of #154. Depends on the building blocks.\n\nUnplaced holds what the gate could not confidently place. Suggest the destination (a section, or the doc it updates) with a one-line reason and a single Accept.\n\n**Why first:** it is the most natural fit in the product, the answers come from a short fixed list, and every item there is already waiting on a person.\n\n**Careful:** accepting routes the item exactly as assigning does today; discard stays a person's choice.\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; an item with no suggestion simply has none.\n- **Metered.** Calls count against a per-organization allowance in `PLANS`."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t19",
+   "source": "Personal Dev #19 (AndresL230/trov#158)",
+   "ticket": {
+    "number": 19,
+    "title": "Instant intelligence · building block 4: limits, consent, privacy and knowing whether it is any good",
+    "body": "Part of #154.\n\nThe parts that make it responsible to switch on.\n\n## Wanted\n\n- **A plan limit** in `PLANS`, enforced through `requirePlan`, with a clear answer at the limit: suggestions stop, nothing breaks.\n- **An organization switch**, off or on, with plain words on what is sent to the model and to whom. The Privacy Policy and Terms say the same.\n- **Never sent:** secrets, integration keys, anything from another organization, source code.\n- **A test set per kind** of judgement: real examples with the right answer, so a model or prompt change can be scored before it ships, and a cheaper model can be shown to be good enough.\n- **Feedback as data:** accept and dismiss rates per kind, visible to the owner in Platform, so a kind that people keep dismissing gets fixed or removed.\n\n## Groundwork before code\n\nThe disclosure wording; the first test sets, written from real items in the owner's own organization.\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; an item with no suggestion simply has none.\n- **Metered.** Calls count "
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t18",
+   "source": "Personal Dev #18 (AndresL230/trov#157)",
+   "ticket": {
+    "number": 18,
+    "title": "Instant intelligence · building block 3: one way to show and answer a suggestion",
+    "body": "Part of #154.\n\nOne interface pattern, used wherever a suggestion appears, so people learn it once.\n\n## Wanted\n\n- A small \"Suggested: High — because two customers reported it\" element with Accept and Dismiss, visibly different from a value a person set.\n- The reason is always one tap away. A suggestion with no reason is not shown.\n- Accepting writes the real field as that person; dismissing hides it and is remembered.\n- Works in a list row, a card, a detail pane and on a phone; no button inside a button; motion off under reduced motion.\n- Sorting or grouping by a suggested value says so (\"ordered by suggested priority\"), and one control turns it off.\n\n## Groundwork before code\n\nWording and placement tested on Tickets, Review and Unplaced; decide whether a member sees suggestions or only the people who can act on them.\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; an item with no suggestion simply has none.\n- **Metered.** Calls count against a per-organization allowance in `PLANS`."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t17",
+   "source": "Personal Dev #17 (AndresL230/trov#156)",
+   "ticket": {
+    "number": 17,
+    "title": "Instant intelligence · building block 2: where suggestions live",
+    "body": "Part of #154.\n\nA single place to store a model's judgement about an item, kept apart from what a person set.\n\n## Wanted\n\n- A tenant table of suggestions: the item (type and id), the kind, the suggested value, confidence, reason, the model and prompt version that produced it, when, and its state (open, accepted, dismissed, superseded).\n- A computed, direct write (it is derived data, like summaries and progress), bound to the organization like every tenant statement.\n- **A suggestion is never the field itself.** A ticket's priority is what a person set; the suggestion sits beside it until someone accepts it, and accepting is an ordinary authored write by that person.\n- Re-running a kind supersedes the old suggestion instead of piling up.\n- Handle columns registered so a rename rewrites who accepted or dismissed.\n\n## Groundwork before code\n\nDecide retention (how long dismissed suggestions are kept as test data) and what the audit trail records.\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; an item with no suggestion simp"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t16",
+   "source": "Personal Dev #16 (AndresL230/trov#155)",
+   "ticket": {
+    "number": 16,
+    "title": "Instant intelligence · building block 1: one classify service",
+    "body": "Part of #154.\n\nOne internal function every use goes through, instead of each feature calling a model its own way.\n\n## Wanted\n\n- **In:** a kind of judgement (for example `ticket.priority`), the item's text, and the fixed list of allowed answers.\n- **Out:** one answer from that list, a confidence, and a one-sentence reason. Structured output, validated; anything else is discarded and the item simply has no suggestion.\n- **Cached by content.** The same text under the same kind and list is never classified twice (the gate already hashes content for dedupe).\n- **Provider injected**, like the summarizer is today, so tests stub it and the model can be swapped.\n- **Fails closed and quiet:** a timeout or an error leaves no suggestion and never surfaces to the person.\n- Runs from the write paths and the cron, never from a render path.\n\n## Groundwork before code\n\nDecide the model and what a call costs; write the contract for a \"kind\" (its allowed answers, its prompt, its test set).\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; a"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t15",
+   "source": "Personal Dev #15 (AndresL230/trov#154)",
+   "ticket": {
+    "number": 15,
+    "title": "Explore: instant intelligence — fast, cheap judgements attached to what Trov already stores",
+    "body": "## The idea\n\nA fast, inexpensive model looks at something Trov already holds — a feed entry, a ticket, a proposal, an item in Unplaced — and attaches a small structured judgement to it: a priority, a category, a tag, a destination, a risk. The interface stays hand-built and simply sorts, groups, filters or suggests by that judgement.\n\nThe model classifies and ranks. It does not generate the screen. That is what makes it cheap, and what makes it safe to use in many places.\n\n## Why it could matter\n\nTrov's bottleneck is human attention: what to review first, where an unplaced item belongs, which of forty feed entries matters to me. Every one of those is a small judgement over text Trov already has.\n\n## Shape of the work\n\n**Building blocks first** (so this is one capability used in many places, not ten separate features), then the uses, most valuable first. Each is its own issue, listed in a comment below.\n\n## Rules that bind every one of these (CLAUDE.md)\n\n- **Suggestions, never actions.** A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm.\n- **Never while a page loads.** A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model.\n- **A fixed set of answers.** The model picks from a list Trov gives it; it does not write interface, markup or figures.\n- **Never guess on read.** No suggestion is shown as fact; an item with no suggestion simply has none.\n- **Metered.** Calls count "
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t14",
+   "source": "Personal Dev #14 (AndresL230/trov#153)",
+   "ticket": {
+    "number": 14,
+    "title": "Guided repository setup: pick the stack, then be walked through connecting each piece and where to get its keys",
+    "body": "## Decision (owner, 2026-10-10)\n\nTrov does not work out how a repository is hosted by reading it. **It asks.** When someone sets up a repository in an organization they get a short guided setup: they say what the stack is, and Trov then connects each piece with them, telling them exactly where to get each key as they go. At the end the Repo dashboard is the one that fits what they said.\n\nThis settles the open question in #147 for the first version: no file is opened, and no model is needed to know the stack. Detection from events Trov already captures (the hosting branch's \"Detected: Vercel\") only PRE-FILLS an answer; the person confirms it.\n\n## The flow\n\n1. **Repository.** Pick it (the GitHub App's repository picker; the manual path stays for those who cannot install the App).\n2. **What is it?** One question with plain choices, each with a one-line description and a small picture of the dashboard it leads to:\n   - One service that does everything (a Worker, a single app server)\n   - A frontend and a backend, hosted separately\n   - A static site\n   - A library or tool that is released, not deployed\n   - Something else / set it up by hand\n3. **Where does each part run?** For each part the answer implies, pick the host: Cloudflare, Vercel, Netlify, Render, Fly.io, Railway, or \"somewhere Trov does not connect to yet\" (the part is still listed; its figures are \"—\" with that reason).\n4. **Connect each host, one at a time.** This is the heart of it. For each host:\n   - the one-click path where there is one (Connect with Vercel, Connect with Netlify);\n   - otherwise numbered steps"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t13",
+   "source": "Personal Dev #13 (AndresL230/trov#152)",
+   "ticket": {
+    "number": 13,
+    "title": "Fitted Repo dashboard · 7: a time-boxed experiment, once the groundwork gives it something to aim at",
+    "body": "Part of #145. An experiment with a question and an end date — not a feature.\n\n## Preconditions\n\nPieces 2 (signals), 3 (the layout description) and 6 (the test set) exist at least in draft. Without them an experiment produces a demo, not an answer.\n\n## The question\n\nGiven the signals Trov can have for a repository, how often does a model produce the expected layout, compared with plain rules — and what does it cost per repository?\n\n## Shape\n\n- Run outside the product, against the test set: signals in, a layout in the description out, validated and scored by the rule from piece 6.\n- Compare three: rules only; a model only; rules, with a model for what the rules call ambiguous.\n- Record accuracy, confident-wrong answers, cost and latency per repository, and what the model was sent.\n- Two days, then a write-up with a recommendation: ship rules only, ship the hybrid, or stop.\n\n## Open\n\n- **Which tool or model to prototype with** is the owner's call and is not settled in this issue.\n- Nothing from the experiment ships: it informs piece 4's decision."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t12",
+   "source": "Personal Dev #12 (AndresL230/trov#151)",
+   "ticket": {
+    "number": 12,
+    "title": "Fitted Repo dashboard · 6: how we will know it works — a set of real repositories with expected results",
+    "body": "Part of #145. A test set, written before any detector exists.\n\n## Why first\n\nWithout agreed answers there is no way to tell a good detector from a confident one, to compare rules with a model, or to notice a regression. This is also what makes an experiment (piece 7) worth running.\n\n## What to collect\n\n- **Ten to fifteen repositories** covering the shapes in the brief: single Worker (`AndresL230/trov`), split frontend and backend (`SaplingLearn/Sapling`), a Next.js app on Vercel, a static site on Netlify, a container service on Fly.io or Render, a monorepo with two deployables, a library published to a registry, a repository with no deploys at all, and two or three deliberately awkward ones (a migration between hosts in progress, two hosts for one part).\n- **For each:** the signals Trov would have (from piece 2), the expected shape, the expected layout in the description from piece 3, and what must NOT be shown.\n- **The awkward cases' right answer** may be \"not sure: ask\" — say so explicitly.\n\n## How it is used\n\n- A detector's score is how many repositories get the expected layout, how many get a wrong one stated confidently (the worst outcome), and how many correctly say \"not sure\".\n- Public repositories can be fixtures in the repo; private ones are described, not copied.\n\n## Output\n\nThe set as fixtures plus a table, and the scoring rule."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t11",
+   "source": "Personal Dev #11 (AndresL230/trov#150)",
+   "ticket": {
+    "number": 11,
+    "title": "Fitted Repo dashboard · 5: choice and control — automatic, pick a layout, or adjust it",
+    "body": "Part of #145. A product design, not code.\n\n## Questions to answer\n\n- **The three ways in.** (1) Trov proposes a layout and you accept it; (2) you pick from the built-in layouts; (3) you adjust one: reorder, hide, or add a widget. Which of these is in the first version? (Picking a layout needs only piece 3 and may be the whole first release.)\n- **Where does it live?** Org settings, the Repo screen itself, or the guided setup a new organization walks through — and how it reads for a member who cannot change it.\n- **What does a proposal look like?** A preview of the proposed dashboard beside the current one, with one sentence on why (\"this repository deploys one Cloudflare Worker and has no separate backend\"), and Accept / Keep mine.\n- **What happens when the repository changes?** A backend appears, a host moves. Trov may propose again; it never rearranges a screen someone accepted or customised without asking.\n- **Undo and reset.** Back to the previous layout; back to the default.\n- **Per organization, per repository, or per person?** Probably per repository for the organization, with no personal variants at first.\n- **Plans.** Is choosing a layout in every plan and automatic proposals a paid feature, or all of it everywhere?\n\n## Output\n\nThe flow as a written walkthrough with states (first connection, proposal waiting, accepted, customised, repository changed, member's view), ready to design screens from."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t10",
+   "source": "Personal Dev #10 (AndresL230/trov#149)",
+   "ticket": {
+    "number": 10,
+    "title": "Fitted Repo dashboard · 4: where AI fits — its role, its limits, its cost and what it is shown",
+    "body": "Part of #145. A written decision, not code.\n\n## Questions to answer\n\n- **What is the model actually for?** Split the job: (a) classify the repository's shape from signals, (b) pick and fill a template, (c) explain the choice in a sentence. Which of these do plain rules already do well enough (the hosting branch detects three hosts with no model), and where does a model add something rules cannot?\n- **Rules first?** A likely answer: rules decide when the signals are clear, and a model is asked only for the ambiguous cases — or only to write the explanation. Decide, with the evaluation set from piece 6.\n- **What can the model output?** Only a layout in the description from piece 3, validated before anything is stored. Never markup, never code, never a figure. A proposal that fails validation is discarded and the rules' answer stands.\n- **It proposes; a person accepts.** How is a proposal shown, where is it stored while it waits, and what does accepting or dismissing it do? (\"Agents stage; humans confirm\" applies to the product's own AI as it does to a customer's agent.)\n- **What is sent to the model, and to whom?** Signal summaries and config file names, or file contents? Which provider (pull request summaries use Google Gemini today through a platform key)? What the Privacy Policy and the consent text in Org settings must say, and whether an organization can turn it off.\n- **Cost and limits.** One proposal per repository connection, or on every change? Counted against the plan's AI allowance in `PLANS`, or its own limit? What happens at the limit (the rules' answer, with no "
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t9",
+   "source": "Personal Dev #9 (AndresL230/trov#148)",
+   "ticket": {
+    "number": 9,
+    "title": "Fitted Repo dashboard · 3: the building blocks — a widget catalogue and a way to describe a layout",
+    "body": "Part of #145. A design, then the smallest code that proves it.\n\n## Why this is the centre of the whole thing\n\nIf a dashboard is a fixed screen, there is nothing for a detector to choose. If it is free-form, nothing can be trusted or tested. The middle is a **fixed catalogue of widgets**, each of which knows how to draw one true thing from data Trov has, and a **description of a layout** that names which widgets appear, in what order, bound to which environment and part.\n\nThen anything can produce a layout — a built-in template, a rule, a model, or a person — and every one of them is checked the same way.\n\n## Questions to answer\n\n- **The catalogue.** List every block the Repo dashboard draws today (pull requests, CI, deploys per part, health, drift, traffic, resources, usage) and the ones the single-stack work adds (#143: Worker requests and CPU time, D1, R2, cron). For each: the data it needs, when it is \"not applicable\" versus \"not connected\", and its sizes.\n- **The description.** A small, versioned, validated shape (a zod schema in `shared/`): sections, the widgets in each, and what each is bound to. What can be expressed, and — as important — what cannot.\n- **Validation.** A layout that names a widget for data the organization does not have is rejected or the widget is dropped with a reason; it never renders a hole or a zero.\n- **Templates.** Three or four built-in layouts written in that description (split frontend / backend; single service; static site; library). Today's dashboard becomes the first template, unchanged for existing organizations.\n- **Storage and authors"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t8",
+   "source": "Personal Dev #8 (AndresL230/trov#147)",
+   "ticket": {
+    "number": 8,
+    "title": "Fitted Repo dashboard · 2: the signal inventory — what Trov can know about a repository, and what it would need",
+    "body": "Part of #145. A catalogue, not code.\n\n## Questions to answer\n\n- **What does Trov already capture** that says how a repository is built and hosted? Go through the webhook, reconcile, Sync and the cron: check runs with their app slug and details URL, deployment statuses and environment names, commit status contexts, workflow runs and job names, branch names, pull requests. For each: where it is stored, how reliable it is, and what it tells us. (The hosting-providers branch already detects Vercel, Netlify and Cloudflare Workers Builds from captured check runs, and notes that Render, Railway and Fly.io are missed because their deployment events are dropped for unconfigured environments.)\n- **What is NOT captured that detection would want?** Files at the repository root (`wrangler.toml`, `vercel.json`, `netlify.toml`, `fly.toml`, `render.yaml`, `Dockerfile`, `package.json`, workflow files), languages, the default branch's tree.\n- **What would reading those require?** Which GitHub App permission (repository contents: read is a new, visible permission every installing org must approve), what the manual-token path can do, how many requests per repository, and where in the pipeline it runs (never at render time).\n- **What must never be read or stored?** Source code beyond the named config files, secrets in workflow files, anything from a repository an organization did not connect.\n\n## Output\n\nA table of signals (have / could have / will not have), with the cost and the permission of each \"could have\", and a recommendation on whether to ask for the contents permission. This decides h"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t7",
+   "source": "Personal Dev #7 (AndresL230/trov#146)",
+   "ticket": {
+    "number": 7,
+    "title": "Fitted Repo dashboard · 1: the brief — what we are building, for whom, and what is out of scope",
+    "body": "Part of #145. A written decision, not code.\n\n## Questions to answer\n\n- **Who is it for?** A team connecting its first repository, an existing team whose dashboard has holes, or both?\n- **What does \"a screen that fits\" mean, concretely?** Write it out for four real repositories, section by section: what is shown, in what order, and what is deliberately absent.\n  - `AndresL230/trov`: one Cloudflare Worker, D1 and R2, one environment plus previews.\n  - `SaplingLearn/Sapling`: frontend on Cloudflare, backend on Railway, two environments.\n  - A static site or docs repository with no backend at all.\n  - A library or CLI that is released, not deployed.\n- **What is the smallest version worth shipping?** For example: \"Trov recognises three shapes of project and picks one of three layouts\", with no model at all.\n- **What is out of scope?** Free-form generated interfaces; dashboards for things Trov does not capture (logs, traces, cost); anything that needs code from the customer's repository to run.\n- **What does success look like?** A new organization connects a repository and sees a dashboard with no \"not connected\" holes without visiting Org settings; and what share of proposals are accepted unchanged.\n\n## Output\n\nA one-page brief in `docs/superpowers/specs/`, and the four worked examples as sketches or tables."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t6",
+   "source": "Personal Dev #6 (AndresL230/trov#145)",
+   "ticket": {
+    "number": 6,
+    "title": "Explore: a Repo dashboard that fits the repository (detect the stack, propose a layout, let people choose)",
+    "body": "## The idea\n\nToday every repository gets the same Repo dashboard, built for one shape of project (a frontend on one host and a backend on another). The idea is for Trov to look at a repository, work out how it is built and hosted, and propose a monitoring screen that fits it — and to let people accept that, pick a different layout, or adjust it.\n\nAI is a candidate for the \"work out how it is built\" and \"propose a layout\" steps. It is not the starting point: before any model is involved, Trov needs the building blocks a proposal would be made OF, and a clear statement of what a good result is.\n\n## This issue is the umbrella for the groundwork\n\nNothing here is implementation. Each piece below ends in a written decision, a catalogue or a test set, so that the technical work that follows has something to build to.\n\n1. What we are building and for whom (the brief).\n2. What Trov can know about a repository (the signal inventory).\n3. What a dashboard is made of (a widget catalogue and a layout description).\n4. Where AI fits, and its limits (role, guardrails, cost, privacy).\n5. How people choose and stay in control (automatic, templates, by hand).\n6. How we will know it works (a set of real repositories with expected results).\n7. A time-boxed experiment, once 1–6 give it something to aim at.\n\n## Principles that already bind this (CLAUDE.md)\n\n- **Agents stage; humans confirm.** A detected stack or a proposed layout is a proposal a person accepts, never something that silently changes a screen.\n- **Never guess on read.** A dashboard never shows a figure it does not have; an unknown i"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t5",
+   "source": "Personal Dev #5 (AndresL230/trov#144)",
+   "ticket": {
+    "number": 5,
+    "title": "Repo dashboard: recognise a single-stack repository at setup, and dogfood it on AndresL230/trov",
+    "body": "Part of #140.\n\n## Problem\n\nSetting up monitoring asks for a frontend, a backend and their separate URLs. Someone whose whole project is one Worker has to work out which fields to leave empty, and gets a dashboard with holes.\n\n## Wanted\n\n- **Recognition.** From data already captured (never a call on a render path): a repository whose only deploy signal is one host's check run or deployment status, with no second one, is offered as \"one service that does everything\" in Org settings. The hosting-providers branch already detects Cloudflare Workers Builds from captured check runs; reuse that.\n- **Setup in one step.** Pick the host, give the production URL and (optionally) a health path, connect the credential. No frontend / backend vocabulary on that path.\n- **The Guide** says what a single-stack setup monitors and what it cannot.\n- **Dogfood.** `AndresL230/trov` is connected in the owner's personal organization and its Repo dashboard is correct end to end: production's deploys from `main`, health of trov.dev, Worker / D1 / R2 figures, pull requests and CI. This is the acceptance test for the whole umbrella.\n\n## Notes\n\n- An agent connection set to \"Follow the repository\" already needs `AndresL230/trov` connected in that organization, so the two setups meet here.\n- Watch the plan limits (`PLANS` in `shared/plans.ts`): Free allows one repository and two environments, which a single-stack project fits."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t4",
+   "source": "Personal Dev #4 (AndresL230/trov#143)",
+   "ticket": {
+    "number": 4,
+    "title": "Repo dashboard: the Cloudflare Worker as the whole stack (Worker, D1, R2 and cron metrics)",
+    "body": "Part of #140.\n\n## Problem\n\nCloudflare is read today as the FRONTEND host: traffic analytics for a Worker that serves a site, beside a backend whose CPU and memory come from Railway. When the Worker IS the backend too, the figures that matter are different, and the \"resources\" a service part reports (CPU, memory) do not exist in that form on Workers.\n\n## Wanted\n\nFor a part hosted on a Cloudflare Worker that is the whole application:\n\n- **Worker:** requests, error rate, and CPU time (p50 / p99) per range; subrequest or duration limits hit, if the analytics API reports them.\n- **D1:** rows read and written per range, and database size.\n- **R2:** stored bytes and object count; operations per range if available.\n- **Cron triggers:** the last run of each schedule and whether it succeeded.\n- **Deploys:** from the Workers Builds check run, as in the one-part issue.\n\nEach figure Cloudflare cannot report through the token an organization gives is \"—\" with the reason, never `0`.\n\n## Notes\n\n- Polling belongs in the repo cron with a stated request cost per tick, behind the organization's own Cloudflare credential through the existing resolver. State exactly which token permissions are needed (read-only analytics; D1 and R2 read) and show that in Org settings where the credential is entered.\n- Confirm each query against a real account before relying on it: the existing Cloudflare and Railway query shapes were written without one and `repo-dashboard.md` says so.\n- Decide what replaces the CPU / memory \"resources\" block for a Worker (CPU time and limits hit are the natural pair)."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t3",
+   "source": "Personal Dev #3 (AndresL230/trov#142)",
+   "ticket": {
+    "number": 3,
+    "title": "Repo dashboard: a repository with one environment (drift, previews, the environment list)",
+    "body": "Part of #140.\n\n## Problem\n\nSeveral things assume at least two long-lived environments:\n\n- **Drift** is computed between environments and \"needs two environments\"; with one, the section has nothing to say and no way to say why.\n- The first configured environment's branch is treated as the head everything else is compared against.\n- Branch previews (a build of any branch on its own URL) are neither an environment nor shown anywhere, although for a single-stack project they are the only \"staging\" there is.\n\nTrov is this case: production from `main`, and a Cloudflare preview per branch.\n\n## Wanted\n\n- With one environment, drift is not an error or an empty box: the section says there is one environment, so there is nothing to compare (the empty-layout pattern in `web/src/skeleton.ts`), and the dashboard's overall status does not depend on it.\n- Decide what a preview is: either a lightweight, short-lived entry under the environment (\"3 previews, newest 2h ago\", each linking to its build) or explicitly out of scope. If shown, they come from captured check runs only, never from a call at render time.\n- \"What is deployed\" for a single environment: the commit production is on, how far `main` is ahead of it (if at all), and when it last deployed.\n\n## Notes\n\n- A preview is not a place to judge health; do not ping preview URLs from the cron.\n- Keep the environment budget in the repo cron in mind (`docs/architecture/repo-dashboard.md` › the cron)."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t2",
+   "source": "Personal Dev #2 (AndresL230/trov#141)",
+   "ticket": {
+    "number": 2,
+    "title": "Repo dashboard: an environment with one part (no backend / frontend split)",
+    "body": "Part of #140.\n\n## Problem\n\nAn environment is modelled as two deployables on two hosts: a backend (a Railway `deployment_status` matched by environment name) and a frontend (the Cloudflare \"Workers Builds\" `check_run`, matched by name and branch). The environment's status pill, its \"last deploy\" and its health all read both.\n\nA single-stack project has ONE deployable per environment. For a Worker that serves everything, the only deploy signal is the Workers Builds check run; there is no `deployment_status` at all, and one URL answers for both the app and its API.\n\n## Wanted\n\n- An environment may have exactly one part. Its deploy history, status and \"last deploy\" come from that one part's signal, whichever kind it is (a check run, or a deployment status).\n- Health: one URL (plus an optional health path on the same origin), not a frontend URL and a separate API URL. The pill is computed from the parts that exist.\n- The dashboard and Org settings never show a slot for a part that is not configured. No \"Backend: not connected\" row for a project that has no backend.\n- The deploys (CI) section and the MCP `get_repo_dashboard` answer describe the same single part.\n\n## Notes\n\n- The hosting-providers branch already gives a part a `web` / `service` role; a single-stack environment is one part that is both. Decide whether that is a third role or \"web with a health path\", and say which in `docs/architecture/repo-dashboard.md`.\n- Existing two-part configurations (SaplingLearn) must read exactly as they do today."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t1",
+   "source": "Personal Dev #1 (AndresL230/trov#140)",
+   "ticket": {
+    "number": 1,
+    "title": "Repo dashboard: support repositories hosted on one stack (e.g. everything on one Cloudflare Worker)",
+    "body": "## Problem\n\nThe Repo dashboard assumes a split deployment. `docs/architecture/repo-dashboard.md` says it outright: \"each environment ships two deployables, on two hosts\" — a **Backend** read from a Railway `deployment_status`, and a **Frontend** read from the Cloudflare \"Workers Builds\" `check_run`. Health pings two URLs per environment (the frontend URL and `apiUrl + healthPath`), hosting metrics come from Railway, and drift needs two environments to compare.\n\nA lot of projects are not shaped like that. **Trov itself is the example:** one Cloudflare Worker serves the API, the MCP endpoint, the webhooks and the SPA, with D1 and R2 behind it, deployed from `main`, with previews for branches. Connecting `AndresL230/trov` to Trov today cannot describe it correctly: there is no backend deployable, no second host, and only one long-lived environment.\n\n## What \"done\" looks like\n\nTrov can monitor its own repository, in the owner's personal org, and every section of the Repo dashboard is either filled with something true or says plainly why it does not apply — never an empty \"Backend: not connected\" for a part that does not exist.\n\n## Pieces\n\nTracked as separate issues (linked below as they are opened):\n\n- An environment with ONE part: no backend / frontend split.\n- A repository with ONE environment: drift, previews and the environment list.\n- The Cloudflare Worker as the whole stack: its own metrics, plus D1, R2 and cron.\n- Setup: recognise a single-stack repository and preconfigure it; dogfood on `AndresL230/trov`.\n\n## Constraints (from CLAUDE.md)\n\n- Never guess on read: unknown "
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a design/research piece of work"
+  },
+  {
+   "id": "t1040",
+   "source": "AndresL230/trov#40 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1040,
+    "title": "Digest email: fix and polish follow-ups after #39",
+    "body": "PR #39 landed the site-themed digest (tokens, branded header, ledger items, chips, 8pt spacing scale). This tracks what is left to make it production-polished.\n\n## Fix\n\n- [ ] **Real-client rendering pass.** Only checked in headless Chromium so far. Send-test-to-me from Maintenance › Notifications › Schedule and check Gmail web + iOS (dark-mode inversion; the `prefers-color-scheme` block is ignored there), Apple Mail / iOS Mail (honours the dark block, loads Geist), Outlook desktop (no `border-radius`, table widths). Fix what breaks.\n- [ ] **Markdown in PR summaries.** `what` / `why` / `impact` come from the summarizer and can carry lists, links and emphasis. The email renders escaped prose with backtick spans only, so a `- ` list arrives as literal dashes. Either render a minimal safe subset (bold, code, links, lists) or normalise to prose at capture time.\n- [ ] **Muted tiers vs WCAG AA.** Summaries use the 55% ink (~3.8:1 on the card), section labels and footer the 40% ink (~2.5:1). These mirror the app's tokens but email has no hover/zoom. Decide whether the digest holds to 4.5:1 and, if so, darken `fg55` / `fg40` in `THEME` for the email only.\n- [ ] **Claude Design source is stale.** `email/digest-daily.html` and `email/digest-weekly.html` in the design project still show the original Helvetica mockup. Write the current sample renders back so the design stays the source of truth (`DesignSync`, project `2553c69f-…`).\n\n## Polish\n\n- [ ] **Decision rows say \"ready to ratify\" as filler.** Show a one-line excerpt of the ADR `context` or `decision` instead, like proposals show "
+   },
+   "expected": "bug",
+   "rationale": "tracks rendering defects of the digest email left to fix after #39"
+  },
+  {
+   "id": "t1045",
+   "source": "AndresL230/trov#45 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1045,
+    "title": "Ticket writes over MCP (create, comment, transition, assign, sprint, links)",
+    "body": "## Goal\n\nLet agents work the ticket queue over MCP, not just read it. Today (`feat/tickets`, PR #44) MCP exposes `list_tickets`, `get_ticket`, `list_sprints`, `get_sprint` only; every ticket write is a cookie route under `sessionGate`.\n\n## Proposed tools (bearer, per-person token)\n\n- `create_ticket { title, body?, category?, priority?, assignees?, sprint_id?, link? }` — requester = the bearer's person\n- `transition_ticket { id, to }` — same `canTransition` table as the routes; no new statuses\n- `comment_ticket { id, body }` — raw text, mentions stay a render concern\n- `assign_ticket { id, login, on }`, `set_ticket_sprint { id, sprint_id | null }`, `add_ticket_link { id, raw }`\n- `set_ticket_parent { parent_id, child_id }` with the same four rejections\n\nAll thin adapters over the existing writers in `src/tools/tickets.ts`, so the transition table, nesting rules, handle validation and `ticket_events` audit rows are shared with the web UI. No new route, no new credential class.\n\n## Decision this needs first\n\nThe tickets spec's invariants say \"MCP gets read tools only\" and \"every ticket write is a human authored write\". Opening writes over MCP relaxes the first and stretches the second: the write is attributed to the person whose bearer token the agent holds. Options:\n\n1. Attribute to the token's person and record `via: 'mcp'` on `ticket_events` / `ticket_comments` so the UI can mark agent-made changes.\n2. Only allow the low-stakes verbs over MCP (create, comment, link) and keep status transitions, assignment and sprint moves human-only.\n3. Keep MCP read-only and route agent pr"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1046",
+   "source": "AndresL230/trov#46 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1046,
+    "title": "Claude Code skill: work and customize the ticket queue from the agent",
+    "body": "## Goal\n\nA Claude Code skill (`plugins/canopy/skills/tickets`, symlinked into `.claude/skills` like the others) so the agent can work the ticket queue conversationally — \"file a ticket for X\", \"what's unassigned\", \"move this to sprint 13\", \"comment on the CSV export ticket\" — and so each team can customize how it does that.\n\nReads work today over the four MCP read tools; the write half depends on the MCP write tools issue (#45).\n\n## Skill shape\n\n- **Triggers**: \"file a ticket\", \"what's in the queue\", \"what's assigned to me\", \"what's in this sprint\", \"comment on / start / decline ticket …\".\n- **Procedure**: orient first (`list_tickets` / `get_sprint`), confirm the exact fields it will send (title, category, priority, sprint, assignees, link) in a one-line diff before any write, then one tool call, then report what changed. Explicit-only for writes (never auto-fire), like `update-plan` and `record-session`.\n- **Customization** lives in a small `tickets.config.md` (or frontmatter) the skill reads:\n  - default category / priority for tickets the agent files\n  - which sprint new tickets land in (Backlog vs the active sprint)\n  - whether the agent may assign people, and to whom (allowlist)\n  - which transitions the agent may perform (recommend: `submitted → in_progress` only; never `done` / `declined`)\n  - a comment signature / prefix so agent comments are recognizable\n  - link-parsing repo (`SaplingLearn/sapling` today, hard-coded in `shared/tickets.ts`)\n\n## Acceptance\n\n- Skill file + reference doc under `plugins/canopy/skills/tickets/`, `allowed-tools` limited to the ticket/spr"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1051",
+   "source": "AndresL230/trov#51 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1051,
+    "title": "Handle handoff prompts: store a session's handoff and route it to whoever picks the work up",
+    "body": "**Canopy feature addition.**\n\n## What\nAn agent or a person often ends a working session with a **handoff prompt**: a self-contained brief that the next session pastes in to pick up the work. The next session might be the same person later, a teammate, or another agent. The brief covers what was done, what's left, where the state lives, and what not to redo. Today these live in terminal scrollback, chat or one-off files, so they get lost or go stale.\n\nCanopy should treat handoff prompts as first-class records:\n- **Write.** An MCP tool, and/or an option on `record-session`, stores a handoff with:\n  - the author;\n  - an optional recipient (a handle, or open to anyone);\n  - the repo or area;\n  - links to issues, PRs, tickets and sprints.\n- **Read.**\n  - The recipient sees pending handoffs in My Work.\n  - `load-context` surfaces handoffs relevant to the area being worked.\n  - A tool fetches one by id, so an agent can start from it directly.\n- **Lifecycle.** A handoff goes open → picked up (by whom, when) → done or superseded, so it isn't run twice or after it has gone stale.\n\n## Open questions\n- **Direct or staged?** A handoff is somebody's request, so it probably follows the ticket model (direct write, scoped) rather than the staging gate. Or should a handoff simply be a ticket with a `handoff` kind?\n- **Freshness.** Should a handoff record the commit or branch it was written against, so a reader can tell when it is out of date?\n- **Secrets.** Handoffs often paste environment details and URLs. Should they be scrubbed the way feed entries are?\n"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1052",
+   "source": "AndresL230/trov#52 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1052,
+    "title": "Store and share artifacts: keep agent-produced pages (specs, reports, design pages) in Canopy and share them with the team",
+    "body": "**Canopy feature addition.**\n\n## What\nAgent sessions increasingly produce shareable **artifacts**: design pages, specs, audit reports, dashboards. One example is the Google sign-in design page linked from `docs/superpowers/specs/2026-09-14-google-signin-identity-design.md`. Today they live at scattered URLs or in local files, and are hard to find later.\n\nCanopy should store them and share them with the team:\n- **Store.** Register an artifact through MCP and the web. A record holds:\n  - a title and kind;\n  - a URL or an uploaded file;\n  - the author and the repo or area;\n  - links to issues, PRs, tickets and sprints.\n- **Share.** Browse artifacts by area, sprint or ticket. They are visible to the org, and can be attached to tickets and sprints as resources.\n- **Search.** Include artifacts in `query`, so `load-context` can surface them.\n\nThis is not the existing feed-entry `artifacts` field, which holds observed PR, commit and issue references on a feed row. The naming should avoid colliding with it.\n\n## Open questions\n- **Store the content, or only a link?** Links rot, and a private artifact page isn't viewable by teammates. Copies (e.g. in R2) need a size limit and access control.\n- **Direct or staged?** An authored artifact is closer to a ticket than to a doc. But one presented as a spec or decision may need to go through the gate before it counts as authoritative.\n- **Access.** Org-wide by default, or private to the author with explicit sharing?\n"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1064",
+   "source": "AndresL230/trov#64 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1064,
+    "title": "Feed: typed entries with a type-driven layout (a small generative UI for the Feed)",
+    "body": "## Idea\nA feed entry now has one of six **types**, each with a fixed set of labelled lines — but only by convention, in the `record-session` skill (#62):\n\n| Type | Lines |\n|---|---|\n| `Shipped:` | What · Why · Impact · Follow-up |\n| `Decision:` | Decided · Because · Instead of |\n| `Triage:` | Closed · Kept · Moved to · Why |\n| `Status:` | State · Blocked on · Next |\n| `Finding:` | Found · Evidence · So |\n| `Incident:` | What broke · Cause · Fix · Guard |\n\nToday the Feed renders every entry the same way: a headline and a markdown body. **Make the type drive how the entry looks** — a small generative UI: the agent supplies typed, structured content; the Feed picks the layout.\n\n## What it could look like\n- A **type chip** on the card (tone per type: Incident red, Status amber, Shipped accent, …) and a **type filter** in the Feed header next to the author filter.\n- A **layout per type** rather than one markdown blob, e.g.\n  - *Shipped* — What as the lead line, Why/Impact as quiet secondary lines, PR chips prominent;\n  - *Triage* — Closed / Kept / Moved to as three compact columns of issue/PR chips;\n  - *Status* — a \"Blocked on\" list with an owner-only marker, Next as a footer;\n  - *Finding* — the measured result pulled out as a figure (`2/6 → 5/6`);\n  - *Incident* — a mini timeline: broke → cause → fix → guard.\n- Entries without a type (everything written before this) keep today's layout.\n\n## Design questions to settle first\n1. **Where the type lives.** A real `type` column on `feed` + a field on the `FeedEntry` contract (validated by the gate, vocab-controlled like tags), or p"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1070",
+   "source": "AndresL230/trov#70 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1070,
+    "title": "Update the Canopy plugin for Handoffs + Prompt Library (hold until the in-progress skills/MCP change is ready)",
+    "body": "Handoffs + Prompt Library shipped in #69: merged, migration `0028` applied to prod, and prod `/mcp` already serves the new tools. The Claude Code plugin has **not** been updated yet.\n\n**On hold:** another change to the plugin's skills and MCP is in progress, and both should ship in the same plugin release.\n\n## When that lands, one plugin update covering both\n- Bump `plugins/canopy/.claude-plugin/plugin.json` (still `0.3.0`) so existing installs pick up the new skills.\n- New skills:\n  - `handoff` (explicit-only): leave one handoff per session, fill its context from git, report the id as `#N`.\n  - `prompts`: search and fill library prompts, ask for any unfilled variables, stage with `save_prompt` only after writing the same instructions twice.\n- Changed skills:\n  - `load-context` now lists pending handoffs at session start and claims only the one the person picks (its one write).\n  - The `canopy` overview skill lists the new tools.\n- New MCP tools those skills rely on: `send_handoff`, `list_handoffs`, `get_handoff`, `claim_handoff`, `expire_handoff`, `search_prompts`, `get_prompt`, `save_prompt`.\n\n## Setup note (fish users)\nThe plugin sends `Bearer ${CANOPY_MCP_TOKEN}`. If the token is only exported in `~/.zshrc`, Claude Code launched from fish sends an empty bearer and prod answers 401. Export it in fish as well.\n"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1090",
+   "source": "AndresL230/trov#90 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1090,
+    "title": "MCP assign_ticket: let agents (un)assign existing tickets",
+    "body": "## Why\nAgents can file tickets with assignees (`create_ticket`), but once a ticket exists nothing an agent does can change who owns it:\n- There's no MCP assign tool. #45 proposed `assign_ticket` and deliberately kept assignment human-only.\n- GitHub assignment doesn't reach mirrored tickets. `src/tools/ticket-mirror.ts` seeds assignees at import only (\"a GitHub (un)assign never touches assignees\").\n\nThat surfaced on 2026-09-27, when an agent split the Sapling beta work across the team. It could assign on GitHub, but about 16 existing tickets had to be assigned by hand in the web UI. Teammates who don't use GitHub (the incoming UI/UX designers) can't be reached through GitHub at all.\n\n## Proposal\nAdd the MCP tool #45 sketched, as a thin adapter over the writer the web UI already uses:\n\n`assign_ticket { id, login, on: boolean }`: add (`on: true`) or remove (`on: false`) one assignee.\n- It reuses the web UI's handle validation, so an unknown handle is `bad_request`.\n- It's attributed to the bearer and writes a `ticket_events` row (or the existing assignment audit, if assignment has its own), marked `via: 'mcp'` if that marker exists by then.\n- It's idempotent: adding someone already assigned, or removing someone who isn't, is a no-op success.\n- It never changes status. Assigning doesn't auto-move `submitted → in_progress` unless the web UI already does that, in which case it matches the UI exactly.\n\n## Decision to settle: scope\nEvery other ticket write is scoped to \"assigned to you\", and that can't work here, because assignment is how a ticket gets into someone's lane. Options:"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1094",
+   "source": "AndresL230/trov#94 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1094,
+    "title": "Let people create their own organization (self-serve org creation)",
+    "body": "Self-serve organization creation is switched off for now. Only a platform superadmin adds an organization (Platform › Add organization) and names its admin.\n\n## Current state (PR #93)\n\n- `DEFAULT_ORG_LIMIT` in `shared/orgs.ts` is `0`, so `POST /api/orgs` answers `403 org_limit` for anyone without an allowance.\n- A superadmin is exempt. A named person can be given an allowance through Platform › Admins & limits (`persons.org_limit`).\n- The org picker and the org switcher menu do not offer \"Create an organization\" to an account that cannot create one.\n- The create dialog, its validation and `createOrg` (which seeds the plan, notification settings and counters) are all still in place and tested.\n\n## To open it up later\n\n- Decide the default allowance (it was 3 per person) and raise `DEFAULT_ORG_LIMIT`.\n- Before doing so, settle the open-sign-up questions in `docs/architecture/abuse-limits.md` › Residual risks: invitation mail to arbitrary addresses, shared Gemini key and cron budget with no per-org quota, GitHub identity pinning for existing accounts.\n- Restore the copy that mentions creating an organization: the landing sign-in line, the Get Started guide, the picker's intro, and the 0.18 release notes.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1095",
+   "source": "AndresL230/trov#95 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1095,
+    "title": "Connect repositories through a GitHub App instead of a pasted token and a hand-made webhook",
+    "body": "Today an organization's admin connects GitHub by hand: they create a fine-grained personal access token with the right permissions, paste it into Org settings › Integrations, then add a webhook in the repository's GitHub settings with a URL and a generated secret. That is fine for orgs onboarded by hand, and it is where setup will fail for orgs we don't know. A GitHub App would make Trov something an admin installs on their repositories.\n\n## What it replaces\n\n| | Today | With a GitHub App |\n|---|---|---|\n| Connecting a repo | Create a token with seven read permissions, paste it in | Click Install, pick the repos |\n| Live events | Add a webhook by hand per repo (`/webhook/github/:hookId` + secret) | One App webhook, delivered automatically |\n| Credential | Long-lived, tied to one person; breaks when they leave or it expires | Short-lived installation tokens minted by Trov |\n| Org-owned repos | The GitHub org may have to approve fine-grained tokens | An org owner approves the install once |\n| Several repos | One webhook each; only the primary repo's events are captured | Every selected repo delivers through the App |\n| Which repos exist | The admin types `owner/repo` | Trov lists what the installation can see |\n\nIt works the same for personal repos (`username/project`) and org repos (`orgname/project`).\n\n## What it does not change\n\n- Cloudflare analytics, Railway and the app-metrics endpoint stay as pasted credentials.\n- Invitations, memberships and roles stay Trov's own data.\n- Sign-in already works through a GitHub OAuth app. A GitHub App can take over that job too (one reg"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1097",
+   "source": "AndresL230/trov#97 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1097,
+    "title": "Hosting providers: a provider interface so the Repo dashboard is not tied to Cloudflare and Railway",
+    "body": "The Repo dashboard's usage and deploy panels are built around one stack: a Cloudflare Worker frontend (requests and error rate from Cloudflare's analytics API) and a Railway backend (CPU and memory from Railway's API). An org on any other host gets the GitHub half and health pings only; the other panels say \"Not connected\".\n\nThis is the umbrella issue for making that pluggable. Per-provider issues link here.\n\n## Today\n\n- Integration kinds are a fixed list in the schema and code: `cloudflare_analytics`, `railway`, `metrics_endpoint`, `github_token`, `github_webhook` (`org_secrets.kind` CHECK, `src/integrations/catalog.ts`, `src/data/secrets.ts`).\n- An environment row has Cloudflare- and Railway-specific columns (`worker`, `worker_check`, `railway_env`, `railway_environment_id`, `railway_service_id`).\n- The pollers are per provider (`pollCloudflare`, `pollRailway` in `src/repo/poll.ts`) and the dashboard projection names them (`cf_*`, `rw_*` metrics).\n- Already provider-neutral: health pings (any https URL), GitHub deployments / check runs / workflow runs, and the app-metrics endpoint an org implements itself.\n\n## Proposed shape\n\n- A **provider** describes: its id and label, the credential(s) it needs and where an admin gets them, per-environment settings (project / service / site ids), a `probe` (Test connection), and one or more `poll` functions that return normalised series.\n- **Normalised metrics**, so the dashboard does not care who produced them: requests, error rate, latency for a \"web\" part; CPU, memory for a \"service\" part; deploys with status and commit.\n- An enviro"
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1098",
+   "source": "AndresL230/trov#98 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1098,
+    "title": "Hosting provider: Vercel",
+    "body": "Add **Vercel** as a hosting provider behind the provider interface (#97).\n\n## Scope\n\nProjects and deployments from the Vercel REST API with a team-scoped access token; usage where the plan exposes it (requests, errors, function duration). Deploy status also arrives through GitHub deployments. Per-environment setting: project id and team id; map Trov environments to Vercel's production / preview targets.\n\n## Done when\n\n- An org admin can pick Vercel for an environment's part, enter its credential and ids in Org settings, and Test connection passes against the real API.\n- The Repo dashboard shows that environment's deploys and whatever usage Vercel exposes, in the same panels Cloudflare and Railway fill today.\n- The credential goes to Vercel's API host only, errors are scrubbed, and an org without it costs no requests.\n- The Set form says where to get the credential and the narrowest permission that works; verify that against the live API, not from memory.\n\nDepends on #97."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1099",
+   "source": "AndresL230/trov#99 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1099,
+    "title": "Hosting provider: Render",
+    "body": "Add **Render** as a hosting provider behind the provider interface (#97).\n\n## Scope\n\nServices and deploys from the Render API with an API key; CPU and memory from its metrics endpoints where available. Per-environment setting: service id. Render posts GitHub deployment statuses when its GitHub integration is on.\n\n## Done when\n\n- An org admin can pick Render for an environment's part, enter its credential and ids in Org settings, and Test connection passes against the real API.\n- The Repo dashboard shows that environment's deploys and whatever usage Render exposes, in the same panels Cloudflare and Railway fill today.\n- The credential goes to Render's API host only, errors are scrubbed, and an org without it costs no requests.\n- The Set form says where to get the credential and the narrowest permission that works; verify that against the live API, not from memory.\n\nDepends on #97."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1100",
+   "source": "AndresL230/trov#100 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1100,
+    "title": "Hosting provider: Netlify",
+    "body": "Add **Netlify** as a hosting provider behind the provider interface (#97).\n\n## Scope\n\nSites and deploys from the Netlify API with a personal access token; analytics only where the site has Netlify Analytics. Per-environment setting: site id; map environments to production / branch deploys.\n\n## Done when\n\n- An org admin can pick Netlify for an environment's part, enter its credential and ids in Org settings, and Test connection passes against the real API.\n- The Repo dashboard shows that environment's deploys and whatever usage Netlify exposes, in the same panels Cloudflare and Railway fill today.\n- The credential goes to Netlify's API host only, errors are scrubbed, and an org without it costs no requests.\n- The Set form says where to get the credential and the narrowest permission that works; verify that against the live API, not from memory.\n\nDepends on #97."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1101",
+   "source": "AndresL230/trov#101 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1101,
+    "title": "Hosting provider: Fly.io",
+    "body": "Add **Fly.io** as a hosting provider behind the provider interface (#97).\n\n## Scope\n\nApps, machines and releases from the Fly Machines / GraphQL API with an org-scoped token; CPU and memory from Fly's Prometheus-compatible metrics endpoint. Per-environment setting: app name.\n\n## Done when\n\n- An org admin can pick Fly.io for an environment's part, enter its credential and ids in Org settings, and Test connection passes against the real API.\n- The Repo dashboard shows that environment's deploys and whatever usage Fly.io exposes, in the same panels Cloudflare and Railway fill today.\n- The credential goes to Fly.io's API host only, errors are scrubbed, and an org without it costs no requests.\n- The Set form says where to get the credential and the narrowest permission that works; verify that against the live API, not from memory.\n\nDepends on #97."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  },
+  {
+   "id": "t1102",
+   "source": "AndresL230/trov#102 (GitHub issue, not in Personal Dev)",
+   "ticket": {
+    "number": 1102,
+    "title": "Hosting provider: AWS (later)",
+    "body": "Track **AWS** as a hosting provider behind the provider interface (#97). Not needed yet; the consumer hosts come first.\n\n## Why it is its own piece\n\n- There is no single API: an app may be on ECS, Lambda, App Runner, Amplify, Elastic Beanstalk or plain EC2, with metrics in CloudWatch.\n- Credentials should be a cross-account IAM role an org grants Trov (assume-role with an external id), not long-lived access keys, which needs SigV4 signing in the Worker.\n- Scope must be read-only and narrow (CloudWatch metrics for named resources, deployment status), per org.\n\n## First cut, when picked up\n\n- CloudWatch metrics for one named service (requests / errors from an ALB or API Gateway; CPU / memory from ECS or Lambda) through an assumed role.\n- Deploy status from GitHub deployments, as today.\n\nDepends on #97."
+   },
+   "expected": "request",
+   "rationale": "asks for a feature, a change or a piece of work"
+  }
+ ]
+}

@@ -31,6 +31,9 @@ import { segmented } from "./segmented";
 import { dangerTrigger, confirmModal } from "./confirm";
 import { skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse, emptyLayout, emptyShapes } from "./skeleton";
 import { ticketStatusIcon, ticketStatusMark, priorityMark } from "./marks";
+import { ticketDuplicateChip, ticketFieldChips, type AiChipUi } from "./ai-cards";
+
+const NO_AI_UI: AiChipUi = { busy: [], unavailable: [], reasonOpen: null };
 
 // ── shared atoms ─────────────────────────────────────────────────────────────
 
@@ -617,6 +620,8 @@ export interface TicketDetailProps {
   mention: { query: string; start: number; index: number; line: number } | null;
   /** The comment box's dragged height (the bottom-left grip), null = resting. */
   commentHeight: number | null;
+  /** Trov's suggestion chips' state (`state.ai`): only read when the ticket carries `ai`. */
+  aiUi?: AiChipUi;
   /** The Artifacts block under Linked work (artifacts.ts), pre-rendered; absent = none. */
   artifactsBlock?: string;
   /** The title/body editor's drafts while editing; null (or absent) = reading. */
@@ -1058,7 +1063,7 @@ export function ticketDetailView(p: TicketDetailProps): string {
           <button data-act="ticketEdit" title="Edit title and description" aria-label="Edit title and description" class="cnpy-iconbtn" style="${ICON_BTN};flex:none;margin-top:3px">${PENCIL_SVG}</button>
         </div>
         ${ticketBody(t.body)}`}
-        ${linkedWorkBlock(p)}
+        ${t.ai ? ticketDuplicateChip(t.ai, p.aiUi ?? NO_AI_UI) : ""}${linkedWorkBlock(p)}
         ${p.artifactsBlock ?? ""}
         ${threadBlock(p)}
       </div>
@@ -1070,7 +1075,7 @@ export function ticketDetailView(p: TicketDetailProps): string {
           <div style="${PROP_ROW}"><div style="${PROP_LABEL}">PRIORITY</div><div>${priorityMark(t.priority)}</div></div>
           <div style="${PROP_ROW}"><div style="${PROP_LABEL}">REQUESTER</div><div style="display:flex;min-width:0">${personLink(linkable(p.persons, t.requester), t.requester, 20, t.requester === MIRROR_HANDLE && t.source_author ? `@${t.source_author}` : nameOf(p.persons, t.requester), "min-width:0;font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}</div></div>
           ${sourceRow(t)}
-          <div style="${PROP_ROW}"><div style="${PROP_LABEL}">OPENED</div><div style="font-size:12.5px;color:var(--fg-70);white-space:nowrap">${esc(relTime(t.created_at))}</div></div>
+          <div style="${PROP_ROW}"><div style="${PROP_LABEL}">OPENED</div><div style="font-size:12.5px;color:var(--fg-70);white-space:nowrap">${esc(relTime(t.created_at))}</div></div>${t.ai ? ticketFieldChips(t.ai, p.aiUi ?? NO_AI_UI) : ""}
         </div>
         ${assigneeRail(p)}
         ${sprintRail(p)}

@@ -1,0 +1,32 @@
+{
+ "kind": "unplaced.destination",
+ "model": "jev-1.13.0",
+ "recordedAt": "2026-10-15T09:05:16.168Z",
+ "accuracy": 0.85,
+ "correct": 17,
+ "n": 20,
+ "written": 19,
+ "writtenRight": 17,
+ "decisions": {
+  "trov-ingestion-gate": "reference",
+  "trov-deploy-runbook": "reference",
+  "trov-tickets": "reference",
+  "trov-environment": "reference",
+  "trov-testing": "reference",
+  "trov-mcp-connection-modes": "reference",
+  "trov-billing-stripe": "reference",
+  "trov-notifications": "reference",
+  "trov-github-app": "reference",
+  "trov-overview": "context",
+  "canopy-spec-throughline": "reference",
+  "issue154-idea": "none",
+  "issue145-idea": "context",
+  "feed118-status": "context",
+  "oauth-decisions": "decisions",
+  "milestone-decisions": "decisions",
+  "docs-spaces-decisions": "decisions",
+  "artifacts-decisions": "decisions",
+  "issue153-decision": "decisions",
+  "server-ai-decided": "reference"
+ }
+}

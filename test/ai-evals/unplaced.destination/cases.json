@@ -1,0 +1,686 @@
+{
+ "kind": "unplaced.destination",
+ "source": "Personal Dev docs (Trov MCP list_docs / get_feed, read-only) and this repo's specs and issues, as unplaced docs; the agent's section is an out-of-vocabulary word; candidates are Personal Dev's top three docs by shared words",
+ "cases": [
+  {
+   "id": "trov-ingestion-gate",
+   "source": "Personal Dev doc trov-ingestion-gate (Trov MCP list_docs, read-only)",
+   "item": {
+    "title": "The ingestion gate and triage",
+    "body": "# The ingestion gate and triage\n\nSource: `docs/architecture/ingestion-gate.md`, `src/consumer.ts`, `shared/vocabulary.ts`. Read the area file before changing any of this.\n\n## What the gate is for\n\nTrov has two classes of write.\n\n- **Ingested content** is knowledge an agent proposes: feed entries, doc proposals, ADR drafts, captured GitHub events and repo events. An agent can be wrong, and a wrong doc gets believed, so this content goes through a gate and a person confirms it.\n- **Authored and computed writes** go direct. Authored: the plan, tickets, sprints, handoffs, prompts, artifacts, people. Computed: sprint progress, PR and issue summaries, repo metrics and snapshots, the GitHub issue mirror. These are \"promote-class\" writers in `src/tools/`.\n\nThe gate is therefore an *ingestion* gate, not a universal write gate. The rule for new work: a new ingestion path goes **into** the gate, never beside it as a second surface.\n\n## Where it lives\n\n`src/consumer.ts` has one gate function per type: `ingestFeedEntry`, `ingestDocProposal`, `ingestAdrDraft`, `ingestEvent`, `ingestRepoEvent`. Every entry point is a thin adapter over them:\n\n- `POST /ingest` and the MCP `record_session` batch tool, both through `consume()`.\n- The per-entry MCP tools `append_feed` and `propose_doc_update`.\n- `POST /api/docs/propose`, where a signed-in person stages a new doc through `ingestDocProposal`.\n- `/webhook/github`, which calls `ingestEvent` (into `events`, for My Work) and, independently, `ingestRepoEvent` (into `repo_events`, for the Repo dashboard) off the same HMAC-verified delivery.\n\n## What t",
+    "filedUnder": "architecture"
+   },
+   "candidates": [
+    {
+     "slug": "trov-tickets",
+     "title": "Tickets, the board, agent writes and the GitHub issue mirror",
+     "section": "reference",
+     "body": "# Tickets, the board, agent writes and the GitHub issue mirror\n\nSource: `docs/architecture/tickets.md`, `src/tools/tickets.ts`, `src/tools/tickets-agent.ts`, `src/tools/ticket-mirror.ts`, `shared/tickets-core.ts`, `web/src/tickets.ts`.\n\n## What a ticket is\n\nA ticket is somebody's request. It is an **authored** write: no vocabulary gate, no confidence, no staged state. A ticket write is visible to ",
+     "snippet": null
+    },
+    {
+     "slug": "trov-overview",
+     "title": "Trov overview: what it is, how it is built, and where to read next",
+     "section": "context",
+     "body": "# Trov overview: what it is, how it is built, and where to read next\n\nSource: `CLAUDE.md`, `plugins/trov/skills/trov/SKILL.md`, `src/index.ts`, `wrangler.toml`, and the files in `docs/architecture/`. Start here; every section points to a doc with the detail.\n\n## What Trov is\n\nTrov is a multi-tenant **shared context store**: a team's working memory. It holds the team's docs, decisions, roadmap, a t",
+     "snippet": null
+    },
+    {
+     "slug": "trov-docs-and-decisions",
+     "title": "Docs and decisions: propose, promote, reject, ratify",
+     "section": "reference",
+     "body": "# Docs and decisions: propose, promote, reject, ratify\n\nSource: `docs/architecture/ingestion-gate.md`, `docs/architecture/feed-and-search.md`, `src/consumer.ts`, `src/routes.ts`, `src/mcp.ts`, `src/tools/reads.ts`, `shared/vocabulary.ts`, the `trov` and `load-context` skills under `plugins/trov/skills/`.\n\n## The rule\n\n**Agents stage; humans confirm.** A doc edit or a decision an agent writes does ",
+     "snippet": null
+    }
+   ],
+   "expected": "reference",
+   "rationale": "how a part of the system works or how to run it"
+  },
+  {
+   "id": "trov-deploy-runbook",
+   "source": "Personal Dev doc trov-deploy-runbook (Trov MCP list_docs, read-only)",
+   "item": {
+    "title": "Deploy runbook and production gotchas",
+    "body": "# Deploy runbook and production gotchas\n\nSource: `HANDOFF.md` (the repo's deploy runbook), `CLAUDE.md`, `docs/architecture/env.md`, `wrangler.toml`, `package.json`, the `ops` lines in `web/src/releases.ts`, and the owner's own verification where noted.\n\n## What production is\n\nOne Cloudflare Worker named `trov`, on one origin (`https://trov.dev`), with the D1 database `trov` and the R2 bucket `trov-artifacts`. Deploys run through Cloudflare **Workers Builds**, connected to the GitHub repository `AndresL230/trov`.\n\n## The commands\n\n- `npm test` — the suite. The source of truth for \"is it green\".\n- `npm run typecheck` — **not** part of `npm test`. Run it too.\n- `npm run build:web` — builds the SPA into `web/dist`.\n- `npm run deploy` — builds the SPA and runs `wrangler deploy`.\n- `npm run db:migrate:local` / `npm run db:migrate:remote` — apply D1 migrations.\n- `npm run deploy:preview` — applies migrations to the preview database and deploys a Preview.\n- `npm run dev` — local Worker plus a watching web build. Never run `build:web` under a running `wrangler dev`; it empties `web/dist`.\n\n## The gotchas — read these first\n\n1. **A merge to `main` is a production deploy.** Workers Builds ships the Worker and applies new migrations. There is no staging step in between. After merging, verify the live bundle.\n\n2. **A push of ANY branch currently applies that branch's new migrations to production.** Verified by the owner on 2026-10-09. The branch push does **not** deploy the Worker, but its migrations reach the production database. The mechanism is described in `env.md`: Cloudflare refus",
+    "filedUnder": "runbooks"
+   },
+   "candidates": [
+    {
+     "slug": "trov-overview",
+     "title": "Trov overview: what it is, how it is built, and where to read next",
+     "section": "context",
+     "body": "# Trov overview: what it is, how it is built, and where to read next\n\nSource: `CLAUDE.md`, `plugins/trov/skills/trov/SKILL.md`, `src/index.ts`, `wrangler.toml`, and the files in `docs/architecture/`. Start here; every section points to a doc with the detail.\n\n## What Trov is\n\nTrov is a multi-tenant **shared context store**: a team's working memory. It holds the team's docs, decisions, roadmap, a t",
+     "snippet": null
+    },
+    {
+     "slug": "trov-testing",
+     "title": "Testing: the suite, the seed and the tsconfig rule",
+     "section": "reference",
+     "body": "# Testing: the suite, the seed and the tsconfig rule\n\nSource: `CLAUDE.md`, `vitest.config.ts`, `test/apply-migrations.ts`, `scripts/seed/reset.mjs`, `tsconfig.worker.json`, `tsconfig.web.json`, `test/helpers/`, and the Tests sections of the files in `docs/architecture/`.\n\n## Running it\n\n- `npm test` — Vitest. This is the source of truth for \"is it green\".\n- One file: `npx vitest run test/<file>.te",
+     "snippet": null
+    },
+    {
+     "slug": "trov-repo-dashboard",
+     "title": "The Repo dashboard and the repo cron",
+     "section": "reference",
+     "body": "# The Repo dashboard and the repo cron\n\nSource: `docs/architecture/repo-dashboard.md`, `docs/architecture/data-layer.md` § Background jobs, `src/tools/repo.ts`, `src/tools/repo-agent.ts`, `src/repo/` (`cron.ts`, `dispatch.ts`, `capture.ts`, `github.ts`, `poll.ts`, `reads.ts`, `store.ts`, `product.ts`), `shared/repo.ts`, `web/src/repo.ts`.\n\n## What it is\n\nThe Repo dashboard (`GET /repo/dashboard` →",
+     "snippet": null
+    }
+   ],
+   "expected": "reference",
+   "rationale": "how a part of the system works or how to run it"
+  },
+  {
+   "id": "trov-tickets",
+   "source": "Personal Dev doc trov-tickets (Trov MCP list_docs, read-only)",
+   "item": {
+    "title": "Tickets, the board, agent writes and the GitHub issue mirror",
+    "body": "# Tickets, the board, agent writes and the GitHub issue mirror\n\nSource: `docs/architecture/tickets.md`, `src/tools/tickets.ts`, `src/tools/tickets-agent.ts`, `src/tools/ticket-mirror.ts`, `shared/tickets-core.ts`, `web/src/tickets.ts`.\n\n## What a ticket is\n\nA ticket is somebody's request. It is an **authored** write: no vocabulary gate, no confidence, no staged state. A ticket write is visible to the whole org at once. Tickets are the largest authored surface in the product — the writers are in `src/tools/tickets.ts`, behind fourteen session-cookie routes in `src/routes.ts`.\n\nWriters: `create_ticket`, `edit_ticket`, `transition_ticket`, `move_ticket` (a board drop), `toggle_assignee`, `add_ticket_link`, `remove_ticket_link`, `set_ticket_sprint`, `set_ticket_parent`, `add_ticket_comment`, `delete_ticket`.\n\n- Every write bumps `tickets.updated_at`, the queue's sort key.\n- A ticket's `id` on every surface is its per-org **number**, never the row id.\n- Tickets nest exactly one level. A nesting-rule break is a 409 that writes nothing.\n- `delete_ticket` (`POST /tickets/:id/delete`) is a **hard** delete in one `db.batch`: assignees, links, comments, history and artifact links go with it, sub-tickets are detached, and the number is never reissued. Any signed-in member may do it; it is never an MCP tool. A mirrored ticket cannot be deleted (403), because the mirror would only re-create it.\n\n## Statuses and the board\n\nStatuses are `submitted` (shown as Triage), `in_progress`, `testing`, `done`, `declined`. `testing` is an optional step, not a gate. The status machine is `canTransitio",
+    "filedUnder": "features"
+   },
+   "candidates": [
+    {
+     "slug": "trov-ingestion-gate",
+     "title": "The ingestion gate and triage",
+     "section": "reference",
+     "body": "# The ingestion gate and triage\n\nSource: `docs/architecture/ingestion-gate.md`, `src/consumer.ts`, `shared/vocabulary.ts`. Read the area file before changing any of this.\n\n## What the gate is for\n\nTrov has two classes of write.\n\n- **Ingested content** is knowledge an agent proposes: feed entries, doc proposals, ADR drafts, captured GitHub events and repo events. An agent can be wrong, and a wrong ",
+     "snippet": null
+    },
+    {
+     "slug": "trov-testing",
+     "title": "Testing: the suite, the seed and the tsconfig rule",
+     "section": "reference",
+     "body": "# Testing: the suite, the seed and the tsconfig rule\n\nSource: `CLAUDE.md`, `vitest.config.ts`, `test/apply-migrations.ts`, `scripts/seed/reset.mjs`, `tsconfig.worker.json`, `tsconfig.web.json`, `test/helpers/`, and the Tests sections of the files in `docs/architecture/`.\n\n## Running it\n\n- `npm test` — Vitest. This is the source of truth for \"is it green\".\n- One file: `npx vitest run test/<file>.te",
+     "snippet": null
+    },
+    {
+     "slug": "trov-docs-and-decisions",
+     "title": "Docs and decisions: propose, promote, reject, ratify",
+     "section": "reference",
+     "body": "# Docs and decisions: propose, promote, reject, ratify\n\nSource: `docs/architecture/ingestion-gate.md`, `docs/architecture/feed-and-search.md`, `src/consumer.ts`, `src/routes.ts`, `src/mcp.ts`, `src/tools/reads.ts`, `shared/vocabulary.ts`, the `trov` and `load-context` skills under `plugins/trov/skills/`.\n\n## The rule\n\n**Agents stage; humans confirm.** A doc edit or a decision an agent writes does ",
+     "snippet": null
+    }
+   ],
+   "expected": "reference",
+   "rationale": "how a part of the system works or how to run it"
+  },
+  {
+   "id": "trov-environment",
+   "source": "Personal Dev doc trov-environment (Trov MCP list_docs, read-only)",
+   "item": {
+    "title": "Environment: secrets, vars and bindings",
+    "body": "# Environment: secrets, vars and bindings\n\nSource: `docs/architecture/env.md`, `wrangler.toml`, `.dev.vars.example`, `src/env.ts`. This doc lists **names only**. Secret values live in Cloudflare (`wrangler secret put …`) and, for local development, in `.dev.vars`, which is never committed and never to be copied anywhere.\n\n## Bindings\n\n| Binding | What | Notes |\n| --- | --- | --- |\n| `DB` | D1 database `trov` | reached only inside `src/data/` |\n| `ASSETS` | the built SPA (`web/dist`) | static assets |\n| `ARTIFACTS_BUCKET` | R2 bucket `trov-artifacts` | binary artifacts, doc images, avatars, org images. The bucket must exist before the first deploy that carries the binding |\n\nThere is no `[ai]` block. Summaries call Gemini over plain REST with a key.\n\nTwo deferred seams exist only as `// SEAM:` comments and must **not** be activated: a Cloudflare Queue and Vectorize.\n\n## Secrets\n\n**Sign-in and sessions**\n\n- `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` — GitHub sign-in (the App's client).\n- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — Google sign-in. Without the id, Google login answers 503.\n- `COOKIE_SECRET` — signs the session cookie, and keys the signed links and sealed cookies.\n\n**Encryption**\n\n- `TROV_KEK` — the deployment's key-encryption key. Each org's stored integration credentials are envelope-encrypted under it. **Losing it loses every org's stored credentials.**\n\n**The GitHub App**\n\n- `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (the whole `.pem`), `GITHUB_APP_WEBHOOK_SECRET`. Missing the id, the key or the slug var means only the by-hand token path is offered. Nothing ",
+    "filedUnder": "ops"
+   },
+   "candidates": [
+    {
+     "slug": "trov-artifacts",
+     "title": "Artifacts and doc images",
+     "section": "reference",
+     "body": "# Artifacts and doc images\n\nSource: `docs/architecture/artifacts.md`, `docs/artifact-contract.md` (the contract for agents — read it before a first artifact write), `src/tools/artifacts.ts`, `src/tools/artifacts-agent.ts`, `src/artifacts/`, `shared/artifacts-core.ts`, `web/src/artifacts.ts`.\n\n## What an artifact is\n\nAn artifact is one self-contained page an agent or a person produced — a design, s",
+     "snippet": null
+    },
+    {
+     "slug": "trov-overview",
+     "title": "Trov overview: what it is, how it is built, and where to read next",
+     "section": "context",
+     "body": "# Trov overview: what it is, how it is built, and where to read next\n\nSource: `CLAUDE.md`, `plugins/trov/skills/trov/SKILL.md`, `src/index.ts`, `wrangler.toml`, and the files in `docs/architecture/`. Start here; every section points to a doc with the detail.\n\n## What Trov is\n\nTrov is a multi-tenant **shared context store**: a team's working memory. It holds the team's docs, decisions, roadmap, a t",
+     "snippet": null
+    },
+    {
+     "slug": "trov-notifications",
+     "title": "Email notifications and digests",
+     "section": "reference",
+     "body": "# Email notifications and digests\n\nSource: `docs/architecture/notifications.md`, `src/notifications/` (`registry.ts`, `resolve.ts`, `run.ts`, `retry.ts`, `window.ts`, `cron.ts`, `resend.ts`, `unsubscribe.ts`, `assemble.ts`, `invite.ts`, `welcome.ts`, `grant.ts`, `support.ts`), `src/orgs/mail.ts`, `shared/notifications.ts`.\n\n## The shape\n\nDigests are a **read-side projection, never a writer**. They",
+     "snippet": null
+    }
+   ],
+   "expected": "reference",
+   "rationale": "how a part of the system works or how to run it"
+  },
+  {
+   "id": "trov-testing",
+   "source": "Personal Dev doc trov-testing (Trov MCP list_docs, read-only)",
+   "item": {
+    "title": "Testing: the suite, the seed and the tsconfig rule",
+    "body": "# Testing: the suite, the seed and the tsconfig rule\n\nSource: `CLAUDE.md`, `vitest.config.ts`, `test/apply-migrations.ts`, `scripts/seed/reset.mjs`, `tsconfig.worker.json`, `tsconfig.web.json`, `test/helpers/`, and the Tests sections of the files in `docs/architecture/`.\n\n## Running it\n\n- `npm test` — Vitest. This is the source of truth for \"is it green\".\n- One file: `npx vitest run test/<file>.test.ts`.\n- `npm run typecheck` — `tsc` over the Worker and the web. It is **not** part of `npm test`. Run both before calling a change done.\n\n## A real database, not mocks\n\nTests run in Cloudflare's Vitest pool against a **real Miniflare D1**. `vitest.config.ts` reads every file in `migrations/` and `test/apply-migrations.ts` applies them, so a test exercises the real schema, triggers and full-text tables.\n\nA second, empty database (`MT_DB`) exists for the multi-tenancy migration tests, which build an old-shape database with data, apply `0042_organizations` and its generated rollback, and compare.\n\n## The seed\n\n`scripts/seed/reset.mjs` is the canonical seed. It truncates the data tables **before each test** in a foreign-key-safe order and re-seeds:\n\n- two organizations — `org_saplinglearn` and an empty `org_b`;\n- six persons in the first: four GitHub engineers and two Google-only people (`meilin`, `sanaok`), each with a role and responsibilities;\n- the reserved system person `github-webhook`.\n\nThe names are fixture data only; no real organization's data is in the seed.\n\n**Add every new table to `reset.mjs`.** A table that is not reset leaks rows between tests.\n\nPer-org counters rest",
+    "filedUnder": "engineering"
+   },
+   "candidates": [
+    {
+     "slug": "trov-github-app",
+     "title": "The GitHub App: how an organization connects its repositories",
+     "section": "reference",
+     "body": "# The GitHub App: how an organization connects its repositories\n\nSource: `docs/architecture/github-app.md`, `src/github-app/` (`credential.ts`, `api.ts`, `jwt.ts`, `webhook.ts`, `status.ts`, `store.ts`), `src/auth/tx.ts`, `shared/github-app.ts`, `web/src/github-app.ts`. Migration `0043_github_app`. Tests: `test/github-app.*.test.ts`.\n\n## The idea\n\nTrov is **one** GitHub App. It signs people in, an",
+     "snippet": null
+    },
+    {
+     "slug": "trov-web-ui-rules",
+     "title": "Web UI rules: repaint, switches, skeletons, empty layouts and corners",
+     "section": "reference",
+     "body": "# Web UI rules: repaint, switches, skeletons, empty layouts and corners\n\nSource: `docs/architecture/web-ui.md`, `web/src/` (`main.ts`, `render.ts`, `morph.ts`, `sidebar.ts`, `segmented.ts`, `tabs.ts`, `dropdown.ts`, `skeleton.ts`, `preview.ts`, `confirm.ts`, `people.ts`, `ui.ts`, `transition.ts`, `trov.css`).\n\nThe SPA is TypeScript and Vite with **no framework**. `main.ts` holds state and acts, `r",
+     "snippet": null
+    },
+    {
+     "slug": "trov-data-layer",
+     "title": "The data layer: tenant and platform contexts",
+     "section": "reference",
+     "body": "# The data layer: tenant and platform contexts\n\nSource: `docs/architecture/data-layer.md`, `src/data/` (`context.ts`, `sql.ts`, `platform-sql.ts`, `gate.ts`, `bearer.ts`, `secrets.ts`, `legacy.ts`), `src/platform/jobs.ts`, `src/repo/dispatch.ts`, `test/data-layer.static.test.ts`.\n\n## The rule\n\nTrov is multi-tenant: many organizations share one D1 database. Isolation rests on one rule — **every ten",
+     "snippet": null
+    }
+   ],
+   "expected": "reference",
+   "rationale": "how a part of the system works or how to run it"
+  },
+  {
+   "id": "trov-mcp-connection-modes",
+   "source": "Personal Dev doc trov-mcp-connection-modes (Trov MCP list_docs, read-only)",
+   "item": {
+    "title": "MCP connections: which organization a call acts in",
+    "body": "# MCP connections: which organization a call acts in\n\nSource: `docs/architecture/data-layer.md` § Bearer, `docs/architecture/auth-identity-people.md`, `src/data/bearer.ts`, `src/data/context.ts` (`liveTenants`), `src/mcp.ts`, `shared/repo-ref.ts`, migration `0051_mcp_connection_orgs`. Shipped in release 0.25.\n\n## The idea\n\nA credential names a **person** and a **way of choosing** among that person's organizations. `src/data/bearer.ts` is the only place that choice is made.\n\nEvery organization it can come up with is read through `liveTenants`: the person's membership **today**, of an org that is not suspended, with the role they hold there now. Nothing in a request can add an organization to that list. The `repo` and `org` arguments only choose within it.\n\n## Three kinds of credential\n\n| Credential | Can reach | Acts in |\n| --- | --- | --- |\n| A pasted token (`mcp_tokens.org_id`) | the one org on its row | that org, always |\n| An OAuth connection, mode **Manual** | the orgs its person allowed (`oauth_grant_orgs`) and is still a live member of | its **current** org |\n| An OAuth connection, mode **Follow the repository** | every org its person is a live member of | the org that has the call's `repo` connected |\n\nThe consent page asks which mode at sign-in. Follow the repository is recommended and preselected when the person has several orgs. In Manual, the person ticks organizations and picks which one the connection starts in.\n\n## Per request\n\n`resolveBearerConnection` does two reads: the credential by hash, then its reach.\n\nIf there is nowhere to act at all, the answer is th",
+    "filedUnder": "guides"
+   },
+   "candidates": [
+    {
+     "slug": "trov-auth-identity-people",
+     "title": "Auth, identity and people",
+     "section": "reference",
+     "body": "# Auth, identity and people\n\nSource: `docs/architecture/auth-identity-people.md`, `src/auth/` (`onboard.ts`, `oauth.ts`, `oauth-routes.ts`, `oauth-pages.ts`, `persons.ts`, `tokens.ts`), `src/data/bearer.ts`, `src/github-hook.ts`, `src/tools/people.ts`, `shared/people.ts`.\n\n## Three auth classes — do not add a fourth\n\n| Class | Who | Where |\n| --- | --- | --- |\n| Session cookie | people | the Hono ",
+     "snippet": null
+    },
+    {
+     "slug": "trov-data-layer",
+     "title": "The data layer: tenant and platform contexts",
+     "section": "reference",
+     "body": "# The data layer: tenant and platform contexts\n\nSource: `docs/architecture/data-layer.md`, `src/data/` (`context.ts`, `sql.ts`, `platform-sql.ts`, `gate.ts`, `bearer.ts`, `secrets.ts`, `legacy.ts`), `src/platform/jobs.ts`, `src/repo/dispatch.ts`, `test/data-layer.static.test.ts`.\n\n## The rule\n\nTrov is multi-tenant: many organizations share one D1 database. Isolation rests on one rule — **every ten",
+     "snippet": null
+    },
+    {
+     "slug": "trov-github-app",
+     "title": "The GitHub App: how an organization connects its repositories",
+     "section": "reference",
+     "body": "# The GitHub App: how an organization connects its repositories\n\nSource: `docs/architecture/github-app.md`, `src/github-app/` (`credential.ts`, `api.ts`, `jwt.ts`, `webhook.ts`, `status.ts`, `store.ts`), `src/auth/tx.ts`, `shared/github-app.ts`, `web/src/github-app.ts`. Migration `0043_github_app`. Tests: `test/github-app.*.test.ts`.\n\n## The idea\n\nTrov is **one** GitHub App. It signs people in, an",
+     "snippet": null
+    }
+   ],
+   "expected": "reference",
+   "rationale": "how a part of the system works or how to run it"
+  },
+  {
+   "id": "trov-billing-stripe",
+   "source": "Personal Dev doc trov-billing-stripe (Trov MCP list_docs, read-only)",
+   "item": {
+    "title": "Billing with Stripe",
+    "body": "# Billing with Stripe\n\nSource: `docs/architecture/billing.md`, `shared/billing.ts`, `src/billing/` (`config.ts`, `stripe.ts`, `signature.ts`, `store.ts`, `sync.ts`, `webhook.ts`, `routes.ts`, `view.ts`, `pages.ts`), `src/plans/billing.ts` (the seam), `web/src/billing.ts`, `web/src/org-plan.ts`, `wrangler.toml`. Migrations `0045_billing.sql`, `0047_billing_seats.sql`. Tests: `test/billing.*.test.ts`.\n\n## What is sold\n\nOne plan: **Pro** (plan id `team`), **per seat**, $10 per seat per month, no minimum, up to 50 seats. Free is never bought. Enterprise is arranged with Trov. Personal is no longer sold.\n\n**Money correctness.** Trov computes no amount, tax or proration and holds no price, card or address. A price is an opaque Stripe Price id in `wrangler.toml`. Trov stores ids, a status and a seat count. Billing only moves things plans already have — a grant, an org's plan, its `seats` override, its status — through the seam in `src/plans/billing.ts`.\n\n## Configuration\n\n| Name | Kind | If missing |\n| --- | --- | --- |\n| `STRIPE_SECRET_KEY` | secret | billing is OFF |\n| `STRIPE_WEBHOOK_SECRET` | secret | billing is OFF |\n| `STRIPE_PRICE_TEAM` | var — the monthly Price id of one seat of Pro | Pro cannot be bought monthly |\n| `STRIPE_PRICE_TEAM_YEARLY` | var, optional | Pro is not offered yearly |\n| `STRIPE_TAX` | var; `on` enables Stripe Tax at checkout | no tax lines |\n\nIn `wrangler.toml` today, production has `STRIPE_PRICE_TEAM = \"price_1UOOExH7KZijv6AwQIPrilmu\"` (the live Pro price), no yearly price, and `STRIPE_TAX = \"on\"`. Previews have all three empty.\n\n**OFF** means every b",
+    "filedUnder": "billing"
+   },
+   "candidates": [
+    {
+     "slug": "trov-plans-limits-grants",
+     "title": "Plans, limits, grants and gifts",
+     "section": "reference",
+     "body": "# Plans, limits, grants and gifts\n\nSource: `docs/architecture/plans.md`, `shared/plans.ts`, `shared/pricing.ts`, `src/plans/` (`state.ts`, `gate.ts`, `grants.ts`, `gifts.ts`, `free.ts`, `summaries.ts`, `billing.ts`, `routes.ts`), `web/src/org-plan.ts`, `web/src/pricing.ts`. Migrations `0044_plans.sql`, `0048_plan_gifts.sql`.\n\n## The model\n\nEvery organization is on a **plan**. A plan is a name over",
+     "snippet": null
+    },
+    {
+     "slug": "trov-web-ui-rules",
+     "title": "Web UI rules: repaint, switches, skeletons, empty layouts and corners",
+     "section": "reference",
+     "body": "# Web UI rules: repaint, switches, skeletons, empty layouts and corners\n\nSource: `docs/architecture/web-ui.md`, `web/src/` (`main.ts`, `render.ts`, `morph.ts`, `sidebar.ts`, `segmented.ts`, `tabs.ts`, `dropdown.ts`, `skeleton.ts`, `preview.ts`, `confirm.ts`, `people.ts`, `ui.ts`, `transition.ts`, `trov.css`).\n\nThe SPA is TypeScript and Vite with **no framework**. `main.ts` holds state and acts, `r",
+     "snippet": null
+    },
+    {
+     "slug": "trov-sync-github",
+     "title": "Sync GitHub",
+     "section": "reference",
+     "body": "# Sync GitHub\n\nSource: `docs/architecture/sync.md`, `src/tools/backfill.ts` (`runBackfill`), `src/repo/cron.ts` (`runReconcileJob`), `src/sync/runs.ts`, `src/plans/summaries.ts`, `shared/sync.ts`, `web/src/sync.ts`, `web/src/sync-actions.ts`. Migration `0046_sync_runs.sql`. Tests: `test/sync.runs.test.ts`, `test/sync.credential.test.ts`, `test/render.sync.test.ts`.\n\nEvery sentence the Sync panel s",
+     "snippet": null
+    }
+   ],
+   "expected": "reference",
+   "rationale": "how a part of the system works or how to run it"
+  },
+  {
+   "id": "trov-notifications",
+   "source": "Personal Dev doc trov-notifications (Trov MCP list_docs, read-only)",
+   "item": {
+    "title": "Email notifications and digests",
+    "body": "# Email notifications and digests\n\nSource: `docs/architecture/notifications.md`, `src/notifications/` (`registry.ts`, `resolve.ts`, `run.ts`, `retry.ts`, `window.ts`, `cron.ts`, `resend.ts`, `unsubscribe.ts`, `assemble.ts`, `invite.ts`, `welcome.ts`, `grant.ts`, `support.ts`), `src/orgs/mail.ts`, `shared/notifications.ts`.\n\n## The shape\n\nDigests are a **read-side projection, never a writer**. They are assembled from D1 and sent through Resend. The pipeline writes only to its own `notification_*` tables.\n\n## Kinds — a registry in code\n\n`registry.ts` and `shared/notifications.ts` define one `NotificationKind` per digest section:\n\n- `my_work` — merged pull requests in the window plus open assigned issues, summarised exactly as My Work does.\n- `review_queue` — open proposals and draft decisions.\n- `roadmap_plan` — the plan's changes in the window.\n- `ticketq` — the ticket queue: unassigned submitted tickets org-wide plus the recipient's own open assigned tickets.\n\nA renderer is a pure read that returns a section or `null`. Null means nothing to say, and the section is dropped. Adding a kind is one registry entry plus one renderer.\n\n## Cadences\n\n`daily`, `weekly` or `off`. **There is no immediate tier.**\n\nResolution (`resolve.ts`): the user's preference, then the org policy's default, then the registry default. A policy that disables a kind wins before the user layer.\n\n## A run\n\n`run.ts`, per eligible person (an address on file, not unsubscribed):\n\n1. **Claim the outbox row first**, with `INSERT OR IGNORE` on an idempotency key. A conflict skips the person, so a cron that fires ",
+    "filedUnder": "features"
+   },
+   "candidates": [
+    {
+     "slug": "trov-roadmap-sprints-my-work",
+     "title": "Roadmap, sprints and My Work",
+     "section": "reference",
+     "body": "# Roadmap, sprints and My Work\n\nSource: `docs/architecture/roadmap-my-work.md`, `docs/architecture/ingestion-gate.md`, `src/tools/sprints.ts`, `src/tools/progress.ts`, `src/tools/summarize.ts`, `shared/sprints.ts`, `shared/sprints-core.ts`, `web/src/mywork.ts`.\n\nThe rule for this whole area: **no live GitHub at render**. Everything a screen shows is read from Trov's own database.\n\n## The plan\n\nThe",
+     "snippet": null
+    },
+    {
+     "slug": "trov-tickets",
+     "title": "Tickets, the board, agent writes and the GitHub issue mirror",
+     "section": "reference",
+     "body": "# Tickets, the board, agent writes and the GitHub issue mirror\n\nSource: `docs/architecture/tickets.md`, `src/tools/tickets.ts`, `src/tools/tickets-agent.ts`, `src/tools/ticket-mirror.ts`, `shared/tickets-core.ts`, `web/src/tickets.ts`.\n\n## What a ticket is\n\nA ticket is somebody's request. It is an **authored** write: no vocabulary gate, no confidence, no staged state. A ticket write is visible to ",
+     "snippet": null
+    },
+    {
+     "slug": "trov-docs-and-decisions",
+     "title": "Docs and decisions: propose, promote, reject, ratify",
+     "section": "reference",
+     "body": "# Docs and decisions: propose, promote, reject, ratify\n\nSource: `docs/architecture/ingestion-gate.md`, `docs/architecture/feed-and-search.md`, `src/consumer.ts`, `src/routes.ts`, `src/mcp.ts`, `src/tools/reads.ts`, `shared/vocabulary.ts`, the `trov` and `load-context` skills under `plugins/trov/skills/`.\n\n## The rule\n\n**Agents stage; humans confirm.** A doc edit or a decision an agent writes does ",
+     "snippet": null
+    }
+   ],
+   "expected": "reference",
+   "rationale": "how a part of the system works or how to run it"
+  },
+  {
+   "id": "trov-github-app",
+   "source": "Personal Dev doc trov-github-app (Trov MCP list_docs, read-only)",
+   "item": {
+    "title": "The GitHub App: how an organization connects its repositories",
+    "body": "# The GitHub App: how an organization connects its repositories\n\nSource: `docs/architecture/github-app.md`, `src/github-app/` (`credential.ts`, `api.ts`, `jwt.ts`, `webhook.ts`, `status.ts`, `store.ts`), `src/auth/tx.ts`, `shared/github-app.ts`, `web/src/github-app.ts`. Migration `0043_github_app`. Tests: `test/github-app.*.test.ts`.\n\n## The idea\n\nTrov is **one** GitHub App. It signs people in, and an organization connects its repositories by **installing** it — no token to paste, no webhook to add. The pasted token and the per-repository webhook remain as the fallback, for a repository the App cannot see or a self-hosted Trov with no App.\n\n## What is stored\n\n`org_github_installations` binds a GitHub installation to a Trov org: the installation id, the account it is on, whether it covers all or selected repositories, who connected it, `suspended_at`, `removed_at`, `last_error`. A row is never deleted; ending a binding sets `removed_at`.\n\n- An installation belongs to **at most one org**, and an org has **at most one live installation** (two partial unique indexes). So an org connects one GitHub account at a time.\n- `org_repos.connection` is `app` for a repository the installation can see, `manual` otherwise. `access_lost_at` marks one the installation stopped seeing.\n\n**No token is ever stored** — not the user's, not an installation's. Nothing in these tables is secret.\n\n## The connect flow\n\n1. Org settings › Repositories › **Connect with GitHub** — a plain link to `GET /api/o/:slug/github/install` (admin only, cookie only). It sets a sealed, 15-minute `gh_install` cookie ho",
+    "filedUnder": "integrations"
+   },
+   "candidates": [
+    {
+     "slug": "trov-auth-identity-people",
+     "title": "Auth, identity and people",
+     "section": "reference",
+     "body": "# Auth, identity and people\n\nSource: `docs/architecture/auth-identity-people.md`, `src/auth/` (`onboard.ts`, `oauth.ts`, `oauth-routes.ts`, `oauth-pages.ts`, `persons.ts`, `tokens.ts`), `src/data/bearer.ts`, `src/github-hook.ts`, `src/tools/people.ts`, `shared/people.ts`.\n\n## Three auth classes — do not add a fourth\n\n| Class | Who | Where |\n| --- | --- | --- |\n| Session cookie | people | the Hono ",
+     "snippet": null
+    },
+    {
+     "slug": "trov-abuse-limits",
+     "title": "Abuse limits: what a stranger with an account cannot do",
+     "section": "reference",
+     "body": "# Abuse limits: what a stranger with an account cannot do\n\nSource: `docs/architecture/abuse-limits.md`, `src/platform/limits.ts` (every number), `src/notifications/resend.ts` (the From header). Tests: `test/abuse-limits.test.ts`.\n\n## Why this exists\n\nAnyone with a GitHub account, or a Google account with a verified address, can sign in and create one Free organization they own. This doc is everyth",
+     "snippet": null
+    },
+    {
+     "slug": "trov-mcp-connection-modes",
+     "title": "MCP connections: which organization a call acts in",
+     "section": "reference",
+     "body": "# MCP connections: which organization a call acts in\n\nSource: `docs/architecture/data-layer.md` § Bearer, `docs/architecture/auth-identity-people.md`, `src/data/bearer.ts`, `src/data/context.ts` (`liveTenants`), `src/mcp.ts`, `shared/repo-ref.ts`, migration `0051_mcp_connection_orgs`. Shipped in release 0.25.\n\n## The idea\n\nA credential names a **person** and a **way of choosing** among that person",
+     "snippet": null
+    }
+   ],
+   "expected": "reference",
+   "rationale": "how a part of the system works or how to run it"
+  },
+  {
+   "id": "trov-overview",
+   "source": "Personal Dev doc trov-overview",
+   "item": {
+    "title": "Trov overview: what it is, how it is built, and where to read next",
+    "body": "# Trov overview: what it is, how it is built, and where to read next\n\nSource: `CLAUDE.md`, `plugins/trov/skills/trov/SKILL.md`, `src/index.ts`, `wrangler.toml`, and the files in `docs/architecture/`. Start here; every section points to a doc with the detail.\n\n## What Trov is\n\nTrov is a multi-tenant **shared context store**: a team's working memory. It holds the team's docs, decisions, roadmap, a ticket queue, artifacts, a prompt library, handoffs between sessions, and a running feed of what everyone — people and their coding agents — has done. It also shows a dashboard for the team's main repository.\n\nThe product was renamed from Canopy to Trov. Some stored identifiers keep the old name on purpose (token prefixes, commit-status names); do not rename them.\n\nIt is hosted at `https://trov.dev`. Each organization lives at `/<org-slug>/`.\n\n## The one idea: two classes of write\n\n| | Staged — a person confirms | Direct — takes effect now |\n| --- | --- | --- |\n| **What** | docs, decisions, feed entries | tickets, sprints, the roadmap plan, handoffs, prompts, artifacts |\n| **Why** | an agent proposing knowledge can be wrong, and a wrong doc is believed | a request or a plan is an act, not a claim |\n| **What bounds it** | the gate: vocabulary, confidence, dedupe, then a person in Review | scope: your own lane, or the admin role |\n\nAgents **propose** knowledge and people **confirm** it. Confirming — promote, reject, ratify, publish, delete — is always done by a signed-in person in the web app and is never available to an agent's token.\n\nEvery read says how settled it is: `live` (trust",
+    "filedUnder": "overview"
+   },
+   "candidates": [
+    {
+     "slug": "trov-docs-and-decisions",
+     "title": "Docs and decisions: propose, promote, reject, ratify",
+     "section": "reference",
+     "body": "# Docs and decisions: propose, promote, reject, ratify\n\nSource: `docs/architecture/ingestion-gate.md`, `docs/architecture/feed-and-search.md`, `src/consumer.ts`, `src/routes.ts`, `src/mcp.ts`, `src/tools/reads.ts`, `shared/vocabulary.ts`, the `trov` and `load-context` skills under `plugins/trov/skills/`.\n\n## The rule\n\n**Agents stage; humans confirm.** A doc edit or a decision an agent writes does ",
+     "snippet": null
+    },
+    {
+     "slug": "trov-handoffs-and-prompts",
+     "title": "Handoffs and the Prompt Library",
+     "section": "reference",
+     "body": "# Handoffs and the Prompt Library\n\nSource: `docs/architecture/handoffs-prompts.md`, `src/tools/handoffs.ts`, `src/tools/prompts.ts`, `shared/handoffs.ts`, `web/src/handoffs.ts`, `web/src/prompts.ts`, migration `0028_handoffs_prompts`.\n\nBoth are **direct writers**, not the ingestion gate. Neither has vocabulary or confidence.\n\n## Handoffs\n\nA handoff is an addressed message for the next session, not",
+     "snippet": null
+    },
+    {
+     "slug": "trov-github-app",
+     "title": "The GitHub App: how an organization connects its repositories",
+     "section": "reference",
+     "body": "# The GitHub App: how an organization connects its repositories\n\nSource: `docs/architecture/github-app.md`, `src/github-app/` (`credential.ts`, `api.ts`, `jwt.ts`, `webhook.ts`, `status.ts`, `store.ts`), `src/auth/tx.ts`, `shared/github-app.ts`, `web/src/github-app.ts`. Migration `0043_github_app`. Tests: `test/github-app.*.test.ts`.\n\n## The idea\n\nTrov is **one** GitHub App. It signs people in, an",
+     "snippet": null
+    }
+   ],
+   "expected": "context",
+   "rationale": "what Trov is and how it fits together: background"
+  },
+  {
+   "id": "canopy-spec-throughline",
+   "source": "canopy-spec.md (this repo)",
+   "item": {
+    "title": "Through-line of the build",
+    "body": "## Through-line\n\nAgent orients against authority-flagged context (Phase 1) → works → at session end emits one structured,\nper-target payload declaring exactly what it touched and from what base (Phase 2 writer) → the worker\nreconciles against the KB, drops no-ops, stages only real deltas, classifies each new/edit/rewrite (Phase 2\nreconciler) → feed/focus go live, the rest land typed and flagged in Triage → a human promotes, rejects, or\nplaces them via working routes (Phase 3) rendered by shape (Phase 4). Theming unifies the badges the loop\nproduces (Phase 5).\n\n## Phase map + dependencies\n\n- **Phase 1 — Read-side brain.** Query tool (FTS5 + bm25), authority flags, retrieval skill, Search.\n  Independent.\n- **Phase 2 — Contract + reconciler + per-target writer.** Write-side foundation. Uses Phase 1's `query` if\n  present, else `get_doc`. Produces `authority`/`change_kind`/flags consumed by Phase 4.\n- **Phase 3 — Triage write-back routes.** Resolve / assign / reject. Build after Phase 2.\n- **Phase 4 — Triage UI rework.** Renders by change-type. Needs Phase 2 metadata + Phase 3 routes. Last code\n  phase.\n- **Phase 5 — Theming.** Palette over CSS vars + badges. After Phase 4.\n\n```\nPhase 1 ──(query tool)──┐\n                         ▼\nPhase 2 ──(change_kind, flags)──► Phase 4 ──► Phase 5\n   └────► Phase 3 ──(routes)──────┘\n```\n\n## Locked decisions (settled — do not re-open)\n\nRead side: FTS5 now, Vectorize a named seam; one rich `query` + `get_doc`; agent `include_staged:true`,\nhuman Search `false`; structured search now, synthesis a commented `POST /ask` seam.\n\nWrite side: reconcil",
+    "filedUnder": "notes"
+   },
+   "candidates": [
+    {
+     "slug": "trov-feed-and-search",
+     "title": "Feed, query and search",
+     "section": "reference",
+     "body": "# Feed, query and search\n\nSource: `docs/architecture/feed-and-search.md`, `src/tools/reads.ts`, `src/tools/feed-stats.ts`, `src/tools/quick-search.ts`, `web/src/quicksearch.ts`.\n\n## The feed\n\nThe feed is the running record of what people and their agents did. A feed entry is ingested content: it goes through the gate (`ingestFeedEntry`) via `append_feed` or `record_session`.\n\nAn entry has two read",
+     "snippet": null
+    },
+    {
+     "slug": "trov-ingestion-gate",
+     "title": "The ingestion gate and triage",
+     "section": "reference",
+     "body": "# The ingestion gate and triage\n\nSource: `docs/architecture/ingestion-gate.md`, `src/consumer.ts`, `shared/vocabulary.ts`. Read the area file before changing any of this.\n\n## What the gate is for\n\nTrov has two classes of write.\n\n- **Ingested content** is knowledge an agent proposes: feed entries, doc proposals, ADR drafts, captured GitHub events and repo events. An agent can be wrong, and a wrong ",
+     "snippet": null
+    },
+    {
+     "slug": "trov-docs-and-decisions",
+     "title": "Docs and decisions: propose, promote, reject, ratify",
+     "section": "reference",
+     "body": "# Docs and decisions: propose, promote, reject, ratify\n\nSource: `docs/architecture/ingestion-gate.md`, `docs/architecture/feed-and-search.md`, `src/consumer.ts`, `src/routes.ts`, `src/mcp.ts`, `src/tools/reads.ts`, `shared/vocabulary.ts`, the `trov` and `load-context` skills under `plugins/trov/skills/`.\n\n## The rule\n\n**Agents stage; humans confirm.** A doc edit or a decision an agent writes does ",
+     "snippet": null
+    }
+   ],
+   "expected": "context",
+   "rationale": "the idea behind the whole build: background"
+  },
+  {
+   "id": "issue154-idea",
+   "source": "AndresL230/trov#154 'The idea'",
+   "item": {
+    "title": "Instant intelligence: the idea",
+    "body": "## The idea\n\nA fast, inexpensive model looks at something Trov already holds — a feed entry, a ticket, a proposal, an item in Unplaced — and attaches a small structured judgement to it: a priority, a category, a tag, a destination, a risk. The interface stays hand-built and simply sorts, groups, filters or suggests by that judgement.\n\nThe model classifies and ranks. It does not generate the screen. That is what makes it cheap, and what makes it safe to use in many places.\n\n",
+    "filedUnder": "ideas"
+   },
+   "candidates": [
+    {
+     "slug": "trov-overview",
+     "title": "Trov overview: what it is, how it is built, and where to read next",
+     "section": "context",
+     "body": "# Trov overview: what it is, how it is built, and where to read next\n\nSource: `CLAUDE.md`, `plugins/trov/skills/trov/SKILL.md`, `src/index.ts`, `wrangler.toml`, and the files in `docs/architecture/`. Start here; every section points to a doc with the detail.\n\n## What Trov is\n\nTrov is a multi-tenant **shared context store**: a team's working memory. It holds the team's docs, decisions, roadmap, a t",
+     "snippet": null
+    },
+    {
+     "slug": "trov-feed-and-search",
+     "title": "Feed, query and search",
+     "section": "reference",
+     "body": "# Feed, query and search\n\nSource: `docs/architecture/feed-and-search.md`, `src/tools/reads.ts`, `src/tools/feed-stats.ts`, `src/tools/quick-search.ts`, `web/src/quicksearch.ts`.\n\n## The feed\n\nThe feed is the running record of what people and their agents did. A feed entry is ingested content: it goes through the gate (`ingestFeedEntry`) via `append_feed` or `record_session`.\n\nAn entry has two read",
+     "snippet": null
+    },
+    {
+     "slug": "trov-ingestion-gate",
+     "title": "The ingestion gate and triage",
+     "section": "reference",
+     "body": "# The ingestion gate and triage\n\nSource: `docs/architecture/ingestion-gate.md`, `src/consumer.ts`, `shared/vocabulary.ts`. Read the area file before changing any of this.\n\n## What the gate is for\n\nTrov has two classes of write.\n\n- **Ingested content** is knowledge an agent proposes: feed entries, doc proposals, ADR drafts, captured GitHub events and repo events. An agent can be wrong, and a wrong ",
+     "snippet": null
+    }
+   ],
+   "expected": "context",
+   "rationale": "why an idea matters and what it is: background"
+  },
+  {
+   "id": "issue145-idea",
+   "source": "AndresL230/trov#145 'The idea'",
+   "item": {
+    "title": "A Repo dashboard that fits the repository: the idea",
+    "body": "## The idea\n\nToday every repository gets the same Repo dashboard, built for one shape of project (a frontend on one host and a backend on another). The idea is for Trov to look at a repository, work out how it is built and hosted, and propose a monitoring screen that fits it — and to let people accept that, pick a different layout, or adjust it.\n\nAI is a candidate for the \"work out how it is built\" and \"propose a layout\" steps. It is not the starting point: before any model is involved, Trov needs the building blocks a proposal would be made OF, and a clear statement of what a good result is.\n\n## This issue is the umbrella for the groundwork\n\nNothing here is implementation. Each piece below ends in a written decision, a catalogue or a test set, so that the technical work that follows has something to build to.\n\n1. What we are building and for whom (the brief).\n2. What Trov can know about a repository (the signal inventory).\n3. What a dashboard is made of (a widget catalogue and a layout description).\n4. Where AI fits, and its limits (role, guardrails, cost, privacy).\n5. How people choose and stay in control (automatic, templates, by hand).\n6. How we will know it works (a set of real repositories with expected results).\n7. A time-boxed experiment, once 1–6 give it something to aim at.\n\n## Principles that already bind this (CLAUDE.md)\n\n- **Agents stage; humans confirm.** A detect",
+    "filedUnder": "ideas"
+   },
+   "candidates": [
+    {
+     "slug": "trov-overview",
+     "title": "Trov overview: what it is, how it is built, and where to read next",
+     "section": "context",
+     "body": "# Trov overview: what it is, how it is built, and where to read next\n\nSource: `CLAUDE.md`, `plugins/trov/skills/trov/SKILL.md`, `src/index.ts`, `wrangler.toml`, and the files in `docs/architecture/`. Start here; every section points to a doc with the detail.\n\n## What Trov is\n\nTrov is a multi-tenant **shared context store**: a team's working memory. It holds the team's docs, decisions, roadmap, a t",
+     "snippet": null
+    },
+    {
+     "slug": "trov-repo-dashboard",
+     "title": "The Repo dashboard and the repo cron",
+     "section": "reference",
+     "body": "# The Repo dashboard and the repo cron\n\nSource: `docs/architecture/repo-dashboard.md`, `docs/architecture/data-layer.md` § Background jobs, `src/tools/repo.ts`, `src/tools/repo-agent.ts`, `src/repo/` (`cron.ts`, `dispatch.ts`, `capture.ts`, `github.ts`, `poll.ts`, `reads.ts`, `store.ts`, `product.ts`), `shared/repo.ts`, `web/src/repo.ts`.\n\n## What it is\n\nThe Repo dashboard (`GET /repo/dashboard` →",
+     "snippet": null
+    },
+    {
+     "slug": "trov-docs-and-decisions",
+     "title": "Docs and decisions: propose, promote, reject, ratify",
+     "section": "reference",
+     "body": "# Docs and decisions: propose, promote, reject, ratify\n\nSource: `docs/architecture/ingestion-gate.md`, `docs/architecture/feed-and-search.md`, `src/consumer.ts`, `src/routes.ts`, `src/mcp.ts`, `src/tools/reads.ts`, `shared/vocabulary.ts`, the `trov` and `load-context` skills under `plugins/trov/skills/`.\n\n## The rule\n\n**Agents stage; humans confirm.** A doc edit or a decision an agent writes does ",
+     "snippet": null
+    }
+   ],
+   "expected": "context",
+   "rationale": "the motivation for a direction: background"
+  },
+  {
+   "id": "feed118-status",
+   "source": "Personal Dev feed #118 (get_feed)",
+   "item": {
+    "title": "Where the server-side AI build stands",
+    "body": "Handoff #10, Phase B, on ai/screens (PR #178): Router: one event to scope table; the pass: stage order, Jev one item per request, Haiku up to 20 per call, gates with rule fallbacks, the cached org prefix, section isolation, the Batch API. Registry still empty. Next: Phase C and D.",
+    "filedUnder": "status"
+   },
+   "candidates": [
+    {
+     "slug": "trov-overview",
+     "title": "Trov overview: what it is, how it is built, and where to read next",
+     "section": "context",
+     "body": "# Trov overview: what it is, how it is built, and where to read next\n\nSource: `CLAUDE.md`, `plugins/trov/skills/trov/SKILL.md`, `src/index.ts`, `wrangler.toml`, and the files in `docs/architecture/`. Start here; every section points to a doc with the detail.\n\n## What Trov is\n\nTrov is a multi-tenant **shared context store**: a team's working memory. It holds the team's docs, decisions, roadmap, a t",
+     "snippet": null
+    },
+    {
+     "slug": "trov-testing",
+     "title": "Testing: the suite, the seed and the tsconfig rule",
+     "section": "reference",
+     "body": "# Testing: the suite, the seed and the tsconfig rule\n\nSource: `CLAUDE.md`, `vitest.config.ts`, `test/apply-migrations.ts`, `scripts/seed/reset.mjs`, `tsconfig.worker.json`, `tsconfig.web.json`, `test/helpers/`, and the Tests sections of the files in `docs/architecture/`.\n\n## Running it\n\n- `npm test` — Vitest. This is the source of truth for \"is it green\".\n- One file: `npx vitest run test/<file>.te",
+     "snippet": null
+    },
+    {
+     "slug": "trov-mcp-connection-modes",
+     "title": "MCP connections: which organization a call acts in",
+     "section": "reference",
+     "body": "# MCP connections: which organization a call acts in\n\nSource: `docs/architecture/data-layer.md` § Bearer, `docs/architecture/auth-identity-people.md`, `src/data/bearer.ts`, `src/data/context.ts` (`liveTenants`), `src/mcp.ts`, `shared/repo-ref.ts`, migration `0051_mcp_connection_orgs`. Shipped in release 0.25.\n\n## The idea\n\nA credential names a **person** and a **way of choosing** among that person",
+     "snippet": null
+    }
+   ],
+   "expected": "context",
+   "rationale": "the state of a piece of work and its history: context"
+  },
+  {
+   "id": "oauth-decisions",
+   "source": "2026-09-24-mcp-oauth-design.md › Decisions",
+   "item": {
+    "title": "MCP OAuth: decisions",
+    "body": "## Decisions (from brainstorming)\n\n| Question | Decision |\n| --- | --- |\n| Existing `canopy_mcp_` tokens | Keep both. OAuth is the default; pasted tokens remain for headless use. |\n| Consent | Always shown, every authorization. |\n| Token lifetimes | Access 1 h; refresh rotating, 90 days idle; Settings lists and revokes connections. |\n| Implementation | Hand-rolled, stored in D1. |\n",
+    "filedUnder": "design"
+   },
+   "candidates": [
+    {
+     "slug": "trov-mcp-connection-modes",
+     "title": "MCP connections: which organization a call acts in",
+     "section": "reference",
+     "body": "# MCP connections: which organization a call acts in\n\nSource: `docs/architecture/data-layer.md` § Bearer, `docs/architecture/auth-identity-people.md`, `src/data/bearer.ts`, `src/data/context.ts` (`liveTenants`), `src/mcp.ts`, `shared/repo-ref.ts`, migration `0051_mcp_connection_orgs`. Shipped in release 0.25.\n\n## The idea\n\nA credential names a **person** and a **way of choosing** among that person",
+     "snippet": null
+    },
+    {
+     "slug": "trov-docs-and-decisions",
+     "title": "Docs and decisions: propose, promote, reject, ratify",
+     "section": "reference",
+     "body": "# Docs and decisions: propose, promote, reject, ratify\n\nSource: `docs/architecture/ingestion-gate.md`, `docs/architecture/feed-and-search.md`, `src/consumer.ts`, `src/routes.ts`, `src/mcp.ts`, `src/tools/reads.ts`, `shared/vocabulary.ts`, the `trov` and `load-context` skills under `plugins/trov/skills/`.\n\n## The rule\n\n**Agents stage; humans confirm.** A doc edit or a decision an agent writes does ",
+     "snippet": null
+    },
+    {
+     "slug": "trov-auth-identity-people",
+     "title": "Auth, identity and people",
+     "section": "reference",
+     "body": "# Auth, identity and people\n\nSource: `docs/architecture/auth-identity-people.md`, `src/auth/` (`onboard.ts`, `oauth.ts`, `oauth-routes.ts`, `oauth-pages.ts`, `persons.ts`, `tokens.ts`), `src/data/bearer.ts`, `src/github-hook.ts`, `src/tools/people.ts`, `shared/people.ts`.\n\n## Three auth classes — do not add a fourth\n\n| Class | Who | Where |\n| --- | --- | --- |\n| Session cookie | people | the Hono ",
+     "snippet": null
+    }
+   ],
+   "expected": "decisions",
+   "rationale": "what was chosen and why: a decision record"
+  },
+  {
+   "id": "milestone-decisions",
+   "source": "2026-06-30-milestone-proposals-triage-design.md › Decisions",
+   "item": {
+    "title": "Milestone proposals in Triage: decisions",
+    "body": "## Decisions\n\n- **Placement:** a 4th Triage queue, \"Milestones\", alongside Proposals /\n  Decisions / Triage. Most consistent — all staged-confirm work in one place,\n  reusing the existing queue layout and selection model.\n- **Scope:** Promote **and** Reject. Add the missing backend reject route + a\n  soft-reject so the queue behaves like Proposals and Decisions.\n",
+    "filedUnder": "design"
+   },
+   "candidates": [
+    {
+     "slug": "trov-docs-and-decisions",
+     "title": "Docs and decisions: propose, promote, reject, ratify",
+     "section": "reference",
+     "body": "# Docs and decisions: propose, promote, reject, ratify\n\nSource: `docs/architecture/ingestion-gate.md`, `docs/architecture/feed-and-search.md`, `src/consumer.ts`, `src/routes.ts`, `src/mcp.ts`, `src/tools/reads.ts`, `shared/vocabulary.ts`, the `trov` and `load-context` skills under `plugins/trov/skills/`.\n\n## The rule\n\n**Agents stage; humans confirm.** A doc edit or a decision an agent writes does ",
+     "snippet": null
+    },
+    {
+     "slug": "trov-ingestion-gate",
+     "title": "The ingestion gate and triage",
+     "section": "reference",
+     "body": "# The ingestion gate and triage\n\nSource: `docs/architecture/ingestion-gate.md`, `src/consumer.ts`, `shared/vocabulary.ts`. Read the area file before changing any of this.\n\n## What the gate is for\n\nTrov has two classes of write.\n\n- **Ingested content** is knowledge an agent proposes: feed entries, doc proposals, ADR drafts, captured GitHub events and repo events. An agent can be wrong, and a wrong ",
+     "snippet": null
+    },
+    {
+     "slug": "trov-roadmap-sprints-my-work",
+     "title": "Roadmap, sprints and My Work",
+     "section": "reference",
+     "body": "# Roadmap, sprints and My Work\n\nSource: `docs/architecture/roadmap-my-work.md`, `docs/architecture/ingestion-gate.md`, `src/tools/sprints.ts`, `src/tools/progress.ts`, `src/tools/summarize.ts`, `shared/sprints.ts`, `shared/sprints-core.ts`, `web/src/mywork.ts`.\n\nThe rule for this whole area: **no live GitHub at render**. Everything a screen shows is read from Trov's own database.\n\n## The plan\n\nThe",
+     "snippet": null
+    }
+   ],
+   "expected": "decisions",
+   "rationale": "what was chosen and why: a decision record"
+  },
+  {
+   "id": "docs-spaces-decisions",
+   "source": "2026-07-10-harden-docs-spaces-design.md › Decisions",
+   "item": {
+    "title": "Docs spaces: decisions locked with the user",
+    "body": "## Decisions (locked with the user)\n\n1. `space` is a fixed enum of exactly **`technical | product`**. When an agent omits it, the doc\n   defaults to **`technical`** (the engineering default).\n2. Enforcement is a **hard enum**: a doc proposal carrying an off-vocab space fails contract/tool\n   validation (an error), rather than being silently routed to triage.\n3. The single `sapling`-spaced doc is re-homed by content — `sapling-frontend-local-dev` → `technical`.\n4. Scope is **spaces/tabs only**. The parallel section-vocab disconnect is explicitly out of scope.\n",
+    "filedUnder": "design"
+   },
+   "candidates": [
+    {
+     "slug": "trov-docs-and-decisions",
+     "title": "Docs and decisions: propose, promote, reject, ratify",
+     "section": "reference",
+     "body": "# Docs and decisions: propose, promote, reject, ratify\n\nSource: `docs/architecture/ingestion-gate.md`, `docs/architecture/feed-and-search.md`, `src/consumer.ts`, `src/routes.ts`, `src/mcp.ts`, `src/tools/reads.ts`, `shared/vocabulary.ts`, the `trov` and `load-context` skills under `plugins/trov/skills/`.\n\n## The rule\n\n**Agents stage; humans confirm.** A doc edit or a decision an agent writes does ",
+     "snippet": null
+    },
+    {
+     "slug": "trov-ingestion-gate",
+     "title": "The ingestion gate and triage",
+     "section": "reference",
+     "body": "# The ingestion gate and triage\n\nSource: `docs/architecture/ingestion-gate.md`, `src/consumer.ts`, `shared/vocabulary.ts`. Read the area file before changing any of this.\n\n## What the gate is for\n\nTrov has two classes of write.\n\n- **Ingested content** is knowledge an agent proposes: feed entries, doc proposals, ADR drafts, captured GitHub events and repo events. An agent can be wrong, and a wrong ",
+     "snippet": null
+    },
+    {
+     "slug": "trov-tickets",
+     "title": "Tickets, the board, agent writes and the GitHub issue mirror",
+     "section": "reference",
+     "body": "# Tickets, the board, agent writes and the GitHub issue mirror\n\nSource: `docs/architecture/tickets.md`, `src/tools/tickets.ts`, `src/tools/tickets-agent.ts`, `src/tools/ticket-mirror.ts`, `shared/tickets-core.ts`, `web/src/tickets.ts`.\n\n## What a ticket is\n\nA ticket is somebody's request. It is an **authored** write: no vocabulary gate, no confidence, no staged state. A ticket write is visible to ",
+     "snippet": null
+    }
+   ],
+   "expected": "decisions",
+   "rationale": "what was chosen and why: a decision record"
+  },
+  {
+   "id": "artifacts-decisions",
+   "source": "2026-09-24-artifacts-implementation.md › Decisions",
+   "item": {
+    "title": "Artifacts: decisions taken here",
+    "body": "## Decisions taken here (not in the prompt)\n\n- **Tables** `artifact_pages`, `artifact_versions`, `artifact_links`, plus `artifact_upload_tokens`\n  and `artifacts_fts`. `author_id`, `ratified_by`, `created_by`, token `principal` are person\n  handles → `HANDLE_COLUMNS`.\n- **A page with `current_version = 0` does not exist** to any reader (list, get, raw, query, MCP):\n  it is a binary page created by an MCP call whose upload has not landed. Same 404 as a missing slug.\n- **Binary uploads declare `sha256`** (hex) with `size_bytes`. The PUT streams through\n  `FixedLengthStream(size_bytes)` into R2 at `artifacts/<sha256>` with R2's `sha256` put option, so\n  R2 itself rejects a body that does not hash to it — no temp key, no second write. The MCP tools\n  gain a `sha256` arg for binary kinds (the curl example computes it with `shasum -a 256`).\n- **Who may write**: anyone who can READ a page may add a version, change status draft⇄published,\n  change title/area/repo, and link/unlink (the prototype shows teammates versioning each other's\n  pages). Only the **author** may set `visibility = private`. Ratify: any signed-in person, session\n  only. A private page is readable (and so writable) only by its author.\n- **404 parity**: missing slug, private-to-someone-else, and `current_version = 0` return the SAME\n  status and body — `404 { \"error\": \"not_found\" }` over HTTP, `{ error: \"not_found\", code:\n  \"not_found\" }` over MCP. Tested byte for byte.\n- **Link refs**: `ticket` → ticket id, `sprint` → sprint id, `pr` / `issue` → `<owner>/<repo>#<n>`\n  (a bare `#n` or number from a client is resol",
+    "filedUnder": "specs"
+   },
+   "candidates": [
+    {
+     "slug": "trov-artifacts",
+     "title": "Artifacts and doc images",
+     "section": "reference",
+     "body": "# Artifacts and doc images\n\nSource: `docs/architecture/artifacts.md`, `docs/artifact-contract.md` (the contract for agents — read it before a first artifact write), `src/tools/artifacts.ts`, `src/tools/artifacts-agent.ts`, `src/artifacts/`, `shared/artifacts-core.ts`, `web/src/artifacts.ts`.\n\n## What an artifact is\n\nAn artifact is one self-contained page an agent or a person produced — a design, s",
+     "snippet": null
+    },
+    {
+     "slug": "trov-docs-and-decisions",
+     "title": "Docs and decisions: propose, promote, reject, ratify",
+     "section": "reference",
+     "body": "# Docs and decisions: propose, promote, reject, ratify\n\nSource: `docs/architecture/ingestion-gate.md`, `docs/architecture/feed-and-search.md`, `src/consumer.ts`, `src/routes.ts`, `src/mcp.ts`, `src/tools/reads.ts`, `shared/vocabulary.ts`, the `trov` and `load-context` skills under `plugins/trov/skills/`.\n\n## The rule\n\n**Agents stage; humans confirm.** A doc edit or a decision an agent writes does ",
+     "snippet": null
+    },
+    {
+     "slug": "trov-mcp-connection-modes",
+     "title": "MCP connections: which organization a call acts in",
+     "section": "reference",
+     "body": "# MCP connections: which organization a call acts in\n\nSource: `docs/architecture/data-layer.md` § Bearer, `docs/architecture/auth-identity-people.md`, `src/data/bearer.ts`, `src/data/context.ts` (`liveTenants`), `src/mcp.ts`, `shared/repo-ref.ts`, migration `0051_mcp_connection_orgs`. Shipped in release 0.25.\n\n## The idea\n\nA credential names a **person** and a **way of choosing** among that person",
+     "snippet": null
+    }
+   ],
+   "expected": "decisions",
+   "rationale": "what was chosen and why: a decision record"
+  },
+  {
+   "id": "issue153-decision",
+   "source": "AndresL230/trov#153 › Decision (owner, 2026-10-10)",
+   "item": {
+    "title": "Guided repository setup: the owner's decision",
+    "body": "## Decision (owner, 2026-10-10)\n\nTrov does not work out how a repository is hosted by reading it. **It asks.** When someone sets up a repository in an organization they get a short guided setup: they say what the stack is, and Trov then connects each piece with them, telling them exactly where to get each key as they go. At the end the Repo dashboard is the one that fits what they said.\n\nThis settles the open question in #147 for the first version: no file is opened, and no model is needed to know the stack. Detection from events Trov already captures (the hosting branch's \"Detected: Vercel\") only PRE-FILLS an answer; the person confirms it.\n",
+    "filedUnder": "rulings"
+   },
+   "candidates": [
+    {
+     "slug": "trov-overview",
+     "title": "Trov overview: what it is, how it is built, and where to read next",
+     "section": "context",
+     "body": "# Trov overview: what it is, how it is built, and where to read next\n\nSource: `CLAUDE.md`, `plugins/trov/skills/trov/SKILL.md`, `src/index.ts`, `wrangler.toml`, and the files in `docs/architecture/`. Start here; every section points to a doc with the detail.\n\n## What Trov is\n\nTrov is a multi-tenant **shared context store**: a team's working memory. It holds the team's docs, decisions, roadmap, a t",
+     "snippet": null
+    },
+    {
+     "slug": "trov-github-app",
+     "title": "The GitHub App: how an organization connects its repositories",
+     "section": "reference",
+     "body": "# The GitHub App: how an organization connects its repositories\n\nSource: `docs/architecture/github-app.md`, `src/github-app/` (`credential.ts`, `api.ts`, `jwt.ts`, `webhook.ts`, `status.ts`, `store.ts`), `src/auth/tx.ts`, `shared/github-app.ts`, `web/src/github-app.ts`. Migration `0043_github_app`. Tests: `test/github-app.*.test.ts`.\n\n## The idea\n\nTrov is **one** GitHub App. It signs people in, an",
+     "snippet": null
+    },
+    {
+     "slug": "trov-repo-dashboard",
+     "title": "The Repo dashboard and the repo cron",
+     "section": "reference",
+     "body": "# The Repo dashboard and the repo cron\n\nSource: `docs/architecture/repo-dashboard.md`, `docs/architecture/data-layer.md` § Background jobs, `src/tools/repo.ts`, `src/tools/repo-agent.ts`, `src/repo/` (`cron.ts`, `dispatch.ts`, `capture.ts`, `github.ts`, `poll.ts`, `reads.ts`, `store.ts`, `product.ts`), `shared/repo.ts`, `web/src/repo.ts`.\n\n## What it is\n\nThe Repo dashboard (`GET /repo/dashboard` →",
+     "snippet": null
+    }
+   ],
+   "expected": "decisions",
+   "rationale": "what was chosen and why: a decision record"
+  },
+  {
+   "id": "server-ai-decided",
+   "source": "2026-10-15-server-ai-build.md (the decided design's rules)",
+   "item": {
+    "title": "Server-side AI: the decided build",
+    "body": "# Server-side AI: the decided build (2026-10-15)\n\n> **Decided.** This is the design of Trov handoff #10 (claimed 2026-10-15), built into PR #178 on `ai/screens`.\n> Updated 2026-10-15 after merging `main` with #185 (hosting providers): migrations moved to 0058–0067, and\n> hosting deploys feed the router and repo state.\n> Where `2026-10-14-server-ai.md` (the older background spec) disagrees, this file wins. What was verified before\n> building, and the migration numbers, are in `2026-10-14-ai-base.md`.\n\n## How the system works\n\n**One loop: capture → route → decide → write → show → learn.**\n\n1. **Capture** already exists: the GitHub webhook and reconcile, plus the app's writers.\n2. **Route** is plain code. Each write marks the scopes it made stale. No model is involved.\n3. **The AI pass** in the `*/10` cron works through stale scopes per org, within the switch, the allowance and the cron budget.\n4. **Jev decides; Haiku writes.**\n   - Jev (TypeSafe, about $0.0001 a check) answers classifications and **gates**: is this worth a Haiku call?\n   - Haiku 5.5 writes words, only past a gate, and reads **item cards**, never raw PR bodies or commit lists.\n5. **Store** everything as computed rows. Screens, MCP, emails and Ask Trov all read those rows. Nothing calls a model while a page loads.\n6. **Learn.** Accept, Dismiss and \"Wrong?\" go to `ai_suggestions` and `ai_feedback`, and each kind's eval set must pass before its prompt or threshold changes.\n\n**Rules every part keeps** (the first, fourth and fifth become CLAUDE.md invariants in Phase G):\n\n- **Where model calls happen.** Only in: th",
+    "filedUnder": "specs"
+   },
+   "candidates": [
+    {
+     "slug": "trov-overview",
+     "title": "Trov overview: what it is, how it is built, and where to read next",
+     "section": "context",
+     "body": "# Trov overview: what it is, how it is built, and where to read next\n\nSource: `CLAUDE.md`, `plugins/trov/skills/trov/SKILL.md`, `src/index.ts`, `wrangler.toml`, and the files in `docs/architecture/`. Start here; every section points to a doc with the detail.\n\n## What Trov is\n\nTrov is a multi-tenant **shared context store**: a team's working memory. It holds the team's docs, decisions, roadmap, a t",
+     "snippet": null
+    },
+    {
+     "slug": "trov-repo-dashboard",
+     "title": "The Repo dashboard and the repo cron",
+     "section": "reference",
+     "body": "# The Repo dashboard and the repo cron\n\nSource: `docs/architecture/repo-dashboard.md`, `docs/architecture/data-layer.md` § Background jobs, `src/tools/repo.ts`, `src/tools/repo-agent.ts`, `src/repo/` (`cron.ts`, `dispatch.ts`, `capture.ts`, `github.ts`, `poll.ts`, `reads.ts`, `store.ts`, `product.ts`), `shared/repo.ts`, `web/src/repo.ts`.\n\n## What it is\n\nThe Repo dashboard (`GET /repo/dashboard` →",
+     "snippet": null
+    },
+    {
+     "slug": "trov-sync-github",
+     "title": "Sync GitHub",
+     "section": "reference",
+     "body": "# Sync GitHub\n\nSource: `docs/architecture/sync.md`, `src/tools/backfill.ts` (`runBackfill`), `src/repo/cron.ts` (`runReconcileJob`), `src/sync/runs.ts`, `src/plans/summaries.ts`, `shared/sync.ts`, `web/src/sync.ts`, `web/src/sync-actions.ts`. Migration `0046_sync_runs.sql`. Tests: `test/sync.runs.test.ts`, `test/sync.credential.test.ts`, `test/render.sync.test.ts`.\n\nEvery sentence the Sync panel s",
+     "snippet": null
+    }
+   ],
+   "expected": "decisions",
+   "rationale": "what was chosen and why: a decision record"
+  }
+ ]
+}

@@ -1,0 +1,935 @@
+{
+ "model": "jev-1.13.0",
+ "recordedAt": "2026-10-15T09:05:14.985Z",
+ "promptVersions": {
+  "ticket": "jev-ticket-1",
+  "review": "jev-risk-1",
+  "unplaced": "jev-place-1"
+ },
+ "cases": {
+  "dup3": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #902: Handoff skill refuses to run when I ask Claude in words\n\nI asked Claude Code to 'send a handoff' and it said the trov:handoff skill can't be used because of disable-model-invocation, so nothing was sent.",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_32": "#32: Plugin skills marked disable-model-invocation can't be used when a person asks in words (handoff, record-session, ticket — What happened On 2026-10-14 the owner asked a Claude Code session, in plain words, to \"send a handoff to get that stuff ",
+       "ticket_28": "#28: Instant intelligence · use: a reading list when someone claims a handoff — Part of 154. Depends on the building blocks. When a handoff is claimed, show a short 'read these first' list: the docs a",
+       "ticket_19": "#19: Instant intelligence · building block 4: limits, consent, privacy and knowing whether it is any good — Part of 154. The parts that make it responsible to switch on. Wanted - A plan limit in , enforced through , with a clear",
+       "ticket_15": "#15: Explore: instant intelligence — fast, cheap judgements attached to what Trov already stores — The idea A fast, inexpensive model looks at something Trov already holds — a feed entry, a ticket, a proposal, an item i",
+       "ticket_18": "#18: Instant intelligence · building block 3: one way to show and answer a suggestion — Part of 154. One interface pattern, used wherever a suggestion appears, so people learn it once. Wanted - A small \"Sugge"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"bug\",\"confidence\":0.95,\"probabilities\":{\"bug\":0.96,\"request\":0.02,\"question\":0.0,\"access\":0.02,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.38,\"probabilities\":{\"low\":0.04,\"normal\":0.59,\"high\":0.37}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"ticket_32\",\"confidence\":0.99,\"probabilities\":{\"none\":0.01,\"ticket_32\":0.99,\"ticket_28\":0.0,\"ticket_19\":0.0,\"ticket_15\":0.0,\"ticket_18\":0.0}}},\"usage\":{\"input_tokens\":992,\"output_tokens\":161}}"
+  },
+  "dup2": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #901: Use one GitHub account for two Trov organizations\n\nMy personal repo and a client's repo are both under my GitHub user. Once the GitHub App is installed for one org, I cannot connect the other repo to a second org.",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_30": "#30: One GitHub account, several Trov organizations: connect different repositories to different orgs — Problem People want different Trov organizations for different repositories — a personal org for one project, a client's",
+       "ticket_29": "#29: Let a person delete their own account from Settings — Problem There is no way to delete an account in the app. The Terms and the Privacy Policy both say to write to hello@tro",
+       "ticket_5": "#5: Repo dashboard: recognise a single-stack repository at setup, and dogfood it on AndresL230/trov — Part of 140. Problem Setting up monitoring asks for a frontend, a backend and their separate URLs. Someone whose whole p",
+       "ticket_8": "#8: Fitted Repo dashboard · 2: the signal inventory — what Trov can know about a repository, and what it would need — Part of 145. A catalogue, not code. Questions to answer - What does Trov already capture that says how a repository is b",
+       "ticket_15": "#15: Explore: instant intelligence — fast, cheap judgements attached to what Trov already stores — The idea A fast, inexpensive model looks at something Trov already holds — a feed entry, a ticket, a proposal, an item i"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":0.54,\"probabilities\":{\"bug\":0.3,\"request\":0.63,\"question\":0.02,\"access\":0.05,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.35,\"probabilities\":{\"low\":0.02,\"normal\":0.57,\"high\":0.41}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"ticket_30\",\"confidence\":0.99,\"probabilities\":{\"none\":0.01,\"ticket_30\":0.99,\"ticket_29\":0.0,\"ticket_5\":0.0,\"ticket_8\":0.0,\"ticket_15\":0.0}}},\"usage\":{\"input_tokens\":961,\"output_tokens\":159}}"
+  },
+  "dup1": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #900: Delete account button in Settings\n\nThere's no way to remove my own Trov account. The privacy policy says to email hello@trov.dev; please add a self-serve delete in Settings.",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_29": "#29: Let a person delete their own account from Settings — Problem There is no way to delete an account in the app. The Terms and the Privacy Policy both say to write to hello@tro",
+       "ticket_30": "#30: One GitHub account, several Trov organizations: connect different repositories to different orgs — Problem People want different Trov organizations for different repositories — a personal org for one project, a client's",
+       "ticket_4": "#4: Repo dashboard: the Cloudflare Worker as the whole stack (Worker, D1, R2 and cron metrics) — Part of 140. Problem Cloudflare is read today as the FRONTEND host: traffic analytics for a Worker that serves a site, b",
+       "ticket_5": "#5: Repo dashboard: recognise a single-stack repository at setup, and dogfood it on AndresL230/trov — Part of 140. Problem Setting up monitoring asks for a frontend, a backend and their separate URLs. Someone whose whole p",
+       "ticket_18": "#18: Instant intelligence · building block 3: one way to show and answer a suggestion — Part of 154. One interface pattern, used wherever a suggestion appears, so people learn it once. Wanted - A small \"Sugge"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.49,\"probabilities\":{\"low\":0.04,\"normal\":0.66,\"high\":0.3}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"ticket_29\",\"confidence\":0.99,\"probabilities\":{\"none\":0.01,\"ticket_29\":0.99,\"ticket_30\":0.0,\"ticket_4\":0.0,\"ticket_5\":0.0,\"ticket_18\":0.0}}},\"usage\":{\"input_tokens\":954,\"output_tokens\":159}}"
+  },
+  "dup4": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #903: Show application logs on the Repo dashboard\n\nPull error logs and log volume from Cloudflare Workers and Railway and show them per environment next to deploys.",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_31": "#31: Repo dashboard: log ingestion (errors and log volume per environment) — Ingest application logs so the Repo dashboard can show errors and log volume next to deploys and health, not only reques",
+       "ticket_4": "#4: Repo dashboard: the Cloudflare Worker as the whole stack (Worker, D1, R2 and cron metrics) — Part of 140. Problem Cloudflare is read today as the FRONTEND host: traffic analytics for a Worker that serves a site, b",
+       "ticket_2": "#2: Repo dashboard: an environment with one part (no backend / frontend split) — Part of 140. Problem An environment is modelled as two deployables on two hosts: a backend (a Railway matched by environ",
+       "ticket_1": "#1: Repo dashboard: support repositories hosted on one stack (e.g. everything on one Cloudflare Worker) — Problem The Repo dashboard assumes a split deployment. says it outright: \"each environment ships two deployables, on two",
+       "ticket_3": "#3: Repo dashboard: a repository with one environment (drift, previews, the environment list) — Part of 140. Problem Several things assume at least two long-lived environments: - Drift is computed between environment"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.38,\"probabilities\":{\"low\":0.41,\"normal\":0.59,\"high\":0.0}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"ticket_31\",\"confidence\":0.98,\"probabilities\":{\"none\":0.02,\"ticket_31\":0.98,\"ticket_4\":0.0,\"ticket_2\":0.0,\"ticket_1\":0.0,\"ticket_3\":0.0}}},\"usage\":{\"input_tokens\":945,\"output_tokens\":157}}"
+  },
+  "dup5": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #904: Suggest a category and priority for new tickets and warn about duplicates\n\nWhen a ticket is filed, Trov could propose its category and priority and say 'this looks like 12'.",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_26": "#26: Instant intelligence · use: ticket intake — category, priority, duplicates, who should take it — Part of 154. Depends on the building blocks. On a new ticket: suggest its category and priority, warn 'this looks like 2",
+       "ticket_20": "#20: Instant intelligence · use: suggest where an Unplaced item belongs — Part of 154. Depends on the building blocks. Unplaced holds what the gate could not confidently place. Suggest the desti",
+       "ticket_25": "#25: Instant intelligence · use: feed entries with a priority, and digests that lead with what matters — Part of 154. Depends on the building blocks. Give each feed entry a kind and an importance when it is written (a breakin",
+       "ticket_32": "#32: Plugin skills marked disable-model-invocation can't be used when a person asks in words (handoff, record-session, ticket — What happened On 2026-10-14 the owner asked a Claude Code session, in plain words, to \"send a handoff to get that stuff ",
+       "ticket_8": "#8: Fitted Repo dashboard · 2: the signal inventory — what Trov can know about a repository, and what it would need — Part of 145. A catalogue, not code. Questions to answer - What does Trov already capture that says how a repository is b"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"low\",\"confidence\":0.95,\"probabilities\":{\"low\":0.97,\"normal\":0.03,\"high\":0.0}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"ticket_26\",\"confidence\":1.0,\"probabilities\":{\"none\":0.0,\"ticket_26\":1.0,\"ticket_20\":0.0,\"ticket_25\":0.0,\"ticket_32\":0.0,\"ticket_8\":0.0}}},\"usage\":{\"input_tokens\":986,\"output_tokens\":160}}"
+  },
+  "dup6": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #905: Type a filter in plain English\n\nLet me type 'my open high-priority bugs from last week' and have the ticket screen's filters set for me.",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_23": "#23: Instant intelligence · use: filters from plain language — Part of 154. Depends on the building blocks. 'High priority tickets about auth from last week' becomes the screen's exis",
+       "ticket_26": "#26: Instant intelligence · use: ticket intake — category, priority, duplicates, who should take it — Part of 154. Depends on the building blocks. On a new ticket: suggest its category and priority, warn 'this looks like 2",
+       "ticket_29": "#29: Let a person delete their own account from Settings — Problem There is no way to delete an account in the app. The Terms and the Privacy Policy both say to write to hello@tro",
+       "ticket_17": "#17: Instant intelligence · building block 2: where suggestions live — Part of 154. A single place to store a model's judgement about an item, kept apart from what a person set. Wanted - A te",
+       "ticket_6": "#6: Explore: a Repo dashboard that fits the repository (detect the stack, propose a layout, let people choose) — The idea Today every repository gets the same Repo dashboard, built for one shape of project (a frontend on one host and"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"low\",\"confidence\":0.94,\"probabilities\":{\"low\":0.96,\"normal\":0.04,\"high\":0.0}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"ticket_23\",\"confidence\":0.99,\"probabilities\":{\"none\":0.01,\"ticket_23\":0.99,\"ticket_26\":0.0,\"ticket_29\":0.0,\"ticket_17\":0.0,\"ticket_6\":0.0}}},\"usage\":{\"input_tokens\":932,\"output_tokens\":160}}"
+  },
+  "dup7": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #906: Recommend what to read when I pick up a handoff\n\nWhen I claim a handoff, list the docs and decisions I should read first, ranked by relevance.",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_28": "#28: Instant intelligence · use: a reading list when someone claims a handoff — Part of 154. Depends on the building blocks. When a handoff is claimed, show a short 'read these first' list: the docs a",
+       "ticket_32": "#32: Plugin skills marked disable-model-invocation can't be used when a person asks in words (handoff, record-session, ticket — What happened On 2026-10-14 the owner asked a Claude Code session, in plain words, to \"send a handoff to get that stuff ",
+       "ticket_11": "#11: Fitted Repo dashboard · 5: choice and control — automatic, pick a layout, or adjust it — Part of 145. A product design, not code. Questions to answer - The three ways in. (1) Trov proposes a layout and you acc",
+       "ticket_14": "#14: Guided repository setup: pick the stack, then be walked through connecting each piece and where to get its keys — Decision (owner, 2026-10-10) Trov does not work out how a repository is hosted by reading it. It asks. When someone sets",
+       "ticket_24": "#24: Instant intelligence · use: My Work ordered by what needs you first — Part of 154. Depends on the building blocks. Order the items within My Work's tiles and add one line on where to start, "
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"low\",\"confidence\":0.52,\"probabilities\":{\"low\":0.68,\"normal\":0.32,\"high\":0.0}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"ticket_28\",\"confidence\":0.99,\"probabilities\":{\"none\":0.01,\"ticket_28\":0.99,\"ticket_32\":0.0,\"ticket_11\":0.0,\"ticket_14\":0.0,\"ticket_24\":0.0}}},\"usage\":{\"input_tokens\":989,\"output_tokens\":161}}"
+  },
+  "dup9": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #908: Flag docs that are out of date with recent work\n\nIf a doc says deploys are manual but recent feed entries say CI deploys, Trov should notice and stage a proposal.",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_22": "#22: Instant intelligence · use: notice when a doc and recent work disagree — Part of 154. Depends on the building blocks. A scheduled check: 'this doc says deploys are manual; three recent feed ent",
+       "ticket_24": "#24: Instant intelligence · use: My Work ordered by what needs you first — Part of 154. Depends on the building blocks. Order the items within My Work's tiles and add one line on where to start, ",
+       "ticket_27": "#27: Instant intelligence · use: tags for artifacts and docs — Part of 154. Depends on the building blocks. Suggest tags from the fixed vocabulary (auth, architecture, infra, api, ui,",
+       "ticket_15": "#15: Explore: instant intelligence — fast, cheap judgements attached to what Trov already stores — The idea A fast, inexpensive model looks at something Trov already holds — a feed entry, a ticket, a proposal, an item i",
+       "ticket_25": "#25: Instant intelligence · use: feed entries with a priority, and digests that lead with what matters — Part of 154. Depends on the building blocks. Give each feed entry a kind and an importance when it is written (a breakin"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":0.99,\"probabilities\":{\"bug\":0.01,\"request\":0.99,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"low\",\"confidence\":0.34,\"probabilities\":{\"low\":0.56,\"normal\":0.44,\"high\":0.0}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"ticket_22\",\"confidence\":0.99,\"probabilities\":{\"none\":0.01,\"ticket_22\":0.99,\"ticket_24\":0.0,\"ticket_27\":0.0,\"ticket_15\":0.0,\"ticket_25\":0.0}}},\"usage\":{\"input_tokens\":953,\"output_tokens\":161}}"
+  },
+  "dup8": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #907: Put risky proposals first in Review\n\nLabel each staged doc change by whether it changes a decision or a process, and order the Review queue so those come first.",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_21": "#21: Instant intelligence · use: order Review by risk — Part of 154. Depends on the building blocks. Label each proposal — changes a decision, contradicts an existing doc, chan",
+       "ticket_24": "#24: Instant intelligence · use: My Work ordered by what needs you first — Part of 154. Depends on the building blocks. Order the items within My Work's tiles and add one line on where to start, ",
+       "ticket_15": "#15: Explore: instant intelligence — fast, cheap judgements attached to what Trov already stores — The idea A fast, inexpensive model looks at something Trov already holds — a feed entry, a ticket, a proposal, an item i",
+       "ticket_19": "#19: Instant intelligence · building block 4: limits, consent, privacy and knowing whether it is any good — Part of 154. The parts that make it responsible to switch on. Wanted - A plan limit in , enforced through , with a clear",
+       "ticket_22": "#22: Instant intelligence · use: notice when a doc and recent work disagree — Part of 154. Depends on the building blocks. A scheduled check: 'this doc says deploys are manual; three recent feed ent"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.49,\"probabilities\":{\"low\":0.31,\"normal\":0.66,\"high\":0.03}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"ticket_21\",\"confidence\":0.95,\"probabilities\":{\"none\":0.04,\"ticket_21\":0.96,\"ticket_24\":0.0,\"ticket_15\":0.0,\"ticket_19\":0.0,\"ticket_22\":0.0}}},\"usage\":{\"input_tokens\":943,\"output_tokens\":161}}"
+  },
+  "dup10": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #909: Ask which stack a repo uses during setup\n\nInstead of guessing how a repository is hosted, ask during setup and walk the person through connecting each piece and where to get its keys.",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_14": "#14: Guided repository setup: pick the stack, then be walked through connecting each piece and where to get its keys — Decision (owner, 2026-10-10) Trov does not work out how a repository is hosted by reading it. It asks. When someone sets",
+       "ticket_5": "#5: Repo dashboard: recognise a single-stack repository at setup, and dogfood it on AndresL230/trov — Part of 140. Problem Setting up monitoring asks for a frontend, a backend and their separate URLs. Someone whose whole p",
+       "ticket_1": "#1: Repo dashboard: support repositories hosted on one stack (e.g. everything on one Cloudflare Worker) — Problem The Repo dashboard assumes a split deployment. says it outright: \"each environment ships two deployables, on two",
+       "ticket_6": "#6: Explore: a Repo dashboard that fits the repository (detect the stack, propose a layout, let people choose) — The idea Today every repository gets the same Repo dashboard, built for one shape of project (a frontend on one host and",
+       "ticket_4": "#4: Repo dashboard: the Cloudflare Worker as the whole stack (Worker, D1, R2 and cron metrics) — Part of 140. Problem Cloudflare is read today as the FRONTEND host: traffic analytics for a Worker that serves a site, b"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.52,\"probabilities\":{\"low\":0.31,\"normal\":0.6799999999999999,\"high\":0.01}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"ticket_14\",\"confidence\":0.98,\"probabilities\":{\"none\":0.02,\"ticket_14\":0.98,\"ticket_5\":0.0,\"ticket_1\":0.0,\"ticket_6\":0.0,\"ticket_4\":0.0}}},\"usage\":{\"input_tokens\":976,\"output_tokens\":157}}"
+  },
+  "neg1098": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #1098: Hosting provider: Vercel\n\nAdd Vercel as a hosting provider behind the provider interface ( 97). Scope Projects and deployments from the Vercel REST API with a team-scoped access token; usage where the plan exposes it (requests, errors, function duration). Deploy status also arrives through GitHub deployments. Per-environment setting: project id and team id; map Trov environments to Vercel's production / preview targets. Done when - An org admin can pick Vercel for an environment's part, enter its credential and ids in Org settings, and Test connection passes against the real API. - The Repo dashboard shows that environment's deploys and whatever usage Vercel exposes, in the same panels Cloudflare and Railway fill today. - The credential goes to Vercel's API host only, errors are scrubbed, and an org without it costs no requests. - The Set form says where to get the credential and the narrowest permission that works; verify that against the live API, not from memory. Depends on 97.",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_31": "#31: Repo dashboard: log ingestion (errors and log volume per environment) — Ingest application logs so the Repo dashboard can show errors and log volume next to deploys and health, not only reques",
+       "ticket_5": "#5: Repo dashboard: recognise a single-stack repository at setup, and dogfood it on AndresL230/trov — Part of 140. Problem Setting up monitoring asks for a frontend, a backend and their separate URLs. Someone whose whole p",
+       "ticket_8": "#8: Fitted Repo dashboard · 2: the signal inventory — what Trov can know about a repository, and what it would need — Part of 145. A catalogue, not code. Questions to answer - What does Trov already capture that says how a repository is b",
+       "ticket_2": "#2: Repo dashboard: an environment with one part (no backend / frontend split) — Part of 140. Problem An environment is modelled as two deployables on two hosts: a backend (a Railway matched by environ",
+       "ticket_10": "#10: Fitted Repo dashboard · 4: where AI fits — its role, its limits, its cost and what it is shown — Part of 145. A written decision, not code. Questions to answer - What is the model actually for? Split the job: (a) clas"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.86,\"probabilities\":{\"low\":0.09,\"normal\":0.91,\"high\":0.0}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"none\",\"confidence\":0.96,\"probabilities\":{\"none\":0.97,\"ticket_31\":0.01,\"ticket_5\":0.0,\"ticket_8\":0.0,\"ticket_2\":0.02,\"ticket_10\":0.0}}},\"usage\":{\"input_tokens\":1157,\"output_tokens\":155}}"
+  },
+  "neg1097": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #1097: Hosting providers: a provider interface so the Repo dashboard is not tied to Cloudflare and Railway\n\nThe Repo dashboard's usage and deploy panels are built around one stack: a Cloudflare Worker frontend (requests and error rate from Cloudflare's analytics API) and a Railway backend (CPU and memory from Railway's API). An org on any other host gets the GitHub half and health pings only; the other panels say \"Not connected\". This is the umbrella issue for making that pluggable. Per-provider issues link here. Today - Integration kinds are a fixed list in the schema and code: , , , , ( CHECK, , ). - An environment row has Cloudflare- and Railway-specific columns ( , , , , ). - The pollers are per provider ( , in ) and the dashboard projection names them ( , metrics). - Already provider-neutral: health pings (any https URL), GitHub deployments / check runs / workflow runs, and the app-metrics endpoint an org implements itself. Proposed shape - A provider describes: its id and label, the credential(s) it needs and where an admin gets them, per-environment settings (project / service / site ids), a (Test connection), and one or more functions that return normalised series. - Normalised metrics, so the dashboard does not care who produced them: requests, error rate, latency for a \"web\" pa",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_4": "#4: Repo dashboard: the Cloudflare Worker as the whole stack (Worker, D1, R2 and cron metrics) — Part of 140. Problem Cloudflare is read today as the FRONTEND host: traffic analytics for a Worker that serves a site, b",
+       "ticket_1": "#1: Repo dashboard: support repositories hosted on one stack (e.g. everything on one Cloudflare Worker) — Problem The Repo dashboard assumes a split deployment. says it outright: \"each environment ships two deployables, on two",
+       "ticket_2": "#2: Repo dashboard: an environment with one part (no backend / frontend split) — Part of 140. Problem An environment is modelled as two deployables on two hosts: a backend (a Railway matched by environ",
+       "ticket_31": "#31: Repo dashboard: log ingestion (errors and log volume per environment) — Ingest application logs so the Repo dashboard can show errors and log volume next to deploys and health, not only reques",
+       "ticket_5": "#5: Repo dashboard: recognise a single-stack repository at setup, and dogfood it on AndresL230/trov — Part of 140. Problem Setting up monitoring asks for a frontend, a backend and their separate URLs. Someone whose whole p"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.51,\"probabilities\":{\"low\":0.3,\"normal\":0.67,\"high\":0.03}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"none\",\"confidence\":0.95,\"probabilities\":{\"none\":0.96,\"ticket_4\":0.0,\"ticket_1\":0.03,\"ticket_2\":0.01,\"ticket_31\":0.0,\"ticket_5\":0.0}}},\"usage\":{\"input_tokens\":1215,\"output_tokens\":154}}"
+  },
+  "neg1099": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #1099: Hosting provider: Render\n\nAdd Render as a hosting provider behind the provider interface ( 97). Scope Services and deploys from the Render API with an API key; CPU and memory from its metrics endpoints where available. Per-environment setting: service id. Render posts GitHub deployment statuses when its GitHub integration is on. Done when - An org admin can pick Render for an environment's part, enter its credential and ids in Org settings, and Test connection passes against the real API. - The Repo dashboard shows that environment's deploys and whatever usage Render exposes, in the same panels Cloudflare and Railway fill today. - The credential goes to Render's API host only, errors are scrubbed, and an org without it costs no requests. - The Set form says where to get the credential and the narrowest permission that works; verify that against the live API, not from memory. Depends on 97.",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_31": "#31: Repo dashboard: log ingestion (errors and log volume per environment) — Ingest application logs so the Repo dashboard can show errors and log volume next to deploys and health, not only reques",
+       "ticket_4": "#4: Repo dashboard: the Cloudflare Worker as the whole stack (Worker, D1, R2 and cron metrics) — Part of 140. Problem Cloudflare is read today as the FRONTEND host: traffic analytics for a Worker that serves a site, b",
+       "ticket_2": "#2: Repo dashboard: an environment with one part (no backend / frontend split) — Part of 140. Problem An environment is modelled as two deployables on two hosts: a backend (a Railway matched by environ",
+       "ticket_5": "#5: Repo dashboard: recognise a single-stack repository at setup, and dogfood it on AndresL230/trov — Part of 140. Problem Setting up monitoring asks for a frontend, a backend and their separate URLs. Someone whose whole p",
+       "ticket_10": "#10: Fitted Repo dashboard · 4: where AI fits — its role, its limits, its cost and what it is shown — Part of 145. A written decision, not code. Questions to answer - What is the model actually for? Split the job: (a) clas"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.85,\"probabilities\":{\"low\":0.1,\"normal\":0.9,\"high\":0.0}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"none\",\"confidence\":0.99,\"probabilities\":{\"none\":0.99,\"ticket_31\":0.0,\"ticket_4\":0.01,\"ticket_2\":0.0,\"ticket_5\":0.0,\"ticket_10\":0.0}}},\"usage\":{\"input_tokens\":1129,\"output_tokens\":155}}"
+  },
+  "neg1094": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #1094: Let people create their own organization (self-serve org creation)\n\nSelf-serve organization creation is switched off for now. Only a platform superadmin adds an organization (Platform › Add organization) and names its admin. Current state (PR 93) - in is , so answers for anyone without an allowance. - A superadmin is exempt. A named person can be given an allowance through Platform › Admins & limits ( ). - The org picker and the org switcher menu do not offer \"Create an organization\" to an account that cannot create one. - The create dialog, its validation and (which seeds the plan, notification settings and counters) are all still in place and tested. To open it up later - Decide the default allowance (it was 3 per person) and raise . - Before doing so, settle the open-sign-up questions in › Residual risks: invitation mail to arbitrary addresses, shared Gemini key and cron budget with no per-org quota, GitHub identity pinning for existing accounts. - Restore the copy that mentions creating an organization: the landing sign-in line, the Get Started guide, the picker's intro, and the 0.18 release notes. 🤖 Generated with Claude Code",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_29": "#29: Let a person delete their own account from Settings — Problem There is no way to delete an account in the app. The Terms and the Privacy Policy both say to write to hello@tro",
+       "ticket_6": "#6: Explore: a Repo dashboard that fits the repository (detect the stack, propose a layout, let people choose) — The idea Today every repository gets the same Repo dashboard, built for one shape of project (a frontend on one host and",
+       "ticket_30": "#30: One GitHub account, several Trov organizations: connect different repositories to different orgs — Problem People want different Trov organizations for different repositories — a personal org for one project, a client's",
+       "ticket_10": "#10: Fitted Repo dashboard · 4: where AI fits — its role, its limits, its cost and what it is shown — Part of 145. A written decision, not code. Questions to answer - What is the model actually for? Split the job: (a) clas",
+       "ticket_4": "#4: Repo dashboard: the Cloudflare Worker as the whole stack (Worker, D1, R2 and cron metrics) — Part of 140. Problem Cloudflare is read today as the FRONTEND host: traffic analytics for a Worker that serves a site, b"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"low\",\"confidence\":0.97,\"probabilities\":{\"low\":0.98,\"normal\":0.02,\"high\":0.0}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"none\",\"confidence\":0.89,\"probabilities\":{\"none\":0.91,\"ticket_29\":0.0,\"ticket_6\":0.0,\"ticket_30\":0.09,\"ticket_10\":0.0,\"ticket_4\":0.0}}},\"usage\":{\"input_tokens\":1177,\"output_tokens\":156}}"
+  },
+  "neg1095": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #1095: Connect repositories through a GitHub App instead of a pasted token and a hand-made webhook\n\nToday an organization's admin connects GitHub by hand: they create a fine-grained personal access token with the right permissions, paste it into Org settings › Integrations, then add a webhook in the repository's GitHub settings with a URL and a generated secret. That is fine for orgs onboarded by hand, and it is where setup will fail for orgs we don't know. A GitHub App would make Trov something an admin installs on their repositories. What it replaces Today With a GitHub App --- --- --- Connecting a repo Create a token with seven read permissions, paste it in Click Install, pick the repos Live events Add a webhook by hand per repo ( + secret) One App webhook, delivered automatically Credential Long-lived, tied to one person; breaks when they leave or it expires Short-lived installation tokens minted by Trov Org-owned repos The GitHub org may have to approve fine-grained tokens An org owner approves the install once Several repos One webhook each; only the primary repo's events are captured Every selected repo delivers through the App Which repos exist The admin types Trov lists what the installation can see It works the same for personal repos ( ) and org repos ( ). What it does",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_30": "#30: One GitHub account, several Trov organizations: connect different repositories to different orgs — Problem People want different Trov organizations for different repositories — a personal org for one project, a client's",
+       "ticket_14": "#14: Guided repository setup: pick the stack, then be walked through connecting each piece and where to get its keys — Decision (owner, 2026-10-10) Trov does not work out how a repository is hosted by reading it. It asks. When someone sets",
+       "ticket_8": "#8: Fitted Repo dashboard · 2: the signal inventory — what Trov can know about a repository, and what it would need — Part of 145. A catalogue, not code. Questions to answer - What does Trov already capture that says how a repository is b",
+       "ticket_12": "#12: Fitted Repo dashboard · 6: how we will know it works — a set of real repositories with expected results — Part of 145. A test set, written before any detector exists. Why first Without agreed answers there is no way to tell a ",
+       "ticket_1": "#1: Repo dashboard: support repositories hosted on one stack (e.g. everything on one Cloudflare Worker) — Problem The Repo dashboard assumes a split deployment. says it outright: \"each environment ships two deployables, on two"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.45,\"probabilities\":{\"low\":0.22,\"normal\":0.63,\"high\":0.15}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"none\",\"confidence\":0.99,\"probabilities\":{\"none\":0.99,\"ticket_30\":0.0,\"ticket_14\":0.01,\"ticket_8\":0.0,\"ticket_12\":0.0,\"ticket_1\":0.0}}},\"usage\":{\"input_tokens\":1203,\"output_tokens\":156}}"
+  },
+  "neg1064": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #1064: Feed: typed entries with a type-driven layout (a small generative UI for the Feed)\n\nIdea A feed entry now has one of six types, each with a fixed set of labelled lines — but only by convention, in the skill ( 62): Type Lines --- --- What · Why · Impact · Follow-up Decided · Because · Instead of Closed · Kept · Moved to · Why State · Blocked on · Next Found · Evidence · So What broke · Cause · Fix · Guard Today the Feed renders every entry the same way: a headline and a markdown body. Make the type drive how the entry looks — a small generative UI: the agent supplies typed, structured content; the Feed picks the layout. What it could look like - A type chip on the card (tone per type: Incident red, Status amber, Shipped accent, …) and a type filter in the Feed header next to the author filter. - A layout per type rather than one markdown blob, e.g. - Shipped — What as the lead line, Why/Impact as quiet secondary lines, PR chips prominent; - Triage — Closed / Kept / Moved to as three compact columns of issue/PR chips; - Status — a \"Blocked on\" list with an owner-only marker, Next as a footer; - Finding — the measured result pulled out as a figure ( ); - Incident — a mini timeline: broke → cause → fix → guard. - Entries without a type (everything written before this)",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_25": "#25: Instant intelligence · use: feed entries with a priority, and digests that lead with what matters — Part of 154. Depends on the building blocks. Give each feed entry a kind and an importance when it is written (a breakin",
+       "ticket_9": "#9: Fitted Repo dashboard · 3: the building blocks — a widget catalogue and a way to describe a layout — Part of 145. A design, then the smallest code that proves it. Why this is the centre of the whole thing If a dashboard i",
+       "ticket_6": "#6: Explore: a Repo dashboard that fits the repository (detect the stack, propose a layout, let people choose) — The idea Today every repository gets the same Repo dashboard, built for one shape of project (a frontend on one host and",
+       "ticket_11": "#11: Fitted Repo dashboard · 5: choice and control — automatic, pick a layout, or adjust it — Part of 145. A product design, not code. Questions to answer - The three ways in. (1) Trov proposes a layout and you acc",
+       "ticket_15": "#15: Explore: instant intelligence — fast, cheap judgements attached to what Trov already stores — The idea A fast, inexpensive model looks at something Trov already holds — a feed entry, a ticket, a proposal, an item i"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"low\",\"confidence\":0.94,\"probabilities\":{\"low\":0.96,\"normal\":0.04,\"high\":0.0}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"ticket_25\",\"confidence\":0.56,\"probabilities\":{\"none\":0.35,\"ticket_25\":0.63,\"ticket_9\":0.02,\"ticket_6\":0.0,\"ticket_11\":0.0,\"ticket_15\":0.0}}},\"usage\":{\"input_tokens\":1245,\"output_tokens\":159}}"
+  },
+  "neg1090": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #1090: MCP assignticket: let agents (un)assign existing tickets\n\nWhy Agents can file tickets with assignees ( ), but once a ticket exists nothing an agent does can change who owns it: - There's no MCP assign tool. 45 proposed and deliberately kept assignment human-only. - GitHub assignment doesn't reach mirrored tickets. seeds assignees at import only (\"a GitHub (un)assign never touches assignees\"). That surfaced on 2026-09-27, when an agent split the Sapling beta work across the team. It could assign on GitHub, but about 16 existing tickets had to be assigned by hand in the web UI. Teammates who don't use GitHub (the incoming UI/UX designers) can't be reached through GitHub at all. Proposal Add the MCP tool 45 sketched, as a thin adapter over the writer the web UI already uses: : add ( ) or remove ( ) one assignee. - It reuses the web UI's handle validation, so an unknown handle is . - It's attributed to the bearer and writes a row (or the existing assignment audit, if assignment has its own), marked if that marker exists by then. - It's idempotent: adding someone already assigned, or removing someone who isn't, is a no-op success. - It never changes status. Assigning doesn't auto-move unless the web UI already does that, in which case it match",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_32": "#32: Plugin skills marked disable-model-invocation can't be used when a person asks in words (handoff, record-session, ticket — What happened On 2026-10-14 the owner asked a Claude Code session, in plain words, to \"send a handoff to get that stuff ",
+       "ticket_26": "#26: Instant intelligence · use: ticket intake — category, priority, duplicates, who should take it — Part of 154. Depends on the building blocks. On a new ticket: suggest its category and priority, warn 'this looks like 2",
+       "ticket_6": "#6: Explore: a Repo dashboard that fits the repository (detect the stack, propose a layout, let people choose) — The idea Today every repository gets the same Repo dashboard, built for one shape of project (a frontend on one host and",
+       "ticket_29": "#29: Let a person delete their own account from Settings — Problem There is no way to delete an account in the app. The Terms and the Privacy Policy both say to write to hello@tro",
+       "ticket_15": "#15: Explore: instant intelligence — fast, cheap judgements attached to what Trov already stores — The idea A fast, inexpensive model looks at something Trov already holds — a feed entry, a ticket, a proposal, an item i"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.35,\"probabilities\":{\"low\":0.11,\"normal\":0.57,\"high\":0.32}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"none\",\"confidence\":1.0,\"probabilities\":{\"none\":1.0,\"ticket_32\":0.0,\"ticket_26\":0.0,\"ticket_6\":0.0,\"ticket_29\":0.0,\"ticket_15\":0.0}}},\"usage\":{\"input_tokens\":1240,\"output_tokens\":157}}"
+  },
+  "neg1046": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #1046: Claude Code skill: work and customize the ticket queue from the agent\n\nGoal A Claude Code skill ( , symlinked into like the others) so the agent can work the ticket queue conversationally — \"file a ticket for X\", \"what's unassigned\", \"move this to sprint 13\", \"comment on the CSV export ticket\" — and so each team can customize how it does that. Reads work today over the four MCP read tools; the write half depends on the MCP write tools issue ( 45). Skill shape - Triggers: \"file a ticket\", \"what's in the queue\", \"what's assigned to me\", \"what's in this sprint\", \"comment on / start / decline ticket …\". - Procedure: orient first ( / ), confirm the exact fields it will send (title, category, priority, sprint, assignees, link) in a one-line diff before any write, then one tool call, then report what changed. Explicit-only for writes (never auto-fire), like and . - Customization lives in a small (or frontmatter) the skill reads: - default category / priority for tickets the agent files - which sprint new tickets land in (Backlog vs the active sprint) - whether the agent may assign people, and to whom (allowlist) - which transitions the agent may perform (recommend: only; never / ) - a comment signature / prefix so agent comments are recognizable - link-parsi",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_32": "#32: Plugin skills marked disable-model-invocation can't be used when a person asks in words (handoff, record-session, ticket — What happened On 2026-10-14 the owner asked a Claude Code session, in plain words, to \"send a handoff to get that stuff ",
+       "ticket_26": "#26: Instant intelligence · use: ticket intake — category, priority, duplicates, who should take it — Part of 154. Depends on the building blocks. On a new ticket: suggest its category and priority, warn 'this looks like 2",
+       "ticket_24": "#24: Instant intelligence · use: My Work ordered by what needs you first — Part of 154. Depends on the building blocks. Order the items within My Work's tiles and add one line on where to start, ",
+       "ticket_22": "#22: Instant intelligence · use: notice when a doc and recent work disagree — Part of 154. Depends on the building blocks. A scheduled check: 'this doc says deploys are manual; three recent feed ent",
+       "ticket_6": "#6: Explore: a Repo dashboard that fits the repository (detect the stack, propose a layout, let people choose) — The idea Today every repository gets the same Repo dashboard, built for one shape of project (a frontend on one host and"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.28,\"probabilities\":{\"low\":0.48,\"normal\":0.52,\"high\":0.0}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"none\",\"confidence\":0.8,\"probabilities\":{\"none\":0.83,\"ticket_32\":0.01,\"ticket_26\":0.16,\"ticket_24\":0.0,\"ticket_22\":0.0,\"ticket_6\":0.0}}},\"usage\":{\"input_tokens\":1242,\"output_tokens\":157}}"
+  },
+  "neg1052": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #1052: Store and share artifacts: keep agent-produced pages (specs, reports, design pages) in Canopy and share them with the team\n\nCanopy feature addition. What Agent sessions increasingly produce shareable artifacts: design pages, specs, audit reports, dashboards. One example is the Google sign-in design page linked from . Today they live at scattered URLs or in local files, and are hard to find later. Canopy should store them and share them with the team: - Store. Register an artifact through MCP and the web. A record holds: - a title and kind; - a URL or an uploaded file; - the author and the repo or area; - links to issues, PRs, tickets and sprints. - Share. Browse artifacts by area, sprint or ticket. They are visible to the org, and can be attached to tickets and sprints as resources. - Search. Include artifacts in , so can surface them. This is not the existing feed-entry field, which holds observed PR, commit and issue references on a feed row. The naming should avoid colliding with it. Open questions - Store the content, or only a link? Links rot, and a private artifact page isn't viewable by teammates. Copies (e.g. in R2) need a size limit and access control. - Direct or staged? An authored artifact is closer to a ticket than to a doc. But one presented as a spec or decision may need to go through the",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_27": "#27: Instant intelligence · use: tags for artifacts and docs — Part of 154. Depends on the building blocks. Suggest tags from the fixed vocabulary (auth, architecture, infra, api, ui,",
+       "ticket_7": "#7: Fitted Repo dashboard · 1: the brief — what we are building, for whom, and what is out of scope — Part of 145. A written decision, not code. Questions to answer - Who is it for? A team connecting its first repository, ",
+       "ticket_11": "#11: Fitted Repo dashboard · 5: choice and control — automatic, pick a layout, or adjust it — Part of 145. A product design, not code. Questions to answer - The three ways in. (1) Trov proposes a layout and you acc",
+       "ticket_17": "#17: Instant intelligence · building block 2: where suggestions live — Part of 154. A single place to store a model's judgement about an item, kept apart from what a person set. Wanted - A te",
+       "ticket_29": "#29: Let a person delete their own account from Settings — Problem There is no way to delete an account in the app. The Terms and the Privacy Policy both say to write to hello@tro"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.35,\"probabilities\":{\"low\":0.42,\"normal\":0.57,\"high\":0.01}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"none\",\"confidence\":0.96,\"probabilities\":{\"none\":0.97,\"ticket_27\":0.02,\"ticket_7\":0.0,\"ticket_11\":0.0,\"ticket_17\":0.01,\"ticket_29\":0.0}}},\"usage\":{\"input_tokens\":1219,\"output_tokens\":157}}"
+  },
+  "neg2": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #2: Repo dashboard: an environment with one part (no backend / frontend split)\n\nPart of 140. Problem An environment is modelled as two deployables on two hosts: a backend (a Railway matched by environment name) and a frontend (the Cloudflare \"Workers Builds\" , matched by name and branch). The environment's status pill, its \"last deploy\" and its health all read both. A single-stack project has ONE deployable per environment. For a Worker that serves everything, the only deploy signal is the Workers Builds check run; there is no at all, and one URL answers for both the app and its API. Wanted - An environment may have exactly one part. Its deploy history, status and \"last deploy\" come from that one part's signal, whichever kind it is (a check run, or a deployment status). - Health: one URL (plus an optional health path on the same origin), not a frontend URL and a separate API URL. The pill is computed from the parts that exist. - The dashboard and Org settings never show a slot for a part that is not configured. No \"Backend: not connected\" row for a project that has no backend. - The deploys (CI) section and the MCP answer describe the same single part. Notes - The hosting-providers branch already gives a part a / role; a single-stack environment is one part th",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_1": "#1: Repo dashboard: support repositories hosted on one stack (e.g. everything on one Cloudflare Worker) — Problem The Repo dashboard assumes a split deployment. says it outright: \"each environment ships two deployables, on two",
+       "ticket_3": "#3: Repo dashboard: a repository with one environment (drift, previews, the environment list) — Part of 140. Problem Several things assume at least two long-lived environments: - Drift is computed between environment",
+       "ticket_4": "#4: Repo dashboard: the Cloudflare Worker as the whole stack (Worker, D1, R2 and cron metrics) — Part of 140. Problem Cloudflare is read today as the FRONTEND host: traffic analytics for a Worker that serves a site, b",
+       "ticket_5": "#5: Repo dashboard: recognise a single-stack repository at setup, and dogfood it on AndresL230/trov — Part of 140. Problem Setting up monitoring asks for a frontend, a backend and their separate URLs. Someone whose whole p",
+       "ticket_31": "#31: Repo dashboard: log ingestion (errors and log volume per environment) — Ingest application logs so the Repo dashboard can show errors and log volume next to deploys and health, not only reques"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.7,\"probabilities\":{\"low\":0.04,\"normal\":0.8,\"high\":0.16}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"ticket_1\",\"confidence\":0.94,\"probabilities\":{\"none\":0.04,\"ticket_1\":0.95,\"ticket_3\":0.0,\"ticket_4\":0.0,\"ticket_5\":0.01,\"ticket_31\":0.0}}},\"usage\":{\"input_tokens\":1204,\"output_tokens\":156}}"
+  },
+  "neg25": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #25: Instant intelligence · use: feed entries with a priority, and digests that lead with what matters\n\nPart of 154. Depends on the building blocks. Give each feed entry a kind and an importance when it is written (a breaking change, a decision needed, routine), let the Feed be filtered or ordered by it, and let digest emails open with the three entries that matter to that person. Why: the feed is the highest-volume thing in Trov and the easiest to stop reading. Careful: importance is relative to a person's area, so decide whether it is one label per entry or per reader. Rules that bind every one of these (CLAUDE.md) - Suggestions, never actions. A model may propose a label, an order or a destination. It never closes, reassigns, promotes, publishes or deletes anything: nothing infers a resolution, and agents stage while humans confirm. - Never while a page loads. A judgement is made when something is written, or in a scheduled run, and stored. Nothing on a render path calls a model. - A fixed set of answers. The model picks from a list Trov gives it; it does not write interface, markup or figures. - Never guess on read. No suggestion is shown as fact; an item with no suggestion simply has none. - Metered. Calls count against a per-organization allowance in .",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_26": "#26: Instant intelligence · use: ticket intake — category, priority, duplicates, who should take it — Part of 154. Depends on the building blocks. On a new ticket: suggest its category and priority, warn 'this looks like 2",
+       "ticket_15": "#15: Explore: instant intelligence — fast, cheap judgements attached to what Trov already stores — The idea A fast, inexpensive model looks at something Trov already holds — a feed entry, a ticket, a proposal, an item i",
+       "ticket_18": "#18: Instant intelligence · building block 3: one way to show and answer a suggestion — Part of 154. One interface pattern, used wherever a suggestion appears, so people learn it once. Wanted - A small \"Sugge",
+       "ticket_22": "#22: Instant intelligence · use: notice when a doc and recent work disagree — Part of 154. Depends on the building blocks. A scheduled check: 'this doc says deploys are manual; three recent feed ent",
+       "ticket_28": "#28: Instant intelligence · use: a reading list when someone claims a handoff — Part of 154. Depends on the building blocks. When a handoff is claimed, show a short 'read these first' list: the docs a"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"request\",\"confidence\":1.0,\"probabilities\":{\"bug\":0.0,\"request\":1.0,\"question\":0.0,\"access\":0.0,\"other\":0.0}},\"priority\":{\"type\":\"choice\",\"choice\":\"normal\",\"confidence\":0.58,\"probabilities\":{\"low\":0.2,\"normal\":0.72,\"high\":0.08}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"none\",\"confidence\":0.52,\"probabilities\":{\"none\":0.6,\"ticket_26\":0.24,\"ticket_15\":0.15,\"ticket_18\":0.0,\"ticket_22\":0.01,\"ticket_28\":0.0}}},\"usage\":{\"input_tokens\":1207,\"output_tokens\":158}}"
+  },
+  "neg8": {
+   "request": {
+    "model": "jev-latest",
+    "state": "Ticket #8: Fitted Repo dashboard · 2: the signal inventory — what Trov can know about a repository, and what it would need\n\nPart of 145. A catalogue, not code. Questions to answer - What does Trov already capture that says how a repository is built and hosted? Go through the webhook, reconcile, Sync and the cron: check runs with their app slug and details URL, deployment statuses and environment names, commit status contexts, workflow runs and job names, branch names, pull requests. For each: where it is stored, how reliable it is, and what it tells us. (The hosting-providers branch already detects Vercel, Netlify and Cloudflare Workers Builds from captured check runs, and notes that Render, Railway and Fly.io are missed because their deployment events are dropped for unconfigured environments.) - What is NOT captured that detection would want? Files at the repository root ( , , , , , , , workflow files), languages, the default branch's tree. - What would reading those require? Which GitHub App permission (repository contents: read is a new, visible permission every installing org must approve), what the manual-token path can do, how many requests per repository, and where in the pipeline it runs (never at render time). - What must never be read or stored? Source code beyond the named config files, secr",
+    "questions": {
+     "category": {
+      "type": "choice",
+      "instructions": "What kind of ticket is this?",
+      "criteria": {
+       "bug": "Something is broken, fails, or behaves wrongly",
+       "request": "Asks for something new or changed: a feature, an improvement, support for a case, a piece of work",
+       "question": "Asks how something works or for information, without asking for a change",
+       "access": "Asks for access, an account, an invite, a role or a permission",
+       "other": "None of these"
+      }
+     },
+     "priority": {
+      "type": "choice",
+      "instructions": "How urgent is this ticket?",
+      "criteria": {
+       "low": "Can wait: an idea, an exploration, a nice-to-have, polish, or something marked for later",
+       "normal": "Ordinary work, with no sign of urgency or of being deferred",
+       "high": "Urgent: something is broken for people now, blocks work, risks data or security, or is asked for as soon as possible"
+      }
+     },
+     "duplicate": {
+      "type": "choice",
+      "instructions": "Is this ticket the same request as one of these existing tickets? Pick that ticket, or none.",
+      "criteria": {
+       "none": "None of them: this ticket asks for something different (related or similar work is not the same request)",
+       "ticket_5": "#5: Repo dashboard: recognise a single-stack repository at setup, and dogfood it on AndresL230/trov — Part of 140. Problem Setting up monitoring asks for a frontend, a backend and their separate URLs. Someone whose whole p",
+       "ticket_6": "#6: Explore: a Repo dashboard that fits the repository (detect the stack, propose a layout, let people choose) — The idea Today every repository gets the same Repo dashboard, built for one shape of project (a frontend on one host and",
+       "ticket_12": "#12: Fitted Repo dashboard · 6: how we will know it works — a set of real repositories with expected results — Part of 145. A test set, written before any detector exists. Why first Without agreed answers there is no way to tell a ",
+       "ticket_10": "#10: Fitted Repo dashboard · 4: where AI fits — its role, its limits, its cost and what it is shown — Part of 145. A written decision, not code. Questions to answer - What is the model actually for? Split the job: (a) clas",
+       "ticket_3": "#3: Repo dashboard: a repository with one environment (drift, previews, the environment list) — Part of 140. Problem Several things assume at least two long-lived environments: - Drift is computed between environment"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"category\":{\"type\":\"choice\",\"choice\":\"question\",\"confidence\":0.51,\"probabilities\":{\"bug\":0.0,\"request\":0.37,\"question\":0.61,\"access\":0.0,\"other\":0.02}},\"priority\":{\"type\":\"choice\",\"choice\":\"low\",\"confidence\":0.33,\"probabilities\":{\"low\":0.55,\"normal\":0.44,\"high\":0.01}},\"duplicate\":{\"type\":\"choice\",\"choice\":\"none\",\"confidence\":0.68,\"probabilities\":{\"none\":0.73,\"ticket_5\":0.0,\"ticket_6\":0.17,\"ticket_12\":0.08,\"ticket_10\":0.02,\"ticket_3\":0.0}}},\"usage\":{\"input_tokens\":1213,\"output_tokens\":155}}"
+  }
+ }
+}

@@ -19,8 +19,8 @@
 // The status machine is NOT re-declared here: `canTransition` in shared/tickets.ts
 // is the one table, shared with the SPA.
 
-import type { TicketCreate, TicketEdit, TicketStatus } from "@shared/tickets";
-import { canTransition, parseTicketLink, placeInColumn } from "@shared/tickets";
+import type { TicketCategory, TicketCreate, TicketEdit, TicketPriority, TicketStatus } from "@shared/tickets";
+import { canTransition, parseTicketLink, placeInColumn, TICKET_CATEGORIES, TICKET_PRIORITIES } from "@shared/tickets";
 import type { TicketRow } from "@shared/rows";
 import { type TenantContext, type Stmt, first, all, run, stmt, batch, nowIso } from "../data/sql";
 import { requireMember } from "../auth/persons";
@@ -312,6 +312,26 @@ export async function edit_ticket(ctx: TenantContext, number: number, patch: Tic
   if (title === undefined && patch.body === undefined) throw new TicketError("bad_request", "nothing to edit: pass title and/or body");
   await run(ctx, `UPDATE tickets SET title = ?, body = ?, updated_at = ? WHERE id = ? AND org_id = ?`,
     title ?? t.title, patch.body ?? t.body, nowIso(), id, ctx.orgId);
+}
+
+/**
+ * Set a ticket's category and/or priority after it was filed — today ONLY Trov's suggestion Accept reaches it
+ * (`ticket.category` / `ticket.priority`, src/ai/jobs/accept.ts), as the person who pressed it. Not an MCP tool.
+ * A value outside the vocabulary, or a patch that sets neither, is `bad_request`; setting what the ticket already
+ * has writes nothing. No history row — `ticket_events` audits status moves only.
+ */
+export async function set_ticket_classification(
+  ctx: TenantContext, number: number, patch: { category?: TicketCategory; priority?: TicketPriority }, actor: string,
+): Promise<void> {
+  const t = await getTicketRow(ctx, number);
+  await requireMember(ctx, actor);
+  if (patch.category === undefined && patch.priority === undefined) throw new TicketError("bad_request", "nothing to set: pass category and/or priority");
+  if (patch.category !== undefined && !(TICKET_CATEGORIES as readonly string[]).includes(patch.category)) throw new TicketError("bad_request", `unknown category: ${patch.category}`);
+  if (patch.priority !== undefined && !(TICKET_PRIORITIES as readonly string[]).includes(patch.priority)) throw new TicketError("bad_request", `unknown priority: ${patch.priority}`);
+  const category = patch.category ?? t.category;
+  const priority = patch.priority ?? t.priority;
+  if (category === t.category && priority === t.priority) return;
+  await run(ctx, `UPDATE tickets SET category = ?, priority = ?, updated_at = ? WHERE id = ? AND org_id = ?`, category, priority, nowIso(), t.id, ctx.orgId);
 }
 
 /** Move a ticket into a sprint, or back to the backlog (`null`). */

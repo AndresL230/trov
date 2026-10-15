@@ -52,6 +52,13 @@ export const KIND_PROVIDER = {
   "pr.theme": "jev",
   // Phase C: how much a feed entry or a merged PR matters, routine / notable / breaking (src/ai/importance.ts).
   "feed.importance": "jev",
+  // Phase C cards (src/ai/jobs/cards.ts): a ticket's category, priority and possible duplicate (one request), a
+  // Review item's risk, an Unplaced item's destination.
+  "ticket.category": "jev",
+  "ticket.priority": "jev",
+  "ticket.duplicate": "jev",
+  "review.risk": "jev",
+  "unplaced.destination": "jev",
 } as const satisfies Record<string, AiProviderName>;
 
 /** What a call is for. */

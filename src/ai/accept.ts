@@ -13,14 +13,18 @@ export interface AcceptHandler {
   /** Write the real field AS `ctx`'s person (the signed-in caller's own context — the author is always the
    *  authenticated principal). `value` is the suggested one, or the person's replacement (Rename). Throw to
    *  refuse: the suggestion goes back to open — an `AcceptRefused` answers with its code, anything else
-   *  propagates (a `PlanLimitError` reaches the app's 402 as usual). */
-  apply(ctx: TenantContext, suggestion: AiSuggestionRow, value: unknown): Promise<void>;
+   *  propagates (a `PlanLimitError` reaches the app's 402 as usual). `req` is what the request knows that the
+   *  context does not: the app's origin (an in-app link, Phase C's duplicate). */
+  apply(ctx: TenantContext, suggestion: AiSuggestionRow, value: unknown, req?: AcceptRequest): Promise<void>;
   /** Who may DISMISS this kind (default: any member). A theme's Remove is an admin's. */
   dismissRole?: "member" | "admin";
   /** What a dismissal also does to the real item (a removed theme), AS `ctx`'s person, after it is recorded.
    *  Never fails the dismissal: a throw is logged. */
   dismissed?(ctx: TenantContext, suggestion: AiSuggestionRow): Promise<void>;
 }
+
+/** What the accept request knows beyond the context. */
+export interface AcceptRequest { origin: string | null }
 
 /** A handler's refusal, answered with its code (the claim is undone first). */
 export class AcceptRefused extends Error {

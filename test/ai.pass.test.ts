@@ -55,7 +55,14 @@ const pass = (s: Stub, jobs: readonly AiJob[], limit = 900, e: Env = keyedEnv())
 
 describe("the real registry, with nothing it takes", () => {
   it("AI_JOBS holds the producers; over scopes none of them takes it makes zero calls and writes nothing — with both keys and stale scopes", async () => {
-    expect(AI_JOBS.map((j) => j.name)).toEqual(["tag.fit:new-item", "feed.importance:feed", "feed.importance:pr", "pr.theme", "themes.propose", "themes.caption", "themes.backfill"]);
+    expect(AI_JOBS.map((j) => j.name)).toEqual([
+      "ticket.card", "review.risk", "unplaced.destination", "tag.fit:new-item", "feed.importance:feed", "feed.importance:pr",
+      "pr.theme", "themes.propose", "themes.caption", "themes.backfill",
+    ]);
+    // Phase C's cards: Jev, cards only, each on its own key prefix.
+    expect(AI_JOBS.slice(0, 3).map((j) => [j.name, j.provider, j.scope, j.keyPrefix])).toEqual([
+      ["ticket.card", "jev", "card", "ticket:"], ["review.risk", "jev", "card", "proposal:"], ["unplaced.destination", "jev", "card", "unplaced:"],
+    ]);
     await cards(ORG_A, 3);
     const s = stub();
     expect(await runAiPass(keyedEnv(), newBudget(s.fetchImpl), { now: NOW })).toMatchObject({ calls: 0, haiku: 0, jev: 0, batched: 0, collected: 0, deferred: 0 });

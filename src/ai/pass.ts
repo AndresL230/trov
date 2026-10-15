@@ -47,14 +47,18 @@ import { providerFor, type AiProviderOpts, type AiUsage, type JevAsk, type JevKi
 import { groupOf, takes, validJob, customIdOf, type AiJob, type ClaudeJob, type JevGate, type JevJob, type JevRequest, type JobItem } from "./jobs";
 import { orgPrefix } from "./prefix";
 import { collectBatches, submitBatches, AI_BATCH_PER_TICK, type QueuedRequest } from "./batches";
+import { ticketCardJob, reviewRiskJob, unplacedDestinationJob } from "./jobs/cards";
 import { prThemeJob, themesBackfillJob, themesCaptionJob, themesProposeJob } from "./themes";
 import { TAG_FIT_ITEM_JOB } from "./sift-items";
 import { IMPORTANCE_JOBS } from "./importance";
 
 export type { AiJob } from "./jobs";
 
-/** THE registry: one line per producer (Phases C and D). */
+/** THE registry: one line per producer — Phase C's Jev cards, then (Phase D) the Haiku producers. */
 export const AI_JOBS: readonly AiJob[] = [
+  ticketCardJob, // card:ticket — ticket.category / ticket.priority / ticket.duplicate, one request (./jobs/cards.ts)
+  reviewRiskJob, // card:proposal — review.risk
+  unplacedDestinationJob, // card:unplaced — unplaced.destination
   TAG_FIT_ITEM_JOB, // tag.fit — Sift on new items (card:tagfit:*)
   ...IMPORTANCE_JOBS, // feed.importance — card:feed:*, card:pr:*
   prThemeJob,

@@ -29,7 +29,7 @@ A caller names a KIND, never a model. `KIND_PROVIDER` is the ONE table from a ki
 | Provider | Model | Kinds today | What it does |
 |---|---|---|---|
 | `claude` | `claude-haiku-5-5` (Anthropic, `ANTHROPIC_API_KEY`) | `summary_pr`, `summary_issue`, `filter` | `structured()`: one call, a system prompt and a text in, a zod-checked value out. It writes words. |
-| `jev` | `jev-latest` (TypeSafe AI's Jev, `TYPESAFE_API_KEY`) | `tag.fit`, `feed.importance` | `classify()`: a run of one yes/no question over many items; `ask()`: several `noul` / `choice` / `score` questions about ONE item in ONE request. Numbers only, no text. |
+| `jev` | `jev-latest` (TypeSafe AI's Jev, `TYPESAFE_API_KEY`) | `tag.fit`, `feed.importance`, `pr.theme`; Phase C's cards: `ticket.category`, `ticket.priority`, `ticket.duplicate`, `review.risk`, `unplaced.destination` | `classify()`: a run of one yes/no question over many items; `ask()`: several `noul` / `choice` / `score` questions about ONE item in ONE request. Numbers only, no text. |
 
 - **The Jev provider is `src/tools/classify.ts`**, the ONLY file in `src/` and `shared/` that names TypeSafe's URL,
   and only `src/ai/client.ts` imports it (`test/secrets.mcp.test.ts`). `classify` is Sift's run, unchanged by the
@@ -99,9 +99,9 @@ either off stops a run in progress at its next request. The Tags tab says when t
 6-hourly progress / reconcile), AFTER the health pings, on what they left of the SAME `Budget`
 (`CRON_SUBREQUEST_BUDGET`, `CRON_WALL_BUDGET_MS` — `src/repo/dispatch.ts`, `repo-dashboard.md` › The repo cron).
 
-- **The job registry.** `AI_JOBS: readonly AiJob[]` — one line per producer (› Jobs: Phase C's `tag.fit` and
-  `feed.importance`; Phase D's `pr.theme`, `themes.propose`, `themes.caption`, `themes.backfill` ("Themes" below); Phase D
-  adds the other Haiku producers). A job
+- **The job registry.** `AI_JOBS: readonly AiJob[]` — one line per producer (› Jobs and › The kinds: Phase C's three Jev
+  card jobs, `tag.fit` and `feed.importance`; Phase D's `pr.theme`, `themes.propose`, `themes.caption`,
+  `themes.backfill` ("Themes" below); Phase D adds the other Haiku producers). A job
   (`src/ai/jobs.ts`) is one KIND of work over one scope (`scope`, and for a shared scope like `card` a `keyPrefix`):
   `input(ctx, scope)` reads its item from D1 (null = nothing to send: the scope is written as it is), and then —
   - a **Jev job** (`provider: "jev"`, a `JevKind`): `ask(item)` → ONE request (`state` + questions) per item;
@@ -410,19 +410,60 @@ the model cannot invent an item, because it returns no item. Three screens: Tick
   model's answer, with no key, no call and no count; `empty` is unreadable, `capped` the 402. The switch still holds.
 - Tests: `test/ai.filter.test.ts` (the call, the gates, the checks, the preview), `test/render.ai-filter.test.ts`.
 
+## The kinds (Phase C: the Jev cards, `src/ai/jobs/`)
+
+Three jobs in `AI_JOBS` (`src/ai/jobs/cards.ts`), each ONE Jev request per item, each writing `ai_suggestions` and
+nothing else. The request and the decision are pure modules (`ticket-card.ts`, `review-card.ts`, `unplaced-card.ts`)
+so the eval runner and the recorded-response test build exactly what the pass sends; D1 reads are
+`src/data/ai-cards.ts` (this org's own full-text indexes only, never the item itself).
+
+| Job (scope) | Kinds | The question | Accept |
+|---|---|---|---|
+| `ticket.card` (`card:ticket:<n>`) | `ticket.category`, `ticket.priority`, `ticket.duplicate` | ONE request with up to three `choice` questions: the category (`TICKET_CATEGORIES`), the priority (`TICKET_PRIORITIES`), and the duplicate — `ticket_<n>` for each of the TOP FIVE `tickets_fts` hits (never itself, its parent or children, or a ticket it already links) or `none` | category / priority → `set_ticket_classification` (`src/tools/tickets.ts`); duplicate → `add_ticket_link` (the other ticket's GitHub issue if mirrored, else its in-app `#tickets/<n>` address) — never closes anything |
+| `review.risk` (`card:proposal:doc:<slug>:<v>` / `card:proposal:adr:<id>`) | `review.risk` | `choice`: `decision` / `contradicts` / `process` / `routine`, over the lines the proposal removes and adds (or the ADR's context, decision, rationale) and the top related live docs and ratified decisions | none (`not_available`): Dismiss only. Never promotes, rejects or ratifies; `routine` writes nothing |
+| `unplaced.destination` (`card:unplaced:<id>`) | `unplaced.destination` | `choice` over the vocabulary's sections (less `needs-triage`) and the top three live docs by full text ("next to …"); a section's probability is its own option's plus its docs' | `assign_triage` as a doc in that section — exactly Unplaced's "File it", the same gate, as the person |
+
+- **Person over AI.** A ticket's category is asked about only while it is `other` and its priority only while it
+  is `normal` (what the form files when nobody picks; a person who picked either is indistinguishable and is left
+  alone); a kind a person already accepted or dismissed for the item (`decidedKinds`) is never asked again; a
+  closed ticket, a gone item, an Unplaced item that is not a doc (no slug and body) is not asked about at all.
+- **Candidates only.** A duplicate or a destination is only ever one of the options OFFERED; anything else counts
+  for nothing (the parser already refuses an option outside the question).
+- **Thresholds** (chosen on the eval sets): category 0.7, priority 0.75, duplicate 0.9, risk 0.6, destination 0.55.
+  Below one, or the value the item already has, writes nothing and the scope is still cleared.
+- **Reasons are Trov's evidence**: the ticket's own words around a word matching the answer (else its title); the
+  words two tickets share (else the candidate's full-text snippet); the lines a proposal removes / adds or the
+  decision an ADR records, plus the related doc or decision cited; the snippet an Unplaced item shares with the
+  nearby doc, or the section the agent filed it under. No reason → no suggestion.
+- **The screens** (cookie reads only, `src/ai/attach.ts`): `GET /tickets/:id` carries `TicketDetail.ai?`,
+  `GET /needs-triage` each row's `ai?`, `GET /proposals` / `GET /adrs` each item's `ai?` — open suggestions only,
+  only while the switch is on (`openSuggestions` joins `orgs.ai_automation`); a failed read returns the rows as they
+  were. MCP's `get_ticket` never carries the field. Drawn by `web/src/ai-cards.ts` (chips with Accept / Dismiss on
+  the ticket detail and on an Unplaced item; a quiet risk line on Review with Dismiss only).
+- **Evals** (`test/ai-evals/<kind>/cases.json`, ≥15 each, labelled by hand, from Personal Dev and this repo):
+  `node scripts/ai-evals/run.mjs record --vars .dev.vars` (LIVE, a few cents) writes `recorded.json`; `score`
+  (offline) writes `results.json` and a threshold sweep. `test/ai.evals.cards.test.ts` replays the recorded bodies at the
+  `Response` level and fails on ANY drift in a card's request (re-record) or in a decision.
+
 ## Suggestions and "Wrong?" (0055)
 
 - **`ai_suggestions`** — a suggested value for one field of one item, with a REQUIRED reason, its cites, model and
   prompt version; `open` → `accepted` | `dismissed` (a person's decision, remembered) | `superseded` (a re-run of
-  the same kind for the same item replaces the OPEN one: `putSuggestion`, `src/data/ai.ts`). Theme proposals write them (kind `themes.propose`).
+  the same kind for the same item replaces the OPEN one: `putSuggestion`, `src/data/ai.ts`). Phase C's cards write
+  them (› The kinds), and theme proposals (kind `themes.propose`). A value that is an object names itself with a
+  `label` (`suggestionDto`).
 - **Accept** — `POST /ai/suggestions/:id/accept { value? }` (`:id` is the row id; another org's id is
   `not_found`). In order: `not_found` (404) → `not_open` (409) → `not_available` (409: no handler for the kind) →
   `forbidden` (403: below the handler's role) → `invalid` (400: a body the contract refuses). Then the row is claimed by one guarded UPDATE, the handler writes the
   real field AS the cookie person, and on its throw the claim is undone. `AI_ACCEPT_HANDLERS` (`src/ai/suggestions.ts`)
-  holds the theme handlers (kind `themes.propose`); any other kind is `not_available`. **A handler names its `role`**: `member` (anyone in the org)
+  holds Phase C's (`src/ai/jobs/accept.ts`) and the theme handlers (kind `themes.propose`); a kind with none
+  (`review.risk`) is `not_available`. A handler gets the request's origin too (`AcceptRequest`: the in-app address a
+  duplicate link points at). **A handler names its `role`**: `member` (anyone in the org)
   or `admin`; **dismiss is open to every member** (`POST /ai/suggestions/:id/dismiss`) unless the handler names a `dismissRole` (a theme's
   Remove is an admin's), and a handler may also act on a dismissal (`dismissed`), check a value before the claim (`valid`:
-  `invalid` 400) and refuse with a code (`AcceptRefused`) — `src/ai/accept.ts`. Theme accept / rename /
+  `invalid` 400) and refuse with a code (`AcceptRefused`) — `src/ai/accept.ts`. A refusal is never a 500: Phase C's
+  handlers check their value in `valid` and answer a writer's refusal after the claim (the ticket or triage item
+  gone) as `not_available` / `invalid` / `forbidden` (`refusing`, `src/ai/jobs/accept.ts`). Theme accept / rename /
   remove go through the same two routes.
 - **"Wrong?"** — `POST /ai/feedback` (`AiFeedbackBody`) records `ai_feedback` for the cookie person, ONE row per
   (person, item), idempotent; it hides the item for that person (`hiddenFor(ctx, handle, itemType)`, what a
@@ -446,7 +487,9 @@ month in `ready` / `proposed`, nothing used in `empty`, every allowance used up 
 org's real ones, and what is sent names both providers in every mode) — when it names a mode (`ready` / `empty` /
 `capped` / `proposed`), the request came to a loopback `http://` origin (what `wrangler dev` serves on; no deployed
 Worker is reached there) and no live Stripe key is set. Never over MCP. It also answers the plain-language filter route
-from its fixtures (above).
+from its fixtures (above). And it puts Phase C's sample suggestions on the REAL rows of the ticket detail, Unplaced and
+Review (`ticketSuggestionsFixture`, `unplacedSuggestionFixture`, `reviewRiskFixture`; made-up ids, so Accept and
+Dismiss answer `not_found`) while the switch is on, in `ready` / `proposed`.
 
 ## Tests
 
@@ -470,5 +513,10 @@ merged-PR webhook, an assigned issue and Sync; an existing summary kept; on = as
 `test/secrets.mcp.test.ts` (the call sites, the MCP boundary, TypeSafe's URL in one file),
 `test/plans.limits.test.ts` (`ai_chat`, per seat on Pro), `test/ai.filter.test.ts` and `test/render.ai-filter.test.ts`
 (the plain-language filter), `test/ai.themes.test.ts` (themes: the threshold, the cadence, cites, person-over-AI, the
-caption rules, admin-only decisions, batch results for a deleted or switched-off org, the read and the dev seed) and
-`test/ai-evals.themes.test.ts` (the theme evals, replayed).
+caption rules, admin-only decisions, batch results for a deleted or switched-off org, the read and the dev seed),
+`test/ai-evals.themes.test.ts` (the theme evals, replayed), `test/ai.cards.test.ts` (Phase C's cards over real D1: the
+request, person over AI, decided kinds, the switch, Accept through the writers — and its refusals as 4xx —, the reads,
+the preview), `test/ai.evals.cards.test.ts` (the cards' recorded evals), `test/render.ai-cards.test.ts` (the three
+screens with and without `ai`), `test/ai.cards-live.test.ts` (END TO END on real rows: the pass writes them, the SPA's
+own api client reads them through the real cookie routes, the SPA's render draws the AI kit's chips, and its
+`aiAccept` / `aiDismiss` acts round-trip through the real accept / dismiss routes).

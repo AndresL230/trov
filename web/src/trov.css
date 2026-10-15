@@ -463,6 +463,22 @@ input, select { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .cnpy-rv-row, .cnpy-rv-row .cnpy-titem, .cnpy-rv-card-in, .cnpy-rv-verdict { transition:none !important; }
 }
+/* The same exit for a suggestion Trov made (web/src/ai-cards.ts `leaveBox`; Phase C's chips on the ticket detail,
+   Unplaced and Review): once Accept / Dismiss answered, the box holds .13s, then its one track goes `1fr` → `0fr` and
+   it fades over `--fx-fast` on `--fx-ease` — `AI_CHIP_EXIT_MS`, after which main.ts re-reads. Those screens are
+   rebuilt on a paint, so it is a keyframe animation whose negative delay (`--leave-t`, set from the time already
+   spent leaving) makes a rebuilt box join it where the old one was; a list's mark just fades the same way. The
+   chip itself enters with the screen (`.cnpy-rise`). Reduced motion: gone at once. */
+@keyframes cnpy-ai-out { from { grid-template-rows:1fr; opacity:1; } to { grid-template-rows:0fr; opacity:0; } }
+@keyframes cnpy-ai-fade { from { opacity:1; } to { opacity:0; } }
+.cnpy-ai-out { display:grid; grid-template-rows:1fr; }
+.cnpy-ai-out-in { min-height:0; }
+.cnpy-ai-out[data-leaving] { animation:cnpy-ai-out var(--fx-fast) var(--fx-ease) both; animation-delay:calc(.13s + var(--leave-t, 0ms)); pointer-events:none; }
+.cnpy-ai-out[data-leaving] > .cnpy-ai-out-in { overflow:hidden; }
+.cnpy-ai-risk[data-leaving], .cnpy-ai-row-mark[data-leaving] { animation:cnpy-ai-fade var(--fx-fast) var(--fx-ease) both; animation-delay:calc(.13s + var(--leave-t, 0ms)); }
+@media (prefers-reduced-motion: reduce) {
+  .cnpy-ai-out[data-leaving], .cnpy-ai-risk[data-leaving], .cnpy-ai-row-mark[data-leaving] { animation:none !important; display:none !important; }
+}
 /* How many are waiting, on a switch's option (Review's All / Proposals / Decisions). */
 .cnpy-seg-n { font-family:var(--label); font-size:11px; font-weight:600; color:var(--fg-40); font-variant-numeric:tabular-nums; }
 .cnpy-seg-btn.is-on > .cnpy-seg-n { color:var(--fg-55); }

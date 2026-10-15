@@ -10,6 +10,7 @@
 // `actor`) hold a person HANDLE (0023 identity root), never a GitHub login.
 
 import { z } from "zod";
+import type { AiSuggestion } from "./ai-core";
 import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUSES, TICKET_LINK_KINDS, TICKET_SOURCES,
 } from "./tickets-core";
@@ -131,6 +132,10 @@ export type TicketDetail = TicketRow & {
   parent: TicketRef | null;
   children: TicketRef[];
   sprint: { id: number; label: string } | null;
+  /** The ticket detail's cookie read only (`GET /tickets/:id`, src/ai/attach.ts — never MCP's `get_ticket`): Trov's
+   *  open suggestions for it (`ticket.category`, `ticket.priority`, `ticket.duplicate`). Absent when there is none,
+   *  or the org's AI is off. */
+  ai?: AiSuggestion[];
 };
 
 // ── payloads (request bodies; the routes validate with these) ────────────────
@@ -248,6 +253,11 @@ export function parseTicketLink(raw: string, repo: string | null): ParsedLink | 
     const seg = (url.split("/").filter(Boolean).pop() || "Design file").split("?")[0].replace(/[-_]+/g, " ");
     return { url, kind: "figma", label: seg.charAt(0).toUpperCase() + seg.slice(1), meta: "FIGMA · DESIGN" };
   }
+
+  // Another ticket in Trov (`<origin>/<org slug>/#tickets/12` — what accepting a "possible duplicate" links, see
+  // src/ai/jobs/accept.ts): named by its number, not by the host.
+  const own = url.match(/^https?:\/\/[^/?#]+\/(?:[a-z0-9][a-z0-9-]*\/)?#tickets\/(\d+)$/i);
+  if (own) return { url, kind: "plain", label: `#${own[1]}`, meta: "TROV · TICKET" };
 
   let host = "link";
   try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* unparseable — keep the fallback */ }

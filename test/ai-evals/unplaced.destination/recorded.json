@@ -1,0 +1,451 @@
+{
+ "model": "jev-1.13.0",
+ "recordedAt": "2026-10-15T09:05:16.168Z",
+ "promptVersions": {
+  "ticket": "jev-ticket-1",
+  "review": "jev-risk-1",
+  "unplaced": "jev-place-1"
+ },
+ "cases": {
+  "trov-ingestion-gate": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “The ingestion gate and triage”.\n\nThe agent filed it under “architecture”.\n\nThe ingestion gate and triage Source: , , . Read the area file before changing any of this. What the gate is for Trov has two classes of write. - Ingested content is knowledge an agent proposes: feed entries, doc proposals, ADR drafts, captured GitHub events and repo events. An agent can be wrong, and a wrong doc gets believed, so this content goes through a gate and a person confirms it. - Authored and computed writes go direct. Authored: the plan, tickets, sprints, handoffs, prompts, artifacts, people. Computed: sprint progress, PR and issue summaries, repo metrics and snapshots, the GitHub issue mirror. These are \"promote-class\" writers in . The gate is therefore an ingestion gate, not a universal write gate. The rule for new work: a new ingestion path goes into the gate, never beside it as a second surface. Where it lives has one gate function per type: , , , , . Every entry point is a thin adapter over them: - and the MCP batch tool, both through . - The per-entry MCP tools and . - , where a signed-in person stages a new doc through . - , which calls (into , for My Work) and, independently, (into , for the Repo dashboard) off the same HMAC-verified delivery. What t",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Tickets, the board, agent writes and the GitHub issue mirror” (section reference): Tickets, the board, agent writes and the GitHub issue mirror Source: , , , , , . What a ticket is A ticket is somebody's",
+       "doc_2": "Next to the existing doc “Trov overview: what it is, how it is built, and where to read next” (section context): Trov overview: what it is, how it is built, and where to read next Source: , , , , and the files in . Start here; every ",
+       "doc_3": "Next to the existing doc “Docs and decisions: propose, promote, reject, ratify” (section reference): Docs and decisions: propose, promote, reject, ratify Source: , , , , , , , the and skills under . The rule Agents stage;"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"reference\",\"confidence\":0.56,\"probabilities\":{\"reference\":0.63,\"context\":0.0,\"decisions\":0.02,\"doc_1\":0.05,\"doc_2\":0.01,\"doc_3\":0.29}}},\"usage\":{\"input_tokens\":899,\"output_tokens\":67}}"
+  },
+  "trov-tickets": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Tickets, the board, agent writes and the GitHub issue mirror”.\n\nThe agent filed it under “features”.\n\nTickets, the board, agent writes and the GitHub issue mirror Source: , , , , , . What a ticket is A ticket is somebody's request. It is an authored write: no vocabulary gate, no confidence, no staged state. A ticket write is visible to the whole org at once. Tickets are the largest authored surface in the product — the writers are in , behind fourteen session-cookie routes in . Writers: , , , (a board drop), , , , , , , . - Every write bumps , the queue's sort key. - A ticket's on every surface is its per-org number, never the row id. - Tickets nest exactly one level. A nesting-rule break is a 409 that writes nothing. - ( ) is a hard delete in one : assignees, links, comments, history and artifact links go with it, sub-tickets are detached, and the number is never reissued. Any signed-in member may do it; it is never an MCP tool. A mirrored ticket cannot be deleted (403), because the mirror would only re-create it. Statuses and the board Statuses are (shown as Triage), , , , . is an optional step, not a gate. The status machine is `canTransitio",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “The ingestion gate and triage” (section reference): The ingestion gate and triage Source: , , . Read the area file before changing any of this. What the gate is for Trov ha",
+       "doc_2": "Next to the existing doc “Testing: the suite, the seed and the tsconfig rule” (section reference): Testing: the suite, the seed and the tsconfig rule Source: , , , , , , , and the Tests sections of the files in . Runnin",
+       "doc_3": "Next to the existing doc “Docs and decisions: propose, promote, reject, ratify” (section reference): Docs and decisions: propose, promote, reject, ratify Source: , , , , , , , the and skills under . The rule Agents stage;"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"reference\",\"confidence\":0.92,\"probabilities\":{\"reference\":0.9299999999999999,\"context\":0.0,\"decisions\":0.0,\"doc_1\":0.06,\"doc_2\":0.0,\"doc_3\":0.01}}},\"usage\":{\"input_tokens\":881,\"output_tokens\":67}}"
+  },
+  "trov-deploy-runbook": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Deploy runbook and production gotchas”.\n\nThe agent filed it under “runbooks”.\n\nDeploy runbook and production gotchas Source: (the repo's deploy runbook), , , , , the lines in , and the owner's own verification where noted. What production is One Cloudflare Worker named , on one origin ( ), with the D1 database and the R2 bucket . Deploys run through Cloudflare Workers Builds, connected to the GitHub repository . The commands - — the suite. The source of truth for \"is it green\". - — not part of . Run it too. - — builds the SPA into . - — builds the SPA and runs . - / — apply D1 migrations. - — applies migrations to the preview database and deploys a Preview. - — local Worker plus a watching web build. Never run under a running ; it empties . The gotchas — read these first 1. A merge to is a production deploy. Workers Builds ships the Worker and applies new migrations. There is no staging step in between. After merging, verify the live bundle. 2. A push of ANY branch currently applies that branch's new migrations to production. Verified by the owner on 2026-10-09. The branch push does not deploy the Worker, but its migrations reach the production database. The mechanism is described in : Cloudflare refus",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Trov overview: what it is, how it is built, and where to read next” (section context): Trov overview: what it is, how it is built, and where to read next Source: , , , , and the files in . Start here; every ",
+       "doc_2": "Next to the existing doc “Testing: the suite, the seed and the tsconfig rule” (section reference): Testing: the suite, the seed and the tsconfig rule Source: , , , , , , , and the Tests sections of the files in . Runnin",
+       "doc_3": "Next to the existing doc “The Repo dashboard and the repo cron” (section reference): The Repo dashboard and the repo cron Source: , § Background jobs, , , ( , , , , , , , ), , . What it is The Repo dashboa"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"reference\",\"confidence\":0.99,\"probabilities\":{\"reference\":0.99,\"context\":0.0,\"decisions\":0.0,\"doc_1\":0.0,\"doc_2\":0.01,\"doc_3\":0.0}}},\"usage\":{\"input_tokens\":898,\"output_tokens\":67}}"
+  },
+  "trov-testing": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Testing: the suite, the seed and the tsconfig rule”.\n\nThe agent filed it under “engineering”.\n\nTesting: the suite, the seed and the tsconfig rule Source: , , , , , , , and the Tests sections of the files in . Running it - — Vitest. This is the source of truth for \"is it green\". - One file: . - — over the Worker and the web. It is not part of . Run both before calling a change done. A real database, not mocks Tests run in Cloudflare's Vitest pool against a real Miniflare D1. reads every file in and applies them, so a test exercises the real schema, triggers and full-text tables. A second, empty database ( ) exists for the multi-tenancy migration tests, which build an old-shape database with data, apply and its generated rollback, and compare. The seed is the canonical seed. It truncates the data tables before each test in a foreign-key-safe order and re-seeds: - two organizations — and an empty ; - six persons in the first: four GitHub engineers and two Google-only people ( , ), each with a role and responsibilities; - the reserved system person . The names are fixture data only; no real organization's data is in the seed. Add every new table to . A table that is not reset leaks rows between tests. Per-org counters rest",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “The GitHub App: how an organization connects its repositories” (section reference): The GitHub App: how an organization connects its repositories Source: , ( , , , , , ), , , . Migration . Tests: . The id",
+       "doc_2": "Next to the existing doc “Web UI rules: repaint, switches, skeletons, empty layouts and corners” (section reference): Web UI rules: repaint, switches, skeletons, empty layouts and corners Source: , ( , , , , , , , , , , , , , ). The SPA i",
+       "doc_3": "Next to the existing doc “The data layer: tenant and platform contexts” (section reference): The data layer: tenant and platform contexts Source: , ( , , , , , , ), , , . The rule Trov is multi-tenant: many organi"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"reference\",\"confidence\":0.8,\"probabilities\":{\"reference\":0.83,\"context\":0.0,\"decisions\":0.0,\"doc_1\":0.14,\"doc_2\":0.0,\"doc_3\":0.03}}},\"usage\":{\"input_tokens\":895,\"output_tokens\":67}}"
+  },
+  "trov-environment": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Environment: secrets, vars and bindings”.\n\nThe agent filed it under “ops”.\n\nEnvironment: secrets, vars and bindings Source: , , , . This doc lists names only. Secret values live in Cloudflare ( ) and, for local development, in , which is never committed and never to be copied anywhere. Bindings Binding What Notes --- --- --- D1 database reached only inside the built SPA ( ) static assets R2 bucket binary artifacts, doc images, avatars, org images. The bucket must exist before the first deploy that carries the binding There is no block. Summaries call Gemini over plain REST with a key. Two deferred seams exist only as comments and must not be activated: a Cloudflare Queue and Vectorize. Secrets Sign-in and sessions - , — GitHub sign-in (the App's client). - , — Google sign-in. Without the id, Google login answers 503. - — signs the session cookie, and keys the signed links and sealed cookies. Encryption - — the deployment's key-encryption key. Each org's stored integration credentials are envelope-encrypted under it. Losing it loses every org's stored credentials. The GitHub App - , (the whole ), . Missing the id, the key or the slug var means only the by-hand token path is offered. Nothing",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Artifacts and doc images” (section reference): Artifacts and doc images Source: , (the contract for agents — read it before a first artifact write), , , , , . What an ",
+       "doc_2": "Next to the existing doc “Trov overview: what it is, how it is built, and where to read next” (section context): Trov overview: what it is, how it is built, and where to read next Source: , , , , and the files in . Start here; every ",
+       "doc_3": "Next to the existing doc “Email notifications and digests” (section reference): Email notifications and digests Source: , ( , , , , , , , , , , , , ), , . The shape Digests are a read-side projection,"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"reference\",\"confidence\":0.99,\"probabilities\":{\"reference\":0.99,\"context\":0.0,\"decisions\":0.0,\"doc_1\":0.01,\"doc_2\":0.0,\"doc_3\":0.0}}},\"usage\":{\"input_tokens\":871,\"output_tokens\":67}}"
+  },
+  "trov-mcp-connection-modes": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “MCP connections: which organization a call acts in”.\n\nThe agent filed it under “guides”.\n\nMCP connections: which organization a call acts in Source: § Bearer, , , ( ), , , migration . Shipped in release 0.25. The idea A credential names a person and a way of choosing among that person's organizations. is the only place that choice is made. Every organization it can come up with is read through : the person's membership today, of an org that is not suspended, with the role they hold there now. Nothing in a request can add an organization to that list. The and arguments only choose within it. Three kinds of credential Credential Can reach Acts in --- --- --- A pasted token ( ) the one org on its row that org, always An OAuth connection, mode Manual the orgs its person allowed ( ) and is still a live member of its current org An OAuth connection, mode Follow the repository every org its person is a live member of the org that has the call's connected The consent page asks which mode at sign-in. Follow the repository is recommended and preselected when the person has several orgs. In Manual, the person ticks organizations and picks which one the connection starts in. Per request does two reads: the credential by hash, then its reach. If there is nowhere to act at all, the a",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Auth, identity and people” (section reference): Auth, identity and people Source: , ( , , , , , ), , , , . Three auth classes — do not add a fourth Class Who Where --- ",
+       "doc_2": "Next to the existing doc “The data layer: tenant and platform contexts” (section reference): The data layer: tenant and platform contexts Source: , ( , , , , , , ), , , . The rule Trov is multi-tenant: many organi",
+       "doc_3": "Next to the existing doc “The GitHub App: how an organization connects its repositories” (section reference): The GitHub App: how an organization connects its repositories Source: , ( , , , , , ), , , . Migration . Tests: . The id"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"reference\",\"confidence\":0.81,\"probabilities\":{\"reference\":0.84,\"context\":0.0,\"decisions\":0.0,\"doc_1\":0.11,\"doc_2\":0.03,\"doc_3\":0.02}}},\"usage\":{\"input_tokens\":871,\"output_tokens\":67}}"
+  },
+  "trov-notifications": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Email notifications and digests”.\n\nThe agent filed it under “features”.\n\nEmail notifications and digests Source: , ( , , , , , , , , , , , , ), , . The shape Digests are a read-side projection, never a writer. They are assembled from D1 and sent through Resend. The pipeline writes only to its own tables. Kinds — a registry in code and define one per digest section: - — merged pull requests in the window plus open assigned issues, summarised exactly as My Work does. - — open proposals and draft decisions. - — the plan's changes in the window. - — the ticket queue: unassigned submitted tickets org-wide plus the recipient's own open assigned tickets. A renderer is a pure read that returns a section or . Null means nothing to say, and the section is dropped. Adding a kind is one registry entry plus one renderer. Cadences , or . There is no immediate tier. Resolution ( ): the user's preference, then the org policy's default, then the registry default. A policy that disables a kind wins before the user layer. A run , per eligible person (an address on file, not unsubscribed): 1. Claim the outbox row first, with on an idempotency key. A conflict skips the person, so a cron that fires",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Roadmap, sprints and My Work” (section reference): Roadmap, sprints and My Work Source: , , , , , , , . The rule for this whole area: no live GitHub at render. Everything ",
+       "doc_2": "Next to the existing doc “Tickets, the board, agent writes and the GitHub issue mirror” (section reference): Tickets, the board, agent writes and the GitHub issue mirror Source: , , , , , . What a ticket is A ticket is somebody's",
+       "doc_3": "Next to the existing doc “Docs and decisions: propose, promote, reject, ratify” (section reference): Docs and decisions: propose, promote, reject, ratify Source: , , , , , , , the and skills under . The rule Agents stage;"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"reference\",\"confidence\":0.94,\"probabilities\":{\"reference\":0.95,\"context\":0.0,\"decisions\":0.0,\"doc_1\":0.04,\"doc_2\":0.01,\"doc_3\":0.0}}},\"usage\":{\"input_tokens\":874,\"output_tokens\":67}}"
+  },
+  "trov-billing-stripe": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Billing with Stripe”.\n\nThe agent filed it under “billing”.\n\nBilling with Stripe Source: , , ( , , , , , , , , ), (the seam), , , . Migrations , . Tests: . What is sold One plan: Pro (plan id ), per seat, $10 per seat per month, no minimum, up to 50 seats. Free is never bought. Enterprise is arranged with Trov. Personal is no longer sold. Money correctness. Trov computes no amount, tax or proration and holds no price, card or address. A price is an opaque Stripe Price id in . Trov stores ids, a status and a seat count. Billing only moves things plans already have — a grant, an org's plan, its override, its status — through the seam in . Configuration Name Kind If missing --- --- --- secret billing is OFF secret billing is OFF var — the monthly Price id of one seat of Pro Pro cannot be bought monthly var, optional Pro is not offered yearly var; enables Stripe Tax at checkout no tax lines In today, production has (the live Pro price), no yearly price, and . Previews have all three empty. OFF means every b",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Plans, limits, grants and gifts” (section reference): Plans, limits, grants and gifts Source: , , , ( , , , , , , , ), , . Migrations , . The model Every organization is on a",
+       "doc_2": "Next to the existing doc “Web UI rules: repaint, switches, skeletons, empty layouts and corners” (section reference): Web UI rules: repaint, switches, skeletons, empty layouts and corners Source: , ( , , , , , , , , , , , , , ). The SPA i",
+       "doc_3": "Next to the existing doc “Sync GitHub” (section reference): Sync GitHub Source: , ( ), ( ), , , , , . Migration . Tests: , , . Every sentence the Sync panel s"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"reference\",\"confidence\":0.86,\"probabilities\":{\"reference\":0.88,\"context\":0.0,\"decisions\":0.0,\"doc_1\":0.12,\"doc_2\":0.0,\"doc_3\":0.0}}},\"usage\":{\"input_tokens\":838,\"output_tokens\":67}}"
+  },
+  "trov-github-app": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “The GitHub App: how an organization connects its repositories”.\n\nThe agent filed it under “integrations”.\n\nThe GitHub App: how an organization connects its repositories Source: , ( , , , , , ), , , . Migration . Tests: . The idea Trov is one GitHub App. It signs people in, and an organization connects its repositories by installing it — no token to paste, no webhook to add. The pasted token and the per-repository webhook remain as the fallback, for a repository the App cannot see or a self-hosted Trov with no App. What is stored binds a GitHub installation to a Trov org: the installation id, the account it is on, whether it covers all or selected repositories, who connected it, , , . A row is never deleted; ending a binding sets . - An installation belongs to at most one org, and an org has at most one live installation (two partial unique indexes). So an org connects one GitHub account at a time. - is for a repository the installation can see, otherwise. marks one the installation stopped seeing. No token is ever stored — not the user's, not an installation's. Nothing in these tables is secret. The connect flow 1. Org settings › Repositories › Connect with GitHub — a plain link to (admin only, cookie only). It sets a sealed, 15-minute cookie ho",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Auth, identity and people” (section reference): Auth, identity and people Source: , ( , , , , , ), , , , . Three auth classes — do not add a fourth Class Who Where --- ",
+       "doc_2": "Next to the existing doc “Abuse limits: what a stranger with an account cannot do” (section reference): Abuse limits: what a stranger with an account cannot do Source: , (every number), (the From header). Tests: . Why this e",
+       "doc_3": "Next to the existing doc “MCP connections: which organization a call acts in” (section reference): MCP connections: which organization a call acts in Source: § Bearer, , , ( ), , , migration . Shipped in release 0.25. T"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"reference\",\"confidence\":0.83,\"probabilities\":{\"reference\":0.86,\"context\":0.0,\"decisions\":0.0,\"doc_1\":0.05,\"doc_2\":0.0,\"doc_3\":0.09}}},\"usage\":{\"input_tokens\":883,\"output_tokens\":67}}"
+  },
+  "trov-overview": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Trov overview: what it is, how it is built, and where to read next”.\n\nThe agent filed it under “overview”.\n\nTrov overview: what it is, how it is built, and where to read next Source: , , , , and the files in . Start here; every section points to a doc with the detail. What Trov is Trov is a multi-tenant shared context store: a team's working memory. It holds the team's docs, decisions, roadmap, a ticket queue, artifacts, a prompt library, handoffs between sessions, and a running feed of what everyone — people and their coding agents — has done. It also shows a dashboard for the team's main repository. The product was renamed from Canopy to Trov. Some stored identifiers keep the old name on purpose (token prefixes, commit-status names); do not rename them. It is hosted at . Each organization lives at . The one idea: two classes of write Staged — a person confirms Direct — takes effect now --- --- --- What docs, decisions, feed entries tickets, sprints, the roadmap plan, handoffs, prompts, artifacts Why an agent proposing knowledge can be wrong, and a wrong doc is believed a request or a plan is an act, not a claim What bounds it the gate: vocabulary, confidence, dedupe, then a person in Review scope: your own lane, or the admin role Agents propose knowledge and people confirm it. Confirmi",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Docs and decisions: propose, promote, reject, ratify” (section reference): Docs and decisions: propose, promote, reject, ratify Source: , , , , , , , the and skills under . The rule Agents stage;",
+       "doc_2": "Next to the existing doc “Handoffs and the Prompt Library” (section reference): Handoffs and the Prompt Library Source: , , , , , , migration . Both are direct writers, not the ingestion gate. Neither",
+       "doc_3": "Next to the existing doc “The GitHub App: how an organization connects its repositories” (section reference): The GitHub App: how an organization connects its repositories Source: , ( , , , , , ), , , . Migration . Tests: . The id"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"context\",\"confidence\":0.81,\"probabilities\":{\"reference\":0.13,\"context\":0.84,\"decisions\":0.0,\"doc_1\":0.03,\"doc_2\":0.0,\"doc_3\":0.0}}},\"usage\":{\"input_tokens\":887,\"output_tokens\":67}}"
+  },
+  "canopy-spec-throughline": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Through-line of the build”.\n\nThe agent filed it under “notes”.\n\nThrough-line Agent orients against authority-flagged context (Phase 1) → works → at session end emits one structured, per-target payload declaring exactly what it touched and from what base (Phase 2 writer) → the worker reconciles against the KB, drops no-ops, stages only real deltas, classifies each new/edit/rewrite (Phase 2 reconciler) → feed/focus go live, the rest land typed and flagged in Triage → a human promotes, rejects, or places them via working routes (Phase 3) rendered by shape (Phase 4). Theming unifies the badges the loop produces (Phase 5). Phase map + dependencies - Phase 1 — Read-side brain. Query tool (FTS5 + bm25), authority flags, retrieval skill, Search. Independent. - Phase 2 — Contract + reconciler + per-target writer. Write-side foundation. Uses Phase 1's if present, else . Produces / /flags consumed by Phase 4. - Phase 3 — Triage write-back routes. Resolve / assign / reject. Build after Phase 2. - Phase 4 — Triage UI rework. Renders by change-type. Needs Phase 2 metadata + Phase 3 routes. Last code phase. - Phase 5 — Theming. Palette over CSS vars + badges. After Phase 4. Locked decisions (settled — do not re-open) Read side: FTS5 now, Vectorize a named sea",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Feed, query and search” (section reference): Feed, query and search Source: , , , , . The feed The feed is the running record of what people and their agents did. A ",
+       "doc_2": "Next to the existing doc “The ingestion gate and triage” (section reference): The ingestion gate and triage Source: , , . Read the area file before changing any of this. What the gate is for Trov ha",
+       "doc_3": "Next to the existing doc “Docs and decisions: propose, promote, reject, ratify” (section reference): Docs and decisions: propose, promote, reject, ratify Source: , , , , , , , the and skills under . The rule Agents stage;"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"reference\",\"confidence\":0.38,\"probabilities\":{\"reference\":0.48,\"context\":0.02,\"decisions\":0.02,\"doc_1\":0.03,\"doc_2\":0.37,\"doc_3\":0.08}}},\"usage\":{\"input_tokens\":907,\"output_tokens\":67}}"
+  },
+  "issue154-idea": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Instant intelligence: the idea”.\n\nThe agent filed it under “ideas”.\n\nThe idea A fast, inexpensive model looks at something Trov already holds — a feed entry, a ticket, a proposal, an item in Unplaced — and attaches a small structured judgement to it: a priority, a category, a tag, a destination, a risk. The interface stays hand-built and simply sorts, groups, filters or suggests by that judgement. The model classifies and ranks. It does not generate the screen. That is what makes it cheap, and what makes it safe to use in many places.",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Trov overview: what it is, how it is built, and where to read next” (section context): Trov overview: what it is, how it is built, and where to read next Source: , , , , and the files in . Start here; every ",
+       "doc_2": "Next to the existing doc “Feed, query and search” (section reference): Feed, query and search Source: , , , , . The feed The feed is the running record of what people and their agents did. A ",
+       "doc_3": "Next to the existing doc “The ingestion gate and triage” (section reference): The ingestion gate and triage Source: , , . Read the area file before changing any of this. What the gate is for Trov ha"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"doc_3\",\"confidence\":0.24,\"probabilities\":{\"reference\":0.08,\"context\":0.3,\"decisions\":0.05,\"doc_1\":0.14,\"doc_2\":0.06,\"doc_3\":0.37}}},\"usage\":{\"input_tokens\":711,\"output_tokens\":69}}"
+  },
+  "issue145-idea": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “A Repo dashboard that fits the repository: the idea”.\n\nThe agent filed it under “ideas”.\n\nThe idea Today every repository gets the same Repo dashboard, built for one shape of project (a frontend on one host and a backend on another). The idea is for Trov to look at a repository, work out how it is built and hosted, and propose a monitoring screen that fits it — and to let people accept that, pick a different layout, or adjust it. AI is a candidate for the \"work out how it is built\" and \"propose a layout\" steps. It is not the starting point: before any model is involved, Trov needs the building blocks a proposal would be made OF, and a clear statement of what a good result is. This issue is the umbrella for the groundwork Nothing here is implementation. Each piece below ends in a written decision, a catalogue or a test set, so that the technical work that follows has something to build to. 1. What we are building and for whom (the brief). 2. What Trov can know about a repository (the signal inventory). 3. What a dashboard is made of (a widget catalogue and a layout description). 4. Where AI fits, and its limits (role, guardrails, cost, privacy). 5. How people choose and stay in control (automatic, templates, by hand). 6. How we will know it works (a set of real repositor",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Trov overview: what it is, how it is built, and where to read next” (section context): Trov overview: what it is, how it is built, and where to read next Source: , , , , and the files in . Start here; every ",
+       "doc_2": "Next to the existing doc “The Repo dashboard and the repo cron” (section reference): The Repo dashboard and the repo cron Source: , § Background jobs, , , ( , , , , , , , ), , . What it is The Repo dashboa",
+       "doc_3": "Next to the existing doc “Docs and decisions: propose, promote, reject, ratify” (section reference): Docs and decisions: propose, promote, reject, ratify Source: , , , , , , , the and skills under . The rule Agents stage;"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"context\",\"confidence\":0.39,\"probabilities\":{\"reference\":0.0,\"context\":0.49,\"decisions\":0.06,\"doc_1\":0.08,\"doc_2\":0.09,\"doc_3\":0.28}}},\"usage\":{\"input_tokens\":905,\"output_tokens\":67}}"
+  },
+  "feed118-status": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Where the server-side AI build stands”.\n\nThe agent filed it under “status”.\n\nHandoff 10, Phase B, on ai/screens (PR 178): Router: one event to scope table; the pass: stage order, Jev one item per request, Haiku up to 20 per call, gates with rule fallbacks, the cached org prefix, section isolation, the Batch API. Registry still empty. Next: Phase C and D.",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Trov overview: what it is, how it is built, and where to read next” (section context): Trov overview: what it is, how it is built, and where to read next Source: , , , , and the files in . Start here; every ",
+       "doc_2": "Next to the existing doc “Testing: the suite, the seed and the tsconfig rule” (section reference): Testing: the suite, the seed and the tsconfig rule Source: , , , , , , , and the Tests sections of the files in . Runnin",
+       "doc_3": "Next to the existing doc “MCP connections: which organization a call acts in” (section reference): MCP connections: which organization a call acts in Source: § Bearer, , , ( ), , , migration . Shipped in release 0.25. T"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"context\",\"confidence\":0.6,\"probabilities\":{\"reference\":0.21,\"context\":0.67,\"decisions\":0.01,\"doc_1\":0.07,\"doc_2\":0.01,\"doc_3\":0.03}}},\"usage\":{\"input_tokens\":709,\"output_tokens\":67}}"
+  },
+  "oauth-decisions": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “MCP OAuth: decisions”.\n\nThe agent filed it under “design”.\n\nDecisions (from brainstorming) Question Decision --- --- Existing tokens Keep both. OAuth is the default; pasted tokens remain for headless use. Consent Always shown, every authorization. Token lifetimes Access 1 h; refresh rotating, 90 days idle; Settings lists and revokes connections. Implementation Hand-rolled, stored in D1.",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “MCP connections: which organization a call acts in” (section reference): MCP connections: which organization a call acts in Source: § Bearer, , , ( ), , , migration . Shipped in release 0.25. T",
+       "doc_2": "Next to the existing doc “Docs and decisions: propose, promote, reject, ratify” (section reference): Docs and decisions: propose, promote, reject, ratify Source: , , , , , , , the and skills under . The rule Agents stage;",
+       "doc_3": "Next to the existing doc “Auth, identity and people” (section reference): Auth, identity and people Source: , ( , , , , , ), , , , . Three auth classes — do not add a fourth Class Who Where --- "
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"decisions\",\"confidence\":0.9,\"probabilities\":{\"reference\":0.0,\"context\":0.0,\"decisions\":0.92,\"doc_1\":0.01,\"doc_2\":0.03,\"doc_3\":0.04}}},\"usage\":{\"input_tokens\":684,\"output_tokens\":69}}"
+  },
+  "milestone-decisions": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Milestone proposals in Triage: decisions”.\n\nThe agent filed it under “design”.\n\nDecisions - Placement: a 4th Triage queue, \"Milestones\", alongside Proposals / Decisions / Triage. Most consistent — all staged-confirm work in one place, reusing the existing queue layout and selection model. - Scope: Promote and Reject. Add the missing backend reject route + a soft-reject so the queue behaves like Proposals and Decisions.",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Docs and decisions: propose, promote, reject, ratify” (section reference): Docs and decisions: propose, promote, reject, ratify Source: , , , , , , , the and skills under . The rule Agents stage;",
+       "doc_2": "Next to the existing doc “The ingestion gate and triage” (section reference): The ingestion gate and triage Source: , , . Read the area file before changing any of this. What the gate is for Trov ha",
+       "doc_3": "Next to the existing doc “Roadmap, sprints and My Work” (section reference): Roadmap, sprints and My Work Source: , , , , , , , . The rule for this whole area: no live GitHub at render. Everything "
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"decisions\",\"confidence\":0.81,\"probabilities\":{\"reference\":0.01,\"context\":0.0,\"decisions\":0.84,\"doc_1\":0.07,\"doc_2\":0.06,\"doc_3\":0.02}}},\"usage\":{\"input_tokens\":691,\"output_tokens\":69}}"
+  },
+  "docs-spaces-decisions": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Docs spaces: decisions locked with the user”.\n\nThe agent filed it under “design”.\n\nDecisions (locked with the user) 1. is a fixed enum of exactly . When an agent omits it, the doc defaults to (the engineering default). 2. Enforcement is a hard enum: a doc proposal carrying an off-vocab space fails contract/tool validation (an error), rather than being silently routed to triage. 3. The single -spaced doc is re-homed by content — → . 4. Scope is spaces/tabs only. The parallel section-vocab disconnect is explicitly out of scope.",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Docs and decisions: propose, promote, reject, ratify” (section reference): Docs and decisions: propose, promote, reject, ratify Source: , , , , , , , the and skills under . The rule Agents stage;",
+       "doc_2": "Next to the existing doc “The ingestion gate and triage” (section reference): The ingestion gate and triage Source: , , . Read the area file before changing any of this. What the gate is for Trov ha",
+       "doc_3": "Next to the existing doc “Tickets, the board, agent writes and the GitHub issue mirror” (section reference): Tickets, the board, agent writes and the GitHub issue mirror Source: , , , , , . What a ticket is A ticket is somebody's"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"decisions\",\"confidence\":0.86,\"probabilities\":{\"reference\":0.07,\"context\":0.0,\"decisions\":0.88,\"doc_1\":0.04,\"doc_2\":0.01,\"doc_3\":0.0}}},\"usage\":{\"input_tokens\":717,\"output_tokens\":69}}"
+  },
+  "artifacts-decisions": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Artifacts: decisions taken here”.\n\nThe agent filed it under “specs”.\n\nDecisions taken here (not in the prompt) - Tables , , , plus and . , , , token are person handles → . - A page with does not exist to any reader (list, get, raw, query, MCP): it is a binary page created by an MCP call whose upload has not landed. Same 404 as a missing slug. - Binary uploads declare (hex) with . The PUT streams through into R2 at with R2's put option, so R2 itself rejects a body that does not hash to it — no temp key, no second write. The MCP tools gain a arg for binary kinds (the curl example computes it with ). - Who may write: anyone who can READ a page may add a version, change status draft⇄published, change title/area/repo, and link/unlink (the prototype shows teammates versioning each other's pages). Only the author may set . Ratify: any signed-in person, session only. A private page is readable (and so writable) only by its author. - 404 parity: missing slug, private-to-someone-else, and return the SAME status and body — over HTTP, `{ error: \"notfound\", code: \"notfound\" }` over MCP. Tested byte for byte. - Link refs: → ticket id, → sprint id, / → (a bare or number from a client is resol",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Artifacts and doc images” (section reference): Artifacts and doc images Source: , (the contract for agents — read it before a first artifact write), , , , , . What an ",
+       "doc_2": "Next to the existing doc “Docs and decisions: propose, promote, reject, ratify” (section reference): Docs and decisions: propose, promote, reject, ratify Source: , , , , , , , the and skills under . The rule Agents stage;",
+       "doc_3": "Next to the existing doc “MCP connections: which organization a call acts in” (section reference): MCP connections: which organization a call acts in Source: § Bearer, , , ( ), , , migration . Shipped in release 0.25. T"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"decisions\",\"confidence\":0.72,\"probabilities\":{\"reference\":0.08,\"context\":0.0,\"decisions\":0.77,\"doc_1\":0.08,\"doc_2\":0.06,\"doc_3\":0.01}}},\"usage\":{\"input_tokens\":908,\"output_tokens\":69}}"
+  },
+  "issue153-decision": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Guided repository setup: the owner's decision”.\n\nThe agent filed it under “rulings”.\n\nDecision (owner, 2026-10-10) Trov does not work out how a repository is hosted by reading it. It asks. When someone sets up a repository in an organization they get a short guided setup: they say what the stack is, and Trov then connects each piece with them, telling them exactly where to get each key as they go. At the end the Repo dashboard is the one that fits what they said. This settles the open question in 147 for the first version: no file is opened, and no model is needed to know the stack. Detection from events Trov already captures (the hosting branch's \"Detected: Vercel\") only PRE-FILLS an answer; the person confirms it.",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Trov overview: what it is, how it is built, and where to read next” (section context): Trov overview: what it is, how it is built, and where to read next Source: , , , , and the files in . Start here; every ",
+       "doc_2": "Next to the existing doc “The GitHub App: how an organization connects its repositories” (section reference): The GitHub App: how an organization connects its repositories Source: , ( , , , , , ), , , . Migration . Tests: . The id",
+       "doc_3": "Next to the existing doc “The Repo dashboard and the repo cron” (section reference): The Repo dashboard and the repo cron Source: , § Background jobs, , , ( , , , , , , , ), , . What it is The Repo dashboa"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"decisions\",\"confidence\":0.95,\"probabilities\":{\"reference\":0.02,\"context\":0.0,\"decisions\":0.96,\"doc_1\":0.0,\"doc_2\":0.01,\"doc_3\":0.01}}},\"usage\":{\"input_tokens\":780,\"output_tokens\":69}}"
+  },
+  "server-ai-decided": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A doc an agent wrote: “Server-side AI: the decided build”.\n\nThe agent filed it under “specs”.\n\nServer-side AI: the decided build (2026-10-15) Decided. This is the design of Trov handoff 10 (claimed 2026-10-15), built into PR 178 on . Updated 2026-10-15 after merging with 185 (hosting providers): migrations moved to 0058–0067, and hosting deploys feed the router and repo state. Where (the older background spec) disagrees, this file wins. What was verified before building, and the migration numbers, are in . How the system works One loop: capture → route → decide → write → show → learn. 1. Capture already exists: the GitHub webhook and reconcile, plus the app's writers. 2. Route is plain code. Each write marks the scopes it made stale. No model is involved. 3. The AI pass in the cron works through stale scopes per org, within the switch, the allowance and the cron budget. 4. Jev decides; Haiku writes. - Jev (TypeSafe, about $0.0001 a check) answers classifications and gates: is this worth a Haiku call? - Haiku 5.5 writes words, only past a gate, and reads item cards, never raw PR bodies or commit lists. 5. Store everything as computed rows. Screens, MCP, emails and Ask Trov all read those rows. Nothing calls a model while a page loads. 6. Learn. Accept, Dismiss and \"Wrong?\" go",
+    "questions": {
+     "destination": {
+      "type": "choice",
+      "instructions": "Where does this doc belong?",
+      "criteria": {
+       "reference": "Reference: how something works or how to use it — a system, an API, a setup, a runbook, a guide",
+       "context": "Context: background — the product, the team, the goals, the history, why things are the way they are",
+       "decisions": "Decisions: a decision and its reasons — what was chosen, the alternatives, the trade-offs",
+       "doc_1": "Next to the existing doc “Trov overview: what it is, how it is built, and where to read next” (section context): Trov overview: what it is, how it is built, and where to read next Source: , , , , and the files in . Start here; every ",
+       "doc_2": "Next to the existing doc “The Repo dashboard and the repo cron” (section reference): The Repo dashboard and the repo cron Source: , § Background jobs, , , ( , , , , , , , ), , . What it is The Repo dashboa",
+       "doc_3": "Next to the existing doc “Sync GitHub” (section reference): Sync GitHub Source: , ( ), ( ), , , , , . Migration . Tests: , , . Every sentence the Sync panel s"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"destination\":{\"type\":\"choice\",\"choice\":\"reference\",\"confidence\":0.42,\"probabilities\":{\"reference\":0.52,\"context\":0.0,\"decisions\":0.36,\"doc_1\":0.02,\"doc_2\":0.09,\"doc_3\":0.01}}},\"usage\":{\"input_tokens\":952,\"output_tokens\":67}}"
+  }
+ }
+}

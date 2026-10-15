@@ -327,7 +327,7 @@ import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView,
 import type * as IntT from "@shared/integrations";
 import type { BillingCheckoutRequest, BillingCheckoutResponse, BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
 import type * as GhT from "@shared/github-app";
-import { AI_ROUTES, type AiAcceptBody, type AiFeedbackBody, type AiSettings, type AiSettingsPut } from "@shared/ai-core";
+import { AI_ROUTES, type AiAcceptBody, type AiFeedbackBody, type AiSettings, type AiSettingsPut, type AiSuggestion } from "@shared/ai-core";
 import { AI_FILTER_ROUTE, type AiFilterAnswer, type AiFilterBody } from "@shared/ai-filter-core";
 import type * as TagT from "@shared/tags-core";
 /** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
@@ -656,6 +656,8 @@ export interface StagedProposal {
   created_at: string;
   stagedBody: string;
   promotedBody: string;
+  /** Trov's open `review.risk` for it (src/ai/attach.ts); absent when there is none. */
+  ai?: AiSuggestion[];
 }
 export function listStagedProposals(): Promise<StagedProposal[]> {
   return getJson<{ proposals: StagedProposal[] }>("/proposals").then((r) => r.proposals);

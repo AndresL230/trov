@@ -110,7 +110,10 @@ export function suggestionDto(r: AiSuggestionRow): AiSuggestion {
   const cites = parse<unknown>(r.cites_json, []);
   return {
     id: r.id, itemType: r.item_type, itemRef: r.item_ref, kind: r.kind, value,
-    label: typeof value === "string" ? value : JSON.stringify(value),
+    // A kind whose value is an object names itself in words with a `label` (Phase C: "#12 Login loops", "reference").
+    label: typeof value === "string" ? value
+      : value && typeof value === "object" && typeof (value as { label?: unknown }).label === "string" ? (value as { label: string }).label
+      : JSON.stringify(value),
     reason: r.reason, confidence: r.confidence, cites: Array.isArray(cites) ? (cites as AiCite[]) : [], state: r.state,
   };
 }

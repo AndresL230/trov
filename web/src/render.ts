@@ -466,6 +466,9 @@ export interface AppState {
   preview: PreviewMode | null;
   /** The AI screens (ai-ui.ts): what "Wrong?" hid, the Feed's Source, the themes' range and lane. */
   ai: AiUi;
+  /** Phase C's suggestions leaving after Accept / Dismiss (ai-cards.ts `leaveBox`): id → the `Date.now()` its exit
+   *  began. It only HIDES what the reads still carry; the re-read (held until the exit is done) drops it. */
+  aiLeaving: Record<number, number>;
   /** The plain-language filter's box on Tickets, the Feed and Artifacts (ai-filter.ts; #162). */
   aiFilter: AiFilterUi;
 }
@@ -607,6 +610,7 @@ export function initialState(): AppState {
     org: initialOrgUi(),
     preview: null,
     ai: initialAiUi(),
+    aiLeaving: {},
     aiFilter: initialAiFilterUi(),
   };
 }
@@ -625,6 +629,7 @@ export function reviewProps(s: AppState): ReviewProps {
     filter: s.reviewFilter,
     selectedId: s.reviewSel,
     diffView: s.reviewDiffView,
+    aiUi: { ...s.ai, leaving: s.aiLeaving },
   };
 }
 
@@ -640,6 +645,7 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
     assignSpace: s.assignSpace,
     assignTags: s.assignTags,
     people: peopleFromPersons(s.persons.data),
+    aiUi: { ...s.ai, leaving: s.aiLeaving },
   };
 }
 
@@ -2788,6 +2794,7 @@ function ticketDetailScreen(s: AppState): string {
     artifactsBlock: ticketArtifactsBlock(s.art.ticketArts[slice.data.id]),
     edit: s.tdEdit,
     deleteArm: s.tdDeleteArm,
+    aiUi: { ...s.ai, leaving: s.aiLeaving },
   });
 }
 
