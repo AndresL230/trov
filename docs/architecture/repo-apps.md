@@ -316,7 +316,8 @@ own module and `trov.css` section, wrapped in `data-repo-block="<name>"`, worded
   an admin — `repoFoundAccept` / `repoFoundIgnore` + the suggestion id, the scan's own routes, a toast with Undo,
   then the dashboard read again; disabled in sample mode; or what Trov looked for and what it does see — tags,
   PRs, CI workflows, GitHub deployments in 30 days — and "Add an app by hand"). `notShippedBlock`
-  (`repo-not-shipped.ts`). Shared pieces in `repo-block-kit.ts` (the design's `MARKS` on `stateMark` shapes, the sha
+  (`repo-not-shipped.ts`). Shared pieces in `repo-block-kit.ts` (the design's `MARKS` on `stateMark` shapes — ONE table, `REPO_MARK`;
+Building is a blue ring pulsing by `.repo-kit-pulse`, still under reduced motion —, the sha
   chip that says "no commit" and why, the byline person via people.ts, https-only links, plain text in the sample,
   the commit groups; a disclosure is ONE act, `repoOpen` with the block's key, read back from `ctx.open`).
 - **Week tiles** (`repo-week.ts`): "—" for a null figure (never 0), ▲ / ▼, failed deploys inverted, "vs last week" /
