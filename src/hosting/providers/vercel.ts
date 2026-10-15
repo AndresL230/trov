@@ -55,9 +55,11 @@ const PROJECT_ID = /^prj_[A-Za-z0-9]{1,64}$/;
  *  away and the read would land on another endpoint. */
 const PROJECT = /^(?!\.{1,2}$)(?:prj_[A-Za-z0-9]{1,64}|[a-z0-9._-]{1,100})$/;
 const TARGET = /^(?:production|preview)$/;
-/** The webhook events that mean "this project's deploys changed": every other type is acknowledged and ignored. */
+/** The webhook events that mean "this project's deploys changed": every other type is acknowledged and ignored.
+ *  `deployment.ready` is the "finished" event for an integration with no checks of its own (Trov registers none):
+ *  Vercel sends `deployment.succeeded` only once a check is registered (vercel.com/docs/webhooks/webhooks-api). */
 export const VERCEL_REFRESH_EVENTS: readonly string[] = [
-  "deployment.created", "deployment.succeeded", "deployment.error", "deployment.canceled", "deployment.promoted", "deployment.rollback",
+  "deployment.created", "deployment.ready", "deployment.succeeded", "deployment.error", "deployment.canceled", "deployment.promoted", "deployment.rollback",
   "project.removed", "project.renamed",
 ];
 /** A git branch name, conservatively: no spaces, no `..`-style tricks matter here (it is only compared). */
@@ -261,8 +263,12 @@ export const vercel: HostingProvider = {
     {
       method: "install",
       label: "Connect with Vercel",
-      howTo: "Vercel opens its install screen for Trov's integration: pick your personal account or the team that owns the project, choose \"Specific Projects\" and select only the projects Trov should read (\"All Projects\" works but grants more), then confirm — Vercel sends you back here. Trov asks for read access to projects and deployments only. Uninstalling the integration on Vercel (Settings › Integrations) disconnects Trov too. The access token Vercel issues is stored encrypted and only ever sent to api.vercel.com.",
-      grants: ["Projects: Read — on the projects you pick", "Deployments: Read — on the projects you pick"],
+      howTo: "Vercel opens its install screen for Trov's integration: pick your personal account or the team that owns the project, choose \"Specific Projects\" and select only the projects Trov should read (\"All Projects\" works but grants more), then confirm — Vercel sends you back here. Trov asks to read the projects and deployments you pick, your team's and your account's name, and its own installation (which it removes when you disconnect here). Uninstalling the integration on Vercel (Settings › Integrations) disconnects Trov too. The access token Vercel issues is stored encrypted and only ever sent to api.vercel.com.",
+      grants: [
+        "Projects: Read — on the projects you pick", "Deployments: Read — on the projects you pick",
+        "Team and User: Read — the account's name, shown on this page",
+        "Integration Configuration: Read / Write — its own installation, so Disconnect here uninstalls it on Vercel",
+      ],
       requires: ["VERCEL_INTEGRATION_CLIENT_ID", "VERCEL_INTEGRATION_CLIENT_SECRET", "VERCEL_INTEGRATION_SLUG"],
     },
     {

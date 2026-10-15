@@ -80,7 +80,7 @@ describe("Vercel's own events, as the provider reads them", () => {
     expect(hook.changedProject!(deploymentSucceeded)).toEqual({ accountId: "team_a1B2c3D4e5F6g7H8i9J0k1L2", names: ["prj_Qm3xT8vLp2Rk7Yw4Nf6Hs9Bd1Cz5", "acme-web"] });
     expect(hook.changedProject!(projectRenamed)).toEqual({ accountId: "team_a1B2c3D4e5F6g7H8i9J0k1L2", names: ["prj_Qm3xT8vLp2Rk7Yw4Nf6Hs9Bd1Cz5", "acme-site"] });
     expect([...VERCEL_REFRESH_EVENTS].sort()).toEqual([
-      "deployment.canceled", "deployment.created", "deployment.error", "deployment.promoted", "deployment.rollback", "deployment.succeeded", "project.removed", "project.renamed",
+      "deployment.canceled", "deployment.created", "deployment.error", "deployment.promoted", "deployment.ready", "deployment.rollback", "deployment.succeeded", "project.removed", "project.renamed",
     ]);
     for (const type of VERCEL_REFRESH_EVENTS) expect(hook.changedProject!({ ...deploymentSucceeded, type }), type).not.toBeNull();
     // A personal account has no team: the user's id is the account.
@@ -89,7 +89,7 @@ describe("Vercel's own events, as the provider reads them", () => {
   });
 
   it("anything else is null: another event type, the uninstall notice, no account, no usable project", () => {
-    for (const type of ["deployment.ready", "domain.created", "integration-configuration.removed", "", 7]) expect(hook.changedProject!({ ...deploymentSucceeded, type }), String(type)).toBeNull();
+    for (const type of ["deployment.check-rerequested", "domain.created", "integration-configuration.removed", "", 7]) expect(hook.changedProject!({ ...deploymentSucceeded, type }), String(type)).toBeNull();
     expect(hook.changedProject!(removed)).toBeNull();
     expect(hook.removedExternalId(deploymentSucceeded)).toBeNull();
     expect(hook.changedProject!({ type: "deployment.created", payload: { project: { id: "prj_abc" } } })).toBeNull();

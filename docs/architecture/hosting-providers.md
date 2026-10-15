@@ -100,8 +100,9 @@ may have been removed; Test connection to confirm" in `last_error`. `revoked_rea
 Org settings › Integrations lists a hosting kind only once a stored part uses it (the five original slots are unchanged).
 
 **Deployment and project events, and the Configuration URL** (Vercel). The same `POST /webhook/hosting/vercel`
-that takes the uninstall notice takes `deployment.created` / `succeeded` / `error` / `canceled` / `promoted` /
-`rollback` and `project.removed` / `project.renamed` (`VERCEL_REFRESH_EVENTS`; the provider's
+that takes the uninstall notice takes `deployment.created` / `ready` / `succeeded` / `error` / `canceled` / `promoted` /
+`rollback` and `project.removed` / `project.renamed` (`VERCEL_REFRESH_EVENTS`; `ready` is the "finished" event for an
+integration with no checks of its own — Vercel sends `succeeded` only once one is registered; the provider's
 `install.webhook.changedProject`). A verified one is a NUDGE, never a record: the active org(s) whose install /
 OAuth connection is on that provider-side account (`connectionsForAccount`, a platform read) have their stored
 parts on that project — matched by id or name against the part's FIRST setting — polled again now (`pollPart`, as
