@@ -10,7 +10,7 @@ import { env } from "cloudflare:test";
 import { z } from "zod";
 import type { Env } from "../src/env";
 import { JEV_CALLS_PER_TICK, runAiPass, type AiJob, type AiPassResult } from "../src/ai/pass";
-import { HAIKU_GROUP_MAX, type ClaudeJob } from "../src/ai/jobs";
+import { HAIKU_GROUP_MAX, groupOf, type ClaudeJob } from "../src/ai/jobs";
 import { each, keep, sections } from "../src/ai/sections";
 import { newBudget, CRON_SUBREQUEST_BUDGET, CRON_WALL_BUDGET_MS } from "../src/repo/dispatch";
 import { captureDelivery } from "../src/webhook";
@@ -142,6 +142,10 @@ describe("GROUPING: Jev one item per request; Haiku up to 20 per call", () => {
     const s = stubProviders();
     await pass(s, [{ ...jevCardJob(), group: 20 } as AiJob], later(0));
     expect(s.jev).toBe(3);
+    // The rule itself: a Jev job, and a batch request, is one item whatever `group` says; Haiku 1–20.
+    expect(groupOf({ ...jevCardJob(), group: 20 } as AiJob)).toBe(1);
+    expect(groupOf(claudeJob("doc_drift", { batch: true, group: 20 }))).toBe(1);
+    expect([groupOf(claudeJob("card", { group: 0 })), groupOf(claudeJob("card", { group: 7 })), groupOf(claudeJob("card", { group: 99 }))]).toEqual([1, 7, 20]);
   });
 
   it(`THE JEV CAP: at most JEV_CALLS_PER_TICK (${JEV_CALLS_PER_TICK}) Jev requests a tick; the rest wait`, async () => {
