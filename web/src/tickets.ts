@@ -179,8 +179,11 @@ export interface QueueProps {
   filterOpen?: boolean;
   filterCat?: QueueFilterCat;
   fmOpening?: string | null;
-  /** The plain-language filter's box (ai-filter.ts), drawn above the toolbar; "" when the org's AI is off. */
+  /** The plain-language filter's applied line (ai-filter.ts `aiFilterLine`), drawn above the toolbar; "" when
+   *  nothing typed is applied or the org's AI is off. */
   aiFilter?: string;
+  /** The Filter menu's typed-filter row (ai-filter.ts `aiFilterMenuTop`) at the popover's top; "" when AI is off. */
+  aiFilterMenu?: string;
   /** The queue's first read is still out: the toolbar is real, and the board's columns
    *  (or the table's rows) hold a skeleton instead of "Nothing here". */
   loading?: boolean;
@@ -262,7 +265,7 @@ function queueFilterMenu(p: QueueProps, shown: number): FilterMenuProps {
   return {
     id: "queue", open: !!p.filterOpen, opening: p.fmOpening === "queue", cat: p.filterCat ?? "assignee", activeCount: active,
     showLabel: `Show ${shown} ${shown === 1 ? "ticket" : "tickets"}`, clearAct: "queueFilterClear",
-    align: "stretch", ariaLabel: "Filter tickets",
+    align: "stretch", ariaLabel: "Filter tickets", top: p.aiFilterMenu,
     groups: [
       {
         // A person is `@<handle>`, one list with the three modes. Their counts are

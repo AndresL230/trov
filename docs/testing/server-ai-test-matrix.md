@@ -247,9 +247,9 @@ once per mount (§ 8 D-1).
 
 | id | state | act | expected | source |
 | --- | --- | --- | --- | --- |
-| FL-1 | no key | open `#tickets` | NO filter box (never a disabled one) | `web/src/ai-filter-actions.ts:40-52`, `ai-filter.ts:54` |
-| FL-2 | org-ai-off · `K:dummy` | open `#tickets` | no box | same |
-| FL-3 | `K:dummy` · org-enterprise | open `#tickets`, `#feed`, `#artifacts` | the box with placeholders "Describe a filter: my open high-priority bugs" / "…my entries from the last 7 days" / "…published designs about auth"; `maxlength=300`; the AI-mark tooltip text | `shared/ai-filter-core.ts:115-119` |
+| FL-1 | no key | open `#tickets`, open Filter | NO "Describe a filter" row in the menu (never a disabled one), no bar above the toolbar | `web/src/ai-filter-actions.ts` `ensure`, `ai-filter.ts` `aiFilterMenuTop` |
+| FL-2 | org-ai-off · `K:dummy` | open `#tickets`, open Filter | no row | same |
+| FL-3 | `K:dummy` · org-enterprise | open `#tickets`, `#feed`, `#artifacts`; open Filter; choose "Describe a filter" (click, or ↓ then Enter) | the menu's first row "Describe a filter" (AI mark); choosing it grows the field open with placeholders "my open high-priority bugs" / "my entries from the last 7 days" / "published designs about auth"; `maxlength=300`; Escape closes the menu and focuses Filter | `shared/ai-filter-core.ts` `AI_FILTER_PLACEHOLDER` |
 | FL-4 | `K:dummy` | submit "" and "   " | no request; field error "Type what you want to see, in a sentence." | `ai-filter-actions.ts:68-70` |
 | FL-5 | `K:dummy` | `POST /ai/filter` with `{screen:"x"}`, a 301-char text, an extra key | 400 `{error:"invalid", message:"Type what you want to see, in a sentence."}` | `src/ai/routes.ts:130-155` |
 | FL-6 | `K:dummy` · org-ai-off (box forced via a stale page, Q1) | Apply | 403 `{error:"off", message:"AI is switched off for this organization."}` | same |

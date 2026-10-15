@@ -958,11 +958,21 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   skeleton's settle fade (`data-settle-with`, Loading skeletons above). Off under reduced motion
   (`test/render.brief-motion.test.ts`). The tile leaving on "Wrong?" has no exit yet: My Work is not `data-morph`ed,
   and the bento switches layout when the brief goes.
-- **The plain-language filter box** (`web/src/ai-filter.ts`, #162) above the toolbar of Tickets, the Feed and
-  Artifacts: the search bar's shape (`.cnpy-sfbar`, the AI mark where the magnifier is, Apply where Filter is), only
-  when the org's AI is on (no box when off, never a disabled one). Typing keeps the draft WITHOUT a repaint (Tickets
-  and the Feed are rebuilt on a paint); a refusal is the field's floating error (`fieldError`); once applied, one
-  plain line — "Filtered: Open · Assigned to you. Not a filter here: “overdue”." — and Undo. No pill, no select.
+- **The plain-language filter** (`web/src/ai-filter.ts`, #162) lives INSIDE the Filter menu of Tickets, the Feed and
+  Artifacts — no bar of its own. `FilterMenuProps.top` puts its section at the popover's top, over a hairline: a
+  `cnpy-menurow` "Describe a filter" with the AI mark and a chevron, and under it the field (input + Apply, the
+  search bar's look, `.fm-ai-field`), only when the org's AI is on (no row when off, never a disabled one).
+  Choosing the row opens the field ON THE LIVE POPOVER (`data-open`, `inert` off, focus to the input) — a one-track
+  grid `0fr` → `1fr` with a fade on `--fx-base` / `--fx-ease`, the chevron turning — so the menu's entrance never
+  replays; a repaint draws it already open. The row rises with the options on the paint that opens the menu
+  (`.is-opening`); all of it is off under reduced motion (the `.fm-pop *` rule). Typing keeps the draft WITHOUT a
+  repaint (Tickets and the Feed are rebuilt on a paint); a refusal is a `role="alert"` line under the field (a
+  floating error would be clipped by the popover), gone on the next keystroke. Keyboard: ↓ / ↑ walk the open
+  menu's rows from the Filter button, a row or nowhere (`.fm-pop .cnpy-menurow`, the typed filter first), Enter
+  on the row opens the field and Enter in it applies, Escape closes the menu and hands focus back to its Filter
+  button. A field with focus holds a hover-opened menu open, and the ticket queue's `data-hover-blur` leaves it be.
+  Once applied the menu closes on its exit and one plain line sits above the toolbar — "Filtered: Open · Assigned
+  to you. Not a filter here: “overdue”." — with Undo; after Undo it leaves by the kit's one exit. No pill, no select.
 - Tests: `test/render.ai.test.ts` (every screen in ready / empty / capped, themes proposed, admin vs member, the
   chip, the cites, Org settings › AI, Platform's AI line), `test/render.ai-absent.test.ts`, `test/render.ai-motion.test.ts`,
   `test/render.ai-filter.test.ts`.

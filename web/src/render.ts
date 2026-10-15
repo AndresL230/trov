@@ -81,7 +81,7 @@ import { previewBanner, previewState, type PreviewMode } from "./preview";
 import { aiItemRef } from "@shared/ai-core";
 import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, AI_NOTE_LEAVING, AI_EXIT_MS, type AiUi } from "./ai-ui";
 import { driftLine, roadmapSuggestionCards } from "./roadmap-ai";
-import { aiFilterBox, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
+import { aiFilterLine, aiFilterMenuTop, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
 import { initialAskUi, type AskUi } from "./ask-state";
 import { askScreenView, askHeader, askOverlays } from "./ask-screen";
 import { phoneHeaderControls } from "./ask-phone";
@@ -484,7 +484,7 @@ export interface AppState {
   preview: PreviewMode | null;
   /** The AI screens (ai-ui.ts): what "Wrong?" hid, the Feed's Source, the themes' range and lane. */
   ai: AiUi;
-  /** The plain-language filter's box on Tickets, the Feed and Artifacts (ai-filter.ts; #162). */
+  /** The plain-language filter in the Filter menus of Tickets, the Feed and Artifacts (ai-filter.ts; #162). */
   aiFilter: AiFilterUi;
 }
 
@@ -1022,7 +1022,7 @@ function header(s: AppState): string {
 /** The Feed page: the entries (`inner`) beside the sticky aside — This week + Waiting on
  *  review — in the Roadmap Narrative's two columns (ui.ts `asideColumns`). */
 function wrapFeed(s: AppState, inner: string, history = true): string {
-  return asideColumns(`${aiFilterBox("feed", s.aiFilter)}${inner}
+  return asideColumns(`${aiFilterLine("feed", s.aiFilter, s.ai)}${inner}
     ${history ? `<div style="text-align:center;padding:18px 0;font-size:11.5px;color:var(--fg-40);font-family:var(--label)">&mdash; start of recorded history &mdash;</div>` : ""}`, feedAside(s));
 }
 
@@ -1194,7 +1194,7 @@ function feedFilterMenu(s: AppState): FilterMenuProps {
   return {
     id: "feed", open: s.feedFilterOpen, opening: s.fmOpening === "feed", cat: s.feedFilterCat, activeCount: active,
     showLabel: `Show ${shown} ${shown === 1 ? "entry" : "entries"}`, clearAct: "feedFilterClear",
-    align: "right", ariaLabel: "Filter the feed", standalone: true,
+    align: "right", ariaLabel: "Filter the feed", standalone: true, top: aiFilterMenuTop("feed", s.aiFilter),
     groups: [
       {
         key: "author", label: "Author", value: s.feedAuthor, none: "all",
@@ -2785,7 +2785,8 @@ function ticketsScreen(s: AppState): string {
     filterOpen: s.qFilterOpen,
     filterCat: s.qFilterCat,
     fmOpening: s.fmOpening,
-    aiFilter: aiFilterBox("tickets", s.aiFilter),
+    aiFilter: aiFilterLine("tickets", s.aiFilter, s.ai),
+    aiFilterMenu: aiFilterMenuTop("tickets", s.aiFilter),
     // The first read is out: the toolbar is real, the columns / rows are skeletons.
     loading: slicePending(s.tickets),
     // Cards declined while this view was up, mid-exit (the AI kit's clock: `--leave-t`).
@@ -2945,7 +2946,8 @@ function repoProps(s: AppState): RepoProps {
 function artProps(s: AppState, screen: ArtScreen): ArtProps {
   return {
     screen, route: s.artRoute, ui: s.art, me: s.me?.handle ?? "", admin: viewerIsAdmin(s), fmOpening: s.fmOpening,
-    aiFilter: screen === "artifacts" ? aiFilterBox("artifacts", s.aiFilter) : "",
+    aiFilter: screen === "artifacts" ? aiFilterLine("artifacts", s.aiFilter, s.ai) : "",
+    aiFilterMenu: screen === "artifacts" ? aiFilterMenuTop("artifacts", s.aiFilter) : "",
     orgName: viewerOrg(s)?.name ?? "", repos: s.orgMe.data?.repos.all ?? [],
     persons: s.persons.data, host: `${typeof location !== "undefined" ? location.host : "trov"}${s.orgSlug ? `/${s.orgSlug}` : ""}`,
     theme: resolved(s),

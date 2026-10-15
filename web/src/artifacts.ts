@@ -166,8 +166,11 @@ export interface ArtProps {
   host: string;
   /** The filter menu (web/src/filter-menu.ts) that this render opens, if any — plays its entrance once. */
   fmOpening?: string | null;
-  /** The plain-language filter's box (ai-filter.ts) above the library's toolbar; "" when the org's AI is off. */
+  /** The plain-language filter's applied line (ai-filter.ts `aiFilterLine`) above the library's toolbar; "" when
+   *  nothing typed is applied or the org's AI is off. */
   aiFilter?: string;
+  /** The Filter menu's typed-filter row (ai-filter.ts `aiFilterMenuTop`) at the popover's top; "" when AI is off. */
+  aiFilterMenu?: string;
   /** The resolved theme — the mermaid cache is keyed by it (the diagram is drawn in its colours). */
   theme: string;
   tickets: ArtTicketRef[];
@@ -492,7 +495,7 @@ function libraryView(p: ArtProps): string {
   const menu: FilterMenuProps = {
     id: "art", open: ui.filterOpen, opening: p.fmOpening === "art", cat: ui.filterCat, activeCount: active,
     showLabel: `Show ${rows.length} ${rows.length === 1 ? "artifact" : "artifacts"}`, clearAct: "artFilterClear",
-    align: "stretch", ariaLabel: "Filter artifacts",
+    align: "stretch", ariaLabel: "Filter artifacts", top: p.aiFilterMenu,
     groups: groups.map((g) => ({
       key: g.key, label: g.label, value: ui.f[g.key], none: "all",
       options: g.options.map((o) => {

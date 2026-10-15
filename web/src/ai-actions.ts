@@ -32,6 +32,9 @@ export interface AiHost {
 }
 export interface AiController {
   act(act: string, arg: string | null, value: string | null): void;
+  /** Start `key`'s exit — the kit's ONE exit (› Leaving), for an item another controller draws (the typed
+   *  filter's applied line after Undo). Null under reduced motion: no exit, gone at once. */
+  leave(key: string): number | null;
 }
 
 /** A "Wrong?" button's arg, read back — only a well-formed body is ever sent. */
@@ -208,5 +211,5 @@ export function createAiController(host: AiHost): AiController {
     }
     rerender();
   }
-  return { act };
+  return { act, leave: (key) => leave(key) };
 }

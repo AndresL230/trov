@@ -188,12 +188,16 @@ const aiFilterCtl = createAiFilterController({
   snapshot: (screen) => aiFilterSnapshot(screen),
   apply: (screen, filter) => applyAiFilter(screen, filter),
   restore: (screen, snap) => restoreAiFilter(screen, snap),
+  closeMenu: (screen) => closeFilterMenu(AI_FILTER_MENU[screen]),
+  leave: (key) => aiCtl.leave(key),
   names: () => ({
     me: state.me?.handle ?? "",
     person: (h) => state.persons.data.find((p) => p.handle.toLowerCase() === h.toLowerCase())?.name || h,
     sprint: (id) => state.sprints.data.find((x) => String(x.id) === id)?.label ?? `Sprint #${id}`,
   }),
 });
+/** Each typed filter's Filter menu (its `FILTER_MENUS` id, below). */
+const AI_FILTER_MENU: Record<AiFilterScreen, string> = { tickets: "queue", feed: "feed", artifacts: "art" };
 /** One screen's filter state, as Undo puts it back. */
 function aiFilterSnapshot(screen: AiFilterScreen): AiFilterSnapshot {
   if (screen === "tickets") return { qSeg: state.qSeg, qAssignee: state.qAssignee, qPerson: state.qPerson, qCategory: state.qCategory, qPrio: state.qPrio, qSprint: state.qSprint, qQ: state.qQ };
@@ -4286,15 +4290,20 @@ function openFilterMenu(id: string): void {
   }
   if (spec.isOpen()) return;
   spec.setOpen(true);
+  state.aiFilter.reveal = null;      // a menu always opens on its "Describe a filter" row, the field shut
   state.fmOpening = id;
   rerender();
   state.fmOpening = null;
 }
-function closeFilterMenu(id: string): void {
+/** `refocus`: the keyboard was in the menu (Escape) — focus goes back to its Filter button once it is shut. */
+function closeFilterMenu(id: string, refocus = false): void {
   const spec = FILTER_MENUS[id];
   if (!spec || !spec.isOpen() || fmClosing === id) return;
   cancelHoverClose();
-  const finish = () => { fmClosing = null; spec.setOpen(false); rerender(); };
+  const finish = () => {
+    fmClosing = null; spec.setOpen(false); rerender();
+    if (refocus) mount.querySelector<HTMLElement>(`[data-act="fmToggle"][data-arg="${id}"]`)?.focus({ preventScroll: true });
+  };
   const pop = livePopover(id);
   if (!pop || reducedMotion()) { finish(); return; }
   fmClosing = id;
@@ -4376,6 +4385,9 @@ mount.addEventListener("pointerout", (e) => {
   if (!FILTER_MENUS[id]) return;
   const to = e.relatedTarget as Element | null;
   if (to && to.closest?.(`[data-hover-menu="${id}"]`)) return;   // moving between its own children
+  // Typing a filter in it (ai-filter.ts): the menu stays while its field has focus; Escape, the backdrop or
+  // the Filter button close it.
+  if (menu?.querySelector(".fm-ai")?.contains(document.activeElement)) return;
   cancelHoverClose();
   hoverCloseTimer = setTimeout(() => { hoverCloseTimer = null; closeFilterMenu(id); }, 200);
 });
@@ -4389,7 +4401,8 @@ mount.addEventListener("pointerout", (e) => {
   const to = e.relatedTarget as Element | null;
   if (to && box.contains(to)) return;
   const focused = document.activeElement;
-  if (focused instanceof HTMLElement && box.contains(focused)) focused.blur();
+  // A filter being typed in the open Filter menu keeps its focus (the menu stays open for it, above).
+  if (focused instanceof HTMLElement && box.contains(focused) && !focused.closest(".fm-ai")) focused.blur();
 });
 // A switch's option widths (and a tab bar's tab widths) change with the viewport and once
 // the web fonts land: re-place every indicator where it sits, without a slide.
@@ -4398,10 +4411,33 @@ window.addEventListener("resize", syncIndicators);
 void document.fonts?.ready.then(syncIndicators);
 // A tab bar's keyboard: ←/→ step between its tabs, Home/End jump (./tabs `onTabBarKey`).
 mount.addEventListener("keydown", onTabBarKey);
-// Escape closes an open filter menu.
+// Escape closes an open filter menu — and when the keyboard was in it (a row, the typed filter's field, or
+// nowhere after a repaint), focus goes back to its Filter button.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  for (const [id, spec] of Object.entries(FILTER_MENUS)) if (spec.isOpen()) closeFilterMenu(id);
+  const active = document.activeElement;
+  for (const [id, spec] of Object.entries(FILTER_MENUS)) {
+    if (!spec.isOpen()) continue;
+    closeFilterMenu(id, !active || active === document.body || !!active.closest(`[data-hover-menu="${id}"]`));
+  }
+});
+// ↓ / ↑ walk an open filter menu's rows — the typed filter's "Describe a filter" first, then the shown options,
+// then the categories — from its Filter button, a row, or nowhere (a repaint drops focus). Enter on a row is its
+// click; a text field keeps its own arrows.
+document.addEventListener("keydown", (e) => {
+  if ((e.key !== "ArrowDown" && e.key !== "ArrowUp") || e.altKey || e.ctrlKey || e.metaKey) return;
+  const id = Object.keys(FILTER_MENUS).find((k) => FILTER_MENUS[k].isOpen() && fmClosing !== k);
+  const wrap = id ? mount.querySelector<HTMLElement>(`[data-hover-menu="${id}"]`) : null;
+  if (!wrap) return;
+  const t = e.target instanceof Element ? e.target : null;
+  if (t?.closest("input, textarea, select, [contenteditable]")) return;
+  if (t && t !== document.body && !wrap.contains(t)) return;
+  const rows = Array.from(wrap.querySelectorAll<HTMLElement>(".fm-pop .cnpy-menurow")).filter((r) => !r.closest("[hidden], [inert]"));
+  if (!rows.length) return;
+  e.preventDefault();
+  const at = rows.indexOf(document.activeElement as HTMLElement);
+  const next = at < 0 ? (e.key === "ArrowDown" ? 0 : rows.length - 1) : (at + (e.key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length;
+  rows[next].focus({ preventScroll: false });
 });
 
 mount.addEventListener("click", (e) => {
