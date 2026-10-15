@@ -337,6 +337,7 @@ export const RELEASES: Release[] = [
         "A digest whose brief block is only Also says Also once (e2e EM-4) (#178)",
         "A handoff's reading list rises in when a claim draws it, and never again on a rerender (e2e MO-13) (#178)",
         "Org settings › AI's switches keep the keyboard's focus while they save (`switchBtn` busy is `aria-disabled`) (e2e EV-OA-admin-K) (#178)",
+        "The plain-language filter's \"Filtered: …\" line rises in when applied and leaves with the AI kit's one exit on Undo (e2e MO-10 / MO-11) (#178)",
       ],
       removed: [
         "The digest's per-PR What / Why / Impact cards, its assigned-issue rows and labels, the ticket queue's per-ticket rows and the Roadmap section's plan diff (Phase E: one line per queue) (#178)",

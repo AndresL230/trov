@@ -4,6 +4,15 @@ Phase H run (`docs/superpowers/specs/2026-10-15-server-ai-e2e.md`), Tier 1 of `d
 § 10 for the sections **G, OA, SF, PU, FL, RL, EM, JB, MC, LG**, plus their § 6 environment and § 7 motion cells.
 Branch `ai/e2e-platform` from `af26ce3c`. Screenshots: `docs/testing/server-ai-shots/platform/` (linked by name below).
 
+## Summary
+
+- **Functional (Tier 1): 136 cases** — G 12, OA 26, SF 18, PU 6, FL 23, RL 10, EM 24 (+ the sample set), JB 10, MC 4,
+  LG 3: **128 pass · 3 fail → fixed** (OA-1 and LG-2 are one bug; EM-4) · **5 question** (OA-15, FL-23, FL-25, EM-3, EM-6).
+- **Environment (§ 6): 70 cells** — 68 pass · 1 fail → fixed (EV-OA-admin-K) · 1 pre-existing (EV-SF-cell-K's focus, P-1).
+- **Motion (§ 7): 17 cells** — 14 pass · 3 fail → fixed (MO-10, MO-11, MO-13).
+- **Fix commits:** 0a8519eb (OA-1 / LG-2), f84f06cd (EM-4), 3b80ae8f (MO-13), daab320d (EV-OA-admin-K), 128c0573 (MO-10 / MO-11).
+- Not run (no Tier 1 expectation): FL-12 (it would reach the model), FL-24 (Q1, a second tab), EM-18 (Q46 only).
+
 ## Setup
 
 - Local only: `wrangler dev --port 8830 --inspector-port 9830 --test-scheduled` in this worktree, its own
@@ -195,6 +204,7 @@ The daily cron was fired at the real New York hour (send_hour set to it); weekly
 | EM-22 | the text part | present for every sent digest | `assemble.ts:364-383` | present (e.g. 779 chars) | pass (Q47 open) | D1 |
 | EM-23 | signed out opens the deep link, signs in | lands on `/test-ent/#mywork` | `main.ts` return-to | stash `trov.returnHash=#mywork`, `trov.returnOrg=test-ent`; after the cookie, "/" lands on `/test-ent/#mywork` (the OAuth hop stubbed, D-7) | pass | → `em-23-landed.png` |
 | EM-24 | the footer | "You're getting the daily Trov digest for test-member" + Unsubscribe; List-Unsubscribe | `assemble.ts:359-361` | footer as expected; the header is built only for Resend (`resend.ts:49`) and local mode stores no headers | pass (header not observable locally) | body |
+| EM-25 | the `:50` pre-warm (no key), send hour = the coming NY hour | `ai_dirty (person, <handle>, urgent=1)` per recipient; org-ai-off: none | `notifications/cron.ts:68-96` | fired at a real 22:50 UTC: test-ent's four recipients (admin, member, member2, owner — not noemail / unsub) urgent=1, every other active org's recipients too, **no** test-ai-off row; `ai_batches` 0 (the pass after it read nothing) | pass | D1 |
 | EM-sample | `?sample=index` + six samples | each Phase E shape | `sample.ts` | index lists daily-ai, daily-off, daily-empty, weekly-ai, weekly-off, only-when-needed; each renders | pass | → `em-sample-*.png` |
 
 ### JB — keyless background behaviour
@@ -249,7 +259,9 @@ picks it — the app does not follow `prefers-color-scheme` on its own; e-mail b
 | SF-modal (SF-11) | pass | pass | pass | pass: focus lands in Name, 25 Tabs stay inside, Escape closes, focus back on New tag |
 | PU-line (PU-3) | pass | pass | pass | — |
 | PU-org (PU-4) | pass | pass | pass | — |
-| FL-box (FL-3) | pass | pass | pass | (P:ready, below) |
+| FL-box (FL-3) | pass | pass | pass | pass (P:ready): 27 Tabs reach the field (3 px ring), Enter applies, 2 Tabs reach Undo, Enter on it clears the line |
+| FL-applied (FL-13, P:ready) | pass | pass | pass | — |
+| FL-error (FL-18, P:empty) | pass | pass | pass | — |
 | FL-402 (FL-7) | pass | pass | pass | — |
 | RL-list (RL-1) | pass | pass | pass | pass: the first row reached by Tab; Enter opens Docs on test-Deploy checklist |
 | EM-daily (EM-2 body) | pass (`ev-em-daily-1440-dark`) | pass | pass | — |
@@ -268,6 +280,10 @@ picks it — the app does not follow `prefers-color-scheme` on its own; e-mail b
 | MO-6 | the What is sent popover (a rerender) | no replay | the popover's own `cnpy-pop` only | pass |
 | MO-7 | New tag modal | keyframe in / out, no replay while typing | `cnpy-cm-in` / `cnpy-cm-fade`; typing: none; Escape: `cnpy-cm-out` with `data-closing` | pass |
 | MO-8 | reduced | nothing moves | no keyframes (only colour transitions on hover) | pass |
+| MO-9 | the filter box, `#feed` → `#tickets` (P:ready) | rises with the screen | `cnpy-screen` + the cards' `cnpy-rise` (the route entrance) | pass |
+| MO-10 | typing in the box; the applied line appearing | typing: nothing; the line enters | typing: none. The applied line appeared with **no motion** | **fail → fixed** (128c0573): rises with `.cnpy-flash` from when it was applied (negative delay, so the list reload's repaint joins it) |
+| MO-11 | Undo: the applied line leaves | the one exit pattern | the line **vanished instantly** | **fail → fixed** (128c0573): `aiLeave` (`cnpy-ai-leave`, inert, `AI_EXIT_MS`), then one paint drops it; FL-17 retested (Undo restores the pre-first-apply filters, line gone at 600 ms) |
+| MO-12 | reduced | nothing moves | no keyframes (the leaving copy is `display:none`) | pass |
 | MO-13 | the reading list after Claim | rises in once | **nothing animated** — the list popped in | **fail → fixed** (3b80ae8f): rises with `.cnpy-flash`; a repaint 15 ms later joins the same animation (traced: `cnpy-rise:running` across both repaints) |
 | MO-14 | a later rerender (Copy as prompt) | no replay | none on the list | pass |
 | MO-15 | reduced | nothing moves | none | pass |
@@ -290,6 +306,14 @@ picks it — the app does not follow `prefers-color-scheme` on its own; e-mail b
   except a file a ticket or doc still refers to or one you published to the organization. Deleting your account
   deletes the files you attached in Ask Trov and did not publish."; › deletion "…the files you attached in Ask Trov and
   did not publish to the organization…". — pass.
+
+## Final pass (after every fix, from a clean seed, 2026-10-15 ~23:00Z)
+
+Re-run, each from a fresh seed in its key / preview mode: G (all 130 refusals + G-59–61), OA-2/4/8/13/24/25 (no key),
+OA-1/3/9–11/14–18 and OA-5/6/7/26 (K:dummy), SF-1/2/8/9/11/16 (no key) and SF-3–7/10/12–15/17/18 (K:dummy), PU-1/2/5
+and PU-4, FL-1, FL-2–11 (K:dummy), FL-13–25 and OA-20/21/22/23 (P:ready / empty / capped), RL-1–7, LG-1–3, JB-1–10,
+EM (daily cron: 33 sent, 3 skipped; EM-1/12–16/20 previews), MC-2 and EV-FL-box-K. Every result as recorded above;
+nothing that passed earlier failed. The fixes' own cases were retested after each fix (see each row).
 
 ## Pre-existing (same on main; recorded, not fixed)
 
