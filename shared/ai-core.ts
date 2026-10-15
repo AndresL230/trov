@@ -204,7 +204,7 @@ export type AiSuggestionError = (typeof AI_SUGGESTION_ERRORS)[number];
 
 /** Tenant routes (cookie only, under `/api/o/:slug`). */
 export const AI_ROUTES = {
-  settings: "/ai/settings",                       // GET → AiSettings; PUT { enabled } (admin) → AiSettings
+  settings: "/ai/settings",                       // GET → AiSettings; PUT AiSettingsPut (admin) → AiSettings
   accept: (id: number) => `/ai/suggestions/${id}/accept`,   // POST AiAcceptBody
   dismiss: (id: number) => `/ai/suggestions/${id}/dismiss`, // POST {}
   feedback: "/ai/feedback",                       // POST AiFeedbackBody
@@ -219,25 +219,51 @@ export function nextMonthStart(now: Date): string {
 export const AI_ELIGIBILITY = ["ok", "off", "no_key", "capped"] as const;
 export type AiEligibility = (typeof AI_ELIGIBILITY)[number];
 
-/** One line of "What is sent to Anthropic". Grows as features land; today only summaries. */
-export interface AiSendLine { what: string; for: string }
+/** Who receives what Trov sends — the providers BY THEIR LEGAL NAMES (what the Privacy Policy names). A
+ *  screen calls TypeSafe AI's model "Sift", never by its own name. */
+export const AI_PROVIDER_NAMES = ["Anthropic", "TypeSafe AI"] as const;
+export type AiProviderLabel = (typeof AI_PROVIDER_NAMES)[number];
+
+/** One line of "What is sent": to whom, what, and for which feature. Grows as features land. */
+export interface AiSendLine { provider: AiProviderLabel; what: string; for: string }
 export const AI_SENDS: readonly AiSendLine[] = [
-  { what: "Pull request and issue titles and descriptions (up to 8,000 characters each)", for: "Summaries" },
+  { provider: "Anthropic", what: "Pull request and issue titles and descriptions (up to 8,000 characters each)", for: "Summaries" },
+  {
+    provider: "TypeSafe AI",
+    what: "A tag's name and description, and the title and first 400 characters of each feed entry, doc or decision that may fit it (code and anything shaped like a credential removed)",
+    for: "Sift",
+  },
 ];
 /** Never sent, whatever lands. */
 export const AI_NEVER_SENT = "Source code, diffs, secrets, integration keys, and anything from another organization.";
 
+/** The four AI allowances Org settings › AI shows, by their `LimitKey` (shared/plans.ts), in order:
+ *  capture-time summaries (Anthropic), what the AI pass writes (Anthropic), Sift's checks (TypeSafe AI),
+ *  and Ask Trov (Anthropic, weighted units). */
+export const AI_ALLOWANCE_KEYS = ["ai_summaries", "ai_runs", "jev_checks", "ai_chat"] as const;
+export type AiAllowanceKey = (typeof AI_ALLOWANCE_KEYS)[number];
+
+/** One allowance this calendar month (UTC): `cap` null = unlimited (Pro's `ai_chat` is already its seats ×
+ *  the per-seat amount); `resumesOn` (`YYYY-MM-DD`, the 1st of next month) only when it is used up. */
+export interface AiAllowanceUse { used: number; cap: number | null; resumesOn: string | null }
+
 export interface AiSettings {
-  /** `orgs.ai_automation`. */
+  /** `orgs.ai_automation` — the switch every AI feature (Sift included) sits under. */
   enabled: boolean;
-  /** The caller is an admin: the switch is theirs to change. Members see its state. */
+  /** The caller is an admin: the switches are theirs to change. Members see their state. */
   canEdit: boolean;
   eligibility: AiEligibility;
-  /** This calendar month (UTC) against the plan's `ai_runs`; `cap` null = unlimited. */
-  runs: { used: number; cap: number | null; resumesOn: string | null };
+  /** This month's use of each AI allowance. */
+  allowances: Record<AiAllowanceKey, AiAllowanceUse>;
+  /** `orgs.ai_chat_auto` (0057) — whether Ask Trov's Auto mode (writes run without a Confirm, with Undo)
+   *  may be used in this organization. */
+  chatAuto: boolean;
   sends: AiSendLine[];
   neverSent: string;
 }
+
+/** `PUT /ai/settings` (admin+): either switch, or both. */
+export interface AiSettingsPut { enabled?: boolean; chatAuto?: boolean }
 
 // ── Platform › Usage ────────────────────────────────────────────────────────
 /** `OrgUsage.ai?` / `PlatformUsageResponse.ai?`: AI runs and tokens in the window

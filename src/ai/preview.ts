@@ -5,9 +5,11 @@
 // (`ready`, `empty`, `capped`, `proposed`); anything else is ignored. It is guarded like the other local
 // stand-ins (src/platform/loopback.ts): honoured only for a request to a LOOPBACK http origin — the
 // address `wrangler dev` serves on, which no deployed Worker is ever reached at — and never while the
-// Worker holds a live Stripe key (`holdsLiveKey`). With it honoured, three cookie reads carry the fixtures
+// Worker holds a live Stripe key (`holdsLiveKey`). With it honoured, four cookie reads carry the fixtures
 // (shared/ai-fixtures.ts): `/me/dashboard` → `brief`, `/repo/dashboard` → `state` + `themes`, and `/feed`
-// → the two entries written by Trov, merged by `created_at`. MCP never: the preview is for the screens.
+// → the two entries written by Trov, merged by `created_at`, and `/ai/settings` → all four allowances' numbers
+// and the eligibility (the switches stay the org's real ones; what is sent names both providers in every
+// mode). MCP never: the preview is for the screens.
 //
 // Production omits every AI field: nothing produces one yet.
 import type { Env } from "../env";

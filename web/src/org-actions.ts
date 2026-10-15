@@ -146,22 +146,25 @@ export function createOrgController(host: OrgHost): OrgController {
   const loadEnvs = () => read(() => ui().envs, (v) => { ui().envs = v; }, listOrgEnvironments);
   const loadIntegrations = () => read(() => ui().integrations, (v) => { ui().integrations = v; }, listOrgIntegrations);
   const loadAudit = () => read(() => ui().audit, (v) => { ui().audit = v; }, (slug) => listOrgAudit(slug));
-  /** AI (org-ai.ts): the switch, this month's runs, what is sent — every member reads it. */
+  /** AI (org-ai.ts): the switches, this month's allowances, what is sent — every member reads it. */
   const loadAi = () => read(() => ui().ai, (v) => { ui().ai = v; }, getAiSettings);
-  /** The switch: an admin's write. The answer is the settings as they now stand. */
-  function toggleAi(): void {
+  /** A switch — the AI switch (`enabled`) or Ask Trov's Auto (`chatAuto`): an admin's write. The answer is
+   *  the settings as they now stand. */
+  function toggleAi(which: "enabled" | "chatAuto"): void {
     const o = org();
     const u = ui();
     const cur = u.ai.data;
     if (!o || !cur || !cur.canEdit || u.aiSaving) return;
     u.aiSaving = true;
     rerender();
-    putAiSettings(o.slug, !cur.enabled)
+    putAiSettings(o.slug, which === "enabled" ? { enabled: !cur.enabled } : { chatAuto: !cur.chatAuto })
       .then((next) => {
         u.aiSaving = false;
         if (ui().slug !== o.slug) return;
         u.ai = { status: "ok", data: next };
-        host.flash(next.enabled ? "Trov's AI is on for this organization" : "Trov's AI is off for this organization");
+        host.flash(which === "enabled"
+          ? (next.enabled ? "Trov's AI is on for this organization" : "Trov's AI is off for this organization")
+          : (next.chatAuto ? "Auto mode is allowed in Ask Trov" : "Auto mode is off in Ask Trov: every change waits to be confirmed"));
       })
       .catch((e) => {
         u.aiSaving = false;
@@ -667,7 +670,8 @@ export function createOrgController(host: OrgHost): OrgController {
       case "orgPlanReload": loadPlanOnly(); return;
 
       // AI
-      case "orgAiToggle": toggleAi(); return;
+      case "orgAiToggle": toggleAi("enabled"); return;
+      case "orgAiChatAutoToggle": toggleAi("chatAuto"); return;
 
       // General
       case "orgNameDraft": u.nameDraft = value ?? ""; u.nameError = null; break;

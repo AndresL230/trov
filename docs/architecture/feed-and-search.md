@@ -70,7 +70,8 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   legal pages name the provider, **TypeSafe AI**, because the privacy policy must name who receives the text
   (not the model). Code identifiers (`jevCell`, `jev_checks`, the reserved `jev` handle on provenance rows)
   are internal and keep the name.
-- **Tagging existing items — Jev ADDS the tag** (issues #154–#158, #166; `src/tools/classify.ts`, `src/tools/tag-fit.ts`).
+- **Tagging existing items — Jev ADDS the tag** (issues #154–#158, #166; the run `src/ai/sift.ts`, through the `tag.fit` kind's provider — the Jev provider
+  `src/tools/classify.ts`, handed out by `src/ai/client.ts` —; the rest `src/tools/tag-fit.ts`; `ai.md`).
   When an admin adds a tag (or accepts a suggested one), and on "Find items", Trov asks a model which of the
   org's EXISTING items fit it, and **adds the tag to each item it is sure fits** (≥ `FIT_APPLY`, 0.85) and **suggests
   it** for each it is less sure about (≥ `FIT_SUGGEST`, 0.60, below 0.85) — an `open` model row in
@@ -122,9 +123,12 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   - **Not confirmed from TypeSafe's docs** (so the client is conservative): a maximum number of questions per
     request, a maximum `state` size, rate limits and pricing are not documented. Hence one item and one question
     per request, at most 4 at once, and states of at most ~600 characters (title ≤ 200 + excerpt ≤ 400).
-  - **Consent**: `org_ai_settings` (kind `tag.fit`), OFF by default, an admin's switch in Org settings › Tags
-    (`PUT /api/o/:slug/tag-settings`, audited `ai.enable` / `ai.disable`). Off, or no `TYPESAFE_API_KEY` → nothing
-    is sent (`startTagFit` answers `off` / `no_key`); turning it off mid-run stops the next call.
+  - **Consent**: TWO switches, both needed. Sift's own — `org_ai_settings` (kind `tag.fit`), OFF by default, an
+    admin's switch in Org settings › Tags (`PUT /api/o/:slug/tag-settings`, audited `ai.enable` / `ai.disable`) —
+    and the organization's AI switch (`orgs.ai_automation`, Org settings › AI), which covers every AI feature.
+    Either off, or no `TYPESAFE_API_KEY` → nothing is sent (`startTagFit` answers `off` / `no_key`); both are read
+    in one statement (`siftSwitches`) before EVERY request, so turning either off mid-run stops the next call. The
+    Tags tab says so when it is the org's switch (`TagAiDTO.org`: "Trov's AI is off for this organization").
   - **What is sent** (to TypeSafe AI only): the tag's name and description (in the question and its criteria), and
     per item its title (≤ 200) and an excerpt of ≤ 400 characters (topped-up items alike) (`excerptOf`: code blocks, inline code, link targets, URLs, markup and anything shaped like
     a credential removed). Candidates are picked WITHOUT the model: the org's own FTS (`feed_fts`, `docs_fts` —

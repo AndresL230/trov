@@ -17,7 +17,7 @@ export type PlanId = (typeof PLAN_IDS)[number];
 export const isPlanId = (v: unknown): v is PlanId => typeof v === "string" && (PLAN_IDS as readonly string[]).includes(v);
 
 /** Every limit a plan sets. `null` as a value means UNLIMITED. */
-export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections", "ai_summaries", "ai_runs", "jev_checks", "tags"] as const;
+export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections", "ai_summaries", "ai_runs", "jev_checks", "ai_chat", "tags"] as const;
 export type LimitKey = (typeof LIMIT_KEYS)[number];
 export type Entitlements = Record<LimitKey, number | null>;
 /** Per-org exceptions: a key that is present replaces the plan's value (null = unlimited); absent = the plan's. */
@@ -72,6 +72,13 @@ export const LIMITS: Record<LimitKey, LimitDef> = {
     label: "Tag checks", one: "tag check", many: "tag checks", counts: "Checks Sift made of whether an existing item fits a tag, this calendar month (UTC).",
     per: "org", unit: "count", min: 0, period: "month", atCap: "Trov stops looking for items that fit a tag until next month.",
   },
+  // Ask Trov (docs/architecture/ai.md): answers counted in WEIGHTED units — a Fast answer is 1, Smart 5,
+  // Thinking 10 (`ai_chat` metric). Per org on Free and Personal; on Pro it is PER SEAT (`PlanDef.perSeat`:
+  // `resolveEntitlements` multiplies by the seats in force). Nothing uses it yet, so it is NOT LISTED.
+  ai_chat: {
+    label: "Ask Trov", one: "Ask Trov unit", many: "Ask Trov units", counts: "Ask Trov answers this calendar month (UTC), weighted: a Fast answer is 1, Smart 5, Thinking 10.",
+    per: "org", unit: "count", min: 0, period: "month", atCap: "Ask Trov pauses until next month.", listed: false,
+  },
   // The organization's tag list (0056_org_tags; src/tools/tags.ts). min 6: the starters are never removed.
   tags: { label: "Tags", one: "tag", many: "tags", counts: "Tags on the list. Retired tags do not count.", per: "org", unit: "count", min: 6 },
 };
@@ -102,6 +109,11 @@ export interface PlanDef {
   entitlements: Entitlements;
   /** The capabilities the plan includes (`FEATURE_KEYS`). Not overridable per org. */
   features: readonly FeatureKey[];
+  /** Limits this plan gives PER SEAT (`LimitDef.per` cannot say so: it is per plan, not per limit). Its
+   *  `entitlements` value is the amount for one seat; `resolveEntitlements` multiplies it by the seats in
+   *  force — the org's `seats` override (a paid Pro org's: the seats it pays for), else the plan's own. An
+   *  org's override of such a limit is its WHOLE cap, never multiplied. Absent = none. */
+  perSeat?: readonly LimitKey[];
   /** Shown on the pricing page and given to new organizations. false: a legacy plan, kept only so the
    *  orgs and grants already on it resolve (Personal). */
   offered: boolean;
@@ -118,28 +130,29 @@ const GB = 1024 * MB;
 // platform's caps from before plans (10 each: the repo cron's budget is shared), so an existing org sees
 // no change. `ai_summaries` (per calendar month) are sized so that one org cannot run up the platform's
 // one Anthropic bill, not from measured use (plans.md › AI summaries); `ai_runs` likewise (ai.md).
-// Tags and Sift's checks: the owner's numbers (2026-10-14). Personal follows Free, as everywhere.
+// Tags and Sift's checks: the owner's numbers (2026-10-14). Personal follows Free, as everywhere. Ask Trov
+// (`ai_chat`, 2026-10-15): 50 per org on Free and Personal, 500 PER SEAT on Pro (`perSeat`), unlimited on Enterprise.
 
 export const PLANS: Record<PlanId, PlanDef> = {
   free: {
     id: "free", name: "Free", description: "For a small team trying Trov out.",
-    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, tags: 30 },
+    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, ai_chat: 50, tags: 30 },
     features: [], offered: true, billing: null,
   },
   // LEGACY: no longer offered or sold. An org or grant already on it keeps these limits.
   personal: {
     id: "personal", name: "Personal", description: "One person's own organization.",
-    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, tags: 30 },
+    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, ai_chat: 50, tags: 30 },
     features: [], offered: false, billing: null,
   },
   team: {
     id: "team", name: "Pro", description: "For a team, paid per seat.",
-    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, tags: 50 },
-    features: [], offered: true, billing: null,
+    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 500, tags: 50 },
+    features: [], offered: true, billing: null, perSeat: ["ai_chat"],
   },
   enterprise: {
     id: "enterprise", name: "Enterprise", description: "Limits set for the organization by Trov.",
-    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_runs: null, jev_checks: null, tags: null },
+    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_runs: null, jev_checks: null, ai_chat: null, tags: null },
     features: [], offered: true, billing: null,
   },
 };
@@ -263,11 +276,18 @@ export function storedOverrides(json: string | null | undefined): PlanOverrides 
   try { return parseOverrides(JSON.parse(json)) ?? {}; } catch { return {}; }
 }
 
-/** THE resolution: the plan's defaults with the org's overrides on top. */
+/** THE resolution: the plan's defaults with the org's overrides on top — and a per-seat limit
+ *  (`PlanDef.perSeat`, Pro's `ai_chat`) computed HERE, at read time: the plan's amount for one seat × the
+ *  seats in force (unlimited seats → unlimited). An override of that limit is the org's whole cap. */
 export function resolveEntitlements(plan: string | null | undefined, overrides: PlanOverrides = {}): Entitlements {
-  const base = planDef(plan).entitlements;
-  const out = { ...base };
-  for (const k of LIMIT_KEYS) if (k in overrides && overrides[k] !== undefined) out[k] = overrides[k] as number | null;
+  const def = planDef(plan);
+  const out = { ...def.entitlements };
+  const overridden = (k: LimitKey): boolean => k in overrides && overrides[k] !== undefined;
+  for (const k of LIMIT_KEYS) if (overridden(k)) out[k] = overrides[k] as number | null;
+  for (const k of def.perSeat ?? []) {
+    const each = def.entitlements[k];
+    if (!overridden(k) && each !== null) out[k] = out.seats === null ? null : each * out.seats;
+  }
   return out;
 }
 

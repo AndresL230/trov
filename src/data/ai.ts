@@ -17,6 +17,16 @@ export async function setAiAutomation(ctx: TenantContext, enabled: boolean, at: 
   ]);
 }
 
+/** Allow or disallow Ask Trov's Auto mode in the org (`orgs.ai_chat_auto`, 0057), audited (`org.ai_chat_auto`)
+ *  in the same batch. The caller has checked the role. */
+export async function setAiChatAuto(ctx: TenantContext, on: boolean, at: string = nowIso()): Promise<void> {
+  await batch(ctx, [
+    stmt(ctx, `UPDATE orgs SET ai_chat_auto = ? WHERE id = ?`, on ? 1 : 0, ctx.orgId),
+    stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, 'org.ai_chat_auto', 'ai', ?, ?)`,
+      ctx.orgId, ctx.userId, JSON.stringify({ chatAuto: on }), at),
+  ]);
+}
+
 // ── suggestions ──────────────────────────────────────────────────────────────
 
 export interface AiSuggestionRow {

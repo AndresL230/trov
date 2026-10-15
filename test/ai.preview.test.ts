@@ -13,11 +13,12 @@ import { aiPreviewMode, withPreviewFeed } from "../src/ai/preview";
 import { shapeRepoDashboard } from "../src/tools/repo-agent";
 import { emptyRepoDashboard } from "../src/tools/repo";
 import { append_feed } from "../src/tools/writes";
-import { AiBriefSchema, AiFeedMetaSchema, AiRepoStateSchema, AiThemesSchema, AI_THEME_RANGES } from "@shared/ai";
-import { aiPreviewFixtures } from "@shared/ai-fixtures";
+import { AiBriefSchema, AiFeedMetaSchema, AiRepoStateSchema, AiSettingsSchema, AiThemesSchema, AI_ALLOWANCE_KEYS, AI_ROUTES, AI_THEME_RANGES, nextMonthStart, type AiSettings } from "@shared/ai";
+import { aiPreviewFixtures, aiSettingsFixture } from "@shared/ai-fixtures";
 import type { FeedRow } from "@shared/rows";
 import { cookieFor } from "./helpers/persons";
-import { bearerCtx, systemCtx } from "./helpers/tenant";
+import { ORG_A, bearerCtx, systemCtx } from "./helpers/tenant";
+import { run } from "./helpers/db";
 
 const ME = "AndresL230";
 const LOCAL = "http://localhost:8787";
@@ -92,6 +93,28 @@ describe("LOCAL_AI_PREVIEW under `wrangler dev`", () => {
     expect(capped.brief).toMatchObject({ state: "capped", upgrade: true });
     const proposed = await get<Dash>(LOCAL, "/repo/dashboard", withVars({ LOCAL_AI_PREVIEW: "proposed" }));
     expect((proposed.themes as Record<string, { lanes: { status: string }[] }>)["8w"].lanes.every((l) => l.status === "proposed")).toBe(true);
+  });
+
+  it("Org settings › AI in every mode: all four allowances, the Auto switch and BOTH providers — the switches stay the org's own", async () => {
+    const now = new Date();
+    const real = await get<AiSettings>(DEPLOYED, AI_ROUTES.settings, withVars({ LOCAL_AI_PREVIEW: "ready" })); // not honoured: the real numbers
+    expect(real.allowances.ai_runs).toEqual({ used: 0, cap: null, resumesOn: null }); // the seed org is Enterprise
+    for (const mode of ["ready", "empty", "capped", "proposed"] as const) {
+      const s = AiSettingsSchema.parse(await get<AiSettings>(LOCAL, AI_ROUTES.settings, withVars({ LOCAL_AI_PREVIEW: mode })));
+      expect(Object.keys(s.allowances), mode).toEqual([...AI_ALLOWANCE_KEYS]);
+      expect(s.allowances, mode).toEqual(aiSettingsFixture(mode, now).allowances);
+      expect(s.eligibility, mode).toBe(mode === "capped" ? "capped" : "ok");
+      expect(s.chatAuto, mode).toBe(true);                       // the org's real switch (0057, default on)
+      expect(s.enabled, mode).toBe(true);
+      expect([...new Set(s.sends.map((l) => l.provider))], mode).toEqual(["Anthropic", "TypeSafe AI"]);
+    }
+    const ready = aiSettingsFixture("ready", now).allowances;
+    expect(ready.ai_chat).toEqual({ used: 1830, cap: 2500, resumesOn: null }); // a 5-seat Pro org: 500 per seat
+    expect(Object.values(aiSettingsFixture("empty", now).allowances).every((a) => a.used === 0 && a.cap !== null)).toBe(true);
+    expect(Object.values(aiSettingsFixture("capped", now).allowances).every((a) => a.used === a.cap && a.resumesOn === nextMonthStart(now))).toBe(true);
+    // The preview fills numbers, never a choice: an admin's switch shows through it.
+    await run(env.DB, `UPDATE orgs SET ai_chat_auto = 0 WHERE id = ?`, ORG_A);
+    expect((await get<AiSettings>(LOCAL, AI_ROUTES.settings, withVars({ LOCAL_AI_PREVIEW: "ready" }))).chatAuto).toBe(false);
   });
 
   it("is never on MCP, whatever the request", async () => {

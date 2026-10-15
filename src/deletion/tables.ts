@@ -44,6 +44,8 @@ export const ORG_TABLES = [
   "pr_summaries", "issue_summaries", "events", "identity_tasks", "repo_events", "repo_snapshots", "repo_metrics", "sync_runs",
   // What the model suggested and the "Wrong?" people pressed (0055_ai).
   "ai_suggestions", "ai_feedback",
+  // What the AI router marked stale for the pass (0057_ai_dirty).
+  "ai_dirty",
   // Email: the outbox (and its dev-only bodies), each member's preferences, the org's policy and settings.
   "notification_outbox_bodies", "notification_outbox", "notification_prefs", "notification_policy", "notification_settings",
   // Configuration and credentials: the GitHub App binding, encrypted secrets and their keys, repositories, environments.

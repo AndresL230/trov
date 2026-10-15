@@ -4,7 +4,9 @@
 // /api/o/:slug/* in src/routes.ts) has already resolved `c.var.ctx`; there is no old-path alias.
 //
 //   GET  /ai/settings                  any member — `AiSettings`; a failed read is 503 `{ error }`, never a 500
-//   PUT  /ai/settings { enabled }      admin+ — the switch (`orgs.ai_automation`), audited; → `AiSettings`
+//   PUT  /ai/settings { enabled?, chatAuto? }  admin+ — the AI switch (`orgs.ai_automation`, audited `org.ai`)
+//                                      and/or Ask Trov's Auto switch (`orgs.ai_chat_auto`, audited
+//                                      `org.ai_chat_auto`); → `AiSettings`
 //   POST /ai/suggestions/:id/accept    the kind's handler's role (./suggestions.ts) — writes AS the caller
 //   POST /ai/suggestions/:id/dismiss   any member
 //   POST /ai/feedback                  any member — "Wrong?": hides the item for the caller, idempotent
@@ -12,22 +14,27 @@ import { Hono, type Context } from "hono";
 import type { Env } from "../env";
 import type { AppEnv } from "../auth/principal";
 import {
-  AI_NEVER_SENT, AI_ROUTES, AI_SENDS, AiAcceptBodySchema, AiFeedbackBodySchema, AiSettingsPutSchema, type AiSettings,
+  AI_ALLOWANCE_KEYS, AI_NEVER_SENT, AI_ROUTES, AI_SENDS, AiAcceptBodySchema, AiFeedbackBodySchema, AiSettingsPutSchema, type AiSettings,
 } from "@shared/ai";
 import { hasRole, type TenantContext } from "../data/context";
-import { recordFeedback, setAiAutomation } from "../data/ai";
+import { recordFeedback, setAiAutomation, setAiChatAuto } from "../data/ai";
 import { cookieOnly } from "../orgs/routes";
-import { aiAllowance } from "./eligibility";
+import { planAndAiSettings } from "../plans/gate";
+import { allowanceUse, eligibilityOf } from "./eligibility";
+import { aiPreview } from "./preview";
 import { acceptSuggestion, dismissSuggestion, type SuggestionAnswer } from "./suggestions";
 
-/** What Org settings › AI shows. Any member reads it; `canEdit` says whether the switch is theirs. */
+/** What Org settings › AI shows, from ONE statement: both switches, the eligibility, this month's use of all
+ *  four AI allowances, and what is sent to whom. Any member reads it; `canEdit` says whether the switches
+ *  are theirs. Nothing here calls a model. */
 export async function aiSettings(env: Pick<Env, "ANTHROPIC_API_KEY">, ctx: TenantContext, now: Date = new Date()): Promise<AiSettings> {
-  const a = await aiAllowance(ctx, env, now);
+  const a = await planAndAiSettings(ctx, now);
   return {
     enabled: a.enabled,
     canEdit: hasRole(ctx, "admin"),
-    eligibility: a.eligibility,
-    runs: { used: a.used, cap: a.cap, resumesOn: a.resumesOn },
+    eligibility: eligibilityOf(env, a.enabled, a.plan, a.used.ai_runs),
+    allowances: Object.fromEntries(AI_ALLOWANCE_KEYS.map((k) => [k, allowanceUse(a.plan, k, a.used[k], now)])) as AiSettings["allowances"],
+    chatAuto: a.chatAuto,
     sends: [...AI_SENDS],
     neverSent: AI_NEVER_SENT,
   };
@@ -38,7 +45,10 @@ aiApp.use("/ai/*", cookieOnly);
 
 const settingsOr503 = async (c: Context<AppEnv>) => {
   try {
-    return c.json(await aiSettings(c.env, c.var.ctx));
+    const s = await aiSettings(c.env, c.var.ctx);
+    // LOCAL DEVELOPMENT ONLY (./preview.ts): the sample numbers over the real switches.
+    const preview = aiPreview(c.env, c.req.url);
+    return c.json(preview ? { ...s, ...preview.settings } : s);
   } catch (e) {
     console.error("ai settings", e instanceof Error ? e.name : "error");
     return c.json({ error: "Couldn't read the AI settings" }, 503);
@@ -50,8 +60,9 @@ aiApp.get(AI_ROUTES.settings, settingsOr503);
 aiApp.put(AI_ROUTES.settings, async (c) => {
   if (!hasRole(c.var.ctx, "admin")) return c.json({ error: "forbidden" }, 403);
   const parsed = AiSettingsPutSchema.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ error: "invalid", message: "Send { enabled: true | false }." }, 400);
-  await setAiAutomation(c.var.ctx, parsed.data.enabled);
+  if (!parsed.success) return c.json({ error: "invalid", message: "Send { enabled: true | false }, { chatAuto: true | false }, or both." }, 400);
+  if (parsed.data.enabled !== undefined) await setAiAutomation(c.var.ctx, parsed.data.enabled);
+  if (parsed.data.chatAuto !== undefined) await setAiChatAuto(c.var.ctx, parsed.data.chatAuto);
   return settingsOr503(c);
 });
 

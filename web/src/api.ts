@@ -326,7 +326,7 @@ import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView,
 import type * as IntT from "@shared/integrations";
 import type { BillingCheckoutRequest, BillingCheckoutResponse, BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
 import type * as GhT from "@shared/github-app";
-import { AI_ROUTES, type AiAcceptBody, type AiFeedbackBody, type AiSettings } from "@shared/ai-core";
+import { AI_ROUTES, type AiAcceptBody, type AiFeedbackBody, type AiSettings, type AiSettingsPut } from "@shared/ai-core";
 import type * as TagT from "@shared/tags-core";
 /** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
  *  `detail` the server's sentence, `field` the input it is about. */
@@ -395,10 +395,10 @@ export function getBillingConfig(): Promise<BillingConfigResponse> { return orgS
 export function getOrgSettings(slug: string): Promise<{ org: OrgT.OrgSettings; can_edit: boolean }> { return orgSend("GET", orgPath(slug, "/settings")); }
 
 // ── Trov's AI (shared/ai-core.ts `AI_ROUTES`; cookie only, never MCP) ─────────
-/** Org settings › AI: the switch, this month's runs against the allowance, what is sent (any member). */
+/** Org settings › AI: the switches, this month's use of each AI allowance, what is sent to whom (any member). */
 export function getAiSettings(slug: string): Promise<AiSettings> { return orgSend("GET", orgPath(slug, AI_ROUTES.settings)); }
-/** Flip the switch (admin). Answers the settings as they now stand. */
-export function putAiSettings(slug: string, enabled: boolean): Promise<AiSettings> { return orgSend("PUT", orgPath(slug, AI_ROUTES.settings), { enabled }); }
+/** Flip the AI switch and/or Ask Trov's Auto switch (admin). Answers the settings as they now stand. */
+export function putAiSettings(slug: string, body: AiSettingsPut): Promise<AiSettings> { return orgSend("PUT", orgPath(slug, AI_ROUTES.settings), body); }
 /** Accept a suggestion; `value` replaces the suggested one (a renamed theme: `{ name }`). A kind with no
  *  accept handler yet answers 409 `not_available` (`OrgApiError.message`), which the screen says. */
 export function acceptAiSuggestion(id: number, value?: unknown): Promise<unknown> {

@@ -1,4 +1,4 @@
-// Sample DTOs for the four AI screens, built from the mockup's sample data
+// Sample DTOs for the four AI screens (and Org settings › AI's numbers), built from the mockup's sample data
 // (docs/superpowers/specs/2026-10-14-ai-screens-mock.md). Read ONLY by the
 // `LOCAL_AI_PREVIEW` path (src/ai/preview.ts, honoured under `wrangler dev` alone) and by
 // tests — production never returns them. Zod-free, so render tests in `web/` can import
@@ -6,8 +6,9 @@
 
 import type { FeedRow } from "./rows";
 import {
-  AI_MODEL, AI_THEME_RANGE_WEEKS, nextMonthStart,
+  AI_ALLOWANCE_KEYS, AI_MODEL, AI_THEME_RANGE_WEEKS, nextMonthStart,
   type AiBrief, type AiRepoState, type AiThemes, type AiThemeLane, type AiThemeRange, type AiCite, type AiState,
+  type AiAllowanceKey, type AiAllowanceUse, type AiSettings,
 } from "./ai-core";
 
 export { nextMonthStart };
@@ -175,7 +176,23 @@ export function themesFixture(mode: AiPreviewMode, range: AiThemeRange, now: Dat
   return { ...meta(state, now, state === "capped" ? 9 * DAY : 3 * HOUR), caption: proposed ? null : caption, prCount, range, weeks, lanes };
 }
 
-/** Everything one preview mode puts on the four reads. */
+// ── Org settings › AI ───────────────────────────────────────────────────────
+/** What the preview puts on `GET /ai/settings`: the eligibility and all four allowances, as a 5-seat Pro org
+ *  would see them (Ask Trov: 500 per seat). The switches (`enabled`, `chatAuto`), who may change them and what
+ *  is sent stay the org's real ones — the preview fills numbers, never a choice — and what is sent always names
+ *  both providers. `ready` / `proposed`: partway through the month; `empty`: nothing used yet; `capped`:
+ *  every allowance used up, each resuming on the 1st. */
+export function aiSettingsFixture(mode: AiPreviewMode, now: Date): Pick<AiSettings, "eligibility" | "allowances"> {
+  const caps: Record<AiAllowanceKey, number> = { ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 500 * 5 };
+  const used: Record<AiAllowanceKey, number> = mode === "empty" ? { ai_summaries: 0, ai_runs: 0, jev_checks: 0, ai_chat: 0 }
+    : mode === "capped" ? caps
+    : { ai_summaries: 212, ai_runs: 486, jev_checks: 1240, ai_chat: 1830 };
+  const resumesOn = mode === "capped" ? nextMonthStart(now) : null;
+  const allowances = Object.fromEntries(AI_ALLOWANCE_KEYS.map((k) => [k, { used: used[k], cap: caps[k], resumesOn }])) as Record<AiAllowanceKey, AiAllowanceUse>;
+  return { eligibility: mode === "capped" ? "capped" : "ok", allowances };
+}
+
+/** Everything one preview mode puts on the reads. */
 export function aiPreviewFixtures(mode: AiPreviewMode, now: Date = new Date()) {
   const state: AiState = mode === "proposed" ? "ready" : mode;
   return {
@@ -183,5 +200,6 @@ export function aiPreviewFixtures(mode: AiPreviewMode, now: Date = new Date()) {
     repoState: repoStateFixture(state, now),
     feed: feedFixtures(now),
     themes: { "8w": themesFixture(mode, "8w", now), quarter: themesFixture(mode, "quarter", now) } as Record<AiThemeRange, AiThemes>,
+    settings: aiSettingsFixture(mode, now),
   };
 }
