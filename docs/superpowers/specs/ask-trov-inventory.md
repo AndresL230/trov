@@ -470,9 +470,13 @@ under the `ask-` prefix.
   `--row-ring` and `--scrim` do NOT: the Ask shell block defines them as `--ask-row-on`, `--ask-row-ring`,
   `--ask-scrim` (both themes). The design's `'Archivo Narrow'` labels become `var(--label)` (Geist in the app —
   Archivo Narrow is the sidebar's alone), never a literal font name; mono is `var(--code)`.
-- Radii: inline `border-radius:Npx` with a value already in the corners block (3, 5, 6, 7, 8, 9, 10, 12, 14 …); a NEW
-  value or a CLASS that declares a radius needs a line in the corners block at the end of trov.css (in the
-  `Ask` sub-block there) — `test/render.corners.test.ts`.
+- **Corners — owner's ruling (2026-10-15): do NOT change the corner radii.** Port every radius exactly as the design
+  authors it (inline `border-radius:Npx` or in a class), and give each NEW inline value or each class that declares a
+  radius its line in the corners block at the END of trov.css (the `Ask` sub-block there), so Ask renders at the app's
+  `--corner-scale` (.4) like the rest of Trov. No exception for Ask, no change to the scale, no hand-shrunk values.
+  Values already in the block (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16px, 50%, 999px) need nothing new; a class
+  rule always needs its own line. `test/render.corners.test.ts` fails on a missing one (it scans `web/src/*.ts` and
+  trov.css — keep Ask modules flat in `web/src/` so it sees them).
 - States are marks (`marks.ts`); a RefView status maps `{ mark, tone }` → `glyph()` / `markShape()` (`ask-refs.ts`
   `refStatusMark`).
 - Switches: `segmented()`; menus are our own popovers (Escape stack, `role="menu"` / `menuitemradio`, keyboard);
