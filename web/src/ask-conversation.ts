@@ -239,7 +239,8 @@ const fmtSize = (n: number): string => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).
 const dataFoot = (): string => `<div class="ask-fig-foot">${trovMark(10)}<span>Data from Trov</span></div>`;
 
 /** The bar chart: "Data from Trov" and the total; `barH` is the bars' area (150 in the thread, bigger in the inspector). */
-export function chartFigure(c: AskChart, o: { barH?: number } = {}): string {
+/** `bare`: no caption and no "Data from Trov" — the inspector draws the title, the line and the query's note itself. */
+export function chartFigure(c: AskChart, o: { barH?: number; bare?: boolean } = {}): string {
   const area = o.barH ?? 150;
   const max = Math.max(1, ...c.rows.map((r) => r.value));
   const n = c.rows.length;
@@ -250,11 +251,11 @@ export function chartFigure(c: AskChart, o: { barH?: number } = {}): string {
     const h = r.value > 0 ? Math.max(2, Math.round((r.value / max) * (area - 26))) : 0;
     return `<div class="ask-bar"><span class="ask-bar-v">${r.value}</span><div class="ask-bar-b" style="height:${h}px;animation-delay:${i * 45}ms"></div></div>`;
   }).join("");
-  return `<figure class="ask-fig" data-fig="chart">
-    <figcaption class="ask-fig-cap"><span class="ask-fig-t">${esc(c.title)}</span><span class="ask-fig-s">${esc(total)}</span></figcaption>
+  return `<figure class="ask-fig${o.bare ? " ask-fig--bare" : ""}" data-fig="chart">
+    ${o.bare ? "" : `<figcaption class="ask-fig-cap"><span class="ask-fig-t">${esc(c.title)}</span><span class="ask-fig-s">${esc(total)}</span></figcaption>`}
     <div class="ask-fig-scroll"><div class="ask-bars" role="img" aria-label="${attr(aria)}" style="height:${area}px">${bars}</div>
     <div class="ask-bar-ls" aria-hidden="true">${c.rows.map((r) => `<span>${esc(r.label)}</span>`).join("")}</div></div>
-    ${dataFoot()}
+    ${o.bare ? "" : dataFoot()}
   </figure>`;
 }
 

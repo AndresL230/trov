@@ -3066,6 +3066,8 @@ button.ask-step:hover { background:var(--hover); color:var(--fg-70); }
 .ask-ci-ft { display:flex; align-items:center; gap:6px; min-width:0; padding-top:8px; border-top:1px solid var(--border); font-size:11.5px; color:var(--fg-55); }
 .ask-ci-up { font-family:var(--label); color:var(--fg-40); white-space:nowrap; }
 .ask-fig { margin:0; padding:14px 16px 12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); }
+/* The inspector's chart: the bars alone (the view draws the title, the line and the note — design L990–1003). */
+.ask-fig.ask-fig--bare { padding:0; background:none; border:0; box-shadow:none; }
 .ask-fig-cap { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 12px; margin-bottom:12px; }
 .ask-fig-t { font-size:13px; font-weight:600; }
 .ask-fig-s { font-size:12px; color:var(--fg-55); }
