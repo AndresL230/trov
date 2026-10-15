@@ -301,16 +301,29 @@ export interface AiUsage {
  *  `ticket:14`, `feed:<id>`, `proposal:doc:<slug>:<version>` / `proposal:adr:<id>`, `unplaced:<id>`,
  *  `tagfit:doc:<slug>` / `tagfit:artifact:<slug>`; `session` → `<repo>:<login>`; `person` → a handle; `repo`,
  *  `theme_window`, `theme_backfill` → `owner/repo`; `sprint` → a sprint id; `org` → ''; `doc_drift` → a doc's slug
- *  (`artifact:<slug>` for an artifact). */
-export const AI_SCOPES = ["session", "card", "person", "repo", "org", "sprint", "theme_window", "theme_backfill", "doc_drift"] as const;
+ *  (`artifact:<slug>` for an artifact); `digest` → `week:<YYYY-Www>:<send instant>` (`weekScopeKey`, the weekly
+ *  e-mail's "This week", Phase E). */
+export const AI_SCOPES = ["session", "card", "person", "repo", "org", "sprint", "theme_window", "theme_backfill", "doc_drift", "digest"] as const;
 export type AiScope = (typeof AI_SCOPES)[number];
 export const isAiScope = (v: unknown): v is AiScope => typeof v === "string" && (AI_SCOPES as readonly string[]).includes(v);
 
 /** THE PASS ORDER: each org's due scopes run in these stages, first to last — sessions, cards, briefs, repo
- *  state, the org rollup, themes, doc drift — so a later stage reads what an earlier one just wrote. */
+ *  state, the org rollup, themes, doc drift, the weekly e-mail's highlights — so a later stage reads what an earlier
+ *  one just wrote. */
 export const AI_PASS_STAGES: readonly (readonly AiScope[])[] = [
-  ["session"], ["card"], ["person"], ["repo"], ["org", "sprint"], ["theme_window", "theme_backfill"], ["doc_drift"],
+  ["session"], ["card"], ["person"], ["repo"], ["org", "sprint"], ["theme_window", "theme_backfill"], ["doc_drift"], ["digest"],
 ];
+
+/** The `digest` scope's key for one weekly e-mail: its window id and the instant it is sent (the window's end). The
+ *  key carries the end so the job reads the SAME window when it submits and again when it collects the answer. */
+export const weekScopeKey = (weekId: string, sendAt: Date): string => `week:${weekId}:${sendAt.toISOString()}`;
+/** The parts of a `digest` key, or null (a key from elsewhere, or a malformed one). */
+export function parseWeekScopeKey(key: string): { weekId: string; end: Date } | null {
+  const m = /^week:(\d{4}-W\d{2}):(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)$/.exec(key);
+  if (!m) return null;
+  const end = new Date(m[2]);
+  return Number.isFinite(end.getTime()) ? { weekId: m[1], end } : null;
+}
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -332,6 +345,7 @@ const SHORT_DEBOUNCE_PLANS: readonly string[] = ["team", "enterprise"];
  *   | `theme_window`   | daily                                     | weekly          |
  *   | `doc_drift`      | weekly                                    | monthly (30 d)  |
  *   | `theme_backfill` | next tick (0) — not in the table: it is the accept's own follow-up, through the Batch API |
+ *   | `digest`         | next tick (0) — Phase E: marked once, hours before the weekly send, through the Batch API |
  *
  * `urgent` (`ai_dirty.urgent`, set by the caller that marks): a BREAKING change on a `repo` skips the wait on Pro
  * and Enterprise only (the table's own parenthesis); the digest PRE-WARM on a `person` skips it on every plan (the
@@ -342,7 +356,7 @@ export function debounceMs(scope: AiScope, plan: string, opts: { urgent?: boolea
   const short = SHORT_DEBOUNCE_PLANS.includes(plan);
   switch (scope) {
     case "session": return 45 * MINUTE;
-    case "card": case "theme_backfill": return 0;
+    case "card": case "theme_backfill": case "digest": return 0;
     case "person": return opts.urgent ? 0 : short ? 30 * MINUTE : 2 * HOUR;
     case "repo": return opts.urgent && short ? 0 : short ? HOUR : 6 * HOUR;
     case "org": case "sprint": return short ? 6 * HOUR : DAY;

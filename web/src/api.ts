@@ -689,7 +689,7 @@ export function restoreIdentity(login: string): Promise<{ ok: true; login: strin
 export function getNotificationPrefs(): Promise<PrefsView> {
   return getJson<PrefsView>("/api/notifications/prefs");
 }
-export interface PrefsWrite { email?: string; unsubscribed?: boolean; prefs?: Record<string, Cadence | null>; }
+export interface PrefsWrite { email?: string; unsubscribed?: boolean; prefs?: Record<string, Cadence | null>; onlyWhenNeeded?: boolean; }
 export function putNotificationPrefs(body: PrefsWrite): Promise<PrefsView> {
   return putJson<PrefsView>("/api/notifications/prefs", body);
 }

@@ -10,6 +10,7 @@ import { getKind } from "./registry";
 import { computeWindow } from "./window";
 import { deliverRow, type DeliverOptions } from "./run";
 import { loadSettings } from "./cron";
+import { loadOnlyWhenNeeded } from "./resolve";
 
 const RETRY_LIMIT = 20;
 const RETRY_MAX_AGE_HOURS = 48;
@@ -44,7 +45,8 @@ export async function retryFailed(ctx: TenantContext, p: PlatformContext, opts: 
     report.retried++;
     const window = computeWindow(row.cadence, new Date(row.created_at), settings.timezone);
     const kinds = (JSON.parse(row.kinds) as string[]).map(getKind).filter((k): k is NonNullable<typeof k> => !!k);
-    const outcome = await deliverRow(ctx, { key: row.idempotency_key, login: who.github_login, email: who.email, kinds, window, timeZone: settings.timezone }, opts);
+    const onlyWhenNeeded = await loadOnlyWhenNeeded(ctx, who.github_login);
+    const outcome = await deliverRow(ctx, { key: row.idempotency_key, login: who.github_login, email: who.email, kinds, window, timeZone: settings.timezone, onlyWhenNeeded }, opts);
     report[outcome]++;
   }
   return report;

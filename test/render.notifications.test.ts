@@ -20,7 +20,18 @@ const prefs = (over: Partial<PrefsView> = {}): PrefsView => ({
     { id: "my_work", label: "My Work", description: "Your merged PRs.", allowedCadences: ["daily", "weekly", "off"], cadence: "weekly", orgDefault: "daily", inherited: false },
     { id: "review_queue", label: "Review queue", description: "Waiting on you.", allowedCadences: ["daily", "off"], cadence: "daily", orgDefault: "daily", inherited: true },
   ],
+  onlyWhenNeeded: false,
   ...over,
+});
+
+describe("Only when something needs me (Phase E)", () => {
+  it("is a switch in Settings › Email notifications, reflecting the person's choice", () => {
+    const off = emailNotificationsSection({ prefs: prefs(), loading: false, error: null, emailEditing: false, emailDraft: "" });
+    expect(off).toContain("Only when something needs me");
+    expect(off).toMatch(/data-act="toggleOnlyWhenNeeded"[^>]*aria-checked="false"/);
+    const on = emailNotificationsSection({ prefs: prefs({ onlyWhenNeeded: true }), loading: false, error: null, emailEditing: false, emailDraft: "" });
+    expect(on).toMatch(/data-act="toggleOnlyWhenNeeded"[^>]*aria-checked="true"/);
+  });
 });
 
 describe("emailNotificationsSection", () => {

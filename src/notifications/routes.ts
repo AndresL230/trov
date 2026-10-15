@@ -13,14 +13,14 @@ import { hasRole } from "../data/context";
 import { type TenantContext, all, first, run, nowIso } from "../data/sql";
 import { type PlatformContext, first as platformFirst, run as platformRun } from "../data/platform-sql";
 import { REGISTRY, getKind } from "./registry";
-import { loadPolicies, loadPrefs, resolveWith } from "./resolve";
+import { loadOnlyWhenNeeded, loadPolicies, loadPrefs, resolveWith, saveOnlyWhenNeeded } from "./resolve";
 import { loadSettings } from "./cron";
 import { computeWindow } from "./window";
 import { renderSections, buildMessage, deliverRow, outboxKey } from "./run";
 import { PLATFORM_FROM_ADDRESS, SENDER_NAME_MAX, bareAddress, deliveryFor, senderNamePart, senderNameProblem } from "./resend";
 import { rateLimited } from "../platform/limits";
 import { unsubscribeUrl } from "./unsubscribe";
-import { sampleSections } from "./sample";
+import { SAMPLE_LABEL, SAMPLE_SCENARIOS, isSampleScenario, sampleDigest, sampleSections } from "./sample";
 
 export const notificationsApp = new Hono<AppEnv>();
 
@@ -47,7 +47,7 @@ export async function prefsView(ctx: TenantContext, p: PlatformContext, login: s
       inherited: pref === undefined,
     });
   }
-  return { email: person?.email ?? null, unsubscribed: (person?.email_unsubscribed ?? 0) === 1, kinds };
+  return { email: person?.email ?? null, unsubscribed: (person?.email_unsubscribed ?? 0) === 1, kinds, onlyWhenNeeded: await loadOnlyWhenNeeded(ctx, login) };
 }
 
 const Email = z.string().trim().max(254).refine((s) => s === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s), "invalid email");
@@ -62,6 +62,7 @@ const PrefsWrite = z.object({
   email: Email.optional(),                                 // "" clears the address
   unsubscribed: z.boolean().optional(),
   prefs: z.record(z.string(), Cadence.nullable()).optional(), // null = reset (delete the row)
+  onlyWhenNeeded: z.boolean().optional(),                  // "Only when something needs me" (0067), this org
 });
 
 notificationsApp.get("/prefs", async (c) => c.json(await prefsView(c.var.ctx, c.var.p, c.get("principal").handle)));
@@ -96,6 +97,7 @@ notificationsApp.put("/prefs", async (c) => {
   const ctx = c.var.ctx;
   if (body.email !== undefined) await platformRun(c.var.p, `UPDATE persons SET email = ? WHERE handle = ?`, body.email === "" ? null : body.email, login);
   if (body.unsubscribed !== undefined) await platformRun(c.var.p, `UPDATE persons SET email_unsubscribed = ? WHERE handle = ?`, body.unsubscribed ? 1 : 0, login);
+  if (body.onlyWhenNeeded !== undefined) await saveOnlyWhenNeeded(ctx, login, body.onlyWhenNeeded, now);
   for (const w of writes) {
     if (w.cadence === null) await run(ctx, `DELETE FROM notification_prefs WHERE org_id = ? AND user_id = ? AND kind = ?`, ctx.orgId, login, w.kind);
     else await run(ctx, `INSERT INTO notification_prefs (org_id, user_id, kind, cadence, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(org_id, user_id, kind) DO UPDATE SET cadence = excluded.cadence, updated_at = excluded.updated_at`, ctx.orgId, login, w.kind, w.cadence, now);
@@ -246,16 +248,30 @@ async function enabledKinds(ctx: TenantContext) {
   return REGISTRY.filter((k) => (policies.get(k.id)?.enabled ?? 1) === 1);
 }
 
-/** GET /preview?cadence=daily|weekly[&format=html|text][&sample=1] → the rendered digest, no outbox row. */
+/**
+ * GET /preview?cadence=daily|weekly[&format=html|text][&sample=1|<fixture>] → the rendered digest, no outbox row.
+ * `sample=<fixture>` (src/notifications/sample.ts) shows one of Phase E's shapes — AI on or off, empty sections left
+ * out, "only when something needs me" skipping — and sets its own cadence; `sample=index` lists them.
+ */
 notificationsApp.get("/preview", async (c) => {
-  const cadence = RunCadence.safeParse(c.req.query("cadence") ?? "daily");
+  const sample = c.req.query("sample");
+  if (sample === "index") {
+    const base = new URL(c.req.url);
+    const items = SAMPLE_SCENARIOS.map((s) => { base.searchParams.set("sample", s); return `<li><a href="${base.pathname}${base.search}">${s}</a> — ${SAMPLE_LABEL[s]}</li>`; }).join("");
+    return c.html(`<!DOCTYPE html><meta charset="utf-8"><title>E-mail previews</title><body style="font-family:system-ui;padding:32px;color:#333;line-height:1.6"><h2>E-mail previews (sample data)</h2><ul>${items}</ul></body>`);
+  }
+  const fixture = isSampleScenario(sample) ? sampleDigest(sample) : null;
+  if (fixture?.skipped) {
+    return c.html(`<!DOCTYPE html><meta charset="utf-8"><body style="font-family:system-ui;padding:32px;color:#444"><h2>Not sent</h2><p>${fixture.skipped}</p></body>`);
+  }
+  const cadence = RunCadence.safeParse(fixture?.cadence ?? c.req.query("cadence") ?? "daily");
   if (!cadence.success) return c.json({ error: "cadence must be daily or weekly" }, 400);
   const login = c.get("principal").handle;
   const settings = await loadSettings(c.var.ctx);
   const window = computeWindow(cadence.data, new Date(), settings.timezone);
   const kinds = await enabledKinds(c.var.ctx);
   const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-  const sections = c.req.query("sample") === "1" ? sampleSections() : (await renderSections(c.var.ctx, login, kinds, window)).sections;
+  const sections = fixture ? fixture.sections : sample === "1" ? sampleSections() : (await renderSections(c.var.ctx, login, kinds, window)).sections;
   if (sections.length === 0) {
     return c.html(`<!DOCTYPE html><meta charset="utf-8"><body style="font-family:system-ui;padding:32px;color:#444"><h2>Nothing to render</h2><p>No section had anything to say for <b>${login}</b> in the ${cadence.data} window (${window.id}). A real run would mark this user <code>skipped</code>. Add <code>&amp;sample=1</code> to see the layout with sample data.</p></body>`);
   }

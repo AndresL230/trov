@@ -7,8 +7,10 @@ import { myWorkKind } from "./renderers/my-work";
 import { reviewQueueKind } from "./renderers/review-queue";
 import { roadmapPlanKind } from "./renderers/roadmap-plan";
 import { ticketQueueKind } from "./renderers/ticket-queue";
+import { weekRecapKind } from "./renderers/week-recap";
 
-export const REGISTRY: readonly NotificationKind<TenantContext>[] = [myWorkKind, reviewQueueKind, roadmapPlanKind, ticketQueueKind];
+// The ORDER is the e-mail's: the brief leads, then "This week" (weekly), then each queue's one line.
+export const REGISTRY: readonly NotificationKind<TenantContext>[] = [myWorkKind, weekRecapKind, reviewQueueKind, roadmapPlanKind, ticketQueueKind];
 
 export function getKind(id: string): NotificationKind<TenantContext> | undefined {
   return REGISTRY.find((k) => k.id === id);

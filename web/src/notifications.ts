@@ -127,7 +127,14 @@ export function emailNotificationsSection(p: NotifSettingsProps): string {
         ${switchBtn("toggleAllOff", null, v.unsubscribed)}
       </div>
     </div>
-    <div class="cnpy-set-pairs" style="${listStyle}">${rows || `<div style="${TILE_ROW};font-size:12.5px;color:var(--fg-40)">No digests are enabled org-wide right now.</div>`}</div>
+    <div style="${TILE_ROW};display:flex;align-items:flex-start;justify-content:space-between;gap:16px;${listStyle}">
+      <div style="min-width:0">
+        <div style="font-size:13.5px;font-weight:500">Only when something needs me</div>
+        <div data-only-needed style="font-size:12px;color:var(--fg-55);margin-top:3px;line-height:1.5">Send a digest only when your brief has something next for you, or something notable or breaking touched your work.</div>
+      </div>
+      ${switchBtn("toggleOnlyWhenNeeded", null, v.onlyWhenNeeded, "Only when something needs me")}
+    </div>
+    <div class="cnpy-set-pairs" style="${listStyle}">${rows ||`<div style="${TILE_ROW};font-size:12.5px;color:var(--fg-40)">No digests are enabled org-wide right now.</div>`}</div>
     <div style="padding-top:12px;border-top:1px solid var(--border)">
       <div style="font-size:11.5px;color:var(--fg-40);line-height:1.5">Digests send once per window, at the org's send hour. Cadence options vary per digest. Kinds turned off org-wide don't appear here at all. The Unsubscribe link at the bottom of every digest works without signing in.</div>
     </div>
@@ -260,7 +267,7 @@ export function notificationsAdminSections(p: NotifAdminProps): string {
   const tryIt = `<div${surface("overflow:hidden")}>
     <div class="cnpy-org-row" style="align-items:center">
       <div style="flex:1 1 240px;min-width:0"><div style="font-size:13.5px;font-weight:600">Preview</div><div style="font-size:12px;color:var(--fg-40);margin-top:1px">Your own digest in a new tab, with live data. Your preferences are ignored.</div></div>
-      <div class="cnpy-org-actions" style="align-items:center">${linkBtn("Daily", tenantHref("/api/notifications/preview?cadence=daily"))}${linkBtn("Weekly", tenantHref("/api/notifications/preview?cadence=weekly"))}${linkBtn("Sample data", tenantHref("/api/notifications/preview?cadence=daily&sample=1"))}</div>
+      <div class="cnpy-org-actions" style="align-items:center">${linkBtn("Daily", tenantHref("/api/notifications/preview?cadence=daily"))}${linkBtn("Weekly", tenantHref("/api/notifications/preview?cadence=weekly"))}${linkBtn("Sample data", tenantHref("/api/notifications/preview?sample=index"))}</div>
     </div>
     <div class="cnpy-org-row" style="align-items:center">
       <div style="flex:1 1 240px;min-width:0"><div style="font-size:13.5px;font-weight:600">Send a test to me</div><div style="font-size:12px;color:var(--fg-40);margin-top:1px">Through the real delivery path, to your address; it appears in the outbox. With nothing new it sends sample data.</div></div>

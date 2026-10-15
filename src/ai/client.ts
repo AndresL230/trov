@@ -47,6 +47,8 @@ export const KIND_PROVIDER = {
   "ask.compact": "claude",
   // My Work's "Your brief": one person's Now / Recently / Next, written by the AI pass (src/ai/brief.ts).
   "brief.person": "claude",
+  // Phase E: the weekly e-mail's "This week", one Batch API request per org per week (src/ai/week.ts).
+  "digest.week": "claude",
   // Phase C: how much a feed entry or a merged PR matters, routine / notable / breaking (src/ai/importance.ts).
   "feed.importance": "jev",
 } as const satisfies Record<string, AiProviderName>;

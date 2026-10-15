@@ -21,8 +21,10 @@ describe("shared notification schemas", () => {
     expect(Window.safeParse({ cadence: "daily", start: "2026-09-11", end: new Date(), id: "x" }).success).toBe(false);
   });
 
-  it("Section requires heading, html, text and deepLink", () => {
+  it("Section requires heading, html, text and deepLink; a layout is block or line", () => {
     expect(Section.safeParse({ heading: "h", html: "<p>x</p>", text: "x", deepLink: "/#mywork" }).success).toBe(true);
+    expect(Section.safeParse({ heading: "h", html: "x", text: "x", deepLink: "/#review", layout: "line", subject: "s" }).success).toBe(true);
+    expect(Section.safeParse({ heading: "h", html: "x", text: "x", deepLink: "/#review", layout: "card" }).success).toBe(false);
     expect(Section.safeParse({ heading: "h", html: "<p>x</p>", text: "x" }).success).toBe(false);
   });
 
@@ -42,24 +44,15 @@ describe("shared notification schemas", () => {
 });
 
 describe("registry", () => {
-  it("has the four kinds with the spec's defaults and allowed cadences", () => {
-    expect(REGISTRY.map((k) => k.id)).toEqual(["my_work", "review_queue", "roadmap_plan", "ticketq"]);
-    expect(getKind("my_work")).toMatchObject({ defaultCadence: "daily", allowedCadences: ["daily", "weekly", "off"] });
-    expect(getKind("review_queue")).toMatchObject({ defaultCadence: "daily", allowedCadences: ["daily", "off"] });
-    expect(getKind("roadmap_plan")).toMatchObject({
-      // The Maintenance policy row's copy, verbatim from the corrected spec.
-      description: "Sprint progress and slips.",
-      defaultCadence: "weekly",
-      allowedCadences: ["daily", "weekly", "off"],
-    });
+  it("has the five kinds, in the e-mail's order (the brief, This week, then the queue lines), with their defaults", () => {
+    expect(REGISTRY.map((k) => k.id)).toEqual(["my_work", "week_recap", "review_queue", "roadmap_plan", "ticketq"]);
+    expect(getKind("my_work")).toMatchObject({ label: "Your brief", defaultCadence: "daily", allowedCadences: ["daily", "weekly", "off"] });
+    // Phase E: the weekly's "This week" — weekly only.
+    expect(getKind("week_recap")).toMatchObject({ label: "This week", defaultCadence: "weekly", allowedCadences: ["weekly", "off"] });
+    expect(getKind("review_queue")).toMatchObject({ label: "Review", defaultCadence: "daily", allowedCadences: ["daily", "off"] });
+    expect(getKind("roadmap_plan")).toMatchObject({ label: "Sprint", defaultCadence: "weekly", allowedCadences: ["daily", "weekly", "off"] });
     expect(REGISTRY.every((k) => !/milestone/i.test(k.description) && !/milestone/i.test(k.label))).toBe(true);
-    // Phase 6 (the tickets build): the queue digest, org-wide + your own plate.
-    expect(getKind("ticketq")).toMatchObject({
-      label: "Ticket queue",
-      description: "New and unassigned tickets across the org.",
-      defaultCadence: "daily",
-      allowedCadences: ["daily", "weekly", "off"],
-    });
+    expect(getKind("ticketq")).toMatchObject({ label: "Tickets", defaultCadence: "daily", allowedCadences: ["daily", "weekly", "off"] });
     expect(getKind("nope")).toBeUndefined();
   });
 

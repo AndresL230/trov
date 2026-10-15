@@ -1,68 +1,48 @@
 import type { NotificationKind, Section } from "@shared/notifications";
-import type { TenantContext } from "../../data/sql";
+import { type TenantContext, all, ph } from "../../data/sql";
 import { list_proposals, list_adrs } from "../../tools/reads";
-import { escapeHtml } from "../html";
-import { EMAIL_STYLE as S, EMAIL_CARD as K, EMAIL_SPACE as SP, THEME } from "../assemble";
+import { planAndAiRuns } from "../../plans/gate";
+import { queueLine } from "../assemble";
 
 const DEEP_LINK = "/#review";
-const TOP = 5;
 
-const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** The Review card's item refs (`ai_suggestions.item_ref` of `review.risk`, Phase C: item type `proposal`). */
+const proposalRef = (slug: string, version: number) => `doc:${slug}@${version}`;
+const decisionRef = (id: number) => `adr:${id}`;
 
 /**
- * review_queue — what is waiting for a human: open Proposals (staged doc
- * versions newer than the live doc) and Decisions (draft ADRs). Org-wide, so
- * the userId is not consulted. Null when both queues are empty.
+ * How many of the waiting items Sift rated "changes a decision" (Phase C's `review.risk`, the open suggestion the
+ * Review card shows). Only while the org's AI switch is on; unknown is left out of the line, never 0.
+ */
+async function changesADecision(ctx: TenantContext, refs: string[]): Promise<number | null> {
+  if (!refs.length || !(await planAndAiRuns(ctx)).enabled) return null;
+  const rows = await all<{ item_ref: string }>(ctx,
+    `SELECT DISTINCT item_ref FROM ai_suggestions
+      WHERE org_id = ? AND item_type = 'proposal' AND kind = 'review.risk' AND state = 'open'
+        AND json_extract(value_json, '$.risk') = 'decision' AND item_ref IN (${ph(refs.length)})`,
+    ctx.orgId, ...refs);
+  return rows.length;
+}
+
+/**
+ * review_queue — ONE line (Phase E): "Review: 3 waiting, 1 changes a decision". What waits for a person: open
+ * proposals (staged doc versions newer than the live doc) and draft decisions. Org-wide, so the person is not
+ * consulted. Null when both queues are empty.
  */
 async function render(ctx: TenantContext): Promise<Section | null> {
   const proposals = await list_proposals(ctx);
   const decisions = await list_adrs(ctx, "draft");
-  if (proposals.length === 0 && decisions.length === 0) return null;
-
-  const items = [
-    ...proposals.slice(0, TOP).map((p) => ({
-      kind: "proposal" as const,
-      title: `${cap(p.section)} / ${p.title}`,
-      summary: p.summary ?? `${p.change_kind ?? "edit"} v${p.version}`,
-      meta: `by ${p.author}${p.confidence ? ` · ${p.confidence} confidence` : ""}`,
-      low: Boolean(p.low_confidence) || p.confidence === "low",
-    })),
-    ...decisions.slice(0, TOP).map((d) => ({
-      kind: "decision" as const,
-      title: `ADR-${String(d.id).padStart(3, "0")} — ${d.title}`,
-      summary: "ready to ratify",
-      meta: `by ${d.created_by}`,
-      low: false,
-    })),
-  ];
-
-  const html =
-    `<table ${S.table} style="margin-top:${SP.m}px;">` +
-    items
-      .map(
-        (it, i) =>
-          `<tr><td style="padding:${i === 0 ? 0 : SP.m - SP.xs}px 0 ${SP.m - SP.xs}px 0;${i === 0 ? "" : `border-top:1px solid ${THEME.border.light};`}">` +
-          `<div><span style="${S.muted}">${it.kind === "proposal" ? "Proposal" : "Decision"}</span>` +
-          `<span style="${S.body}font-weight:500;padding-left:8px;">${escapeHtml(it.title)}</span>` +
-          `${it.low ? `<span style="padding-left:10px;">${K.mark("Low confidence", "amber")}</span>` : ""}</div>` +
-          `<div style="${S.muted}padding-top:${SP.xs}px;">${escapeHtml(it.summary)}</div>` +
-          `<div style="${S.muted}font-size:12px;line-height:16px;padding-top:${SP.xs}px;">${escapeHtml(it.meta)}</div>` +
-          `</td></tr>`
-      )
-      .join("") +
-    `</table>`;
-  const text = items.map((it) => `  ${it.kind.padEnd(9)} ${it.title} — ${it.summary} (${it.meta}${it.low ? ", low confidence" : ""})`).join("\n");
-  const parts = [proposals.length ? plural(proposals.length, "proposal", "proposals") : null, decisions.length ? plural(decisions.length, "decision", "decisions") : null].filter(Boolean);
-  const summary = `${parts.join(", ")} waiting on review`;
-
-  return { heading: "Review queue", summary, html, text, deepLink: DEEP_LINK, linkLabel: "Review" };
+  const waiting = proposals.length + decisions.length;
+  if (waiting === 0) return null;
+  const risky = await changesADecision(ctx, [...proposals.map((p) => proposalRef(p.slug, p.version)), ...decisions.map((d) => decisionRef(d.id))]);
+  const rest = `${waiting} waiting${risky ? `, ${risky} ${risky === 1 ? "changes" : "change"} a decision` : ""}`;
+  return queueLine({ label: "Review", rest, deepLink: DEEP_LINK, linkLabel: "Review" });
 }
 
 export const reviewQueueKind: NotificationKind<TenantContext> = {
   id: "review_queue",
-  label: "Review queue",
-  description: "What is waiting on your review in Triage.",
+  label: "Review",
+  description: "One line: how many doc changes and decisions wait for review.",
   defaultCadence: "daily",
   allowedCadences: ["daily", "off"],
   render,

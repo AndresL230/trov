@@ -48,6 +48,7 @@ import { groupOf, takes, validJob, customIdOf, type AiJob, type ClaudeJob, type 
 import { orgPrefix } from "./prefix";
 import { collectBatches, submitBatches, AI_BATCH_PER_TICK, type QueuedRequest } from "./batches";
 import { briefJob } from "./brief";
+import { weekJob } from "./week";
 import { TAG_FIT_ITEM_JOB } from "./sift-items";
 import { IMPORTANCE_JOBS } from "./importance";
 
@@ -58,6 +59,7 @@ export const AI_JOBS: readonly AiJob[] = [
   briefJob, // person:<handle> — My Work's brief (Phase D)
   TAG_FIT_ITEM_JOB, // tag.fit — Sift on new items (card:tagfit:*)
   ...IMPORTANCE_JOBS, // feed.importance — card:feed:*, card:pr:*
+  weekJob, // digest:week:* — the weekly e-mail's "This week" (Phase E, Batch API)
 ];
 
 /** Haiku calls one tick may make, across every org. */
