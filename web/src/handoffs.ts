@@ -73,16 +73,21 @@ function readingOpenAttr(r: HandoffReadingItem): string | null {
 /**
  * "Read these first (not complete)": what a text search with the handoff's own words found when it
  * was claimed. A plain list — the kind as a word, the title as a link. Empty draws nothing.
+ * `risingT`: how long ago a claim on this page drew it (ms). Within `READING_RISE_MS` it rises in with the app's
+ * one-shot `.cnpy-flash` (off under reduced motion), at a negative delay so a repaint inside the rise joins it where
+ * the last one left off (this page is rebuilt per repaint); past it — and on any later rerender — nothing moves.
  */
-export function readingListBlock(items: HandoffReadingItem[] | null | undefined, marginTop = 28): string {
+export const READING_RISE_MS = 300;
+export function readingListBlock(items: HandoffReadingItem[] | null | undefined, marginTop = 28, risingT: number | null = null): string {
   if (!items || !items.length) return "";
+  const rising = risingT !== null && risingT >= 0 && risingT < READING_RISE_MS;
   const row = (r: HandoffReadingItem): string => {
     const inner = `<span style="flex:none;width:64px;font-size:12px;color:var(--fg-40)">${READING_KIND_WORD[r.kind]}</span><span style="flex:1;min-width:0;font-size:13px;line-height:1.5;color:var(--fg-70);overflow-wrap:anywhere">${esc(r.title)}</span>`;
     const style = "display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;padding:7px 0;border-top:1px solid var(--border)";
     const act = readingOpenAttr(r);
     return act ? `<button ${act} class="cnpy-mutelink" style="${style};cursor:pointer">${inner}</button>` : `<div style="${style}">${inner}</div>`;
   };
-  return `<div data-reading-list style="margin-top:${marginTop}px">
+  return `<div data-reading-list${rising ? ` class="cnpy-flash"` : ""} style="margin-top:${marginTop}px${rising ? `;animation-delay:-${Math.round(risingT!)}ms` : ""}">
       <div style="${MONO_EYEBROW};white-space:normal">${esc(HANDOFF_READING_HEADING)}</div>
       <div style="font-size:12px;line-height:1.5;color:var(--fg-40);margin:6px 0 10px">Found by a text search with this handoff's words when it was claimed. A place to start, not everything that bears on the task.</div>
       <div style="display:flex;flex-direction:column">${items.map(row).join("")}</div>
@@ -180,6 +185,8 @@ export interface HandoffDetailProps {
   promptView: PromptView;
   /** The reading list this session's claim returned (#167); absent once the page is reloaded. */
   reading?: HandoffReadingItem[] | null;
+  /** How long ago a claim on this page drew the list (ms), or null — its one-shot rise (`readingListBlock`). */
+  readingT?: number | null;
 }
 
 /** Inline `code` → a monospace span; everything else escaped. The checklist's one bit of markup. */
@@ -246,7 +253,7 @@ export function handoffDetailView(p: HandoffDetailProps): string {
       <div style="flex:2.2 1 440px;min-width:0;display:flex;flex-direction:column">
         ${rest ? `<div class="cnpy-md cnpy-td-body" style="font-size:14px;line-height:1.72;color:var(--fg-70)">${renderMarkdown(rest)}</div>` : ""}
         ${promptSection}
-        ${h.status === "claimed" ? readingListBlock(p.reading, rest || h.prompt ? 28 : 0) : ""}
+        ${h.status === "claimed" ? readingListBlock(p.reading, rest || h.prompt ? 28 : 0, p.readingT ?? null) : ""}
       </div>
 
       <div${surface("flex:1 1 290px;min-width:0;padding:18px 20px")}>

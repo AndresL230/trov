@@ -420,7 +420,8 @@ export interface AppState {
   handoffPromptOpen: boolean;
   /** The reading list (#167) the last claim in this session returned, for that handoff only. Not
    *  stored on the server and never recomputed on a read, so a reload drops it. */
-  handoffReading: { id: number; items: HandoffReadingItem[] | null } | null;
+  /** `at`: when an in-page claim drew it (Date.now()) — the list rises in once from then (handoffs.ts `readingListBlock`). */
+  handoffReading: { id: number; items: HandoffReadingItem[] | null; at?: number } | null;
   nh: NewHandoffDraft;
   // ── Prompt Library ─────────────────────────────────────────────────────────
   /** The whole library; the search / tag / sort filter runs client-side over it. */
@@ -2876,7 +2877,7 @@ function screenBody(s: AppState): string {
     case "artifactnew":
     case "artifact": return artifactsView(artProps(s, s.screen));
     case "handoffs": return handoffsView({ status: s.handoffs.status, handoffs: s.handoffs.data, me: s.me?.handle ?? "", persons: s.persons.data });
-    case "handoff": return handoffDetailView({ status: s.handoffDetail.status, handoff: s.handoffDetail.data, me: s.me?.handle ?? "", persons: s.persons.data, expireArm: s.handoffExpireArm, promptView: s.promptView, reading: s.handoffReading && s.handoffDetail.data && s.handoffReading.id === s.handoffDetail.data.id ? s.handoffReading.items : null });
+    case "handoff": return handoffDetailView({ status: s.handoffDetail.status, handoff: s.handoffDetail.data, me: s.me?.handle ?? "", persons: s.persons.data, expireArm: s.handoffExpireArm, promptView: s.promptView, reading: s.handoffReading && s.handoffDetail.data && s.handoffReading.id === s.handoffDetail.data.id ? s.handoffReading.items : null, readingT: s.handoffReading?.at === undefined ? null : Date.now() - s.handoffReading.at });
     case "newhandoff": return newHandoffView({ draft: s.nh, me: s.me?.handle ?? "", persons: s.persons.data, primaryRepo: s.orgMe.data?.repos.primary ?? null });
     case "prompts": return promptLibraryView({ status: s.promptList.status, prompts: s.promptList.data, q: s.promptQ, tag: s.promptTag, sort: s.promptSort, filterOpen: s.promptFilterOpen, filterCat: s.promptFilterCat, fmOpening: s.fmOpening, persons: s.persons.data });
     case "prompt": return promptDetailView({
