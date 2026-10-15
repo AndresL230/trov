@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="padding:20px 22px 14px">
+  <div style="display:flex;align-items:center;gap:6px 10px;margin-bottom:12px;flex-wrap:wrap">
+    <span style="font-size:16.5px;font-weight:600;letter-spacing:-0.01em">{{ p.env }}</span>
+    <span style="font-size:12px;color:var(--fg-40);white-space:nowrap">from <span style="font-family:var(--code);font-size:11.5px;color:var(--fg-55)">{{ p.branch }}</span> · {{ p.row.app }} · {{ p.kind }} on {{ p.host }}</span>
+    <span style="margin-left:auto"><dc-import name="Mark" m="{{ p.verdict }}" hint-size="80px,16px"></dc-import></span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(380px,100%),1fr));gap:0 40px">
+    <div style="min-width:0">
+      <div style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;padding:11px 0;border-top:1px solid var(--border)">
+        <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);padding-top:4px">Serving</span>
+        <div style="display:flex;flex-direction:column;gap:5px;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap;min-height:22px">
+            <span style="font-family:var(--label);font-size:12.5px;color:var(--fg);background:var(--hover);border:1px solid var(--border);border-radius:1.6px;padding:0 5px;line-height:18px">{{ p.row.sha }}</span>
+            <span style="font-size:12px;color:var(--fg-55);white-space:nowrap">{{ p.row.meta }}</span>
+            <sc-if value="{{ p.row.state }}" hint-placeholder-val="{{ false }}"><dc-import name="Mark" m="{{ p.row.state }}" size="12" hint-size="70px,16px"></dc-import></sc-if>
+          </div>
+          <sc-if value="{{ showLine }}" hint-placeholder-val="{{ false }}"><span style="font-size:12.5px;line-height:1.5;color:var(--fg-70)">{{ p.row.line.text }}</span></sc-if>
+        </div>
+      </div>
+      <sc-if value="{{ p.failed }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;padding:11px 0;border-top:1px solid var(--border)">
+          <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);padding-top:4px">Last deploy</span>
+          <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+            <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;min-height:22px"><dc-import name="Mark" m="{{ failedMark }}" size="12.5" hint-size="160px,16px"></dc-import><span style="font-size:12px;color:var(--fg-55);white-space:nowrap">by {{ p.failed.by }}</span><a href="#" style="font-size:12.5px;color:var(--accent);text-decoration:none" style-hover="text-decoration:underline;text-underline-offset:3px">Build log ↗</a></div>
+            <span style="font-size:12.5px;line-height:1.5;color:var(--fg-55)">{{ p.failed.why }}</span>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ p.next }}" hint-placeholder-val="{{ false }}">
+        <div style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;padding:11px 0;border-top:1px solid var(--border)">
+          <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);padding-top:4px">Next</span>
+          <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;min-height:22px"><span style="font-family:var(--label);font-size:12.5px;color:var(--fg);background:var(--hover);border:1px solid var(--border);border-radius:1.6px;padding:0 5px;line-height:18px">{{ p.next.sha }}</span><dc-import name="Mark" m="{{ p.next.m }}" size="12" hint-size="70px,16px"></dc-import><span style="font-size:12px;color:var(--fg-55);white-space:nowrap">started {{ p.next.age }} ago</span></div>
+        </div>
+      </sc-if>
+      <div style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;padding:11px 0;border-top:1px solid var(--border)">
+        <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);padding-top:3px">URL</span>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><a href="{{ p.row.href }}" target="_blank" rel="noopener" style="font-size:12.5px;color:var(--accent);text-decoration:none;white-space:nowrap" style-hover="text-decoration:underline;text-underline-offset:3px">{{ p.row.url }} ↗</a><span style="font-size:12px;color:var(--fg-55);font-variant-numeric:tabular-nums;white-space:nowrap">{{ p.row.health }}</span><sc-if value="{{ p.row.healthMark }}"><dc-import name="Mark" m="{{ p.row.healthMark }}" size="12" hint-size="60px,16px"></dc-import></sc-if></div>
+      </div>
+      <div style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;padding:11px 0 4px;border-top:1px solid var(--border);align-items:baseline">
+        <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">CI on head</span>
+        <span style="font-size:12.5px;line-height:1.5;color:{{ p.ci.tone }};display:flex;gap:7px;align-items:center"><span style="font-weight:600">{{ p.ci.glyph }}</span><sc-if value="{{ p.ci.dot }}"><span aria-hidden="true" style="display:inline-block;width:7px;height:7px;border-radius:25%;background:currentColor"></span></sc-if><span>{{ p.ci.text }}</span></span>
+      </div>
+    </div>
+    <div style="min-width:0;padding:11px 0;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">Deploys</span>
+        <span style="font-size:11.5px;color:var(--fg-40)">{{ p.stripText }}</span>
+      </div>
+      <div role="list" aria-label="Last 20 deploys, oldest first" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+        <sc-for list="{{ strip }}" as="d" hint-placeholder-count="20">
+          <span role="listitem" title="{{ d.tip }}" style="width:14px;height:14px;border-radius:3.5px;background:{{ d.color }};flex:none;outline:{{ d.outline }};outline-offset:2px;animation:{{ d.anim }}"></span>
+        </sc-for>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10.5px;color:var(--fg-40)"><span>oldest</span><span>latest</span></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1000,&quot;height&quot;:320},&quot;p&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;ProductionModel&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const p = this.props.p || { row: { line: null }, ci: {}, strip: [] };
+    const words = { live: 'Live', failed: 'Failed', building: 'Building', rolledBack: 'Rolled back', cancelled: 'Cancelled' };
+    return {
+      p,
+      showLine: !!(p.row && p.row.line && !p.failed),
+      failedMark: p.failed ? { shape: 'diamond', tone: 'var(--red)', word: `${p.failed.sha} failed ${p.failed.age} ago` } : null,
+      strip: (p.strip || []).map((d, i) => ({ ...d, tip: words[d.st] || d.st, outline: d.last ? '1px solid var(--border-strong)' : 'none', anim: d.pulse ? 'trov-pulse 1.6s ease-in-out infinite' : 'none' })),
+    };
+  }
+}
+</script>
+</body>
+</html>

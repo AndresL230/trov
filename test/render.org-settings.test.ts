@@ -13,7 +13,7 @@ import {
   type OrgUi, type OrgSettingsProps,
 } from "../web/src/org-settings";
 import {
-  integrationStatus, groupIntegrations, integrationRow, secretFormModal, auditSentence, howToHtml, WEBHOOKS_LIVE,
+  integrationStatus, groupIntegrations, integrationRow, secretFormModal, auditSentence, howToHtml, WEBHOOKS_LIVE, onIntegrationsTab,
   type SecretFormState,
 } from "../web/src/integrations";
 import { render, initialState, type AppState } from "../web/src/render";
@@ -266,10 +266,12 @@ describe("Integrations — status in words", () => {
     expect(integrationStatus(set("github_token", "1a2b", { last_error: "github 401" }))).toMatchObject({ state: "error", word: "Error" });
     expect(integrationStatus(set("railway", "beef", { expected: false }))).toMatchObject({ state: "orphan" });
   });
-  it("groups GitHub, Hosting (every provider a part uses), then one group per environment, then what nothing claims", () => {
-    const list = [...fullUi().integrations.data!.integrations, set("vercel", "v3rc"), set("railway", "dead", { scope: "old", scope_label: null, expected: false })];
-    expect(groupIntegrations(list).map((g) => [g.key, g.rows.length])).toEqual([["github", 2], ["hosting", 3], ["env:staging", 1], ["env:production", 1], ["orphans", 1]]);
-    expect(groupIntegrations(list).find((g) => g.key === "hosting")!.rows.map((i) => i.kind)).toEqual(["cloudflare_analytics", "railway", "vercel"]);
+  it("groups GitHub, then what nothing claims — hosting credentials and app metrics tokens are Hosting's, never here", () => {
+    const list = [...fullUi().integrations.data!.integrations, set("vercel", "v3rc"), set("railway", "dead", { scope: "old", scope_label: null, expected: false }), set("github_webhook", "dead", { scope: "gone", scope_label: null, expected: false })];
+    expect(groupIntegrations(list).map((g) => [g.key, g.rows.length])).toEqual([["github", 2], ["orphans", 1]]);
+    expect(groupIntegrations(list).flatMap((g) => g.rows.map((i) => i.kind))).not.toContain("metrics_endpoint");
+    for (const kind of ["cloudflare_analytics", "railway", "vercel", "render", "netlify", "fly", "aws", "metrics_endpoint"] as const) expect(onIntegrationsTab({ kind }), kind).toBe(false);
+    for (const kind of ["github_token", "github_webhook"] as const) expect(onIntegrationsTab({ kind }), kind).toBe(true);
   });
 });
 
@@ -282,7 +284,13 @@ describe("Integrations — the states of the page", () => {
     expect(html).toContain("What GitHub token is used for.");
     expect(html).toContain('aria-label="Set the GitHub token"');
     expect(html).toContain("None is connected yet.");
-    expect(html).toContain("Add an environment first.");
+    // Hosting credentials are on Hosting; an app's metrics token in its part's editor (Repositories › a repo › Apps): one
+    // line, and the way there.
+    expect(html).toContain("data-org-int-hosting");
+    expect(html).toMatch(/data-org-int-hosting[\s\S]*data-act="orgTab" data-arg="hosting"/);
+    expect(html).toContain("An app's metrics token is set in its part's editor, under Repositories › a repository › Apps.");
+    expect(html).not.toContain("are set on Hosting, beside the providers and parts");
+    expect(html).not.toContain("No environment tokens yet");
     expect(html).toContain("There is no key yet.");
     expect(html).toContain("Nothing yet. Every secret set, rotated or deleted is recorded here.");
     expect(html).not.toContain("Test connection");
@@ -298,11 +306,11 @@ describe("Integrations — the states of the page", () => {
     expect(html).toContain('aria-label="Test the GitHub token"');
     expect(html).toContain('aria-label="Rotate the GitHub token"');
     expect(html).toContain('aria-label="Delete the GitHub token"');
-    expect(html).toContain("Account ID:");
-    expect(html).toContain("0123456789abcdef0123456789abcdef");
-    expect(html).toContain('aria-label="Edit the settings of the Cloudflare analytics"');
-    expect(html).toContain("Staging environment");
-    expect(html).toContain("Production environment");
+    // No hosting credential and no app metrics token is listed here any more: they are Hosting's.
+    expect(html).not.toContain('data-org-integration="cloudflare_analytics:"');
+    expect(html).not.toContain('data-org-integration="railway:');
+    expect(html).not.toContain('data-org-integration="metrics_endpoint:');
+    expect(html).not.toContain("Staging environment");
     // The lead: the tab's state in one sentence, and no accent button once the token is set.
     expect(html).toMatch(/<strong>\d+ of \d+<\/strong> credentials set/);
     expect(html).not.toContain('data-field="orgLeadToken"');
@@ -351,7 +359,6 @@ describe("Integrations — the states of the page", () => {
     expect(html).toContain("TROV_KEK");
     expect(html).toMatch(/data-field="orgSecretOpen:rotate:github_token:" disabled/);
     expect(html).toMatch(/data-field="orgSecretTest:github_token:" disabled/);
-    expect(html).toMatch(/data-field="orgSecretOpen:set:metrics_endpoint:production" disabled/);
     expect(html).toMatch(/data-field="orgConfirm:key:" disabled/);
     expect(html).not.toMatch(/data-field="orgConfirm:secret:github_token:" disabled/);
     expect(tabView(fullUi(), "integrations")).not.toContain("data-org-unavailable");
@@ -596,6 +603,9 @@ describe("Environments", () => {
   it("lists them in order and says what the order means; reorder is up / down buttons", () => {
     const html = tabView(fullUi(), "environments");
     expect(html.indexOf(">Staging<")).toBeLessThan(html.indexOf(">Production<"));
+    // What each environment runs is set per app in Repositories (Phase D) — Hosting only points there (e2e E1b).
+    expect(html).toMatch(/data-act="orgTab" data-arg="repos"[^>]*>What each one runs is set per app in Repositories/);
+    expect(html).not.toContain("What each one runs is in Hosting");
     expect(html).toContain("drift is measured from <strong>Staging</strong> (the head, first) to <strong>Production</strong> (the base, last)");
     // Add environment is the tab's one accent button; Delete is in the edit form, not on every row.
     expect(html.match(/cnpy-accentbtn/g)?.length).toBe(1);
@@ -797,23 +807,23 @@ describe("the hierarchy every tab keeps (org-ui.ts)", () => {
   });
   it("Integrations: a row is a name, a status and ONE action; the rest is behind a real toggle", () => {
     const html = page("integrations");
-    const at = html.indexOf('data-org-integration="cloudflare_analytics:"');
+    const at = html.indexOf('data-org-integration="github_token:"');
     const row = html.slice(at, html.indexOf("</li>", at));
     const head = row.slice(0, row.indexOf('class="cnpy-xrow-b"'));
-    expect(head).toContain('data-act="orgRowToggle" data-arg="cloudflare_analytics:"');
-    expect(head).toContain('aria-expanded="false" aria-controls="xrow-cloudflare_analytics-"');
-    expect(head).toMatch(/aria-label="Cloudflare analytics, set: show details"/);
+    expect(head).toContain('data-act="orgRowToggle" data-arg="github_token:"');
+    expect(head).toContain('aria-expanded="false" aria-controls="xrow-github_token-"');
+    expect(head).toMatch(/aria-label="GitHub token, set: show details"/);
     expect((head.match(/<button/g) ?? []).length).toBe(2);                 // the toggle, and Test connection
     expect(head).toContain(">Test connection<");
-    for (const behind of ["Edit settings", ">Rotate<", ">Delete<", "Account ID:", "What Cloudflare analytics is used for."]) {
+    for (const behind of [">Rotate<", ">Delete<", "What GitHub token is used for."]) {
       expect(head, behind).not.toContain(behind);
       expect(row, behind).toContain(behind);
     }
-    expect(row).toContain('id="xrow-cloudflare_analytics-" class="cnpy-xrow-b" hidden');
+    expect(row).toContain('id="xrow-github_token-" class="cnpy-xrow-b" hidden');
     // Opened: the same row, its body shown, the toggle saying so.
-    const open = orgSettingsView(props({ ...fullUi(), tab: "integrations", openRows: ["cloudflare_analytics:"] }));
-    expect(open).toContain('aria-expanded="true" aria-controls="xrow-cloudflare_analytics-" aria-label="Cloudflare analytics, set: hide details"');
-    expect(open).toMatch(/id="xrow-cloudflare_analytics-" class="cnpy-xrow-b">/);
+    const open = orgSettingsView(props({ ...fullUi(), tab: "integrations", openRows: ["github_token:"] }));
+    expect(open).toContain('aria-expanded="true" aria-controls="xrow-github_token-" aria-label="GitHub token, set: hide details"');
+    expect(open).toMatch(/id="xrow-github_token-" class="cnpy-xrow-b">/);
   });
   it("Integrations: the key and the history are two rows at the foot, not sections; the GitHub token leads while it is missing", () => {
     const html = page("integrations");

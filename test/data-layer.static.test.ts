@@ -62,7 +62,7 @@ interface Allow { file: string; fn: string; tables?: string[]; why: string }
 const PLATFORM_ALLOW: Allow[] = [
   // The cross-org retention sweeps (§4.4): write-only, bounded by age, run by the cron for every org.
   { file: "src/auth/oauth.ts", fn: "pruneOAuth", tables: ["oauth_grants", "oauth_codes"], why: "retention sweep, cross-org and write-only" },
-  { file: "src/platform/sweeps.ts", fn: "pruneRepoCapture", tables: ["repo_events", "repo_metrics", "hosting_deploys"], why: "retention sweep, cross-org and write-only" },
+  { file: "src/platform/sweeps.ts", fn: "pruneRepoCapture", tables: ["repo_events", "repo_metrics", "hosting_deploys", "commit_paths", "pr_files", "pr_file_reads"], why: "retention sweep, cross-org and write-only" },
   { file: "src/platform/sweeps.ts", fn: "expireDueHandoffs", tables: ["handoffs"], why: "retention sweep, cross-org and write-only (§4.4)" },
   { file: "src/platform/sweeps.ts", fn: "pruneSyncRuns", tables: ["sync_runs"], why: "retention sweep, cross-org and write-only: Sync GitHub run records past 90 days" },
   // Bearer credentials are looked up by HASH before any org is known: the row is what names the
@@ -315,6 +315,7 @@ describe("data layer — static enforcement (§4.4)", () => {
       "src/auth/onboard.ts": "liveLegacyInvite — a legacy invite lets a Google account reach onboarding and seeds the invitee's name",
       "src/auth/routes.ts": "consumeLegacyInvite — a new person with a live legacy invite joins org #1 at onboarding (and gets its welcome mail)",
       "src/orgs/legacy-invites.ts": "isLegacyOrg — the legacy `invites` sidecar (a pre-0042_organizations row's invitee name and mail outcome; the row a first sign-in consumes) is read and written for org #1 only",
+      "src/tools/repo.ts": "isLegacyOrg — the Repo dashboard's hosting status (the one status function) cannot resolve SaplingLearn's legacy Worker secret (no decrypt path from MCP), so for org #1 only a poll that found a credential is its evidence",
     };
     // …and the ONE importer of the org's id: the env-secret fallback (`resolveCredential`, §8.7.6).
     const ID_IMPORTERS = ["src/data/secrets.ts"];

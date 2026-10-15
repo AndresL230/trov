@@ -1,0 +1,31 @@
+# Trov's own wrangler.toml, trimmed (account id and vars dropped): a Worker with D1, R2, crons and an [env.preview].
+name = "trov"
+main = "src/index.ts"
+compatibility_date = "2025-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "./web/dist"
+binding = "ASSETS"
+run_worker_first = ["/"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "trov"
+database_id = "6c71838c-18f7-4f68-8513-b58e86c237b9"
+
+[[r2_buckets]]
+binding = "ARTIFACTS_BUCKET"
+bucket_name = "trov-artifacts"
+
+[vars]
+PUBLIC_ORIGIN = "https://trov.dev"
+
+[env.preview]
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "trov-preview"
+database_id = "b8e88540-be00-4938-9f71-1eac4a8e7232"
+
+[triggers]
+crons = ["*/10 * * * *", "0 * * * *", "0 * * * SUN,MON"]

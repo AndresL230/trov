@@ -25,8 +25,9 @@ describe("reconcileRepo — workflow runs and env-head checks", () => {
     // A check run is captured as it is — the posting App in `raw` (src/hosting/detect.ts) — never as a deploy.
     expect(await all(env.DB, `SELECT env, part, ref, json_extract(raw, '$.app') AS app FROM repo_events WHERE kind = 'check'`))
       .toEqual([{ env: null, part: null, ref: "main", app: "cloudflare-workers-and-pages" }]);
-    // Two GraphQL requests: the branches refs query and the PR-reviews query (same URL, routed by query text).
-    expect(gh.calls.filter((c) => c.endsWith("/graphql")).length).toBe(2);
+    // Three GraphQL requests: the branches refs query, the PR-reviews query and — the repository having no
+    // release — the releases arm's tags query (same URL, routed by query text).
+    expect(gh.calls.filter((c) => c.endsWith("/graphql")).length).toBe(3);
     expect(gh.graphql.some((c) => c.query.includes("deployments("))).toBe(false);
     expect(gh.calls.some((c) => c.includes("/deployments"))).toBe(false);
   });
@@ -145,7 +146,7 @@ describe("reconcileRepo", () => {
       return new Response("nope", { status: 500 });
     }) as typeof fetch;
     const res = await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW);
-    expect(res).toEqual({ written: 0, unchanged: 0, failed: ["open_prs", "closed_prs", "commits", "runs", "env_heads", "checks", "statuses", "reviews", "branches", "drift"] });
+    expect(res).toEqual({ written: 0, unchanged: 0, failed: ["open_prs", "closed_prs", "commits", "runs", "env_heads", "checks", "statuses", "reviews", "branches", "drift", "releases"] });
     expect(calls.length).toBeGreaterThan(0);
     for (const init of calls) {
       expect((init.headers as Record<string, string>).authorization).toBe("Bearer t");
@@ -204,7 +205,7 @@ describe("reconcileRepo", () => {
       "/compare/main...production": { ahead_by: 1, behind_by: 1, commits: [compareCommit] },
     });
     await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
-    expect(gh.calls.length).toBe(18); // 4 + 5 job lookups + 2 environments × 2 + 1 status list + 1 reviews query + 1 branches refs page + 2 drift compares
+    expect(gh.calls.length).toBe(20); // 4 + 5 job lookups + 2 environments × 2 + 1 status list + 1 reviews query + 1 branches refs page + 2 drift compares + the releases list + (no release) the tags query
   });
 });
 

@@ -12,8 +12,9 @@ secret creates a new deployment at once** (`HANDOFF.md` › Secrets). A var and 
 name: the deploy fails.
 
 Per-organization credentials are NOT here. An organization's GitHub access is its App installation or its
-stored token, its hosting providers' credentials (Cloudflare, Railway, Vercel, … — ONE org-wide each) and its
-app-metrics tokens are rows it enters on Org settings › Hosting / Integrations, envelope-encrypted under `TROV_KEK` (`data-layer.md` › Configuration and credentials,
+stored token, its hosting providers' credentials (Cloudflare, Railway, Vercel, … — ONE org-wide each, on Org settings ›
+Hosting) and its app-metrics tokens (one per environment, in a part's editor — Org settings › Repositories › a repo ›
+Apps) are rows it enters in Org settings, envelope-encrypted under `TROV_KEK` (`data-layer.md` › Configuration and credentials,
 `github-app.md`, `organizations.md`). Code reads them only through `resolveGithubCredential` /
 `resolveCredential` — never a Worker secret directly.
 

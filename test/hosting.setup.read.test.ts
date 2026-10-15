@@ -225,3 +225,21 @@ describe("Org settings › Integrations expects a provider's credential once a p
     expect(set.status).toBe(201);
   });
 });
+
+describe("an environment's app metrics token, for its parts' editor", () => {
+  it("each environment carries the token's metadata (never its value), with the API URL it is sent to", async () => {
+    await seedOrgSettings();
+    const value = "mt_" + "Q7w8E9r0".repeat(5) + "beef";
+    await setSecret(await tenantCtx("AndresL230"), "metrics_endpoint", "production", value);
+    const r = await send(app, "GET", `${A}/hosting`, await ownerCookie(), undefined, env as never);
+    const dto = r.json as unknown as HostingSetupDTO;
+    expect(dto.environments.map((e) => [e.key, e.app_metrics])).toEqual([
+      ["staging", { configured: false, legacy_fallback: false, hint_last4: "", last_used_at: null, last_error: null, api_url: "https://api.staging.example.com" }],
+      ["production", { configured: true, legacy_fallback: false, hint_last4: "beef", last_used_at: null, last_error: null, api_url: "https://api.example.com" }],
+    ]);
+    expect(JSON.stringify(r.json)).not.toContain(value.slice(0, 12));
+    // SaplingLearn's shared Worker secret answers for an environment with none stored.
+    const legacy = (await send(app, "GET", `${A}/hosting`, await ownerCookie(), undefined, { ...env, SAPLING_METRICS_TOKEN: "legacy_" + "x".repeat(30) } as never)).json as unknown as HostingSetupDTO;
+    expect(legacy.environments[0].app_metrics).toMatchObject({ configured: false, legacy_fallback: true });
+  });
+});

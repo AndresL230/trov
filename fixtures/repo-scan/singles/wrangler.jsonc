@@ -1,0 +1,10 @@
+{
+  // a JSONC wrangler config, with a staging environment that names its own Worker
+  "name": "edge-api",
+  "main": "src/index.ts",
+  "triggers": { "crons": ["0 3 * * *"] },
+  "env": {
+    "staging": { "name": "edge-api-stg", },
+    "production": {},
+  },
+}

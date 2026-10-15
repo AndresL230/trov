@@ -1,0 +1,17 @@
+{
+  "data": {
+    "viewer": {
+      "accounts": [
+        {
+          "q0": [
+            { "dimensions": { "date": "2026-10-06" }, "sum": { "readQueries": 9672, "writeQueries": 3093, "rowsRead": 2354377, "rowsWritten": 13712 } }
+          ],
+          "s0": [
+            { "dimensions": { "date": "2026-10-06" }, "max": { "databaseSizeBytes": 27545600 } }
+          ]
+        }
+      ]
+    }
+  },
+  "errors": null
+}

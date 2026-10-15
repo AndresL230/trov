@@ -29,20 +29,32 @@
 // This module imports src/data/secrets.ts, so nothing reachable from src/mcp.ts may import it
 // (test/secrets.mcp.test.ts): its callers are src/repo/cron.ts (the `:40` job and Poll now) only.
 import {
-  HOSTING_INTEGRATION_KIND, HOSTING_METRICS, hostingMetricName, isDeployState, isHostingMetric, isHostingProvider,
-  type DeployState, type DeployTarget, type HostingMetric, type HostingPollOutcome, type HostingProviderId,
+  HOSTING_INTEGRATION_KIND, HOSTING_METRICS, hostingMetricName, isDeployState, isHostingMetric, isHostingProvider, metricsForRole,
+  type HostingMetric, type HostingPollOutcome, type HostingProviderId,
 } from "@shared/hosting";
 import type { Env } from "../env";
-import { type Stmt, type TenantContext, batch, first, run, stmt } from "../data/sql";
+import { type TenantContext, first, run } from "../data/sql";
 import { type Revealed, type Secret, lastErrorText, recordSecretOutcome, resolveCredential, resolveIntegrationConfig, scrub } from "../data/secrets";
 import { jobTenant } from "../platform/jobs";
 import { DAY, HOSTING_DEPLOY_RETENTION_DAYS, USAGE_RETENTION_DAYS, putMetrics } from "../repo/store";
 import type { RepoMetric } from "../repo/types";
-import { HOUR, HostingError, asHostingError, hostFetch, hourFloor, iso } from "./http";
+import { HOUR, HostingError, SETTLE_MS, asHostingError, hostFetch, hourFloor, iso } from "./http";
 import { listAllParts, partRef, type PartRow } from "./parts";
 import { PROVIDERS } from "./registry";
 import type { HostingField, HostingProvider, PollResult } from "./types";
 import { routeAi } from "../tools/ai-route";
+import { REASON_STORED_MAX, upsertDeploys, type CleanDeploy } from "./deploy-store";
+import { joinShas } from "./sha-join";
+import { ROLLBACK_COMPARE_COST, checkRollback, newestReadyChanged } from "./rollback";
+import { resolveGithubCredential } from "../github-app/credential";
+import type { GhOpts } from "../repo/github";
+import { NO_GITHUB_METRICS } from "./providers/github";
+import {
+  DAILY_READ_METRIC, EXTRA_FAMILIES, FAMILY_ROLE, isExtraFamily, parseExtraMetric, type ExtraFamily, type ExtraMetricName,
+} from "@shared/usage-families-core";
+
+/** The extra families read once a day, for a completed UTC day. */
+const DAILY_FAMILIES: readonly ExtraFamily[] = ["runtime", "storage"];
 
 /** The providers a poll may run — the registry, or (tests) a map holding a fake. */
 export type ProviderMap = Readonly<Partial<Record<HostingProviderId, HostingProvider>>>;
@@ -54,8 +66,13 @@ export const DEFAULT_HOSTING_COST = 5;
  *  budget size a part by. `provider` is a stored string, so an id the code no longer knows (or a
  *  provider whose `pollCost` is not a positive number) is budgeted at `DEFAULT_HOSTING_COST`. */
 export function providerPollCost(providers: ProviderMap, provider: string): number {
-  const cost = isHostingProvider(provider) ? providers[provider]?.pollCost : undefined;
-  return typeof cost === "number" && Number.isFinite(cost) && cost >= 1 ? Math.ceil(cost) : DEFAULT_HOSTING_COST;
+  const p = isHostingProvider(provider) ? providers[provider] : undefined;
+  // A provider with no credential of its own (`github`) is never polled: its deploys come from the capture.
+  if (p?.credential === "github_app") return 0;
+  const cost = p?.pollCost;
+  const base = typeof cost === "number" && Number.isFinite(cost) && cost >= 1 ? Math.ceil(cost) : DEFAULT_HOSTING_COST;
+  // + the ONE GitHub compare a new production deploy may cost (rollback detection, ./rollback.ts).
+  return base + (p && !p.capabilities.deploys ? 0 : ROLLBACK_COMPARE_COST);
 }
 
 /** The worst case of polling every one of `parts`, in subrequests. */
@@ -91,11 +108,7 @@ const FUTURE_SLACK_MS = HOUR;
 /** Detail strings (`hosting_poll_state.detail`, an outcome's `detail`) — `lastErrorText`'s 300. */
 const DETAIL_MAX = 300;
 
-/** A deploy as it is stored — every string checked, scrubbed and capped, every instant normalised. */
-export interface CleanDeploy {
-  id: string; state: DeployState; target: DeployTarget; sha: string | null; branch: string | null; message: string | null;
-  by: string | null; createdAt: string; readyAt: string | null; url: string | null; inspectUrl: string | null;
-}
+export type { CleanDeploy } from "./deploy-store";
 export interface CleanPoll {
   points: RepoMetric[];
   deploys: CleanDeploy[];
@@ -103,7 +116,24 @@ export interface CleanPoll {
   /** Snapped INWARD to whole hours, its end clamped to the current hour's floor; null when the provider
    *  claimed none, or claimed one that is not an interval. */
   covered: { from: number; to: number } | null;
+  /** The extra families' points (repo setups, Phase G — shared/usage-families-core.ts), already `RepoMetric`s. */
+  extra: RepoMetric[];
+  /** The extra families this poll attempted, each with its reason (null = read). */
+  families: { family: ExtraFamily; reason: string | null }[];
   dropped: { points: number; deploys: number; unavailable: number };
+}
+
+/** At most this many extra-family points are stored from ONE poll (a busy Worker: ~6 outcomes + subrequests per
+ *  hour × 3 hours, a few crons × 3 fields × 3 hours, and once a day ≤ 4 runtime + 3 × 5 D1 points). */
+export const MAX_EXTRA_POINTS_PER_POLL = 1000;
+/** A cron run's `last` is an epoch ms INSIDE its own hour — anything else is not a run time. */
+const extraValueOk = (name: ExtraMetricName, at: number, value: number): boolean =>
+  name.family === "schedules" && name.field === "last" ? value >= at && value < at + HOUR : value < 1e13;
+
+/** The completed UTC day whose DAILY figures a poll at `now` reads (`YYYY-MM-DD`): the newest day that ended at least
+ *  `SETTLE_MS` ago — so at 00:40 UTC it is yesterday, and at 00:10 the day before (already read). PURE. */
+export function dailyDay(now: number): string {
+  return new Date(Math.floor((now - SETTLE_MS) / DAY) * DAY - DAY).toISOString().slice(0, 10);
 }
 
 // eslint-disable-next-line no-control-regex
@@ -155,7 +185,9 @@ const instantMs = (v: unknown): number | null => {
  *                interval → null. A point outside it is still a real point; the interval only decides where
  *                a MISSING hour may be read as zero.
  */
-export function validatePoll(result: unknown, part: Pick<PartRow, "env" | "key" | "role">, now: number, revealed: Revealed = null): CleanPoll {
+export function validatePoll(
+  result: unknown, part: Pick<PartRow, "env" | "key" | "role">, now: number, revealed: Revealed = null, declared: readonly ExtraFamily[] = [],
+): CleanPoll {
   const r = record(result);
   const nowHour = hourFloor(now);
   const oldestPoint = now - USAGE_RETENTION_DAYS * DAY;
@@ -198,6 +230,8 @@ export function validatePoll(result: unknown, part: Pick<PartRow, "env" | "key" 
       branch: ident(d.branch, BRANCH_MAX), message: prose(d.message, MESSAGE_MAX, revealed), by: prose(d.by, ACTOR_MAX, revealed),
       createdAt: iso(created), readyAt: ready === null ? null : iso(ready),
       url: httpsUrl(d.url, revealed), inspectUrl: httpsUrl(d.inspectUrl, revealed),
+      // A failure reason only for a deploy that failed — scrubbed FIRST, then one line, then cut to 140.
+      reason: d.state === "error" ? prose(d.reason, REASON_STORED_MAX, revealed) : null,
     });
   }
   // The newest `MAX_DEPLOYS_PER_POLL`; whatever a provider over-delivered beyond them is counted, not kept.
@@ -220,7 +254,54 @@ export function validatePoll(result: unknown, part: Pick<PartRow, "env" | "key" 
     const to = Math.min(nowHour, Math.floor(cTo / HOUR) * HOUR);
     if (from < to) covered = { from, to };
   }
-  return { points, deploys, unavailable, covered, dropped };
+
+  // Extra families (Phase G): a name one of the builders makes, of a family the provider DECLARES and the part's
+  // role reads; an hourly point at a complete hour's start, a daily one at 00:00 UTC of a COMPLETED day; a finite
+  // value ≥ 0 under its ceiling (a cron's `last` inside its own hour). One per (name, instant) — the first wins.
+  const ofFamily = (f: unknown): f is ExtraFamily => isExtraFamily(f) && declared.includes(f) && FAMILY_ROLE[f] === part.role;
+  const extra: RepoMetric[] = [];
+  const seenExtra = new Set<string>();
+  for (const raw of Array.isArray(r.extraPoints) ? r.extraPoints : []) {
+    const p = record(raw);
+    const name = typeof p.metric === "string" ? parseExtraMetric(p.metric) : null;
+    const t = instantMs(p.at);
+    const value = p.value;
+    const key = `${String(p.metric)}@${t}`;
+    const placed = t !== null && t >= oldestPoint && (name?.grain === "day" ? t % DAY === 0 && t + DAY <= now : t % HOUR === 0 && t < nowHour);
+    if (!name || !ofFamily(name.family) || t === null || !placed || typeof value !== "number" || !Number.isFinite(value) || value < 0
+      || !extraValueOk(name, t, value) || seenExtra.has(key) || extra.length >= MAX_EXTRA_POINTS_PER_POLL) {
+      dropped.points++;
+      continue;
+    }
+    seenExtra.add(key);
+    extra.push({ metric: p.metric as string, env: part.env, part: part.key, value, at: iso(t) });
+  }
+  const families: CleanPoll["families"] = [];
+  for (const raw of Array.isArray(r.families) ? r.families : []) {
+    const f = record(raw);
+    if (!ofFamily(f.family) || families.some((x) => x.family === f.family)) { dropped.unavailable++; continue; }
+    families.push({ family: f.family, reason: f.reason === null || f.reason === undefined ? null : prose(f.reason, REASON_MAX, revealed) ?? "the provider could not read it" });
+  }
+  return { points, deploys, unavailable, covered, extra, families, dropped };
+}
+
+/** `hosting_poll_state.unavailable` after this poll, for the EXTRA families: the stored entries (`{ family, reason }`,
+ *  beside the metric entries) of every family this poll did not attempt are kept — a daily family is attempted once a
+ *  day — and each attempted one is replaced by its new reason, or dropped when it was read. PURE. */
+export function mergeFamilies(prevJson: string | null, attempted: CleanPoll["families"]): { family: ExtraFamily; reason: string }[] {
+  let prev: { family: ExtraFamily; reason: string }[] = [];
+  try {
+    const v = prevJson ? (JSON.parse(prevJson) as unknown) : [];
+    if (Array.isArray(v)) {
+      prev = v.flatMap((x) => {
+        const o = record(x);
+        return isExtraFamily(o.family) && typeof o.reason === "string" ? [{ family: o.family, reason: o.reason }] : [];
+      });
+    }
+  } catch { prev = []; }
+  const kept = prev.filter((p) => !attempted.some((a) => a.family === p.family));
+  const fresh = attempted.flatMap((a) => (a.reason ? [{ family: a.family, reason: a.reason }] : []));
+  return [...kept, ...fresh].sort((a, b) => EXTRA_FAMILIES.indexOf(a.family) - EXTRA_FAMILIES.indexOf(b.family));
 }
 
 /**
@@ -240,53 +321,6 @@ export function mergeCovered(prev: { from: number; to: number } | null, next: { 
 
 // ── storage ──────────────────────────────────────────────────────────────────
 
-/**
- * ONE batch of upserts, keyed `(org_id, env, part, provider, deploy_id)`. A deploy's state moves (building →
- * ready), so a row is UPDATED — but only when something actually changed (the `WHERE`), so a re-poll of a
- * settled deploy writes nothing and `meta.changes` counts new OR changed rows only. A later poll that no
- * longer reports a field (a message, a URL) never erases one already known (`COALESCE`); the creation
- * instant and the first `recorded_at` are kept. Returns how many rows were new or changed.
- */
-async function upsertDeploys(ctx: TenantContext, part: PartRow, deploys: CleanDeploy[], now: number): Promise<number> {
-  if (!deploys.length) return 0;
-  const at = iso(now);
-  const stmts: Stmt[] = deploys.map((d) => stmt(ctx,
-    `INSERT INTO hosting_deploys (org_id, env, part, provider, deploy_id, state, target, sha, branch, message, actor, url, inspect_url,
-                                  created_at, ready_at, recorded_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(org_id, env, part, provider, deploy_id) DO UPDATE SET
-       state = excluded.state,
-       target = COALESCE(excluded.target, hosting_deploys.target),
-       sha = COALESCE(excluded.sha, hosting_deploys.sha),
-       branch = COALESCE(excluded.branch, hosting_deploys.branch),
-       message = COALESCE(excluded.message, hosting_deploys.message),
-       actor = COALESCE(excluded.actor, hosting_deploys.actor),
-       url = COALESCE(excluded.url, hosting_deploys.url),
-       inspect_url = COALESCE(excluded.inspect_url, hosting_deploys.inspect_url),
-       ready_at = COALESCE(excluded.ready_at, hosting_deploys.ready_at),
-       updated_at = excluded.updated_at
-     WHERE hosting_deploys.state IS NOT excluded.state
-        OR (excluded.target IS NOT NULL AND hosting_deploys.target IS NOT excluded.target)
-        OR (excluded.sha IS NOT NULL AND hosting_deploys.sha IS NOT excluded.sha)
-        OR (excluded.branch IS NOT NULL AND hosting_deploys.branch IS NOT excluded.branch)
-        OR (excluded.message IS NOT NULL AND hosting_deploys.message IS NOT excluded.message)
-        OR (excluded.actor IS NOT NULL AND hosting_deploys.actor IS NOT excluded.actor)
-        OR (excluded.url IS NOT NULL AND hosting_deploys.url IS NOT excluded.url)
-        OR (excluded.inspect_url IS NOT NULL AND hosting_deploys.inspect_url IS NOT excluded.inspect_url)
-        OR (excluded.ready_at IS NOT NULL AND hosting_deploys.ready_at IS NOT excluded.ready_at)`,
-    ctx.orgId, part.env, part.key, part.provider, d.id, d.state, d.target, d.sha, d.branch, d.message, d.by, d.url, d.inspectUrl,
-    d.createdAt, d.readyAt, at, at));
-  let changed = 0;
-  // ≤ MAX_DEPLOYS_PER_POLL (50) statements — exactly one D1 batch, one transaction.
-  for (const [i, res] of (await batch(ctx, stmts)).entries()) {
-    if (!(res.meta.changes > 0)) continue;
-    changed++;
-    // The AI router, after the batch committed: a deploy new or changed (src/tools/ai-route.ts decides which matter).
-    await routeAi(ctx, { type: "hosting_deploy", env: part.env, branch: deploys[i].branch, state: deploys[i].state });
-  }
-  return changed;
-}
-
 interface StateRow { provider: string; last_ok_at: string | null; covered_from: string | null; covered_to: string | null; unavailable: string }
 
 /**
@@ -298,7 +332,7 @@ interface StateRow { provider: string; last_ok_at: string | null; covered_from: 
  */
 async function writeState(
   ctx: TenantContext, part: PartRow, now: number, status: HostingPollOutcome["status"], detail: string | null,
-  ok: { covered: { from: number; to: number } | null; unavailable: CleanPoll["unavailable"] } | null,
+  ok: { covered: { from: number; to: number } | null; unavailable: CleanPoll["unavailable"]; families?: CleanPoll["families"] } | null,
 ): Promise<void> {
   const prev = await first<StateRow>(ctx,
     `SELECT provider, last_ok_at, covered_from, covered_to, unavailable FROM hosting_poll_state WHERE org_id = ? AND env = ? AND part = ?`,
@@ -317,7 +351,18 @@ async function writeState(
     ctx.orgId, part.env, part.key, part.provider, at, status, detail,
     ok ? at : mine?.last_ok_at ?? null,
     covered ? iso(covered.from) : null, covered ? iso(covered.to) : null,
-    ok ? JSON.stringify(ok.unavailable) : mine?.unavailable ?? "[]");
+    ok ? JSON.stringify([...ok.unavailable, ...mergeFamilies(mine?.unavailable ?? null, ok.families ?? [])]) : mine?.unavailable ?? "[]");
+}
+
+/** Whether `day`'s daily figures were already read for this part — its `hx_daily_read` marker (the once-a-day rule).
+ *  One indexed read; a failed read answers "read" (a missed day costs a gap, never a burst of retries). */
+async function dailyRead(ctx: TenantContext, part: PartRow, day: string): Promise<boolean> {
+  try {
+    const row = await first<{ n: number }>(ctx,
+      `SELECT 1 AS n FROM repo_metrics WHERE org_id = ? AND metric = ? AND env = ? AND part = ? AND at = ?`,
+      ctx.orgId, DAILY_READ_METRIC, part.env, part.key, `${day}T00:00:00.000Z`);
+    return row !== null;
+  } catch { return true; }
 }
 
 /** Why a part cannot be polled with these values, or null — the first REQUIRED field that is absent, or
@@ -373,6 +418,13 @@ export async function pollPart(
     const provider = providers[part.provider];
     if (!provider || provider.status !== "available") return await settle({ ...base, status: "skipped", written: 0, detail: "not supported yet" });
     const kind = HOSTING_INTEGRATION_KIND[part.provider];
+    // No credential of its own (`github`): nothing is resolved and nothing is fetched — its deploys are written
+    // from the GitHub capture (./github-deploys.ts). The state says so; GitHub reports no metric.
+    if (provider.credential === "github_app" || !kind) {
+      return await settle({ ...base, status: "ok", written: 0 },
+        { covered: null, unavailable: metricsForRole(part.role).map((metric) => ({ metric, reason: NO_GITHUB_METRICS })) },
+        "deploys come from GitHub — nothing to poll");
+    }
     const scope = "";
 
     let secret: Secret | null;
@@ -392,9 +444,15 @@ export async function pollPart(
     const missing = fieldProblem(provider.orgConfigFields, config) ?? fieldProblem(provider.partSettings, part.settings);
     if (missing) return await settle({ ...base, status: "skipped", written: 0, detail: missing });
 
+    // The once-a-day rule (Phase G): a provider with a DAILY family (runtime, storage) is handed the completed day
+    // to read only while that day's marker is not stored yet.
+    const declared = provider.capabilities.families ?? [];
+    const day = declared.some((f) => DAILY_FAMILIES.includes(f)) ? dailyDay(now) : null;
+    const daily = day && !(await dailyRead(ctx, part, day)) ? day : null;
+
     let result: PollResult;
     try {
-      result = await provider.poll({ fetch: hostFetch(provider.apiHosts, fetchImpl), credential: { secret, config }, now }, partRef(ctx.orgId, part));
+      result = await provider.poll({ fetch: hostFetch(provider.apiHosts, fetchImpl), credential: { secret, config }, now, daily }, partRef(ctx.orgId, part));
     } catch (e) {
       // `asHostingError` keeps a HostingError's message (already scrubbed by the provider with what IT
       // revealed) and replaces anything else with fixed text; `lastErrorText` scrubs again with the
@@ -409,18 +467,32 @@ export async function pollPart(
       return await settle({ ...base, status: "failed", written: 0, detail });
     }
 
-    const clean = validatePoll(result, part, now, revealed);
-    const newPoints = await putMetrics(ctx, clean.points);
-    const changedDeploys = await upsertDeploys(ctx, part, clean.deploys, now);
+    const clean = validatePoll(result, part, now, revealed, declared);
+    const newPoints = await putMetrics(ctx, [...clean.points, ...clean.extra]);
+    const changedIds = await upsertDeploys(ctx, part, clean.deploys, now, "provider");
+    const changedDeploys = changedIds.length;
+    // The AI router, after the batch committed: each deploy new or changed (src/tools/ai-route.ts decides which matter).
+    for (const d of clean.deploys) {
+      if (changedIds.includes(d.id)) await routeAi(ctx, { type: "hosting_deploy", env: part.env, branch: d.branch, state: d.state });
+    }
+    // A deploy the provider gave no sha: the commit join (exactly one GitHub candidate, else none). Then the
+    // rollback check of the newest production deploy, when this poll created or changed it — ONE compare at
+    // most, through the org's GitHub credential. Neither ever fails the poll.
+    const joined = await joinShas(ctx, { env: part.env, key: part.key, provider: part.provider, branch: part.branch }, now)
+      .catch((e: unknown) => { console.error("hosting poll", part.provider, part.env, part.key, "join", lastErrorText(e instanceof Error ? e.message : String(e), revealed), `org=${ctx.orgId}`); return [] as string[]; });
+    const toCheck = await newestReadyChanged(ctx, part, [...changedIds, ...joined]).catch(() => null);
+    if (toCheck) await checkRollback(ctx, part, toCheck, githubFor(env, ctx, fetchImpl)).catch(() => "skipped");
+    const notes = (Array.isArray(result.notes) ? result.notes : []).map((n) => lastErrorText(String(n), revealed)).filter(Boolean).slice(0, 3);
     const dropped = droppedText(clean.dropped);
     if (dropped) console.warn("hosting poll", part.provider, part.env, part.key, dropped, `org=${ctx.orgId}`);
     await recordSecretOutcome(ctx, kind, scope, { ok: true }, now).catch(() => undefined);
     // The state says what was written; the outcome says only what was dropped (an `ok` with nothing to
     // add carries no detail — `PollOutcome`'s convention).
-    const wrote = `${plural(newPoints, "new point")}, ${plural(changedDeploys, "new or changed deploy")}`;
+    const wrote = [`${plural(newPoints, "new point")}, ${plural(changedDeploys, "new or changed deploy")}`,
+      ...(joined.length ? [`${plural(joined.length, "commit")} joined from GitHub`] : []), ...notes].join("; ");
     return await settle(
       { ...base, status: "ok", written: newPoints + changedDeploys, ...(dropped ? { detail: dropped.slice(0, DETAIL_MAX) } : {}) },
-      { covered: clean.covered, unavailable: clean.unavailable },
+      { covered: clean.covered, unavailable: clean.unavailable, families: clean.families },
       lastErrorText(dropped ? `${wrote}; ${dropped}` : wrote, revealed),
     );
   } catch (e) {
@@ -428,6 +500,20 @@ export async function pollPart(
     console.error("hosting poll", part.provider, part.env, part.key, lastErrorText(e instanceof Error ? e.message : String(e), revealed), `org=${ctx.orgId}`);
     return { ...base, status: "failed", written: 0, detail: "unexpected error" };
   }
+}
+
+/** The org's GitHub credential for the rollback compare, resolved only when a compare is due — through
+ *  `resolveGithubCredential` (the App's installation token, else the stored token), for the primary repository. */
+function githubFor(env: Env, ctx: TenantContext, fetchImpl?: typeof fetch): () => Promise<GhOpts | null> {
+  return async () => {
+    const repo = (await first<{ repo_full_name: string }>(ctx,
+      `SELECT repo_full_name FROM org_repos WHERE org_id = ? AND is_primary = 1`, ctx.orgId))?.repo_full_name;
+    if (!repo) return null;
+    const gh = await resolveGithubCredential(ctx, env, { repo, fetchImpl }).catch(() => null);
+    if (!gh) return null;
+    await gh.markUsed().catch(() => undefined);
+    return { token: gh.token.reveal(), repo, fetchImpl };
+  };
 }
 
 /** Poll each of `parts` in turn (sequentially — one provider's slowness is the next one's wait, never a

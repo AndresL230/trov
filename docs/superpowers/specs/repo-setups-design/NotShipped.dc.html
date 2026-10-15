@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="border-top:1px solid var(--border)">
+  <div style="display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;padding:14px 22px 12px">
+    <span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Not shipped</span>
+    <span style="font-size:13px;font-weight:500;color:var(--fg);white-space:nowrap">{{ ns.title }}</span>
+    <span style="font-size:11.5px;color:var(--fg-40);white-space:nowrap">{{ ns.sub }}</span>
+    <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}"><span style="font-size:12.5px;color:var(--fg-55)">Everything merged is deployed.</span></sc-if>
+  </div>
+  <sc-for list="{{ groups }}" as="g" hint-placeholder-count="2">
+    <div>
+      <div style="display:flex;align-items:center;gap:9px;padding:10px 22px;border-top:1px solid var(--border);background:color-mix(in srgb,var(--fg) 2%,transparent)">
+        <span style="font-size:11.5px;font-weight:600;color:{{ g.tone }};flex:none">{{ g.tag }}</span>
+        <span style="font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ g.title }}</span>
+        <span style="font-size:11.5px;color:var(--fg-40);flex:none;margin-left:auto;white-space:nowrap">{{ g.meta }}</span>
+      </div>
+      <sc-for list="{{ g.commits }}" as="c" hint-placeholder-count="1">
+        <div style="display:grid;grid-template-columns:84px minmax(0,1fr) 64px;gap:10px;align-items:center;padding:7px 22px 7px 30px;border-top:1px solid var(--border)">
+          <span style="font-size:11.5px;color:var(--fg-55);font-family:var(--code)">{{ c.sha }}</span>
+          <span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.msg }}</span>
+          <span style="font-size:11px;color:var(--fg-40);text-align:right">{{ c.at }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:800,&quot;height&quot;:260},&quot;ns&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;NotShippedModel&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const ns = this.props.ns || { title: '', sub: '', groups: [] };
+    const groups = (ns.groups || []).map((g) => ({ ...g, tone: g.pr ? 'var(--accent)' : 'var(--fg-55)' }));
+    return { ns, groups, empty: !groups.length };
+  }
+}
+</script>
+</body>
+</html>

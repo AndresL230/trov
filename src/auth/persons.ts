@@ -297,6 +297,12 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["chat_threads", "handle"], ["person_ask_settings", "handle"],
   // Repo themes (0064_repo_themes): who proposed (`trov`) and who decided a theme; who set a PR's theme by hand.
   ["repo_themes", "created_by"], ["repo_themes", "decided_by"], ["pr_themes", "set_by"],
+  // Apps (0070_repo_apps): who created an app and who last changed it.
+  ["repo_apps", "created_by"], ["repo_apps", "updated_by"],
+  // The repo scan (0072_repo_scans): who accepted or ignored a suggestion.
+  ["repo_app_suggestions", "decided_by"],
+  // The Repo screen's per-repository defaults (0071_repo_settings): who set one.
+  ["repo_settings", "updated_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

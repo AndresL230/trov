@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="position:relative;display:inline-flex;min-width:0">
+  <button type="button" onClick="{{ toggle }}" aria-haspopup="listbox" aria-expanded="{{ open }}" aria-label="{{ aria }}" style="display:inline-flex;align-items:center;gap:8px;height:30px;box-sizing:border-box;max-width:260px;padding:0 8px 0 10px;border:1px solid {{ border }};box-shadow:{{ ring }};border-radius:3.2px;background:var(--surface);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap" style-hover="border-color:var(--fg-40)">
+    <sc-if value="{{ isRepo }}" hint-placeholder-val="{{ true }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="1.8" aria-hidden="true" style="flex:none"><path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg></sc-if>
+    <sc-if value="{{ isApp }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="1.8" aria-hidden="true" style="flex:none"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg></sc-if>
+    <span style="min-width:0;overflow:hidden;text-overflow:ellipsis">{{ label }}</span>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="2.2" aria-hidden="true" style="flex:none;transform:rotate({{ caret }})"><path d="m6 9 6 6 6-6"></path></svg>
+  </button>
+  <sc-if value="{{ open }}" hint-placeholder-val="{{ false }}">
+    <div role="listbox" aria-label="{{ aria }}" style="position:absolute;top:calc(100% + 6px);left:0;z-index:40;box-sizing:border-box;display:flex;flex-direction:column;gap:1px;width:max-content;min-width:260px;max-width:340px;padding:5px;background:var(--surface);border:1px solid var(--border-strong);border-radius:4px;box-shadow:var(--menu-shadow)">
+      <sc-for list="{{ rows }}" as="r" hint-placeholder-count="4">
+        <div>
+          <sc-if value="{{ r.divider }}"><div style="height:1px;background:var(--border);margin:4px 4px"></div></sc-if>
+          <button type="button" role="option" aria-selected="{{ r.on }}" onClick="{{ r.pick }}" style="display:flex;align-items:center;gap:10px;width:100%;min-height:34px;padding:6px 10px;border-radius:2.8px;text-align:left;font-size:13px;font-weight:500;color:{{ r.color }};background:{{ r.bg }};border:none" style-hover="background:var(--hover)">
+            <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.name }}</span><sc-if value="{{ r.sub }}"><span style="font-size:11px;font-weight:400;color:var(--fg-40);font-family:{{ r.subFont }}">{{ r.sub }}</span></sc-if></span>
+            <sc-if value="{{ r.showN }}"><span title="Open pull requests" style="font-size:11px;font-weight:600;min-width:18px;height:18px;line-height:18px;padding:0 6px;box-sizing:border-box;border-radius:4.5px;text-align:center;color:var(--fg-55);background:var(--hover);box-shadow:inset 0 0 0 1px var(--border)">{{ r.n }}</span></sc-if>
+            <span style="width:14px;flex:none;display:grid;place-items:center"><sc-if value="{{ r.on }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg></sc-if></span>
+          </button>
+        </div>
+      </sc-for>
+      <sc-if value="{{ foot }}" hint-placeholder-val="{{ false }}">
+        <div style="height:1px;background:var(--border);margin:4px 4px"></div>
+        <button type="button" style="display:flex;align-items:center;gap:8px;width:100%;min-height:34px;padding:6px 10px;border-radius:2.8px;text-align:left;font-size:12.5px;font-weight:500;color:var(--fg-55);background:none;border:none" style-hover="background:var(--hover);color:var(--fg)">{{ foot }} →</button>
+      </sc-if>
+      <sc-if value="{{ hint }}" hint-placeholder-val="{{ false }}"><div style="padding:6px 10px 5px;font-size:11px;line-height:1.45;color:var(--fg-40);max-width:300px">{{ hint }}</div></sc-if>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:380,&quot;height&quot;:420},&quot;kind&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;repo&quot;,&quot;app&quot;],&quot;default&quot;:&quot;repo&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;items&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;array&quot;},&quot;label&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;acme/storefront&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;open&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;admin&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = { open: null };
+  renderVals() {
+    const kind = this.props.kind || 'repo';
+    const open = this.state.open ?? !!this.props.open;
+    const items = this.props.items || [];
+    const isRepo = kind === 'repo';
+    return {
+      isRepo, isApp: !isRepo, open, label: this.props.label || '',
+      aria: isRepo ? 'Repository' : 'App',
+      border: open ? 'var(--accent)' : 'var(--border)', ring: open ? '0 0 0 3px var(--accent-soft)' : 'none', caret: open ? '180deg' : '0deg',
+      toggle: () => this.setState({ open: !open }), close: () => this.setState({ open: false }),
+      rows: items.map((r) => ({ ...r, pick: () => { this.setState({ open: false }); if (this.props.onPick) this.props.onPick(r.value); }, color: r.on ? 'var(--fg)' : 'var(--fg-70)', bg: r.on ? 'var(--hover)' : 'transparent', showN: !isRepo && r.n !== undefined, n: String(r.n ?? ''), sub: r.sub || '', subFont: r.name === 'Repo-wide only' ? 'inherit' : 'var(--code)' })),
+      foot: isRepo ? (this.props.admin === false ? '' : 'Connect a repository in Org settings') : '',
+      hint: isRepo ? '' : 'Picking an app narrows every tab to the files it watches.',
+    };
+  }
+}
+</script>
+</body>
+</html>

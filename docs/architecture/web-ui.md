@@ -659,7 +659,7 @@ empty, so a brand-new organization can see what the screen is for. The rules:
 - **Shapes are the skeleton's builders.** Each screen has ONE shape builder (`tableShapes`,
   `boardCardShapes`, `feedCardShape`, `sprintCardShape`, `timelineShapes`, `handoffRowsShape`,
   `promptCardShape`, `libraryCardShape`, `reviewCardShape`, `unplacedShapes`, `skRowsShape`, Hosting's
-  `envTilesShape` / `partRowsShape` and the dashboard's `hostingShapes`, …) used by its
+  `partsListShape` / `partRowsShape` and the dashboard's `hostingShapes`, …) used by its
   loading skeleton AND its empty layout, so the two have the same columns and row heights and cannot drift.
 - **Never data (CLAUDE.md invariant 7).** A shape is a box: no name, title, number, date, avatar, control or
   status colour. Inside `.cnpy-empty-shapes` (`aria-hidden`, `pointer-events:none`) trov.css draws `.cnpy-sk`

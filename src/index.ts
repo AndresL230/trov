@@ -7,6 +7,7 @@ import { BILLING_CHECKOUT_PATH, BILLING_DONE_PATH } from "@shared/billing";
 import { APP_WEBHOOK_PATH, handleGithubAppWebhook } from "./github-app/webhook";
 import { handleHostingWebhook, hostingWebhookPath } from "./hosting/webhook";
 import { resolveBearerConnection } from "./data/bearer";
+import { INTERNAL_METRICS_PATH, handleInternalMetrics } from "./internal-metrics";
 import { meterMcp, pruneUsage } from "./data/meter";
 import { pruneSyncRuns } from "./platform/sweeps";
 import { platform } from "./data/context";
@@ -47,6 +48,9 @@ async function serve(request: Request, env: Env, ctx: ExecutionContext, url: URL
     ctx.waitUntil(meterMcp(env, bearer.conn.current?.ctx ?? null, request));
     return handleMcp(request, env, ctx, bearer.conn);
   }
+  // Trov's OWN app metrics endpoint (contract v3, src/internal-metrics.ts): the SAME bearer class as /mcp — a Trov MCP
+  // credential, its organization chosen only by src/data/bearer.ts — read-only, D1-only, before the cookie-only app.
+  if (url.pathname === INTERNAL_METRICS_PATH) return handleInternalMetrics(request, env);
   // Stripe's deliveries (docs/architecture/billing.md): the `Stripe-Signature` over the raw body is the
   // auth, against STRIPE_WEBHOOK_SECRET; a bad one is a bare 401 and writes nothing (src/billing/webhook.ts).
   if (request.method === "POST" && url.pathname === STRIPE_WEBHOOK_PATH) return handleStripeWebhook(request, env);

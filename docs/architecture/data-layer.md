@@ -43,6 +43,12 @@ at all is the one `unauthorized` (`/mcp` → 401 `invalid_token`): an unknown / 
 token whose person left its org or whose org is suspended; a manual grant none of whose allowed orgs is live
 for its person; a `repo` grant whose person is in no org. There is no 409 on `/mcp`.
 
+**The one other bearer path** — Trov's own app metrics endpoint, `GET /api/internal/metrics` (repo setups, Phase G;
+`src/internal-metrics.ts`): the SAME credentials, resolved by `resolveBearerTenant` (a token's org, a manual grant's
+current one; a `repo` grant names none without a `repo`, so it is a 401 there), read-only, D1-only
+(`src/data/own-metrics.ts`, every statement bound to that org — counts only), dispatched in `src/index.ts` before the
+cookie-only app like `/mcp`. It is not a fourth auth class: no new credential, no new resolver.
+
 **Per tool call** — `resolveCall(conn, { repo, org })`. Every org tool takes these two OPTIONAL arguments
 (`src/mcp.ts` adds them in front of the tool's own; a tool body never sees `org`). A refusal is an MCP tool
 error `{ error, code, orgs? }` and has read and written nothing; `orgs` is only ever slugs of the person's own
@@ -255,11 +261,17 @@ credential comes from `resolveGithubCredential(ctx, env, { repo })` (`src/github
 `github-app.md`): the org's live App installation → an installation token, else its stored `github_token`,
 else SaplingLearn's legacy secret. Every other credential comes from
 `resolveCredential(ctx, env, kind, scope)`: `github_webhook` (the hook id),
-`cloudflare_analytics` (`""`, + `resolveCloudflareAccountId`), `railway` and `metrics_endpoint` (the
-environment key). Both are resolved ONLY in modules that `src/mcp.ts` cannot reach — `src/repo/cron.ts`,
-`src/github-hook.ts`, `src/tools/backfill.ts`, `src/integrations/*`, `src/github-app/*` — and the revealed value is passed down as a parameter
+`cloudflare_analytics` (`""`, + `resolveCloudflareAccountId`), `railway` and the other hosting kinds (`""`, ONE
+org-wide each — a scoped one is a leftover, `hosting-providers.md`) and `metrics_endpoint` (the environment key).
+Both are resolved ONLY in modules that
+`src/mcp.ts` cannot reach — `src/repo/cron.ts`, `src/github-hook.ts`, `src/tools/backfill.ts`, `src/integrations/*`,
+`src/github-app/*`, `src/hosting/poll.ts` (the poll, and the rollback compare's GitHub token), `src/repo/scan-store.ts`
+(Scan again, and the scan's `describe` hosts) — and the revealed value is passed down as a parameter
 (`src/webhook.ts` and `src/repo/github.ts` ARE reachable from MCP; `test/secrets.mcp.test.ts`). Every log
-line and stored `last_error` is scrubbed of every credential the unit revealed.
+line and stored `last_error` is scrubbed of every credential the unit revealed. Whether a credential EXISTS is not a
+secret: the Repo dashboard's `hostingReads` (`src/repo/store.ts`, MCP-reachable) selects `org_secrets` METADATA only —
+`kind`, `last_error`, scope `''`, never `ciphertext` / `iv` / `key_version` — so the one hosting status function
+(`shared/hosting-status-core.ts`) says the same "connected / not connected" there as on Org settings › Hosting.
 
 **Webhooks.** `POST /webhook/github/:hookId`: look the row up, verify the HMAC against that repo's secret,
 require the payload to name that repo (else 202 ignored), then `captureDelivery` as the org. Every refusal —

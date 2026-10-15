@@ -16,7 +16,8 @@ import type {
 } from "@shared/tickets";
 import type { DashboardData } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
-import type { RepoDashboard, RepoRefreshResult } from "@shared/repo";
+import { REPO_SETTINGS_ROUTE, type RepoDashboard, type RepoRefreshResult, type RepoSettingsDTO } from "@shared/repo";
+import type { GroupBy } from "@shared/repo-layout-core";
 import type { SyncRunView, SyncStatusView, SyncSummariesView } from "@shared/sync";
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow, OAuthGrantSummary, McpTokenSummary } from "@shared/rows";
@@ -350,6 +351,11 @@ async function orgSend<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: strin
   return res.json() as Promise<T>;
 }
 const orgPath = (slug: string, rest: string): string => `/api/o/${encodeURIComponent(slug)}${rest}`;
+
+/** An admin sets a repository's default Group by on the Overview (`repo_settings.overview_group`; null clears it). */
+export function putRepoSettings(slug: string, repo: string, overviewGroup: GroupBy | null): Promise<RepoSettingsDTO> {
+  return orgSend<RepoSettingsDTO>("PUT", orgPath(slug, REPO_SETTINGS_ROUTE), { repo, overview_group: overviewGroup });
+}
 const integrationPath = (slug: string, kind: IntT.IntegrationKind, scope: string, action = ""): string =>
   orgPath(slug, `/integrations/${kind}${scope ? `/${encodeURIComponent(scope)}` : ""}${action}`);
 
@@ -527,10 +533,47 @@ export function startHostingConnect(slug: string, provider: HostT.HostingProvide
 export function disconnectHosting(slug: string, provider: HostT.HostingProviderId, scope = ""): Promise<{ connection: HostT.HostingConnectionDTO; upstream: "revoked" | "failed" | "none" }> {
   return orgSend("POST", orgPath(slug, `/hosting/${provider}/disconnect`), scope ? { scope } : {});
 }
-/** Test connection — the credential alone, or against one part (`{ env, part }`). `scope` for Railway's per-environment token. */
+/** "Remove old tokens": a provider's leftover per-environment credentials (never its org-wide connection). */
+export function removeHostingLeftovers(slug: string, provider: HostT.HostingProviderId): Promise<HostT.HostingLeftoversRemovedDTO> {
+  return orgSend("DELETE", orgPath(slug, `/hosting/${provider}/leftovers`));
+}
+/** Test connection — the credential alone, or against one part (`{ env, part }`). */
 export function testHosting(slug: string, provider: HostT.HostingProviderId, target: { scope?: string; env?: string; part?: string } = {}): Promise<HostT.HostingTestDTO> {
   return orgSend("POST", orgPath(slug, `/hosting/${provider}/test`), target);
 }
+
+// ── Org settings › Repositories › a repo › Apps (repo setups, Phase D2; src/repo/apps-routes.ts, admin+) ──
+/** `/api/o/<slug>/repos/<owner>/<name><rest>`. */
+const repoPath = (slug: string, repo: string, rest: string): string => orgPath(slug, `/repos/${repo.split("/").map(encodeURIComponent).join("/")}${rest}`);
+/** Everything the Apps tab draws for one repository, in one read. */
+export function getRepoAppsSetup(slug: string, repo: string): Promise<ScanT.RepoAppsSetupDTO> { return orgSend("GET", repoPath(slug, repo, "/apps")); }
+/** An app's own fields, as the Apps tab writes them (src/repo/apps.ts `putRepoApp`). */
+export interface RepoAppBody { kind?: AppsT.AppKind; label?: string; folder?: string; watch?: string[]; release_signal?: string | null }
+/** Create or change an app of this repository. Refusals: `invalid` (+ `field`), `app_conflict` (the key is another repository's). */
+export function putRepoAppSetup(slug: string, repo: string, key: string, body: RepoAppBody): Promise<{ app: AppsT.RepoApp; created: boolean }> {
+  return orgSend("PUT", repoPath(slug, repo, `/apps/${encodeURIComponent(key)}`), body);
+}
+/** Remove an app; `removeParts` takes its parts (and their deploy history) with it. */
+export function deleteRepoAppSetup(slug: string, repo: string, key: string, removeParts: boolean): Promise<{ key: string; removed_parts: { env: string; part: string }[]; kept_parts: number }> {
+  return orgSend("DELETE", repoPath(slug, repo, `/apps/${encodeURIComponent(key)}${removeParts ? "?parts=remove" : ""}`));
+}
+// The scan's own routes (the scan and the suggestion lifecycle, Phase D1): called here, written there.
+/** Scan again: read the repository's config files now. */
+export function scanRepoNow(slug: string, repo: string): Promise<unknown> { return orgSend("POST", repoPath(slug, repo, "/scan")); }
+/** Accept a suggestion: its app and parts are written as you. `undo` takes it back. */
+export function acceptRepoSuggestion(slug: string, repo: string, id: string): Promise<{ undo?: string }> {
+  return orgSend("POST", repoPath(slug, repo, `/suggestions/${encodeURIComponent(id)}/accept`));
+}
+/** Ignore a suggestion until the next Scan again. */
+export function ignoreRepoSuggestion(slug: string, repo: string, id: string): Promise<{ undo?: string } | null> {
+  return orgSend("POST", repoPath(slug, repo, `/suggestions/${encodeURIComponent(id)}/ignore`));
+}
+/** Take back an accept (or an ignore) by the token it answered. */
+export function undoRepoSuggestion(slug: string, repo: string, undo: string): Promise<unknown> {
+  return orgSend("POST", repoPath(slug, repo, "/suggestions/undo"), { undo });
+}
+import type * as ScanT from "@shared/repo-scan-core";
+import type * as AppsT from "@shared/repo-apps-core";
 
 // ADMIN action: trigger the server-side GitHub backfill (admin-only route). The
 // worker holds the service token and fetches GitHub directly — no webhook secret.
@@ -581,9 +624,14 @@ export function getMyDashboard(): Promise<DashboardData> {
   return getJson<DashboardData>("/me/dashboard");
 }
 
-/** The Repo dashboard — a D1-only projection; uncaptured sections arrive `not_connected`. */
-export function getRepoDashboard(): Promise<RepoDashboard> {
-  return getJson<RepoDashboard>("/repo/dashboard");
+/** The Repo dashboard — a D1-only projection; uncaptured sections arrive `not_connected`. `repo` (one of the
+ *  org's repositories) and `app` (an app key, or `__repo`) scope it; the Worker reads them with the facts read. */
+export function getRepoDashboard(q: { repo?: string | null; app?: string | null } = {}): Promise<RepoDashboard> {
+  const p = new URLSearchParams();
+  if (q.repo) p.set("repo", q.repo);
+  if (q.app) p.set("app", q.app);
+  const qs = p.toString();
+  return getJson<RepoDashboard>(`/repo/dashboard${qs ? `?${qs}` : ""}`);
 }
 
 // The Triage "Proposals" queue = staged doc versions newer than the live doc.

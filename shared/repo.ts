@@ -12,6 +12,8 @@ import type { PersonColor } from "./rows";
 // TYPES only, in both directions: shared/hosting.ts imports `RepoRange` / `RepoSection` / `RepoTone` from
 // here, and this file its section and Poll-now shapes from there. A type-only cycle is erased at compile
 // time, so neither module loads the other.
+import type { RepoFacts } from "./repo-facts-core";
+import type { GroupBy } from "./repo-layout-core";
 import type { DeployState, HostingPollOutcome, HostingProviderId, ProviderDeployDTO, RepoProvidersSection } from "./hosting";
 
 export const REPO_TABS = [
@@ -92,7 +94,9 @@ export interface RepoStat { label: string; value: number; delta: number; tone: R
 export interface RepoHealth { env: string; url: string; up: boolean; ms: number }
 
 // ── Code ────────────────────────────────────────────────────────────────────
-export interface RepoCodeStat { label: string; value: number; sub: string; tone: RepoTone }
+/** `value: null` = not known (repo setups, Phase E: a tile narrowed to one app while some of what it counts has
+ *  files nobody has read yet — the `sub` says how many); rendered "—", never 0. */
+export interface RepoCodeStat { label: string; value: number | null; sub: string; tone: RepoTone }
 export interface RepoBars { title: string; note: string; days: { date: string; count: number }[] }
 export type RepoPrState = "draft" | "review" | "approved" | "merged" | "closed";
 export interface RepoPr {
@@ -106,6 +110,12 @@ export interface RepoPr {
   /** Absent when no check data is captured — the column then renders nothing. */
   checks: "pass" | "fail" | "run" | null;
   at: string;
+  /** Repo setups, Phase E — only in a repository with two or more apps: the keys of the apps (not Packages) whose
+   *  watch paths its changed files hit; `[]` = none; `null` = its files were never read (unknown: no "touches"
+   *  line, and never listed under one app). Absent with one app. */
+  touches?: string[] | null;
+  /** The Package apps its files hit (with `touches`; `[]` when none or unknown). */
+  packages?: string[];
 }
 /** The PR list (`rows`, at most 8 — the latest state per PR touched in 90 days,
  *  merged/closed included) and the REAL open-PR count beside it. `openCount` is
@@ -126,7 +136,13 @@ export interface RepoBranches { active: number; stale: number; head?: string; ro
 export interface RepoDeploy { sha: string; at: string; by: string; result: "ok" | "fail" | "cancel" }
 /** One dot strip: the last SETTLED deploys of ONE part of ONE environment, oldest first. `part` is the part's
  *  key, `label` "<environment> · <part label>". */
-export interface RepoDeployRow { env: string; part: string; label: string; deploys: RepoDeploy[] }
+export interface RepoDeployRow {
+  env: string; part: string; label: string; deploys: RepoDeploy[];
+  /** Repo setups, Phase E: the environment's name and the part's host label, so a monorepo's strips group per app
+   *  (the part key IS the app key) — "Production" under "api · Render". */
+  envLabel?: string;
+  host?: string;
+}
 
 /** A provider deploy's state as an environment card's `result`. */
 const ENV_PART_RESULT: Record<DeployState, RepoEnvPart["result"]> = { ready: "ok", error: "fail", canceled: "cancel", queued: "running", building: "running" };
@@ -155,7 +171,15 @@ export function deployDots(deploys: ProviderDeployDTO[]): RepoDeploy[] {
   }
   return out.reverse();
 }
-export interface RepoCiFailure { workflow: string; branch: string; job: string; at: string; url: string }
+export interface RepoCiFailure {
+  workflow: string; branch: string; job: string; at: string; url: string;
+  /** Repo setups, Phase E — only in a repository with two or more apps: the apps the run belongs to (its workflow
+   *  file names one, or its head commit's files hit their watch paths); `[]` = repo-wide; `null` = unknown (shown
+   *  under All apps only). Absent with one app. */
+  apps?: string[] | null;
+  /** The head commit had no file list of its own: the apps were read from its PUSH's files. */
+  approx?: boolean;
+}
 /** `rate`/`trend` are the SEVEN-day picture, so they are published only once run
  *  capture had been recording for the whole week — before that a "0.0%" day is
  *  just a day capture was not running, not a green day. `rate: null` (and an
@@ -228,12 +252,29 @@ export interface RepoProductCount {
   raw: Record<RepoRange, number | null>;
   trend: number[];
   note?: string;
+  /** Contract v3, a `status` group: `neutral` never raises a colour when non-zero (`bad` is the default). */
+  tone?: "bad" | "neutral";
 }
 export interface RepoProductTotal { key: string; label: string; value: string | null; raw: number | null; trend: number[]; note?: string }
-export interface RepoProductGroup { id: string; title: string; metrics: RepoProductCount[] }
+/** How a contract-v3 group asks to be drawn (docs/superpowers/specs/2026-10-15-app-metrics-v3.md): a ranked bar list,
+ *  figures over labels, one feature figure, or a status list. */
+export type RepoProductShape = "ranked" | "stats" | "figure" | "status";
+export interface RepoProductGroup {
+  id: string;
+  title: string;
+  metrics: RepoProductCount[];
+  /** Contract v3 only: the group's own shape — the screen draws it by shape, never by `id` or a key. Absent: a v2
+   *  group, drawn by its registry `id` as before. */
+  shape?: RepoProductShape;
+  /** Contract v3: point-in-time values (the same figure in every range — "right now"). */
+  now?: boolean;
+  /** Contract v3: the group's one caveat line. */
+  note?: string;
+}
 /** Every configured environment is listed, in config order — one that has
- *  reported nothing has no groups and no totals. */
-export interface RepoProductEnv { name: string; groups: RepoProductGroup[]; totals: RepoProductTotal[] }
+ *  reported nothing has no groups and no totals. Contract v3 adds what the body
+ *  said about itself: its `version`, the `part` it describes and its `label`. */
+export interface RepoProductEnv { name: string; groups: RepoProductGroup[]; totals: RepoProductTotal[]; version?: 3; part?: string | null; label?: string | null }
 export type RepoProduct = RepoProductEnv[];
 
 // ── Team & Planning ─────────────────────────────────────────────────────────
@@ -264,6 +305,9 @@ export interface RepoDashboard {
   degraded: boolean;
   /** True only for the client-side sample set — never sent by the Worker. */
   sample?: boolean;
+  /** The sample's Code / CI sections per App menu value (an app key, `__repo`, or `__all` for All apps) — what the
+   *  Worker's narrowing (repo setups, Phase E) sends for that `?app=`. Client-side sample only, never sent. */
+  sampleScopes?: Record<string, Partial<Pick<RepoDashboard, "codeStats" | "bars" | "prs" | "deploys" | "ciFailures">>>;
 
   environments: RepoSection<RepoEnv[]>;
   drift: RepoSection<RepoDrift>;
@@ -297,6 +341,11 @@ export interface RepoDashboard {
   state?: AiRepoState;
   /** Planning's first section, "Where the work went", per range (the screen switches client-side). */
   themes?: Partial<Record<AiThemeRange, AiThemes>>;
+
+  // ── Repo setups (shared/repo-facts-core.ts) — NOT a section: absent = today's Overview ──
+  /** The Overview's one facts object (`?repo=&app=` narrowed). The sample sets it now; the Worker adds it with
+   *  the facts read. When present the Overview is drawn from it (web/src/repo-overview.ts). */
+  facts?: RepoFacts;
 }
 
 // ── Which section belongs to which tab — ONE mapping, two readers ────────────
@@ -359,3 +408,11 @@ export interface RepoRefreshResult extends UsagePollResult {
   hosting?: HostingPollOutcome[] | "not_configured";
   github: RepoRefreshGithub | "not_configured";
 }
+
+// ── Repo settings (0071_repo_settings) — one row per (org, repository) ──────
+/** `PUT /api/o/:slug/repo/settings` — an admin's per-repository Overview defaults. Cookie only, never MCP. */
+export const REPO_SETTINGS_ROUTE = "/repo/settings";
+/** What the route takes: the repository (one of the org's `org_repos`) and its default Group by (null clears it). */
+export interface RepoSettingsPut { repo: string; overview_group: GroupBy | null }
+/** A repository's settings as stored (`repo_settings`); every field null when no admin has set one. */
+export interface RepoSettingsDTO { repo: string; overview_group: GroupBy | null; updated_at: string | null; updated_by: string | null }

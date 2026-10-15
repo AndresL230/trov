@@ -96,10 +96,10 @@ describe("vercel — descriptor", () => {
     expect(vercel.install?.clientSecretVar).toBe("VERCEL_INTEGRATION_CLIENT_SECRET");
   });
 
-  it("claims deploys and no metric, with the reason in its plan note and a one-fetch poll", () => {
+  it("claims deploys and no metric, with the reason in its plan note and a two-fetch poll (production, then previews)", () => {
     expect(vercel.capabilities).toEqual({ deploys: true, metrics: [] });
     expect(vercel.planNote).toMatch(/Observability Plus/);
-    expect(vercel.pollCost).toBe(1);
+    expect(vercel.pollCost).toBe(2);
   });
 
   it.each([
@@ -218,10 +218,11 @@ describe("vercel — probe", () => {
 // ── poll ─────────────────────────────────────────────────────────────────────
 
 describe("vercel — poll", () => {
-  it("asks for the project's 20 newest production deploys, in the team, in ONE request", async () => {
+  it("asks for the project's 20 newest production deploys, in the team, in ONE request — then ONE for its previews", async () => {
     const { fetchImpl, calls } = stub(() => json(production));
     await vercel.poll(ctx(fetchImpl), part({ project: "web" }));
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
+    expect(query(calls[1])).toEqual({ projectId: "web", limit: "20", teamId: TEAM_ID });
     expect(calls.length).toBeLessThanOrEqual(vercel.pollCost);
     expect(calls[0].method).toBe("GET");
     expect(calls[0].url.pathname).toBe("/v7/deployments");
@@ -262,6 +263,7 @@ describe("vercel — poll", () => {
       readyAt: null, // in flight
       url: "https://web-q7m2x9k4p-acme.vercel.app",
       inspectUrl: "https://vercel.com/acme/web/9Fq2LmN4pR8sT1vW3xY5zA6bC7dE",
+      reason: null,
     });
     const ready = r.deploys.find((d) => d.id === "dpl_6Co9IjK1mO5pQ8sT0uV2wX3yZ4aB")!;
     expect(ready.readyAt).toBe("2026-10-07T09:43:01.000Z");
@@ -325,9 +327,23 @@ describe("vercel — poll", () => {
       { ...noTarget, uid: "dpl_untargeted" },
     ];
     const prod = stub(() => json(deploysOf(items)));
-    expect((await vercel.poll(ctx(prod.fetchImpl), part({ project: "web" }))).deploys.map((d) => d.id)).toEqual(["dpl_prod1", "dpl_untargeted"]);
+    const r = await vercel.poll(ctx(prod.fetchImpl), part({ project: "web" }));
+    expect(r.deploys.filter((d) => d.target === "production").map((d) => d.id)).toEqual(["dpl_prod1", "dpl_untargeted"]);
+    // …and from the second (untargeted) list, the previews only — never the staging row, never production again.
+    expect(r.deploys.filter((d) => d.target === "preview").map((d) => d.id)).toEqual(["dpl_preview1"]);
     const prev = stub(() => json(deploysOf(items)));
     expect((await vercel.poll(ctx(prev.fetchImpl), part({ project: "web", target: "preview" }))).deploys.map((d) => d.id)).toEqual(["dpl_preview1"]);
+  });
+
+  it("a production part reads the project's previews too, with their branch — a preview part reads no second list", async () => {
+    const both = stub((c) => json(c.url.searchParams.has("target") ? production : preview));
+    const r = await vercel.poll(ctx(both.fetchImpl), part({ project: "web" }));
+    const previews = r.deploys.filter((d) => d.target === "preview");
+    expect(previews.length).toBeGreaterThan(0);
+    expect(previews.every((d) => d.branch !== null)).toBe(true);
+    const only = stub(() => json(preview));
+    await vercel.poll(ctx(only.fetchImpl), part({ project: "web", target: "preview" }));
+    expect(only.calls).toHaveLength(1);
   });
 
   it("skips malformed items one by one and drops a bad field without guessing", async () => {

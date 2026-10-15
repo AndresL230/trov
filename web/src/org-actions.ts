@@ -29,12 +29,15 @@ import type { GithubAppStatusDTO } from "@shared/github-app";
 import { createOrgLogoActions } from "./org-logo-actions";
 import { createOrgBillingActions } from "./org-billing-actions";
 import { createHostingActions } from "./hosting-actions";
+import { createAppsActions } from "./repo-apps-actions";
+import type { ToastAction } from "./render";
 
 export interface OrgHost {
   state: AppState;
   mount: HTMLElement;
   rerender(): void;
-  flash(msg: string, ms?: number): void;
+  /** A toast; `action` puts one button on it (an Undo). */
+  flash(msg: string, ms?: number, action?: ToastAction | null): void;
   /** The session expired: back to sign-in. */
   unauth(e: unknown): void;
   /** Play the confirmation modal's exit, then run `then`. */
@@ -107,6 +110,9 @@ export function createOrgController(host: OrgHost): OrgController {
   /** The Hosting tab: its read, its dialogs and their writes (hosting-actions.ts). Its reloads of this
    *  screen's other slices are wired below, once those loaders exist. */
   const hosting = createHostingActions({ ...host, reloadSettings: () => reloadForHosting() });
+  /** Repositories › a repo › Apps: its read, its drafts and writes (repo-apps-actions.ts). The part editor it opens
+   *  is Hosting's, so it reads Hosting's setup too. */
+  const apps = createAppsActions({ ...host, loadHosting: () => hosting.load() });
 
   // ── the secret draft (see the header) ──────────────────────────────────────
   let secretDraft = "";
@@ -190,7 +196,8 @@ export function createOrgController(host: OrgHost): OrgController {
    *  its tab's badge counts what needs attention there, and a new environment is a new place for parts. */
   const loadAdmin = () => { if (roleAtLeast(org()?.role, "admin")) { loadInvites(); loadIntegrations(); loadAudit(); hosting.load(); } };
   /** What a Hosting write changed elsewhere on this screen (never Hosting's own read: it made that itself). */
-  const reloadForHosting = () => { loadEnvs(); loadIntegrations(); loadAudit(); };
+  // A part written or removed from a repository's Apps page changes that page too.
+  const reloadForHosting = () => { loadEnvs(); loadIntegrations(); loadAudit(); apps.reload(); };
 
   // ── the GitHub App (github-app.ts) ─────────────────────────────────────────
   /** The connection as the server just reported it — into its own slice and the Integrations list's copy. */
@@ -269,7 +276,7 @@ export function createOrgController(host: OrgHost): OrgController {
       dropSecret();
       // (What the return from GitHub — or from a hosting provider — said arrives before the first load: it is kept.)
       const fresh = initialOrgUi();
-      state.org = { ...fresh, tab: ui().tab, slug: o.slug, githubNotice: ui().githubNotice, hosting: { ...fresh.hosting, notice: ui().hosting.notice } };
+      state.org = { ...fresh, tab: ui().tab, slug: o.slug, githubNotice: ui().githubNotice, hosting: { ...fresh.hosting, notice: ui().hosting.notice }, repoPage: ui().repoPage };
     }
     return true;
   }
@@ -289,6 +296,8 @@ export function createOrgController(host: OrgHost): OrgController {
   }
   function load(): void {
     loadSlices();
+    // A repository's Apps page (`#org/repos/<owner>/<name>…`) reads its own repository too.
+    if (ui().repoPage) apps.enter();
     rerender();
   }
 
@@ -346,7 +355,9 @@ export function createOrgController(host: OrgHost): OrgController {
           loadAdmin();
         })
         .catch((e) => { failed(e, "Couldn't disconnect GitHub."); loadGithub(); });
-    } else if (what === "part" || what === "hosting") {
+    } else if (what === "app") {
+      apps.runConfirm(arg, (msg, ms, action) => { ui().confirm = null; if (msg) host.flash(msg, ms, action ?? null); else rerender(); }, failed);
+    } else if (what === "part" || what === "hosting" || what === "leftovers") {
       hosting.runConfirm(what, arg, (msg, ms) => { ui().confirm = null; if (msg) host.flash(msg, ms); else rerender(); }, failed);
     } else if (what === "env") {
       const label = ui().envs.data.find((x) => x.key === arg)?.label ?? arg;
@@ -365,7 +376,8 @@ export function createOrgController(host: OrgHost): OrgController {
       if (!k) { ui().confirm = null; rerender(); return; }
       const label = i ? integrationLabel(i) : "secret";
       deleteOrgIntegration(o.slug, k.kind, k.scope)
-        .then((row) => { replaceIntegration(row); delete ui().tests[arg]; done(`Deleted the ${label}`); loadAudit(); loadRepos(); })
+        // An app metrics token is deleted from its part's editor on Hosting: that tab reads it again too.
+        .then((row) => { replaceIntegration(row); delete ui().tests[arg]; done(`Deleted the ${label}`); loadAudit(); loadRepos(); if (k.kind === "metrics_endpoint") hosting.load(); })
         .catch((e) => failed(e, `Couldn't delete the ${label}.`));
     } else if (what === "member") {
       const m = ui().members.data.find((x) => x.handle.toLowerCase() === arg.toLowerCase());
@@ -663,6 +675,7 @@ export function createOrgController(host: OrgHost): OrgController {
     if (logo.act(name)) return;
     if (billing.act(name, arg)) return;
     if (hosting.act(name, arg, value)) return;
+    if (apps.act(name, arg, value)) return;
     const u = ui();
     const o = org();
     const admin = roleAtLeast(o?.role, "admin");
@@ -670,12 +683,17 @@ export function createOrgController(host: OrgHost): OrgController {
       case "orgGo":
         state.screen = "org"; state.personCard = null;
         if (isOrgTab(arg)) u.tab = arg;
+        u.repoPage = null; // a tab opened from elsewhere is the tab itself, never a repository's page left from before
         load();
         return;
       case "orgTab":
         if (!isOrgTab(arg)) return;
         u.tab = effectiveOrgTab(arg, o?.role ?? null);
+        // A tab pressed opens the tab itself (the list of repositories, not a repository's page); a route that names
+        // a repository's page (`value` "route" — Back / Forward) keeps the page applyRoute set.
+        if (value !== "route") u.repoPage = null;
         if (state.screen !== "org") { state.screen = "org"; load(); return; }
+        if (u.tab === "repos" && u.repoPage) apps.enter();
         break;
       case "orgReload": loadOrgs(loadSlices); break;
       case "orgPlanReload": loadPlanOnly(); return;
@@ -834,7 +852,8 @@ export function createOrgController(host: OrgHost): OrgController {
       case "orgConfirm": {
         const at = (arg ?? "").indexOf(":");
         const what = (arg ?? "").slice(0, at);
-        if (!admin || at < 0 || !["repo", "env", "secret", "member", "key", "github", "part", "hosting"].includes(what)) return;
+        if (!admin || at < 0 || !["repo", "env", "secret", "member", "key", "github", "part", "hosting", "leftovers", "app"].includes(what)) return;
+        if (what === "app") u.apps.removeParts = false; // the Remove dialog's choice starts at "keep its parts"
         if (what === "key" && o?.role !== "owner") return;
         u.confirm = { what: what as OrgConfirm["what"], arg: (arg ?? "").slice(at + 1), busy: false };
         rerender();

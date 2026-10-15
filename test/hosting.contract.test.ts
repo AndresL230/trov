@@ -19,8 +19,11 @@ describe("the registry", () => {
     expect(allProviders().map((p) => p.id)).toEqual([...HOSTING_PROVIDERS]);
   });
 
-  it("maps every provider to an integration kind the secrets table admits", () => {
-    for (const id of HOSTING_PROVIDERS) expect(INTEGRATION_KINDS).toContain(HOSTING_INTEGRATION_KIND[id]);
+  it("maps every provider with a credential of its own to an integration kind the secrets table admits — and none to the one without", () => {
+    for (const id of HOSTING_PROVIDERS) {
+      if (PROVIDERS[id].credential === "github_app") expect(HOSTING_INTEGRATION_KIND[id], id).toBeNull();
+      else expect(INTEGRATION_KINDS).toContain(HOSTING_INTEGRATION_KIND[id]);
+    }
   });
 });
 
@@ -43,7 +46,13 @@ describe.each(HOSTING_PROVIDERS.map((id) => [id] as [HostingProviderId]))("provi
     }
   });
 
-  it("offers at least one way to connect, best first, each with how-to text", () => {
+  it("offers at least one way to connect, best first, each with how-to text — none when it has no credential of its own", () => {
+    if (p.credential === "github_app") {
+      expect(p.connectionMethods).toEqual([]);
+      expect(p.install).toBeUndefined();
+      expect(p.orgConfigFields).toEqual([]);
+      return;
+    }
     expect(p.connectionMethods.length).toBeGreaterThan(0);
     const order = ["install", "oauth", "token", "assume_role"];
     const ranks = p.connectionMethods.map((m) => order.indexOf(m.method));
@@ -91,7 +100,10 @@ describe.each(HOSTING_PROVIDERS.map((id) => [id] as [HostingProviderId]))("provi
 
   it("budgets its poll and serialises to the wire description", () => {
     expect(Number.isInteger(p.pollCost)).toBe(true);
-    expect(p.pollCost).toBeGreaterThanOrEqual(1);
+    // A provider with no credential of its own is never polled (its deploys come from the GitHub capture).
+    if (p.credential === "github_app") expect(p.pollCost).toBe(0);
+    else expect(p.pollCost).toBeGreaterThanOrEqual(1);
+    expect(!!providerDTO(p, {}).via_github).toBe(p.credential === "github_app");
     expect(p.pollCost).toBeLessThanOrEqual(10);
     const dto = providerDTO(p, {});
     expect(JSON.parse(JSON.stringify(dto))).toEqual(dto);

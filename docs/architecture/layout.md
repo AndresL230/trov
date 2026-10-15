@@ -10,7 +10,11 @@
   zod-free: the caps, `avatarSrc`, the profile / directory / agent DTOs), `repo.ts` (the Repo dashboard DTO — zod-free,
   since the SPA imports `REPO_TABS` as a value), `hosting.ts` (the hosting-provider contract — zod-free: providers,
   parts, roles, connection methods, the `hx_<metric>` vocabulary, deploy states, the setup and dashboard DTOs; see
-  `hosting-providers.md`), `notifications.ts` (the digest DTOs), and the
+  `hosting-providers.md`), `hosting-status-core.ts` (THE hosting status function), the repo-setups cores — all
+  zod-free, see `repo-apps.md` — `repo-apps-core.ts` (app kinds, roles, `RepoApp`), `repo-facts-core.ts` (`RepoFacts`,
+  `narrowFacts`, `layoutInputOf`), `repo-layout-core.ts` (`RULES`, `decide`, `TABS`, `layoutOf`), `repo-scan-core.ts`
+  (suggestions, seen signals, the Apps DTO), `repo-apps-setup-core.ts` (signals ↔ `github` part settings) and
+  `usage-families-core.ts` (`hosting-providers.md`), `notifications.ts` (the digest DTOs), and the
   tickets pair-per-domain: `tickets.ts` / `sprints.ts` (zod rows, DTOs, payloads, `parseTicketLink`,
   `toSprintView`) over `tickets-core.ts` / `sprints-core.ts`. **The `*-core.ts` split is a rule**: anything
   the SPA imports as a VALUE (`canTransition` / `legalMoves` / `TICKET_STATUS_LABEL` / `isOpenStatus`,
@@ -35,7 +39,7 @@
   › Background jobs), `routes.ts` (Hono HTTP), `mcp.ts` (MCP
   tools; `mcp-catalog.ts` lists them for the docs at build time and is never imported by the Worker),
   `error-hints.ts` (adds `hint` to the Worker's JSON errors), `consumer.ts` (THE GATE), `webhook.ts` (GitHub event capture), `tools/` (`writes.ts`, `reads.ts`,
-  `plan.ts`, `tickets.ts`, `sprints.ts`, `mywork.ts`, `repo.ts`, `repo-agent.ts`, `progress.ts`, `summarize.ts`), `ai/` (the one model client: `client.ts` — `providerFor(kind)` and
+  `plan.ts`, `tickets.ts`, `sprints.ts`, `mywork.ts`, `repo.ts`, `repo-facts.ts` (the Overview's `RepoFacts`, inside the dashboard's projection), `repo-agent.ts` (+ the pure `repo-agent-view.ts`), `progress.ts`, `summarize.ts`), `ai/` (the one model client: `client.ts` — `providerFor(kind)` and
   `structured()`, Claude over the Messages API with structured outputs, never throwing; `schema.ts` —
   `toClaudeSchema`; imported only by `tools/summarize.ts`, never reachable from `mcp.ts`), `notifications/` (every email, and the `/u/`
   unsubscribe page — see notifications.md), `db.ts` (D1 helpers), `auth/` (`persons.ts` — the identity root;
@@ -44,9 +48,28 @@
   `RepoEventRow` / `RepoMetric` shapes), `config.ts` (the org's own configuration: `orgEnvironments` /
   `orgEnvironment` read `org_environments` into `RepoEnvConfig[]`, `orgPrimaryRepo` its primary `org_repos` row;
   the legacy `repoEnvironments()` parser of the `REPO_ENVIRONMENTS` var is called only by tests), `capture.ts` (PURE delivery→`RepoEvent[]` derivation,
-  `repoEventsFromDelivery` — no DB, no clock, no network, and stores only a SLICE of each payload in `raw`),
-  `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the five snapshot kinds —
-  `prs_reconciled`, `env_heads`, `drift`, `branches`; `putMetric`, the ONE write seam that
+  `repoEventsFromDelivery` — no DB, no clock, no network, and stores only a SLICE of each payload in `raw`; GitHub
+  deploy signals land here as untagged `deploy` rows), `apps.ts` (0070_repo_apps: the admin writers `putRepoApp` / `deleteRepoApp`) and
+  `apps-read.ts` (`listRepoApps` — the rows plus an app synthesised for every part key with none; split out so the
+  MCP-reachable facts read never imports the settings module), `facts-compute.ts` (the Overview facts' reconcile
+  arms: the promotion chain, not shipped, out of step — `FACTS_COMPARE_CAP`), `facts-store.ts` (their snapshot
+  shapes and the facts' D1 reads: `factsDeploys`, `deployWeekCounts`, `servingShas`), `watch.ts` (an app's watch
+  globs, `matchesWatch`), `gh-http.ts` (`ghJson` / `ghJsonOrNull` / `ghGraphql` / `scrubbedMessage`, re-exported by
+  `github.ts`),
+  `releases.ts` (0074_releases, Phase F: the `release` / `create` derivation, reconcile's `releases` arm, and the
+  reads `readRelease` / `readTags` / `releaseWeekFigure`; `isFeaturePr` is the one feature rule) and
+  `release-store.ts` (the `releases` writers, called only by the gate's `ingestRepoRelease`),
+  monorepos (0073_commit_paths, Phase E — `repo-apps.md` › Monorepos): `commit-paths.ts` (the push derivation,
+  the writer the gate's `ingestCommitPaths` calls, the read), `path-capture.ts` (the webhook's push arm and its one
+  compare), `pr-files.ts` (the PR-files read from GitHub: the webhook trigger and reconcile's `pr_files` arm),
+  `pr-files-store.ts` (the writer the gate's `ingestPrFiles` calls, and the reads), `app-scope.ts` (what a set of files,
+  a Package and a run touch — D1 only, for `src/tools/repo-scope.ts`, the Code / CI narrowing),
+  the repo scan (repo setups, Phase D — `repo-apps.md` › Detection): `scan.ts` (the guarded reconcile arm),
+  `detect/` (the detector registry, the subset parsers, the signal token rules), `signals.ts` (seen signals),
+  `scan-reads.ts` (the secret-free read side the facts read uses), `scan-store.ts` (accept / ignore / undo, Scan
+  again — credentialed) and `scan-routes.ts`,
+  `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the snapshot kinds —
+  `prs_reconciled`, `env_heads`, `drift`, `branches`, `drift_chain`, `not_shipped`, `out_of_step`; `putMetric`, the ONE write seam that
   normalises `repo_metrics.at`, and `putMetrics`, the same write for MANY rows in `db.batch` chunks of 50;
   the metric reads `metricSeries` / `latestMetric` / `latestHealth` and the Usage tab's whole-tab reads
   `metricsSince` / `productReadings` / `metricsEver`; and `pruneRepoCapture`, the retention rules),
@@ -200,13 +223,28 @@
   Then `0057_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
   `hosting_poll_state`, and `org_secrets` REBUILT only to widen its kind CHECK to the five hosting kinds; rollback
   `scripts/hosting/0057_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.
+  Then `0070_repo_apps` (repo setups, Phase A; 0070–0079 are reserved for that build) [`repo_apps` with a row per
+  existing part key, and `hosting_deploys.source` / `reason` / `sha_source` / `rolled_back_from`; additive].
+  Then `0072_repo_scans` (Phase D) [`repo_scans`, `repo_app_suggestions`; additive].
+  Then `0073_commit_paths` (Phase E) [`commit_paths`, `pr_files`, `pr_file_reads`: which files a commit and a pull
+  request touched; additive].
+  Then `0074_releases` (Phase F) [`releases`: a repository's releases and bare tags, PK `(org_id, repo, tag)`;
+  additive]. (`0071_repo_settings` is below, with the Repo screen; `0073` is reserved for Phase E's `commit_paths`.)
+  All of 0070–0074: `repo-apps.md` › Migrations.
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,
-  `routes.ts`, `webhook.ts`, `probe.ts`, `poll.ts`, `detect.ts` (the "Detected" suggestion, from captured GitHub
+  `routes.ts`, `webhook.ts`, `probe.ts`, `poll.ts`, `deploy-store.ts` (the `hosting_deploys` upsert, secret-free),
+  `github-deploys.ts` (a `github` part's deploys from the capture), `sha-join.ts` (the one-candidate commit join),
+  `rollback.ts` (the one-compare rollback check), `detect.ts` (the "Detected" suggestion, from captured GitHub
   activity alone). Its screens: `web/src/hosting.ts` + `web/src/hosting-actions.ts` (Org settings › Hosting),
   `web/src/repo-hosting.ts` (Repo dashboard › Usage › Hosting), `web/src/hosting-sample.ts` (the sample states — a
-  dynamic import, never in the main bundle).
+  dynamic import, never in the main bundle). Usage families (repo setups, Phase G): `shared/usage-families-core.ts`
+  (traffic / latency / compute and the extra outcomes / runtime / storage / schedules, their stored `hx_` names, the
+  projection's types), `src/tools/repo-extras.ts` (a part's extra families, MCP-reachable), `web/src/repo-usage.ts`
+  (the Usage tab's targets and extra blocks). App metrics contract v3: `appMetricsV3` in `src/repo/poll.ts`
+  (`docs/superpowers/specs/2026-10-15-app-metrics-v3.md`); Trov's own `GET /api/internal/metrics` is
+  `src/internal-metrics.ts` over `src/data/own-metrics.ts` (the bearer class, D1 only).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, the Guide (Help › Guide, `#guide`; it was Get Started), the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard) served via the ASSETS binding (an email's Unsubscribe link is NOT a screen
@@ -223,8 +261,18 @@
   `web/src/tip.ts` the one styled bubble that shows a mark's tooltip (`data-mtip`); and
   `web/src/hash.ts` is the hash-route seam (`parseHash` / `hashForRoute` — `#tickets/7`, `#sprints/3`,
   `#repo/<tab>`). `web/src/repo.ts` is the Repo dashboard (ported from the Claude Design `Trov Repo
-  Dashboard.dc.html`), `web/src/repo-sample.ts` its design-placeholder set (a dynamic import, never in the main
-  bundle), and `web/src/sidebar.ts` + `web/src/morph.ts` the sidebar — see "Sidebar & motion" below.
+  Dashboard.dc.html`), `web/src/repo-sample.ts` its design-placeholder set and the Repo-setups scenarios A–N as `RepoFacts` (a
+  dynamic import, never in the main bundle; their names in `web/src/repo-sample-keys.ts`), `web/src/repo-overview.ts`
+  the Overview drawn from facts with one module per block (`repo-attention.ts`, `repo-week.ts`, `repo-connect.ts`,
+  `repo-env-cards.ts`, `repo-drift.ts`, `repo-apps-table.ts`, `repo-not-shipped.ts`, `repo-production.ts`,
+  `repo-previews.ts`, `repo-release.ts`, `repo-found.ts`), `web/src/repo-header.ts` its repository / App menus,
+  environment pills and Group by, `web/src/repo-verdict.ts` the one environment verdict, and `web/src/repo-scope.ts`
+  the Code / CI tabs under the App menu (Phase E: the scope line, the touches cell, failures by app, strips per app;
+  rules in `shared/repo-scope-core.ts`, the Worker side `src/tools/repo-scope.ts`) (`repo-apps.md` › The Overview and › Monorepos).
+  Migration `0071_repo_settings` (`repo_settings`: an admin's per-repository Overview default; `src/data/repo-settings.ts`,
+  `src/repo/settings-routes.ts`). Org settings › Repositories › a repo › Apps: `web/src/repo-apps.ts` (views) and
+  `web/src/repo-apps-actions.ts` (controller), served by `src/repo/apps-routes.ts` + `src/repo/apps-setup.ts`, the
+  signal rules in `shared/repo-apps-setup-core.ts` (`repo-apps.md` › Org settings › Repositories › a repo › Apps). And `web/src/sidebar.ts` + `web/src/morph.ts` the sidebar — see "Sidebar & motion" below.
   Signed out, the app renders the **landing page** (`web/src/landing.ts`, ported from the Claude Design
   `Canopy Site.dc.html`); its nav's Sign in opens the GitHub/Google dialog, and its in-page links scroll
   rather than set the hash (the hash is the route and the sign-in return-to). Signed IN, the sidebar logo

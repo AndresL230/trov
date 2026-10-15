@@ -87,6 +87,8 @@ export const ORG_AUDIT_ACTIONS = [
   "github.connect", "github.disconnect", "github.uninstall", "github.suspend", "github.unsuspend", "github.repos", "github.permissions",
   // Org settings › Hosting (0057_hosting_providers, src/hosting/).
   "part.set", "part.delete", "hosting.connect", "hosting.disconnect", "hosting.revoked",
+  // An admin removed a provider's leftover per-environment tokens (repo-setups Phase 0, src/hosting/connections.ts).
+  "hosting.leftovers_removed",
   "platform.org_limit", "platform.admin.grant", "platform.admin.revoke",
   // Plans and grants (0044_plans, src/plans): an org's plan / limits / status changed; a grant made, revoked, used.
   "plan.change", "plan.overrides", "plan.status", "grant.create", "grant.revoke", "grant.use",
@@ -103,6 +105,10 @@ export const ORG_AUDIT_ACTIONS = [
   // The organization's AI switch (0055_ai) and its Auto switch for Ask Trov (0058_ai_dirty), both in Org
   // settings › AI: an admin turned one on or off.
   "org.ai", "org.ai_chat_auto",
+  // Apps (0070_repo_apps, src/repo/apps.ts): an app written or removed by an admin.
+  "app.set", "app.delete",
+  // A repository's Repo-screen defaults (0071_repo_settings, src/data/repo-settings.ts): the Overview's Group by.
+  "repo.settings",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 

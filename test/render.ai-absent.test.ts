@@ -7,7 +7,8 @@
  * work went" section, no brief card, no Source switch, no first-run note, no AI usage line.
  *
  * The snapshots in `__snapshots__/render.ai-absent.test.ts.snap` were written by THIS file against
- * main's code, which has no AI screens (commit 45bf29a, `origin/main`; Repo re-pinned at 6c965ac5 after #185's hosting), at a fixed clock —
+ * main's code, which has no AI screens (commit 45bf29a, `origin/main`; Repo re-pinned at 6c965ac5 after #185's hosting; all three re-pinned at 2b7d0183 after #186 Repo setups, whose
+ * shell and Overview add only empty whitespace lines here — the Group by slot and a trailing slot), at a fixed clock —
  * so a change to any of these screens' field-absent markup fails here.
  * One deliberate change since: My Work's header (the date top right, the stat line under the greeting), so
  * "My Work (no `brief`)" was re-pinned with it — the brief is still absent from it. Re-pinned again for the review

@@ -16,8 +16,8 @@
 
 import {
   REPO_RANGES, REPO_TABS, REPO_TAB_SECTIONS,
-  type RepoActivity, type RepoActivityKind, type RepoDashboard, type RepoPerson, type RepoPr, type RepoPrState,
-  type RepoProductEnv, type RepoRange, type RepoSection, type RepoTab, type RepoTone, type RepoTrend, type RepoUsageEnv, type RepoUsageMetric,
+  type RepoActivity, type RepoActivityKind, type RepoDashboard, type RepoDeployRow, type RepoPerson, type RepoPr, type RepoPrState,
+  type RepoProductEnv, type RepoRange, type RepoSection, type RepoTab, type RepoTone, type RepoTrend,
   type PollOutcome, type RepoRefreshGithub, type RepoRefreshResult, type RepoSectionName, type UsagePollSource,
 } from "@shared/repo";
 import type { HostingPollOutcome, HostingProviderId } from "@shared/hosting";
@@ -30,7 +30,15 @@ import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { emptyLayout, emptyShapes, skeleton, skBar, skList, skW } from "./skeleton";
 import { repoStateSection, themesSection, type RepoAiProps } from "./repo-ai";
-import { hostingBlank, hostingEmpty, hostingNotConnected, hostingParts, hostingSkeleton } from "./repo-hosting";
+import { HOSTING_EMPTY, hostingBlank, hostingEmpty, hostingNotConnected, hostingParts, hostingSkeleton } from "./repo-hosting";
+import { targetsFromFacts, usageExtras, usageTargets } from "./repo-usage";
+import { REPO_WIDE, narrowFacts, layoutInputOf, type RepoFacts } from "@shared/repo-facts-core";
+import { layoutOf, type GroupBy, type RepoLayout } from "@shared/repo-layout-core";
+import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
+import { overviewFacts } from "./repo-overview";
+import { ALL_APPS, envPillsHtml, groupByHtml, repoHeaderDropdowns, repoScopeHtml } from "./repo-header";
+import { REPO_SCENARIOS, SCENARIO_KEYS, variantLabel, type ScenarioKey } from "./repo-sample-keys";
+import { failureApps, groupDeployRows, isMulti, scopeStrip, touchCell } from "./repo-scope";
 
 export interface RepoProps {
   tab: RepoTab;
@@ -56,6 +64,23 @@ export interface RepoProps {
   /** The AI screens' state (repo-ai.ts): Overview's State and Planning's Where the work went are drawn
    *  only when the dashboard carries `state` / `themes` AND this is given. */
   ai?: RepoAiProps;
+  // ── the Overview from `facts` (repo-overview.ts) ──
+  /** The App menu's narrowing (an app key, `REPO_WIDE`, or null for all apps) — from the address. */
+  app?: string | null;
+  /** Group by, this session; null = the admin's default (`facts.groupDefault`). */
+  group?: GroupBy | null;
+  /** Phone width: Group by is not offered, so the opener is the rules' own (the design's phone rule). */
+  phone?: boolean;
+  /** The viewer flipped Group by this session: an admin is offered "Make this the default". */
+  groupFlipped?: boolean;
+  /** Sample mode's scenario and variant (the preview bar's switch). */
+  scenario?: { key: ScenarioKey; variant: string };
+  /** The app's one open dropdown (the repository / App menus, the sample switch). */
+  dd?: DropdownUi;
+  /** Disclosures opened this session (`repoOpen`), keyed by each block. */
+  open?: ReadonlySet<string>;
+  /** "Now" for the blocks' ages (tests pin it). */
+  now?: number;
 }
 
 /** "Poll now" (POST /admin/poll): in flight, its per-source outcomes, a 409 (another refresh holds the lock), or a failed request. */
@@ -185,10 +210,26 @@ function okData<T>(p: RepoProps, pick: (d: RepoDashboard) => RepoSection<T>): T 
   return s && s.status === "ok" ? s.data : null;
 }
 
+/** The Overview's facts as the viewer sees them — narrowed by the App menu (client-side when the payload is not
+ *  already narrowed to it: the sample, and the server until it reads `?app=`) — and the layout the shared rules
+ *  decide, with the session's Group by over the admin's default. null when the payload has no facts (today's
+ *  overview then draws), or there is nothing to read. */
+export function factsView(p: Pick<RepoProps, "repo" | "app" | "group" | "noRepo" | "sample" | "phone">): { f: RepoFacts; layout: RepoLayout } | null {
+  const raw = phaseOf(p as RepoProps) === "ready" ? p.repo.data?.facts ?? null : null;
+  if (!raw) return null;
+  const app = p.app ?? null;
+  const f = raw.app === app ? raw : narrowFacts(raw, app);
+  // A phone has no Group by (the design hides it there), so it draws the opener the rules picked — neither the
+  // session's flip nor the admin's default applies (e2e O16b).
+  return { f, layout: layoutOf(layoutInputOf(f), p.phone ? null : p.group ?? f.groupDefault) };
+}
+
 // ── header chrome ────────────────────────────────────────────────────────────
 /** The repo the dashboard reads, beside the title. The tab in view is named by the page's
  *  own tab bar, so the crumb no longer repeats it; nothing is drawn until the slug is known. */
 export function repoCrumb(p: RepoProps): string {
+  const fx = factsView(p);
+  if (fx) return repoScopeHtml(fx.f, p.dd ?? initialDropdownUi());
   const slug = p.repo.data?.repo ?? "";
   return slug
     ? `<span style="font-family:var(--label);font-size:11px;color:var(--fg-40);white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(slug)}</span>`
@@ -216,7 +257,8 @@ const envVerdict = (pill: string) => ENV_VERDICT[pill] ?? { word: pill.charAt(0)
 
 export function repoControls(p: RepoProps): string {
   const envs = okData(p, (d) => d.environments) ?? [];
-  const pills = envs.map((e) => {
+  const fx = factsView(p);
+  const pills = fx ? envPillsHtml(fx.f) : envs.map((e) => {
     const c = TONE[e.tone];
     const v = envVerdict(e.pill);
     return `<span data-mtip="${attr(`${e.name}: ${v.word}.${v.hint ? ` ${v.hint}` : ""}`)}" style="display:inline-flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;color:var(--fg-70)"><span class="repo-envdot${e.tone === "good" || e.tone === "neutral" ? "" : " repo-pulse"}" style="--c:${c};width:7px;height:7px;border-radius:50%;background:${c};box-shadow:0 0 0 3px color-mix(in srgb,${c} 16%,transparent)"></span>${esc(e.name)}</span>`;
@@ -251,6 +293,12 @@ const kv = (k: string, v: string): string =>
   `<div style="display:grid;grid-template-columns:96px 1fr;gap:12px;padding:11px 0;${TOP}"><div style="${LABEL_SM};padding-top:2px">${k}</div>${v}</div>`;
 
 function overviewTab(p: RepoProps): string {
+  const fx = factsView(p);
+  if (fx) {
+    return overviewFacts(fx.f, {
+      now: p.now ?? Date.now(), admin: p.admin, sample: p.sample, persons: p.persons ?? [], layout: fx.layout, open: p.open ?? new Set(),
+    });
+  }
   const now = Date.now();
   const envs = sec(p, (d) => d.environments, { nc: "Nothing captured for a configured environment yet. Cards appear once Org settings › Environments lists an environment and a health ping, a deploy or a head check lands for it — from the 10-minute check, the hourly hosting poll, the GitHub webhook, or an admin's Sync GitHub.", empty: "No environments recorded." }, (rows) =>
     `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${rows.map((e, i) => {
@@ -338,13 +386,14 @@ const PR_STATE: Record<RepoPrState, { word: string; glyph: Glyph; tone: string; 
 };
 const CHECKS = { pass: ["✓", "var(--green)", "all checks passing"], fail: ["✕", "var(--red)", "checks failing"], run: [GDOT, "var(--amber)", "checks running"] } as const;
 
-function prRow(pr: RepoPr, now: number, persons: PersonSummary[] = []): string {
+function prRow(pr: RepoPr, now: number, persons: PersonSummary[] = [], touch = ""): string {
   const st = PR_STATE[pr.state];
   const chip = glyphMark(st.glyph, st.tone, st.word, 12, st.hint);
   const ck = pr.checks ? CHECKS[pr.checks] : null;
   return `<a href="${attr(safeUrl(pr.url))}" target="_blank" rel="noopener" class="repo-row" style="display:flex;align-items:center;gap:12px;padding:8px 20px;border-bottom:1px solid var(--border);color:inherit;text-decoration:none">
     <span title="${attr(who(pr.author))}" style="flex:none">${avatar(pr.author, 22, persons)}</span>
     <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500">${esc(pr.title)} <span style="font-family:var(--label);font-size:11px;font-weight:400;color:var(--fg-40)">#${pr.number}${pr.branch ? ` · ${esc(pr.branch)}` : ""}</span></span>
+    ${touch}
     <span style="flex:none">${chip}</span>
     <span title="${ck ? ck[2] : ""}" style="width:16px;text-align:center;flex:none;font-family:var(--label);font-size:12px;font-weight:600;color:${ck ? ck[1] : "transparent"}">${ck ? ck[0] : ""}</span>
     <span style="width:38px;text-align:right;flex:none;font-size:11.5px;color:var(--fg-40)">${esc(ago(pr.at, now))}</span>
@@ -353,11 +402,18 @@ function prRow(pr: RepoPr, now: number, persons: PersonSummary[] = []): string {
 
 function codeTab(p: RepoProps): string {
   const now = Date.now();
+  // The App menu (repo setups, Phase E): a monorepo's PR rows say which apps each touches; narrowed, the tab says
+  // what it shows and offers All apps back. The Worker sent the narrowed rows (src/tools/repo-scope.ts).
+  const facts = p.repo.data?.facts ?? null;
+  const multi = isMulti(facts);
+  const app = p.app ?? null;
   const tiles = sec(p, (d) => d.codeStats, { nc: "Repo stats aren't connected.", empty: "No data recorded for this window.", lines: 2 }, (rows) =>
     `<div class="repo-tiles" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr))">${rows.map((s, i) => `<div style="padding:14px 20px 12px;${i ? LEFT : ""}">
       <div style="${LABEL}">${esc(s.label)}</div>
       <div style="display:flex;align-items:baseline;gap:9px;margin-top:6px;flex-wrap:wrap">
-        <span data-count="${s.value}" style="font-family:var(--label);font-size:24px;font-weight:600;letter-spacing:-0.02em">${s.value}</span>
+        ${s.value === null
+          ? `<span data-unknown style="font-family:var(--label);font-size:24px;font-weight:600;letter-spacing:-0.02em;color:var(--fg-40)">—</span>`
+          : `<span data-count="${s.value}" style="font-family:var(--label);font-size:24px;font-weight:600;letter-spacing:-0.02em">${s.value}</span>`}
         <span style="font-size:11px;color:${s.tone === "neutral" ? "var(--fg-40)" : TONE[s.tone]};white-space:nowrap">${esc(s.sub)}</span>
       </div>
     </div>`).join("")}</div>`);
@@ -382,7 +438,8 @@ function codeTab(p: RepoProps): string {
   // `ok` with no rows happens once open PRs are captured (`openCount` known)
   // but nothing was touched in 90 days — say that, not "not captured".
   const prs = sec(p, (d) => d.prs, { nc: "Pull requests aren't connected.", empty: "No pull requests captured yet.", lines: 4 }, (l) =>
-    l.rows.length ? l.rows.map((r) => prRow(r, now, p.persons)).join("") : `<div style="padding:6px 20px">${emptyBlock("No pull requests updated in the last 90 days.")}</div>`);
+    l.rows.length ? l.rows.map((r) => prRow(r, now, p.persons, multi && facts ? touchCell(facts, r, app) : "")).join("")
+      : `<div style="padding:6px 20px">${emptyBlock(multi && app ? (app === REPO_WIDE ? "No pull request outside every app in the last 90 days." : "No pull request touching this app in the last 90 days — or none whose files were read yet.") : "No pull requests updated in the last 90 days.")}</div>`);
 
   const br = okData(p, (d) => d.branches);
   const branches = sec(p, (d) => d.branches, { nc: "No branch snapshot yet. One is taken when an admin runs Sync GitHub and by the 6-hourly GitHub reconcile — both need the GitHub token in Org settings › Integrations.", empty: "No branches recorded." }, (b) =>
@@ -393,7 +450,7 @@ function codeTab(p: RepoProps): string {
       <span style="text-align:right">${r.stale ? kindMark("Stale", "warn", 11.5, "No commit in 14 days.") : ""}</span>
     </div>`).join(""));
 
-  return `<div ${rise(0)}>${okData(p, (d) => d.codeStats) ? tiles : `<div style="padding:6px 20px">${tiles}</div>`}</div>
+  return `${scopeStrip(facts, app, "code")}<div ${rise(0)}>${okData(p, (d) => d.codeStats) ? tiles : `<div style="padding:6px 20px">${tiles}</div>`}</div>
     <div ${rise(1, `${TOP};padding:14px 20px 12px`)}>
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="${LABEL}">${esc(barsData?.title ?? "Activity — last 14 days")}</span><span style="font-size:11px;color:var(--fg-40);white-space:nowrap">${esc(barsData?.note ?? "")}</span></div>
       ${bars}
@@ -404,7 +461,7 @@ function codeTab(p: RepoProps): string {
     </div>
     <div ${rise(3)}>${prsLive ? prs : `<div style="padding:6px 20px;border-bottom:1px solid var(--border)">${prs}</div>`}</div>
     <div ${rise(4, `padding:14px 20px 10px;flex:1;display:flex;flex-direction:column`)}>
-      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px"><span style="${LABEL}">Branches</span><span style="font-size:11px;color:var(--fg-40)">${br ? `${br.active} active · ${br.stale} stale` : ""}</span></div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px"><span style="${LABEL}">Branches</span><span style="font-size:11px;color:var(--fg-40)">${br ? `${br.active} active · ${br.stale} stale${multi && app ? " · repo-wide" : ""}` : ""}</span></div>
       ${branches}
     </div>`;
 }
@@ -447,12 +504,16 @@ const titled = (title: string, body: string): string => `<div style="${LABEL}">$
 function ciTab(p: RepoProps): string {
   const now = Date.now();
   const RESULT = { ok: ["var(--green)", "DEPLOYED"], fail: ["var(--red)", "FAILED"], cancel: ["var(--amber)", "CANCELLED"] } as const;
-  const deploys = sec(p, (d) => d.deploys, { nc: "No deploy captured for a configured environment yet. Each part's deploys come from its hosting provider, polled every hour; an admin sets up the parts in Org settings › Hosting.", empty: "No deploys recorded.", lines: 2 }, (rows) =>
-    rows.map((row) => {
+  // The App menu (repo setups, Phase E): in a monorepo the strips group per app (app × environment) and each
+  // failure names its apps; narrowed, the Worker sent that app's strips and failures only.
+  const facts = p.repo.data?.facts ?? null;
+  const multi = isMulti(facts);
+  const app = p.app ?? null;
+  const deployRow = (row: RepoDeployRow, label: string, top = true): string => {
       const okCount = row.deploys.filter((d) => d.result === "ok").length;
       const last = row.deploys[row.deploys.length - 1];
-      return `<div style="display:flex;align-items:center;gap:16px;padding:14px 0;${TOP};flex-wrap:wrap">
-        <span style="width:118px;font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-70);flex:none">${esc(row.label)}</span>
+      return `<div style="display:flex;align-items:center;gap:16px;padding:${top ? 14 : 8}px 0;${top ? TOP : ""};flex-wrap:wrap">
+        <span style="width:118px;font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-70);flex:none">${esc(label)}</span>
         <div style="display:flex;align-items:center;gap:9px">${row.deploys.map((d, i) => {
           const [color, word] = RESULT[d.result];
           // Pure CSS tooltip (hover + keyboard focus): no state, so no rerender on every dot.
@@ -467,7 +528,17 @@ function ciTab(p: RepoProps): string {
         }).join("")}</div>
         <span style="margin-left:auto;font-size:11.5px;color:var(--fg-40)">${last ? `last ${esc(ago(last.at, now))} ago · ` : ""}${okCount} of ${row.deploys.length} succeeded</span>
       </div>`;
-    }).join(""));
+  };
+  const deploys = sec(p, (d) => d.deploys, { nc: "No deploy captured for a configured environment yet. Each part's deploys come from its hosting provider, polled every hour; an admin sets up the parts in Org settings › Hosting.", empty: multi && app ? "No deploys recorded for this app." : "No deploys recorded.", lines: 2 }, (rows) =>
+    multi && facts
+      ? groupDeployRows(facts, rows).map((g) => {
+          const hosts = [...new Set(g.rows.map((r) => r.host).filter((h): h is string => !!h))];
+          return `<div data-deploy-app="${attr(g.app)}" style="${TOP};padding:10px 0 4px">
+            <div style="display:flex;align-items:baseline;gap:9px"><span style="font-size:13.5px;font-weight:600">${esc(g.label)}</span>${hosts.length ? `<span style="font-size:11.5px;color:var(--fg-40)">${esc(hosts.join(", "))}</span>` : ""}</div>
+            ${g.rows.map((r) => deployRow(r, r.envLabel ?? r.label, false)).join("")}
+          </div>`;
+        }).join("")
+      : rows.map((row) => deployRow(row, row.label)).join(""));
 
   const fails = okData(p, (d) => d.ciFailures);
   // `rate === null` = run capture has not been recording for a whole week yet
@@ -476,11 +547,11 @@ function ciTab(p: RepoProps): string {
   // themselves are facts and are always listed.
   const failures = sec(p, (d) => d.ciFailures, { nc: "No workflow run captured yet. Runs arrive when the GitHub webhook delivers workflow_run events, or when an admin runs Sync GitHub.", empty: "No CI failures this week." }, (f) =>
     `${f.rate === null
-        ? `<div style="margin-top:8px;font-size:12.5px;color:var(--fg-40)">A 7-day rate appears after a week of captured runs.</div>`
+        ? `<div style="margin-top:8px;font-size:12.5px;color:var(--fg-40)">${multi && app ? "A 7-day rate for one app appears once a week of runs is captured and every one of them can be told apart by its workflow or its head commit's files." : "A 7-day rate appears after a week of captured runs."}</div>`
         : spark(f.trend, "var(--amber)", 40)}
-    ${f.total ? "" : `<div style="margin-top:10px;font-size:12.5px;color:var(--fg-55)">No CI failures this week.</div>`}
+    ${f.total ? "" : `<div style="margin-top:10px;font-size:12.5px;color:var(--fg-55)">${multi && app ? "No CI failures of this app this week." : "No CI failures this week."}</div>`}
     <div style="margin-top:10px">${f.rows.map((r) => `<div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr) 82px;gap:10px;align-items:center;padding:10px 4px;${TOP}">
-      <span style="display:inline-flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:12px;font-weight:600;color:var(--red);flex:none">✕</span><span style="font-family:var(--label);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.workflow)}</span></span>
+      <span style="display:inline-flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:12px;font-weight:600;color:var(--red);flex:none">✕</span><span style="font-family:var(--label);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.workflow)}</span>${failureApps(facts, r, app)}</span>
       <span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.branch)}</span>
       <span style="font-size:12px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.job)}</span>
       <span style="text-align:right;white-space:nowrap"><span style="font-size:11px;color:var(--fg-40)">${esc(ago(r.at, now))} · </span><a href="${attr(safeUrl(r.url))}" target="_blank" rel="noopener" class="repo-link" style="font-size:11.5px">Logs ↗</a></span>
@@ -499,9 +570,9 @@ function ciTab(p: RepoProps): string {
     `<div class="cnpy-scroll" style="max-height:236px;overflow-y:auto">${rows.map((a) => activityRow(a, now, p)).join("")}</div>`);
   const count = okData(p, (d) => d.activity)?.length ?? 0;
 
-  return `<div ${rise(0, `padding:18px 20px 4px`)}>
+  return `${scopeStrip(facts, app, "ci")}<div ${rise(0, `padding:18px 20px 4px`)}>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <span style="${LABEL}">Deploy history — last 10</span>
+        <span style="${LABEL}">Deploy history — last 10${multi ? " per app" : ""}</span>
         <span style="display:${okData(p, (d) => d.deploys) ? "inline-flex" : "none"};gap:14px;font-size:10.5px;font-family:var(--label);color:var(--fg-40)">${(["ok", "fail", "cancel"] as const).map((k) => `<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:${RESULT[k][0]}"></span>${RESULT[k][1].toLowerCase()}</span>`).join("")}</span>
       </div>
       ${deploys}
@@ -523,36 +594,10 @@ function ciTab(p: RepoProps): string {
 }
 
 // ── Usage ────────────────────────────────────────────────────────────────────
-// A `null` metric keeps its label row (so the block never collapses or shifts
-// its neighbours) and shows a quiet line where the value would be — no
-// sparkline element, no empty-state box. WHICH line is the Worker's `seen`
-// flag: a source that has reported inside the 30-day read is CONNECTED, so its
-// null reads "no recent reading" (no point in this range, a poll that stopped,
-// a gauge gone stale); only a source that never reported reads "not
-// connected". `spark()` already renders nothing under 2 trend points, so a
-// connected-but-thin metric just shows its value with no line. `errorRate` is
-// derived from the requests series, so it follows `seen.requests` — except
-// while `requests` is live and the range simply holds no request to take a
-// rate of (src/tools/repo.ts): that reads a quiet "—" in the same muted slot.
+// The targets and the extra families are repo-usage.ts (the design's UsageTarget, repo setups Phase G) — they
+// replaced the environment-by-environment compare. A product figure with no current reading reads "no recent
+// reading" (`absentLabel(true)`): the key HAS been reported, it has gone quiet.
 const absentLabel = (seen: boolean): string => (seen ? "no recent reading" : "not connected");
-function usageEnv(e: RepoUsageEnv, i: number): string {
-  const metric = (label: string, m: RepoUsageMetric | null, stroke: string, valueColor: string, absent: string): string =>
-    `<div style="${TOP};padding:12px 0">
-      <div style="display:flex;align-items:baseline;justify-content:space-between"><span style="${LABEL_SM}">${label}</span>${
-        m
-          ? `<span style="font-family:var(--label);font-size:17px;font-weight:600;white-space:nowrap;${valueColor ? `color:${valueColor}` : ""}">${esc(m.value)}</span>`
-          : `<span style="font-size:11.5px;color:var(--fg-40)">${absent}</span>`
-      }</div>
-      ${m ? spark(m.trend, stroke, 40, 8) : ""}
-    </div>`;
-  const errC = e.errorRate ? TONE[e.errorRate.tone === "neutral" ? "good" : e.errorRate.tone] : "";
-  return `<div style="padding:18px 20px 4px;min-width:0;${i ? LEFT : ""}">
-    <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px"><span style="font-size:15px;font-weight:600;flex:1">${esc(e.name)}</span><span style="font-family:var(--label);font-size:10px;color:var(--fg-40)">${esc(e.host)}</span></div>
-    ${metric("Requests", e.requests, "var(--accent)", "", absentLabel(e.seen.requests))}
-    ${metric("Error rate", e.errorRate, errC, errC, e.requests ? "—" : absentLabel(e.seen.requests))}
-    ${metric("Active users", e.users, "var(--blue)", "", absentLabel(e.seen.users))}
-  </div>`;
-}
 
 // ── Usage › Product ──────────────────────────────────────────────────────────
 // What the app reports about itself (src/repo/poll.ts → `sap_*` gauges), as ONE
@@ -663,9 +708,9 @@ function rankedBlock(metrics: Count[], range: RepoRange): string {
   }).join("");
 }
 
-/** AI spend: the cost as the one figure, the rest of the group as a quiet line under it. */
-function featureBlock(metrics: Count[], range: RepoRange): string {
-  const lead = metrics.find((m) => m.key === AI_LEAD) ?? metrics[0];
+/** AI spend: the cost as the one figure, the rest of the group as a quiet line under it. A contract-v3 `figure` group
+ *  leads with its FIRST metric (`lead`) — no key decides it. */
+function featureBlock(metrics: Count[], range: RepoRange, lead: Count = metrics.find((m) => m.key === AI_LEAD) ?? metrics[0]): string {
   const rest = metrics.filter((m) => m !== lead);
   const value = lead.values[range];
   return `<div data-prow="${attr(lead.key)}" style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;min-height:28px">${
@@ -685,15 +730,15 @@ function featureBlock(metrics: Count[], range: RepoRange): string {
 /** Reliability: what is non-zero leads, with a tone dot; every measured zero folds
  *  into ONE muted line (a real reading, but not the size of a problem); a figure
  *  with no recent reading is named apart and is never counted among the zeros. */
-function statusBlock(metrics: Count[], range: RepoRange): string {
+function statusBlock(metrics: Count[], range: RepoRange, toneOf: (m: Count) => RepoTone = (m) => failTone(m.key)): string {
   const live = metrics.filter((m) => m.values[range] !== null);
   const hot = live.filter((m) => m.raw[range] !== 0)
-    .sort((a, b) => (failTone(a.key) === "bad" ? 0 : 1) - (failTone(b.key) === "bad" ? 0 : 1) || (b.raw[range] ?? 0) - (a.raw[range] ?? 0));
+    .sort((a, b) => (toneOf(a) === "bad" ? 0 : 1) - (toneOf(b) === "bad" ? 0 : 1) || (b.raw[range] ?? 0) - (a.raw[range] ?? 0));
   const zero = live.filter((m) => m.raw[range] === 0);
   const stale = metrics.filter((m) => m.values[range] === null);
   const names = (rows: Count[]) => rows.map((m) => esc(m.label)).join(", ");
   return `<div>${hot.map((m) => {
-      const c = TONE[failTone(m.key)];
+      const c = TONE[toneOf(m)];
       return `<div class="repo-rank-h" data-prow="${attr(m.key)}" style="display:flex;align-items:center;gap:10px;padding:5px 0">
         <span style="width:7px;height:7px;border-radius:50%;background:${c};flex:none"></span>
         <span class="repo-rank-l" title="${attr(m.label)}" style="font-size:12.5px;color:var(--fg-70);min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.label)}</span>
@@ -739,11 +784,52 @@ function plainBlock(metrics: Count[], range: RepoRange): string {
 
 const WIDE = ["learning", "reliability"], NARROW = ["ai", "growth", "community"];
 
+// Contract v3 (docs/superpowers/specs/2026-10-15-app-metrics-v3.md): a group that names its SHAPE is drawn by that
+// shape — never by its id, never by a key. A point-in-time `stats` group is a "right now" strip; the rest sit two to
+// a row. The v2 groups (no shape) keep the id-keyed layout below them.
+/** A point-in-time group as one wrapping strip of figures, titled by the group. */
+function nowGroupStrip(g: RepoProductEnv["groups"][number]): string {
+  return `<div data-pblock="${attr(g.id)}" data-pshape="now" style="padding:0 20px 16px">
+    <div style="overflow:hidden"><div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 0;margin-left:-15px">
+      <span style="${LABEL_SM};padding:0 14px;border-left:1px solid var(--border)">${esc(g.title)}</span>
+      ${g.metrics.map((m) => {
+        const v = m.values["24h"], raw = m.raw["24h"];
+        return `<span data-prow="${attr(m.key)}" style="display:inline-flex;align-items:baseline;gap:6px;padding:0 14px;border-left:1px solid var(--border);white-space:nowrap">${
+          v === null ? `<span style="font-size:12.5px;color:var(--fg-55)">${esc(m.label)}</span><span style="${QUIET}">${absentLabel(true)}</span>`
+            : `<span${exactTitle(v, raw)} style="${NUM};font-size:13.5px">${esc(v)}</span><span style="font-size:12.5px;color:var(--fg-55)">${esc(m.label)}</span>`}</span>`;
+      }).join("")}
+    </div></div>
+    ${g.note ? `<div class="repo-pnotes" style="font-size:11px;line-height:1.5;color:var(--fg-40);margin-top:10px">${esc(g.note)}</div>` : ""}
+  </div>`;
+}
+/** A v3 group in its own shape. */
+function shapedBlock(g: RepoProductEnv["groups"][number], range: RepoRange): string {
+  const aside = g.now ? `<span style="font-size:11px;color:var(--fg-40);white-space:nowrap">right now</span>` : `<span style="font-size:11px;color:var(--fg-40);white-space:nowrap">last ${esc(range)}</span>`;
+  const body = g.shape === "ranked" ? rankedBlock(g.metrics, range)
+    : g.shape === "figure" ? featureBlock(g.metrics, range, g.metrics[0])
+    : g.shape === "status" ? statusBlock(g.metrics, range, (m) => (m.tone === "neutral" ? "neutral" : "bad"))
+    : pairsBlock(g.metrics, range);
+  return `<div data-pblock="${attr(g.id)}" data-pshape="${attr(g.shape ?? "")}">${blockTitle(g.title, aside)}${body}${g.note ? `<div class="repo-pnotes" style="font-size:11px;line-height:1.5;color:var(--fg-40);margin-top:12px">${esc(g.note)}</div>` : ""}</div>`;
+}
+function shapedGroups(e: RepoProductEnv, range: RepoRange, i: number): string {
+  const shaped = e.groups.filter((g) => g.shape && g.metrics.length);
+  if (!shaped.length) return "";
+  const strips = shaped.filter((g) => g.now && g.shape === "stats").map(nowGroupStrip).join("");
+  const blocks = shaped.filter((g) => !(g.now && g.shape === "stats"));
+  const cells = blocks.map((g, n) => {
+    const alone = blocks.length % 2 === 1 && n === blocks.length - 1;
+    return `<div style="grid-column:span ${alone ? 12 : 6};padding:18px 20px 20px">${shapedBlock(g, range)}</div>`;
+  });
+  return `${strips ? `<div ${rise(i)}>${strips}</div>` : ""}${cells.length ? `<div ${rise(i + 1)}><div class="repo-cells" style="${TOP}"><div class="repo-pgrid" style="grid-template-columns:repeat(12,minmax(0,1fr))">${cells.join("")}</div></div></div>` : ""}`;
+}
+
 function productBody(e: RepoProductEnv, range: RepoRange, all: RepoProductEnv[], i: number): string {
-  const groups = e.groups.filter((g) => g.metrics.length);
-  if (!groups.length && !e.totals.length) {
+  const shaped = shapedGroups(e, range, i);
+  const groups = e.groups.filter((g) => !g.shape && g.metrics.length);
+  if (!shaped && !groups.length && !e.totals.length) {
     return `<div style="padding:0 20px 18px;font-size:12.5px;color:var(--fg-40)">This environment has reported no product metrics.</div>`;
   }
+  if (shaped && !groups.length && !e.totals.length) return shaped;
   // The status list is held to its tallest form across every range and
   // environment, so switching either never moves what sits under it.
   const relHeight = Math.max(0, ...all.flatMap((env) => env.groups.filter((g) => g.id === "reliability")
@@ -771,7 +857,7 @@ function productBody(e: RepoProductEnv, range: RepoRange, all: RepoProductEnv[],
   }
   for (const g of groups) if (!WIDE.includes(g.id) && !NARROW.includes(g.id)) cells.push(`<div style="grid-column:1 / -1;padding:18px 20px 20px">${block(g)}</div>`);
   const strip = nowStrip(e), tiles = headlineTiles(e, range);
-  return `${strip ? `<div ${rise(i)}>${strip}</div>` : ""}${tiles ? `<div ${rise(i + 1)}>${tiles}</div>` : ""}
+  return `${shaped}${strip ? `<div ${rise(i)}>${strip}</div>` : ""}${tiles ? `<div ${rise(i + 1)}>${tiles}</div>` : ""}
     ${cells.length ? `<div ${rise(i + 2)}><div class="repo-cells" style="${TOP}"><div class="repo-pgrid" style="grid-template-columns:repeat(12,minmax(0,1fr))">${cells.join("")}</div></div></div>` : ""}`;
 }
 
@@ -792,7 +878,7 @@ function productSection(p: RepoProps, i: number): string {
   // that carries none (the Worker never sends that; the fallback is total anyway,
   // and an `ok` with nothing in it reads as the section's empty state, never as nothing).
   if (!envs?.length) {
-    const copy = { nc: "No product metrics reported yet. They appear once the app's metrics endpoint serves `counts` / `totals` and the environment's app metrics token is set in Org settings › Integrations.", empty: "No current product reading — the hourly poll of the app's metrics endpoint has gone quiet.", lines: 3 };
+    const copy = { nc: "No product metrics reported yet. They appear once the app's metrics endpoint serves `counts` / `totals` and its app metrics token is set in the part's editor, in Org settings › Repositories › Apps.", empty: "No current product reading — the hourly poll of the app's metrics endpoint has gone quiet.", lines: 3 };
     const state = sec(p, (d) => d.product ?? { status: "not_connected" }, copy, () => emptyBlock(copy.empty));
     return `<div ${rise(i, `${TOP}`)}>${head()}<div style="padding:0 20px 14px">${state}</div></div>`;
   }
@@ -804,9 +890,14 @@ function productSection(p: RepoProps, i: number): string {
         options: envs.map((e) => ({ value: e.name, label: e.name })),
       })
     : `<span style="font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-70)">${esc(shown.name)}</span>`;
-  const aside = `<div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px 14px;min-width:0"><span style="font-size:11px;color:var(--fg-40)">reported by the app · counts over ${esc(p.range)}</span>${seg}</div>`;
+  const aside = `<div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px 14px;min-width:0"><span style="font-size:11px;color:var(--fg-40)">${shown.version === 3 ? "from the app's own metrics endpoint" : "reported by the app"} · counts over ${esc(p.range)}</span>${seg}</div>`;
+  // Contract v3: the body names the app it reports (`label`, else its `part`) — "Product · Trov".
+  const named = shown.label ?? shown.part ?? null;
+  const headHtml = named
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;padding:16px 20px 14px;min-height:30px"><span style="${LABEL}">Product · ${esc(named)}</span>${aside}</div>`
+    : head(aside);
   return `<div style="${TOP};min-width:0">
-      <div ${rise(i)}>${head(aside)}</div>
+      <div ${rise(i)}>${headHtml}</div>
       <div class="repo-swap repo-pswap" data-penv="${attr(shown.name)}">${productBody(shown, p.range, envs, i)}</div>
     </div>`;
 }
@@ -845,8 +936,10 @@ function pollOutcome(o: PollOutcome): string {
 }
 /** A source the org has not set up: said plainly, with the way to set it up — never as a failure. */
 export const NOT_CONNECTED = `<span data-poll-off style="color:${MUTED}">Not connected — <button type="button" data-act="orgGo" data-arg="integrations" class="cnpy-mutelink" style="padding:0;font:inherit;color:var(--fg-70);text-decoration:underline;text-underline-offset:2px;cursor:pointer">set it up in Org settings › Integrations</button></span>`;
+/** The app metrics source not set up: its token lives in a part's editor (Org settings › Repositories › an app). */
+const METRICS_NOT_CONNECTED = `<span data-poll-off style="color:${MUTED}">Not connected — <button type="button" data-act="orgGo" data-arg="repos" class="cnpy-mutelink" style="padding:0;font:inherit;color:var(--fg-70);text-decoration:underline;text-underline-offset:2px;cursor:pointer">set its token in a part's editor, in Org settings › Repositories</button></span>`;
 const pollSource = (s: UsagePollSource): string =>
-  s === "not_configured" || !Array.isArray(s) ? NOT_CONNECTED
+  s === "not_configured" || !Array.isArray(s) ? METRICS_NOT_CONNECTED
   : !s.length ? `<span style="color:${MUTED}">no environment configured</span>`
   : s.map(pollOutcome).join(SEP);
 
@@ -876,7 +969,7 @@ function pollGithub(g: RepoRefreshGithub | "not_configured" | undefined): string
 /** A provider's name in the strip. The registry's labels live on the Worker (src/hosting/registry.ts);
  *  these are the short forms a one-line summary needs. */
 const PROVIDER_NAME: Record<HostingProviderId, string> = {
-  cloudflare: "Cloudflare", railway: "Railway", vercel: "Vercel", render: "Render", netlify: "Netlify", fly: "Fly.io", aws: "AWS",
+  cloudflare: "Cloudflare", railway: "Railway", vercel: "Vercel", render: "Render", netlify: "Netlify", fly: "Fly.io", aws: "AWS", github: "GitHub",
 };
 /** The hosting providers: ONE line per provider, in the order its first part was polled — how many parts
  *  polled cleanly, then each one that did not, by `<env> <part>`: `Vercel — 2 ok · staging web ✗ timeout`.
@@ -914,20 +1007,36 @@ function pollStrip(poll: RepoPollState | null): string {
 }
 
 function usageTab(p: RepoProps): string {
-  const usageLive = okData(p, (d) => d.usage) !== null;
   const ranges = segmented({
     id: "repo-range", ariaLabel: "Range", act: "repoRange", value: p.range, size: "sm",
     options: REPO_RANGES.map((r) => ({ value: r, label: r })),
   });
 
-  const usage = sec(p, (d) => d.usage, { nc: "No usage captured yet. Requests and error rate come from each environment's web parts, polled hourly from their hosting provider (Org settings › Hosting); active users come from the app's own metrics endpoint (Org settings › Integrations).", empty: "No current usage reading — the hourly polls have gone quiet.", lines: 4 }, (u) =>
-    `<div class="repo-swap" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${u[p.range].map(usageEnv).join("")}</div>`);
   // Hosting — ONE provider-neutral section (repo-hosting.ts), built from `providers`: every part of every
   // environment, whoever hosts it.
-  const tools = { range: p.range, now: Date.now(), ago, sparkPoints: (v: number[]) => sparkPoints(v) };
+  const tools = { range: p.range, now: p.now ?? Date.now(), ago, sparkPoints: (v: number[]) => sparkPoints(v) };
   const phase = phaseOf(p);
   // `?? not_connected`: a payload from before the section existed lacks its key.
   const providers = p.repo.data ? (p.repo.data.providers as RepoDashboard["providers"] | undefined) ?? { status: "not_connected" as const } : null;
+  // The design's UsageTarget (repo-usage.ts): one card per target — a part, narrowed by the App menu — in its one of
+  // four states, then the extra families its provider reads. The environment's active users (the app's own
+  // endpoint) ride its first web target.
+  const opts = { admin: p.admin, sample: p.sample, app: p.app ?? null };
+  const usersByEnv = new Map((okData(p, (d) => d.usage)?.[p.range] ?? []).map((u) => [u.name, u] as const));
+  // With facts (every Worker payload and the sample), the targets are the facts' parts — narrowed by
+  // the App menu — each with its providers-section figures when the section carries it (repo-usage.ts
+  // `targetsFromFacts`): so a part nothing has been read for still says what it is (not connected, not available).
+  const fx = factsView(p);
+  const providerParts = providers?.status === "ok" ? providers.data : [];
+  const targetParts = fx ? targetsFromFacts(fx.f, providerParts) : null;
+  const targets = phase === "blank" ? emptyShapes(sectionBars(4))
+    : phase === "loading" ? sectionSkeleton(4)
+    : phase === "error" || !providers ? `<div style="padding:6px 20px 12px">${errorBlock()}</div>`
+    : targetParts ? usageTargets(targetParts, tools, opts, usersByEnv)
+    : providers.status === "ok" ? usageTargets(providers.data, tools, opts, usersByEnv)
+    : providers.status === "empty" ? `<div data-utargets="empty">${emptyLayout("repo-usage-targets", { text: HOSTING_EMPTY, sayStyle: "margin:14px 20px 16px" })}</div>`
+    : usageTargets([], tools, opts);
+  const extras = phase === "ready" ? usageExtras(targetParts ?? providerParts, tools, opts) : "";
   // ONE shape (repo-hosting.ts `hostingShapes`) behind the section's skeleton and its empty layouts.
   const hostingBody = phase === "blank" ? hostingBlank()
     : phase === "loading" ? hostingSkeleton(`repo-${sectionNo++}`)
@@ -941,8 +1050,9 @@ function usageTab(p: RepoProps): string {
   return `<div ${rise(0, `display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;padding:14px 20px;border-bottom:1px solid var(--border)`)}>
       <span style="${LABEL}">App usage</span>${ranges}
     </div>
-    <div ${rise(1)}>${usageLive ? usage : `<div style="padding:6px 20px">${usage}</div>`}</div>
-    ${productSection(p, 2)}
+    <div ${rise(1)} data-usage-targets>${targets}</div>
+    ${extras ? `<div ${rise(2)} data-usage-extras>${extras}</div>` : ""}
+    ${productSection(p, 3)}
     <div ${rise(5, `${TOP};flex:1`)} data-usage-hosting>
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 12px;padding:14px 20px 12px">
         <span style="${LABEL}">Hosting</span>
@@ -1063,6 +1173,30 @@ export function repoTabBar(tab: RepoTab): string {
  *  failed, degraded, sample, nothing connected) — only the panel's content changes — so its
  *  line and underline never move; the sample / degraded banner, the "Poll now" strip and the
  *  "not connected" footer all sit under the line, in the labelled panel. */
+// ── the sample switch (Preview with sample data) ─────────────────────────────
+/** Which scenario of the design the sample draws (A–N, repo-sample-keys.ts). */
+export function sampleScenarioDropdown(sc: { key: ScenarioKey; variant: string }): DropdownProps {
+  return {
+    id: "repo-sample-scenario", act: "repoScenario", value: sc.key, labelledBy: "repo-sample-scenario-l", size: "sm",
+    options: SCENARIO_KEYS.map((k) => ({ value: k, label: `${k} · ${REPO_SCENARIOS[k].title}` })),
+  };
+}
+/** The scenario's variant ('' = calm), when it has more than one. */
+export function sampleVariantDropdown(sc: { key: ScenarioKey; variant: string }): DropdownProps {
+  return {
+    id: "repo-sample-variant", act: "repoVariant", value: sc.variant, labelledBy: "repo-sample-variant-l", size: "sm",
+    options: REPO_SCENARIOS[sc.key].variants.map((v) => ({ value: v, label: variantLabel(sc.key, v) })),
+  };
+}
+/** Every dropdown the Repo screen shows — what render.ts's root overlays draw the open menu from. */
+export function repoDropdowns(p: RepoProps): DropdownProps[] {
+  const fx = factsView(p);
+  return [
+    ...(fx ? repoHeaderDropdowns(fx.f) : []),
+    ...(p.sample && p.scenario ? [sampleScenarioDropdown(p.scenario), ...(REPO_SCENARIOS[p.scenario.key].variants.length > 1 ? [sampleVariantDropdown(p.scenario)] : [])] : []),
+  ];
+}
+
 /** The dashboard's empty sentences (no repository connected). Both point at Preview with sample
  *  data — the dashboard's own way to see a full screen. */
 export const REPO_EMPTY = {
@@ -1080,15 +1214,30 @@ function repoAiSection(p: RepoProps): string {
   return "";
 }
 
-export function repoView(p: RepoProps): string {
+/** In the sample, the Code / CI sections the picked App menu value draws (`sampleScopes`) — what the Worker's
+ *  narrowing sends for that `?app=` (the sample never asks it). */
+function withSampleScope(p: RepoProps): RepoProps {
+  const d = p.sample ? p.repo.data : null;
+  const over = d?.sampleScopes?.[p.app ?? ALL_APPS];
+  return d && over ? { ...p, repo: { ...p.repo, data: { ...d, ...over } } as RepoProps["repo"] } : p;
+}
+
+export function repoView(props: RepoProps): string {
+  const p = withSampleScope(props);
   sectionNo = 0;
   const body = p.tab === "overview" ? overviewTab(p) : p.tab === "code" ? codeTab(p) : p.tab === "ci" ? ciTab(p)
     : p.tab === "usage" ? usageTab(p) : planningTab(p);
 
   const info = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="1.8" style="flex:none"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>`;
+  const dd = p.dd ?? initialDropdownUi();
+  const sampleSwitch = p.sample && p.scenario
+    ? `<span class="repo-sample-switch" data-repo-sample="${attr(`${p.scenario.key}${p.scenario.variant ? `/${p.scenario.variant}` : ""}`)}"><span id="repo-sample-scenario-l" style="font-size:12px;color:var(--fg-40)">Scenario</span><span style="min-width:220px">${dropdown(sampleScenarioDropdown(p.scenario), dd)}</span>${REPO_SCENARIOS[p.scenario.key].variants.length > 1
+      ? `<span id="repo-sample-variant-l" style="font-size:12px;color:var(--fg-40)">Variant</span><span style="min-width:170px">${dropdown(sampleVariantDropdown(p.scenario), dd)}</span>` : ""}</span>`
+    : "";
   const banner = p.sample
-    ? `<div class="cnpy-rise" style="display:flex;align-items:center;gap:9px;margin-bottom:16px;font-size:12.5px;color:var(--fg-55)">${info}
+    ? `<div class="cnpy-rise" style="display:flex;align-items:center;gap:9px 12px;flex-wrap:wrap;margin-bottom:16px;font-size:12.5px;color:var(--fg-55)">${info}
         <span><strong style="font-weight:600;color:var(--fg)">Sample data</strong> — every section shown with placeholder values, not this repo's.</span>
+        ${sampleSwitch}
         <button data-act="repoSampleOff" class="repo-textbtn" style="margin-left:auto;font-size:12.5px;font-weight:500;color:var(--accent);padding:0;white-space:nowrap">Back to live data</button>
       </div>`
     : p.repo.data?.degraded
@@ -1129,10 +1278,15 @@ export function repoView(p: RepoProps): string {
     </div>`;
   }
 
+  // Group by sits above the panel, right-aligned (the design's RepoScreen), on the Overview of a repository whose
+  // facts could draw either grouping. An admin who flipped it is offered "Make this the default" (never in the sample).
+  const fx = p.tab === "overview" ? factsView(p) : null;
+  const groupBy = fx ? groupByHtml(fx.layout, { offerDefault: !!p.groupFlipped && p.admin && !p.sample && fx.layout.group !== fx.f.groupDefault }) : "";
   return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}">
     ${repoTabBar(p.tab)}
     <div${tabPanelAttrs("repo-tab", p.tab)} style="padding-top:20px">
       ${banner}${repoAiSection(p)}
+      ${groupBy}
       <div class="repo-panel ${SURFACE}" style="${PANEL}">${canPollRepo(p) ? pollStrip(p.poll) : ""}${body}</div>
       ${footer}
     </div>

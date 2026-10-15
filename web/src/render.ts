@@ -53,7 +53,9 @@ import { firstLine } from "@shared/handoffs";
 import { emailNotificationsSection, switchBtn, type NotifAdminProps } from "./notifications";
 import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow } from "./api";
 import { sidebarView, NAV_CLOSED, type NavOpen } from "./sidebar";
-import { repoView, repoControls, repoCrumb, type RepoProps, type RepoPollState } from "./repo";
+import { repoView, repoControls, repoCrumb, repoDropdowns, type RepoProps, type RepoPollState } from "./repo";
+import type { GroupBy } from "@shared/repo-layout-core";
+import type { ScenarioKey } from "./repo-sample-keys";
 import {
   artifactsView, artifactsHeader, artifactsDialogs, ticketArtifactsBlock, initialArtUi, ART_ROUTE_NONE,
   type ArtUi, type ArtRoute, type ArtScreen, type ArtProps,
@@ -193,6 +195,18 @@ export interface AppState {
   repoSample: boolean;
   /** The admin's last "Poll now" on the Usage tab. Session-only, never persisted; cleared on leaving the Repo screen. */
   repoPoll: RepoPollState | null;
+  /** The repository the Repo screen reads (`#repo?repo=…`); null = the org's primary. */
+  repoSlug: string | null;
+  /** The App menu's narrowing (`#repo?app=…`): an app key, `REPO_WIDE`, or null for all apps. */
+  repoApp: string | null;
+  /** Group by, this session (null = the admin's default, `facts.groupDefault`). */
+  repoGroup: GroupBy | null;
+  /** Group by was flipped this session — an admin is offered "Make this the default". */
+  repoGroupFlipped: boolean;
+  /** "Preview with sample data": which of the design's scenarios (A–N) and variant it draws. Session-only. */
+  repoScenario: { key: ScenarioKey; variant: string };
+  /** Overview disclosures opened this session (`repoOpen`), keyed by each block. */
+  repoOpen: ReadonlySet<string>;
   /** The Feed's lens: "reading" = title + brief (for people), "agents" = the full body. Saved per browser. */
   feedView: FeedView;
   feedAuthor: string;
@@ -484,6 +498,7 @@ export function initialState(): AppState {
     navOpen: { ...NAV_CLOSED },
     repo: { status: "idle", data: null },
     repoTab: "overview", repoRange: "7d", repoProductEnv: null, repoDriftOpen: false, repoFetchedAt: null, repoSample: false, repoPoll: null,
+    repoSlug: null, repoApp: null, repoGroup: null, repoGroupFlipped: false, repoScenario: { key: "A", variant: "" }, repoOpen: new Set<string>(),
     feedView: "reading", feedFilterOpen: false, feedFilterCat: "author", feedAuthor: "all", feedTag: "all", feedRange: "all",
     feed: { status: "idle", data: [] },
     mywork: { status: "idle", data: null },
@@ -2870,6 +2885,7 @@ function repoProps(s: AppState): RepoProps {
     admin: viewerIsAdmin(s), noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, poll: s.repoPoll, productEnv: s.repoProductEnv, persons: s.persons.data,
     synced: syncRepoLabel(s.sync, Date.now()),
     ai: { ui: s.ai, admin: viewerIsAdmin(s), repo: s.repo.data?.repo ?? "" },
+    app: s.repoApp, group: s.repoGroup, groupFlipped: s.repoGroupFlipped, phone: s.phone, scenario: s.repoSample ? s.repoScenario : undefined, dd: s.dd, open: s.repoOpen,
   };
 }
 
@@ -2975,6 +2991,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "settings" ? grantScopeDialog(s) : ""}
     ${s.view === "app" && s.screen === "settings" && s.dd.open ? dropdownMenu(grantDropdowns(s), s.dd) : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
+    ${s.view === "app" && s.screen === "repo" && s.dd.open ? dropdownMenu(repoDropdowns(repoProps(s)), s.dd) : ""}
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
