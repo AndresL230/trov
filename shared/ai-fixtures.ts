@@ -431,7 +431,7 @@ function hostingTurn(now: Date, mode: "smart" | "thinking"): AskTranscriptStep[]
     } }, 300),
     ...words("Fixing the test unblocks [[pr:176]], which closes most of [[ticket:14]]. Until then the sprint is forecast to finish 3 days late."),
     ev("followups", { items: ["File a ticket for the failing test", "Hand off the test fix to an agent", "What changed in PR #173?"] }, 200),
-    ev("done", { messageId: 2, cites: ["ticket:14", "pr:173", "person:andres", "doc:hosting-connections", "ticket:18", "ticket:19", "pr:176"].map((r) => R[r]), tokens: { in: 18_240, out: 1_310, cached: 14_902 } }, 40),
+    ev("done", { messageId: 2, questionId: 1, cites: ["ticket:14", "pr:173", "person:andres", "doc:hosting-connections", "ticket:18", "ticket:19", "pr:176"].map((r) => R[r]), tokens: { in: 18_240, out: 1_310, cached: 14_902 } }, 40),
   );
   return steps;
 }
@@ -488,7 +488,7 @@ function actionsAskTurn(now: Date): AskTranscriptStep[] {
       fields: { slug: "hosting-connections", section: "architecture", title: null, change_summary: "Token refresh is manual for now" },
       editable: ["hunks"],
     }, 300),
-    ev("done", { messageId: 4, cites: [R["ticket:18"], R["doc:hosting-connections"], R["handoff:11"]], tokens: { in: 9_820, out: 640, cached: 8_100 } }, 40),
+    ev("done", { messageId: 4, questionId: 3, cites: [R["ticket:18"], R["doc:hosting-connections"], R["handoff:11"]], tokens: { in: 9_820, out: 640, cached: 8_100 } }, 40),
   ];
 }
 
@@ -515,7 +515,7 @@ function actionsAutoTurn(now: Date): AskTranscriptStep[] {
       fields: { slug: "release-0-30-notes", version: 2 }, editable: [],
     }, 300),
     ...words("Five changes ran on their own. The sixth waits for you."),
-    ev("done", { messageId: 6, cites: [R["handoff:11"], R["ticket:14"], R["pr:178"], R["doc:release-0-30-notes"]], tokens: { in: 11_400, out: 820, cached: 9_960 } }, 40),
+    ev("done", { messageId: 6, questionId: 5, cites: [R["handoff:11"], R["ticket:14"], R["pr:178"], R["doc:release-0-30-notes"]], tokens: { in: 11_400, out: 820, cached: 9_960 } }, 40),
   ];
 }
 
@@ -526,7 +526,7 @@ function artifactTurn(saved: boolean): AskTranscriptStep[] {
     ev("block", { kind: "save_form", form: { messageId: null, block: null, title: "Hosting status, Oct 15", kind: "html", visibility: "private", saved: null } }, 200),
     ev("activity", { step: 1, state: "done" }, 20),
     ...words("Here it is as an artifact. Change the title or who can see it, then save."),
-    ev("done", { messageId: 8, cites: [], tokens: { in: 21_300, out: 160, cached: 20_900 } }, 40),
+    ev("done", { messageId: 8, questionId: 7, cites: [], tokens: { in: 21_300, out: 160, cached: 20_900 } }, 40),
   ];
   // After Save (`POST /ask/threads/:id/save`), the form becomes the saved line.
   if (saved) out.push(ev("artifact_saved", { slug: "hosting-status-oct-15", title: "Hosting status, Oct 15", visibility: "private", url: "#artifacts/hosting-status-oct-15" }, 900));
@@ -545,7 +545,7 @@ function searchTurn(now: Date): AskTranscriptStep[] {
     ev("block", { kind: "items", items: [R["pr:173"], R["pr:171"], R["doc:release-0-30-notes"]] }, 150),
     ...words("Nothing was reverted. [[person:priya]] merged 3 of the 7 PRs."),
     ev("followups", { items: ["What's still open for 0.30?", "Summarize PR #173", "What's blocking the hosting work?"] }, 150),
-    ev("done", { messageId: 10, cites: [R["pr:173"], R["pr:171"], R["ticket:14"], R["doc:release-0-30-notes"], R["handoff:11"], R["person:priya"]], tokens: { in: 7_200, out: 410, cached: 6_100 } }, 40),
+    ev("done", { messageId: 10, questionId: 9, cites: [R["pr:173"], R["pr:171"], R["ticket:14"], R["doc:release-0-30-notes"], R["handoff:11"], R["person:priya"]], tokens: { in: 7_200, out: 410, cached: 6_100 } }, 40),
   ];
 }
 
@@ -571,7 +571,7 @@ function notFoundTurn(): AskTranscriptStep[] {
     } }, 200),
     ev("activity", { step: 4, state: "done" }, 20),
     ev("thread", { id: 9, title: "SSO pricing on the last call", mode: "smart", auto: false, origin: "page", contextRef: null }, 40),
-    ev("done", { messageId: 12, cites: [], tokens: { in: 6_900, out: 120, cached: 5_800 } }, 40),
+    ev("done", { messageId: 12, questionId: 11, cites: [], tokens: { in: 6_900, out: 120, cached: 5_800 } }, 40),
   ];
 }
 
@@ -586,7 +586,7 @@ function cmdjTurn(now: Date): AskTranscriptStep[] {
     ...words("Two of three sub-tickets are open. [[pr:176]] needs the connect test fixed first.\n\n- Fix the connect test on main. [[person:andres]] said today.\n- Merge [[pr:176]].\n- Write the empty state for #23 with [[person:jon]]."),
     ev("followups", { items: ["Draft a handoff for the connect test"] }, 150),
     ev("thread", { id: 10, title: "What's left on #14", mode: "smart", auto: false, origin: "panel", contextRef: "ticket:14" }, 30),
-    ev("done", { messageId: 14, cites: [R["pr:176"], R["person:andres"], R["person:jon"]], tokens: { in: 5_400, out: 260, cached: 4_300 } }, 40),
+    ev("done", { messageId: 14, questionId: 13, cites: [R["pr:176"], R["person:andres"], R["person:jon"]], tokens: { in: 5_400, out: 260, cached: 4_300 } }, 40),
   ];
 }
 

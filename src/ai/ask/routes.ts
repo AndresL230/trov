@@ -16,7 +16,7 @@ import {
   ASK_ATTACH_BYTES_MAX, ASK_ATTACH_FILES_MAX, ASK_ATTACH_KINDS, ASK_DEFAULT_MODE, ASK_FLAG_REASONS, ASK_LOW_SHARE, ASK_MODES, ASK_ROUTES,
   ASK_STARTERS_FALLBACK, askMode, askModesFor, AskCancelBodySchema, AskConfirmBodySchema, AskPeekBodySchema, AskRequestSchema, AskSaveBodySchema, AskSettingsPutSchema,
   AskThreadPatchSchema, AskWrongBodySchema, parseAskRef,
-  type AskAction, type AskActionAnswer, type AskAttachment, type AskBlock, type AskCommand, type AskEventMap, type AskMessage, type AskMode,
+  type AskAction, type AskActionAnswer, type AskAttachment, type AskBlock, type AskCommand, type AskEventMap, type AskMessage, type AskMessagePart, type AskMode,
   type AskSaveForm, type AskSearchHit, type AskSettings, type AskState, type AskThreadDetail, type AskThreadGroup, type AskThreadSummary,
   type PeekResult, type RefView,
 } from "@shared/ai-ask";
@@ -294,7 +294,30 @@ interface Conversation {
   signal: AbortSignal;
 }
 
-async function converse(c: C, v: Conversation): Promise<void> {
+/** What the answer SHOWED, in the order it streamed — text runs (merged deltas), blocks (their index among the
+ *  answer's blocks), write cards (by id, once) — stored with the answer so a reload draws the live order. */
+function recordParts(emit: Emit): { emit: Emit; parts: AskMessagePart[] } {
+  const parts: AskMessagePart[] = [];
+  let blocks = 0;
+  const cards = new Set<number>();
+  const rec: Emit = async (event, data) => {
+    if (event === "text") {
+      const delta = (data as AskEventMap["text"]).delta;
+      const last = parts[parts.length - 1];
+      if (last?.kind === "text") last.md += delta; else parts.push({ kind: "text", md: delta });
+    } else if (event === "block") parts.push({ kind: "block", index: blocks++ });
+    else if (event === "action" || event === "action_result") {
+      const id = (data as AskEventMap["action"]).id;
+      if (!cards.has(id)) { cards.add(id); parts.push({ kind: "action", id }); }
+    }
+    return emit(event, data);
+  };
+  return { emit: rec, parts };
+}
+
+async function converse(c: C, outer: Conversation): Promise<void> {
+  const rec = recordParts(outer.emit);
+  const v: Conversation = { ...outer, emit: rec.emit };
   const { ctx } = c.var;
   const handle = me(c);
   const env = c.env;
@@ -347,7 +370,7 @@ async function converse(c: C, v: Conversation): Promise<void> {
   const qc = contentOf(question);
   const seen = seenRefs([...earlier, question]);
 
-  if (search) return answerSearch(c, v, thread, turn, question, qc.text ?? "", seen);
+  if (search) return answerSearch(c, v, thread, turn, question, qc.text ?? "", seen, rec.parts);
 
   // The question counts BEFORE the model is called (an attempt, like every AI allowance) — and still counts if stopped.
   const p = platform(env, handle);
@@ -386,7 +409,7 @@ async function converse(c: C, v: Conversation): Promise<void> {
   const failed = out.ended === "failed" || out.ended === "refused";
   const cites = failed ? [] : await linkAnswer(ctx, handle, out.text, seen, nowDate());
   const stopped = out.ended === "stopped" || out.ended === "timeout";
-  const messageId = await storeAnswer(ctx, thread.id, turn, mode, out, seen, cites, stopped || failed, def.countsAs);
+  const messageId = await storeAnswer(ctx, thread.id, turn, mode, out, seen, cites, stopped || failed, def.countsAs, rec.parts);
   if (failed) return v.emit("error", { code: "failed", message: out.ended === "refused" ? "Trov can't answer that." : "Something went wrong. Nothing was changed. Try again." });
 
   const title = thread.title || out.title || fallbackTitle(qc.text ?? "");
@@ -400,12 +423,13 @@ async function converse(c: C, v: Conversation): Promise<void> {
   }
   if (out.ended === "timeout") return v.emit("error", { code: "timeout", message: "Ask Trov ran out of time for this answer. What it said so far is kept." });
   if (out.followups.length && !stopped) await v.emit("followups", { items: out.followups });
-  await v.emit("done", { messageId, cites, tokens: out.tokens, ...(stopped ? { stopped: true } : {}) });
+  await v.emit("done", { messageId, questionId: question.id, cites, tokens: out.tokens, ...(stopped ? { stopped: true } : {}) });
 }
 
-async function storeAnswer(ctx: TenantContext, threadId: number, turn: number, mode: AskMode, out: TurnResult, seen: Set<string>, cites: RefView[], stopped: boolean, countsAs: number): Promise<number> {
+async function storeAnswer(ctx: TenantContext, threadId: number, turn: number, mode: AskMode, out: TurnResult, seen: Set<string>, cites: RefView[], stopped: boolean, countsAs: number, parts?: AskMessagePart[]): Promise<number> {
   const content: StoredContent = {
     text: out.text, refs: [...seen], blocks: out.blocks, activity: out.activity, followups: stopped ? [] : out.followups, thinking: out.thinking,
+    ...(parts ? { parts } : {}),
   };
   const id = await insertMessage(ctx, threadId, {
     role: "assistant", mode, content, cites, model: out.model, tokensIn: out.tokens.in, tokensOut: out.tokens.out, tokensCached: out.tokens.cached,
@@ -421,7 +445,7 @@ async function storeAnswer(ctx: TenantContext, threadId: number, turn: number, m
 }
 
 /** `/search <q>`: item cards from Trov's own search — no model call, nothing counted. */
-async function answerSearch(c: C, v: Conversation, thread: ChatThreadRow, turn: number, question: ChatMessageRow, q: string, seen: Set<string>): Promise<void> {
+async function answerSearch(c: C, v: Conversation, thread: ChatThreadRow, turn: number, question: ChatMessageRow, q: string, seen: Set<string>, parts: AskMessagePart[]): Promise<void> {
   const ctx = c.var.ctx;
   await v.emit("activity", { step: 1, tool: "search", icon: "search", label: `Searched Trov for '${q}'`, state: "run" });
   const res = await quickSearch(ctx, q, me(c), { limit: 4 });
@@ -442,14 +466,13 @@ async function answerSearch(c: C, v: Conversation, thread: ChatThreadRow, turn: 
     text, title: null, followups: [], blocks: items.length ? [block] : [], activity: [{ step: 1, tool: "search", icon: "search", label: `Searched Trov for '${q}'`, results: items.map((i) => i.ref), resultLine: `${items.length} results` }],
     thinking: null, model: "", tokens: { in: 0, out: 0, cached: 0 }, ended: "done", called: false, autosave: null,
   };
-  const messageId = await storeAnswer(ctx, thread.id, turn, v.req.mode, out, seen, items, false, 0);
+  const messageId = await storeAnswer(ctx, thread.id, turn, v.req.mode, out, seen, items, false, 0, parts);
   if (!thread.title) {
     const title = fallbackTitle(`Search: ${q}`);
     await setThreadTitle(ctx, thread.id, title);
     await v.emit("thread", { id: thread.id, title, mode: v.req.mode, auto: thread.auto_mode === 1, origin: thread.origin, contextRef: thread.context_ref });
   }
-  void question;
-  await v.emit("done", { messageId, cites: items, tokens: out.tokens });
+  await v.emit("done", { messageId, questionId: question.id, cites: items, tokens: out.tokens });
 }
 
 // ── saving answers as artifacts ──────────────────────────────────────────────
@@ -563,7 +586,7 @@ function messageOf(m: ChatMessageRow, actions: ChatActionRow[]): AskMessage {
     id: m.id, role: m.role, mode: m.mode, text: content.text ?? "", command: (content.command ?? null) as AskCommand | null, context: content.context ?? [],
     blocks: (content.blocks ?? []) as AskBlock[], activity: (content.activity ?? []) as AskMessage["activity"], followups: content.followups ?? [],
     thinking: content.thinking ?? null, cites: parseJson<RefView[]>(m.cites_json, []), attachments: parseJson<AskAttachment[]>(m.attachments_json, []),
-    actions: actions.filter((a) => a.message_id === m.id).map(actionOf), stopped: m.stopped === 1, model: m.model, units: m.units, createdAt: m.created_at,
+    actions: actions.filter((a) => a.message_id === m.id).map(actionOf), ...(content.parts ? { parts: content.parts } : {}), stopped: m.stopped === 1, model: m.model, units: m.units, createdAt: m.created_at,
   };
 }
 

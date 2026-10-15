@@ -94,7 +94,7 @@ export const AskEventSchemas = {
   action_result: actionResult,
   artifact_saved: saved,
   followups: z.object({ items: z.array(z.string()).max(ASK_FOLLOWUPS_MAX) }),
-  done: z.object({ messageId: z.number().int(), cites: z.array(RefViewSchema), tokens, stopped: z.boolean().optional() }),
+  done: z.object({ messageId: z.number().int(), questionId: z.number().int().optional(), cites: z.array(RefViewSchema), tokens, stopped: z.boolean().optional() }),
   error: z.object({ code: z.enum(ASK_ERROR_CODES), message: z.string() }),
 } satisfies { [K in AskEventName]: z.ZodType<AskEventMap[K]> };
 
@@ -175,7 +175,11 @@ export const AskMessageSchema = z.object({
   context: z.array(z.string()), blocks: z.array(AskBlockSchema),
   activity: z.array(z.object({ step: z.number().int(), tool: z.string(), icon: z.enum(ASK_ACTIVITY_ICONS), label: z.string(), results: z.array(z.string()), resultLine: z.string().nullable() })),
   followups: z.array(z.string()), thinking: z.object({ seconds: z.number(), summary: z.string() }).nullable(), cites: z.array(RefViewSchema),
-  attachments: z.array(AskAttachmentSchema), actions: z.array(AskActionSchema), stopped: z.boolean(), model: z.string().nullable(),
+  attachments: z.array(AskAttachmentSchema), actions: z.array(AskActionSchema),
+  parts: z.array(z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("text"), md: z.string() }), z.object({ kind: z.literal("block"), index: z.number().int().min(0) }), z.object({ kind: z.literal("action"), id: z.number().int() }),
+  ])).optional(),
+  stopped: z.boolean(), model: z.string().nullable(),
   units: z.number().int(), createdAt: z.string(),
 }) satisfies z.ZodType<AskMessage>;
 

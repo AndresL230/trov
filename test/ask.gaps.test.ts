@@ -5,6 +5,8 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
+import { create_ticket } from "../src/tools/tickets";
+import { tenantCtx } from "./helpers/tenant";
 import { PLANS } from "@shared/plans";
 import { AskStateSchema, AskThreadDetailSchema } from "@shared/ai-ask";
 import { all, first } from "./helpers/db";
@@ -101,5 +103,34 @@ describe("an attachment removed before it was sent — a hard delete through src
     expect((await call("DELETE", `${BASE}/ask/threads/${up.threadId}`, cookie)).status).toBe(200);
     expect(await pageRows(a.slug)).toBe(0);
     expect(await inR2(a.sha256)).toBe(false);
+  });
+});
+
+describe("the stream names the question; a stored answer keeps its streamed order", () => {
+  it("done carries questionId (the stored question), and GET /ask/threads/:id returns the parts as they streamed", async () => {
+    const cookie = await cookieFor(ME);
+    const n = await create_ticket(await tenantCtx("AndresL230"), { title: "Order me", body: "", category: "bug", priority: "high", assignees: [ME] }, "AndresL230");
+    const model = fakeModel([
+      [{ type: "text", text: "Before the card." }, { type: "tool_use", name: "get_ticket", input: { id: n } }],
+      [{ type: "tool_use", name: "show_items", input: { refs: [`ticket:${n}`] } }],
+      [{ type: "text", text: `After the card.${final("Order")}` }],
+    ]);
+    const r = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { text: "Show me the ticket" }));
+    const streamed = r.events.filter((e) => e.event === "text" || e.event === "block").map((e) => e.event);
+    expect(streamed[0]).toBe("text");
+    expect(streamed).toContain("block");
+    expect(streamed.at(-1)).toBe("text");
+    const done = eventsOf(r.events, "done")[0];
+    const id = eventsOf(r.events, "thread")[0].id;
+    const detail = AskThreadDetailSchema.parse((await call("GET", `${BASE}/ask/threads/${id}`, cookie)).json);
+    const [q, a] = detail.messages;
+    expect(done.questionId).toBe(q.id);
+    expect(q.role).toBe("user");
+    expect(a.id).toBe(done.messageId);
+    expect(a.parts?.map((p) => p.kind)).toEqual(["text", "block", "text"]);
+    expect(a.parts?.[1]).toEqual({ kind: "block", index: 0 });
+    expect(a.blocks[0].kind).toBe("items");
+    expect(a.parts?.[0]).toMatchObject({ kind: "text", md: expect.stringContaining("Before the card.") });
+    expect(a.parts?.[2]).toMatchObject({ kind: "text", md: expect.stringContaining("After the card.") });
   });
 });

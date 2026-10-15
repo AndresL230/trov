@@ -630,9 +630,9 @@ const closeRegen = (ctx: AskCtx): void => ctx.exit("menu", () => { ctx.ui.conver
 /** What to focus after the next paint (the edit box, the menu's checked mode). */
 let focusNext: "edit" | "regen" | null = null;
 
-/** Ask question `qi` of `where` again, as `text`: through `replaceFrom` (its stored id, read back from the thread
- *  when it streamed this session — `done` names only the answer); a question the server never stored (no thread
- *  yet, or the replay) is dropped here and asked fresh. */
+/** Ask question `qi` of `where` again, as `text`: through `replaceFrom` (its stored id — `done.questionId` sets it as
+ *  the answer ends; read back from the thread only when the answer ended in an error, with no `done`); a question the
+ *  server never stored (no thread yet, or the replay) is dropped here and asked fresh. */
 async function resend(ctx: AskCtx, where: AskWhere, qKey: string, text: string): Promise<void> {
   let c = ctx.ui[where];
   const qi = c.messages.findIndex((m) => m.key === qKey);

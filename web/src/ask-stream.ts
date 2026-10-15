@@ -193,6 +193,30 @@ export const turnText = (t: AskTurn): string => t.parts.filter((p): p is { kind:
 /** A stored answer (`GET /ask/threads/:id` › messages) as a turn. NOTE (contract gap, reported): a stored
  *  message keeps `text` and `blocks` apart, so where a block sat in the text is lost — blocks are shown
  *  after the text until the server stores their position. */
+/** A stored answer's parts: in the order they STREAMED when the row has them (`AskMessage.parts`), then anything
+ *  added since (a Save as artifact form, a card linked later) in its own order; an older row: text, blocks, cards. */
+export function storedParts(m: Pick<AskMessage, "text" | "blocks" | "actions" | "parts">): AskPartVm[] {
+  if (!m.parts?.length) {
+    return [
+      ...(m.text ? [{ kind: "text" as const, md: m.text }] : []),
+      ...m.blocks.map((block) => ({ kind: "block" as const, block })),
+      ...m.actions.map((a) => ({ kind: "action" as const, id: a.id })),
+    ];
+  }
+  const usedBlocks = new Set<number>();
+  const usedCards = new Set<number>();
+  const known = new Set(m.actions.map((a) => a.id));
+  const out: AskPartVm[] = [];
+  for (const p of m.parts) {
+    if (p.kind === "text") { if (p.md) out.push({ kind: "text", md: p.md }); continue; }
+    if (p.kind === "block") { const b = m.blocks[p.index]; if (b && !usedBlocks.has(p.index)) { usedBlocks.add(p.index); out.push({ kind: "block", block: b }); } continue; }
+    if (known.has(p.id) && !usedCards.has(p.id)) { usedCards.add(p.id); out.push({ kind: "action", id: p.id }); }
+  }
+  m.blocks.forEach((block, i) => { if (!usedBlocks.has(i)) out.push({ kind: "block", block }); });
+  for (const a of m.actions) if (!usedCards.has(a.id)) out.push({ kind: "action", id: a.id });
+  return out;
+}
+
 export function turnFromMessage(m: AskMessage): AskTurn {
   const t = newTurn(m.mode);
   const actions: Record<number, AskActionVm> = {};
@@ -205,11 +229,7 @@ export function turnFromMessage(m: AskMessage): AskTurn {
     messageId: m.id,
     activity: m.activity.map((s) => ({ step: s.step, tool: s.tool, icon: s.icon, label: s.label, state: "done" as const, results: s.results, resultLine: s.resultLine })),
     thinking: m.thinking ? { state: "done", seconds: m.thinking.seconds, summary: m.thinking.summary } : null,
-    parts: [
-      ...(m.text ? [{ kind: "text" as const, md: m.text }] : []),
-      ...m.blocks.map((block) => ({ kind: "block" as const, block })),
-      ...m.actions.map((a) => ({ kind: "action" as const, id: a.id })),
-    ],
+    parts: storedParts(m),
     actions,
     followups: m.followups,
     cites: m.cites,
@@ -278,6 +298,14 @@ export function lastAnswer(c: AskConvo): AskAnswer | null {
   return null;
 }
 /** Replace the last answer's turn. */
+/** `done.questionId`: the question this answer answers gets its stored id (Edit on it needs no read first). */
+export function withQuestionId(c: AskConvo, id: number | undefined): AskConvo {
+  if (id === undefined) return c;
+  const i = c.messages.map((m) => m.role).lastIndexOf("user");
+  if (i < 0) return c;
+  const q = c.messages[i] as AskQuestion;
+  return q.id === id ? c : { ...c, messages: [...c.messages.slice(0, i), { ...q, id }, ...c.messages.slice(i + 1)] };
+}
 export function withLastTurn(c: AskConvo, f: (t: AskTurn) => AskTurn): AskConvo {
   const i = c.messages.map((m) => m.role).lastIndexOf("assistant");
   if (i < 0) return c;

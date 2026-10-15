@@ -32,5 +32,5 @@ event: thread
 data: {"id":9,"title":"SSO pricing on the last call","mode":"smart","auto":false,"origin":"page","contextRef":null}
 
 event: done
-data: {"messageId":12,"cites":[],"tokens":{"in":6900,"out":120,"cached":5800}}
+data: {"messageId":12,"questionId":11,"cites":[],"tokens":{"in":6900,"out":120,"cached":5800}}
 

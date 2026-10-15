@@ -316,7 +316,9 @@ export interface AskEventMap {
   action_result: { id: number; groupId: string | null; state: "confirmed" | "auto" | "undone" | "cancelled" | "failed"; result: unknown; ref: string | null; undo: boolean; at: string };
   artifact_saved: { slug: string; title: string; visibility: "private" | "org"; url: string };
   followups: { items: string[] };
-  done: { messageId: number; cites: RefView[]; tokens: AskTokens; stopped?: boolean };
+  /** `questionId`: the stored id of the question this answers (edit-and-resend needs no read first); absent on a
+   *  stream recorded before it was added. */
+  done: { messageId: number; questionId?: number; cites: RefView[]; tokens: AskTokens; stopped?: boolean };
   error: { code: AskErrorCode; message: string };
 }
 export type AskEvent = { [K in AskEventName]: { event: K; data: AskEventMap[K] } }[AskEventName];
@@ -438,11 +440,16 @@ export interface AskMessage {
   cites: RefView[];
   attachments: AskAttachment[];
   actions: AskAction[];
+  /** An answer's parts in the order they STREAMED (text runs, blocks by their index in `blocks`, write cards by id),
+   *  so a reload draws what the live answer drew. Absent on rows stored before it: text, then blocks, then cards. */
+  parts?: AskMessagePart[];
   stopped: boolean;
   model: string | null;
   units: number;
   createdAt: string;
 }
+
+export type AskMessagePart = { kind: "text"; md: string } | { kind: "block"; index: number } | { kind: "action"; id: number };
 
 export interface AskThreadDetail {
   thread: AskThreadSummary & { draft: string };

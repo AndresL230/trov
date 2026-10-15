@@ -8,7 +8,7 @@ vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, render
 import { render, initialState, type AppState } from "../web/src/render";
 import { actionsPart } from "../web/src/ask-actions";
 import { composerPart } from "../web/src/ask-composer";
-import { convoFromDetail } from "../web/src/ask-stream";
+import { convoFromDetail, storedParts, withQuestionId } from "../web/src/ask-stream";
 import { SseParser, askEventOf } from "../web/src/ask-sse";
 import { emptyConvo, foldAskEvent, foldThreadEvent, newTurn, withLastTurn, type AskConvo } from "../web/src/ask-stream";
 import type { AskApi } from "../web/src/ask-api";
@@ -106,5 +106,24 @@ describe("the composer's contract gaps, closed", () => {
     expect(deleted).toEqual([77]);
     expect(s.ask.composer.page.files).toEqual([]);
     expect(s.ask.composer.page.attachments).toEqual([]);
+  });
+});
+
+describe("the conversation's contract gaps, closed", () => {
+  it("done.questionId gives the streamed question its stored id (Edit needs no read first)", () => {
+    const c = answered().ask.page;
+    const q = { ...c, messages: c.messages.map((m) => (m.role === "user" ? { ...m, id: null } : m)) };
+    const after = withQuestionId(q, 41);
+    expect(after.messages[0].role === "user" && after.messages[0].id).toBe(41);
+    expect(withQuestionId(q, undefined)).toBe(q);
+  });
+
+  it("a stored answer is drawn in its streamed order; a block added later (a save form) follows; an old row is text, blocks, cards", () => {
+    const chart = { kind: "not_found" as const, notFound: { query: "x", tries: [], searched: [] } };
+    const form = { kind: "save_form" as const, form: { messageId: 2, block: null, title: "T", kind: "html" as const, visibility: "private" as const, saved: null } };
+    const m = { text: "Before. After.", blocks: [chart, form], actions: [],
+      parts: [{ kind: "text" as const, md: "Before. " }, { kind: "block" as const, index: 0 }, { kind: "text" as const, md: "After." }] };
+    expect(storedParts(m as never).map((p) => p.kind === "block" ? `block:${p.block.kind}` : p.kind)).toEqual(["text", "block:not_found", "text", "block:save_form"]);
+    expect(storedParts({ ...m, parts: undefined } as never).map((p) => p.kind === "block" ? `block:${p.block.kind}` : p.kind)).toEqual(["text", "block:not_found", "block:save_form"]);
   });
 });

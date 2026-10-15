@@ -10,7 +10,7 @@
 import type { AppState } from "./render";
 import { askApi, AskApiError, isAbort, isUnauthorized, type AskApi } from "./ask-api";
 import {
-  emptyConvo, convoFromDetail, foldAskEvent, foldThreadEvent, newTurn, stopTurn, failTurn, turnLive, withLastTurn,
+  emptyConvo, convoFromDetail, foldAskEvent, foldThreadEvent, newTurn, stopTurn, failTurn, turnLive, withLastTurn, withQuestionId,
   type AskConvo, type AskMsg,
 } from "./ask-stream";
 import { initialComposerUi, composerFocus, composerPart } from "./ask-composer";
@@ -168,6 +168,7 @@ export function createAskController(host: AskHost): AskController {
         onEvent: (e) => {
           if (streams[where] !== ctl) return;
           if (e.event === "thread") setConvo(where, foldThreadEvent(ui()[where], e.data));
+          else if (e.event === "done") setConvo(where, withLastTurn(withQuestionId(ui()[where], e.data.questionId), (t) => foldAskEvent(t, e, Date.now())));
           else setConvo(where, withLastTurn(ui()[where], (t) => foldAskEvent(t, e, Date.now())));
           primeFromEvent(e);
           if (e.event === "text") { textSeen += e.data.delta; if (/\]\]/.test(e.data.delta)) want(refsInText(textSeen)); }

@@ -42,8 +42,10 @@ JSON refusals before the stream: `400 invalid`, `404 not_found` (another person'
 mode_unavailable`. Then SSE, in order: `thread` (again once the first exchange names it) → an attachment notice per
 file the model could not take (an `activity` line, run then done at once — › Attachments) → `thinking` run/done
 (Thinking only; the SUMMARY, never raw thinking) → `activity` run then done (`results` refs, `resultLine`) → `text`
-deltas → `block` → `action` / `action_result` / `artifact_saved` → `followups` → `done { messageId, cites, tokens,
-stopped? }`. `error { code: capped | off | no_key | timeout | too_large | failed }` ends it early.
+deltas → `block` → `action` / `action_result` / `artifact_saved` → `followups` → `done { messageId, questionId, cites, tokens,
+stopped? }` (`questionId`: the stored question this answers). The answer is stored with its `parts` in the order they
+streamed (`{ text md } | { block index } | { action id }` in `content_json`; `AskMessage.parts`), so a reload draws the
+live order — a row stored before it has none and reads as text, blocks, cards. `error { code: capped | off | no_key | timeout | too_large | failed }` ends it early.
 
 - **The gate**, inside the stream: no key → `no_key`; `orgs.ai_automation` off → `off`; `planRefusal(ai_chat,
   countsAs)` → `capped`. Nothing is stored or counted when it refuses.
@@ -300,9 +302,10 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **Conversation** (`ask-conversation.ts`, `test/render.ask-conversation.test.ts`): the answer draws in stream order —
   steps (a `show_*` / `save_artifact` step stays quiet), thinking, then the parts — with its own small markdown
   reader (headings, lists, code, tables split outside ref tokens so `[[ticket:14|status]]` is one cell). Edit-and-resend
-  and regenerate go through `replaceFrom`; a question streamed this session has no id yet (`done` names only the
-  answer), so its id is read back from `GET /ask/threads/:id` first. Save as artifact and Wrong? are the actions part's
-  acts (`askAcSaveForm` `<where>:<answerKey>[:<block>]`, `askAcWrong` `<answerKey>`). A block or a question's file
+  and regenerate go through `replaceFrom`; a question streamed this session gets its id from `done.questionId`
+  (`withQuestionId`; read back from `GET /ask/threads/:id` only after an answer that ended in an error). Save as
+  artifact and Wrong? are the actions part's acts, their args built by `saveFormArg` (`askAcSaveForm`
+  `<answerKey>[|<block>]`) and `askAcWrong` `<answerKey>`. A block or a question's file
   opens in the inspector as a conversation-held ref, `askcv:<where>:<key>:<kind>:<n>` (`ask-cvref.ts`): primed as
   hidden so it is never peeked, resolved by `cvItem`, drawn bigger with `chartFigure` / `themesFigure` /
   `diagramFigure` / `tableView`.
