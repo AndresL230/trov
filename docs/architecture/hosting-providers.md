@@ -65,8 +65,8 @@ whose provider reads no usage at all), `resources` for a service part (latest �
 zero-filled), `seen`, `unavailable`, `status`, `tone`, `last_poll`, `console_url` (org config read directly — the
 projection never touches the secrets module). The SAME reads feed the environment cards (each part's newest deploy),
 the CI tab's deploy strips (each part's settled deploys) and the Usage compare (requests / error rate summed over
-each environment's web parts) — nothing on the dashboard reads `cf_*`, `rw_*`, `cf_polled` or GitHub deployments any
-more. Three extra statements; a failed read costs what it feeds (`providers` and `deploys` `not_connected`, no parts
+each environment's web parts) — nothing on the dashboard reads `cf_*`, `rw_*` or `cf_polled` any more, and a GitHub
+deployment reaches a card only as a `github` part's own `hosting_deploys` row (`repo-apps.md`). Three extra statements; a failed read costs what it feeds (`providers` and `deploys` `not_connected`, no parts
 on the cards, `degraded: true`). MCP `get_repo_dashboard` collapses `traffic` to the range and, without
 `include_trends`, drops trends and keeps the newest 2 deploys per part (+ `deployCount`).
 
@@ -112,7 +112,8 @@ install / OAuth credential (`HostingError.status`, set by `refuse`). The last tw
 provider id — audited `hosting.revoked`); a POLL's 401 only stores the fixed "<Provider> refused the token — the grant
 may have been removed; Test connection to confirm" in `last_error`. `revoked_reason` is a CHECKed code (`disconnected`
 / `uninstalled` / `superseded` / `refused`); the DTO derives its sentence (`hostingRevokedReasonText`).
-The Integrations API (`GET /integrations`) still lists a hosting kind once a stored part uses it, and the token form
+The Integrations API (`GET /integrations`) still lists a hosting kind once a stored part uses it (never `github`, which
+has no credential of its own), and the token form
 writes through it — but Org settings › Integrations does not SHOW hosting credentials or app metrics tokens: they are
 Hosting's (`onIntegrationsTab`, `web/src/integrations.ts`), with one line linking there.
 
@@ -164,69 +165,19 @@ matched narrowly (a false "Detected" is worse than none):
 
 So Vercel, Netlify and Cloudflare Workers Builds are seen as soon as a check run or status arrives, and Render,
 Railway (and Fly.io, by a link to its hosts) as soon as they report a deployment. This is PROVIDER-level detection;
-which APPS a repository holds (a root-file probe of `vercel.json`, `netlify.toml`, `fly.toml`, …) is the repo scan,
-below. The screen shows a
+which APPS a repository holds (its deploy files — `vercel.json`, `netlify.toml`, `fly.toml`, … — and the deploy names
+GitHub has seen) is the repo scan, below. The screen shows a
 suggestion only for an `available` provider no part uses yet (`shownDetections`); it preselects the provider in
 the part editor and connects nothing — the credential is still the admin's to give. A dismissal is per browser
 (`localStorage` `trov.hosting.dismissed.<slug>`).
 
-### The repo scan and app suggestions (repo setups, Phase D)
+### The repo scan and app suggestions (repo setups)
 
-Detection SUGGESTS; a person decides. `0072_repo_scans`: `repo_scans` (the last scan per repository: root tree sha,
-when, the file names it looked for, a fixed-words `error`) and `repo_app_suggestions` (PK `(org_id, id)`, `id` =
-hash of repo + folder + kind; key, folder, kind, provider, evidence, proposed parts, `used_by`, `state` pending /
-accepted / ignored, `decided_by` a handle).
-
-- **The scan** (`src/repo/scan.ts` `scanRepo`) is a guarded arm of `reconcileRepo` (`scan` — the cron's `:20` unit
-  and Sync GitHub's closing reconcile; NOT Poll now) and an admin's Scan again. Cost ≤ `SCAN_COST` = 5: ONE tree
-  read (`GET /repos/:o/:r/git/trees/HEAD?recursive=1` — its `sha` is the root tree's), then — **only when that sha
-  differs from `repo_scans.tree_sha` (THE GUARD: same sha → no further request; Scan again forces past it)** — ONE
-  GraphQL batch of ≤ 24 files (`object(expression: "HEAD:<path>")`, paths passed as variables; step 0 confirmed a
-  missing path is null), and ≤ 1 `describe` list call per CONNECTED host that has one. A truncated tree (GitHub's
-  100,000 entries / 7 MB) is scanned with the entries GitHub listed and its sha stored; `error` says so. A refused
-  tree / batch records fixed words in `error` (the last good sha kept) — and nothing else: a scan is detection, so a
-  refusal never marks the org's GitHub credential failing or a Sync partial; only an unexpected throw (D1) lands in
-  reconcile's `failed` as `scan`.
-  `reconcileCost` counts `SCAN_COST`. The connected hosts' credentials are resolved by the caller
-  (`describeSources`, src/repo/scan-store.ts — lazily, only past the guard); the scan itself is secret-free.
-- **The detector registry** (`src/repo/detect/<id>.ts`, `index.ts`; one interface: `patterns` to read, `seen` names
-  looked for in the tree, a pure `detect`): wrangler (`name` → Worker, `pages_build_output_dir` → Site; D1 ids and
-  crons as extra part settings for Phase G; `[env.<name>]` Workers), vercel.json, netlify.toml (`[build] base`),
-  fly.toml (`app`), render.yaml (services, `rootDir`, type), railway.json / .toml, amplify.yml (AWS, `later`),
-  `.do/app.yaml`, Procfile, Dockerfile + a workflow that references its folder AND uses a deploy action, and
-  workspaces (pnpm, package.json, lerna, go.work, Cargo) — a member with no deploy config of its own is a Package
-  whose `usedBy` is the members depending on its name. Files are picked nearest the root first, then by detector
-  order, outside dependencies / fixtures / tests / examples, ≤ 4 folders deep. TOML / YAML / JSONC are read by a
-  tiny safe subset parser (`detect/parse.ts`; no dependency). Candidates merge per folder (the first detector with a
-  host leads).
-- **`describe()`** (optional on `HostingProvider`): Vercel `GET /v9/projects?limit=100` (`link.org`/`link.repo`,
-  `rootDirectory`), Render `GET /services?limit=100` (`repo`, `rootDir`, type), Netlify `GET /sites?per_page=100`
-  (`build_settings.repo_url` / `repo_path`, `base`) — shapes from the vendors' references, UNCONFIRMED live. A match
-  upgrades evidence ("Vercel project storefront-web builds apps/web"), fills the host's part settings, and turns a
-  Package it builds into an app. A refused describe is no evidence, never a failure.
-- **Seen signals** (`src/repo/signals.ts` `seenSignals`, ONE statement): untagged deployments (by name + creator,
-  distinct deployments), commit statuses (by context), check runs (by app + name, `github-actions`' left to their
-  workflow), workflow runs (by file) of 30 days — the primary repository's only (the capture keeps no repository).
-  **Token rules** (`detect/match.ts`): names normalised per the step-0 formats (Vercel `Production – <p>`, Railway
-  `<service> / <env>`, Render `<branch> - <service>`, `netlify/<site>/…`, `Render – api`, a workflow's file name),
-  split into tokens; a candidate matches when the tokens contain its folder's last segment (the repository's name
-  at the root) or equal a name its host knows it by. EXACTLY ONE candidate per signal — ambiguous matches none;
-  Packages never match. A matched signal's environment word (or Render's branch) names an org environment.
-- **Proposed parts**: the candidate's own host when its settings are complete (checked with `checkFields`), on the
-  environment a production signal names, else one called production, else the first; every other environment a
-  signal names gets a `github` part naming that signal; else the deploying workflow on the first environment.
-- **Lifecycle** (`src/repo/scan-store.ts`, cookie routes `src/repo/scan-routes.ts`, admin only, under `/api/o/:slug`,
-  repo checked against `org_repos`): a scan upserts pending rows, never touches an accepted one, keeps an ignored one
-  ignored (an admin's Scan again — `POST /repos/:o/:n/scan` — resets them), deletes what it no longer finds.
-  **Accept** (`POST …/suggestions/:id/accept` → `{ undo, app, parts }`) writes the app (`putRepoApp`, source
-  `suggested`, audited `app.set`) and its parts (`putPart`, audited `part.set`, the provider's own keys only) as that
-  admin — each writer its own batch; a refused part rolls the accept back; refused (409 `key_taken`) when the key
-  already names an app or part. **Ignore** (`…/ignore` → `{ undo }`). **Undo** (`POST …/suggestions/undo` `{ undo }`,
-  within 10 minutes) removes what the accept wrote (audited) or lifts the ignore. **A suggestion changes nothing on
-  the Repo screen but the found-apps card until accepted** (`test/repo-scan.test.ts` › THE GUARD).
-- **The facts read** takes `readFound` / `readUnseen` from `src/repo/scan-reads.ts` — the secret-free read side
-  (MCP-reachable; it must never import scan-store, apps.ts or a credential). `unseen.tags` is null until Phase F
-  captures tags; PR counts are null until the open-PR list was read; a non-primary repository's `unseen` is null.
+APP-level detection — the repo scan (a guarded reconcile arm, ≤ `SCAN_COST` = 5, skipped past the tree read when the
+default branch's root tree sha is unchanged), the detector registry (`src/repo/detect/`), the optional provider
+`describe()` (Vercel, Render, Netlify: which folder a project builds — one list call each, in the scan only), seen
+signals, the suggestion lifecycle (accept / ignore / undo, `repo_scans` and `repo_app_suggestions`, 0072) and the
+read side the facts use — is `repo-apps.md` › Detection. A suggestion changes nothing until an admin accepts it.
 
 **Where detection stands** (`HostingSetupDTO.detection`, `readDetectionStatus`): so a new org sees what Trov is doing
 instead of nothing. `no_repo` (no repository connected) → `no_environment` (a repository, but no environment names a
@@ -246,53 +197,27 @@ project tokens still stored. `test/hosting.sample.test.ts` holds every combinati
 `test/render.hosting.test.ts` › "ONE status, everywhere" holds the card, the part rows, the payload's part status, the
 checklist and Test this part to the same status for every combination.
 
-## GitHub deployments, the commit on every deploy, rollbacks, previews (repo setups, Phase A)
+## GitHub deployments, the commit on every deploy, rollbacks, previews (repo setups)
 
-**The `github` provider** (`src/hosting/providers/github.ts`, label "GitHub deployments") is a part whose deploys
-Trov learns from GITHUB: an app deployed by GitHub Actions, or a host Trov has no credential for. It has NO credential
-of its own (`credential: "github_app"` on the provider, `via_github: true` on the DTO — the SPA never branches on the
-id): no connection method, no card on Org settings › Hosting, no checklist step, no Integrations slot, and its parts
-read `connected`. The poll framework never resolves a credential for it and never runs its `poll` (`pollCost` 0; its
-state says "deploys come from GitHub — nothing to poll"). Its part settings are EXACTLY one of (`checkSettings`,
-enforced on the part write): a deployment environment (`environment`, exactly as GitHub names it), a check run
-(`check_app` + `check_name`), or a workflow file (`workflow`). `src/hosting/github-deploys.ts` writes its deploys
-from the webhook capture (`source = 'github'`, `sha_source = 'provider'`) when a newly captured signal matches the
-part's OWN setting on the environment's branch (`signalMatchesPart` — THE guard: an untagged signal never sets a
-part's deploy without a matching setting): a deployment status with that environment name (a branch ref must be the
-environment's; a sha ref says nothing), a check run of that app and name on the branch, a completed workflow run of
-that file on the branch. A failed one's `reason` is the deployment's description or the check's `output.title`.
-
-**`hosting_deploys` columns (0070):** `source` (`provider` | `github`), `reason` (a failure reason, scrubbed BEFORE
-it is cut to 140 — Netlify `error_message`, Vercel `errorMessage` else the alias error's message, Render's failed
-status in words; kept for an `error` deploy only — `validatePoll`), `sha_source` (`provider` | `joined` | NULL) and
-`rolled_back_from`. The upsert lives in `src/hosting/deploy-store.ts` (secret-free — the webhook's capture calls it);
-a provider sha replaces a joined one, never the reverse.
-
-**The commit join** (`src/hosting/sha-join.ts`): after a poll, each of the part's provider deploys with NO sha (not a
-preview, created in the last 2 days, ≤ 10) looks for GitHub signals on the environment's branch that FINISHED in the
-10 minutes before its creation — a completed check run, a completed workflow run, a settled deployment status whose
-ref is the branch, a settled commit status listing the branch. EXACTLY ONE distinct sha → it is the deploy's
-(`sha_source = 'joined'`); none or several → NULL (`joinCandidate`, THE guard). App attribution is the branch alone
-until `commit_paths` (Phase E). **Cloudflare** reads the newest deployment's commit from the Workers Builds API
-instead (step 0 confirmed the data): `GET /accounts/{id}/builds/builds?version_ids=<the version at 100 %>` — one more
-fetch (`pollCost` 3), exactly one build with a commit or nothing; refused (it needs Workers CI Read on a USER token)
-it adds the note "commit: the token needs Workers CI Read" to the poll state (`PollResult.notes`) and the join
-takes over. Fly.io and Railway (when `meta` lacks `commitHash`) rely on the join.
-
-**Rollback** (`src/hosting/rollback.ts`): when a write creates or changes a part's NEWEST non-preview `ready` deploy
-and its sha differs from the previous ready one's, ONE GitHub `compare` (previous...new, through the org's GitHub
-credential — `resolveGithubCredential` on the poll path, the webhook entry point's token on the capture path; never
-on a render path). `behind` → `rolled_back_from` = the previous sha; `ahead` / `identical` / `diverged`, a failed
-compare or no credential → nothing. A hosting unit costs its provider's `pollCost` + `ROLLBACK_COMPARE_COST` (1) for
-every provider that reports deploys (`providerPollCost`).
-
-**Previews:** a Vercel or Netlify PRODUCTION part also reads the project's / site's previews — a second list
-(`pollCost` 2 each), stored as `target = 'preview'` rows of that part with their branch (matched to open PRs at read
-time, Phase B). Render is not: a Render preview is a SEPARATE service with its own id (its provider's own notes),
-so a production service's deploys never include one. `hostingReads` leaves a production part's previews out of
-its strips (a part that reads ONLY previews keeps them; a deploy with NO target — every GitHub-sourced one — is
-never a preview: the test is `COALESCE`d, since `NOT (NULL AND …)` is NULL and dropped the row); the Overview's facts
-read them (`factsDeploys`, `repo-dashboard.md` › The Overview's facts): newest per branch, matched to open PRs.
+The full reference is `repo-apps.md` › The `github` provider, GitHub deploy signals and deploy provenance. In short,
+for this layer:
+- **The `github` provider** (`src/hosting/providers/github.ts`, "GitHub deployments"): `credential: "github_app"`
+  (no connection method, no card, no checklist step, no Integrations slot; `via_github: true`; always live in
+  `hostingStatus`), `capabilities: { deploys: true, metrics: [] }`, `pollCost` 0 — the framework never resolves a
+  credential for it and never runs its `poll`. Part settings: EXACTLY one of `environment`, `check_app` +
+  `check_name`, `workflow` (`checkSettings`). Its deploys are written from the webhook capture
+  (`src/hosting/github-deploys.ts`, `source = 'github'`) only through the part's own setting (`signalMatchesPart`).
+- **`hosting_deploys` columns (0070)**: `source`, `reason` (scrubbed BEFORE the cut to 140, an `error` deploy only —
+  `validatePoll`), `sha_source` (`provider` | `joined` | NULL), `rolled_back_from`; ONE upsert,
+  `src/hosting/deploy-store.ts` (secret-free; a provider sha replaces a joined one, never the reverse).
+- **After a poll**: the one-candidate commit join (`src/hosting/sha-join.ts`) and, for a new production `ready` sha,
+  the one-compare rollback check (`src/hosting/rollback.ts`, `ROLLBACK_COMPARE_COST` in `providerPollCost`).
+  Cloudflare reads the commit from the Workers Builds API (`builds?version_ids=`; refused → the note "commit: the
+  token needs Workers CI Read" in `PollResult.notes`, and the join).
+- **Previews**: a Vercel or Netlify PRODUCTION part also reads its previews (a second list, `pollCost` 2 each),
+  stored as `target = 'preview'` rows of that part with their branch; Render's previews are separate services.
+  `hostingReads` leaves a production part's previews out of its strips (a previews-only part keeps them; a deploy with
+  NO target is never a preview — the test is `COALESCE`d).
 
 ## Usage families: outcomes, runtime, D1, crons (repo setups, Phase G)
 
@@ -342,33 +267,10 @@ family that was read; a daily one with no point is null; a range that starts bef
 "since …". MCP collapses the extras to the asked range (`extrasForRange`). Tests: `test/hosting.provider.cloudflare.test.ts`,
 `test/hosting.poll.families.test.ts`, `test/repo-dashboard.extras.test.ts`.
 
-**Apps** (`repo_apps`, 0070; `src/repo/apps.ts`): an app is a part key with a home — repository, folder, kind (Site /
-Service / Worker / Job / Package; the role follows the kind, `shared/repo-apps-core.ts`), watch globs. 0070 wrote a
-row per existing part key; `listRepoApps` synthesises one for any key with no row (the primary repository's root,
-kind from the role), so nothing existing breaks. The admin writers (`putRepoApp` / `deleteRepoApp`, audited
-`app.set` / `app.delete`) are called from Org settings › Repositories › a repo › Apps (below).
-
-**The Apps read and writes** (repo setups, Phase D2; `src/repo/apps-routes.ts`, `src/repo/apps-setup.ts`; cookie only,
-admin, the repository checked against `org_repos` — another org's or an unconnected one is a 404):
-`GET /api/o/:slug/repos/:owner/:name/apps` → `RepoAppsSetupDTO` (shared/repo-scan-core.ts): the repository's apps with
-every part of each app key per environment (`describeParts`, so each carries THE status function's connection), the
-scan's suggestions and last scan (Phase D1's `listSuggestions` / `readScan`), the GitHub deploy signals seen in 30 days
-(`seenSignals`), the **unassigned deploy names** — deploy names (a deployment environment, or a host's own check /
-status) no `github` part's setting names and no pending suggestion carries (`unassignedSignals`,
-shared/repo-apps-setup-core.ts) —, the tags the repository holds (`readTags`, src/repo/releases.ts — null until a reconcile has read its releases, never "0 tags"; no tag choice is offered then), the environments in drift
-order and the provider catalogue's words (`providers`, with `via_github`). D1 rows only; a failed suggestions / signals
-/ scan sub-read is that part empty and `degraded: true`, never a 500. `PUT …/apps/:key` (kind, label, folder, watch,
-release_signal, position — never `repo` or `source`) goes through `putRepoApp` (201 when created); a key that is
-another repository's app (a row, or a part key read as an app there) is a 409 `app_conflict`, never moved. `DELETE
-…/apps/:key` removes the row (`deleteRepoApp`) and KEEPS its parts unless `?parts=remove` (each through `deletePart`,
-audited `part.delete`, its deploys and poll state with it); an app with no row is its parts, so only `?parts=remove`
-removes it. The scan and the suggestions' accept / ignore / undo are the scan's own routes (`…/scan`,
-`…/suggestions/:id/accept|ignore`, `…/suggestions/undo`).
-
-**Signals and `github` part settings** (shared/repo-apps-setup-core.ts, the read and the screen both): a deployment
-signal fills `environment`, a check run `check_app` (its App's slug) + `check_name`, a workflow run `workflow` (its
-file) — exactly the identity `signalMatchesPart` holds a captured signal to, minus the branch. A commit status can name
-no part (the provider has no setting for one), so the picker never offers one.
+**Apps** (`repo_apps`, 0070) — an app is a part key with a home (repository, folder, kind, watch paths, release
+signal); a part key with no row reads as an app at the primary repository's root. The writers, the Apps read and its
+routes, and the signal ↔ `github` setting rules: `repo-apps.md` › Apps and › Org settings › Repositories › a repo ›
+Apps.
 
 ## The screens
 
@@ -384,9 +286,10 @@ disabled with the reason; parts stay editable, since a part is not a credential)
 is the checklist's next step; the checklist the server generated (steps to do listed, done ones folded); "Detected";
 **Providers** — ONE grid of cards (`.cnpy-hx-cards`, two a row, one at phone width, every card the same height), ONE
 card per provider (its org-wide connection — `connectionsFor`; a scoped row in an old payload never makes a card) in
-registry order (Cloudflare, Railway, Vercel, Render, Netlify, Fly.io); **Parts** — until Repositories › a repo › Apps
-own them (repo setups, Phase D2), ONE line per environment (`envParts`): its name, branch, how many parts, and "Parts are
-set per app in Repositories › <primary repo> › Apps" (`orgAppsGo`; "connect a repository first" while there is none).
+registry order (Cloudflare, Railway, Vercel, Render, Netlify, Fly.io; `github` has none); **Parts** — they are set per
+app in Repositories › a repo › Apps (`repo-apps.md`), so here ONE line per environment (`envParts`): its name, branch,
+how many parts, and "Parts are set per app in Repositories › <primary repo> › Apps" (`orgAppsGo`; "connect a
+repository first" while there is none).
 Hosting is the home of connections; nothing on it edits a part any more (the checklist's add / edit steps still open
 the part editor). A part's ROW (`hostingPartRow` → `partRow`) is drawn on its app's page: label, role as plain text,
 its provider's status mark (THE status function); host · identifying setting as metadata; Edit (the part editor, which
@@ -460,37 +363,10 @@ main bundle — and shows any Flow × Stack of its two switchers (above); while
 it is on NOTHING is sent (a save, a connect, a test and a disconnect each answer from the sample and say so). The
 sample's provider catalogue is pinned to the registry by `test/hosting.sample.test.ts`.
 
-**Org settings › Repositories › a repo › Apps** (repo setups, Phase D2; `web/src/repo-apps.ts` pure views,
-`web/src/repo-apps-actions.ts` the controller, every act `orgApps…` handed over by `org-actions.ts`; admins only — a
-member on the address sees the Repositories list). Three pages of the Repositories tab, `#org/repos/<owner>/<name>`,
-`…/apps/<key>` and `…/new` (hash.ts `orgRepo`; a repository row's **Apps** button opens the first), each under a
-breadcrumb, from ONE read into `state.org.apps`:
-- **Apps** — the lead (N apps · Trov found M more; Scan again — "Scanning…", then "Scanned <repo>. Nothing new since
-  <when>." or how many are new —, Add an app, Accept all M as the one accent action); **Suggestions** (each: a blue
-  ring "Suggested" — marks.ts `stateMark`, never a pill —, folder, kind · host or "no host", its evidence lines,
-  Ignore / Accept; "scanned 3m ago · from config files and deploys seen in 30 days"; nothing pending says what the scan
-  looked for); **Apps** (name, folder, kind · host, a targets line — "Production from main · Staging from develop",
-  "No targets · ships inside web and docs" for a Package; a row opens the app); **Unassigned deploy names** ("Production –
-  storefront-admin · Vercel deployment · seen 8 times · last 2d ago", **Make an app** prefilled with a key from the
-  name — `keyFromSignalName`).
-- **an app** — Name (its label; the key is fixed), Folder, Kind (`segmented()`), Watch paths as a list (remove one,
-  Add a path), How a release shows up for a Package or an app with no host (a `dropdown()`: "A tag matching v*" only
-  when tags were seen, "A workflow run of <file> on <branch>" only for a workflow seen, one per environment branch, "Not tracked"; stored as `tag:v*` — an SQLite GLOB releases reads —, `workflow:<file>@<branch>`, or NULL), and **Targets**, one row per
-  environment: a part on a host is Hosting's own part row (`hostingPartRow`, handed in by org-settings.ts); a `github`
-  part, or an environment where the app has no part, is the **deploy-signal picker** — a `dropdown()` that offers ONLY
-  the signals seen in the last 30 days a setting can name (`pickableSignals`, each "Render · 14 times · last 25m ago"),
-  never a name not seen, not even the part's own stale setting (said under it: "Now: Deployment “…”, not seen in the
-  last 30 days."); Add part / Edit open #185's `partEditorModal` over the page, prefilled with the env and the APP KEY as
-  the part key (`PartDraft.app` — fixed). Save writes the app (`PUT …/apps/:key`), then each picked signal as the
-  `github` part's setting (`PUT …/environments/:env/parts/:key`; a new part for an environment with none). **Remove
-  app** is the page's `confirmModal` (`OrgConfirm` `app`) whose `detail` holds one `segmented()` choice: keep its parts
-  (the default) or remove them too; an app read from its parts goes with them.
-- **Add an app** — Name (the key), Folder, Kind, How a release shows up; then the app's page.
-Accept, Accept all, Ignore and Remove (parts kept) answer with a 5-second toast carrying **Undo** (`orgAppsUndo`, whose
-arg names a closure kept in the controller — never a token in the markup): an accept is undone by the scan's undo
-route, a kept-parts removal by writing the app back. The Repo screen's found-apps card (`web/src/repo-found.ts`)
-dispatches `repoFoundAccept` / `repoFoundIgnore` (main.ts) to the same accept / ignore routes, with the same toast and
-Undo, then reads the dashboard again. Render tests: `test/render.repo-apps.test.ts`; the routes: `test/repo-apps-setup.test.ts`.
+**Org settings › Repositories › a repo › Apps** (`web/src/repo-apps.ts`, `web/src/repo-apps-actions.ts`) is where an
+app's parts are set — suggestions, apps, a target row per environment (a part on a host is the part row above,
+`hostingPartRow`; a `github` part is the deploy-signal picker) and #185's part editor opened over it, prefilled with
+the app key: `repo-apps.md` › Org settings › Repositories › a repo › Apps.
 
 **Repo dashboard › Usage › Hosting** (`web/src/repo-hosting.ts`, called from `repo.ts` `usageTab`): ONE section
 from `providers` (the old `cloudflare` / `hosting` sections are gone from the payload and from MCP), below the targets

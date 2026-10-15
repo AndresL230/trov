@@ -106,7 +106,9 @@ every `github` part whose OWN setting it matches — `signalMatchesPart`, THE gu
 exact environment name (a branch ref must be the environment's branch; a sha ref says nothing), a check run of that
 app and name on the branch, a completed workflow run of that file on the branch. A failed one's `reason` is the
 deployment's description or the check's `output.title`; neutral is skipped. The write may run the rollback check
-(below) with the GitHub token the webhook entry point resolved. Its own failure never costs the capture.
+(below) with the GitHub token the webhook entry point resolved. Its own failure never costs the capture. Only the
+webhook calls it: a check run or workflow run that reconcile backfills, and a signal captured before the part (or its
+setting) existed, write no deploy — the part's first deploy is the next matching delivery.
 
 **Deploy provenance — `hosting_deploys` columns (0070)**, written through ONE upsert, `src/hosting/deploy-store.ts`
 (secret-free, so the webhook may call it):
