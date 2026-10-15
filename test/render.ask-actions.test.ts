@@ -253,13 +253,41 @@ describe("actions-auto — done lines with Undo and a time, one grouped line, on
     expect(pub).not.toContain("askAcEdit");
   });
 
-  it("GUARD — Publish never runs by itself in Auto: folding the whole Auto stream decides nothing on the client", () => {
-    const s2 = app("actions-auto");
-    const a = answerOf(s2);
-    expect(a.turn.actions[46]).toMatchObject({ tool: "publish_doc", state: "waiting" });
-    expect(shownParts(a.turn).filter((p) => p.kind === "actions").flatMap((p) => (p.kind === "actions" ? p.ids : []))).toContain(46);
-    // Nothing but the person's Confirm decides it: the actions part has no hook on stream events.
-    expect(actionsPart.onEvent).toBeUndefined();
+  it("GUARD — Publish never runs by itself in Auto: the whole Auto stream, through the part's own event hook, decides nothing", async () => {
+    const s2 = app(null);
+    s2.ask.page = { ...convoOf("actions-auto"), messages: [convoOf("actions-auto").messages[0], { role: "assistant", key: "a1", turn: newTurn("smart") }] };
+    const api = {
+      confirmAction: vi.fn(async () => ({ results: [] })), cancelAction: vi.fn(async () => ({ results: [] })), undoAction: vi.fn(async () => ({ results: [] })),
+      getThread: vi.fn(async () => ({ thread: {} as never, messages: [] })),
+    };
+    const { ctx } = ctxOf(s2, api);
+    for (const st of askTranscript("actions-auto", NOW)) {
+      const e = st.event;
+      s2.ask.page = e.event === "thread" ? foldThreadEvent(s2.ask.page, e.data) : withLastTurn(s2.ask.page, (t) => foldAskEvent(t, e, 0));
+      actionsPart.onEvent!(ctx, "page", e);
+    }
+    await flush();
+    expect(answerOf(s2).turn.actions[46]).toMatchObject({ tool: "publish_doc", state: "waiting" });
+    expect(api.confirmAction).not.toHaveBeenCalled();
+    expect(api.cancelAction).not.toHaveBeenCalled();
+    expect(api.undoAction).not.toHaveBeenCalled();
+    // Its one read: the stored cards behind the Auto results (to name them), once the answer is stored.
+    expect(api.getThread).toHaveBeenCalledWith(1);
+  });
+
+  it("an Auto result names its write once the stored card is read back (the stream carries no tool)", async () => {
+    const s2 = app(null);
+    let t = newTurn("smart");
+    t = foldAskEvent(t, { event: "action_result", data: result(60, "auto", "ticket:40", { id: 40, title: "T", status: "submitted" }, true) }, 0);
+    s2.ask.page = { ...s2.ask.page, threadId: 9, messages: [{ role: "assistant", key: "a9", turn: t }] };
+    expect(text(cards(s2)[0])).toBe("Changed ticket #40 Just now Undo");
+    const stored = { id: 60, groupId: "9-1-1", tool: "create_ticket", kind: "ticket", state: "auto", preview: { title: "New ticket", lines: [], item: null }, fields: { title: "T" }, editable: [], note: null, result: null, ref: "ticket:40", undo: true, createdAt: "", decidedAt: null };
+    const getThread = vi.fn(async () => ({ thread: {} as never, messages: [{ actions: [stored] } as never] }));
+    const { ctx } = ctxOf(s2, { getThread });
+    actionsPart.onEvent!(ctx, "page", { event: "done", data: { messageId: 2, cites: [], tokens: { in: 0, out: 0, cached: 0 } } });
+    await flush();
+    expect(getThread).toHaveBeenCalledWith(9);
+    expect(text(cards(s2)[0])).toBe("Created ticket #40 Just now Undo");
   });
 
   it("GUARD — Publish confirms only for someone who may promote: canPublish false shows \"Open in Review\" and no Confirm", () => {

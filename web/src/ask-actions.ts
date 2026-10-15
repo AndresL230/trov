@@ -813,6 +813,30 @@ export const actionsPart: AskPart = {
       }
     }
   },
+  // An Auto write streams only its RESULT (`action_result` carries no tool, kind or preview — a contract gap), so
+  // once the answer is stored its cards are read back from the thread (`GET /ask/threads/:id` › actions) and the
+  // lines say what was done ("Created ticket #30" rather than "Changed ticket #30"). A read only: nothing here ever
+  // decides a card — every Confirm is the person's.
+  onEvent(ctx, where, e) {
+    if (e.event !== "done") return;
+    const c = ctx.ui[where];
+    const last = [...c.messages].reverse().find((m): m is AskAnswer => m.role === "assistant");
+    const unknown = last ? Object.values(last.turn.actions).filter((x) => x.tool === null).map((x) => x.id) : [];
+    if (!unknown.length || c.threadId === null) return;
+    const threadId = c.threadId;
+    ctx.api.getThread(threadId).then((d) => {
+      const cards = new Map(d.messages.flatMap((m) => m.actions).filter((x) => unknown.includes(x.id)).map((x) => [x.id, x]));
+      if (!cards.size) return;
+      for (const w of WHERES) {
+        let next = ctx.ui[w];
+        for (const [id, x] of cards) {
+          next = withTurnOfAction(next, id, (t) => ({ ...t, actions: { ...t.actions, [id]: { ...t.actions[id], tool: x.tool, kind: x.kind, preview: x.preview, fields: x.fields, editable: x.editable, note: x.note } } }));
+        }
+        ctx.ui[w] = next;
+      }
+      ctx.paint();
+    }).catch(() => undefined);
+  },
   escape: [{
     layer: "menu",
     isOpen: (ctx) => Object.keys(ctx.ui.actions.wrongOpen).some((k) => !ctx.ui.closing[`wrong:${k}`]),
