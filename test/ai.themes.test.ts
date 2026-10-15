@@ -27,6 +27,7 @@ import { all, first, run } from "./helpers/db";
 import { FIXTURE_ADMIN, cookieFor } from "./helpers/persons";
 import { ORG_A, ORG_B, systemCtx } from "./helpers/tenant";
 import { addOrgRepo } from "./helpers/org-config";
+import { themesDevStatements } from "../scripts/seed/themes-dev.mjs";
 import { dirtyRow, keyedEnv, markRow, stubProviders, succeededLine, type ClaudeReply, type Stub } from "./helpers/ai-pass";
 
 const REPO = "SaplingLearn/sapling";
@@ -475,6 +476,26 @@ describe("the read: RepoDashboard.themes (and get_repo_dashboard's planning tab)
     const s = (await themeShares(systemCtx(), REPO, ago(30), new Date(Date.now() + MIN).toISOString()))!;
     expect(s).toEqual({ total: 4, themes: [{ id: billing, name: "Billing and plans", count: 3, share: 0.75 }, expect.objectContaining({ name: "Repo dashboard", count: 0, share: 0 })], unthemed: 1 });
     expect((await mergedPrsSince(systemCtx(), REPO, ago(30))).length).toBe(4);
+  });
+
+  it("the local dev seed (fixtures/dev/themes.json) draws a real section: active lanes, a person's pick, a caption, a proposal to decide", async () => {
+    const fx = JSON.parse(Object.values(import.meta.glob("../fixtures/dev/themes.json", { query: "?raw", import: "default", eager: true }))[0] as string) as Record<string, unknown>;
+    for (const st of themesDevStatements(fx)) await env.DB.prepare(st).run();
+    const t = (await readRepoThemes(systemCtx(), REPO))!;
+    expect(t).toBeDefined();
+    const w8 = t["8w"];
+    expect(w8.lanes.map((l) => [l.name, l.status])).toEqual([
+      ["Repo dashboard", "active"], ["Tickets and sprints", "active"], ["Billing and plans", "active"], ["Organizations and sign-in", "active"], ["Emails and digests", "proposed"]]);
+    expect(w8.lanes.every((l) => l.counts.length === 8)).toBe(true);
+    expect(w8.lanes.slice(0, 4).every((l) => l.counts.some((c) => c > 0))).toBe(true);
+    expect(w8.lanes[4].suggestionId).not.toBeNull();
+    expect(w8.caption).toMatch(/^Most of the work/);
+    expect(checkCaption(w8.caption!, [1], [{ id: 1, name: "x" }], [])).not.toBeNull(); // the sample keeps the rules
+    expect(await prTheme(171)).toMatchObject({ source: "person", set_by: "AndresL230" });
+    // The proposal is decidable through the real route.
+    const admin = await cookieFor(FIXTURE_ADMIN);
+    expect((await call("POST", `${BASE}${AI_ROUTES.accept(w8.lanes[4].suggestionId!)}`, admin, { value: { name: "Emails" } })).status).toBe(200);
+    expect((await readRepoThemes(systemCtx(), REPO))!["8w"].lanes.at(-1)).toMatchObject({ name: "Emails", status: "active" });
   });
 
   it("the cached prefix names the org's active themes", async () => {
