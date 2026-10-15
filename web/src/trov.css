@@ -3510,9 +3510,12 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 /* ── repo-header (web/src/repo-header.ts): the repository / App menus, the pills, Group by ────────────────── */
 .repo-scope-dd { display:inline-flex; min-width:0; max-width:260px; }
 /* A phone keeps the repository's name: the "updated …" / synced text gives up its room (the refresh button's title
-   still says it) and the repository menu never collapses to an empty chip (e2e P-phone — a header with no pills). */
+   still says it) and the scope menus never shrink below their names — the header wraps its controls to a second line
+   instead (e2e P-phone: `.repo-scope` clipped the repository menu to an empty chip). */
 [data-phone="1"] [data-repo-updated], [data-phone="1"] .sync-repo-l { display:none; }
-[data-phone="1"] .repo-scope-dd { min-width:9ch; }
+/* (it outranks the phone header's crumb rule, `.cnpy-hdr-l > span { contain:inline-size; flex:1 1 0; overflow:hidden }`,
+   whose inline-size containment gives a span no width of its own) */
+[data-phone="1"] .cnpy-hdr-l > span.repo-scope { contain:none; flex:1 0 auto; max-width:100%; overflow:visible; }
 .repo-groupby { display:flex; align-items:center; justify-content:flex-end; gap:10px 16px; margin-bottom:12px; flex-wrap:wrap; }
 /* The design offers Group by on a wide screen only: a phone draws the opener the rules picked. */
 [data-phone="1"] .repo-groupby { display:none; }
