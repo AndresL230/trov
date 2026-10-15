@@ -7,7 +7,8 @@ import { putMetric, putSnapshot } from "./store";
 import { untitledFailedRuns } from "./reads";
 import type { RepoEnvConfig } from "./config";
 import type { RepoEvent } from "./types";
-import { metricsFromStatus, repoEventsFromDelivery } from "./capture";
+import { labelNames, metricsFromStatus, repoEventsFromDelivery } from "./capture";
+import { reconcileReleases, RELEASES_RECONCILE_COST } from "./releases";
 import { ghGraphql, ghJson, ghJsonOrNull, scrubbedMessage, type GhOpts } from "./gh-http";
 import { FACTS_COMPARE_CAP, computeDriftChain, computeNotShipped, computeOutOfStep, driftCompares, factsBudget } from "./facts-compute";
 
@@ -31,7 +32,7 @@ const JOB_LOOKUP_DAYS = 7;
 export interface ReconcileResult { written: number; unchanged: number; failed: string[] }
 
 const DAY = 86_400_000;
-interface GhPull { number: number; title: string; html_url: string; state: string; draft: boolean; merged_at: string | null; updated_at: string; user: { login: string }; head: { ref: string; sha: string }; base: { ref: string } }
+interface GhPull { number: number; title: string; html_url: string; state: string; draft: boolean; merged_at: string | null; updated_at: string; user: { login: string }; head: { ref: string; sha: string }; base: { ref: string }; labels?: { name?: string }[] }
 interface GhCommit { sha: string; commit: { message: string; committer: { date: string } }; author: { login: string } | null }
 
 const prEvent = (pr: GhPull): RepoEvent => ({
@@ -39,7 +40,7 @@ const prEvent = (pr: GhPull): RepoEvent => ({
   kind: "pr", number: pr.number,
   state: pr.merged_at ? "merged" : pr.state === "closed" ? "closed" : pr.draft ? "draft" : "review",
   ref: pr.head.ref, sha: pr.head.sha, actor_login: pr.user.login, title: pr.title.slice(0, 300), url: pr.html_url,
-  raw: JSON.stringify({ action: "backfill", base: pr.base.ref, draft: pr.draft }),
+  raw: JSON.stringify({ action: "backfill", base: pr.base.ref, draft: pr.draft, labels: labelNames(pr.labels) }),
   provenance: "backfill", occurred_at: pr.merged_at ?? pr.updated_at,
 });
 
@@ -119,17 +120,18 @@ const MAX_STATUSES_PER_CONTEXT = 10;
  * is its own `safely` block, named in `failed` when it throws.
  *
  * Worst case **`reconcileRequests(N)`** outbound requests for N environments
- * (28 for two): 2 PR lists + 1 pre-capture commit window + 1 workflow-run list +
+ * (30 for two): 2 PR lists + 1 pre-capture commit window + 1 workflow-run list +
  * ≤5 job lookups + 1 commit-status list + 1 GraphQL reviews + ≤5 GraphQL branch
  * pages + 2 per environment (head commit, head checks) — 16 + 2N — plus the
  * promotion chain's compares (`driftCompares(N)` = max(2, N): N − 1 steps and the
  * last step's behind side; it replaced the old ≤ 2 first↔last compares) and the
  * facts arms' shared `FACTS_COMPARE_CAP` (6: not shipped + out of step,
- * ./facts-compute.ts). GitHub deployments are not read: an environment's deploys
+ * ./facts-compute.ts), and the `releases` arm's `RELEASES_RECONCILE_COST` (2: the releases list, the tags
+ * query, src/repo/releases.ts). GitHub deployments are not read: an environment's deploys
  * come from its hosting provider (src/hosting/). The callers' budgets
  * (src/repo/cron.ts) build on this number.
  */
-export const reconcileRequests = (n: number): number => 16 + 2 * n + driftCompares(n) + FACTS_COMPARE_CAP;
+export const reconcileRequests = (n: number): number => 16 + 2 * n + driftCompares(n) + FACTS_COMPARE_CAP + RELEASES_RECONCILE_COST;
 
 export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now()): Promise<ReconcileResult> {
   const out: ReconcileResult = { written: 0, unchanged: 0, failed: [] };
@@ -313,6 +315,14 @@ export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: Repo
   const budget = factsBudget();
   await safely("not_shipped", () => computeNotShipped(ctx, opts, envs, budget, now));
   await safely("out_of_step", () => computeOutOfStep(ctx, opts, envs, budget, now));
+
+  // Releases (Phase F, src/repo/releases.ts): the 30 newest releases, and the 30 newest tags only when there
+  // are none — ≤ 2 requests (`RELEASES_RECONCILE_COST`), every row through the gate's release arm.
+  await safely("releases", async () => {
+    const r = await reconcileReleases(ctx, opts, now);
+    out.written += r.written;
+    out.unchanged += r.unchanged;
+  });
 
   return out;
 }

@@ -80,7 +80,7 @@ export const RELEASES: Release[] = [
     title: "Repo setups",
     headline: "The Repo screen fits every kind of repository, every deploy carries its commit, and Org settings says plainly what is connected.",
     highlights: [
-      "The Repo screen's Overview takes the shape of the repository — its apps and environments — and opens with what needs attention, in plain sentences: a deploy that failed and what is still serving, an app that is down, a rollback, a check failing, commits merged and not yet live.",
+      "The Repo screen's Overview takes the shape of the repository — its apps and environments — and opens with what needs attention, in plain sentences: a deploy that failed and what is still serving, an app that is down, a rollback, a check failing, commits merged and not yet live. A repository that ships by releases or tags opens on its latest release: what has merged since, the features waiting to ship, and how often it releases.",
       "A repository with several apps gets an App menu that narrows every tab to one app; an organization with several repositories gets a repository menu. Each environment's state sits in the header, and Group by switches between environment cards and a table of apps (an admin can make either the default).",
       "Every deploy shows the commit it shipped, or says it doesn't know; a failed deploy says why, a production deploy that went back to an older commit is marked as a rollback, and Vercel and Netlify previews are read with their branch.",
       "An app deployed by GitHub Actions — or on a host Trov cannot read yet — can be a part too: pick GitHub deployments as its host. Render, Railway and Fly.io are now detected from what they report to GitHub.",
@@ -93,6 +93,7 @@ export const RELEASES: Release[] = [
       "Optional, for Cloudflare deploys' commits: give the Cloudflare API token a third permission, Account › Workers CI › Read (it must be a USER token — My Profile › API Tokens). Without it the Cloudflare part's state says \"commit: the token needs Workers CI Read\" and the commit is matched from GitHub when it can be. UNVERIFIED: that Read (not Edit) suffices.",
       "The hosting job's cost per part grows by one (the possible GitHub compare for a rollback), and Cloudflare, Vercel and Netlify each make one more request per poll — still inside the `:40` budget; no trigger change.",
       "Apply `migrations/0071_repo_settings.sql` (merging to main applies it): ADDITIVE — the `repo_settings` table (an admin's per-repository Overview default). Rollback: `DROP TABLE repo_settings; DELETE FROM org_admin_audit WHERE action = 'repo.settings';`.",
+      "Apply `migrations/0074_releases.sql` (merging to main applies it): ADDITIVE — the `releases` table (a repository's releases and tags). Rollback: `DROP TABLE releases;`. Releases arrive through the App's `release` / `create` subscription (above); the first reconcile after the merge backfills the 30 newest releases (or tags). The reconcile costs 2 more GitHub requests (`reconcileCost`; \"Poll now\" is 20 + 5N) — no trigger change.",
     ],
     headsUp: [
       "Hosting tokens and app metrics tokens moved from Integrations to Hosting. Nothing was reset: every token you saved is still there.",
@@ -127,6 +128,11 @@ export const RELEASES: Release[] = [
         "MCP `get_repo_dashboard` takes `repo` and `app` and returns `facts` and `layout` (`layoutOf(layoutInputOf(facts), facts.groupDefault)`) with the overview; the pure view is `src/tools/repo-agent-view.ts`",
         "Reconcile arms `not_shipped` and `out_of_step` and the promotion chain (`src/repo/facts-compute.ts`; snapshots `not_shipped`, `out_of_step`, `drift_chain`), also run on a push to an environment branch; `FACTS_COMPARE_CAP` = 6, incremental; watch-path filtering (`src/repo/watch.ts`) when a compare's commits list their files",
         "Tests: `test/repo-facts.test.ts`, `test/repo-facts.reconcile.test.ts`, `test/repo-facts.parity.test.ts` (decide() parity SPA ↔ MCP over every scenario × variant × app × default Group by)",
+        "Migration `0074_releases`: `releases` (PK `(org_id, repo, tag)`; `source` release | tag; `author` a GitHub login; `content_hash`); in `ORG_TABLES` and the test reset",
+        "The gate's release arm `ingestRepoRelease` (`src/consumer.ts`): content-hash dedupe on `(repo, tag)`; a tag never downgrades a release; drafts and rows without GitHub's own date are never written. Writers in `src/repo/release-store.ts`",
+        "`src/repo/releases.ts`: `releaseEventsFromDelivery` (`release` published / released / prereleased / edited / deleted / unpublished; `create` of a tag, dated by `repository.pushed_at`), reconcile's `releases` arm `reconcileReleases` (`GET /releases?per_page=30`, else one GraphQL page of tags with dates; `RELEASES_RECONCILE_COST` = 2; the `releases_reconciled` marker), and the reads `readRelease(ctx, repo, app?)` → `FactsRelease`, `readTags(ctx, repo)` → `FactsUnseen.tags`, `releaseWeekFigure(ctx, repo, now)` → the week tile `releases`",
+        "`isFeaturePr`: a waiting PR is a feature only by a `feat:` / `feat(scope):` title prefix or a `feature` / `enhancement` label",
+        "Tests: `test/repo-releases.test.ts` (capture arms, gate dedupe, backfill with releases present / absent, the cost, since / waiting / cadence, the feature guard, tags, the week figure)",
       ],
       changed: [
         "`listConnections` returns ONE org-wide row per provider; a scoped hosting credential is a leftover, never a connection, never counted.",
@@ -137,9 +143,11 @@ export const RELEASES: Release[] = [
         "`detect.ts` also reads deployments by creator login and commit statuses by context (`Vercel`, `netlify/…`, `Render`, `Workers Builds`), still narrowly",
         "Failure reasons: Netlify `error_message`, Vercel `errorMessage` (else the alias error), Render's failed status, a GitHub deployment's description or a check's `output.title` — scrubbed before the cut to 140",
         "Vercel and Netlify production parts read their previews too (a second list each — `pollCost` 2); the Repo dashboard's deploy strips leave a production part's previews out",
-        "The webhook accepts `release`, `create` and `workflow_job` (verified, acknowledged, not captured yet)",
+        "The webhook accepts `workflow_job` (verified, acknowledged, not captured yet); `release` and `create` are captured into `releases` (`RELEASE_EVENT_NAMES`)",
+        "A `pr` row's `raw` keeps the PR's label names (`labels`, ≤ 20) — from the webhook and the PR-list backfill",
+        "`reconcileCost` and `refreshSubrequests` carry the releases arm's 2 requests (\"Poll now\": 20 + 5N, 30 for two environments)",
         "A hosting unit costs its provider's `pollCost` + 1 (the rollback compare)",
-        "The `drift` section's snapshot is the promotion chain's last step (for two environments, the same pair as before); `reconcileRequests(N)` = 16 + 2N + max(2, N) + 6, so Poll now's GitHub arm runs for up to 4 environments (was 6) and leaves 15 requests for hosting with two",
+        "The `drift` section's snapshot is the promotion chain's last step (for two environments, the same pair as before); `reconcileRequests(N)` = 16 + 2N + max(2, N) + 6 + 2 (the releases arm), so Poll now's GitHub arm runs for up to 4 environments (was 6) and leaves 13 requests for hosting with two",
         "`listRepoApps` moves to `src/repo/apps-read.ts` and the GitHub HTTP helpers to `src/repo/gh-http.ts` (both re-exported where they were)",
       ],
       fixed: [

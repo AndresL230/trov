@@ -44,6 +44,7 @@ export function fakeGithub(routes: Record<string, unknown>): { fetchImpl: typeof
   const EMPTY_REFS = { data: { repository: { refs: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } } };
   const EMPTY_OTHER = { data: { repository: null } };
   const EMPTY_REVIEWS = { data: { repository: { pullRequests: { nodes: [] } } } };
+  const EMPTY_TAGS = { data: { repository: { tags: { nodes: [] } } } };
   const EMPTY_COMPARE = { ahead_by: 0, behind_by: 0, commits: [] };
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -51,14 +52,16 @@ export function fakeGithub(routes: Record<string, unknown>): { fetchImpl: typeof
     if (url.endsWith("/graphql")) {
       const call = JSON.parse(String(init?.body ?? "{}")) as GraphqlCall;
       graphql.push(call);
-      const isRefs = typeof call.query === "string" && call.query.includes("refs(refPrefix");
+      // The releases arm's tags query (`"tagsGraphql"`, src/repo/releases.ts) also reads `refs(refPrefix`: routed first.
+      const isTags = typeof call.query === "string" && call.query.includes('refPrefix:"refs/tags/"');
+      const isRefs = !isTags && typeof call.query === "string" && call.query.includes("refs(refPrefix");
       // The PR-reviews query (`"reviewsGraphql"`) is the third to share the URL.
       const isReviews = typeof call.query === "string" && call.query.includes("pullRequests(");
-      const key = isRefs ? "refsGraphql" : isReviews ? "reviewsGraphql" : "graphql";
-      const body = key in routes ? routes[key] : isRefs ? EMPTY_REFS : isReviews ? EMPTY_REVIEWS : EMPTY_OTHER;
+      const key = isTags ? "tagsGraphql" : isRefs ? "refsGraphql" : isReviews ? "reviewsGraphql" : "graphql";
+      const body = key in routes ? routes[key] : isTags ? EMPTY_TAGS : isRefs ? EMPTY_REFS : isReviews ? EMPTY_REVIEWS : EMPTY_OTHER;
       return new Response(JSON.stringify(body), { status: 200 });
     }
-    const hit = Object.keys(routes).find((k) => k !== "graphql" && k !== "refsGraphql" && k !== "reviewsGraphql" && url.includes(k));
+    const hit = Object.keys(routes).find((k) => k !== "graphql" && k !== "refsGraphql" && k !== "reviewsGraphql" && k !== "tagsGraphql" && url.includes(k));
     if (hit) return new Response(JSON.stringify(routes[hit]), { status: 200 });
     return new Response(JSON.stringify(url.includes("/compare/") ? EMPTY_COMPARE : []), { status: 200 });
   }) as typeof fetch;

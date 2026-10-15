@@ -61,7 +61,7 @@ the settings module), `factsDeploys` / `deployWeekCounts` (`src/repo/facts-store
 - **week** — all seven `WeekKey`s: `mergedPrs` (`events`, null until one was ever captured), `deploys` /
   `failedDeploys` (settled production deploys of the parts in view, null with no deploy capture; a delta only when
   every counted part's capture began two weeks ago, `MIN(recorded_at)`), `openPrs` (the `prs_reconciled` gate and
-  its recording window), `commits` (the Commits tile's gates), `releases` null (Phase F), `ciRuns` (`run` rows;
+  its recording window), `commits` (the Commits tile's gates), `releases` (`releaseWeekFigure`, Phase F), `ciRuns` (`run` rows;
   delta when `recordingSince('run')` predates two weeks). A null value has a null delta.
 - **attention** (structured; worded in the SPA), most urgent first: `down` (fresh health down), `failed` (the
   newest production deploy errored: `failedSha`, `sha` still serving, `reason`), `rolledBack` (the serving deploy
@@ -71,8 +71,10 @@ the settings module), `factsDeploys` / `deployWeekCounts` (`src/repo/facts-store
   provider), `need: "metrics"` when GitHub already gives every such part its deploys, else `"deploys"`.
 - **The PR / CI facts are the PRIMARY repository's capture** (reconcile and the webhook capture one repository per
   org): for another connected repository `ci`, `drift`, `outOfStep` are empty, `notShipped` counts and the PR /
-  commit / CI week figures null — its own parts, deploys and previews are its own. `found`, `unseen`, `release`
-  stay null until Phases D / F.
+  commit / CI week figures null — its own parts, deploys and previews are its own. `release` is `readRelease(ctx, repo,
+  app)` (Phase F, `src/repo/releases.ts` — narrowed by the app's release signal when the App menu names one) and the
+  `releases` week figure `releaseWeekFigure` (null until reconcile read the repository's releases); `found` / `unseen`
+  stay null until Phase D.
 
 **The Overview's deploy blocks** (Repo setups, Phase C) are `OverviewBlock`s — `(facts, ctx) => html`
 (`web/src/repo-overview-ctx.ts`) — each in its own module and its own `trov.css` section, worded in the SPA from
@@ -146,6 +148,7 @@ plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no secti
 | `usage` (Usage) | each environment's WEB parts' `hx_requests` / `hx_errors` summed (requests, error rate; covered intervals from `hosting_poll_state`) and `active_users_*` | cron `:40` — `pollPart`; cron `:00` — `pollSaplingMetrics` |
 | `product` (Usage) | metrics `sap_c_<key>_<24h\|7d\|30d>` / `sap_t_<key>` — whatever keys the app reports | cron `:00` — `pollSaplingMetrics` (the same response as active users) |
 | `providers` (Usage — the tab's ONE Hosting section, `web/src/repo-hosting.ts`) | every part of every environment, provider-neutral (Cloudflare and Railway like the rest): `hx_*` metrics, `hosting_deploys`, `hosting_poll_state` | cron `:40` — `pollPart` per part |
+| `release` (Overview R3), `unseen.tags`, week `releases` | `releases` (0074): `readRelease` / `readTags` / `releaseWeekFigure`, `src/repo/releases.ts`; `since` / `waiting` from `repo_events` `push` / `pr` | webhook `release` / `create` (gate: `ingestRepoRelease`); reconcile `releases` arm |
 | `sprint`, `labels`, `contributors` (Planning) | live D1: the sprint a person marked `active` (the Roadmap's `sprintProgress`); open-issue snapshots; webhook pushes · merged PRs · `review` rows this week | none / webhook `issues` / `push`, `pull_request`, `pull_request_review`; reconcile `reviews` arm |
 
 "Reconcile" is `reconcileRepo` (`src/repo/github.ts`), run by an admin's Sync GitHub and by the cron's
@@ -156,13 +159,37 @@ used to be webhook-only (`canopy/*` commit statuses, PR reviews). What stays web
 feeds `events` (My Work's capture, refreshed by Sync GitHub). The capture names a PR's AUTHOR and an
 issue's subject, not who merged/closed, so the feed never claims an actor it does not have.
 
+**Releases and tags (Repo setups, Phase F — `releases`, 0074; `src/repo/releases.ts`)** feed R3, the unseen card's
+tags and the week tile `releases`. Capture is gated: `release` (published / released / prereleased / edited →
+upsert; deleted / unpublished → the row goes; a DRAFT never) and `create` of a tag (dated by the delivery's
+`repository.pushed_at`, else nothing) are derived by `releaseEventsFromDelivery` and put through
+`ingestRepoRelease` (`src/consumer.ts` — identity `(org, repo, tag)`, content-hash dedupe; a tag never
+downgrades a release; a release over a tag row keeps the tag's sha), then written by
+`src/repo/release-store.ts`; reconcile's `releases` arm is the backfill (below). `author` is a GitHub login,
+mapped to a person on read. The reads, D1 only:
+- `readRelease(ctx, repo, app?)` → `FactsRelease | null`: the newest published non-prerelease release — or, for a
+  repository with no release, its newest tag (notes only for a release: headings and comments dropped, ≤ 280
+  characters). `app` narrows by that app's `release_signal` when it reads `tag:<glob>` (SQLite GLOB). `since`
+  is counted on the default branch (the first environment's, else `main`) from the push that carried the tagged
+  commit when one was captured, else from the release's date: `commits` sums captured pushes after it, `prs`
+  counts PRs merged into that branch after it (`raw.base`; a PR's merge is its FIRST merged row) — each `null`
+  unless its capture was recording by then (`recordingSince`), never a partial count. `waiting` lists those PRs
+  newest first (≤ 10; listed even when the count is unknown — they are facts). **`feature: true` ONLY by
+  `isFeaturePr`**: a `feat:` / `feat(scope):` title prefix (any case) or a label named `feature` / `enhancement`
+  (any case) — PR labels are now kept in the `pr` row's `raw.labels` by the webhook and the PR-list backfill.
+  `cadence` = the ≤ 8 releases before it, newest last.
+- `readTags(ctx, repo)` → `FactsUnseen.tags` (also `RepoAppsSetupDTO.tags`): every tag held, releases included.
+- `releaseWeekFigure(ctx, repo, now)` → `{ key: "releases", value, delta }` over the same pool: `null` until the
+  `releases_reconciled` snapshot names the repository (before a read, 0 would be a guess).
+
 **Owner prerequisites — what must be true OUTSIDE this repo** (the one place they are listed):
 - **The target repo's GitHub webhook must be SUBSCRIBED to every name in `REPO_EVENT_NAMES`**
   (`src/webhook.ts`; for an org connected through the GitHub App the subscription is the App's own event
   list, set once on the App — `github-app.md`): `pull_request`, `push`, `pull_request_review`, `check_run`,
   `workflow_run`, `status`, `deployment_status`, `deployment`. Every capture arm exists, but GitHub delivers only
-  what the hook subscribes to. The App is ALSO subscribed to `release`, `create` and `workflow_job`
-  (`LATER_EVENT_NAMES`: verified, acknowledged, not captured yet). **GitHub deploy signals** (repo setups,
+  what the hook subscribes to. The App is ALSO subscribed to `release` and `create` (`RELEASE_EVENT_NAMES`:
+  releases and tags, Phase F — below) and `workflow_job` (`LATER_EVENT_NAMES`: verified, acknowledged, not
+  captured yet). **GitHub deploy signals** (repo setups,
   Phase A — `src/repo/capture.ts`): a `deployment` / `deployment_status` delivery and every commit status whose
   context is NOT `canopy/*` become `repo_events` rows of kind `deploy`, UNTAGGED (`env` / `part` NULL), with
   `raw.signal` = `deployment` | `status` — creator login, environment name exactly as the host spells it, state,
@@ -219,7 +246,7 @@ on. An org with no environment and no primary repository has no unit and costs n
   failures). A HOST's usage (Cloudflare, Railway, …) is not read here: it is the `:40` `hosting` job's.
 - **every 6th hour** (UTC hour % 6 = 0) — `:10` `progress`: `recomputeAllProgress` per org, UNBOUNDED (one
   request per issue number of every array-ref sprint; budgeted as an estimate, `PROGRESS_COST_ESTIMATE`);
-  `:20` `reconcile`: `runReconcileJob` per org (`reconcileRepo`, `reconcileRequests(N)` worst case for N environments,
+  `:20` `reconcile`: `runReconcileJob` per org (`reconcileRepo`, `reconcileRequests(N)` worst case for N environments (its releases arm included),
   below — plus one request when an App installation token has to be minted, and the org image's import that
   rides the same unit: `reconcileCost`; logs `failed` when non-empty); `:30` `pruneRepoCapture` + `pruneOAuth`
   (D1 only, cross-org). `:10` and `:20` skip, without a word, an org with no primary repository or no GitHub
@@ -433,9 +460,16 @@ it.
   compares per run (the rest keep their entries and go first next time); each stores what it computed before it
   throws. The same arms run on a push to an environment branch (`refreshDrift(…, pushedBranch)` — not shipped only
   for that branch's parts).
-- Worst case **`reconcileRequests(N)` = 16 + 2N + max(2, N) + 6** outbound requests for N environments (28 for two):
+- **The `releases` arm (Phase F, `reconcileReleases` in `src/repo/releases.ts`)**: ONE `GET /releases?per_page=30`
+  (drafts skipped; a list shorter than the page is the whole history, so a captured release no longer in it is
+  removed) and, ONLY when the repository has no published release, ONE GraphQL page of its 30 newest tags
+  (`refs(refPrefix:"refs/tags/", orderBy: TAG_COMMIT_DATE)` — REST `/tags` carries no date; an annotated tag is
+  dated by its tagger, a lightweight one by its commit). Every row goes through the gate's release arm
+  (`ingestRepoRelease`), so a re-read writes nothing; a successful read writes the `releases_reconciled`
+  snapshot (`{ repo }`), the week figure's "read" marker. `RELEASES_RECONCILE_COST` = 2.
+- Worst case **`reconcileRequests(N)` = 16 + 2N + max(2, N) + 6 + 2** outbound requests for N environments (30 for two):
   2 PR lists + 1 commit window + 1 workflow-run list + ≤5 job lookups + 1 status list + 1 GraphQL reviews + ≤5
-  branch pages + 2 per environment (head commit, head checks), the chain's max(2, N) and the facts arms' 6. Under an
+  branch pages + 2 per environment (head commit, head checks), the chain's max(2, N), the facts arms' 6 and the releases arm's 2. Under an
   admin Sync it shares the invocation with `runBackfill`'s ~13.
 - **`/admin/backfill` runs it once per Sync, on the batch that ENDS the loop**: the batch whose
   `summaryBudgetExhausted` reads `false`, OR the one that hits the SPA's own cap while still exhausted —
@@ -480,12 +514,12 @@ words `timeout` / `HTTP <status>` / `unreachable`; `"not_configured"` with no en
 `{ written, unchanged, failed }` (`failed` = reconcile's ARM NAMES), `"not_configured"` without a primary
 repository and a GitHub credential, `failed: ["unexpected error"]` on an unexpected throw. **The cron
 does NOT call it** — its per-tick spreading stands. **Budget: health 2N + usage N + reconcile
-(`reconcileRequests(N)`) = `refreshSubrequests(N)` — 34 for two environments, and `SUBREQUEST_CAP` = 50 (the free
+(`reconcileRequests(N)`) = `refreshSubrequests(N)` — 36 for two environments, and `SUBREQUEST_CAP` = 50 (the free
 plan's per-invocation cap, which this ONE-org refresh is still held to; the cron's own budget is 900) caps it at N ≤
-4** (46; 52 at five — it was N ≤ 6 before the promotion chain and the facts arms); past that the
+4** (48; 54 at five — it was N ≤ 6 before the promotion chain and the facts arms); past that the
 github arm is SKIPPED and says so (`failed: ["skipped: would exceed the subrequest budget"]`) rather than
 risk the invocation, while health and usage still run. The hosting arm runs only when the WHOLE refresh still
-fits (`refreshSubrequests(N)` + a mint + Σ `pollCost` ≤ 50 — 15 left for two environments), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
+fits (`refreshSubrequests(N)` + a mint + Σ `pollCost` ≤ 50 — 13 left for two environments), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
 (UNBOUNDED — the reason it has a tick of its own — and it feeds the Roadmap, not this dashboard),
 `pruneRepoCapture` (maintenance, not a refresh) and `runBackfill` / summaries (that is Sync GitHub: My Work's
 capture, with its own summary allowance). **That last exclusion has a visible cost**: `runBackfill` is also

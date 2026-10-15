@@ -159,9 +159,9 @@ describe("reconcile's facts arms", () => {
     expect(next.compares().length).toBeLessThanOrEqual(4);
   });
 
-  it("the cost: 16 + 2N + max(2, N) + 6", () => {
-    expect(reconcileRequests(2)).toBe(28);
-    expect(reconcileRequests(3)).toBe(16 + 6 + 3 + 6);
+  it("the cost: 16 + 2N + max(2, N) + 6, + 2 for the releases arm (Phase F)", () => {
+    expect(reconcileRequests(2)).toBe(30);
+    expect(reconcileRequests(3)).toBe(16 + 6 + 3 + 6 + 2);
     expect(FACTS_COMPARE_CAP).toBe(6);
   });
 

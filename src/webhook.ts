@@ -1,7 +1,8 @@
 import type { CapturedEvent } from "@shared/contract";
 import type { Env } from "./env";
 import { platform, type TenantContext } from "./data/context";
-import { ingestEvent, ingestRepoEvent } from "./consumer";
+import { ingestEvent, ingestRepoEvent, ingestRepoRelease } from "./consumer";
+import { releaseEventsFromDelivery } from "./repo/releases";
 import { type Summarizer, type PrSummary, type IssueSummary, storePrSummary, storeIssueSummary } from "./tools/summarize";
 import { orgSummarizers, type OrgSummarizers, type OrgSummarizersOpts } from "./plans/summaries";
 import { applyEventProgress } from "./tools/progress";
@@ -305,9 +306,14 @@ export const REPO_EVENT_NAMES: readonly string[] = [
   "pull_request", "push", "pull_request_review", "check_run", "workflow_run", "status", "deployment_status", "deployment",
 ];
 
-/** Deliveries the GitHub App is subscribed to for LATER phases of repo setups (`release` / `create` — releases,
- *  Phase F; `workflow_job` — CI per app, Phase E): verified, acknowledged and not captured yet. */
-export const LATER_EVENT_NAMES: readonly string[] = ["release", "create", "workflow_job"];
+/** Deliveries the release capture reads (Repo setups, Phase F): a published / edited / deleted `release` and the
+ *  `create` of a tag — through the gate's release arm (`ingestRepoRelease`) into `releases`
+ *  (src/repo/releases.ts `releaseEventsFromDelivery`). Counted in the response's `repo` object. */
+export const RELEASE_EVENT_NAMES: readonly string[] = ["release", "create"];
+
+/** Deliveries the GitHub App is subscribed to for a LATER phase of repo setups (`workflow_job` — CI per app,
+ *  Phase E): verified, acknowledged and not captured yet. */
+export const LATER_EVENT_NAMES: readonly string[] = ["workflow_job"];
 
 // ---------------------------------------------------------------------------
 // The capture of ONE VERIFIED delivery, for the org it was verified for. The
@@ -352,7 +358,8 @@ export async function captureDelivery(
 ): Promise<Response> {
   const forWork = WORK_EVENT_NAMES.includes(eventName);
   const forRepo = REPO_EVENT_NAMES.includes(eventName);
-  if (!forWork && !forRepo) {
+  const forRelease = RELEASE_EVENT_NAMES.includes(eventName);
+  if (!forWork && !forRepo && !forRelease) {
     // Verified, but not a surface we capture (ping, star, …) — or one a later phase will (`LATER_EVENT_NAMES`).
     return json({ ok: true, ignored: true, ...(LATER_EVENT_NAMES.includes(eventName) ? { later: true } : {}) });
   }
@@ -471,6 +478,18 @@ export async function captureDelivery(
     } catch (e) {
       // The message only, scrubbed of the token if one was revealed — never the Error object.
       console.error("repo capture failed", eventName, scrubbedMessage(e, token ?? ""), `org=${ctx.orgId}`);
+    }
+  }
+
+  // Releases and tags (Phase F): the same verified delivery, through the gate's release arm. Its own failure
+  // costs nothing else (logged with the message only — a release delivery needs no credential).
+  if (forRelease) {
+    try {
+      for (const ev of releaseEventsFromDelivery(eventName, payload, scope.repo)) {
+        if ((await ingestRepoRelease(ctx, ev)).outcome === "written") repo.captured++; else repo.unchanged++;
+      }
+    } catch (e) {
+      console.error("release capture failed", eventName, e instanceof Error ? e.message : String(e), `org=${ctx.orgId}`);
     }
   }
 
