@@ -18,6 +18,7 @@ import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runSyncBatch, syncStatus } from "./sync/runs";
 import { get_doc, list_docs, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_discarded_identities, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
+import { sidebarBadges } from "./tools/badges";
 import {
   create_ticket, edit_ticket, transition_ticket, move_ticket, toggle_assignee, add_ticket_link, remove_ticket_link, delete_ticket,
   set_ticket_sprint, set_ticket_parent, add_ticket_comment,
@@ -898,6 +899,16 @@ tenantRoot.get("/tickets", async (c) => {
     me: c.get("principal").handle,
   });
   return c.json({ tickets });
+});
+
+// The sidebar's counts in one batch: the boot reads this instead of the seven lists it counts.
+// A failed read degrades (503 `{ error }`): the badges stay as they were, the screen still renders.
+tenantRoot.get("/badges", async (c) => {
+  try { return c.json(await sidebarBadges(c.var.ctx, c.get("principal").handle)); }
+  catch (e) {
+    console.error("badges failed", e instanceof Error ? e.message : String(e));
+    return c.json({ error: "badges unavailable" }, 503);
+  }
 });
 
 // REGISTERED BEFORE /tickets/:id ON PURPOSE: Hono matches in registration order,
