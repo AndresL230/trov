@@ -9,6 +9,7 @@ import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow
 import type { QueryResult, QueryPrimary, QueryPointer, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
+import type { SidebarBadges } from "@shared/badges";
 import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
 import { agentMark, authorityMark, markShape, stateMark, tagWords } from "./marks";
 import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId } from "./sprints";
@@ -301,6 +302,10 @@ export interface AppState {
   ticketId: number | null;
   /** Unassigned + open, org-wide — the sidebar badge AND the queue's footer count. */
   ticketBadge: number;
+  /** The sidebar's counts before their lists are read: `GET /badges` at boot, and each list writes its
+   *  own count here when it lands, so a list's reload never flashes 0. A list that has answered (`ok`)
+   *  counts itself — `badgeCount` is the one place that picks. */
+  badges: Partial<SidebarBadges>;
   qSeg: TicketSeg;
   qAssignee: TicketAssigneeFilter;
   qCategory: TicketCategory | "all";
@@ -542,6 +547,7 @@ export function initialState(): AppState {
     ticketDetail: { status: "idle", data: null },
     ticketId: null,
     ticketBadge: 0,
+    badges: {},
     qSeg: "all", qAssignee: "anyone", qCategory: "all", qView: "board",
     qQ: "", qPrio: "all", qSprint: "all", qPerson: "", qFilterOpen: false, qFilterCat: "assignee",
     fTitle: "", fCat: null, fPrio: "normal", fDesc: "", fAsgs: [], fLink: "", fSpr: null,
@@ -618,27 +624,35 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
 
 /** Sidebar counts for the two triage entries: Review's two reads, and the Unplaced queue (the
  *  key is still `maintenance`). Unmatched logins are NOT in it — they wait in Org settings. */
+/** A sidebar count: its list's own once the list has answered, else the last count known for it
+ *  (`s.badges`), else the list as it stands (empty before anything is read). */
+function badgeCount<T>(s: Pick<AppState, "badges">, key: keyof SidebarBadges, list: Loadable<T[]>, count: (rows: T[]) => number): number {
+  return list.status === "ok" ? count(list.data) : s.badges[key] ?? count(list.data);
+}
+const length = <T>(rows: T[]): number => rows.length;
+export const stagedPrompts = (rows: readonly { status: string }[]): number => rows.filter((p) => p.status === "staged").length;
+
 export function triageCounts(s: AppState): { review: number; maintenance: number } {
   // An item a verdict was just given to is not waiting any more: the badge drops with the card,
   // not when the refetch lands. It is derived, never stored — a failed write deletes the entry in
   // `reviewLeaving` and the count is back; the refetch then replaces the reads it is derived from.
   const left = reviewHeadsFromReads(s.proposals.data, s.draftAdrs.data).filter((it) => s.reviewLeaving[it.id]).length;
   return {
-    review: s.proposals.data.length + s.draftAdrs.data.length - left,
-    maintenance: s.needsTriage.data.length,
+    review: badgeCount(s, "proposals", s.proposals, length) + badgeCount(s, "decisions", s.draftAdrs, length) - left,
+    maintenance: badgeCount(s, "unplaced", s.needsTriage, length),
   };
 }
 
 /** How many logins wait to be matched to a person — an ADMIN's count (Org settings › Members,
  *  and the org switcher that leads there). 0 for everyone else: they cannot act on it. */
 export function identityCount(s: AppState): number {
-  return viewerIsAdmin(s) ? s.identityTasks.data.length : 0;
+  return viewerIsAdmin(s) ? badgeCount(s, "logins", s.identityTasks, length) : 0;
 }
 
 /** Sidebar count for Handoffs: pending handoffs left for ME — `handoffsForMe`, the
  *  ONE definition My Work's Your sessions tile counts too. */
 export function handoffBadge(s: AppState): number {
-  return handoffsForMe(s.handoffs.data, s.me?.handle ?? "").length;
+  return badgeCount(s, "handoffs", s.handoffs, (rows) => handoffsForMe(rows, s.me?.handle ?? "").length);
 }
 
 /** The org on screen with MY role in it — `currentOrg` is the one place that picks it. */
@@ -812,7 +826,7 @@ function sidebar(s: AppState): string {
     docSpace: s.docSpace,
     docSpaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })),
     // Tickets: unassigned ACTIVE tickets — a "nobody has this" signal (design call #2).
-    counts: { review: counts.review, maintenance: counts.maintenance, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: s.promptList.data.filter((p) => p.status === "staged").length },
+    counts: { review: counts.review, maintenance: counts.maintenance, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: badgeCount(s, "prompts", s.promptList, stagedPrompts) },
     me: s.me ? { handle: s.me.handle, name: s.me.name, color: s.me.color, avatar_url: s.me.avatar_url } : null,
     displayName: s.displayName,
     logo: logo(24),
@@ -1070,7 +1084,7 @@ function feedWeekBox(s: AppState): string {
 
 /**
  * Box 2, "Waiting on review": what sessions staged that no one has confirmed — the
- * Review queue, from the boot-loaded proposals + draft ADR slices, as the cheap no-diff
+ * Review queue, from the proposals + draft ADR slices (the Feed loads them), as the cheap no-diff
  * heads (`reviewHeadsFromReads`). Each row opens the Review screen on that item (My
  * Work's `mwOpenReview`). Data on hand wins over a refetch (mwLoad), a failed slice is
  * never papered over as "nothing waiting".

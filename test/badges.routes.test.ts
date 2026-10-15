@@ -72,7 +72,8 @@ describe("GET /badges", () => {
     const prompts = (await json<{ prompts: { status: string }[] }>("/api/prompts", cookie)).prompts;
 
     expect(badges).toEqual({
-      review: proposals.length + drafts.length,
+      proposals: proposals.length,
+      decisions: drafts.length,
       unplaced: unplaced.length,
       logins: logins.length,
       tickets,
@@ -81,7 +82,7 @@ describe("GET /badges", () => {
       prompts: prompts.filter((p) => p.status === "staged").length,
     });
     // …and the seed above is not vacuous: each count is the one it was built to be.
-    expect(badges).toEqual({ review: 3, unplaced: 1, logins: 1, tickets: 1, handoffs: 2, prompts: 1 });
+    expect(badges).toEqual({ proposals: 1, decisions: 2, unplaced: 1, logins: 1, tickets: 1, handoffs: 2, prompts: 1 });
   });
 
 });

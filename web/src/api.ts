@@ -4,6 +4,7 @@
 // @shared, and web/ can't import src/), so they are re-declared here atop the
 // @shared rows. All requests carry the session cookie (credentials:"same-origin");
 // the MCP bearer is for /mcp only and never appears here.
+import type { SidebarBadges } from "@shared/badges";
 import type {
   FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, EventRow,
   PersonColor,
@@ -715,6 +716,10 @@ export function listTickets(f: TicketFilters = {}): Promise<TicketListItem[]> {
 }
 export function getTicket(id: number): Promise<TicketDetail> {
   return getJson<TicketDetail>(`/tickets/${id}`);
+}
+/** The sidebar's counts in one read (src/tools/badges.ts) — the boot asks this, not the lists. */
+export function getBadges(): Promise<SidebarBadges> {
+  return getJson<SidebarBadges>("/badges");
 }
 /** The sidebar badge: unassigned + open tickets, org-wide. */
 export function getTicketBadge(): Promise<number> {

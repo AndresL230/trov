@@ -11,10 +11,12 @@ import { syncSegments } from "./segmented";
 import { REVIEW_EXIT_MS, type ReviewVerdict } from "./review";
 import { syncTabBars, onTabBarKey } from "./tabs";
 import { syncFavicon } from "./favicon";
-import { MW_REPO_TABS, type MwRepoTab } from "./mywork";
+import { MW_REPO_TABS, handoffsForMe, type MwRepoTab } from "./mywork";
+import type { SidebarBadges } from "@shared/badges";
 import {
   render, initialState, reviewProps, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf,
   FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
+  stagedPrompts,
 } from "./render";
 import {
   getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard,
@@ -29,7 +31,7 @@ import {
   listPersons, updateMe, unlinkIdentity, renameHandle,
   getPersonProfile, uploadAvatar, removeAvatar,
   getMyOrgs, getOrgMe, listMcpTokens, revokeMcpToken, setApiOrg, setOrgLostHandler, tenantHref,
-  listTickets, getTicket, getTicketBadge, createTicket, transitionTicket, moveTicket, toggleTicketAssignee,
+  listTickets, getTicket, getTicketBadge, getBadges, createTicket, transitionTicket, moveTicket, toggleTicketAssignee,
   addTicketLink, editTicket, removeTicketLink, deleteTicket, setTicketSprint, setTicketParent, addTicketComment, listSprints,
   getSprint, createSprint, setSprintActive, addSprintResource,
   type TicketDetail,
@@ -610,7 +612,7 @@ function applyRoute(r: Route): void {
 // Kick off the data load for a screen (mirrors the go* dispatch cases).
 function loadForScreen(screen: Screen): void {
   switch (screen) {
-    case "feed": loadFeedIfNeeded(); loadFeedStats(); break;
+    case "feed": loadFeedIfNeeded(); loadFeedStats(); loadFeedReview(); break;
     case "docs": loadDocsIfNeeded(); break;
     case "roadmap": loadRoadmapIfNeeded(); loadRoadmapFeed(); break;
     case "review": loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); break;
@@ -657,7 +659,7 @@ function loadHandoffs(): void {
   state.handoffs = { status: "loading", data: state.handoffs.data };
   rerender();
   listHandoffs("mine")
-    .then((data) => { state.handoffs = { status: "ok", data }; rerender(); })
+    .then((data) => { state.handoffs = { status: "ok", data }; listed("handoffs", handoffsForMe(data, state.me?.handle ?? "").length); rerender(); })
     .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } state.handoffs = { status: "error", data: state.handoffs.data, error: String(e) }; rerender(); });
 }
 function openHandoff(id: number): void {
@@ -682,13 +684,14 @@ function loadPrompts(): void {
   state.promptList = { status: "loading", data: state.promptList.data };
   rerender();
   listPrompts()
-    .then((data) => { state.promptList = { status: "ok", data }; rerender(); })
+    .then((data) => { state.promptList = { status: "ok", data }; listed("prompts", stagedPrompts(data)); rerender(); })
     .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } state.promptList = { status: "error", data: state.promptList.data, error: String(e) }; rerender(); });
 }
 function openPrompt(slug: string): void {
   state.promptSlug = slug;
   state.promptDiffV = null; state.promptTagMenu = false; state.promptTagDraft = ""; state.promptExpanded = false;
   state.promptDeleteArm = false; state.promptDeleteBusy = false;
+  if (state.promptList.status === "idle") loadPrompts(); // the tag picker suggests the library's tags
   const same = state.promptDetail.data?.prompt.slug === slug;
   state.promptDetail = { status: "loading", data: same ? state.promptDetail.data : null };
   rerender();
@@ -869,25 +872,18 @@ function enterOrg(slug: string, hash: string): void {
     flash("Nothing was connected: only an admin or an owner of this organization can connect a host.", 7000);
   }
   loadOrgMe();
-  void loadMyOrgs();
+  // No `GET /api/orgs` here: /auth/me already brought my orgs, my role in each and the invites count —
+  // all the rail and the switcher show. The full list (plans, grants, invites) is read where it is
+  // used: the switcher's menu, the picker, Settings and a connection's scope dialog.
   syncCtl.load(); // a sync in progress shows in the header on every screen, also after a reload
   loadForScreen(state.screen);
   // A conflicting Link redirect lands here directly (full page load to
   // /?link=conflict#settings), not through the goSettings dispatch case.
   checkLinkConflict(link);
-  // Boot-time loads for the sidebar triage badges — the counts must be
-  // right on every screen, not just after visiting Review/Maintenance.
-  // Guarded: the screen's own loader (My Work, Review) may have just started
-  // these — a second unconditional call would fetch each twice.
-  if (state.proposals.status === "idle") loadProposals();
-  if (state.draftAdrs.status === "idle") loadDraftAdrs();
-  loadNeedsTriage();
-  loadIdentityTasks();
-  // The Tickets badge shows on every screen too — unassigned + open, org-wide.
-  loadTicketBadge();
-  // Handoffs (pending for me) and the Prompt Library (staged) badges.
-  if (state.handoffs.status === "idle") loadHandoffs();
-  if (state.promptList.status === "idle") loadPrompts();
+  // The sidebar's badges show on every screen: ONE read of their counts (Review, Unplaced, Tickets,
+  // Handoffs, Prompts, and the admin's unmatched logins), not the seven lists they count. A screen
+  // that needs a list (My Work, Review, …) loads it itself, and its count then replaces the badge's.
+  loadBadges();
   // The persons directory backs every colored chip (sidebar, feed, docs,
   // Settings › Profile, Org settings › Members) — load it on every screen too.
   loadPersons();
@@ -1465,7 +1461,7 @@ function loadProposals(after?: () => void): void {
   state.proposals = { status: "loading", data: state.proposals.data };
   rerender();
   listStagedProposals()
-    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; after?.(); pruneReviewLeaving(); rerender(); })
+    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; listed("proposals", rows.length); after?.(); pruneReviewLeaving(); rerender(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== proposalsSeq) return;
@@ -1473,6 +1469,12 @@ function loadProposals(after?: () => void): void {
       after?.(); pruneReviewLeaving();
       rerender();
     });
+}
+/** The Feed's "Waiting on review" box lists Review's two reads — the boot no longer loads them
+ *  (the sidebar counts come from GET /badges), so the Feed asks for them when they are not on hand. */
+function loadFeedReview(): void {
+  if (state.proposals.status === "idle") loadProposals();
+  if (state.draftAdrs.status === "idle") loadDraftAdrs();
 }
 function loadProposalsIfNeeded(): void {
   if (state.proposals.status === "idle" || state.proposals.status === "error") loadProposals();
@@ -1485,7 +1487,7 @@ function loadDraftAdrs(after?: () => void): void {
   state.draftAdrs = { status: "loading", data: state.draftAdrs.data };
   rerender();
   listAdrs("draft")
-    .then((rows) => { if (seq !== draftAdrsSeq) return; state.draftAdrs = { status: "ok", data: rows }; after?.(); pruneReviewLeaving(); rerender(); })
+    .then((rows) => { if (seq !== draftAdrsSeq) return; state.draftAdrs = { status: "ok", data: rows }; listed("decisions", rows.length); after?.(); pruneReviewLeaving(); rerender(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== draftAdrsSeq) return;
@@ -1588,7 +1590,7 @@ function loadNeedsTriage(): void {
   state.needsTriage = { status: "loading", data: state.needsTriage.data };
   rerender();
   listNeedsTriage()
-    .then((rows) => { if (seq !== needsTriageSeq) return; state.needsTriage = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== needsTriageSeq) return; state.needsTriage = { status: "ok", data: rows }; listed("unplaced", rows.length); rerender(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== needsTriageSeq) return;
@@ -1610,6 +1612,7 @@ function loadIdentityTasks(): void {
     .then((r) => {
       if (seq !== identityTasksSeq) return;
       state.identityTasks = { status: "ok", data: r.tasks };
+      listed("logins", r.tasks.length);
       state.identityDiscarded = r.discarded;
       if (r.discarded.length === 0) state.identityShowDiscarded = false;
       rerender();
@@ -1674,9 +1677,31 @@ function loadTicketDetail(id: number): void {
 
 /** The sidebar badge — loaded at boot (it shows on EVERY screen) and after every
  *  ticket write. A failure leaves the previous count rather than flashing 0. */
+/** The counts that landed from their own list (or the ticket badge's read) since `GET /badges` was
+ *  asked: a later-landing badges answer is older than these and must not overwrite them. */
+const landed = new Set<keyof SidebarBadges>();
+/** A list landed: its count is now the sidebar's, also while that list reloads. */
+function listed(key: keyof SidebarBadges, n: number): void {
+  state.badges = { ...state.badges, [key]: n };
+  landed.add(key);
+}
+/** The boot's ONE read for the sidebar (src/tools/badges.ts), in place of the seven lists it counts.
+ *  A failure leaves the badges as they are — each screen still loads its own list. */
+function loadBadges(): void {
+  landed.clear();
+  getBadges()
+    .then((b) => {
+      const next = { ...state.badges };
+      for (const k of Object.keys(b) as (keyof SidebarBadges)[]) if (!landed.has(k)) next[k] = b[k];
+      state.badges = next;
+      if (!landed.has("tickets")) state.ticketBadge = b.tickets;
+      rerender();
+    })
+    .catch((e) => { if (e instanceof Unauthorized) unauth(e); });
+}
 function loadTicketBadge(): void {
   getTicketBadge()
-    .then((count) => { state.ticketBadge = count; rerender(); })
+    .then((count) => { state.ticketBadge = count; listed("tickets", count); rerender(); })
     .catch((e) => { if (e instanceof Unauthorized) unauth(e); });
 }
 
@@ -2567,7 +2592,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       mount.querySelector<HTMLInputElement>('[data-field="sideSearch"]')?.focus();
       return;
     }
-    case "goFeed": state.screen = "feed"; loadFeedIfNeeded(); loadFeedStats(); return;
+    case "goFeed": state.screen = "feed"; loadFeedIfNeeded(); loadFeedStats(); loadFeedReview(); return;
 
     // ── The person card: a click on anyone's name (the rail, the Feed, quick search,
     // Org settings › Members) opens it over the page; the backdrop, × and Escape close it.

@@ -248,6 +248,8 @@ const TENANT: Record<string, Row> = {
   // Sync GitHub's status (0046_sync_runs, src/sync/runs.ts): the PATH's org's runs, repository and summaries allowance only.
   "GET /sync": {},
   "POST /tickets": J({ title: "from the matrix" }), "GET /tickets": { query: "?seg=all" }, "GET /tickets/badge": {}, "GET /tickets/:id": {},
+  // The sidebar's counts (src/tools/badges.ts): numbers only, every COUNT binds the PATH's org.
+  "GET /badges": {},
   "POST /tickets/:id/edit": J({ title: "hijacked" }), "POST /tickets/:id/status": J({ to: "in_progress" }),
   "POST /tickets/:id/move": J({ to: "in_progress", after_id: null }), "POST /tickets/:id/assignees": J({ login: "bob", on: true }),
   "POST /tickets/:id/links": J({ raw: "https://example.com/x" }), "POST /tickets/:id/links/:linkId/remove": J({}),

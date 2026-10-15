@@ -6,7 +6,7 @@ import { type TenantContext, stmt, batch } from "../data/sql";
  * The sidebar's counts in ONE batch (one D1 round trip), so the boot does not fetch seven lists only
  * to count them. Each COUNT is its list's own WHERE clause — the list stays the definition, and a test
  * holds every count to the length of the list it stands for:
- * review = `list_proposals` + `list_adrs("draft")`, unplaced = `list_needs_triage`, logins =
+ * proposals = `list_proposals`, decisions = `list_adrs("draft")`, unplaced = `list_needs_triage`, logins =
  * `list_identity_tasks`, tickets = `ticket_badge`, handoffs = the web's `handoffsForMe` over
  * `listHandoffs(me, "mine")`, prompts = the staged ones of `listPrompts`.
  */
@@ -28,5 +28,5 @@ export async function sidebarBadges(ctx: TenantContext, me: string): Promise<Sid
                 WHERE p.org_id = ? AND p.deleted_at IS NULL AND v.status = 'staged'`, o, o),
   ]);
   const n = (i: number): number => rows[i]?.results[0]?.n ?? 0;
-  return { review: n(0) + n(1), unplaced: n(2), logins: n(3), tickets: n(4), handoffs: n(5), prompts: n(6) };
+  return { proposals: n(0), decisions: n(1), unplaced: n(2), logins: n(3), tickets: n(4), handoffs: n(5), prompts: n(6) };
 }

@@ -89,6 +89,7 @@ export function previewState(s: AppState, mode: PreviewMode, blank: AppState): A
   const out = blankSlices(s, blank, mode, [...identity, ...one, ...personal]);
   out.preview = null; // already applied: painting this state again must not project it twice
   out.ticketBadge = 0;
+  out.badges = {};
   out.feedAuthors = [];
   out.identityDiscarded = [];
   out.repoFetchedAt = null;

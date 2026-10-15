@@ -47,6 +47,7 @@ export const RESERVED_ORG_SLUGS: readonly string[] = [
   "admins", "grants", "github", "google", "onboard", "callback", "identities", "handle-check", "mcp-token",
   "mcp-tokens", "oauth-grants", "org-logo", "logo", "policy", "prefs", "outbox", "preview", "fetch",
   "upload-url", "test-send", "triage", "mywork", "site", "releases", "unsubscribe", "unplaced", "maintenance",
+  "badges",
   // A hosting provider's install / OAuth callback, `/hosting/<provider>/callback` (src/hosting/routes.ts).
   "hosting",
 ];

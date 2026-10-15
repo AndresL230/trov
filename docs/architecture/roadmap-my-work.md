@@ -72,7 +72,8 @@ sessions off `mwSessions` (`GET /feed?author=<me>&limit=2` — never the Feed sc
 you own off `mwDocs` (`GET /docs?fields=meta`, no bodies, stubs at `current_version = 0` skipped), the review
 tile off `reviewHeadsFromReads` (no diff), and every handoff count — Your sessions' pills and the library's
 Queued handoffs cell (count + the newest, opened, never claimed from here) — off `handoffsForMe`, the ONE
-definition the sidebar badge uses too (pending, recipient = me, self-sent included, `anyone` excluded).
+definition the sidebar badge uses too (pending, recipient = me, self-sent included, `anyone` excluded;
+`GET /badges` counts the same set in SQL, held to it by `test/badges.routes.test.ts`).
 `person` resolves via the github `identities` row (`resolvePersonForLogin`, see Identity above); an
 unmapped login yields an empty EVENT projection (`degraded:false`) — but the ticket list is read BEFORE the
 identity fork and is keyed on the person HANDLE (`COLLATE NOCASE`, like `persons.handle`), so a person with

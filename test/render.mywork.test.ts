@@ -600,9 +600,14 @@ describe("My Work — audit fixes", () => {
     expect(mw).toContain("loadMwSessions()");
     expect(body("loadMwDocs")).toContain("listDocMeta()");
     expect(body("loadMwSessions")).toContain("limit: 2");
-    // The boot's badge loads are guarded, so a screen loader that already started them (My Work, Review) is not doubled.
-    expect(mainSrc).toContain('if (state.proposals.status === "idle") loadProposals();');
-    expect(mainSrc).toContain('if (state.draftAdrs.status === "idle") loadDraftAdrs();');
+    // The boot reads the sidebar's counts from GET /badges, never the lists they count…
+    const boot = body("enterOrg");
+    expect(boot).toContain("loadBadges()");
+    for (const list of ["loadProposals", "loadDraftAdrs", "loadNeedsTriage", "loadIdentityTasks", "loadHandoffs", "loadPrompts", "loadTicketBadge"])
+      expect(boot, list).not.toMatch(new RegExp(`\\b${list}\\(`));
+    // …and the Feed's review box loads them guarded, so a screen loader that already started them is not doubled.
+    expect(body("loadFeedReview")).toContain('if (state.proposals.status === "idle") loadProposals();');
+    expect(body("loadFeedReview")).toContain('if (state.draftAdrs.status === "idle") loadDraftAdrs();');
     expect(mainSrc).not.toMatch(/^\s*loadProposals\(\);\s*\n\s*loadDraftAdrs\(\);/m);
   });
 

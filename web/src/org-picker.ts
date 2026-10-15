@@ -1,5 +1,6 @@
 // Organizations, as a person meets them (canopy-multitenancy.md §5.1, §5.3) — three views over
-// ONE piece of state (`GET /api/orgs`, loaded at boot into `state.myOrgs`):
+// ONE piece of state (`GET /api/orgs` into `state.myOrgs`, read when the menu, the picker or Settings opens;
+// until then the rail shows /auth/me's `me.orgs`):
 //   THE SWITCHER  — in the sidebar's header: the current org's name; its menu lists the person's
 //                   orgs with their role, pending invitations (Accept / Decline), Org settings and
 //                   Create organization. The menu is a root-level overlay (like every dialog), so

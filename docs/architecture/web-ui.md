@@ -465,6 +465,20 @@ mid-entrance joins the animation where the old DOM left off. Hooks: `.cnpy-rise`
 (lists), `.repo-bar` / `.repo-fill` / `.repo-spark`, `data-count` (count-up). In-place changes use the
 one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 
+### The badges — one read at boot (`GET /badges`, `src/tools/badges.ts`)
+
+The sidebar's counts (Review, Unplaced, Tickets, Handoffs, Prompts, and the admin's unmatched logins on the
+switcher) come from ONE `GET /api/o/<slug>/badges`: seven `COUNT(*)`s in one D1 batch, each its list's own
+WHERE clause, and `test/badges.routes.test.ts` holds every count to the length of the list it stands for.
+`enterOrg` no longer reads the lists only to count them (a proposal alone carried both bodies); a screen
+that shows a list loads it (the Feed's "Waiting on review" box loads Review's two reads, a prompt's tag
+picker the library). A list that lands writes its count into `state.badges` (`listed()` in `main.ts`), so a
+reload of that list never flashes 0, and a badges answer that lands AFTER a list never overwrites it.
+`badgeCount` in `render.ts` is the one place that picks: the list's own count once it is `ok`, else
+`state.badges`. Nor does the boot read `GET /api/orgs`: `/auth/me` already has my orgs, my role in each and
+the invites count; the full list is read where it is shown (the switcher's menu, the picker, Settings, a
+connection's scope dialog).
+
 ## A row leaving a list — the one exit pattern (Review's queue)
 
 When a person acts on a row and the row should go (a verdict in Review; Add tag / Dismiss on a tag's To
