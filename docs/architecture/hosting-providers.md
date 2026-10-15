@@ -246,7 +246,7 @@ every part of each app key per environment (`describeParts`, so each carries THE
 scan's suggestions and last scan (Phase D1's `listSuggestions` / `readScan`), the GitHub deploy signals seen in 30 days
 (`seenSignals`), the **unassigned deploy names** — deploy names (a deployment environment, or a host's own check /
 status) no `github` part's setting names and no pending suggestion carries (`unassignedSignals`,
-shared/repo-apps-setup-core.ts) —, the tags seen (none until releases are captured, Phase F), the environments in drift
+shared/repo-apps-setup-core.ts) —, the tags the repository holds (`readTags`, src/repo/releases.ts), the environments in drift
 order and the provider catalogue's words (`providers`, with `via_github`). D1 rows only; a failed suggestions / signals
 / scan sub-read is that part empty and `degraded: true`, never a 500. `PUT …/apps/:key` (kind, label, folder, watch,
 release_signal, position — never `repo` or `source`) goes through `putRepoApp` (201 when created); a key that is
@@ -365,7 +365,7 @@ breadcrumb, from ONE read into `state.org.apps`:
   name — `keyFromSignalName`).
 - **an app** — Name (its label; the key is fixed), Folder, Kind (`segmented()`), Watch paths as a list (remove one,
   Add a path), How a release shows up for a Package or an app with no host (a `dropdown()`: "A tag matching v*" only
-  when tags were seen, "A workflow run of <file>" only for a workflow seen, "Not tracked"), and **Targets**, one row per
+  when tags were seen, "A workflow run of <file> on <branch>" only for a workflow seen, one per environment branch, "Not tracked"; stored as `tag:v*` — an SQLite GLOB releases reads —, `workflow:<file>@<branch>`, or NULL), and **Targets**, one row per
   environment: a part on a host is Hosting's own part row (`hostingPartRow`, handed in by org-settings.ts); a `github`
   part, or an environment where the app has no part, is the **deploy-signal picker** — a `dropdown()` that offers ONLY
   the signals seen in the last 30 days a setting can name (`pickableSignals`, each "Render · 14 times · last 25m ago"),

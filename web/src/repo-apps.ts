@@ -41,7 +41,8 @@ export interface AppDraft {
   watch: string[];
   /** The "Add a path" field. */
   watchDraft: string;
-  /** How a release shows up: "" (not tracked), `tag:<glob>`, `workflow:<file>`. */
+  /** How a release shows up: "" (not tracked — stored NULL), `tag:<glob>` (an SQLite GLOB on the tag, read by releases,
+   *  Phase F), `workflow:<file>@<branch>`. */
   release: string;
   /** Deploy signals picked per environment, by `signalKey` ("" = not tracked) — applied on Save. */
   picks: Record<string, string>;
@@ -147,12 +148,17 @@ export function settingWord(settings: Readonly<Record<string, string>>): string 
 export function releaseWord(v: string | null): string {
   if (!v) return "Not tracked";
   if (v.startsWith("tag:")) return `A tag matching ${v.slice(4)}`;
-  if (v.startsWith("workflow:")) return `A workflow run of ${v.slice(9).replace(/^\.github\/workflows\//, "")}`;
+  if (v.startsWith("workflow:")) {
+    const [file, branch] = v.slice(9).split("@");
+    return `A workflow run of ${file.replace(/^\.github\/workflows\//, "")}${branch ? ` on ${branch}` : ""}`;
+  }
   return v;
 }
 
-/** The release choices: a tag only when tags were seen, a workflow only when its runs were — and "Not tracked".
- *  `current` (what is stored) stays pickable even when it was not seen lately. */
+/** The release choices: a tag only when tags were seen (`tag:v*`), a workflow only when its runs were — one per
+ *  environment branch (`workflow:<file>@<branch>`; the run carries no branch here, so with no environment none is
+ *  offered rather than a guessed one) — and "Not tracked". `current` (what is stored) stays pickable even when it was
+ *  not seen lately. */
 export function releaseOptions(d: RepoAppsSetupDTO, current: string | null = null): DropdownOption[] {
   const out: DropdownOption[] = [];
   const tags = d.tags ?? { count: 0, latest: null };
@@ -165,7 +171,9 @@ export function releaseOptions(d: RepoAppsSetupDTO, current: string | null = nul
     const file = (s.source ?? s.name).replace(/^\.github\/workflows\//, "");
     if (seen.has(file)) continue;
     seen.add(file);
-    out.push({ value: `workflow:${file}`, label: `A workflow run of ${file}`, hint: `Seen ${times(s.count)} in ${SIGNAL_WINDOW_DAYS} days · it does not say whether it reached its users` });
+    for (const branch of [...new Set((d.environments ?? []).map((e) => e.branch))]) {
+      out.push({ value: `workflow:${file}@${branch}`, label: `A workflow run of ${file} on ${branch}`, hint: `Seen ${times(s.count)} in ${SIGNAL_WINDOW_DAYS} days · it does not say whether it reached its users` });
+    }
   }
   if (current && !out.some((o) => o.value === current)) out.push({ value: current, label: releaseWord(current), hint: `Set before · not seen in ${SIGNAL_WINDOW_DAYS} days` });
   out.push({ value: "", label: "Not tracked", hint: "Shows pull requests and CI only" });

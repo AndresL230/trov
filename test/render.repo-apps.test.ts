@@ -290,9 +290,12 @@ describe("Setup 5 · Add an app by hand", () => {
     expect(releaseOptions(d).map((o) => o.label)).toEqual(["Not tracked"]);
     const seen = setup({ tags: { count: 14, latest: { tag: "v1.8.0", at: ago(6 * 24 * 60) } } });
     expect(releaseOptions(seen).map((o) => [o.value, o.label])).toEqual([
-      ["tag:v*", "A tag matching v*"], ["workflow:eas-build.yml", "A workflow run of eas-build.yml"], ["", "Not tracked"],
+      ["tag:v*", "A tag matching v*"], ["workflow:eas-build.yml@develop", "A workflow run of eas-build.yml on develop"],
+      ["workflow:eas-build.yml@main", "A workflow run of eas-build.yml on main"], ["", "Not tracked"],
     ]);
     expect(releaseOptions(seen)[0].hint).toBe("Seen 14 times · latest v1.8.0, 6d ago");
+    // No environment: the run's branch is unknown, so no workflow choice is guessed.
+    expect(releaseOptions(setup({ environments: [] })).map((o) => o.value)).toEqual([""]);
     // The key is checked as the server will: taken, or not a key.
     const taken = page(route("new"), appsUi(setup(), { add: { key: "web", folder: "/", kind: "Site", release: "", saving: false, error: null, errorField: null } }));
     expect(taken).toContain("An app called web exists already.");

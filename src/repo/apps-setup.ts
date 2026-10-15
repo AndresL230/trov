@@ -27,15 +27,18 @@ import { describeParts } from "../hosting/setup";
 import { deleteRepoApp, listRepoApps, putRepoApp } from "./apps";
 import { seenSignals } from "./signals";
 import { listSuggestions, readScan } from "./scan-store";
+import { readTags } from "./releases";
 
 /** What the read stands on — injectable so a test can stand the scan's (D1's) reads in. */
 export interface AppsSetupDeps {
   seenSignals: (ctx: TenantContext, repo: string, sinceDays?: number) => Promise<SeenSignal[]>;
   listSuggestions: (ctx: TenantContext, repo: string) => Promise<AppSuggestionDTO[]>;
   readScan: (ctx: TenantContext, repo: string) => Promise<RepoScanDTO>;
+  /** The tags Trov holds for the repository (releases, Phase F). */
+  readTags: (ctx: TenantContext, repo: string) => Promise<{ count: number; latest: { tag: string; at: string } | null }>;
   providers: ProviderMap;
 }
-export const APPS_SETUP_DEPS: AppsSetupDeps = { seenSignals, listSuggestions, readScan, providers: PROVIDERS };
+export const APPS_SETUP_DEPS: AppsSetupDeps = { seenSignals, listSuggestions, readScan, readTags, providers: PROVIDERS };
 
 const NO_SCAN: RepoScanDTO = { treeSha: null, scannedAt: null, looked: [], error: null };
 
@@ -70,6 +73,7 @@ export async function getRepoAppsSetup(ctx: TenantContext, env: Env, repo: strin
   const suggestions = await soft(() => deps.listSuggestions(ctx, repo), [] as AppSuggestionDTO[], mark);
   const signals = await soft(() => deps.seenSignals(ctx, repo, SIGNAL_WINDOW_DAYS), [] as SeenSignal[], mark);
   const scan = await soft(() => deps.readScan(ctx, repo), NO_SCAN, mark);
+  const tags = await soft(() => deps.readTags(ctx, repo), { count: 0, latest: null }, mark);
   // Every `github` part of the org names what it reads, whichever repository its app lives in.
   const githubSettings = allParts.filter((p) => deps.providers[p.provider]?.credential === "github_app").map((p) => p.settings);
   const byKey = new Map<string, EnvironmentPartDTO[]>();
@@ -81,8 +85,8 @@ export async function getRepoAppsSetup(ctx: TenantContext, env: Env, repo: strin
     unassigned: unassignedSignals(signals, githubSettings, suggestions),
     signals,
     scan: scan ?? NO_SCAN,
-    // Tags are not captured yet (the `release` / `create` events arrive with releases, Phase F): none have been seen.
-    tags: { count: 0, latest: null },
+    // The tags held for the repository (src/repo/releases.ts `readTags`), as the release-signal choice reads them.
+    tags: { count: tags.count, latest: tags.latest ? { tag: tags.latest.tag, at: tags.latest.at } : null },
     environments,
     providers: HOSTING_PROVIDERS.map((id) => deps.providers[id]).filter((p) => p && p.status === "available")
       .map((p) => ({ id: p.id, label: p.label, via_github: p.credential === "github_app" })),

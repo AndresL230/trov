@@ -78,17 +78,30 @@ describe("GET /repos/:owner/:name/apps", () => {
     expect(d.signals).toEqual([]);
     expect(d.unassigned).toEqual([]);
     expect(d.scan).toEqual({ treeSha: null, scannedAt: null, looked: [], error: null });
-    expect(d.tags).toEqual({ count: 0, latest: null });
+    expect(d.tags).toEqual({ count: 0, latest: null }); // no release or tag held yet
     expect(d.degraded).toBeUndefined();
     // The picker's source: exactly the signals seen in the last 30 days, of this repository.
     expect(calls.sinceDays).toEqual([30]);
     expect(calls.repos).toEqual(["SaplingLearn/sapling"]);
   });
 
+  it("answers the tags this repository holds (releases, Phase F) for the release-signal choice — only this org's, only this repo's", async () => {
+    await seedOrgSettings();
+    const ins = (org: string, repo: string, tag: string, at: string) => run(env.DB, `INSERT INTO releases (org_id, repo, tag, published_at, source, content_hash, captured_at)
+      VALUES (?, ?, ?, ?, 'tag', 'h', ?)`, org, repo, tag, at, at);
+    await ins(ORG_A, "SaplingLearn/sapling", "v1.7.0", "2026-10-01T00:00:00Z");
+    await ins(ORG_A, "SaplingLearn/sapling", "v1.8.0", "2026-10-09T00:00:00Z");
+    await ins(ORG_A, "SaplingLearn/other", "v9.0.0", "2026-10-12T00:00:00Z");
+    await ins("org_b", "SaplingLearn/sapling", "v99", "2026-10-13T00:00:00Z");
+    const { app } = testApp({ readTags: APPS_SETUP_DEPS.readTags });
+    const d = (await send(app, "GET", `${REPO}/apps`, await ownerCookie())).json as unknown as RepoAppsSetupDTO;
+    expect(d.tags).toEqual({ count: 2, latest: { tag: "v1.8.0", at: "2026-10-09T00:00:00Z" } });
+  });
+
   it("degrades a failed scan sub-read to empty — never a 500", async () => {
     await seedOrgSettings();
     const boom = async (): Promise<never> => { throw new Error("D1 hiccup with a secret"); };
-    const { app } = testApp({ listSuggestions: boom, readScan: boom, seenSignals: boom });
+    const { app } = testApp({ listSuggestions: boom, readScan: boom, seenSignals: boom, readTags: boom });
     const res = await send(app, "GET", `${REPO}/apps`, await ownerCookie());
     expect(res.status).toBe(200);
     const d = res.json as unknown as RepoAppsSetupDTO;
