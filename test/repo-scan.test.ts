@@ -364,7 +364,7 @@ describe("the lifecycle", () => {
 });
 
 describe("the facts' unseen read", () => {
-  it("what the scan looked for and what GitHub shows; tags unknown (null) until Phase F; PRs unknown until the open-PR list was read", async () => {
+  it("what the scan looked for and what GitHub shows; tags unknown (null) until a reconcile read the releases; PRs unknown until the open-PR list was read", async () => {
     await seedOrgSettings();
     expect(await readUnseen(ctxA(), REPO, NOW)).toBeNull(); // never scanned
     await seedSignals();

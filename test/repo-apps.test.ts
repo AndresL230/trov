@@ -126,6 +126,23 @@ describe("putRepoApp / deleteRepoApp", () => {
     await expect(deleteRepoApp(admin, "nope")).rejects.toMatchObject({ status: 404 });
   });
 
+  it("validates release_signal: tag:<glob> (bounded), workflow:<file>@<branch>, or nothing — anything else is a 400 on the field", async () => {
+    await addOrgRepo("acme/shop", ORG_B);
+    const admin = await tenantCtx("AndresL230", "admin", { orgId: ORG_B });
+    const field = async (signal: unknown): Promise<string | undefined> => {
+      try { await putRepoApp(admin, "ui", { kind: "Package", release_signal: signal }); return "accepted"; } catch (e) { return e instanceof SettingsError ? `${e.status} ${e.field}` : String(e); }
+    };
+    for (const ok of ["tag:v*", "tag:ui-kit@*", "tag:release-[0-9]*", " tag:v* ", "workflow:release.yml@main", "workflow:.github/workflows/publish.yaml@release/2.x", "workflow:release.yml@v1@x", null, ""]) {
+      expect(await field(ok), String(ok)).toBe("accepted");
+    }
+    for (const bad of ["v*", "tag:", "tag:v *", `tag:${"v".repeat(101)}`, `tag:${"*".repeat(11)}`, "tag:v\u0007",
+      "workflow:release.yml", "workflow:release@main", "workflow:@main", "workflow:release.yml@", "workflow:release.yml@feat x",
+      "workflow:../release.yml@main", "workflow:sub/release.yml@main", `workflow:release.yml@${"b".repeat(201)}`, "release", 42]) {
+      expect(await field(bad), String(bad)).toBe("400 release_signal");
+    }
+    expect((await putRepoApp(admin, "ui", { release_signal: " tag:v* " })).app.releaseSignal).toBe("tag:v*");
+  });
+
   it("normalises a folder", () => {
     expect(normaliseFolder("/")).toBe("/");
     expect(normaliseFolder("")).toBe("/");

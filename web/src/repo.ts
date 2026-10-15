@@ -1013,7 +1013,7 @@ function usageTab(p: RepoProps): string {
   // endpoint) ride its first web target.
   const opts = { admin: p.admin, sample: p.sample, app: p.app ?? null };
   const usersByEnv = new Map((okData(p, (d) => d.usage)?.[p.range] ?? []).map((u) => [u.name, u] as const));
-  // With facts (the sample today; the Worker once its facts read lands), the targets are the facts' parts — narrowed by
+  // With facts (every Worker payload and the sample), the targets are the facts' parts — narrowed by
   // the App menu — each with its providers-section figures when the section carries it (repo-usage.ts
   // `targetsFromFacts`): so a part nothing has been read for still says what it is (not connected, not available).
   const fx = factsView(p);

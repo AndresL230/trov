@@ -13,6 +13,7 @@ import { requireRole } from "../data/context";
 import { batch, nowIso, stmt, type Stmt, type TenantContext } from "../data/sql";
 import { SettingsError, listEnvironments } from "../integrations/settings";
 import { listAllParts, type PartRow } from "./parts";
+import { backfillGithubDeploys } from "./github-deploys";
 import { PROVIDERS, checkFields } from "./registry";
 import type { HostingProvider } from "./types";
 
@@ -121,6 +122,13 @@ export async function putPart(
       provider: provider.id, created, fields, ...(providerChanged ? { previous_provider: existing!.provider } : {}),
     }, at),
   ]);
+  // A `github` part's deploys come from GitHub signals; those captured before this part (or this setting) existed
+  // never reach the live path, so fill it from the last 30 days now — through the part's own setting only
+  // (./github-deploys.ts, THE GUARD). D1 only; its failure never costs the write.
+  if (provider.id === "github") {
+    await backfillGithubDeploys(ctx, Date.now(), { env: envKey, key: partKey })
+      .catch((e: unknown) => console.error("putPart: github deploys from history", e instanceof Error ? e.message : "failed", `org=${ctx.orgId}`));
+  }
   return { part: await partAfterWrite(ctx, envKey, partKey), created };
 }
 

@@ -994,6 +994,10 @@ export async function getRepoDashboard(
   // own read, so skip it entirely once PR capture makes that tile unreachable.
   const prRecordingSince = prCaptured ? await recordingSince(ctx, "pr") : null;
   const prDeltaOk = prRecordingSince !== null && prRecordingSince <= weekAgo;
+  // The facts' Merged PRs figure compares this week with LAST week, so its delta needs PR capture recording since
+  // before last week began (`twoWeeksAgo`), like the Commits tile's.
+  const mergedSince = prCaptured ? prRecordingSince : latestPrs.length ? await recordingSince(ctx, "pr") : null;
+  const mergedDeltaOk = mergedSince !== null && mergedSince <= twoWeeksAgo;
   const tickets = prCaptured ? { open: 0, delta: 0 } : await ticketCounts(ctx, weekAgo);
   const pushes = await pushRowsSince(ctx, twoWeeksAgo);
   const pushesThisWeek = pushes.filter((p) => p.occurred_at > weekAgo);
@@ -1503,7 +1507,7 @@ export async function getRepoDashboard(
       consoleUrlOf: (p) => (hosted ? consoleUrlOf(p, providers[p.provider], hosted) : null),
       heads, checks, healthRows,
       pr: { captured: prCaptured, states: prStatesNow, openNow: prsNow.length, openThen: prsThen.length, deltaOk: prDeltaOk },
-      merged: { any: latestPrs.length > 0, thisWeek: mergedThisWeek.length, lastWeek: mergedLastWeek.length },
+      merged: { any: latestPrs.length > 0, thisWeek: mergedThisWeek.length, lastWeek: mergedLastWeek.length, deltaOk: mergedDeltaOk },
       commits: { captured: pushes.length > 0, thisWeek: commitsThisWeek, lastWeek: commitsLastWeek, deltaOk: pushDeltaOk },
       runs: { captured: runCaptured, recordingSince: runRecordingSince },
       openPrsByApp, packageUsedBy,

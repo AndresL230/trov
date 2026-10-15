@@ -11,13 +11,15 @@
 //   workflow      a completed workflow run (`run`) of the setting's file (`raw.path`) on the environment's branch.
 //
 // THE GUARD: an untagged signal never sets a part's deploy without a matching part setting — `signalMatchesPart`
-// is the one place that decides, and an org with no `github` part writes nothing at all.
+// is the one place that decides, and an org with no `github` part writes nothing at all. The same matcher fills a
+// part from HISTORY (`backfillGithubDeploys`, below): reconcile's backfilled runs and checks, and the signals
+// captured before the part or its setting existed.
 //
 // Reads and writes D1 through the tenant surface only and imports nothing that reads a secret, so the webhook's
 // capture (reachable from src/mcp.ts) may call it. The rollback check it may run uses the GitHub token the
 // webhook entry point resolved (`resolveGithubCredential`) and hands down.
 import type { DeployState } from "@shared/hosting";
-import type { TenantContext } from "../data/sql";
+import { all, type TenantContext } from "../data/sql";
 import type { RepoEvent } from "../repo/types";
 import { upsertDeploys, REASON_STORED_MAX, type CleanDeploy } from "./deploy-store";
 import { listAllParts, type PartRow } from "./parts";
@@ -146,6 +148,73 @@ export async function writeGithubDeploys(
     const changed = (await upsertDeploys(ctx, part, [d], now, "github")).length > 0;
     out.push({ env: part.env, part: part.key, id: d.id, state: d.state, changed });
     if (changed && d.state === "ready" && afterReady) await afterReady(part, d.id);
+  }
+  return out;
+}
+
+// ── history: the signals captured BEFORE a part could match them ─────────────
+//
+// A live delivery reaches `writeGithubDeploys` above; two things never do: the check runs and workflow runs that
+// RECONCILE backfills (src/repo/github.ts, through the gate), and the signals captured before a `github` part — or
+// its current setting — existed (the Apps tab's deploy-signal picker names exactly such a signal). So reconcile (a
+// guarded arm after its capture arms) and `putPart` (src/hosting/part-writes.ts, after a `github` part is written)
+// replay the captured, untagged signals of the last 30 days through the SAME matcher — `signalMatchesPart`, THE
+// GUARD — and upsert what matches. D1 only: no GitHub request, so no rollback compare (the live path's job).
+
+/** How far back a part is filled from captured signals — the window the Apps tab's picker offers signals from. */
+export const GITHUB_DEPLOY_HISTORY_DAYS = 30;
+/** At most this many captured signals are read per pass (the newest), and this many deploys written per part. */
+const HISTORY_SIGNAL_MAX = 500;
+const HISTORY_DEPLOYS_PER_PART = 50;
+
+/** A deploy's later signal over an earlier one, as the upsert's COALESCE would fold them one by one: the state
+ *  moves, a field a later signal does not carry keeps the earlier value, the creation instant stays the first. */
+const fold = (prev: CleanDeploy, next: CleanDeploy): CleanDeploy => ({
+  id: next.id, state: next.state, target: next.target ?? prev.target, sha: next.sha ?? prev.sha, branch: next.branch ?? prev.branch,
+  message: next.message ?? prev.message, by: next.by ?? prev.by, createdAt: prev.createdAt, readyAt: next.readyAt ?? prev.readyAt,
+  url: next.url ?? prev.url, inspectUrl: next.inspectUrl ?? prev.inspectUrl, reason: next.reason ?? prev.reason,
+});
+
+/**
+ * Fill the org's `github` parts (or just `only`) from the captured, untagged deployment / check-run / workflow-run
+ * signals of the last 30 days: each part gets the deploys of the signals ITS OWN setting matches
+ * (`signalMatchesPart`), oldest first so the newest state wins, each deploy upserted once (idempotent — a second
+ * pass writes nothing). Returns the deploys that were new or changed. An org with no `github` part reads its parts
+ * once and nothing else.
+ */
+export async function backfillGithubDeploys(ctx: TenantContext, now: number, only?: { env: string; key: string }): Promise<GithubDeployWrite[]> {
+  const parts = (await listAllParts(ctx)).filter((p) => p.provider === "github" && (!only || (p.env === only.env && p.key === only.key)));
+  if (!parts.length) return [];
+  // A narrowing by the names the settings carry, so a busy org's every check run is not read — the decision is
+  // still `signalMatchesPart`'s alone, below (a look-alike on another branch or from another App passes this).
+  const names = [...new Set(parts.flatMap((p) => [p.settings.environment, p.settings.check_name].filter((v): v is string => !!v)))];
+  const paths = [...new Set(parts.map((p) => p.settings.workflow).filter((v): v is string => !!v).map(workflowPath))];
+  const or: string[] = [];
+  const args: unknown[] = [];
+  if (names.length) { or.push(`(kind IN ('deploy', 'check') AND name IN (${names.map(() => "?").join(", ")}))`); args.push(...names); }
+  if (paths.length) { or.push(`(kind = 'run' AND json_extract(raw, '$.path') IN (${paths.map(() => "?").join(", ")}))`); args.push(...paths); }
+  if (!or.length) return [];
+  const since = new Date(now - GITHUB_DEPLOY_HISTORY_DAYS * 86_400_000).toISOString();
+  const rows = (await all<RepoEvent & { id: number }>(ctx,
+    `SELECT id, semantic_key, kind, ref, sha, number, env, part, state, name, actor_login, title, url, count, raw, provenance, occurred_at
+       FROM repo_events WHERE org_id = ? AND env IS NULL AND occurred_at >= ? AND (${or.join(" OR ")})
+      ORDER BY occurred_at DESC, id DESC LIMIT ${HISTORY_SIGNAL_MAX}`,
+    ctx.orgId, since, ...args)).reverse();
+  const out: GithubDeployWrite[] = [];
+  for (const part of parts) {
+    const byId = new Map<string, CleanDeploy>();
+    for (const ev of rows) {
+      if (!signalMatchesPart(ev, part)) continue;
+      const d = deployFromSignal(ev);
+      if (!d) continue;
+      const prev = byId.get(d.id);
+      byId.delete(d.id); // re-inserted last: the map keeps the order each deploy was LAST heard of
+      byId.set(d.id, prev ? fold(prev, d) : d);
+    }
+    const list = [...byId.values()].slice(-HISTORY_DEPLOYS_PER_PART);
+    if (!list.length) continue;
+    const changed = new Set(await upsertDeploys(ctx, part, list, now, "github"));
+    for (const d of list) if (changed.has(d.id)) out.push({ env: part.env, part: part.key, id: d.id, state: d.state, changed: true });
   }
   return out;
 }

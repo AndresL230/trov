@@ -113,7 +113,9 @@ export interface FactsInputs {
     openThen: number;
     deltaOk: boolean;
   };
-  merged: { any: boolean; thisWeek: number; lastWeek: number };
+  /** `deltaOk`: PR capture was recording (`recordingSince('pr')`) before last week began — else this week vs last
+   *  week compares against a week nobody recorded. */
+  merged: { any: boolean; thisWeek: number; lastWeek: number; deltaOk: boolean };
   commits: { captured: boolean; thisWeek: number; lastWeek: number; deltaOk: boolean };
   runs: { captured: boolean; recordingSince: string | null };
   /** Phase E (./repo-scope.ts) — a repository with two or more apps: each app's open PRs (`null` while one of them has
@@ -339,7 +341,7 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
   const fig = (key: WeekKey, value: number | null, delta: number | null): FactsWeekFigure => ({ key, value, delta: value === null ? null : delta });
   const runDeltaOk = i.runs.recordingSince !== null && i.runs.recordingSince <= twoWeeksAgo;
   const week: FactsWeekFigure[] = [
-    fig("mergedPrs", isPrimary && i.merged.any ? i.merged.thisWeek : null, i.merged.thisWeek - i.merged.lastWeek),
+    fig("mergedPrs", isPrimary && i.merged.any ? i.merged.thisWeek : null, i.merged.deltaOk ? i.merged.thisWeek - i.merged.lastWeek : null),
     fig("deploys", deployCapture ? sum("this_ready") + sum("this_error") : null,
       deployDeltaOk ? sum("this_ready") + sum("this_error") - sum("last_ready") - sum("last_error") : null),
     fig("failedDeploys", deployCapture ? sum("this_error") : null, deployDeltaOk ? sum("this_error") - sum("last_error") : null),

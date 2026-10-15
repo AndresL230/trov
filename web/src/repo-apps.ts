@@ -18,11 +18,11 @@
 // web/src/repo-apps-actions.ts. The SPA never branches on a provider id: a host is named by the read's catalogue.
 
 import { esc, attr, relTime, surface } from "./ui";
-import { O_LABEL, O_FIELD, O_HELP, O_ERR, accentBtn, quietBtn, dangerLink, orgHead, tabLead, textField, failedNote, loadingNote, type OrgSlice } from "./org-ui";
+import { O_LABEL, O_FIELD, O_HELP, O_ERR, accentBtn, quietBtn, dangerLink, orgHead, tabLead, textField, anchoredField, fieldError, failedNote, loadingNote, type OrgSlice } from "./org-ui";
 import { segmented } from "./segmented";
 import { dropdown, initialDropdownUi, type DropdownOption, type DropdownProps, type DropdownUi } from "./dropdown";
 import { kindMark, stateMark, type StateKind } from "./marks";
-import { APP_KINDS, APP_KIND_ROLE, type AppKind } from "@shared/repo-apps-core";
+import { APP_KINDS, APP_KIND_ROLE, parseReleaseSignal, type AppKind } from "@shared/repo-apps-core";
 import type { AppSuggestionDTO, RepoAppsSetupDTO, SeenSignal } from "@shared/repo-scan-core";
 import { SIGNAL_WINDOW_DAYS, keyFromSignalName, pickableSignals, settingsNameSignal, signalKey, signalSettings } from "@shared/repo-apps-setup-core";
 import { MAX_PARTS_PER_ENVIRONMENT, PART_KEY_RE, type ConnectionStatus, type EnvironmentPartDTO, type HostingProviderId } from "@shared/hosting";
@@ -148,10 +148,8 @@ export function settingWord(settings: Readonly<Record<string, string>>): string 
 export function releaseWord(v: string | null): string {
   if (!v) return "Not tracked";
   if (v.startsWith("tag:")) return `A tag matching ${v.slice(4)}`;
-  if (v.startsWith("workflow:")) {
-    const [file, branch] = v.slice(9).split("@");
-    return `A workflow run of ${file.replace(/^\.github\/workflows\//, "")}${branch ? ` on ${branch}` : ""}`;
-  }
+  const s = parseReleaseSignal(v);
+  if (s?.kind === "workflow") return `A workflow run of ${s.file.replace(/^\.github\/workflows\//, "")} on ${s.branch}`;
   return v;
 }
 
@@ -377,12 +375,14 @@ function appView(d: RepoAppsSetupDTO, app: SetupApp, dr: AppDraft, dd: DropdownU
   const n = app.parts.length;
   const lead = tabLead(`${B(app.label)} ships from ${CODE(folderWord(app.folder))} to ${B(String(n))} ${n === 1 ? "target" : "targets"}. Changes apply on save; the Repo screen redraws from them.`,
     `<div style="display:flex;gap:8px;align-items:center">${dangerLink("Remove app", "orgConfirm", { arg: `app:${app.key}`, disabled: dr.saving, field: `orgConfirm:app:${app.key}` })}${accentBtn(dr.saving ? "Saving…" : "Save", "orgAppsSave", { disabled: dr.saving || Object.keys(problems).length > 0, busy: dr.saving, field: "orgAppsSave" })}</div>`);
-  const general = dr.error && (dr.errorField === null || !["label", "folder", "watch", "release_signal", "kind"].includes(dr.errorField))
-    ? `<div role="alert" style="${O_ERR};margin:0 0 14px">${esc(dr.error)}</div>` : "";
   const noHost = n === 0 || role === null;
+  // A refused release signal is said beside its field; with no such field on the page (an app on a host), above the form.
+  const general = dr.error && (dr.errorField === null || !["label", "folder", "watch", "release_signal", "kind"].includes(dr.errorField) || (dr.errorField === "release_signal" && !noHost))
+    ? `<div role="alert" style="${O_ERR};margin:0 0 14px">${esc(dr.error)}</div>` : "";
+  const releaseErr = errOf("release_signal");
   const release = noHost ? `<div class="cnpy-org-field" style="margin-top:16px" data-apps-release>
       <div id="org-apps-release-l" style="${O_LABEL}">How a release shows up</div>
-      <div style="margin-top:7px;max-width:420px">${dropdown(releaseDropdown(d, "org-apps-release", dr.release, app.releaseSignal, dr.saving), dd)}</div>
+      <div style="max-width:420px">${anchoredField(`<div style="margin-top:7px">${dropdown(releaseDropdown(d, "org-apps-release", dr.release, app.releaseSignal, dr.saving), dd)}</div>`, releaseErr ? fieldError("org-apps-release-e", releaseErr) : "")}</div>
       <div style="${O_HELP}">${role === null ? "A package ships as releases, not to a URL." : "This app has no host yet: Trov can follow its releases instead."}</div>
     </div>` : "";
   const form = `<section aria-labelledby="org-apps-app-t" data-apps-group="app">
@@ -453,7 +453,7 @@ function addView(route: OrgRepoRoute, d: RepoAppsSetupDTO, a: AddDraft, dd: Drop
       </div>
       <div style="height:1px;background:var(--border);margin:18px 0"></div>
       <div class="cnpy-org-field"><div id="org-apps-add-release-l" style="${O_LABEL}">How a release shows up</div>
-        <div style="margin-top:7px;max-width:420px">${dropdown(releaseDropdown(d, "org-apps-add-release", a.release, null, a.saving), dd)}</div>
+        <div style="max-width:420px">${anchoredField(`<div style="margin-top:7px">${dropdown(releaseDropdown(d, "org-apps-add-release", a.release, null, a.saving), dd)}</div>`, errOf("release_signal") ? fieldError("org-apps-add-release-e", errOf("release_signal") ?? "") : "")}</div>
         <div style="${O_HELP}">Only tags and workflows GitHub reported are offered. Parts on a host are added on the app's page.</div>
       </div>
       ${general}

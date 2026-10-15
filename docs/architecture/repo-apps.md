@@ -52,9 +52,12 @@ the app, in every environment, carries the key as its `part_key`. The key alphab
   under what a glob matches. Read by the not-shipped arm (below) and by the App menu's narrowing of Code and CI (Monorepos, below).
 - **`release_signal`** — how a release of this app shows up (`web/src/repo-apps.ts` offers it for a Package or
   an app with no part): `tag:<glob>` (an SQLite GLOB on the tag — `tag:v*`, `tag:ui-kit@*`), `workflow:<file>@<branch>`
-  (a completed run of that workflow on that branch), or NULL (not tracked). The writer stores any one line ≤ 200;
-  **only `tag:` is read today** (`readRelease`'s narrowing, below) — a `workflow:` signal is stored and drawn and
-  read by nothing yet.
+  (the latest successful run of that workflow on that branch), or NULL (not tracked). ONE parser,
+  `parseReleaseSignal` (`shared/repo-apps-core.ts`), is both the writer's check and `readRelease`'s reading: the glob
+  1–100 of `A–Z a–z 0–9 . _ - @ / + * ? [ ] ! ^` with ≤ 10 wildcards; the file a workflow file name (the `github`
+  provider's own pattern, folder optional, no `..`); the branch no whitespace or control character, ≤ 200 (split at
+  the first `@` — a file has none). Anything else is a 400 on `release_signal`, said beside the field on the Apps tab
+  (above the form for an app on a host, whose page has no such field).
 - **The writers** (`src/repo/apps.ts`, admin+, each ONE batch with its audit row in `org_admin_audit`):
   `putRepoApp(ctx, key, body)` — body keys `repo`, `label`, `folder`, `kind`, `watch`, `release_signal`, `source`,
   `position`, any other refused; a new app needs `kind`; `repo` must be one of the org's repositories (default the
@@ -70,7 +73,8 @@ the app, in every environment, carries the key as its `part_key`. The key alphab
   is 409 `app_conflict`, never moved); `DELETE …/apps/:key` (the row; its parts stay unless `?parts=remove`, each
   then through `deletePart`, audited `part.delete`, its deploys and poll state with it; an implicit app IS its
   parts, so only `?parts=remove` removes it).
-- Tests: `test/repo-apps.test.ts` (0070, `listRepoApps`, the writers), `test/repo-apps-setup.test.ts` (the routes).
+- Tests: `test/repo-apps.test.ts` (0070, `listRepoApps`, the writers, › validates release_signal),
+  `test/repo-apps-setup.test.ts` (the routes).
 
 **Environments are hidden per repository.** Environments stay org-wide; the Repo screen for repository R shows
 R's apps and only the environments where one of them has a part (`FactsEnv`, in the org's `position` order). A
@@ -106,9 +110,18 @@ every `github` part whose OWN setting it matches — `signalMatchesPart`, THE gu
 exact environment name (a branch ref must be the environment's branch; a sha ref says nothing), a check run of that
 app and name on the branch, a completed workflow run of that file on the branch. A failed one's `reason` is the
 deployment's description or the check's `output.title`; neutral is skipped. The write may run the rollback check
-(below) with the GitHub token the webhook entry point resolved. Its own failure never costs the capture. Only the
-webhook calls it: a check run or workflow run that reconcile backfills, and a signal captured before the part (or its
-setting) existed, write no deploy — the part's first deploy is the next matching delivery.
+(below) with the GitHub token the webhook entry point resolved. Its own failure never costs the capture.
+
+**History-fed deploys** (`backfillGithubDeploys`, same module): a live delivery is not the only source. The check
+runs and workflow runs that RECONCILE backfills, and the signals captured before a `github` part — or its current
+setting — existed (the Apps tab's deploy-signal picker names exactly those), are replayed through the SAME matcher:
+the captured, untagged (`env IS NULL`) deployment / check-run / workflow-run rows of the last 30 days
+(`GITHUB_DEPLOY_HISTORY_DAYS`; ≤ 500 newest rows, pre-narrowed in SQL by the names and workflow paths the settings
+carry — the decision is still `signalMatchesPart`'s), oldest first, each deploy folded to its newest state and
+upserted once (≤ 50 per part; a second pass writes nothing). It runs as reconcile's guarded `github_deploys` arm
+(after the capture arms; every `github` part of the org) and right after `putPart` writes a `github` part (that part
+only — the Apps tab's Save, the scan's Accept, Hosting's part editor; a failure is logged and never costs the write).
+D1 only: no GitHub request, so no rollback compare and `reconcileRequests` is unchanged.
 
 **Deploy provenance — `hosting_deploys` columns (0070)**, written through ONE upsert, `src/hosting/deploy-store.ts`
 (secret-free, so the webhook may call it):
@@ -141,7 +154,8 @@ test is `COALESCE`d (`NOT (NULL AND …)` is NULL and once dropped the row). A p
 them as its deploys. The facts match them to open PRs by branch (below).
 
 Tests: `test/hosting.provider.github.test.ts`, `test/hosting.github-deploys.test.ts` (› THE GUARD —
-`signalMatchesPart`; › THE ROLLBACK COMPARE), `test/hosting.sha-join.test.ts` (› THE ONE-CANDIDATE RULE),
+`signalMatchesPart`; › history — reconcile's backfilled runs and checks, and a part created or re-pointed later, filled
+through the guard, a look-alike never; › THE ROLLBACK COMPARE), `test/hosting.sha-join.test.ts` (› THE ONE-CANDIDATE RULE),
 `test/hosting.previews.test.ts`, `test/repo-capture.test.ts`.
 
 ## `RepoFacts` — the Overview's one read
@@ -202,7 +216,8 @@ Every field (null rules in brackets):
 - `release` — `readRelease(ctx, repo, app)` (below), else null.
 - `found` / `unseen` — the scan's read side (below).
 - `week` — all seven `WeekKey`s, each `{ key, value, delta }`, a null value always with a null delta:
-  `mergedPrs` (`events`; null until one was ever captured — its delta is not gated on a recording window),
+  `mergedPrs` (`events`; null until one was ever captured; a delta only when `recordingSince('pr')` predates two
+  weeks — this week is compared with last week, so capture must cover both),
   `deploys` / `failedDeploys` (settled production deploys of the parts in view; null with no deploy capture — no
   deploy row and no successful poll of a deploy-reporting provider; a delta only when every counted part's capture
   began two weeks ago, `MIN(recorded_at)`), `openPrs` (the `prs_reconciled` gate and its recording window),
@@ -371,8 +386,8 @@ Scenario and Variant `dropdown()`s are session-only (`state.repoScenario`); a pi
 | N | Trouble states (A's '' and B's `trov`) | as A / B | R6 / R4 |
 
 G/after is one design-data slip the design's own view model cannot draw (`DESIGN_DATA_SLIPS` in
-`test/repo-layout.test.ts`); the sample still draws it (an apps table). H's Cloud Run app names `github` through a
-leftover cast (`GITHUB_PROVIDER`), now that `github` is a registered id. Tests: `test/repo-sample.scenarios.test.ts`
+`test/repo-layout.test.ts`); the sample still draws it (an apps table). H's Cloud Run app names the registered
+`github` provider (`GITHUB_PROVIDER`). Tests: `test/repo-sample.scenarios.test.ts`
 (every scenario × variant × App × Group by against `buildScreen`; unknown stays null; every part's app and
 environment exist).
 
@@ -503,7 +518,13 @@ a GitHub LOGIN — not a handle column, mapped to a person on read; `notes` ≤ 
   `releases_reconciled` snapshot (`{ repo }`).
 - **`readRelease(ctx, repo, app?)`** → `FactsRelease | null`: the newest published non-prerelease release, or — for a
   repository with none — its newest tag (notes only for a release: headings and comments dropped, ≤ 280). `app`
-  narrows by that app's `release_signal` when it reads `tag:<glob>`. `since` is counted on the default branch (the
+  narrows by that app's `release_signal`: `tag:<glob>` keeps the matching tags; **`workflow:<file>@<branch>`** reads
+  the app's latest SUCCESSFUL captured `run` of that workflow file (`raw.path`) on that branch instead — tag
+  `<file> #<run number>` (`raw.run_number`, kept by the capture's `workflow_run` arm) or `<file> <short sha>` for a run
+  row from before it carried one, dated by the run's completion, by its actor, notes null, `since` / `waiting` from the run's head sha on
+  THAT branch, `cadence` the ≤ 8 successful runs before it (a re-run's attempts are one run); no run captured, or an
+  app of a repository that is not the primary (runs are its capture) → null, never a tag in its place. A run says
+  nothing about whether it reached a store, and the read claims nothing about it. `since` is counted on the default branch (the
   first environment's, else `main`) from the push that carried the tagged commit when one was captured, else from the
   release's date: `commits` sums captured pushes after it, `prs` counts PRs merged into that branch after it — each
   null unless its capture was recording by then (`recordingSince`), never a partial count. `waiting` lists those
@@ -516,23 +537,26 @@ a GitHub LOGIN — not a handle column, mapped to a person on read; `notes` ≤ 
 - On screen: `releaseBlock` (R3) — tag, age, date, who, notes; since ("—" when unknown); the waiting PRs (merged
   glyph, "feature" only where `feature: true`); the cadence strip over the last 100 days and the gaps sentence.
 
-Tests: `test/repo-releases.test.ts` (› a feature claim comes only from a feat prefix or a feature label (guard)),
+Tests: `test/repo-releases.test.ts` (› a feature claim comes only from a feat prefix or a feature label (guard); › an
+app whose release_signal is workflow:<file>@<branch>),
 `test/render.repo-release.test.ts`.
 
 ## Costs: the reconcile arms and Poll now
 
 Every number is a worst case, counted from the code; the callers start a unit only while it fits (`repo-dashboard.md`
 › The budget).
-- **`reconcileRequests(N)` = 16 + 2N + max(2, N) + `FACTS_COMPARE_CAP` (6) + `RELEASES_RECONCILE_COST` (2)**
-  (`src/repo/github.ts`; 30 for two environments): 16 + 2N for the capture arms, `driftCompares(N)` for the promotion
-  chain, 6 for not shipped + out of step, 2 for releases.
-- **`reconcileCost(N)`** (`src/repo/cron.ts`, the `:20` unit) = `reconcileRequests(N)` + **`SCAN_COST` (5)** +
-  `LOGO_IMPORT_COST` (3) + `GITHUB_MINT_COST` (1).
-- **Poll now** (`runRepoRefresh`): `refreshSubrequests(N)` = 3N + `reconcileRequests(N)` (36 for two environments;
-  the scan is off). **`SUBREQUEST_CAP` = 100** (it was the free plan's 50 until the promotion chain, the facts arms
-  and releases pushed a five-environment org past it): the GitHub arm runs for N ≤ 12 (96; 102 at thirteen), else it
-  is skipped and says so; the hosting arm runs only when `refreshSubrequests(N)` + 1 (a mint) + Σ `providerPollCost`
-  ≤ 100 (63 left for two environments).
+- **`reconcileRequests(N)` = 16 + 2N + max(2, N) + `FACTS_COMPARE_CAP` (6) + `RELEASES_RECONCILE_COST` (2) +
+  `PR_FILES_REQUESTS` (9)** (`src/repo/github.ts`; 39 for two environments): 16 + 2N for the capture arms,
+  `driftCompares(N)` for the promotion chain, 6 for not shipped + out of step, 2 for releases, 9 for PR files. The
+  `github_deploys` arm (a `github` part's deploys from history, above) reads D1 only and costs nothing.
+- **`reconcileCost(N)`** (`src/repo/cron.ts`, the `:20` unit) = `reconcileRequests(N)` + (`PR_FILES_SYNC_REQUESTS` −
+  `PR_FILES_REQUESTS`, the cron's wider PR-files allowance) + **`SCAN_COST` (5)** + `LOGO_IMPORT_COST` (3) +
+  `GITHUB_MINT_COST` (1).
+- **Poll now** (`runRepoRefresh`): `refreshSubrequests(N)` = 3N + `reconcileRequests(N)` (45 for two environments;
+  the scan is off). **`SUBREQUEST_CAP` = 100** (it was the free plan's 50 until the promotion chain, the facts arms,
+  releases and PR files pushed a five-environment org past it): the GitHub arm runs for N ≤ 11 (99; 105 at twelve),
+  else it is skipped and says so; the hosting arm runs only when `refreshSubrequests(N)` + 1 (a mint) + Σ
+  `providerPollCost` ≤ `SUBREQUEST_CAP` (54 left for two environments).
 - **A hosting unit** (`:40`) = its provider's `pollCost` + `ROLLBACK_COMPARE_COST` (1) when the provider reports
   deploys; a `github` part 0. Cloudflare's `pollCost` is 6, Vercel's and Netlify's 2 (previews).
 - Tests: `test/repo-facts.reconcile.test.ts` › the cost, `test/repo-releases.test.ts` › is counted,

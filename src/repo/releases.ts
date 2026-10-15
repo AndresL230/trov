@@ -19,6 +19,7 @@ import { orgEnvironments } from "./config";
 import { recordingSince } from "./reads";
 import { getSnapshot, putSnapshot } from "./store";
 import type { FactsRelease, FactsReleaseWaiting, FactsUnseen, FactsWeekFigure } from "@shared/repo-facts-core";
+import { parseReleaseSignal, type ReleaseSignal } from "@shared/repo-apps-core";
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj | null => (v !== null && typeof v === "object" ? (v as Obj) : null);
@@ -187,13 +188,13 @@ export async function reconcileReleases(ctx: TenantContext, opts: GhOpts, now: n
 
 interface Row { tag: string; published_at: string; author: string | null; notes: string | null; sha: string | null; source: "release" | "tag" }
 
-/** An app's `release_signal` of the form `tag:<glob>` ("tag:v*", "tag:ui-kit@*") narrows its releases to the
- *  tags matching the glob (SQLite GLOB); anything else reads every release of the repository. */
-async function tagGlob(ctx: TenantContext, app: string | null | undefined): Promise<string | null> {
+/** An app's `release_signal`, parsed (`parseReleaseSignal` — the form `putRepoApp` accepts): `tag:<glob>`
+ *  ("tag:v*", "tag:ui-kit@*") narrows its releases to the tags matching the glob (SQLite GLOB);
+ *  `workflow:<file>@<branch>` reads that workflow's runs instead (`workflowRelease`); none reads every release. */
+async function appSignal(ctx: TenantContext, app: string | null | undefined): Promise<ReleaseSignal | null> {
   if (!app) return null;
   const row = await first<{ release_signal: string | null }>(ctx, `SELECT release_signal FROM repo_apps WHERE org_id = ? AND key = ?`, ctx.orgId, app);
-  const sig = row?.release_signal ?? "";
-  return sig.startsWith("tag:") && sig.length > 4 ? sig.slice(4) : null;
+  return parseReleaseSignal(row?.release_signal);
 }
 
 /** The release pool, newest first: published non-prerelease RELEASES when the repository has any, else its
@@ -235,7 +236,8 @@ const WAITING_MAX = 10;
  * The Overview's release facts (`RepoFacts.release`), or null when Trov holds no release (nor tag) of the
  * repository. D1 only.
  * - The release: the newest published non-prerelease release — or, for a repository with no release, the newest
- *   tag. `app` narrows by that app's `release_signal` (`tag:<glob>`).
+ *   tag. `app` narrows by that app's `release_signal`: `tag:<glob>` keeps the matching tags; `workflow:<file>@<branch>`
+ *   reads that workflow's latest successful run on that branch instead (`workflowRelease`, below).
  * - `since`: on the default branch (the first environment's, else `main` — as every repo read), counted from
  *   the push that carried the tagged commit when one was captured, else from the release's date. `commits` sums
  *   captured pushes after it, `prs` counts pull requests merged into that branch after it — each `null` unless
@@ -245,15 +247,63 @@ const WAITING_MAX = 10;
  * - `cadence`: the ≤ 8 releases before it, newest LAST.
  */
 export async function readRelease(ctx: TenantContext, repo: string, app?: string | null): Promise<FactsRelease | null> {
-  const rows = await pool(ctx, repo, await tagGlob(ctx, app), 9);
+  const signal = await appSignal(ctx, app);
+  if (signal?.kind === "workflow") return workflowRelease(ctx, repo, signal);
+  const rows = await pool(ctx, repo, signal?.kind === "tag" ? signal.glob : null, 9);
   const latest = rows[0];
   if (!latest) return null;
   const branch = (await orgEnvironments(ctx))[0]?.branch ?? "main";
+  return releaseFacts(ctx, {
+    tag: latest.tag, at: latest.published_at, author: latest.author, sha: latest.sha,
+    notes: latest.source === "release" ? releaseNotesText(latest.notes) : null,
+  }, branch, rows.slice(1, 9).reverse().map((r) => ({ tag: r.tag, at: r.published_at })));
+}
 
+/** At most this many captured runs are read for a workflow release (re-run attempts of one run collapse into one). */
+const WORKFLOW_RUNS_READ = 40;
+
+/**
+ * A `workflow:<file>@<branch>` app's release: its latest SUCCESSFUL captured `run` of that workflow file
+ * (`raw.path`) on that branch — the tag `<file> #<run number>` (or `<file> <short sha>` for a run captured without
+ * its number), dated by the run's completion, by its actor, no notes; `since` / `waiting` from the run's head sha
+ * on THAT branch; `cadence` the ≤ 8 successful runs before it. A run says nothing about whether it reached a store,
+ * and nothing here claims it did. Runs are the PRIMARY repository's capture, so another repository's app reads
+ * null, and so does an app whose workflow has no successful run captured. D1 only.
+ */
+async function workflowRelease(ctx: TenantContext, repo: string, s: { file: string; branch: string }): Promise<FactsRelease | null> {
+  const primary = await first<{ r: string }>(ctx, `SELECT repo_full_name AS r FROM org_repos WHERE org_id = ? ORDER BY is_primary DESC, created_at, id LIMIT 1`, ctx.orgId);
+  if (!primary || primary.r.toLowerCase() !== repo.toLowerCase()) return null;
+  const path = s.file.startsWith(".github/workflows/") ? s.file : `.github/workflows/${s.file}`;
+  const rows = await all<{ number: number | null; sha: string | null; actor_login: string | null; occurred_at: string; raw: string }>(ctx,
+    `SELECT number, sha, actor_login, occurred_at, raw FROM repo_events
+      WHERE org_id = ? AND kind = 'run' AND state = 'success' AND ref = ? AND json_extract(raw, '$.path') = ?
+      ORDER BY occurred_at DESC, id DESC LIMIT ${WORKFLOW_RUNS_READ}`,
+    ctx.orgId, s.branch, path);
+  const seen = new Set<number>();
+  const runs = rows.filter((r) => r.number === null || (!seen.has(r.number) && !!seen.add(r.number))).slice(0, 9);
+  const latest = runs[0];
+  if (!latest) return null;
+  const file = path.slice(".github/workflows/".length);
+  const tagOf = (r: { sha: string | null; raw: string }): string => {
+    let n: unknown = null;
+    try { n = (JSON.parse(r.raw) as { run_number?: unknown }).run_number; } catch { /* no number captured */ }
+    if (typeof n === "number" && Number.isInteger(n) && n > 0) return `${file} #${n}`;
+    return r.sha ? `${file} ${r.sha.slice(0, 7)}` : file;
+  };
+  return releaseFacts(ctx, { tag: tagOf(latest), at: latest.occurred_at, author: latest.actor_login, sha: latest.sha, notes: null },
+    s.branch, runs.slice(1, 9).reverse().map((r) => ({ tag: tagOf(r), at: r.occurred_at })));
+}
+
+/** The release facts once the latest release is chosen: `since` and `waiting` on `branch` from the push that carried
+ *  its commit (else its date), the handles, the cadence as given. */
+async function releaseFacts(
+  ctx: TenantContext, latest: { tag: string; at: string; author: string | null; sha: string | null; notes: string | null },
+  branch: string, cadence: { tag: string; at: string }[],
+): Promise<FactsRelease> {
   const pushed = latest.sha
     ? await first<{ at: string | null }>(ctx, `SELECT MIN(occurred_at) AS at FROM repo_events WHERE org_id = ? AND kind = 'push' AND ref = ? AND sha = ?`, ctx.orgId, branch, latest.sha)
     : null;
-  const start = pushed?.at ?? latest.published_at;
+  const start = pushed?.at ?? latest.at;
 
   const pushSince = await recordingSince(ctx, "push");
   const commits = pushSince !== null && pushSince <= start
@@ -297,15 +347,7 @@ export async function readRelease(ctx: TenantContext, repo: string, app?: string
     return { pr: m.number, title, by: handle(d?.login ?? null), mergedAt: m.merged_at, feature: isFeaturePr(d?.title ?? null, d?.labels ?? []) };
   });
 
-  return {
-    tag: latest.tag,
-    at: latest.published_at,
-    by: handle(latest.author),
-    notes: latest.source === "release" ? releaseNotesText(latest.notes) : null,
-    since: { commits, prs },
-    waiting,
-    cadence: rows.slice(1, 9).reverse().map((r) => ({ tag: r.tag, at: r.published_at })),
-  };
+  return { tag: latest.tag, at: latest.at, by: handle(latest.author), notes: latest.notes, since: { commits, prs }, waiting, cadence };
 }
 
 /** Every tag Trov holds for the repository (releases' tags included — a release IS a tag): the count, the

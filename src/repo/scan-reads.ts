@@ -7,8 +7,8 @@
 //                               each with its matched signals refreshed from the seen signals.
 //   readFound(ctx, repo)        FactsFound: the pending suggestions + the deploy names GitHub has seen.
 //   readUnseen(ctx, repo)       FactsUnseen: what the scan looked for, and what GitHub shows of the repository (tags:
-//                               null — the capture keeps no tags until Phase F; PRs only once the open-PR list was
-//                               read, else null).
+//                               `readTags`, ./releases.ts — null until a reconcile read the repository's releases;
+//                               PRs only once the open-PR list was read, else null).
 import type { FactsFound, FactsUnseen } from "@shared/repo-facts-core";
 import { isAppKind } from "@shared/repo-apps-core";
 import type { AppSuggestionDTO, RepoScanDTO, SeenSignal, SuggestionState } from "@shared/repo-scan-core";

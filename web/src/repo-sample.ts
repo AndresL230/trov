@@ -441,9 +441,8 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
 import { SCENARIO_VARIANTS, type ScenarioKey } from "./repo-sample-keys";
 export { SCENARIO_KEYS, SCENARIO_TITLES, SCENARIO_VARIANTS, REPO_SCENARIOS, isScenarioKey, type ScenarioKey } from "./repo-sample-keys";
 
-// `github` joins HOSTING_PROVIDERS in Phase A (the GitHub-deployments provider); until then the one part that
-// needs it (H's normalizer, on Cloud Run, which no provider reads) names it through this cast.
-const GITHUB_PROVIDER = "github" as string as HostingProviderId;
+// The GitHub-deployments provider: H's normalizer, on Cloud Run (which no provider reads), learns its deploys from GitHub.
+const GITHUB_PROVIDER: HostingProviderId = "github";
 const PROVIDER_OF_HOST: Record<string, HostingProviderId> = {
   Cloudflare: "cloudflare", "Cloudflare Pages": "cloudflare", Railway: "railway", Vercel: "vercel", Render: "render", Netlify: "netlify",
   "Fly.io": "fly", "Cloud Run": GITHUB_PROVIDER,
