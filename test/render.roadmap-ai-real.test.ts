@@ -115,7 +115,9 @@ const screen = async (plan: PlanView, role: "admin" | "member"): Promise<string>
   return render(s);
 };
 
-describe("the Roadmap on real rows: the real read, the real render", () => {
+// Each case seeds through the real writers, reads over HTTP and MCP and loads the SPA's render: ~3s alone, past the
+// default 5s under a loaded full suite (seen 2026-10-15). A slow machine, not a hang.
+describe("the Roadmap on real rows: the real read, the real render", { timeout: 30_000 }, () => {
   it("an admin sees the forecast, the sprint's note, the drift line and both suggestion cards — through the kit", async () => {
     const { sprintId, tickets } = await seedRoadmap();
     await seedAi(sprintId, tickets);
