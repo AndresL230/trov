@@ -20,7 +20,7 @@
 //     connected repository they read unknown until capture is per repository.
 import type { DeployState, HostingProviderId } from "@shared/hosting";
 import {
-  narrowFacts,
+  REPO_WIDE, narrowFacts,
   type AttentionKind, type FactsApp, type FactsAttention, type FactsCi, type FactsConnect, type FactsDeploy, type FactsDriftStep,
   type FactsEnv, type FactsHealth, type FactsNotShipped, type FactsOutOfStep, type FactsPart, type FactsPreview, type FactsWeekFigure,
   type RepoFacts, type WeekKey,
@@ -37,6 +37,7 @@ import {
 } from "../repo/facts-store";
 import { runCounts } from "../repo/reads";
 import { readRepoSettings } from "../data/repo-settings";
+import { readRelease, releaseWeekFigure } from "../repo/releases";
 import { getSnapshot, type HostingPollStateRow } from "../repo/store";
 import type { RepoPrRow } from "../repo/types";
 
@@ -188,7 +189,10 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
     .filter((p) => appIndex.has(p.key) && envIndex.has(p.env) && i.apps[appIndex.get(p.key)!].kind !== "Package")
     .sort((a, b) => appIndex.get(a.key)! - appIndex.get(b.key)! || envIndex.get(a.env)! - envIndex.get(b.env)!);
 
-  const [rows, weekRows, nsSnap, oosSnap, chainSnap, runs, settings] = await Promise.all([
+  // The release block reads the repository's releases (`releases`, per repository — so any connected one), narrowed by
+  // the app's own release signal when the App menu names an app of this repository.
+  const releaseApp = i.app && i.app !== REPO_WIDE && appIndex.has(i.app) ? i.app : null;
+  const [rows, weekRows, nsSnap, oosSnap, chainSnap, runs, settings, release, releasesWeek] = await Promise.all([
     mine.length ? factsDeploys(ctx, previewSince) : Promise.resolve([] as FactsDeployRow[]),
     mine.length ? deployWeekCounts(ctx, weekAgo, twoWeeksAgo) : Promise.resolve([]),
     getSnapshot<NotShippedSnapshot>(ctx, "not_shipped"),
@@ -196,6 +200,8 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
     getSnapshot<DriftChainSnapshot>(ctx, "drift_chain"),
     isPrimary && i.runs.captured ? runCounts(ctx, weekAgo, twoWeeksAgo) : Promise.resolve(null),
     i.repo ? readRepoSettings(ctx, i.repo) : Promise.resolve(null),
+    i.repo ? readRelease(ctx, i.repo, releaseApp) : Promise.resolve(null),
+    i.repo ? releaseWeekFigure(ctx, i.repo, i.now) : Promise.resolve(null),
   ]);
   const of = (p: PartRow) => (r: { env: string; part: string; provider: string }) => r.env === p.env && r.part === p.key && r.provider === p.provider;
 
@@ -327,7 +333,8 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
     fig("failedDeploys", deployCapture ? sum("this_error") : null, deployDeltaOk ? sum("this_error") - sum("last_error") : null),
     fig("openPrs", openPrCount, i.pr.deltaOk ? i.pr.openNow - i.pr.openThen : null),
     fig("commits", isPrimary && i.commits.captured ? i.commits.thisWeek : null, i.commits.deltaOk ? i.commits.thisWeek - i.commits.lastWeek : null),
-    fig("releases", null, null), // releases are Phase F's
+    // Phase F: null until reconcile has read this repository's releases (`releases_reconciled`), then the week's count.
+    releasesWeek ?? fig("releases", null, null),
     fig("ciRuns", runs ? runs.thisWeek : null, runs && runDeltaOk ? runs.thisWeek - runs.lastWeek : null),
   ];
 
@@ -388,7 +395,7 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
 
   const facts: RepoFacts = {
     repo: i.repo, app: null, repos: repos.map((r) => r.repo_full_name), allApps: apps, apps, envs, parts, previews, notShipped,
-    outOfStep, drift, ci, release: null, found: null, unseen: null, week, attention, connect,
+    outOfStep, drift, ci, release, found: null, unseen: null, week, attention, connect,
     // the admin's default Group by for this repository (`repo_settings.overview_group`, 0071), else none
     groupDefault: settings?.overview_group ?? null,
   };

@@ -277,6 +277,21 @@ describe("the facts read — snapshots, CI, attention, the week", () => {
   });
 });
 
+describe("releases (Phase F) in the facts", () => {
+  it("release and the releases week figure come from the repository's releases — null until any is held / read", async () => {
+    await seedWorld();
+    const before = (await factsOf()).f;
+    expect(before.release).toBeNull();
+    expect(before.week.find((x) => x.key === "releases")).toEqual({ key: "releases", value: null, delta: null });
+    await env.DB.prepare(`INSERT INTO releases (org_id, repo, tag, name, published_at, author, notes, source, content_hash, captured_at)
+      VALUES (?, ?, 'v1.2.0', 'v1.2.0', ?, 'jose-a', 'notes', 'release', 'h1', ?)`).bind(ORG_A, PRIMARY, ago(2 * 24 * 60), ago(60)).run();
+    await putSnapshot(systemCtx(ORG_A), "releases_reconciled", { repo: PRIMARY });
+    const after = (await factsOf()).f;
+    expect(after.release).toMatchObject({ tag: "v1.2.0", notes: "notes" });
+    expect(after.week.find((x) => x.key === "releases")?.value).toBe(1);
+  });
+});
+
 describe("the admin's default Group by", () => {
   it("is the repository's repo_settings.overview_group, else null", async () => {
     await seedWorld();
