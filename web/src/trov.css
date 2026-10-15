@@ -2451,6 +2451,30 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .fm-cat { position:relative; color:var(--fg-55); transition:color .16s ease; }
 .fm-cat.is-on { color:var(--fg); }
 .fm-cat.cnpy-menurow:hover { background:transparent; color:var(--fg); }
+/* The typed filter (ai-filter.ts `aiFilterMenuTop`, #162): the popover's first row, "Describe a filter", over a
+   hairline. Choosing it grows its field open in place — a one-track grid, `0fr` → `1fr`, with a fade, on the app's
+   clock (`--fx-base` / `--fx-ease`) — and the chevron turns. The controller flips `data-open` on the LIVE popover,
+   so this transition is what plays; a repaint draws it already open (a new node never transitions). The row rises
+   with the options when the menu opens. Off under reduced motion (the `.fm-pop *` rule below). */
+.fm-ai { padding:6px 6px 6px; border-bottom:1px solid var(--border); }
+.fm-ai-opt { display:flex; align-items:center; gap:9px; width:100%; text-align:left; padding:0 10px; border-radius:7px; font-size:12.5px; font-weight:500; height:32px; color:var(--fg); }
+.fm-ai-opt:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; background:var(--hover); }
+.fm-ai-chev { flex:none; color:var(--fg-40); transition:transform var(--fx-base) var(--fx-ease); }
+.fm-ai[data-open="1"] .fm-ai-chev { transform:rotate(90deg); }
+.fm-ai-box { display:grid; grid-template-rows:0fr; opacity:0; transition:grid-template-rows var(--fx-base) var(--fx-ease), opacity var(--fx-fast) var(--fx-ease); }
+.fm-ai[data-open="1"] .fm-ai-box { grid-template-rows:1fr; opacity:1; }
+.fm-ai-box-in { min-height:0; overflow:hidden; }
+.fm-ai-field { display:flex; align-items:stretch; height:32px; margin:4px 4px 0; box-sizing:border-box; border:1px solid var(--border); border-radius:7px; background:var(--surface); transition:border-color .12s ease; }
+.fm-ai-field:focus-within { border-color:var(--border-strong); outline:2px solid var(--focus); outline-offset:-2px; }
+.fm-ai-field input { flex:1 1 auto; min-width:0; padding:0 10px; }
+.fm-ai-run { display:inline-flex; align-items:center; gap:6px; flex:none; font-size:12.5px; font-weight:500; border:none; border-left:1px solid var(--border); border-radius:0 7px 7px 0; padding:0 11px; white-space:nowrap; color:var(--fg-70); }
+.fm-ai-run:hover, .fm-ai-run:focus-visible { background:var(--hover); color:var(--fg); }
+.fm-ai-run:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
+.fm-ai-err { margin:6px 6px 0; font-size:12px; line-height:1.45; color:var(--red); }
+.fm-ai-note { margin:6px 6px 2px; font-size:11.5px; line-height:1.45; color:var(--fg-55); }
+.fm-pop.is-opening .fm-ai-opt { animation:fm-opt-drop .38s cubic-bezier(.22,.8,.26,1) both; animation-delay:90ms; }
+/* The bar's own focus ring is for its search box and Filter button — not for a filter typed in its popover. */
+.cnpy-sfbar:has(.fm-pop:focus-within) { outline:none; }
 @keyframes fm-in { from { opacity:0; transform:translateY(-6px) scale(.96); } to { opacity:1; transform:none; } }
 @keyframes fm-out { to { opacity:0; transform:translateY(-4px) scale(.98); } }
 @keyframes fm-rise { from { opacity:0; transform:translateX(5px); } to { opacity:1; transform:none; } }

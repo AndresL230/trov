@@ -1,19 +1,20 @@
-// The plain-language filter (#162) — its box on Tickets, the Feed and Artifacts (docs/architecture/ai.md ›
-// The plain-language filter; the acts are ai-filter-actions.ts's). One field — "Describe a filter: my open
-// high-priority bugs" — whose answer is applied to the screen's OWN filter controls, as if the person had
-// set them by hand: they show in the Filter menu, each can be changed there, and Undo puts back what the
-// screen had before. Never results, and nothing here calls a model: the server does, on Enter.
+// The plain-language filter (#162) — a typed filter INSIDE each screen's Filter menu on Tickets, the Feed and
+// Artifacts (docs/architecture/ai.md › The plain-language filter; the acts are ai-filter-actions.ts's). The menu's
+// first row, "Describe a filter", opens a field in place ("my open high-priority bugs"); its answer is applied to
+// the screen's OWN filter controls, as if the person had set them by hand: each shows in the same menu and can be
+// changed there, and Undo puts back what the screen had before. Never results, and nothing here calls a model: the
+// server does, on Enter.
 //
-// Drawn only when the org's AI switch is on (`AiFilterUi.on`, from `GET /ai/settings` once per org) — off
-// is no box at all, never a disabled one. Pure markup over the trov.css tokens.
+// Drawn only when the org's AI switch is on (`AiFilterUi.on`, from `GET /ai/settings` once per org) — off is no
+// row at all, never a disabled one, and the menu is byte-for-byte what it was. Pure markup over the trov.css tokens.
 
 import {
   AI_FILTER_PLACEHOLDER, AI_FILTER_TEXT_MAX,
   type AiFilterByScreen, type AiFilterScreen, type ArtifactsAiFilter, type FeedAiFilter, type TicketsAiFilter,
 } from "@shared/ai-filter-core";
 import { artifactKindLabel } from "@shared/artifacts-core";
+import { aiLeave, aiLeavingT, type AiUi } from "./ai-ui";
 import { aiMark } from "./marks";
-import { anchoredField, fieldError } from "./org-ui";
 import { esc, attr } from "./ui";
 
 /** What the screens' filter state held before a filter was applied — Undo restores it. Opaque here. */
@@ -28,55 +29,80 @@ export interface AiFilterApplied {
 }
 
 export interface AiFilterUi {
-  /** The org the switch was read for, and whether the box is shown there (`enabled`, and a key). */
+  /** The org the switch was read for, and whether the row is shown there (`enabled`, and a key). */
   org: string | null;
   on: boolean;
   drafts: Record<AiFilterScreen, string>;
   busy: AiFilterScreen | null;
   error: Partial<Record<AiFilterScreen, string>>;
   applied: Partial<Record<AiFilterScreen, AiFilterApplied>>;
+  /** The applied line Undo took, drawn on its way out (the AI kit's one exit, `aiFilterLeaveKey`). */
+  undone: Partial<Record<AiFilterScreen, AiFilterApplied>>;
+  /** The screen whose Filter menu shows the field open ("Describe a filter" chosen). A menu opens with it shut. */
+  reveal: AiFilterScreen | null;
 }
 
 export function initialAiFilterUi(): AiFilterUi {
-  return { org: null, on: false, drafts: { tickets: "", feed: "", artifacts: "" }, busy: null, error: {}, applied: {} };
+  return { org: null, on: false, drafts: { tickets: "", feed: "", artifacts: "" }, busy: null, error: {}, applied: {}, undone: {}, reveal: null };
 }
 
-/** The app screen a filter box serves, or null. */
+/** The app screen a typed filter serves, or null. */
 export function aiFilterScreenOf(screen: string): AiFilterScreen | null {
   return screen === "tickets" || screen === "feed" || screen === "artifacts" ? screen : null;
 }
 
-const SEND_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>`;
+/** `AiUi.leaving`'s key for a screen's applied line on its way out after Undo. */
+export const aiFilterLeaveKey = (screen: AiFilterScreen): string => `filter:${screen}`;
 
-/** The box: the field (Enter applies), its Apply button, a floating error, and — once applied — what was set,
- *  what was not a filter here, and Undo. Empty when the org's AI is off. */
-export function aiFilterBox(screen: AiFilterScreen, ui: AiFilterUi): string {
+const SEND_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>`;
+const CHEVRON = `<svg class="fm-ai-chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>`;
+
+/** The Filter menu's top section (filter-menu.ts `top`): the "Describe a filter" row and the field it opens —
+ *  Enter or Apply runs it, a refusal shows under it. "" when the org's AI is off. The field's box is always drawn
+ *  (collapsed and `inert` until chosen) so the controller opens it on the live popover without a repaint, and it
+ *  grows open on the app's clock (trov.css `.fm-ai`). */
+export function aiFilterMenuTop(screen: AiFilterScreen, ui: AiFilterUi): string {
   if (!ui.on) return "";
+  const open = ui.reveal === screen;
   const busy = ui.busy === screen;
   const err = ui.error[screen] ?? null;
-  const applied = ui.applied[screen];
   const id = `ai-filter-${screen}`;
-  const field = `<div class="cnpy-sfbar cnpy-aifilter">
-      <label class="cnpy-sfbar-q" for="${id}">
-        ${aiMark(13, "Trov turns what you type into this screen's filters. Nothing is searched for you: you see and can change each filter.")}
+  return `<div class="fm-ai" data-ai-filter="${screen}" data-open="${open ? "1" : "0"}">
+    <button data-act="aiFilterReveal" data-arg="${screen}" data-field="aiFilterOpt:${screen}" class="cnpy-menurow fm-ai-opt" aria-expanded="${open}" aria-controls="${id}-box">
+      <span style="width:14px;flex:none;display:grid;place-items:center">${aiMark(13)}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Describe a filter</span>
+      ${CHEVRON}
+    </button>
+    <div class="fm-ai-box" id="${id}-box"${open ? "" : " inert"}><div class="fm-ai-box-in">
+      <div class="fm-ai-field">
         <input id="${id}" data-act="aiFilterDraft" data-arg="${screen}" data-field="aiFilter:${screen}" data-enter="aiFilterRun" class="cnpy-search-in" style="font-size:12.5px" placeholder="${attr(AI_FILTER_PLACEHOLDER[screen])}" aria-label="Describe a filter in your own words" maxlength="${AI_FILTER_TEXT_MAX}" value="${attr(ui.drafts[screen])}" autocomplete="off" spellcheck="false"${err ? ` aria-invalid="true" aria-describedby="${id}-e"` : ""}>
-      </label>
-      <span class="cnpy-sfbar-div" aria-hidden="true"></span>
-      <button data-act="aiFilterRun" data-arg="${screen}" class="cnpy-ghostbtn fm-btn" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;border:none;height:100%;padding:0 12px;white-space:nowrap;color:var(--fg-70)"${busy ? ' disabled aria-busy="true"' : ""}>${busy ? "Reading&hellip;" : `Apply${SEND_ICON}`}</button>
-    </div>`;
-  const note = applied ? appliedLine(applied) : "";
-  return `<div class="cnpy-aifilter-row" data-ai-filter="${screen}" style="margin:0 0 10px">
-    ${anchoredField(field, err ? fieldError(`${id}-e`, err) : "")}
-    ${note}
+        <button data-act="aiFilterRun" data-arg="${screen}" class="cnpy-ghostbtn fm-ai-run"${busy ? ' disabled aria-busy="true"' : ""}>${busy ? "Reading&hellip;" : `Apply${SEND_ICON}`}</button>
+      </div>
+      ${err ? `<p id="${id}-e" role="alert" class="fm-ai-err">${esc(err)}</p>` : ""}
+      <p class="fm-ai-note">Trov sets this menu's filters from what you type. Nothing is searched for you.</p>
+    </div></div>
   </div>`;
 }
 
-function appliedLine(a: AiFilterApplied): string {
+/** The line above the screen's toolbar once a typed filter is applied: what was set, what was not a filter here,
+ *  and Undo — and, after Undo, the same line on its way out (the AI kit's one exit). "" otherwise. */
+export function aiFilterLine(screen: AiFilterScreen, ui: AiFilterUi, ai: Partial<Pick<AiUi, "leaving">>, now = Date.now()): string {
+  if (!ui.on) return "";
+  const applied = ui.applied[screen];
+  if (applied) return appliedLine(screen, applied);
+  const undone = ui.undone[screen];
+  if (!undone) return "";
+  const t = aiLeavingT(ai, aiFilterLeaveKey(screen), now);
+  return t === null ? "" : aiLeave(appliedLine(screen, undone), t);
+}
+
+function appliedLine(screen: AiFilterScreen, a: AiFilterApplied): string {
   const set = a.labels.length ? `Filtered: ${a.labels.map(esc).join(" · ")}.` : "";
   const not = a.unmatched.length ? ` Not a filter here: ${a.unmatched.map((u) => `“${esc(u)}”`).join(", ")}.` : "";
-  return `<div role="status" style="display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;margin-top:7px;font-size:12px;line-height:1.5;color:var(--fg-55)">
+  return `<div class="cnpy-aifilter-line" data-ai-filter-line="${screen}" role="status" style="display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;padding:0 0 10px;font-size:12px;line-height:1.5;color:var(--fg-55)">
+    ${aiMark(12, "Set from what you typed in the Filter menu. Each filter shows there and can be changed by hand.")}
     <span>${set}${not}</span>
-    <button data-act="aiFilterUndo" class="cnpy-mutelink" style="font-size:12px;font-weight:500;padding:0">Undo</button>
+    <button data-act="aiFilterUndo" data-arg="${screen}" class="cnpy-mutelink" style="font-size:12px;font-weight:500;padding:0">Undo</button>
   </div>`;
 }
 

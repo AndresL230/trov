@@ -111,9 +111,10 @@ export const AI_FILTER_MESSAGES: Record<AiFilterErrorCode, string> = {
   no_key: "AI isn't available right now.",
 };
 
-/** The input's example, per screen. */
+/** The input's example, per screen. The field opens under the Filter menu's "Describe a filter" option, which
+ *  already says what it is, so the example is only the sentence. */
 export const AI_FILTER_PLACEHOLDER: Record<AiFilterScreen, string> = {
-  tickets: "Describe a filter: my open high-priority bugs",
-  feed: "Describe a filter: my entries from the last 7 days",
-  artifacts: "Describe a filter: published designs about auth",
+  tickets: "my open high-priority bugs",
+  feed: "my entries from the last 7 days",
+  artifacts: "published designs about auth",
 };
