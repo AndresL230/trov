@@ -19,6 +19,7 @@ import type { AppState } from "./render";
 import type { AskPart, AskView } from "./ask-state";
 import { askIcon } from "./ask-icons";
 import { threadsView } from "./ask-threads";
+import { closingAttr } from "./ask-motion";
 
 export interface PhoneUi {
   /** The thread list's drawer is open. */
@@ -36,18 +37,19 @@ export function phoneHeaderControls(app: AppState): string {
 
 export function threadsDrawer(v: AskView): string {
   if (!v.app.phone || !v.ui.phone.drawer) return "";
-  return `<div class="ask-drawer-scrim" data-act="askPhDrawerClose" aria-hidden="true"></div><div class="ask-drawer">${threadsView(v)}</div>`;
+  // MOTION: slides in from the left over a fading scrim (on insertion); closes through `ctx.exit("drawer")`.
+  return `<div class="ask-drawer-layer"${closingAttr(v.ui.closing, "drawer")}><div class="ask-drawer-scrim" data-act="askPhDrawerClose" aria-hidden="true"></div><div class="ask-drawer">${threadsView(v)}</div></div>`;
 }
 
 export const phonePart: AskPart = {
   code: "Ph",
   act(ctx, name) {
     if (name === "askPhDrawer") { ctx.ui.phone.drawer = true; ctx.paint(); return; }
-    if (name === "askPhDrawerClose") { ctx.ui.phone.drawer = false; ctx.paint(); return; }
+    if (name === "askPhDrawerClose") { ctx.exit("drawer", () => { ctx.ui.phone.drawer = false; }); return; }
     if (name === "askPhPlus") { ctx.ui.phone.plus = !ctx.ui.phone.plus; ctx.paint(); return; }
   },
   escape: [
     { layer: "menu", isOpen: (ctx) => ctx.ui.phone.plus, close: (ctx) => { ctx.ui.phone.plus = false; ctx.paint(); } },
-    { layer: "menu", isOpen: (ctx) => ctx.ui.phone.drawer, close: (ctx) => { ctx.ui.phone.drawer = false; ctx.paint(); } },
+    { layer: "menu", isOpen: (ctx) => ctx.ui.phone.drawer, close: (ctx) => ctx.exit("drawer", () => { ctx.ui.phone.drawer = false; }) },
   ],
 };

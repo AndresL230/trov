@@ -23,6 +23,7 @@ import { threadsPart } from "./ask-threads";
 import { closeTop, type EscEntry } from "./ask-escape";
 import { clampInspector, layoutBucket } from "./ask-layout";
 import { HOVER_CARD, placeHoverCard, refsInText, viewOf } from "./ask-refs";
+import { ASK_FX, askEnterNew, askTweenHeights, reducedMotion } from "./ask-motion";
 import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan } from "./ask-replay";
 import { inspectorRef, type AskCtx, type AskPart, type AskSendInput, type AskWhere } from "./ask-state";
 import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, type AskEvent, type RefView } from "@shared/ai-ask-core";
@@ -69,6 +70,27 @@ export function createAskController(host: AskHost): AskController {
     if (isAbort(e)) return;
     if (isUnauthorized(e)) { host.unauth(e); return; }
     host.flash(e instanceof AskApiError && e.message && e.message !== e.code ? e.message : fallback);
+  }
+
+  // ── exits (ask-motion.ts rule 3): flag → paint (CSS animates out) → apply → paint ──
+  const exits = new Map<string, ReturnType<typeof setTimeout>>();
+  function exit(key: string, apply: () => void, ms: number = ASK_FX.exit): void {
+    if (exits.has(key)) return;
+    if (reducedMotion() || typeof window === "undefined") { apply(); paint(); return; }
+    ui().closing = { ...ui().closing, [key]: true };
+    paint();
+    exits.set(key, setTimeout(() => {
+      exits.delete(key);
+      const { [key]: _gone, ...rest } = ui().closing;
+      ui().closing = rest;
+      apply();
+      paint();
+    }, ms));
+  }
+  function cancelExit(key: string): void {
+    const t = exits.get(key);
+    if (t) { clearTimeout(t); exits.delete(key); }
+    if (ui().closing[key]) { const { [key]: _gone, ...rest } = ui().closing; ui().closing = rest; }
   }
 
   // ── ref views: one batched peek for what is not known ────────────────────
@@ -208,7 +230,7 @@ export function createAskController(host: AskHost): AskController {
     paint();
     api.getThread(id).then((d) => {
       if (ui().page.threadId !== id) return;
-      setConvo("page", convoFromDetail(d));
+      setConvo("page", { ...convoFromDetail(d), uid: ui().page.uid });    // the column stays; the skeleton settles
       for (const m of d.messages) { prime(m.cites); want(m.context); }
     }).catch((e) => {
       if (ui().page.threadId !== id) return;
@@ -221,14 +243,19 @@ export function createAskController(host: AskHost): AskController {
     const ins = ui().inspector;
     const stack = ins.where === where ? ins.stack : [];
     const idx = ins.where === where ? ins.idx : -1;
+    cancelExit("inspector");                          // reopened while closing: it stays
     if (idx < 0) ui().threadsForced = null;          // the layout hides the list under 1640px while it is open
     if (stack[idx] !== ref) ui().inspector = { ...ins, where, stack: [...stack.slice(0, idx + 1), ref], idx: idx + 1 };
     else ui().inspector = { ...ins, where };
+    cancelExit("hover");
     ui().hover = null;
     want([ref]);
     paint();
   }
-  function closeInspector(): void { ui().inspector = { ...ui().inspector, stack: [], idx: -1 }; paint(); }
+  function closeInspector(): void {
+    if (inspectorRef(ui()) === null) return;
+    exit("inspector", () => { ui().inspector = { ...ui().inspector, stack: [], idx: -1 }; });
+  }
 
   const ctx: AskCtx = {
     get app() { return s; },
@@ -238,7 +265,7 @@ export function createAskController(host: AskHost): AskController {
     look: () => ({ views: ui().refViews, persons: s.persons.data }),
     paint, flash: (m, ms) => host.flash(m, ms), fail, want,
     send: (input) => { void run(input); },
-    stop, openRef, closeInspector, newThread, openThread, reloadThreads,
+    stop, openRef, closeInspector, newThread, openThread, reloadThreads, exit, cancelExit,
   };
 
   // ── the shell's own acts (`askSh…`) ──────────────────────────────────────
@@ -266,9 +293,11 @@ export function createAskController(host: AskHost): AskController {
   }
 
   // ── DOM: keys, paste, drop, hover cards, the resize edge, the width ──────
+  /** The hover card leaves with its fade (a short exit), unless the pointer comes back to it. */
+  const hideCard = (): void => exit("hover", () => { ui().hover = null; }, 120);
   const escEntries: EscEntry<AskCtx>[] = [
     ...PARTS.flatMap((p) => p.escape ?? []),
-    { layer: "hovercard", isOpen: () => ui().hover !== null, close: () => { ui().hover = null; paint(); } },
+    { layer: "hovercard", isOpen: () => ui().hover !== null, close: () => hideCard() },
     { layer: "inspector", isOpen: () => inspectorRef(ui()) !== null && (s.screen === "ask" || ui().cmdj.open), close: () => closeInspector() },
   ];
   const askOnScreen = () => s.view === "app" && (s.screen === "ask" || ui().cmdj.open);
@@ -301,18 +330,20 @@ export function createAskController(host: AskHost): AskController {
     const showFor = (el: HTMLElement) => {
       const ref = el.dataset.askRef ?? "";
       clear();
+      if (ui().hover?.ref === ref) { cancelExit("hover"); paint(); return; }     // back on the same chip: it stays
       hcTimer = setTimeout(() => {
         if (!el.isConnected || !viewOf(ctx.look(), ref)) return;
         const r = el.getBoundingClientRect();
+        cancelExit("hover");
         ui().hover = { ref, at: placeHoverCard(r, window.innerWidth, window.innerHeight) };
         paint();
       }, HOVER_CARD.delayMs);
     };
-    const hideSoon = () => { clear(); hcTimer = setTimeout(() => { if (ui().hover) { ui().hover = null; paint(); } }, HOVER_CARD.leaveMs); };
+    const hideSoon = () => { clear(); hcTimer = setTimeout(() => { if (ui().hover) hideCard(); }, HOVER_CARD.leaveMs); };
     host.mount.addEventListener("pointerover", (e) => {
       if (e.pointerType === "touch") return;
       const t = e.target as Element | null;
-      if (t?.closest?.(".ask-hc")) { clear(); return; }
+      if (t?.closest?.(".ask-hc")) { clear(); cancelExit("hover"); return; }
       const chip = t?.closest?.<HTMLElement>("[data-ask-ref]");
       if (chip && host.mount.contains(chip)) showFor(chip);
     });
@@ -331,12 +362,14 @@ export function createAskController(host: AskHost): AskController {
       e.preventDefault();
       const frame = edge.closest<HTMLElement>(".ask-insp-frame");
       const x0 = e.clientX, w0 = ui().inspector.width;
+      ui().inspector = { ...ui().inspector, dragging: true };     // no width transition while it follows the pointer
+      paint();
       const move = (ev: PointerEvent) => {
         const w = clampInspector(w0 + (x0 - ev.clientX));
         ui().inspector = { ...ui().inspector, width: w };
         if (frame) frame.style.width = `${w}px`;     // live, without a repaint per pixel
       };
-      const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); paint(); };
+      const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); ui().inspector = { ...ui().inspector, dragging: false }; paint(); };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
     });
@@ -421,6 +454,9 @@ export function createAskController(host: AskHost): AskController {
     afterPaint() {
       if (!askOnScreen()) return;
       for (const p of PARTS) p.afterPaint?.(ctx, host.mount);
+      // Motion (ask-motion.ts): new rows / messages / parts enter once; swapped cards tween their height.
+      askEnterNew(host.mount);
+      askTweenHeights(host.mount);
       // The ⌘J panel on any page: make sure its state is read once.
       if (ui().cmdj.open && ui().state.status === "idle" && !ui().replay) load();
     },

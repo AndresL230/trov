@@ -234,6 +234,9 @@ export interface AskAnswer { role: "assistant"; key: string; turn: AskTurn }
 export type AskMsg = AskQuestion | AskAnswer;
 
 export interface AskConvo {
+  /** The conversation's own key (ask-motion.ts rule 1): it stays when a new thread is named or a stored thread's
+   *  history lands, so the column never re-enters mid-conversation; a new conversation gets a new one. */
+  uid: string;
   /** The thread on screen; null for a new one until its `thread` event arrives. */
   threadId: number | null;
   thread: AskThreadSummary | null;
@@ -245,12 +248,13 @@ export interface AskConvo {
   /** A stream is in flight (Send is Stop). */
   busy: boolean;
 }
-export const emptyConvo = (): AskConvo => ({ threadId: null, thread: null, title: "", messages: [], status: "idle", busy: false });
+let convoSeq = 0;
+export const emptyConvo = (): AskConvo => ({ uid: `c${++convoSeq}`, threadId: null, thread: null, title: "", messages: [], status: "idle", busy: false });
 
 /** The conversation from a stored thread. */
 export function convoFromDetail(d: { thread: AskThreadSummary; messages: AskMessage[] }): AskConvo {
   return {
-    threadId: d.thread.id, thread: d.thread, title: d.thread.title, status: "ok", busy: false,
+    uid: `t${d.thread.id}`, threadId: d.thread.id, thread: d.thread, title: d.thread.title, status: "ok", busy: false,
     messages: d.messages.map((m): AskMsg => m.role === "user"
       ? { role: "user", key: `m${m.id}`, id: m.id, text: m.text, context: m.context, attachments: m.attachments, command: m.command }
       : { role: "assistant", key: `m${m.id}`, turn: turnFromMessage(m) }),

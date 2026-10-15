@@ -209,7 +209,8 @@ export function hoverCard(v: RefView, look: RefLook, at: HoverAt): string {
       if (meta) body += metaLine(esc(meta));
     }
   }
-  return `<div class="ask-hc" role="dialog" aria-label="${attr(v.title)}" data-ask-hc="${attr(v.ref)}" style="left:${Math.round(at.x)}px;top:${Math.round(at.y)}px">
+  // Keyed by the ref: another chip's card is a new element, so it pops in again (ask-motion.ts rule 1).
+  return `<div class="ask-hc" role="dialog" aria-label="${attr(v.title)}" data-ask-hc="${attr(v.ref)}" data-morph-key="hc:${attr(v.ref)}" style="left:${Math.round(at.x)}px;top:${Math.round(at.y)}px">
     ${body}
     <div class="ask-hc-foot"><span>Click to open beside the thread</span><button type="button" data-act="askShOpen" data-arg="${attr(v.ref)}" class="ask-hc-open">Open</button></div>
   </div>`;

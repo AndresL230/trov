@@ -80,6 +80,10 @@ import { previewBanner, previewState, type PreviewMode } from "./preview";
 import { aiItemRef } from "@shared/ai-core";
 import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, AI_NOTE_LEAVING, type AiUi } from "./ai-ui";
 import { aiFilterBox, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
+import { initialAskUi, type AskUi } from "./ask-state";
+import { askScreenView, askHeader, askOverlays } from "./ask-screen";
+import { phoneHeaderControls } from "./ask-phone";
+import { cmdjHeaderButton } from "./ask-cmdj";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
 // Technical | Product). Values come from the data, not a fixed union.
@@ -112,7 +116,9 @@ export type Screen =
   // Org settings: one screen, five tabs (`#org[/<tab>]`, web/src/org-settings.ts).
   | "org"
   // The guided first-run setup: a full page, no sidebar (`#welcome[/<step>]`, web/src/welcome.ts).
-  | "welcome";
+  | "welcome"
+  // Ask Trov (Workspace › Trov): threads, the conversation, the inspector (`#ask[/<thread id>]`, web/src/ask-*.ts).
+  | "ask";
 
 /** Async data slice: a screen's fetched payload plus its load status. */
 export interface Loadable<T> {
@@ -155,6 +161,9 @@ export interface AppState {
   support: SupportDraft;
   /** The guided first-run setup (welcome.ts): its step, and the by-hand disclosure. */
   welcome: WelcomeUi;
+  /** Ask Trov: the screen's reads, its two conversations (the page's and the ⌘J panel's) and every part's state
+   *  (web/src/ask-state.ts). The ⌘J panel opens over any screen, so this lives for the whole session. */
+  ask: AskUi;
   /** `/billing/done`: the waiting room a buyer lands in after Stripe Checkout (billing.ts). null everywhere else. */
   billingDone: BillingDoneUi | null;
   /** The payment page (`/billing/checkout`, embedded checkout): set at boot from the URL, else null. */
@@ -487,6 +496,7 @@ export function initialState(): AppState {
     orgsUi: initialOrgsUi(),
     support: initialSupport(),
     welcome: initialWelcomeUi(),
+    ask: initialAskUi(),
     billingDone: null,
     billingCheckout: null,
     screen: "mywork",
@@ -891,6 +901,7 @@ function header(s: AppState): string {
     releases: "What's new",
     platform: "Platform", platformorg: "Platform",
     org: "Org settings", tag: "Tags",
+    ask: "Trov",
   };
   // dark = "show the moon icon".
   const dark = resolved(s) !== "light";
@@ -981,13 +992,18 @@ function header(s: AppState): string {
   // `.cnpy-menubtn`), where the header also wraps its controls under the title (`.cnpy-hdr`).
   const menuBtn = `<button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="${s.drawer}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button>`;
 
+  // Ask Trov draws its own title ("Trov" is a button: a new thread), crumb (the thread) and, on a phone, the
+  // threads drawer and New thread (ask-screen.ts / ask-phone.ts). The Tickets page gains "Ask about this ⌘J".
+  const ask = s.screen === "ask" ? askHeader(s) : null;
+  const askControls = s.screen === "ask" ? phoneHeaderControls(s) : cmdjHeaderButton(s);
+
   return `<header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
     <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
-      ${menuBtn}${art ? art.title : title}
-      ${art ? art.crumb : crumb}
+      ${menuBtn}${ask ? `${ask.lead}${ask.title}` : art ? art.title : title}
+      ${ask ? ask.crumb : art ? art.crumb : crumb}
     </div>
     <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
-      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedSourceSwitch}${feedViewSwitch}${bugBtn}${themeBtn}
+      ${askControls}${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedSourceSwitch}${feedViewSwitch}${bugBtn}${themeBtn}
     </div>
   </header>`;
 }
@@ -2824,6 +2840,7 @@ function personCardFor(s: AppState, handle: string): string {
 function screenBody(s: AppState): string {
   switch (s.screen) {
     case "mywork": return myWorkView(s);
+    case "ask": return askScreenView(s);
     case "feed": return feedView(s);
     case "docs": return docsView(s);
     case "roadmap": return roadmapView(s);
@@ -2936,7 +2953,10 @@ function appView(s: AppState): string {
     : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen
     // A tag's page too, by tag (another tag is another page): its To review list is keyed, so a row can leave with
     // its animation, and the numbers tick in place instead of the page being rebuilt under them.
-    : s.screen === "tag" ? `tag:${s.tagName ?? ""}` : "";
+    : s.screen === "tag" ? `tag:${s.tagName ?? ""}`
+    // Ask: a keystroke, a streamed word or a hover card never rebuilds the page (the composer keeps its caret,
+    // the conversation its scroll, and nothing that already entered replays its entrance).
+    : s.screen === "ask" ? "ask" : "";
   // The skip link is the shell's first child (a fixed chip, out of the flex row): past the sidebar and the
   // header, to the screen itself. morph.ts patches the aside and swaps <main>; it never touches this.
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
@@ -2996,6 +3016,7 @@ export function render(real: AppState): string {
     ${s.billingCheckout ? billingCheckoutPage(s.billingCheckout, firstRunBackdrop()) : s.billingDone ? billingDonePage(s.billingDone, firstRunBackdrop()) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null, s.dd) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature, menuOpen: s.siteMenu }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
+    ${askOverlays(s)}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}

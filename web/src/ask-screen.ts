@@ -22,6 +22,7 @@ import { composerView } from "./ask-composer";
 import { inspectorBody } from "./ask-inspector";
 import { cmdjOverlay } from "./ask-cmdj";
 import { threadsDrawer } from "./ask-phone";
+import { closingAttr } from "./ask-motion";
 
 /** The inspector's frame for the conversation in `v.where` ("" when it is closed or belongs to the other one). */
 export function inspectorFrame(v: AskView): string {
@@ -32,7 +33,9 @@ export function inspectorFrame(v: AskView): string {
   const trail = ins.stack.slice(0, ins.idx).map((r) => { const x = viewOf(v.look, r); return x ? refShort(x) : refFallbackText(r); });
   const typeWord = view ? refTypeWord(view) : "";
   const sheet = v.app.phone;
-  return `<aside class="ask-insp-frame" aria-label="Inspector" data-sheet="${sheet ? "1" : "0"}" data-where="${v.where}" style="${sheet ? "" : `width:${ins.width}px`}">
+  // Opening slides it in from its edge (the column under it makes room smoothly); closing is `data-closing`
+  // (ask-motion.ts rule 3); `data-dragging` drops the width transition while the edge follows the pointer.
+  return `<aside class="ask-insp-frame" aria-label="Inspector" data-sheet="${sheet ? "1" : "0"}" data-where="${v.where}" data-dragging="${ins.dragging ? "1" : "0"}"${closingAttr(v.ui.closing, "inspector")} style="${sheet ? "" : `width:${ins.width}px;--ask-insp-w:${ins.width}px`}">
     ${sheet ? `<div class="ask-insp-grab" aria-hidden="true"><span></span></div>` : `<div class="ask-insp-resize" data-ask-resize role="separator" aria-orientation="vertical" aria-label="Resize inspector" aria-valuemin="380" aria-valuemax="720" aria-valuenow="${ins.width}" tabindex="0"></div>`}
     <div class="ask-insp-head">
       <button type="button" class="ask-iconbtn" data-act="askShBack" aria-label="Back"${ins.idx > 0 ? "" : " disabled"}>${askIcon("back", 15, null, 2)}</button>
@@ -51,8 +54,12 @@ export function askScreenView(app: AppState): string {
   const lay = askLayout({ vw: ui.vw, phone: app.phone, threadsForced: ui.threadsForced, inspectorOpen: inspectorRef(ui) !== null && ui.inspector.where === "page" });
   const convo = convoOf(v);
   const empty = convo.messages.length === 0 && convo.status !== "loading";
+  // The thread list is ALWAYS emitted on a desktop and slides shut by its width (`data-threads`, a CSS transition),
+  // `inert` while shut; on a phone it is the drawer instead. The conversation's contents are keyed by the
+  // conversation (`uid`), so a new or another thread enters once and a streamed word only patches.
+  const shut = lay.threads !== "column";
   return `<div class="ask-screen" data-ask-root data-threads="${lay.threads}" data-insp="${lay.inspector}" data-empty="${empty ? "1" : "0"}">
-    <aside class="ask-threads" aria-label="Threads"${lay.threads === "column" ? "" : " hidden"}>${lay.threads === "column" ? threadsView(v) : ""}</aside>
+    <aside class="ask-threads" aria-label="Threads"${shut ? ` inert aria-hidden="true"` : ""}>${app.phone ? "" : threadsView(v)}</aside>
     <section class="ask-conv" aria-label="Conversation" data-ask-drop="page">
       <div class="ask-scroll" data-ask-scroll="page">${empty ? emptyView(v) : conversationView(v)}</div>
       ${composerView(v)}
@@ -85,6 +92,6 @@ export function askOverlays(app: AppState): string {
   const ui = app.ask;
   const v = askView(app, "page");
   const hv = ui.hover ? viewOf(v.look, ui.hover.ref) : null;
-  const card = ui.hover && hv ? `<div data-overlay="ask-hc" class="ask-hc-layer">${hoverCard(hv, v.look, ui.hover.at)}</div>` : "";
+  const card = ui.hover && hv ? `<div data-overlay="ask-hc" class="ask-hc-layer"${closingAttr(ui.closing, "hover")}>${hoverCard(hv, v.look, ui.hover.at)}</div>` : "";
   return `${card}${cmdjOverlay(app)}`;
 }

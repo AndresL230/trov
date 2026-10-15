@@ -8,6 +8,8 @@
 import { esc, attr } from "./ui";
 import type { AskCtx, AskPart, AskView } from "./ask-state";
 import { askIcon } from "./ask-icons";
+import { closingAttr } from "./ask-motion";
+import { skeleton, skList, skLine, skW } from "./skeleton";
 import type { AskSearchHit, AskThreadGroup, AskThreadSummary } from "@shared/ai-ask-core";
 
 const GROUP_LABEL: Record<AskThreadGroup, string> = { pinned: "Pinned", today: "Today", week: "This week", earlier: "Earlier" };
@@ -35,8 +37,8 @@ export function snippetHtml(s: AskSearchHit["snippet"]): string {
   return out + esc(s.text.slice(at));
 }
 
-function menu(t: AskThreadSummary): string {
-  return `<div class="ask-menu ask-th-menu" role="menu" aria-label="Thread actions">
+function menu(v: AskView, t: AskThreadSummary): string {
+  return `<div class="ask-menu ask-th-menu" role="menu" aria-label="Thread actions"${closingAttr(v.ui.closing, "menu")}>
     <button type="button" role="menuitem" data-act="askThRename" data-arg="${t.id}">${askIcon("rename", 14)}Rename</button>
     <button type="button" role="menuitem" data-act="askThPin" data-arg="${t.id}">${askIcon("pin", 14)}${t.pinned ? "Unpin" : "Pin"}</button>
     <button type="button" role="menuitem" data-act="askThExport" data-arg="${t.id}">${askIcon("download", 14)}Export as markdown</button>
@@ -48,8 +50,11 @@ function menu(t: AskThreadSummary): string {
 function row(v: AskView, t: AskThreadSummary, hit: AskSearchHit | null): string {
   const on = v.app.screen === "ask" && v.ui.page.threadId === t.id;
   const open = v.ui.threadMenu === t.id;
+  // A row is a one-track grid around its content (`.ask-th-in`), so `data-closing` collapses it with no measuring
+  // and the rows under it move up as the same elements (web-ui.md › A row leaving a list).
+  const leaving = closingAttr(v.ui.closing, `th:${t.id}`);
   if (v.ui.renaming?.id === t.id) {
-    return `<div class="ask-th" data-morph-key="th:${t.id}"><input class="ask-th-rename" data-act="askThRenameText" data-arg="${t.id}" data-field="askThRename" data-ask-rename="${t.id}" value="${attr(v.ui.renaming.text)}" aria-label="Thread name" maxlength="80" /></div>`;
+    return `<div class="ask-th" data-morph-key="th:${t.id}"${leaving}><div class="ask-th-in"><input class="ask-th-rename" data-act="askThRenameText" data-arg="${t.id}" data-field="askThRename" data-ask-rename="${t.id}" value="${attr(v.ui.renaming.text)}" aria-label="Thread name" maxlength="80" /></div></div>`;
   }
   const time = `<span class="ask-th-at">${esc(threadTime(t))}</span>`;
   const main = hit
@@ -59,7 +64,7 @@ function row(v: AskView, t: AskThreadSummary, hit: AskSearchHit | null): string 
         <span class="ask-th-count">${hit.matchCount} ${hit.matchCount === 1 ? "match" : "matches"}</span>
       </button>`
     : `<button type="button" class="ask-th-b${on ? " is-on" : ""}" data-act="askThOpen" data-arg="${t.id}"${on ? ' aria-current="page"' : ""}><span class="ask-th-title">${esc(t.title || "New thread")}</span>${time}</button>`;
-  return `<div class="ask-th${open ? " is-menu" : ""}" data-morph-key="th:${t.id}">${main}<button type="button" class="ask-th-more" data-act="askThMore" data-arg="${t.id}" aria-label="Thread actions" aria-haspopup="menu" aria-expanded="${open}">${askIcon("more", 14)}</button>${open ? menu(t) : ""}</div>`;
+  return `<div class="ask-th${open ? " is-menu" : ""}" data-morph-key="th:${t.id}"${leaving}${leaving ? " inert" : ""}><div class="ask-th-in">${main}<button type="button" class="ask-th-more" data-act="askThMore" data-arg="${t.id}" aria-label="Thread actions" aria-haspopup="menu" aria-expanded="${open}">${askIcon("more", 14)}</button>${open ? menu(v, t) : ""}</div></div>`;
 }
 
 /** The whole list: New thread, the search box, then the groups (or the search's hits). */
@@ -72,16 +77,18 @@ export function threadsView(v: AskView): string {
     body = !hits || hits.status === "loading" ? `<div class="ask-th-head">Searching…</div>`
       : hits.status === "error" ? `<div class="ask-th-none">Couldn't search threads.</div>`
       : `<div class="ask-th-head">${hits.data.length} ${hits.data.length === 1 ? "thread" : "threads"}</div>${hits.data.length
-        ? `<div class="ask-th-list">${hits.data.map((h) => row(v, h.thread, h)).join("")}</div>`
+        ? `<div class="ask-th-list" data-morph-list data-ask-enter="fade">${hits.data.map((h) => row(v, h.thread, h)).join("")}</div>`
         : `<div class="ask-th-none">No thread mentions “${esc(q)}”.</div>`}`;
   } else if (ui.threads.status === "loading" && !ui.threads.data.length) {
-    body = `<div class="ask-th-head">Threads</div><div class="ask-th-skel" aria-busy="true"></div>`;
+    body = skeleton("ask-threads", "Loading your threads…", `<div class="ask-th-head">${skLine("32%", 11.5, 1.4)}</div>${skList(6, (i) => `<div class="ask-th-skrow">${skLine(skW(i), 13, 1.5)}</div>`)}`);
   } else if (ui.threads.status === "error" && !ui.threads.data.length) {
     body = `<div class="ask-th-none">Couldn't load your threads.</div>`;
   } else {
     body = GROUPS.map((g) => {
       const rows = ui.threads.data.filter((t) => (t.pinned ? "pinned" : t.group) === g);
-      return rows.length ? `<div class="ask-th-head">${GROUP_LABEL[g]}</div><div class="ask-th-list">${rows.map((t) => row(v, t, null)).join("")}</div>` : "";
+      // Each group is a keyed list (`data-morph-list`): a new thread's row rises in, a pinned one moves groups, a
+      // deleted one collapses — and a repaint never replays a row (ask-motion.ts rule 2).
+      return rows.length ? `<div class="ask-th-head">${GROUP_LABEL[g]}</div><div class="ask-th-list" data-morph-list data-ask-enter="rise">${rows.map((t) => row(v, t, null)).join("")}</div>` : "";
     }).join("") || `<div class="ask-th-none">No threads yet. Ask something to start one.</div>`;
   }
   return `<div class="ask-threads-in">
@@ -144,7 +151,10 @@ export const threadsPart: AskPart = {
       case "askThOpen": ctx.ui.threadMenu = null; ctx.ui.phone.drawer = false; if (id > 0) ctx.openThread(id); return;
       case "askThQ": ctx.ui.threadQ = value ?? ""; ctx.ui.threadMenu = null; search(ctx); ctx.paint(); return;
       case "askThClear": ctx.ui.threadQ = ""; search(ctx); return;
-      case "askThMore": ctx.ui.threadMenu = ctx.ui.threadMenu === id ? null : id; ctx.paint(); return;
+      case "askThMore":
+        if (ctx.ui.threadMenu === id) { ctx.exit("menu", () => { ctx.ui.threadMenu = null; }, 120); return; }
+        ctx.cancelExit("menu");
+        ctx.ui.threadMenu = id; ctx.paint(); return;
       case "askThRename": {
         const t = threadById(ctx, id);
         ctx.ui.threadMenu = null;
@@ -176,10 +186,12 @@ export const threadsPart: AskPart = {
         const t = threadById(ctx, id);
         ctx.ui.threadMenu = null;
         if (!t) return;
-        ctx.ui.threads.data = ctx.ui.threads.data.filter((x) => x.id !== id);
-        if (ctx.ui.hits) ctx.ui.hits = { ...ctx.ui.hits, data: ctx.ui.hits.data.filter((h) => h.thread.id !== id) };
         if (ctx.ui.page.threadId === id) ctx.newThread("page");
-        ctx.paint();
+        // The row collapses first (its exit), then leaves the list; the write goes out at once.
+        ctx.exit(`th:${id}`, () => {
+          ctx.ui.threads.data = ctx.ui.threads.data.filter((x) => x.id !== id);
+          if (ctx.ui.hits) ctx.ui.hits = { ...ctx.ui.hits, data: ctx.ui.hits.data.filter((h) => h.thread.id !== id) };
+        });
         ctx.api.deleteThread(id).then(() => ctx.flash(`Deleted ${t.title || "the thread"}`)).catch((e) => { ctx.fail(e, "Couldn't delete the thread."); ctx.reloadThreads(); });
         return;
       }
@@ -197,5 +209,5 @@ export const threadsPart: AskPart = {
     if (e.type === "focusout" && (e.target as Element | null)?.closest?.("[data-ask-rename]")) { commitRename(ctx); return true; }
     return false;
   },
-  escape: [{ layer: "menu", isOpen: (ctx) => ctx.ui.threadMenu !== null, close: (ctx) => { ctx.ui.threadMenu = null; ctx.paint(); } }],
+  escape: [{ layer: "menu", isOpen: (ctx) => ctx.ui.threadMenu !== null, close: (ctx) => ctx.exit("menu", () => { ctx.ui.threadMenu = null; }, 120) }],
 };

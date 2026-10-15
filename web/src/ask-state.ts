@@ -60,9 +60,12 @@ export interface AskUi {
   /** The window's width, kept by the controller (only bucket crossings repaint). */
   vw: number;
   /** The inspector: a stack of refs with a cursor (Back steps down it), its width, and which conversation opened it. */
-  inspector: { stack: string[]; idx: number; width: number; where: AskWhere };
+  inspector: { stack: string[]; idx: number; width: number; where: AskWhere; dragging: boolean };
   /** The hover card on screen, if any. */
   hover: { ref: string; at: HoverAt } | null;
+  /** What is animating out right now (ask-motion.ts rule 3): `inspector`, `cmdj`, `hover`, `menu`, `drawer`, `plus`,
+   *  `th:<id>`… The renderer emits `data-closing` for it (`closingAttr`); the controller owns the timers. */
+  closing: Record<string, true>;
   /** The dev replay driving the screen (`?askReplay=<scenario>`), or null. */
   replay: { scenario: string; speed: number } | null;
   // ── the parts' own state ──
@@ -83,8 +86,9 @@ export function initialAskUi(): AskUi {
     refViews: {},
     threadsForced: null,
     vw: typeof window !== "undefined" ? window.innerWidth : 1440,
-    inspector: { stack: [], idx: -1, width: ASK_INSPECTOR.width, where: "page" },
+    inspector: { stack: [], idx: -1, width: ASK_INSPECTOR.width, where: "page", dragging: false },
     hover: null,
+    closing: {},
     replay: null,
     conversation: initialConversationUi(),
     composer: { page: initialComposerUi(), panel: initialComposerUi() },
@@ -154,6 +158,11 @@ export interface AskCtx {
   openThread(id: number): void;
   /** Reload the thread list (after a rename, a pin, a delete, a new thread's title). */
   reloadThreads(): void;
+  /** Animate `key` out, then run `apply` (the state change that removes it) and repaint (ask-motion.ts rule 3).
+   *  Under reduced motion `apply` runs at once. A second exit of the same key while one runs is ignored. */
+  exit(key: string, apply: () => void, ms?: number): void;
+  /** Keep `key`: stop its exit (and drop the flag) without running `apply`. */
+  cancelExit(key: string): void;
 }
 
 /** One part, as the controller knows it (ask-controller.ts `PARTS`). Everything is optional. */

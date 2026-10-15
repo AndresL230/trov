@@ -25,6 +25,7 @@ import { askIcon, trovMark } from "./ask-icons";
 import { conversationView, emptyView } from "./ask-conversation";
 import { composerView } from "./ask-composer";
 import { inspectorFrame } from "./ask-screen";
+import { closingAttr } from "./ask-motion";
 
 export interface CmdjUi {
   open: boolean;
@@ -43,12 +44,14 @@ export function pageRef(app: AppState): string | null {
 }
 
 export function cmdjOverlay(app: AppState): string {
-  const ui = app.ask.cmdj;
+  const ui = { ...app.ask.cmdj, closing: app.ask.closing };
   if (!ui.open || app.screen === "ask" || app.view !== "app") return "";
   const v = askView(app, "panel");
   const convo = v.ui.panel;
   const insp = v.ui.inspector.where === "panel" ? inspectorFrame(v) : "";
-  return `<div data-overlay="ask-panel" class="ask-panel-layer">
+  // MOTION: the panel slides in from the right and the scrim fades (trov.css, on insertion); closing goes through
+  // `ctx.exit("cmdj", …)` so `data-closing` plays them out (ask-motion.ts rule 3).
+  return `<div data-overlay="ask-panel" class="ask-panel-layer"${closingAttr(ui.closing ?? {}, "cmdj")}>
     <div class="ask-scrim" data-act="askCjClose" aria-hidden="true"></div>
     ${insp}
     <section class="ask-panel" role="dialog" aria-label="Ask Trov">
@@ -69,7 +72,8 @@ export function cmdjHeaderButton(app: AppState): string {
 
 export function cmdjToggle(ctx: AskCtx): void {
   const ui = ctx.ui.cmdj;
-  if (ui.open) { ui.open = false; ctx.paint(); return; }
+  if (ui.open) { closePanel(ctx); return; }
+  ctx.cancelExit("cmdj");
   const ref = pageRef(ctx.app);
   // Another page's item: a fresh panel thread about it.
   if (ref !== ui.contextRef) { ctx.newThread("panel"); ctx.ui.composer.panel.context = ref ? [ref] : []; }
@@ -78,11 +82,19 @@ export function cmdjToggle(ctx: AskCtx): void {
   ctx.paint();
 }
 
+/** Close the panel with its exit (and the inspector it opened, with it). */
+export function closePanel(ctx: AskCtx): void {
+  ctx.exit("cmdj", () => {
+    ctx.ui.cmdj.open = false;
+    if (ctx.ui.inspector.where === "panel") ctx.ui.inspector = { ...ctx.ui.inspector, stack: [], idx: -1 };
+  });
+}
+
 export const cmdjPart: AskPart = {
   code: "Cj",
   act(ctx, name) {
     if (name === "askCjOpen") { if (!ctx.ui.cmdj.open) cmdjToggle(ctx); return; }
-    if (name === "askCjClose") { ctx.ui.cmdj.open = false; if (ctx.ui.inspector.where === "panel") ctx.closeInspector(); ctx.paint(); return; }
+    if (name === "askCjClose") { closePanel(ctx); return; }
     if (name === "askCjOpenThread") {
       const id = ctx.ui.panel.threadId;
       ctx.ui.cmdj.open = false;
@@ -90,6 +102,6 @@ export const cmdjPart: AskPart = {
       return;
     }
   },
-  escape: [{ layer: "cmdj", isOpen: (ctx) => ctx.ui.cmdj.open && ctx.app.screen !== "ask", close: (ctx) => { ctx.ui.cmdj.open = false; ctx.paint(); } }],
+  escape: [{ layer: "cmdj", isOpen: (ctx) => ctx.ui.cmdj.open && ctx.app.screen !== "ask", close: (ctx) => closePanel(ctx) }],
 };
 
