@@ -17,10 +17,16 @@ export const platformContext: MiddlewareHandler<AppEnv> = async (c, next) => {
  * existence is not disclosed — and a SUSPENDED org (0042_organizations) answers the same 404, from the same one
  * statement (`resolveTenant`). Runs after sessionGate.
  * Meters the request (src/data/meter.ts) once the tenant is known.
+ * The membership was usually read already, in the session gate's own statement (`c.var.tenantHint`,
+ * `resolveSessionTenant` — `resolveTenant`'s statement joined to the session row): it is used only when it
+ * is for THIS person and THIS slug, and `resolveTenant` reads it otherwise (DEV_LOGIN, a path the hint
+ * parsed differently, a gate mounted without sessionGate's hint).
  */
 export const tenantGate: MiddlewareHandler<AppEnv> = async (c, next) => {
   const handle = c.get("principal").handle;
-  const ctx = await resolveTenant(c.env, handle, c.req.param("slug") ?? "");
+  const slug = c.req.param("slug") ?? "";
+  const hint = c.get("tenantHint");
+  const ctx = hint && hint.handle === handle && hint.slug === slug ? hint.ctx : await resolveTenant(c.env, handle, slug);
   if (!ctx) return c.json({ error: "not_found" }, 404);
   c.set("ctx", ctx);
   meterApiRequest(c, c.var.p ?? platform(c.env, handle), ctx); // the gate does not rely on `platformContext` having run

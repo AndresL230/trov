@@ -1,14 +1,19 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { Env } from "../env";
-import { readSessionCookie, getSessionUser } from "./session";
-import { platform, type PlatformContext, type TenantContext } from "../data/context";
+import { readSessionCookie, getSessionUser, sessionLive } from "./session";
+import { platform, resolveSessionTenant, type PlatformContext, type TenantContext } from "../data/context";
 
 export interface Principal {
   handle: string;
 }
 
+/** What `sessionGate` already knows about a `/api/o/:slug/*` request's org, from the SAME statement that read
+ *  the session (`resolveSessionTenant`): `tenantGate` takes `ctx` from here when the person and the slug are
+ *  the ones it resolves, and reads them itself otherwise. */
+export interface TenantHint { handle: string; slug: string; ctx: TenantContext | null }
+
 // `p` (every request) and `ctx` (every tenant route) are set by the middlewares in src/data/gate.ts.
-export type AppEnv = { Bindings: Env; Variables: { principal: Principal; p: PlatformContext; ctx: TenantContext } };
+export type AppEnv = { Bindings: Env; Variables: { principal: Principal; p: PlatformContext; ctx: TenantContext; tenantHint: TenantHint | undefined } };
 
 // The only routes reachable without a session. Everything else is gated.
 const PUBLIC_PATHS = new Set([
@@ -43,6 +48,26 @@ export async function resolveSessionPrincipal(c: Context<AppEnv>): Promise<Princ
   return handle ? { handle } : null;
 }
 
+/** The org segment of a `/api/o/<slug>/…` path, decoded as a route parameter is — or null for any other
+ *  path (or one that does not decode). Only a HINT: `tenantGate` compares it with its own `:slug`. */
+export function tenantPathSlug(path: string): string | null {
+  const m = /^\/api\/o\/([^/]+)(?:\/|$)/.exec(path);
+  if (!m) return null;
+  try { return decodeURIComponent(m[1]); } catch { return null; }
+}
+
+/** `resolveSessionPrincipal` for a `/api/o/<slug>/…` request: the session AND that org's membership in one
+ *  statement. The session's answer is the same — no row, or an expired one, is no principal — and the org
+ *  half is left for `tenantGate` (`c.var.tenantHint`). */
+async function resolveSessionPrincipalWithTenant(c: Context<AppEnv>, slug: string): Promise<Principal | null> {
+  const id = await readSessionCookie(c, c.env.COOKIE_SECRET);
+  if (!id) return null;
+  const row = await resolveSessionTenant(c.env, id, slug);
+  if (!row || !sessionLive(row.expiresAt)) return null;
+  c.set("tenantHint", { handle: row.person, slug, ctx: row.ctx });
+  return { handle: row.person };
+}
+
 /**
  * Gate every route except the two public auth paths. Fails closed: 401 with no
  * data in the body. On success, sets the principal on the context for handlers.
@@ -57,7 +82,10 @@ export const sessionGate: MiddlewareHandler<AppEnv> = async (c, next) => {
     c.set("principal", { handle: c.env.DEV_LOGIN });
     return next();
   }
-  const principal = await resolveSessionPrincipal(c);
+  // A tenant path reads its org in the same round trip as the session (docs/architecture/data-layer.md ›
+  // Round trips); every other path, the session alone.
+  const slug = tenantPathSlug(c.req.path);
+  const principal = slug === null ? await resolveSessionPrincipal(c) : await resolveSessionPrincipalWithTenant(c, slug);
   if (!principal) return c.json({ error: "unauthorized" }, 401);
   c.set("principal", principal);
   return next();

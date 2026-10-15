@@ -71,8 +71,8 @@ async function cookieFor(handle: string): Promise<string> {
   const { id } = await createSession(platformCtx(), handle);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
-/** What the gates cost a `/api/o/:slug/*` request before its handler runs. */
-const GATE = 2;
+/** What the gates cost a `/api/o/:slug/*` request before its handler runs: the session and the membership, ONE statement (was 2). */
+const GATE = 1;
 
 const statuses =(d: object): Record<string, unknown> =>
   Object.fromEntries(Object.entries(d).filter(([, v]) => typeof v === "object" && v !== null).map(([k, v]) => [k, (v as { status: string }).status]));
@@ -112,8 +112,8 @@ describe("D1 round trips", () => {
     const res = await app.request("/api/o/saplinglearn/repo/dashboard", { headers: { cookie } }, c.env);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ degraded: false, prs: { status: "ok" }, environments: { status: "ok" } });
-    // Was 40 of 44 before the dashboard's reads ran as a dataflow.
-    expect(c.total).toBe(44);
+    // Was 40 of 44 before the dashboard's reads ran as a dataflow and the session gate read the membership in its own statement.
+    expect(c.total).toBe(43);
     expect(c.serial).toBe(GATE + 1 + 3);
   });
 
