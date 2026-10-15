@@ -10,7 +10,7 @@
 // so each part can be built and screenshotted without a key. A part that needs more set-up for its scenario
 // adds it to `replayPlan`'s `setup` (one case per scenario — merge-friendly).
 
-import type { AskActionAnswer, AskEvent, AskEventMap, AskState, PeekResult, RefView } from "@shared/ai-ask-core";
+import { askRepoFacts, type AskActionAnswer, type AskEvent, type AskEventMap, type AskState, type PeekResult, type RefView } from "@shared/ai-ask-core";
 import { getReplayIndex, streamReplay, type AskApi, type AskReplayIndex } from "./ask-api";
 import type { AskCtx, AskWhere } from "./ask-state";
 import { COMPOSER_STATES, type ComposerForced } from "./ask-composer";
@@ -146,5 +146,19 @@ export function createReplayApi(index: AskReplayIndex, plan: ReplayPlan, speed: 
   };
 }
 
-/** Load the replay's index (the fixtures). */
-export const loadReplayIndex = getReplayIndex;
+/** The scenario a replay's repository plays (#186): the Repo Overview's own sample, never a sample of Ask's — N /
+ *  `trov` is Trov's repository in trouble (B/trouble: checks failing on main, a deploy that failed). */
+export const REPLAY_REPO_SCENARIO = { key: "N", variant: "trov" } as const;
+
+/** Load the replay's index (the fixtures), with every repo ref's facts filled from the Overview's sample scenario
+ *  (web/src/repo-sample.ts, loaded on demand like the Overview's own sample switch). */
+export async function loadReplayIndex(): Promise<AskReplayIndex> {
+  const index = await getReplayIndex();
+  const repos = Object.values(index.refs).filter((v) => v.type === "repo" && !v.extra.facts);
+  if (repos.length) {
+    const { repoScenario } = await import("./repo-sample");
+    const facts = askRepoFacts(repoScenario(REPLAY_REPO_SCENARIO.key, REPLAY_REPO_SCENARIO.variant));
+    for (const v of repos) v.extra = { ...v.extra, facts };
+  }
+  return index;
+}

@@ -13,6 +13,7 @@ import { all, first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
 import { ORG_A, platformCtx, tenantCtx } from "./helpers/tenant";
 import { BASE, ask, call, eventsOf, fakeModel, withAsk } from "./helpers/ask";
+import { addOrgRepo } from "./helpers/org-config";
 
 const ME = "ask-viewer";
 const final = (title = "Views") => `\n<trov-meta>{"title": "${title}", "followups": []}</trov-meta>`;
@@ -39,6 +40,25 @@ describe("peek and the inspector", () => {
     // The owner sees their own private page.
     const own = await call("POST", `${BASE}/ask/peek`, await cookieFor("AndresL230"), { refs: [`artifact:${theirs.slug}`] });
     expect(own.json.items[0]).toMatchObject({ title: "Their secret", status: { word: "Private" } });
+  });
+});
+
+describe("a repo ref (#186) — the Repo Overview's facts, never a state of Ask's own", () => {
+  it("peek reads RepoFacts (the dashboard's projection): status null, nothing captured has nothing to call Healthy", async () => {
+    await addOrgRepo("acme/peek-repo");
+    const r = await call("POST", `${BASE}/ask/peek`, await cookieFor(ME), { refs: ["repo:acme/peek-repo", "repo:nobody/else"] });
+    expect(r.status).toBe(200);
+    const [repo, other] = r.json.items;
+    expect(RefViewSchema.parse(repo)).toMatchObject({ ref: "repo:acme/peek-repo", type: "repo", title: "acme/peek-repo", status: null, href: "#repo" });
+    const facts = repo.extra.facts;
+    expect(facts.repo).toBe("acme/peek-repo");
+    // Nothing deployed or captured yet: no part, so no environment to judge (the client draws Unknown), and no CI
+    // state that could read as passing.
+    expect(facts.parts).toEqual([]);
+    expect(facts.envs).toEqual([]);
+    expect(facts.ci.every((c: { state: string | null }) => c.state !== "pass")).toBe(true);
+    expect(Object.keys(repo.extra)).toEqual(["facts"]);
+    expect(other).toEqual({ ref: "repo:nobody/else", hidden: true });
   });
 });
 

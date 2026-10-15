@@ -359,7 +359,14 @@ the per-type routes where they exist); the header from the RefView.
 - **sprint** (`insp:sprint` = Hosting): title; "Oct 5 – Oct 30" · **"Due Fri, Oct 30"** · lead; goal; "58%" + **"7 of 12
   tickets done"**; a 6px progress bar (accent, `ask-wipe`); amber warn + forecast **"At this pace, done Nov 2, 3 days
   late"**; tickets grouped by status (glyph + label + count), rows `#14` title avatar; done group "and N more".
-- **repo** (`insp:repo`): mono title; **Environments** rows (name 84px, url mono, mark + Healthy/Degraded); **Last deploy**
+- **repo** (`insp:repo`) — **#186 rules over the design**: everything from `extra.facts` (RepoFacts, the Overview's
+  one projection; `repoFactsOf`), each environment's mark = the Overview's `envVerdict` drawn with `stateMark`
+  (`verdictMark` / `repoVerdicts` / `repoMark` in ask-refs.ts — Healthy ONLY when `ci.state` is pass; no or running
+  checks = Live; null = Unknown, never zero, never "Up to date"), environments by label, hosts by the part's label
+  (never a provider id), CI wording = `ciLine` (web/src/repo-verdict.ts); a monorepo shows its apps (facts are
+  unnarrowed: every app); the replay's facts are the Overview's sample scenario N / `trov` (`REPLAY_REPO_SCENARIO`,
+  web/src/repo-sample.ts — reuse scenarios A–N, never a sample repo of Ask's own); "where it's connected" links go to
+  Org settings › Integrations / Hosting / Environments / Repositories › Apps. The design, for layout: mono title; **Environments** rows (name 84px, url mono, mark + Healthy/Degraded); **Last deploy**
   (dot + Production; `a1c9e2f · 3h ago · andres`) / **CI on main** (diamond + "Failing"; test · run #1482 · 40m ago);
   **State** box: headline 14.5px/600 + Shipped (check) / In flight (ring blue) / At risk (triangle) lists.
 - **handoff** (`insp:handoff` = #11): "Handoff #11"; title; Pending mark + "Today, 9:20"; From avatar → To "Anyone";
@@ -392,7 +399,7 @@ the per-type routes where they exist); the header from the RefView.
 - Footer: **"Click to open beside the thread"** (11.5px fg-40) … **Open** (accent).
 - From `RefView.extra` (ticket: priority, assignees, sprint; pr: author, head, base, checks; doc: space, version, owner,
   excerpt; person: role, workingOn; sprint: due, progress; handoff: from, to, task; artifact: kind, visibility, version;
-  repo: ci).
+  repo: `facts` — the environments' verdict marks and the head environment's `ciLine`, drawn by `hoverCard`).
 
 ## 8. ⌘J panel (`cmdj`) — L284–297, L1196–1197, L1803–1804, L1811–1812
 

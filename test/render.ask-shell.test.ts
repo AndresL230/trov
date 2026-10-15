@@ -235,3 +235,44 @@ describe("motion — the hooks every part inherits (web/src/ask-motion.ts)", () 
     }
   });
 });
+
+// ── a repository (#186): the Overview's facts, its verdict and its marks ─────
+import { repoScenario, SCENARIO_KEYS, SCENARIO_VARIANTS } from "../web/src/repo-sample";
+import { envVerdict, VERDICT } from "../web/src/repo-verdict";
+import { stateMark } from "../web/src/marks";
+import { hoverCard, repoFactsOf, repoMark, repoVerdicts } from "../web/src/ask-refs";
+import { askRepoFacts, type RefView } from "@shared/ai-ask-core";
+
+describe("a repo ref — RepoFacts, the Overview's verdict, stateMark (#186)", () => {
+  const view = (facts: unknown): RefView => ({ ref: "repo:AndresL230/trov", type: "repo", title: "AndresL230/trov", status: null, href: "#repo", extra: { facts } });
+  const look = { views: {}, persons: [] };
+
+  it.each(SCENARIO_KEYS.flatMap((k) => SCENARIO_VARIANTS[k].map((v) => [k, v] as const)))("scenario %s/%s: every environment's mark is the Overview's", (k, variant) => {
+    const facts = askRepoFacts(repoScenario(k, variant, { now: NOW.getTime() }));
+    const v = view(facts);
+    expect(repoFactsOf(v)).toEqual(facts);
+    const rows = repoVerdicts(facts);
+    expect(rows.map((r) => r.verdict)).toEqual([...facts.envs].sort((a, b) => a.position - b.position).map((e) => envVerdict(facts, e.key)));
+    for (const { verdict, env } of rows) {
+      // Healthy only when the branch head's checks PASS; otherwise never Healthy.
+      if (verdict.key === "healthy") expect(facts.ci.find((c) => c.env === env.key)?.state).toBe("pass");
+    }
+    const card = hoverCard(v, look, { x: 0, y: 0 });
+    for (const { env, verdict } of rows.slice(0, 3)) {
+      expect(card).toContain(esc(env.name));
+      expect(card).toContain(stateMark(verdict.word, verdict.tone, verdict.shape, 12, verdict.tip));
+    }
+    // No provider id stands in for a host, and no part history beyond the newest deploy rides along.
+    expect(facts.parts.every((p) => p.history.length <= 1)).toBe(true);
+  });
+
+  it("no facts is Unknown — never Healthy, never zero", () => {
+    expect(repoMark(null)).toBe(stateMark(VERDICT.unknown.word, VERDICT.unknown.tone, VERDICT.unknown.shape, 12.5, VERDICT.unknown.tip));
+    const card = hoverCard(view(null), look, { x: 0, y: 0 });
+    expect(card).toContain("Unknown");
+    expect(card).toContain("Trov has no reading of this repository yet.");
+    expect(card).not.toContain("Healthy");
+  });
+});
+
+function esc(s: string): string { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }

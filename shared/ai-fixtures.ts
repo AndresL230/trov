@@ -305,8 +305,10 @@ export function askRefFixtures(now: Date): Record<string, RefView> {
       extra: { from: "andres", to: "anyone", task: "Update netlify-connect.test.ts to assert on the new status marks, then re-run CI on main." } },
     { ref: "feed:41", type: "feed", num: 41, title: "Status marks replace pills", status: null, owner: "priya", updated: ago(2 * D), href: null,
       extra: { brief: "Every board, table and rail now shows state as a mark instead of a pill." } },
-    { ref: `repo:${ASK_REPO}`, type: "repo", title: ASK_REPO, status: S.ciFailing, updated: ago(40 * 60_000), href: "#repo",
-      extra: { ci: { state: "failure", name: "netlify-connect.test.ts", run: 1482, at: ago(40 * 60_000) } } },
+    // #186: a repo's state is its RepoFacts, drawn by the client (`status` null). The fixture carries none — the
+    // dev replay fills `extra.facts` from the Repo Overview's own sample, scenario N / `trov` (B in trouble:
+    // web/src/repo-sample.ts `repoScenario`), so Ask never keeps a sample repository of its own.
+    { ref: `repo:${ASK_REPO}`, type: "repo", title: ASK_REPO, status: null, updated: ago(40 * 60_000), href: "#repo", extra: { facts: null } },
     { ref: "artifact:hosting-status-oct-15", type: "artifact", title: "Hosting status, Oct 15", status: S.private, owner: "andres", updated: now.toISOString(), href: "#artifacts/hosting-status-oct-15",
       extra: { kind: "html", visibility: "private", version: 1, status: "draft" } },
     ...people.map(([handle, name, role, working]): RefView => ({ ref: `person:${handle}`, type: "person", title: name, status: null, owner: handle, href: null, extra: { handle, role, workingOn: working } })),

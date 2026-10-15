@@ -76,7 +76,11 @@ stopped? }`. `error { code: capped | off | no_key | timeout | too_large | failed
   `resolveViews` from Trov's rows, permission-checked (another person's private artifact, a deleted page, an unknown
   id: absent). Status words are the design's over the existing vocabularies (Triage / In progress / Testing / Done /
   Declined; Draft / In review / Approved / Merged / Closed; Live / "Staged, not approved"; "N days late"; Pending;
-  CI failing; Private / Org). `POST /ask/peek { refs }` answers `{ ref, hidden: true }` for what the person can't
+  Private / Org). A **repo** ref (#186) is the Repo Overview's facts: `extra.facts` = `askRepoFacts(getRepoDashboard(…).facts)`
+  (`AskRepoFacts`, shared/ai-ask-core.ts: apps, environments, parts with their newest deploy, out-of-step, CI per
+  environment, release, attention, the week; `null` when the read failed) and `status: null` — the client draws its
+  state with the Overview's `envVerdict` and `stateMark` (Healthy only when the branch head's checks pass; Live with
+  none captured; Unknown with nothing seen), never a word of Ask's own. `POST /ask/peek { refs }` answers `{ ref, hidden: true }` for what the person can't
   see; `GET /ask/item/:ref` is the inspector's read where no per-type route exists.
 - With nothing found the model shows `show_not_found({ query, tries })`; the server fills "What I searched" from this
   turn's search calls with counts it computes.

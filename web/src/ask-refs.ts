@@ -13,10 +13,11 @@
 // A chip carries `data-ask-ref="<ref>"` (the hover controller in ask-controller.ts watches it) and
 // `data-act="askShOpen"` (open in the inspector).
 
-import { ASK_REF_TOKEN_RE, parseAskRef, type AskRefType, type AskTone, type PeekResult, type RefStatus, type RefView } from "@shared/ai-ask-core";
+import { ASK_REF_TOKEN_RE, parseAskRef, type AskRefType, type AskRepoFacts, type AskTone, type PeekResult, type RefStatus, type RefView } from "@shared/ai-ask-core";
 import type { PersonSummary } from "@shared/people";
 import { esc, attr, relTime } from "./ui";
-import { glyph, markShape, priorityIcon, type Glyph, type MarkShape } from "./marks";
+import { glyph, markShape, priorityIcon, stateMark, type Glyph, type MarkShape } from "./marks";
+import { VERDICT, ciLine, envVerdict, type EnvVerdict } from "./repo-verdict";
 import { personChip } from "./people";
 import { askIcon, REF_ICON } from "./ask-icons";
 
@@ -162,6 +163,34 @@ export function splitRefTokens(text: string): RefSeg[] {
 /** Every ref a text's tokens name (to warm the store with one peek while an answer streams). */
 export const refsInText = (text: string): string[] => [...new Set(splitRefTokens(text).flatMap((s) => ("ref" in s ? [s.ref] : [])))];
 
+// ── a repository (#186) ──────────────────────────────────────────────────────
+// A repo ref carries the Repo Overview's facts (`extra.facts`, shared/ai-ask-core.ts `AskRepoFacts`); its state is
+// the Overview's own verdict (web/src/repo-verdict.ts `envVerdict`: Healthy only when checks PASS on the branch head,
+// Live when none are captured, Unknown when nothing was seen) drawn with `stateMark` — never a mark of Ask's own.
+// Environments are named by their label, hosts by the part's label, never a provider id.
+
+/** The facts a repo ref carries, or null (not read: Unknown). */
+export function repoFactsOf(v: Pick<RefView, "type" | "extra">): AskRepoFacts | null {
+  const f = v.type === "repo" ? v.extra.facts : null;
+  return f && typeof f === "object" && Array.isArray((f as AskRepoFacts).envs) ? (f as AskRepoFacts) : null;
+}
+/** The environment a repo's headline speaks for: Production (by key), else the last in promotion order. */
+export function repoHeadEnv(f: AskRepoFacts): AskRepoFacts["envs"][number] | null {
+  const envs = [...f.envs].sort((a, b) => a.position - b.position);
+  return envs.find((e) => e.key === "production") ?? envs[envs.length - 1] ?? null;
+}
+/** Each environment's verdict, in promotion order (none when the facts were not read). */
+export function repoVerdicts(f: AskRepoFacts | null): { env: AskRepoFacts["envs"][number]; verdict: EnvVerdict }[] {
+  return f ? [...f.envs].sort((a, b) => a.position - b.position).map((env) => ({ env, verdict: envVerdict(f, env.key) })) : [];
+}
+/** A verdict as its mark (the Overview's tone, shape, word and tip). */
+export const verdictMark = (v: Pick<EnvVerdict, "word" | "tone" | "shape" | "tip">, size = 12.5): string => stateMark(v.word, v.tone, v.shape, size, v.tip);
+/** A repository's headline mark: its head environment's verdict, or Unknown when there are no facts. */
+export function repoMark(f: AskRepoFacts | null, size = 12.5): string {
+  const head = f ? repoHeadEnv(f) : null;
+  return verdictMark(f && head ? envVerdict(f, head.key) : VERDICT.unknown, size);
+}
+
 // ── the hover card (ask-trov.dc.html L1010–1038) ─────────────────────────────
 
 export interface HoverAt { x: number; y: number }
@@ -201,6 +230,16 @@ export function hoverCard(v: RefView, look: RefLook, at: HoverAt): string {
       const owner = str(e.owner);
       body += metaLine(esc([str(e.space) ? `${str(e.space)![0].toUpperCase()}${str(e.space)!.slice(1)}` : null, e.version != null ? `v${String(e.version)}` : null, owner ? personName(look, owner) : null].filter(Boolean).join(" · ")))
         + (str(e.excerpt) ? `<div class="ask-hc-excerpt">${esc(str(e.excerpt)!)}</div>` : "");
+    } else if (v.type === "repo") {
+      // The environments' verdicts (at most three, promotion order), then the head environment's checks.
+      const f = repoFactsOf(v);
+      const rows = repoVerdicts(f);
+      const head = f ? repoHeadEnv(f) : null;
+      const ci = f && head ? ciLine(f.ci.find((c) => c.env === head.key)) : null;
+      body += rows.length
+        ? `<div class="ask-hc-row" style="flex-wrap:wrap">${rows.slice(0, 3).map(({ env, verdict }) => `<span style="display:inline-flex;align-items:center;gap:6px">${esc(env.name)} ${verdictMark(verdict, 12)}</span>`).join("")}</div>`
+        : `<div class="ask-hc-row">${verdictMark(VERDICT.unknown, 12)}</div>`;
+      body += metaLine(esc(ci ? `${head!.name}: ${ci.text}` : f ? "No checks captured on the branch head." : "Trov has no reading of this repository yet."));
     } else {
       const meta = v.type === "handoff" ? `From ${personName(look, str(e.from) ?? "")} to ${str(e.to) === "anyone" || !str(e.to) ? "anyone" : personName(look, str(e.to)!)}`
         : v.type === "feed" ? str(e.brief)

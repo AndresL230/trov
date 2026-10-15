@@ -8,6 +8,7 @@
 // SSE transcript per design scenario, and the dev-only replay route streams them.
 
 import type { AiEligibility } from "./ai-core";
+import type { RepoFacts } from "./repo-facts-core";
 
 // ── Modes (#12 §2.1) — THE table ─────────────────────────────────────────────
 
@@ -152,8 +153,22 @@ export interface RefView {
   href: string | null;
   /** What the hover card shows. ticket: { priority, assignees, sprint }; pr: { author, head, base, checks };
    *  doc: { space, version, owner, excerpt }; person: { role?, workingOn? }; sprint: { due, progress };
-   *  handoff: { from, to, task }; artifact: { kind, visibility, version }; repo: { ci, lastDeploy }. */
+   *  handoff: { from, to, task }; artifact: { kind, visibility, version }; repo: { facts: AskRepoFacts | null }. */
   extra: Record<string, unknown>;
+}
+
+/** A repo ref's `extra.facts` (#186): the Repo Overview's ONE projection (`RepoFacts`, src/tools/repo-facts.ts, as
+ *  `getRepoDashboard` reads it), cut to what a chip, the hover card and the inspector draw — the apps, environments
+ *  and parts (each part's history down to its newest deploy), out-of-step, CI per environment, the release, what
+ *  needs attention and the week's figures. Its status is never a word of Ask's own: the client derives it with the
+ *  Overview's `envVerdict` (web/src/repo-verdict.ts) and draws it with `stateMark` — so `RefView.status` is null for
+ *  a repo. null facts = not read (Unknown, never "Healthy" and never zero). */
+export type AskRepoFacts = Pick<RepoFacts, "repo" | "app" | "apps" | "envs" | "parts" | "outOfStep" | "ci" | "release" | "attention" | "week">;
+export function askRepoFacts(f: RepoFacts): AskRepoFacts {
+  return {
+    repo: f.repo, app: f.app, apps: f.apps, envs: f.envs, outOfStep: f.outOfStep, ci: f.ci, release: f.release, attention: f.attention, week: f.week,
+    parts: f.parts.map((p) => ({ ...p, history: p.history.slice(-1) })),
+  };
 }
 /** What peek answers for an item the person cannot see (or that is not there): the same for both. */
 export interface HiddenRef { ref: string; hidden: true }
