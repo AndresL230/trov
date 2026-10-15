@@ -194,7 +194,7 @@ describe("legal pages", () => {
     // Ruling (Legal 4): attachments go with the conversation (unless a ticket or doc refers to one) and the account.
     expect(section(PRIVACY, "retention")).toContain("Deleting a conversation also deletes the files attached in it, except a file a ticket or doc still refers to or one you published to the organization. Deleting your account deletes the files you attached in Ask Trov and did not publish.");
     // TypeSafe AI: its own model, hosted in the United States, no training on what Trov sends, its own subprocessors linked (DRAFT).
-    expect(section(PRIVACY, "sharing")).toContain(`${DRAFT}TypeSafe AI runs its own model, on services hosted in the United States, and does not train or fine-tune any model on what Trov sends it. TypeSafe AI's own subprocessors are listed at <a href="https://trust.typesafe.ai/subprocessors">trust.typesafe.ai/subprocessors</a>.`);
+    expect(section(PRIVACY, "sharing")).toContain(`${DRAFT}The model that sorts and checks items is TypeSafe AI's own, on services hosted in the United States, and TypeSafe AI does not train or fine-tune any model on what Trov sends it. TypeSafe AI's own subprocessors are listed at <a href="https://trust.typesafe.ai/subprocessors">trust.typesafe.ai/subprocessors</a>.`);
     // Ruling (Legal 3): the same exception as the in-app "Never sent" (AI_NEVER_SENT).
     expect(section(PRIVACY, "sharing")).toContain("Source code reaches Anthropic only when you attach a file of it to a question in Ask Trov");
     expect(AI_NEVER_SENT).toContain("Source code (unless you attach a file to Ask)");
