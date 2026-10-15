@@ -307,7 +307,7 @@ every part of each app key per environment (`describeParts`, so each carries THE
 scan's suggestions and last scan (Phase D1's `listSuggestions` / `readScan`), the GitHub deploy signals seen in 30 days
 (`seenSignals`), the **unassigned deploy names** — deploy names (a deployment environment, or a host's own check /
 status) no `github` part's setting names and no pending suggestion carries (`unassignedSignals`,
-shared/repo-apps-setup-core.ts) —, the tags the repository holds (`readTags`, src/repo/releases.ts), the environments in drift
+shared/repo-apps-setup-core.ts) —, the tags the repository holds (`readTags`, src/repo/releases.ts — null until a reconcile has read its releases, never "0 tags"; no tag choice is offered then), the environments in drift
 order and the provider catalogue's words (`providers`, with `via_github`). D1 rows only; a failed suggestions / signals
 / scan sub-read is that part empty and `degraded: true`, never a 500. `PUT …/apps/:key` (kind, label, folder, watch,
 release_signal, position — never `repo` or `source`) goes through `putRepoApp` (201 when created); a key that is

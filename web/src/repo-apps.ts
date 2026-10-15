@@ -161,8 +161,9 @@ export function releaseWord(v: string | null): string {
  *  not seen lately. */
 export function releaseOptions(d: RepoAppsSetupDTO, current: string | null = null): DropdownOption[] {
   const out: DropdownOption[] = [];
-  const tags = d.tags ?? { count: 0, latest: null };
-  if (tags.count > 0) {
+  // Tags not read yet (null) offer nothing, exactly like none seen: a tag is offered only once one was seen.
+  const tags = d.tags;
+  if (tags && tags.count > 0) {
     out.push({ value: "tag:v*", label: "A tag matching v*", hint: `Seen ${times(tags.count)}${tags.latest ? ` · latest ${tags.latest.tag}, ${relTime(tags.latest.at)}` : ""}` });
   }
   const seen = new Set<string>();

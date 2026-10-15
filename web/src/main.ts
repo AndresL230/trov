@@ -2568,7 +2568,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         })
         .catch((e) => {
           if (e instanceof Unauthorized) { unauth(e); return; }
-          flash(accepting ? "Couldn't accept it. Try again." : "Couldn't ignore it. Try again.", 6000);
+          flash(e instanceof ApiError && e.message === "key_taken" ? "An app or a part already has that key. Add this one by hand under another name in Org settings › Repositories › Apps." : accepting ? "Couldn't accept it. Try again." : "Couldn't ignore it. Try again.", 6000);
         });
       return;
     }

@@ -78,7 +78,7 @@ describe("GET /repos/:owner/:name/apps", () => {
     expect(d.signals).toEqual([]);
     expect(d.unassigned).toEqual([]);
     expect(d.scan).toEqual({ treeSha: null, scannedAt: null, looked: [], error: null });
-    expect(d.tags).toEqual({ count: 0, latest: null }); // no release or tag held yet
+    expect(d.tags).toBeNull(); // no reconcile has read this repository's releases: unknown, never "0 tags"
     expect(d.degraded).toBeUndefined();
     // The picker's source: exactly the signals seen in the last 30 days, of this repository.
     expect(calls.sinceDays).toEqual([30]);

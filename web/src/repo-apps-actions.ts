@@ -62,6 +62,7 @@ export function appsErrorText(e: unknown, fallback: string): string {
     case "forbidden": return "Only an admin or an owner of this organization can set up its apps.";
     case "not_found": return "That no longer exists. Reload the page.";
     case "app_conflict": return detail ? sentence(detail) : "That key belongs to an app of another repository.";
+    case "key_taken": return "An app or a part already has this suggestion's key. Rename or remove that one first, or add this app by hand under another name.";
     case "too_many_parts": return "This environment already has 6 parts, the most one can have.";
     case "internal": return `${fallback} Something went wrong on the server. Try again in a minute.`;
     default: return detail ? sentence(detail) : `${fallback} Try again.`;

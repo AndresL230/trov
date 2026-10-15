@@ -60,8 +60,9 @@ export interface RepoAppsSetupDTO {
   /** Every signal seen in 30 days (the deploy-signal picker offers only these). */
   signals: SeenSignal[];
   scan: RepoScanDTO;
-  /** Tags seen (for the release-signal choice of a Package / mobile app). */
-  tags: { count: number; latest: { tag: string; at: string } | null };
+  /** Tags seen (for the release-signal choice of a Package / mobile app). null = not read yet (no reconcile has
+   *  read this repository's releases) — never "0 tags" (Phase D2: nullable, from `readTags`). */
+  tags: { count: number; latest: { tag: string; at: string } | null } | null;
   // ── Phase D2 (additive): what the screen draws its target rows and host words from ──
   /** The org's environments in drift order — a target row per environment. */
   environments?: { key: string; label: string; branch: string }[];
