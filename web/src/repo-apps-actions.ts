@@ -135,7 +135,7 @@ export function createAppsActions(host: AppsHost): AppsActions {
     push(hashForRoute({ screen: "org", ticketId: null, sprintId: null, orgTab: "repos", ...(next ? { orgRepo: next } : {}) }));
     enter();
     rerender();
-    mount.querySelector<HTMLElement>("#cnpy-main")?.scrollTo?.(0, 0);
+    document.getElementById("cnpy-main")?.scrollTo?.(0, 0);
   }
   function goArg(arg: string): void {
     const p = page();
