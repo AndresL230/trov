@@ -3088,6 +3088,11 @@ button.ask-dn:hover { border-color:var(--border-strong); }
 .ask-fu { display:flex; align-items:center; gap:10px; width:100%; padding:9px 2px; border-top:1px solid var(--border); font-size:13.5px; color:var(--fg-70); text-align:left; cursor:pointer; transition:color .12s ease; }
 .ask-fu:hover { color:var(--fg); }
 .ask-spin { animation:cnpy-spin .8s linear infinite; }
+/* A phone: every touch target in the conversation is at least 44px tall, by its hit area, not its look. Rows in a
+   stack grow by padding (min-height); inline and side-by-side controls get an invisible 44px box centred on them. */
+[data-phone="1"] .ask-fu, [data-phone="1"] .ask-res, [data-phone="1"] .ask-src-r, [data-phone="1"] button.ask-step { min-height:44px; box-sizing:border-box; }
+[data-phone="1"] .ask-col .ask-chip, [data-phone="1"] .ask-fb, [data-phone="1"] .ask-q-edit, [data-phone="1"] .ask-nf-try, [data-phone="1"] .ask-qfile { position:relative; }
+[data-phone="1"] .ask-col .ask-chip::after, [data-phone="1"] .ask-fb::after, [data-phone="1"] .ask-q-edit::after, [data-phone="1"] .ask-nf-try::after, [data-phone="1"] .ask-qfile::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
 
 /* ── Ask: composer ── (ask-composer.ts — a sibling replaces the stub's styles here) */
 .ask-composer { flex:none; width:100%; max-width:720px; box-sizing:border-box; margin:0 auto; padding:0 28px 14px; }

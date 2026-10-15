@@ -355,7 +355,9 @@ function notFoundView(nf: AskNotFound): string {
 }
 
 /** A rich block's frame: on hover (or focus inside) Save as artifact — once the answer is stored — and Open in inspector. */
-function rich(kind: string, inner: string, save: string | null, open: string | null): string {
+function rich(v: Pick<AskView, "app">, kind: string, inner: string, save: string | null, open: string | null): string {
+  // A phone has nothing to hover: no toolbar (the design's phone scenarios).
+  if (v.app.phone) { save = null; open = null; }
   const tools = [
     save ? `<button type="button" class="ask-tool" data-act="askAcSaveForm" data-arg="${attr(save)}" aria-label="Save as artifact" data-mtip="Save as artifact">${askIcon("saveArtifact", 13, null, 1.9)}</button>` : "",
     open ? `<button type="button" class="ask-tool" data-act="askCvOpen" data-arg="${attr(open)}" aria-label="Open in inspector" data-mtip="Open in inspector">${askIcon("openBeside", 13, null, 1.9)}</button>` : "",
@@ -372,11 +374,11 @@ function blockView(v: AskView, a: AskAnswer, p: Extract<AskShownPart, { kind: "b
       const items = b.items.filter((it) => !isHiddenRef(v.look, it.ref));
       if (!items.length) return "";
       // Cards open themselves: no Open in inspector.
-      return rich("items", `<div class="ask-cards" style="--n:${Math.min(items.length, 3)}">${items.map((it) => itemCard(v, it)).join("")}</div>`, save, null);
+      return rich(v, "items", `<div class="ask-cards" style="--n:${Math.min(items.length, 3)}">${items.map((it) => itemCard(v, it)).join("")}</div>`, save, null);
     }
-    case "chart": return rich("chart", chartFigure(b.chart), save, open("chart"));
-    case "themes": return rich("themes", themesFigure(b.themes), save, open("themes"));
-    case "diagram": return rich("diagram", diagramFigure(v, b.diagram), save, open("diagram"));
+    case "chart": return rich(v, "chart", chartFigure(b.chart), save, open("chart"));
+    case "themes": return rich(v, "themes", themesFigure(b.themes), save, open("themes"));
+    case "diagram": return rich(v, "diagram", diagramFigure(v, b.diagram), save, open("diagram"));
     case "not_found": return notFoundView(b.notFound);
     case "save_form": return saveFormView(v, a, b, p.index);
   }
@@ -492,7 +494,7 @@ function partView(v: AskView, a: AskAnswer, p: AskShownPart, i: number, cur: boo
   const key = `p${i}`;
   if (p.kind === "text") {
     const save = a.turn.messageId !== null ? `${v.where}:${a.key}` : null;
-    return `<div class="ask-text" data-morph-key="${key}">${mdView(v, p.md, cur, (k, inner) => rich("table", inner, save, cvRef(v.where, a.key, "table", `${i}.${k}`)))}</div>`;
+    return `<div class="ask-text" data-morph-key="${key}">${mdView(v, p.md, cur, (k, inner) => rich(v, "table", inner, save, cvRef(v.where, a.key, "table", `${i}.${k}`)))}</div>`;
   }
   if (p.kind === "actions") return `<div class="ask-part" data-morph-key="${key}" data-ask-tween>${actionGroupView(v, a, p.ids)}</div>`;
   if (p.block.kind === "save_form") return `<div class="ask-part" data-morph-key="${key}" data-ask-tween>${blockView(v, a, p)}</div>`;

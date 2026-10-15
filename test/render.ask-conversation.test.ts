@@ -499,6 +499,27 @@ describe("contract — the events this part consumes, from every design transcri
   });
 });
 
+describe("a phone — nothing hovers, every touch target is 44px", () => {
+  it("rich blocks draw no hover toolbar; Edit is on the last question, always shown", () => {
+    const { html } = view("answer", { over: (s) => { s.phone = true; } });
+    expect(html).toContain(`data-rich="chart"`);
+    expect(html).not.toContain("ask-tools");
+    expect(html).toContain(`data-act="askCvEdit" data-arg="page:qk1"`);
+    expect(css).toMatch(/\[data-phone="1"\] \.ask-q-edit \{ opacity:1; \}|\[data-phone="1"\] \.ask-q-edit[^{]*\{ opacity:1; \}/);
+    expect(css).toMatch(/\[data-phone="1"\] \.ask-tools \{ display:none; \}/);
+    expect(view("answer").html).toContain("ask-tools");
+  });
+  it("ref chips and the footer's buttons get a 44px hit area (not a bigger look); rows in a stack a 44px min-height", () => {
+    const rule = (sel: string) => css.split("\n").find((l) => l.includes(sel) && /height:44px/.test(l)) ?? "";
+    for (const sel of ['[data-phone="1"] .ask-col .ask-chip::after', '[data-phone="1"] .ask-fb::after', '[data-phone="1"] .ask-q-edit::after', '[data-phone="1"] .ask-nf-try::after']) {
+      expect(rule(sel), sel).toMatch(/content:""; position:absolute;[^}]*height:44px/);
+    }
+    for (const sel of ['[data-phone="1"] .ask-fu', '[data-phone="1"] .ask-res', '[data-phone="1"] .ask-src-r', '[data-phone="1"] button.ask-step']) {
+      expect(rule(sel), sel).toContain("min-height:44px");
+    }
+  });
+});
+
 describe("motion — reduced motion and corners for the conversation's pieces", () => {
   const ask = css.slice(css.indexOf("/* ══ Ask Trov"), css.indexOf("/* ── the site on a phone"));
   const reduce = ask.slice(ask.indexOf("@media (prefers-reduced-motion: reduce)"));
