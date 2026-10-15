@@ -3,7 +3,7 @@
 // cells and "—" figures, so the repository's shape shows before the host is connected and nothing reads as zero.
 //
 //   need `deploys`  nothing reports this app's deploys without the host — the design's G card, word for word in
-//                   shape: "<host> does not report deploys to GitHub, so Trov cannot see what is running in …".
+//                   shape — but never "<host> does not report deploys to GitHub" (a host may; Trov saw none): what is true.
 //   need `metrics`  deploys already arrive through GitHub deployments ("via GitHub"); the host is asked for CPU and
 //                   memory only — the build's one copy change from the design.
 //
@@ -31,9 +31,16 @@ export function connectCopy(f: Pick<RepoFacts, "connect" | "parts" | "envs" | "a
   if (c.need === "deploys") {
     const envs = f.envs.filter((e) => parts.some((p) => p.env === e.key)).map((e) => e.name);
     const where = envs.length ? `in ${list(envs, "or")}` : "anywhere";
+    // Never "<host> does not report deploys to GitHub": a host may well post GitHub deployments (Railway does); Trov has
+    // just seen none for these. And when the parts still show deploys read before, say what those are — never "cannot
+    // see what is running" beside them.
+    const seen = parts.some((p) => p.serving || p.latest || p.history.length);
+    const where2 = envs.length ? `in ${list(envs, "or")}` : "there";
     return {
       title: "Deploys not connected",
-      text: `${host} does not report deploys to GitHub, so Trov cannot see what is running ${where} yet. Connect ${host} once and every ${noun} here fills in, with CPU and memory too.`,
+      text: seen
+        ? `${host} isn't connected, so what runs ${where2} is as Trov last read it. Connect ${host} once and every ${noun} here stays current, with CPU and memory too.`
+        : `${host} isn't connected and GitHub has reported no deploys for these ${noun}s, so Trov cannot see what is running ${where} yet. Connect ${host} once and every ${noun} here fills in, with CPU and memory too.`,
       action, note,
     };
   }

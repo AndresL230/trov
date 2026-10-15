@@ -147,7 +147,8 @@ describe("envCardsBlock — the cards", () => {
     const h = draw(facts("G"));
     expect(verdictOf(h, "production")).toBe("Unknown");
     expect(verdictOf(h, "staging")).toBe("Unknown");
-    expect(h.match(/Railway does not report deploys to GitHub/g)).toHaveLength(8);
+    expect(h.match(/No deploys seen: Railway isn(?:'|&#39;)t connected/g)).toHaveLength(8);
+    expect(h).not.toContain("does not report deploys to GitHub");
     expect(h).not.toContain("font-family:var(--label);font-size:12.5px;color:var(--fg);background:var(--hover)");
     expect(text(h)).not.toMatch(/\b0 ms\b|ago/);
     expect(text(h)).not.toMatch(/not connected/i);

@@ -13,6 +13,8 @@ export const WEEK_LABEL: Record<WeekKey, string> = {
 };
 /** Figures where MORE is worse. */
 const INVERSE: ReadonlySet<WeekKey> = new Set(["failedDeploys"]);
+/** The figures a host's connection feeds. */
+const DEPLOY_FIGURES: ReadonlySet<WeekKey> = new Set(["deploys", "failedDeploys"]);
 
 export interface WeekTile { key: WeekKey; label: string; value: string; delta: string; tone: string; vs: string }
 
@@ -25,7 +27,9 @@ export function weekTile(w: FactsWeekFigure, f: Pick<RepoFacts, "connect" | "par
   const delta = d === null ? "" : d > 0 ? `▲ ${d}` : d < 0 ? `▼ ${Math.abs(d)}` : "—";
   const bad = d !== null && d !== 0 && (INVERSE.has(w.key) ? d > 0 : d < 0);
   const tone = d === null || d === 0 ? "var(--fg-40)" : bad ? "var(--red)" : "var(--green)";
-  const host = waitingOn(f);
+  // Only the deploy figures wait on a host that is not connected; any other unknown figure (PRs, releases, CI) is
+  // waiting on GitHub's capture, never on the host.
+  const host = DEPLOY_FIGURES.has(w.key) && f.connect?.need === "deploys" ? waitingOn(f) : null;
   const vs = d !== null ? "vs last week" : w.value === null ? (host ? `unknown until ${host} is connected` : "not known yet") : "since connecting";
   return { key: w.key, label: WEEK_LABEL[w.key], value: w.value === null ? "—" : String(w.value), delta, tone, vs };
 }

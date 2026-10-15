@@ -277,12 +277,26 @@ describe("the connect card", () => {
     const f = repoScenario("G", "", { now: NOW });
     const c = connectCopy(f);
     expect(c?.title).toBe("Deploys not connected");
-    expect(c?.text).toBe("Railway does not report deploys to GitHub, so Trov cannot see what is running in Production or Staging yet. Connect Railway once and every service here fills in, with CPU and memory too.");
+    // Never "Railway does not report deploys to GitHub" — Railway does post GitHub deployments (step 0); Trov has just
+    // seen none for these services (e2e O12).
+    expect(c?.text).toBe("Railway isn't connected and GitHub has reported no deploys for these services, so Trov cannot see what is running in Production or Staging yet. Connect Railway once and every service here fills in, with CPU and memory too.");
     const admin = panel(repoView(props(f)));
     expect(admin).toMatch(/data-act="orgGo" data-arg="hosting"[^>]*>Connect Railway</);
     const member = panel(repoView(props(f, { admin: false })));
     expect(member).not.toContain('data-arg="hosting"');
     expect(member).toContain("data-connect-note");
+  });
+
+  it("a host not connected whose parts still show deploys read before says so — never 'cannot see what is running' beside them (e2e O12)", () => {
+    // A: Railway's api has deploys on record; take Railway's connection away.
+    const a = repoScenario("A", "", { now: NOW });
+    const f = { ...a, parts: a.parts.map((p) => (p.provider === "railway" ? { ...p, connection: "not_connected" as const } : p)), connect: { provider: "railway" as const, need: "deploys" as const, apps: ["api"] } };
+    expect(connectCopy(f)?.text).toBe("Railway isn't connected, so what runs in Staging or Production is as Trov last read it. Connect Railway once and every service here stays current, with CPU and memory too.");
+    // Only the deploy figures wait on the host; anything else unknown is just not known yet (e2e O11).
+    const nullOpen = { key: "openPrs" as const, value: null, delta: null };
+    expect(weekTile(nullOpen, f).vs).toBe("not known yet");
+    expect(weekTile({ key: "releases", value: null, delta: null }, f).vs).toBe("not known yet");
+    expect(weekTile({ key: "deploys", value: null, delta: null }, f).vs).toBe("unknown until Railway is connected");
   });
 
   it("G with GitHub signals: deploys arrive via GitHub, the card asks for CPU and memory only", () => {

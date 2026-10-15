@@ -23,7 +23,8 @@ const CI_GLYPH = { good: "✓", bad: "✕", warn: `<span class="repo-gdot" aria-
 /** Why a part has no deploy to show. */
 function unknownWhy(p: FactsPart): string {
   if (!p.reportsDeploys) return `${p.host} does not report deploys`;
-  if (p.connection !== "connected") return `${p.host} does not report deploys to GitHub`;
+  // Never "does not report deploys to GitHub" — a host may post GitHub deployments; Trov has just seen none (e2e O12).
+  if (p.connection !== "connected") return `No deploys seen: ${p.host} isn't connected`;
   return "No deploy seen yet";
 }
 

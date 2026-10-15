@@ -98,7 +98,7 @@ function serving(p: FactsPart, f: RepoFacts, x: OverviewCtx): string {
   const s = p.serving;
   if (!s) {
     const why = p.latest ? "Nothing is serving yet." : p.connection !== "connected" && !p.viaGithub
-      ? `${p.host} does not report deploys to GitHub` : "No deploy seen yet.";
+      ? `No deploys seen: ${p.host} isn't connected` : "No deploy seen yet.";
     return flex(`${deployMark("unknown")}<span style="${META}">${esc(why)}</span>`);
   }
   const by = s.by ? ` · by ${byName(s.by, x)}` : "";

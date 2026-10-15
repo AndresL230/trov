@@ -136,7 +136,8 @@ describe("the Production card — unknown is drawn as unknown", () => {
     const t = text(draw(f));
     expect(envVerdict(f, "production").word).toBe("Unknown");
     expect(t).toContain("Unknown");
-    expect(t).toContain("Cloudflare Workers does not report deploys to GitHub");
+    expect(t).toMatch(/No deploys seen: Cloudflare Workers isn(?:'|&#39;)t connected/);
+    expect(t).not.toContain("does not report deploys to GitHub");
     expect(t).toContain("No deploy seen yet.");
     expect(t).not.toMatch(/\b0 live\b/);
   });
