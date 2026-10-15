@@ -88,3 +88,21 @@ describe("the words of an applied filter", () => {
       .toEqual(["Area ui", "HTML", "By Meilin Zhao", "Published", "Sprint #9"]);
   });
 });
+
+describe("motion (e2e MO-10 / MO-11; RULES § 8)", () => {
+  const applied = (at?: number) => ({ labels: ["Open"], unmatched: [], undo: {}, ...(at === undefined ? {} : { at }) });
+  it("the applied line rises in once from when it was applied; a repaint inside the rise joins it; later ones are still", () => {
+    const now = 10_000;
+    expect(aiFilterBox("tickets", on({ applied: { tickets: applied(now - 80) } }), now)).toMatch(/<div role="status" class="cnpy-flash" style="animation-delay:-80ms;/);
+    expect(aiFilterBox("tickets", on({ applied: { tickets: applied(now - 400) } }), now)).not.toContain("cnpy-flash");
+    expect(aiFilterBox("tickets", on({ applied: { tickets: applied() } }), now)).not.toContain("cnpy-flash");
+  });
+  it("Undo: the line leaves with the AI kit's one exit, inert, then is gone", () => {
+    const now = 10_000;
+    const leaving = (at: number) => on({ leaving: { tickets: { applied: applied(), at } } });
+    const mid = aiFilterBox("tickets", leaving(now - 100), now);
+    expect(mid).toContain('class="cnpy-ai-leave" data-ai-leaving inert style="--leave-t:-100ms"');
+    expect(text(mid)).toContain("Filtered: Open.");
+    expect(aiFilterBox("tickets", leaving(now - 400), now)).not.toContain("Filtered:");
+  });
+});

@@ -9,6 +9,7 @@
 
 import type { AppState } from "./render";
 import { aiFilterLabels, aiFilterScreenOf, type AiFilterNames, type AiFilterSnapshot } from "./ai-filter";
+import { AI_EXIT_MS } from "./ai-ui";
 import { AI_FILTER_MESSAGES, AI_FILTER_TEXT_MAX, type AiFilterByScreen, type AiFilterScreen } from "@shared/ai-filter-core";
 import { OrgApiError, PreviewBlocked, Unauthorized, getAiSettings, planLimitText, rateLimitText, runAiFilter } from "./api";
 
@@ -80,7 +81,8 @@ export function createAiFilterController(host: AiFilterHost): AiFilterController
         // Undo always goes back to what the person had set by hand.
         const undo = u.applied[screen]?.undo ?? host.snapshot(screen);
         host.apply(screen, a.filter);
-        u.applied = { ...u.applied, [screen]: { labels: aiFilterLabels(screen, a.filter, host.names()), unmatched: a.unmatched, undo } };
+        u.applied = { ...u.applied, [screen]: { labels: aiFilterLabels(screen, a.filter, host.names()), unmatched: a.unmatched, undo, at: Date.now() } };
+        u.leaving = { ...u.leaving, [screen]: undefined };
         host.rerender();
       })
       .catch((e) => {
@@ -106,6 +108,14 @@ export function createAiFilterController(host: AiFilterHost): AiFilterController
         const a = u.applied[screen];
         if (!a) return;
         u.applied = { ...u.applied, [screen]: undefined };
+        // The line leaves with the AI kit's one exit (ai-filter.ts), then one more paint drops it.
+        const leaving = { applied: a, at: Date.now() };
+        u.leaving = { ...u.leaving, [screen]: leaving };
+        setTimeout(() => {
+          if (ui().leaving?.[screen] !== leaving) return;
+          ui().leaving = { ...ui().leaving, [screen]: undefined };
+          host.rerender();
+        }, AI_EXIT_MS + 20);
         host.restore(screen, a.undo);
         host.rerender();
         return;
