@@ -47,11 +47,16 @@ import { providerFor, type AiProviderOpts, type AiUsage, type JevAsk, type JevKi
 import { groupOf, takes, validJob, customIdOf, type AiJob, type ClaudeJob, type JevGate, type JevJob, type JevRequest, type JobItem } from "./jobs";
 import { orgPrefix } from "./prefix";
 import { collectBatches, submitBatches, AI_BATCH_PER_TICK, type QueuedRequest } from "./batches";
+import { sessionDigestJob } from "./digests";
+import { repoStateJob } from "./repo-state";
 
 export type { AiJob } from "./jobs";
 
-/** THE registry. Empty: Phase B ships the machinery; Phases C and D register the producers. */
-export const AI_JOBS: readonly AiJob[] = [];
+/** THE registry. Phases C and D register the producers; the pass runs them in its stage order. */
+export const AI_JOBS: readonly AiJob[] = [
+  sessionDigestJob, // Phase D: session digests (`session`), behind `gate.session`
+  repoStateJob, // Phase D: repo state (`repo`), behind `gate.state`
+];
 
 /** Haiku calls one tick may make, across every org. */
 export const AI_RUNS_PER_TICK = 12;
