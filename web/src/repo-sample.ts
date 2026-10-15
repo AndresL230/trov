@@ -433,24 +433,10 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
 // and health. test/repo-sample.scenarios.test.ts holds every fixture to the design's `buildScreen` (same rule,
 // opener and Group by) for every variant, App narrowing and Group by.
 
-export const SCENARIO_KEYS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N"] as const;
-export type ScenarioKey = (typeof SCENARIO_KEYS)[number];
-export const isScenarioKey = (v: unknown): v is ScenarioKey => typeof v === "string" && (SCENARIO_KEYS as readonly string[]).includes(v);
-
-/** The design's `SCENARIO_TITLES`, unchanged. */
-export const SCENARIO_TITLES: Record<ScenarioKey, string> = {
-  A: "Frontend and backend", B: "One Worker, main to production", C: "Static site with previews", D: "Full-stack on one host",
-  E: "Turborepo, five apps", F: "Large monorepo, 14 apps", G: "Backend services only", H: "Containers by GitHub Actions",
-  I: "Package with releases only", J: "Promotion chain", K: "One product, two repos", L: "Just connected", M: "Nothing recognised",
-  N: "Trouble states",
-};
-
-/** The variants per scenario ('' = calm), for the switcher. The design's, plus G `signals`: GitHub signals exist,
- *  so the services' deploys arrive "via GitHub" and the card asks to connect Railway for CPU and memory only. */
-export const SCENARIO_VARIANTS: Record<ScenarioKey, readonly string[]> = {
-  A: ["", "outOfStep", "trouble"], B: ["", "failed", "trouble"], C: [""], D: [""], E: [""], F: [""], G: ["", "signals", "after"],
-  H: [""], I: [""], J: [""], K: [""], L: [""], M: [""], N: ["", "trov"],
-};
+// The keys, titles and variants live in ./repo-sample-keys.ts (no fixture data), so the Overview's sample switch can
+// draw its dropdowns without pulling this module into the main bundle; they are re-exported here unchanged.
+import { SCENARIO_VARIANTS, type ScenarioKey } from "./repo-sample-keys";
+export { SCENARIO_KEYS, SCENARIO_TITLES, SCENARIO_VARIANTS, REPO_SCENARIOS, isScenarioKey, type ScenarioKey } from "./repo-sample-keys";
 
 // `github` joins HOSTING_PROVIDERS in Phase A (the GitHub-deployments provider); until then the one part that
 // needs it (H's normalizer, on Cloud Run, which no provider reads) names it through this cast.
@@ -463,6 +449,11 @@ const PROVIDER_OF_HOST: Record<string, HostingProviderId> = {
 const PROVIDER_LABEL: Record<string, string> = {
   cloudflare: "Cloudflare Workers", railway: "Railway", vercel: "Vercel", render: "Render", netlify: "Netlify", fly: "Fly.io", aws: "AWS",
   github: "GitHub deployments",
+};
+/** Whether each provider reports any usage metric — the registry's `capabilities.metrics` non-empty
+ *  (src/hosting/providers/*.ts): Vercel and Netlify publish none, GitHub deployments carry no metrics. */
+const PROVIDER_METRICS: Record<string, boolean> = {
+  cloudflare: true, railway: true, vercel: false, render: true, netlify: false, fly: true, aws: true, github: false,
 };
 const WEEK_KEY: Record<string, WeekKey> = {
   "Merged PRs": "mergedPrs", Deploys: "deploys", "Failed deploys": "failedDeploys", "Open PRs": "openPrs", Commits: "commits",
@@ -604,6 +595,7 @@ function factsOf(sc: Scenario, now: number): RepoFacts {
     return {
       app: t.app, env: envKey(t.env), label: t.app, role, provider, host: PROVIDER_LABEL[provider] ?? a.host,
       via, connection, reportsDeploys: true, viaGithub, serving, latest, history, health, url, consoleUrl: null,
+      reportsMetrics: PROVIDER_METRICS[provider] ?? false,
     };
   });
 
@@ -963,9 +955,6 @@ const SC: Record<Exclude<ScenarioKey, "N">, (v: string, at: At) => Scenario> = {
   }),
 };
 
-/** Every scenario with its title and variants, for the Overview's sample switch. */
-export const REPO_SCENARIOS: Record<ScenarioKey, { title: string; variants: readonly string[] }> =
-  Object.fromEntries(SCENARIO_KEYS.map((k) => [k, { title: SCENARIO_TITLES[k], variants: SCENARIO_VARIANTS[k] }])) as Record<ScenarioKey, { title: string; variants: readonly string[] }>;
 
 /** One scenario as `RepoFacts`, narrowed by the App menu (`app`: an app key, `REPO_WIDE`, or null for all apps).
  *  N is the trouble states: '' = A/trouble, `trov` = B/trouble. An unknown variant reads as the calm one. */

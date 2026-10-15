@@ -210,7 +210,13 @@
   `web/src/hash.ts` is the hash-route seam (`parseHash` / `hashForRoute` — `#tickets/7`, `#sprints/3`,
   `#repo/<tab>`). `web/src/repo.ts` is the Repo dashboard (ported from the Claude Design `Trov Repo
   Dashboard.dc.html`), `web/src/repo-sample.ts` its design-placeholder set and the Repo-setups scenarios A–N as `RepoFacts` (a
-  dynamic import, never in the main bundle), and `web/src/sidebar.ts` + `web/src/morph.ts` the sidebar — see "Sidebar & motion" below.
+  dynamic import, never in the main bundle; their names in `web/src/repo-sample-keys.ts`), `web/src/repo-overview.ts`
+  the Overview drawn from facts with one module per block (`repo-attention.ts`, `repo-week.ts`, `repo-connect.ts`,
+  `repo-env-cards.ts`, `repo-drift.ts`, `repo-apps-table.ts`, `repo-not-shipped.ts`, `repo-production.ts`,
+  `repo-previews.ts`, `repo-release.ts`, `repo-found.ts`), `web/src/repo-header.ts` its repository / App menus,
+  environment pills and Group by, and `web/src/repo-verdict.ts` the one environment verdict (`repo-dashboard.md`).
+  Migration `0071_repo_settings` (`repo_settings`: an admin's per-repository Overview default; `src/data/repo-settings.ts`,
+  `src/repo/settings-routes.ts`). And `web/src/sidebar.ts` + `web/src/morph.ts` the sidebar — see "Sidebar & motion" below.
   Signed out, the app renders the **landing page** (`web/src/landing.ts`, ported from the Claude Design
   `Canopy Site.dc.html`); its nav's Sign in opens the GitHub/Google dialog, and its in-page links scroll
   rather than set the hash (the hash is the route and the sign-in return-to). Signed IN, the sidebar logo

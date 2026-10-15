@@ -16,7 +16,8 @@ import type {
 } from "@shared/tickets";
 import type { DashboardData } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
-import type { RepoDashboard, RepoRefreshResult } from "@shared/repo";
+import { REPO_SETTINGS_ROUTE, type RepoDashboard, type RepoRefreshResult, type RepoSettingsDTO } from "@shared/repo";
+import type { GroupBy } from "@shared/repo-layout-core";
 import type { SyncRunView, SyncStatusView, SyncSummariesView } from "@shared/sync";
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow, OAuthGrantSummary, McpTokenSummary } from "@shared/rows";
@@ -348,6 +349,11 @@ async function orgSend<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: strin
   return res.json() as Promise<T>;
 }
 const orgPath = (slug: string, rest: string): string => `/api/o/${encodeURIComponent(slug)}${rest}`;
+
+/** An admin sets a repository's default Group by on the Overview (`repo_settings.overview_group`; null clears it). */
+export function putRepoSettings(slug: string, repo: string, overviewGroup: GroupBy | null): Promise<RepoSettingsDTO> {
+  return orgSend<RepoSettingsDTO>("PUT", orgPath(slug, REPO_SETTINGS_ROUTE), { repo, overview_group: overviewGroup });
+}
 const integrationPath = (slug: string, kind: IntT.IntegrationKind, scope: string, action = ""): string =>
   orgPath(slug, `/integrations/${kind}${scope ? `/${encodeURIComponent(scope)}` : ""}${action}`);
 
@@ -561,9 +567,14 @@ export function getMyDashboard(): Promise<DashboardData> {
   return getJson<DashboardData>("/me/dashboard");
 }
 
-/** The Repo dashboard — a D1-only projection; uncaptured sections arrive `not_connected`. */
-export function getRepoDashboard(): Promise<RepoDashboard> {
-  return getJson<RepoDashboard>("/repo/dashboard");
+/** The Repo dashboard — a D1-only projection; uncaptured sections arrive `not_connected`. `repo` (one of the
+ *  org's repositories) and `app` (an app key, or `__repo`) scope it; the Worker reads them with the facts read. */
+export function getRepoDashboard(q: { repo?: string | null; app?: string | null } = {}): Promise<RepoDashboard> {
+  const p = new URLSearchParams();
+  if (q.repo) p.set("repo", q.repo);
+  if (q.app) p.set("app", q.app);
+  const qs = p.toString();
+  return getJson<RepoDashboard>(`/repo/dashboard${qs ? `?${qs}` : ""}`);
 }
 
 // The Triage "Proposals" queue = staged doc versions newer than the live doc.

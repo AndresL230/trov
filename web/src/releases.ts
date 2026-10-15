@@ -71,6 +71,36 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Repo setups (handoff #11), feat/repo-setups — in progress. Phase C1: the Overview's frame, header, attention, week, connect card, sample switch.
+  {
+    version: "Unreleased",
+    date: "2026-10-15",
+    unreleased: true,
+    title: "Repo setups",
+    headline: "The Repo screen's Overview takes the shape of the repository: its apps, its environments, and what needs attention first.",
+    highlights: [
+      "The Overview opens with what needs attention, in plain sentences: a deploy that failed and what is still serving, an app that is down, a rollback, a check failing on a branch, commits merged and not yet live.",
+      "A repository with several apps gets an App menu: pick one and every tab narrows to it, or pick Repo-wide only for the files outside every app. An organization with several repositories gets a repository menu.",
+      "Each environment's state sits in the header — Healthy, Degraded, Failing, Down, Out of step or Unknown — and, where both fit, Group by switches the Overview between environment cards and a table of apps. An admin can make either the repository's default.",
+      "When a host is not connected the Overview says so once, above everything else, and shows the repository's shape anyway: unknown figures read as a dash, never as zero. When deploys already arrive through GitHub, connecting the host is only asked for CPU and memory.",
+      "Preview with sample data now has a scenario switch: fourteen kinds of repository, from one Worker to a fourteen-app monorepo, with their trouble states.",
+    ],
+    ops: [
+      "Apply `migrations/0071_repo_settings.sql` (merging to main applies it): ADDITIVE — the `repo_settings` table (an admin's per-repository Overview default). Rollback: `DROP TABLE repo_settings; DELETE FROM org_admin_audit WHERE action = 'repo.settings';`.",
+    ],
+    patches: {
+      added: [
+        "The Overview from facts: `web/src/repo-overview.ts` (`overviewFacts` — the state slot, attention, the connect card, the opener by `layoutOf`, not shipped, week, links; each block wrapped in `data-repo-block`), `repo-attention.ts` (structured attention worded into the design's sentences, hosts by their part's label), `repo-week.ts`, `repo-connect.ts`, `repo-verdict.ts` (`envVerdict`, shared with the environment cards), `repo-header.ts` (repository / App menus, environment pills, Group by)",
+        "Migration `0071_repo_settings`: `repo_settings` (PK `(org_id, repo)`, `overview_group` env / app / NULL); `PUT /api/o/:slug/repo/settings` (admin, cookie only, audited `repo.settings`); `readRepoSettings(ctx, repo)` for the facts read",
+        "`#repo[/<tab>]?repo=<owner%2Fname>&app=<key>` and `GET /repo/dashboard?repo=&app=` (read by the Worker with the facts read); `RepoDashboard.facts`; `FactsPart.reportsMetrics`",
+        "The sample's scenario switch (Scenario × Variant dropdowns; names in `web/src/repo-sample-keys.ts`)",
+        "Tests: `test/render.repo-overview.test.ts` (every scenario × variant × app × Group by against the design's `buildScreen`; no \"not connected\" for absent things), `test/repo-settings.routes.test.ts`, hash routes",
+      ],
+      changed: [],
+      fixed: [],
+      removed: [],
+    },
+  },
   // Hosting providers: Org settings › Hosting, the Repo dashboard's Hosting section, Detected, Vercel events.
   {
     version: "0.33",

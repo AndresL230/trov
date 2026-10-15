@@ -551,6 +551,47 @@ them yet: production omits both** (`GET /repo/dashboard` and `get_repo_dashboard
 them from the fixtures under `wrangler dev` only, never over MCP (`ai.md`). When the dashboard has them,
 `get_repo_dashboard` carries `state` with `tab: overview` (or no tab) and `themes` with `planning` (or no tab).
 
+**The Overview from facts (Repo setups, Phase C)** — when the payload carries `facts` (`RepoDashboard.facts`,
+`shared/repo-facts-core.ts`; the sample sets it today, the Worker adds it with the facts read) the Overview is
+`overviewFacts` (`web/src/repo-overview.ts`), else today's sections. The composition is the design's `buildScreen`,
+top to bottom: `<div data-repo-state-slot>` (where #178's `state` block goes), Needs attention, the connect card, the
+opener by `layoutOf(layoutInputOf(facts), group).opener` (found / unseen / release / production + previews /
+chain and envCards → environment cards + drift / appsTable), not shipped where a part has commit groups waiting, the
+week tiles, and the links row. Every block is its own module exporting an `OverviewBlock` (`(f, x) => string`,
+`web/src/repo-overview-ctx.ts`) and is wrapped in `data-repo-block="<name>"` (an empty one takes no room); "Repo-wide
+only" (`REPO_WIDE`) draws its own note instead of an opener. The frame's modules:
+- `repo-attention.ts` WORDS each structured `FactsAttention` (kind + refs, never a sentence on the wire) into the
+  design's sentences — "Production deploy e07b3a2 failed 12m ago on Cloudflare Workers. c41e7d9 is still serving." —
+  naming the host by its part's `host` label (never a switch on a provider id) and an app first ("api: …") when the
+  repository has more than one deployed app. An action leaves Trov only with an https address and outside the
+  sample; otherwise it opens the tab that holds it.
+- `repo-verdict.ts` `envVerdict(f, envKey)` is THE environment verdict (Unknown → Down → Failing → Out of step →
+  Degraded, the design's `verdictFor`; then Healthy ONLY when checks pass on the branch head — with no checks
+  captured, or checks still running, live parts read Live, never Healthy on unknown checks), read by the header pills
+  and the environment cards alike; `ciLine(ci)` there is the one wording of a branch head's checks ("All 14 checks
+  passing on 3e9a1f2", "2 of 9 checks failing on e07b3a2", "Checks running on f19ad20", "<check> running on <sha>").
+- `repo-week.ts`: "—" for a null figure (never 0), ▲ / ▼, failed deploys inverted, "vs last week" / "since
+  connecting" / "unknown until <host> is connected". `repo-connect.ts`: need `deploys` → the design's G card; need
+  `metrics` → deploys arrive via GitHub and the card asks for CPU and memory only; the action (admins) opens Org
+  settings › Hosting, members read the note.
+- The links row's Usage line reads the parts' `reportsMetrics` capability and `connection`: "from <hosts>", "not
+  available from Netlify" (no host in view reports a metric) or "not connected" — so a repository never reads "not
+  connected" for a thing it does not have (`test/render.repo-overview.test.ts`, every scenario × variant × app).
+- The header (`repo-header.ts`): the repository menu (`dropdown()`, `facts.repos`, only with two or more), the App
+  menu (monorepos only: All apps, each app with its folder and open PRs, Repo-wide only), the environment pills, and
+  Group by (`segmented()`, only when `layout.canGroup`, above the panel). Repository and app are in the address
+  (`#repo[/<tab>]?repo=<owner%2Fname>&app=<key>`, hash.ts; the App menu is left out of the page key) and go to
+  `GET /repo/dashboard?repo=&app=`, which the Worker ignores until the facts read lands; the sample narrows with
+  `narrowFacts` client-side. Group by is the session's (`state.repoGroup`) over `facts.groupDefault`; after a flip
+  an admin (never in the sample) is offered "Make this the default" → `PUT /api/o/:slug/repo/settings
+  { repo, overview_group }` (`src/repo/settings-routes.ts`: admin, cookie only, 404 for a repository the org does not
+  have, audited `repo.settings` in `org_admin_audit`), stored in `repo_settings` (0071) and read back by
+  `readRepoSettings(ctx, repo)` (`src/data/repo-settings.ts`) for the facts read.
+- "Preview with sample data" gains a scenario switch: a `dropdown()` per axis in the sample bar — Scenario (A–N) and
+  Variant (when the scenario has more than one) — session-only (`state.repoScenario`). The names live in
+  `web/src/repo-sample-keys.ts` (no fixture data, like `hosting-keys.ts`), so the switch never pulls the sample into
+  the main bundle; a pick recomputes only `facts`, and picking a repository in the sample shows that scenario.
+
 **`get_repo_dashboard` is the Repo dashboard's read over MCP, for every principal too** — it exposes nothing
 a signed-in member cannot see at `#repo`, and nothing per-user. `src/tools/repo-agent.ts` is a VIEW over
 `getRepoDashboard` (the same D1-only projection the route serves — never a second projection, never a
