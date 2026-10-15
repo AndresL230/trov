@@ -20,7 +20,7 @@ dummy token) — Test on an UNCONNECTED host answers without probing (Phase 0).
 
 ## Matrix
 
-Surfaces × the dimensions that apply. Count: **107 cases** (≤ 150, run without a size check-in).
+Surfaces × the dimensions that apply. Count: **109 cases** (≤ 150, run without a size check-in; first drafted as 107, a miscount of the rows below). Result: **85 pass, 23 fail → fixed (12 distinct bugs; P21–P44 counts its 12 phone shots), 1 question**, 3 pre-existing bugs left alone.
 
 | Surface | Dimensions crossed | Cases |
 | --- | --- | --- |
@@ -113,10 +113,10 @@ Columns: id · surface · state (fixture, role, viewport, theme) · expected · 
 | C3 | CI & deploys | same | deploy strips per app × environment ("Production · Frontend"…), failed deploy red | Phase E / repo-dashboard | Deploy history per app × environment; Backend Production "1 of 2 succeeded" | pass | page text |  |
 | U1 | Usage | same | a card per target: frontend (Cloudflare, connected) shows figures or "No recent reading"; backend (Railway) "Not connected" with Connect for an admin | Phase G four states | Frontend Staging/Production "from Cloudflare Workers" with figures; Backend cards "Not connected" + Connect Railway. Product block said the token "is set in Org settings › Integrations" (moved in Phase 0) | fail → fixed | [repo-setups-shots/branch/U1-usage-dark-desktop.jpg](repo-setups-shots/branch/U1-usage-dark-desktop.jpg) | 43fa8eaf (U3) |
 | U2 | Usage | same | no "not connected" on a Cloudflare (connected) card | Phase G guard | No "not connected" on the Cloudflare cards | pass | page text |  |
-| P1–P20 | Sample preview openers | admin, desktop | A envCards · A/outOfStep envCards · A/trouble envCards · B production · B/failed production · B/trouble production · C production · D production · E appsTable · F appsTable · G appsTable · G/signals appsTable · G/after appsTable · H envCards · I release · J chain · K chain · L found · M unseen · N envCards (N/trov production) | layout core over `repoScenario` (repo-apps.md table) | | | | |
-| P21–P44 | Sample screenshots | A, B, E, I, L, N × light/dark × desktop/phone | each draws without overflow or console errors; phone stacks | Phase H screenshots | | | | |
-| P45 | Sample writes | L, admin | the found card's Accept/Ignore are disabled with a reason; no request sent | C3 sample rule | | | | |
-| P46 | Sample switch | admin | Scenario × Variant dropdowns switch the facts without a reload; leaving sample returns to live | C1 | | | | |
+| P1–P20 | Sample preview openers | admin, desktop | A envCards · A/outOfStep envCards · A/trouble envCards · B production · B/failed production · B/trouble production · C production · D production · E appsTable · F appsTable · G appsTable · G/signals appsTable · G/after appsTable · H envCards · I release · J chain · K chain · L found · M unseen · N envCards (N/trov production) | layout core over `repoScenario` (repo-apps.md table) | All 21 openers as expected (A, A/outOfStep, A/trouble, H, J, K, N → env cards; B, B/failed, B/trouble, C, D, N/trov → production; E, F, G, G/signals, G/after → apps table; I → release; L → found; M → unseen). chain and envCards draw the same blocks (env cards + drift), so J/K read as env cards in the DOM; no console errors, no overflow at 1300px | pass | DOM (opener block per scenario) |  |
+| P21–P44 | Sample screenshots | A, B, E, I, L, N × light/dark × desktop/phone | each draws without overflow or console errors; phone stacks | Phase H screenshots | All 24 draw without page overflow or console errors (desktop 1300px, phone 390px iframe; light and dark). First pass: on a phone the repository scope menu in the header collapsed to an empty chip (inline-size containment from the phone crumb rule gave it no width) | fail → fixed | [repo-setups-shots/sample/](repo-setups-shots/sample/) (before: zz-before-fix-I-L-N-light-phone.jpg) | 0ae2c293, 7ef3d95b (P-phone) |
+| P45 | Sample writes | L, admin | the found card's Accept/Ignore are disabled with a reason; no request sent | C3 sample rule | L: every Accept / Ignore disabled with the tip "Sample data: nothing is changed."; clicking one sends no request | pass | DOM, resource timing |  |
+| P46 | Sample switch | admin | Scenario × Variant dropdowns switch the facts without a reload; leaving sample returns to live | C1 | Scenario and Variant dropdowns switch the facts in place (same document, no navigation); Leave sample returns to the live facts (the live attention items and the saved group default come back) | pass | DOM, navigation timing |  |
 | R1 | Route | admin | `GET /api/o/saplinglearn/repo/dashboard?repo=nope/nope` → 404 `{error}` | B2 | 404 {error:"unknown repository"} | pass | fetch |  |
 | R2 | Route | admin | `…?app=nope` → 200 with `facts.app` null (all apps) | B2 (unknown app = all apps) | 200, facts.app null, apps [frontend, backend] | pass | fetch |  |
 | R3 | Route | member | `PUT …/repo/settings` → 403 | C1 | 403 {error:"admin only"} | pass | fetch (meilin) |  |
@@ -125,12 +125,51 @@ Columns: id · surface · state (fixture, role, viewport, theme) · expected · 
 
 ## Bugs
 
-_(one row per bug: case id, what, cause, fix commit, test)_
+All found by this pass and fixed on the feature branch (one bug → one test → one fix → retest), then retested in the final pass.
+
+| case | what | cause | fix | test |
+|---|---|---|---|---|
+| A8b | A refused scan (no GitHub credential) showed "scanned just now" above "the last scan could not run" | the refusal path stamped `repo_scans.scanned_at` like a successful scan | 01733d93 | test/repo-scan.test.ts |
+| A14b | A workflow release signal was offered on a branch the workflow never ran on | `seenSignals` kept workflow runs per file, not per branch | 4b3e0d6f | test/repo-scan.test.ts, test/render.repo-apps.test.ts |
+| A15b | "… railway.json and more and at the deploys GitHub reported" (doubled "and") | the looked-for list and the GitHub clause were each joined with "and" | 161ca1ff | test/render.repo-apps.test.ts |
+| O4 | Attention sentences and the apps table's sha chip showed full 40-char shas | the server sends full shas; those paths skipped the 7-char cut | 6c016969 | test/render.repo-overview.test.ts |
+| O11 | Week tiles said Open PRs / Releases were "unknown until Railway is connected" | the "host not connected" reason was applied to every unknown figure, not only deploy figures | f5c4e81e | test/render.repo-overview.test.ts |
+| O12 | The connect card / unknown rows said "Railway does not report deploys to GitHub" beside the Railway deploys it showed | the copy assumed every unconnected host is invisible to GitHub | f5c4e81e | test/render.repo-env-cards.test.ts, test/render.repo-production.test.ts |
+| O15b | A member saw no connect card at all (the design shows members the note) | the server built the connect hint only for admins (my Phase B2 prompt asked for that) | b47dd792 | test/repo-facts.test.ts |
+| O16b | A phone drew the apps table from the admin's saved default although Group by is hidden there | the layout honoured the default / session flip on a phone | 69e88173 | test/render.repo-overview.test.ts |
+| O18b | Found-card evidence read "from from apps/web/vercel.json" | the renderer prefixed "from" to evidence the scan already writes as a sentence | 697097fa | test/render.repo-found.test.ts |
+| U3 (case U1) | Usage › Product and Poll now's App metrics line pointed to Org settings › Integrations | the copy was not updated when Phase 0 moved the token to the part editor | 43fa8eaf | test/render.repo.test.ts |
+| E1b | Environments said "What each one runs is in Hosting" (Hosting only points on to Repositories) | stale link copy from before Phase D | 8f858a30 | test/render.org-settings.test.ts |
+| P-phone | On a phone the repository scope menu collapsed to an empty chip | the phone header's crumb rule (`contain: inline-size`) also hit the scope menu | 0ae2c293, 7ef3d95b | test/render.phone.test.ts |
+
+Seed-only fixes (not product bugs; `scripts/seed/repo-setups.mjs`): the evidence signal format, scan suggestion ids (`sg_…`),
+the `prs_reconciled` marker, the picker's seen signals.
 
 ## Questions for Andres
 
-_(cases marked `question`)_
+- **O19**: after accepting a found app that has no target and no release, rule R3 draws nothing (the design's own rule), but the
+  toast says "The Repo screen now shows it." Keep the rule and change the toast, or draw something for R3 with no release?
+- **A12**: "Remove app, keep its parts" leaves the parts in place, so the folder lists again as an implicit root app. The design
+  says "the deploy name is unassigned again". Is the implicit app right, or should kept parts stop implying an app?
+- **CLAUDE.md invariant 8**: the wording now names `/api/internal/metrics` beside `/mcp` as a bearer surface. Please confirm.
+
+## Pre-existing (seen, not fixed; also on `main`)
+
+- The guided setup says "Connect a repository: to do" with a repository connected.
+- The Merged PRs week tile reads 0 (counted from events) where it is really unknown before capture.
+- The Poll now strip's Health line points to Integrations.
 
 ## Final pass
 
-_(the whole matrix rerun from a clean seed after all fixes; suite + typecheck vs baseline)_
+From a clean seed after every fix, the whole matrix was rerun in the browser (admin, then member with `DEV_LOGIN=meilin`, then
+admin restored): every case passes, except O19, which is still the question it was. DB checks rerun for H4, A5–A7, A9, A12,
+A13 (3 github deploys backfilled on test-docs), A17 and O10.
+
+- **Suite:** `npm test` 312 files / 7275 tests passing (base `main`: 277 / 5706; no test removed or failing).
+- **Typecheck:** `npm run typecheck` 0 errors (base 0).
+- **Console:** no errors on any surface or sample scenario.
+- **Environment notes:** the automation window ended up 567px wide (phone layout), so desktop cases ran in a 1300px
+  same-origin iframe reloaded after sizing (a media-query change event does not fire in a hidden window), and phone cases in a
+  390px one. Real key presses do not reach the hidden window, so keyboard cases use dispatched key events.
+
+Screenshots: [base](repo-setups-shots/base/), [branch](repo-setups-shots/branch/), [sample](repo-setups-shots/sample/).
