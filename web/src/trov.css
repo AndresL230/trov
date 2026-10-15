@@ -1683,6 +1683,44 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
   .cnpy-avbtn-veil, .cnpy-avbtn-veil svg { transition:none !important; animation:none !important; }
 }
 
+/* ── repo-block-kit (web/src/repo-block-kit.ts): what the Overview's deploy blocks share ── */
+/* Building pulses its ring (the design's pulse); still under reduced motion. */
+.repo-kit-pulse svg { animation:cnpy-blink 1.4s ease-in-out infinite; }
+
+/* ── repo-env-cards (web/src/repo-env-cards.ts): a card per environment, side by side as room allows ── */
+.repo-envcards { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(var(--card-min, 340px), 100%), 1fr)); margin:-1px 0 0 -1px; overflow:hidden; }
+.repo-envcell { min-width:0; border-left:1px solid var(--border); border-top:1px solid var(--border); }
+.repo-envcard { padding:20px 22px 12px; min-width:0; box-sizing:border-box; }
+.repo-envrow { display:grid; grid-template-columns:84px minmax(0,1fr) auto; gap:4px 12px; padding:11px 0; align-items:start; }
+.repo-envci { display:grid; grid-template-columns:84px minmax(0,1fr); gap:12px; padding:11px 0 6px; align-items:baseline; }
+/* phone: the health reading drops under the app's name instead of squeezing the commit line */
+@media (max-width:480px) {
+  .repo-envrow { grid-template-columns:72px minmax(0,1fr); }
+  .repo-envrow-health { grid-column:1; grid-row:2; justify-content:flex-start !important; }
+  .repo-envci { grid-template-columns:72px minmax(0,1fr); }
+}
+
+/* ── repo-drift (web/src/repo-drift.ts): one strip, or the chain's step buttons ── */
+.repo-driftstep { display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 9px; border:1px solid var(--border); border-radius:7px; background:transparent; font-size:12.5px; color:var(--fg-70); transition:border-color .14s ease, color .14s ease, background .14s ease; }
+.repo-driftstep:hover { border-color:var(--border-strong); color:var(--fg); }
+.repo-driftstep.is-open { border-color:var(--border-strong); background:var(--hover); }
+.repo-driftstep:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+
+/* ── repo-apps-table (web/src/repo-apps-table.ts): a row per app, worst first; scrolls sideways inside on a phone ── */
+.repo-appstable-scroll { overflow-x:auto; overflow-y:hidden; }
+.repo-appstable-in { min-width:820px; }
+.repo-appsrow { display:grid; grid-template-columns:20px minmax(170px,1.2fr) minmax(220px,1.5fr) minmax(160px,1fr) minmax(120px,.8fr); gap:0 16px; padding:11px 20px; border-bottom:1px solid var(--border); align-items:start; transition:background .14s ease; }
+.repo-appsrow:not(.repo-appshead):hover { background:var(--hover); }
+.repo-appsrow.is-failed { background:color-mix(in srgb, var(--red) 4%, transparent); }
+.repo-appshead { padding:10px 20px; }
+.repo-appspkghead { display:flex; align-items:baseline; gap:8px; padding:9px 20px; border-bottom:1px solid var(--border); background:color-mix(in srgb, var(--fg) 2%, transparent); }
+.repo-appspkg { display:grid; grid-template-columns:20px minmax(170px,1.2fr) minmax(0,3.3fr); gap:0 16px; padding:11px 20px; border-bottom:1px solid var(--border); align-items:baseline; }
+
+@media (prefers-reduced-motion: reduce) {
+  .repo-kit-pulse svg { animation:none !important; }
+  .repo-driftstep, .repo-appsrow { transition:none !important; }
+}
+
 /* ── landing (signed-out screen, web/src/landing.ts) ──────────────────────────
    Ported from Canopy Site.dc.html. The page rides the app's three themes; these
    are the tokens the site needs that the app themes don't carry, plus the
@@ -3079,6 +3117,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 [data-cnpy-theme] .cnpy-av-anon { border-color:transparent !important; background:color-mix(in srgb,var(--fg) 14%,transparent) !important; }
 [data-cnpy-theme] .cnpy-dot { box-shadow:none; }
 [data-cnpy-theme] .repo-envdot { box-shadow:none !important; width:8px !important; height:8px !important; }
+[data-cnpy-theme] .repo-driftstep { border-radius:calc(7px * var(--corner-scale)) !important; }
 /* A growing boxy frame is not a pulse; a boxy LED blinks instead. */
 [data-cnpy-theme] .repo-envdot.repo-pulse { animation:cnpy-blink 1.4s ease-in-out infinite; }
 @keyframes cnpy-blink { 50% { opacity:.3; } }
