@@ -53,6 +53,8 @@ export const ORG_TABLES = [
   "repo_apps",
   // The repo scan and its suggestions (0072_repo_scans).
   "repo_scans", "repo_app_suggestions",
+  // The Repo screen's per-repository defaults (0071_repo_settings).
+  "repo_settings",
   // Configuration and credentials: the GitHub App binding, encrypted secrets and their keys, repositories, environments.
   "org_github_installation_repos", "org_github_installations",
   "org_secrets", "org_keys", "org_integration_config", "org_audit",

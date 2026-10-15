@@ -66,6 +66,7 @@ import { AVATAR_MAX_BYTES } from "@shared/people";
 import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
 import { aiApp } from "./ai/routes";
+import { repoSettingsApp } from "./repo/settings-routes";
 import { aiPreview, withPreviewFeed } from "./ai/preview";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
 
@@ -1171,6 +1172,7 @@ app.route("/api/o/:slug", scanApp); // Repositories › a repo › Apps: Scan ag
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
 app.route("/api/o/:slug", orgBillingApp); // an owner's billing for this org: the Stripe portal, a plan switch, a renewal (src/billing/routes.ts)
 app.route("/api/o/:slug", aiApp); // Org settings › AI, and the answers to a suggestion and to "Wrong?" — cookie only (src/ai/routes.ts)
+app.route("/api/o/:slug", repoSettingsApp); // the Repo screen's per-repository defaults (0071_repo_settings) — admin, cookie only (src/repo/settings-routes.ts)
 // The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of
 // their own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name
 // twice. Nothing reads `:org` — `tenantGate` (mounted on `/api/o/:slug/*` above) resolved the org from

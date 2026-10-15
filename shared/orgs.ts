@@ -106,6 +106,8 @@ export const ORG_AUDIT_ACTIONS = [
   "org.ai",
   // Apps (0070_repo_apps, src/repo/apps.ts): an app written or removed by an admin.
   "app.set", "app.delete",
+  // A repository's Repo-screen defaults (0071_repo_settings, src/data/repo-settings.ts): the Overview's Group by.
+  "repo.settings",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 

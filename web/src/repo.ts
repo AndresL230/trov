@@ -30,6 +30,12 @@ import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { emptyLayout, emptyShapes, skeleton, skBar, skList, skW } from "./skeleton";
 import { hostingBlank, hostingEmpty, hostingNotConnected, hostingParts, hostingSkeleton } from "./repo-hosting";
+import { narrowFacts, layoutInputOf, type RepoFacts } from "@shared/repo-facts-core";
+import { layoutOf, type GroupBy, type RepoLayout } from "@shared/repo-layout-core";
+import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
+import { overviewFacts } from "./repo-overview";
+import { envPillsHtml, groupByHtml, repoHeaderDropdowns, repoScopeHtml } from "./repo-header";
+import { REPO_SCENARIOS, SCENARIO_KEYS, variantLabel, type ScenarioKey } from "./repo-sample-keys";
 
 export interface RepoProps {
   tab: RepoTab;
@@ -52,6 +58,21 @@ export interface RepoProps {
   persons?: PersonSummary[];
   /** Sync GitHub's line beside "updated …" (sync.ts `syncRepoLabel`: "synced 12m ago by @andres"); "" / absent = none. */
   synced?: string;
+  // ── the Overview from `facts` (repo-overview.ts) ──
+  /** The App menu's narrowing (an app key, `REPO_WIDE`, or null for all apps) — from the address. */
+  app?: string | null;
+  /** Group by, this session; null = the admin's default (`facts.groupDefault`). */
+  group?: GroupBy | null;
+  /** The viewer flipped Group by this session: an admin is offered "Make this the default". */
+  groupFlipped?: boolean;
+  /** Sample mode's scenario and variant (the preview bar's switch). */
+  scenario?: { key: ScenarioKey; variant: string };
+  /** The app's one open dropdown (the repository / App menus, the sample switch). */
+  dd?: DropdownUi;
+  /** Disclosures opened this session (`repoOpen`), keyed by each block. */
+  open?: ReadonlySet<string>;
+  /** "Now" for the blocks' ages (tests pin it). */
+  now?: number;
 }
 
 /** "Poll now" (POST /admin/poll): in flight, its per-source outcomes, a 409 (another refresh holds the lock), or a failed request. */
@@ -181,10 +202,24 @@ function okData<T>(p: RepoProps, pick: (d: RepoDashboard) => RepoSection<T>): T 
   return s && s.status === "ok" ? s.data : null;
 }
 
+/** The Overview's facts as the viewer sees them — narrowed by the App menu (client-side when the payload is not
+ *  already narrowed to it: the sample, and the server until it reads `?app=`) — and the layout the shared rules
+ *  decide, with the session's Group by over the admin's default. null when the payload has no facts (today's
+ *  overview then draws), or there is nothing to read. */
+export function factsView(p: Pick<RepoProps, "repo" | "app" | "group" | "noRepo" | "sample">): { f: RepoFacts; layout: RepoLayout } | null {
+  const raw = phaseOf(p as RepoProps) === "ready" ? p.repo.data?.facts ?? null : null;
+  if (!raw) return null;
+  const app = p.app ?? null;
+  const f = raw.app === app ? raw : narrowFacts(raw, app);
+  return { f, layout: layoutOf(layoutInputOf(f), p.group ?? f.groupDefault) };
+}
+
 // ── header chrome ────────────────────────────────────────────────────────────
 /** The repo the dashboard reads, beside the title. The tab in view is named by the page's
  *  own tab bar, so the crumb no longer repeats it; nothing is drawn until the slug is known. */
 export function repoCrumb(p: RepoProps): string {
+  const fx = factsView(p);
+  if (fx) return repoScopeHtml(fx.f, p.dd ?? initialDropdownUi());
   const slug = p.repo.data?.repo ?? "";
   return slug
     ? `<span style="font-family:var(--label);font-size:11px;color:var(--fg-40);white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(slug)}</span>`
@@ -212,7 +247,8 @@ const envVerdict = (pill: string) => ENV_VERDICT[pill] ?? { word: pill.charAt(0)
 
 export function repoControls(p: RepoProps): string {
   const envs = okData(p, (d) => d.environments) ?? [];
-  const pills = envs.map((e) => {
+  const fx = factsView(p);
+  const pills = fx ? envPillsHtml(fx.f) : envs.map((e) => {
     const c = TONE[e.tone];
     const v = envVerdict(e.pill);
     return `<span data-mtip="${attr(`${e.name}: ${v.word}.${v.hint ? ` ${v.hint}` : ""}`)}" style="display:inline-flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;color:var(--fg-70)"><span class="repo-envdot${e.tone === "good" || e.tone === "neutral" ? "" : " repo-pulse"}" style="--c:${c};width:7px;height:7px;border-radius:50%;background:${c};box-shadow:0 0 0 3px color-mix(in srgb,${c} 16%,transparent)"></span>${esc(e.name)}</span>`;
@@ -247,6 +283,12 @@ const kv = (k: string, v: string): string =>
   `<div style="display:grid;grid-template-columns:96px 1fr;gap:12px;padding:11px 0;${TOP}"><div style="${LABEL_SM};padding-top:2px">${k}</div>${v}</div>`;
 
 function overviewTab(p: RepoProps): string {
+  const fx = factsView(p);
+  if (fx) {
+    return overviewFacts(fx.f, {
+      now: p.now ?? Date.now(), admin: p.admin, sample: p.sample, persons: p.persons ?? [], layout: fx.layout, open: p.open ?? new Set(),
+    });
+  }
   const now = Date.now();
   const envs = sec(p, (d) => d.environments, { nc: "Nothing captured for a configured environment yet. Cards appear once Org settings › Environments lists an environment and a health ping, a deploy or a head check lands for it — from the 10-minute check, the hourly hosting poll, the GitHub webhook, or an admin's Sync GitHub.", empty: "No environments recorded." }, (rows) =>
     `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${rows.map((e, i) => {
@@ -1059,6 +1101,30 @@ export function repoTabBar(tab: RepoTab): string {
  *  failed, degraded, sample, nothing connected) — only the panel's content changes — so its
  *  line and underline never move; the sample / degraded banner, the "Poll now" strip and the
  *  "not connected" footer all sit under the line, in the labelled panel. */
+// ── the sample switch (Preview with sample data) ─────────────────────────────
+/** Which scenario of the design the sample draws (A–N, repo-sample-keys.ts). */
+export function sampleScenarioDropdown(sc: { key: ScenarioKey; variant: string }): DropdownProps {
+  return {
+    id: "repo-sample-scenario", act: "repoScenario", value: sc.key, labelledBy: "repo-sample-scenario-l", size: "sm",
+    options: SCENARIO_KEYS.map((k) => ({ value: k, label: `${k} · ${REPO_SCENARIOS[k].title}` })),
+  };
+}
+/** The scenario's variant ('' = calm), when it has more than one. */
+export function sampleVariantDropdown(sc: { key: ScenarioKey; variant: string }): DropdownProps {
+  return {
+    id: "repo-sample-variant", act: "repoVariant", value: sc.variant, labelledBy: "repo-sample-variant-l", size: "sm",
+    options: REPO_SCENARIOS[sc.key].variants.map((v) => ({ value: v, label: variantLabel(sc.key, v) })),
+  };
+}
+/** Every dropdown the Repo screen shows — what render.ts's root overlays draw the open menu from. */
+export function repoDropdowns(p: RepoProps): DropdownProps[] {
+  const fx = factsView(p);
+  return [
+    ...(fx ? repoHeaderDropdowns(fx.f) : []),
+    ...(p.sample && p.scenario ? [sampleScenarioDropdown(p.scenario), ...(REPO_SCENARIOS[p.scenario.key].variants.length > 1 ? [sampleVariantDropdown(p.scenario)] : [])] : []),
+  ];
+}
+
 /** The dashboard's empty sentences (no repository connected). Both point at Preview with sample
  *  data — the dashboard's own way to see a full screen. */
 export const REPO_EMPTY = {
@@ -1072,9 +1138,15 @@ export function repoView(p: RepoProps): string {
     : p.tab === "usage" ? usageTab(p) : planningTab(p);
 
   const info = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="1.8" style="flex:none"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>`;
+  const dd = p.dd ?? initialDropdownUi();
+  const sampleSwitch = p.sample && p.scenario
+    ? `<span class="repo-sample-switch" data-repo-sample="${attr(`${p.scenario.key}${p.scenario.variant ? `/${p.scenario.variant}` : ""}`)}"><span id="repo-sample-scenario-l" style="font-size:12px;color:var(--fg-40)">Scenario</span><span style="min-width:220px">${dropdown(sampleScenarioDropdown(p.scenario), dd)}</span>${REPO_SCENARIOS[p.scenario.key].variants.length > 1
+      ? `<span id="repo-sample-variant-l" style="font-size:12px;color:var(--fg-40)">Variant</span><span style="min-width:170px">${dropdown(sampleVariantDropdown(p.scenario), dd)}</span>` : ""}</span>`
+    : "";
   const banner = p.sample
-    ? `<div class="cnpy-rise" style="display:flex;align-items:center;gap:9px;margin-bottom:16px;font-size:12.5px;color:var(--fg-55)">${info}
+    ? `<div class="cnpy-rise" style="display:flex;align-items:center;gap:9px 12px;flex-wrap:wrap;margin-bottom:16px;font-size:12.5px;color:var(--fg-55)">${info}
         <span><strong style="font-weight:600;color:var(--fg)">Sample data</strong> — every section shown with placeholder values, not this repo's.</span>
+        ${sampleSwitch}
         <button data-act="repoSampleOff" class="repo-textbtn" style="margin-left:auto;font-size:12.5px;font-weight:500;color:var(--accent);padding:0;white-space:nowrap">Back to live data</button>
       </div>`
     : p.repo.data?.degraded
@@ -1115,10 +1187,15 @@ export function repoView(p: RepoProps): string {
     </div>`;
   }
 
+  // Group by sits above the panel, right-aligned (the design's RepoScreen), on the Overview of a repository whose
+  // facts could draw either grouping. An admin who flipped it is offered "Make this the default" (never in the sample).
+  const fx = p.tab === "overview" ? factsView(p) : null;
+  const groupBy = fx ? groupByHtml(fx.layout, { offerDefault: !!p.groupFlipped && p.admin && !p.sample && fx.layout.group !== fx.f.groupDefault }) : "";
   return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}">
     ${repoTabBar(p.tab)}
     <div${tabPanelAttrs("repo-tab", p.tab)} style="padding-top:20px">
       ${banner}
+      ${groupBy}
       <div class="repo-panel ${SURFACE}" style="${PANEL}">${canPollRepo(p) ? pollStrip(p.poll) : ""}${body}</div>
       ${footer}
     </div>

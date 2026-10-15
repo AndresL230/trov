@@ -297,6 +297,8 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["repo_apps", "created_by"], ["repo_apps", "updated_by"],
   // The repo scan (0072_repo_scans): who accepted or ignored a suggestion.
   ["repo_app_suggestions", "decided_by"],
+  // The Repo screen's per-repository defaults (0071_repo_settings): who set one.
+  ["repo_settings", "updated_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };
