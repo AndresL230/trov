@@ -262,7 +262,7 @@ export const vercel: HostingProvider = {
     {
       method: "install",
       label: "Connect with Vercel",
-      howTo: "Vercel opens its install screen for Trov's integration: pick your personal account or the team that owns the project, choose \"Specific Projects\" and select only the projects Trov should read (\"All Projects\" works but grants more), then confirm — Vercel sends you back here. Trov asks to read the projects and deployments you pick, your team's and your account's name, and its own installation (which it removes when you disconnect here). Uninstalling the integration on Vercel (Settings › Integrations) disconnects Trov too. The access token Vercel issues is stored encrypted and only ever sent to api.vercel.com.",
+      howTo: "1. Vercel opens its install screen for Trov's integration.\n2. Pick your personal account, or the team that owns the project.\n3. Choose \"Specific Projects\" and select only the projects Trov should read (\"All Projects\" works but grants more).\n4. Confirm. Vercel sends you back here.\nTrov reads the projects and deployments you pick, your team's and your account's name, and its own installation (which it removes when you disconnect here). Uninstalling the integration on Vercel (Settings › Integrations) disconnects Trov too.\nThe access token Vercel issues is stored encrypted and only ever sent to api.vercel.com.",
       grants: [
         "Projects: Read — on the projects you pick", "Deployments: Read — on the projects you pick",
         "Team and User: Read — the account's name, shown on this page",
@@ -273,7 +273,7 @@ export const vercel: HostingProvider = {
     {
       method: "token",
       label: "Paste an access token",
-      howTo: "In Vercel open Account Settings › Tokens › Create Token. Scope it to the ONE project Trov should read (a project-scoped token) — or, where that is not offered, to the one team that owns it; never Full Account — and set an expiry (Vercel allows 1 day to 1 year; Trov shows a 401 when it lapses). Vercel has no read-only token: whoever holds it can also change what it reaches, which is why one project is the narrowest choice. When the project belongs to a team, also set Team ID below. The token is only ever sent to api.vercel.com.",
+      howTo: "1. In Vercel, open Account Settings › Tokens › Create Token.\n2. Scope it to the ONE project Trov should read — or, where that is not offered, to the one team that owns it. Never Full Account.\n3. Set an expiry (Vercel allows 1 day to 1 year; Trov shows a 401 when it lapses).\n4. Paste it here. When the project belongs to a team, also set Team ID.\nVercel has no read-only token: whoever holds it can also change what it reaches, which is why one project is the narrowest choice. The token is only ever sent to api.vercel.com.",
       grants: ["Full access to ONE project (or one team) — Vercel has no read-only token"],
     },
   ],

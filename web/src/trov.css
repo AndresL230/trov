@@ -1358,6 +1358,12 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .cnpy-hx-card-a { flex:none; display:flex; margin:-2px 0 0 auto; }
 .cnpy-hx-card-a > button { width:112px; justify-content:center; }
 @media (max-width:700px) { .cnpy-hx-cards { grid-template-columns:minmax(0, 1fr); } .cnpy-hx-card-a > button { min-height:36px; } }
+/* A field's error FLOATS: a small box pinned just under its input (org-ui.ts `fieldError` in a
+   `.cnpy-field-anchor`), over whatever follows, so a message that appears while typing never moves the form.
+   Its radius is inline (the corners layer scales it); the caret is a rotated square, so it needs none. */
+.cnpy-field-anchor { position:relative; }
+.cnpy-field-err { position:absolute; left:0; top:calc(100% + 7px); z-index:6; box-sizing:border-box; max-width:min(100%, 440px); padding:7px 11px; font-size:12.5px; line-height:1.45; color:var(--red); background:var(--surface); border:1px solid color-mix(in srgb, var(--red) 50%, var(--border)); box-shadow:0 6px 20px color-mix(in srgb, var(--fg) 14%, transparent); pointer-events:none; }
+.cnpy-field-err::before { content:""; position:absolute; top:-5px; left:14px; width:8px; height:8px; background:var(--surface); border-left:1px solid color-mix(in srgb, var(--red) 50%, var(--border)); border-top:1px solid color-mix(in srgb, var(--red) 50%, var(--border)); transform:rotate(45deg); }
 .cnpy-hx-envs { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap:14px; align-items:start; }
 .cnpy-hx-envhead { display:flex; align-items:center; gap:6px 10px; flex-wrap:wrap; min-height:52px; padding:9px 12px 9px 16px; border-bottom:1px solid var(--border); box-sizing:border-box; }
 .cnpy-hx-step { display:flex; align-items:flex-start; gap:10px 12px; flex-wrap:wrap; padding:11px 16px; border-bottom:1px solid var(--border); margin-bottom:-1px; }

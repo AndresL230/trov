@@ -440,7 +440,10 @@ describe("the secret form", () => {
     // The instructions sit beside it, with `code` runs marked up.
     expect(html).toContain("Where to get it");
     expect(html).toContain("Open Settings › Tokens and run <code");
-    expect(howToHtml("a <b> `x`")).toBe('a &lt;b&gt; <code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">x</code>');
+    expect(howToHtml("a <b> `x`")).toContain('<p style="margin:0">a &lt;b&gt; <code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">x</code></p>');
+    // Steps are a numbered list; the lines after them, paragraphs.
+    const steps = howToHtml("1. Open it\n2. Copy `it`\nOnly sent to x.");
+    expect(steps).toMatch(/<ol data-howto-steps[^>]*><li[^>]*>Open it<\/li><li[^>]*>Copy <code[^>]*>it<\/code><\/li><\/ol><p style="margin:0">Only sent to x\.<\/p>/);
     // Nothing to save yet.
     expect(html).toMatch(/data-field="orgSecretSave" disabled/);
     expect(html).not.toContain("orgSecretGenerate");

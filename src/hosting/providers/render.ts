@@ -527,7 +527,7 @@ export const render: HostingProvider = {
     {
       method: "token",
       label: "Paste an API key",
-      howTo: "In the Render Dashboard open Account Settings › API Keys › Create API Key, and paste the key here (Render shows it only once). Render API keys have NO scopes and no read-only mode, and are not bound to a workspace: a key acts as its user — with everything that user may do, including changing and deleting services — in EVERY workspace the user belongs to. The narrowest option Render offers is a key from a dedicated member account that belongs only to this workspace. The key is only ever sent to api.render.com.",
+      howTo: "1. In the Render Dashboard, open Account Settings › API Keys › Create API Key.\n2. Paste the key here (Render shows it only once).\nRender API keys have NO scopes and no read-only mode, and are not bound to a workspace: a key acts as its user — with everything that user may do, including changing and deleting services — in EVERY workspace the user belongs to.\nThe narrowest option is a key from a dedicated member account that belongs only to this workspace. The key is only ever sent to api.render.com.",
       grants: ["Everything the key's user can do, in every workspace that user belongs to (Render API keys have no scopes and no read-only mode)"],
     },
   ],

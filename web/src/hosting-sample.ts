@@ -36,7 +36,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "method": "token",
         "label": "Paste an API token",
-        "how_to": "In the Cloudflare dashboard open My Profile › API Tokens › Create Token › Create Custom Token and grant exactly two permissions: Account › Account Analytics › Read and Account › Workers Scripts › Read, with Account Resources limited to the ONE account your Workers live under. Both are read-only. Paste the token here and set Account ID to that account's 32-character id (Workers & Pages › Overview). The token is only ever sent to api.cloudflare.com.",
+        "how_to": "1. In the Cloudflare dashboard, open My Profile › API Tokens › Create Token › Create Custom Token.\n2. Add two permissions, both read-only: Account › Account Analytics › Read, and Account › Workers Scripts › Read.\n3. Under Account Resources, pick only the account your Workers live under.\n4. Paste the token here, and set Account ID to that account's 32-character id (Workers & Pages › Overview).\nThe token is only ever sent to api.cloudflare.com.",
         "grants": [
           "Account Analytics: Read on one account",
           "Workers Scripts: Read on that account (its Workers' deployments)"
@@ -96,7 +96,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "method": "token",
         "label": "Paste a workspace token",
-        "how_to": "In Railway open Account Settings › Tokens (railway.com/account/tokens), create a token and, in its Workspace dropdown, pick the workspace that owns the project — a WORKSPACE token, limited to that workspace, is the narrowest Railway offers. An account token (\"No workspace\") also works but reaches every workspace you belong to; a project token does not work (it is bound to one environment). Railway has no read-only scope: the token can also change what is in its workspace. The token is only ever sent to backboard.railway.com.",
+        "how_to": "1. In Railway, open Account Settings › Tokens (railway.com/account/tokens) and create a token.\n2. In its Workspace dropdown, pick the workspace that owns the project.\n3. Paste the token here.\nA WORKSPACE token is the narrowest Railway offers. An account token (\"No workspace\") also works but reaches every workspace you belong to; a project token does not work, because it is bound to one environment.\nRailway has no read-only scope: the token can also change what is in its workspace. It is only ever sent to backboard.railway.com.",
         "grants": [
           "Full access to one Railway workspace — everything in it (Railway has no read-only token)"
         ],
@@ -162,7 +162,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "method": "install",
         "label": "Connect with Vercel",
-        "how_to": "Vercel opens its install screen for Trov's integration: pick your personal account or the team that owns the project, choose \"Specific Projects\" and select only the projects Trov should read (\"All Projects\" works but grants more), then confirm — Vercel sends you back here. Trov asks to read the projects and deployments you pick, your team's and your account's name, and its own installation (which it removes when you disconnect here). Uninstalling the integration on Vercel (Settings › Integrations) disconnects Trov too. The access token Vercel issues is stored encrypted and only ever sent to api.vercel.com.",
+        "how_to": "1. Vercel opens its install screen for Trov's integration.\n2. Pick your personal account, or the team that owns the project.\n3. Choose \"Specific Projects\" and select only the projects Trov should read (\"All Projects\" works but grants more).\n4. Confirm. Vercel sends you back here.\nTrov reads the projects and deployments you pick, your team's and your account's name, and its own installation (which it removes when you disconnect here). Uninstalling the integration on Vercel (Settings › Integrations) disconnects Trov too.\nThe access token Vercel issues is stored encrypted and only ever sent to api.vercel.com.",
         "grants": [
           "Projects: Read — on the projects you pick",
           "Deployments: Read — on the projects you pick",
@@ -175,7 +175,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "method": "token",
         "label": "Paste an access token",
-        "how_to": "In Vercel open Account Settings › Tokens › Create Token. Scope it to the ONE project Trov should read (a project-scoped token) — or, where that is not offered, to the one team that owns it; never Full Account — and set an expiry (Vercel allows 1 day to 1 year; Trov shows a 401 when it lapses). Vercel has no read-only token: whoever holds it can also change what it reaches, which is why one project is the narrowest choice. When the project belongs to a team, also set Team ID below. The token is only ever sent to api.vercel.com.",
+        "how_to": "1. In Vercel, open Account Settings › Tokens › Create Token.\n2. Scope it to the ONE project Trov should read — or, where that is not offered, to the one team that owns it. Never Full Account.\n3. Set an expiry (Vercel allows 1 day to 1 year; Trov shows a 401 when it lapses).\n4. Paste it here. When the project belongs to a team, also set Team ID.\nVercel has no read-only token: whoever holds it can also change what it reaches, which is why one project is the narrowest choice. The token is only ever sent to api.vercel.com.",
         "grants": [
           "Full access to ONE project (or one team) — Vercel has no read-only token"
         ],
@@ -257,7 +257,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "method": "token",
         "label": "Paste an API key",
-        "how_to": "In the Render Dashboard open Account Settings › API Keys › Create API Key, and paste the key here (Render shows it only once). Render API keys have NO scopes and no read-only mode, and are not bound to a workspace: a key acts as its user — with everything that user may do, including changing and deleting services — in EVERY workspace the user belongs to. The narrowest option Render offers is a key from a dedicated member account that belongs only to this workspace. The key is only ever sent to api.render.com.",
+        "how_to": "1. In the Render Dashboard, open Account Settings › API Keys › Create API Key.\n2. Paste the key here (Render shows it only once).\nRender API keys have NO scopes and no read-only mode, and are not bound to a workspace: a key acts as its user — with everything that user may do, including changing and deleting services — in EVERY workspace the user belongs to.\nThe narrowest option is a key from a dedicated member account that belongs only to this workspace. The key is only ever sent to api.render.com.",
         "grants": [
           "Everything the key's user can do, in every workspace that user belongs to (Render API keys have no scopes and no read-only mode)"
         ],
@@ -307,7 +307,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "method": "oauth",
         "label": "Connect with Netlify",
-        "how_to": "Connect with Netlify sends you to Netlify to approve Trov's OAuth application, then back here. Netlify OAuth has NO scopes: the token acts as the person who approves it, across every team they belong to — so approve with an account that belongs only to the team whose sites Trov should see. Trov only reads deploys. Disconnecting here deletes Trov's copy; to end the grant on Netlify's side too, revoke Trov under User settings › Applications. The token is only ever sent to api.netlify.com.",
+        "how_to": "1. Netlify opens and asks you to approve Trov's OAuth application.\n2. Approve with an account that belongs only to the team whose sites Trov should see.\n3. Netlify sends you back here.\nNetlify OAuth has NO scopes: the token acts as the person who approves it, across every team they belong to. Trov only reads deploys.\nDisconnecting here deletes Trov's copy; to end the grant on Netlify's side too, revoke Trov under User settings › Applications. The token is only ever sent to api.netlify.com.",
         "grants": [
           "Everything the approving Netlify account can do, across every team it belongs to — Netlify OAuth has no scopes",
           "Trov uses it only to read sites and their deploys"
@@ -318,7 +318,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "method": "token",
         "label": "Paste a personal access token",
-        "how_to": "In Netlify open User settings › Applications › Personal access tokens › New access token, name it \"Trov\" and set an expiration (paste a new one here when it runs out). Netlify has no scoped or read-only tokens: it has full access to your account and every team you belong to, so create it from an account that belongs only to the team whose sites Trov should see. Tick the SAML-team access box only if the site lives in a SAML-based team. The token is only ever sent to api.netlify.com.",
+        "how_to": "1. In Netlify, open User settings › Applications › Personal access tokens › New access token.\n2. Name it \"Trov\" and set an expiration (paste a new one here when it runs out).\n3. Tick the SAML-team access box only if the site lives in a SAML-based team.\n4. Paste the token here.\nNetlify has no scoped or read-only tokens: it has full access to your account and every team you belong to, so create it from an account that belongs only to the team whose sites Trov should see. The token is only ever sent to api.netlify.com.",
         "grants": [
           "Full access to the account that creates it and every team it belongs to (Netlify has no read-only or per-site token)"
         ],
@@ -392,7 +392,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "method": "token",
         "label": "Paste a read-only token",
-        "how_to": "Run fly tokens create readonly <org-slug> --name trov --expiry 8760h (fly orgs list shows the slug) and paste the whole output — a leading \"FlyV1 \" is fine. It is a READ-ONLY token for one organization, the narrowest Fly.io offers: it can read that organization's apps, releases and metrics and change nothing. Never paste the output of fly auth token — that is your personal token, with full access to every organization you belong to. The token stops working after its --expiry (8760h is one year); create a new one before then. It is only ever sent to api.machines.dev and api.fly.io.",
+        "how_to": "1. Find your organization's slug: `fly orgs list`.\n2. Run `fly tokens create readonly <org-slug> --name trov --expiry 8760h`.\n3. Paste the whole output here — a leading \"FlyV1 \" is fine.\nIt is a READ-ONLY token for one organization, the narrowest Fly.io offers: it can read that organization's apps, releases and metrics and change nothing. Never paste the output of `fly auth token` — that is your personal token, with full access to every organization you belong to.\nThe token stops working after its --expiry (8760h is one year); create a new one before then. It is only ever sent to api.machines.dev and api.fly.io.",
         "grants": [
           "Read-only access to one Fly.io organization: its apps, releases and metrics"
         ],
@@ -449,7 +449,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "method": "assume_role",
         "label": "Grant Trov a read-only role",
-        "how_to": "In IAM create a role for \"Another AWS account\" (Trov's account id, shown here), require the external id shown here, and attach a policy that allows only cloudwatch:GetMetricData (and cloudwatch:ListMetrics) — optionally limited by resource. Paste the role's ARN and pick its region. No access key is ever pasted into Trov.",
+        "how_to": "1. In IAM, create a role for \"Another AWS account\", with Trov's account id (shown here).\n2. Require the external id shown here.\n3. Attach a policy that allows only cloudwatch:GetMetricData (and cloudwatch:ListMetrics), optionally limited by resource.\n4. Paste the role's ARN and pick its region.\nNo access key is ever pasted into Trov.",
         "grants": [
           "cloudwatch:GetMetricData",
           "cloudwatch:ListMetrics"

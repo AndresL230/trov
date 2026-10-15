@@ -30,7 +30,7 @@ export const aws: HostingProvider = {
     {
       method: "assume_role",
       label: "Grant Trov a read-only role",
-      howTo: "In IAM create a role for \"Another AWS account\" (Trov's account id, shown here), require the external id shown here, and attach a policy that allows only cloudwatch:GetMetricData (and cloudwatch:ListMetrics) — optionally limited by resource. Paste the role's ARN and pick its region. No access key is ever pasted into Trov.",
+      howTo: "1. In IAM, create a role for \"Another AWS account\", with Trov's account id (shown here).\n2. Require the external id shown here.\n3. Attach a policy that allows only cloudwatch:GetMetricData (and cloudwatch:ListMetrics), optionally limited by resource.\n4. Paste the role's ARN and pick its region.\nNo access key is ever pasted into Trov.",
       grants: ["cloudwatch:GetMetricData", "cloudwatch:ListMetrics"],
       requires: ["AWS_TROV_ACCESS_KEY_ID", "AWS_TROV_SECRET_ACCESS_KEY"],
     },

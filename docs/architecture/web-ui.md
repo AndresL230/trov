@@ -881,3 +881,13 @@ radius needs a line in that block, else it renders square; `test/render.corners.
 A shape that only reads right as a CIRCLE (a halo ring, an overlapping avatar stack, a check in a bordered circle)
 needs a hook class and a rule in that block (`.cnpy-av`, `.cnpy-avstack`, `.cnpy-seal`, `.repo-envdot`, …), and
 a status dot must be an element, never a `●` character (`GDOT` in `repo.ts`).
+
+## Field errors and how-tos
+
+A field's error — whether it appears while you type (the part editor checks as you go) or after a save the
+server refused — is a small box FLOATING right under its input, never a line that pushes the form down:
+`fieldError` inside `anchoredField` (`web/src/org-ui.ts`; `.cnpy-field-anchor` / `.cnpy-field-err` in
+`trov.css`, its radius inline). `textField` does it for every text field; the token inputs, the invite row and
+the part editor's pickers use the same pair. A how-to ("Where to get it") is written as lines: `1. …` steps,
+then short notes; `howToHtml` (`web/src/integrations.ts`) draws the steps as a numbered list and each other line
+as its own paragraph, so no how-to is one long block.

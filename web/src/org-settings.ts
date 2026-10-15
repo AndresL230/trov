@@ -27,7 +27,7 @@ import { isSoloPlan, type OrgPlanView } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
 import {
   O_LABEL, O_FIELD, O_HELP, O_ERR, YOU, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgEmpty, orgBanner, loadingNote, failedNote,
-  sliceNote, roleWord, ROLE_WORD, roleOption, roleAtLeast, sameHandle, textField, tabLead, leadFlag, openRow, type OrgSlice,
+  sliceNote, roleWord, ROLE_WORD, roleOption, roleAtLeast, sameHandle, textField, fieldError, tabLead, leadFlag, openRow, type OrgSlice,
 } from "./org-ui";
 import { kindMark } from "./marks";
 export { roleAtLeast };
@@ -625,14 +625,13 @@ export function inviteSection(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDro
     : `<section aria-labelledby="org-invite-t">
       ${orgHead("Invite someone", "", null, "org-invite-t")}
       <div${surface("padding:14px 16px")}>
-        <div class="cnpy-org-invite">
+        <div class="cnpy-field-anchor"><div class="cnpy-org-invite">
           ${segmented({ id: "org-invite-by", ariaLabel: "Invite by", act: "orgInviteBy", value: ui.inviteBy, size: "sm", inertOn: true, options: [{ value: "github", label: "GitHub login" }, { value: "email", label: "Email" }] })}
           <input id="org-invite" data-act="orgInviteDraft" data-field="orgInvite" data-enter="orgInviteSend" value="${attr(ui.inviteDraft)}" placeholder="${ui.inviteBy === "github" ? "octocat" : "name@example.com"}" aria-label="${ui.inviteBy === "github" ? "GitHub login to invite" : "Email address to invite"}"${ui.inviteBy === "email" ? ' type="email" inputmode="email"' : ""} autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="org-invite-h${ui.inviteError ? " org-invite-e" : ""}"${ui.inviteError ? ' aria-invalid="true"' : ""} class="cnpy-input" style="${O_FIELD};flex:1 1 200px;width:auto;min-width:0;${ui.inviteError ? "border-color:var(--red);" : ""}" />
           ${ui.inviteBy === "email" ? `<input id="org-invite-name" data-act="orgInviteName" data-field="orgInviteName" data-enter="orgInviteSend" value="${attr(ui.inviteName)}" maxlength="${INVITE_NAME_MAX}" placeholder="Their name (optional)" aria-label="Their name, for the email's greeting (optional)" autocomplete="off" class="cnpy-input" style="${O_FIELD};flex:1 1 160px;width:auto;min-width:0" />` : ""}
           ${dropdown(inviteRoleDropdown(ui), dd)}
           ${accentBtn(ui.inviteBusy ? "Inviting…" : "Invite", "orgInviteSend", { disabled: !canSend, busy: ui.inviteBusy, extra: "height:36px" })}
-        </div>
-        ${ui.inviteError ? `<div id="org-invite-e" role="alert" style="${O_ERR}">${esc(ui.inviteError)}</div>` : ""}
+        </div>${ui.inviteError ? fieldError("org-invite-e", ui.inviteError) : ""}</div>
         <div id="org-invite-h" style="${O_HELP};margin-top:9px">${ui.inviteBy === "email"
           ? "Trov emails them the invitation. They join when they sign in with that address, with Google or GitHub, and accept."
           : "They see the invitation the next time they sign in with that GitHub account, and join when they accept. No email is sent: tell them it is waiting."}</div>

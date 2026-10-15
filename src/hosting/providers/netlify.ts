@@ -271,7 +271,7 @@ export const netlify: HostingProvider = {
     {
       method: "oauth",
       label: "Connect with Netlify",
-      howTo: "Connect with Netlify sends you to Netlify to approve Trov's OAuth application, then back here. Netlify OAuth has NO scopes: the token acts as the person who approves it, across every team they belong to — so approve with an account that belongs only to the team whose sites Trov should see. Trov only reads deploys. Disconnecting here deletes Trov's copy; to end the grant on Netlify's side too, revoke Trov under User settings › Applications. The token is only ever sent to api.netlify.com.",
+      howTo: "1. Netlify opens and asks you to approve Trov's OAuth application.\n2. Approve with an account that belongs only to the team whose sites Trov should see.\n3. Netlify sends you back here.\nNetlify OAuth has NO scopes: the token acts as the person who approves it, across every team they belong to. Trov only reads deploys.\nDisconnecting here deletes Trov's copy; to end the grant on Netlify's side too, revoke Trov under User settings › Applications. The token is only ever sent to api.netlify.com.",
       grants: [
         "Everything the approving Netlify account can do, across every team it belongs to — Netlify OAuth has no scopes",
         "Trov uses it only to read sites and their deploys",
@@ -281,7 +281,7 @@ export const netlify: HostingProvider = {
     {
       method: "token",
       label: "Paste a personal access token",
-      howTo: "In Netlify open User settings › Applications › Personal access tokens › New access token, name it \"Trov\" and set an expiration (paste a new one here when it runs out). Netlify has no scoped or read-only tokens: it has full access to your account and every team you belong to, so create it from an account that belongs only to the team whose sites Trov should see. Tick the SAML-team access box only if the site lives in a SAML-based team. The token is only ever sent to api.netlify.com.",
+      howTo: "1. In Netlify, open User settings › Applications › Personal access tokens › New access token.\n2. Name it \"Trov\" and set an expiration (paste a new one here when it runs out).\n3. Tick the SAML-team access box only if the site lives in a SAML-based team.\n4. Paste the token here.\nNetlify has no scoped or read-only tokens: it has full access to your account and every team you belong to, so create it from an account that belongs only to the team whose sites Trov should see. The token is only ever sent to api.netlify.com.",
       grants: ["Full access to the account that creates it and every team it belongs to (Netlify has no read-only or per-site token)"],
     },
   ],

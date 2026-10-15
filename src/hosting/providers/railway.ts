@@ -433,7 +433,7 @@ export const railway: HostingProvider = {
     {
       method: "token",
       label: "Paste a workspace token",
-      howTo: "In Railway open Account Settings › Tokens (railway.com/account/tokens), create a token and, in its Workspace dropdown, pick the workspace that owns the project — a WORKSPACE token, limited to that workspace, is the narrowest Railway offers. An account token (\"No workspace\") also works but reaches every workspace you belong to; a project token does not work (it is bound to one environment). Railway has no read-only scope: the token can also change what is in its workspace. The token is only ever sent to backboard.railway.com.",
+      howTo: "1. In Railway, open Account Settings › Tokens (railway.com/account/tokens) and create a token.\n2. In its Workspace dropdown, pick the workspace that owns the project.\n3. Paste the token here.\nA WORKSPACE token is the narrowest Railway offers. An account token (\"No workspace\") also works but reaches every workspace you belong to; a project token does not work, because it is bound to one environment.\nRailway has no read-only scope: the token can also change what is in its workspace. It is only ever sent to backboard.railway.com.",
       grants: ["Full access to one Railway workspace — everything in it (Railway has no read-only token)"],
     },
   ],

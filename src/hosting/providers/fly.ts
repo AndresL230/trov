@@ -358,7 +358,7 @@ export const fly: HostingProvider = {
     {
       method: "token",
       label: "Paste a read-only token",
-      howTo: "Run fly tokens create readonly <org-slug> --name trov --expiry 8760h (fly orgs list shows the slug) and paste the whole output — a leading \"FlyV1 \" is fine. It is a READ-ONLY token for one organization, the narrowest Fly.io offers: it can read that organization's apps, releases and metrics and change nothing. Never paste the output of fly auth token — that is your personal token, with full access to every organization you belong to. The token stops working after its --expiry (8760h is one year); create a new one before then. It is only ever sent to api.machines.dev and api.fly.io.",
+      howTo: "1. Find your organization's slug: `fly orgs list`.\n2. Run `fly tokens create readonly <org-slug> --name trov --expiry 8760h`.\n3. Paste the whole output here — a leading \"FlyV1 \" is fine.\nIt is a READ-ONLY token for one organization, the narrowest Fly.io offers: it can read that organization's apps, releases and metrics and change nothing. Never paste the output of `fly auth token` — that is your personal token, with full access to every organization you belong to.\nThe token stops working after its --expiry (8760h is one year); create a new one before then. It is only ever sent to api.machines.dev and api.fly.io.",
       grants: ["Read-only access to one Fly.io organization: its apps, releases and metrics"],
     },
   ],

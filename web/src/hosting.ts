@@ -23,7 +23,7 @@
 import { esc, attr, relTime, surface } from "./ui";
 import {
   O_LABEL, O_FIELD, O_HELP, O_ERR, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgBanner, failedNote,
-  tabLead, leadFlag, openRow, textField, type OrgSlice,
+  tabLead, leadFlag, openRow, textField, anchoredField, fieldError, type OrgSlice,
 } from "./org-ui";
 import { segmented } from "./segmented";
 import { hostLogo } from "./host-logos";
@@ -790,8 +790,7 @@ export function partEditorModal(d: HostingSetupDTO, dr: PartDraft, h: HostingUi,
 
   const providerBlock = `<div class="cnpy-org-field">
       <div id="org-hx-provider-l" style="${O_LABEL}">Host</div>
-      <div style="margin-top:7px">${dropdown(partProviderDropdown(dr, d), dd)}</div>
-      ${errOf("provider") ? `<div role="alert" style="${O_ERR}">${esc(errOf("provider") ?? "")}</div>` : ""}
+      ${anchoredField(`<div style="margin-top:7px">${dropdown(partProviderDropdown(dr, d), dd)}</div>`, errOf("provider") ? fieldError(null, errOf("provider") ?? "") : "")}
       ${p ? `<div data-hx-provider-about style="margin-top:9px;font-size:12.5px;line-height:1.55;color:var(--fg-55)">${detected ? `<div data-hx-detected-hint style="margin-bottom:5px;color:var(--fg-70)"><strong style="font-weight:600;color:var(--fg)">Detected.</strong> Trov saw ${esc(detected.evidence)} on your repository.</div>` : ""}${esc(p.summary)}
           <div style="margin-top:7px">${capabilityChips(p)}</div>
           ${p.plan_note ? `<div style="margin-top:7px;color:var(--fg-40)">${esc(p.plan_note)}</div>` : ""}</div>`
@@ -819,9 +818,8 @@ export function partEditorModal(d: HostingSetupDTO, dr: PartDraft, h: HostingUi,
     if (opts) {
       const shown = opts.includes(value) ? value : opts.includes(f.placeholder ?? "") ? f.placeholder ?? opts[0] : opts[0];
       return `<div class="cnpy-org-field" data-hx-setting="${attr(f.key)}"><div style="${O_LABEL}">${esc(f.label)}</div>
-        <div style="margin-top:7px">${segmented({ id: `org-hx-set-${f.key}`, ariaLabel: f.label, act: "orgHxPartPick", value: `${f.key}=${shown}`, size: "sm", inertOn: true, options: opts.map((o) => ({ value: `${f.key}=${o}`, label: cap(o) })) })}</div>
-        <div style="${O_HELP}">${esc(f.description)}</div>
-        ${errOf(field) ? `<div role="alert" style="${O_ERR}">${esc(errOf(field) ?? "")}</div>` : ""}</div>`;
+        ${anchoredField(`<div style="margin-top:7px">${segmented({ id: `org-hx-set-${f.key}`, ariaLabel: f.label, act: "orgHxPartPick", value: `${f.key}=${shown}`, size: "sm", inertOn: true, options: opts.map((o) => ({ value: `${f.key}=${o}`, label: cap(o) })) })}</div>`, errOf(field) ? fieldError(null, errOf(field) ?? "") : "")}
+        <div style="${O_HELP}">${esc(f.description)}</div></div>`;
     }
     return `<div data-hx-setting="${attr(f.key)}">${textField({ id: `org-hx-set-${f.key}`, label: f.label, act: "orgHxPartSetting", arg: f.key, field: `orgHxPartSetting:${f.key}`, value, required: f.required, placeholder: f.placeholder ?? undefined, max: 300, disabled: dr.saving, enter: "orgHxPartSave", help: esc(f.description), error: errOf(field) })}</div>`;
   }).join("");
@@ -880,7 +878,7 @@ export function connectModal(d: HostingSetupDTO, cd: ConnectDraft): string {
         ${replacing ? `<div data-hx-replaces style="${box("var(--amber)")};margin-top:14px"><div style="min-width:0"><strong style="font-weight:600;color:var(--fg)">This replaces ${esc(held)}.</strong> The old one is ended${conn?.method === "token" ? " here" : ` and removed on ${esc(p.label)}`} once the new one is connected.</div></div>` : ""}
         <div style="margin-top:16px"><div style="${O_LABEL}">${esc(p.label)} will ask for</div>
           <ul data-hx-grants style="margin:7px 0 0;padding-left:18px;font-size:13px;line-height:1.6;color:var(--fg-70)">${m.grants.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></div>
-        <p style="margin:12px 0 0;font-size:12.5px;line-height:1.65;color:var(--fg-55);overflow-wrap:anywhere">${howToHtml(m.how_to)}</p>
+        <div style="margin:12px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55);overflow-wrap:anywhere">${howToHtml(m.how_to)}</div>
         <p data-hx-sentto style="margin:10px 0 0;font-size:12px;color:var(--fg-40)">${esc(sentOnlyTo(p))}</p>
         ${cd.error ? `<div role="alert" style="${O_ERR};margin-top:12px">${esc(cd.error)}</div>` : ""}
         <div class="cnpy-cmodal-btns" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:20px">
@@ -923,8 +921,7 @@ export function tokenModal(d: HostingSetupDTO, f: TokenForm): string {
   const formErr = f.error && (f.errorField === null || (f.errorField !== "secret" && !p.org_config_fields.some((c) => `config.${c.key}` === f.errorField))) ? f.error : null;
   const secretField = f.mode === "config" ? "" : `<div class="cnpy-org-field">
       <label for="org-hx-secret" style="${O_LABEL}">${esc(f.mode === "rotate" && !over ? `New ${word}` : cap(word))}</label>
-      <input id="org-hx-secret" data-hx-secret-input data-act="orgHxTokenInput" data-field="orgHxTokenValue" data-enter="orgHxTokenSave" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"${f.saving ? " disabled" : ""}${secretErr ? ' aria-invalid="true"' : ""} aria-describedby="org-hx-secret-h${secretErr ? " org-hx-secret-e" : ""}" placeholder="Paste it here" class="cnpy-input" style="${O_FIELD};margin-top:7px;font-family:var(--code);font-size:12.5px;${secretErr ? "border-color:var(--red);" : ""}" />
-      ${secretErr ? `<div id="org-hx-secret-e" role="alert" style="${O_ERR}">${esc(secretErr)}</div>` : ""}
+      ${anchoredField(`<input id="org-hx-secret" data-hx-secret-input data-act="orgHxTokenInput" data-field="orgHxTokenValue" data-enter="orgHxTokenSave" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"${f.saving ? " disabled" : ""}${secretErr ? ' aria-invalid="true"' : ""} aria-describedby="org-hx-secret-h${secretErr ? " org-hx-secret-e" : ""}" placeholder="Paste it here" class="cnpy-input" style="${O_FIELD};margin-top:7px;font-family:var(--code);font-size:12.5px;${secretErr ? "border-color:var(--red);" : ""}" />`, secretErr ? fieldError("org-hx-secret-e", secretErr) : "")}
       <div id="org-hx-secret-h" style="${O_HELP}">${over ? `It replaces the ${conn?.method === "install" ? "installed integration" : "OAuth connection"} the moment you save. ` : f.mode === "rotate" ? `It replaces the current value${conn?.hint_last4 ? ` (ends in ${esc(conn.hint_last4)})` : ""} the moment you save. ` : ""}Spaces around a pasted value are removed. It is encrypted before it is stored, and Trov never shows it again: only its last four characters. To change it, rotate it.</div>
     </div>`;
   const configFields = f.mode === "rotate" ? "" : p.org_config_fields.map((c) => {
@@ -935,7 +932,7 @@ export function tokenModal(d: HostingSetupDTO, f: TokenForm): string {
   const saveLabel = f.saving ? "Saving…" : f.mode === "config" ? "Save settings" : f.mode === "rotate" ? `Replace ${over ? "connection" : word}` : `Save ${word}`;
   const how = `<aside class="cnpy-org-how" aria-labelledby="org-hx-how">
       <div id="org-hx-how" style="${O_LABEL}">${f.mode === "config" ? "About these settings" : "Where to get it"}</div>
-      <p style="margin:8px 0 0;font-size:12.5px;line-height:1.65;color:var(--fg-70);overflow-wrap:anywhere">${howToHtml(m.how_to)}</p>
+      <div style="margin:8px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-70);overflow-wrap:anywhere">${howToHtml(m.how_to)}</div>
       ${m.grants.length ? `<div style="${O_LABEL};margin-top:16px">What this ${esc(word)} can do</div>
       <ul data-hx-grants style="margin:8px 0 0;padding-left:18px;font-size:12.5px;line-height:1.6;color:var(--fg-70)">${m.grants.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>` : ""}
       ${f.mode === "set" ? `<div style="font-size:12.5px">${methodsOff(p)}</div>` : ""}

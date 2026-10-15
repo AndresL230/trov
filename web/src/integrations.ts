@@ -23,7 +23,7 @@
 import { esc, attr, relTime, surface } from "./ui";
 import {
   O_LABEL, O_FIELD, O_HELP, O_ERR, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgEmpty, orgBanner, roleAtLeast, sliceNote, textField,
-  tabLead, leadFlag, openRow,
+  tabLead, leadFlag, openRow, anchoredField, fieldError,
 } from "./org-ui";
 import { kindMark, type StateKind } from "./marks";
 import type { MyOrg } from "@shared/orgs";
@@ -420,8 +420,26 @@ export function integrationsTab(org: MyOrg, ui: OrgUi): string {
 // ── the Set / Rotate / Edit-settings form ────────────────────────────────────
 
 /** `how_to` as markup: escaped, with `backticked` runs as code. */
+/** A how-to, readable: each line its own block — consecutive "1. …" lines a numbered list (the steps), any other
+ *  line a short paragraph (the notes after them). `code` in backticks. Text with no line breaks is one paragraph. */
 export function howToHtml(text: string): string {
-  return esc(text).replace(/`([^`]+)`/g, `<code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">$1</code>`);
+  const inline = (s: string): string => esc(s).replace(/`([^`]+)`/g, `<code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">$1</code>`);
+  const out: string[] = [];
+  let steps: string[] = [];
+  const flush = (): void => {
+    if (steps.length) out.push(`<ol data-howto-steps style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px">${steps.map((s) => `<li style="padding-left:2px">${inline(s)}</li>`).join("")}</ol>`);
+    steps = [];
+  };
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const step = /^\d+\.\s+(.*)$/.exec(line);
+    if (step) { steps.push(step[1]); continue; }
+    flush();
+    out.push(`<p style="margin:0">${inline(line)}</p>`);
+  }
+  flush();
+  return `<div data-howto style="display:flex;flex-direction:column;gap:10px">${out.join("")}</div>`;
 }
 
 const CLOSE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>`;
@@ -455,8 +473,7 @@ export function secretFormModal(i: IntegrationDTO, f: SecretFormState): string {
         <label for="org-secret-value" style="${O_LABEL}">${f.mode === "rotate" ? `New ${word.toLowerCase()}` : word}</label>
         ${canGenerate ? `<button type="button" data-act="orgSecretGenerate" data-field="orgSecretGenerate"${f.saving ? " disabled" : ""} class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:600;color:var(--accent)">${f.generated ? "Generate another" : "Generate"}</button>` : ""}
       </div>
-      <input id="org-secret-value" data-org-secret-input data-act="orgSecretInput" data-field="orgSecretValue" data-enter="orgSecretSave" type="${f.reveal && f.generated ? "text" : "password"}" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"${f.saving ? " disabled" : ""}${secretErr ? ' aria-invalid="true"' : ""} aria-describedby="org-secret-h${secretErr ? " org-secret-e" : ""}" placeholder="${canGenerate ? "Paste a value, or generate one" : "Paste it here"}" class="cnpy-input" style="${O_FIELD};margin-top:7px;font-family:var(--code);font-size:12.5px;${secretErr ? "border-color:var(--red);" : ""}" />
-      ${secretErr ? `<div id="org-secret-e" role="alert" style="${O_ERR}">${esc(secretErr)}</div>` : ""}
+      ${anchoredField(`<input id="org-secret-value" data-org-secret-input data-act="orgSecretInput" data-field="orgSecretValue" data-enter="orgSecretSave" type="${f.reveal && f.generated ? "text" : "password"}" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"${f.saving ? " disabled" : ""}${secretErr ? ' aria-invalid="true"' : ""} aria-describedby="org-secret-h${secretErr ? " org-secret-e" : ""}" placeholder="${canGenerate ? "Paste a value, or generate one" : "Paste it here"}" class="cnpy-input" style="${O_FIELD};margin-top:7px;font-family:var(--code);font-size:12.5px;${secretErr ? "border-color:var(--red);" : ""}" />`, secretErr ? fieldError("org-secret-e", secretErr) : "")}
       <div id="org-secret-h" style="${O_HELP}">${f.mode === "rotate" ? `It replaces the current value${i.hint_last4 ? ` (ends in ${esc(i.hint_last4)})` : ""} the moment you save. ` : ""}Spaces around a pasted value are removed. It is encrypted before it is stored, and Trov only ever shows its last four characters.</div>
       ${generated}
     </div>`;
@@ -475,7 +492,7 @@ export function secretFormModal(i: IntegrationDTO, f: SecretFormState): string {
   const how = `<aside class="cnpy-org-how" aria-labelledby="org-secret-how">
       <div id="org-secret-how" style="${O_LABEL}">${f.mode === "config" ? "About these settings" : "Where to get it"}</div>
       ${soon}
-      <p style="margin:8px 0 0;font-size:12.5px;line-height:1.65;color:var(--fg-70);overflow-wrap:anywhere">${howToHtml(i.how_to)}</p>
+      <div style="margin:8px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-70);overflow-wrap:anywhere">${howToHtml(i.how_to)}</div>
     </aside>`;
 
   return `<div data-overlay="org-secret" class="cnpy-cmodal">

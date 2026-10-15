@@ -270,7 +270,7 @@ export const cloudflare: HostingProvider = {
     {
       method: "token",
       label: "Paste an API token",
-      howTo: "In the Cloudflare dashboard open My Profile › API Tokens › Create Token › Create Custom Token and grant exactly two permissions: Account › Account Analytics › Read and Account › Workers Scripts › Read, with Account Resources limited to the ONE account your Workers live under. Both are read-only. Paste the token here and set Account ID to that account's 32-character id (Workers & Pages › Overview). The token is only ever sent to api.cloudflare.com.",
+      howTo: "1. In the Cloudflare dashboard, open My Profile › API Tokens › Create Token › Create Custom Token.\n2. Add two permissions, both read-only: Account › Account Analytics › Read, and Account › Workers Scripts › Read.\n3. Under Account Resources, pick only the account your Workers live under.\n4. Paste the token here, and set Account ID to that account's 32-character id (Workers & Pages › Overview).\nThe token is only ever sent to api.cloudflare.com.",
       grants: ["Account Analytics: Read on one account", "Workers Scripts: Read on that account (its Workers' deployments)"],
     },
   ],
