@@ -1,0 +1,108 @@
+// When the app paints (web-ui.md › "Paints: now, batched, or once a frame").
+//
+// Every paint re-renders the whole app to a string and `paint()` (morph.ts) parses it, so a paint is
+// tens to hundreds of milliseconds on a big screen. The boot starts a dozen and a half reads, and
+// each one painted when it started and again when it landed: 25 full-app paints before the first
+// screen settled. This module decides when a requested paint actually runs:
+//
+//  • `now()`   — the interactive paint (`rerender()`): it runs at once, because its callers focus
+//                an element, measure, or read the DOM right after it. Inside a batch it only marks
+//                the app dirty.
+//  • `batch(fn)` — every `now()` / `soon()` inside `fn` is folded into ONE synchronous paint when
+//                the outermost batch ends (the boot's `enterOrg`, `loadForScreen`), so the DOM is
+//                current by the time `batch` returns.
+//  • `soon()`  — a READ LANDING (a loader's `.then` / `.catch`): paints once, on the next animation
+//                frame, however many reads land before it. A visible tab uses requestAnimationFrame;
+//                a hidden one (where rAF never fires: a background tab, an automation tab) or an
+//                environment without rAF uses a timeout instead, and a visible tab keeps a timeout as
+//                a backstop in case it is hidden before the frame comes.
+//
+// Any paint clears a pending `soon()`: the paint just made has already drawn the state it would have.
+
+export interface PaintScheduler {
+  raf?: (cb: () => void) => number;
+  cancelRaf?: (id: number) => void;
+  timeout: (cb: () => void, ms: number) => unknown;
+  clearTimeout: (id: unknown) => void;
+  /** True when a frame callback would not run (a hidden document). */
+  hidden: () => boolean;
+}
+
+export interface PaintQueue {
+  now(): void;
+  soon(): void;
+  batch<T>(fn: () => T): T;
+  /** A `soon()` paint is waiting for its frame. */
+  readonly pending: boolean;
+  /** Paints actually made (for tests and the boot measurement). */
+  readonly paints: number;
+}
+
+/** The backstop for a frame that never comes (the tab went hidden after the request). */
+const FRAME_BACKSTOP_MS = 100;
+
+export function browserScheduler(): PaintScheduler {
+  const hasRaf = typeof requestAnimationFrame === "function";
+  return {
+    raf: hasRaf ? (cb) => requestAnimationFrame(() => cb()) : undefined,
+    cancelRaf: hasRaf ? (id) => cancelAnimationFrame(id) : undefined,
+    timeout: (cb, ms) => setTimeout(cb, ms),
+    clearTimeout: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+    hidden: () => typeof document !== "undefined" && document.hidden === true,
+  };
+}
+
+export function createPaintQueue(paint: () => void, sched: PaintScheduler = browserScheduler()): PaintQueue {
+  let depth = 0;
+  let dirty = false;
+  let frame: number | null = null;
+  let timer: unknown = null;
+  let paints = 0;
+
+  const cancel = (): void => {
+    if (frame !== null && sched.cancelRaf) sched.cancelRaf(frame);
+    if (timer !== null) sched.clearTimeout(timer);
+    frame = null;
+    timer = null;
+  };
+  const run = (): void => {
+    cancel();
+    dirty = false;
+    paints++;
+    paint();
+  };
+  // The frame or its backstop, whichever comes first; the other is cancelled.
+  const flush = (): void => {
+    cancel();
+    if (depth > 0) { dirty = true; return; }
+    run();
+  };
+
+  return {
+    now() {
+      if (depth > 0) { dirty = true; return; }
+      run();
+    },
+    soon() {
+      if (depth > 0) { dirty = true; return; }
+      if (frame !== null || timer !== null) return;
+      if (sched.raf && !sched.hidden()) {
+        frame = sched.raf(flush);
+        timer = sched.timeout(flush, FRAME_BACKSTOP_MS);
+      } else {
+        timer = sched.timeout(flush, 0);
+      }
+    },
+    batch<T>(fn: () => T): T {
+      depth++;
+      try {
+        return fn();
+      } finally {
+        depth--;
+        if (depth === 0 && (dirty || frame !== null || timer !== null)) run();
+      }
+    },
+    get pending() { return frame !== null || timer !== null; },
+    get paints() { return paints; },
+  };
+}

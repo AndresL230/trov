@@ -67,6 +67,29 @@ it. That is the cause of "the screen behind refreshes on every step", not a rebu
 subtree: true })` on the backdrop after a step change; it must be 0. From the picker, an org just created or joined is entered IN PLACE (`enterNew` in `main.ts`) when the
 page has held no other org's data; opening an org from anywhere else stays a page load.
 
+## Paints: now, batched, or once a frame (`web/src/paint-queue.ts`)
+
+A paint renders the WHOLE app to a string and `paint()` parses it, so one costs tens to hundreds of
+milliseconds on a big screen. Every paint goes through one queue in `main.ts` (`paintApp` is the paint; nothing
+calls it directly), in one of three ways:
+
+- **`rerender()` paints now.** It is the interactive paint — a click, a keystroke, a write's answer — and stays
+  synchronous because its callers focus an element, measure, or read the DOM on the next line. Focus, caret and
+  scroll restoration and `data-morph` all happen inside the paint, exactly as before.
+- **`batchRender(fn)` folds the paints `fn` asks for into ONE**, made before it returns (so the DOM is current
+  for whatever follows). `enterOrg` (the boot: about eighteen reads, each painting its "loading" state) and
+  `loadForScreen` (My Work alone starts eight) run inside one. Batches nest; only the outermost paints.
+- **`rerenderSoon()` is a read landing** (a loader's `.then` / `.catch`): every read that lands before the next
+  animation frame shares one paint. A hidden document (a background or automation tab, where rAF never fires) or
+  one without rAF uses a timeout instead, and a visible one keeps a 100 ms timeout as a backstop in case it is
+  hidden before its frame. Any paint made in the meantime takes the waiting one's place.
+
+**Rule:** a loader's completion calls `rerenderSoon()`; its start (the "loading" state) and everything a person
+does call `rerender()`. An expired session (`Unauthorized`) still leaves with `rerender()`. A controller module
+gets `rerenderSoon` on its host where it has a read the boot starts (`tags-actions.ts`). Never call
+`rerenderSoon()` where the next line reads the DOM. Boot paints went from 25 (measured) to a handful; tests:
+`test/paint-queue.test.ts`.
+
 ## The signed-out site — one banner, carried through the page (`web/src/landing.ts`)
 
 The landing page has ONE idea: the first-run card's purple banner is Trov speaking, and the product is the
