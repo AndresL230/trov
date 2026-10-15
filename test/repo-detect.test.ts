@@ -62,6 +62,21 @@ describe("the detectors, each on its fixture", () => {
     expect(c.evidence).toEqual([{ kind: "file", text: "from wrangler.toml · Worker trov" }]);
   });
 
+  it("wrangler: more D1 databases or crons than a Cloudflare part accepts keep the first 5 / 10, and the proposed settings still pass the provider's patterns", async () => {
+    const ids = Array.from({ length: 7 }, (_, i) => `00000000-0000-4000-8000-00000000000${i}`);
+    const toml = `name = "big"\nmain = "src/index.ts"\n${ids.map((id) => `[[d1_databases]]\nbinding = "DB"\ndatabase_name = "d"\ndatabase_id = "${id}"\n`).join("")}[triggers]\ncrons = [${Array.from({ length: 12 }, (_, i) => `"${i} * * * *"`).join(", ")}]\n`;
+    const [c] = run("wrangler", input({ "wrangler.toml": toml }));
+    const settings = c.parts?.[0]?.settings ?? (c as unknown as { settings?: Record<string, string> }).settings ?? {};
+    expect(settings.d1_database_ids?.split(",")).toEqual(ids.slice(0, 5));
+    expect(settings.crons?.split(";")).toHaveLength(10);
+    const { PROVIDERS } = await import("../src/hosting/registry");
+    const fields = PROVIDERS.cloudflare.partSettings ?? [];
+    for (const key of ["d1_database_ids", "crons"]) {
+      const f = fields.find((x) => x.key === key)!;
+      expect(new RegExp(f.pattern!).test(settings[key]!)).toBe(true);
+    }
+  });
+
   it("wrangler.jsonc: an environment's own name, else wrangler's <name>-<env>; a Pages project is a Site with no Worker setting", () => {
     const [c] = run("wrangler", input({ "edge/wrangler.jsonc": single("wrangler.jsonc") }));
     expect(c).toMatchObject({ folder: "edge", kind: "Worker", settings: { worker: "edge-api", crons: "0 3 * * *" } });

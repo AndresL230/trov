@@ -294,6 +294,54 @@ its strips (a part that reads ONLY previews keeps them; a deploy with NO target 
 never a preview: the test is `COALESCE`d, since `NOT (NULL AND …)` is NULL and dropped the row); the Overview's facts
 read them (`factsDeploys`, `repo-dashboard.md` › The Overview's facts): newest per branch, matched to open PRs.
 
+## Usage families: outcomes, runtime, D1, crons (repo setups, Phase G)
+
+**Families** (`shared/usage-families-core.ts`, zod-free): `HOSTING_METRICS` cut into three CORE families — traffic
+(requests, errors, bandwidth), latency (p50, p95), compute (CPU, memory) — and four EXTRA families a provider declares
+in `capabilities.families` only when it really reads them: outcomes, runtime, storage, schedules. A part's families
+are `familiesOf(capabilities)` (`RepoProviderPart.families`); the Usage tab reads them, its states and its capabilities,
+never the provider id. Today only Cloudflare Workers declares the extra four (step 0 of the build confirmed each
+dataset live, Account Analytics Read).
+
+**What the Cloudflare poll adds** (`src/hosting/providers/cloudflare.ts`): the hourly analytics query now groups by
+`status` — the invocation OUTCOME (`success`, `clientDisconnected`, `scriptThrewException`, `exceededResources`, …),
+NOT an HTTP status — and sums `subrequests`; requests / errors stay the hour's sums, and each (hour, outcome) is its own
+`hx_outcome_<status>` point (no 4xx / 5xx split exists in the dataset and none is invented). ONE more query reads
+`workersInvocationsScheduled` for the script over the same window: per (hour, cron) `hx_cron_runs:<expr>`,
+`hx_cron_failed:<expr>` (a status other than `success`), `hx_cron_last:<expr>` (the epoch ms of the hour's last run;
+the expression stored with `_` for its spaces); a refusal, or an answer that fills its 1000-row limit, is the family's
+reason, never a failed poll. **Once a day** (`ProviderContext.daily`): the framework (`src/hosting/poll.ts`) hands a
+provider with a daily family (runtime, storage) the newest completed UTC day that ended ≥ 15 minutes ago
+(`dailyDay`) — only while that day's `hx_daily_read` marker is not stored (`dailyRead`, one indexed read; THE
+once-a-day rule): the day's quantiles (`hx_cpu_time_p50_us` / `_p99_us`, `hx_wall_time_p50_us`, µs, at 00:00 UTC of the
+day, with the marker even on a day with no invocation — a failed read writes no marker, so the next poll asks again),
+then, when the part names D1 databases (its optional `d1_database_ids` setting, up to 5, the first 3 read — the repo
+scan's wrangler detector proposes it), ONE query of `d1AnalyticsAdaptiveGroups` / `d1StorageAdaptiveGroups` for the
+day: `hx_d1_<read_queries|write_queries|rows_read|rows_written|size_bytes>:<id>`. A part with no D1 id says so every
+poll ("no D1 database is named for this part"), never zero. The optional `crons` setting (the detector's
+`triggers.crons`) lists expressions the screen shows even when one never ran. `pollCost` 3 → **6** (deployments,
+the build, analytics, cron runs, and once a day the quantiles and D1). Fixtures: `fixtures/hosting/cloudflare/`
+(`analytics.json` grouped by status, `scheduled.json`, `runtime.json`, `d1.json` — the README marks what is hand-shaped).
+
+**Validated like every point** (`validatePoll`'s `extraPoints`): a name one of the builders makes (`parseExtraMetric`),
+of a family the provider DECLARES and the part's role reads; an hourly point at a complete hour, a daily one at 00:00
+UTC of a completed day; a finite value ≥ 0 under its ceiling (a cron's `last` inside its own hour); one per (name,
+instant), ≤ 1000 a poll. Each family a poll ATTEMPTED comes back in `PollResult.families` with its reason (null =
+read); `hosting_poll_state.unavailable` keeps `{ family, reason }` entries beside the metric entries
+(`mergeFamilies`: a family not attempted this poll — a daily one between days — keeps its last reason; one read
+cleanly drops it). Every extra point is `hx_*`, pruned at 100 days with the rest.
+
+**The projection** (`src/tools/repo-extras.ts`, through `projectProviders`; `RepoProviderPart.extras`): ONE more
+statement (`extraMetricsSince`, GLOB index ranges) only when some part's provider declares an extra family. Per
+family a state — `ok`, `stale`, `unavailable` (its reason), `none` (never read, not drawn): outcomes per range (the
+buckets that exist, largest first; `[]` = covered and quiet), runtime (the newest completed day's quantiles in ms while
+≤ 2 days old, subrequests per range, the CPU p99 line), storage per database (sums of the range's last 1 / 7 / 30
+completed days, the size while current, the reads line) and schedules per cron (runs, failures, the last run; a
+configured cron with no point listed). An hourly range figure with no point is 0 ONLY inside the covered interval of a
+family that was read; a daily one with no point is null; a range that starts before the family's first point says
+"since …". MCP collapses the extras to the asked range (`extrasForRange`). Tests: `test/hosting.provider.cloudflare.test.ts`,
+`test/hosting.poll.families.test.ts`, `test/repo-dashboard.extras.test.ts`.
+
 **Apps** (`repo_apps`, 0070; `src/repo/apps.ts`): an app is a part key with a home — repository, folder, kind (Site /
 Service / Worker / Job / Package; the role follows the kind, `shared/repo-apps-core.ts`), watch globs. 0070 wrote a
 row per existing part key; `listRepoApps` synthesises one for any key with no row (the primary repository's root,
@@ -379,7 +427,8 @@ a time, Escape closes, Tab stays inside, focus returns to the control that opene
   and Delete token (the page's confirmation, `OrgConfirm` `secret`). A typed token is saved WITH the part, after it,
   through the same write-only Integrations API (`PUT /integrations/metrics_endpoint/<env>`, or `…/rotate` when one is
   stored) — the storage is unchanged (`metrics_endpoint`, scoped to the ENVIRONMENT, so the `:00` usage poller reads
-  it as before), and every part of the environment shows the same token until Phase G makes the contract per part. A
+  it as before), and every part of the environment shows the same token: contract v3 (Phase G) lets the endpoint's body
+  NAME the part it reports (`part`), but the token and the API URL stay one per environment. A
   part saved whose token is refused keeps the editor open on the token field.
 - **connect** (`connectModal`) — for the provider's best AVAILABLE method when that is an install / OAuth: what the
   provider will ask (`grants`), its `how_to`, "This replaces …" when something is connected, then
@@ -444,7 +493,8 @@ dispatches `repoFoundAccept` / `repoFoundIgnore` (main.ts) to the same accept / 
 Undo, then reads the dashboard again. Render tests: `test/render.repo-apps.test.ts`; the routes: `test/repo-apps-setup.test.ts`.
 
 **Repo dashboard › Usage › Hosting** (`web/src/repo-hosting.ts`, called from `repo.ts` `usageTab`): ONE section
-from `providers` (the old `cloudflare` / `hosting` sections are gone from the payload and from MCP).
+from `providers` (the old `cloudflare` / `hosting` sections are gone from the payload and from MCP), below the targets
+and the extra families (`web/src/repo-usage.ts`, `repo-dashboard.md` › On screen).
 Environments side by side on the `.repo-cells` lattice, parts stacked: a tone dot, the label, the provider's glyph
 and name, the role, Open in <provider>; the last deploy (state pill — in flight pulses —, short sha when there is
 one, branch, the message's first line, who, when, "ready in 1m 42s", Open / Log) and a strip of the last ≤ 10 as
@@ -464,7 +514,8 @@ only. Render tests: `test/render.hosting.test.ts`, `test/render.repo-hosting.tes
 
 The `hosting` job (`src/repo/cron.ts`; the cron itself is described in `repo-dashboard.md` › The repo cron): one
 unit per (org, environment, STORED part) from `listPartUnits` (`src/platform/jobs.ts`), each costing its provider's
-`pollCost` (≤ 6) + 1 for the possible rollback compare (a `github` part: 0), served by rotation like the other jobs; health keeps half the budget on this tick only when some
+`pollCost` (≤ 6 — Cloudflare's 6 counts its cron-runs query and its once-a-day quantile and D1 reads; the contract
+test allows 10) + 1 for the possible rollback compare (a `github` part: 0), served by rotation like the other jobs; health keeps half the budget on this tick only when some
 org has a stored part. Cloudflare and Railway are polled here like every other provider; the `:00` usage job reads
 only the app-metrics endpoint. Background-job tenancy (the
 unit runs as its org's system tenant) is in `data-layer.md`.

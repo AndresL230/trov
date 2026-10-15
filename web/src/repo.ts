@@ -17,7 +17,7 @@
 import {
   REPO_RANGES, REPO_TABS, REPO_TAB_SECTIONS,
   type RepoActivity, type RepoActivityKind, type RepoDashboard, type RepoPerson, type RepoPr, type RepoPrState,
-  type RepoProductEnv, type RepoRange, type RepoSection, type RepoTab, type RepoTone, type RepoTrend, type RepoUsageEnv, type RepoUsageMetric,
+  type RepoProductEnv, type RepoRange, type RepoSection, type RepoTab, type RepoTone, type RepoTrend,
   type PollOutcome, type RepoRefreshGithub, type RepoRefreshResult, type RepoSectionName, type UsagePollSource,
 } from "@shared/repo";
 import type { HostingPollOutcome, HostingProviderId } from "@shared/hosting";
@@ -29,7 +29,8 @@ import type { PersonSummary } from "./api";
 import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { emptyLayout, emptyShapes, skeleton, skBar, skList, skW } from "./skeleton";
-import { hostingBlank, hostingEmpty, hostingNotConnected, hostingParts, hostingSkeleton } from "./repo-hosting";
+import { HOSTING_EMPTY, hostingBlank, hostingEmpty, hostingNotConnected, hostingParts, hostingSkeleton } from "./repo-hosting";
+import { targetsFromFacts, usageExtras, usageTargets } from "./repo-usage";
 import { narrowFacts, layoutInputOf, type RepoFacts } from "@shared/repo-facts-core";
 import { layoutOf, type GroupBy, type RepoLayout } from "@shared/repo-layout-core";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
@@ -561,36 +562,10 @@ function ciTab(p: RepoProps): string {
 }
 
 // ── Usage ────────────────────────────────────────────────────────────────────
-// A `null` metric keeps its label row (so the block never collapses or shifts
-// its neighbours) and shows a quiet line where the value would be — no
-// sparkline element, no empty-state box. WHICH line is the Worker's `seen`
-// flag: a source that has reported inside the 30-day read is CONNECTED, so its
-// null reads "no recent reading" (no point in this range, a poll that stopped,
-// a gauge gone stale); only a source that never reported reads "not
-// connected". `spark()` already renders nothing under 2 trend points, so a
-// connected-but-thin metric just shows its value with no line. `errorRate` is
-// derived from the requests series, so it follows `seen.requests` — except
-// while `requests` is live and the range simply holds no request to take a
-// rate of (src/tools/repo.ts): that reads a quiet "—" in the same muted slot.
+// The targets and the extra families are repo-usage.ts (the design's UsageTarget, repo setups Phase G) — they
+// replaced the environment-by-environment compare. A product figure with no current reading reads "no recent
+// reading" (`absentLabel(true)`): the key HAS been reported, it has gone quiet.
 const absentLabel = (seen: boolean): string => (seen ? "no recent reading" : "not connected");
-function usageEnv(e: RepoUsageEnv, i: number): string {
-  const metric = (label: string, m: RepoUsageMetric | null, stroke: string, valueColor: string, absent: string): string =>
-    `<div style="${TOP};padding:12px 0">
-      <div style="display:flex;align-items:baseline;justify-content:space-between"><span style="${LABEL_SM}">${label}</span>${
-        m
-          ? `<span style="font-family:var(--label);font-size:17px;font-weight:600;white-space:nowrap;${valueColor ? `color:${valueColor}` : ""}">${esc(m.value)}</span>`
-          : `<span style="font-size:11.5px;color:var(--fg-40)">${absent}</span>`
-      }</div>
-      ${m ? spark(m.trend, stroke, 40, 8) : ""}
-    </div>`;
-  const errC = e.errorRate ? TONE[e.errorRate.tone === "neutral" ? "good" : e.errorRate.tone] : "";
-  return `<div style="padding:18px 20px 4px;min-width:0;${i ? LEFT : ""}">
-    <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px"><span style="font-size:15px;font-weight:600;flex:1">${esc(e.name)}</span><span style="font-family:var(--label);font-size:10px;color:var(--fg-40)">${esc(e.host)}</span></div>
-    ${metric("Requests", e.requests, "var(--accent)", "", absentLabel(e.seen.requests))}
-    ${metric("Error rate", e.errorRate, errC, errC, e.requests ? "—" : absentLabel(e.seen.requests))}
-    ${metric("Active users", e.users, "var(--blue)", "", absentLabel(e.seen.users))}
-  </div>`;
-}
 
 // ── Usage › Product ──────────────────────────────────────────────────────────
 // What the app reports about itself (src/repo/poll.ts → `sap_*` gauges), as ONE
@@ -701,9 +676,9 @@ function rankedBlock(metrics: Count[], range: RepoRange): string {
   }).join("");
 }
 
-/** AI spend: the cost as the one figure, the rest of the group as a quiet line under it. */
-function featureBlock(metrics: Count[], range: RepoRange): string {
-  const lead = metrics.find((m) => m.key === AI_LEAD) ?? metrics[0];
+/** AI spend: the cost as the one figure, the rest of the group as a quiet line under it. A contract-v3 `figure` group
+ *  leads with its FIRST metric (`lead`) — no key decides it. */
+function featureBlock(metrics: Count[], range: RepoRange, lead: Count = metrics.find((m) => m.key === AI_LEAD) ?? metrics[0]): string {
   const rest = metrics.filter((m) => m !== lead);
   const value = lead.values[range];
   return `<div data-prow="${attr(lead.key)}" style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;min-height:28px">${
@@ -723,15 +698,15 @@ function featureBlock(metrics: Count[], range: RepoRange): string {
 /** Reliability: what is non-zero leads, with a tone dot; every measured zero folds
  *  into ONE muted line (a real reading, but not the size of a problem); a figure
  *  with no recent reading is named apart and is never counted among the zeros. */
-function statusBlock(metrics: Count[], range: RepoRange): string {
+function statusBlock(metrics: Count[], range: RepoRange, toneOf: (m: Count) => RepoTone = (m) => failTone(m.key)): string {
   const live = metrics.filter((m) => m.values[range] !== null);
   const hot = live.filter((m) => m.raw[range] !== 0)
-    .sort((a, b) => (failTone(a.key) === "bad" ? 0 : 1) - (failTone(b.key) === "bad" ? 0 : 1) || (b.raw[range] ?? 0) - (a.raw[range] ?? 0));
+    .sort((a, b) => (toneOf(a) === "bad" ? 0 : 1) - (toneOf(b) === "bad" ? 0 : 1) || (b.raw[range] ?? 0) - (a.raw[range] ?? 0));
   const zero = live.filter((m) => m.raw[range] === 0);
   const stale = metrics.filter((m) => m.values[range] === null);
   const names = (rows: Count[]) => rows.map((m) => esc(m.label)).join(", ");
   return `<div>${hot.map((m) => {
-      const c = TONE[failTone(m.key)];
+      const c = TONE[toneOf(m)];
       return `<div class="repo-rank-h" data-prow="${attr(m.key)}" style="display:flex;align-items:center;gap:10px;padding:5px 0">
         <span style="width:7px;height:7px;border-radius:50%;background:${c};flex:none"></span>
         <span class="repo-rank-l" title="${attr(m.label)}" style="font-size:12.5px;color:var(--fg-70);min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.label)}</span>
@@ -777,11 +752,52 @@ function plainBlock(metrics: Count[], range: RepoRange): string {
 
 const WIDE = ["learning", "reliability"], NARROW = ["ai", "growth", "community"];
 
+// Contract v3 (docs/superpowers/specs/2026-10-15-app-metrics-v3.md): a group that names its SHAPE is drawn by that
+// shape — never by its id, never by a key. A point-in-time `stats` group is a "right now" strip; the rest sit two to
+// a row. The v2 groups (no shape) keep the id-keyed layout below them.
+/** A point-in-time group as one wrapping strip of figures, titled by the group. */
+function nowGroupStrip(g: RepoProductEnv["groups"][number]): string {
+  return `<div data-pblock="${attr(g.id)}" data-pshape="now" style="padding:0 20px 16px">
+    <div style="overflow:hidden"><div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 0;margin-left:-15px">
+      <span style="${LABEL_SM};padding:0 14px;border-left:1px solid var(--border)">${esc(g.title)}</span>
+      ${g.metrics.map((m) => {
+        const v = m.values["24h"], raw = m.raw["24h"];
+        return `<span data-prow="${attr(m.key)}" style="display:inline-flex;align-items:baseline;gap:6px;padding:0 14px;border-left:1px solid var(--border);white-space:nowrap">${
+          v === null ? `<span style="font-size:12.5px;color:var(--fg-55)">${esc(m.label)}</span><span style="${QUIET}">${absentLabel(true)}</span>`
+            : `<span${exactTitle(v, raw)} style="${NUM};font-size:13.5px">${esc(v)}</span><span style="font-size:12.5px;color:var(--fg-55)">${esc(m.label)}</span>`}</span>`;
+      }).join("")}
+    </div></div>
+    ${g.note ? `<div class="repo-pnotes" style="font-size:11px;line-height:1.5;color:var(--fg-40);margin-top:10px">${esc(g.note)}</div>` : ""}
+  </div>`;
+}
+/** A v3 group in its own shape. */
+function shapedBlock(g: RepoProductEnv["groups"][number], range: RepoRange): string {
+  const aside = g.now ? `<span style="font-size:11px;color:var(--fg-40);white-space:nowrap">right now</span>` : `<span style="font-size:11px;color:var(--fg-40);white-space:nowrap">last ${esc(range)}</span>`;
+  const body = g.shape === "ranked" ? rankedBlock(g.metrics, range)
+    : g.shape === "figure" ? featureBlock(g.metrics, range, g.metrics[0])
+    : g.shape === "status" ? statusBlock(g.metrics, range, (m) => (m.tone === "neutral" ? "neutral" : "bad"))
+    : pairsBlock(g.metrics, range);
+  return `<div data-pblock="${attr(g.id)}" data-pshape="${attr(g.shape ?? "")}">${blockTitle(g.title, aside)}${body}${g.note ? `<div class="repo-pnotes" style="font-size:11px;line-height:1.5;color:var(--fg-40);margin-top:12px">${esc(g.note)}</div>` : ""}</div>`;
+}
+function shapedGroups(e: RepoProductEnv, range: RepoRange, i: number): string {
+  const shaped = e.groups.filter((g) => g.shape && g.metrics.length);
+  if (!shaped.length) return "";
+  const strips = shaped.filter((g) => g.now && g.shape === "stats").map(nowGroupStrip).join("");
+  const blocks = shaped.filter((g) => !(g.now && g.shape === "stats"));
+  const cells = blocks.map((g, n) => {
+    const alone = blocks.length % 2 === 1 && n === blocks.length - 1;
+    return `<div style="grid-column:span ${alone ? 12 : 6};padding:18px 20px 20px">${shapedBlock(g, range)}</div>`;
+  });
+  return `${strips ? `<div ${rise(i)}>${strips}</div>` : ""}${cells.length ? `<div ${rise(i + 1)}><div class="repo-cells" style="${TOP}"><div class="repo-pgrid" style="grid-template-columns:repeat(12,minmax(0,1fr))">${cells.join("")}</div></div></div>` : ""}`;
+}
+
 function productBody(e: RepoProductEnv, range: RepoRange, all: RepoProductEnv[], i: number): string {
-  const groups = e.groups.filter((g) => g.metrics.length);
-  if (!groups.length && !e.totals.length) {
+  const shaped = shapedGroups(e, range, i);
+  const groups = e.groups.filter((g) => !g.shape && g.metrics.length);
+  if (!shaped && !groups.length && !e.totals.length) {
     return `<div style="padding:0 20px 18px;font-size:12.5px;color:var(--fg-40)">This environment has reported no product metrics.</div>`;
   }
+  if (shaped && !groups.length && !e.totals.length) return shaped;
   // The status list is held to its tallest form across every range and
   // environment, so switching either never moves what sits under it.
   const relHeight = Math.max(0, ...all.flatMap((env) => env.groups.filter((g) => g.id === "reliability")
@@ -809,7 +825,7 @@ function productBody(e: RepoProductEnv, range: RepoRange, all: RepoProductEnv[],
   }
   for (const g of groups) if (!WIDE.includes(g.id) && !NARROW.includes(g.id)) cells.push(`<div style="grid-column:1 / -1;padding:18px 20px 20px">${block(g)}</div>`);
   const strip = nowStrip(e), tiles = headlineTiles(e, range);
-  return `${strip ? `<div ${rise(i)}>${strip}</div>` : ""}${tiles ? `<div ${rise(i + 1)}>${tiles}</div>` : ""}
+  return `${shaped}${strip ? `<div ${rise(i)}>${strip}</div>` : ""}${tiles ? `<div ${rise(i + 1)}>${tiles}</div>` : ""}
     ${cells.length ? `<div ${rise(i + 2)}><div class="repo-cells" style="${TOP}"><div class="repo-pgrid" style="grid-template-columns:repeat(12,minmax(0,1fr))">${cells.join("")}</div></div></div>` : ""}`;
 }
 
@@ -842,9 +858,14 @@ function productSection(p: RepoProps, i: number): string {
         options: envs.map((e) => ({ value: e.name, label: e.name })),
       })
     : `<span style="font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-70)">${esc(shown.name)}</span>`;
-  const aside = `<div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px 14px;min-width:0"><span style="font-size:11px;color:var(--fg-40)">reported by the app · counts over ${esc(p.range)}</span>${seg}</div>`;
+  const aside = `<div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px 14px;min-width:0"><span style="font-size:11px;color:var(--fg-40)">${shown.version === 3 ? "from the app's own metrics endpoint" : "reported by the app"} · counts over ${esc(p.range)}</span>${seg}</div>`;
+  // Contract v3: the body names the app it reports (`label`, else its `part`) — "Product · Trov".
+  const named = shown.label ?? shown.part ?? null;
+  const headHtml = named
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;padding:16px 20px 14px;min-height:30px"><span style="${LABEL}">Product · ${esc(named)}</span>${aside}</div>`
+    : head(aside);
   return `<div style="${TOP};min-width:0">
-      <div ${rise(i)}>${head(aside)}</div>
+      <div ${rise(i)}>${headHtml}</div>
       <div class="repo-swap repo-pswap" data-penv="${attr(shown.name)}">${productBody(shown, p.range, envs, i)}</div>
     </div>`;
 }
@@ -952,20 +973,36 @@ function pollStrip(poll: RepoPollState | null): string {
 }
 
 function usageTab(p: RepoProps): string {
-  const usageLive = okData(p, (d) => d.usage) !== null;
   const ranges = segmented({
     id: "repo-range", ariaLabel: "Range", act: "repoRange", value: p.range, size: "sm",
     options: REPO_RANGES.map((r) => ({ value: r, label: r })),
   });
 
-  const usage = sec(p, (d) => d.usage, { nc: "No usage captured yet. Requests and error rate come from each environment's web parts, polled hourly from their hosting provider (Org settings › Hosting); active users come from the app's own metrics endpoint (Org settings › Integrations).", empty: "No current usage reading — the hourly polls have gone quiet.", lines: 4 }, (u) =>
-    `<div class="repo-swap" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${u[p.range].map(usageEnv).join("")}</div>`);
   // Hosting — ONE provider-neutral section (repo-hosting.ts), built from `providers`: every part of every
   // environment, whoever hosts it.
-  const tools = { range: p.range, now: Date.now(), ago, sparkPoints: (v: number[]) => sparkPoints(v) };
+  const tools = { range: p.range, now: p.now ?? Date.now(), ago, sparkPoints: (v: number[]) => sparkPoints(v) };
   const phase = phaseOf(p);
   // `?? not_connected`: a payload from before the section existed lacks its key.
   const providers = p.repo.data ? (p.repo.data.providers as RepoDashboard["providers"] | undefined) ?? { status: "not_connected" as const } : null;
+  // The design's UsageTarget (repo-usage.ts): one card per target — a part, narrowed by the App menu — in its one of
+  // four states, then the extra families its provider reads. The environment's active users (the app's own
+  // endpoint) ride its first web target.
+  const opts = { admin: p.admin, sample: p.sample, app: p.app ?? null };
+  const usersByEnv = new Map((okData(p, (d) => d.usage)?.[p.range] ?? []).map((u) => [u.name, u] as const));
+  // With facts (the sample today; the Worker once its facts read lands), the targets are the facts' parts — narrowed by
+  // the App menu — each with its providers-section figures when the section carries it (repo-usage.ts
+  // `targetsFromFacts`): so a part nothing has been read for still says what it is (not connected, not available).
+  const fx = factsView(p);
+  const providerParts = providers?.status === "ok" ? providers.data : [];
+  const targetParts = fx ? targetsFromFacts(fx.f, providerParts) : null;
+  const targets = phase === "blank" ? emptyShapes(sectionBars(4))
+    : phase === "loading" ? sectionSkeleton(4)
+    : phase === "error" || !providers ? `<div style="padding:6px 20px 12px">${errorBlock()}</div>`
+    : targetParts ? usageTargets(targetParts, tools, opts, usersByEnv)
+    : providers.status === "ok" ? usageTargets(providers.data, tools, opts, usersByEnv)
+    : providers.status === "empty" ? `<div data-utargets="empty">${emptyLayout("repo-usage-targets", { text: HOSTING_EMPTY, sayStyle: "margin:14px 20px 16px" })}</div>`
+    : usageTargets([], tools, opts);
+  const extras = phase === "ready" ? usageExtras(targetParts ?? providerParts, tools, opts) : "";
   // ONE shape (repo-hosting.ts `hostingShapes`) behind the section's skeleton and its empty layouts.
   const hostingBody = phase === "blank" ? hostingBlank()
     : phase === "loading" ? hostingSkeleton(`repo-${sectionNo++}`)
@@ -979,8 +1016,9 @@ function usageTab(p: RepoProps): string {
   return `<div ${rise(0, `display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;padding:14px 20px;border-bottom:1px solid var(--border)`)}>
       <span style="${LABEL}">App usage</span>${ranges}
     </div>
-    <div ${rise(1)}>${usageLive ? usage : `<div style="padding:6px 20px">${usage}</div>`}</div>
-    ${productSection(p, 2)}
+    <div ${rise(1)} data-usage-targets>${targets}</div>
+    ${extras ? `<div ${rise(2)} data-usage-extras>${extras}</div>` : ""}
+    ${productSection(p, 3)}
     <div ${rise(5, `${TOP};flex:1`)} data-usage-hosting>
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 12px;padding:14px 20px 12px">
         <span style="${LABEL}">Hosting</span>

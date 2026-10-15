@@ -9,6 +9,7 @@ import {
 import type { RepoProviderPart } from "@shared/hosting";
 import { layoutInputOf, type FactsCommitGroup, type RepoFacts } from "@shared/repo-facts-core";
 import { layoutOf, type RepoLayout } from "@shared/repo-layout-core";
+import { extrasForRange } from "./repo-extras";
 
 export const DEFAULT_AGENT_RANGE: RepoRange = "7d";
 
@@ -71,6 +72,8 @@ function providersForRange(parts: RepoProviderPart[], range: RepoRange, includeT
   return parts.map((p) => ({
     ...p,
     traffic: p.traffic ? p.traffic[range] : null,
+    // The extra usage families (Phase G): every per-range record collapsed to the asked range, like `traffic`.
+    ...(p.extras ? { extras: extrasForRange(p.extras, range) } : {}),
     deployCount: p.deploys.length,
     deploys: includeTrends ? p.deploys : p.deploys.slice(0, PROVIDER_DEPLOY_VIEW_LIMIT),
   }));

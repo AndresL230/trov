@@ -86,7 +86,8 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
    degrade (`degraded: true`, 503 `{ error }`) — never a 500. Nothing on a render path calls GitHub or any
    other external service; external reads happen in the webhook, reconcile, Sync or cron.
 8. **Three auth classes, don't add a fourth:** session cookie (GitHub + Google feeding one sign-in fork),
-   bearer on `/mcp` (pasted `trov_mcp_` or OAuth `trov_oat_`; each names a person), HMAC on the webhooks.
+   bearer on `/mcp` and Trov's own app-metrics endpoint `/api/internal/metrics` (pasted `trov_mcp_` or OAuth
+   `trov_oat_`; each names a person, its org chosen only by `resolveBearerTenant`), HMAC on the webhooks.
    The Hono app is cookie-only. Signed-token exceptions (`/u/`, artifact upload/download) sit in
    `src/index.ts` before the session gate.
 9. **Admin is the ORG role** (`hasRole(ctx, "admin")`) — there is no handle allowlist. Superadmin is a

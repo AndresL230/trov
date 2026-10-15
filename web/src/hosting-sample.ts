@@ -68,6 +68,22 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
         "required": true,
         "placeholder": "frontend-staging",
         "pattern": "^[A-Za-z0-9_-]{1,63}$"
+      },
+      {
+        "key": "d1_database_ids",
+        "label": "D1 database ids",
+        "description": "Optional. The ids of the D1 databases this Worker binds (wrangler's d1_databases), comma-separated — up to 5; the first 3 are read.",
+        "required": false,
+        "placeholder": "6c71838c-18f7-4f68-8513-b58e86c237b9",
+        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?:, ?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}){0,4}$"
+      },
+      {
+        "key": "crons",
+        "label": "Cron triggers",
+        "description": "Optional. The Worker's cron expressions (wrangler's triggers.crons), separated by ;. Runs are read either way; a listed cron that never ran in a range reads as none.",
+        "required": false,
+        "placeholder": "*/10 * * * *;0 13 * * *",
+        "pattern": "^[0-9A-Za-z*/,?#\\- ]{1,80}(?:;[0-9A-Za-z*/,?#\\- ]{1,80}){0,9}$"
       }
     ],
     "docs_url": "https://developers.cloudflare.com/analytics/graphql-api/"
