@@ -11,7 +11,7 @@
 // This file is Worker code (tsconfig.worker.json), so it loads the SPA's modules at RUNTIME through a computed path
 // (the type checker never follows it into web/src — the split test/ai.hookup.test.ts keeps); markdown is mocked as in
 // the render tests (no DOM in the pool).
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 import { env } from "cloudflare:test";
 import { create_ticket, edit_ticket } from "../src/tools/tickets";
 import { ingestDocProposal } from "../src/consumer";
@@ -113,7 +113,11 @@ function lines(w: Web, s: any): string[] {
 }
 const ticketRow = (n: number) => first<{ title: string; status: string; priority: string }>(env.DB, `SELECT title, status, priority FROM tickets WHERE org_id = ? AND number = ?`, ORG_A, n);
 
-describe("Ask's write cards, the real routes into the real screen", () => {
+// The SPA's modules load once (a cold import under a loaded suite outlasts the 5s default), and the routes stream a whole
+// turn per test: the same budget test/ai.hookup.test.ts gives its real-rows run.
+beforeAll(async () => { await web(); }, 60_000);
+
+describe("Ask's write cards, the real routes into the real screen", { timeout: 60_000 }, () => {
   it("a proposed card: Edit → Confirm sends only the edited fields; the server writes them and the card becomes its done line", async () => {
     const w = await web();
     const cookie = await cookieFor(ME);
