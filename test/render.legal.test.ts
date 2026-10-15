@@ -198,6 +198,8 @@ describe("legal pages", () => {
     expect(AI_NEVER_SENT).toContain("Source code (unless you attach a file to Ask)");
     // Ruling (Legal 5): "Only when something needs me" decides with what Trov's AI judged, so Privacy says so.
     expect(section(PRIVACY, "email")).toContain(`${DRAFT}If you choose "Only when something needs me"`);
+    expect(section(PRIVACY, "email")).toContain("the ratings Sift made earlier still count, so whether that email is sent can still depend on them.");
+    expect(section(PRIVACY, "email")).toContain("written by Anthropic Claude once a week for the whole organization");
     // Ruling (Legal 2): Terms §10 is "AI features", and Privacy's link to it names it.
     expect(TERMS.sections.find((s) => s.id === "ai")!.title).toBe("10. AI features");
     expect(section(PRIVACY, "use")).toContain('>Terms, section 10, AI features</a>');
