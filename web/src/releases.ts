@@ -71,12 +71,75 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // States drawn as marks instead of tags: the 2026-10 tag audit (#173).
-  // Also: capture-time summaries move from Google Gemini to Anthropic's Claude, behind one model client.
+  // Tags of your own, sorted by Sift: one tag list per organization, automatic tagging, a tag's page (#179).
   {
-    version: "Unreleased",
+    version: "0.32",
     date: "2026-10-14",
-    unreleased: true,
+    title: "Tags of your own, sorted by Sift",
+    headline: "Each organization keeps its own tag list, and Sift finds the feed entries, docs and decisions that fit a new tag.",
+    highlights: [
+      "Tags are now each organization's own list, in Org settings › Tags. It starts with the six you know; an admin can add a tag, rename one, merge two or retire one, and give each a description and a colour.",
+      "An admin can let Sift, Trov's automatic tagging, tag existing items for a new tag: it judges which feed entries, docs and decisions fit it. Where it is at least 85% sure it adds the tag; where it is 60–85% sure it suggests it, and anyone can add or dismiss the suggestion on the tag's To review tab. It is off until an admin turns it on in Org settings › Tags. An admin can undo a run, and anyone can take a tag off an item; Trov does not add it back.",
+      "Click a tag to open its page: every feed entry, doc and decision that carries it, side by side, with when it was used, who writes about it, what it is often seen with, and which items Sift added. Docs have a Tags row of their own.",
+      "The tag list is one even line per tag. Click what a tag is for to change it, or its square to change its colour; Rename, Merge into… and Retire are in each row's ⋯ menu. After you change a tag's words, Trov offers to look for items again.",
+      "New tag, at the top right of the tag table, opens a short form: a name, what it is for, a colour, and whether Sift should find the items that fit it now.",
+      "Tags an agent suggests now sit at the bottom of the tag list, shaded and marked Suggested, with Approve on the row.",
+    ],
+    headsUp: [
+      "A feed entry with a tag that is not on your list is no longer held in Unplaced. It is posted without the tag, and the tag waits in Org settings › Tags, where an admin adds it, points it at a tag you already have, or dismisses it.",
+      "Org settings no longer has a separate GitHub token step: Connect a repository is the GitHub step, done once Trov can read the repository.",
+      "A tag list holds up to 30 tags on Free, 50 on Pro and any number on Enterprise. Retired tags do not count.",
+      "While Trov looks, the tag's row shows a progress bar and a count of the items checked and tagged; the bar takes the tag's colour when it added the tag to something. Afterwards the row keeps the count, with Undo. A tag whose words match nothing still gets the newest items checked.",
+      "Org settings has an AI tab: whether Trov's AI is on for your organization, how many AI runs it has used this month against your plan, and exactly what is sent to Anthropic and what never is. An admin turns it on or off.",
+    ],
+    ops: [
+      "Apply `0056_org_tags` (the deploy does it). It adds `org_tags` and `org_tag_suggestions`, gives every organization the six starter tags, and REBUILDS `entry_tags` without its reference to the global `tags` table: same columns and rows, a guard fails the migration if a row would be lost. Safe on the Worker from before it. Check first that every stored tag is one of the six: `SELECT tag, COUNT(*) FROM entry_tags WHERE tag NOT IN (SELECT tag FROM tags) GROUP BY tag` must return nothing. The by-hand rollback is in the file's header.",
+      "A tag list holds up to 30 tags on Free, 50 on Pro, and any number on Enterprise; Sift checks up to 1,000 items a month on Free, 10,000 on Pro, and any number on Enterprise.",
+      "Automatic tagging needs a NEW secret, `TYPESAFE_API_KEY` (TypeSafe AI's Jev); without it nothing is sent and the Tags tab says no key is set. Suggestions are OFF for every organization until one of its admins turns them on. The monthly allowance `jev_checks` is one per Jev request (a run makes up to 60). The Privacy Policy and Terms name TypeSafe AI as a new processor for automatic tagging (approved by the owner, dated 2026-10-14).",
+      "Trov plugin 0.8.2 (skill text only): feed tags come from the organization's list (`list_tags`), and an unknown tag is a suggestion, not a triage item. Update the plugin from the marketplace.",
+    ],
+    patches: {
+      added: [
+        "`0056_org_tags`: `org_tags` (the org's own list: name, description, colour, `starter`, `retired_at`, `merged_into`) and `org_tag_suggestions` (one row per item and suggested tag: `source`, `confidence`, `reason`, `model`, `prompt_version`, `state`); `entry_tags` rebuilt without `REFERENCES tags(tag)`. No pull request yet (#179)",
+        "`src/tools/tags.ts`: the list's rules (add, rename with its items, merge, retire, restore, settle a suggestion), each `requireRole(admin)` with an `org_admin_audit` row (`tag.*`); `setItemTags` for a member; `sortAgentTags` / `recordTagSuggestions` for the gate (#179)",
+        "`src/tags/routes.ts`: `GET /api/o/:slug/tags[/:name]`, `POST /tags`, `PUT /tags/:name`, `POST /tags/:name/merge|retire|restore`, `POST /tags/suggestions/:name/resolve`, `POST /item-tags`. Cookie only: a request with an `Authorization` header is refused (#179)",
+        "MCP `list_tags` (read-only): the organization's live tags and what each is for. 44 tools for every member (#179)",
+        "The `tags` limit in `PLANS` (`LIMIT_KEYS`, `requirePlan(ctx, \"tags\")`): 30 Free and Personal, 50 Pro, unlimited Enterprise; `jev_checks` 1,000 / 10,000 / unlimited (#179)",
+        "`src/tools/classify.ts`: the one classify call (issue 155 on GitHub), on TypeSafe AI's Jev (`POST /v1/systemone`): one request per item, one `noul` question, at most 4 in flight; the probability is the answer and its confidence; 429/529 retried once then the run stops, 401 stops it, 422 / timeout / bad answer is no judgement for that item (#179)",
+        "`src/tools/tag-fit.ts`: which existing items fit a tag — candidates from the org's own FTS (≤ 60, newest first), ≤ 400-character excerpts with code and credential-shaped text removed; \"fits\" at 0.85 or more ADDS the tag, at 0.60–0.85 SUGGESTS it (an `open` model row; `POST /tags/:name/review/add|dismiss`, any member, cookie only; the tag page's To review tab), recorded with Jev's reported model, `jev-fit-1` and a reason built by Trov (the FTS snippet that matched, or Jev's score), since Jev writes no text; one run per tag (`org_tag_runs`), a re-run supersedes; started in the background after a tag is added and by Find items (#179)",
+        "`org_ai_settings` (OFF by default; `PUT /api/o/:slug/tag-settings`), `POST /tags/:name/find-items`; the `jev_checks` monthly limit in `PLANS` (#179)",
+        "A run, live: `org_tag_runs.checked` / `added` written as the run goes; `GET /api/o/:slug/tags/:name/run` (admins), polled every 600 ms while it runs; `web/src/fit-run.ts` draws ONE bar (fill = checked / candidates, eased, never ahead) whose colour says how it ended (#179)",
+        "No review step (the owner's call, overriding issue 154's \"suggestions, never actions\" for this one feature): a fit at 0.85 or more ADDS the tag — the `entry_tags` row and its `org_tag_suggestions` provenance (`accepted`, resolved by `jev`, `run_id`) in one batch, one `tag.fit` audit row per run; `POST /tags/:name/undo-run` removes exactly that run's tags (`undone`); a person removing one is remembered (`removed`) and never re-added. The review list and `GET /tags/:name/fits`, `POST /tags/:name/fits/resolve` are removed; `jev` is a reserved handle (#179)",
+        "Fewer than 20 keyword matches: the newest other items top the run up to 20; a topped-up fit's reason is `Sift rates it a fit (N%)`; an empty org ends the run with nothing checked, said plainly; the New tag modal says a description helps (#179)",
+        "Web: Org settings › Tags (`web/src/tags.ts`, `tags-actions.ts`), a tag's page at `#tags/<name>`, a doc's Tags row, and `tagMark` / `tagWords` in `marks.ts` (a square and the word; plain words in a list, three then \"and N more\") (#179)",
+        "The AI kit (`web/src/ai-ui.ts`): the Trov AI mark (`aiMark` in `marks.ts`, the mock's pennant in the accent), the \"Written by Trov\" byline with its not-official tooltip, source links (`AiCite`), \"Wrong?\" (`POST /ai/feedback`, hidden at once for the person, back on a failure), the suggestion chip (#157: dashed outline, the mark, a \"because…\" disclosure, Accept / Dismiss, \"Not available yet\" on a 409 `not_available`) and the capped / empty lines; acts in `web/src/ai-actions.ts` (#178)",
+        "Four AI screens, each drawn ONLY when its read carries the field (production omits them all, so nothing shows yet): My Work › Your brief (`briefTile`, `brief?`), Repo › Overview › State and Repo › Planning › Where the work went (`web/src/repo-ai.ts`, `state?` / `themes?`: lanes, weekly bands, 8 weeks / Quarter, proposed themes with Accept / Rename / Remove), and Feed entries written by Trov (`FeedRow.ai?`) with a Source switch (All / Agents / Trov) and a one-time note (`trov.aiFeedNote`, per person on this browser). `test/render.ai-absent.test.ts` pins each screen's field-absent markup byte for byte; `test/render.ai.test.ts` covers every state (#178)",
+        "Org settings › AI (`web/src/org-ai.ts`, `#org/ai`): the switch (admin; `PUT /ai/settings`), this month's runs against the allowance, and what is sent to Anthropic; the web API client gains `getAiSettings` / `putAiSettings` / `acceptAiSuggestion` / `dismissAiSuggestion` / `sendAiFeedback` (`AI_ROUTES`) (#178)",
+        "Platform › Usage: AI runs, failures, capped runs and tokens per organization and in total, from `OrgUsage.ai` / `PlatformUsageResponse.ai` (nothing drawn when absent) (#178)",
+      ],
+      changed: [
+        "The gate (`ingestFeedEntry`) reads the ORG's live tag list instead of `shared/vocabulary.ts` `TAGS`: known tags are written, an unknown one is recorded in `org_tag_suggestions` and the entry is written without it, never sent to `needs_triage` for that. `append_feed` / `record_session` answer `suggested_tags`. Replay ledger, section and confidence routing unchanged (#179)",
+        "`get_feed` (HTTP and MCP) carries each entry's `tags`; `GET /doc/:slug` carries the doc's. The Feed's tag filter and Unplaced's tag picker read the org's list (#179)",
+        "`createOrg` seeds the six starter tags; `shared/vocabulary.ts` `TAGS` and `0002_seed_vocab` now name the STARTER set, not the gate's vocabulary (#179)",
+        "`assign_triage` (feed): a picked tag must be on the org's list; with none picked, the item's own tags go through the gate as they came (#179)",
+        "`switchBtn` (`web/src/notifications.ts`) takes an optional accessible name and a busy state; without them its markup is unchanged (#178)",
+      ],
+      fixed: [
+        "A tag page's Who writes about it and Often seen with bars all took the tag's colour; each is now the person's or the other tag's own (`meters` `tone`, `TagPageProps.colorOf` / `tagColorOf`) (#180)",
+        "The header's breadcrumb (\"Tags › auth\", a ticket, a sprint, an artifact) set the page's name smaller and lighter than the title before it; both are 15px semibold now, the page you are on in full strength (#180)",
+        "To review: adding or dismissing one of Sift's suggestions turned EVERY row's button to \"Adding…\" and waited for the whole page to reload; now only that row slides out at once (`TagsUi.reviewLeaving`, `data-leaving`), the write and a quiet refresh follow (`refreshPage`), and a refusal brings the row back (#182)",
+        "To review: adding or dismissing a suggestion now says so in the app's confirmation at the bottom (a checkmark and \"Added latency to “…”\"), like every other write; the row leaves by the app's one row exit (Review's `.cnpy-rv-row`: it wears “Added” / “Dismissed”, then closes up in one motion over `REVIEW_EXIT_MS`, however fast the server answers), the list pairs rows by item (`data-morph-list`), the hero's split bar resizes smoothly, the row slides aside as it closes up, the tag page is morphed in place (`data-morph` = `tag:<name>`; it was rebuilt on every paint, so no transition could play), and the numbers that change (Items, Feed, Docs, Decisions, To review) tick into place (`TagsUi.bump`, `data-bump`) (#184)",
+      ],
+      removed: [],
+    },
+    prs: [178, 179, 180, 182, 184],
+  },
+  // States drawn as marks instead of tags: the 2026-10 tag audit (#173).
+  // Also: capture-time summaries move from Google Gemini to Anthropic's Claude, behind one model client (#176),
+  // and the AI base (#177).
+  {
+    version: "0.31",
+    date: "2026-10-14",
     title: "Calmer status, fewer tags",
     headline: "Every screen shows a state with a small shape and a plain word, not a coloured capitals tag on every row, and hovering one tells you what it means.",
     highlights: [
@@ -92,7 +155,6 @@ export const RELEASES: Release[] = [
       "A pull request's state on the Repo screen is a circle too: dashed for Draft, filling through In review and Approved, a check for Merged.",
       "Roles, \"(you)\", a plan's name and other plain facts are plain text now, not coloured chips.",
       "The Terms of Service and the Privacy Policy now name Anthropic, which writes the summaries, in place of Google.",
-      "Org settings has an AI tab: whether Trov's AI is on for your organization, how many AI runs it has used this month against your plan, and exactly what is sent to Anthropic and what never is. An admin turns it on or off.",
     ],
     ops: [
       "Set the `ANTHROPIC_API_KEY` secret before merging (`wrangler secret put ANTHROPIC_API_KEY`). Without it summaries fall back to excerpts and nothing breaks.",
@@ -123,10 +185,6 @@ export const RELEASES: Release[] = [
         "`LOCAL_AI_PREVIEW` (`src/ai/preview.ts`): the fixtures on `/me/dashboard`, `/repo/dashboard` and `/feed`, honoured only for a request to a loopback `http://` origin and never beside a live Stripe key; never over MCP (#177)",
         "`docs/architecture/ai.md`: where a model may be called (the summary seams and the AI pass only), the job registry, eligibility, the allowance, suggestions and the preview (#177)",
         "`test/ai.pass.test.ts`, `test/ai.routes.test.ts`, `test/ai.preview.test.ts` (#177)",
-        "The AI kit (`web/src/ai-ui.ts`): the Trov AI mark (`aiMark` in `marks.ts`, the mock's pennant in the accent), the \"Written by Trov\" byline with its not-official tooltip, source links (`AiCite`), \"Wrong?\" (`POST /ai/feedback`, hidden at once for the person, back on a failure), the suggestion chip (#157: dashed outline, the mark, a \"because…\" disclosure, Accept / Dismiss, \"Not available yet\" on a 409 `not_available`) and the capped / empty lines; acts in `web/src/ai-actions.ts` (#178)",
-        "Four AI screens, each drawn ONLY when its read carries the field (production omits them all, so nothing shows yet): My Work › Your brief (`briefTile`, `brief?`), Repo › Overview › State and Repo › Planning › Where the work went (`web/src/repo-ai.ts`, `state?` / `themes?`: lanes, weekly bands, 8 weeks / Quarter, proposed themes with Accept / Rename / Remove), and Feed entries written by Trov (`FeedRow.ai?`) with a Source switch (All / Agents / Trov) and a one-time note (`trov.aiFeedNote`, per person on this browser). `test/render.ai-absent.test.ts` pins each screen's field-absent markup byte for byte; `test/render.ai.test.ts` covers every state (#178)",
-        "Org settings › AI (`web/src/org-ai.ts`, `#org/ai`): the switch (admin; `PUT /ai/settings`), this month's runs against the allowance, and what is sent to Anthropic; the web API client gains `getAiSettings` / `putAiSettings` / `acceptAiSuggestion` / `dismissAiSuggestion` / `sendAiFeedback` (`AI_ROUTES`) (#178)",
-        "Platform › Usage: AI runs, failures, capped runs and tokens per organization and in total, from `OrgUsage.ai` / `PlatformUsageResponse.ai` (nothing drawn when absent) (#178)",
       ],
       changed: [
         "Platform › Usage: `OrgUsage.ai` and `PlatformUsageResponse.ai` carry AI runs, failures, caps and tokens when a key is set; AI metrics are never \"active people\" or an org's last activity (#177)",
@@ -139,7 +197,6 @@ export const RELEASES: Release[] = [
         "The signed-out site and the tour mocks draw every state through `marks.ts`; `pill()` is removed from `landing-mocks.ts`. The pricing badge is a soft label and the tool names in For agents are set in the code face (#173)",
         "Ticket and review digests: status is a mark, priority is words, and the kind is a word instead of a chip (#173)",
         "Repo: an environment's verdict is `kindMark` over `ENV_VERDICT` (Healthy / Degraded / Failing / Down / Unknown) with what it means as its tooltip, the header's dots explain themselves the same way, a PR's state is the progress glyphs, Stale and Sample data are marks, and Due and the drift groups are plain text (#173)",
-        "`switchBtn` (`web/src/notifications.ts`) takes an optional accessible name and a busy state; without them its markup is unchanged (#178)",
         "Settings and Org settings: roles are `roleWord`, your own row says (you), Primary / Private / the plan's name / Admin on a person card are plain text, and every status (integrations, the GitHub App, delivery, billing, a repository the App lost) is a `kindMark` (#173)",
         "Prompts: a version's status is a mark (Draft, Staged, Published), a published prompt's card shows none, and its tags are one line of plain words (#173)",
         "Platform: an org's status, invites, grants, a plan's billing and a support report's status are `kindMark`s; roles, a report's kind and Signed out are plain text (#173)",
@@ -164,7 +221,7 @@ export const RELEASES: Release[] = [
         "The Gemini REST call (`generateContent`), `parseStructuredJson` and the hand-written `validatePrSummary` / `validateIssueSummary`",
       ],
     },
-    prs: [173, 174, 175, 176, 177, 178],
+    prs: [173, 174, 175, 176, 177],
   },
   // The public site, readable by search engines, share cards and AI assistants: prerendered pages, robots.txt,
   // sitemap, canonical links, noindex on the app, a real 404; then public docs, llms.txt, Markdown versions and

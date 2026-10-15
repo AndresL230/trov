@@ -76,8 +76,9 @@ const FREE_SEATS = PLANS.free.entitlements.seats;
 
 /** The effective date of all three documents (they were rewritten together). */
 const EFFECTIVE = "2026-10-12";
-/** Terms and Privacy: summaries moved from Google Gemini to Anthropic Claude. */
-const SUMMARIES_PROVIDER_UPDATED = "2026-10-14";
+/** Terms and Privacy: summaries moved from Google Gemini to Anthropic Claude, and automatic tagging (Sift, on a
+ *  TypeSafe AI model) was added — both approved by the owner on 2026-10-14. */
+const PROVIDERS_UPDATED = "2026-10-14";
 
 // ── Terms of Service ─────────────────────────────────────────────────────────
 
@@ -85,7 +86,7 @@ export const TERMS: LegalDoc = {
   kind: "terms",
   title: "Terms of Service",
   tab: "Terms",
-  updated: SUMMARIES_PROVIDER_UPDATED,
+  updated: PROVIDERS_UPDATED,
   lede: `These terms cover your use of Trov, the shared context store for teams and their coding agents, and are the agreement between you and ${LEGAL_OPERATOR}. You accept them when you create an account, and by using Trov.`,
   brief: [
     "Your content stays yours. We host and process it only to run Trov for you and your team.",
@@ -186,13 +187,14 @@ export const TERMS: LegalDoc = {
       title: "10. AI-generated summaries",
       body: [
         p("Trov uses an AI model (Anthropic Claude) to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete: they are a convenience, not a record. Check the pull request or issue before relying on one."),
+        p("If an admin of your organization turns on automatic tagging in Org settings › Tags, then whenever an admin adds a tag or asks Trov to find items for one, Trov's automatic tagging, Sift, uses a decision model from TypeSafe AI to judge which of the organization's existing feed entries, docs and decisions fit that tag, and adds the tag to each item it judges a fit with high confidence (85% or more); an item it is less sure about (60% to 85%) is only suggested, for a person in the organization to add or dismiss. No person reviews a tag Sift adds on its own before it is added, and a judgement can be wrong. It only ever adds that one tag; it never removes or changes anything else. An admin can undo a run, which takes the tag off exactly the items that run tagged, and anyone can take a tag off an item; Trov does not add it to that item again. An admin can turn it off at any time, and nothing is sent while it is off."),
       ],
     },
     {
       id: "third-parties",
       title: "11. Third-party services",
       body: [
-        p("Trov depends on other services: GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Stripe for payments, Anthropic Claude for summaries and Resend for email. An organization can also connect Railway, Cloudflare Analytics and its own metrics endpoint, with tokens its admins provide. The agent clients you connect (Claude Code, Cursor and others) are yours, not ours. Each of these is governed by its own terms, and its availability is outside our control."),
+        p("Trov depends on other services: GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Stripe for payments, Anthropic Claude for summaries, TypeSafe AI for automatic tagging where an organization turns it on, and Resend for email. An organization can also connect Railway, Cloudflare Analytics and its own metrics endpoint, with tokens its admins provide. The agent clients you connect (Claude Code, Cursor and others) are yours, not ours. Each of these is governed by its own terms, and its availability is outside our control."),
       ],
     },
     {
@@ -288,7 +290,7 @@ export const PRIVACY: LegalDoc = {
   kind: "privacy",
   title: "Privacy Policy",
   tab: "Privacy",
-  updated: SUMMARIES_PROVIDER_UPDATED,
+  updated: PROVIDERS_UPDATED,
   lede: `This policy explains what Trov collects, why, who processes it, how long it is kept and what you can ask for. Trov is run by ${LEGAL_OPERATOR}, which is responsible for the personal data described here.`,
   brief: [
     "We don't sell personal data, show ads, or use analytics or tracking cookies.",
@@ -330,6 +332,7 @@ export const PRIVACY: LegalDoc = {
           "to provide Trov — store, search, show and attribute your team's content, and let connected agents read and propose changes as you;",
           "to take payment for a paid plan, keep an organization on the plan it paid for, and apply each plan's limits;",
           "to summarize captured pull requests and issues;",
+          "where an admin of an organization turns it on, to add one of the organization's tags to its feed entries, docs and decisions that Sift, using a TypeSafe AI model, judges fit it (or to suggest it, for a person to decide, where Sift is less sure), when an admin adds that tag or asks for it;",
           "to send the emails described in section 7;",
           "to answer support messages, and to run, debug and protect the service.",
         ),
@@ -348,6 +351,7 @@ export const PRIVACY: LegalDoc = {
           ["GitHub", "Sign-in; the repository data an organization connects", "Your sign-in; Trov's read-only requests for the connected repositories"],
           ["Google", "Sign-in", "Your sign-in"],
           ["Anthropic", "Summaries (Claude API)", "The title and description (up to 8,000 characters) of each captured pull request and issue"],
+          ["TypeSafe AI", "Automatic tagging (Sift), where an organization turns it on", "The tag's name and description and, for each of the organization's feed entries, docs and decisions that may fit it, its title and up to 400 characters of its text, with code and anything that looks like a password or key removed"],
           ["Stripe", "Payments, invoices and receipts, fraud checks, tax calculation", "The buyer's email, handle, payment details and billing address, and the organization's address for an upgrade"],
           ["Resend", "Delivers Trov's email", "Each email's recipient, subject and body (a digest contains your organization's content: ticket titles, summaries)"],
         ]),

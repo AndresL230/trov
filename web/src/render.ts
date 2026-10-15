@@ -10,7 +10,7 @@ import type { QueryResult, QueryPrimary, QueryPointer, SprintView, SprintDetail,
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
 import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
-import { agentMark, aiMark, authorityMark, markShape, stateMark } from "./marks";
+import { agentMark, aiMark, authorityMark, markShape, stateMark, tagWords } from "./marks";
 import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId } from "./sprints";
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline, timelineShapes } from "./timeline";
@@ -26,7 +26,8 @@ import {
   myWorkLayout, mwSpans, ticketsTile, reviewTile, sessionsTile, repoTile, libraryStrip, handoffsForMe, briefTile,
   type MwLoad, type MwSession, type MwHandoff, type MwLibrary, type MwRepoTab, type MwDue,
 } from "./mywork";
-import { TAGS } from "@shared/vocabulary";
+import type { TagListDTO, TagPageDTO } from "@shared/tags-core";
+import { tagPageView, itemTagsRow, itemTagDropdown, initialTagsUi, type TagsUi } from "./tags";
 import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
@@ -83,6 +84,8 @@ export type DocSpace = string;
 
 export type Screen =
   | "mywork" | "feed" | "docs" | "roadmap" | "review" | "maintenance" | "search" | "settings" | "guide"
+  // One tag's page (`#tags/<name>`): everything that carries it. A child of Org settings › Tags.
+  | "tag"
   // The landing page reopened from inside the app (sidebar logo). Full-screen, no chrome.
   | "site"
   // Tickets (Phase 5): the queue, one ticket, the new-ticket form, and a sprint.
@@ -202,7 +205,15 @@ export interface AppState {
    *  unfiltered — refreshed on each entry to the Feed, never by a filter change. */
   feedStats: Loadable<FeedStats | null>;
   docsList: Loadable<DocRow[]>;
-  docDetail: Loadable<{ doc: DocRow; versions: DocVersionRow[] } | null>;
+  docDetail: Loadable<{ doc: DocRow; versions: DocVersionRow[]; tags?: string[] } | null>;
+  /** The organization's tag list (`GET /api/tags`): the Feed's filter, the Unplaced picker, a doc's
+   *  Tags row and Org settings › Tags all draw from it. Read once per org, again after a write. */
+  tags: Loadable<TagListDTO | null>;
+  /** The tag screens' own state (web/src/tags.ts). */
+  tagsUi: TagsUi;
+  /** The tag whose page is open (`#tags/<name>`). */
+  tagName: string | null;
+  tagPage: Loadable<TagPageDTO | null>;
   docSlug: string | null;
   /** Narrow screens only: the Docs page list is showing instead of the reader. */
   docsTree: boolean;
@@ -478,6 +489,10 @@ export function initialState(): AppState {
     feedStats: { status: "idle", data: null },
     docsList: { status: "idle", data: [] },
     docDetail: { status: "idle", data: null },
+    tags: { status: "idle", data: null },
+    tagsUi: initialTagsUi(),
+    tagName: null,
+    tagPage: { status: "idle", data: null },
     docSlug: null,
     docsTree: false,
     docSpace: "technical",
@@ -595,7 +610,8 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
   return {
     discardArm: s.maintDiscardArm,
     unplaced: s.needsTriage.data.map(unplacedFromRow),
-    assign: ASSIGN_OPTIONS,
+    // Feed tags a person may pick: the org's live list.
+    assign: { ...ASSIGN_OPTIONS, tags: (s.tags.data?.tags ?? []).filter((t) => !t.retired).map((t) => t.name) },
     assignOpen: s.assignOpen,
     assignKind: s.assignKind,
     assignSection: s.assignSection,
@@ -806,7 +822,7 @@ function sidebar(s: AppState): string {
     displayName: s.displayName,
     logo: logo(24),
     orgSwitcher: orgSwitcherButton({ org: viewerOrg(s), open: s.orgsUi.menu, invites: s.myOrgs.data?.invites.length ?? s.me?.pending_invites ?? 0, logins: identityCount(s), collapsed: railCollapsed(s) }),
-    orgActive: s.screen === "org",
+    orgActive: s.screen === "org" || s.screen === "tag",
   });
 }
 
@@ -827,6 +843,7 @@ function headerCrumb(s: AppState): string {
     return ed.mode === "new" ? "New prompt" : `${ed.mode === "edit" ? "Edit" : "New version"} · ${ed.title}`;
   }
   if (s.screen === "newdoc") return "New doc";
+  if (s.screen === "tag") return s.tagName ?? "";
   if (s.screen === "platformorg") return platformCrumb(s.plat);
   if (s.screen === "ticketdetail") return s.ticketDetail.data?.title ?? "";
   if (s.screen === "sprint") {
@@ -849,7 +866,7 @@ function header(s: AppState): string {
     newdoc: "Docs",
     releases: "What's new",
     platform: "Platform", platformorg: "Platform",
-    org: "Org settings",
+    org: "Org settings", tag: "Tags",
   };
   // dark = "show the moon icon".
   const dark = resolved(s) !== "light";
@@ -914,7 +931,7 @@ function header(s: AppState): string {
   // the design's single `back` handler).
   const child = s.screen === "ticketdetail" || s.screen === "newticket" || s.screen === "sprint"
     || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
-    || (s.screen === "releases" && s.releaseVersion !== null) || s.screen === "platformorg";
+    || (s.screen === "releases" && s.releaseVersion !== null) || s.screen === "platformorg" || s.screen === "tag";
   // The act the title's back button fires: each child screen returns to its own parent.
   const backAct = s.screen === "handoff" || s.screen === "newhandoff" ? "goHandoffs"
     : s.screen === "prompt" ? "goPrompts"
@@ -922,9 +939,12 @@ function header(s: AppState): string {
     : s.screen === "newdoc" ? "goDocs"
     : s.screen === "releases" ? "goReleases"
     : s.screen === "platformorg" ? "platGo"
+    : s.screen === "tag" ? "tagsGo"
     : "ticketsBack";
   const crumb = s.screen === "repo" ? repoCrumb(repoProps(s)) : child
-    ? `<span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:13px">›</span><span style="font-size:13px;font-weight:500;color:var(--fg-70);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(headerCrumb(s))}</span></span>`
+    // The crumb is set like the title before it (15px, semibold) — the page you are on, in full strength; the
+    // title is the quieter link back.
+    ? `<span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:15px">›</span><span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(headerCrumb(s))}</span></span>`
     : "";
   const title = child
     ? `<h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0;white-space:nowrap;flex:none"><button data-act="${backAct}" style="font-size:15px;font-weight:600;letter-spacing:-0.01em;padding:0;color:var(--fg-55);cursor:pointer">${titles[s.screen]}</button></h1>`
@@ -1135,8 +1155,10 @@ function feedFilterMenu(s: AppState): FilterMenuProps {
       },
       {
         key: "tag", label: "Tag", value: s.feedTag, none: "all",
-        options: [["all", "All tags"] as [string, string], ...TAGS.map((t): [string, string] => [t, t])]
-          .map(([v, l]) => ({ v, l, act: "setTag", arg: v, mono: v !== "all" })),
+        // The ORG's own list (a retired tag still filters: entries keep it), plus the one picked,
+        // so a filter set from a tag's page shows even before the list has loaded.
+        options: [["all", "All tags"] as [string, string], ...feedTagNames(s).map((t): [string, string] => [t, t])]
+          .map(([v, l]) => ({ v, l, act: "setTag", arg: v })),
       },
       {
         key: "range", label: "Time", value: s.feedRange, none: "all",
@@ -1147,6 +1169,12 @@ function feedFilterMenu(s: AppState): FilterMenuProps {
       },
     ],
   };
+}
+
+/** The tags the Feed can be filtered by: the org's list, in its order — and the picked one, whatever it is. */
+export function feedTagNames(s: Pick<AppState, "tags" | "feedTag">): string[] {
+  const names = (s.tags.data?.tags ?? []).map((t) => t.name);
+  return s.feedTag !== "all" && !names.includes(s.feedTag) ? [...names, s.feedTag] : names;
 }
 
 /** The "For reading" line under the title: the entry's brief, plain text. An entry
@@ -1245,6 +1273,7 @@ function feedView(s: AppState): string {
             ${agentMark()}
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
             <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>
+            ${e.tags && e.tags.length ? `<span style="font-size:12px;color:var(--fg-40)">&middot;</span>${tagWords(e.tags)}` : ""}
             <div style="flex:1"></div>
           </div>
           ${artifactRow}
@@ -1396,6 +1425,7 @@ export function docReaderHtml(real: AppState): string {
     return notice(s.docSlug === null ? "Select a doc from the tree." : "Doc not found.");
   } else if (dd.status === "ok" && dd.data !== null) {
     const { doc, versions } = dd.data;
+    const tagsRow = itemTagsRow({ tags: dd.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy, dd: s.dd });
     const hasStaged = versions.some((v) => v.status === "staged" && v.version > doc.current_version);
 
     const stagedBanner = hasStaged ? `<div${surface("display:flex;align-items:center;gap:14px;padding:12px 14px;margin-bottom:26px")}>
@@ -1424,6 +1454,7 @@ export function docReaderHtml(real: AppState): string {
       </div>
       <button data-act="toggleHistory" class="cnpy-ghostbtn" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;color:var(--fg-70);border:1px solid var(--border);border-radius:7px;padding:5px 11px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v6h6"></path><path d="M3.5 9a9 9 0 1 0 2.3-3.3L3 9"></path><path d="M12 8v4l3 2"></path></svg>Version history</button>
     </div>
+    ${tagsRow}
     ${history}
     <div class="cnpy-md" style="margin-top:28px">${renderMarkdown(doc.body)}</div>
   </div>`;
@@ -2768,6 +2799,11 @@ function screenBody(s: AppState): string {
     case "promptedit": return promptEditorView({ draft: s.promptEd, takenSlugs: s.promptList.data.map((p) => p.slug) });
     case "platform": return platformView(s.plat, s.me?.handle ?? null);
     case "platformorg": return platformOrgView(s.plat);
+    case "tag": return tagPageView({
+      name: s.tagName, page: { ...s.tagPage, status: s.tagPage.status === "unauth" ? "error" : s.tagPage.status }, tab: s.tagsUi.pageTab, leaving: s.tagsUi.reviewLeaving, bump: s.tagsUi.bump,
+      orgName: currentOrg(s)?.name ?? "this organization", who: (h) => handleLink(personFor(s, h), h),
+      colorOf: (h) => personFor(s, h)?.color ?? null, tagColorOf: (n) => s.tags.data?.tags.find((t) => t.name === n)?.color ?? null,
+    });
     case "newdoc": return newDocView({ draft: s.nd, spaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })), sections: ASSIGN_OPTIONS.sections });
     case "org": return orgSettingsView(orgProps(s));
     default: return feedView(s);
@@ -2800,7 +2836,8 @@ function orgProps(s: AppState): OrgSettingsProps {
     outboxLoading: slicePending(s.notifOutbox),
     outboxExpanded: s.outboxExpanded, fromDraft: s.fromDraft, fromError: s.fromError,
   } : null;
-  return { org: currentOrg(s), orgsStatus: currentOrg(s) ? "ok" : status, me: s.me?.handle ?? "", ui: s.org, identity, notif, dd: s.dd };
+  return { org: currentOrg(s), orgsStatus: currentOrg(s) ? "ok" : status, me: s.me?.handle ?? "", ui: s.org, identity, notif, dd: s.dd,
+    tags: { list: { ...s.tags, status: s.tags.status === "unauth" ? "error" : s.tags.status }, ui: s.tagsUi } };
 }
 
 /** Project the app state onto the Repo dashboard's props (its components never see AppState). */
@@ -2839,7 +2876,10 @@ function appView(s: AppState): string {
   const morphKey = isArtScreen(s.screen) ? `${s.screen}:${JSON.stringify(s.screen === "artifact" ? s.artRoute : null)}`
     // Review too: its list is keyed (`data-morph-list`), so a filter or a verdict never rebuilds it —
     // a card can leave with an animation, and the two switches' indicators slide on the same element.
-    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen : "";
+    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen
+    // A tag's page too, by tag (another tag is another page): its To review list is keyed, so a row can leave with
+    // its animation, and the numbers tick in place instead of the page being rebuilt under them.
+    : s.screen === "tag" ? `tag:${s.tagName ?? ""}` : "";
   // The skip link is the shell's first child (a fixed chip, out of the flex row): past the sidebar and the
   // header, to the screen itself. morph.ts patches the aside and swaps <main>; it never touches this.
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
@@ -2911,6 +2951,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "settings" ? grantScopeDialog(s) : ""}
     ${s.view === "app" && s.screen === "settings" && s.dd.open ? dropdownMenu(grantDropdowns(s), s.dd) : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
+    ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}

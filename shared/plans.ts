@@ -17,7 +17,7 @@ export type PlanId = (typeof PLAN_IDS)[number];
 export const isPlanId = (v: unknown): v is PlanId => typeof v === "string" && (PLAN_IDS as readonly string[]).includes(v);
 
 /** Every limit a plan sets. `null` as a value means UNLIMITED. */
-export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections", "ai_summaries", "ai_runs"] as const;
+export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections", "ai_summaries", "ai_runs", "jev_checks", "tags"] as const;
 export type LimitKey = (typeof LIMIT_KEYS)[number];
 export type Entitlements = Record<LimitKey, number | null>;
 /** Per-org exceptions: a key that is present replaces the plan's value (null = unlimited); absent = the plan's. */
@@ -65,6 +65,15 @@ export const LIMITS: Record<LimitKey, LimitDef> = {
     label: "AI runs", one: "AI run", many: "AI runs", counts: "Model calls Trov makes on its own for the organization this calendar month (UTC).",
     per: "org", unit: "count", min: 0, period: "month", atCap: "What Trov writes pauses until next month; what it wrote last stays.", listed: false,
   },
+  // Jev checks (src/tools/tag-fit.ts): each call to TypeSafe AI's Jev — "does this existing item fit this tag?" —
+  // counts, per calendar month (UTC). Past it a run simply stops; nothing is refused with a 402. Separate from
+  // `ai_runs` (Anthropic, the AI pass): another provider, another bill.
+  jev_checks: {
+    label: "Tag checks", one: "tag check", many: "tag checks", counts: "Checks Sift made of whether an existing item fits a tag, this calendar month (UTC).",
+    per: "org", unit: "count", min: 0, period: "month", atCap: "Trov stops looking for items that fit a tag until next month.",
+  },
+  // The organization's tag list (0056_org_tags; src/tools/tags.ts). min 6: the starters are never removed.
+  tags: { label: "Tags", one: "tag", many: "tags", counts: "Tags on the list. Retired tags do not count.", per: "org", unit: "count", min: 6 },
 };
 
 /** The limits a plan is SHOWN with — the pricing page, the Plan block, Settings' Limits: every key but
@@ -109,26 +118,28 @@ const GB = 1024 * MB;
 // platform's caps from before plans (10 each: the repo cron's budget is shared), so an existing org sees
 // no change. `ai_summaries` (per calendar month) are sized so that one org cannot run up the platform's
 // one Anthropic bill, not from measured use (plans.md › AI summaries); `ai_runs` likewise (ai.md).
+// Tags and Sift's checks: the owner's numbers (2026-10-14). Personal follows Free, as everywhere.
+
 export const PLANS: Record<PlanId, PlanDef> = {
   free: {
     id: "free", name: "Free", description: "For a small team trying Trov out.",
-    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250 },
+    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, tags: 30 },
     features: [], offered: true, billing: null,
   },
   // LEGACY: no longer offered or sold. An org or grant already on it keeps these limits.
   personal: {
     id: "personal", name: "Personal", description: "One person's own organization.",
-    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250 },
+    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, tags: 30 },
     features: [], offered: false, billing: null,
   },
   team: {
     id: "team", name: "Pro", description: "For a team, paid per seat.",
-    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000 },
+    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, tags: 50 },
     features: [], offered: true, billing: null,
   },
   enterprise: {
     id: "enterprise", name: "Enterprise", description: "Limits set for the organization by Trov.",
-    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_runs: null },
+    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_runs: null, jev_checks: null, tags: null },
     features: [], offered: true, billing: null,
   },
 };

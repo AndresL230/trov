@@ -109,7 +109,8 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 
 ## Conventions & gotchas
 
-- `shared/vocabulary.ts` MUST match `migrations/0002_seed_vocab.sql` — it is the gate's source of truth.
+- `shared/vocabulary.ts` MUST match `migrations/0002_seed_vocab.sql`: the gate's SECTIONS, and the six STARTER tags
+  every org begins with. A feed entry's tags are checked against the ORG's own list (`org_tags`), never `TAGS`.
 - **Tests** use real Miniflare D1; `scripts/seed/reset.mjs` truncates data tables before each test and is
   the canonical seed: two orgs (`org_saplinglearn` with six persons — four GitHub engineers + Google-only
   `meilin` / `sanaok` — and an empty `org_b`). **Add every new table there.** GitHub I/O, the model client (Anthropic) and other
@@ -146,7 +147,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | --- | --- |
 | `src/consumer.ts`, `/ingest`, `record_session`, triage, doc promote/reject | `ingestion-gate.md` |
 | tickets, the board, `tickets-agent.ts`, the GitHub issue mirror | `tickets.md` |
-| `reads.ts` / `query`, `/search`, quick search, the feed brief & stats | `feed-and-search.md` |
+| `reads.ts` / `query`, `/search`, quick search, the feed brief & stats, the org's tag list | `feed-and-search.md` |
 | plan, sprints, progress, My Work, summaries | `roadmap-my-work.md` |
 | `src/repo/`, `tools/repo*.ts`, the Repo screen, the repo cron, pollers | `repo-dashboard.md` |
 | `src/auth/`, MCP OAuth, identity, persons, avatars, roles, Settings › MCP | `auth-identity-people.md` |

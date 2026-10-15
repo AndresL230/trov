@@ -19,10 +19,11 @@
 // whose unstyled box would show beside the bubble.
 
 import { TICKET_STATUS_LABEL, type TicketStatus, type TicketPriority } from "@shared/tickets-core";
-import { esc } from "./ui";
+import { esc, attr } from "./ui";
 import type { Authority } from "./api";
 import type { HandoffStatus } from "@shared/handoffs";
 import type { ArtifactStatus } from "@shared/artifacts-core";
+import { tagLineParts, type TagColor } from "@shared/tags-core";
 
 /** `label` and `tip` arrive escaped. */
 const svg = (size: number, body: string, label: string | null, color: string, viewBox = "0 0 14 14", tip: string | null = null): string =>
@@ -240,4 +241,41 @@ export const AUTHORITY_MARK: Record<Authority, { word: string; tone: string; hin
 export function authorityMark(a: Authority, size = 12): string {
   const m = AUTHORITY_MARK[a];
   return m ? stateMark(m.word, m.tone, "ring", size, m.hint) : "";
+}
+
+// ── tags ─────────────────────────────────────────────────────────────────────
+// A tag is a FACT about an item, not a state, and it is drawn in exactly two ways (the "option C"
+// ruling; `web-ui.md` › Tags), both here — the ONE place a tag is drawn:
+//   • in a LIST, an item's tags are plain muted words joined by " · " — at most three, then
+//     "and N more" (`tagWords`). No colour, no shape: a row never grows because of its tags.
+//   • on the item's OWN page, in a tag picker and in Org settings, a tag is a small coloured SQUARE
+//     and the word (`tagMark`): 8px, square corners, in the tag's own colour.
+// Never a pill, never uppercase, never a circle, ring or triangle (those mean a state, above). A tag's
+// word opens the tag's page (`tagOpen`) unless `link` is false.
+
+/** The CSS colour of a tag colour key: the person palette's variable (trov.css `--p-*`), tuned for both themes. */
+export const tagTone = (color: TagColor | string): string => `var(--p-${/^[a-z]+$/.test(color) ? color : "slate"})`;
+
+/** The square alone: 8px, no radius. An SVG element (never a character), `aria-hidden` — the word says it. */
+export function tagSquare(color: TagColor | string, size = 8): string {
+  return `<svg class="cnpy-tagsq" width="${size}" height="${size}" viewBox="0 0 8 8" aria-hidden="true" style="flex:none;display:block;color:${tagTone(color)}"><rect width="8" height="8" fill="currentColor"/></svg>`;
+}
+
+const tagWord = (name: string, link: boolean): string => link
+  ? `<button type="button" data-act="tagOpen" data-arg="${attr(name)}" class="cnpy-taglink" title="${attr(`Everything tagged ${name}`)}">${esc(name)}</button>`
+  : `<span>${esc(name)}</span>`;
+
+export interface TagMarkOpts { size?: number; link?: boolean; retired?: boolean }
+/** A tag on its own page, in a picker, in Org settings: the square in the tag's colour and the word. */
+export function tagMark(tag: { name: string; color: TagColor | string }, o: TagMarkOpts = {}): string {
+  return `<span class="cnpy-tagmark" data-tag="${attr(tag.name)}"${o.retired ? ` data-retired="1"` : ""} style="display:inline-flex;align-items:center;gap:6px;font-size:${o.size ?? 13}px;color:${o.retired ? "var(--fg-40)" : "var(--fg)"};white-space:nowrap">${tagSquare(tag.color)}${tagWord(tag.name, o.link !== false)}</span>`;
+}
+
+/** An item's tags in a LIST: plain muted words joined by " · ", the first three, then "and N more".
+ *  "" when it has none. */
+export function tagWords(tags: readonly string[], o: { size?: number; link?: boolean } = {}): string {
+  if (tags.length === 0) return "";
+  const { shown, more } = tagLineParts(tags);
+  const words = shown.map((t) => tagWord(t, o.link !== false)).join(`<span aria-hidden="true"> · </span>`);
+  return `<span class="cnpy-tagwords" style="font-size:${o.size ?? 12}px;color:var(--fg-40);overflow-wrap:anywhere">${words}${more ? `<span style="white-space:nowrap"> and ${more} more</span>` : ""}</span>`;
 }

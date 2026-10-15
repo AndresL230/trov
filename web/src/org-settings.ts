@@ -6,6 +6,8 @@
 //   MEMBERS       — the people directory: org roles, titles, removal, invites by GitHub login
 //                   or email, and (admins) the unmatched logins to map to a person
 //                   (web/src/identity.ts — Maintenance › Identity until 2026-10-06).
+//   TAGS          — the org's ONE tag list (web/src/tags.ts): every member reads it; an admin adds,
+//                   renames, merges and retires, and settles what agents suggested.
 //   NOTIFICATIONS — the e-mail digests: which exist and their default cadence, the send hour,
 //                   timezone and sender name, preview and test send, the outbox
 //                   (web/src/notifications.ts — under Maintenance › People until then). Admin+ only.
@@ -30,6 +32,7 @@ import {
   sliceNote, roleWord, ROLE_WORD, roleOption, roleAtLeast, sameHandle, textField, tabLead, leadFlag, openRow, type OrgSlice,
 } from "./org-ui";
 import { kindMark } from "./marks";
+import { tagsTab, tagConfirmModal, tagAddModal, initialTagsUi, type TagsTabProps } from "./tags";
 export { roleAtLeast };
 export type { OrgSlice };
 import { tabBar, tabPanelAttrs } from "./tabs";
@@ -54,10 +57,10 @@ import { aiTab } from "./org-ai";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
-export type OrgTab = "integrations" | "repos" | "environments" | "members" | "notifications" | "ai" | "general";
-export const ORG_TABS: readonly OrgTab[] = ["integrations", "repos", "environments", "members", "notifications", "ai", "general"];
+export type OrgTab = "integrations" | "repos" | "environments" | "members" | "tags" | "notifications" | "ai" | "general";
+export const ORG_TABS: readonly OrgTab[] = ["integrations", "repos", "environments", "members", "tags", "notifications", "ai", "general"];
 export const isOrgTab = (v: unknown): v is OrgTab => typeof v === "string" && (ORG_TABS as readonly string[]).includes(v);
-const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", members: "Members", notifications: "Notifications", ai: "AI", general: "General" };
+const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", members: "Members", tags: "Tags", notifications: "Notifications", ai: "AI", general: "General" };
 /** The tabs only an admin or an owner may open (their APIs are admin+). */
 const ADMIN_TABS: readonly OrgTab[] = ["integrations", "notifications"];
 
@@ -208,6 +211,8 @@ export interface OrgSettingsProps {
   notif?: NotifAdminProps | null;
   /** Which dropdown is open (dropdown.ts; `state.dd`). Omitted = none. */
   dd?: DropdownUi;
+  /** The Tags tab's reads and state (web/src/tags.ts; every member). */
+  tags?: Omit<TagsTabProps, "dd"> | null;
 }
 
 // ── setup checklist ──────────────────────────────────────────────────────────
@@ -231,16 +236,23 @@ export function setupSteps(ui: OrgUi): SetupStep[] | null {
   // A one-person plan has no team to invite: the step would never be done, so it is not asked. (A Pro
   // org that bought one seat is not one: it invites by adding a seat.)
   const solo = ui.plan.data?.entitlements.seats === 1 && isSoloPlan(ui.plan.data.plan);
-  // GitHub is connected by the App's installation or, by hand, by a token: either satisfies the step.
+  // GitHub is connected by the App's installation or, by hand, by a token (the fallback).
   const app = githubOf(ui);
   const offered = app?.configured === true;
   const connected = !!app?.installation || (!!token && (token.configured || token.legacy_fallback));
+  const repos = ui.repos.data.length > 0;
+  // There is NO separate GitHub or token step: connecting a repository is the GitHub step, done once a
+  // repository is connected AND GitHub can be read. Where the App is offered that is installing it (no token);
+  // on a Trov with no App (self-hosted) it is the repository plus the token — the step leads to Integrations
+  // for the token once the repository is there.
+  const repoStep: SetupStep = offered
+    ? { key: "repo", title: "Connect a repository", why: "Install the Trov App on GitHub and pick the repository: Trov reads its deployments, checks, pull requests and issues.", tab: "repos", go: "Open Repositories", done: repos && connected }
+    : repos && !connected
+      ? { key: "repo", title: "Connect a repository", why: "Set the GitHub token so Trov can read the repository.", tab: "integrations", go: "Open Integrations", done: false }
+      : { key: "repo", title: "Connect a repository", why: "Add the repository and set a GitHub token: Trov reads its deployments, checks, pull requests and issues.", tab: "repos", go: "Open Repositories", done: repos && connected };
   const steps: SetupStep[] = [
-    { key: "repo", title: "Connect a repository", why: "Trov reads its deployments, checks, pull requests and issues.", tab: "repos", go: "Open Repositories", done: ui.repos.data.length > 0 },
+    repoStep,
     { key: "env", title: "Add an environment", why: "The Repo dashboard reports on each one: staging, production.", tab: "environments", go: "Open Environments", done: ui.envs.data.length > 0 },
-    offered
-      ? { key: "token", title: "Connect GitHub", why: "Install the Trov App on GitHub so Trov can read the repository. A token also works.", tab: "repos", go: "Open Repositories", done: connected }
-      : { key: "token", title: "Set the GitHub token", why: "Without it Trov cannot read the repository.", tab: "integrations", go: "Open Integrations", done: connected },
     { key: "team", title: "Invite your team", why: "By GitHub login or email; they join when they accept.", tab: "members", go: "Open Members", done: ui.members.data.length > 1 || ui.invites.data.some((i) => i.status === "pending") },
   ];
   return solo ? steps.filter((s) => s.key !== "team") : steps;
@@ -741,6 +753,7 @@ export function notificationsTab(org: MyOrg, notif: NotifAdminProps | null | und
 /** Every dropdown on the tab that is showing, with the props its trigger was rendered from —
  *  what `orgOverlays` renders the open one's menu from (dropdown.ts). */
 export function orgDropdowns(p: OrgSettingsProps): DropdownProps[] {
+  if (p.org && effectiveOrgTab(p.ui.tab, p.org.role) === "tags") return []; // its picks are row menus (web/src/tags.ts)
   if (!p.org || !roleAtLeast(p.org.role, "admin")) return [];
   const tab = effectiveOrgTab(p.ui.tab, p.org.role);
   if (tab === "notifications") return p.notif ? notifDropdowns(p.notif) : [];
@@ -818,6 +831,8 @@ export function orgOverlays(p: OrgSettingsProps): string {
   if (!p.org) return "";
   const ui = p.ui;
   const menu = p.dd?.open ? dropdownMenu(orgDropdowns(p), p.dd) : "";
+  if (p.tags?.ui.confirm && roleAtLeast(p.org.role, "admin")) return menu + tagConfirmModal(p.tags.ui.confirm, p.tags.list.data);
+  if (p.tags?.ui.addOpen && roleAtLeast(p.org.role, "admin")) return menu + tagAddModal(p.tags.ui, p.tags.list.data);
   if (ui.confirm) {
     const copy = orgConfirmCopy(ui.confirm, p.org, ui);
     if (copy) return menu + confirmModal({ id: "org-confirm", ...copy, confirmAct: "orgConfirmGo", cancelAct: "orgConfirmCancel", busy: ui.confirm.busy });
@@ -865,6 +880,7 @@ export function orgSettingsView(p: OrgSettingsProps): string {
     : tab === "repos" ? reposTab(p.org, p.ui)
     : tab === "environments" ? environmentsTab(p.org, p.ui)
     : tab === "members" ? membersTab(p.org, p.ui, p.me, p.identity ?? null, p.dd)
+    : tab === "tags" ? tagsTab(p.org, { list: p.tags?.list ?? { status: "loading", data: null }, ui: p.tags?.ui ?? initialTagsUi(), dd: p.dd })
     : tab === "notifications" ? notificationsTab(p.org, p.notif, p.dd)
     : tab === "ai" ? aiTab(p.org, p.ui.ai, p.ui.aiSaving)
     : generalTab(p.org, p.ui);

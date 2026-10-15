@@ -29,7 +29,7 @@ const picker = (orgs: MyOrgsResponse) => orgPickerView({ me, mine: orgs.orgs, or
 const view = (plan: PlanId = "team", o: Partial<OrgPlanView> = {}): OrgPlanView => ({
   plan, name: PLANS[plan].name, description: PLANS[plan].description, status: "active", source: "granted", period_end: null, gift_until: null,
   entitlements: PLANS[plan].entitlements, overridden: [], seats: { members: 5, pending: 2 },
-  usage: { seats: 7, repositories: 1, environments: 2, artifact_bytes: 1024 ** 3, agent_connections: 1, ai_summaries: 0, ai_runs: 0 }, over: [], ...o,
+  usage: { seats: 7, repositories: 1, environments: 2, artifact_bytes: 1024 ** 3, agent_connections: 1, ai_summaries: 0, ai_runs: 0, jev_checks: 0, tags: 6 }, over: [], ...o,
 });
 /** An org's billing view (shared/billing.ts): by default a Free org that never paid and can upgrade to Pro. */
 const bill = (o: Partial<OrgBillingView> = {}): OrgBillingView => ({
@@ -285,10 +285,10 @@ describe("Org settings › Members — seats", () => {
   });
   it("the setup checklist does not ask a one-person org to invite its team", () => {
     const ready: Partial<OrgUi> = { repos: { status: "ok", data: [] }, envs: { status: "ok", data: [] }, integrations: { status: "ok", data: { integrations: [], key: null } as never } };
-    expect(setupSteps(orgUi(view(), ready))!.map((s) => s.key)).toEqual(["repo", "env", "token", "team"]);
-    expect(setupSteps(orgUi(view("personal"), ready))!.map((s) => s.key)).toEqual(["repo", "env", "token"]);
+    expect(setupSteps(orgUi(view(), ready))!.map((s) => s.key)).toEqual(["repo", "env", "team"]);
+    expect(setupSteps(orgUi(view("personal"), ready))!.map((s) => s.key)).toEqual(["repo", "env"]);
     // A Pro org that bought ONE seat is not a one-person plan: it invites by adding a seat, so the step stays.
-    expect(setupSteps(orgUi(paidPro(1), ready))!.map((s) => s.key)).toEqual(["repo", "env", "token", "team"]);
+    expect(setupSteps(orgUi(paidPro(1), ready))!.map((s) => s.key)).toEqual(["repo", "env", "team"]);
   });
 });
 

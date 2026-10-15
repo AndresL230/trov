@@ -209,6 +209,7 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
     case "a": case "b": return "nope"; // never `test`: Test connection would reach for the network
     case "email": return encodeURIComponent(INVITED);
     case "ref": return fx.artifactSlug;
+    case "name": return "auth"; // a tag: every org has the starter of that name, each its own row
     default: throw new Error(`no fixture value for :${name} in ${suffix}`);
   }
 }
@@ -273,6 +274,13 @@ const TENANT: Record<string, Row> = {
   "POST /prompts/:slug/tags": J({ tags: ["review"] }), "POST /prompts/:slug/used": J({}), "POST /prompts/:slug/publish": J({ version: 1 }),
   "POST /prompts/:slug/delete": J({}), "POST /prompts/:slug/restore": J({}),
   "POST /docs/propose": J({ title: "From the matrix", section: "reference", space: "technical", body: "b" }),
+  // src/tags/routes.ts — the org's tag list (0056_org_tags): every statement binds the org the gate resolved
+  "GET /tags": {}, "GET /tags/:name": {}, "POST /tags": J({ name: "hijacked" }), "PUT /tags/:name": J({ name: "hijacked" }),
+  "POST /tags/:name/merge": J({ into: "ui" }), "POST /tags/:name/retire": J({}), "POST /tags/:name/restore": J({}),
+  "POST /tags/suggestions/:name/resolve": J({ resolution: "accept" }), "POST /item-tags": J({ type: "feed", id: "1", tags: ["auth"] }),
+  "POST /tags/:name/find-items": J({}), "GET /tags/:name/run": {}, "POST /tags/:name/undo-run": J({}),
+  "POST /tags/:name/review/add": J({ type: "feed", id: "1" }), "POST /tags/:name/review/dismiss": J({ type: "feed", id: "1" }),
+  "PUT /tag-settings": J({ enabled: true }),
   "GET /people/:handle": {}, "POST /people/me/avatar": J({}), "POST /people/me/avatar/remove": J({}),
   // src/artifacts/raw.ts — the bytes of A's artifact, by slug (`:ref`, `:slug/:ver`); the alias is `/raw/a/…`
   "GET /raw/a/:ref": {}, "GET /raw/a/:slug/:ver": {},

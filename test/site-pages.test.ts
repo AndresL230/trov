@@ -389,7 +389,7 @@ describe("the MCP tools reference is the server's own list", () => {
 
   it("says the server's own counts, and every error code with the hint the server sends", () => {
     const { everyone, adminOnly } = mcpToolCounts(MCP_TOOLS);
-    expect([everyone, adminOnly]).toEqual([43, 1]);
+    expect([everyone, adminOnly]).toEqual([44, 1]);
     expect(md).toContain(`It gives **${everyone} tools** to every member, plus **${adminOnly}** to an organization's admins (${everyone + adminOnly} in all).`);
     for (const [code, hint] of Object.entries(MCP_ERROR_HINTS)) expect(md, code).toContain(`- \`${code}\`: ${hint}`);
   });
@@ -404,7 +404,7 @@ describe("the MCP tools reference is the server's own list", () => {
 
   it("the landing's MCP card counts and shows the same tools — no typed number", () => {
     expect(MCP_TOOL_NAMES).toEqual(MCP_TOOLS.map((t) => ({ name: t.name, admin: t.admin })));
-    expect(mcpToolCountPhrase(MCP_TOOL_NAMES)).toBe("43 tools, plus 1 admin-only");
+    expect(mcpToolCountPhrase(MCP_TOOL_NAMES)).toBe("44 tools, plus 1 admin-only");
     const landing = landingView({ dark: false, signInOpen: false, seen: new Set() });
     expect(landing).toContain(`>${mcpToolCountPhrase(MCP_TOOL_NAMES)}</span>`);
     expect(landing).not.toContain("39 tools");

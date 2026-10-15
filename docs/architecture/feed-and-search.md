@@ -21,6 +21,126 @@ boot-loaded proposals + draft ADRs as `reviewHeadsFromReads` heads (no diff), ea
 body's soft target is ~2,500 characters. Pre-0034 entries were filled once by
 `scripts/backfill-feed-briefs.mjs` (local, Gemini, dry run by default, `--apply` only `WHERE brief IS NULL`).
 
+## Tags — ONE list per organization (`0056_org_tags`, phase 1)
+
+Each org has its own tag list (`org_tags`: `name`, a one-line `description`, a `color` from
+`shared/tags-core.ts` `TAG_COLORS`, `starter`, `retired_at`, `merged_into`). It starts as the six STARTER tags
+(`STARTER_TAGS` = the names of `shared/vocabulary.ts` `TAGS` and `0002_seed_vocab.sql`): 0056 seeded them for
+the orgs that existed, `createOrg` (`src/orgs/repo.ts`) seeds them for a new one, and `tagRows` gives them to
+an org that has NO row at all (one a pre-0056 Worker created). **Phase 1 puts tags on feed entries, docs and
+decisions** (`entry_tags.entry_type` = `feed` / `doc` / `adr`; ids: the entry's number, the doc's slug, the
+decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are untouched — phase 2.
+
+- **Stored by NAME.** `entry_tags(org_id, tag, entry_type, entry_id)` holds the tag's name; 0056 rebuilt the
+  table without its reference to the global `tags` table (which stays, unread: it names the starters) and
+  added NO reference to `org_tags` — what may be stored is the gate's rule and `setItemTags`'s, so the Worker
+  from before 0056 keeps working. A name is lowercase letters, digits and hyphens, ≤ 32 (`normalizeTagName`).
+- **Only an org ADMIN changes the list** (`src/tools/tags.ts`, each `requireRole(ctx, "admin")` with an
+  `org_admin_audit` row `tag.*` in the same batch; cookie routes in `src/tags/routes.ts`, which refuse any
+  request carrying an `Authorization` header — NEVER MCP): `addTag`; `editTag` (rename and/or description,
+  colour — a rename rewrites `entry_tags` in the batch, so every tagged item stays tagged, and moves every
+  `source = 'model'` row and `org_tag_runs` with it, so Sift's credit and a run's Undo survive; a starter may be
+  renamed); `mergeTag` (the source's items move to the target, the source is retired with
+  `merged_into`, and an agent that still sends it gets the target; a starter cannot be merged away);
+  `retireTag` (soft: stays on what has it, can no longer be picked, name stays reserved; never a starter) and
+  `restoreTag`. Nothing is hard-deleted.
+- **The plan caps the list**: `tags` in `PLANS` (`plans.md`), `requirePlan(ctx, "tags")` on add, restore and
+  accepting a suggestion (402 `plan_limit`). Live tags count; retired ones do not.
+- **Suggestions** (`org_tag_suggestions`): one row per ITEM and suggested tag — `source` (`agent` now; `model`
+  later, issues #154–#158), `state` (`open` / `accepted` / `dismissed` / `superseded`), nullable `confidence`,
+  `reason`, `model`, `prompt_version`, who suggested and who resolved. A suggestion is never the tag itself:
+  the item's tags are `entry_tags`. Phase 1 writes only agent rows — a tag the gate could not use
+  (`ingestion-gate.md`). `listTags` groups the open rows whose tag is NOT live by tag text (who sent it, on
+  what, how many, a look-alike on the list) — admins only. `resolveSuggestion`: **accept** (the tag joins
+  the list — or is restored — and every item that carried it gets it), **map** (`into` an existing live tag:
+  the items get that one; rows are `accepted` with `resolved_to` = it), **dismiss** (nothing tagged; a later
+  use is a new suggestion). Adding or renaming a tag TO a suggested name settles those rows the same way.
+- **Any member** reads the list (`GET /api/o/:slug/tags` → `TagListDTO`: tags with per-type counts, `used`,
+  `cap`; suggestions `[]` unless admin), one tag's page (`GET /tags/:name` → `TagPageDTO`: feed entries, docs,
+  decisions, newest 50 each, what it is seen with, who writes about it — authors across the three types, a doc
+  counting for its last editor — and Jev's share: an item a run added the tag to carries `jev` { confidence,
+  reason, at } from its `source = 'model'`, `accepted` provenance row while it still has the tag, and
+  `jev_added` counts them all) and sets one item's tags
+  (`POST /item-tags` `{ type, id, tags }` → `setItemTags`: an authored, direct write; each tag must be live or
+  already on the item, at most 12). Reads answer 503 `{ error }` on failure, never a 500.
+- **Agents** read the list with MCP **`list_tags`** (live tags + descriptions) and can only USE it.
+  `get_feed` (MCP and HTTP) returns each entry's `tags`; `GET /doc/:slug` the doc's.
+- **Its name on screen is Sift** (the owner's call, 2026-10-14): every screen, flash and release note says
+  *Sift* — "Added by Sift", "Sift checks…", "Sift rates it a fit (87%)" — and never the model's own name. The
+  legal pages name the provider, **TypeSafe AI**, because the privacy policy must name who receives the text
+  (not the model). Code identifiers (`jevCell`, `jev_checks`, the reserved `jev` handle on provenance rows)
+  are internal and keep the name.
+- **Tagging existing items — Jev ADDS the tag** (issues #154–#158, #166; `src/tools/classify.ts`, `src/tools/tag-fit.ts`).
+  When an admin adds a tag (or accepts a suggested one), and on "Find items", Trov asks a model which of the
+  org's EXISTING items fit it, and **adds the tag to each item it is sure fits** (≥ `FIT_APPLY`, 0.85) and **suggests
+  it** for each it is less sure about (≥ `FIT_SUGGEST`, 0.60, below 0.85) — an `open` model row in
+  `org_tag_suggestions` with the run's `run_id`, listed on the tag page's **To review** tab (`TagPageDTO.review`,
+  surest first) and counted on the Tags tab (`TagListDTO.review`, "N to review"). Any member settles one
+  (`settleFitSuggestion`; `POST /api/o/:slug/tags/:name/review/add|dismiss` `{ type, id }`, cookie only): **add**
+  puts the tag on the item and marks the row `accepted` BY THAT PERSON (so it is theirs — never "Added by Sift",
+  and no run's Undo takes it; `ITEM_TAGS_MAX` holds), **dismiss** marks it `dismissed` (no later run asks again).
+  Undo withdraws the run's open suggestions too (`undone`), and a new run supersedes the tag's open ones. The model
+  is **TypeSafe AI's Jev** (`POST https://api.typesafe.ai/v1/systemone`, `TYPESAFE_API_KEY`), a NON-generative
+  decision model: ONE request per candidate item, the item's text as `state` and one `noul` (yes/no) question keyed
+  `fits` with `criteria` built from the tag's name and description, at most 4 in flight. Its answer is a
+  probability: "fits" at 0.5 or more, the confidence that probability. Summaries are on Anthropic (`ai.md`).
+  - **A deliberate exception to #154's "suggestions, never actions" — the owner's call (2026-10-14)**: no review
+    step. It is SCOPED: only a run an ADMIN starts (adding a tag, accepting a suggested one, Find items), only with
+    the org's switch on, only that org's items, and it only ever ADDS that one tag — it never removes or changes
+    anything else. Every other rule holds: never on a render path (the route starts the run and hands its work to
+    `waitUntil`); a fixed set of answers (a `noul` must be a number 0–1, anything else is no judgement); metered
+    (`jev_checks`, one per request, `plans.md`).
+  - **Provenance**: each tag a run adds keeps an `org_tag_suggestions` row — `source = 'model'`, `confidence`,
+    `reason`, `model` (the version Jev reports, e.g. `jev-1.13.0`), `prompt_version` `jev-fit-1`, `state =
+    'accepted'`, `resolved_by = 'jev'` (a reserved handle) and the run's `run_id` — written in the SAME batch as
+    the `entry_tags` row (`INSERT … WHERE changes() > 0`, so a row exists only for a tag the run really added).
+    One `tag.fit` row in `org_admin_audit` per run (counts only).
+  - **The way back**: `POST /api/o/:slug/tags/:name/undo-run` (admins, cookie; `undoTagFit`) removes EXACTLY the tags
+    that run added and that are still there — never one a person or another run added — marks those rows
+    `undone` and the run `undone_at`, audited `tag.fit.undo`. A PERSON taking a tag off one item (`setItemTags`)
+    marks a run's row for it `removed` in the same batch. A later run skips an item whose row is `undone`,
+    `removed`, `dismissed` or `open`, so it never adds a tag back that someone took off.
+  - **The reason is Trov's EVIDENCE, never the model's**: Jev writes no text, and #157 shows no suggestion without
+    a reason, so the reason is the full-text snippet around the match that made the item a candidate
+    (`evidenceOf`: `Mentions “…session cookie…”`, scrubbed like the excerpt) — or "Matches the tag's description"
+    when the match left no usable snippet. A TOPPED-UP item (below) matched nothing, so its reason is the model's
+    score said as such: `Sift rates it a fit (87%)` (`scoreReason`). Nothing is invented, and no quote is faked.
+  - **Too few matches → top up** (`TOP_UP_TO` = 20): a tag with no description, or words nothing uses (`desktop`),
+    found nothing to judge. When the keyword search yields fewer than 20, the newest other items (not tagged, not
+    dismissed or open for it) fill the list up to 20, so Jev — the part that understands meaning — judges them.
+    `CANDIDATE_CAP` stays 60 and the bands 0.85 / 0.60. With nothing at all (an empty org) the run ends with
+    `candidates = 0` and no call, and the row says "Nothing in this organization to check yet." The New tag modal
+    says a plain description helps Jev find the right items; it is never required. Its "Find the items that fit it
+    now" switch (on by default while Jev may look) sends `scan: false` on `POST /tags` when turned off: the tag is
+    added and no run starts (`fit: "skipped"`); Find items on its row looks later.
+  - **Live progress**: the run writes `candidates`, `calls`, `checked` and `added` on `org_tag_runs` AS IT GOES —
+    one small UPDATE per answer (≤ 60), and each confident "fits" adds the tag the moment it is answered.
+    `GET /api/o/:slug/tags/:name/run` (admins; `{ run: TagRunDTO | null }`) is the cheap read the Tags tab polls.
+  - **Errors** (`jevClassifier`): a 422, a body that is not JSON, a bad answer, a timeout (10 s) or a network
+    error → no judgement for that item, the run goes on; a 429 or 529 → one retry after 1.5 s, then the run stops;
+    a 401 or any other status → the run stops (`failed`). Nothing surfaces to a person.
+  - **Not confirmed from TypeSafe's docs** (so the client is conservative): a maximum number of questions per
+    request, a maximum `state` size, rate limits and pricing are not documented. Hence one item and one question
+    per request, at most 4 at once, and states of at most ~600 characters (title ≤ 200 + excerpt ≤ 400).
+  - **Consent**: `org_ai_settings` (kind `tag.fit`), OFF by default, an admin's switch in Org settings › Tags
+    (`PUT /api/o/:slug/tag-settings`, audited `ai.enable` / `ai.disable`). Off, or no `TYPESAFE_API_KEY` → nothing
+    is sent (`startTagFit` answers `off` / `no_key`); turning it off mid-run stops the next call.
+  - **What is sent** (to TypeSafe AI only): the tag's name and description (in the question and its criteria), and
+    per item its title (≤ 200) and an excerpt of ≤ 400 characters (topped-up items alike) (`excerptOf`: code blocks, inline code, link targets, URLs, markup and anything shaped like
+    a credential removed). Candidates are picked WITHOUT the model: the org's own FTS (`feed_fts`, `docs_fts` —
+    live docs —, `adrs_fts` — not rejected) over the tag's name and description words, items that do not carry
+    the tag and that no one has said no to (no dismissed, open, undone or removed row), newest first, at most 60,
+    one request each. Every
+    statement binds the org; another org's items are never read.
+  - **Runs**: `org_tag_runs`, ONE running row per tag (`busy` otherwise; a row running for 15 minutes is let go).
+    A run that is still going cannot be undone yet (409 `run_running`). `GET /tags` gives an admin `ai` (switch,
+    key, allowance) and `runs` (per tag: its latest run).
+  - **Agents' suggestions are separate and unchanged**: an AGENT's unknown tag (sent on a feed entry through the
+    gate, `recordTagSuggestions`) still waits (`open`) for an admin to approve, map or dismiss it. They are drawn
+    as suggested rows at the top of the tag list (`web-ui.md` › Tags).
+  - Not built: the content-hash cache of #155, the per-kind test set and the rates in Platform of #158.
+- Screens: `web-ui.md` › Tags.
+
 **Entries written by Trov** (`FeedRow.ai?`, `shared/ai-core.ts` `AiFeedMeta`: `origin: "ai"`, the person it was
 written for, its sources). An entry with no `ai` is an agent's — every entry today: nothing writes one yet, so
 `/feed` and `get_feed` carry no `ai` in production. `LOCAL_AI_PREVIEW` merges two sample entries into `/feed`

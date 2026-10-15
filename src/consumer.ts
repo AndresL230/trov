@@ -3,7 +3,7 @@ import type { IngestPayload, FeedEntry, DocProposal, AdrDraft, CapturedEvent } f
 // (src/webhook.ts) calls ingestEvent directly. There is no `events` arm on
 // IngestPayload: subject_login is trustworthy only once the webhook has verified
 // the delivery's HMAC, so no bearer/cookie payload may route events through here.
-import { isSection, isTag } from "@shared/vocabulary";
+import { isSection } from "@shared/vocabulary";
 import type { DocRow, DocVersionRow, AdrRow, ProcessedItemRow } from "@shared/rows";
 import { type TenantContext, first, run, nowIso } from "./data/sql";
 import type { PlatformContext } from "./data/platform-sql";
@@ -14,6 +14,7 @@ import type { Principal } from "./auth/principal";
 import type { RepoEvent } from "./repo/types";
 import { applyArtifactLinks, type ArtifactLinkOutcome } from "./tools/artifacts-agent";
 import { docImageProblems } from "./tools/doc-images";
+import { recordTagSuggestions, sortAgentTags } from "./tools/tags";
 
 // Per-type, per-outcome counts surfaced on /ingest so a re-run reads, e.g.,
 // "3 docs: 1 staged, 2 unchanged".
@@ -25,6 +26,9 @@ export interface IngestResult {
   /** Doc proposals the gate REFUSED (a dangling or external image), each with why.
    *  Present only when non-empty, so a batch with no images reads exactly as before. */
   refused?: { slug: string; reason: string }[];
+  /** Tags a feed entry carried that are not on the org's list: the entries were written WITHOUT them and
+   *  each waits, as a suggestion, for an admin. Present only when non-empty. */
+  suggested_tags?: string[];
 }
 
 // The replay key for one item. The worker assigns item_index by stable
@@ -38,7 +42,9 @@ export interface LedgerRef {
 // The gate's verdict for a single entry. "unchanged" is the reconciler's no-op
 // drop (a content-hash dedupe hit or a ledger replay) — nothing was written.
 export type FeedIngestResult =
-  | { outcome: "written"; id: number }
+  // `suggested_tags`: sent but not on the org's list — the entry is in the feed without them and an admin
+  // decides (accept, map to an existing tag, dismiss). `ignored_tags`: not a tag at all. Both only when non-empty.
+  | { outcome: "written"; id: number; tags: string[]; suggested_tags?: string[]; ignored_tags?: string[] }
   | { outcome: "unchanged" }
   | { outcome: "triaged"; reason: string };
 export type DocIngestResult =
@@ -100,28 +106,33 @@ async function ledgerRecord(
 // principal, passed in by the caller. A `ledger` makes the entry replay-safe.
 // ---------------------------------------------------------------------------
 
-/** Feed: append-only. Out-of-vocab tag → triage; the ledger is the only replay guard
- *  (content repeats are legal, which is exactly why feed needs the ledger). */
+/** Feed: append-only; the ledger is the only replay guard (content repeats are legal, which is exactly
+ *  why feed needs the ledger).
+ *
+ *  TAGS (0056_org_tags) are read against the ORG's own live list, never a constant. A tag on the list is
+ *  written; a tag that is not does NOT hold the entry back — the entry is written with the tags it may
+ *  have, and each other one is recorded as a SUGGESTION for the org's admins (who sent it, on which
+ *  entry). Nothing here adds a tag to the list: only an admin does, over a cookie route. A replay is
+ *  dropped by the ledger above before any of it runs, so a suggestion is recorded once per entry. */
 export async function ingestFeedEntry(ctx: TenantContext, entry: FeedEntry, author: string, ledger?: LedgerRef): Promise<FeedIngestResult> {
   if (ledger && (await ledgerLookup(ctx,ledger))) return { outcome: "unchanged" };
 
-  const unknown = entry.tags.filter((t) => !isTag(t));
-  if (unknown.length > 0) {
-    const reason = `unknown tag: ${unknown.join(", ")}`;
-    await route_triage(ctx,{ raw: entry, reason, source_author: author });
-    if (ledger) await ledgerRecord(ctx,ledger, "feed", "triaged", null);
-    return { outcome: "triaged", reason };
-  }
+  const tags = await sortAgentTags(ctx, entry.tags);
   const id = await append_feed(ctx,{
     author,
     summary: entry.summary,
     brief: entry.brief,
     body: entry.body,
     artifacts: entry.artifacts,
-    tags: entry.tags,
+    tags: tags.known,
   });
+  await recordTagSuggestions(ctx, tags.suggested, { type: "feed", id: String(id) }, author);
   if (ledger) await ledgerRecord(ctx,ledger, "feed", "written", String(id));
-  return { outcome: "written", id };
+  return {
+    outcome: "written", id, tags: tags.known,
+    ...(tags.suggested.length ? { suggested_tags: tags.suggested } : {}),
+    ...(tags.ignored.length ? { ignored_tags: tags.ignored } : {}),
+  };
 }
 
 /** Docs: reconcile against the KB. Out-of-vocab section or low-confidence-new → triage;
@@ -302,7 +313,10 @@ export async function consume(ctx: TenantContext, payload: IngestPayload, princi
 
   for (const entry of payload.feed_entries) {
     const r = await ingestFeedEntry(ctx,entry, author, { sessionId, itemIndex: idx++ });
-    if (r.outcome === "written") result.feed.written++;
+    if (r.outcome === "written") {
+      result.feed.written++;
+      for (const t of r.suggested_tags ?? []) if (!(result.suggested_tags ??= []).includes(t)) result.suggested_tags.push(t);
+    }
     else if (r.outcome === "unchanged") result.feed.unchanged++;
     else result.feed.triaged++;
   }

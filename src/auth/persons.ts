@@ -5,7 +5,8 @@ import { avatarSrc, type PersonSummary } from "@shared/people";
 import { isTombstoneHandle } from "@shared/deletion-core";
 
 export const HANDLE_RE = /^[a-z][a-z0-9-]{1,23}$/;
-export const RESERVED_HANDLES: readonly string[] = ["github-webhook", "system", "admin", "canopy", "trov", "me"];
+// "jev": who a tag-suggestion run's tags are recorded as resolved by (src/tools/tag-fit.ts JEV_ACTOR) — never a person.
+export const RESERVED_HANDLES: readonly string[] = ["github-webhook", "system", "admin", "canopy", "trov", "me", "jev"];
 export type HandleProblem = "invalid" | "reserved" | "taken";
 
 export class HandleTakenError extends Error {
@@ -284,6 +285,11 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["support_reports", "reporter"], ["support_reports", "resolved_by"],
   // AI (0055_ai): who accepted or dismissed a suggestion, and who pressed "Wrong?".
   ["ai_suggestions", "decided_by"], ["ai_feedback", "handle"],
+  // The org's tag list (0056_org_tags): who added, changed and retired a tag; who sent and settled a suggestion.
+  ["org_tags", "created_by"], ["org_tags", "updated_by"], ["org_tags", "retired_by"],
+  ["org_tag_suggestions", "suggested_by"], ["org_tag_suggestions", "resolved_by"],
+  // Jev tagging: who turned the org's switch on or off, and who started a run.
+  ["org_ai_settings", "updated_by"], ["org_tag_runs", "started_by"], ["org_tag_runs", "undone_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };
