@@ -442,7 +442,7 @@ at once; "kept" says why.
 
 | | Removed |
 |---|---|
-| Content | docs and every version (staged, rejected and older ones included), decisions (ADRs), the feed and its tags, the org's tag list and what agents suggested for it (`org_tags`, `org_tag_suggestions`), the triage queue, the agent-ingest ledger, the roadmap plan and its versions, sprints (resources, progress), tickets (assignees, links, comments, status history — mirrored ones too), handoffs, prompts and versions, artifacts (pages, versions, links, pending uploads — soft-deleted ones too), doc images, and every search index over them |
+| Content | docs and every version (staged, rejected and older ones included), decisions (ADRs), the feed and its tags, the org's tag list and what agents suggested for it (`org_tags`, `org_tag_suggestions`), the triage queue, the agent-ingest ledger, the roadmap plan and its versions, sprints (resources, progress), tickets (assignees, links, comments, status history — mirrored ones too), handoffs, prompts and versions, artifacts (pages, versions, links, pending uploads — soft-deleted ones too, and every file attached in Ask Trov), doc images, every member's Ask Trov conversations, write cards and Ask settings and Review's "Flagged in Ask" lines, and every search index over them |
 | Captured from GitHub | pull request and issue events and their AI summaries, unmatched-login tasks, the Repo dashboard's events, snapshots and metrics, Sync runs |
 | What Trov suggested | its suggestions (`ai_suggestions`), every "Wrong?" pressed (`ai_feedback`), and what the AI router marked stale (`ai_dirty`) |
 | Configuration and credentials | repositories, environments, every integration secret (encrypted) and the keys that sealed them, integration settings and their change history, the GitHub App binding and its repository list, the login-to-person attribution map |
@@ -479,8 +479,9 @@ at once; "kept" says why.
 | Grants | an unused one is revoked (a paid one's subscription cancelled); none keeps their handle, login or address |
 | Rate limits | their counters (two days at most anyway) |
 | What the AI router marked for them | their brief's stale mark (`ai_dirty` scope `person:<handle>`) and their GitHub sessions' (`session:<repo>:<login>`), in every organization |
+| Ask Trov | their conversations in every organization (messages, write cards, attachment links, search rows), their Ask settings, and the files they attached that are still PRIVATE — every version, link and search row, referenced by a ticket or a doc or not (only they could read them). An attachment they published to the organization stays, as below (`ask.md` › Deletion and renames) |
 | Organizations nobody else is in | deleted whole, as above |
-| R2 | their photo, unless someone else's is the same bytes |
+| R2 | their photo and their private Ask attachments' files, each unless someone else's row points at the same bytes |
 | At Stripe | open checkouts they started are expired |
 
 | Kept | Why |
@@ -491,6 +492,10 @@ at once; "kept" says why.
 | Trov's billing mirror for a continuing organization's subscription they bought (cancelled to the period's end) | the organization's billing record; its buyer is the tombstone |
 | At Stripe: their customer record for any purchase (name, e-mail, address, tax id, card fingerprint, invoices) | Stripe's, for tax and accounting law; deletable in Stripe on request where the law allows |
 | Text people typed that mentions them — "@alice" in a comment, their name in a doc | other people's words (and their own prose) are never rewritten |
+| A file they attached in Ask Trov and then published to the organization, and every answer they saved as an artifact | library items the organization may rely on, like their other artifacts (the owner's ruling covers PRIVATE attachments) |
+
+Deleting ONE Ask Trov conversation (not an account) also deletes its attachments, except a file a ticket or a doc
+still refers to or one the person published — rows at once, bytes after the commit (`ask.md` › Deletion and renames).
 | Their GitHub login in activity captured from an organization's repositories (pull requests, issues, commits, checks, mirrored issues' authors) | a copy of that repository's history on GitHub, naming a GitHub account, not the Trov account; it follows GitHub (remove it there) |
 | Invitations another organization sent to their address or login and they never answered | that organization's record of whom it invited; it can revoke them. If they sign up again, they see them |
 | E-mails already delivered | in recipients' mailboxes and Resend's delivery logs (Resend's retention) |

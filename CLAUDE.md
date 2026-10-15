@@ -100,6 +100,8 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
     by an owner, and Platform for a superadmin): an org's every `org_id` row goes in one batch
     (`ORG_TABLES`, held to the schema by a test), a person's own rows go and their handle becomes a
     `deleted-…` tombstone through `HANDLE_COLUMNS`; Stripe is cancelled first, R2 freed after the commit.
+    Ask Trov's PRIVATE attachments are hard-deleted with their conversation (unless a ticket or doc refers to
+    them) and with the account, also only through `src/deletion/` (`ask.md`).
     A new table with an `org_id` or a handle column must be added to `ORG_TABLES` / `HANDLE_COLUMNS`.
 12. **Credentials go through their one resolver; secrets never reach logs or responses.** A GitHub read
     uses `resolveGithubCredential`, any other integration `resolveCredential` — never a Worker secret or
