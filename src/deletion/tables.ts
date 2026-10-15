@@ -52,6 +52,8 @@ export const ORG_TABLES = [
   "chat_actions", "chat_artifacts", "chat_messages", "chat_fts", "chat_threads", "person_ask_settings", "ask_flags",
   // Repo › Planning's themes (0064_repo_themes): each PR's theme, the captions, the themes.
   "pr_themes", "repo_theme_captions", "repo_themes",
+  // What the AI pass's org rollup wrote about the roadmap: sprint notes and plan drift (0065_org_insights).
+  "org_insights",
   // Email: the outbox (and its dev-only bodies), each member's preferences, the org's policy and settings.
   "notification_outbox_bodies", "notification_outbox", "notification_prefs", "notification_policy", "notification_settings",
   // Hosting (0057_hosting_providers): the parts and their poll state and deploys, the provider connections. The

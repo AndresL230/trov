@@ -66,6 +66,13 @@ export const KIND_PROVIDER = {
   "repo.state": "claude",
   // My Work's "Your brief": one person's Now / Recently / Next, written by the AI pass (src/ai/brief.ts).
   "brief.person": "claude",
+  // Phase D, the Roadmap (src/ai/roadmap.ts): sprint notes + plan drift; sprint drafts; the weekly narrative proposal.
+  "org.rollup": "claude",
+  "sprint.draft": "claude",
+  "plan.narrative": "claude",
+  // Phase D, doc drift (#161, src/ai/doc-drift.ts): the gate "does this doc disagree with these entries?", then Haiku.
+  "gate.drift": "jev",
+  "doc.drift": "claude",
 } as const satisfies Record<string, AiProviderName>;
 
 /** What a call is for. */

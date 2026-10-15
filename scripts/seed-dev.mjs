@@ -15,6 +15,7 @@ import { platformDevStatements } from "./seed/platform-dev.mjs";
 import { themesDevStatements } from "./seed/themes-dev.mjs";
 import { guideDemoStatements, DEMO_LOGIN } from "./seed/guide-demo.mjs";
 import { briefDevStatements } from "./seed/brief-dev.mjs";
+import { aiRoadmapDevStatements } from "./seed/ai-roadmap-dev.mjs";
 
 const argv = process.argv.slice(2);
 if (targetsRemote(argv)) {
@@ -38,14 +39,16 @@ const fx = {
   themes: load("themes.json"),
   // What Trov wrote (0061, 0062): session digests, a skipped session, the repository's state versions.
   ai: load("ai.json"),
+  aiRoadmap: load("ai-roadmap.json"),
 };
 
 // …plus the Platform (superadmin) screens' demo rows: usage for both seed orgs, Acme's owner, audit; Repo › Planning's
 // themes (scripts/seed/themes-dev.mjs: real rows, no LOCAL_AI_PREVIEW needed); and AndresL230's stored brief, so My
 // Work shows a real one (scripts/seed/brief-dev.mjs). The Guide demo has no superadmin, so it leaves those out.
 const guideDemo = argv.includes("--guide-demo");
-// The Guide demo leaves Trov's own writing out: its screenshots show the product without it.
-const statements = guideDemo ? guideDemoStatements({ ...fx, ai: undefined }) : [...buildSeedStatements(fx), ...platformDevStatements(), ...themesDevStatements(fx.themes), ...briefDevStatements()];
+// The Guide demo leaves Trov's own writing out: its screenshots show the product without it. Phase D's Roadmap and
+// doc-drift samples (scripts/seed/ai-roadmap-dev.mjs) come after the rows they name.
+const statements = guideDemo ? guideDemoStatements({ ...fx, ai: undefined, aiRoadmap: undefined }) : [...buildSeedStatements(fx), ...platformDevStatements(), ...themesDevStatements(fx.themes), ...briefDevStatements(), ...aiRoadmapDevStatements(fx)];
 
 // Applied 8 statements at a time, by the D1 BINDING: one file holding the whole seed is refused
 // by the local execute (SQLITE_TOOBIG), and the database's name has changed before.

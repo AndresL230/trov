@@ -48,6 +48,8 @@ describe("providerFor: one table from a kind to its provider", () => {
       "gate.session": "jev", "digest.session": "claude", "gate.state": "jev", "repo.state": "claude",
       // My Work's brief (Phase D).
       "brief.person": "claude",
+      // Phase D (the Roadmap, doc drift): one line per kind.
+      "org.rollup": "claude", "sprint.draft": "claude", "plan.narrative": "claude", "doc.drift": "claude", "gate.drift": "jev",
     });
     expect(providerFor("tag.fit", { apiKey: "k" })?.name).toBe("jev");
     expect(providerFor("tag.fit", { apiKey: "k" })?.model).toBe("jev-latest");

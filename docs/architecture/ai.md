@@ -596,20 +596,22 @@ so the eval runner and the recorded-response test build exactly what the pass se
 - **`ai_suggestions`** — a suggested value for one field of one item, with a REQUIRED reason, its cites, model and
   prompt version; `open` → `accepted` | `dismissed` (a person's decision, remembered) | `superseded` (a re-run of
   the same kind for the same item replaces the OPEN one: `putSuggestion`, `src/data/ai.ts`). Phase C's cards write
-  them (› The kinds), and theme proposals (kind `themes.propose`). A value that is an object names itself with a
-  `label` (`suggestionDto`).
+  them (› The kinds), theme proposals (kind `themes.propose`) and the Roadmap's two kinds (below). A value that is an
+  object names itself with a `label` (`suggestionDto`).
 - **Accept** — `POST /ai/suggestions/:id/accept { value? }` (`:id` is the row id; another org's id is
   `not_found`). In order: `not_found` (404) → `not_open` (409) → `not_available` (409: no handler for the kind) →
   `forbidden` (403: below the handler's role) → `invalid` (400: a body the contract refuses). Then the row is claimed by one guarded UPDATE, the handler writes the
   real field AS the cookie person, and on its throw the claim is undone. `AI_ACCEPT_HANDLERS` (`src/ai/suggestions.ts`)
-  holds Phase C's (`src/ai/jobs/accept.ts`) and the theme handlers (kind `themes.propose`); a kind with none
+  holds Phase C's (`src/ai/jobs/accept.ts`), the theme handlers (kind `themes.propose`) and the Roadmap's `sprint_draft` /
+  `plan_narrative` (admin; `src/ai/roadmap-accept.ts`); a kind with none
   (`review.risk`) is `not_available`. A handler gets the request's origin too (`AcceptRequest`: the in-app address a
   duplicate link points at). **A handler names its `role`**: `member` (anyone in the org)
   or `admin`; **dismiss is open to every member** (`POST /ai/suggestions/:id/dismiss`) unless the handler names a `dismissRole` (a theme's
   Remove is an admin's), and a handler may also act on a dismissal (`dismissed`), check a value before the claim (`valid`:
   `invalid` 400) and refuse with a code (`AcceptRefused`) — `src/ai/accept.ts`. A refusal is never a 500: Phase C's
   handlers check their value in `valid` and answer a writer's refusal after the claim (the ticket or triage item
-  gone) as `not_available` / `invalid` / `forbidden` (`refusing`, `src/ai/jobs/accept.ts`). Theme accept / rename /
+  gone) as `not_available` / `invalid` / `forbidden` (`refusing`, `src/ai/jobs/accept.ts`); a Roadmap writer refusing
+  (`SprintError` / `TicketError` / `PersonError`) is a 400 `invalid` with the writer's message. Theme accept / rename /
   remove go through the same two routes.
 - **"Wrong?"** — `POST /ai/feedback` (`AiFeedbackBody`) records `ai_feedback` for the cookie person, ONE row per
   (person, item), idempotent; it hides the item for that person (`hiddenFor(ctx, handle, itemType)`, what a
@@ -617,6 +619,61 @@ so the eval runner and the recorded-response test build exactly what the pass se
 - Both tables are in `ORG_TABLES` and the reset seed; `ai_suggestions.decided_by` and `ai_feedback.handle` are in
   `HANDLE_COLUMNS`. Every route refuses a request carrying an `Authorization` header (`cookieOnly`); none is an MCP
   tool and none has an old-path alias.
+
+## The Roadmap (Phase D, Feature E; `src/ai/roadmap.ts`, `src/ai/roadmap-accept.ts`, `0065_org_insights`)
+
+| job | kind | scope | how | writes |
+| --- | --- | --- | --- | --- |
+| `roadmap.sprint_note` | `org.rollup` | `sprint:<id>` | direct, ≤10 sprints a call | `org_insights` `sprint_note` — an ACTIVE sprint's one line |
+| `roadmap.plan_drift` | `org.rollup` | `org` | direct | `org_insights` `plan_drift` — only when a theme of ≥25% of the merged PRs is in no active sprint |
+| `roadmap.sprint_draft` | `sprint.draft` | `org` | Batch API | `ai_suggestions` `sprint_draft` — ≥8 open tickets outside every sprint and none active; at most one a week |
+| `roadmap.plan_narrative` | `plan.narrative` | `org` | Batch API | `ai_suggestions` `plan_narrative` — weekly |
+
+- **The forecast is not here**: `sprintForecast` (`src/tools/sprints.ts`) is arithmetic on read — closed tickets
+  per day since the start, carried over the open ones, against the due day; null when unknown. No model.
+- **The drift's numbers are the server's**: `themeShares` reads the themes module's per-repo shares (`themeShares`,
+  `src/tools/themes.ts` — 0064's `repo_themes` / `pr_themes`) for the primary repository over `AI_DRIFT_WINDOW_DAYS` (14), rounds them (`toAiThemeShares`) and marks
+  which an active sprint holds (its tickets' linked PRs, by theme). No active theme, nothing merged, no primary
+  repo → null: no call, nothing said. The model is given the shares and words them.
+- **Grounding** (`src/ai/grounding.ts`, every line of every job): cites only from the refs the input offered (the
+  server builds each `AiCite`); every number stated must be one the input gave (digits and number words); a ref
+  written in the text (`ticket:14`) states no number, is shown as its label (`#14`), and one not offered drops the
+  line; people's words go fenced as data (a document as its own text, `fencedText`). A note claiming the sprint is
+  done is dropped. Nothing here marks work done (invariant 5).
+- **Reads**: `org_insights` (newest of the last 10 versions per key) joins `orgs.ai_automation = 1`, so with the
+  switch off every field is ABSENT. `SprintView.note?` (active sprints only) and `PlanView.drift?` (until its
+  window passes) come with `GET /roadmap`, `GET /sprints` and MCP `get_roadmap`; `PlanView.suggestions?` (the open
+  Roadmap suggestions) only with the cookie `GET /roadmap`, only for an admin. "Wrong?" on a note or the drift
+  hides it for that person (`roadmapForPerson`, `src/data/org-insights.ts`).
+- **Accept** runs the existing writers AS the admin who pressed it: a draft → `create_sprint` per sprint (created
+  upcoming), then `set_ticket_sprint` for each of its tickets still open in the backlog (never moved out of another
+  sprint); a narrative → `write_plan` with the narrative and no sprint entries (versioned like any plan write).
+- The UI: `web/src/roadmap-ai.ts` over the AI kit (`aiByline`, `aiCites`, `aiWrongBtn`, `aiSuggestionChip`) — a
+  forecast and a note on each active sprint card, the drift line under the narrative, an admin's cards above it.
+
+## Doc drift (#161; `src/ai/doc-drift.ts`)
+
+Scope `doc_drift:<slug>` (marked by a doc promote; weekly on Pro / Enterprise, monthly otherwise), Batch API, behind
+**`gate.drift`**: Jev `noul` ("does an entry show something this doc states is no longer true?", with criteria) over
+the entries and the doc's paragraphs that share words with them (`gateState`, ≤4,000 characters — a doc's stale
+sentence is usually far from its opening); below `DRIFT_GATE_MIN` (0.6) no Haiku call; without Jev the rule is SKIP.
+The input is the live doc and up to six feed entries since its last promote (≤30 days) that its full-text index
+matches against its title — none, no call; Trov's own entries are never evidence; a doc with a Trov proposal still
+staged is not checked again. Haiku answers edits (`find` an exact passage, `replace`, `cites`); the SERVER applies
+them (`applyDrift`: a passage not in the doc exactly once, a number not given or no valid cite drops the edit) and
+the result goes **through the gate**: `ingestDocProposal` at `confidence: "low"`, authored by `trov`
+(`TROV_SYSTEM_HANDLE`, the documented exception to "the author is the principal"). Staged and flagged; only a
+person promotes or rejects it. An artifact's scope has no doc: null, cleared.
+
+## Evals
+
+Each kind's set lives in `test/ai-evals/<kind>/` (cases, the live run's `recorded.json`), and its CI test replays
+the recordings through THE client at the `Response` level and the REAL job code. Phase D's: `gate.drift` (20 of
+Personal Dev's docs with the entries the input would compare them with, labelled by hand), `doc.drift` (12) and
+`org.rollup` (6 sprint notes over Personal Dev's tickets and entries, 4 drifts over server-given shares); the live
+runner is `test/ai-evals/run-live-roadmap.mjs` (keys from a `.dev.vars` at run time, never committed), the grades
+`test/ai-evals/roadmap-grade.ts`, the replay `test/ai.evals-roadmap.test.ts`. Its "never" floors: no false gate
+pass, no proposal on a doc that agrees, only offered cites. A change to a question or a prompt needs a new live run.
 
 ## The screens' fields (each omitted until its producer exists)
 
@@ -681,7 +738,10 @@ input, hosting parts, cites, keep 20, the read — absent, the switch, capped, "
 `test/ai.hookup.test.ts` (THE HOOKUP, real rows end to end: webhook capture → the pass → `GET /repo/dashboard`,
 `get_repo_dashboard`, `GET /feed`, `get_feed` → the existing screens render State and the Trov entry; "Wrong?"'s
 exact button bodies through the real route hide each for the presser only; absent renders nothing),
-`test/ai-evals.digests.test.ts` (the digest evals' recorded live answers, replayed and graded in CI).
+`test/ai-evals.digests.test.ts` (the digest evals' recorded live answers, replayed and graded in CI). Phase D's Roadmap: `test/ai.roadmap.test.ts` (the forecast, notes, drift and its shares, drafts,
+the narrative, accept), `test/ai.doc-drift.test.ts`, `test/ai.grounding.test.ts`, `test/render.roadmap-ai.test.ts`,
+`test/render.roadmap-ai-exit.test.ts`, `test/render.roadmap-ai-real.test.ts` (real rows → the real reads → the real
+render), `test/ai.roadmap-seed.test.ts`, `test/ai.evals-roadmap.test.ts`.
 
 ## Evals: session digests and repo state (`test/ai-evals/<kind>/`)
 

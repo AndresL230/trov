@@ -79,6 +79,7 @@ import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, ty
 import { previewBanner, previewState, type PreviewMode } from "./preview";
 import { aiItemRef } from "@shared/ai-core";
 import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, AI_NOTE_LEAVING, type AiUi } from "./ai-ui";
+import { driftLine, roadmapSuggestionCards } from "./roadmap-ai";
 import { aiFilterBox, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
@@ -1591,7 +1592,7 @@ function roadmapSprintGroups(s: AppState): string {
   const renderGroup = (items: SprintView[], heading: string, color: string): string =>
     items.length === 0
       ? ""
-      : `${sectionHeading(heading, color)}<div class="cnpy-stagger">${items.map((sp) => sprintCard(sp, s.persons.data, { done: isDone(sp), nextUp: sp.id === nextId, now })).join("")}</div>`;
+      : `${sectionHeading(heading, color)}<div class="cnpy-stagger">${items.map((sp) => sprintCard(sp, s.persons.data, { done: isDone(sp), nextUp: sp.id === nextId, now, ai: s.ai })).join("")}</div>`;
 
   return `${renderGroup(inProgress, "In Progress", "var(--amber)")}
     ${renderGroup(upcoming, "Upcoming", "var(--blue)")}
@@ -1706,7 +1707,10 @@ function roadmapNewSprint(s: AppState): string {
  * tab has no aside.
  */
 function roadmapDigest(s: AppState): string {
-  return asideColumns(`${roadmapNewSprint(s)}${planNarrativeBlock(s.roadmap.data.narrative, renderMarkdown)}${roadmapSprintGroups(s)}`, roadmapAside(s),
+  // Trov's pieces (./roadmap-ai.ts), each "" when its field is absent: an admin's suggestion cards above the
+  // narrative, the drift line under it.
+  const d = s.roadmap.data;
+  return asideColumns(`${roadmapNewSprint(s)}${roadmapSuggestionCards(d.suggestions, s.ai)}${planNarrativeBlock(d.narrative, renderMarkdown)}${driftLine(d.drift, s.ai)}${roadmapSprintGroups(s)}`, roadmapAside(s),
     { bar: roadmapTabBar(s), panel: tabPanelAttrs("roadmap-tab", s.roadmapTab) });
 }
 
@@ -2936,7 +2940,11 @@ function appView(s: AppState): string {
     : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen
     // A tag's page too, by tag (another tag is another page): its To review list is keyed, so a row can leave with
     // its animation, and the numbers tick in place instead of the page being rebuilt under them.
-    : s.screen === "tag" ? `tag:${s.tagName ?? ""}` : "";
+    : s.screen === "tag" ? `tag:${s.tagName ?? ""}`
+    // The Roadmap's Narrative tab too: Trov's suggestion cards are a keyed list, so one an Accept / Dismiss took
+    // leaves with Review's exit, and a note or the drift collapses out the same way (roadmap-ai.ts › MOTION). The
+    // Timeline tab is rebuilt as before (another key, so a tab switch replaces the page).
+    : s.screen === "roadmap" && s.roadmapTab === "narrative" ? "roadmap:narrative" : "";
   // The skip link is the shell's first child (a fixed chip, out of the flex row): past the sidebar and the
   // header, to the screen itself. morph.ts patches the aside and swaps <main>; it never touches this.
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">

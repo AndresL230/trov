@@ -155,24 +155,27 @@ describe("the controller (ai-actions.ts)", () => {
     expect(s.ai.hidden).toEqual([]);
     expect(s.ai.leaving).toEqual([]);
   });
-  it("Accept / Dismiss on ANY suggestion starts the kit's one exit, held (no timer clears it); the screen re-reads after AI_EXIT_MS", async () => {
+  it("Accept / Dismiss on ANY suggestion: the kit's one exit starts on the click (held: no timer clears it); ONE re-read once the exit is over", async () => {
     motion(false);
+    vi.setSystemTime(NOW);
     const s = feed(ui());
-    const decided: [number, string, number][] = [];
-    const ctl = createAiController({ state: s, mount: {} as HTMLElement, rerender: () => {}, flash: () => {}, unauth: () => {}, decided: (id, how, ms) => { decided.push([id, how, ms]); } });
+    const decided: [number, string][] = [];
+    const ctl = createAiController({ state: s, mount: {} as HTMLElement, rerender: () => {}, flash: () => {}, unauth: () => {}, decided: (id, how) => { decided.push([id, how]); } });
     ctl.act("aiAccept", "42", null);
-    await vi.advanceTimersByTimeAsync(0);
     expect(s.ai.leaving).toEqual([{ key: aiSuggestionKey(42), at: T }]);
-    expect(decided).toEqual([[42, "accept", AI_EXIT_MS]]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(decided).toEqual([]); // the exit is still running
+    await vi.advanceTimersByTimeAsync(AI_EXIT_MS);
+    expect(decided).toEqual([[42, "accept"]]);
     await vi.advanceTimersByTimeAsync(AI_EXIT_MS * 3);
     expect(s.ai.leaving).toEqual([{ key: aiSuggestionKey(42), at: T }]); // held until the re-read drops the chip
     // A later exit drops entries older than 10 s.
     vi.setSystemTime(T + 11_000);
     ctl.act("aiDismiss", "43", null);
-    await vi.advanceTimersByTimeAsync(0);
     expect(s.ai.leaving).toEqual([{ key: aiSuggestionKey(43), at: T + 11_000 }]);
+    vi.setSystemTime(NOW);
   });
-  it("a theme proposal's answer re-reads the Repo dashboard only after the exit; under reduced motion at once and nothing leaves", async () => {
+  it("a theme proposal's answer re-reads the Repo dashboard only after the exit; under reduced motion at once (and it is gone at once)", async () => {
     for (const reduce of [false, true]) {
       motion(reduce);
       vi.setSystemTime(NOW);
@@ -180,8 +183,8 @@ describe("the controller (ai-actions.ts)", () => {
       let reloads = 0;
       const ctl = createAiController({ state: s, mount: {} as HTMLElement, rerender: () => {}, flash: () => {}, unauth: () => {}, reloadRepo: () => { reloads++; } });
       ctl.act("aiAccept", "7", null);
+      expect(s.ai.leaving).toEqual([{ key: aiSuggestionKey(7), at: T }]); // recorded either way: `.cnpy-ai-leave` is display:none under reduced motion
       await vi.advanceTimersByTimeAsync(0);
-      expect(s.ai.leaving).toEqual(reduce ? [] : [{ key: aiSuggestionKey(7), at: T }]);
       expect(reloads).toBe(reduce ? 1 : 0);
       await vi.advanceTimersByTimeAsync(AI_EXIT_MS);
       expect(reloads).toBe(1);

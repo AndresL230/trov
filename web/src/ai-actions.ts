@@ -6,6 +6,10 @@
 // "Wrong?" is optimistic: the item is hidden for this person at once (`state.ai.hidden`) and back, with a
 // toast, if the write fails. Accept / Dismiss on a suggestion answer 409 `not_available` until a handler
 // for its kind exists (every kind, today): the chip then says "Not available yet" in place of its buttons.
+//
+// Everything that goes LEAVES by the AI kit's one exit (ai-ui.ts › Leaving) — on the Roadmap too (its sprint note,
+// the drift, a sprint-draft or narrative card): "Wrong?" collapses the item; an Accept / Dismiss collapses the card
+// and its screen re-reads once the exit is done. Under reduced motion it goes at once.
 
 import type { AppState } from "./render";
 import { AI_EXIT_MS, AI_FEED_SOURCES, AI_NOTE_KEY, AI_NOTE_LEAVING, aiHiddenKey, aiSuggestionKey, type AiFeedSource } from "./ai-ui";
@@ -22,7 +26,7 @@ export interface AiHost {
   reloadRepo?(): void;
   /** A suggestion was accepted or dismissed: the screen it was on re-reads what changed (Phase C — the ticket, the
    *  Unplaced queue, Review). */
-  decided?(id: number, how: "accept" | "dismiss", exitMs: number): void;
+  decided?(id: number, how: "accept" | "dismiss"): void;
   /** One-shot `.cnpy-flash` on what matches, after the next paint (main.ts `pendingFlash`). */
   flashNext?(selector: string): void;
 }
@@ -56,19 +60,39 @@ export function createAiController(host: AiHost): AiController {
   const without = (xs: number[], id: number) => xs.filter((x) => x !== id);
   const reduced = (): boolean => { try { return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false; } catch { return false; } };
   const stopLeaving = (key: string) => { ui().leaving = ui().leaving.filter((l) => l.key !== key); };
-  /** Draw `key` leaving for AI_EXIT_MS (ai-ui.ts › Leaving), then let it go. Gone at once under reduced motion.
-   *  `hold`: a decided suggestion — it stays drawn collapsed until its screen's re-read drops it (`aiLeaving`'s
-   *  `hold`), so its entry is not cleared on a timer; entries older than 10 s are dropped on the next exit. */
-  function leave(key: string, hold = false): void {
-    if (reduced()) return;
+  /** Draw `key` leaving for AI_EXIT_MS (ai-ui.ts › Leaving), then let it go; returns when it began. Gone at once
+   *  under reduced motion (no exit). `hold`: a decided suggestion — it stays drawn collapsed until its screen's
+   *  re-read drops it (`aiLeaving`'s `hold`), so its entry is not cleared on a timer (entries older than 10 s are
+   *  dropped on the next exit); it is recorded under reduced motion too, where `.cnpy-ai-leave` is `display:none`,
+   *  so it is gone at once. */
+  function leave(key: string, hold = false): number | null {
+    if (reduced() && !hold) return null;
     const at = Date.now();
     ui().leaving = [...ui().leaving.filter((l) => l.key !== key && at - l.at < 10_000), { key, at }];
-    if (hold) return;
+    if (hold) return reduced() ? null : at;
     setTimeout(() => {
       if (!ui().leaving.some((l) => l.key === key && l.at === at)) return;
       stopLeaving(key);
       rerender();
     }, AI_EXIT_MS);
+    return at;
+  }
+  /** The screen's re-read after decisions: ONE read, once the LAST exit in flight is over (several cards in a row
+   *  re-read once), so a read never pulls a card out mid-exit. A theme's decision re-reads the Repo dashboard. */
+  let reread: { timer: ReturnType<typeof setTimeout>; due: number; theme: boolean } | null = null;
+  function rereadAfter(id: number, how: "accept" | "dismiss", due: number, theme: boolean): void {
+    const d = Math.max(due, reread?.due ?? 0);
+    const th = theme || !!reread?.theme;
+    if (reread) clearTimeout(reread.timer);
+    reread = {
+      due: d, theme: th,
+      timer: setTimeout(() => {
+        reread = null;
+        // A theme's answer changes the chart (proposed → active, merged or gone): read it again.
+        if (th) host.reloadRepo?.();
+        host.decided?.(id, how);
+      }, Math.max(0, d - Date.now())),
+    };
   }
 
   function wrong(body: AiFeedbackBody): void {
@@ -88,11 +112,16 @@ export function createAiController(host: AiHost): AiController {
       });
   }
 
-  /** Accept (with a renamed value) or dismiss one suggestion. */
+  /** Accept (with a renamed value) or dismiss one suggestion. Optimistic: the write goes out on the click and the
+   *  suggestion leaves at once by the kit's one exit (every chip, the risk line, a row's mark, a Roadmap card, a
+   *  proposed theme alike); a failed write stops the exit and it is back exactly as it was. */
   function decide(id: number, how: "accept" | "dismiss", value?: unknown): void {
     const u = ui();
     if (u.busy.includes(id)) return;
     u.busy = [...u.busy, id];
+    const key = aiSuggestionKey(id);
+    const at = leave(key, true);
+    const theme = Object.values(host.state.repo.data?.themes ?? {}).some((t) => t.lanes.some((l) => l.suggestionId === id));
     rerender();
     const call = how === "accept" ? acceptAiSuggestion(id, value) : dismissAiSuggestion(id);
     call
@@ -100,17 +129,12 @@ export function createAiController(host: AiHost): AiController {
         u.busy = without(u.busy, id);
         if (u.rename?.id === id) u.rename = null;
         host.flash(how === "accept" ? "Accepted" : "Removed");
-        // It leaves by the kit's one exit (ai-ui.ts › Leaving) — every chip, the risk line and a row's mark alike —
-        // and its screen re-reads once the exit is done, so the read never pulls it out mid-exit.
-        leave(aiSuggestionKey(id), true);
         rerender();
-        const exitMs = reduced() ? 0 : AI_EXIT_MS;
-        // A theme's answer changes the chart (proposed → active, merged or gone): read it again.
-        if (Object.values(host.state.repo.data?.themes ?? {}).some((t) => t.lanes.some((l) => l.suggestionId === id))) setTimeout(() => host.reloadRepo?.(), exitMs);
-        host.decided?.(id, how, exitMs);
+        rereadAfter(id, how, at === null ? 0 : at + AI_EXIT_MS, theme);
       })
       .catch((e) => {
         u.busy = without(u.busy, id);
+        stopLeaving(key);
         if (e instanceof Unauthorized) { host.unauth(e); return; }
         if (e instanceof ApiError && e.message === "not_available") {
           if (!u.unavailable.includes(id)) u.unavailable = [...u.unavailable, id];

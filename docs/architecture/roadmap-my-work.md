@@ -119,3 +119,31 @@ the item's own and linked to `cites[0]`, the model's one muted "why" — over a 
 byline and the thumbs-down "Wrong?" at the bottom right. Empty: "Trov writes your brief after your next push or when something is
 assigned to you. It reads your sessions, pull requests, tickets and handoffs." Capped: the last `now`, then the
 allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `get_my_work` carries the same `brief?`.
+
+## Roadmap intelligence (Phase D; `ai.md` › The Roadmap)
+
+- **Forecast** — `SprintView.forecast` on every sprint read (`sprintForecast`, `src/tools/sprints.ts`): ARITHMETIC,
+  never a model — tickets closed per day since the start day (day 1), carried over the open ones, against the due
+  day (`projected`, `daysLate`). Null for a sprint not active, with no start, or with nothing closed yet. The card
+  says "At this pace, done Nov 2, 3 days late" with no AI mark.
+- **Sprint notes** — `SprintView.note?`: one line Trov wrote about an ACTIVE sprint (its tickets, the PRs they link,
+  the week's entries naming them), with its cites, byline and "Wrong?". `org_insights` (0065), present only while
+  the org's AI switch is on.
+- **Drift** — `PlanView.drift?`: one sentence on where the merged work went against the plan, with the theme shares
+  the SERVER counted (`shares`, `windowDays`), drawn under the narrative.
+- **Suggestions** — `PlanView.suggestions?` (cookie `GET /roadmap`, admins only, never MCP): a sprint draft (2–4
+  sprints over the backlog, offered when ≥8 open tickets sit outside every sprint and none is active) and the weekly
+  narrative proposal. Accept runs `create_sprint` + `set_ticket_sprint` or `write_plan` AS that admin; nothing is
+  written before. Nothing here sets a sprint or ticket done.
+- With a field absent each piece renders nothing and the Roadmap is byte-for-byte what it was
+  (`test/render.ai-absent.test.ts`, `test/render.roadmap-ai-real.test.ts`) — but for one attribute that is not AI's:
+  the Narrative tab's `<main data-morph="roadmap:narrative">` (below).
+- **Motion** (the app's own; `web-ui.md` › A row leaving a list): the Narrative tab is `data-morph`ed (patched in
+  place; the Timeline is still rebuilt), the cards are a keyed list (`data-morph-list`, `s:<id>`) that rises with the
+  entrance (`.cnpy-stagger`), the drift rises (`.cnpy-rise`), the forecast and note come with their sprint card. A
+  card an Accept / Dismiss took — and a note or the drift "Wrong?" took — is Review's `.cnpy-rv-row`: `data-verdict`
+  + `inert`, collapsing over `AI_EXIT_MS` (= `REVIEW_EXIT_MS`), then not drawn (`state.ai.leaving` / `decided` in
+  `ai-actions.ts`, which only HIDE rows of the read). The write goes on the click; a failure puts the card back with a
+  toast; the Roadmap is read again once no card is collapsing (one read for several). Reduced motion: gone at once.
+  Off the Roadmap (a theme proposal on Repo) the kit's busy path is unchanged. Tests: `test/render.roadmap-ai.test.ts`
+  (markup, CSS), `test/render.roadmap-ai-exit.test.ts` (the controller).

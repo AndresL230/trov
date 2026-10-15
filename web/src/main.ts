@@ -163,17 +163,14 @@ const aiCtl = createAiController({
   state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
   flashNext: (sel) => { pendingFlash = sel; },
   reloadRepo: () => { if (!state.repoSample && state.repo.status !== "loading") loadRepo(); },
-  // Phase C: an accepted suggestion changed the ticket / filed the item, and a decided one is gone. Its chip leaves
-  // by the AI kit's one exit (ai-ui.ts › Leaving — the controller started it); the re-read is HELD for `exitMs` so a
-  // read landing mid-exit never pulls it out from under its own animation (0 under reduced motion).
-  decided: (_id, _how, exitMs) => {
-    const screen = state.screen, ticketId = state.ticketId;
-    setTimeout(() => {
-      if (screen !== state.screen) return; // left the screen: the next visit reads afresh
-      if (screen === "ticketdetail" && ticketId !== null && state.ticketId === ticketId) loadTicketDetail(ticketId);
-      else if (screen === "maintenance") loadNeedsTriage();
-      else if (screen === "review") { loadProposals(); loadDraftAdrs(); }
-    }, exitMs);
+  // A decision went through and its exit is over (the controller waits for the last one, ai-ui.ts › Leaving): the
+  // screen it was on reads what it changed — the ticket, Unplaced, Review, or the Roadmap (an accepted sprint draft or
+  // narrative changed the plan; a dismissed card goes too).
+  decided: () => {
+    if (state.screen === "ticketdetail" && state.ticketId !== null) loadTicketDetail(state.ticketId);
+    else if (state.screen === "maintenance") loadNeedsTriage();
+    else if (state.screen === "review") { loadProposals(); loadDraftAdrs(); }
+    else if (state.screen === "roadmap") loadRoadmap();
   },
 });
 // The plain-language filter (web/src/ai-filter-actions.ts, #162): every `aiFilter…` act. Its answer is applied

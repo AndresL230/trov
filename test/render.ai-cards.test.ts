@@ -182,11 +182,13 @@ describe("motion — a suggestion enters with its screen and leaves by the AI ki
     expect(ticket).toContain(`style="--leave-t:-${AI_EXIT_MS}ms"><div class="cnpy-ai-leave-in">`);
   });
 
-  it("ONE exit in the kit: no second class, constant or state for chips; main.ts holds the re-read for the exit", () => {
+  it("ONE exit in the kit: no second class, constant or state for chips; the re-read comes after the exit", () => {
     expect(css).not.toContain("cnpy-ai-out");
     expect(css).toContain(".cnpy-ai-leave[data-inline], [data-enter] .cnpy-ai-leave[data-inline] { display:inline-grid; vertical-align:middle; }");
     expect(Object.keys(initialState())).not.toContain("aiLeaving");
-    const hook = mainSrc.slice(mainSrc.indexOf("decided: (_id, _how, exitMs) =>"), mainSrc.indexOf("const aiFilterCtl"));
-    expect(hook).toContain("}, exitMs);");
+    // main.ts's `decided` re-reads at once: the controller calls it only once the last exit is over.
+    const hook = mainSrc.slice(mainSrc.indexOf("decided: () =>"), mainSrc.indexOf("const aiFilterCtl"));
+    expect(hook).toContain("loadTicketDetail(state.ticketId)");
+    expect(hook).not.toContain("setTimeout");
   });
 });

@@ -13,7 +13,7 @@ itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
-Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
@@ -469,7 +469,7 @@ one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 
 When a person acts on a row and the row should go (a verdict in Review; Add tag / Dismiss on a tag's To
 review tab — `reviewItem` in `tags.ts`, `TagsUi.reviewLeaving`, the same `.cnpy-rv-row`, slower by the owner's call — `.cnpy-tagreview-row`, `TAG_REVIEW_EXIT_MS` .7s, and the card slides aside as it closes; the
-next screen that removes a row reuses this, it does not invent another — Phase C's suggestion chips do, see The AI kit), the row **confirms, collapses, and the rows
+next screen that removes a row reuses this, it does not invent another — everything Trov drew uses the AI kit's one exit, see The AI kit), the row **confirms, collapses, and the rows
 under it move up as the same elements**. Four parts, each in one place:
 
 1. **A keyed list** (`web/src/morph.ts`). The screen is `data-morph`ed, the list's container carries
@@ -912,7 +912,7 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   28px thumbs-down icon button at the item's bottom right — no visible word; its `aria-label` and `data-mtip`
   say "Wrong?" and what pressing it does. It POSTs
   `/ai/feedback` and hides the item for that person at once (`state.ai.hidden`), back with a toast if the write
-  fails. Nothing written is ever shown without the mark.
+  fails; it leaves by the kit's one exit (› Motion below) — on the Roadmap too. Nothing written is ever shown without the mark.
 - **Capped and empty** are the screen's own words (`aiCapped`, `AI_EMPTY`): "Monthly AI allowance used; <what>
   resumes Nov 1." with "Upgrade to Pro" (to Org settings › General, where the plan is changed) only when
   `upgrade` is true.
@@ -921,7 +921,8 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   reason is a real disclosure button (`aria-expanded`, works on touch), the chip a container of buttons (never
   a button itself), and it wraps, so it fits a row, a card, a detail pane and a phone. A 409 `not_available`
   (no accept handler for its kind) replaces the buttons with "Not available yet". It is used by Phase C's cards
-  (the ticket detail, Unplaced, Review's risk line — `web/src/ai-cards.ts`) and the proposed themes.
+  (the ticket detail, Unplaced, Review's risk line — `web/src/ai-cards.ts`), the proposed themes and the Roadmap's
+  sprint-draft and narrative cards (`web/src/roadmap-ai.ts`).
 - **Motion** is the app's: State rises with the page (`.cnpy-rise`) and flashes with the panel on a Repo tab
   switch (`pendingFlash` includes `.repo-ai`); a Trov entry cascades in the feed's `.cnpy-stagger`, and the Source
   switch flashes the list (`AiHost.flashNext`); Phase C's chips and the risk line rise with their screen
@@ -929,16 +930,16 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   (`state.ai.leaving`, key → when its exit began), ONE class (`.cnpy-ai-leave`, `[data-inline]` for a mark inside a
   line), ONE constant (`AI_EXIT_MS`, 310 ms) and ONE helper (`aiLeaving`, over `aiLeavingT` / `aiLeave`). It covers
   "Wrong?" on State or a Trov entry (`aiHiddenKey`), "Got it" on the Feed's note (`AI_NOTE_LEAVING`), and every
-  suggestion once Accept / Dismiss answered — a chip, the risk line, a list row's mark, a proposed theme
-  (`aiSuggestionKey(id)`). It is Review's exit (› A row leaving a list) on a screen REBUILT per paint: the item is
+  suggestion an Accept / Dismiss took — a chip, the risk line, a list row's mark, a proposed theme, a Roadmap card
+  (`aiSuggestionKey(id)`) — and a Roadmap note or the drift "Wrong?" took. It is Review's exit (› A row leaving a list) on a screen REBUILT per paint: the item is
   still drawn for `AI_EXIT_MS`, `inert`, dimmed .13s, then the one-track grid goes `1fr` → `0fr` and fades over
   `--fx-fast` — a KEYFRAME clocked by `--leave-t` (the elapsed ms, negative — `--enter-t`'s trick), so a rebuild
   mid-exit joins it instead of replaying it; it outranks `[data-enter] .cnpy-stagger > *`. "Wrong?" / "Got it" hide
   the item in state at once (every count already leaves it out) and the exit's entry clears after `AI_EXIT_MS`; a
-  failed write stops it and the item is back. A suggestion's exit is HELD (`hold`): its screen re-reads only after
-  `AI_EXIT_MS` (`AiHost.decided`'s `exitMs`, the themes' `reloadRepo`), and until the read drops it, it stays drawn
-  collapsed. The controller starts every exit (`ai-actions.ts` `leave`). Under reduced motion nothing leaves: it is
-  gone at once and the re-read goes out at once (`test/render.ai-motion.test.ts`, `test/render.ai-cards.test.ts` ›
+  failed write stops it and the item is back. Accept / Dismiss is optimistic: the write goes out on the click and
+  the suggestion's exit starts at once, HELD (`hold`) — drawn collapsed until its screen's re-read drops it; the
+  controller makes ONE re-read once the LAST exit in flight is over (`AiHost.decided`, the themes' `reloadRepo`). The controller starts every exit (`ai-actions.ts` `leave`). Under reduced motion nothing leaves: it is
+  gone at once and the re-read goes out at once (`test/render.ai-motion.test.ts`, `test/render.roadmap-ai-exit.test.ts`, `test/render.ai-cards.test.ts` ›
   motion).
 - **Acts** are `ai…`, in `web/src/ai-actions.ts`. The themes' Rename field keeps its draft WITHOUT a repaint
   (the Repo screen is rebuilt on a paint, not morphed), so typing never rebuilds the page.

@@ -10,7 +10,7 @@ import {
   AI_SUGGESTION_STATES, AI_ITEM_TYPES, AI_ELIGIBILITY, AI_LIST_MAX, AI_PROVIDER_NAMES,
   type AiCite, type AiLine, type AiBrief, type AiRepoState, type AiFeedMeta, type AiThemes,
   type AiThemeLane, type AiSuggestion, type AiFeedbackBody, type AiAcceptBody, type AiSettings, type AiSettingsPut, type AiUsage,
-  type AiAllowanceUse,
+  type AiAllowanceUse, type AiRoadmapLine, type AiPlanDrift, type AiSprintDraftValue, type AiPlanNarrativeValue,
 } from "./ai-core";
 
 export * from "./ai-core";
@@ -146,3 +146,28 @@ export const AiUsageSchema = z.object({
   jevTokensIn: z.number().int().min(0).optional(),
   jevTokensOut: z.number().int().min(0).optional(),
 }) satisfies z.ZodType<AiUsage>;
+
+// ── Roadmap (Phase D): sprint notes, plan drift, the two suggestions' values ────────────────────────
+export const AiRoadmapLineSchema = z.object({
+  text: z.string().min(1).max(400),
+  cites: z.array(AiCiteSchema).min(1).max(10),
+  generatedAt: z.string().min(1),
+  model: z.string().nullable(),
+}) satisfies z.ZodType<AiRoadmapLine>;
+
+export const AiPlanDriftSchema = AiRoadmapLineSchema.extend({
+  windowDays: z.number().int().positive(),
+  shares: z.array(z.object({ themeId: z.string().min(1), theme: z.string().min(1), pct: z.number().int().min(0).max(100), inSprint: z.boolean() })).max(12),
+}) satisfies z.ZodType<AiPlanDrift>;
+
+/** What accepting a sprint draft takes (the suggested value, or the admin's edited one). */
+export const AiSprintDraftValueSchema = z.object({
+  sprints: z.array(z.object({
+    name: z.string().trim().min(1).max(80),
+    goal: z.string().trim().max(200),
+    tickets: z.array(z.number().int().positive()).min(1).max(40),
+  })).min(1).max(4),
+}) satisfies z.ZodType<AiSprintDraftValue>;
+
+/** What accepting a narrative proposal takes. The cap itself is `write_plan`'s (PLAN_NARRATIVE_MAX). */
+export const AiPlanNarrativeValueSchema = z.object({ narrative: z.string().trim().min(1) }) satisfies z.ZodType<AiPlanNarrativeValue>;

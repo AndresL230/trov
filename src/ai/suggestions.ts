@@ -14,6 +14,7 @@ import { nowIso } from "../data/sql";
 import { AcceptRefused, type AcceptHandler, type AcceptRequest } from "./accept";
 import { THEME_ACCEPT_HANDLERS } from "./themes-accept";
 import { CARD_ACCEPT_HANDLERS } from "./jobs/accept";
+import { PLAN_NARRATIVE_ACCEPT, SPRINT_DRAFT_ACCEPT } from "./roadmap-accept";
 
 export { AcceptRefused, type AcceptHandler, type AcceptRequest } from "./accept";
 
@@ -21,6 +22,8 @@ export { AcceptRefused, type AcceptHandler, type AcceptRequest } from "./accept"
 export const AI_ACCEPT_HANDLERS: Readonly<Record<string, AcceptHandler>> = {
   ...CARD_ACCEPT_HANDLERS, // Phase C: ticket.category / ticket.priority / ticket.duplicate / unplaced.destination (./jobs/accept.ts)
   ...THEME_ACCEPT_HANDLERS,
+  sprint_draft: SPRINT_DRAFT_ACCEPT, // Phase D: an admin creates the drafted sprints (./roadmap-accept.ts)
+  plan_narrative: PLAN_NARRATIVE_ACCEPT, // Phase D: an admin writes the proposed narrative (./roadmap-accept.ts)
 };
 
 export type SuggestionAnswer =
