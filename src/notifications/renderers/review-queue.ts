@@ -43,15 +43,16 @@ async function render(ctx: TenantContext): Promise<Section | null> {
       .map(
         (it, i) =>
           `<tr><td style="padding:${i === 0 ? 0 : SP.m - SP.xs}px 0 ${SP.m - SP.xs}px 0;${i === 0 ? "" : `border-top:1px solid ${THEME.border.light};`}">` +
-          `<div>${K.chip(it.kind.toUpperCase(), it.kind === "proposal" ? "accent" : "blue")}${it.low ? ` ${K.chip("LOW CONFIDENCE", "amber")}` : ""}` +
-          `<span style="${S.body}font-weight:500;padding-left:8px;">${escapeHtml(it.title)}</span></div>` +
+          `<div><span style="${S.muted}">${it.kind === "proposal" ? "Proposal" : "Decision"}</span>` +
+          `<span style="${S.body}font-weight:500;padding-left:8px;">${escapeHtml(it.title)}</span>` +
+          `${it.low ? `<span style="padding-left:10px;">${K.mark("Low confidence", "amber")}</span>` : ""}</div>` +
           `<div style="${S.muted}padding-top:${SP.xs}px;">${escapeHtml(it.summary)}</div>` +
           `<div style="${S.muted}font-size:12px;line-height:16px;padding-top:${SP.xs}px;">${escapeHtml(it.meta)}</div>` +
           `</td></tr>`
       )
       .join("") +
     `</table>`;
-  const text = items.map((it) => `  ${it.kind.padEnd(9)} ${it.title} — ${it.summary} (${it.meta}${it.low ? ", LOW CONFIDENCE" : ""})`).join("\n");
+  const text = items.map((it) => `  ${it.kind.padEnd(9)} ${it.title} — ${it.summary} (${it.meta}${it.low ? ", low confidence" : ""})`).join("\n");
   const parts = [proposals.length ? plural(proposals.length, "proposal", "proposals") : null, decisions.length ? plural(decisions.length, "decision", "decisions") : null].filter(Boolean);
   const summary = `${parts.join(", ")} waiting on review`;
 

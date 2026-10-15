@@ -3,7 +3,9 @@ import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import { type PlatformContext, first, run } from "../data/platform-sql";
 import { randomToken, hmacSeal, hmacUnseal } from "./crypto";
 
-const SESSION_COOKIE = "session";
+/** Exported for `/` alone (src/site.ts), which serves the app shell instead of the landing page to a
+ *  request that CARRIES one — a hint, never a check: the cookie is verified only here, below. */
+export const SESSION_COOKIE = "session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export async function createSession(p: PlatformContext, handle: string): Promise<{ id: string; expiresAt: string }> {

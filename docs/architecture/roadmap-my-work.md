@@ -9,7 +9,10 @@ The roadmap is two layers. **The plan** (narrative + sprints + timeline) is admi
 non-destructively into `plan` (singleton narrative) + `plan_versions` snapshots (`sprints_json`), over
 the `sprints` table. **Sprints ARE the old milestones, renamed in place by 0025** — same rows, same
 ids, plus `dates` / `summary` / `urgency` / `lead` / `domain` alongside the pre-existing `description`
-(now rendered as markdown) and `phase`. Sprint `done` is admin-set here, never event-inferred.
+(now rendered as markdown) and `phase`. Sprint `done` is set by a PERSON, never event-inferred: the plan
+write may set it (admin), and ANY signed-in member completes a sprint with `POST /sprints/:id/complete` or MCP
+`complete_sprint` — sprint writes are open to every member; only the whole-plan rewrite is admin-only
+(`ingestion-gate.md` › Sprints).
 **ONE overdue rule**: `sprintDueState(due, now)` in `shared/sprints-core.ts` — a sprint is due all of its
 (local) due day and overdue from the day AFTER, "due this week" = today through 7 days out — read by the sprint
 cards, the Roadmap's Timeline-tab dot / Now box / single NEXT UP (`nextSprintId`), the Timeline and My Work's ticket due dates.
@@ -43,9 +46,16 @@ SEPARATELY as `SprintView.issues` (null without a cache row), so a mirrored tick
 summed into one number. The ticket half is a live D1 count; the GitHub half is a stored cache (`sprint_progress`,
 keyed `sprint_id`), written as ABSOLUTE `closed`/`total` (so delivery order is irrelevant — the last
 write wins) by two direct writers: the webhook (event-derived, on issue events) and the `scheduled()`
-cron backstop (`recomputeAllProgress`, `GITHUB_SERVICE_TOKEN`, off the render path). `github_ref` is bare
+cron backstop (`recomputeAllProgress`, run per org with that org's GitHub credential from
+`resolveGithubCredential`, off the render path). `github_ref` is bare
 (a GITHUB milestone number — GitHub's own vocabulary, kept deliberately — OR a JSON array of issue
-numbers) resolved against `GITHUB_REPO` — only by those two writers, never at render.
+numbers) resolved against the org's PRIMARY repository (`orgPrimaryRepo`, its `org_repos` row) — only by
+those two writers, never at render.
+
+**Your brief** (`DashboardData.brief?`, `shared/ai-core.ts` `AiBrief`) is what Trov would WRITE for the person
+— now, recently, what is next. Nothing produces one yet, so `/me/dashboard` and `get_my_work` omit it in
+production; `LOCAL_AI_PREVIEW` shows the sample on the screen under `wrangler dev` only, never over MCP
+(`ai.md`). Absent = the screen renders exactly as before.
 
 **My Work** (`GET /me/dashboard`, MCP `get_my_work` → `getMyWork`) is a D1-only projection over captured
 events AND over the ticket queue: three separate lists — `previousActivity` (summarized merged/closed PRs
@@ -68,9 +78,10 @@ unmapped login yields an empty EVENT projection (`degraded:false`) — but the t
 identity fork and is keyed on the person HANDLE (`COLLATE NOCASE`, like `persons.handle`), so a person with
 no GitHub identity at all (a Google-only filer) still gets their tickets; any D1 failure yields empty
 `degraded:true` — never a 500. Completed PRs and assigned issues are each summarized ONCE, at capture time
-(`tools/summarize.ts`: Google Gemini `gemini-2.5-flash-lite` via `GEMINI_API_KEY` — a REST
-`generateContent` call, not a Cloudflare binding — emits one validated JSON object — PR:
-title/what/why/impact; issue: title/summary/next_step). On AI failure the **issue**
+(`tools/summarize.ts`: Anthropic Claude `claude-haiku-5-5` via `ANTHROPIC_API_KEY`, through the one model
+client `src/ai/client.ts` — structured outputs over the Messages API, not a Cloudflare binding — emits one
+JSON object, checked again by its zod schema — PR: title/what/why/impact; issue: title/summary/next_step; a
+refusal or an answer cut off at `max_tokens` is no answer). On AI failure the **issue**
 path writes a deterministic prose excerpt (`issue_summaries.summary`); the **PR** path
 is structured-only (the prose `pr_summaries.summary` column was dropped in `0019`), so
 its fallback is a content-less marker row (`model='excerpt'`, null structured columns)

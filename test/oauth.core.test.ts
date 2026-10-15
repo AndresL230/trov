@@ -11,6 +11,7 @@ import {
   canonicalAuthorizeQuery, type RegisteredClient, refreshAccessToken, revokeOAuthToken, listGrants, revokeGrant, pruneOAuth, mcpUnauthorized,
 } from "../src/auth/oauth";
 
+import { MCP_INVALID_TOKEN_HINT, MCP_UNAUTHORIZED_HINT } from "@shared/error-hints";
 import { platformCtx, tenantCtx, ORG_A } from "./helpers/tenant";
 const NOW = Date.parse("2026-09-24T12:00:00.000Z");
 
@@ -378,6 +379,9 @@ describe("mcpUnauthorized", () => {
     expect(r.headers.get("www-authenticate")).toBe(`Bearer resource_metadata="https://c.test/.well-known/oauth-protected-resource"`);
     expect(mcpUnauthorized("https://c.test", true).headers.get("www-authenticate")).toBe(
       `Bearer resource_metadata="https://c.test/.well-known/oauth-protected-resource", error="invalid_token"`);
-    expect(await r.json()).toEqual({ error: "unauthorized" });
+    // …and says, in the body, what to do: sign in (no token), or why a token can be refused (the same
+    // words for every refused token).
+    expect(await r.json()).toEqual({ error: "unauthorized", hint: MCP_UNAUTHORIZED_HINT });
+    expect(await mcpUnauthorized("https://c.test", true).json()).toEqual({ error: "unauthorized", hint: MCP_INVALID_TOKEN_HINT });
   });
 });

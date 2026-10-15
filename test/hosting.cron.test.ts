@@ -82,7 +82,7 @@ describe("the :40 tick — the hosting job", () => {
     await connect(ORG_B, `b_${LONG_TOKEN}`);
     const log: string[] = [];
     const w = world();
-    await handleRepoCron(e, AT_40, w.fetchImpl, undefined, { vercel: fakeVercel(log) });
+    await handleRepoCron(e, AT_40, w.fetchImpl, undefined, {}, { vercel: fakeVercel(log) });
     // The lister's stable order: org id, then environment position, then part position.
     expect(log).toEqual([`${ORG_B}/live/site`, `${ORG_A}/staging/web`, `${ORG_A}/production/web`]);
     expect(w.pings()).toHaveLength(6);             // health first: two pings for each of the three environments
@@ -107,11 +107,11 @@ describe("the :40 tick — the hosting job", () => {
     await connect(ORG_B, `b_${LONG_TOKEN}`);
     const log: string[] = [];
     for (const minute of ["00", "10", "20", "30", "50"]) {
-      await quiet(() => handleRepoCron(e, Date.parse(`2026-09-20T12:${minute}:00Z`), world().fetchImpl, undefined, { vercel: fakeVercel(log) }));
+      await quiet(() => handleRepoCron(e, Date.parse(`2026-09-20T12:${minute}:00Z`), world().fetchImpl, undefined, {}, { vercel: fakeVercel(log) }));
     }
     expect(log).toEqual([]);
     await env.DB.prepare(`UPDATE orgs SET suspended_at = '2026-09-01T00:00:00.000Z' WHERE id = ?`).bind(ORG_B).run();
-    await handleRepoCron(e, AT_40, world().fetchImpl, undefined, { vercel: fakeVercel(log) });
+    await handleRepoCron(e, AT_40, world().fetchImpl, undefined, {}, { vercel: fakeVercel(log) });
     expect(log).toEqual([`${ORG_A}/live/web`]);
   });
 
@@ -121,10 +121,10 @@ describe("the :40 tick — the hosting job", () => {
     await connect(ORG_A, LONG_TOKEN);
     const log: string[] = [];
     // 6: health may use half (3) — its one unit costs 2 — and two parts (2 each) fit after it.
-    await handleRepoCron(e, AT_40, world().fetchImpl, 6, { vercel: fakeVercel(log) });
+    await handleRepoCron(e, AT_40, world().fetchImpl, 6, {}, { vercel: fakeVercel(log) });
     expect(log).toEqual([`${ORG_A}/live/p1`, `${ORG_A}/live/p2`]);
     expect(await readCursor(platformCtx("system"), "hosting")).toBe(`${ORG_A}/live/p2`);
-    await handleRepoCron(e, AT_40 + HOUR, world().fetchImpl, 6, { vercel: fakeVercel(log) });
+    await handleRepoCron(e, AT_40 + HOUR, world().fetchImpl, 6, {}, { vercel: fakeVercel(log) });
     expect(log.slice(2)).toEqual([`${ORG_A}/live/p3`, `${ORG_A}/live/p1`]);
     expect(await readCursor(platformCtx("system"), "hosting")).toBe(`${ORG_A}/live/p1`);
   });
@@ -133,14 +133,14 @@ describe("the :40 tick — the hosting job", () => {
     await setOrgEnvironments(["one", "two", "three"].map(oneEnv), ORG_A);
     const w = world();
     // No stored part anywhere: :40 is a health-only tick, and 3 units × 2 pings fit a budget of 6.
-    await handleRepoCron(e, AT_40, w.fetchImpl, 3 * HEALTH_COST, { vercel: fakeVercel([]) });
+    await handleRepoCron(e, AT_40, w.fetchImpl, 3 * HEALTH_COST, {}, { vercel: fakeVercel([]) });
     expect(w.pings()).toHaveLength(6);
     // A stored part (and its credential) makes :40 a heavy tick: health may use only half (3) — one unit.
     await addPart(ORG_A, "one", "web");
     await connect(ORG_A, LONG_TOKEN);
     const log: string[] = [];
     const w2 = world();
-    await quiet(() => handleRepoCron(e, AT_40 + HOUR, w2.fetchImpl, 3 * HEALTH_COST, { vercel: fakeVercel(log) }));
+    await quiet(() => handleRepoCron(e, AT_40 + HOUR, w2.fetchImpl, 3 * HEALTH_COST, {}, { vercel: fakeVercel(log) }));
     expect(w2.pings()).toHaveLength(2);
     expect(log).toEqual([`${ORG_A}/one/web`]);
   });
@@ -150,7 +150,7 @@ describe("the :40 tick — the hosting job", () => {
     await addPart(ORG_A, "live", "web");
     const log: string[] = [];
     const w = world();
-    await handleRepoCron(e, AT_40, w.fetchImpl, undefined, { vercel: fakeVercel(log) });
+    await handleRepoCron(e, AT_40, w.fetchImpl, undefined, {}, { vercel: fakeVercel(log) });
     expect(log).toEqual([]);
     expect(w.polls()).toEqual([]);
     expect(await all(env.DB, `SELECT status, detail FROM hosting_poll_state`)).toEqual([{ status: "skipped", detail: "not connected" }]);

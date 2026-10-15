@@ -21,19 +21,31 @@ TROV_KEK=replace-with-openssl-rand-base64-32
 # STRIPE_SECRET_KEY is a live key (sk_live_… / rk_live_…). Never set either as a deployed secret: a
 # deployed Worker ignores them (and could not reach loopback if it did not).
 #
-# LOCAL_UPSTREAM — GitHub and Gemini, during a Sync GitHub and its closing refresh
+# LOCAL_UPSTREAM — GitHub and Anthropic, during a Sync GitHub and its closing refresh
 # (src/sync/local-upstream.ts, docs/architecture/sync.md › Trying it locally). Requests to
-# api.github.com go to <base>/github/… and to generativelanguage.googleapis.com to <base>/gemini/….
+# api.github.com go to <base>/github/… and to api.anthropic.com to <base>/anthropic/… (a summary is
+# POST <base>/anthropic/v1/messages, answered in the Messages API shape: content [{type:"text", text:<JSON>}]).
 # The webhook, the cron and sign-in are not rerouted.
 # LOCAL_UPSTREAM=http://127.0.0.1:8862
 #
 # STRIPE_TEST_API_BASE — Stripe's API, for every billing call (src/billing/config.ts,
 # docs/architecture/billing.md › Configuration). Needs the two Stripe secrets set to TEST values.
 # STRIPE_TEST_API_BASE=http://127.0.0.1:8842
+# (Embedded checkout — STRIPE_PUBLISHABLE_KEY, a `pk_test_…` key — is never on beside this stand-in: it
+#  has no Stripe.js to serve, so a local checkout is always the stand-in's plain hosted page. To see the
+#  embedded form locally, use real Stripe TEST keys with no STRIPE_TEST_API_BASE. docs/architecture/billing.md.)
 # To walk the paid flows with no Stripe account: run `node scripts/dev/stripe-standin.mjs` (it listens on
 # that port, serves a stand-in checkout and portal, and delivers signed webhooks) and set
 # STRIPE_SECRET_KEY=sk_test_local_standin and STRIPE_WEBHOOK_SECRET=whsec_local_standin beside it.
 #
+# LOCAL_AI_PREVIEW — the AI screens with sample content (src/ai/preview.ts, docs/architecture/ai.md), before
+# anything writes them: My Work's brief, Repo › Overview's State, Repo › Planning's "Where the work went"
+# and two Feed entries written by Trov. One of: ready, empty, capped, proposed (the themes' proposed lanes;
+# the rest show `ready`). Anything else is ignored. Honoured ONLY for a request to a loopback http origin
+# (what `wrangler dev` serves on) and never beside a live Stripe key — the same rule as the stand-ins above.
+# No key is needed; MCP never sees it.
+# LOCAL_AI_PREVIEW=ready
+#
 # Summaries are off without a key (docs/architecture/plans.md › AI summaries). With LOCAL_UPSTREAM set,
 # any non-empty value turns them on against the stand-in.
-# GEMINI_API_KEY=your-gemini-key
+# ANTHROPIC_API_KEY=your-anthropic-key

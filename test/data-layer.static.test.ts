@@ -101,7 +101,7 @@ const PLATFORM_ALLOW: Allow[] = [
   // Background work is per org (§8.3, §8.5): the cron's dispatcher lists its units — (org, environment)
   // and org-with-a-primary-repo — and a webhook delivery finds its org by hook id, BEFORE any org is
   // known. Ids, an environment key and a repo name only; everything after runs as that org's tenant.
-  { file: "src/platform/jobs.ts", fn: "*", tables: ["org_repos", "org_environments", "org_github_installations", "org_hosting_connections"], why: "the cron's unit lists, the webhook's hook lookup, and the installation → org lookups of the GitHub App and of the hosting providers (the uninstall notice; the connect callback's one-org-per-installation check) — ids, a scope and a repo name, no content, no secret" },
+  { file: "src/platform/jobs.ts", fn: "*", tables: ["org_repos", "org_environments", "org_github_installations", "org_github_installation_repos", "org_hosting_connections"], why: "the cron's unit lists, the webhook's hook lookup, the GitHub App's lookups (which orgs an installation serves, and which of them a repository's delivery goes to) and the hosting providers' installation → org lookups (the uninstall notice; the connect callback's one-org-per-installation check) — ids, a scope and a repo name, no content, no secret" },
   // The superadmin's org list says which GitHub account each org's App installation is on (0043_github_app): a name.
   { file: "src/platform/repo.ts", fn: "listPlatformOrgs", tables: ["org_github_installations"], why: "the superadmin's org list: the GitHub account an org is connected through — a name, no token exists in the table" },
   // The `hosting` job's units (src/repo/cron.ts, :40): one per (org, environment, STORED part), with the
@@ -110,6 +110,15 @@ const PLATFORM_ALLOW: Allow[] = [
   { file: "src/platform/jobs.ts", fn: "listPartUnits", tables: ["org_environment_parts"], why: "the hosting job's unit list — env / part keys and a provider id, no settings, no secret" },
   // Removing a member revokes that person's tokens for the org in the same batch as the membership row.
   { file: "src/orgs/repo.ts", fn: "removeMember", tables: ["mcp_tokens", "oauth_grants", "oauth_grant_orgs"], why: "member removal ends the person's credentials' reach into that org, atomically: tokens revoked, each connection's row for the org dropped, a connection left with no org revoked" },
+  // Deleting an ACCOUNT (src/deletion/person.ts) is a person's act across every org they are in: their own
+  // credentials, connections, digests and e-mail preferences go wherever they are — keyed by the person, never by an org.
+  { file: "src/deletion/person.ts", fn: "personStmts", tables: ["oauth_grants", "oauth_codes", "oauth_grant_orgs", "mcp_tokens", "notification_outbox_bodies", "notification_outbox", "notification_prefs", "org_login_map", "feed", "feed_fts"],
+    why: "an account's deletion removes the person's OWN rows in every org, in one batch — by person, never reading an org's content; the handoff sentence Trov generated with their handle names the tombstone" },
+  { file: "src/deletion/person.ts", fn: "addressesOf", tables: ["org_login_map"], why: "the GitHub logins orgs attribute to the person being deleted, so the audit trail can be scrubbed of them — logins only" },
+  // R2 after a deletion (src/deletion/r2.ts): content-addressed objects are shared across orgs, so whether ANY
+  // row still points at an object is a cross-org yes/no — no content column is read.
+  { file: "src/deletion/r2.ts", fn: "stillReferenced", tables: ["artifact_versions", "artifact_upload_tokens", "doc_images", "doc_image_upload_tokens"],
+    why: "does any org's row (or an upload in flight) still reference this sha before its R2 object is deleted — a yes/no per sha" },
 ];
 
 /**
@@ -121,6 +130,10 @@ const INTERPOLATED_ALLOW: (Allow & { surface: Surface })[] = [
     why: "`tickets WHERE number` or `sprints WHERE id`, picked from a two-value literal — … = ? AND org_id = ?" },
   { file: "src/auth/persons.ts", fn: "renamePerson", surface: "platform",
     why: "the HANDLE_COLUMNS update: a rename MUST rewrite the handle in every org's rows (C-14)" },
+  { file: "src/deletion/person.ts", fn: "personStmts", surface: "platform",
+    why: "the HANDLE_COLUMNS update to a deleted account's tombstone: like a rename, it spans every org's rows" },
+  { file: "src/deletion/tables.ts", fn: "orgRowDeletes", surface: "tenant",
+    why: "`DELETE FROM ${t} WHERE org_id = ?` over ORG_TABLES (every org-keyed table, held to the schema by test/deletion.org.test.ts), bound from the org's own system context" },
 ];
 
 /** Rule 2 — upsert targets that cannot name the org. */

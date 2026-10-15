@@ -36,7 +36,9 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   version's `created_at` (a v1 published by PATCH never recorded when, so that is a lower bound).
 - **Delete is SOFT** (0035 PART D; `deletePage` / `restorePage` in `src/tools/artifacts.ts`):
   `POST /api/artifacts/:slug/delete` stamps `deleted_at` / `deleted_by` and drops the page's `artifacts_fts` row in
-  ONE batch — every version, every `artifact_links` row and the R2 bytes stay, so restore is lossless. Only the
+  ONE batch — every version, every `artifact_links` row and the R2 bytes stay, so restore is lossless. (Only
+  the deletion of the whole ORGANIZATION hard-deletes its artifacts, soft-deleted ones included, and frees their
+  bytes when no other org shares them: `organizations.md` §8.) Only the
   page's AUTHOR (case-insensitive) or an org ADMIN / owner, and only on a page they can SEE (an admin gets the plain
   404 on someone's private page); anyone else is 403 with nothing written. `VISIBLE_SQL` carries `p.deleted_at IS
   NULL`, so a deleted page is the ONE byte-identical not-found on EVERY surface — library, detail, diff, raw, MCP
@@ -83,11 +85,24 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   `Cache-Control: private`; html alone gets the injected `trov:height` postMessage script (never on
   `?download=1`). The SPA frames html as `<iframe src="/raw/…" sandbox="allow-scripts">` — never `srcdoc`, never
   `allow-same-origin` — and inlines svg ONLY through `sanitizeSvg` (DOMPurify, `web/src/markdown.ts`).
+  A mermaid page is drawn in the SPA itself (`renderPendingMermaid`, `securityLevel: "strict"`) by the `mermaid`
+  npm dependency, pinned to an EXACT version in `package.json` and loaded with a dynamic `import()`: Vite splits it
+  into its own chunks on Trov's origin, fetched the first time a diagram opens, never in the main bundle. No CDN
+  is contacted (it was `cdn.jsdelivr.net/npm/mermaid@11`, unpinned, before 2026-10). The raw CSP's cdnjs /
+  jsdelivr allowance above is for an HTML artifact's OWN scripts, inside the sandbox — not for mermaid.
 - **MCP** (every principal, `src/tools/artifacts-agent.ts`): `artifact_list`, `artifact_get` (text content inline
   up to `ARTIFACT_INLINE_MAX` = 64 KB — over it `content: null` + `content_omitted: true` unless
   `include_content: true`, and `query`'s assembled body is a one-line pointer instead; `warnings` still see
   the full text; for every kind a `download_url` + `sha256` + `size_bytes` to verify), `upload_asset` / `artifact_update`
-  (text inline; binary returns an absolute `upload_url` the agent PUTs to). All carry `warnings` (never a
+  (text inline; binary returns an absolute `upload_url` the agent PUTs to). **For a client with no shell**
+  (a chat on the web — claude.ai's connector) the bytes travel INSIDE the call, capped at
+  `ARTIFACT_INLINE_BINARY_MAX` (1 MB; a call lands whole in the model's context): `content_base64` on
+  `upload_asset` (an artifact or a doc image) and `artifact_update` is hashed in `artifacts-agent.ts`
+  (`inlineBytes`) and landed through the SAME `mintUploadToken` → `consumeUploadToken` as a PUT, so no rule
+  of the upload is skipped; `artifact_get { include_file: true }` returns the stored bytes beside the
+  metadata — an `image` content block for an image, an embedded `resource` otherwise — read through
+  `readRawByPageId` with the caller as viewer, and `file` says `included` / `too_large` / `text` /
+  `unavailable`. Off by default: Claude Code keeps using `download_url`. All carry `warnings` (never a
   rejection) for `window.claude` / `window.storage` / `api.anthropic.com`, and for a bundled Claude Design
   export (`isBundledExport` — its `blob:` scripts and `new Function` are refused by the raw CSP, so it must be
   flattened; the web create screen shows the same warning as FLATTEN FIRST). `query` has an `artifact` type
@@ -105,7 +120,10 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
 
 A doc embeds an image as `![alt](/img/<sha256>)`. `0031_doc_images`: one `doc_images` row per sha256 (png /
 jpeg / gif / webp, ≤ 10 MB), bytes in R2 (`ARTIFACTS_BUCKET`) at `doc-images/<sha256>` — immutable, never
-deleted, so a promoted version renders the same forever. The reference format and the body scan live ONCE
+deleted while any organization's row points at them, so a promoted version renders the same forever. The one
+thing that deletes bytes is an ORGANIZATION's deletion (`organizations.md` §8, `src/deletion/r2.ts`): after its
+rows are gone, each `doc-images/` and `artifacts/` object it pointed at is deleted unless another org's row (or an
+unexpired upload token) still points at the same sha — the objects are content-addressed and shared. The reference format and the body scan live ONCE
 in `shared/doc-images.ts` (`scanDocImages`, zod-free); the repository is `src/tools/doc-images.ts`.
 
 - **Upload is the artifact upload's twin, through ONE tool**: MCP `upload_asset` (was `artifact_create`)
@@ -123,4 +141,5 @@ in `shared/doc-images.ts` (`scanDocImages`, zod-free); the repository is `src/to
 - **Web**: `markdown.ts` `enhance()` wraps each `/img/` image in a `.cnpy-md-img` zoom button (`docImgZoom`
   → `web/src/lightbox.ts`, the lightbox the guide uses); Review's Rendered view (`renderedPreview`) shows a
   line's images outlined green (added) / red and dimmed (removed); unified and split diffs show the text.
-- There is no web upload yet (agents only, by decision) and no garbage collection.
+- There is no web upload yet (agents only, by decision) and no garbage collection — except an organization's
+  deletion, above.

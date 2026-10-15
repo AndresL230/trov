@@ -1,8 +1,11 @@
 // Connecting a coding agent to Trov — the ONE copy of the commands and the three sign-in steps.
 // Settings › MCP access (render.ts `mcpAccessSection`), the Get Started guide and the first-run
 // wizard (welcome.ts) all show exactly this, so the instructions cannot drift apart.
+// They are Claude Code's steps; `otherClientsLink` sends everyone else (a chat on claude.ai, Cursor, …)
+// to the public Connect page, which has each client's own.
 // Pure markup; the Copy buttons' acts (`copyPluginInstall`, `copyBrowserConnect`) are main.ts's.
 
+import { pagePath } from "@shared/site-pages";
 import { esc } from "./ui";
 
 /** This Trov's own MCP endpoint — the origin the SPA is served from, so a local
@@ -46,3 +49,9 @@ export function connectSteps(orgName = "", lands = "it shows up under Connected 
 }
 /** What a connection reaches — said under the steps wherever they are shown. */
 export const CONNECTION_NOTE = "One connection covers all your organizations. When you allow it you choose how it picks one: follow the repository you are working in, or the organizations you tick, one at a time. You can change that later in Settings.";
+
+/** For a person whose agent is not Claude Code: the public Connect page (every client's setup, and
+ *  what a chat with no repository can do), in a new tab so the app keeps its place. */
+export function otherClientsLink(): string {
+  return `<a href="${pagePath("docs-connect")}" target="_blank" rel="noopener" data-mcp-other-clients class="cnpy-mutelink" style="font-weight:500;color:var(--fg-55);text-decoration:none;white-space:nowrap">Claude on the web, Cursor and other clients &rarr;</a>`;
+}

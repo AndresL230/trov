@@ -93,7 +93,7 @@ the web library's filters: `q` is full text over title / summary / body or a tit
 `{ artifacts: [{ slug, title, kind, status, version, updated_at, url, area, author, visibility }], total,
 truncated }`.
 
-`url` is the page in the Trov web app (`<origin>/#artifacts/<slug>`) — the link to hand a person;
+`url` is the page in the Trov web app, in the organization the call acted in (`<origin>/<org>/#artifacts/<slug>`) — the link to hand a person;
 `upload_url`, `download_url` and `raw_url` are absolute too. **Every result carries `warnings: string[]`** — non-empty when text content calls into
 something only claude.ai provides (`window.claude`, `window.storage`, `api.anthropic.com`). That is a
 warning, never a rejection: the write has already happened, and the page will not work in Trov's
@@ -136,6 +136,21 @@ curl -X PUT --data-binary @threat-model.pdf -H "Content-Type: application/pdf" "
 - Until the PUT lands, a new page does not exist to anyone — not even in your own `artifact_get`.
 - Re-uploading bytes identical to the latest version writes nothing.
 
+### With no shell (a chat on the web)
+
+A client that cannot run `curl` — Claude on the web through the connector — moves a binary file inside
+the call instead, up to **1 MB** (`ARTIFACT_INLINE_BINARY_MAX`):
+
+- **Write:** pass `content_base64` (the file's bytes, base64) to `upload_asset` or `artifact_update`
+  instead of `size_bytes` + `sha256`. Trov hashes it and lands it at once → `{ id, slug, url, version,
+  warnings }` (and `unchanged` on an update); for `destination: "doc"` → `{ ref, markdown, uploaded: true }`.
+  There is no `upload_url` and nothing to PUT. An `image` still needs its `content_type`. Send only bytes
+  you actually hold; a larger file needs the PUT.
+- **Read:** `artifact_get { slug, include_file: true }` returns the file beside the metadata — an image
+  as an image the model can look at, a PDF or other file as an embedded resource — and `file` in the
+  metadata says `included`, `too_large` (share `url` with the person), `text` (it is in `content`) or
+  `unavailable`. Leave it off when you can fetch `download_url`: the file lands whole in your context.
+
 ## Downloading (agents)
 
 `artifact_get` hands you a `download_url` for the version you asked for — text and binary alike. Fetch
@@ -167,7 +182,8 @@ python3 -m http.server 8000 --bind 127.0.0.1 --directory .trov/artifacts/checkou
 
 ## The raw route
 
-`GET /raw/a/<slug>` (latest), `/raw/a/<slug>@v<n>` or `/raw/a/<slug>/v<n>` serves the bytes with
+`GET /api/o/<org>/raw/a/<slug>` (latest), `…/raw/a/<slug>@v<n>` or `…/raw/a/<slug>/v<n>` (the old `/raw/a/…`
+without the organization is an alias that answers a person with exactly one organization) serves the bytes with
 locked-down headers (a sandboxing CSP, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`,
 `Cache-Control: private`). `?download=1` forces an attachment named `<slug>-v<n>.<ext>`. It is
 **session-cookie only** — it is what the web viewer frames and what `raw_url` points a signed-in browser

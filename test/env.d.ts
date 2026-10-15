@@ -27,7 +27,7 @@ declare global {
       TEST_GITHUB_APP_PUBLIC_JWK: string; // its public half, to verify a signed JWT with
       GITHUB_REPO?: string;
       GITHUB_SERVICE_TOKEN?: string;
-      GEMINI_API_KEY?: string;
+      ANTHROPIC_API_KEY?: string;
       RESEND_API_KEY?: string;
       PUBLIC_ORIGIN?: string;
       NOTIFICATIONS_MODE?: "local" | "resend";

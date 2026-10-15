@@ -2,6 +2,7 @@ import { type PlatformContext, first, all, run, stmt, batch, nowIso } from "../d
 import { type TenantContext, first as tenantFirst, all as tenantAll } from "../data/sql";
 import { PERSON_COLORS, type PersonColor, type PersonRow, type IdentityRow, type IdentityProvider } from "@shared/rows";
 import { avatarSrc, type PersonSummary } from "@shared/people";
+import { isTombstoneHandle } from "@shared/deletion-core";
 
 export const HANDLE_RE = /^[a-z][a-z0-9-]{1,23}$/;
 export const RESERVED_HANDLES: readonly string[] = ["github-webhook", "system", "admin", "canopy", "trov", "me"];
@@ -138,7 +139,9 @@ export async function soleTitle(p: PlatformContext, handle: string): Promise<str
 
 export async function handleAvailable(p: PlatformContext, handle: string): Promise<{ available: boolean; reason?: HandleProblem }> {
   if (!isValidHandle(handle)) return { available: false, reason: "invalid" };
-  if (RESERVED_HANDLES.includes(handle)) return { available: false, reason: "reserved" };
+  // `deleted-…` is a deleted account's tombstone (src/deletion/person.ts): never a new person's handle, so no
+  // one can take one and inherit the work it is credited with.
+  if (RESERVED_HANDLES.includes(handle) || isTombstoneHandle(handle)) return { available: false, reason: "reserved" };
   if (await getPerson(p, handle)) return { available: false, reason: "taken" };
   return { available: true };
 }
@@ -275,13 +278,15 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["billing_checkouts", "person"], ["billing_subscriptions", "person"],
   // The GitHub App (0043_github_app): who connected the org's installation.
   ["org_github_installations", "connected_by"],
-  // Hosting (0052_hosting_providers). `revoked_by` is a handle, or the reserved `system` when the provider's side
+  // Hosting (0056_hosting_providers). `revoked_by` is a handle, or the reserved `system` when the provider's side
   // ended the connection (an uninstall notice, a 401 at Test connection) — never a provider id.
   ["org_environment_parts", "updated_by"], ["org_hosting_connections", "connected_by"], ["org_hosting_connections", "revoked_by"],
   // Sync GitHub runs (0046_sync_runs): who started one.
   ["sync_runs", "started_by"],
   // Support reports (0049_support_reports): who sent one, and the superadmin who resolved it.
   ["support_reports", "reporter"], ["support_reports", "resolved_by"],
+  // AI (0055_ai): who accepted or dismissed a suggestion, and who pressed "Wrong?".
+  ["ai_suggestions", "decided_by"], ["ai_feedback", "handle"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

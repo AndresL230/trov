@@ -16,12 +16,15 @@
 //   3. the code exchanges for a GitHub user token, and that GitHub account is this person's own linked
 //      GitHub identity (login, pinned numeric id) — the same match sign-in makes;
 //   4. GitHub itself lists the installation among those this user token can reach (`GET /user/installations`);
-//   5. that GitHub account can read EVERY repository the installation covers — the installation's
-//      repository ids are a subset of the ids GitHub says this user can read in it — so the org gains
-//      nothing through the installation that the person connecting it could not already read (a
-//      collaborator on one repository must not be able to attach an organization's whole installation);
-//   6. no other Trov org holds the installation. An org holds ONE: connecting a different one (the App
-//      on another GitHub account) REPLACES the org's current binding, in the same write.
+//   5. the org gains nothing through the installation that the person connecting it could not already
+//      read. GitHub says which of the installation's repositories this user can read: all of them →
+//      the binding spans the installation (`all`); some → it reaches exactly those (`selected`, the
+//      list stored with it — a collaborator on one repository gets that repository, never an
+//      organization's whole installation); none → nothing is connected;
+//   6. an org holds ONE installation: connecting a different one (the App on another GitHub account)
+//      REPLACES the org's current binding, in the same write.
+// ANOTHER Trov org holding the same installation is no obstacle (0053_installation_repos): one GitHub
+// account's installation may serve several orgs, and several of them may track the same repository.
 // A failure at any step redirects to Org settings with a sentence and writes NOTHING. Every outcome is a
 // redirect — a human never gets JSON here.
 //
@@ -39,13 +42,12 @@ import { OAUTH_TX_COOKIE, beginTx, callbackUrl } from "../auth/tx";
 import { hasRole, resolveTenantById, type TenantContext } from "../data/context";
 import { importLogoForOrg } from "../integrations/logo";
 import { listMyOrgs } from "../orgs/repo";
-import { installationOrg } from "../platform/jobs";
 import {
   INSTALLATION_SCOPE, appConfigured, appSlug, forgetInstallationToken, getInstallation, installUrl, installationRepoIds, installationToken, listUserInstallations,
   revokeUserToken, userInstallationRepoIds, type AppRefusal,
 } from "./api";
 import { forgetRepoList, visibleRepos } from "./repos";
-import { InstallationConflictError, bindInstallation, liveInstallation } from "./store";
+import { InstallationConflictError, bindInstallation, liveInstallation, type RepoAccess } from "./store";
 
 type C = Context<AppEnv>;
 export interface ConnectDeps { fetchImpl?: typeof fetch; now?: () => number }
@@ -187,24 +189,16 @@ async function verifyAndBind(c: C, deps: ConnectDeps, intent: Intent, userToken:
     const wanted = pick.account?.toLowerCase();
     const reachable = wanted ? mine.filter((i) => i.account_login.toLowerCase() === wanted) : mine;
     if (reachable.length === 0) return no("none_found");
-    const free: typeof reachable = [];
-    for (const i of reachable.slice(0, 20)) {
-      const held = await installationOrg(p, i.installation_id);
-      if (!held || held.org_id === ctx.orgId) free.push(i);
-    }
-    if (free.length === 0) return no("taken");
-    if (free.length > 1) {
-      const accounts = free.map((i) => i.account_login).filter((l) => GITHUB_LOGIN_RE.test(l)).slice(0, 10);
+    if (reachable.length > 1) {
+      const accounts = reachable.map((i) => i.account_login).filter((l) => GITHUB_LOGIN_RE.test(l)).slice(0, 10);
       return no("choose", `&accounts=${accounts.map(encodeURIComponent).join(",")}`);
     }
-    installationId = free[0].installation_id;
+    installationId = reachable[0].installation_id;
   }
 
-  // 6 — one org per installation (the unique index says so again at the write). An org has one
-  //     installation: a different one — the admin chose another GitHub account — takes the place of
-  //     the org's current binding, ended in the same batch as the new one is written.
-  const held = await installationOrg(p, installationId);
-  if (held && held.org_id !== ctx.orgId) return no("taken");
+  // 6 — an org has one installation (the unique index says so again at the write): a different one —
+  //     the admin chose another GitHub account — takes the place of the org's current binding, ended
+  //     in the same batch as the new one is written. Other orgs bound to it are not looked at.
   const live = await liveInstallation(ctx);
   const replaced = live && live.installation_id !== installationId ? live : null;
 
@@ -216,25 +210,30 @@ async function verifyAndBind(c: C, deps: ConnectDeps, intent: Intent, userToken:
   }
   if (info.installation.suspended_at !== null) return no("suspended");
 
-  // 5 — no escalation: every repository the installation covers is one this account can read. Compared
-  //     by repository ID, the whole of both lists — two counts can agree while the repositories differ.
-  //     The same for a personal account's installation: its owner reads all of it, and passes. An
-  //     installation too large to list in `REPO_ID_PAGES` pages is refused, never guessed at; so is a
-  //     list that did not arrive in full. The refusal carries a COUNT, never a repository's name.
+  // 5 — no escalation: the binding reaches only what this account can read. Compared by repository ID,
+  //     the whole of both lists — two counts can agree while the repositories differ. Everything the
+  //     installation covers → `all` (a personal account's owner reads all of it, and gets this). Less →
+  //     `selected`, exactly the repositories GitHub lists for this user that the installation covers.
+  //     An installation too large to list in `REPO_ID_PAGES` pages cannot be shown to be read in full,
+  //     so it is `selected` too; a USER who reads more than that is refused, never guessed at, and so
+  //     is a list that did not arrive in full.
   const minted = await installationToken(c.env, installationId, INSTALLATION_SCOPE, f, nowOf(deps));
   if (!minted.ok) return no(refusedAs(minted));
   const covered = await installationRepoIds(minted.token, f);
-  if (!covered.ok) return no(covered.reason === "too_many" ? "too_many_repos" : "github_failed");
+  if (!covered.ok && covered.reason !== "too_many") return no("github_failed");
   const readable = await userInstallationRepoIds(userToken, installationId, f);
-  if (!readable.ok) return no("github_failed");
-  let unreadable = 0;
-  for (const id of covered.ids) if (!readable.ids.has(id)) unreadable++;
-  if (unreadable > 0) return no("partial_access", `&missing=${unreadable}`);
+  if (!readable.ok) return no(readable.reason === "too_many" ? "too_many_repos" : "github_failed");
+  let access: RepoAccess = { mode: "all" };
+  if (!covered.ok || [...covered.ids].some((id) => !readable.ids.has(id))) {
+    const repos = readable.repos.filter((r) => !covered.ok || covered.ids.has(r.id));
+    if (repos.length === 0) return no("no_access");
+    access = { mode: "selected", repos };
+  }
 
   try {
-    await bindInstallation(ctx, info.installation, replaced);
+    await bindInstallation(ctx, info.installation, replaced, access);
   } catch (e) {
-    if (e instanceof InstallationConflictError) return no("taken");
+    if (e instanceof InstallationConflictError) return no("conflict");
     throw e;
   }
   if (replaced) { // what the isolate held for the installation that was replaced, as Disconnect drops it

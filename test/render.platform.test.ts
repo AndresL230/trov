@@ -116,16 +116,16 @@ describe("Organizations", () => {
     expect(html).toContain("Maya Ortiz");
     expect(html).toContain("@maya");
     expect(html).toContain("Sep 1, 2026");
-    expect(html).toContain("ACTIVE");
+    expect(html).toContain(">Active</span>");
     // An org whose invited owner has not accepted yet says so; no activity reads "Never".
     expect(html).toContain("No owner yet — invite pending");
     expect(html).toContain("Never");
     expect(html).toContain("Beta &lt;Co&gt;");
     expect(html).toMatch(/<strong>2<\/strong> organizations &middot; <span class="cnpy-lead-flag"[^>]*>[\s\S]*?1 with no owner yet<\/span>\. Select one to manage it\./);
   });
-  it("marks a suspended org clearly: a red badge, a muted name, and it is said in the row's name and the count", () => {
+  it("marks a suspended org clearly: a red mark, a muted name, and it is said in the row's name and the count", () => {
     const html = orgsTab({ orgs: { status: "ok", data: [org({ status: "suspended", suspended_at: "2026-10-02T10:00:00.000Z", suspended_by: "andres" })] } });
-    expect(html).toContain("SUSPENDED");
+    expect(html).toContain(">Suspended</span>");
     expect(html).toContain("var(--red)");
     expect(html).toContain('class="plat-row plat-orgs-grid is-suspended" aria-label="Acme, suspended — open"');
     expect(html).toContain("<strong>1</strong> organization");
@@ -257,13 +257,13 @@ describe("one organization", () => {
   it("shows the header, members and pending invites in one People list, usage and audit; adding an owner is behind a button", () => {
     const html = platformOrgView(open());
     expect(html).toContain(">Acme</h2>");
-    expect(html).toContain("ACTIVE");
+    expect(html).toContain(">Active</span>");
     expect(html).toContain("created Sep 1, 2026 by @andres");
     expect(html).toContain("Maya Ortiz");
-    expect(html).toContain("OWNER");
-    expect(html).toContain("MEMBER");
+    expect(html).toContain(">Owner</span>");
+    expect(html).toContain(">Member</span>");
     expect(html).toContain("octocat");
-    expect(html).toContain("PENDING");
+    expect(html).toContain(">Pending</span>");
     expect(html).not.toContain("old@acme.example");
     expect(html).toMatch(/<h2[^>]*>People<\/h2><span class="cnpy-badge" data-n="\d+">/);
     expect(html).toContain('data-act="platOwnerToggle" data-field="platOwnerToggle" aria-expanded="false"');
@@ -291,7 +291,7 @@ describe("one organization", () => {
     // Suspend is text until pointed at (`cnpy-org-danger`), never a button at the weight of the page's actions.
     expect(active).toMatch(/<button data-confirm-trigger aria-expanded="false" aria-controls="plat-suspend-confirm" type="button" data-act="platSuspendArm" data-arg="suspend"[^>]*class="cnpy-org-danger" aria-haspopup="dialog"[^>]*>Suspend<\/button>/);
     const sus = platformOrgView(open({ detail: { status: "ok", data: detailOf({ org: org({ status: "suspended", suspended_at: "2026-10-02T10:00:00.000Z", suspended_by: "andres" }) }) } }));
-    expect(sus).toContain("SUSPENDED");
+    expect(sus).toContain(">Suspended</span>");
     expect(sus).toContain("by @andres");
     expect(sus).toContain("No data was deleted.");
     expect(sus).toContain('data-act="platSuspendArm" data-arg="unsuspend"');
@@ -354,7 +354,7 @@ describe("Usage", () => {
     expect(html.indexOf('data-arg="acme"')).toBeLessThan(html.indexOf('data-arg="beta"'));
     expect(html).toContain('aria-label="Acme: API requests per day: 420 in total, 120 on the busiest day"');
     expect(html).toContain('aria-label="Acme: MCP tool calls per day: 64 in total, 20 on the busiest day"');
-    expect(html).toContain("SUSPENDED");
+    expect(html).toContain(">Suspended</span>");
     expect(html).toContain("3.0 MB");
     expect(html).toContain("Never");
     expect(html).toContain('aria-expanded="false" aria-controls="plat-usage-acme"');
@@ -437,7 +437,7 @@ describe("Usage", () => {
     expect(t).toContain("AI summaries Attempted 52 Succeeded 46 Fell back to an excerpt 9 last 7 days, all organizations");
     // The six tiles are untouched: the strip is not a seventh.
     expect(html.match(/class="plat-tile-n"/g)).toHaveLength(6);
-    expect(html).not.toContain("GEMINI_API_KEY");
+    expect(html).not.toContain("ANTHROPIC_API_KEY");
   });
   it("AI summaries per org: attempted, succeeded, fell back and this month against the plan — in the opened row, 'unlimited' for no cap", () => {
     const open = (slug: string) => words(usageView({ status: "ok", usage: report([busy, free]), days: 7, open: slug }));
@@ -452,7 +452,7 @@ describe("Usage", () => {
   });
   it("with no summaries key the page says so ONCE, quietly — no rows of zeros, in the totals or in any org's row", () => {
     const html = usageView({ status: "ok", usage: { ...report([usageOf(), free]), summaries_enabled: false }, days: 7, open: "acme" });
-    expect(html.match(/AI summaries are off on this deployment \(no GEMINI_API_KEY\)\./g)).toHaveLength(1);
+    expect(html.match(/AI summaries are off on this deployment \(no ANTHROPIC_API_KEY\)\./g)).toHaveLength(1);
     expect(html.match(/data-usage-summaries/g)).toHaveLength(1);
     expect(words(html)).not.toContain("Attempted");
     expect(words(html)).not.toContain("Fell back");
@@ -462,14 +462,14 @@ describe("Usage", () => {
   });
   it("an organization's own page says the same when the deployment has no key: one sentence, no figures", () => {
     const off = orgUsageBlock(busy, 30, false);
-    expect(off.match(/AI summaries are off on this deployment \(no GEMINI_API_KEY\)\./g)).toHaveLength(1);
+    expect(off.match(/AI summaries are off on this deployment \(no ANTHROPIC_API_KEY\)\./g)).toHaveLength(1);
     expect(off.match(/data-usage-summaries/g)).toHaveLength(1);
     expect(words(off)).not.toContain("Attempted");
     expect(words(off)).not.toContain("This month");
     expect(off).not.toContain('role="alert"');
     // Through the page: `PlatformOrgDetail.summaries_enabled` decides it.
     const open = (on: boolean) => platformOrgView(plat({ orgSlug: "acme", detail: { status: "ok", data: detailOf({ usage: busy, summaries_enabled: on }) }, orgAudit: { status: "ok", data: [] } }));
-    expect(open(false)).toContain("AI summaries are off on this deployment (no GEMINI_API_KEY).");
+    expect(open(false)).toContain("AI summaries are off on this deployment (no ANTHROPIC_API_KEY).");
     expect(words(open(false))).not.toContain("Attempted 40");
     expect(words(open(true))).toContain("AI summaries Attempted 40 Succeeded 34 Fell back to an excerpt 9 This month 38 of 100");
     expect(open(true)).not.toContain("AI summaries are off");
@@ -486,7 +486,7 @@ describe("Admins & limits", () => {
     const html = adminsTab(admins(), "Andres");
     expect(html).toContain("@andres");
     expect(html).toContain("by @migration");
-    expect((html.match(/>YOU</g) ?? []).length).toBe(1);
+    expect((html.match(/>\(you\)</g) ?? []).length).toBe(1);
     expect(html).toContain('data-act="platRevokeArm" data-arg="maya"');
     expect(html).toContain('aria-label="Remove @maya as superadmin"');
   });

@@ -93,7 +93,7 @@ describe("Usage › Hosting — the section", () => {
 
   it("sample mode draws the same section from the sample set, with no link that writes", () => {
     const html = repoView(props({ sample: true, admin: true, repo: { status: "ok", data: repoSample() } }));
-    expect(html).toContain("sample data");
+    expect(html).toContain("Sample data");
     expect(html).toContain('data-hosting="ok"');
     expect(html).not.toContain('data-arg="hosting"');
   });
@@ -106,15 +106,15 @@ describe("a part's card", () => {
     expect(cf).toMatch(/data-htone="warn" title="needs a look" style="[^"]*border-radius:50%;background:var\(--amber\)"/);
     expect(cf).toContain(">Frontend<");
     expect(cf).toContain("Cloudflare Workers");
-    expect(cf).toContain(">WEB<");
+    expect(cf).toContain(">Web<");
     expect(cf).toMatch(/href="https:\/\/dash\.cloudflare\.com\/[^"]+" target="_blank" rel="noopener noreferrer"[^>]*>Open in Cloudflare Workers</);
-    expect(card(html, "staging/backend")).toContain(">SERVICE<");
+    expect(card(html, "staging/backend")).toContain(">Service<");
     expect(card(html, "staging/backend")).not.toContain("Open in Railway");     // no console link in the payload: none drawn
     expect(card(html, "production/frontend")).toMatch(/data-htone="good"[^>]*background:var\(--green\)/);
     expect(html).not.toContain("●");
   });
 
-  it("the last deploy line: state pill, short sha, branch, first line of the message, who, when, how long, links", () => {
+  it("the last deploy line: state mark, short sha, branch, first line of the message, who, when, how long, links", () => {
     const now = Date.now();
     const d: ProviderDeployDTO = {
       id: "dpl_1", state: "ready", target: "production", sha: "9b04e7f1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7", branch: "main",
@@ -124,7 +124,7 @@ describe("a part's card", () => {
     const part = { ...find("staging/web"), deploys: [d, { ...d, id: "dpl_0", state: "error" as const, at: new Date(now - 5 * 3600_000).toISOString() }] };
     const c = card(withParts([part]), "staging/web");
     expect(c).toContain('data-hdeploy="ready"');
-    expect(c).toContain(">READY<");
+    expect(c).toContain(">Ready<");
     expect(c).toContain(">9b04e7f<");
     expect(c).not.toContain("9b04e7f1c2");
     expect(c).toContain(">main<");
@@ -149,7 +149,7 @@ describe("a part's card", () => {
     const building = card(html, "staging/web");
     expect(building).toContain('data-hdeploy="building"');
     expect(building).toMatch(/class="repo-envdot repo-pulse"[^>]*style="--c:var\(--blue\)/);
-    expect(building).toContain(">BUILDING<");
+    expect(building).toContain(">Building<");
     const part = find("staging/edge");
     part.deploys[0] = { ...part.deploys[0], url: "javascript:alert(1)", inspect_url: "http://insecure.example" };
     part.console_url = "javascript:alert(1)";

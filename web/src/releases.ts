@@ -34,7 +34,8 @@
 
 import { esc, attr, surface } from "./ui";
 import { segmented } from "./segmented";
-
+import { stateMark } from "./marks";
+import { SOURCE_PATH, TROV_SOURCE_REPO } from "@shared/legal-core";
 
 export interface ReleasePatches {
   added: string[];
@@ -66,17 +67,14 @@ export interface Release {
   prs?: number[];
 }
 
-export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
+export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
   // Hosting providers: Org settings › Hosting, the Repo dashboard's Hosting section, Detected, Vercel events.
-  // STACKED ON #134 and not merged yet. TODO(PR-NUMBER): once the pull request exists, replace every `(#PR)`
-  // below with `(#<its number>)` and the `// prs: [PR],` line with `prs: [<its number>],`. The PR that merges
-  // it cuts the entry as the header says: `version` to the next 0.N, `date` to the merge day, drop `unreleased`.
   {
     version: "Unreleased",
-    date: "2026-10-09",
+    date: "2026-10-14",
     unreleased: true,
     title: "Hosting providers",
     headline: "Connect Vercel, Netlify, Render or Fly.io, and the Repo dashboard shows every part of every environment, whoever hosts it.",
@@ -89,7 +87,7 @@ export const RELEASES: Release[] = [
       "Vercel deploys show up as they happen: when a deploy starts, finishes or is rolled back, Trov reads that project again straight away instead of waiting for the hourly check.",
     ],
     ops: [
-      "Apply `migrations/0052_hosting_providers.sql` (merging to main applies it). It adds the hosting tables and REBUILDS `org_secrets` only to widen its kind CHECK; rollback: `scripts/hosting/0052_hosting_providers.down.sql`, run before 0042's.",
+      "Apply `migrations/0056_hosting_providers.sql` (merging to main applies it). It adds the hosting tables and REBUILDS `org_secrets` only to widen its kind CHECK; rollback: `scripts/hosting/0056_hosting_providers.down.sql`, run before 0042's.",
       "No trigger change: the hosting job rides the existing `*/10` repo trigger at `:40`, so no `wrangler triggers deploy` is needed.",
       "Optional, for Connect with Vercel: create a Vercel Integration (Projects: Read, Deployments: Read; Redirect URL `<origin>/hosting/vercel/callback`; Configuration URL `<origin>/hosting/vercel/configure`; Webhook URL `<origin>/webhook/hosting/vercel`, subscribed to `integration-configuration.removed`, the `deployment.*` events and `project.removed` / `project.renamed`) and set `VERCEL_INTEGRATION_CLIENT_ID`, `VERCEL_INTEGRATION_CLIENT_SECRET` (secrets) and `VERCEL_INTEGRATION_SLUG`. Without them, Vercel falls back to a pasted token.",
       "Optional, for Connect with Netlify: register a Netlify OAuth application (Redirect URI `<origin>/hosting/netlify/callback`) and set `NETLIFY_OAUTH_CLIENT_ID` / `NETLIFY_OAUTH_CLIENT_SECRET`. Without them, Netlify falls back to a personal access token.",
@@ -99,7 +97,7 @@ export const RELEASES: Release[] = [
       added: [
         "Hosting providers behind one interface, issue #97: `shared/hosting.ts` (the contract — providers, parts, roles, connection methods, the `hx_<metric>` vocabulary, deploy states, setup and dashboard DTOs) and `src/hosting/` (`types.ts`, `http.ts` — the fixed-host fetch with scrubbed errors and the shared poll window —, `registry.ts`, `parts.ts`, `part-writes.ts`, `connections.ts`, `setup.ts`, `routes.ts`, `webhook.ts`, `probe.ts`, `poll.ts`) (#PR)",
         "Providers (issues #98–#102): Vercel — install or token —, Render — API key —, Netlify — OAuth or token —, Fly.io — a read-only token; AWS described as `later`; Cloudflare and Railway as the first two, LEGACY parts read from the environment's own columns (#PR)",
-        "Migration `0052_hosting_providers`: `org_environment_parts`, `org_hosting_connections`, `hosting_deploys`, `hosting_poll_state`; `org_secrets.kind` admits `vercel` / `render` / `netlify` / `fly` / `aws` (#PR)",
+        "Migration `0056_hosting_providers`: `org_environment_parts`, `org_hosting_connections`, `hosting_deploys`, `hosting_poll_state`; `org_secrets.kind` admits `vercel` / `render` / `netlify` / `fly` / `aws` (#PR)",
         "Routes under `/api/o/:slug`: `GET /hosting`, `GET /hosting/providers`, `PUT|DELETE /environments/:key/parts/:part`, `POST /hosting/:provider/connect|disconnect|test`; the root `GET /hosting/:provider/callback` and the provider-side uninstall notice `POST /webhook/hosting/:provider` (#PR)",
         "The `hosting` job on the repo cron's `:40` tick (one unit per stored part, budgeted by the provider's `pollCost`), a `hosting` arm in Poll now, and the Repo dashboard's provider-neutral `providers` section (also in MCP `get_repo_dashboard`) (#PR)",
         "Data stubs for the UI: `web/src/hosting-sample.ts` (every Hosting setup state), the `providers` section of `web/src/repo-sample.ts`, recorded-shape API fixtures under `fixtures/hosting/<provider>/`; the design brief `docs/design/hosting-providers-claude-design-prompt.md` (#PR)",
@@ -127,6 +125,408 @@ export const RELEASES: Release[] = [
       removed: [],
     },
     // prs: [PR],
+  },
+  // States drawn as marks instead of tags: the 2026-10 tag audit (#173).
+  // Also: capture-time summaries move from Google Gemini to Anthropic's Claude, behind one model client.
+  {
+    version: "0.31",
+    date: "2026-10-14",
+    title: "Calmer status, fewer tags",
+    headline: "Every screen shows a state with a small shape and a plain word, not a coloured capitals tag on every row, and hovering one tells you what it means.",
+    highlights: [
+      "A ticket's status is a circle that fills as the work moves along: dashed for Triage, half for In progress, three quarters for Testing, a check for Done. Priority is a set of signal bars. Both say their name when you hover.",
+      "Review shows no status tag. Everything in it is waiting, and the Promote, Ratify and Reject buttons already say so. A proposal the agent was unsure about says Low confidence next to a small amber triangle.",
+      "Search no longer marks every result Live. Only a result that is not settled yet says so, for example Awaiting review.",
+      "Sprints on the Roadmap use the same circles as tickets, and a late sprint shows a red warning triangle. Handoffs, artifacts, the doc you are reading, the Repo screen, Settings and the email digests show their state the same way: a small shape and the word.",
+      "Hover a state to see what it means. Testing says \"Built, and being checked before it is done.\" and a stale branch says it has had no commit in 14 days.",
+      "Pull request and issue summaries are now written by Anthropic's Claude.",
+    ],
+    headsUp: [
+      "States now read in sentence case, for example \"In progress\" instead of \"IN PROGRESS\".",
+      "A pull request's state on the Repo screen is a circle too: dashed for Draft, filling through In review and Approved, a check for Merged.",
+      "Roles, \"(you)\", a plan's name and other plain facts are plain text now, not coloured chips.",
+      "The Terms of Service and the Privacy Policy now name Anthropic, which writes the summaries, in place of Google.",
+    ],
+    ops: [
+      "Set the `ANTHROPIC_API_KEY` secret before merging (`wrangler secret put ANTHROPIC_API_KEY`). Without it summaries fall back to excerpts and nothing breaks.",
+      "Delete `GEMINI_API_KEY` (`wrangler secret delete GEMINI_API_KEY`) once summaries land with model `claude-haiku-5-5` (`SELECT model, COUNT(*) FROM pr_summaries GROUP BY model`). Existing Gemini rows stay; nothing is resummarized.",
+      "Local development: `.dev.vars` takes `ANTHROPIC_API_KEY` in place of `GEMINI_API_KEY`; a `LOCAL_UPSTREAM` stand-in now answers `POST /anthropic/v1/messages` in the Messages API shape instead of `/gemini/…`.",
+      "Apply migration 0055 before merging (`npm run db:migrate:remote`): `0055_ai` adds `orgs.ai_automation` (on for every org) and the `ai_suggestions` and `ai_feedback` tables. It is additive; the Worker from before it names none of them.",
+      "Local development: `LOCAL_AI_PREVIEW=ready` (or `empty`, `capped`, `proposed`) in `.dev.vars` shows the AI screens' sample content under `wrangler dev` only (`docs/architecture/ai.md`). Never set it on a deployed Worker.",
+    ],
+    patches: {
+      added: [
+        "`web/src/marks.ts`: the one place a state is drawn. Progress glyphs (`glyph`, `ticketStatusIcon`, `priorityIcon`), shape-and-word marks (`stateMark`, `handoffMark`, `artifactStatusMark`, `authorityMark`, `LOW_CONFIDENCE`), `agentMark`, and the tone tables (`TICKET_STATUS_TONE`, `HANDOFF_MARK`, `ARTIFACT_MARK`, `AUTHORITY_MARK`) (#173)",
+        "`EMAIL_CARD.mark` (`src/notifications/assemble.ts`): a small square and the word in its own face, for the digests (#173)",
+        "`web/src/tip.ts`: one styled tooltip bubble (`.cnpy-mtip`) for every mark's `data-mtip`, placed by script so no container clips it; `placeTip` is pure and tested; off on touch and in the tour mocks (#173)",
+        "`kindMark` / `STATE_KIND` (`marks.ts`): a state by what it means (good, waiting, warn, bad, stopped, done, off) for settings, billing, the Repo verdicts and the platform pages; `roleWord` and `(you)` in `org-ui.ts` (#173)",
+        "`artifactKindLabel` (`shared/artifacts-core.ts`): HTML / SVG / PDF / Markdown / …, shared by the viewer and the site (#173)",
+        "`test/render.marks.test.ts`: the marks are never a pill, and the signed-out site and every tour mock draw no pill and take their states from `marks.ts` (#173)",
+        "Docs for Claude on the web: `/docs/connect` walks through adding Trov as a custom connector and gains \"In a chat, with no repository\" (what to ask, what differs with no checkout, the 1 MB file limit) with `CHAT_SNIPPET`, the agent rules for a claude.ai Project's instructions; `/docs/setup` steps 4 and 5 point to it (`web/src/docs-content.ts`) (#174)",
+        "`otherClientsLink` (`web/src/mcp-connect.ts`): \"Not using Claude Code?\" links the guided setup's agent step, Settings › MCP access and the Guide to `/docs/connect`; the Guide's Other agents says how Claude on the web connects (#174)",
+        "`src/ai/client.ts`: the one model client. `providerFor(kind)` (the `AiKind` union, today `summary_pr` / `summary_issue`, every kind mapped to Claude) hands out an `AiProvider` whose `structured()` sends `claude-haiku-5-5` a system prompt, an optional cached prefix and an input with `output_config.format` `json_schema`, checks the answer with the same zod schema, reports `AiUsage` (tokens, cached tokens, characters) through `onCall`, and never throws: a refusal, `max_tokens`, an API error, a timeout or a bad parse is `null` (#176)",
+        "`src/ai/schema.ts`: `toClaudeSchema`, a zod schema's JSON Schema with what structured outputs reject stripped (lengths, bounds, `minItems` above 1, `$schema`) and every object closed (#176)",
+        "`test/ai.client.test.ts`, `test/ai.schema.test.ts` and `test/helpers/anthropic.ts` (Messages API bodies for every summary test); `test/secrets.mcp.test.ts` checks that nothing reachable from `src/mcp.ts` imports `src/ai/` (#176)",
+        "The AI contracts: `shared/ai-core.ts` (zod-free) and `shared/ai.ts` type the brief, the repo State, entries written by Trov, \"Where the work went\", AI settings, suggestions, \"Wrong?\" and usage; `shared/ai-fixtures.ts` holds the preview's sample DTOs. `brief?`, `state?`, `themes?` and `FeedRow.ai?` are optional on the existing reads and omitted in production: nothing produces them yet (#177)",
+        "The `ai_runs` allowance (`shared/plans.ts`): 250 a month on Free and Personal, 2,000 on Pro, unlimited on Enterprise, counted from `ai_run:*`; `LimitDef.listed: false` and `LISTED_LIMIT_KEYS` keep it off the pricing page, the Plan block and Settings › Limits until something uses it (#177)",
+        "`0055_ai`: `orgs.ai_automation`, the org's AI switch; `GET` / `PUT /api/o/:slug/ai/settings` (any member reads, admin+ writes, audited `org.ai`, cookie only) in `src/ai/routes.ts` (#177)",
+        "`aiEligibility` (`src/ai/eligibility.ts`): `ok` / `off` / `no_key` / `capped` from one statement (`planAndAiRuns`: the plan, the switch and the month's runs) (#177)",
+        "`src/ai/pass.ts`: the AI pass, after the health pings on every repo tick with no heavy job, on the cron's own budget. Its job registry `AI_JOBS` is empty, so it reads and fetches nothing; with a job it rotates orgs on `cron_cursor` (`ai_pass`), makes at most `AI_RUNS_PER_TICK` = 12 calls a tick, never overspends an org's allowance, and meters `ai_run:<kind>` before each call, then `ai_run_failed:<kind>`, `ai_run_capped:<kind>` and `ai_tokens_in` / `_out` / `_cached` (#177)",
+        "`0055_ai`: `ai_suggestions` and `ai_feedback` (in `ORG_TABLES`, `HANDLE_COLUMNS` and the reset seed; data in `src/data/ai.ts`). `POST /api/o/:slug/ai/suggestions/:id/accept` runs a per-kind handler from `AI_ACCEPT_HANDLERS` (empty: every accept is 409 `not_available`) as the signed-in person, `…/dismiss` is any member's, and `POST /api/o/:slug/ai/feedback` records \"Wrong?\" once per person and item (`hiddenFor`) (#177)",
+        "`LOCAL_AI_PREVIEW` (`src/ai/preview.ts`): the fixtures on `/me/dashboard`, `/repo/dashboard` and `/feed`, honoured only for a request to a loopback `http://` origin and never beside a live Stripe key; never over MCP (#177)",
+        "`docs/architecture/ai.md`: where a model may be called (the summary seams and the AI pass only), the job registry, eligibility, the allowance, suggestions and the preview (#177)",
+        "`test/ai.pass.test.ts`, `test/ai.routes.test.ts`, `test/ai.preview.test.ts` (#177)",
+      ],
+      changed: [
+        "Platform › Usage: `OrgUsage.ai` and `PlatformUsageResponse.ai` carry AI runs, failures, caps and tokens when a key is set; AI metrics are never \"active people\" or an org's last activity (#177)",
+        "`get_repo_dashboard` carries `state` with the overview tab and `themes` with planning when the dashboard has them (never today) (#177)",
+        "Tickets: the table, board column heads, the status control and its menu, the rail, sub-ticket rows, sprint cards and the artifact attach picker draw `ticketStatusMark` / `priorityMark`; category, relation and source are plain text (`metaWord`) (#173)",
+        "Review and Unplaced: no STAGED / DRAFT / FLAGGED tags; `ReviewItem` loses `badge` / `badgeColor`; a low-confidence proposal wears `LOW_CONFIDENCE`; the triage reason reads Low confidence / Flagged by an agent (#173)",
+        "Search: the kind is an icon and a word, and `authorityMark` shows nothing for `live`. The feed's agent chip is `agentMark` (#173)",
+        "Roadmap: Timeline rows and popovers use the progress glyphs (`stateTag`), Today is plain red text, and sprint cards show Next up, Overdue, the urgency bars, Due and the domain as marks and plain text. `shortDue` reads \"Sep 26\" (#173)",
+        "Handoffs, artifacts (status, kind, area, Private, the compare sides, the upload warnings) and the doc page (the proposal notice, Promoted in history) use marks; the old-version banner has no tag (#173)",
+        "The signed-out site and the tour mocks draw every state through `marks.ts`; `pill()` is removed from `landing-mocks.ts`. The pricing badge is a soft label and the tool names in For agents are set in the code face (#173)",
+        "Ticket and review digests: status is a mark, priority is words, and the kind is a word instead of a chip (#173)",
+        "Repo: an environment's verdict is `kindMark` over `ENV_VERDICT` (Healthy / Degraded / Failing / Down / Unknown) with what it means as its tooltip, the header's dots explain themselves the same way, a PR's state is the progress glyphs, Stale and Sample data are marks, and Due and the drift groups are plain text (#173)",
+        "Settings and Org settings: roles are `roleWord`, your own row says (you), Primary / Private / the plan's name / Admin on a person card are plain text, and every status (integrations, the GitHub App, delivery, billing, a repository the App lost) is a `kindMark` (#173)",
+        "Prompts: a version's status is a mark (Draft, Staged, Published), a published prompt's card shows none, and its tags are one line of plain words (#173)",
+        "Platform: an org's status, invites, grants, a plan's billing and a support report's status are `kindMark`s; roles, a report's kind and Signed out are plain text (#173)",
+        "Review's stale-base notice is a warning mark on a plain surface (no coloured left edge); What's new marks Unreleased; the MCP consent page's Recommended is a soft label; Unplaced's activity kinds and Notifications' Org default are plain text (#173)",
+        "My Work and roadmap digests: Merged and the plan changes (Added / Changed / Reordered / Done) are marks, and a GitHub issue's labels are plain words (#173)",
+        "Summaries: `makeGeminiSummarizer` is `makeClaudeSummarizer` on `structured()` behind the unchanged `Summarizer` interface (10s timeout, same prompts, `capSummaryBody`, excerpt fallback and storage; rows record `model = 'claude-haiku-5-5'`); `geminiPrSummarizer` / `geminiIssueSummarizer` / `GeminiOpts` are `claudePrSummarizer` / `claudeIssueSummarizer` / `AiOpts`, and the answers are the zod `PrSummarySchema` / `IssueSummarySchema` (#176)",
+        "The `gemini` seam option is `ai` in `orgSummarizers`, `captureDelivery`, `runBackfill` and `runSyncBatch`; `GEMINI_API_KEY` is `ANTHROPIC_API_KEY` in `env.ts`, the Platform pages' `summaries_enabled` and off sentence, `vitest.config.ts` and `.dev.vars.example` (#176)",
+        "`LOCAL_UPSTREAM` sends `api.anthropic.com` to `<base>/anthropic/…` in place of the Gemini host (#176)",
+        "Terms › AI-generated summaries and Third-party services name Anthropic Claude; Privacy splits the Google row (sign-in only) from a new Anthropic row (summaries) and names Anthropic's Commercial Terms of Service; both are dated 2026-10-14 (#176)",
+        "`progressFromIssueEvent` moves from `src/webhook.ts` (which re-exports it) to `src/tools/progress.ts`, so `src/mcp.ts` no longer reaches the webhook, or the model client, through the sprint reads (#176)",
+      ],
+      fixed: [
+        "The docs' page tabs reloaded the whole page: `docs-page.ts` now fetches the other page's prerendered HTML (prefetched on hover) and swaps its band and body in, with Back / Forward, the head's title and links, and focus on the new title; the contents column no longer shows a scrollbar (#174)",
+        "A mark in an email took the mail client's serif default where its cell set no face (#173)",
+        "The artifact attach picker called a Triage ticket SUBMITTED and showed a Testing ticket as a plain grey tag (#173)",
+        "Email digests coloured ticket statuses differently from the app (#173)",
+        "The site's Docs mockups drew the tree's disclosure chevrons as text triangles (▾ / ▸); they are the app's stroked chevron now (`treeChev` in `landing-mocks.ts`), muted and turned for an open doc (#175)",
+      ],
+      removed: [
+        "`statusBadge` (`ui.ts`), `chip` / `roleChip` (`org-ui.ts`), `EMAIL_CARD.chip`, `.cnpy-rel-tag`, and native `<title>` tooltips on the glyphs (#173)",
+        "`ticketPill`, `priorityChip`, `tagChip`, `handoffPill` and the per-file `CHIP_BASE` / `TAG_BASE` copies; the unused `ticketPill` / `priorityChip` import in `render.ts` (#173)",
+        "The Gemini REST call (`generateContent`), `parseStructuredJson` and the hand-written `validatePrSummary` / `validateIssueSummary`",
+      ],
+    },
+    prs: [173, 174, 175, 176, 177],
+  },
+  // The public site, readable by search engines, share cards and AI assistants: prerendered pages, robots.txt,
+  // sitemap, canonical links, noindex on the app, a real 404; then public docs, llms.txt, Markdown versions and
+  // errors an agent can act on. (#172)
+  // Also: self-serve deletion — one's own account (Settings), an organization (its owner, Org settings), and both from Platform.
+  // Also: the compliance pass — the Terms, Privacy and a new Refund and Cancellation Policy, consent at sign-up, billing
+  // terms before checkout, the footer's business details, the AGPL source link, accessibility basics, third-party notices.
+  {
+    version: "0.30",
+    date: "2026-10-12",
+    title: "Readable by search engines and agents, yours to delete, and plain about the terms",
+    headline: "The public site and new docs arrive with their words on the page for search engines and AI assistants; Trov loads nothing from anyone else; and you can delete your account, or an owner an organization, without writing to us.",
+    highlights: [
+      "The site's pages open with their words already there, each under one address search engines can find, with a preview card when a link is shared. Your organization's pages, sign-in and the API stay out of search results.",
+      "New public docs at trov.dev/docs: setting up, connecting Claude Code, Claude Desktop, Cursor, VS Code, Codex or Windsurf (with the config to copy), how Trov decides what is settled, every MCP tool, and the changelog. Each page is also plain Markdown, and trov.dev/llms.txt lists them for AI assistants.",
+      "Trov no longer contacts anyone else when you open it: its typefaces and the diagram renderer come from trov.dev itself, not Google Fonts or a CDN. Text, links, status labels and form fields meet the WCAG AA contrast guidelines in both themes, and every button, link, menu item and field shows where keyboard focus is.",
+      "The Unsubscribe link at the bottom of a Trov email works without signing in. It opens a page that says whose email it stops and what still arrives, and nothing changes until you press Unsubscribe.",
+      "You can delete your account in Settings, and an organization's owner can delete it in Org settings › General. An account takes its sign-ins, sessions, agent connections, email settings, photo and support messages, and signs you out everywhere; what you wrote in organizations that carry on stays, credited to “Deleted user”. An organization goes whole, and if it pays for Pro its subscription is cancelled at Stripe right away, with no refund for time already paid. Trov's operators can delete either from Platform, under the same rules, and each deletion is recorded.",
+      "New Terms of Service and Privacy Policy, and a Refund and Cancellation Policy at trov.dev/refunds. They say who runs Trov (TrovLabs, Inc., a New Jersey corporation), what is collected and why, which services process it, every cookie, how long things are kept and what deletion keeps; and that Pro renews monthly until you cancel, stays active until the end of the period paid, and is not refunded for partial periods except where the law requires.",
+    ],
+    headsUp: [
+      "The home page's headline no longer fades in: it is there at once and settles into place.",
+      "When a call fails, the error your agent gets now says what to do next, for example that a ticket must be assigned to you first, or that the repository is not connected.",
+      "The home page's Questions also answer what Trov is, how it differs from a README or a wiki, which MCP clients work, what Pro adds, and whether you can run Trov yourself.",
+      "Trov's emails now use your device's own fonts instead of downloading the site's, so opening one no longer contacts Google.",
+      "The welcome email now says what was always true: email digests are on from the start, and when they arrive. It has an Unsubscribe link, like the digests, and someone who has unsubscribed is not sent one.",
+      "Settings › Email notifications says exactly what still arrives after you unsubscribe: an invitation, a test digest you send yourself, and word that an organization you were given or paid for is ready. Invitation and organization emails now say why they came.",
+      "The old in-app unsubscribe address now opens Settings and changes nothing. Before, opening it turned off email for whoever was signed in.",
+      "Some colors are a little deeper so they are easier to read: quiet grey text, links, the green, amber, blue and red labels, and the purple banner in the light theme; quiet text and red in the dark theme. Text fields have a clearer edge.",
+      "In the dark theme, the initials on a colored avatar and the label of a red Delete button are now dark rather than white.",
+      "The home page no longer shows \"Signing you in…\" to someone who is signed out.",
+      "An address that does not exist shows a Page not found page with a way back, instead of asking you to sign in.",
+      "In the dark theme the site opens dark, with no white flash first.",
+      "Before anything is deleted you type your handle or the organization's slug, and Trov tells you what is in the way first: being the only owner of a team that has other people in it, or paying for a team that carries on.",
+      "Signing in again with the same GitHub or Google account after deleting your account starts a new, empty account.",
+      "A deletion can't be undone. An organization nobody else is in is deleted together with your account, and the confirmation names it.",
+      "If you pay for a team that carries on, cancel its plan first (it stays Pro until the end of the period already paid), or ask us to move the billing to another owner.",
+      "Creating an account now asks you to tick a box agreeing to the Terms of Service and the Privacy Policy and confirming you are 16 or older. The sign-in screens, including the one an agent opens to connect, say what continuing agrees to.",
+      "Before you pay for Pro — on the pricing page, in Get started, beside Upgrade to Pro and on the payment page — Trov shows the per-seat total, that tax is added at checkout, that Pro renews monthly until you cancel and that you can cancel any time from Billing, with links to the Terms and the refund policy. The email after a purchase says the same.",
+      "The pricing page no longer labels Pro “Most teams start here”. The home page no longer says tickets are never closed automatically (a ticket mirrored from a GitHub issue follows that issue), and the pricing questions and the docs now say what Trov's operators can see.",
+      "Every page's footer names TrovLabs, Inc. of New Jersey and hello@trov.dev, and links the Terms, Privacy, Refunds, the source code and the third-party licences. Settings › Help, What's new, the agent sign-in pages and the MCP server link the source code of the version you are using.",
+      "A Skip to content link is the first thing the keyboard reaches on every page. The sign-up form, New doc, New handoff, New sprint and the artifact forms label every field, the Guide's screenshots describe themselves, links in the legal pages and docs are underlined, and the sign-in dialog keeps the keyboard inside it.",
+    ],
+    ops: [
+      "`wrangler.toml` `[assets]` gains `run_worker_first = [\"/\"]`: `/` is answered by the Worker (the prerendered landing, or the app shell with a session cookie). It ships with the Worker; nothing to run.",
+      "The build now writes `web/dist/_redirects` and `web/dist/_headers` (Workers Static Assets reads both): no setting to change. The build command is unchanged (`npm run build:web`).",
+      "New reserved organization slugs `og` and `404` (and, from now on, the path of every page in `shared/site-pages.ts`). Before deploying: `npx wrangler d1 execute trov --remote --command \"SELECT slug FROM orgs WHERE slug IN ('og','404')\"` must return nothing.",
+      "One-time, outside the repo (`HANDOFF.md` › 10): Always Use HTTPS on, a www → apex Redirect Rule, optionally the workers.dev route off; verify `trov.dev` in Google Search Console as a Domain property (DNS TXT) and submit `https://trov.dev/sitemap.xml`.",
+      "One-time, Cloudflare dashboard (`HANDOFF.md` › 10, AI crawlers): AI Crawl Control must not block the search and assistant crawlers (\"Block AI bots\" is on by default for new zones), the managed robots.txt must be off (it would prepend its own rules), and Bot Fight Mode / WAF rules must not challenge them. Check `curl -s https://trov.dev/robots.txt | head` starts with `# trov.dev:`.",
+      "`shared/mcp-tools.generated.ts` is written by `npm run build:web` from the MCP server's own registrations; commit it whenever a tool changes (`test/mcp-catalog.test.ts` fails until you do). Nothing to run at deploy: the build regenerates it.",
+      "New reserved paths: the docs live under `/docs/<page>` (`docs` was already a reserved slug); `/llms.txt`, `/llms-full.txt`, `/pricing.md` and `/docs/<page>.md` are static files.",
+      "New dependency `mermaid` (exact `11.17.2`): `npm ci` picks it up; nothing to configure. New reserved organization slug `fonts`: before deploying, `npx wrangler d1 execute trov --remote --command \"SELECT slug FROM orgs WHERE slug = 'fonts'\"` must return nothing.",
+      "No migration, no new secret, no trigger. Deletion is live on merge.",
+      "Before relying on it: (1) check D1 Time Travel's retention in the Cloudflare dashboard — a deleted account or organization stays restorable from it until that window passes, and the Privacy Policy should say so; (2) a Time Travel restore across a deletion brings it back: re-apply the deletions it undid (`scripts/deletion-refs.mjs`, and `docs/architecture/organizations.md` › After a restore); (3) the Stripe webhook needs no change — the cancel a deletion makes sends `customer.subscription.deleted`, which Trov acknowledges and ignores.",
+      "New reserved organization slug `source` (and `refunds`, a page of `SITE_PAGES`): before deploying, `npx wrangler d1 execute trov --remote --command \"SELECT slug FROM orgs WHERE slug IN ('source','refunds')\"` must return nothing.",
+      "`/source` (the AGPL source link) is a `_redirects` rule the build writes from Workers Builds' `WORKERS_CI_COMMIT_SHA`: nothing to configure. A build that knows no commit (local) points it at the repository; so does the Worker, should the rule be missing.",
+      "Stripe dashboard, test and live (the Terms and refund policy describe these; the code cannot check them): Settings › Public details: the Terms of Service (`https://trov.dev/terms`), Privacy (`https://trov.dev/privacy`) and refund policy (`https://trov.dev/refunds`) URLs; Customer Portal: cancel AT THE END OF THE PERIOD, allow resuming, and the proration you want on seat changes; Emails: successful-payment receipts on. Checkout's own `consent_collection` / `custom_text` are not sent (they need the Terms URL set first): the owner's call.",
+      "`THIRD-PARTY-NOTICES.txt` (served at `/third-party-notices.txt`) is generated: after a dependency change run `node scripts/licenses/notices.mjs` and commit the file.",
+      "Human decisions this pass left open (no deploy step): governing law and venue (the Terms say New Jersey), whether the Gemini key's Google project is a paid one (the Privacy Policy says only that Google handles the text under the Gemini API terms that apply), the D1 Time Travel and Workers Logs retention to verify against \"up to 30 days\" and \"a few days\", and a lawyer's review of all three texts.",
+    ],
+    patches: {
+      added: [
+        "`shared/site-pages.ts`: the public site's ONE page list (`SITE_PAGES`) — titles, descriptions, Open Graph images; `siteHead` (canonical, Open Graph, Twitter), `softwareApplicationLd` (Free and Pro from `PLANS` / `PRICING`, Pro per seat per month as a `UnitPriceSpecification`; Enterprise has no price, so no Offer), and the generated `_redirects` / `_headers`. A new page is one entry (#172)",
+        "`web/site-build.ts` (a Vite plugin) and `web/src/site-prerender.ts`: every input is generated and prerendered from the code that boots it — `index.html`, `pricing.html`, `terms.html`, `privacy.html`, `404.html` — plus the empty app shell `app.html`; `THEME_BOOT` paints the stored theme before the page is parsed (#172)",
+        "`src/site.ts`: `GET /robots.txt`, `GET /sitemap.xml`, `/` as the landing (no `session` / `onboard` cookie) or the app shell (`Vary: Cookie`; `?denied=` and `DEV_LOGIN` get the shell), `canonicalRedirect` (www and plain http → `https://` + the public host, 301), `noindex`, `notFound` (#172)",
+        "`isAppRoute` (`src/routes.ts`): an address no handler answers (by method and path; `use()` middleware does not count) is a 404 before the session gate — the built page, or `{ error: \"not_found\" }` under `/api` and for other methods (#172)",
+        "`web/src/not-found.ts`: the 404 page, no script (#172)",
+        "`test/site.test.ts`, `test/site-pages.test.ts` (#172)",
+        "Public docs (`kind: \"docs\"` in `SITE_PAGES`): `/docs/setup`, `/docs/connect`, `/docs/concepts`, `/docs/mcp-tools`, `/docs/changelog` — each ONE Markdown text (`web/src/docs-content.ts`, `docs-tools.ts`, `docs-changelog.ts`) served at `/docs/<page>.md` and rendered into the page (`web/src/docs.ts`, raw HTML escaped); `<link rel=\"alternate\" type=\"text/markdown\">` in each head; script `docs-page.ts` (theme, Copy, contents) (#172)",
+        "`/llms.txt` and `/llms-full.txt` (`web/src/llms.ts`, llmstxt.org), `/pricing.md` (`pricingMarkdown`), written by the build; `_headers` gives the Markdown `text/markdown; charset=utf-8` and `Link: <page>; rel=\"canonical\"`, the two text files `text/plain; charset=utf-8` (#172)",
+        "The MCP tools reference is generated: `src/mcp-catalog.ts` lists the real registered tools (admin and member, through the SDK client) and `web/site-build.ts` writes `shared/mcp-tools.generated.ts` before prerendering; groups in `shared/mcp-tools-core.ts`; `catalogTenant` (`src/data/context.ts`, no database); `test/mcp-catalog.test.ts` (#172)",
+        "`hint` on errors: `shared/error-hints.ts` (one table by code and status), `withErrorHint` (`src/error-hints.ts`) on the Worker's JSON errors (the app, the artifact token routes, the 404), `toolError` in `src/mcp.ts` for every tool error, and `/mcp`'s 401 body; `test/error-hints.test.ts` (#172)",
+        "robots.txt names the AI search and assistant crawlers (OAI-SearchBot, ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, Googlebot, Bingbot, Applebot, DuckAssistBot) and the training ones (GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, CCBot) in groups that repeat every Disallow; the training ones follow ONE switch, `AI_TRAINING_CRAWLERS` in `src/site.ts` (default `\"allow\"`, as before) (#172)",
+        "FAQPage JSON-LD on `/` from the landing's own Questions (`web/src/site-questions.ts` + `pricingQuestions`, `faqPageLd`); new questions: what Trov is, README / wiki, MCP clients, what Pro adds (from `PLANS`), running Trov yourself (#172)",
+        "Open Graph cards for the five docs pages (`scripts/og/render.mjs`) (#172)",
+        "`src/notifications/unsubscribe-page.ts` + `handleUnsubscribe` (`src/notifications/unsubscribe.ts`): `GET /u/<token>` is a server page — who the token names (name, handle, masked address), what unsubscribing stops and what still arrives, a form POSTing `?confirm=1` (→ 303 back) — and changes nothing; CSP `default-src 'none'`, `frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, `no-store`, noindex. The one-click POST is unchanged; a bad token is a 404 page / 401; other methods 405 (#172)",
+        "`shared/email-unsubscribe.ts`: what unsubscribing stops and what still arrives (`STILL_SENT`), one wording for Settings and the `/u/` page (#172)",
+        "`emailHead` / `emailFooter` (`src/notifications/assemble.ts`): every non-digest mail's `<head>` (no link) and last row (why it came; the Unsubscribe link on a notification) (#172)",
+        "`test/notifications.unsubscribe.test.ts`, `test/notifications.email-kinds.test.ts`: the page and both POSTs, forged tokens; per-kind flag, link and header behavior; no web font in any rendered mail (#172)",
+        "Self-hosted fonts: `web/src/fonts/` (Geist latin + latin-ext, Archivo Narrow latin — the variable woff2 subsets Google Fonts serves — with their SIL OFL 1.1 texts), `@font-face` at the top of `trov.css` (`font-weight:100 900`, `swap`, Google's `unicode-range`), `shared/fonts.ts`, and `FONT_PRELOAD` (Geist latin) in every built document; Vite hashes the files into `/assets/` (#172)",
+        "`'Geist Fallback'`: local Arial / Helvetica / Liberation Sans with `size-adjust` and ascent / descent overrides measured against Geist (three weight bands), after `'Geist'` in every stack, so the `swap` barely moves prerendered text (#172)",
+        "The build writes the fonts and licenses at stable paths, `/fonts/<file>`, for the Worker's own pages (OAuth, billing notices); `fonts` joins `RESERVED_ORG_SLUGS` (#172)",
+        "Tokens `--border-input`, `--focus`, `--red-fg`, `--p-ink`; `test/render.contrast.test.ts` computes every text / control token pair of both themes (text 4.5:1 on `--bg`, `--surface` and its own 12% chip; field edges and focus 3:1; the banner's text at its two light points) and fails under WCAG AA (#172)",
+        "`test/render.focus.test.ts` (no `:focus` rule removes the outline; every ring is 2px in an allowed colour; fields are covered) and `test/render.fonts.test.ts` (no third party in any document, the preload, the faces, the licenses, mermaid pinned) (#172)",
+        "`src/deletion/`: ONE core per deletion. `org.ts` `deleteOrganization` — Stripe first (`src/billing/cancel.ts`: open Checkout Sessions expired, every live subscription cancelled with `DELETE /v1/subscriptions/:id`, Stripe's defaults: no proration, no final invoice), then one D1 batch with foreign keys deferred, then R2. `person.ts` `deleteAccount` — the guard rails, the orgs nobody else is in deleted with the account, then one batch: personal rows deleted and the handle rewritten to a `deleted-<random>` tombstone through `HANDLE_COLUMNS`",
+        "`src/deletion/tables.ts` `ORG_TABLES`: every table with an `org_id` column, deleted by `org_id`; a manual connection that can still reach another org moves there. `test/deletion.org.test.ts` fails when a migration adds an `org_id` table it does not list",
+        "`src/deletion/r2.ts` `sweepR2`: after the commit, an `artifacts/`, `doc-images/`, `org-logos/` or `avatars/` object is deleted only when no row anywhere (and no unexpired upload token) still points at its sha",
+        "Routes, cookie only, never MCP: `GET /auth/me/deletion`, `POST /auth/me/delete { confirm }`; `GET /api/o/:slug/deletion`, `POST /api/o/:slug/delete { confirm }` (owner only); `GET|POST /api/platform/orgs/:slug/deletion|delete`, `GET|POST /api/platform/persons/:handle/deletion|delete` (superadmin; never a superadmin's account or one's own)",
+        "Audit: `org.delete` (a platform row, the slug as target, the Stripe ids a refund would need) and `person.delete` (the tombstone as target, `ref` = a keyed hash of the old handle so a restored database can be matched); every org the person left gets `member.leave`. `scripts/deletion-refs.mjs` matches refs after a restore",
+        "Web: Settings › Delete account, Org settings › General › Delete organization (owners), Platform › an organization › Delete, Platform › Admins › Accounts (`web/src/deletion.ts`, `deletion-actions.ts`); `confirmModal` gains a typed confirmation field, `detail`, `error` and a wide box (`web/src/confirm.ts`); the landing says `?deleted=account|org` once",
+        "`shared/deletion-core.ts`: the previews' DTOs, the guard-rail codes and every sentence the screens use; `test/deletion.{org,account,platform}.test.ts`, `test/render.deletion.test.ts`",
+        "`/refunds`: the Refund and Cancellation Policy, a `legal` page of `SITE_PAGES` (`REFUNDS` in `web/src/legal.ts`, `LEGAL_DOCS` / `LEGAL_ORDER`), with its Open Graph card (`scripts/og/render.mjs refunds`), sitemap line, 301s and reserved slug; the legal tab row is `legalTabs`, built from `LEGAL_ORDER` (#172)",
+        "`shared/legal-core.ts`: the operator (`LEGAL_ENTITY` TrovLabs, Inc., `LEGAL_STATE` New Jersey), `LEGAL_EMAIL`, `MIN_AGE` (16), the legal paths, `SOURCE_PATH` / `sourceUrl`, `NOTICES_PATH`, `copyrightLine`, the consent sentence (`consentHtml`, `agreeHtml`) and `LEGAL_LINKS` — one copy for the site, the app, the Worker's pages, the mail and MCP (#172)",
+        "Consent: `consentHtml()` under the landing's sign-in / Get started dialog (every mode and plan), on the refused-Google card and on the MCP OAuth sign-in page; onboarding has an unchecked, required checkbox (`onbAgree`, `OnboardState.agreed`) that Continue waits for — not asked again when editing an account (#172)",
+        "Billing terms before payment: `seatMath` + `CHECKOUT_TAX` / `RENEWAL_TERMS` / `CANCEL_TERMS` (`shared/pricing.ts`) on the Pro card (`planTerms`, inside `.site-plan-ctabox` so the subgrid holds), the Pro side of Get started, the Plan block and Settings › Plan (`upgradeLine` with the org's own seats, `checkoutTerms` / `cancelTerms`), the Members tab's Upgrade to Pro, the embedded payment card, and the paid confirmation mail (`paidTermsText`) (#172)",
+        "AGPL §13: `/source` → the deployed commit (`assetRedirects(commit)` / `sourceRedirect` in `shared/site-pages.ts`, `WORKERS_CI_COMMIT_SHA` read by `web/site-build.ts`; `src/site.ts` answers it too), linked from the footer, Settings › Help (`legalLinksRow`), What's new, the OAuth / billing pages (`LEGAL_FOOT` in `oauth-pages.ts` `shell`), the Terms, and the MCP server's `instructions` (`mcpInstructions`) with `serverInfo.websiteUrl` (#172)",
+        "`THIRD-PARTY-NOTICES.txt` + `scripts/licenses/notices.mjs` (what the browser bundle and the Worker actually contain, from Rollup's chunks and esbuild's metafile, with licence texts; the fonts' OFL; Lucide's ISC for the inline icons), served at `/third-party-notices.txt` (`text/plain; charset=utf-8`) (#172)",
+        "Skip links (`skipLink` / `followSkipLink` in `site-chrome.ts`, `.site-skip`) on every public page and the app shell (`#cnpy-main`), never writing the hash; a Tab trap for the sign-in dialog; `role=\"main\"` on the sign-up card's wrapper (#172)",
+        "`test/render.legal.test.ts` (rewritten), `test/legal.compliance.test.ts`, `test/legal.worker.test.ts` (#172)",
+      ],
+      changed: [
+        "`X-Robots-Tag: noindex` on every GET / HEAD the Worker answers but `/robots.txt`, `/sitemap.xml` and the landing, and on everything on a host other than `PUBLIC_ORIGIN`'s; `_headers` adds it to every static file on `*.workers.dev`, and to `/app` and `/404` (#172)",
+        "The app shell is `/app` (`web/app.html`: `noindex`, no canonical, no landing), served for `/<org>/`, `/platform`, `/billing/done`, `/billing/checkout` and `/` with a session — no longer the landing's `index.html` (#172)",
+        "`main.ts`: on the prerendered landing the boot paints it at once (a morph, nothing rebuilt) and asks no `/auth/me`; the hero copy is rendered settled with a transform-only CSS rise (`site-rise`); `@media (scripting: none)` shows every reveal; `pricing-page.ts` / `legal-page.ts` patch their prerendered root (`paintRoot`); `syncPageBackground` keeps `<html>` in the theme (#172)",
+        "`/index`, `/index.html`, `/<page>.html` and `/<page>/` answer 301 to the clean URL (were the assets binding's 307) (#172)",
+        "`RESERVED_ORG_SLUGS` gains `og`, `404` and every page of `SITE_PAGES` (#172)",
+        "An unknown address is a 404 instead of the session gate's 401 (`test/spa-shell.test.ts`, `test/billing.signature.test.ts` follow); a real cookie route is unchanged (#172)",
+        "`/docs/` and a browser's signed-out `/docs` (accepts `text/html`, no session cookie) 302 to `/docs/setup`; `/docs` stays the cookie route for a fetch and for anyone signed in (#172)",
+        "The landing's MCP card counts and lists the tools from the generated list (43 tools, plus 1 admin-only), with links to the reference and the client setup; pricing's \"Can we read the source?\" now also says what running your own copy takes (#172)",
+        "`get_ticket` / `get_sprint` on an unknown id answer `code: \"not_found\"` (same sentence as before, now with its code) (#172)",
+        "`test/isolation.mcp.test.ts`: the three every-tool matrices (~3.5s each alone) take a 20s budget instead of 5s, so a busy machine no longer times them out (#172)",
+        "The welcome is a NOTIFICATION: `welcomeFirstJoin` sends none to a person with `email_unsubscribed = 1`, and it carries the unsubscribe link (footer + `List-Unsubscribe`); its digest line comes from the joined org's policy and send hour (`welcomeDigests`, `digestSentence`). Invitations and grant / paid notices stay transactional, with a footer saying why they came (#172)",
+        "`List-Unsubscribe` is the https one-click link alone (`unsubscribeHeaders`): the `mailto:` alternative is gone, since nothing processed it (#172)",
+        "Every mail is set in a system font stack (`EMAIL_FONT_STACK`); `FONTS_HREF` and every Google Fonts `<link>` are gone from mail (#172)",
+        "Mermaid is the `mermaid` npm dependency pinned to `11.17.2`, loaded by `import(\"mermaid\")` (lazy Vite chunks on Trov's origin; `securityLevel: \"strict\"` unchanged) instead of `cdn.jsdelivr.net/npm/mermaid@11` (unpinned) (#172)",
+        "WCAG AA token values, hue kept: light `--fg-40` #8e8e98 → #70707a, `--accent` #5e6ad2 → #525cc3 (and `--accent-soft`), `--green` → #007545, `--amber` → #945800, `--blue` → #2467af, `--red` → #c22231, `--purple` → #804db7, `--p-moss` → #607a29, `--p-ochre` → #966800; dark `--fg-40` .40 → .52, `--red` #cc6262 → #df7372; the banner gradient one step deeper in both themes, its highlight .16 → .10 (light), its text ≥ 92% white. `src/auth/oauth-pages.ts` copies the light values (#172)",
+        "Every text field's edge is `--border-input` and its focus a 2px `--focus` ring — one `!important` rule in `trov.css`, since the fields' borders and `outline:none` are inline; a borderless field inside a box colours the box (`:has`). Focus rings use `var(--focus)` (was the accent at 70%) (#172)",
+        "The OAuth / billing pages' CSP is `font-src 'self'` (was Google Fonts); `scripts/og/render.mjs` inlines the vendored Geist and needs no network (the PNGs come out byte-identical) (#172)",
+        "`deleted-…` handles are reserved: no sign-up or rename can take one (`handleAvailable`)",
+        "The handoff sentence Trov writes into the feed (\"<sender> left a handoff for <recipient>\") names the tombstone once its person is deleted; text people typed is never rewritten",
+        "`stripeCall` takes `DELETE` (no idempotency key: Stripe ignores one there); the Stripe stand-ins (`scripts/dev/stripe-standin.mjs`, `test/helpers/billing.ts`) answer the cancel and the session expiry",
+        "CLAUDE.md invariant 11: accounts and organizations are hard-deleted, and only through `src/deletion/`",
+        "The Terms and the Privacy Policy are rewritten from the code (effective 2026-10-12): TrovLabs, Inc. of New Jersey, eligibility 16+, agents act as the person, per-seat billing, Stripe Tax, anniversary-date renewal, cancellation and refunds (pointing at `/refunds`), deletion and what it keeps, the six cookies, a retention table, rights, transfers, governing law; the legal tab row shows Terms · Privacy · Refunds and the date reads \"Effective and last updated\" (#172)",
+        "The site footer: Contact · hello@trov.dev · Pricing · Terms · Privacy · Refunds · Source (AGPL-3.0) · Licenses, then `© <year> TrovLabs, Inc. · New Jersey` (`copyrightLine`); the bare \"Licensed under AGPL-3.0\" text and `.site-foot-lic` are gone (#172)",
+        "`PRICING.team.badge` is null (no \"Most teams start here\"); the accent still falls on Pro, so the pricing card and its OG image are unchanged (#172)",
+        "Labels: onboarding Handle / Display name (`for` / `id`, help and status as `aria-describedby`, the colors a named radiogroup, swatches named), New doc, New handoff, New sprint, the artifact forms; Guide screenshots get `GUIDE_ALT` text; site navs are named landmarks; links in `.site-legal-sec` text and the legal summary are underlined; `.site-signin-foot` text is `--fg-70` (axe contrast) (#172)",
+        "The Guide's 42 screenshots (`web/public/guide/`) are retaken on the current UI and brand with a made-up team and organization: `node scripts/seed-dev.mjs --guide-demo` loads `scripts/seed/guide-demo.mjs` (the dev fixtures with fictional people, org and product, dates moved to the present), so no real person's name, handle or address and no \"Canopy\" appears; `scripts/capture-guide.mjs` frames Board / Table with the queue's view switch, shows My Work's Repo tile on the labelled sample data and falls back to the Chromium under `PLAYWRIGHT_BROWSERS_PATH` (#172)",
+      ],
+      fixed: [
+        "Search Console's \"Duplicate without user-selected canonical\" on `/`: the home page carries a canonical, and no other address serves its HTML — the app shell at `/<org>/`, `/platform` and `/billing/*` was `index.html`, byte-identical to `/`, with no canonical anywhere (#172)",
+        "`/robots.txt` and `/sitemap.xml` answered the session gate's 401 (#172)",
+        "`/pricing`'s description named the retired Personal and Team plans; it is built from the plan tables now (#172)",
+        "The landing said \"39 tools, plus 1 admin-only\"; the server registers 43, plus 1 (#172)",
+        "`AGENTS.md` sent agents to a token screen Settings no longer has; it points at the browser sign-in and the docs (#172)",
+        "A digest's footer Unsubscribe link (`GET /u/<token>`) redirected to `/#unsubscribe` and dropped the token, so it needed a sign-in and then turned off mail for whoever was signed in — not the person the mail was for (#172)",
+        "The welcome email said digests were off until a cadence was picked; they are on by default (#172)",
+        "Settings › Email notifications said nothing of any kind sends after unsubscribing; invitations, grant notices and test sends do, and now it says so (#172)",
+        "The avatar menu's rows, `dropdown()` options and the filter bar's button showed keyboard focus only as a faint hover tint; the New sprint form and the New doc body showed none, and no inline-styled field ever showed `.cnpy-input:focus` (#172)",
+        "Weight 640 (`trov.css`) rendered as 650: the static Google weights are replaced by the variable axis (#172)",
+        "Legal and marketing claims the code did not back: the GitHub `read:org` scope (sign-in asks `read:user user:email`); \"seats cannot be reduced below the number of people\"; \"charged at the start of each month\" (it is the subscription's anniversary); \"expired and revoked tokens are cleared\" (pasted tokens and revoked grants are kept); content visible \"to nobody else\" (operators and processors); Google Fonts as a processor; \"tickets and sprints are never closed automatically\" (mirrored tickets follow their issue); \"rejected proposals and old versions are kept, never deleted\"; the retention the Privacy Policy left out (usage counts 400 days, audit trail, support reports, invitations, the email log, expired sessions) (#172)",
+        "The landing's sign-in dialog let Tab wander onto the page behind it (#172)",
+      ],
+      removed: [
+        "`web/index.html`, `web/pricing.html`, `web/terms.html`, `web/privacy.html` (generated now) (#172)",
+        "The in-app `#unsubscribe` screen (`unsubscribeView`, `runUnsubscribe`, Settings' \"Preview the unsubscribe page\"): `#unsubscribe` now parses to Settings and changes nothing (#172)",
+        "Google Fonts from every built page, the app shell and the OAuth / billing pages (stylesheet, preconnects, CSP), and jsDelivr from the app (#172)",
+      ],
+    },
+    prs: [172],
+  },
+  // One GitHub account, several Trov organizations: repositories split between orgs (#170).
+  {
+    version: "0.29",
+    date: "2026-10-11",
+    title: "One GitHub account, several organizations",
+    headline: "Several Trov organizations can connect the same GitHub account, track the same repository, and connect with whatever repositories their admin can read.",
+    highlights: [
+      "More than one organization can connect the same GitHub account through the Trov App. Before, the first organization to connect an account kept it, and a second one had to paste a token and add a webhook by hand.",
+      "Several organizations can track the same repository. Each gets its own copy of that repository's pull requests, checks and deploys, and nothing in one organization says who else tracks it.",
+      "You no longer need to read every repository of a GitHub account to connect it. Connect with the repositories you can read: your organization can then use exactly those. An owner of the GitHub account still gets all of them.",
+      "When an organization is connected with part of an account, Repositories lists only that part and says whose access it is. Got access to more on GitHub since? Choose Connect again to add them.",
+      "Disconnecting GitHub in one organization leaves the others connected. Uninstalling the Trov App on GitHub ends the connection for every organization that used it, and each is told.",
+      "Getting ready for Claude on the web: connecting from claude.ai preselects Manual, so the connection works in the organization you pick, and handoffs, prompts and artifacts no longer assume a code repository. An agent with no shell can open and add image, PDF and file artifacts up to 1 MB.",
+    ],
+    headsUp: [
+      "An organization still captures events for its primary repository only. Other tracked repositories are listed and resolve links, as before.",
+      "What an organization can read is checked when its admin connects, not again later. To drop access someone no longer has on GitHub, disconnect and connect again.",
+      "Claude on the web has not been tried against Trov yet. There, a file over 1 MB can be linked but not opened or uploaded, and a picture you attach in the chat usually cannot be passed on to Trov.",
+      "A connection that says \"cannot read N of the repositories\" no longer happens: it now connects with the repositories you can read. With none, it says so and connects nothing.",
+    ],
+    ops: [
+      "Migration `0053_installation_repos` (applied on merge): the index on an installation stops being unique, `org_github_installations` gains `repo_access` (default `all`, which is what every existing connection is), and the table `org_github_installation_repos` is added. No table is rebuilt and no row changes. Rollback is in the file's header. No secret, no trigger, no change on GitHub.",
+    ],
+    patches: {
+      added: [
+        "`0053_installation_repos`: `idx_org_github_installations_installation` is no longer unique (several orgs may bind one installation; `idx_org_github_installations_org` stays); `org_github_installations.repo_access` (`all` | `selected`); `org_github_installation_repos` (what a `selected` binding reaches: GitHub's id, the name, private or not) (#171)",
+        "`src/platform/jobs.ts`: `installationOrgs` (every org bound to an installation) and `installationRepoOrgs` (every bound org that tracks a repository and whose binding reaches it). `installationOrg` is gone (#171)",
+        "`src/github-app/store.ts`: `allowedRepos` / `repoAllowed`, and `bindInstallation` takes what the connect flow found readable; connecting again adds to a `selected` list or widens it to `all`, never narrows (#171)",
+        "`GithubInstallationDTO.repo_access`; Repositories says whose access a `selected` connection carries and links Connect again (`web/src/github-app.ts`) (#171)",
+        "`content_base64` on `upload_asset` (artifact and doc image) and `artifact_update`, and `include_file` on `artifact_get` (an image block or an embedded resource; `file` says what happened): binary bytes inside the call, ≤ `ARTIFACT_INLINE_BINARY_MAX` (1 MB), through the same token mint and consume as a PUT (`src/tools/artifacts-agent.ts`, `src/mcp.ts`) (#171)",
+        "`test/github-app.shared.test.ts`: two orgs on one installation and on one repository, and a `selected` org through the webhook, the picker, Disconnect and the token (#171)",
+      ],
+      changed: [
+        "The connect flow no longer refuses an installation another org holds, nor an account that reads only part of it: check 5 now decides `all` or `selected` (the readable repositories, by id), and refuses only an account that reads none (`no_access`, which replaces `partial_access`). `?existing=1` offers every reachable installation (`src/github-app/connect.ts`) (#171)",
+        "An installation past 1,000 repositories is connected as `selected` when the account reads 1,000 or fewer of them; `too_many_repos` is now about what the ACCOUNT reads (#171)",
+        "`POST /webhook/github/app`: `installation` and `installation_repositories` events are applied to every org bound to the installation; a repository's event is captured once in every org that tracks it as its primary and reaches it (`src/github-app/webhook.ts`) (#171)",
+        "`visibleRepos`, and so the picker, `POST …/github/repositories` and `syncRepoAccess`, are cut to what the org's binding reaches (`src/github-app/repos.ts`) (#171)",
+        "`resolveGithubCredential` / `githubCredentialSource`: the installation does not answer for a repository outside a `selected` binding's list; the stored token does, if there is one (`src/github-app/credential.ts`) (#171)",
+        "The connect outcome `taken` is replaced by `conflict` (two connects racing for one org) (#171)",
+        "The MCP consent page preselects and recommends Manual for a client that returns to `claude.ai` / `claude.com` (`isWebClient`, `src/auth/oauth-pages.ts`): such an app is in no repository to follow (#171)",
+        "Tool descriptions say what to do with no checkout and no shell: `send_handoff`, `claim_handoff`, `save_prompt`, `artifact_get`, `upload_asset`, the shared `repo` argument, and the `repo_required` refusal (`src/mcp.ts`, `src/data/bearer.ts`) (#171)",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [171],
+  },
+  // Embedded checkout: pay inside Trov's own card instead of on Stripe's page. OFF until Trov turns it on (#136).
+  {
+    version: "0.28",
+    date: "2026-10-10",
+    title: "Pay without leaving Trov",
+    headline: "Buying Pro can happen on a Trov page, in the same card as the rest of signing up, instead of on Stripe's site.",
+    highlights: [
+      "You can pay for Pro without leaving Trov. The payment form opens on a Trov page; it is still Stripe's own form, so your card details go straight to Stripe and Trov never sees them.",
+      "The form sits in the same card as the rest of signing up, with the same banner, so paying is one more step of setting up your organization and not a trip to another site. Upgrading an organization from Free works the same way.",
+      "Reloading the page, or coming back to it, picks up the same payment where you left it. If you already paid, you are taken to the confirmation and never asked to pay twice.",
+      "If the form cannot load, for example behind a content blocker, the page says so and offers Stripe's own page for the same purchase, and you come back to Trov when it is done.",
+      "Nothing changes until Trov turns this on. Until then, and whenever it is turned off again, buying Pro goes to Stripe's page exactly as before.",
+    ],
+    ops: [
+      "Embedded checkout is OFF until `STRIPE_PUBLISHABLE_KEY` is set in `wrangler.toml` `[vars]` (empty by default; nothing changes for buyers until then). To turn it on: paste the Stripe publishable key of the SAME mode as `STRIPE_SECRET_KEY` (`pk_test_…` beside `sk_test_…`, `pk_live_…` beside `sk_live_…`; Developers › API keys — it is public, never the secret key) and merge. No migration, no secret, no trigger. For Apple Pay, Google Pay and Link in the form, add `trov.dev` under Stripe › Settings › Payments › Payment method domains (per mode). To turn it off: empty the var and merge; checkout is Stripe's hosted page again. `docs/architecture/billing.md` › Owner checklist.",
+    ],
+    patches: {
+      added: [
+        "Embedded checkout (`STRIPE_PUBLISHABLE_KEY`, var; empty = off): `/billing/checkout` (`web/src/billing-checkout.ts`), a payment page in the bannered first-run card with Stripe's embedded form mounted in its body (`data-morph=\"billing-checkout\"`, the mount node `data-keep`, so a repaint never rebuilds Stripe's iframe). States: a skeleton while it loads, the form, \"The payment form did not open\" with Continue on Stripe's page (a hosted session for the same purchase) and Try again, an expired checkout, and a refusal as a sentence. `BillingConfig.embedded` (`src/billing/config.ts`) is the one switch: on only for a `pk_` key of the secret key's mode against the real Stripe API, never with `STRIPE_TEST_API_BASE` (#136)",
+        "`POST /api/billing/checkout` (session cookie only) and `POST /api/o/:slug/billing/upgrade { ui }`: the payment page's call. `startCheckout` makes the same session with `ui_mode: \"embedded\"` and `return_url` in place of `success_url` / `cancel_url` and answers its client secret to the signed-in buyer, `no-store`, never logged or stored; `session_id` resumes an open session (no new Stripe object, no `checkout` unit), answers `complete` for a paid one (the page goes to `/billing/done`) and `expired` for an expired one; `ui: \"hosted\"` is the fallback. `GET /api/billing/config` says `embedded: true` while it is on (#136)",
+        "`web/src/stripe-js.ts`: Stripe.js from `https://js.stripe.com/v3/`, injected by the payment page's boot only (never the landing or the app), no npm dependency, a 15 s timeout; `test/billing.embedded.test.ts`, `test/render.billing-checkout.test.ts`, and a client-secret canary in `test/billing.leak.test.ts` (#136)",
+        "The state preview (`web/src/preview.ts`) never opens a checkout: `/billing/checkout` under a preview shows \"Nothing can be paid in a preview\" and asks the Worker for nothing, and Stripe.js is not loaded (#136)",
+        "`docs/architecture/billing.md` › First real test: the owner's Stripe TEST-mode walk of the embedded form on their own machine (#136)",
+      ],
+      changed: [
+        "With embedded checkout on, `GET /billing/start` (signed in) answers 303 to `/billing/checkout?plan=…` and the org's Upgrade to Pro answers `{ url: \"/billing/checkout?…&org=<slug>\" }`; neither creates a session (the page does). Off, both are the hosted redirect, unchanged. After payment Stripe returns to `/billing/done?session_id=…` either way and the webhook still fulfils (#136)",
+        "Privacy (`web/src/legal.ts`): Stripe's script (Stripe.js) runs on the payment page, and only there, and sets Stripe's own cookies; `updated` stays 2026-10-09 (#136)",
+        "The Stripe client cuts anything shaped like a Checkout Session client secret out of an upstream error before it is logged (`src/billing/stripe.ts` `clean`) (#136)",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [136],
+  },
+  // The signed-out site on a phone (#139).
+  {
+    version: "0.27",
+    date: "2026-10-10",
+    title: "The site on a phone",
+    headline: "The front page, pricing, the terms and the sign-in and contact forms are laid out for a phone, not shrunk to fit one.",
+    highlights: [
+      "On a phone the top bar is one row: Trov, Get started and a Menu button. The menu opens from the bottom of the screen with every section of the page, the theme switch, the source on GitHub, Sign in and Get started.",
+      "The pictures of the product are drawn for a narrow screen. The Review screen at the top shows one change in a single column with Reject and Promote under it, each screen in the tour shows its most telling part, and none of the text in them is too small to read.",
+      "Opening a screen from the tour fills the phone: the screen, what the Guide says about it, and Previous and Next at the bottom under your thumb. Swipe left or right to move between the seven.",
+      "Sign in, Get started and the Contact form rise from the bottom of the screen with full-size buttons. When the keyboard opens the form ends above it, and Send stays in view while you type.",
+      "Pricing is a readable stack of the three plans with one column of questions, the install commands for the Claude Code plugin sit in their own box over a Copy button, and the footer is a list of links you can tap.",
+      "The Terms of Service and Privacy Policy read as a page on a phone: larger text, and the contents folded behind a Contents button until you want them.",
+    ],
+    patches: {
+      added: [
+        "The site's menu under 900px: `menuSheet` in `web/src/landing.ts`, a root-level `data-overlay=\"sitemenu\"` (`role=\"dialog\"` `aria-modal`) drawn from `state.siteMenu`, with the five `siteJump` links, `cycleTheme`, the GitHub link and both `openSignIn` buttons (Back to the app when reopened from inside it). The nav always carries its button (`openSiteMenu`, `aria-expanded`, `aria-controls`); GitHub, the theme toggle and Sign in carry `site-nav-x` and leave the bar under 900px (#139)",
+        "`web/src/site-menu.ts` (`createMenuCtl`): the scroll lock (undone at once on close, so a section link scrolls the page while the sheet leaves), focus to the first link and back to the button, Esc, the Tab trap (`trapIndex`), an exit on `--fx-fast` (`data-closing`, `MENU_EXIT_MS`), none under reduced motion, and a close when the window grows past 900px. Acts `openSiteMenu` / `closeSiteMenu`; `siteJump`, `openSignIn` and `siteBack` close it first (#139)",
+        "One block in `web/src/trov.css`, \"the site on a phone\", holds every rule the signed-out site changes for a narrow or touch screen. All of it is behind `max-width:900px`, `max-width:640px`, `max-width:480px` or `(hover:none)`; the only rules outside a query hide what a wide screen never shows, or style the menu, which `min-width:901px` hides (#139)",
+        "A swipe steps the tour's dialog on a phone: `swipeStep` in `web/src/site-feature-core.ts` (at least 56px, twice as far across as down, under 700ms) and `onPointerDown` / `onPointerUp` / `onPointerCancel` in `web/src/site-feature.ts`, touch and pen only. The panel and its scroller are `touch-action:pan-y`, so a vertical scroll stays the browser's and cancels the gesture (#139)",
+        "`web/src/site-viewport.ts` (`initSiteViewport`, `coveredBottom`): `--site-kb` on `<html>` is the height of the window the on-screen keyboard covers, read from `visualViewport`. Under 640px the sign-in and Contact sheets are lifted by it and lose it from their `max-height`, and the focused field is scrolled into view inside the sheet (#139)",
+        "The legal contents disclosure: `legalView(doc, dark, tocOpen)` emits a `data-legal-tocb` button (`aria-expanded`, `aria-controls`) and a `.site-legal-tocw` wrapper round the list; under 900px the box is folded (`grid-template-rows:0fr`, the list `visibility:hidden`) until `web/src/legal-page.ts` opens it, it survives the theme toggle, and a contents link folds it at once before scrolling (#139)",
+        "`test/render.site-mobile.test.ts`: the menu's markup, state and acts, that every rule of the phone block is behind a width or hover query, the hero's unified-diff hooks, the 11px type floor covering every smaller size the mockups use, the sheet rules, `swipeStep`, `coveredBottom`, the Copy button, the footer and the legal disclosure (#139)",
+        "`docs/architecture/web-ui.md`: a section \"The site on a phone\" (the menu overlay, the sheet pattern, the mockup rule) (#139)",
+      ],
+      changed: [
+        "The hero under 640px: the headline at `clamp(32px, 9.4vw, 40px)`, the two buttons 50px tall (stacked under 480px), the banner's dots masked toward its foot and its tilted mark placed bottom right. The Review mockup drops its fixed 568px height and shows ONE unified diff: the left pane's twin lines (`site-hero-twin`) and both pane heads are hidden, the removed line is ordered above the added ones, the verdict is two buttons under the diff and the toast sits at the top of the window (#139)",
+        "No text in a mockup renders under 11px under 640px: one rule keyed on the inline sizes (`[style*=\"font-size:9px\"]` and the six others in use) inside the hero mockup, the tour's teasers, the how-it-works cards, the agents cards, the Contact form and the dialog's screens; the 18px and 20px avatars that hold initials grow to 22px and 24px (#139)",
+        "Tour rows under 640px stack copy then mockup with a 22px gap and 64px between rows; Explore is a bordered 44px button; the Tickets teaser keeps two columns (`site-hide-ph` drops Testing), the Artifacts teaser is one column, and the dots run edge to edge behind each mockup (#139)",
+        "The tour's dialog under 640px: a 44px close button, 48px Previous and Next with `env(safe-area-inset-bottom)` under them, the board at two columns, and three rows re-laid (`fxm-hrow`: a handoff's title over who, state and when; `fxm-staged`; `fxm-stats`) (#139)",
+        "Sign in / Get started under 640px: the card slides up (`site-sheet-up` on `--fx-slow`), the plan switch is 44px, the providers 50px, the close button 44px. Contact: 46px fields, a 44px kind switch, and Cancel / Send in a sticky row at the foot of the sheet (`scroll-padding-bottom` keeps a focused field above it) (#139)",
+        "Pricing under 640px: a full-width interval switch, 48px plan buttons, 14.5px limits, 15px answers, 56px question rows. Sections carry `site-sec` and take 84px of top padding and a 20px gutter; a nav jump lands the heading 16px under the bar (`scroll-margin-top:-8px`) (#139)",
+        "The plugin card under 640px: each install command stays on its line and scrolls inside its box, and Copy is a labelled 44px button under them (`mcp-connect.ts` `copyBox`, restyled for `.cnpy-site` only; Settings and the guided setup are unchanged) (#139)",
+        "Terms and Privacy under 640px: 16px text at line-height 1.72, the document switch as two 44px halves, contents links as 44px rows. The footer stacks left-aligned with its links as 44px rows in two columns and the licence after the copyright (`site-foot-lic`, a span only a phone shows) (#139)",
+        "On a touch screen (`hover:none`) cards and mockups no longer stay lifted after a tap, and a tour mockup answers a press with its accent edge (#139)",
+      ],
+      fixed: [
+        "The hero's Review mockup was cut off at the bottom on a phone: its two diff panes wrapped to a few words a line inside a window fixed at 568px (#139)",
+        "The tour dialog's Tickets board overflowed its cards on a phone (an avatar outside its card), and a handoff's title was cut to a few letters (#139)",
+      ],
+      removed: [],
+    },
+    prs: [139],
+  },
+  // Review, polished after its first real queue (26 staged docs) (#138).
+  {
+    version: "0.26",
+    date: "2026-10-10",
+    title: "Review, made for a long queue",
+    headline: "Rendered shows a proposed doc the way it will read, and a card you decide on leaves the list in one clear move.",
+    highlights: [
+      "Rendered now shows the document, not its source. A proposed doc reads the way it will in Docs once promoted: headings, tables, lists, code and images, where before you saw the raw text with its # and | marks.",
+      "For a change to an existing doc, Rendered marks what the proposal adds in green and shows what it removes struck through, inside the text where a sentence, a list item or a table cell was edited, and a whole paragraph, item or row at a time where one was added, removed or rewritten. A brand-new doc is shown plain, with one line saying nothing is live yet.",
+      "When you promote, ratify or reject, the card shows the verdict, folds away, and the next one is already open on the right. The counts drop with it, and you can decide several in a row without waiting. If a decision could not be saved, the card comes back and a message says why.",
+      "The queue's filter and the way a change is shown are now switches like the rest of Trov. All, Proposals and Decisions each say how many are waiting.",
+      "The list keeps its place. Picking a card far down a long queue no longer jumps the list back to the top.",
+      "The screen says Review once, in the top bar, with one line under it.",
+    ],
+    patches: {
+      added: [
+        "`web/src/html-words.ts`: two renderings of one block merged word by word (`mergeInline`), so Rendered marks an edit INSIDE a paragraph, heading, list item or table cell (`<ins class=\"cnpy-rv-w\">` / `<del class=\"cnpy-rv-w\">`, `data-chg=\"mix\"`, `tr.cnpy-rv-row-chg`) instead of showing the old block and then the new one. A tag is one token with its quoted attribute values, only text tokens are wrapped, no old tag is kept, and anything the tokenizer cannot account for refuses the merge; an edited table row pairs with the added row it still shares a cell with (#138)",
+        "`web/src/review-rendered.ts` + `web/src/md-blocks.ts`: Review's Rendered view renders the two BODIES through `renderMarkdown` (the Docs reader's pipeline: marked, DOMPurify, the code / table / doc-image pass) in `.cnpy-md`. An edit is cut into top-level blocks with marked's lexer, compared with `diffSeq`, and each changed block sits in an `<ins>` / `<del>` (`.cnpy-rv-blk`); a table whose header stayed is ONE table with its changed rows classed (`cnpy-rv-row-add` / `-del`), a list is compared item by item. A new doc (`isNew`: nothing live) is one call, unmarked, under one note (#138)",
+        "`morph.ts` `data-morph-list`: a keyed child list. Children pair by `data-morph-key` instead of by index, so a row taken out of the middle leaves every other row the element it was. `docs/architecture/web-ui.md` › A row leaving a list is the pattern to reuse (#138)",
+        "Review's list exit: `state.reviewLeaving` (`{ verdict, gone }` by item id), `reviewVerdict` / `settleReview` / `pruneReviewLeaving` in `main.ts`, `.cnpy-rv-row[data-verdict]` in `trov.css` (the verdict held .13s, then `grid-template-rows:1fr → 0fr` and opacity over `--fx-fast`; `REVIEW_EXIT_MS` 310). The refetch is held until no card is still collapsing; a failed write deletes the entry and restores the selection (#138)",
+        "`test/render.review-rendered.test.ts`; the switch, title, keyed-list, verdict and reduced-motion cases in `test/render.review.test.ts` (#138)",
+      ],
+      changed: [
+        "Review is `data-morph=\"review\"`: the page is patched in place, the detail body is keyed by item (`rvd:<id>`) and the diff body by mode (`diff:<mode>`). The list pane keeps its scroll position across a repaint, and the detail pane starts at the top for a new item (`syncReviewDetail`, which also hands focus from a verdict button to the next item's) (#138)",
+        "Unified / Side by side / Rendered and All / Proposals / Decisions are `segmented()` (`review-diff`, `review-filter`, size `sm`); the filter's options carry counts (`.cnpy-seg-n`), absent while the queue is still being read. `selectChip` is no longer used by Review (#138)",
+        "`triageCounts().review` leaves out items in `reviewLeaving`, so the sidebar badge drops with the card; it is derived per paint, never stored (#138)",
+        "`ReviewItem` carries `liveBody`, `proposedBody` and `isNew`; `diffViewer(item, view)` replaces `diffViewer(entries, view, liveLabel)`; `lineDiff` is built on the new `diffSeq` (#138)",
+      ],
+      fixed: [
+        "Review › Rendered: removed text inside a table row or block was struck twice where it held inline code or bold (the strike was set on the cell and again on the child); it is set once, on the removed box (#138)",
+        "Review › Rendered showed raw markdown: it printed the line-cut diff one escaped line at a time, so no table, list or code fence could ever form, and unchanged runs were collapsed away (#138)",
+        "Review said its name twice (the header's title and an in-page heading); the in-page `<h1>` is gone and the one-line description stays (#138)",
+        "Selecting a card rebuilt the whole screen and reset the list's scroll to the top (#138)",
+      ],
+      removed: [
+        "`renderedPreview` and its per-line image handling in `review.ts` (the reader's own doc-image pass does it now) (#138)",
+      ],
+    },
+    prs: [138],
   },
   // The signed-out landing page, revamped around the first-run card's banner (#134).
   {
@@ -216,8 +616,11 @@ export const RELEASES: Release[] = [
         "Redundancy pass on the landing copy: open sign-up is said once (under the hero buttons); the sign-up clause left Security and the dialog foot; Security's person-only line now covers decisions, artifacts and prompts, and the same claim left the Artifacts row, the Decisions card and the Prompt Library card; the loop's lede, the authority card's second sentence, the plugin card's \"installed in two commands\" and the hero's pricing link and Free-plan claim are gone; the hero button is Start for free, the plan card's own label (#134)",
         "The tour's small Tickets mockup uses the board card's real parts (`#id \u00b7 High|Low`): the invented `P0` / `P2` chips and comment count are gone. Docs' fourth dialog fact is now \"New doc lets you propose one yourself.\" (the labels new / edit / rewrite live on Review, not Docs) (#134)",
         "Dark theme: the sign-in and feature scrims dim with the page's warm black, and the dialog and hero-mockup shadows are neutral (were blue-black) (#134)",
+        "Docs corrected to match the code, no behaviour change: `docs/architecture/env.md` now lists every name in `Env` (the Stripe names and `TROV_KEK` were missing); `repo-dashboard.md` describes the per-org repo cron and its 900-request budget; `notifications.md` (the welcome mail on a first membership, the outbox key with its org, the per-org policy seed), `feed-and-search.md` (`query` types: `artifact`, not `ticket`), `ingestion-gate.md`, `roadmap-my-work.md`, `data-layer.md` (open sign-up), `auth-identity-people.md`, `tickets.md`, `layout.md`, `docs/artifact-contract.md` (links carry the organization) and three sentences of `CLAUDE.md`; `HANDOFF.md` is rewritten as the current deploy runbook (#137)",
+        "Trov plugin 0.8.1 (skill text only): a sprint's `progress` is its tickets alone and its GitHub issue counts are the separate `issues` field; any member completes a sprint; connecting is browser sign-in, with no pasted-token setup step (`trov`, `read-plan`, `update-plan`) (#137)",
       ],
       fixed: [
+        "A NEW account that signed up to buy Pro was taken through the first run and never reached checkout: `POST /auth/onboard` handed back the purchase path, but the SPA followed only an MCP authorize link. It follows `signInReturnPath` (`shared/billing.ts`: an authorize request or a purchase link, nothing else), and the purchase path's shape is defined once (`isBillingStartPath`) for the Worker's return allowlist and the SPA alike (#168)",
         "A first-run card morphing into the organization picker landed on the picker's short \"Loading…\" card and then snapped to full height when the list arrived (squeezed, then stretched) — after the handle step and after payment alike. The list is read first (`morphToPicker`, `web/src/main.ts`), so the card morphs once, to its real size (#134)",
         "Opening the sign-in dialog rebuilt the whole landing page, restarting the terminal carets and cutting any reveal in flight (#134)",
         "Org settings › Notifications showed \"No sends yet\" and an Outbox count of 0 until the outbox's first read landed. It is a skeleton until then (`outboxLoading`) (#134)",
@@ -225,7 +628,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [134],
+    prs: [134, 137, 168],
   },
   // The guided first-run setup: a new owner, admin or member is walked through it instead of landing on a checklist or an empty feed (#121).
   {
@@ -1489,7 +1892,7 @@ const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : 
 /** "v0.14 · Sep 26, 2026", or the Unreleased tag. */
 function metaRow(r: Release): string {
   const inner = r.unreleased
-    ? `<span class="cnpy-rel-tag">Unreleased</span><span>Not deployed yet</span>`
+    ? `${stateMark("Unreleased", "var(--accent)", "ring", 12, "Merged, not deployed yet.")}<span aria-hidden="true">·</span><span>Not deployed yet</span>`
     : `<span class="cnpy-rel-ver">v${esc(r.version)}</span><span aria-hidden="true">·</span><time datetime="${attr(r.date)}">${esc(releaseDate(r.date))}</time>`;
   return `<div class="cnpy-rel-meta">${inner}</div>`;
 }
@@ -1515,7 +1918,7 @@ export function releasesIndex(releases: readonly Release[] = RELEASES): string {
   return `<div class="cnpy-relidx">
     <div class="cnpy-relidx-head">
       <h1 class="cnpy-relidx-title">What's new in Trov</h1>
-      <p class="cnpy-relidx-intro">Every release, newest first. Open one for its notes, and switch to Patch notes for the full list of changes with links to the pull requests on <a href="${attr(TROV_REPO_URL)}" target="_blank" rel="noopener noreferrer" class="cnpy-rel-pr">GitHub</a>.</p>
+      <p class="cnpy-relidx-intro">Every release, newest first. Open one for its notes, and switch to Patch notes for the full list of changes with links to the pull requests on <a href="${attr(TROV_REPO_URL)}" target="_blank" rel="noopener noreferrer" class="cnpy-rel-pr">GitHub</a>. Trov is open source under AGPL-3.0: <a href="${SOURCE_PATH}" target="_blank" rel="noopener" class="cnpy-rel-pr" data-source-link>the source code of the version you are using</a>.</p>
     </div>
     <div class="cnpy-relgrid">${releases.map(indexCard).join("")}</div>
   </div>`;

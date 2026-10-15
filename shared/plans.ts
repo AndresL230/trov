@@ -17,7 +17,7 @@ export type PlanId = (typeof PLAN_IDS)[number];
 export const isPlanId = (v: unknown): v is PlanId => typeof v === "string" && (PLAN_IDS as readonly string[]).includes(v);
 
 /** Every limit a plan sets. `null` as a value means UNLIMITED. */
-export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections", "ai_summaries"] as const;
+export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections", "ai_summaries", "ai_runs"] as const;
 export type LimitKey = (typeof LIMIT_KEYS)[number];
 export type Entitlements = Record<LimitKey, number | null>;
 /** Per-org exceptions: a key that is present replaces the plan's value (null = unlimited); absent = the plan's. */
@@ -40,6 +40,10 @@ export interface LimitDef {
    *  reaching it is never "over the limit" — `atCap` says what happens instead. */
   period?: "month";
   atCap?: string;
+  /** false: not LISTED yet — the pricing page, the Plan block and Settings' Limits leave it out
+   *  (`LISTED_LIMIT_KEYS`), because nothing uses it. It is a limit everywhere else: resolved, overridable
+   *  in Platform, enforced. Absent = listed. */
+  listed?: false;
 }
 
 export const LIMITS: Record<LimitKey, LimitDef> = {
@@ -48,13 +52,24 @@ export const LIMITS: Record<LimitKey, LimitDef> = {
   environments: { label: "Environments", one: "environment", many: "environments", counts: "Environments the Repo dashboard reports on.", per: "org", unit: "count", min: 0 },
   artifact_bytes: { label: "Artifact storage", one: "byte", many: "bytes", counts: "Every stored version of every artifact.", per: "org", unit: "bytes", min: 0 },
   agent_connections: { label: "Agent connections", one: "agent connection", many: "agent connections", counts: "Your own MCP tokens and connected apps for this organization.", per: "person", unit: "count", min: 0 },
-  // The one MONTHLY allowance (docs/architecture/plans.md › AI summaries). It refuses nothing with a 402:
+  // A MONTHLY allowance (docs/architecture/plans.md › AI summaries). It refuses nothing with a 402:
   // past it a new pull request or issue is stored with its excerpt, and a later Sync fills it in.
   ai_summaries: {
     label: "AI summaries", one: "AI summary", many: "AI summaries", counts: "Summaries of pull requests and issues attempted this calendar month (UTC).",
     per: "org", unit: "count", min: 0, period: "month", atCap: "New pull requests and issues show an excerpt until next month.",
   },
+  // The second monthly allowance (docs/architecture/ai.md): model calls the AI pass makes on its own
+  // (src/ai/pass.ts), one per call. It refuses nothing either: past it the pass makes no call and what was
+  // written last stays. NOT LISTED yet — no job runs, so a plan card would advertise nothing.
+  ai_runs: {
+    label: "AI runs", one: "AI run", many: "AI runs", counts: "Model calls Trov makes on its own for the organization this calendar month (UTC).",
+    per: "org", unit: "count", min: 0, period: "month", atCap: "What Trov writes pauses until next month; what it wrote last stays.", listed: false,
+  },
 };
+
+/** The limits a plan is SHOWN with — the pricing page, the Plan block, Settings' Limits: every key but
+ *  the ones not listed yet (`LimitDef.listed`). Platform's override fields still take every `LIMIT_KEYS`. */
+export const LISTED_LIMIT_KEYS: readonly LimitKey[] = LIMIT_KEYS.filter((k) => LIMITS[k].listed !== false);
 
 /** A plan's price, when one is written in code. Unused: prices are deployment config (`STRIPE_PRICE_*`),
  *  resolved by src/billing/config.ts, so the owner changes one without a release. */
@@ -93,27 +108,27 @@ const GB = 1024 * MB;
 // `seats` override holds the seats it pays for. Enterprise's repositories and environments are the
 // platform's caps from before plans (10 each: the repo cron's budget is shared), so an existing org sees
 // no change. `ai_summaries` (per calendar month) are sized so that one org cannot run up the platform's
-// one Gemini bill, not from measured use (plans.md › AI summaries).
+// one Anthropic bill, not from measured use (plans.md › AI summaries); `ai_runs` likewise (ai.md).
 export const PLANS: Record<PlanId, PlanDef> = {
   free: {
     id: "free", name: "Free", description: "For a small team trying Trov out.",
-    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300 },
+    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250 },
     features: [], offered: true, billing: null,
   },
   // LEGACY: no longer offered or sold. An org or grant already on it keeps these limits.
   personal: {
     id: "personal", name: "Personal", description: "One person's own organization.",
-    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300 },
+    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250 },
     features: [], offered: false, billing: null,
   },
   team: {
     id: "team", name: "Pro", description: "For a team, paid per seat.",
-    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000 },
+    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000 },
     features: [], offered: true, billing: null,
   },
   enterprise: {
     id: "enterprise", name: "Enterprise", description: "Limits set for the organization by Trov.",
-    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null },
+    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_runs: null },
     features: [], offered: true, billing: null,
   },
 };

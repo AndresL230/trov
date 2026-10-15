@@ -1,22 +1,18 @@
 import { defineConfig } from "vite";
 import path from "node:path";
+import { siteInputs, sitePages } from "./site-build";
 
 export default defineConfig({
   root: __dirname,
   build: {
     outDir: path.join(__dirname, "dist"),
     emptyOutDir: true,
-    // Four pages: the app, and the three public static pages (served at /terms, /privacy
-    // and /pricing — the assets binding maps a bare path to its .html file).
-    rollupOptions: {
-      input: {
-        main: path.join(__dirname, "index.html"),
-        terms: path.join(__dirname, "terms.html"),
-        privacy: path.join(__dirname, "privacy.html"),
-        pricing: path.join(__dirname, "pricing.html"),
-      },
-    },
+    // The inputs are the public site's pages — one per entry of shared/site-pages.ts (/, /pricing, /terms,
+    // /privacy and the 404 page: `<name>.html`, which the assets binding serves at `/<name>`) — and the app
+    // shell (app.html). None is a file in web/: site-build.ts writes each, prerendered.
+    rollupOptions: { input: siteInputs() },
   },
+  plugins: [sitePages()],
   resolve: {
     alias: { "@shared": path.join(__dirname, "..", "shared") },
   },

@@ -23,13 +23,13 @@ import type { MyOrg, OrgRole } from "@shared/orgs";
 import type { McpTokenSummary, OAuthGrantSummary } from "@shared/rows";
 import { isSoloPlan } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
-import { O_HELP, accentBtn, chip, failedNote, goLink, quietBtn, roleAtLeast, roleChip } from "./org-ui";
+import { O_HELP, accentBtn, failedNote, goLink, quietBtn, roleAtLeast, roleWord } from "./org-ui";
 import { skeleton, skLine, skLines, skBox } from "./skeleton";
 import { dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
 import { githubOf, inviteMailNote, inviteRoleDropdown, inviteSection, type OrgUi } from "./org-settings";
 import { seatsLead } from "./org-plan";
 import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, lostBanner, mismatchBanner, repoPicker, suspendedBanner } from "./github-app";
-import { CONNECTION_NOTE, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpStrong } from "./mcp-connect";
+import { CONNECTION_NOTE, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpStrong, otherClientsLink } from "./mcp-connect";
 
 // ── steps and state ──────────────────────────────────────────────────────────
 
@@ -173,7 +173,7 @@ export function githubStep(p: WelcomeProps): string {
   const byName = goLink("Add a repository by name instead", "orgGo", "repos");
 
   if (repos.length > 0) {
-    const rows = repos.map((r) => `<li class="cnpy-wel-row" data-welcome-repo="${attr(r.repo_full_name)}">${OK_RING}<span style="flex:1 1 200px;min-width:0;font-family:var(--code);font-size:12.5px;color:var(--fg);overflow-wrap:anywhere">${esc(r.repo_full_name)}</span>${r.is_primary ? chip("Primary", "var(--accent)") : ""}</li>`).join("");
+    const rows = repos.map((r) => `<li class="cnpy-wel-row" data-welcome-repo="${attr(r.repo_full_name)}">${OK_RING}<span style="flex:1 1 200px;min-width:0;font-family:var(--code);font-size:12.5px;color:var(--fg);overflow-wrap:anywhere">${esc(r.repo_full_name)}</span>${r.is_primary ? `<span style="font-size:12px;font-weight:500;color:var(--fg-55);flex:none">Primary</span>` : ""}</li>`).join("");
     return `${notice}<div${surface("padding:18px 20px")} data-welcome-github="tracked">
       <div style="${CARD_T}">${repos.length === 1 ? "Your repository is connected" : `${repos.length} repositories are connected`}</div>
       <p style="${P};margin-top:5px">Trov reads ${repos.length === 1 ? "its" : "the primary one's"} pull requests, issues, checks and deployments${inst ? ` ${appLeadPhrase(inst)}` : ""}.</p>
@@ -240,7 +240,8 @@ export function agentStatus(p: Pick<WelcomeProps, "grants" | "tokens">, org: Pic
 }
 
 /** Connect your coding agent — the SAME three steps Settings › MCP access shows (mcp-connect.ts),
- *  under a live line saying whether this person is connected to this org. Both wizards use it. */
+ *  under a live line saying whether this person is connected to this org (any client's connection
+ *  counts, so one made from a chat on claude.ai ticks the step too). Both wizards use it. */
 export function agentStep(p: WelcomeProps): string {
   const org = p.org!;
   const open = p.wel.byHand;
@@ -248,6 +249,7 @@ export function agentStep(p: WelcomeProps): string {
     <div${surface("padding:18px 20px;margin-top:14px")} data-welcome-connect>
       ${connectSteps(org.name, "this page then shows your agent as connected")}
       <div style="font-size:12px;line-height:1.55;color:var(--fg-40);margin-top:12px">${CONNECTION_NOTE}</div>
+      <div style="font-size:12px;line-height:1.55;color:var(--fg-40);margin-top:6px">Not using Claude Code? ${otherClientsLink()}</div>
     </div>
     <div class="cnpy-wel-quiet">
       <button type="button" data-act="welcomeByHand" data-field="welcomeByHand" aria-expanded="${open}" aria-controls="wel-byhand" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;padding:4px 0;font-size:12.5px;font-weight:500;color:var(--fg-55);text-align:left"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" class="cnpy-xrow-c" style="transform:${open ? "rotate(90deg)" : "none"}"><path d="M9 6l6 6-6 6"></path></svg>Set it up without the plugin</button>
@@ -283,7 +285,7 @@ export function teamStep(p: WelcomeProps): string {
     const mail = inviteMailNote(i);
     return `<li class="cnpy-wel-row" data-welcome-invite="${i.id}">
       <span style="flex:1 1 200px;min-width:0;line-height:1.35"><span style="display:block;font-size:13.5px;font-weight:600;color:var(--fg-70);overflow-wrap:anywhere">${esc(i.name ? `${i.name} · ${who}` : who)}</span><span style="display:block;font-size:12px;color:${mail.bad ? "var(--red)" : "var(--fg-40)"}">${esc(mail.text)}</span></span>
-      ${roleChip(i.role)}
+      ${roleWord(i.role)}
     </li>`;
   }).join("");
   const waiting = pending.length ? `<div${surface("padding:6px 20px;margin-top:16px")} data-welcome-pending><ul class="cnpy-wel-list is-flush">${rows}</ul></div>` : "";
@@ -390,7 +392,7 @@ export function welcomeView(p: WelcomeProps): string {
           ${next === null ? "" : `<button type="button" data-act="goMyWork" data-field="welcomeExit" class="cnpy-mutelink" style="flex:none;padding:0;font-size:12.5px;font-weight:500">Skip setup &rarr;</button>`}
           ${p.wel.firstRun ? `<span class="cnpy-onb-step" data-flow-step="3" style="margin-left:0">${firstRunStepLabel(3)}</span>` : ""}
         </div>
-        <div data-welcome-eyebrow style="position:relative;margin-top:20px;font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.78)">${esc(eyebrow)}</div>
+        <div data-welcome-eyebrow style="position:relative;margin-top:20px;font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.92)">${esc(eyebrow)}</div>
         <h1 id="wel-t" tabindex="-1" style="position:relative;margin:6px 0 0;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.25;overflow-wrap:anywhere;outline:none">${esc(copy.title)}</h1>
         <p class="cnpy-orgs-lede" style="position:relative;margin:8px 0 0;font-size:13.5px;line-height:1.55;max-width:520px">${esc(copy.lead)}</p>
       </header>

@@ -1,5 +1,5 @@
 // The ONE test both local stand-ins pass before they are honoured (`.dev.vars.example` lists them):
-//   • `LOCAL_UPSTREAM`       — GitHub and Gemini during a Sync (src/sync/local-upstream.ts);
+//   • `LOCAL_UPSTREAM`       — GitHub and Anthropic during a Sync (src/sync/local-upstream.ts);
 //   • `STRIPE_TEST_API_BASE` — Stripe's API (src/billing/config.ts).
 // A stand-in is a server on THIS machine, so its value must be plain http on a loopback host, and it
 // is never honoured beside a live key: a Worker that holds one is, or is talking to, production.

@@ -199,7 +199,7 @@ export async function runSyncBatch(env: Env, ctx: TenantContext, by: string, bod
   const backfill = opts.backfill ?? runBackfill;
   // Undefined in production and in tests: only `wrangler dev` with a loopback `LOCAL_UPSTREAM` gets one.
   const local = localUpstreamFetch(env);
-  const upstream: Parameters<typeof runBackfill>[3] = local ? { fetchImpl: local, gemini: { fetchImpl: local } } : {};
+  const upstream: Parameters<typeof runBackfill>[3] = local ? { fetchImpl: local, ai: { fetchImpl: local } } : {};
 
   // Nothing to sync with: the same 503 body as ever, and no run is recorded for a click that could not start.
   const ready = await readiness(env, ctx);

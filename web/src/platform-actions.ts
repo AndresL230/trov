@@ -6,11 +6,16 @@
 import {
   listPlatformOrgs, getPlatformOrg, createPlatformOrg, assignPlatformOrgAdmin, setPlatformOrgSuspended,
   listPlatformAdmins, grantPlatformAdmin, revokePlatformAdmin, listPlatformAudit, getPlatformUsage,
+  getPlatformOrgDeletion, deletePlatformOrg, getPlatformPersonDeletion, deletePlatformPerson,
   Unauthorized, ApiError,
 } from "./api";
+import { typedMatches } from "./confirm";
+import { PERSON_DELETE_ID, initialDeleteUi } from "./deletion";
+import { deletionFailure } from "./deletion-actions";
+import type { AccountDeletionPreview, OrgDeletionPreview } from "@shared/deletion-core";
 import {
   PLAT_TABS, ADMIN_KINDS, blankAddOrg, blankOwner, slugFromName, addOrgErrors, addOrgServerError, ownerServerError,
-  adminError, adminTarget, assignmentSentence, lastSuperadminSentence,
+  adminError, adminTarget, assignmentSentence, lastSuperadminSentence, PLAT_ORG_DELETE_ID,
   type PlatState, type PlatTab, type AdminKind,
 } from "./platform";
 import { USAGE_WINDOWS, type UsageWindow } from "./platform-usage";
@@ -152,6 +157,7 @@ export function createPlatform(h: PlatformHost) {
     p.support.reportId = null; p.support.actionError = null; // a tab opens on its list, never on the report last read
     p.suspendArm = null; p.revokeArm = null;
     p.access.revokeArm = null; p.access.plan = null; p.access.gift = null; p.access.giftEnd = null;
+    p.orgDelete = initialDeleteUi<OrgDeletionPreview>(); p.personDelete = { ...p.personDelete, open: false };
     load();
   }
   function openOrg(slug: string): void {
@@ -159,6 +165,7 @@ export function createPlatform(h: PlatformHost) {
     p.add = null;
     h.state.screen = "platformorg";
     p.orgSlug = slug; p.suspendArm = null; p.ownerOpen = false; p.access.grant = null; p.access.plan = null; p.access.gift = null; p.access.giftEnd = null;
+    p.orgDelete = initialDeleteUi<OrgDeletionPreview>();
     load();
     h.mount.querySelector<HTMLElement>("#cnpy-main")?.scrollTo(0, 0);
     if (h.state.view === "platform") window.scrollTo(0, 0); // the standalone page scrolls the window
@@ -277,6 +284,77 @@ export function createPlatform(h: PlatformHost) {
       h.rerender();
     });
   }
+  // ── deletion (deletion.ts views; the same cores as the owner's and the person's own, src/deletion/) ──
+  /** The org on screen: read what deleting it would do, then open the confirmation with its slug field focused. */
+  function orgDeleteArm(): void {
+    const p = s();
+    const slug = p.orgSlug;
+    if (!slug || p.orgDelete.open) return;
+    p.orgDelete = { ...initialDeleteUi<OrgDeletionPreview>(), preview: { status: "loading", data: null } };
+    getPlatformOrgDeletion(slug).then((preview) => {
+      s().orgDelete = { ...s().orgDelete, preview: { status: "ok", data: preview }, open: true };
+      h.rerender();
+      focus(`#${PLAT_ORG_DELETE_ID}-typed`);
+    }).catch((e) => {
+      if (readFailed(e)) return;
+      s().orgDelete = { ...s().orgDelete, preview: { status: "error", data: null }, error: deletionFailure(e) };
+      h.rerender();
+    });
+  }
+  function orgDeleteGo(): void {
+    const d = s().orgDelete;
+    const pv = d.preview.data;
+    if (!d.open || d.busy || !pv || !pv.billing_ready || !typedMatches({ expected: pv.confirm, value: d.typed })) return;
+    s().orgDelete = { ...d, busy: true, error: null };
+    h.rerender();
+    deletePlatformOrg(pv.org.slug, d.typed.trim()).then(() => {
+      s().orgDelete = initialDeleteUi<OrgDeletionPreview>();
+      h.flash(`${pv.org.name} was deleted.`, 5000);
+      go("orgs");
+      loadOrgs();
+    }).catch((e) => {
+      if (readFailed(e)) return;
+      s().orgDelete = { ...s().orgDelete, busy: false, error: deletionFailure(e) };
+      h.rerender();
+    });
+  }
+  /** Admins › Delete a person's account: what deleting the typed handle's account would do. */
+  function personCheck(): void {
+    const p = s();
+    const handle = p.personDraft.trim().replace(/^@/, "");
+    if (!handle) return;
+    p.personDelete = { ...initialDeleteUi<AccountDeletionPreview>(), preview: { status: "loading", data: null } };
+    h.rerender();
+    getPlatformPersonDeletion(handle).then((preview) => {
+      s().personDelete = { ...s().personDelete, preview: { status: "ok", data: preview } };
+      h.rerender();
+    }).catch((e) => {
+      if (readFailed(e)) return;
+      s().personDelete = { ...s().personDelete, preview: { status: "error", data: null }, error: deletionFailure(e) };
+      h.rerender();
+    });
+  }
+  function personDeleteGo(): void {
+    const d = s().personDelete;
+    const pv = d.preview.data;
+    if (!d.open || d.busy || !pv || pv.blockers.length || !typedMatches({ expected: pv.confirm, value: d.typed })) return;
+    s().personDelete = { ...d, busy: true, error: null };
+    h.rerender();
+    deletePlatformPerson(pv.handle, d.typed.trim()).then((r) => {
+      const q = s();
+      q.personDelete = initialDeleteUi<AccountDeletionPreview>();
+      q.personDraft = "";
+      h.flash(`@${pv.handle}'s account was deleted${r.orgs_deleted.length ? `, with ${r.orgs_deleted.length === 1 ? "the organization" : `${r.orgs_deleted.length} organizations`} only they were in` : ""}.`, 5000);
+      loadOrgs();
+      loadAudit();
+      h.rerender();
+    }).catch((e) => {
+      if (readFailed(e)) return;
+      s().personDelete = { ...s().personDelete, busy: false, error: deletionFailure(e) };
+      h.rerender();
+    });
+  }
+
   /** Every `plat…` act. */
   function act(name: string, arg: string | null, value: string | null): void {
     const p = s();
@@ -329,6 +407,29 @@ export function createPlatform(h: PlatformHost) {
         h.confirmOut(() => { s().suspendArm = null; h.rerender(); focus("[data-confirm-trigger]"); });
         return;
       case "platSuspendGo": suspendGo(); return;
+
+      case "platOrgDelArm": orgDeleteArm(); return;
+      case "platOrgDelCancel":
+        if (!p.orgDelete.open || p.orgDelete.busy) return;
+        h.confirmOut(() => { s().orgDelete = initialDeleteUi<OrgDeletionPreview>(); h.rerender(); focus(`[aria-controls="${PLAT_ORG_DELETE_ID}"]`); });
+        return;
+      case "platOrgDelTyped": p.orgDelete = { ...p.orgDelete, typed: value ?? "" }; break;
+      case "platOrgDelGo": orgDeleteGo(); return;
+
+      case "platPersonDraft": p.personDraft = value ?? ""; break;
+      case "platPersonCheck": personCheck(); return;
+      case "platPersonDelArm":
+        if (!p.personDelete.preview.data || p.personDelete.preview.data.blockers.length) return;
+        p.personDelete = { ...p.personDelete, open: true, typed: "", error: null };
+        h.rerender();
+        focus(`#${PERSON_DELETE_ID}-typed`);
+        return;
+      case "platPersonDelCancel":
+        if (!p.personDelete.open || p.personDelete.busy) return;
+        h.confirmOut(() => { s().personDelete = { ...s().personDelete, open: false, typed: "", error: null }; h.rerender(); focus(`[aria-controls="${PERSON_DELETE_ID}"]`); });
+        return;
+      case "platPersonDelTyped": p.personDelete = { ...p.personDelete, typed: value ?? "" }; break;
+      case "platPersonDelGo": personDeleteGo(); return;
 
       case "platUsageDays": {
         const d = Number(arg);

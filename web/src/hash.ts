@@ -51,7 +51,7 @@ import { isWelcomeStep, type WelcomeStep } from "./welcome";
  *  sprint routes are parsed separately below. */
 const PLAIN_SCREENS: Screen[] = [
   "mywork", "feed", "docs", "review",
-  "search", "settings", "guide", "unsubscribe", "tickets", "site", "handoffs", "prompts",
+  "search", "settings", "guide", "tickets", "site", "handoffs", "prompts",
 ];
 
 export interface Route {
@@ -205,6 +205,10 @@ export function parseHash(hash: string): Route {
     return none;
   }
   if (parts[0] === "unplaced") return parts.length === 1 ? { screen: "maintenance", ...base } : none;
+  // Legacy: `#unsubscribe` was a screen that turned the signed-in person's email off on arrival. An
+  // email's Unsubscribe link is the Worker's `/u/<token>` page now, so the old address just opens
+  // Settings, where the switch is — arriving changes nothing.
+  if (parts[0] === "unsubscribe") return parts.length === 1 ? { screen: "settings", ...base } : none;
   // Legacy: the page was Maintenance, with three tabs. Unplaced is the page now; Identity and
   // People moved into Org settings › Members, so an old link (or bookmark) lands there.
   if (parts[0] === "maintenance") {

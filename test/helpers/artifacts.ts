@@ -9,11 +9,15 @@ import worker from "../../src/index";
 import { sha256Hex } from "../../src/tools/artifacts";
 import type { ArtifactDetailDTO } from "@shared/artifacts";
 import { cookieFor, seedPerson } from "./persons";
+import { apiErrorHint, mcpErrorHint } from "@shared/error-hints";
 import { platformCtx, mintTokenFor, ORG_A } from "./tenant";
 
 export const ORIGIN = "https://trov.test";
-export const NOT_FOUND = JSON.stringify({ error: "not_found" });
-export const MCP_NOT_FOUND = JSON.stringify({ error: "not_found", code: "not_found" });
+/** The HTTP 404 a missing or hidden page answers through the Worker: its code, and the hint the Worker adds
+ *  to every JSON error (src/error-hints.ts) — by code and status alone, so it stays ONE set of bytes. */
+export const NOT_FOUND = JSON.stringify({ error: "not_found", hint: apiErrorHint(404, "not_found") });
+/** An MCP tool's not_found, as every tool sends it: the same bytes for a missing page and someone else's private one. */
+export const MCP_NOT_FOUND = JSON.stringify({ error: "not_found", code: "not_found", hint: mcpErrorHint("not_found") });
 
 const ctx = { waitUntil() {}, passThroughException() {} } as unknown as ExecutionContext;
 

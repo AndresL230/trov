@@ -13,12 +13,24 @@ itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
-Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, and the three first-run pages (onboarding `onboard`, the org picker `orgs`,
-the guided setup `welcome`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
+Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
 thing (a tab's panel, a wizard's step) names itself with `data-morph-key`. Do not fix a flicker by turning
 animations off in the affected region — that hides one symptom and leaves the rebuild.
+
+**A third party's widget lives in a `data-keep` node of a morphed page.** `morph()` returns at once on an
+element with `data-keep`: neither its attributes nor its children are touched. The payment page
+(`web/src/billing-checkout.ts`, `data-morph="billing-checkout"`) mounts Stripe's embedded checkout — an iframe
+Stripe creates and resizes — into `<div id="billing-checkout-mount" data-keep>`; a rebuilt iframe would reload
+the form and lose what the buyer typed. Three things make that hold: (1) the node is emitted in EVERY state,
+byte-identical, as the FIRST child of its container, so index pairing can never land something else on it;
+(2) since morph will not sync its attributes, whether it shows is decided on an ancestor
+(`[data-billco-phase="loading"] .cnpy-billco-mount { display:none }`), never on the node itself; (3) the
+script mounts only AFTER the rerender that makes the node visible. The card around it has no height and no
+`overflow:auto` — the widget sets its own height, the card grows, and the page scrolls
+(`test/render.billing-checkout.test.ts`).
 
 **A dialog that opens over ANY screen repaints itself alone.** Most screens are not `data-morph`ed, so a dialog
 whose host page can be any of them cannot rely on the page's opt-in: a `rerender()` per keystroke would rebuild
@@ -95,7 +107,10 @@ a fourth banner or a second texture (the tour's dialog has none: its stage is th
 - **Reveals** (`rv()` / `data-rv`, `landing-motion.ts`) are short and small: 6 to 14px over `--fx-slow`, played
   once (the observer unobserves), 6% of the viewport before the element enters. While a nav jump is carrying
   the page (`noteJump()` until just after `scrollend`), what comes into view is settled with no motion
-  (`revealClass`), so a jump never ends on a section that is still sliding.
+  (`revealClass`), so a jump never ends on a section that is still sliding. **The hero's copy is the one
+  exception**: the page's first words are never hidden — it is rendered settled (`is-done`, no `data-rv`) and
+  rises by `translate` alone, in CSS from the first paint (`.site-hero-in .site-st`, `site-rise`), so it waits
+  on no script. With scripting off, `@media (scripting: none)` shows every other reveal settled.
 - **Nav jumps** (`siteJump`) are one `scrollIntoView` per click, instant under reduced motion; where one lands
   is the target's `scroll-margin-top` (`section[id^="site-"]`, -58px: the heading about 32px under the sticky
   nav). Nothing else moves the scroll position: both dialogs take and return focus with `preventScroll`.
@@ -152,11 +167,236 @@ through all seven (wrapping), with the position as text and dots.
 ### For agents
 
 Two cards whose content is naturally the same height at desktop width (`.site-agents-row`, 1.65fr / 1fr,
-measured at 1440 and 1100); one column under 900px. The plugin card holds the skills, then `connectSteps()` and
-`CONNECTION_NOTE` from `mcp-connect.ts`. (Settings › MCP access changes a connection in a dialog —
+measured at 1440 and 1100); one column under 900px. The MCP card's count and chips are the server's own tool list
+(`shared/mcp-tools.generated.ts`, in `MCP_TOOL_GROUPS` order) with a link to the reference; its two smallest groups
+(Connection, Admin) share one row, which keeps it the plugin card's height (605 / 600px at both widths, 2026-10-12,
+with 43 + 1 tools). The plugin card holds the skills, then `connectSteps()` and `CONNECTION_NOTE` from `mcp-connect.ts`,
+whose line ends with a link to the other clients' setup (/docs/connect). (Settings › MCP access changes a connection in a dialog —
 `grantScopeDialog` in `render.ts`, a root `data-overlay` in the `.cnpy-cmodal` shell, never a panel under the
 row: `auth-identity-people.md`.) If a card's content shrinks, re-weight the columns or let the card be
 smaller: never pad one out.
+
+## The public pages, for crawlers (`shared/site-pages.ts`, `web/site-build.ts`, `src/site.ts`)
+
+`/`, `/pricing`, `/terms`, `/privacy`, `/refunds` and the docs (`/docs/setup`, `/docs/connect`, `/docs/concepts`,
+`/docs/mcp-tools`, `/docs/changelog`) arrive as real HTML — their words, a unique title and description, a
+canonical link, Open Graph and Twitter tags, JSON-LD on `/` and `/pricing` — before any script runs, and the
+script then takes over the SAME markup. Everything else is the app, and is never indexed.
+
+- **One list.** `SITE_PAGES` (`shared/site-pages.ts`) is every public page: path, `kind` (`landing`, `pricing`,
+  `legal`, `docs`, `not-found`), title, description, Open Graph image, and its Markdown (`markdown`, below). Everything follows from an entry: the Vite input
+  and its prerendered document (`web/site-build.ts` writes every input — there is no `.html` in `web/`), the
+  head tags (`siteHead`), the `/sitemap.xml` line, the reserved org slug (`shared/orgs.ts` spreads
+  `SITE_PAGE_SEGMENTS`), and the 301s for its other spellings (`_redirects`). **Adding a page** is one entry
+  plus its content: a `kind` that renders it (a new legal document is a `legal` entry whose `key` is its key in
+  `LEGAL_DOCS`; the legal pages' tab row is `legalTabs`, built from `LEGAL_ORDER`, so it follows), and its 1200 × 630 image in
+  `scripts/og/render.mjs`'s own list (an entry without `image` gets no `og:image` and a `summary` card).
+  A reserved slug shadows any org already using it: check before adding a page at a new path.
+- **Copy is the page's own.** A description is a sentence the page says (the landing's hero lede, a legal
+  document's opening line); the pricing one and the JSON-LD offers are built from `PLANS` / `PRICING`, never
+  typed (Free $0, Pro $10 per seat / month as a `UnitPriceSpecification`; Enterprise has no price, so no
+  Offer; no rating or review, which Trov does not have). `test/site-pages.test.ts` holds each to the render.
+- **Prerendered from the code that boots it** (`web/src/site-prerender.ts`, loaded in Node through Vite's own
+  module server at build time). The landing is `render(initialState())` — exactly main.ts's signed-out paint —
+  so its first paint MORPHS it (`data-morph="landing"`); `/pricing`, `/terms` and `/privacy` are `siteRoot(…)` of
+  their boot script's own render and patch in place too (`paintRoot`, morph.ts). On the prerendered landing
+  main.ts paints the landing at once and asks nothing: no "Signing you in…" card, no `/auth/me` (the Worker only
+  sends that page to a request with no session cookie). Pages are built in the light theme; `THEME_BOOT`, an
+  inline script that is each root's first child (and in the app shell's head), paints `<html>` and the root in
+  the stored theme before the rest of the page is parsed; the boot's first paint drops it, and main.ts keeps
+  `<html>`'s background in step (`syncPageBackground`).
+- **`/` is two documents** (`run_worker_first = ["/"]`, `sitePublic` in `src/site.ts`): the prerendered landing
+  to a request with no `session` / `onboard` cookie, the app shell (`web/app.html`, served at `/app`) to one
+  with, after a refused sign-in (`?denied=`), or with the local `DEV_LOGIN`; both `Vary: Cookie`. The cookie's
+  PRESENCE picks a public page; it authorizes nothing (no fourth auth class). The shell is never the home
+  page's HTML: no landing words, no canonical, `noindex` in a meta tag and the header — at `/`, `/<org>/`,
+  `/platform`, `/billing/done`, `/billing/checkout` and `/app` alike. (Before, all of those served `index.html`,
+  byte-identical to `/`, with no canonical anywhere: the likely cause of Search Console's "Duplicate without
+  user-selected canonical" on `/`.)
+- **One address per page.** Every canonical is absolute and fixed in the file, so a query (`?ref=`, `utm_*`,
+  `?contact=1`, `?start=team`) cannot change it. `_redirects` (generated, `assetRedirects`) sends `/index`,
+  `/index.html`, `/<page>.html` and `/<page>/` to the page for good (301) — the binding's own html handling would
+  answer 307. The Worker 301s `www.` and plain http on the public host to `https://` + the public host for what it
+  serves (`canonicalRedirect`); the binding takes relative rules only, so the static files on www / http are the
+  zone's to redirect (a Redirect Rule and "Always Use HTTPS" — `HANDOFF.md`).
+- **`noindex`** (`X-Robots-Tag`): every GET / HEAD the Worker answers except `/robots.txt`, `/sitemap.xml` and
+  the landing — the API, sign-in, OAuth, MCP, the signed links, every app shell, every redirect; a POST is left
+  alone (a webhook's bare 401 stays bare). On a host that is not PUBLIC_ORIGIN's (a Preview) the Worker tags
+  everything, and `_headers` (`assetHeaders`) tags every static file on a `*.workers.dev` address, plus `/app`
+  and `/404` anywhere. Loopback counts as the public host, so `wrangler dev` answers as production does.
+- **robots.txt** disallows only the API, sign-in and token endpoints and the session-gated bytes
+  (`ROBOTS_DISALLOW`). The app's pages are deliberately NOT disallowed: a crawler that may not fetch a URL
+  never sees its `noindex` (nor that it is no longer the home page's HTML), and a disallowed URL can still be
+  indexed from a link. `/sitemap.xml` is `SITE_PAGES`' indexed pages by canonical URL.
+  **Crawlers by name** (`src/site.ts`): a crawler that matches a group by name obeys ONLY that group and
+  ignores `User-agent: *` (RFC 9309), so every named group repeats the `*` group's Disallow lines, then
+  `Allow: /` — Disallow first, because Python's `urllib.robotparser` takes the first matching line, not the
+  longest. `SEARCH_CRAWLERS` (allowed): OAI-SearchBot + ChatGPT-User, Claude-SearchBot + Claude-User,
+  PerplexityBot + Perplexity-User, Googlebot, Bingbot, Applebot, DuckAssistBot — one group per operator, each
+  agent named once. `TRAINING_CRAWLERS` (GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, CCBot) follow
+  ONE switch, `AI_TRAINING_CRAWLERS`: `"allow"` (the default — what they had through `*` before) gives them the
+  same rules as everyone, `"disallow"` gives them `Disallow: /` and leaves search untouched. Flipping it is a
+  one-line change and a deploy. The file's comments point at the docs and `/llms.txt`.
+  What can still block a crawler outside the repo (Cloudflare's AI Crawl Control, its managed robots.txt, Bot
+  Fight Mode, WAF rules) is `HANDOFF.md` › 10.
+- **404.** An address no route answers is the built not-found page (`web/src/not-found.ts`, no script), status
+  404, `noindex` — JSON `{ error: "not_found" }` under `/api` or for any other method — decided in
+  `src/index.ts` BEFORE the session gate by `isAppRoute` (`src/routes.ts`: every handler of the Hono app by
+  method and path; its `use()` middleware wildcards make nothing known). A real cookie route still answers 401
+  signed out. One exception, on purpose: a single path segment that is a valid, unreserved slug (`/blog`) is
+  an org's page and gets the app shell (with `noindex`) whether or not that org exists — answering 404 there
+  would tell a stranger which organizations do.
+- **The shared head** (`documentHtml`) links nothing off-site: the icons, and `FONT_PRELOAD` (Geist latin,
+  self-hosted — "Fonts" below). The build also writes `/fonts/` (the fonts' stable copies) beside `_redirects`
+  and `_headers`.
+- Tests: `test/site.test.ts` (the Worker: robots and its named groups, sitemap, `/`, `/docs`, redirects,
+  `noindex`, 404 vs 401, reserved slugs), `test/site-pages.test.ts` (the list, the head tags, the JSON-LD, the
+  documents, the docs and their Markdown, llms.txt, the FAQPage, `_redirects` / `_headers`), `test/spa-shell.test.ts`, `test/render.fonts.test.ts` (no third party in any document).
+
+## Docs for people and agents (`/docs/<page>`, their Markdown, `/llms.txt`)
+
+The public docs are five `docs` pages of `SITE_PAGES`: Setup, Connect a client (copy-paste MCP config per
+client and an AGENTS.md / CLAUDE.md snippet), Concepts (the authority model), MCP tools and Changelog.
+
+- **Where.** Under `/docs/<page>`. `/docs` ITSELF is the app's cookie route — the cut-over alias of an
+  organization's docs list, which old clients and the SPA's fetch still call — so there is no page at
+  `/docs` and no `docs.html` or `docs/index.html` (either would make the assets binding answer `/docs` before
+  the Worker). `src/site.ts` `docsEntry` sends `/docs/` (no route) and a BROWSER's signed-out `/docs` (it
+  accepts `text/html`, no session cookie) to the first page with a 302; a fetch, anyone signed in and every
+  other method still reach the route exactly as before. `docs` was already a reserved org slug.
+- **One text per page.** Each page is ONE Markdown string (`web/src/docs-content.ts` `docsMarkdown`):
+  `# title`, the lede (= its `description`, word for word), an optional intro, `## ` sections. The build serves
+  it at `markdown` (`/docs/<page>.md`, `text/markdown; charset=utf-8`, with an HTTP `Link: <page>; rel=
+  "canonical"` so search engines index the page, not its source) and RENDERS the HTML page from it
+  (`web/src/docs.ts`: marked, with raw HTML escaped, `## ` → a `.site-legal-sec`, the contents list from the
+  `## ` headings, a tool's heading anchored by its own name). The page's `<head>` links it as
+  `<link rel="alternate" type="text/markdown">`. Links to the site are absolute in the Markdown and relative on
+  the page. The docs borrow the legal pages' layout (`.site-legal-*`) and add `.site-docs-*` for code blocks
+  (with Copy), tables and subsections; their script (`docs-page.ts`, ~3 KB) only flips the theme, copies,
+  follows the contents, and switches docs pages IN PLACE: a tab (or Back / Forward) fetches the other page's
+  prerendered HTML (prefetched on hover) and swaps in its band and `#site-main`, the title, description,
+  canonical and Markdown links, and moves focus to the new title; a failed fetch falls back to a plain
+  navigation. It never renders text itself, so the client bundle carries none of the docs' text. The contents
+  column (`.site-legal-side`, legal pages too) scrolls with no visible scrollbar.
+- **Nothing typed that can drift.** The endpoint is `SITE_ORIGIN`'s, the plugin commands are
+  `mcp-connect.ts`'s, prices and limits are `PLANS` / `PRICING`, the changelog is `releases.ts`'s `highlights` and
+  `headsUp` only (never `ops` or `patches`, never an `unreleased` entry), and the MCP reference is GENERATED:
+  `web/site-build.ts` first loads `src/mcp-catalog.ts` in Node (Vite's SSR loader, `agents/mcp` stubbed — the
+  transport adapter is not part of registration), which builds the real server for an admin and a member
+  (`catalogTenant`: no org, no database) and lists `tools/list` through the SDK's client; the result is written
+  to `shared/mcp-tools.generated.ts` (only when it changed) BEFORE anything reads it. The landing's MCP card (its
+  count — "43 tools, plus 1 admin-only" — and its chips) reads the same file, grouped by `MCP_TOOL_GROUPS`
+  (`shared/mcp-tools-core.ts`). **A new or changed tool**: `npm run build:web` rewrites the file, and a new tool
+  needs a line in `MCP_TOOL_GROUPS`; `test/mcp-catalog.test.ts` fails on either until done.
+- **Client configs** (Connect): Claude Code (plugin, and `claude mcp add --transport http --scope user`), Claude
+  Desktop / claude.ai (custom connector), Cursor (`mcpServers.url`), VS Code (`servers` + `"type": "http"`,
+  `inputs` for a token), Codex (`[mcp_servers.trov]`, `codex mcp add --url` / `codex mcp login`,
+  `bearer_token_env_var`), Windsurf (`serverUrl`), and a generic block. Checked on 2026-10-12: Codex against its
+  source (`openai/codex`), VS Code against `microsoft/vscode-docs`, Claude's connectors against Anthropic's help
+  centre (search results); Cursor and Windsurf from third-party guides (their docs sites were unreachable).
+  Trov's OAuth server takes only https and loopback-http redirects, so the page says an older Cursor (`cursor://`)
+  cannot sign in. Recheck these when a client changes its format.
+- **A chat, with no repository** (Connect › `CHAT_SECTION`): claude.ai and Claude Desktop get numbered connector
+  steps, then one section for any client outside a checkout: what to ask, what differs (the organization is
+  the manual connection's, nothing reads `git`, files travel inside the call up to
+  `ARTIFACT_INLINE_BINARY_MAX`), and `CHAT_SNIPPET` — `AGENT_SNIPPET` for a claude.ai Project's instructions,
+  sharing its orient / live / stage / tickets lines. It restates what `src/mcp.ts`'s descriptions and
+  `scopeError`'s hints say about "no checkout"; change them together. In the app, `otherClientsLink`
+  (`mcp-connect.ts`) is the one link there: the guided setup's agent step, Settings › MCP access, the Guide.
+- **llms.txt** (`web/src/llms.ts`, llmstxt.org): `# Trov`, a one-line `>` summary, a paragraph of context, then
+  `## Docs`, `## Pricing`, `## Changelog`, `## Optional` — links to the Markdown versions, each with its page's
+  description. **llms-full.txt** is that head plus every Markdown page in full (with its source URL). Both are
+  static files written by the build (`text/plain; charset=utf-8` by `_headers`), so the assets binding serves
+  them before the Worker, with no session check. `/pricing.md` is `pricingMarkdown` (`pricing.ts`): the same
+  tables and questions as the page.
+- **The landing's FAQ** is the Questions accordion (`pricingSection`'s `lead`): the product questions
+  (`web/src/site-questions.ts`: what Trov is, README / wiki, MCP clients) before the pricing ones (`pricingQuestions`,
+  which now also answers what Pro adds — from the two plans' tables — and whether you can run Trov yourself: AGPL,
+  Cloudflare Workers + D1 + R2, no self-hosting guide or support). The landing's head carries that SAME list as
+  schema.org `FAQPage` (`faqPageLd`, passed to `siteHead` by the prerender); `/pricing` shows part of it unmarked,
+  since a question is marked up on one page only.
+- **The home page's first words** (after the nav) stay the hero: "Shared memory for your team and its coding
+  agents." and its one-sentence lede — what Trov is, who it is for, and how it behaves (a test holds this).
+- Tests: `test/site-pages.test.ts` (each page's Markdown shape; every heading, code block and paragraph of the
+  Markdown on the page; raw HTML escaped; the reference against the generated list; the changelog without ops or
+  patches; llms.txt's format; the FAQPage against the visible accordion), `test/mcp-catalog.test.ts` (the
+  generated list against the live registration), `test/site.test.ts` (`/docs` and robots).
+
+## Legal pages, consent and the source (`web/src/legal.ts`, `shared/legal-core.ts`)
+
+The compliance pass of 2026-10-12. **Not legal advice**: the texts were written from the code and the owner's
+facts, and a lawyer should review them. Open decisions (governing law, the Anthropic account's data terms, the Stripe
+dashboard, retention windows to verify) are listed in the release's `ops` and in `billing.md` › Owner checklist.
+
+- **Three documents, one renderer.** `LEGAL_DOCS` = Terms (`/terms`), Privacy (`/privacy`) and the Refund and
+  Cancellation Policy (`/refunds`), each a `legal` page of `SITE_PAGES` with its Open Graph card. `legalView`
+  draws the banner, the tab row (`legalTabs`, from `LEGAL_ORDER`: short names "Terms · Privacy · Refunds"), the
+  contents rail, an "In short" box and the sections; tables use the docs' `.site-docs-table` frame (a focusable
+  region, so a keyboard can scroll it on a phone). The date line reads "Effective and last updated". Every fact
+  in them is the code's (the header of `legal.ts` names where each comes from); numbers come from `PLANS` /
+  `PRICING`; who runs Trov (`LEGAL_ENTITY` TrovLabs, Inc., `LEGAL_STATE` New Jersey), the address, the age (16)
+  and the paths from `shared/legal-core.ts`. Change the code, change the text, bump `updated`.
+  `test/render.legal.test.ts` holds the facts most likely to drift (cookies and lifetimes, retention, processors,
+  no Vercel / Netlify, no `read:org`, the refund policy's four rules).
+- **Consent wherever an account can be made** — `consentHtml()`: "By continuing you agree to the Terms of Service
+  and Privacy Policy, and confirm you are 16 or older." Under the landing's sign-in / Get started dialog (every
+  mode and plan, `.site-signin-note`), on the refused-Google card, on the MCP OAuth sign-in page; onboarding (where
+  the account is created) has an unchecked, required checkbox (`agreeHtml`) that Continue waits for. No box is
+  ever pre-ticked. `auth-identity-people.md` › Consent at sign-up.
+- **Before paying** — the per-seat math, tax at checkout, monthly renewal until cancelled, "cancel any time from
+  Billing", the Terms and the refund policy, beside every button that starts a payment (`plans.md` › The pricing
+  page). The Pro side of Get started carries one more note than Free (`data-signin-terms`): the one place the
+  two sides of the dialog differ in height, on purpose.
+- **The footer** (`siteFooter`): Contact · hello@trov.dev · Pricing · Terms · Privacy · Refunds · Source (AGPL-3.0) ·
+  Licenses, then `copyrightLine()` — "© <year> TrovLabs, Inc. · New Jersey". On a phone the links are the 44px
+  two-column list (bare separators dropped by `font-size:0`); keep every item a link or a button.
+- **The source (AGPL-3.0 §13)** is `/source` (`SOURCE_PATH`): a 302 the BUILD writes into `_redirects` from Workers
+  Builds' `WORKERS_CI_COMMIT_SHA` (`sourceRedirect`, `env.md`) — the deployed commit's tree on GitHub, or the
+  repository when the build knew none; `src/site.ts` answers it the same way should the rule be missing. Every
+  surface links that one path, so none needs the commit and no render path asks GitHub anything: the footer,
+  Settings › Help (`legalLinksRow`), Help › What's new, the Terms, the OAuth and billing pages the Worker renders
+  (`LEGAL_FOOT` in `src/auth/oauth-pages.ts` `shell`), and the MCP server's `instructions` (`mcpInstructions`).
+  `source` is a reserved org slug. `/third-party-notices.txt` (`NOTICES_PATH`) is `THIRD-PARTY-NOTICES.txt`,
+  generated by `scripts/licenses/notices.mjs`: what the browser bundle and the Worker actually contain (Rollup's
+  chunks, esbuild's metafile), with licence texts, the fonts' OFL and Lucide's ISC (several inline icons are
+  Lucide's paths). Rerun it after a dependency change.
+- **Accessibility basics.** Every page starts with a skip link (`skipLink`, `.site-skip`: out of sight until
+  focused) to `#site-main` (the app: `#cnpy-main`), followed WITHOUT writing the hash (`followSkipLink`; the hash is
+  the route and the sign-in return-to). Site navs are labelled landmarks; links inside legal and docs text are
+  underlined (WCAG 1.4.1); the sign-in dialog traps Tab (`main.ts`); onboarding's fields have `<label for>`s,
+  their help as `aria-describedby` and the colours as a named radiogroup; Guide screenshots carry `GUIDE_ALT`.
+  Checked 2026-10-12 with axe-core 4.10 (WCAG 2.0/2.1 A + AA and best practice) in Playwright's Chromium against
+  `wrangler dev`: `/`, `/pricing`, `/terms`, `/privacy`, `/refunds`, `/docs/setup`, the 404, the sign-in dialog
+  and the phone menu at 390px had no violations; plus a scripted keyboard pass (skip link, the dialog's trap and
+  Escape, the FAQ with Enter, the legal tabs, the phone menu, the onboarding checkbox with Space). axe-core is not
+  a dependency: the check was run from outside the repository.
+
+## Errors an agent can act on (`shared/error-hints.ts`, `src/error-hints.ts`)
+
+Every JSON error the Worker answers, and every MCP tool error, carries a `hint`: what went wrong and what to do
+next. Nothing else changes — the `error` code, any `message`, the status and the headers stay exactly as they
+were (the SPA and the tests read them).
+
+- **One table** (`shared/error-hints.ts`): `API_ERROR_HINTS` by the HTTP `error` code (the older sentence codes —
+  `"admin only"`, `"not found"`, `"invalid payload"` — included), `STATUS_HINTS` by status for any other code,
+  `MCP_ERROR_HINTS` by an MCP tool error's `code` (`not_found`, `forbidden`, `conflict`, `bad_request`,
+  `too_large`, `gone`, `plan_limit`, `plan_feature`, and the connection's `repo_required`, `not_connected`,
+  `ambiguous_org`, `org_unavailable`, `org_not_allowed`), and the two /mcp 401 hints. The MCP reference prints the
+  MCP table, so the docs and the server say the same words.
+- **Chosen by code and status ALONE** — never by the path, the id, the caller or anything read — so two answers
+  that were byte-identical stay identical (an unknown id and another organization's; a missing org and one you
+  are not in: invariants 4 and 12), and a hint names no organization, slug or secret (`test/error-hints.test.ts`).
+- **HTTP**: `withErrorHint` (`src/error-hints.ts`) is applied in `src/index.ts` to what the Hono app, the artifact
+  upload / download token routes and the 404 answer: a JSON object with a string `error`, status ≥ 400, no
+  `hint` yet, not a HEAD — the body is re-written with `hint` added, every header kept (but the length). A
+  webhook's bare 401 and the unsubscribe POST are NOT passed through it. `/mcp`'s 401 (`mcpUnauthorized`) carries
+  its own hint: how to sign in, or (a refused token) what a refusal can mean — the same words for every token.
+- **MCP**: every tool error goes through `toolError` in `src/mcp.ts` (`runTool`, the connection's scope refusals,
+  the plan's agent-connection refusal, `update_plan` for a non-admin, a lost `claim_handoff`). `get_ticket` and
+  `get_sprint` now throw a coded `not_found` (their sentence unchanged). The SDK's own input-validation error
+  (`MCP error -32602: Input validation error: …`, before a tool runs) is left as the SDK writes it: it already
+  names the argument, and its text is private to the SDK. The MCP server has no rate limit.
+- A new error code gets a line in the table if it needs more than its status's hint.
 
 ## Sidebar & motion — the `<aside>` outlives rerenders
 
@@ -200,7 +440,7 @@ the trigger where the control sits, its menu a root-level overlay (`dropdownMenu
 and closes with an animation — Org settings' role and Notifications pickers.
 
 **Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, the queue's
-Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, form segments. Never
+Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, Review's filter (with counts) and its diff mode, form segments. Never
 hand-roll a segment group. It picks a VALUE or a view; moving between a page's own SECTIONS is the **underline
 tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Org settings' and Platform's tabs, patched in place so a switch replaces
 only the panel (`web/src/morph.ts` `data-morph` / `data-morph-key`); the Roadmap's Narrative / Timeline, `roadmapTabBar` in `render.ts`, the Timeline
@@ -225,6 +465,72 @@ mid-entrance joins the animation where the old DOM left off. Hooks: `.cnpy-rise`
 (lists), `.repo-bar` / `.repo-fill` / `.repo-spark`, `data-count` (count-up). In-place changes use the
 one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 
+## A row leaving a list — the one exit pattern (Review's queue)
+
+When a person acts on a row and the row should go (a verdict in Review today; the next screen that
+removes a row reuses this, it does not invent another), the row **confirms, collapses, and the rows
+under it move up as the same elements**. Four parts, each in one place:
+
+1. **A keyed list** (`web/src/morph.ts`). The screen is `data-morph`ed, the list's container carries
+   **`data-morph-list`** and every child a **`data-morph-key`**. `morph()` then pairs that container's
+   children by key, not by index: a child still in the list is patched (never moved unless the order
+   really changed, since a moved element drops its running transition), a new one is inserted where
+   it belongs, a gone one is removed. Without it a row removed from the middle turns every row after
+   it into its neighbour and nothing can animate. Children are joined with no whitespace between
+   them; a row's own structure is the same in every state (the selection bar and the verdict label
+   are always emitted, shown by `aria-current` / `data-verdict`).
+2. **State, not DOM, says a row is leaving.** `state.reviewLeaving[id] = { verdict, gone }`. While
+   `gone` is false the view still renders the row, with `data-verdict` and `inert`; the selection
+   and every count already leave it out (`reviewView`'s `waiting`, `triageCounts`). After
+   `REVIEW_EXIT_MS` the entry flips to `gone` and the row is no longer rendered. The entry only
+   HIDES rows of the reads, so it is never a second source of truth: the refetch replaces the reads
+   and the entry is dropped (`settleReview`, `pruneReviewLeaving` in `main.ts`).
+3. **CSS does the motion** (`trov.css` `.cnpy-rv-row`). The row is a one-track grid around its card:
+   `grid-template-rows:1fr` to `0fr` collapses it with no measuring, the inner box clips
+   (`min-height:0`, `overflow:hidden` only while leaving, so a card's hover shadow is never cut).
+   The verdict shows for .13s (the card tinted with the verdict's tone, its content dimmed, the word
+   over it), then height and opacity go over `--fx-fast` on `--fx-ease`: .31s in all, under the
+   350ms budget. The transition sits on the base rule with no delay, so a row that comes back opens
+   at once. `--fx-ease` / `--fx-fast` / `--fx-base` / `--fx-slow` are on `:root`, so they are the
+   app's clock as well as the site's; use them, never a literal curve.
+4. **The write is optimistic and exactly restorable.** The request goes out on the click and the
+   next action is never blocked: the selection has already moved to the next row, so several
+   verdicts in a row just work (a verdict button that had focus hands it to the next item's,
+   `syncReviewDetail`). On failure the entry is deleted, so the row, the counts and the selection
+   it had are back, with the usual error toast. The refetch is held until no row is still
+   collapsing, so a read landing mid-exit never pulls a row out from under its own animation.
+
+Also part of the pattern: the **last** row leaving already has the screen's empty layout under it
+(`emptyLayout`, a keyed child of the same list), which rises as the row collapses, so there is no
+jump; and **reduced motion** means no movement at all: `main.ts` marks the row `gone` at once and
+the CSS has `transition:none`. Away from the screen that shows the list (My Work's review tile
+uses the same acts) the row is `gone` at once too. Check it with `getAnimations()` on the row (two
+transitions, 180ms each, 130ms delay), by sampling the row's height per frame, and by clicking
+several verdicts 90ms apart. Tests: `test/render.review.test.ts` (the keyed list, the verdict
+markup, the CSS and its reduced-motion rule, `REVIEW_EXIT_MS` against `--fx-fast`).
+
+**Review's page** is named once, by the app header (as every screen is: `org-ui.ts` rule 1); the
+list pane starts with one line (`REVIEW_INTRO`) and the filter. All / Proposals / Decisions is a
+`segmented()` switch (one list, three views of it; not a tab bar, since nothing below changes
+section) whose options carry how many are waiting (`.cnpy-seg-n` in an option's `trail`; left out
+while the queue is still being read). Unified / Side by side / Rendered is a second one; the diff
+body under it is keyed by mode (`diff:<mode>`) and the detail body by item (`rvd:<id>`), so a
+switch replaces only that part. **Rendered** (`web/src/review-rendered.ts`) is the Docs reader's
+rendering, never a second renderer: the proposal's two bodies go through `renderMarkdown` in
+`.cnpy-md`; an edit is cut into marked's top-level blocks (`md-blocks.ts`), compared, and each
+changed block sits in an `<ins>` / `<del>`; a table is compared row by row and a list item by item;
+a new doc is rendered whole, unmarked, under one note. Body text reaches the page only through
+`renderMarkdown` (`test/render.review-rendered.test.ts`). Unified and Side by side show source.
+Where a block was EDITED rather than replaced, the two renderings are merged word by word
+(`web/src/html-words.ts` `mergeInline`): one block (`data-chg="mix"`, an amber rule) or one table row
+(`tr.cnpy-rv-row-chg`), with the added words in `<ins class="cnpy-rv-w">` and the dropped ones in
+`<del class="cnpy-rv-w">`. Its safety rule is the one to keep if this is ever touched: **a tag is ONE token,
+quoted attribute values included** (a wrapper written inside an attribute would close the value with its own
+quotes and let the rest be parsed as elements), only text tokens are wrapped, no tag of the old rendering is
+kept, and markup the tokenizer cannot account for refuses the merge (the two blocks are then shown whole).
+More than 60% of the words changed is two texts, not one edited: also shown whole. A strike is set ONCE, on
+the removed box — never again on an inline child, which draws a second line.
+
 ## Personal Settings — a bento whose tiles are as tall as what they hold
 
 `#settings` (`settingsView` in `render.ts`, the Plan / Limits / Organizations tiles in `settings-plan.ts`) is
@@ -240,11 +546,15 @@ beside short ones (the old MCP tile did, and Profile and Account were padded out
 | 4 | Organizations (12): a card per org, as many across as fit |
 | 5 | MCP access (12): the steps beside Connected apps |
 | 6 | Email notifications (12) |
+| 7, 8 | Help (12), then Delete account (12): slim tiles of their own |
 
 - Each tile is placed by NAME (`.cnpy-set-profile`, `-account`, `-session`, `-appear`, `-plan`, `-limits`,
-  `-orgs-tile`, `-mcp`, `-email`); DOM order is the folded order — Profile, Account, Plan, Limits,
-  Organizations, MCP access, Appearance, Email, Session. Below 1000px of page: Profile | Account, every other
+  `-orgs-tile`, `-mcp`, `-email`, `-help`, `-delete`); DOM order is the folded order — Profile, Account, Plan, Limits,
+  Organizations, MCP access, Appearance, Email, Help, Delete account, Session. Below 1000px of page: Profile | Account, every other
   tile full width; below 760px one column, **Sign out last**.
+- **Delete account** (`web/src/deletion.ts` `accountDeleteTile`): one sentence, the quiet destructive trigger
+  (`dangerTrigger`) — or, when a guard rail stands in the way (`organizations.md` §8), its sentences as a list and
+  a disabled button `aria-describedby` them. Never blame: it says what to do first.
 - **Sign out** is the Session tile's: a labelled button with its icon, at the top right of the page. It is the
   only `signOut` on the screen, and never a quiet link.
 - Adding a tile: give it a row partner of the same natural height, or its own row. Measure (`align-self:start`
@@ -253,6 +563,22 @@ beside short ones (the old MCP tile did, and Profile and Account were padded out
 - A limit's meter (`.cnpy-meter`) is a 4px bar with no radius, no animation and no transition, described once
   by its `role="meter"`; the page is `data-morph="settings"`, so typing in a field patches it in place.
 - Tests: `test/render.connect.test.ts` (the grid, Session, sign-in methods), `test/render.settings-plan.test.ts`.
+
+## A typed confirmation — irreversible deletions (`web/src/confirm.ts`, `web/src/deletion.ts`)
+
+Deleting an account or an organization confirms in THE confirmation modal (`confirmModal`, the same root-level
+`data-overlay`, keyboard contract and exit), with four optional props that a plain delete never uses (without
+them the markup is byte-for-byte the old dialog): `detail` (what is deleted, what is kept and why, as a list —
+the sentences of `shared/deletion-core.ts`), `typed` (a LABELLED field the handle or slug is typed into; it, not
+the red button, takes the focus on open, and the button stays `disabled` until it matches, case and outer
+spaces aside — Enter in the field confirms only a match, the reducer re-checks, the server re-checks), `error`
+(`role="alert"`, the server's sentence) and `wide` (`.cnpy-cmodal-box--wide`, 540px, scrolling inside the window
+on a short screen). The field has a visible focus ring (`.cnpy-cm-typed .cnpy-input:focus-visible`), and the
+modal's Tab trap includes it (`main.ts`). Where it opens: Settings (the person), Org settings › General (an
+owner — a quiet `dangerLink`, Org settings' rule for a destructive act), Platform's organization page and
+Admins › Accounts (a superadmin). Each repaints with a plain `rerender()`: all three host pages are
+`data-morph`ed, and the overlay is patched in place, so typing keeps the focus. Tests:
+`test/render.deletion.test.ts`.
 
 ## Full pages without the sidebar
 
@@ -376,6 +702,172 @@ then paints its empty layout or its loading skeleton, whatever the organization 
 - The Repo dashboard's own "Preview with sample data" still works under it.
 - Tests: `test/render.empty.test.ts` (no string of the organization's data on any screen in either mode,
   the state object untouched, writes refused before `fetch`).
+
+## The site on a phone
+
+The signed-out site (`landing.ts`, `pricing.ts`, `legal.ts`, the sign-in and Contact dialogs) has ONE block
+in `trov.css`, "the site on a phone", just before the corners block (so it is after every rule it overrides).
+**Nothing in it applies at 961px and up**: every rule is behind `max-width:900px` (the nav's menu, the legal
+contents), `max-width:640px` (the phone layout), `max-width:480px` or `(hover:none)`. The only rules outside a
+query hide what a wide screen never shows, or style the menu, which `min-width:901px` hides. A new phone rule
+goes in that block; a template gets a class hook, never a second copy of its markup.
+`test/render.site-mobile.test.ts` fails on an unguarded rule.
+
+- **The menu.** Under 900px the bar is one row: mark, name, the accent button, Menu. GitHub, the theme toggle
+  and Sign in carry `site-nav-x` and leave it; the menu button is ALWAYS emitted (a stable nav) and shown by
+  CSS. The menu is `menuSheet` in `landing.ts`: a root-level `data-overlay="sitemenu"` drawn from
+  `state.siteMenu`, so opening it, toggling the theme in it and closing it patch the page (`data-morph`) and
+  no reveal replays. `web/src/site-menu.ts` owns the scroll lock, focus (first link on open, the button on
+  close), Esc, the Tab trap and the exit (`data-closing`, `MENU_EXIT_MS` = `--fx-fast`). A section link closes
+  it first, unlocking the scroll at once, then scrolls ONCE; sections carry 84px of top padding on a phone and
+  `scroll-margin-top:-8px`, so the heading lands 16px under the 60px bar. A tablet gets a card under the
+  button, a phone the sheet below.
+- **The sheet pattern.** The app's rule already turns every modal into a sheet under 640px (a full-screen
+  wrapper whose child is `[role="dialog"][aria-modal="true"]`: bottom edge, full width, the safe area as a
+  transparent bottom border, `100dvh`). The site adds: controls of 44px and up, a slide up on the site's clock
+  (`site-sheet-up`, `--fx-slow`), and `--site-kb`, the height the on-screen keyboard covers
+  (`web/src/site-viewport.ts`, from `visualViewport`), which lifts the sign-in and Contact sheets and comes off
+  their `max-height`. Contact keeps Cancel / Send in a sticky row, with `scroll-padding-bottom` so a focused
+  field stops above it. The tour's dialog is the full height; its panel AND its scroller are
+  `touch-action:pan-y`, and a sideways swipe steps it (`swipeStep` in `site-feature-core.ts`), touch and pen
+  only. A touch's action is settled between the element and its nearest scroll container, so `pan-y` on the
+  panel alone does nothing.
+- **The mockup rule.** A mockup on a phone is never a shrunken desktop window. It shows the screen's most
+  telling pane in one column (`site-hide-sm` under 900px, `site-hide-ph` and `.fxm-wide` under 640px drop the
+  rest), and **no text in it renders under 11px**: one rule in the block keys on the inline sizes
+  (`[style*="font-size:9px"]`, the corners block's idiom) inside every mockup scope. A new mockup size under
+  11px needs its key there, and the test names the size that is missing. The hero's Review mockup becomes one
+  unified diff by CSS alone: `site-hero-twin` marks the left pane's lines that the right pane repeats.
+- **Touch.** Hover lifts are off under `(hover:none)` and a press answers instead. A hover-only `title` is
+  never the only label: in the menu the theme and GitHub rows are labelled.
+- **Checking it.** Phone widths are measured in a real phone-sized viewport (Playwright with `isMobile`, or an
+  iframe), at 360, 390 and 430, light and dark, with screenshots that are looked at. The wide layout is proved
+  by rects and computed styles at 1440, 1100 and 961, not by eye.
+
+## Status marks — a state is a shape and a word, never a pill (`web/src/marks.ts`)
+
+Trov used to paint every state as a small bordered, tinted, letter-spaced UPPERCASE pill (`LIVE`, `STAGED`,
+`IN PROGRESS`, `ADMIN`…): about 160 of them from 34 hand-copied helpers, the same word in different colours from
+screen to screen. A pill on every row is noise, its border reads as a control, and the recipe is the stock
+look of generated UI (the 2026-10 tag audit; the research behind it: Carbon's status-indicator pattern,
+Polaris Badge, the 2026 Atlassian lozenge, Linear). There is no `statusBadge` any more. **A state goes through
+`marks.ts`**, with the lightest treatment that does the job:
+
+1. **Nothing for the normal state**, and nothing where the screen already says it. A live search hit has no
+   mark (`AUTHORITY_MARK.live` is null); Review has no state tag, since everything in it is waiting and its
+   Promote / Ratify / Reject buttons say so; a published prompt's card has none; a doc's proposal notice is
+   its sentence and a ring, not a tag.
+2. **A glyph whose SHAPE carries the meaning** (`glyph`): a ring that fills as work moves along — `todo`
+   (dashed), `half`, `most`, `done` (a check), `declined` (a cross) — and `warn` (a triangle) for late.
+   Ticket statuses (`ticketStatusIcon`, tones in `TICKET_STATUS_TONE`), sprint states (`stateTag` in
+   `timeline.ts`) and a PR's state on the Repo screen read the SAME glyphs, so a shape means one thing
+   everywhere. Priority (and a sprint's urgency) is `priorityIcon`: three signal bars, monochrome (design
+   call #5). Beside the word (`ticketStatusMark`, `priorityMark`, `glyphMark`) the glyph is `aria-hidden`;
+   alone it is `role="img"` with an `aria-label`.
+3. **A small shape and a sentence-case word** (`stateMark`) for a state worth flagging: each meaning has its
+   own shape (dot = fine, ring = waiting, triangle = warning, diamond = failing, square = stopped, check =
+   settled by a person) so it reads without colour; the hue is on the shape and the word stays in `--fg-70`
+   for contrast. Workflow tables: `HANDOFF_MARK`, `ARTIFACT_MARK`, `AUTHORITY_MARK`, `LOW_CONFIDENCE`. The
+   screens whose states are not a workflow (settings, connections, billing, the Repo verdicts, the platform
+   pages) say what a state MEANS instead — `kindMark(word, kind)` over `STATE_KIND` (good / waiting / warn /
+   bad / stopped / done / off) — so "Error" or "Suspended" looks the same on every page and no page picks
+   its own colour.
+4. **One soft label** — a fill, no border, sentence case, 12px / 500 — only where the state is the page's
+   headline (the recommended plan on pricing, `.site-plan-badge`; "Recommended" on the MCP consent page).
+
+A **fact is plain text**, never a chip: a role (`roleWord` in `org-ui.ts`), "(you)" after your own name
+(`YOU`), Admin on a person card, a plan's name, Primary, Private, a support report's kind, a category, a
+relation, an area, a kind (`metaWord` in `tickets.ts`), a prompt card's tags. **Controls keep their
+hairline**: a link chip (a PR / commit / issue reference), a filter chip, a removable tag, the visibility
+switch. Never `text-transform:uppercase` on a state, never a `●` character (every shape is an SVG element
+with no border-radius, so the corners block leaves it alone), never a coloured left edge on a card.
+
+**Tooltips.** A mark carries `data-mtip`: a sentence on what its state means ("Built, and being checked
+before it is done."), not the word again; a glyph alone puts its name first ("Testing. Built, …"). ONE
+bubble shows it — `web/src/tip.ts` (`installMarkTips`, wired once in `main.ts`): the rail tooltip's look
+(`.cnpy-mtip`), placed by script and fixed to the viewport, so no scroll container or `overflow:hidden`
+surface clips it (a CSS `::after` would be cut off inside the ticket table); it lives on `<body>`, out of
+every repaint, and takes the theme attribute of the mark it explains, so its tokens resolve on itself (its
+radius has its line in the corners block, keyed `[data-cnpy-theme].cnpy-mtip`). It shows after
+`TIP_DELAY_MS` on hover, at once on keyboard focus, above the mark or below it when there is no room
+(`placeTip`, pure and tested), and goes on a press, a scroll or Escape. Never on touch (`pointerType`, and
+`(hover:none)` hides it), never inside an `aria-hidden` picture (the tour mocks), no fade under reduced
+motion. A glyph's accessible name stays `aria-label` — never a native `<title>`, whose unstyled box would
+show beside the bubble.
+
+**The signed-out site and its tour mocks draw their states with the same helpers** — `landing-mocks.ts` has
+no pill of its own — so the site cannot drift from the app. The digests (`EMAIL_CARD.mark`) use a small square
+and the word, since mail clients render SVG unreliably; `EMAIL_CARD` has no chip. Tests:
+`test/render.marks.test.ts` (no pill in a mark, on the page or in any mock; the site imports `marks.ts`;
+every mark explains itself; `placeTip`), and each screen's own tests pin its marks.
+
+## Fonts, contrast and focus — nothing from a third party, AA in both themes
+
+### Fonts — self-hosted (`web/src/fonts/`, `shared/fonts.ts`)
+
+- **No page asks a third party for anything.** Geist (latin + latin-ext) and Archivo Narrow (latin, the sidebar's
+  face) are vendored in `web/src/fonts/` — the variable woff2 subsets Google Fonts serves (Geist v5, Archivo
+  Narrow v35), SIL Open Font License 1.1, each family's `*-OFL.txt` beside the files. `trov.css` declares them at
+  its top (`@font-face`, `font-weight` = the variable axis, so 640 is 640; `font-display:swap`; Google's
+  `unicode-range`, held equal to `shared/fonts.ts` by `test/render.fonts.test.ts`); Vite hashes them into
+  `/assets/`. latin-ext and Archivo Narrow are fetched only when a page draws a character in their range.
+- **One preload.** Every built document — the four public pages, the 404 and the app shell — carries
+  `FONT_PRELOAD` (`web/src/site-prerender.ts`): Geist latin, `as="font" crossorigin`. Vite rewrites its href to
+  the same hashed file the stylesheet's `url()` resolves to, so it is one download. Nothing else is preloaded.
+- **`'Geist Fallback'`** follows `'Geist'` in every stack: the system Arial (Helvetica, Liberation Sans) with
+  `size-adjust` and ascent / descent overrides measured against Geist over the prerendered pages' own text, in
+  three weight bands (400, 500, bold), so text set before Geist arrives wraps where Geist will put it. A new
+  font stack names it too (the test fails otherwise).
+- **The Worker's own pages** (OAuth sign-in and consent, the billing notices: `src/auth/oauth-pages.ts`) cannot
+  know a hashed name, so the build also writes each font and license at a stable path, `/fonts/<file>`
+  (`web/site-build.ts`; `fonts` is a reserved org slug). Their CSP is `font-src 'self'`.
+- **Mermaid** is the `mermaid` npm dependency at an EXACT version, loaded by `import("mermaid")` in
+  `web/src/artifacts.ts`: Vite makes it lazy chunks on Trov's origin (fetched when a diagram first opens, never
+  in the main bundle). No CDN. The OG image generator (`scripts/og/render.mjs`) inlines the vendored Geist, so
+  it needs no network either.
+- **Still third-party, and said so in the Privacy Policy (§5):** the artifact sandbox's CSP lets an HTML
+  artifact's OWN scripts load from cdnjs / jsdelivr and its styles from Google Fonts (`src/artifacts/raw.ts`; an
+  opaque origin, no cookies — `artifacts.md`); GitHub and Google profile pictures are hot-linked (`avatarSrc`:
+  an uploaded photo wins, else the provider's URL); an image a doc links from another site loads from it. The
+  e-mails use system fonts and load nothing (`notifications.md` › No web font).
+
+### Contrast — WCAG AA, computed from the tokens (`test/render.contrast.test.ts`)
+
+The test parses both theme blocks of `trov.css` and fails on any pair under AA, so a retuned token cannot
+regress silently:
+
+| Pair | Minimum |
+| --- | --- |
+| every text token (`--fg`, `--fg-70`, `--fg-55`, `--fg-40`, `--accent`, the five tones, the ten `--p-*` handle colors) on `--bg` and `--surface` | 4.5:1 |
+| each tone (and `--accent`) on its own chip — the `tint` idiom, the tone at 12% over the ground — and `--accent` on `--accent-soft` | 4.5:1 |
+| the ink of a filled control on its fill: `--accent-fg` / `--accent`, `--red-fg` / `--red`, `--p-ink` / every `--p-*` (avatar initials) | 4.5:1 |
+| `--border-input` (a text field's edge) and `--focus` (the ring) on `--bg` and `--surface` | 3:1 |
+| white text on the brand banner, at its two light points (the first gradient stop; the highlight's peak over the middle stop) | 4.5:1 |
+
+- **Fixed at the token, hue kept, the least that passes** (2026-10): light `--fg-40` #8e8e98 → #70707a, `--accent`
+  #5e6ad2 → #525cc3 (and `--accent-soft`), `--green` #2f9e6b → #007545, `--amber` #c98a1a → #945800, `--blue`
+  #4c8ed9 → #2467af, `--red` #e5484d → #c22231, `--purple` #8e5cc7 → #804db7, `--p-moss` / `--p-ochre`; dark
+  `--fg-40` .40 → .52, `--red` #cc6262 → #df7372. The banner's gradient went one step deeper in both themes and
+  its text is at least 92% white. `--fg-55` is unchanged, so light `--fg-55` and `--fg-40` now sit close
+  (4.67 / 4.53 on `--bg`).
+- **New tokens, split where a value served two jobs:** `--border-input` (fields) beside `--border-strong`
+  (cards, dividers, the empty layouts' hollow shapes — still quiet); `--red-fg` (text on a filled red button:
+  white on light, the dark ink on dark, as `--accent-fg`); `--p-ink` (avatar initials); `--focus` (= `--accent`).
+- **A text field's edge is `--border-input` whatever its template wrote.** Field borders are inline
+  `var(--border-strong)`, so one `!important` rule in `trov.css` recolours every `input` (not checkbox / radio /
+  file / …) and `textarea`; an `aria-invalid` field keeps its red edge. A borderless field inside a bordered box
+  (`@` + handle, `prompts/` + slug, tags, Search) colours the box (`:has()`). The sidebar's and the board's
+  search boxes keep their quiet `--border` (an icon and a placeholder name them).
+
+### Focus — every focusable element draws a ring (`test/render.focus.test.ts`)
+
+- A ring is `outline:2px solid var(--focus)` (or `--accent`; `--red` on a destructive confirm; white on the
+  banner) with an offset — never `outline:none` in a `:focus` rule, never a hover tint alone. Menu and option
+  rows (the avatar menu, `dropdown()` options, the filter bar's button) draw it inset (`outline-offset:-2px`).
+- **Text fields**: focused, the edge turns `--focus` and doubles (`box-shadow:0 0 0 1px`), `!important` because
+  their `outline:none` is inline. The palette search's bar shows a 2px `--focus` line on its lower edge.
+- Rules use `:focus-visible`, so a mouse click on a button draws nothing new; a text field shows its ring on
+  click too, as browsers do for fields.
 
 ## Corners — tighter than the design file
 

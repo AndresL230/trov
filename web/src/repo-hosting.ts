@@ -17,7 +17,8 @@
 
 import type { RepoRange, RepoTone } from "@shared/repo";
 import type { DeployState, HostingMetric, HostingProviderId, ProviderDeployDTO, ProviderResources, ProviderTrafficRange, RepoProviderPart } from "@shared/hosting";
-import { esc, attr, statusBadge } from "./ui";
+import { esc, attr } from "./ui";
+import { kindMark, type StateKind } from "./marks";
 import { emptyLayout, emptyShapes, skBar, skBox, skLine, skeleton } from "./skeleton";
 
 /** What the section borrows from repo.ts (passed in, so the two modules do not import each other). */
@@ -124,9 +125,12 @@ function gaugeSpark(trend: ProviderResources["trend"], pick: "cpu" | "mem_mb", s
 
 // ── deploys ──────────────────────────────────────────────────────────────────
 
-const DEPLOY: Record<DeployState, { word: string; tone: string }> = {
-  queued: { word: "Queued", tone: "var(--fg-55)" }, building: { word: "Building", tone: "var(--blue)" }, ready: { word: "Ready", tone: "var(--green)" },
-  error: { word: "Failed", tone: "var(--red)" }, canceled: { word: "Canceled", tone: "var(--fg-55)" },
+const DEPLOY: Record<DeployState, { word: string; tone: string; kind: StateKind; hint: string }> = {
+  queued: { word: "Queued", tone: "var(--fg-55)", kind: "waiting", hint: "Waiting for the host to start the build." },
+  building: { word: "Building", tone: "var(--blue)", kind: "waiting", hint: "The host is building it now." },
+  ready: { word: "Ready", tone: "var(--green)", kind: "good", hint: "Built and live." },
+  error: { word: "Failed", tone: "var(--red)", kind: "bad", hint: "The build or the release failed on the host." },
+  canceled: { word: "Canceled", tone: "var(--fg-55)", kind: "off", hint: "Stopped before it went live." },
 };
 const inFlight = (s: DeployState): boolean => s === "queued" || s === "building";
 const firstLine = (s: string | null): string => (s ?? "").split("\n")[0].trim().slice(0, 140);
@@ -138,7 +142,7 @@ function lastDeploy(d: ProviderDeployDTO, t: RepoHostingTools): string {
   const took = d.state === "ready" ? duration(d.at, d.ready_at) : null;
   const url = safeUrl(d.url), log = safeUrl(d.inspect_url);
   const msg = firstLine(d.message);
-  const pill = `<span style="display:inline-flex;align-items:center;gap:6px">${inFlight(d.state) ? `<span class="repo-envdot repo-pulse" aria-hidden="true" style="--c:${s.tone};flex:none;width:7px;height:7px;border-radius:50%;background:${s.tone}"></span>` : ""}${statusBadge(s.word.toUpperCase(), s.tone)}</span>`;
+  const pill = `<span style="display:inline-flex;align-items:center;gap:6px">${inFlight(d.state) ? `<span class="repo-envdot repo-pulse" aria-hidden="true" style="--c:${s.tone};flex:none;width:7px;height:7px;border-radius:50%;background:${s.tone}"></span>` : ""}${kindMark(s.word, s.kind, 12, s.hint)}</span>`;
   const bits = [
     d.sha ? `<code style="font-family:var(--label);font-size:11.5px;color:var(--fg-70)">${esc(d.sha.slice(0, 7))}</code>` : "",
     d.branch ? `<span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55)">${esc(d.branch)}</span>` : "",
@@ -167,7 +171,7 @@ function deployStrip(deploys: ProviderDeployDTO[], t: RepoHostingTools): string 
         <span class="repo-tip" role="tooltip">
           <span style="display:block;font-family:var(--label);font-size:11.5px;font-weight:600">${esc(d.sha ? d.sha.slice(0, 7) : firstLine(d.message) || d.id.slice(0, 16))}</span>
           <span style="display:block;font-size:11.5px;color:var(--fg-55);margin-top:2px">${esc(t.ago(d.at, t.now))} ago${d.by ? ` · by ${esc(d.by)}` : ""}</span>
-          <span style="display:block;font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;margin-top:4px;color:${s.tone}">${esc(s.word.toUpperCase())}</span>
+          <span style="display:block;margin-top:4px">${kindMark(s.word, s.kind, 11)}</span>
         </span>
       </span>`;
   }).join("");
@@ -221,7 +225,7 @@ function partCard(part: RepoProviderPart, t: RepoHostingTools): string {
       <span data-htone="${part.tone}" title="${attr(TONE_WORD[part.tone])}" style="flex:none;width:8px;height:8px;border-radius:50%;background:${TONE[part.tone]}"></span><span class="cnpy-sr">${esc(TONE_WORD[part.tone])}: </span>
       <span style="font-size:14px;font-weight:600;overflow-wrap:anywhere">${esc(part.label)}</span>
       <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-55);white-space:nowrap"><span aria-hidden="true" style="display:inline-grid;place-items:center;width:18px;height:18px;border-radius:5px;border:1px solid var(--border-strong);background:var(--hover);font-family:var(--label);font-size:8.5px;font-weight:700;line-height:1;color:var(--fg-70)">${GLYPH[part.provider] ?? "?"}</span>${esc(part.provider_label)}</span>
-      ${statusBadge(ROLE_WORD[part.role].toUpperCase(), "var(--fg-55)")}
+      <span style="font-size:12px;font-weight:500;color:var(--fg-55)">${esc(ROLE_WORD[part.role])}</span>
       ${console_ ? `<a href="${attr(console_)}" target="_blank" rel="noopener noreferrer" class="repo-quiet" style="margin-left:auto;font-size:11.5px;white-space:nowrap;${QUIET_LINK}">Open in ${esc(part.provider_label)}</a>` : ""}
     </div>`;
   const deploys = part.deploys.length ? `${lastDeploy(part.deploys[0], t)}${deployStrip(part.deploys, t)}`

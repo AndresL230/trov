@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import css from "../web/src/trov.css?raw";
+import { kindMark } from "../web/src/marks";
 import {
   orgSettingsView, orgOverlays, setupSteps, setupChecklist, initialOrgUi, currentOrg, orgTabsFor, effectiveOrgTab, orgConfirmCopy,
   apiUrlMoves, envForm, envFieldsOf, blankEnvFields, inviteDraftOk, repoDraftOk, lastOwnerSentence, memberRoleDropdown,
@@ -282,7 +283,7 @@ describe("Integrations — the states of the page", () => {
   it("fully configured: last four, who and when, the actions, the key and the history", () => {
     const html = tabView(fullUi(), "integrations");
     expect(html).toContain('data-org-integration="github_token:" data-state="set"');
-    expect(html).toMatch(/<span>GitHub token<\/span><span[^>]*>Set<\/span>/);
+    expect(html).toContain(`<span>GitHub token</span>${kindMark("Set", "good")}`);
     expect(html).toContain("ends in 1a2b");
     expect(html).toContain("Set by andres");
     expect(html).toContain("last used");
@@ -322,7 +323,7 @@ describe("Integrations — the states of the page", () => {
     const ui = fullUi({ integrations: ok({ integrations: [set("github_token", "1a2b", { last_error: "github 401 for acme/web — the token is not valid" })], secrets_available: true, key_version: 1 }) });
     const html = tabView(ui, "integrations");
     expect(html).toContain('data-state="error"');
-    expect(html).toMatch(/<span>GitHub token<\/span><span[^>]*>Error<\/span>/);
+    expect(html).toContain(`<span>GitHub token</span>${kindMark("Error", "bad", 12, "The last use failed. Open the row to see the error.")}`);
     expect(html).toContain("1 with an error");
     // The error is on the row WITHOUT opening it; the description is behind it.
     const row = html.slice(html.indexOf('data-org-integration="github_token:"'), html.indexOf("</li>", html.indexOf('data-org-integration="github_token:"')));
@@ -641,7 +642,7 @@ describe("Environments", () => {
 describe("Members and invites", () => {
   it("lists members with their role in words, and the invite form for an admin", () => {
     const html = tabView(fullUi(), "members");
-    for (const w of [">Owner<", ">Admin<", ">Member<", "YOU", "Platform engineer"]) expect(html).toContain(w);
+    for (const w of [">Owner<", ">Admin<", ">Member<", ">(you)<", "Platform engineer"]) expect(html).toContain(w);
     expect(html).toContain('data-seg="org-invite-by"');
     expect(html).toContain('aria-label="GitHub login to invite"');
     expect(html).toContain('aria-label="Role the invite grants: As member"');

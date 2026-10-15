@@ -1,10 +1,12 @@
 // THE Stripe client: the only code in Trov that sends the secret key anywhere, and the only place it is
 // sent is api.stripe.com (docs/architecture/billing.md › Safety). Plain `fetch` — no SDK: the handful of
-// calls Trov makes are form-encoded POSTs and GETs, and the SDK would be most of the Worker's bundle.
+// calls Trov makes are form-encoded POSTs, GETs and one DELETE, and the SDK would be most of the Worker's bundle.
 //
 //   • the host is fixed (`BillingConfig.apiBase`: api.stripe.com, or a loopback stand-in in a test);
 //   • redirects are not followed, so the Authorization header cannot travel to another origin;
-//   • every call has a timeout, a pinned `Stripe-Version`, and — when it mutates — an `Idempotency-Key`;
+//   • every call has a timeout, a pinned `Stripe-Version`, and — on a POST — an `Idempotency-Key` (a
+//     DELETE — ending a subscription now, for a deletion: ./cancel.ts — is idempotent by Stripe's own
+//     definition, and Stripe ignores a key on it);
 //   • every failure is a `StripeError` whose message was SCRUBBED of the key (and of the webhook secret)
 //     before it was cut — so nothing that logs, stores or returns it can leak either.
 //   • a 2xx that holds the key anywhere in its body is refused whole: its ids are never read, so the key
@@ -45,9 +47,14 @@ export function formEncode(params: Record<string, FormValue>): string {
   return out.join("&");
 }
 
+/** A Checkout Session's client secret (embedded checkout), wherever an upstream message quotes one: it is
+ *  the buyer's browser's alone, so it is cut out of anything that could be logged — by SHAPE, since Trov
+ *  never keeps one to compare against. */
+const CLIENT_SECRET = /\b[a-z]{2,8}_(?:test_|live_)?[A-Za-z0-9]+_secret_[A-Za-z0-9_%+/=-]+/g;
+
 /** Scrubbed FIRST, then one line, then cut — a cut first could leave half a key behind. */
 const clean = (cfg: BillingConfig, text: string): string =>
-  scrub(text, [cfg.secretKey, cfg.webhookSecret]).replace(/\s+/g, " ").trim().slice(0, MESSAGE_CHARS);
+  scrub(text, [cfg.secretKey, cfg.webhookSecret]).replace(CLIENT_SECRET, "[client secret]").replace(/\s+/g, " ").trim().slice(0, MESSAGE_CHARS);
 
 async function boundedText(res: Response): Promise<string> {
   const reader = res.body?.getReader();
@@ -79,11 +86,11 @@ export interface StripeCallOpts {
  * a 4xx / 5xx, a redirect, a timeout, a network failure, a body that is not a JSON object — throws a
  * `StripeError` with a scrubbed message.
  */
-export async function stripeCall<T>(cfg: BillingConfig, method: "GET" | "POST", path: string, params: Record<string, FormValue> = {}, opts: StripeCallOpts = {}): Promise<T> {
+export async function stripeCall<T>(cfg: BillingConfig, method: "GET" | "POST" | "DELETE", path: string, params: Record<string, FormValue> = {}, opts: StripeCallOpts = {}): Promise<T> {
   if (!path.startsWith("/v1/")) throw new StripeError("shape", 0, null, "not a Stripe API path");
   if (method === "POST" && !opts.idempotencyKey) throw new StripeError("shape", 0, null, "a mutating Stripe call needs an idempotency key");
   const body = formEncode(params);
-  const url = `${cfg.apiBase}${path}${method === "GET" && body ? `?${body}` : ""}`;
+  const url = `${cfg.apiBase}${path}${method !== "POST" && body ? `?${body}` : ""}`;
   const f = opts.fetchImpl ?? fetch;
   let res: Response;
   try {

@@ -80,13 +80,6 @@ export function asideNote(html: string): string {
   return `<div style="padding:12px 18px 14px;border-top:1px solid var(--border);font-size:13px;color:var(--fg-40)">${html}</div>`;
 }
 
-/** Bordered tinted status chip (STAGED / DRAFT / …); colorVar is a CSS var expression.
- *  `size` overrides the box (height, padding, font size, radius) where the chip sits in a
- *  row of buttons and must match their height. */
-export function statusBadge(text: string, colorVar: string, size = "font-size:10px;border-radius:5px;padding:2px 6px"): string {
-  return `<span style="font-family:var(--label);font-weight:600;letter-spacing:.04em;color:${colorVar};border:1px solid color-mix(in srgb,${colorVar} 45%,transparent);background:color-mix(in srgb,${colorVar} 12%,transparent);${size};flex:none;white-space:nowrap">${esc(text)}</span>`;
-}
-
 /** Selectable filter/view chip. `small` is the compact variant (diff view toggle). */
 export function selectChip(label: string, active: boolean, act: string, arg: string, small = false): string {
   const pad = small ? "4px 10px" : "5px 11px";

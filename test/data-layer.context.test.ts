@@ -15,6 +15,7 @@ import * as sql from "../src/data/sql";
 import * as psql from "../src/data/platform-sql";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import { sha256Hex } from "../src/auth/crypto";
+import { MCP_INVALID_TOKEN_HINT } from "@shared/error-hints";
 import { ORG_A, ORG_B, bearerCtx, ensureMember, mintTokenFor, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
 
 const e = env as unknown as Env;
@@ -180,7 +181,7 @@ describe("the gates", () => {
     await env.DB.prepare(`DELETE FROM memberships WHERE user_id = 'drifter'`).run(); // the row stays unrevoked
     const exec = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
     const res = await worker.fetch(new Request("https://trov.test/mcp", { method: "POST", headers: { authorization: `Bearer ${raw}` } }), e, exec);
-    expect([res.status, await res.json()]).toEqual([401, { error: "unauthorized" }]);
+    expect([res.status, await res.json()]).toEqual([401, { error: "unauthorized", hint: MCP_INVALID_TOKEN_HINT }]);
     expect(res.headers.get("www-authenticate")).toContain(`error="invalid_token"`);
   });
 });

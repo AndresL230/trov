@@ -12,8 +12,11 @@ const TOP = 5;
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 const pad = (s: string, w: number) => s.padEnd(w);
 
-/** Status pill tones mirror the app's `ticketPill` (design call #5): submitted blue, in progress green, testing accent (the email has no amber-as-testing; amber is declined here), done muted, declined red-ish. */
-const STATUS_TONE: Record<TicketStatus, ChipTone> = { submitted: "blue", in_progress: "green", testing: "accent", done: "muted", declined: "amber" };
+/** Status tones mirror the app's `TICKET_STATUS_TONE` (web/src/marks.ts): Triage quiet, in progress
+ *  the accent, testing amber, done the accent, declined quiet. Shown as a mark (`K.mark`), not a chip. */
+const STATUS_TONE: Record<TicketStatus, ChipTone> = { submitted: "muted", in_progress: "accent", testing: "amber", done: "accent", declined: "muted" };
+/** Priority in words, like the app's `PRIORITY_LABEL` — monochrome, never a chip. */
+const PRIORITY_WORD: Record<TicketPriority, string> = { high: "High priority", normal: "Normal priority", low: "Low priority" };
 
 /**
  * Short age, the design's `age()` — "42m" / "6h" / "3d". Measured against the
@@ -90,8 +93,8 @@ async function render(ctx: TenantContext, handle: string, window: Window): Promi
             url: null,
             rows: [K.row("Category", escapeHtml(t.category)), K.row("Requester", escapeHtml(t.requester_name))],
             footer:
-              `${K.chip(t.priority.toUpperCase(), "muted")}` +
-              `<span style="padding-left:8px;">opened ${escapeHtml(age(t.created_at, window.end))} ago</span>`,
+              `${PRIORITY_WORD[t.priority]}` +
+              `<span style="padding-left:10px;">opened ${escapeHtml(age(t.created_at, window.end))} ago</span>`,
             first: i === 0,
           })
         )
@@ -116,8 +119,9 @@ async function render(ctx: TenantContext, handle: string, window: Window): Promi
             url: null,
             rows: [K.row("Sprint", escapeHtml(t.sprint ? t.sprint.label : "Backlog"))],
             footer:
-              `${K.chip(TICKET_STATUS_LABEL[t.status], STATUS_TONE[t.status])} ${K.chip(t.priority.toUpperCase(), "muted")}` +
-              `<span style="padding-left:8px;">updated ${escapeHtml(age(t.updatedAt, window.end))} ago</span>`,
+              `${K.mark(TICKET_STATUS_LABEL[t.status], STATUS_TONE[t.status])}` +
+              `<span style="padding-left:10px;">${PRIORITY_WORD[t.priority]}</span>` +
+              `<span style="padding-left:10px;">updated ${escapeHtml(age(t.updatedAt, window.end))} ago</span>`,
             first: i === 0,
           })
         )

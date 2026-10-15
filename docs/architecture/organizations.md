@@ -171,10 +171,12 @@ For the steps skipped, **Org settings** opens with
 4. **Invite your team** — next section.
 
 **Who can connect it, and what can go wrong.** An admin or an owner, with the GitHub account linked to
-their Trov account, which must be able to read every repository the installation covers. If a GitHub
+their Trov account, which must be able to read at least one repository the installation covers: the
+organization can then use exactly the repositories that person can read (all of them, for an owner of the
+GitHub account). If a GitHub
 organization's owner has to approve the App first, Repositories says the request is pending and nothing is
-connected until they do. An organization connects one GitHub account at a time; an installation belongs to
-one Trov organization. *Disconnect* ends it in Trov and leaves the App installed on GitHub. If the App is
+connected until they do. An organization connects one GitHub account at a time; several Trov organizations may
+connect the same GitHub account, and track the same repository. *Disconnect* ends it in Trov and leaves the App installed on GitHub. If the App is
 suspended or uninstalled on GitHub, or stops seeing a tracked repository, Org settings says so. Events are
 captured for the **primary** repository only.
 
@@ -225,7 +227,10 @@ when the limit turns over [`abuse-limits.md`].
 | Repositories, environments, integrations (set / rotate / delete a credential) | | ✓ | ✓ |
 | Sync GitHub, Poll now; map a GitHub login to a person; the e-mail digest policy, schedule and sender name; rewrite the plan over MCP | | ✓ | ✓ |
 | Delete another person's prompt or artifact; rename the organization | | ✓ | ✓ |
+| Turn the organization's AI on or off (Org settings › AI, `ai.md`) | | ✓ | ✓ |
+| Dismiss a suggestion Trov made, or press "Wrong?" on what it wrote; accept a suggestion whose kind is a member's call (an admin's kind needs admin+) | ✓ | ✓ | ✓ |
 | Make or unmake an owner; rotate the organization's encryption key | | | ✓ |
+| Delete the organization (§8) | | | ✓ |
 
 The last owner can neither leave nor be demoted. Removing a member ends their agents' reach into that
 organization at once — their tokens for it are revoked, and every connected app of theirs stops being able to
@@ -251,7 +256,8 @@ One place: **Org settings**, opened from the switcher at the top of the sidebar 
 | Environments | the environments the Repo dashboard reports on, in drift order | everyone (read), admin+ (write) |
 | Members | the people directory; for admins also invitations, roles and titles, removal, and **Unmatched logins** — GitHub logins in captured activity to map to a person or discard [`web/src/identity.ts`] | everyone (read), admin+ (write) |
 | Notifications | the e-mail digests: which exist and their default cadence, send hour, timezone and sender name, preview, test send, the outbox [`web/src/notifications.ts`] | admin, owner |
-| General | the image; the name; the slug, read-only; the **Plan** — what it includes and the org's use of each limit [`web/src/org-plan.ts`] | everyone (read), admin+ (image, rename); nobody changes the plan here |
+| AI (the screen is the frontend's next PR; the routes exist) | the AI switch (`orgs.ai_automation`, 0055 — on by default), this month's AI runs against the plan's `ai_runs`, what is sent to Anthropic and what never is: `GET` / `PUT /api/o/:slug/ai/settings`, cookie only, the change audited `org.ai` (`ai.md`) | everyone (read), admin+ (the switch) |
+| General | the image; the name; the slug, read-only; the **Plan** — what it includes and the org's use of each limit [`web/src/org-plan.ts`]; for an owner, **Delete organization** (§8) | everyone (read), admin+ (image, rename); nobody changes the plan here; owner (delete) |
 
 General is a **bento** inside the tab's width (`.cnpy-org-gen` in `trov.css`, Settings' `.cnpy-tile`s on 12 columns; `generalTab` and `planBlock`), so its outer edges are the tab bar's and every other tab's: image + name is the tall tile on the left, Plan (name, billing, who changes it) and Slug the two short ones beside it, and the plan's **Limits** a tile across the page under them, three to a line. A read-only member has no field to make the first tile tall, so the three sit in one row (`.cnpy-org-gen--read`). It folds by the room the TAB has (a container query, as Settings does): under 900px the limits go two to a line, under 760px image + name takes a row and Slug | Plan the next, under 520px one column in DOM order. No tab narrows its own blocks (`test/render.org-settings.test.ts` walks them); a control inside a tile keeps its own measure.
 
@@ -279,7 +285,8 @@ invitation, Platform. Without one the SPA draws the first letter of the name [`w
   its bytes, at most 2 MB; the browser crops it to a square first) and each person may upload 20 a day
   [`abuse-limits.md`]. Everyone else sees the image and where it came from.
 - **Where it is stored and served**: R2, content-addressed at `org-logos/<sha256>`, served by
-  `GET /org-logo/<sha>` with the person photo's headers. It is person-level, not tenant-gated: an invitee
+  `GET /org-logo/<sha>` with the person photo's headers. The bytes go only when the organization is deleted
+  (§8), and then only if no other organization shows the same image. It is person-level, not tenant-gated: an invitee
   and the superadmin see an organization's name without being members, so they see its image too. The
   browser never loads anything from GitHub.
 - **The import from GitHub**: the avatar of the OWNER of the organization's primary repository (the user or
@@ -312,7 +319,8 @@ background jobs and digests skip it. **Nothing is deleted** and no other organiz
 Platform › **Usage** [`src/platform/usage.ts`, `org_usage_daily`]: per organization, API requests and MCP
 tool calls by day, active people, what was created in the window (feed entries, tickets, doc versions,
 sprints, prompts, handoffs, artifacts), e-mails sent, the most-called tools, and sizes now (rows per kind,
-artifact bytes, tokens and connected apps). Platform › an organization shows the same for that one.
+artifact bytes, tokens and connected apps) — and, when the deployment has an Anthropic key, AI runs (attempted,
+failed, capped) and tokens (`OrgUsage.ai`, `ai.md`). Platform › an organization shows the same for that one.
 Requests are metered, not limited. What IS limited per organization — people, repositories, environments,
 stored artifacts, agent connections per person — is its plan's (`plans.md`).
 
@@ -343,9 +351,182 @@ content at all, and an organization's own routes answer a superadmin who is not 
 answer a stranger: 404. To see inside an organization a superadmin has to be invited like anyone else — or
 make themselves an owner through *Add another owner*, which is written to the audit trail under their name.
 
+**Can also delete** any organization, and any account but a superadmin's or their own (§8). Doing so shows
+them what the owner or the person would see before deleting — counts, the organizations' names and slugs,
+the guard rails — and nothing of the content; each deletion is recorded in the audit trail under their name.
+
+## 8. Deleting an account or an organization
+
+Self-serve, and irreversible (the owner's decision, 2026-10-12, which made CLAUDE.md invariant 11 name it).
+Code: `src/deletion/` — `org.ts` (an organization), `person.ts` (an account), `tables.ts` (`ORG_TABLES`,
+every table with an `org_id`), `r2.ts` (the bytes); `src/billing/cancel.ts` (Stripe); the words in
+`shared/deletion-core.ts`; the screens in `web/src/deletion.ts` + `deletion-actions.ts`. Tests:
+`test/deletion.org.test.ts`, `test/deletion.account.test.ts`, `test/deletion.platform.test.ts`,
+`test/render.deletion.test.ts`.
+
+Every way in is a **session-cookie route that refuses a request carrying an `Authorization` header**, and
+nothing reachable from `src/mcp.ts` imports `src/deletion/` (`test/secrets.mcp.test.ts`): an agent can never
+delete an account or an organization (invariant 2). Each is the SAME core whoever asks; the routes are thin.
+
+| Who | Where | Route |
+|---|---|---|
+| anyone signed in, their own account | Settings › Delete account | `GET /auth/me/deletion` (what it would do), `POST /auth/me/delete { confirm: <handle> }` |
+| an **owner**, their organization | Org settings › General › Delete organization | `GET /api/o/:slug/deletion`, `POST /api/o/:slug/delete { confirm: <slug> }` |
+| a superadmin, any organization (no membership needed) | Platform › the organization › Delete… | `GET /api/platform/orgs/:slug/deletion`, `POST /api/platform/orgs/:slug/delete { confirm }` |
+| a superadmin, any account but a superadmin's or their own | Platform › Admins › Accounts | `GET /api/platform/persons/:handle/deletion`, `POST /api/platform/persons/:handle/delete { confirm }` |
+
+The confirmation is the one confirmation modal (`web/src/confirm.ts`) with the handle or the slug TYPED (case
+and surrounding spaces aside; the server checks it too: 400 `confirm_mismatch`). It says what is deleted, what
+is kept, which organizations go with an account, and what a paid plan means. A refusal is a sentence in it:
+`blocked` (409, with the guard rails), `billing_failed` (502), `billing_unavailable` (503), `forbidden` (403).
+
+**Why an owner, not an admin.** Deleting ends the organization for its owners too and cancels what it pays
+for; an admin can neither remove an owner nor manage billing, so an admin cannot do the larger thing either
+(403, and the tile is not shown to them).
+
+**The order, for both.** (1) **Stripe** — every subscription that could still charge for what is going is
+cancelled NOW (`DELETE /v1/subscriptions/:id`, Stripe's defaults: no proration credit, no final invoice — the
+owner's policy is no refund for a period already started, except where the law requires, done by hand in
+Stripe), and every open Checkout Session for it is expired, so nobody can pay for it afterwards. A Stripe
+failure deletes NOTHING (502, "nothing was deleted"); a live subscription on a deployment with no Stripe keys
+is refused (503). (2) **One D1 batch** with foreign keys deferred: all of it lands or none of it. (3) **R2**,
+after the commit (`sweepR2`): an object is deleted only when no row anywhere — any org's, any person's — and no
+unexpired upload token still points at its sha. A failure there leaves an orphaned object; never a row pointing
+at bytes that are gone.
+
+### Deleting an organization
+
+Everything with its `org_id` goes (`ORG_TABLES`, children first; a test fails when a migration adds a table
+with an `org_id` column that is not listed), then the global rows that point at it and the `orgs` row. A MANUAL
+agent connection whose current organization this was, but which may also act in another, keeps working there
+(its current organization moves to the one it was allowed first); any other connection into it goes, with its
+tokens. Its members keep their accounts and their other organizations; a member left with none lands on the
+org picker. Its owner lands on the app with "The organization has been deleted." The slug is free again.
+
+### Deleting an account — the guard rails
+
+The same for the person and for a superadmin; they protect the OTHER people (`accountDeletionPreview`):
+
+| Code | When | The way past it |
+|---|---|---|
+| `last_owner` | the only owner of an organization other people are in | make one of them an owner (Org settings › Members; a superadmin: Add another owner), or delete the organization first |
+| `billing_buyer` | the buyer of a subscription that still RENEWS for an organization that carries on — it would go on charging their card | cancel the plan (Org settings › General › Cancel plan: it then runs to the end of the period already paid and stops, so it no longer blocks), or ask Trov to move the billing; or delete the organization |
+| `last_superadmin` | the platform's only superadmin, deleting themselves | make someone else a superadmin first |
+| `superadmin` / `self` | Platform only: the account is a superadmin's, or the caller's own | that person deletes it in their own Settings |
+
+An organization **nobody else is in** (the person is its only member, and its owner) is deleted WITH the
+account, through the organization core; the confirmation names each one. Pending invitations do not count
+as people. A plan **paid for but never set up** (an unused paid grant) has its subscription cancelled, and the
+grant is revoked.
+
+The account's own rows are deleted and every other column that holds the handle is rewritten, in one batch, to
+a **tombstone** — `deleted-<10 random characters>` — through the same `HANDLE_COLUMNS` list a rename uses.
+The `persons` row becomes that tombstone (name "Deleted user", no e-mail, photo, picture, role or
+responsibilities, dates reset to the deletion): it stays only because content must point at a person row (a
+ticket's requester is a foreign key). The tombstone is in no organization, so no screen lists it; the
+`deleted-` prefix is reserved, so nobody can sign up as one and inherit its work. Signing in again with the
+same GitHub or Google account finds no identity and no verified address, and starts a new, empty account; the
+old handle is free.
+
+### What deletion removes and what it keeps (and why)
+
+Turned into the Privacy Policy's text (`web/src/legal.ts` › 9. Deleting your account or an organization, and the retention table in 8; 2026-10-12): change one, change the other. "Removed" means hard-deleted from Trov's database (or R2)
+at once; "kept" says why.
+
+**An organization**
+
+| | Removed |
+|---|---|
+| Content | docs and every version (staged, rejected and older ones included), decisions (ADRs), the feed and its tags, the triage queue, the agent-ingest ledger, the roadmap plan and its versions, sprints (resources, progress), tickets (assignees, links, comments, status history — mirrored ones too), handoffs, prompts and versions, artifacts (pages, versions, links, pending uploads — soft-deleted ones too), doc images, and every search index over them |
+| Captured from GitHub | pull request and issue events and their AI summaries, unmatched-login tasks, the Repo dashboard's events, snapshots and metrics, Sync runs |
+| What Trov suggested | its suggestions (`ai_suggestions`) and every "Wrong?" pressed (`ai_feedback`) |
+| Configuration and credentials | repositories, environments, every integration secret (encrypted) and the keys that sealed them, integration settings and their change history, the GitHub App binding and its repository list, the login-to-person attribution map |
+| People and access | memberships, invitations (any status), MCP tokens for it, OAuth codes and connections that could act only there (with their access and refresh tokens; a connection that can act elsewhere only loses this organization), each member's e-mail preferences for it |
+| E-mail | the digest outbox for it (and the rendered bodies kept in local/dev mode), its digest policy and schedule |
+| The platform's records of it | its counters, its usage metering (per day, per person), its admin audit trail, support reports sent from it |
+| Billing | Trov's mirror of its Stripe subscriptions, its checkouts, the grant it was created from |
+| The `orgs` row | its name, slug, image reference, plan, plan state and Stripe ids |
+| R2 | its artifact files, doc images and image — each unless another organization stored the same bytes |
+
+| Kept | Why |
+|---|---|
+| Members' accounts, sign-ins and other organizations | they are people, not the organization's; each can delete their own account |
+| ONE audit row, `org.delete` (a platform row): who deleted it, when, the slug, how many members it had, and its Stripe customer and subscription ids | accountability for an irreversible act, and the ids are what a billing dispute or a refund is looked up by; nothing of its content or people. Never pruned today (a retention bound is the owner's decision) |
+| At Stripe: the customer, invoices, payments and the cancelled subscription | Stripe's records, kept for tax and accounting law; Trov cannot delete them. An operator can delete a Stripe customer in Stripe's dashboard on request, where the law allows |
+| `billing_events` (Stripe event id, type, outcome — no payload, no org or person) | webhook idempotency; pruned after 90 days |
+| R2 objects another organization (or person) also references | content-addressed: the same bytes are one object, still in use |
+| The GitHub App on the GitHub account | Trov cannot uninstall it; uninstall it on GitHub if no other organization uses it |
+| SaplingLearn's legacy `invites` table | pre-organization invitations for that one org; removed by the Phase 7 cleanup |
+
+**An account**
+
+| | Removed |
+|---|---|
+| Profile | name, e-mail (notification address), uploaded photo, provider picture URL, role and responsibilities, account dates — the row becomes the tombstone |
+| Sign-ins | the GitHub and Google identities: login, Google subject and e-mail, every verified address, the GitHub account id |
+| Sessions and agents | every session (all browsers), every MCP token in every organization, every OAuth connection with its organizations, codes and tokens |
+| E-mail | digest preferences, every digest outbox row addressed to them (and local/dev rendered bodies to their addresses) |
+| Memberships | every one (each organization's trail gets `member.leave` by the tombstone); the superadmin role |
+| Attribution | every organization's map of a GitHub login to them |
+| Invitations | the ones they accepted or declined, and SaplingLearn legacy invitations to their addresses |
+| Support | the reports and messages they sent, signed in or signed out from one of their addresses |
+| Grants | an unused one is revoked (a paid one's subscription cancelled); none keeps their handle, login or address |
+| Rate limits | their counters (two days at most anyway) |
+| Organizations nobody else is in | deleted whole, as above |
+| R2 | their photo, unless someone else's is the same bytes |
+| At Stripe | open checkouts they started are expired |
+
+| Kept | Why |
+|---|---|
+| What they wrote or did in organizations that carry on — docs and versions, decisions, feed entries, tickets (as requester or assignee), comments, ticket history, sprints, handoffs (sent or addressed to them), prompts, artifacts, links, plan versions, triage decisions, settings they changed, integration history, Sync runs, per-person usage counts, the admin audit trail | the team's shared record, which the other members rely on. Every handle column names the tombstone instead (`HANDLE_COLUMNS`), as does the one sentence Trov writes with a handle in it (a handoff's feed line). The tombstone carries no personal data |
+| The admin audit trail's entries about them | as above: their handle as actor or target, and their handle, GitHub logins and e-mail addresses inside an entry's details, are replaced by the tombstone (exact spellings) |
+| ONE audit row, `person.delete`: the tombstone, who asked (themselves, or the superadmin), the organizations deleted with it, and `ref` — a keyed hash (HMAC under `COOKIE_SECRET`) of the old handle | accountability; the hash cannot be turned back into the handle, but lets the operator find the account again in a database restored from before the deletion and delete it again (below) |
+| Trov's billing mirror for a continuing organization's subscription they bought (cancelled to the period's end) | the organization's billing record; its buyer is the tombstone |
+| At Stripe: their customer record for any purchase (name, e-mail, address, tax id, card fingerprint, invoices) | Stripe's, for tax and accounting law; deletable in Stripe on request where the law allows |
+| Text people typed that mentions them — "@alice" in a comment, their name in a doc | other people's words (and their own prose) are never rewritten |
+| Their GitHub login in activity captured from an organization's repositories (pull requests, issues, commits, checks, mirrored issues' authors) | a copy of that repository's history on GitHub, naming a GitHub account, not the Trov account; it follows GitHub (remove it there) |
+| Invitations another organization sent to their address or login and they never answered | that organization's record of whom it invited; it can revoke them. If they sign up again, they see them |
+| E-mails already delivered | in recipients' mailboxes and Resend's delivery logs (Resend's retention) |
+
+**Outside the database, for both — the operator must know and the Privacy Policy should say:**
+
+- **D1 Time Travel.** Cloudflare keeps point-in-time history of the database (documented as 30 days on
+  Workers Paid, 7 on Free — **verify in the Cloudflare dashboard** for this account). Deleted rows can be
+  brought back by a whole-database restore until that window passes; after it, they are gone. Trov keeps no
+  other backup (HANDOFF.md). R2 has no versioning configured by Trov (verify in the dashboard): a deleted
+  object is gone.
+- **Cloudflare Workers Logs** (`[observability] enabled`): request URLs (which can hold a handle or a slug,
+  e.g. `/api/platform/persons/<handle>/delete`) and the Worker's scrubbed log lines, kept for the plan's log
+  retention (verify in the dashboard). Not deletable per person from code.
+- **Stripe, Resend, Anthropic (and Google, for summaries made before 2026-10-14)** keep what they were sent under their own terms: Stripe's records above;
+  Resend's sent-mail logs; PR and issue text sent for summaries earlier.
+- **Elsewhere**: agents' local copies (MCP clients, `.trov/` artifact pulls), and the person's own browser
+  (the last organization's slug and display preferences in local storage).
+
+### After a restore
+
+A Time Travel restore to a point BEFORE a deletion brings that account or organization back, and loses the
+audit row that recorded it. So, before restoring:
+
+1. Save the deletions the restore will undo: `npx wrangler d1 execute trov --remote --json --command "SELECT
+   action, target, detail FROM org_admin_audit WHERE action IN ('org.delete','person.delete') AND at > '<the
+   bookmark's time>'"`.
+2. Restore. Delete each `org.delete` target again by slug (Platform › the organization › Delete…).
+3. For `person.delete`, list every handle (`SELECT handle FROM persons`) and run
+   `COOKIE_SECRET=<production secret> node scripts/deletion-refs.mjs <deletions.json> <handles.json>`: it
+   prints the handles whose `ref` matches; delete each again (Platform › Admins › Accounts). It only matches
+   while `COOKIE_SECRET` is the one in use when they were deleted.
+
+**Known limits.** A write already in flight at the instant an organization's batch commits can leave an
+orphaned row with that `org_id` (nothing reads it — every read is scoped to an org that no longer exists). An
+upload of the SAME bytes by another organization in the few milliseconds between `sweepR2`'s check and its
+delete would find its object gone (an artifact or doc image upload registers a token first, which counts as a
+reference, so this needs a photo or an org image). A very large organization is one D1 batch; past D1's
+per-batch limits it would be refused whole (nothing deleted) and needs deleting in parts by hand.
+
 ## Before the first outside organization
 
 `HANDOFF.md` has the deploy runbook. The decisions that are the owner's to make, not the code's, are listed
-there under "Decide before a production deploy" and in `abuse-limits.md` › Residual risks — chiefly that
+in `abuse-limits.md` › Residual risks (mail) and `data-layer.md` › Routes and gates (raw artifacts) — chiefly that
 mail goes out from one platform address under names and organization names strangers choose, and that raw
 artifacts are still served from the app's own origin.

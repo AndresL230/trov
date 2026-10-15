@@ -22,8 +22,9 @@
 import { esc, attr, relTime, surface } from "./ui";
 import {
   O_LABEL, O_FIELD, O_HELP, O_ERR, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgEmpty, orgBanner, roleAtLeast, sliceNote, textField,
-  tabLead, leadFlag, openRow, chip,
+  tabLead, leadFlag, openRow,
 } from "./org-ui";
+import { kindMark, type StateKind } from "./marks";
 import type { MyOrg } from "@shared/orgs";
 import type { IntegrationDTO, IntegrationKind, OrgAuditDTO } from "@shared/integrations";
 import type { OrgUi } from "./org-settings";
@@ -97,13 +98,21 @@ export function integrationLabel(i: Pick<IntegrationDTO, "label" | "scope_label"
 }
 
 export type IntegrationState = "unset" | "set" | "legacy" | "error" | "orphan";
+/** What a state means, where the word alone does not say it — the tooltip on the row's mark. */
+const INTEGRATION_HINT: Record<IntegrationState, string | null> = {
+  unset: null,
+  set: null,
+  legacy: "Trov's shared credential answers until you set your own.",
+  error: "The last use failed. Open the row to see the error.",
+  orphan: "Its environment or repository is gone, so nothing reads it.",
+};
 /** One status per row, in words (a colour only ever repeats what the words say). */
-export function integrationStatus(i: IntegrationDTO): { state: IntegrationState; word: string; tone: string } {
-  if (i.configured && !i.expected) return { state: "orphan", word: "No longer used", tone: "var(--fg-55)" };
-  if (i.configured && i.last_error) return { state: "error", word: "Error", tone: "var(--red)" };
-  if (i.configured) return { state: "set", word: "Set", tone: "var(--green)" };
-  if (i.legacy_fallback) return { state: "legacy", word: "Using legacy credential", tone: "var(--amber)" };
-  return { state: "unset", word: "Not set", tone: "var(--fg-55)" };
+export function integrationStatus(i: IntegrationDTO): { state: IntegrationState; word: string; kind: StateKind } {
+  if (i.configured && !i.expected) return { state: "orphan", word: "No longer used", kind: "off" };
+  if (i.configured && i.last_error) return { state: "error", word: "Error", kind: "bad" };
+  if (i.configured) return { state: "set", word: "Set", kind: "good" };
+  if (i.legacy_fallback) return { state: "legacy", word: "Using legacy credential", kind: "warn" };
+  return { state: "unset", word: "Not set", kind: "waiting" };
 }
 /** The tab's figures: how many expected credentials are set (a legacy fallback counts as
  *  answered), how many of those report an error, and how many are stored for nothing. */
@@ -215,7 +224,7 @@ export function integrationRow(i: IntegrationDTO, o: RowOpts): string {
   return openRow({
     key, open: o.open === true, act: "orgRowToggle", label: `${full}, ${st.word.toLowerCase()}`,
     // Under GITHUB a webhook secret is named by its repository; the group says the rest.
-    head: `${i.kind === "github_webhook" && i.scope_label ? `<span>Webhook secret <span style="font-weight:500;color:var(--fg-55)">&middot; ${esc(i.scope_label)}</span></span>` : `<span>${esc(name)}</span>`}${chip(st.word, st.tone)}`,
+    head: `${i.kind === "github_webhook" && i.scope_label ? `<span>Webhook secret <span style="font-weight:500;color:var(--fg-55)">&middot; ${esc(i.scope_label)}</span></span>` : `<span>${esc(name)}</span>`}${kindMark(st.word, st.kind, 12, INTEGRATION_HINT[st.state])}`,
     meta: quiet, action: lead,
     always: error || answer ? `${error}${answer}` : "",
     body: `<div style="max-width:680px">${esc(i.description)}</div>
@@ -346,7 +355,7 @@ function githubGroup(org: MyOrg, ui: OrgUi, rows: IntegrationDTO[], app: GithubA
   const offered = app?.configured === true;
   const appRow = openRow({
     key: "github-app", open: ui.openRows.includes("github-app"), act: "orgRowToggle", label: `GitHub App, ${offered ? "not connected" : "not available"}`,
-    head: `<span>GitHub App</span>${chip(offered ? "Not connected" : "Not available", "var(--fg-55)")}`,
+    head: `<span>GitHub App</span>${kindMark(offered ? "Not connected" : "Not available", "waiting")}`,
     meta: offered ? "Recommended: no token to paste, no webhook to add" : "Not configured on this Trov",
     action: offered ? goLink("Connect in Repositories", "orgTab", "repos") : "",
     body: offered

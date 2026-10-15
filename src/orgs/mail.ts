@@ -1,6 +1,6 @@
-// The two transactional mails of the org surface, as the routes call them: the invitation (an e-mail
+// The two mails of the org surface, as the routes call them: the invitation (transactional: an e-mail
 // invite created or re-sent — by an org admin, or by the superadmin naming an owner) and the welcome
-// (a person's FIRST membership of any org). Both are sent AS the org concerned — its sender name over
+// (a notification: a person's FIRST membership of any org). Both are sent AS the org concerned — its sender name over
 // the platform's address (src/notifications/resend.ts) — and neither ever throws: the invite or the
 // membership is already written, and the mail is reported, not required.
 import type { Env } from "../env";
@@ -31,15 +31,22 @@ export async function mailInvite(env: Env, p: PlatformContext, orgId: string, in
   });
 }
 
+/** Has the person turned Trov email off (`persons.email_unsubscribed`, the one global flag)? */
+const unsubscribed = async (p: PlatformContext, handle: string): Promise<boolean> =>
+  (await first<{ u: number }>(p, `SELECT email_unsubscribed AS u FROM persons WHERE handle = ?`, handle))?.u === 1;
+
 /**
  * The welcome, when `firstJoin` says this membership is the person's first anywhere (`neverJoined`,
- * asked BEFORE the join was written). No verified address on file = no mail. Never throws.
+ * asked BEFORE the join was written). No verified address on file = no mail. The welcome is a
+ * NOTIFICATION, not transactional mail (shared/email-unsubscribe.ts): a person who has unsubscribed gets
+ * none. Never throws.
  */
 export async function welcomeFirstJoin(env: Env, p: PlatformContext, orgId: string, handle: string, firstJoin: boolean, origin: string, fetchImpl?: typeof fetch): Promise<void> {
   if (!firstJoin) return;
   try {
     const [org, to] = await Promise.all([orgOf(p, orgId), welcomeRecipient(p, handle)]);
     if (!org || !to) return;
+    if (await unsubscribed(p, to.handle)) return;
     await sendWelcome(env, systemTenant(p, orgId, "system"), {
       email: to.email, name: to.name, handle: to.handle, orgName: org.name, orgSlug: org.slug, origin, fetchImpl,
     });

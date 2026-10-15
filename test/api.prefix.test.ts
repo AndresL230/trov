@@ -258,12 +258,16 @@ describe("the SPA sends nothing around the prefix", () => {
   const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/([^:"'`])\/\/ .*$/gm, "$1");
   const files = Object.entries(sources).map(([path, src]) => ({ name: path.split("/").pop()!, src: code(src) }));
 
-  it("only api.ts calls fetch — its sender, and the membership probe", () => {
+  it("only api.ts calls fetch — its sender, and the membership probe (and the public docs page's own pages)", () => {
+    // docs-page.ts is the public docs page's script, not the SPA: its one call fetches another docs page's
+    // prerendered HTML (`/docs/<page>`) to switch tabs in place — never an /api/ route.
+    const allowed: Record<string, number> = { "api.ts": 2, "docs-page.ts": 1 };
     for (const f of files) {
       // A call, not a declaration (`fetch(q: string, …)` in an interface is a dependency's name).
       const calls = f.src.match(/(?<![.\w])fetch\((?!\w+: )/g) ?? [];
-      expect(calls.length, f.name).toBe(f.name === "api.ts" ? 2 : 0);
+      expect(calls.length, f.name).toBe(allowed[f.name] ?? 0);
     }
+    expect(files.find((f) => f.name === "docs-page.ts")?.src ?? "").not.toMatch(/\/api\//);
   });
 
   it("no other module spells an /api/ URL unless it hands it to the prefix function", () => {

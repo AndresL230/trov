@@ -15,7 +15,7 @@ import {
 } from "../web/src/platform-access";
 import { platformView, platformDialogs, addOrgModal, blankAddOrg, initialPlat, orgsTab, PLAT_TABS, type PlatState } from "../web/src/platform";
 import { initialDropdownUi } from "../web/src/dropdown";
-import { LIMIT_KEYS, PLANS, resolveEntitlements, type MyGrant, type OrgPlanView, type PlatformGrant, type PlatformOrgPlan, type PlanId } from "@shared/plans";
+import { LISTED_LIMIT_KEYS, PLANS, resolveEntitlements, type MyGrant, type OrgPlanView, type PlatformGrant, type PlatformOrgPlan, type PlanId } from "@shared/plans";
 import type { MyOrg, MyOrgsResponse, OrgMember, PlatformOrgRow } from "@shared/orgs";
 import type { OrgBillingView } from "@shared/billing";
 
@@ -29,7 +29,7 @@ const picker = (orgs: MyOrgsResponse) => orgPickerView({ me, mine: orgs.orgs, or
 const view = (plan: PlanId = "team", o: Partial<OrgPlanView> = {}): OrgPlanView => ({
   plan, name: PLANS[plan].name, description: PLANS[plan].description, status: "active", source: "granted", period_end: null, gift_until: null,
   entitlements: PLANS[plan].entitlements, overridden: [], seats: { members: 5, pending: 2 },
-  usage: { seats: 7, repositories: 1, environments: 2, artifact_bytes: 1024 ** 3, agent_connections: 1, ai_summaries: 0 }, over: [], ...o,
+  usage: { seats: 7, repositories: 1, environments: 2, artifact_bytes: 1024 ** 3, agent_connections: 1, ai_summaries: 0, ai_runs: 0 }, over: [], ...o,
 });
 /** An org's billing view (shared/billing.ts): by default a Free org that never paid and can upgrade to Pro. */
 const bill = (o: Partial<OrgBillingView> = {}): OrgBillingView => ({
@@ -137,7 +137,8 @@ describe("Org settings › General — the Plan block", () => {
     expect(html).toContain(">Pro</span>");
     expect(html).toContain("For a team, paid per seat.");
     for (const label of ["Seats", "Repositories", "Environments", "Artifact storage", "Agent connections", "AI summaries"]) expect(html).toContain(label);
-    expect(html.match(/data-limit="/g)).toHaveLength(LIMIT_KEYS.length);
+    expect(html.match(/data-limit="/g)).toHaveLength(LISTED_LIMIT_KEYS.length);
+    expect(html).not.toContain(`data-limit="ai_runs"`); // a limit nothing uses yet is not listed (LimitDef.listed)
     expect(html).toMatch(/data-limit="seats">[\s\S]*?7 of 50/);
     expect(html).toContain("Members plus pending invitations.");
     expect(html).toMatch(/data-limit="artifact_bytes">[\s\S]*?1 GB of 5 GB/);
@@ -329,7 +330,7 @@ describe("Platform › Access — the grants", () => {
       pg({ id: 14, github_login: null, email: "buyer@shop.io", source: "billing", granted_by: "billing", mail_status: "failed" }),
     ] } }));
     expect(html).toContain("<strong>6</strong> grants &middot; <strong>3</strong> unused.");
-    for (const word of ["UNUSED", "USED", "REVOKED", "EXPIRED"]) expect(html).toContain(`>${word}<`);
+    for (const word of ["Unused", "Used", "Revoked", "Expired"]) expect(html).toContain(`>${word}</span>`);
     expect(html).toContain("GitHub login &middot; granted");
     expect(html).toContain("by @andres &middot; does not expire");
     expect(html).toMatch(/cto@bigco\.io[\s\S]*?Enterprise[\s\S]*?Email &middot;[\s\S]*?email sent &middot; seats 40[\s\S]*?Annual contract/);
@@ -422,7 +423,7 @@ describe("Platform — an organization's plan", () => {
     expect(html).toMatch(/data-limit="artifact_bytes"[\s\S]*?2 GB used[\s\S]*?unlimited/);
     expect(html).toMatch(/<button type="button" data-act="platPlanOpen" data-plat-plan-trigger class="cnpy-outlinebtn" aria-haspopup="dialog"[^>]*>Change plan<\/button>/);
     expect(orgPlanSection(row({ plan: orgPlan("personal", { seats_used: 4 }) }), null)).toContain("over the limit");
-    expect(orgPlanSection(row({ plan: orgPlan("team", { status: "canceled" }) }), null)).toContain(">ENDED<");
+    expect(orgPlanSection(row({ plan: orgPlan("team", { status: "canceled" }) }), null)).toContain(">Ended</span>");
   });
   it("the limit fields: blank is the plan's own, a number or “unlimited” overrides, storage is in GB", () => {
     expect(parseLimitDraft(blankLimits())).toEqual({ overrides: {} });

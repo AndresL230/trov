@@ -21,8 +21,9 @@ export interface Env {
   GITHUB_WEBHOOK_SECRET?: string; // LEGACY: SaplingLearn's fallback for the old /webhook/github hook (src/data/secrets.ts `resolveCredential`); Phase 7 deletes it
   GITHUB_REPO?: string;   // LEGACY: read by nothing — an org's repo is its `org_repos` row (0042_organizations copied this one); Phase 7 deletes it
   DEV_LOGIN?: string;     // LOCAL DEV ONLY (set in .dev.vars): bypass OAuth, act as this seeded user. Never set in prod.
-  GEMINI_API_KEY?: string; // Google Gemini key for capture-time PR/issue summaries (REST generateContent); absent → excerpt fallback.
-  LOCAL_UPSTREAM?: string; // LOCAL DEV ONLY (.dev.vars): a loopback http stand-in for GitHub + Gemini during a Sync (src/sync/local-upstream.ts). Ignored unless http://127.0.0.1 or http://localhost, and always beside a live Stripe key (src/platform/loopback.ts).
+  ANTHROPIC_API_KEY?: string; // Anthropic API key for capture-time PR/issue summaries and the AI pass (src/ai/client.ts, Claude Haiku); absent → excerpt fallback, and no AI run anywhere (`no_key`).
+  LOCAL_UPSTREAM?: string; // LOCAL DEV ONLY (.dev.vars): a loopback http stand-in for GitHub + Anthropic during a Sync (src/sync/local-upstream.ts). Ignored unless http://127.0.0.1 or http://localhost, and always beside a live Stripe key (src/platform/loopback.ts).
+  LOCAL_AI_PREVIEW?: string; // LOCAL DEV ONLY (.dev.vars): `ready` | `empty` | `capped` | `proposed` — the AI screens' sample content (src/ai/preview.ts). Honoured only for a request to a loopback http origin (`wrangler dev`), never beside a live Stripe key; anything else is ignored.
   GITHUB_SERVICE_TOKEN?: string; // LEGACY: SaplingLearn's `github_token` fallback until its admin stores one (`resolveCredential`); no other org ever reads it
   PUBLIC_ORIGIN?: string; // absolute origin for links in email (deep links, unsubscribe); absent → relative links
   NOTIFICATIONS_MODE?: "local" | "resend"; // delivery gate; absent → local (bodies to the dev table, Resend never called)
@@ -73,7 +74,8 @@ export interface Env {
   STRIPE_WEBHOOK_SECRET?: string; // SECRET — the `whsec_…` of the endpoint POST /webhook/stripe; absent → every delivery there is the bare 401
   STRIPE_PRICE_TEAM?: string;            // VAR — the Stripe Price id (`price_…`) of ONE SEAT of Trov Pro (plan id `team`), monthly
   STRIPE_PRICE_TEAM_YEARLY?: string;     // VAR — optional yearly per-seat price; Pro is offered on the intervals it has a price for
-  STRIPE_TAX?: string;                   // VAR — "on" → a checkout asks Stripe Tax to work out the tax (and takes a billing address); anything else → no tax lines
+  STRIPE_PUBLISHABLE_KEY?: string;       // VAR — Stripe's PUBLIC key (`pk_test_…` / `pk_live_…`), sent to the buyer's browser: set → checkout is embedded in Trov's own page (docs/architecture/billing.md › Embedded checkout); empty → Stripe's hosted page
+  STRIPE_TAX?: string;                  // VAR — "on" → a checkout asks Stripe Tax to work out the tax (and takes a billing address); anything else → no tax lines
   // LOCAL / TEST ONLY: a stand-in for api.stripe.com. Honoured ONLY for a loopback http origin (127.0.0.1 /
   // localhost) and ONLY with a key that is not a live one, so production — where it is unset, and where a
   // Worker cannot reach loopback anyway — always talks to api.stripe.com.

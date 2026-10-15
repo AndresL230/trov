@@ -11,10 +11,22 @@
  * All tests are pure (no D1 / Miniflare bindings). They run in the same Vitest
  * pool-workers harness as the backend tests; nothing here touches the DOM.
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setApiOrg } from "../web/src/api";
+import { describe, it, expect, vi } from "vitest";
+
+// marked + DOMPurify cannot run in this workerd pool (no DOM), so the markdown module is mocked,
+// as in the other render tests: the mock ESCAPES and wraps, so a body can be seen to have gone
+// through the renderer. What Rendered does with a body is test/render.review-rendered.test.ts.
+vi.mock("../web/src/markdown", () => ({
+  renderMarkdown: (body: string) => `<div class="mock-md">${body.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>`,
+  renderMarkdownInline: (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
+  sanitizeSvg: () => "",
+}));
+
 import { lineDiff, collapsedLineDiff } from "../web/src/diff";
-import { reviewView, reviewDetail, reviewCard, unifiedDiff, renderedPreview, splitDiffRows, type ReviewItem, type ReviewProps } from "../web/src/review";
+import { reviewView, reviewDetail, reviewCard, reviewFilterSwitch, diffViewer, unifiedDiff, splitDiffRows, staleBaseWarning, REVIEW_EXIT_MS, REVIEW_INTRO, type ReviewItem, type ReviewProps } from "../web/src/review";
+import { LOW_CONFIDENCE } from "../web/src/marks";
+import css from "../web/src/trov.css?raw";
+import morphSrc from "../web/src/morph.ts?raw";
 import { maintenanceView, assignPanel, fileHint, type MaintenanceProps, type UnplacedItem } from "../web/src/maintenance";
 import { identitySection, personPicker, type IdentityProps, type IdentityGroup } from "../web/src/identity";
 import { render, initialState, triageCounts, identityCount } from "../web/src/render";
@@ -96,8 +108,6 @@ function makeItem(overrides: Partial<ReviewItem> = {}): ReviewItem {
     id: "p1",
     kind: "proposal",
     eyebrow: "PROPOSAL · DOCS / TEST",
-    badge: "STAGED",
-    badgeColor: "var(--amber)",
     title: "Test Proposal",
     summary: "A summary",
     agent: "agent · session 0000",
@@ -131,7 +141,7 @@ describe("reviewView — populated", () => {
 
   it("labels the accept action Ratify for decisions and renders the ADR record", () => {
     const item = makeItem({
-      id: "d1", kind: "decision", badge: "DRAFT", badgeColor: "var(--blue)",
+      id: "d1", kind: "decision",
       diff: undefined, adr: [{ h: "Context", p: "Why." }, { h: "Decision", p: "What." }],
     });
     const html = reviewView(makeReviewProps({ items: [item] }));
@@ -143,8 +153,8 @@ describe("reviewView — populated", () => {
 
   it("shows the stale-base warning only when stale", () => {
     const stale = makeItem({ stale: true, staleNote: "Proposed from v6 — live is v8." });
-    expect(reviewView(makeReviewProps({ items: [stale] }))).toContain("STALE BASE");
-    expect(reviewView(makeReviewProps())).not.toContain("STALE BASE");
+    expect(reviewView(makeReviewProps({ items: [stale] }))).toContain(">Stale base</span>");
+    expect(reviewView(makeReviewProps())).not.toContain("Stale base");
   });
 
   it("filter hides non-matching kinds from the list", () => {
@@ -174,7 +184,9 @@ describe("reviewView — surface cards", () => {
     expect(adr).toMatch(/class="cnpy-surface" style="padding:24px 28px 26px"/);
     expect(adr).not.toContain("border-left:2px solid var(--green)"); // no accent edge on the record
     const stale = reviewDetail(makeItem({ stale: true, staleNote: "Proposed from v6." }), "unified");
-    expect(stale).toMatch(/class="cnpy-surface" style="border-left:2px solid var\(--amber\)/);
+    expect(stale).toMatch(/class="cnpy-surface" style="padding:11px 15px;margin-top:18px/);
+    expect(staleBaseWarning("Proposed from v6.")).not.toContain("border-left"); // a warning mark, never a coloured edge
+    expect(stale).toContain(">Stale base</span>");
   });
 });
 
@@ -194,18 +206,20 @@ describe("reviewView — diff view modes", () => {
     expect(html).toContain("grid-template-columns:1fr 1fr");
   });
 
-  it("rendered mode strips heading markers and shows the legend", () => {
-    const html = reviewView(makeReviewProps({ diffView: "rendered" }));
+  it("rendered mode renders the two BODIES through the markdown renderer, not the line-cut diff", () => {
+    const html = reviewView(makeReviewProps({ diffView: "rendered", items: [makeItem({ liveBody: "## Heading\n\nold line", proposedBody: "## Heading\n\nnew line" })] }));
+    expect(html).toContain('class="cnpy-md cnpy-rv-md"');
+    expect(html).toContain('<div class="mock-md">new line</div>');
     expect(html).toContain("added in this proposal");
     expect(html).toContain("removed (struck)");
-    expect(html).toContain("Heading");
-    expect(html).not.toContain("## Heading");
+    // The diff's own lines (the fixture's "trailing add") are source views only.
+    expect(html).not.toContain("trailing add");
   });
 });
 
 describe("reviewDetail — restructured header", () => {
   const decision = () => makeItem({
-    id: "d1", kind: "decision", eyebrow: "DECISION · ADR-005", badge: "DRAFT", badgeColor: "var(--blue)",
+    id: "d1", kind: "decision", eyebrow: "DECISION · ADR-005",
     title: "Append-only feed as the record", agent: "AndresL230", time: "Jun 25",
     diff: undefined, adr: [{ h: "Context", p: "Why." }],
   });
@@ -224,27 +238,28 @@ describe("reviewDetail — restructured header", () => {
     expect(html.indexOf("Append-only feed as the record")).toBeLessThan(html.indexOf(">Decision<"));
   });
 
-  it("moves the status badge up-right, next to the verdict controls", () => {
+  it("wears no state tag — the verdict buttons say it is waiting — and the low-confidence mark beside them when set", () => {
     const html = reviewDetail(decision(), "unified");
-    expect(html).toContain("DRAFT");
-    // Badge sits on the title's row (after the title) and beside the buttons (before Reject).
-    expect(html.indexOf("Append-only feed as the record")).toBeLessThan(html.indexOf("DRAFT"));
-    expect(html.indexOf("DRAFT")).toBeLessThan(html.indexOf("Reject"));
+    expect(html).not.toMatch(/>DRAFT<|>STAGED<|Low confidence/);
     expect(html.indexOf("Reject")).toBeLessThan(html.indexOf("Ratify"));
+    const flagged = reviewDetail({ ...decision(), flagged: true }, "unified");
+    expect(flagged).toContain(LOW_CONFIDENCE());
+    expect(flagged.indexOf("Append-only feed as the record")).toBeLessThan(flagged.indexOf("Low confidence"));
+    expect(flagged.indexOf("Low confidence")).toBeLessThan(flagged.indexOf("Reject"));
   });
 });
 
 describe("reviewCard — restructured to match the detail header", () => {
-  it("leads with the title, badge up-right, folds type/id/author/date into one byline", () => {
+  it("leads with the title, no state tag, folds type/id/author/date into one byline", () => {
     const html = reviewCard(makeItem({
-      eyebrow: "DECISION · ADR-005", badge: "DRAFT", badgeColor: "var(--blue)",
+      eyebrow: "DECISION · ADR-005",
       title: "A decision card title", agent: "AndresL230", time: "Jun 25",
     }), false);
     // The uppercase eyebrow line above the title is gone.
     expect(html).not.toContain("DECISION · ADR-005");
     // Title is first — before the byline record type and before the badge.
     expect(html.indexOf("A decision card title")).toBeLessThan(html.indexOf(">Decision<"));
-    expect(html.indexOf("A decision card title")).toBeLessThan(html.indexOf("DRAFT"));
+    expect(html).not.toMatch(/>DRAFT<|>STAGED</);
     // Byline folds type/id/author/date; identifier in the label face.
     expect(html).toContain(">Decision<");
     expect(html).toMatch(/font-family:var\(--label\)[^>]*>ADR-005</);
@@ -302,18 +317,19 @@ describe("diff viewer — ellipsis rows (collapsed unchanged runs)", () => {
     expect(rows[0].right.text).toBe("5 unchanged lines");
   });
 
-  it("renderedPreview replaces an ellipsis row with a divider (no count text)", () => {
-    const html = renderedPreview([{ t: "add", s: "kept" }, { t: "ellipsis", s: "9 unchanged lines" }]);
+  it("Rendered never shows a collapsed run: it renders the whole proposed doc, not the diff's rows", () => {
+    const html = diffViewer({ diff: [{ t: "add", s: "kept" }, { t: "ellipsis", s: "9 unchanged lines" }], liveBody: "a", proposedBody: "a\n\nkept" }, "rendered");
     expect(html).toContain("kept");
     expect(html).not.toContain("9 unchanged lines");
-    expect(html).toContain("border-top:1px dashed");
   });
 });
 
 describe("reviewView — flagged marker (low-confidence scrutiny signal)", () => {
-  it("renders FLAGGED only for flagged items", () => {
-    expect(reviewView(makeReviewProps({ items: [makeItem({ flagged: true })] }))).toContain("FLAGGED");
-    expect(reviewView(makeReviewProps())).not.toContain("FLAGGED");
+  it("marks Low confidence only on flagged items — an amber triangle and the words, never a tag", () => {
+    const flagged = reviewView(makeReviewProps({ items: [makeItem({ flagged: true })] }));
+    expect(flagged).toContain(LOW_CONFIDENCE(12));
+    expect(flagged).not.toContain("FLAGGED");
+    expect(reviewView(makeReviewProps())).not.toContain("Low confidence");
   });
 });
 
@@ -370,7 +386,7 @@ describe("XSS: review item fields are escaped in text and attributes", () => {
 
 function makeUnplaced(overrides: Partial<UnplacedItem> = {}): UnplacedItem {
   return {
-    id: "u1", title: "Loose thing", snippet: "A snippet.", reason: "AGENT FLAGGED",
+    id: "u1", title: "Loose thing", snippet: "A snippet.", reason: "Flagged by an agent",
     meta: "agent · session 0000 · 1h ago", reasonNote: "Could not place.", ...overrides,
   };
 }
@@ -649,34 +665,6 @@ describe("personPicker — two-step confirm guard", () => {
   });
 });
 
-// ── doc images in the Rendered view (docs/superpowers/specs/2026-09-24-doc-images-design.md) ──
-
-describe("Review › Rendered shows the proposed images", () => {
-  const A = "f".repeat(64);
-  beforeAll(() => setApiOrg("acme"));
-  afterAll(() => setApiOrg(null));
-  it("an added image line renders the picture (zoomable), outlined as added, with its alt as caption", () => {
-    const html = renderedPreview([{ t: "add", s: `![The deploy flow](/img/${A})` }]);
-    // The image is the ORG's: its bytes are behind the org's membership gate, like every request.
-    expect(html).toContain(`<img src="/api/o/acme/img/${A}" alt="The deploy flow"`);
-    expect(html).not.toContain(`src="/img/`);
-    expect(html).toContain(`data-act="docImgZoom" data-arg="${A}"`);
-    expect(html).toContain("border-color:var(--green)");
-    expect(html).toContain("<figcaption");
-    expect(html).not.toContain("![The deploy flow]");
-  });
-  it("a removed image is dimmed with a red outline; text around an image still reads as text", () => {
-    const html = renderedPreview([{ t: "del", s: `See ![old](/img/${A}) above` }]);
-    expect(html).toContain("border-color:var(--red);opacity:.55");
-    expect(html).toContain("See  above");
-  });
-  it("an alt text cannot inject markup", () => {
-    const html = renderedPreview([{ t: "add", s: `![<b onmouseover=x>](/img/${A})` }]);
-    expect(html).not.toContain("<b onmouseover");
-    expect(html).toContain("&lt;b onmouseover=x&gt;");
-  });
-});
-
 describe("Review and Unplaced — the detail's author opens their person card", () => {
   it("a mapped proposer is one chip in the detail byline; the list card (a select button) keeps a plain pair", () => {
     const it0 = makeItem({ agent: "maya-k", agentColor: "plum", agentHandle: "maya-k", agentName: "Maya K" });
@@ -695,5 +683,150 @@ describe("Review and Unplaced — the detail's author opens their person card", 
     expect((mapped.match(/data-act="openPerson"/g) ?? []).length).toBe(1);
     const stranger = maintenanceView(makeMaintProps({ people, unplaced: [makeUnplaced({ author: "ghost", when: "1h ago" })] }));
     expect(stranger).not.toContain('data-act="openPerson"');
+  });
+});
+
+// ── the 0.26 polish: one title, two switches, a keyed list, a card that leaves ──────────────────
+
+describe("Review — the screen is named once", () => {
+  const html = render({ ...initialState(), view: "app", screen: "review", proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] } });
+  it("the app header carries the title; the page has no heading of its own, only the one line", () => {
+    expect(html.match(/<h1[ >]/g)?.length).toBe(1);
+    expect(html).toMatch(/<h1 style="[^"]*">Review<\/h1>/);
+    expect(html.split(REVIEW_INTRO).length - 1).toBe(1);
+    expect(reviewView(makeReviewProps())).not.toContain("<h1");
+  });
+  it("Unplaced does the same: the header's title and one line", () => {
+    const un = render({ ...initialState(), view: "app", screen: "maintenance", needsTriage: { status: "ok", data: [] } });
+    expect(un.match(/<h1[ >]/g)?.length).toBe(1);
+    expect(un).toMatch(/<h1 style="[^"]*">Unplaced<\/h1>/);
+  });
+});
+
+describe("Review — Unified / Side by side / Rendered is ONE segmented switch", () => {
+  it("is a segmented() group with the same act and the picked mode pressed", () => {
+    const html = reviewDetail(makeItem(), "split");
+    const seg = html.slice(html.indexOf('data-seg="review-diff"'));
+    expect(html).toMatch(/class="cnpy-seg cnpy-seg--sm" data-seg="review-diff"/);
+    expect(seg).toContain('role="group"');
+    for (const mode of ["unified", "rendered"]) expect(html).toContain(`data-act="reviewDiffView" data-arg="${mode}"`);
+    expect(html).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">Side by side</);
+    // No hand-rolled chips left: the old ones were accent-bordered buttons.
+    expect(html).not.toContain("border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft)");
+  });
+  it("the mode's body is a keyed part, so a switch replaces it alone; the item's body is keyed by the item", () => {
+    expect(reviewDetail(makeItem(), "unified")).toContain('class="cnpy-rv-diff" data-morph-key="diff:unified"');
+    expect(reviewDetail(makeItem(), "rendered")).toContain('data-morph-key="diff:rendered"');
+    expect(reviewDetail(makeItem(), "unified")).toContain('class="cnpy-rv-body" data-morph-key="rvd:p1"');
+  });
+  it("the default mode is still Unified", () => {
+    expect(initialState().reviewDiffView).toBe("unified");
+  });
+});
+
+describe("Review — All / Proposals / Decisions is a segmented switch with counts", () => {
+  const items = [makeItem(), makeItem({ id: "p2", title: "Second" }), makeItem({ id: "d1", kind: "decision", title: "A Decision", diff: undefined, adr: [] })];
+  it("picks one view of the same list, each option carrying how many wait", () => {
+    const html = reviewView(makeReviewProps({ items, filter: "proposal" }));
+    expect(html).toMatch(/class="cnpy-seg cnpy-seg--sm" data-seg="review-filter"/);
+    expect(html).not.toContain('role="tablist"');
+    expect(html).toMatch(/data-act="reviewFilter" data-arg="all"[^>]*>All<span class="cnpy-seg-n">3<\/span>/);
+    expect(html).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">Proposals<span class="cnpy-seg-n">2<\/span>/);
+    expect(html).toMatch(/>Decisions<span class="cnpy-seg-n">1<\/span>/);
+  });
+  it("shows no count while the queue is still being read (never a made-up 0)", () => {
+    expect(reviewFilterSwitch("all", null)).not.toContain("cnpy-seg-n");
+    expect(reviewView(makeReviewProps({ items: [], loading: true }))).not.toContain("cnpy-seg-n");
+  });
+  it("a selection the filter still shows stays selected; one it hides keeps its detail", () => {
+    const shown = reviewView(makeReviewProps({ items, filter: "proposal", selectedId: "p2" }));
+    expect(shown).toMatch(/data-arg="p2" class="cnpy-titem cnpy-surface cnpy-card" aria-current="true"/);
+    const hidden = reviewView(makeReviewProps({ items, filter: "decision", selectedId: "p2" }));
+    expect(hidden).toContain('data-morph-key="rvd:p2"');
+  });
+});
+
+describe("Review — the list is keyed, and a card with a verdict leaves it", () => {
+  const items = [makeItem(), makeItem({ id: "p2", title: "Second" }), makeItem({ id: "p3", title: "Third" })];
+  const rowKeys = (html: string) => [...html.matchAll(/class="cnpy-rv-row" data-morph-key="([^"]+)"/g)].map((m) => m[1]);
+
+  it("every row is a keyed child of a data-morph-list container, and the screen is patched in place", () => {
+    const html = reviewView(makeReviewProps({ items }));
+    expect(html).toMatch(/class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list/);
+    expect(rowKeys(html)).toEqual(["rv:p1", "rv:p2", "rv:p3"]);
+    expect(render({ ...initialState(), view: "app", screen: "review" })).toContain('<main data-morph="review"');
+    expect(morphSrc).toContain('next.hasAttribute("data-morph-list")');
+  });
+
+  it("a card's structure is the same selected or not, with or without a verdict (only attributes differ)", () => {
+    const shape = (h: string) => h.replace(/ aria-current="true"| data-verdict="\w+" inert/g, "").replace(/<span class="cnpy-rv-verdict" aria-hidden="true">.*?<\/span>\s*<\/button>/s, "<V/></button>");
+    const plain = reviewCard(items[0], false);
+    expect(shape(reviewCard(items[0], true))).toBe(shape(plain));
+    expect(shape(reviewCard(items[0], false, "promoted"))).toBe(shape(plain));
+    expect(plain).toContain('<span class="cnpy-selbar"></span>');
+    expect(plain).toContain('<span class="cnpy-rv-verdict" aria-hidden="true"></span>');
+  });
+
+  it("a leaving card wears its verdict, is inert, and is out of the selection and the counts", () => {
+    const html = reviewView(makeReviewProps({ items, selectedId: null, leaving: { p1: "promoted" } }));
+    expect(rowKeys(html)).toEqual(["rv:p1", "rv:p2", "rv:p3"]);   // still in the list, same order
+    expect(html).toMatch(/data-morph-key="rv:p1" data-verdict="promoted" inert/);
+    expect(html).toMatch(/<span class="cnpy-rv-verdict" aria-hidden="true"><svg[^>]*>.*?<\/svg>Promoted<\/span>/);
+    expect(html).toContain('data-morph-key="rvd:p2"');             // the detail moved on
+    expect(html).toMatch(/data-arg="p2" class="cnpy-titem cnpy-surface cnpy-card" aria-current="true"/);
+    expect(html).toMatch(/>All<span class="cnpy-seg-n">2<\/span>/);
+    expect(reviewCard(items[0], false, "ratified")).toContain(">Ratified</span>");
+    expect(reviewCard(items[0], false, "rejected")).toContain(">Rejected</span>");
+  });
+
+  it("the last card leaving already has the empty layout under it, so nothing jumps when it is gone", () => {
+    const html = reviewView(makeReviewProps({ items: [items[0]], leaving: { p1: "rejected" } }));
+    expect(html.indexOf('data-morph-key="rv:p1"')).toBeLessThan(html.indexOf('data-morph-key="rv-empty"'));
+    expect(html).toContain('data-empty="review-list"');
+    expect(html).not.toContain('data-morph-key="rvd:');          // nothing left to show: the detail draws its shape
+  });
+
+  it("the sidebar count drops with the card and comes back if the entry is removed (a failed write)", () => {
+    const p = { slug: "a", version: 2, title: "A", section: "Architecture", space: "technical", summary: null, author: "x", confidence: null, status: "staged", change_kind: "edit" as const, low_confidence: 0, base_version: 1, current_version: 1, created_at: "2026-10-01T00:00:00Z", stagedBody: "b", promotedBody: "a" };
+    const s = { ...initialState(), view: "app" as const, screen: "review" as const, proposals: { status: "ok" as const, data: [p, { ...p, slug: "b" }] }, draftAdrs: { status: "ok" as const, data: [] } };
+    expect(triageCounts(s).review).toBe(2);
+    const leaving = { ...s, reviewLeaving: { "doc:a@2": { verdict: "promoted" as const, gone: false } } };
+    expect(triageCounts(leaving).review).toBe(1);
+    expect(render(leaving)).toMatch(/data-morph-key="rv:doc:a@2" data-verdict="promoted" inert/);
+    const gone = { ...s, reviewLeaving: { "doc:a@2": { verdict: "promoted" as const, gone: true } } };
+    expect(triageCounts(gone).review).toBe(1);
+    expect(render(gone)).not.toContain('data-morph-key="rv:doc:a@2"');
+    expect(triageCounts({ ...s, reviewLeaving: {} }).review).toBe(2);
+  });
+
+  it("the write is optimistic but restorable: main.ts deletes the entry and restores the selection when it fails", () => {
+    const fn = mainSrc.slice(mainSrc.indexOf("function reviewVerdict"), mainSrc.indexOf("function loadDraftAdrsIfNeeded"));
+    expect(fn).toMatch(/\.catch\(\(e\) => \{[\s\S]*delete state\.reviewLeaving\[id\];[\s\S]*state\.reviewSel = exit\.selBefore/);
+    expect(fn).toContain("prefers-reduced-motion: reduce");   // no movement: the card is gone at once
+    expect(fn).toContain("REVIEW_EXIT_MS");
+    // The verdicts are still the four session-cookie writes, nothing else.
+    for (const call of ["promoteDoc(ref.slug, ref.version)", "rejectDoc(ref.slug, ref.version)", "ratifyAdr(ref.id)", "rejectAdr(ref.id)"]) expect(fn).toContain(call);
+  });
+});
+
+describe("Review — the exit's CSS (trov.css)", () => {
+  const rule = (sel: string) => css.match(new RegExp(`${sel.replace(/[.[\]"=*]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+  it("a row is a one-track grid that collapses to 0fr on the app's one clock", () => {
+    expect(rule(".cnpy-rv-row")).toContain("grid-template-rows:1fr");
+    expect(rule(".cnpy-rv-row")).toContain("transition:grid-template-rows var(--fx-fast) var(--fx-ease), opacity var(--fx-fast) var(--fx-ease)");
+    expect(rule(".cnpy-rv-row[data-verdict]")).toContain("grid-template-rows:0fr");
+    expect(rule(".cnpy-rv-row[data-verdict]")).toContain("transition-delay:.13s");
+  });
+  it("the script's timer is the hold plus the collapse, and the whole exit stays under 350ms", () => {
+    const fast = Number(css.match(/--fx-fast:\.(\d+)s/)?.[1]) * 10;   // ".18s" → 180
+    expect(REVIEW_EXIT_MS).toBe(130 + fast);
+    expect(REVIEW_EXIT_MS).toBeLessThanOrEqual(350);
+  });
+  it("nothing eases under prefers-reduced-motion", () => {
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.cnpy-rv-row, \.cnpy-rv-row \.cnpy-titem, \.cnpy-rv-card-in, \.cnpy-rv-verdict \{ transition:none !important; \}/);
+  });
+  it("the verdict's tone is the diff's: green for promoted and ratified, red for rejected", () => {
+    expect(css).toContain('.cnpy-rv-row[data-verdict="promoted"], .cnpy-rv-row[data-verdict="ratified"] { --rv-tone:var(--green); }');
+    expect(css).toContain('.cnpy-rv-row[data-verdict="rejected"] { --rv-tone:var(--red); }');
   });
 });

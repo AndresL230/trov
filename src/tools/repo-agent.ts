@@ -11,7 +11,12 @@
 //               selector; an agent gets ONE;
 //   · trends  — sparkline arrays are stripped, the drift breakdown is cut
 //               to a bounded list of group headers, and each provider part's
-//               deploy strip to its newest few, unless asked for.
+//               deploy strip to its newest few, unless asked for;
+//   · written — what Trov WROTE about the repository is not a section, so the
+//               tab filter does not name it: `state` travels with the overview
+//               (it is Overview's first block), `themes` with planning (Planning's
+//               first block), both with no `tab`. Absent on the dashboard = absent
+//               here — nothing writes either yet, so today neither ever travels.
 // A section's STATUS is never touched: `not_connected` and `empty` pass through
 // as they are — unknown is never coerced into a zero or an empty list.
 //
@@ -19,6 +24,7 @@
 // `POST /admin/poll-usage`) and Sync GitHub stay
 // session-cookie + admin routes and are never MCP tools.
 
+import type { AiRepoState, AiThemeRange, AiThemes } from "@shared/ai-core";
 import {
   REPO_TAB_SECTIONS,
   type RepoDashboard, type RepoDrift, type RepoProduct, type RepoRange, type RepoSection, type RepoSectionName, type RepoTab,
@@ -47,6 +53,10 @@ export interface RepoAgentView {
   tab: RepoTab | "all";
   range: RepoRange;
   sections: Partial<Record<RepoSectionName, RepoSection<unknown>>>;
+  /** Written by Trov (shared/ai-core.ts): with `tab` overview or none, when the dashboard has it. */
+  state?: AiRepoState;
+  /** Written by Trov: with `tab` planning or none, when the dashboard has it. */
+  themes?: Record<AiThemeRange, AiThemes>;
 }
 
 const ALL_SECTIONS: readonly RepoSectionName[] = Object.values(REPO_TAB_SECTIONS).flat();
@@ -147,7 +157,10 @@ export function shapeRepoDashboard(dash: RepoDashboard, opts: RepoAgentOptions =
     sections[name] = { status: "ok", data: includeTrends ? data : withoutTrends(data) };
   }
 
-  return { repo: dash.repo, generatedAt: dash.generatedAt, degraded: dash.degraded, tab: opts.tab ?? "all", range, sections };
+  const view: RepoAgentView = { repo: dash.repo, generatedAt: dash.generatedAt, degraded: dash.degraded, tab: opts.tab ?? "all", range, sections };
+  if (dash.state && (!opts.tab || opts.tab === "overview")) view.state = dash.state;
+  if (dash.themes && (!opts.tab || opts.tab === "planning")) view.themes = dash.themes;
+  return view;
 }
 
 /**

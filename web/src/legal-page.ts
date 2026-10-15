@@ -1,11 +1,14 @@
-// The DOM boot for the two legal pages (web/terms.html, web/privacy.html). The page
-// says which document it is (`data-doc` on #legal); everything it renders comes from
-// the pure web/src/legal.ts. The theme follows the app's own stored choice
-// (`trov.theme`, the same key and reading as web/src/main.ts), and the toggle flips
-// Light ⇄ Dark and stores it, so the app and these pages always agree.
+// The DOM boot for the legal pages (/terms, /privacy, /refunds: `legal` pages of shared/site-pages.ts,
+// whose HTML the build writes and PRERENDERS — web/src/site-prerender.ts). The page says which
+// document it is (`data-doc` on #legal) and its <title> is the page list's; everything it renders
+// comes from the pure web/src/legal.ts, the same markup the build put there. The theme follows
+// the app's own stored choice (`trov.theme`, the same key and reading as web/src/main.ts), and
+// the toggle flips Light ⇄ Dark and stores it, so the app and these pages always agree.
 import "./trov.css";
 import { LEGAL_DOCS, legalView, type LegalKind } from "./legal";
 import { syncFavicon } from "./favicon";
+import { followSkipLink, siteRoot } from "./site-chrome";
+import { paintRoot } from "./morph";
 import { migrateBrowserStorage } from "./storage-migrate";
 
 migrateBrowserStorage(); // canopy.* → trov.* before the theme is read
@@ -27,20 +30,31 @@ const doc = kind ? LEGAL_DOCS[kind] : undefined;
 
 if (mount && doc) {
   let theme = storedTheme();
+  // The contents disclosure a narrow screen shows (trov.css folds it under 900px; a wide one never sees it).
+  let tocOpen = false;
+  const setToc = (open: boolean, instant = false): void => {
+    tocOpen = open;
+    const nav = mount.querySelector<HTMLElement>(".site-legal-toc");
+    if (!nav) return;
+    nav.toggleAttribute("data-instant", instant);
+    nav.dataset.open = open ? "1" : "0";
+    nav.querySelector("[data-legal-tocb]")?.setAttribute("aria-expanded", String(open));
+    if (instant) { void nav.offsetHeight; nav.removeAttribute("data-instant"); }
+  };
   const media = window.matchMedia?.("(prefers-color-scheme: dark)");
   const resolved = (): "light" | "dark" => (theme === "system" ? (media?.matches ? "dark" : "light") : theme);
 
   const paint = () => {
     const t = resolved();
     document.documentElement.style.background = t === "dark" ? "#1c1a16" : "#f6f6f7"; // no white flash past the wrapper
-    mount.innerHTML = `<div data-cnpy-theme="${t}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">${legalView(doc, t === "dark")}</div>`;
+    paintRoot(mount, siteRoot(t, legalView(doc, t === "dark", tocOpen)));
     syncFavicon(t);
   };
 
-  document.title = `${doc.title} · Trov`;
   paint();
   media?.addEventListener?.("change", () => { if (theme === "system") paint(); });
   mount.addEventListener("click", (e) => {
+    if (followSkipLink(e)) return;
     if (!(e.target as Element).closest("[data-legal-theme]")) return;
     theme = resolved() === "light" ? "dark" : "light";
     try { localStorage.setItem("trov.theme", theme); } catch { /* ignore */ }
@@ -66,10 +80,13 @@ if (mount && doc) {
   spy();
   // A contents link glides to its section (and keeps the address shareable); with reduced motion it jumps.
   mount.addEventListener("click", (e) => {
+    if ((e.target as Element).closest("[data-legal-tocb]")) { setToc(!tocOpen); return; }
     const a = (e.target as Element).closest<HTMLElement>("[data-legal-toc]");
     const sec = a ? document.getElementById(a.dataset.legalToc ?? "") : null;
     if (!a || !sec) return;
     e.preventDefault();
+    // Folded contents sit ABOVE the text: close them at once, so the section is where the scroll expects it.
+    if (tocOpen) setToc(false, true);
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     sec.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
     history.replaceState(null, "", `#${sec.id}`);

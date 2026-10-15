@@ -4,14 +4,16 @@
 // still render their Phase-1 mock until their task lands.
 
 import "./trov.css";
+import { installMarkTips } from "./tip";
 import { migrateBrowserStorage } from "./storage-migrate";
 import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments } from "./segmented";
+import { REVIEW_EXIT_MS, type ReviewVerdict } from "./review";
 import { syncTabBars, onTabBarKey } from "./tabs";
 import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, type MwRepoTab } from "./mywork";
 import {
-  render, initialState, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf,
+  render, initialState, reviewProps, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf,
   FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
 } from "./render";
 import {
@@ -47,6 +49,8 @@ import type { SprintDetail } from "@shared/sprints";
 import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash";
 import { mountLandingMotion, unmountLandingMotion, noteJump } from "./landing-motion";
 import { createFeatureCtl } from "./site-feature";
+import { createMenuCtl } from "./site-menu";
+import { initSiteViewport } from "./site-viewport";
 import { TOUR_KEYS } from "./landing";
 import { initFaqAccordion } from "./site-faq";
 import {
@@ -61,6 +65,7 @@ import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX
 import { PERSON_COLORS, type PersonColor, type OAuthGrantSummary } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
+import { followSkipLink, syncPageBackground } from "./site-chrome";
 import { syncSkeletons } from "./skeleton";
 import { parsePreview, previewSearch, withPreview, PREVIEW_BLOCKED, type PreviewMode } from "./preview";
 import { setWriteBlock } from "./api";
@@ -80,6 +85,7 @@ import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
+import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
 import { RELEASES } from "./releases";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
@@ -90,8 +96,10 @@ import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
 import { SETUP_PARAM, initialBillingDone, startBillingDone } from "./billing";
 import { morphStep } from "./transition";
-import { BILLING_DONE_PATH } from "@shared/billing";
-import { getBillingStatus } from "./api";
+import { BILLING_CHECKOUT_PATH, BILLING_DONE_PATH, PRICING_PATH, signInReturnPath } from "@shared/billing";
+import { askBillingCheckout, getBillingStatus } from "./api";
+import { BILLING_MOUNT_ID, billingCheckoutHosted, initialBillingCheckout, startBillingCheckout, type BillingCheckoutHost } from "./billing-checkout";
+import { loadStripeEmbedder } from "./stripe-js";
 import { setPrimaryRepo } from "./github";
 import { GITHUB_LOGIN_RE, type MyOrgsResponse } from "@shared/orgs";
 import { isGithubConnectOutcome } from "@shared/github-app";
@@ -169,6 +177,16 @@ const supportCtl = createSupport({
   context: () => (state.view === "auth"
     ? { route: `${location.pathname}${location.hash}`, org: null, version: "", userAgent: navigator.userAgent }
     : { route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: RELEASES[0]?.version ?? "", userAgent: navigator.userAgent }),
+});
+
+// Deleting one's account (Settings) and an organization (Org settings › General, its owner) — web/src/deletion-actions.ts.
+// A success is a page load: everything this page holds belonged to what was deleted.
+const deletionCtl = createDeletion({
+  state, mount, rerender: () => rerender(), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+  leave: (href) => {
+    try { if (state.orgSlug && localStorage.getItem(LAST_ORG_KEY) === state.orgSlug) localStorage.removeItem(LAST_ORG_KEY); } catch { /* ignore */ }
+    location.replace(href);
+  },
 });
 
 // The dropdowns (web/src/dropdown.ts): opening, closing (with its exit), the keyboard, and
@@ -265,6 +283,24 @@ function markEnter(): void {
   }, ENTER_MS - elapsed + 50);
 }
 
+/** Review's detail pane after a paint: a different item starts at its top (the pane is the same
+ *  element now, so it would keep the last item's scroll), and a verdict button that had focus —
+ *  and went with its item — gives it to the same button of the item now on screen, so Enter,
+ *  Enter, Enter works down a queue. */
+let reviewShown: string | null = null;
+function syncReviewDetail(focusAct: string | null): void {
+  const body = state.view === "app" && state.screen === "review" ? mount.querySelector<HTMLElement>(".cnpy-rv-body[data-morph-key]") : null;
+  const key = body?.getAttribute("data-morph-key") ?? null;
+  if (key !== reviewShown) {
+    reviewShown = key;
+    const pane = body?.closest<HTMLElement>(".cnpy-rv-detail");
+    if (pane) pane.scrollTop = 0;
+  }
+  if (body && (focusAct === "reviewAccept" || focusAct === "reviewReject") && !body.contains(document.activeElement)) {
+    body.querySelector<HTMLElement>(`.cnpy-rv-head [data-act="${focusAct}"]`)?.focus({ preventScroll: true });
+  }
+}
+
 /** Stat figures count up to their value on entrance (`data-count`). */
 function countUp(root: HTMLElement): void {
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
@@ -341,12 +377,18 @@ function rerender(): void {
   // The swap below discards the main scroll pane; keep its position when the
   // screen is unchanged so a button low on a long screen doesn't jump to the top.
   const scroll = captureScroll(mount, state.screen);
+  // Review: a verdict button that had focus hands it to the same button of the item that follows.
+  const rvFocus = active?.closest?.(".cnpy-rv-head") ? active.getAttribute("data-act") : null;
   paint(mount, render(state));
+  syncReviewDetail(rvFocus);
   syncSegments(mount);
   syncTabBars(mount);
   qs.sync();   // the search dropdown lives outside the mount: re-anchor and re-theme it
   // The tab icon follows the app's resolved theme (a no-op until it changes).
   syncFavicon(resolvedTheme(), mount.querySelector("[data-cnpy-theme]"));
+  // The page behind the app (an overscroll, the instant before a paint) in the app's theme: the build's
+  // theme boot set it for the first paint (site-prerender.ts), and a theme change must not leave it behind.
+  syncPageBackground(document.documentElement, resolvedTheme());
   restoreScroll(mount, scroll, state.screen);
   markEnter();
   // Loading skeletons: keep each region's clock across this swap, and fade in what replaced one.
@@ -577,7 +619,6 @@ function loadForScreen(screen: Screen): void {
     case "repo": loadRepoIfNeeded(); break;
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
     case "settings": loadSettingsReads(); break;
-    case "unsubscribe": runUnsubscribe(); break;
     // Platform has one home, `/platform/` (the org menu links there): an old in-app `#platform…` link goes to it.
     case "platform": case "platformorg":
       if (state.view === "app") { location.replace(`${PLATFORM_PATH}${hashForRoute(currentRoute())}`); break; }
@@ -782,8 +823,7 @@ function enterOrg(slug: string, hash: string): void {
   // Read once, here — the address bar is rewritten below, so a reload does not say it again.
   const github = query.get("github");
   if (isGithubConnectOutcome(github)) {
-    const missing = /^[1-9][0-9]{0,5}$/.test(query.get("missing") ?? "") ? Number(query.get("missing")) : undefined;
-    state.org.githubNotice = { outcome: github, accounts: (query.get("accounts") ?? "").split(",").filter((a) => GITHUB_LOGIN_RE.test(a)).slice(0, 10), ...(missing ? { missing } : {}) };
+    state.org.githubNotice = { outcome: github, accounts: (query.get("accounts") ?? "").split(",").filter((a) => GITHUB_LOGIN_RE.test(a)).slice(0, 10) };
   }
   // The return from a hosting provider after Connect with Vercel / Netlify (src/hosting/connections.ts):
   // `/<slug>/?hosting=<outcome>&provider=<id>#org/hosting`, or `/?hosting=<outcome>` when the intent could
@@ -1072,6 +1112,7 @@ function loadSettingsReads(): void {
   loadNotifPrefsIfNeeded();
   orgCtl.loadPlan();
   void loadMyOrgs();
+  void deletionCtl.loadAccount(); // what Delete account would do, and anything in its way (deletion.ts)
 }
 /** Why a change to a connection's scope was refused, in words (the route answers with a code). */
 const GRANT_SCOPE_REFUSALS: Record<string, string> = {
@@ -1191,24 +1232,6 @@ function writeSettings(body: Parameters<typeof putNotificationSettings>[0], done
       rerender();
     });
 }
-/**
- * The #unsubscribe screen (the footer link's GET /u/<token> redirects here):
- * flips email_unsubscribed through the cookie-gated prefs route, then shows
- * the confirmation. A Settings "preview" shows the same screen without a flip.
- */
-function runUnsubscribe(): void {
-  if (state.unsub.preview) { rerender(); return; }
-  state.unsub = { pending: true, error: null, preview: false };
-  rerender();
-  putNotificationPrefs({ unsubscribed: true })
-    .then((data) => { state.notifPrefs = { status: "ok", data }; state.unsub = { pending: false, error: null, preview: false }; rerender(); })
-    .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-      state.unsub = { pending: false, error: e instanceof ApiError ? e.message : "Something went wrong.", preview: false };
-      rerender();
-    });
-}
-
 function loadDoc(slug: string): void {
   state.docDetail = { status: "loading", data: null };
   rerender();
@@ -1425,16 +1448,18 @@ function loadRoadmapFeed(): void {
 // only the newest in-flight request commit, so a slow earlier response can't
 // overwrite fresher data.
 let proposalsSeq = 0;
-function loadProposals(): void {
+/** `after` runs when THIS read commits, before the paint (Review's verdicts settle there). */
+function loadProposals(after?: () => void): void {
   const seq = ++proposalsSeq;
   state.proposals = { status: "loading", data: state.proposals.data };
   rerender();
   listStagedProposals()
-    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; after?.(); pruneReviewLeaving(); rerender(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== proposalsSeq) return;
       state.proposals = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
+      after?.(); pruneReviewLeaving();
       rerender();
     });
 }
@@ -1444,17 +1469,101 @@ function loadProposalsIfNeeded(): void {
 }
 
 let draftAdrsSeq = 0;
-function loadDraftAdrs(): void {
+function loadDraftAdrs(after?: () => void): void {
   const seq = ++draftAdrsSeq;
   state.draftAdrs = { status: "loading", data: state.draftAdrs.data };
   rerender();
   listAdrs("draft")
-    .then((rows) => { if (seq !== draftAdrsSeq) return; state.draftAdrs = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== draftAdrsSeq) return; state.draftAdrs = { status: "ok", data: rows }; after?.(); pruneReviewLeaving(); rerender(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== draftAdrsSeq) return;
       state.draftAdrs = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
+      after?.(); pruneReviewLeaving();
       rerender();
+    });
+}
+
+// ── Review: a verdict's card leaves the list (web-ui.md › A row leaving a list) ──────────────
+// The write is sent at once and the card is taken out optimistically: it wears its verdict, then
+// collapses (trov.css `.cnpy-rv-row[data-verdict]`), the selection moves to the next card and the
+// counts drop with it. Nothing here is a second source of truth — `state.reviewLeaving` only HIDES
+// rows of the two reads; the refetch replaces the reads and the entry is dropped. A failed write
+// deletes the entry, and the card, the counts and the selection are exactly what they were.
+interface ReviewExit { kind: "doc" | "adr"; selBefore: string | null; selAfter: string | null; timer: ReturnType<typeof setTimeout> | null; ok: boolean }
+const reviewExits = new Map<string, ReviewExit>();
+/** A verdict landed for this kind: its list is refetched once no card is still leaving. */
+const reviewRefetch = { doc: false, adr: false };
+
+/** Refetch what the verdicts changed — held while a card is still collapsing, so a read that
+ *  lands mid-exit never pulls a row out from under its own animation (and several verdicts in a
+ *  row cost one refetch, not one each). */
+function settleReview(): void {
+  if (Object.values(state.reviewLeaving).some((l) => !l.gone)) return;
+  for (const kind of ["doc", "adr"] as const) {
+    if (!reviewRefetch[kind]) continue;
+    reviewRefetch[kind] = false;
+    // Every verdict of this kind the server has confirmed: once THIS read commits, the read is the truth.
+    const done = [...reviewExits].filter(([, x]) => x.kind === kind && x.ok).map(([id]) => id);
+    const after = () => { for (const id of done) { delete state.reviewLeaving[id]; reviewExits.delete(id); } };
+    if (kind === "doc") loadProposals(after); else loadDraftAdrs(after);
+  }
+}
+/** A confirmed verdict whose item no read holds any more has nothing left to hide. */
+function pruneReviewLeaving(): void {
+  const held = new Set([...state.proposals.data.map((p) => `doc:${p.slug}@${p.version}`), ...state.draftAdrs.data.map((a) => `adr:${a.id}`)]);
+  for (const [id, x] of reviewExits) if (x.ok && state.reviewLeaving[id]?.gone && !held.has(id)) { delete state.reviewLeaving[id]; reviewExits.delete(id); }
+}
+
+function reviewVerdict(id: string, accept: boolean): void {
+  const ref = decodeReviewId(id);
+  if (!ref || state.reviewLeaving[id]) return;   // unknown, or already decided (a second click)
+  const verdict: ReviewVerdict = accept ? (ref.kind === "adr" ? "ratified" : "promoted") : "rejected";
+  // The selection follows to the next card still waiting (the one before, at the end of the list).
+  // Only a selection made by hand is moved: with none, the view already shows the first one waiting.
+  const selBefore = state.reviewSel;
+  let selAfter = selBefore;
+  if (selBefore === id) {
+    const p = reviewProps(state);
+    const rows = p.items.filter((it) => (p.filter === "all" || it.kind === p.filter) && (it.id === id || !p.leaving?.[it.id]));
+    const at = rows.findIndex((it) => it.id === id);
+    selAfter = (rows[at + 1] ?? rows[at - 1] ?? null)?.id ?? null;
+  }
+  state.reviewSel = selAfter;
+  // The card is seen leaving only on Review, and only when motion is allowed; otherwise it is gone at once.
+  const animate = state.screen === "review" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  state.reviewLeaving[id] = { verdict, gone: !animate };
+  const exit: ReviewExit = { kind: ref.kind, selBefore, selAfter, timer: null, ok: false };
+  reviewExits.set(id, exit);
+  if (animate) exit.timer = setTimeout(() => {
+    exit.timer = null;
+    const l = state.reviewLeaving[id];
+    if (l && !l.gone) { l.gone = true; rerender(); }
+    settleReview();
+  }, REVIEW_EXIT_MS);
+  rerender();
+
+  const op = ref.kind === "doc"
+    ? (accept ? promoteDoc(ref.slug, ref.version) : rejectDoc(ref.slug, ref.version))
+    : (accept ? ratifyAdr(ref.id) : rejectAdr(ref.id));
+  op.then(() => {
+      exit.ok = true;
+      reviewRefetch[ref.kind] = true;
+      flash(accept
+        ? (ref.kind === "adr" ? "Ratified — the decision is now accepted" : "Promoted — the proposal is live; previous version kept")
+        : "Rejected — parked, nothing changed");
+      // Refetch the affected list — the read stays the truth (the counts are derived from it).
+      settleReview();
+    })
+    .catch((e) => {
+      // The write did not happen: the card is back where it was, with the selection it had.
+      if (exit.timer !== null) clearTimeout(exit.timer);
+      reviewExits.delete(id);
+      delete state.reviewLeaving[id];
+      if (state.reviewSel === exit.selAfter) state.reviewSel = exit.selBefore;
+      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      flash(e instanceof ApiError ? e.message : "Action failed");
+      settleReview();
     });
 }
 function loadDraftAdrsIfNeeded(): void {
@@ -2168,6 +2277,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "onbName": state.onboard.name = value ?? ""; rerender(); return;
+    // The Terms / Privacy / age checkbox (people.ts): ticked by the person, never by default.
+    case "onbAgree": state.onboard.agreed = value === "1"; rerender(); return;
     case "onbColor": if (arg && (PERSON_COLORS as readonly string[]).includes(arg)) state.onboard.color = arg as PersonColor; break;
     // Back from the welcome card to "how you'll appear": the account exists, so the card edits it.
     case "onbBack": {
@@ -2184,7 +2295,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     case "onbSubmit": {
       const o = state.onboard;
-      if (o.check !== "available" || o.submitting) return;
+      if (o.check !== "available" || o.submitting || (!o.edit && !o.agreed)) return;
       o.submitting = true; o.error = null; rerender();
       if (o.edit) {
         // Save what changed (the same writes Settings › Profile makes), then on to the welcome card.
@@ -2209,10 +2320,13 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         // empty on day one, and this is the one moment they are guaranteed to be
         // new. The boot path restores the route from the hash, so #guide is all
         // it takes. Every later sign-in goes wherever their hash points.
-        // Signed up from an MCP client's authorize link → back to the consent screen
-        // (a same-origin path the Worker built); otherwise Get Started, as before.
+        // Signed up FOR something → on to it, before any of the first run: an MCP client's authorize link
+        // (back to the consent screen), or a purchase (on to checkout — a new buyer names their
+        // organization after paying, not before). A same-origin path the Worker built and
+        // `signInReturnPath` recognises; anything else is ignored. Otherwise the first run, as before.
         .then((r) => {
-          if (r.redirect?.startsWith("/oauth/authorize?")) { window.location.href = r.redirect; return; }
+          const next = signInReturnPath(r.redirect);
+          if (next) { window.location.href = next; return; }
           // No reload: read who we now are and morph this card into the next one (the org picker —
           // a new person is in no org). Anything unexpected falls back to a fresh page.
           getMe().then((me) => {
@@ -2243,6 +2357,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // `arg` says what the visitor came to do ("signup" from a Start-for-free button, or the dialog's own
       // switch); anything else is the nav's Sign in. Switching inside the open dialog keeps focus on the switch.
       const switching = state.signInOpen;
+      menuCtl.close({ instant: true, refocus: false }); // opened from the menu: the sign-in sheet takes its place
       state.signInMode = arg === "signup" ? "signup" : "signin";
       state.signInOpen = true;
       rerender();
@@ -2263,8 +2378,13 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       }).catch(() => { location.assign(fallback); });
       return;
     }
+    // The payment page's fallback (billing-checkout.ts): Stripe's hosted checkout, when its form would not open here.
+    case "billingHosted": void billingCheckoutHosted(billingCheckoutHost); return;
     case "closeSignIn": state.signInOpen = false; break;
     // The tour's dialog (site-feature.ts): a card grows into it, ← / → step through the features.
+    // The menu the nav offers under 900px (site-menu.ts).
+    case "openSiteMenu": menuCtl.open(); return;
+    case "closeSiteMenu": menuCtl.close(); return;
     case "openFeature": if (arg) featureCtl.open(arg); return;
     case "closeFeature": featureCtl.close(); return;
     case "stepFeature": featureCtl.step(arg === "prev" ? -1 : 1); return;
@@ -2287,6 +2407,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const behavior: ScrollBehavior = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
       // ONE scroll per click; where it lands is the target's `scroll-margin-top` (trov.css). Sections
       // passed on the way settle without their entrance (landing-motion.ts).
+      // From the menu: it closes (unlocking the page's scroll at once) and the page scrolls under it as it leaves.
+      menuCtl.close({ refocus: false });
       noteJump();
       if (arg === "top") window.scrollTo({ top: 0, behavior });
       else document.getElementById(`site-${arg}`)?.scrollIntoView({ behavior, block: "start" });
@@ -2320,6 +2442,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       window.scrollTo(0, 0);
       return;
     case "siteBack": {
+      menuCtl.close({ instant: true, refocus: false });
       const back = state.siteReturn ?? parseHash("");
       state.siteReturn = null;
       applyRoute(back);
@@ -2964,7 +3087,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       loadNeedsTriageIfNeeded();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3031,29 +3154,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (arg === "unified" || arg === "split" || arg === "rendered") state.reviewDiffView = arg;
       break;
     case "reviewAccept":
-    case "reviewReject": {
-      if (!arg) return;
-      const ref = decodeReviewId(arg);
-      if (!ref) return;
-      const accept = act === "reviewAccept";
-      const op = ref.kind === "doc"
-        ? (accept ? promoteDoc(ref.slug, ref.version) : rejectDoc(ref.slug, ref.version))
-        : (accept ? ratifyAdr(ref.id) : rejectAdr(ref.id));
-      op.then(() => {
-          state.reviewSel = null; // fall back to the first visible item
-          flash(accept
-            ? (ref.kind === "adr" ? "Ratified — the decision is now accepted" : "Promoted — the proposal is live; previous version kept")
-            : "Rejected — parked, nothing changed");
-          // Refetch the affected list — never locally decrement (badge drift is worse).
-          if (ref.kind === "doc") loadProposals();
-          else loadDraftAdrs();
-        })
-        .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-          flash(e instanceof ApiError ? e.message : "Action failed");
-        });
+    case "reviewReject":
+      if (arg) reviewVerdict(arg, act === "reviewAccept");
       return;
-    }
 
     // docs navigation. Clicking the whole row toggles the outline like the chevron:
     // if it's the doc you're already reading, collapse/expand its outline; otherwise
@@ -3563,8 +3666,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       writePrefs({ unsubscribed: next }, next ? "Email is off" : "Email is back on");
       return;
     }
-    case "previewUnsub": state.unsub = { pending: false, error: null, preview: true }; state.screen = "unsubscribe"; break;
-    case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadSettingsReads(); return;
 
     // ── Org settings › Notifications (admin) ─────────────────────────────────
     case "policyToggle": {
@@ -3795,6 +3896,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
       // The support form, signed in or out: its controller repaints the dialog alone (support-actions.ts).
       if (act.startsWith("support")) { supportCtl.act(act, arg, value); return; }
+      // Deleting one's account or an organization (deletion-actions.ts) — before `org…` below.
+      if (act.startsWith("acctDel") || act.startsWith("orgDel")) { deletionCtl.act(act, arg, value); return; }
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
       // `orgs…` (the switcher, the picker, the create dialog) before `org…` (Org settings).
       if (act.startsWith("welcome")) { welcomeCtl.act(act, arg); return; }
@@ -3985,6 +4088,9 @@ document.addEventListener("keydown", (e) => {
 });
 
 mount.addEventListener("click", (e) => {
+  // The skip link (site-chrome.ts `skipLink`): focus the main content without writing the hash, which is
+  // the app's route and the sign-in return-to.
+  if (followSkipLink(e)) return;
   const target = e.target as Element;
   // Textareas carry data-act too (the description / comment drafts); clicking
   // into one must place the caret, not dispatch the act with a null value.
@@ -4261,6 +4367,8 @@ mount.addEventListener("keydown", (e) => {
 mount.addEventListener("input", (e) => {
   const el = e.target as HTMLElement;
   if ((el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && el.dataset.act) {
+    // A checkbox's value is whether it is ticked ("1" or ""), not its constant `value`.
+    if (el instanceof HTMLInputElement && el.type === "checkbox") { dispatch(el.dataset.act, el.dataset.arg ?? null, el.checked ? "1" : ""); return; }
     // The caret rides along: "ticketComment" needs it to decide whether the
     // cursor is inside an @mention token. Every other case ignores it.
     dispatch(el.dataset.act, el.dataset.arg ?? null, el.value, el.selectionStart);
@@ -4452,7 +4560,8 @@ document.addEventListener("keydown", (e) => {
   if (what === "confirm") dispatch(dlg.getAttribute("data-confirm-act") ?? "", arg, null);
   else if (what === "cancel") dispatch(dlg.getAttribute("data-confirm-cancel") ?? "", arg, null);
   else if (what === "trap") {
-    const items = Array.from(dlg.querySelectorAll<HTMLElement>("button:not([disabled])"));
+    // Its buttons, and a deletion's typed confirmation field (confirm.ts `typed`).
+    const items = Array.from(dlg.querySelectorAll<HTMLElement>("input:not([disabled]), button:not([disabled])"));
     if (!items.length) { dlg.focus(); return; }
     const at = items.indexOf(document.activeElement as HTMLElement);
     const next = at < 0 ? (e.shiftKey ? items.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length;
@@ -4495,9 +4604,23 @@ mount.addEventListener("focusin", (e) => railTip((e.target as Element | null)?.c
 mount.addEventListener("focusout", () => railTip(null));
 mount.addEventListener("mouseleave", () => railTip(null));
 
+// A status mark's tooltip (`data-mtip`, marks.ts): one styled bubble on <body>, placed by tip.ts.
+installMarkTips(mount);
+
 // The landing tour's dialog: Escape, ← / →, and Tab kept inside it.
 const featureCtl = createFeatureCtl({ mount, keys: TOUR_KEYS, get: () => state.siteFeature, set: (v) => { state.siteFeature = v; }, rerender: () => rerender() });
 document.addEventListener("keydown", (e) => featureCtl.onKey(e));
+// A phone steps through the tour's dialog by swiping it left or right (site-feature.ts `onSwipe*`).
+mount.addEventListener("pointerdown", (e) => featureCtl.onPointerDown(e));
+mount.addEventListener("pointerup", (e) => featureCtl.onPointerUp(e));
+mount.addEventListener("pointercancel", () => featureCtl.onPointerCancel());
+
+// The landing's menu (under 900px): Escape, Tab kept inside it, and gone when the window outgrows it.
+const menuCtl = createMenuCtl({ mount, get: () => state.siteMenu, set: (v) => { state.siteMenu = v; }, rerender: () => rerender() });
+document.addEventListener("keydown", (e) => menuCtl.onKey(e));
+window.addEventListener("resize", () => menuCtl.onResize());
+// The on-screen keyboard: the site's sheets stay above it (site-viewport.ts sets `--site-kb`).
+initSiteViewport();
 
 // Escape closes the landing page's sign-in dialog, wherever focus is.
 document.addEventListener("keydown", (e) => {
@@ -4505,6 +4628,34 @@ document.addEventListener("keydown", (e) => {
   state.signInOpen = false;
   rerender();
 });
+// …and Tab stays inside it (it is `aria-modal`): from the last stop — the consent's links — back to the
+// first, and the reverse, so a keyboard never wanders onto the page behind (the compliance pass's keyboard check).
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || !state.signInOpen || state.view !== "auth") return;
+  const dialog = document.querySelector<HTMLElement>('[data-overlay="signin"] [role="dialog"]');
+  if (!dialog) return;
+  const stops = [...dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+    .filter((el) => el.offsetParent !== null || el === document.activeElement);
+  if (!stops.length) return;
+  const first = stops[0], last = stops[stops.length - 1];
+  const at = document.activeElement as HTMLElement | null;
+  if (!at || !dialog.contains(at)) { e.preventDefault(); first.focus(); return; }
+  if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+});
+
+// The payment page (`/billing/checkout`, embedded checkout). Stripe.js is loaded from here and nowhere
+// else, and only when that page asks for it (stripe-js.ts).
+const billingCheckoutHost: BillingCheckoutHost = {
+  get: () => state.billingCheckout,
+  rerender: () => rerender(),
+  ask: (s, req) => askBillingCheckout(s.org, req),
+  stripe: (publishableKey) => loadStripeEmbedder(publishableKey),
+  mountNode: () => document.getElementById(BILLING_MOUNT_ID),
+  go: (href) => { location.replace(href); },
+  setUrl: (href) => { history.replaceState(null, "", href); },
+  preview: () => state.preview !== null,
+};
 
 // ── boot: detect session via /auth/me ────────────────────────────────────────
 const params = new URLSearchParams(location.search);
@@ -4519,6 +4670,12 @@ if (params.get("denied") === "1") {
   state.authStep = "unverified";
   state.deniedEmail = params.get("email");
   rerender();
+} else if (location.pathname === BILLING_CHECKOUT_PATH) {
+  // Embedded checkout (billing-checkout.ts): Stripe's form in Trov's own card. The page asks the Worker for
+  // its session, which answers the signed-in buyer only; a URL that names no plan Trov sells is the plans.
+  state.billingCheckout = initialBillingCheckout(params);
+  if (!state.billingCheckout) location.replace(PRICING_PATH);
+  else { rerender(); void startBillingCheckout(billingCheckoutHost); }
 } else if (location.pathname === BILLING_DONE_PATH) {
   // Back from Stripe Checkout (billing.ts): the waiting room polls until the webhook has made the
   // buyer's grant, then sends them on to `/?setup=<grant>` — the picker, with that organization's form open.
@@ -4545,6 +4702,13 @@ if (params.get("denied") === "1") {
       history.replaceState(null, "", "/");
       rerender();
     });
+} else if (mount.querySelector(':scope > * > [data-morph="landing"]')) {
+  // The PRERENDERED landing page: the Worker sends it for `/` only to a request with no session cookie
+  // (src/site.ts — the app shell otherwise, and always with the local DEV_LOGIN), and the build made it
+  // from this very render (web/src/site-prerender.ts). So there is nobody to ask about: no "Signing you
+  // in…" card and no /auth/me, which could only answer unauthorized. This paint MORPHS the markup already
+  // on screen (`data-morph="landing"`, morph.ts): nothing is rebuilt or flashes, and the reveals play.
+  showSignedOut();
 } else {
   // Show "verifying" while we check if a session cookie exists
   state.view = "auth";
@@ -4556,6 +4720,11 @@ if (params.get("denied") === "1") {
       state.displayName = me.name ?? me.handle;
       // The Platform entry and its screens hang on this; `GET /api/orgs` confirms it.
       state.plat.superadmin = me.superadmin === true;
+      // Sent here by an organization's deletion (deletion-actions.ts): say it happened, once, wherever this lands.
+      if (params.get(DELETED_PARAM) === "org") {
+        history.replaceState(null, "", `${location.pathname}${location.hash}`);
+        flash(DELETED_SENTENCE.org, 6000);
+      }
       // Return-to after sign-in (see "signIn"): the stashed hash and org, once.
       let back: string | null = null, backOrg: string | null = null, last: string | null = null;
       try {
@@ -4594,23 +4763,30 @@ if (params.get("denied") === "1") {
       if (back && back !== location.hash) history.replaceState(null, "", `${location.pathname}${back}`);
       showPicker(land.lost);
     })
-    .catch(() => {
-      // Unauthorized or any error → show login
-      state.view = "auth";
-      state.authStep = "login";
-      // Sent here by the billing route (`/?start=team`: a signed-out buyer who has not picked a provider —
-      // the pricing page's "Choose Pro"): Get started opens on that plan, so the two provider buttons
-      // carry on to payment. The parameter is read once and leaves the address bar.
-      if (params.get("start") === "team") {
-        state.signInOpen = true; state.signInMode = "signup"; state.signInPlan = "team";
-        history.replaceState(null, "", `/${location.hash}`);
-      }
-      rerender();
-      // Sent here by Contact in the footer of a static page (pricing, terms, privacy — site-chrome.ts
-      // `CONTACT_HREF`): the Contact form opens over the landing page. Read once; it leaves the address bar.
-      if (params.get("contact") === "1") {
-        history.replaceState(null, "", `/${location.hash}`);
-        supportCtl.open("question");
-      }
-    });
+    .catch(() => showSignedOut()); // Unauthorized or any error → the landing page
+}
+
+/** Signed out: the landing page — with what a link to it asked for. */
+function showSignedOut(): void {
+  state.view = "auth";
+  state.authStep = "login";
+  // Sent here by the billing route (`/?start=team`: a signed-out buyer who has not picked a provider —
+  // the pricing page's "Choose Pro"): Get started opens on that plan, so the two provider buttons
+  // carry on to payment. The parameter is read once and leaves the address bar.
+  if (params.get("start") === "team") {
+    state.signInOpen = true; state.signInMode = "signup"; state.signInPlan = "team";
+    history.replaceState(null, "", `/${location.hash}`);
+  }
+  rerender();
+  // Sent here by deleting one's own account (deletion-actions.ts): signed out, on the site, told so once.
+  if (params.get(DELETED_PARAM) === "account") {
+    history.replaceState(null, "", "/");
+    flash(DELETED_SENTENCE.account, 8000);
+  }
+  // Sent here by Contact in the footer of a static page (pricing, terms, privacy — site-chrome.ts
+  // `CONTACT_HREF`): the Contact form opens over the landing page. Read once; it leaves the address bar.
+  if (params.get("contact") === "1") {
+    history.replaceState(null, "", `/${location.hash}`);
+    supportCtl.open("question");
+  }
 }

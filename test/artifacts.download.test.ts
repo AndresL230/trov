@@ -19,6 +19,7 @@ import {
 } from "../src/artifacts/download";
 import { ARTIFACT_DOWNLOAD_TTL_MS } from "@shared/artifacts";
 import { seedPerson } from "./helpers/persons";
+import { apiErrorHint, mcpErrorHint } from "@shared/error-hints";
 import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const ME = "dl-author";
@@ -209,7 +210,9 @@ describe("the download token", () => {
     const missing = await fetchUrl(`${ORIGIN}/api/artifacts/download/${reencode({ h: ME, p: 999999, v: 1, e: Date.now() + 60_000 })}.${sig}`);
     const expected = await missing.text();
     expect(missing.status).toBe(404);
-    expect(expected).toBe(JSON.stringify({ error: "not_found" }));
+    // Through the Worker the 404 gains its hint (src/error-hints.ts) — chosen by code and status alone, so
+    // every variant below still answers these exact bytes.
+    expect(expected).toBe(JSON.stringify({ error: "not_found", hint: apiErrorHint(404, "not_found") }));
     for (const t of variants) {
       const res = await fetchUrl(`${ORIGIN}/api/artifacts/download/${t}`);
       expect(res.status).toBe(404);
@@ -222,7 +225,7 @@ describe("the download token", () => {
   it("another principal cannot get a URL for a private page, and the URL is bound to its principal", async () => {
     const { slug } = await textPage(ME, { title: "Secret plan", visibility: "private" });
     const theirs = await call(YOU, "artifact_get", { slug });
-    expect(theirs.body).toEqual({ error: "not_found", code: "not_found" });
+    expect(theirs.body).toEqual({ error: "not_found", code: "not_found", hint: mcpErrorHint("not_found") });
     const mine = await call(ME, "artifact_get", { slug });
     expect((await fetchUrl(mine.body.download_url)).status).toBe(200);
   });

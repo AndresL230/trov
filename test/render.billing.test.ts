@@ -29,7 +29,7 @@ const freeBill = (o: Partial<OrgBillingView> = {}): OrgBillingView => bill({ sub
 const view = (plan: PlanId = "team", o: Partial<OrgPlanView> = {}): OrgPlanView => ({
   plan, name: PLANS[plan].name, description: PLANS[plan].description, status: "active", source: "billing", period_end: PERIOD, gift_until: null,
   entitlements: plan === "team" ? { ...PLANS.team.entitlements, seats: 5 } : PLANS[plan].entitlements, overridden: plan === "team" ? ["seats"] : [], seats: { members: 3, pending: 0 },
-  usage: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 1024 ** 2, agent_connections: 1, ai_summaries: 1212 }, over: [], billing: plan === "free" ? freeBill() : bill(), ...o,
+  usage: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 1024 ** 2, agent_connections: 1, ai_summaries: 1212, ai_runs: 0 }, over: [], billing: plan === "free" ? freeBill() : bill(), ...o,
 });
 const block = (v: OrgPlanView, role: MyOrg["role"] = "owner", b: OrgBillingUi = initialOrgBillingUi()) => planBlock({ status: "ok", data: v }, role, b);
 const buttons = (html: string): string[] => [...html.matchAll(/<button[^>]*data-act="(orgBilling\w+)"(?: data-arg="(\w+)")?[^>]*>([^<]+)<\/button>/g)].map((m) => `${m[3]}|${m[1]}${m[2] ? `:${m[2]}` : ""}`);
@@ -65,7 +65,7 @@ describe("Org settings › General — the Plan block of an org that pays, or ca
     expect(row(due)).toMatch(/1,212 of 3,000 this month\s*$/);
     expect(due).toContain('data-org-billing="past_due"');
     // Used up on Free: the row says what happens, and the org is not "over" anything.
-    const used = block(view("free", { usage: { seats: 1, repositories: 1, environments: 1, artifact_bytes: 0, agent_connections: 0, ai_summaries: 300 } }));
+    const used = block(view("free", { usage: { seats: 1, repositories: 1, environments: 1, artifact_bytes: 0, agent_connections: 0, ai_summaries: 300, ai_runs: 0 } }));
     expect(row(used)).toMatch(/300 of 300 this month\s*$/);
     expect(used).not.toContain("Over the limit");
     expect(used).toContain("New pull requests and issues show an excerpt until next month.");
@@ -74,7 +74,12 @@ describe("Org settings › General — the Plan block of an org that pays, or ca
   it("Free, never paid: what Pro is, and the owner's one button — Upgrade to Pro — with no Manage billing (there is no customer)", () => {
     const html = block(view("free", { source: "granted", period_end: null }));
     expect(html).toContain('data-org-billing="free"');
-    expect(html).toContain("Pro is paid per seat: one for each member or pending invitation. It raises every limit below.");
+    // The price and this organization's own seat math, then — beside the button — tax, renewal, the Terms and the refund policy.
+    expect(html).toMatch(/Pro is \$10 per seat each month, one seat for each member or pending invitation: \d+ seats? × \$10 = \$\d+ per month for this organization now\. You can change the number at checkout\. It raises every limit below\./);
+    expect(html).toContain('data-plan-terms="checkout"');
+    expect(html).toContain("Plus applicable tax, calculated at checkout. Renews monthly until you cancel; cancel any time from Billing.");
+    expect(html).toContain('href="/terms"');
+    expect(html).toContain('href="/refunds"');
     expect(buttons(html)).toEqual(["Upgrade to Pro|orgBillingUpgrade:team"]);
     expect(html).toMatch(/data-field="orgBillingUpgrade:team"/);
     expect(html).toContain("Pro is paid through Stripe; you choose the number of seats there. Trov never sees your card.");
@@ -82,6 +87,7 @@ describe("Org settings › General — the Plan block of an org that pays, or ca
       const other = block(view("free", { source: "granted", period_end: null }), role);
       expect(buttons(other)).toEqual([]);
       expect(other).toContain("An owner of this organization can upgrade it to Pro.");
+      expect(other).not.toContain("data-plan-terms"); // the terms go beside a button that can start a payment
     }
     // Billing off on the deployment: the button is there, disabled, and says why.
     const off = block(view("free", { billing: freeBill({ available: false }) }));
@@ -267,9 +273,9 @@ describe("a plan refusal's pointer", () => {
     e.plan = planRefusal(paid, "seats", 1);
     expect(planLimitText(e, "owner")).toMatch(/You can upgrade or manage billing in Org settings\.$/);
     expect(planLimitText(e, "member")).toMatch(/Ask one of this organization's owners\.$/);
-    const gate = inviteGate(view("personal", { billing: null, usage: { seats: 1, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0 } }), "owner");
+    const gate = inviteGate(view("personal", { billing: null, usage: { seats: 1, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0, ai_runs: 0 } }), "owner");
     expect(gate).toMatchObject({ kind: "solo", sentence: expect.stringMatching(/You can upgrade or manage billing in Org settings\.$/), next: null });
-    expect(inviteGate(view("personal", { source: "granted", billing: null, usage: { seats: 1, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0 } }), "owner")).toMatchObject({ sentence: expect.stringMatching(/Ask Trov to change your plan\.$/) });
+    expect(inviteGate(view("personal", { source: "granted", billing: null, usage: { seats: 1, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0, ai_runs: 0 } }), "owner")).toMatchObject({ sentence: expect.stringMatching(/Ask Trov to change your plan\.$/) });
     // A full Pro org: "Add a seat"; a full Free org: "Upgrade to Pro".
     const fullPro = view("team", { usage: { ...view().usage, seats: 5 } });
     expect(inviteGate(fullPro, "owner")).toMatchObject({ kind: "full", next: "add_seat" });
@@ -439,7 +445,7 @@ describe("Platform — a paid organization", () => {
     expect(live).toContain('href="https://dashboard.stripe.com/customers/cus_123"');
     expect(live).toContain(">past due</strong>");
     expect(live).not.toContain("test mode");
-    expect(live).toContain(">PAST DUE<");
+    expect(live).toContain(">Past due</span>");
     expect(section(plan({ billing: paid({ cancel_at_period_end: true }) }))).toContain("ends 15 January 2027");
     // Ended: the org is on Free, and the line says so (no seats, no renewal).
     const ended = section(plan({ plan: "free", entitlements: PLANS.free.entitlements, billing: paid({ ended: true, stripe_status: "canceled", period_end: "2026-03-02T00:00:00.000Z" }) }));

@@ -23,6 +23,9 @@ import type { AdminAssignment, PlatformOrgDetail, PlatformOrgRow } from "@shared
 import type { PlatformContext } from "../data/platform-sql";
 import { platformBillingBySlug } from "../billing/store";
 import { registerSupportRoutes } from "./support-routes";
+import { confirmMismatch, deleteOrganization, deletionRefusal, orgDeletionPreview, orgForDeletion } from "../deletion/org";
+import { accountDeletionPreview, deleteAccount } from "../deletion/person";
+import { confirms } from "@shared/deletion-core";
 
 export const platformApp = new Hono<AppEnv>();
 
@@ -88,8 +91,8 @@ platformApp.post("/orgs", async (c) => {
 async function detail(c: Context<AppEnv>, slug: string): Promise<PlatformOrgDetail | null> {
   const [org] = await listPlatformOrgs(c.var.p, slug);
   if (!org) return null;
-  const [people, usage] = await Promise.all([platformOrgPeople(c.var.p, org.id), platformUsage(c.var.p, USAGE_DEFAULT_DAYS)]);
-  return { org: (await platformRows(c.var.p, org.slug))[0], ...people, usage: usage.orgs.find((o) => o.slug === org.slug)!, summaries_enabled: !!c.env.GEMINI_API_KEY };
+  const [people, usage] = await Promise.all([platformOrgPeople(c.var.p, org.id), platformUsage(c.var.p, USAGE_DEFAULT_DAYS, new Date(), { aiEnabled: !!c.env.ANTHROPIC_API_KEY })]);
+  return { org: (await platformRows(c.var.p, org.slug))[0], ...people, usage: usage.orgs.find((o) => o.slug === org.slug)!, summaries_enabled: !!c.env.ANTHROPIC_API_KEY };
 }
 
 platformApp.get("/orgs/:slug", async (c) => {
@@ -115,6 +118,48 @@ const suspend = (suspended: boolean) => async (c: Context<AppEnv>) => {
 };
 platformApp.post("/orgs/:slug/suspend", suspend(true));
 platformApp.post("/orgs/:slug/unsuspend", suspend(false));
+
+// ── deletion (src/deletion/): the SAME cores as an owner's "Delete organization" and a person's "Delete my
+// account" — the superadmin is just another caller. An organization needs no membership (the superadmin has
+// none: they see its name, slug and counts, never its content). An account keeps every guard rail that
+// protects other people, and is refused for a superadmin's account or one's own (`superadmin` / `self`).
+// Each is recorded in the audit trail (`org.delete`, `person.delete`), the superadmin as its actor.
+const refusedDeletion = (c: Context<AppEnv>, e: unknown): Response => {
+  const refused = deletionRefusal(e);
+  if (refused) return c.json(refused.body, refused.status);
+  throw e;
+};
+platformApp.get("/orgs/:slug/deletion", async (c) => {
+  const org = await orgForDeletion(c.var.p, { slug: c.req.param("slug") });
+  return org ? c.json(await orgDeletionPreview(c.env, c.var.p, org), 200, { "cache-control": "no-store" }) : c.json({ error: "not_found" }, 404);
+});
+platformApp.post("/orgs/:slug/delete", async (c) => {
+  const org = await orgForDeletion(c.var.p, { slug: c.req.param("slug") });
+  if (!org) return c.json({ error: "not_found" }, 404);
+  const b = await body(c);
+  if (!confirms(b?.confirm, org.slug)) return c.json(confirmMismatch("slug"), 400);
+  try {
+    await deleteOrganization(c.env, c.var.p, org, { by: "platform", actor: c.get("principal").handle });
+    return c.json({ ok: true, slug: org.slug });
+  } catch (e) { return refusedDeletion(c, e); }
+});
+platformApp.get("/persons/:handle/deletion", async (c) => {
+  const me = c.get("principal").handle;
+  const preview = await accountDeletionPreview(c.var.p, c.req.param("handle"), { by: "platform", actor: me });
+  return preview ? c.json(preview, 200, { "cache-control": "no-store" }) : c.json({ error: "not_found", message: "No account has that handle." }, 404);
+});
+platformApp.post("/persons/:handle/delete", async (c) => {
+  const me = c.get("principal").handle;
+  const preview = await accountDeletionPreview(c.var.p, c.req.param("handle"), { by: "platform", actor: me });
+  if (!preview) return c.json({ error: "not_found", message: "No account has that handle." }, 404);
+  const b = await body(c);
+  if (!confirms(b?.confirm, preview.handle)) return c.json(confirmMismatch("handle"), 400);
+  try {
+    const done = await deleteAccount(c.env, c.var.p, preview.handle, { by: "platform", actor: me });
+    // Not the tombstone: nothing here should pair the old handle with the new one.
+    return c.json({ ok: true, orgs_deleted: done.orgs_deleted });
+  } catch (e) { return refusedDeletion(c, e); }
+});
 
 // ── plans and grants (0044_plans): /orgs/:slug/plan, /grants… — src/plans/routes.ts ──
 registerPlanRoutes(platformApp, (slug, p) => platformRows(p, slug).then((rows) => rows[0] ?? null));
@@ -147,4 +192,4 @@ platformApp.get("/audit", async (c) => {
   } catch (e) { return fail(c, e); }
 });
 
-platformApp.get("/usage", async (c) => c.json(await platformUsage(c.var.p, usageDays(c.req.query("days")), new Date(), { summariesEnabled: !!c.env.GEMINI_API_KEY })));
+platformApp.get("/usage", async (c) => c.json(await platformUsage(c.var.p, usageDays(c.req.query("days")), new Date(), { summariesEnabled: !!c.env.ANTHROPIC_API_KEY, aiEnabled: !!c.env.ANTHROPIC_API_KEY })));

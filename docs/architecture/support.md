@@ -143,12 +143,12 @@ whole message, the attached context, what became of the mail, **Resolve** / **Re
 email** — a `mailto:` with `Re: [Trov bug] <subject>` prefilled; absent when there is no address. Loading is
 a skeleton, a failed read an error line with a retry, an unknown id says so.
 
-**A report sent signed out** carries a `SIGNED OUT` badge in the list and on the report, shows the typed
+**A report sent signed out** says "Signed out" (plain text) in the list and on the report, shows the typed
 address where the person would be — labelled `(unverified, as typed)` on the report — and Reply by email
 uses it. Its context is the page and the browser; there is no organization and no version.
 
 ## Owner steps on deploy
 
-1. The migration is additive; a push applies it (`HANDOFF.md`).
+1. The migration is additive; the merge to `main` applies it (`HANDOFF.md`).
 2. Set `SUPPORT_NOTIFY_EMAIL` in `wrangler.toml` `[vars]` to the inbox that should get the reports. Until
    then reports are stored and shown in Platform, not mailed.

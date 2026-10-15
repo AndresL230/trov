@@ -103,6 +103,47 @@ describe("billing is not an agent's", () => {
   });
 });
 
+describe("deletion is a person's, never an agent's (invariant 2)", () => {
+  it("nothing reachable from src/mcp.ts imports the deletion core, the Stripe cancel, or a deletion route", () => {
+    const fromMcp = reachable("src/mcp.ts");
+    expect(SOURCES.has("src/deletion/person.ts") && SOURCES.has("src/deletion/org.ts")).toBe(true);
+    // The walker finds it from where it IS used: the HTTP app.
+    expect(reachable("src/routes.ts").has("src/deletion/person.ts")).toBe(true);
+    expect([...fromMcp].filter((f) => f.startsWith("src/deletion/") || f === "src/billing/cancel.ts")).toEqual([]);
+    for (const file of fromMcp) expect(SOURCES.get(file), file).not.toMatch(/\b(deleteAccount|deleteOrganization|cancelSubscriptionNow)\s*\(/);
+  });
+});
+
+describe("the model client is a capture-time seam and the AI pass's, never an agent's", () => {
+  it("nothing reachable from src/mcp.ts imports src/ai/, and only the summarizer and the AI pass import the client", () => {
+    const fromMcp = reachable("src/mcp.ts");
+    expect(SOURCES.has("src/ai/client.ts")).toBe(true);
+    // The walker finds it from where it IS used: the webhook (and Sync, through the backfill).
+    expect(reachable("src/webhook.ts").has("src/ai/client.ts")).toBe(true);
+    expect(reachable("src/tools/backfill.ts").has("src/ai/client.ts")).toBe(true);
+    // …and the repo tick, through the AI pass (docs/architecture/ai.md); the AI routes from the HTTP app.
+    expect(reachable("src/repo/cron.ts").has("src/ai/pass.ts")).toBe(true);
+    expect(reachable("src/routes.ts").has("src/ai/routes.ts")).toBe(true);
+    expect([...fromMcp].filter((f) => f.startsWith("src/ai/"))).toEqual([]);
+    const importers = [...SOURCES.keys()].filter((f) => f !== "src/ai/client.ts" && reachableDirect(f).has("src/ai/client.ts")).sort();
+    expect(importers).toEqual(["src/ai/pass.ts", "src/tools/summarize.ts"]);
+    // The key is read where summaries are chosen, where AI eligibility is answered and the pass starts (and
+    // where Platform says whether they are on) — nowhere else.
+    const readers = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /\.ANTHROPIC_API_KEY\b/.test(text)).map(([f]) => f).sort();
+    expect(readers).toEqual(["src/ai/eligibility.ts", "src/ai/pass.ts", "src/plans/summaries.ts", "src/platform/routes.ts"]);
+  });
+});
+
+/** The files `file` imports directly. */
+function reachableDirect(file: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of SOURCES.get(file)!.matchAll(IMPORT)) {
+    const next = resolve(file, m[1] ?? m[2]);
+    if (next) out.add(next);
+  }
+  return out;
+}
+
 describe("a bearer context", () => {
   it("cannot read a secret, whatever its role — neither the stored one nor the legacy fallback", async () => {
     await setSecret(await tenantCtx("AndresL230"), "github_token", "", "tok_0123456789abcdef0123456789abcdef");

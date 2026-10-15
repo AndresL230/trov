@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { inspectRoutes } from "hono/dev";
+import { TrieRouter } from "hono/router/trie-router";
 import type { Context } from "hono";
 import { z } from "zod";
 import { IngestPayload, QueryType } from "@shared/contract";
@@ -62,6 +64,8 @@ import { getPersonProfile, writePersonProfile, setAvatar, clearAvatar, readAvata
 import { AVATAR_MAX_BYTES } from "@shared/people";
 import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
+import { aiApp } from "./ai/routes";
+import { aiPreview, withPreviewFeed } from "./ai/preview";
 
 export const app = new Hono<AppEnv>();
 
@@ -227,13 +231,17 @@ tenantRoot.get("/doc/:slug", async (c) => {
 tenantRoot.get("/feed", async (c) => {
   const tags = c.req.query("tags");
   const limit = c.req.query("limit");
-  const feed = await get_feed(c.var.ctx, {
+  const filter = {
     author: c.req.query("author"),
     tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined,
     since: c.req.query("since"),
     limit: limit ? Number(limit) : undefined,
-  });
-  return c.json({ feed });
+  };
+  const feed = await get_feed(c.var.ctx, filter);
+  // An entry written by Trov carries `ai` (shared/rows.ts). Nothing writes one yet, so production rows have
+  // none; under `wrangler dev` with LOCAL_AI_PREVIEW the sample entries are merged in (src/ai/preview.ts).
+  const preview = aiPreview(c.env, c.req.url);
+  return c.json({ feed: preview ? withPreviewFeed(feed, preview.feed, filter) : feed });
 });
 
 // The Feed aside's "This week": entry counts per day, people, top tags and authors over
@@ -702,7 +710,10 @@ tenantRoot.get("/me/dashboard", async (c) => {
   const login = c.get("principal").handle;
   try {
     const data: DashboardData = await getMyWork(c.var.ctx, login);
-    return c.json(data);
+    // `brief` (shared/dashboard.ts) is omitted: nothing writes one yet. LOCAL_AI_PREVIEW shows the sample
+    // under `wrangler dev` only (src/ai/preview.ts); `get_my_work` never gets it.
+    const preview = aiPreview(c.env, c.req.url);
+    return c.json(preview ? { ...data, brief: preview.brief } : data);
   } catch {
     // Absolute backstop: never 500. Anything unexpected (D1) → empty degraded payload.
     const empty: DashboardData = { person: null, previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: true };
@@ -719,7 +730,11 @@ tenantRoot.get("/repo/dashboard", async (c) => {
   let repo = "";
   try {
     repo = (await orgPrimaryRepo(c.var.ctx))?.repo ?? "";
-    return c.json(await getRepoDashboard(c.var.ctx, repo, Date.now(), await orgEnvironments(c.var.ctx)));
+    const dash = await getRepoDashboard(c.var.ctx, repo, Date.now(), await orgEnvironments(c.var.ctx));
+    // `state` / `themes` (shared/repo.ts) are not sections and are omitted: nothing writes them yet.
+    // LOCAL_AI_PREVIEW shows the samples under `wrangler dev` only (src/ai/preview.ts).
+    const preview = aiPreview(c.env, c.req.url);
+    return c.json(preview ? { ...dash, state: preview.repoState, themes: preview.themes } : dash);
   } catch {
     return c.json(emptyRepoDashboard(repo, true));
   }
@@ -1148,6 +1163,7 @@ app.route("/api/o/:slug", githubAppRoutes); // the GitHub App's connection (src/
 app.route("/api/o/:slug", hostingApp); // Org settings › Hosting: parts, connections, the setup read (src/hosting/routes.ts)
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
 app.route("/api/o/:slug", orgBillingApp); // an owner's billing for this org: the Stripe portal, a plan switch, a renewal (src/billing/routes.ts)
+app.route("/api/o/:slug", aiApp); // Org settings › AI, and the answers to a suggestion and to "Wrong?" — cookie only (src/ai/routes.ts)
 // The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of
 // their own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name
 // twice. Nothing reads `:org` — `tenantGate` (mounted on `/api/o/:slug/*` above) resolved the org from
@@ -1158,3 +1174,18 @@ app.route("/api/o/:org", tenantApi);
 app.route("/", tenantRoot);
 app.route("/api", tenantApi);
 app.route("/", legacyOnly);
+
+// ── Does any route answer this address? (src/index.ts, before the session gate) ──
+// An address no route of this app answers is a 404 for everyone (src/site.ts `notFound`), never the
+// session gate's 401: a crawler, or a mistyped link, meets "Page not found" instead of "unauthorized".
+// A REAL cookie route still answers 401 signed out — the SPA relies on that — because it is matched here.
+// Matched by method (HEAD as GET) and path, against every handler; the `use()` middleware (the gates,
+// `cookieOnly`, the raw headers) is not a route, so its wildcards do not make every path "known".
+let knownRoutes: TrieRouter<true> | null = null;
+export function isAppRoute(method: string, path: string): boolean {
+  if (!knownRoutes) {
+    knownRoutes = new TrieRouter<true>();
+    for (const r of inspectRoutes(app)) if (r.method !== "ALL" || !r.isMiddleware) knownRoutes.add(r.method, r.path, true);
+  }
+  return knownRoutes.match(method === "HEAD" ? "GET" : method, path)[0].length > 0;
+}

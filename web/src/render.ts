@@ -6,15 +6,18 @@
 import { trovMark } from "@shared/mark";
 import type { Me, StagedProposal, IdentityTask, DiscardedIdentity, PersonSummary, PersonProfile } from "./api";
 import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary, McpTokenSummary } from "@shared/rows";
-import type { QueryResult, QueryPrimary, QueryPointer, Authority, SprintView, SprintDetail, PlanView } from "./api";
+import type { QueryResult, QueryPrimary, QueryPointer, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
-import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
+import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
+import { agentMark, authorityMark, markShape, stateMark } from "./marks";
 import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId } from "./sprints";
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline, timelineShapes } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
 import { initialOnboard, onboardView, personChip, personLink, personAvatarLink, handleTag, handleLink, swatches, type OnboardState } from "./people";
+import { skipLink } from "./site-chrome";
+import { LEGAL_LINKS, NOTICES_PATH, consentHtml } from "@shared/legal-core";
 import { personCardModal } from "./profile";
 import { AVATAR_TYPES } from "@shared/people";
 import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
@@ -29,13 +32,15 @@ import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { releasesScreen, findRelease, type ReleasePage } from "./releases";
 import { supportDialog, initialSupport, type SupportDraft } from "./support";
+import { accountDeleteModal, accountDeleteTile, initialDeleteUi, type DeleteUi } from "./deletion";
+import type { AccountDeletionPreview } from "@shared/deletion-core";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { repoUrl } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
 import { landingView } from "./landing";
 import { emptyLayout, CONNECT_AGENT, skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
-import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
+import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
 import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type AssignKind } from "./maintenance";
 import type { IdentityProps } from "./identity";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
@@ -44,7 +49,7 @@ import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal,
 import { newDocView, blankDoc, type NewDocDraft } from "./newdoc";
 import type { HandoffView, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
-import { emailNotificationsSection, unsubscribeView, switchBtn, type NotifAdminProps } from "./notifications";
+import { emailNotificationsSection, switchBtn, type NotifAdminProps } from "./notifications";
 import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow } from "./api";
 import { sidebarView, NAV_CLOSED, type NavOpen } from "./sidebar";
 import { repoView, repoControls, repoCrumb, type RepoProps, type RepoPollState } from "./repo";
@@ -63,8 +68,9 @@ import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
 // Organizations as a person meets them (org-picker.ts): the switcher, the picker, the create dialog.
 import { orgSwitcherButton, orgMenu, orgPickerView, createOrgModal, initialOrgsUi, type OrgsUi } from "./org-picker";
 import { billingDonePage, type BillingDoneUi } from "./billing";
+import { billingCheckoutPage, type BillingCheckoutUi } from "./billing-checkout";
 import { isOrgAdmin } from "./org-context";
-import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpEndpoint, mcpStrong, CONNECTION_NOTE } from "./mcp-connect";
+import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpEndpoint, mcpStrong, otherClientsLink, CONNECTION_NOTE } from "./mcp-connect";
 import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type WelcomeUi } from "./welcome";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 import { previewBanner, previewState, type PreviewMode } from "./preview";
@@ -74,7 +80,7 @@ import { previewBanner, previewState, type PreviewMode } from "./preview";
 export type DocSpace = string;
 
 export type Screen =
-  | "mywork" | "feed" | "docs" | "roadmap" | "review" | "maintenance" | "search" | "settings" | "guide" | "unsubscribe"
+  | "mywork" | "feed" | "docs" | "roadmap" | "review" | "maintenance" | "search" | "settings" | "guide"
   // The landing page reopened from inside the app (sidebar logo). Full-screen, no chrome.
   | "site"
   // Tickets (Phase 5): the queue, one ticket, the new-ticket form, and a sprint.
@@ -121,6 +127,8 @@ export interface AppState {
   signInPlan: "free" | "team";
   /** The landing tour's feature open in its dialog (web/src/site-feature.ts), or none. */
   siteFeature: import("./site-feature-core").FeatureState | null;
+  /** The landing's menu, which its nav offers under 900px (web/src/site-menu.ts), is open. */
+  siteMenu: boolean;
   /** Landing reveal keys that already played (landing-motion.ts records them). */
   landingSeen: Set<string>;
   /** Where "Back to the app" on the #site landing returns to (the route the logo was clicked from). */
@@ -141,6 +149,8 @@ export interface AppState {
   welcome: WelcomeUi;
   /** `/billing/done`: the waiting room a buyer lands in after Stripe Checkout (billing.ts). null everywhere else. */
   billingDone: BillingDoneUi | null;
+  /** The payment page (`/billing/checkout`, embedded checkout): set at boot from the URL, else null. */
+  billingCheckout: BillingCheckoutUi | null;
   mywork: Loadable<DashboardData | null>;
   /** My Work › Repo tile: which view is showing. Session-only. */
   mwRepoTab: MwRepoTab;
@@ -221,6 +231,11 @@ export interface AppState {
   reviewFilter: ReviewFilter;
   reviewSel: string | null;
   reviewDiffView: DiffViewMode;
+  /** Review items a verdict was just given to, by id (main.ts `reviewAccept` / `reviewReject`).
+   *  `gone: false` — the card is on screen, wearing its verdict and collapsing; `gone: true` — it
+   *  has left the list and the write or the refetch that confirms it is still out. Either way the
+   *  item is out of the queue's counts. A failed write deletes the entry, and the card is back. */
+  reviewLeaving: Record<string, { verdict: ReviewVerdict; gone: boolean }>;
   assignOpen: string | null;
   assignKind: AssignKind | null;
   assignSection: string | null;
@@ -252,6 +267,8 @@ export interface AppState {
   handleEdit: boolean;
   handleDraft: string;
   handleCheck: "idle" | "checking" | "available" | "invalid" | "reserved" | "taken" | "same";
+  /** Settings › Delete account (deletion.ts, deletion-actions.ts): what it would do, and its confirmation. */
+  acctDelete: DeleteUi<AccountDeletionPreview>;
   // Email notifications (Settings) — the user's resolved prefs + the address edit form.
   notifPrefs: Loadable<PrefsView | null>;
   emailEditing: boolean;
@@ -264,8 +281,6 @@ export interface AppState {
   fromDraft: string | null;
   /** Why the typed sender name was refused (shared/sender.ts `SENDER_NAME_HELP`, or the server's answer). */
   fromError: string | null;
-  /** The #unsubscribe screen: the flip in flight, its error, or a Settings preview (no flip). */
-  unsub: { pending: boolean; error: string | null; preview: boolean };
   confirmedSprints: Record<string, boolean>;
   // ── Tickets (Phase 5) ──────────────────────────────────────────────────────
   /** The queue list for the CURRENT filters (the server applies seg/assignee/category). */
@@ -427,7 +442,7 @@ export function syncPropsOf(s: AppState, now: number = Date.now()): SyncProps {
 
 export function initialState(): AppState {
   return {
-    view: "auth", authStep: "login", signInOpen: false, signInMode: "signin", signInPlan: "free", siteFeature: null, landingSeen: new Set(), siteReturn: null,
+    view: "auth", authStep: "login", signInOpen: false, signInMode: "signin", signInPlan: "free", siteFeature: null, siteMenu: false, landingSeen: new Set(), siteReturn: null,
     deniedEmail: null,
     onboard: initialOnboard(),
     persons: { status: "idle", data: [] },
@@ -438,6 +453,7 @@ export function initialState(): AppState {
     support: initialSupport(),
     welcome: initialWelcomeUi(),
     billingDone: null,
+    billingCheckout: null,
     screen: "mywork",
     theme: "light", systemDark: true,
     collapsed: false,
@@ -473,7 +489,7 @@ export function initialState(): AppState {
     needsTriage: { status: "idle", data: [] },
     identityTasks: { status: "idle", data: [] },
     identityDiscarded: [], identityShowDiscarded: false,
-    reviewFilter: "all", reviewSel: null, reviewDiffView: "unified",
+    reviewFilter: "all", reviewSel: null, reviewDiffView: "unified", reviewLeaving: {},
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
     mapConfirm: null,
     mapPicks: {},
@@ -492,6 +508,7 @@ export function initialState(): AppState {
     handleEdit: false,
     handleDraft: "",
     handleCheck: "idle",
+    acctDelete: initialDeleteUi<AccountDeletionPreview>(),
     notifPrefs: { status: "idle", data: null },
     emailEditing: false,
     emailDraft: "",
@@ -501,7 +518,6 @@ export function initialState(): AppState {
     outboxExpanded: null,
     fromDraft: null,
     fromError: null,
-    unsub: { pending: false, error: null, preview: false },
     confirmedSprints: {},
     // Tickets — defaults transcribed from the design's `state` block: the queue
     // opens on Open / Any assignee / All categories in the Table view, and the
@@ -555,11 +571,15 @@ export function initialState(): AppState {
 
 // ── triage surface data (real reads — the mapping layer lives in triage-map.ts) ──
 export function reviewProps(s: AppState): ReviewProps {
+  const leaving: Record<string, ReviewVerdict> = {};
+  for (const [id, l] of Object.entries(s.reviewLeaving)) if (!l.gone) leaving[id] = l.verdict;
   return {
-    items: reviewItemsFromReads(s.proposals.data, s.draftAdrs.data).map((it) => {
+    // A card that has finished leaving is not in the list, even while the read still holds it.
+    items: reviewItemsFromReads(s.proposals.data, s.draftAdrs.data).filter((it) => !s.reviewLeaving[it.id]?.gone).map((it) => {
       const p = personFor(s, it.agent);
       return p ? { ...it, agentColor: p.color, agentAvatar: p.avatar_url, agentHandle: p.handle, agentName: p.name } : it;
     }),
+    leaving,
     filter: s.reviewFilter,
     selectedId: s.reviewSel,
     diffView: s.reviewDiffView,
@@ -583,8 +603,12 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
 /** Sidebar counts for the two triage entries: Review's two reads, and the Unplaced queue (the
  *  key is still `maintenance`). Unmatched logins are NOT in it — they wait in Org settings. */
 export function triageCounts(s: AppState): { review: number; maintenance: number } {
+  // An item a verdict was just given to is not waiting any more: the badge drops with the card,
+  // not when the refetch lands. It is derived, never stored — a failed write deletes the entry in
+  // `reviewLeaving` and the count is back; the refetch then replaces the reads it is derived from.
+  const left = reviewHeadsFromReads(s.proposals.data, s.draftAdrs.data).filter((it) => s.reviewLeaving[it.id]).length;
   return {
-    review: s.proposals.data.length + s.draftAdrs.data.length,
+    review: s.proposals.data.length + s.draftAdrs.data.length - left,
     maintenance: s.needsTriage.data.length,
   };
 }
@@ -687,10 +711,12 @@ function notice(text: string): string {
 // ── auth states ──────────────────────────────────────────────────────────────
 function authView(s: AppState): string {
   // Signed out → the landing page; its Sign in opens the provider dialog.
-  if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, signInMode: s.signInMode, signInPlan: s.signInPlan, seen: s.landingSeen, feature: s.siteFeature });
+  if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, signInMode: s.signInMode, signInPlan: s.signInPlan, seen: s.landingSeen, feature: s.siteFeature, menuOpen: s.siteMenu });
   // Onboarding is a form: `data-morph` patches it in place per keystroke (morph.ts `paint`) instead of
   // rebuilding the card and the backdrop behind it. The other auth cards have nothing to type in.
-  return `<div class="cnpy-authwrap"${s.authStep === "onboard" ? ' data-morph="onboard"' : ""} style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
+  // The page's main landmark (a div with the role: the onboarding card's backdrop is the app's own markup,
+  // `<main>` included, inert and hidden from assistive tech — a second `<main>` element may not wrap it).
+  return `<div role="main" class="cnpy-authwrap"${s.authStep === "onboard" ? ' data-morph="onboard"' : ""} style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
     ${s.authStep === "nonmember" ? nonmemberCard() : ""}
     ${s.authStep === "unverified" ? unverifiedCard(s.deniedEmail) : ""}
     ${s.authStep === "verifying" ? verifyingCard() : ""}
@@ -736,6 +762,7 @@ function unverifiedCard(email: string | null): string {
         <button data-act="signIn" class="cnpy-accentbtn" style="width:100%;padding:11px 16px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600">Sign in with GitHub</button>
         <button data-act="signInGoogleSwitch" class="cnpy-outlinebtn" style="width:100%;padding:11px 16px;border-radius:9px;border:1px solid var(--border-strong);font-size:13.5px;font-weight:500">Try a different Google account</button>
       </div>
+      <p class="cnpy-consent" data-consent style="margin:0;font-size:12px;line-height:1.5;color:var(--fg-55)">${consentHtml()}</p>
     </div>
   </div>`;
 }
@@ -807,7 +834,7 @@ function header(s: AppState): string {
   const titles: Record<Screen, string> = {
     mywork: "My Work", feed: "Feed", docs: "Docs", roadmap: "Roadmap", review: "Review",
     maintenance: "Unplaced", search: "Search", settings: "Settings", guide: "Guide",
-    unsubscribe: "Unsubscribe", site: "Trov", welcome: "Guided setup",
+    site: "Trov", welcome: "Guided setup",
     // The three ticket screens all sit under Tickets; a sprint sits under Roadmap.
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
     repo: "Repo",
@@ -1051,7 +1078,6 @@ function feedReviewBox(s: AppState): string {
   const rows = items.slice(0, FEED_REVIEW_LIMIT).map((it) => `<div class="mw-row ${HITBOX}" style="display:block;width:100%;text-align:left;padding:9px 18px;border-top:1px solid var(--border);font-size:13px">
       <span style="display:block;color:var(--fg);font-weight:500;line-height:1.45;overflow-wrap:anywhere">${esc(it.title)}</span>
       <span style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:3px;font-size:12px;color:var(--fg-40)">
-        <span style="width:7px;height:7px;border-radius:50%;background:${it.badgeColor};flex:none"></span>
         <span style="color:var(--fg-55)">${it.kind === "decision" ? "Decision" : "Proposal"}</span>
         <span>·</span>${handleLink(personFor(s, it.agent), it.agent, 11.5)}
         <span>·</span><span style="white-space:nowrap">${esc(it.time)}</span>
@@ -1147,7 +1173,7 @@ function feedView(s: AppState): string {
           ${s.feedView === "reading" ? feedBrief(e.brief) : feedBody(e.body)}
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px">
             <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-55)">${feedAuthorTag(s, e.author)}</div>
-            <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 5px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="11" rx="2"></rect><path d="M12 8V4M8 13h.01M16 13h.01"></path></svg>agent</span>
+            ${agentMark()}
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
             <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>
             <div style="flex:1"></div>
@@ -1304,7 +1330,7 @@ export function docReaderHtml(real: AppState): string {
     const hasStaged = versions.some((v) => v.status === "staged" && v.version > doc.current_version);
 
     const stagedBanner = hasStaged ? `<div${surface("display:flex;align-items:center;gap:14px;padding:12px 14px;margin-bottom:26px")}>
-      <span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;font-family:var(--label);letter-spacing:.04em;color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 45%,transparent);background:color-mix(in srgb,var(--amber) 12%,transparent);border-radius:5px;padding:3px 7px;flex:none">STAGED</span>
+      ${markShape("ring", "var(--amber)", 10)}
       <div style="flex:1;font-size:12.5px;color:var(--fg-70);line-height:1.45">You're viewing the <strong style="font-weight:600;color:var(--fg)">promoted</strong> version. A newer proposal is awaiting review.</div>
       <button data-act="goReview" class="cnpy-link" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--accent);white-space:nowrap;flex:none">Review proposal<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
     </div>` : "";
@@ -1314,7 +1340,7 @@ export function docReaderHtml(real: AppState): string {
         <span style="font-family:var(--label);font-size:12px;font-weight:600;color:var(--fg);width:26px">v${v.version}</span>
         <span style="flex:1;font-size:12.5px;color:var(--fg-70)">${esc(v.summary ?? "")}</span>
         <span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--fg-40)">${personLink(personFor(s, v.created_by), v.created_by, 16, { html: handleTag(personFor(s, v.created_by), v.created_by, 11) }, "", 6)} · ${relTime(v.created_at)}</span>
-        ${v.version === doc.current_version ? `<span style="font-size:9.5px;font-weight:600;font-family:var(--label);color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);background:var(--accent-soft);border-radius:4px;padding:2px 6px">PROMOTED</span>` : ""}
+        ${v.version === doc.current_version ? stateMark("Promoted", "var(--accent)", "check", 11.5, "The live version: what everyone reads.") : ""}
       </div>`).join("")}
     </div>` : "";
 
@@ -1631,25 +1657,12 @@ const SEARCH_TYPE_ICON: Record<string, string> = { feed: "M4 5h16M4 12h16M4 19h1
 // reading "Roadmap" — the screen it navigates to.
 const SEARCH_TYPE_LABEL: Record<string, string> = { doc: "Doc", feed: "Feed", decision: "Decision", sprint: "Roadmap", artifact: "Artifact" };
 
-// Authority → badge. /search is live-only, so humans normally see LIVE / PENDING;
-// the others are mapped for completeness. Reuses the status badge styling.
-function authorityBadge(a: Authority): string {
-  const map: Record<Authority, { label: string; color: string }> = {
-    live: { label: "LIVE", color: "var(--green)" },
-    staged_pending: { label: "PENDING", color: "var(--amber)" },
-    unpromoted: { label: "UNPROMOTED", color: "var(--amber)" },
-    draft: { label: "DRAFT", color: "var(--blue)" },
-  };
-  const { label, color } = map[a];
-  return `<span style="font-size:9.5px;font-weight:600;font-family:var(--label);letter-spacing:.03em;color:${color};border:1px solid color-mix(in srgb,${color} 45%,transparent);background:color-mix(in srgb,${color} 12%,transparent);border-radius:5px;padding:2px 6px;white-space:nowrap">${label}</span>`;
-}
-
-function searchTypeBadge(type: string): string {
-  const color = type === "decision" ? "var(--blue)" : type === "feed" ? "var(--fg-70)" : "var(--accent)";
-  const border = type === "decision" ? "color-mix(in srgb,var(--blue) 45%,transparent)" : type === "feed" ? "var(--border-strong)" : "color-mix(in srgb,var(--accent) 45%,transparent)";
+// A hit's kind as its icon and word, and its authority as a mark only when it is not live
+// (`authorityMark`, marks.ts: /search is live-only, so a person normally sees no mark at all).
+function searchTypeLabel(type: string): string {
   const label = SEARCH_TYPE_LABEL[type] ?? type;
   const icon = SEARCH_TYPE_ICON[type] ?? SEARCH_TYPE_ICON["doc"];
-  return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;font-family:var(--label);letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;color:${color};border:1px solid ${border}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${icon}"></path></svg>${label}</span>`;
+  return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--fg-55);white-space:nowrap"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="${icon}"></path></svg>${esc(label)}</span>`;
 }
 
 // Highlight the active query term inside a body of text.
@@ -1676,7 +1689,7 @@ function searchOpenAttr(type: string, id: string): string | null {
 
 function primaryCard(r: QueryPrimary, sq: string): string {
   const preview = r.body.replace(/\s+/g, " ").trim().slice(0, 280);
-  const inner = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;flex-wrap:wrap">${searchTypeBadge(r.type)}${authorityBadge(r.authority)}</div>
+  const inner = `<div style="display:flex;align-items:center;gap:12px;margin-bottom:7px;flex-wrap:wrap">${searchTypeLabel(r.type)}${authorityMark(r.authority)}</div>
     <div style="font-size:14.5px;font-weight:500;letter-spacing:-0.01em;margin-bottom:6px">${esc(r.title)}</div>
     <div style="font-size:13px;line-height:1.6;color:var(--fg-55)">${highlight(preview, sq)}${r.body.length > 280 ? "…" : ""}</div>`;
   const act = searchOpenAttr(r.type, r.id);
@@ -1686,7 +1699,7 @@ function primaryCard(r: QueryPrimary, sq: string): string {
 }
 
 function pointerRow(r: QueryPointer, sq: string): string {
-  const inner = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">${searchTypeBadge(r.type)}${authorityBadge(r.authority)}<span style="font-size:13px;font-weight:500;letter-spacing:-0.01em">${esc(r.title)}</span></div>
+  const inner = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap"><span style="font-size:13px;font-weight:500;letter-spacing:-0.01em">${esc(r.title)}</span>${searchTypeLabel(r.type)}${authorityMark(r.authority)}</div>
     <div style="font-size:12.5px;line-height:1.55;color:var(--fg-55)">${highlight(r.snippet, sq)}</div>`;
   const act = searchOpenAttr(r.type, r.id);
   return act
@@ -1747,6 +1760,33 @@ function searchView(s: AppState): string {
 }
 
 // ── get started / guide ──────────────────────────────────────────────────────
+/** What each Guide screenshot shows (web/public/guide/<name>-<theme>.png), as its text alternative. Generic
+ *  on purpose: the screen, not what one capture holds — the captures will be retaken. */
+export const GUIDE_ALT: Record<string, string> = {
+  mywork: "The My Work screen: your open tickets, what needs your review, and recent activity",
+  docs: "The Docs screen: the library tree beside an open document",
+  feed: "The Feed: a timeline of what people and agents shipped",
+  tickets: "The Tickets screen as a table, grouped by sprint",
+  board: "The ticket board, one column per status",
+  ticket: "A ticket opened: its description, status, assignees and comments",
+  roadmap: "The Roadmap's narrative: the plan beside its sprint cards",
+  timeline: "The Roadmap's timeline: each sprint as a bar on a calendar",
+  sprint: "A sprint opened: its tickets and progress",
+  handoffs: "The Handoffs screen: handoffs left for the next session",
+  artifacts: "The Artifacts library",
+  artifact: "An artifact opened in the viewer",
+  prompts: "The Prompt Library",
+  review: "The Review screen: staged proposals waiting for a person's verdict",
+  maintenance: "The Unplaced screen: entries waiting to be placed or discarded",
+  repo: "The Repo dashboard: environments, deploys and CI",
+  "repo-usage": "The Repo dashboard's usage view",
+  search: "Search results across docs, tickets and the feed",
+  quicksearch: "Quick search, open over the app",
+  settings: "The Settings screen",
+  releases: "The What's new screen",
+};
+export const guideAlt = (name: string): string => GUIDE_ALT[name] ?? "A screenshot of Trov";
+
 function guideView(s: AppState): string {
   // Screenshots are captured per theme (dark/light) by scripts/capture-guide.mjs;
   // pick the variant that matches the viewer's active theme so the figures never clash
@@ -1764,9 +1804,11 @@ function guideView(s: AppState): string {
   // image loading mid-jump can't push the table-of-contents target down the page.
   // Each figure is a button that opens it in the lightbox (web/src/lightbox.ts),
   // titled and captioned from its own figcaption.
+  // Each figure's text alternative says which screen it shows, in general terms (`GUIDE_ALT`: the captures
+  // will be retaken, so it never describes what one capture happens to hold); the button's name repeats it.
   const gFig = (name: string, cap: string) => `<figure style="margin:18px 0 4px">
-      <button data-act="guideZoom" data-arg="${name}" class="cnpy-guide-shot" aria-label="Expand screenshot">
-        <img src="/guide/${name}-${th}.png" alt="" loading="lazy" width="2560" height="1600" />
+      <button data-act="guideZoom" data-arg="${name}" class="cnpy-guide-shot" aria-label="${attr(`Expand screenshot: ${guideAlt(name)}`)}">
+        <img src="/guide/${name}-${th}.png" alt="${attr(guideAlt(name))}" loading="lazy" width="2560" height="1600" />
       </button>
       <figcaption style="font-size:12px;color:var(--fg-40);margin-top:8px">${cap}</figcaption>
     </figure>`;
@@ -1904,6 +1946,7 @@ function guideView(s: AppState): string {
 
     ${sub("Other agents")}
     <p style="${gP}">Any MCP client that can sign in through the browser (OAuth) connects to the same address, ${gCode(esc(mcpEndpoint()))}, and shows up under ${gStrong("Connected apps")} once you approve it. Trov no longer creates access tokens in Settings; a token you already set up (for Codex or CI) keeps working.</p>
+    <p style="${gP}">${gStrong("Claude on the web and Claude Desktop")} take Trov as a custom connector: in Claude's Settings › Connectors, choose ${gStrong("Add custom connector")} and enter that address. A chat is in no repository, so on the Allow page pick ${gStrong("Manual")} and the organizations it may use. There are no skills there: ask in words (“what's on my plate in Trov?”). ${otherClientsLink()}</p>
     ${gFig("settings", `${gEm("Settings")}: profile, sign-in methods, MCP access, appearance, and email digests.`)}
 
     ${sec("Troubleshooting", "When something doesn't work", "Troubleshooting")}
@@ -2019,7 +2062,7 @@ export function profileSection(s: AppState): string {
         ${handleRow}
       </div>
     </div>
-    <div class="cnpy-tile-foot" style="padding-top:20px"><label style="${FIELD_LABEL}">Your color</label>${swatches("setMyColor", me?.color ?? "stone", true)}</div>
+    <div class="cnpy-tile-foot" style="padding-top:20px"><div id="set-color-l" style="${FIELD_LABEL}">Your color</div>${swatches("setMyColor", me?.color ?? "stone", true, "set-color-l")}</div>
   </section>`;
 }
 
@@ -2057,7 +2100,17 @@ export function helpSection(): string {
       </div>
       <button data-act="supportOpen" data-arg="question" data-support-trigger="question" data-field="supportOpen:question" aria-haspopup="dialog" class="cnpy-ghostbtn" style="flex:none;display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:600;color:var(--fg)">Contact support</button>
     </div>
+    ${legalLinksRow()}
   </section>`;
+}
+
+/** The legal pages, the source of the version running (AGPL-3.0 §13: `/source`, the deployed commit) and the
+ *  third-party notices — in Settings › Help and on Help › What's new. Static pages, so they open beside the app. */
+export function legalLinksRow(): string {
+  const links = [...LEGAL_LINKS, { label: "Third-party notices", path: NOTICES_PATH }]
+    .map((l) => `<a href="${l.path}" target="_blank" rel="noopener" class="cnpy-mutelink" style="color:var(--fg-55)">${esc(l.label)}</a>`)
+    .join(`<span aria-hidden="true"> · </span>`);
+  return `<nav class="cnpy-legal-links" aria-label="Legal and source" data-legal-links style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;line-height:1.7;color:var(--fg-40)">${links}</nav>`;
 }
 
 /** Settings › Session: who is signed in on this browser, and SIGN OUT — a labelled button with its
@@ -2282,7 +2335,7 @@ export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" |
     <div class="cnpy-mcp-body">
       <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
       ${connectSteps(orgName)}
-      <div data-mcp-one-org style="font-size:12px;line-height:1.55;color:var(--fg-40);min-width:0">${CONNECTION_NOTE}</div>
+      <div data-mcp-one-org style="font-size:12px;line-height:1.55;color:var(--fg-40);min-width:0">${CONNECTION_NOTE} Not using Claude Code? ${otherClientsLink()}</div>
       </div>
       <div style="min-width:0">
       ${grantListBody(s)}
@@ -2368,6 +2421,8 @@ function settingsView(s: AppState): string {
     })}
 
     ${helpSection()}
+
+    ${accountDeleteTile(s.acctDelete)}
 
     ${sessionSection(s)}
 
@@ -2711,12 +2766,17 @@ function appView(s: AppState): string {
   // Personal Settings too: it holds forms (name, handle, digest address), and a page rebuilt per
   // keystroke restarts everything in it (web-ui.md › A repaint REBUILDS a page).
   const morphKey = isArtScreen(s.screen) ? `${s.screen}:${JSON.stringify(s.screen === "artifact" ? s.artRoute : null)}`
-    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" ? s.screen : "";
+    // Review too: its list is keyed (`data-morph-list`), so a filter or a verdict never rebuilds it —
+    // a card can leave with an animation, and the two switches' indicators slide on the same element.
+    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen : "";
+  // The skip link is the shell's first child (a fixed chip, out of the flex row): past the sidebar and the
+  // header, to the screen itself. morph.ts patches the aside and swaps <main>; it never touches this.
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+    ${skipLink("cnpy-main")}
     ${sidebar(s)}
     <main${morphKey ? ` data-morph="${attr(morphKey)}"` : ""} style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
       ${header(s)}
-      <div id="cnpy-main" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0">${screenBody(s)}</div>
+      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0">${screenBody(s)}</div>
     </main>
     <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
   </div>`;
@@ -2764,8 +2824,8 @@ export function shownState(s: AppState): AppState {
 export function render(real: AppState): string {
   const s = shownState(real);
   const themeAttr = resolved(s);
-  return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    ${s.billingDone ? billingDonePage(s.billingDone, firstRunBackdrop()) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null, s.dd) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
+  return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    ${s.billingCheckout ? billingCheckoutPage(s.billingCheckout, firstRunBackdrop()) : s.billingDone ? billingDonePage(s.billingDone, firstRunBackdrop()) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null, s.dd) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature, menuOpen: s.siteMenu }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
@@ -2776,6 +2836,7 @@ export function render(real: AppState): string {
     ${s.view !== "auth" && s.orgsUi.create ? createOrgModal(s.orgsUi.create) : ""}
     ${supportDialog(s.support)}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
+    ${s.view === "app" && s.screen === "settings" ? accountDeleteModal(s.acctDelete) : ""}
     ${s.view === "app" && s.screen === "settings" ? grantScopeDialog(s) : ""}
     ${s.view === "app" && s.screen === "settings" && s.dd.open ? dropdownMenu(grantDropdowns(s), s.dd) : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}

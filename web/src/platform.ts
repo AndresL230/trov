@@ -21,14 +21,20 @@ import {
   type PlatformOrgRow, type PlatformOrgDetail, type PlatformAdmin, type PlatformAuditRow, type PlatformUsageResponse,
   type AdminAssignment, type AdminTarget, type OrgRole, type OrgInvite,
 } from "@shared/orgs";
-import { esc, attr, relTime, statusBadge, surface } from "./ui";
+import { esc, attr, relTime, surface } from "./ui";
+import { kindMark } from "./marks";
 import { trovMark } from "@shared/mark";
 import { orgTile } from "./org-logo";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { segmented } from "./segmented";
 import { confirmModal } from "./confirm";
+import { accountDeleteModal, initialDeleteUi, orgDeleteModal, personDeleteSection, PERSON_DELETE_ID, type DeleteUi } from "./deletion";
+import type { AccountDeletionPreview, OrgDeletionPreview } from "@shared/deletion-core";
+
+/** The Platform org page's Delete confirmation (deletion.ts `orgDeleteModal`, with Platform's acts). */
+export const PLAT_ORG_DELETE_ID = "plat-org-delete-confirm";
 import { usageView, orgUsageBlock, type UsageWindow } from "./platform-usage";
-import { tabLead, leadFlag, dangerLink } from "./org-ui";
+import { tabLead, leadFlag, dangerLink, roleWord, YOU } from "./org-ui";
 import { emptyLayout, skRows, skRowsShape, skKey } from "./skeleton";
 // Plans and grants (shared/plans.ts): the Access tab, an org's Plan section, their dialogs.
 import { PLANS, type PlanId } from "@shared/plans";
@@ -101,6 +107,11 @@ export interface PlatState {
   access: AccessState;
   /** Platform › Support (platform-support.ts): the reports, the filters, the one on screen. */
   support: SupportTabState;
+  /** Platform › an organization › Delete (deletion.ts): the org on screen's deletion. */
+  orgDelete: DeleteUi<OrgDeletionPreview>;
+  /** Platform › Admins › Delete a person's account: the handle typed, and that account's deletion. */
+  personDraft: string;
+  personDelete: DeleteUi<AccountDeletionPreview>;
 }
 
 export function initialPlat(): PlatState {
@@ -118,6 +129,8 @@ export function initialPlat(): PlatState {
     revokeArm: null, revokeBusy: false, revokeError: null,
     access: initialAccess(),
     support: initialSupportTab(),
+    orgDelete: initialDeleteUi<OrgDeletionPreview>(),
+    personDraft: "", personDelete: initialDeleteUi<AccountDeletionPreview>(),
   };
 }
 
@@ -235,9 +248,8 @@ const shortDate = (iso: string): string => {
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
 const orgStatus = (o: Pick<PlatformOrgRow, "status">): string =>
-  o.status === "suspended" ? statusBadge("SUSPENDED", "var(--red)") : statusBadge("ACTIVE", "var(--green)");
-const ROLE_TONE: Record<OrgRole, string> = { owner: "var(--accent)", admin: "var(--blue)", member: "var(--fg-55)" };
-const roleBadge = (r: OrgRole): string => statusBadge(r.toUpperCase(), ROLE_TONE[r]);
+  o.status === "suspended" ? kindMark("Suspended", "stopped", 12, "Its members cannot open it until it is unsuspended.") : kindMark("Active", "good");
+const roleBadge = (r: OrgRole): string => roleWord(r);
 
 /** The standing note: what a superadmin is, and is not. */
 export const NOT_A_MEMBER = "You are not a member of this organization. As superadmin you can manage it and see its sizes and counts, but you cannot open or read its content.";
@@ -305,7 +317,7 @@ export function orgsTab(p: Pick<PlatState, "orgs">): string {
 function inviteRow(i: OrgInvite): string {
   return `<div style="${ROW};flex-wrap:wrap">
     <div style="flex:1;min-width:0;line-height:1.35"><div style="font-size:13.5px;font-weight:500;color:var(--fg-70);overflow-wrap:anywhere">${esc(i.github_login ?? i.email ?? "")}</div><div style="${QUIET}">${i.github_login ? "GitHub login" : "Email"} · invited ${esc(relTime(i.created_at))} by @${esc(i.invited_by)}${i.email ? ` · ${i.mail_status === "sent" ? "email sent" : i.mail_status === "failed" ? "email not sent" : "no email sent"}` : ""}</div></div>
-    ${roleBadge(i.role)}${statusBadge("PENDING", "var(--amber)")}
+    ${roleBadge(i.role)}${kindMark("Pending", "waiting", 12, "Invited, not accepted yet.")}
   </div>`;
 }
 
@@ -337,6 +349,8 @@ export function platformOrgView(p: PlatState): string {
   const action = sus
     ? `<button type="button" data-act="platSuspendArm" data-arg="unsuspend" data-confirm-trigger class="cnpy-outlinebtn" aria-haspopup="dialog" aria-expanded="${p.suspendArm === "unsuspend"}" aria-controls="plat-suspend-confirm" style="${OUTLINE};height:32px">Unsuspend</button>`
     : dangerLink("Suspend", "platSuspendArm", { arg: "suspend", label: `Suspend ${o.name}` }).replace("<button ", `<button data-confirm-trigger aria-expanded="${p.suspendArm === "suspend"}" aria-controls="plat-suspend-confirm" `);
+  // Deleting it (deletion.ts): the same deletion its owner can do, with no membership needed — rarer still.
+  const del = dangerLink("Delete…", "platOrgDelArm", { label: `Delete ${o.name}` }).replace("<button ", `<button data-confirm-trigger aria-expanded="${p.orgDelete.open}" aria-controls="${PLAT_ORG_DELETE_ID}" `);
   const pending = d.invites.filter((i) => i.status === "pending");
   const owners = d.members.filter((m) => m.role === "owner").length;
   // The head: who this is and its state, then its figures in one quiet line — the page's summary.
@@ -346,8 +360,9 @@ export function platformOrgView(p: PlatState): string {
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${orgTile(o.name, 32, o.logo_url, 8)}<h2 style="margin:0;font-size:19px;font-weight:600;letter-spacing:-0.01em;overflow-wrap:anywhere">${esc(o.name)}</h2>${orgStatus(o)}</div>
         <div style="margin-top:4px;font-size:12.5px;color:var(--fg-55);line-height:1.5"><span style="font-family:var(--code);font-size:12px">${esc(o.slug)}</span> · <strong style="font-weight:600;color:var(--fg-70)">${d.members.length}</strong> ${d.members.length === 1 ? "member" : "members"}${owners === 0 ? ` · <span style="color:var(--amber);font-weight:500">no owner yet</span>` : ""}${pending.length ? ` · ${pending.length} pending ${pending.length === 1 ? "invite" : "invites"}` : ""} · created ${esc(shortDate(o.created_at))} by @${esc(o.created_by)}${o.last_activity_at ? ` · last activity ${esc(relTime(o.last_activity_at))}` : " · no activity yet"} · <span data-plat-github>${o.github_account ? `GitHub through the App on <strong style="font-weight:600;color:var(--fg-70)">${esc(o.github_account)}</strong>` : "GitHub not connected through the App"}</span></div>
       </div>
-      ${action}
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${action}${del}</div>
     </div>
+    ${p.orgDelete.preview.status === "error" && !p.orgDelete.open ? `<div role="alert" style="margin-top:10px;font-size:12.5px;line-height:1.5;color:var(--red)">${esc(p.orgDelete.error ?? "Trov couldn't check what deleting it involves. Try again.")}</div>` : ""}
     ${sus ? `<div role="status" style="margin-top:14px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--red) 40%,transparent);background:color-mix(in srgb,var(--red) 8%,transparent);border-radius:9px;font-size:12.5px;line-height:1.5;color:var(--fg-70)">Suspended${o.suspended_at ? ` ${esc(relTime(o.suspended_at))}` : ""}${o.suspended_by ? ` by @${esc(o.suspended_by)}` : ""}. Members can't open it and its MCP tokens and connected apps don't work. No data was deleted.</div>` : ""}
     <div role="note" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;line-height:1.5;color:var(--fg-40)">${esc(NOT_A_MEMBER)}</div>
   </div>`;
@@ -391,12 +406,12 @@ export function platformOrgView(p: PlatState): string {
 // ── ADMINS ───────────────────────────────────────────────────────────────────
 export function adminsTab(p: PlatState, me: string | null): string {
   const n = p.admins.data.length;
-  const intro = tabLead(`${n ? `<strong>${n}</strong> ${n === 1 ? "superadmin" : "superadmins"}. ` : ""}They add and suspend organizations, grant them, and see usage; it is not a membership of any organization.`);
+  const intro = tabLead(`${n ? `<strong>${n}</strong> ${n === 1 ? "superadmin" : "superadmins"}. ` : ""}They add, suspend and delete organizations, grant them, see usage, and can delete an account; it is not a membership of any organization.`);
   const list = p.admins.status === "error" && !p.admins.data.length ? errorLine("the superadmins")
     : p.admins.status !== "ok" && !p.admins.data.length ? loadingLine("superadmins")
     : `<div${surface("overflow:hidden")}>${p.admins.data.map((a) => `<div style="${ROW}">
         <div style="flex:1;min-width:0;line-height:1.35"><div style="font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name ?? a.handle)}</div><div style="${QUIET};overflow-wrap:anywhere">${handleText(a.handle)} · granted ${esc(relTime(a.granted_at))} by @${esc(a.granted_by)}</div></div>
-        ${me && a.handle.toLowerCase() === me.toLowerCase() ? `<span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:2px 6px">YOU</span>` : ""}
+        ${me && a.handle.toLowerCase() === me.toLowerCase() ? YOU : ""}
         ${dangerLink("Remove", "platRevokeArm", { arg: a.handle, field: `platRevoke:${a.handle}`, label: `Remove @${a.handle} as superadmin` }).replace("<button ", `<button${p.revokeArm === a.handle ? " data-confirm-trigger" : ""} `)}
       </div>`).join("")}</div>`;
   const canGrant = !p.grantBusy && cleanHandle(p.grantDraft) !== "";
@@ -412,7 +427,9 @@ export function adminsTab(p: PlatState, me: string | null): string {
       </div>
       ${fieldError("plat-grant-err", p.grantError)}
       <div style="${QUIET};margin-top:8px;line-height:1.45">They can then do everything on this page, including removing other superadmins.</div>
-    </div>`;
+    </div>
+    ${sectionHead("Accounts")}
+    <div${surface("padding:16px 20px")}>${personDeleteSection(p.personDraft, p.personDelete, "platPersonDraft")}</div>`;
 }
 
 // ── AUDIT ────────────────────────────────────────────────────────────────────
@@ -570,6 +587,14 @@ export function platformDialogs(p: PlatState, screen: string, dd: DropdownUi = i
       // Suspending takes access away (red); unsuspending gives it back (the neutral confirm).
       tone: suspend ? "danger" : "neutral",
     });
+  }
+  // Deletion (deletion.ts): an organization from its page, an account from Admins — the owner's and the
+  // person's own confirmations, in Platform's words and with Platform's acts.
+  if (screen === "platformorg" && p.orgDelete.open && p.detail.data) {
+    return orgDeleteModal(p.orgDelete, { platform: true, id: PLAT_ORG_DELETE_ID, acts: { go: "platOrgDelGo", cancel: "platOrgDelCancel", typed: "platOrgDelTyped" } });
+  }
+  if (screen === "platform" && p.personDelete.open) {
+    return accountDeleteModal(p.personDelete, { platform: true, id: PERSON_DELETE_ID, acts: { go: "platPersonDelGo", cancel: "platPersonDelCancel", typed: "platPersonDelTyped" } });
   }
   if (screen === "platform" && p.revokeArm) {
     return confirmModal({

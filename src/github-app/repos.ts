@@ -7,7 +7,7 @@ import type { TenantContext } from "../data/sql";
 import type { Env } from "../env";
 import { listInstallationRepos, type InstallationRepo } from "./api";
 import { resolveGithubCredential } from "./credential";
-import { syncRepoAccess } from "./store";
+import { allowedRepos, syncRepoAccess } from "./store";
 
 export interface VisibleRepos { repositories: InstallationRepo[]; total: number; truncated: boolean }
 export type VisibleReposResult = { ok: true; list: VisibleRepos } | { ok: false; reason: "not_connected" | "github_failed"; status?: number };
@@ -21,8 +21,20 @@ export function forgetRepoList(installationId: number): void { cache.delete(inst
 /** Tests only. */
 export function clearRepoLists(): void { cache.clear(); }
 
+/** `list` as THIS org's binding reaches it. An `all` binding: the installation's list. A `selected`
+ *  one: its own stored repositories — cut to those the installation still covers when GitHub's list is
+ *  complete (a cut list cannot say one is gone). The cache holds the installation's list, which other
+ *  orgs share; the cut is made per org, after it. */
+async function reached(ctx: TenantContext, row: Parameters<typeof allowedRepos>[1], list: VisibleRepos): Promise<VisibleRepos> {
+  const allowed = await allowedRepos(ctx, row);
+  if (!allowed) return list;
+  const live = new Map(list.repositories.map((r) => [r.full_name.toLowerCase(), r]));
+  const repositories = list.truncated ? allowed : allowed.flatMap((r) => { const now = live.get(r.full_name.toLowerCase()); return now ? [now] : []; });
+  return { repositories, total: repositories.length, truncated: false };
+}
+
 /**
- * The live installation's repositories, through its own token (`appOnly`: the stored token is never
+ * The live installation's repositories THIS ORG can reach, through its own token (`appOnly`: the stored token is never
  * what answers "what can the installation see"). A complete list also re-marks the org's connected
  * repositories — reachable through the App, or no longer.
  */
@@ -32,7 +44,7 @@ export async function visibleRepos(ctx: TenantContext, env: Env, opts: { fetchIm
   if (!gh || !gh.installation) return { ok: false, reason: "not_connected" };
   const id = gh.installation.installation_id;
   const held = cache.get(id);
-  if (held && !opts.refresh && now - held.at < REPO_LIST_TTL_MS) return { ok: true, list: held.list };
+  if (held && !opts.refresh && now - held.at < REPO_LIST_TTL_MS) return { ok: true, list: await reached(ctx, gh.installation, held.list) };
   const res = await listInstallationRepos(gh.token.reveal(), gh.fetch(opts.fetchImpl), GITHUB_REPO_LIST_MAX);
   if (!res.ok) {
     await gh.recordOutcome({ ok: false, message: `list the installation's repositories: github ${res.status || "request failed"}`, revealed: gh.token }, now);
@@ -42,6 +54,7 @@ export async function visibleRepos(ctx: TenantContext, env: Env, opts: { fetchIm
   cache.set(id, { at: now, list });
   await gh.recordOutcome({ ok: true }, now);
   // A cut list cannot say a repository is gone — only a complete one re-marks.
-  if (!list.truncated) await syncRepoAccess(ctx, { visible: list.repositories.map((r) => r.full_name) }).catch(() => undefined);
-  return { ok: true, list };
+  const mine = await reached(ctx, gh.installation, list);
+  if (!list.truncated) await syncRepoAccess(ctx, { visible: mine.repositories.map((r) => r.full_name) }).catch(() => undefined);
+  return { ok: true, list: mine };
 }

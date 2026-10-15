@@ -13,7 +13,7 @@ import { promote_doc } from "../src/tools/writes";
 import { storePrSummary, storeIssueSummary, type Summarizer, type PrSummary, type IssueSummary } from "../src/tools/summarize";
 import { write_plan } from "../src/tools/plan";
 import { getKind } from "../src/notifications/registry";
-import { THEME } from "../src/notifications/assemble";
+import { THEME, EMAIL_CARD } from "../src/notifications/assemble";
 import type { Window } from "@shared/notifications";
 import type { CapturedEvent } from "@shared/contract";
 
@@ -41,7 +41,7 @@ const issueStub = (s: IssueSummary): Summarizer<IssueSummary> => ({ model: "stub
 describe("My Work items (ledger layout)", () => {
   const kind = () => getKind("my_work")!;
 
-  it("renders a merged PR as a ledger item: title with the #number pill far right, What changed / Why / Impact rows, MERGED chip into main", async () => {
+  it("renders a merged PR as a ledger item: title with the #number pill far right, What changed / Why / Impact rows, Merged mark into main", async () => {
     await ingestEvent(systemCtx(), platformCtx(), prEvent(10, IN_WINDOW, "Raw ten"), "github-webhook");
     await storePrSummary(systemCtx(), prStub({ title: "Humanized ten", what: "Did the thing", why: "Because reasons", impact: "Users win" }), { semantic_key: "gh:pr:10:merged", pr_number: 10, title: "Raw ten", body: "b" });
     const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
@@ -53,8 +53,8 @@ describe("My Work items (ledger layout)", () => {
     expect(s.html).toMatch(/What changed[\s\S]*Did the thing/);
     expect(s.html).toMatch(/Why[\s\S]*Because reasons/);
     expect(s.html).toMatch(/Impact[\s\S]*Users win/);
-    expect(s.html).toMatch(/>MERGED<[\s\S]*into <span[^>]*>main</); // base ref in the label face, like the app
-    expect(s.html).toContain(THEME.green.light); // the MERGED chip colour comes from the token map
+    expect(s.html).toMatch(/>Merged<[\s\S]*into <span[^>]*>main</); // base ref in the label face, like the app
+    expect(s.html).toContain(THEME.green.light); // the Merged mark's colour comes from the token map
     expect(s.text).toMatch(/What changed:\s+Did the thing/);
   });
 
@@ -70,7 +70,7 @@ describe("My Work items (ledger layout)", () => {
   it("caps merged PRs at five with a '+N more' line", async () => {
     for (let n = 1; n <= 7; n++) await ingestEvent(systemCtx(), platformCtx(), prEvent(100 + n, IN_WINDOW, `PR ${100 + n}`), "github-webhook");
     const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
-    expect((s.html.match(/>MERGED<\/span>/g) ?? []).length).toBe(5); // 5 chips (the group label is a div, not a chip)
+    expect((s.html.match(/>Merged<\/span>/g) ?? []).length).toBe(5); // 5 marks (the group label is a div, not a mark)
     expect(s.html).toContain("+2 more in My Work");
   });
 
@@ -92,28 +92,29 @@ describe("My Work items (ledger layout)", () => {
 });
 
 describe("Review queue rows", () => {
-  it("each item carries a PROPOSAL or DECISION kind chip, the summary line, and 'by <author> · <confidence> confidence'", async () => {
+  it("each item names its kind in words (Proposal / Decision), the summary line, and 'by <author> · <confidence> confidence'", async () => {
     await ingestDocProposal(systemCtx(), { slug: "auth-flow", section: "reference", title: "Auth flow", body: "v1", change_summary: "init", confidence: "high" }, "agent");
     await promote_doc(systemCtx(), "auth-flow", 1, "human");
     await ingestDocProposal(systemCtx(), { slug: "auth-flow", section: "reference", title: "Auth flow", body: "v2 proposed", change_summary: "clarify token rotation", confidence: "high" }, "mei");
     await ingestAdrDraft(systemCtx(), { title: "Use D1 for outbox", context: "c", decision: "d", rationale: "r", confidence: "high" }, "dev");
     const s = (await getKind("review_queue")!.render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.html).toMatch(/>PROPOSAL<[\s\S]*Reference \/ Auth flow[\s\S]*clarify token rotation[\s\S]*by mei · high confidence/);
-    expect(s.html).toMatch(/>DECISION<[\s\S]*ADR-\d+[\s\S]*Use D1 for outbox[\s\S]*by dev/);
+    expect(s.html).toMatch(/>Proposal<[\s\S]*Reference \/ Auth flow[\s\S]*clarify token rotation[\s\S]*by mei · high confidence/);
+    expect(s.html).toMatch(/>Decision<[\s\S]*ADR-\d+[\s\S]*Use D1 for outbox[\s\S]*by dev/);
+    expect(s.html).not.toContain("data-chip");
   });
 
-  it("a low-confidence proposal gets an amber LOW CONFIDENCE chip", async () => {
+  it("a low-confidence proposal gets an amber Low confidence mark", async () => {
     await ingestDocProposal(systemCtx(), { slug: "shaky", section: "reference", title: "Shaky", body: "v1", change_summary: "init", confidence: "high" }, "agent");
     await promote_doc(systemCtx(), "shaky", 1, "human");
     await ingestDocProposal(systemCtx(), { slug: "shaky", section: "reference", title: "Shaky", body: "v2", change_summary: "guess", confidence: "low" }, "agent");
     const s = (await getKind("review_queue")!.render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.html).toMatch(/LOW CONFIDENCE/);
+    expect(s.html).toContain(EMAIL_CARD.mark("Low confidence", "amber"));
     expect(s.html).toContain(THEME.amber.light);
   });
 });
 
 describe("Roadmap plan chips", () => {
-  it("labels are coloured chips: ADDED green, DONE purple, CHANGED blue", async () => {
+  it("labels are marks: Added green, Done purple, Changed blue", async () => {
     const r = await write_plan(systemCtx(), { narrative: "n", sprints: [
       { label: "Ship it", due: "2026-10-01", status: "in_progress" },
       { label: "Old name", due: "2026-10-15", status: "upcoming" },
@@ -128,8 +129,9 @@ describe("Roadmap plan chips", () => {
     ] }, "admin");
     await run(env.DB, `UPDATE plan_versions SET created_at = ? WHERE version = (SELECT MAX(version) FROM plan_versions)`, IN_WINDOW);
     const s = (await getKind("roadmap_plan")!.render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.html).toMatch(new RegExp(`color:${THEME.green.light}[^>]*>ADDED<`));
-    expect(s.html).toMatch(new RegExp(`color:${THEME.accentText.light}[^>]*>DONE<`));
-    expect(s.html).toMatch(new RegExp(`color:${THEME.blue.light}[^>]*>CHANGED<`));
+    expect(s.html).toContain(EMAIL_CARD.mark("Added", "green"));
+    expect(s.html).toContain(EMAIL_CARD.mark("Done", "accent"));
+    expect(s.html).toContain(EMAIL_CARD.mark("Changed", "blue"));
+    expect(s.html).not.toMatch(/>ADDED<|>DONE<|>CHANGED</);
   });
 });

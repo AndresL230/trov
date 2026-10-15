@@ -143,7 +143,7 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `UPDATE orgs SET logo_sha = ?, logo_source = 'upload', logo_by = ?, logo_at = ? WHERE id = 'org_b'`, "a".repeat(64), handle, nowIso());
   await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-01-01', 'api_read', ?, 1, ?)`, org, handle, nowIso());
   await run(env.DB, `INSERT INTO org_admin_audit (org_id, actor, action, target, at) VALUES (?, ?, 'org.update', 'settings', ?)`, org, handle, nowIso());
-  // 0052_hosting_providers: a stored part (on the staging environment above) and an installed connection.
+  // 0056_hosting_providers: a stored part (on the staging environment above) and an installed connection.
   await run(env.DB, `INSERT INTO org_environment_parts (org_id, env_key, part_key, position, label, role, provider, settings, created_at, updated_at, updated_by)
     VALUES (?, 'staging', 'web', 0, 'Web', 'web', 'vercel', '{}', ?, ?, ?)`, org, nowIso(), nowIso(), handle);
   await run(env.DB, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, status, connected_by, connected_at, revoked_by)
@@ -161,6 +161,9 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   // 0049_support_reports: a report the person sent, and one they resolved (the real writers take the
   // principal from the session: test/support.routes.test.ts renames through them).
   await run(env.DB, `INSERT INTO support_reports (kind, subject, message, reporter, status, resolved_by, resolved_at, created_at) VALUES ('bug', 's', 'm', ?, 'resolved', ?, ?, ?)`, handle, handle, nowIso(), nowIso());
+  // 0055_ai: a suggestion the person dismissed, and a "Wrong?" they pressed.
+  await run(env.DB, `INSERT INTO ai_suggestions (org_id, item_type, item_ref, kind, value_json, reason, state, created_at, decided_by, decided_at) VALUES (?, 'ticket', '1', 'category', '"bug"', 'r', 'dismissed', ?, ?, ?)`, org, nowIso(), handle, nowIso());
+  await run(env.DB, `INSERT INTO ai_feedback (org_id, handle, item_type, item_ref, kind, created_at) VALUES (?, ?, 'brief', 'person:x', 'brief', ?)`, org, handle, nowIso());
 }
 
 describe("renamePerson", () => {

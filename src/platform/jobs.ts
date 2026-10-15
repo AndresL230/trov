@@ -40,7 +40,7 @@ export function listRepoUnits(p: PlatformContext): Promise<RepoUnit[]> {
 
 export interface PartUnit { org_id: string; env_key: string; part_key: string; provider: string }
 
-/** One row per STORED part (`org_environment_parts`, 0052_hosting_providers) of every active org — the
+/** One row per STORED part (`org_environment_parts`, 0056_hosting_providers) of every active org — the
  *  units of the `hosting` job — in org, environment `position`, part `position` order, so the rotation
  *  is stable from tick to tick. A legacy Cloudflare / Railway part has no row here (it is the
  *  environment's own columns, polled by `usage`), so an org without a stored part contributes nothing.
@@ -70,32 +70,50 @@ export function legacyHookRepo(p: PlatformContext): Promise<HookRepo | null> {
       WHERE r.legacy_hook = 1 AND o.suspended_at IS NULL ORDER BY r.created_at, r.id LIMIT 1`);
 }
 
-// ── the GitHub App: which org an installation is connected to (0043_github_app) ──
+// ── the GitHub App: which orgs an installation is connected to (0043_github_app, 0053_installation_repos) ──
 
 export interface InstallationOrg { org_id: string; org_slug: string; org_suspended: number }
 
 /**
- * The org a LIVE binding of GitHub installation `installationId` belongs to, or null — the App
- * webhook's and the connect callback's lookup, before any org is known. It returns the org and whether
- * it is suspended, nothing else: the binding itself is then read as that org's tenant
- * (src/github-app/store.ts). A suspended org's binding IS returned (flagged): the connect flow must
- * still see that the installation is taken, and an uninstall on GitHub must still end it — a delivery
- * to CAPTURE is dropped by the caller.
+ * The orgs that hold a LIVE binding of GitHub installation `installationId`, oldest binding first — the
+ * App webhook's lookup, before any org is known. One installation is one GitHub account, and several
+ * orgs may bind it (0053). It returns each org and whether it is
+ * suspended, nothing else: the binding itself is then read as that org's tenant
+ * (src/github-app/store.ts). A suspended org's binding IS returned (flagged): an uninstall on GitHub
+ * must still end it — a delivery to CAPTURE is dropped by the caller.
  */
-export function installationOrg(p: PlatformContext, installationId: number): Promise<InstallationOrg | null> {
-  return first<InstallationOrg>(p,
+export function installationOrgs(p: PlatformContext, installationId: number): Promise<InstallationOrg[]> {
+  return all<InstallationOrg>(p,
     `SELECT i.org_id, o.slug AS org_slug, (o.suspended_at IS NOT NULL) AS org_suspended
        FROM org_github_installations i JOIN orgs o ON o.id = i.org_id
-      WHERE i.installation_id = ? AND i.removed_at IS NULL`, installationId);
+      WHERE i.installation_id = ? AND i.removed_at IS NULL ORDER BY i.id`, installationId);
 }
 
-// ── hosting installations: which org holds one (0052_hosting_providers) ──────
+export interface InstallationRepoOrg extends InstallationOrg { repo_full_name: string; is_primary: number }
+
+/**
+ * The orgs a repository's delivery from installation `installationId` goes to, oldest binding first —
+ * a delivery is routed by its REPOSITORY, to EVERY org that is bound to the installation, tracks
+ * `repo`, and whose binding reaches it: an `all` binding, or a `selected` one that lists the repository
+ * (0053). An org that merely typed the name of a repository its admin cannot read gets nothing.
+ */
+export function installationRepoOrgs(p: PlatformContext, installationId: number, repo: string): Promise<InstallationRepoOrg[]> {
+  return all<InstallationRepoOrg>(p,
+    `SELECT i.org_id, o.slug AS org_slug, (o.suspended_at IS NOT NULL) AS org_suspended, r.repo_full_name, r.is_primary
+       FROM org_github_installations i JOIN orgs o ON o.id = i.org_id JOIN org_repos r ON r.org_id = i.org_id
+      WHERE i.installation_id = ? AND i.removed_at IS NULL AND r.repo_full_name = ?
+        AND (i.repo_access = 'all' OR EXISTS (SELECT 1 FROM org_github_installation_repos a
+              WHERE a.org_id = i.org_id AND a.binding_id = i.id AND a.repo_full_name = r.repo_full_name))
+      ORDER BY i.id`, installationId, repo);
+}
+
+// ── hosting installations: which org holds one (0056_hosting_providers) ──────
 
 /**
  * The orgs whose ACTIVE connection for hosting `provider` is the provider-side installation `externalId`,
  * with its scope — before any org is known: the provider's uninstall notice names only the installation
  * (src/hosting/webhook.ts), and the connect callback must see that an installation is already another org's
- * (`taken`, src/hosting/connections.ts — 0052's unique index says so again at the write). A SUSPENDED org's
+ * (`taken`, src/hosting/connections.ts — 0056's unique index says so again at the write). A SUSPENDED org's
  * row is returned too: its installation is still taken, and an uninstall must still end it. Org ids and a
  * scope only; the connection itself is then read as that org's tenant.
  */

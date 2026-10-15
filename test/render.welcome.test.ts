@@ -53,7 +53,7 @@ const repo = (name: string, o: Partial<OrgRepoDTO> = {}): OrgRepoDTO => ({
   created_at: "2026-10-01T10:00:00.000Z", created_by: "ines", ...o,
 });
 const inst = (o: Partial<GithubInstallationDTO> = {}): GithubInstallationDTO => ({
-  installation_id: 5551234, account_login: "acme-gh", account_type: "Organization", repository_selection: "selected", connected_by: "ines",
+  installation_id: 5551234, account_login: "acme-gh", account_type: "Organization", repository_selection: "selected", repo_access: "all", connected_by: "ines",
   connected_at: "2026-10-05T10:00:00.000Z", suspended_at: null, last_used_at: null, last_error: null, manage_url: "https://github.com/organizations/acme-gh/settings/installations/5551234", ...o,
 });
 const gh = (o: Partial<GithubAppStatusDTO> = {}): GithubAppStatusDTO => ({ configured: true, installation: null, lost: null, mismatch: null, ...o });
@@ -61,7 +61,7 @@ const available = (names: string[]): GithubReposDTO => ({ repositories: names.ma
 const bill = (o: Partial<OrgBillingView> = {}): OrgBillingView => ({ available: true, subscribed: false, ended: false, customer: false, interval: null, seats: null, cancel_at_period_end: false, pinned: false, upgrade_to: ["team"], ...o });
 const plan = (id: PlanId = "team", o: Partial<OrgPlanView> = {}): OrgPlanView => ({
   plan: id, name: PLANS[id].name, description: PLANS[id].description, status: "active", source: "granted", period_end: null, gift_until: null, entitlements: PLANS[id].entitlements, overridden: [],
-  seats: { members: 1, pending: 0 }, usage: { seats: 1, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0 }, over: [], ...o,
+  seats: { members: 1, pending: 0 }, usage: { seats: 1, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0, ai_runs: 0 }, over: [], ...o,
 });
 const grant = (slug = "acme", o: Partial<OAuthGrantSummary> = {}): OAuthGrantSummary => ({ id: 3, client_name: "Claude Code", created_at: "2026-10-07T10:00:00.000Z", last_used_at: null, mode: "manual", org: { slug, name: slug === "acme" ? "Acme Robotics" : "Other" }, orgs: [{ slug, name: slug === "acme" ? "Acme Robotics" : "Other" }], ...o });
 const token = (): McpTokenSummary => ({ id: 9, hint: "ab12", created_at: "2026-09-01T10:00:00.000Z", last_used_at: null });
@@ -359,6 +359,9 @@ describe("step 2 — connect your coding agent (both versions)", () => {
   });
   it("the status is a live region", () => {
     expect(agentStatus({ grants: ok([]), tokens: ok([]) }, org())).toMatch(/role="status" aria-live="polite" data-welcome-agent="waiting"/);
+  });
+  it("someone not on Claude Code is sent to every other client's setup", () => {
+    expect(view("agent")).toMatch(/Not using Claude Code\? <a href="\/docs\/connect" target="_blank" rel="noopener" data-mcp-other-clients/);
   });
   it("the by-hand command is behind a real toggle, closed until asked for", () => {
     const shut = view("agent");

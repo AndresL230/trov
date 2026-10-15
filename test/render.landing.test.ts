@@ -52,7 +52,7 @@ describe("landing — the facts it states", () => {
     expect(html.match(/only exist in the signed-in web app/g)?.length).toBe(1);
     expect(html).not.toContain("Only a signed-in person sees these buttons");
     // Whose data it is: the pricing Questions answer it, so Security does not.
-    expect(html.match(/only its members and the agents they connect can read it/g)?.length).toBe(1);
+    expect(html.match(/only its members and the agents they connect can read its content/g)?.length).toBe(1);
     const security = html.slice(html.indexOf('id="site-security"'), html.indexOf('id="site-pricing"'));
     expect(security).not.toMatch(/its members|sign up|Sign-in with/i);
     expect(security.match(/class="site-check"/g)?.length).toBe(7);
@@ -99,8 +99,13 @@ describe("landing — the banner carried through the page", () => {
     // The way to the pricing page is in the lede, so the plan's line is nothing but the plan.
     expect(signup).toContain('Pick a plan to start, or <a href="/pricing" class="site-signin-compare">compare them</a>.');
     expect(pro).toContain('class="site-signin-compare"');
-    // One line either way and no extra note under Pro, so the dialog is the same height on both plans.
-    expect(pro).not.toContain("site-signin-note");
+    // The plan's line is one line either way. Under the buttons, both sides say what continuing agrees to; Pro
+    // also says, before anything is paid, that tax is added at checkout, that it renews until cancelled, and
+    // where the refund policy is (the compliance pass, 2026-10-12: the one place the two sides differ in height).
+    expect(signup).toContain('<p class="site-signin-note" data-consent>By continuing you agree to the <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>, and confirm you are 16 or older.</p>');
+    expect(signup).not.toContain("data-signin-terms");
+    expect(pro).toContain("data-consent");
+    expect(pro).toContain('<p class="site-signin-note" data-signin-terms>Plus applicable tax, calculated at checkout. Renews monthly until you cancel; cancel any time from Billing. <a href="/refunds">Refund policy</a></p>');
     expect(rules).toMatch(/\.site-signin-plan-what \{[^}]*white-space:nowrap;/);
     // Pro is the same two buttons: each is the billing route with the provider already picked, so signing in
     // carries straight on to payment.
@@ -114,7 +119,7 @@ describe("landing — the banner carried through the page", () => {
     expect(signup).not.toContain(">Sign in to Trov<");
     expect(signup).toMatch(/Already have an account\? <button type="button" data-act="openSignIn" data-arg="signin"[^>]*>Sign in<\/button>/);
     // The nav says the two apart as well: a quiet Sign in, and the accent Get started (the hero's label).
-    expect(out()).toMatch(/<button data-act="openSignIn" data-field="navSignIn" class="site-nav-signin"[^>]*>Sign in<\/button>\s*<button data-act="openSignIn" data-arg="signup" data-field="navStart" class="cnpy-accentbtn"[^>]*>Get started<\/button>/);
+    expect(out()).toMatch(/<button data-act="openSignIn" data-field="navSignIn" class="site-nav-signin site-nav-x"[^>]*>Sign in<\/button>\s*<button data-act="openSignIn" data-arg="signup" data-field="navStart" class="cnpy-accentbtn site-nav-cta"[^>]*>Get started<\/button>/);
     expect(out(false, true)).not.toContain("navStart"); // reopened from inside the app: only the way back
     expect(out(false, true)).toContain(">Back to the app</button>");
     // The same two providers either way.
@@ -123,10 +128,10 @@ describe("landing — the banner carried through the page", () => {
   });
 
   it("is ONE definition with the first-run card's banner", () => {
-    expect(rules).toMatch(/\.cnpy-orgs-banner, \.site-banner \{[^}]*linear-gradient\(135deg, #6c75d8 0%, #5a64cc 48%, #454fb2 100%\)/);
+    expect(rules).toMatch(/\.cnpy-orgs-banner, \.site-banner \{[^}]*linear-gradient\(135deg, #5e66c7 0%, #4d55bb 48%, #3940a2 100%\)/);
     expect(rules).toMatch(/\.cnpy-orgs-banner::after, \.site-banner::after \{[^}]*background-size:16px 16px/);
     // Dark: the banner follows the theme's accent (the green mark), on the site AND the first-run cards — one rule.
-    expect(rules).toMatch(/\[data-cnpy-theme="dark"\] \.site-banner, \[data-cnpy-theme="dark"\] \.cnpy-orgs-banner \{[^}]*linear-gradient\(135deg, #73844a 0%, #5d6d37 48%, #485628 100%\)/);
+    expect(rules).toMatch(/\[data-cnpy-theme="dark"\] \.site-banner, \[data-cnpy-theme="dark"\] \.cnpy-orgs-banner \{[^}]*linear-gradient\(135deg, #65753c 0%, #4f5f29 48%, #3b481a 100%\)/);
     // …and the glows behind the cards take the mark's colour from the theme, not a fixed purple.
     expect(rules).not.toMatch(/color-mix\(in srgb, #616acb /);
     expect(rules.match(/color-mix\(in srgb, var\(--mark, #616acb\) /g)?.length).toBeGreaterThanOrEqual(3);
@@ -221,5 +226,13 @@ describe("landing — motion is off under prefers-reduced-motion", () => {
   });
   it("the sign-in dialog, which sits outside the page", () => {
     expect(rules).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.site-signin-back, \.site-signin-card, \.site-signin-x, \.site-signin-btn \{ animation:none !important; transition:none !important; \} \}/);
+  });
+});
+
+describe("landing — buying Pro as someone new carries through signing up", () => {
+  it("after onboarding the SPA goes on to what the sign-up was for: an authorize link OR a purchase (it used to follow an authorize link only, so a new buyer's checkout was dropped)", () => {
+    expect(mainSrc).toContain("const next = signInReturnPath(r.redirect);");
+    expect(mainSrc).toContain("if (next) { window.location.href = next; return; }");
+    expect(mainSrc).not.toContain('r.redirect?.startsWith("/oauth/authorize?")');
   });
 });

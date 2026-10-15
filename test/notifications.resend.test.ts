@@ -32,7 +32,7 @@ function capture(status = 200, body: unknown = { id: "em_123" }) {
 }
 
 describe("resendDelivery", () => {
-  it("POSTs the message to Resend with the bearer key, from, both List-Unsubscribe headers, and returns the id", async () => {
+  it("POSTs the message to Resend with the bearer key, from, the RFC 8058 one-click headers, and returns the id", async () => {
     const { calls, fetchImpl } = capture();
     const d = resendDelivery({ apiKey: "re_test", from: "Trov <trov@mail.example>", fetchImpl });
     const r = await d.send(MSG);
@@ -43,7 +43,8 @@ describe("resendDelivery", () => {
     expect(new Headers(calls[0].init.headers).get("authorization")).toBe("Bearer re_test");
     const body = JSON.parse(String(calls[0].init.body));
     expect(body).toMatchObject({ from: "Trov <trov@mail.example>", to: ["andres@example.com"], subject: "Trov daily, Sep 11", html: "<p>hi</p>", text: "hi" });
-    expect(body.headers["List-Unsubscribe"]).toBe("<mailto:trov@mail.example?subject=unsubscribe>, <https://trov.example/u/AndresL230.sig>");
+    // The https link alone: no mailto: alternative, since nothing reads the sending mailbox for unsubscribes.
+    expect(body.headers["List-Unsubscribe"]).toBe("<https://trov.example/u/AndresL230.sig>");
     expect(body.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
   });
 

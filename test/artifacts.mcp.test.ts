@@ -13,7 +13,8 @@ import { consumeUploadToken, createPage, sha256Hex, mintUploadToken } from "../s
 import { create_ticket } from "../src/tools/tickets";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { app } from "../src/routes";
-import { ARTIFACT_INLINE_MAX } from "@shared/artifacts";
+import { ARTIFACT_INLINE_BINARY_MAX, ARTIFACT_INLINE_MAX } from "@shared/artifacts";
+import { mcpErrorHint } from "@shared/error-hints";
 import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const ME = "arti-author";
@@ -170,7 +171,7 @@ describe("text artifacts", () => {
     }
     expect((await call(ME, "artifact_get", { slug: "auth-flow" })).body.content).toBe("v2 body");
     expect((await call(ME, "artifact_get", { slug: "auth-flow@v1", version: 2 })).body.code).toBe("bad_request");
-    expect((await call(ME, "artifact_get", { slug: "auth-flow@v9" })).text).toBe(JSON.stringify({ error: "not_found", code: "not_found" }));
+    expect((await call(ME, "artifact_get", { slug: "auth-flow@v9" })).text).toBe(JSON.stringify({ error: "not_found", code: "not_found", hint: mcpErrorHint("not_found") }));
   });
 
   it("a text cap breach is too_large", async () => {
@@ -325,7 +326,7 @@ describe("binary artifacts — the upload_url flow", () => {
     const mine = await call(ME, "artifact_update", { slug: "dump", size_bytes: 4, sha256: "c".repeat(64), summary: "retry" });
     expect(mine.body.upload_url).toBeTruthy();
     const theirs = await call(YOU, "artifact_update", { slug: "dump", size_bytes: 4, sha256: "c".repeat(64), summary: "x" });
-    expect(theirs.text).toBe(JSON.stringify({ error: "not_found", code: "not_found" }));
+    expect(theirs.text).toBe(JSON.stringify({ error: "not_found", code: "not_found", hint: mcpErrorHint("not_found") }));
   });
 });
 
@@ -334,7 +335,7 @@ describe("binary artifacts — the upload_url flow", () => {
 describe("private and missing are the same not_found", () => {
   it("get / update on another person's private page read exactly like a missing slug; the author sees it", async () => {
     await call(ME, "upload_asset", textArgs({ title: "Secret plan", visibility: "private" }));
-    const NF = JSON.stringify({ error: "not_found", code: "not_found" });
+    const NF = JSON.stringify({ error: "not_found", code: "not_found", hint: mcpErrorHint("not_found") });
     for (const [name, args] of [
       ["artifact_get", { slug: "secret-plan" }],
       ["artifact_get", { slug: "secret-plan@v1" }],
@@ -496,5 +497,88 @@ describe("artifact_links on the session batch", () => {
     expect(body.result.artifact_links.map((o) => o.outcome)).toEqual(["linked", "not_found"]);
     const rows = await all<{ created_by: string }>(env.DB, `SELECT created_by FROM artifact_links`);
     expect(rows).toEqual([{ created_by: YOU }]);
+  });
+});
+
+// ── bytes inside the call: a client with no shell (a chat on the web) ────────
+
+describe("binary artifacts with no shell — content_base64 in, include_file out", () => {
+  const b64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
+  // A real 1×1 PNG.
+  const PNG = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
+  const PDF = new TextEncoder().encode("%PDF-1.4 inline " + "q".repeat(60));
+  const page = (o: Record<string, unknown>) => ({ title: "Diagram", kind: "image", area: "ui", repo: "", visibility: "org", ...o });
+  const raw = (handle: string, name: string, args: Record<string, unknown>) =>
+    withClient(handle, async (c) => (await c.callTool({ name, arguments: args })) as { content: any[]; isError?: boolean });
+
+  it("upload_asset with content_base64 lands the file in one call: hashed here, v1 at once, nothing left to PUT", async () => {
+    const r = await call(ME, "upload_asset", page({ content_base64: `data:image/png;base64,${b64(PNG)}`, content_type: "image/png", filename: "d.png" }));
+    expect(r.isError).toBe(false);
+    expect(Object.keys(r.body).sort()).toEqual(["id", "slug", "url", "version", "warnings"]);
+    expect(r.body.version).toBe(1);
+    const g = await call(YOU, "artifact_get", { slug: r.body.slug });
+    expect([g.body.kind, g.body.sha256, g.body.size_bytes, g.body.version.content_type]).toEqual(["image", await sha256Hex(PNG), PNG.byteLength, "image/png"]);
+    expect(g.body.file).toBeUndefined(); // not asked for: the result is what it always was
+    expect(await all(env.DB, `SELECT used_at IS NOT NULL AS used FROM artifact_upload_tokens`)).toEqual([{ used: 1 }]);
+  });
+
+  it("artifact_get include_file returns an image as an image block, a PDF as an embedded resource — the exact stored bytes", async () => {
+    const img = await call(ME, "upload_asset", page({ content_base64: b64(PNG), content_type: "image/png" }));
+    const res = await raw(YOU, "artifact_get", { slug: img.body.slug, include_file: true });
+    expect(res.content).toHaveLength(2);
+    expect(JSON.parse(res.content[0].text).file).toBe("included");
+    expect(res.content[1]).toEqual({ type: "image", data: b64(PNG), mimeType: "image/png" });
+
+    const pdf = await call(ME, "upload_asset", page({ title: "Spec", kind: "pdf", content_base64: b64(PDF), filename: "spec.pdf" }));
+    const got = await raw(ME, "artifact_get", { slug: pdf.body.slug, include_file: true });
+    expect(got.content[1]).toEqual({ type: "resource", resource: { uri: pdf.body.url, mimeType: "application/pdf", blob: b64(PDF) } });
+
+    // A text kind has its content already; a private page stays the one not_found.
+    const text = await call(ME, "upload_asset", textArgs());
+    const t = await raw(ME, "artifact_get", { slug: text.body.slug, include_file: true });
+    expect([t.content.length, JSON.parse(t.content[0].text).file]).toEqual([1, "text"]);
+    const mine = await call(ME, "upload_asset", page({ title: "Mine", visibility: "private", content_base64: b64(PNG), content_type: "image/png" }));
+    const theirs = await raw(YOU, "artifact_get", { slug: mine.body.slug, include_file: true });
+    expect(theirs.isError).toBe(true);
+    expect(theirs.content).toHaveLength(1);
+    expect(JSON.parse(theirs.content[0].text)).toEqual({ error: "not_found", code: "not_found", hint: mcpErrorHint("not_found") });
+  });
+
+  it("artifact_update takes content_base64 for a new binary version; the same bytes again change nothing", async () => {
+    const c = await call(ME, "upload_asset", page({ kind: "pdf", title: "Plan", content_base64: b64(PDF) }));
+    const next = new TextEncoder().encode("%PDF-1.4 inline v2");
+    const u = await call(YOU, "artifact_update", { slug: c.body.slug, summary: "v2", content_base64: b64(next) });
+    expect([u.isError, u.body.version, u.body.unchanged]).toEqual([false, 2, false]);
+    const again = await call(YOU, "artifact_update", { slug: c.body.slug, summary: "same", content_base64: b64(next) });
+    expect([again.body.version, again.body.unchanged]).toEqual([2, true]);
+    expect((await call(ME, "artifact_update", { slug: c.body.slug, summary: "x", content_base64: b64(next), sha256: "a".repeat(64), size_bytes: 3 })).body.code).toBe("bad_request");
+  });
+
+  it("a doc image goes in the same way and is embeddable at once", async () => {
+    const r = await call(ME, "upload_asset", { destination: "doc", content_base64: b64(PNG), content_type: "image/png" });
+    expect(r.isError).toBe(false);
+    expect(r.body).toMatchObject({ destination: "doc", ref: `/img/${await sha256Hex(PNG)}`, uploaded: true });
+    expect(r.body.upload_url).toBeUndefined();
+    const twice = await call(ME, "upload_asset", { destination: "doc", content_base64: b64(PNG), content_type: "image/png" });
+    expect(twice.body.uploaded).toBe(true);
+  });
+
+  it("refuses what is not base64, is empty, the wrong type, or over the inline cap — and writes nothing", async () => {
+    expect((await call(ME, "upload_asset", page({ content_base64: "not base64 !!!", content_type: "image/png" }))).body.code).toBe("bad_request");
+    expect((await call(ME, "upload_asset", page({ content_base64: "", content_type: "image/png" }))).body.code).toBe("bad_request");
+    expect((await call(ME, "upload_asset", page({ content_base64: b64(PNG), content_type: "image/tiff" }))).body.code).toBe("bad_request");
+    expect((await call(ME, "upload_asset", textArgs({ content_base64: b64(PNG) }))).body.code).toBe("bad_request"); // a text kind takes content
+    const big = await call(ME, "upload_asset", page({ kind: "file", content_base64: "A".repeat(Math.ceil(ARTIFACT_INLINE_BINARY_MAX / 3) * 4 + 4) }));
+    expect(big.body.code).toBe("too_large");
+    expect(big.body.error).toContain("upload_url");
+    expect(await all(env.DB, `SELECT id FROM artifact_pages WHERE current_version > 0`)).toEqual([]);
+  });
+
+  it("a stored file over the inline cap is not read into the result: `file` says too_large", async () => {
+    const bytes = new Uint8Array(ARTIFACT_INLINE_BINARY_MAX + 1).fill(7);
+    const m = await mintUploadToken(systemCtx(), { title: "Big", kind: "file", area: "infra", repo: "", visibility: "org", size_bytes: bytes.byteLength, sha256: await sha256Hex(bytes) }, ME);
+    await consumeUploadToken(systemCtx(), env.ARTIFACTS_BUCKET, m.token, new Response(bytes).body!);
+    const res = await raw(ME, "artifact_get", { slug: m.slug, include_file: true });
+    expect([res.content.length, JSON.parse(res.content[0].text).file]).toEqual([1, "too_large"]);
   });
 });

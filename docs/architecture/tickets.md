@@ -16,7 +16,9 @@ tickets nest exactly ONE level (`set_ticket_parent`'s four rejections).
 
 **The ticket board** (the queue's DEFAULT view, `web/src/tickets.ts` `boardView`; the Table is the other).
 Statuses are `submitted` (Triage) / `in_progress` / `testing` / `done` / `declined` — `testing` (0033) is an
-optional step, not a gate. Every move is FREE (the owner's call, 2026-09-27): ANY status may move to any other —
+optional step, not a gate. On every screen a status is its glyph and word (`ticketStatusMark` in `web/src/marks.ts`: a
+ring that fills — dashed, half, three quarters, a check — and a cross for declined) and a priority is
+signal bars (`priorityMark`), never a pill (`web-ui.md` › Status marks). Every move is FREE (the owner's call, 2026-09-27): ANY status may move to any other —
 Triage straight to Done, and `done` / `declined` back to an open status (nothing is terminal; only a move to the
 status a ticket already has is a 409). The OPEN statuses are `OPEN_STATUSES`, spelled `OPEN_STATUS_SQL` in every
 SQL reader (My Work, the badge, the Repo tile, `seg=open`). Each column is in
@@ -78,15 +80,16 @@ MCP write is recorded as the person, indistinguishable from a click.
 ## Tickets mirrored from GitHub issues — ADR-007, amended (`src/tools/ticket-mirror.ts`, `0032_ticket_source`)
 
 ADR-007 now reads: **a ticket may link to GitHub work, and may be sourced from a GitHub issue, but is never the
-issue itself.** Every issue of `GITHUB_REPO` is mirrored into a ticket (`source = 'github'`, `source_ref`
+issue itself.** Every issue of the org's PRIMARY repository (its `org_repos` row — the `GITHUB_REPO` var is read by nothing) is mirrored into a ticket (`source = 'github'`, `source_ref`
 `owner/repo#n`, UNIQUE; `source_author` = the raw GitHub login, NOT a handle, so it is not in
 `HANDLE_COLUMNS`). The mirror is a COMPUTED write from a verified delivery — no `consume()`.
 
-- **Where it runs**: `handleGithubWebhook` calls `mirrorIssue` on EVERY verified `issues` delivery (not only
+- **Where it runs**: the webhook capture (`captureDelivery`, `src/webhook.ts`) calls `mirrorIssue` on EVERY verified `issues` delivery (not only
   when `ingestEvent` wrote — a redelivery heals a half-failed mirror), wrapped so a failure never costs the
   `events` capture; `runBackfill` calls the SAME function for OPEN issues, and its reconstructed deliveries
   (and `scripts/backfill-events.mjs`') carry `repository.full_name`. Only an issue whose
-  `repository.full_name === GITHUB_REPO` is mirrored; unset `GITHUB_REPO` mirrors nothing; PRs are skipped.
+  `repository.full_name` equals the org's primary repository (compared without case) is mirrored; an org with
+  no primary repository mirrors nothing; PRs are skipped.
 - **Mapping** (`ticketFromIssue`, pure): the `[P0]`–`[P3]` title tag (else a `P0`–`P3` label) → high / high /
   normal / low, none → normal, stripped from the title; label `bug` / `question` → that category, else
   `other`; the requester is `resolvePersonForLogin(author)` or the system person `github-webhook`; GitHub

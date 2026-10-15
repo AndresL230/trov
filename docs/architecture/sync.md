@@ -62,7 +62,7 @@ the App ("check that the Trov App still has access") and at Integrations for a t
 What a sync does **not** do: it never closes or resolves anything, never deletes, and does not poll usage,
 hosting or health (that is **Poll now**, on the Repo screen).
 
-When no summary can be attempted — the deployment has no `GEMINI_API_KEY`, the org's plan has ended (`canceled` —
+When no summary can be attempted — the deployment has no `ANTHROPIC_API_KEY`, the org's plan has ended (`canceled` —
 a plan that is only **past due** still summarizes: `billing.md`), or its month's allowance is used up (`plans.md` › AI summaries) — an item with no summary gets its **excerpt**
 once and the run is a single batch. A later sync fills the excerpts in once summaries are allowed again.
 
@@ -144,9 +144,10 @@ and CI last refreshed …" in the panel. It does not say which of the three it w
 
 ## Trying it locally
 
-`LOCAL_UPSTREAM` (a `.dev.vars` value) points a local Worker's Sync at a stand-in for GitHub and Gemini on
+`LOCAL_UPSTREAM` (a `.dev.vars` value) points a local Worker's Sync at a stand-in for GitHub and Anthropic on
 the same machine (`src/sync/local-upstream.ts`): requests to `api.github.com` go to `<base>/github/…` and
-to `generativelanguage.googleapis.com` to `<base>/gemini/…` — the App's token requests included, when the
+to `api.anthropic.com` to `<base>/anthropic/…` (a summary is `POST <base>/anthropic/v1/messages`, answered in
+the Messages API's response shape) — the App's token requests included, when the
 App is configured locally. It is honoured only for `http://127.0.0.1` or `http://localhost`, and never
 while the Worker holds a live Stripe key, so a deployed Worker ignores it. That is the same test billing's
 `STRIPE_TEST_API_BASE` passes (`src/platform/loopback.ts`, and `holdsLiveKey` in `src/billing/config.ts` —

@@ -22,13 +22,14 @@
 //
 // "The current org" is ONE function, `currentOrg`: the org the page's path names.
 
-import { planBlock, inviteGate, seatCapAction, seatsLead, initialOrgBillingUi, type OrgBillingUi } from "./org-plan";
+import { planBlock, inviteGate, seatCapAction, seatsLead, initialOrgBillingUi, checkoutTerms, type OrgBillingUi } from "./org-plan";
 import { isSoloPlan, type OrgPlanView } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
 import {
   O_LABEL, O_FIELD, O_HELP, O_ERR, YOU, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgEmpty, orgBanner, loadingNote, failedNote,
-  sliceNote, roleChip, roleOption, roleAtLeast, sameHandle, textField, tabLead, leadFlag, openRow, chip, type OrgSlice,
+  sliceNote, roleWord, ROLE_WORD, roleOption, roleAtLeast, sameHandle, textField, tabLead, leadFlag, openRow, type OrgSlice,
 } from "./org-ui";
+import { kindMark } from "./marks";
 export { roleAtLeast };
 export type { OrgSlice };
 import { tabBar, tabPanelAttrs } from "./tabs";
@@ -36,6 +37,8 @@ import { segmented } from "./segmented";
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { personChip, handleTag } from "./people";
 import { confirmModal } from "./confirm";
+import { initialDeleteUi, orgDeleteModal, orgDeleteTile, type DeleteUi } from "./deletion";
+import type { OrgDeletionPreview } from "@shared/deletion-core";
 import { ROLE_MAX, RESPONSIBILITIES_MAX } from "@shared/people";
 import { ORG_NAME_MAX, INVITE_NAME_MAX, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, type MyOrg, type MyOrgsResponse, type OrgInvite, type OrgMember, type OrgRole, type OrgSettings } from "@shared/orgs";
 import type { IntegrationDTO, IntegrationKind, IntegrationsListDTO, OrgAuditDTO, OrgEnvironmentDTO, OrgRepoDTO } from "@shared/integrations";
@@ -46,6 +49,7 @@ import { orgLogoSection, initialOrgLogoUi, type OrgLogoUi } from "./org-logo";
 import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, githubAppRow, githubLink, lostBanner, mismatchBanner, repoPicker, suspendedBanner, type GithubNotice } from "./github-app";
 import type { GithubAppStatusDTO, GithubReposDTO } from "@shared/github-app";
 import { disconnectConfirmCopy, hostingData, hostingDropdowns, hostingOverlay, hostingTab, hostingTodo, initialHostingUi, partConfirmCopy, type HostingUi } from "./hosting";
+import { githubInstallHref } from "./api";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -156,6 +160,8 @@ export interface OrgUi {
   billing: OrgBillingUi;
   /** The Hosting tab (hosting.ts, hosting-actions.ts): its one read, the open dialog, tests in flight. */
   hosting: HostingUi;
+  /** General › Delete organization (an owner's; deletion.ts, deletion-actions.ts). */
+  del: DeleteUi<OrgDeletionPreview>;
 }
 
 export function initialOrgUi(): OrgUi {
@@ -169,6 +175,7 @@ export function initialOrgUi(): OrgUi {
     envEdit: null, envBusy: false,
     secretForm: null, tests: {}, auditOpen: false, openRows: [], confirm: null, billing: initialOrgBillingUi(),
     hosting: initialHostingUi(),
+    del: initialDeleteUi<OrgDeletionPreview>(),
   };
 }
 
@@ -277,7 +284,7 @@ export function generalTab(org: MyOrg, ui: OrgUi): string {
     ? `${textField({ id: "org-name", label: "Name", act: "orgNameDraft", field: "orgName", value: draft, max: ORG_NAME_MAX, enter: "orgNameSave", error: ui.nameError, help: "Changing it does not change the slug or any link." })}
        <div style="display:flex;gap:8px;margin-top:14px">${accentBtn(ui.nameSaving ? "Saving…" : "Save name", "orgNameSave", { disabled: !changed || ui.nameSaving, busy: ui.nameSaving })}${ui.nameDraft !== null && !ui.nameSaving ? quietBtn("Cancel", "orgNameCancel") : ""}</div>`
     : `<div style="${O_LABEL}">Name</div><div style="font-size:14px;margin-top:7px;overflow-wrap:anywhere">${esc(stored)}</div>`;
-  return `${tabLead(`Created ${esc(relTime(s.data.org.created_at))} by <strong>${esc(s.data.org.created_by)}</strong> &middot; you are ${org.role === "member" ? "a" : "an"} ${roleChip(org.role)} here${canEdit ? "" : ". Only an admin or an owner can rename the org."}`)}
+  return `${tabLead(`Created ${esc(relTime(s.data.org.created_at))} by <strong>${esc(s.data.org.created_by)}</strong> &middot; you are ${org.role === "member" ? "a" : "an"} <strong>${ROLE_WORD[org.role].toLowerCase()}</strong> here${canEdit ? "" : ". Only an admin or an owner can rename the org."}`)}
     <div class="cnpy-org-gen-wrap"><div class="cnpy-org-gen${canEdit ? "" : " cnpy-org-gen--read"}">
     <section${surface("", { cls: "cnpy-tile cnpy-org-gen-id" })} aria-label="Image and name">
       ${orgLogoSection({ name: stored, logo: s.data.org.logo, canEdit, ui: ui.logo, repo: ui.repos.data.find((r) => r.is_primary)?.repo_full_name ?? null })}
@@ -289,6 +296,7 @@ export function generalTab(org: MyOrg, ui: OrgUi): string {
       <div class="cnpy-tile-foot" style="${O_HELP};margin-top:auto;padding-top:12px">The org's permanent address in links and in the API. It cannot be changed.</div>
     </section>
     ${planBlock(ui.plan, org.role, ui.billing)}
+    ${org.role === "owner" ? orgDeleteTile(org, ui.del) : ""}
   </div></div>`;
 }
 
@@ -370,7 +378,7 @@ export function reposTab(org: MyOrg, ui: OrgUi): string {
     const key = `repo:${r.repo_full_name}`;
     return openRow({
       key, open: ui.openRows.includes(key), act: "orgRowToggle", label: `${r.repo_full_name}${r.is_primary ? ", primary" : ""}${through && r.access_lost ? ", no longer visible to the App" : ""}`,
-      head: `<span>${esc(r.repo_full_name)}</span>${r.is_primary ? chip("Primary", "var(--accent)") : ""}${through && r.access_lost ? chip("No longer visible", "var(--amber)") : ""}`,
+      head: `<span>${esc(r.repo_full_name)}</span>${r.is_primary ? `<span style="font-size:12px;font-weight:500;color:var(--fg-55)">Primary</span>` : ""}${through && r.access_lost ? kindMark("No longer visible", "warn", 12, "The GitHub App can no longer see this repository.") : ""}`,
       meta: !admin ? `Added ${esc(relTime(r.created_at))}` : through ? (r.access_lost ? "Not visible to the App" : "Through the GitHub App") : `Webhook secret ${r.webhook_secret_configured ? "set" : "not set"}`,
       body: `<div>Added ${esc(relTime(r.created_at))} by ${esc(r.created_by)}.${locked && admin ? " To remove it, make another repository the primary first." : ""}</div>${how}${capture}${hook}${actions}`,
       attrs: ` data-org-repo="${attr(r.repo_full_name)}" data-connection="${through ? "app" : "manual"}"`,
@@ -381,7 +389,10 @@ export function reposTab(org: MyOrg, ui: OrgUi): string {
     ? `${orgHead("Connected", "", repos.length)}<ul${surface(LIST)}>${rows}</ul>`
     : inst ? ""
     : orgEmpty("No repository connected", admin ? (offered ? "Connect GitHub and pick the repository your team ships from. Trov reads its deployments, checks, pull requests and issues." : "Add the repository your team ships from. Trov reads its deployments, checks, pull requests and issues.") : "An admin has not connected a repository yet.", "", 2);
-  const picker = admin && inst && live ? repoPicker(ui.githubRepos, inst.account_login, { filter: ui.githubFilter, busy: ui.githubBusy, }) : "";
+  const picker = admin && inst && live ? repoPicker(ui.githubRepos, inst.account_login, {
+    filter: ui.githubFilter, busy: ui.githubBusy,
+    ...(inst.repo_access === "selected" ? { selected: { by: inst.connected_by, href: githubInstallHref(org.slug, { existing: true, account: inst.account_login }) } } : {}),
+  }) : "";
   const appRow = inst ? `<section aria-labelledby="org-gh-conn" data-org-group="github-app">
       ${orgHead("Connection", "", null, "org-gh-conn")}
       <ul${surface(LIST)}>${githubAppRow(inst, { open: ui.openRows.includes("github-app"), admin, tracked: repos.filter(viaApp).length, test: ui.tests.github_app, busy: ui.confirm?.what === "github" })}</ul>
@@ -512,7 +523,7 @@ export function environmentsTab(org: MyOrg, ui: OrgUi): string {
         <div style="flex:1 1 260px;min-width:0">
           <div style="display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap">
             <span style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">${esc(e.label)}</span>
-            ${role ? chip(role, "var(--fg-55)") : ""}
+            ${role ? `<span style="font-size:12px;color:var(--fg-55)">${esc(role)}</span>` : ""}
             <code style="font-family:var(--code);font-size:11.5px;color:var(--fg-40)">${esc(e.key)}</code>
             ${e.note ? `<span style="font-size:12px;color:var(--fg-40)">${esc(e.note)}</span>` : ""}
           </div>
@@ -625,7 +636,7 @@ export function inviteSection(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDro
   return !admin || gate.kind === "solo" ? ""
     : gate.kind !== "open" ? `<section aria-labelledby="org-invite-t" data-invite-gate="${gate.kind}">
       ${orgHead("Invite someone", "", null, "org-invite-t")}
-      <div${surface("padding:14px 16px")}><p role="status" style="margin:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${esc(gate.sentence)}${gate.kind === "full" ? " Removing a member or revoking a pending invite frees a seat." : ""}</p>${fix ? `<div class="cnpy-plan-actions" data-seat-fix="${gate.next ?? ""}">${fix}</div>` : ""}${fix && ui.billing.error ? `<div role="alert" style="${O_ERR}">${esc(ui.billing.error)}</div>` : ""}</div>
+      <div${surface("padding:14px 16px")}><p role="status" style="margin:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${esc(gate.sentence)}${gate.kind === "full" ? " Removing a member or revoking a pending invite frees a seat." : ""}</p>${fix ? `<div class="cnpy-plan-actions" data-seat-fix="${gate.next ?? ""}">${fix}</div>${gate.next === "upgrade" ? checkoutTerms() : ""}` : ""}${fix && ui.billing.error ? `<div role="alert" style="${O_ERR}">${esc(ui.billing.error)}</div>` : ""}</div>
     </section>`
     : `<section aria-labelledby="org-invite-t">
       ${orgHead("Invite someone", "", null, "org-invite-t")}
@@ -672,7 +683,7 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
         <span class="cnpy-mem-handle">${handleTag(m, m.handle, 12)}</span>
         <span class="cnpy-mem-title"${m.title ? "" : ' data-empty="1"'}>${m.title ? esc(m.title) : "&mdash;"}</span>
         <span class="cnpy-mem-joined">${joined(m.joined_at)}</span>
-        <span class="cnpy-mem-role">${roleChip(m.role)}</span>
+        <span class="cnpy-mem-role">${roleWord(m.role)}</span>
         ${admin ? `<span class="cnpy-mem-act">${quietBtn(d ? "Close" : "Edit", d ? "orgMemberCancel" : "orgMemberEdit", { arg: m.handle, label: `${d ? "Close the editor for" : "Edit"} ${name}`, field: `orgMemberEdit:${m.handle}` })}</span>` : ""}
       </div>
       ${d ? memberEditor(m, d, org.role, m.role === "owner" && owners <= 1, dd) : ""}
@@ -690,7 +701,7 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
         <div style="font-size:12px;color:var(--fg-40);overflow-wrap:anywhere">Invited ${esc(relTime(i.created_at))} by ${esc(i.invited_by)} &middot; <span data-invite-mail="${i.mail_status ?? "none"}" style="color:${mail.bad ? "var(--red)" : "inherit"}">${esc(mail.text)}${mail.bad && i.mail_error ? `: ${esc(i.mail_error)}` : ""}</span></div>
       </div>
       <div class="cnpy-org-actions" style="align-items:center">
-        ${roleChip(i.role)}
+        ${roleWord(i.role)}
         ${i.email ? quietBtn(ui.mailBusy === i.id ? "Sending…" : "Resend email", "orgInviteMail", { arg: String(i.id), disabled: ui.mailBusy !== null, busy: ui.mailBusy === i.id, label: `Email the invitation to ${who} again` }) : ""}
         ${dangerLink("Revoke", "orgInviteRevoke", { arg: String(i.id), label: `Revoke the invite for ${who}` })}
       </div>
@@ -819,6 +830,7 @@ export function orgOverlays(p: OrgSettingsProps): string {
     const i = ui.integrations.data?.integrations.find((x) => x.kind === f.kind && x.scope === f.scope);
     if (i) return menu + secretFormModal(i, f);
   }
+  if (ui.del.open && p.org.role === "owner") return menu + orgDeleteModal(ui.del);
   if (roleAtLeast(p.org.role, "admin") && effectiveOrgTab(ui.tab, p.org.role) === "hosting") return menu + hostingOverlay(ui.hosting, p.dd);
   return menu;
 }

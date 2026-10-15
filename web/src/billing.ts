@@ -44,12 +44,15 @@ export const setupHref = (grant: number): string => `/?setup=${grant}`;
 export const SETUP_PARAM = "setup";
 const doneHref = (sessionId: string): string => `/billing/done?session_id=${encodeURIComponent(sessionId)}`;
 
-const SPINNER = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" aria-hidden="true" style="animation:cnpy-spin .8s linear infinite"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"></path></svg>`;
-const BTN = "display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;padding:11px 16px;border-radius:9px;font-size:13.5px;text-decoration:none";
-const accentLink = (href: string, text: string): string =>
+export const SPINNER = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" aria-hidden="true" style="animation:cnpy-spin .8s linear infinite"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"></path></svg>`;
+export const BTN = "display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;padding:11px 16px;border-radius:9px;font-size:13.5px;text-decoration:none";
+export const accentLink = (href: string, text: string): string =>
   `<a href="${attr(href)}" data-billing-go class="cnpy-accentbtn" style="${BTN};background:var(--accent);color:var(--accent-fg);font-weight:600">${esc(text)}</a>`;
-const quietLink = (href: string, text: string): string =>
+export const quietLink = (href: string, text: string): string =>
   `<a href="${attr(href)}" class="cnpy-outlinebtn" style="${BTN};border:1px solid var(--border-strong);color:var(--fg);font-weight:500">${esc(text)}</a>`;
+
+/** The foot of every payment card (this one and the payment page, billing-checkout.ts). */
+export const BILLING_FOOT = "Stripe sends the receipt. Trov never sees your card.";
 
 interface Copy { title: string; body: string; actions: string }
 
@@ -144,7 +147,7 @@ export function billingDonePage(s: BillingDoneUi, backdrop = ""): string {
           ${waiting ? `<div style="display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--fg-55)">${SPINNER}<span>${s.phase === "received" || s.slow ? "Still working on it" : "Checking with Stripe"}</span></div>` : ""}
           ${c.actions ? `<div class="cnpy-billdone-acts">${c.actions}</div>` : ""}
         </div>
-        <footer class="cnpy-orgs-foot"><span>Stripe sends the receipt. Trov never sees your card.</span></footer>
+        <footer class="cnpy-orgs-foot"><span>${BILLING_FOOT}</span></footer>
       </main>
     </div>
   </div>`;

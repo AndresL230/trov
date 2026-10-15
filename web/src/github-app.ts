@@ -8,13 +8,14 @@
 // answers with a redirect to GitHub. Acts are dispatched in main.ts to org-actions.ts.
 
 import { esc, attr, relTime, surface } from "./ui";
-import { O_FIELD, O_HELP, chip, dangerLink, failedNote, leadFlag, loadingNote, openRow, orgBanner, orgHead, quietBtn, type OrgSlice } from "./org-ui";
+import { O_FIELD, O_HELP, dangerLink, failedNote, leadFlag, loadingNote, openRow, orgBanner, orgHead, quietBtn, type OrgSlice } from "./org-ui";
 import { githubInstallHref } from "./api";
+import { kindMark, type StateKind } from "./marks";
 import type { GithubAppStatusDTO, GithubConnectOutcome, GithubInstallationDTO, GithubRepoOptionDTO, GithubReposDTO } from "@shared/github-app";
 import type { TestState } from "./integrations";
 
 /** What came back from GitHub (`?github=<outcome>` on the page the callback redirects to). */
-export interface GithubNotice { outcome: GithubConnectOutcome; accounts: string[]; /** `partial_access`: how many repositories the account cannot read. */ missing?: number }
+export interface GithubNotice { outcome: GithubConnectOutcome; accounts: string[] }
 
 const LIST = "overflow:hidden;list-style:none;margin:0;padding:0";
 const EXT = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M14 4h6v6"></path><path d="M20 4 10 14"></path><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"></path></svg>`;
@@ -50,9 +51,9 @@ export function connectNoticeCopy(n: GithubNotice, orgName: string): NoticeCopy 
     case "not_admin": return { tone: "red", title: "Nothing was connected.", body: `Only an admin or an owner of ${org} can connect GitHub.` };
     case "wrong_account": return { tone: "red", title: "Nothing was connected.", body: "The GitHub account that approved this is not the one linked to your Trov account. Sign in to GitHub as your own account, or link it in Settings, then try again." };
     case "not_yours": return { tone: "red", title: "Nothing was connected.", body: "GitHub does not list that installation among the ones your account can reach." };
-    case "partial_access": return { tone: "red", title: "Nothing was connected.", body: `Your GitHub account cannot read ${n.missing ? `${n.missing} of the ${n.missing === 1 ? "repository" : "repositories"}` : "every repository"} that installation covers. Ask an owner of the GitHub account to connect it, or limit the App to repositories you can read.` };
-    case "too_many_repos": return { tone: "red", title: "Nothing was connected.", body: "That installation covers more than 1,000 repositories, which is more than Trov checks before connecting one. On GitHub, open the Trov App's settings for that account, choose Only select repositories, pick the ones Trov should read, then connect again." };
-    case "taken": return { tone: "red", title: "Nothing was connected.", body: "That installation is already connected to another Trov organization. It can belong to one at a time: disconnect it there first." };
+    case "no_access": return { tone: "red", title: "Nothing was connected.", body: "Your GitHub account cannot read any repository that installation covers. Ask an owner of the GitHub account to give you access to the repositories you work on, or to add them to the Trov App." };
+    case "too_many_repos": return { tone: "red", title: "Nothing was connected.", body: "Your GitHub account can read more than 1,000 repositories of that installation, which is more than Trov lists before connecting one. On GitHub, open the Trov App's settings for that account, choose Only select repositories, pick the ones Trov should read, then connect again." };
+    case "conflict": return { tone: "amber", title: "Nothing was connected.", body: `${org} was being connected to another GitHub account at the same moment. Check what this page shows now, then connect again if it is not the account you meant.` };
     case "suspended": return { tone: "amber", title: "Nothing was connected.", body: "That installation is suspended on GitHub. Unsuspend it there, then connect again." };
     case "none_found": return { tone: "amber", title: "No installation found.", body: "Your GitHub account cannot reach any installation of the Trov App. Choose Connect with GitHub to install it." };
     case "choose": return { tone: "amber", title: "Which GitHub account?", body: "Your GitHub account can reach more than one installation of the Trov App. Choose the one to connect." };
@@ -115,10 +116,10 @@ export function suspendedBanner(i: GithubInstallationDTO | null): string {
 
 // ── the installation's one row ───────────────────────────────────────────────
 
-export function installationStatus(i: GithubInstallationDTO): { word: string; tone: string } {
-  if (i.suspended_at) return { word: "Suspended", tone: "var(--amber)" };
-  if (i.last_error) return { word: "Error", tone: "var(--red)" };
-  return { word: "Connected", tone: "var(--green)" };
+export function installationStatus(i: GithubInstallationDTO): { word: string; kind: StateKind; hint?: string } {
+  if (i.suspended_at) return { word: "Suspended", kind: "warn", hint: "Suspended on GitHub. Trov reads nothing through it until it is unsuspended." };
+  if (i.last_error) return { word: "Error", kind: "bad", hint: "The last call to GitHub failed. Open the row to see the error." };
+  return { word: "Connected", kind: "good" };
 }
 
 const OK_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg>`;
@@ -137,21 +138,23 @@ export function githubAppRow(i: GithubInstallationDTO, o: AppRowOpts): string {
   const running = o.test?.status === "running";
   const answer = o.test && o.test.status === "done"
     ? `<div role="status" aria-live="polite" data-org-test="${o.test.ok ? "ok" : "failed"}" style="${box(o.test.ok ? "var(--green)" : "var(--red)")};margin-top:10px">${o.test.ok ? OK_ICON : FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">${o.test.ok ? "Connection works." : "Test failed."}</strong> ${esc(o.test.detail)}</div></div>` : "";
-  // A suspension is said by the chip and the tab's banner; its token error would only repeat it.
+  // A suspension is said by the mark and the tab's banner; its token error would only repeat it.
   const error = i.last_error && !i.suspended_at
     ? `<div data-org-lasterror style="${box("var(--red)")}">${FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">Last error.</strong> ${esc(i.last_error)}</div></div>` : "";
-  const scope = i.repository_selection === "all" ? `every repository of ${i.account_login}` : `the repositories selected for it on ${i.account_login}`;
+  // What THIS organization reaches: a `selected` binding is cut to what its admin could read.
+  const scope = i.repo_access === "selected" ? `the repositories of ${i.account_login} that ${i.connected_by} could read on GitHub when connecting it`
+    : i.repository_selection === "all" ? `every repository of ${i.account_login}` : `the repositories selected for it on ${i.account_login}`;
   const actions = o.admin ? `<div class="cnpy-xrow-acts">
       ${i.manage_url ? githubLink("Manage on GitHub", i.manage_url, `Manage the Trov App on ${i.account_login}, on GitHub`) : ""}
       ${dangerLink("Disconnect", "orgConfirm", { arg: "github:", disabled: o.busy, label: `Disconnect the GitHub App on ${i.account_login}`, field: "orgConfirm:github:" })}
     </div>` : "";
   return openRow({
     key: "github-app", open: o.open, act: "orgRowToggle", label: `GitHub App on ${i.account_login}, ${st.word.toLowerCase()}`,
-    head: `<span>GitHub App <span style="font-weight:500;color:var(--fg-55)">&middot; ${esc(i.account_login)}</span></span>${chip(st.word, st.tone)}`,
+    head: `<span>GitHub App <span style="font-weight:500;color:var(--fg-55)">&middot; ${esc(i.account_login)}</span></span>${kindMark(st.word, st.kind, 12, st.hint ?? null)}`,
     meta: `${o.tracked === 0 ? "No repository tracked yet" : `${o.tracked} ${o.tracked === 1 ? "repository" : "repositories"}`} &middot; connected by ${esc(i.connected_by)}`,
     action: o.admin ? quietBtn(running ? "Testing…" : "Test connection", "orgGithubTest", { disabled: running, busy: running, label: "Test the GitHub App connection", field: "orgGithubTest" }) : "",
     always: error || answer ? `${error}${answer}` : "",
-    body: `<div style="max-width:680px">The Trov App is installed on the GitHub ${i.account_type === "Organization" ? "organization" : "account"} <strong style="font-weight:600;color:var(--fg)">${esc(i.account_login)}</strong> and can read ${esc(scope)}. Trov reads through it with tokens GitHub issues for an hour at a time, and GitHub delivers events to Trov itself: no token to paste, no webhook to add.</div>
+    body: `<div style="max-width:680px">The Trov App is installed on the GitHub ${i.account_type === "Organization" ? "organization" : "account"} <strong style="font-weight:600;color:var(--fg)">${esc(i.account_login)}</strong> and ${i.repo_access === "selected" ? "this organization can read" : "can read"} ${esc(scope)}. Trov reads through it with tokens GitHub issues for an hour at a time, and GitHub delivers events to Trov itself: no token to paste, no webhook to add.</div>
       <div style="font-size:12px;color:var(--fg-40);margin-top:6px">Connected by ${esc(i.connected_by)} ${esc(relTime(i.connected_at))} &middot; ${i.last_used_at ? `last used ${esc(relTime(i.last_used_at))}` : "not used yet"}</div>
       <div style="font-size:12px;color:var(--fg-40);margin-top:6px">Events are captured for the primary repository. Other tracked repositories are listed, and resolve links, but are not captured yet.</div>
       ${actions}`,
@@ -161,7 +164,12 @@ export function githubAppRow(i: GithubInstallationDTO, o: AppRowOpts): string {
 
 // ── the repositories the installation can see ────────────────────────────────
 
-export interface PickerOpts { filter: string; busy: string | null }
+export interface PickerOpts {
+  filter: string; busy: string | null;
+  /** The binding reaches only what `by` could read (`repo_access: "selected"`): said under the list,
+   *  with `href` — connect again — as the way to add what they have gained access to since. */
+  selected?: { by: string; href: string };
+}
 /** Above this many, the list gets a filter. */
 export const PICKER_FILTER_FROM = 9;
 
@@ -178,14 +186,15 @@ export function repoPicker(slice: OrgSlice<GithubReposDTO | null>, account: stri
   const filter = all.length >= PICKER_FILTER_FROM
     ? `<input id="org-gh-filter" data-act="orgGithubFilter" data-field="orgGithubFilter" value="${attr(o.filter)}" placeholder="Filter repositories" aria-label="Filter the repositories on ${attr(account)}" autocomplete="off" autocapitalize="off" spellcheck="false" class="cnpy-input" style="${O_FIELD};height:32px;max-width:320px;font-size:13px;margin-bottom:10px" />` : "";
   const refresh = `<button type="button" data-act="orgGithubReposReload" data-field="orgGithubReposReload" class="cnpy-mutelink" style="padding:0;font-size:11.5px;font-weight:500;color:var(--fg-55)" title="Ask GitHub again">Refresh</button>`;
+  const reach = o.selected ? `<div style="${O_HELP}" data-org-github-reach>These are the repositories ${esc(o.selected.by)} could read on ${esc(account)} when connecting it. Access to more since then? <a href="${attr(o.selected.href)}" data-field="orgGithubReconnect" style="color:var(--fg-70)">Connect again</a> to add them.</div>` : "";
   if (all.length === 0) {
     return `<section aria-labelledby="org-gh-avail" data-org-github-picker="empty">${head(0, refresh)}
-      <div style="${O_HELP};margin-top:0">Every repository the App can see is tracked. To add more, give the App access to them on GitHub (Manage on GitHub), then refresh.</div></section>`;
+      <div style="${O_HELP};margin-top:0">Every repository the App can see is tracked. To add more, give the App access to them on GitHub (Manage on GitHub), then refresh.</div>${reach}</section>`;
   }
   const row = (r: GithubRepoOptionDTO): string => {
     const busy = o.busy === r.full_name;
     return `<li class="cnpy-org-row" style="align-items:center;padding-top:9px;padding-bottom:9px" data-org-github-repo="${attr(r.full_name)}">
-      <div style="flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:13.5px;font-weight:500;overflow-wrap:anywhere">${esc(r.full_name)}</span>${r.private ? chip("Private", "var(--fg-55)") : ""}</div>
+      <div style="flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:13.5px;font-weight:500;overflow-wrap:anywhere">${esc(r.full_name)}</span>${r.private ? `<span style="font-size:12px;color:var(--fg-55)">Private</span>` : ""}</div>
       <div class="cnpy-org-actions is-inline" style="align-items:center">${quietBtn(busy ? "Adding…" : "Track", "orgGithubTrack", { arg: r.full_name, disabled: o.busy !== null, busy, label: `Track ${r.full_name}`, field: `orgGithubTrack:${r.full_name}` })}</div>
     </li>`;
   };
@@ -194,7 +203,7 @@ export function repoPicker(slice: OrgSlice<GithubReposDTO | null>, account: stri
     ${head(all.length, refresh)}
     ${filter}
     ${shown.length ? `<ul${surface(LIST)}>${shown.map(row).join("")}</ul>` : `<div style="${O_HELP};margin-top:0">No repository matches “${esc(o.filter.trim())}”.</div>`}
-    ${cut}
+    ${cut}${reach}
   </section>`;
 }
 

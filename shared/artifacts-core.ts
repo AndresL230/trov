@@ -11,6 +11,10 @@ export const ARTIFACT_TEXT_KINDS = ["html", "markdown", "svg", "mermaid"] as con
 export const ARTIFACT_BINARY_KINDS = ["image", "pdf", "file"] as const;
 export const ARTIFACT_KINDS = [...ARTIFACT_TEXT_KINDS, ...ARTIFACT_BINARY_KINDS] as const;
 export const ARTIFACT_STATUSES = ["draft", "published", "ratified"] as const;
+/** A kind as a reader says it: the acronyms in capitals, the rest a word ("Markdown"). */
+export function artifactKindLabel(k: string): string {
+  return ["html", "svg", "pdf"].includes(k) ? k.toUpperCase() : k.charAt(0).toUpperCase() + k.slice(1);
+}
 export const ARTIFACT_VISIBILITIES = ["org", "private"] as const;
 export const ARTIFACT_LINK_TYPES = ["ticket", "sprint", "pr", "issue"] as const;
 /** The design's areas. */
@@ -39,6 +43,10 @@ export const ARTIFACT_TEXT_CAP = 750 * 1024;
 export const ARTIFACT_INLINE_MAX = 64 * 1024;
 /** Binary kinds: bytes of the file, stored in R2 under `artifacts/<sha256>`. */
 export const ARTIFACT_BINARY_CAP = 10 * 1024 * 1024;
+/** The largest binary file that travels INSIDE an MCP call — sent as `content_base64`, or returned by
+ *  artifact_get with `include_file` — for a client with no shell to PUT or fetch with (a chat on the
+ *  web). A tool call lands whole in the model's context, so this is far under the PUT's cap. */
+export const ARTIFACT_INLINE_BINARY_MAX = 1024 * 1024;
 export const artifactCap = (k: ArtifactKind): number => (isTextKind(k) ? ARTIFACT_TEXT_CAP : ARTIFACT_BINARY_CAP);
 /** Title → slug: lowercase, non-alphanumerics → "-", trimmed, at most 60 chars. */
 export const ARTIFACT_SLUG_MAX = 60;

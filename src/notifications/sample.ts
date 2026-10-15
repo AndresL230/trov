@@ -2,43 +2,43 @@
 // to say (a fresh org, a quiet window). Built on the same card/row/chip helpers
 // as the live renderers so the full layout is visible. Clearly marked as sample.
 import type { Section } from "@shared/notifications";
-import { EMAIL_STYLE as S, EMAIL_CARD as K, EMAIL_SPACE as SP, THEME } from "./assemble";
+import { EMAIL_STYLE as S, EMAIL_CARD as K, EMAIL_SPACE as SP, EMAIL_FONT, THEME } from "./assemble";
 
 const pr = (n: number, title: string, what: string, why: string | null, impact: string | null, first = false) =>
   K.item({
     title, number: n, url: `https://github.com/SaplingLearn/sapling/pull/${n}`,
     rows: [K.row("What changed", K.prose(what)), ...(why ? [K.row("Why", K.prose(why))] : []), ...(impact ? [K.row("Impact", K.prose(impact))] : [])],
-    footer: `${K.chip("MERGED", "green")}<span style="padding-left:8px;">into <span style="font-family:'Archivo Narrow',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;">main</span></span>`,
+    footer: `${K.mark("Merged", "green")}<span style="padding-left:8px;">into <span style="${EMAIL_FONT.label}">main</span></span>`,
     first,
   });
 const issue = (n: number, title: string, summary: string, sprint: string | null, next: string | null, prio: string | null, labels: string[], first = false) =>
   K.item({
     title, number: n, url: `https://github.com/SaplingLearn/sapling/issues/${n}`,
     rows: [K.row("Summary", K.prose(summary)), ...(sprint ? [K.row("Sprint", sprint)] : []), ...(next ? [K.row("Next step", K.prose(next), "accent")] : [])],
-    footer: [prio ? K.chip(prio, "amber") : "", ...labels.map((l) => K.chip(l, "muted"))].filter(Boolean).join(" ") || undefined,
+    footer: [prio ? K.mark(prio, "amber") : "", labels.map((l) => `<span>${l}</span>`).join(" &middot; ")].filter(Boolean).join(`<span style="padding-left:10px;"></span>`) || undefined,
     first,
   });
 const review = (kind: "proposal" | "decision", title: string, summary: string, meta: string, low = false, first = false) =>
   `<tr><td style="padding:${first ? 0 : SP.m - SP.xs}px 0 ${SP.m - SP.xs}px 0;${first ? "" : `border-top:1px solid ${THEME.border.light};`}">` +
-  `<div>${K.chip(kind.toUpperCase(), kind === "proposal" ? "accent" : "blue")}${low ? ` ${K.chip("LOW CONFIDENCE", "amber")}` : ""}<span style="${S.body}font-weight:500;padding-left:8px;">${title}</span></div>` +
+  `<div><span style="${S.muted}">${kind === "proposal" ? "Proposal" : "Decision"}</span><span style="${S.body}font-weight:500;padding-left:8px;">${title}</span>${low ? `<span style="padding-left:10px;">${K.mark("Low confidence", "amber")}</span>` : ""}</div>` +
   `<div style="${S.muted}padding-top:${SP.xs}px;">${summary}</div><div style="${S.muted}font-size:12px;line-height:16px;padding-top:${SP.xs}px;">${meta}</div></td></tr>`;
 /** A ticketq card, mirroring renderers/ticket-queue.ts's two halves exactly. */
 const unassigned = (title: string, category: string, prio: string, requester: string, old: string, first = false) =>
   K.item({
     title, number: null, url: null,
     rows: [K.row("Category", category), K.row("Requester", requester)],
-    footer: `${K.chip(prio, "muted")}<span style="padding-left:8px;">opened ${old} ago</span>`,
+    footer: `${prio}<span style="padding-left:10px;">opened ${old} ago</span>`,
     first,
   });
-const assigned = (title: string, status: string, tone: "green" | "blue", prio: string, sprint: string, updated: string, first = false) =>
+const assigned = (title: string, status: string, tone: "accent" | "amber" | "muted", prio: string, sprint: string, updated: string, first = false) =>
   K.item({
     title, number: null, url: null,
     rows: [K.row("Sprint", sprint)],
-    footer: `${K.chip(status, tone)} ${K.chip(prio, "muted")}<span style="padding-left:8px;">updated ${updated} ago</span>`,
+    footer: `${K.mark(status, tone)}<span style="padding-left:10px;">${prio}</span><span style="padding-left:10px;">updated ${updated} ago</span>`,
     first,
   });
 const plan = (label: "added" | "changed" | "reordered" | "done", t: string) =>
-  `<tr><td width="96" style="vertical-align:top;padding:${SP.xs}px 8px ${SP.xs}px 0;">${K.chip(label.toUpperCase(), { added: "green", changed: "blue", reordered: "muted", done: "accent" }[label] as "green" | "blue" | "muted" | "accent")}</td><td style="${S.body}">${t}</td></tr>`;
+  `<tr><td width="96" style="vertical-align:top;padding:${SP.xs}px 8px ${SP.xs}px 0;">${K.mark(label.charAt(0).toUpperCase() + label.slice(1), { added: "green", changed: "blue", reordered: "muted", done: "accent" }[label] as "green" | "blue" | "muted" | "accent")}</td><td style="${S.body}">${t}</td></tr>`;
 
 export function sampleSections(): Section[] {
   return [
@@ -90,10 +90,10 @@ export function sampleSections(): Section[] {
       deepLink: "/#tickets",
       html:
         `<div style="${S.label}padding-top:${SP.l}px;padding-bottom:${SP.s}px;">UNASSIGNED</div>` +
-        unassigned("Gradebook export comes back empty", "bug", "HIGH", "Meilin Zhao", "3h", true) +
-        unassigned("Access to the staging analytics dashboard", "access", "NORMAL", "Sana Okafor", "2d") +
+        unassigned("Gradebook export comes back empty", "bug", "High priority", "Meilin Zhao", "3h", true) +
+        unassigned("Access to the staging analytics dashboard", "access", "Normal priority", "Sana Okafor", "2d") +
         `<div style="${S.label}padding-top:${SP.l}px;padding-bottom:${SP.s}px;">ASSIGNED TO YOU</div>` +
-        assigned("Roster import drops middle names", "In progress", "green", "NORMAL", "Ticket queue", "6h", true),
+        assigned("Roster import drops middle names", "In progress", "accent", "Normal priority", "Ticket queue", "6h", true),
       text:
         "  unassigned  #214  Gradebook export comes back empty\n" +
         "                    bug · high · filed by Meilin Zhao · 3h old\n" +

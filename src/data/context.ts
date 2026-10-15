@@ -131,6 +131,16 @@ export function systemTenant(p: PlatformContext, orgId: string, actor: SystemAct
   return tenant(p[ENV], orgId, actor, "system", "system");
 }
 
+/** NO organization and NO database: what a person in `role` is OFFERED, for describing the MCP tools
+ *  (src/mcp-catalog.ts — the public tool reference, written at build time). Registering a tool reads
+ *  nothing; a statement run through this context throws, so it can never reach a database. */
+export function catalogTenant(role: OrgRole): TenantContext {
+  return Object.freeze({
+    orgId: "", userId: "", role, via: "bearer" as const, [ENV]: {} as Env,
+    get [DB](): D1Database { throw new Error("catalogTenant: describes tools; it has no database"); },
+  });
+}
+
 // ── gates ────────────────────────────────────────────────────────────────────
 
 /** Thrown by the `require*` gates; a route maps it to 403 `{ error: "forbidden" }`. */

@@ -180,12 +180,20 @@ export function fakeApp(over: Partial<FakeWorld> = {}): FakeApp {
   };
 }
 
-/** Bind an installation to an org directly (what the connect flow writes), for tests that start connected. */
-export async function seedInstallation(orgId: string, installationId: number, account: string, o: { type?: "User" | "Organization"; by?: string; suspended?: boolean; accountId?: string } = {}): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO org_github_installations (org_id, installation_id, account_login, account_id, account_type, repository_selection, connected_by, connected_at, suspended_at)
-     VALUES (?, ?, ?, ?, ?, 'all', ?, '2026-10-06T00:00:00.000Z', ?)`,
-  ).bind(orgId, installationId, account, o.accountId ?? String(installationId), o.type ?? "Organization", o.by ?? "AndresL230", o.suspended ? "2026-10-06T00:00:00.000Z" : null).run();
+/** Bind an installation to an org directly (what the connect flow writes), for tests that start connected.
+ *  `repos`: a `selected` binding that reaches exactly these (0053_installation_repos); absent = `all`. */
+export async function seedInstallation(
+  orgId: string, installationId: number, account: string,
+  o: { type?: "User" | "Organization"; by?: string; suspended?: boolean; accountId?: string; repos?: { full_name: string; private?: boolean }[] } = {},
+): Promise<void> {
+  const made = await env.DB.prepare(
+    `INSERT INTO org_github_installations (org_id, installation_id, account_login, account_id, account_type, repository_selection, repo_access, connected_by, connected_at, suspended_at)
+     VALUES (?, ?, ?, ?, ?, 'all', ?, ?, '2026-10-06T00:00:00.000Z', ?)`,
+  ).bind(orgId, installationId, account, o.accountId ?? String(installationId), o.type ?? "Organization", o.repos ? "selected" : "all", o.by ?? "AndresL230", o.suspended ? "2026-10-06T00:00:00.000Z" : null).run();
+  for (const [i, r] of (o.repos ?? []).entries()) {
+    await env.DB.prepare(`INSERT INTO org_github_installation_repos (org_id, binding_id, repo_id, repo_full_name, private) VALUES (?, ?, ?, ?, ?)`)
+      .bind(orgId, made.meta.last_row_id, installationId * 10_000 + 900 + i, r.full_name, r.private ? 1 : 0).run();
+  }
 }
 
 export async function signAppWebhook(body: string, secret: string = APP_WEBHOOK_SECRET): Promise<string> {

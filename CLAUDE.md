@@ -47,7 +47,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
   `consumer.ts` (**the gate**), `webhook.ts` / `github-hook.ts`, `data/` (the ONLY place D1 is reached),
   `tools/` (one module per domain; writers in `tools/writes.ts`), `auth/`, `repo/` (Repo-dashboard capture),
   `github-app/`, `hosting/`, `sync/`, `orgs/`, `platform/`, `plans/`, `billing/`, `integrations/`, `artifacts/`,
-  `notifications/`.
+  `notifications/`, `deletion/` (deleting an account or an org).
 - `migrations/` — numbered, append-only D1 SQL; each file's header says what it does. Multi-part migrations
   use marker lines that tests cut on. `0042_organizations` is all-or-nothing and must stay under 100 KB; its
   rollback is GENERATED (`scripts/mt/build-rollback.py`, CI fails if stale).
@@ -67,7 +67,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
    (plan, tickets, sprints, handoffs, prompts, artifacts, people) and computed writes (progress, summaries,
    repo metrics/snapshots, the GitHub issue mirror) are direct "promote-class" writers in `src/tools/`.
 2. **Agents stage; humans confirm.** Promote / reject / ratify / triage assign & discard, artifact ratify,
-   prompt publish, every delete, which orgs a connection may use — session-cookie routes, NEVER MCP tools.
+   prompt publish, every delete but a sprint's, which orgs a connection may use — cookie routes, NEVER MCP.
 3. **The author is always the authenticated principal**, passed in by the caller; client-supplied authors
    are ignored. An MCP write is recorded as the token's person (no separate provenance).
 4. **Every tenant statement binds `ctx.orgId`.** D1 is reached only through a context, inside `src/data/`
@@ -86,7 +86,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
    degrade (`degraded: true`, 503 `{ error }`) — never a 500. Nothing on a render path calls GitHub or any
    other external service; external reads happen in the webhook, reconcile, Sync or cron.
 8. **Three auth classes, don't add a fourth:** session cookie (GitHub + Google feeding one sign-in fork),
-   bearer on `/mcp` (pasted `canopy_mcp_` or OAuth `canopy_oat_`, same person + org), HMAC on the webhooks.
+   bearer on `/mcp` (pasted `trov_mcp_` or OAuth `trov_oat_`; each names a person), HMAC on the webhooks.
    The Hono app is cookie-only. Signed-token exceptions (`/u/`, artifact upload/download) sit in
    `src/index.ts` before the session gate.
 9. **Admin is the ORG role** (`hasRole(ctx, "admin")`) — there is no handle allowlist. Superadmin is a
@@ -94,7 +94,12 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 10. **Handles, not logins.** `persons.handle` is identity; every `*_by` / owner column is a handle and must
     be listed in `HANDLE_COLUMNS` so a rename rewrites it. GitHub logins map through `identities`.
 11. **Soft by default.** Doc/ADR reject, triage exits, prompt and artifact delete are soft and restorable; a
-    deleted slug stays reserved. Hard deletes exist only for tickets and sprints.
+    deleted slug stays reserved. Hard deletes exist only for tickets and sprints — and for an ACCOUNT or an
+    ORGANIZATION, only through `src/deletion/` (Settings › Delete account, Org settings › Delete organization
+    by an owner, and Platform for a superadmin): an org's every `org_id` row goes in one batch
+    (`ORG_TABLES`, held to the schema by a test), a person's own rows go and their handle becomes a
+    `deleted-…` tombstone through `HANDLE_COLUMNS`; Stripe is cancelled first, R2 freed after the commit.
+    A new table with an `org_id` or a handle column must be added to `ORG_TABLES` / `HANDLE_COLUMNS`.
 12. **Credentials go through their one resolver; secrets never reach logs or responses.** A GitHub read
     uses `resolveGithubCredential`, any other integration `resolveCredential` — never a Worker secret or
     var directly. Scrub (`scrubbedMessage` / `scrubbedLog`) BEFORE any cut. Nothing reachable from
@@ -107,7 +112,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 - `shared/vocabulary.ts` MUST match `migrations/0002_seed_vocab.sql` — it is the gate's source of truth.
 - **Tests** use real Miniflare D1; `scripts/seed/reset.mjs` truncates data tables before each test and is
   the canonical seed: two orgs (`org_saplinglearn` with six persons — four GitHub engineers + Google-only
-  `meilin` / `sanaok` — and an empty `org_b`). **Add every new table there.** GitHub I/O, Gemini and other
+  `meilin` / `sanaok` — and an empty `org_b`). **Add every new table there.** GitHub I/O, the model client (Anthropic) and other
   network clients are dependency-injected (`fetchImpl`, `summarizer`) — stub at the `Response` level, never
   hit the network. `vitest.config.ts` blanks every network secret from `.dev.vars`; a test that needs one
   passes its own env.
@@ -119,6 +124,9 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
     is `dropdown()`. Never hand-roll one, never a native `<select>`.
   - Every radius is scaled in ONE block at the end of `trov.css`; a new radius value needs a line there
     (`test/render.corners.test.ts`). Status dots are elements, never `●`.
+  - A state is a mark from `web/src/marks.ts` (a glyph, or a small shape and a sentence-case word; nothing for
+    the normal state; its `data-mtip` tooltip says what it means) — never a bordered, tinted or UPPERCASE
+    pill, in the app, the site or its mocks. A fact (a role, a kind, a category) is plain text.
   - Confirmations use `confirmModal` (`web/src/confirm.ts`), never `window.confirm`.
   - A clickable person goes through `web/src/people.ts`; a picture always through `avatarSrc`.
   - Never a button inside a button — use `hitArea`.
@@ -127,8 +135,8 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
   words, `ops` deploy steps, and patch lines ending `(#N)`. The merging PR cuts "Unreleased" into the next
   `0.N` (the file's header says how).
 - **Deferred seams — do NOT activate:** Cloudflare Queue, Vectorize (`// SEAM:` comments only).
-- The product was renamed Canopy → Trov, but stored identifiers keep the old name on purpose: the
-  `canopy_mcp_` / `canopy_oat_` token prefixes and the `canopy/*` commit-status contexts. Don't rename them.
+- The product was renamed Canopy → Trov, but stored identifiers keep the old name on purpose: issued
+  `canopy_mcp_` / `canopy_oat_` tokens (new: `trov_…`) and the `canopy/*` status contexts. Don't rename them.
 - `REPO_CRON` in `src/repo/cron.ts` must equal the expression in `wrangler.toml` (pinned by a test);
   Cloudflare cron weekdays are 1–7 or SUN–SAT, never 0.
 
@@ -145,13 +153,14 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | artifacts, doc images, R2 | `artifacts.md` (+ `docs/artifact-contract.md`) |
 | handoffs, the Prompt Library | `handoffs-prompts.md` |
 | `src/notifications/`, digests, invite/welcome mail | `notifications.md` |
-| sidebar, morph, segmented, tab bars, entrances, corners | `web-ui.md` |
+| sidebar, morph, segmented, tab bars, entrances, corners; the public pages (`site-pages.ts`, prerender, robots/sitemap, noindex, 404), the public docs + llms.txt, error hints; fonts, contrast tokens, focus rings | `web-ui.md` |
 | `src/data/`, contexts, tenant vs platform SQL, bearer → org, background jobs | `data-layer.md` |
-| orgs, memberships, roles, invites, superadmin, how an org is set up | `organizations.md` |
+| orgs, memberships, roles, invites, superadmin, how an org is set up; deleting an account or an org (`src/deletion/`) | `organizations.md` |
 | `src/github-app/`, the install flow, installation tokens, the App webhook | `github-app.md` |
 | `src/hosting/`, hosting providers, environment parts, provider connections, the `:40` hosting job | `hosting-providers.md` |
 | Sync GitHub, `src/sync/`, the sync panel's copy | `sync.md` |
 | plans, limits, grants, the pricing page, the summarizer allowance | `plans.md` |
+| `src/ai/`, where a model may be called, the AI pass, `ai_runs`, the AI switch, suggestions / "Wrong?", `LOCAL_AI_PREVIEW` | `ai.md` |
 | Stripe, checkout, `src/billing/` | `billing.md` |
 | rate limits, the mail sender, what a stranger can do | `abuse-limits.md` |
 | the bug-report / support form, `support_reports`, Platform › Support | `support.md` |

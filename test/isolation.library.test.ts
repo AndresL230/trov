@@ -26,6 +26,7 @@ import {
 } from "../src/tools/handoffs";
 import { cookieFor } from "./helpers/persons";
 import { ensureMember, platformCtx, systemCtx, ORG_A, ORG_B } from "./helpers/tenant";
+import { apiErrorHint } from "@shared/error-hints";
 import { expireDueHandoffs } from "../src/platform/sweeps";
 
 const A = () => systemCtx(ORG_A);
@@ -33,7 +34,9 @@ const B = () => systemCtx(ORG_B);
 const BUCKET = () => env.ARTIFACTS_BUCKET;
 const SECRET = "test-cookie-secret"; // COOKIE_SECRET in vitest.config.ts
 const ORIGIN = "https://trov.test";
-const NOT_FOUND = JSON.stringify({ error: "not_found" });
+// Through the Worker (`fetch` below), every JSON error carries its hint — by code and status alone, so the
+// one 404 is still one set of bytes (src/error-hints.ts).
+const NOT_FOUND = JSON.stringify({ error: "not_found", hint: apiErrorHint(404, "not_found") });
 
 const ANN = "iso-ann"; // acts in org A
 const BOB = "iso-bob"; // acts in org B

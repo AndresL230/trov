@@ -1,34 +1,42 @@
-// ── Legal: the Terms of Service and Privacy Policy pages ────────────────────
-// Two PUBLIC static pages, `/terms` and `/privacy` (web/terms.html, web/privacy.html —
-// extra Vite inputs, served by the assets binding before the Worker, so no session is
-// ever asked for). They are paths, not hash routes, on purpose: the hash is the app's
-// route AND the sign-in return-to, and a legal page must open signed out, from the
-// landing's footer, from an email or from an OAuth consent screen.
+// ── Legal: the Terms of Service, the Privacy Policy and the Refund and Cancellation Policy ─────────────
+// Three PUBLIC static pages, `/terms`, `/privacy` and `/refunds` (`legal` pages of shared/site-pages.ts,
+// whose HTML the build writes and prerenders — served by the assets binding before the Worker, so no
+// session is ever asked for; a new document here is one entry there and one in `LEGAL_DOCS`). They are
+// paths, not hash routes, on purpose: the hash is the app's route AND the sign-in return-to, and a legal
+// page must open signed out, from the site's footer, from an email, from the sign-in dialog, from the app's
+// Settings › Help, or from the OAuth pages the Worker renders.
 //
-// This module is PURE (content + `legalView`), so a render test can read it; the DOM
-// boot (theme, toggle, mount) is web/src/legal-page.ts. The landing's footer is shared
-// (`siteFooter`, web/src/site-chrome.ts), so both pages end exactly like the product page.
+// This module is PURE (content + `legalView`), so a render test can read it; the DOM boot (theme, toggle,
+// mount) is web/src/legal-page.ts. The footer is shared (`siteFooter`, web/src/site-chrome.ts).
 //
-// Every statement about data below describes what the code does today — the cookie
-// names and lifetimes (src/auth/session.ts, src/auth/routes.ts), the OAuth scopes
-// (src/auth/github.ts, src/auth/google.ts), the processors (Cloudflare, Stripe, Google
-// Gemini, Resend, Google Fonts), the retention rules (CLAUDE.md "Pruning", the soft
-// deletes) and how a paid plan is billed, changed and ended (docs/architecture/billing.md;
-// the numbers come from shared/plans.ts and shared/pricing.ts, never typed here).
-// Change the code, change this page — and bump `updated`.
+// Every statement about data below describes what the code does today (the compliance inventory of
+// 2026-10-12, re-checked against this tree): the cookie names and lifetimes (src/auth/session.ts, tx.ts,
+// onboard.ts, oauth-routes.ts, return-to.ts, src/github-app/connect.ts), the OAuth scopes
+// (src/auth/github.ts, src/auth/google.ts) and the GitHub App's read-only permissions
+// (docs/architecture/github-app.md), the processors (Cloudflare, GitHub, Google, Anthropic, Stripe, Resend — no font
+// or script CDN: the fonts and Mermaid are self-hosted), the retention rules (the sweeps in src/index.ts and
+// src/repo/cron.ts, the soft deletes), deletion (docs/architecture/organizations.md §8, which this text
+// follows), the e-mails (docs/architecture/notifications.md › Who gets what) and how a paid plan is billed,
+// changed and ended (docs/architecture/billing.md; the numbers come from shared/plans.ts and
+// shared/pricing.ts, never typed here). Who runs Trov and the consent sentence are shared/legal-core.ts.
+// Change the code, change this page — and bump `updated`. This text is not legal advice: a lawyer should
+// review it (the open questions are in the compliance pass's report and docs/architecture/web-ui.md).
 
 import { esc } from "./ui";
 import { trovMark } from "@shared/mark";
 import { PLANS } from "@shared/plans";
 import { PRICING, formatPrice } from "@shared/pricing";
-import { SITE_CONTACT, siteFooter, siteMark } from "./site-chrome";
+import {
+  LEGAL_EMAIL, LEGAL_ENTITY, LEGAL_STATE, MIN_AGE, NOTICES_PATH, PRIVACY_PATH, REFUNDS_PATH, SOURCE_PATH, TERMS_PATH, TROV_SOURCE_REPO,
+} from "@shared/legal-core";
+import { siteFooter, siteMark, skipLink } from "./site-chrome";
 
-/** Who runs the service (the landing footer's copyright line). */
-export const LEGAL_OPERATOR = "TrovLabs, Inc.";
-/** Where questions and privacy requests go — the same address Trov sends its mail from. */
-export const LEGAL_CONTACT = SITE_CONTACT;
+/** Who runs the service. */
+export const LEGAL_OPERATOR = LEGAL_ENTITY;
+/** Where questions and privacy, deletion and refund requests go — the same address Trov sends its mail from. */
+export const LEGAL_CONTACT = LEGAL_EMAIL;
 
-export type LegalKind = "terms" | "privacy";
+export type LegalKind = "terms" | "privacy" | "refunds";
 
 export interface LegalSection {
   id: string;
@@ -40,7 +48,9 @@ export interface LegalSection {
 export interface LegalDoc {
   kind: LegalKind;
   title: string;
-  /** ISO date the text last changed. */
+  /** The tab's short name in the row over the title. */
+  tab: string;
+  /** ISO date the text last changed (its effective date). */
   updated: string;
   lede: string;
   /** "In short": a few plain lines, shown beside the contents. A summary, never a substitute for the text. */
@@ -50,263 +60,493 @@ export interface LegalDoc {
 
 const p = (html: string) => `<p>${html}</p>`;
 const ul = (...items: string[]) => `<ul>${items.map((i) => `<li>${i}</li>`).join("")}</ul>`;
+/** A table in the docs' own frame (`.site-docs-table`), focusable so a keyboard can scroll it on a phone. */
+const table = (label: string, head: string[], rows: string[][]) =>
+  `<div class="site-docs-table" role="region" aria-label="${esc(label)}" tabindex="0"><table><thead><tr>${head.map((h) => `<th scope="col">${h}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 const mail = `<a href="mailto:${LEGAL_CONTACT}">${LEGAL_CONTACT}</a>`;
-// The plan's own numbers, so this page can never disagree with the pricing page.
+const link = (href: string, text: string) => `<a href="${href}">${text}</a>`;
+const code = (s: string) => `<code>${s}</code>`;
+// The plan's own numbers, so these pages can never disagree with the pricing page.
 const PRO = PLANS.team.name;
 const PRO_PRICE = `${formatPrice(PRICING.team.price ?? 0)} ${PRICING.team.per}`;
+const PRO_SEAT_PRICE = formatPrice(PRICING.team.price ?? 0);
 const PRO_SEATS = PLANS.team.entitlements.seats;
+const FREE = PLANS.free.name;
 const FREE_SEATS = PLANS.free.entitlements.seats;
+
+/** The effective date of all three documents (they were rewritten together). */
+const EFFECTIVE = "2026-10-12";
+/** Terms and Privacy: summaries moved from Google Gemini to Anthropic Claude. */
+const SUMMARIES_PROVIDER_UPDATED = "2026-10-14";
+
+// ── Terms of Service ─────────────────────────────────────────────────────────
 
 export const TERMS: LegalDoc = {
   kind: "terms",
   title: "Terms of Service",
-  updated: "2026-10-09",
-  lede: `These terms cover your use of Trov, the shared context store for teams and their coding agents, run by ${LEGAL_OPERATOR} By signing in you agree to them. If you use Trov on behalf of a team or company, you agree for it too.`,
+  tab: "Terms",
+  updated: SUMMARIES_PROVIDER_UPDATED,
+  lede: `These terms cover your use of Trov, the shared context store for teams and their coding agents, and are the agreement between you and ${LEGAL_OPERATOR}. You accept them when you create an account, and by using Trov.`,
   brief: [
-    "Your content stays yours. We host and process it only to run Trov for your team.",
-    "An agent you connect acts as you, and its writes are recorded under your name.",
-    `Free costs nothing. ${PRO} is billed monthly per seat through Stripe, and you can cancel at any time.`,
-    "Cancelling keeps what you paid for until the period ends, then the organization moves to Free. Nothing is deleted.",
+    "Your content stays yours. We host and process it only to run Trov for you and your team.",
+    "An agent you connect acts as you, and what it writes is recorded under your name.",
+    `${FREE} costs nothing. ${PRO} is ${PRO_PRICE} plus tax, renews monthly until you cancel, and you can cancel any time from Billing.`,
+    "Cancelling keeps Pro until the paid period ends; there are no refunds for partial periods, except where the law requires one.",
   ],
   sections: [
     {
-      id: "service",
-      title: "1. The service",
+      id: "about",
+      title: "1. Who we are and these terms",
       body: [
-        p("Trov stores your team's working memory — docs, decisions, a feed of sessions, tickets, sprints, handoffs, prompts and artifacts — and lets people and the coding agents they connect read and propose changes to it. Agents only ever stage changes; a person confirms the consequential ones."),
-        p("Anyone can create an account and an organization. Each organization is on a plan — Free, or a paid plan — which sets how many people, repositories and other things it can hold. The current plans and their limits are on the <a href=\"/pricing\">pricing page</a>."),
+        p(`Trov is run by <b>${LEGAL_OPERATOR}</b>, a ${LEGAL_STATE} corporation ("${LEGAL_OPERATOR}", "we", "us"). You can reach us at ${mail}.`),
+        p(`These terms, the ${link(PRIVACY_PATH, "Privacy Policy")} and the ${link(REFUNDS_PATH, "Refund and Cancellation Policy")} are the whole agreement between you and us about Trov. When you create an account you are asked to confirm that you agree to them. If you use Trov for a company or a team, you confirm that you may accept them for it, and they bind it too.`),
+      ],
+    },
+    {
+      id: "service",
+      title: "2. The service",
+      body: [
+        p("Trov stores a team's working memory — docs and their versions, decisions, a feed of what shipped, tickets, sprints and the roadmap, handoffs, prompts and artifacts — and lets people, and the coding agents they connect, read it and propose changes to it. Agents stage changes; a person confirms the consequential ones in the web app."),
+        p(`Everything in Trov belongs to an organization. Anyone with an account can create one, or be invited to one. Each organization is on a plan — ${FREE}, ${PRO} or Enterprise — which sets how many people, repositories and other things it can hold. The plans and their limits are on the ${link("/pricing", "pricing page")}.`),
+        p("Within an organization, owners and admins manage its members, settings and content, and an owner manages its plan and billing."),
       ],
     },
     {
       id: "accounts",
-      title: "2. Accounts and sign-in",
+      title: "3. Eligibility and accounts",
       body: [
-        p("You sign in with GitHub or Google. You must give accurate information, keep your accounts secure, and tell us promptly if you think someone else has used your account or one of your agent connections."),
-        p("You are responsible for what happens under your account, <b>including everything an agent does with a connection you authorized</b>. An agent connected to Trov acts as you: its writes are recorded under your name, exactly as if you had made them. Revoke a connection in Settings › MCP access as soon as you no longer trust it."),
-        p("You must be at least 16 years old to use Trov."),
+        p(`You must be at least ${MIN_AGE} years old to use Trov. You confirm this when you create an account; we do not verify it.`),
+        p("You sign in with GitHub or Google. Give accurate information, keep the accounts you sign in with secure, and tell us promptly if you think someone else has used your Trov account or one of your agent connections. You are responsible for what happens under your account."),
+      ],
+    },
+    {
+      id: "agents",
+      title: "4. Agents you connect",
+      body: [
+        p("An agent you connect to Trov (over its MCP server, by signing in in your browser or with a token) <b>acts as you</b>: it can read what you can read in the organizations you allow, and what it writes is recorded under your name, exactly as if you had written it. You are responsible for what it does with the connection."),
+        p("Agents cannot approve, promote, reject or delete on anyone's behalf: those are a person's actions in the web app. Revoke a connection in Settings › MCP access as soon as you no longer trust it."),
       ],
     },
     {
       id: "plans",
-      title: "3. Plans, payment and cancellation",
+      title: "5. Plans, payment and renewal",
       body: [
-        p(`<b>Free.</b> An organization on Free costs nothing and holds up to ${FREE_SEATS} people. Each person can own one Free organization.`),
-        p(`<b>${PRO}.</b> ${PRO} costs ${PRO_PRICE}, for up to ${PRO_SEATS} people. It is a subscription: you are charged when you subscribe and again at the start of each month until you cancel. Prices are in US dollars. Any tax that applies is shown at checkout before you pay.`),
-        p("<b>Who pays.</b> The person who buys a plan is the organization's owner and its billing contact. Only the owner can change seats, update the payment method, see invoices or cancel. Members never pay and are never asked for a card."),
-        p("<b>Seats.</b> A seat is a place for one member or one pending invitation. The owner can add or remove seats at any time; the change takes effect straight away and the charge is adjusted in proportion on the next invoice. Seats cannot be reduced below the number of people already in the organization."),
-        p("<b>Payment.</b> Payments are taken by Stripe. Trov never receives or stores your card number. By subscribing you authorize the recurring charge to the payment method you gave Stripe. If a payment fails, Stripe retries it; if the retries run out, the subscription ends."),
-        p("<b>Cancelling.</b> The owner can cancel at any time in the organization's settings, under Plan. The organization keeps its paid plan until the end of the period already paid for, and then moves to Free. It can be resumed before that date."),
-        p("<b>When a subscription ends.</b> Nothing is deleted. Everyone keeps access and can read everything; tickets, docs, the feed and existing agent connections carry on. Anything over Free's limits — a new member, repository or connection, for example — is refused until the organization is back within them or subscribes again."),
-        p(`<b>Refunds.</b> Payments are not refunded for a period that has already started, except where the law requires it. If you were charged by mistake, or something went wrong on our side, write to ${mail} and we will put it right.`),
-        p("<b>Price changes.</b> We may change a plan's price or limits. A change to what you pay takes effect no sooner than your next billing period, and we will email the owner at least 30 days before it does. You can cancel before then."),
-        p("<b>Gifted plans.</b> We may give an organization a paid plan for a set time at no charge. When that time ends the organization moves to Free unless its owner subscribes. A gift has no cash value."),
+        p(`<b>${FREE}.</b> An organization on ${FREE} costs nothing and holds up to ${FREE_SEATS} people, within the limits on the pricing page. Each person can own one ${FREE} organization. We may change ${FREE}'s limits; an organization a change leaves over a limit keeps everything it has (section 6).`),
+        p(`<b>${PRO}.</b> ${PRO} costs ${PRO_PRICE} — ${PRO_SEAT_PRICE} for each seat, each month — for up to ${PRO_SEATS} seats. A seat is a place for one member or one pending invitation. Prices are in US dollars and do not include tax: where tax applies, Stripe calculates it at checkout and shows it before you pay.`),
+        p(`<b>Automatic renewal.</b> ${PRO} is a monthly subscription. You are charged when you subscribe, and then again each month on the same day of the month (the subscription's anniversary), for the seats you have then, <b>until you cancel</b>. By subscribing you authorize these recurring charges to the payment method you gave Stripe. Cancel any time from Billing (section 7).`),
+        p("<b>Who pays.</b> The person who buys a plan is the organization's owner and its billing contact. Only an owner can change seats, update the payment method, see invoices or cancel. Members never pay and are never asked for a card."),
+        p("<b>Seats.</b> An owner changes the number of seats on Stripe's billing page, opened from Billing; Stripe shows what the change costs, or credits to future invoices, before it is confirmed. If an organization has fewer seats than people, nobody is removed: adding people waits until there is room."),
+        p("<b>Payment.</b> Payments are taken by Stripe; Trov never receives or stores your card number. If a payment fails, Stripe retries it and the organization keeps working; if the retries run out, the subscription ends and the organization moves to Free (section 6)."),
+        p("<b>Price changes.</b> We may change a plan's price. A change to what you pay takes effect no sooner than your next billing period, and we will email the owner at least 30 days before it does; you can cancel before then."),
+        p(`<b>Gifted plans.</b> We may give an organization a paid plan for a set time at no charge. When that time ends it moves to ${FREE} unless its owner subscribes. A gift has no cash value.`),
+      ],
+    },
+    {
+      id: "limits",
+      title: "6. Limits, and when a paid plan ends",
+      body: [
+        p(`When an organization is over a limit — because a paid plan ended, its seats were lowered, or ${FREE}'s limits changed — <b>nothing is deleted</b> and nobody loses access. Everyone can still read everything; tickets, docs, the feed and existing agent connections carry on. Adding more of what is over the limit (a member, a repository, a connection, for example) is refused until the organization is back within it or subscribes again.`),
+      ],
+    },
+    {
+      id: "cancel",
+      title: "7. Cancellation and refunds",
+      body: [
+        p(`An owner can cancel ${PRO} at any time, as easily as subscribing: Org settings › General › Plan › <b>Cancel plan</b> (Stripe's cancel page, which brings you back to Trov), or Manage billing. ${PRO} stays active until the end of the period already paid, and the organization then moves to ${FREE}.`),
+        p(`<b>No refunds for partial periods</b>, except where the law requires one. Those, and any charge made by mistake, are handled by hand: write to ${mail}. Deleting an organization that pays for ${PRO} cancels its subscription at once, with no refund for the rest of the period. The full policy is the ${link(REFUNDS_PATH, "Refund and Cancellation Policy")}, which is part of these terms.`),
       ],
     },
     {
       id: "content",
-      title: "4. Your content",
+      title: "8. Your content",
       body: [
-        p("You keep every right you have in what you and your agents put into Trov (\"your content\"). You give the operator a limited, worldwide, non-exclusive licence to host, copy, process, index, display and transmit your content only as needed to run, secure and improve the service for you and your team — for example to store it, search it, render it, send digest emails and generate summaries."),
-        p("Content you add to a team's workspace is visible to the other members of that team, and team admins can manage it. Make sure you have the right to add what you add, and do not put secrets (passwords, API keys, personal data you are not allowed to share) into docs, tickets, prompts or artifacts."),
-        p("Content you connect from GitHub (pull requests, issues, commits, reviews, CI results) stays subject to GitHub's terms and your repository's own permissions."),
+        p("You keep every right you have in what you and your agents put into Trov (\"your content\"). You give us a limited, worldwide, non-exclusive licence to host, copy, process, index, display and transmit your content <b>only as needed to provide, secure and support Trov</b> for you and your team — for example to store and search it, show it to your team, send digest emails and generate summaries. The licence ends when your content is deleted, except for copies kept for a limited time as the Privacy Policy describes."),
+        p("Content you add to an organization is visible to its other members and the agents they connect, and its owners and admins can manage it. Make sure you have the right to add what you add. Do not put secrets (passwords, API keys) or personal data you are not allowed to share into docs, tickets, prompts or artifacts."),
+        p("Content Trov captures from a GitHub repository your organization connects (pull requests, issues, commits, reviews, CI results) stays subject to GitHub's terms and the repository's own permissions."),
       ],
     },
     {
       id: "use",
-      title: "5. Acceptable use",
+      title: "9. Acceptable use",
       body: [
         p("Don't use Trov to:"),
         ul(
           "break the law or infringe anyone's rights;",
           "upload malware, or artifacts designed to attack the people who open them;",
-          "try to reach data, accounts or teams you have not been given access to, or probe, scan or test the service's security without written permission;",
+          "try to reach data, accounts or organizations you have not been given access to, or probe, scan or test the service's security without our written permission;",
           "overload the service, or get around its limits, sandboxes or access controls;",
-          "harass people, or store content about people that you have no right to hold.",
+          "send unwanted email through it, or harass people;",
+          "store content about people that you have no right to hold.",
         ),
-        p("We may remove content or suspend access that breaks these rules, and will tell you when we reasonably can."),
+        p("We may remove content, or suspend an account or organization, that breaks these rules, and will tell you when we reasonably can."),
       ],
     },
     {
       id: "ai",
-      title: "6. AI-generated summaries",
+      title: "10. AI-generated summaries",
       body: [
-        p("Trov uses an AI model to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete; they are a convenience, not a record. Check the underlying pull request or issue before relying on one."),
+        p("Trov uses an AI model (Anthropic Claude) to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete: they are a convenience, not a record. Check the pull request or issue before relying on one."),
       ],
     },
     {
       id: "third-parties",
-      title: "7. Third-party services",
+      title: "11. Third-party services",
       body: [
-        p("Trov depends on other services — GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Stripe for payments, Google Gemini for summaries and Resend for email. Their availability and terms are outside our control, and your use of them is governed by their own terms."),
-      ],
-    },
-    {
-      id: "open-source",
-      title: "8. Open source",
-      body: [
-        p("Trov's source code is published under the GNU Affero General Public License v3.0. That licence governs the code. These terms govern your use of this hosted service; nothing in them limits the rights the AGPL gives you in the code."),
-      ],
-    },
-    {
-      id: "availability",
-      title: "9. Availability and changes",
-      body: [
-        p("We work to keep Trov running and your content safe, but the service may change, be interrupted, or lose data. Keep your own copies of anything you cannot afford to lose. We may add, change or remove features at any time; if we remove something a paid plan depends on, the owner can cancel and section 3 applies."),
-      ],
-    },
-    {
-      id: "disclaimer",
-      title: "10. Disclaimer and limitation of liability",
-      body: [
-        p("Trov is provided <b>\"as is\" and \"as available\"</b>, without warranties of any kind, express or implied — including merchantability, fitness for a particular purpose and non-infringement — to the fullest extent the law allows."),
-        p("To the fullest extent the law allows, the operator is not liable for indirect, incidental, special, consequential or punitive damages, or for lost profits, revenue, data or goodwill, arising from your use of Trov. The operator's total liability for any claim about the service is limited to what your organization paid for Trov in the 12 months before the claim arose. Nothing in these terms limits liability that cannot be limited by law."),
+        p("Trov depends on other services: GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Stripe for payments, Anthropic Claude for summaries and Resend for email. An organization can also connect Railway, Cloudflare Analytics and its own metrics endpoint, with tokens its admins provide. The agent clients you connect (Claude Code, Cursor and others) are yours, not ours. Each of these is governed by its own terms, and its availability is outside our control."),
       ],
     },
     {
       id: "ending",
-      title: "11. Ending your use",
+      title: "12. Deleting your account, and ending your use",
       body: [
-        p(`You can stop using Trov at any time, and ask for your account to be deleted by writing to ${mail}. Deleting an account does not cancel a subscription you own: cancel it first, as described in section 3. We may suspend or end your access if you break these terms or if we stop offering the service; where we can, we will give notice and a chance to export your content first, and if we stop offering the service we will refund the unused part of a period already paid for. Sections 4, 10 and 12 survive the end of your use.`),
+        p(`You can stop using Trov at any time. You can delete your account yourself in Settings › Delete account, and an owner can delete an organization in Org settings › General; you can also ask us to delete either by writing to ${mail}. What is deleted, what is kept and why is in the ${link(`${PRIVACY_PATH}#deletion`, "Privacy Policy")}. If you pay for an organization that others keep using, cancel its plan first (section 7).`),
+        p("We may suspend or end your access, or an organization's, if you break these terms, if the law requires it, or to protect the service or other people. Where we reasonably can, we will tell you first and give you a chance to export your content. If we stop offering Trov, or end your access for a reason other than a breach of these terms, we will refund the unused part of a period already paid."),
+        p("Sections 8, 13, 14, 15 and 16 survive the end of your use."),
+      ],
+    },
+    {
+      id: "open-source",
+      title: "13. Open source",
+      body: [
+        p(`Trov's source code is published under the GNU Affero General Public License v3.0. You can get the source of the version this service runs at ${link(SOURCE_PATH, `trov.dev${SOURCE_PATH}`)} (the repository is ${link(TROV_SOURCE_REPO, "AndresL230/trov on GitHub")}), and the licences of the third-party software and fonts it includes are in the ${link(NOTICES_PATH, "third-party notices")}. The AGPL governs the code; these terms govern your use of this hosted service, and nothing in them limits the rights the AGPL gives you.`),
+      ],
+    },
+    {
+      id: "disclaimer",
+      title: "14. Disclaimers",
+      body: [
+        p("We work to keep Trov running and your content safe, but the service may change, be interrupted, or lose data: keep your own copies of anything you cannot afford to lose. We may add, change or remove features; if we remove something a paid plan depends on, the owner can cancel, and section 7 applies."),
+        p("To the fullest extent the law allows, Trov is provided <b>\"as is\" and \"as available\"</b>, without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose and non-infringement."),
+      ],
+    },
+    {
+      id: "liability",
+      title: "15. Limitation of liability",
+      body: [
+        p(`To the fullest extent the law allows, ${LEGAL_OPERATOR} is not liable for indirect, incidental, special, consequential or punitive damages, or for lost profits, revenue, data or goodwill, arising from your use of Trov; and our total liability for any claim about the service is limited to what your organization paid us for Trov in the 12 months before the claim arose. Nothing in these terms limits liability that the law does not allow to be limited, or takes away rights you have as a consumer that cannot be waived.`),
+      ],
+    },
+    {
+      id: "law",
+      title: "16. Governing law",
+      body: [
+        p(`These terms are governed by the laws of the State of ${LEGAL_STATE}, United States, without regard to its conflict-of-law rules, and disputes about them are for the state and federal courts located in ${LEGAL_STATE}. If you are a consumer, you also keep the protection of the mandatory laws of the country where you live, and may bring a claim in its courts.`),
       ],
     },
     {
       id: "changes",
-      title: "12. Changes to these terms",
+      title: "17. Changes to these terms",
       body: [
-        p("We may update these terms. The date at the top of this page says when they last changed, and we will tell you in the app or by email before a material change takes effect. If you keep using Trov after that, you accept the new terms."),
+        p("We may update these terms. The date at the top says when they last changed. Before a material change takes effect we will tell you in the app or by email; if you keep using Trov after it does, you accept the new terms. If you do not agree, stop using Trov and, if you pay, cancel."),
       ],
     },
     {
       id: "contact",
-      title: "13. Contact",
-      body: [p(`Questions about these terms: ${mail}.`)],
+      title: "18. Contact",
+      body: [p(`${LEGAL_OPERATOR}, ${LEGAL_STATE}, United States. Questions about these terms: ${mail}.`)],
     },
   ],
 };
 
+// ── Privacy Policy ───────────────────────────────────────────────────────────
+
+const COOKIES: string[][] = [
+  [code("session"), "Keeps you signed in. Holds a sealed random id that points at your session.", "30 days"],
+  [code("oauth_tx"), "Carries a GitHub or Google sign-in while it happens (its state and PKCE check).", "10 minutes"],
+  [code("onboard"), "Holds what GitHub or Google told us about you until you choose your handle.", "10 minutes"],
+  [code("oauth_pending"), "Remembers an agent's connection request while you sign in.", "10 minutes"],
+  [code("return_to"), "Remembers a purchase you started while you sign in.", "10 minutes"],
+  [code("gh_install"), "Carries an admin's \"Connect with GitHub\" to GitHub and back (sent only to <code>/auth</code>).", "15 minutes"],
+];
+
+const STORAGE: string[][] = [
+  [`${code("trov.theme")}, ${code("trov.collapsed")}, ${code("trov.navOpen")}, ${code("trov.feedView")}, ${code("trov.promptView")}`, "Local storage", "Your theme and how you left the sidebar, the feed and the prompt library."],
+  [code("trov.org"), "Local storage", "The organization you last opened, so Trov opens it next time."],
+  [`${code("trov.returnHash")}, ${code("trov.returnOrg")}, ${code("trov.welcomeReturn")}, ${code("trov:first-run")}`, "Session storage (gone when you close the tab)", "Where to bring you back after signing in or connecting GitHub, and the setup's step counter."],
+];
+
+const RETENTION: string[][] = [
+  ["Your account and profile", "Until you delete your account."],
+  ["Sign-in sessions", "Each expires after 30 days. Signing out deletes that browser's session; an expired one is kept until your account is deleted."],
+  ["Agent connections", "Browser sign-in tokens expire after an hour and are renewed while in use; expired tokens and unused sign-in codes are deleted automatically. A connection you revoke, and a revoked pasted token (stored only as a hash), stay on record, marked revoked, until your account is deleted."],
+  ["Content in an organization", "Until the organization deletes it, or is deleted. Deleting a ticket or sprint removes it; rejecting a doc or decision, discarding from triage and deleting a prompt or artifact hide it but keep it so it can be restored."],
+  ["Uploaded files, images and photos", "Until nothing in Trov refers to them any more: deleting an organization or an account removes the files only it used."],
+  ["Repository activity", "Pull requests, issues, their summaries and mirrored tickets: for the life of the organization. Check results and health checks: 45 days. Hourly usage figures: 7 to 100 days. Sync runs: 90 days."],
+  ["Usage counts (per person, per day)", "400 days."],
+  ["Rate-limit counters (including the hashed address of a signed-out Contact form)", "2 days."],
+  ["Invitations and an organization's admin history", "Until the organization is deleted. A short record of each deletion is kept indefinitely."],
+  ["Records of a plan given or sold to someone (with the address it was for)", "Kept; removed with the organization made from it, or when the person deletes their account before using it."],
+  ["Bug reports and support messages", "Until you delete your account, or the organization you sent them from is deleted."],
+  ["Email send log (who was sent which digest, and whether it was delivered)", "Until your account or the organization is deleted. The emails themselves are not stored."],
+  ["Billing records in Trov", "While the organization exists. Stripe's notification ids: 90 days."],
+  ["Billing records at Stripe", "As long as Stripe keeps them for tax and accounting law."],
+  ["Server logs at Cloudflare", "A few days, under Cloudflare's log retention."],
+  ["Database history at Cloudflare", "Up to 30 days of point-in-time history, which can bring back deleted data until it ages out."],
+];
+
 export const PRIVACY: LegalDoc = {
   kind: "privacy",
   title: "Privacy Policy",
-  updated: "2026-10-09",
+  tab: "Privacy",
+  updated: SUMMARIES_PROVIDER_UPDATED,
   lede: `This policy explains what Trov collects, why, who processes it, how long it is kept and what you can ask for. Trov is run by ${LEGAL_OPERATOR}, which is responsible for the personal data described here.`,
   brief: [
-    "We do not sell personal data. Trov shows no ads and uses no tracking or analytics cookies.",
-    "What you add to an organization is visible to its members, and to nobody else.",
-    "Card details go to Stripe and never reach Trov. We keep the plan, its status and the seat count.",
-    "You can change or delete your details, revoke agent connections and stop any email.",
+    "We don't sell personal data, show ads, or use analytics or tracking cookies.",
+    "What you add to an organization is visible to its members and the agents they connect. Trov's operators see names, members and usage, and step in only for support, security or legal reasons.",
+    "Card details go to Stripe and never reach Trov.",
+    "You can delete your account in Settings, and ask us for a copy of your data or anything else at hello@trov.dev.",
   ],
   sections: [
     {
-      id: "collect",
-      title: "1. What we collect",
+      id: "who",
+      title: "1. Who we are",
       body: [
-        p("<b>Your account.</b> When you sign in with GitHub we receive your GitHub username, display name, profile picture and your primary, verified email address (the <code>read:user</code>, <code>user:email</code> and <code>read:org</code> permissions). With Google we receive your Google account id, name, picture and verified email (<code>openid email profile</code>). We use the provider's access token during sign-in and do not store it. You choose a handle and a color; you may upload a profile photo; an admin may record your role and responsibilities on the team."),
-        p("<b>What you and your agents write.</b> Docs and their versions, decisions, feed entries, tickets and comments, sprints, handoffs, prompts, artifacts and the images and files you upload — together with who wrote each one and when."),
-        p("<b>Connected repository data.</b> When a team connects a GitHub repository, Trov captures pull requests, issues, pushes, reviews, deployments and CI results from it, including the GitHub usernames of the people involved. That can include people who never signed in to Trov, such as outside contributors; their usernames appear in a list team members can link or discard."),
-        p("<b>Agent connections.</b> When you connect an agent we keep a record of the connection (the app's name, when it was created and last used). Access tokens are stored only as one-way hashes."),
-        p("<b>Billing.</b> When you buy a plan, Stripe collects your payment details, billing address and any tax information on its own pages. Trov never receives your card number. We send Stripe your email address and receive back, and keep, the Stripe customer and subscription ids, the plan, its status, the number of seats, the end of the current period and whether it is set to cancel."),
-        p("<b>Bug reports and support messages.</b> When you use Report a bug or Contact support, we store what you wrote together with the screen you were on, your organization, the app version and your browser, and it is read by Trov's operator, who may reply to your verified email address. If you use the Contact form without signing in, we store what you wrote, the page you were on, your browser and the email address you type, which we use only to reply to you."),
-        p("<b>Email preferences</b> — which digests you get and how often, and whether you unsubscribed."),
-        p("<b>Technical data.</b> Our host, Cloudflare, processes your IP address and request details to serve and protect the service, and keeps operational logs."),
+        p(`Trov is a service of ${LEGAL_OPERATOR}, a ${LEGAL_STATE} corporation in the United States. For the personal data in this policy, ${LEGAL_OPERATOR} is responsible ("controller"). Questions and requests: ${mail}.`),
+      ],
+    },
+    {
+      id: "collect",
+      title: "2. What we collect",
+      body: [
+        p("<b>Your account.</b> When you sign in with GitHub (through Trov's GitHub App), Trov reads your GitHub username, display name, profile picture, GitHub account id and your primary, verified email address, and nothing else. With Google we receive your Google account id, name, picture and verified email address (<code>openid email profile</code>). We use the provider's access token only during sign-in and do not store it. You choose a handle, a display name and a color; you may upload a photo and change the address digests go to."),
+        p("<b>What your organization records about you.</b> Your role (owner, admin, member), and optionally a title and a note on what you are responsible for, set by an admin. Your title is shown to your team; the responsibilities note is readable by the organization's admins and by the agents its members connect, which use it to assign work."),
+        p("<b>What you and your agents write.</b> Docs and their versions, decisions, feed entries, tickets and comments, sprints and the roadmap, handoffs, prompts, artifacts and the files and images you upload — with who wrote each one and when."),
+        p("<b>Connected repository data.</b> When an admin connects a GitHub repository, Trov's GitHub App reads it with read-only permissions (metadata, contents, pull requests, issues, Actions, checks, deployments and commit statuses) and captures pull requests and issues (titles and descriptions), pushes, reviews, deployments and CI results, including the GitHub usernames of the people involved — also people who never signed in to Trov, such as outside contributors. It does not store commit authors' email addresses. The repository owner's GitHub picture becomes the organization's image. While connecting, Trov uses a short-lived GitHub token to list the installations you can reach, then revokes it."),
+        p("<b>Integrations an organization adds.</b> Tokens for Railway, Cloudflare Analytics or its own metrics endpoint, stored encrypted and used only to read figures (requests, errors, CPU, memory, active users) from those services; and the website addresses it asks Trov to health-check."),
+        p("<b>Agent connections.</b> The app's name and return address, the organizations it may use, and when it was created and last used. Tokens are stored only as one-way hashes."),
+        p("<b>Billing.</b> When an owner buys a plan, Stripe collects the payment details, billing address and any tax id on its own page. We send Stripe the buyer's verified email address, their handle and, for an upgrade, the organization's address, and keep what Stripe sends back: the Stripe customer and subscription ids, the plan, its status, the number of seats, the current period's end, and whether it is set to cancel."),
+        p("<b>Bug reports and support messages.</b> What you write, with the screen you were on, your organization, the app version and your browser's user agent; signed out (the Contact form), the page, your browser and the email address you type, which we use only to reply. No screenshot, page content or IP address is stored with a report."),
+        p("<b>Email.</b> Your email preferences, whether you unsubscribed, and a log of the digests sent to you (when, which, and whether delivery worked)."),
+        p("<b>Usage and security.</b> Counts of what each person does in an organization each day (reads, writes, agent requests by tool), which Trov's operators see as totals, to understand how Trov is used; rate-limit counters, which for the signed-out Contact form use a keyed hash of your IP address, never the address itself."),
+        p("<b>Technical data.</b> Our host, Cloudflare, processes your IP address and request details to serve and protect Trov. Its logs keep the addresses Trov was asked for (which can contain a handle or an organization's address) and Trov's own log lines, which are scrubbed of secrets."),
       ],
     },
     {
       id: "use",
-      title: "2. How we use it",
+      title: "3. How we use it, and why we may",
       body: [
         ul(
           "to sign you in, keep you signed in and keep accounts secure;",
           "to provide Trov — store, search, show and attribute your team's content, and let connected agents read and propose changes as you;",
-          "to take payment for a paid plan, keep an organization on the plan it paid for, and apply that plan's limits;",
+          "to take payment for a paid plan, keep an organization on the plan it paid for, and apply each plan's limits;",
           "to summarize captured pull requests and issues;",
-          "to send the emails you can control in Settings (digests) and the service emails that go with an account (an invitation, a welcome message);",
-          "to run, debug and protect the service.",
+          "to send the emails described in section 7;",
+          "to answer support messages, and to run, debug and protect the service.",
         ),
-        p("We process this data because it is necessary to provide the service you signed up for and to carry out a purchase you made, for our legitimate interest in keeping it secure and working, and to meet legal duties such as keeping tax and accounting records."),
+        p("We do this because it is necessary to provide the service you signed up for and to carry out a purchase (contract); for our legitimate interest in keeping Trov secure, working and supported; and to meet legal duties such as keeping tax records. We do not use your content to train AI models, and we do not use it for advertising."),
       ],
     },
     {
       id: "sharing",
-      title: "3. Who can see it",
+      title: "4. Who can see it, and who processes it",
       body: [
-        p("<b>Your team.</b> What you add to a team's workspace is visible to its members; an artifact you mark private is visible only to you. Team admins can manage content and members. Members can see which plan the organization is on and its limits; only the owner can open its invoices and payment details, which are shown by Stripe."),
-        p("<b>Service providers</b> that process data for us, only to run Trov:"),
+        p("<b>Your team.</b> What you add to an organization is visible to its members and the agents they connect; an artifact you keep private is visible only to you. Owners and admins manage content and members. Members can see the organization's plan and limits; only owners open its invoices and payment details, which Stripe shows."),
+        p("<b>Trov's operators.</b> The people at TrovLabs who run Trov can see each organization's name, address, plan and status, its members' names, handles, roles and titles, pending invitations, usage counts and sizes, its admin history, and the support messages people send. Their tools do not show an organization's content. They can act on an account or organization — for example add themselves as an owner, suspend it or delete it — and may access stored data, only for support, security or legal reasons. Adding themselves to an organization is recorded in its history."),
+        p("<b>Service providers</b> that process data for us, to run Trov:"),
+        table("Service providers", ["Provider", "What it does", "What it receives"], [
+          ["Cloudflare", "Hosting, the database, file storage, logs", "Every request (with your IP address) and everything stored in Trov"],
+          ["GitHub", "Sign-in; the repository data an organization connects", "Your sign-in; Trov's read-only requests for the connected repositories"],
+          ["Google", "Sign-in", "Your sign-in"],
+          ["Anthropic", "Summaries (Claude API)", "The title and description (up to 8,000 characters) of each captured pull request and issue"],
+          ["Stripe", "Payments, invoices and receipts, fraud checks, tax calculation", "The buyer's email, handle, payment details and billing address, and the organization's address for an upgrade"],
+          ["Resend", "Delivers Trov's email", "Each email's recipient, subject and body (a digest contains your organization's content: ticket titles, summaries)"],
+        ]),
+        p("Anthropic handles the text sent for summaries under Anthropic's Commercial Terms of Service, which apply to Trov's API account. Railway, Cloudflare Analytics and an organization's own endpoint receive only Trov's requests with the token its admins saved, and send back figures. The agent clients you connect (Claude Code, Cursor and others) receive what they read on your behalf; they are your tools, under their own terms, not our processors."),
+        p("We may also disclose data if the law requires it, or to protect the rights and safety of people and the service. If TrovLabs is part of a merger or acquisition, personal data may pass to the new owner under this policy. <b>We do not sell or rent personal data</b>, and we do not share it for advertising."),
+      ],
+    },
+    {
+      id: "browser",
+      title: "5. What your browser loads from others",
+      body: [
+        p("Trov's pages, typefaces and diagram renderer are all served from trov.dev, so opening the site or the app sends nothing to Google Fonts or a script CDN. A few things do load from elsewhere, and send your IP address to whoever serves them:"),
         ul(
-          "<b>Cloudflare</b> — hosting, database and file storage, and request logs;",
-          "<b>Google (Gemini API)</b> — the text of captured pull requests and issues is sent to Google to generate summaries;",
-          "<b>Stripe</b> — takes payment, hosts the checkout and billing pages, issues invoices and receipts, and screens for fraud. It receives the buyer's email address, payment details and billing address, and handles them under its own privacy policy;",
-          "<b>Resend</b> — delivers email (your address and the message);",
-          "<b>GitHub and Google</b> — sign-in, and for GitHub, the repository data a team connects;",
-          "<b>Google Fonts</b> — the site's typefaces load from Google, which receives your IP address when they do.",
+          "<b>Profile pictures</b> from GitHub or Google, unless the person uploaded a photo to Trov: they load from GitHub's and Google's servers wherever that person is shown.",
+          "<b>Images a doc links from another website</b> load from that website.",
+          "<b>HTML artifacts</b> a team uploads run in a sandbox, cut off from your session, and may load scripts from the cdnjs and jsDelivr code CDNs, and styles and fonts from Google Fonts, if their author used them.",
+          "<b>Payment</b> happens on Stripe's own page, under Stripe's privacy policy. When Trov shows Stripe's payment form on its own payment page instead, Stripe's script (Stripe.js) runs on that page, and only there, and sets Stripe's own cookies, including ones Stripe uses to prevent fraud.",
         ),
-        p("We may also disclose data if the law requires it, or to protect the rights and safety of users and the service. We do not sell or rent personal data."),
       ],
     },
     {
       id: "cookies",
-      title: "4. Cookies and local storage",
+      title: "6. Cookies and browser storage",
       body: [
-        p("Trov uses only cookies it needs to work: <code>session</code> keeps you signed in (30 days), and a few short-lived cookies carry a sign-in in progress (about 10 minutes). Your browser's local storage keeps interface preferences such as the theme and the sidebar's state; they never leave your device. There are no analytics, advertising or third-party tracking cookies. Stripe's checkout and billing pages are on Stripe's own site and set Stripe's cookies there, including ones it uses to prevent fraud."),
+        p("Trov sets only the cookies it needs to work. They are first-party, sealed, sent only over HTTPS and not readable by scripts. There are no analytics, advertising or tracking cookies, so there is nothing to ask your consent for and no cookie banner. The one other party that sets cookies is Stripe, on its own pages and on Trov's payment page when that shows Stripe's form, to take the payment and prevent fraud (section 5)."),
+        table("Cookies", ["Cookie", "What it is for", "Lasts"], COOKIES),
+        p("Your browser's storage keeps only preferences and where to bring you back after signing in. It never leaves your device:"),
+        table("Browser storage", ["Key", "Where", "What it holds"], STORAGE),
+      ],
+    },
+    {
+      id: "email",
+      title: "7. Email",
+      body: [
+        p("Trov sends no marketing email. What it sends:"),
+        ul(
+          "<b>Digests</b>, on by default: a daily one on weekdays and a weekly one on Mondays, at your organization's send hour, and only when there is something for you. Change or stop them in Settings › Email notifications.",
+          "<b>A welcome email</b> when you first join an organization.",
+          "<b>One-off emails that answer something someone did</b>: an invitation, word that an organization you were given or paid for is ready (with your plan's renewal and cancellation terms), and a test digest you send yourself.",
+          "<b>Stripe's own receipts and invoices</b>, sent by Stripe.",
+        ),
+        p("Every digest and welcome email has an Unsubscribe link at the bottom that works without signing in, a one-click unsubscribe your mail app can use, and a switch in Settings. Unsubscribing stops digests and the welcome email from every organization; the one-off emails above still arrive, because each answers something someone did. An unsubscribe link names your handle and does not expire."),
+        p("Our emails load nothing remote — no web fonts, images or scripts. They are delivered by Resend, which receives the recipient, the subject and the body. We keep a log of the digests sent (not their text)."),
       ],
     },
     {
       id: "retention",
-      title: "5. How long we keep it",
+      title: "8. How long we keep it",
       body: [
+        table("How long data is kept", ["Data", "How long"], RETENTION),
+      ],
+    },
+    {
+      id: "deletion",
+      title: "9. Deleting your account or an organization",
+      body: [
+        p(`You can delete your account in <b>Settings › Delete account</b>, and an owner can delete an organization in <b>Org settings › General › Delete organization</b>. You can also ask us at ${mail}, and our operators can delete accounts and organizations too. Deletion is immediate and cannot be undone.`),
+        p("<b>Deleting an organization</b> removes everything in it: its content and every version, what was captured from GitHub, its settings, credentials and integrations, its members' memberships and agent connections to it, its email settings and send log, its usage counts, admin history and support messages, its billing records, and the files only it used. A paid subscription is cancelled at Stripe first, with no refund for the rest of the period."),
+        p("<b>Deleting your account</b> removes your profile, photo, sign-ins, sessions, agent connections and tokens, email settings and send log, memberships, support messages, and any organization nobody else is in. If you are the only owner of an organization others are in, or pay for one that carries on, Trov asks you to hand it over, cancel or delete it first."),
+        p("<b>What is kept, and why:</b>"),
         ul(
-          "<b>Account data</b> — while your account exists.",
-          "<b>Team content</b> — for as long as the team keeps it. Deleting a ticket or sprint removes it; deleting a prompt or artifact hides it everywhere but keeps it so it can be restored. Uploaded images and files are stored by content and are not removed automatically.",
-          "<b>Sessions</b> — expire after 30 days. Agents connected by browser sign-in use access tokens that expire after an hour and are renewed while in use; expired and revoked tokens are cleared on a schedule.",
-          "<b>Repository monitoring</b> — health checks are deleted after 45 days and hourly usage figures after 100 days; repository history (pull requests, pushes, deployments) is kept for the life of the team's workspace.",
-          "<b>Billing records</b> — the subscription record is kept while the organization exists, including after the subscription ends, so the owner can still reach past invoices. Stripe keeps payment and invoice records for as long as tax and accounting law requires.",
-          "<b>Email records</b> — kept to avoid sending the same digest twice.",
+          "What you wrote in organizations that carry on — docs, tickets, comments, history — stays for the people you worked with, credited to \"Deleted user\" (a placeholder with no personal data) instead of your handle. Text other people typed that mentions you is not rewritten.",
+          "Your GitHub username in repository activity Trov captured, because it is a copy of that repository's history on GitHub.",
+          "One record of each deletion: who asked, when, and for an organization its address, member count and Stripe ids (for billing disputes). For an account it holds a one-way code, not your handle.",
+          "Stripe keeps its records of payments and invoices for tax and accounting law; Resend keeps its delivery logs; Anthropic, and Google for summaries made before October 14, 2026, may have the text sent earlier for summaries — each under its own terms.",
+          "Cloudflare's database history (up to 30 days) and logs (a few days) keep deleted data until they age out.",
         ),
-        p(`When an account is deleted on request, we delete or anonymize its personal data unless we must keep it by law; content you wrote in a team's workspace may stay with that team, attributed to your handle.`),
       ],
     },
     {
       id: "rights",
-      title: "6. Your choices and rights",
+      title: "10. Your rights and choices",
       body: [
-        p("You can change your name, handle, color and photo in Settings, unlink a sign-in method, revoke agent connections, and change or stop digest emails — every digest has a one-click unsubscribe. An organization's owner can update the payment method, download invoices and cancel the plan from the organization's settings."),
-        p(`Depending on where you live, you may have the right to access, correct, delete, restrict or object to the processing of your personal data, and to receive a copy of it. To use these rights, or to have your account deleted, write to ${mail}. We will answer within 30 days. You can also complain to your local data protection authority.`),
-      ],
-    },
-    {
-      id: "security",
-      title: "7. Security",
-      body: [
-        p("Sign-in uses GitHub or Google with PKCE; session cookies are signed, HTTP-only and secure; agent tokens are stored only as hashes; GitHub deliveries are signature-verified; artifact pages run in a sandbox cut off from your session; payment notices from Stripe are signature-verified, and card data never touches Trov's servers; all traffic is encrypted in transit. No system is perfectly secure — if you find a vulnerability, please report it to us privately."),
+        p("In Trov you can change your name, handle, color, photo and email address in Settings, unlink a sign-in method, revoke agent connections, stop email, and delete your account. An organization's owner can update its payment method, download invoices and cancel its plan."),
+        p(`Depending on where you live, you may have the right to <b>access</b> your personal data and get a <b>copy</b> of it (in a portable format), to <b>correct</b> it, to have it <b>deleted</b>, and to <b>restrict</b> or <b>object</b> to how we use it — under the GDPR and UK GDPR, for example, and under US state privacy laws such as California's. To use any of them, write to ${mail} from the address on your account (or tell us how to confirm it is you). We will answer within 30 days, and will not treat you differently for asking. If we decline a request, we will say why, and you can ask us to reconsider. You can also complain to your local data protection authority.`),
+        p("We do not sell personal data or share it for targeted advertising, and we do not use it to make decisions about you that have legal or similar effects."),
       ],
     },
     {
       id: "transfers",
-      title: "8. International transfers",
+      title: "11. International transfers",
       body: [
-        p("Our providers operate globally, so your data may be processed outside your country, including in the United States. Where the law requires it, those transfers rely on the providers' standard contractual safeguards."),
+        p("Trov is run from the United States and hosted on Cloudflare's network, and our providers process data mostly in the United States. If you use Trov from elsewhere, your data is transferred there. Where the law requires it, those transfers rely on the safeguards our providers offer, such as the European Commission's Standard Contractual Clauses."),
       ],
     },
     {
       id: "children",
-      title: "9. Children",
-      body: [p("Trov is a tool for working teams and is not meant for anyone under 16. We do not knowingly collect their data.")],
+      title: "12. Children",
+      body: [p(`Trov is a tool for working teams and is not for anyone under ${MIN_AGE}. Everyone confirms they are ${MIN_AGE} or older when they sign up. If you believe someone younger has given us personal data, write to ${mail} and we will delete it.`)],
+    },
+    {
+      id: "security",
+      title: "13. Security",
+      body: [
+        p("What we do: sign-in goes through GitHub or Google; session cookies are sealed, HTTP-only and secure; agent tokens are stored only as hashes; integration credentials are stored encrypted and never shown again; GitHub and Stripe notifications are signature-checked; artifact pages run in a sandbox cut off from your session; card data never touches Trov's servers; traffic is encrypted in transit; and secrets are scrubbed from our logs."),
+        p(`No system is perfectly secure, and we cannot promise that data will never be accessed without permission. If something happens that puts your personal data at risk, we will tell you as the law requires. If you find a vulnerability, please report it privately to ${mail}.`),
+      ],
     },
     {
       id: "changes",
-      title: "10. Changes to this policy",
+      title: "14. Changes to this policy",
       body: [
         p("If we change how we handle personal data we will update this page and its date, and tell you in the app or by email before a material change takes effect."),
       ],
     },
     {
       id: "contact",
-      title: "11. Contact",
-      body: [p(`Privacy questions and requests: ${mail}.`)],
+      title: "15. Contact",
+      body: [p(`${LEGAL_OPERATOR}, ${LEGAL_STATE}, United States. Privacy questions and requests: ${mail}.`)],
     },
   ],
 };
 
-export const LEGAL_DOCS: Record<LegalKind, LegalDoc> = { terms: TERMS, privacy: PRIVACY };
+// ── Refund and Cancellation Policy ──────────────────────────────────────────
+
+export const REFUNDS: LegalDoc = {
+  kind: "refunds",
+  title: "Refund and Cancellation Policy",
+  tab: "Refunds",
+  updated: EFFECTIVE,
+  lede: `This policy explains how to cancel a paid Trov plan, what happens when you do, and when a payment is refunded. It is part of the Terms of Service.`,
+  brief: [
+    "Cancel any time from Billing, as easily as you subscribed.",
+    `${PRO} stays active until the end of the period you already paid for, then the organization moves to ${FREE}. Nothing is deleted.`,
+    "No refunds for partial periods, except where the law requires one: write to us.",
+    "Deleting an organization that pays for Pro cancels it at once, with no refund.",
+  ],
+  sections: [
+    {
+      id: "billing",
+      title: "1. How a paid plan is billed",
+      body: [
+        p(`${FREE} is never charged. ${PRO} costs ${PRO_PRICE} (for example, 3 seats × ${PRO_SEAT_PRICE} = ${formatPrice((PRICING.team.price ?? 0) * 3)} a month), plus any tax Stripe calculates at checkout. It is charged when you subscribe and then automatically each month, on the day of the month you subscribed, until you cancel. Payments are taken by Stripe.`),
+      ],
+    },
+    {
+      id: "cancel",
+      title: "2. How to cancel",
+      body: [
+        p(`An owner of the organization cancels in Trov: <b>Org settings › General › Plan › Cancel plan</b>. It opens Stripe's cancel page and brings you back to Trov when you are done. <b>Manage billing</b>, in the same place, also lets you cancel. Nothing else is needed — no call, no email. If you cannot get to it, write to ${mail} and we will cancel for you.`),
+      ],
+    },
+    {
+      id: "after",
+      title: "3. What happens when you cancel",
+      body: [
+        p(`${PRO} stays active until the end of the period already paid, and nothing changes until then; Trov shows the date in Org settings › General › Plan. Until that date you can undo the cancellation in Manage billing. On that date the organization moves to ${FREE}: <b>nothing is deleted</b> and nobody loses access, but adding more of anything over ${FREE}'s limits waits until it is back within them or subscribes again (${link(`${TERMS_PATH}#limits`, "Terms, section 6")}).`),
+      ],
+    },
+    {
+      id: "refunds",
+      title: "4. Refunds",
+      body: [
+        p("<b>No refunds for partial periods.</b> A period that has started is not refunded when you cancel, lower your seats, or stop using Trov — <b>except where the law requires a refund</b>. Those are handled by hand: write to " + mail + " with your organization's name."),
+        p("<b>Charged by mistake?</b> If you were charged twice, after cancelling, or because of an error on our side, write to " + mail + " and we will refund it."),
+        p("<b>Changing seats.</b> Stripe's billing page shows what adding or removing seats costs, or credits to future invoices, before you confirm it. A credit is used against later invoices; it is not paid out."),
+        p(`<b>If we end the service.</b> If we stop offering Trov, or end your access for a reason other than a breach of the ${link(TERMS_PATH, "Terms")}, we refund the unused part of the period already paid.`),
+      ],
+    },
+    {
+      id: "delete",
+      title: "5. Deleting an organization or an account",
+      body: [
+        p(`Deleting an organization that pays for ${PRO} cancels its subscription at Stripe <b>immediately</b>, with no refund for the rest of the period: there is nothing left for it to pay for. Trov asks you to confirm this before anything is deleted.`),
+        p("If you pay for an organization that other people keep using, Trov will not delete your account while that subscription still renews, so your card is not charged for a team you left. Cancel the plan first (it runs to the end of the paid period), or ask us to move the billing to another owner."),
+      ],
+    },
+    {
+      id: "failed",
+      title: "6. Failed payments",
+      body: [
+        p(`If a payment fails, Stripe tries the card again and the organization keeps working while it does. Update the card in Manage billing. If the retries run out, the subscription ends and the organization moves to ${FREE}, as in section 3.`),
+      ],
+    },
+    {
+      id: "changes",
+      title: "7. Price changes",
+      body: [
+        p("We email the owner at least 30 days before a change to what they pay takes effect, and it applies no sooner than the next billing period. You can cancel before then."),
+      ],
+    },
+    {
+      id: "receipts",
+      title: "8. Receipts and invoices",
+      body: [
+        p("Stripe emails receipts. An owner finds every invoice in Manage billing. After a new purchase Trov also emails the buyer that their organization is ready, with these renewal and cancellation terms."),
+      ],
+    },
+    {
+      id: "contact",
+      title: "9. Contact",
+      body: [p(`${LEGAL_OPERATOR}, ${LEGAL_STATE}, United States. Billing, cancellation and refund questions: ${mail}.`)],
+    },
+  ],
+};
+
+/** Every legal document, in the order of the tab row over each one. */
+export const LEGAL_DOCS: Record<LegalKind, LegalDoc> = { terms: TERMS, privacy: PRIVACY, refunds: REFUNDS };
+export const LEGAL_ORDER: readonly LegalKind[] = ["terms", "privacy", "refunds"];
 
 /** "2026-10-06" → "October 6, 2026" (fixed English, independent of the reader's locale and timezone). */
 export function legalDate(iso: string): string {
@@ -315,8 +555,8 @@ export function legalDate(iso: string): string {
   return m ? `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}, ${m[1]}` : iso;
 }
 
-const SUN = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"></path></svg>`;
-const MOON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>`;
+const SUN = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"></path></svg>`;
+const MOON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>`;
 
 const BANNER_ART = `<span class="site-banner-art" aria-hidden="true">${trovMark(100, "currentColor")}</span>`;
 
@@ -326,11 +566,29 @@ function numbered(title: string): { n: string; text: string } {
   return m ? { n: m[1], text: m[2] } : { n: "", text: title };
 }
 
+const CHEV = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>`;
+
+/** The tab row over each document: every legal document, the current one marked (a link to each other). */
+export function legalTabs(current: LegalKind): string {
+  const tab = (d: LegalDoc): string => d.kind === current
+    ? `<span class="site-legal-tab" aria-current="page" style="border-radius:8px">${esc(d.tab)}</span>`
+    : `<a href="/${d.kind}" class="site-legal-tab" style="border-radius:8px">${esc(d.tab)}</a>`;
+  return `<nav class="site-legal-tabs" aria-label="Legal documents">${LEGAL_ORDER.map((k) => tab(LEGAL_DOCS[k])).join("")}</nav>`;
+}
+
+/** "the Privacy Policy and the Refund and Cancellation Policy" — the other documents, linked. */
+function others(kind: LegalKind): string {
+  const rest = LEGAL_ORDER.filter((k) => k !== kind).map((k) => `the <a href="/${k}">${esc(LEGAL_DOCS[k].title)}</a>`);
+  return rest.length < 2 ? rest.join("") : `${rest.slice(0, -1).join(", ")} and ${rest[rest.length - 1]}`;
+}
+
 /** The whole page for one document. `dark` picks the toggle's icon, like the landing's nav. The page is the
  *  site's own: the brand banner carries the title (`.site-banner`, the landing hero's), the contents ride
- *  beside the text and follow the reader (web/src/legal-page.ts marks the section in view). */
-export function legalView(doc: LegalDoc, dark: boolean): string {
-  const other = doc.kind === "terms" ? PRIVACY : TERMS;
+ *  beside the text and follow the reader (web/src/legal-page.ts marks the section in view).
+ *  Under 900px the contents are a box above the text, folded behind a "Contents" disclosure (up to 18 links
+ *  would otherwise stand between the title and the first paragraph): `tocOpen` is its state, the button
+ *  and the wrapper round the list are what trov.css folds, and a wide screen shows neither. */
+export function legalView(doc: LegalDoc, dark: boolean, tocOpen = false): string {
   const toc = doc.sections.map((s) => {
     const t = numbered(s.title);
     return `<li><a href="#${s.id}" data-legal-toc="${s.id}">${t.n ? `<span class="site-legal-toc-n">${t.n}</span>` : ""}<span>${esc(t.text)}</span></a></li>`;
@@ -341,11 +599,9 @@ export function legalView(doc: LegalDoc, dark: boolean): string {
       return `<section id="${s.id}" class="site-legal-sec"><h2>${t.n ? `<span class="site-legal-n">${t.n}.</span>` : ""}${esc(t.text)}</h2>${s.body.join("")}</section>`;
     })
     .join("");
-  const tab = (d: LegalDoc): string => d.kind === doc.kind
-    ? `<span class="site-legal-tab" aria-current="page" style="border-radius:8px">${esc(d.title)}</span>`
-    : `<a href="/${d.kind}" class="site-legal-tab" style="border-radius:8px">${esc(d.title)}</a>`;
   return `<div class="cnpy-site">
-    <nav class="site-nav" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
+    ${skipLink()}
+    <nav class="site-nav" aria-label="Site" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
       <div class="site-navin" style="max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px">
         <a href="/" aria-label="Trov home" style="display:flex;align-items:center;gap:9px;color:var(--fg);text-decoration:none">
           ${siteMark(20)}
@@ -362,22 +618,22 @@ export function legalView(doc: LegalDoc, dark: boolean): string {
       <div class="site-banner site-legal-band" style="border-radius:16px">
         ${BANNER_ART}
         <div class="site-legal-band-in">
-          <div class="site-legal-tabs" role="navigation" aria-label="Legal documents">${tab(TERMS)}${tab(PRIVACY)}</div>
+          ${legalTabs(doc.kind)}
           <h1 class="site-legal-h">${esc(doc.title)}</h1>
           <p class="site-legal-lede">${esc(doc.lede)}</p>
-          <div class="site-legal-date">Last updated ${legalDate(doc.updated)}</div>
+          <div class="site-legal-date">Effective and last updated ${legalDate(doc.updated)}</div>
         </div>
       </div>
     </header>
-    <main class="site-legal">
+    <main id="site-main" tabindex="-1" class="site-legal">
       <aside class="site-legal-side">
-        <nav aria-label="Contents" class="site-legal-toc"><div class="site-legal-toc-h">Contents</div><ol>${toc}</ol></nav>
+        <nav aria-label="Contents" class="site-legal-toc" data-open="${tocOpen ? 1 : 0}"><div class="site-legal-toc-h">Contents</div><button type="button" data-legal-tocb aria-expanded="${tocOpen}" aria-controls="site-legal-toc-list" class="site-legal-tocb"><span class="site-legal-toc-h">Contents</span><span class="site-legal-tocb-n">${doc.sections.length} sections</span>${CHEV}</button><div class="site-legal-tocw"><ol id="site-legal-toc-list">${toc}</ol></div></nav>
       </aside>
       <div class="site-legal-text">
         <div class="site-legal-brief" style="border-radius:12px">
           <div class="site-legal-toc-h">In short</div>
           <ul>${doc.brief.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
-          <p>A summary to read first. The sections below are what applies. Also see the <a href="/${other.kind}">${esc(other.title)}</a>.</p>
+          <p>A summary to read first. The sections below are what applies. Also see ${others(doc.kind)}.</p>
         </div>
         ${sections}
       </div>

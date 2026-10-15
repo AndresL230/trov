@@ -24,6 +24,14 @@ means unlimited. Plan ids are stored and never renamed: **`team` is the plan use
 | `artifact_bytes` | 250 MB | 5 GB | unlimited | 250 MB | `SUM(artifact_versions.size_bytes)` — every stored version, deleted pages included | `writeVersion`, `insertPage`, `mintUploadToken`, `consumeUploadToken` (`src/tools/artifacts.ts`) — so HTTP, the upload link and the MCP artifact tools alike |
 | `agent_connections` | 5 | 10 | unlimited | 5 | PER PERSON: that person's live MCP tokens for the org + their connected apps that hold a row for it (`oauth_grant_orgs`) — see below | `mintToken`, `issueAuthorization` (the OAuth consent), `setGrantOrg` / `setGrantMode` (Settings), `admitGrantOrg` (a follow-the-repository connection's first call into the org) |
 | `ai_summaries` | 300 | 3,000 | unlimited | 300 | PER CALENDAR MONTH (UTC): summarizer calls attempted for the org | `orgSummarizers` (`src/plans/summaries.ts`) — it refuses nothing: past it an item shows its excerpt (below) |
+| `ai_runs` | 250 | 2,000 | unlimited | 250 | PER CALENDAR MONTH (UTC): model calls the AI pass attempted for the org (`ai_run:*`) | the AI pass (`src/ai/pass.ts`, via `aiEligibility`) — it refuses nothing: past it no call is made (`ai.md`). **Not listed yet** (below) |
+
+**A limit that is not listed** (`LimitDef.listed: false`): `ai_runs` is a limit like any other — resolved,
+overridable per org in Platform's limit fields, enforced — but nothing uses it yet (the AI pass has no job), so
+the pricing page's cards, its questions and its markdown, the Plan block (Org settings › General) and Settings ›
+Limits list `LISTED_LIMIT_KEYS` (every key but the unlisted) instead of `LIMIT_KEYS`. `OrgPlanView.usage` still
+carries `ai_runs` (this month's `ai_run:*`). To list it: drop the flag (`test/render.pricing.test.ts`,
+`render.plans.test.ts`, `render.settings-plan.test.ts` pin that it is absent today).
 
 **How one connection counts when it can reach several organizations** (0051). The limit stays per organization,
 per person, and one rule covers both modes: *a connected app counts once in every organization that holds a
@@ -132,12 +140,13 @@ its paid seats lowered, or an override lowered. Then, and always:
 
 ## AI summaries: one key, counted per org, capped per plan
 
-Capture-time summaries of pull requests and assigned issues come from Gemini, and **one** platform key
-(`GEMINI_API_KEY`) pays for every org. So each org's calls are counted, and each plan has a monthly
+Capture-time summaries of pull requests and assigned issues come from Anthropic's Claude (`claude-haiku-5-5`, through
+the one model client `src/ai/client.ts`), and **one** platform key
+(`ANTHROPIC_API_KEY`) pays for every org. So each org's calls are counted, and each plan has a monthly
 allowance. Code: `src/plans/summaries.ts`, `src/data/meter.ts`; tests: `test/summaries.cap.test.ts`.
 
 **The one choice.** `orgSummarizers(env, ctx, …)` is the only place a summarizer is chosen for an org — the
-webhook (`src/webhook.ts`) and Sync GitHub (`src/tools/backfill.ts`) both ask it. It answers the Gemini
+webhook (`src/webhook.ts`) and Sync GitHub (`src/tools/backfill.ts`) both ask it. It answers the Claude
 summarizer, or `null` when the deployment has no key (`off`), the org's plan is canceled (`ended`), or the
 org has used its month's allowance (`capped`). The comparison is `planRefusal(state, "ai_summaries", used)`,
 like every other limit.
@@ -158,7 +167,7 @@ click; the Sync panel says how many a run will attempt and how many are left bef
 | `summary_failed:pr`, `summary_failed:issue` | attempts that produced no summary (the item kept its excerpt) |
 | `summary_capped:pr`, `summary_capped:issue` | items given an excerpt because nothing could be attempted (the allowance, an ended plan); counted once, when the excerpt row is first written |
 | `summary_chars_in`, `summary_chars_out` | characters sent (prompt + title + body) and received |
-| `summary_tokens_in`, `summary_tokens_out` | Gemini's own `usageMetadata` counts, when its answer carried them |
+| `summary_tokens_in`, `summary_tokens_out` | the provider's own counts (`usage.input_tokens` / `output_tokens`), when its answer carried them — a refusal or an unparseable answer included, since it was billed |
 
 Counts and sizes only: no title, body or summary text is ever written there. The attempt is written
 *before* the call and its outcome after it. Metering follows the request-metering rule — it rides
@@ -211,14 +220,14 @@ SELECT org_id, metric, SUM(count) FROM org_usage_daily
  WHERE day >= '2026-10-01' AND metric GLOB 'summary*' GROUP BY org_id, metric;
 ```
 
-Cost ≈ `tokens_in × input price + tokens_out × output price` for the model in use (`GEMINI_MODEL` in
-`src/tools/summarize.ts`, `gemini-2.5-flash-lite`); where tokens were not recorded, characters ÷ 4 is the
+Cost ≈ `tokens_in × input price + tokens_out × output price` for the model in use (`CLAUDE_MODEL` in
+`src/ai/client.ts`, `claude-haiku-5-5`); where tokens were not recorded, characters ÷ 4 is the
 usual approximation. Input dominates and scales with the description, so at most its first **8,000
 characters** are sent (`SUMMARY_BODY_MAX`, `capSummaryBody` — the title always goes whole; a cut never
 splits a surrogate pair); sizes are recorded, not just calls. Check the provider's current prices; none is
 stored here.
 
-**Owner step.** Summaries are **off** until the key is set: `wrangler secret put GEMINI_API_KEY`. From then
+**Owner step.** Summaries are **off** until the key is set: `wrangler secret put ANTHROPIC_API_KEY`. From then
 on every org's new pull requests and assigned issues are summarized on capture (webhook) and on Sync, each
 call is counted, and each org's plan allowance applies. Existing excerpt rows fill in at each org's next
 Sync GitHub. Removing the secret turns it all off again; nothing else changes.
@@ -235,18 +244,18 @@ A plan belongs to an ORGANIZATION and its owner pays for every seat; everyone in
     actually charged** (`planPriceWords`: a live subscription on an interval `PRICING` has a price for —
     "$10 per seat / month"; a granted, gifted, pinned or yearly-without-a-yearly-price plan says nothing, and
     Enterprise says the pricing page's "Custom pricing"; a Free org also reads "Pro is $10 per seat / month.");
-    the status chips, the gift line and the payment sentence; and **the Plan block's own buttons** for an
+    the status marks (`kindMark`: Payment past due, Ended, Cancelled — `web-ui.md` › Status marks), the gift line and the payment sentence; and **the Plan block's own buttons** for an
     owner — Upgrade to Pro, Change seats, Manage billing, Keep Pro by paying — the same `orgBilling…` acts and
     `state.org.billing`. Anyone else gets no button: the Plan block's sentence naming who can change it, and a
     link to Org settings › General. "Compare plans" opens `/pricing`. All of it comes through `planParts`
-    (`org-plan.ts`), which returns the Plan block's chips / gift / sentence / buttons / closing line in parts;
+    (`org-plan.ts`), which returns the Plan block's marks (`chips`) / gift / sentence / buttons / closing line in parts;
     the one sentence this tile words itself is a never-paid Free org's (the Plan block's says the limits are
     "below", and here they are beside it).
   - **Limits** (`settingsLimitsTile`): every `LIMIT_KEYS` row as "used of limit" with a quiet meter
     (`role="meter"`), what it counts, "yours" on the per-person one and "this month" on the allowance; "Over
     the limit" in amber and the spent-allowance sentence as in Org settings. A use that is not a number is
     **"—" with an empty meter, never 0** (the route always sends numbers today; the tile does not assume it).
-  - **Organizations** (`settingsOrgsTile`): every org I belong to — my role, its plan's chip, a link that
+  - **Organizations** (`settingsOrgsTile`): every org I belong to — my role, its plan's name (plain text, accent when paid), a link that
     opens it — from `GET /api/orgs`, whose rows carry `plan` and `paid` (`listMyOrgs`, `src/orgs/repo.ts`:
     `paid` = `plan_source = 'billing'` with a subscription, not Free, not `canceled`; so also on `/auth/me`).
     Who pays is said only when `paid`: "you manage its billing" to an owner, "paid for by its owners" to
@@ -371,6 +380,10 @@ migration.
 4. **Revoked / expired** — `POST /api/platform/grants/:id/revoke` for an unused one (409 `grant_used` after).
    `expires_in_days` is optional (1–365; the default is never); "expired" is derived, the row is not
    rewritten.
+5. **Deleted with what it became** (`organizations.md` §8) — deleting an organization deletes the grant it was
+   created from (`used_org`); deleting an account revokes every UNUSED grant addressed to the person (a paid
+   one's subscription is cancelled first) and rewrites every grant that named them to the tombstone, with no
+   login or address. A person who deletes their Free organization may create another (it no longer counts).
 
 Every step is in `org_admin_audit`: `grant.create`, `grant.revoke`, `grant.use`, and for an org's plan
 `plan.change`, `plan.overrides`, `plan.status`, `plan.gift`, `plan.gift_end`.
@@ -382,7 +395,7 @@ person before any org exists. `org_grants.used_org` is deliberately not named `o
 
 | Route | Gate | Answers |
 |---|---|---|
-| `GET /api/o/:slug/plan` | any member | `OrgPlanView`: plan, name, status, `gift_until`, entitlements, `usage` (seats = members + pending; `agent_connections` = the caller's own; `ai_summaries` = this month's), `over` |
+| `GET /api/o/:slug/plan` | any member | `OrgPlanView`: plan, name, status, `gift_until`, entitlements, `usage` (seats = members + pending; `agent_connections` = the caller's own; `ai_summaries` and `ai_runs` = this month's), `over` |
 | `GET /api/o/:slug/sync` | any member | `SyncStatusView` — its `summaries` is the allowance: status, used, cap, remaining, pending (`sync.md`) |
 | `GET /api/orgs` | signed in | each org with its `plan` and `paid`; adds `grants: MyGrant[]`, `can_create`, `free: { can_create, owned }` |
 | `POST /api/orgs` | holds a usable grant, or may own a Free org | 201 the org; 403 `no_grant` (a grant that is not theirs, a superadmin); 403 `free_org_limit` |
@@ -397,9 +410,9 @@ person before any org exists. `org_grants.used_org` is deliberately not named `o
 ## The pricing page
 
 The public face of the plans is ONE pure render, `pricingSection` (`web/src/pricing.ts`), shown twice: as the
-landing page's last section (nav link "Pricing") and as the static page `/pricing` (`web/pricing.html`, booted
-by `web/src/pricing-page.ts`; an extra Vite input served by the assets binding like `/terms`, linked from the
-footer). It restates nothing: names, descriptions and limits come from `PLANS`, prices from `PRICING` in
+landing page's last section (nav link "Pricing") and as the static page `/pricing` (a page of
+`shared/site-pages.ts`, prerendered at build and booted by `web/src/pricing-page.ts`; served by the assets binding
+like `/terms`, linked from the footer — `web-ui.md` › The public pages, for crawlers). It restates nothing: names, descriptions and limits come from `PLANS`, prices from `PRICING` in
 `shared/pricing.ts`. It shows the OFFERED plans only — Free, Pro, Enterprise. Tests:
 `test/render.pricing.test.ts`.
 
@@ -423,6 +436,18 @@ footer). It restates nothing: names, descriptions and limits come from `PLANS`, 
 - Its sentences (what every plan includes, the questions — among them how Pro's per-seat pricing works and
   that a cancelled Pro org moves to Free) describe what the product does today. A change to seats, limits or
   how a plan is changed is a change to that copy.
+- **What a buyer is told before paying** (the compliance pass, 2026-10-12; one wording in `shared/pricing.ts`):
+  beside "Choose Pro" (`planTerms`, inside `.site-plan-ctabox` so the cards' subgrid rows still line up) an
+  example of the per-seat math (`seatMath(3)` → "3 seats × $10 = $30 per month"), `CHECKOUT_TAX` ("Plus applicable
+  tax, calculated at checkout."), `RENEWAL_TERMS` ("Renews monthly until you cancel; cancel any time from
+  Billing.") and links to `/terms` and `/refunds`. The same words, with the org's OWN seat count (members +
+  pending invitations, what checkout starts at: `upgradeLine` / `checkoutTerms` in `web/src/org-plan.ts`), sit
+  beside Upgrade to Pro in the Plan block, Settings › Plan and the Members tab's seat cap, and on the Pro side of
+  Get started and the embedded payment card; a live subscription's Cancel plan carries `CANCEL_TERMS` and the
+  policy (`cancelTerms`). The pricing questions say the policy too. Nothing pre-ticked, no upsell, no
+  confirmshaming: "Cancel plan", "Keep Pro by paying", "Upgrade to Pro" are the whole vocabulary.
+- **No badge.** `PRICING.team.badge` is null: "Most teams start here" read as a statistic nobody could show. The
+  accent action falls back to the plan on sale (`accentPlan`), so nothing on the page or its OG card moved.
 
 ## The billing seam
 

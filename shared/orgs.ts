@@ -1,8 +1,10 @@
 // Orgs, memberships, invites and the superadmin surface (canopy-multitenancy.md §5.3, §5.4) — the ONE
 // contract the Worker and the SPA share. Zod-free: the SPA imports the slug rule and these types as-is.
 import type { PersonColor } from "./rows";
+import type { AiUsage } from "./ai-core";
 import { AVATAR_MAX_BYTES, AVATAR_TYPES } from "./people";
 import type { MyGrant, PlanId, PlatformOrgPlan } from "./plans";
+import { SITE_PAGE_SEGMENTS } from "./site-pages";
 
 export type OrgRole = "owner" | "admin" | "member";
 export type OrgStatus = "active" | "suspended";
@@ -27,8 +29,16 @@ export const RESERVED_ORG_SLUGS: readonly string[] = [
   "api", "o", "orgs", "org", "auth", "oauth", "mcp", "new", "settings", "admin", "platform", "raw", "img",
   "avatar", "u", "webhook", "static", "assets", "www", "app", "trov", "canopy", "invites", "invite", "me",
   "help", "support", "docs", "login", "logout", "signup", "system",
-  // Static pages and files at the root (web/*.html, web/public/).
-  "index", "pricing", "privacy", "terms", "guide", "favicon", "robots", "sitemap", "billing",
+  // Static pages and files at the root (the built pages, web/public/): every page of the public site is
+  // added from its ONE list (shared/site-pages.ts `SITE_PAGE_SEGMENTS`), so a new page reserves its own
+  // path; the four named here predate it. `app` (the app shell, web/app.html) is above; `og` holds the
+  // pages' Open Graph images. test/site.test.ts fails on a page or a web/public entry not listed.
+  "index", "pricing", "privacy", "terms", "guide", "favicon", "robots", "sitemap", "billing", "og",
+  // `fonts`: the self-hosted fonts' stable copies and licenses (shared/fonts.ts `FONTS_PATH`, written by the build).
+  "fonts",
+  // `source`: the AGPL source link, redirected to the deployed commit (shared/legal-core.ts `SOURCE_PATH`).
+  "source",
+  ...SITE_PAGE_SEGMENTS,
   // Root routes of the Hono app (src/routes.ts and the routers mounted at "/"), and screen names kept
   // free so a path can never be mistaken for one.
   "feed", "doc", "adr", "adrs", "roadmap", "search", "tickets", "ticket", "sprints", "sprint", "repo", "repos",
@@ -75,7 +85,7 @@ export const ORG_AUDIT_ACTIONS = [
   "repo.add", "repo.remove", "repo.primary", "environment.set", "environment.delete", "environment.reorder",
   // The GitHub App's installation (0043_github_app, src/github-app/store.ts).
   "github.connect", "github.disconnect", "github.uninstall", "github.suspend", "github.unsuspend", "github.repos", "github.permissions",
-  // Org settings › Hosting (0052_hosting_providers, src/hosting/).
+  // Org settings › Hosting (0056_hosting_providers, src/hosting/).
   "part.set", "part.delete", "hosting.connect", "hosting.disconnect", "hosting.revoked",
   "platform.org_limit", "platform.admin.grant", "platform.admin.revoke",
   // Plans and grants (0044_plans, src/plans): an org's plan / limits / status changed; a grant made, revoked, used.
@@ -86,6 +96,12 @@ export const ORG_AUDIT_ACTIONS = [
   // A person created a Free organization of their own (src/plans/free.ts): the row is also the guard that
   // keeps them to one owned Free org at a time.
   "org.create_free",
+  // Deletion (src/deletion/): an organization deleted by its owner or a superadmin — a PLATFORM row (org_id
+  // NULL, the org is gone), its slug as the target; a person's account deleted — the target is the tombstone
+  // handle their content now carries, never the handle they had.
+  "org.delete", "person.delete",
+  // The organization's AI switch (0055_ai, Org settings › AI): an admin turned it on or off.
+  "org.ai",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 
@@ -310,6 +326,8 @@ export interface OrgUsage {
   series: UsageDay[];
   /** AI summaries in the window, and this calendar month against the plan's allowance. */
   summaries: UsageSummaries & { month_used: number; cap: number | null };
+  /** AI runs and tokens in the window (shared/ai-core.ts). */
+  ai?: AiUsage;
 }
 
 /** AI summary calls in the window (`org_usage_daily`, src/data/meter.ts). Counts and sizes only. */
@@ -336,6 +354,8 @@ export interface PlatformUsageResponse {
   summaries_enabled: boolean;
   /** Every org's summaries in the window, summed. */
   summaries: UsageSummaries;
+  /** Every org's AI runs and tokens in the window, summed. */
+  ai?: AiUsage;
   days: number;
   since: string;       // first day of the window, 'YYYY-MM-DD' (UTC)
   until: string;       // last day (today, UTC)

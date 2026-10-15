@@ -30,6 +30,7 @@ import { listStoredParts } from "../hosting/parts";
 import { type ProviderMap, hostingPollCost, pollPart, pollParts, providerPollCost } from "../hosting/poll";
 import { PROVIDERS } from "../hosting/registry";
 import { expireGifts } from "../plans/gifts";
+import { runAiPass, type AiPassOpts } from "../ai/pass";
 
 export const REPO_CRON = "*/10 * * * *";
 
@@ -378,7 +379,7 @@ export async function runUsagePolls(env: Env, caller: TenantContext, now: number
  *   `pruneRepoCapture`      maintenance, not a refresh — nothing on screen
  *                           changes because old rows were deleted.
  *   `runBackfill`/summaries that is "Sync GitHub": My Work's capture, with its
- *                           own Gemini budget loop. It is ALSO the only
+ *                           own summary allowance. It is ALSO the only
  *                           non-webhook writer of the `events` issue snapshots,
  *                           so the Overview's Open issues / Open bugs tiles and
  *                           deltas, Planning's issues by label and the feed's
@@ -561,12 +562,17 @@ export const PROGRESS_COST_ESTIMATE = 40;
  * org with no environment and no repo has no unit: it costs nothing and logs
  * nothing. A suspended org is not listed. Nothing throws out of here.
  *
+ * THE AI PASS (src/ai/pass.ts) runs on every tick with no heavy job, after the
+ * health pings, on what they left of the same budget.
+ *
  * `limit` is the invocation's subrequest budget — a parameter only so a test can
- * make it small enough to watch the rotation; `providers` likewise lets a test
- * run the hosting job against a fake provider.
+ * make it small enough to watch the rotation; `aiPass` likewise hands the pass a
+ * test's job registry, and `providers` lets a test run the hosting job against a
+ * fake provider.
  */
 export async function handleRepoCron(
-  env: Env, scheduledTime: number, fetchImpl?: typeof fetch, limit: number = CRON_SUBREQUEST_BUDGET, providers: ProviderMap = PROVIDERS,
+  env: Env, scheduledTime: number, fetchImpl?: typeof fetch, limit: number = CRON_SUBREQUEST_BUDGET, aiPass: AiPassOpts = {},
+  providers: ProviderMap = PROVIDERS,
 ): Promise<void> {
   const when = new Date(scheduledTime);
   const minute = when.getUTCMinutes();
@@ -614,6 +620,11 @@ export async function handleRepoCron(
     const swept = await expireGifts(p, scheduledTime);
     if (swept.failed) console.error("repo cron", "plan gifts", `${swept.failed} failed; the next tick retries`);
   });
+  // Every tick with no heavy job: the AI pass (src/ai/pass.ts, docs/architecture/ai.md), AFTER the health
+  // pings and on what they left of the SAME budget — at most `AI_RUNS_PER_TICK` model calls across every
+  // org. Its job registry is empty today, so it returns before reading anything. A heavy tick (the usage
+  // polls, progress, reconcile) keeps its invocation to itself, as before.
+  if (heavy === null) await safely("ai pass", () => runAiPass(env, budget, { now: when, ...aiPass }));
 
   if (heavy === "usage") {
     // The hourly polls — and NOTHING else may join this tick: the slot exists

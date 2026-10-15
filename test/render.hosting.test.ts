@@ -194,8 +194,8 @@ describe("the tab, state by state (the sample payloads)", () => {
     expect(web).toContain('data-hx-status="connected"');
     expect(web).toMatch(/>Web<\/span>/);
     expect(web).toContain('data-act="orgHxPartEdit" data-arg="staging/web"');
-    // A status is a dot ELEMENT and a word, never a character.
-    expect(web).toMatch(/data-hx-status="connected"[^>]*><span aria-hidden="true" style="[^"]*border-radius:50%;background:var\(--green\)"><\/span>Connected</);
+    // A status is a mark (marks.ts: a shape in its kind's tone and the word), never a character or a chip.
+    expect(web).toMatch(/data-hx-status="connected"[^>]*>.*var\(--green\).*Connected</);
     expect(rowOf(html, 'data-org-part="production/docs"')).toContain('data-hx-status="not_connected"');
     // Legacy: the same row, a fixed key, and the pointer to Environments.
     const legacy = rowOf(html, 'data-org-part="staging/frontend"');
@@ -336,7 +336,7 @@ describe("providers and their connections", () => {
     expect(html).not.toContain('data-org-hosting-manual="fly"');
   });
 
-  it("a connection the PROVIDER ended: an amber banner, a Removed chip, Connect again — never after an admin's own Disconnect", () => {
+  it("a connection the PROVIDER ended: an amber banner, a Removed mark, Connect again — never after an admin's own Disconnect", () => {
     const html = tab(HOSTING_SAMPLES.revoked);
     expect(html).toContain('data-org-hosting-lost="vercel"');
     expect(html).toContain("Vercel is no longer connected");

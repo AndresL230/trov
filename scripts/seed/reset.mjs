@@ -17,15 +17,18 @@ export const RESET_STATEMENTS = [
   "DELETE FROM platform_outbox_bodies",
   // Support reports (0049_support_reports): a global table — no FK in or out.
   "DELETE FROM support_reports",
-  "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL, plan_gift_until = NULL",
+  "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL, plan_gift_until = NULL, ai_automation = 1",
   "DELETE FROM abuse_counters",
   // Sync GitHub runs (0046_sync_runs) reference orgs.
   "DELETE FROM sync_runs",
+  // AI (0055_ai): suggestions and "Wrong?" reference orgs.
+  "DELETE FROM ai_suggestions",
+  "DELETE FROM ai_feedback",
   "DELETE FROM org_usage_daily",
   "DELETE FROM org_admin_audit",
   "UPDATE orgs SET suspended_at = NULL, suspended_by = NULL, logo_sha = NULL, logo_source = NULL, logo_by = NULL, logo_from = NULL, logo_at = NULL",
   "DELETE FROM org_audit",
-  // Hosting (0052_hosting_providers): parts reference org_environments, so they go before it.
+  // Hosting (0056_hosting_providers): parts reference org_environments, so they go before it.
   "DELETE FROM hosting_poll_state",
   "DELETE FROM hosting_deploys",
   "DELETE FROM org_hosting_connections",
@@ -34,6 +37,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM org_keys",
   "DELETE FROM org_integration_config",
   "DELETE FROM org_environments",
+  "DELETE FROM org_github_installation_repos", // 0053_installation_repos: what a `selected` binding reaches
   "DELETE FROM org_github_installations", // 0043_github_app: an org's GitHub App installation
   "DELETE FROM org_repos",
   "DELETE FROM org_login_map",

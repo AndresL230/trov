@@ -22,7 +22,8 @@ import {
 } from "@shared/repo";
 import type { HostingPollOutcome, HostingProviderId } from "@shared/hosting";
 import type { Loadable } from "./render";
-import { esc, attr, statusBadge, SURFACE } from "./ui";
+import { esc, attr, SURFACE } from "./ui";
+import { kindMark, glyphMark, type Glyph, type StateKind } from "./marks";
 import { personChip, personLink, personNameLink } from "./people";
 import type { PersonSummary } from "./api";
 import { segmented } from "./segmented";
@@ -198,11 +199,23 @@ export function repoUpdatedLabel(p: Pick<RepoProps, "repo" | "fetchedAt">, now: 
   return mins < 1 ? "updated just now" : `updated ${mins}m ago`;
 }
 
+/** An environment's verdict (`RepoEnv.pill`, upper case on the wire) as a mark: its word, its kind's
+ *  shape and tone (marks.ts `kindMark`), and what it means — the repo-dashboard.md verdict rules. */
+const ENV_VERDICT: Record<string, { word: string; kind: StateKind; hint: string }> = {
+  HEALTHY: { word: "Healthy", kind: "good", hint: "Checks on the branch head pass, and no deploy part failed." },
+  DEGRADED: { word: "Degraded", kind: "warn", hint: "Checks are failing on the branch head." },
+  FAILING: { word: "Failing", kind: "bad", hint: "A deploy part failed." },
+  DOWN: { word: "Down", kind: "stopped", hint: "Its health ping says it cannot be reached." },
+  UNKNOWN: { word: "Unknown", kind: "waiting", hint: "No checks captured on the branch head yet." },
+};
+const envVerdict = (pill: string) => ENV_VERDICT[pill] ?? { word: pill.charAt(0) + pill.slice(1).toLowerCase(), kind: "waiting" as const, hint: "" };
+
 export function repoControls(p: RepoProps): string {
   const envs = okData(p, (d) => d.environments) ?? [];
   const pills = envs.map((e) => {
     const c = TONE[e.tone];
-    return `<span title="${attr(`${e.name} — ${e.pill.toLowerCase()}`)}" style="display:inline-flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;color:var(--fg-70)"><span class="repo-envdot${e.tone === "good" || e.tone === "neutral" ? "" : " repo-pulse"}" style="--c:${c};width:7px;height:7px;border-radius:50%;background:${c};box-shadow:0 0 0 3px color-mix(in srgb,${c} 16%,transparent)"></span>${esc(e.name)}</span>`;
+    const v = envVerdict(e.pill);
+    return `<span data-mtip="${attr(`${e.name}: ${v.word}.${v.hint ? ` ${v.hint}` : ""}`)}" style="display:inline-flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;color:var(--fg-70)"><span class="repo-envdot${e.tone === "good" || e.tone === "neutral" ? "" : " repo-pulse"}" style="--c:${c};width:7px;height:7px;border-radius:50%;background:${c};box-shadow:0 0 0 3px color-mix(in srgb,${c} 16%,transparent)"></span>${esc(e.name)}</span>`;
   }).join("");
   const busy = p.repo.status === "loading";
   // "Poll now" sits beside the refresh icon on EVERY tab and in every state of
@@ -237,11 +250,10 @@ function overviewTab(p: RepoProps): string {
   const now = Date.now();
   const envs = sec(p, (d) => d.environments, { nc: "Nothing captured for a configured environment yet. Cards appear once Org settings › Environments lists an environment and a health ping, a deploy or a head check lands for it — from the 10-minute check, the GitHub webhook, or an admin's Sync GitHub.", empty: "No environments recorded." }, (rows) =>
     `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${rows.map((e, i) => {
-      const c = TONE[e.tone];
       return `<div style="padding:20px 22px 10px;min-width:0;${i ? LEFT : ""}">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
           <span style="font-size:16.5px;font-weight:600;letter-spacing:-0.01em;flex:1">${esc(e.name)}${e.note ? ` <span style="font-size:11.5px;font-weight:500;color:var(--fg-40)">${esc(e.note)}</span>` : ""}</span>
-          ${statusBadge(e.pill, c)}
+          ${(({ word, kind, hint }) => kindMark(word, kind, 12.5, hint || null))(envVerdict(e.pill))}
         </div>
         ${e.parts.map((pt) => kv(pt.part === "backend" ? "Backend" : "Frontend",
           pt.sha
@@ -263,7 +275,7 @@ function overviewTab(p: RepoProps): string {
       const c = g.kind === "pr" ? "var(--accent)" : g.kind === "behind" ? "var(--red)" : "var(--fg-55)";
       return `<div>
         <div style="display:flex;align-items:center;gap:9px;padding:10px 22px;${TOP};background:color-mix(in srgb,var(--fg) 2%,transparent)">
-          <span style="font-family:var(--label);font-size:11px;font-weight:600;color:${c};background:color-mix(in srgb,${c} 12%,transparent);border-radius:5px;padding:1px 7px;flex:none">${esc(g.tag)}</span>
+          <span style="font-family:var(--label);font-size:11.5px;font-weight:600;color:${c};flex:none">${esc(g.kind === "pr" ? g.tag : g.tag.charAt(0) + g.tag.slice(1).toLowerCase())}</span>
           <span style="font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(g.title)}</span>
           <span style="font-size:11.5px;color:var(--fg-40);flex:none;margin-left:auto;white-space:nowrap">${esc(g.meta)}</span>
         </div>
@@ -311,16 +323,20 @@ function overviewTab(p: RepoProps): string {
 }
 
 // ── Code ─────────────────────────────────────────────────────────────────────
-const M_CHIP = "font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;border-radius:5px;padding:2px 7px;white-space:nowrap;color:var(--fg-40);border:1px solid var(--border);background:transparent";
-const PR_STATE: Record<RepoPrState, [string, string | null]> = {
-  draft: ["DRAFT", null], review: ["IN REVIEW", "var(--blue)"], approved: ["APPROVED", "var(--green)"],
-  merged: ["MERGED", "var(--accent)"], closed: ["CLOSED", null],
+/** A pull request's state as the progress glyphs (marks.ts): it fills as the PR moves toward merge,
+ *  and a closed one is the cross. */
+const PR_STATE: Record<RepoPrState, { word: string; glyph: Glyph; tone: string; hint: string }> = {
+  draft: { word: "Draft", glyph: "todo", tone: "var(--fg-55)", hint: "Not ready for review yet." },
+  review: { word: "In review", glyph: "half", tone: "var(--blue)", hint: "Waiting on a review." },
+  approved: { word: "Approved", glyph: "most", tone: "var(--green)", hint: "Approved, not merged yet." },
+  merged: { word: "Merged", glyph: "done", tone: "var(--accent)", hint: "Merged." },
+  closed: { word: "Closed", glyph: "declined", tone: "var(--fg-40)", hint: "Closed without merging." },
 };
 const CHECKS = { pass: ["✓", "var(--green)", "all checks passing"], fail: ["✕", "var(--red)", "checks failing"], run: [GDOT, "var(--amber)", "checks running"] } as const;
 
 function prRow(pr: RepoPr, now: number, persons: PersonSummary[] = []): string {
-  const [text, color] = PR_STATE[pr.state];
-  const chip = color ? statusBadge(text, color) : `<span style="${M_CHIP}">${text}</span>`;
+  const st = PR_STATE[pr.state];
+  const chip = glyphMark(st.glyph, st.tone, st.word, 12, st.hint);
   const ck = pr.checks ? CHECKS[pr.checks] : null;
   return `<a href="${attr(safeUrl(pr.url))}" target="_blank" rel="noopener" class="repo-row" style="display:flex;align-items:center;gap:12px;padding:8px 20px;border-bottom:1px solid var(--border);color:inherit;text-decoration:none">
     <span title="${attr(who(pr.author))}" style="flex:none">${avatar(pr.author, 22, persons)}</span>
@@ -370,7 +386,7 @@ function codeTab(p: RepoProps): string {
       <span style="font-family:var(--label);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</span>
       <span style="font-size:11.5px;color:var(--fg-40);white-space:nowrap">${esc(ago(r.at, now))} ago</span>
       <span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55);white-space:nowrap">+${r.ahead} / −${r.behind}${b.head ? ` vs ${esc(b.head)}` : ""}</span>
-      <span style="text-align:right">${r.stale ? `<span style="font-family:var(--label);font-size:9.5px;font-weight:600;letter-spacing:.04em;color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 45%,transparent);background:color-mix(in srgb,var(--amber) 12%,transparent);border-radius:5px;padding:1px 5px;flex:none">STALE</span>` : ""}</span>
+      <span style="text-align:right">${r.stale ? kindMark("Stale", "warn", 11.5, "No commit in 14 days.") : ""}</span>
     </div>`).join(""));
 
   return `<div ${rise(0)}>${okData(p, (d) => d.codeStats) ? tiles : `<div style="padding:6px 20px">${tiles}</div>`}</div>
@@ -937,10 +953,10 @@ function usageTab(p: RepoProps): string {
 // ── Team & Planning ──────────────────────────────────────────────────────────
 function planningTab(p: RepoProps): string {
   const sprint = sec(p, (d) => d.sprint, { nc: "Sprints aren't connected.", empty: "No sprint is active — mark one active on the Roadmap.", lines: 2 }, (sp) => {
-    const due = sp.due ? new Date(sp.due).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).toUpperCase() : null;
+    const due = sp.due ? new Date(sp.due).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : null;
     return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span style="${LABEL}">Current sprint</span>
-        ${due ? `<span style="margin-left:auto;font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--fg-55);border:1px solid var(--border);border-radius:5px;padding:2px 7px;white-space:nowrap">DUE ${esc(due)}</span>` : ""}
+        ${due ? `<span style="margin-left:auto;font-size:12px;color:var(--fg-55);white-space:nowrap">Due ${esc(due)}</span>` : ""}
       </div>
       <div style="display:flex;align-items:center;gap:12px;margin-top:10px">
         <button data-act="openSprint" data-arg="${sp.id}" class="repo-quiet" style="font-size:16.5px;font-weight:600;letter-spacing:-0.01em;min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;padding:0">${esc(sp.label)}</button>
@@ -1064,7 +1080,7 @@ export function repoView(p: RepoProps): string {
   const info = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="1.8" style="flex:none"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>`;
   const banner = p.sample
     ? `<div class="cnpy-rise" style="display:flex;align-items:center;gap:9px;margin-bottom:16px;font-size:12.5px;color:var(--fg-55)">${info}
-        <span><span style="font-family:var(--label);font-size:11.5px;color:var(--fg);background:var(--hover);border:1px solid var(--border);border-radius:4px;padding:0 5px">sample data</span> — every section shown with placeholder values, not this repo's.</span>
+        <span><strong style="font-weight:600;color:var(--fg)">Sample data</strong> — every section shown with placeholder values, not this repo's.</span>
         <button data-act="repoSampleOff" class="repo-textbtn" style="margin-left:auto;font-size:12.5px;font-weight:500;color:var(--accent);padding:0;white-space:nowrap">Back to live data</button>
       </div>`
     : p.repo.data?.degraded

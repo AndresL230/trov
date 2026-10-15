@@ -219,13 +219,5 @@ describe("signed one-click unsubscribe (/u/:token) — no cookie", () => {
     expect(res.status).toBe(401);
     expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'u1'`))!.email_unsubscribed).toBe(0);
   });
-
-  it("GET redirects to the in-app (cookie-gated) unsubscribe screen without flipping anything", async () => {
-    await seedPerson("u1", { name: "U", email: "me@example.com" });
-    const token = await unsubscribeToken("u1", "test-cookie-secret");
-    const res = await worker.fetch(new Request(`https://trov.example/u/${token}`), wenv, ctx);
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("https://trov.example/#unsubscribe");
-    expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'u1'`))!.email_unsubscribed).toBe(0);
-  });
+  // The GET page, the confirm POST and the rest: test/notifications.unsubscribe.test.ts.
 });

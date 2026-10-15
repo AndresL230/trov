@@ -19,7 +19,7 @@ const ok = <T,>(data: T) => ({ status: "ok" as const, data });
 const org = (role: OrgRole = "owner"): MyOrg => ({ slug: "acme", name: "Acme Robotics", role });
 
 const inst = (o: Partial<GithubInstallationDTO> = {}): GithubInstallationDTO => ({
-  installation_id: 5551234, account_login: "acme-gh", account_type: "Organization", repository_selection: "selected", connected_by: "andres",
+  installation_id: 5551234, account_login: "acme-gh", account_type: "Organization", repository_selection: "selected", repo_access: "all", connected_by: "andres",
   connected_at: "2026-10-05T10:00:00.000Z", suspended_at: null, last_used_at: "2026-10-07T01:00:00.000Z", last_error: null,
   manage_url: "https://github.com/organizations/acme-gh/settings/installations/5551234", ...o,
 });
@@ -199,6 +199,20 @@ describe("Repositories — connected", () => {
     expect(failed).toContain('data-act="orgGithubReposReload"');
     expect(text(page(connected({ githubRepos: ok({ ...available(many), total: 900, truncated: true }) })))).toContain(`Showing the first ${many.length} of 900.`);
   });
+  it("a binding that reaches only what its admin could read says so, and offers connecting again to add more", () => {
+    const app = status({ installation: inst({ repo_access: "selected", connected_by: "olive" }) });
+    const html = page(ui(app, { repos: ok([repo("acme-gh/web", { is_primary: true, connection: "app" })]), githubRepos: ok(available(["acme-gh/web", "acme-gh/api"], ["acme-gh/web"])), openRows: ["github-app"] }));
+    const at = html.indexOf("data-org-github-picker");
+    const picker = html.slice(at, html.indexOf("</section>", at));
+    expect(text(picker)).toContain("These are the repositories olive could read on acme-gh when connecting it.");
+    expect(picker).toContain('href="/api/o/acme/github/install?existing=1&amp;account=acme-gh"');
+    expect(text(html)).toContain("this organization can read the repositories of acme-gh that olive could read on GitHub when connecting it");
+    // Every one of them tracked: the note is still there. A binding that spans the installation has none.
+    const all = page(ui(app, { githubRepos: ok(available(["acme-gh/web"], ["acme-gh/web"])) }));
+    expect(all).toContain('data-org-github-picker="empty"');
+    expect(all).toContain("data-org-github-reach");
+    expect(page(connected())).not.toContain("data-org-github-reach");
+  });
   it("the connection is ONE row: Test connection in view; Manage on GitHub and Disconnect (as quiet text) behind it", () => {
     const html = page(connected({ openRows: ["github-app"] }));
     const at = html.indexOf('data-org-github-app="connected"');
@@ -254,7 +268,7 @@ describe("Repositories — suspended, a repository no longer visible, and a bind
     expect(html).not.toContain("data-org-github-picker");
     expect(html).not.toContain("data-org-lasterror"); // the banner and the chip already say it
     expect(html).toContain('data-act="orgGithubTest"');
-    expect(installationStatus(app.installation!)).toEqual({ word: "Suspended", tone: "var(--amber)" });
+    expect(installationStatus(app.installation!)).toMatchObject({ word: "Suspended", kind: "warn" });
   });
   it("a repository the installation can no longer see is marked on its row, in its details and in the lead", () => {
     const html = page(ui(status({ installation: inst() }), {
@@ -326,10 +340,8 @@ describe("the sentence after a return from GitHub", () => {
     expect(connectNoticeCopy({ outcome: "connected", accounts: [] }, "Acme").tone).toBe("ok");
     expect(isGithubConnectOutcome("connected")).toBe(true);
     expect(isGithubConnectOutcome("<script>")).toBe(false);
-    // A partial reader is told HOW MANY repositories they cannot read (never which); too large an installation, what to do.
-    expect(connectNoticeCopy({ outcome: "partial_access", accounts: [], missing: 3 }, "Acme").body).toContain("cannot read 3 of the repositories that installation covers");
-    expect(connectNoticeCopy({ outcome: "partial_access", accounts: [], missing: 1 }, "Acme").body).toContain("cannot read 1 of the repository that installation covers");
-    expect(connectNoticeCopy({ outcome: "partial_access", accounts: [] }, "Acme").body).toContain("cannot read every repository that installation covers");
+    // Someone who reads none of it is told what to ask for; too many readable repositories, what to do.
+    expect(connectNoticeCopy({ outcome: "no_access", accounts: [] }, "Acme").body).toContain("cannot read any repository that installation covers");
     expect(connectNoticeCopy({ outcome: "too_many_repos", accounts: [] }, "Acme").body).toContain("Only select repositories");
     // An org's name is escaped inside a notice.
     expect(connectNoticeCopy({ outcome: "requested", accounts: [] }, "<b>x</b>").body).toContain("&lt;b&gt;x&lt;/b&gt;");

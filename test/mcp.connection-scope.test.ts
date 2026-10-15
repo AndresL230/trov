@@ -18,7 +18,7 @@ import { registerClient } from "../src/auth/oauth";
 import { removeMember } from "../src/orgs/repo";
 import { limitUse } from "../src/plans/gate";
 import { normalizeRepoRef, normalizeOrgSlug } from "@shared/repo-ref";
-import { consentPage, defaultConsentChoice } from "../src/auth/oauth-pages";
+import { consentPage, defaultConsentChoice, isWebClient } from "../src/auth/oauth-pages";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import { addOrgRepo } from "./helpers/org-config";
 import { ORG_A, ORG_B, ensureMember, mintTokenFor, platformCtx, tenantCtx } from "./helpers/tenant";
@@ -645,6 +645,14 @@ describe("the consent page — how the connection picks an organization", () => 
     const many = Array.from({ length: 6 }, (_, i) => ({ slug: `org-${i}`, name: `Org ${i}` }));
     expect(defaultConsentChoice(many)).toEqual({ mode: "repo", orgs: ["org-0"], current: "org-0" });
     expect(defaultConsentChoice(three).orgs).toEqual(["acme", "saplinglearn", "third"]);
+    // An app in a browser tab (claude.ai) is in no repository: Manual is preselected and recommended.
+    expect([isWebClient("claude.ai"), isWebClient("Claude.com"), isWebClient("app.claude.ai"), isWebClient("localhost"), isWebClient("notclaude.ai")]).toEqual([true, true, true, false, false]);
+    expect(defaultConsentChoice(three, true)).toEqual({ mode: "manual", orgs: ["acme", "saplinglearn", "third"], current: "acme" });
+    const onWeb = consentPage({ ...base, redirectHost: "claude.ai", orgs: three });
+    expect(onWeb).toMatch(/name="mode" value="manual" form="consent" checked/);
+    expect(onWeb).not.toMatch(/name="mode" value="repo" form="consent" checked/);
+    expect(onWeb).toMatch(/Manual<span class="rec">Recommended<\/span>/);
+    expect(onWeb).toContain("This app is not in one");
     const one = consentPage({ ...base, orgs: [three[0]] });
     expect(defaultConsentChoice([three[0]])).toEqual({ mode: "manual", orgs: ["acme"], current: "acme" });
     expect(one).toContain(`<input type="radio" name="mode" value="manual" form="consent" checked>`);

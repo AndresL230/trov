@@ -17,28 +17,40 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   session; anyone else → onboarding (a sealed 10-minute `onboard` cookie; the person row is created only on
   `POST /auth/onboard` with handle + color). Link mode (`?link=1` with a session) attaches a second provider in
   Settings; the last identity can't be unlinked.
-- **Bearer token** (agents, `/mcp`): either a pasted per-person `canopy_mcp_` token (stored hashed) or an
-  OAuth access token (`canopy_oat_`) obtained through Trov's own OAuth server — both resolve to a
+- **Consent at sign-up** (the compliance pass, 2026-10-12; words in `shared/legal-core.ts`): every place a
+  provider button can create an account says "By continuing you agree to the Terms of Service and Privacy
+  Policy, and confirm you are 16 or older" (`consentHtml`) — the landing's sign-in / Get started dialog, the
+  refused-Google card, the MCP OAuth sign-in page — and onboarding, where the person row IS created, has an
+  unchecked, required checkbox (`onbAgree`, `OnboardState.agreed`; never pre-ticked) that Continue waits for.
+  Editing an existing account from the welcome card asks nothing. The agreement is enforced in the SPA only:
+  `POST /auth/onboard` neither requires nor records it (recording the time and the Terms version is an owner's
+  decision). Age is 16+ (`MIN_AGE`), confirmed, never verified.
+- **Bearer token** (agents, `/mcp`): either a pasted per-person `trov_mcp_` token (stored hashed) or an
+  OAuth access token (`trov_oat_`) obtained through Trov's own OAuth server (the prefixes minted before the
+  rename, `canopy_mcp_` / `canopy_oat_`, still resolve) — both resolve to a
   connection in `resolveBearerConnection` (`src/data/bearer.ts`), so OAuth is how a bearer is OBTAINED, not a
   fourth class. **Each call acts in ONE org, chosen only among the person's live memberships**: a token's one
   org; a `manual` connection's current org (of the set its person allowed); or, for a connection that
   `follows the repository`, the org that has the call's `repo` connected — else nothing is read or written.
   Removed member, suspended org → that org drops out at once; nowhere left → 401 (the full rule:
   `docs/architecture/data-layer.md` § Bearer).
-  **The Settings UI is OAuth-only** (the owner's call, 2026-09-27): nothing in the SPA mints, lists or revokes a
-  `canopy_mcp_` token any more — the Get connection command modal, the token list and their web client calls are
-  gone. The token routes REMAIN, so a token already in use keeps working: `POST /auth/mcp-token` still mints,
-  `GET /auth/mcp-tokens` lists the caller's live tokens by `token_hint` (the first 4 characters of the random
-  part), and `POST /auth/mcp-tokens/:id/revoke` soft-revokes the caller's OWN token — someone else's id is the
-  same 404 as an unknown one. All three are session-cookie routes, never MCP tools, with no screen in front of
-  them. Settings › MCP access (`mcpAccessSection` in `web/src/render.ts`) has, beside its heading, a quiet
+  **Connecting is browser sign-in only** (the owner's call, 2026-09-27): nothing in the SPA MINTS a pasted
+  token any more — the Get connection command modal is gone. The token routes REMAIN, per org, so a token
+  already in use keeps working: `POST /api/o/:slug/mcp-tokens` still mints (no screen calls it),
+  `GET /api/o/:slug/mcp-tokens` lists the caller's live tokens for that org by `token_hint` (the first 4
+  characters of the random part), and `POST …/mcp-tokens/:id/revoke` soft-revokes the caller's OWN token —
+  someone else's id is the same 404 as an unknown one (`src/auth/token-routes.ts`; `/auth/mcp-token…` is the
+  cut-over alias for a person with exactly one org). All three are session-cookie routes, never MCP tools.
+  Settings › MCP access shows the list-and-revoke half only: "Access tokens for <org>" (`tokenListBody`), drawn
+  when the person still has a live token there, with a two-click Revoke and a line saying Trov no longer
+  creates tokens. Settings › MCP access (`mcpAccessSection` in `web/src/render.ts`) has, beside its heading, a quiet
   "Set it up without the plugin" link that opens a MODAL (`mcpSetupModal`, `state.mcpSetup`: the confirmation
   modal's `.cnpy-cmodal` shell as a root-level `data-overlay`, focus in on open and back to the link on close,
   the backdrop / × / Escape close it, a bottom sheet on a phone) holding the by-hand
   `claude mcp add --transport http --scope user trov <origin>/mcp` (`browserConnectCommand`, no header) with a
   Copy button and the `/mcp` → Authenticate follow-up — so using it never changes the tile's height. The tile
   then reads top to bottom: one line of what it is; the browser sign-in as three steps — install the
-  plugin (`PLUGIN_INSTALL`, the same two commands the Get Started guide shows), `/mcp` → trov → Authenticate,
+  plugin (`PLUGIN_INSTALL`, the same two commands the Guide shows), `/mcp` → trov → Authenticate,
   click Allow in the browser; then **Connected apps** (the OAuth grants — below the steps, or beside them once
   the tile is ≥ 620px, the `cnpy-mcp` container — with a count, its own empty state, a two-click Revoke per row
   and its first `MCP_LIST_CAP` (3) rows until "Show all N"; no fixed height, no inner scroller).
@@ -67,7 +79,11 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   | Account, then Appearance and MCP access at full width), and a phone is one column. `/mcp` is **bearer-only**; its `401` carries
   `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource"` (plus
   `error="invalid_token"` when a token was presented), which is how Claude Code and claude.ai discover
-  sign-in. A fresh `McpServer` is constructed per request
+  sign-in; its JSON body is `{ error: "unauthorized", hint }`, the hint saying how to sign in (the same words for
+  every refused token, so it tells nothing about one — `shared/error-hints.ts`, `web-ui.md` › Errors an agent can
+  act on). Which clients that serves, and their config, is the public `/docs/connect` (`web/src/docs-content.ts`):
+  the OAuth server takes only https and loopback-http redirects, so a client registering a custom scheme (an
+  older Cursor's `cursor://`) is refused at registration — say so there if that changes. A fresh `McpServer` is constructed per request
   (SDK ≥1.26 guards against reuse); `createMcpHandler` is stateless (no Durable Object / McpAgent).
 - **MCP OAuth** (`src/auth/oauth.ts` core, `oauth-routes.ts` HTTP, `oauth-pages.ts` pages; spec
   `docs/superpowers/specs/2026-09-24-mcp-oauth-design.md`; migration `0029_oauth`): RFC 9728/8414 metadata,
@@ -75,7 +91,9 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   PKCE, a server-rendered consent page shown on EVERY authorization (CSRF = HMAC over session + request).
   **The consent page asks how the connection picks an organization** (0051; `consentPage`, no script — the
   org list shows and hides on which mode radio is checked): *Follow the repository* (recommended and
-  preselected when the person has several orgs: "works in whichever of your organizations has the repository
+  preselected when the person has several orgs — except for a client in a browser tab, `isWebClient`: a
+  redirect to `claude.ai` / `claude.com`, a claude.ai custom connector, which is in no repository, so
+  *Manual* is preselected and recommended there and the row says why: "works in whichever of your organizations has the repository
   you are in connected; anywhere else it reads and writes nothing") or *Manual* (a tick per organization — all
   ticked up to `CONSENT_TICK_ALL_MAX`, at least one required — and which one it "starts here"; with one org it
   is named and sent hidden). Above the choice the page says WHO is approving — "Signed in as <name>
@@ -140,6 +158,15 @@ Every `recorded_by` / `created_by` / `user_id` is a handle. Migrated GitHub user
 overwritten by edits or promotions (`updated_by` is the last promoter) — listed in `HANDLE_COLUMNS`; there is no
 route to change it yet.
 
+**Deleting an account** (Settings › Delete account; `src/deletion/person.ts`; the whole rule, the guard rails
+and what is kept: `organizations.md` §8) reuses `HANDLE_COLUMNS`: the person's own rows — identities, sessions,
+MCP tokens, OAuth connections, notification prefs and outbox, memberships, attribution map, superadmin role —
+are deleted, and every other column holding the handle is rewritten to a TOMBSTONE, `deleted-<random>`, in one
+batch; the `persons` row itself becomes that tombstone ("Deleted user", no e-mail, photo or profile). So a new
+column holding a handle must be in `HANDLE_COLUMNS` for a rename AND a deletion to reach it. `deleted-…`
+handles are reserved (`handleAvailable` answers `reserved`), so no new person can take one. After a deletion,
+the same GitHub or Google account signs in as a NEW person (no identity, no verified address left to link on).
+
 ## People profiles — an avatar, a role, responsibilities (`0036_person_profiles`; contract `shared/people.ts`)
 
 Three nullable person fields, written directly (no gate, no staging) by `src/tools/people.ts`:
@@ -160,7 +187,8 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   sha256 via Web Crypto, bytes in R2 (`ARTIFACTS_BUCKET`) at `avatars/<sha256>` with R2's own sha256 check and the
   SNIFFED type as `httpMetadata.contentType` — skipped when that object already exists. Returns `{ ok, avatar_url }`.
   `POST /api/people/me/avatar/remove` only clears `avatar_sha` (returns the picture that now shows); the bytes are
-  immutable and never deleted, like doc images. There is no avatars table: the R2 object's metadata is the type.
+  immutable and stay, like doc images — until the account is DELETED, when they go if no other person's
+  `avatar_sha` is the same bytes (`src/deletion/r2.ts`). There is no avatars table: the R2 object's metadata is the type.
 - **Serving** `GET /avatar/<sha>` (session-gated, beside `/img/<sha>` and exactly like it): `nosniff`,
   `default-src 'none'; sandbox`, `Cache-Control: private, max-age=31536000, immutable`; 404 for a malformed sha,
   no object, or a stored type outside `AVATAR_TYPES`.
@@ -184,7 +212,7 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   name — the ticket rail's people, Feed authors, quick search's person hits, Org settings › Members' rows — opens the
   **person card** (`personCardModal`, `web/src/profile.ts`): a modal in the confirm modal's `.cnpy-cmodal` shell,
   rendered at the app root (`state.personCard`), with the large avatar, name, handle and role painted at once from
-  `GET /persons`, then joined / GitHub / the admin badge when `GET /api/people/:handle` lands; the backdrop, × and
+  `GET /persons`, then joined / GitHub / "Admin" (plain text) when `GET /api/people/:handle` lands; the backdrop, × and
   Escape close it, and one's OWN card links to Settings (photo, name). Role + responsibilities are edited in ONE place: Org settings › Members, where
   an admin's "Edit" opens `memberEditor` (`web/src/org-settings.ts`) under that row. Settings › Profile uploads a photo (center-cropped, ≤ 512px, WebP/PNG in the browser before
   the POST — so a GIF loses its animation) and removes one (shown only for an `/avatar/` URL) — both from a small

@@ -2,14 +2,14 @@
 
 Spec: `canopy-multitenancy.md` §4–§8. Code: `src/data/`, `src/routes.ts`. Phases 3–5 are complete: every statement in `src/` runs
 through a context, every tenant statement names its org, and `test/data-layer.static.test.ts` enforces both.
-What is left (Phase 7 cleanup) and the deploy runbook: `HANDOFF.md`. Rate limits and mail: `abuse-limits.md`.
+What is left for the Phase 7 cleanup: "What is still org #1's alone" below. The deploy runbook: `HANDOFF.md`. Rate limits and mail: `abuse-limits.md`.
 The flow a human operator follows — add an org, name its admin, set it up, invite the team: `organizations.md`.
 
 ## The two contexts
 
 | | Type | Built by | Query surface |
 |---|---|---|---|
-| Tenant data | `TenantContext { orgId, userId, role, via }` | `resolveTenant` (slug + membership), `resolveTenantById` (a credential that names its org), `resolveSoleTenant` (cut-over alias: the caller's one org), `liveTenants` (a bearer connection's reach — `src/data/bearer.ts` picks one per call), `systemTenant(p, orgId, actor)` | `src/data/sql.ts` |
+| Tenant data | `TenantContext { orgId, userId, role, via }` | `resolveTenant` (slug + membership), `resolveTenantById` (a credential that names its org), `resolveSoleTenant` (cut-over alias: the caller's one org), `liveTenants` (a bearer connection's reach — `src/data/bearer.ts` picks one per call), `systemTenant(p, orgId, actor)`, `catalogTenant(role)` (NO org and NO database — any read through it throws; only `src/mcp-catalog.ts`, which registers the MCP tools to describe them) | `src/data/sql.ts` |
 | Platform data | `PlatformContext { actor }` | `platform(env, actor)` | `src/data/platform-sql.ts` |
 
 Both surfaces export the same helpers — `first`, `all`, `run`, `stmt`, `batch`, `fanOut`, plus `nowIso`, `ph`,
@@ -128,13 +128,16 @@ org of the context that produced it.
 
 ## Which tables are which
 
-The lists are derived from the live schema — every table with an `org_id` column is **org-keyed**.
+The lists are derived from the live schema — every table with an `org_id` column is **org-keyed**. Every one
+of them is also in `ORG_TABLES` (`src/deletion/tables.ts`), what an organization's deletion deletes by
+`org_id`: `test/deletion.org.test.ts` fails when a migration adds an `org_id` table that list does not name.
 
 - **Tenant tables**: every org-keyed table except the five below. That includes all content tables and their
   FTS tables, the per-user-per-org tables (`mcp_tokens`, `oauth_grants`, `oauth_codes`, `notification_*`), and an
   org's own configuration: `org_repos`, `org_environments`, `org_integration_config`, `org_login_map`,
   `org_secrets`, `org_keys`, `org_audit` (read through a tenant ctx by `src/integrations/*`, `src/data/secrets.ts`)
-  and `org_github_installations` (0043_github_app — the org's GitHub App installation, `src/github-app/store.ts`).
+  and `org_github_installations` (0043_github_app — the org's GitHub App installation, `src/github-app/store.ts`), and the
+  AI tables `ai_suggestions` / `ai_feedback` (0055, read and written by `src/data/ai.ts`).
 - **Platform-owned org-keyed tables**: `memberships`, `org_invites`, `org_counters`, `org_usage_daily`,
   `org_admin_audit` — an org's place on the platform, written by `src/orgs`, `src/platform`, `src/data/meter.ts`.
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.
@@ -184,15 +187,18 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 | Where | Why |
 |---|---|
 | `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture` (incl. `hosting_deploys`), `pruneSyncRuns`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
-| `src/platform/jobs.ts` (`org_repos`, `org_environments`, `org_github_installations`, `org_hosting_connections`) | the cron's unit lists, the webhook's hook lookup and the installation → org lookups — the GitHub App's (`installationOrg`) and a hosting provider's (`connectionsForExternalId`: the uninstall notice, and the connect callback's one-org-per-installation check) — before any org is known — ids, a scope, an environment key and a repo name |
+| `src/platform/jobs.ts` (`org_repos`, `org_environments`, `org_github_installations`, `org_github_installation_repos`, `org_hosting_connections`) | the cron's unit lists, the webhook's hook lookup, the GitHub App's lookups before any org is known, or past one (`installationOrgs`, `installationRepoOrgs` — 0053: which orgs an installation serves, and which of them a repository's delivery goes to), and a hosting provider's installation → org lookup (`connectionsForExternalId`: the uninstall notice, and the connect callback's one-org-per-installation check) — ids, an environment key and a repo name |
 | `src/platform/repo.ts` `listPlatformOrgs` (`org_github_installations`) | the superadmin's org list: the GitHub account an org's installation is on — a name |
-| `src/platform/jobs.ts` `listPartUnits` (`org_environment_parts`) | the `hosting` job's units (0052): env / part keys and a provider id — the part's settings are re-read by the unit as its org's tenant |
+| `src/platform/jobs.ts` `listPartUnits` (`org_environment_parts`) | the `hosting` job's units (0056): env / part keys and a provider id — the part's settings are re-read by the unit as its org's tenant |
 | `src/auth/tokens.ts` `resolveToken`; `src/auth/oauth.ts` `resolveOAuthAccessToken`, `exchangeAuthorizationCode`, `refreshAccessToken`, `revokeOAuthToken`, `grantRefusal`, `GRANT_STANDING` | credential lookup by HASH before any org is known (the row names the grant), its standing over the orgs it can reach, and the revoke of the one grant just found |
 | `src/auth/oauth.ts` `listGrants`, `revokeGrant`, `ownGrant`, `setGrantMode` | Connected apps is user-level: a person's own grants across their orgs, keyed by id AND person |
 | `src/auth/oauth.ts` `issueRepoAuthorization` | a grant that follows the repository is the person's and no org's: written with `org_id` '' |
 | `src/artifacts/upload.ts` `uploadTokenOrg` | upload-token lookup by hash, returning only its `org_id` |
 | `src/platform/usage.ts` (whole file); `src/platform/repo.ts` `listAudit` (`org_audit`) | the superadmin's cross-org counts and merged audit trail — no content, no secret |
 | `src/orgs/repo.ts` `removeMember` | ends the removed person's credentials' reach into that org, in the same batch (tokens revoked, each grant's row for the org dropped, a grant left with no org revoked) |
+| `src/deletion/person.ts` `personStmts` (also interpolated), `addressesOf` | an ACCOUNT's deletion (`organizations.md` §8): the person's own tokens, connections, digests, prefs and attribution rows in every org, by person; the handoff feed line that names them; the `HANDLE_COLUMNS` rewrite to the tombstone, like a rename |
+| `src/deletion/r2.ts` `stillReferenced` | before an R2 object is deleted: does ANY org's row (or upload token) still point at its sha — a yes/no |
+| `src/deletion/tables.ts` `orgRowDeletes` (interpolated, tenant) | `DELETE FROM <t> WHERE org_id = ?` over `ORG_TABLES`, on the org's own system context |
 | `src/auth/persons.ts` `renamePerson` (interpolated) | the `HANDLE_COLUMNS` update — a rename must span every org |
 | `src/tools/artifacts.ts` `normalizeLinkRef` (interpolated, tenant) | `tickets WHERE number` or `sprints WHERE id` from a two-value literal, with `org_id = ?` |
 | `src/tools/progress.ts` upsert on `sprint_progress` | its PK is `sprint_id` alone; guarded by `WHERE sprint_progress.org_id = excluded.org_id` (asserted) |
@@ -206,8 +212,9 @@ belongs to) through `src/platform/jobs.ts`, then does its work as that org's `sy
 |---|---|---|
 | repo cron `handleRepoCron` (`src/repo/cron.ts`) | `listEnvUnits` / `listRepoUnits` — every non-suspended org | `systemTenant(p, org, "system")` per unit |
 | digest crons `handleNotificationCron` (`src/notifications/cron.ts`) | `listActiveOrgIds` | the same, per org |
+| the AI pass `runAiPass` (`src/ai/pass.ts`, from the repo cron on every tick with no heavy job — `ai.md`) | `listActiveOrgIds`, rotated on `cron_cursor` job `ai_pass` — and NOTHING is read while its job registry is empty (today) | `systemTenant(p, org, "system")` per org; meter rows as actor `ai-pass` |
 | `POST /webhook/github/:hookId`, legacy `/webhook/github` (`src/github-hook.ts`) | `hookRepo(p, id)` / `legacyHookRepo(p)` | `systemTenant(p, row.org_id, "github-webhook")` |
-| `POST /webhook/github/app` — the GitHub App's one endpoint (`src/github-app/webhook.ts`, `github-app.md`) | `installationOrg(p, <the delivery's installation id>)` | the same |
+| `POST /webhook/github/app` — the GitHub App's one endpoint (`src/github-app/webhook.ts`, `github-app.md`) | `installationOrgs(p, <the delivery's installation id>)` for the installation's own events, `installationRepoOrgs(p, <installation id>, <repository>)` for a repository's | the same |
 | repo cron `hosting` job at `:40` (`src/repo/cron.ts`, `src/hosting/poll.ts`) | `listPartUnits` — one per (org, environment, stored part) | `systemTenant(p, org, "system")` per unit |
 | `POST /webhook/hosting/:provider` (`src/hosting/webhook.ts`) | `connectionsForExternalId(p, provider, id)` after the provider's signature is verified | `systemTenant(p, org, "system")` per org — `systemRevocationDeleteStmts` deletes the secret |
 | `GET /hosting/:provider/callback` (`src/hosting/connections.ts`) | the HMAC-sealed intent in the `trov_hx` cookie, then a LIVE membership check of the signed-in admin (`resolveTenantById`) | that admin's own session tenant — a public path that reads the session cookie itself; exactly `/hosting/<provider>/callback` is a platform path in `src/data/gate.ts` |
@@ -223,6 +230,9 @@ that job, while the unit's worst-case cost still fits `CRON_SUBREQUEST_BUDGET` (
 really spent is counted through the budget's own `fetch`) and `CRON_WALL_BUDGET_MS` (8 min) is not spent;
 then it stores the last key served (`''` once every unit was served — so with few orgs the cursor is never
 written). `health` goes first and may use at most half the budget on a tick that also has a heavy job.
+On a tick with NO heavy job the AI pass (`src/ai/pass.ts`, `ai.md`) runs after the health pings on what they left
+of the same budget — at most `AI_RUNS_PER_TICK` (12) model calls across every org, one subrequest each — with its
+own cursor (`ai_pass`, one unit per org, keyed `<org>`), written only when a tick stops before the last org.
 Queues stay a deferred seam: a unit runner (`runEnvJob(env, orgId, envKey, job, now)`,
 `runOrgJob(env, orgId, job, now)`) is what a consumer would call, unchanged.
 
@@ -310,8 +320,9 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
 
 - **Sign-in** (§5.1, `src/auth/onboard.ts`): no GitHub org is checked. A known identity signs in; a new identity
   whose provider-VERIFIED email is another identity's `verified_email` is linked to that person (never
-  `persons.email`, which is an editable notification address); otherwise GitHub always reaches onboarding and
-  Google only with a pending invite for its verified email. `identities.verified_email` is written at every
+  `persons.email`, which is an editable notification address); otherwise the identity reaches onboarding —
+  sign-up is OPEN: any GitHub account, and any Google account whose address Google has verified (an
+  unverified Google address is refused before the fork). No invite is needed (`auth-identity-people.md`). `identities.verified_email` is written at every
   sign-in; `identities.provider_uid` (0042_organizations) pins a GitHub identity to the account's numeric id, and a sign-in
   with the same login but another id is refused.
 - **Onboarding creates a person, never a membership** — a new person accepts an invite (`/api/invites`) or creates

@@ -7,16 +7,17 @@
  * purchase link.
  */
 import { describe, it, expect } from "vitest";
-import { OFFERED_PLAN_IDS, PLANS, PLAN_IDS, LIMIT_KEYS, LIMITS, formatLimit, type PlanDef, type PlanId } from "../shared/plans";
+import { OFFERED_PLAN_IDS, PLANS, PLAN_IDS, LISTED_LIMIT_KEYS, LIMITS, formatLimit, type PlanDef, type PlanId } from "../shared/plans";
 import { PRICING, canPurchase, canPurchasePlan, formatPrice, hasYearly, isFreePrice, purchaseHref, type PlanPricing } from "../shared/pricing";
 import { BILLING_INTERVALS, BILLING_START_PATH, PRICING_PATH, PURCHASABLE_PLANS, billingStartHref, isPurchasablePlan } from "../shared/billing";
-import pricingHtml from "../web/pricing.html?raw";
 import viteConfig from "../web/vite.config.ts?raw";
+import { SITE_PAGES, sitePageFile } from "../shared/site-pages";
+import { sitePageHtml } from "../web/src/site-prerender";
 import trovCssRaw from "../web/src/trov.css?raw";
 import faqSrc from "../web/src/site-faq.ts?raw";
 import pricingPageSrc from "../web/src/pricing-page.ts?raw";
 import mainSrc from "../web/src/main.ts?raw";
-import { EVERY_PLAN, FREE_START_HREF, PRICING_TITLE, earlyAccessHref, pricingQuestions, pricingSection, pricingView, talkHref, waitlistHref } from "../web/src/pricing";
+import { EVERY_PLAN, FREE_START_HREF, PRICING_TITLE, earlyAccessHref, pricingMarkdown, pricingQuestions, pricingSection, pricingView, talkHref, waitlistHref } from "../web/src/pricing";
 import { landingView } from "../web/src/landing";
 import { siteFooter, SITE_CONTACT } from "../web/src/site-chrome";
 import { LEGAL_CONTACT } from "../web/src/legal";
@@ -39,7 +40,8 @@ describe("shared/pricing.ts", () => {
     expect(PRICING.free).toMatchObject({ price: 0, yearly: null, badge: null, selfServe: true });
     expect(isFreePrice(PRICING.free)).toBe(true);
     expect(canPurchase(PRICING.free)).toBe(false);
-    expect(PRICING.team).toMatchObject({ price: 10, per: "per seat / month", yearly: null, yearlyPer: "per seat / year", badge: "Most teams start here", selfServe: true });
+    // No badge: "Most teams start here" read as a statistic nobody can show (compliance pass, 2026-10-12).
+    expect(PRICING.team).toMatchObject({ price: 10, per: "per seat / month", yearly: null, yearlyPer: "per seat / year", badge: null, selfServe: true });
     expect(canPurchase(PRICING.team)).toBe(true);
     expect(isFreePrice(PRICING.team)).toBe(false);
     expect(PRICING.personal).toMatchObject({ price: null, selfServe: false });
@@ -64,9 +66,13 @@ describe("shared/pricing.ts", () => {
     }
     expect(PRICING_PATH).toBe("/pricing");
     expect(siteFooter()).toContain(`<a href="${PRICING_PATH}">Pricing</a>`);
-    // the page PRICING_PATH names is a real build input (web/vite.config.ts → dist/pricing.html)
-    expect(viteConfig).toMatch(/pricing: path\.join\(__dirname, "pricing\.html"\)/);
-    expect(pricingHtml).toContain("/src/pricing-page.ts");
+    // the page PRICING_PATH names is a real build input: a page of the site's one list, which
+    // web/vite.config.ts builds (`siteInputs()` → dist/pricing.html), booted by pricing-page.ts
+    const page = SITE_PAGES.find((p) => p.path === PRICING_PATH);
+    expect(page?.kind).toBe("pricing");
+    expect(sitePageFile(page!)).toBe("pricing.html");
+    expect(viteConfig).toContain("input: siteInputs()");
+    expect(sitePageHtml(page!)).toContain('<script type="module" src="/src/pricing-page.ts"></script>');
     // the plans the page may sell are exactly the ones billing sells; the only other self-serve plan is Free
     for (const id of PLAN_IDS) {
       expect(canPurchasePlan(id, PRICING[id]), id).toBe(isPurchasablePlan(id));
@@ -119,7 +125,7 @@ describe("pricing — the plans on offer come from shared/plans.ts", () => {
       const c = card(html, id);
       expect(c).toContain(`>${PLANS[id].name}</h3>`);
       expect(c).toContain(`<p class="site-plan-for">${PLANS[id].description.replace(/'/g, "&#39;")}</p>`);
-      for (const k of LIMIT_KEYS) {
+      for (const k of LISTED_LIMIT_KEYS) {
         const v = formatLimit(k, PLANS[id].entitlements[k]);
         // a plan sold per seat (Pro) shows its seat cap as the most it can buy
         expect(c).toContain(`<b>${id === "team" && k === "seats" ? `Up to ${v}` : v}</b>`);
@@ -191,7 +197,13 @@ describe("pricing — what ships: Free, Pro per seat, Enterprise by conversation
   it("Pro is $10 per seat a month, up to 50 seats, and its button is the page's one accent: the purchase link", () => {
     const pro = card(html, "team");
     expect(pro).toContain(">Pro</h3>");
-    expect(pro).toContain("Most teams start here");
+    expect(pro).not.toContain("site-plan-badge");
+    // Beside Choose Pro, before anything is paid: the per-seat math, tax, renewal, the Terms and the refund policy.
+    expect(pro).toContain("<p>For example, 3 seats × $10 = $30 per month. Plus applicable tax, calculated at checkout. Renews monthly until you cancel; cancel any time from Billing.</p>");
+    expect(pro).toContain('<p><a href="/terms">Terms</a> · <a href="/refunds">Refund policy</a></p>');
+    expect(pro.indexOf(">Choose Pro</a>")).toBeLessThan(pro.indexOf("data-plan-terms"));
+    expect(card(html, "free")).not.toContain("data-plan-terms");
+    expect(card(html, "enterprise")).not.toContain("data-plan-terms");
     expect(pro).toContain('<p class="site-plan-price"><span class="site-plan-amt">$10</span> <span class="site-plan-per">per seat / month</span></p>');
     expect(pro).toContain('<a href="/billing/start?plan=team" class="site-btn site-btn-accent site-plan-cta"');
     expect(pro).toContain(">Choose Pro</a>");
@@ -279,12 +291,12 @@ describe("pricing — prices announced", () => {
     expect(html).not.toContain("Prices are not announced yet.");
   });
 
-  it("has ONE accent action: the badged plan's", () => {
+  it("has ONE accent action: the plan on sale (no plan wears a badge)", () => {
     const html = pricingSection({ pricing: priced() });
     expect(html.match(/site-btn-accent/g)).toHaveLength(1);
     expect(html.match(/site-plan is-accent/g)).toHaveLength(1);
     expect(html).toMatch(/class="site-st site-plan is-accent"[^>]*aria-labelledby="site-plan-team"/);
-    expect(card(html, "team")).toContain("Most teams start here");
+    expect(card(html, "team")).not.toContain("site-plan-badge");
   });
 
   it("monthly only: no interval switch, no yearly link", () => {
@@ -339,11 +351,21 @@ describe("pricing — the limits are said once, on the cards", () => {
     expect(html).not.toContain("<table");
     expect(html).not.toContain("Limits, side by side");
     expect(html).not.toContain("site-cmp");
-    for (const id of OFFERED_PLAN_IDS) expect((card(html, id).match(/<li><b>/g) ?? []).length).toBe(LIMIT_KEYS.length);
+    for (const id of OFFERED_PLAN_IDS) expect((card(html, id).match(/<li><b>/g) ?? []).length).toBe(LISTED_LIMIT_KEYS.length);
     expect(card(html, "free")).toContain("<b>250 MB</b>");
     expect(card(html, "team")).toContain("<b>5 GB</b>");
     expect(card(html, "enterprise")).toContain("<b>Unlimited</b>");
     expect(html).not.toContain("null");
+  });
+
+  it("does not list `ai_runs` yet: a limit nothing uses is on no card, in no question and not in llms.txt's plans", () => {
+    expect(LIMITS.ai_runs.listed).toBe(false);
+    expect(LISTED_LIMIT_KEYS).not.toContain("ai_runs");
+    expect(LISTED_LIMIT_KEYS).toContain("ai_summaries");
+    expect(html).not.toMatch(/AI runs?/);
+    expect(JSON.stringify(pricingQuestions(Object.values(PLANS), PRICING))).not.toMatch(/AI runs?/);
+    expect(pricingMarkdown()).not.toMatch(/AI runs?/);
+    for (const page of SITE_PAGES) expect(sitePageHtml(page), page.path).not.toMatch(/AI runs?/);
   });
 
   it("lists what every plan includes, and says the by-conversation plan's limits can be set", () => {
@@ -382,31 +404,42 @@ describe("pricing — questions say only what is true today", () => {
   });
   const all = text(pricingSection() + pricingSection({ pricing: priced({ team: { yearly: 400 } }) }) + pricingSection({ pricing: unpriced() }));
 
-  it("answers seats, Pro's per-seat price, going over, changing plans, isolation, the source and Enterprise", () => {
+  it("answers seats, what Pro adds, Pro's per-seat price, going over, changing plans, isolation, the source and Enterprise", () => {
     expect(qs.map((x) => x.q)).toEqual([
       "What counts as a seat?",
+      "What does Pro add?",
       "How does Pro pricing work?",
       "What happens if we go over a limit?",
       "Can we change plans?",
       "Is our data separate from other organizations?",
-      "Can we read the source?",
+      "Can we read the source, or run Trov ourselves?",
       "How does Enterprise work?",
     ]);
     expect(qs[0].a).toContain("an invitation that has not been answered yet");
+    // What Pro adds is room, from the two plans' own tables (no plan gates a feature today), never a typed number.
+    const adds = qs[1].a;
+    expect(adds).toContain("Pro is all of Trov, as Free is: no plan turns a feature on or off. What it adds is room: ");
+    for (const k of LISTED_LIMIT_KEYS) if (PLANS.team.entitlements[k] !== PLANS.free.entitlements[k]) expect(adds).toContain(`(Free: ${formatLimit(k, PLANS.free.entitlements[k])})`);
+    expect(adds).toContain("50 seats (Free: 3)");
+    expect(adds).toContain("5 GB of artifact storage (Free: 250 MB)");
+    expect(adds).not.toContain("$");
     // Per seat: the price and its interval from shared/pricing.ts, no minimum, more seats from Org settings, up to the cap.
-    expect(qs[1].a).toContain(`Pro is bought per seat, at ${formatPrice(10)} per seat / month.`);
-    expect(qs[1].a).not.toContain("for each one");
-    expect(qs[1].a).toContain("There is no minimum, so a person on their own can buy a single seat.");
-    expect(qs[1].a).toContain("You choose how many at checkout, and add more from Org settings › General when you invite more people, up to 50.");
-    expect(qs[2].a).toContain("Nothing is deleted and nobody is removed");
+    expect(qs[2].a).toContain(`Pro is bought per seat, at ${formatPrice(10)} per seat / month.`);
+    expect(qs[2].a).not.toContain("for each one");
+    expect(qs[2].a).toContain("There is no minimum, so a person on their own can buy a single seat.");
+    expect(qs[2].a).toContain("You choose how many at checkout, and add more from Org settings › General when you invite more people, up to 50.");
+    expect(qs[3].a).toContain("Nothing is deleted and nobody is removed");
     // Changing plans: Free is created one at a time and upgraded from Org settings; cancelling Pro moves to Free.
-    expect(qs[3].a).toContain("Anyone signed in can create a Free organization (one they own at a time), and its owner upgrades it to Pro from Org settings › General.");
-    expect(qs[3].a).toContain("An owner manages seats, the card and invoices there too.");
-    expect(qs[3].a).toContain("If Pro is cancelled, the organization moves to Free when the paid period ends");
-    expect(qs[3].a).not.toContain("mailto:");
-    expect(qs[3].a).not.toMatch(/downgrade|any ?time|instantly/i);
-    expect(qs[5].a).toContain("AGPL-3.0");
-    expect(qs[6].a).toContain(talkHref(PLANS.enterprise));
+    expect(qs[4].a).toContain("Anyone signed in can create a Free organization (one they own at a time), and its owner upgrades it to Pro from Org settings › General.");
+    expect(qs[4].a).toContain("An owner manages seats, the card and invoices there too.");
+    expect(qs[4].a).toContain("If Pro is cancelled, the organization moves to Free when the paid period ends");
+    expect(qs[4].a).not.toContain("mailto:");
+    expect(qs[4].a).not.toMatch(/downgrade|any ?time|instantly/i);
+    // The source, and running it: what the repository is and runs on, and that no self-hosting is supported.
+    expect(qs[6].a).toContain("AGPL-3.0");
+    expect(qs[6].a).toContain("one Worker, with D1 for the data and R2 for files");
+    expect(qs[6].a).toContain("there is no self-hosting guide, and no support for one");
+    expect(qs[7].a).toContain(talkHref(PLANS.enterprise));
   });
 
   it("with nothing purchasable there is no per-seat question, and a plan is changed by writing to Trov", () => {
@@ -416,21 +449,25 @@ describe("pricing — questions say only what is true today", () => {
       "What happens if we go over a limit?",
       "Can we change plans?",
       "Is our data separate from other organizations?",
-      "Can we read the source?",
+      "Can we read the source, or run Trov ourselves?",
       "How does Enterprise work?",
     ]);
     expect(none[2].a).toContain("Until paid plans are available, a plan is changed by us: write to <a href=\"mailto:");
     expect(none[2].a).not.toMatch(/upgrade|downgrade|any ?time|instantly|yourself/i);
     // a per-seat plan with no seat cap promises no "up to"
     const uncapped = pricingQuestions(defs.map((d) => (d.id === "team" ? { ...d, entitlements: { ...d.entitlements, seats: null } } : d)), PRICING);
-    expect(uncapped[1].a).toContain("when you invite more people. The seats you pay for");
-    expect(uncapped[1].a).not.toContain("up to");
+    expect(uncapped[2].a).toContain("when you invite more people. The seats you pay for");
+    expect(uncapped[2].a).not.toContain("up to");
   });
 
   it("promises nothing the product does not do", () => {
-    for (const claim of [/refund/i, /\btrial/i, /\bSLA\b/, /discount/i, /\btax/i, /money.back/i, /SOC ?2/i, /GDPR/i, /HIPAA/i, /uptime/i, /guarantee/i, /free (for ?ever|of charge)/i, /cancel any ?time/i]) {
+    for (const claim of [/\btrial/i, /\bSLA\b/, /discount/i, /money.back/i, /SOC ?2/i, /GDPR/i, /HIPAA/i, /uptime/i, /guarantee/i, /free (for ?ever|of charge)/i]) {
       expect(all).not.toMatch(claim);
     }
+    // Tax, renewal, cancelling and refunds are the owner's policy now (2026-10-12): said, and only with the policy one link away.
+    expect(all).toMatch(/Plus applicable tax, calculated at checkout\. Renews monthly until you cancel; cancel any time from Billing\./);
+    expect(all).toMatch(/no refunds for partial periods/);
+    expect(all).not.toMatch(/full refund|refund(s|ed)? (on|upon) request/i);
     for (const word of [/seamless/i, /powerful/i, /unlock/i, /lorem/i, /\$X\b/]) expect(all).not.toMatch(word);
   });
 });

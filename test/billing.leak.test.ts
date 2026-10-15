@@ -177,6 +177,58 @@ describe("every billing surface, against a Stripe that echoes the key back", () 
     expect(logged.length).toBeGreaterThan(0); // the failures WERE logged — the afterEach scans every argument
   });
 
+  // Embedded checkout: the Checkout Session's CLIENT SECRET is handed to the buyer's own page and is in
+  // nothing else — no log line, no D1 column, no other answer. (It is made a canary once it exists, so the
+  // afterEach scans every console argument for it too.) The publishable key is public by design.
+  it("embedded checkout: the session's client secret is in the buyer's own answer and nowhere else — no log, no row, no other response", async () => {
+    install(null);
+    const e = { ...leaky(), STRIPE_PUBLISHABLE_KEY: "pk_test_51TrovPublicKey", STRIPE_TAX: "on" };
+    expect(billingConfig(e)!.embedded).toBe(true);
+    const maya = await cookieFor("maya", { member: false, email: "maya@example.com", verified: true });
+    const omar = await cookieFor("omar", { member: false, email: "omar@example.com", verified: true });
+    const ask = (cookie: string, body: Record<string, unknown>, path = "/api/billing/checkout") => bcall<{ ui?: string; client_secret?: string; session_id?: string }>("POST", path, cookie, body, { env: e });
+    const first = await ask(maya, { plan: "team", ui: "embedded" });
+    const session = stripe.lastSession();
+    expect(first.json).toMatchObject({ ui: "embedded", client_secret: session.client_secret, session_id: session.id });
+    const secret = session.client_secret!.split("_secret_")[1];
+    expect(secret).toHaveLength(48);
+    canaries.set("client secret", secret);
+    // Her own reload gets it again; that is the whole of where it may be.
+    expect((await ask(maya, { plan: "team", ui: "embedded", session_id: session.id })).json.client_secret).toBe(session.client_secret);
+
+    expect((await call("POST", "/api/orgs", maya, { slug: "maya-free", name: "Maya Free" })).status).toBe(201);
+    const others: [string, { status: number; text: string; headers: Headers }][] = [
+      ["another person naming her session", await ask(omar, { plan: "team", ui: "embedded", session_id: session.id })],
+      ["signed out", await ask("", { plan: "team", ui: "embedded", session_id: session.id })],
+      ["her fallback (hosted)", await ask(maya, { plan: "team", ui: "hosted", session_id: session.id })],
+      ["the purchase link", await bcall("GET", "/billing/start?plan=team", maya, undefined, { env: e })],
+      ["the upgrade button", await bcall("POST", "/api/o/maya-free/billing/upgrade", maya, {}, { env: e })],
+      ["status", await bcall("GET", `/api/billing/status?session_id=${session.id}`, maya, undefined, { env: e })],
+      ["config", await bcall("GET", "/api/billing/config", maya, undefined, { env: e })],
+      ["plan", await bcall("GET", "/api/o/maya-free/plan", maya, undefined, { env: e })],
+    ];
+    // Stripe failing while it holds the session: the resume, a new session and the status look all log.
+    install((d) => Response.json({ error: { message: `down ${d} ${session.client_secret}` } }, { status: 500 }));
+    others.push(["a failed resume", await ask(maya, { plan: "team", ui: "embedded", session_id: session.id })]);
+    others.push(["a failed start", await ask(maya, { plan: "team", ui: "embedded" })]);
+    // A 200 that carries the secret where an id belongs is not kept either.
+    install(() => Response.json({ id: `cs_${session.client_secret}`, ui_mode: "embedded", client_secret: null, status: "open" }));
+    others.push(["a malformed answer", await ask(maya, { plan: "team", ui: "embedded" })]);
+    install(null);
+    stripe.pay(session.id);
+    const completed = JSON.stringify(event("checkout.session.completed", { ...stripe.sessionJson(session), client_secret: session.client_secret }));
+    others.push(["the webhook", await postWebhook(completed, { "stripe-signature": await signature(completed, HOOK) }, e)]);
+    others.push(["status, fulfilled", await bcall("GET", `/api/billing/status?session_id=${session.id}`, maya, undefined, { env: e })]);
+
+    for (const [where, r] of others) {
+      expect(r.status, `${where} → ${r.text.slice(0, 200)}`).toBeLessThan(600);
+      expectClean(r.text, `${where} body`);
+      expectClean(JSON.stringify([...r.headers]), `${where} headers`);
+    }
+    expectClean(await dumpD1(), "D1 after an embedded checkout");
+    expect(logged.length).toBeGreaterThan(0); // the failures were logged — and scanned
+  });
+
   it("a delivery signed with the wrong secret, and one with none, tell the caller nothing about the right one", async () => {
     install(null);
     const raw = JSON.stringify(event("invoice.paid", { id: "in_1", subscription: "sub_x" }));

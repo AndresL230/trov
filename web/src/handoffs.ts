@@ -11,16 +11,11 @@ import { personChip, personLink, personNameLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
 import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skList, skW, skDetail } from "./skeleton";
+import { handoffMark } from "./marks";
 
 // ── atoms ────────────────────────────────────────────────────────────────────
-const CHIP_BASE = "font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;border-radius:5px;padding:2px 6px;white-space:nowrap;flex:none";
-
-/** PENDING (blue tint) / CLAIMED (quiet outline) / EXPIRED (faded red) — the ticket pill, mapped onto handoff status. */
-export function handoffPill(status: HandoffStatus): string {
-  if (status === "pending") return `<span style="${CHIP_BASE};color:var(--blue);border:1px solid color-mix(in srgb,var(--blue) 45%,transparent);background:color-mix(in srgb,var(--blue) 12%,transparent)">PENDING</span>`;
-  if (status === "claimed") return `<span style="${CHIP_BASE};color:var(--fg-55);border:1px solid var(--border-strong)">CLAIMED</span>`;
-  return `<span style="${CHIP_BASE};color:var(--red);border:1px solid color-mix(in srgb,var(--red) 35%,transparent);opacity:.75">EXPIRED</span>`;
-}
+/** Pending / Claimed / Expired — a mark (marks.ts `HANDOFF_MARK`), never a pill. */
+export const handoffStatusMark = (status: HandoffStatus, size = 12.5): string => handoffMark(status, size);
 
 /** The dashed "–" avatar that stands for Anyone (the tickets' Unassigned avatar). */
 export function anyoneAvatar(size: number): string {
@@ -75,7 +70,7 @@ function listRow(h: HandoffView, p: HandoffsListProps): string {
   const pending = h.status === "pending";
   const titleSt = `min-width:0;font-size:13.5px;font-weight:${pending ? 600 : 500};letter-spacing:-0.005em;color:${pending ? "var(--fg)" : "var(--fg-55)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap`;
   const promptChip = h.prompt
-    ? `<span class="cnpy-hrow-chip" style="font-family:var(--label);font-size:9.5px;font-weight:600;letter-spacing:.05em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 6px;white-space:nowrap;flex:none">+ prompt</span>`
+    ? `<span class="cnpy-hrow-chip" style="font-size:11.5px;color:var(--fg-40);white-space:nowrap;flex:none">+ prompt</span>`
     : "";
   const when = relTime(pending ? h.created_at : (h.claimed_at ?? h.created_at));
   return `<div class="cnpy-trow cnpy-hrow${pending ? " cnpy-attn" : ""} ${HITBOX}" style="display:grid;grid-template-columns:minmax(0,2.6fr) minmax(0,1.1fr) minmax(0,1.3fr) auto 64px;gap:12px;align-items:center;width:100%;text-align:left;padding:12px 16px;border-bottom:1px solid var(--border);transition:background .12s ease">
@@ -84,7 +79,7 @@ function listRow(h: HandoffView, p: HandoffsListProps): string {
       ? `${anyoneAvatar(20)}<span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Anyone</span>`
       : personLink(personOf(p.persons, other), other, 20, nameOf(p.persons, other), "min-width:0;font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap")}</div>
     <div class="cnpy-hrow-ref" style="min-width:0"><div style="font-family:var(--label);font-size:11.5px;font-weight:500;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.context.branch)}</div><div style="font-family:var(--label);font-size:10px;color:var(--fg-40);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.context.repo)}</div></div>
-    <div>${handoffPill(h.status)}</div>
+    <div>${handoffStatusMark(h.status)}</div>
     <div style="font-size:11.5px;color:var(--fg-40);text-align:right;font-family:var(--label);white-space:nowrap">${esc(when)}</div>
     ${hitArea("openHandoff", String(h.id), `#${h.id} ${firstLine(h.body)}`)}
   </div>`;
@@ -201,7 +196,7 @@ export function handoffDetailView(p: HandoffDetailProps): string {
       <div style="flex:1;min-width:0">
         <h2 style="margin:0;max-width:620px;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.28;text-wrap:pretty">${esc(firstLine(h.body))}</h2>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--fg-55)">
-          ${handoffPill(h.status)}
+          ${handoffStatusMark(h.status)}
           <span style="font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-40)">#${h.id}</span>
           <span style="white-space:nowrap">${whoLink(h.sender)} → ${whoLink(h.recipient)}</span>
           <span style="color:var(--fg-40);white-space:nowrap">· ${esc(relTime(h.created_at))}</span>
@@ -298,9 +293,9 @@ export function personPickStyle(on: boolean): string {
 export function newHandoffView(p: NewHandoffProps): string {
   const n = p.draft;
   const input = (field: keyof NewHandoffDraft, placeholder: string, style: string) =>
-    `<input data-act="nhField" data-arg="${field}" data-field="nh-${field}" value="${attr(String(n[field]))}" class="cnpy-input" placeholder="${attr(placeholder)}" style="${style}">`;
+    `<input id="nh-${field}" data-act="nhField" data-arg="${field}" data-field="nh-${field}" value="${attr(String(n[field]))}" class="cnpy-input" placeholder="${attr(placeholder)}" style="${style}">`;
   const area = (field: keyof NewHandoffDraft, placeholder: string, style: string) =>
-    `<textarea data-act="nhField" data-arg="${field}" data-field="nh-${field}" placeholder="${attr(placeholder)}" style="${style}">${esc(String(n[field]))}</textarea>`;
+    `<textarea id="nh-${field}" data-act="nhField" data-arg="${field}" data-field="nh-${field}" placeholder="${attr(placeholder)}" style="${style}">${esc(String(n[field]))}</textarea>`;
 
   const first = n.body.trim() ? firstLine(n.body) : "";
   const others = p.persons.filter((x) => x.handle.toLowerCase() !== p.me.toLowerCase());
@@ -312,16 +307,16 @@ export function newHandoffView(p: NewHandoffProps): string {
 
   const ctx = n.ctxOpen ? `
     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:10px">
-      <div><label style="${MONO_FIELD_LABEL()}">REPO</label>${input("repo", p.primaryRepo || "owner/repo", `width:100%;height:38px;padding:0 12px;${FIELD};font-size:12.5px;font-family:var(--label)`)}${p.primaryRepo === null ? `<div data-nh-norepo style="font-size:11.5px;line-height:1.5;color:var(--fg-40);margin-top:6px">No repository is connected to this organization, so type it. <button type="button" data-act="orgGo" data-arg="repos" class="cnpy-mutelink" style="padding:0;font-size:11.5px;font-weight:500;color:var(--fg-55);text-decoration:underline;text-underline-offset:2px">Org settings &rsaquo; Repositories</button></div>` : ""}</div>
-      <div><label style="${MONO_FIELD_LABEL()}">BRANCH</label>${input("branch", "feat/…", `width:100%;height:38px;padding:0 12px;${FIELD};font-size:12.5px;font-family:var(--label)`)}</div>
+      <div><label for="nh-repo" style="${MONO_FIELD_LABEL()}">REPO</label>${input("repo", p.primaryRepo || "owner/repo", `width:100%;height:38px;padding:0 12px;${FIELD};font-size:12.5px;font-family:var(--label)`)}${p.primaryRepo === null ? `<div data-nh-norepo style="font-size:11.5px;line-height:1.5;color:var(--fg-40);margin-top:6px">No repository is connected to this organization, so type it. <button type="button" data-act="orgGo" data-arg="repos" class="cnpy-mutelink" style="padding:0;font-size:11.5px;font-weight:500;color:var(--fg-55);text-decoration:underline;text-underline-offset:2px">Org settings &rsaquo; Repositories</button></div>` : ""}</div>
+      <div><label for="nh-branch" style="${MONO_FIELD_LABEL()}">BRANCH</label>${input("branch", "feat/…", `width:100%;height:38px;padding:0 12px;${FIELD};font-size:12.5px;font-family:var(--label)`)}</div>
     </div>
-    <label style="${MONO_FIELD_LABEL()};margin:14px 0 6px">TASK</label>
+    <label for="nh-task" style="${MONO_FIELD_LABEL()};margin:14px 0 6px">TASK</label>
     ${input("task", "One line: what is this session in the middle of?", `width:100%;height:38px;padding:0 12px;${FIELD};font-size:13.5px`)}
     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px">
-      <div><label style="${MONO_FIELD_LABEL("var(--green)")}">DONE <span style="color:var(--fg-40);font-weight:500;letter-spacing:0">· one per line</span></label>${area("done", "", `width:100%;min-height:96px;padding:9px 12px;${FIELD};font-size:13px;line-height:1.55;resize:vertical;font-family:inherit`)}</div>
-      <div><label style="${MONO_FIELD_LABEL("var(--accent)")}">NEXT <span style="color:var(--fg-40);font-weight:500;letter-spacing:0">· one per line</span></label>${area("next", "", `width:100%;min-height:96px;padding:9px 12px;${FIELD};font-size:13px;line-height:1.55;resize:vertical;font-family:inherit`)}</div>
+      <div><label for="nh-done" style="${MONO_FIELD_LABEL("var(--green)")}">DONE <span style="color:var(--fg-40);font-weight:500;letter-spacing:0">· one per line</span></label>${area("done", "", `width:100%;min-height:96px;padding:9px 12px;${FIELD};font-size:13px;line-height:1.55;resize:vertical;font-family:inherit`)}</div>
+      <div><label for="nh-next" style="${MONO_FIELD_LABEL("var(--accent)")}">NEXT <span style="color:var(--fg-40);font-weight:500;letter-spacing:0">· one per line</span></label>${area("next", "", `width:100%;min-height:96px;padding:9px 12px;${FIELD};font-size:13px;line-height:1.55;resize:vertical;font-family:inherit`)}</div>
     </div>
-    <label style="${MONO_FIELD_LABEL()};margin:14px 0 6px">FILES TOUCHED <span style="font-weight:500;letter-spacing:0">· one per line</span></label>
+    <label for="nh-files" style="${MONO_FIELD_LABEL()};margin:14px 0 6px">FILES TOUCHED <span style="font-weight:500;letter-spacing:0">· one per line</span></label>
     ${area("files", "backend/routes/documents.py", `width:100%;min-height:76px;padding:9px 12px;${FIELD};font-size:12.5px;line-height:1.6;resize:vertical;font-family:var(--label)`)}` : "";
 
   const canSend = !!n.body.trim();

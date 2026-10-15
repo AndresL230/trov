@@ -23,9 +23,10 @@
 import { esc, attr, relTime, surface } from "./ui";
 import {
   O_LABEL, O_FIELD, O_HELP, O_ERR, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgBanner, failedNote,
-  tabLead, leadFlag, openRow, chip, textField, type OrgSlice,
+  tabLead, leadFlag, openRow, textField, type OrgSlice,
 } from "./org-ui";
 import { segmented } from "./segmented";
+import { kindMark, type StateKind } from "./marks";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { howToHtml, type TestState } from "./integrations";
 import { emptyLayout, skBox, skCard, skLine, skRowsShape, skeleton } from "./skeleton";
@@ -136,6 +137,14 @@ const METRIC_CHIP: Record<HostingMetric, string> = {
 
 const STATUS_WORD: Record<ConnectionStatus, string> = { connected: "Connected", error: "Error", not_connected: "Not connected", revoked: "Removed" };
 const STATUS_TONE: Record<ConnectionStatus, string> = { connected: "var(--green)", error: "var(--red)", not_connected: "var(--fg-40)", revoked: "var(--amber)" };
+/** What each status MEANS, as marks.ts draws it (the same shape and tone as every other connection in Org settings). */
+const STATUS_KIND: Record<ConnectionStatus, StateKind> = { connected: "good", error: "bad", not_connected: "waiting", revoked: "stopped" };
+const STATUS_HINT: Record<ConnectionStatus, string> = {
+  connected: "Trov can read this host.",
+  error: "The last read failed. Open the row to see why.",
+  not_connected: "Nothing is connected for this host yet.",
+  revoked: "Ended on the host's side: it was uninstalled there, or the grant was refused.",
+};
 
 /** Was this connection ended on the PROVIDER's side (uninstalled there, or the grant refused) — not by an admin here? */
 export function lostOnProvider(c: HostingConnectionDTO, label: string): boolean {
@@ -150,8 +159,10 @@ export function connectionStatus(c: HostingConnectionDTO, label: string): { word
 
 /** A status as a dot and a word. The dot is an element (the corners layer shapes it), the word carries the meaning. */
 export function statusDot(state: ConnectionStatus, word = STATUS_WORD[state]): string {
-  return `<span data-hx-status="${state}" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--fg-55);white-space:nowrap"><span aria-hidden="true" style="flex:none;width:7px;height:7px;border-radius:50%;background:${STATUS_TONE[state]}"></span>${esc(word)}</span>`;
+  return `<span data-hx-status="${state}" style="display:inline-flex">${kindMark(word, STATUS_KIND[state], 12, STATUS_HINT[state])}</span>`;
 }
+/** A fact beside a name (a part's role, "Coming later"): plain muted text, never a chip (web-ui.md › Status marks). */
+const factWord = (w: string): string => `<span style="font-size:12px;font-weight:500;color:var(--fg-55)">${esc(w)}</span>`;
 
 /** The first method this Trov can offer for a provider (the catalogue lists them best first), or null. */
 export const bestMethod = (p: HostingProviderDTO): ConnectionMethodDTO | null => p.connection_methods.find((m) => m.available) ?? null;
@@ -174,7 +185,7 @@ export function capabilityChips(p: HostingProviderDTO): string {
   const shown = (m: HostingMetric): boolean => m !== "latency_p50_ms";
   const words = [...(p.capabilities.deploys ? ["Deploys"] : []), ...p.capabilities.metrics.filter(shown).map((m) => METRIC_CHIP[m])];
   if (!words.length) return "";
-  return `<ul data-hx-caps aria-label="What ${attr(p.label)} can show" style="display:flex;gap:5px;flex-wrap:wrap;list-style:none;margin:0;padding:0">${words.map((w) => `<li style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.03em;color:var(--fg-55);border:1px solid var(--border);border-radius:5px;padding:1px 6px">${esc(w)}</li>`).join("")}</ul>`;
+  return `<ul data-hx-caps aria-label="What ${attr(p.label)} can show" style="display:flex;gap:2px 0;flex-wrap:wrap;list-style:none;margin:0;padding:0;font-size:12px;color:var(--fg-55)">${words.map((w, i) => `<li>${i ? "&nbsp;&middot;&nbsp;" : ""}${esc(w)}</li>`).join("")}</ul>`;
 }
 
 const EXT = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M14 4h6v6"></path><path d="M20 4 10 14"></path><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"></path></svg>`;
@@ -397,7 +408,7 @@ function partRow(x: TabCtx, env: HostingEnvironmentDTO, part: EnvironmentPartDTO
   const answer = testAnswer(test);
   return openRow({
     key, open: ui.openRows.includes(key), act: "orgRowToggle", label: `${env.label}, ${part.label}: ${ROLE_WORD[part.role].toLowerCase()} on ${label}, ${STATUS_WORD[part.connection].toLowerCase()}`,
-    head: `${providerGlyph(part.provider)}<span>${esc(part.label)}</span>${chip(ROLE_WORD[part.role], "var(--fg-55)")}${statusDot(part.connection)}`,
+    head: `${providerGlyph(part.provider)}<span>${esc(part.label)}</span>${factWord(ROLE_WORD[part.role])}${statusDot(part.connection)}`,
     meta: `${esc(label)}${id ? ` &middot; ${esc(id)}` : ""}`,
     action: quietBtn("Edit", "orgHxPartEdit", { arg: ref, label: `Edit ${env.label} › ${part.label}`, field: `orgHxPartEdit:${ref}` }),
     always: failed || answer ? `${failed}${answer}` : "",
@@ -532,7 +543,7 @@ function connectionRow(x: TabCtx, p: HostingProviderDTO, c: HostingConnectionDTO
 
   const row = openRow({
     key, open: ui.openRows.includes(key), act: "orgRowToggle", label: `${p.label}${who ? `, ${who}` : ""}, ${st.word.toLowerCase()}`,
-    head: `${providerGlyph(p.id)}${name}${chip(st.word, st.tone)}`,
+    head: `${providerGlyph(p.id)}${name}${statusDot(st.state, st.word)}`,
     meta: meta.join(" &middot; "), action,
     always: error || answer || fallback ? `${fallback}${error}${answer}` : "",
     body: `<div style="max-width:680px">${esc(p.summary)}</div>
@@ -564,7 +575,7 @@ function laterRow(x: TabCtx, p: HostingProviderDTO): string {
   const m = p.connection_methods[0];
   return openRow({
     key, open: x.ui.openRows.includes(key), act: "orgRowToggle", label: `${p.label}, coming later`,
-    head: `${providerGlyph(p.id)}<span style="color:var(--fg-55)">${esc(p.label)}</span>${chip("Coming later", "var(--fg-55)")}`,
+    head: `${providerGlyph(p.id)}<span style="color:var(--fg-55)">${esc(p.label)}</span>${factWord("Coming later")}`,
     meta: m ? esc(m.label) : "",
     body: `<div style="max-width:680px">${esc(p.summary)}</div>
       ${p.plan_note ? `<div style="margin-top:6px;max-width:680px;color:var(--fg-40)">${esc(p.plan_note)}</div>` : ""}
@@ -578,7 +589,7 @@ function laterRow(x: TabCtx, p: HostingProviderDTO): string {
 function scopedHintRow(p: HostingProviderDTO): string {
   return `<li class="cnpy-org-row" style="align-items:center" data-org-hosting-conn="${attr(`${p.id}:`)}" data-state="unused">
     ${providerGlyph(p.id)}
-    <div style="flex:1 1 260px;min-width:0"><div style="display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap"><span style="font-size:13.5px;font-weight:600">${esc(p.label)}</span>${chip("Not connected", "var(--fg-55)")}</div>
+    <div style="flex:1 1 260px;min-width:0"><div style="display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap"><span style="font-size:13.5px;font-weight:600">${esc(p.label)}</span>${statusDot("not_connected")}</div>
       <div style="font-size:12px;color:var(--fg-40);margin-top:2px">${esc(cap(tokenWord(p)))} per environment: add a ${esc(p.label)} part to an environment, then connect it there.</div></div>
   </li>`;
 }

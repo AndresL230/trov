@@ -36,8 +36,8 @@ import { seatCounts } from "../plans/state";
 import { FREE_PLAN, PLANS, UPGRADE_PLAN, type PlanId } from "@shared/plans";
 import {
   BILLING_CONTACT, BILLING_DONE_PATH, BILLING_UNAVAILABLE, BILLING_UNAVAILABLE_MESSAGE, PRICING_PATH,
-  billingAskHref, billingStartHref, isBillingInterval, isPurchasablePlan, orgBillingHref,
-  type BillingConfigResponse, type BillingInterval, type BillingStatusResponse, type PurchasablePlan,
+  billingAskHref, billingCheckoutHref, billingStartHref, isBillingInterval, isPurchasablePlan, orgBillingHref,
+  type BillingCheckoutResponse, type BillingConfigResponse, type BillingInterval, type BillingStatusResponse, type PurchasablePlan,
 } from "@shared/billing";
 import { billingConfig, billingOffers, intervalsOf, priceFor, type BillingConfig } from "./config";
 import { StripeError, stripeCall } from "./stripe";
@@ -83,13 +83,25 @@ async function seatQuantity(p: PlatformContext, plan: PurchasablePlan, orgId: st
 
 class CheckoutRefused extends Error { constructor(readonly why: "rate_limited" | "stripe", readonly retryAfter = 0) { super(why); } }
 
+interface CheckoutAsk { person: string; plan: PurchasablePlan; interval: BillingInterval; price: string; forOrg?: { id: string; slug: string; customer: string | null } }
+/** A session Stripe made: its page on Stripe (hosted), or the secret Trov's own page mounts it with (embedded). */
+type StartedCheckout = { ui: "hosted"; url: string } | { ui: "embedded"; clientSecret: string; sessionId: string };
+
 /**
- * Create a Checkout Session for `person` and return Stripe's URL. The row that binds the session to the
- * person is written BEFORE Stripe is asked (its `ref` is the idempotency key and travels in the
- * session's metadata), so a webhook can never arrive for a session Trov has no row for.
+ * Create a Checkout Session for `person`: HOSTED (Stripe's URL) or EMBEDDED (the session's client secret,
+ * for Trov's own payment page). Which one is `cfg.embedded` — the one decision — unless the caller asks
+ * for hosted outright (the payment page's fallback when Stripe.js would not load). The two differ ONLY in
+ * where the buyer is while paying: an embedded session takes `ui_mode` + `return_url` where a hosted one
+ * takes `success_url` + `cancel_url` (Stripe refuses those in embedded mode); everything else is the same.
+ * The row that binds the session to the person is written BEFORE Stripe is asked (its `ref` is the
+ * idempotency key and travels in the session's metadata), so a webhook can never arrive for a session
+ * Trov has no row for.
+ *
+ * The client secret is returned to the caller and goes nowhere else: not a log line, not a D1 column.
  */
-async function startCheckout(c: Context<AppEnv>, cfg: BillingConfig, o: { person: string; plan: PurchasablePlan; interval: BillingInterval; price: string; forOrg?: { id: string; slug: string; customer: string | null } }): Promise<string> {
+async function startCheckout(c: Context<AppEnv>, cfg: BillingConfig, o: CheckoutAsk, want: { hosted?: boolean } = {}): Promise<StartedCheckout> {
   const p = c.var.p;
+  const embedded = cfg.embedded && !want.hosted;
   // Per person per day (docs/architecture/abuse-limits.md): each one is a Stripe object and a row here.
   const retryAfter = await takeLimit(p, o.person, "checkout");
   if (retryAfter !== null) throw new CheckoutRefused("rate_limited", retryAfter);
@@ -101,14 +113,18 @@ async function startCheckout(c: Context<AppEnv>, cfg: BillingConfig, o: { person
   const email = o.forOrg?.customer ? null : (await welcomeRecipient(p, o.person).catch(() => null))?.email ?? null;
   const metadata = { trov_ref: ref, trov_plan: o.plan, trov_person: o.person, ...(o.forOrg ? { trov_org: o.forOrg.slug } : {}) };
   try {
-    const session = await stripeCall<{ id?: unknown; url?: unknown }>(cfg, "POST", "/v1/checkout/sessions", {
+    const done = `${origin}${BILLING_DONE_PATH}?session_id={CHECKOUT_SESSION_ID}`;
+    const session = await stripeCall<{ id?: unknown; url?: unknown; client_secret?: unknown }>(cfg, "POST", "/v1/checkout/sessions", {
       mode: "subscription",
       // Per seat: the price is one seat's; the buyer can change the count on Stripe's page.
       line_items: [{ price: o.price, quantity, adjustable_quantity: { enabled: true, minimum: 1, maximum: maxSeats(o.plan) } }],
       client_reference_id: o.person,
       ...(o.forOrg?.customer ? { customer: o.forOrg.customer } : email ? { customer_email: email } : {}),
-      success_url: `${origin}${BILLING_DONE_PATH}?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: o.forOrg ? `${origin}${orgBillingHref(o.forOrg.slug)}` : `${origin}${PRICING_PATH}`,
+      // Either way Stripe sends the buyer to the SAME waiting room when the payment is made. An embedded
+      // session has no cancel URL: backing out is the payment page's own Back link.
+      ...(embedded
+        ? { ui_mode: "embedded", return_url: done }
+        : { success_url: done, cancel_url: o.forOrg ? `${origin}${orgBillingHref(o.forOrg.slug)}` : `${origin}${PRICING_PATH}` }),
       metadata,
       subscription_data: { metadata },
       // Tax is Stripe's to work out (`STRIPE_TAX`): the subscription keeps `automatic_tax`, so every later
@@ -121,9 +137,15 @@ async function startCheckout(c: Context<AppEnv>, cfg: BillingConfig, o: { person
         ...(o.forOrg?.customer ? { customer_update: { address: "auto", name: "auto" } } : {}),
       } : {}),
     }, { idempotencyKey: `trov-checkout-${ref}` });
-    if (typeof session.id !== "string" || !redirectable(cfg, session.url)) throw new StripeError("shape", 200, null, "stripe POST /v1/checkout/sessions: no session url");
+    if (typeof session.id !== "string") throw new StripeError("shape", 200, null, "stripe POST /v1/checkout/sessions: no session id");
+    if (embedded) {
+      if (!isClientSecret(session.client_secret)) throw new StripeError("shape", 200, null, "stripe POST /v1/checkout/sessions: no client secret");
+      await setCheckoutSession(p, ref, session.id);
+      return { ui: "embedded", clientSecret: session.client_secret, sessionId: session.id };
+    }
+    if (!redirectable(cfg, session.url)) throw new StripeError("shape", 200, null, "stripe POST /v1/checkout/sessions: no session url");
     await setCheckoutSession(p, ref, session.id);
-    return session.url;
+    return { ui: "hosted", url: session.url };
   } catch (e) {
     await dropCheckout(p, ref).catch(() => undefined);
     logStripe("billing checkout failed", e);
@@ -131,7 +153,67 @@ async function startCheckout(c: Context<AppEnv>, cfg: BillingConfig, o: { person
   }
 }
 
+// ── the payment page's call (embedded checkout) ──────────────────────────────
+
+const SESSION_ID = /^cs_[A-Za-z0-9_]{1,200}$/;
+/** A Checkout Session's client secret, as far as Trov reads it: Stripe's own opaque string. */
+const isClientSecret = (v: unknown): v is string => typeof v === "string" && v.startsWith("cs_") && v.length <= 2000;
+const NO_STORE = { "cache-control": "no-store" };
+
+/**
+ * The session the payment page says it already showed (a reload; Back from the confirmation). Only the
+ * caller's OWN session for the same purchase is looked at — anyone else's id, or an unknown one, is null
+ * and the page simply gets a new session, so a session id teaches nothing here either. Paid → `complete`
+ * (the page goes to the waiting room: it must never offer a second payment for the same purchase);
+ * expired → `expired`; still open and embedded → the SAME session's client secret again, with no new
+ * Stripe object and no unit of the `checkout` limit. Throws the Stripe failure: with the session's state
+ * unknown, starting another could charge twice.
+ */
+async function resumeCheckout(c: Context<AppEnv>, cfg: BillingConfig, o: CheckoutAsk, sessionId: string): Promise<BillingCheckoutResponse | null> {
+  if (!SESSION_ID.test(sessionId)) return null;
+  const row = await checkoutBySession(c.var.p, sessionId);
+  if (!row || row.person.toLowerCase() !== o.person.toLowerCase() || row.plan !== o.plan || (row.for_org ?? null) !== (o.forOrg?.id ?? null)) return null;
+  if (row.subscription_id) return { ui: "complete", session_id: sessionId };
+  let s: { status?: unknown; ui_mode?: unknown; client_secret?: unknown };
+  try {
+    s = await stripeCall(cfg, "GET", `/v1/checkout/sessions/${encodeURIComponent(sessionId)}`);
+  } catch (e) {
+    logStripe("billing checkout resume failed", e);
+    throw new CheckoutRefused("stripe");
+  }
+  if (s.status === "complete") return { ui: "complete", session_id: sessionId };
+  if (s.status === "expired") return { ui: "expired" };
+  if (cfg.embedded && cfg.publishableKey && row.interval === o.interval && s.status === "open" && s.ui_mode === "embedded" && isClientSecret(s.client_secret)) {
+    return { ui: "embedded", client_secret: s.client_secret, publishable_key: cfg.publishableKey, session_id: sessionId };
+  }
+  return null;
+}
+
+/**
+ * What the payment page (`/billing/checkout`) is answered: the client secret to mount Stripe's form with —
+ * or Stripe's own URL when embedded checkout is off or the page asked for hosted (`ui: "hosted"`, its
+ * fallback), or what became of the session it named. `no-store`, and to the signed-in buyer only: both
+ * routes that call this are behind the session gate and refuse a bearer.
+ */
+async function pageCheckout(c: Context<AppEnv>, cfg: BillingConfig, o: CheckoutAsk, b: Record<string, unknown>): Promise<Response> {
+  const hosted = b.ui === "hosted";
+  try {
+    const held = typeof b.session_id === "string" ? await resumeCheckout(c, cfg, o, b.session_id) : null;
+    // The fallback wants Stripe's page whatever the old session was — unless that session was PAID.
+    if (held && (!hosted || held.ui === "complete")) return c.json(held satisfies BillingCheckoutResponse, 200, NO_STORE);
+    const s = await startCheckout(c, cfg, o, { hosted });
+    const answer: BillingCheckoutResponse = s.ui === "hosted" ? { ui: "hosted", url: s.url }
+      : { ui: "embedded", client_secret: s.clientSecret, publishable_key: cfg.publishableKey ?? "", session_id: s.sessionId };
+    return c.json(answer, 200, NO_STORE);
+  } catch (e) {
+    if (!(e instanceof CheckoutRefused)) throw e;
+    if (e.why === "stripe") return stripeFailed(c, "Trov could not reach Stripe just now. Nothing was charged. Try again in a minute.");
+    return c.json({ error: "rate_limited", retry_after: e.retryAfter }, 429, { "retry-after": String(e.retryAfter) });
+  }
+}
+
 export const billingApp = new Hono<AppEnv>();
+billingApp.use("/api/billing/checkout", cookieOnly);
 
 billingApp.get("/billing/start", async (c) => {
   const plan = c.req.query("plan");
@@ -159,12 +241,33 @@ billingApp.get("/billing/start", async (c) => {
     return c.redirect(billingAskHref(plan, interval), 302);
   }
   if (await isSuperadmin(c.var.p, me.handle)) return page(c, superadminPage(), 403);
+  // Embedded checkout: the buyer pays on Trov's own page, which asks for its session itself
+  // (`POST /api/billing/checkout`) — nothing is created by following this link.
+  if (cfg.embedded) return c.redirect(billingCheckoutHref(plan, interval), 303);
   try {
-    return c.redirect(await startCheckout(c, cfg, { person: me.handle, plan, interval, price }), 303);
+    const s = await startCheckout(c, cfg, { person: me.handle, plan, interval, price });
+    if (s.ui !== "hosted") throw new CheckoutRefused("stripe"); // unreachable: `embedded` was just read as off
+    return c.redirect(s.url, 303);
   } catch (e) {
     if (!(e instanceof CheckoutRefused)) throw e;
     return e.why === "rate_limited" ? page(c, rateLimitedPage(), 429) : page(c, stripeFailedPage(), 502);
   }
+});
+
+// The payment page's own call (web/src/billing-checkout.ts), for a NEW purchase: a session for the person
+// signed in, as a client secret (embedded) or Stripe's URL (embedded off, or `ui: "hosted"`). Behind the
+// session gate — a signed-out caller is the app's bare 401 — and never a token's.
+billingApp.post("/api/billing/checkout", async (c) => {
+  const cfg = billingConfig(c.env);
+  if (!cfg) return unavailable(c);
+  const b = await body(c);
+  if (!isPurchasablePlan(b.plan)) return c.json({ error: "invalid_plan", message: `plan must be ${UPGRADE_PLAN}` }, 400);
+  const interval = b.interval === undefined ? intervalsOf(cfg, b.plan)[0] ?? null : isBillingInterval(b.interval) ? b.interval : null;
+  const price = interval ? priceFor(cfg, b.plan, interval) : null;
+  if (!interval || !price) return unavailable(c);
+  const me = c.get("principal").handle;
+  if (await isSuperadmin(c.var.p, me)) return c.json({ error: "superadmin", message: "A superadmin adds organizations in Platform, on any plan, without paying." }, 403);
+  return pageCheckout(c, cfg, { person: me, plan: b.plan, interval, price }, b);
 });
 
 // What can be bought on this deployment. Public; the signed-in part is the caller's own. (The static pricing
@@ -173,7 +276,7 @@ billingApp.get("/api/billing/config", async (c) => {
   const cfg = billingConfig(c.env);
   const me = await caller(c);
   return c.json({
-    available: cfg !== null, mode: cfg?.mode ?? null, plans: billingOffers(cfg), contact: BILLING_CONTACT,
+    available: cfg !== null, mode: cfg?.mode ?? null, ...(cfg?.embedded ? { embedded: true as const } : {}), plans: billingOffers(cfg), contact: BILLING_CONTACT,
     signed_in: me !== null, manage: me ? await managedOrgs(c.var.p, me.handle) : [],
   } satisfies BillingConfigResponse, 200, { "cache-control": "no-store" });
 });
@@ -296,9 +399,17 @@ orgBillingApp.post("/billing/upgrade", async (c) => {
   const price = interval ? priceFor(cfg, plan, interval) : null;
   if (!interval || !price) return unavailable(c);
   const customer = now.source === "billing" ? now.customer_id : null;
+  const slug = c.req.param("slug") ?? "";
+  const ask: CheckoutAsk = { person: c.get("principal").handle, plan, interval, price, forOrg: { id: c.var.ctx.orgId, slug, customer } };
+  // The payment page itself (`ui`): a client secret, Stripe's URL, or what became of its session.
+  if (b.ui !== undefined) return pageCheckout(c, cfg, ask, b);
+  // The button. Embedded checkout: on to Trov's own payment page for this org — which asks this route
+  // again as the page — and nothing is created yet. Otherwise Stripe's page, as ever.
+  if (cfg.embedded) return c.json({ url: billingCheckoutHref(plan, interval, { org: slug }) });
   try {
-    const url = await startCheckout(c, cfg, { person: c.get("principal").handle, plan, interval, price, forOrg: { id: c.var.ctx.orgId, slug: c.req.param("slug") ?? "", customer } });
-    return c.json({ url });
+    const s = await startCheckout(c, cfg, ask);
+    if (s.ui !== "hosted") throw new CheckoutRefused("stripe"); // unreachable: `embedded` was just read as off
+    return c.json({ url: s.url });
   } catch (e) {
     if (!(e instanceof CheckoutRefused)) throw e;
     if (e.why === "stripe") return stripeFailed(c);

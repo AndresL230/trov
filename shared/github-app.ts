@@ -3,6 +3,9 @@
 
 export type GithubAccountType = "User" | "Organization";
 export type GithubRepoSelection = "all" | "selected";
+/** What an org's binding reaches: the whole installation, or only the repositories the admin who
+ *  connected it could read on GitHub. */
+export type GithubRepoAccess = "all" | "selected";
 /** Why a binding ended: disconnected in Trov, uninstalled on GitHub, or GitHub no longer knows it. */
 export type GithubRemovedReason = "disconnected" | "uninstalled" | "not_found";
 
@@ -13,6 +16,8 @@ export interface GithubInstallationDTO {
   account_login: string;
   account_type: GithubAccountType;
   repository_selection: GithubRepoSelection;
+  /** `selected`: this organization reaches only the repositories `connected_by` could read. */
+  repo_access: GithubRepoAccess;
   connected_by: string;
   connected_at: string;
   /** Suspended on GitHub: nothing can be read through it until that is lifted there. */
@@ -71,9 +76,9 @@ export const GITHUB_CONNECT_OUTCOMES = [
   "not_admin",          // no longer an admin of the org
   "wrong_account",      // the GitHub account is not this person's linked GitHub identity
   "not_yours",          // the installation is not one this GitHub account can reach
-  "partial_access",     // this GitHub account cannot read every repository the installation covers (`missing=` how many)
+  "no_access",          // this GitHub account can read none of the repositories the installation covers
   "too_many_repos",     // the installation covers more repositories than the check reads (1,000): select some on GitHub
-  "taken",              // the installation is connected to another Trov organization
+  "conflict",           // the org was connected to another installation at the same moment; nothing connected
   "suspended",          // the installation is suspended on GitHub; nothing connected
   "none_found",         // linking an existing installation: this account can reach none
   "choose",             // linking an existing installation: several to choose from (`accounts=`)
