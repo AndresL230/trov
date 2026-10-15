@@ -7,13 +7,33 @@
 // A refusal is an `AskApiError` carrying the body's `error` code (`mode_unavailable`, `auto_off`, `changed`,
 // `expired`, `plan_limit`, …), its `message` and, for Undo's `changed`, the `ref` to undo by hand.
 
-import { apiFetch, tenantHref, Unauthorized } from "./api";
+import { apiFetch, tenantHref, Unauthorized, quickSearch } from "./api";
 import { readAskStream } from "./ask-sse";
 import {
-  ASK_ROUTES,
+  ASK_ROUTES, parseAskRef,
   type AskActionAnswer, type AskAttachmentUpload, type AskEvent, type AskEventMap, type AskItem, type AskRequest, type AskSaveBody, type AskSearchHit,
   type AskSettings, type AskSettingsPut, type AskState, type AskThreadDetail, type AskThreadPatch, type AskThreadSummary, type AskWrongReason, type PeekResult,
+  type AskRefType,
 } from "@shared/ai-ask-core";
+import type { QuickSearchResult } from "@shared/quick-search";
+
+/** One item the composer's @ picker found (the app's quick search, as refs). Its row draws from the item's RefView
+ *  once peek has it; until then from these words. */
+export interface AskRefHit { ref: string; type: AskRefType; title: string; status: string | null }
+
+/** The quick search's hits as refs, in its order (a sprint's id is `sprint:<n>`; the roadmap's `plan` is not an item). */
+export function quickHitsToRefs(r: QuickSearchResult): AskRefHit[] {
+  const out: AskRefHit[] = [];
+  for (const g of r.groups) {
+    for (const h of g.hits) {
+      const key = h.type === "sprint" ? h.id.replace(/^sprint:/, "") : h.id;
+      const p = parseAskRef(`${h.type}:${key}`);
+      if (!p || (h.type === "sprint" && !/^\d+$/.test(key))) continue;
+      out.push({ ref: `${p.type}:${p.key}`, type: p.type, title: h.title, status: h.status });
+    }
+  }
+  return out;
+}
 
 export class AskApiError extends Error {
   status: number;
@@ -63,6 +83,8 @@ export interface AskApi {
    *  `mode_unavailable`, `auto_off`) rejects with an AskApiError; Stop rejects with an AbortError. */
   ask(req: AskRequest, o: AskStreamOpts): Promise<void>;
   peek(refs: string[]): Promise<PeekResult[]>;
+  /** The composer's @ picker: the org's quick search (`GET /search/quick`), as refs. */
+  searchRefs(q: string, signal?: AbortSignal): Promise<AskRefHit[]>;
   getItem(ref: string): Promise<AskItem>;
   confirmAction(id: number, body?: { args?: Record<string, unknown>; only?: number }): Promise<AskActionAnswer>;
   cancelAction(id: number, body?: { only?: number }): Promise<AskActionAnswer>;
@@ -94,6 +116,7 @@ export const askApi: AskApi = {
     await readAskStream(res, o.onEvent, o.signal);
   },
   peek: (refs) => send<{ items: PeekResult[] }>("POST", ASK_ROUTES.peek, { refs }).then((r) => r.items),
+  searchRefs: (q, signal) => quickSearch(q, signal).then(quickHitsToRefs),
   getItem: (ref) => send<AskItem>("GET", ASK_ROUTES.item(ref)),
   confirmAction: (id, body = {}) => send<AskActionAnswer>("POST", ASK_ROUTES.confirm(id), body),
   cancelAction: (id, body = {}) => send<AskActionAnswer>("POST", ASK_ROUTES.cancel(id), body),

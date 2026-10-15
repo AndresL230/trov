@@ -123,6 +123,8 @@ export interface AskSendInput {
   context?: string[];
   /** Attachment ids from `uploadAttachments` (this thread's). */
   attachments?: number[];
+  /** The same attachments as the composer holds them — the question's file chips while it streams. */
+  files?: import("@shared/ai-ask-core").AskAttachment[];
   /** Default: the thread's mode, else `ask/state.defaultMode`. */
   mode?: AskMode;
   /** Default: the thread's switch. */

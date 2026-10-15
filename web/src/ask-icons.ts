@@ -43,6 +43,12 @@ export const ASK_ICON_PATHS = {
   openNew: `<path d="M7 17 17 7"></path><path d="M8 7h9v9"></path>`,
   send: `<path d="M12 19V5"></path><path d="m6 11 6-6 6 6"></path>`,
   menu: `<path d="M4 7h16M4 12h16M4 17h16"></path>`,
+  // The composer's (ask-composer.ts).
+  attach: `<path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"></path>`,
+  at: `<circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"></path>`,
+  upload: `<path d="M12 15V3"></path><path d="m7 8 5-5 5 5"></path><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"></path>`,
+  check: `<path d="m5 12.5 4.5 4.5L19 7.5"></path>`,
+  chevron: `<path d="m6 9 6 6 6-6"></path>`,
 } as const;
 export type AskIconName = keyof typeof ASK_ICON_PATHS;
 
