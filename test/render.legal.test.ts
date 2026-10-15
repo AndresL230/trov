@@ -164,6 +164,30 @@ describe("legal pages", () => {
     expect(html).toContain('Also see the <a href="/privacy">Privacy Policy</a> and the <a href="/refunds">Refund and Cancellation Policy</a>.');
   });
 
+  it("the server-side AI passages (#178 Phase G) are visibly DRAFT until the owner approves them; the approved Sift passages are unchanged", () => {
+    const DRAFT = "<b>DRAFT —</b> ";
+    const ai = section(TERMS, "ai");
+    // Approved 2026-10-14: the summaries and Sift paragraphs, word for word.
+    expect(TERMS.sections.find((s) => s.id === "ai")!.body[0]).toBe("<p>Trov uses an AI model (Anthropic Claude) to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete: they are a convenience, not a record. Check the pull request or issue before relying on one.</p>");
+    expect(TERMS.sections.find((s) => s.id === "ai")!.body[1]).toMatch(/^<p>If an admin of your organization turns on automatic tagging in Org settings › Tags, .* An admin can turn it off at any time, and nothing is sent while it is off\.<\/p>$/);
+    expect(section(PRIVACY, "sharing")).toContain("<td>TypeSafe AI</td><td>Automatic tagging (Sift), where an organization turns it on</td>");
+    // Every new passage carries the marker.
+    for (const start of ["While both switches are on, Sift also checks", "<b>Ask Trov.</b>", "<b>Notes, briefs and suggestions.</b>", "An admin can turn the organization's AI switch off"]) {
+      expect(ai).toContain(`${DRAFT}${start}`);
+    }
+    expect(ai).toContain("The switch does not cover the summaries of pull requests and issues.");
+    expect(section(TERMS, "third-parties")).toContain(`${DRAFT}Anthropic Claude also answers Ask Trov`);
+    expect(section(PRIVACY, "collect")).toContain(`${DRAFT}<b>Ask Trov.</b>`);
+    expect(section(PRIVACY, "sharing")).toContain(`<td>Anthropic</td><td>${DRAFT}Ask Trov (Claude API), when a person asks</td>`);
+    expect(section(PRIVACY, "sharing")).toContain(`<td>TypeSafe AI</td><td>${DRAFT}Sorting and checking items`);
+    expect(section(PRIVACY, "email")).toContain(`${DRAFT}A digest leads with your brief`);
+    expect(section(PRIVACY, "retention")).toContain(`${DRAFT}Ask Trov conversations`);
+    expect(section(PRIVACY, "deletion")).toContain(`${DRAFT}It also removes your Ask Trov conversations`);
+    expect(section(PRIVACY, "cookies")).toContain(`<td>${DRAFT}<code>trov.aiFeedNote</code></td><td>Local storage</td>`);
+    // The public pages call TypeSafe AI's model Sift and never by its own name.
+    for (const doc of ALL) expect(text(doc)).not.toMatch(/\bJev\b/);
+  });
+
   it("dates read in fixed English", () => {
     expect(legalDate("2026-10-06")).toBe("October 6, 2026");
   });

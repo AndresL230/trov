@@ -80,6 +80,17 @@ const EFFECTIVE = "2026-10-12";
  *  TypeSafe AI model) was added — both approved by the owner on 2026-10-14. */
 const PROVIDERS_UPDATED = "2026-10-14";
 
+// DRAFT: awaiting Andres's approval (#178 Phase G). Every passage below that starts with `${DRAFT}` is new text for
+// the server-side AI build — Ask Trov, the plain-language filter, the AI pass's notes, briefs and suggestions, the
+// weekly email's "This week", and the widened Anthropic and TypeSafe AI lists — and shows a visible "DRAFT —" so
+// nothing reads as final. The approved passages (summaries, Sift) are unchanged. On approval: drop `${DRAFT}` from
+// each passage, delete this constant, and bump `updated` (PROVIDERS_UPDATED, and the date
+// test/render.legal.test.ts pins). Ask Trov and the filter are written from the code (src/ai/ask/, src/ai/filter.ts,
+// docs/architecture/ask.md); the pass's producers, Sift on new docs and the emails from the decided build
+// (docs/superpowers/specs/2026-10-15-server-ai-build.md › Phases C–E) — re-check those against the merged code
+// before the markers come off.
+const DRAFT = "<b>DRAFT —</b> ";
+
 // ── Terms of Service ─────────────────────────────────────────────────────────
 
 export const TERMS: LegalDoc = {
@@ -188,6 +199,17 @@ export const TERMS: LegalDoc = {
       body: [
         p("Trov uses an AI model (Anthropic Claude) to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete: they are a convenience, not a record. Check the pull request or issue before relying on one."),
         p("If an admin of your organization turns on automatic tagging in Org settings › Tags, then whenever an admin adds a tag or asks Trov to find items for one, Trov's automatic tagging, Sift, uses a decision model from TypeSafe AI to judge which of the organization's existing feed entries, docs and decisions fit that tag, and adds the tag to each item it judges a fit with high confidence (85% or more); an item it is less sure about (60% to 85%) is only suggested, for a person in the organization to add or dismiss. No person reviews a tag Sift adds on its own before it is added, and a judgement can be wrong. It only ever adds that one tag; it never removes or changes anything else. An admin can undo a run, which takes the tag off exactly the items that run tagged, and anyone can take a tag off an item; Trov does not add it to that item again. An admin can turn it off at any time, and nothing is sent while it is off."),
+        // DRAFT: awaiting Andres's approval (#178 Phase G) — Sift on new docs (Phase C, `tag.fit` in the pass).
+        p(`${DRAFT}While both switches are on, Sift also checks each doc against the organization's tags when the doc is approved, by the same rules.`),
+        // DRAFT: awaiting Andres's approval (#178 Phase G) — Ask Trov (src/ai/ask/, docs/architecture/ask.md).
+        p(`${DRAFT}<b>Ask Trov.</b> Ask Trov answers a person's questions about their organization, using Anthropic Claude (Claude Haiku, Sonnet or Opus, by the mode the person picks where their plan offers a choice). It reads only what that person can see in that organization. It never reads secrets, integrations, billing, other organizations, other people's private items or source code, and it does not browse the web. Its answers can be wrong or incomplete: check the items it cites before relying on one. It acts as the person who asks, and what it changes is recorded under their name. A change it proposes is a card the person confirms or cancels. In Auto, which a person turns on for a conversation and an admin can turn off for the organization, some changes run at once and can be undone. It never publishes a doc unless the person confirms it, and it cannot reject or delete anything. Each question counts against the organization's monthly allowance for Ask Trov.`),
+        // DRAFT: awaiting Andres's approval (#178 Phase G) — the plain-language filter (src/ai/filter.ts) and the AI
+        // pass's producers (Phases C–D: session notes, repo state, the brief, themes, sprint notes and plan drift,
+        // the weekly recap, doc drift; Jev's cards and gates).
+        p(`${DRAFT}<b>Notes, briefs and suggestions.</b> When a person types a filter in plain words on Tickets, the Feed or Artifacts, Trov uses Anthropic Claude to set the screen's own filters from it. While an organization's AI switch is on, Trov also uses Anthropic Claude to write short texts from what the organization already holds in Trov: a note on what a burst of work in a connected repository shipped, where a repository stands, each person's brief (on My Work, for the agents they connect, and in their email), the themes of the work merged, notes on sprints and on drift from the plan, the weekly email's "This week" highlights, and changes to a doc that seems out of date. It uses a decision model from TypeSafe AI to sort and check items: a ticket's category and priority, a likely duplicate, how much a change matters, what a proposal changes, where an unplaced item belongs, which theme a pull request is part of, and whether something is worth writing about at all. These can be wrong: they are a convenience, not a record. They are shown as written by Trov, or as suggestions a person accepts or dismisses. None of them approves, promotes, rejects, resolves or closes anything, and a doc change Trov writes is staged for a person to approve, like an agent's.`),
+        // DRAFT: awaiting Andres's approval (#178 Phase G) — the org switch (orgs.ai_automation). Capture-time
+        // summaries do NOT read it (src/plans/summaries.ts), so the text says so.
+        p(`${DRAFT}An admin can turn the organization's AI switch off at any time. While it is off, nothing is sent for Ask Trov, Sift, filters typed in plain words or the notes, briefs and suggestions above. The switch does not cover the summaries of pull requests and issues.`),
       ],
     },
     {
@@ -195,6 +217,8 @@ export const TERMS: LegalDoc = {
       title: "11. Third-party services",
       body: [
         p("Trov depends on other services: GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Stripe for payments, Anthropic Claude for summaries, TypeSafe AI for automatic tagging where an organization turns it on, and Resend for email. An organization can also connect Railway, Cloudflare Analytics and its own metrics endpoint, with tokens its admins provide. The agent clients you connect (Claude Code, Cursor and others) are yours, not ours. Each of these is governed by its own terms, and its availability is outside our control."),
+        // DRAFT: awaiting Andres's approval (#178 Phase G) — the widened provider list.
+        p(`${DRAFT}Anthropic Claude also answers Ask Trov and writes Trov's other AI features, and TypeSafe AI also sorts and checks items for them, while an organization's AI switch is on (section 10).`),
       ],
     },
     {
@@ -262,7 +286,10 @@ const COOKIES: string[][] = [
 ];
 
 const STORAGE: string[][] = [
-  [`${code("trov.theme")}, ${code("trov.collapsed")}, ${code("trov.navOpen")}, ${code("trov.feedView")}, ${code("trov.promptView")}, ${code("trov.aiFeedNote")}`, "Local storage", "Your theme, how you left the sidebar, the feed and the prompt library, and whether you dismissed the Feed's note about entries written by Trov."],
+  [`${code("trov.theme")}, ${code("trov.collapsed")}, ${code("trov.navOpen")}, ${code("trov.feedView")}, ${code("trov.promptView")}`, "Local storage", "Your theme, how you left the sidebar, the feed and the prompt library."],
+  // DRAFT: awaiting Andres's approval (#178 Phase G) — `AI_NOTE_KEY` (web/src/ai-ui.ts): the handles that pressed
+  // "Got it" on the Feed's note, on this browser.
+  [`${DRAFT}${code("trov.aiFeedNote")}`, "Local storage", "The handles of the people who dismissed the Feed's note about entries written by Trov on this browser."],
   [code("trov.org"), "Local storage", "The organization you last opened, so Trov opens it next time."],
   [`${code("trov.returnHash")}, ${code("trov.returnOrg")}, ${code("trov.welcomeReturn")}, ${code("trov:first-run")}`, "Session storage (gone when you close the tab)", "Where to bring you back after signing in or connecting GitHub, and the setup's step counter."],
 ];
@@ -274,6 +301,12 @@ const RETENTION: string[][] = [
   ["Content in an organization", "Until the organization deletes it, or is deleted. Deleting a ticket or sprint removes it; rejecting a doc or decision, discarding from triage and deleting a prompt or artifact hide it but keep it so it can be restored."],
   ["Uploaded files, images and photos", "Until nothing in Trov refers to them any more: deleting an organization or an account removes the files only it used."],
   ["Repository activity", "Pull requests, issues, their summaries and mirrored tickets: for the life of the organization. Check results and health checks: 45 days. Hourly usage figures: 7 to 100 days. Sync runs: 90 days."],
+  // DRAFT: awaiting Andres's approval (#178 Phase G) — Ask Trov (src/data/ask.ts deleteThread, src/deletion/person.ts;
+  // ai_feedback.handle is in HANDLE_COLUMNS) and the AI pass's computed rows (Phase D: the last 5 briefs, 20 repo
+  // states, 10 insights per key — the spec's numbers, to re-check).
+  [`${DRAFT}Ask Trov conversations, and what you told it about how to answer you`, "Until you delete the conversation or your account, or the organization is deleted. Files you attach are kept as your private artifacts, like any other artifact."],
+  [`${DRAFT}"Wrong?" reports on what Trov's AI wrote`, "Until the organization is deleted. If you delete your account, they stay credited to \"Deleted user\"."],
+  [`${DRAFT}What Trov's AI writes (briefs, notes, repository state, themes, highlights, suggestions)`, "While the organization exists; only the latest few versions of each are kept."],
   ["Usage counts (per person, per day)", "400 days."],
   ["Rate-limit counters (including the hashed address of a signed-out Contact form)", "2 days."],
   ["Invitations and an organization's admin history", "Until the organization is deleted. A short record of each deletion is kept indefinitely."],
@@ -313,6 +346,9 @@ export const PRIVACY: LegalDoc = {
         p("<b>Your account.</b> When you sign in with GitHub (through Trov's GitHub App), Trov reads your GitHub username, display name, profile picture, GitHub account id and your primary, verified email address, and nothing else. With Google we receive your Google account id, name, picture and verified email address (<code>openid email profile</code>). We use the provider's access token only during sign-in and do not store it. You choose a handle, a display name and a color; you may upload a photo and change the address digests go to."),
         p("<b>What your organization records about you.</b> Your role (owner, admin, member), and optionally a title and a note on what you are responsible for, set by an admin. Your title is shown to your team; the responsibilities note is readable by the organization's admins and by the agents its members connect, which use it to assign work."),
         p("<b>What you and your agents write.</b> Docs and their versions, decisions, feed entries, tickets and comments, sprints and the roadmap, handoffs, prompts, artifacts and the files and images you upload — with who wrote each one and when."),
+        // DRAFT: awaiting Andres's approval (#178 Phase G) — Ask Trov's rows (0066_ask: chat_threads / chat_messages,
+        // person_ask_settings, ai_feedback, ask_flags — the reason only, no handle).
+        p(`${DRAFT}<b>Ask Trov.</b> The questions you ask and its answers, the files you attach (kept as your private artifacts), what you tell it about how to answer you, and the "Wrong?" reports you send. Your conversations are visible only to you. When you report that an item an answer cited is wrong or out of date, people in the organization see the report on that item in Review, as a reason only, without your name or the conversation.`),
         p("<b>Connected repository data.</b> When an admin connects a GitHub repository, Trov's GitHub App reads it with read-only permissions (metadata, contents, pull requests, issues, Actions, checks, deployments and commit statuses) and captures pull requests and issues (titles and descriptions), pushes, reviews, deployments and CI results, including the GitHub usernames of the people involved — also people who never signed in to Trov, such as outside contributors. It does not store commit authors' email addresses. The repository owner's GitHub picture becomes the organization's image. While connecting, Trov uses a short-lived GitHub token to list the installations you can reach, then revokes it."),
         p("<b>Integrations an organization adds.</b> Tokens for Railway, Cloudflare Analytics or its own metrics endpoint, stored encrypted and used only to read figures (requests, errors, CPU, memory, active users) from those services; and the website addresses it asks Trov to health-check."),
         p("<b>Agent connections.</b> The app's name and return address, the organizations it may use, and when it was created and last used. Tokens are stored only as one-way hashes."),
@@ -332,6 +368,8 @@ export const PRIVACY: LegalDoc = {
           "to provide Trov — store, search, show and attribute your team's content, and let connected agents read and propose changes as you;",
           "to take payment for a paid plan, keep an organization on the plan it paid for, and apply each plan's limits;",
           "to summarize captured pull requests and issues;",
+          // DRAFT: awaiting Andres's approval (#178 Phase G) — Ask Trov, the filter, the AI pass.
+          `${DRAFT}where an organization's AI switch is on, to answer the questions a person asks Ask Trov, to set a screen's filters from words a person types, to write notes, briefs, the weekly email's highlights and suggestions from the organization's own content, and to sort and check its items (${link(`${TERMS_PATH}#ai`, "Terms, section 10")});`,
           "where an admin of an organization turns it on, to add one of the organization's tags to its feed entries, docs and decisions that Sift, using a TypeSafe AI model, judges fit it (or to suggest it, for a person to decide, where Sift is less sure), when an admin adds that tag or asks for it;",
           "to send the emails described in section 7;",
           "to answer support messages, and to run, debug and protect the service.",
@@ -351,11 +389,21 @@ export const PRIVACY: LegalDoc = {
           ["GitHub", "Sign-in; the repository data an organization connects", "Your sign-in; Trov's read-only requests for the connected repositories"],
           ["Google", "Sign-in", "Your sign-in"],
           ["Anthropic", "Summaries (Claude API)", "The title and description (up to 8,000 characters) of each captured pull request and issue"],
+          // DRAFT: awaiting Andres's approval (#178 Phase G) — the widened Anthropic list: Ask Trov (src/ai/ask/prompt.ts
+          // contextBlock, turn.ts, history.ts compaction, attachments.ts), the filter (src/ai/filter.ts), the AI pass.
+          ["Anthropic", `${DRAFT}Ask Trov (Claude API), when a person asks`, "The question; the conversation so far (a long one partly as a summary of its older turns); the person's handle and role, the organization's name, the date, and what the person said about how to answer them; the items Ask Trov reads from the organization to answer, only ones that person can see; and the files they attach, whole in the turn they are attached and again only when an answer reads one"],
+          ["Anthropic", `${DRAFT}Filters typed in plain words (Claude API), when a person asks`, "What the person typed, and the organization's members' handles and names, with its sprints' titles or its tags"],
+          ["Anthropic", `${DRAFT}Notes, briefs, the weekly email's highlights and suggestions (Claude API), while the organization's AI switch is on`, "The organization's name, tags, active themes and sprints, and its plan; and, for what is being written, the summaries Trov already made of pull requests and issues, commit messages and pull request titles, check and deploy results, tickets, handoffs and feed entries, the people they concern (by handle), and a doc with the entries that may disagree with it"],
           ["TypeSafe AI", "Automatic tagging (Sift), where an organization turns it on", "The tag's name and description and, for each of the organization's feed entries, docs and decisions that may fit it, its title and up to 400 characters of its text, with code and anything that looks like a password or key removed"],
+          // DRAFT: awaiting Andres's approval (#178 Phase G) — the widened TypeSafe AI list (Phase C's cards and gates).
+          ["TypeSafe AI", `${DRAFT}Sorting and checking items, while the organization's AI switch is on`, "One item at a time — a ticket, feed entry, pull request summary, doc proposal or unplaced item — as its title and a short excerpt, with code and anything that looks like a password or key removed, and the choices it is judged against (categories, priorities, a few possible duplicates, sections or docs, themes); and, to decide whether something is worth writing about, commit messages and pull request titles, what changed in a repository, and a doc with the entries that may disagree with it"],
           ["Stripe", "Payments, invoices and receipts, fraud checks, tax calculation", "The buyer's email, handle, payment details and billing address, and the organization's address for an upgrade"],
           ["Resend", "Delivers Trov's email", "Each email's recipient, subject and body (a digest contains your organization's content: ticket titles, summaries)"],
         ]),
         p("Anthropic handles the text sent for summaries under Anthropic's Commercial Terms of Service, which apply to Trov's API account. Railway, Cloudflare Analytics and an organization's own endpoint receive only Trov's requests with the token its admins saved, and send back figures. The agent clients you connect (Claude Code, Cursor and others) receive what they read on your behalf; they are your tools, under their own terms, not our processors."),
+        // DRAFT: awaiting Andres's approval (#178 Phase G) — one platform key (ANTHROPIC_API_KEY) for every Anthropic
+        // call; what is never sent is AI_NEVER_SENT (shared/ai-core.ts), less what a person attaches to Ask.
+        p(`${DRAFT}Everything else Trov sends Anthropic, for Ask Trov and the features in section 3, goes through the same API account, under the same terms. Neither Anthropic nor TypeSafe AI is sent a connected repository's source code or diffs, secrets, integration keys, or anything from another organization; a file a person attaches to a question in Ask Trov is sent as it is.`),
         p("We may also disclose data if the law requires it, or to protect the rights and safety of people and the service. If TrovLabs is part of a merger or acquisition, personal data may pass to the new owner under this policy. <b>We do not sell or rent personal data</b>, and we do not share it for advertising."),
       ],
     },
@@ -393,6 +441,9 @@ export const PRIVACY: LegalDoc = {
           "<b>One-off emails that answer something someone did</b>: an invitation, word that an organization you were given or paid for is ready (with your plan's renewal and cancellation terms), and a test digest you send yourself.",
           "<b>Stripe's own receipts and invoices</b>, sent by Stripe.",
         ),
+        // DRAFT: awaiting Andres's approval (#178 Phase G) — Phase E's emails: the brief leads (the stored brief, or
+        // the assigned items with AI off) and the weekly recap (one Haiku call per org per week, shared by members).
+        p(`${DRAFT}A digest leads with your brief, the same one My Work shows: while your organization's AI switch is on, Trov writes it with Anthropic Claude; while it is off, the digest lists your assigned items instead. While the switch is on, the weekly digest also has "This week": up to 3 highlights of the organization's week, written once a week for the whole organization and the same for every member who gets it.`),
         p("Every digest and welcome email has an Unsubscribe link at the bottom that works without signing in, a one-click unsubscribe your mail app can use, and a switch in Settings. Unsubscribing stops digests and the welcome email from every organization; the one-off emails above still arrive, because each answers something someone did. An unsubscribe link names your handle and does not expire."),
         p("Our emails load nothing remote — no web fonts, images or scripts. They are delivered by Resend, which receives the recipient, the subject and the body. We keep a log of the digests sent (not their text)."),
       ],
@@ -411,12 +462,17 @@ export const PRIVACY: LegalDoc = {
         p(`You can delete your account in <b>Settings › Delete account</b>, and an owner can delete an organization in <b>Org settings › General › Delete organization</b>. You can also ask us at ${mail}, and our operators can delete accounts and organizations too. Deletion is immediate and cannot be undone.`),
         p("<b>Deleting an organization</b> removes everything in it: its content and every version, what was captured from GitHub, its settings, credentials and integrations, its members' memberships and agent connections to it, its email settings and send log, its usage counts, admin history and support messages, its billing records, and the files only it used. A paid subscription is cancelled at Stripe first, with no refund for the rest of the period."),
         p("<b>Deleting your account</b> removes your profile, photo, sign-ins, sessions, agent connections and tokens, email settings and send log, memberships, support messages, and any organization nobody else is in. If you are the only owner of an organization others are in, or pay for one that carries on, Trov asks you to hand it over, cancel or delete it first."),
+        // DRAFT: awaiting Andres's approval (#178 Phase G) — src/deletion/person.ts deletes chat_* and
+        // person_ask_settings; the attachments stay as artifacts (docs/architecture/ask.md › Deletion and renames).
+        p(`${DRAFT}It also removes your Ask Trov conversations and what you told it about how to answer you. Files you attached in Ask Trov stay as artifacts, like any other artifact you made.`),
         p("<b>What is kept, and why:</b>"),
         ul(
           "What you wrote in organizations that carry on — docs, tickets, comments, history — stays for the people you worked with, credited to \"Deleted user\" (a placeholder with no personal data) instead of your handle. Text other people typed that mentions you is not rewritten.",
           "Your GitHub username in repository activity Trov captured, because it is a copy of that repository's history on GitHub.",
           "One record of each deletion: who asked, when, and for an organization its address, member count and Stripe ids (for billing disputes). For an account it holds a one-way code, not your handle.",
           "Stripe keeps its records of payments and invoices for tax and accounting law; Resend keeps its delivery logs; Anthropic, and Google for summaries made before October 14, 2026, may have the text sent earlier for summaries — each under its own terms.",
+          // DRAFT: awaiting Andres's approval (#178 Phase G) — the widened provider list.
+          `${DRAFT}Anthropic and TypeSafe AI may have the text sent earlier for Ask Trov and Trov's other AI features, each under its own terms.`,
           "Cloudflare's database history (up to 30 days) and logs (a few days) keep deleted data until they age out.",
         ),
       ],
