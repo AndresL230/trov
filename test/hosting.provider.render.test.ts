@@ -260,9 +260,12 @@ describe("render: poll — deploys", () => {
       readyAt: "2026-10-07T11:44:50.918Z",
       url: "https://checkout-api.onrender.com",
       inspectUrl: `https://dashboard.render.com/web/${SRV}/deploys/dep-d3m1a06j7mgec73c0opf`,
+      reason: null,
     });
     // Only the live deploy carries the service's URL; in-flight ones have no readyAt.
     expect(r.deploys.filter((d) => d.url !== null).map((d) => d.id)).toEqual(["dep-d3m1a06j7mgec73c0opf"]);
+    // A failed deploy's reason is its failed status (Render gives no message).
+    expect(r.deploys.filter((d) => d.reason).map((d) => [d.id.slice(-3), d.reason])).toEqual([["opg", "The pre-deploy command failed"], ["oph", "The update failed"], ["opi", "The build failed"]]);
     expect(r.deploys.find((d) => d.id.endsWith("opc"))).toMatchObject({ readyAt: null, sha: "7dfa09859c2b3a6948170c0fa9e8d7c6b5a49382", message: "Cache tax tables per region" });
     // An image deploy has no commit: its registry digest is not a git SHA.
     expect(r.deploys.find((d) => d.id.endsWith("opl"))).toMatchObject({ sha: null, message: null, branch: "main" });

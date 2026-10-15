@@ -253,8 +253,11 @@ describe("netlify — poll", () => {
       readyAt: "2026-10-07T09:42:55.904Z",
       url: "https://6703d4a91b8a9e0008d4c1a7--trov-web.netlify.app",
       inspectUrl: "https://app.netlify.com/sites/trov-web/deploys/6703d4a91b8a9e0008d4c1a7",
+      reason: null,
     });
     expect(res.deploys.find((d) => d.id === "6703c7351b8a9e0008d4c098")?.readyAt).toBeNull();
+    // A failed deploy says why, in Netlify's own words (repo setups).
+    expect(res.deploys.find((d) => d.id === "6703c7351b8a9e0008d4c098")?.reason).toBe("Build script returned non-zero exit code: 2");
   });
 
   it("never reads a metric: every web metric unavailable with the reason, no points, covered null", async () => {

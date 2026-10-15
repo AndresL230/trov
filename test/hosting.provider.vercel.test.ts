@@ -262,6 +262,7 @@ describe("vercel — poll", () => {
       readyAt: null, // in flight
       url: "https://web-q7m2x9k4p-acme.vercel.app",
       inspectUrl: "https://vercel.com/acme/web/9Fq2LmN4pR8sT1vW3xY5zA6bC7dE",
+      reason: null,
     });
     const ready = r.deploys.find((d) => d.id === "dpl_6Co9IjK1mO5pQ8sT0uV2wX3yZ4aB")!;
     expect(ready.readyAt).toBe("2026-10-07T09:43:01.000Z");

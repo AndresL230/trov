@@ -19,6 +19,7 @@ import { setOrgEnvironments } from "./helpers/org-config";
 import { ORG_A, ORG_B, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
 import { setSecret } from "../src/data/secrets";
 import { BUDGET_SKIP, HEALTH_COST, handleRepoCron, runPartJob, runRepoRefresh } from "../src/repo/cron";
+import { ROLLBACK_COMPARE_COST } from "../src/hosting/rollback";
 import { DEFAULT_HOSTING_COST, hostingPollCost, providerPollCost, type ProviderMap } from "../src/hosting/poll";
 import { PROVIDERS } from "../src/hosting/registry";
 import { listAllParts } from "../src/hosting/parts";
@@ -120,11 +121,11 @@ describe("the :40 tick — the hosting job", () => {
     for (const [i, key] of ["p1", "p2", "p3"].entries()) await addPart(ORG_A, "live", key, "vercel", i);
     await connect(ORG_A, LONG_TOKEN);
     const log: string[] = [];
-    // 6: health may use half (3) — its one unit costs 2 — and two parts (2 each) fit after it.
-    await handleRepoCron(e, AT_40, world().fetchImpl, 6, {}, { vercel: fakeVercel(log) });
+    // 8: health may use half (4) — its one unit costs 2 — and two parts (2 + the rollback compare's 1 each) fit after it.
+    await handleRepoCron(e, AT_40, world().fetchImpl, 8, {}, { vercel: fakeVercel(log) });
     expect(log).toEqual([`${ORG_A}/live/p1`, `${ORG_A}/live/p2`]);
     expect(await readCursor(platformCtx("system"), "hosting")).toBe(`${ORG_A}/live/p2`);
-    await handleRepoCron(e, AT_40 + HOUR, world().fetchImpl, 6, {}, { vercel: fakeVercel(log) });
+    await handleRepoCron(e, AT_40 + HOUR, world().fetchImpl, 8, {}, { vercel: fakeVercel(log) });
     expect(log.slice(2)).toEqual([`${ORG_A}/live/p3`, `${ORG_A}/live/p1`]);
     expect(await readCursor(platformCtx("system"), "hosting")).toBe(`${ORG_A}/live/p1`);
   });
@@ -156,13 +157,17 @@ describe("the :40 tick — the hosting job", () => {
     expect(await all(env.DB, `SELECT status, detail FROM hosting_poll_state`)).toEqual([{ status: "skipped", detail: "not connected" }]);
   });
 
-  it("a unit costs its provider's pollCost — the default when the provider is unknown or declares nonsense", () => {
+  it("a unit costs its provider's pollCost + the rollback compare — the default when the provider is unknown or declares nonsense", () => {
     const fake = fakeVercel([], 3);
-    expect(providerPollCost({ vercel: fake }, "vercel")).toBe(3);
-    expect(providerPollCost({ vercel: { ...fake, pollCost: Number.NaN } }, "vercel")).toBe(DEFAULT_HOSTING_COST);
-    expect(providerPollCost({ vercel: { ...fake, pollCost: 0 } }, "vercel")).toBe(DEFAULT_HOSTING_COST);
-    expect(providerPollCost(PROVIDERS, "heroku")).toBe(DEFAULT_HOSTING_COST);
-    expect(providerPollCost({}, "render")).toBe(DEFAULT_HOSTING_COST);
+    // + ROLLBACK_COMPARE_COST: a new production deploy may cost ONE GitHub compare (repo setups, src/hosting/rollback.ts).
+    expect(providerPollCost({ vercel: fake }, "vercel")).toBe(3 + ROLLBACK_COMPARE_COST);
+    expect(providerPollCost({ vercel: { ...fake, capabilities: { deploys: false, metrics: ["requests"] } } }, "vercel")).toBe(3);
+    expect(providerPollCost({ vercel: { ...fake, pollCost: Number.NaN } }, "vercel")).toBe(DEFAULT_HOSTING_COST + ROLLBACK_COMPARE_COST);
+    expect(providerPollCost({ vercel: { ...fake, pollCost: 0 } }, "vercel")).toBe(DEFAULT_HOSTING_COST + ROLLBACK_COMPARE_COST);
+    expect(providerPollCost(PROVIDERS, "heroku")).toBe(DEFAULT_HOSTING_COST + ROLLBACK_COMPARE_COST);
+    expect(providerPollCost({}, "render")).toBe(DEFAULT_HOSTING_COST + ROLLBACK_COMPARE_COST);
+    // A provider with no credential of its own is never polled.
+    expect(providerPollCost(PROVIDERS, "github")).toBe(0);
   });
 
   it("runPartJob is total: a part removed since it was listed is a no-op", async () => {
@@ -205,15 +210,15 @@ describe("Poll now — the hosting arm", () => {
     await connect(ORG_A, LONG_TOKEN);
     const parts = await listAllParts(systemCtx(ORG_A));
     const log: string[] = [];
-    // 2 × 11 = 22: 51 > 50 — skipped, nothing fetched for them.
-    expect(hostingPollCost(parts, { vercel: fakeVercel([], 11) })).toBe(22);
+    // 2 × (10 + 1 for the rollback compare) = 22: 51 > 50 — skipped, nothing fetched for them.
+    expect(hostingPollCost(parts, { vercel: fakeVercel([], 10) })).toBe(22);
     const w = world();
-    const skipped = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, w.fetchImpl, noReconcile, { vercel: fakeVercel(log, 11) });
+    const skipped = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, w.fetchImpl, noReconcile, { vercel: fakeVercel(log, 10) });
     expect(skipped.hosting).toEqual(parts.map((p) => ({ env: p.env, part: p.key, provider: "vercel", status: "skipped", written: 0, detail: BUDGET_SKIP })));
     expect(log).toEqual([]);
     expect(w.polls()).toEqual([]);
-    // 2 × 10 = 20: 49 fits.
-    const fits = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, world().fetchImpl, noReconcile, { vercel: fakeVercel(log, 10) });
+    // 2 × (9 + 1) = 20: 49 fits.
+    const fits = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, world().fetchImpl, noReconcile, { vercel: fakeVercel(log, 9) });
     expect((fits.hosting as { status: string }[]).map((o) => o.status)).toEqual(["ok", "ok"]);
   });
 });

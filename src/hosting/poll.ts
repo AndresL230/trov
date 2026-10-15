@@ -43,6 +43,10 @@ import { listAllParts, partRef, type PartRow } from "./parts";
 import { PROVIDERS } from "./registry";
 import type { HostingField, HostingProvider, PollResult } from "./types";
 import { REASON_STORED_MAX, upsertDeploys, type CleanDeploy } from "./deploy-store";
+import { joinShas } from "./sha-join";
+import { ROLLBACK_COMPARE_COST, checkRollback, newestReadyChanged } from "./rollback";
+import { resolveGithubCredential } from "../github-app/credential";
+import type { GhOpts } from "../repo/github";
 import { NO_GITHUB_METRICS } from "./providers/github";
 
 /** The providers a poll may run — the registry, or (tests) a map holding a fake. */
@@ -59,7 +63,9 @@ export function providerPollCost(providers: ProviderMap, provider: string): numb
   // A provider with no credential of its own (`github`) is never polled: its deploys come from the capture.
   if (p?.credential === "github_app") return 0;
   const cost = p?.pollCost;
-  return typeof cost === "number" && Number.isFinite(cost) && cost >= 1 ? Math.ceil(cost) : DEFAULT_HOSTING_COST;
+  const base = typeof cost === "number" && Number.isFinite(cost) && cost >= 1 ? Math.ceil(cost) : DEFAULT_HOSTING_COST;
+  // + the ONE GitHub compare a new production deploy may cost (rollback detection, ./rollback.ts).
+  return base + (p && !p.capabilities.deploys ? 0 : ROLLBACK_COMPARE_COST);
 }
 
 /** The worst case of polling every one of `parts`, in subrequests. */
@@ -373,13 +379,23 @@ export async function pollPart(
 
     const clean = validatePoll(result, part, now, revealed);
     const newPoints = await putMetrics(ctx, clean.points);
-    const changedDeploys = (await upsertDeploys(ctx, part, clean.deploys, now, "provider")).length;
+    const changedIds = await upsertDeploys(ctx, part, clean.deploys, now, "provider");
+    const changedDeploys = changedIds.length;
+    // A deploy the provider gave no sha: the commit join (exactly one GitHub candidate, else none). Then the
+    // rollback check of the newest production deploy, when this poll created or changed it — ONE compare at
+    // most, through the org's GitHub credential. Neither ever fails the poll.
+    const joined = await joinShas(ctx, { env: part.env, key: part.key, provider: part.provider, branch: part.branch }, now)
+      .catch((e: unknown) => { console.error("hosting poll", part.provider, part.env, part.key, "join", lastErrorText(e instanceof Error ? e.message : String(e), revealed), `org=${ctx.orgId}`); return [] as string[]; });
+    const toCheck = await newestReadyChanged(ctx, part, [...changedIds, ...joined]).catch(() => null);
+    if (toCheck) await checkRollback(ctx, part, toCheck, githubFor(env, ctx, fetchImpl)).catch(() => "skipped");
+    const notes = (Array.isArray(result.notes) ? result.notes : []).map((n) => lastErrorText(String(n), revealed)).filter(Boolean).slice(0, 3);
     const dropped = droppedText(clean.dropped);
     if (dropped) console.warn("hosting poll", part.provider, part.env, part.key, dropped, `org=${ctx.orgId}`);
     await recordSecretOutcome(ctx, kind, scope, { ok: true }, now).catch(() => undefined);
     // The state says what was written; the outcome says only what was dropped (an `ok` with nothing to
     // add carries no detail — `PollOutcome`'s convention).
-    const wrote = `${plural(newPoints, "new point")}, ${plural(changedDeploys, "new or changed deploy")}`;
+    const wrote = [`${plural(newPoints, "new point")}, ${plural(changedDeploys, "new or changed deploy")}`,
+      ...(joined.length ? [`${plural(joined.length, "commit")} joined from GitHub`] : []), ...notes].join("; ");
     return await settle(
       { ...base, status: "ok", written: newPoints + changedDeploys, ...(dropped ? { detail: dropped.slice(0, DETAIL_MAX) } : {}) },
       { covered: clean.covered, unavailable: clean.unavailable },
@@ -390,6 +406,20 @@ export async function pollPart(
     console.error("hosting poll", part.provider, part.env, part.key, lastErrorText(e instanceof Error ? e.message : String(e), revealed), `org=${ctx.orgId}`);
     return { ...base, status: "failed", written: 0, detail: "unexpected error" };
   }
+}
+
+/** The org's GitHub credential for the rollback compare, resolved only when a compare is due — through
+ *  `resolveGithubCredential` (the App's installation token, else the stored token), for the primary repository. */
+function githubFor(env: Env, ctx: TenantContext, fetchImpl?: typeof fetch): () => Promise<GhOpts | null> {
+  return async () => {
+    const repo = (await first<{ repo_full_name: string }>(ctx,
+      `SELECT repo_full_name FROM org_repos WHERE org_id = ? AND is_primary = 1`, ctx.orgId))?.repo_full_name;
+    if (!repo) return null;
+    const gh = await resolveGithubCredential(ctx, env, { repo, fetchImpl }).catch(() => null);
+    if (!gh) return null;
+    await gh.markUsed().catch(() => undefined);
+    return { token: gh.token.reveal(), repo, fetchImpl };
+  };
 }
 
 /** Poll each of `parts` in turn (sequentially — one provider's slowness is the next one's wait, never a

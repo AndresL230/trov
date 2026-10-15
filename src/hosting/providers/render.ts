@@ -174,8 +174,15 @@ function deployOf(item: unknown, svc: ServiceFacts, secret: SecretLike): Hosting
     readyAt: instant(d.finishedAt),
     url: status === "live" ? svc.url : null,
     inspectUrl: `${svc.dashboard}/deploys/${encodeURIComponent(id)}`,
+    // Render's deploy carries no failure message: its failed STATUS is the reason it gives.
+    reason: status ? FAILURE_REASON[status] ?? null : null,
   };
 }
+
+/** What a failed Render deploy's status says, as a reason (repo setups: every deploy says why it failed). */
+const FAILURE_REASON: Readonly<Record<string, string>> = {
+  build_failed: "The build failed", update_failed: "The update failed", pre_deploy_failed: "The pre-deploy command failed",
+};
 
 // ── requests ─────────────────────────────────────────────────────────────────
 

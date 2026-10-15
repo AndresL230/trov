@@ -245,6 +245,9 @@ function toDeploy(raw: unknown, want: "production" | "preview", branch: string |
     readyAt: IN_FLIGHT.has(state) ? null : instant(d.ready),
     url: httpsUrl(d.url),
     inspectUrl: httpsUrl(d.inspectorUrl),
+    // Why it failed: `errorMessage` (the SDK's deployment field; UNCONFIRMED that the LIST carries it), else the
+    // alias error's `message` (a deploy that built but could not be assigned its domain). Kept for `error` only.
+    reason: str(d.errorMessage) ?? str(record(d.aliasError).message),
   };
 }
 

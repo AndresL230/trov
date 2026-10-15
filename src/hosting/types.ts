@@ -117,6 +117,9 @@ export interface PollResult {
   /** The hours the metric read covered [from, to) — inside it an hour with no point is a true zero.
    *  null when no metric was read (deploys only, or every metric unavailable). */
   covered: { from: string; to: string } | null;
+  /** Short fixed notes about what this poll could NOT read that is not a metric ("commit: the token needs
+   *  Workers CI Read") — scrubbed and appended to the poll state's detail. */
+  notes?: string[];
 }
 
 /** What an install / OAuth code exchange yields — stored as the org's secret + connection row. */

@@ -227,6 +227,8 @@ function toDeploy(v: unknown, partSiteName: string | null): HostingDeploy | null
     by: oneLine(d.committer, 100),
     createdAt,
     readyAt: instant(d.published_at),
+    // Netlify's own words for a failed deploy (the framework keeps it for an `error` only, scrubbed and cut to 140).
+    reason: str(d.error_message),
     url: httpsUrl(d.deploy_ssl_url) ?? httpsUrl(d.ssl_url),
     inspectUrl: name ? `${APP}/sites/${encodeURIComponent(name)}/deploys/${encodeURIComponent(id)}` : httpsUrl(d.admin_url),
   };
