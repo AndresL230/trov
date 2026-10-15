@@ -44,11 +44,35 @@
 //                GitHub join (src/hosting/sha-join.ts) — never a guess, and never a failed poll. UNCONFIRMED: the
 //                response's exact nesting (`result.builds` keyed by version id, or a list) — both are read; that
 //                Read (not Edit) suffices.
-//   one poll     deployments (1) + the newest deployment's build (1) + analytics (1) = 3 (`pollCost`).
+//   outcomes     (repo setups, Phase G) the SAME analytics query groups by `status` too and sums `subrequests`:
+//                `status` is the invocation OUTCOME (`success`, `clientDisconnected`, `scriptThrewException`,
+//                `exceededResources`, … — step 0 CONFIRMED it is not an HTTP status), so each (hour, outcome) is stored
+//                as its own hourly `hx_outcome_<status>` point and requests / errors are the hour's sums over them.
+//                No 4xx / 5xx split exists in this dataset and none is invented. `hx_subrequests` per hour beside them.
+//   schedules    ONE more GraphQL query: `workersInvocationsScheduled` (step 0 CONFIRMED: per-run rows with `cron`,
+//                `status`, `datetime`, `cpuTimeUs`) for the script over the same window — per (hour, cron) the runs,
+//                the runs whose status is not `success`, and the epoch ms of the hour's last run. A refusal or an
+//                answer with no row list is the family's reason, never a failed poll. UNCONFIRMED: the filter's
+//                field names (`datetime_geq` / `datetime_leq`, as on the adaptive datasets).
+//   daily        once a day, for the completed UTC day the framework names (`pc.daily`, ../poll.ts): the day's
+//                quantiles — `workersInvocationsAdaptive(…) { quantiles { cpuTimeP50 cpuTimeP99 wallTimeP50 } }`,
+//                step 0 CONFIRMED the fields, µs — stored as daily points with the `hx_daily_read` marker (so a day
+//                with no traffic is not asked again), and, when the part names D1 databases (its `d1_database_ids`
+//                setting — the repo scan's wrangler detector fills it on accept), ONE query of
+//                `d1AnalyticsAdaptiveGroups` (read / write queries, rows read / written) and `d1StorageAdaptiveGroups`
+//                (`max { databaseSizeBytes }`) for the first 3 of them — step 0 CONFIRMED both with Account Analytics
+//                Read. UNCONFIRMED: the `datetime_lt` filter, the `Date` variable type of the D1 filters. A part with
+//                no D1 id says so (`storage`: "no D1 database is named for this part"), never zero.
+//   one poll     deployments (1) + the newest deployment's build (1) + analytics (1) + scheduled runs (1) + on the
+//                day's first poll the quantiles (1) and D1 (1) = 6 (`pollCost`).
 //
 // Every message is scrubbed of the token — and of the account id, as the old poller did: Cloudflare's own
 // errors can name the account they refused — BEFORE it is cut (../http.ts). Nothing is logged here.
 import type { HostingMetric } from "@shared/hosting";
+import {
+  CRON_EXPR_RE, D1_ID_RE, DAILY_READ_METRIC, OUTCOME_STATUS_RE, RUNTIME_DAILY, SUBREQUESTS_METRIC, cronMetric, d1Metric, outcomeMetric,
+  type ExtraFamily,
+} from "@shared/usage-families-core";
 import type { HostingDeploy, HostingPoint, HostingProvider, PartRef, PollResult, ProbeResult, ProviderContext } from "../types";
 import {
   HOUR, HostingError, type Revealed, asHostingError, instant, iso, pollWindow, probeFailure, readJson, record, refuse, sane, scrub, str,
@@ -65,6 +89,11 @@ const DEPLOYMENT_ID = /^[A-Za-z0-9-]{1,64}$/;
 const VERSION_ID = /^[A-Za-z0-9-]{1,64}$/;
 const SHA = /^[0-9a-f]{7,64}$/i;
 const PLAIN_LINE = /^[^\u0000-\u001f\u007f]{1,200}$/;
+const UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+/** Up to five D1 ids, comma-separated (a space allowed after a comma) — 5 × 36 + separators stays under the 200-character field limit. */
+const D1_IDS = new RegExp(`^${UUID}(?:, ?${UUID}){0,4}$`);
+/** Up to ten cron expressions of cron characters, `;`-separated. */
+const CRONS = /^[0-9A-Za-z*/,?#\- ]{1,80}(?:;[0-9A-Za-z*/,?#\- ]{1,80}){0,9}$/;
 
 /** Deployments kept per poll — the contract's "≤ 20, newest first". */
 const DEPLOY_LIMIT = 20;
@@ -74,12 +103,52 @@ const DEPLOY_LIMIT = 20;
  *  window (three hours, `datetime_leq` inclusive). The old poller's query, unchanged. */
 const ANALYTICS_QUERY = `query($a: string!, $s: string!, $from: Time!, $to: Time!) {
   viewer { accounts(filter: { accountTag: $a }) {
-    workersInvocationsAdaptive(limit: 100, filter: { scriptName: $s, datetime_geq: $from, datetime_leq: $to }, orderBy: [datetimeHour_ASC]) {
-      dimensions { datetimeHour }
-      sum { requests errors }
+    workersInvocationsAdaptive(limit: 200, filter: { scriptName: $s, datetime_geq: $from, datetime_leq: $to }, orderBy: [datetimeHour_ASC]) {
+      dimensions { datetimeHour status }
+      sum { requests errors subrequests }
     }
   } }
 }`;
+
+/** The script's cron runs over the window — per-run rows (step 0). 1000 rows is a cron every minute for 16 hours;
+ *  an answer that FILLS the limit may be cut short, so it is not stored (the family says why). */
+const SCHEDULED_LIMIT = 1000;
+const SCHEDULED_QUERY = `query($a: string!, $s: string!, $from: Time!, $to: Time!) {
+  viewer { accounts(filter: { accountTag: $a }) {
+    workersInvocationsScheduled(limit: ${SCHEDULED_LIMIT}, filter: { scriptName: $s, datetime_geq: $from, datetime_leq: $to }) {
+      cron status datetime
+    }
+  } }
+}`;
+
+/** The completed day's quantiles for the script — one row (`date` = the day), or none on a day with no invocation. */
+const RUNTIME_QUERY = `query($a: string!, $s: string!, $from: Time!, $to: Time!) {
+  viewer { accounts(filter: { accountTag: $a }) {
+    workersInvocationsAdaptive(limit: 10, filter: { scriptName: $s, datetime_geq: $from, datetime_lt: $to }) {
+      dimensions { date }
+      quantiles { cpuTimeP50 cpuTimeP99 wallTimeP50 }
+    }
+  } }
+}`;
+
+/** D1 for up to `D1_PER_POLL` databases, one alias pair each — the query text names only aliases and variables. */
+const D1_PER_POLL = 3;
+function d1Query(n: number): string {
+  const vars = Array.from({ length: n }, (_, i) => `$d${i}: string!`).join(", ");
+  const fields = Array.from({ length: n }, (_, i) => `
+    q${i}: d1AnalyticsAdaptiveGroups(limit: 10, filter: { databaseId: $d${i}, date_geq: $day, date_leq: $day }) {
+      dimensions { date }
+      sum { readQueries writeQueries rowsRead rowsWritten }
+    }
+    s${i}: d1StorageAdaptiveGroups(limit: 10, filter: { databaseId: $d${i}, date_geq: $day, date_leq: $day }) {
+      dimensions { date }
+      max { databaseSizeBytes }
+    }`).join("");
+  return `query($a: string!, $day: Date!, ${vars}) {
+  viewer { accounts(filter: { accountTag: $a }) {${fields}
+  } }
+}`;
+}
 
 /** `probe` without a part: the same dataset for the whole account, one row at most. */
 const ACCOUNT_PROBE_QUERY = `query($a: string!, $from: Time!, $to: Time!) {
@@ -202,31 +271,144 @@ async function readAnalytics(pc: ProviderContext, auth: CfAuth, worker: string, 
 /** Ceilings far past anything real — a stored point is permanent (first write wins). */
 const MAX_COUNT = 1e12;
 
+type ExtraPoint = { metric: string; at: string; value: number };
+
 /**
- * Rows → points: `requests` and `errors` for each hour of `[from, to)`, an hour per row. A row outside the
- * window, the row AT `to` (the inclusive end), and a malformed one (an unparseable hour, a count that is not
- * a finite number ≥ 0) are skipped on their own — never repaired, never aborting the rows after them. Two
- * rows for one hour (never expected) are summed.
+ * Rows → points: `requests` and `errors` for each hour of `[from, to)`, summed over the hour's rows (one per
+ * invocation outcome), and — Phase G — each outcome's requests as `hx_outcome_<status>` and the hour's subrequests.
+ * A row outside the window, the row AT `to` (the inclusive end), and a malformed one (an unparseable hour, a count
+ * that is not a finite number ≥ 0) are skipped on their own — never repaired, never aborting the rows after them.
+ * A row with no readable `status` still counts toward the hour's requests and errors, and toward no outcome; a
+ * missing `subrequests` is simply not stored for that row's hour (never a zero).
  */
-function hourPoints(rows: unknown[], from: number, to: number): HostingPoint[] {
-  const hours = new Map<number, { requests: number; errors: number }>();
+function hourPoints(rows: unknown[], from: number, to: number): { points: HostingPoint[]; extra: ExtraPoint[] } {
+  const hours = new Map<number, { requests: number; errors: number; sub: number | null; outcomes: Map<string, number> }>();
   for (const row of rows) {
     const r = record(row);
-    const hour = record(r.dimensions).datetimeHour;
+    const dims = record(r.dimensions);
+    const hour = dims.datetimeHour;
     const at = typeof hour === "string" ? Date.parse(hour) : Number.NaN;
     const sum = record(r.sum);
     const requests = typeof sum.requests === "number" ? sane(sum.requests, MAX_COUNT) : null;
     const errors = typeof sum.errors === "number" ? sane(sum.errors, MAX_COUNT) : null;
     if (!Number.isFinite(at) || at % HOUR !== 0 || at < from || at >= to || requests === null || errors === null) continue;
-    const held = hours.get(at) ?? { requests: 0, errors: 0 };
-    hours.set(at, { requests: held.requests + Math.round(requests), errors: held.errors + Math.round(errors) });
+    const held = hours.get(at) ?? { requests: 0, errors: 0, sub: null, outcomes: new Map<string, number>() };
+    held.requests += Math.round(requests);
+    held.errors += Math.round(errors);
+    const sub = typeof sum.subrequests === "number" ? sane(sum.subrequests, MAX_COUNT) : null;
+    if (sub !== null) held.sub = (held.sub ?? 0) + Math.round(sub);
+    const status = typeof dims.status === "string" ? dims.status : null;
+    if (status && OUTCOME_STATUS_RE.test(status)) held.outcomes.set(status, (held.outcomes.get(status) ?? 0) + Math.round(requests));
+    hours.set(at, held);
   }
   const sorted = [...hours].sort((a, b) => a[0] - b[0]);
-  return [
-    ...sorted.map(([at, v]): HostingPoint => ({ metric: "requests", at: iso(at), value: v.requests })),
-    ...sorted.map(([at, v]): HostingPoint => ({ metric: "errors", at: iso(at), value: v.errors })),
-  ];
+  const extra: ExtraPoint[] = [];
+  for (const [at, v] of sorted) {
+    for (const [status, n] of v.outcomes) extra.push({ metric: outcomeMetric(status), at: iso(at), value: n });
+    if (v.sub !== null) extra.push({ metric: SUBREQUESTS_METRIC, at: iso(at), value: v.sub });
+  }
+  return {
+    points: [
+      ...sorted.map(([at, v]): HostingPoint => ({ metric: "requests", at: iso(at), value: v.requests })),
+      ...sorted.map(([at, v]): HostingPoint => ({ metric: "errors", at: iso(at), value: v.errors })),
+    ],
+    extra,
+  };
 }
+
+/** The `<dataset>` list of a GraphQL answer for the account — or a failure when it names no account. */
+function datasetRows(body: Record<string, unknown>, dataset: string, what: string): unknown[] {
+  const accounts = record(record(body.data).viewer).accounts;
+  const rows = Array.isArray(accounts) ? record(accounts[0])[dataset] : null;
+  if (!Array.isArray(rows)) throw new HostingError(`${what}: Cloudflare answered with no ${dataset} list`);
+  return rows;
+}
+
+/**
+ * Cron runs → hourly points per (hour, cron): `runs`, `failed` (a status other than `success`) and `last` (the epoch
+ * ms of the hour's newest run). A run outside `[from, to)`, with an expression that is not a cron or an unparseable
+ * time, is skipped on its own.
+ */
+function cronPoints(rows: unknown[], from: number, to: number): ExtraPoint[] {
+  const cells = new Map<string, { at: number; cron: string; runs: number; failed: number; last: number }>();
+  for (const row of rows) {
+    const r = record(row);
+    const cron = typeof r.cron === "string" ? r.cron.trim() : "";
+    const t = typeof r.datetime === "string" ? Date.parse(r.datetime) : Number.NaN;
+    if (!cron || cron.length > 80 || !CRON_EXPR_RE.test(cron) || !Number.isFinite(t) || t < from || t >= to) continue;
+    const at = Math.floor(t / HOUR) * HOUR;
+    const key = `${at}|${cron}`;
+    const cell = cells.get(key) ?? { at, cron, runs: 0, failed: 0, last: 0 };
+    cell.runs++;
+    if (r.status !== "success") cell.failed++;
+    cell.last = Math.max(cell.last, t);
+    cells.set(key, cell);
+  }
+  return [...cells.values()].sort((a, b) => a.at - b.at || (a.cron < b.cron ? -1 : 1)).flatMap((c) => [
+    { metric: cronMetric("runs", c.cron), at: iso(c.at), value: c.runs },
+    { metric: cronMetric("failed", c.cron), at: iso(c.at), value: c.failed },
+    { metric: cronMetric("last", c.cron), at: iso(c.at), value: c.last },
+  ]);
+}
+
+const DAY = 24 * HOUR;
+/** A day's quantile in µs, sane (an hour of CPU at most) — else null. */
+const micros = (v: unknown): number | null => (typeof v === "number" ? sane(v, 3_600_000_000) : null);
+
+/** The completed day's quantiles → daily points, plus the `hx_daily_read` marker (the day was read, with or without a row). */
+function runtimePoints(rows: unknown[], day: string, dayStart: number): ExtraPoint[] {
+  const at = iso(dayStart);
+  const out: ExtraPoint[] = [{ metric: DAILY_READ_METRIC, at, value: 1 }];
+  const row = rows.map(record).find((r) => record(r.dimensions).date === day);
+  if (!row) return out;
+  const q = record(row.quantiles);
+  const pick: [string, unknown][] = [[RUNTIME_DAILY.cpu_p50, q.cpuTimeP50], [RUNTIME_DAILY.cpu_p99, q.cpuTimeP99], [RUNTIME_DAILY.wall_p50, q.wallTimeP50]];
+  for (const [metric, v] of pick) {
+    const n = micros(v);
+    if (n !== null) out.push({ metric, at, value: Math.round(n) });
+  }
+  return out;
+}
+
+/** The D1 answer → daily points per database: the day's sums and its size. A database whose rows are not that day's
+ *  (or malformed) stores nothing — absent, never zero. */
+function d1Points(body: Record<string, unknown>, ids: string[], day: string, dayStart: number): ExtraPoint[] {
+  const accounts = record(record(body.data).viewer).accounts;
+  const account = Array.isArray(accounts) && accounts.length ? record(accounts[0]) : null;
+  if (!account) throw new HostingError("cloudflare d1: Cloudflare answered for no account");
+  const at = iso(dayStart);
+  const out: ExtraPoint[] = [];
+  const ofDay = (v: unknown): Record<string, unknown> | undefined =>
+    Array.isArray(v) ? v.map(record).find((r) => record(r.dimensions).date === day) : undefined;
+  ids.forEach((id, i) => {
+    const q = ofDay(account[`q${i}`]);
+    if (q) {
+      const sum = record(q.sum);
+      const fields: [Parameters<typeof d1Metric>[0], unknown][] = [["read_queries", sum.readQueries], ["write_queries", sum.writeQueries], ["rows_read", sum.rowsRead], ["rows_written", sum.rowsWritten]];
+      for (const [field, v] of fields) {
+        const n = typeof v === "number" ? sane(v, MAX_COUNT) : null;
+        if (n !== null) out.push({ metric: d1Metric(field, id), at, value: Math.round(n) });
+      }
+    }
+    const st = ofDay(account[`s${i}`]);
+    const size = st ? record(st.max).databaseSizeBytes : undefined;
+    const n = typeof size === "number" ? sane(size, 1e13) : null;
+    if (n !== null) out.push({ metric: d1Metric("size_bytes", id), at, value: Math.round(n) });
+  });
+  return out;
+}
+
+/** The part's D1 database ids (its `d1_database_ids` setting, comma-separated), each a UUID — at most `D1_PER_POLL` read. */
+function d1Ids(part: PartRef): string[] {
+  return [...new Set((part.settings.d1_database_ids ?? "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => D1_ID_RE.test(x)))];
+}
+
+/** A family's reason from a thrown read: the error's own (already scrubbed) words, else fixed text. */
+const familyReason = (prefix: string, e: unknown): string =>
+  `${prefix}: ${e instanceof HostingError ? e.message.replace(/^cloudflare [a-z0-9 ]+: /i, "") : "the request failed"}`.slice(0, 200);
+
+/** What `storage` says for a part that names no D1 database — every poll, with no request. */
+export const NO_D1_DATABASE = "no D1 database is named for this part — set its D1 database ids (the repo scan fills them from wrangler)";
 
 // ── deploys ──────────────────────────────────────────────────────────────────
 
@@ -338,11 +520,16 @@ export const cloudflare: HostingProvider = {
   ],
   partSettings: [
     { key: "worker", label: "Worker name", description: "The Worker script's name, as Workers & Pages lists it.", required: true, placeholder: "frontend-staging", pattern: WORKER },
+    // Repo setups, Phase G: the D1 databases and cron triggers the Usage tab reads for this Worker. The repo scan's
+    // wrangler detector proposes both (its `d1_databases[].database_id` and `triggers.crons`); an admin may edit them.
+    { key: "d1_database_ids", label: "D1 database ids", description: "Optional. The ids of the D1 databases this Worker binds (wrangler's d1_databases), comma-separated — up to 5; the first 3 are read.", required: false, placeholder: "6c71838c-18f7-4f68-8513-b58e86c237b9", pattern: D1_IDS },
+    { key: "crons", label: "Cron triggers", description: "Optional. The Worker's cron expressions (wrangler's triggers.crons), separated by ;. Runs are read either way; a listed cron that never ran in a range reads as none.", required: false, placeholder: "*/10 * * * *;0 13 * * *", pattern: CRONS },
   ],
-  capabilities: { deploys: true, metrics: ["requests", "errors"] },
+  capabilities: { deploys: true, metrics: ["requests", "errors"], families: ["outcomes", "runtime", "storage", "schedules"] },
   planNote: null,
-  // Deployments (1) + the newest deployment's build (1) + analytics (1).
-  pollCost: 3,
+  // Deployments (1) + the newest deployment's build (1) + analytics (1) + scheduled runs (1) + once a day the
+  // quantiles (1) and D1 (1).
+  pollCost: 6,
   // A pasted API token is managed (and rolled or deleted) under My Profile › API Tokens.
   manageUrl(_config, method) {
     return method === "token" ? `${DASHBOARD}/profile/api-tokens` : null;
@@ -406,12 +593,58 @@ export const cloudflare: HostingProvider = {
     }
     const { from, to } = pollWindow(pc.now);
     const rows = await readAnalytics(pc, auth, worker, from, to, "cloudflare analytics");
+    const hourly = hourPoints(rows, from, to);
+    const extra: ExtraPoint[] = [...hourly.extra];
+    const families: { family: ExtraFamily; reason: string | null }[] = [{ family: "outcomes", reason: null }];
+
+    // Scheduled runs over the same window: ONE query; its failure is the family's reason, never the poll's.
+    try {
+      const body = await cfRequest(pc, auth, GRAPHQL, "cloudflare schedules", ANALYTICS_HINTS, {
+        query: SCHEDULED_QUERY, variables: { a: auth.account, s: worker, from: iso(from), to: iso(to) },
+      });
+      const runs = datasetRows(body, "workersInvocationsScheduled", "cloudflare schedules");
+      if (runs.length >= SCHEDULED_LIMIT) families.push({ family: "schedules", reason: `more than ${SCHEDULED_LIMIT - 1} cron runs in three hours — too many to read in one answer` });
+      else { extra.push(...cronPoints(runs, from, to)); families.push({ family: "schedules", reason: null }); }
+    } catch (e) {
+      families.push({ family: "schedules", reason: familyReason("Cloudflare did not answer for cron runs", e) });
+    }
+
+    // Once a day (the framework says which completed day): the quantiles, then D1 when the part names a database.
+    const ids = d1Ids(part);
+    const day = pc.daily && /^\d{4}-\d{2}-\d{2}$/.test(pc.daily) ? pc.daily : null;
+    const dayStart = day ? Date.parse(`${day}T00:00:00.000Z`) : Number.NaN;
+    if (day && Number.isFinite(dayStart) && dayStart + DAY <= pc.now) {
+      try {
+        const body = await cfRequest(pc, auth, GRAPHQL, "cloudflare runtime", ANALYTICS_HINTS, {
+          query: RUNTIME_QUERY, variables: { a: auth.account, s: worker, from: iso(dayStart), to: iso(dayStart + DAY) },
+        });
+        extra.push(...runtimePoints(datasetRows(body, "workersInvocationsAdaptive", "cloudflare runtime"), day, dayStart));
+        families.push({ family: "runtime", reason: null });
+      } catch (e) {
+        families.push({ family: "runtime", reason: familyReason("Cloudflare did not answer for the day's CPU and wall time", e) });
+      }
+      if (ids.length) {
+        const read = ids.slice(0, D1_PER_POLL);
+        try {
+          const vars: Record<string, string> = { a: auth.account, day };
+          read.forEach((id, i) => { vars[`d${i}`] = id; });
+          const body = await cfRequest(pc, auth, GRAPHQL, "cloudflare d1", ANALYTICS_HINTS, { query: d1Query(read.length), variables: vars });
+          extra.push(...d1Points(body, read, day, dayStart));
+          families.push({ family: "storage", reason: null });
+        } catch (e) {
+          families.push({ family: "storage", reason: familyReason("Cloudflare did not answer for D1", e) });
+        }
+      }
+    }
+    if (!ids.length) families.push({ family: "storage", reason: NO_D1_DATABASE });
     return {
       deploys,
-      points: hourPoints(rows, from, to),
+      points: hourly.points,
       unavailable: WEB_UNAVAILABLE.map((u) => ({ ...u })),
       covered: { from: iso(from), to: iso(to) },
       ...(notes.length ? { notes } : {}),
+      extraPoints: extra,
+      families,
     };
   },
 };

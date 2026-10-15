@@ -38,7 +38,7 @@ import { type Revealed, type Secret, lastErrorText, recordSecretOutcome, resolve
 import { jobTenant } from "../platform/jobs";
 import { DAY, HOSTING_DEPLOY_RETENTION_DAYS, USAGE_RETENTION_DAYS, putMetrics } from "../repo/store";
 import type { RepoMetric } from "../repo/types";
-import { HOUR, HostingError, asHostingError, hostFetch, hourFloor, iso } from "./http";
+import { HOUR, HostingError, SETTLE_MS, asHostingError, hostFetch, hourFloor, iso } from "./http";
 import { listAllParts, partRef, type PartRow } from "./parts";
 import { PROVIDERS } from "./registry";
 import type { HostingField, HostingProvider, PollResult } from "./types";
@@ -48,6 +48,12 @@ import { ROLLBACK_COMPARE_COST, checkRollback, newestReadyChanged } from "./roll
 import { resolveGithubCredential } from "../github-app/credential";
 import type { GhOpts } from "../repo/github";
 import { NO_GITHUB_METRICS } from "./providers/github";
+import {
+  DAILY_READ_METRIC, EXTRA_FAMILIES, FAMILY_ROLE, isExtraFamily, parseExtraMetric, type ExtraFamily, type ExtraMetricName,
+} from "@shared/usage-families-core";
+
+/** The extra families read once a day, for a completed UTC day. */
+const DAILY_FAMILIES: readonly ExtraFamily[] = ["runtime", "storage"];
 
 /** The providers a poll may run — the registry, or (tests) a map holding a fake. */
 export type ProviderMap = Readonly<Partial<Record<HostingProviderId, HostingProvider>>>;
@@ -109,7 +115,24 @@ export interface CleanPoll {
   /** Snapped INWARD to whole hours, its end clamped to the current hour's floor; null when the provider
    *  claimed none, or claimed one that is not an interval. */
   covered: { from: number; to: number } | null;
+  /** The extra families' points (repo setups, Phase G — shared/usage-families-core.ts), already `RepoMetric`s. */
+  extra: RepoMetric[];
+  /** The extra families this poll attempted, each with its reason (null = read). */
+  families: { family: ExtraFamily; reason: string | null }[];
   dropped: { points: number; deploys: number; unavailable: number };
+}
+
+/** At most this many extra-family points are stored from ONE poll (a busy Worker: ~6 outcomes + subrequests per
+ *  hour × 3 hours, a few crons × 3 fields × 3 hours, and once a day ≤ 4 runtime + 3 × 5 D1 points). */
+export const MAX_EXTRA_POINTS_PER_POLL = 1000;
+/** A cron run's `last` is an epoch ms INSIDE its own hour — anything else is not a run time. */
+const extraValueOk = (name: ExtraMetricName, at: number, value: number): boolean =>
+  name.family === "schedules" && name.field === "last" ? value >= at && value < at + HOUR : value < 1e13;
+
+/** The completed UTC day whose DAILY figures a poll at `now` reads (`YYYY-MM-DD`): the newest day that ended at least
+ *  `SETTLE_MS` ago — so at 00:40 UTC it is yesterday, and at 00:10 the day before (already read). PURE. */
+export function dailyDay(now: number): string {
+  return new Date(Math.floor((now - SETTLE_MS) / DAY) * DAY - DAY).toISOString().slice(0, 10);
 }
 
 // eslint-disable-next-line no-control-regex
@@ -161,7 +184,9 @@ const instantMs = (v: unknown): number | null => {
  *                interval → null. A point outside it is still a real point; the interval only decides where
  *                a MISSING hour may be read as zero.
  */
-export function validatePoll(result: unknown, part: Pick<PartRow, "env" | "key" | "role">, now: number, revealed: Revealed = null): CleanPoll {
+export function validatePoll(
+  result: unknown, part: Pick<PartRow, "env" | "key" | "role">, now: number, revealed: Revealed = null, declared: readonly ExtraFamily[] = [],
+): CleanPoll {
   const r = record(result);
   const nowHour = hourFloor(now);
   const oldestPoint = now - USAGE_RETENTION_DAYS * DAY;
@@ -228,7 +253,54 @@ export function validatePoll(result: unknown, part: Pick<PartRow, "env" | "key" 
     const to = Math.min(nowHour, Math.floor(cTo / HOUR) * HOUR);
     if (from < to) covered = { from, to };
   }
-  return { points, deploys, unavailable, covered, dropped };
+
+  // Extra families (Phase G): a name one of the builders makes, of a family the provider DECLARES and the part's
+  // role reads; an hourly point at a complete hour's start, a daily one at 00:00 UTC of a COMPLETED day; a finite
+  // value ≥ 0 under its ceiling (a cron's `last` inside its own hour). One per (name, instant) — the first wins.
+  const ofFamily = (f: unknown): f is ExtraFamily => isExtraFamily(f) && declared.includes(f) && FAMILY_ROLE[f] === part.role;
+  const extra: RepoMetric[] = [];
+  const seenExtra = new Set<string>();
+  for (const raw of Array.isArray(r.extraPoints) ? r.extraPoints : []) {
+    const p = record(raw);
+    const name = typeof p.metric === "string" ? parseExtraMetric(p.metric) : null;
+    const t = instantMs(p.at);
+    const value = p.value;
+    const key = `${String(p.metric)}@${t}`;
+    const placed = t !== null && t >= oldestPoint && (name?.grain === "day" ? t % DAY === 0 && t + DAY <= now : t % HOUR === 0 && t < nowHour);
+    if (!name || !ofFamily(name.family) || t === null || !placed || typeof value !== "number" || !Number.isFinite(value) || value < 0
+      || !extraValueOk(name, t, value) || seenExtra.has(key) || extra.length >= MAX_EXTRA_POINTS_PER_POLL) {
+      dropped.points++;
+      continue;
+    }
+    seenExtra.add(key);
+    extra.push({ metric: p.metric as string, env: part.env, part: part.key, value, at: iso(t) });
+  }
+  const families: CleanPoll["families"] = [];
+  for (const raw of Array.isArray(r.families) ? r.families : []) {
+    const f = record(raw);
+    if (!ofFamily(f.family) || families.some((x) => x.family === f.family)) { dropped.unavailable++; continue; }
+    families.push({ family: f.family, reason: f.reason === null || f.reason === undefined ? null : prose(f.reason, REASON_MAX, revealed) ?? "the provider could not read it" });
+  }
+  return { points, deploys, unavailable, covered, extra, families, dropped };
+}
+
+/** `hosting_poll_state.unavailable` after this poll, for the EXTRA families: the stored entries (`{ family, reason }`,
+ *  beside the metric entries) of every family this poll did not attempt are kept — a daily family is attempted once a
+ *  day — and each attempted one is replaced by its new reason, or dropped when it was read. PURE. */
+export function mergeFamilies(prevJson: string | null, attempted: CleanPoll["families"]): { family: ExtraFamily; reason: string }[] {
+  let prev: { family: ExtraFamily; reason: string }[] = [];
+  try {
+    const v = prevJson ? (JSON.parse(prevJson) as unknown) : [];
+    if (Array.isArray(v)) {
+      prev = v.flatMap((x) => {
+        const o = record(x);
+        return isExtraFamily(o.family) && typeof o.reason === "string" ? [{ family: o.family, reason: o.reason }] : [];
+      });
+    }
+  } catch { prev = []; }
+  const kept = prev.filter((p) => !attempted.some((a) => a.family === p.family));
+  const fresh = attempted.flatMap((a) => (a.reason ? [{ family: a.family, reason: a.reason }] : []));
+  return [...kept, ...fresh].sort((a, b) => EXTRA_FAMILIES.indexOf(a.family) - EXTRA_FAMILIES.indexOf(b.family));
 }
 
 /**
@@ -259,7 +331,7 @@ interface StateRow { provider: string; last_ok_at: string | null; covered_from: 
  */
 async function writeState(
   ctx: TenantContext, part: PartRow, now: number, status: HostingPollOutcome["status"], detail: string | null,
-  ok: { covered: { from: number; to: number } | null; unavailable: CleanPoll["unavailable"] } | null,
+  ok: { covered: { from: number; to: number } | null; unavailable: CleanPoll["unavailable"]; families?: CleanPoll["families"] } | null,
 ): Promise<void> {
   const prev = await first<StateRow>(ctx,
     `SELECT provider, last_ok_at, covered_from, covered_to, unavailable FROM hosting_poll_state WHERE org_id = ? AND env = ? AND part = ?`,
@@ -278,7 +350,18 @@ async function writeState(
     ctx.orgId, part.env, part.key, part.provider, at, status, detail,
     ok ? at : mine?.last_ok_at ?? null,
     covered ? iso(covered.from) : null, covered ? iso(covered.to) : null,
-    ok ? JSON.stringify(ok.unavailable) : mine?.unavailable ?? "[]");
+    ok ? JSON.stringify([...ok.unavailable, ...mergeFamilies(mine?.unavailable ?? null, ok.families ?? [])]) : mine?.unavailable ?? "[]");
+}
+
+/** Whether `day`'s daily figures were already read for this part — its `hx_daily_read` marker (the once-a-day rule).
+ *  One indexed read; a failed read answers "read" (a missed day costs a gap, never a burst of retries). */
+async function dailyRead(ctx: TenantContext, part: PartRow, day: string): Promise<boolean> {
+  try {
+    const row = await first<{ n: number }>(ctx,
+      `SELECT 1 AS n FROM repo_metrics WHERE org_id = ? AND metric = ? AND env = ? AND part = ? AND at = ?`,
+      ctx.orgId, DAILY_READ_METRIC, part.env, part.key, `${day}T00:00:00.000Z`);
+    return row !== null;
+  } catch { return true; }
 }
 
 /** Why a part cannot be polled with these values, or null — the first REQUIRED field that is absent, or
@@ -360,9 +443,15 @@ export async function pollPart(
     const missing = fieldProblem(provider.orgConfigFields, config) ?? fieldProblem(provider.partSettings, part.settings);
     if (missing) return await settle({ ...base, status: "skipped", written: 0, detail: missing });
 
+    // The once-a-day rule (Phase G): a provider with a DAILY family (runtime, storage) is handed the completed day
+    // to read only while that day's marker is not stored yet.
+    const declared = provider.capabilities.families ?? [];
+    const day = declared.some((f) => DAILY_FAMILIES.includes(f)) ? dailyDay(now) : null;
+    const daily = day && !(await dailyRead(ctx, part, day)) ? day : null;
+
     let result: PollResult;
     try {
-      result = await provider.poll({ fetch: hostFetch(provider.apiHosts, fetchImpl), credential: { secret, config }, now }, partRef(ctx.orgId, part));
+      result = await provider.poll({ fetch: hostFetch(provider.apiHosts, fetchImpl), credential: { secret, config }, now, daily }, partRef(ctx.orgId, part));
     } catch (e) {
       // `asHostingError` keeps a HostingError's message (already scrubbed by the provider with what IT
       // revealed) and replaces anything else with fixed text; `lastErrorText` scrubs again with the
@@ -377,8 +466,8 @@ export async function pollPart(
       return await settle({ ...base, status: "failed", written: 0, detail });
     }
 
-    const clean = validatePoll(result, part, now, revealed);
-    const newPoints = await putMetrics(ctx, clean.points);
+    const clean = validatePoll(result, part, now, revealed, declared);
+    const newPoints = await putMetrics(ctx, [...clean.points, ...clean.extra]);
     const changedIds = await upsertDeploys(ctx, part, clean.deploys, now, "provider");
     const changedDeploys = changedIds.length;
     // A deploy the provider gave no sha: the commit join (exactly one GitHub candidate, else none). Then the
@@ -398,7 +487,7 @@ export async function pollPart(
       ...(joined.length ? [`${plural(joined.length, "commit")} joined from GitHub`] : []), ...notes].join("; ");
     return await settle(
       { ...base, status: "ok", written: newPoints + changedDeploys, ...(dropped ? { detail: dropped.slice(0, DETAIL_MAX) } : {}) },
-      { covered: clean.covered, unavailable: clean.unavailable },
+      { covered: clean.covered, unavailable: clean.unavailable, families: clean.families },
       lastErrorText(dropped ? `${wrote}; ${dropped}` : wrote, revealed),
     );
   } catch (e) {

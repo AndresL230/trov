@@ -10,12 +10,17 @@ import { baseOf, folderOf, fromFile, type Candidate, type Detector } from "./typ
 
 const FILES = ["wrangler.toml", "wrangler.json", "wrangler.jsonc"];
 
+/** The Cloudflare part settings' own bounds (src/hosting/providers/cloudflare.ts `D1_IDS` / `CRONS`): past them the
+ *  pattern refuses the setting, and a refused setting would drop the whole suggestion — so keep the first ones. */
+export const WRANGLER_MAX_D1 = 5;
+export const WRANGLER_MAX_CRONS = 10;
+
 function extras(cfg: Rec): Record<string, string> {
   const out: Record<string, string> = {};
   const d1 = arr(cfg.d1_databases).map((d) => str(rec(d)?.database_id)).filter((s): s is string => s !== null);
-  if (d1.length) out.d1_database_ids = [...new Set(d1)].join(",");
+  if (d1.length) out.d1_database_ids = [...new Set(d1)].slice(0, WRANGLER_MAX_D1).join(",");
   const crons = arr(rec(cfg.triggers)?.crons).map(str).filter((s): s is string => s !== null);
-  if (crons.length) out.crons = crons.join(";");
+  if (crons.length) out.crons = [...new Set(crons)].slice(0, WRANGLER_MAX_CRONS).join(";");
   return out;
 }
 

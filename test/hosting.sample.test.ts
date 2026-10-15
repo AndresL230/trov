@@ -7,6 +7,8 @@ import { type HostingSetupDTO, HOSTING_METRICS, PART_KEY_RE } from "@shared/host
 import { allProviders, checkFields, providerDTO, providerOf } from "../src/hosting/registry";
 import { HOSTING_SAMPLES, HOSTING_SAMPLE_PROVIDERS, hostingScenario } from "../web/src/hosting-sample";
 import { HOSTING_SAMPLE_KEYS, HOSTING_STACK_KEYS } from "../web/src/hosting-keys";
+import { PROVIDER_FAMILIES } from "../web/src/repo-sample";
+import { familiesOf } from "@shared/usage-families-core";
 
 // The deployment the sample describes: the Vercel integration and the Netlify OAuth app both configured.
 const SAMPLE_ENV = {
@@ -17,6 +19,12 @@ const SAMPLE_ENV = {
 describe("the Hosting sample data", () => {
   it("carries the registry's own provider catalogue (regenerate it when a provider changes)", () => {
     expect(HOSTING_SAMPLE_PROVIDERS).toEqual(allProviders().map((p) => providerDTO(p, SAMPLE_ENV)));
+  });
+
+  // The Repo screen's Usage sample (web/src/repo-sample.ts `repoScenarioUsage`, repo setups Phase G) gives each part the
+  // families its provider REALLY reads — so a scenario never draws a figure or an extra block the Worker cannot send.
+  it("the Repo Usage sample's provider families are the registry's own (`familiesOf(capabilities)`)", () => {
+    expect(Object.fromEntries(allProviders().map((p) => [p.id, familiesOf(p.capabilities)]))).toEqual(PROVIDER_FAMILIES);
   });
 
   // The fixed states the render tests use, and every flow × stack the preview's two switchers can show.

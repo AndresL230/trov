@@ -43,6 +43,12 @@ at all is the one `unauthorized` (`/mcp` → 401 `invalid_token`): an unknown / 
 token whose person left its org or whose org is suspended; a manual grant none of whose allowed orgs is live
 for its person; a `repo` grant whose person is in no org. There is no 409 on `/mcp`.
 
+**The one other bearer path** — Trov's own app metrics endpoint, `GET /api/internal/metrics` (repo setups, Phase G;
+`src/internal-metrics.ts`): the SAME credentials, resolved by `resolveBearerTenant` (a token's org, a manual grant's
+current one; a `repo` grant names none without a `repo`, so it is a 401 there), read-only, D1-only
+(`src/data/own-metrics.ts`, every statement bound to that org — counts only), dispatched in `src/index.ts` before the
+cookie-only app like `/mcp`. It is not a fourth auth class: no new credential, no new resolver.
+
 **Per tool call** — `resolveCall(conn, { repo, org })`. Every org tool takes these two OPTIONAL arguments
 (`src/mcp.ts` adds them in front of the tool's own; a tool body never sees `org`). A refusal is an MCP tool
 error `{ error, code, orgs? }` and has read and written nothing; `orgs` is only ever slugs of the person's own

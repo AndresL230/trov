@@ -8,7 +8,7 @@
 import {
   deployDots, envPartOf,
   type RepoDashboard, type RepoDeployRow, type RepoEnvPart, type RepoPerson, type RepoRange, type RepoUsageEnv, type RepoUsageMetric,
-  type RepoActivityKind, type RepoPrState, type RepoProductEnv, type RepoProductGroup,
+  type RepoActivityKind, type RepoPrState, type RepoProductEnv, type RepoProductGroup, REPO_RANGES,
 } from "@shared/repo";
 import type { PersonColor } from "@shared/rows";
 import type {
@@ -16,6 +16,7 @@ import type {
 } from "@shared/hosting";
 import type { AppKind } from "@shared/repo-apps-core";
 import { APP_KIND_ROLE } from "@shared/repo-apps-core";
+import type { PartExtras, UsageFamily, UsageOutcome } from "@shared/usage-families-core";
 import {
   narrowFacts,
   type FactsApp, type FactsAttention, type FactsCi, type FactsCommitGroup, type FactsConnect, type FactsDeploy, type FactsDriftStep,
@@ -963,4 +964,169 @@ export function repoScenario(key: ScenarioKey, variant = "", opts: { now?: numbe
   const at: At = (age) => new Date(now - ageMs(age)).toISOString();
   const [k, v]: [Exclude<ScenarioKey, "N">, string] = key === "N" ? (variant === "trov" ? ["B", "trouble"] : ["A", "trouble"]) : [key, variant];
   return narrowFacts(factsOf(SC[k](SCENARIO_VARIANTS[k].includes(v) ? v : "", at), now), opts.app ?? null);
+}
+
+// ── Repo setups, Phase G: the Usage tab of each scenario ─────────────────────
+// What the projection (src/tools/repo.ts `projectProviders`, src/tools/repo-extras.ts) would send for the scenario's
+// parts: one `RepoProviderPart` per target, with the families its provider REALLY reads (the registry's capabilities,
+// mirrored below), its connection as the scenario has it, figures where the host is connected and reads them, and —
+// for a Cloudflare Worker — the extra families (outcomes, runtime, D1, crons) the Cloudflare poll stores. The numbers
+// are placeholders shaped like the design's `usageExtras` (repo-data.js); every state is one the Worker can produce.
+// test/render.repo-usage.test.ts draws each scenario from here.
+
+/** The usage families each provider reads — `familiesOf(capabilities)` of the registry (test/render.repo-usage.test.ts
+ *  holds the two together). */
+export const PROVIDER_FAMILIES: Record<string, UsageFamily[]> = {
+  cloudflare: ["traffic", "outcomes", "runtime", "storage", "schedules"], railway: ["traffic", "latency", "compute"],
+  render: ["traffic", "latency", "compute"], fly: ["traffic", "latency", "compute"], aws: ["traffic", "latency", "compute"],
+  vercel: [], netlify: [], github: [],
+};
+/** Why a host reads no usage, as its poll stores it (`unavailable`). */
+const NO_USAGE: Record<string, string> = {
+  vercel: "Vercel has no public usage API — traffic needs Observability Plus",
+  netlify: "Netlify has no documented usage API",
+  github: "GitHub reports deploys only, no traffic or resources — connect the host itself to read them",
+};
+const SAMPLE_D1 = "6c71838c-18f7-4f68-8513-b58e86c237b9";
+const SEED = (s: string): number => { let h = 7; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 9973; return h; };
+const RANGE_N: Record<RepoRange, number> = { "24h": 24, "7d": 7, "30d": 30 };
+const RANGE_SCALE: Record<RepoRange, number> = { "24h": 1 / 7, "7d": 1, "30d": 30 / 7 };
+
+export interface ScenarioUsage {
+  usage: RepoDashboard["usage"];
+  providers: RepoDashboard["providers"];
+  product: RepoDashboard["product"];
+}
+
+/** One scenario's Usage tab: its targets (every part of its facts), the extra families of its Workers, and its
+ *  Product block — scenario A the app's own v2 metrics, B (and N's `trov`) Trov's own v3 endpoint. */
+export function repoScenarioUsage(key: ScenarioKey, variant = "", opts: { now?: number } = {}): ScenarioUsage {
+  const now = opts.now ?? Date.now();
+  const f = repoScenario(key, variant, { now });
+  const [k, v] = key === "N" ? (variant === "trov" ? ["B", "trouble"] : ["A", "trouble"]) : [key, variant];
+  const failed = k === "B" && (v === "failed" || v === "trouble");
+  const endHour = Math.floor(now / HOUR) * HOUR;
+  const today = Math.floor(now / DAY) * DAY;
+  const series = (seed: string, n: number, base: number, amp: number): number[] =>
+    Array.from({ length: n }, (_, i) => Math.max(0, Math.round(base + ((SEED(`${seed}x${i * 7}`) % 100) / 100) * amp * (0.6 + 0.4 * Math.sin(i * 1.3 + (SEED(seed) % 5))))));
+
+  const parts: RepoProviderPart[] = f.parts.map((p) => {
+    const env = f.envs.find((e) => e.key === p.env);
+    const families = PROVIDER_FAMILIES[p.provider] ?? [];
+    const reads = p.role === "web" ? families.includes("traffic") : families.includes("compute");
+    const live = reads && p.connection === "connected" && !p.viaGithub;
+    // A/trouble: api's staging Railway reading has gone quiet (the design's stale card).
+    const stale = live && k === "A" && v === "trouble" && p.app === "api" && p.env === "staging";
+    const seed = `${p.app}:${p.env}`;
+    const perDay = (SEED(seed) % 900 + 40) * 1000 / 7;
+    const traffic: RepoProviderPart["traffic"] = p.role !== "web" || !reads ? null
+      : Object.fromEntries(REPO_RANGES.map((r) => {
+        if (!live || stale) return [r, { requests: null, errors: null, error_rate: null, latency_p95_ms: null, bandwidth_bytes: null, trend: [] }];
+        const n = RANGE_N[r], step = r === "24h" ? HOUR : DAY;
+        const req = series(`${seed}${r}`, n, perDay * (r === "24h" ? 1 / 24 : 1), perDay * 0.4 * (r === "24h" ? 1 / 24 : 1));
+        const errs = req.map((x, i) => Math.round(x * (0.001 + ((SEED(`${seed}e${i}`) % 30) / 10000))));
+        const requests = req.reduce((a, b) => a + b, 0), errors = errs.reduce((a, b) => a + b, 0);
+        const reads2 = families.includes("latency");
+        return [r, {
+          requests, errors, error_rate: Math.round((errors / requests) * 10000) / 100,
+          latency_p95_ms: reads2 ? 120 + (SEED(seed) % 90) : null, bandwidth_bytes: reads2 ? requests * 18_000 : null,
+          trend: req.map((x, i) => ({ at: new Date((r === "24h" ? endHour : today) - (n - i) * step).toISOString(), requests: x, errors: errs[i] })),
+        }];
+      })) as Record<RepoRange, ProviderTrafficRange>;
+    const resources: ProviderResources | null = p.role !== "service" ? null : !live || stale
+      ? { cpu: null, mem_mb: null, at: null, trend: stale ? Array.from({ length: 20 }, (_, i) => ({ at: new Date(endHour - (24 - i) * HOUR).toISOString(), cpu: 0.1 + (SEED(`${seed}c${i}`) % 20) / 100, mem_mb: 300 + (SEED(`${seed}m${i}`) % 80) })) : [] }
+      : {
+        cpu: Math.round((0.06 + (SEED(seed) % 40) / 100) * 100) / 100, mem_mb: 120 + (SEED(seed) % 500), at: new Date(endHour - HOUR).toISOString(),
+        trend: Array.from({ length: 24 }, (_, i) => ({ at: new Date(endHour - (24 - i) * HOUR).toISOString(), cpu: 0.06 + (SEED(`${seed}c${i}`) % 40) / 100, mem_mb: 120 + (SEED(`${seed}m${i}`) % 500) })),
+      };
+    const unavailable = NO_USAGE[p.provider] ? (p.role === "web" ? (["requests", "errors", "latency_p50_ms", "latency_p95_ms", "bandwidth_bytes"] as const) : (["cpu", "mem_mb"] as const))
+      .map((metric) => ({ metric, reason: NO_USAGE[p.provider] })) : p.provider === "cloudflare"
+      ? [{ metric: "latency_p50_ms" as const, reason: "Cloudflare's Workers analytics report CPU and wall time per invocation, not HTTP response latency" },
+        { metric: "latency_p95_ms" as const, reason: "Cloudflare's Workers analytics report CPU and wall time per invocation, not HTTP response latency" },
+        { metric: "bandwidth_bytes" as const, reason: "Trov reads requests and errors only from Cloudflare's Workers analytics" }] : [];
+    const deploys: ProviderDeployDTO[] = [p.serving, p.latest].filter((d): d is FactsDeploy => !!d).map((d) => ({
+      id: d.id, state: d.state, target: d.target, sha: d.sha, branch: d.branch, message: d.message, by: d.by, at: d.createdAt, ready_at: d.readyAt, url: d.url, inspect_url: d.logUrl,
+    })).sort((a, b) => b.at.localeCompare(a.at));
+    const part: RepoProviderPart = {
+      env: p.env, env_label: env?.name ?? p.env, part: p.app, label: p.label, role: p.role, provider: p.provider, provider_label: p.host,
+      console_url: null, deploys, traffic, resources,
+      seen: { traffic: !!traffic && (live || stale), resources: !!resources && (live || stale), deploys: deploys.length > 0 },
+      unavailable, status: deploys.length || live ? "ok" : "not_connected", tone: "neutral",
+      last_poll: live || stale ? { at: new Date(now - (stale ? 34 : 20) * MIN).toISOString(), status: "ok", detail: null } : null,
+      connection: p.viaGithub ? "not_connected" : p.connection, families,
+    };
+    if (p.provider === "cloudflare" && live) part.extras = workerExtras(seed, k === "B" ? "trov" : "web", failed, now);
+    return part;
+  });
+  const providers: RepoDashboard["providers"] = parts.length ? (parts.some((p) => p.status === "ok") ? { status: "ok", data: parts } : { status: "empty" }) : { status: "not_connected" };
+
+  // Product: A reports the app's own v2 metrics (the sample's production environment); B is Trov's own v3 endpoint.
+  const sample = repoSample(now);
+  const product: RepoDashboard["product"] = k === "A" && sample.product.status === "ok"
+    ? { status: "ok", data: sample.product.data.filter((e) => e.name === "production").map((e) => ({ ...e, name: "Production" })) }
+    : k === "B" ? { status: "ok", data: [trovProduct()] } : { status: "not_connected" };
+  // Active users ride the app's own endpoint too — A's.
+  const usage: RepoDashboard["usage"] = k === "A" && sample.usage.status === "ok"
+    ? { status: "ok", data: Object.fromEntries(REPO_RANGES.map((r) => [r, sample.usage.status === "ok" ? sample.usage.data[r].map((u) => ({ ...u, name: u.name === "staging" ? "Staging" : "Production" })) : []])) as Record<RepoRange, RepoUsageEnv[]> }
+    : { status: "not_connected" };
+  return { usage, providers, product };
+
+  /** A Worker's extra families, shaped like the design's `workerExtras` (and B's D1 and crons). */
+  function workerExtras(seed: string, name: string, broke: boolean, at: number): PartExtras {
+    const req7 = name === "trov" ? 335_000 : 1_240_000;
+    const scale = (n: number, r: RepoRange) => Math.round(n * RANGE_SCALE[r]);
+    const outcome = (r: RepoRange): UsageOutcome[] => [
+      { status: "success", label: "Success", tone: "good" as const, count: scale(req7 * 0.993, r) },
+      { status: "clientDisconnected", label: "Client disconnected", tone: "neutral" as const, count: scale(req7 * 0.0062, r) },
+      { status: "scriptThrewException", label: "Script errors", tone: "bad" as const, count: scale(req7 * (broke ? 0.0031 : 0.0006), r) },
+      { status: "exceededResources", label: "Exceeded limits", tone: "warn" as const, count: scale(req7 * 0.0001, r) },
+    ].filter((b) => b.count > 0);
+    const dayIso = (back: number) => new Date(today - back * DAY).toISOString();
+    const extras: PartExtras = {
+      outcomes: { state: "ok", reason: null, since: null, ranges: Object.fromEntries(REPO_RANGES.map((r) => [r, outcome(r)])) as Record<RepoRange, UsageOutcome[]> },
+      runtime: {
+        state: "ok", reason: null, day: dayIso(1).slice(0, 10), since: null,
+        cpu_p50_ms: name === "trov" ? 2.1 : 1.8, cpu_p99_ms: name === "trov" ? (broke ? 31.6 : 16.4) : 14.2, wall_p50_ms: name === "trov" ? 42 : 38,
+        subrequests: Object.fromEntries(REPO_RANGES.map((r) => [r, scale(req7 * 0.28, r)])) as Record<RepoRange, number>,
+        trend: series(`${seed}p99`, 14, 12, 8).map((ms, i) => ({ at: dayIso(14 - i), cpu_p99_ms: ms })),
+      },
+      storage: name === "trov"
+        ? { state: "ok", reason: null, databases: [{
+            id: SAMPLE_D1,
+            read_queries: { "24h": 172_000, "7d": 1_210_000, "30d": 5_190_000 }, write_queries: { "24h": 6_900, "7d": 48_300, "30d": 207_000 },
+            rows_read: { "24h": 5_260_000, "7d": 36_800_000, "30d": 157_700_000 }, rows_written: { "24h": 30_300, "7d": 212_000, "30d": 908_000 },
+            size_bytes: 41_600_000, size_day: dayIso(1).slice(0, 10),
+            trend: series(`${seed}d1`, 14, 150_000, 40_000).map((reads, i) => ({ at: dayIso(14 - i), reads })),
+          }] }
+        : { state: "unavailable", reason: "no D1 database is named for this part — set its D1 database ids (the repo scan fills them from wrangler)", databases: [] },
+      schedules: name === "trov"
+        ? { state: "ok", reason: null, since: null, crons: [
+            { expr: "*/10 * * * *", runs: { "24h": 144, "7d": 1_008, "30d": 4_320 }, failed: broke ? { "24h": 1, "7d": 3, "30d": 5 } : { "24h": 0, "7d": 2, "30d": 4 }, last_run: new Date(at - 4 * MIN).toISOString() },
+            { expr: "0 13 * * *", runs: { "24h": 1, "7d": 7, "30d": 30 }, failed: { "24h": 0, "7d": 0, "30d": 0 }, last_run: new Date(at - HOUR).toISOString() },
+            { expr: "0 13 * * MON", runs: { "24h": 0, "7d": 1, "30d": 4 }, failed: { "24h": 0, "7d": 0, "30d": 0 }, last_run: new Date(at - 2 * DAY).toISOString() },
+          ] }
+        : { state: "none", reason: null, since: null, crons: [] },
+    };
+    return extras;
+  }
+
+  /** Trov's own v3 body as the projection draws it (src/data/own-metrics.ts → src/tools/repo.ts `projectProduct`). */
+  function trovProduct(): RepoProductEnv {
+    const fmt = (n: number) => (n >= 999_950 ? `${(n / 1e6).toFixed(2)}M` : n >= 1_000 ? `${(n / 1e3).toFixed(1)}K` : String(Math.round(n)));
+    const now1 = (key: string, label: string, n: number) => ({ key, label, values: { "24h": fmt(n), "7d": fmt(n), "30d": fmt(n) }, raw: { "24h": n, "7d": n, "30d": n }, trend: [] as number[] });
+    const win = (key: string, label: string, n7: number) => {
+      const raw = { "24h": Math.round(n7 / 7), "7d": n7, "30d": Math.round(n7 * 30 / 7) };
+      return { key, label, raw, values: { "24h": fmt(raw["24h"]), "7d": fmt(raw["7d"]), "30d": fmt(raw["30d"]) }, trend: [] as number[] };
+    };
+    const tools: [string, number][] = [["query", 4210], ["get_doc", 1930], ["get_my_work", 862], ["record_session", 312], ["append_feed", 298], ["get_repo_dashboard", 164], ["propose_doc_update", 141]];
+    return {
+      name: "Production", version: 3, part: "trov", label: "Trov", totals: [],
+      groups: [
+        { id: "now", title: "Right now", shape: "stats", now: true, metrics: [now1("people", "People", 6), now1("live_docs", "Live docs", 184), now1("awaiting_review", "Awaiting review", 7), now1("in_triage", "In triage", 3), now1("open_tickets", "Open tickets", 41), now1("agents_connected", "Agents connected", 9)] },
+        { id: "mcp_tools", title: "MCP tool calls", shape: "ranked", note: "Counted per UTC day: 24h is today so far.", metrics: tools.map(([t, n]) => win(`mcp_${t}`, t, n)) },
+        { id: "gate", title: "Agent writes through the gate", shape: "stats", note: "Every agent write goes through the gate; a person promotes or rejects it.", metrics: [win("gate_staged", "Staged", 451), win("gate_promoted", "Promoted", 388), win("gate_rejected", "Rejected", 21), win("gate_to_triage", "To triage", 42)] },
+        { id: "activity", title: "Activity", shape: "stats", note: "Counted per UTC day: 24h is today so far.", metrics: [win("sessions_recorded", "Sessions recorded", 312), win("people_active", "People active", 42)] },
+      ],
+    };
+  }
 }

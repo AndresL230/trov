@@ -1064,7 +1064,7 @@ function loadRepo(): void {
   // `narrowFacts` does on the server); the live read is scoped by the address's repository and app.
   const sc = state.repoScenario;
   const read = sample
-    ? import("./repo-sample").then((m) => ({ ...m.repoSample(), facts: m.repoScenario(sc.key, sc.variant) }))
+    ? import("./repo-sample").then((m) => ({ ...m.repoSample(), facts: m.repoScenario(sc.key, sc.variant), ...m.repoScenarioUsage(sc.key, sc.variant) }))
     : getRepoDashboard({ repo: state.repoSlug, app: state.repoApp });
   read
     .then((data) => {
@@ -1108,12 +1108,13 @@ async function runRepoPoll(): Promise<void> {
     rerender();
   }
 }
-/** The sample switch moved (scenario or variant): swap the facts in place — the other tabs keep the sample. */
+/** The sample switch moved (scenario or variant): swap the facts and the Usage tab's data (targets, extras, Product) in place —
+ *  the other tabs keep the sample. */
 function reloadSampleFacts(): void {
   const sc = state.repoScenario;
   void import("./repo-sample").then((m) => {
     if (!state.repoSample || state.repoScenario !== sc || !state.repo.data) return;
-    state.repo = { status: "ok", data: { ...state.repo.data, facts: m.repoScenario(sc.key, sc.variant) } };
+    state.repo = { status: "ok", data: { ...state.repo.data, facts: m.repoScenario(sc.key, sc.variant), ...m.repoScenarioUsage(sc.key, sc.variant) } };
     pendingFlash = ".repo-panel > :not(.repo-poll-strip)";
     rerender();
   });

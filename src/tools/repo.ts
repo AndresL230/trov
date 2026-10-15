@@ -29,9 +29,12 @@ import {
 import type { RepoEnvConfig } from "../repo/config";
 import { PRODUCT_GROUPS, PRODUCT_PREFIX, type ProductFormat, compareProductKeys, parseProductMetric, productKeyInfo } from "../repo/product";
 import {
-  type HostingPollStateRow, type HostingReads, MIDNIGHT_TAIL, type MetricGroup, getSnapshot, hostingReads, latestHealth, latestMetric,
+  type HostingPollStateRow, type HostingReads, MIDNIGHT_TAIL, type MetricGroup, extraMetricsSince, getSnapshot, hostingReads, latestHealth, latestMetric, snapshotsByPrefix,
   metricSeries, metricsEver, metricsSince, productReadings,
 } from "../repo/store";
+import { familiesOf } from "@shared/usage-families-core";
+import { APP_METRICS_SNAPSHOT_PREFIX, type AppMetricsDescriptor } from "../repo/poll";
+import { type ExtraRow, familyReasons, projectExtras } from "./repo-extras";
 import type { RepoEventRow, RepoPrRow } from "../repo/types";
 // The hosting layer's READ side only: the parts list (tenant statements) and the provider registry (pure
 // metadata — labels, capabilities, console links). Never src/hosting/poll.ts, which resolves credentials:
@@ -512,7 +515,9 @@ const productValue = (v: number, format: ProductFormat): string =>
  * `anyProduct` = some figure is current somewhere (the caller's `ok`).
  */
 function projectProduct(
-  rows: { metric: string; env: string; at: string; value: number }[], envs: RepoDashboardEnv[], now: number
+  rows: { metric: string; env: string; at: string; value: number }[], envs: RepoDashboardEnv[], now: number,
+  /** Contract v3: what each environment's last body DESCRIBED (`app_metrics:<env>` snapshots, src/repo/poll.ts). */
+  descriptors: ReadonlyMap<string, AppMetricsDescriptor> = new Map(),
 ): { product: RepoProductEnv[]; anyProduct: boolean } {
   interface Reading { t: number; value: number }
   interface Series { latest: Partial<Record<RepoRange | "total", Reading>>; trend: number[] }
@@ -536,8 +541,31 @@ function projectProduct(
       if ((name.kind === "total" || name.range === "24h") && t >= trendFrom && r.at.endsWith(MIDNIGHT_TAIL)) series.trend.push(r.value);
     }
 
+    // Contract v3 first: the groups the body described, in its order, each drawn by its own shape. A key it named
+    // with no row in the read is absent (never reported, or silent past the trend); one with a row but no current
+    // reading is listed with null figures ("no recent reading"). Every key a v3 group named leaves the v2 grouping.
+    const desc = descriptors.get(cfg.key);
+    const v3 = desc && desc.version === 3 ? desc : null;
+    const named = new Set<string>();
+    const v3Groups: RepoProductGroup[] = (v3?.groups ?? []).flatMap((g): RepoProductGroup[] => {
+      const metrics = g.metrics.flatMap((m): RepoProductCount[] => {
+        named.add(m.key);
+        const series = g.window === "now" ? totals.get(m.key) : counts.get(m.key);
+        if (!series) return [];
+        const values = {} as Record<RepoRange, string | null>;
+        const raw = {} as Record<RepoRange, number | null>;
+        for (const range of REPO_RANGES) {
+          raw[range] = current(g.window === "now" ? series.latest.total : series.latest[range]);
+          values[range] = raw[range] === null ? null : productValue(raw[range], m.format);
+          if (raw[range] !== null) anyProduct = true;
+        }
+        return [{ key: m.key, label: m.label, values, raw, trend: series.trend, ...(m.tone ? { tone: m.tone } : {}) }];
+      });
+      return metrics.length ? [{ id: g.id, title: g.label, metrics, shape: g.shape, ...(g.window === "now" ? { now: true } : {}), ...(g.note ? { note: g.note } : {}) }] : [];
+    });
+
     const byGroup = new Map<string, RepoProductCount[]>();
-    for (const key of [...counts.keys()].sort(compareProductKeys)) {
+    for (const key of [...counts.keys()].filter((k) => !named.has(k)).sort(compareProductKeys)) {
       const series = counts.get(key)!;
       const info = productKeyInfo(key);
       const values = {} as Record<RepoRange, string | null>;
@@ -551,18 +579,18 @@ function projectProduct(
       list.push({ key, label: info.label, values, raw, trend: series.trend, ...(info.note ? { note: info.note } : {}) });
       byGroup.set(info.group, list);
     }
-    const groups: RepoProductGroup[] = PRODUCT_GROUPS.flatMap(([id, title]) => {
+    const groups: RepoProductGroup[] = [...v3Groups, ...PRODUCT_GROUPS.flatMap(([id, title]) => {
       const metrics = byGroup.get(id);
       return metrics ? [{ id, title, metrics }] : [];
-    });
-    const totalRows: RepoProductTotal[] = [...totals.keys()].sort(compareProductKeys).map((key) => {
+    })];
+    const totalRows: RepoProductTotal[] = [...totals.keys()].filter((k) => !named.has(k)).sort(compareProductKeys).map((key) => {
       const series = totals.get(key)!;
       const info = productKeyInfo(key);
       const raw = current(series.latest.total);
       if (raw !== null) anyProduct = true;
       return { key, label: info.label, value: raw === null ? null : productValue(raw, info.format), raw, trend: series.trend, ...(info.note ? { note: info.note } : {}) };
     });
-    return { name: cfg.label, groups, totals: totalRows };
+    return { name: cfg.label, groups, totals: totalRows, ...(v3 ? { version: 3 as const, part: v3.part, label: v3.label } : {}) };
   });
   return { product, anyProduct };
 }
@@ -765,7 +793,7 @@ function partConnectionOf(info: PartInfo, reads: HostingReads, legacyOrg: boolea
  *   connection  the part's provider's org-wide connection, as Org settings › Hosting says it (`partConnectionOf`).
  * Section: `ok` when any part is ok; `empty` when parts exist but none is; `not_connected` with no part.
  */
-function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingReads, endExcl: number, now: number, legacyOrg = false): RepoProvidersSection {
+function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingReads, endExcl: number, now: number, legacyOrg = false, extraRows: readonly ExtraRow[] = []): RepoProvidersSection {
   if (!infos.length) return NOT_CONNECTED;
   const series = (metric: string, envKey: string, part: string): UsagePoint[] =>
     rows.filter((r) => r.metric === metric && r.env === envKey && r.part === part)
@@ -817,6 +845,9 @@ function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingRe
       unavailable, status, tone,
       last_poll: state ? { at: state.polled_at, status: state.status, detail: state.detail } : null,
       connection: partConnectionOf(info, reads, legacyOrg),
+      // Repo setups, Phase G: the usage families the part's provider reads, and what its EXTRA families say.
+      ...(provider ? { families: familiesOf(provider.capabilities) } : {}),
+      ...extrasOf(info, extraRows, endExcl, now),
     };
   });
   return out.some((p) => p.status === "ok") ? ok(out) : EMPTY;
@@ -830,6 +861,19 @@ function consoleUrlOf(part: PartRow, provider: HostingProvider | undefined, read
     const u = provider?.consoleUrl({ settings: part.settings }, reads.config.get(HOSTING_INTEGRATION_KIND[part.provider] ?? "") ?? {}) ?? null;
     return isHttps(u) ? u : null;
   } catch { return null; }
+}
+
+/** Does any of these parts' providers declare an extra usage family? (Only then is the extra read made.) */
+const readsExtras = (infos: PartInfo[]): boolean => infos.some((i) => (i.provider?.capabilities.families ?? []).length > 0);
+
+/** A part's `extras` — its provider's EXTRA families (src/tools/repo-extras.ts), or nothing when it declares none. */
+function extrasOf(info: PartInfo, rows: readonly ExtraRow[], endExcl: number, now: number): { extras?: RepoProviderPart["extras"] } {
+  const families = info.provider?.capabilities.families ?? [];
+  if (!families.length) return {};
+  const extras = projectExtras({
+    env: info.part.env, part: info.part.key, families, covered: info.covered, reasons: familyReasons(info.state?.unavailable), settings: info.part.settings,
+  }, rows, endExcl, now);
+  return extras ? { extras } : {};
 }
 
 /** A part's host as the screen names it: the registry's label, else (a provider the registry lost) its id. */
@@ -1337,9 +1381,26 @@ export async function getRepoDashboard(
       ])
     : [[], []];
   const used = projectUsage(usageRows, envs, infos, usageEnd, now);
-  const produced = projectProduct(productRows, envs, now);
+  // Contract v3's descriptions — ONE statement, a key range over the environments' `app_metrics:<env>` snapshots;
+  // a failed read costs only the v3 shapes (the values still show, grouped as v2 groups them).
+  const descriptors = new Map<string, AppMetricsDescriptor>();
+  if (envs.length) {
+    for (const s of await snapshotsByPrefix<AppMetricsDescriptor>(ctx, APP_METRICS_SNAPSHOT_PREFIX).catch(() => [])) {
+      if (s.data && typeof s.data === "object") descriptors.set(s.kind.slice(APP_METRICS_SNAPSHOT_PREFIX.length), s.data);
+    }
+  }
+  const produced = projectProduct(productRows, envs, now, descriptors);
+  // Repo setups, Phase G: the extra usage families (outcomes, runtime, storage, schedules) — ONE more statement, made
+  // only when some part's provider declares one. 31 days back: the 30-day hourly ranges and the last 30 completed days.
+  // A failed read costs only the extras (logged), never the section.
+  const extraRows = hosted && readsExtras(infos)
+    ? await extraMetricsSince(ctx, new Date(Math.floor(now / DAY) * DAY - 31 * DAY).toISOString()).catch((e: unknown) => {
+        console.error("repo dashboard", "extras", e instanceof Error ? e.message : String(e), `org=${ctx.orgId}`);
+        return [] as ExtraRow[];
+      })
+    : [];
   // MT: SaplingLearn's legacy Worker secret is evidence only for org #1 (src/data/legacy.ts).
-  const providerSection = hosted ? projectProviders(infos, usageRows, hosted, usageEnd, now, isLegacyOrg(ctx)) : NOT_CONNECTED;
+  const providerSection = hosted ? projectProviders(infos, usageRows, hosted, usageEnd, now, isLegacyOrg(ctx), extraRows) : NOT_CONNECTED;
   const ever = envs.length && (!used.anyUsage || !produced.anyProduct)
     ? await metricsEver(ctx, USAGE_METRICS, [PRODUCT_PREFIX])
     : new Set<string>();

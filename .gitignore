@@ -1,4 +1,6 @@
 node_modules/
+# a worktree's node_modules is often a SYMLINK to the main checkout's — `node_modules/` (a directory) never matches it
+node_modules
 web/dist/
 .wrangler/
 .dev.vars

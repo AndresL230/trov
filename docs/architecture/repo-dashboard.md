@@ -145,9 +145,9 @@ plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no secti
 | `ciFailures` | `run` rows | webhook `workflow_run` (+ `fillFailedJob`); reconcile `runs` + `job_titles` arms |
 | `coverage`, `bundle` (CI); `todos` (Planning) | metrics `coverage` / `bundle_kb` / `todo_count` | a `canopy/*` commit status the target repo's CI posts — webhook `status`; reconcile `statuses` arm |
 | `activity` | PR closes + issue moves from `events`; webhook `push` rows, `review` rows, landed deploys | the captures above |
-| `usage` (Usage) | each environment's WEB parts' `hx_requests` / `hx_errors` summed (requests, error rate; covered intervals from `hosting_poll_state`) and `active_users_*` | cron `:40` — `pollPart`; cron `:00` — `pollSaplingMetrics` |
-| `product` (Usage) | metrics `sap_c_<key>_<24h\|7d\|30d>` / `sap_t_<key>` — whatever keys the app reports | cron `:00` — `pollSaplingMetrics` (the same response as active users) |
-| `providers` (Usage — the tab's ONE Hosting section, `web/src/repo-hosting.ts`) | every part of every environment, provider-neutral (Cloudflare and Railway like the rest): `hx_*` metrics, `hosting_deploys`, `hosting_poll_state` | cron `:40` — `pollPart` per part |
+| `usage` (Usage) | each environment's WEB parts' `hx_requests` / `hx_errors` summed (requests, error rate; covered intervals from `hosting_poll_state`) and `active_users_*` — on screen only the active users (on the environment's first web target) | cron `:40` — `pollPart`; cron `:00` — `pollSaplingMetrics` |
+| `product` (Usage) | metrics `sap_c_<key>_<24h\|7d\|30d>` / `sap_t_<key>` — whatever keys the app reports; contract v3's self-description is the `app_metrics:<env>` snapshot | cron `:00` — `pollSaplingMetrics` (the same response as active users) |
+| `providers` (Usage — the targets, the extra families and the Hosting section: `web/src/repo-usage.ts`, `web/src/repo-hosting.ts`) | every part of every environment, provider-neutral (Cloudflare and Railway like the rest): `hx_*` metrics (the extra families' `hx_outcome_*` / `hx_subrequests` / `hx_cpu_time_*` / `hx_wall_time_*` / `hx_d1_*` / `hx_cron_*` in one more read), `hosting_deploys`, `hosting_poll_state` | cron `:40` — `pollPart` per part |
 | `release` (Overview R3), `unseen.tags`, week `releases` | `releases` (0074): `readRelease` / `readTags` / `releaseWeekFigure`, `src/repo/releases.ts`; `since` / `waiting` from `repo_events` `push` / `pr` | webhook `release` / `create` (gate: `ingestRepoRelease`); reconcile `releases` arm |
 | `sprint`, `labels`, `contributors` (Planning) | live D1: the sprint a person marked `active` (the Roadmap's `sprintProgress`); open-issue snapshots; webhook pushes · merged PRs · `review` rows this week | none / webhook `issues` / `push`, `pull_request`, `pull_request_review`; reconcile `reviews` arm |
 
@@ -684,8 +684,43 @@ each midnight by equality), because the plain `metric GLOB 'sap_*'` form walks e
 (~33k at steady state for two environments) to return ~3k. The shape saves rows READ, not the sort — the
 `UNION ALL … ORDER BY` still costs a temp b-tree in both arms.
 
-**On screen the Usage tab is a hierarchy, not tables** (`web/src/repo.ts`): APP USAGE compare (side by side —
-comparing environments is its job) → ONE **Product** section → infrastructure. Product shows ONE environment,
+**Contract v3 — self-described groups** (repo setups, Phase G; `docs/superpowers/specs/2026-10-15-app-metrics-v3.md`).
+A body with `version: 3` may name the `part` it reports and a `label`, leave `active_users` out, and carry `groups` —
+each with its id, label, SHAPE (`ranked` / `stats` / `figure` / `status`), note, and metrics all windowed (`values`) or
+all point-in-time (`value`), each with its own label, `format: "cents"` and (status) `tone: "neutral"`.
+`appMetricsV3` (`src/repo/poll.ts`, pure) judges them per group and per metric under v2's key pattern, value rules and
+shared caps; values are stored exactly as v2's (`sap_c_*` / `sap_t_*`), the DESCRIPTION (never a value) as the
+environment's `app_metrics:<env>` snapshot — rewritten by every v3 body, DELETED by a v1 / v2 one. v1 and v2 parse
+unchanged. `projectProduct` puts the described groups FIRST, in the body's order, with `shape` / `now` / `note` / `tone`
+(`RepoProductGroup`, `RepoProductCount`) and the body's `version` / `part` / `label` on the environment; a key a v3
+group names leaves the v2 grouping. One more statement: `snapshotsByPrefix` (a key range over `app_metrics:`).
+**Trov's own `GET /api/internal/metrics`** answers v3 for ONE organization (`src/internal-metrics.ts`,
+`src/data/own-metrics.ts`): the bearer class — a Trov MCP credential, the organization chosen only by
+`resolveBearerTenant` (`src/data/bearer.ts`); anything else a bare 401, `GET` / `HEAD` only, `Cache-Control: no-store`,
+D1 only, counts only (people, live docs, awaiting review, in triage, open tickets, agents connected; MCP tool calls
+ranked; doc proposals staged / promoted / rejected and items sent to triage; sessions recorded, people active — the
+meter's windows are whole UTC days and say so). Tests: `test/repo-poll.v3.test.ts`, `test/internal-metrics.test.ts`.
+
+**On screen the Usage tab is a hierarchy, not tables** (`web/src/repo.ts`): the TARGETS (repo setups, Phase G — the
+design's UsageTarget, `web/src/repo-usage.ts`) → the EXTRA families of the parts that carry them → ONE **Product**
+section → the Hosting section. **A target is a part** (an app in an environment), narrowed by the App menu (Repo-wide
+only has none, and says so); with facts (the sample today) the targets are the facts' parts, each with its providers
+figures when the section carries it, else `partFromFacts` (no figure). A card is in exactly ONE of four states
+(`targetState`), read from the part's role, `families` (what its provider reads — shared/usage-families-core.ts),
+`connection` (THE status function) and figures — NEVER its provider id: figures for the range (`ok`: requests and
+error rate with their lines, p95 latency and bandwidth only when the payload carries them, Active users on the
+environment's FIRST web target when the app's endpoint has ever reported them; a service's CPU and memory with their
+24-hour gap lines); "No recent reading" (`stale` — read before, or connected and not read yet, with the last poll's
+age); "Not connected" (`nc` — the host is not connected; an admin outside the sample gets Connect <host> → Org settings ›
+Hosting, a member reads who does it); "Not available from <host>" with its reason (`na` — the host has nothing Trov can
+read for the role: Vercel, Netlify, GitHub deployments). A repository never reads "not connected" for a thing it does
+not have (`test/render.repo-usage.test.ts`, every scenario × variant). Then, per target whose card is `ok` / `stale`,
+the blocks of its EXTRA families (`usageExtras`): requests by OUTCOME (a bar and a legend in Cloudflare's own outcome
+names, shape marks, "not an HTTP status" — no 4xx / 5xx, ever), the Worker's runtime (CPU time p50 / p99, wall time p50
+of the last completed UTC day, subrequests in range, the CPU p99 daily line), each D1 database (read / write queries,
+rows read / written over the range's completed days, the size, the reads-per-day line), and the cron triggers (runs,
+failed — red when any —, last run). A family never read is not drawn; one the provider could not read says "Not
+available from <host>: <reason>" (a Worker with no D1 id: "no D1 database is named for this part"). Product shows ONE environment,
 picked by a segmented control (`state.repoProductEnv`, session-only; default = the LAST configured environment
 that has reported anything, else the first; the pressed button carries no `data-act`, so re-pressing it never
 replays the cross-fade; `repoProductEnv` flashes only `.repo-pswap`, a range switch flashes every `.repo-swap`).
@@ -701,8 +736,11 @@ block's `min-height` is its tallest form across every range and environment so a
 it), `growth` / `community` stat pairs, and `other` or ANY unrecognised group id as quiet rows at the end — no
 shape may depend on a key existing. `data-count` now takes an optional `data-count-fmt` (`compact` / `usd`,
 `formatCount`): `countUp` formats the in-between frames and LANDS on the element's own rendered text, so a
-compacted or dollar figure counts up without the browser ever re-deriving the Worker's string. Infrastructure
-is the ONE Hosting section (`providers`, `hosting-providers.md` › Repo dashboard › Usage › Hosting).
+compacted or dollar figure counts up without the browser ever re-deriving the Worker's string. A contract-v3 group is
+drawn BY ITS SHAPE, never by id or key (`shapedGroups`): a point-in-time `stats` group as a strip titled by the group,
+`ranked` as the bar list, `stats` as stat pairs, `figure` with its FIRST metric as the feature figure, `status` with its
+metrics' own tones; they come first, two to a row, then the v2 groups as above; the header reads "Product · <label>".
+Infrastructure is the ONE Hosting section (`providers`, `hosting-providers.md` › Repo dashboard › Usage › Hosting).
 
 **Pruning** (`pruneRepoCapture`, `src/repo/store.ts`, the cron's 6-hourly `:30` tick): `health_*` metrics
 and `check` rows older than 45 days — the `check` deletion ONLY `WHERE part IS NULL`, because a FRONTEND
