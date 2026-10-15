@@ -146,6 +146,15 @@ describe("Escape — one layer at a time, in the design's order", () => {
   });
 });
 
+describe("the thread list — a row's ⋯ takes the time's place", () => {
+  // e2e AU-24 search: on a search hit the ⋯ (shown on hover / while its menu is open) sat ON the time ("Tue" drawn
+  // through the button): the rule that hides the time left hits out. The design hides it on every row (L239).
+  it("hides the time on hover and while the menu is open, search hits included", () => {
+    expect(css).not.toMatch(/:not\(\.ask-th-b--hit\)\s*\.ask-th-at/);
+    expect(css).toMatch(/\.ask-th-in:hover \.ask-th-at,\s*\.ask-th\.is-menu \.ask-th-at\s*\{\s*opacity:\s*0/);
+  });
+});
+
 describe("the empty conversation — centred as the design draws it", () => {
   // e2e AU-2 (`live`): the design puts a flexible spacer UNDER the composer while the conversation is empty
   // (ask-trov.dc.html L770 `flex:1 1 0;min-height:24px`), so the mark, the heading, the starters and the composer sit
