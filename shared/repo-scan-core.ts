@@ -62,4 +62,12 @@ export interface RepoAppsSetupDTO {
   scan: RepoScanDTO;
   /** Tags seen (for the release-signal choice of a Package / mobile app). */
   tags: { count: number; latest: { tag: string; at: string } | null };
+  // ── Phase D2 (additive): what the screen draws its target rows and host words from ──
+  /** The org's environments in drift order — a target row per environment. */
+  environments?: { key: string; label: string; branch: string }[];
+  /** The provider catalogue's words (every provider a part can choose), so the screen names a host without branching
+   *  on an id; `via_github` = its deploys come from GitHub (the deploy-signal picker applies). */
+  providers?: { id: HostingProviderId; label: string; via_github: boolean }[];
+  /** A sub-read failed and fell back to empty (the screen says so; never a 500). */
+  degraded?: boolean;
 }

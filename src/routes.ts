@@ -14,6 +14,7 @@ import { artifactsApp } from "./artifacts/routes";
 import { orgSettingsApp } from "./integrations/routes";
 import { githubAppRoutes } from "./github-app/routes";
 import { hostingApp, hostingCallbackApp } from "./hosting/routes";
+import { repoAppsApp } from "./repo/apps-routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runSyncBatch, syncStatus } from "./sync/runs";
@@ -1166,6 +1167,7 @@ app.route("/api/o/:slug", orgTenantApp);
 app.route("/api/o/:slug", orgSettingsApp);
 app.route("/api/o/:slug", githubAppRoutes); // the GitHub App's connection (src/github-app/routes.ts)
 app.route("/api/o/:slug", hostingApp); // Org settings › Hosting: parts, connections, the setup read (src/hosting/routes.ts)
+app.route("/api/o/:slug", repoAppsApp); // Org settings › Repositories › a repo › Apps: the read and the app writes (src/repo/apps-routes.ts)
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
 app.route("/api/o/:slug", orgBillingApp); // an owner's billing for this org: the Stripe portal, a plan switch, a renewal (src/billing/routes.ts)
 app.route("/api/o/:slug", aiApp); // Org settings › AI, and the answers to a suggestion and to "Wrong?" — cookie only (src/ai/routes.ts)
