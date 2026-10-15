@@ -36,6 +36,7 @@ import { esc, attr } from "./ui";
 import type { AskCtx, AskPart, AskView, AskWhere } from "./ask-state";
 import { convoOf } from "./ask-state";
 import { askIcon, askSpinner, trovMark, REF_ICON } from "./ask-icons";
+import { phoneComposerBar } from "./ask-phone";   // the phone's bottom row and its + menu (the ONE + menu)
 import { segmented } from "./segmented";
 import { markShape } from "./marks";
 import { closingAttr } from "./ask-motion";
@@ -378,32 +379,6 @@ function sendButton(v: AskView, big: boolean): string {
     : askIcon("send", big ? 18 : 16, null, 2.2)}</button>`;
 }
 
-/** The phone's meta line beside +: "Smart · Asks first" (Free: "Asks first"). */
-export function phoneMeta(v: ComposerSee): string {
-  const modes = composerModes(v);
-  const cur = composerMode(v);
-  const change = composerAuto(v) ? "Auto" : "Asks first";
-  return modes.length > 1 ? `${modes.find((m) => m.id === cur)?.label ?? cur} · ${change}` : change;
-}
-
-/** The phone's + menu (ask-trov.dc.html L679–691): Attach, Mention, Run a command; Mode (Pro); Changes. The phone
- *  part owns whether it is open (`ui.phone.plus`, its Escape layer); these are the composer's own controls. */
-export function composerPlusMenu(v: AskView): string {
-  const modes = composerModes(v);
-  const cur = composerMode(v);
-  const row = (act: string, icon: "attach" | "at" | "cmd", label: string) =>
-    `<button type="button" role="menuitem" class="ask-co-plus-row" data-act="${act}" data-arg="${v.where}">${askIcon(icon, 17, "var(--fg-55)", 1.8)}${esc(label)}</button>`;
-  const mode = modes.length > 1
-    ? `<div class="ask-co-plus-sec"><div class="ask-co-plus-l">Mode</div>${segmented({ id: `ask-pmode-${v.where}`, ariaLabel: "Mode", value: cur, act: "askCoMode", size: "md", fill: true, inertOn: true, className: "cnpy-seg--bar",
-      options: modes.map((m) => ({ value: m.id, arg: `${v.where}|${m.id}`, label: m.label })) })}<div class="ask-co-plus-h">${esc(modeHint(modes.find((m) => m.id === cur) ?? modes[0]))}</div></div>`
-    : "";
-  return `<div class="ask-co-plus" role="menu" aria-label="More options" data-morph-key="plus" data-co-menu${closingAttr(v.ui.closing, "plus")}>
-    ${row("askCoAttach", "attach", "Attach a file or photo")}${row("askCoAt", "at", "Mention a ticket, doc or person")}${row("askCoSlash", "cmd", "Run a command")}
-    <div class="ask-co-plus-sep" aria-hidden="true"></div>
-    ${mode}<div class="ask-co-plus-sec"><div class="ask-co-plus-l">Changes in this thread</div>${autoSwitch(v, true)}</div>
-  </div>`;
-}
-
 function boxView(v: AskView): string {
   const ui = v.ui.composer[v.where];
   const phone = v.app.phone;
@@ -411,11 +386,10 @@ function boxView(v: AskView): string {
   const chips = [...ui.files.map((f) => fileChip(v, f)), ...ui.context.map((r) => ctxChip(v, r))].join("");
   const style = ui.h !== null ? ` style="height:${ui.h}px"` : "";
   const ta = `<textarea rows="1" class="ask-input" data-morph-key="ta" data-act="askCoText" data-arg="${v.where}" data-field="${fieldOf(v.where)}" data-ask-input="${v.where}" placeholder="${attr(placeholderOf(v))}" aria-label="Message Ask Trov"${p ? ` aria-controls="ask-co-pick-${v.where}" aria-expanded="true"` : ""}${style}>${esc(ui.text)}</textarea>`;
+  // A phone: the phone part's bottom row (+, the meta line, Send / Stop) and its + menu — the ONE + menu, which
+  // drives this composer's own controls (its file input, its box through a real input event, ComposerUi.mode / auto).
   const bar = phone
-    ? `<div class="ask-box-bar ask-box-bar--phone" data-morph-key="bar" data-morph-list>
-        <button type="button" class="ask-co-plusbtn" data-morph-key="plusb" data-act="askPhPlus" aria-label="More options" aria-expanded="${v.ui.phone.plus}">${askIcon("plus", 18, null, 2)}</button>
-        <span class="ask-co-meta" data-morph-key="meta">${esc(phoneMeta(v))}</span><span class="ask-co-grow" data-morph-key="sp"></span>${sendButton(v, true)}
-      </div>`
+    ? `<div class="ask-ph-host" data-morph-key="bar">${phoneComposerBar(v)}</div>`
     : `<div class="ask-box-bar" data-morph-key="bar" data-morph-list>
         <button type="button" class="ask-co-tool" data-morph-key="att" data-act="askCoAttach" data-arg="${v.where}" aria-label="Attach files" data-mtip="Attach files, or drop and paste them">${askIcon("attach", 16, null, 1.8)}</button>
         <button type="button" class="ask-co-tool" data-morph-key="at" data-act="askCoAt" data-arg="${v.where}" aria-label="Mention an item" data-mtip="Mention a ticket, doc, PR or person">${askIcon("at", 16, null, 1.8)}</button>
@@ -447,7 +421,6 @@ export function composerView(v: AskView): string {
   const maxMb = st ? fmtBytes(st.attach.maxBytes) : "";
   const inner: string[] = [];
   if (ui.picker && !block) inner.push(pickerView(v, ui.picker));
-  if (phone && v.ui.phone.plus && !block) inner.push(composerPlusMenu(v));
   const line = block ? "" : contextLine(v);
   if (line) inner.push(`<div class="ask-co-ctx" data-morph-key="ctx">${trovMark(11)}<span class="ask-co-ctx-t">${esc(line)}</span><button type="button" class="ask-co-x ask-co-x--sm" data-act="askCoClear" data-arg="${v.where}" aria-label="Remove all context">${X}</button></div>`);
   if (!block && (ui.error || ui.forced === "error")) {
@@ -811,7 +784,8 @@ function retry(ctx: AskCtx, where: AskWhere): void {
   if (items.length) void upload(ctx, where, items);
 }
 
-function setMode(ctx: AskCtx, where: AskWhere, id: string): void {
+/** Pick the mode here (and remember it on the thread). The phone's + menu calls it too. */
+export function setMode(ctx: AskCtx, where: AskWhere, id: string): void {
   const modes = ctx.ui.state.data?.modes ?? [];
   const m = modes.find((x) => x.id === id);
   if (!m) return;
@@ -823,7 +797,8 @@ function setMode(ctx: AskCtx, where: AskWhere, id: string): void {
   ctx.paint();
 }
 
-function setAuto(ctx: AskCtx, where: AskWhere, on: boolean): void {
+/** Turn Auto on or off here (and remember it on the thread). The phone's + menu calls it too. */
+export function setAuto(ctx: AskCtx, where: AskWhere, on: boolean): void {
   if (!autoAllowed({ ui: ctx.ui, where })) return;
   ctx.ui.composer[where] = { ...ctx.ui.composer[where], auto: on };
   const tid = ctx.ui[where].threadId;

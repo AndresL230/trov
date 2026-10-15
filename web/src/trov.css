@@ -2852,6 +2852,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-h1-b { padding:0; font:inherit; color:var(--fg); cursor:pointer; transition:color .12s ease; }
 .ask-h1-b.is-parent { color:var(--fg-55); }
 .ask-h1-b:hover { color:var(--fg); }
+/* A phone's touch floor: the title (a New thread button) is 44px tall and at least as wide. */
+[data-phone="1"] .ask-h1-b { display:inline-flex; align-items:center; min-height:44px; min-width:44px; }
 .ask-crumb { display:inline-flex; align-items:center; gap:10px; min-width:0; }
 .ask-crumb-sep { color:var(--fg-40); font-size:15px; }
 .ask-crumb-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:600; letter-spacing:-0.01em; }
@@ -2911,8 +2913,14 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .ask-panel, .ask-scrim, .ask-panel-layer[data-closing] .ask-panel, .ask-panel-layer[data-closing] .ask-scrim, .ask-drawer, .ask-drawer-scrim,
   .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-line, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
   /* the composer */
-  .ask-input, .ask-co-plusbtn { transition:none !important; }
-  .ask-co-chip, .ask-co-menu, .ask-co-pick, .ask-co-plus, .ask-co-ctx, .ask-co-note, .ask-co-drop, .ask-blocked { animation:none !important; }
+  .ask-input { transition:none !important; }
+  .ask-co-chip, .ask-co-menu, .ask-co-pick, .ask-co-ctx, .ask-co-note, .ask-co-drop, .ask-blocked { animation:none !important; }
+  /* phone: the + menu's pop and its + turning, the sheet (`.ask-insp-frame` above covers its variants) */
+  .ask-ph-plus, .ask-ph-plus[data-closing] { animation:none !important; }
+/* The composer hosts the bar and the menu in a box-less wrapper; the menu spans the composer's column (`.ask-co-in`). */
+.ask-ph-host { display:contents; }
+.ask-co-in .ask-ph-plus { left:0; right:0; }
+  .ask-ph-plusbtn > svg { transition:none !important; }
 }
 
 /* ── Ask: threads ── (ask-threads.ts; the shell's) */
@@ -2930,7 +2938,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-th-none { padding:12px 10px; font-size:12.5px; line-height:1.5; color:var(--fg-55); }
 .ask-th-skrow { padding:7px 10px; }
 /* A row: a one-track grid, so `data-closing` (a deleted thread) collapses it and the rows under it move up. */
-.ask-th { display:grid; grid-template-rows:1fr; transition:grid-template-rows var(--fx-fast) var(--fx-ease), opacity var(--fx-fast) var(--fx-ease); }
+.ask-th { display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:1fr; transition:grid-template-rows var(--fx-fast) var(--fx-ease), opacity var(--fx-fast) var(--fx-ease); }
 .ask-th[data-closing] { grid-template-rows:0fr; opacity:0; }
 .ask-th-in { position:relative; min-height:0; }
 .ask-th[data-closing] .ask-th-in { overflow:hidden; }
@@ -3013,7 +3021,6 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-input { display:block; width:100%; min-height:46px; max-height:220px; box-sizing:border-box; padding:12px 14px 4px; border:0; outline:none; resize:none; overflow-y:auto; background:none; font:inherit; font-size:14.5px; line-height:1.55; color:var(--fg); transition:height .14s var(--fx-ease); }
 .ask-input::placeholder { color:var(--fg-55); }
 .ask-box-bar { display:flex; align-items:center; gap:2px; padding:4px 8px 8px; }
-.ask-box-bar--phone { gap:6px; padding:2px 6px 6px; }
 .ask-co-grow { flex:1; }
 .ask-co-tool { width:30px; height:30px; border-radius:7px; display:grid; place-items:center; flex:none; color:var(--fg-55); cursor:pointer; transition:background .12s ease, color .12s ease; }
 .ask-co-tool:hover { background:var(--hover); color:var(--fg-70); }
@@ -3037,9 +3044,6 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-send[aria-disabled="true"] { cursor:default; }
 .ask-send[aria-disabled="true"]:active { transform:none; }
 .ask-send--40 { width:40px; height:40px; border-radius:10px; flex:none; }
-.ask-co-plusbtn { width:40px; height:40px; box-sizing:border-box; border-radius:10px; display:grid; place-items:center; flex:none; color:var(--fg-70); border:1px solid var(--border); cursor:pointer; transition:transform .2s var(--fx-ease); }
-.ask-co-plusbtn[aria-expanded="true"] { transform:rotate(45deg); }
-.ask-co-meta { font-size:12px; color:var(--fg-55); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 /* The @ picker and the / commands: above the box, popping from its bottom-left corner. */
 .ask-co-pick { position:absolute; left:0; bottom:calc(100% - 6px); z-index:30; width:min(420px, 100%); max-height:330px; display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--border-strong); border-radius:12px; box-shadow:var(--lift-shadow); transform-origin:bottom left; animation:ask-pop-in .14s cubic-bezier(.2,.9,.3,1.2) both; }
 .ask-co-pick[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
@@ -3056,15 +3060,6 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-co-pick-empty { padding:9px 10px; font-size:12.5px; color:var(--fg-55); }
 .ask-co-pick-foot { display:flex; gap:14px; padding:7px 12px; border-top:1px solid var(--border); font-size:11px; color:var(--fg-55); white-space:nowrap; }
 /* The phone's + menu: a sheet rising above the composer. */
-.ask-co-plus { position:absolute; left:0; right:0; bottom:calc(100% - 6px); z-index:30; padding:6px; background:var(--surface); border:1px solid var(--border-strong); border-radius:14px; box-shadow:var(--lift-shadow); animation:ask-sheet-up .22s cubic-bezier(.2,.8,.2,1) both; }
-.ask-co-plus[data-closing] { animation:ask-sheet-down .18s var(--fx-ease) both; pointer-events:none; }
-.ask-co-plus-row { display:flex; align-items:center; gap:12px; width:100%; min-height:44px; padding:0 12px; border-radius:9px; font-size:14px; color:var(--fg); text-align:left; cursor:pointer; }
-.ask-co-plus-row:hover { background:var(--hover); }
-.ask-co-plus-sep { height:1px; margin:6px 4px; background:var(--border); }
-.ask-co-plus-sec { padding:6px 12px 8px; }
-.ask-co-plus-l { margin-bottom:6px; font-family:var(--label); font-size:11px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-55); }
-.ask-co-plus-h { margin-top:6px; font-size:12px; color:var(--fg-55); }
-.ask-co-plus .ask-co-auto { margin:0; }
 /* The context line and the notes above the box; the blocks that replace it. */
 .ask-co-ctx { display:flex; align-items:center; gap:7px; padding:0 4px 7px; font-size:12px; color:var(--fg-55); animation:ask-fade-in .16s ease both; }
 .ask-co-ctx-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -3148,16 +3143,75 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 @keyframes ask-cj-insp-out { from { opacity:1; transform:none; } to { opacity:0; transform:translateX(18px); } }
 @keyframes ask-cj-insp-away { from { transform:none; } to { transform:translateX(420px); } }
 
-/* ── Ask: phone ── (ask-phone.ts — a sibling replaces the stub's styles here) */
+/* ── Ask: phone ── (ask-phone.ts; inventory §10, design L111–118, L679–691, L748–756, L787, L1008). Every touch
+   target here is ≥ 44px (the design draws 40 / 34). */
+/* The header: Open threads + New thread on the right; the bug and theme buttons leave on Ask (the design). */
+[data-phone="1"][data-screen="ask"] .cnpy-hdr-r > [data-act="supportOpen"],
+[data-phone="1"][data-screen="ask"] .cnpy-hdr-r > [data-act="cycleTheme"] { display:none !important; }   /* (their display is inline) */
+.ask-ph-hbtn { display:grid; place-items:center; flex:none; width:44px; height:44px; border-radius:8px; color:var(--fg-70); cursor:pointer; transition:background .12s ease, color .12s ease; }
+.ask-ph-hbtn:hover { background:var(--hover); color:var(--fg); }
+.ask-ph-hbtn--outline { border:1px solid var(--border); color:var(--fg-55); }
+[data-phone="1"] .cnpy-hdr-r > .ask-ph-hbtn { min-height:44px; }
+/* The thread list as a drawer: from the left over a scrim (a modal dialog; ask-phone.ts keeps focus in it). */
 .ask-drawer-layer { position:fixed; inset:0; z-index:85; }
-.ask-drawer-scrim { position:absolute; inset:0; background:rgba(0,0,0,.45); animation:ask-fade-in .26s ease both; }
-.ask-drawer { position:absolute; top:0; bottom:0; left:0; width:min(300px, calc(100% - 48px)); background:var(--bg); box-shadow:0 0 48px rgba(0,0,0,.32); animation:ask-drawer-in .26s var(--fx-ease) both; }
-.ask-drawer .ask-threads-in { width:100%; }
+.ask-drawer-scrim { position:absolute; inset:0; background:rgba(0,0,0,.45); animation:ask-fade-in .26s ease both; -webkit-tap-highlight-color:transparent; }
+.ask-drawer { position:absolute; top:0; bottom:0; left:0; display:flex; flex-direction:column; width:min(300px, calc(100% - 48px)); box-sizing:border-box; padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); background:var(--bg); box-shadow:0 0 48px rgba(0,0,0,.32); animation:ask-drawer-in .26s var(--fx-ease) both; }
+/* (a side drawer, not the app's phone modal-as-bottom-sheet: `[role="dialog"][aria-modal="true"]` at ≤ 640px) */
+[data-cnpy-theme] .ask-drawer[role="dialog"][aria-modal="true"] { width:min(300px, calc(100% - 48px)) !important; max-height:none !important; border-bottom:0 !important; }
+.ask-drawer-head { display:flex; align-items:center; justify-content:space-between; gap:8px; flex:none; height:56px; box-sizing:border-box; padding:0 6px 0 16px; border-bottom:1px solid var(--border); }
+.ask-drawer-t { margin:0; font-size:15px; font-weight:600; letter-spacing:-0.01em; }
+.ask-drawer .ask-threads-in { flex:1; width:100%; height:auto; }
+.ask-drawer .ask-th-new, .ask-drawer .ask-th-search, .ask-drawer .ask-th-rename { height:44px; }
+.ask-drawer .ask-th-new, .ask-drawer .ask-th-search input, .ask-drawer .ask-th-rename { font-size:14px; }
+.ask-drawer .ask-th-search { height:46px; }
+.ask-drawer .ask-th-search input { align-self:stretch; }   /* the field itself is the 44px target, inside the box's border */
+.ask-drawer .ask-th-clear { width:44px; height:44px; margin-right:-8px; }
+.ask-drawer .ask-th { grid-template-columns:minmax(0, 1fr); }   /* a long title ellipsizes instead of widening the row */
+.ask-drawer .ask-th-b { min-height:44px; padding-right:46px; font-size:14px; }
+/* Nothing hovers on a phone: a row's ⋯ is always there (44×44 at its right), and its time stays beside it. */
+.ask-drawer .ask-th-more { top:0; right:0; width:44px; height:44px; opacity:1; }
+.ask-drawer .ask-th .ask-th-in .ask-th-b .ask-th-at { opacity:1; }
+.ask-drawer .ask-th-menu { top:calc(100% - 2px); }
+.ask-drawer .ask-menu > button { min-height:44px; font-size:14px; }
 .ask-drawer-layer[data-closing] .ask-drawer { animation:ask-drawer-out var(--fx-base) var(--fx-ease) both; }
 .ask-drawer-layer[data-closing] .ask-drawer-scrim { animation:ask-fade-out var(--fx-base) ease both; }
 .ask-drawer-layer[data-closing] { pointer-events:none; }
 @keyframes ask-drawer-in { from { transform:translateX(-100%); } to { transform:none; } }
 @keyframes ask-drawer-out { from { transform:none; } to { transform:translateX(-100%); } }
+/* The composer on a phone: + · the meta line · Send, and the + menu over the box (positioned on the composer). */
+[data-phone="1"] .ask-composer { position:relative; }
+.ask-ph-bar { display:flex; align-items:center; gap:8px; padding:2px 6px 6px; }
+.ask-ph-plusbtn { display:grid; place-items:center; flex:none; width:44px; height:44px; box-sizing:border-box; border:1px solid var(--border); border-radius:10px; color:var(--fg-70); cursor:pointer; transition:background .12s ease; }
+.ask-ph-plusbtn:hover { background:var(--hover); }
+/* Open, the + turns into an × (the glyph turns, not the box — a turned box would be a diamond). */
+.ask-ph-plusbtn > svg { transition:transform .2s var(--fx-ease); }
+.ask-ph-plusbtn[aria-expanded="true"] > svg { transform:rotate(45deg); }
+.ask-ph-meta { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--fg-55); }
+.ask-ph-send { display:grid; place-items:center; flex:none; width:44px; height:44px; border-radius:10px; background:var(--hover); color:var(--fg-40); cursor:pointer; transition:background .15s ease, color .15s ease; }
+.ask-ph-send.is-on { background:var(--accent); color:var(--accent-fg); }
+.ask-ph-send.is-busy { background:var(--fg); color:var(--bg); }
+.ask-ph-plus { position:absolute; left:16px; right:16px; bottom:calc(100% - 6px); z-index:30; box-sizing:border-box; max-height:calc(100dvh - 140px); overflow-y:auto; padding:6px; background:var(--surface); border:1px solid var(--border-strong); border-radius:14px; box-shadow:var(--lift-shadow); transform-origin:bottom left; animation:ask-pop-in .2s cubic-bezier(.2,.9,.3,1.2) both; }
+.ask-ph-plus[data-closing] { animation:ask-pop-out .14s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
+.ask-ph-row { display:flex; align-items:center; gap:12px; width:100%; min-height:44px; padding:0 12px; border-radius:9px; text-align:left; font-size:14px; color:var(--fg); cursor:pointer; }
+.ask-ph-row:hover, .ask-ph-row:focus-visible { background:var(--hover); }
+.ask-ph-row > svg { color:var(--fg-55); }
+.ask-ph-sep { height:1px; margin:6px 4px; background:var(--border); }
+.ask-ph-group { padding:6px 12px 8px; }
+.ask-ph-label { margin-bottom:6px; font-family:var(--label); font-size:11px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
+.ask-ph-seg { padding:2px; }
+.ask-ph-seg > .cnpy-seg-btn { min-height:44px; padding:0 8px; font-size:13px; }
+.ask-ph-group.is-off .ask-ph-seg { opacity:.55; }
+.ask-ph-group.is-off .ask-ph-seg > .cnpy-seg-btn { opacity:1; }
+.ask-ph-hint { margin-top:6px; font-size:12px; line-height:1.45; color:var(--fg-55); }
+/* The inspector as a full-height sheet: up from the bottom (the design's curve), finger-sized header, clear of the
+   notch and the home indicator. The ⌘J panel's inspector is a sheet too (over the full-screen panel). */
+.ask-insp-frame[data-sheet="1"] { padding-top:env(safe-area-inset-top); box-shadow:var(--lift-shadow); animation:ask-sheet-up .26s cubic-bezier(.2,.8,.2,1) both; }
+.ask-insp-frame[data-sheet="1"][data-closing] { animation:ask-sheet-down var(--fx-base) var(--fx-ease) both; pointer-events:none; }
+.ask-panel-layer > .ask-insp-frame[data-sheet="1"] { position:fixed; inset:0; right:0; z-index:81; }
+.ask-insp-frame[data-sheet="1"] .ask-insp-grab { height:auto; padding-top:8px; }
+.ask-insp-frame[data-sheet="1"] .ask-insp-head { height:56px; padding:0 6px; gap:2px; }
+.ask-insp-frame[data-sheet="1"] .ask-insp-head > .ask-iconbtn { width:44px; height:44px; border-radius:8px; }
+.ask-insp-frame[data-sheet="1"] .ask-insp-body { padding:20px 16px calc(40px + env(safe-area-inset-bottom)); }
 
 /* ── the site on a phone ──────────────────────────────────────────────────────
    Everything the signed-out site (landing.ts, pricing.ts, legal.ts, their dialogs) changes for a narrow
@@ -3616,13 +3670,17 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 [data-cnpy-theme] .ask-co-row { border-radius:calc(7px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-co-chip,
 [data-cnpy-theme] .ask-co-upgrade { border-radius:calc(8px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-co-plus-row { border-radius:calc(9px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-co-menu,
-[data-cnpy-theme] .ask-co-plusbtn,
 [data-cnpy-theme] .ask-send--40 { border-radius:calc(10px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-co-pick { border-radius:calc(12px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-co-plus,
 [data-cnpy-theme] .ask-co-drop { border-radius:calc(14px * var(--corner-scale)) !important; }
+/* Ask: phone (ask-phone.ts) — the header's buttons, the + and Send, the + menu and its rows, the sheet's header buttons. */
+[data-cnpy-theme] .ask-ph-hbtn,
+[data-cnpy-theme] .ask-insp-frame[data-sheet="1"] .ask-insp-head > .ask-iconbtn { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-ph-row { border-radius:calc(9px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-ph-plusbtn,
+[data-cnpy-theme] .ask-ph-send { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-ph-plus { border-radius:calc(14px * var(--corner-scale)) !important; }
 /* ── Sync GitHub: the header control and the panel it opens (web/src/sync.ts) ──
    The control lives in a slot that is always in the header (empty = no box), so a progress tick
    repaints the slot alone. The panel is a root-level overlay hung under the button: main.ts

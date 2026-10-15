@@ -14,6 +14,7 @@ import { emptyConvo, newTurn } from "../web/src/ask-stream";
 import type { AskApi, AskRefHit } from "../web/src/ask-api";
 import { quickHitsToRefs } from "../web/src/ask-api";
 import { replayPlan } from "../web/src/ask-replay";
+import { phonePart } from "../web/src/ask-phone";
 import {
   composerView, composerPart, composerReplaySetup, composerMode, composerAuto, composerBlock, canSend, parseCommand, usageLine, modeHint,
   kindsPhrase, atRows, addFiles, typeText, pick, sendFrom, initialComposerUi, COMPOSER_STATES,
@@ -533,23 +534,37 @@ describe("the ⌘J panel's composer", () => {
   });
 });
 
-describe("the phone — one + menu and the meta line", () => {
-  it("+ (the phone part's toggle), 'Smart · Asks first', a 40px Send; the + menu holds Attach, Mention, Run a command, Mode, Changes", () => {
+describe("the phone — ONE + menu (the phone part's) driving the composer's own controls", () => {
+  it("the phone's bar sits in the box (+, 'Smart · Asks first', Send); its menu holds Attach, Mention, Run a command, Mode, Changes", () => {
     const s = askState("pro", (st) => { st.phone = true; });
     const h = html(s);
-    expect(h).toMatch(/class="ask-co-plusbtn" data-morph-key="plusb" data-act="askPhPlus" aria-label="More options" aria-expanded="false"/);
+    expect(h).toMatch(/<div class="ask-ph-host" data-morph-key="bar"><div class="ask-ph-bar">/);
+    expect(h).toMatch(/class="ask-ph-plusbtn" data-act="askPhPlus" data-arg="page" aria-label="More options" aria-expanded="false"/);
     expect(h).toContain(">Smart · Asks first<");
-    expect(h).toContain("ask-send ask-send--40");
     expect(h).not.toContain("Enter to send");
     expect(h).not.toContain(`data-act="askCoAttach" data-arg="page" aria-label="Attach files"`);
+    expect(h).not.toContain("ask-co-plus");
+    // The phone's Attach clicks THIS input; its Mode / Changes write ComposerUi.mode / .auto through the setters.
+    expect(h).toMatch(/data-ask-composer="page"[\s\S]*<input type="file"/);
     s.ask.phone.plus = true;
     const open = html(s);
     for (const t of ["Attach a file or photo", "Mention a ticket, doc or person", "Run a command", ">Mode<", ">Changes in this thread<", ">Ask before changes<"]) expect(open).toContain(t);
+    expect(open.match(/class="ask-ph-plus"/g)).toHaveLength(1);
     expect(html(askState("free", (st) => { st.phone = true; }))).toContain(">Asks first<");
-    // A row closes the menu.
+    // A composer row closes the menu.
     const ctx = makeCtx(s);
     composerPart.act!(ctx, "askCoSlash", "page", null);
     expect(s.ask.phone.plus).toBe(false);
+  });
+
+  it("the phone menu's Mode and Changes go through the composer's setters (its state, and the thread's PATCH)", () => {
+    const s = askState("pro", (st) => { st.phone = true; st.ask.page = { ...st.ask.page, threadId: 7 }; });
+    const ctx = makeCtx(s);
+    phonePart.act!(ctx, "askPhMode", "page:thinking", null);
+    phonePart.act!(ctx, "askPhAuto", "page:auto", null);
+    expect(s.ask.composer.page.mode).toBe("thinking");
+    expect(s.ask.composer.page.auto).toBe(true);
+    expect(ctx.patches).toEqual([[7, { mode: "thinking" }], [7, { auto: true }]]);
   });
 });
 

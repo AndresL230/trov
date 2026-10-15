@@ -28,6 +28,9 @@ export const ASK_ICON_PATHS = {
   clock: `<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>`,
   sprint: `<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`,
   cmd: `<path d="M15 4 9 20"></path>`,
+  // The phone (ask-phone.ts): the header's Open threads (not the app's nav hamburger beside it). Its + menu's
+  // Attach / Mention rows draw the composer's `attach` and `at`.
+  phThreads: `<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z"></path><path d="M8.5 10.5h7M8.5 14h4.5"></path>`,
   // The shell's own controls.
   panel: `<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path>`,
   plus: `<path d="M12 5v14M5 12h14"></path>`,

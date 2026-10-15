@@ -217,8 +217,18 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   are offered), rows drawn from RefViews; `/` is the five commands, sent as `command` with the rest as the text.
   The mode (only when the plan offers more than one) and the Auto switch are remembered per thread
   (`PATCH /ask/threads/:id { mode | auto }`); Auto is never sent while an admin has it off. Unsent words are kept
-  per thread (here, and `PATCH … { draft }`, read back from the thread's detail; cleared on send). The phone's +
-  menu (`composerPlusMenu`) holds the same controls. Tests: `test/render.ask-composer.test.ts`.
+  per thread (here, and `PATCH … { draft }`, read back from the thread's detail; cleared on send). On a phone the box's
+  bottom row is the phone part's `phoneComposerBar` and its ONE + menu, which drives these controls (the file input, the
+  box through a real `input` event, `setMode` / `setAuto`). Tests: `test/render.ask-composer.test.ts`.
 - **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on
   `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written.
 - Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`, `test/render.ask-cmdj.test.ts`.
+- Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`.
+- **Phone** (`ask-phone.ts`, ≤ 640px; `test/render.ask-phone.test.ts`): the header's Open threads + New thread (the
+  app's nav button stays; bug and theme leave the Ask header); the thread list is a modal side drawer (focus in, Tab
+  kept in, Escape / scrim / Close / a pick close it through its exit, focus back — it opts out of the app's phone
+  modal-as-bottom-sheet rule); the composer renders `phoneComposerBar(v)` in place of its toolbar: the + menu drives
+  the composer's OWN controls (Attach clicks its file input, Mention / Run a command type `@` / `/` into its box as a
+  real `input` event, Mode / Changes write `ComposerUi.mode / .auto`, from `ask/state` only) and the meta line reads
+  "Smart · Asks first"; the inspector is the shell's frame as a full-height sheet (`data-sheet="1"`) with focus kept in
+  it. Every phone control is ≥ 44px.

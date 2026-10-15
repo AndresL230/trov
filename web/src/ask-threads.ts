@@ -148,7 +148,7 @@ export const threadsPart: AskPart = {
   act(ctx, name, arg, value) {
     const id = Number(arg);
     switch (name) {
-      case "askThOpen": ctx.ui.threadMenu = null; ctx.ui.phone.drawer = false; if (id > 0) ctx.openThread(id); return;
+      case "askThOpen": ctx.ui.threadMenu = null; if (id > 0) ctx.openThread(id); return;   // openThread slides the phone drawer out
       case "askThQ": ctx.ui.threadQ = value ?? ""; ctx.ui.threadMenu = null; search(ctx); ctx.paint(); return;
       case "askThClear": ctx.ui.threadQ = ""; search(ctx); return;
       case "askThMore":
