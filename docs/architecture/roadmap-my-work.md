@@ -71,7 +71,9 @@ The SCREEN (`web/src/mywork.ts`, composed by `myWorkView`) reads its other tiles
 sessions off `mwSessions` (`GET /feed?author=<me>&limit=2` — never the Feed screen's filtered `feed`), Docs
 you own off `mwDocs` (`GET /docs?fields=meta`, no bodies, stubs at `current_version = 0` skipped), the review
 tile off `reviewHeadsFromReads` (no diff), and every handoff count — Your sessions' pills and the library's
-Queued handoffs cell (count + the newest, opened, never claimed from here) — off `handoffsForMe`, the ONE
+Queued handoffs cell (count + the newest: its row opens it; **Claim & copy** (`mwHandoffClaim`,
+the owner's call 2026-10-15) copies it as a prompt inside the click, then claims it with a `sess_web_` session —
+permanent, as on the handoff screen) — off `handoffsForMe`, the ONE
 definition the sidebar badge uses too (pending, recipient = me, self-sent included, `anyone` excluded).
 `person` resolves via the github `identities` row (`resolvePersonForLogin`, see Identity above); an
 unmapped login yields an empty EVENT projection (`degraded:false`) — but the ticket list is read BEFORE the
@@ -94,7 +96,8 @@ a bento TILE — drawn ONLY when the dashboard carries `brief` and the person ha
 key, or nothing written: the field is absent and the bento is exactly its five tiles). With it the bento is laid out by AREA
 (`trov.css` `.mw-bento-brief`, `MyWorkLayout.bento`), each tile sized to what it holds and the whole closing as one
 rectangle: Brief tall on the left beside Needs your review over Tickets for you; Your sessions tall on the left
-beside Repo over the library's three small tiles (`libraryTiles`: Docs you own, Artifacts, Queued handoffs). Below
+beside Repo over two small tiles (`libraryTiles`: Docs you own, Queued handoffs; Artifacts is not drawn here — the
+owner's call; the strip without a brief keeps it). Below
 the 700px container breakpoint every tile is full width, in that order. Without a brief the page is unchanged (7/5,
 then `mwSpans`, then the library strip across the page). Ready: Now / Recently (each a sentence and its sources) and Next — rows that are real items
 (Failing = the app's failing mark, Handoff = an arrow, a ticket = its `#N`, Due soon = the warning mark), the title

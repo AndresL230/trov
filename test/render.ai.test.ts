@@ -149,7 +149,7 @@ describe("My Work › Your brief", () => {
   it("ready: the first tile — Now / Recently / Next, the byline, the thumbs-down", () => {
     const html = mw("ready");
     const labels = [...html.matchAll(/data-screen-label="My Work · ([^"]+)"/g)].map((m) => m[1]);
-    expect(labels).toEqual(["Your brief", "Needs your review", "Tickets for you", "Your sessions", "Repo monitor", "Docs you own", "Artifacts", "Queued handoffs"]);
+    expect(labels).toEqual(["Your brief", "Needs your review", "Tickets for you", "Your sessions", "Repo monitor", "Docs you own", "Queued handoffs"]);
     const card = html.slice(html.lastIndexOf("<section", html.indexOf('data-mw="brief"')), html.lastIndexOf("<section", html.indexOf('data-mw="review"')));
     const t = text(card);
     expect(t).toContain("Your brief");
@@ -173,11 +173,11 @@ describe("My Work › Your brief", () => {
     expect(text(rows[2])).toContain("#14");
     expect(rows[2]).toMatch(/<a href="#tickets\/14"[^>]*>Guided repository setup<\/a>/);
   });
-  it("with a brief, the bento is laid out by area, and nothing is dropped: the library is three small tiles", () => {
+  it("with a brief, the bento is laid out by area: Docs you own and Queued handoffs are small tiles, Artifacts is not drawn", () => {
     const html = mw("ready");
     expect(html).toContain('class="mw-bento mw-bento-brief cnpy-stagger"');
     const tiles = [...html.matchAll(/data-mw="(\w+)"/g)].map((m) => m[1]);
-    expect(tiles).toEqual(["brief", "review", "tickets", "sessions", "repo", "docs", "artifacts", "handoffs"]);
+    expect(tiles).toEqual(["brief", "review", "tickets", "sessions", "repo", "docs", "handoffs"]);
     expect(text(html.slice(html.indexOf('data-mw="handoffs"')))).toContain("Queued handoffs");
     // Without a brief: the strip across the page, all three parts in one tile, no area layout.
     const plain = render(app({ screen: "mywork", mywork: { status: "ok", data: dash({}) } }));

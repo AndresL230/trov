@@ -107,7 +107,7 @@ describe("libraryStrip", () => {
     handoffs,
   }, 12);
 
-  it("names the three cells; the third is the queued handoffs — the row opens it, the button copies it", () => {
+  it("names the three cells; the third is the queued handoffs — the row opens it, the button claims and copies it", () => {
     const html = lib({ load: "ok", count: 2, newest: { id: 9, title: "Finish the <b>gate</b> port", at: new Date().toISOString() } });
     expect(html).toContain("Docs you own");
     expect(html).toContain("1 not updated in 30 days");
@@ -117,8 +117,8 @@ describe("libraryStrip", () => {
     expect(html).toContain("2 for you");
     expect(html).toContain("Finish the &lt;b&gt;gate&lt;/b&gt; port");
     expect(html).toContain('data-act="openHandoff" data-arg="9"');
-    expect(html).toContain('data-act="mwHandoffCopy" data-arg="9"');
-    expect(html).toContain("Copy</button>");
+    expect(html).toContain('data-act="mwHandoffClaim" data-arg="9"');
+    expect(html).toContain("Claim &amp; copy</button>");
     expect(html).not.toContain(">Open<");
     // The prompt cell and its Copy path are gone.
     expect(html).not.toContain("Saved prompts");

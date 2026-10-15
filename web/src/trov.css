@@ -70,19 +70,18 @@ input, select { font-family: inherit; }
 .mw-libdiv { width:1px; height:100%; }
 /* With Your brief (render.ts): the bento by AREA, so each tile is sized to what it holds and the whole
    closes as one rectangle — Brief tall beside Needs your review over Tickets; Your sessions tall beside
-   Repo over the library's three small tiles. */
+   Repo over Docs you own and Queued handoffs. */
 .mw-bento-brief { grid-template-areas:
   "brief brief brief brief brief brief brief review review review review review"
   "brief brief brief brief brief brief brief tickets tickets tickets tickets tickets"
   "sessions sessions sessions sessions repo repo repo repo repo repo repo repo"
-  "sessions sessions sessions sessions docs docs docs arts arts hand hand hand"; }
+  "sessions sessions sessions sessions docs docs docs docs hand hand hand hand"; }
 .mw-bento-brief > [data-mw="brief"] { grid-area:brief; }
 .mw-bento-brief > [data-mw="review"] { grid-area:review; }
 .mw-bento-brief > [data-mw="tickets"] { grid-area:tickets; }
 .mw-bento-brief > [data-mw="sessions"] { grid-area:sessions; }
 .mw-bento-brief > [data-mw="repo"] { grid-area:repo; }
 .mw-bento-brief > [data-mw="docs"] { grid-area:docs; }
-.mw-bento-brief > [data-mw="artifacts"] { grid-area:arts; }
 .mw-bento-brief > [data-mw="handoffs"] { grid-area:hand; }
 .mw-row { transition:background .12s ease; }
 .mw-row:hover { background:var(--hover); }

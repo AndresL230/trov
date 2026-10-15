@@ -3268,12 +3268,17 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "goHandoffs": state.screen = "handoffs"; state.handoffId = null; loadHandoffs(); return;
     case "newHandoff": state.screen = "newhandoff"; state.nh = blankHandoff(primaryRepoName()); rerender(); return;
     case "openHandoff": { const id = Number(arg); if (!Number.isInteger(id) || id <= 0) return; state.screen = "handoff"; openHandoff(id); return; }
-    case "mwHandoffCopy": {
-      // My Work › Queued handoffs: the same "Copy as prompt" text as the handoff screen,
-      // from the inbox row already on hand — so the write stays inside the click.
+    case "mwHandoffClaim": {
+      // My Work › Queued handoffs: Claim & copy. The copy runs first, inside the click (the clipboard
+      // needs the gesture), from the inbox row on hand — the same "Copy as prompt" text as the handoff
+      // screen; then the claim, which is permanent and takes the handoff from everyone else.
       const h = state.handoffs.data.find((x) => x.id === Number(arg));
       if (!h) return;
-      copyToClipboard(handoffAsPrompt(h)).then((ok) => flash(ok ? "Copied as prompt" : "Couldn't reach the clipboard"));
+      const copied = copyToClipboard(handoffAsPrompt(h));
+      const session = "sess_web_" + Math.random().toString(36).slice(2, 10).toUpperCase();
+      claimHandoff(h.id, session)
+        .then(() => copied.then((ok) => { loadHandoffs(); flash(ok ? `Claimed #${h.id} · copied as prompt` : `Claimed #${h.id} — couldn't reach the clipboard`); }))
+        .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } writeErr(e, "Couldn't claim this handoff"); loadHandoffs(); });
       return;
     }
     case "handoffCopy": {
