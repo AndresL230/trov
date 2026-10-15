@@ -1,8 +1,8 @@
 # Ask Trov — the chat backend
 
 The decided design: `docs/superpowers/specs/2026-10-15-server-ai-build.md` › Phase F, **amended by Trov handoff #12 §2**
-(the delta the finished Claude Design needs; where they disagree, #12 wins). The frontend is not built here (it waits
-on the design session); this file is the backend, the contract and the fixtures. Where AI calls may happen at all,
+(the delta the finished Claude Design needs; where they disagree, #12 wins). This file is the backend, the contract and
+the fixtures, then the screen (§ The screen, at the end). Where AI calls may happen at all,
 the allowances and the switches: `ai.md`.
 
 ## Shape
@@ -170,3 +170,24 @@ lane, Auto and its cap, Confirm-only writes, Publish, Undo and "changed since", 
 /search, ⌘J, state, settings, account deletion), `test/ask.parity.test.ts`, `test/ask.contract.test.ts` (every
 fixture against the schemas, the transcript files, the replay's guard), `test/secrets.mcp.test.ts` (the boundary).
 The Anthropic stream is stubbed at the `Response` level (`test/helpers/ask.ts`) — never the network.
+
+## The screen (`web/src/ask-*.ts`)
+
+Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) and `#ask/<id>`; the page is
+`data-morph="ask"`. The design and the per-scenario map: `docs/superpowers/specs/ask-trov.dc.html` and
+`ask-trov-inventory.md`. One file per part, each with its own `/* ── Ask: <part> ── */` block in trov.css:
+
+- **Foundation**: `ask-state.ts` (`AppState.ask`, `AskCtx` — the ONLY way a part reads or writes, `AskPart`),
+  `ask-controller.ts` (main.ts hands it every `ask…` act, routed by the two-letter part code; it owns the reads, one
+  stream per conversation with Stop, batched `POST /ask/peek`, the inspector stack, the hover card, ⌘J, the Escape
+  stack, the resize edge; nothing on a render path fetches), `ask-api.ts` (the typed client), `ask-sse.ts` +
+  `ask-stream.ts` (the SSE reader and the reducer, tested on every recorded transcript), `ask-refs.ts` (the chip, the
+  status cell, the hover card — one `RefView` per ref), `ask-screen.ts` + `ask-layout.ts` (header, the three columns
+  and their breakpoints, the inspector's frame), `ask-threads.ts` (the thread list), `ask-escape.ts`,
+  `ask-icons.ts`, `ask-motion.ts` (the motion hooks: inventory §12), `ask-replay.ts` (the dev replay).
+- **Parts** (stubs with their interface in the file header): `ask-conversation.ts`, `ask-composer.ts`,
+  `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
+  Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
+- **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on
+  `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written.
+- Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`.

@@ -46,11 +46,15 @@ curl -s localhost:8791/api/o/saplinglearn/ai/ask-replay | head -c 200         # 
 curl -s 'localhost:8791/api/o/saplinglearn/ai/ask-replay/answer?speed=0'      # the whole transcript at once
 ```
 
-In the app: **`http://localhost:8791/saplinglearn/?askReplay=<scenario>#ask`** drives the Ask screen from the replay
+In the app: **`http://localhost:<port>/saplinglearn/?askReplay=<scenario>#ask`** (the org's home path is `/<slug>/`)
+drives the Ask screen from the replay
 (web/src/ask-replay.ts): the state, threads, search hits and ref views come from the replay index's fixtures, and the
 scenario's transcript streams at real pacing (`&askSpeed=4` faster, `0` instant). Nothing is written in replay mode — a
 write answers with a toast. `askReplay` accepts every scenario below, plus `composer:<state>` and `insp:<type>`.
-`cmdj` opens the ⌘J panel over the current route: `?askReplay=cmdj#tickets/14`.
+`cmdj` opens the ⌘J panel over the current route: `?askReplay=cmdj#tickets/14`. The flag is read ONCE, when the page
+loads (the boot rewrites the address to the org's href, so the query is gone afterwards): to switch scenario, load the
+URL again. Without `askReplay`, `#ask` is the real screen on the real routes (it answers `no_key` with no
+`ANTHROPIC_API_KEY`).
 
 ---
 
@@ -457,7 +461,37 @@ on these too.
 
 ## 12. Motion (all off under `prefers-reduced-motion`, L43)
 
-`ask-rise` (10px rise, .36–.42s `cubic-bezier(.2,.7,.2,1)`), `ask-screen` (6px), `ask-pop` (scale .94 + 3px, .12–.2s
+**Owner's ruling (2026-10-15): every part animates, built from the APP's motion system** (web-ui.md › Sidebar & motion,
+A row leaving a list, Loading skeletons; the `--fx-*` clock), never a second one; nothing replays on a rerender; all
+of it off under reduced motion. The foundation's hooks (`web/src/ask-motion.ts`; tests in `test/render.ask-shell.test.ts`):
+
+1. **Entrance of an element** = a CSS animation on its class, played on INSERTION. The page is `data-morph="ask"`, so an
+   element whose key is unchanged is patched and never replays; give a thing that becomes another thing a different
+   `data-morph-key`. The screen enters with the app's `[data-enter]` once per arrival (a thread switch is not a new
+   page: `pageKey` leaves the thread out); staggered pieces use `.cnpy-rise` + `--i`.
+2. **New children of a keyed list** — `data-morph-list` + `data-ask-enter="rise|fade|pop"` on the container,
+   `data-morph-key` on each child: only children new to that container animate (Web Animations; a container's first
+   paint animates nothing). In use: the messages (`.ask-msgs`), an answer's children (`.ask-a`), its parts
+   (`.ask-parts`: streamed blocks / cards rise in, a text part only grows), its steps, the thread rows.
+3. **Exits through state** — `ctx.exit(key, apply)` sets `ui.closing[key]`; the renderer emits `data-closing`
+   (`closingAttr`); CSS plays the out animation / collapse; `apply()` runs after `ASK_FX.exit` (200ms). Keys in use:
+   `inspector`, `cmdj`, `hover`, `menu`, `drawer`, `plus`, `th:<id>`. Reduced motion: `apply()` at once.
+4. **Height tween** — `data-ask-tween` on a part whose content swaps (a write card → its done / cancelled line, a save
+   form → its saved line): its height glides from the last paint's.
+5. **Skeleton → content** — `skeleton()` (the thread list, a thread being read); `syncSkeletons` gives the settle fade.
+6. **Columns** — the thread list slides by its width (`data-threads`, always in the DOM, `inert` when shut); the
+   inspector slides in from its edge while its negative margin opens the room (`--ask-insp-w`), closes with
+   `data-closing`, eases a keyboard resize and follows a drag with no transition (`data-dragging`); the ⌘J panel
+   slides from the right over a fading scrim; the phone drawer from the left; menus / pickers / the hover card pop
+   (`ask-pop-in` / `ask-pop-out`).
+7. **Streamed text** — patched in place (no rebuild), the scroller sticks to the bottom unless the person scrolled up,
+   `overflow-anchor:none` on the scroller; the cursor blinks (`ask-blink`).
+Every Ask animation or moving transition must be listed (by its base class) in the ONE reduced-motion block of the
+`Ask: motion` section of trov.css — the shell test fails otherwise. The design's keyframe names below map to: `ask-rise`
+→ `cnpy-rise` / rule 2's `rise`; `ask-pop` → `ask-pop-in`; `ask-fade` → `ask-fade-in`; `ask-insp-in`, `ask-panel-in`,
+`ask-sheet-up`, `ask-drawer-in` as named; `ask-ia`/`ask-ib` → `ask-view-in` on the inspector body (keyed per ref).
+
+The design's own list, for reference: `ask-rise` (10px rise, .36–.42s `cubic-bezier(.2,.7,.2,1)`), `ask-screen` (6px), `ask-pop` (scale .94 + 3px, .12–.2s
 `cubic-bezier(.2,.9,.3,1.2)`), `ask-fade`, `ask-spin` (.8s), `ask-blink` (cursor 1.1s), `ask-pulse` (thinking 1.6s),
 `ask-grow-y` (bars .55s), `ask-wipe` (theme lanes / progress .7s), `ask-insp-in` (18px from the right .3s), `ask-ia`/`ask-ib`
 (inspector view swap), `ask-panel-in`, `ask-sheet-up`, `ask-drawer-in` (L28–43). Keyframes live in trov.css's Ask block
