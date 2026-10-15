@@ -335,10 +335,8 @@ export interface MwLibrary {
   /** Queued handoffs: `handoffsForMe` (the badge's definition), newest first. */
   handoffs: { load: MwLoad; count: number; newest: { id: number; title: string; at: string } | null };
 }
-/** The library: Docs you own, Artifacts and Queued handoffs side by side across the page. `stacked` (beside
- *  Repo, when Your brief leads the page) is the narrow tile — Docs and Artifacts one above the other, and no
- *  Queued handoffs: Your sessions already shows the handoffs waiting for you. */
-export function libraryStrip(lib: MwLibrary, span: number, o: { stacked?: boolean } = {}): string {
+/** The library's three parts — Docs you own, Artifacts, Queued handoffs — each a title, its link and a body. */
+function libraryCells(lib: MwLibrary): { docs: string; arts: string; handoffs: string } {
   const cell = (title: string, link: { act: string; label: string }, body: string): string =>
     `<div style="min-width:0;display:flex;flex-direction:column;gap:6px;padding:14px 16px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:2px 10px"><span style="font-size:14px;font-weight:500;white-space:nowrap">${title}</span><button data-act="${link.act}" class="mw-more" style="display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--fg-40);white-space:nowrap;padding:0">${esc(link.label)}${ARROW}</button></div>${body}</div>`;
@@ -362,18 +360,28 @@ export function libraryStrip(lib: MwLibrary, span: number, o: { stacked?: boolea
       ? `${line(`${h.count} for you`)}<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><button data-act="openHandoff" data-arg="${h.newest.id}" class="mw-more" style="min-width:0;flex:1;display:flex;flex-direction:column;text-align:left;padding:0"><span style="font-size:13px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.newest.title)}</span><span style="font-size:12.5px;color:var(--fg-40)">Newest · ${relTime(h.newest.at)}</span></button><button data-act="mwHandoffCopy" data-arg="${h.newest.id}" title="Copy as prompt — paste it into a fresh session" class="cnpy-accentbtn" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:500;white-space:nowrap;flex:none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>Copy</button></div>`
       : quiet("No handoffs queued.")
 
+  return {
+    docs: cell("Docs you own", { act: "goDocs", label: "Docs" }, docs),
+    arts: cell("Artifacts", { act: "goArtifacts", label: "Library" }, arts),
+    handoffs: cell("Queued handoffs", { act: "goHandoffs", label: "Handoffs" }, handoffs),
+  };
+}
+
+/** The library as one strip across the page: Docs you own | Artifacts | Queued handoffs. */
+export function libraryStrip(lib: MwLibrary, span: number): string {
+  const c = libraryCells(lib);
   const div = `<div class="mw-libdiv" style="background:var(--border)"></div>`;
-  if (o.stacked) {
-    return tile("library", span, "Your library", `<div class="mw-lib mw-lib-stack">
-    ${cell("Docs you own", { act: "goDocs", label: "Docs" }, docs)}${div}
-    ${cell("Artifacts", { act: "goArtifacts", label: "Library" }, arts)}
-  </div>`);
-  }
   return tile("library", span, "Your library", `<div class="mw-lib">
-    ${cell("Docs you own", { act: "goDocs", label: "Docs" }, docs)}${div}
-    ${cell("Artifacts", { act: "goArtifacts", label: "Library" }, arts)}${div}
-    ${cell("Queued handoffs", { act: "goHandoffs", label: "Handoffs" }, handoffs)}
+    ${c.docs}${div}
+    ${c.arts}${div}
+    ${c.handoffs}
   </div>`);
+}
+
+/** The library as three small tiles of their own, for the bento with Your brief (`.mw-bento-brief`). */
+export function libraryTiles(lib: MwLibrary): { docs: string; artifacts: string; handoffs: string } {
+  const c = libraryCells(lib);
+  return { docs: tile("docs", 12, "Docs you own", c.docs), artifacts: tile("artifacts", 12, "Artifacts", c.arts), handoffs: tile("handoffs", 12, "Queued handoffs", c.handoffs) };
 }
 
 /** The design's grid rule: the first two tiles 7/5 (or one full row), the rest in
@@ -458,6 +466,8 @@ export interface MyWorkLayout {
   /** "1 ticket open, 3 to review, …" under the greeting; "" draws nothing. */
   stat: string;
   tiles: string[];
+  /** `brief`: the bento laid out by area around Your brief (trov.css `.mw-bento-brief`). */
+  bento?: "brief";
 }
 export function myWorkLayout(p: MyWorkLayout): string {
   return `<div class="cnpy-scroll" style="max-width:1180px;margin:0 auto;padding:28px 32px 80px">
@@ -468,6 +478,6 @@ export function myWorkLayout(p: MyWorkLayout): string {
       </div>
       <div style="font-size:13.5px;color:var(--fg-55);white-space:nowrap">${p.date}</div>
     </div>
-    <div class="mw-main"><div class="mw-bento cnpy-stagger">${p.tiles.join("")}</div></div>
+    <div class="mw-main"><div class="mw-bento${p.bento === "brief" ? " mw-bento-brief" : ""} cnpy-stagger">${p.tiles.join("")}</div></div>
   </div>`;
 }

@@ -68,8 +68,22 @@ input, select { font-family: inherit; }
 .mw-tile { grid-column:span var(--span, 12); }
 .mw-lib { display:grid; grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr) 1px minmax(0,1fr); }
 .mw-libdiv { width:1px; height:100%; }
-.mw-lib-stack { grid-template-columns:minmax(0,1fr); }
-.mw-lib-stack .mw-libdiv { width:100%; height:1px; }
+/* With Your brief (render.ts): the bento by AREA, so each tile is sized to what it holds and the whole
+   closes as one rectangle — Brief tall beside Needs your review over Tickets; Your sessions tall beside
+   Repo over the library's three small tiles. */
+.mw-bento-brief { grid-template-areas:
+  "brief brief brief brief brief brief brief review review review review review"
+  "brief brief brief brief brief brief brief tickets tickets tickets tickets tickets"
+  "sessions sessions sessions sessions repo repo repo repo repo repo repo repo"
+  "sessions sessions sessions sessions docs docs docs arts arts hand hand hand"; }
+.mw-bento-brief > [data-mw="brief"] { grid-area:brief; }
+.mw-bento-brief > [data-mw="review"] { grid-area:review; }
+.mw-bento-brief > [data-mw="tickets"] { grid-area:tickets; }
+.mw-bento-brief > [data-mw="sessions"] { grid-area:sessions; }
+.mw-bento-brief > [data-mw="repo"] { grid-area:repo; }
+.mw-bento-brief > [data-mw="docs"] { grid-area:docs; }
+.mw-bento-brief > [data-mw="artifacts"] { grid-area:arts; }
+.mw-bento-brief > [data-mw="handoffs"] { grid-area:hand; }
 .mw-row { transition:background .12s ease; }
 .mw-row:hover { background:var(--hover); }
 .mw-more { transition:color .12s ease; }
@@ -87,6 +101,8 @@ input, select { font-family: inherit; }
 .mw-handoff:hover { border-color:color-mix(in srgb,var(--blue) 45%,transparent) !important; }
 @container mwmain (max-width: 700px) {
   .mw-tile { grid-column:span 12; }
+  .mw-bento-brief { grid-template-areas:none; }
+  .mw-bento-brief > .mw-tile { grid-area:auto; grid-column:span 12; }
   .mw-lib { grid-template-columns:minmax(0,1fr); }
   .mw-libdiv { width:100%; height:1px; }
 }

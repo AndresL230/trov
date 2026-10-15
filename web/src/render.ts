@@ -23,7 +23,7 @@ import { AVATAR_TYPES } from "@shared/people";
 import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
 import {
-  myWorkLayout, mwSpans, ticketsTile, reviewTile, sessionsTile, repoTile, libraryStrip, handoffsForMe, briefTile,
+  myWorkLayout, mwSpans, ticketsTile, reviewTile, sessionsTile, repoTile, libraryStrip, libraryTiles, handoffsForMe, briefTile,
   type MwLoad, type MwSession, type MwHandoff, type MwLibrary, type MwRepoTab, type MwDue,
 } from "./mywork";
 import type { TagListDTO, TagPageDTO } from "@shared/tags-core";
@@ -2633,27 +2633,31 @@ function myWorkView(s: AppState): string {
   // queue (loaded, empty) steps out of the lead pair to sit beside Repo:
   // Tickets 7 | Sessions 5, then Repo 7 | Needs your review 5.
   // Your brief (written by Trov) is a tile of its own, ONLY when the dashboard carries one and this
-  // person has not pressed "Wrong?" on it. With it, every row is one wide tile and one narrow one (7/5):
-  // Brief | Needs your review, Tickets | Your sessions, Repo | the library stacked (Docs and Artifacts —
-  // Your sessions already shows the handoffs waiting). A clear review queue trades places with Your
-  // sessions and steps down beside Repo.
+  // person has not pressed "Wrong?" on it. With it the bento is laid out by AREA (trov.css
+  // `.mw-bento-brief`): Brief tall on the left beside Needs your review over Tickets; Your sessions tall
+  // on the left beside Repo over the library's three small tiles (Docs, Artifacts, Queued handoffs).
   const reviewClear = reviewLoad === "ok" && reviewItems.length === 0;
   const brief = d?.brief && !aiIsHidden(s.ai, "brief", aiItemRef.brief(d.brief.generatedAt ?? "brief")) ? d.brief : null;
   const strips = brief ? [] : ["library"];
   const order = brief
-    ? (reviewClear ? ["brief", "sessions", "tickets", "library", "repo", "review"] : ["brief", "review", "tickets", "sessions", "repo", "library"])
+    ? ["brief", "review", "tickets", "sessions", "repo", "docs", "artifacts", "handoffs"]
     : reviewClear ? ["tickets", "sessions", "repo", "review"] : ["tickets", "review", "sessions", "repo"];
+  // With the brief, the areas place every tile; the spans only matter below the phone breakpoint (all 12).
   const span: Record<string, number> = brief
-    ? Object.fromEntries(order.map((k, i) => [k, i % 2 === 0 ? 7 : 5]))
+    ? Object.fromEntries(order.map((k) => [k, 12]))
     : reviewClear
       ? { tickets: 7, sessions: 5, repo: 7, review: 5, library: 12 }
       : mwSpans(order, strips);
+  const libTiles = brief ? libraryTiles(library) : null;
   const tile: Record<string, () => string> = {
     tickets: () => ticketsTile({ load: dLoad, rows: tickets, total: ticketsTotal, expanded: s.mwExpanded.tickets }, degraded, span.tickets, dueOf),
     review: () => reviewTile(reviewItems, reviewLoad, span.review),
     sessions: () => sessionsTile(sessions, feedLoad, waiting, span.sessions),
     repo: () => repoTile(s.repo.data, mwLoad(s.repo.status, !!s.repo.data), s.mwRepoTab, span.repo, { noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, admin: viewerIsAdmin(s) }),
-    library: () => libraryStrip(library, span.library, { stacked: !!brief }),
+    library: () => libraryStrip(library, span.library),
+    docs: () => libTiles?.docs ?? "",
+    artifacts: () => libTiles?.artifacts ?? "",
+    handoffs: () => libTiles?.handoffs ?? "",
     brief: () => (brief ? briefTile(brief, false, span.brief) : ""),
   };
 
@@ -2662,6 +2666,7 @@ function myWorkView(s: AppState): string {
     date: esc(today),
     stat: esc(stat),
     tiles: [...order, ...strips].map((k) => tile[k]()),
+    ...(brief ? { bento: "brief" as const } : {}),
   });
 }
 

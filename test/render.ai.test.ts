@@ -146,12 +146,11 @@ describe("My Work › Your brief", () => {
   const mw = (state: "ready" | "empty" | "capped", o: Partial<AppState> = {}) =>
     render(app({ screen: "mywork", mywork: { status: "ok", data: dash({ brief: briefFixture(state, NOW) }) }, ...o }));
 
-  it("ready: the lead bento tile, beside Needs your review — Now / Recently / Next, the byline, the thumbs-down", () => {
+  it("ready: the first tile — Now / Recently / Next, the byline, the thumbs-down", () => {
     const html = mw("ready");
     const labels = [...html.matchAll(/data-screen-label="My Work · ([^"]+)"/g)].map((m) => m[1]);
-    expect(labels).toEqual(["Your brief", "Needs your review", "Tickets for you", "Your sessions", "Repo monitor", "Your library"]);
+    expect(labels).toEqual(["Your brief", "Needs your review", "Tickets for you", "Your sessions", "Repo monitor", "Docs you own", "Artifacts", "Queued handoffs"]);
     const card = html.slice(html.lastIndexOf("<section", html.indexOf('data-mw="brief"')), html.lastIndexOf("<section", html.indexOf('data-mw="review"')));
-    expect(card).toContain("--span:7");
     const t = text(card);
     expect(t).toContain("Your brief");
     expect(t).toContain("You are partway through the hosting screens");
@@ -174,18 +173,16 @@ describe("My Work › Your brief", () => {
     expect(text(rows[2])).toContain("#14");
     expect(rows[2]).toMatch(/<a href="#tickets\/14"[^>]*>Guided repository setup<\/a>/);
   });
-  it("with a brief, every row is 7/5: Brief | Review, Tickets | Sessions, Repo | the stacked library", () => {
-    const spans = (html: string) => Object.fromEntries([...html.matchAll(/data-mw="(\w+)"/g)].map((m) => {
-      const open = html.lastIndexOf("<section", m.index);
-      return [m[1], Number(/--span:(\d+)/.exec(html.slice(open, m.index))?.[1])];
-    }));
+  it("with a brief, the bento is laid out by area, and nothing is dropped: the library is three small tiles", () => {
     const html = mw("ready");
-    expect(spans(html)).toEqual({ brief: 7, review: 5, tickets: 7, sessions: 5, repo: 7, library: 5 });
-    // The narrow library: Docs and Artifacts stacked, no Queued handoffs (Your sessions shows them).
-    const lib = html.slice(html.indexOf('data-mw="library"'));
-    expect(lib).toContain("mw-lib-stack");
-    expect(text(lib)).toContain("Docs you own");
-    expect(text(lib)).not.toContain("Queued handoffs");
+    expect(html).toContain('class="mw-bento mw-bento-brief cnpy-stagger"');
+    const tiles = [...html.matchAll(/data-mw="(\w+)"/g)].map((m) => m[1]);
+    expect(tiles).toEqual(["brief", "review", "tickets", "sessions", "repo", "docs", "artifacts", "handoffs"]);
+    expect(text(html.slice(html.indexOf('data-mw="handoffs"')))).toContain("Queued handoffs");
+    // Without a brief: the strip across the page, all three parts in one tile, no area layout.
+    const plain = render(app({ screen: "mywork", mywork: { status: "ok", data: dash({}) } }));
+    expect(plain).not.toContain("mw-bento-brief");
+    expect(plain).toContain('data-mw="library"');
   });
   it("empty: the mock's sentence, no grid, no Wrong?", () => {
     const card = briefTile(briefFixture("empty", NOW));
