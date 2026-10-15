@@ -97,17 +97,19 @@ const FAIL_STATES = ["failure", "error", "timed_out"];
  *  The snapshot wins only when it is NEWER than that branch's latest push (or
  *  when no push was ever captured for it) — a Sync is a point-in-time read, and
  *  a push that landed after it is the better answer. Two D1 statements whatever
- *  the branch count. */
+ *  the branch count, side by side (one round trip's wait). */
 export async function branchHeads(ctx: TenantContext, branches: string[]): Promise<Map<string, string>> {
   const refs = [...new Set(branches.filter(Boolean))];
   if (!refs.length) return new Map();
-  const rows = await fanOut<{ ref: string; sha: string; at: string }>(ctx, refs, (p) =>
-    `SELECT ref, sha, at FROM (
-       SELECT ref, sha, occurred_at AS at, ROW_NUMBER() OVER (PARTITION BY ref ORDER BY occurred_at DESC, id DESC) AS rn
-         FROM repo_events WHERE org_id = ? AND kind = 'push' AND ref IN (${p})
-     ) WHERE rn = 1 AND sha IS NOT NULL`, [ctx.orgId]);
+  const [rows, snap] = await Promise.all([
+    fanOut<{ ref: string; sha: string; at: string }>(ctx, refs, (p) =>
+      `SELECT ref, sha, at FROM (
+         SELECT ref, sha, occurred_at AS at, ROW_NUMBER() OVER (PARTITION BY ref ORDER BY occurred_at DESC, id DESC) AS rn
+           FROM repo_events WHERE org_id = ? AND kind = 'push' AND ref IN (${p})
+       ) WHERE rn = 1 AND sha IS NOT NULL`, [ctx.orgId]),
+    getSnapshot<Record<string, unknown>>(ctx, "env_heads"),
+  ]);
   const out = new Map(rows.map((r) => [r.ref, r.sha] as const));
-  const snap = await getSnapshot<Record<string, unknown>>(ctx, "env_heads");
   if (snap) {
     for (const ref of refs) {
       const sha = snap.data?.[ref];

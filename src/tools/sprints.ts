@@ -168,9 +168,8 @@ export async function list_sprints(ctx: TenantContext): Promise<SprintView[]> {
   const rows = await all<SprintRow>(ctx, `SELECT * FROM sprints WHERE org_id = ? ${SPRINT_ORDER}`, ctx.orgId);
   if (rows.length === 0) return [];
 
-  const counts = await ticketCountsBySprint(ctx);
-  const members = await membersBySprint(ctx);
-  const cache = await getProgress(ctx);
+  // Three independent reads, side by side (one round trip's wait, not three).
+  const [counts, members, cache] = await Promise.all([ticketCountsBySprint(ctx), membersBySprint(ctx), getProgress(ctx)]);
 
   return rows.map((row) => viewOf(row, counts.get(row.id), cache.get(row.id), members.get(row.id) ?? []));
 }
