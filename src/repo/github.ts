@@ -8,6 +8,7 @@ import { untitledFailedRuns } from "./reads";
 import type { RepoEnvConfig } from "./config";
 import type { RepoEvent } from "./types";
 import { metricsFromStatus, repoEventsFromDelivery } from "./capture";
+import { scanRepo, type ScanOpts } from "./scan";
 import type { RepoBranches, RepoDrift, RepoDriftGroup } from "@shared/repo";
 
 /** At most this many `.../jobs` lookups per `reconcileRepo` call, so a first
@@ -169,9 +170,10 @@ const MAX_STATUSES_PER_CONTEXT = 10;
  * + ≤2 drift compares + 2 per environment (head commit, head checks). GitHub
  * deployments are not read: an environment's deploys come from its hosting
  * provider (src/hosting/). The callers' budgets (src/repo/cron.ts) build on this
- * number: the `:20` tick is 18 + 4N with its pings, "Poll now" 18 + 5N.
+ * number: the `:20` tick is 18 + 4N with its pings, "Poll now" 18 + 5N. With
+ * `scan` (the cron's and Sync's reconcile), + `SCAN_COST` (src/repo/scan.ts).
  */
-export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now()): Promise<ReconcileResult> {
+export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now(), scan?: ScanOpts): Promise<ReconcileResult> {
   const out: ReconcileResult = { written: 0, unchanged: 0, failed: [] };
   /** Every event goes through the SAME gate the webhook uses; a redelivery or a
    *  backfill overlap drops as `unchanged` on the UNIQUE semantic key. */
@@ -346,6 +348,11 @@ export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: Repo
   // failing compare lands in `failed` instead of vanishing into a swallowed
   // catch (Task 11 carry-over fix: it used to be invisible here).
   await safely("drift", () => computeDrift(ctx, opts, envs));
+
+  // The repo scan (repo setups, Phase D — src/repo/scan.ts): which apps the repository holds, as SUGGESTIONS. Only
+  // when the caller asks (`scan` — the cron's and Sync's reconcile; not Poll now) and only when the default branch's
+  // root tree changed since the last scan: same sha → no request past the tree read. ≤ SCAN_COST requests.
+  if (scan) await safely("scan", async () => { await scanRepo(ctx, opts, { ...scan, now }); });
 
   return out;
 }

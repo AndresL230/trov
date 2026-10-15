@@ -23,6 +23,8 @@ import { importLogoForOrg } from "../integrations/logo";
 import { LOGO_IMPORT_COST } from "../orgs/logo";
 import { CRON_SUBREQUEST_BUDGET, newBudget, serveJob, type Unit } from "./dispatch";
 import { reconcileRepo, type ReconcileResult } from "./github";
+import { SCAN_COST } from "./scan";
+import { describeSources } from "./scan-store";
 import { HEALTH_ON_DEMAND_BUCKET_MS, pingHealth, pollSaplingMetrics } from "./poll";
 import { getSnapshot } from "./store";
 import { expireDueHandoffs, pruneRepoCapture } from "../platform/sweeps";
@@ -192,6 +194,9 @@ export interface ReconcileJobOpts {
   label?: string;
   /** "Poll now" only: skip (and say so, `BUDGET_SKIP`) when the whole refresh would not fit `SUBREQUEST_CAP`. */
   budgetSkip?: boolean;
+  /** The repo scan arm (src/repo/scan.ts, ≤ `SCAN_COST`): on by default (the cron's `:20` unit, Sync GitHub); "Poll
+   *  now" turns it off — an admin has Scan again, and the refresh's `SUBREQUEST_CAP` budget stays as it was. */
+  scan?: boolean;
 }
 
 /**
@@ -214,7 +219,9 @@ export async function runReconcileJob(env: Env, caller: TenantContext, now: numb
     if (!repo || !gh) return null;
     const envs = await orgEnvironments(ctx);
     if (opts.budgetSkip && refreshSubrequests(envs.length) > SUBREQUEST_CAP) return { written: 0, unchanged: 0, failed: [BUDGET_SKIP] };
-    const res = await (opts.reconcile ?? reconcileRepo)(ctx, { token: gh.token.reveal(), repo: repo.repo, fetchImpl: gh.fetch(opts.fetchImpl) }, envs, now);
+    // The scan's connected hosts are resolved lazily — only when the tree changed (`describeSources`, D1 only).
+    const scan = opts.scan === false ? undefined : { describe: () => describeSources(env, ctx, opts.fetchImpl, now) };
+    const res = await (opts.reconcile ?? reconcileRepo)(ctx, { token: gh.token.reveal(), repo: repo.repo, fetchImpl: gh.fetch(opts.fetchImpl) }, envs, now, scan);
     if (res.failed.length) console.error(`${label} reconcile: arms failed`, res.failed, `org=${ctx.orgId}`);
     // `failed` is arm NAMES — nothing an upstream wrote — so it is safe to keep as the last error.
     await gh.recordOutcome(res.failed.length ? { ok: false, message: `reconcile: arms failed: ${res.failed.join(", ")}`, revealed } : { ok: true }, now);
@@ -410,7 +417,7 @@ export async function runRepoRefresh(
     console.error("repo refresh", "hosting", scrubbedLog(e, env), `org=${ctx.orgId}`);
   }
 
-  const github = (await runReconcileJob(env, ctx, now, { fetchImpl, reconcile, label: "repo refresh", budgetSkip: true })) ?? "not_configured";
+  const github = (await runReconcileJob(env, ctx, now, { fetchImpl, reconcile, label: "repo refresh", budgetSkip: true, scan: false })) ?? "not_configured";
 
   return { health, ...usage, ...(hosting ? { hosting } : {}), github };
 }
@@ -475,8 +482,9 @@ export const HEALTH_COST = 2;                                   // the two pings
 export const USAGE_COST = 1;                                    // the app's metrics
 /** An installation token's mint: one POST, when the isolate holds no fresh one (src/github-app/api.ts). */
 export const GITHUB_MINT_COST = 1;
-/** `reconcileRepo`'s 18 + 2N, plus the org image's import that rides the same unit (`runOrgJob`) and a mint. */
-export const reconcileCost = (envs: number): number => 18 + 2 * envs + LOGO_IMPORT_COST + GITHUB_MINT_COST;
+/** `reconcileRepo`'s 18 + 2N and its repo scan (`SCAN_COST`, src/repo/scan.ts), plus the org image's import that
+ *  rides the same unit (`runOrgJob`) and a mint. */
+export const reconcileCost = (envs: number): number => 18 + 2 * envs + SCAN_COST + LOGO_IMPORT_COST + GITHUB_MINT_COST;
 /** `recomputeAllProgress` is UNBOUNDED (one request per issue number of every array-ref sprint), so
  *  this is an ESTIMATE for deciding whether another org may start; what a unit really spent is
  *  counted (`Budget.spent`), so one large org shortens the slice instead of overrunning it. */
