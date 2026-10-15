@@ -733,14 +733,17 @@ describe("the Integrations page keeps an install row honest", () => {
 });
 
 describe("test connection: POST /hosting/:provider/test", () => {
-  it("Cloudflare runs its provider's probe (one request, to Cloudflare only) and records the outcome; the answer carries the connection", async () => {
+  it("Cloudflare runs its provider's probe (to Cloudflare only) and records the outcome; the answer carries the connection", async () => {
     await seedOrgSettings();
     const ctx = await tenantCtx("AndresL230");
     await setSecret(ctx, "cloudflare_analytics", "", LONG_TOKEN);
     await setIntegrationConfig(ctx, "cloudflare_analytics", "", { account_id: "0123456789abcdef0123456789abcdef" });
     const seen: string[] = [];
+    // The probe with a part: the Worker's deployments (Workers Scripts Read), then one hour of its analytics.
     const cfFetch = (async (input: RequestInfo | URL) => {
-      seen.push(String(input));
+      const url = String(input);
+      seen.push(url);
+      if (url.includes("/deployments")) return new Response(JSON.stringify({ success: true, errors: [], messages: [], result: { deployments: [] } }), { status: 200 });
       return new Response(JSON.stringify({ data: { viewer: { accounts: [{ workersInvocationsAdaptive: [] }] } } }), { status: 200 });
     }) as typeof fetch;
     const web = hostingTestApp(fakeProviders().providers, cfFetch);
@@ -750,8 +753,8 @@ describe("test connection: POST /hosting/:provider/test", () => {
     expect(dto.ok).toBe(true);
     expect(dto.connection).toMatchObject({ provider: "cloudflare", status: "connected", last_error: null, manage_url: "https://dash.cloudflare.com/profile/api-tokens" });
     expect(dto.connection.last_used_at).not.toBeNull();
-    expect(seen).toHaveLength(1);
-    expect(seen[0].startsWith("https://api.cloudflare.com/")).toBe(true);
+    expect(seen).toHaveLength(2);
+    for (const u of seen) expect(u.startsWith("https://api.cloudflare.com/")).toBe(true);
     expect(leakedFragments(JSON.stringify(r.json), LONG_TOKEN)).toEqual([]);
   });
 

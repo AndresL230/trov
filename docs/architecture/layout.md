@@ -46,7 +46,7 @@
   the legacy `repoEnvironments()` parser of the `REPO_ENVIRONMENTS` var is called only by tests), `capture.ts` (PURE delivery→`RepoEvent[]` derivation,
   `repoEventsFromDelivery` — no DB, no clock, no network, and stores only a SLICE of each payload in `raw`),
   `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the five snapshot kinds —
-  `prs_reconciled`, `env_heads`, `drift`, `branches`, `cf_polled`; `putMetric`, the ONE write seam that
+  `prs_reconciled`, `env_heads`, `drift`, `branches`; `putMetric`, the ONE write seam that
   normalises `repo_metrics.at`, and `putMetrics`, the same write for MANY rows in `db.batch` chunks of 50;
   the metric reads `metricSeries` / `latestMetric` / `latestHealth` and the Usage tab's whole-tab reads
   `metricsSince` / `productReadings` / `metricsEver`; and `pruneRepoCapture`, the retention rules),

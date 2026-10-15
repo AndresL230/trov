@@ -168,7 +168,7 @@ describe("Cloudflare and Railway are ordinary providers", () => {
     expect(fe.status).toBe(201);
     expect(fe.json?.part).toMatchObject({ key: "edge", label: "Edge", provider: "cloudflare", role: "web", settings: { worker: "qa-frontend" }, last_poll: null });
     expect(fe.json?.part).not.toHaveProperty("legacy");
-    const be = await put("api", { provider: "railway", settings: { environment_id: "env-1", service_id: "svc-1" } });
+    const be = await put("api", { provider: "railway", role: "service", settings: { environment_id: "env-1", service_id: "svc-1" } });
     expect(be.status).toBe(201);
     expect(be.json?.part).toMatchObject({ key: "api", provider: "railway", role: "service", settings: { environment_id: "env-1", service_id: "svc-1" } });
     expect((await partsOf("qa")).map((p) => [p.part_key, p.provider, JSON.parse(p.settings)])).toEqual([

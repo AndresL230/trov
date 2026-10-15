@@ -6,7 +6,7 @@
 //   GET    /hosting                              admin+   HostingSetupDTO — providers, environments + parts, connections, checklist
 //   GET    /hosting/providers                    member   { providers: HostingProviderDTO[] }
 //   PUT    /environments/:key/parts/:part        admin+   { part: EnvironmentPartDTO, created }   (201 when created)
-//   DELETE /environments/:key/parts/:part        admin+   { ok: true, removed: { env, part, provider, legacy } }
+//   DELETE /environments/:key/parts/:part        admin+   { ok: true, removed: { env, part, provider } }
 //   POST   /hosting/:provider/connect            admin+   ConnectStartDTO, + the `trov_hx` sealed-intent cookie;
 //                                                         an org already connected is replaced at the callback
 //   POST   /hosting/:provider/disconnect         admin+   { connection: HostingConnectionDTO, upstream }   body { scope? }

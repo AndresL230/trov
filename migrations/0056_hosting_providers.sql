@@ -159,6 +159,7 @@ UPDATE OR IGNORE repo_metrics SET metric = 'hx_requests' WHERE metric = 'cf_requ
 UPDATE OR IGNORE repo_metrics SET metric = 'hx_errors' WHERE metric = 'cf_errors';
 UPDATE OR IGNORE repo_metrics SET metric = 'hx_cpu' WHERE metric = 'rw_cpu';
 UPDATE OR IGNORE repo_metrics SET metric = 'hx_mem_mb' WHERE metric = 'rw_mem_mb';
+DELETE FROM repo_snapshots WHERE kind = 'cf_polled';   -- the old Cloudflare poller's coverage marker: its parts now keep hosting_poll_state
 
 ALTER TABLE org_environments DROP COLUMN worker;
 ALTER TABLE org_environments DROP COLUMN worker_check;

@@ -590,7 +590,7 @@ describe("Environments", () => {
     // Add environment is the tab's one accent button; Delete is in the edit form, not on every row.
     expect(html.match(/cnpy-accentbtn/g)?.length).toBe(1);
     expect(html).not.toContain("orgConfirm:env:");
-    const editing = tabView(fullUi({ envEdit: { key: "staging", keyDraft: "staging", fields: envFieldsOf(env("staging", 0)), advanced: false, saving: false, error: null, errorField: null } }), "environments");
+    const editing = tabView(fullUi({ envEdit: { key: "staging", keyDraft: "staging", fields: envFieldsOf(env("staging", 0)), saving: false, error: null, errorField: null } }), "environments");
     expect(editing).toMatch(/data-field="orgConfirm:env:staging"[^>]*aria-label="Delete Staging"[^>]*class="cnpy-org-danger"/);
     expect(html).toContain("Drift head");
     expect(html).toContain("Drift base");

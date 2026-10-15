@@ -18,7 +18,7 @@ is no connect button or flow. "Preview with sample data" swaps in `repo-sample.t
 (session-only, labelled on screen); it never touches the Worker.
 
 Three capture shapes feed it: `repo_events` rows (through the `ingestRepoEvent` gate — see Core invariant),
-`repo_snapshots` (one JSON row per kind: `prs_reconciled`, `env_heads`, `drift`, `branches`, `cf_polled` —
+`repo_snapshots` (one JSON row per kind: `prs_reconciled`, `env_heads`, `drift`, `branches` —
 plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no section) and
 `repo_metrics` points (`putMetric`). Every section, its source, and what triggers the capture:
 
@@ -532,7 +532,7 @@ is the ONE Hosting section (`providers`, `hosting-providers.md` › Repo dashboa
 **Pruning** (`pruneRepoCapture`, `src/repo/store.ts`, the cron's 6-hourly `:30` tick): `health_*` metrics
 and `check` rows older than 45 days — the `check` deletion ONLY `WHERE part IS NULL`, because a FRONTEND
 deploy record IS a `check` row (`part = 'frontend'`) and must be kept forever like `deploy` rows; and the
-HOURLY usage metrics (`cf_*` / `rw_*` / `active_users_*`) older than 100 days; and `sap_*` product metrics
+HOURLY usage metrics (`hx_*` / `active_users_*`) older than 100 days; and `sap_*` product metrics
 older than **7 days, EXCEPT the rows stamped exactly 00:00 UTC, kept 100 days** (the daily totals the trend
 reads — `sap_*` and the usage globs never match each other's names). `pr` / `push` / `deploy` /
 `run` / `review` rows and `coverage` / `bundle_kb` / `todo_count` match no rule and are kept forever.

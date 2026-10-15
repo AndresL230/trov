@@ -16,7 +16,7 @@
 //      wins). An item that fails is DROPPED and counted, never repaired into a guess;
 //   6. points → `putMetrics` as `hx_<metric>` (env = environment key, part = part key); deploys → ONE
 //      batch of upserts into `hosting_deploys` (a deploy's state MOVES, so not first-write-wins); the
-//      outcome → `hosting_poll_state`, with the covered interval MERGED (the `cf_polled` rule, below);
+//      outcome → `hosting_poll_state`, with the covered interval MERGED (below);
 //   7. the credential's integration row learns the outcome (`recordSecretOutcome`: `last_used_at`, or a
 //      scrubbed `last_error` — for a 401, the fixed `refusedText`; a poll never deletes a credential).
 //
@@ -34,7 +34,7 @@ import {
 } from "@shared/hosting";
 import type { Env } from "../env";
 import { type Stmt, type TenantContext, batch, first, run, stmt } from "../data/sql";
-import { type Revealed, type Secret, getIntegrationConfig, lastErrorText, recordSecretOutcome, resolveCredential, scrub } from "../data/secrets";
+import { type Revealed, type Secret, lastErrorText, recordSecretOutcome, resolveCredential, resolveIntegrationConfig, scrub } from "../data/secrets";
 import { jobTenant } from "../platform/jobs";
 import { DAY, HOSTING_DEPLOY_RETENTION_DAYS, USAGE_RETENTION_DAYS, putMetrics } from "../repo/store";
 import type { RepoMetric } from "../repo/types";
@@ -223,8 +223,7 @@ export function validatePoll(result: unknown, part: Pick<PartRow, "env" | "key" 
 }
 
 /**
- * The covered interval after this poll — the `cf_polled` rule (src/repo/poll.ts `pollCloudflare`),
- * generalised to an interval that may arrive on either side. When the two OVERLAP or TOUCH they become one
+ * The covered interval after this poll: a window that may arrive on either side of the stored one. When the two OVERLAP or TOUCH they become one
  * (neither end ever moves backwards); when the new window lies AFTER a gap — an outage longer than the
  * window left hours nothing looked at — the interval RESTARTS at the new window, and that jump is the
  * record of the hole: the projection never draws a zero before `from`. A window wholly OLDER than the
@@ -287,7 +286,7 @@ interface StateRow { provider: string; last_ok_at: string | null; covered_from: 
 /**
  * `hosting_poll_state` after this poll — a read-modify-write of ONE row (no lock: the cron's units run one
  * after another, and an on-demand poll overlapping a tick computes the same window, so a lost update is
- * re-written identically by the next poll — the `cf_polled` argument). A row left by a DIFFERENT provider
+ * re-written identically by the next poll). A row left by a DIFFERENT provider
  * (the part was re-pointed) is not this provider's history: its interval, `last_ok_at` and `unavailable`
  * are dropped. A failed or skipped poll keeps the interval and `unavailable` of the last good one.
  */
@@ -383,7 +382,7 @@ export async function pollPart(
     if (!secret) return await settle({ ...base, status: "skipped", written: 0, detail: "not connected" });
     revealed.push(secret);
 
-    const config = await getIntegrationConfig(ctx, kind, "");
+    const config = await resolveIntegrationConfig(ctx, env, kind, "");
     const missing = fieldProblem(provider.orgConfigFields, config) ?? fieldProblem(provider.partSettings, part.settings);
     if (missing) return await settle({ ...base, status: "skipped", written: 0, detail: missing });
 
@@ -436,10 +435,9 @@ export async function pollParts(
 }
 
 /**
- * Every STORED part of the caller's org, polled now — what the cron's `:40` job does a unit at a time,
- * for one org in one call. `caller` names the org (an admin's session, or a system context); it runs as
- * that org's system tenant (`jobTenant`, which refuses a bearer context). `"not_configured"` = the org has
- * no stored part (its legacy Cloudflare / Railway parts are the usage job's).
+ * Every part of the caller's org, polled now — what the cron's `:40` job does a unit at a time, for one org
+ * in one call. `caller` names the org (an admin's session, or a system context); it runs as that org's
+ * system tenant (`jobTenant`, which refuses a bearer context). `"not_configured"` = the org has no part.
  */
 export async function runHostingPolls(
   env: Env, caller: TenantContext, now: number, fetchImpl?: typeof fetch, providers: ProviderMap = PROVIDERS,

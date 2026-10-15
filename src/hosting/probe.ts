@@ -6,7 +6,7 @@
 // caller can tell "the provider no longer accepts this credential" (401) from any other failure.
 import type { IntegrationKind } from "@shared/integrations";
 import { providerOfKind } from "@shared/hosting";
-import { getIntegrationConfig, type Secret } from "../data/secrets";
+import { resolveIntegrationConfig, type Secret } from "../data/secrets";
 import type { TenantContext } from "../data/sql";
 import type { Env } from "../env";
 import { hostFetch, probeFailure } from "./http";
@@ -15,13 +15,13 @@ import { providerOf } from "./registry";
 import type { ProbeResult } from "./types";
 
 export async function probeHostingKind(
-  ctx: TenantContext, _env: Env, kind: IntegrationKind, secret: Secret, now: number, fetchImpl: typeof fetch, partKey?: { env: string; part: string },
+  ctx: TenantContext, env: Env, kind: IntegrationKind, secret: Secret, now: number, fetchImpl: typeof fetch, partKey?: { env: string; part: string },
 ): Promise<ProbeResult> {
   const id = providerOfKind(kind);
   if (!id) return { ok: false, detail: "not a hosting provider" };
   const p = providerOf(id);
   if (p.status !== "available") return { ok: false, detail: `${p.label} is not supported yet` };
-  const config = await getIntegrationConfig(ctx, kind, "");
+  const config = await resolveIntegrationConfig(ctx, env, kind, "");
   const parts = (await listAllParts(ctx)).filter((x) => x.provider === id);
   const part = partKey ? parts.find((x) => x.env === partKey.env && x.key === partKey.part) ?? null : parts[0] ?? null;
   try {

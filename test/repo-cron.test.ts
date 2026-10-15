@@ -10,7 +10,8 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { systemCtx } from "./helpers/tenant";
+import { ORG_A, systemCtx } from "./helpers/tenant";
+import { addPart, deployRow } from "./helpers/dashboard-hosting";
 import wranglerToml from "../wrangler.toml?raw";
 import { all, run, nowIso } from "./helpers/db";
 import { ingestRepoEvent } from "../src/consumer";
@@ -19,7 +20,7 @@ import { REPO_CRON } from "../src/repo/cron";
 import { handleRepoCron } from "./helpers/org-config";
 import { getRepoDashboard } from "../src/tools/repo";
 import { getSnapshot, putMetric } from "../src/repo/store";
-import { ENVS, fakeGithub } from "./helpers/repo";
+import { ENVS, fakeGithub, seedOrgRepoConfig } from "./helpers/repo";
 import type { RepoEvent } from "../src/repo/types";
 import type { Env } from "../src/env";
 
@@ -137,7 +138,10 @@ describe("pingHealth", () => {
   // is not known to be down.
   it("a stale down reading does not produce DOWN", async () => {
     const stale = T - 31 * 60_000;
-    await put([deploy(1, "success", 20)]);
+    // A part with a landed deploy, so the card has something to show beside the stale ping.
+    await seedOrgRepoConfig(env.DB, ORG_A, "o/r");
+    await addPart(ORG_A, "staging", "frontend", "cloudflare", "web", { worker: "w" });
+    await deployRow(ORG_A, "staging", "frontend", "cloudflare", "d1", "ready", new Date(T - 20 * 60_000).toISOString());
     await putMetric(systemCtx(), { metric: "health_up", env: "staging", part: "frontend", value: 0, at: new Date(stale).toISOString() });
     const [staging] = ok((await getRepoDashboard(systemCtx(), "o/r", T, ENVS)).environments);
     expect(staging).toMatchObject({ pill: "UNKNOWN", tone: "neutral" });

@@ -367,7 +367,7 @@ describe("repoView — live content", () => {
     // A deploy with no sha (a Fly.io release) still shows when and where — and that it is still going.
     expect(html).toContain("Edge &lt;cache&gt;");
     expect(html).toContain("ago · Fly.io");
-    expect(html).toContain("deploying");
+    expect(html).toContain(">Deploying<");
     expect(html).not.toMatch(/undefined|NaN|by null/);
   });
 
