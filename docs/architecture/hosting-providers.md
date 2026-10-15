@@ -237,7 +237,29 @@ production part's previews out of its strips (a part that reads ONLY previews ke
 Service / Worker / Job / Package; the role follows the kind, `shared/repo-apps-core.ts`), watch globs. 0070 wrote a
 row per existing part key; `listRepoApps` synthesises one for any key with no row (the primary repository's root,
 kind from the role), so nothing existing breaks. The admin writers (`putRepoApp` / `deleteRepoApp`, audited
-`app.set` / `app.delete`) have no screen yet (Phase D).
+`app.set` / `app.delete`) are called from Org settings › Repositories › a repo › Apps (below).
+
+**The Apps read and writes** (repo setups, Phase D2; `src/repo/apps-routes.ts`, `src/repo/apps-setup.ts`; cookie only,
+admin, the repository checked against `org_repos` — another org's or an unconnected one is a 404):
+`GET /api/o/:slug/repos/:owner/:name/apps` → `RepoAppsSetupDTO` (shared/repo-scan-core.ts): the repository's apps with
+every part of each app key per environment (`describeParts`, so each carries THE status function's connection), the
+scan's suggestions and last scan (Phase D1's `listSuggestions` / `readScan`), the GitHub deploy signals seen in 30 days
+(`seenSignals`), the **unassigned deploy names** — deploy names (a deployment environment, or a host's own check /
+status) no `github` part's setting names and no pending suggestion carries (`unassignedSignals`,
+shared/repo-apps-setup-core.ts) —, the tags seen (none until releases are captured, Phase F), the environments in drift
+order and the provider catalogue's words (`providers`, with `via_github`). D1 rows only; a failed suggestions / signals
+/ scan sub-read is that part empty and `degraded: true`, never a 500. `PUT …/apps/:key` (kind, label, folder, watch,
+release_signal, position — never `repo` or `source`) goes through `putRepoApp` (201 when created); a key that is
+another repository's app (a row, or a part key read as an app there) is a 409 `app_conflict`, never moved. `DELETE
+…/apps/:key` removes the row (`deleteRepoApp`) and KEEPS its parts unless `?parts=remove` (each through `deletePart`,
+audited `part.delete`, its deploys and poll state with it); an app with no row is its parts, so only `?parts=remove`
+removes it. The scan and the suggestions' accept / ignore / undo are the scan's own routes (`…/scan`,
+`…/suggestions/:id/accept|ignore`, `…/suggestions/undo`).
+
+**Signals and `github` part settings** (shared/repo-apps-setup-core.ts, the read and the screen both): a deployment
+signal fills `environment`, a check run `check_app` (its App's slug) + `check_name`, a workflow run `workflow` (its
+file) — exactly the identity `signalMatchesPart` holds a captured signal to, minus the branch. A commit status can name
+no part (the provider has no setting for one), so the picker never offers one.
 
 ## The screens
 
@@ -254,12 +276,15 @@ is the checklist's next step; the checklist the server generated (steps to do li
 **Providers** — ONE grid of cards (`.cnpy-hx-cards`, two a row, one at phone width, every card the same height), ONE
 card per provider (its org-wide connection — `connectionsFor`; a scoped row in an old payload never makes a card) in
 registry order (Cloudflare, Railway, Vercel, Render, Netlify, Fly.io); **Parts** — until Repositories › a repo › Apps
-owns them (repo-setups Phase D), a compact read-only list (`envParts`): per environment a heading line (name, branch,
-how many parts, Add part) and its parts as `openRow`s — label, role as plain text, its provider's status mark (THE status
-function); host · identifying setting as metadata; Edit (the part editor, which holds Remove part) as the one action;
-a failed last poll and a test's answer always visible; key, settings, last poll, the provider's "not available" reasons,
-Open in <provider> and Test this part behind the row. Test this part on a provider that is not connected sends nothing
-and answers "<Provider> isn't connected." with a Connect <provider> button (`notConnectedAnswer`); then **Later** — AWS.
+own them (repo setups, Phase D2), ONE line per environment (`envParts`): its name, branch, how many parts, and "Parts are
+set per app in Repositories › <primary repo> › Apps" (`orgAppsGo`; "connect a repository first" while there is none).
+Hosting is the home of connections; nothing on it edits a part any more (the checklist's add / edit steps still open
+the part editor). A part's ROW (`hostingPartRow` → `partRow`) is drawn on its app's page: label, role as plain text,
+its provider's status mark (THE status function); host · identifying setting as metadata; Edit (the part editor, which
+holds Remove part) as the one action; a failed last poll and a test's answer always visible; key, settings, last poll,
+the provider's "not available" reasons, Open in <provider> and Test this part behind the row. Test this part on a
+provider that is not connected sends nothing and answers "<Provider> isn't connected." with a Connect <provider> button
+(`notConnectedAnswer`); then **Later** — AWS.
 A card is
 NOT a dropdown: it shows its logo (`web/src/host-logos.ts`, Simple Icons, CC0), name and status, the metadata (how it is
 connected — a token named by how it was stored —, then what uses it as plain words: "Backend in Staging and Production",
@@ -308,10 +333,10 @@ After Disconnect the toast says what is left to do upstream (`upstream`: `failed
 
 **Skeleton, empty layouts and the state preview** (`web-ui.md` › Empty layouts). ONE set of shape builders per
 screen is behind both its loading skeleton and its empty layouts, so the two cannot drift: the tab's
-`partsListShape` / `partRowsShape` (`hosting.ts`), the dashboard section's `hostingShapes` (`repo-hosting.ts`). The
-tab's read being out is `skeleton("org-hosting", …)`; no environment is `emptyLayout("org-hosting-envs", …)` — one
-sentence (`HOSTING_ENVS_EMPTY`), Open Environments, the parts list drawn empty; an environment with no part is a plain
-layout under its heading line (`HOSTING_PARTS_EMPTY`; the heading's Add part is the action). On the dashboard,
+`partsListShape` (one environment line each, `hosting.ts`), the dashboard section's `hostingShapes` (`repo-hosting.ts`).
+The tab's read being out is `skeleton("org-hosting", …)`; no environment is `emptyLayout("org-hosting-envs", …)` — one
+sentence (`HOSTING_ENVS_EMPTY`), Open Environments, the lines drawn empty; an environment with no part says "No parts"
+on its line. On the dashboard,
 `not_connected` and `empty` are `emptyLayout("repo-hosting", …)` (`HOSTING_NOT_CONNECTED`, with Open Org settings ›
 Hosting for an admin; `HOSTING_EMPTY`), and with no repository at all the section is `emptyShapes` under the
 dashboard's own sentence. `?preview=empty|loading` covers both: the tab's read lives one level down
@@ -324,6 +349,38 @@ state preview — loads `web/src/hosting-sample.ts` by dynamic import — never 
 main bundle — and shows any Flow × Stack of its two switchers (above); while
 it is on NOTHING is sent (a save, a connect, a test and a disconnect each answer from the sample and say so). The
 sample's provider catalogue is pinned to the registry by `test/hosting.sample.test.ts`.
+
+**Org settings › Repositories › a repo › Apps** (repo setups, Phase D2; `web/src/repo-apps.ts` pure views,
+`web/src/repo-apps-actions.ts` the controller, every act `orgApps…` handed over by `org-actions.ts`; admins only — a
+member on the address sees the Repositories list). Three pages of the Repositories tab, `#org/repos/<owner>/<name>`,
+`…/apps/<key>` and `…/new` (hash.ts `orgRepo`; a repository row's **Apps** button opens the first), each under a
+breadcrumb, from ONE read into `state.org.apps`:
+- **Apps** — the lead (N apps · Trov found M more; Scan again — "Scanning…", then "Scanned <repo>. Nothing new since
+  <when>." or how many are new —, Add an app, Accept all M as the one accent action); **Suggestions** (each: a blue
+  ring "Suggested" — marks.ts `stateMark`, never a pill —, folder, kind · host or "no host", its evidence lines,
+  Ignore / Accept; "scanned 3m ago · from config files and deploys seen in 30 days"; nothing pending says what the scan
+  looked for); **Apps** (name, folder, kind · host, a targets line — "Production from main · Staging from develop",
+  "No targets · ships inside web and docs" for a Package; a row opens the app); **Unassigned deploy names** ("Production –
+  storefront-admin · Vercel deployment · seen 8 times · last 2d ago", **Make an app** prefilled with a key from the
+  name — `keyFromSignalName`).
+- **an app** — Name (its label; the key is fixed), Folder, Kind (`segmented()`), Watch paths as a list (remove one,
+  Add a path), How a release shows up for a Package or an app with no host (a `dropdown()`: "A tag matching v*" only
+  when tags were seen, "A workflow run of <file>" only for a workflow seen, "Not tracked"), and **Targets**, one row per
+  environment: a part on a host is Hosting's own part row (`hostingPartRow`, handed in by org-settings.ts); a `github`
+  part, or an environment where the app has no part, is the **deploy-signal picker** — a `dropdown()` that offers ONLY
+  the signals seen in the last 30 days a setting can name (`pickableSignals`, each "Render · 14 times · last 25m ago"),
+  never a name not seen, not even the part's own stale setting (said under it: "Now: Deployment “…”, not seen in the
+  last 30 days."); Add part / Edit open #185's `partEditorModal` over the page, prefilled with the env and the APP KEY as
+  the part key (`PartDraft.app` — fixed). Save writes the app (`PUT …/apps/:key`), then each picked signal as the
+  `github` part's setting (`PUT …/environments/:env/parts/:key`; a new part for an environment with none). **Remove
+  app** is the page's `confirmModal` (`OrgConfirm` `app`) whose `detail` holds one `segmented()` choice: keep its parts
+  (the default) or remove them too; an app read from its parts goes with them.
+- **Add an app** — Name (the key), Folder, Kind, How a release shows up; then the app's page.
+Accept, Accept all, Ignore and Remove (parts kept) answer with a 5-second toast carrying **Undo** (`orgAppsUndo`, whose
+arg names a closure kept in the controller — never a token in the markup): an accept is undone by the scan's undo
+route, a kept-parts removal by writing the app back. The Repo screen's found-apps card (`web/src/repo-found.ts`)
+dispatches `repoFoundAccept` / `repoFoundIgnore` (main.ts) to the same accept / ignore routes, with the same toast and
+Undo, then reads the dashboard again. Render tests: `test/render.repo-apps.test.ts`; the routes: `test/repo-apps-setup.test.ts`.
 
 **Repo dashboard › Usage › Hosting** (`web/src/repo-hosting.ts`, called from `repo.ts` `usageTab`): ONE section
 from `providers` (the old `cloudflare` / `hosting` sections are gone from the payload and from MCP).
