@@ -163,11 +163,70 @@ matched narrowly (a false "Detected" is worse than none):
   never by who posted it.
 
 So Vercel, Netlify and Cloudflare Workers Builds are seen as soon as a check run or status arrives, and Render,
-Railway (and Fly.io, by a link to its hosts) as soon as they report a deployment. Still not built: a root-file
-probe (`vercel.json`, `netlify.toml`, `fly.toml`, …) — that is the repo scan, Phase D of repo setups. The screen shows a
+Railway (and Fly.io, by a link to its hosts) as soon as they report a deployment. This is PROVIDER-level detection;
+which APPS a repository holds (a root-file probe of `vercel.json`, `netlify.toml`, `fly.toml`, …) is the repo scan,
+below. The screen shows a
 suggestion only for an `available` provider no part uses yet (`shownDetections`); it preselects the provider in
 the part editor and connects nothing — the credential is still the admin's to give. A dismissal is per browser
 (`localStorage` `trov.hosting.dismissed.<slug>`).
+
+### The repo scan and app suggestions (repo setups, Phase D)
+
+Detection SUGGESTS; a person decides. `0072_repo_scans`: `repo_scans` (the last scan per repository: root tree sha,
+when, the file names it looked for, a fixed-words `error`) and `repo_app_suggestions` (PK `(org_id, id)`, `id` =
+hash of repo + folder + kind; key, folder, kind, provider, evidence, proposed parts, `used_by`, `state` pending /
+accepted / ignored, `decided_by` a handle).
+
+- **The scan** (`src/repo/scan.ts` `scanRepo`) is a guarded arm of `reconcileRepo` (`scan` — the cron's `:20` unit
+  and Sync GitHub's closing reconcile; NOT Poll now) and an admin's Scan again. Cost ≤ `SCAN_COST` = 5: ONE tree
+  read (`GET /repos/:o/:r/git/trees/HEAD?recursive=1` — its `sha` is the root tree's), then — **only when that sha
+  differs from `repo_scans.tree_sha` (THE GUARD: same sha → no further request; Scan again forces past it)** — ONE
+  GraphQL batch of ≤ 24 files (`object(expression: "HEAD:<path>")`, paths passed as variables; step 0 confirmed a
+  missing path is null), and ≤ 1 `describe` list call per CONNECTED host that has one. A truncated tree (GitHub's
+  100,000 entries / 7 MB) is scanned with the entries GitHub listed and its sha stored; `error` says so. A refused
+  tree / batch records fixed words in `error` (the last good sha kept) — and nothing else: a scan is detection, so a
+  refusal never marks the org's GitHub credential failing or a Sync partial; only an unexpected throw (D1) lands in
+  reconcile's `failed` as `scan`.
+  `reconcileCost` counts `SCAN_COST`. The connected hosts' credentials are resolved by the caller
+  (`describeSources`, src/repo/scan-store.ts — lazily, only past the guard); the scan itself is secret-free.
+- **The detector registry** (`src/repo/detect/<id>.ts`, `index.ts`; one interface: `patterns` to read, `seen` names
+  looked for in the tree, a pure `detect`): wrangler (`name` → Worker, `pages_build_output_dir` → Site; D1 ids and
+  crons as extra part settings for Phase G; `[env.<name>]` Workers), vercel.json, netlify.toml (`[build] base`),
+  fly.toml (`app`), render.yaml (services, `rootDir`, type), railway.json / .toml, amplify.yml (AWS, `later`),
+  `.do/app.yaml`, Procfile, Dockerfile + a workflow that references its folder AND uses a deploy action, and
+  workspaces (pnpm, package.json, lerna, go.work, Cargo) — a member with no deploy config of its own is a Package
+  whose `usedBy` is the members depending on its name. Files are picked nearest the root first, then by detector
+  order, outside dependencies / fixtures / tests / examples, ≤ 4 folders deep. TOML / YAML / JSONC are read by a
+  tiny safe subset parser (`detect/parse.ts`; no dependency). Candidates merge per folder (the first detector with a
+  host leads).
+- **`describe()`** (optional on `HostingProvider`): Vercel `GET /v9/projects?limit=100` (`link.org`/`link.repo`,
+  `rootDirectory`), Render `GET /services?limit=100` (`repo`, `rootDir`, type), Netlify `GET /sites?per_page=100`
+  (`build_settings.repo_url` / `repo_path`, `base`) — shapes from the vendors' references, UNCONFIRMED live. A match
+  upgrades evidence ("Vercel project storefront-web builds apps/web"), fills the host's part settings, and turns a
+  Package it builds into an app. A refused describe is no evidence, never a failure.
+- **Seen signals** (`src/repo/signals.ts` `seenSignals`, ONE statement): untagged deployments (by name + creator,
+  distinct deployments), commit statuses (by context), check runs (by app + name, `github-actions`' left to their
+  workflow), workflow runs (by file) of 30 days — the primary repository's only (the capture keeps no repository).
+  **Token rules** (`detect/match.ts`): names normalised per the step-0 formats (Vercel `Production – <p>`, Railway
+  `<service> / <env>`, Render `<branch> - <service>`, `netlify/<site>/…`, `Render – api`, a workflow's file name),
+  split into tokens; a candidate matches when the tokens contain its folder's last segment (the repository's name
+  at the root) or equal a name its host knows it by. EXACTLY ONE candidate per signal — ambiguous matches none;
+  Packages never match. A matched signal's environment word (or Render's branch) names an org environment.
+- **Proposed parts**: the candidate's own host when its settings are complete (checked with `checkFields`), on the
+  environment a production signal names, else one called production, else the first; every other environment a
+  signal names gets a `github` part naming that signal; else the deploying workflow on the first environment.
+- **Lifecycle** (`src/repo/scan-store.ts`, cookie routes `src/repo/scan-routes.ts`, admin only, under `/api/o/:slug`,
+  repo checked against `org_repos`): a scan upserts pending rows, never touches an accepted one, keeps an ignored one
+  ignored (an admin's Scan again — `POST /repos/:o/:n/scan` — resets them), deletes what it no longer finds.
+  **Accept** (`POST …/suggestions/:id/accept` → `{ undo, app, parts }`) writes the app (`putRepoApp`, source
+  `suggested`, audited `app.set`) and its parts (`putPart`, audited `part.set`, the provider's own keys only) as that
+  admin — each writer its own batch; a refused part rolls the accept back; refused (409 `key_taken`) when the key
+  already names an app or part. **Ignore** (`…/ignore` → `{ undo }`). **Undo** (`POST …/suggestions/undo` `{ undo }`,
+  within 10 minutes) removes what the accept wrote (audited) or lifts the ignore. **A suggestion changes nothing on
+  the Repo screen but the found-apps card until accepted** (`test/repo-scan.test.ts` › THE GUARD).
+- **The facts read** takes `readFound` / `readUnseen` from `src/repo/scan-reads.ts` — the secret-free read side
+  (MCP-reachable; it must never import scan-store, apps.ts or a credential). `unseen.tags` is null until Phase F
+  captures tags; PR counts are null until the open-PR list was read; a non-primary repository's `unseen` is null.
 
 **Where detection stands** (`HostingSetupDTO.detection`, `readDetectionStatus`): so a new org sees what Trov is doing
 instead of nothing. `no_repo` (no repository connected) → `no_environment` (a repository, but no environment names a
@@ -230,8 +289,10 @@ every provider that reports deploys (`providerPollCost`).
 **Previews:** a Vercel or Netlify PRODUCTION part also reads the project's / site's previews — a second list
 (`pollCost` 2 each), stored as `target = 'preview'` rows of that part with their branch (matched to open PRs at read
 time, Phase B). Render is not: a Render preview is a SEPARATE service with its own id (its provider's own notes),
-so a production service's deploys never include one. Until the facts read uses them, `hostingReads` leaves a
-production part's previews out of its strips (a part that reads ONLY previews keeps them).
+so a production service's deploys never include one. `hostingReads` leaves a production part's previews out of
+its strips (a part that reads ONLY previews keeps them; a deploy with NO target — every GitHub-sourced one — is
+never a preview: the test is `COALESCE`d, since `NOT (NULL AND …)` is NULL and dropped the row); the Overview's facts
+read them (`factsDeploys`, `repo-dashboard.md` › The Overview's facts): newest per branch, matched to open PRs.
 
 **Apps** (`repo_apps`, 0070; `src/repo/apps.ts`): an app is a part key with a home — repository, folder, kind (Site /
 Service / Worker / Job / Package; the role follows the kind, `shared/repo-apps-core.ts`), watch globs. 0070 wrote a

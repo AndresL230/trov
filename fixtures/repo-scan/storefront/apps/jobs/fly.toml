@@ -1,0 +1,9 @@
+# fly.toml app configuration file
+app = 'storefront-jobs'
+primary_region = 'iad'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[[vm]]
+  memory = '512mb'

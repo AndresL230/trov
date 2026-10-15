@@ -14,7 +14,7 @@
 import { type TenantContext, all, first, fanOut } from "../data/sql";
 import { ingestRepoRelease } from "../consumer";
 import type { ReleaseCapture } from "./release-store";
-import { type GhOpts, ghGraphql, ghJson } from "./github";
+import { type GhOpts, ghGraphql, ghJson } from "./gh-http";
 import { orgEnvironments } from "./config";
 import { recordingSince } from "./reads";
 import { getSnapshot, putSnapshot } from "./store";
@@ -310,9 +310,14 @@ export async function readRelease(ctx: TenantContext, repo: string, app?: string
 
 /** Every tag Trov holds for the repository (releases' tags included — a release IS a tag): the count, the
  *  newest, and the newest four — `FactsUnseen.tags` and the Apps tab's release-signal choice
- *  (`RepoAppsSetupDTO.tags`, which takes `count` and `latest`). D1 only. */
+ *  (`RepoAppsSetupDTO.tags`, which takes `count` and `latest`). D1 only. `null` when nothing is held AND reconcile
+ *  has not read this repository's list yet (`releases_reconciled`) — "not read yet" is never "no tags". */
 export async function readTags(ctx: TenantContext, repo: string): Promise<FactsUnseen["tags"]> {
   const count = (await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM releases WHERE org_id = ? AND repo = ?`, ctx.orgId, repo))?.n ?? 0;
+  if (count === 0) {
+    const marker = await getSnapshot<{ repo?: unknown }>(ctx, RELEASES_RECONCILED);
+    if (!(typeof marker?.data?.repo === "string" && marker.data.repo.toLowerCase() === repo.toLowerCase())) return null;
+  }
   const recent = await all<{ tag: string; published_at: string; author: string | null }>(ctx,
     `SELECT tag, published_at, author FROM releases WHERE org_id = ? AND repo = ? ORDER BY published_at DESC, tag DESC LIMIT 4`, ctx.orgId, repo);
   const handle = await handlesOf(ctx, recent.map((r) => r.author));

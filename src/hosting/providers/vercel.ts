@@ -33,9 +33,9 @@
 //
 // Pure apart from `pc.fetch` (the fixed-host fetch) — no D1, no env, no logging, no src/data/secrets.ts.
 import { metricsForRole, type DeployState, type DeployTarget, type HostingMetric, type PartRole } from "@shared/hosting";
-import type { HostingDeploy, HostingProvider, InstallGrant, ProviderContext } from "../types";
+import type { DescribedProject, HostingDeploy, HostingProvider, InstallGrant, ProviderContext } from "../types";
 import {
-  HostingError, asHostingError, instant, probeFailure, readJson, record, refuse, str,
+  HostingError, asHostingError, describedFolder, githubRepoOf, instant, probeFailure, readJson, record, refuse, str,
   type HostFetch, type Revealed, type SecretLike,
 } from "../http";
 
@@ -379,6 +379,28 @@ export const vercel: HostingProvider = {
     // A production part also reads the project's previews: the same list without `target`, previews kept.
     const previews = want === "production" ? await list({ projectId: project, limit: String(DEPLOYS_LIMIT) }, "preview", null) : [];
     return { deploys: [...deploys, ...previews], points: [], unavailable: unavailableFor(part.role), covered: null };
+  },
+
+  // ONE fetch (repo setups, Phase D — the repo scan only): `GET /v9/projects?limit=100[&teamId=…]` → the projects
+  // whose Git link is this GitHub repository (`link.type` github, `link.org`/`link.repo`), each with the folder it
+  // builds (`rootDirectory`, null = the root). Shape from Vercel's API reference; UNCONFIRMED against a live team
+  // (fixtures/hosting/vercel/README.md). A team with more than 100 projects may leave some out — the scan then
+  // simply has less evidence.
+  async describe(pc, repo) {
+    const body = await getJson(pc, "vercel projects", apiUrl("/v9/projects", pc.credential.config, { limit: "100" }), PROJECT_HINTS);
+    const want = repo.toLowerCase();
+    const out: DescribedProject[] = [];
+    for (const item of Array.isArray(body.projects) ? body.projects : []) {
+      const p = record(item);
+      const link = record(p.link);
+      const name = str(p.name);
+      if (!name || str(link.type) !== "github") continue;
+      const linked = githubRepoOf(str(link.org) && str(link.repo) ? `${str(link.org)}/${str(link.repo)}` : null);
+      const folder = describedFolder(p.rootDirectory);
+      if (linked !== want || !folder) continue;
+      out.push({ name, folder, settings: { project: name }, kind: "Site" });
+    }
+    return out;
   },
 
   install: {

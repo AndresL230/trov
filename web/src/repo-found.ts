@@ -85,7 +85,7 @@ export function unseenSees(u: FactsUnseen, now: number): [string, string][] {
   const num = (n: number | null): string => (n === null ? "—" : String(n));
   const t = u.tags;
   return [
-    ["Tags", t.count === 0 ? "No tags" : `${t.count} ${t.count === 1 ? "tag" : "tags"}${t.latest ? `; the latest is ${t.latest.tag}, ${agoWords(t.latest.at, now)} ago` : ""}`],
+    ["Tags", t === null ? "—" : t.count === 0 ? "No tags" : `${t.count} ${t.count === 1 ? "tag" : "tags"}${t.latest ? `; the latest is ${t.latest.tag}, ${agoWords(t.latest.at, now)} ago` : ""}`],
     ["Pull requests", `${num(u.prs.open)} open, ${num(u.prs.mergedThisMonth)} merged this month`],
     ["CI", u.workflows.length ? andList(u.workflows) : "No workflows seen"],
     ["GitHub deployments", u.deploymentsSeen30d === 0 ? "None reported in 30 days" : `${u.deploymentsSeen30d} reported in 30 days`],
@@ -106,7 +106,7 @@ export const unseenBlock: OverviewBlock = (f, x) => {
       </div>
       ${x.admin ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">${orgReposBtn("Add an app by hand")}</div>` : ""}
     </div>
-    ${u.tags.recent.length ? `<div style="${TOP};padding:14px 22px 8px">
+    ${u.tags?.recent.length ? `<div style="${TOP};padding:14px 22px 8px">
       <div style="${LABEL};margin-bottom:4px">Latest tags</div>
       ${u.tags.recent.map((t) => `<div class="repo-unseen-tag" style="display:grid;grid-template-columns:120px minmax(0,1fr) 60px;gap:12px;padding:8px 0;${TOP};align-items:center"><span style="font-family:var(--label);font-size:12.5px;font-weight:600">${esc(t.tag)}</span><span style="font-size:12px;color:var(--fg-55)">${t.by ? `by ${byName(t.by, x)}` : ""}</span><span style="font-size:11.5px;color:var(--fg-40);text-align:right">${esc(ago(t.at, x.now))}</span></div>`).join("")}
     </div>` : ""}

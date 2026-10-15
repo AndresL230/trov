@@ -197,7 +197,8 @@ export interface FactsFound { apps: FactsFoundApp[]; signals: FactsSignal[] }
 export interface FactsUnseen {
   /** The files the scan looked for. */
   looked: string[];
-  tags: { count: number; latest: { tag: string; at: string; by: string | null } | null; recent: { tag: string; at: string; by: string | null }[] };
+  /** null = not known: the capture keeps no tags until Phase F (`release` / `create` events). */
+  tags: { count: number; latest: { tag: string; at: string; by: string | null } | null; recent: { tag: string; at: string; by: string | null }[] } | null;
   prs: { open: number | null; mergedThisMonth: number | null };
   workflows: string[];
   deploymentsSeen30d: number;

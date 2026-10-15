@@ -18,6 +18,10 @@ import { type TenantContext, all, first, nowIso, ph } from "../data/sql";
 import { isLegacyOrg } from "../data/legacy";
 import { ISSUE_GONE_ACTIONS } from "./issue-gone";
 import { list_sprints } from "./sprints";
+import { emptyRepoFacts, readRepoFacts } from "./repo-facts";
+import { REPO_WIDE, type RepoFacts } from "@shared/repo-facts-core";
+import type { RepoApp } from "@shared/repo-apps-core";
+import { listRepoApps } from "../repo/apps-read";
 import {
   approvedPrs, branchHeads, checkState, ciDailyRates, ciFailureRows, commitsByDay,
   hasCaptured, latestChecks, prStatesAsOf, pushRowsSince, recentPrRows, recordingSince, reviewRowsSince,
@@ -93,7 +97,7 @@ const NOT_CONNECTED = { status: "not_connected" } as const;
 
 export function emptyRepoDashboard(repo: string, degraded: boolean): RepoDashboard {
   return {
-    repo, generatedAt: nowIso(), degraded,
+    repo, generatedAt: nowIso(), degraded, facts: emptyRepoFacts(repo),
     usage: NOT_CONNECTED, providers: NOT_CONNECTED, product: NOT_CONNECTED,
     environments: NOT_CONNECTED, deploys: NOT_CONNECTED, ciFailures: NOT_CONNECTED, drift: NOT_CONNECTED,
     branches: NOT_CONNECTED, health: NOT_CONNECTED, coverage: NOT_CONNECTED, bundle: NOT_CONNECTED, todos: NOT_CONNECTED,
@@ -803,12 +807,7 @@ function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingRe
       : state?.status === "failed" || (rate !== null && rate >= ERROR_RATE_WARN) ? "warn"
       : newest === "ready" ? "good" : "neutral";
 
-    let consoleUrl: string | null = null;
-    try {
-      // Provider code, on the render path: a throw or a non-https answer is simply no link.
-      const u = provider?.consoleUrl({ settings: part.settings }, reads.config.get(HOSTING_INTEGRATION_KIND[part.provider] ?? "") ?? {}) ?? null;
-      consoleUrl = isHttps(u) ? u : null;
-    } catch { consoleUrl = null; }
+    const consoleUrl = consoleUrlOf(part, provider, reads);
 
     return {
       env: part.env, env_label: part.envLabel, part: part.key, label: part.label, role: part.role,
@@ -821,6 +820,16 @@ function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingRe
     };
   });
   return out.some((p) => p.status === "ok") ? ok(out) : EMPTY;
+}
+
+/** A part's console link on its provider: the provider's own `consoleUrl(part settings, org settings)`, https only,
+ *  or null — the org settings come from `hostingReads` (scope ''), never through the secrets module. */
+function consoleUrlOf(part: PartRow, provider: HostingProvider | undefined, reads: HostingReads): string | null {
+  try {
+    // Provider code, on the render path: a throw or a non-https answer is simply no link.
+    const u = provider?.consoleUrl({ settings: part.settings }, reads.config.get(HOSTING_INTEGRATION_KIND[part.provider] ?? "") ?? {}) ?? null;
+    return isHttps(u) ? u : null;
+  } catch { return null; }
 }
 
 /** A part's host as the screen names it: the registry's label, else (a provider the registry lost) its id. */
@@ -872,6 +881,10 @@ export async function getRepoDashboard(
   envs: RepoDashboardEnv[] = [],
   /** The hosting provider registry — a parameter only so a test can hand the `providers` section a fake. */
   providers: ProviderMap = PROVIDERS,
+  /** `app`: the App menu's narrowing (an app key of `repo`, or `REPO_WIDE`; null / unknown = every app). It
+   *  narrows the facts (`narrowFacts`) and the per-part sections — environments' parts, deploys, usage,
+   *  providers: an app IS a part key. */
+  opts: { app?: string | null } = {},
 ): Promise<RepoDashboard> {
   const nowAt = new Date(now).toISOString();
   const weekAgo = new Date(now - 7 * DAY).toISOString();
@@ -913,7 +926,10 @@ export async function getRepoDashboard(
   // changed.
   const prCaptured = (await getSnapshot(ctx, "prs_reconciled")) !== null;
   const isOpen = (r: RepoPrRow) => r.state === "draft" || r.state === "review";
-  const prsNow = prCaptured ? (await prStatesAsOf(ctx, nowAt)).filter(isOpen) : [];
+  // Every PR's latest state now — the open ones count once `prCaptured`; the facts' previews match branches to
+  // them whatever the marker says (a captured PR row is a fact about its branch).
+  const prStatesNow = await prStatesAsOf(ctx, nowAt);
+  const prsNow = prCaptured ? prStatesNow.filter(isOpen) : [];
   const prsThen = prCaptured ? (await prStatesAsOf(ctx, weekAgo)).filter(isOpen) : [];
   // The PR list: the latest state per PR, unknown states dropped (never guessed).
   const prRows = prCaptured ? (await recentPrRows(ctx, PR_LIMIT, ninetyDaysAgo)).filter((r) => isKnownPrState(r.state)) : [];
@@ -958,9 +974,17 @@ export async function getRepoDashboard(
     }
   };
   const [allParts, hosted] = envs.length ? await hostingRead() : [[] as PartRow[], null] as const;
+  // The repository's apps (an app IS a part key) — what the App menu narrows to, and the facts' apps. A failed
+  // read costs the facts (and the narrowing), never the other sections.
+  let repoApps: RepoApp[] | null = null;
+  try { repoApps = await listRepoApps(ctx, repo, allParts); } catch (e) {
+    console.error("repo dashboard", "apps", e instanceof Error ? e.message : String(e), `org=${ctx.orgId}`);
+  }
+  const narrowTo = opts.app == null ? null : opts.app === REPO_WIDE ? REPO_WIDE : repoApps?.some((a) => a.key === opts.app) ? opts.app : null;
+  const inView = (p: PartRow) => narrowTo === null || (narrowTo !== REPO_WIDE && p.key === narrowTo);
   // Only the environments this projection reports on: the parts list reads the org's rows, the rest of the
   // dashboard reads `envs` — in production they are the same rows (src/routes.ts, src/tools/repo-agent.ts).
-  const infos = hosted ? partInfos(allParts.filter((p) => envKeys.has(p.env)), hosted, providers) : [];
+  const infos = hosted ? partInfos(allParts.filter((p) => envKeys.has(p.env) && inView(p)), hosted, providers) : [];
   const heads = envs.length ? await branchHeads(ctx, envs.map((e) => e.branch)) : new Map<string, string>();
   const checks = await latestChecks(ctx, [...heads.values(), ...prRows.map((r) => r.sha ?? "")]);
 
@@ -1321,8 +1345,32 @@ export async function getRepoDashboard(
     : new Set<string>();
   const everAny = (metrics: string[]) => metrics.some((m) => ever.has(m));
 
+  // ── the Overview's facts (src/tools/repo-facts.ts) — from the reads above; a throw there costs the facts
+  // alone (the empty facts, and `degraded`), never the sections.
+  let facts: RepoFacts = emptyRepoFacts(repo);
+  let factsFailed = false;
+  try {
+    if (!repoApps) throw new Error("the apps read failed");
+    // MT: the same evidence rule as the providers section — SaplingLearn's legacy Worker secret, org #1 only.
+    const legacy = isLegacyOrg(ctx);
+    facts = await readRepoFacts(ctx, {
+      repo, app: opts.app ?? null, now, envs, parts: allParts, apps: repoApps, providers,
+      pollState: (p) => hosted?.states.find((st) => st.env === p.env && st.part === p.key && st.provider === p.provider),
+      connectionOf: (p) => (hosted ? partConnectionOf(partInfos([p], hosted, providers)[0], hosted, legacy) ?? "not_connected" : "not_connected"),
+      consoleUrlOf: (p) => (hosted ? consoleUrlOf(p, providers[p.provider], hosted) : null),
+      heads, checks, healthRows,
+      pr: { captured: prCaptured, states: prStatesNow, openNow: prsNow.length, openThen: prsThen.length, deltaOk: prDeltaOk },
+      merged: { any: latestPrs.length > 0, thisWeek: mergedThisWeek.length, lastWeek: mergedLastWeek.length },
+      commits: { captured: pushes.length > 0, thisWeek: commitsThisWeek, lastWeek: commitsLastWeek, deltaOk: pushDeltaOk },
+      runs: { captured: runCaptured, recordingSince: runRecordingSince },
+    });
+  } catch (e) {
+    factsFailed = true;
+    console.error("repo dashboard", "facts", e instanceof Error ? e.message : String(e), `org=${ctx.orgId}`);
+  }
+
   return {
-    repo, generatedAt: nowAt, degraded: hostingFailed,
+    repo, generatedAt: nowAt, degraded: hostingFailed || factsFailed, facts,
     usage: used.anyUsage ? ok(used.usage) : everAny(USAGE_METRICS) ? EMPTY : NOT_CONNECTED,
     providers: providerSection,
     product: produced.anyProduct ? ok(produced.product) : ever.has(`${PRODUCT_PREFIX}*`) ? EMPTY : NOT_CONNECTED,

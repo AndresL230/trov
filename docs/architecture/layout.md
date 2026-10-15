@@ -35,7 +35,7 @@
   › Background jobs), `routes.ts` (Hono HTTP), `mcp.ts` (MCP
   tools; `mcp-catalog.ts` lists them for the docs at build time and is never imported by the Worker),
   `error-hints.ts` (adds `hint` to the Worker's JSON errors), `consumer.ts` (THE GATE), `webhook.ts` (GitHub event capture), `tools/` (`writes.ts`, `reads.ts`,
-  `plan.ts`, `tickets.ts`, `sprints.ts`, `mywork.ts`, `repo.ts`, `repo-agent.ts`, `progress.ts`, `summarize.ts`), `ai/` (the one model client: `client.ts` — `providerFor(kind)` and
+  `plan.ts`, `tickets.ts`, `sprints.ts`, `mywork.ts`, `repo.ts`, `repo-facts.ts` (the Overview's `RepoFacts`, inside the dashboard's projection), `repo-agent.ts` (+ the pure `repo-agent-view.ts`), `progress.ts`, `summarize.ts`), `ai/` (the one model client: `client.ts` — `providerFor(kind)` and
   `structured()`, Claude over the Messages API with structured outputs, never throwing; `schema.ts` —
   `toClaudeSchema`; imported only by `tools/summarize.ts`, never reachable from `mcp.ts`), `notifications/` (every email, and the `/u/`
   unsubscribe page — see notifications.md), `db.ts` (D1 helpers), `auth/` (`persons.ts` — the identity root;
@@ -45,13 +45,22 @@
   `orgEnvironment` read `org_environments` into `RepoEnvConfig[]`, `orgPrimaryRepo` its primary `org_repos` row;
   the legacy `repoEnvironments()` parser of the `REPO_ENVIRONMENTS` var is called only by tests), `capture.ts` (PURE delivery→`RepoEvent[]` derivation,
   `repoEventsFromDelivery` — no DB, no clock, no network, and stores only a SLICE of each payload in `raw`; GitHub
-  deploy signals land here as untagged `deploy` rows), `apps.ts` (0070_repo_apps: `listRepoApps` — the rows plus an
-  app synthesised for every part key with none — and the admin writers `putRepoApp` / `deleteRepoApp`),
+  deploy signals land here as untagged `deploy` rows), `apps.ts` (0070_repo_apps: the admin writers `putRepoApp` / `deleteRepoApp`) and
+  `apps-read.ts` (`listRepoApps` — the rows plus an app synthesised for every part key with none; split out so the
+  MCP-reachable facts read never imports the settings module), `facts-compute.ts` (the Overview facts' reconcile
+  arms: the promotion chain, not shipped, out of step — `FACTS_COMPARE_CAP`), `facts-store.ts` (their snapshot
+  shapes and the facts' D1 reads: `factsDeploys`, `deployWeekCounts`, `servingShas`), `watch.ts` (an app's watch
+  globs, `matchesWatch`), `gh-http.ts` (`ghJson` / `ghJsonOrNull` / `ghGraphql` / `scrubbedMessage`, re-exported by
+  `github.ts`),
   `releases.ts` (0074_releases, Phase F: the `release` / `create` derivation, reconcile's `releases` arm, and the
   reads `readRelease` / `readTags` / `releaseWeekFigure`; `isFeaturePr` is the one feature rule) and
   `release-store.ts` (the `releases` writers, called only by the gate's `ingestRepoRelease`),
-  `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the five snapshot kinds —
-  `prs_reconciled`, `env_heads`, `drift`, `branches`; `putMetric`, the ONE write seam that
+  the repo scan (repo setups, Phase D — `hosting-providers.md` › The repo scan): `scan.ts` (the guarded reconcile arm),
+  `detect/` (the detector registry, the subset parsers, the signal token rules), `signals.ts` (seen signals),
+  `scan-reads.ts` (the secret-free read side the facts read uses), `scan-store.ts` (accept / ignore / undo, Scan
+  again — credentialed) and `scan-routes.ts`,
+  `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the snapshot kinds —
+  `prs_reconciled`, `env_heads`, `drift`, `branches`, `drift_chain`, `not_shipped`, `out_of_step`; `putMetric`, the ONE write seam that
   normalises `repo_metrics.at`, and `putMetrics`, the same write for MANY rows in `db.batch` chunks of 50;
   the metric reads `metricSeries` / `latestMetric` / `latestHealth` and the Usage tab's whole-tab reads
   `metricsSince` / `productReadings` / `metricsEver`; and `pruneRepoCapture`, the retention rules),
@@ -193,6 +202,7 @@
   `scripts/hosting/0057_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.
   Then `0070_repo_apps` (repo setups, Phase A; 0070–0079 are reserved for that build) [`repo_apps` with a row per
   existing part key, and `hosting_deploys.source` / `reason` / `sha_source` / `rolled_back_from`; additive].
+  Then `0072_repo_scans` (Phase D) [`repo_scans`, `repo_app_suggestions`; additive].
   Then `0074_releases` (Phase F) [`releases`: a repository's releases and bare tags, PK `(org_id, repo, tag)`;
   additive].
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`

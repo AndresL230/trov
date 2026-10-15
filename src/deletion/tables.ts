@@ -51,6 +51,8 @@ export const ORG_TABLES = [
   "hosting_poll_state", "hosting_deploys", "org_hosting_connections", "org_environment_parts",
   // Apps (0070_repo_apps): what each repository ships.
   "repo_apps",
+  // The repo scan and its suggestions (0072_repo_scans).
+  "repo_scans", "repo_app_suggestions",
   // The Repo screen's per-repository defaults (0071_repo_settings).
   "repo_settings",
   // A repository's releases and tags (0074_releases).

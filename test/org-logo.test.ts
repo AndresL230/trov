@@ -14,6 +14,7 @@ import { setSecret } from "../src/data/secrets";
 import { importOrgLogo, checkAvatarUrl, orgLogoKey, LOGO_IMPORT_COST, type LogoImport } from "../src/orgs/logo";
 import { importLogoForOrg } from "../src/integrations/logo";
 import { runOrgJob, reconcileCost } from "../src/repo/cron";
+import { SCAN_COST } from "../src/repo/scan";
 import { LIMITS } from "../src/platform/limits";
 import { ORG_LOGO_MAX_BYTES, type MyOrgsResponse, type OrgLogoResponse, type OrgMeResponse, type OrgSettings, type PlatformOrgDetail, type PlatformOrgRow, type PlatformUsageResponse } from "@shared/orgs";
 import { cookieFor } from "./helpers/persons";
@@ -634,7 +635,7 @@ describe("when the import runs", () => {
     await captured(() => runOrgJob(e, ORG_B, "reconcile", Date.parse("2026-09-20T18:20:00Z"), g2.fetchImpl));
     expect(await cols(ORG_B)).toMatchObject({ logo_sha: await sha256Hex(PNG("cron-2")) });
     // The dispatcher budgets the unit for it.
-    expect(reconcileCost(2)).toBe(18 + 2 * 2 + 2 + LOGO_IMPORT_COST + 1); // + the releases arm (0074) + an installation token's mint (0043_github_app)
+    expect(reconcileCost(2)).toBe(16 + 2 * 2 + 2 + 6 + 2 + SCAN_COST + LOGO_IMPORT_COST + 1); // reconcileRequests(2) (the chain's 2, the facts arms' 6, the releases arm's 2, 0074) + the repo scan (0072) + an installation token's mint (0043_github_app)
   });
 });
 

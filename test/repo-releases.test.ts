@@ -5,6 +5,7 @@
  * cadence), `readTags`, `releaseWeekFigure`.
  */
 import { describe, it, expect } from "vitest";
+import { SCAN_COST } from "../src/repo/scan";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
 import { all, first, run } from "./helpers/db";
@@ -184,8 +185,10 @@ describe("reconcile's releases arm", () => {
 
   it("is counted: reconcileCost and the on-demand refresh both carry its 2 requests", () => {
     expect(RELEASES_RECONCILE_COST).toBe(2);
-    expect(reconcileCost(2)).toBe(18 + 2 * 2 + RELEASES_RECONCILE_COST + LOGO_IMPORT_COST + 1);
-    expect(refreshSubrequests(2)).toBe(18 + 5 * 2 + RELEASES_RECONCILE_COST);
+    // 16 + 2N + the promotion chain's max(2, N) + the facts arms' 6 (Phase B) + the releases arm; the cron's unit also
+    // budgets the repo scan (Phase D, `SCAN_COST`), which Poll now does not run
+    expect(reconcileCost(2)).toBe(16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST + SCAN_COST + LOGO_IMPORT_COST + 1);
+    expect(refreshSubrequests(2)).toBe(3 * 2 + 16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST);
   });
 
   it("tagCapture skips a tag with no date", () => {
@@ -333,10 +336,11 @@ describe("readTags and the week figure", () => {
   it("readTags: every tag held (releases included), the newest, and the newest four", async () => {
     await seedReleases();
     const t = await readTags(systemCtx(ORG_A), REPO);
-    expect(t.count).toBe(7);
-    expect(t.latest).toEqual({ tag: "v2.5.0-rc.1", at: iso(2), by: "meilin-gh" });
-    expect(t.recent.map((x) => x.tag)).toEqual(["v2.5.0-rc.1", "v2.4.0", "v2.3.2", "v2.3.1"]);
-    expect(await readTags(systemCtx(ORG_B), REPO)).toEqual({ count: 0, latest: null, recent: [] });
+    expect(t!.count).toBe(7);
+    expect(t!.latest).toEqual({ tag: "v2.5.0-rc.1", at: iso(2), by: "meilin-gh" });
+    expect(t!.recent.map((x) => x.tag)).toEqual(["v2.5.0-rc.1", "v2.4.0", "v2.3.2", "v2.3.1"]);
+    // nothing held and never read: unknown (null), never "0 tags"
+    expect(await readTags(systemCtx(ORG_B), REPO)).toBeNull();
   });
 
   it("releases this week and the change from last week — null until reconcile has read the list", async () => {

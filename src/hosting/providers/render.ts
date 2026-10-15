@@ -26,9 +26,9 @@
 // again) or a 5xx anywhere, or any non-2xx on the service or deploy read, throws (`refuse`). Nothing is
 // logged; every message is scrubbed of the key before it is cut (../http.ts).
 import type { DeployState, HostingMetric } from "@shared/hosting";
-import type { HostingDeploy, HostingPoint, HostingProvider, PollResult, ProbeResult, ProviderContext } from "../types";
+import type { DescribedProject, HostingDeploy, HostingPoint, HostingProvider, PollResult, ProbeResult, ProviderContext } from "../types";
 import {
-  HostingError, type SecretLike, asHostingError, hourFloor, probeFailure, instant, iso, pollWindow, readJson, record, refuse, sane, scrub, str,
+  HostingError, type SecretLike, asHostingError, describedFolder, githubRepoOf, hourFloor, probeFailure, instant, iso, pollWindow, readJson, record, refuse, sane, scrub, str,
 } from "../http";
 
 const API = "https://api.render.com/v1";
@@ -635,5 +635,25 @@ export const render: HostingProvider = {
       unavailable: c.unavailable,
       covered: c.read ? { from: iso(win.from), to: iso(win.to) } : null,
     };
+  },
+
+  // ONE fetch (repo setups, Phase D — the repo scan only): `GET /services?limit=100` → `[{ cursor, service }]`; the
+  // services whose `repo` is this GitHub repository, each with the folder it builds (`rootDir`, '' = the root) and
+  // its type (a static site → Site, a cron job → Job, the rest → Service). Shape from Render's API reference;
+  // UNCONFIRMED against a live workspace. A workspace with more than 100 services may leave some out.
+  async describe(pc, repo) {
+    const list = await getJson(pc, "/services?limit=100", "render services");
+    const want = repo.toLowerCase();
+    const out: DescribedProject[] = [];
+    for (const item of Array.isArray(list) ? list : []) {
+      const s = record(record(item).service);
+      const id = str(s.id);
+      const name = str(s.name);
+      const folder = describedFolder(s.rootDir);
+      if (!id || !name || !folder || githubRepoOf(s.repo) !== want) continue;
+      const type = str(s.type);
+      out.push({ name, folder, settings: { service_id: id }, kind: type === "static_site" ? "Site" : type === "cron_job" ? "Job" : "Service" });
+    }
+    return out;
   },
 };
