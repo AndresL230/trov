@@ -187,8 +187,9 @@ describe("reconcile's releases arm", () => {
     expect(RELEASES_RECONCILE_COST).toBe(2);
     // 16 + 2N + the promotion chain's max(2, N) + the facts arms' 6 (Phase B) + the releases arm; the cron's unit also
     // budgets the repo scan (Phase D, `SCAN_COST`), which Poll now does not run
-    expect(reconcileCost(2)).toBe(16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST + SCAN_COST + LOGO_IMPORT_COST + 1);
-    expect(refreshSubrequests(2)).toBe(3 * 2 + 16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST);
+    // (and the PR-files arm, Phase E: 9 on Poll now, 30 on the cron's unit)
+    expect(reconcileCost(2)).toBe(16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST + 30 + SCAN_COST + LOGO_IMPORT_COST + 1);
+    expect(refreshSubrequests(2)).toBe(3 * 2 + 16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST + 9);
   });
 
   it("tagCapture skips a tag with no date", () => {
