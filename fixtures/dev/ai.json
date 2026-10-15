@@ -1,0 +1,84 @@
+{
+  "_comment": "What Trov wrote, as REAL rows for localhost (0061_ai_digests, 0062_repo_state; scripts/seed/build.mjs › aiStatements): session digests in the feed (author `trov`, origin 'ai') with their ai_sessions bookkeeping, one skipped session, and two repo_state versions for the primary repository — so the Feed and Repo › Overview show them without LOCAL_AI_PREVIEW. Times are RELATIVE (`*_ago_min`), stamped at seed time. Every cite names a PR in events.json.",
+  "repo": "SaplingLearn/sapling",
+  "model": "claude-haiku-5-5",
+  "digests": [
+    {
+      "id": 101,
+      "login": "AndresL230",
+      "subject": "AndresL230",
+      "summary": "Shipped: My Work cards read from structured summaries",
+      "brief": "Each card on My Work now shows what a pull request changed, why and its impact as separate lines, so a teammate can read a week of work at a glance.",
+      "body": "**What** My Work renders each merged pull request from its structured summary: a title, what changed, why and the impact.\n**Why** The old cards parsed a prose summary with a pattern that broke on unusual wording.\n**Impact** Everyone reading My Work sees the same four parts on every card.\n\n_Written by Trov from 1 pull request and 2 commits in SaplingLearn/sapling. Not reviewed by a person._",
+      "artifacts": { "prs": ["162"], "commits": ["c1a2b3d", "9e8f7a6"], "issues": [] },
+      "tags": ["ui", "data"],
+      "created_ago_min": 50,
+      "started_ago_min": 190,
+      "ended_ago_min": 95
+    },
+    {
+      "id": 102,
+      "login": "AndresL230",
+      "subject": "AndresL230",
+      "summary": "Shipped: pull requests record their base branch",
+      "brief": "Trov now knows which branch a pull request merged into, so work landed on main reads apart from work merged into a feature branch.",
+      "body": "**What** Captured pull request events keep their base branch, and issue events keep their milestone.\n**Impact** My Work and the Repo screen can tell a merge to main from a merge between branches.\n\n_Written by Trov from 1 pull request in SaplingLearn/sapling. Not reviewed by a person._",
+      "artifacts": { "prs": ["158"], "commits": [], "issues": [] },
+      "tags": ["data"],
+      "created_ago_min": 1460,
+      "started_ago_min": 1600,
+      "ended_ago_min": 1505
+    },
+    {
+      "id": 103,
+      "login": "Darkest-Teddy",
+      "subject": "Darkest-Teddy",
+      "summary": "Status: lesson schema validator upgrade is partway",
+      "brief": "Lesson files are moving to the new schema validator so a broken lesson is caught before it reaches learners. The checks pass locally; nothing is merged yet.",
+      "body": "**State** The validator is upgraded on a branch and the existing lessons pass it locally.\n**Next** Open a pull request once the remaining lesson files are converted.\n\n_Written by Trov from 3 commits in SaplingLearn/sapling. Not reviewed by a person._",
+      "artifacts": { "prs": [], "commits": ["4d5e6f7", "8a9b0c1", "2b3c4d5"], "issues": [] },
+      "tags": [],
+      "created_ago_min": 320,
+      "started_ago_min": 470,
+      "ended_ago_min": 365
+    }
+  ],
+  "skipped": [
+    { "login": "AndresL230", "reason": "not_substantive", "shas": ["0f1e2d3"], "started_ago_min": 2900, "ended_ago_min": 2890 }
+  ],
+  "repo_state": [
+    {
+      "version": 1,
+      "generated_ago_min": 1440,
+      "event_count": 3,
+      "state": {
+        "headline": "Base branches are captured on every pull request; the lesson validator upgrade has started.",
+        "shipped": [
+          { "text": "Pull requests record the branch they merged into.", "cites": [{ "ref": "pr:158", "label": "#158", "href": "https://github.com/SaplingLearn/sapling/pull/158" }] },
+          { "text": "Roadmap sprints show progress bars.", "cites": [{ "ref": "pr:153", "label": "#153", "href": "https://github.com/SaplingLearn/sapling/pull/153" }] }
+        ],
+        "inFlight": [],
+        "attention": []
+      }
+    },
+    {
+      "version": 2,
+      "generated_ago_min": 45,
+      "event_count": 4,
+      "state": {
+        "headline": "My Work now reads structured summaries; the lesson validator upgrade is still on a branch.",
+        "shipped": [
+          { "text": "My Work cards read from structured summaries.", "cites": [{ "ref": "pr:162", "label": "#162", "href": "https://github.com/SaplingLearn/sapling/pull/162" }, { "ref": "feed:101", "label": "Shipped: My Work cards read from structured summaries", "href": "#feed" }] },
+          { "text": "Pull requests record the branch they merged into.", "cites": [{ "ref": "pr:158", "label": "#158", "href": "https://github.com/SaplingLearn/sapling/pull/158" }] },
+          { "text": "Roadmap sprints show progress bars.", "cites": [{ "ref": "pr:153", "label": "#153", "href": "https://github.com/SaplingLearn/sapling/pull/153" }] }
+        ],
+        "inFlight": [
+          { "text": "The lesson schema validator upgrade passes locally; no pull request yet.", "cites": [{ "ref": "feed:103", "label": "Status: lesson schema validator upgrade is partway", "href": "#feed" }] }
+        ],
+        "attention": [
+          { "text": "CI's test suite is failing on main since the last merge.", "cites": [{ "ref": "run:38674390889", "label": "CI run 38674390889", "href": "https://github.com/SaplingLearn/sapling/actions/runs/38674390889" }] }
+        ]
+      }
+    }
+  ]
+}
