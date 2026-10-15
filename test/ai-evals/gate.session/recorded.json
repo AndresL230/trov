@@ -1,0 +1,91 @@
+{
+ "model": "jev-latest",
+ "recordedAt": "2026-10-15T13:52:37.272Z",
+ "responses": {
+  "pr-179": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.97}},\"usage\":{\"input_tokens\":781,\"output_tokens\":22}}",
+   "key": "3e8d05f5a59f93d3"
+  },
+  "pr-180": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.86}},\"usage\":{\"input_tokens\":426,\"output_tokens\":22}}",
+   "key": "985d15c2a23216ca"
+  },
+  "pr-182": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.69}},\"usage\":{\"input_tokens\":427,\"output_tokens\":22}}",
+   "key": "1890afc151fc989d"
+  },
+  "pr-184": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.94}},\"usage\":{\"input_tokens\":559,\"output_tokens\":22}}",
+   "key": "98638d4f179621e7"
+  },
+  "pr-185": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.96}},\"usage\":{\"input_tokens\":918,\"output_tokens\":22}}",
+   "key": "5a7e732484066760"
+  },
+  "ai-phase-b": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.93}},\"usage\":{\"input_tokens\":1106,\"output_tokens\":22}}",
+   "key": "f6b02b0f30976d15"
+  },
+  "ai-screens-tail": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.87}},\"usage\":{\"input_tokens\":452,\"output_tokens\":22}}",
+   "key": "bc862a17a985bff3"
+  },
+  "hosting-plumbing": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.9}},\"usage\":{\"input_tokens\":393,\"output_tokens\":22}}",
+   "key": "3dbd8246cd63b05c"
+  },
+  "hosting-dashboard": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.86}},\"usage\":{\"input_tokens\":392,\"output_tokens\":22}}",
+   "key": "e591eb76d9857730"
+  },
+  "account-deletion": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.9}},\"usage\":{\"input_tokens\":420,\"output_tokens\":22}}",
+   "key": "7bcbaf4c6d022052"
+  },
+  "rn-link-185": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.1}},\"usage\":{\"input_tokens\":385,\"output_tokens\":22}}",
+   "key": "bd832c4d39436337"
+  },
+  "rn-link-184-182": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.1}},\"usage\":{\"input_tokens\":396,\"output_tokens\":22}}",
+   "key": "5780b53f56daa6bd"
+  },
+  "rn-quote": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.07}},\"usage\":{\"input_tokens\":387,\"output_tokens\":22}}",
+   "key": "bf135f6953023313"
+  },
+  "rn-cite-133-132": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.16}},\"usage\":{\"input_tokens\":404,\"output_tokens\":22}}",
+   "key": "70773e4a9d9adb88"
+  },
+  "rn-link-177-176": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.11}},\"usage\":{\"input_tokens\":414,\"output_tokens\":22}}",
+   "key": "0d84026f18e40377"
+  },
+  "merge-main": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.07}},\"usage\":{\"input_tokens\":395,\"output_tokens\":22}}",
+   "key": "4b1184e565975dcb"
+  },
+  "rn-cite-120-117": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"substantive\":{\"type\":\"noul\",\"noul\":0.11}},\"usage\":{\"input_tokens\":412,\"output_tokens\":22}}",
+   "key": "d822632c0b68abfe"
+  }
+ }
+}

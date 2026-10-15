@@ -1,0 +1,725 @@
+{
+ "kind": "digest.session",
+ "source": "AndresL230/trov git history + Personal Dev (trov-dev) via the Trov MCP read tools (get_my_work cards, get_repo_dashboard ci/overview), read-only, 2026-10-15",
+ "cases": [
+  {
+   "id": "pr-179",
+   "source": "git log b6a71799^1..b6a71799^2 + the PR's card (Personal Dev, get_my_work)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "login": "AndresL230",
+    "subject": "andres",
+    "startedAt": "2026-10-15T00:00:00Z",
+    "endedAt": "2026-10-15T01:00:00Z",
+    "commits": [
+     {
+      "sha": "934a9aa",
+      "subject": "Release notes: cut 0.31 (#173–#177) and 0.32 (#179, tags and Sift)",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "34c016c",
+      "subject": "Tags: the owner's limits and bands; Sift suggests at 60–85% for a person to add or dismiss; legal approved",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "8fdb81a",
+      "subject": "Tags: a rename moves every Sift record with the tag, so its credit and a run's Undo survive",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "712bee7",
+      "subject": "Tag page: tiles sized from the window so every tab fits the screen; a type's list takes the full height",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "cada0bd",
+      "subject": "Setup checklist: no GitHub token step on any Trov; Connect a repository is the GitHub step",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "5d4b8bf",
+      "subject": "Tags: call the classifier Sift on every screen; the legal pages name the provider (TypeSafe AI), never the model",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "bc595f5",
+      "subject": "Tags: Items centred in a wider column; a clear gap before Added by Jev",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "3b64864",
+      "subject": "Tags: New tag in the table's head row (top right); a taller head with larger column names",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "3f44b65",
+      "subject": "Setup checklist: no GitHub or token step where the Trov App is offered",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "98c0e18",
+      "subject": "Tags: New tag opens a modal (name, description, colour, find the items now) instead of an add row",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "c6383fa",
+      "subject": "Tags tab and tag page rework: one even row per tag, in-place edits, suggestions in the list, a bento tag page",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "e5cf605",
+      "subject": "Tag runs: a progress bar, and Jev adds the tag directly (with Undo)",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "8f9e0da",
+      "subject": "Tag suggestions: draw a run live; judge something when the tag's words match nothing",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "8627bd1",
+      "subject": "Tag suggestions: classify with TypeSafe AI's Jev instead of Gemini",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "78cd9d5",
+      "subject": "Tags: suggest which existing items fit a new tag (model, opt-in)",
+      "branch": "feat/org-tags"
+     },
+     {
+      "sha": "64058c3",
+      "subject": "One tag list per organization, phase 1: the list, the gate, the screens",
+      "branch": "feat/org-tags"
+     }
+    ],
+    "prs": [
+     {
+      "number": 179,
+      "title": "Tags of your own, sorted by Sift",
+      "state": "merged",
+      "card": {
+       "what": "Each organization now gets its own tag list in Org settings, with six starter tags and add, rename, merge, retire, and restore actions. When an admin adds a tag or presses Find items, Sift checks the org's existing items and adds the tag automatically at 85% confidence or more, or suggests it at 60–85% for members to review on the tag page.",
+       "why": null,
+       "impact": "Teams can manage their own tagging vocabulary and have existing items tagged automatically, and agents' unrecognized tags become suggestions rather than leaving entries stuck in Unplaced."
+      }
+     }
+    ],
+    "shipped": true
+   }
+  },
+  {
+   "id": "pr-180",
+   "source": "git log 4599e266^1..4599e266^2 + the PR's card (Personal Dev, get_my_work)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "login": "AndresL230",
+    "subject": "andres",
+    "startedAt": "2026-10-15T00:00:00Z",
+    "endedAt": "2026-10-15T01:00:00Z",
+    "commits": [
+     {
+      "sha": "a99e656",
+      "subject": "Release notes: link #180",
+      "branch": "fix/tag-page-bar-colours"
+     },
+     {
+      "sha": "f77f62e",
+      "subject": "Tag page bars in each person's / tag's own colour; header crumbs set like the title",
+      "branch": "fix/tag-page-bar-colours"
+     }
+    ],
+    "prs": [
+     {
+      "number": 180,
+      "title": "Tag page bars in their own colours; header crumbs set like the title",
+      "state": "merged",
+      "card": {
+       "what": "Bars on the tag page now take colour from the relevant person under Who writes about it, and from the other tag under Often seen with (falling back to the tag's own colour when unknown). Header breadcrumbs on child screens, including Artifacts, now render at 15px semibold to match the title before them.",
+       "why": "Follow-up to #179; the breadcrumb was 13px medium, which looked off next to the title.",
+       "impact": "Tag page bars are colour-coded by person or related tag, and the breadcrumb no longer looks mismatched beside the page title."
+      }
+     }
+    ],
+    "shipped": true
+   }
+  },
+  {
+   "id": "pr-182",
+   "source": "git log 18518565^1..18518565^2 + the PR's card (Personal Dev, get_my_work)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "login": "AndresL230",
+    "subject": "andres",
+    "startedAt": "2026-10-15T00:00:00Z",
+    "endedAt": "2026-10-15T01:00:00Z",
+    "commits": [
+     {
+      "sha": "1590ca6",
+      "subject": "Release notes: link #182",
+      "branch": "fix/tag-review-flow"
+     },
+     {
+      "sha": "dbf30c5",
+      "subject": "To review: only the row you settle slides out, at once; the write and a quiet refresh follow",
+      "branch": "fix/tag-review-flow"
+     }
+    ],
+    "prs": [
+     {
+      "number": 182,
+      "title": "To review: only the row you settle slides out, at once",
+      "state": "merged",
+      "card": {
+       "what": "On a tag's To review tab, adding or dismissing a suggestion now removes only that row, sliding it out and closing the gap immediately while the other rows stay usable. The write runs in the background and the page refreshes without showing a loading state.",
+       "why": "Adding one suggestion turned every row's button to \"Adding…\", was slow, and made the page flash through its loading state, as reported by the owner.",
+       "impact": "Reviewing suggestions on a tag feels fast and stable, since only the row being acted on changes and a refused suggestion returns with a reason. Under reduced motion the row simply disappears."
+      }
+     }
+    ],
+    "shipped": true
+   }
+  },
+  {
+   "id": "pr-184",
+   "source": "git log 45bf29af^1..45bf29af^2 + the PR's card (Personal Dev, get_my_work)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "login": "AndresL230",
+    "subject": "andres",
+    "startedAt": "2026-10-15T00:00:00Z",
+    "endedAt": "2026-10-15T01:00:00Z",
+    "commits": [
+     {
+      "sha": "6694132",
+      "subject": "To review: a slower exit — the verdict holds .26s, then slide, fade and close-up over .4s",
+      "branch": "fix/tag-review-toast"
+     },
+     {
+      "sha": "df6af86",
+      "subject": "Release notes: fix a quote that broke the file",
+      "branch": "fix/tag-review-toast"
+     },
+     {
+      "sha": "681741b",
+      "subject": "Tag page: morphed in place, so the To review row's exit (and the number ticks) can actually play",
+      "branch": "fix/tag-review-toast"
+     },
+     {
+      "sha": "e6f0e32",
+      "subject": "To review: the row slides aside as it closes up, in the same motion",
+      "branch": "fix/tag-review-toast"
+     },
+     {
+      "sha": "bbbb688",
+      "subject": "To review: rows leave by the app's one row exit (Review's), in one smooth motion",
+      "branch": "fix/tag-review-toast"
+     },
+     {
+      "sha": "25e7e7b",
+      "subject": "To review: the row plays its slide-out before it goes; changed numbers tick into place",
+      "branch": "fix/tag-review-toast"
+     },
+     {
+      "sha": "3c173bc",
+      "subject": "Release notes: link #184",
+      "branch": "fix/tag-review-toast"
+     },
+     {
+      "sha": "c5e0258",
+      "subject": "To review: confirm an add or a dismiss in the app's checkmark toast, at once",
+      "branch": "fix/tag-review-toast"
+     }
+    ],
+    "prs": [
+     {
+      "number": 184,
+      "title": "To review: a checkmark confirmation when you add or dismiss",
+      "state": "merged",
+      "card": {
+       "what": "Adding or dismissing one of Sift's suggestions now shows a confirmation toast with a checkmark at the bottom of the screen, reading \"Added latency to “…”\" or \"Dismissed latency for “…”\", as the row slides out. If the action is refused, the row returns along with the error.",
+       "why": "Adding or dismissing a suggestion should be confirmed the way every other write is, based on the owner's review of #182.",
+       "impact": "People get immediate feedback that their add or dismiss action was applied, and they see the row restored if it failed."
+      }
+     }
+    ],
+    "shipped": true
+   }
+  },
+  {
+   "id": "pr-185",
+   "source": "git log 6c965ac5^1..6c965ac5^2 + the PR's card (Personal Dev, get_my_work)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "login": "AndresL230",
+    "subject": "andres",
+    "startedAt": "2026-10-15T00:00:00Z",
+    "endedAt": "2026-10-15T01:00:00Z",
+    "commits": [
+     {
+      "sha": "5f3cc4c",
+      "subject": "Hosting test: the tab list has main's Tags tab",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "44e42c5",
+      "subject": "Hosting: where detection stands for a new org, and a Flow × Stack sample preview",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "0b6c0e2",
+      "subject": "Forms: errors float in a box under their input; every \"Where to get it\" is numbered steps, then short notes",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "6885a28",
+      "subject": "Hosting: Cloudflare and Railway exactly like every other provider — merge follow-ups",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "324a8e1",
+      "subject": "Hosting: remove the legacy Cloudflare / Railway paths outside the hosting core",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "9f20685",
+      "subject": "Cloudflare: a token without Workers Scripts Read still reads traffic; release ops for the Cloudflare / Railway move",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "6fe9cb5",
+      "subject": "Provider tests: no credentialScope (every provider is org-wide)",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "1c45e05",
+      "subject": "Repo dashboard reads hosting data only: cards, deploy strips and Usage from parts",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "5ae55db",
+      "subject": "Docs: hosting providers without a legacy path",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "f17a579",
+      "subject": "Hosting: Cloudflare and Railway providers as ordinary providers; one-line card descriptions; parts show the org's tile",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "a64ec85",
+      "subject": "Hosting: Cloudflare and Railway as full providers, like the others",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "fd6d212",
+      "subject": "WIP hosting: Cloudflare and Railway as stored parts (core, migration, screen)",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "53261fb",
+      "subject": "Hosting: a card's one button sits at its top right",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "6610dfd",
+      "subject": "Hosting: provider cards two a row, Connect / Manage open dialogs instead of rows that open in place",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "608b061",
+      "subject": "Hosting: one Providers grid with each host's logo, no method hints, one button width",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "50769a3",
+      "subject": "Hosting / Vercel: refresh on deployment.ready, and say every scope the integration needs",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "b6fb168",
+      "subject": "Release notes: link #185",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "c782c23",
+      "subject": "Hosting: the sample bar says Sample data in sentence case, as the Repo dashboard's does since #173",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "37228e2",
+      "subject": "Hosting: a part row keeps its name, role and status on one line",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "6dddd14",
+      "subject": "Hosting screens: Org settings › Hosting, the Repo dashboard's Hosting section, Detected, Vercel events",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "e296bb7",
+      "subject": "Hosting connect replaces a live install instead of refusing it, as the GitHub App does since #110",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "4d620af",
+      "subject": "Hosting connect: the GitHub App binding's guarantees for Vercel and Netlify",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "d4a3146",
+      "subject": "Design prompt: build Hosting the way Org settings and Connect with GitHub already work",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "edad3a5",
+      "subject": "Hosting: the Claude Design prompt for the hosting UI, final",
+      "branch": "feat/hosting-screens"
+     },
+     {
+      "sha": "864c78e",
+      "subject": "Hosting: polling, the :40 cron job, Poll now, and the dashboard's providers section",
+      "branch": "feat/hosting-screens"
+     }
+    ],
+    "prs": [
+     {
+      "number": 185,
+      "title": "Hosting providers: Vercel, Render, Netlify, Fly.io — backend + Org settings › Hosting + Repo › Hosting (#97–#101)",
+      "state": "merged",
+      "card": {
+       "what": "Ships a unified hosting provider interface with Vercel (install or token), Render (API key), Netlify (OAuth or token), and Fly.io (read-only token), plus an Org settings > Hosting page for setup, environment parts, and provider connections. The repo dashboard's Usage tab gains a Hosting section showing each part's last deploy, recent deploy history, and traffic or CPU/memory usage. Hosting data is polled on the repo cron, and Vercel deploy webhooks trigger an immediate poll.",
+       "why": "The PR lands work for issues #97 through #101 on main and supersedes #107, adding the screens that previously existed only on a local branch.",
+       "impact": "Teams can connect their hosting providers and see deploy status and resource usage for every part of a repo in one place, while Cloudflare and Railway appear as legacy parts alongside them."
+      }
+     }
+    ],
+    "shipped": true
+   }
+  },
+  {
+   "id": "ai-phase-b",
+   "source": "git log 6183c5d8~6..6183c5d8 on ai/phase-b (open PR #178)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "login": "AndresL230",
+    "subject": "andres",
+    "startedAt": "2026-10-15T00:00:00Z",
+    "endedAt": "2026-10-15T01:00:00Z",
+    "commits": [
+     {
+      "sha": "6183c5d",
+      "subject": "AI Phase B: the router, scopes and the pass's machinery",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "5a24dc6",
+      "subject": "Tests after merging main (#185): Hosting's tab list has AI; the Repo field-absent snapshot re-pinned to main",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "9c783e4",
+      "subject": "AI Phase A: the migration is 0058_ai_dirty (main took 0057); the base spec's reserved numbers are the master's to update",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "dc6ee44",
+      "subject": "Server-side AI plan after merging main (#185 hosting): migrations 0058-0067; hosting deploys feed the router and repo state",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "5da0ef9",
+      "subject": "AI Phase A: the SPA never names TypeSafe's URL either (test/secrets.mcp.test.ts)",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "2de0bbe",
+      "subject": "AI Phase A: the ai_chat allowance, 0057_ai_dirty, and Org settings › AI with all four allowances",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "5f3cc4c",
+      "subject": "Hosting test: the tab list has main's Tags tab",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "5fe1c35",
+      "subject": "Handoff reading list: a claim lists \"Read these first (not complete)\" from the handoff's own words",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "407596f",
+      "subject": "AI Phase A: Jev is a provider of the one client; Sift runs only under the org switch",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "44e42c5",
+      "subject": "Hosting: where detection stands for a new org, and a Flow × Stack sample preview",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "0b6c0e2",
+      "subject": "Forms: errors float in a box under their input; every \"Where to get it\" is numbered steps, then short notes",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "6885a28",
+      "subject": "Hosting: Cloudflare and Railway exactly like every other provider — merge follow-ups",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "324a8e1",
+      "subject": "Hosting: remove the legacy Cloudflare / Railway paths outside the hosting core",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "9f20685",
+      "subject": "Cloudflare: a token without Workers Scripts Read still reads traffic; release ops for the Cloudflare / Railway move",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "6fe9cb5",
+      "subject": "Provider tests: no credentialScope (every provider is org-wide)",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "1c45e05",
+      "subject": "Repo dashboard reads hosting data only: cards, deploy strips and Usage from parts",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "5ae55db",
+      "subject": "Docs: hosting providers without a legacy path",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "f17a579",
+      "subject": "Hosting: Cloudflare and Railway providers as ordinary providers; one-line card descriptions; parts show the org's tile",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "a64ec85",
+      "subject": "Hosting: Cloudflare and Railway as full providers, like the others",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "fd6d212",
+      "subject": "WIP hosting: Cloudflare and Railway as stored parts (core, migration, screen)",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "53261fb",
+      "subject": "Hosting: a card's one button sits at its top right",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "6610dfd",
+      "subject": "Hosting: provider cards two a row, Connect / Manage open dialogs instead of rows that open in place",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "608b061",
+      "subject": "Hosting: one Providers grid with each host's logo, no method hints, one button width",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "50769a3",
+      "subject": "Hosting / Vercel: refresh on deployment.ready, and say every scope the integration needs",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "b6fb168",
+      "subject": "Release notes: link #185",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "c782c23",
+      "subject": "Hosting: the sample bar says Sample data in sentence case, as the Repo dashboard's does since #173",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "37228e2",
+      "subject": "Hosting: a part row keeps its name, role and status on one line",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "6dddd14",
+      "subject": "Hosting screens: Org settings › Hosting, the Repo dashboard's Hosting section, Detected, Vercel events",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "e296bb7",
+      "subject": "Hosting connect replaces a live install instead of refusing it, as the GitHub App does since #110",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "4d620af",
+      "subject": "Hosting connect: the GitHub App binding's guarantees for Vercel and Netlify",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "d4a3146",
+      "subject": "Design prompt: build Hosting the way Org settings and Connect with GitHub already work",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "edad3a5",
+      "subject": "Hosting: the Claude Design prompt for the hosting UI, final",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "864c78e",
+      "subject": "Hosting: polling, the :40 cron job, Poll now, and the dashboard's providers section",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "9b6ff12",
+      "subject": "Hosting: the setup backend — parts, connections, connect / disconnect, the uninstall notice",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "af86643",
+      "subject": "Hosting: sample data for every Org settings › Hosting state",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "468d242",
+      "subject": "Hosting provider: Render (#99), and the contract every provider is held to",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "d3a8acf",
+      "subject": "Hosting provider: Vercel (#98)",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "075a447",
+      "subject": "Hosting provider: Fly.io (#101)",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "a4c2d0f",
+      "subject": "Hosting provider: Netlify (#100)",
+      "branch": "ai/phase-b"
+     },
+     {
+      "sha": "adf15af",
+      "subject": "Hosting: first draft of the Claude Design prompt for the hosting UI",
+      "branch": "ai/phase-b"
+     }
+    ],
+    "prs": [
+     {
+      "number": 178,
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "open",
+      "card": null
+     }
+    ],
+    "shipped": false
+   }
+  },
+  {
+   "id": "ai-screens-tail",
+   "source": "git log 45575d6b..15b639ef on ai/screens (PR #178)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "login": "AndresL230",
+    "subject": "andres",
+    "startedAt": "2026-10-15T00:00:00Z",
+    "endedAt": "2026-10-15T01:00:00Z",
+    "commits": [
+     {
+      "sha": "15b639e",
+      "subject": "shared/ai-core: TROV_SYSTEM_HANDLE, the one name for Trov's own author (Phase D)",
+      "branch": "ai/screens"
+     },
+     {
+      "sha": "b6701fd",
+      "subject": "AI base spec: 0059 also carries ai_batch_requests and ai_dirty.marked_at / urgent (Phase B)",
+      "branch": "ai/screens"
+     }
+    ],
+    "prs": [
+     {
+      "number": 178,
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "open",
+      "card": null
+     }
+    ],
+    "shipped": false
+   }
+  },
+  {
+   "id": "hosting-plumbing",
+   "source": "git log be0357d0^1..be0357d0^2 (branch hosting-plumbing, before #185 merged)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "login": "AndresL230",
+    "subject": "andres",
+    "startedAt": "2026-10-15T00:00:00Z",
+    "endedAt": "2026-10-15T01:00:00Z",
+    "commits": [
+     {
+      "sha": "324a8e1",
+      "subject": "Hosting: remove the legacy Cloudflare / Railway paths outside the hosting core",
+      "branch": "hosting-plumbing"
+     }
+    ],
+    "prs": [],
+    "shipped": false
+   }
+  },
+  {
+   "id": "hosting-dashboard",
+   "source": "git log 88461e42^1..88461e42^2 (branch hosting-dashboard, before #185 merged)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "login": "AndresL230",
+    "subject": "andres",
+    "startedAt": "2026-10-15T00:00:00Z",
+    "endedAt": "2026-10-15T01:00:00Z",
+    "commits": [
+     {
+      "sha": "1c45e05",
+      "subject": "Repo dashboard reads hosting data only: cards, deploy strips and Usage from parts",
+      "branch": "hosting-dashboard"
+     }
+    ],
+    "prs": [],
+    "shipped": false
+   }
+  },
+  {
+   "id": "account-deletion",
+   "source": "git log 835284fd^1..835284fd^2 (branch compliance/account-deletion, before #172 merged)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "login": "AndresL230",
+    "subject": "andres",
+    "startedAt": "2026-10-15T00:00:00Z",
+    "endedAt": "2026-10-15T01:00:00Z",
+    "commits": [
+     {
+      "sha": "2203d48",
+      "subject": "Docs: self-serve deletion, invariant 11, release notes",
+      "branch": "compliance/account-deletion"
+     },
+     {
+      "sha": "e1253f7",
+      "subject": "Delete an account or an organization: Settings, Org settings and Platform",
+      "branch": "compliance/account-deletion"
+     },
+     {
+      "sha": "395c089",
+      "subject": "Delete an account or an organization: the server core",
+      "branch": "compliance/account-deletion"
+     }
+    ],
+    "prs": [],
+    "shipped": false
+   }
+  }
+ ]
+}
