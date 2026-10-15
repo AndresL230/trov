@@ -85,6 +85,14 @@ describe("the import graph", () => {
   });
 });
 
+describe("the org image module holds no credential (src/orgs/logo.ts: the token is resolved by its caller)", () => {
+  it("src/orgs/logo.ts reaches neither src/data/secrets.ts nor src/github-app/", () => {
+    const reach = reachable("src/orgs/logo.ts");
+    expect(reach.has("src/data/secrets.ts")).toBe(false);
+    expect([...reach].filter((f) => f.startsWith("src/github-app/"))).toEqual([]);
+  });
+});
+
 describe("billing is not an agent's", () => {
   it("nothing reachable from src/mcp.ts imports the Stripe client, or anything else of src/billing/", () => {
     const fromMcp = reachable("src/mcp.ts");
