@@ -2875,6 +2875,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-menu { animation:ask-pop-in .14s cubic-bezier(.2,.9,.3,1.2) both; }
 .ask-menu[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
 @media (prefers-reduced-motion: reduce) {
+  .ask-act-form, .ask-diff textarea, .ask-line, .ask-wrong, .ask-wrong[data-closing] { animation:none !important; }
   .ask-threads, .ask-insp-frame, .ask-insp-resize::after, .ask-th, .ask-th-more, .ask-th-at, .ask-send, .ask-chip, .ask-starters > button { transition:none !important; }
   .ask-insp-frame, .ask-insp-frame[data-closing], .ask-insp-body, .ask-menu, .ask-menu[data-closing], .ask-hc, .ask-hc-layer[data-closing] .ask-hc,
   .ask-panel, .ask-scrim, .ask-panel-layer[data-closing] .ask-panel, .ask-panel-layer[data-closing] .ask-scrim, .ask-drawer, .ask-drawer-scrim,
@@ -2966,12 +2967,103 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-disclaimer { margin:10px 0 0; font-size:12.5px; line-height:1.5; color:var(--fg-55); text-align:center; text-wrap:balance; }
 .ask-blocked { display:flex; flex-direction:column; gap:3px; padding:12px 14px; border:1px solid var(--border-strong); border-radius:12px; font-size:13px; color:var(--fg-55); }
 
-/* ── Ask: actions ── (ask-actions.ts — a sibling replaces the stub's styles here) */
-.ask-card { margin:6px 0 4px; padding:12px 14px; border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); }
-.ask-card-t { font-size:13.5px; font-weight:600; }
-.ask-card-note { margin-top:4px; font-size:12.5px; color:var(--fg-55); }
-.ask-card-bar { display:flex; align-items:center; gap:8px; margin-top:10px; }
-.ask-line { display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; color:var(--fg-70); animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
+/* ── Ask: actions ── (ask-actions.ts: write cards, their lines, Save as artifact, Wrong?; design L475–590, L630–638) */
+.ask-acts { display:flex; flex-direction:column; }
+.ask-grow { flex:1; }
+.ask-eyebrow { font-family:var(--label); font-size:11.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); white-space:nowrap; }
+/* A card: the eyebrow and its mark, the body per kind, the footer with Cancel / Confirm. */
+.ask-act { margin:0 0 12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); overflow:hidden; }
+.ask-act[aria-busy="true"] .ask-act-body { opacity:.72; }
+.ask-act-head { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--border); }
+.ask-act-st { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-70); white-space:nowrap; }
+.ask-act-edit { padding:2px 4px; border-radius:5px; font-size:12.5px; font-weight:500; color:var(--accent); cursor:pointer; }
+.ask-act-edit:hover { text-decoration:underline; }
+.ask-act-edit:disabled { opacity:.5; cursor:default; text-decoration:none; }
+.ask-act-body { padding:14px 16px 4px; }
+.ask-act-stack > div + div { border-top:1px solid var(--border); }
+.ask-act-row { display:flex; align-items:flex-start; gap:9px; }
+.ask-act-row > svg { flex:none; margin-top:3px; }
+.ask-act-main { flex:1; min-width:0; }
+.ask-act-title { font-size:15px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; overflow-wrap:anywhere; }
+.ask-act-title--h { margin:10px 0 0; }
+.ask-act-desc { margin-top:6px; font-size:13px; line-height:1.6; color:var(--fg-70); overflow-wrap:anywhere; }
+.ask-act-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; margin:14px 0 10px; padding-top:12px; border-top:1px solid var(--border); }
+[data-phone="1"] .ask-act-grid, .ask-panel .ask-act-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }
+.ask-act-k { margin-bottom:5px; font-family:var(--label); font-size:10.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
+.ask-act-v { font-size:12.5px; color:var(--fg-70); overflow-wrap:anywhere; }
+.ask-act-iv { display:inline-flex; align-items:center; gap:6px; }
+.ask-act-strong { font-weight:500; color:var(--fg); }
+.ask-act-faint { font-size:12px; color:var(--fg-55); }
+.ask-act-lines { display:grid; grid-template-columns:max-content 1fr; gap:6px 14px; align-items:baseline; margin:12px 0 10px; }
+.ask-act-lines > .ask-act-k { margin:0; }
+.ask-act-who { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:12.5px; color:var(--fg-70); }
+.ask-act-cols { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; margin-top:14px; }
+[data-phone="1"] .ask-act-cols { grid-template-columns:1fr; }
+.ask-act-li { display:flex; align-items:flex-start; gap:8px; margin-bottom:6px; font-size:12.5px; line-height:1.5; color:var(--fg-70); }
+.ask-act-li > span { flex:none; margin-top:2px; }
+.ask-act-li.is-next { color:var(--fg); }
+.ask-act-files { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 10px; }
+.ask-act-files > span { padding:2px 6px; border:1px solid var(--border); border-radius:5px; background:color-mix(in srgb, var(--fg) 5%, transparent); font-family:var(--code); font-size:11.5px; color:var(--fg-70); }
+.ask-act-doc { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:13px; }
+.ask-act-ver { font-family:var(--label); font-size:12px; color:var(--fg-55); }
+.ask-act-more { margin:-4px 0 10px; }
+.ask-act-ul { margin:8px 0 10px; padding-left:18px; font-size:12.5px; line-height:1.6; color:var(--fg-55); }
+/* Edit: the form fades in where the card's text was; the card's height glides (data-ask-tween). */
+.ask-act-form { display:flex; flex-direction:column; gap:14px; padding:14px 16px 8px; animation:ask-fade-in .14s ease both; }
+.ask-act-form--in { padding:0; margin-top:12px; gap:12px; }
+.ask-field { display:flex; flex-direction:column; align-items:flex-start; gap:6px; font-size:12.5px; font-weight:500; }
+label.ask-field { align-items:stretch; }
+.ask-field .cnpy-seg { max-width:100%; overflow-x:auto; }
+.ask-input-line { width:100%; height:36px; box-sizing:border-box; padding:0 12px; border:1px solid var(--border-strong); border-radius:9px; background:transparent; outline:none; font:inherit; font-size:13.5px; font-weight:400; color:var(--fg); transition:border-color .12s ease; }
+.ask-input-line:focus { border-color:var(--accent); }
+.ask-input-line--lg { height:38px; font-size:14px; }
+.ask-act-foot { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 14px; border-top:1px solid var(--border); background:color-mix(in srgb, var(--fg) 1.5%, transparent); }
+.ask-act-note { display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--fg-70); }
+.ask-act-confirm { padding:6px 14px; }
+a.ask-btn { text-decoration:none; }
+/* A doc edit's hunks: the heading for context, the old line struck out, the new one (a textarea while editing). */
+.ask-diffs { margin:12px 0 10px; display:flex; flex-direction:column; gap:8px; }
+.ask-diff { border:1px solid var(--border); border-radius:8px; overflow:hidden; font-size:13px; line-height:1.6; }
+.ask-diff-row { display:flex; gap:10px; padding:5px 10px; color:var(--fg); overflow-wrap:anywhere; white-space:pre-wrap; }
+.ask-diff-row.is-h { color:var(--fg-55); background:color-mix(in srgb, var(--fg) 2.5%, transparent); font-family:var(--code); font-size:12px; }
+.ask-diff-row.is-del { background:color-mix(in srgb, var(--red) 9%, transparent); }
+.ask-diff-row.is-del s { text-decoration-color:color-mix(in srgb, var(--red) 50%, transparent); }
+.ask-diff-row.is-add { background:color-mix(in srgb, var(--green) 10%, transparent); }
+.ask-diff-row.is-edit { padding:6px 10px; }
+.ask-diff-sign { width:10px; flex:none; font-family:var(--code); }
+.is-del > .ask-diff-sign { color:var(--red); }
+.is-add > .ask-diff-sign { color:var(--green); }
+.ask-diff textarea { flex:1; min-height:52px; resize:vertical; box-sizing:border-box; padding:6px 8px; border:1px solid var(--border-strong); border-radius:6px; background:var(--surface); outline:none; font:inherit; font-size:13px; line-height:1.55; color:var(--fg); animation:ask-fade-in .14s ease both; }
+.ask-diff textarea:focus { border-color:var(--accent); }
+/* A line: what was done (linked), when, Undo — or Cancelled / Undone / Expired / Didn't work, muted. It enters once
+   (a new key replaces the card), and the wrapper's height glides from the card's. */
+.ask-line { display:flex; align-items:center; flex-wrap:wrap; gap:9px; min-height:40px; box-sizing:border-box; margin:0 0 8px; padding:6px 8px 6px 12px; border:1px solid var(--border); border-radius:10px; background:var(--surface); box-shadow:var(--shadow); font-size:13px; animation:ask-line-in .36s cubic-bezier(.2,.7,.2,1) both; }
+.ask-line--saved { min-height:44px; }
+.ask-line-t { font-weight:500; color:var(--fg); overflow-wrap:anywhere; }
+.ask-line.is-off .ask-line-t { color:var(--fg-55); }
+.ask-line-why { flex-basis:100%; padding-left:18px; font-size:12px; color:var(--fg-55); }
+.ask-line-link { padding:0; font:inherit; font-weight:500; color:var(--fg); text-align:left; text-decoration:underline; text-decoration-color:var(--border-strong); text-underline-offset:3px; cursor:pointer; transition:text-decoration-color .12s ease; }
+.ask-line-link:hover { text-decoration-color:var(--fg); }
+.ask-line-at { font-family:var(--label); font-size:11.5px; color:var(--fg-40); white-space:nowrap; }
+.ask-line-vis { font-size:12px; color:var(--fg-55); }
+.ask-line-refused { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-70); }
+.ask-undo { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--border-strong); border-radius:7px; font-size:12px; font-weight:500; color:var(--fg-70); white-space:nowrap; cursor:pointer; transition:background .12s ease, color .12s ease; }
+.ask-undo:hover { background:var(--hover); color:var(--fg); }
+.ask-undo:disabled { opacity:.55; cursor:default; }
+@keyframes ask-line-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+/* Save as artifact: the form card (it enters as a new part of the answer), then its saved line. */
+.ask-save { margin:0 0 12px; padding:14px 16px; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); }
+.ask-save-head { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+.ask-save-opts { display:flex; flex-wrap:wrap; gap:22px; margin-top:14px; }
+.ask-save-foot { display:flex; align-items:center; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+.ask-save-hint { flex:1; font-size:12px; color:var(--fg-55); }
+/* Wrong?: the reasons row under the footer pops in, and out when a reason is picked or Escape closes it. */
+.ask-wrong { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:6px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; background:var(--surface); transform-origin:top left; animation:ask-pop-in .16s cubic-bezier(.2,.9,.3,1.2) both; }
+.ask-wrong[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
+.ask-wrong-q { margin-right:4px; font-size:12.5px; color:var(--fg-70); }
+.ask-wrong-opt { padding:4px 10px; border:1px solid var(--border); border-radius:7px; font-size:12px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:border-color .12s ease, color .12s ease; }
+.ask-wrong-opt:hover { border-color:var(--border-strong); color:var(--fg); }
+.ask-act :focus-visible, .ask-line :focus-visible, .ask-save :focus-visible, .ask-wrong :focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 
 /* ── Ask: inspector ── (ask-inspector.ts — the per-type views; the frame is the shell's, above) */
 .ask-insp-title { margin:0 0 8px; font-size:19px; font-weight:600; letter-spacing:-0.01em; }
@@ -3468,6 +3560,17 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 [data-cnpy-theme] .ask-blocked,
 [data-cnpy-theme] .ask-card { border-radius:calc(12px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-cursor { border-radius:calc(2px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-act-edit,
+[data-cnpy-theme] .ask-act-files > span { border-radius:calc(5px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-diff textarea { border-radius:calc(6px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-undo,
+[data-cnpy-theme] .ask-wrong-opt { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-diff { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-input-line { border-radius:calc(9px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-act,
+[data-cnpy-theme] .ask-line,
+[data-cnpy-theme] .ask-save,
+[data-cnpy-theme] .ask-wrong { border-radius:calc(10px * var(--corner-scale)) !important; }
 /* ── Sync GitHub: the header control and the panel it opens (web/src/sync.ts) ──
    The control lives in a slot that is always in the header (empty = no box), so a progress tick
    repaints the slot alone. The panel is a root-level overlay hung under the button: main.ts
