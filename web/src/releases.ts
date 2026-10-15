@@ -332,7 +332,12 @@ export const RELEASES: Release[] = [
         "`test/secrets.mcp.test.ts` pins the three model call sites (the summary seams, the AI pass, the Sift run), that nothing MCP reaches imports `src/ai/` or the Jev provider, and that only `src/tools/classify.ts` names TypeSafe's URL (#178)",
         "`test/secrets.mcp.test.ts` also pins Ask's call sites (`src/ai/ask/turn.ts`, `history.ts`) and its boundary: nothing under `src/ai/ask/` reaches `src/data/secrets.ts`, `src/github-app/`, `src/billing/` or `src/mcp.ts`. Review's `GET /proposals` and `GET /adrs` carry `askFlags` (the reason and a count per item, never thread text). `KIND_PROVIDER` gains `ask.fast` / `ask.smart` / `ask.thinking` / `ask.compact`; `askChatClient` hands Ask's turn the SDK client for a mode (#178)",
       ],
-      fixed: [],
+      fixed: [
+        "Org settings › AI's What is sent lists every AI use the Privacy Policy names — Ask Trov, plain-language filters and the notes and briefs to Anthropic, sorting and checking to TypeSafe AI — not only summaries and Sift (e2e OA-1 / LG-2) (#178)",
+        "A digest whose brief block is only Also says Also once (e2e EM-4) (#178)",
+        "A handoff's reading list rises in when a claim draws it, and never again on a rerender (e2e MO-13) (#178)",
+        "Org settings › AI's switches keep the keyboard's focus while they save (`switchBtn` busy is `aria-disabled`) (e2e EV-OA-admin-K) (#178)",
+      ],
       removed: [
         "The digest's per-PR What / Why / Impact cards, its assigned-issue rows and labels, the ticket queue's per-ticket rows and the Roadmap section's plan diff (Phase E: one line per queue) (#178)",
       ],

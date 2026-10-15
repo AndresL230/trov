@@ -80,6 +80,10 @@ Every refusal body also carries a `hint` (main's error-hint layer) beside the ex
 | OA-17 | test-pro | `ai_chat` 1500, `ai_runs` 2000 | same | 1500 / 2000 | pass | `fetch` |
 | OA-18 | test-chat-ovr | `ai_chat.cap` 10 | same | 10 | pass | `fetch` |
 | OA-19 | test-free | 120 runs, not 1119 (last month's 999) | `plans.ts:493` | 120 (the 999 row is dated 2026-09-30) | pass | D1 |
+| OA-20 | P:ready · admin | 212 / 486 / 1240 / 1120 of 3000 / 2000 / 10000 / 1500; `ok`; `enabled` real | `ai-fixtures.ts:190-199` | exactly (the reference PNG `ai-screens-shots/org-ai-ready-*` predates Phase A's four allowances and two switches — compared on numbers and states, not pixels) | pass | → `oa-pready-admin-*.png` |
+| OA-21 | P:empty | 0 of each | same | 0/3000, 0/2000, 0/10000, 0/1500 | pass | → `oa-pempty-admin-*.png` |
+| OA-22 | P:capped | at cap on all four, four "Used up" lines | same | exactly, `capped` | pass | → `oa-pcapped-admin-*.png` |
+| OA-23 | P:ready · member | the member view on the sample | same | numbers as OA-20, no switches | pass | → `oa-pready-member-*.png` |
 | OA-24 | settings read slowed | skeleton "Loading the AI settings…" `aria-busy` | `org-ui.ts:128-140` | exactly | pass | → `oa-24-loading.png` |
 | OA-25 | settings read blocked | "Couldn't load the AI settings. Check your connection, then [Try again]"; Try again reloads | same | exactly; Try again loaded the tab | pass | → `oa-25-failed.png` |
 | OA-26 | double-click the switch | one PUT in flight, final = last request | `org-actions.ts:158-178` | one PUT `{"enabled":false}`; aria-checked false; D1 0 | pass | request log |
@@ -133,7 +137,18 @@ Every refusal body also carries a `hint` (main's error-hint layer) beside the ex
 | FL-9 | test-canceled · owner | "…Pro plan has ended… You can renew it in Org settings." | same | 402 `status:"canceled"`; exactly that line | pass | text |
 | FL-10 | test-gift runs at 2000 · owner | "Ask Trov to change your plan." | same | "…reached the 2,000 AI runs its Pro plan includes. Ask Trov to change your plan." | pass | text |
 | FL-11 | test-admin, this hour's 60 spent | 429 + `Retry-After`; "You've hit this hour's limit for this; try again after {time}." | `limits.ts:39,73-81` | 429, Retry-After 3018; "…try again after 7:00 PM." | pass | → `fl-11-rate-limited.png` |
-| FL-20 | test-ai-off (direct POST) | 403 off; no box | routes | = FL-2 + FL-6 | pass | — |
+| FL-20 | test-ai-off (direct POST); also under P:ready | 403 off; no box | routes | = FL-2 + FL-6; P:ready: no box, POST 403 `off` (the preview honours the real switch) | pass | DOM + `fetch` |
+| FL-13 | P:ready · Tickets "my open high priority bugs" | "Filtered: Open · Assigned to you · Bug · High priority." + Undo; the list reloads | `ai-fixtures.ts:218-225` | that line + Undo; the board shows Filter 3, Open, "1 shown" | pass | → `fl-13-applied-tickets.png` |
+| FL-14 | P:ready, text has "overdue" | adds " Not a filter here: “overdue”." | same | exactly | pass | text |
+| FL-15 | P:ready · Feed, "…about deploys" | "Filtered: By you · Last 7 days." + unmatched “about deploys” | same | exactly | pass | text |
+| FL-16 | P:ready · Artifacts | "Filtered: HTML · Published · search “checkout”." | same | exactly | pass | → `fl-16-applied-artifacts.png` |
+| FL-17 | P:ready · Undo after two applies | the state before the FIRST apply | `ai-filter-actions.ts:80-112` | 13 shown / no filter → apply → 1 shown / Filter 3 → apply → same → Undo → 13 shown / Filter 0, line gone | pass | DOM |
+| FL-18 | P:empty | 422 "Trov couldn't turn that into a filter on this screen. Try naming a person, a status, a priority or a time." | `routes.ts:138-140` | exactly | pass | → `fl-pempty-error.png` |
+| FL-19 | P:capped | 402 with the Free-plan sentence | same | "…reached the 250 AI runs its Free plan includes. Ask one of this organization's owners." (member) | pass | → `fl-pcapped-error.png` |
+| FL-21 | P:ready · `<img src=x onerror=alert(1)> overdue` | drawn escaped, no script | `org-ui.ts:169-170` | no `<img>` element, no dialog; the fixture echoes only “overdue” as unmatched, so the escaping of an echoed tag is not exercised by the preview | pass | DOM |
+| FL-22 | P:ready · Enter twice fast | one request; "Reading…", `aria-busy` | `ai-filter-actions.ts:65-69` | 1 request; "Reading…"; aria-busy | pass | request log |
+| FL-23 | P:ready · change a filter by hand after an apply | Q3 | — | the "Filtered: Open · …" line and Undo stay after switching the status to All (2 shown, line still says Open) | question (Q3) | → `fl-23-hand-change.png` |
+| FL-25 | P:ready · type after an error | Q2 | — | the error stays while typing | question (Q2) | DOM |
 
 ### RL — the reading list
 
@@ -202,6 +217,7 @@ The daily cron was fired at the real New York hour (send_hour set to it); weekly
 | id | act | expected | actual | result | evidence |
 |---|---|---|---|---|---|
 | MC-1 | `tools/list` | no promote / ratify / accept / dismiss tool; no Ask publish | 45 tools, none of those | pass | list |
+| MC-2 | `get_my_work`, `get_repo_dashboard`, `get_feed`, `get_roadmap` with P:ready | NO preview fixture over MCP | the seeded rows ("test- You have the Safari login fix…"), while the cookie `/me/dashboard` at the same moment returns the sample ("You are partway through the hosting screens…") | pass | JSON |
 | MC-3 | `get_ticket 2` | no `ai` | no `ai` key | pass | JSON |
 | MC-4 | bearer on `/ai/settings` with a cookie | 403 cookie-only | = G-4 | pass | sweep |
 
@@ -212,6 +228,51 @@ The daily cron was fired at the real New York hour (send_hour set to it); weekly
 | LG-1 | `/terms` | Ask Trov / AI pass / weekly passages marked DRAFT; Anthropic + TypeSafe AI | f03e8781 | 5 "DRAFT —" markers, rendered and in the prerendered HTML; both providers; Sift named, never Jev | pass | → `lg-terms-1440-light.png` |
 | LG-2 | `/privacy` | same; what is sent / never sent matching Org settings › AI | `shared/ai-core.ts` | 16 DRAFT markers; never-sent matches; **the AI rows did not match** (5 AI rows here, 2 in Org settings) → fixed with OA-1 | **fail → fixed** (0a8519eb) | → `lg-privacy-1440-light.png` |
 | LG-3 | both | prerendered, no console error, `noindex` unchanged | web-ui.md | 200, no `X-Robots-Tag`, no robots meta — same as main (:8800); 0 console errors | pass | headers |
+
+### § 6 Environment (D = 1440 dark, P = 360 light, PD = 360 dark, K = keyboard at 1440 light)
+
+Every run checked: no horizontal page scroll, no element past the viewport's right edge (outside a scroller), no
+console error (except the case's own refused request), the app's dark theme applied (`trov.theme=dark`, as a person
+picks it — the app does not follow `prefers-color-scheme` on its own; e-mail bodies do). Shots `ev-<row>-<env>.png`.
+
+| row | D | P | PD | K |
+|---|---|---|---|---|
+| OA-admin (K:dummy) | pass | pass | pass | **fail → fixed** (daab320d): after Space / Enter on either switch the focus dropped to `<body>` (the switch was `disabled` while saving), so Enter after Space did nothing. Now `aria-disabled`; after the fix: 28 Tabs reach the AI switch (3 px ring), Space → off (D1 0), Enter → on (D1 1), Tab → Auto mode switch, both toggled back |
+| OA-member | pass | pass | pass | — |
+| OA-nokey | pass | pass | pass | — |
+| OA-capped (P:capped) | pass | pass | pass | — |
+| OA-ready / OA-empty (preview) | pass | pass | pass | — |
+| OA-loading | pass | pass | pass | — |
+| OA-failed | pass | pass | pass | pass: Try again reached by Tab (ring), Enter reloads the tab |
+| SF-cell (test-free / test-pro, K:dummy) | pass | pass | pass | pass for the switch (reached, Space turns Sift on) and the "What is sent" popover (Enter opens, `aria-expanded`, Escape closes, focus back on the trigger); the switch drops focus to `<body>` while saving — **pre-existing** (P-1) |
+| SF-off (SF-3) | pass | pass | pass | — |
+| SF-modal (SF-11) | pass | pass | pass | pass: focus lands in Name, 25 Tabs stay inside, Escape closes, focus back on New tag |
+| PU-line (PU-3) | pass | pass | pass | — |
+| PU-org (PU-4) | pass | pass | pass | — |
+| FL-box (FL-3) | pass | pass | pass | (P:ready, below) |
+| FL-402 (FL-7) | pass | pass | pass | — |
+| RL-list (RL-1) | pass | pass | pass | pass: the first row reached by Tab; Enter opens Docs on test-Deploy checklist |
+| EM-daily (EM-2 body) | pass (`ev-em-daily-1440-dark`) | pass | pass | — |
+| EM-settings (EM-17) | pass | pass | pass | pass (EM-17) |
+| LG-terms / LG-privacy | pass | pass | pass | — |
+
+### § 7 Motion (`document.getAnimations()`, running ones, right after the act; reduced = emulated `prefers-reduced-motion`)
+
+| id | surface | expected | actual | result |
+|---|---|---|---|---|
+| MO-1 | Org settings › AI, `#org/general` → `#org/ai` | the tab bar's switch, not a page re-entrance | the indicator slides (`cnpy-tabs-ind` transform / width), nothing else — identical to the Members tab (control) | pass |
+| MO-2 | toggling Auto mode | the page morphs, no re-entrance | only the switch's own transitions and the toast | pass |
+| MO-3 | skeleton → content (slow read) | skeleton pulse, then one short fade | `cnpy-skel-in` + `cnpy-skel-pulse`, then `cnpy-settle` (240 ms) — identical to Members / Tags | pass |
+| MO-4 | reduced | nothing moves | none at every step | pass |
+| MO-5 | Tags (Sift cell) via the tab bar | as MO-1 | as MO-1 | pass |
+| MO-6 | the What is sent popover (a rerender) | no replay | the popover's own `cnpy-pop` only | pass |
+| MO-7 | New tag modal | keyframe in / out, no replay while typing | `cnpy-cm-in` / `cnpy-cm-fade`; typing: none; Escape: `cnpy-cm-out` with `data-closing` | pass |
+| MO-8 | reduced | nothing moves | no keyframes (only colour transitions on hover) | pass |
+| MO-13 | the reading list after Claim | rises in once | **nothing animated** — the list popped in | **fail → fixed** (3b80ae8f): rises with `.cnpy-flash`; a repaint 15 ms later joins the same animation (traced: `cnpy-rise:running` across both repaints) |
+| MO-14 | a later rerender (Copy as prompt) | no replay | none on the list | pass |
+| MO-15 | reduced | nothing moves | none | pass |
+| MO-40 | Settings › Email notifications switch | no re-entrance | the switch's transitions and the toast | pass |
+| MO-41 | reduced | nothing moves | none | pass |
 
 **Owner rulings, verified:**
 - *The org switch covers every AI feature, PR and issue summaries included; off = no model call, no summary written,
@@ -230,6 +291,13 @@ The daily cron was fired at the real New York hour (send_hour set to it); weekly
   deletes the files you attached in Ask Trov and did not publish."; › deletion "…the files you attached in Ask Trov and
   did not publish to the organization…". — pass.
 
+## Pre-existing (same on main; recorded, not fixed)
+
+- **P-1** (EV-SF-cell-K): Tags › Sift's switch is `disabled` while its write is out (`tags.ts`, `ui.aiBusy`), so Space
+  drops the keyboard's focus to `<body>`. The same line is on main. The fix would be the one made for Org settings › AI
+  (daab320d) — the owner's call whether to extend it.
+- **B-1**: `PUBLIC_ORIGIN=http://localhost:<port>` 301s every GET to https (above).
+
 ## Findings that are not failures
 
 - **F-1** (FL-6): the AI routes' own codes (`off`, `no_key`, `unreadable`) have no line in `shared/error-hints.ts`, so
@@ -239,4 +307,16 @@ The daily cron was fired at the real New York hour (send_hour set to it); weekly
 
 ## Questions (spec silent or the matrix and the spec disagree — not guessed)
 
-(see the end of the report; this list is completed at the final pass)
+| case | question | what I'd expect, and why |
+|---|---|---|
+| EM-3 (Q32/Q43) | With the switch OFF, the daily still draws "Also" from importance ratings made earlier (matrix expected none). | Keep it: the Privacy draft says earlier ratings still count with the switch off, and nothing new is sent. But the matrix and the code disagree, so the owner decides. |
+| EM-6 (Q45) | The Sprint line is not in the default daily — `roadmap_plan` defaults to weekly (as on main); spec Phase E lists "Sprint: …" among the daily's queue lines. | Default `roadmap_plan` to daily, since the spec's daily shows it; it is a default every member gets, so not changed here. |
+| FL-23 (Q3) | After a hand change, the "Filtered: …" line and Undo stay, describing filters that no longer hold. | Clear the line (and Undo) on any hand change. |
+| FL-25 (Q2) | The filter's error stays while the person types. | Clear it on input (the code's own comment says so). |
+| OA-15 (Q10) | A canceled plan: eligibility `capped`, no "Used up" line, so Org settings › AI says nothing about why. | One line: "This organization's Pro plan has ended, so Trov's AI is paused until it is renewed." |
+| PU-2 (Q7) | No Anthropic key hides the Sift figures too. | Show Sift on its own key. |
+| SF-15 (Q9) | Find items says "Suggestions are off" when the ORG switch is the cause. | Name Org settings › AI, as the Sift cell does. |
+| RL-3 (Q12) | The reading list is gone after a reload. | As built ("never stored") — fine, but say so to the owner. |
+| OA-1 (screen copy) | Org settings › AI's What is sent now mirrors the Privacy Policy's AI rows (0a8519eb), four of which are still DRAFT there. | Approve both together; the new screen lines carry no DRAFT marker. |
+| F-1 | No `hint` for the AI routes' own codes (`off`, `no_key`, `unreadable`). | Add hints, e.g. off: "This organization's AI switch is off (Org settings › AI): nothing was sent. An admin can turn it on." |
+| matrix | The reference shots `ai-screens-shots/org-ai-*` show the pre-Phase-A page (one allowance, one switch). | Replace them with this run's `oa-p*` shots. |
