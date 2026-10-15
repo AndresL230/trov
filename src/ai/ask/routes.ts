@@ -346,9 +346,12 @@ async function converse(c: C, v: Conversation): Promise<void> {
   const compacted = await maybeCompact(env, ctx, thread, earlier, askDeps.fetchImpl);
   const { messages: history, actionsNote } = await buildHistory(ctx, compacted, earlier, nonce);
   const ctxViews = (qc.context ?? []).length ? await resolveViews(ctx, handle, qc.context ?? [], nowDate()) : new Map();
+  // An attachment the model can't take (too large, or no room left in this request) is stored but not read: the
+  // model is told, and the person sees a notice (the turn's first activity lines).
+  const files = await attachmentBlocks(ctx, env.ARTIFACTS_BUCKET, handle, attachments, nonce);
   const user = [
     ...(actionsNote ? [{ type: "text" as const, text: actionsNote }] : []),
-    ...(await attachmentBlocks(ctx, env.ARTIFACTS_BUCKET, handle, attachments, nonce)),
+    ...files.blocks,
     ...(ctxViews.size ? [{ type: "text" as const, text: fence(nonce, "Items the person attached as context", JSON.stringify([...ctxViews.values()])) }] : []),
     ...(qc.command && qc.command !== "search" ? [{ type: "text" as const, text: COMMAND_NOTE[qc.command as Exclude<AskCommand, "search">] }] : []),
     { type: "text" as const, text: qc.text || "(no text)" },
@@ -364,7 +367,7 @@ async function converse(c: C, v: Conversation): Promise<void> {
       orgName: org?.name ?? "this organization", orgSlug, handle, role: ctx.role, mode,
       today: nowDate().toISOString().slice(0, 10), instructions: v.settings.instructions, autoMode: auto,
     }),
-    history, user, seen, autoMode: auto, autoAllowed: v.st.chatAuto, nonce, emit: v.emit, signal: v.signal,
+    history, user, seen, autoMode: auto, autoAllowed: v.st.chatAuto, nonce, emit: v.emit, signal: v.signal, notices: files.notices,
     fetchImpl: askDeps.fetchImpl, now: nowMs,
   });
   await meterBy(p, ctx.orgId, handle, [[METRIC_AI_TOKENS_IN, out.tokens.in], [METRIC_AI_TOKENS_OUT, out.tokens.out], [METRIC_AI_TOKENS_CACHED, out.tokens.cached]]);

@@ -58,9 +58,13 @@ export const ASK_ATTACH_FILES_MAX = 5;
 export const ASK_ATTACH_BYTES_MAX = 10 * 1024 * 1024;
 /** A text attachment goes to the model inline up to this many characters; past it, the first part and "truncated". */
 export const ASK_ATTACH_TEXT_INLINE_MAX = 60_000;
-/** The largest image the Messages API takes (5 MB per image): a larger one is stored, and the model is told it
- *  could not view it. */
-export const ASK_MODEL_IMAGE_MAX = 5 * 1024 * 1024;
+/** The Messages API's own per-image limits on the Claude API, which Trov calls directly (platform.claude.com ›
+ *  Vision › Request limits; the pinned SDK documents only `transformations.oversized_image`, which DOWNSIZES an image
+ *  over the model's viewing size by default — these two are hard limits): 10 MB per image, base64-encoded (taken as
+ *  decimal megabytes, the safe reading), and 8000 px on either side. An image past either is stored, the model is
+ *  told it could not view it, and the person sees a notice (docs/architecture/ask.md › Attachments). */
+export const ASK_MODEL_IMAGE_B64_MAX = 10_000_000;
+export const ASK_MODEL_IMAGE_PX_MAX = 8000;
 /** What one request may carry to the model in files, base64 included (the API's request cap is 32 MB). */
 export const ASK_MODEL_FILES_MAX = 20 * 1024 * 1024;
 export const ASK_INSTRUCTIONS_MAX = 500;
