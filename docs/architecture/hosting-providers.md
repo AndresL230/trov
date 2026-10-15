@@ -1,6 +1,6 @@
 # Hosting providers
 
-One interface for every host (#97–#102; `shared/hosting.ts`, `src/hosting/`, `0056_hosting_providers`).
+One interface for every host (#97–#102; `shared/hosting.ts`, `src/hosting/`, `0057_hosting_providers`).
 
 The Repo dashboard was built around one stack (a Cloudflare Worker frontend, a Railway backend). It now reads any
 host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free — the SPA imports its vocabularies):
@@ -29,7 +29,7 @@ host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free �
   offered. Pasting a token over an install supersedes it (`supersedeConnection`).
 - **Part** — one deployable of one environment, with a ROLE: `web` (requests, 5xx errors, latency, bandwidth) or
   `service` (CPU, memory). EVERY part, whoever hosts it, is an `org_environment_parts` row — Cloudflare and Railway
-  exactly like the rest (0056 moved the environment's old `worker` / `railway_*` columns into parts keyed `frontend` /
+  exactly like the rest (0057 moved the environment's old `worker` / `railway_*` columns into parts keyed `frontend` /
   `backend`, renamed their `cf_*` / `rw_*` history to `hx_*`, and dropped the columns). `src/hosting/parts.ts` is
   the read side and is reachable from src/mcp.ts (the projection), so it — like `types.ts`, `http.ts`, `registry.ts`
   and `providers/*` — must never import src/data/secrets.ts (`http.ts` carries this layer's own `scrub`).
@@ -84,7 +84,7 @@ cookie itself and ALWAYS redirects — never JSON, never a 500: nobody signed in
 `/<slug>/?hosting=<outcome>&provider=<id>#org/hosting` (`/?hosting=<outcome>` when the intent cannot be read), the outcome one of `HOSTING_CONNECT_OUTCOMES` (`shared/hosting.ts`) — never provider text.
 It binds only for that browser's intent, that provider, the same person, still an admin (re-checked live), after the
 code exchange through `hostFetch`; an installation ANOTHER org holds is `taken` (a platform read,
-`connectionsForExternalId` in `src/platform/jobs.ts`, and 0056's partial unique index on the active
+`connectionsForExternalId` in `src/platform/jobs.ts`, and 0057's partial unique index on the active
 `(provider, external_id)` at the write — the row, the credential and the config are ONE batch, so a lost race stores
 nothing). **A DIFFERENT live install / OAuth grant is REPLACED** — the GitHub App's rule since #110
 (`github-app.md` step 6): `bindConnection(…, replaced)` overwrites the row in the same batch and audits the end
@@ -134,7 +134,7 @@ matched narrowly (a false "Detected" is worse than none):
   the slug of the GitHub App that posted it: `vercel`, `netlify`, `cloudflare-workers-and-pages` (also a details
   link to the host, or a name only that host uses — `netlify/…`, `Workers Builds: …`, `Vercel …`);
 - **deployments** — GitHub `deployment_status` deliveries are NOT captured any more (an environment's deploys come
-  from its provider); rows captured before 0056, with the creator's login (`railway-app[bot]`, `render[bot]`,
+  from its provider); rows captured before 0057, with the creator's login (`railway-app[bot]`, `render[bot]`,
   `vercel[bot]`) and log link, still count while inside the window.
 
 So it is exactly as good as that capture: Vercel, Netlify and Cloudflare Workers Builds are seen as soon as GitHub

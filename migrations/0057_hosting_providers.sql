@@ -1,4 +1,4 @@
--- 0056_hosting_providers — hosting providers behind one interface (issues #97–#102).
+-- 0057_hosting_providers — hosting providers behind one interface (issues #97–#102).
 --
 -- Every host is a provider behind ONE interface — Cloudflare and Railway exactly like the rest. Section 6
 -- moves an environment's Cloudflare frontend and Railway backend out of `org_environments`' own columns into
@@ -28,7 +28,7 @@
 --
 -- Normalised metric POINTS need no table: they are `repo_metrics` rows named `hx_<metric>` (env = the
 -- environment key, part = the part key), pruned with the other hourly usage metrics (src/repo/store.ts).
--- Rollback: scripts/hosting/0056_hosting_providers.down.sql (run it BEFORE 0042's own rollback).
+-- Rollback: scripts/hosting/0057_hosting_providers.down.sql (run it BEFORE 0042's own rollback).
 
 -- ── 1. org_secrets: the kind CHECK admits the hosting providers ──────────────
 PRAGMA defer_foreign_keys = true;

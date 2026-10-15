@@ -144,7 +144,7 @@ of them is also in `ORG_TABLES` (`src/deletion/tables.ts`), what an organization
   `org_admin_audit` — an org's place on the platform, written by `src/orgs`, `src/platform`, `src/data/meter.ts`.
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.
 - **Global tables** (no `org_id`): `persons`, `identities`, `sessions`, `invites`, `oauth_clients`,
-  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags` (since 0056 only the STARTER tags' names: nothing reads it, an org's tags are `org_tags`),
+  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags` (since 0057 only the STARTER tags' names: nothing reads it, an org's tags are `org_tags`),
   and `org_grants`, `platform_outbox_bodies` (0044_plans — a grant is about a person before any org exists;
   its `used_org` is deliberately not named `org_id`), and `support_reports` (0049 — a person's report to the
   operator; the org it was sent from is `from_org`, for the same reason: `support.md`). An org's plan is columns on `orgs` (`plans.md`).
@@ -191,7 +191,7 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 | `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture` (incl. `hosting_deploys`), `pruneSyncRuns`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
 | `src/platform/jobs.ts` (`org_repos`, `org_environments`, `org_github_installations`, `org_github_installation_repos`, `org_hosting_connections`) | the cron's unit lists, the webhook's hook lookup, the GitHub App's lookups before any org is known, or past one (`installationOrgs`, `installationRepoOrgs` — 0053: which orgs an installation serves, and which of them a repository's delivery goes to), and a hosting provider's installation → org lookup (`connectionsForExternalId`: the uninstall notice, and the connect callback's one-org-per-installation check) — ids, an environment key and a repo name |
 | `src/platform/repo.ts` `listPlatformOrgs` (`org_github_installations`) | the superadmin's org list: the GitHub account an org's installation is on — a name |
-| `src/platform/jobs.ts` `listPartUnits` (`org_environment_parts`) | the `hosting` job's units (0056): env / part keys and a provider id — the part's settings are re-read by the unit as its org's tenant |
+| `src/platform/jobs.ts` `listPartUnits` (`org_environment_parts`) | the `hosting` job's units (0057): env / part keys and a provider id — the part's settings are re-read by the unit as its org's tenant |
 | `src/auth/tokens.ts` `resolveToken`; `src/auth/oauth.ts` `resolveOAuthAccessToken`, `exchangeAuthorizationCode`, `refreshAccessToken`, `revokeOAuthToken`, `grantRefusal`, `GRANT_STANDING` | credential lookup by HASH before any org is known (the row names the grant), its standing over the orgs it can reach, and the revoke of the one grant just found |
 | `src/auth/oauth.ts` `listGrants`, `revokeGrant`, `ownGrant`, `setGrantMode` | Connected apps is user-level: a person's own grants across their orgs, keyed by id AND person |
 | `src/auth/oauth.ts` `issueRepoAuthorization` | a grant that follows the repository is the person's and no org's: written with `org_id` '' |

@@ -140,7 +140,7 @@ export async function removeRepo(ctx: TenantContext, id: string): Promise<string
 const ENV_COLS = `key, position, label, note, branch, frontend_url, api_url, health_path, created_at, updated_at, updated_by`;
 const ENV_KEY = /^[a-z0-9_-]{1,32}$/; // the organizations migration's CHECK
 /** The integrations whose scope is an environment key. (A per-environment Railway PROJECT token from
- *  before 0056_hosting_providers is not one: it is unread, and stays until the org is deleted.) */
+ *  before 0057_hosting_providers is not one: it is unread, and stays until the org is deleted.) */
 const ENV_SECRET_KINDS: readonly IntegrationKind[] = ["metrics_endpoint"];
 
 export const listEnvironments = (ctx: TenantContext): Promise<OrgEnvironmentDTO[]> =>
@@ -258,7 +258,7 @@ export async function reorderEnvironments(ctx: TenantContext, order: unknown): P
 }
 
 /** Delete an environment, its `metrics_endpoint` secret and close the gap in the order — one batch
- *  (admin+, §8.7.3). Its hosting parts (0056_hosting_providers) go in the same batch, with each one's
+ *  (admin+, §8.7.3). Its hosting parts (0057_hosting_providers) go in the same batch, with each one's
  *  last-poll row and deploy history: they describe a deployable of an environment that no longer exists.
  *  Returns the audit targets of the secrets removed with it. */
 export async function deleteEnvironment(ctx: TenantContext, key: string): Promise<string[]> {

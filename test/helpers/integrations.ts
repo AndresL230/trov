@@ -4,7 +4,7 @@ import { cookieFor } from "./persons";
 import { ensureMember, ORG_A } from "./tenant";
 
 /** The repo + two environments 0042_organizations gives SaplingLearn, and the Cloudflare frontend / Railway backend
- *  parts 0056_hosting_providers made of their old columns (the per-test reset clears them all). */
+ *  parts 0057_hosting_providers made of their old columns (the per-test reset clears them all). */
 export const HOOK_A = "hook_saplinglearn_sapling";
 export async function seedOrgSettings(orgId: string = ORG_A, hookId: string = HOOK_A): Promise<void> {
   const at = "2026-10-06T00:00:00.000Z";

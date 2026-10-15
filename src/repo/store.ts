@@ -12,7 +12,7 @@ export const FAST_KINDS = ["check"];
 export const FAST_RETENTION_DAYS = 45;
 /** Hourly usage series — the active-user gauges (`active_users_*`) and the
  *  hosting providers' normalised points (`hx_*`, shared/hosting.ts — one per
- *  part per metric per complete hour; 0056_hosting_providers renamed the legacy
+ *  part per metric per complete hour; 0057_hosting_providers renamed the legacy
  *  `cf_*` / `rw_*` rows into them). The Usage tab reads 30 days at most, so
  *  100 days is ample; unbounded, two environments add ~35,000 rows a year. GLOB,
  *  not LIKE: in LIKE `_` is itself a wildcard (`hx_%` would also match `hxy…`),
@@ -44,7 +44,7 @@ export const PRODUCT_GLOB_SQL = `metric GLOB ${globLiteral(PRODUCT_METRIC_GLOB)}
 export const PRODUCT_HOURLY_RETENTION_DAYS = 7;
 export const PRODUCT_DAILY_RETENTION_DAYS = 100;
 export const MIDNIGHT_TAIL = "T00:00:00.000Z";
-/** `hosting_deploys` rows (0056_hosting_providers) older than this — by the provider's own creation
+/** `hosting_deploys` rows (0057_hosting_providers) older than this — by the provider's own creation
  *  instant — are pruned. The dashboard reads 90 days of them (`hostingReads`); the rest is margin for the
  *  setup screen and for an agent asking what shipped last quarter. A deploy row is an UPSERT, not a point:
  *  a provider moves its state, so it is never first-write-wins and never in `repo_metrics`. */
@@ -284,7 +284,7 @@ export async function latestHealth(ctx: TenantContext): Promise<Map<string, { at
   return new Map(rows.map((r) => [`${r.metric}:${r.env}:${r.part}`, { at: r.at, value: r.value }]));
 }
 
-// ── hosting providers (0056_hosting_providers) ───────────────────────────────
+// ── hosting providers (0057_hosting_providers) ───────────────────────────────
 
 /** One `hosting_poll_state` row, as the dashboard reads it. `covered_*` is the contiguous interval the
  *  part's polls have looked at; `unavailable` is the JSON list the last successful poll reported. */

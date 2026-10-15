@@ -1027,7 +1027,7 @@ describe("repoView — product metrics", () => {
     const both = repoView(props({ tab: "usage", repo: { status: "ok", data: { ...others, providers: NC, usage: NC } } }));
     expect(both).toContain("Sections marked");
     expect(both).not.toContain("data-nc-quiet");
-    // A payload from before 0056 still carrying the old `cloudflare` / `hosting` keys: the tab no longer names
+    // A payload from before 0057 still carrying the old `cloudflare` / `hosting` keys: the tab no longer names
     // them, so they cannot put the footer up.
     const stale = repoView(props({ tab: "usage", repo: { status: "ok", data: { ...others, cloudflare: NC, hosting: NC } as RepoDashboard } }));
     expect(stale).not.toContain("Sections marked");

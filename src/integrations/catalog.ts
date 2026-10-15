@@ -102,7 +102,7 @@ interface Slot { kind: IntegrationKind; scope: string; scope_label: string | nul
 /** The org's expected (kind, scope) slots, in page order, then any stored secret none of them claims. A hosting
  *  provider's org-wide credential is expected once a part (src/hosting/parts.ts) uses that provider — never for
  *  an org that does not. A stored secret whose scope its kind cannot have (a per-environment Railway project
- *  token from before 0056_hosting_providers — unread, and not addressable by the routes) is left out. */
+ *  token from before 0057_hosting_providers — unread, and not addressable by the routes) is left out. */
 async function slots(ctx: TenantContext, origin: string, secrets: SecretMeta[]): Promise<Slot[]> {
   const [repos, envs, parts] = [await listRepoRows(ctx), await listEnvironments(ctx), await listAllParts(ctx)];
   const used = new Set(parts.map((p) => p.provider));

@@ -51,11 +51,11 @@ describe("GET /integrations", () => {
     expect(body.integrations.map((i) => i.kind)).toEqual(["github_token"]);
   });
 
-  it("a per-environment Railway project token stored before 0056 is neither listed nor addressable", async () => {
+  it("a per-environment Railway project token stored before 0057 is neither listed nor addressable", async () => {
     await seedOrgSettings();
     const me = await ownerCookie();
     await call(me, "/integrations/metrics_endpoint/staging", { method: "PUT", body: { secret: TOKEN } });
-    // What 0056 left behind: a `railway` row scoped to an environment key (nothing reads it).
+    // What 0057 left behind: a `railway` row scoped to an environment key (nothing reads it).
     await env.DB.prepare(`INSERT INTO org_secrets (org_id, kind, scope, ciphertext, iv, key_version, hint_last4, created_by, created_at)
       SELECT org_id, 'railway', 'staging', ciphertext, iv, key_version, hint_last4, created_by, created_at FROM org_secrets WHERE kind = 'metrics_endpoint'`).run();
     const body = await json<IntegrationsListDTO>(await call(me, "/integrations"));

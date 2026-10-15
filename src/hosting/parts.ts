@@ -1,5 +1,5 @@
 // An environment's PARTS (#97: "an environment has a list of parts (web, api, worker…), each pointing at
-// a provider and its settings, instead of fixed columns"): `org_environment_parts` (0056_hosting_providers),
+// a provider and its settings, instead of fixed columns"): `org_environment_parts` (0057_hosting_providers),
 // one row per part, whoever hosts it — Cloudflare and Railway exactly like every other provider.
 //
 // This module reads D1 through the tenant surface only and imports nothing from src/data/secrets.ts: the

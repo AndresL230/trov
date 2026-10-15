@@ -143,7 +143,7 @@ rows it edits in Org settings, and neither var is in `wrangler.toml` any more. T
 types: the parser `repoEnvironments()` (`src/repo/config.ts`) is called by the SaplingLearn-era test suites
 to seed those rows. The shape it parsed is the shape of an `org_environments` row (`RepoEnvConfig`): `key`,
 `label`, `note`, `branch`, `frontendUrl`, `apiUrl`, `healthPath` (the Cloudflare / Railway names it once held
-are hosting parts since 0056 — `hosting-providers.md`; a stale `REPO_ENVIRONMENTS` carrying them is parsed and
+are hosting parts since 0057 — `hosting-providers.md`; a stale `REPO_ENVIRONMENTS` carrying them is parsed and
 the extra keys dropped). What the order of an organization's environments means, and which capture reads which
 field, is `repo-dashboard.md`.
 

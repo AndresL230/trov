@@ -74,7 +74,7 @@ export default defineConfig({
           CF_ANALYTICS_TOKEN: "",
           CF_ANALYTICS_ACCOUNT_ID: "",
           SAPLING_METRICS_TOKEN: "",
-          // The hosting integrations' client credentials (0056_hosting_providers): blank, so a local .dev.vars
+          // The hosting integrations' client credentials (0057_hosting_providers): blank, so a local .dev.vars
           // never makes "Connect with Vercel / Netlify" available in a test that did not ask for it.
           VERCEL_INTEGRATION_CLIENT_ID: "",
           VERCEL_INTEGRATION_CLIENT_SECRET: "",

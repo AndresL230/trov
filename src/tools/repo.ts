@@ -918,7 +918,7 @@ export async function getRepoDashboard(
   // settings and label are not in the environments this function is handed) and `hostingReads` — every
   // part's last poll, the newest deploys and the org's provider settings in ONE statement — feed the cards,
   // the deploy strips, the Usage compare and the `providers` section alike. They fail ALONE: a throw there
-  // (a database without 0056 yet, say) costs what they feed — no parts on the cards, `deploys` and
+  // (a database without 0057 yet, say) costs what they feed — no parts on the cards, `deploys` and
   // `providers` not_connected, and the dashboard says it is `degraded` — never every other section with it.
   // Batched on purpose: ONE branch-head read and ONE check read covering the environment heads AND the
   // listed PRs' heads together. N environments cost the same round-trips as one.

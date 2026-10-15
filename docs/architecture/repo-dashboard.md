@@ -106,7 +106,7 @@ on. An org with no environment and no primary repository has no unit and costs n
   rides the same unit: `reconcileCost`; logs `failed` when non-empty); `:30` `pruneRepoCapture` + `pruneOAuth`
   (D1 only, cross-org). `:10` and `:20` skip, without a word, an org with no primary repository or no GitHub
   credential; `:30` and the pings run regardless.
-- **`:40`, every hour** — the `hosting` job (0056; `hosting-providers.md`): one unit per (org, environment, part)
+- **`:40`, every hour** — the `hosting` job (0057; `hosting-providers.md`): one unit per (org, environment, part)
   from `listPartUnits` — Cloudflare and Railway parts included — each costing its provider's `pollCost` (≤ 6),
   served by rotation like the others; health keeps half the budget on this tick only when some org has a part.
   With no part anywhere `:40` has no heavy job and is a plain health tick (below).
@@ -413,7 +413,7 @@ metrics); an `ok` outcome's `detail` (dropped product keys) and a `failed` outco
 both shown.
 
 **A host's usage is a hosting provider's** (`hosting-providers.md`): the legacy `pollCloudflare` /
-`pollRailway` (and the `cf_polled` coverage snapshot they kept) are gone with 0056, whose rows became
+`pollRailway` (and the `cf_polled` coverage snapshot they kept) are gone with 0057, whose rows became
 `hx_requests` / `hx_errors` / `hx_cpu` / `hx_mem_mb`; a Cloudflare or Railway part's covered interval is its
 `hosting_poll_state` row like any other part's.
 

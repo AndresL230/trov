@@ -350,7 +350,7 @@ describe("MCP get_repo_dashboard — never an MCP error, never a secret", () => 
       for (const cfg of configured) {
         for (const field of NEVER_IN_DTO) {
           const value = cfg[field];
-          // The environment no longer stores these (0056 moved them into parts); a var that still lists one
+          // The environment no longer stores these (0057 moved them into parts); a var that still lists one
           // must not leak it either.
           if (typeof value !== "string" || !value) continue;
           // Production's Worker is literally named "frontend" — also the DTO's own

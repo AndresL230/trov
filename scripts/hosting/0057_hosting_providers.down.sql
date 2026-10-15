@@ -1,6 +1,6 @@
--- Rollback of migrations/0056_hosting_providers.sql. Run it BEFORE scripts/mt/rollback/0042_organizations.down.sql.
+-- Rollback of migrations/0057_hosting_providers.sql. Run it BEFORE scripts/mt/rollback/0042_organizations.down.sql.
 -- The hosting tables go; org_secrets is rebuilt back to the five kinds 0042 admitted, and any hosting
--- credential stored since 0056 is DROPPED with it (their parts and connections go too — nothing reads them).
+-- credential stored since 0057 is DROPPED with it (their parts and connections go too — nothing reads them).
 -- Section 6 first: the five org_environments columns come back, filled from the Cloudflare / Railway parts
 -- (the first of each per environment — the columns hold one), and the metric history gets its old names.
 ALTER TABLE org_environments ADD COLUMN railway_env TEXT NOT NULL DEFAULT '';
@@ -52,4 +52,4 @@ DROP TABLE org_secrets;
 ALTER TABLE org_secrets_old RENAME TO org_secrets;
 PRAGMA defer_foreign_keys = false;
 
-DELETE FROM d1_migrations WHERE name = '0056_hosting_providers.sql';
+DELETE FROM d1_migrations WHERE name = '0057_hosting_providers.sql';

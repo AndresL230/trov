@@ -183,9 +183,9 @@
   `shared/ai-fixtures.ts`. Migration `0055_ai` (`orgs.ai_automation`, the switch, and
   `ai_suggestions`, `ai_feedback`); the monthly `ai_runs` allowance is in `PLANS`
   (not listed on the pricing page yet).
-  Then `0056_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
+  Then `0057_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
   `hosting_poll_state`, and `org_secrets` REBUILT only to widen its kind CHECK to the five hosting kinds; rollback
-  `scripts/hosting/0056_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.
+  `scripts/hosting/0057_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,

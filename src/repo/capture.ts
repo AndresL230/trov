@@ -207,7 +207,7 @@ export function metricsFromStatus(payload: unknown, envs: RepoEnvConfig[]): Stat
 
 /** A `deployment_status` is no longer captured: an environment's deploys come from its hosting
  *  provider (src/hosting/, `hosting_deploys`), not from GitHub deployments matched to a configured
- *  environment name. Rows captured before 0056 (`kind = 'deploy'`) stay as they are. */
+ *  environment name. Rows captured before 0057 (`kind = 'deploy'`) stay as they are. */
 export function repoEventsFromDelivery(eventName: string, payload: unknown): RepoEvent[] {
   const p = obj(payload);
   if (!p) return [];
