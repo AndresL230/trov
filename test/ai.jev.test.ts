@@ -33,9 +33,9 @@ const LIVE = {
 };
 
 describe("providerFor: one table from a kind to its provider", () => {
-  it("tag.fit is Jev's; the summaries, the plain-language filter, the brief and Ask Trov are Claude's; no key → null", () => {
+  it("tag.fit and feed.importance are Jev's; the summaries, the plain-language filter, the brief and Ask Trov are Claude's; no key → null", () => {
     expect(KIND_PROVIDER).toEqual({
-      summary_pr: "claude", summary_issue: "claude", "tag.fit": "jev", filter: "claude", "brief.person": "claude",
+      summary_pr: "claude", summary_issue: "claude", "tag.fit": "jev", filter: "claude", "brief.person": "claude", "feed.importance": "jev",
       // Ask Trov (Phase F): one kind per mode, and the compaction of a long thread.
       "ask.fast": "claude", "ask.smart": "claude", "ask.thinking": "claude", "ask.compact": "claude",
     });

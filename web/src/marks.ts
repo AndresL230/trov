@@ -25,6 +25,7 @@ import type { HandoffStatus } from "@shared/handoffs";
 import type { ArtifactStatus } from "@shared/artifacts-core";
 import { tagLineParts, type TagColor } from "@shared/tags-core";
 import { TROV_MARK_PATH } from "@shared/mark";
+import type { FeedImportance } from "@shared/ai-core";
 
 /** `label` and `tip` arrive escaped. */
 const svg = (size: number, body: string, label: string | null, color: string, viewBox = "0 0 14 14", tip: string | null = null): string =>
@@ -203,6 +204,20 @@ export const ARTIFACT_MARK: Record<ArtifactStatus, { word: string; tone: string;
 export function artifactStatusMark(status: ArtifactStatus, size = 12): string {
   const m = ARTIFACT_MARK[status];
   return stateMark(m.word, m.tone, m.shape, size, m.hint);
+}
+
+// ── how much it matters (feed.importance) ────────────────────────────────────
+
+/** Sift's rating of a feed entry (0060, `feed.importance`): notable is a quiet accent dot, breaking an amber
+ *  triangle (a warning). Routine — the normal state — and an unrated entry draw NOTHING. The ONE table. */
+export const IMPORTANCE_MARK: Record<Exclude<FeedImportance, "routine">, { word: string; tone: string; shape: MarkShape; hint: string }> = {
+  notable: { word: "Notable", tone: "var(--accent)", shape: "dot", hint: "Sift rates this worth knowing about: a new feature or a visible change. A rating, not official." },
+  breaking: { word: "Breaking", tone: "var(--amber)", shape: "triangle", hint: "Sift rates this a breaking change: something people or agents rely on works differently now. A rating, not official." },
+};
+/** The mark for a rating, or "" for routine and for none. */
+export function importanceMark(i: FeedImportance | null | undefined, size = 12): string {
+  const m = i && i !== "routine" ? IMPORTANCE_MARK[i] : undefined;
+  return m ? stateMark(m.word, m.tone, m.shape, size, m.hint) : "";
 }
 
 // ── who wrote it ─────────────────────────────────────────────────────────────

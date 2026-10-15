@@ -1,5 +1,6 @@
 import type { DocRow, DocMetaRow, DocVersionRow, FeedRow, AdrRow, NeedsTriageRow, SprintRow, PlanRow, EventRow, IdentityTaskRow, TicketRow, TicketLinkRow, TicketCommentRow, TicketEventRow } from "@shared/rows";
 import { tagsOfItems } from "./tags";
+import { isFeedImportance, type FeedImportance } from "@shared/ai-core";
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
@@ -83,7 +84,14 @@ export async function get_feed(ctx: TenantContext, filter: FeedFilter = {}): Pro
   );
   // Each entry's tags, in one more read (chunked): the Feed and an agent both see what an entry is about.
   const tags = await tagsOfItems(ctx, "feed", rows.map((r) => String(r.id)));
-  return rows.map((r) => ({ ...r, tags: tags.get(String(r.id)) ?? [] }));
+  return rows.map((r) => ({ ...withImportance(r), tags: tags.get(String(r.id)) ?? [] }));
+}
+
+/** A feed row as a read returns it: `importance` (0060) only when Sift rated it — a NULL column is LEFT OUT, so an
+ *  unrated entry reads exactly as it did before the column existed (never a guessed `routine`). */
+export function withImportance<R extends { importance?: unknown }>(row: R): Omit<R, "importance"> & { importance?: FeedImportance } {
+  const { importance, ...rest } = row;
+  return isFeedImportance(importance) ? { ...rest, importance } : rest;
 }
 
 // NOTE: the old flat-LIKE search_context was replaced by query() (below) — one

@@ -1,0 +1,320 @@
+{
+  "kind": "feed.importance",
+  "about": "Real items with the expected rating. Feed entries come from Andres's Personal Dev org (trov-dev) through the Trov MCP read tools; PRs from this repository (gh pr list --state merged), sent as a PR with no capture-time summary is (its title and a scrubbed excerpt of its body). The requests are built by the job's own pure builders (src/ai/importance.ts feedImportanceText / prImportanceText).",
+  "result": {
+    "run": "2026-10-15, live against jev-1.13.0 (scripts/ai-evals/run-live.ts), prompt jev-importance-1",
+    "threshold": 0.7,
+    "byThreshold": {
+      "0": "25 stored, 20 right (80%)",
+      "0.5": "21 stored, 20 right (95%)",
+      "0.6": "21 stored, 20 right (95%)",
+      "0.7": "18 stored, 18 right (100%)",
+      "0.8": "16 stored, 16 right (100%)",
+      "0.9": "10 stored, 10 right (100%)"
+    },
+    "why": "0.7 is the lowest threshold at which every stored rating was right: 18 of 25 items rated, 7 left unknown (NULL). The misses below it were PRs whose text alone could not settle notable vs breaking (#111, #27, #42) or polish Jev called notable (#184, #130).",
+    "earlierPrompt": "The first wording (no line about handed-off or planned work) rated four handoff notices notable at up to 1.00 confidence: 18 of 25 right overall; the routine criterion now says a note that a task was handed off, planned or started is routine."
+  },
+  "cases": [
+    {
+      "id": "feed-118",
+      "source": "Personal Dev (trov-dev) feed entry #118",
+      "kind": "feed",
+      "row": {
+        "summary": "Status: server-side AI Phase B landed on PR #178 (router, scopes, the pass, batches) plus the plain-language filter",
+        "brief": "Every write now marks what it made stale, and the AI pass has its machinery (debounce, grouping, gates, caching, batches); the plain-language filter works on Tickets, the Feed and Artifacts.",
+        "body": "Handoff #10, Phase B, on ai/screens (PR #178):\n- Router: one event→scope table in `src/tools/ai-route.ts`, rows via `src/data/ai-dirty.ts` (outside `src/ai/` so MCP writers can mark). 19 write paths call it.\n- The pass (`src/ai/pass.ts`, `jobs.ts`): stage order, Jev 1 item/request, Haiku ≤20/call, 12 Haiku + 60 Jev a tick, gates with rule fallbacks, the cached org prefix, section isolation, 3-attempt clearing, the Batch API (`0059_ai_batches`). Registry still empty.\n- Harness counts: 10 pushes + merge → 1 repo call; 25 ticket cards → 25 Jev, 0 Haiku; non-substantive burst → 1 Jev, 0 Haiku. 50 orgs use ~48 subrequests a tick of 900.\n- Plain-language filter (#162): `POST /api/o/:slug/ai/filter`, the screen's own filter schema, names resolve or drop.\n- Ask's `ai_chat` counts questions: Pro 300 per seat, a gifted Pro × members (handoff #12 §2.1, owner's answers).\nNext: Phase C and D."
+      },
+      "expected": "notable",
+      "rationale": "Status of a phase that landed: the router and the AI pass now exist, and the plain-language filter works on three screens."
+    },
+    {
+      "id": "feed-117",
+      "source": "Personal Dev (trov-dev) feed entry #117",
+      "kind": "feed",
+      "row": {
+        "summary": "Repo setups Phase 0: Org settings › Hosting shows one card per provider; old per-environment Railway tokens are leftovers, not connections",
+        "brief": "Fixed the three-Railway-cards bug: one status function for every hosting surface, leftovers shown inside the card with Remove old tokens, and Integrations / Hosting / Environments each own one thing.",
+        "body": "Handoff #11, branch feat/repo-setups (PR #186), merge c9441389.\n\nCause of the bug: 0057 left SaplingLearn's per-environment Railway PROJECT tokens in org_secrets (kind railway, scope = env key) and the connections list drew one card per (provider, scope), so two unread tokens read as Connected while the parts said Not connected.\n\nFix: shared/hosting-status-core.ts `hostingStatus` is the one (provider, org-wide scope) status read by the card, part rows, checklist, lead, Test this part and the Repo dashboard. A scoped credential of an org-wide provider is a leftover: never a card, never counted, labelled \"Project token (no longer used)\", removable as an admin via DELETE /api/o/:slug/hosting/:provider/leftovers (audited hosting.leftovers_removed). Test on an unconnected provider says \"Railway isn't connected.\" with Connect.\n\nOne place for each thing: Integrations = GitHub + non-hosting kinds; Hosting = provider cards (+ a compact Parts list until Phase D); Environments = environments only; the app-metrics token moved into the part editor (storage unchanged).\n\nAlso on the branch: shared/repo-layout-core.ts (the design's decide()/RULES/TABS/group-by moved unchanged, 243 parity cases vs the design module), shared/repo-facts-core.ts (RepoFacts contract), scenarios A–N as RepoFacts fixtures. Migrations 0070–0079 reserved. Verified: typecheck clean, 6289 tests pass.\n\nOps after merge: connect Railway once with a workspace token, then Remove old tokens."
+      },
+      "expected": "notable",
+      "rationale": "A visible fix across the hosting screens (one card per provider) and a reorganized Org settings."
+    },
+    {
+      "id": "feed-116",
+      "source": "Personal Dev (trov-dev) feed entry #116",
+      "kind": "feed",
+      "row": {
+        "summary": "andres left a handoff for andres: #12 Build Ask Trov's frontend from the Claude Design prototype, and fit Phase F to it",
+        "brief": null,
+        "body": "Task: Build the Ask Trov frontend from Andres's Claude Design prototype and amend the Phase F contract to support it, stacked on PR #178"
+      },
+      "expected": "routine",
+      "rationale": "A handoff notice: a task was left for a session; nothing changed yet."
+    },
+    {
+      "id": "feed-115",
+      "source": "Personal Dev (trov-dev) feed entry #115",
+      "kind": "feed",
+      "row": {
+        "summary": "Status: server-side AI Phase A landed on PR #178 (Jev as a provider, Sift under the org switch, ai_chat allowance, Org settings › AI)",
+        "brief": "Trov's AI now has one client with two providers, Sift obeys the org's AI switch, and Org settings › AI shows every AI allowance and both providers.",
+        "body": "Handoff #10, Phase A, on ai/screens (PR #178):\n- `KIND_PROVIDER` in `src/ai/client.ts` maps each kind to `claude` or `jev`; `src/tools/classify.ts` is the Jev provider (noul / choice / score, several questions per request). Only it names TypeSafe's URL.\n- Sift (`src/ai/sift.ts`) runs only while `orgs.ai_automation` and its own `tag.fit` switch are on, checked before every request.\n- `ai_chat` allowance: Free/Personal 50, Pro 500 per paid seat (`PlanDef.perSeat`), Enterprise unlimited; unlisted.\n- Migration `0058_ai_dirty`: `ai_dirty` and `orgs.ai_chat_auto` (0057 went to hosting, #185).\n- Org settings › AI: the switch, four allowances, Ask's Auto switch, what goes to Anthropic and TypeSafe AI.\n- Also merged: the handoff reading list (#167) and main with #185.\nVerified live 2026-10-15: Haiku/Sonnet/Opus 5.5 streaming + tools + caching; Opus extended thinking with `thinking: {type: \"adaptive\"}`; the Batch API; Jev `choice` and `score`. Next: Phase B (router, scopes, the pass)."
+      },
+      "expected": "notable",
+      "rationale": "A phase landed: one AI client with two providers, Sift under the org switch, and a new Org settings › AI."
+    },
+    {
+      "id": "feed-114",
+      "source": "Personal Dev (trov-dev) feed entry #114",
+      "kind": "feed",
+      "row": {
+        "summary": "andres left a handoff for anyone: #11 Build the Repo screen for every repo setup (feat/repo-setups)",
+        "brief": null,
+        "body": "Task: Build the modular Repo screen from the Claude Design prototype on top of #185's hosting model, plus the Org settings fixes"
+      },
+      "expected": "routine",
+      "rationale": "A handoff notice for anyone; nothing changed yet."
+    },
+    {
+      "id": "feed-110",
+      "source": "Personal Dev (trov-dev) feed entry #110",
+      "kind": "feed",
+      "row": {
+        "summary": "andres left a handoff for anyone: #7 Land the hosting providers work on main (Vercel, Render, Netlify, Fly.io; issues #97–#101)",
+        "brief": null,
+        "body": "Task: Bring feat/hosting-screens (PR #107 backend + hosting screens) up to main, renumber its migration to 0056, open PR(s) (`feat/hosting-screens`)"
+      },
+      "expected": "routine",
+      "rationale": "A handoff notice; the work it names has not landed."
+    },
+    {
+      "id": "feed-108",
+      "source": "Personal Dev (trov-dev) feed entry #108",
+      "kind": "feed",
+      "row": {
+        "summary": "Shipped: PR #176 opens — summaries move from Gemini to Claude Haiku 5.5 behind a provider-agnostic client",
+        "brief": "Pull request and issue summaries now go through one model client (Claude Haiku 5.5), the base every later AI feature will use. Same fields and storage, no migration; waits on ANTHROPIC_API_KEY and a merge.",
+        "body": "What: src/ai/client.ts (AiProvider, providerFor(kind) — every kind maps to Claude today; never throws; refusal/max_tokens → null → excerpt) and src/ai/schema.ts (toClaudeSchema strips what structured outputs reject, closes every object). makeGeminiSummarizer → makeClaudeSummarizer; the gemini seam is ai; GEMINI_API_KEY → ANTHROPIC_API_KEY; legal names Anthropic for summaries.\nWhy: handoff #6 wave 1 — one client every AI feature goes through, proved on the one existing model call.\nImpact: src/mcp.ts no longer reaches the model client (progressFromIssueEvent moved to src/tools/progress.ts; test/secrets.mcp.test.ts pins it). Verified: 4882 tests pass, typecheck clean. Haiku 5.5 rejects non-default temperature, so it was dropped; effort low.\nFollow-up: set ANTHROPIC_API_KEY before merging; delete GEMINI_API_KEY once rows show claude-haiku-5-5. Wave 2 (ai/base backend, ai/screens frontend) is stacked on it. SDK pinned at @anthropic-ai/sdk 0.133.0; migrations 0055/0056 reserved for ai/base."
+      },
+      "expected": "breaking",
+      "rationale": "Renames the summaries key (GEMINI_API_KEY → ANTHROPIC_API_KEY): the deploy needs action before it merges."
+    },
+    {
+      "id": "feed-104",
+      "source": "Personal Dev (trov-dev) feed entry #104",
+      "kind": "feed",
+      "row": {
+        "summary": "andres left a handoff for anyone: #3 Performance plan for trov.dev is ready; nothing in it is built yet.",
+        "brief": null,
+        "body": null
+      },
+      "expected": "routine",
+      "rationale": "A handoff notice: a plan is ready, nothing in it is built."
+    },
+    {
+      "id": "feed-103",
+      "source": "Personal Dev (trov-dev) feed entry #103",
+      "kind": "feed",
+      "row": {
+        "summary": "andres left a handoff for andres: #2 Trov after release 0.28: what is live, what is built but not shipped, and what waits on a decision",
+        "brief": null,
+        "body": "Task: Carry Trov on from release 0.28: ship hosting, then pick up the queued issues (`main`)"
+      },
+      "expected": "routine",
+      "rationale": "A handoff notice about carrying on after a release."
+    },
+    {
+      "id": "feed-102",
+      "source": "Personal Dev (trov-dev) feed entry #102",
+      "kind": "feed",
+      "row": {
+        "summary": "andres left a handoff for andres: #1 Update the andresl.dev case study from Canopy to Trov",
+        "brief": null,
+        "body": "Task: Rewrite the `canopy` entry in src/data/projects.ts as Trov (`main`)"
+      },
+      "expected": "routine",
+      "rationale": "A handoff notice about a portfolio page outside the product."
+    },
+    {
+      "id": "pr-111",
+      "source": "AndresL230/trov pull request #111 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 111,
+        "title": "An org's address is /<slug>/ instead of /o/<slug>/",
+        "body": "**A merge deploys to production.** No migration.\n\n## What changes\n- An organization's page is `trov.dev/<slug>/` (was `trov.dev/o/<slug>/`). The screen is still in the hash: `trov.dev/saplinglearn/#feed`.\n- Old links keep working: `GET /o/<slug>/…` is a 301 to `/<slug>/`, query kept (the browser carries the hash across). The client still reads the old form too.\n- The app shell is served only for `/<slug>` and `/<slug>/` where the segment is a valid org slug that is **not reserved**. Nothing deeper is a page.\n- `RESERVED_ORG_SLUGS` (`shared/orgs.ts`) now lists every root route of the Worker and every static page (`feed`, `docs`, `pricing`, `billing`, …), so an org can never shadow one. `test/spa-shell.test.ts` walks `app.routes` and fails if a first path segment is missing from the list.\n- Links Trov writes follow: MCP result URLs, the welcome and digest mail, the GitHub connect return, billing return URLs, the org picker.\n- **Unchanged:** the API stays at `/api/o/:slug`.\n\n## Behaviour to know\n- A signed-out GET for an unknown single segment (`/anything`) now gets the app shell (which shows the landing page or \"not your organization\") instead of a 401.\n- The only production org, `saplinglearn`, is not a reserved name.\n\n## Verified\n- `npm run typecheck` clean; `npm test` 215 files / 4065 tests pass.\n- Against a local `wrangler dev`: `/saplinglearn/` and `/saplinglearn` return the shell; `/o/saplinglearn/` and `/o/saplinglearn/?github=connected` are 301s to the new address with the query; `/pricing`, `/terms` and `/platform` are unchanged.\n\n## Not verified\n- Not clicked through in a browser signed in (the local database is not migrated), and Stripe's return URLs were only checked by the tests.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_01NhtjgnGTEK9qVp1bTwFWuJ\n"
+      },
+      "expected": "breaking",
+      "rationale": "Every organization's address changes from /o/<slug>/ to /<slug>/: links, bookmarks and agent configs move."
+    },
+    {
+      "id": "pr-92",
+      "source": "AndresL230/trov pull request #92 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 92,
+        "title": "Rename Canopy to Trov, with the new logo",
+        "body": "## What this is\n\nThe rename and the new logo, split out of the multitenancy branch (`claude/sharp-hawking-m0jgdp`) so they can ship now. No multitenancy schema or code is in here.\n\n- **Canopy → Trov** across the app, landing page, emails, OAuth consent pages, MCP server name and tool descriptions, README / AGENTS / CLAUDE.md, and `canopy.css` → `trov.css`.\n- **Plugin** moves to `plugins/trov` (0.7.0); the `canopy` skill becomes `trov`.\n- **Tokens**: new ones mint as `trov_mcp_` / `trov_oat_` / `trov_ort_`; `canopy_*` tokens still resolve. Browser `canopy.*` keys move to `trov.*` once at boot.\n- **Email**: every address is `hello@trov.dev`; migration `0041_trov_name` moves the default sender to `Trov <hello@trov.dev>` and leaves an admin-edited one alone.\n- **Terms and Privacy pages** at `/terms` and `/privacy`, linked from the landing footer (the rename commit builds on them).\n- **New logo**: `shared/mark.ts` holds the mark and its two purples (`#616ACB` light, `#8991D7` dark, via a `--mark` token). It replaces the three bars in the sidebar, sign-in, landing, legal and OAuth pages, the tab icon (`favicon.svg`, `favicon.ico` in place of `favicon-32.png`, an apple-touch icon) and the email banner (drawn as table cells, since Gmail strips SVG).\n\nDeliberately not renamed: the `canopy.saplinglearn.com` domain, the Worker / D1 / R2 names, the `canopy/*` commit statuses and user-agents in Sapling's contracts, the stored `tickets.source = 'canopy'`, and the HMAC labels.\n\n## Before merging\n\nMerging deploys to production, and it applies `0041_trov_name`.\n\n- [ ] `trov.dev` is a verified Resend sending domain and `hello@trov.dev` receives mail. Until then every digest, invite and welcome mail would fail.\n- [ ] Everyone reinstalls the plugin afterwards: `/plugin uninstall canopy`, `/plugin marketplace add AndresL230/trov`, `/plugin install trov@trov`, then `/mcp` → trov → Authenticate.\n- [ ] The Get Started guide screenshots still say \"Canopy\" (`scripts/capture-guide.mjs` re-captures them).\n- [ ] Legal pages name the operator as \"Andres Lopez\".\n\nThe migration keeps the number `0041` so the multitenancy branch's `0037`–`0040` do not need renumbering. It only touches `notification_settings.from_address` and does not depend on them.\n\n## Verification\n\n- `npm run typecheck` passes; `npm run build:web` passes.\n- `npm test`: 160 files, 2,699 tests pass. The command still exits 1 because of four unhandled `ArtifactError` rejections from `src/tools/artifacts-agent.ts`; the same four fail CI on the multitenancy branch and the code is untouched here.\n- The mark was rendered in a browser at 96px and 24px in both themes and as the email table grid, and matches the supplied PNG.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_01SHs5YNagMrboyApz5UNR5w"
+      },
+      "expected": "breaking",
+      "rationale": "The product is renamed Canopy → Trov: names, plugin and logo change for everyone."
+    },
+    {
+      "id": "pr-112",
+      "source": "AndresL230/trov pull request #112 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 112,
+        "title": "Plugin 0.7.1: connect to trov.dev/mcp",
+        "body": "The plugin's MCP server still pointed at `https://canopy.saplinglearn.com/mcp`. That address now redirects to trov.dev, so signing in fails with \"Protected resource https://trov.dev… does not match expected https://canopy.saplinglearn.com\".\n\n- `plugins/trov/.mcp.json`: `https://trov.dev/mcp`\n- plugin version 0.7.0 → 0.7.1, homepage `https://trov.dev`\n- the by-hand command in the `trov` skill and README, and an upgrade note in What's new 0.22\n\nNo Worker code changes; a merge still deploys. After merging: `/plugin marketplace update trov`, reinstall or `/reload-plugins`, then `/mcp` → trov → Authenticate.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_01NhtjgnGTEK9qVp1bTwFWuJ"
+      },
+      "expected": "breaking",
+      "rationale": "The plugin now connects to trov.dev/mcp: every agent's MCP URL changes."
+    },
+    {
+      "id": "pr-93",
+      "source": "AndresL230/trov pull request #93 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 93,
+        "title": "Organizations: multi-tenant Trov, superadmin Platform area, org settings and keys",
+        "body": "## What this is\n\nTrov becomes multi-tenant. A platform superadmin can add an organization and name its admin; that admin signs in, invites their team, connects a repository and configures their own keys. Nothing is shared between organizations.\n\nThis branch also contains the rename and logo from #92. Merge #92 first if you want that to ship on its own; this PR then shows only the multitenancy work.\n\n**Do not merge yet.** Merging deploys to production and applies ten migrations, two of which rebuild 20 tables. The owner steps and the open decisions are below and in `HANDOFF.md`.\n\n## What changed\n\n- **Data layer** — every query runs through `src/data/` with an explicit org; a static test (`test/data-layer.static.test.ts`) fails on raw database access anywhere else, and on a tenant statement that does not name its org.\n- **Organizations** — create, switch, invite by GitHub login or e-mail (the invitation is mailed), roles (owner / admin / member), suspension. The app lives at `/o/<slug>/`; old links still open for a person in one org.\n- **Org settings** (admins) — Members, Repositories, Environments, and Integrations: per-org credentials that are envelope-encrypted, write-only, with Test connection, rotation and an audit history. A setup checklist walks a new org's admin through it.\n- **Platform** (superadmin, at `/platform/` and in the sidebar) — add an organization and assign its admin, add another owner, suspend, per-person org limits, superadmins, audit, and usage: sizes, activity and per-day series per org.\n- **MCP** — a token or OAuth connection is bound to one organization; the consent page asks which when a person is in several.\n- **Background work** — cron, digests and webhooks run per org with that org's stored credentials. `POST /webhook/github/:hookId` is the per-repo webhook; the existing `/webhook/github` keeps delivering for SaplingLearn.\n- **Sign-in** — any GitHub account can sign in; Google still needs an invitation matching a provider-verified e-mail. The `ADMIN_LOGINS` allowlist is gone; the org role is the only admin.\n- **Numbers** — tickets and handoffs are addressed by their number within the org, so a new org's first ticket is `#1`. SaplingLearn's numbers equal its existing ids.\n- **Abuse limits** — per-person daily caps on invites, test sends, notification-address changes and avatar uploads; every mail leaves from the platform address with a sanitised org name.\n\nOperator guide: `docs/architecture/organizations.md`. Architecture: `docs/architecture/data-layer.md`, `docs/architecture/abuse-limits.md`. Release notes: 0.18 in `web/src/releases.ts`.\n\n## Before a production deploy — owner steps\n\nThe full ordered list is `HANDOFF.md` › \"OWNER STEPS\". In short:\n\n- [ ] Take a D1 export and note the Time Travel bookmark; run `node scripts/mt/verify-migration.mjs` on the export. It has only been run on a local fixture. If it reports any ticket or handoff whose number differs from its id, stop.\n- [ ] Apply migrations `0037`–`0043`, `0045`, `0046`, `0047` (there is no `0044`).\n- [ ] Set `TROV_KEK` (`openssl rand -base64 32`, then `wrangler secret put TROV_KEK`) and keep a copy. Losing it loses every org's stored credentials.\n- [ ] Confirm the Worker is on Workers Paid: the cron budgets 900 subrequests per run.\n- [ ] Enter SaplingLearn's credentials on Org settings › Integrations. Until then it falls back to the existing Worker secrets.\n- [ ] Everything in #92's checklist (Resend domain for `hello@trov.dev`, plugin reinstall).\n\n## Decisions that are the owner's, not the code's\n\n1. **Mail to strangers.** Once mail is live, any org's admin can have Trov send an invitation to any address, 50 a day per person. `wrangler.toml` has notifications in local mode today.\n2. **Open sign-in.** Identity pinning for existing GitHub identities only takes effect at each member's next sign-in; invites by GitHub login go to whoever holds that login; one Gemini key and one cron budget are shared by every org. See `abuse-limits.md` › Residu"
+      },
+      "expected": "breaking",
+      "rationale": "Multi-tenant organizations: the data model, addresses and settings change underneath everyone."
+    },
+    {
+      "id": "pr-27",
+      "source": "AndresL230/trov pull request #27 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 27,
+        "title": "fix(mywork): PR cards are structured-only — drop the legacy pr_summaries.summary",
+        "body": "## Problem\nOn My Work → **Previous activity**, a PR card rendered a raw **\"Summary\"** excerpt row whenever the capture-time Workers-AI summary fell back to the excerpt (i.e. `what/why/impact` all null — as happened to PR #321). A prose \"Summary\" row is the **issue/todo** surface; PR cards should be **What changed / Why / Impact** only.\n\n## Change — remove `pr.summary` end-to-end\n- **render** (`web/src/render.ts`): `prActivityCard` renders `What changed` / `Why` / `Impact` only. A PR with no structured summary shows a **\"No summary recorded\"** placeholder — the raw excerpt is never rendered.\n- **DTO/query**: drop `summary` from `MyWorkPr` (`shared/dashboard.ts`) and the `getMyWork` PR `SELECT`/mapping (`src/tools/mywork.ts`).\n- **store** (`src/tools/summarize.ts`): `storePrSummary` no longer mirrors `what`→`summary`; a PR's excerpt fallback is now a **content-less marker** row (`model='excerpt'`, null structured columns) that Sync retries.\n- **schema**: `0019_drop_pr_summary.sql` drops the (NOT NULL) `pr_summaries.summary` column. `issue_summaries` is untouched — **issues keep their prose summary**.\n- **seed + tests + CLAUDE.md** updated.\n\n## Verification\n- `npm run typecheck` clean · `npm run build:web` clean\n- Full suite green: **53 files / 418 tests** (migration 0019 applies cleanly in the test D1).\n\n## ⚠️ Deploy ordering\n`pr_summaries.summary` is still `NOT NULL` in prod and the new INSERT omits it, so apply the migration **before** deploying:\n```\nnpm run db:migrate:remote   # applies 0019 (deploy does NOT auto-apply remote migrations)\nnpm run deploy\n```\n\n<sub>🤖 Generated with [Claude Code](https://claude.com/claude-code)</sub>\n\n<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\n\n## Summary by CodeRabbit\n\n* **New Features**\n  * PR activity now uses structured summary fields, with a clearer “What changed” display on cards.\n  * When no PR summary is available, users now see a “No summary recorded for this PR.” placeholder.\n\n* **Bug Fixes**\n  * Dashboard and My Work views now consistently show the updated PR summary content.\n  * Legacy prose summary fallbacks for PRs were removed, reducing mismatches between stored data and displayed content.\n\n<!-- end of auto-generated comment: release notes by coderabbit.ai -->"
+      },
+      "expected": "breaking",
+      "rationale": "Drops the legacy pr_summaries.summary column: a data migration that removes a column readers used."
+    },
+    {
+      "id": "pr-179",
+      "source": "AndresL230/trov pull request #179 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 179,
+        "title": "Tags of your own, sorted by Sift",
+        "body": "One tag list per organization, and Sift (automatic tagging on TypeSafe AI's model) to find the existing items that fit a tag.\n\n**What it adds**\n- Org settings › Tags: one list per org (six starters, add / rename / merge / retire / restore, a colour and a one-line description each), one even row per tag, edited in place; New tag opens a short form; agents' unknown tags wait at the bottom as Suggested rows with Approve.\n- Sift: when an admin adds a tag (or presses Find items) it checks the org's items and ADDS the tag at 85% or more, SUGGESTS it at 60–85% (the tag page's To review tab: Add tag / Dismiss, any member), with a live progress bar and Undo. Off until an admin turns it on; metered by `jev_checks`.\n- One tag's page (`#tags/<name>`): a bento of fixed-size tiles sized to the window — docs, decisions, the feed, activity, who tagged it, who writes about it, often seen with.\n- The gate reads the org's list: an agent's unknown tag becomes a suggestion instead of holding the entry in Unplaced. MCP `list_tags`; plugin 0.8.2.\n- Setup checklist: no separate GitHub token step (Connect a repository is the GitHub step).\n- Limits (owner's numbers): tags 30 / 50 / unlimited; Sift checks 1,000 / 10,000 / unlimited. Terms and Privacy name TypeSafe AI (approved, dated 2026-10-14).\n\n**Deploy**\n- Migration `0056_org_tags` (already applied to production by the branch push; pre-check `SELECT tag, COUNT(*) FROM entry_tags WHERE tag NOT IN (SELECT tag FROM tags) GROUP BY tag` returned no rows).\n- After the merge: `wrangler secret put TYPESAFE_API_KEY` (until then the Tags tab says no key is set and nothing is sent).\n\nTests: `npm test` (260 files, 5,055 tests) and `npm run typecheck` pass.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_01BGZfhyh6K2isDLcrm1xogr\n"
+      },
+      "expected": "notable",
+      "rationale": "A new feature: each org's own tag list, with Sift tagging existing items."
+    },
+    {
+      "id": "pr-136",
+      "source": "AndresL230/trov pull request #136 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 136,
+        "title": "Embedded checkout: pay for Pro inside Trov (off by default)",
+        "body": "Buying Pro can happen on a Trov page, in the same bannered card as the rest of signing up, instead of on Stripe's hosted page. **It ships switched off**: nothing changes for a buyer until `STRIPE_PUBLISHABLE_KEY` is set.\n\n## What it adds\n\n- `/billing/checkout`: Stripe's embedded form mounted in the first-run card, then on to the existing \"Payment received\" step. The webhook is still the only thing that fulfils a purchase.\n- One switch, `BillingConfig.embedded`: on only when `STRIPE_PUBLISHABLE_KEY` is a `pk_…` key whose mode matches the secret key's and the API base is real Stripe. Empty (the default) or mismatched means the hosted redirect, exactly as today.\n- A reload resumes the same session; a paid one goes to the confirmation; an expired one offers to start again.\n- If Stripe.js cannot load, the page says so and offers the hosted checkout for the same purchase.\n- Stripe.js is loaded from `js.stripe.com` on that page only.\n- Upstream error text is scrubbed of client secrets before it is logged.\n\nNo migration, no new secret, no cron change.\n\n## Not verified against real Stripe\n\nEverything in a browser ran against a local fake of Stripe.js. Only a real test can show: that the form mounts with a real key at the pinned API version (`2024-06-20`), how it fits the card in light, dark and at phone width, 3-D Secure and the real return, and that Stripe accepts the adjustable seat count and tax parameters on an embedded session. Stripe's API reference lists no restriction on them and confirms `ui_mode: \"embedded\"`, `return_url`, and that `success_url` / `cancel_url` are not allowed.\n\n**Before turning it on:** follow \"First real test\" in `docs/architecture/billing.md` (Stripe test mode, your own keys in `.dev.vars`, `stripe listen` for the webhook).\n\n## To turn it on, later\n\nPaste the publishable key into `wrangler.toml` `[vars]` as `STRIPE_PUBLISHABLE_KEY` and merge. To turn it off, empty it.\n\n## Tests\n\n`npm test` 229 files / 4,567 tests and `npm run typecheck` green locally.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_01NhtjgnGTEK9qVp1bTwFWuJ"
+      },
+      "expected": "notable",
+      "rationale": "A new feature: pay for Pro inside Trov (embedded checkout), off by default."
+    },
+    {
+      "id": "pr-69",
+      "source": "AndresL230/trov pull request #69 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 69,
+        "title": "Add Handoffs and the Prompt Library",
+        "body": "Adds **Handoffs** (addressed messages from one session to the next) and the **Prompt Library** (versioned, reusable prompts), end to end: D1 storage, session-cookie routes, MCP tools, Claude Code skills and the SPA screens ported from the Claude Design `Canopy.dc.html` (project `2c8cfa50`). The same port brings a tabbed Maintenance (Unplaced / Identity / People) and a Docs › New doc form.\n\nVerified: `npm run typecheck` clean, `npx vitest run` 123 files / 1787 tests green, `npm run build:web` ok, and the write flows driven in a browser against `wrangler dev` (send → claim → second claim 409 → expire; save prompt → publish; FTS search; handoff → Promote to doc → staged v1 proposal in Review).\n\n## Migration\n- `0028_handoffs_prompts.sql` — `handoffs` (INTEGER id, `context` JSON, inline prompt both-or-neither via CHECK, `expires_at`; indexes `(recipient, status)`, `(sender, created_at)`), `prompts`, `prompt_versions`, and `prompts_fts` (standalone FTS5 like `tickets_fts`, kept at each prompt's latest version by triggers on both tables). **Needs `npm run db:migrate:remote` before deploy.**\n\n## Routes (session cookie, errors are `{ error }`)\n- `GET /api/handoffs?box=mine|me|anyone|sent` → `{ handoffs }`, newest first\n- `GET /api/handoffs/:id` → `{ handoff }`\n- `POST /api/handoffs` `{ recipient?, body, context?, prompt? }` → `{ ok, handoff }` — sender is the principal; recipient `anyone` or a known handle; body ≤ 32 KB; expires in 7 days; writes a feed entry; replay-safe via `processed_items` when the request carries a session id + item index\n- `POST /api/handoffs/:id/claim` `{ session }` → `{ ok, handoff }` or 409 `handoff is <status>` — one conditional `UPDATE … WHERE id=? AND status='pending'` with the permission check in the same statement\n- `POST /api/handoffs/:id/expire` → `{ ok, handoff }` or 409 — sender or recipient only\n- `GET /api/prompts?q=&tags=a,b&sort=updated_desc|updated_asc` → `{ prompts }` (FTS `q`, tags AND)\n- `GET /api/prompts/:slug` → `{ prompt }`, `GET /api/prompts/:slug/versions` → `{ versions }` newest first\n- `POST /api/prompts` `{ slug, base_slug?, title, tags, body, status?, summary? }` → `{ ok, prompt }` — upsert on `base_slug || slug`, always appends a version; humans default to `draft`, may publish and rename\n- `POST /api/prompts/:slug/tags` `{ tags }`, `POST /api/prompts/:slug/publish` `{ version }` (409 `not staged`)\n- `POST /api/docs/propose` `{ title, section, space, body, summary?, slug? }` → `{ ok, proposal }` — through the existing gate (`ingestDocProposal`) as a new v1; an existing slug is 409, an off-vocab section 400\n\nCron: `expireDueHandoffs` runs as its own guarded arm on every `*/10` repo tick (D1 only, no subrequests).\n\n## MCP tools (principal = bearer owner)\n- `send_handoff` — \"Leave a handoff for the next session: where a task stands when you stop mid-way (context running out, switching person, ending the session). Send exactly ONE per session and tell the person its id as #N. `recipient` is a person handle, or omit it for 'anyone' (the first session to claim it gets it). Keep `body` under 300 words — its first line is the title, the rest says where things stand. ALWAYS fill `context` with the fixed shape { repo, branch, task, done[], next[], files[] }: repo from the git remote (owner/name), branch from HEAD, task as one line, done/next as short items, files from `git diff --name-only` against main. Long step-by-step instructions for the claiming session go in `prompt.body` (with a `prompt.title`), not in body. Pass your session id as `session` so a retry does not send twice. Returns { id, url }.\"\n- `list_handoffs` — \"List handoffs waiting for you. With no `box`, returns the PENDING ones left for you ('me') plus open 'anyone' handoffs from other people — call this at session start and tell the person what is waiting; never claim one without asking. box: 'me' (left for you), 'anyone' (open to all, from others), 'mine' (sent by or left for you), 'sent' (what you sent — the only box that incl"
+      },
+      "expected": "notable",
+      "rationale": "A new feature: Handoffs and the Prompt Library."
+    },
+    {
+      "id": "pr-42",
+      "source": "AndresL230/trov pull request #42 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 42,
+        "title": "feat: Google sign-in and person-centric identity",
+        "body": "Brings the Google sign-in / person-centric identity work (PR #41) into `main`. #41 was merged into `feat/email-theme` rather than `main`, so the work has been sitting one branch short of the default branch — and was never deployed. This is that missing hop.\n\n## What lands\n\n- **Identity model (`0023_persons.sql`)** — `persons` / `identities` / `invites`; a person owns N provider identities. `sessions` and `mcp_tokens` repoint from `user` to `person`; `users` and `people` are dropped.\n- **Google provider** — PKCE authorize, code exchange, JWKS-verified ID token; the shared sign-in fork (`completeSignIn`) plus link mode, so a Google identity can attach to an existing person.\n- **Invites** — invite store, admin invite routes, invite email through the existing delivery gate.\n- **Web** — \"Continue with Google\", not-invited card, onboarding screen, Settings › Profile (color, sign-in methods), Maintenance › People, colored person chips, handle text carrying the person's color.\n- **Self-service handle rename** — atomic multi-table rewrite.\n- **Readers/writers** resolve through `identities` + `persons`; `Principal` carries `handle`.\n\n## Also in this PR\n\n- `fix(test): stamp the retry fixture relative to now` — three `retryFailed` tests in `test/notifications.cron.test.ts` were failing. Root cause was not the identity work: the fixture stamped `created_at` with an absolute date (`2026-09-11T12:00Z`) while `retryFailed` bounds rows to `now - 48h`, so from 2026-09-13T12:00Z on the row aged out and the job never saw it. Two sibling tests were also passing vacuously; a mutation check confirms the unsubscribe gate is genuinely covered again.\n- `Merge branch 'main'` — resolves the conflicts with PR #38 (main-pane scroll preservation), which this branch never saw. Union of both tsconfig include/exclude lists (every test importing `web/src` must appear in both), both import groups in `web/src/main.ts`, and `test/render.scroll.test.ts`'s `Me` fixture updated to the persons shape. Verified the scroll fix is intact end to end: `captureScroll`/`restoreScroll` still bracket the `mount.innerHTML = render(state)` swap, and `render.ts` still emits the `id=\"cnpy-main\"` anchor.\n\n## Verification\n\n- `npm test` — 682/683 (the one remaining local failure is the documented `GEMINI_API_KEY`-in-`.dev.vars` leak; 43/43 in `test/summarize.test.ts` with the key absent).\n- `npm run typecheck` — exit 0.\n\n## ⚠️ Merging this IS a production deploy, and the migration must go first\n\nCloudflare Workers Builds is connected to this repo: a push to `main` builds and **deploys production** (the build on merge `2531683` started 2026-09-13T09:18:41Z; a deployment landed at 09:18:37Z — same pairing on `42cb84d`). Feature-branch pushes build but do not touch production.\n\n`0023_persons.sql` is **not yet applied** to the prod D1, and it is not additive: it rebuilds `sessions` / `mcp_tokens` / `notification_outbox_bodies` and **drops `users` and `people`**. So:\n\n- Merge before migrating → the new code goes live against a schema with no `persons` / `identities`: sign-in, sessions and My Work all fail.\n- Migrate before merging → the currently-live Worker loses `users` / `people` and breaks until the new code is live.\n\nEither way there is a short outage window, so run them back to back, off-hours: `npm run db:migrate:remote`, then get the new code live (merging here, or `npm run deploy` from the merged tree for the shortest window). Sessions should survive — 0023 carries `sessions.id` across and handle = old login.\n\n`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` are already set as prod secrets ✅. `ADMIN_LOGINS` becomes `AndresL230,andres` to carry the handle rename.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)"
+      },
+      "expected": "notable",
+      "rationale": "A new capability: Google sign-in and person-centric identity."
+    },
+    {
+      "id": "pr-184",
+      "source": "AndresL230/trov pull request #184 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 184,
+        "title": "To review: a checkmark confirmation when you add or dismiss",
+        "body": "From the owner's review of #182: adding or dismissing one of Sift's suggestions should be confirmed the way every other write is.\n\n- The app's confirmation toast (the checkmark at the bottom) says \"Added latency to “…”\" or \"Dismissed latency for “…”\" the moment you click, while the row slides out. A refusal still brings the row back with the error.\n\nNo migration. Typecheck, the tags and release tests pass.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_01BGZfhyh6K2isDLcrm1xogr\n"
+      },
+      "expected": "routine",
+      "rationale": "Polish: a checkmark confirmation on the review queue."
+    },
+    {
+      "id": "pr-175",
+      "source": "AndresL230/trov pull request #175 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 175,
+        "title": "Landing Docs mocks: the app's tree chevron instead of ▾ / ▸",
+        "body": "## What\n\n- Both landing Docs mocks (the tour and the Explore Docs dialog) drew their tree disclosure with `▾` / `▸` text glyphs. They now use the app's own tree chevron (`docTreeRow`'s `.cnpy-treechev`): a small stroked SVG, muted, accent on the open doc, turned 90° when open. One helper, `treeChev`, in `landing-mocks.ts`.\n- The tour mock's tree titles stay on one line (ellipsis), and its column's side padding is 8px like the dialog mock's, so \"ADR-0012 · Retry budget\" fits instead of wrapping under its chevron.\n\n## Verified\n\n- `tsc -p tsconfig.web.json` clean; `render.landing`, `render.site-feature`, `render.site-mobile`, `render.corners`, `render.marks`, `releases`, `site`, `site-pages` pass.\n- Looked at both mocks on a signed-out `wrangler dev`.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_012945i6D9mjqTN2zEBeSLHP\n"
+      },
+      "expected": "routine",
+      "rationale": "Polish: a chevron in the landing page's mock docs tree."
+    },
+    {
+      "id": "pr-130",
+      "source": "AndresL230/trov pull request #130 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 130,
+        "title": "Emails: fit a phone (the card is fluid, not 680px)",
+        "body": "Every Trov email was 680px wide on a phone. The card was a `width=\"680\"` table; a table is at least as wide as its `width`, so `max-width:100%` never applied and the client scaled the mail down or scrolled it sideways.\n\n- The card is fluid up to 680px (`emailCardOpen`): `width=\"100%\"` with `max-width`. Outlook ignores `max-width`, so it alone gets a fixed-width wrapper through a conditional comment.\n- Under 520px (`EMAIL_MOBILE_CSS`): the page gutter tightens, the banner's faint mark makes room for the headline, and the headline steps down from 25px to 22px. A client that drops `<style>` still gets a card that fits.\n\n## Measured (rendered samples in an iframe)\n| | Before | After |\n|---|---|---|\n| Page width in a 375px viewport | 712px | 375px |\n| Card | 680px | 355px |\n| Elements past the right edge | 40+ | 0 |\n\nSame at 320px. Not seen: a real mail client (Gmail app, Apple Mail, Outlook). No screenshot was possible in this session; the numbers above are from layout measurements.\n\n## Tests\n`npm run typecheck` clean; full suite 4,264 passing before the four width tests were rewritten; those files pass now.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_01NhtjgnGTEK9qVp1bTwFWuJ\n"
+      },
+      "expected": "routine",
+      "rationale": "A layout fix: emails fit a phone."
+    },
+    {
+      "id": "pr-116",
+      "source": "AndresL230/trov pull request #116 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 116,
+        "title": "Landing page: the sample address has no /o/",
+        "body": "The landing page's mock browser bar still showed `trov.dev/o/acme/#review` after #111 dropped the prefix. It now reads `trov.dev/acme/#review`. Code comments that described the old address are updated too; no behaviour changes.\n\nTypecheck and the landing tests pass. A merge deploys.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_01NhtjgnGTEK9qVp1bTwFWuJ"
+      },
+      "expected": "routine",
+      "rationale": "A copy fix on the landing page's sample address."
+    },
+    {
+      "id": "pr-35",
+      "source": "AndresL230/trov pull request #35 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 35,
+        "title": "fix(cron): weekly digest trigger uses SUN,MON (Cloudflare weekdays are 1-7)",
+        "body": "The PR #34 deploy uploaded the Worker but failed on the schedules step: Cloudflare's cron weekdays field accepts `1-7` (1 = Sunday) or `SUN`–`SAT`, never `0`, so `\"0 * * * 0,1\"` was rejected. Switched the weekly candidate trigger to `\"0 * * * SUN,MON\"` in `wrangler.toml`, `src/notifications/cron.ts` and CLAUDE.md. Tests pin the string from `wrangler.toml`.\n\nProduction has already been repaired out of band: migrations 0021/0022 were applied remotely (the merged code needs `users.email`; login was failing until then) and the corrected triggers were pushed with `wrangler triggers deploy`. Merging this makes CI agree with what is live.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nhttps://claude.ai/code/session_01SAudE3dKhPfSL2LPzFMn4S\n"
+      },
+      "expected": "routine",
+      "rationale": "A one-line cron fix (weekday numbering)."
+    },
+    {
+      "id": "pr-13",
+      "source": "AndresL230/trov pull request #13 (merged)",
+      "kind": "pr",
+      "row": {
+        "number": 13,
+        "title": "debug(summarize): temporary console.error on workersAiSummarizer failure",
+        "body": "Diagnosing a production failure mode: the retroactive resync succeeded for 47/146 PRs (real AI, ~16s/call) then started failing every subsequent call instantly (99 PRs in ~7s) — looks like a rate/subrequest/duration limit under sustained load, but the catch block swallows the actual error with no visibility. Logging it to find out, then removing this once identified."
+      },
+      "expected": "routine",
+      "rationale": "A temporary debug log line."
+    }
+  ]
+}

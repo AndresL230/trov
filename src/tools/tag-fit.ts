@@ -168,11 +168,15 @@ export async function fitCandidates(ctx: TenantContext, tag: string, description
   return [...matched, ...more.filter((c) => !held.has(`${c.type}:${c.id}`))].slice(0, Math.max(TOP_UP_TO, matched.length));
 }
 
-/** `NOT EXISTS` clauses: the item does not carry the tag, and no one has said no to it there — a dismissed or open
- *  suggestion, a person's removal of a tag a run had added (`removed`), or an undone run (`undone`). */
+/** The states of an item's suggestion that keep Sift from asking about that tag there again: a person dismissed it, it
+ *  is already waiting for one (`open`), a person took off a tag a run had added (`removed`), or a run was undone
+ *  (`undone`). PERSON OVER AI: what a person said no to is never added or suggested again. */
+const SAID_NO = `('dismissed', 'open', 'removed', 'undone')`;
+
+/** `NOT EXISTS` clauses: the item does not carry the tag, and no one has said no to it there (`SAID_NO`). */
 const notTagged = (type: TagItemType, idExpr: string) =>
   `NOT EXISTS (SELECT 1 FROM entry_tags et WHERE et.org_id = ? AND et.entry_type = '${type}' AND et.entry_id = ${idExpr} AND et.tag = ?)
-   AND NOT EXISTS (SELECT 1 FROM org_tag_suggestions s WHERE s.org_id = ? AND s.entry_type = '${type}' AND s.entry_id = ${idExpr} AND s.tag = ? AND s.state IN ('dismissed', 'open', 'removed', 'undone'))`;
+   AND NOT EXISTS (SELECT 1 FROM org_tag_suggestions s WHERE s.org_id = ? AND s.entry_type = '${type}' AND s.entry_id = ${idExpr} AND s.tag = ? AND s.state IN ${SAID_NO})`;
 const byNewest = (a: FitCandidate, b: FitCandidate): number => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0);
 
 /** The newest feed entries, live docs and decisions of THIS org that are not tagged and not dismissed for it. */
@@ -221,6 +225,153 @@ async function keywordCandidates(ctx: TenantContext, tag: string, q: string): Pr
     ...adrs.map((a) => ({ type: "adr" as const, id: String(a.id), title: cut(a.title), text: excerptOf(a.decision), at: a.created_at, evidence: evidenceOf(a.snip) })),
   ];
   return out.sort(byNewest).slice(0, CANDIDATE_CAP);
+}
+
+// ── the question and the bands: ONE definition for the run and for new items ─
+// Sift asks the same thing two ways: a RUN asks one tag of many existing items (src/ai/sift.ts `continueTagFit`),
+// and the AI pass asks one NEW item about every active tag (src/ai/sift-items.ts, `card:tagfit:<type>:<id>`). Both
+// read the question, the bands and the write from here, so they can never drift apart.
+
+/** Sift's yes/no question about one tag (Jev `noul`: `instructions` + what yes and no mean). */
+export function fitQuestion(tag: string, description: string): { instructions: string; criteria: { true: string; false: string } } {
+  return {
+    instructions: `Is this item about the tag "${tag}"${description ? ` (${description})` : ""}? Say yes only when the item is clearly about it.`,
+    criteria: {
+      true: `The item is about ${tag}${description ? `: ${description}` : ""}.`,
+      false: `The item is not about ${tag}, or only mentions it in passing.`,
+    },
+  };
+}
+
+/** The two bands (the owner's numbers): a "fits" at `FIT_APPLY` or more ADDS the tag; from `FIT_SUGGEST` up to it,
+ *  the tag is SUGGESTED; below — or a "does not fit" — nothing. */
+export function fitBand(fits: boolean, confidence: number): "add" | "suggest" | null {
+  if (!fits || !Number.isFinite(confidence)) return null;
+  if (confidence >= FIT_APPLY) return "add";
+  return confidence >= FIT_SUGGEST ? "suggest" : null;
+}
+
+/** One judgement to store: the item, the tag, how sure Jev was that it FITS, the reason (Trov's own evidence —
+ *  never model text; null = the score, said as such), the model and prompt version, and the run it belongs to. */
+export interface FitVerdict {
+  type: TagItemType; id: string; tag: string;
+  fits: boolean; confidence: number; reason: string | null; model: string; promptVersion: string; runId: number;
+}
+
+/**
+ * Store one judgement by its band — the ONE writer of Sift's results:
+ *   • `add`: the `entry_tags` row AND its provenance (`source = 'model'`, `accepted`, `resolved_by = 'jev'`, the run)
+ *     in ONE batch, the provenance written only when the tag was not already there — what Undo removes;
+ *   • `suggest`: an `open` model row for a person to add or dismiss (`settleFitSuggestion`);
+ *   • otherwise nothing.
+ * Returns what it did (`added` only when the tag was really added).
+ */
+export async function storeFit(ctx: TenantContext, v: FitVerdict): Promise<"added" | "suggested" | null> {
+  const band = fitBand(v.fits, v.confidence);
+  if (!band) return null;
+  const reason = v.reason ?? scoreReason(v.confidence);
+  const at = nowIso();
+  if (band === "suggest") {
+    await run(ctx,
+      `INSERT OR IGNORE INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, confidence, reason, model, prompt_version, suggested_by, suggested_at, state, run_id)
+       VALUES (?, ?, ?, ?, 'model', ?, ?, ?, ?, 'system', ?, 'open', ?)`,
+      ctx.orgId, v.type, v.id, v.tag, v.confidence, reason, v.model, v.promptVersion, at, v.runId);
+    return "suggested";
+  }
+  const [tagged] = await batch(ctx, [
+    stmt(ctx, `INSERT OR IGNORE INTO entry_tags (org_id, tag, entry_type, entry_id) VALUES (?, ?, ?, ?)`, ctx.orgId, v.tag, v.type, v.id),
+    stmt(ctx,
+      `INSERT INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, confidence, reason, model, prompt_version, suggested_by, suggested_at,
+                                        state, resolved_to, resolved_at, resolved_by, run_id)
+       SELECT ?, ?, ?, ?, 'model', ?, ?, ?, ?, 'system', ?, 'accepted', ?, ?, '${JEV_ACTOR}', ? WHERE changes() > 0`,
+      ctx.orgId, v.type, v.id, v.tag, v.confidence, reason, v.model, v.promptVersion, at, v.tag, at, v.runId),
+  ]);
+  return (tagged.meta.changes ?? 0) > 0 ? "added" : null;
+}
+
+// ── a NEW item (Sift on new items: the AI pass's `tag.fit` job, src/ai/sift-items.ts) ──
+
+/** The most tags one new item is asked about in its ONE request (Jev answered 60 `noul` questions in one request,
+ *  live, 2026-10-15). With more active tags, those whose words the item's text matches go first, then by name. */
+export const NEW_ITEM_TAGS_MAX = 60;
+
+/** A tag a new item may be asked about, and Trov's evidence for it there (null = none: the score is the reason). */
+export interface ItemFitTag { name: string; description: string; evidence: string | null }
+/** What the new-item job sends and what it may write: the item's title and excerpt (cut and scrubbed exactly as a
+ *  run's candidates are), the tags to ask about, and how many more tags the item may carry (`ITEM_TAGS_MAX`). */
+export interface ItemFitInput { type: TagItemType; id: string; title: string; text: string; tags: ItemFitTag[]; room: number }
+
+const ITEM_ROW: Record<TagItemType, string> = {
+  feed: `SELECT summary AS title, COALESCE(brief, body) AS text FROM feed WHERE org_id = ? AND CAST(id AS TEXT) = ?`,
+  doc: `SELECT title, body AS text FROM docs WHERE org_id = ? AND slug = ? AND current_version > 0`,
+  adr: `SELECT title, decision AS text FROM adrs WHERE org_id = ? AND CAST(id AS TEXT) = ? AND status != 'rejected'`,
+};
+/** The FTS snippet of the item's text around the tag's words — the same evidence a run shows (`evidenceOf`). */
+const ITEM_SNIPPET: Record<TagItemType, string> = {
+  feed: `SELECT snippet(feed_fts, -1, ${SNIP}) AS snip FROM feed_fts WHERE feed_fts MATCH ? AND feed_fts.org_id = ? AND feed_fts.feed_id = ? LIMIT 1`,
+  doc: `SELECT snippet(docs_fts, -1, ${SNIP}) AS snip FROM docs_fts WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND docs_fts.slug = ? LIMIT 1`,
+  adr: `SELECT snippet(adrs_fts, -1, ${SNIP}) AS snip FROM adrs_fts WHERE adrs_fts MATCH ? AND adrs_fts.org_id = ? AND adrs_fts.adr_id = ? LIMIT 1`,
+};
+
+/**
+ * A new item's input, without the model: the item (a live doc, a feed entry, a decision that was not rejected) and
+ * every ACTIVE tag (not retired) that it does not carry and that nobody said no to on it (`SAID_NO` — person over AI),
+ * each with its evidence from the org's own full-text index. null = nothing to ask: the item is gone or not taggable
+ * (an artifact cannot carry tags yet), it already carries `ITEM_TAGS_MAX`, or no tag is left to ask about.
+ */
+export async function itemFitInput(ctx: TenantContext, type: string, id: string): Promise<ItemFitInput | null> {
+  if (!isTagItemType(type) || !id) return null;
+  const o = ctx.orgId;
+  const item = await first<{ title: string | null; text: string | null }>(ctx, ITEM_ROW[type], o, id);
+  if (!item) return null;
+  const held = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM entry_tags WHERE org_id = ? AND entry_type = ? AND entry_id = ?`, o, type, id);
+  const room = ITEM_TAGS_MAX - Number(held?.n ?? 0);
+  if (room <= 0) return null;
+  const tags = await all<{ name: string; description: string }>(ctx,
+    `SELECT t.name, t.description FROM org_tags t
+      WHERE t.org_id = ? AND t.retired_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM entry_tags et WHERE et.org_id = ? AND et.entry_type = ? AND et.entry_id = ? AND et.tag = t.name)
+        AND NOT EXISTS (SELECT 1 FROM org_tag_suggestions s WHERE s.org_id = ? AND s.entry_type = ? AND s.entry_id = ? AND s.tag = t.name AND s.state IN ${SAID_NO})
+      ORDER BY t.name`, o, o, type, id, o, type, id);
+  if (!tags.length) return null;
+  // Each tag's evidence in ONE batch: the snippet around its words, where the item's text has them.
+  const asked = tags.map((t) => ({ ...t, q: fitQuery(t.name, t.description) }));
+  const withQ = asked.filter((t): t is typeof t & { q: string } => t.q !== null);
+  const snips = withQ.length ? await batch<{ snip: string | null }>(ctx, withQ.map((t) => stmt(ctx, ITEM_SNIPPET[type], t.q, o, id))) : [];
+  const evidence = new Map(withQ.map((t, k) => {
+    const row = snips[k]?.results?.[0];
+    return [t.name, row ? evidenceOf(row.snip) : null] as const;
+  }));
+  const out: ItemFitTag[] = asked.map((t) => ({ name: t.name, description: t.description, evidence: evidence.get(t.name) ?? null }));
+  // Matched tags first, so a cut keeps the likeliest.
+  out.sort((a, b) => Number(b.evidence !== null) - Number(a.evidence !== null) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return {
+    type, id,
+    title: excerptOf(item.title ?? "", TITLE_MAX),
+    text: excerptOf(item.text),
+    tags: out.slice(0, NEW_ITEM_TAGS_MAX),
+    room,
+  };
+}
+
+/**
+ * Record ONE tag's result for a new item as a RUN of that tag (`org_tag_runs`, already `done`: one item checked), so
+ * the Tags tab shows it as the tag's latest run and its Undo (`undoTagFit`) takes exactly what it added, like any
+ * run's. Written only for a tag that got a band; one `tag.fit` audit row per run (counts only). Returns what was done.
+ */
+export async function storeNewItemFit(ctx: TenantContext, v: Omit<FitVerdict, "runId">): Promise<"added" | "suggested" | null> {
+  if (!fitBand(v.fits, v.confidence)) return null;
+  const at = nowIso();
+  const res = await run(ctx,
+    `INSERT INTO org_tag_runs (org_id, tag, status, started_by, started_at, ended_at, candidates, calls, checked, added) VALUES (?, ?, 'done', ?, ?, ?, 1, 1, 1, 0)`,
+    ctx.orgId, v.tag, ctx.userId, at, at);
+  const runId = Number(res.meta.last_row_id);
+  const did = await storeFit(ctx, { ...v, runId });
+  await batch(ctx, [
+    stmt(ctx, `UPDATE org_tag_runs SET added = ? WHERE org_id = ? AND id = ?`, did === "added" ? 1 : 0, ctx.orgId, runId),
+    fitAuditStmt(ctx, "tag.fit", v.tag, { run: runId, status: "done", item: `${v.type}:${v.id}`, candidates: 1, calls: 1, added: did === "added" ? 1 : 0, suggested: did === "suggested" ? 1 : 0 }, at),
+  ]);
+  return did;
 }
 
 // ── the result, and the way back ─────────────────────────────────────────────

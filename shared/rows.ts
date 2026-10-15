@@ -7,7 +7,7 @@ export type {
   TicketRow, TicketAssigneeRow, TicketLinkRow, TicketCommentRow, TicketEventRow,
   TicketCategory, TicketPriority, TicketStatus, TicketLinkKind,
 } from "./tickets";
-import type { AiFeedMeta } from "./ai-core";
+import type { AiFeedMeta, FeedImportance } from "./ai-core";
 
 // Sprints (the table 0025_sprints.sql renamed in place) are defined ONCE, as Zod
 // schemas in shared/sprints.ts, and re-exported here for the same reason.
@@ -70,6 +70,9 @@ export interface FeedRow {
   tags?: string[];
   /** Set only on an entry written by Trov (shared/ai-core.ts); absent on every agent entry. */
   ai?: AiFeedMeta;
+  /** How much it matters, as Sift rated it (0060, `feed.importance`): a computed fact. ABSENT when unknown (the
+   *  column is NULL) — `get_feed` drops a NULL, so a read without a rating is exactly what it was before. */
+  importance?: FeedImportance;
 }
 
 export interface AdrRow {

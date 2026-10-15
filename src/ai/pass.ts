@@ -48,12 +48,16 @@ import { groupOf, takes, validJob, customIdOf, type AiJob, type ClaudeJob, type 
 import { orgPrefix } from "./prefix";
 import { collectBatches, submitBatches, AI_BATCH_PER_TICK, type QueuedRequest } from "./batches";
 import { briefJob } from "./brief";
+import { TAG_FIT_ITEM_JOB } from "./sift-items";
+import { IMPORTANCE_JOBS } from "./importance";
 
 export type { AiJob } from "./jobs";
 
-/** THE registry: the producers Phases C and D register, one line each. */
+/** THE registry: one line per kind (Phases C and D). */
 export const AI_JOBS: readonly AiJob[] = [
   briefJob, // person:<handle> — My Work's brief (Phase D)
+  TAG_FIT_ITEM_JOB, // tag.fit — Sift on new items (card:tagfit:*)
+  ...IMPORTANCE_JOBS, // feed.importance — card:feed:*, card:pr:*
 ];
 
 /** Haiku calls one tick may make, across every org. */
