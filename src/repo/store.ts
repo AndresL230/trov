@@ -10,6 +10,10 @@ export const DAY = 86_400_000;
 export const FAST_METRICS = ["health_up", "health_ms"];
 export const FAST_KINDS = ["check"];
 export const FAST_RETENTION_DAYS = 45;
+/** GitHub deploy signals (repo setups, Phase A): `deploy` rows captured UNTAGGED (`env IS NULL`) — deployments,
+ *  deployment statuses and non-`canopy/*` commit statuses (src/repo/capture.ts). They feed detection (a 90-day
+ *  window, src/hosting/detect.ts), the `github` provider's parts and the commit join; 90 days is all of that. */
+export const DEPLOY_SIGNAL_RETENTION_DAYS = 90;
 /** Hourly usage series — the active-user gauges (`active_users_*`) and the
  *  hosting providers' normalised points (`hx_*`, shared/hosting.ts — one per
  *  part per metric per complete hour; 0057_hosting_providers renamed the legacy

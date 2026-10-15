@@ -7,7 +7,7 @@
 // src/data/meter.ts.)
 import { type PlatformContext, run, ph } from "../data/platform-sql";
 import {
-  DAY, FAST_KINDS, FAST_METRICS, FAST_RETENTION_DAYS, HOSTING_DEPLOY_RETENTION_DAYS, MIDNIGHT_TAIL, PRODUCT_DAILY_RETENTION_DAYS,
+  DAY, DEPLOY_SIGNAL_RETENTION_DAYS, FAST_KINDS, FAST_METRICS, FAST_RETENTION_DAYS, HOSTING_DEPLOY_RETENTION_DAYS, MIDNIGHT_TAIL, PRODUCT_DAILY_RETENTION_DAYS,
   PRODUCT_GLOB_SQL, PRODUCT_HOURLY_RETENTION_DAYS, USAGE_GLOB_SQL, USAGE_RETENTION_DAYS,
 } from "../repo/store";
 import { SYNC_RUN_RETENTION_DAYS } from "@shared/sync";
@@ -45,6 +45,11 @@ export async function pruneRepoCapture(p: PlatformContext, now: number): Promise
   // DEPLOY record and must be kept forever like `deploy` rows, or the
   // frontend dot strip would age out asymmetrically from the backend's.
   await run(p, `DELETE FROM repo_events WHERE kind IN (${ph(FAST_KINDS.length)}) AND part IS NULL AND occurred_at < ?`, ...FAST_KINDS, cutoff);
+  // GitHub deploy signals (repo setups, Phase A): deployments and non-`canopy/*` statuses, captured UNTAGGED
+  // (`env IS NULL`) — 90 days, the detection window. A `deploy` row tagged with an environment (captured
+  // before 0057) is a deploy record and is kept, as before.
+  await run(p, `DELETE FROM repo_events WHERE kind = 'deploy' AND env IS NULL AND occurred_at < ?`,
+    new Date(now - DEPLOY_SIGNAL_RETENTION_DAYS * DAY).toISOString());
   // The hosting providers' deploy rows, by the provider's own creation instant. `hosting_poll_state` is
   // one row per part — it never grows, so it has no rule.
   await run(p, `DELETE FROM hosting_deploys WHERE created_at < ?`, new Date(now - HOSTING_DEPLOY_RETENTION_DAYS * DAY).toISOString());
