@@ -259,3 +259,39 @@ export function layoutInputOf(f: Pick<RepoFacts, "apps" | "envs" | "parts" | "fo
     found: f.found ? { apps: f.found.apps } : null,
   };
 }
+
+// ── the App menu's narrowing ─────────────────────────────────────────────────
+
+/** The App menu's narrowing — the design's `narrow()` (repo-data.js), one function for the server and the SPA.
+ *  `f` is the repository's UNNARROWED facts (`app: null`).
+ *  - `null` → all apps, unchanged.
+ *  - an app key → that app's parts, previews, not-shipped, out-of-step and attention items; `apps` = [it],
+ *    `allApps` unchanged, `envs` = the environments it has a part in, `connect` kept only if it names the app.
+ *    Like the design, drift, CI, release, week figures and found / unseen are the repository's and stay.
+ *    Attention items with no app (a branch's CI) are dropped, as the design's text filter drops them.
+ *  - `REPO_WIDE` ("files outside every app") → no app rows at all (apps, envs, parts, previews, not-shipped,
+ *    out-of-step, connect empty) and found / unseen null; the PR / CI-level facts (drift, CI, release, week,
+ *    attention items with no app) stay. The design draws the whole repository for it; Trov draws none of the
+ *    apps, so its rule reads `unseen` — the Overview for "Repo-wide only" is the SPA's to draw (Phase C / E).
+ *  - an unknown key → unchanged, as in the design. */
+export function narrowFacts(f: RepoFacts, app: string | null): RepoFacts {
+  if (app === null) return f;
+  if (app === REPO_WIDE) {
+    return {
+      ...f, app: REPO_WIDE, apps: [], envs: [], parts: [], previews: [], notShipped: [], outOfStep: [],
+      attention: f.attention.filter((a) => a.app === null), connect: null, found: null, unseen: null,
+    };
+  }
+  const one = f.allApps.find((a) => a.key === app);
+  if (!one) return f;
+  const parts = f.parts.filter((p) => p.app === app);
+  const envs = f.envs.filter((e) => parts.some((p) => p.env === e.key));
+  return {
+    ...f, app, apps: [one], envs, parts,
+    previews: f.previews.filter((p) => p.app === app),
+    notShipped: f.notShipped.filter((n) => n.app === app),
+    outOfStep: f.outOfStep.filter((o) => o.app === app),
+    attention: f.attention.filter((a) => a.app === app),
+    connect: f.connect && f.connect.apps.includes(app) ? { ...f.connect, apps: [app] } : null,
+  };
+}
