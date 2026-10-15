@@ -28,7 +28,7 @@ export const SIGNAL_LIMIT = 200;
 
 interface SignalRow {
   kind: SeenSignalKind; name: string | null; actor_login: string | null; app: string | null; source: string | null;
-  url: string | null; n: number; last_at: string;
+  url: string | null; n: number; last_at: string; branches: string | null;
 }
 
 const LABELS = Object.fromEntries(HOSTING_PROVIDERS.map((id) => [id, PROVIDERS[id].label])) as Record<HostingProviderId, string>;
@@ -45,6 +45,15 @@ function providerOf(r: SignalRow): HostingProviderId | null {
 
 const fileName = (path: string) => path.replace(/^.*\//, "");
 
+/** A workflow's per-branch run counts, from the statement's JSON object (`{ "<branch>": n }`). */
+function branchCounts(json: string | null): { name: string; count: number }[] {
+  try {
+    const o = JSON.parse(json ?? "{}") as Record<string, unknown>;
+    return Object.entries(o).filter(([, n]) => typeof n === "number" && n > 0).map(([name, n]) => ({ name, count: n as number }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  } catch { return []; }
+}
+
 /** The repository's seen signals — ONE statement (see the header). `[]` for a repository that is not the primary. */
 export async function seenSignals(ctx: TenantContext, repo: string, sinceDays = SIGNAL_WINDOW_DAYS, now: number = Date.now()): Promise<SeenSignal[]> {
   const since = new Date(now - sinceDays * 86_400_000).toISOString();
@@ -52,21 +61,23 @@ export async function seenSignals(ctx: TenantContext, repo: string, sinceDays = 
     WITH primary_repo AS (SELECT lower(repo_full_name) AS r FROM org_repos WHERE org_id = ? ORDER BY is_primary DESC, created_at, id LIMIT 1),
     ev AS (SELECT * FROM repo_events WHERE org_id = ? AND occurred_at >= ? AND lower(?) = (SELECT r FROM primary_repo))
     SELECT 'deployment' AS kind, name, actor_login, NULL AS app, MAX(json_extract(raw, '$.workflow')) AS source, MAX(url) AS url,
-           COUNT(DISTINCT number) AS n, MAX(occurred_at) AS last_at
+           COUNT(DISTINCT number) AS n, MAX(occurred_at) AS last_at, NULL AS branches
       FROM ev WHERE kind = 'deploy' AND COALESCE(json_extract(raw, '$.signal'), 'deployment') = 'deployment' AND name IS NOT NULL
       GROUP BY name, actor_login
     UNION ALL
-    SELECT 'status', name, NULL, NULL, NULL, MAX(url), COUNT(DISTINCT sha), MAX(occurred_at)
+    SELECT 'status', name, NULL, NULL, NULL, MAX(url), COUNT(DISTINCT sha), MAX(occurred_at), NULL
       FROM ev WHERE kind = 'deploy' AND json_extract(raw, '$.signal') = 'status' AND name IS NOT NULL
       GROUP BY name
     UNION ALL
-    SELECT 'check', name, NULL, json_extract(raw, '$.app'), json_extract(raw, '$.app'), MAX(url), COUNT(DISTINCT number), MAX(occurred_at)
+    SELECT 'check', name, NULL, json_extract(raw, '$.app'), json_extract(raw, '$.app'), MAX(url), COUNT(DISTINCT number), MAX(occurred_at), NULL
       FROM ev WHERE kind = 'check' AND name IS NOT NULL AND COALESCE(json_extract(raw, '$.app'), '') <> 'github-actions'
       GROUP BY name, json_extract(raw, '$.app')
     UNION ALL
-    SELECT 'workflow', json_extract(raw, '$.path'), NULL, NULL, json_extract(raw, '$.path'), MAX(url), COUNT(DISTINCT number), MAX(occurred_at)
-      FROM ev WHERE kind = 'run' AND json_extract(raw, '$.path') IS NOT NULL
-      GROUP BY json_extract(raw, '$.path')
+    SELECT 'workflow', w.path, NULL, NULL, w.path, MAX(w.url), COUNT(DISTINCT w.number), MAX(w.occurred_at),
+           (SELECT json_group_object(ref, c) FROM (SELECT ref, COUNT(DISTINCT number) AS c FROM ev e2
+              WHERE e2.kind = 'run' AND json_extract(e2.raw, '$.path') = w.path AND e2.ref IS NOT NULL GROUP BY ref))
+      FROM (SELECT *, json_extract(raw, '$.path') AS path FROM ev WHERE kind = 'run' AND json_extract(raw, '$.path') IS NOT NULL) w
+      GROUP BY w.path
     ORDER BY last_at DESC LIMIT ${SIGNAL_LIMIT}`, ctx.orgId, ctx.orgId, since, repo);
   return rows.filter((r) => r.name).map((r) => ({
     kind: r.kind,
@@ -75,5 +86,6 @@ export async function seenSignals(ctx: TenantContext, repo: string, sinceDays = 
     count: Number(r.n) || 0,
     lastAt: r.last_at,
     source: r.source ?? null,
+    ...(r.kind === "workflow" ? { branches: branchCounts(r.branches) } : {}),
   }));
 }

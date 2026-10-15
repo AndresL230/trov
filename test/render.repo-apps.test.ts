@@ -31,7 +31,7 @@ const SIGNALS: SeenSignal[] = [
   sig("check", "Render – api", "render", 51, 25, "render"),
   sig("deployment", "Production – storefront-admin", "vercel", 8, 2 * 24 * 60),
   sig("status", "Vercel", "vercel", 9, 90),
-  sig("workflow", "eas-build.yml", null, 52, 300, ".github/workflows/eas-build.yml"),
+  { ...sig("workflow", "eas-build.yml", null, 52, 300, ".github/workflows/eas-build.yml"), branches: [{ name: "main", count: 52 }] },
 ];
 const part = (env: string, key: string, provider: HostingProviderId, settings: Record<string, string>, connection: EnvironmentPartDTO["connection"] = "connected"): EnvironmentPartDTO =>
   ({ env, key, label: key, role: "service", provider, settings, position: 0, connection, console_url: null, last_poll: null, updated_at: null, updated_by: null });
@@ -302,11 +302,16 @@ describe("Setup 5 · Add an app by hand", () => {
     expect(html).toMatch(/data-act="orgAppsAddSave"[^>]*>Add app</);
     expect(releaseOptions(d).map((o) => o.label)).toEqual(["Not tracked"]);
     const seen = setup({ tags: { count: 14, latest: { tag: "v1.8.0", at: ago(6 * 24 * 60) } } });
+    // A workflow is offered only on an environment branch it really ran on, with THAT branch's count (e2e A14b):
+    // eas-build.yml ran on main only, so no "on develop" choice is claimed.
     expect(releaseOptions(seen).map((o) => [o.value, o.label])).toEqual([
-      ["tag:v*", "A tag matching v*"], ["workflow:eas-build.yml@develop", "A workflow run of eas-build.yml on develop"],
-      ["workflow:eas-build.yml@main", "A workflow run of eas-build.yml on main"], ["", "Not tracked"],
+      ["tag:v*", "A tag matching v*"], ["workflow:eas-build.yml@main", "A workflow run of eas-build.yml on main"], ["", "Not tracked"],
     ]);
     expect(releaseOptions(seen)[0].hint).toBe("Seen 14 times · latest v1.8.0, 6d ago");
+    expect(releaseOptions(seen)[1].hint).toBe("Seen 52 times in 30 days · it does not say whether it reached its users");
+    // A workflow whose branches are unknown is offered on none (never guessed onto every branch).
+    const noBranches = setup({ signals: [sig("workflow", "eas-build.yml", null, 52, 300, ".github/workflows/eas-build.yml")] });
+    expect(releaseOptions(noBranches).map((o) => o.value)).toEqual([""]);
     // No environment: the run's branch is unknown, so no workflow choice is guessed.
     expect(releaseOptions(setup({ environments: [] })).map((o) => o.value)).toEqual([""]);
     // The key is checked as the server will: taken, or not a key.

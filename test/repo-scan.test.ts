@@ -172,7 +172,7 @@ describe("seen signals", () => {
     const by = (name: string) => s.find((x) => x.name === name);
     expect(by("Production – storefront-web")).toMatchObject({ kind: "deployment", provider: "vercel", count: 3 });
     expect(by("main - storefront-api")).toMatchObject({ kind: "deployment", provider: "render", count: 1 });
-    expect(by("deploy-jobs.yml")).toMatchObject({ kind: "workflow", provider: null, count: 1, source: ".github/workflows/deploy-jobs.yml" });
+    expect(by("deploy-jobs.yml")).toMatchObject({ kind: "workflow", provider: null, count: 1, source: ".github/workflows/deploy-jobs.yml", branches: [{ name: "main", count: 1 }] });
     expect(by("Vercel")).toMatchObject({ kind: "status", provider: "vercel" });
     expect(by("build (web)")).toBeUndefined();
     expect(by("old")).toBeUndefined();

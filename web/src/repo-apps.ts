@@ -170,8 +170,12 @@ export function releaseOptions(d: RepoAppsSetupDTO, current: string | null = nul
     const file = (s.source ?? s.name).replace(/^\.github\/workflows\//, "");
     if (seen.has(file)) continue;
     seen.add(file);
+    // Only on an environment branch the workflow really ran on, with that branch's own count — a run seen on main
+    // says nothing about production (unknown branches: offered on none).
     for (const branch of [...new Set((d.environments ?? []).map((e) => e.branch))]) {
-      out.push({ value: `workflow:${file}@${branch}`, label: `A workflow run of ${file} on ${branch}`, hint: `Seen ${times(s.count)} in ${SIGNAL_WINDOW_DAYS} days · it does not say whether it reached its users` });
+      const ran = s.branches?.find((b) => b.name === branch)?.count ?? 0;
+      if (!ran) continue;
+      out.push({ value: `workflow:${file}@${branch}`, label: `A workflow run of ${file} on ${branch}`, hint: `Seen ${times(ran)} in ${SIGNAL_WINDOW_DAYS} days · it does not say whether it reached its users` });
     }
   }
   if (current && !out.some((o) => o.value === current)) out.push({ value: current, label: releaseWord(current), hint: `Set before · not seen in ${SIGNAL_WINDOW_DAYS} days` });

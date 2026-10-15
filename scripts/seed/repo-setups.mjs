@@ -129,6 +129,11 @@ for (const [branch, head] of [["main", SHA.a], ["production", SHA.c]]) {
 }
 s.push(event({ kind: "pr", number: 318, state: "review", ref: "test-repo-apps", sha: sha("9"), by: "AndresL230", title: "test: Repo screen apps and targets", url: "https://example.test/pr/318", at: 40 * MIN, raw: { action: "opened", base: "main", draft: false, labels: [] } }));
 s.push(event({ kind: "pr", number: 314, state: "merged", ref: "test-quiz-timer", sha: sha("8"), by: "dev-raj", title: "test: Quiz timer drifts when the tab is hidden", url: "https://example.test/pr/314", at: DAY, raw: { action: "closed", base: "main", draft: false, labels: [] } }));
+// Signals for the Apps tab's deploy-signal picker (A13): a Vercel deployment and a deploy workflow seen recently,
+// and one deployment last seen 40 days ago that must NOT be offered (the picker's window is 30 days).
+for (let i = 0; i < 3; i++) s.push(event({ kind: "deploy", sha: SHA.a, ref: SHA.a, number: 8100 + i, state: "success", name: "Production – sapling-docs", by: "vercel[bot]", title: "Deployment has completed", url: "https://example.test/vercel/docs", at: (i + 1) * 5 * HOUR, raw: { signal: "deployment", environment: "Production – sapling-docs" } }));
+s.push(event({ kind: "run", ref: "main", sha: SHA.a, number: 8200, state: "success", name: "Deploy docs", by: "dev-raj", url: "https://example.test/runs/8200", count: 1, at: 3 * HOUR, raw: { event: "push", path: ".github/workflows/deploy-docs.yml" } }));
+s.push(event({ kind: "deploy", sha: SHA.d, ref: SHA.d, number: 8300, state: "success", name: "Preview – stale-thing", by: "vercel[bot]", title: "Deployment has completed", url: "https://example.test/vercel/stale", at: 40 * DAY, raw: { signal: "deployment", environment: "Preview – stale-thing" } }));
 s.push(row("repo_snapshots", { org_id: SAP, kind: "env_heads", json: JSON.stringify({ main: SHA.a, production: SHA.c }), computed_at: ago(20 * MIN) }));
 
 // ── sapling-live: credentials (DUMMY metadata) ──────────────────────────────────────────────────────────────────

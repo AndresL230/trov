@@ -17,6 +17,9 @@ export interface SeenSignal {
   lastAt: string;
   /** For a check run: the posting App's slug; for a workflow: the file. */
   source: string | null;
+  /** A workflow only: the branches its runs ran on, each with its own count — a workflow is offered as a release
+   *  signal on a branch only when it ran there (never one total claimed for every branch). */
+  branches?: { name: string; count: number }[];
 }
 
 /** One piece of evidence behind a suggestion, already a sentence ("from apps/web/vercel.json"). */
