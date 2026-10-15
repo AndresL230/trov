@@ -241,7 +241,7 @@ describe("Org settings › Notifications — preview + test send controls", () =
     const v = sections();
     expect(v).toContain('href="/api/o/acme/notifications/preview?cadence=daily"');
     expect(v).toContain('href="/api/o/acme/notifications/preview?cadence=weekly"');
-    expect(v).toContain('href="/api/o/acme/notifications/preview?cadence=daily&amp;sample=1"');
+    expect(v).toContain('href="/api/o/acme/notifications/preview?sample=index"'); // Phase E: every sample shape
     expect(v).not.toContain('href="/api/notifications/');
     // With no org open the links are inert, never the unprefixed alias.
     setApiOrg(null);

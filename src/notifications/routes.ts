@@ -305,7 +305,7 @@ notificationsApp.post("/test-send", async (c) => {
   const settings = await loadSettings(ctx);
   const window = computeWindow(parsed.data.cadence, new Date(), settings.timezone);
   const kinds = await enabledKinds(ctx);
-  const preset = parsed.data.sample ? sampleSections() : undefined;
+  const preset = parsed.data.sample ? sampleDigest(parsed.data.cadence === "weekly" ? "weekly-ai" : "daily-ai").sections : undefined;
   if (!preset) {
     const probe = await renderSections(ctx, login, kinds, window);
     if (probe.sections.length === 0) return c.json({ error: `nothing to render for ${login} in the ${parsed.data.cadence} window (${window.id}); pass sample:true to send the sample digest` }, 400);

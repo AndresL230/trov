@@ -47,9 +47,22 @@ describe("GET/PUT /api/notifications/prefs", () => {
     const v = (await res.json()) as PrefsView;
     expect(v.email).toBe("me@example.com");
     expect(v.unsubscribed).toBe(false);
-    expect(v.kinds.map((k) => k.id)).toEqual(["my_work", "roadmap_plan", "ticketq"]);
+    expect(v.kinds.map((k) => k.id)).toEqual(["my_work", "week_recap", "roadmap_plan", "ticketq"]);
     expect(v.kinds[0]).toMatchObject({ cadence: "weekly", orgDefault: "daily", inherited: false, allowedCadences: ["daily", "weekly", "off"] });
-    expect(v.kinds[1]).toMatchObject({ cadence: "daily", orgDefault: "daily", inherited: true });
+    expect(v.kinds[2]).toMatchObject({ cadence: "daily", orgDefault: "daily", inherited: true });
+    expect(v.onlyWhenNeeded).toBe(false); // never set
+  });
+
+  it("PUT onlyWhenNeeded saves \"Only when something needs me\" for this org and the caller only; GET reads it back", async () => {
+    const cookie = await cookieFor("u1");
+    let res = await app.request("/api/notifications/prefs", json("PUT", { onlyWhenNeeded: true }, cookie), env);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as PrefsView).onlyWhenNeeded).toBe(true);
+    expect(await all(env.DB, `SELECT org_id, user_id, only_when_needed FROM notification_person_prefs`)).toEqual([{ org_id: "org_saplinglearn", user_id: "u1", only_when_needed: 1 }]);
+    expect(((await (await app.request("/api/notifications/prefs", { headers: { cookie } }, env)).json()) as PrefsView).onlyWhenNeeded).toBe(true);
+    res = await app.request("/api/notifications/prefs", json("PUT", { onlyWhenNeeded: false }, cookie), env);
+    expect(((await res.json()) as PrefsView).onlyWhenNeeded).toBe(false);
+    expect((await app.request("/api/notifications/prefs", json("PUT", { onlyWhenNeeded: "yes" }, cookie), env)).status).toBe(400);
   });
 
   it("PUT writes a valid pref, rejects a cadence outside allowedCadences, and null resets (deletes the row)", async () => {
@@ -109,7 +122,7 @@ describe("GET/PUT /api/notifications/prefs", () => {
     expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'u2'`))!.email).toBe("TAKEN@example.com");
     const free = await put("nobody-has-this@example.com");
     expect(taken).toEqual(free);
-    expect(taken).toMatchObject({ status: 200, keys: ["email", "kinds", "unsubscribed"] });
+    expect(taken).toMatchObject({ status: 200, keys: ["email", "kinds", "onlyWhenNeeded", "unsubscribed"] });
     // The other person's row is theirs, untouched: the address is where mail goes, not who someone is.
     expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'u1'`))!.email).toBe("taken@example.com");
   });
@@ -135,8 +148,8 @@ describe("admin routes: policy, settings, outbox, user email", () => {
     let res = await app.request("/api/notifications/policy", { headers: { cookie } }, env);
     expect(res.status).toBe(200);
     const view = (await res.json()) as { kinds: { id: string; enabled: boolean; default_cadence: string; allowedCadences: string[]; updated_by: string }[] };
-    expect(view.kinds.map((k) => k.id)).toEqual(["my_work", "review_queue", "roadmap_plan", "ticketq"]);
-    expect(view.kinds[2]).toMatchObject({ enabled: true, default_cadence: "weekly" });
+    expect(view.kinds.map((k) => k.id)).toEqual(["my_work", "week_recap", "review_queue", "roadmap_plan", "ticketq"]);
+    expect(view.kinds[3]).toMatchObject({ enabled: true, default_cadence: "weekly" });
 
     res = await app.request("/api/notifications/policy", json("PUT", { kind: "roadmap_plan", enabled: false, default_cadence: "daily" }, cookie), env);
     expect(res.status).toBe(200);
