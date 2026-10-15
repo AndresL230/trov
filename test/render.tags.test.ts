@@ -596,6 +596,19 @@ describe("tags added by Jev, on the Tags tab (the owner's call: no review step)"
   const run = (o: Partial<TagRunDTO> = {}): TagRunDTO => ({ id: 4, status: "done", started_at: "t", ended_at: "t", candidates: 20, checked: 20, added: 7, undone_at: null, ...o });
   const t = (name: string): OrgTagDTO => tag(name, { color: "ochre" });
 
+  it("the switch keeps the keyboard's focus while its write is out: aria-disabled + aria-busy, never disabled (P-1, as switchBtn)", () => {
+    const sw = (html: string) => html.slice(html.indexOf('data-act="tagAiToggle"') - 8, html.indexOf("</button>", html.indexOf('data-act="tagAiToggle"')));
+    const busy = sw(aiSection(ai(), { ...initialTagsUi(), aiBusy: true }));
+    expect(busy).toContain(`aria-disabled="true" aria-busy="true"`);
+    expect(busy).not.toMatch(/\sdisabled[\s>]/);
+    expect(busy).toContain(`aria-label="Tag existing items for a new tag"`);
+    const idle = sw(aiSection(ai(), initialTagsUi()));
+    expect(idle).not.toContain("aria-disabled");
+    expect(idle).not.toMatch(/\sdisabled[\s>]/);
+    // Sift unavailable (no key or the org's switch off) is not a write in flight: the switch is plainly disabled.
+    expect(aiSection(ai({ available: false }), initialTagsUi())).toContain(`<button disabled data-act="tagAiToggle"`);
+  });
+
   it("the switch: OFF by default, one plain sentence on what is sent, to whom, and that the tag is ADDED — with the way back", () => {
     const off = aiSection(ai({ enabled: false }), initialTagsUi());
     expect(off).toContain(`role="switch" aria-checked="false"`);

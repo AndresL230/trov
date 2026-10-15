@@ -147,7 +147,7 @@ export function aiSection(ai: TagAiDTO, ui: TagsUi): string {
   return `<div class="cnpy-tagshead-cell cnpy-tagshead-jev" data-org-group="tag-ai" data-ai="${ai.enabled ? "on" : "off"}">
       <div class="cnpy-tagshead-k" id="org-tags-ai">Sift</div>
       <div class="cnpy-tagshead-jevrow">
-        <span style="flex:none">${switchBtn("tagAiToggle", null, ai.enabled).replace("<button ", `<button aria-label="Tag existing items for a new tag"${ui.aiBusy || !ai.available ? " disabled" : ""} `)}</span>
+        <span style="flex:none">${switchBtn("tagAiToggle", null, ai.enabled, "Tag existing items for a new tag", ui.aiBusy).replace("<button ", `<button${!ai.available ? " disabled" : ""} `)}</span>
         <span class="cnpy-tagshead-v">${ai.enabled ? "Tags existing items" : "Off"}</span>
       </div>
       <div class="cnpy-tagshead-meterwrap"${ai.org && ai.enabled && ai.available ? "" : ' data-off="1"'}>${meter(ai.used, ai.cap, "Checks used this month")}</div>
