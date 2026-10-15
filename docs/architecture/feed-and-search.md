@@ -169,7 +169,9 @@ carries the key ONLY when the column is set: an unrated entry has no `importance
 guessed `routine`. The Feed draws a quiet mark in the byline after the time and tags — notable an accent dot,
 breaking an amber triangle, each with its word and a tooltip saying it is Sift's rating and not official
 (`importanceMark`, `web/src/marks.ts`) — and NOTHING for routine or unrated, byte for byte
-(`test/render.feed-importance.test.ts`). `LOCAL_AI_PREVIEW` merges two rated agent entries (`feedImportanceFixtures`)
+(`test/render.feed-importance.test.ts`). The mark has no motion of its own: it enters with its row (the Feed's
+`.cnpy-stagger` entrance, on a route change only, off under reduced motion), so a rerender never replays it.
+`LOCAL_AI_PREVIEW` merges two rated agent entries (`feedImportanceFixtures`)
 into `/feed`; the dev seed rates a few entries and PRs.
 
 **Entries written by Trov** (`FeedRow.ai?`, `shared/ai-core.ts` `AiFeedMeta`: `origin: "ai"`, the person it was

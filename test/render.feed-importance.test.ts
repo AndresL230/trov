@@ -56,6 +56,21 @@ describe("the Feed's importance mark", () => {
     expect(importanceMark(null)).toBe("");
   });
 
+  it("MOTION: the mark enters with its row (the Feed's `.cnpy-stagger` entrance) and has no motion of its own to replay", () => {
+    // The app's one motion system: `markEnter` sets `[data-enter]` only when the ROUTE changes, and
+    // `[data-enter] .cnpy-stagger > *` rises each row in (off under prefers-reduced-motion, trov.css). The mark lives
+    // inside a row of that list, so it arrives with it — and a rerender (a new read, a keystroke) draws the same
+    // markup, so nothing replays.
+    const s = state([row({ id: 1, importance: "breaking" }), row({ id: 2, importance: "notable" })]);
+    const html = render(s);
+    const list = html.indexOf('<div class="cnpy-stagger">');
+    expect(list).toBeGreaterThan(-1);
+    expect(html.indexOf('data-importance="breaking"')).toBeGreaterThan(list);
+    expect(html.indexOf('data-importance="notable"')).toBeGreaterThan(list);
+    for (const imp of ["notable", "breaking"] as const) expect(importanceMark(imp)).not.toMatch(/animation|transition|cnpy-rise|cnpy-flash/);
+    expect(render(s)).toBe(html);
+  });
+
   it("an entry written by Trov carries it too, and is unchanged without it", () => {
     const [trov] = feedFixtures(NOW);
     const plain = render(state([trov]));
