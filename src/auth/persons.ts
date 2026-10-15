@@ -295,6 +295,8 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["org_ai_settings", "updated_by"], ["org_tag_runs", "started_by"], ["org_tag_runs", "undone_by"],
   // Apps (0070_repo_apps): who created an app and who last changed it.
   ["repo_apps", "created_by"], ["repo_apps", "updated_by"],
+  // The Repo screen's per-repository defaults (0071_repo_settings): who set one.
+  ["repo_settings", "updated_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

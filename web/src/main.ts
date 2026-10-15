@@ -17,7 +17,7 @@ import {
   FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
 } from "./render";
 import {
-  getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard,
+  getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
   listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, mapIdentity, discardIdentity, restoreIdentity, type AssignTarget,
@@ -69,6 +69,10 @@ import { followSkipLink, syncPageBackground } from "./site-chrome";
 import { syncSkeletons } from "./skeleton";
 import { parsePreview, previewSearch, withPreview, PREVIEW_BLOCKED, type PreviewMode } from "./preview";
 import { setWriteBlock } from "./api";
+import { isGroupBy } from "@shared/repo-layout-core";
+import { REPO_WIDE } from "@shared/repo-facts-core";
+import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
+import { ALL_APPS } from "./repo-header";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { createPlatform } from "./platform-actions";
@@ -556,7 +560,11 @@ function persistNavOpen(): void {
 // module is the only one that touches `location`.
 function currentRoute(): Route {
   const r: Route = { screen: state.screen, ticketId: state.ticketId, sprintId: state.sprintId };
-  if (state.screen === "repo") r.repoTab = state.repoTab;
+  if (state.screen === "repo") {
+    r.repoTab = state.repoTab;
+    if (state.repoSlug) r.repoSlug = state.repoSlug;
+    if (state.repoApp) r.repoApp = state.repoApp;
+  }
   if (state.screen === "roadmap") r.roadmapTab = state.roadmapTab;
   if (state.screen === "releases" && state.releaseVersion) { r.releaseVersion = state.releaseVersion; r.releasePage = state.releasePage; }
   if (state.screen === "artifact") r.art = state.artRoute;
@@ -583,6 +591,15 @@ function applyRoute(r: Route): void {
   state.ticketId = r.ticketId;
   state.sprintId = r.sprintId;
   if (r.repoTab) state.repoTab = r.repoTab;
+  if (r.screen === "repo") {
+    // The address scopes the Repo screen: another repository, or the App menu. A live read asks the Worker
+    // again for a new scope (the sample narrows its facts at render time, so only a new repository reloads it).
+    const slug = r.repoSlug ?? null, app = r.repoApp ?? null;
+    const moved = slug !== state.repoSlug || (app !== state.repoApp && !state.repoSample);
+    if (slug !== state.repoSlug) state.repoGroup = null;
+    state.repoSlug = slug; state.repoApp = app;
+    if (moved && state.repo.status !== "idle") state.repo = { status: "idle", data: state.repo.data };
+  }
   if (r.roadmapTab) state.roadmapTab = r.roadmapTab;
   if (r.screen === "releases") {
     // What's new keeps one screen for the grid and every release page, so moving between
@@ -1037,7 +1054,12 @@ function loadRepo(): void {
   state.repo = { status: "loading", data: state.repo.data };
   rerender();
   const sample = state.repoSample;
-  const read = sample ? import("./repo-sample").then((m) => m.repoSample()) : getRepoDashboard();
+  // The sample carries the picked scenario's facts (unnarrowed: the App menu narrows them at render time, as
+  // `narrowFacts` does on the server); the live read is scoped by the address's repository and app.
+  const sc = state.repoScenario;
+  const read = sample
+    ? import("./repo-sample").then((m) => ({ ...m.repoSample(), facts: m.repoScenario(sc.key, sc.variant) }))
+    : getRepoDashboard({ repo: state.repoSlug, app: state.repoApp });
   read
     .then((data) => {
       if (sample !== state.repoSample) return; // switched source mid-flight — the newer load wins
@@ -1079,6 +1101,16 @@ async function runRepoPoll(): Promise<void> {
     pendingFlash = ".repo-poll-strip";
     rerender();
   }
+}
+/** The sample switch moved (scenario or variant): swap the facts in place — the other tabs keep the sample. */
+function reloadSampleFacts(): void {
+  const sc = state.repoScenario;
+  void import("./repo-sample").then((m) => {
+    if (!state.repoSample || state.repoScenario !== sc || !state.repo.data) return;
+    state.repo = { status: "ok", data: { ...state.repo.data, facts: m.repoScenario(sc.key, sc.variant) } };
+    pendingFlash = ".repo-panel > :not(.repo-poll-strip)";
+    rerender();
+  });
 }
 function loadRepoIfNeeded(): void {
   syncCtl.load(); // the header's "synced 12m ago by @…"
@@ -2529,9 +2561,91 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       break;
     case "repoPollNow": runRepoPoll(); return;
     case "repoPollDismiss": state.repoPoll = null; break;
+    // ── the Overview from facts (repo-overview.ts, repo-header.ts) ──
+    case "repoPickApp": {
+      // The App menu: narrow every tab. The address carries it; a live read asks the Worker for that scope.
+      const v = value ?? arg ?? "";
+      const app = v === ALL_APPS || v === "" ? null : v;
+      if (app === state.repoApp) return;
+      if (app !== null && app !== REPO_WIDE && !(state.repo.data?.facts?.allApps ?? []).some((a) => a.key === app)) return;
+      state.repoApp = app;
+      if (!state.repoSample) { loadRepo(); return; }
+      pendingFlash = ".repo-panel > :not(.repo-poll-strip)";
+      break;
+    }
+    case "repoPickRepo": {
+      const v = value ?? arg ?? "";
+      if (!v || v === state.repo.data?.facts?.repo) return;
+      state.repoApp = null; state.repoGroup = null; state.repoGroupFlipped = false; state.repoOpen = new Set();
+      if (state.repoSample) {
+        // The sample's repositories are its scenarios': show the scenario that repository is.
+        void import("./repo-sample").then((m) => {
+          const key = m.SCENARIO_KEYS.find((k) => m.repoScenario(k).repo === v);
+          if (key) { state.repoScenario = { key, variant: "" }; reloadSampleFacts(); }
+        });
+        return;
+      }
+      state.repoSlug = v;
+      loadRepo();
+      return;
+    }
+    case "repoGroup": {
+      // Group by, this session. An admin who leaves it on something other than the default is offered to save it.
+      if (!isGroupBy(arg)) return;
+      state.repoGroup = arg;
+      state.repoGroupFlipped = true;
+      pendingFlash = ".repo-panel > :not(.repo-poll-strip)";
+      break;
+    }
+    case "repoGroupDefault": {
+      const facts = state.repo.data?.facts;
+      const group = state.repoGroup;
+      if (!facts || !group || state.repoSample || !viewerIsAdmin(state) || !state.orgSlug) return;
+      putRepoSettings(state.orgSlug, facts.repo, group).then((saved) => {
+        const cur = state.repo.data;
+        if (cur?.facts && cur.facts.repo === saved.repo) state.repo = { status: state.repo.status, data: { ...cur, facts: { ...cur.facts, groupDefault: saved.overview_group } } } as typeof state.repo;
+        state.repoGroupFlipped = false;
+        flash(`Group by ${group === "app" ? "app" : "environment"} is now the default for ${saved.repo}.`);
+      }).catch((e) => {
+        if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+        flash("Couldn't save the default. Try again.");
+      });
+      return;
+    }
+    case "repoScenario": {
+      const v = value ?? arg ?? "";
+      if (!isScenarioKey(v) || !state.repoSample || v === state.repoScenario.key) return;
+      state.repoScenario = { key: v, variant: "" };
+      state.repoApp = null; state.repoGroup = null; state.repoGroupFlipped = false; state.repoOpen = new Set();
+      reloadSampleFacts();
+      return;
+    }
+    case "repoVariant": {
+      const v = value ?? arg ?? "";
+      const sc = state.repoScenario;
+      if (!state.repoSample || !REPO_SCENARIOS[sc.key].variants.includes(v) || v === sc.variant) return;
+      state.repoScenario = { key: sc.key, variant: v };
+      reloadSampleFacts();
+      return;
+    }
+    case "repoOpen": {
+      // A disclosure inside an Overview block (its key is the block's: `drift:staging>production`, …). Session-only.
+      if (!arg) return;
+      const open = new Set(state.repoOpen);
+      if (open.has(arg)) open.delete(arg); else open.add(arg);
+      state.repoOpen = open;
+      break;
+    }
+    case "repoSeeWaiting": {
+      // Needs attention › See what is waiting: the block that lists it (not shipped, else the opener's row).
+      const el = mount.querySelector<HTMLElement>('[data-repo-block="notShipped"]:not(:empty), [data-repo-block="appsTable"]:not(:empty), [data-repo-block="envCards"]:not(:empty)');
+      el?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+      return;
+    }
     case "repoSampleOn":
     case "repoSampleOff":
       state.repoSample = act === "repoSampleOn";
+      state.repoApp = null; state.repoGroup = null; state.repoGroupFlipped = false; state.repoOpen = new Set();
       state.repoPoll = null; // a poll result describes the LIVE sources, not the sample set
       state.repo = { status: "idle", data: null };
       state.repoDriftOpen = false;

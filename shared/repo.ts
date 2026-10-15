@@ -13,6 +13,8 @@ import type { PersonColor } from "./rows";
 // TYPES only, in both directions: shared/hosting.ts imports `RepoRange` / `RepoSection` / `RepoTone` from
 // here, and this file its section and Poll-now shapes from there. A type-only cycle is erased at compile
 // time, so neither module loads the other.
+import type { RepoFacts } from "./repo-facts-core";
+import type { GroupBy } from "./repo-layout-core";
 import type { DeployState, HostingPollOutcome, HostingProviderId, ProviderDeployDTO, RepoProvidersSection } from "./hosting";
 
 export const REPO_TABS = [
@@ -302,6 +304,11 @@ export interface RepoDashboard {
   state?: AiRepoState;
   /** Planning's first section, "Where the work went", per range (the screen switches client-side). */
   themes?: Record<AiThemeRange, AiThemes>;
+
+  // ── Repo setups (shared/repo-facts-core.ts) — NOT a section: absent = today's Overview ──
+  /** The Overview's one facts object (`?repo=&app=` narrowed). The sample sets it now; the Worker adds it with
+   *  the facts read. When present the Overview is drawn from it (web/src/repo-overview.ts). */
+  facts?: RepoFacts;
 }
 
 // ── Which section belongs to which tab — ONE mapping, two readers ────────────
@@ -364,3 +371,11 @@ export interface RepoRefreshResult extends UsagePollResult {
   hosting?: HostingPollOutcome[] | "not_configured";
   github: RepoRefreshGithub | "not_configured";
 }
+
+// ── Repo settings (0071_repo_settings) — one row per (org, repository) ──────
+/** `PUT /api/o/:slug/repo/settings` — an admin's per-repository Overview defaults. Cookie only, never MCP. */
+export const REPO_SETTINGS_ROUTE = "/repo/settings";
+/** What the route takes: the repository (one of the org's `org_repos`) and its default Group by (null clears it). */
+export interface RepoSettingsPut { repo: string; overview_group: GroupBy | null }
+/** A repository's settings as stored (`repo_settings`); every field null when no admin has set one. */
+export interface RepoSettingsDTO { repo: string; overview_group: GroupBy | null; updated_at: string | null; updated_by: string | null }
