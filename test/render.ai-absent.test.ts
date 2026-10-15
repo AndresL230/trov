@@ -10,7 +10,9 @@
  * main's code, which has no AI screens (commit 45bf29a, `origin/main`, re-pinned after merging main), at a fixed clock —
  * so a change to any of these screens' field-absent markup fails here.
  * One deliberate change since: My Work's header (the date top right, the stat line under the greeting), so
- * "My Work (no `brief`)" was re-pinned with it — the brief is still absent from it.
+ * "My Work (no `brief`)" was re-pinned with it — the brief is still absent from it. Re-pinned again for the review
+ * tile's sentence (no count repeated under the number) and the `mw-scroll` class on the tiles' lists, which only
+ * the layout with a brief styles.
  */
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 

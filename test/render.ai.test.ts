@@ -179,6 +179,12 @@ describe("My Work › Your brief", () => {
     const tiles = [...html.matchAll(/data-mw="(\w+)"/g)].map((m) => m[1]);
     expect(tiles).toEqual(["brief", "review", "tickets", "sessions", "repo", "docs", "handoffs"]);
     expect(text(html.slice(html.indexOf('data-mw="handoffs"')))).toContain("Queued handoffs");
+    // Each tile keeps one height: what does not fit scrolls inside it (trov.css `.mw-bento-brief .mw-scroll`).
+    for (const k of ["brief", "sessions", "docs", "handoffs"]) { // (this fixture's Tickets and Review are empty: no list)
+      const open = html.lastIndexOf("<section", html.indexOf(`data-mw="${k}"`));
+      const end = html.indexOf("</section>", open);
+      expect(html.slice(open, end), k).toContain('class="mw-scroll"');
+    }
     // Without a brief: the strip across the page, all three parts in one tile, no area layout.
     const plain = render(app({ screen: "mywork", mywork: { status: "ok", data: dash({}) } }));
     expect(plain).not.toContain("mw-bento-brief");

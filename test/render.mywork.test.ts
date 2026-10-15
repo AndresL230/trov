@@ -164,6 +164,13 @@ describe("reviewTile", () => {
     expect(html).toContain("1 to promote, 1 to ratify");
   });
 
+  it("never says the number twice: one kind reads '1' over 'to promote', not '1 to promote'", () => {
+    const one = reviewTile([item("d:a:2", "proposal")], "ok", 5);
+    expect(one).toContain(">to promote</span>");
+    expect(one).not.toContain("1 to promote");
+    expect(reviewTile([item("a:5", "decision"), item("a:6", "decision")], "ok", 5)).toContain(">to ratify</span>");
+  });
+
   it("shows three and points to the rest", () => {
     const html = reviewTile(["1", "2", "3", "4", "5"].map((i) => item(i, "proposal")), "ok", 5);
     expect(html).toContain("Item 3");

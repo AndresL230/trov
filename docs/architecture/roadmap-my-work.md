@@ -95,10 +95,14 @@ that renders a "No summary recorded" placeholder. Stored as columns on `pr_summa
 a bento TILE — drawn ONLY when the dashboard carries `brief` and the person has not pressed "Wrong?" on it (off, no
 key, or nothing written: the field is absent and the bento is exactly its five tiles). With it the bento is laid out by AREA
 (`trov.css` `.mw-bento-brief`, `MyWorkLayout.bento`), each tile sized to what it holds and the whole closing as one
-rectangle: Brief tall on the left beside Needs your review over Tickets for you; Your sessions tall on the left
+rectangle: Brief tall on the left (8 of 12 columns) beside Needs your review over Tickets for you; Your sessions tall on the left
 beside Repo over two small tiles (`libraryTiles`: Docs you own, Queued handoffs; Artifacts is not drawn here — the
-owner's call; the strip without a brief keeps it). Below
-the 700px container breakpoint every tile is full width, in that order. Without a brief the page is unchanged (7/5,
+owner's call; the strip without a brief keeps it). The bento fits one screen:
+its height follows the window (`clamp(704px, 100dvh − 162px, 796px)`), only the top two rows give (each at least
+150px), Repo keeps 248px and the small tiles 120px, and the page's padding tightens. Every tile keeps that
+height whatever it holds (the brief 8 columns wide; the owner's call): what does not fit scrolls inside
+the tile (`.mw-scroll`) under a header that stays put. Below the 700px container breakpoint every tile is full
+width at its natural height, in that order. Without a brief the page is unchanged (7/5,
 then `mwSpans`, then the library strip across the page). Ready: Now / Recently (each a sentence and its sources) and Next — rows that are real items
 (Failing = the app's failing mark, Handoff = an arrow, a ticket = its `#N`, Due soon = the warning mark), the title
 the item's own and linked to `cites[0]`, the model's one muted "why" — over a footer with the "Written by Trov"

@@ -72,10 +72,23 @@ input, select { font-family: inherit; }
    closes as one rectangle — Brief tall beside Needs your review over Tickets; Your sessions tall beside
    Repo over Docs you own and Queued handoffs. */
 .mw-bento-brief { grid-template-areas:
-  "brief brief brief brief brief brief brief review review review review review"
-  "brief brief brief brief brief brief brief tickets tickets tickets tickets tickets"
+  "brief brief brief brief brief brief brief brief review review review review"
+  "brief brief brief brief brief brief brief brief tickets tickets tickets tickets"
   "sessions sessions sessions sessions repo repo repo repo repo repo repo repo"
   "sessions sessions sessions sessions docs docs docs docs hand hand hand hand"; }
+/* Every tile keeps ONE height whatever it holds (the owner's call, 2026-10-15): fixed rows, sized from the
+   tiles' content at the time — the brief's three parts at 8 columns, Repo's own floor — and what
+   does not fit scrolls inside its tile (`.mw-scroll`) under a header that stays put. Brief = rows 1 + 2,
+   Your sessions = rows 3 + 4. */
+.mw-bento-brief {
+  /* The whole bento fits one screen: its height follows the window — the window less the top bar (57), the
+     page's own top and bottom padding (20 + 16) and the greeting (~53 + 16) — between the least it can take
+     (704: rows at their floors) and its natural height (796). Only the top two rows give; Repo keeps its
+     floor and the small tiles their height, so nothing is clipped — what does not fit scrolls in its tile. */
+  height:clamp(704px, calc(100dvh - 162px), 796px);
+  grid-template-rows:minmax(150px, 1fr) minmax(150px, 1fr) 248px 120px; }
+.mw-bento-brief > .mw-tile { min-height:0; }
+.mw-bento-brief .mw-scroll { flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
 .mw-bento-brief > [data-mw="brief"] { grid-area:brief; }
 .mw-bento-brief > [data-mw="review"] { grid-area:review; }
 .mw-bento-brief > [data-mw="tickets"] { grid-area:tickets; }
@@ -100,7 +113,8 @@ input, select { font-family: inherit; }
 .mw-handoff:hover { border-color:color-mix(in srgb,var(--blue) 45%,transparent) !important; }
 @container mwmain (max-width: 700px) {
   .mw-tile { grid-column:span 12; }
-  .mw-bento-brief { grid-template-areas:none; }
+  .mw-bento-brief { grid-template-areas:none; grid-template-rows:none; height:auto; }
+  .mw-bento-brief .mw-scroll { overflow-y:visible; }
   .mw-bento-brief > .mw-tile { grid-area:auto; grid-column:span 12; }
   .mw-lib { grid-template-columns:minmax(0,1fr); }
   .mw-libdiv { width:100%; height:1px; }

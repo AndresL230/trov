@@ -141,7 +141,7 @@ function capped<T>(sl: MwListSlice<T>, area: string, row: (x: T) => string, beyo
   const foot = toggle || link
     ? `<div style="display:flex;align-items:center;gap:8px;border-top:1px solid var(--border);margin-top:auto">${toggle}${link}</div>`
     : "";
-  return `<div style="display:flex;flex-direction:column;flex:1">${shown.map(row).join("")}${foot}</div>`;
+  return `<div class="mw-scroll" style="display:flex;flex-direction:column;flex:1">${shown.map(row).join("")}${foot}</div>`;
 }
 
 /** My Work's empty sentences — each says what the tile shows (the Guide's own words for it,
@@ -179,7 +179,9 @@ export function reviewTile(items: ReviewHead[], load: MwLoad, span: number): str
   }
   const staged = items.filter((i) => i.kind === "proposal").length;
   const decide = items.length - staged;
-  const sentence = [staged ? `${staged} to promote` : "", decide ? `${decide} to ratify` : ""].filter(Boolean).join(", ");
+  // The big number is the total, so the sentence names counts only when it splits it: "to promote" under a
+  // lone 1, "1 to promote, 2 to ratify" under a 3.
+  const sentence = staged && decide ? `${staged} to promote, ${decide} to ratify` : staged ? "to promote" : "to ratify";
   const rows = items.slice(0, 3).map((it) => `<div class="mw-row" style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid var(--border)">
       <button data-act="mwOpenReview" data-arg="${attr(it.id)}" style="flex:1;min-width:0;display:block;text-align:left;padding:0">
         <span style="${ROW_TITLE}">${esc(it.title)}</span>
@@ -201,7 +203,7 @@ export function reviewTile(items: ReviewHead[], load: MwLoad, span: number): str
       <span style="font-size:32px;font-weight:500;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">${items.length}</span>
       <span style="font-size:13.5px;color:var(--fg-55);white-space:nowrap">${sentence}</span>
     </div>
-    <div style="display:flex;flex-direction:column;flex:1">${rows}${more}</div>`);
+    <div class="mw-scroll" style="display:flex;flex-direction:column;flex:1">${rows}${more}</div>`);
 }
 
 /** Your sessions: what I recorded to the Feed lately (My Work's OWN read — never the
@@ -229,7 +231,7 @@ export function sessionsTile(sessions: MwSession[], feedLoad: MwLoad, handoffs: 
       ${CHEV}
     </button>`).join("");
   const handoffBlock = pills ? `<div style="display:flex;flex-direction:column;gap:6px;padding:10px 16px 12px;border-top:1px solid var(--border);margin-top:auto">${pills}</div>` : "";
-  return tile("sessions", span, "Your sessions", `${tileHead("Your sessions", { act: "goFeed", label: "Feed" })}${sub}<div style="display:flex;flex-direction:column">${body}</div>${handoffBlock}`);
+  return tile("sessions", span, "Your sessions", `${tileHead("Your sessions", { act: "goFeed", label: "Feed" })}${sub}<div class="mw-scroll" style="display:flex;flex-direction:column">${body}</div>${handoffBlock}`);
 }
 
 // ── repo monitor ─────────────────────────────────────────────────────────────
@@ -382,7 +384,7 @@ export function libraryStrip(lib: MwLibrary, span: number): string {
  *  Queued handoffs. Artifacts is not one of them there (the owner's call, 2026-10-15); the strip keeps it. */
 export function libraryTiles(lib: MwLibrary): { docs: string; handoffs: string } {
   const c = libraryCells(lib);
-  return { docs: tile("docs", 12, "Docs you own", c.docs), handoffs: tile("handoffs", 12, "Queued handoffs", c.handoffs) };
+  return { docs: tile("docs", 12, "Docs you own", `<div class="mw-scroll">${c.docs}</div>`), handoffs: tile("handoffs", 12, "Queued handoffs", `<div class="mw-scroll">${c.handoffs}</div>`) };
 }
 
 /** The design's grid rule: the first two tiles 7/5 (or one full row), the rest in
@@ -456,7 +458,7 @@ export function briefTile(b: AiBrief, hidden = false, span = 7): string {
     body = `<div class="mw-brief-grid">${rows.join("")}</div>`;
   }
   const foot = written ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px 8px 16px;border-top:1px solid var(--border);margin-top:auto">${aiByline(b.generatedAt, AI_TIP.brief, { size: 12 })}${wrong}</div>` : "";
-  return `<section${surface(`min-width:0;display:flex;flex-direction:column;overflow:hidden;--span:${span}`, { cls: "mw-tile mw-brief cnpy-rise" })} data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}<div style="display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px;min-width:0">${body}</div>${foot}</section>`;
+  return `<section${surface(`min-width:0;display:flex;flex-direction:column;overflow:hidden;--span:${span}`, { cls: "mw-tile mw-brief cnpy-rise" })} data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}<div class="mw-scroll" style="display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px;min-width:0">${body}</div>${foot}</section>`;
 }
 
 // ── the page ─────────────────────────────────────────────────────────────────
@@ -471,8 +473,10 @@ export interface MyWorkLayout {
   bento?: "brief";
 }
 export function myWorkLayout(p: MyWorkLayout): string {
-  return `<div class="cnpy-scroll" style="max-width:1180px;margin:0 auto;padding:28px 32px 80px">
-    <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px;margin-bottom:22px;min-width:0">
+  // With the brief the page is sized to fit one screen (trov.css `.mw-bento-brief`): tighter padding.
+  const fit = p.bento === "brief";
+  return `<div class="cnpy-scroll" style="max-width:1180px;margin:0 auto;padding:${fit ? "20px 32px 16px" : "28px 32px 80px"}">
+    <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px;margin-bottom:${fit ? 16 : 22}px;min-width:0">
       <div style="min-width:0">
         <h2 style="font-size:22px;font-weight:500;letter-spacing:-0.02em;margin:0;line-height:1.2">${p.greeting}</h2>
         ${p.stat ? `<div style="font-size:13.5px;color:var(--fg-55);margin-top:6px;text-wrap:balance">${p.stat}</div>` : ""}
