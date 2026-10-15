@@ -956,8 +956,9 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   (label and line on one `--i`), each Next item and the byline rise in order (`.cnpy-rise`), only under
   `[data-enter]`, so a rerender never replays them; landing after the entrance, the tile takes the dashboard
   skeleton's settle fade (`data-settle-with`, Loading skeletons above). Off under reduced motion
-  (`test/render.brief-motion.test.ts`). The tile leaving on "Wrong?" has no exit yet: My Work is not `data-morph`ed,
-  and the bento switches layout when the brief goes.
+  (`test/render.brief-motion.test.ts`). On "Wrong?" the tile leaves by the kit's one exit IN its bento slot
+  (`.mw-bento-brief > .cnpy-ai-leave` holds the brief's area); only then does the bento take its other layout, which
+  fades in (`pendingFlash` on `.mw-bento`). Under reduced motion it is simply gone (`test/render.ai-motion.test.ts`).
 - **The plain-language filter box** (`web/src/ai-filter.ts`, #162) above the toolbar of Tickets, the Feed and
   Artifacts: the search bar's shape (`.cnpy-sfbar`, the AI mark where the magnifier is, Apply where Filter is), only
   when the org's AI is on (no box when off, never a disabled one). Typing keeps the draft WITHOUT a repaint (Tickets
