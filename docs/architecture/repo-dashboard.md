@@ -24,6 +24,32 @@ every scenario × variant × App narrowing × Group by to the design's own `buil
 Group by from `layoutOf(layoutInputOf(facts))`), and checks unknown stays `null` and every part's app and
 environment exist. H's Cloud Run app uses provider `github` through a cast until Phase A adds it.
 
+**The Overview's blocks (Repo setups, Phase C)** are `OverviewBlock`s (`web/src/repo-overview-ctx.ts`: `(facts,
+ctx) => html`), one module each, drawn from `RepoFacts` alone — every sentence is made in the block, nothing is
+pre-worded by the server, and each returns `""` when its facts are absent:
+- **R4** `productionBlock` (`repo-production.ts`): the one app's part in the one environment — the verdict
+  (`envVerdict`, `repo-verdict.ts`), the serving row (sha or "no commit", age, who via people.ts, host and
+  `via`), the URL and its health (ms; "Reading 34m old" when stale; Down), a failed or cancelled newest deploy
+  ("e07b3a2 failed 12m ago", its reason, "c41e7d9 is still serving."), a deploy in flight as the Next row, a
+  rollback ("Rolled back from …"), CI on the head (`ciLine`: a count only when one is known — a running set
+  says "Checks running on …"), and the strip: `history` plus an in-flight `latest`, ≤ 20, newest right, ready
+  green / error red / building blue and blinking (`.repo-blink`, still under reduced motion) / rolled back amber
+  / canceled grey, with its sentence ("Last 20 deploys · 17 live, 1 failed, 1 rolled back, 1 building"). A part
+  with no deploy reads Unknown and why ("<host> does not report deploys to GitHub" when its host is not
+  connected and nothing came via GitHub).
+- `previewsBlock` (`repo-previews.ts`): "Previews · N open", a row per preview (a live one unmarked), the
+  failing streak only from two failures ("Failing for 3 days, last 4 builds"); nothing at all when no app in
+  view has previews, "No open pull requests, so no previews." when one has and none is open.
+- **R3** `releaseBlock` (`repo-release.ts`): tag, age in words, date, who, notes; since (commits / PRs, "—"
+  when unknown); the waiting PRs (merged glyph, "feature" only where `feature: true`); the cadence strip over
+  the last 100 days (wider for an older history) and the gaps sentence derived newest first.
+- **R1** `foundBlock` / **R2** `unseenBlock` (`repo-found.ts`): the suggested apps with Accept / Ignore for an
+  admin (`repoFoundAccept` / `repoFoundIgnore` + the suggestion id, wired in Phase D; disabled in sample mode)
+  and the seen deploy names; or what Trov looked for and what it does see (tags, PRs, CI workflows, GitHub
+  deployments in 30 days), the latest tags, and "Add an app by hand" (admin → Org settings › Repositories).
+Shared pieces (`repo-block-kit.ts`): the design's deploy-state `MARKS` on `stateMark` shapes, links that are
+https only and plain text in sample mode, a handle as a person link (plain in sample mode).
+
 Three capture shapes feed it: `repo_events` rows (through the `ingestRepoEvent` gate — see Core invariant),
 `repo_snapshots` (one JSON row per kind: `prs_reconciled`, `env_heads`, `drift`, `branches` —
 plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no section) and

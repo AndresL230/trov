@@ -71,6 +71,29 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Repo setups (handoff #11): the Repo screen for every repository setup — the Overview's blocks.
+  {
+    version: "Unreleased",
+    date: "2026-10-15",
+    unreleased: true,
+    title: "The Repo screen for every repository",
+    headline: "The Repo Overview opens on what fits the repository: a Production card, a release, or what Trov found in it.",
+    highlights: [
+      "A repository with one app in one environment opens on a Production card: what is serving and since when, a deploy that failed and why, what is building next, checks on the branch head, and the last 20 deploys as a strip.",
+      "Under it, every open pull request's preview: live, failed or building, a link to it, and how long a failing one has been failing.",
+      "A repository of packages opens on its latest release: what has merged since, the features waiting to ship, and how often it releases.",
+      "A repository with no app yet shows the apps Trov found in it, for an admin to accept or ignore, or, when it found none, what Trov already sees without a host: tags, pull requests and CI.",
+    ],
+    patches: {
+      added: [
+        "Overview blocks from `RepoFacts`, per the Repo-setups design: `productionBlock` (`web/src/repo-production.ts`: verdict, serving row, failed / cancelled block, Next row, URL and health, CI on head, the last-20 strip and its sentence), `previewsBlock` (`web/src/repo-previews.ts`), `releaseBlock` (`web/src/repo-release.ts`: since, waiting PRs, cadence strip, gaps sentence), `foundBlock` and `unseenBlock` (`web/src/repo-found.ts`: Accept / Ignore as `repoFoundAccept` / `repoFoundIgnore`, disabled in sample mode); shared pieces in `web/src/repo-block-kit.ts` (deploy-state marks on `stateMark`, https-only links that never leave sample data)",
+        "Tests: `test/render.repo-production.test.ts`, `test/render.repo-previews.test.ts`, `test/render.repo-release.test.ts`, `test/render.repo-found.test.ts` — every scenario that opens on each block, narrowed facts, unknown drawn as unknown, no \"not connected\" for a thing the repository does not have",
+      ],
+      changed: [],
+      fixed: [],
+      removed: [],
+    },
+  },
   // Hosting providers: Org settings › Hosting, the Repo dashboard's Hosting section, Detected, Vercel events.
   {
     version: "0.33",
