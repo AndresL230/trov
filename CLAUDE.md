@@ -109,6 +109,12 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
     `src/mcp.ts` may import `src/github-app/`.
 13. **A per-org limit goes in `PLANS` and is enforced with `requirePlan`** (402 `plan_limit`) — never an
     ad-hoc check.
+14. **A model is called only from five places**, all through `src/ai/client.ts`: the AI pass, the summary seams
+    (webhook and Sync), the Sift run, the Ask route and the plain-language filter route. Never on a render path;
+    nothing reachable from `src/mcp.ts` imports `src/ai/` (`test/secrets.mcp.test.ts` pins the list; `ai.md`).
+15. **The org AI switch (`orgs.ai_automation`) covers every AI feature** — the pass, Ask, the filter, Sift and
+    PR / issue summaries. Off means no call and nothing written.
+16. **A Jev reason is Trov's own evidence** (a snippet or a field of the item), never model text.
 
 ## Conventions & gotchas
 
@@ -165,7 +171,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | `src/hosting/`, hosting providers, environment parts, provider connections, the `:40` hosting job | `hosting-providers.md` |
 | Sync GitHub, `src/sync/`, the sync panel's copy | `sync.md` |
 | plans, limits, grants, the pricing page, the summarizer allowance | `plans.md` |
-| `src/ai/`, where a model may be called, the AI pass, `ai_runs`, the AI switch, suggestions / "Wrong?", `LOCAL_AI_PREVIEW` | `ai.md` |
+| `src/ai/`, where a model may be called, the router and the AI pass, the kinds and their evals, `ai_runs`, the AI switch, suggestions / "Wrong?", AI cost, `LOCAL_AI_PREVIEW` | `ai.md` |
 | Ask Trov: `src/ai/ask/`, the `/ask` routes and SSE contract, `chat_*` tables, `ai_chat` | `ask.md` |
 | Stripe, checkout, `src/billing/` | `billing.md` |
 | rate limits, the mail sender, what a stranger can do | `abuse-limits.md` |
