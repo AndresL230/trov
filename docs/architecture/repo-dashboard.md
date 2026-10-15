@@ -407,7 +407,7 @@ risk the invocation, while health and usage still run. The hosting arm runs only
 fits (`refreshSubrequests(N)` + a mint + Σ `providerPollCost` ≤ `SUBREQUEST_CAP` — 54 left for two environments), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
 (UNBOUNDED — the reason it has a tick of its own — and it feeds the Roadmap, not this dashboard),
 `pruneRepoCapture` (maintenance, not a refresh) and `runBackfill` / summaries (that is Sync GitHub: My Work's
-capture, with its own summary allowance). **That last exclusion has a visible cost**: `runBackfill` is also
+capture, with its own summary allowance, and under the org's AI switch: off, it writes no summary — `ai.md`). **That last exclusion has a visible cost**: `runBackfill` is also
 the ONLY non-webhook writer of the `events` issue snapshots, so the Overview's Open issues / Open bugs tiles
 and their deltas, Planning's Issues by label and the activity feed's issue lines do NOT move on a poll — they
 refresh with Sync GitHub, and the button's title says so. **Idempotent with the cron**: the pollers key on the HOUR FLOOR,

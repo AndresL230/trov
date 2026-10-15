@@ -171,9 +171,10 @@ allowance. Code: `src/plans/summaries.ts`, `src/data/meter.ts`; tests: `test/sum
 
 **The one choice.** `orgSummarizers(env, ctx, …)` is the only place a summarizer is chosen for an org — the
 webhook (`src/webhook.ts`) and Sync GitHub (`src/tools/backfill.ts`) both ask it. It answers the Claude
-summarizer, or `null` when the deployment has no key (`off`), the org's plan is canceled (`ended`), or the
-org has used its month's allowance (`capped`). The comparison is `planRefusal(state, "ai_summaries", used)`,
-like every other limit.
+summarizer, or `null` when the deployment has no key (`off`), the org's AI switch is off (`disabled` —
+`orgs.ai_automation`, read in the same statement; the seams then write nothing at all: `ai.md` › the org
+switch), the org's plan is canceled (`ended`), or the org has used its month's allowance (`capped`). The
+comparison is `planRefusal(state, "ai_summaries", used)`, like every other limit.
 
 **Nothing errors past the cap.** A `null` summarizer is what the code always had without a key: the item
 is stored with its **excerpt** (`pr_summaries.model = 'excerpt'`, a marker row; an issue's row holds the

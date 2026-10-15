@@ -48,6 +48,7 @@ ONLY in these places, all behind THE client (the fifth, Ask Trov, is `ask.md`):
 
 1. **The capture-time summary seams** — `src/tools/summarize.ts`, chosen per org by `orgSummarizers`
    (`src/plans/summaries.ts`), from the webhook and Sync GitHub. Kinds `summary_pr` / `summary_issue` (Claude).
+   Gated by the org switch (below).
 2. **The AI pass** — `src/ai/pass.ts` (and its batch half, `src/ai/batches.ts`), from the `*/10` repo tick. Jev
    jobs and gates and Claude jobs (`src/ai/jobs.ts`); the registry (`AI_JOBS`) holds the theme jobs (`src/ai/themes.ts`).
 3. **The Sift run** — `src/ai/sift.ts` (`startTagFit` / `continueTagFit`), started by an admin from the Tags routes
@@ -72,7 +73,18 @@ only), and Ask's `src/ai/ask/turn.ts` and `history.ts`; that only `src/ai/eligib
 that nothing under `src/ai/ask/` reaches secrets, the GitHub App, billing or `src/mcp.ts`; and that the ROUTER, which
 MCP's writers reach, imports nothing from `src/ai/`).
 
-**The org switch covers every AI feature, Sift included.** A Sift run starts, and each of its requests is made, only
+**The org switch covers every AI feature, Sift and the capture-time summaries included.** For summaries
+(owner ruling, 2026-10-15): `planAndSummaries` (`src/plans/gate.ts`) reads `orgs.ai_automation` in the SAME
+statement as the plan and the month's use — as `planAndAiRuns` reads it for the pass — and `summaryAllowance` answers
+`disabled` when it is off, before the allowance is looked at. `orgSummarizers` then hands out no summarizer and
+`switchedOff()` is true, and both seams (the webhook's `captureDelivery`, Sync's `runBackfill`) write NOTHING for the
+item: no call, no summary row (not even the excerpt marker a cap or a missing key leaves), no meter. It is a write
+gate, not a hide: a summary already written stays readable, and is never replaced by an excerpt while the switch is
+off; the items wait, and the first Sync after it is turned back on summarizes them. The switch is read once per
+webhook delivery or Sync batch (a batch makes at most 5 calls), not before every call as Sift's is. The Sync panel
+says so (`syncSummariesText`, `disabled`); `test/summaries.switch.test.ts` pins it.
+
+A Sift run starts, and each of its requests is made, only
 while BOTH `orgs.ai_automation` (Org settings › AI) and Sift's own switch (`org_ai_settings`, kind `tag.fit`, the
 Tags tab) are on — `siftSwitches` reads both in one statement before the run and before EVERY request, so turning
 either off stops a run in progress at its next request. The Tags tab says when the org's switch is what stops it
@@ -297,7 +309,7 @@ the plan, `orgs.ai_automation` and the month's `ai_run:*` — gives `off` when t
   `plan_members`) — never the plan's 50-seat most — at read time, so `planRefusal` and every screen see the org's whole cap. An override of
   `ai_chat` itself is the whole cap, never multiplied. Nothing writes the metric yet (Ask Trov is Phase F), so it
   reads 0. **Not listed**, like `ai_runs`.
-- **The switches** — `orgs.ai_automation` (0055, default on): every AI feature, Sift included. And
+- **The switches** — `orgs.ai_automation` (0055, default on): every AI feature, Sift and PR / issue summaries included. And
   `orgs.ai_chat_auto` (0058, default on): whether Ask Trov's Auto mode (writes run without a Confirm card, with Undo)
   may be used in the org. Org settings › AI, cookie routes only (`src/ai/routes.ts`, `AI_ROUTES` in
   `shared/ai-core.ts`; `organizations.md`):
@@ -417,6 +429,8 @@ dismiss, "Wrong?"), `test/ai.preview.test.ts` (fields absent in production, the 
 › AI in every mode —, the MCP tab mapping), `test/ai.contracts.test.ts` (the fixtures against the schemas),
 `test/ai.client.test.ts` (Claude's `structured`), `test/ai.jev.test.ts` (the kind table, Jev's `ask` and its
 parsing), `test/tag-fit.test.ts` (Sift: the run, its switches — the org's included, mid-run — and the allowance),
+`test/summaries.switch.test.ts` (the org switch over summaries: off = zero summarizer calls and nothing written on a
+merged-PR webhook, an assigned issue and Sync; an existing summary kept; on = as before),
 `test/secrets.mcp.test.ts` (the call sites, the MCP boundary, TypeSafe's URL in one file),
 `test/plans.limits.test.ts` (`ai_chat`, per seat on Pro), `test/ai.filter.test.ts` and `test/render.ai-filter.test.ts`
 (the plain-language filter), `test/ai.themes.test.ts` (themes: the threshold, the cadence, cites, person-over-AI, the

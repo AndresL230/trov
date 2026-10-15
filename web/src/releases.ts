@@ -207,6 +207,7 @@ export const RELEASES: Release[] = [
     ],
     headsUp: [
       "Org settings has an AI tab: whether Trov's AI is on for your organization, this month's use of each AI allowance, and exactly what is sent to Anthropic and to TypeSafe AI, and what never is. An admin turns it on or off; off stops Sift too.",
+      "Turning Trov's AI off now also stops the summaries of new pull requests and issues, from GitHub and from Sync. Summaries already written stay as they are, and the next Sync after it is back on catches up.",
     ],
     ops: [
       "Apply `0058_ai_dirty` (the deploy does it). ADDITIVE: the `ai_dirty` table (the AI router writes it from `0059` on) and `orgs.ai_chat_auto` (on for every organization). Safe on the Worker from before it; the by-hand rollback is in the file's header.",
@@ -250,6 +251,7 @@ export const RELEASES: Release[] = [
         "Ask fixtures: a recorded SSE transcript per design scenario in `shared/ai-fixtures.ts` (and `docs/superpowers/specs/ask-transcripts/`), streamed at real pacing by the dev-only `GET /api/o/:slug/ai/ask-replay/:scenario` behind `LOCAL_AI_PREVIEW` (#178)",
       ],
       changed: [
+        "The org's AI switch (`orgs.ai_automation`) covers PR and issue summaries: `planAndSummaries` reads it in the same statement as the plan, `summaryAllowance` answers `disabled` (a new `SummariesStatus`) when it is off, and `orgSummarizers().switchedOff()` makes the webhook (`captureDelivery`) and Sync (`runBackfill`) write nothing for the item — no call, no summary row (not even the excerpt), no meter — so an existing summary is never replaced. The Sync panel says the switch is why; Org settings › AI lists summaries among what off stops. `test/summaries.switch.test.ts` (#178)",
         "Deleting an account also deletes the AI router's scopes keyed on the person (their brief, their GitHub sessions) (#178)",
         "`switchBtn` (`web/src/notifications.ts`) takes an optional accessible name and a busy state; without them its markup is unchanged (#178)",
         "My Work › Queued handoffs: the button is Claim & copy (`mwHandoffClaim`): it copies the newest handoff as a prompt and claims it, as the handoff screen's Claim does (#178)",
