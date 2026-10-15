@@ -467,7 +467,7 @@ describe("one tag's page", () => {
     expect(other).toMatch(/data-act="tagReviewAdd" data-arg="doc:keys"(?![^>]*disabled)/);
     expect(css).toMatch(/\.cnpy-rv-row\[data-verdict="added"\] \{ --rv-tone:var\(--green\); \}/);
     expect(css).not.toContain("cnpy-tagreview-out");                         // no exit of its own
-    expect(css).toMatch(/\.cnpy-rv-row\[data-verdict\] \.cnpy-tagreview \{[^}]*transform:translateX\(24px\); transition-delay:0s, \.13s;/);   // it slides aside as it closes
+    expect(css).toMatch(/\.cnpy-rv-row\[data-verdict\] \.cnpy-tagreview \{[^}]*transform:translateX\(24px\); transition-delay:0s, \.26s;/);   // it slides aside as it closes
     // Rows pair by item, so settling one never moves another's markup into it.
     expect(leaving).toContain(`<ul class="cnpy-tagpage-list" data-morph-list>`);
     // A number that just changed ticks into place: the hero's figures and the tabs' counts.

@@ -9,7 +9,6 @@ import {
   findTagItems, undoTagRun, setTagSuggestions, getTagRun, settleTagReview,
 } from "./api";
 import { currentOrg, roleAtLeast } from "./org-settings";
-import { REVIEW_EXIT_MS } from "./review";
 import { isTagPageTab, nextTagColor, tagDraftProblem, type TagPageTab } from "./tags";
 import { isTagColor, isTagItemType, normalizeTagName } from "@shared/tags-core";
 import { POLL_MS, applyAnswer, barFill, barState, newLive, runCounter, shouldPoll, shownAt, type LiveRun } from "./fit-run";
@@ -43,9 +42,11 @@ export interface TagsController {
 }
 
 /** A refusal as words that say what to do next. */
-/** How long a changed number keeps its tick (trov.css `cnpy-tagbump`). A settled review row leaves on Review's clock,
- *  `REVIEW_EXIT_MS` (review.ts). */
+/** How long a changed number keeps its tick (trov.css `cnpy-tagbump`). */
 const BUMP_MS = 700;
+/** How long a settled To review row takes to leave: the verdict's .26s hold, then .4s of slide, fade and close-up
+ *  (trov.css `.cnpy-tagreview-row`) — slower than Review's `REVIEW_EXIT_MS`, the owner's call. */
+const TAG_REVIEW_EXIT_MS = 700;
 
 export function tagErrorText(e: unknown, fallback: string): string {
   if (!(e instanceof ApiError)) return `${fallback} Check your connection and try again.`;
@@ -426,7 +427,7 @@ export function createTagsController(host: TagsHost): TagsController {
         if (cut < 1 || !tag || !isTagItemType(type) || u.reviewLeaving[key]) return;
         const add = name === "tagReviewAdd";
         // The app's one exit for a row leaving a list (web-ui.md › A row leaving a list): the row wears its verdict,
-        // then closes up (trov.css `.cnpy-rv-row`) over REVIEW_EXIT_MS — only this row; the others stay usable —
+        // then closes up (trov.css `.cnpy-rv-row`, `.cnpy-tagreview-row`) over TAG_REVIEW_EXIT_MS — only this row; the others stay usable —
         // while the write goes on. It is taken out of the list once its exit has played (at once under reduced
         // motion); a refusal brings it back. The checkmark toast says what happened, at once.
         const animate = !(typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -446,7 +447,7 @@ export function createTagsController(host: TagsHost): TagsController {
             rerender();
             refreshPage(tag);
             if (state.tags.status === "ok") load();
-          }, animate ? Math.max(0, REVIEW_EXIT_MS - (Date.now() - startedAt)) : 0))
+          }, animate ? Math.max(0, TAG_REVIEW_EXIT_MS - (Date.now() - startedAt)) : 0))
           .catch((e) => { settled(); rerender(); if (fail(e)) return; host.flash(errorText(e, add ? "Couldn't add the tag." : "Couldn't dismiss it."), 6000); });
         return;
       }
