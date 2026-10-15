@@ -25,9 +25,11 @@ import {
 import type { RepoEnvConfig } from "../repo/config";
 import { PRODUCT_GROUPS, PRODUCT_PREFIX, type ProductFormat, compareProductKeys, parseProductMetric, productKeyInfo } from "../repo/product";
 import {
-  type HostingPollStateRow, type HostingReads, MIDNIGHT_TAIL, type MetricGroup, getSnapshot, hostingReads, latestHealth, latestMetric,
+  type HostingPollStateRow, type HostingReads, MIDNIGHT_TAIL, type MetricGroup, extraMetricsSince, getSnapshot, hostingReads, latestHealth, latestMetric,
   metricSeries, metricsEver, metricsSince, productReadings,
 } from "../repo/store";
+import { familiesOf } from "@shared/usage-families-core";
+import { type ExtraRow, familyReasons, projectExtras } from "./repo-extras";
 import type { RepoEventRow, RepoPrRow } from "../repo/types";
 // The hosting layer's READ side only: the parts list (tenant statements) and the provider registry (pure
 // metadata — labels, capabilities, console links). Never src/hosting/poll.ts, which resolves credentials:
@@ -761,7 +763,7 @@ function partConnectionOf(info: PartInfo, reads: HostingReads, legacyOrg: boolea
  *   connection  the part's provider's org-wide connection, as Org settings › Hosting says it (`partConnectionOf`).
  * Section: `ok` when any part is ok; `empty` when parts exist but none is; `not_connected` with no part.
  */
-function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingReads, endExcl: number, now: number, legacyOrg = false): RepoProvidersSection {
+function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingReads, endExcl: number, now: number, legacyOrg = false, extraRows: readonly ExtraRow[] = []): RepoProvidersSection {
   if (!infos.length) return NOT_CONNECTED;
   const series = (metric: string, envKey: string, part: string): UsagePoint[] =>
     rows.filter((r) => r.metric === metric && r.env === envKey && r.part === part)
@@ -818,9 +820,25 @@ function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingRe
       unavailable, status, tone,
       last_poll: state ? { at: state.polled_at, status: state.status, detail: state.detail } : null,
       connection: partConnectionOf(info, reads, legacyOrg),
+      // Repo setups, Phase G: the usage families the part's provider reads, and what its EXTRA families say.
+      ...(provider ? { families: familiesOf(provider.capabilities) } : {}),
+      ...extrasOf(info, extraRows, endExcl, now),
     };
   });
   return out.some((p) => p.status === "ok") ? ok(out) : EMPTY;
+}
+
+/** Does any of these parts' providers declare an extra usage family? (Only then is the extra read made.) */
+const readsExtras = (infos: PartInfo[]): boolean => infos.some((i) => (i.provider?.capabilities.families ?? []).length > 0);
+
+/** A part's `extras` — its provider's EXTRA families (src/tools/repo-extras.ts), or nothing when it declares none. */
+function extrasOf(info: PartInfo, rows: readonly ExtraRow[], endExcl: number, now: number): { extras?: RepoProviderPart["extras"] } {
+  const families = info.provider?.capabilities.families ?? [];
+  if (!families.length) return {};
+  const extras = projectExtras({
+    env: info.part.env, part: info.part.key, families, covered: info.covered, reasons: familyReasons(info.state?.unavailable), settings: info.part.settings,
+  }, rows, endExcl, now);
+  return extras ? { extras } : {};
 }
 
 /** A part's host as the screen names it: the registry's label, else (a provider the registry lost) its id. */
@@ -1314,8 +1332,17 @@ export async function getRepoDashboard(
     : [[], []];
   const used = projectUsage(usageRows, envs, infos, usageEnd, now);
   const produced = projectProduct(productRows, envs, now);
+  // Repo setups, Phase G: the extra usage families (outcomes, runtime, storage, schedules) — ONE more statement, made
+  // only when some part's provider declares one. 31 days back: the 30-day hourly ranges and the last 30 completed days.
+  // A failed read costs only the extras (logged), never the section.
+  const extraRows = hosted && readsExtras(infos)
+    ? await extraMetricsSince(ctx, new Date(Math.floor(now / DAY) * DAY - 31 * DAY).toISOString()).catch((e: unknown) => {
+        console.error("repo dashboard", "extras", e instanceof Error ? e.message : String(e), `org=${ctx.orgId}`);
+        return [] as ExtraRow[];
+      })
+    : [];
   // MT: SaplingLearn's legacy Worker secret is evidence only for org #1 (src/data/legacy.ts).
-  const providerSection = hosted ? projectProviders(infos, usageRows, hosted, usageEnd, now, isLegacyOrg(ctx)) : NOT_CONNECTED;
+  const providerSection = hosted ? projectProviders(infos, usageRows, hosted, usageEnd, now, isLegacyOrg(ctx), extraRows) : NOT_CONNECTED;
   const ever = envs.length && (!used.anyUsage || !produced.anyProduct)
     ? await metricsEver(ctx, USAGE_METRICS, [PRODUCT_PREFIX])
     : new Set<string>();

@@ -132,7 +132,7 @@ export function parseExtraMetric(name: string): ExtraMetricName | null {
 }
 
 /** The SQL GLOBs that find every extra point (GLOB: `_` is literal, `*` any run) — the projection's one read. */
-export const EXTRA_METRIC_GLOBS = ["hx_outcome_*", SUBREQUESTS_METRIC, "hx_cpu_time_*", "hx_wall_time_*", "hx_d1_*", "hx_cron_*"] as const;
+export const EXTRA_METRIC_GLOBS = ["hx_outcome_*", "hx_subrequests*", "hx_cpu_time_*", "hx_wall_time_*", "hx_d1_*", "hx_cron_*"] as const;
 
 // ── outcomes, in words ───────────────────────────────────────────────────────
 
@@ -169,8 +169,12 @@ export interface FamilyStatus { state: FamilyState; reason: string | null }
 /** One outcome bucket in one range: its status as Cloudflare names it, its words, its count. */
 export interface UsageOutcome { status: string; label: string; tone: UsageTone; count: number }
 export interface UsageOutcomes extends FamilyStatus {
-  /** Per range, the buckets that EXIST (a status with a point in range), largest first; null = nothing known in that range. */
+  /** Per range, the buckets that EXIST (a status with a point in range), largest first; `[]` = known quiet (a covered
+   *  hour, no request); null = nothing known in that range. */
   ranges: Record<RepoRange, UsageOutcome[] | null>;
+  /** When the family's first point in the projection's 30-day read landed — a range that starts before it is PARTIAL
+   *  (the screen says "since …"); null when it has none. */
+  since: string | null;
 }
 export interface UsageRuntime extends FamilyStatus {
   /** The completed UTC day the quantiles describe (`YYYY-MM-DD`), or null. Shown only while it is at most 2 days old. */
@@ -180,8 +184,11 @@ export interface UsageRuntime extends FamilyStatus {
   wall_p50_ms: number | null;
   /** Hourly sums per range; null when nothing is known in the range. */
   subrequests: Record<RepoRange, number | null>;
-  /** CPU time p99 per completed day, oldest first, a missed day ABSENT — ≤ 30 points. */
-  cpu_p99_trend: { at: string; ms: number }[];
+  /** When the first subrequests point of the 30-day read landed (a range starting before it is partial), or null. */
+  since: string | null;
+  /** CPU time p99 per completed day, oldest first, a missed day ABSENT — ≤ 30 points. (`trend`: MCP strips every
+   *  key so named without `include_trends`.) */
+  trend: { at: string; cpu_p99_ms: number }[];
 }
 export interface UsageDatabase {
   id: string;
@@ -204,7 +211,11 @@ export interface UsageCron {
   /** The newest run seen (ISO), or null. */
   last_run: string | null;
 }
-export interface UsageSchedules extends FamilyStatus { crons: UsageCron[] }
+export interface UsageSchedules extends FamilyStatus {
+  crons: UsageCron[];
+  /** When the family's first point in the 30-day read landed (a range starting before it is partial), or null. */
+  since: string | null;
+}
 
 /** `RepoProviderPart.extras`: one entry per EXTRA family the part's provider reads (absent = it reads none of it). */
 export interface PartExtras {

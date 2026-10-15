@@ -1,5 +1,6 @@
 import { type TenantContext, type Stmt, all, first, run, stmt, batch, nowIso, ph, chunked } from "../data/sql";
 import { PRODUCT_PREFIX } from "./product";
+import { EXTRA_METRIC_GLOBS } from "@shared/usage-families-core";
 import type { RepoMetric } from "./types";
 
 export const DAY = 86_400_000;
@@ -37,14 +38,16 @@ const PRODUCT_METRIC_GLOB = `${PRODUCT_PREFIX}*`;
  *  an index range on `idx_repo_metrics_series`, but only when it can see the
  *  pattern: a bound `GLOB ?` is a scan of the whole table. Inlining is safe
  *  ONLY because every caller passes a module constant — and this refuses, at
- *  module load, anything but `[a-z_]` plus one trailing `*`, so a pattern that
+ *  module load, anything but `[a-z0-9_]` plus one trailing `*`, so a pattern that
  *  could close the quote can never be written here by mistake. */
 const globLiteral = (pattern: string): string => {
-  if (!/^[a-z_]+\*$/.test(pattern)) throw new Error(`not a constant prefix glob: ${pattern}`);
+  if (!/^[a-z0-9_]+\*$/.test(pattern)) throw new Error(`not a constant prefix glob: ${pattern}`);
   return `'${pattern}'`;
 };
 export const USAGE_GLOB_SQL = USAGE_METRIC_GLOBS.map((g) => `metric GLOB ${globLiteral(g)}`).join(" OR ");
 export const PRODUCT_GLOB_SQL = `metric GLOB ${globLiteral(PRODUCT_METRIC_GLOB)}`;
+/** The extra usage families' names (Phase G) — all under `hx_`, so the usage pruning rule already covers them. */
+const EXTRA_GLOB_SQL = EXTRA_METRIC_GLOBS.map((g) => `metric GLOB ${globLiteral(g)}`).join(" OR ");
 export const PRODUCT_HOURLY_RETENTION_DAYS = 7;
 export const PRODUCT_DAILY_RETENTION_DAYS = 100;
 export const MIDNIGHT_TAIL = "T00:00:00.000Z";
@@ -171,6 +174,18 @@ export async function metricsSince(ctx: TenantContext, groups: MetricGroup[]): P
   return all<{ metric: string; env: string; part: string; at: string; value: number }>(ctx,
     `SELECT metric, env, part, at, value FROM repo_metrics WHERE org_id = ? AND (${clauses.join(" OR ")}) ORDER BY at ASC, id ASC`,
     ctx.orgId, ...binds);
+}
+
+/** The EXTRA usage families' points (repo setups, Phase G — shared/usage-families-core.ts: outcomes, subrequests,
+ *  the daily quantiles, D1, cron runs) since `sinceIso`, every env and part, ascending. ONE statement; each family a
+ *  GLOB literal SQLite turns into an index range on `idx_repo_metrics_series` (`globLiteral`), never a scan. An
+ *  unparseable bound answers []. */
+export async function extraMetricsSince(ctx: TenantContext, sinceIso: string): Promise<{ metric: string; env: string; part: string; at: string; value: number }[]> {
+  const since = normaliseAt(sinceIso);
+  if (since === null) return [];
+  return all<{ metric: string; env: string; part: string; at: string; value: number }>(ctx,
+    `SELECT metric, env, part, at, value FROM repo_metrics WHERE org_id = ? AND (${EXTRA_GLOB_SQL}) AND at >= ? ORDER BY at ASC, id ASC`,
+    ctx.orgId, since);
 }
 
 /** Which of `metrics` have EVER landed — any env, any part, any age. ONE
