@@ -120,7 +120,11 @@ export function commitGroups(groups: readonly FactsCommitGroup[], x: OverviewCtx
     const tag = g.kind === "pr" && g.pr !== null ? `#${g.pr}` : rest ? "More" : "Pushed";
     const people = g.by.map((h) => who(h, x)).join(", ");
     const when = g.kind === "pr" && g.mergedAt ? `merged${o.into ? ` into ${esc(o.into)}` : ""} ${esc(ago(g.mergedAt, x.now))} ago` : "";
-    const meta = [people, when].filter(Boolean).join(" · ");
+    // Phase E: in a monorepo a commit whose changed files are not known stays in an app's list — and says so.
+    const unknown = g.pathsUnknown
+      ? `<span data-paths-unknown data-mtip="${attr("Which files these commits changed is not known yet, so they are kept in, not filtered by the app's watch paths.")}">${g.pathsUnknown >= g.commits.length ? "paths unknown" : `${g.pathsUnknown} with paths unknown`}</span>`
+      : "";
+    const meta = [people, when, unknown].filter(Boolean).join(" · ");
     return `<div class="repo-cgroup">
       <div style="display:flex;align-items:center;gap:9px;padding:10px 22px;${TOP};background:color-mix(in srgb,var(--fg) 2%,transparent)">
         <span style="font-family:var(--label);font-size:11.5px;font-weight:600;color:${g.kind === "pr" ? "var(--accent)" : "var(--fg-55)"};flex:none">${esc(tag)}</span>

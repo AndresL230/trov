@@ -11,11 +11,12 @@
 //                 N − 1 steps plus the behind side of the last step (the `drift` section's BEHIND group).
 //   not_shipped   per part of the primary repository's apps, with a serving commit: `<serving sha>...<branch>`,
 //                 grouped by PR (a squash merge's trailing `(#123)`) or as direct pushes. In a repository with ≥ 2
-//                 apps the commits are kept to the app's watch paths (./watch.ts) — but only when the compare's
-//                 commits carry their own `files` list: GitHub's compare does NOT list files per commit (only one
-//                 combined list for the whole range, which cannot say which commit touched what), so today a
-//                 group stays UNFILTERED; Phase E stores per-commit paths (`commit_paths`) and filters for real.
-//                 Incremental: a part is compared again only when its serving sha or its branch head changed.
+//                 apps the commits are kept to the app's watch paths (./watch.ts), each commit's files read from
+//                 `commit_paths` (Phase E, ./commit-paths.ts — exact rows only; GitHub's compare lists one combined
+//                 file list for the range, which cannot say which commit touched what). A commit whose files are
+//                 not known stays IN, counted, and its group says how many (`pathsUnknown`) — never dropped.
+//                 Incremental: a part is compared again only when its serving sha or its branch head changed, or
+//                 when a commit it kept as unknown has paths now (a D1 read finds out).
 //   out_of_step   per environment where the primary repository's apps serve different commits: the part with the
 //                 NEWEST serving deploy is the reference, and one compare per other distinct sha says how far
 //                 behind it each is. Incremental: an environment is compared again only when its shas changed.
@@ -37,6 +38,7 @@ import { ghJson, type GhOpts } from "./gh-http";
 import { branchHeads } from "./reads";
 import { getSnapshot, putSnapshot } from "./store";
 import { matchesWatch } from "./watch";
+import { commitPathsFor, type KnownPaths } from "./commit-paths";
 
 /** not_shipped + out_of_step compares, together, per run. */
 export const FACTS_COMPARE_CAP = 6;
@@ -55,7 +57,7 @@ export interface GhCompareCommit {
   sha: string;
   commit: { message: string; committer?: { date?: string | null } | null; author?: { date?: string | null } | null };
   author: { login?: string | null } | null;
-  /** Not in GitHub's compare today — see the header. When every commit carries it, the watch paths apply. */
+  /** Not in GitHub's compare today — see the header. When a commit carries it, it is that commit's files (else `commit_paths`). */
   files?: { filename?: string }[];
 }
 export interface GhCompare { status?: string; ahead_by: number; behind_by: number; commits: GhCompareCommit[] }
@@ -70,9 +72,10 @@ const commitAt = (c: GhCompareCommit): string => c.commit.committer?.date ?? c.c
  * Commits grouped the way the Overview shows them: one group per PR a squash merge names (`(#123)` at the end of
  * the first line), newest PR first, with the PR's captured title and author (`repo_events` `pr` rows) when known;
  * then the rest as one `direct` group. Commits newest first, 7-character shas. `more` stays 0: a compare's 250-commit
- * cap cannot be attributed to a group (the count beside the groups is GitHub's own total).
+ * cap cannot be attributed to a group (the count beside the groups is GitHub's own total). `unknown` (Phase E): the full
+ * shas whose changed files are not known — each group counts its own (`pathsUnknown`, set only when > 0).
  */
-export async function groupCommits(ctx: TenantContext, commits: GhCompareCommit[], branch: string): Promise<FactsCommitGroup[]> {
+export async function groupCommits(ctx: TenantContext, commits: GhCompareCommit[], branch: string, unknown: ReadonlySet<string> = new Set()): Promise<FactsCommitGroup[]> {
   const byPr = new Map<number, GhCompareCommit[]>();
   const direct: GhCompareCommit[] = [];
   for (const c of commits) {
@@ -89,19 +92,24 @@ export async function groupCommits(ctx: TenantContext, commits: GhCompareCommit[
   const toCommit = (c: GhCompareCommit) => ({ sha: c.sha.slice(0, 7), msg: firstLine(c).slice(0, 160), at: commitAt(c) });
   const newestFirst = (rows: GhCompareCommit[]) => rows.map(toCommit).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
   const groups: FactsCommitGroup[] = [];
+  const flag = (g: FactsCommitGroup, list: GhCompareCommit[]): FactsCommitGroup => {
+    const n = list.filter((c) => unknown.has(c.sha.toLowerCase())).length;
+    if (n) g.pathsUnknown = n;
+    return g;
+  };
   for (const [pr, list] of [...byPr.entries()].sort((a, b) => b[0] - a[0])) {
     const k = known.find((r) => r.number === pr);
     const cs = newestFirst(list);
     const by = k?.actor_login ?? list[0].author?.login ?? null;
-    groups.push({
+    groups.push(flag({
       kind: "pr", pr, title: k?.title ?? firstLine(list[0]), by: by ? [by] : [],
       // A squash merge's commit IS the merge (GitHub commits it), so its date stands in when no `pr` row says.
       mergedAt: k?.merged_at ?? cs[0]?.at ?? null, commits: cs, more: 0,
-    });
+    }, list));
   }
   if (direct.length) {
     const by = [...new Set(direct.map((c) => c.author?.login).filter((l): l is string => !!l))];
-    groups.push({ kind: "direct", pr: null, title: `Direct pushes to ${branch}`, by, mergedAt: null, commits: newestFirst(direct), more: 0 });
+    groups.push(flag({ kind: "direct", pr: null, title: `Direct pushes to ${branch}`, by, mergedAt: null, commits: newestFirst(direct), more: 0 }, direct));
   }
   return groups;
 }
@@ -171,12 +179,17 @@ export async function computeNotShipped(
   const keep = new Set(parts.map((p) => notShippedKey(p.part.env, p.app)));
   const next: Record<string, NotShippedEntry> = Object.fromEntries(Object.entries(prev).filter(([k]) => keep.has(k)));
 
+  // Phase E: an entry that kept commits of unknown paths is computed again once one of them has paths (a D1 read —
+  // no GitHub request to find out).
+  const waiting = appCount >= 2 ? [...new Set(Object.values(prev).flatMap((e) => e.unknown ?? []))] : [];
+  const nowKnown = waiting.length ? await commitPathsFor(ctx, opts.repo, waiting) : new Map<string, KnownPaths>();
   const todo = parts
     .filter((p) => branch === undefined || p.part.branch === branch)
     .filter((p) => {
       const e = prev[notShippedKey(p.part.env, p.app)];
       const head = heads.get(p.part.branch) ?? null;
-      return !e || !sameSha(e.servingSha, p.sha) || e.head === null || head === null || e.head !== head;
+      return !e || !sameSha(e.servingSha, p.sha) || e.head === null || head === null || e.head !== head
+        || (e.unknown ?? []).some((s) => nowKnown.has(s));
     })
     // never computed first, then the oldest
     .sort((a, b) => (prev[notShippedKey(a.part.env, a.app)]?.computedAt ?? "").localeCompare(prev[notShippedKey(b.part.env, b.app)]?.computedAt ?? ""));
@@ -189,18 +202,29 @@ export async function computeNotShipped(
     try {
       const cmp = await compare(opts, p.sha, p.part.branch);
       const commits = cmp.commits ?? [];
-      // Watch paths: only in a repository with two or more apps, and only when every commit lists its files
-      // (GitHub's compare does not today — see the header); otherwise every commit counts, unfiltered.
-      const filter = appCount >= 2 && commits.length > 0 && commits.every((c) => Array.isArray(c.files));
+      // Watch paths, in a repository with two or more apps (Phase E): each commit's files are its own `files` when
+      // the compare lists them (it does not today), else its captured `commit_paths` (exact rows only — a push's
+      // rows are never read as a commit's). A commit whose files are not known stays IN, counted and flagged in
+      // its group ("paths unknown") — never dropped. With one app, every commit counts, unfiltered.
+      const multi = appCount >= 2 && commits.length > 0;
+      const captured = multi ? await commitPathsFor(ctx, opts.repo, commits.filter((c) => !Array.isArray(c.files)).map((c) => c.sha)) : new Map<string, KnownPaths>();
+      const pathsOf = (c: GhCompareCommit): string[] | null => Array.isArray(c.files)
+        ? c.files.map((f) => f.filename).filter((f): f is string => typeof f === "string")
+        : captured.get(c.sha.toLowerCase())?.paths ?? null;
+      const filter = multi && commits.some((c) => pathsOf(c) !== null);
       const kept = filter
-        ? commits.filter((c) => (c.files ?? []).some((f) => typeof f.filename === "string" && matchesWatch(f.filename, p.watch)))
+        ? commits.filter((c) => { const ps = pathsOf(c); return ps === null || ps.some((f) => matchesWatch(f, p.watch)); })
         : commits;
-      // GitHub's own total when unfiltered; filtered, an exact count only when the compare returned every commit.
+      const unknown = multi ? kept.filter((c) => pathsOf(c) === null).map((c) => c.sha.toLowerCase()) : [];
+      // GitHub's own total when nothing could be filtered; filtered, an exact count only when the compare returned
+      // every commit (the unknown ones are in it).
       const count = !filter ? cmp.ahead_by : commits.length >= cmp.ahead_by ? kept.length : null;
       const dates = kept.map(commitAt).filter(Boolean).sort();
+      const groups = await groupCommits(ctx, kept, p.part.branch, new Set(unknown));
       next[notShippedKey(p.part.env, p.app)] = {
         env: p.part.env, app: p.app, servingSha: p.sha, branch: p.part.branch, head: heads.get(p.part.branch) ?? null,
-        count, oldestAt: count ? dates[0] ?? null : null, groups: await groupCommits(ctx, kept, p.part.branch), computedAt: at,
+        count, oldestAt: count ? dates[0] ?? null : null, groups, computedAt: at,
+        ...(unknown.length ? { unknown: unknown.slice(0, 250) } : {}),
       };
     } catch (e) {
       failure ??= e;

@@ -116,6 +116,11 @@ export interface FactsInputs {
   merged: { any: boolean; thisWeek: number; lastWeek: number };
   commits: { captured: boolean; thisWeek: number; lastWeek: number; deltaOk: boolean };
   runs: { captured: boolean; recordingSince: string | null };
+  /** Phase E (./repo-scope.ts) — a repository with two or more apps: each app's open PRs (`null` while one of them has
+   *  files nobody read), once open PRs are captured. Absent → `null` for a multi-app repository. */
+  openPrsByApp?: Record<string, number | null>;
+  /** Each Package app's users (app keys) from the scan's workspace graph, `null` when not described. */
+  packageUsedBy?: Map<string, string[] | null>;
 }
 
 const isOpenPr = (r: RepoPrRow): boolean => r.state === "draft" || r.state === "review";
@@ -285,10 +290,12 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
   const apps: FactsApp[] = i.apps.map((a) => ({
     key: a.key, label: a.label, folder: a.folder, kind: a.kind, watch: a.watch,
     source: a.source === "synthesised" ? "implicit" : a.source,
-    usedBy: null, // the workspace graph is Phase D's
+    // A Package's users: the repo scan's workspace graph (Phase D), matched to this repository's apps (Phase E).
+    usedBy: a.kind === "Package" ? i.packageUsedBy?.get(a.key) ?? null : null,
     previews: appHasPreviews.has(a.key),
-    // Every open PR touches a repository's only app; with two or more, which one needs PR files (Phase E).
-    openPrs: i.apps.length === 1 ? openPrCount : null,
+    // Every open PR touches a repository's only app; with two or more, the ones whose files reach it (Phase E's PR
+    // files) — null while one open PR's files were never read.
+    openPrs: i.apps.length === 1 ? openPrCount : openPrCount === null ? null : i.openPrsByApp?.[a.key] ?? null,
   }));
 
   // ── not shipped, out of step, drift (the reconcile's snapshots, read back) ──

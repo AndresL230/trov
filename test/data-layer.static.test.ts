@@ -62,7 +62,7 @@ interface Allow { file: string; fn: string; tables?: string[]; why: string }
 const PLATFORM_ALLOW: Allow[] = [
   // The cross-org retention sweeps (§4.4): write-only, bounded by age, run by the cron for every org.
   { file: "src/auth/oauth.ts", fn: "pruneOAuth", tables: ["oauth_grants", "oauth_codes"], why: "retention sweep, cross-org and write-only" },
-  { file: "src/platform/sweeps.ts", fn: "pruneRepoCapture", tables: ["repo_events", "repo_metrics", "hosting_deploys"], why: "retention sweep, cross-org and write-only" },
+  { file: "src/platform/sweeps.ts", fn: "pruneRepoCapture", tables: ["repo_events", "repo_metrics", "hosting_deploys", "commit_paths", "pr_files", "pr_file_reads"], why: "retention sweep, cross-org and write-only" },
   { file: "src/platform/sweeps.ts", fn: "expireDueHandoffs", tables: ["handoffs"], why: "retention sweep, cross-org and write-only (§4.4)" },
   { file: "src/platform/sweeps.ts", fn: "pruneSyncRuns", tables: ["sync_runs"], why: "retention sweep, cross-org and write-only: Sync GitHub run records past 90 days" },
   // Bearer credentials are looked up by HASH before any org is known: the row is what names the

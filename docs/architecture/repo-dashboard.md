@@ -41,10 +41,10 @@ plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no secti
 | `environments` | every part of the environment (`org_environment_parts`, any host) with its newest `hosting_deploys` row, a part's successful poll (`hosting_poll_state`), head checks, fresh `health_*` metrics | cron `:40` — `pollPart` per part; webhook `check_run`; reconcile `env_heads` / `checks` arms; cron health ping |
 | `drift` | snapshot `drift` | webhook `push` to a configured environment branch; reconcile `drift` arm |
 | `health` | metrics `health_up` / `health_ms` | cron, every tick |
-| `codeStats`, `bars`, `prs` (Code) | `repo_events` `pr` / `push`; merged/closed PRs in `events` as the fallback | webhook `pull_request` / `push`; reconcile open + closed PR lists and the pre-capture commit window |
+| `codeStats`, `bars`, `prs` (Code) | `repo_events` `pr` / `push`; merged/closed PRs in `events` as the fallback; under the App menu `pr_files` / `commit_paths` (Phase E) | webhook `pull_request` / `push`; reconcile open + closed PR lists and the pre-capture commit window |
 | `branches` (+ the Active branches tile) | snapshot `branches` | reconcile `branches` arm only |
 | `deploys` (CI) | each part's settled `hosting_deploys` rows (a dot strip per part); checks and health excluded | cron `:40` — `pollPart` per part |
-| `ciFailures` | `run` rows | webhook `workflow_run` (+ `fillFailedJob`); reconcile `runs` + `job_titles` arms |
+| `ciFailures` | `run` rows (by app: the run's workflow file and head commit's `commit_paths`, Phase E) | webhook `workflow_run` (+ `fillFailedJob`); reconcile `runs` + `job_titles` arms |
 | `coverage`, `bundle` (CI); `todos` (Planning) | metrics `coverage` / `bundle_kb` / `todo_count` | a `canopy/*` commit status the target repo's CI posts — webhook `status`; reconcile `statuses` arm |
 | `activity` | PR closes + issue moves from `events`; webhook `push` rows, `review` rows, landed deploys | the captures above |
 | `usage` (Usage) | each environment's WEB parts' `hx_requests` / `hx_errors` summed (requests, error rate; covered intervals from `hosting_poll_state`) and `active_users_*` — on screen only the active users (on the environment's first web target) | cron `:40` — `pollPart`; cron `:00` — `pollSaplingMetrics` |
@@ -64,6 +64,10 @@ issue's subject, not who merged/closed, so the feed never claims an actor it doe
 **Releases and tags** (`releases`, 0074; `src/repo/releases.ts`) feed R3, the unseen card's tags and the week tile
 `releases`: gated capture of `release` / `create`, reconcile's backfill, and the reads `readRelease` / `readTags` /
 `releaseWeekFigure` — `repo-apps.md` › Releases.
+
+**Monorepos — the App menu on Code and CI** (repo setups, Phase E; `0073_commit_paths`): which files a commit and a
+pull request touched (`commit_paths`, `pr_files`), and how the Code tiles, bars and PR list and the CI failures narrow
+to one app — `repo-apps.md` › Monorepos.
 
 **Owner prerequisites — what must be true OUTSIDE this repo** (the one place they are listed):
 - **The target repo's GitHub webhook must be SUBSCRIBED to every name in `REPO_EVENT_NAMES`**
@@ -335,10 +339,16 @@ it.
 - **The `releases` arm** (`reconcileReleases`, `src/repo/releases.ts`; ≤ `RELEASES_RECONCILE_COST` = 2 — the releases
   list, and the tags query only when there is no release; every row through the gate's release arm; writes the
   `releases_reconciled` marker): `repo-apps.md` › Releases.
-- Worst case **`reconcileRequests(N)` = 16 + 2N + max(2, N) + 6 + 2** outbound requests for N environments (30 for two):
+- **The `pr_files` arm (Phase E, `reconcilePrFiles` in `src/repo/pr-files.ts`)**: in a repository with two or more
+  apps, the open PRs and the PRs merged in the last 14 days whose files were never read for their current head
+  (`pr_file_reads.head_sha`) — open first, then merged, newest first — each `GET /pulls/{n}/files` ≤ 3 pages of 100,
+  started only while a whole PR (3 requests) still fits the allowance: `PR_FILES_REQUESTS` = 9 (counted in
+  `reconcileRequests` — Poll now), `PR_FILES_SYNC_REQUESTS` = 30 for the cron's unit and Sync GitHub
+  (`ReconcileLimits`; `reconcileCost` counts the difference). Every list through the gate's PR-files arm.
+- Worst case **`reconcileRequests(N)` = 16 + 2N + max(2, N) + 6 + 2 + 9** outbound requests for N environments (39 for two):
   2 PR lists + 1 commit window + 1 workflow-run list + ≤5 job lookups + 1 status list + 1 GraphQL reviews + ≤5
-  branch pages + 2 per environment (head commit, head checks), the chain's max(2, N), the facts arms' 6 and the releases arm's 2. Under an
-  admin Sync it shares the invocation with `runBackfill`'s ~13.
+  branch pages + 2 per environment (head commit, head checks), the chain's max(2, N), the facts arms' 6, the releases arm's 2
+  and the PR-files arm's 9. Under an admin Sync it shares the invocation with `runBackfill`'s ~13.
 - **`/admin/backfill` runs it once per Sync, on the batch that ENDS the loop**: the batch whose
   `summaryBudgetExhausted` reads `false`, OR the one that hits the SPA's own cap while still exhausted —
   `isFinalBackfillBatch(result, batch?, of?)` (`src/tools/backfill.ts`); `runAdminBackfillLoop`
@@ -382,12 +392,13 @@ words `timeout` / `HTTP <status>` / `unreachable`; `"not_configured"` with no en
 `{ written, unchanged, failed }` (`failed` = reconcile's ARM NAMES), `"not_configured"` without a primary
 repository and a GitHub credential, `failed: ["unexpected error"]` on an unexpected throw. **The cron
 does NOT call it** — its per-tick spreading stands. **Budget: health 2N + usage N + reconcile
-(`reconcileRequests(N)`) = `refreshSubrequests(N)` — 36 for two environments, and `SUBREQUEST_CAP` = 100 (a tenth of
+(`reconcileRequests(N)`) = `refreshSubrequests(N)` — 45 for two environments, and `SUBREQUEST_CAP` = 100 (a tenth of
 Workers Paid's 1,000 an invocation; the cron's own budget is 900 — it was the free plan's 50 until the promotion chain,
-the facts arms and releases pushed a five-environment org past it) caps it at N ≤ 12** (96; 102 at thirteen); past that the
+the facts arms and releases pushed a five-environment org past it) caps it at N ≤ 11** (99; 105 at twelve — the PR-files
+arm's 9 took it from twelve); past that the
 github arm is SKIPPED and says so (`failed: ["skipped: would exceed the subrequest budget"]`) rather than
 risk the invocation, while health and usage still run. The hosting arm runs only when the WHOLE refresh still
-fits (`refreshSubrequests(N)` + a mint + Σ `providerPollCost` ≤ `SUBREQUEST_CAP` — 63 left for two environments), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
+fits (`refreshSubrequests(N)` + a mint + Σ `providerPollCost` ≤ `SUBREQUEST_CAP` — 54 left for two environments), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
 (UNBOUNDED — the reason it has a tick of its own — and it feeds the Roadmap, not this dashboard),
 `pruneRepoCapture` (maintenance, not a refresh) and `runBackfill` / summaries (that is Sync GitHub: My Work's
 capture, with its own summary allowance). **That last exclusion has a visible cost**: `runBackfill` is also
@@ -618,7 +629,10 @@ older than **7 days, EXCEPT the rows stamped exactly 00:00 UTC, kept 100 days** 
 reads — `sap_*` and the usage globs never match each other's names); UNTAGGED `deploy` rows (`env IS NULL`: the
 GitHub deploy signals) older than 90 days (`DEPLOY_SIGNAL_RETENTION_DAYS`); and `hosting_deploys` older than 180
 days by the provider's creation instant. `pr` / `push` / `run` / `review` rows, a `deploy` row tagged with an
-environment (from before 0057) and `coverage` / `bundle_kb` / `todo_count` match no rule and are kept forever.
+environment (from before 0057) and `coverage` / `bundle_kb` / `todo_count` match no rule and are kept forever. Which
+files a commit touched (`commit_paths`, by the commit's own `at`) and a PR's files (`pr_files` / `pr_file_reads`, by
+the read's `fetched_at`) go after 100 days (`COMMIT_PATHS_RETENTION_DAYS`, Phase E); a PR still open past that is read
+again.
 
 **Written by Trov — `state` and `themes`** (`shared/repo.ts`, typed in `shared/ai-core.ts`): Overview's first
 block ("State") and Planning's ("Where the work went", per range). They are NOT sections, so `REPO_TAB_SECTIONS`

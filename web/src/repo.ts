@@ -16,7 +16,7 @@
 
 import {
   REPO_RANGES, REPO_TABS, REPO_TAB_SECTIONS,
-  type RepoActivity, type RepoActivityKind, type RepoDashboard, type RepoPerson, type RepoPr, type RepoPrState,
+  type RepoActivity, type RepoActivityKind, type RepoDashboard, type RepoDeployRow, type RepoPerson, type RepoPr, type RepoPrState,
   type RepoProductEnv, type RepoRange, type RepoSection, type RepoTab, type RepoTone, type RepoTrend,
   type PollOutcome, type RepoRefreshGithub, type RepoRefreshResult, type RepoSectionName, type UsagePollSource,
 } from "@shared/repo";
@@ -31,12 +31,13 @@ import { tabBar, tabPanelAttrs } from "./tabs";
 import { emptyLayout, emptyShapes, skeleton, skBar, skList, skW } from "./skeleton";
 import { HOSTING_EMPTY, hostingBlank, hostingEmpty, hostingNotConnected, hostingParts, hostingSkeleton } from "./repo-hosting";
 import { targetsFromFacts, usageExtras, usageTargets } from "./repo-usage";
-import { narrowFacts, layoutInputOf, type RepoFacts } from "@shared/repo-facts-core";
+import { REPO_WIDE, narrowFacts, layoutInputOf, type RepoFacts } from "@shared/repo-facts-core";
 import { layoutOf, type GroupBy, type RepoLayout } from "@shared/repo-layout-core";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { overviewFacts } from "./repo-overview";
-import { envPillsHtml, groupByHtml, repoHeaderDropdowns, repoScopeHtml } from "./repo-header";
+import { ALL_APPS, envPillsHtml, groupByHtml, repoHeaderDropdowns, repoScopeHtml } from "./repo-header";
 import { REPO_SCENARIOS, SCENARIO_KEYS, variantLabel, type ScenarioKey } from "./repo-sample-keys";
+import { failureApps, groupDeployRows, isMulti, scopeStrip, touchCell } from "./repo-scope";
 
 export interface RepoProps {
   tab: RepoTab;
@@ -377,13 +378,14 @@ const PR_STATE: Record<RepoPrState, { word: string; glyph: Glyph; tone: string; 
 };
 const CHECKS = { pass: ["✓", "var(--green)", "all checks passing"], fail: ["✕", "var(--red)", "checks failing"], run: [GDOT, "var(--amber)", "checks running"] } as const;
 
-function prRow(pr: RepoPr, now: number, persons: PersonSummary[] = []): string {
+function prRow(pr: RepoPr, now: number, persons: PersonSummary[] = [], touch = ""): string {
   const st = PR_STATE[pr.state];
   const chip = glyphMark(st.glyph, st.tone, st.word, 12, st.hint);
   const ck = pr.checks ? CHECKS[pr.checks] : null;
   return `<a href="${attr(safeUrl(pr.url))}" target="_blank" rel="noopener" class="repo-row" style="display:flex;align-items:center;gap:12px;padding:8px 20px;border-bottom:1px solid var(--border);color:inherit;text-decoration:none">
     <span title="${attr(who(pr.author))}" style="flex:none">${avatar(pr.author, 22, persons)}</span>
     <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500">${esc(pr.title)} <span style="font-family:var(--label);font-size:11px;font-weight:400;color:var(--fg-40)">#${pr.number}${pr.branch ? ` · ${esc(pr.branch)}` : ""}</span></span>
+    ${touch}
     <span style="flex:none">${chip}</span>
     <span title="${ck ? ck[2] : ""}" style="width:16px;text-align:center;flex:none;font-family:var(--label);font-size:12px;font-weight:600;color:${ck ? ck[1] : "transparent"}">${ck ? ck[0] : ""}</span>
     <span style="width:38px;text-align:right;flex:none;font-size:11.5px;color:var(--fg-40)">${esc(ago(pr.at, now))}</span>
@@ -392,11 +394,18 @@ function prRow(pr: RepoPr, now: number, persons: PersonSummary[] = []): string {
 
 function codeTab(p: RepoProps): string {
   const now = Date.now();
+  // The App menu (repo setups, Phase E): a monorepo's PR rows say which apps each touches; narrowed, the tab says
+  // what it shows and offers All apps back. The Worker sent the narrowed rows (src/tools/repo-scope.ts).
+  const facts = p.repo.data?.facts ?? null;
+  const multi = isMulti(facts);
+  const app = p.app ?? null;
   const tiles = sec(p, (d) => d.codeStats, { nc: "Repo stats aren't connected.", empty: "No data recorded for this window.", lines: 2 }, (rows) =>
     `<div class="repo-tiles" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr))">${rows.map((s, i) => `<div style="padding:14px 20px 12px;${i ? LEFT : ""}">
       <div style="${LABEL}">${esc(s.label)}</div>
       <div style="display:flex;align-items:baseline;gap:9px;margin-top:6px;flex-wrap:wrap">
-        <span data-count="${s.value}" style="font-family:var(--label);font-size:24px;font-weight:600;letter-spacing:-0.02em">${s.value}</span>
+        ${s.value === null
+          ? `<span data-unknown style="font-family:var(--label);font-size:24px;font-weight:600;letter-spacing:-0.02em;color:var(--fg-40)">—</span>`
+          : `<span data-count="${s.value}" style="font-family:var(--label);font-size:24px;font-weight:600;letter-spacing:-0.02em">${s.value}</span>`}
         <span style="font-size:11px;color:${s.tone === "neutral" ? "var(--fg-40)" : TONE[s.tone]};white-space:nowrap">${esc(s.sub)}</span>
       </div>
     </div>`).join("")}</div>`);
@@ -421,7 +430,8 @@ function codeTab(p: RepoProps): string {
   // `ok` with no rows happens once open PRs are captured (`openCount` known)
   // but nothing was touched in 90 days — say that, not "not captured".
   const prs = sec(p, (d) => d.prs, { nc: "Pull requests aren't connected.", empty: "No pull requests captured yet.", lines: 4 }, (l) =>
-    l.rows.length ? l.rows.map((r) => prRow(r, now, p.persons)).join("") : `<div style="padding:6px 20px">${emptyBlock("No pull requests updated in the last 90 days.")}</div>`);
+    l.rows.length ? l.rows.map((r) => prRow(r, now, p.persons, multi && facts ? touchCell(facts, r, app) : "")).join("")
+      : `<div style="padding:6px 20px">${emptyBlock(multi && app ? (app === REPO_WIDE ? "No pull request outside every app in the last 90 days." : "No pull request touching this app in the last 90 days — or none whose files were read yet.") : "No pull requests updated in the last 90 days.")}</div>`);
 
   const br = okData(p, (d) => d.branches);
   const branches = sec(p, (d) => d.branches, { nc: "No branch snapshot yet. One is taken when an admin runs Sync GitHub and by the 6-hourly GitHub reconcile — both need the GitHub token in Org settings › Integrations.", empty: "No branches recorded." }, (b) =>
@@ -432,7 +442,7 @@ function codeTab(p: RepoProps): string {
       <span style="text-align:right">${r.stale ? kindMark("Stale", "warn", 11.5, "No commit in 14 days.") : ""}</span>
     </div>`).join(""));
 
-  return `<div ${rise(0)}>${okData(p, (d) => d.codeStats) ? tiles : `<div style="padding:6px 20px">${tiles}</div>`}</div>
+  return `${scopeStrip(facts, app, "code")}<div ${rise(0)}>${okData(p, (d) => d.codeStats) ? tiles : `<div style="padding:6px 20px">${tiles}</div>`}</div>
     <div ${rise(1, `${TOP};padding:14px 20px 12px`)}>
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="${LABEL}">${esc(barsData?.title ?? "Activity — last 14 days")}</span><span style="font-size:11px;color:var(--fg-40);white-space:nowrap">${esc(barsData?.note ?? "")}</span></div>
       ${bars}
@@ -443,7 +453,7 @@ function codeTab(p: RepoProps): string {
     </div>
     <div ${rise(3)}>${prsLive ? prs : `<div style="padding:6px 20px;border-bottom:1px solid var(--border)">${prs}</div>`}</div>
     <div ${rise(4, `padding:14px 20px 10px;flex:1;display:flex;flex-direction:column`)}>
-      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px"><span style="${LABEL}">Branches</span><span style="font-size:11px;color:var(--fg-40)">${br ? `${br.active} active · ${br.stale} stale` : ""}</span></div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px"><span style="${LABEL}">Branches</span><span style="font-size:11px;color:var(--fg-40)">${br ? `${br.active} active · ${br.stale} stale${multi && app ? " · repo-wide" : ""}` : ""}</span></div>
       ${branches}
     </div>`;
 }
@@ -486,12 +496,16 @@ const titled = (title: string, body: string): string => `<div style="${LABEL}">$
 function ciTab(p: RepoProps): string {
   const now = Date.now();
   const RESULT = { ok: ["var(--green)", "DEPLOYED"], fail: ["var(--red)", "FAILED"], cancel: ["var(--amber)", "CANCELLED"] } as const;
-  const deploys = sec(p, (d) => d.deploys, { nc: "No deploy captured for a configured environment yet. Each part's deploys come from its hosting provider, polled every hour; an admin sets up the parts in Org settings › Hosting.", empty: "No deploys recorded.", lines: 2 }, (rows) =>
-    rows.map((row) => {
+  // The App menu (repo setups, Phase E): in a monorepo the strips group per app (app × environment) and each
+  // failure names its apps; narrowed, the Worker sent that app's strips and failures only.
+  const facts = p.repo.data?.facts ?? null;
+  const multi = isMulti(facts);
+  const app = p.app ?? null;
+  const deployRow = (row: RepoDeployRow, label: string, top = true): string => {
       const okCount = row.deploys.filter((d) => d.result === "ok").length;
       const last = row.deploys[row.deploys.length - 1];
-      return `<div style="display:flex;align-items:center;gap:16px;padding:14px 0;${TOP};flex-wrap:wrap">
-        <span style="width:118px;font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-70);flex:none">${esc(row.label)}</span>
+      return `<div style="display:flex;align-items:center;gap:16px;padding:${top ? 14 : 8}px 0;${top ? TOP : ""};flex-wrap:wrap">
+        <span style="width:118px;font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-70);flex:none">${esc(label)}</span>
         <div style="display:flex;align-items:center;gap:9px">${row.deploys.map((d, i) => {
           const [color, word] = RESULT[d.result];
           // Pure CSS tooltip (hover + keyboard focus): no state, so no rerender on every dot.
@@ -506,7 +520,17 @@ function ciTab(p: RepoProps): string {
         }).join("")}</div>
         <span style="margin-left:auto;font-size:11.5px;color:var(--fg-40)">${last ? `last ${esc(ago(last.at, now))} ago · ` : ""}${okCount} of ${row.deploys.length} succeeded</span>
       </div>`;
-    }).join(""));
+  };
+  const deploys = sec(p, (d) => d.deploys, { nc: "No deploy captured for a configured environment yet. Each part's deploys come from its hosting provider, polled every hour; an admin sets up the parts in Org settings › Hosting.", empty: multi && app ? "No deploys recorded for this app." : "No deploys recorded.", lines: 2 }, (rows) =>
+    multi && facts
+      ? groupDeployRows(facts, rows).map((g) => {
+          const hosts = [...new Set(g.rows.map((r) => r.host).filter((h): h is string => !!h))];
+          return `<div data-deploy-app="${attr(g.app)}" style="${TOP};padding:10px 0 4px">
+            <div style="display:flex;align-items:baseline;gap:9px"><span style="font-size:13.5px;font-weight:600">${esc(g.label)}</span>${hosts.length ? `<span style="font-size:11.5px;color:var(--fg-40)">${esc(hosts.join(", "))}</span>` : ""}</div>
+            ${g.rows.map((r) => deployRow(r, r.envLabel ?? r.label, false)).join("")}
+          </div>`;
+        }).join("")
+      : rows.map((row) => deployRow(row, row.label)).join(""));
 
   const fails = okData(p, (d) => d.ciFailures);
   // `rate === null` = run capture has not been recording for a whole week yet
@@ -515,11 +539,11 @@ function ciTab(p: RepoProps): string {
   // themselves are facts and are always listed.
   const failures = sec(p, (d) => d.ciFailures, { nc: "No workflow run captured yet. Runs arrive when the GitHub webhook delivers workflow_run events, or when an admin runs Sync GitHub.", empty: "No CI failures this week." }, (f) =>
     `${f.rate === null
-        ? `<div style="margin-top:8px;font-size:12.5px;color:var(--fg-40)">A 7-day rate appears after a week of captured runs.</div>`
+        ? `<div style="margin-top:8px;font-size:12.5px;color:var(--fg-40)">${multi && app ? "A 7-day rate for one app appears once a week of runs is captured and every one of them can be told apart by its workflow or its head commit's files." : "A 7-day rate appears after a week of captured runs."}</div>`
         : spark(f.trend, "var(--amber)", 40)}
-    ${f.total ? "" : `<div style="margin-top:10px;font-size:12.5px;color:var(--fg-55)">No CI failures this week.</div>`}
+    ${f.total ? "" : `<div style="margin-top:10px;font-size:12.5px;color:var(--fg-55)">${multi && app ? "No CI failures of this app this week." : "No CI failures this week."}</div>`}
     <div style="margin-top:10px">${f.rows.map((r) => `<div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr) 82px;gap:10px;align-items:center;padding:10px 4px;${TOP}">
-      <span style="display:inline-flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:12px;font-weight:600;color:var(--red);flex:none">✕</span><span style="font-family:var(--label);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.workflow)}</span></span>
+      <span style="display:inline-flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:12px;font-weight:600;color:var(--red);flex:none">✕</span><span style="font-family:var(--label);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.workflow)}</span>${failureApps(facts, r, app)}</span>
       <span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.branch)}</span>
       <span style="font-size:12px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.job)}</span>
       <span style="text-align:right;white-space:nowrap"><span style="font-size:11px;color:var(--fg-40)">${esc(ago(r.at, now))} · </span><a href="${attr(safeUrl(r.url))}" target="_blank" rel="noopener" class="repo-link" style="font-size:11.5px">Logs ↗</a></span>
@@ -538,9 +562,9 @@ function ciTab(p: RepoProps): string {
     `<div class="cnpy-scroll" style="max-height:236px;overflow-y:auto">${rows.map((a) => activityRow(a, now, p)).join("")}</div>`);
   const count = okData(p, (d) => d.activity)?.length ?? 0;
 
-  return `<div ${rise(0, `padding:18px 20px 4px`)}>
+  return `${scopeStrip(facts, app, "ci")}<div ${rise(0, `padding:18px 20px 4px`)}>
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <span style="${LABEL}">Deploy history — last 10</span>
+        <span style="${LABEL}">Deploy history — last 10${multi ? " per app" : ""}</span>
         <span style="display:${okData(p, (d) => d.deploys) ? "inline-flex" : "none"};gap:14px;font-size:10.5px;font-family:var(--label);color:var(--fg-40)">${(["ok", "fail", "cancel"] as const).map((k) => `<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:${RESULT[k][0]}"></span>${RESULT[k][1].toLowerCase()}</span>`).join("")}</span>
       </div>
       ${deploys}
@@ -1170,7 +1194,16 @@ export const REPO_EMPTY = {
   member: "This organization has no repository connected yet; an admin connects one in Org settings. Preview with sample data shows every section filled in.",
 } as const;
 
-export function repoView(p: RepoProps): string {
+/** In the sample, the Code / CI sections the picked App menu value draws (`sampleScopes`) — what the Worker's
+ *  narrowing sends for that `?app=` (the sample never asks it). */
+function withSampleScope(p: RepoProps): RepoProps {
+  const d = p.sample ? p.repo.data : null;
+  const over = d?.sampleScopes?.[p.app ?? ALL_APPS];
+  return d && over ? { ...p, repo: { ...p.repo, data: { ...d, ...over } } as RepoProps["repo"] } : p;
+}
+
+export function repoView(props: RepoProps): string {
+  const p = withSampleScope(props);
   sectionNo = 0;
   const body = p.tab === "overview" ? overviewTab(p) : p.tab === "code" ? codeTab(p) : p.tab === "ci" ? ciTab(p)
     : p.tab === "usage" ? usageTab(p) : planningTab(p);

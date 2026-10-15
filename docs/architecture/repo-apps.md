@@ -49,7 +49,7 @@ the app, in every environment, carries the key as its `part_key`. The key alphab
   (`scripts/seed/reset.mjs`).
 - **Watch paths** (`src/repo/watch.ts` `matchesWatch`, pure): `/`, `''`, `.`, `**` are the whole repository; a
   plain path is itself and everything under it; `*` one segment, `**` any number, `?` one character, and anything
-  under what a glob matches. Read by the not-shipped arm (below) and, after Phase E, the per-commit paths.
+  under what a glob matches. Read by the not-shipped arm (below) and by the App menu's narrowing of Code and CI (Monorepos, below).
 - **`release_signal`** — how a release of this app shows up (`web/src/repo-apps.ts` offers it for a Package or
   an app with no part): `tag:<glob>` (an SQLite GLOB on the tag — `tag:v*`, `tag:ui-kit@*`), `workflow:<file>@<branch>`
   (a completed run of that workflow on that branch), or NULL (not tracked). The writer stores any one line ≤ 200;
@@ -171,9 +171,11 @@ Every field (null rules in brackets):
 - `repo`, `app` (the narrowing: a key, `REPO_WIDE`, or null = all apps), `repos` (the org's, primary first — the
   repository menu), `groupDefault` (`repo_settings.overview_group`, else null).
 - `allApps` / `apps` — `FactsApp`: key, label, folder, kind, watch, `source` (`migrated` / `manual` / `suggested` /
-  `implicit`), `usedBy` (always null today — the workspace graph is not carried into the facts), `previews` (a
-  preview landed in 30 days), `openPrs` (the open-PR count for a repository's ONLY app once `prs_reconciled` exists;
-  null with two or more apps — which PR touches which app is Phase E's).
+  `implicit`), `usedBy` (a Package: the apps that use it — the repo scan's workspace graph, `repo_app_suggestions.used_by`
+  folders matched to the apps' folders; null when the scan never described it), `previews` (a preview landed in 30
+  days), `openPrs` (once `prs_reconciled` exists: the open-PR count for a repository's ONLY app; with two or more, the
+  open PRs whose files reach the app — directly or via a Package it uses — `null` while one open PR's files were
+  never read; Monorepos, below).
 - `envs` — `FactsEnv` (key, name, branch or null, position): only environments with a part of the apps in view.
 - `parts` — `FactsPart`, one per app × environment (apps' order, then promotion order), Packages excluded:
   `serving` = the newest `ready` production deploy of the part's CURRENT provider, any age; `latest` = the newest
@@ -237,11 +239,14 @@ names it in `failed` and the last good entries stand.
   first↔last pair, request for request) — `repo-dashboard.md` › Drift. ≤ `driftCompares(N)` = max(2, N).
 - **`not_shipped`** (`computeNotShipped`): per part of the PRIMARY repository's apps with a serving sha
   (`servingShas`), `GET /compare/<serving sha>...<branch>` — GitHub's `ahead_by` as the count, the commits grouped
-  by PR, the oldest commit's date. In a repository with ≥ 2 apps the commits are kept to the app's watch paths ONLY
-  when every returned commit lists its `files` — GitHub's compare does not today (one combined list for the range),
-  so the groups stay unfiltered until Phase E; filtered, the count is exact only when the compare returned every
-  commit, else null. A one-app repository is never filtered. Incremental: a part is compared again only when its
-  serving sha or its branch head changed; never-computed parts first, then the oldest.
+  by PR, the oldest commit's date. In a repository with ≥ 2 apps the commits are kept to the app's watch paths, each
+  commit's files from `commit_paths` (exact `commit` rows only — GitHub's compare lists one combined file list for
+  the range). **A commit whose files are not known stays IN**: counted, and its group says how many
+  (`FactsCommitGroup.pathsUnknown`, "paths unknown" on screen) — never dropped (GUARD, `test/repo-monorepo.scope.test.ts`).
+  With no commit known nothing is filtered and the count is GitHub's total; filtered, the count is exact only when the
+  compare returned every commit, else null. A one-app repository is never filtered. Incremental: a part is compared
+  again only when its serving sha or its branch head changed, or a commit it kept as unknown (`NotShippedEntry.unknown`)
+  has paths now (a D1 read, no GitHub request); never-computed parts first, then the oldest.
 - **`out_of_step`** (`computeOutOfStep`): per environment whose parts serve different commits (a 7- and a
   40-character sha are one), the NEWEST serving deploy is the reference and one compare per other distinct sha
   (`<other>...<reference>`): `ahead` → the others are behind by `ahead_by`; `behind` → the reference apps are behind.
@@ -558,7 +563,8 @@ The build reserved `0070`–`0079` (clear of #178's renumbering). All additive.
 - `0071_repo_settings` (Phase C) — `repo_settings`. Rollback: `DROP TABLE repo_settings; DELETE FROM org_admin_audit
   WHERE action = 'repo.settings';`.
 - `0072_repo_scans` (Phase D) — `repo_scans`, `repo_app_suggestions`.
-- `0073_commit_paths` (Phase E) — reserved; see Monorepos below.
+- `0073_commit_paths` (Phase E) — `commit_paths`, `pr_files`, `pr_file_reads` (no handle column). Rollback: `DROP TABLE
+  pr_file_reads; DROP TABLE pr_files; DROP TABLE commit_paths;`. See Monorepos below.
 - `0074_releases` (Phase F) — `releases`. Rollback: `DROP TABLE releases;`.
 - `0075`–`0079` spare.
 
@@ -568,8 +574,45 @@ are in `HANDLE_COLUMNS` (`src/auth/persons.ts`). `releases.author` is a GitHub l
 
 ## Monorepos (Phase E)
 
-<!-- TODO(master): fill after Phase E merges — `0073_commit_paths` (`commit_paths`, PR files: ≤ 3 pages, repositories with ≥ 2 apps), the App menu narrowing Code and CI, "touches" / "via <package>", CI failures by app, `FactsApp.openPrs` for multi-app repositories, the not-shipped arm's real watch-path filtering, the sha join's app attribution, and their costs in `reconcileRequests`. -->
+Two captures, both through the gate (`ingestion-gate.md` — `ingestCommitPaths`, `ingestPrFiles`), both off the render path:
+- **Commit paths** (`src/repo/commit-paths.ts`, `src/repo/path-capture.ts`): a `push` delivery's own `commits[].added /
+  modified / removed` → `commit_paths` rows with `scope = 'commit'` (exactly that commit's files), written FIRST on the
+  delivery so the drift refresh's not-shipped compare already reads them. A push that lists `PUSH_PAYLOAD_COMMIT_CAP`
+  (20) commits, or a commit whose lists are missing or reach `PATHS_PER_COMMIT_CAP` (300 — UNVERIFIED: GitHub documents
+  no per-commit cap), was cut short; when the HEAD commit has no exact list and `before` is a real commit, ONE `compare`
+  (before...after, deferred under `waitUntil`) fills in — its `files` belong to the whole push, so they are stored under
+  the head commit as `scope = 'push'` (`'push_partial'` at the compare's own 300-file cap). A `push*` row is never read
+  as a commit's: the not-shipped filter and the commit counts read `commit` rows only; only CI's head-commit attribution
+  reads a push's, marked `approx`. A commit with neither is UNKNOWN. ≤ `PUSH_PATH_ROWS_CAP` (1,000) rows per push.
+- **PR files** (`src/repo/pr-files.ts`, `src/repo/pr-files-store.ts`): `GET /pulls/{n}/files`, ≤ 3 pages of 100 (three
+  full pages = `complete: false`), only for a repository with two or more apps (Packages count), for open PRs and PRs
+  merged in the last 14 days — on the `pull_request` webhook (opened / reopened / synchronize / closed-merged; no
+  request when the files were read for that head) and reconcile's `pr_files` arm (`repo-dashboard.md` › reconcile; ≤ 9 requests on Poll now, 30 on the cron's unit and Sync GitHub). `pr_file_reads` holds the
+  head each list was read for: no row = never read = unknown.
+- **The narrowing** (`src/tools/repo-scope.ts`, `src/repo/app-scope.ts`; the rules in `shared/repo-scope-core.ts`, which
+  the SPA words with): a PR / commit / run TOUCHES the apps (not Packages) whose watch paths its files hit and the
+  Packages they hit; it REACHES an app it touches, or that uses a Package it touches (`usedBy`). Only in a repository
+  with two or more apps: under All apps each listed PR carries `touches` / `packages` (`null` = never read: no
+  "touches" line) and each CI failure `apps` (`null` = unknown) and `approx`; under an app key the Code tiles (Open
+  PRs, Merged this week, Commits this week — the week's pushed commits by their own files —, Contributors; a figure
+  with one unknown member is `value: null` with how many in its `sub`, "—" on screen), the 14-day bars (the app's
+  commits per push day, the note naming how many have unknown paths), the PR list (its 8 among the 100 most recently
+  touched PRs of 90 days, their checks and approvals read for just those) and the CI failures (the app's failed runs;
+  the 7-day rate over its decisive runs, `null` unless a week of run capture AND every run of the window is
+  attributed) are its own; `__repo` = touching no app and no package. **Unknown is never guessed into an app**, nor
+  into `__repo`; a PR read past its page cap belongs where it hits and is unknown where it does not. A run belongs to
+  the apps a `github` part's `workflow` setting names (by file name) or whose watch paths cover its workflow file,
+  plus its head commit's files. The deploy strips carry `envLabel` / `host`; the screen groups them per app. A throw
+  costs the narrowing alone (`degraded`, the narrowed sections empty). On screen (`web/src/repo-scope.ts`): the scope
+  line ("Pull requests that touch apps/api/** or packages/db/**", Show all apps), the touches cell (the apps it reaches,
+  "Repo-wide", and "via packages/ui" — under an app only when the app is reached through a Package alone), a failure's
+  apps after its workflow (All apps), strips per app. The sample narrows scenario E with `sampleScopes` (the design's
+  `CODE_E_API` / `CI_E`). Tests: `test/repo-monorepo.capture.test.ts`, `test/repo-monorepo.scope.test.ts`,
+  `test/render.repo-monorepo.test.ts`.
 
-TODO: Phase E is not merged on this branch yet. Until it is, which commit or PR touches which app is unknown:
-`openPrs` is null for a repository with two or more apps, the not-shipped groups stay unfiltered, and the App menu
-narrows the Overview and the per-part sections only.
+Costs: the webhook's push arm asks ONE compare at most per delivery (only when the head commit's lists were cut
+short); a `pull_request` delivery ≤ 3 requests (none when already read for that head); reconcile's `pr_files` arm is
+in `reconcileRequests` (`PR_FILES_REQUESTS` = 9 — Poll now's `refreshSubrequests` fits `SUBREQUEST_CAP` up to 11
+environments) and widened by `ReconcileLimits` to `PR_FILES_SYNC_REQUESTS` = 30 for the cron's unit and Sync GitHub
+(`reconcileCost`). Retention: 100 days (`pruneRepoCapture`). Not done in Phase E: the sha join's app attribution stays
+the branch alone (above).

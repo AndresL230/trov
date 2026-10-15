@@ -13,6 +13,8 @@ import { fillFailedJob, refreshDrift, scrubbedMessage } from "./repo/github";
 import { mirrorIssue } from "./tools/ticket-mirror";
 import { writeGithubDeploys } from "./hosting/github-deploys";
 import { checkRollback } from "./hosting/rollback";
+import { commitPathsOnPush } from "./repo/path-capture";
+import { prFilesOnDelivery } from "./repo/pr-files";
 
 // The GitHub webhook is Trov's THIRD auth class. Unlike the session cookie
 // (humans) and the bearer token (agents), a delivery authenticates itself by an
@@ -311,8 +313,9 @@ export const REPO_EVENT_NAMES: readonly string[] = [
  *  (src/repo/releases.ts `releaseEventsFromDelivery`). Counted in the response's `repo` object. */
 export const RELEASE_EVENT_NAMES: readonly string[] = ["release", "create"];
 
-/** Deliveries the GitHub App is subscribed to for a LATER phase of repo setups (`workflow_job` — CI per app,
- *  Phase E): verified, acknowledged and not captured yet. */
+/** Deliveries the GitHub App is subscribed to and Trov does not capture yet (`workflow_job`): verified and
+ *  acknowledged. CI per app (repo setups, Phase E) attributes a whole `workflow_run` by its workflow file and its
+ *  head commit's paths — no per-job capture is needed for it. */
 export const LATER_EVENT_NAMES: readonly string[] = ["workflow_job"];
 
 // ---------------------------------------------------------------------------
@@ -446,6 +449,14 @@ export async function captureDelivery(
           if (await putMetric(ctx, m)) repo.captured++; else repo.unchanged++;
         }
       }
+      if (eventName === "push") {
+        // Which files each pushed commit touched (Repo setups, Phase E — the App menu's narrowing and not shipped's
+        // watch-path filter): the gate's commit-paths arm, from the delivery's own lists — ONE compare (deferred) only
+        // when the delivery cut the head commit's short. FIRST, so the drift refresh below already reads them. Its own
+        // guard: a failure here costs nothing else, and never changes the counts.
+        await commitPathsOnPush(ctx, scope.repo, payload, gh, opts?.waitUntil)
+          .catch((e: unknown) => console.error("repo capture: commit paths", scrubbedMessage(e, token ?? ""), `org=${ctx.orgId}`));
+      }
       {
         // Every arm's repo_events rows — for a `status`, a non-`canopy/*` context as an untagged deploy signal.
         for (const ev of repoEventsFromDelivery(eventName, payload)) {
@@ -478,6 +489,14 @@ export async function captureDelivery(
     } catch (e) {
       // The message only, scrubbed of the token if one was revealed — never the Error object.
       console.error("repo capture failed", eventName, scrubbedMessage(e, token ?? ""), `org=${ctx.orgId}`);
+    }
+    // Which files a pull request touched (Repo setups, Phase E — the App menu's narrowing): the gate's PR-files arm
+    // (≤ 3 pages, repositories with two or more apps, skipped without a request when already read for the head). Its
+    // own guard, off the response path when the runtime allows: a failure costs nothing above, nor its counts.
+    if (eventName === "pull_request") {
+      const job = prFilesOnDelivery(ctx, gh, scope.repo, payload)
+        .catch((e: unknown) => console.error("repo capture: pr files", scrubbedMessage(e, token ?? ""), `org=${ctx.orgId}`));
+      if (opts?.waitUntil) opts.waitUntil(job); else await job;
     }
   }
 

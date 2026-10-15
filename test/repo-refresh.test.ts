@@ -6,8 +6,8 @@
  * the org has a part — none here; test/hosting.cron.test.ts), then the GitHub
  * reconcile — each in its own guarded arm — and `POST /admin/poll` returns what
  * they report, behind a `refresh_lock` snapshot. The budget is 3N + reconcile's
- * `reconcileRequests(N)` (16 + 2N + max(2, N) + 6 + 2 — the promotion chain, the facts arms and the releases
- * arm) subrequests; past the free plan's 50 the GitHub arm is skipped and says so.
+ * `reconcileRequests(N)` (16 + 2N + max(2, N) + 6 + 2 + 9 — the promotion chain, the facts arms, the releases
+ * arm and the PR-files arm) subrequests; past `SUBREQUEST_CAP` (100) the GitHub arm is skipped and says so.
  * The fetch is stubbed at the Response level; rows are asserted in real D1.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
@@ -82,18 +82,18 @@ const USAGE_OK = {
 };
 
 describe("the on-demand budget", () => {
-  it("is health 2N + usage N + reconcile (16 + 2N + max(2, N) + 6 + 2): 36 for two environments, inside the cap (100) up to N = 12 (96) and past it at 13 (102)", () => {
+  it("is health 2N + usage N + reconcile (16 + 2N + max(2, N) + 6 + 2 + 9): 45 for two environments, inside the cap (100) up to N = 11 (99) and past it at 12 (105)", () => {
     expect(SUBREQUEST_CAP).toBe(100);
-    expect(refreshSubrequests(2)).toBe(36);
-    expect(refreshSubrequests(12)).toBe(96);
-    expect(refreshSubrequests(13)).toBe(102);
-    expect(refreshSubrequests(12)).toBeLessThanOrEqual(SUBREQUEST_CAP);
-    expect(refreshSubrequests(13)).toBeGreaterThan(SUBREQUEST_CAP);
+    expect(refreshSubrequests(2)).toBe(45);
+    expect(refreshSubrequests(11)).toBe(99);
+    expect(refreshSubrequests(12)).toBe(105);
+    expect(refreshSubrequests(11)).toBeLessThanOrEqual(SUBREQUEST_CAP);
+    expect(refreshSubrequests(12)).toBeGreaterThan(SUBREQUEST_CAP);
   });
 });
 
 describe("runRepoRefresh", () => {
-  it("runs health, then usage, then GitHub — every arm's outcome, in order, at ≤ 36 requests for N = 2", async () => {
+  it("runs health, then usage, then GitHub — every arm's outcome, in order, at ≤ 45 requests for N = 2", async () => {
     const w = world();
     const res = await runRepoRefresh(refreshEnv(), NOW, w.fetchImpl);
     expect(res).toEqual({ health: ALL_UP, ...USAGE_OK, github: { written: 0, unchanged: 0, failed: [] } });
@@ -107,7 +107,7 @@ describe("runRepoRefresh", () => {
     expect(github.length).toBeGreaterThan(0);
     for (const url of github) expect(url.startsWith(GH)).toBe(true);
     expect(w.calls.length).toBeLessThanOrEqual(refreshSubrequests(2));
-    expect(refreshSubrequests(2)).toBe(36);
+    expect(refreshSubrequests(2)).toBe(45);
     // Reconcile really ran: its completeness marker and its snapshots are in D1.
     const kinds = (await all<{ kind: string }>(env.DB, `SELECT kind FROM repo_snapshots ORDER BY kind`)).map((r) => r.kind);
     expect(kinds).toContain("prs_reconciled");
@@ -266,15 +266,15 @@ describe("runRepoRefresh", () => {
     expect(w.calls.length).toBeLessThanOrEqual(SUBREQUEST_CAP);
   });
 
-  it("with 12 environments (96) the GitHub arm still runs", async () => {
-    const six = Array.from({ length: 12 }, (_, i) => ({
+  it("with 11 environments (99) the GitHub arm still runs", async () => {
+    const six = Array.from({ length: 11 }, (_, i) => ({
       ...ENVS[0], key: `env${i}`, label: `env${i}`, branch: `b${i}`,
       frontendUrl: `https://e${i}.example.com`, apiUrl: `https://api.e${i}.example.com`,
     }));
     const w = world();
     const res = await runRepoRefresh(refreshEnv({ REPO_ENVIRONMENTS: JSON.stringify(six) }), NOW, w.fetchImpl);
     expect(res.github).toEqual({ written: 0, unchanged: 0, failed: [] });
-    expect(w.calls.length).toBeLessThanOrEqual(refreshSubrequests(12));
+    expect(w.calls.length).toBeLessThanOrEqual(refreshSubrequests(11));
   });
 
   // The worst case: every failure quotes its own request — headers AND body —

@@ -57,6 +57,8 @@ export const ORG_TABLES = [
   "repo_settings",
   // A repository's releases and tags (0074_releases).
   "releases",
+  // Which files a commit and a pull request touched (0073_commit_paths).
+  "commit_paths", "pr_files", "pr_file_reads",
   // Configuration and credentials: the GitHub App binding, encrypted secrets and their keys, repositories, environments.
   "org_github_installation_repos", "org_github_installations",
   "org_secrets", "org_keys", "org_integration_config", "org_audit",
