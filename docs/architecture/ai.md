@@ -5,9 +5,8 @@ and the decided system, `docs/superpowers/specs/2026-10-15-server-ai-build.md` (
 `2026-10-14-server-ai.md`). The capture-time summaries and their allowance: `plans.md` › AI summaries. The keys:
 `env.md` › Summaries.
 
-**Nothing produces AI content yet** (Phases A and B of the decided build). The pass below has its machinery but
-no job, no suggestion is ever written, and every AI field on the existing reads is omitted in production. What
-exists is the base: the client with both providers (and Claude's Message Batches), the allowances, the switches,
+**Phase D's first producers run: session digests and repo state** (below). Every other AI field on the existing
+reads is still omitted in production, and no suggestion is written yet. What exists besides is the base: the client with both providers (and Claude's Message Batches), the allowances, the switches,
 the ROUTER (every write path marks the scopes it made stale in `ai_dirty`), the pass's machinery (debounce, stages,
 grouping, gates, the cached org prefix, batches, section isolation, clearing, the caps), the suggestion and
 "Wrong?" tables and routes, the screens' contracts, and a local preview. Sift (tagging existing items,
@@ -26,8 +25,8 @@ A caller names a KIND, never a model. `KIND_PROVIDER` is the ONE table from a ki
 
 | Provider | Model | Kinds today | What it does |
 |---|---|---|---|
-| `claude` | `claude-haiku-5-5` (Anthropic, `ANTHROPIC_API_KEY`) | `summary_pr`, `summary_issue`, `filter` | `structured()`: one call, a system prompt and a text in, a zod-checked value out. It writes words. |
-| `jev` | `jev-latest` (TypeSafe AI's Jev, `TYPESAFE_API_KEY`) | `tag.fit` | `classify()`: a run of one yes/no question over many items; `ask()`: several `noul` / `choice` / `score` questions about ONE item in ONE request. Numbers only, no text. |
+| `claude` | `claude-haiku-5-5` (Anthropic, `ANTHROPIC_API_KEY`) | `summary_pr`, `summary_issue`, `filter`, `digest.session`, `repo.state` | `structured()`: one call, a system prompt and a text in, a zod-checked value out. It writes words. |
+| `jev` | `jev-latest` (TypeSafe AI's Jev, `TYPESAFE_API_KEY`) | `tag.fit`, `gate.session`, `gate.state` | `classify()`: a run of one yes/no question over many items; `ask()`: several `noul` / `choice` / `score` questions about ONE item in ONE request. Numbers only, no text. |
 
 - **The Jev provider is `src/tools/classify.ts`**, the ONLY file in `src/` and `shared/` that names TypeSafe's URL,
   and only `src/ai/client.ts` imports it (`test/secrets.mcp.test.ts`). `classify` is Sift's run, unchanged by the
@@ -49,7 +48,8 @@ ONLY in these places, all behind THE client (the decided build adds Ask Trov's r
 1. **The capture-time summary seams** — `src/tools/summarize.ts`, chosen per org by `orgSummarizers`
    (`src/plans/summaries.ts`), from the webhook and Sync GitHub. Kinds `summary_pr` / `summary_issue` (Claude).
 2. **The AI pass** — `src/ai/pass.ts` (and its batch half, `src/ai/batches.ts`), from the `*/10` repo tick. Jev
-   jobs and gates and Claude jobs (`src/ai/jobs.ts`); the registry is empty until Phases C and D.
+   jobs and gates and Claude jobs (`src/ai/jobs.ts`); the registry's producers so far: `digest.session` and
+   `repo.state` (`src/ai/digests.ts`, `src/ai/repo-state.ts` — they import no client: the pass calls for them).
 3. **The Sift run** — `src/ai/sift.ts` (`startTagFit` / `continueTagFit`), started by an admin from the Tags routes
    (`src/tags/routes.ts`: adding a tag, accepting a suggested one, Find items) and run in the background
    (`waitUntil`). Kind `tag.fit` (Jev). Everything about Sift that is NOT a call — candidates, the switches' read,
@@ -79,7 +79,8 @@ either off stops a run in progress at its next request. The Tags tab says when t
 6-hourly progress / reconcile), AFTER the health pings, on what they left of the SAME `Budget`
 (`CRON_SUBREQUEST_BUDGET`, `CRON_WALL_BUDGET_MS` — `src/repo/dispatch.ts`, `repo-dashboard.md` › The repo cron).
 
-- **The job registry.** `AI_JOBS: readonly AiJob[]` is EMPTY (Phases C and D register the producers). A job
+- **The job registry.** `AI_JOBS: readonly AiJob[]` holds the producers: `digest.session` (`session`, gated by
+  `gate.session`) and `repo.state` (`repo`, gated by `gate.state`) so far. A job
   (`src/ai/jobs.ts`) is one KIND of work over one scope (`scope`, and for a shared scope like `card` a `keyPrefix`):
   `input(ctx, scope)` reads its item from D1 (null = nothing to send: the scope is written as it is), and then —
   - a **Jev job** (`provider: "jev"`, a `JevKind`): `ask(item)` → ONE request (`state` + questions) per item;
@@ -120,6 +121,89 @@ either off stops a run in progress at its next request. The Tags tab says when t
   `attempts`).
 - **Isolation.** A read, `input`, `prompt` or `write` that throws is logged by name with `org=<id>` (the scope fails)
   and the loop moves on; nothing throws out of `runAiPass`.
+
+## Session digests (`src/ai/digests.ts`, `0061_ai_digests`; Phase D)
+
+What one person's burst of work on one repository shipped, or where it stands — a `Shipped:` / `Status:` feed entry
+written by Trov, so agents record only what a session alone knows (`record-session` now writes decisions, findings
+and incidents, citing its commits). The job `digest.session` takes the router's `session:<repo>:<login>` scope (a
+push, PR opened, run, check or deploy by that login), which closes 45 minutes after its last event.
+
+1. **The burst** (`sessionInput`, D1 only): the login's `repo_events` captured since its last `ai_sessions` row (or
+   since the scope went stale) — the pushes' commits (short sha, subject, branch; distinct only; newest first, at
+   most 40) and its PRs (at most 12): a MERGED one as its card (`pr_summaries` what / why / impact), an open one by
+   its title. Never a PR body, a diff or a commit body. Runs and checks alone are no burst (nothing to digest:
+   the scope clears, no row). `shipped` = a merged PR, or commits pushed to `main` / `master` / an environment's
+   branch — only then may the type be `Shipped`. `subject` = the member the login is in this org
+   (`resolvePersonForLogin`), else null.
+2. **Dedupe, with ZERO model calls** (`agentCovered`): an AGENT entry (`origin = 'agent'`, the last 24 h before the
+   burst onwards) whose `artifacts.commits` (compared by their first 7 characters) or `artifacts.prs` meet the
+   burst's covers it — UNLESS its type is `Decision:` / `Finding:` / `Incident:` / `Triage:`, which is not a record
+   of what shipped (the new `record-session` writes exactly those, citing its commits, and they must not suppress
+   the digest). Covered: `ai_sessions` `skipped` / `agent_recorded`, the scope written, no Jev, no Haiku. The other
+   direction — an agent records the same commits AFTER the digest — writes both: the agent's entry is never held
+   back (the gate never refuses a person's write over Trov's), and the 45-minute wait gives a session-end
+   `record_session` the time to land first.
+3. **`gate.session`** (Jev, one `noul` over the commit subjects and PR titles: substantive?) — below
+   `SESSION_GATE_MIN` (0.5) no digest, `ai_sessions` `skipped` / `not_substantive`. Without Jev (no key, the
+   allowance spent, the provider stopped, a malformed answer): the plain rule — a PR, or 3+ commits.
+4. **`digest.session`** (Haiku, `output_config.format`, the org prefix first; `DigestSchema`, one section per field):
+   `type`, `summary`, `brief`, the labelled fields (`what` / `why` / `impact` / `follow_up` for Shipped, `state` /
+   `blocked_on` / `next` for Status), `tags` (from the prefix's vocabulary) and `cites` (`sha:<7>` / `pr:<n>`).
+   `cites` may name every ref the input carries (40 commits + 12 PRs: a lower cap made the schema drop a whole
+   answer that cited them all — found by the eval). The prompt asks for a summary of at most 90 characters.
+   **`checkDigest`** (pure) writes it only when: the summary starts with `<type>: ` and fits 100 characters; the
+   type is `Shipped` only for a `shipped` burst; the brief (≤ 280) carries no `#n`, sha or `pr:` / `sha:` ref; no
+   number in the summary or brief that the input does not write (a sha's digits do not count); at least ONE cite
+   that was in the input (the rest dropped). Over-length is discarded, never cut. An optional field with an
+   invented number is dropped alone. A refusal or `max_tokens` is no answer: nothing is written, the scope fails.
+5. **The write** (`writeDigest`): the server renders the body in the record-session format (`**What** …`, then
+   "Written by Trov from N commits in <repo>. Not reviewed by a person.") and `artifacts` from the kept cites,
+   and calls **`ingestFeedEntry(ctx, entry, "trov", ledger, { model, subject })`** — THE GATE, the one author
+   exception (`ingestion-gate.md`). Then `ai_sessions` is `done` with the entry's id.
+
+**`ai_sessions`** (0061; `ORG_TABLES`, the reset seed): PK `(org_id, repo, actor_login, started_at)`; `ended_at`,
+`status` (`done` | `skipped`), `reason` (`not_substantive` | `agent_recorded`), `shas` / `prs` (JSON), `feed_id`,
+`model`, `prompt_version`. `actor_login` is a GitHub login, not a handle: an account's deletion deletes the rows of
+its logins (`src/deletion/person.ts`); its digests stay as content with `subject` tombstoned (`HANDLE_COLUMNS`).
+
+**The `trov` person** (0061): `persons` row like `github-webhook`'s; reserved (`RESERVED_HANDLES`: no sign-up,
+rename to or from); never a member (the reset seed's memberships skip it), never listed (`listPersons`), never a
+person card (`memberPerson`), never counted as a person (Platform), and `accountDeletionPreview` answers not found
+for any reserved handle, so neither Settings nor Platform can delete it.
+
+## Repo state (`src/ai/repo-state.ts`, `src/tools/repo-state.ts`, `0062_repo_state`; Phase D)
+
+Where the org's repository stands — a headline and three lists of at most 5 (shipped recently, in flight, needs
+attention), each line with its cites — what Repo › Overview's State, `get_repo_dashboard`'s `state` and the
+`load-context` skill read FIRST. The job `repo.state` takes `repo:<repo>` (debounced 60 min on Pro / Enterprise —
+a breaking change skips it — 6 h otherwise).
+
+1. **The input, INCREMENTAL** (`stateInput`, D1 only): the newest version (its lines and their resolved cites —
+   valid cites again) and, since its `basis_until` (14 days for the first): merged PRs as their cards (`events`
+   `pr_merged` ⋈ `pr_summaries`), Trov's digests for the repo (`feed` ⋈ `ai_sessions`); and now: the open PRs (each
+   PR's newest `repo_events` row, 30 days), the default branches' failing workflows (each workflow's newest run on
+   `main` / `master` / an environment's branch), every environment PART's newest `hosting_deploys` row and last
+   `hosting_poll_state` status (#185: every host is a provider), and the deploys since. Every ref the model may cite
+   is built HERE with its cite (`pr:<n>`, `run:<id>`, `feed:<id>` → `#feed`, `deploy:<env>/<part>` → the deploy's
+   inspect link). `eventCount` = merged + digests + new default-branch failures + deploys since.
+2. **`gate.state`** (Jev, one `noul` over the delta: did it change what is shipped, in flight or needing
+   attention?) — below `STATE_GATE_MIN` (0.5) no call, nothing written, the scope clears. Without Jev: a merged
+   PR, a deploy, or a red default branch. What Jev reads (`stateGateText`) is a merged PR with its card's `what`,
+   a digest with its brief and a deploy WITH the commit it shipped — with titles alone Jev scored 8/19 on the eval
+   (it could not tell a release-notes deploy from a feature); with them, 18/19.
+3. **`repo.state`** (Haiku, structured, the org prefix first; `StateSchema`: `headline` and each list's lines
+   checked one at a time). **`checkState`** keeps a line only with ≥ 1 cite from the input (resolved to the
+   server's own `AiCite`, the rest dropped), no number the input lacks and no ref written INTO its sentence
+   (`writesRef`: "pr:178" in a headline is the model's syntax, never shown to a person — dropped, not cleaned);
+   at most 5 per list; a headline over 200 characters, with an invented number or a ref is dropped. Nothing left at all → not written (the scope fails).
+4. **The write** — computed, direct (`appendRepoState`): version N+1 and every version older than the last 20
+   deleted, in ONE batch.
+
+**The read** (`readRepoState`, MCP-reachable, imports nothing from `src/ai/`): absent with no repo, the switch off,
+nothing written, a row that no longer parses, the viewer's "Wrong?" on that version
+(`aiItemRef.repoState(repo, generatedAt)`), or a failed read; `capped` once the month's `ai_runs` are spent (the
+last state, `resumesOn`, `upgrade` on Free); else `ready`. Two statements (plus "Wrong?"'s with a viewer).
 
 ## The router (`src/tools/ai-route.ts`, `src/data/ai-dirty.ts`; Phase B)
 
@@ -324,7 +408,8 @@ the model cannot invent an item, because it returns no item. Three screens: Tick
 
 The contracts are typed (`shared/ai-core.ts`, schemas in `shared/ai.ts`): `DashboardData.brief?` (`/me/dashboard`,
 `get_my_work`), `RepoDashboard.state?` / `themes?` (`/repo/dashboard`, `get_repo_dashboard`), `FeedRow.ai?` (`/feed`,
-`get_feed`). Production returns none of them. `get_repo_dashboard` carries `state` with `tab: overview` (or no
+`get_feed`). Production returns `state` (the newest `repo_state` version — Repo state above) and the feed's `ai` on
+Trov's own entries (Session digests above); none of the others yet. `get_repo_dashboard` carries `state` with `tab: overview` (or no
 tab) and `themes` with `planning` (or no tab) when the dashboard has them — they are not sections, so
 `REPO_TAB_SECTIONS` does not name them (`src/tools/repo-agent.ts`).
 
@@ -353,4 +438,36 @@ dismiss, "Wrong?"), `test/ai.preview.test.ts` (fields absent in production, the 
 parsing), `test/tag-fit.test.ts` (Sift: the run, its switches — the org's included, mid-run — and the allowance),
 `test/secrets.mcp.test.ts` (the call sites, the MCP boundary, TypeSafe's URL in one file),
 `test/plans.limits.test.ts` (`ai_chat`, per seat on Pro), `test/ai.filter.test.ts` and `test/render.ai-filter.test.ts`
-(the plain-language filter).
+(the plain-language filter), `test/ai.digests.test.ts` (session digests through the real webhook capture: the gate
+and its rule, dedupe with zero calls, cites, refusal / `max_tokens`, the gate path and its ledger, the `trov`
+exception, the feed's `ai`, deletion), `test/ai.repo-state.test.ts` (repo state: the gate and its rule, incremental
+input, hosting parts, cites, keep 20, the read — absent, the switch, capped, "Wrong?" — and `get_repo_dashboard`),
+`test/ai.hookup.test.ts` (THE HOOKUP, real rows end to end: webhook capture → the pass → `GET /repo/dashboard`,
+`get_repo_dashboard`, `GET /feed`, `get_feed` → the existing screens render State and the Trov entry; "Wrong?"'s
+exact button bodies through the real route hide each for the presser only; absent renders nothing),
+`test/ai-evals.digests.test.ts` (the digest evals' recorded live answers, replayed and graded in CI).
+
+## Evals (`test/ai-evals/<kind>/`)
+
+Each kind ships its eval set: real examples and the expected answer (Jev gates: `expected` substantive / changed;
+Haiku producers: the input and the grading rules — cites valid, no invented number, the prefix right, the lengths).
+A kind's prompt or threshold changes only with its eval set passing.
+
+**Phase D's digests** — `gate.session` (17 cases), `digest.session` (10), `gate.state` (19), `repo.state` (8) —
+are REAL: this repository's history (`git log` of the commits each merged PR carried, branch bursts, trivial pushes
+to `main`) with the Personal Dev org's PR cards and dashboard (read-only, over the Trov MCP read tools);
+`scripts/ai-evals/digests-cases.mjs` rebuilds `cases.json`. The rules are `test/ai-evals/digests-grade.ts`: a digest
+— the type the input calls for, the prefix, the lengths, no ref in the brief, no invented number, every cite valid
+and at least one; a state — the headline, every cite valid, no invented number, no ref in a sentence, at most 5 per
+list, each merged PR in shipped and out of in flight, a red default branch and a failed deploy in attention. A
+Haiku answer is graded raw AND as the server would write it (`checkDigest` / `checkState`).
+`scripts/ai-evals/digests-live.ts` runs them LIVE by hand (bundled with esbuild; the keys read from a `.dev.vars`
+path at run time, never stored) with THE client, the jobs' own questions and prompts and the eval prefix (Personal
+Dev, the six starter tags); it prints the scores and every call's tokens and writes `<kind>/recorded.json` — the
+raw response bodies, each with a hash of what was sent. `test/ai-evals.digests.test.ts` replays them at the
+`Response` level through the real code: a changed prompt, question or input FAILS ("record again").
+
+Live (2026-10-15): `gate.session` 17/17 (the plain rule 14/17), ~510 Jev tokens in / 22 out per call;
+`gate.state` 18/19 (the plain rule 12/19), ~416 in / 20 out; `digest.session` 10/10 raw and written, per call
+~660 uncached + ~1,360 cached in, ~366 out (thinking included); `repo.state` 8/8 raw and written, ~508 uncached +
+~1,190 cached in, ~257 out. CI floors: 0.9, 0.85, 0.9, 0.9.

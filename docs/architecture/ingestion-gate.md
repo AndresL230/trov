@@ -49,6 +49,18 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   trusted only post-HMAC — distinct from the writer.
 - **Author is ALWAYS the authenticated principal**, passed in by the caller. The client-supplied
   `session.author` is advisory and ignored. (This writer rule does NOT clobber an event's `subject_login`.)
+  **The ONE exception: what Trov writes itself.** A session digest (the AI pass's `digest.session` job,
+  `src/ai/digests.ts`; `ai.md` › Session digests) goes through `ingestFeedEntry` like any entry, authored by the
+  reserved system person `trov` (`TROV_SYSTEM_HANDLE`, its `persons` row from 0061 — never a member, never
+  listed, never deletable or renamable) with its provenance `ai = { model, subject }` → `feed.origin = 'ai'`,
+  `feed.model`, `feed.subject` (the member it is for; in `HANDLE_COLUMNS`). The author and the provenance go
+  TOGETHER or not at all — `ingestFeedEntry` throws on `trov` without `ai`, or `ai` with any other author — and
+  only the pass's job passes `ai` (no route, no MCP tool can: `/ingest` and `record_session` never do), so no
+  principal can write as Trov and no person's entry can be marked as Trov's. Its ledger key is the burst
+  (`ai:session:<repo>:<login>:<started_at>`, item 0), so a retried write replays instead of doubling; a tag of
+  Trov's entry that is not on the org's list is DROPPED (never recorded as a suggestion for the admins); and the
+  router marks `person:<subject>`, not `person:trov`. Phase D's doc-drift proposals (0065) will be the same
+  exception through `ingestDocProposal`.
 - **Repo capture is a SECOND, sibling gate to `ingestEvent`** — same reconciliation (a UNIQUE `semantic_key`
   written `INSERT OR IGNORE`, so a redelivery or a backfill overlap drops as `unchanged`) but deliberately
   NOT the `events` table: `ingestEvent` raises an `identity_tasks` row per unmapped `subject_login`, which is
