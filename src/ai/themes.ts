@@ -29,6 +29,7 @@ import {
 import { orgPrimaryRepo } from "../repo/config";
 import { TROV_SYSTEM_HANDLE, type AiCite } from "@shared/ai-core";
 import { sharesOf, weekIndex, weeksEnding } from "../tools/themes";
+import { excerptOf } from "../tools/tag-fit";
 import { each, keep, sections } from "./sections";
 import type { ClaudeJob, JevAnswers, JevJob, JobItem } from "./jobs";
 import { freeColors, themeName, THEME_NAME_MAX } from "./themes-accept";
@@ -293,13 +294,16 @@ export interface PrThemeInput { repo: string; pr: MergedPrRow; themes: { id: num
 
 export const PR_THEME_INSTRUCTIONS = "Which of these themes of the repository's work does this merged pull request belong to? Pick none of these when no theme fits.";
 
-/** What Jev reads for one PR: its card (or its title), never its body. */
+/** What Jev reads for one PR: its card (or its title), never its body — each part through the SAME scrub every Jev
+ *  input uses (`excerptOf`, src/tools/tag-fit.ts: no code, no markup, no link targets, nothing shaped like a
+ *  credential), so what the Privacy Policy says TypeSafe AI is sent stays true. */
 export function prState(p: MergedPrRow): string {
+  const what = excerptOf(p.what, 500), why = excerptOf(p.why, 300), impact = excerptOf(p.impact, 300);
   return [
-    `Pull request #${p.number}: ${cut(p.card_title ?? p.title ?? "", 200)}`,
-    p.what ? `What changed: ${cut(p.what, 500)}` : "",
-    p.why ? `Why: ${cut(p.why, 300)}` : "",
-    p.impact ? `Impact: ${cut(p.impact, 300)}` : "",
+    `Pull request #${p.number}: ${excerptOf(p.card_title ?? p.title ?? "", 200)}`,
+    what ? `What changed: ${what}` : "",
+    why ? `Why: ${why}` : "",
+    impact ? `Impact: ${impact}` : "",
   ].filter(Boolean).join("\n");
 }
 

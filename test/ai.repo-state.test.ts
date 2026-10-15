@@ -76,7 +76,9 @@ describe("THE GATE: gate.state before any state call", () => {
     const sent = (s.haikuBodies[0] as { messages: { content: { text: string }[] }[] }).messages[0].content.at(-1)!.text;
     expect(sent).toContain("- pr:77 Card title 77\n  what: Adds the Vercel and Netlify connect screens.");
     expect(sent).toContain("- deploy:production/web production web label: error from production");
-    expect(sent).toContain("on vercel: last deploy error, last read failed");
+    // (b) A part is named by its label, never the provider id (#186).
+    expect(sent).toContain("- deploy:production/web production web label: last deploy error, last read failed");
+    expect(sent).not.toMatch(/\bon vercel\b/); // the provider id is never how a part is named (the PR card may say "Vercel")
     expect(sent).not.toContain("SECRET BODY");
     expect(await versions()).toEqual([{ version: 1, event_count: 2, model: "claude-haiku-5-5" }]);
     expect(await dirtyRow(ORG_A, "repo", REPO)).toMatchObject({ attempts: 0, last_error: null });

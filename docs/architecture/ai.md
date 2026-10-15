@@ -398,7 +398,8 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
   `{ value: { mergeInto } }` (another live theme of the repo: this one is removed, its PRs join), Remove = dismiss.
   Accept, Rename and a Merge into an active theme route `themes_accepted` → `theme_backfill:<repo>`.
 - **`pr.theme`** (Jev, `card:pr:<n>`, `pr-theme-1`): once the repo has an active theme, ONE `choice` request per merged PR
-  — the active themes (described) plus `(none of these)`; the state is the PR's card (title, what, why, impact). A pick
+  — the active themes (described) plus `(none of these)`; the state is the PR's card (title, what, why, impact), each part through `excerptOf` (no code, no link targets,
+  nothing shaped like a credential — what the Privacy Policy says TypeSafe AI is sent). A pick
   at ≥ 0.5 confidence is written `source='ai'` with the confidence (`prThemePick`); none-of-these or below is answered
   and writes nothing. A PR a PERSON themed is never asked about; every AI write is an upsert guarded by
   `WHERE pr_themes.source <> 'person'`.
@@ -430,7 +431,8 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
 Each kind's real examples with the expected answer, a live run by hand, and a CI test replaying the recorded answers
 at the `Response` level through THE client and the real job code. `test/ai-evals/run-live.mjs` (bundled with esbuild,
 keys read from a `.dev.vars` at run time) runs them: `pr.theme` — 39 of this repository's merged PRs (`gh pr list`),
-seven themes; live 2026-10-15: 38 / 39 (Jev tokens 26,384 in / 3,908 out). `themes.caption` — six eight-week windows of
+seven themes; live 2026-10-15: 38 / 39 (Jev tokens 26,384 in / 3,908 out; re-recorded with the scrubbed card the same
+day: 38 / 39, 26,245 in / 3,908 out). `themes.caption` — six eight-week windows of
 the same PRs; live: 6 / 6 kept by the rules (Claude tokens 3,954 in / 478 out / 3,820 cached). The replay
 (`test/ai-evals.themes.test.ts`) holds the floors: `pr.theme` ≥ 0.9, captions 1.0.
 
@@ -797,4 +799,5 @@ raw response bodies, each with a hash of what was sent. `test/ai-evals.digests.t
 Live (2026-10-15): `gate.session` 17/17 (the plain rule 14/17), ~510 Jev tokens in / 22 out per call;
 `gate.state` 18/19 (the plain rule 12/19), ~416 in / 20 out; `digest.session` 10/10 raw and written, per call
 ~660 uncached + ~1,360 cached in, ~366 out (thinking included); `repo.state` 8/8 raw and written, ~508 uncached +
-~1,190 cached in, ~257 out. CI floors: 0.9, 0.85, 0.9, 0.9.
+~1,190 cached in, ~257 out (re-recorded the same day with parts named by their label, never the provider id: 8/8,
+~507 uncached + ~1,040 cached in, ~249 out). CI floors: 0.9, 0.85, 0.9, 0.9.

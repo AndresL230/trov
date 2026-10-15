@@ -246,7 +246,8 @@ export function statePrompt(s: StateInput): string {
     "Failing on a default branch:",
     ...(s.failedRuns.length ? s.failedRuns.map((r) => `- ${r.ref} ${r.name} on ${r.branch}`) : ["none"]),
     "Hosting:",
-    ...(s.parts.length ? s.parts.map((p) => `- ${p.ref} ${p.label} on ${p.provider}: last deploy ${p.latest ?? "unknown"}${p.poll && p.poll !== "ok" ? `, last read ${p.poll}` : ""}`) : ["none connected"]),
+    // A part is named by its label only, never the provider id (#186: a host is its part's label — RepoFacts).
+    ...(s.parts.length ? s.parts.map((p) => `- ${p.ref} ${p.label}: last deploy ${p.latest ?? "unknown"}${p.poll && p.poll !== "ok" ? `, last read ${p.poll}` : ""}`) : ["none connected"]),
     "</now>",
   ].join("\n");
 }
