@@ -71,6 +71,29 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Repo setups (handoff #11), feat/repo-setups — in progress. Phase C2: environment cards, drift, the apps table, not shipped.
+  {
+    version: "Unreleased",
+    date: "2026-10-15",
+    unreleased: true,
+    title: "Repo setups",
+    headline: "Every repository setup, read the same way: its apps, where each one runs, and the commit behind every deploy.",
+    highlights: [
+      "The Repo Overview has a card per environment with a row per app: the commit it runs, how long ago and who shipped it, where it runs, its URL and health, and, when something is wrong, why — a failed deploy and its reason, a build in progress and what serves until it finishes, a rollback, or an app running behind the others.",
+      "Between environments, a strip says how far ahead each branch is and opens on the pull requests and pushes waiting; three or more environments show the whole promotion chain, step by step.",
+      "A repository with many apps gets a table instead: worst first, each app's production commit, its previews or other environment, and how much is merged and not shipped — with the packages that ship inside them listed below.",
+      "Where Trov cannot know something it says Unknown and why, never zero and never “up to date”.",
+    ],
+    patches: {
+      added: [
+        "Repo › Overview blocks (Phase C2), each an `OverviewBlock` over `RepoFacts`: `envCardsBlock` (`web/src/repo-env-cards.ts`), `driftBlock` (`web/src/repo-drift.ts`), `appsTableBlock` (`web/src/repo-apps-table.ts`), `notShippedBlock` (`web/src/repo-not-shipped.ts`); `envVerdict(f, env)` (`web/src/repo-verdict.ts`, the design's `verdictFor`); the shared marks, sha chip, byline, URL and commit groups in `web/src/repo-block-kit.ts`; disclosures through one act, `repoOpen` + the block's key",
+        "Tests: `test/render.repo-env-cards.test.ts`, `test/render.repo-drift.test.ts`, `test/render.repo-apps-table.test.ts`, `test/render.repo-not-shipped.test.ts`",
+      ],
+      changed: [],
+      fixed: [],
+      removed: [],
+    },
+  },
   // Hosting providers: Org settings › Hosting, the Repo dashboard's Hosting section, Detected, Vercel events.
   {
     version: "0.33",
