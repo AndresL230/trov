@@ -13,7 +13,7 @@
 import { askRepoFacts, type AskActionAnswer, type AskEvent, type AskEventMap, type AskState, type PeekResult, type RefView } from "@shared/ai-ask-core";
 import { getReplayIndex, streamReplay, type AskApi, type AskReplayIndex } from "./ask-api";
 import type { AskCtx, AskWhere } from "./ask-state";
-import { COMPOSER_STATES, type ComposerForced } from "./ask-composer";
+import { COMPOSER_STATES, composerReplaySetup, type ComposerForced } from "./ask-composer";
 
 /** The replay asked for in the page's address, or null. */
 export function replayFromLocation(search: string): { scenario: string; speed: number } | null {
@@ -51,8 +51,9 @@ export function replayPlan(scenario: string): ReplayPlan {
     if (!(COMPOSER_STATES as readonly string[]).includes(forced)) return base;
     return {
       ...base,
-      plan: forced === "free" ? "free" : "pro",
-      setup: (ctx) => { ctx.ui.composer.page.forced = forced; },
+      // `quota` is the design's Free org at its cap (the upsell to Pro is a Free org's).
+      plan: forced === "free" || forced === "quota" ? "free" : "pro",
+      setup: (ctx) => composerReplaySetup(ctx, "page", forced),
       state: (s) => forced === "quota" ? { ...s, allowance: { ...s.allowance, used: s.allowance.cap ?? 0, low: true } }
         : forced === "off" ? { ...s, enabled: false }
         : forced === "autoOff" ? { ...s, autoAllowed: false }
@@ -127,6 +128,13 @@ export function createReplayApi(index: AskReplayIndex, plan: ReplayPlan, speed: 
       await streamReplay(scenario, speed, { onEvent: (e: AskEvent) => o.onEvent(e), signal: o.signal });
     },
     peek: async (refs) => refs.map(peekOne),
+    // The composer's @ picker over the fixtures' items (the replay's org is not the seed's).
+    searchRefs: async (q) => {
+      const n = q.trim().toLowerCase().replace(/^#/, "");
+      return Object.values(index.refs)
+        .filter((v) => !n || `${v.num ?? ""} ${v.title} ${v.ref}`.toLowerCase().includes(n))
+        .map((v) => ({ ref: v.ref, type: v.type, title: v.title, status: v.status?.word ?? null }));
+    },
     getItem: async (ref) => {
       const v = index.refs[ref];
       if (!v) throw new Error("not_found");

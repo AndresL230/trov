@@ -147,7 +147,7 @@ export function createAskController(host: AskHost): AskController {
       if (i >= 0) { ask = messages[i].role === "user"; messages = messages.slice(0, i); }
     }
     const key = `k${++seq}`;
-    const q: AskMsg[] = ask ? [{ role: "user", key: `q${key}`, id: null, text: input.text, context: input.context ?? [], attachments: [], command: input.command ?? null }] : [];
+    const q: AskMsg[] = ask ? [{ role: "user", key: `q${key}`, id: null, text: input.text, context: input.context ?? [], attachments: input.files ?? [], command: input.command ?? null }] : [];
     c = { ...c, messages: [...messages, ...q, { role: "assistant", key: `a${key}`, turn: newTurn(mode) }], busy: true, status: c.status === "idle" ? "ok" : c.status };
     setConvo(where, c);
     ui().conversation.stick = true;

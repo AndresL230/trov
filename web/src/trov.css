@@ -2910,6 +2910,9 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .ask-insp-frame, .ask-insp-frame[data-closing], .ask-insp-body, .ask-menu, .ask-menu[data-closing], .ask-hc, .ask-hc-layer[data-closing] .ask-hc,
   .ask-panel, .ask-scrim, .ask-panel-layer[data-closing] .ask-panel, .ask-panel-layer[data-closing] .ask-scrim, .ask-drawer, .ask-drawer-scrim,
   .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-line, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
+  /* the composer */
+  .ask-input, .ask-co-plusbtn { transition:none !important; }
+  .ask-co-chip, .ask-co-menu, .ask-co-pick, .ask-co-plus, .ask-co-ctx, .ask-co-note, .ask-co-drop, .ask-blocked { animation:none !important; }
 }
 
 /* ── Ask: threads ── (ask-threads.ts; the shell's) */
@@ -2983,19 +2986,110 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-follow { display:flex; flex-direction:column; align-items:flex-start; gap:6px; margin-top:14px; }
 .ask-spin { animation:cnpy-spin .8s linear infinite; }
 
-/* ── Ask: composer ── (ask-composer.ts — a sibling replaces the stub's styles here) */
-.ask-composer { flex:none; width:100%; max-width:720px; box-sizing:border-box; margin:0 auto; padding:0 28px 14px; }
-[data-phone="1"] .ask-composer, .ask-panel .ask-composer { padding:0 16px 12px; }
-.ask-box { border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); transition:border-color .12s ease, box-shadow .12s ease; }
+/* ── Ask: composer ── (ask-composer.ts; ask-trov.dc.html L658–780) */
+.ask-composer { flex:none; width:100%; box-sizing:border-box; padding:0 28px; }
+[data-phone="1"] .ask-composer, .ask-panel .ask-composer { padding:0 16px; }
+.ask-co-in { position:relative; max-width:720px; margin:0 auto; padding-bottom:14px; }
+.ask-panel .ask-co-in { max-width:none; }
+.ask-co-file { display:none; }
+.ask-box { border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); transition:border-color .15s ease, box-shadow .15s ease; }
 .ask-box:focus-within { border-color:var(--border-input); box-shadow:0 0 0 3px var(--accent-soft), var(--shadow); }
-.ask-input { display:block; width:100%; min-height:46px; max-height:220px; box-sizing:border-box; padding:12px 14px 4px; border:0; outline:none; resize:none; background:none; font:inherit; font-size:14.5px; line-height:1.55; color:var(--fg); }
-.ask-box-bar { display:flex; align-items:center; gap:6px; padding:6px 8px 8px; }
-.ask-send { display:grid; place-items:center; width:32px; height:32px; border-radius:8px; background:var(--hover); color:var(--fg-40); cursor:pointer; transition:background .15s ease, color .15s ease; }
+/* The chips: a keyed list (new ones pop in, ask-motion.ts rule 2; a removed one pops out on data-closing). */
+.ask-co-chips { display:flex; flex-wrap:wrap; gap:6px; padding:10px 10px 0; }
+.ask-co-chips:empty { display:none; }
+.ask-co-chip { display:inline-flex; align-items:center; gap:7px; max-width:240px; height:32px; box-sizing:border-box; padding:0 4px 0 6px; border:1px solid var(--border); border-radius:8px; background:var(--bg); }
+.ask-co-chip.is-bad { border-color:color-mix(in srgb, var(--red) 45%, transparent); }
+.ask-co-chip[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
+.ask-co-thumb { width:22px; height:22px; border-radius:4px; object-fit:cover; flex:none; }
+.ask-co-ico { width:22px; height:22px; box-sizing:border-box; border-radius:5px; display:grid; place-items:center; flex:none; background:var(--surface); border:1px solid var(--border); color:var(--fg-55); }
+.ask-co-chip-t { display:flex; flex-direction:column; min-width:0; line-height:1.15; }
+.ask-co-chip-n { font-size:12px; font-weight:500; color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ask-co-chip-m { font-family:var(--label); font-size:10.5px; color:var(--fg-55); }
+.ask-co-chip.is-bad .ask-co-chip-m { color:var(--red); }
+.ask-co-x { width:20px; height:20px; border-radius:5px; display:grid; place-items:center; flex:none; color:var(--fg-55); cursor:pointer; transition:background .12s ease, color .12s ease; }
+.ask-co-x:hover { background:var(--hover); color:var(--fg); }
+.ask-co-x--sm { width:18px; height:18px; }
+/* The input grows with its words (ask-composer.ts `grow` sets the height after a paint; this eases it). */
+.ask-input { display:block; width:100%; min-height:46px; max-height:220px; box-sizing:border-box; padding:12px 14px 4px; border:0; outline:none; resize:none; overflow-y:auto; background:none; font:inherit; font-size:14.5px; line-height:1.55; color:var(--fg); transition:height .14s var(--fx-ease); }
+.ask-input::placeholder { color:var(--fg-55); }
+.ask-box-bar { display:flex; align-items:center; gap:2px; padding:4px 8px 8px; }
+.ask-box-bar--phone { gap:6px; padding:2px 6px 6px; }
+.ask-co-grow { flex:1; }
+.ask-co-tool { width:30px; height:30px; border-radius:7px; display:grid; place-items:center; flex:none; color:var(--fg-55); cursor:pointer; transition:background .12s ease, color .12s ease; }
+.ask-co-tool:hover { background:var(--hover); color:var(--fg-70); }
+.ask-co-modewrap { position:relative; }
+.ask-co-modebtn { display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 8px; border-radius:7px; font-size:12px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:background .12s ease, color .12s ease; }
+.ask-co-modebtn:hover, .ask-co-modebtn[aria-expanded="true"] { background:var(--hover); color:var(--fg); }
+.ask-co-menu { position:absolute; right:0; bottom:calc(100% + 8px); z-index:30; width:286px; box-sizing:border-box; display:flex; flex-direction:column; gap:1px; padding:5px; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:var(--menu-shadow); transform-origin:bottom right; animation:ask-pop-in .14s cubic-bezier(.2,.9,.3,1.2) both; }
+.ask-co-menu[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
+.ask-co-mi { display:flex; align-items:center; justify-content:space-between; gap:14px; width:100%; padding:7px 10px; border-radius:7px; text-align:left; cursor:pointer; }
+.ask-co-mi:hover, .ask-co-mi:focus-visible { background:var(--hover); }
+.ask-co-mi-t { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.ask-co-mi-l { font-size:13px; font-weight:500; color:var(--fg); }
+.ask-co-mi-h { font-size:11.5px; line-height:1.4; color:var(--fg-55); }
+.ask-co-auto { flex:none; margin:0 6px 0 4px; }
+.ask-co-auto.is-off { opacity:.55; cursor:not-allowed; }
+.ask-co-auto.is-off .cnpy-seg-btn:disabled { opacity:1; cursor:not-allowed; }
+.ask-send { display:grid; place-items:center; width:32px; height:32px; border-radius:8px; background:var(--hover); color:var(--fg-55); cursor:pointer; transition:background .15s ease, color .15s ease, transform .12s ease; }
 .ask-send.is-on { background:var(--accent); color:var(--accent-fg); }
 .ask-send.is-busy { background:var(--fg); color:var(--bg); }
-.ask-hint { margin-top:6px; font-size:11.5px; color:var(--fg-40); }
-.ask-disclaimer { margin:10px 0 0; font-size:12.5px; line-height:1.5; color:var(--fg-55); text-align:center; text-wrap:balance; }
-.ask-blocked { display:flex; flex-direction:column; gap:3px; padding:12px 14px; border:1px solid var(--border-strong); border-radius:12px; font-size:13px; color:var(--fg-55); }
+.ask-send:active { transform:translateY(1px); }
+.ask-send[aria-disabled="true"] { cursor:default; }
+.ask-send[aria-disabled="true"]:active { transform:none; }
+.ask-send--40 { width:40px; height:40px; border-radius:10px; flex:none; }
+.ask-co-plusbtn { width:40px; height:40px; box-sizing:border-box; border-radius:10px; display:grid; place-items:center; flex:none; color:var(--fg-70); border:1px solid var(--border); cursor:pointer; transition:transform .2s var(--fx-ease); }
+.ask-co-plusbtn[aria-expanded="true"] { transform:rotate(45deg); }
+.ask-co-meta { font-size:12px; color:var(--fg-55); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* The @ picker and the / commands: above the box, popping from its bottom-left corner. */
+.ask-co-pick { position:absolute; left:0; bottom:calc(100% - 6px); z-index:30; width:min(420px, 100%); max-height:330px; display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--border-strong); border-radius:12px; box-shadow:var(--lift-shadow); transform-origin:bottom left; animation:ask-pop-in .14s cubic-bezier(.2,.9,.3,1.2) both; }
+.ask-co-pick[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
+.ask-co-pick-list { flex:1; min-height:0; overflow-y:auto; padding:4px; }
+.ask-co-pick-h { padding:7px 8px 3px; font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--fg-55); }
+.ask-co-row { display:flex; align-items:center; gap:8px; width:100%; min-width:0; padding:5px 8px; border-radius:7px; text-align:left; cursor:pointer; }
+.ask-co-row:hover, .ask-co-row.is-on { background:var(--hover); }
+.ask-co-row--cmd { gap:12px; padding:6px 8px; }
+.ask-co-row-l { width:18px; display:grid; place-items:center; flex:none; }
+.ask-co-row-t { flex:0 1 auto; max-width:72%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:12.5px; line-height:20px; font-weight:500; color:var(--fg); }
+.ask-co-row-c { flex:1 1 0; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:11.5px; color:var(--fg-55); }
+.ask-co-row--cmd .ask-co-row-c { font-size:12px; }
+.ask-co-cmd { width:92px; flex:none; font-family:var(--code); font-size:12.5px; font-weight:500; color:var(--fg); }
+.ask-co-pick-empty { padding:9px 10px; font-size:12.5px; color:var(--fg-55); }
+.ask-co-pick-foot { display:flex; gap:14px; padding:7px 12px; border-top:1px solid var(--border); font-size:11px; color:var(--fg-55); white-space:nowrap; }
+/* The phone's + menu: a sheet rising above the composer. */
+.ask-co-plus { position:absolute; left:0; right:0; bottom:calc(100% - 6px); z-index:30; padding:6px; background:var(--surface); border:1px solid var(--border-strong); border-radius:14px; box-shadow:var(--lift-shadow); animation:ask-sheet-up .22s cubic-bezier(.2,.8,.2,1) both; }
+.ask-co-plus[data-closing] { animation:ask-sheet-down .18s var(--fx-ease) both; pointer-events:none; }
+.ask-co-plus-row { display:flex; align-items:center; gap:12px; width:100%; min-height:44px; padding:0 12px; border-radius:9px; font-size:14px; color:var(--fg); text-align:left; cursor:pointer; }
+.ask-co-plus-row:hover { background:var(--hover); }
+.ask-co-plus-sep { height:1px; margin:6px 4px; background:var(--border); }
+.ask-co-plus-sec { padding:6px 12px 8px; }
+.ask-co-plus-l { margin-bottom:6px; font-family:var(--label); font-size:11px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-55); }
+.ask-co-plus-h { margin-top:6px; font-size:12px; color:var(--fg-55); }
+.ask-co-plus .ask-co-auto { margin:0; }
+/* The context line and the notes above the box; the blocks that replace it. */
+.ask-co-ctx { display:flex; align-items:center; gap:7px; padding:0 4px 7px; font-size:12px; color:var(--fg-55); animation:ask-fade-in .16s ease both; }
+.ask-co-ctx-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ask-co-note { display:flex; align-items:center; gap:8px; padding:0 4px 8px; font-size:12.5px; color:var(--fg-70); animation:ask-fade-in .16s ease both; }
+.ask-co-note b { font-weight:600; }
+.ask-co-link { padding:0; font:inherit; font-weight:500; color:var(--accent); cursor:pointer; }
+.ask-co-link:hover { text-decoration:underline; }
+.ask-blocked { display:flex; align-items:flex-start; gap:10px; padding:14px 16px; background:var(--surface); border:1px solid var(--border-strong); border-radius:12px; box-shadow:var(--shadow); animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
+.ask-blocked--quota { align-items:center; gap:14px; flex-wrap:wrap; }
+.ask-blocked-m { margin-top:4px; }
+.ask-blocked-b { flex:1; min-width:220px; }
+.ask-blocked-h { font-size:13.5px; font-weight:500; }
+.ask-blocked-s { margin-top:2px; font-size:12.5px; color:var(--fg-55); }
+.ask-co-upgrade { padding:7px 15px; border-radius:8px; background:var(--accent); color:var(--accent-fg); font-size:12.5px; font-weight:600; cursor:pointer; }
+.ask-co-upgrade:hover { filter:brightness(1.06); }
+.ask-co-foot { display:flex; justify-content:space-between; gap:12px; padding:7px 4px 0; font-size:11.5px; color:var(--fg-55); }
+.ask-co-foot:empty { display:none; }
+.ask-co-usage { margin-left:auto; }
+.ask-disclaimer { margin:14px 0 0; font-size:12.5px; line-height:1.5; color:var(--fg-55); text-align:center; text-wrap:balance; }
+/* Dragging files over the conversation (or the ⌘J panel): the overlay fades in and out. */
+.ask-co-drop { position:absolute; inset:10px; z-index:25; pointer-events:none; display:grid; place-items:center; border:1.5px dashed var(--accent); border-radius:14px; background:color-mix(in srgb, var(--surface) 90%, transparent); animation:ask-fade-in .14s ease both; }
+.ask-co-drop[data-closing] { animation:ask-fade-out .14s ease both; }
+.ask-co-drop-in { display:flex; flex-direction:column; align-items:center; gap:8px; text-align:center; }
+.ask-co-drop-t { font-size:14px; font-weight:600; }
+.ask-co-drop-s { font-size:12.5px; color:var(--fg-55); }
 
 /* ── Ask: actions ── (ask-actions.ts — a sibling replaces the stub's styles here) */
 .ask-card { margin:6px 0 4px; padding:12px 14px; border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); }
@@ -3512,6 +3606,23 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 [data-cnpy-theme] .ask-blocked,
 [data-cnpy-theme] .ask-card { border-radius:calc(12px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-cursor { border-radius:calc(2px * var(--corner-scale)) !important; }
+/* Ask: composer (ask-composer.ts). */
+[data-cnpy-theme] .ask-co-thumb { border-radius:calc(4px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-co-ico,
+[data-cnpy-theme] .ask-co-x { border-radius:calc(5px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-co-tool,
+[data-cnpy-theme] .ask-co-modebtn,
+[data-cnpy-theme] .ask-co-mi,
+[data-cnpy-theme] .ask-co-row { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-co-chip,
+[data-cnpy-theme] .ask-co-upgrade { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-co-plus-row { border-radius:calc(9px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-co-menu,
+[data-cnpy-theme] .ask-co-plusbtn,
+[data-cnpy-theme] .ask-send--40 { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-co-pick { border-radius:calc(12px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-co-plus,
+[data-cnpy-theme] .ask-co-drop { border-radius:calc(14px * var(--corner-scale)) !important; }
 /* ── Sync GitHub: the header control and the panel it opens (web/src/sync.ts) ──
    The control lives in a slot that is always in the header (empty = no box), so a progress tick
    repaints the slot alone. The panel is a root-level overlay hung under the button: main.ts
