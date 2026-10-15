@@ -118,6 +118,8 @@ export const RELEASES: Release[] = [
         "`#repo[/<tab>]?repo=<owner%2Fname>&app=<key>` and `GET /repo/dashboard?repo=&app=` (read by the Worker with the facts read); `RepoDashboard.facts`; `FactsPart.reportsMetrics`",
         "The sample's scenario switch (Scenario × Variant dropdowns; names in `web/src/repo-sample-keys.ts`)",
         "Tests: `test/render.repo-overview.test.ts` (every scenario × variant × app × Group by against the design's `buildScreen`; no \"not connected\" for absent things), `test/repo-settings.routes.test.ts`, hash routes",
+        "Repo › Overview blocks (Phase C2), each an `OverviewBlock` over `RepoFacts`: `envCardsBlock` (`web/src/repo-env-cards.ts`), `driftBlock` (`web/src/repo-drift.ts`), `appsTableBlock` (`web/src/repo-apps-table.ts`), `notShippedBlock` (`web/src/repo-not-shipped.ts`); `envVerdict(f, env)` (`web/src/repo-verdict.ts`, the design's `verdictFor`); the shared marks, sha chip, byline, URL and commit groups in `web/src/repo-block-kit.ts`; disclosures through one act, `repoOpen` + the block's key",
+        "Tests: `test/render.repo-env-cards.test.ts`, `test/render.repo-drift.test.ts`, `test/render.repo-apps-table.test.ts`, `test/render.repo-not-shipped.test.ts`",
       ],
       changed: [
         "`listConnections` returns ONE org-wide row per provider; a scoped hosting credential is a leftover, never a connection, never counted.",

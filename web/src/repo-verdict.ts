@@ -62,17 +62,15 @@ export function envVerdict(f: Pick<RepoFacts, "parts" | "outOfStep" | "ci">, env
 
 /** An environment's CI line ("All 14 checks passing on 3e9a1f2", "2 of 9 checks failing on e07b3a2", "Checks running
  *  on f19ad20", "deploy-normalizer.yml running on 4e1a9c7") and its tone — THE wording, for the environment cards,
- *  the Production card and anywhere else a branch head's checks are said. null when no checks are captured. */
-export function ciLine(ci: FactsCi | undefined): { text: string; tone: string } | null {
-  if (!ci || ci.state === null) return null;
-  const on = ci.sha ? ` on ${ci.sha}` : "";
-  if (ci.state === "pass") {
-    return { text: ci.total === null ? `All checks passing${on}` : `All ${ci.total} ${ci.total === 1 ? "check" : "checks"} passing${on}`, tone: "var(--green)" };
+ *  the Production card and anywhere else a branch head's checks are said. null when no checks are captured; a
+ *  count the facts do not have is never printed (a running set has no total yet). */
+export function ciLine(c: FactsCi | undefined): { tone: "good" | "bad" | "warn"; text: string } | null {
+  if (!c || c.state === null) return null;
+  const on = c.sha ? ` on ${c.sha.slice(0, 7)}` : "";
+  const checks = (n: number): string => `${n} ${n === 1 ? "check" : "checks"}`;
+  if (c.state === "pass") return { tone: "good", text: c.total !== null ? `All ${checks(c.total)} passing${on}` : `Checks passing${on}` };
+  if (c.state === "fail") {
+    return { tone: "bad", text: c.failing !== null && c.total !== null ? `${c.failing} of ${checks(c.total)} failing${on}` : c.failing !== null ? `${checks(c.failing)} failing${on}` : `Checks failing${on}` };
   }
-  if (ci.state === "fail") {
-    const n = ci.failing;
-    const text = n === null ? `Checks failing${on}` : ci.total === null ? `${n} ${n === 1 ? "check" : "checks"} failing${on}` : `${n} of ${ci.total} checks failing${on}`;
-    return { text, tone: "var(--red)" };
-  }
-  return { text: `${ci.total === null && ci.names[0] ? ci.names[0] : "Checks"} running${on}`, tone: "var(--amber)" };
+  return { tone: "warn", text: c.total === null && c.names[0] ? `${c.names[0]} running${on}` : `Checks running${on}` };
 }

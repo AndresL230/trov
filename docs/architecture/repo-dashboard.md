@@ -24,6 +24,28 @@ every scenario × variant × App narrowing × Group by to the design's own `buil
 Group by from `layoutOf(layoutInputOf(facts))`), and checks unknown stays `null` and every part's app and
 environment exist. H's Cloud Run app uses provider `github` through a cast until Phase A adds it.
 
+**The Overview's deploy blocks** (Repo setups, Phase C) are `OverviewBlock`s — `(facts, ctx) => html`
+(`web/src/repo-overview-ctx.ts`) — each in its own module and its own `trov.css` section, worded in the SPA from
+`RepoFacts` (nothing arrives worded): `envCardsBlock` (`repo-env-cards.ts`: a card per environment in promotion
+order, a row per part in the apps' order — sha, "<age> ago · by <who> · <host>[ via <workflow> | via GitHub]",
+URL, ms / Down / "Reading 34m old", a failed line with the reason and what still serves, a building line, a
+rollback line, the out-of-step flag; a part with no deploy is Unknown and says why — "<host> does not report
+deploys to GitHub" when its host is not connected — and the CI line worded from `FactsCi`, "<check> running on
+<sha>" while a running set has no total), `driftBlock` (`repo-drift.ts`: one strip, or the chain form for three or
+more environments), `appsTableBlock` (`repo-apps-table.ts`: worst first — failed, building, waiting (> 2 commits),
+unknown, live — Production, then Previews or the other environment, then Not shipped; a missing or `null` count
+is "Unknown", never "Up to date"; then the packages) and `notShippedBlock` (`repo-not-shipped.ts`: one deployed
+app → its production entry, "<app> is up to date in Production" at 0; several → the one with the most commits
+waiting, only when its commits are listed — E's web; nothing for a `null` count). The environment verdict is ONE
+function, `envVerdict(f, env)` (`repo-verdict.ts`, the design's `verdictFor`: unknown, down, failing, out of step,
+degraded, healthy). What they share is `repo-block-kit.ts`: the design's `MARKS` as `kindMark` kinds (`REPO_MARK`;
+Building is the `waiting` ring, pulsing, still under reduced motion — no kind added), the sha chip, the byline
+person (people.ts, never in sample mode), a URL that never links out in sample mode, and the commit groups drift
+and not-shipped both list. A disclosure is ONE act, `repoOpen` with the block's key in `data-arg`
+(`drift:<from>><to>`, `ns:<app>><env>`), read back from `ctx.open`; its panel is always emitted and shown by
+`data-open`. Tests: `test/render.repo-env-cards.test.ts`, `render.repo-drift`, `render.repo-apps-table`,
+`render.repo-not-shipped` (every scenario × variant, narrowed facts).
+
 Three capture shapes feed it: `repo_events` rows (through the `ingestRepoEvent` gate — see Core invariant),
 `repo_snapshots` (one JSON row per kind: `prs_reconciled`, `env_heads`, `drift`, `branches` —
 plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no section) and
