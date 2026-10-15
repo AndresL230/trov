@@ -89,6 +89,15 @@ const PROVIDERS_UPDATED = "2026-10-14";
 // docs/architecture/ask.md); the pass's producers, Sift on new docs and the emails from the decided build
 // (docs/superpowers/specs/2026-10-15-server-ai-build.md › Phases C–E) — re-check those against the merged code
 // before the markers come off.
+// Revised 2026-10-15 to the owner's rulings on the Phase G questions (trov-ai-master STATE.md › Owner rulings, Legal
+// 1–6): Terms §10 is "AI features" (its id stays `ai`, so `/terms#ai` links still land); the summaries' exception to
+// the AI switch is its own paragraph, to delete when ai/summaries-switch ships; Ask attachments go with the
+// conversation and the account; "Only when something needs me" has its line (Phase E). The markers stay until the
+// owner OKs this revised text.
+// DRAFT (open question for Andres): TypeSafe AI is named because it receives the data (`JEV_URL`,
+// https://api.typesafe.ai/v1/systemone, src/tools/classify.ts, with Trov's own TYPESAFE_API_KEY). Nothing in the repo
+// says whether TypeSafe AI runs Jev on an underlying model or hosting provider; if it does, that provider is listed
+// as TypeSafe AI's subprocessor in Privacy › 4 before the markers come off.
 const DRAFT = "<b>DRAFT —</b> ";
 
 // ── Terms of Service ─────────────────────────────────────────────────────────
@@ -195,21 +204,27 @@ export const TERMS: LegalDoc = {
     },
     {
       id: "ai",
-      title: "10. AI-generated summaries",
+      // Owner ruling 2026-10-15 (Legal 2): renamed from "AI-generated summaries". The id stays `ai` (the anchor).
+      title: "10. AI features",
       body: [
         p("Trov uses an AI model (Anthropic Claude) to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete: they are a convenience, not a record. Check the pull request or issue before relying on one."),
         p("If an admin of your organization turns on automatic tagging in Org settings › Tags, then whenever an admin adds a tag or asks Trov to find items for one, Trov's automatic tagging, Sift, uses a decision model from TypeSafe AI to judge which of the organization's existing feed entries, docs and decisions fit that tag, and adds the tag to each item it judges a fit with high confidence (85% or more); an item it is less sure about (60% to 85%) is only suggested, for a person in the organization to add or dismiss. No person reviews a tag Sift adds on its own before it is added, and a judgement can be wrong. It only ever adds that one tag; it never removes or changes anything else. An admin can undo a run, which takes the tag off exactly the items that run tagged, and anyone can take a tag off an item; Trov does not add it to that item again. An admin can turn it off at any time, and nothing is sent while it is off."),
         // DRAFT: awaiting Andres's approval (#178 Phase G) — Sift on new docs (Phase C, `tag.fit` in the pass).
         p(`${DRAFT}While both switches are on, Sift also checks each doc against the organization's tags when the doc is approved, by the same rules.`),
         // DRAFT: awaiting Andres's approval (#178 Phase G) — Ask Trov (src/ai/ask/, docs/architecture/ask.md).
-        p(`${DRAFT}<b>Ask Trov.</b> Ask Trov answers a person's questions about their organization, using Anthropic Claude (Claude Haiku, Sonnet or Opus, by the mode the person picks where their plan offers a choice). It reads only what that person can see in that organization. It never reads secrets, integrations, billing, other organizations, other people's private items or source code, and it does not browse the web. Its answers can be wrong or incomplete: check the items it cites before relying on one. It acts as the person who asks, and what it changes is recorded under their name. A change it proposes is a card the person confirms or cancels. In Auto, which a person turns on for a conversation and an admin can turn off for the organization, some changes run at once and can be undone. It never publishes a doc unless the person confirms it, and it cannot reject or delete anything. Each question counts against the organization's monthly allowance for Ask Trov.`),
+        p(`${DRAFT}<b>Ask Trov.</b> Ask Trov answers a person's questions about their organization, using Anthropic Claude (Claude Haiku, Sonnet or Opus, by the mode the person picks where their plan offers a choice). It reads only what that person can see in that organization. It never reads secrets, integrations, billing, other organizations or other people's private items, nor source code unless the person attaches a file of it, and it does not browse the web. Its answers can be wrong or incomplete: check the items it cites before relying on one. It acts as the person who asks, and what it changes is recorded under their name. A change it proposes is a card the person confirms or cancels. In Auto, which a person turns on for a conversation and an admin can turn off for the organization, some changes run at once and can be undone. It never publishes a doc unless the person confirms it, and it cannot reject or delete anything. Each question counts against the organization's monthly allowance for Ask Trov.`),
         // DRAFT: awaiting Andres's approval (#178 Phase G) — the plain-language filter (src/ai/filter.ts) and the AI
         // pass's producers (Phases C–D: session notes, repo state, the brief, themes, sprint notes and plan drift,
         // the weekly recap, doc drift; Jev's cards and gates).
         p(`${DRAFT}<b>Notes, briefs and suggestions.</b> When a person types a filter in plain words on Tickets, the Feed or Artifacts, Trov uses Anthropic Claude to set the screen's own filters from it. While an organization's AI switch is on, Trov also uses Anthropic Claude to write short texts from what the organization already holds in Trov: a note on what a burst of work in a connected repository shipped, where a repository stands, each person's brief (on My Work, for the agents they connect, and in their email), the themes of the work merged, notes on sprints and on drift from the plan, the weekly email's "This week" highlights, and changes to a doc that seems out of date. It uses a decision model from TypeSafe AI to sort and check items: a ticket's category and priority, a likely duplicate, how much a change matters, what a proposal changes, where an unplaced item belongs, which theme a pull request is part of, and whether something is worth writing about at all. These can be wrong: they are a convenience, not a record. They are shown as written by Trov, or as suggestions a person accepts or dismisses. None of them approves, promotes, rejects, resolves or closes anything, and a doc change Trov writes is staged for a person to approve, like an agent's.`),
-        // DRAFT: awaiting Andres's approval (#178 Phase G) — the org switch (orgs.ai_automation). Capture-time
-        // summaries do NOT read it (src/plans/summaries.ts), so the text says so.
-        p(`${DRAFT}An admin can turn the organization's AI switch off at any time. While it is off, nothing is sent for Ask Trov, Sift, filters typed in plain words or the notes, briefs and suggestions above. The switch does not cover the summaries of pull requests and issues.`),
+        // DRAFT: awaiting Andres's approval (#178 Phase G) — the org switch (orgs.ai_automation). Written to hold once
+        // the switch covers every feature in this section, summaries included (owner ruling, Legal 1).
+        p(`${DRAFT}An admin can turn the organization's AI switch off at any time. While it is off, nothing is sent to Anthropic or TypeSafe AI for any feature in this section.`),
+        // DRAFT: awaiting Andres's approval (#178 Phase G). TEMPORARY — DELETE THIS PARAGRAPH (and its pin in
+        // test/render.legal.test.ts) when ai/summaries-switch ships: capture-time summaries do not read the switch yet
+        // (src/plans/summaries.ts). Owner ruling (Legal 1): keep the disclosure until that code ships. Nothing else
+        // in this file needs to change with it.
+        p(`${DRAFT}For now, one exception: the summaries of pull requests and issues are still made while the switch is off.`),
       ],
     },
     {
@@ -218,7 +233,7 @@ export const TERMS: LegalDoc = {
       body: [
         p("Trov depends on other services: GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Stripe for payments, Anthropic Claude for summaries, TypeSafe AI for automatic tagging where an organization turns it on, and Resend for email. An organization can also connect Railway, Cloudflare Analytics and its own metrics endpoint, with tokens its admins provide. The agent clients you connect (Claude Code, Cursor and others) are yours, not ours. Each of these is governed by its own terms, and its availability is outside our control."),
         // DRAFT: awaiting Andres's approval (#178 Phase G) — the widened provider list.
-        p(`${DRAFT}Anthropic Claude also answers Ask Trov and writes Trov's other AI features, and TypeSafe AI also sorts and checks items for them, while an organization's AI switch is on (section 10).`),
+        p(`${DRAFT}Anthropic Claude also answers Ask Trov and writes Trov's other AI features, and TypeSafe AI also sorts and checks items for them, while an organization's AI switch is on (section 10, AI features).`),
       ],
     },
     {
@@ -303,8 +318,10 @@ const RETENTION: string[][] = [
   ["Repository activity", "Pull requests, issues, their summaries and mirrored tickets: for the life of the organization. Check results and health checks: 45 days. Hourly usage figures: 7 to 100 days. Sync runs: 90 days."],
   // DRAFT: awaiting Andres's approval (#178 Phase G) — Ask Trov (src/data/ask.ts deleteThread, src/deletion/person.ts;
   // ai_feedback.handle is in HANDLE_COLUMNS) and the AI pass's computed rows (Phase D: the last 5 briefs, 20 repo
-  // states, 10 insights per key — the spec's numbers, to re-check).
-  [`${DRAFT}Ask Trov conversations, and what you told it about how to answer you`, "Until you delete the conversation or your account, or the organization is deleted. Files you attach are kept as your private artifacts, like any other artifact."],
+  // states, 10 insights per key — the spec's numbers, to re-check). Attachments per the owner's ruling (Legal 4,
+  // being built on ai/ask-backend-rulings): deleting a conversation deletes its attachments except a file a ticket or
+  // doc still refers to; deleting the account deletes the person's private Ask attachments.
+  [`${DRAFT}Ask Trov conversations, the files attached in them, and what you told it about how to answer you`, "Until you delete the conversation or your account, or the organization is deleted. Deleting a conversation also deletes the files attached in it, except a file a ticket or doc still refers to. Deleting your account deletes the files you attached in Ask Trov."],
   [`${DRAFT}"Wrong?" reports on what Trov's AI wrote`, "Until the organization is deleted. If you delete your account, they stay credited to \"Deleted user\"."],
   [`${DRAFT}What Trov's AI writes (briefs, notes, repository state, themes, highlights, suggestions)`, "While the organization exists; only the latest few versions of each are kept."],
   ["Usage counts (per person, per day)", "400 days."],
@@ -369,7 +386,7 @@ export const PRIVACY: LegalDoc = {
           "to take payment for a paid plan, keep an organization on the plan it paid for, and apply each plan's limits;",
           "to summarize captured pull requests and issues;",
           // DRAFT: awaiting Andres's approval (#178 Phase G) — Ask Trov, the filter, the AI pass.
-          `${DRAFT}where an organization's AI switch is on, to answer the questions a person asks Ask Trov, to set a screen's filters from words a person types, to write notes, briefs, the weekly email's highlights and suggestions from the organization's own content, and to sort and check its items (${link(`${TERMS_PATH}#ai`, "Terms, section 10")});`,
+          `${DRAFT}where an organization's AI switch is on, to answer the questions a person asks Ask Trov, to set a screen's filters from words a person types, to write notes, briefs, the weekly email's highlights and suggestions from the organization's own content, and to sort and check its items (${link(`${TERMS_PATH}#ai`, "Terms, section 10, AI features")});`,
           "where an admin of an organization turns it on, to add one of the organization's tags to its feed entries, docs and decisions that Sift, using a TypeSafe AI model, judges fit it (or to suggest it, for a person to decide, where Sift is less sure), when an admin adds that tag or asks for it;",
           "to send the emails described in section 7;",
           "to answer support messages, and to run, debug and protect the service.",
@@ -396,14 +413,18 @@ export const PRIVACY: LegalDoc = {
           ["Anthropic", `${DRAFT}Notes, briefs, the weekly email's highlights and suggestions (Claude API), while the organization's AI switch is on`, "The organization's name, tags, active themes and sprints, and its plan; and, for what is being written, the summaries Trov already made of pull requests and issues, commit messages and pull request titles, check and deploy results, tickets, handoffs and feed entries, the people they concern (by handle), and a doc with the entries that may disagree with it"],
           ["TypeSafe AI", "Automatic tagging (Sift), where an organization turns it on", "The tag's name and description and, for each of the organization's feed entries, docs and decisions that may fit it, its title and up to 400 characters of its text, with code and anything that looks like a password or key removed"],
           // DRAFT: awaiting Andres's approval (#178 Phase G) — the widened TypeSafe AI list (Phase C's cards and gates).
+          // DRAFT (open question for Andres, owner ruling Legal 6): TypeSafe AI is named because it is who receives this
+          // (src/tools/classify.ts `JEV_URL`, api.typesafe.ai). If TypeSafe AI runs Jev on an underlying model or hosting
+          // provider, add that provider here as TypeSafe AI's subprocessor; the repo does not say which, so none is named.
           ["TypeSafe AI", `${DRAFT}Sorting and checking items, while the organization's AI switch is on`, "One item at a time — a ticket, feed entry, pull request summary, doc proposal or unplaced item — as its title and a short excerpt, with code and anything that looks like a password or key removed, and the choices it is judged against (categories, priorities, a few possible duplicates, sections or docs, themes); and, to decide whether something is worth writing about, commit messages and pull request titles, what changed in a repository, and a doc with the entries that may disagree with it"],
           ["Stripe", "Payments, invoices and receipts, fraud checks, tax calculation", "The buyer's email, handle, payment details and billing address, and the organization's address for an upgrade"],
           ["Resend", "Delivers Trov's email", "Each email's recipient, subject and body (a digest contains your organization's content: ticket titles, summaries)"],
         ]),
         p("Anthropic handles the text sent for summaries under Anthropic's Commercial Terms of Service, which apply to Trov's API account. Railway, Cloudflare Analytics and an organization's own endpoint receive only Trov's requests with the token its admins saved, and send back figures. The agent clients you connect (Claude Code, Cursor and others) receive what they read on your behalf; they are your tools, under their own terms, not our processors."),
         // DRAFT: awaiting Andres's approval (#178 Phase G) — one platform key (ANTHROPIC_API_KEY) for every Anthropic
-        // call; what is never sent is AI_NEVER_SENT (shared/ai-core.ts), less what a person attaches to Ask.
-        p(`${DRAFT}Everything else Trov sends Anthropic, for Ask Trov and the features in section 3, goes through the same API account, under the same terms. Neither Anthropic nor TypeSafe AI is sent a connected repository's source code or diffs, secrets, integration keys, or anything from another organization; a file a person attaches to a question in Ask Trov is sent as it is.`),
+        // call; what is never sent is AI_NEVER_SENT (shared/ai-core.ts), which says "unless you attach a file to Ask"
+        // (owner ruling, Legal 3) — keep the two in step.
+        p(`${DRAFT}Everything else Trov sends Anthropic, for Ask Trov and the features in section 3, goes through the same API account, under the same terms. Neither Anthropic nor TypeSafe AI is sent a connected repository's source code or diffs, secrets, integration keys, or anything from another organization. Source code reaches Anthropic only when you attach a file of it to a question in Ask Trov, and the file is sent as it is.`),
         p("We may also disclose data if the law requires it, or to protect the rights and safety of people and the service. If TrovLabs is part of a merger or acquisition, personal data may pass to the new owner under this policy. <b>We do not sell or rent personal data</b>, and we do not share it for advertising."),
       ],
     },
@@ -444,6 +465,13 @@ export const PRIVACY: LegalDoc = {
         // DRAFT: awaiting Andres's approval (#178 Phase G) — Phase E's emails: the brief leads (the stored brief, or
         // the assigned items with AI off) and the weekly recap (one Haiku call per org per week, shared by members).
         p(`${DRAFT}A digest leads with your brief, the same one My Work shows: while your organization's AI switch is on, Trov writes it with Anthropic Claude; while it is off, the digest lists your assigned items instead. While the switch is on, the weekly digest also has "This week": up to 3 highlights of the organization's week, written once a week for the whole organization and the same for every member who gets it.`),
+        // DRAFT: awaiting Andres's approval (#178 Phase G) — "Only when something needs me" (owner ruling, Legal 5: a
+        // line only if it uses AI to decide). It does: Phase E's `needsMe` (ai/phase-e-emails,
+        // src/notifications/renderers/my-work.ts; 0067 notification_person_prefs) sends only when the stored brief
+        // (Claude, `brief.person`) has a Next item or Sift's importance (Jev, `feed.importance`, 0060) rated something
+        // notable or breaking that touched the person's work; with no brief, assigned tickets stand in. It reads
+        // stored results and calls no model. Ship this line with Phase E, not before.
+        p(`${DRAFT}If you choose "Only when something needs me" in Settings › Email notifications, Trov sends you a digest only when your brief has something next for you, or when something Sift rated notable or breaking touched your work. Both are judgements Trov's AI made earlier, so the AI decides whether that email is sent; deciding sends nothing more to Anthropic or TypeSafe AI. When there is no brief, for example while your organization's AI switch is off, a ticket assigned to you counts instead.`),
         p("Every digest and welcome email has an Unsubscribe link at the bottom that works without signing in, a one-click unsubscribe your mail app can use, and a switch in Settings. Unsubscribing stops digests and the welcome email from every organization; the one-off emails above still arrive, because each answers something someone did. An unsubscribe link names your handle and does not expire."),
         p("Our emails load nothing remote — no web fonts, images or scripts. They are delivered by Resend, which receives the recipient, the subject and the body. We keep a log of the digests sent (not their text)."),
       ],
@@ -463,8 +491,9 @@ export const PRIVACY: LegalDoc = {
         p("<b>Deleting an organization</b> removes everything in it: its content and every version, what was captured from GitHub, its settings, credentials and integrations, its members' memberships and agent connections to it, its email settings and send log, its usage counts, admin history and support messages, its billing records, and the files only it used. A paid subscription is cancelled at Stripe first, with no refund for the rest of the period."),
         p("<b>Deleting your account</b> removes your profile, photo, sign-ins, sessions, agent connections and tokens, email settings and send log, memberships, support messages, and any organization nobody else is in. If you are the only owner of an organization others are in, or pay for one that carries on, Trov asks you to hand it over, cancel or delete it first."),
         // DRAFT: awaiting Andres's approval (#178 Phase G) — src/deletion/person.ts deletes chat_* and
-        // person_ask_settings; the attachments stay as artifacts (docs/architecture/ask.md › Deletion and renames).
-        p(`${DRAFT}It also removes your Ask Trov conversations and what you told it about how to answer you. Files you attached in Ask Trov stay as artifacts, like any other artifact you made.`),
+        // person_ask_settings; the person's private Ask attachments go too (owner ruling, Legal 4; being built on
+        // ai/ask-backend-rulings — until it ships, docs/architecture/ask.md › Deletion and renames keeps them).
+        p(`${DRAFT}It also removes your Ask Trov conversations, the files you attached in Ask Trov, and what you told it about how to answer you.`),
         p("<b>What is kept, and why:</b>"),
         ul(
           "What you wrote in organizations that carry on — docs, tickets, comments, history — stays for the people you worked with, credited to \"Deleted user\" (a placeholder with no personal data) instead of your handle. Text other people typed that mentions you is not rewritten.",
