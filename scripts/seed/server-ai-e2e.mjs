@@ -5,7 +5,6 @@
 // LOCAL D1 ONLY — it refuses --remote outright, like scripts/seed-dev.mjs.
 //
 //   node scripts/seed/server-ai-e2e.mjs [--persist-to <dir>] [--no-base] [--list]
-//   npm run seed:ai-e2e -- [same flags]
 //
 //   --persist-to <dir>  the local D1 state directory, passed to `wrangler d1 execute --local` (default: wrangler's
 //                       own, the `.wrangler/state` that `npm run dev` reads)
@@ -20,16 +19,18 @@
 // lacks one (its branch's migration is not merged yet) the section is SKIPPED with a message naming the migration
 // and the branch, and the rest still seeds — run it on `ai/screens` now and again after each merge.
 //
+// AFTER IT (default local state only — that seed has no --persist-to): `node scripts/seed/repo-setups.mjs` (PR #186,
+// on main) gives Repo › Overview real RepoFacts — sapling-live (org_saplinglearn, ≈ scenario A), new-org-found
+// (org_b, scenario L) and unseen-org (org_test_unseen, scenario M). The `repo-facts` section below puts Trov's State on
+// sapling-live's repository. Run this seed first: it resets everything, repo-setups only adds.
+//
 // SIGNING IN AS A FIXTURE PERSON. Every test person has a session row `test-session-<handle>`. With DEV_LOGIN UNSET
 // in .dev.vars (it overrides every cookie), print the cookie with `node scripts/dev-cookie.mjs test-session-<handle>`
 // and set it at http://localhost:8787 (`document.cookie = "session=…; path=/"`). No cookie = signed out. The
 // `bearer-token` fixture's raw token is TEST_BEARER below (for "cookie only" refusals and MCP reads).
+// The statement builders are importable from a Worker test (test/seed-server-ai-e2e.test.ts): only node:crypto is
+// imported up front; the CLI's fs / os / path / child_process / url are imported inside `main()`.
 import { createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { RESET_STATEMENTS } from "./reset.mjs";
 import { buildSeedStatements, targetsRemote } from "./build.mjs";
 
@@ -144,8 +145,10 @@ export const SECTIONS = [
     needs: { repo_themes: ["status"], pr_themes: ["source"], repo_theme_captions: ["caption"] } },
   { id: "phase-d-roadmap", title: "Phase D: sprint notes, plan drift, Roadmap suggestions", branch: "ai/phase-d-roadmap", migration: "0065_org_insights",
     needs: { org_insights: ["json"] } },
-  { id: "phase-e-emails", title: "Phase E: \"Only when something needs me\" (column name UNVERIFIED: Phase E is not built yet)", branch: "ai/phase-e-emails", migration: "0067_notify_only_when_needed",
-    needs: { notification_prefs: ["only_when_needed"] } },
+  { id: "phase-e-emails", title: "Phase E: \"Only when something needs me\" and the weekly \"This week\" highlights", branch: "ai/phase-e-emails", migration: "0067_digest_email",
+    needs: { notification_person_prefs: ["only_when_needed"], digest_highlights: ["highlights_json"] } },
+  { id: "repo-facts", title: "Repo › Overview after PR #186 (RepoFacts): Trov's State over SaplingLearn/sapling — then run scripts/seed/repo-setups.mjs (scenarios sapling-live / new-org-found / unseen-org)", branch: "main (#186, 0070_repo_apps) + ai/phase-d-digests (0062_repo_state)", migration: "0070_repo_apps + 0062_repo_state",
+    needs: { repo_apps: ["key", "kind"], repo_state: ["state_json"] } },
 ];
 
 /** Every fixture: its name (the matrix's state column), its section, what it is, and the checks the CLI runs after
@@ -698,19 +701,77 @@ function buildPhaseDRoadmap(c, s) {
   fixture("phase-d-roadmap", "doc-drift-proposal", "test-webhook-retries v2: staged, low confidence, by trov (Review)", [`SELECT COUNT(*) AS n FROM doc_versions WHERE org_id = '${ent.id}' AND created_by = 'trov'`, 1]);
 }
 
-function buildPhaseE(c, s) {
-  const ent = ORG["org-enterprise"];
-  s.push(`UPDATE notification_prefs SET only_when_needed = 1 WHERE org_id = '${ent.id}' AND user_id = 'test-member2'`);
-  fixture("phase-e-emails", "notify-only-when-needed", "test-member2 in org-enterprise: \"Only when something needs me\" on (adjust to 0067's real shape)", [`SELECT COUNT(*) AS n FROM notification_prefs WHERE org_id = '${ent.id}' AND only_when_needed = 1`, 1]);
+/** ISO-8601 week id (`YYYY-Www`) of a UTC date — the same rule as src/notifications/window.ts `isoWeekId` (the weekly
+ *  run uses the org's LOCAL send date; at 8:00 New York on a Monday that is the same week). */
+export function isoWeekId(d) {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNum = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - dayNum);
+  const yearStart = Date.UTC(t.getUTCFullYear(), 0, 1);
+  const week = Math.ceil(((t.getTime() - yearStart) / DAY + 1) / 7);
+  return `${t.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
-const BUILDERS = { core: buildCore, ask: buildAsk, "phase-c-tickets": buildPhaseCTickets, "phase-c-feed": buildPhaseCFeed, "phase-d-digests": buildPhaseDDigests, "phase-d-brief": buildPhaseDBrief, "phase-d-themes": buildPhaseDThemes, "phase-d-roadmap": buildPhaseDRoadmap, "phase-e-emails": buildPhaseE };
+function buildPhaseE(c, s) {
+  const ent = ORG["org-enterprise"];
+  const free = ORG["org-free"];
+  // "Only when something needs me" (no row = OFF): test-member2 (no valid brief → nothing needs them → skipped) and
+  // test-member in org-free (a brief with one Next item → sent). test-member in org-enterprise has no row (every digest).
+  s.push(insert("notification_person_prefs", { org_id: ent.id, user_id: "test-member2", only_when_needed: 1, updated_at: c.days(2) }));
+  s.push(insert("notification_person_prefs", { org_id: free.id, user_id: "test-member", only_when_needed: 1, updated_at: c.days(2) }));
+  s.push(insert("notification_person_prefs", { org_id: ent.id, user_id: "test-admin", only_when_needed: 0, updated_at: c.days(2) }));
+  fixture("phase-e-emails", "notify-only-when-needed-skip", "test-member2 in org-enterprise: the option ON and no valid brief (its brief_json fails the schema) → the digest is skipped unless a notable/breaking item touched their work",
+    [`SELECT COUNT(*) AS n FROM notification_person_prefs WHERE org_id = '${ent.id}' AND user_id = 'test-member2' AND only_when_needed = 1`, 1]);
+  fixture("phase-e-emails", "notify-only-when-needed-send", "test-member in org-free: the option ON and a brief with one Next item → sent",
+    [`SELECT COUNT(*) AS n FROM notification_person_prefs WHERE org_id = '${free.id}' AND only_when_needed = 1`, 1]);
+  fixture("phase-e-emails", "notify-only-when-needed-off-row", "test-admin in org-enterprise: an explicit OFF row (same as no row)",
+    [`SELECT COUNT(*) AS n FROM notification_person_prefs WHERE org_id = '${ent.id}' AND user_id = 'test-admin' AND only_when_needed = 0`, 1]);
+
+  // The weekly "This week": this week's highlights (3, cited), last week's (1), one behind the AI switch, one malformed.
+  const thisWeek = isoWeekId(new Date(c.iso));
+  const lastWeek = isoWeekId(new Date(c.days(7)));
+  const hl = (o, week_id, json, at = c.days(1)) => s.push(insert("digest_highlights", { org_id: o.id, week_id, generated_at: at, model: "claude-haiku-5-5", prompt_version: "week.1", highlights_json: json }));
+  const three = (o) => [
+    { text: "test- The Safari login fix shipped and closed #1's report.", cites: [pc(o, 115), tc(o, 1)] },
+    { text: "test- Webhook retries are half done: the queue table exists.", cites: [{ ref: `feed:${rid(o, 8)}`, label: "test- webhook retries half done", href: "#feed" }] },
+    { text: "test- A draft ADR proposes bearer tokens for the web app.", cites: [{ ref: `adr:${rid(o, 2)}`, label: "test-ADR draft: bearer tokens", href: null }] },
+  ];
+  hl(ent, thisWeek, three(ent));
+  hl(ent, lastWeek, three(ent).slice(0, 1), c.days(8));
+  hl(ORG["org-ai-off"], thisWeek, three(ORG["org-ai-off"]));
+  hl(ORG["org-pro-5-seats"], thisWeek, [{ text: "", cites: [] }]);
+  fixture("phase-e-emails", "week-highlights", `org-enterprise: 3 cited highlights for ${thisWeek} and 1 for ${lastWeek}`, [`SELECT COUNT(*) AS n FROM digest_highlights WHERE org_id = '${ent.id}'`, 2]);
+  fixture("phase-e-emails", "week-highlights-ai-off", "org-ai-off: highlights stored, the switch is off (not shown)", [`SELECT COUNT(*) AS n FROM digest_highlights WHERE org_id = '${ORG["org-ai-off"].id}'`, 1]);
+  fixture("phase-e-emails", "week-highlights-malformed", "org-pro: a row that fails its schema (an empty line: not shown)", [`SELECT COUNT(*) AS n FROM digest_highlights WHERE org_id = '${ORG["org-pro-5-seats"].id}'`, 1]);
+  fixture("phase-e-emails", "week-highlights-none", "org-free: no highlights row (the weekly shows the numbers line only)", [`SELECT COUNT(*) AS n FROM orgs WHERE id = '${free.id}'`, 1]);
+}
+
+/** Trov's State on the repository #186's repo-setups seed fills with RepoFacts (sapling-live ≈ scenario A: a Worker and
+ *  a Service, Staging + Production, a failed Production deploy). Needs the dev seed (org_saplinglearn); the RepoFacts
+ *  rows themselves come from `node scripts/seed/repo-setups.mjs`, run AFTER this seed (default local state only). */
+function buildRepoFacts(c, s, { base }) {
+  if (!base) return;
+  const SAP = "org_saplinglearn";
+  const repo = "SaplingLearn/sapling";
+  const json = {
+    headline: "test- Production backend's last deploy failed; Staging is ahead of Production by one change.",
+    shipped: [{ text: "test- The redirect fix reached Staging.", cites: [{ ref: "pr:162", label: "#162", href: `https://github.com/${repo}/pull/162` }] }],
+    inFlight: [{ text: "test- Pull request #158 is in review.", cites: [{ ref: "pr:158", label: "#158", href: `https://github.com/${repo}/pull/158` }] }],
+    attention: [{ text: "test- The Production backend deploy failed.", cites: [{ ref: "deploy:production/backend", label: "Production backend", href: null }] }],
+  };
+  s.push(`DELETE FROM repo_state WHERE org_id = '${SAP}' AND repo = '${repo}'`);
+  s.push(insert("repo_state", { org_id: SAP, repo, version: 1, generated_at: c.ago(40), basis_until: c.ago(40), model: "claude-haiku-5-5", prompt_version: "state-1", event_count: 9, state_json: json }));
+  fixture("repo-facts", "repo-state-over-repofacts", "org_saplinglearn / SaplingLearn/sapling: a State whose attention line cites a deploy by its PART LABEL (\"Production backend\"); run scripts/seed/repo-setups.mjs after for the Overview's RepoFacts (scenario A shape: R6 environment cards)",
+    [`SELECT COUNT(*) AS n FROM repo_state WHERE org_id = '${SAP}'`, 1]);
+}
+
+const BUILDERS = { core: buildCore, ask: buildAsk, "phase-c-tickets": buildPhaseCTickets, "phase-c-feed": buildPhaseCFeed, "phase-d-digests": buildPhaseDDigests, "phase-d-brief": buildPhaseDBrief, "phase-d-themes": buildPhaseDThemes, "phase-d-roadmap": buildPhaseDRoadmap, "phase-e-emails": buildPhaseE, "repo-facts": buildRepoFacts };
 
 /** Every fixture of every section, built against a fixed clock (for --list and the test). */
 export function allFixtures(now = new Date()) {
   FIXTURES.length = 0;
   const c = makeClock(now);
-  for (const sec of SECTIONS) BUILDERS[sec.id](c, []);
+  for (const sec of SECTIONS) BUILDERS[sec.id](c, [], { base: true });
   return [...FIXTURES];
 }
 
@@ -738,7 +799,7 @@ export function serverAiE2eStatements(schema, { now = new Date(), base = true, f
     }
     FIXTURES.length = 0;
     const out = [];
-    BUILDERS[sec.id](c, out);
+    BUILDERS[sec.id](c, out, { base: base && fx !== null });
     statements.push(...out);
     fixtures.push(...FIXTURES);
     sections.push({ ...sec, ran: true, missing: null, count: out.length });
@@ -751,13 +812,19 @@ function wranglerArgs(argv) {
   const i = argv.indexOf("--persist-to");
   return ["d1", "execute", "DB", "--local", ...(i >= 0 && argv[i + 1] ? ["--persist-to", argv[i + 1]] : [])];
 }
-const QUIET = { ...process.env, npm_config_loglevel: "error" };
-function d1Json(argv, sql) {
-  const out = execFileSync("npx", ["wrangler", ...wranglerArgs(argv), "--json", `--command=${sql}`], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], maxBuffer: 64 * 1024 * 1024, env: QUIET });
+const QUIET = () => ({ ...process.env, npm_config_loglevel: "error" });
+function d1Json({ execFileSync }, argv, sql) {
+  const out = execFileSync("npx", ["wrangler", ...wranglerArgs(argv), "--json", `--command=${sql}`], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], maxBuffer: 64 * 1024 * 1024, env: QUIET() });
   return JSON.parse(out)[0]?.results ?? [];
 }
 
 async function main() {
+  const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { execFileSync } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const cp = { execFileSync };
   const argv = process.argv.slice(2);
   if (targetsRemote(argv)) {
     console.error("server-ai-e2e: refusing --remote. This seed only ever targets LOCAL D1.");
@@ -776,7 +843,7 @@ async function main() {
     docs: load("docs.json"), feed: load("feed.json"), adrs: load("adrs.json"), triage: load("triage.json"), roadmap: load("roadmap.json"),
     tickets: load("tickets.json"), events: load("events.json"), identity: load("identity.json"), handoffs: load("handoffs.json"), prompts: load("prompts.json"),
   };
-  const schema = schemaFromRows(d1Json(argv, SCHEMA_SQL));
+  const schema = schemaFromRows(d1Json(cp, argv, SCHEMA_SQL));
   if (!schema.has("orgs")) {
     console.error("server-ai-e2e: this local D1 has no tables. Apply the migrations first: npx wrangler d1 migrations apply DB --local [--persist-to <dir>]");
     process.exit(1);
@@ -795,7 +862,7 @@ async function main() {
   console.log(`server-ai-e2e: applying ${statements.length} statements to LOCAL D1 in ${chunks.length} files…`);
   for (const chunk of chunks) {
     writeFileSync(file, chunk.map((st) => st + ";").join("\n"), "utf8");
-    execFileSync("npx", ["wrangler", ...wranglerArgs(argv), `--file=${file}`], { stdio: ["ignore", "ignore", "inherit"], env: QUIET });
+    execFileSync("npx", ["wrangler", ...wranglerArgs(argv), `--file=${file}`], { stdio: ["ignore", "ignore", "inherit"], env: QUIET() });
   }
   console.log("\nSections:");
   for (const sec of sections) {
@@ -807,7 +874,7 @@ async function main() {
   const counts = new Map();
   for (let from = 0; from < checks.length; from += 50) {
     const part = checks.slice(from, from + 50);
-    const row = d1Json(argv, `SELECT ${part.map(([sql], i) => `(${sql}) AS c${from + i}`).join(", ")}`)[0] ?? {};
+    const row = d1Json(cp, argv, `SELECT ${part.map(([sql], i) => `(${sql}) AS c${from + i}`).join(", ")}`)[0] ?? {};
     part.forEach((_, i) => counts.set(from + i, Number(row[`c${from + i}`] ?? 0)));
   }
   let bad = 0;
@@ -825,6 +892,6 @@ async function main() {
   if (bad) process.exit(1);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (typeof process !== "undefined" && process.argv?.[1] && import.meta.url === (await import("node:url")).pathToFileURL(process.argv[1]).href) {
   await main();
 }

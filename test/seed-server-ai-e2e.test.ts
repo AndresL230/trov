@@ -1,0 +1,81 @@
+// The server-side AI e2e seed (scripts/seed/server-ai-e2e.mjs; docs/testing/server-ai-test-matrix.md): its statement
+// builder against THIS branch's real schema — every section whose tables exist runs and every fixture it names is
+// there; a section whose migration is missing is skipped (never a half-written section); a second run gives the same
+// rows (idempotent); and the literal builder escapes what it must.
+import { describe, it, expect } from "vitest";
+import { env } from "cloudflare:test";
+import {
+  SECTIONS, SCHEMA_SQL, insert, isoWeekId, missingFrom, schemaFromRows, serverAiE2eStatements, allFixtures,
+} from "../scripts/seed/server-ai-e2e.mjs";
+import { targetsRemote } from "../scripts/seed/build.mjs";
+
+const NOW = new Date("2026-10-15T12:00:00.000Z");
+
+async function schema() {
+  const { results } = await env.DB.prepare(SCHEMA_SQL).all<{ t: string; c: string }>();
+  return schemaFromRows(results);
+}
+
+async function seed() {
+  const out = serverAiE2eStatements(await schema(), { now: NOW, base: false });
+  for (const st of out.statements) await env.DB.prepare(st).run();
+  return out;
+}
+
+async function count(sql: string): Promise<number> {
+  const row = await env.DB.prepare(sql).first<{ n: number }>();
+  return Number(row?.n ?? 0);
+}
+
+describe("server-ai e2e seed", () => {
+  it("runs every section this schema can take, and every fixture of those sections is present", async () => {
+    const { sections, fixtures } = await seed();
+    const s = await schema();
+    for (const sec of sections) expect(sec.ran).toBe(missingFrom(s, sec.needs) === null);
+    expect(sections.find((x) => x.id === "core")?.ran).toBe(true);
+    expect(sections.find((x) => x.id === "ask")?.ran).toBe(true);
+    expect(fixtures.length).toBeGreaterThan(40);
+    const missing: string[] = [];
+    for (const f of fixtures) for (const [sql, least] of f.checks) if ((await count(sql)) < least) missing.push(`${f.name}: ${sql}`);
+    expect(missing).toEqual([]);
+  });
+
+  it("is idempotent: a second run leaves the same test rows", async () => {
+    const tally = () => count(`SELECT (SELECT COUNT(*) FROM orgs WHERE id LIKE 'org_test_%') + (SELECT COUNT(*) FROM tickets WHERE org_id LIKE 'org_test_%') * 1000 + (SELECT COUNT(*) FROM ai_suggestions) * 1000000 + (SELECT COUNT(*) FROM chat_actions) * 100000000 AS n`);
+    await seed();
+    const once = await tally();
+    await seed();
+    expect(await tally()).toBe(once);
+    expect(once).toBeGreaterThan(0);
+  });
+
+  it("only ever writes obviously fake rows: test- handles and org_test_ orgs", async () => {
+    await seed();
+    const persons = await env.DB.prepare("SELECT handle, email FROM persons WHERE handle LIKE 'test-%'").all<{ handle: string; email: string | null }>();
+    expect(persons.results.length).toBeGreaterThan(5);
+    for (const p of persons.results) if (p.email !== null) expect(p.email).toMatch(/@example\.com$/);
+    const orgs = await env.DB.prepare("SELECT id, slug FROM orgs WHERE id LIKE 'org_test_%'").all<{ id: string; slug: string }>();
+    for (const o of orgs.results) expect(o.slug).toMatch(/^test-/);
+  });
+
+  it("skips a section whose table is missing, naming it", () => {
+    const empty = schemaFromRows([{ t: "orgs", c: "id" }]);
+    const { sections, statements } = serverAiE2eStatements(empty, { now: NOW, base: false });
+    expect(sections.every((x) => !x.ran)).toBe(true);
+    expect(sections.find((x) => x.id === "phase-e-emails")?.missing).toBe("notification_person_prefs");
+    expect(statements.some((st) => st.includes("org_test_"))).toBe(false);
+  });
+
+  it("names every section's migration as one that exists on a branch (no reserved-but-unused names)", () => {
+    for (const sec of SECTIONS) expect(sec.migration).not.toMatch(/only_when_needed/);
+    expect(allFixtures(NOW).every((f) => SECTIONS.some((s) => s.id === f.section))).toBe(true);
+  });
+
+  it("builds literals safely and computes ISO weeks like window.ts", () => {
+    expect(insert("t", { a: "O'Hara", b: null, c: 3, d: true, e: { x: 1 }, f: { sql: "now()" } }))
+      .toBe("INSERT INTO t (a, b, c, d, e, f) VALUES ('O''Hara', NULL, 3, 1, '{\"x\":1}', now())");
+    expect(isoWeekId(new Date("2026-10-15T12:00:00Z"))).toBe("2026-W42");
+    expect(isoWeekId(new Date("2027-01-01T00:00:00Z"))).toBe("2026-W53");
+    expect(targetsRemote(["--remote"])).toBe(true);
+  });
+});
