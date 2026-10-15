@@ -131,19 +131,27 @@ describe("the model client is the summary seams', the AI pass's, the Sift run's 
     expect(fromMcp.has("src/tools/tag-fit.ts")).toBe(true);
     expect([...fromMcp].filter((f) => f.startsWith("src/ai/"))).toEqual([]);
     expect(fromMcp.has("src/tools/classify.ts")).toBe(false);
-    // THE call sites (ai.md › Where a model call may happen): the summary seams, the AI pass, the Sift run, the filter route.
+    // THE call sites (ai.md › Where a model call may happen): the summary seams, the AI pass (with its batch half
+    // and its job interface — types only), the Sift run, the filter route.
     const importers = [...SOURCES.keys()].filter((f) => f !== "src/ai/client.ts" && reachableDirect(f).has("src/ai/client.ts")).sort();
-    expect(importers).toEqual(["src/ai/filter.ts", "src/ai/pass.ts", "src/ai/sift.ts", "src/tools/summarize.ts"]);
+    expect(importers).toEqual(["src/ai/batches.ts", "src/ai/filter.ts", "src/ai/jobs.ts", "src/ai/pass.ts", "src/ai/sift.ts", "src/tools/summarize.ts"]);
     // The filter's ONE way in is its cookie route (src/ai/routes.ts `POST /ai/filter`): nothing else imports it.
     expect(reachable("src/routes.ts").has("src/ai/filter.ts")).toBe(true);
     expect([...SOURCES.keys()].filter((f) => reachableDirect(f).has("src/ai/filter.ts") && f !== "src/ai/filter.ts")).toEqual(["src/ai/routes.ts"]);
+    // THE ROUTER (Phase B) is what MCP's writers mark through — reachable from src/mcp.ts — and it lives OUTSIDE
+    // src/ai/ for exactly that reason: src/tools/ai-route.ts and src/data/ai-dirty.ts import nothing from src/ai/.
+    expect(fromMcp.has("src/tools/ai-route.ts")).toBe(true);
+    expect(fromMcp.has("src/data/ai-dirty.ts")).toBe(true);
+    for (const f of ["src/tools/ai-route.ts", "src/data/ai-dirty.ts"]) expect([...reachable(f)].filter((x) => x.startsWith("src/ai/")), f).toEqual([]);
+    // …and src/ai/router.ts (the AI side's name for it) only re-exports them.
+    expect([...reachableDirect("src/ai/router.ts")].sort()).toEqual(["src/data/ai-dirty.ts", "src/tools/ai-route.ts"]);
     // The key is read where summaries are chosen, where AI eligibility is answered, the pass starts and the filter calls (and
     // where Platform says whether they are on) — nowhere else.
     const readers = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /\.ANTHROPIC_API_KEY\b/.test(text)).map(([f]) => f).sort();
     expect(readers).toEqual(["src/ai/eligibility.ts", "src/ai/filter.ts", "src/ai/pass.ts", "src/plans/summaries.ts", "src/platform/routes.ts"]);
-    // TypeSafe's key: the Sift run sends with it; the Tags list says whether one is set.
+    // TypeSafe's key: the Sift run and the AI pass (its Jev jobs and gates) send with it; the Tags list says whether one is set.
     const jevReaders = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /\.TYPESAFE_API_KEY\b/.test(text)).map(([f]) => f).sort();
-    expect(jevReaders).toEqual(["src/ai/sift.ts", "src/tags/routes.ts"]);
+    expect(jevReaders).toEqual(["src/ai/pass.ts", "src/ai/sift.ts", "src/tags/routes.ts"]);
   });
 
   it("the Jev provider is the client's alone: only src/ai/client.ts imports it, and only it names TypeSafe's URL", () => {

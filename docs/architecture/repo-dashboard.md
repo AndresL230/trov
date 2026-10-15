@@ -112,7 +112,13 @@ on. An org with no environment and no primary repository has no unit and costs n
   With no part anywhere `:40` has no heavy job and is a plain health tick (below).
 - `:50`, `:40` when no org has a part, and `:10`–`:30` of any other hour, ping health and nothing else — and then the AI pass
   (`src/ai/pass.ts`, `ai.md`) on what the pings left of the budget, on every tick with no heavy job. Its job
-  registry is empty, so today it reads and fetches nothing.
+  registry is empty, so today it reads and fetches nothing. At `:50` the digest pre-warm (`prewarmDigests`,
+  `notifications.md`) runs first: D1 only, it marks the briefs the coming hour's digests lead with.
+- The repo capture marks the AI router (`ai.md` › The router): a webhook delivery's written `repo_events` row marks
+  `session:<repo>:<actor>` (and `repo:<repo>` for a default-branch push, a deploy, a default-branch run failure;
+  the PR author's `person` for a failure on their branch), and a hosting deploy that lands or fails on an
+  environment's branch marks `repo:<repo>` (`upsertDeploys`, `src/hosting/poll.ts`). Reconcile's backfilled rows
+  mark nothing: a session is about a live burst.
 
 **The budget.** One invocation may spend `CRON_SUBREQUEST_BUDGET` = **900** outbound requests (Workers Paid
 allows 1,000 an invocation; D1 does not count) and `CRON_WALL_BUDGET_MS` = 8 minutes of wall clock. `health`

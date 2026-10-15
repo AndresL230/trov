@@ -77,7 +77,30 @@ export interface ClaudeProvider {
   readonly model: string;
   /** The checked answer and its size, or null on ANY failure (see the file header). Never throws. */
   structured<T>(req: StructuredRequest<T>): Promise<{ value: T; usage: AiUsage } | null>;
+  // ── the Message Batches API (the AI pass's non-urgent kinds: src/ai/batches.ts) ──
+  /** Create ONE batch of structured requests — each sent exactly as `structured` would send it. Null on any
+   *  failure (nothing was created, as far as Trov can tell). Never throws. */
+  submitBatch(reqs: readonly ClaudeBatchRequest[]): Promise<ClaudeBatch | null>;
+  /** A batch's status; `gone` when the provider no longer knows it (404); null on any other failure. */
+  retrieveBatch(id: string): Promise<ClaudeBatch | "gone" | null>;
+  /** An ENDED batch's results (two requests: the batch, then its results file); null on any failure. */
+  batchResults(id: string): Promise<ClaudeBatchResult[] | null>;
+  /** One batch result's message read EXACTLY as `structured` reads its own answer: a refusal, `max_tokens`, text
+   *  that is not JSON or JSON the schema rejects is null. The size goes to `onCall` either way. */
+  answer<T>(req: Pick<StructuredRequest<T>, "kind" | "schema">, message: unknown): { value: T; usage: AiUsage } | null;
 }
+
+/** One request of a batch. `requestId` is what the provider echoes back (`[A-Za-z0-9_-]{1,64}`). */
+export interface ClaudeBatchRequest { requestId: string; req: StructuredRequest<unknown> }
+export interface ClaudeBatch {
+  id: string;
+  ended: boolean;
+  /** The provider's own tallies (all `processing` until the whole batch ends). */
+  counts: { processing: number; succeeded: number; errored: number; canceled: number; expired: number };
+}
+export type ClaudeBatchResult =
+  | { requestId: string; type: "succeeded"; message: unknown }
+  | { requestId: string; type: "errored" | "canceled" | "expired" };
 
 /** Either provider; `name` tells them apart. */
 export type AiProvider = ClaudeProvider | JevProvider;
@@ -110,6 +133,64 @@ export function providerFor<K extends AiKind>(kind: K, opts: AiProviderOpts): Pr
   return (name === "jev" ? jevProvider(opts.apiKey, opts) : claudeProvider(opts.apiKey, opts)) as ProviderOf<K>;
 }
 
+/** The Messages API body for one structured request — what `structured` sends, and what one batch request carries. */
+function messageParams(model: string, req: StructuredRequest<unknown>): Anthropic.MessageCreateParamsNonStreaming {
+  const breakpoint = req.cache ? { cache_control: { type: "ephemeral" as const } } : {};
+  const system: Anthropic.TextBlockParam[] = [{ type: "text", text: req.system, ...(req.prefix ? {} : breakpoint) }];
+  const content: Anthropic.TextBlockParam[] = [
+    ...(req.prefix ? [{ type: "text" as const, text: req.prefix, ...breakpoint }] : []),
+    { type: "text", text: req.input },
+  ];
+  return {
+    model,
+    max_tokens: req.maxTokens,
+    system,
+    messages: [{ role: "user", content }],
+    // Low effort: these are short, grounded answers, and the webhook waits on them.
+    output_config: {
+      effort: "low",
+      format: { type: "json_schema", schema: toClaudeSchema(z.toJSONSchema(req.schema, { io: "input" }) as Record<string, unknown>) },
+    },
+  };
+}
+
+/** Read one Message as the answer to `req`: its size goes to `onCall` whatever becomes of the answer; then null
+ *  for a refusal, an answer cut off at `max_tokens`, or JSON the schema rejects. Text that is not JSON THROWS
+ *  (the caller's catch logs it). */
+function readAnswer<T>(req: Pick<StructuredRequest<T>, "kind" | "schema">, res: Anthropic.Message, sentChars: number, opts: AiProviderOpts): { value: T; usage: AiUsage } | null {
+  const text = res.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text ?? "";
+  const usage: AiUsage = {
+    inputTokens: count(res.usage?.input_tokens),
+    outputTokens: count(res.usage?.output_tokens),
+    cachedTokens: count(res.usage?.cache_read_input_tokens),
+    inputChars: sentChars,
+    outputChars: text.length,
+  };
+  try { opts.onCall?.(usage); } catch { /* a listener never fails a call */ }
+  // A refusal, or an answer cut off at max_tokens, may not match the schema even when it parses.
+  if (res.stop_reason === "refusal" || res.stop_reason === "max_tokens") {
+    console.error(`ai (${req.kind}) no answer: stop_reason=${res.stop_reason}`);
+    return null;
+  }
+  const parsed = req.schema.safeParse(JSON.parse(text));
+  return parsed.success ? { value: parsed.data, usage } : null;
+}
+
+/** A failure's NAME and HTTP status only: an SDK error's message can quote the request. */
+function logFailure(what: string, err: unknown): void {
+  const status = err instanceof Anthropic.APIError && err.status ? ` status=${err.status}` : "";
+  console.error(`ai (${what}) failed: ${err instanceof Error ? err.name : "error"}${status}`);
+}
+
+function batchOf(b: Anthropic.Messages.MessageBatch): ClaudeBatch {
+  const c = b.request_counts;
+  return {
+    id: b.id,
+    ended: b.processing_status === "ended",
+    counts: { processing: count(c?.processing), succeeded: count(c?.succeeded), errored: count(c?.errored), canceled: count(c?.canceled), expired: count(c?.expired) },
+  };
+}
+
 /** Claude over the Messages API, with structured outputs (`output_config.format: json_schema`). */
 function claudeProvider(apiKey: string, opts: AiProviderOpts): ClaudeProvider {
   const model = opts.model ?? CLAUDE_MODEL;
@@ -119,45 +200,55 @@ function claudeProvider(apiKey: string, opts: AiProviderOpts): ClaudeProvider {
     model,
     async structured<T>(req: StructuredRequest<T>): Promise<{ value: T; usage: AiUsage } | null> {
       try {
-        const breakpoint = req.cache ? { cache_control: { type: "ephemeral" as const } } : {};
-        const system: Anthropic.TextBlockParam[] = [{ type: "text", text: req.system, ...(req.prefix ? {} : breakpoint) }];
-        const content: Anthropic.TextBlockParam[] = [
-          ...(req.prefix ? [{ type: "text" as const, text: req.prefix, ...breakpoint }] : []),
-          { type: "text", text: req.input },
-        ];
-        const res = await client.messages.create({
-          model,
-          max_tokens: req.maxTokens,
-          system,
-          messages: [{ role: "user", content }],
-          // Low effort: these are short, grounded answers, and the webhook waits on them.
-          output_config: {
-            effort: "low",
-            format: { type: "json_schema", schema: toClaudeSchema(z.toJSONSchema(req.schema, { io: "input" }) as Record<string, unknown>) },
-          },
-        });
-        // A response came back: its size is reported whatever becomes of the answer.
-        const text = res.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text ?? "";
-        const usage: AiUsage = {
-          inputTokens: count(res.usage?.input_tokens),
-          outputTokens: count(res.usage?.output_tokens),
-          cachedTokens: count(res.usage?.cache_read_input_tokens),
-          inputChars: req.system.length + (req.prefix?.length ?? 0) + req.input.length,
-          outputChars: text.length,
-        };
-        try { opts.onCall?.(usage); } catch { /* a listener never fails a call */ }
-        // A refusal, or an answer cut off at max_tokens, may not match the schema even when it parses.
-        if (res.stop_reason === "refusal" || res.stop_reason === "max_tokens") {
-          console.error(`ai (${req.kind}) no answer: stop_reason=${res.stop_reason}`);
-          return null;
-        }
-        const parsed = req.schema.safeParse(JSON.parse(text));
-        return parsed.success ? { value: parsed.data, usage } : null;
+        const res = await client.messages.create(messageParams(model, req as StructuredRequest<unknown>));
+        return readAnswer(req, res, req.system.length + (req.prefix?.length ?? 0) + req.input.length, opts);
       } catch (err) {
-        // A timeout/abort, a network error, an API error, or text that is not JSON. The name and status
-        // only: an SDK error's message can quote the request.
-        const status = err instanceof Anthropic.APIError && err.status ? ` status=${err.status}` : "";
-        console.error(`ai (${req.kind}) failed: ${err instanceof Error ? err.name : "error"}${status}`);
+        // A timeout/abort, a network error, an API error, or text that is not JSON.
+        logFailure(req.kind, err);
+        return null;
+      }
+    },
+    async submitBatch(reqs) {
+      if (!reqs.length) return null;
+      try {
+        return batchOf(await client.messages.batches.create({
+          requests: reqs.map((r) => ({ custom_id: r.requestId, params: messageParams(model, r.req) })),
+        }));
+      } catch (err) {
+        logFailure("batch create", err);
+        return null;
+      }
+    },
+    async retrieveBatch(id) {
+      try {
+        return batchOf(await client.messages.batches.retrieve(id));
+      } catch (err) {
+        if (err instanceof Anthropic.APIError && err.status === 404) return "gone";
+        logFailure("batch retrieve", err);
+        return null;
+      }
+    },
+    async batchResults(id) {
+      try {
+        const out: ClaudeBatchResult[] = [];
+        for await (const line of await client.messages.batches.results(id)) {
+          if (typeof line?.custom_id !== "string") continue;
+          const r = line.result;
+          if (r?.type === "succeeded") out.push({ requestId: line.custom_id, type: "succeeded", message: r.message });
+          else if (r?.type === "errored" || r?.type === "canceled" || r?.type === "expired") out.push({ requestId: line.custom_id, type: r.type });
+        }
+        return out;
+      } catch (err) {
+        logFailure("batch results", err);
+        return null;
+      }
+    },
+    answer<T>(req: Pick<StructuredRequest<T>, "kind" | "schema">, message: unknown): { value: T; usage: AiUsage } | null {
+      try {
+        if (!message || typeof message !== "object" || !Array.isArray((message as { content?: unknown }).content)) return null;
+        return readAnswer(req, message as Anthropic.Message, 0, opts);
+      } catch (err) {
+        logFailure(req.kind, err);
         return null;
       }
     },

@@ -13,6 +13,7 @@ import { changeKind } from "./diff";
 import type { Principal } from "./auth/principal";
 import type { RepoEvent } from "./repo/types";
 import { applyArtifactLinks, type ArtifactLinkOutcome } from "./tools/artifacts-agent";
+import { routeAi } from "./tools/ai-route";
 import { docImageProblems } from "./tools/doc-images";
 import { recordTagSuggestions, sortAgentTags } from "./tools/tags";
 
@@ -128,6 +129,7 @@ export async function ingestFeedEntry(ctx: TenantContext, entry: FeedEntry, auth
   });
   await recordTagSuggestions(ctx, tags.suggested, { type: "feed", id: String(id) }, author);
   if (ledger) await ledgerRecord(ctx,ledger, "feed", "written", String(id));
+  await routeAi(ctx, { type: "feed_ingested", id, author });
   return {
     outcome: "written", id, tags: tags.known,
     ...(tags.suggested.length ? { suggested_tags: tags.suggested } : {}),
@@ -214,6 +216,7 @@ export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposa
     author
   );
   if (ledger) await ledgerRecord(ctx,ledger, "doc", "staged", `${res.slug}@${res.version}`);
+  await routeAi(ctx, { type: "proposal_staged", ref: `doc:${res.slug}:${res.version}` });
   return { outcome: "written", ...res, change_kind, base_version, low_confidence: lowConf };
 }
 
@@ -242,6 +245,7 @@ export async function ingestAdrDraft(ctx: TenantContext, draft: AdrDraft, author
 
   const id = await stage_adr(ctx,draft, author, hash);
   if (ledger) await ledgerRecord(ctx,ledger, "adr", "staged", String(id));
+  await routeAi(ctx, { type: "proposal_staged", ref: `adr:${id}` });
   return { outcome: "written", id };
 }
 
@@ -266,6 +270,7 @@ export async function ingestEvent(ctx: TenantContext, p: PlatformContext, event:
   // already landed either way — capture never depends on this.
   await ensure_identity_task(ctx, p, event.subject_login);
   if (ledger) await ledgerRecord(ctx,ledger, "event", written ? "written" : "unchanged", event.semantic_key);
+  if (written && event.event_type === "pr_merged" && event.ref_number) await routeAi(ctx, { type: "pr_merged", number: event.ref_number, author: event.subject_login ?? null });
   return written ? { outcome: "written", id: res.meta.last_row_id as number } : { outcome: "unchanged" };
 }
 

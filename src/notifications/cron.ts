@@ -15,7 +15,8 @@ import { platform, systemTenant, type PlatformContext } from "../data/context";
 import { listActiveOrgIds } from "../platform/jobs";
 import { ensureNotificationPolicySeeded } from "./policy";
 import { localDate } from "./window";
-import { runDigest, type RunReport } from "./run";
+import { digestRecipients, runDigest, type RunReport } from "./run";
+import { routeAi } from "../tools/ai-route";
 import { retryFailed, type RetryReport } from "./retry";
 import { PLATFORM_FROM, deliveryFor } from "./resend";
 import { unsubscribeUrl } from "./unsubscribe";
@@ -64,8 +65,38 @@ export async function runOrgNotifications(env: Env, ctx: TenantContext, p: Platf
   return { run, retry };
 }
 
+/** How far ahead the pre-warm looks: one repo tick. */
+export const PREWARM_AHEAD_MS = 10 * 60_000;
+
 /**
- * Entry point for the two notification triggers: `runOrgNotifications` for every active
+ * THE BRIEF PRE-WARM (docs/architecture/ai.md › The router; notifications.md): run by the repo tick ONE TICK BEFORE
+ * the hour (`:50`, src/repo/cron.ts), before the AI pass. For every active org whose digest (daily or weekly) is due
+ * at the coming hour by ITS settings, each recipient's `person:<handle>` scope is marked URGENT — it skips the
+ * debounce, so the pass that follows writes the brief the digest leads with. Rows only (the router); no model, no
+ * mail. Returns how many people were marked. One org's failure is logged with its id and never stops the next.
+ */
+export async function prewarmDigests(env: Env, now: Date): Promise<number> {
+  const p = platform(env, "system");
+  const soon = new Date(now.getTime() + PREWARM_AHEAD_MS);
+  let marked = 0;
+  for (const orgId of await listActiveOrgIds(p)) {
+    try {
+      const ctx = systemTenant(p, orgId, "system");
+      const settings = await loadSettings(ctx);
+      if (!dueCadence(DAILY_CRON, soon, settings) && !dueCadence(WEEKLY_CRON, soon, settings)) continue;
+      for (const handle of await digestRecipients(p, orgId)) {
+        await routeAi(ctx, { type: "digest_prewarm", handle });
+        marked++;
+      }
+    } catch (e) {
+      console.error("digest prewarm", e instanceof Error ? e.name : "error", `org=${orgId}`);
+    }
+  }
+  return marked;
+}
+
+/**
+ * Entry point for the two notification triggers:`runOrgNotifications` for every active
  * (non-suspended) org, in id order, each in its own guarded arm — one org's failure (a bad timezone, a
  * renderer that throws, Resend refusing) is logged with its org id and never stops the next. The
  * outbox key carries the org, so a re-fired trigger is harmless per org. Returns each org's report by id.

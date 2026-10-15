@@ -31,6 +31,10 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
 - **Cron** (`cron.ts`, `wrangler.toml [triggers]`): two hourly triggers (`0 * * * *` daily candidate,
   `0 * * * SUN,MON` weekly candidate) dispatched by expression in `scheduled()`, gated in code on
   `notification_settings.send_hour` + `timezone` at fire time (static crons cannot read D1 or follow DST).
+- **The brief pre-warm** (`prewarmDigests`, `cron.ts`; `ai.md` › The router): the repo tick ONE TICK BEFORE the hour
+  (`:50`) asks `dueCadence` for the coming hour, per org; for an org whose daily or weekly digest is due then, the
+  AI router marks every recipient's `person:<handle>` scope URGENT (it skips the debounce), so the AI pass that
+  follows on the same tick can write the brief the digest leads with. Rows only — no model, no mail.
 - **Delivery gate** (`resend.ts`): `NOTIFICATIONS_MODE` absent/`local` → bodies go to the dev-only
   `notification_outbox_bodies` table and Resend is NEVER called; `resend` requires `RESEND_API_KEY` (a config
   error otherwise, never a silent fallback). A message with an `unsubscribeUrl` (a NOTIFICATION — see Who

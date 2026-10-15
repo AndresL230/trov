@@ -129,8 +129,24 @@ export const outboxKey = (ctx: TenantContext, login: string, cadence: string, wi
  */
 export const preOrgOutboxKey = (login: string, cadence: string, windowId: string): string => `${login}:${cadence}:${windowId}`;
 
+/** A digest's recipients — the org's MEMBERS with an address on file who have not unsubscribed — in handle order. */
+function recipientRows(p: PlatformContext, orgId: string): Promise<Recipient[]> {
+  return platformAll<Recipient>(
+    p,
+    `SELECT p.handle AS github_login, p.email
+       FROM persons p JOIN memberships m ON p.handle = m.user_id AND m.org_id = ?
+      WHERE p.email IS NOT NULL AND p.email != '' AND p.email_unsubscribed = 0 ORDER BY p.handle`,
+    orgId
+  );
+}
+
+/** The handles a digest of this org would go to (what the brief pre-warm marks: ./cron.ts `prewarmDigests`). */
+export async function digestRecipients(p: PlatformContext, orgId: string): Promise<string[]> {
+  return (await recipientRows(p, orgId)).map((r) => r.github_login);
+}
+
 /**
- * `p` reads the people: the org's MEMBERS with an address on file who have not unsubscribed (the
+ * `p` reads the people:the org's MEMBERS with an address on file who have not unsubscribed (the
  * unsubscribe is global — one click stops every org's mail). Everything else is `ctx`'s org.
  */
 export async function runDigest(ctx: TenantContext, p: PlatformContext, cadence: RunCadence, now: Date, opts: RunOptions): Promise<RunReport> {
@@ -142,13 +158,7 @@ export async function runDigest(ctx: TenantContext, p: PlatformContext, cadence:
 
   const policies = await loadPolicies(ctx);
   // Eligibility is a hard gate above resolution: a member, an address on file, not unsubscribed.
-  const recipients = await platformAll<Recipient>(
-    p,
-    `SELECT p.handle AS github_login, p.email
-       FROM persons p JOIN memberships m ON p.handle = m.user_id AND m.org_id = ?
-      WHERE p.email IS NOT NULL AND p.email != '' AND p.email_unsubscribed = 0 ORDER BY p.handle`,
-    ctx.orgId
-  );
+  const recipients = await recipientRows(p, ctx.orgId);
 
   for (const who of recipients) {
     report.eligible++;

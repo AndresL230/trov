@@ -24,6 +24,7 @@ import { canTransition, parseTicketLink, placeInColumn } from "@shared/tickets";
 import type { TicketRow } from "@shared/rows";
 import { type TenantContext, type Stmt, first, all, run, stmt, batch, nowIso } from "../data/sql";
 import { requireMember } from "../auth/persons";
+import { routeAi } from "./ai-route";
 
 /**
  * A typed failure the routes map onto an HTTP status:
@@ -172,7 +173,9 @@ export async function create_ticket(ctx: TenantContext, input: TicketCreate, req
     );
   }
 
-  return (await first<{ number: number }>(ctx, `SELECT number FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId))!.number;
+  const number = (await first<{ number: number }>(ctx, `SELECT number FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId))!.number;
+  await routeAi(ctx, { type: "ticket_created", number });
+  return number;
 }
 
 /**
@@ -196,6 +199,7 @@ export async function transition_ticket(ctx: TenantContext, number: number, to: 
   // A move that is not a board drop clears the card's position: it lands at the
   // TOP of its new column (`boardOrder`), where a person will see it.
   await run(ctx, `UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ? WHERE id = ? AND org_id = ?`, to, now, id, ctx.orgId);
+  await routeAi(ctx, { type: "ticket_changed", ticketId: id });
 }
 
 /**
@@ -233,6 +237,7 @@ export async function move_ticket(ctx: TenantContext, number: number, to: Ticket
   stmts.push(stmt(ctx, `UPDATE tickets SET status = ?, board_rank = ?, updated_at = ? WHERE id = ? AND org_id = ?`, to, rank, now, id, ctx.orgId));
   // D1 caps a batch well above a board column; chunk anyway so a huge Done column never trips it.
   for (let i = 0; i < stmts.length; i += 100) await batch(ctx, stmts.slice(i, i + 100));
+  if (to !== t.status) await routeAi(ctx, { type: "ticket_changed", ticketId: id });
 }
 
 /**
@@ -249,6 +254,7 @@ export async function toggle_assignee(ctx: TenantContext, number: number, login:
     await run(ctx, `DELETE FROM ticket_assignees WHERE ticket_id = ? AND login = ? AND org_id = ?`, id, handle, ctx.orgId);
   }
   await touch(ctx, id, nowIso());
+  await routeAi(ctx, { type: "ticket_changed", ticketId: id, people: on ? [] : [handle] });
 }
 
 /** Attach one linked-work reference, parsed by the SHARED parser the SPA also uses. */
@@ -310,10 +316,11 @@ export async function edit_ticket(ctx: TenantContext, number: number, patch: Tic
 
 /** Move a ticket into a sprint, or back to the backlog (`null`). */
 export async function set_ticket_sprint(ctx: TenantContext, number: number, sprintId: number | null): Promise<void> {
-  const { id } = await getTicketRow(ctx, number);
+  const { id, sprint_id: was } = await getTicketRow(ctx, number);
   if (sprintId !== null) await requireSprint(ctx, sprintId);
   const now = nowIso();
   await run(ctx, `UPDATE tickets SET sprint_id = ?, updated_at = ? WHERE id = ? AND org_id = ?`, sprintId, now, id, ctx.orgId);
+  await routeAi(ctx, { type: "ticket_changed", ticketId: id, sprints: [was] });
 }
 
 /**

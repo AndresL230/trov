@@ -10,6 +10,7 @@ import { orgEnvironments } from "./repo/config";
 import { putMetric } from "./repo/store";
 import { fillFailedJob, refreshDrift, scrubbedMessage } from "./repo/github";
 import { mirrorIssue } from "./tools/ticket-mirror";
+import { routeAi } from "./tools/ai-route";
 
 // The GitHub webhook is Trov's THIRD auth class. Unlike the session cookie
 // (humans) and the bearer token (agents), a delivery authenticates itself by an
@@ -301,6 +302,13 @@ const WORK_EVENT_NAMES = ["pull_request", "issues"];
  *  ignored like any other surface we do not capture. */
 export const REPO_EVENT_NAMES: readonly string[] = ["pull_request", "push", "pull_request_review", "check_run", "workflow_run", "status"];
 
+/** `repository.default_branch` of a delivery, or null when it does not say. */
+export function repoDefaultBranch(payload: unknown): string | null {
+  const repo = payload && typeof payload === "object" ? (payload as { repository?: { default_branch?: unknown } | null }).repository : null;
+  const b = repo && typeof repo === "object" ? repo.default_branch : null;
+  return typeof b === "string" && b ? b : null;
+}
+
 // ---------------------------------------------------------------------------
 // The capture of ONE VERIFIED delivery, for the org it was verified for. The
 // entry point (src/github-hook.ts) has already checked the HMAC against that
@@ -431,10 +439,13 @@ export async function captureDelivery(
           if (await putMetric(ctx, m)) repo.captured++; else repo.unchanged++;
         }
       } else {
+        // The repository's default branch, as the delivery names it (null = unknown): what the AI router reads.
+        const defaultBranch = repoDefaultBranch(payload);
         for (const ev of repoEventsFromDelivery(eventName, payload)) {
           const res = await ingestRepoEvent(ctx, ev);
           if (res.outcome !== "written") { repo.unchanged++; continue; }
           repo.captured++;
+          await routeAi(ctx, { type: "repo_activity", repo: scope.repo, ev, defaultBranch });
           if (ev.kind === "run" && (ev.state === "failure" || ev.state === "timed_out") && ev.number) {
             const ghOpts = await gh();
             if (ghOpts) {

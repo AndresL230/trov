@@ -11,7 +11,7 @@ import {
   METRIC_SUMMARY, METRIC_SUMMARY_CAPPED, METRIC_SUMMARY_CHARS_IN, METRIC_SUMMARY_CHARS_OUT, METRIC_SUMMARY_FAILED,
   METRIC_SUMMARY_TOKENS_IN, METRIC_SUMMARY_TOKENS_OUT, SUMMARY_METRIC_GLOB,
   AI_METRIC_GLOB, METRIC_AI_RUN_CAPPED_PREFIX, METRIC_AI_RUN_FAILED_PREFIX, METRIC_AI_RUN_PREFIX,
-  METRIC_AI_TOKENS_CACHED, METRIC_AI_TOKENS_IN, METRIC_AI_TOKENS_OUT,
+  METRIC_AI_TOKENS_CACHED, METRIC_AI_TOKENS_IN, METRIC_AI_TOKENS_OUT, METRIC_AI_SUGGEST, METRIC_JEV_TOKENS_IN, METRIC_JEV_TOKENS_OUT,
 } from "../data/meter";
 import type { AiUsage } from "@shared/ai-core";
 import { orgLogoSrc, type OrgUsage, type PlatformUsageResponse, type UsageActivity, type UsageCreated, type UsageDay, type UsageSizes, type UsageSummaries } from "@shared/orgs";
@@ -79,11 +79,13 @@ const SUMMARY_FIELD: Record<string, "attempted" | "failed" | "capped" | "chars_i
   [METRIC_SUMMARY_TOKENS_IN]: "tokens_in", [METRIC_SUMMARY_TOKENS_OUT]: "tokens_out",
 };
 // AI runs (docs/architecture/ai.md): `ai_run:*` / `ai_run_failed:*` / `ai_run_capped:*` by prefix, tokens by name.
-const zeroAi = (): AiUsage => ({ runs: 0, failed: 0, capped: 0, tokensIn: 0, tokensOut: 0, tokensCached: 0 });
-const AI_TOKEN_FIELD: Record<string, "tokensIn" | "tokensOut" | "tokensCached"> = {
+// Jev's side (Phase B, per provider): its requests (`ai_suggest` — Sift's and the pass's) and its tokens.
+const zeroAi = (): Required<AiUsage> => ({ runs: 0, failed: 0, capped: 0, tokensIn: 0, tokensOut: 0, tokensCached: 0, jevChecks: 0, jevTokensIn: 0, jevTokensOut: 0 });
+const AI_TOKEN_FIELD: Record<string, "tokensIn" | "tokensOut" | "tokensCached" | "jevChecks" | "jevTokensIn" | "jevTokensOut"> = {
   [METRIC_AI_TOKENS_IN]: "tokensIn", [METRIC_AI_TOKENS_OUT]: "tokensOut", [METRIC_AI_TOKENS_CACHED]: "tokensCached",
+  [METRIC_AI_SUGGEST]: "jevChecks", [METRIC_JEV_TOKENS_IN]: "jevTokensIn", [METRIC_JEV_TOKENS_OUT]: "jevTokensOut",
 };
-const aiField = (metric: string): keyof AiUsage | null =>
+const aiField = (metric: string): keyof Required<AiUsage> | null =>
   metric.startsWith(METRIC_AI_RUN_PREFIX) ? "runs" : metric.startsWith(METRIC_AI_RUN_FAILED_PREFIX) ? "failed"
     : metric.startsWith(METRIC_AI_RUN_CAPPED_PREFIX) ? "capped" : AI_TOKEN_FIELD[metric] ?? null;
 const derived = (s: UsageSummaries): UsageSummaries => ({ ...s, succeeded: Math.max(0, s.attempted - s.failed), fell_back: s.failed + s.capped });
@@ -183,7 +185,7 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
     };
   });
   const tAi = zeroAi();
-  for (const o of out) if (o.ai) for (const k of Object.keys(tAi) as (keyof AiUsage)[]) tAi[k] += o.ai[k];
+  for (const o of out) if (o.ai) for (const k of Object.keys(tAi) as (keyof AiUsage)[]) tAi[k] += o.ai[k] ?? 0;
   const tSummaries = zeroSummaries();
   for (const o of out) for (const k of Object.keys(tSummaries) as (keyof UsageSummaries)[]) tSummaries[k] += o.summaries[k];
 

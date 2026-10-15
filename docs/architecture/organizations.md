@@ -461,6 +461,7 @@ at once; "kept" says why.
 | R2 objects another organization (or person) also references | content-addressed: the same bytes are one object, still in use |
 | The GitHub App on the GitHub account | Trov cannot uninstall it; uninstall it on GitHub if no other organization uses it |
 | SaplingLearn's legacy `invites` table | pre-organization invitations for that one org; removed by the Phase 7 cleanup |
+| A Message Batch request still open for it (`ai_batch_requests`, a platform row: its `custom_id` names the org, a scope and a key — no content) | Anthropic ends a batch within 24 h and the next AI pass collects it: a result for an organization that no longer exists writes NOTHING, and the request row is deleted then (`ai.md` › Batches) |
 
 **An account**
 
@@ -476,6 +477,7 @@ at once; "kept" says why.
 | Support | the reports and messages they sent, signed in or signed out from one of their addresses |
 | Grants | an unused one is revoked (a paid one's subscription cancelled); none keeps their handle, login or address |
 | Rate limits | their counters (two days at most anyway) |
+| What the AI router marked for them | their brief's stale mark (`ai_dirty` scope `person:<handle>`) and their GitHub sessions' (`session:<repo>:<login>`), in every organization |
 | Organizations nobody else is in | deleted whole, as above |
 | R2 | their photo, unless someone else's is the same bytes |
 | At Stripe | open checkouts they started are expired |

@@ -32,6 +32,7 @@
 //     is no MCP delete. A delete drops the page's FTS row; a restore re-inserts it.
 
 import { all, batch, first, fanOut, nowIso, run, stmt, type Stmt, type TenantContext } from "../data/sql";
+import { routeAi } from "./ai-route";
 import {
   ARTIFACT_AREAS, ARTIFACT_BINARY_CAP, ARTIFACT_IMAGE_TYPES, ARTIFACT_KINDS, ARTIFACT_LINK_TYPES,
   ARTIFACT_RESERVED_SLUGS, ARTIFACT_SLUG_MAX, ARTIFACT_TEXT_CAP, ARTIFACT_TEXT_CONTENT_TYPE,
@@ -638,6 +639,7 @@ async function writeVersion(ctx: TenantContext, p: ArtifactPageRow, v: VersionPa
     if (isUniqueViolation(e)) throw new ArtifactError("conflict", "another version landed first — reload and retry");
     throw e;
   }
+  await routeAi(ctx, { type: "artifact_saved", slug: p.slug });
   const fresh = (await first<ArtifactPageRow>(ctx, `SELECT * FROM artifact_pages WHERE id = ? AND org_id = ?`, p.id, ctx.orgId))!;
   return { unchanged: false, version_no: next, page: await detailOf(ctx, fresh, null) };
 }
@@ -688,6 +690,7 @@ async function insertPage(
     if (isUniqueViolation(e)) throw new ArtifactError("conflict", "that slug was just taken — retry");
     throw e;
   }
+  if (version) await routeAi(ctx, { type: "artifact_saved", slug });
   return slug;
 }
 
