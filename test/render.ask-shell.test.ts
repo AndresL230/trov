@@ -215,7 +215,7 @@ describe("motion — the hooks every part inherits (web/src/ask-motion.ts)", () 
 
   // Every Ask rule that animates or transitions is switched off by the one reduced-motion block: its base class
   // is listed there with `!important`, which beats every variant (`[data-closing]`, `[data-sheet]`).
-  const ask = css.slice(css.indexOf("/* ══ Ask Trov"), css.indexOf("/* ── corners: tightened")).replace(/\/\*[\s\S]*?\*\//g, "");
+  const ask = css.slice(css.indexOf("/* ══ Ask Trov"), css.indexOf("/* ── the site on a phone")).replace(/\/\*[\s\S]*?\*\//g, "");
   const reduce = ask.slice(ask.indexOf("@media (prefers-reduced-motion: reduce)"));
   const reduceSel = new Set(reduce.slice(0, reduce.indexOf("\n}\n")).split(/[{},]/).map((x) => x.trim()));
   const baseClass = (sel: string): string => (sel.trim().split(/\s+/).pop()!.match(/^\.[a-z][\w-]*(\.[a-z][\w-]*)?(::[a-z-]+)?/)?.[0] ?? "");

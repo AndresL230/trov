@@ -131,9 +131,9 @@ export function sameRoute(a: Route, b: Route): boolean {
  * the same key are the same page: moving between them swaps the tab's body in place, with no
  * screen entrance and nothing to load again (main.ts `markEnter`, the hashchange handler).
  */
+// Ask's thread (`askThread`) is not a page of its own either: opening one, or a new thread being named mid-answer,
+// swaps the conversation in place and never replays the screen's entrance.
 export function pageKey(r: Route): string {
-  // Ask's thread is not a page of its own: opening one (or a new thread being named mid-answer) swaps the
-  // conversation in place, never replays the screen's entrance.
   return hashForRoute({ ...r, askThread: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
 }
 

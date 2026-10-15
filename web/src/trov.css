@@ -2795,6 +2795,232 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 }
 @media (prefers-reduced-motion: reduce) { .plat-row, .plat-chev, .plat-busy { transition:none; } }
 
+/* ══ Ask Trov (web/src/ask-*.ts; design: docs/superpowers/specs/ask-trov.dc.html, map: ask-trov-inventory.md) ══
+   One sub-block per PART, each owned by the agent that builds that part, so no two edit the same lines:
+   shell · motion · threads · conversation · composer · actions · inspector · refs (chips + hover card) · cmdj ·
+   phone. Settings › Trov (ask-settings.ts) brings its own. Every radius below has its line in the corners block's
+   `Ask` sub-block at the end of this file (owner's ruling: authored values, scaled by --corner-scale like the rest).
+   Motion: web/src/ask-motion.ts says which hook does what; every animation here is off under reduced motion
+   (the `Ask: motion` block's media query) and plays on INSERTION or on an attribute, never on a repaint. */
+
+/* ── Ask: shell ── (ask-screen.ts, ask-layout.ts) */
+[data-cnpy-theme="light"] { --ask-row-on:#ffffff; --ask-row-ring:0 1px 2px rgba(20,20,30,0.05), 0 0 0 1px rgba(20,20,30,0.08); --ask-scrim:rgba(12,11,9,.42); }
+[data-cnpy-theme="dark"] { --ask-row-on:rgba(237,233,226,0.07); --ask-row-ring:none; --ask-scrim:rgba(0,0,0,.5); }
+[data-screen="ask"] #cnpy-main { display:flex; flex-direction:column; overflow:hidden; }
+.ask-screen { position:relative; flex:1; display:flex; min-height:0; height:100%; overflow:hidden; }
+.ask-threads { flex:none; width:260px; overflow:hidden; border-right:1px solid var(--border); transition:width var(--fx-slow) var(--fx-ease), opacity var(--fx-base) var(--fx-ease), border-color var(--fx-base) var(--fx-ease); }
+.ask-screen[data-threads="hidden"] > .ask-threads { width:0; opacity:0; border-right-color:transparent; }
+[data-phone="1"] .ask-threads { display:none; }
+.ask-conv { position:relative; flex:1; min-width:0; display:flex; flex-direction:column; }
+.ask-scroll { flex:1; min-height:0; overflow-y:auto; overflow-anchor:none; display:flex; flex-direction:column; }
+.ask-col { width:100%; max-width:720px; box-sizing:border-box; margin:0 auto; padding:28px 28px 8px; }
+[data-phone="1"] .ask-col, .ask-panel .ask-col { padding:20px 16px 8px; }
+.ask-insp-slot { display:contents; }
+.ask-drawer-slot { display:contents; }
+.ask-h1 { margin:0; font-size:15px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; flex:none; }
+.ask-h1-b { padding:0; font:inherit; color:var(--fg); cursor:pointer; transition:color .12s ease; }
+.ask-h1-b.is-parent { color:var(--fg-55); }
+.ask-h1-b:hover { color:var(--fg); }
+.ask-crumb { display:inline-flex; align-items:center; gap:10px; min-width:0; }
+.ask-crumb-sep { color:var(--fg-40); font-size:15px; }
+.ask-crumb-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:600; letter-spacing:-0.01em; }
+.ask-iconbtn { display:grid; place-items:center; flex:none; width:28px; height:28px; border-radius:7px; color:var(--fg-55); cursor:pointer; transition:background .12s ease, color .12s ease; }
+.ask-iconbtn:hover { background:var(--hover); color:var(--fg); }
+.ask-iconbtn:disabled { color:var(--fg-40); opacity:.5; cursor:default; background:none; }
+.ask-iconbtn--40 { width:40px; height:40px; border-radius:8px; }
+.ask-iconbtn--outline { border:1px solid var(--border-strong); }
+.ask-th-toggle[aria-pressed="false"] { color:var(--fg-40); }
+.ask-kbd { display:inline-block; padding:0 5px; border:1px solid var(--border); border-radius:4px; font-family:var(--label); font-size:10.5px; line-height:16px; color:var(--fg-40); }
+.ask-ghostbtn { display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border-radius:7px; font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; white-space:nowrap; transition:background .12s ease, color .12s ease; }
+.ask-ghostbtn:hover { background:var(--hover); color:var(--fg); }
+.ask-ghostbtn--outline { padding:6px 12px; border:1px solid var(--border-strong); border-radius:8px; }
+.ask-btn { display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border:1px solid var(--border-strong); border-radius:8px; font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; }
+.ask-btn:hover { background:var(--hover); color:var(--fg); }
+.ask-btn--accent { border-color:transparent; background:var(--accent); color:var(--accent-fg); font-weight:600; }
+.ask-btn--accent:hover { background:var(--accent); color:var(--accent-fg); filter:brightness(1.06); }
+.ask-btn:disabled { opacity:.55; cursor:default; }
+.ask-loading { padding:24px 0; font-size:13px; color:var(--fg-55); }
+/* The inspector's frame (ask-screen.ts `inspectorFrame`; its body is the inspector part's). Opening slides it in from
+   its edge while the margin it starts from (its own width, negative) opens the room for it, so the conversation
+   re-centres smoothly; `data-closing` runs it back; a keyboard resize eases the width; a drag follows the pointer. */
+.ask-insp-frame { position:relative; flex:none; display:flex; flex-direction:column; min-height:0; box-sizing:border-box; background:var(--surface); border-left:1px solid var(--border); transition:width var(--fx-fast) var(--fx-ease); animation:ask-insp-in var(--fx-slow) var(--fx-ease) both; }
+.ask-insp-frame[data-dragging="1"] { transition:none; }
+.ask-insp-frame[data-closing] { animation:ask-insp-out var(--fx-base) var(--fx-ease) both; pointer-events:none; }
+@keyframes ask-insp-in { from { margin-right:calc(-1 * var(--ask-insp-w, 480px)); opacity:0; } to { margin-right:0; opacity:1; } }
+@keyframes ask-insp-out { from { margin-right:0; opacity:1; } to { margin-right:calc(-1 * var(--ask-insp-w, 480px)); opacity:0; } }
+.ask-insp-frame[data-sheet="1"] { position:fixed; inset:0; z-index:70; width:auto; border-left:0; animation:ask-sheet-up .26s var(--fx-ease) both; }
+.ask-insp-frame[data-sheet="1"][data-closing] { animation:ask-sheet-down var(--fx-base) var(--fx-ease) both; }
+@keyframes ask-sheet-up { from { transform:translateY(100%); } to { transform:none; } }
+@keyframes ask-sheet-down { from { transform:none; } to { transform:translateY(100%); } }
+.ask-insp-resize { position:absolute; top:0; bottom:0; left:-4px; z-index:2; width:8px; cursor:col-resize; }
+.ask-insp-resize::after { content:""; position:absolute; top:0; bottom:0; left:3px; width:2px; background:var(--accent); opacity:0; transition:opacity .12s ease; }
+.ask-insp-resize:hover::after, .ask-insp-resize:focus-visible::after, .ask-insp-frame[data-dragging="1"] .ask-insp-resize::after { opacity:1; }
+.ask-insp-resize:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
+.ask-insp-grab { display:grid; place-items:center; height:18px; }
+.ask-insp-grab > span { width:36px; height:4px; border-radius:2px; background:var(--border-strong); }
+.ask-insp-head { display:flex; align-items:center; gap:4px; height:52px; flex:none; box-sizing:border-box; padding:0 10px; border-bottom:1px solid var(--border); }
+.ask-insp-crumb { flex:1; min-width:0; display:flex; align-items:baseline; gap:8px; padding-left:4px; overflow:hidden; white-space:nowrap; }
+.ask-insp-type { font-family:var(--label); font-size:12px; font-weight:500; letter-spacing:.04em; text-transform:uppercase; color:var(--fg-55); }
+.ask-insp-from { min-width:0; overflow:hidden; text-overflow:ellipsis; font-size:12px; color:var(--fg-40); }
+.ask-insp-body { flex:1; min-height:0; overflow-y:auto; padding:20px 22px 40px; animation:ask-view-in var(--fx-base) var(--fx-ease) both; }
+@keyframes ask-view-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+/* ── Ask: motion ── (ask-motion.ts) the shared keyframes and the ONE reduced-motion switch for everything Ask */
+@keyframes ask-pop-in { from { opacity:0; transform:scale(.94) translateY(3px); } to { opacity:1; transform:none; } }
+@keyframes ask-pop-out { from { opacity:1; transform:none; } to { opacity:0; transform:scale(.96); } }
+@keyframes ask-fade-in { from { opacity:0; } to { opacity:1; } }
+@keyframes ask-fade-out { from { opacity:1; } to { opacity:0; } }
+@keyframes ask-blink { 0%, 45% { opacity:.75; } 55%, 100% { opacity:0; } }
+@keyframes ask-pulse { 0%, 100% { opacity:1; } 50% { opacity:.55; } }
+.ask-menu { animation:ask-pop-in .14s cubic-bezier(.2,.9,.3,1.2) both; }
+.ask-menu[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
+@media (prefers-reduced-motion: reduce) {
+  .ask-threads, .ask-insp-frame, .ask-insp-resize::after, .ask-th, .ask-th-more, .ask-th-at, .ask-send, .ask-chip, .ask-starters > button { transition:none !important; }
+  .ask-insp-frame, .ask-insp-frame[data-closing], .ask-insp-body, .ask-menu, .ask-menu[data-closing], .ask-hc, .ask-hc-layer[data-closing] .ask-hc,
+  .ask-panel, .ask-scrim, .ask-panel-layer[data-closing] .ask-panel, .ask-panel-layer[data-closing] .ask-scrim, .ask-drawer, .ask-drawer-scrim,
+  .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-line, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
+}
+
+/* ── Ask: threads ── (ask-threads.ts; the shell's) */
+.ask-threads-in { display:flex; flex-direction:column; width:260px; height:100%; min-height:0; box-sizing:border-box; }
+.ask-th-top { display:flex; flex-direction:column; gap:8px; padding:12px 12px 6px; }
+.ask-th-new { display:flex; align-items:center; justify-content:center; gap:7px; height:34px; border:1px solid var(--border-strong); border-radius:9px; background:var(--surface); box-shadow:var(--shadow); font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:color .12s ease, border-color .12s ease; }
+.ask-th-new:hover { color:var(--fg); border-color:var(--border-input); }
+.ask-th-search { display:flex; align-items:center; gap:7px; height:34px; padding:0 8px 0 10px; border:1px solid var(--border); border-radius:9px; color:var(--fg-40); }
+.ask-th-search:focus-within { border-color:var(--border-input); }
+.ask-th-search input { flex:1; min-width:0; border:0; background:none; outline:none; font:inherit; font-size:13px; color:var(--fg); }
+.ask-th-clear { display:grid; place-items:center; width:20px; height:20px; border-radius:5px; color:var(--fg-40); cursor:pointer; }
+.ask-th-clear:hover { background:var(--hover); color:var(--fg); }
+.ask-th-scroll { flex:1; min-height:0; overflow-y:auto; padding:0 8px 16px; }
+.ask-th-head { padding:10px 10px 4px; font-family:var(--label); font-size:11.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
+.ask-th-none { padding:12px 10px; font-size:12.5px; line-height:1.5; color:var(--fg-55); }
+.ask-th-skrow { padding:7px 10px; }
+/* A row: a one-track grid, so `data-closing` (a deleted thread) collapses it and the rows under it move up. */
+.ask-th { display:grid; grid-template-rows:1fr; transition:grid-template-rows var(--fx-fast) var(--fx-ease), opacity var(--fx-fast) var(--fx-ease); }
+.ask-th[data-closing] { grid-template-rows:0fr; opacity:0; }
+.ask-th-in { position:relative; min-height:0; }
+.ask-th[data-closing] .ask-th-in { overflow:hidden; }
+.ask-th-b { display:flex; align-items:center; gap:8px; width:100%; box-sizing:border-box; padding:7px 10px; border-radius:8px; text-align:left; font-size:13px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:background .12s ease, color .12s ease; }
+.ask-th-b:hover { background:var(--hover); }
+.ask-th-b.is-on { background:var(--ask-row-on); box-shadow:var(--ask-row-ring); color:var(--fg); }
+.ask-th-b--hit { flex-direction:column; align-items:stretch; gap:3px; }
+.ask-th-line { display:flex; align-items:center; gap:8px; }
+.ask-th-title { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ask-th-at { flex:none; font-family:var(--label); font-size:11.5px; font-weight:400; color:var(--fg-40); transition:opacity .12s ease; }
+.ask-th-snip { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:12px; font-weight:400; line-height:1.45; color:var(--fg-55); }
+.ask-th-count { font-family:var(--label); font-size:11px; font-weight:400; color:var(--fg-40); }
+.ask-hl { padding:0 1px; border-radius:3px; background:var(--accent-soft); color:var(--fg); font-weight:600; }
+.ask-th-more { position:absolute; top:5px; right:6px; display:grid; place-items:center; width:24px; height:24px; border-radius:6px; color:var(--fg-55); opacity:0; cursor:pointer; transition:opacity .12s ease, background .12s ease; }
+.ask-th-in:hover .ask-th-more, .ask-th.is-menu .ask-th-more, .ask-th-more:focus-visible { opacity:1; }
+.ask-th-in:hover .ask-th-b:not(.ask-th-b--hit) .ask-th-at, .ask-th.is-menu .ask-th-b:not(.ask-th-b--hit) .ask-th-at { opacity:0; }
+.ask-th-more:hover, .ask-th-more[aria-expanded="true"] { background:var(--hover); color:var(--fg); }
+.ask-th-rename { width:100%; height:32px; box-sizing:border-box; padding:0 10px; border:1px solid var(--accent); border-radius:8px; background:var(--surface); outline:none; font:inherit; font-size:13px; color:var(--fg); }
+.ask-menu { position:absolute; z-index:30; display:flex; flex-direction:column; gap:1px; width:196px; box-sizing:border-box; padding:5px; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:var(--menu-shadow); }
+.ask-th-menu { top:calc(100% + 2px); right:4px; transform-origin:top right; }
+.ask-menu > button { display:flex; align-items:center; gap:9px; width:100%; padding:7px 9px; border-radius:6px; text-align:left; font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; }
+.ask-menu > button:hover, .ask-menu > button:focus-visible { background:var(--hover); color:var(--fg); }
+.ask-menu > button.is-danger { color:var(--red); }
+.ask-menu > button.is-danger:hover { background:color-mix(in srgb, var(--red) 9%, transparent); }
+.ask-menu-sep { height:1px; margin:4px 2px; background:var(--border); }
+
+/* ── Ask: conversation ── (ask-conversation.ts — a sibling replaces the stub's styles here) */
+.ask-col { animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
+.ask-empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:safe flex-end; gap:14px; width:100%; max-width:720px; box-sizing:border-box; margin:0 auto; padding:40px 28px 18px; text-align:center; animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
+[data-phone="1"] .ask-empty { padding:24px 16px 14px; }
+.ask-empty-h { margin:0; font-size:24px; font-weight:600; letter-spacing:-0.02em; text-wrap:balance; }
+.ask-starters { display:grid; grid-template-columns:1fr 1fr; gap:8px; width:100%; max-width:560px; margin-top:6px; }
+[data-phone="1"] .ask-starters { grid-template-columns:1fr; }
+.ask-starters > button, .ask-follow > button { display:flex; align-items:center; gap:9px; padding:10px 13px; border:1px solid var(--border); border-radius:10px; text-align:left; font-size:13px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:background .12s ease, border-color .12s ease, color .12s ease; }
+.ask-starters > button:hover, .ask-follow > button:hover { background:var(--surface); border-color:var(--border-strong); color:var(--fg); }
+.ask-q { display:flex; justify-content:flex-end; gap:6px; margin-bottom:22px; }
+.ask-q-col { display:flex; flex-direction:column; align-items:flex-end; gap:6px; max-width:min(560px, 86%); }
+.ask-q-att { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+.ask-q-bubble { padding:9px 14px; border-radius:12px; background:color-mix(in srgb, var(--fg) 6%, var(--bg)); font-size:14.5px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; }
+.ask-file { display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border:1px solid var(--border); border-radius:8px; font-size:12px; }
+.ask-a { margin-bottom:26px; }
+.ask-steps { display:flex; flex-direction:column; gap:1px; margin-bottom:10px; }
+.ask-step { display:flex; align-items:center; gap:8px; min-height:28px; font-size:13px; color:var(--fg-55); }
+.ask-step.is-run { color:var(--fg-70); }
+.ask-step-n { font-size:12px; color:var(--fg-40); }
+.ask-text { font-size:14.5px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; text-wrap:pretty; }
+.ask-cursor { display:inline-block; width:7px; height:15px; margin-left:2px; vertical-align:-2px; border-radius:2px; background:var(--accent); opacity:.75; animation:ask-blink 1.1s steps(1) infinite; }
+.ask-block-stub { margin:6px 0 16px; padding:12px 14px; border:1px dashed var(--border-strong); border-radius:10px; font-size:12.5px; color:var(--fg-55); }
+.ask-part { margin:6px 0 16px; }
+.ask-err { margin-top:10px; padding:10px 13px; border:1px solid color-mix(in srgb, var(--red) 30%, var(--border)); border-radius:10px; background:color-mix(in srgb, var(--red) 5%, var(--surface)); font-size:13px; font-weight:500; }
+.ask-stopped { margin-top:8px; font-size:12.5px; color:var(--fg-55); }
+.ask-foot { display:flex; align-items:center; gap:6px; margin-top:12px; font-size:12px; color:var(--fg-40); }
+.ask-follow { display:flex; flex-direction:column; align-items:flex-start; gap:6px; margin-top:14px; }
+.ask-spin { animation:cnpy-spin .8s linear infinite; }
+
+/* ── Ask: composer ── (ask-composer.ts — a sibling replaces the stub's styles here) */
+.ask-composer { flex:none; width:100%; max-width:720px; box-sizing:border-box; margin:0 auto; padding:0 28px 14px; }
+[data-phone="1"] .ask-composer, .ask-panel .ask-composer { padding:0 16px 12px; }
+.ask-box { border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); transition:border-color .12s ease, box-shadow .12s ease; }
+.ask-box:focus-within { border-color:var(--border-input); box-shadow:0 0 0 3px var(--accent-soft), var(--shadow); }
+.ask-input { display:block; width:100%; min-height:46px; max-height:220px; box-sizing:border-box; padding:12px 14px 4px; border:0; outline:none; resize:none; background:none; font:inherit; font-size:14.5px; line-height:1.55; color:var(--fg); }
+.ask-box-bar { display:flex; align-items:center; gap:6px; padding:6px 8px 8px; }
+.ask-send { display:grid; place-items:center; width:32px; height:32px; border-radius:8px; background:var(--hover); color:var(--fg-40); cursor:pointer; transition:background .15s ease, color .15s ease; }
+.ask-send.is-on { background:var(--accent); color:var(--accent-fg); }
+.ask-send.is-busy { background:var(--fg); color:var(--bg); }
+.ask-hint { margin-top:6px; font-size:11.5px; color:var(--fg-40); }
+.ask-disclaimer { margin:10px 0 0; font-size:12.5px; line-height:1.5; color:var(--fg-55); text-align:center; text-wrap:balance; }
+.ask-blocked { display:flex; flex-direction:column; gap:3px; padding:12px 14px; border:1px solid var(--border-strong); border-radius:12px; font-size:13px; color:var(--fg-55); }
+
+/* ── Ask: actions ── (ask-actions.ts — a sibling replaces the stub's styles here) */
+.ask-card { margin:6px 0 4px; padding:12px 14px; border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); }
+.ask-card-t { font-size:13.5px; font-weight:600; }
+.ask-card-note { margin-top:4px; font-size:12.5px; color:var(--fg-55); }
+.ask-card-bar { display:flex; align-items:center; gap:8px; margin-top:10px; }
+.ask-line { display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; color:var(--fg-70); animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
+
+/* ── Ask: inspector ── (ask-inspector.ts — the per-type views; the frame is the shell's, above) */
+.ask-insp-title { margin:0 0 8px; font-size:19px; font-weight:600; letter-spacing:-0.01em; }
+.ask-insp-note { margin:10px 0 0; font-size:12.5px; color:var(--fg-55); }
+
+/* ── Ask: refs ── (ask-refs.ts: the chip, the status cell, the hover card — the foundation's) */
+.ask-chip { display:inline-flex; align-items:center; gap:5px; max-width:100%; vertical-align:-4px; margin:0 1px; padding:1px 7px 1px 5px; border:1px solid var(--border); border-radius:6px; background:var(--surface); font-size:13px; font-weight:500; line-height:20px; cursor:pointer; transition:border-color .12s ease, background .12s ease; }
+.ask-chip:hover, .ask-chip:focus-visible { border-color:var(--border-strong); background:var(--hover); }
+.ask-chip--cell { font-size:12.5px; }
+.ask-chip--tag { height:28px; box-sizing:border-box; padding:0 9px 0 7px; border-radius:8px; vertical-align:middle; }
+.ask-chip-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ask-reftext { color:var(--fg-70); }
+.ask-hc-layer { position:fixed; inset:0; z-index:96; pointer-events:none; }
+.ask-hc { position:fixed; width:300px; box-sizing:border-box; padding:12px 14px; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:var(--menu-shadow); pointer-events:auto; transform-origin:top left; animation:ask-pop-in .14s cubic-bezier(.2,.9,.3,1.2) both; }
+.ask-hc-layer[data-closing] .ask-hc { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; }
+.ask-hc-eyebrow { display:flex; align-items:center; gap:6px; font-family:var(--label); font-size:11.5px; color:var(--fg-40); }
+.ask-hc-title { font-size:14px; font-weight:600; line-height:1.35; }
+.ask-hc-row { display:flex; align-items:center; gap:8px; margin-top:8px; font-size:12.5px; }
+.ask-hc-meta { margin-top:6px; font-size:12px; color:var(--fg-55); }
+.ask-hc-excerpt { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; margin-top:6px; font-size:12.5px; line-height:1.5; color:var(--fg-70); }
+.ask-hc-person { display:flex; align-items:center; gap:10px; }
+.ask-hc-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:12px; padding-top:10px; border-top:1px solid var(--border); font-size:11.5px; color:var(--fg-40); }
+.ask-hc-open { padding:4px 10px; border-radius:7px; background:var(--accent); color:var(--accent-fg); font-size:12px; font-weight:600; cursor:pointer; }
+
+/* ── Ask: cmdj ── (ask-cmdj.ts — the ⌘J panel; a sibling replaces the stub's styles here) */
+.ask-panel-layer { position:fixed; inset:0; z-index:80; }
+.ask-scrim { position:absolute; inset:0; background:var(--ask-scrim); animation:ask-fade-in .16s ease both; }
+.ask-panel { position:absolute; top:0; right:0; bottom:0; display:flex; flex-direction:column; width:420px; max-width:100%; background:var(--surface); border-left:1px solid var(--border-strong); box-shadow:var(--lift-shadow); animation:ask-panel-in .28s var(--fx-ease) both; }
+[data-phone="1"] .ask-panel { width:100%; border-left:0; }
+.ask-panel-layer[data-closing] .ask-panel { animation:ask-panel-out var(--fx-base) var(--fx-ease) both; }
+.ask-panel-layer[data-closing] .ask-scrim { animation:ask-fade-out var(--fx-base) ease both; }
+.ask-panel-layer[data-closing] { pointer-events:none; }
+@keyframes ask-panel-in { from { transform:translateX(100%); } to { transform:none; } }
+@keyframes ask-panel-out { from { transform:none; } to { transform:translateX(100%); } }
+.ask-panel-layer > .ask-insp-frame { position:absolute; top:0; bottom:0; right:420px; box-shadow:var(--lift-shadow); }
+.ask-panel-head { display:flex; align-items:center; gap:8px; height:57px; flex:none; box-sizing:border-box; padding:0 12px 0 16px; border-bottom:1px solid var(--border); }
+.ask-panel-t { font-size:14px; font-weight:600; }
+
+/* ── Ask: phone ── (ask-phone.ts — a sibling replaces the stub's styles here) */
+.ask-drawer-layer { position:fixed; inset:0; z-index:85; }
+.ask-drawer-scrim { position:absolute; inset:0; background:rgba(0,0,0,.45); animation:ask-fade-in .26s ease both; }
+.ask-drawer { position:absolute; top:0; bottom:0; left:0; width:min(300px, calc(100% - 48px)); background:var(--bg); box-shadow:0 0 48px rgba(0,0,0,.32); animation:ask-drawer-in .26s var(--fx-ease) both; }
+.ask-drawer .ask-threads-in { width:100%; }
+.ask-drawer-layer[data-closing] .ask-drawer { animation:ask-drawer-out var(--fx-base) var(--fx-ease) both; }
+.ask-drawer-layer[data-closing] .ask-drawer-scrim { animation:ask-fade-out var(--fx-base) ease both; }
+.ask-drawer-layer[data-closing] { pointer-events:none; }
+@keyframes ask-drawer-in { from { transform:translateX(-100%); } to { transform:none; } }
+@keyframes ask-drawer-out { from { transform:none; } to { transform:translateX(-100%); } }
+
 /* ── the site on a phone ──────────────────────────────────────────────────────
    Everything the signed-out site (landing.ts, pricing.ts, legal.ts, their dialogs) changes for a narrow
    or touch screen, in ONE place. Nothing here applies at 961px and up: every rule sits behind a width
@@ -3059,232 +3285,6 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .site-hero-cta { grid-template-columns:minmax(0, 1fr); }
 }
 
-/* ══ Ask Trov (web/src/ask-*.ts; design: docs/superpowers/specs/ask-trov.dc.html, map: ask-trov-inventory.md) ══
-   One sub-block per PART, each owned by the agent that builds that part, so no two edit the same lines:
-   shell · motion · threads · conversation · composer · actions · inspector · refs (chips + hover card) · cmdj ·
-   phone. Settings › Trov (ask-settings.ts) brings its own. Every radius below has its line in the corners block's
-   `Ask` sub-block at the end of this file (owner's ruling: authored values, scaled by --corner-scale like the rest).
-   Motion: web/src/ask-motion.ts says which hook does what; every animation here is off under reduced motion
-   (the `Ask: motion` block's media query) and plays on INSERTION or on an attribute, never on a repaint. */
-
-/* ── Ask: shell ── (ask-screen.ts, ask-layout.ts) */
-[data-cnpy-theme="light"] { --ask-row-on:#ffffff; --ask-row-ring:0 1px 2px rgba(20,20,30,0.05), 0 0 0 1px rgba(20,20,30,0.08); --ask-scrim:rgba(12,11,9,.42); }
-[data-cnpy-theme="dark"] { --ask-row-on:rgba(237,233,226,0.07); --ask-row-ring:none; --ask-scrim:rgba(0,0,0,.5); }
-[data-screen="ask"] #cnpy-main { display:flex; flex-direction:column; overflow:hidden; }
-.ask-screen { position:relative; flex:1; display:flex; min-height:0; height:100%; overflow:hidden; }
-.ask-threads { flex:none; width:260px; overflow:hidden; border-right:1px solid var(--border); transition:width var(--fx-slow) var(--fx-ease), opacity var(--fx-base) var(--fx-ease), border-color var(--fx-base) var(--fx-ease); }
-.ask-screen[data-threads="hidden"] > .ask-threads { width:0; opacity:0; border-right-color:transparent; }
-[data-phone="1"] .ask-threads { display:none; }
-.ask-conv { position:relative; flex:1; min-width:0; display:flex; flex-direction:column; }
-.ask-scroll { flex:1; min-height:0; overflow-y:auto; overflow-anchor:none; display:flex; flex-direction:column; }
-.ask-col { width:100%; max-width:720px; box-sizing:border-box; margin:0 auto; padding:28px 28px 8px; }
-[data-phone="1"] .ask-col, .ask-panel .ask-col { padding:20px 16px 8px; }
-.ask-insp-slot { display:contents; }
-.ask-drawer-slot { display:contents; }
-.ask-h1 { margin:0; font-size:15px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; flex:none; }
-.ask-h1-b { padding:0; font:inherit; color:var(--fg); cursor:pointer; transition:color .12s ease; }
-.ask-h1-b.is-parent { color:var(--fg-55); }
-.ask-h1-b:hover { color:var(--fg); }
-.ask-crumb { display:inline-flex; align-items:center; gap:10px; min-width:0; }
-.ask-crumb-sep { color:var(--fg-40); font-size:15px; }
-.ask-crumb-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:600; letter-spacing:-0.01em; }
-.ask-iconbtn { display:grid; place-items:center; flex:none; width:28px; height:28px; border-radius:7px; color:var(--fg-55); cursor:pointer; transition:background .12s ease, color .12s ease; }
-.ask-iconbtn:hover { background:var(--hover); color:var(--fg); }
-.ask-iconbtn:disabled { color:var(--fg-40); opacity:.5; cursor:default; background:none; }
-.ask-iconbtn--40 { width:40px; height:40px; border-radius:8px; }
-.ask-iconbtn--outline { border:1px solid var(--border-strong); }
-.ask-th-toggle[aria-pressed="false"] { color:var(--fg-40); }
-.ask-kbd { display:inline-block; padding:0 5px; border:1px solid var(--border); border-radius:4px; font-family:var(--label); font-size:10.5px; line-height:16px; color:var(--fg-40); }
-.ask-ghostbtn { display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border-radius:7px; font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; white-space:nowrap; transition:background .12s ease, color .12s ease; }
-.ask-ghostbtn:hover { background:var(--hover); color:var(--fg); }
-.ask-ghostbtn--outline { padding:6px 12px; border:1px solid var(--border-strong); border-radius:8px; }
-.ask-btn { display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border:1px solid var(--border-strong); border-radius:8px; font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; }
-.ask-btn:hover { background:var(--hover); color:var(--fg); }
-.ask-btn--accent { border-color:transparent; background:var(--accent); color:var(--accent-fg); font-weight:600; }
-.ask-btn--accent:hover { background:var(--accent); color:var(--accent-fg); filter:brightness(1.06); }
-.ask-btn:disabled { opacity:.55; cursor:default; }
-.ask-loading { padding:24px 0; font-size:13px; color:var(--fg-55); }
-/* The inspector's frame (ask-screen.ts `inspectorFrame`; its body is the inspector part's). Opening slides it in from
-   its edge while the margin it starts from (its own width, negative) opens the room for it, so the conversation
-   re-centres smoothly; `data-closing` runs it back; a keyboard resize eases the width; a drag follows the pointer. */
-.ask-insp-frame { position:relative; flex:none; display:flex; flex-direction:column; min-height:0; box-sizing:border-box; background:var(--surface); border-left:1px solid var(--border); transition:width var(--fx-fast) var(--fx-ease); animation:ask-insp-in var(--fx-slow) var(--fx-ease) both; }
-.ask-insp-frame[data-dragging="1"] { transition:none; }
-.ask-insp-frame[data-closing] { animation:ask-insp-out var(--fx-base) var(--fx-ease) both; pointer-events:none; }
-@keyframes ask-insp-in { from { margin-right:calc(-1 * var(--ask-insp-w, 480px)); opacity:0; } to { margin-right:0; opacity:1; } }
-@keyframes ask-insp-out { from { margin-right:0; opacity:1; } to { margin-right:calc(-1 * var(--ask-insp-w, 480px)); opacity:0; } }
-.ask-insp-frame[data-sheet="1"] { position:fixed; inset:0; z-index:70; width:auto; border-left:0; animation:ask-sheet-up .26s var(--fx-ease) both; }
-.ask-insp-frame[data-sheet="1"][data-closing] { animation:ask-sheet-down var(--fx-base) var(--fx-ease) both; }
-@keyframes ask-sheet-up { from { transform:translateY(100%); } to { transform:none; } }
-@keyframes ask-sheet-down { from { transform:none; } to { transform:translateY(100%); } }
-.ask-insp-resize { position:absolute; top:0; bottom:0; left:-4px; z-index:2; width:8px; cursor:col-resize; }
-.ask-insp-resize::after { content:""; position:absolute; top:0; bottom:0; left:3px; width:2px; background:var(--accent); opacity:0; transition:opacity .12s ease; }
-.ask-insp-resize:hover::after, .ask-insp-resize:focus-visible::after, .ask-insp-frame[data-dragging="1"] .ask-insp-resize::after { opacity:1; }
-.ask-insp-resize:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
-.ask-insp-grab { display:grid; place-items:center; height:18px; }
-.ask-insp-grab > span { width:36px; height:4px; border-radius:2px; background:var(--border-strong); }
-.ask-insp-head { display:flex; align-items:center; gap:4px; height:52px; flex:none; box-sizing:border-box; padding:0 10px; border-bottom:1px solid var(--border); }
-.ask-insp-crumb { flex:1; min-width:0; display:flex; align-items:baseline; gap:8px; padding-left:4px; overflow:hidden; white-space:nowrap; }
-.ask-insp-type { font-family:var(--label); font-size:12px; font-weight:500; letter-spacing:.04em; text-transform:uppercase; color:var(--fg-55); }
-.ask-insp-from { min-width:0; overflow:hidden; text-overflow:ellipsis; font-size:12px; color:var(--fg-40); }
-.ask-insp-body { flex:1; min-height:0; overflow-y:auto; padding:20px 22px 40px; animation:ask-view-in var(--fx-base) var(--fx-ease) both; }
-@keyframes ask-view-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
-
-/* ── Ask: motion ── (ask-motion.ts) the shared keyframes and the ONE reduced-motion switch for everything Ask */
-@keyframes ask-pop-in { from { opacity:0; transform:scale(.94) translateY(3px); } to { opacity:1; transform:none; } }
-@keyframes ask-pop-out { from { opacity:1; transform:none; } to { opacity:0; transform:scale(.96); } }
-@keyframes ask-fade-in { from { opacity:0; } to { opacity:1; } }
-@keyframes ask-fade-out { from { opacity:1; } to { opacity:0; } }
-@keyframes ask-blink { 0%, 45% { opacity:.75; } 55%, 100% { opacity:0; } }
-@keyframes ask-pulse { 0%, 100% { opacity:1; } 50% { opacity:.55; } }
-.ask-menu { animation:ask-pop-in .14s cubic-bezier(.2,.9,.3,1.2) both; }
-.ask-menu[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
-@media (prefers-reduced-motion: reduce) {
-  .ask-threads, .ask-insp-frame, .ask-insp-resize::after, .ask-th, .ask-th-more, .ask-th-at, .ask-send, .ask-chip, .ask-starters > button { transition:none !important; }
-  .ask-insp-frame, .ask-insp-frame[data-closing], .ask-insp-body, .ask-menu, .ask-menu[data-closing], .ask-hc, .ask-hc-layer[data-closing] .ask-hc,
-  .ask-panel, .ask-scrim, .ask-panel-layer[data-closing] .ask-panel, .ask-panel-layer[data-closing] .ask-scrim, .ask-drawer, .ask-drawer-scrim,
-  .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-line, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
-}
-
-/* ── Ask: threads ── (ask-threads.ts; the shell's) */
-.ask-threads-in { display:flex; flex-direction:column; width:260px; height:100%; min-height:0; box-sizing:border-box; }
-.ask-th-top { display:flex; flex-direction:column; gap:8px; padding:12px 12px 6px; }
-.ask-th-new { display:flex; align-items:center; justify-content:center; gap:7px; height:34px; border:1px solid var(--border-strong); border-radius:9px; background:var(--surface); box-shadow:var(--shadow); font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:color .12s ease, border-color .12s ease; }
-.ask-th-new:hover { color:var(--fg); border-color:var(--border-input); }
-.ask-th-search { display:flex; align-items:center; gap:7px; height:34px; padding:0 8px 0 10px; border:1px solid var(--border); border-radius:9px; color:var(--fg-40); }
-.ask-th-search:focus-within { border-color:var(--border-input); }
-.ask-th-search input { flex:1; min-width:0; border:0; background:none; outline:none; font:inherit; font-size:13px; color:var(--fg); }
-.ask-th-clear { display:grid; place-items:center; width:20px; height:20px; border-radius:5px; color:var(--fg-40); cursor:pointer; }
-.ask-th-clear:hover { background:var(--hover); color:var(--fg); }
-.ask-th-scroll { flex:1; min-height:0; overflow-y:auto; padding:0 8px 16px; }
-.ask-th-head { padding:10px 10px 4px; font-family:var(--label); font-size:11.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
-.ask-th-none { padding:12px 10px; font-size:12.5px; line-height:1.5; color:var(--fg-55); }
-.ask-th-skrow { padding:7px 10px; }
-/* A row: a one-track grid, so `data-closing` (a deleted thread) collapses it and the rows under it move up. */
-.ask-th { display:grid; grid-template-rows:1fr; transition:grid-template-rows var(--fx-fast) var(--fx-ease), opacity var(--fx-fast) var(--fx-ease); }
-.ask-th[data-closing] { grid-template-rows:0fr; opacity:0; }
-.ask-th-in { position:relative; min-height:0; }
-.ask-th[data-closing] .ask-th-in { overflow:hidden; }
-.ask-th-b { display:flex; align-items:center; gap:8px; width:100%; box-sizing:border-box; padding:7px 10px; border-radius:8px; text-align:left; font-size:13px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:background .12s ease, color .12s ease; }
-.ask-th-b:hover { background:var(--hover); }
-.ask-th-b.is-on { background:var(--ask-row-on); box-shadow:var(--ask-row-ring); color:var(--fg); }
-.ask-th-b--hit { flex-direction:column; align-items:stretch; gap:3px; }
-.ask-th-line { display:flex; align-items:center; gap:8px; }
-.ask-th-title { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ask-th-at { flex:none; font-family:var(--label); font-size:11.5px; font-weight:400; color:var(--fg-40); transition:opacity .12s ease; }
-.ask-th-snip { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:12px; font-weight:400; line-height:1.45; color:var(--fg-55); }
-.ask-th-count { font-family:var(--label); font-size:11px; font-weight:400; color:var(--fg-40); }
-.ask-hl { padding:0 1px; border-radius:3px; background:var(--accent-soft); color:var(--fg); font-weight:600; }
-.ask-th-more { position:absolute; top:5px; right:6px; display:grid; place-items:center; width:24px; height:24px; border-radius:6px; color:var(--fg-55); opacity:0; cursor:pointer; transition:opacity .12s ease, background .12s ease; }
-.ask-th-in:hover .ask-th-more, .ask-th.is-menu .ask-th-more, .ask-th-more:focus-visible { opacity:1; }
-.ask-th-in:hover .ask-th-b:not(.ask-th-b--hit) .ask-th-at, .ask-th.is-menu .ask-th-b:not(.ask-th-b--hit) .ask-th-at { opacity:0; }
-.ask-th-more:hover, .ask-th-more[aria-expanded="true"] { background:var(--hover); color:var(--fg); }
-.ask-th-rename { width:100%; height:32px; box-sizing:border-box; padding:0 10px; border:1px solid var(--accent); border-radius:8px; background:var(--surface); outline:none; font:inherit; font-size:13px; color:var(--fg); }
-.ask-menu { position:absolute; z-index:30; display:flex; flex-direction:column; gap:1px; width:196px; box-sizing:border-box; padding:5px; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:var(--menu-shadow); }
-.ask-th-menu { top:calc(100% + 2px); right:4px; transform-origin:top right; }
-.ask-menu > button { display:flex; align-items:center; gap:9px; width:100%; padding:7px 9px; border-radius:6px; text-align:left; font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; }
-.ask-menu > button:hover, .ask-menu > button:focus-visible { background:var(--hover); color:var(--fg); }
-.ask-menu > button.is-danger { color:var(--red); }
-.ask-menu > button.is-danger:hover { background:color-mix(in srgb, var(--red) 9%, transparent); }
-.ask-menu-sep { height:1px; margin:4px 2px; background:var(--border); }
-
-/* ── Ask: conversation ── (ask-conversation.ts — a sibling replaces the stub's styles here) */
-.ask-col { animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
-.ask-empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:safe flex-end; gap:14px; width:100%; max-width:720px; box-sizing:border-box; margin:0 auto; padding:40px 28px 18px; text-align:center; animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
-[data-phone="1"] .ask-empty { padding:24px 16px 14px; }
-.ask-empty-h { margin:0; font-size:24px; font-weight:600; letter-spacing:-0.02em; text-wrap:balance; }
-.ask-starters { display:grid; grid-template-columns:1fr 1fr; gap:8px; width:100%; max-width:560px; margin-top:6px; }
-[data-phone="1"] .ask-starters { grid-template-columns:1fr; }
-.ask-starters > button, .ask-follow > button { display:flex; align-items:center; gap:9px; padding:10px 13px; border:1px solid var(--border); border-radius:10px; text-align:left; font-size:13px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:background .12s ease, border-color .12s ease, color .12s ease; }
-.ask-starters > button:hover, .ask-follow > button:hover { background:var(--surface); border-color:var(--border-strong); color:var(--fg); }
-.ask-q { display:flex; justify-content:flex-end; gap:6px; margin-bottom:22px; }
-.ask-q-col { display:flex; flex-direction:column; align-items:flex-end; gap:6px; max-width:min(560px, 86%); }
-.ask-q-att { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
-.ask-q-bubble { padding:9px 14px; border-radius:12px; background:color-mix(in srgb, var(--fg) 6%, var(--bg)); font-size:14.5px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; }
-.ask-file { display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border:1px solid var(--border); border-radius:8px; font-size:12px; }
-.ask-a { margin-bottom:26px; }
-.ask-steps { display:flex; flex-direction:column; gap:1px; margin-bottom:10px; }
-.ask-step { display:flex; align-items:center; gap:8px; min-height:28px; font-size:13px; color:var(--fg-55); }
-.ask-step.is-run { color:var(--fg-70); }
-.ask-step-n { font-size:12px; color:var(--fg-40); }
-.ask-text { font-size:14.5px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; text-wrap:pretty; }
-.ask-cursor { display:inline-block; width:7px; height:15px; margin-left:2px; vertical-align:-2px; border-radius:2px; background:var(--accent); opacity:.75; animation:ask-blink 1.1s steps(1) infinite; }
-.ask-block-stub { margin:6px 0 16px; padding:12px 14px; border:1px dashed var(--border-strong); border-radius:10px; font-size:12.5px; color:var(--fg-55); }
-.ask-part { margin:6px 0 16px; }
-.ask-err { margin-top:10px; padding:10px 13px; border:1px solid color-mix(in srgb, var(--red) 30%, var(--border)); border-radius:10px; background:color-mix(in srgb, var(--red) 5%, var(--surface)); font-size:13px; font-weight:500; }
-.ask-stopped { margin-top:8px; font-size:12.5px; color:var(--fg-55); }
-.ask-foot { display:flex; align-items:center; gap:6px; margin-top:12px; font-size:12px; color:var(--fg-40); }
-.ask-follow { display:flex; flex-direction:column; align-items:flex-start; gap:6px; margin-top:14px; }
-.ask-spin { animation:cnpy-spin .8s linear infinite; }
-
-/* ── Ask: composer ── (ask-composer.ts — a sibling replaces the stub's styles here) */
-.ask-composer { flex:none; width:100%; max-width:720px; box-sizing:border-box; margin:0 auto; padding:0 28px 14px; }
-[data-phone="1"] .ask-composer, .ask-panel .ask-composer { padding:0 16px 12px; }
-.ask-box { border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); transition:border-color .12s ease, box-shadow .12s ease; }
-.ask-box:focus-within { border-color:var(--border-input); box-shadow:0 0 0 3px var(--accent-soft), var(--shadow); }
-.ask-input { display:block; width:100%; min-height:46px; max-height:220px; box-sizing:border-box; padding:12px 14px 4px; border:0; outline:none; resize:none; background:none; font:inherit; font-size:14.5px; line-height:1.55; color:var(--fg); }
-.ask-box-bar { display:flex; align-items:center; gap:6px; padding:6px 8px 8px; }
-.ask-send { display:grid; place-items:center; width:32px; height:32px; border-radius:8px; background:var(--hover); color:var(--fg-40); cursor:pointer; transition:background .15s ease, color .15s ease; }
-.ask-send.is-on { background:var(--accent); color:var(--accent-fg); }
-.ask-send.is-busy { background:var(--fg); color:var(--bg); }
-.ask-hint { margin-top:6px; font-size:11.5px; color:var(--fg-40); }
-.ask-disclaimer { margin:10px 0 0; font-size:12.5px; line-height:1.5; color:var(--fg-55); text-align:center; text-wrap:balance; }
-.ask-blocked { display:flex; flex-direction:column; gap:3px; padding:12px 14px; border:1px solid var(--border-strong); border-radius:12px; font-size:13px; color:var(--fg-55); }
-
-/* ── Ask: actions ── (ask-actions.ts — a sibling replaces the stub's styles here) */
-.ask-card { margin:6px 0 4px; padding:12px 14px; border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); }
-.ask-card-t { font-size:13.5px; font-weight:600; }
-.ask-card-note { margin-top:4px; font-size:12.5px; color:var(--fg-55); }
-.ask-card-bar { display:flex; align-items:center; gap:8px; margin-top:10px; }
-.ask-line { display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; color:var(--fg-70); animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
-
-/* ── Ask: inspector ── (ask-inspector.ts — the per-type views; the frame is the shell's, above) */
-.ask-insp-title { margin:0 0 8px; font-size:19px; font-weight:600; letter-spacing:-0.01em; }
-.ask-insp-note { margin:10px 0 0; font-size:12.5px; color:var(--fg-55); }
-
-/* ── Ask: refs ── (ask-refs.ts: the chip, the status cell, the hover card — the foundation's) */
-.ask-chip { display:inline-flex; align-items:center; gap:5px; max-width:100%; vertical-align:-4px; margin:0 1px; padding:1px 7px 1px 5px; border:1px solid var(--border); border-radius:6px; background:var(--surface); font-size:13px; font-weight:500; line-height:20px; cursor:pointer; transition:border-color .12s ease, background .12s ease; }
-.ask-chip:hover, .ask-chip:focus-visible { border-color:var(--border-strong); background:var(--hover); }
-.ask-chip--cell { font-size:12.5px; }
-.ask-chip--tag { height:28px; box-sizing:border-box; padding:0 9px 0 7px; border-radius:8px; vertical-align:middle; }
-.ask-chip-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ask-reftext { color:var(--fg-70); }
-.ask-hc-layer { position:fixed; inset:0; z-index:96; pointer-events:none; }
-.ask-hc { position:fixed; width:300px; box-sizing:border-box; padding:12px 14px; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:var(--menu-shadow); pointer-events:auto; transform-origin:top left; animation:ask-pop-in .14s cubic-bezier(.2,.9,.3,1.2) both; }
-.ask-hc-layer[data-closing] .ask-hc { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; }
-.ask-hc-eyebrow { display:flex; align-items:center; gap:6px; font-family:var(--label); font-size:11.5px; color:var(--fg-40); }
-.ask-hc-title { font-size:14px; font-weight:600; line-height:1.35; }
-.ask-hc-row { display:flex; align-items:center; gap:8px; margin-top:8px; font-size:12.5px; }
-.ask-hc-meta { margin-top:6px; font-size:12px; color:var(--fg-55); }
-.ask-hc-excerpt { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; margin-top:6px; font-size:12.5px; line-height:1.5; color:var(--fg-70); }
-.ask-hc-person { display:flex; align-items:center; gap:10px; }
-.ask-hc-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:12px; padding-top:10px; border-top:1px solid var(--border); font-size:11.5px; color:var(--fg-40); }
-.ask-hc-open { padding:4px 10px; border-radius:7px; background:var(--accent); color:var(--accent-fg); font-size:12px; font-weight:600; cursor:pointer; }
-
-/* ── Ask: cmdj ── (ask-cmdj.ts — the ⌘J panel; a sibling replaces the stub's styles here) */
-.ask-panel-layer { position:fixed; inset:0; z-index:80; }
-.ask-scrim { position:absolute; inset:0; background:var(--ask-scrim); animation:ask-fade-in .16s ease both; }
-.ask-panel { position:absolute; top:0; right:0; bottom:0; display:flex; flex-direction:column; width:420px; max-width:100%; background:var(--surface); border-left:1px solid var(--border-strong); box-shadow:var(--lift-shadow); animation:ask-panel-in .28s var(--fx-ease) both; }
-[data-phone="1"] .ask-panel { width:100%; border-left:0; }
-.ask-panel-layer[data-closing] .ask-panel { animation:ask-panel-out var(--fx-base) var(--fx-ease) both; }
-.ask-panel-layer[data-closing] .ask-scrim { animation:ask-fade-out var(--fx-base) ease both; }
-.ask-panel-layer[data-closing] { pointer-events:none; }
-@keyframes ask-panel-in { from { transform:translateX(100%); } to { transform:none; } }
-@keyframes ask-panel-out { from { transform:none; } to { transform:translateX(100%); } }
-.ask-panel-layer > .ask-insp-frame { position:absolute; top:0; bottom:0; right:420px; box-shadow:var(--lift-shadow); }
-.ask-panel-head { display:flex; align-items:center; gap:8px; height:57px; flex:none; box-sizing:border-box; padding:0 12px 0 16px; border-bottom:1px solid var(--border); }
-.ask-panel-t { font-size:14px; font-weight:600; }
-
-/* ── Ask: phone ── (ask-phone.ts — a sibling replaces the stub's styles here) */
-.ask-drawer-layer { position:fixed; inset:0; z-index:85; }
-.ask-drawer-scrim { position:absolute; inset:0; background:rgba(0,0,0,.45); animation:ask-fade-in .26s ease both; }
-.ask-drawer { position:absolute; top:0; bottom:0; left:0; width:min(300px, calc(100% - 48px)); background:var(--bg); box-shadow:0 0 48px rgba(0,0,0,.32); animation:ask-drawer-in .26s var(--fx-ease) both; }
-.ask-drawer .ask-threads-in { width:100%; }
-.ask-drawer-layer[data-closing] .ask-drawer { animation:ask-drawer-out var(--fx-base) var(--fx-ease) both; }
-.ask-drawer-layer[data-closing] .ask-drawer-scrim { animation:ask-fade-out var(--fx-base) ease both; }
-.ask-drawer-layer[data-closing] { pointer-events:none; }
-@keyframes ask-drawer-in { from { transform:translateX(-100%); } to { transform:none; } }
-@keyframes ask-drawer-out { from { transform:none; } to { transform:translateX(-100%); } }
-
 /* ── corners: tightened ──────────────────────────────────────────────────────
    Trov's corners are TIGHTER than the design file's: every radius is shrunk by one
    factor, --corner-scale, so a card stays rounder than a chip and the hierarchy of the
@@ -3436,6 +3436,38 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .site-bar { scale:none !important; }
 }
 
+/* Ask Trov (the `Ask: …` blocks, before the site's phone block): each class that declares a radius, at its authored value. */
+[data-cnpy-theme] .ask-hl { border-radius:calc(3px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-kbd,
+[data-cnpy-theme] .ask-insp-grab > span { border-radius:calc(4px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-th-clear { border-radius:calc(5px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-th-more,
+[data-cnpy-theme] .ask-menu > button,
+[data-cnpy-theme] .ask-chip { border-radius:calc(6px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-iconbtn,
+[data-cnpy-theme] .ask-ghostbtn,
+[data-cnpy-theme] .ask-hc-open { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-iconbtn--40,
+[data-cnpy-theme] .ask-ghostbtn--outline,
+[data-cnpy-theme] .ask-btn,
+[data-cnpy-theme] .ask-th-b,
+[data-cnpy-theme] .ask-th-rename,
+[data-cnpy-theme] .ask-file,
+[data-cnpy-theme] .ask-send,
+[data-cnpy-theme] .ask-chip--tag { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-th-new,
+[data-cnpy-theme] .ask-th-search { border-radius:calc(9px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-menu,
+[data-cnpy-theme] .ask-starters > button,
+[data-cnpy-theme] .ask-follow > button,
+[data-cnpy-theme] .ask-block-stub,
+[data-cnpy-theme] .ask-err,
+[data-cnpy-theme] .ask-hc { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-q-bubble,
+[data-cnpy-theme] .ask-box,
+[data-cnpy-theme] .ask-blocked,
+[data-cnpy-theme] .ask-card { border-radius:calc(12px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-cursor { border-radius:calc(2px * var(--corner-scale)) !important; }
 /* ── Sync GitHub: the header control and the panel it opens (web/src/sync.ts) ──
    The control lives in a slot that is always in the header (empty = no box), so a progress tick
    repaints the slot alone. The panel is a root-level overlay hung under the button: main.ts
@@ -3840,35 +3872,3 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
   .repo-found-row .repo-found-ev { white-space:normal !important; }
   .repo-found-act { grid-column:3; grid-row:1; }
 }
-/* Ask Trov (the `Ask: …` blocks above): each class that declares a radius, at its authored value. */
-[data-cnpy-theme] .ask-hl { border-radius:calc(3px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-kbd,
-[data-cnpy-theme] .ask-insp-grab > span { border-radius:calc(4px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-th-clear { border-radius:calc(5px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-th-more,
-[data-cnpy-theme] .ask-menu > button,
-[data-cnpy-theme] .ask-chip { border-radius:calc(6px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-iconbtn,
-[data-cnpy-theme] .ask-ghostbtn,
-[data-cnpy-theme] .ask-hc-open { border-radius:calc(7px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-iconbtn--40,
-[data-cnpy-theme] .ask-ghostbtn--outline,
-[data-cnpy-theme] .ask-btn,
-[data-cnpy-theme] .ask-th-b,
-[data-cnpy-theme] .ask-th-rename,
-[data-cnpy-theme] .ask-file,
-[data-cnpy-theme] .ask-send,
-[data-cnpy-theme] .ask-chip--tag { border-radius:calc(8px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-th-new,
-[data-cnpy-theme] .ask-th-search { border-radius:calc(9px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-menu,
-[data-cnpy-theme] .ask-starters > button,
-[data-cnpy-theme] .ask-follow > button,
-[data-cnpy-theme] .ask-block-stub,
-[data-cnpy-theme] .ask-err,
-[data-cnpy-theme] .ask-hc { border-radius:calc(10px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-q-bubble,
-[data-cnpy-theme] .ask-box,
-[data-cnpy-theme] .ask-blocked,
-[data-cnpy-theme] .ask-card { border-radius:calc(12px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-cursor { border-radius:calc(2px * var(--corner-scale)) !important; }
