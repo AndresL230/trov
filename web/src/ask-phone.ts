@@ -44,7 +44,7 @@ export function threadsDrawer(v: AskView): string {
 export const phonePart: AskPart = {
   code: "Ph",
   act(ctx, name) {
-    if (name === "askPhDrawer") { ctx.ui.phone.drawer = true; ctx.paint(); return; }
+    if (name === "askPhDrawer") { ctx.cancelExit("drawer"); ctx.ui.phone.drawer = true; ctx.paint(); return; }
     if (name === "askPhDrawerClose") { ctx.exit("drawer", () => { ctx.ui.phone.drawer = false; }); return; }
     if (name === "askPhPlus") { ctx.ui.phone.plus = !ctx.ui.phone.plus; ctx.paint(); return; }
   },

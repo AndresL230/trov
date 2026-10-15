@@ -21,7 +21,7 @@ import { cmdjPart, cmdjToggle } from "./ask-cmdj";
 import { phonePart } from "./ask-phone";
 import { threadsPart } from "./ask-threads";
 import { closeTop, type EscEntry } from "./ask-escape";
-import { clampInspector, layoutBucket } from "./ask-layout";
+import { askLayout, clampInspector, layoutBucket } from "./ask-layout";
 import { HOVER_CARD, placeHoverCard, refsInText, viewOf } from "./ask-refs";
 import { ASK_FX, askEnterNew, askTweenHeights, reducedMotion } from "./ask-motion";
 import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan } from "./ask-replay";
@@ -276,7 +276,7 @@ export function createAskController(host: AskHost): AskController {
       case "askShBack": { const ins = ui().inspector; if (ins.idx > 0) { ui().inspector = { ...ins, idx: ins.idx - 1 }; paint(); } return; }
       case "askShClose": closeInspector(); return;
       case "askShThreads": {
-        const shown = host.mount.querySelector(".ask-threads:not([hidden])") !== null;
+        const shown = askLayout({ vw: ui().vw, phone: s.phone, threadsForced: ui().threadsForced, inspectorOpen: inspectorRef(ui()) !== null && ui().inspector.where === "page" }).threads === "column";
         ui().threadsForced = !shown;
         paint();
         return;

@@ -3071,7 +3071,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 [data-cnpy-theme="light"] { --ask-row-on:#ffffff; --ask-row-ring:0 1px 2px rgba(20,20,30,0.05), 0 0 0 1px rgba(20,20,30,0.08); --ask-scrim:rgba(12,11,9,.42); }
 [data-cnpy-theme="dark"] { --ask-row-on:rgba(237,233,226,0.07); --ask-row-ring:none; --ask-scrim:rgba(0,0,0,.5); }
 [data-screen="ask"] #cnpy-main { display:flex; flex-direction:column; overflow:hidden; }
-.ask-screen { position:relative; flex:1; display:flex; min-height:0; height:100%; }
+.ask-screen { position:relative; flex:1; display:flex; min-height:0; height:100%; overflow:hidden; }
 .ask-threads { flex:none; width:260px; overflow:hidden; border-right:1px solid var(--border); transition:width var(--fx-slow) var(--fx-ease), opacity var(--fx-base) var(--fx-ease), border-color var(--fx-base) var(--fx-ease); }
 .ask-screen[data-threads="hidden"] > .ask-threads { width:0; opacity:0; border-right-color:transparent; }
 [data-phone="1"] .ask-threads { display:none; }
