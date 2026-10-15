@@ -120,3 +120,13 @@ describe("narrow layouts — the hooks exist and their rules are there", () => {
     expect(rules).toContain("@supports (height:100dvh) { .cnpy-shell { height:100dvh !important; } }");
   });
 });
+
+describe("the Repo header on a phone keeps the repository's name (e2e P-phone)", () => {
+  // With no environment pills (scenarios I, L, M — one header line), the right-hand controls took the row and the
+  // repository menu collapsed to an empty chip. On a phone the "updated …" text gives up its room (the refresh button's
+  // title still says it) and the repository menu keeps a readable minimum.
+  it("hides the updated / synced text and gives the repository menu a minimum width at phone width", () => {
+    expect(css).toMatch(/\[data-phone="1"\] \[data-repo-updated\],\s*\[data-phone="1"\] \.sync-repo-l\s*\{\s*display:none;\s*\}/);
+    expect(css).toMatch(/\[data-phone="1"\] \.repo-scope-dd\s*\{[^}]*min-width:\s*9ch/);
+  });
+});

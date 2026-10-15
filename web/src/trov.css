@@ -3509,6 +3509,10 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 
 /* ── repo-header (web/src/repo-header.ts): the repository / App menus, the pills, Group by ────────────────── */
 .repo-scope-dd { display:inline-flex; min-width:0; max-width:260px; }
+/* A phone keeps the repository's name: the "updated …" / synced text gives up its room (the refresh button's title
+   still says it) and the repository menu never collapses to an empty chip (e2e P-phone — a header with no pills). */
+[data-phone="1"] [data-repo-updated], [data-phone="1"] .sync-repo-l { display:none; }
+[data-phone="1"] .repo-scope-dd { min-width:9ch; }
 .repo-groupby { display:flex; align-items:center; justify-content:flex-end; gap:10px 16px; margin-bottom:12px; flex-wrap:wrap; }
 /* The design offers Group by on a wide screen only: a phone draws the opener the rules picked. */
 [data-phone="1"] .repo-groupby { display:none; }
