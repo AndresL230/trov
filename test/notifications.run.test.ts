@@ -271,3 +271,47 @@ describe("assembled message follows the designed template", () => {
     expect(b.text).toMatch(/ASSIGNED TO YOU\n  - Issue 1 <https:\/\/trov\.example\/#tickets\/1>\n    Not started/);
   });
 });
+
+describe("\"Only when something needs me\" (0067, Phase E)", () => {
+  const needed = (login: string) => run(env.DB, `INSERT INTO notification_person_prefs (org_id, user_id, only_when_needed, updated_at) VALUES ('org_saplinglearn', ?, 1, 'now')`, login);
+  const pending = () => ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+
+  it("with nothing next and nothing notable, a queue line alone is not enough: the row is skipped and nothing is sent — someone without the option still gets it", async () => {
+    await user("AndresL230", "andres@example.com");
+    await user("lpcooper-arch", "luke@example.com");
+    await needed("AndresL230");
+    await pending();
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: localDelivery(systemCtx()) });
+    const rows = await outbox();
+    expect(rows.map((r) => [r.user_id, r.status, kindsOf(r)])).toEqual([["AndresL230", "skipped", []], ["lpcooper-arch", "sent", ["review_queue"]]]);
+    expect((await bodies()).map((b) => b.to_address)).toEqual(["luke@example.com"]);
+  });
+
+  it("a Next item (with no brief: an assigned ticket) sends the whole digest", async () => {
+    await user("AndresL230", "andres@example.com");
+    await needed("AndresL230");
+    await pending();
+    await assigned("Issue 1", "AndresL230");
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: localDelivery(systemCtx()) });
+    const [row] = await outbox();
+    expect(row.status).toBe("sent");
+    expect(kindsOf(row)).toEqual(["my_work", "review_queue", "ticketq"]);
+  });
+
+  it("something notable that touched their work in the window sends it, even with nothing next", async () => {
+    await user("AndresL230", "andres@example.com");
+    await needed("AndresL230");
+    await run(env.DB, `INSERT INTO feed (org_id, author, summary, created_at, importance) VALUES ('org_saplinglearn', 'AndresL230', 'Hosting deploys now poll every hour', '2026-09-11T03:00:00Z', 'notable')`);
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: localDelivery(systemCtx()) });
+    const [row] = await outbox();
+    expect(row.status).toBe("sent");
+    const [b] = await bodies();
+    expect(b.html).toContain("Hosting deploys now poll every hour");
+    // A routine one does not count.
+    await run(env.DB, `DELETE FROM notification_outbox`);
+    await run(env.DB, `DELETE FROM notification_outbox_bodies`);
+    await run(env.DB, `UPDATE feed SET importance = 'routine'`);
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: localDelivery(systemCtx()) });
+    expect((await outbox())[0].status).toBe("skipped");
+  });
+});
