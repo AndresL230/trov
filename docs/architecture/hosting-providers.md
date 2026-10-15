@@ -24,7 +24,11 @@ host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free �
   `aws`; Cloudflare and Railway keep `cloudflare_analytics` / `railway` — `HOSTING_INTEGRATION_KIND`); an install / OAuth
   grant also writes `org_hosting_connections` (method, provider-side installation id, account). EVERY provider is
   connected ONCE for the org (scope ""; the per-environment Railway project token is gone — a project token reads
-  one environment only, so it cannot serve the org-wide connection). An install / OAuth
+  one environment only, so it cannot serve the org-wide connection). A hosting credential stored under a NON-EMPTY
+  scope (0057 left SaplingLearn's per-environment Railway project tokens in place, unread) is a **leftover**, never a
+  connection: `listConnections` returns ONE org-wide row per provider, `HostingSetupDTO.leftovers` lists the
+  leftovers (`listLeftovers` — labelled by how they were stored, "Project token", never by the provider's current
+  method), they are never counted or called Connected, and "Remove old tokens" deletes them (below). An install / OAuth
   method needs Trov-side Worker vars (its `requires`) — absent, it is listed `available: false` and the token method is
   offered. Pasting a token over an install supersedes it (`supersedeConnection`).
 - **Part** — one deployable of one environment, with a ROLE: `web` (requests, 5xx errors, latency, bandwidth) or
@@ -69,12 +73,18 @@ on the cards, `degraded: true`). MCP `get_repo_dashboard` collapses `traffic` to
 **Setup API** (`src/hosting/routes.ts`, cookie only — an `Authorization` header is a 403; admin unless noted), under
 `/api/o/:slug` with NO old-path alias: `GET /hosting` (`HostingSetupDTO`: providers, environments with their parts,
 connections — each with `manage_url`, where the grant is managed on the provider (`HostingProvider.manageUrl`) —, a
-checklist generated from what the parts use, and `detected`, below), `GET /hosting/providers` (any member), `PUT|DELETE
+checklist generated from what the parts use, `detected`, below, `leftovers`, and each environment's `app_metrics` — its
+app metrics token's metadata, never the value), `GET /hosting/providers` (any member), `PUT|DELETE
 /environments/:key/parts/:part` (audited `part.set` / `part.delete` in `org_admin_audit`; deleting an environment
 deletes its stored parts, poll state and deploys in the same batch), `POST /hosting/:provider/connect` (→ `{ url }`;
 an org already connected — a pasted token, or another install / OAuth grant — is not refused: the callback replaces
 it), `POST /hosting/:provider/disconnect` (best-effort provider-side revoke; always succeeds
-locally), `POST /hosting/:provider/test` (the integrations `testConnection`, optionally against one part). **An
+locally), `POST /hosting/:provider/test` (the integrations `testConnection`, optionally against one part; a provider
+that is NOT connected — the one status function, below — is answered `{ ok: false, detail: "<Provider> isn't connected." }`
+without probing, never "No secret is set"), `DELETE /hosting/:provider/leftovers` ("Remove old tokens": the provider's
+credentials under a non-empty scope deleted as the admin, ONE batch — each a `secret.delete` with reason `leftover` in
+`org_audit`, and one `hosting.leftovers_removed` in `org_admin_audit`; the org-wide credential is never touched; none →
+404). **An
 installed connection has the GitHub App binding's guarantees** (`src/hosting/connections.ts`): the provider is handed
 only a RANDOM `state`; what it answers for — `{ o, s, p, h, state, exp }`, HMAC-sealed with `hosting-connect:<COOKIE_SECRET>`
 — is the HttpOnly `trov_hx` cookie (Secure, SameSite=Lax, Path `/hosting/`, 10 minutes, spent by the first callback
@@ -102,7 +112,19 @@ install / OAuth credential (`HostingError.status`, set by `refuse`). The last tw
 provider id — audited `hosting.revoked`); a POLL's 401 only stores the fixed "<Provider> refused the token — the grant
 may have been removed; Test connection to confirm" in `last_error`. `revoked_reason` is a CHECKed code (`disconnected`
 / `uninstalled` / `superseded` / `refused`); the DTO derives its sentence (`hostingRevokedReasonText`).
-Org settings › Integrations lists a hosting kind only once a stored part uses it (the five original slots are unchanged).
+The Integrations API (`GET /integrations`) still lists a hosting kind once a stored part uses it, and the token form
+writes through it — but Org settings › Integrations does not SHOW hosting credentials or app metrics tokens: they are
+Hosting's (`onIntegrationsTab`, `web/src/integrations.ts`), with one line linking there.
+
+**One status function** (`shared/hosting-status-core.ts`, zod-free — the SPA, `src/hosting/` and the MCP-reachable
+`src/tools/repo.ts` all import it). `hostingStatus(connection, label)` answers for a provider's ORG-WIDE connection:
+`connected` (stored, or SaplingLearn's legacy Worker secret), `error` (stored, last use failed), `not_connected`
+(nothing answers — an admin's own Disconnect included) or `revoked` (ended on the provider's side), with its word and
+whether it is `live` (the parts read) / `stored`. The provider's card, every part row (`EnvironmentPartDTO.connection`,
+`setup.ts` `partConnection`), the checklist's connect / test steps, the lead's counts, the tab's badge, Test this part
+(server and SPA) and the Repo dashboard's not-connected copy (`RepoProviderPart.connection`, from `hostingReads`'
+`org_secrets` METADATA and `org_hosting_connections` arms — never a value; SaplingLearn's legacy secret, which that
+projection may not resolve, is evidenced by a poll that found a credential) all read it, so none can disagree.
 
 **Deployment and project events, and the Configuration URL** (Vercel). The same `POST /webhook/hosting/vercel`
 that takes the uninstall notice takes `deployment.created` / `ready` / `succeeded` / `error` / `canceled` / `promoted` /
@@ -158,10 +180,13 @@ repository, Add an environment, Sync GitHub now (the Sync panel, which an admin 
 `looking` the tab re-reads itself every 20 s (hosting-actions.ts `afterPaint`).
 
 **The sample preview's two switchers** (web/src/hosting-keys.ts, `hostingScenario` in web/src/hosting-sample.ts):
-a FLOW — New org, Looking, Found, Parts added, Connecting, Live, Broken, Locked — × a STACK — Vercel + Render,
-Netlify + Fly.io, Cloudflare + Railway, All on Render, All on Railway, Vercel only, Five hosts. Every combination is
+a FLOW — New org, Looking, Found, Parts added, Connecting, Live, Broken, Leftover tokens, Locked — × a STACK — Vercel +
+Render, Netlify + Fly.io, Cloudflare + Railway, All on Render, All on Railway, Vercel only, Five hosts. Every combination is
 a whole `HostingSetupDTO` built from the real catalogue; detection follows what Trov can see (a stack of only Render
-/ Railway / Fly.io finds nothing). `test/hosting.sample.test.ts` holds every combination to the providers' own checks.
+/ Railway / Fly.io finds nothing). Leftover tokens is Live with Railway NOT connected and its two old per-environment
+project tokens still stored. `test/hosting.sample.test.ts` holds every combination to the providers' own checks, and
+`test/render.hosting.test.ts` › "ONE status, everywhere" holds the card, the part rows, the payload's part status, the
+checklist and Test this part to the same status for every combination.
 
 ## The screens
 
@@ -175,15 +200,22 @@ a toast instead; one title + body per outcome in `hostingNoticeCopy`, tone ok / 
 banner); the "credentials can't be saved" banner (`secrets_available: false` — connect / rotate / paste are
 disabled with the reason; parts stay editable, since a part is not a credential); the LEAD, whose one accent action
 is the checklist's next step; the checklist the server generated (steps to do listed, done ones folded); "Detected";
-**Environments** — a tile per environment side by side (`.cnpy-hx-envs`), its parts as `openRow`s (the ORG's tile
-— a part is the org's own app; the host is named in the metadata — label, role as plain text, a status mark; host · identifying setting as metadata; Edit as the one action; a failed last poll
-and a test's answer always visible; key, settings, last poll, the provider's "not available" reasons, Open in
-<provider>, Test this part and Remove behind the row); **Providers** — ONE grid of cards (`.cnpy-hx-cards`, two a row, one at
-phone width, every card the same height) in registry order (Cloudflare, Railway, Vercel, Render, Netlify, Fly.io), then
-**Later** — AWS. A card is
+**Providers** — ONE grid of cards (`.cnpy-hx-cards`, two a row, one at phone width, every card the same height), ONE
+card per provider (its org-wide connection — `connectionsFor`; a scoped row in an old payload never makes a card) in
+registry order (Cloudflare, Railway, Vercel, Render, Netlify, Fly.io); **Parts** — until Repositories › a repo › Apps
+owns them (repo-setups Phase D), a compact read-only list (`envParts`): per environment a heading line (name, branch,
+how many parts, Add part) and its parts as `openRow`s — label, role as plain text, its provider's status mark (THE status
+function); host · identifying setting as metadata; Edit (the part editor, which holds Remove part) as the one action;
+a failed last poll and a test's answer always visible; key, settings, last poll, the provider's "not available" reasons,
+Open in <provider> and Test this part behind the row. Test this part on a provider that is not connected sends nothing
+and answers "<Provider> isn't connected." with a Connect <provider> button (`notConnectedAnswer`); then **Later** — AWS.
+A card is
 NOT a dropdown: it shows its logo (`web/src/host-logos.ts`, Simple Icons, CC0), name and status, the metadata (how it is
-connected, how many parts use it), the provider's one-line summary (every summary reads "A <thing> on <host>. Trov
-reads its …"), what Trov reads (`capabilityChips`), a last error or a test's answer — and ONE button at its top right,
+connected — a token named by how it was stored —, then what uses it as plain words: "Backend in Staging and Production",
+`usedByLine`), the provider's one-line summary (every summary reads "A <thing> on <host>. Trov
+reads its …"), its leftover tokens as ONE quiet line ("2 old per-environment tokens from before Oct 15 aren't used.
+Connect Railway once with a workspace token." — `leftoverLine`, count and wording generated) with "Review old tokens"
+(the Manage dialog), what Trov reads (`capabilityChips`), a last error or a test's answer — and ONE button at its top right,
 one width on every card: **Connect** (the provider's own dialog: its install / OAuth confirmation, or the token form)
 or **Manage** once connected. The plan note ("Vercel has no public usage API…") is in the Manage dialog and the part
 editor. Nothing on a card says how a host connects (no "Recommended" / "Paste a…" hint): which method a host
@@ -191,8 +223,10 @@ offers is not a reason to pick it. **Manage** opens a dialog (`manageModal`, `h.
 by whom it was connected, what uses it, its settings, what it can do (`grants`), "Sent only to <api_hosts>", Test
 connection, Manage on <provider>, Connect a different account, Rotate / Edit settings, Disconnect as quiet text (it
 closes the dialog under the page's confirmation), and — for an install / OAuth connection — a quiet "Manual connection"
-block with the paste-a-token form (the GitHub App's pattern). Saving a token returns to the Manage dialog, on Test
-connection.
+block with the paste-a-token form (the GitHub App's pattern); while it is not connected, Connect <provider>; and its
+**Old tokens** — each "Project token (no longer used) · <environment> · ••••<last 4> · saved by …" — with **Remove old
+tokens** behind the page's confirmation (`OrgConfirm` `leftovers`, `leftoversConfirmCopy`). Saving a token returns to
+the Manage dialog, on Test connection.
 
 Three dialogs, each a root-level `data-overlay` (so a keystroke patches it — Org settings is `data-morph`), one at
 a time, Escape closes, Tab stays inside, focus returns to the control that opened it:
@@ -201,7 +235,15 @@ a time, Escape closes, Tab stays inside, focus returns to the control that opene
   and a form generated from `part_settings` — a setting whose pattern is a short
   list of words (`^(?:production|preview)$`, `fieldOptions`) is a `segmented()`, anything else a text field checked
   against its pattern (`partDraftProblems`, the server's own rules; the server's refusal lands beside its field).
-  Not connected yet → "Save and connect". Save is `PUT …/environments/:env/parts/:part`.
+  Not connected yet → "Save and connect". Save is `PUT …/environments/:env/parts/:part`. Under the form, the
+  environment's **app metrics token** (`appMetricsBlock` — it moved here from Integrations): its status (Set · ends in
+  … / Not set / the legacy credential / an error), where it is read from (`<API URL>/api/internal/metrics`), an optional
+  password field with NO `value` in any state (the draft is `metricsDraft`, private to hosting-actions.ts), Test token
+  and Delete token (the page's confirmation, `OrgConfirm` `secret`). A typed token is saved WITH the part, after it,
+  through the same write-only Integrations API (`PUT /integrations/metrics_endpoint/<env>`, or `…/rotate` when one is
+  stored) — the storage is unchanged (`metrics_endpoint`, scoped to the ENVIRONMENT, so the `:00` usage poller reads
+  it as before), and every part of the environment shows the same token until Phase G makes the contract per part. A
+  part saved whose token is refused keeps the editor open on the token field.
 - **connect** (`connectModal`) — for the provider's best AVAILABLE method when that is an install / OAuth: what the
   provider will ask (`grants`), its `how_to`, "This replaces …" when something is connected, then
   `POST …/hosting/:provider/connect` and a full navigation to its `url`.
@@ -215,10 +257,10 @@ After Disconnect the toast says what is left to do upstream (`upstream`: `failed
 
 **Skeleton, empty layouts and the state preview** (`web-ui.md` › Empty layouts). ONE set of shape builders per
 screen is behind both its loading skeleton and its empty layouts, so the two cannot drift: the tab's
-`envTilesShape` / `partRowsShape` (`hosting.ts`), the dashboard section's `hostingShapes` (`repo-hosting.ts`). The
+`partsListShape` / `partRowsShape` (`hosting.ts`), the dashboard section's `hostingShapes` (`repo-hosting.ts`). The
 tab's read being out is `skeleton("org-hosting", …)`; no environment is `emptyLayout("org-hosting-envs", …)` — one
-sentence (`HOSTING_ENVS_EMPTY`), Open Environments, the tiles drawn empty; an environment with no part is a plain
-layout inside its tile (`HOSTING_PARTS_EMPTY`; the tile's Add part is the action). On the dashboard,
+sentence (`HOSTING_ENVS_EMPTY`), Open Environments, the parts list drawn empty; an environment with no part is a plain
+layout under its heading line (`HOSTING_PARTS_EMPTY`; the heading's Add part is the action). On the dashboard,
 `not_connected` and `empty` are `emptyLayout("repo-hosting", …)` (`HOSTING_NOT_CONNECTED`, with Open Org settings ›
 Hosting for an admin; `HOSTING_EMPTY`), and with no repository at all the section is `emptyShapes` under the
 dashboard's own sentence. `?preview=empty|loading` covers both: the tab's read lives one level down
@@ -228,7 +270,7 @@ suggestion. Its dialogs and return notice are not drawn under a preview, and no 
 
 "Preview with sample data" (the tab's footer) — still the way to see a FULL screen, and it keeps working under the
 state preview — loads `web/src/hosting-sample.ts` by dynamic import — never in the
-main bundle — and shows any of its five states (mid-setup, no parts, new org, removed, locked) with a switch; while
+main bundle — and shows any Flow × Stack of its two switchers (above); while
 it is on NOTHING is sent (a save, a connect, a test and a disconnect each answer from the sample and say so). The
 sample's provider catalogue is pinned to the registry by `test/hosting.sample.test.ts`.
 
@@ -242,7 +284,9 @@ dots (newest right; green landed, red failed, hollow canceled); then traffic for
 errors, following the range switch (`repo-swap`) — or resources for a service (CPU, memory, a 24-hour line each
 whose missing hours are GAPS, `gapPath`). **A figure the payload does not carry is "—" with one of three calm
 reasons, never 0** (`absentHint`): "not available from <provider>: <its reason>" (`unavailable[]`), "no recent
-reading" (`seen`), "not connected"; a web part whose provider reads no usage at all (`traffic: null`) is ONE line
+reading" (`seen`, or a host that IS connected and has not reported yet — `connection`), "not connected"; a part never
+read says it in its provider card's words (`neverReadLine`: "Railway isn't connected." or "Connected, not read yet");
+a web part whose provider reads no usage at all (`traffic: null`) is ONE line
 with the reason instead of an empty grid. `not_connected` and `empty` are empty layouts (below; the footer keeps
 "Preview with sample data"). Links out are https
 only. Render tests: `test/render.hosting.test.ts`, `test/render.repo-hosting.test.ts`.

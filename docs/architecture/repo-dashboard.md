@@ -456,7 +456,8 @@ says `empty` — whose copy is "No current usage reading — the hourly polls ha
 
 **Active users come from Sapling's own backend** — the one number Trov CANNOT compute. `pollSaplingMetrics`
 sends `GET {cfg.apiUrl}/api/internal/metrics` with `Authorization: Bearer <token>` — the org's
-`metrics_endpoint` secret stored for that environment (SaplingLearn's fallback: `SAPLING_METRICS_TOKEN`) —
+`metrics_endpoint` secret stored for that environment (set from its parts' editor on Org settings › Hosting since
+repo-setups Phase 0; SaplingLearn's fallback: `SAPLING_METRICS_TOKEN`) —
 (user-agent `canopy-metrics`, the 8s timeout) per environment and expects `200` → `{ "active_users": {
 "24h": n, "7d": n, "30d": n } }`. **The token goes to ONE place**: a non-`https:` `apiUrl` is never fetched,
 trailing slashes are normalised, and `redirect: "manual"` + "only a 200 is an answer" means a 3xx is a
