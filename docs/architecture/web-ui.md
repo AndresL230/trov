@@ -90,6 +90,23 @@ gets `rerenderSoon` on its host where it has a read the boot starts (`tags-actio
 `rerenderSoon()` where the next line reads the DOM. Boot paints went from 25 (measured) to a handful; tests:
 `test/paint-queue.test.ts`.
 
+## Help › What's new is its own chunk (`web/src/releases-lazy.ts`, `web/src/release-latest.ts`)
+
+`web/src/releases.ts` is every release's notes and patch lines — the largest module in the app, and every PR adds
+to it — so the app bundle does not carry it. Like the Repo screen's sample data (`repo-sample.ts`), the screen is
+rendered from `import("./releases")`: `render.ts` calls `releasesView` / `releaseCrumb` (releases-lazy.ts), which
+draw the screen's own frame with skeletons (`data-skel="releases"`, `release-head`, `release-body`) until the chunk
+is in, then `releasesScreen` itself. `paintApp` starts the load whenever it paints the screen without the chunk,
+and the arrival repaints (`rerenderSoon`). A chunk that fails (an old page after a deploy, whose chunk names are
+gone) says so — "Reload the page to try again" — and is not retried in a loop.
+
+- **No app module imports releases.ts as a value** (`import type` only; a test reads every `web/src/*.ts`). The
+  build-time readers keep the full import: `docs-changelog.ts` (the public `/docs/changelog`), and the tests.
+- **The newest version is `release-latest.ts`** (`LATEST_VERSION`, and `LATEST_RELEASE` with its slug): the
+  support form's attached version and the legacy `#releases/patches` route read it. It is kept by hand and pinned
+  to `RELEASES[0]` by `test/releases.test.ts`: the PR that opens an "Unreleased" entry sets it to "Unreleased",
+  and the PR that cuts it into `0.N` sets "0.N" (the releases.ts header says so).
+
 ## The signed-out site — one banner, carried through the page (`web/src/landing.ts`)
 
 The landing page has ONE idea: the first-run card's purple banner is Trov speaking, and the product is the

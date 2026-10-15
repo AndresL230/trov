@@ -4,6 +4,8 @@
 //
 // Pure data + a pure renderer, no backend: RELEASES below is the whole record, and
 // `releasesScreen` turns it into the screen's markup. Every string goes through `esc`.
+// The app loads this file as its own chunk when the screen opens (releases-lazy.ts) — never
+// import it as a value from an app module; the newest version is release-latest.ts.
 //
 // ── How to add the next release ──────────────────────────────────────────────
 // Every PR that ships something adds its lines to the FIRST entry, "Unreleased":
@@ -21,7 +23,9 @@
 //   • `prs`        — the pull requests the release carries (listed on the patch notes).
 // A merge to `main` IS a production deploy, so the PR that merges a batch also cuts it:
 // set `version` to the next `0.N`, `date` to the merge day (YYYY-MM-DD) and drop
-// `unreleased` — main never carries an "Unreleased" entry. A small follow-up with too
+// `unreleased` — main never carries an "Unreleased" entry. Keep `LATEST_VERSION` in
+// release-latest.ts equal to the first entry's version ("Unreleased" while there is one,
+// then the `0.N` it is cut into); test/releases.test.ts fails until it is. A small follow-up with too
 // little for its own 3–6 highlights adds its patch lines (and PR) to the newest version
 // instead. Newest first; dates never increase down the list
 // (test/releases.test.ts checks the order, unique versions, and that every release has

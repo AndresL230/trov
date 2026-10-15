@@ -2,7 +2,7 @@
  * Help › What's new (web/src/releases.ts): the RELEASES data, the index grid, each
  * release's two pages, the `#releases…` routes and the screen as the app renders it.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 
 vi.mock("../web/src/markdown", () => ({
   renderMarkdown: (s: string) => `<div class="mock-md">${s.replace(/</g, "&lt;")}</div>`,
@@ -15,8 +15,14 @@ import {
   RELEASES, releasesIndex, releasePageView, releasesScreen, releaseLine, releaseDate, releaseSlug, releaseHash,
   findRelease, prUrl, TROV_REPO_URL, type Release,
 } from "../web/src/releases";
+import * as releasesModule from "../web/src/releases";
 import { parseHash, hashForRoute } from "../web/src/hash";
 import { render, initialState } from "../web/src/render";
+import { LATEST_RELEASE, LATEST_VERSION } from "../web/src/release-latest";
+import { releasesView, releaseCrumb, setReleasesModule, releasesLoaded } from "../web/src/releases-lazy";
+
+// Every web module as text: which of them import releases.ts, and how.
+const webSources = import.meta.glob("../web/src/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -326,7 +332,53 @@ describe("#releases routes", () => {
   });
 });
 
+describe("the release record loads lazily (release-latest.ts, releases-lazy.ts)", () => {
+  it("LATEST_RELEASE is the first entry of RELEASES — the cut that changes one changes the other", () => {
+    expect(LATEST_VERSION).toBe(RELEASES[0].version);
+    expect(LATEST_RELEASE.version).toBe(RELEASES[0].version);
+    expect(LATEST_RELEASE.slug).toBe(releaseSlug(RELEASES[0]));
+  });
+
+  it("no app module imports releases.ts as a value — only a type, or the dynamic import", () => {
+    // The build-time readers keep the full import: docs-changelog.ts (the public changelog, prerendered).
+    const BUILD_TIME = ["docs-changelog.ts"];
+    for (const [file, src] of Object.entries(webSources)) {
+      const name = file.split("/").pop()!;
+      if (name === "releases.ts" || BUILD_TIME.includes(name)) continue;
+      const imports = [...src.matchAll(/^import\s+(type\s+)?[^;]*?from\s+"\.\/releases";/gm)];
+      for (const m of imports) expect(m[1], `${name}: ${m[0]}`).toBeTruthy();
+    }
+    expect(webSources["../web/src/releases-lazy.ts"]).toContain('import("./releases")');
+  });
+
+  it("before the chunk is in, the screen is its skeleton in its own frame, and the crumb reads the slug", () => {
+    setReleasesModule(null);
+    expect(releasesLoaded()).toBeNull();
+    const index = releasesView(null, "notes");
+    expect(index).toContain('class="cnpy-relidx"');
+    expect(index).toContain("What's new in Trov");
+    expect(index).toContain('data-skel="releases"');
+    expect(index).toContain('aria-busy="true"');
+    expect(index).not.toContain("cnpy-relcard-title");
+    const page = releasesView("0.14", "patches");
+    expect(page).toContain('class="cnpy-reldoc"');
+    expect(page).toContain('href="#releases" class="cnpy-rel-back"');
+    expect(page).toContain('data-skel="release-body"');
+    expect(releaseCrumb("0.14", "patches")).toBe("v0.14 · Patch notes");
+    expect(releaseCrumb("unreleased", "notes")).toBe("Unreleased");
+    expect(releaseCrumb(null, "notes")).toBe("");
+  });
+
+  it("once it is in, the screen is releasesScreen's", () => {
+    setReleasesModule(releasesModule);
+    expect(releasesView(null, "notes")).toBe(releasesScreen(null, "notes"));
+    expect(releasesView("0.14", "notes")).toBe(releasesScreen("0.14", "notes"));
+    expect(releaseCrumb("0.99", "notes")).toBe("0.99"); // not a release: the slug as typed
+  });
+});
+
 describe("the What's new screen in the app", () => {
+  beforeAll(() => setReleasesModule(releasesModule));
   const app = (releaseVersion: string | null, releasePage: "notes" | "patches" = "notes") => render({
     ...initialState(), view: "app", screen: "releases", releaseVersion, releasePage,
     me: { handle: "alice", name: "Alice", avatar_url: null, color: "stone", identities: [], org: "SaplingLearn", admin: false },

@@ -87,7 +87,8 @@ import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
 import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
-import { RELEASES } from "./releases";
+import { LATEST_RELEASE } from "./release-latest";
+import { releasesLoaded, releasesFailed, loadReleases } from "./releases-lazy";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
 import { currentOrg, roleAtLeast } from "./org-settings";
@@ -192,7 +193,7 @@ const supportCtl = createSupport({
   signedIn: () => state.view !== "auth",
   context: () => (state.view === "auth"
     ? { route: `${location.pathname}${location.hash}`, org: null, version: "", userAgent: navigator.userAgent }
-    : { route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: RELEASES[0]?.version ?? "", userAgent: navigator.userAgent }),
+    : { route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: LATEST_RELEASE.version, userAgent: navigator.userAgent }),
 });
 
 // Deleting one's account (Settings) and an organization (Org settings › General, its owner) — web/src/deletion-actions.ts.
@@ -347,11 +348,21 @@ let drawerRoute = "";
 /** The group the app opened on its own (so it may close it again). */
 let autoOpened: NavGroup | null = null;
 
+let releasesWanted = false;
+function wantReleases(): void {
+  if (releasesWanted) return;
+  releasesWanted = true;
+  loadReleases().catch(() => undefined).finally(() => { releasesWanted = false; rerenderSoon(); });
+}
+
 /** The paint itself — reached only through the paint queue (`rerender`, `rerenderSoon`, `batchRender`). */
 function paintApp(): void {
   // A board drag holds the DOM: swapping <main> would drop the card mid-drag.
   // The held paint runs when the drag ends (clearBoardDrag).
   if (boardDrag) { rerenderHeld = true; return; }
+  // Help › What's new renders from its own chunk (releases-lazy.ts): a paint on the screen without
+  // it draws the skeleton and starts the load, and its arrival paints again.
+  if (state.view === "app" && state.screen === "releases" && !releasesLoaded() && !releasesFailed()) wantReleases();
   // The phone drawer closes whenever the route changes (a nav row, a search, Back).
   const drawerKey = state.view === "app" ? hashForRoute(currentRoute()) : state.view;
   if (drawerKey !== drawerRoute) { drawerRoute = drawerKey; state.drawer = false; }
@@ -3120,7 +3131,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
     case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
-    // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
+    // Help › What's new (its chunk is loaded by the paint: releases-lazy.ts). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
     // One release's page (arg = its slug, "0.14" / "unreleased"), and its notes / patches switch.
     case "openRelease": if (!arg) return; state.screen = "releases"; state.releaseVersion = arg.toLowerCase(); state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;

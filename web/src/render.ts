@@ -31,7 +31,8 @@ import { tagPageView, itemTagsRow, itemTagDropdown, initialTagsUi, type TagsUi }
 import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
-import { releasesScreen, findRelease, type ReleasePage } from "./releases";
+import type { ReleasePage } from "./releases";
+import { releasesView, releaseCrumb } from "./releases-lazy";
 import { supportDialog, initialSupport, type SupportDraft } from "./support";
 import { accountDeleteModal, accountDeleteTile, initialDeleteUi, type DeleteUi } from "./deletion";
 import type { AccountDeletionPreview } from "@shared/deletion-core";
@@ -823,11 +824,7 @@ function sidebar(s: AppState): string {
 
 /** The "›" crumb text for the three child screens (empty on a top-level screen). */
 function headerCrumb(s: AppState): string {
-  if (s.screen === "releases") {
-    const r = s.releaseVersion ? findRelease(s.releaseVersion) : null;
-    const name = r ? (r.unreleased ? "Unreleased" : `v${r.version}`) : (s.releaseVersion ?? "");
-    return s.releasePage === "patches" ? `${name} · Patch notes` : name;
-  }
+  if (s.screen === "releases") return releaseCrumb(s.releaseVersion, s.releasePage);
   if (s.screen === "newticket") return "New ticket";
   if (s.screen === "handoff") return s.handoffDetail.data ? firstLine(s.handoffDetail.data.body) : "";
   if (s.screen === "newhandoff") return "New handoff";
@@ -2707,7 +2704,7 @@ function screenBody(s: AppState): string {
     case "search": return searchView(s);
     case "settings": return settingsView(s);
     case "guide": return guideView(s);
-    case "releases": return releasesScreen(s.releaseVersion, s.releasePage);
+    case "releases": return releasesView(s.releaseVersion, s.releasePage);
     case "tickets": return ticketsScreen(s);
     case "newticket": return newTicketScreen(s);
     case "ticketdetail": return ticketDetailScreen(s);
