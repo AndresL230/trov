@@ -11,6 +11,7 @@ import { collapsedLineDiff } from "./diff";
 import { initialsOf, relTime } from "./ui";
 import { initialsOfName } from "./people";
 import { SECTIONS } from "@shared/vocabulary";
+export { attachAskFlags } from "./api";
 
 // ── shared derivations ───────────────────────────────────────────────────────
 /** First non-empty line of a body — the card-summary fallback. */
@@ -64,6 +65,7 @@ export function proposalReviewItem(p: StagedProposal): ReviewItem {
     proposedBody: p.stagedBody,
     isNew: p.current_version === 0 || p.promotedBody.trim() === "",
     ...(p.ai ? { ai: p.ai } : {}),
+    ...(p.askFlags?.length ? { askFlags: p.askFlags } : {}),
   };
 }
 
@@ -83,6 +85,7 @@ export function adrReviewItem(a: AdrRow): ReviewItem {
     time: relTime(a.created_at),
     adr: sections,
     ...(a.ai ? { ai: a.ai } : {}),
+    ...(a.askFlags?.length ? { askFlags: a.askFlags } : {}),
   };
 }
 

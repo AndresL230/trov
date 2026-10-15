@@ -23,6 +23,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 
 import { lineDiff, collapsedLineDiff } from "../web/src/diff";
+import { attachAskFlags } from "../web/src/triage-map";
 import { reviewView, reviewDetail, reviewCard, reviewFilterSwitch, diffViewer, unifiedDiff, splitDiffRows, staleBaseWarning, REVIEW_EXIT_MS, REVIEW_INTRO, type ReviewItem, type ReviewProps } from "../web/src/review";
 import { LOW_CONFIDENCE } from "../web/src/marks";
 import css from "../web/src/trov.css?raw";
@@ -828,5 +829,33 @@ describe("Review — the exit's CSS (trov.css)", () => {
   it("the verdict's tone is the diff's: green for promoted and ratified, red for rejected", () => {
     expect(css).toContain('.cnpy-rv-row[data-verdict="promoted"], .cnpy-rv-row[data-verdict="ratified"] { --rv-tone:var(--green); }');
     expect(css).toContain('.cnpy-rv-row[data-verdict="rejected"] { --rv-tone:var(--red); }');
+  });
+});
+
+// e2e RV-8 (Phase H): `GET /proposals` and `GET /adrs` carry `askFlags` (handoff #12 § 2.14), but nothing drew them —
+// Review showed no "Flagged in Ask" line. The line: the reasons and how often, never the question, answer or asker.
+describe("Flagged in Ask (handoff #12 § 2.14)", () => {
+  const flags = [
+    { ref: "doc:auth", reason: "out_of_date" as const, count: 1, lastAt: "2026-10-15T10:00:00Z" },
+    { ref: "doc:auth", reason: "source_wrong" as const, count: 2, lastAt: "2026-10-15T10:00:00Z" },
+  ];
+  it("the detail draws one line of reasons and counts, most flagged first", () => {
+    const html = reviewDetail(makeItem({ askFlags: flags }), "unified");
+    const at = html.indexOf("cnpy-rv-askflags");
+    expect(at).toBeGreaterThan(0);
+    const line = html.slice(at, html.indexOf("</p>", at)).replace(/<[^>]+>/g, "").replace(/&middot;/g, "·").replace(/\s+/g, " ");
+    expect(line).toContain("Flagged in Ask: A source is wrong (2) · It is out of date (1)");
+  });
+  it("no flags, no line (the detail as before)", () => {
+    expect(reviewDetail(makeItem(), "unified")).not.toContain("Flagged in Ask");
+    expect(reviewDetail(makeItem({ askFlags: [] }), "unified")).not.toContain("Flagged in Ask");
+  });
+  it("each read's flags go to their own item: a proposal by `doc:<slug>`, a decision by `decision:<id>`", () => {
+    const rows = [{ slug: "auth" }, { slug: "other" }];
+    const out = attachAskFlags(rows, flags, (r) => `doc:${r.slug}`);
+    expect(out[0].askFlags).toEqual(flags);
+    expect("askFlags" in out[1]).toBe(false);
+    expect(attachAskFlags([{ id: 7 }], [{ ...flags[0], ref: "decision:7" }], (r) => `decision:${r.id}`)[0].askFlags).toHaveLength(1);
+    expect(attachAskFlags(rows, undefined, (r) => `doc:${r.slug}`)).toEqual(rows);
   });
 });

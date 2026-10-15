@@ -15,6 +15,7 @@ import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
 import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse } from "./skeleton";
 import type { AiSuggestion } from "@shared/ai-core";
+import { ASK_WRONG_LABELS, type AskFlag } from "@shared/ai-ask-core";
 import { reviewRiskLine, reviewRiskMark, type AiChipUi } from "./ai-cards";
 import type { AiUi } from "./ai-ui";
 
@@ -70,6 +71,9 @@ export interface ReviewItem {
   adr?: AdrSection[]; // decisions
   /** Trov's open `review.risk` for it (src/ai/attach.ts); absent when there is none — the card draws nothing then. */
   ai?: AiSuggestion[];
+  /** "Flagged in Ask" (handoff #12 § 2.14): the reasons people gave on Ask answers that cited it, and how often —
+   *  never the question, the answer or who asked. Absent when nobody did. */
+  askFlags?: AskFlag[];
 }
 
 export interface ReviewProps {
@@ -315,9 +319,17 @@ export function reviewDetail(it: ReviewItem, diffView: DiffViewMode, aiUi: AiChi
         <button data-act="reviewAccept" data-arg="${attr(it.id)}" class="cnpy-accentbtn" style="${HEAD_BTN};background:var(--accent);color:var(--accent-fg);border:1px solid var(--accent);padding:0 17px;font-weight:600">${acceptLabel}</button>
       </div>
     </div>
-    ${it.ai ? reviewRiskLine(it.ai, aiUi) : ""}${it.stale && it.staleNote ? staleBaseWarning(it.staleNote) : ""}
+    ${it.ai ? reviewRiskLine(it.ai, aiUi) : ""}${it.askFlags?.length ? askFlagsLine(it.askFlags) : ""}${it.stale && it.staleNote ? staleBaseWarning(it.staleNote) : ""}
     ${content}
   </div>`;
+}
+
+/** "Flagged in Ask: A source is wrong (2) · It is out of date (1)" — most flagged first; the reason words are Ask's
+ *  own (`ASK_WRONG_LABELS`). Nothing from the thread is ever here. */
+export function askFlagsLine(flags: AskFlag[]): string {
+  const sorted = [...flags].sort((a, b) => b.count - a.count);
+  const words = sorted.map((f) => `${esc(ASK_WRONG_LABELS[f.reason] ?? f.reason)} (${f.count})`).join(" &middot; ");
+  return `<p class="cnpy-rv-askflags" style="margin:14px 0 0;font-size:12.5px;line-height:1.5;color:var(--fg-55)">Flagged in Ask: <span style="color:var(--fg-70)">${words}</span></p>`;
 }
 
 /** The list pane while the queue's first read is out: cards in the review card's box. */
