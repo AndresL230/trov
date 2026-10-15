@@ -305,6 +305,9 @@ export interface RepoDashboard {
   degraded: boolean;
   /** True only for the client-side sample set — never sent by the Worker. */
   sample?: boolean;
+  /** The sample's Code / CI sections per App menu value (an app key, `__repo`, or `__all` for All apps) — what the
+   *  Worker's narrowing (repo setups, Phase E) sends for that `?app=`. Client-side sample only, never sent. */
+  sampleScopes?: Record<string, Partial<Pick<RepoDashboard, "codeStats" | "bars" | "prs" | "deploys" | "ciFailures">>>;
 
   environments: RepoSection<RepoEnv[]>;
   drift: RepoSection<RepoDrift>;

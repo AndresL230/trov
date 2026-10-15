@@ -24,6 +24,8 @@ import {
   type FactsUnseen, type FactsWeekFigure, type RepoFacts, type WeekKey,
 } from "@shared/repo-facts-core";
 
+import { inScope, type ScopeApp } from "@shared/repo-scope-core";
+
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 
 const PEOPLE: Record<string, [PersonColor, string]> = {
@@ -1129,4 +1131,101 @@ export function repoScenarioUsage(key: ScenarioKey, variant = "", opts: { now?: 
       ],
     };
   }
+}
+
+// ── Repo setups, Phase E: the Code and CI tabs under the App menu ────────────
+// What the Worker's narrowing (src/tools/repo-scope.ts) sends for each `?app=` of a monorepo scenario: under All apps
+// every PR row carries `touches` / `packages` and every failure its `apps`; under one app (or Repo-wide only) the
+// tiles, bars, PRs, CI failures and deploy strips are that app's — the design's `CODE_E_API` and `CI_E`
+// (repo-data.js) for E. Narrowed with the shared rules (shared/repo-scope-core.ts), so a PR whose files were never
+// read (#653) is listed under All apps only. Keyed by app key, `__repo`, or `__all` (All apps).
+type ScopeOverlay = NonNullable<RepoDashboard["sampleScopes"]>;
+const E_GH = "https://github.com/acme/storefront";
+/** [title, number, branch, login, state, checks, age, touches (null = files never read), packages] */
+const E_PRS: [string, number, string, string, RepoPrState, "pass" | "fail" | "run" | null, string, string[] | null, string[]][] = [
+  ["Bump dependencies", 653, "deps-weekly", "dev-raj", "draft", "run", "10m", null, []],
+  ["api: fix Render build on Node 22", 644, "node22-build", "priya-k", "draft", "fail", "20m", ["api"], []],
+  ["api: idempotent order webhooks", 642, "webhook-idempotency", "priya-k", "review", "pass", "40m", ["api"], []],
+  ["web: lazy-load the product gallery", 650, "gallery-lazy", "ana-r", "review", "pass", "2h", ["web"], []],
+  ["db: index orders.created_at", 639, "orders-index", "kenji-m", "approved", "pass", "3h", ["api", "jobs"], []],
+  ["docs: deploy guide for Render", 647, "docs-render", "ana-r", "review", "pass", "5h", ["docs"], []],
+  ["ui: focus ring on buttons", 640, "ui-focus", "ana-r", "approved", "pass", "1d", [], ["ui"]],
+  ["Money formatting in one place", 636, "money-format", "tom-h", "merged", "pass", "1d", ["api"], ["ui"]],
+  ["ci: cache the pnpm store", 645, "ci-cache", "tom-h", "merged", "pass", "1d", [], []],
+  ["api: carts expire after 30 days", 633, "cart-expiry", "dev-raj", "merged", "pass", "2d", ["api"], []],
+  ["Checkout: saved addresses", 651, "saved-addresses", "tom-h", "merged", "pass", "2d", ["web"], []],
+  ["db: migrate to drizzle 0.40", 630, "drizzle-040", "kenji-m", "merged", "pass", "3d", ["api", "jobs"], []],
+];
+/** Per app: [merged this week, commits this week, contributors, 14 days of commits, 7-day failure rate]. The api's
+ *  are the design's own (`CODE_E_API.tiles`). */
+const E_CODE: Record<string, [number, number, number, number[], number]> = {
+  __all: [21, 61, 6, [5, 7, 3, 8, 6, 9, 2, 7, 8, 6, 9, 5, 8, 6], 4.2],
+  web: [7, 19, 3, [2, 3, 1, 3, 2, 4, 0, 2, 3, 2, 4, 1, 3, 2], 2.1],
+  api: [6, 24, 4, [2, 3, 1, 4, 3, 4, 1, 3, 4, 3, 4, 2, 4, 3], 6.3],
+  docs: [2, 6, 1, [1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1], 0],
+  jobs: [2, 5, 2, [0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0], 0],
+  ui: [2, 4, 2, [0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0], 0],
+  __repo: [2, 3, 2, [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], 0],
+};
+/** The design's `CI_E.apps` (production strips; previews are not strips on the server), `l` live · `f` failed · `c` cancelled. */
+const E_DEPLOYS: [string, string, string][] = [
+  ["web", "Vercel", "llllllllll"], ["api", "Render", "lllflllllf"], ["docs", "Cloudflare Pages", "llllllllll"], ["jobs", "Fly.io via deploy-jobs.yml", "llllllll"],
+];
+/** The design's `CI_E.fails`, with the apps each run belongs to. */
+const E_FAILS: [string, string, string, string, string[]][] = [
+  ["ci.yml", "node22-build", "api › build", "20m", ["api"]],
+  ["deploy-api (Render)", "main", "Render build", "25m", ["api"]],
+  ["ci.yml", "checkout-addresses", "web › e2e", "1d", ["web"]],
+];
+const E_APPS: ScopeApp[] = [
+  { key: "web", kind: "Site", usedBy: null }, { key: "api", kind: "Service", usedBy: null }, { key: "docs", kind: "Site", usedBy: null },
+  { key: "jobs", kind: "Job", usedBy: null }, { key: "ui", kind: "Package", usedBy: ["web", "docs"] },
+];
+
+/** The scenario's Code / CI sections per App menu value, or none (the scenario is not a monorepo the sample narrows). */
+export function repoScenarioScopes(key: ScenarioKey, _variant = "", opts: { now?: number } = {}): { sampleScopes?: ScopeOverlay } {
+  if (key !== "E") return { sampleScopes: undefined }; // cleared, so a switch from E leaves none behind
+  const now = opts.now ?? Date.now();
+  const at = (age: string) => new Date(now - ageMs(age)).toISOString();
+  const prs = E_PRS.map(([title, number, branch, login, state, checks, age, touches, packages]) => ({
+    number, title, url: `${E_GH}/pull/${number}`, author: person(login), branch, state, checks, at: at(age), touches, packages,
+  }));
+  /** An app's production strip (the part key IS the app key); none for a Package or Repo-wide only. */
+  const deploys = (app: string | null): RepoDeployRow[] => E_DEPLOYS.filter(([k]) => app === null || k === app).map(([k, host, dots]) => ({
+    env: "production", part: k, label: `Production · ${k}`, envLabel: "Production", host,
+    deploys: dots.split("").map((c, i) => ({
+      sha: placeholderSha(`${k}${i}`).slice(0, 7), at: at(`${(dots.length - i) * 7}h`), by: "kenji-m",
+      result: c === "f" ? "fail" as const : c === "c" ? "cancel" as const : "ok" as const,
+    })),
+  }));
+  const fails = (app: string | null) => E_FAILS.filter(([, , , , apps]) => app === null || inScope({ touches: apps, packages: [] }, app, E_APPS) === true)
+    .map(([workflow, branch, job, age, apps]) => ({ workflow, branch, job, at: at(age), url: `${E_GH}/actions`, apps }));
+  const out: ScopeOverlay = {};
+  for (const app of ["__all", "web", "api", "docs", "jobs", "ui", "__repo"]) {
+    const scoped = app === "__all" ? null : app;
+    const rows = scoped === null ? prs : prs.filter((r) => inScope({ touches: r.touches, packages: r.packages }, scoped, E_APPS) === true);
+    const open = rows.filter((r) => r.state === "draft" || r.state === "review" || r.state === "approved");
+    const [merged, commits, people, days, rate] = E_CODE[app];
+    const failRows = fails(scoped);
+    const mergers = Math.min(merged, people);
+    out[app] = {
+      codeStats: { status: "ok", data: [
+        { label: "Open PRs", value: open.length, sub: `${open.filter((r) => r.state === "review").length} awaiting review`, tone: "neutral" },
+        { label: "Merged this week", value: merged, sub: mergers === 1 ? "by 1 person" : `by ${mergers} people`, tone: "neutral" },
+        { label: "Commits this week", value: commits, sub: "this week", tone: "neutral" },
+        { label: "Contributors", value: people, sub: "this week", tone: "neutral" },
+      ] },
+      bars: { status: "ok", data: {
+        title: "Commit activity — last 14 days",
+        note: `${days.reduce((a, b) => a + b, 0)} commits · ${scoped === null ? "all branches" : scoped === "__repo" ? "outside every app" : `touching ${scoped}`}`,
+        days: days.map((count, i) => ({ date: new Date(now - (13 - i) * DAY).toISOString().slice(0, 10), count })),
+      } },
+      prs: { status: "ok", data: { openCount: open.length, rows: rows.slice(0, 8) } },
+      deploys: scoped === "__repo" || scoped === "ui" ? { status: "empty" } : { status: "ok", data: deploys(scoped) },
+      ciFailures: { status: "ok", data: {
+        rate, trend: [3, 5, 4, 2, 6, 4, 5].map((v) => Math.round(v * rate * 10) / 40), rows: failRows, total: failRows.length,
+      } },
+    };
+  }
+  return { sampleScopes: out };
 }

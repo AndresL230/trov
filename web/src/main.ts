@@ -1064,7 +1064,7 @@ function loadRepo(): void {
   // `narrowFacts` does on the server); the live read is scoped by the address's repository and app.
   const sc = state.repoScenario;
   const read = sample
-    ? import("./repo-sample").then((m) => ({ ...m.repoSample(), facts: m.repoScenario(sc.key, sc.variant), ...m.repoScenarioUsage(sc.key, sc.variant) }))
+    ? import("./repo-sample").then((m) => ({ ...m.repoSample(), facts: m.repoScenario(sc.key, sc.variant), ...m.repoScenarioUsage(sc.key, sc.variant), ...m.repoScenarioScopes(sc.key, sc.variant) }))
     : getRepoDashboard({ repo: state.repoSlug, app: state.repoApp });
   read
     .then((data) => {
@@ -1114,7 +1114,7 @@ function reloadSampleFacts(): void {
   const sc = state.repoScenario;
   void import("./repo-sample").then((m) => {
     if (!state.repoSample || state.repoScenario !== sc || !state.repo.data) return;
-    state.repo = { status: "ok", data: { ...state.repo.data, facts: m.repoScenario(sc.key, sc.variant), ...m.repoScenarioUsage(sc.key, sc.variant) } };
+    state.repo = { status: "ok", data: { ...state.repo.data, facts: m.repoScenario(sc.key, sc.variant), ...m.repoScenarioUsage(sc.key, sc.variant), ...m.repoScenarioScopes(sc.key, sc.variant) } };
     pendingFlash = ".repo-panel > :not(.repo-poll-strip)";
     rerender();
   });
