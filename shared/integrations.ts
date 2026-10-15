@@ -74,7 +74,9 @@ export type OrgSettingsAuditAction =
   // from Trov, or revoked from the provider's side.
   | "part.set" | "part.delete" | "hosting.connect" | "hosting.disconnect" | "hosting.revoked"
   // A provider's leftover per-environment tokens removed by an admin (repo-setups Phase 0).
-  | "hosting.leftovers_removed";
+  | "hosting.leftovers_removed"
+  // Apps (0070_repo_apps): an app written or removed by an admin (src/repo/apps.ts).
+  | "app.set" | "app.delete";
 
 /** One row of `GET /api/o/:slug/integrations/audit`: the secret trail and the repository / environment
  *  trail as ONE list, newest first. `id` is unique across both: `s<n>` (secrets) or `a<n>` (settings). */

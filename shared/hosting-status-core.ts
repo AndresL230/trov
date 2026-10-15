@@ -51,8 +51,14 @@ export function endedOnProvider(c: ConnectionFacts | null, label: string): boole
   return !!c && c.status === "revoked" && c.revoked_reason !== null && lostTexts(label).includes(c.revoked_reason);
 }
 
-/** THE status function: what every surface says about a provider's org-wide connection (null = nothing known of it). */
-export function hostingStatus(c: ConnectionFacts | null, label: string): HostingStatus {
+/** What a provider with NO credential of its own (`via_github` — GitHub deployments, repo setups Phase A) reads as:
+ *  live, nothing stored, never "Not connected" — it reads through the org's GitHub connection. */
+export const VIA_GITHUB_WORD = "Through GitHub";
+
+/** THE status function: what every surface says about a provider's org-wide connection (null = nothing known of it).
+ *  `viaGithub`: the provider has no credential of its own (`HostingProviderDTO.via_github`) — always live. */
+export function hostingStatus(c: ConnectionFacts | null, label: string, viaGithub = false): HostingStatus {
+  if (viaGithub) return { state: "connected", word: VIA_GITHUB_WORD, live: true, stored: false };
   const stored = !!c && (c.status === "connected" || c.status === "error");
   const legacy = !!c && !stored && c.status !== "revoked" && c.legacy_fallback;
   const state: ConnectionStatus = stored ? c!.status

@@ -10,6 +10,10 @@ export const DAY = 86_400_000;
 export const FAST_METRICS = ["health_up", "health_ms"];
 export const FAST_KINDS = ["check"];
 export const FAST_RETENTION_DAYS = 45;
+/** GitHub deploy signals (repo setups, Phase A): `deploy` rows captured UNTAGGED (`env IS NULL`) — deployments,
+ *  deployment statuses and non-`canopy/*` commit statuses (src/repo/capture.ts). They feed detection (a 90-day
+ *  window, src/hosting/detect.ts), the `github` provider's parts and the commit join; 90 days is all of that. */
+export const DEPLOY_SIGNAL_RETENTION_DAYS = 90;
 /** Hourly usage series — the active-user gauges (`active_users_*`) and the
  *  hosting providers' normalised points (`hx_*`, shared/hosting.ts — one per
  *  part per metric per complete hour; 0057_hosting_providers renamed the legacy
@@ -352,6 +356,11 @@ export async function hostingReads(ctx: TenantContext, sinceIso: string, perPart
                           'by', actor, 'at', created_at, 'ready_at', ready_at, 'url', url, 'inspect_url', inspect_url) AS j,
               ROW_NUMBER() OVER (PARTITION BY env, part, provider ORDER BY created_at DESC, id DESC) AS rn
          FROM hosting_deploys WHERE org_id = ? AND created_at >= ?
+          -- A production part's PREVIEWS (repo setups) are not its deploys: a preview row is left out of a part that
+          -- has any non-preview row. A part that reads only previews (a staging = previews-of-main part) keeps them.
+          AND NOT (target = 'preview' AND EXISTS (
+            SELECT 1 FROM hosting_deploys h2 WHERE h2.org_id = ? AND h2.env = hosting_deploys.env AND h2.part = hosting_deploys.part
+              AND h2.provider = hosting_deploys.provider AND (h2.target IS NULL OR h2.target <> 'preview')))
      ) WHERE rn <= ?
      UNION ALL
      SELECT 'config', kind, scope, '', config FROM org_integration_config WHERE org_id = ? AND scope = ''
@@ -359,7 +368,7 @@ export async function hostingReads(ctx: TenantContext, sinceIso: string, perPart
      SELECT 'secret', kind, scope, '', json_object('last_error', last_error) FROM org_secrets WHERE org_id = ? AND scope = ''
      UNION ALL
      SELECT 'conn', provider, scope, '', json_object('status', status, 'revoked_reason', revoked_reason) FROM org_hosting_connections WHERE org_id = ? AND scope = ''`,
-    ctx.orgId, ctx.orgId, since, perPart, ctx.orgId, ctx.orgId, ctx.orgId);
+    ctx.orgId, ctx.orgId, since, ctx.orgId, perPart, ctx.orgId, ctx.orgId, ctx.orgId);
   const out: HostingReads = { states: [], deploys: [], config: new Map(), secrets: new Map(), connections: new Map() };
   for (const r of rows) {
     const j = jsonRecord(r.j);

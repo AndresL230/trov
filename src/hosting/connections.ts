@@ -54,6 +54,14 @@ import type { ProviderMap } from "./part-writes";
 import { PROVIDERS, checkFields } from "./registry";
 import type { ConnectionMethodSpec, HostingProvider, InstallGrant } from "./types";
 
+/** The provider's credential kind. `github` (repo setups) has none — it is never listed here as a connection
+ *  (`listConnections` skips its parts) and every route that names it is refused with this. */
+function kindOf(id: HostingProviderId): IntegrationKind {
+  const kind = HOSTING_INTEGRATION_KIND[id];
+  if (!kind) throw new SettingsError("invalid", 400, "this provider has no credential of its own: it reads through the organization's GitHub connection");
+  return kind;
+}
+
 // ── the connection list ──────────────────────────────────────────────────────
 
 export interface ConnectionRow {
@@ -111,7 +119,7 @@ export function connectionStatusOf(meta: SecretMeta | null, row: ConnectionRow |
 export async function describeConnection(
   ctx: TenantContext, env: Env, s: ConnectionState, provider: HostingProvider, scope: string,
 ): Promise<HostingConnectionDTO> {
-  const kind = HOSTING_INTEGRATION_KIND[provider.id];
+  const kind = kindOf(provider.id);
   const meta = s.secrets.find((m) => m.kind === kind && m.scope === scope) ?? null;
   const row = s.rows.find((r) => r.provider === provider.id && r.scope === scope) ?? null;
   const status = connectionStatusOf(meta, row);
@@ -153,7 +161,8 @@ export async function describeConnection(
 export async function listConnections(ctx: TenantContext, env: Env, providers: ProviderMap = PROVIDERS, state?: ConnectionState): Promise<HostingConnectionDTO[]> {
   const s = state ?? (await loadConnectionState(ctx));
   const used = new Set<HostingProviderId>();
-  for (const p of s.parts) used.add(p.provider);
+  // A provider with no credential of its own (`github`) has no connection to list.
+  for (const p of s.parts) if (!providers[p.provider].credential) used.add(p.provider);
   for (const m of s.secrets) {
     const provider = providerOfKind(m.kind);
     if (provider && !isLeftover(m)) used.add(provider);
@@ -186,7 +195,7 @@ export function listLeftovers(s: ConnectionState): HostingLeftoverDTO[] {
 export async function removeLeftovers(ctx: TenantContext, env: Env, providerId: string, providers: ProviderMap = PROVIDERS): Promise<HostingLeftoversRemovedDTO> {
   requireRole(ctx, "admin");
   const p = knownProvider(providers, providerId);
-  const kind = HOSTING_INTEGRATION_KIND[p.id];
+  const kind = kindOf(p.id);
   const scopes = (await listSecretMeta(ctx)).filter((m) => m.kind === kind && isLeftover(m)).map((m) => m.scope);
   if (scopes.length === 0) throw new SettingsError("not_found", 404, `${p.label} has no old tokens to remove`);
   const at = nowIso();
@@ -436,7 +445,7 @@ export async function completeConnect(env: Env, cb: ConnectCallback): Promise<Co
       return to("exchange_failed");
     }
     const token = grant?.accessToken;
-    if (typeof token !== "string" || secretValueProblem(HOSTING_INTEGRATION_KIND[p.id], token) !== null) {
+    if (typeof token !== "string" || secretValueProblem(kindOf(p.id), token) !== null) {
       grant = null; // nothing usable to hand back either
       console.error("hosting connect: the exchange returned no usable token", p.id, `org=${intent.o}`);
       return to("exchange_failed");
@@ -457,7 +466,7 @@ export async function completeConnect(env: Env, cb: ConnectCallback): Promise<Co
     const row = await connectionRow(ctx, p.id, "");
     const same = isLiveInstall(row) && sameGrant(row, externalId, accountId);
     const replaced = isLiveInstall(row) && !same ? row : null;
-    const kind = HOSTING_INTEGRATION_KIND[p.id];
+    const kind = kindOf(p.id);
     const old = replaced && install.revoke
       ? { secret: await getSecret(ctx, kind, ""), config: await getIntegrationConfig(ctx, kind, "") }
       : null;
@@ -545,7 +554,7 @@ export async function bindConnection(
   ctx: TenantContext, p: HostingProvider, method: "install" | "oauth", grant: InstallGrant, at: string = nowIso(),
   replaced: ConnectionRow | null = null,
 ): Promise<void> {
-  const kind = HOSTING_INTEGRATION_KIND[p.id];
+  const kind = kindOf(p.id);
   const config = await mergedGrantConfig(ctx, p, kind, grant.config);
   const accountLabel = cleanText(grant.accountLabel);
   const stmts: Stmt[] = [
@@ -610,7 +619,7 @@ export async function disconnect(
   requireRole(ctx, "admin");
   const p = knownProvider(providers, providerId);
   const scope = checkScope(p, scopeIn);
-  const kind = HOSTING_INTEGRATION_KIND[p.id];
+  const kind = kindOf(p.id);
   const [meta, row] = [await getSecretMeta(ctx, kind, scope), await connectionRow(ctx, p.id, scope)];
   const active = row?.status === "active" ? row : null;
   if (!meta && !active) throw new SettingsError("not_connected", 404, `${p.label} is not connected`);
@@ -682,7 +691,7 @@ export async function endConnectionAsSystem(
   if (!isLiveInstall(row)) return false;
   if (match.externalId !== undefined && row.external_id !== match.externalId) return false;
   if (match.connectedAt !== undefined && row.connected_at !== match.connectedAt) return false;
-  const kind = HOSTING_INTEGRATION_KIND[provider.id];
+  const kind = kindOf(provider.id);
   const at = nowIso();
   await batch(ctx, [
     ...(await systemRevocationDeleteStmts(ctx, kind, scope, reason, at)),

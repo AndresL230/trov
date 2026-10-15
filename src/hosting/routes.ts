@@ -156,12 +156,15 @@ export function makeHostingApp(o: HostingRouteOptions = {}): Hono<AppEnv> {
       if (!part) return c.json({ error: "not_found", message: `no such ${p.label} part` }, 404);
       partKey = { env: part.env, part: part.key };
     }
+    const kind = HOSTING_INTEGRATION_KIND[p.id];
+    // A provider with no credential of its own (`github`) has nothing to test here.
+    if (!kind) return c.json({ error: "invalid", field: "provider", message: `${p.label} has no credential of its own: it reads through the organization's GitHub connection` }, 400);
     const scope = checkScope(p, scopeIn);
     // Not connected (the one status function — what the card and the part row say): nothing to probe, and the
     // answer says so in the card's own words — never "No secret is set".
     const before = await connectionDTO(ctx, c.env, p.id, scope, providers);
     if (!hostingStatus(before, p.label).live) return c.json({ ok: false, detail: notConnectedSentence(p.label), connection: before } satisfies HostingTestDTO);
-    const result = await testConnection(ctx, c.env, HOSTING_INTEGRATION_KIND[p.id], scope, originOf(c), Date.now(), o.fetchImpl, partKey);
+    const result = await testConnection(ctx, c.env, kind, scope, originOf(c), Date.now(), o.fetchImpl, partKey);
     const out: HostingTestDTO = { ok: result.ok, detail: result.detail, connection: await connectionDTO(ctx, c.env, p.id, scope, providers) };
     return c.json(out);
   }));

@@ -136,7 +136,8 @@ export const scopeFor = (_p: HostingProviderDTO, _env: string): string => "";
 /** A provider's status on this screen: THE status function over its ORG-WIDE connection — what its card, every part
  *  on it, the checklist, the lead and Test this part say. */
 export function providerStatusOf(d: HostingSetupDTO, id: HostingProviderId): HostingStatus {
-  return hostingStatus(orgConnection(d.connections, id), providerOf(d, id)?.label ?? id);
+  const p = providerOf(d, id);
+  return hostingStatus(orgConnection(d.connections, id), p?.label ?? id, !!p?.via_github);
 }
 /** A provider's leftover per-environment tokens (`HostingSetupDTO.leftovers`) — never a connection. */
 export const leftoversOf = (d: HostingSetupDTO, id: HostingProviderId): HostingLeftoverDTO[] => (d.leftovers ?? []).filter((l) => l.provider === id);
@@ -796,7 +797,8 @@ export function hostingTab(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDropdo
     })
     : `<ul${surface(`${LIST};min-width:0`)}>${d.environments.map((e) => envParts(x, e)).join("")}</ul>`;
 
-  const available = d.providers.filter((p) => p.status === "available");
+  // A provider with no credential of its own (`via_github` — GitHub deployments) has nothing to connect: no card.
+  const available = d.providers.filter((p) => p.status === "available" && !p.via_github);
   const later = d.providers.filter((p) => p.status === "later");
   const accentIsConnect = next?.action.kind === "connect";
   // ONE card per provider — its org-wide connection — whatever is stored under other scopes.

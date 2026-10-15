@@ -104,6 +104,8 @@ export const ORG_AUDIT_ACTIONS = [
   "org.delete", "person.delete",
   // The organization's AI switch (0055_ai, Org settings › AI): an admin turned it on or off.
   "org.ai",
+  // Apps (0070_repo_apps, src/repo/apps.ts): an app written or removed by an admin.
+  "app.set", "app.delete",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 

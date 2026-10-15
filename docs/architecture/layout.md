@@ -44,7 +44,9 @@
   `RepoEventRow` / `RepoMetric` shapes), `config.ts` (the org's own configuration: `orgEnvironments` /
   `orgEnvironment` read `org_environments` into `RepoEnvConfig[]`, `orgPrimaryRepo` its primary `org_repos` row;
   the legacy `repoEnvironments()` parser of the `REPO_ENVIRONMENTS` var is called only by tests), `capture.ts` (PURE delivery→`RepoEvent[]` derivation,
-  `repoEventsFromDelivery` — no DB, no clock, no network, and stores only a SLICE of each payload in `raw`),
+  `repoEventsFromDelivery` — no DB, no clock, no network, and stores only a SLICE of each payload in `raw`; GitHub
+  deploy signals land here as untagged `deploy` rows), `apps.ts` (0070_repo_apps: `listRepoApps` — the rows plus an
+  app synthesised for every part key with none — and the admin writers `putRepoApp` / `deleteRepoApp`),
   `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the five snapshot kinds —
   `prs_reconciled`, `env_heads`, `drift`, `branches`; `putMetric`, the ONE write seam that
   normalises `repo_metrics.at`, and `putMetrics`, the same write for MANY rows in `db.batch` chunks of 50;
@@ -186,10 +188,14 @@
   Then `0057_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
   `hosting_poll_state`, and `org_secrets` REBUILT only to widen its kind CHECK to the five hosting kinds; rollback
   `scripts/hosting/0057_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.
+  Then `0070_repo_apps` (repo setups, Phase A; 0070–0079 are reserved for that build) [`repo_apps` with a row per
+  existing part key, and `hosting_deploys.source` / `reason` / `sha_source` / `rolled_back_from`; additive].
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,
-  `routes.ts`, `webhook.ts`, `probe.ts`, `poll.ts`, `detect.ts` (the "Detected" suggestion, from captured GitHub
+  `routes.ts`, `webhook.ts`, `probe.ts`, `poll.ts`, `deploy-store.ts` (the `hosting_deploys` upsert, secret-free),
+  `github-deploys.ts` (a `github` part's deploys from the capture), `sha-join.ts` (the one-candidate commit join),
+  `rollback.ts` (the one-compare rollback check), `detect.ts` (the "Detected" suggestion, from captured GitHub
   activity alone). Its screens: `web/src/hosting.ts` + `web/src/hosting-actions.ts` (Org settings › Hosting),
   `web/src/repo-hosting.ts` (Repo dashboard › Usage › Hosting), `web/src/hosting-sample.ts` (the sample states — a
   dynamic import, never in the main bundle).

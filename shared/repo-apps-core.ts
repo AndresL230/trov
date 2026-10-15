@@ -13,3 +13,23 @@ export const APP_KIND_ROLE: Record<AppKind, PartRole | null> = { Site: "web", Wo
 /** An app with no `repo_apps` row (a part key from before apps existed) reads as an app at the root, its kind
  *  from its part's role. */
 export const kindForRole = (role: PartRole): AppKind => (role === "web" ? "Site" : "Service");
+
+// ── Phase A: one app as the server reads it (src/repo/apps.ts `listRepoApps`) ──
+/** Where a `repo_apps` row came from (0070_repo_apps). */
+export const APP_SOURCES = ["migrated", "manual", "suggested"] as const;
+export type AppSource = (typeof APP_SOURCES)[number];
+export interface RepoApp {
+  key: string;
+  /** `owner/name`. A row stored with '' (an org with no repository yet) reads as the primary repository, or ''. */
+  repo: string;
+  label: string;
+  /** '/' = the repository root; else a path without leading or trailing '/'. */
+  folder: string;
+  kind: AppKind;
+  /** Path globs whose changes count as this app's; the folder by default. */
+  watch: string[];
+  releaseSignal: string | null;
+  /** `synthesised` = no `repo_apps` row: a part key read as an app at the primary repository's root. */
+  source: AppSource | "synthesised";
+  position: number;
+}

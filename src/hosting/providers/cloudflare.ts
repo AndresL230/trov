@@ -35,7 +35,16 @@
 //                `/user/tokens/verify`: that answers only for a USER-owned token, and proves no permission. With
 //                a part: the script's deployments (Workers Scripts Read + the Worker exists) and the same
 //                one-hour analytics query for that script. TWO fetches either way.
-//   one poll     deployments (1) + analytics (1) = 2 (`pollCost`).
+//   commit       the Workers Builds API (repo setups, Phase A; step 0 CONFIRMED the data — a build carries
+//                `build_trigger_metadata.commit_hash` / `.branch`): ONE `GET /accounts/{account_id}/builds/builds?
+//                version_ids=<id>` for the NEWEST deployment's version (the one at 100 %), and its commit and branch
+//                when EXACTLY ONE build with a commit answers. It needs the token's optional third permission,
+//                Workers CI Read (Workers Builds Configuration), on a USER token; refused (401 / 403 / an auth
+//                error) the poll notes "commit: the token needs Workers CI Read" and the commit is left to the
+//                GitHub join (src/hosting/sha-join.ts) — never a guess, and never a failed poll. UNCONFIRMED: the
+//                response's exact nesting (`result.builds` keyed by version id, or a list) — both are read; that
+//                Read (not Edit) suffices.
+//   one poll     deployments (1) + the newest deployment's build (1) + analytics (1) = 3 (`pollCost`).
 //
 // Every message is scrubbed of the token — and of the account id, as the old poller did: Cloudflare's own
 // errors can name the account they refused — BEFORE it is cut (../http.ts). Nothing is logged here.
@@ -53,6 +62,8 @@ const UA = "trov-hosting";
 const ACCOUNT_ID = /^[0-9a-fA-F]{32}$/;
 const WORKER = /^[A-Za-z0-9_-]{1,63}$/;
 const DEPLOYMENT_ID = /^[A-Za-z0-9-]{1,64}$/;
+const VERSION_ID = /^[A-Za-z0-9-]{1,64}$/;
+const SHA = /^[0-9a-f]{7,64}$/i;
 const PLAIN_LINE = /^[^\u0000-\u001f\u007f]{1,200}$/;
 
 /** Deployments kept per poll — the contract's "≤ 20, newest first". */
@@ -135,6 +146,13 @@ const SCRIPTS_HINTS = {
   400: MALFORMED, 401: NOT_VALID, 403: "the token lacks Workers Scripts: Read on this account",
   404: "no Worker by that name on this account (check the Worker name and the Account ID)",
 };
+const BUILDS_HINTS = {
+  400: MALFORMED, 401: "the token cannot read Workers Builds — it needs Workers CI Read (a user token)", 403: "the token lacks Workers CI Read on this account",
+};
+/** What a poll notes when the Builds API refuses the token (the commit is then left to the GitHub join). */
+export const COMMIT_NEEDS_CI_READ = "commit: the token needs Workers CI Read";
+/** …and when it fails some other way. */
+export const COMMIT_UNREAD = "commit: Workers Builds did not answer — the commit is joined from GitHub when it can be";
 const ACCOUNT_HINTS = { 400: MALFORMED, 401: NOT_VALID, 403: "the token cannot read this account — it needs Workers Scripts: Read on it", 404: "no account with that ID that the token can see" };
 
 /** One request through the fixed-host fetch → parsed JSON. A non-2xx is a scrubbed refusal; anything thrown
@@ -240,20 +258,61 @@ function deployOf(raw: unknown, auth: CfAuth, worker: string): HostingDeploy | n
   };
 }
 
+/** The version a deployment serves WHOLLY: its only version, or the one at 100 % — else null (a split rollout
+ *  serves two commits; neither is "the" deploy's). */
+function servedVersion(raw: unknown): string | null {
+  const versions = record(raw).versions;
+  if (!Array.isArray(versions)) return null;
+  const whole = versions.length === 1 ? versions[0] : versions.find((v) => record(v).percentage === 100);
+  const id = str(record(whole).version_id);
+  return id && VERSION_ID.test(id) ? id : null;
+}
+
+/** The commit of the build that produced `version` — exactly ONE build with a commit, else null. */
+async function readBuildCommit(pc: ProviderContext, auth: CfAuth, version: string): Promise<{ sha: string; branch: string | null } | null> {
+  const url = `${API}/accounts/${encodeURIComponent(auth.account)}/builds/builds?version_ids=${encodeURIComponent(version)}`;
+  const body = await cfRequest(pc, auth, url, "cloudflare builds", BUILDS_HINTS);
+  const result = body.result;
+  let builds: unknown[] = [];
+  if (Array.isArray(result)) builds = result;
+  else {
+    const held = record(result).builds;
+    if (Array.isArray(held)) builds = held;
+    else if (held && typeof held === "object") builds = [record(held)[version]].filter((b) => b !== undefined);
+  }
+  const commits = builds
+    .map((b) => { const m = record(record(b).build_trigger_metadata); return { sha: str(m.commit_hash), branch: str(m.branch) }; })
+    .filter((c): c is { sha: string; branch: string | null } => !!c.sha && SHA.test(c.sha));
+  const distinct = [...new Set(commits.map((c) => c.sha.toLowerCase()))];
+  if (distinct.length !== 1) return null;
+  const branch = commits[0].branch;
+  return { sha: distinct[0], branch: branch && PLAIN_LINE.test(branch) ? branch : null };
+}
+
 /** The script's deployments → its newest ≤ 20, newest first. A body with no deployments list is refused. */
 async function readDeployments(pc: ProviderContext, auth: CfAuth, worker: string): Promise<HostingDeploy[]> {
+  return (await readDeploymentsWithVersions(pc, auth, worker)).deploys;
+}
+
+/** …with the version each one serves wholly (`servedVersion`), by deploy id. */
+async function readDeploymentsWithVersions(pc: ProviderContext, auth: CfAuth, worker: string): Promise<{ deploys: HostingDeploy[]; versions: Map<string, string> }> {
   const url = `${API}/accounts/${encodeURIComponent(auth.account)}/workers/scripts/${encodeURIComponent(worker)}/deployments`;
   const body = await cfRequest(pc, auth, url, "cloudflare deployments", SCRIPTS_HINTS);
   const list = record(body.result).deployments;
   if (!Array.isArray(list)) throw new HostingError("cloudflare deployments: the response has no deployments list");
   const seen = new Set<string>();
   const deploys: HostingDeploy[] = [];
+  const versions = new Map<string, string>();
   for (const raw of list) {
     const d = deployOf(raw, auth, worker);
-    if (d && !seen.has(d.id)) { seen.add(d.id); deploys.push(d); }
+    if (d && !seen.has(d.id)) {
+      seen.add(d.id); deploys.push(d);
+      const v = servedVersion(raw);
+      if (v) versions.set(d.id, v);
+    }
   }
   // A stable sort: two deployments of one instant keep Cloudflare's order (its first is the live one).
-  return deploys.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, DEPLOY_LIMIT);
+  return { deploys: deploys.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, DEPLOY_LIMIT), versions };
 }
 
 // ── the provider ─────────────────────────────────────────────────────────────
@@ -270,8 +329,8 @@ export const cloudflare: HostingProvider = {
     {
       method: "token",
       label: "Paste an API token",
-      howTo: "1. In the Cloudflare dashboard, open My Profile › API Tokens › Create Token › Create Custom Token.\n2. Add two permissions, both read-only: Account › Account Analytics › Read, and Account › Workers Scripts › Read.\n3. Under Account Resources, pick only the account your Workers live under.\n4. Paste the token here, and set Account ID to that account's 32-character id (Workers & Pages › Overview).\nThe token is only ever sent to api.cloudflare.com.",
-      grants: ["Account Analytics: Read on one account", "Workers Scripts: Read on that account (its Workers' deployments)"],
+      howTo: "1. In the Cloudflare dashboard, open My Profile › API Tokens › Create Token › Create Custom Token.\n2. Add two permissions, both read-only: Account › Account Analytics › Read, and Account › Workers Scripts › Read.\n3. Optional, for the commit behind each deploy: also add Account › Workers CI › Read (Workers Builds). Without it Trov finds the commit from GitHub when it can.\n4. Under Account Resources, pick only the account your Workers live under.\n5. Paste the token here, and set Account ID to that account's 32-character id (Workers & Pages › Overview).\nThe token is only ever sent to api.cloudflare.com.",
+      grants: ["Account Analytics: Read on one account", "Workers Scripts: Read on that account (its Workers' deployments)", "Optional — Workers CI: Read (the commit each deploy was built from)"],
     },
   ],
   orgConfigFields: [
@@ -282,8 +341,8 @@ export const cloudflare: HostingProvider = {
   ],
   capabilities: { deploys: true, metrics: ["requests", "errors"] },
   planNote: null,
-  // Deployments (1) + analytics (1).
-  pollCost: 2,
+  // Deployments (1) + the newest deployment's build (1) + analytics (1).
+  pollCost: 3,
   // A pasted API token is managed (and rolled or deleted) under My Profile › API Tokens.
   manageUrl(_config, method) {
     return method === "token" ? `${DASHBOARD}/profile/api-tokens` : null;
@@ -325,10 +384,25 @@ export const cloudflare: HostingProvider = {
     // the deployments list with a 403 (UNCONFIRMED: 403, not 401, is what a missing permission answers). Its traffic
     // is still read — the part shows no deploys until the token gains the permission; any other failure fails the poll.
     let deploys: HostingDeploy[] = [];
+    let versions = new Map<string, string>();
     try {
-      deploys = await readDeployments(pc, auth, worker);
+      ({ deploys, versions } = await readDeploymentsWithVersions(pc, auth, worker));
     } catch (e) {
       if (!(e instanceof HostingError && e.status === 403)) throw e;
+    }
+    // The NEWEST deployment's commit, from the build that made its version (one request). Refused or failing, it is
+    // noted and left to the GitHub join — the poll itself never fails for it.
+    const notes: string[] = [];
+    const newest = deploys[0];
+    const version = newest ? versions.get(newest.id) : undefined;
+    if (newest && version) {
+      try {
+        const commit = await readBuildCommit(pc, auth, version);
+        if (commit) { newest.sha = commit.sha; newest.branch = commit.branch; }
+      } catch (e) {
+        const refused = e instanceof HostingError && (e.status === 401 || e.status === 403 || (e.status === undefined && /authentication|forbidden|permission/i.test(e.message)));
+        notes.push(refused ? COMMIT_NEEDS_CI_READ : COMMIT_UNREAD);
+      }
     }
     const { from, to } = pollWindow(pc.now);
     const rows = await readAnalytics(pc, auth, worker, from, to, "cloudflare analytics");
@@ -337,6 +411,7 @@ export const cloudflare: HostingProvider = {
       points: hourPoints(rows, from, to),
       unavailable: WEB_UNAVAILABLE.map((u) => ({ ...u })),
       covered: { from: iso(from), to: iso(to) },
+      ...(notes.length ? { notes } : {}),
     };
   },
 };

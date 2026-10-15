@@ -77,9 +77,34 @@ describe("repoEventsFromDelivery — pull_request", () => {
   });
 });
 
-describe("repoEventsFromDelivery — deployment_status", () => {
-  it("is not captured: an environment's deploys come from its hosting provider", () => {
-    expect(repoEventsFromDelivery("deployment_status", deployStatus)).toEqual([]);
+describe("repoEventsFromDelivery — GitHub deploy signals (untagged)", () => {
+  it("captures a deployment status as an UNTAGGED deploy signal: creator, environment name, state, sha, ref, links", () => {
+    const [ev] = repoEventsFromDelivery("deployment_status", deployStatus);
+    expect(ev).toMatchObject({
+      semantic_key: "gh:deploy:7001:success", kind: "deploy", number: 7001, state: "success", name: "Sapling / staging",
+      sha: "becdbac09eaf5d7c73b9f27019c0e43c4444dd7b", ref: "becdbac09eaf5d7c73b9f27019c0e43c4444dd7b",
+      actor_login: "railway-app[bot]", url: "https://railway.com/project/3f90b930/logs", occurred_at: "2026-09-20T09:05:34Z",
+    });
+    expect(ev.env ?? null).toBeNull();
+    expect(ev.part ?? null).toBeNull();
+    expect(JSON.parse(ev.raw)).toMatchObject({ signal: "deployment", environment: "Sapling / staging", environment_url: "https://railway.com/project/3f90b930", workflow: null, status_id: 9001 });
+  });
+
+  it("keeps the workflow file of a GitHub Actions deployment, and a deployment before any status as `created`", () => {
+    const actions = { ...deployStatus, workflow: { path: ".github/workflows/deploy-jobs.yml" }, workflow_run: { id: 42 } };
+    expect(JSON.parse(repoEventsFromDelivery("deployment_status", actions)[0].raw)).toMatchObject({ workflow: ".github/workflows/deploy-jobs.yml", run_id: 42 });
+    const [created] = repoEventsFromDelivery("deployment", { action: "created", deployment: deployStatus.deployment });
+    expect(created).toMatchObject({ semantic_key: "gh:deploy:7001:created", kind: "deploy", state: "created", name: "Sapling / staging", occurred_at: "2026-09-20T09:04:47Z" });
+    expect(repoEventsFromDelivery("deployment", { action: "deleted", deployment: deployStatus.deployment })).toEqual([]);
+  });
+
+  it("captures a commit status other than canopy/* — its branches kept for the commit join; canopy/* stays a metric only", () => {
+    const status = { id: 55, sha: "a".repeat(40), context: "Vercel", state: "success", description: "Deployment has completed", target_url: "https://web-x.vercel.app",
+      branches: [{ name: "main" }, { name: "feat/x" }], created_at: "2026-09-20T09:07:00Z", updated_at: "2026-09-20T09:07:10Z", sender: { login: "vercel[bot]" } };
+    const [ev] = repoEventsFromDelivery("status", status);
+    expect(ev).toMatchObject({ semantic_key: "gh:status:55", kind: "deploy", name: "Vercel", state: "success", sha: "a".repeat(40), ref: null, actor_login: "vercel[bot]", occurred_at: "2026-09-20T09:07:10Z" });
+    expect(JSON.parse(ev.raw)).toEqual({ signal: "status", context: "Vercel", description: "Deployment has completed", branches: ["main", "feat/x"] });
+    expect(repoEventsFromDelivery("status", { ...status, context: "canopy/coverage" })).toEqual([]);
   });
 });
 

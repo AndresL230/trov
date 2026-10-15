@@ -22,7 +22,7 @@ import type { RepoRange, RepoSection, RepoTone } from "./repo";
 // ── vocabularies ────────────────────────────────────────────────────────────
 
 /** Every provider Trov knows, in the order the picker lists them. `aws` is described but not pollable yet. */
-export const HOSTING_PROVIDERS = ["cloudflare", "railway", "vercel", "render", "netlify", "fly", "aws"] as const;
+export const HOSTING_PROVIDERS = ["cloudflare", "railway", "vercel", "render", "netlify", "fly", "aws", "github"] as const;
 export type HostingProviderId = (typeof HOSTING_PROVIDERS)[number];
 export const isHostingProvider = (v: unknown): v is HostingProviderId =>
   typeof v === "string" && (HOSTING_PROVIDERS as readonly string[]).includes(v);
@@ -31,7 +31,10 @@ export const isHostingProvider = (v: unknown): v is HostingProviderId =>
  *  names they had before providers existed (stored identifiers are never renamed). */
 export const HOSTING_INTEGRATION_KIND = {
   cloudflare: "cloudflare_analytics", railway: "railway", vercel: "vercel", render: "render", netlify: "netlify", fly: "fly", aws: "aws",
-} as const satisfies Record<HostingProviderId, IntegrationKind>;
+  // `github` (repo setups, Phase A) has NO credential of its own: its deploys come from the GitHub capture, and
+  // anything it reads from GitHub goes through the org's GitHub connection (`resolveGithubCredential`).
+  github: null,
+} as const satisfies Record<HostingProviderId, IntegrationKind | null>;
 export const providerOfKind = (kind: IntegrationKind): HostingProviderId | null =>
   (Object.keys(HOSTING_INTEGRATION_KIND) as HostingProviderId[]).find((p) => HOSTING_INTEGRATION_KIND[p] === kind) ?? null;
 
@@ -140,6 +143,9 @@ export interface HostingProviderDTO {
   /** What a part on this provider needs (project id, service id, site id, app name…). */
   part_settings: HostingFieldDTO[];
   docs_url: string;
+  /** Present (true) only for a provider with NO credential of its own, read through the org's GitHub connection
+   *  (`github`): nothing to connect, rotate or test on its card — its parts are as connected as GitHub is. */
+  via_github?: true;
 }
 
 // ── Org settings › Hosting: an org's connections and parts ──────────────────

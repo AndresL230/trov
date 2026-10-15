@@ -67,6 +67,8 @@ async function effectiveConfigs(ctx: TenantContext, env: Env, s: ConnectionState
 /** A part's connection: its provider's org-wide connection, as EVERY surface says it (`hostingStatus` — the
  *  card, the checklist, the lead and Test this part read the same function). */
 function partConnection(connections: HostingConnectionDTO[], provider: HostingProvider, part: PartRow): ConnectionStatus {
+  // A provider with no credential of its own (`github`) reads through the org's GitHub connection: nothing to connect here.
+  if (provider.credential) return "connected";
   const c = connections.find((x) => x.provider === provider.id && x.scope === credentialScopeOf(provider, part)) ?? null;
   return hostingStatus(c, provider.label).state;
 }

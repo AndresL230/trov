@@ -71,7 +71,8 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // Repo setups (handoff #11, `feat/repo-setups`). Phase 0: Org settings bugs, and one place for each thing.
+  // Repo setups (handoff #11, `feat/repo-setups`). Phase 0: Org settings bugs, and one place for each thing. Phase A: apps,
+  // the GitHub provider, a commit on every deploy.
   {
     version: "Unreleased",
     date: "2026-10-15",
@@ -83,6 +84,14 @@ export const RELEASES: Release[] = [
       "A host's status reads the same on its card, on every part it runs, in the setup checklist and in the Repo dashboard. Testing a part on a host that is not connected says so, with a Connect button.",
       "Integrations is for GitHub and the other integrations; the hosting tokens are on Hosting, beside the hosts that use them.",
       "An environment's app metrics token is set in its parts' editor on Hosting, and each host's card says which parts use it.",
+      "An app deployed by GitHub Actions — or on a host Trov cannot read yet — can be a part too: pick GitHub deployments as its host and name its deployment environment, check run or workflow. Render, Railway and Fly.io are now detected from what they report to GitHub.",
+      "Every deploy shows the commit it shipped, or says it doesn't know (a host that reports none is matched to the one commit GitHub finished just before, only when there is exactly one); a failed deploy says why, a production deploy that went back to an older commit is marked as a rollback, and Vercel and Netlify previews are read with their branch.",
+    ],
+    ops: [
+      "Apply `migrations/0070_repo_apps.sql` (merging to main applies it): ADDITIVE — the `repo_apps` table with a row per existing part key (SaplingLearn's `frontend` / `backend`), and four `hosting_deploys` columns (`source`, `reason`, `sha_source`, `rolled_back_from`). No rebuild, no data removed.",
+      "Subscribe the GitHub App to deployment, release, create, workflow_job (GitHub › Developer settings › GitHub Apps › trov-by-trovlabs › Permissions & events › Subscribe to events). It already has the permissions they need (Deployments, Contents, Actions: read), so installations need not re-approve. It is already subscribed to `deployment_status` and `status`, which Trov now captures.",
+      "Optional, for Cloudflare deploys' commits: give the Cloudflare API token a third permission, Account › Workers CI › Read (it must be a USER token — My Profile › API Tokens). Without it the Cloudflare part's state says \"commit: the token needs Workers CI Read\" and the commit is matched from GitHub when it can be. UNVERIFIED: that Read (not Edit) suffices.",
+      "The hosting job's cost per part grows by one (the possible GitHub compare for a rollback), and Cloudflare, Vercel and Netlify each make one more request per poll — still inside the `:40` budget; no trigger change.",
     ],
     headsUp: [
       "Hosting tokens and app metrics tokens moved from Integrations to Hosting. Nothing was reset: every token you saved is still there.",
@@ -94,12 +103,27 @@ export const RELEASES: Release[] = [
         "`HostingSetupDTO.leftovers` and `HostingEnvironmentDTO.app_metrics`; `RepoProviderPart.connection` (the part's provider status, from `org_secrets` metadata and `org_hosting_connections` — never a value).",
         "The Hosting sample preview's Flow switcher gains \"Leftover tokens\"; a test holds the card, the part rows, the checklist and Test this part to the same status for every Flow × Stack.",
         "The part editor's app metrics token field (stored as before: `metrics_endpoint`, scoped to the environment, so the `:00` poller reads it unchanged).",
+        "Migration `0070_repo_apps`: `repo_apps` (PK `(org_id, key)`; kind Site / Service / Worker / Job / Package; watch globs; source migrated / manual / suggested), a row per existing part key; `hosting_deploys.source` / `reason` / `sha_source` / `rolled_back_from`",
+        "`src/repo/apps.ts`: `listRepoApps(ctx, repo?)` (synthesises an app at the primary repo's root for a part key with no row) and the admin writers `putRepoApp` / `deleteRepoApp`, audited `app.set` / `app.delete`; `shared/repo-apps-core.ts` `RepoApp`",
+        "The `github` hosting provider (`src/hosting/providers/github.ts`): GitHub deployments, NO credential of its own (`credential: \"github_app\"`, `via_github` on the DTO, always live in `hostingStatus`), `pollCost` 0, roles web + service; exactly one of a deployment environment, a check run (app + name) or a workflow file (`checkSettings`)",
+        "`src/hosting/github-deploys.ts`: a `github` part's deploys from the webhook capture — only through the part's own setting, on the environment's branch (`signalMatchesPart`)",
+        "`src/hosting/sha-join.ts`: after a poll, a deploy with no sha takes the ONE commit whose GitHub check / run / deployment / status finished on the environment's branch in the 10 minutes before it (`sha_source = 'joined'`); none or several leave it NULL",
+        "`src/hosting/rollback.ts`: a new production `ready` sha costs ONE GitHub compare (previous...new) through `resolveGithubCredential`; `behind` sets `rolled_back_from` — on the poll path and the webhook path",
+        "`src/hosting/deploy-store.ts`: the `hosting_deploys` upsert, shared by the poll and the capture (secret-free, so the webhook may call it)",
+        "Cloudflare reads the newest deployment's commit from the Workers Builds API (`/builds/builds?version_ids=`) — `pollCost` 3; refused, the poll notes it (`PollResult.notes`) and the join takes over",
+        "Tests: `test/repo-apps.test.ts`, `test/hosting.provider.github.test.ts`, `test/hosting.github-deploys.test.ts`, `test/hosting.sha-join.test.ts`, `test/hosting.previews.test.ts`",
       ],
       changed: [
         "`listConnections` returns ONE org-wide row per provider; a scoped hosting credential is a leftover, never a connection, never counted.",
         "Org settings › Hosting: the environment tiles are gone — a compact read-only parts list with Edit stays until Repositories › Apps; a card lists what uses it (\"Backend in Staging and Production\").",
         "`POST /hosting/:provider/test` on a provider that is not connected answers `{ ok: false, detail: \"<Provider> isn't connected.\" }` without probing (was 404 \"No secret is set\").",
         "Org settings › Integrations lists GitHub and the non-hosting integrations only, with one line to Hosting; Environments links to Hosting for what each one runs.",
+        "GitHub deploy signals are captured again, untagged: `deployment` / `deployment_status` deliveries and every commit status other than `canopy/*` become `repo_events` kind `deploy` with `raw.signal` (`deployment` | `status`), kept 90 days (`pruneRepoCapture`); workflow runs keep their `path`, check runs their `output_title`",
+        "`detect.ts` also reads deployments by creator login and commit statuses by context (`Vercel`, `netlify/…`, `Render`, `Workers Builds`), still narrowly",
+        "Failure reasons: Netlify `error_message`, Vercel `errorMessage` (else the alias error), Render's failed status, a GitHub deployment's description or a check's `output.title` — scrubbed before the cut to 140",
+        "Vercel and Netlify production parts read their previews too (a second list each — `pollCost` 2); the Repo dashboard's deploy strips leave a production part's previews out",
+        "The webhook accepts `release`, `create` and `workflow_job` (verified, acknowledged, not captured yet)",
+        "A hosting unit costs its provider's `pollCost` + 1 (the rollback compare)",
       ],
       fixed: [
         "Railway's old per-environment project tokens showed as two Connected \"workspace token\" cards while the org-wide connection the Backend parts need did not exist.",

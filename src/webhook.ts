@@ -10,6 +10,8 @@ import { orgEnvironments } from "./repo/config";
 import { putMetric } from "./repo/store";
 import { fillFailedJob, refreshDrift, scrubbedMessage } from "./repo/github";
 import { mirrorIssue } from "./tools/ticket-mirror";
+import { writeGithubDeploys } from "./hosting/github-deploys";
+import { checkRollback } from "./hosting/rollback";
 
 // The GitHub webhook is Trov's THIRD auth class. Unlike the session cookie
 // (humans) and the bearer token (agents), a delivery authenticates itself by an
@@ -293,13 +295,19 @@ async function progressSeam(ctx: TenantContext, payload: unknown): Promise<void>
 
 /** Deliveries the My Work capture (`events`) reads. */
 const WORK_EVENT_NAMES = ["pull_request", "issues"];
-/** Deliveries the repo dashboard capture (`repo_events`) reads. `status` (Task
- *  14) is a sibling arm: it feeds `repo_metrics`, not `repo_events` — see the
- *  branch below. GitHub only delivers the ones the repo's webhook is SUBSCRIBED
- *  to. `deployment_status` is not read any more: an environment's deploys come
- *  from its hosting provider (src/hosting/), so such a delivery is verified and
- *  ignored like any other surface we do not capture. */
-export const REPO_EVENT_NAMES: readonly string[] = ["pull_request", "push", "pull_request_review", "check_run", "workflow_run", "status"];
+/** Deliveries the repo dashboard capture (`repo_events`) reads. GitHub only
+ *  delivers the ones the repo's webhook (or the App) is SUBSCRIBED to. `status`
+ *  feeds BOTH arms: a `canopy/*` context is a CI metric (`repo_metrics`, Task 14)
+ *  and any other context a GitHub deploy signal; `deployment` /
+ *  `deployment_status` are deploy signals too — captured untagged as `repo_events`
+ *  kind `deploy` (src/repo/capture.ts, repo setups Phase A). */
+export const REPO_EVENT_NAMES: readonly string[] = [
+  "pull_request", "push", "pull_request_review", "check_run", "workflow_run", "status", "deployment_status", "deployment",
+];
+
+/** Deliveries the GitHub App is subscribed to for LATER phases of repo setups (`release` / `create` — releases,
+ *  Phase F; `workflow_job` — CI per app, Phase E): verified, acknowledged and not captured yet. */
+export const LATER_EVENT_NAMES: readonly string[] = ["release", "create", "workflow_job"];
 
 // ---------------------------------------------------------------------------
 // The capture of ONE VERIFIED delivery, for the org it was verified for. The
@@ -345,8 +353,8 @@ export async function captureDelivery(
   const forWork = WORK_EVENT_NAMES.includes(eventName);
   const forRepo = REPO_EVENT_NAMES.includes(eventName);
   if (!forWork && !forRepo) {
-    // Verified, but not a surface we capture (ping, star, …).
-    return json({ ok: true, ignored: true });
+    // Verified, but not a surface we capture (ping, star, …) — or one a later phase will (`LATER_EVENT_NAMES`).
+    return json({ ok: true, ignored: true, ...(LATER_EVENT_NAMES.includes(eventName) ? { later: true } : {}) });
   }
 
   let payload: unknown = null;
@@ -415,11 +423,11 @@ export async function captureDelivery(
       // drift-refresh trigger as well as the event derivation itself.
       const cfgs = await orgEnvironments(ctx);
       if (eventName === "status") {
-        // A SIBLING arm, not a row through repoEventsFromDelivery/ingestRepoEvent:
-        // a status produces repo_metrics points, never a repo_events row. Most
-        // statuses (Railway's, CodeRabbit's) carry no canopy/* context and cost
-        // one cheap parse in metricsFromStatus, which returns no metrics AND no
-        // drop reason for them. metricsFromStatus stays PURE (no console) — it
+        // A `canopy/*` status produces repo_metrics points here; any OTHER context
+        // (Railway's, CodeRabbit's, Vercel's) is an untagged deploy signal through
+        // repoEventsFromDelivery below, and costs one cheap parse in
+        // metricsFromStatus, which returns no metrics AND no drop reason for it.
+        // metricsFromStatus stays PURE (no console) — it
         // only reports WHY a canopy/* status was dropped; this is the one place
         // that logs it, once, naming the context and reason (never the raw
         // description beyond ~40 chars — metricsFromStatus already truncates it).
@@ -430,11 +438,19 @@ export async function captureDelivery(
         for (const m of outcome.metrics) {
           if (await putMetric(ctx, m)) repo.captured++; else repo.unchanged++;
         }
-      } else {
+      }
+      {
+        // Every arm's repo_events rows — for a `status`, a non-`canopy/*` context as an untagged deploy signal.
         for (const ev of repoEventsFromDelivery(eventName, payload)) {
           const res = await ingestRepoEvent(ctx, ev);
           if (res.outcome !== "written") { repo.unchanged++; continue; }
           repo.captured++;
+          // A `github` part's deploys come from these signals — ONLY through the part's own setting
+          // (src/hosting/github-deploys.ts). Its own failure never costs the capture.
+          if (ev.kind === "deploy" || ev.kind === "check" || ev.kind === "run") {
+            await writeGithubDeploys(ctx, ev, Date.now(), async (part, id) => { await checkRollback(ctx, part, id, gh); })
+              .catch((e) => console.error("repo capture: github deploys", scrubbedMessage(e, token ?? ""), `org=${ctx.orgId}`));
+          }
           if (ev.kind === "run" && (ev.state === "failure" || ev.state === "timed_out") && ev.number) {
             const ghOpts = await gh();
             if (ghOpts) {

@@ -381,7 +381,12 @@ Nothing 500s.
    and deploy (merging to `main` deploys, and applies `0043_github_app`).
 3. **On GitHub, in the App's settings:** Webhook → Active, URL `https://trov.dev/webhook/github/app`,
    the secret you already set; subscribe to Pull request, Pull request review, Issues, Push, Deployment
-   status, Check run, Workflow run, Status. Leave `https://trov.dev/auth/callback` as the FIRST callback
+   status, Check run, Workflow run, Status — and (repo setups, Phase A) Deployment, Release, Create and
+   Workflow job. The App's permissions already cover all twelve (Deployments, Contents, Actions, Checks,
+   Statuses: read), so adding the last four needs no re-approval by installations. `deployment` /
+   `deployment_status` and every non-`canopy/*` status are captured as untagged GitHub deploy signals
+   (`repo-dashboard.md`); `release` / `create` / `workflow_job` are verified and acknowledged and not captured
+   yet (`LATER_EVENT_NAMES` in `src/webhook.ts` — releases and CI per app come in later phases). Leave `https://trov.dev/auth/callback` as the FIRST callback
    URL (GitHub returns there after an install) and "Request user authorization (OAuth) during
    installation" on.
 4. **In Trov:** sign in as SaplingLearn's owner → Org settings › Repositories › **Connect with GitHub** →

@@ -84,7 +84,8 @@ function fromCheckRun(p: Obj): RepoEvent[] {
     kind: "check", number: id, sha, ref, name,
     state: action === "completed" ? (str(cr.conclusion) ?? "neutral") : "pending",
     url: str(cr.details_url),
-    raw: JSON.stringify({ app: str(obj(cr.app)?.slug), status: str(cr.status) }),
+    // `output_title`: a failed check's one-line summary — the failure reason of a `github` part's deploy.
+    raw: JSON.stringify({ app: str(obj(cr.app)?.slug), status: str(cr.status), output_title: str(obj(cr.output)?.title)?.split(/\r?\n/)[0].slice(0, 200) ?? null }),
     provenance: "webhook", occurred_at: at,
   }];
 }
@@ -100,7 +101,90 @@ function fromWorkflowRun(p: Obj): RepoEvent[] {
     semantic_key: `gh:run:${id}:${attempt}`,
     kind: "run", number: id, name: str(run.name), ref: str(run.head_branch), sha: str(run.head_sha),
     state: str(run.conclusion) ?? "neutral", actor_login: str(obj(run.actor)?.login), url: str(run.html_url), count: attempt,
-    raw: JSON.stringify({ event: str(run.event), started_at: str(run.run_started_at) }),
+    // `path` (`.github/workflows/<file>.yml`) is what a `github` part's workflow setting names (src/hosting/github-deploys.ts).
+    raw: JSON.stringify({ event: str(run.event), started_at: str(run.run_started_at), path: str(run.path) }),
+    provenance: "webhook", occurred_at: at,
+  }];
+}
+
+// ── GitHub deploy signals (repo setups, Phase A) ─────────────────────────────
+// A deployment, a deployment status and a commit status other than `canopy/*` are captured UNTAGGED — `env`
+// and `part` NULL — as the existing kind `deploy`, `raw.signal` saying which (`deployment` | `status`). They
+// say what GitHub saw: who created it (`render[bot]`, `railway-app[bot]`, `vercel[bot]`, `github-actions[bot]`),
+// the environment name exactly as the host spells it (`Production – web`, `web / production`, `main - api`), the
+// state, the sha, the ref, a description, the log / target link and — for a GitHub Actions deployment — the
+// workflow file. They feed src/hosting/detect.ts, the `github` provider's parts (src/hosting/github-deploys.ts,
+// ONLY through a matching part setting) and the commit join (src/hosting/sha-join.ts). Kept 90 days
+// (`pruneRepoCapture`).
+
+/** A GitHub description: one line, ≤ 200 characters. */
+const line200 = (v: unknown): string | null => {
+  const s = str(v);
+  if (!s) return null;
+  const one = s.split(/\r?\n/)[0].replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+  return one || null;
+};
+
+/** `deployment_status`: one row per (deployment, state). The deployment's own `ref` may be a branch (Render,
+ *  Actions) or a sha (Vercel, Railway) — stored as given; the sha is the deployment's `sha`. */
+function fromDeploymentStatus(p: Obj): RepoEvent[] {
+  const st = obj(p.deployment_status);
+  const dep = obj(p.deployment);
+  const id = num(dep?.id);
+  const state = str(st?.state);
+  const at = str(st?.updated_at) ?? str(st?.created_at);
+  const environment = str(st?.environment) ?? str(dep?.environment);
+  if (!st || !dep || id === null || !state || !at || !environment) return [];
+  return [{
+    semantic_key: `gh:deploy:${id}:${state}`,
+    kind: "deploy", number: id, sha: str(dep.sha), ref: str(dep.ref), state, name: environment.slice(0, 200),
+    actor_login: str(obj(dep.creator)?.login), title: line200(st.description), url: str(st.log_url) ?? str(st.target_url),
+    raw: JSON.stringify({
+      signal: "deployment", environment, environment_url: str(st.environment_url), description: line200(st.description),
+      workflow: str(obj(p.workflow)?.path), run_id: num(obj(p.workflow_run)?.id), status_id: num(st.id),
+      deployment_created_at: str(dep.created_at), task: str(dep.task),
+    }),
+    provenance: "webhook", occurred_at: at,
+  }];
+}
+
+/** `deployment` (created): the deployment before any status — state `created`. */
+function fromDeployment(p: Obj): RepoEvent[] {
+  const dep = obj(p.deployment);
+  if (!dep || str(p.action) !== "created") return [];
+  const id = num(dep.id);
+  const at = str(dep.created_at);
+  const environment = str(dep.environment);
+  if (id === null || !at || !environment) return [];
+  return [{
+    semantic_key: `gh:deploy:${id}:created`,
+    kind: "deploy", number: id, sha: str(dep.sha), ref: str(dep.ref), state: "created", name: environment.slice(0, 200),
+    actor_login: str(obj(dep.creator)?.login), title: line200(dep.description), url: null,
+    raw: JSON.stringify({
+      signal: "deployment", environment, environment_url: null, description: line200(dep.description),
+      workflow: str(obj(p.workflow)?.path), run_id: num(obj(p.workflow_run)?.id), status_id: null,
+      deployment_created_at: at, task: str(dep.task),
+    }),
+    provenance: "webhook", occurred_at: at,
+  }];
+}
+
+/** A commit status whose context is NOT `canopy/*` (those are CI metrics — `metricsFromStatus`): `Vercel`,
+ *  `netlify/<site>/deploy-preview`, `Render`, a CI's own. One row per status id. GitHub lists up to 10 of the
+ *  branches the commit is on (`branches`) — kept in `raw` for the commit join; `ref` stays NULL. */
+function fromStatus(p: Obj): RepoEvent[] {
+  const context = str(p.context);
+  const id = num(p.id);
+  const sha = str(p.sha);
+  const state = str(p.state);
+  const at = str(p.updated_at) ?? str(p.created_at);
+  if (!context || context.startsWith("canopy/") || id === null || !sha || !state || !at) return [];
+  const branches = (Array.isArray(p.branches) ? p.branches : []).map((b) => str(obj(b)?.name)).filter((b): b is string => b !== null).slice(0, 10);
+  return [{
+    semantic_key: `gh:status:${id}`,
+    kind: "deploy", number: id, sha, ref: null, state, name: context.slice(0, 200),
+    actor_login: str(obj(p.sender)?.login), title: line200(p.description), url: str(p.target_url),
+    raw: JSON.stringify({ signal: "status", context, description: line200(p.description), branches }),
     provenance: "webhook", occurred_at: at,
   }];
 }
@@ -205,9 +289,10 @@ export function metricsFromStatus(payload: unknown, envs: RepoEnvConfig[]): Stat
   return { metrics: [{ metric: spec.metric, env: "", part: "", value, at }], dropped: null };
 }
 
-/** A `deployment_status` is no longer captured: an environment's deploys come from its hosting
- *  provider (src/hosting/, `hosting_deploys`), not from GitHub deployments matched to a configured
- *  environment name. Rows captured before 0057 (`kind = 'deploy'`) stay as they are. */
+/** One verified delivery → its `repo_events` rows. A deployment / deployment status / non-`canopy/*` commit
+ *  status is a GitHub deploy SIGNAL, captured untagged (above) — never matched to an environment here: an
+ *  environment's deploys come from its hosting provider (src/hosting/, `hosting_deploys`), or, for a `github`
+ *  part, from a signal that matches the part's own setting (src/hosting/github-deploys.ts). */
 export function repoEventsFromDelivery(eventName: string, payload: unknown): RepoEvent[] {
   const p = obj(payload);
   if (!p) return [];
@@ -217,6 +302,9 @@ export function repoEventsFromDelivery(eventName: string, payload: unknown): Rep
     case "check_run": return fromCheckRun(p);
     case "workflow_run": return fromWorkflowRun(p);
     case "pull_request_review": return fromReview(p);
+    case "deployment_status": return fromDeploymentStatus(p);
+    case "deployment": return fromDeployment(p);
+    case "status": return fromStatus(p);
     default: return [];
   }
 }

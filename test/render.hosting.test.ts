@@ -826,7 +826,8 @@ describe("house rules", () => {
 });
 
 describe("ONE status, everywhere (repo-setups Phase 0)", () => {
-  const available = HOSTING_SAMPLE_PROVIDERS.filter((p) => p.status === "available");
+  // A provider with no credential of its own (`via_github`) has no card and no connection: its own test is test/hosting.provider.github.test.ts.
+  const available = HOSTING_SAMPLE_PROVIDERS.filter((p) => p.status === "available" && !p.via_github);
   const cardState = (html: string, id: HostingProviderId): string | null => new RegExp(`data-org-hosting-conn="${id}:" data-state="([a-z_]+)"`).exec(html)?.[1] ?? null;
 
   // GUARD 2: for every Flow × Stack the sample preview can show, the provider's card, every part row on it, the

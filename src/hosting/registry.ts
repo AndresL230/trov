@@ -13,8 +13,9 @@ import { render } from "./providers/render";
 import { netlify } from "./providers/netlify";
 import { fly } from "./providers/fly";
 import { aws } from "./providers/aws";
+import { github } from "./providers/github";
 
-export const PROVIDERS: Readonly<Record<HostingProviderId, HostingProvider>> = { cloudflare, railway, vercel, render, netlify, fly, aws };
+export const PROVIDERS: Readonly<Record<HostingProviderId, HostingProvider>> = { cloudflare, railway, vercel, render, netlify, fly, aws, github };
 
 export const providerOf = (id: HostingProviderId): HostingProvider => PROVIDERS[id];
 
@@ -51,6 +52,7 @@ export function providerDTO(p: HostingProvider, env: unknown): HostingProviderDT
     org_config_fields: p.orgConfigFields.map(fieldDTO),
     part_settings: p.partSettings.map(fieldDTO),
     docs_url: p.docsUrl,
+    ...(p.credential === "github_app" ? { via_github: true as const } : {}),
   };
 }
 

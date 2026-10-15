@@ -310,6 +310,7 @@ export function createHostingActions(host: HostingHost): HostingActions {
     if (!o || !d || !f || !p || !tokenFormOk(p, f)) return;
     if (f.mode !== "config" && secretDraft.trim() === "") return;
     const kind = HOSTING_INTEGRATION_KIND[p.id];
+    if (!kind) return; // a provider with no credential of its own (`via_github`) has no token form
     const word = tokenWord(p);
     const ck = connKey(f);
     const config: Record<string, string> = {};

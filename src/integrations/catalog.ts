@@ -106,11 +106,12 @@ interface Slot { kind: IntegrationKind; scope: string; scope_label: string | nul
 async function slots(ctx: TenantContext, origin: string, secrets: SecretMeta[]): Promise<Slot[]> {
   const [repos, envs, parts] = [await listRepoRows(ctx), await listEnvironments(ctx), await listAllParts(ctx)];
   const used = new Set(parts.map((p) => p.provider));
-  const hosting = HOSTING_PROVIDERS.filter((id) => used.has(id));
+  // A provider with no credential of its own (`github`, repo setups) has no slot.
+  const hosting = HOSTING_PROVIDERS.flatMap((id) => { const kind = HOSTING_INTEGRATION_KIND[id]; return used.has(id) && kind ? [kind] : []; });
   const out: Slot[] = [
     { kind: "github_token", scope: "", scope_label: null, webhook_url: null, expected: true },
     ...repos.map((r): Slot => ({ kind: "github_webhook", scope: r.id, scope_label: r.repo_full_name, webhook_url: webhookUrl(origin, r.id), expected: true })),
-    ...hosting.map((id): Slot => ({ kind: HOSTING_INTEGRATION_KIND[id], scope: "", scope_label: null, webhook_url: null, expected: true })),
+    ...hosting.map((kind): Slot => ({ kind, scope: "", scope_label: null, webhook_url: null, expected: true })),
     ...envs.map((e): Slot => ({ kind: "metrics_endpoint", scope: e.key, scope_label: e.label, webhook_url: null, expected: true })),
   ];
   for (const s of secrets) {

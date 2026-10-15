@@ -723,7 +723,9 @@ const isHttps = (u: string | null): u is string => {
  */
 function partConnectionOf(info: PartInfo, reads: HostingReads, legacyOrg: boolean): RepoProviderPart["connection"] {
   const label = info.provider?.label ?? info.part.provider;
-  const secret = reads.secrets.get(HOSTING_INTEGRATION_KIND[info.part.provider]) ?? null;
+  // A provider with no credential of its own (`github`) reads through the org's GitHub connection: always live.
+  if (info.provider?.credential === "github_app") return hostingStatus(null, label, true).state;
+  const secret = reads.secrets.get(HOSTING_INTEGRATION_KIND[info.part.provider] ?? "") ?? null;
   const row = reads.connections.get(info.part.provider) ?? null;
   const status = storedConnectionStatus(secret, row);
   const reason = status === "revoked" && isHostingRevokedReason(row?.revoked_reason) ? hostingRevokedReasonText(row!.revoked_reason, label) : null;
@@ -804,7 +806,7 @@ function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingRe
     let consoleUrl: string | null = null;
     try {
       // Provider code, on the render path: a throw or a non-https answer is simply no link.
-      const u = provider?.consoleUrl({ settings: part.settings }, reads.config.get(HOSTING_INTEGRATION_KIND[part.provider]) ?? {}) ?? null;
+      const u = provider?.consoleUrl({ settings: part.settings }, reads.config.get(HOSTING_INTEGRATION_KIND[part.provider] ?? "") ?? {}) ?? null;
       consoleUrl = isHttps(u) ? u : null;
     } catch { consoleUrl = null; }
 
