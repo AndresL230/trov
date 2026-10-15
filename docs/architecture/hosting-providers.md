@@ -157,15 +157,20 @@ is the checklist's next step; the checklist the server generated (steps to do li
 **Environments** — a tile per environment side by side (`.cnpy-hx-envs`), its parts as `openRow`s (the host's logo,
 label, role as plain text, a status mark; host · identifying setting as metadata; Edit as the one action; a failed last poll
 and a test's answer always visible; key, settings, last poll, the provider's "not available" reasons, Open in
-<provider>, Test this part and Remove behind the row); **Providers** — ONE list in registry order (Cloudflare, Railway,
-Vercel, Render, Netlify, Fly.io; that Cloudflare and Railway keep their part in the environment's own fields is a
-storage detail the screen never shows), each with its logo (`web/src/host-logos.ts`, Simple Icons, CC0), one row per
-connection (or one not-connected row; Railway, whose token is per environment, has a row that opens like the others
-with "Add a Railway part" as its action), **Later** — AWS, described and disabled. A row says NOTHING about how a host
-connects (no "Recommended" / "Paste a…" hint, and every button reads "Connect <host>"): which method a host offers is
-not a reason to pick it. A connected row's one action is Test connection; behind it: what it is, what it can do (`grants`), "Sent only to <api_hosts>", Manage on
-<provider>, Rotate / Edit settings, Connect a different account, and Disconnect as quiet text. An install / OAuth
-connection folds its paste-a-token form under a quiet "Manual connection" row (the GitHub App's pattern).
+<provider>, Test this part and Remove behind the row); **Providers** — ONE grid of cards (`.cnpy-hx-cards`, two a row, one at
+phone width) in registry order (Cloudflare, Railway, Vercel, Render, Netlify, Fly.io; that Cloudflare and Railway keep
+their part in the environment's own fields is a storage detail the screen never shows), then **Later** — AWS. A card is
+NOT a dropdown: it shows its logo (`web/src/host-logos.ts`, Simple Icons, CC0), name and status, the metadata (how it is
+connected, how many parts use it), the provider's summary and plan note, what Trov reads (`capabilityChips`), a last
+error or a test's answer — and ONE button at its foot, one width on every card: **Connect** (the provider's own dialog:
+its install / OAuth confirmation, or the token form), **Manage** once connected, **Add part** for Railway (its token is
+per environment). Nothing on a card says how a host connects (no "Recommended" / "Paste a…" hint): which method a host
+offers is not a reason to pick it. **Manage** opens a dialog (`manageModal`, `h.manage`) with everything else: when and
+by whom it was connected, what uses it, its settings, what it can do (`grants`), "Sent only to <api_hosts>", Test
+connection, Manage on <provider>, Connect a different account, Rotate / Edit settings, Disconnect as quiet text (it
+closes the dialog under the page's confirmation), and — for an install / OAuth connection — a quiet "Manual connection"
+block with the paste-a-token form (the GitHub App's pattern). Saving a token returns to the Manage dialog, on Test
+connection.
 
 Three dialogs, each a root-level `data-overlay` (so a keystroke patches it — Org settings is `data-morph`), one at
 a time, Escape closes, Tab stays inside, focus returns to the control that opened it:

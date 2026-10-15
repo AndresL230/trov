@@ -9,7 +9,7 @@ import mainSrc from "../web/src/main.ts?raw";
 import hostingSrc from "../web/src/hosting.ts?raw";
 import { orgSettingsView, orgOverlays, orgTabBar, initialOrgUi, orgTabsFor, effectiveOrgTab, orgConfirmCopy, orgDropdowns, type OrgUi } from "../web/src/org-settings";
 import {
-  hostingNoticeCopy, hostingTab, partEditorModal, connectModal, tokenModal, partDraftProblems, fieldOptions, unavailableLines, connectionStatus, lostOnProvider,
+  hostingNoticeCopy, hostingTab, partEditorModal, connectModal, tokenModal, manageModal, partDraftProblems, fieldOptions, unavailableLines, connectionStatus, lostOnProvider,
   shownDetections, tokenWord, sentOnlyTo, connectionsFor, hostingTodo, tokenFormOk, initialHostingUi, HOSTING_SAMPLE_KEYS,
   HOSTING_ENVS_EMPTY, HOSTING_PARTS_EMPTY, envTilesShape, partRowsShape,
   type HostingUi, type PartDraft, type TokenForm,
@@ -40,9 +40,12 @@ const rowOf = (html: string, marker: string): string => {
   const at = html.indexOf(marker);
   expect(at, marker).toBeGreaterThan(-1);
   const start = html.lastIndexOf("<li", at);
-  const next = html.indexOf('<li class="cnpy-xrow"', at);
+  const next = html.indexOf('<li class="cnpy-', at);
   return html.slice(start, next > -1 ? next : html.length);
 };
+/** The Manage dialog of one connection (`<provider>:<scope>`). */
+const manage = (data: HostingSetupDTO, ck: string, over: Partial<HostingUi> = {}): string =>
+  manageModal(data, { ...initialHostingUi(), setup: { status: "ok", data }, manage: ck, ...over });
 const draft = (over: Partial<PartDraft> = {}): PartDraft => ({ env: "staging", key: null, keyDraft: "site", label: "", provider: "vercel", role: "web", settings: { project: "acme-site" }, saving: false, error: null, errorField: null, ...over });
 
 describe("Hosting is an admin's tab of Org settings", () => {
@@ -246,54 +249,75 @@ describe("the tab, state by state (the sample payloads)", () => {
 });
 
 describe("providers and their connections", () => {
-  it("lists the catalogue in ONE Providers list (Cloudflare and Railway beside the rest, never a Legacy group); AWS as later", () => {
+  it("lists the catalogue as ONE grid of cards (Cloudflare and Railway beside the rest, never a Legacy group); AWS as later", () => {
     const html = tab(HOSTING_SAMPLE_MIXED);
     const group = (key: string) => { const a = html.indexOf(`data-org-group="${key}"`); const b = html.indexOf("data-org-group=", a + 1); return html.slice(a, b > -1 ? b : html.length); };
     const conns = (part: string) => [...part.matchAll(/data-org-hosting-conn="([^"]+)" data-state="([^"]+)"/g)].map((m) => `${m[1]} ${m[2]}`);
     expect(conns(group("hosting-providers"))).toEqual(["cloudflare: connected", "railway:staging connected", "vercel: connected", "render: error", "netlify: not_connected", "fly: connected"]);
+    expect(group("hosting-providers")).toContain('<ul class="cnpy-hx-cards">');
     expect(html).not.toContain('data-org-group="hosting-legacy"');
     expect(html).not.toContain(">Legacy<");
+    // Cards, not dropdowns: nothing on a provider opens in place.
+    expect(group("hosting-providers")).not.toContain("orgRowToggle");
     expect(conns(group("hosting-later"))).toEqual(["aws: later"]);
     expect(group("hosting-later")).toContain("Coming later");
-    expect(group("hosting-later")).not.toContain("orgHxConnect");
+    const aws = rowOf(html, 'data-org-hosting-conn="aws:"');
+    expect(aws.slice(0, aws.indexOf("</li>"))).not.toContain("<button");
     expect(html).toContain("5 of 6 connected");
-    // On a new org every provider still has a row to connect from — except Railway, whose token belongs to an environment.
+    // On a new org every provider still has a card to connect from — Railway's says its token belongs to an environment.
     const fresh = tab(HOSTING_SAMPLES.no_parts);
     for (const id of ["vercel", "render", "netlify", "fly", "cloudflare"]) expect(fresh).toContain(`data-org-hosting-conn="${id}:" data-state="not_connected"`);
-    expect(fresh).toContain('data-org-hosting-conn="railway:" data-state="unused"');
-    // Railway's row opens like every other one, and its one action is adding the part its token belongs to.
-    const railway = rowOf(tab(HOSTING_SAMPLES.no_parts, {}, ["hx:railway:unused"]), 'data-org-hosting-conn="railway:"');
-    expect(railway).toContain('class="cnpy-xrow" data-open="1"');
+    const railway = rowOf(fresh, 'data-org-hosting-conn="railway:"');
+    expect(railway).toContain('data-state="unused"');
     expect(railway).toMatch(/data-act="orgHxPartNew" data-arg="[a-z0-9_-]+\|railway"[^>]*>Add part</);
     expect(railway).toContain("per environment: add a Railway part to an environment");
     expect(connectionsFor(HOSTING_SAMPLES.no_parts, provider("railway"))).toEqual([]);
   });
 
-  it("a connected row: how it is connected, who uses it, one quiet Test connection; the rest behind the row", () => {
-    const html = tab(HOSTING_SAMPLE_MIXED, {}, ["hx:vercel:", "hx:fly:"]);
+  it("a card shows what the host is and what Trov reads from it, without opening anything", () => {
+    const html = tab(HOSTING_SAMPLES.no_parts);
+    const netlify = rowOf(html, 'data-org-hosting-conn="netlify:"');
+    expect(netlify).toContain('data-hx-glyph="netlify"');                     // the logo
+    expect(netlify).toContain(provider("netlify").summary.slice(0, 40));
+    expect(netlify).toContain("Netlify publishes no usage or analytics API"); // the plan note, on the card
+    expect(netlify).toContain("data-hx-caps");
+    expect(netlify).not.toContain("cnpy-xrow");                             // no row to open
+  });
+
+  it("a connected card: how it is connected and who uses it, and ONE Manage button; the rest is in the Manage dialog", () => {
+    const html = tab(HOSTING_SAMPLE_MIXED);
     const vercel = rowOf(html, 'data-org-hosting-conn="vercel:"');
     expect(vercel).toContain("Vercel <span");
     expect(vercel).toContain("&middot; Acme</span>");
     expect(vercel).toContain(">Connected<");
-    expect(vercel).toContain("Installed &middot; used by 2 parts &middot; connected by andres");
-    expect(vercel).toContain('data-act="orgHxTest" data-arg="vercel:"');
-    expect(vercel).toContain("Used by Staging › Web app and Production › Web app.");
-    expect(vercel).toMatch(/href="https:\/\/vercel\.com\/acme\/~\/integrations"[^>]*>Manage on Vercel/);
-    expect(vercel).toContain("Connect a different account");
-    expect(vercel).toContain("Sent only to api.vercel.com.");
-    expect(vercel).toContain("Projects: Read — on the projects you pick");
-    expect(vercel).toMatch(/data-act="orgConfirm" data-arg="hosting:vercel:"[^>]*class="cnpy-org-danger"/);
-    expect(vercel).not.toContain(">Rotate<");                                // an install has no token to rotate
-    const fly = rowOf(html, 'data-org-hosting-conn="fly:"');
+    expect(vercel).toContain("Installed &middot; used by 2 parts");
+    expect(vercel).toMatch(/data-act="orgHxManage" data-arg="vercel:"[^>]*>Manage</);
+    expect(vercel).not.toContain("orgHxTest");
+    expect(vercel).not.toContain("orgConfirm");
+    const dlg = manage(HOSTING_SAMPLE_MIXED, "vercel:");
+    expect(dlg).toContain('data-overlay="org-hx-manage"');
+    expect(dlg).toContain('role="dialog"');
+    expect(dlg).toContain('data-act="orgHxTest" data-arg="vercel:"');
+    expect(dlg).toContain("Connected by andres");
+    expect(dlg).toContain("Used by Staging › Web app and Production › Web app.");
+    expect(dlg).toMatch(/href="https:\/\/vercel\.com\/acme\/~\/integrations"[^>]*>Manage on Vercel/);
+    expect(dlg).toContain("Connect a different account");
+    expect(dlg).toContain("Sent only to api.vercel.com.");
+    expect(dlg).toContain("Projects: Read — on the projects you pick");
+    expect(dlg).toMatch(/data-act="orgConfirm" data-arg="hosting:vercel:"[^>]*class="cnpy-org-danger"/);
+    expect(dlg).not.toContain(">Rotate<");                                // an install has no token to rotate
+    const fly = manage(HOSTING_SAMPLE_MIXED, "fly:");
     expect(fly).toContain("Read-only token &bull;&bull;&bull;&bull;Q2xk");     // only ever the last four
     expect(fly).toContain(">Rotate<");
     expect(fly).toContain("Organization slug: <code");
     expect(fly).toContain("Read-only access to one Fly.io organization");
     expect(fly).toContain("Sent only to api.machines.dev and api.fly.io.");
+    expect(manage(HOSTING_SAMPLE_MIXED, "nope:")).toBe("");
   });
 
-  it("a connection in error shows its last error without opening the row; a test's answer shows there too", () => {
-    const html = tab(HOSTING_SAMPLE_MIXED, { tests: { "render:": { status: "done", ok: false, detail: "render service 401: Unauthorized" }, "fly:": { status: "done", ok: true, detail: "Fly.io answered for app acme-worker (deployed)." }, "vercel:": { status: "running" } } });
+  it("a connection in error shows its last error on the card; a test's answer shows on the card and in the dialog", () => {
+    const tests = { "render:": { status: "done", ok: false, detail: "render service 401: Unauthorized" }, "fly:": { status: "done", ok: true, detail: "Fly.io answered for app acme-worker (deployed)." }, "vercel:": { status: "running" } } as HostingUi["tests"];
+    const html = tab(HOSTING_SAMPLE_MIXED, { tests });
     const render = rowOf(html, 'data-org-hosting-conn="render:"');
     expect(render).toContain(">Error<");
     expect(render).toContain("data-org-lasterror");
@@ -301,45 +325,43 @@ describe("providers and their connections", () => {
     expect(render).toMatch(/role="status"[^>]*data-org-test="failed"/);
     expect(render).toContain("Test failed.");
     expect(rowOf(html, 'data-org-hosting-conn="fly:"')).toMatch(/data-org-test="ok"[\s\S]*Connection works\.<\/strong> Fly\.io answered/);
-    expect(rowOf(html, 'data-org-hosting-conn="vercel:"')).toMatch(/data-act="orgHxTest"[^>]*disabled[^>]*aria-busy="true"[^>]*>Testing…</);
+    expect(manage(HOSTING_SAMPLE_MIXED, "vercel:", { tests })).toMatch(/data-act="orgHxTest"[^>]*disabled[^>]*aria-busy="true"[^>]*>Testing…</);
+    expect(manage(HOSTING_SAMPLE_MIXED, "render:", { tests })).toContain("Test failed.");
   });
 
-  it("not connected: the provider's best available method is the row's action — and the tab's ONE accent button is the checklist's next step", () => {
-    const html = tab(HOSTING_SAMPLE_MIXED, {}, ["hx:netlify:"]);
+  it("not connected: Connect is the card's action — and the tab's ONE accent button is the checklist's next step", () => {
+    const html = tab(HOSTING_SAMPLE_MIXED);
     const netlify = rowOf(html, 'data-org-hosting-conn="netlify:"');
     expect(netlify).toContain(">Not connected<");
-    // No "Recommended" / "Paste a…" hint beside the name: the button says how it connects.
+    // No "Recommended" / "Paste a…" hint: how a host connects is the dialog's business.
     expect(netlify).not.toContain("Recommended");
+    expect(netlify).not.toContain("Paste a");
     expect(netlify).toMatch(/data-act="orgHxConnect" data-arg="netlify:"[^>]*>Connect</);
-    expect(netlify).toContain("Paste a personal access token");               // the other way, behind the row
-    expect(netlify).toContain("Netlify publishes no usage or analytics API");
     // Mixed: the next step is Connect Netlify — the lead's accent button; every other button is quiet.
     expect(html).toMatch(/class="cnpy-accentbtn"[^>]*>Connect Netlify</);
     expect((html.match(/class="cnpy-accentbtn"/g) ?? []).length).toBe(1);
   });
 
-  it("a method this Trov cannot offer is said quietly, and the row falls back to the token", () => {
+  it("a method this Trov cannot offer is said quietly in the token form Connect falls back to", () => {
     const d = clone(HOSTING_SAMPLES.no_parts);
     const v = d.providers.find((p) => p.id === "vercel")!;
     v.connection_methods[0] = { ...v.connection_methods[0], available: false, unavailable_reason: "this Trov deployment has no Vercel integration configured" };
-    const html = tab(d, {}, ["hx:vercel:"]);
-    const row = rowOf(html, 'data-org-hosting-conn="vercel:"');
+    const row = rowOf(tab(d), 'data-org-hosting-conn="vercel:"');
     expect(row).toMatch(/data-act="orgHxConnect" data-arg="vercel:"[^>]*>Connect</);
-    expect(row).toContain("data-hx-method-off");
-    expect(row).toContain("Connect with Vercel is not offered here: this Trov deployment has no Vercel integration configured.");
-    expect(row).not.toContain("Recommended: no token to paste");
+    expect(row).not.toContain("data-hx-method-off");
+    const form = tokenModal(d, { mode: "set", provider: "vercel", scope: "", hasValue: false, config: {}, saving: false, error: null, errorField: null } as TokenForm);
+    expect(form).toContain("Connect with Vercel is not offered here: this Trov deployment has no Vercel integration configured.");
   });
 
-  it("an installed connection folds its paste-a-token form under a quiet Manual connection row", () => {
-    const html = tab(HOSTING_SAMPLE_MIXED, {}, ["hx-manual:vercel:"]);
-    expect(html).toContain('data-org-hosting-manual="vercel"');
-    const manual = rowOf(html, 'data-org-hosting-manual="vercel"');
-    expect(manual).toContain("Not needed while Vercel is connected");
-    expect(manual).toContain("Pasting one REPLACES the current connection.");
-    expect(manual).toContain('data-arg="rotate:vercel:"');
+  it("an installed connection folds its paste-a-token form into its Manage dialog as a quiet Manual connection", () => {
+    const dlg = manage(HOSTING_SAMPLE_MIXED, "vercel:");
+    expect(dlg).toContain('data-org-hosting-manual="vercel"');
+    expect(dlg).toContain("Not needed while Vercel is connected");
+    expect(dlg).toContain("Pasting one REPLACES the current connection.");
+    expect(dlg).toContain('data-arg="rotate:vercel:"');
     // A token connection has no such fold.
-    expect(html).not.toContain('data-org-hosting-manual="render"');
-    expect(html).not.toContain('data-org-hosting-manual="fly"');
+    expect(manage(HOSTING_SAMPLE_MIXED, "render:")).not.toContain("data-org-hosting-manual");
+    expect(manage(HOSTING_SAMPLE_MIXED, "fly:")).not.toContain("data-org-hosting-manual");
   });
 
   it("a connection the PROVIDER ended: an amber banner, a Removed mark, Connect again — never after an admin's own Disconnect", () => {
@@ -366,26 +388,34 @@ describe("providers and their connections", () => {
   });
 
   it("credentials can't be saved: a banner, and every connect / rotate / paste is disabled with the reason — parts can still be edited", () => {
-    const html = tab(HOSTING_SAMPLES.secrets_locked, {}, ["hx:fly:", "hx:netlify:"]);
+    const html = tab(HOSTING_SAMPLES.secrets_locked);
     expect(html).toContain("data-org-unavailable");
     expect(html).toContain("Credentials can&#39;t be saved right now");
     const netlify = rowOf(html, 'data-org-hosting-conn="netlify:"');
     expect(netlify).toMatch(/data-act="orgHxConnect"[^>]*disabled[^>]*title="Credentials can&#39;t be saved right now: the platform key is missing"/);
-    expect(rowOf(html, 'data-org-hosting-conn="fly:"')).toMatch(/data-arg="rotate:fly:"[^>]*disabled/);
+    const fly = manage(HOSTING_SAMPLES.secrets_locked, "fly:");
+    expect(fly).toMatch(/data-arg="rotate:fly:"[^>]*disabled/);
+    expect(fly).not.toMatch(/data-act="orgHxTest" data-arg="fly:"[^>]*disabled/);
     expect(html).toMatch(/class="cnpy-org-off"[^>]*>Connect Netlify</);       // the lead's action too
     expect(html).not.toMatch(/data-act="orgHxPartEdit"[^>]*disabled/);
-    expect(html).not.toMatch(/data-act="orgHxTest" data-arg="fly:"[^>]*disabled/);
+    expect(html).not.toMatch(/data-act="orgHxManage"[^>]*disabled/);          // Manage (and Test) still open
   });
 
   it("a legacy fallback says the platform's old secret answers, and offers saving your own", () => {
     const d = clone(HOSTING_SAMPLE_MIXED);
     const cf = d.connections.find((c) => c.provider === "cloudflare")!;
     Object.assign(cf, { status: "not_connected", method: null, hint_last4: "", connected_by: null, connected_at: null, legacy_fallback: true });
-    const row = rowOf(tab(d, {}, ["hx:cloudflare:"]), 'data-org-hosting-conn="cloudflare:"');
+    const row = rowOf(tab(d), 'data-org-hosting-conn="cloudflare:"');
     expect(row).toContain("data-org-legacy");
     expect(row).toContain("Using the platform's old secret. Save your own to take over.");
-    expect(row).toContain('data-arg="set:cloudflare:"');
     expect(row).toContain(">Connected<");
+    expect(row).toMatch(/data-act="orgHxManage" data-arg="cloudflare:"/);
+    expect(manage(d, "cloudflare:")).toContain('data-arg="set:cloudflare:"');
+  });
+
+  it("the Manage dialog is drawn by the page's overlay, above the tab", () => {
+    const ui = uiFor(HOSTING_SAMPLE_MIXED, { manage: "fly:" });
+    expect(orgOverlays({ org: org(), orgsStatus: "ok", me: "andres", ui })).toContain('data-overlay="org-hx-manage"');
   });
 });
 

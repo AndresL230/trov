@@ -34,7 +34,7 @@ import { emptyLayout, skBox, skCard, skLine, skRowsShape, skeleton } from "./ske
 import type { MyOrg } from "@shared/orgs";
 import type { OrgUi } from "./org-settings";
 import {
-  HOSTING_METRICS, MAX_PARTS_PER_ENVIRONMENT, PART_KEY_RE, hostingRevokedReasonText, metricsForRole,
+  HOSTING_METRICS, MAX_PARTS_PER_ENVIRONMENT, PART_KEY_RE, hostingRevokedReasonText, isHostingProvider, metricsForRole,
   type ConnectionMethodDTO, type ConnectionStatus, type EnvironmentPartDTO, type HostingChecklistItem, type HostingConnectOutcome,
   type HostingConnectionDTO, type HostingDetectionDTO, type HostingEnvironmentDTO, type HostingFieldDTO, type HostingMetric,
   type HostingProviderDTO, type HostingProviderId, type HostingSetupDTO, type PartRole,
@@ -93,6 +93,8 @@ export interface HostingUi {
   part: PartDraft | null;
   connect: ConnectDraft | null;
   token: TokenForm | null;
+  /** The Manage dialog's connection, `<provider>:<scope>` (manageModal); null = closed. */
+  manage: string | null;
   /** Test connection, by `<provider>:<scope>`; one part's test by `part:<env>/<part>`. */
   tests: Record<string, TestState>;
   /** The checklist's finished steps are shown. */
@@ -103,7 +105,7 @@ export interface HostingUi {
 
 export function initialHostingUi(): HostingUi {
   return {
-    setup: { status: "idle", data: null }, sample: null, sampleData: null, notice: null, part: null, connect: null, token: null,
+    setup: { status: "idle", data: null }, sample: null, sampleData: null, notice: null, part: null, connect: null, token: null, manage: null,
     tests: {}, doneOpen: false, dismissed: [],
   };
 }
@@ -161,8 +163,8 @@ export function connectionStatus(c: HostingConnectionDTO, label: string): { word
 export function statusDot(state: ConnectionStatus, word = STATUS_WORD[state]): string {
   return `<span data-hx-status="${state}" style="display:inline-flex">${kindMark(word, STATUS_KIND[state], 12, STATUS_HINT[state])}</span>`;
 }
-/** A provider is a CARD in the Providers grid (`.cnpy-hx-provs`): its radius inline, so the corners layer scales it. */
-const CARD = ` style="border-radius:10px"`;
+/** A provider is a CARD in the Providers grid (`.cnpy-hx-cards`): its radius inline, so the corners layer scales it. */
+const CARD = ` style="border-radius:12px"`;
 /** A fact beside a name (a part's role, "Coming later"): plain muted text, never a chip (web-ui.md › Status marks). */
 const factWord = (w: string): string => `<span style="font-size:12px;font-weight:500;color:var(--fg-55)">${esc(w)}</span>`;
 
@@ -481,11 +483,77 @@ export function connectionsFor(d: HostingSetupDTO, p: HostingProviderDTO): Hosti
   return p.credential_scope === "org" ? [blankConnection(p.id)] : [];
 }
 
+/** A provider's CARD in the Providers grid (`.cnpy-hx-cards`): logo, name and status, the metadata, what the
+ *  host is and what Trov reads from it — all visible, nothing behind a toggle — and ONE button at the foot
+ *  (Connect, Manage or Add part, one width on every card). Everything you need only while connecting or managing
+ *  is in that button's dialog. */
+function providerCard(o: { key: string; state: string; p: HostingProviderDTO; title: string; status: string; meta?: string; extra?: string; always?: string; action?: string }): string {
+  return `<li class="cnpy-hx-card" data-org-hosting-conn="${attr(o.key)}" data-state="${attr(o.state)}"${CARD}>
+    <div class="cnpy-hx-card-h">${providerGlyph(o.p.id, 26)}<div style="min-width:0;flex:1 1 auto"><div class="cnpy-hx-card-n">${o.title}${o.status}</div>${o.meta ? `<div class="cnpy-hx-card-m">${o.meta}</div>` : ""}</div></div>
+    <p class="cnpy-hx-card-d">${esc(o.p.summary)}</p>
+    ${o.p.plan_note ? `<p class="cnpy-hx-card-d" style="margin-top:6px;color:var(--fg-40)">${esc(o.p.plan_note)}</p>` : ""}
+    ${o.extra ? `<p class="cnpy-hx-card-d" style="margin-top:6px">${o.extra}</p>` : ""}
+    <div style="margin-top:10px">${capabilityChips(o.p)}</div>
+    ${o.always ? `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">${o.always}</div>` : ""}
+    ${o.action ? `<div class="cnpy-hx-card-a">${o.action}</div>` : ""}
+  </li>`;
+}
+
+/** The metadata line under a connection's name: how it is connected and who uses it, or why it is not. */
+function connectionMeta(p: HostingProviderDTO, c: HostingConnectionDTO): string {
+  const stored = c.status === "connected" || c.status === "error";
+  const meta: string[] = [];
+  if (stored) {
+    const how = howConnected(c, p);
+    if (how) meta.push(how);
+    meta.push(c.used_by.length ? `used by ${c.used_by.length} ${c.used_by.length === 1 ? "part" : "parts"}` : "not used by a part");
+  } else if (c.status === "revoked" && c.revoked_reason) meta.push(esc(c.revoked_reason));
+  else if (c.legacy_fallback) meta.push("Using the platform's old secret");
+  else if (!bestMethod(p)) meta.push("Not available on this Trov");
+  return meta.join(" &middot; ");
+}
+
+const lastErrorBox = (c: HostingConnectionDTO): string => c.last_error
+  ? `<div data-org-lasterror style="${box("var(--red)")}">${FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">Last error.</strong> ${esc(c.last_error)}</div></div>` : "";
+
 function connectionRow(x: TabCtx, p: HostingProviderDTO, c: HostingConnectionDTO, accentTaken: boolean): string {
-  const { d, ui, h } = x;
+  const { d, h } = x;
   const st = connectionStatus(c, p.label);
-  const key = `hx:${connKey(c)}`;
   const ck = connKey(c);
+  const locked = !d.secrets_available;
+  const best = bestMethod(p);
+  const stored = c.status === "connected" || c.status === "error";
+  const live = stored || c.legacy_fallback;
+  const who = c.scope_label ?? c.account?.label ?? "";
+  const scoped = c.scope_label ? ` for ${c.scope_label}` : "";
+  const title = `<span>${esc(p.label)}${who ? ` <span style="font-weight:500;color:var(--fg-55)">&middot; ${esc(who)}</span>` : ""}</span>`;
+  // The card's ONE action: Manage once it is connected (Test, Rotate, Disconnect… live in that dialog),
+  // Connect while it is not (the provider's own dialog: its install confirmation or its token form).
+  const action = live
+    ? quietBtn("Manage", "orgHxManage", { arg: ck, field: `orgHxManage:${ck}`, label: `Manage ${p.label}${scoped}` })
+    : best ? quietBtn(st.state === "revoked" ? "Connect again" : "Connect", "orgHxConnect", {
+      arg: ck, disabled: locked, title: locked ? WHY_LOCKED : undefined, field: `orgHxConnect:${ck}`, label: `${st.state === "revoked" ? "Connect again" : "Connect"}: ${p.label}${scoped}`,
+      extra: accentTaken ? "" : "color:var(--fg);border-color:var(--border-strong)",
+    }) : "";
+  const fallback = c.legacy_fallback && !stored ? `<div data-org-legacy style="font-size:12.5px;color:var(--fg-70)">Using the platform's old secret. Save your own to take over.</div>` : "";
+  return providerCard({
+    key: ck, state: st.state, p, title, status: statusDot(st.state, st.word), meta: connectionMeta(p, c),
+    always: `${fallback}${lastErrorBox(c)}${testAnswer(h.tests[ck])}`, action,
+  });
+}
+
+/** The Manage dialog of one connection (`h.manage`): everything that is not on its card — when and by whom it was
+ *  connected, what uses it, its settings, what it can do, where the credential goes — and every action: Test
+ *  connection, Manage on <provider>, Connect a different account, Rotate, Edit settings, the folded manual
+ *  connection, and Disconnect last, as quiet text. */
+export function manageModal(d: HostingSetupDTO, h: HostingUi): string {
+  const ck = h.manage ?? "";
+  const at = ck.indexOf(":");
+  const pid = ck.slice(0, at);
+  const p = at > 0 && isHostingProvider(pid) ? providerOf(d, pid) : null;
+  const c = p ? connectionOf(d, p.id, ck.slice(at + 1)) ?? (ck.slice(at + 1) === "" ? blankConnection(p.id) : null) : null;
+  if (!p || !c) return "";
+  const st = connectionStatus(c, p.label);
   const locked = !d.secrets_available;
   const why = locked ? WHY_LOCKED : undefined;
   const best = bestMethod(p);
@@ -495,111 +563,82 @@ function connectionRow(x: TabCtx, p: HostingProviderDTO, c: HostingConnectionDTO
   const test = h.tests[ck];
   const running = test?.status === "running";
   const users = userNames(d, c);
+  const scoped = c.scope_label ? ` for ${c.scope_label}` : "";
   const who = c.scope_label ?? c.account?.label ?? "";
-  const name = `<span>${esc(p.label)}${who ? ` <span style="font-weight:500;color:var(--fg-55)">&middot; ${esc(who)}</span>` : ""}</span>`;
+  const meta = connectionMeta(p, c);
 
-  const meta: string[] = [];
-  if (stored) {
-    const how = howConnected(c, p);
-    if (how) meta.push(how);
-    meta.push(c.used_by.length ? `used by ${c.used_by.length} ${c.used_by.length === 1 ? "part" : "parts"}` : "not used by a part");
-    if (c.connected_by) meta.push(`connected by ${esc(c.connected_by)}`);
-  } else if (c.status === "revoked" && c.revoked_reason) meta.push(esc(c.revoked_reason));
-  else if (c.legacy_fallback) meta.push("Using the platform's old secret");
-  else if (!best) meta.push("Not available on this Trov");
-
-  // The row's ONE visible action: check it once it is connected, connect it while it is not.
-  const connectBtn = best ? quietBtn(st.state === "revoked" ? "Connect again" : "Connect", "orgHxConnect", {
-    arg: ck, disabled: locked, title: why, field: `orgHxConnect:${ck}`, label: `${st.state === "revoked" ? "Connect again" : "Connect"}: ${p.label}${c.scope_label ? ` for ${c.scope_label}` : ""}`,
-    extra: accentTaken ? "" : "color:var(--fg);border-color:var(--border-strong)",
-  }) : "";
-  const testBtn = quietBtn(running ? "Testing…" : "Test connection", "orgHxTest", { arg: ck, disabled: running, busy: running, field: `orgHxTest:${ck}`, label: `Test the ${p.label} connection${c.scope_label ? ` for ${c.scope_label}` : ""}` });
-  const action = live ? testBtn : connectBtn;
-
-  const error = c.last_error ? `<div data-org-lasterror style="${box("var(--red)")}">${FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">Last error.</strong> ${esc(c.last_error)}</div></div>` : "";
-  const answer = testAnswer(test);
-  const fallback = c.legacy_fallback && !stored ? `<div data-org-legacy style="font-size:12.5px;color:var(--fg-70)">Using the platform's old secret. Save your own to take over.</div>` : "";
-
-  // Behind the row: what the connection is and what Trov reads with it, then the less-used actions.
   const method = p.connection_methods.find((m) => m.method === c.method) ?? best;
-  const grants = method?.grants.length ? `<div style="margin-top:8px"><span style="${O_LABEL};font-size:10px">${stored ? "What this connection can do" : `What ${esc(p.label)} grants`}</span><ul style="margin:4px 0 0;padding-left:18px">${method.grants.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></div>` : "";
-  const facts = stored ? `<div style="font-size:12px;color:var(--fg-40);margin-top:6px">Connected${c.connected_by ? ` by ${esc(c.connected_by)}` : ""}${c.connected_at ? ` ${esc(relTime(c.connected_at))}` : ""} &middot; ${c.last_used_at ? `last used ${esc(relTime(c.last_used_at))}` : "not used yet"}</div>` : "";
-  const usedBy = users.length ? `<div style="margin-top:6px">Used by ${esc(listed(users))}.</div>` : stored ? `<div style="margin-top:6px">No part uses it: it can be disconnected without breaking anything.</div>` : "";
+  const grants = method?.grants.length ? `<div style="margin-top:16px"><div style="${O_LABEL}">${stored ? "What this connection can do" : `What ${esc(p.label)} grants`}</div><ul data-hx-grants style="margin:7px 0 0;padding-left:18px;font-size:13px;line-height:1.6;color:var(--fg-70)">${method.grants.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></div>` : "";
+  const facts = stored ? `<div style="margin-top:4px">Connected${c.connected_by ? ` by ${esc(c.connected_by)}` : ""}${c.connected_at ? ` ${esc(relTime(c.connected_at))}` : ""} &middot; ${c.last_used_at ? `last used ${esc(relTime(c.last_used_at))}` : "not used yet"}</div>` : "";
+  const usedBy = users.length ? `<div style="margin-top:4px">Used by ${esc(listed(users))}.</div>` : stored ? `<div style="margin-top:4px">No part uses it: it can be disconnected without breaking anything.</div>` : "";
   const config = stored ? p.org_config_fields.map((f) => {
     const v = c.config[f.key];
     return `<div style="margin-top:4px">${esc(f.label)}: ${v ? `<code style="font-family:var(--code);font-size:12px;color:var(--fg-70);overflow-wrap:anywhere">${esc(v)}</code>` : `<span style="color:var(--fg-40)">not set${f.required ? " (required)" : ""}</span>`}</div>`;
   }).join("") : "";
-  const unavailable = p.connection_methods.filter((m) => !m.available && m.unavailable_reason && m.method !== "assume_role")
-    .map((m) => `<div data-hx-method-off style="margin-top:6px;color:var(--fg-40)">${esc(m.label)} is not offered here: ${esc(m.unavailable_reason ?? "")}.</div>`).join("");
+  const unavailable = methodsOff(p);
 
   const more: string[] = [];
   if (stored && c.manage_url) more.push(outLink(`Manage on ${p.label}`, c.manage_url, `Manage this connection on ${p.label}`));
-  if (live && connectBtn && isRedirect(best)) more.push(quietBtn("Connect a different account", "orgHxConnect", { arg: ck, disabled: locked, title: why, field: `orgHxReconnect:${ck}` }));
+  if (live && best && isRedirect(best)) more.push(quietBtn("Connect a different account", "orgHxConnect", { arg: ck, disabled: locked, title: why, field: `orgHxReconnect:${ck}` }));
   if (stored && c.method === "token" && token) more.push(quietBtn("Rotate", "orgHxToken", { arg: `rotate:${ck}`, disabled: locked, title: why, field: `orgHxToken:rotate:${ck}`, label: `Rotate the ${p.label} ${tokenWord(p)}` }));
   if (stored && p.org_config_fields.length) more.push(quietBtn("Edit settings", "orgHxToken", { arg: `config:${ck}`, field: `orgHxToken:config:${ck}`, label: `Edit the ${p.label} settings` }));
-  if (!live && token && isRedirect(best)) more.push(quietBtn(cap(token.label), "orgHxToken", { arg: `set:${ck}`, disabled: locked, title: why, field: `orgHxToken:set:${ck}` }));
   if (c.legacy_fallback && !stored && token) more.push(quietBtn(cap(token.label), "orgHxToken", { arg: `set:${ck}`, disabled: locked, title: why, field: `orgHxToken:set:${ck}` }));
-  if (stored) more.push(dangerLink("Disconnect", "orgConfirm", { arg: `hosting:${ck}`, label: `Disconnect ${p.label}${c.scope_label ? ` for ${c.scope_label}` : ""}`, field: `orgConfirm:hosting:${ck}` }));
 
-  // Connected by install / OAuth: the paste-a-token form is NOT offered beside it — it folds into the card's
-  // details as a quiet "Manual connection" block, as GitHub's token and webhook rows fold under the App.
+  // Connected by install / OAuth: the paste-a-token form is NOT offered beside it — it folds in as a quiet
+  // "Manual connection" block, as GitHub's token and webhook rows fold under the App.
   const manual = stored && (c.method === "install" || c.method === "oauth") && token
-    ? `<div data-org-hosting-manual="${attr(p.id)}" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+    ? `<div data-org-hosting-manual="${attr(p.id)}" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
         <div style="font-weight:600;color:var(--fg-70)">Manual connection <span style="font-weight:400;color:var(--fg-40)">&middot; Not needed while ${esc(p.label)} is connected</span></div>
-        <div style="margin-top:4px;max-width:680px">${cap(/^[aeiou]/i.test(tokenWord(p)) ? "an" : "a")} ${esc(tokenWord(p))}: how ${esc(p.label)} is connected without ${c.method === "install" ? "the integration" : "signing in"}. Pasting one REPLACES the current connection.</div>
+        <div style="margin-top:4px">${cap(/^[aeiou]/i.test(tokenWord(p)) ? "an" : "a")} ${esc(tokenWord(p))}: how ${esc(p.label)} is connected without ${c.method === "install" ? "the integration" : "signing in"}. Pasting one REPLACES the current connection.</div>
         <div class="cnpy-xrow-acts" style="margin-top:8px">${quietBtn(cap(token.label), "orgHxToken", { arg: `rotate:${ck}`, disabled: locked, title: why, field: `orgHxToken:manual:${ck}` })}</div>
       </div>`
     : "";
+  const disconnect = stored ? dangerLink("Disconnect", "orgConfirm", { arg: `hosting:${ck}`, label: `Disconnect ${p.label}${scoped}`, field: `orgConfirm:hosting:${ck}` }) : "";
 
-  return openRow({
-    key, open: ui.openRows.includes(key), act: "orgRowToggle", label: `${p.label}${who ? `, ${who}` : ""}, ${st.word.toLowerCase()}`,
-    head: `${providerGlyph(p.id)}${name}${statusDot(st.state, st.word)}`,
-    meta: meta.join(" &middot; "), action,
-    always: error || answer || fallback ? `${fallback}${error}${answer}` : "",
-    body: `<div style="max-width:680px">${esc(p.summary)}</div>
-      ${p.plan_note ? `<div style="margin-top:6px;max-width:680px;color:var(--fg-40)">${esc(p.plan_note)}</div>` : ""}
-      <div style="margin-top:8px">${capabilityChips(p)}</div>
-      ${facts}${usedBy}${config}${grants}
-      <div data-hx-sentto style="margin-top:8px;color:var(--fg-40)">${esc(sentOnlyTo(p))}</div>
-      ${unavailable}
-      ${more.length ? `<div class="cnpy-xrow-acts">${more.join("")}</div>` : ""}${manual}`,
-    attrs: ` data-org-hosting-conn="${attr(ck)}" data-state="${st.state}"${CARD}`,
-  });
+  return `<div data-overlay="org-hx-manage" class="cnpy-cmodal">
+    <div data-act="orgHxManageClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
+    <div class="cnpy-cmodal-wrap">
+      <div id="org-hx-manage" role="dialog" aria-modal="true" aria-labelledby="org-hx-manage-t" tabindex="-1" data-hx-dialog data-org-hosting-manage="${attr(ck)}" data-state="${st.state}" data-scroll-keep="org-hx-manage" class="cnpy-surface cnpy-cmodal-box cnpy-hx-dialog cnpy-scroll" style="position:relative">
+        <button type="button" data-act="orgHxManageClose" aria-label="Close" title="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${CLOSE}</button>
+        <div style="display:flex;align-items:center;gap:10px;padding-right:36px">${providerGlyph(p.id, 22)}<h2 id="org-hx-manage-t" style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.01em;line-height:1.35">${esc(p.label)}${who ? ` <span style="font-weight:500;color:var(--fg-55)">&middot; ${esc(who)}</span>` : ""}</h2>${statusDot(st.state, st.word)}</div>
+        <div style="margin-top:8px;font-size:12.5px;line-height:1.6;color:var(--fg-55)">
+          ${meta ? `<div>${meta}</div>` : ""}${facts}${usedBy}${config}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">${lastErrorBox(c)}${testAnswer(test)}</div>
+        ${grants}
+        <p data-hx-sentto style="margin:10px 0 0;font-size:12px;color:var(--fg-40)">${esc(sentOnlyTo(p))}</p>
+        <div style="font-size:12.5px">${unavailable}</div>
+        <div class="cnpy-cmodal-btns" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px">
+          ${live ? quietBtn(running ? "Testing…" : "Test connection", "orgHxTest", { arg: ck, disabled: running, busy: running, field: `orgHxTest:${ck}`, label: `Test the ${p.label} connection${scoped}`, extra: "height:36px;color:var(--fg);border-color:var(--border-strong)" }) : ""}
+          ${more.join("")}
+          ${disconnect ? `<span style="margin-left:auto">${disconnect}</span>` : ""}
+        </div>
+        <div style="font-size:12.5px;line-height:1.55;color:var(--fg-55)">${manual}</div>
+      </div>
+    </div>
+  </div>`;
 }
 
-
-/** A provider Trov describes but cannot connect yet (AWS): visible, disabled, with what it will need. */
-function laterRow(x: TabCtx, p: HostingProviderDTO): string {
-  const key = `hx:${p.id}:later`;
-  const m = p.connection_methods[0];
-  return openRow({
-    key, open: x.ui.openRows.includes(key), act: "orgRowToggle", label: `${p.label}, coming later`,
-    head: `${providerGlyph(p.id)}<span style="color:var(--fg-55)">${esc(p.label)}</span>${factWord("Coming later")}`,
-    meta: "",
-    body: `<div style="max-width:680px">${esc(p.summary)}</div>
-      ${p.plan_note ? `<div style="margin-top:6px;max-width:680px;color:var(--fg-40)">${esc(p.plan_note)}</div>` : ""}
-      <div style="margin-top:8px">${capabilityChips(p)}</div>
-      ${m ? `<div style="margin-top:8px"><span style="${O_LABEL};font-size:10px">What it will need</span><ul style="margin:4px 0 0;padding-left:18px">${m.grants.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></div>` : ""}`,
-    attrs: ` data-org-hosting-conn="${attr(`${p.id}:`)}" data-state="later"${CARD}`,
-  });
+/** "Connect with Vercel is not offered here: …" — a method this deployment cannot offer, said quietly (the Manage
+ *  dialog, and the token form a Connect falls back to). */
+function methodsOff(p: HostingProviderDTO): string {
+  return p.connection_methods.filter((m) => !m.available && m.unavailable_reason && m.method !== "assume_role")
+    .map((m) => `<div data-hx-method-off style="margin-top:6px;color:var(--fg-40)">${esc(m.label)} is not offered here: ${esc(m.unavailable_reason ?? "")}.</div>`).join("");
 }
 
-/** An environment-scoped provider (Railway) nobody uses yet: a row that opens like every other, with what it reads
- *  — there is no credential to give until a part names its environment, so its one action is adding that part. */
+/** A provider Trov describes but cannot connect yet (AWS): its card, with no button. */
+function laterRow(_x: TabCtx, p: HostingProviderDTO): string {
+  return providerCard({ key: `${p.id}:`, state: "later", p, title: `<span style="color:var(--fg-55)">${esc(p.label)}</span>`, status: factWord("Coming later") });
+}
+
+/** An environment-scoped provider (Railway) nobody uses yet: its card says the token belongs to an environment,
+ *  and its one action is adding the part that names one. */
 function scopedHintRow(x: TabCtx, p: HostingProviderDTO): string {
-  const key = `hx:${p.id}:unused`;
   const env = x.d.environments[0] ?? null;
   const action = env ? quietBtn("Add part", "orgHxPartNew", { arg: `${env.key}|${p.id}`, field: `orgHxScoped:${p.id}`, label: `Add a ${p.label} part to ${env.label}` }) : "";
-  return openRow({
-    key, open: x.ui.openRows.includes(key), act: "orgRowToggle", label: `${p.label}, not connected`,
-    head: `${providerGlyph(p.id)}<span>${esc(p.label)}</span>${statusDot("not_connected")}`,
-    meta: "", action,
-    body: `<div style="max-width:680px">${esc(p.summary)}</div>
-      ${p.plan_note ? `<div style="margin-top:6px;max-width:680px;color:var(--fg-40)">${esc(p.plan_note)}</div>` : ""}
-      <div style="margin-top:8px">${capabilityChips(p)}</div>
-      <div style="margin-top:8px;max-width:680px">${esc(cap(tokenWord(p)))} per environment: add a ${esc(p.label)} part to an environment, then connect it there.</div>
-      <div data-hx-sentto style="margin-top:8px;color:var(--fg-40)">${esc(sentOnlyTo(p))}</div>`,
-    attrs: ` data-org-hosting-conn="${attr(`${p.id}:`)}" data-state="unused"${CARD}`,
+  return providerCard({
+    key: `${p.id}:`, state: "unused", p, title: `<span>${esc(p.label)}</span>`, status: statusDot("not_connected"),
+    extra: `${esc(cap(tokenWord(p)))} per environment: add a ${esc(p.label)} part to an environment, then connect it there.`, action,
   });
 }
 
@@ -682,11 +721,11 @@ export function hostingTab(org: MyOrg, ui: OrgUi): string {
     </section>
     <section aria-labelledby="org-hx-prov-t" data-org-group="hosting-providers">
       ${orgHead("Providers", `${connected(available)} of ${available.length} connected`, null, "org-hx-prov-t")}
-      <ul class="cnpy-hx-provs">${rowsOf(available)}</ul>
+      <ul class="cnpy-hx-cards">${rowsOf(available)}</ul>
     </section>
     ${later.length ? `<section aria-labelledby="org-hx-later-t" data-org-group="hosting-later">
       ${orgHead("Later", "described, not connectable yet", null, "org-hx-later-t")}
-      <ul class="cnpy-hx-provs">${later.map((p) => laterRow(x, p)).join("")}</ul>
+      <ul class="cnpy-hx-cards">${later.map((p) => laterRow(x, p)).join("")}</ul>
     </section>` : ""}
     ${h.sample ? "" : sampleFoot()}`;
 }
@@ -916,6 +955,7 @@ export function tokenModal(d: HostingSetupDTO, f: TokenForm): string {
       <p style="margin:8px 0 0;font-size:12.5px;line-height:1.65;color:var(--fg-70);overflow-wrap:anywhere">${howToHtml(m.how_to)}</p>
       ${m.grants.length ? `<div style="${O_LABEL};margin-top:16px">What this ${esc(word)} can do</div>
       <ul data-hx-grants style="margin:8px 0 0;padding-left:18px;font-size:12.5px;line-height:1.6;color:var(--fg-70)">${m.grants.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>` : ""}
+      ${f.mode === "set" ? `<div style="font-size:12.5px">${methodsOff(p)}</div>` : ""}
     </aside>`;
   return `<div data-overlay="org-hx-token" class="cnpy-cmodal">
     <div data-act="orgHxTokenClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
@@ -996,5 +1036,6 @@ export function hostingOverlay(h: HostingUi, dd: DropdownUi = initialDropdownUi(
   if (h.token) return tokenModal(d, h.token);
   if (h.connect) return connectModal(d, h.connect);
   if (h.part) return partEditorModal(d, h.part, h, dd);
+  if (h.manage) return manageModal(d, h);
   return "";
 }

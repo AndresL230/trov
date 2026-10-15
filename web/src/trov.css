@@ -1345,19 +1345,19 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* Org settings › Hosting (web/src/hosting.ts). Environments are tiles side by side — comparing staging with
    production is the point — two to a line where the tab has room, one under the other below that. Every
    radius here is an inline value the corners block already scales. */
-/* The Providers grid: three cards a row (two, then one, as the page narrows). A card keeps the row's parts
-   (chevron, name, status, details behind it) stacked: the name line, the metadata under it, the action under
-   that at ONE width so every card's button lines up. Its radius is inline (hosting.ts CARD). */
-.cnpy-hx-provs { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; align-items:start; list-style:none; margin:0; padding:0; }
-.cnpy-hx-provs > .cnpy-xrow { border:1px solid var(--border); margin:0; background:var(--surface); min-width:0; }
-.cnpy-hx-provs .cnpy-xrow-h { flex-wrap:wrap; align-items:flex-start; padding:4px 14px 14px 6px; }
-.cnpy-hx-provs .cnpy-xrow-t { flex:1 1 100%; display:grid; grid-template-columns:12px minmax(0,1fr); align-items:center; gap:3px 10px; min-height:0; padding-top:10px; }
-.cnpy-hx-provs .cnpy-xrow-m { grid-column:2; margin-left:0; text-align:left; white-space:normal; }
-.cnpy-hx-provs .cnpy-xrow-a { padding-left:32px; }
-.cnpy-hx-provs .cnpy-xrow-a > button { width:128px; justify-content:center; }
-.cnpy-hx-provs .cnpy-xrow-x, .cnpy-hx-provs .cnpy-xrow-b { padding-left:16px; padding-right:14px; }
-@media (max-width:900px) { .cnpy-hx-provs { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
-@media (max-width:560px) { .cnpy-hx-provs { grid-template-columns:minmax(0, 1fr); } }
+/* The Providers grid: two cards a row (one at phone width), each the same height as its neighbour. A card shows
+   everything but its dialogs: logo, name and status, the metadata, what the host is and what Trov reads, and ONE
+   button at its foot, one width on every card. Its radius is inline (hosting.ts CARD). */
+.cnpy-hx-cards { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; align-items:stretch; list-style:none; margin:0; padding:0; }
+.cnpy-hx-card { display:flex; flex-direction:column; min-width:0; padding:18px 18px 16px; border:1px solid var(--border); background:var(--surface); box-shadow:var(--shadow); }
+.cnpy-hx-card-h { display:flex; align-items:flex-start; gap:12px; }
+.cnpy-hx-card-h > svg { margin-top:1px; }
+.cnpy-hx-card-n { display:flex; align-items:center; gap:4px 10px; flex-wrap:wrap; min-width:0; font-size:14.5px; font-weight:600; letter-spacing:-0.005em; overflow-wrap:anywhere; }
+.cnpy-hx-card-m { margin-top:3px; font-size:12px; line-height:1.5; color:var(--fg-40); overflow-wrap:anywhere; }
+.cnpy-hx-card-d { margin:12px 0 0; font-size:13px; line-height:1.55; color:var(--fg-55); overflow-wrap:anywhere; }
+.cnpy-hx-card-a { margin-top:auto; padding-top:16px; display:flex; }
+.cnpy-hx-card-a > button { width:128px; justify-content:center; }
+@media (max-width:700px) { .cnpy-hx-cards { grid-template-columns:minmax(0, 1fr); } .cnpy-hx-card-a > button { min-height:36px; } }
 .cnpy-hx-envs { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap:14px; align-items:start; }
 .cnpy-hx-envhead { display:flex; align-items:center; gap:6px 10px; flex-wrap:wrap; min-height:52px; padding:9px 12px 9px 16px; border-bottom:1px solid var(--border); box-sizing:border-box; }
 .cnpy-hx-step { display:flex; align-items:flex-start; gap:10px 12px; flex-wrap:wrap; padding:11px 16px; border-bottom:1px solid var(--border); margin-bottom:-1px; }

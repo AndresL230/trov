@@ -108,7 +108,7 @@ export function createHostingActions(host: HostingHost): HostingActions {
     mount.querySelector<HTMLElement>("[data-hx-dialog] input:not([disabled]), [data-hx-dialog] .cnpy-dd:not([disabled])")?.focus();
   };
   const activeField = (): string | null => (document.activeElement as HTMLElement | null)?.getAttribute?.("data-field") ?? null;
-  const closeDialogs = (): void => { dropSecret(); const u = h(); u.part = null; u.connect = null; u.token = null; };
+  const closeDialogs = (): void => { dropSecret(); const u = h(); u.part = null; u.connect = null; u.token = null; u.manage = null; };
 
   // ── the read ───────────────────────────────────────────────────────────────
   function load(): void {
@@ -292,6 +292,7 @@ export function createHostingActions(host: HostingHost): HostingActions {
       delete u.tests[ck];
       if (!state.org.openRows.includes(`hx:${ck}`)) state.org.openRows = [...state.org.openRows, `hx:${ck}`];
       host.flash(mode === "config" ? `Saved the ${p.label} settings` : `${mode === "rotate" ? "Replaced" : "Saved"} the ${p.label} ${word}. Test the connection to check it.`, mode === "config" ? 2200 : 6000);
+      u.manage = mode === "config" ? u.manage : ck;   // back in its Manage dialog, on Test connection
       trigger = `orgHxTest:${ck}`;   // straight to Test connection, the next thing to do
       rerender();
       refocus();
@@ -403,6 +404,8 @@ export function createHostingActions(host: HostingHost): HostingActions {
 
   // ── acts ───────────────────────────────────────────────────────────────────
   function act(name: string, arg: string | null, value: string | null): boolean {
+    // Disconnect asks the page's confirmation (org-actions.ts handles it): the Manage dialog closes under it.
+    if (name === "orgConfirm" && (arg ?? "").startsWith("hosting:")) h().manage = null;
     if (!name.startsWith("orgHx")) return false;
     const u = h();
     if (!admin()) return true;
@@ -459,6 +462,9 @@ export function createHostingActions(host: HostingHost): HostingActions {
         if (at > 0 && isHostingProvider(provider) && d?.secrets_available) { trigger = null; openConnect(provider, (arg ?? "").slice(at + 1)); }
         return true;
       }
+      // A connected card's Manage dialog: everything that is not on the card, and every action on it.
+      case "orgHxManage": if (arg && /^[a-z]+:/.test(arg)) { trigger = activeField(); u.manage = arg; rerender(); mount.querySelector<HTMLElement>("#org-hx-manage button:not([disabled]):not([data-act=\"orgHxManageClose\"])")?.focus(); } return true;
+      case "orgHxManageClose": if (u.manage) { u.manage = null; rerender(); refocus(); } return true;
       case "orgHxConnectClose": if (u.connect && !u.connect.busy) { u.connect = null; rerender(); refocus(); } return true;
       case "orgHxConnectGo": startConnect(); return true;
       case "orgHxToken": {
@@ -533,13 +539,13 @@ export function createHostingActions(host: HostingHost): HostingActions {
   document.addEventListener("keydown", (e) => {
     if (state.view !== "app" || state.screen !== "org") return;
     const u = h();
-    if (!u.part && !u.connect && !u.token) return;
+    if (!u.part && !u.connect && !u.token && !u.manage) return;
     if (state.org.confirm || state.dd.open) return;
     const dlg = mount.querySelector<HTMLElement>("[data-hx-dialog]");
     if (!dlg) return;
     if (e.key === "Escape") {
       e.preventDefault(); e.stopPropagation();
-      act(u.token ? "orgHxTokenClose" : u.connect ? "orgHxConnectClose" : "orgHxPartClose", null, null);
+      act(u.token ? "orgHxTokenClose" : u.connect ? "orgHxConnectClose" : u.part ? "orgHxPartClose" : "orgHxManageClose", null, null);
       return;
     }
     if (e.key !== "Tab") return;
