@@ -14,6 +14,7 @@ import { askRepoFacts, type AskActionAnswer, type AskEvent, type AskEventMap, ty
 import { getReplayIndex, streamReplay, type AskApi, type AskReplayIndex } from "./ask-api";
 import type { AskCtx, AskWhere } from "./ask-state";
 import { COMPOSER_STATES, type ComposerForced } from "./ask-composer";
+import { REPLAY_WRITES, replayPriorExchange } from "./ask-actions";
 
 /** The replay asked for in the page's address, or null. */
 export function replayFromLocation(search: string): { scenario: string; speed: number } | null {
@@ -65,7 +66,10 @@ export function replayPlan(scenario: string): ReplayPlan {
     return { ...base, setup: (ctx) => { if (ref) ctx.openRef(ref); } };
   }
   switch (scenario) {
-    case "streaming": case "thinking": case "answer": case "notfound": case "actions-ask": case "actions-auto":
+    // The design's earlier exchange (a confirmed and a cancelled line; an undone one) above the streamed turn.
+    case "actions-ask": case "actions-auto":
+      return { ...base, play: [scenario], setup: (ctx) => { ctx.ui.page = { ...ctx.ui.page, messages: replayPriorExchange(scenario === "actions-auto"), status: "ok" }; } };
+    case "streaming": case "thinking": case "answer": case "notfound":
     case "phone": case "phone-plus": case "phone-insp":
       return {
         ...base, play: [scenario === "phone" || scenario === "phone-plus" || scenario === "phone-insp" ? "answer" : scenario],
@@ -94,8 +98,10 @@ export function replayRoute(text: string): string {
 }
 
 const now = (): string => new Date().toISOString();
-const sample = (ids: number[], state: AskEventMap["action_result"]["state"]): AskActionAnswer =>
-  ({ results: ids.map((id) => ({ id, groupId: null, state, result: { sample: true }, ref: null, undo: state === "confirmed", at: now() })) });
+/** A write's sample answer: every card of its group (a group moves together), with the item the design's card makes. */
+const sample = (ids: number[], state: AskEventMap["action_result"]["state"], groups: Map<number, string> = new Map()): AskActionAnswer =>
+  ({ results: ids.map((id) => ({ id, groupId: groups.get(id) ?? null, state, result: state === "confirmed" ? REPLAY_WRITES[id]?.result ?? { sample: true } : { sample: true },
+    ref: state === "confirmed" ? REPLAY_WRITES[id]?.ref ?? null : null, undo: state === "confirmed", at: now() })) });
 
 /** The replay's stand-in for `askApi`: fixtures for reads, transcripts for sends, sample answers for writes. */
 export function createReplayApi(index: AskReplayIndex, plan: ReplayPlan, speed: number): AskApi {
@@ -104,6 +110,10 @@ export function createReplayApi(index: AskReplayIndex, plan: ReplayPlan, speed: 
   // The plan's transcripts play first, in order; after them each send picks one by its words.
   const queue = [...plan.play];
   const peekOne = (ref: string): PeekResult => index.refs[ref] ?? { ref, hidden: true };
+  // The cards' groups, as the transcripts streamed them: Confirm / Cancel / Undo answer for the whole group.
+  const groups = new Map<number, string>();
+  const note = (e: AskEvent) => { if ((e.event === "action" || e.event === "action_result") && e.data.groupId) groups.set(e.data.id, e.data.groupId); };
+  const group = (id: number): number[] => { const g = groups.get(id); return g ? [...groups].filter(([, x]) => x === g).map(([i]) => i) : [id]; };
   return {
     getState: async () => state,
     listThreads: async () => threads,
@@ -123,7 +133,7 @@ export function createReplayApi(index: AskReplayIndex, plan: ReplayPlan, speed: 
     stopThread: async () => undefined,
     async ask(req, o) {
       const scenario = queue.shift() ?? replayRoute(req.text);
-      await streamReplay(scenario, speed, { onEvent: (e: AskEvent) => o.onEvent(e), signal: o.signal });
+      await streamReplay(scenario, speed, { onEvent: (e: AskEvent) => { note(e); o.onEvent(e); }, signal: o.signal });
     },
     peek: async (refs) => refs.map(peekOne),
     getItem: async (ref) => {
@@ -131,9 +141,9 @@ export function createReplayApi(index: AskReplayIndex, plan: ReplayPlan, speed: 
       if (!v) throw new Error("not_found");
       return { view: v as RefView, detail: {} };
     },
-    confirmAction: async (id) => sample([id], "confirmed"),
-    cancelAction: async (id) => sample([id], "cancelled"),
-    undoAction: async (id) => sample([id], "undone"),
+    confirmAction: async (id, body) => sample(body?.args ? [id] : group(id), "confirmed", groups),
+    cancelAction: async (id) => sample(group(id), "cancelled", groups),
+    undoAction: async (id) => sample(group(id), "undone", groups),
     saveForm: async (messageId) => ({ block: { kind: "save_form", form: { messageId, block: null, title: "Hosting status, Oct 15", kind: "html", visibility: "private", saved: null } }, index: 0 }),
     saveThread: async (_id, body) => ({ slug: "hosting-status-oct-15", title: body.title ?? "Hosting status, Oct 15", visibility: body.visibility ?? "private", url: "#artifacts/hosting-status-oct-15" }),
     uploadAttachments: async (files, threadId) => ({

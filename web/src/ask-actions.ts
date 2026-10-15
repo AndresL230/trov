@@ -40,7 +40,7 @@
 
 import { esc, attr, relTime } from "./ui";
 import type { AskCtx, AskPart, AskView, AskWhere } from "./ask-state";
-import { applyActionResult, withTurnOfAction, type AskActionVm, type AskAnswer, type AskConvo, type AskTurn } from "./ask-stream";
+import { applyActionResult, newTurn, withTurnOfAction, type AskActionVm, type AskAnswer, type AskConvo, type AskMsg, type AskTurn } from "./ask-stream";
 import { AskApiError } from "./ask-api";
 import { segmented } from "./segmented";
 import { glyph, markShape, priorityIcon, PRIORITY_LABEL } from "./marks";
@@ -499,7 +499,15 @@ function setActionState(ctx: AskCtx, id: number, state: AskActionVm["state"]): v
 export function applyResults(ctx: AskCtx, ans: Pick<AskActionAnswer, "results">): void {
   for (const where of WHERES) {
     let c = ctx.ui[where];
-    for (const r of ans.results) c = withTurnOfAction(c, r.id, (t) => applyActionResult(t, r));
+    for (const r of ans.results) {
+      c = withTurnOfAction(c, r.id, (t) => {
+        const prev = t.actions[r.id];
+        const next = applyActionResult(t, r);
+        // An undone line still says what was done ("Undone: filed tickets #30, #31 and #32"): Undo's own result
+        // (what was written back) does not replace the write's.
+        return r.state === "undone" && prev ? { ...next, actions: { ...next.actions, [r.id]: { ...next.actions[r.id], result: prev.result, ref: prev.ref } } } : next;
+      });
+    }
     ctx.ui[where] = c;
   }
   ctx.paint();
@@ -697,6 +705,38 @@ export async function markWrong(ctx: AskCtx, answerName: string, reason: AskWron
     ctx.fail(e, "Couldn't send that.");
   }
 }
+
+// ── the dev replay (ask-replay.ts › replayPlan `actions-ask` / `actions-auto`) ─
+
+/** The exchange BEFORE the streamed turn, as the design draws it (ask-trov.dc.html L1186–1190, L1307, L1318): the
+ *  transcript streams only the last turn. A confirmed line and a cancelled one (`actions-ask`); an undone move
+ *  (`actions-auto`). Display only — nothing is written in replay mode. */
+export function replayPriorExchange(auto: boolean, at = new Date().toISOString()): AskMsg[] {
+  const vm = (id: number, tool: string, kind: AskActionVm["kind"], state: AskActionVm["state"], title: string, ref: string | null, extra: Partial<AskActionVm> = {}): AskActionVm =>
+    ({ id, groupId: `0-${id}`, tool, kind, state, preview: { title, lines: [], item: null }, fields: {}, editable: [], note: null, result: null, ref, undo: false, at, ...extra });
+  const turn = (text: string, vms: AskActionVm[], activity: AskTurn["activity"] = []): AskTurn => ({
+    ...newTurn("smart"), messageId: auto ? 5 : 3, activity, done: true,
+    parts: [{ kind: "text", md: text }, ...vms.map((x) => ({ kind: "action" as const, id: x.id }))],
+    actions: Object.fromEntries(vms.map((x) => [x.id, x])),
+  });
+  const q = (text: string): AskMsg => ({ role: "user", key: `rq-${auto ? "auto" : "ask"}`, id: null, text, context: [], attachments: [], command: null });
+  return auto
+    ? [q("Move #14 to Done."), { role: "assistant", key: "ra-auto", turn: turn("Moved it. Undo is there if that was early.", [
+        vm(40, "transition_ticket", "move", "undone", "Move #14 to Done", "ticket:14", { fields: { to: "done" } })]) }]
+    : [q("File a ticket for the failing Netlify connect test and move #14 to Testing."), { role: "assistant", key: "ra-ask", turn: turn("Done where you confirmed.", [
+        vm(29, "create_ticket", "ticket", "confirmed", "New ticket", "ticket:29", { result: { id: 29, title: "Fix the Netlify connect test on main" } }),
+        vm(28, "transition_ticket", "move", "cancelled", "Move #14 to Testing", null, { fields: { to: "testing" } }),
+      ], [{ step: 1, tool: "get_repo_dashboard", icon: "ci", label: "Checked CI on AndresL230/trov", state: "done", results: [], resultLine: null }]) }];
+}
+
+/** What the replay's Confirm answers for the design's cards (the item each one makes), so its done line reads as
+ *  the design's: "Created ticket #30", "Sent handoff #12 to anyone", the doc edit, the publish. */
+export const REPLAY_WRITES: Record<number, { ref: string; result: unknown }> = {
+  31: { ref: "ticket:30", result: { id: 30, title: "Reconnect expired hosting tokens from Org settings" } },
+  32: { ref: "handoff:12", result: { id: 12, recipient: "anyone", url: "#handoffs/12" } },
+  33: { ref: "doc:hosting-connections", result: { outcome: "staged" } },
+  46: { ref: "doc:release-0-30-notes", result: { promoted: true } },
+};
 
 // ── the acts ─────────────────────────────────────────────────────────────────
 
