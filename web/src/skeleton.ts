@@ -232,7 +232,9 @@ export function emptyLayout(key: string, o: EmptyOpts): string {
 // When a region's skeleton is gone from the paint, what stands in its place (and
 // after it, in the same container) gets ONE short fade (`.cnpy-settle`) — and only if the skeleton had actually been
 // visible; a read that beat the 150 ms never showed one, so there is nothing to
-// fade from.
+// fade from. Content that a read brings in somewhere ELSE than where its skeleton stood (My Work's brief tile,
+// drawn only once the dashboard read lands, in a bento laid out anew) names that skeleton's key in
+// `data-settle-with` (space-separated keys) and gets the same one fade with it.
 
 /** How long a skeleton stays invisible (trov.css `.cnpy-skel-in`'s delay must match). */
 export const SKEL_DELAY_MS = 150;
@@ -242,7 +244,7 @@ export const SETTLE_MS = 240;
 interface Seen { at: number; path: number[] }
 let scopeKey = "";
 const seen = new Map<string, Seen>();
-let settles: { path: number[]; at: number }[] = [];
+let settles: { key: string; path: number[]; at: number }[] = [];
 
 /** Child-index path from `root` down to `el` (null when `el` is not inside it). */
 function pathOf(root: Element, el: Element): number[] | null {
@@ -286,7 +288,7 @@ export function syncSkeletons(mount: HTMLElement, scope: string, now: number = p
   for (const [key, s] of Array.from(seen)) {
     if (live.has(key)) continue;
     seen.delete(key);
-    if (!reduced && s.path.length && now - s.at >= SKEL_DELAY_MS) settles.push({ path: s.path, at: now });
+    if (!reduced && s.path.length && now - s.at >= SKEL_DELAY_MS) settles.push({ key, path: s.path, at: now });
   }
   settles = settles.filter((st) => now - st.at < SETTLE_MS);
   for (const st of settles) {
@@ -301,5 +303,13 @@ export function syncSkeletons(mount: HTMLElement, scope: string, now: number = p
       el.classList.add("cnpy-settle");
       el.style.setProperty("--settle-t", `${-Math.round(now - st.at)}ms`);
     }
+  }
+  if (!settles.length) return;
+  for (const el of Array.from(mount.querySelectorAll<HTMLElement>("[data-settle-with]"))) {
+    const keys = (el.getAttribute("data-settle-with") ?? "").split(/\s+/);
+    const st = settles.find((x) => keys.includes(x.key));
+    if (!st) continue;
+    el.classList.add("cnpy-settle");
+    el.style.setProperty("--settle-t", `${-Math.round(now - st.at)}ms`);
   }
 }

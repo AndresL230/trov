@@ -1,5 +1,5 @@
-// The AI pass (src/ai/pass.ts, docs/architecture/ai.md): the machinery every AI job runs in. Its registry is EMPTY
-// in production — so the first suite proves it does nothing at all — and the rest register STAND-IN jobs
+// The AI pass (src/ai/pass.ts, docs/architecture/ai.md): the machinery every AI job runs in. Its registry holds the
+// real producers — the first suite proves it does nothing when none of their scopes is stale — and the rest register STAND-IN jobs
 // (test/helpers/ai-pass.ts) over real `ai_dirty` rows to drive the guards: the switch, the keys, the allowances,
 // the per-tick caps, the cron budget, the rotation cursor and metering. Both providers are stubs answering real
 // response bodies; the assertions are on meter rows, `ai_dirty` and the cursor.
@@ -58,7 +58,7 @@ describe("the real registry, with nothing it takes", () => {
   it("AI_JOBS holds the producers (unique names, each kind's own provider); over scopes none of them takes it makes zero calls and writes nothing — with both keys and stale scopes", async () => {
     expect(AI_JOBS.map((j) => j.name)).toEqual([
       "ticket.card", "review.risk", "unplaced.destination", "tag.fit:new-item", "feed.importance:feed", "feed.importance:pr",
-      "digest.session", "repo.state", "pr.theme", "themes.propose", "themes.caption", "themes.backfill",
+      "digest.session", "repo.state", "brief.person", "pr.theme", "themes.propose", "themes.caption", "themes.backfill",
     ]);
     expect(new Set(AI_JOBS.map((j) => j.name)).size).toBe(AI_JOBS.length);
     for (const j of AI_JOBS) expect(KIND_PROVIDER[j.kind], j.name).toBe(j.provider);

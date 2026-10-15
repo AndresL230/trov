@@ -53,6 +53,7 @@ import { TAG_FIT_ITEM_JOB } from "./sift-items";
 import { IMPORTANCE_JOBS } from "./importance";
 import { sessionDigestJob } from "./digests";
 import { repoStateJob } from "./repo-state";
+import { briefJob } from "./brief";
 
 export type { AiJob } from "./jobs";
 
@@ -65,6 +66,7 @@ export const AI_JOBS: readonly AiJob[] = [
   ...IMPORTANCE_JOBS, // feed.importance — card:feed:*, card:pr:*
   sessionDigestJob, // Phase D: session digests (`session`), behind `gate.session`
   repoStateJob, // Phase D: repo state (`repo`), behind `gate.state`
+  briefJob, // person:<handle> — My Work's brief (Phase D)
   prThemeJob,
   themesProposeJob,
   themesCaptionJob,

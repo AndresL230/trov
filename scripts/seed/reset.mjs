@@ -33,6 +33,8 @@ export const RESET_STATEMENTS = [
   // AI (0061_ai_digests, 0062_repo_state): the session digests' bookkeeping and the written repo states.
   "DELETE FROM ai_sessions",
   "DELETE FROM repo_state",
+  // AI (0063_person_brief): each member's brief references orgs.
+  "DELETE FROM person_brief",
   // AI (0059_ai_batches): the pass's open Message Batches — platform tables, no org_id (requests first).
   "DELETE FROM ai_batch_requests",
   "DELETE FROM ai_batches",
