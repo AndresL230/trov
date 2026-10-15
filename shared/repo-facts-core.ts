@@ -167,8 +167,9 @@ export interface FactsCi {
   env: string;
   sha: string | null;
   state: "pass" | "fail" | "running" | null;
-  total: number;
-  failing: number;
+  /** Checks on the head; `null` while they are still being counted (a running set has no total yet). */
+  total: number | null;
+  failing: number | null;
   /** Names of failing (or, when running, running) checks — at most 3. */
   names: string[];
 }

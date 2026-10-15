@@ -515,7 +515,7 @@ interface Scenario {
   /** Providers with no org connection (every other one is connected). */
   notConnected?: HostingProviderId[];
   strip?: ScStrip;
-  ci?: [env: string, state: FactsCi["state"], total: number, failing: number, sha: string, names?: string[]][];
+  ci?: [env: string, state: FactsCi["state"], total: number | null, failing: number | null, sha: string, names?: string[]][];
   drift?: { from: string; to: string; ahead: number; groups: ScGroup[] }[];
   previews?: ScPreview[];
   previewsByApp?: Record<string, PreviewState[]>;
@@ -700,7 +700,7 @@ const SC: Record<Exclude<ScenarioKey, "N">, (v: string, at: At) => Scenario> = {
       apps: [{ name: "trov", folder: "/", kind: "Worker", host: "Cloudflare", prs: 2, previews: true }],
       targets: [{ app: "trov", env: "Production", url: "trov.dev", ms: tr ? 102 : 96 }],
       strip,
-      ci: [failed ? ["Production", "fail", 9, 2, "e07b3a2"] : tr ? ["Production", "running", 9, 0, "f19ad20"] : ["Production", "pass", 9, 0, "c41e7d9"]],
+      ci: [failed ? ["Production", "fail", 9, 2, "e07b3a2"] : tr ? ["Production", "running", null, null, "f19ad20"] : ["Production", "pass", 9, 0, "c41e7d9"]],
       previews: [
         { pr: 318, title: "Repo screen: apps and targets", branch: "repo-apps", by: "andres", state: "live", age: "40m", url: "repo-apps.trov.workers.dev" },
         { pr: 316, title: "Usage: Railway poller", branch: "railway-poller", by: "jose-a", state: "failed", age: tr ? "3d" : "3h", streak: tr ? { count: 4, since: "3d" } : undefined },
@@ -865,7 +865,7 @@ const SC: Record<Exclude<ScenarioKey, "N">, (v: string, at: At) => Scenario> = {
       { app: "collector", env: "Production", sha: "0b72d3e", age: "1d", by: "sanaok", via: "deploy-collector.yml", url: "collector.fly.dev", ms: 58 },
       { app: "normalizer", env: "Production", sha: "0b72d3e", age: "1d", by: "sanaok", via: "deploy-normalizer.yml", url: "normalizer-prod-4kq.a.run.app", ms: 140 },
     ],
-    ci: [["Staging", "running", 7, 0, "4e1a9c7", ["deploy-normalizer.yml"]], ["Production", "pass", 7, 0, "0b72d3e"]],
+    ci: [["Staging", "running", null, null, "4e1a9c7", ["deploy-normalizer.yml"]], ["Production", "pass", 7, 0, "0b72d3e"]],
     drift: [{ from: "main", to: "production", ahead: 3, groups: [
       { pr: 77, title: "normalizer: drop events older than 7 days", by: ["kenji-m"], merged: "1h", commits: [["4e1a9c7", "Drop stale events before normalising", "1h"], ["9c3d0e1", "Config: max event age", "1h"]] },
       { pr: null, title: "1 commit pushed straight to main", by: ["tom-h"], merged: null, commits: [["ba0f6e2", "ci: pin flyctl 0.3.40", "5h"]] },
