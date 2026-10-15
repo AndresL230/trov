@@ -63,7 +63,7 @@ export function unplacedChip(ai: AiSuggestion[] | undefined, ui: AiChipUi): stri
 export function unplacedRowMark(ai: AiSuggestion[] | undefined, leaving?: AiUi["leaving"]): string {
   const d = ofKind(ai, "unplaced.destination");
   return d
-    ? aiLeaving({ leaving }, aiSuggestionKey(d.id), `<span class="cnpy-ai-row-mark" data-mtip="${attr(`${AI_TIP.suggestion} Suggested: ${d.label}.`)}" style="display:inline-flex;align-items:center;gap:4px;flex:none;margin-left:2px;color:var(--fg-55)">&middot; ${aiMark(11)}${esc(d.label)}</span>`, { hold: true, inline: true })
+    ? aiLeaving({ leaving }, aiSuggestionKey(d.id), `<span class="cnpy-ai-row-mark" data-mtip="${attr(`${AI_TIP.suggestion} Suggested: ${d.label}.`)}" style="display:inline-flex;align-items:center;gap:4px;flex:0 1 auto;min-width:0;margin-left:2px;color:var(--fg-55)">&middot; ${aiMark(11)}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(d.label)}</span></span>`, { hold: true, inline: true })
     : "";
 }
 
