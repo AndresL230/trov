@@ -18,6 +18,9 @@ export interface AiHost {
   rerender(): void;
   flash(msg: string, ms?: number): void;
   unauth(e: unknown): void;
+  /** After an Accept or Dismiss went through: the screen re-reads what the decision changed (the Roadmap, whose
+   *  accepted draft or narrative is now real). */
+  afterDecide?(id: number, how: "accept" | "dismiss"): void;
 }
 export interface AiController {
   act(act: string, arg: string | null, value: string | null): void;
@@ -75,6 +78,7 @@ export function createAiController(host: AiHost): AiController {
         u.busy = without(u.busy, id);
         if (u.rename?.id === id) u.rename = null;
         host.flash(how === "accept" ? "Accepted" : "Removed");
+        host.afterDecide?.(id, how);
         rerender();
       })
       .catch((e) => {

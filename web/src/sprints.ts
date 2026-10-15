@@ -27,6 +27,8 @@ import { segmented } from "./segmented";
 import { age, avatarStack, metaWord } from "./tickets";
 import { ticketStatusMark, priorityIcon, priorityMark, stateMark, glyphMark, PRIORITY_LABEL } from "./marks";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skLines, skList, skW } from "./skeleton";
+import { forecastLine, sprintNoteBlock } from "./roadmap-ai";
+import type { AiUi } from "./ai-ui";
 
 // ── atoms ────────────────────────────────────────────────────────────────────
 
@@ -87,6 +89,8 @@ export interface SprintCardOpts {
   nextUp?: boolean;
   /** The clock (ms), injected for tests; defaults to `Date.now()`. */
   now?: number;
+  /** What this person pressed "Wrong?" on (a hidden note is not drawn). */
+  ai?: Pick<AiUi, "hidden">;
 }
 
 /**
@@ -169,8 +173,8 @@ export function sprintCard(sp: SprintView, persons: PersonSummary[], opts: Sprin
       ${leadBlock(sp.lead, persons)}
     </div>
     ${sp.summary ? `<p style="font-size:13px;line-height:1.65;color:var(--fg-70);margin:0 0 8px">${esc(sp.summary)}</p>` : ""}
-    <span style="font-size:11.5px;color:var(--fg-40);font-family:var(--label)">${esc(dateNote)}</span>
-    ${bar}
+    <span style="font-size:11.5px;color:var(--fg-40);font-family:var(--label)">${esc(dateNote)}</span>${done ? "" : forecastLine(sp.forecast)}
+    ${bar}${done ? "" : sprintNoteBlock(sp, sp.note, opts.ai ?? null)}
     <div style="display:flex;align-items:center;gap:10px;margin-top:11px;padding-top:10px;border-top:1px solid var(--border)">
       ${avatarStack(sp.members, persons, 20, true)}
       <span style="flex:1"></span>

@@ -65,7 +65,8 @@ import { AVATAR_MAX_BYTES } from "@shared/people";
 import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
 import { aiApp } from "./ai/routes";
-import { aiPreview, withPreviewFeed } from "./ai/preview";
+import { aiPreview, withPreviewFeed, withPreviewRoadmap } from "./ai/preview";
+import { roadmapForPerson } from "./data/org-insights";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
 
 export const app = new Hono<AppEnv>();
@@ -709,7 +710,16 @@ legacyOnly.post("/invites/:email/resend", async (c) => {
 
 // Roadmap read (session-gated): admin narrative + sprints in target-date order,
 // merged with cached progress from the plan store. No live GitHub, no per-user token.
-tenantRoot.get("/roadmap", async (c) => c.json(await get_plan(c.var.ctx)));
+// What Trov wrote (sprint notes, the drift) comes with it while the org's AI switch is on, minus what this
+// person pressed "Wrong?" on; an ADMIN also gets the open Roadmap suggestions (a sprint draft, a narrative) —
+// MCP's `get_roadmap` never does. LOCAL_AI_PREVIEW fills the samples under `wrangler dev` only.
+tenantRoot.get("/roadmap", async (c) => {
+  const ctx = c.var.ctx;
+  const admin = hasRole(ctx, "admin");
+  const plan = await roadmapForPerson(ctx, c.get("principal").handle, await get_plan(ctx), { admin });
+  const preview = aiPreview(c.env, c.req.url);
+  return c.json(preview ? withPreviewRoadmap(plan, preview.roadmap, { admin }) : plan);
+});
 
 // Personal dashboard (session-gated): the signed-in user's My Work projection —
 // previous activity (summarized merged/closed PRs), open assigned issues, and open

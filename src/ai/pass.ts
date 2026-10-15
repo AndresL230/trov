@@ -47,11 +47,16 @@ import { providerFor, type AiProviderOpts, type AiUsage, type JevAsk, type JevKi
 import { groupOf, takes, validJob, customIdOf, type AiJob, type ClaudeJob, type JevGate, type JevJob, type JevRequest, type JobItem } from "./jobs";
 import { orgPrefix } from "./prefix";
 import { collectBatches, submitBatches, AI_BATCH_PER_TICK, type QueuedRequest } from "./batches";
+import { ROADMAP_JOBS } from "./roadmap";
+import { DOC_DRIFT_JOB } from "./doc-drift";
 
 export type { AiJob } from "./jobs";
 
-/** THE registry. Empty: Phase B ships the machinery; Phases C and D register the producers. */
-export const AI_JOBS: readonly AiJob[] = [];
+/** THE registry: Phases C and D register the producers, one line each. */
+export const AI_JOBS: readonly AiJob[] = [
+  ...ROADMAP_JOBS, // Phase D: sprint notes, plan drift, sprint drafts, the weekly narrative proposal (./roadmap.ts)
+  DOC_DRIFT_JOB, // Phase D: doc drift (#161), past gate.drift (./doc-drift.ts)
+];
 
 /** Haiku calls one tick may make, across every org. */
 export const AI_RUNS_PER_TICK = 12;

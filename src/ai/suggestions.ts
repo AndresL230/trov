@@ -10,6 +10,7 @@ import type { AiSuggestion, AiSuggestionError } from "@shared/ai";
 import { hasRole, type TenantContext } from "../data/context";
 import { decideSuggestion, getSuggestion, reopenSuggestion, suggestionDto, type AiSuggestionRow } from "../data/ai";
 import { nowIso } from "../data/sql";
+import { PLAN_NARRATIVE_ACCEPT, SPRINT_DRAFT_ACCEPT } from "./roadmap-accept";
 
 export interface AcceptHandler {
   /** Who may accept this kind: any member, or an admin (admin or owner) of the org. */
@@ -20,8 +21,11 @@ export interface AcceptHandler {
   apply(ctx: TenantContext, suggestion: AiSuggestionRow, value: unknown): Promise<void>;
 }
 
-/** THE registry, by `ai_suggestions.kind`. Empty: nothing produces a suggestion yet. */
-export const AI_ACCEPT_HANDLERS: Readonly<Record<string, AcceptHandler>> = {};
+/** THE registry, by `ai_suggestions.kind`. */
+export const AI_ACCEPT_HANDLERS: Readonly<Record<string, AcceptHandler>> = {
+  sprint_draft: SPRINT_DRAFT_ACCEPT, // Phase D: an admin creates the drafted sprints (./roadmap-accept.ts)
+  plan_narrative: PLAN_NARRATIVE_ACCEPT, // Phase D: an admin writes the proposed narrative (./roadmap-accept.ts)
+};
 
 export type SuggestionAnswer =
   | { ok: true; suggestion: AiSuggestion }

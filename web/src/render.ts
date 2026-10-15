@@ -77,6 +77,7 @@ import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, ty
 import { previewBanner, previewState, type PreviewMode } from "./preview";
 import { aiItemRef } from "@shared/ai-core";
 import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, type AiUi } from "./ai-ui";
+import { driftLine, roadmapSuggestionCards } from "./roadmap-ai";
 import { aiFilterBox, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
@@ -1560,7 +1561,7 @@ function roadmapSprintGroups(s: AppState): string {
   const renderGroup = (items: SprintView[], heading: string, color: string): string =>
     items.length === 0
       ? ""
-      : `${sectionHeading(heading, color)}<div class="cnpy-stagger">${items.map((sp) => sprintCard(sp, s.persons.data, { done: isDone(sp), nextUp: sp.id === nextId, now })).join("")}</div>`;
+      : `${sectionHeading(heading, color)}<div class="cnpy-stagger">${items.map((sp) => sprintCard(sp, s.persons.data, { done: isDone(sp), nextUp: sp.id === nextId, now, ai: s.ai })).join("")}</div>`;
 
   return `${renderGroup(inProgress, "In Progress", "var(--amber)")}
     ${renderGroup(upcoming, "Upcoming", "var(--blue)")}
@@ -1675,7 +1676,10 @@ function roadmapNewSprint(s: AppState): string {
  * tab has no aside.
  */
 function roadmapDigest(s: AppState): string {
-  return asideColumns(`${roadmapNewSprint(s)}${planNarrativeBlock(s.roadmap.data.narrative, renderMarkdown)}${roadmapSprintGroups(s)}`, roadmapAside(s),
+  // Trov's pieces (./roadmap-ai.ts), each "" when its field is absent: an admin's suggestion cards above the
+  // narrative, the drift line under it.
+  const d = s.roadmap.data;
+  return asideColumns(`${roadmapNewSprint(s)}${roadmapSuggestionCards(d.suggestions, s.ai)}${planNarrativeBlock(d.narrative, renderMarkdown)}${driftLine(d.drift, s.ai)}${roadmapSprintGroups(s)}`, roadmapAside(s),
     { bar: roadmapTabBar(s), panel: tabPanelAttrs("roadmap-tab", s.roadmapTab) });
 }
 

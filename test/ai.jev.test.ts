@@ -34,7 +34,9 @@ const LIVE = {
 
 describe("providerFor: one table from a kind to its provider", () => {
   it("tag.fit is Jev's; the summaries and the plain-language filter are Claude's; no key → null", () => {
-    expect(KIND_PROVIDER).toEqual({ summary_pr: "claude", summary_issue: "claude", "tag.fit": "jev", filter: "claude" });
+    expect(KIND_PROVIDER).toMatchObject({ summary_pr: "claude", summary_issue: "claude", "tag.fit": "jev", filter: "claude" });
+    // Phase D (the Roadmap, doc drift): one line per kind.
+    expect(KIND_PROVIDER).toMatchObject({ "org.rollup": "claude", "sprint.draft": "claude", "plan.narrative": "claude", "doc.drift": "claude", "gate.drift": "jev" });
     expect(providerFor("tag.fit", { apiKey: "k" })?.name).toBe("jev");
     expect(providerFor("tag.fit", { apiKey: "k" })?.model).toBe("jev-latest");
     expect(providerFor("summary_pr", { apiKey: "k" })?.name).toBe("claude");

@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { buildSeedStatements, targetsRemote } from "./seed/build.mjs";
 import { platformDevStatements } from "./seed/platform-dev.mjs";
 import { guideDemoStatements, DEMO_LOGIN } from "./seed/guide-demo.mjs";
+import { aiRoadmapDevStatements } from "./seed/ai-roadmap-dev.mjs";
 
 const argv = process.argv.slice(2);
 if (targetsRemote(argv)) {
@@ -33,12 +34,14 @@ const fx = {
   identity: load("identity.json"),
   handoffs: load("handoffs.json"),
   prompts: load("prompts.json"),
+  aiRoadmap: load("ai-roadmap.json"),
 };
 
 // …plus the Platform (superadmin) screens' demo rows: usage for both seed orgs, Acme's owner, audit.
 // The Guide demo has no superadmin, so it leaves those out.
 const guideDemo = argv.includes("--guide-demo");
-const statements = guideDemo ? guideDemoStatements(fx) : [...buildSeedStatements(fx), ...platformDevStatements()];
+// …and Phase D's Roadmap and doc-drift samples (scripts/seed/ai-roadmap-dev.mjs), after the rows they name.
+const statements = guideDemo ? guideDemoStatements(fx) : [...buildSeedStatements(fx), ...platformDevStatements(), ...aiRoadmapDevStatements(fx)];
 
 // Applied 8 statements at a time, by the D1 BINDING: one file holding the whole seed is refused
 // by the local execute (SQLITE_TOOBIG), and the database's name has changed before.

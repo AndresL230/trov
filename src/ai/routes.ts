@@ -86,8 +86,17 @@ aiApp.post("/ai/suggestions/:id/accept", async (c) => {
   if (id === null) return c.json({ error: "not_found" }, 404);
   // An empty or unreadable body is `{}`; one the contract refuses is answered only after the id is found.
   const parsed = AiAcceptBodySchema.safeParse((await c.req.json().catch(() => null)) ?? {});
-  return answer(c, await acceptSuggestion(c.var.ctx, id, parsed.success ? parsed.data : null));
+  try {
+    return answer(c, await acceptSuggestion(c.var.ctx, id, parsed.success ? parsed.data : null));
+  } catch (e) {
+    // A handler's writer refused (a bad date, an over-long narrative, a ticket gone): the suggestion is open again
+    // (./suggestions.ts) and the person is told why, in the writer's own words. Anything else stays a 500.
+    if (e instanceof Error && HANDLER_REFUSALS.has(e.name)) return c.json({ error: "invalid", message: e.message }, 400);
+    throw e;
+  }
 });
+/** The typed refusals of the writers an accept handler runs (src/tools/sprints.ts, tickets.ts, src/auth/persons.ts). */
+const HANDLER_REFUSALS = new Set(["SprintError", "TicketError", "PersonError"]);
 
 aiApp.post("/ai/suggestions/:id/dismiss", async (c) => {
   const id = suggestionId(c);

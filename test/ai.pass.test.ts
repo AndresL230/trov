@@ -54,14 +54,15 @@ const pass = (s: Stub, jobs: readonly AiJob[], limit = 900, e: Env = keyedEnv())
   runAiPass(e, newBudget(s.fetchImpl, limit), { jobs, now: NOW });
 
 describe("the real registry is empty", () => {
-  it("AI_JOBS has nothing in it, and a pass with it makes zero calls and writes nothing — with both keys and stale scopes", async () => {
-    expect(AI_JOBS).toEqual([]);
+  it("AI_JOBS holds the registered producers; stale scopes no registered job takes make zero calls and write nothing — with both keys", async () => {
+    // Phase D registers the Roadmap's four and doc drift (src/ai/roadmap.ts, src/ai/doc-drift.ts); none takes `card:x:`.
+    expect(AI_JOBS.map((j) => j.name)).toEqual(expect.arrayContaining(["roadmap.sprint_note", "roadmap.plan_drift", "roadmap.sprint_draft", "roadmap.plan_narrative", "doc.drift"]));
     await cards(ORG_A, 3);
     const s = stub();
-    expect(await runAiPass(keyedEnv(), newBudget(s.fetchImpl), { now: NOW })).toEqual({ calls: 0, haiku: 0, jev: 0, batched: 0, collected: 0, served: [], deferred: 0 });
+    expect(await runAiPass(keyedEnv(), newBudget(s.fetchImpl), { now: NOW })).toMatchObject({ calls: 0, haiku: 0, jev: 0, batched: 0, collected: 0, deferred: 0 });
     expect(s.haiku + s.jev + s.other).toBe(0);
     expect(await aiRows()).toEqual([]);
-    expect(await cursor()).toBe(""); // nothing read, nothing written
+    expect(await cursor()).toBe(""); // every org finished: the cursor is not written
     expect((await dirtyRow(ORG_A, "card", "x:1"))!.last_run_at).toBeNull();
   });
 

@@ -38,6 +38,13 @@ export const KIND_PROVIDER = {
   "tag.fit": "jev",
   // The plain-language filter (#162): a person's request → the screen's own filter fields (src/ai/filter.ts).
   filter: "claude",
+  // Phase D, the Roadmap (src/ai/roadmap.ts): sprint notes + plan drift; sprint drafts; the weekly narrative proposal.
+  "org.rollup": "claude",
+  "sprint.draft": "claude",
+  "plan.narrative": "claude",
+  // Phase D, doc drift (#161, src/ai/doc-drift.ts): the gate "does this doc disagree with these entries?", then Haiku.
+  "gate.drift": "jev",
+  "doc.drift": "claude",
 } as const satisfies Record<string, AiProviderName>;
 
 /** What a call is for. */

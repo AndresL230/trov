@@ -175,7 +175,7 @@ export interface AiSuggestion {
 }
 
 /** What "Wrong?" can be pressed on. */
-export const AI_ITEM_TYPES = ["brief", "repo_state", "feed", "themes", "suggestion"] as const;
+export const AI_ITEM_TYPES = ["brief", "repo_state", "feed", "themes", "suggestion", "sprint_note", "plan_drift"] as const;
 export type AiItemType = (typeof AI_ITEM_TYPES)[number];
 
 /** The `itemRef` "Wrong?" sends for each item type — ONE definition for the screen that sends it and
@@ -187,7 +187,43 @@ export const aiItemRef = {
   themes: (repo: string, range: AiThemeRange, generatedAt: string): string => `${repo}:${range}@${generatedAt}`,
   feed: (id: number): string => String(id),
   suggestion: (id: number): string => String(id),
+  sprintNote: (sprintId: number, generatedAt: string): string => `${sprintId}@${generatedAt}`,
+  planDrift: (generatedAt: string): string => generatedAt,
 } as const;
+
+// ── Roadmap (Phase D, Feature E): sprint notes, plan drift, and two suggestions ─────────────────────
+/** One written line on the Roadmap (`org_insights`, 0065): the words, their checked sources, and when and by
+ *  which model they were written. Only ever present while the org's switch is on (absent otherwise). */
+export interface AiRoadmapLine {
+  text: string;
+  cites: AiCite[];
+  generatedAt: string;
+  model: string | null;
+}
+/** `SprintView.note?` — one line per ACTIVE sprint ("Two of five done; the other three wait on hosting"). */
+export type AiSprintNote = AiRoadmapLine;
+/** A theme's share of the merged pull requests in the drift's window, COUNTED BY THE SERVER, and whether any
+ *  active sprint holds work of that theme. */
+export interface AiThemeShare { themeId: string; theme: string; pct: number; inSprint: boolean }
+/** `PlanView.drift?` — "The last two weeks went mostly to Billing, which isn't in any sprint". Every number in
+ *  `text` is one of the numbers in `shares` / `windowDays`: the model is given them and may use no other. */
+export interface AiPlanDrift extends AiRoadmapLine {
+  windowDays: number;
+  shares: AiThemeShare[];
+}
+/** How many days a drift describes, and how long the Roadmap shows it after it was written. */
+export const AI_DRIFT_WINDOW_DAYS = 14;
+
+/** The Roadmap's suggestion kinds (`ai_suggestions.kind`, item `roadmap` / `org`): an admin accepts them, and
+ *  accepting runs the existing writers as that admin. */
+export const AI_ROADMAP_SUGGESTION_KINDS = ["sprint_draft", "plan_narrative"] as const;
+export type AiRoadmapSuggestionKind = (typeof AI_ROADMAP_SUGGESTION_KINDS)[number];
+/** The item every Roadmap suggestion is about: the organization's plan. */
+export const AI_ROADMAP_ITEM = { itemType: "roadmap", itemRef: "org" } as const;
+/** A sprint draft's value: 2–4 sprints, each a name, a one-line goal, and backlog tickets by their NUMBER. */
+export interface AiSprintDraftValue { sprints: { name: string; goal: string; tickets: number[] }[] }
+/** A proposed plan narrative (at most `PLAN_NARRATIVE_MAX` characters). */
+export interface AiPlanNarrativeValue { narrative: string }
 
 /** `POST /ai/feedback` — hides the item for the person who pressed it; never edits the record. */
 export interface AiFeedbackBody {
