@@ -5,6 +5,7 @@ import { type TenantContext, all, run, nowIso } from "../data/sql";
 import { type PlatformContext, first as platformFirst, run as platformRun } from "../data/platform-sql";
 import type { McpTokenSummary } from "@shared/rows";
 import { randomToken, sha256Hex } from "./crypto";
+import { LAST_USED_THROTTLE_MS } from "./oauth";
 import { requirePlan } from "../plans/gate";
 
 // Tokens minted since the rename to Trov carry `trov_mcp_`. A token is looked up by the hash of the WHOLE
@@ -28,15 +29,24 @@ export async function mintToken(ctx: TenantContext): Promise<{ raw: string }> {
 }
 
 /** Resolve a presented raw token to the (person, org) on its row; null if missing/unknown/revoked.
- *  Bumps last_used_at. The caller still checks the LIVE membership (src/data/bearer.ts): a row only
+ *  Bumps last_used_at, at most once a minute. The caller still checks the LIVE membership (src/data/bearer.ts): a row only
  *  says who the token was minted for, not that they are still in that org. */
 export async function resolveToken(p: PlatformContext, raw: string): Promise<{ handle: string; orgId: string } | null> {
   if (!raw) return null;
   const token_hash = await sha256Hex(raw);
-  const row = await platformFirst<{ id: number; person: string; org_id: string }>(
-    p, `SELECT id, person, org_id FROM mcp_tokens WHERE token_hash = ? AND revoked = 0`, token_hash);
+  const row = await platformFirst<{ id: number; person: string; org_id: string; last_used_at: string | null }>(
+    p, `SELECT id, person, org_id, last_used_at FROM mcp_tokens WHERE token_hash = ? AND revoked = 0`, token_hash);
   if (!row) return null;
-  await platformRun(p, `UPDATE mcp_tokens SET last_used_at = ? WHERE id = ?`, nowIso(), row.id);
+  // At most once a minute, as an OAuth grant's (src/auth/oauth.ts `resolveOAuthAccessToken`): MCP traffic is
+  // not a write per call. Best-effort for the same reason — Settings' "last used" is a courtesy, never auth.
+  const nowMs = Date.now();
+  if (!row.last_used_at || Date.parse(row.last_used_at) <= nowMs - LAST_USED_THROTTLE_MS) {
+    try {
+      await platformRun(p, `UPDATE mcp_tokens SET last_used_at = ? WHERE id = ?`, new Date(nowMs).toISOString(), row.id);
+    } catch (e) {
+      console.error("mcp token last_used_at: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
   return { handle: row.person, orgId: row.org_id };
 }
 
