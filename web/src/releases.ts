@@ -83,20 +83,28 @@ export const RELEASES: Release[] = [
       "My Work puts the date at the top right, and Needs your review says its count once.",
     ],
     headsUp: [
-      "Org settings has an AI tab: whether Trov's AI is on for your organization, and exactly what is sent to Anthropic and what never is. An admin turns it on or off.",
+      "Org settings has an AI tab: whether Trov's AI is on for your organization, this month's use of each AI allowance, and exactly what is sent to Anthropic and to TypeSafe AI, and what never is. An admin turns it on or off; off stops Sift too.",
     ],
-    ops: [],
+    ops: [
+      "Apply `0058_ai_dirty` (the deploy does it). ADDITIVE: the empty `ai_dirty` table (nothing writes it yet) and `orgs.ai_chat_auto` (on for every organization). Safe on the Worker from before it; the by-hand rollback is in the file's header.",
+    ],
     patches: {
       added: [
         "The AI kit (`web/src/ai-ui.ts`): the Trov AI mark (`aiMark` in `marks.ts`, the Trov logo in the accent), the \"Written by Trov\" byline with its not-official tooltip, \"Wrong?\" as a thumbs-down icon button at the bottom right, source links (`AiCite`), \"Wrong?\" (`POST /ai/feedback`, hidden at once for the person, back on a failure), the suggestion chip (#157: dashed outline, the mark, a \"because…\" disclosure, Accept / Dismiss, \"Not available yet\" on a 409 `not_available`) and the capped / empty lines; acts in `web/src/ai-actions.ts` (#178)",
         "Four AI screens, each drawn ONLY when its read carries the field (production omits them all, so nothing shows yet): My Work › Your brief (`briefTile`, `brief?`; with it the bento is laid out by area, `.mw-bento-brief`: Brief tall beside Review over Tickets, Your sessions tall beside Repo over Docs you own and Queued handoffs; every tile one fixed height, its overflow scrolling inside it), Repo › Overview › State and Repo › Planning › Where the work went (`web/src/repo-ai.ts`, `state?` / `themes?`: lanes, weekly bands, 8 weeks / Quarter, proposed themes with Accept / Rename / Remove), and Feed entries written by Trov (`FeedRow.ai?`) with a Source switch (All / Agents / Trov) and a one-time note (`trov.aiFeedNote`, per person on this browser). `test/render.ai-absent.test.ts` pins each screen's field-absent markup byte for byte; `test/render.ai.test.ts` covers every state (#178)",
         "Org settings › AI (`web/src/org-ai.ts`, `#org/ai`): the switch (admin; `PUT /ai/settings`), this month's runs against the allowance, and what is sent to Anthropic; the web API client gains `getAiSettings` / `putAiSettings` / `acceptAiSuggestion` / `dismissAiSuggestion` / `sendAiFeedback` (`AI_ROUTES`) (#178)",
         "Platform › Usage: AI runs, failures, capped runs and tokens per organization and in total, from `OrgUsage.ai` / `PlatformUsageResponse.ai` (nothing drawn when absent) (#178)",
+        "`src/ai/client.ts`: `KIND_PROVIDER`, the ONE table from a kind to its provider (`claude` | `jev`); `providerFor(kind)` returns the provider typed by its kind (`tag.fit` → Jev). `src/tools/classify.ts` is the Jev provider — its `classify` unchanged — and gains `ask`: several `noul` / `choice` / `score` questions about one item in one request, each answer parsed against its question and null when malformed (#178)",
+        "`ai_chat` (Ask Trov) in `PLANS`: weighted units a month (Fast 1, Smart 5, Thinking 10; metric `ai_chat`, nothing writes it yet), 50 on Free and Personal, 500 PER SEAT on Pro (`PlanDef.perSeat`: `resolveEntitlements` multiplies by the seats in force), unlimited on Enterprise; not listed (`listed: false`) (#178)",
+        "`0058_ai_dirty`: `ai_dirty` (the AI router's stale scopes, PK `(org_id, scope, scope_key)`; in `ORG_TABLES` and the reset seed; nothing writes it yet) and `orgs.ai_chat_auto` (Ask Trov's Auto switch, moved here from the reserved 0066_ask) (#178)",
       ],
       changed: [
         "`switchBtn` (`web/src/notifications.ts`) takes an optional accessible name and a busy state; without them its markup is unchanged (#178)",
         "My Work › Queued handoffs: the button is Claim & copy (`mwHandoffClaim`): it copies the newest handoff as a prompt and claims it, as the handoff screen's Claim does (#178)",
         "My Work: the date sits top right of the greeting, and the line under the greeting is only what is waiting on you (`myWorkLayout` takes `date` and `stat`) (#178)",
+        "Sift runs only while the organization's AI switch (`orgs.ai_automation`) AND its own `tag.fit` switch are on: `siftSwitches` reads both before the run and before every request, so turning the org's off stops a run in progress; the Tags tab says so (`TagAiDTO.org`). The run moved to `src/ai/sift.ts`, out of MCP's reach; `src/tools/tag-fit.ts` keeps the rest (#178)",
+        "Org settings › AI: all four allowances with this month's use (Summaries, Written by Trov, Sift, Ask Trov), the Auto mode switch for Ask Trov (`PUT /ai/settings { chatAuto }`, admin, audited `org.ai_chat_auto`), and what is sent to each provider, Anthropic and TypeSafe AI (`AiSettings.allowances`, `chatAuto`, `AiSendLine.provider`; `runs` is gone). `LOCAL_AI_PREVIEW` fills its numbers in every mode (#178)",
+        "`test/secrets.mcp.test.ts` pins the three model call sites (the summary seams, the AI pass, the Sift run), that nothing MCP reaches imports `src/ai/` or the Jev provider, and that only `src/tools/classify.ts` names TypeSafe's URL (#178)",
       ],
       fixed: [],
       removed: [],

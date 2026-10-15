@@ -39,27 +39,78 @@ async function withHandler<T>(kind: string, h: AcceptHandler, fn: () => Promise<
 }
 
 describe("Org settings › AI — GET / PUT /ai/settings", () => {
-  it("any member reads it: the switch, who may change it, eligibility, this month's runs, what is sent", async () => {
+  it("any member reads it: the switches, who may change them, eligibility, all four allowances this month, what is sent to whom", async () => {
     const r = await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, await cookieFor(MEMBER));
     expect(r.status).toBe(200);
+    const unlimited = { used: 0, cap: null, resumesOn: null }; // the seed org is Enterprise: unlimited
     expect(AiSettingsSchema.parse(r.json)).toEqual({
       enabled: true, canEdit: false, eligibility: "no_key", // the pool has no key
-      runs: { used: 0, cap: null, resumesOn: null }, // the seed org is Enterprise: unlimited
+      allowances: { ai_summaries: unlimited, ai_runs: unlimited, jev_checks: unlimited, ai_chat: unlimited },
+      chatAuto: true, // 0058: on for every org
       sends: [...AI_SENDS], neverSent: AI_NEVER_SENT,
     });
+    // Both providers, by their legal names, and what each receives.
+    expect(r.json.sends.map((s) => [s.provider, s.for])).toEqual([["Anthropic", "Summaries"], ["TypeSafe AI", "Sift"]]);
     expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, await cookieFor(FIXTURE_ADMIN))).json.canEdit).toBe(true);
   });
 
-  it("with a key: ok, and on Free at 250 capped with the day it resumes", async () => {
+  it("with a key: ok, and on Free at 250 capped with the day it resumes; each allowance counts its own metric", async () => {
     const keyed = { ...(env as unknown as Env), ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY };
     const cookie = await cookieFor(MEMBER);
     expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie, undefined, keyed)).json.eligibility).toBe("ok");
     await run(env.DB, `UPDATE orgs SET plan = 'free' WHERE id = ?`, ORG_A);
     const day = new Date().toISOString().slice(0, 10);
-    await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, ?, 'ai_run:brief', 'ai-pass', 250, ?)`, ORG_A, day, new Date().toISOString());
+    const at = new Date().toISOString();
+    for (const [metric, n] of [["ai_run:brief", 250], ["summary:pr", 7], ["ai_suggest", 12], ["ai_chat", 30], ["ai_run_failed:brief", 99]] as const) {
+      await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, ?, ?, 'x', ?, ?)`, ORG_A, day, metric, n, at);
+    }
+    // Another org's use and last month's never count.
+    await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, ?, 'ai_chat', 'x', 40, ?)`, ORG_B, day, at);
+    await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2020-01-01', 'ai_chat', 'x', 40, ?)`, ORG_A, at);
     const r = (await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie, undefined, keyed)).json;
     const next = new Date(); next.setUTCDate(1); next.setUTCMonth(next.getUTCMonth() + 1);
-    expect(r).toMatchObject({ eligibility: "capped", runs: { used: 250, cap: 250, resumesOn: next.toISOString().slice(0, 10) } });
+    expect(r).toMatchObject({
+      eligibility: "capped",
+      allowances: {
+        ai_runs: { used: 250, cap: 250, resumesOn: next.toISOString().slice(0, 10) },
+        ai_summaries: { used: 7, cap: 300, resumesOn: null },
+        jev_checks: { used: 12, cap: 1000, resumesOn: null },
+        ai_chat: { used: 30, cap: 50, resumesOn: null },
+      },
+    });
+  });
+
+  it("Pro's Ask Trov allowance is 500 PER SEAT — the paid seats (the `seats` override) × 500, computed when read", async () => {
+    const cookie = await cookieFor(MEMBER);
+    await run(env.DB, `UPDATE orgs SET plan = 'team', plan_source = 'billing', plan_overrides = ? WHERE id = ?`, JSON.stringify({ seats: 4 }), ORG_A);
+    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie)).json.allowances.ai_chat).toEqual({ used: 0, cap: 2000, resumesOn: null });
+    await run(env.DB, `UPDATE orgs SET plan_overrides = ? WHERE id = ?`, JSON.stringify({ seats: 7 }), ORG_A);
+    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie)).json.allowances.ai_chat.cap).toBe(3500);
+    // Free is per org, whatever its seats.
+    await run(env.DB, `UPDATE orgs SET plan = 'free', plan_source = 'granted', plan_overrides = ? WHERE id = ?`, JSON.stringify({ seats: 7 }), ORG_A);
+    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie)).json.allowances.ai_chat.cap).toBe(50);
+  });
+
+  it("an admin allows or stops Ask Trov's Auto mode (audited `org.ai_chat_auto`); a member's PUT is 403; it is cookie-only", async () => {
+    const admin = await cookieFor(FIXTURE_ADMIN);
+    const off = await call<AiSettings>("PUT", `${BASE}${AI_ROUTES.settings}`, admin, { chatAuto: false });
+    expect(off.status).toBe(200);
+    expect(off.json).toMatchObject({ chatAuto: false, enabled: true }); // the AI switch is untouched
+    expect(await first(env.DB, `SELECT ai_chat_auto, ai_automation FROM orgs WHERE id = ?`, ORG_A)).toEqual({ ai_chat_auto: 0, ai_automation: 1 });
+    expect(await all(env.DB, `SELECT actor, action, target, detail FROM org_admin_audit WHERE org_id = ? AND action LIKE 'org.ai%'`, ORG_A))
+      .toEqual([{ actor: FIXTURE_ADMIN, action: "org.ai_chat_auto", target: "ai", detail: JSON.stringify({ chatAuto: false }) }]);
+    expect(await call("PUT", `${BASE}${AI_ROUTES.settings}`, await cookieFor(MEMBER), { chatAuto: true })).toEqual({ status: 403, json: { error: "forbidden" } });
+    expect((await call("PUT", `${BASE}${AI_ROUTES.settings}`, admin, { chatAuto: true }, env as unknown as Env, { authorization: "Bearer trov_mcp_x" })).status).toBe(403);
+    expect(await first(env.DB, `SELECT ai_chat_auto FROM orgs WHERE id = ?`, ORG_A)).toEqual({ ai_chat_auto: 0 });
+    // Both at once; neither, another key or a wrong type is 400 and changes nothing.
+    const both = await call<AiSettings>("PUT", `${BASE}${AI_ROUTES.settings}`, admin, { enabled: false, chatAuto: true });
+    expect(both.json).toMatchObject({ enabled: false, chatAuto: true });
+    for (const bad of [{}, { chatAuto: "yes" }, { auto: true }, { enabled: true, extra: 1 }, null]) {
+      expect((await call("PUT", `${BASE}${AI_ROUTES.settings}`, admin, bad)).status, JSON.stringify(bad)).toBe(400);
+    }
+    expect(await first(env.DB, `SELECT ai_chat_auto, ai_automation FROM orgs WHERE id = ?`, ORG_A)).toEqual({ ai_chat_auto: 1, ai_automation: 0 });
+    // Another org's switch is its own.
+    expect(await first(env.DB, `SELECT ai_chat_auto FROM orgs WHERE id = ?`, ORG_B)).toEqual({ ai_chat_auto: 1 });
   });
 
   it("an admin turns it off (audited) and on; a member's PUT is 403 and changes nothing; a bad body is 400", async () => {

@@ -104,7 +104,7 @@ describe("the grantee — who a grant is for", () => {
     const other = await loner("someone-else");
     const seen = await mine(late);
     expect(seen.can_create).toBe(true);
-    expect(seen.grants).toEqual([{ id: g.id, plan: "team", plan_name: "Pro", entitlements: PLANS.team.entitlements, granted_by: SUPERADMIN, created_at: g.created_at, expires_at: null, gift_days: null } satisfies MyGrant]);
+    expect(seen.grants).toEqual([{ id: g.id, plan: "team", plan_name: "Pro", entitlements: { ...PLANS.team.entitlements, ai_chat: 500 * 50 }, granted_by: SUPERADMIN, created_at: g.created_at, expires_at: null, gift_days: null } satisfies MyGrant]);
     // …and it is invisible to, and unusable by, anyone else — even naming its id. (They may still make a Free org.)
     expect(await mine(other)).toMatchObject(ONLY_FREE);
     const stolen = await call("POST", "/api/orgs", other, { slug: "stolen", name: "Stolen", grant: g.id });
@@ -440,7 +440,7 @@ describe("the billing seam — src/plans/billing.ts", () => {
     expect(await one(`SELECT overrides FROM org_grants WHERE id = ?`, byHand)).toEqual({ overrides: "{}" });
 
     const buyer = await loner("seat-buyer", { email: "seats@shop.io", verified: true });
-    expect((await mine(buyer)).grants).toEqual([expect.objectContaining({ id: g.id, plan: "team", plan_name: "Pro", entitlements: { ...PLANS.team.entitlements, seats: 7 } })]);
+    expect((await mine(buyer)).grants).toEqual([expect.objectContaining({ id: g.id, plan: "team", plan_name: "Pro", entitlements: { ...PLANS.team.entitlements, seats: 7, ai_chat: 500 * 7 } })]);
     expect((await call("POST", "/api/orgs", buyer, { slug: "seven", name: "Seven", grant: g.id })).status).toBe(201);
     // The creating batch copied the subscription's ids, plan, status and period — and the grant's paid seats.
     expect(await one(`SELECT plan, plan_overrides, plan_source, plan_status, plan_period_end, billing_customer_id, billing_subscription_id FROM orgs WHERE slug = 'seven'`)).toEqual({

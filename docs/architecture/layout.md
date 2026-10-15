@@ -174,14 +174,19 @@
   `shared/sync.ts`): `docs/architecture/sync.md` — whether a sync can start is asked of the ONE GitHub credential
   source (`githubCredentialSource`, `src/github-app/credential.ts`), never of the token alone. The summarizer for an org is chosen ONLY by `orgSummarizers`
   (`src/plans/summaries.ts` — one platform key, each call metered per org, the monthly `ai_summaries` allowance).
-  AI (`docs/architecture/ai.md`): `src/ai/client.ts` (THE model client, `providerFor`) and `src/ai/schema.ts`;
+  AI (`docs/architecture/ai.md`): `src/ai/client.ts` (THE model client: `KIND_PROVIDER`, the one table from a kind
+  to its provider — Claude or Jev — and `providerFor`) and `src/ai/schema.ts`; `src/tools/classify.ts` (the Jev
+  provider, the one file that names TypeSafe's URL; only the client imports it); `src/ai/sift.ts` (the Sift run —
+  the rest of Sift is `src/tools/tag-fit.ts`, which MCP reaches and which imports no client);
   `src/ai/pass.ts` (the AI pass in the repo tick — its job registry `AI_JOBS` is empty), `src/ai/eligibility.ts`
   (`aiEligibility`: ok / off / no_key / capped), `src/ai/routes.ts` (Org settings › AI, accept / dismiss,
   "Wrong?" — cookie only, `/api/o/:slug/ai/…`), `src/ai/suggestions.ts` (`AI_ACCEPT_HANDLERS`, empty),
   `src/ai/preview.ts` (`LOCAL_AI_PREVIEW`, `wrangler dev` only); the tables' one repository `src/data/ai.ts`;
   the screens' contracts `shared/ai-core.ts` (zod-free) + `shared/ai.ts` and the preview's
   `shared/ai-fixtures.ts`. Migration `0055_ai` (`orgs.ai_automation`, the switch, and
-  `ai_suggestions`, `ai_feedback`); the monthly `ai_runs` allowance is in `PLANS`
+  `ai_suggestions`, `ai_feedback`) and `0058_ai_dirty` (`ai_dirty`, the router's table — nothing writes it yet — and
+  `orgs.ai_chat_auto`, Ask Trov's Auto switch); the monthly `ai_runs` and `ai_chat` (Ask Trov, per seat on Pro)
+  allowances are in `PLANS`
   (not listed on the pricing page yet).
   Then `0057_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
   `hosting_poll_state`, and `org_secrets` REBUILT only to widen its kind CHECK to the five hosting kinds; rollback

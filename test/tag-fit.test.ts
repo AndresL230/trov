@@ -3,11 +3,13 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
-import { jevClassifier, noulOf, JEV_URL, JEV_MODEL, CLASSIFY_PROMPT_VERSION, type ClassifyRequest, type ClassifyItem } from "../src/tools/classify";
+import { jevProvider, noulOf, JEV_URL, JEV_MODEL, CLASSIFY_PROMPT_VERSION, type ClassifyRequest, type ClassifyItem } from "../src/tools/classify";
 import {
-  FIT_APPLY, FIT_SUGGEST, settleFitSuggestion, CANDIDATE_CAP, NO_SNIPPET_REASON, excerptOf, evidenceOf, fitQuery, fitCandidates, startTagFit, continueTagFit, runTagFit,
-  setAiEnabled, aiEnabled, suggestAllowance, undoTagFit, JEV_ACTOR,
+  FIT_APPLY, FIT_SUGGEST, settleFitSuggestion, CANDIDATE_CAP, NO_SNIPPET_REASON, excerptOf, evidenceOf, fitQuery, fitCandidates,
+  setAiEnabled, aiEnabled, siftSwitches, suggestAllowance, undoTagFit, JEV_ACTOR,
 } from "../src/tools/tag-fit";
+import { startTagFit, continueTagFit, runTagFit } from "../src/ai/sift";
+import { setAiAutomation } from "../src/data/ai";
 import { addTag, listTags, setItemTags, tagPage } from "../src/tools/tags";
 import type { TagPageDTO } from "@shared/tags-core";
 import { append_feed } from "../src/tools/writes";
@@ -42,7 +44,7 @@ function jev(reply: (state: string) => Reply) {
       return new Response(r.raw ?? JSON.stringify(r.body ?? { error: "x" }), { status: r.status, headers: { "content-type": "application/json" } });
     } finally { inFlight--; }
   }) as unknown as typeof fetch;
-  return { fetchImpl, sent, peak: () => maxInFlight, classifier: jevClassifier("k", { fetchImpl, retryDelayMs: 0, timeoutMs: 30 }) };
+  return { fetchImpl, sent, peak: () => maxInFlight, classifier: jevProvider("k", { fetchImpl, retryDelayMs: 0, timeoutMs: 30 }) };
 }
 /** `p` for every item whose text contains `word`, 0.05 for the rest. */
 const fitsIf = (word: string, p = 0.9) => (state: string): Reply => (state.includes(word) ? p : 0.05);
@@ -122,16 +124,16 @@ describe("the classify call: Jev (#155)", () => {
     expect(r1.judgements.length).toBe(1);
 
     const always = jev(() => ({ status: 429 }));
-    const r2 = await jevClassifier("k", { fetchImpl: always.fetchImpl, retryDelayMs: 0, concurrency: 1 }).classify(req([item("0", "a"), item("1", "b"), item("2", "c")]));
+    const r2 = await jevProvider("k", { fetchImpl: always.fetchImpl, retryDelayMs: 0, concurrency: 1 }).classify(req([item("0", "a"), item("1", "b"), item("2", "c")]));
     expect(r2).toEqual({ judgements: [], calls: 2, stopped: "provider" });
     expect(always.sent.length).toBe(2); // the first item and its one retry; nothing after
   });
 
   it("401 (bad key) stops the run at once; a network error is no judgement; it never throws", async () => {
     const bad = jev(() => ({ status: 401 }));
-    const r = await jevClassifier("k", { fetchImpl: bad.fetchImpl, concurrency: 1 }).classify(req([item("0", "a"), item("1", "b")]));
+    const r = await jevProvider("k", { fetchImpl: bad.fetchImpl, concurrency: 1 }).classify(req([item("0", "a"), item("1", "b")]));
     expect(r).toEqual({ judgements: [], calls: 1, stopped: "provider" });
-    const down = jevClassifier("k", { fetchImpl: (async () => { throw new Error("network"); }) as unknown as typeof fetch });
+    const down = jevProvider("k", { fetchImpl: (async () => { throw new Error("network"); }) as unknown as typeof fetch });
     expect(await down.classify(req([item("0", "a")]))).toEqual({ judgements: [], calls: 1, stopped: null });
     expect(await down.classify(req([]))).toEqual({ judgements: [], calls: 0, stopped: null });
   });
@@ -289,6 +291,56 @@ describe("a run", () => {
     const j = jev(() => { if (++n === 2) void setAiEnabled(admin, false); return 0.9; });
     await runTagFit(KEYED, systemCtx(), "billing", { jev: { fetchImpl: j.fetchImpl, concurrency: 1, retryDelayMs: 0 } });
     expect(j.sent.length).toBeLessThan(10);
+  });
+
+  it("the organization's AI switch gates Sift too: with it off no run starts — nothing sent, nothing counted — whatever Sift's own switch says", async () => {
+    await seedBilling();
+    await billingTag(); // Sift's own switch ON
+    const admin = await tenantCtx(OWNER);
+    await setAiAutomation(admin, false);
+    expect(await siftSwitches(systemCtx())).toEqual({ org: false, sift: true, on: false });
+    expect((await listTags(admin, { aiAvailable: true })).ai).toMatchObject({ enabled: true, org: false }); // the Tags tab says so
+    const j = jev(fitsIf("Invoice"));
+    expect((await startTagFit(KEYED, systemCtx(), "billing")).status).toBe("off");
+    expect(await runTagFit(KEYED, systemCtx(), "billing", { classifier: j.classifier })).toBe("off");
+    expect(j.sent).toEqual([]);
+    expect(await calls()).toBe(0);
+    expect(await all(env.DB, `SELECT 1 FROM org_tag_runs`)).toEqual([]);
+    // Both on: it runs.
+    await setAiAutomation(admin, true);
+    expect(await siftSwitches(systemCtx())).toEqual({ org: true, sift: true, on: true });
+    expect(await runTagFit(KEYED, systemCtx(), "billing", { classifier: j.classifier })).toBe("done");
+    expect(j.sent.length).toBeGreaterThan(0);
+  });
+
+  it("Sift's own switch (`tag.fit`) gates it with the organization's on: off → no run starts", async () => {
+    await seedBilling();
+    await billingTag(false); // Sift's own switch OFF (no row)
+    expect(await siftSwitches(systemCtx())).toEqual({ org: true, sift: false, on: false });
+    const j = jev(fitsIf("Invoice"));
+    expect(await runTagFit(KEYED, systemCtx(), "billing", { classifier: j.classifier })).toBe("off");
+    await setAiEnabled(await tenantCtx(OWNER), true);
+    await setAiEnabled(await tenantCtx(OWNER), false); // a row that says off is off too
+    expect(await runTagFit(KEYED, systemCtx(), "billing", { classifier: j.classifier })).toBe("off");
+    expect(j.sent).toEqual([]);
+    expect(await calls()).toBe(0);
+  });
+
+  it("turning the ORGANIZATION's switch off mid-run stops the run at its next request", async () => {
+    for (let i = 0; i < 10; i++) await append_feed(systemCtx(), { author: OWNER, summary: `billing ${i}`, body: "billing" });
+    await billingTag();
+    const admin = await tenantCtx(OWNER);
+    const j = jev(() => 0.9);
+    let n = 0;
+    // The second request turns the org's switch off BEFORE it is answered: the third is never made.
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (++n === 2) await setAiAutomation(admin, false);
+      return j.fetchImpl(url, init);
+    }) as unknown as typeof fetch;
+    await runTagFit(KEYED, systemCtx(), "billing", { jev: { fetchImpl, concurrency: 1, retryDelayMs: 0 } });
+    expect(j.sent.length).toBe(2);
+    expect(await calls()).toBe(2);
+    expect(await first(env.DB, `SELECT calls, checked FROM org_tag_runs`)).toEqual({ calls: 2, checked: 2 });
   });
 
   it("isolation: org B's run reads and sends only org B's items, with org B's own switch", async () => {

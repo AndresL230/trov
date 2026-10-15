@@ -80,7 +80,7 @@ export async function meterMcpTool(env: Env, ctx: TenantContext, tool: string): 
 // from the webhook (actor `github-webhook`) and from Sync GitHub (actor = the admin). Counts and sizes
 // only: no title, no body, no summary text ever reaches this table.
 export type SummaryKind = "pr" | "issue";
-/** One model call for a suggestion (src/tools/tag-fit.ts) — what the monthly `jev_checks` allowance counts. */
+/** One model call for a suggestion (the Sift run, src/ai/sift.ts) — what the monthly `jev_checks` allowance counts. */
 export const METRIC_AI_SUGGEST = "ai_suggest";
 /** An attempted summarizer call — what the monthly allowance (`ai_summaries`) counts. */
 export const METRIC_SUMMARY: Record<SummaryKind, string> = { pr: "summary:pr", issue: "summary:issue" };
@@ -118,6 +118,9 @@ export const AI_METRIC_GLOB = "ai_*";
 export const aiRunMetric = (kind: string): string => METRIC_AI_RUN_PREFIX + kind;
 export const aiRunFailedMetric = (kind: string): string => METRIC_AI_RUN_FAILED_PREFIX + kind;
 export const aiRunCappedMetric = (kind: string): string => METRIC_AI_RUN_CAPPED_PREFIX + kind;
+/** `ai_chat` — Ask Trov's WEIGHTED units (a Fast answer 1, Smart 5, Thinking 10): what the monthly `ai_chat`
+ *  allowance counts (shared/plans.ts). Nothing writes it yet (Ask Trov is a later phase), so it reads 0. */
+export const METRIC_AI_CHAT = "ai_chat";
 
 const UPSERT_BY = `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, ?, ?, ?, ?, ?)
   ON CONFLICT(org_id, day, metric, actor) DO UPDATE SET count = count + excluded.count, last_at = excluded.last_at`;

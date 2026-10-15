@@ -7,9 +7,10 @@
 import { z } from "zod";
 import {
   AI_STATES, AI_NEXT_KINDS, AI_ORIGINS, AI_THEME_RANGES, AI_THEME_COLORS, AI_THEME_STATUSES,
-  AI_SUGGESTION_STATES, AI_ITEM_TYPES, AI_ELIGIBILITY, AI_LIST_MAX,
+  AI_SUGGESTION_STATES, AI_ITEM_TYPES, AI_ELIGIBILITY, AI_LIST_MAX, AI_PROVIDER_NAMES,
   type AiCite, type AiLine, type AiBrief, type AiRepoState, type AiFeedMeta, type AiThemes,
-  type AiThemeLane, type AiSuggestion, type AiFeedbackBody, type AiAcceptBody, type AiSettings, type AiUsage,
+  type AiThemeLane, type AiSuggestion, type AiFeedbackBody, type AiAcceptBody, type AiSettings, type AiSettingsPut, type AiUsage,
+  type AiAllowanceUse,
 } from "./ai-core";
 
 export * from "./ai-core";
@@ -111,14 +112,23 @@ export const AiFeedbackBodySchema = z.object({
 
 export const AiAcceptBodySchema = z.object({ value: z.unknown().optional() }) satisfies z.ZodType<AiAcceptBody>;
 
-export const AiSettingsPutSchema = z.object({ enabled: z.boolean() });
+/** Either switch, or both — never neither, never another key. */
+export const AiSettingsPutSchema = z.strictObject({ enabled: z.boolean().optional(), chatAuto: z.boolean().optional() })
+  .refine((b) => b.enabled !== undefined || b.chatAuto !== undefined, "send enabled, chatAuto, or both") satisfies z.ZodType<AiSettingsPut>;
+
+const AiAllowanceUseSchema = z.object({
+  used: z.number().int().min(0), cap: z.number().int().min(0).nullable(), resumesOn: isoDay.nullable(),
+}) satisfies z.ZodType<AiAllowanceUse>;
 
 export const AiSettingsSchema = z.object({
   enabled: z.boolean(),
   canEdit: z.boolean(),
   eligibility: z.enum(AI_ELIGIBILITY),
-  runs: z.object({ used: z.number().int().min(0), cap: z.number().int().min(0).nullable(), resumesOn: isoDay.nullable() }),
-  sends: z.array(z.object({ what: z.string(), for: z.string() })),
+  allowances: z.object({
+    ai_summaries: AiAllowanceUseSchema, ai_runs: AiAllowanceUseSchema, jev_checks: AiAllowanceUseSchema, ai_chat: AiAllowanceUseSchema,
+  }),
+  chatAuto: z.boolean(),
+  sends: z.array(z.object({ provider: z.enum(AI_PROVIDER_NAMES), what: z.string(), for: z.string() })),
   neverSent: z.string(),
 }) satisfies z.ZodType<AiSettings>;
 

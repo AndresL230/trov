@@ -23,7 +23,7 @@ import {
 } from "../web/src/ai-ui";
 import { parseFeedbackArg } from "../web/src/ai-actions";
 import { aiMark } from "../web/src/marks";
-import { aiTab, aiRunsLine } from "../web/src/org-ai";
+import { aiTab, allowanceLine } from "../web/src/org-ai";
 import { usageView, orgUsageBlock } from "../web/src/platform-usage";
 import { briefFixture, repoStateFixture, themesFixture, feedFixtures, aiPreviewFixtures } from "@shared/ai-fixtures";
 import { AI_NEVER_SENT, AI_SENDS, type AiSettings, type AiThemeRange, type AiThemes } from "@shared/ai-core";
@@ -409,32 +409,59 @@ describe("Feed — entries written by Trov", () => {
 
 describe("Org settings › AI", () => {
   const org = { slug: "trov", name: "Trov", role: "admin" as const };
-  const settings = (o: Partial<AiSettings> = {}): AiSettings => ({ enabled: true, canEdit: true, eligibility: "ok", runs: { used: 1212, cap: 3000, resumesOn: null }, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT, ...o });
+  const use = (used: number, cap: number | null, resumesOn: string | null = null) => ({ used, cap, resumesOn });
+  const settings = (o: Partial<AiSettings> = {}): AiSettings => ({
+    enabled: true, canEdit: true, eligibility: "ok",
+    allowances: { ai_summaries: use(212, 3000), ai_runs: use(1212, 3000), jev_checks: use(40, 10000), ai_chat: use(830, 2500) },
+    chatAuto: true, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT, ...o,
+  });
   const tab = (a: AiSettings | null, status: "ok" | "loading" | "error" = "ok", saving = false) => aiTab(org, { status, data: a }, saving);
 
-  it("an admin gets the switch; a member reads its state as words", () => {
+  it("an admin gets both switches — the AI switch and Ask Trov's Auto; a member reads their state as words", () => {
     const admin = tab(settings());
     expect(admin).toMatch(/<button data-act="orgAiToggle" role="switch" aria-checked="true" aria-label="Trov(&#39;|')s AI for this organization"/);
-    const member = tab(settings({ canEdit: false, enabled: false }));
+    expect(admin).toMatch(/<button data-act="orgAiChatAutoToggle" role="switch" aria-checked="true" aria-label="Auto mode in Ask Trov for this organization"/);
+    expect(tab(settings({ chatAuto: false }))).toMatch(/data-act="orgAiChatAutoToggle" role="switch" aria-checked="false"/);
+    expect(tab(settings({ chatAuto: false }))).toContain('data-ai-chat-auto="off"');
+    const member = tab(settings({ canEdit: false, enabled: false, chatAuto: false }));
     expect(member).not.toContain('role="switch"');
     expect(text(member)).toContain("Off");
+    expect(text(member)).toContain("Auto mode in Ask Trov");
     expect(text(member)).toContain("Only an admin or an owner can change this.");
     expect(tab(settings(), "ok", true)).toMatch(/role="switch" aria-checked="true"[^>]* disabled aria-busy="true"/);
   });
-  it("this month's runs against the allowance; unlimited when the plan has no cap; the resume date when used up", () => {
-    expect(text(tab(settings()))).toContain("1,212 of 3,000 AI runs this month");
-    expect(tab(settings())).toContain('role="meter"');
-    expect(aiRunsLine({ used: 4, cap: null, resumesOn: null })).toBe("4 AI runs this month (unlimited)");
-    expect(tab(settings({ runs: { used: 9, cap: null, resumesOn: null } }))).not.toContain('role="meter"');
-    const capped = text(tab(settings({ eligibility: "capped", runs: { used: 3000, cap: 3000, resumesOn: "2026-11-01" } })));
-    expect(capped).toContain("Monthly AI allowance used; Trov writes again on Nov 1.");
+  it("all four allowances with this month's use, in order; unlimited when the plan has no cap; the resume date when one is used up", () => {
+    const html = tab(settings());
+    expect([...html.matchAll(/data-ai-allowance="([a-z_]+)"/g)].map((m) => m[1])).toEqual(["ai_summaries", "ai_runs", "jev_checks", "ai_chat"]);
+    const t = text(html);
+    for (const line of ["212 of 3,000 summaries this month", "1,212 of 3,000 runs this month", "40 of 10,000 checks this month", "830 of 2,500 units this month"]) expect(t).toContain(line);
+    for (const name of ["Summaries", "Written by Trov", "Sift", "Ask Trov"]) expect(t).toContain(name);
+    expect(t).toContain("Fast is 1, Smart 5, Thinking 10");
+    expect(html.match(/role="meter"/g)?.length).toBe(4);
+    expect(allowanceLine("ai_runs", use(4, null))).toBe("4 runs this month (unlimited)");
+    expect(allowanceLine("jev_checks", use(1, null))).toBe("1 check this month (unlimited)");
+    const unlimited = tab(settings({ allowances: { ai_summaries: use(1, null), ai_runs: use(9, null), jev_checks: use(0, null), ai_chat: use(0, null) } }));
+    expect(unlimited).not.toContain('role="meter"');
+    const capped = text(tab(settings({ eligibility: "capped", allowances: { ...settings().allowances, ai_runs: use(3000, 3000, "2026-11-01"), ai_chat: use(2500, 2500, "2026-11-01") } })));
+    expect(capped).toContain("Used up for this month: Trov writes nothing new until Nov 1.");
+    expect(capped).toContain("Used up for this month: Ask Trov pauses until Nov 1.");
+    expect(capped).not.toContain("excerpt until"); // summaries are not used up
   });
-  it("what is sent to Anthropic is a list, with what is never sent", () => {
-    const t = text(tab(settings()));
-    expect(t).toContain("What is sent to Anthropic");
+  it("what is sent names BOTH providers — Anthropic and TypeSafe AI — and what each receives, with what is never sent; the model is Sift, never named", () => {
+    const html = tab(settings());
+    const t = text(html);
+    expect(t).toContain("What is sent");
+    expect(html).toContain('data-ai-sends="Anthropic"');
+    expect(html).toContain('data-ai-sends="TypeSafe AI"');
+    expect(t).toContain("To Anthropic");
+    expect(t).toContain("To TypeSafe AI");
     expect(t).toContain("Pull request and issue titles and descriptions (up to 8,000 characters each)");
     expect(t).toContain("For summaries");
+    expect(t).toContain("the title and first 400 characters of each feed entry, doc or decision that may fit it");
+    expect(t).toContain("For Sift");
     expect(t).toContain(AI_NEVER_SENT);
+    expect(t).not.toMatch(/\bJev\b/);
+    expect(html).not.toMatch(/\bJev\b/);
   });
   it("no key on this Trov: said as a fact", () => {
     expect(text(tab(settings({ eligibility: "no_key" })))).toContain("This Trov has no Anthropic key");
@@ -447,7 +474,7 @@ describe("Org settings › AI", () => {
     const s = app({ screen: "org", org: { ...initialState().org, tab: "ai", slug: "trov", ai: { status: "ok", data: settings({ canEdit: false }) } } }, "member");
     const html = render(s);
     expect(html).toContain('id="org-tab-ai"');
-    expect(text(html)).toContain("What is sent to Anthropic");
+    expect(text(html)).toContain("To TypeSafe AI");
   });
 });
 

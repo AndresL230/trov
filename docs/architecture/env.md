@@ -28,8 +28,8 @@ app-metrics tokens are rows it enters on Org settings › Hosting / Integrations
 Capture-time summaries call Anthropic's Messages API (`ANTHROPIC_API_KEY`, through the one model client
 `src/ai/client.ts`), never at render — not a Cloudflare binding,
 so there is no `[ai]` block.
-Automatic tagging of existing items (which existing items fit a new tag, which are then tagged: `src/tools/classify.ts`,
-`src/tools/tag-fit.ts`) use a DIFFERENT provider and key: TypeSafe AI's Jev over REST (`TYPESAFE_API_KEY`) — only
+Automatic tagging of existing items (Sift: which existing items fit a new tag, which are then tagged — the run `src/ai/sift.ts`,
+through the client's Jev provider `src/tools/classify.ts`) use a DIFFERENT provider and key: TypeSafe AI's Jev over REST (`TYPESAFE_API_KEY`) — only
 for an organization whose admin turned them on, in the background, each request counted against `jev_checks`
 (`feed-and-search.md` › Tags › Tagging existing items).
 

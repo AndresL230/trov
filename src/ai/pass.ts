@@ -30,18 +30,18 @@ import {
 import { planRefusal } from "@shared/plans";
 import { listActiveOrgIds, readCursor, writeCursor } from "../platform/jobs";
 import { rotated, type Budget } from "../repo/dispatch";
-import { providerFor, type AiKind, type AiProvider, type AiProviderOpts, type AiUsage } from "./client";
+import { providerFor, type AiProviderOpts, type AiUsage, type ClaudeKind, type ClaudeProvider } from "./client";
 import { aiAllowance } from "./eligibility";
 
 /** One kind of work the pass does for an org. A job never decides eligibility, metering or caps — the
  *  pass does — and it reaches D1 only through the context it is handed. */
 export interface AiJob {
-  kind: AiKind;
+  kind: ClaudeKind;
   /** How many calls the job has waiting for this org right now (0 = nothing to do). D1 only, no model. */
   pending(ctx: TenantContext): Promise<number>;
   /** Do ONE unit of the waiting work: at most ONE model call, through `provider`. `done` = it wrote what it
    *  should; `failed` = it wrote nothing (a null answer, a refusal). Throwing counts as `failed`. */
-  run(ctx: TenantContext, provider: AiProvider): Promise<"done" | "failed">;
+  run(ctx: TenantContext, provider: ClaudeProvider): Promise<"done" | "failed">;
 }
 
 /** THE registry. Empty: nothing produces AI content yet. */

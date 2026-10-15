@@ -137,7 +137,8 @@ of them is also in `ORG_TABLES` (`src/deletion/tables.ts`), what an organization
   org's own configuration: `org_repos`, `org_environments`, `org_integration_config`, `org_login_map`,
   `org_secrets`, `org_keys`, `org_audit` (read through a tenant ctx by `src/integrations/*`, `src/data/secrets.ts`)
   and `org_github_installations` (0043_github_app — the org's GitHub App installation, `src/github-app/store.ts`), and the
-  AI tables `ai_suggestions` / `ai_feedback` (0055, read and written by `src/data/ai.ts`),
+  AI tables `ai_suggestions` / `ai_feedback` (0055, read and written by `src/data/ai.ts`) and `ai_dirty` (0058 —
+  the router's stale scopes; nothing writes it yet),
   and `org_tags`, `org_tag_suggestions` (0056_org_tags — the org's tag list and what was suggested for it,
   `src/tools/tags.ts`; `feed-and-search.md` › Tags).
 - **Platform-owned org-keyed tables**: `memberships`, `org_invites`, `org_counters`, `org_usage_daily`,
