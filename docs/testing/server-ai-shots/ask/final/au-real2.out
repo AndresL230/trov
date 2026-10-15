@@ -1,0 +1,424 @@
+
+=== AU-4 menu
+Rename
+Pin
+Export as markdown
+Delete
+
+=== AU-4 rename row
+title
+test-Renamed in e2e
+
+=== AU-4 pin row
+pinned
+1
+
+=== AU-4 pinned group
+New thread
+PINNED
+test-Renamed in e2e
+Mon
+test-Pinned: sprint plan
+Sep 25
+
+
+=== AU-4 export
+{
+ "file": "test-Renamed-in-e2e.md",
+ "toast": "Exported test-Renamed in e2e.md"
+}
+
+=== AU-4 after Delete click: a confirm dialog?
+{
+ "modal": false
+}
+
+=== AU-4 delete rows
+t	m
+0	0
+
+=== AU-4 toast
+
+
+=== AU-8 toast
+Thanks. The team can see this in Review.
+
+=== AU-8 rows
+fb	flags
+1	ticket:1,ticket:2
+
+=== AU-9 cards before
+[
+ "ask-act"
+]
+
+=== AU-9 card text
+Edit
+What is blocking #1?
+
+#1
+ waits on the CSP fix; 
+#2
+ looks like the same report.
+
+NEW TICKET
+Draft, not created yet
+Edit
+test-E2E ticket from Ask
+CATEGORY
+bug
+PRIORITY
+Normal
+ASSIGNEE
+Unassigned
+SPRINT
+Backlog
+Cancel
+Confirm
+MOVE
+Draft, not done yet
+Move #1 to Testing
+STATUS
+In progress → Testing
+Cancel
+Confirm
+2 NEW TICKETS
+Draft, not created yet
+test-Grouped ticket A
+CATEGORY
+other
+PRIORITY
+Normal
+ASSIGNEE
+Unassigned
+SPRINT
+Backlog
+test-Grouped ticket B
+CATEGORY
+other
+PRIORITY
+Normal
+ASSIGNEE
+Unassigned
+SPRINT
+Backlog
+Cancel
+Confirm
+NEW HANDOFF
+Draft, not created yet
+Edit
+TM
+Test Member
+TM
+Test Member Two
+test- Fix the connect test
+Cancel
+Confirm
+PUBLISH DOC
+Waiting for you
+test-auth-sessions
+Publishing makes it live for the org. Agents read it from then on.
+Cancel
+Confirm
+Expired: new ticket
+This card expired with its turn. Ask again.
+NEW TICKET
+Draft, not created yet
+Edit
+test-Stale-turn card
+CATEGORY
+other
+PRIORITY
+Normal
+ASSIGNEE
+Unassigned
+SPRINT
+Backlog
+Cancel
+Confirm
+Commented on ticket #1
+50m ago
+Cancelled: new ticket
+Moved ticket #1 to In progress
+50m ago
+Undo
+Moved ticket #4 to Testing
+50m ago
+Undo
+MOVE
+Draft, not done yet
+Move #7 to In progress
+Cancel
+Confirm
+Smart
+2 sources
+Copy
+Regenerate
+Save as artifact
+Wrong?
+test- What changed since?
+Smart
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+
+=== AU-9 edit button for group
+0
+
+=== AU-9 after
+Edit
+What is blocking #1?
+
+#1
+ waits on the CSP fix; 
+#2
+ looks like the same report.
+
+Created ticket #15
+Just now
+Undo
+MOVE
+Draft, not done yet
+Move #1 to Testing
+STATUS
+In progress → Testing
+Cancel
+Confirm
+Filed tickets #16 and #17
+Just now
+Undo
+Cancelled: new handoff
+PUBLISH DOC
+Waiting for you
+test-auth-sessions
+Publishing makes it live for the org. Agents read it from then on.
+Cancel
+Confirm
+Expired: new ticket
+This card expired with its turn. Ask again.
+NEW TICKET
+Draft, not created yet
+Edit
+test-Stale-turn card
+CATEGORY
+other
+PRIORITY
+Normal
+ASSIGNEE
+Unassigned
+SPRINT
+Backlog
+Cancel
+Confirm
+Commented on ticket #1
+50m ago
+Cancelled: new ticket
+Moved ticket #1 to In progress
+50m ago
+Undo
+Moved ticket #4 to Testing
+50m ago
+Undo
+MOVE
+Draft, not done yet
+Move #7 to In progress
+Cancel
+Confirm
+Smart
+2 sources
+Copy
+Regenerate
+Save as artifact
+Wrong?
+test- What changed since?
+Smart
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+
+=== AU-9 rows
+id	state
+801201	confirmed
+801203	confirmed
+801204	confirmed
+801205	cancelled
+
+=== AU-9 tickets
+number	title	requester
+15	test-E2E ticket from Ask	test-member
+16	test-Grouped ticket A	test-member
+17	test-Grouped ticket B	test-member
+
+=== AU-10 undo buttons
+1
+
+=== AU-10 line
+{
+ "text": "EditWhat is blocking #1?#1 waits on the CSP fix; #2 looks like the same report.Created ticket #15Just nowUndo\n    \n      MoveDraft, not done yet\n      \n    \n    \n    Move #1 to Testing\n    StatusIn progress → Testing\n  \n    \n      \n      Cancel\n      Confirm\n    \n  Filed tickets #16 and #17Just nowUndoCancelled: new handoff\n    \n      Publish docWaiting for you\n      \n    \n    \n    test-auth-sessions\n    Publishing makes it live for the org. Agents read it from then on.\n    \n  \n    \n      \n      Cancel\n      Confirm\n    \n  Expired: new ticketThis card expired with its turn. Ask again.\n    \n      New ticketDraft, not created yet\n      Edit\n    \n    \n      test-Stale-turn card\n      \n        Categoryother\n        PriorityNormal\n        AssigneeUnassigned\n        SprintBacklog\n      \n    \n    \n      \n      Cancel\n      Confirm\n    \n  Commented on ticket #150m agoCancelled: new ticketMoved ticket #1 to In progress50m agoUndoMoved ticket #4 to TestingChanged since. Undo it by hand.Open ticket #4\n    \n      MoveDraft, not done yet\n      \n    \n    \n    Move #7 to In progress\n    \n  \n    \n      \n      Cancel\n      Confirm\n    \n  \n    Smart\n    \n    2 sources\n    Copy\n    Regenerate\n    Save as artifact\n    Wrong?\n  test- What changed since?",
+ "link": "<button type=\"button\" class=\"ask-q-edit\" data-act=\"askCvEdit\" data-arg=\"page:m801101\" aria-label=\"Edit message\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke"
+}
+
+=== AU-11 form
+Edit
+What is blocking #1?
+
+#1
+ waits on the CSP fix; 
+#2
+ looks like the same report.
+
+Created ticket #15
+Just now
+Undo
+MOVE
+Draft, not done yet
+Move #1 to Testing
+STATUS
+In progress → Testing
+Cancel
+Confirm
+Filed tickets #16 and #17
+Just now
+Undo
+Cancelled: new handoff
+PUBLISH DOC
+Waiting for you
+test-auth-sessions
+Publishing makes it live for the org. Agents read it from then on.
+Cancel
+Confirm
+Expired: new ticket
+This card expired with its turn. Ask again.
+NEW TICKET
+Draft, not created yet
+Edit
+test-Stale-turn card
+CATEGORY
+other
+PRIORITY
+Normal
+ASSIGNEE
+Unassigned
+SPRINT
+Backlog
+Cancel
+Confirm
+Commented on ticket #1
+50m ago
+Cancelled: new ticket
+Moved ticket #1 to In progress
+50m ago
+Undo
+Moved ticket #4 to Testing
+Changed since. Undo it by hand.
+Open ticket #4
+MOVE
+Draft, not done yet
+Move #7 to In progress
+Cancel
+Confirm
+SAVE AS ARTIFACT
+Title
+Kind
+Markdown
+HTML page
+Who can see it
+Private
+Org
+Only you can see it. You can publish it to the org later.
+Save
+Smart
+2 sources
+Copy
+Regenerate
+Save as artifact
+Wrong?
+test- What changed since?
+
+=== AU-11 saved line
+Edit
+What is blocking #1?
+
+#1
+ waits on the CSP fix; 
+#2
+ looks like the same report.
+
+Created ticket #15
+Just now
+Undo
+MOVE
+Draft, not done yet
+Move #1 to Testing
+STATUS
+In progress → Testing
+Cancel
+Confirm
+Filed tickets #16 and #17
+Just now
+Undo
+Cancelled: new handoff
+PUBLISH DOC
+Waiting for you
+test-auth-sessions
+Publishing makes it live for the org. Agents read it from then on.
+Cancel
+Confirm
+Expired: new ticket
+This card expired with its turn. Ask again.
+NEW TICKET
+Draft, not created yet
+Edit
+test-Stale-turn card
+CATEGORY
+other
+PRIORITY
+Normal
+ASSIGNEE
+Unassigned
+SPRINT
+Backlog
+Cancel
+Confirm
+Commented on ticket #1
+50m ago
+Cancelled: new ticket
+Moved ticket #1 to In progress
+50m ago
+Undo
+Moved ticket #4 to Testing
+Changed since. Undo it by hand.
+Open ticket #4
+MOVE
+Draft, not done yet
+Move #7 to In progress
+Cancel
+Confirm
+Saved as artifact: test-What is blocking #1?, Oct 15
+· Private
+Open
+Smart
+2 sources
+Copy
+Regenerate
+Save as artifact
+Wrong?
+test- What changed since?
+
+=== AU-11 toast
+Saved to Artifacts
+
+=== AU-11 rows
+slug	title	visibility	role
+test-what-is-blocking-1-oct-15	test-What is blocking #1?, Oct 15	private	saved
+
+=== logs
+{
+ "console": [
+  "error: Failed to load resource: the server responded with a status of 409 (Conflict)"
+ ],
+ "failed": [
+  "409 POST /api/o/test-ent/ask/actions/801212/undo"
+ ],
+ "pageerrors": []
+}

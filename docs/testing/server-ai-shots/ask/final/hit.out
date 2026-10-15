@@ -1,0 +1,28 @@
+
+=== hit test 20px above centre
+[
+ {
+  "t": "Edit",
+  "h": 21,
+  "up": true,
+  "down": true
+ },
+ {
+  "t": "Cancel",
+  "h": 29,
+  "up": true,
+  "down": true
+ },
+ {
+  "t": "Confirm",
+  "h": 31,
+  "up": true,
+  "down": true
+ },
+ {
+  "t": "Cancel",
+  "h": 29,
+  "up": true,
+  "down": true
+ }
+]

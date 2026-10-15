@@ -1,0 +1,29 @@
+
+=== AU-26 peek
+{
+ "status": 200,
+ "hidden": false,
+ "facts": true,
+ "envs": [
+  null,
+  null
+ ]
+}
+
+=== AU-26 inspector
+REPO ⏎ SaplingLearn/sapling ⏎ 2 apps: Frontend, Backend ⏎ ENVIRONMENTS ⏎ Staging ⏎ staging.example.test ⏎ Healthy ⏎ Frontend ⏎ on Cloudflare Workers ⏎ Backend ⏎ on Railway · not connected ⏎ Production ⏎ app.example.test ⏎ Failing ⏎ Frontend ⏎ on Cloudflare Workers ⏎ Backend ⏎ on Railway · not connected ⏎  ⏎ Railway is not connected, so nothing is read from it. An admin connects it in Org settings › Hosting. ⏎  ⏎ LAST DEPLOY ⏎ Production ⏎ c41e7d9 · 7m ago · andres ⏎ CI ON PRODUCTION ⏎ Passing ⏎ All 3 checks passing on c41e7d9 ⏎ STATE ⏎ Release 0.30 is live; hosting screens are the open front, and main is green. ⏎ Shipped ⏎ Status marks replace status tags everywhere. ⏎ Release 0.30: public docs, account deletion, compliance pass. ⏎ Claude on the web connector; partial-access GitHub orgs. ⏎ In flight ⏎ Hosting screens for Vercel and Netlify. ⏎ Performance plan for trov.dev, waiting on an owner. ⏎ At risk ⏎ CI failing on the hosting branch since this morning. ⏎ 28 open tickets, none in a sprint. ⏎ NEEDS ATTENTION ⏎ backend: production deploy 71f0e3a failed 13m ago on Railway. b4c21de is still serving. ⏎ frontend: production was rolled back to c41e7d9 by andres 7m ago. e07b3a2 is no longer live.
+
+=== AU-26 links
+[
+ "Org settings › Hosting -> #org/hosting"
+]
+
+=== AU-26 overview
+Repo ⏎ SaplingLearn/sapling ⏎ / ⏎ All apps ⏎ Staging ⏎ Production ⏎ updated just now ⏎ Overview ⏎ Code ⏎ CI & Deploys ⏎ Usage ⏎ Team & Planning ⏎ State ⏎ Written by Trov from 6 events, 2h ago ⏎  ⏎ Release 0.30 is live; hosting screens are the open front, and main is green. ⏎  ⏎ Shipped recently ⏎ Status marks replace status tags everywhere.  ⏎ #173 ⏎ Release 0.30: public docs, account deletion, compliance pass.  ⏎ #172 ⏎ Claude on the web connector; partial-access GitHub orgs.  ⏎ #171 ⏎ In flight ⏎ Hosting screens for Vercel and Netlify.  ⏎ feat/hosting-screens ⏎ Performance plan for trov.dev, waiting on an owner.  ⏎ handoff #3 ⏎ Needs attention ⏎ CI failing on the hosting branch since this morning.  ⏎ run 4812 ⏎ 28 open tickets, none in a sprint.  ⏎ Tickets ⏎ Group by ⏎ Environment ⏎ App ⏎ NEEDS ATTENTION ⏎ 2 ⏎ backend: production deploy 71f0e3a failed 13m ago on Railway. b4c21de is still serving. ⏎ View build log ⏎ ↗ ⏎ frontend: production was rolled back to c41e7d9 by andres 7m ago. e07b3a2 is no longer live. ⏎ Compare ⏎ ↗ ⏎ Deploys not connected ⏎ Railway isn't connected, so what runs in Staging or Production is as Trov last read it. Connect Railway once and every service here stays current, with CPU and memory too. ⏎ Members see this note too; only an admin can connect a host, in Org settings › Hosting. ⏎ Staging ⏎ from main ⏎ Healthy ⏎ Frontend ⏎ 3e9a1f2 ⏎ 25m ago · by dev-raj · Cloudflare Workers ⏎ staging.example.test ↗ ⏎ 142 ms ⏎ Backend ⏎ 3e9a1f2 ⏎ 27m ago · by dev-raj · Railway ⏎ api.staging.example.test ↗ ⏎ 88 ms ⏎ CI ON HEAD ⏎ ✓ ⏎ All 3 checks passing on 3e9a1f2 ⏎ Production ⏎ from producti
+
+=== logs
+{
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}

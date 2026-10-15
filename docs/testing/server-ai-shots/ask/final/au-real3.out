@@ -1,0 +1,179 @@
+
+=== AU-22 conversation
+Edit
+hi
+Something went wrong.
+Nothing was changed.
+Try again
+Fast
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+
+=== AU-22 thread url
+http://localhost:8810/test-ent/#ask
+
+=== AU-31 Try again buttons
+1
+
+=== AU-14 slash picker while typing /search
+null
+
+=== AU-23 conversation
+Edit
+netlify
+Searched Trov for 'netlify'
+· 4 results
+
+4 items match best:
+
+TICKET #5
+test-Netlify deploy preview is failing
+Done
+TM
+Test Member
+Sep 30
+DOC
+test-Deploy checklist
+Live
+TO
+Test Owner
+Oct 5
+HANDOFF #1
+Finish the deploy checklist for the Netlify preview: the redirect rules and the cache headers.
+Pending
+TM
+Test Member Two
+2h ago
+FEED ENTRY
+Shipped: test- the Netlify redirect fix
+TM
+Test Member
+1h ago
+Fast
+4 sources
+Copy
+Regenerate
+Save as artifact
+Wrong?
+Fast
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+
+=== AU-23 header
+›Search: netlify
+
+=== AU-30 edit buttons
+1
+
+=== AU-30 edit box
+Sending replaces the answer below.
+Cancel
+Send
+
+=== AU-30 after resend
+Edit
+webhook
+Searched Trov for 'webhook'
+· 5 results
+
+5 items match best:
+
+TICKET #12
+test-Retry failed webhook deliveries
+Triage
+Oct 7
+DOC
+test-Webhook retries
+Staged, not approved
+TO
+Test Owner
+Oct 5
+HANDOFF #2
+Someone pick up the webhook retries: GitHub redelivery and our own retry queue.
+Pending
+TO
+Test Owner
+3h ago
+FEED ENTRY
+Status: test- webhook retries half done
+TM
+Test Member
+Oct 6
+FEED ENTRY
+Status: test- webhook retries in progress
+TR
+trov
+2h ago
+Fast
+5 sources
+Copy
+Regenerate
+Save as artifact
+Wrong?
+Fast
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+
+=== AU-14 shift+enter value
+"line one\nline two"
+
+=== AU-14 @ picker
+TICKETS
+#5 test-Netlify deploy preview is failing
+Done
+DOCS
+test-Deploy checklist
+Live
+HANDOFFS
+#1 Finish the deploy checklist for the Netlify preview: the redirect rules and the cache headers.
+Pending
+FEED ENTRIES
+Shipped: test- the Netlify redirect fix
+↑↓ to move
+Enter to pick
+Esc to close
+
+=== AU-14 after pick: chips + text
+{
+ "chips": [
+  "test-Deploy checklist Doc"
+ ],
+ "text": "",
+ "ctx": "About doc test-Deploy checklist"
+}
+
+=== AU-14 / commands
+COMMANDS
+/ticket
+Draft a new ticket
+/handoff
+Draft a handoff for an agent session
+/search
+Search Trov for a phrase
+/summarize
+Summarize an item or this thread
+/brief
+Write a status brief for the team
+↑↓ to move
+Enter to pick
+Esc to close
+
+=== AU-15 chips + note
+{
+ "chips": [
+  "test-notes.txt 1 KB",
+  "test-big.txt Too large",
+  "test-Deploy checklist Doc"
+ ],
+ "note": "test-big.txt is too large. Files can be up to 10 MB."
+}
+
+=== logs
+{
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}

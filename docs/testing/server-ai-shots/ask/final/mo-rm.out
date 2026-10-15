@@ -1,0 +1,111 @@
+
+=== REDUCED MOTION
+{
+ "MO-42 entrance on #mywork → #ask (running animations)": {
+  "count": 2,
+  "sample": [
+   {
+    "name": "color",
+    "cls": "cnpy-seg-btn.is-on",
+    "key": null,
+    "state": "running",
+    "dur": 150
+   },
+   {
+    "name": "color",
+    "cls": "cnpy-seg-btn",
+    "key": null,
+    "state": "running",
+    "dur": 150
+   }
+  ]
+ },
+ "MO-43a typing in the composer: animations": [
+  {
+   "name": "border-bottom-color",
+   "cls": "ask-box",
+   "key": "box",
+   "state": "running",
+   "dur": 150
+  },
+  {
+   "name": "border-left-color",
+   "cls": "ask-box",
+   "key": "box",
+   "state": "running",
+   "dur": 150
+  },
+  {
+   "name": "border-right-color",
+   "cls": "ask-box",
+   "key": "box",
+   "state": "running",
+   "dur": 150
+  },
+  {
+   "name": "border-top-color",
+   "cls": "ask-box",
+   "key": "box",
+   "state": "running",
+   "dur": 150
+  },
+  {
+   "name": "box-shadow",
+   "cls": "ask-box",
+   "key": "box",
+   "state": "running",
+   "dur": 150
+  }
+ ],
+ "MO-43 the question bubble animating while the answer streams (should be ≤ its one entrance)": {
+  "qAnimSamples": 0,
+  "uniq": []
+ },
+ "MO-50 activity steps animating": {
+  "samples": 0,
+  "uniq": []
+ },
+ "MO-52 cursor anim during stream": {
+  "cursor": 0
+ },
+ "MO-43 scroller sticks to bottom": {
+  "top": 1052,
+  "max": 1052
+ },
+ "MO-51 thinking": {
+  "t1": "Searched docs for 'hosting'· 3 results",
+  "t2": "Thinking… 5s",
+  "enterAnims": [],
+  "pulse": 0
+ },
+ "MO-44 Cancel: animations right after": [],
+ "MO-46 inspector opens": [
+  "ask-iconbtn.ask-th-toggle|color"
+ ],
+ "MO-47 Back: what animates (the frame must not)": [
+  "ask-iconbtn|background-color",
+  "ask-iconbtn|color"
+ ],
+ "MO-48 inspector close": {
+  "closingAttr": "gone",
+  "anims": [
+   "ask-iconbtn.ask-th-toggle|color"
+  ],
+  "goneAfter": true
+ },
+ "MO-48 picker close": {
+  "closing": "gone",
+  "anims": []
+ },
+ "MO-46/48 ⌘J panel open / close": {
+  "open": [
+   "ask-box|border-bottom-color",
+   "ask-box|border-left-color",
+   "ask-box|border-right-color",
+   "ask-box|border-top-color",
+   "ask-box|box-shadow"
+  ],
+  "close": [],
+  "closing": "gone"
+ }
+}

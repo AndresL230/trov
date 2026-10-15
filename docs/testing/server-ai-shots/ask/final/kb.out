@@ -1,0 +1,242 @@
+
+=== keyboard
+{
+ "K-live tab order (first 30)": [
+  "a.site-skip:Skip to content:ring",
+  "goSite:About Trov:ring",
+  "orgsMenu:Test Enterprise: switch organi:ring",
+  "sideSearch:Search Trov:NO-RING",
+  "goMyWork:My Work:ring",
+  "goAsk:Trov:ring",
+  "goTickets:Tickets:ring",
+  "goRoadmap:Roadmap:ring",
+  "goHandoffs:Handoffs:ring",
+  "goRepo:Repo:ring",
+  "goFeed:Feed:ring",
+  "goDocs:Docs:ring",
+  "navToggle:Show Docs pages:ring",
+  "goArtifacts:Artifacts:ring",
+  "goPrompts:Prompt Library:ring",
+  "goReview:Review:ring",
+  "goMaintenance:Unplaced:ring",
+  "goGuide:Guide:ring",
+  "goReleases:What's new:ring",
+  "toggleCollapse:Collapse sidebar:ring",
+  "goSettings:Settings:ring",
+  "askShThreads:Hide threads:ring",
+  "askShNew:Trov:ring",
+  "supportOpen:Report a bug:ring",
+  "cycleTheme::ring",
+  "askShNew:New thread:ring",
+  "askThQ:Search threads:NO-RING",
+  "askThOpen:Hosting status05:41:ring",
+  "askThMore:Thread actions:ring",
+  "askThOpen:Release 0.30 checklistMon:ring"
+ ],
+ "K-live thread ⋯ menu": {
+  "more": {
+   "el": "button.ask-th-more",
+   "label": "Thread actions",
+   "act": "askThMore",
+   "ring": true,
+   "inView": true
+  },
+  "menuFocus": {
+   "el": "button.",
+   "label": "Rename",
+   "act": "askThRename",
+   "ring": true,
+   "inView": true
+  },
+  "down": {
+   "el": "button.",
+   "label": "Unpin",
+   "act": "askThPin",
+   "ring": true,
+   "inView": true
+  },
+  "afterEsc": {
+   "el": "button.ask-th-more",
+   "label": "Thread actions",
+   "act": "askThMore",
+   "ring": true,
+   "inView": true
+  },
+  "menuOpen": false
+ },
+ "K-answer": {
+  "chip": {
+   "el": "button.ask-chip",
+   "label": "Ticket: #1 test-Login page is ",
+   "act": "askShOpen",
+   "ring": true,
+   "inView": true
+  },
+  "hoverOnFocus": false,
+  "hoverAfterEsc": false,
+  "wrong": {
+   "el": "button.ask-fb",
+   "label": "Wrong?",
+   "act": "askAcWrong",
+   "ring": true,
+   "inView": true
+  },
+  "reason": {
+   "el": "button.ask-wrong-opt",
+   "label": "A source is wrong",
+   "act": "askAcWrongReason",
+   "ring": true,
+   "inView": true
+  }
+ },
+ "K-actions-ask Edit": {
+  "edit": {
+   "el": "button.ask-act-edit",
+   "label": "Edit",
+   "act": "askAcEdit",
+   "ring": true,
+   "inView": true
+  },
+  "editing": true,
+  "next": {
+   "el": "input.ask-input-line",
+   "label": "",
+   "act": "askAcField",
+   "ring": true,
+   "inView": true
+  }
+ },
+ "K-actions-ask Confirm reachable": {
+  "el": "button.ask-btn",
+  "label": "Confirm",
+  "act": "askAcConfirm",
+  "ring": true,
+  "inView": true
+ },
+ "K-actions-auto Undo": {
+  "undo": {
+   "el": "button.ask-undo",
+   "label": "Undo",
+   "act": "askAcUndo",
+   "ring": true,
+   "inView": true
+  },
+  "after": [
+   "Undone: moved ticket #14 to Done",
+   "Undone: sent handoff #11 to anyone",
+   "Moved ticket #14 to In progress | Just now | Undo",
+   "Filed tickets #30, #31 and #32 | Just now | Undo"
+  ]
+ },
+ "K-artifact": {
+  "title": {
+   "el": "input.ask-input-line",
+   "label": "",
+   "act": "askAcSaveTitle",
+   "ring": true,
+   "inView": true
+  },
+  "seg": {
+   "el": "button.cnpy-seg-btn",
+   "label": "Markdown",
+   "act": "askAcSaveKind",
+   "ring": true,
+   "inView": true
+  },
+  "segAfter": {
+   "el": "button.cnpy-seg-btn",
+   "label": "Markdown",
+   "act": "askAcSaveKind",
+   "ring": true,
+   "inView": true
+  },
+  "save": {
+   "el": "button.ask-btn",
+   "label": "Save",
+   "act": "askAcSave",
+   "ring": true,
+   "inView": true
+  },
+  "saved": true
+ },
+ "K-notfound rephrase": {
+  "tryc": {
+   "el": "button.ask-nf-try",
+   "label": "What do our docs say about pri",
+   "act": "askCvSend",
+   "ring": true,
+   "inView": true
+  },
+  "questionsBefore": 2,
+  "questionsAfter": 4
+ },
+ "K-settings": {
+  "ta": {
+   "el": "textarea.cnpy-settle",
+   "label": "test- Answer briefly, in bulle",
+   "act": "trovSetInstr",
+   "ring": true,
+   "inView": true
+  },
+  "tryc": {
+   "el": "button.cnpy-ghostbtn",
+   "label": "Lead with what is blocked, the",
+   "act": "trovSetTry",
+   "ring": true,
+   "inView": true
+  },
+  "counter": "65 / 500",
+  "seg": {
+   "el": "button.cnpy-seg-btn",
+   "label": "Fast",
+   "act": null,
+   "ring": true,
+   "inView": true
+  },
+  "save": {
+   "el": "button.cnpy-accentbtn",
+   "label": "Save",
+   "act": "trovSetSave",
+   "ring": true,
+   "inView": true
+  },
+  "toast": "Saved. New threads use these settings."
+ },
+ "K-phone": {
+  "dr": {
+   "el": "button.ask-ph-hbtn",
+   "label": "Open threads",
+   "act": "askPhDrawer",
+   "ring": true,
+   "inView": true
+  },
+  "inDrawer": {
+   "el": "button.ask-ph-hbtn",
+   "label": "Close threads",
+   "act": "askPhDrawerClose",
+   "ring": true,
+   "inView": true
+  },
+  "plus": {
+   "el": "button.ask-ph-plusbtn",
+   "label": "More options",
+   "act": "askPhPlus",
+   "ring": true,
+   "inView": true
+  },
+  "inPlus": {
+   "el": "button.ask-ph-row",
+   "label": "Attach a file or photo",
+   "act": "askPhAttach",
+   "ring": true,
+   "inView": true
+  },
+  "afterEsc": {
+   "el": "button.ask-ph-plusbtn",
+   "label": "More options",
+   "act": "askPhPlus",
+   "ring": true,
+   "inView": true
+  }
+ }
+}

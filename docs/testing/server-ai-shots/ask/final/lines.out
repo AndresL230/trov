@@ -1,0 +1,9 @@
+
+=== decided lines
+[
+ "Expired: new ticket | This card expired with its turn. Ask again.",
+ "Commented on ticket #1 | 52m ago",
+ "Cancelled: new ticket",
+ "Moved ticket #1 to In progress | 52m ago | Undo",
+ "Moved ticket #4 to Testing | 52m ago | Undo"
+]

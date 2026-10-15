@@ -1,0 +1,581 @@
+
+=== composer:quota text
+Trov
+New thread
+PINNED
+Hosting status
+05:41
+Release 0.30 checklist
+Mon
+TODAY
+What shipped this week?
+06:12
+Summarize ticket #14
+05:05
+THIS WEEK
+CI flake on netlify-connect
+Tue
+Where did our time go in September?
+Tue
+Draft a sprint goal for Hosting
+Mon
+Performance plan handoff
+Sun
+Ask anything about your team's work
+What shipped this week?
+What's blocking the hosting work?
+Summarize ticket #14
+Where did our time go this month?
+You've used this month's questions.
+Resets Nov 1. Pro includes 300 a month, plus Thinking mode.
+Upgrade to Pro
+Enter to send · Shift+Enter for a new line
+
+Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.
+
+=== composer:quota overflow+logs
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false,
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}
+
+=== composer:off text
+Trov
+New thread
+PINNED
+Hosting status
+05:41
+Release 0.30 checklist
+Mon
+TODAY
+What shipped this week?
+06:12
+Summarize ticket #14
+05:05
+THIS WEEK
+CI flake on netlify-connect
+Tue
+Where did our time go in September?
+Tue
+Draft a sprint goal for Hosting
+Mon
+Performance plan handoff
+Sun
+Ask anything about your team's work
+What shipped this week?
+What's blocking the hosting work?
+Summarize ticket #14
+Where did our time go this month?
+Ask Trov is off for this org.
+An admin can turn it on in Org settings › AI.
+Enter to send · Shift+Enter for a new line
+
+Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.
+
+=== composer:off overflow+logs
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false,
+ "console": [],
+ "failed": [
+  "(harness) navigation retry 1"
+ ],
+ "pageerrors": []
+}
+
+=== composer:autoOff text
+Trov
+New thread
+PINNED
+Hosting status
+05:41
+Release 0.30 checklist
+Mon
+TODAY
+What shipped this week?
+06:12
+Summarize ticket #14
+05:05
+THIS WEEK
+CI flake on netlify-connect
+Tue
+Where did our time go in September?
+Tue
+Draft a sprint goal for Hosting
+Mon
+Performance plan handoff
+Sun
+Ask anything about your team's work
+What shipped this week?
+What's blocking the hosting work?
+Summarize ticket #14
+Where did our time go this month?
+Smart
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+
+Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.
+
+=== composer:autoOff overflow+logs
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false,
+ "console": [],
+ "failed": [
+  "(harness) navigation retry 1"
+ ],
+ "pageerrors": []
+}
+
+=== composer:free text
+Trov
+New thread
+PINNED
+Hosting status
+05:41
+Release 0.30 checklist
+Mon
+TODAY
+What shipped this week?
+06:12
+Summarize ticket #14
+05:05
+THIS WEEK
+CI flake on netlify-connect
+Tue
+Where did our time go in September?
+Tue
+Draft a sprint goal for Hosting
+Mon
+Performance plan handoff
+Sun
+Ask anything about your team's work
+What shipped this week?
+What's blocking the hosting work?
+Summarize ticket #14
+Where did our time go this month?
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+9 of 50 questions left this month · Resets Nov 1
+
+Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.
+
+=== composer:free overflow+logs
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false,
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}
+
+=== composer:low text
+Trov
+New thread
+PINNED
+Hosting status
+05:41
+Release 0.30 checklist
+Mon
+TODAY
+What shipped this week?
+06:12
+Summarize ticket #14
+05:05
+THIS WEEK
+CI flake on netlify-connect
+Tue
+Where did our time go in September?
+Tue
+Draft a sprint goal for Hosting
+Mon
+Performance plan handoff
+Sun
+Ask anything about your team's work
+What shipped this week?
+What's blocking the hosting work?
+Summarize ticket #14
+Where did our time go this month?
+Smart
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+41 of 1500 questions left this month · Resets Nov 1
+
+Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.
+
+=== composer:low overflow+logs
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false,
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}
+
+=== composer:error text
+Trov
+New thread
+PINNED
+Hosting status
+05:41
+Release 0.30 checklist
+Mon
+TODAY
+What shipped this week?
+06:12
+Summarize ticket #14
+05:05
+THIS WEEK
+CI flake on netlify-connect
+Tue
+Where did our time go in September?
+Tue
+Draft a sprint goal for Hosting
+Mon
+Performance plan handoff
+Sun
+Ask anything about your team's work
+What shipped this week?
+What's blocking the hosting work?
+Summarize ticket #14
+Where did our time go this month?
+Something went wrong. Try again
+Smart
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+
+Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.
+
+=== composer:error overflow+logs
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false,
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}
+
+=== composer:tooLarge text
+Trov
+New thread
+PINNED
+Hosting status
+05:41
+Release 0.30 checklist
+Mon
+TODAY
+What shipped this week?
+06:12
+Summarize ticket #14
+05:05
+THIS WEEK
+CI flake on netlify-connect
+Tue
+Where did our time go in September?
+Tue
+Draft a sprint goal for Hosting
+Mon
+Performance plan handoff
+Sun
+Ask anything about your team's work
+What shipped this week?
+What's blocking the hosting work?
+Summarize ticket #14
+Where did our time go this month?
+1 file
+standup-recording.mov is too large. Files can be up to 10 MB.
+standup-recording.mov
+Too large
+Smart
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+
+Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.
+
+=== composer:tooLarge overflow+logs
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false,
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}
+
+=== composer:busy text
+Trov
+New thread
+PINNED
+Hosting status
+05:41
+Release 0.30 checklist
+Mon
+TODAY
+What shipped this week?
+06:12
+Summarize ticket #14
+05:05
+THIS WEEK
+CI flake on netlify-connect
+Tue
+Where did our time go in September?
+Tue
+Draft a sprint goal for Hosting
+Mon
+Performance plan handoff
+Sun
+Ask anything about your team's work
+What shipped this week?
+What's blocking the hosting work?
+Summarize ticket #14
+Where did our time go this month?
+Smart
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+
+Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.
+
+=== composer:busy overflow+logs
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false,
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}
+
+=== composer:at text
+Trov
+New thread
+PINNED
+Hosting status
+05:41
+Release 0.30 checklist
+Mon
+TODAY
+What shipped this week?
+06:12
+Summarize ticket #14
+05:05
+THIS WEEK
+CI flake on netlify-connect
+Tue
+Where did our time go in September?
+Tue
+Draft a sprint goal for Hosting
+Mon
+Performance plan handoff
+Sun
+Ask anything about your team's work
+What shipped this week?
+What's blocking the hosting work?
+Summarize ticket #14
+Where did our time go this month?
+TICKETS
+#18 Hosting connections: Netlify and Vercel
+In progress
+#29 Fix the Netlify connect test on main
+Triage
+PULL REQUESTS
+#176 Netlify connect step for guided setup
+In review
+HANDOFFS
+#12 Fix the Netlify connect test on main
+Pending
+↑↓ to move
+Enter to pick
+Esc to close
+Smart
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+
+Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.
+
+=== composer:at overflow+logs
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false,
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}
+
+=== composer:slash text
+Trov
+New thread
+PINNED
+Hosting status
+05:41
+Release 0.30 checklist
+Mon
+TODAY
+What shipped this week?
+06:12
+Summarize ticket #14
+05:05
+THIS WEEK
+CI flake on netlify-connect
+Tue
+Where did our time go in September?
+Tue
+Draft a sprint goal for Hosting
+Mon
+Performance plan handoff
+Sun
+Ask anything about your team's work
+What shipped this week?
+What's blocking the hosting work?
+Summarize ticket #14
+Where did our time go this month?
+COMMANDS
+/ticket
+Draft a new ticket
+/handoff
+Draft a handoff for an agent session
+/search
+Search Trov for a phrase
+/summarize
+Summarize an item or this thread
+/brief
+Write a status brief for the team
+↑↓ to move
+Enter to pick
+Esc to close
+Smart
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+
+Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.
+
+=== composer:slash overflow+logs
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false,
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}
+
+=== composer:files text
+Trov
+New thread
+PINNED
+Hosting status
+05:41
+Release 0.30 checklist
+Mon
+TODAY
+What shipped this week?
+06:12
+Summarize ticket #14
+05:05
+THIS WEEK
+CI flake on netlify-connect
+Tue
+Where did our time go in September?
+Tue
+Draft a sprint goal for Hosting
+Mon
+Performance plan handoff
+Sun
+Ask anything about your team's work
+What shipped this week?
+What's blocking the hosting work?
+Summarize ticket #14
+Where did our time go this month?
+About ticket #14 · 3 files
+ci-failure.png
+412 KB
+deploys-october.csv
+18 KB
+netlify-api.pdf
+1.2 MB
+#14
+Ticket
+Smart
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+
+Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.
+
+=== composer:files overflow+logs
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false,
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}
+
+=== composer:drag text
+Trov
+New thread
+PINNED
+Hosting status
+05:41
+Release 0.30 checklist
+Mon
+TODAY
+What shipped this week?
+06:12
+Summarize ticket #14
+05:05
+THIS WEEK
+CI flake on netlify-connect
+Tue
+Where did our time go in September?
+Tue
+Draft a sprint goal for Hosting
+Mon
+Performance plan handoff
+Sun
+Ask anything about your team's work
+What shipped this week?
+What's blocking the hosting work?
+Summarize ticket #14
+Where did our time go this month?
+Smart
+Ask before changes
+Auto
+Enter to send · Shift+Enter for a new line
+
+Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.
+
+Drop files to attach
+Images, PDFs and text files, up to 10 MB each
+
+=== composer:drag overflow+logs
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false,
+ "console": [
+  "warning: The resource http://localhost:8810/assets/geist-latin-BgDaEnEv.woff2 was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally."
+ ],
+ "failed": [
+  "(harness) navigation retry 1"
+ ],
+ "pageerrors": []
+}
