@@ -10,6 +10,7 @@ import { setApiOrg } from "../web/src/api";
 import { emailNotificationsSection, notificationsAdminSections, notifDropdowns } from "../web/src/notifications";
 import { esc } from "../web/src/ui";
 import { STILL_SENT, STILL_SENT_SENTENCE, UNSUBSCRIBE_STOPS } from "@shared/email-unsubscribe";
+import css from "../web/src/trov.css?raw";
 import type { PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
 
@@ -31,6 +32,14 @@ describe("Only when something needs me (Phase E)", () => {
     expect(off).toMatch(/data-act="toggleOnlyWhenNeeded"[^>]*aria-checked="false"/);
     const on = emailNotificationsSection({ prefs: prefs({ onlyWhenNeeded: true }), loading: false, error: null, emailEditing: false, emailDraft: "" });
     expect(on).toMatch(/data-act="toggleOnlyWhenNeeded"[^>]*aria-checked="true"/);
+  });
+
+  it("moves like every switch: its knob slides and its track fades (inline .15s), and both stand still under reduced motion", () => {
+    const html = emailNotificationsSection({ prefs: prefs({ onlyWhenNeeded: true }), loading: false, error: null, emailEditing: false, emailDraft: "" });
+    const sw = /<button data-act="toggleOnlyWhenNeeded"[^>]*>[\s\S]*?<\/button>/.exec(html)![0];
+    expect(sw).toContain("transition:all .15s ease");
+    expect(sw).toContain("transition:left .15s ease,background .15s ease");
+    expect(css).toContain('@media (prefers-reduced-motion: reduce) { button[role="switch"], button[role="switch"] > span { transition:none !important; } }');
   });
 });
 
