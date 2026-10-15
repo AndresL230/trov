@@ -403,6 +403,16 @@ describe("the lines' words", () => {
     expect(doneText([vm({ tool: "publish_doc", preview: { title: "Publish x", lines: [], item: null }, fields: { slug: "release-notes" } })])).toBe("Published release-notes to the org");
     expect(proposedText([vm({ kind: "move", preview: { title: "Move #14 to Testing", lines: [], item: null } })])).toBe("Move ticket #14 to Testing");
   });
+  // e2e AU-9: decided cards whose item number is unknown (no `ref`, a result without the item) drew "Moved ticket
+  // #null to Testing" / "Commented on ticket #null". Unknown is never printed (CLAUDE.md invariant 7): "the ticket".
+  it("never writes #null: a write whose number is unknown names the item without one", () => {
+    for (const tool of ["transition_ticket", "add_ticket_comment", "edit_ticket", "add_ticket_link", "set_ticket_sprint", "set_ticket_parent", "assign_ticket", "send_handoff", "claim_handoff", "expire_handoff"]) {
+      const line = doneText([vm({ tool, ref: null, result: { ok: true }, fields: { to: "testing" } })]);
+      expect(line, tool).not.toMatch(/null|undefined|#\s/);
+    }
+    expect(doneText([vm({ tool: "transition_ticket", ref: null, result: { ok: true }, fields: { to: "testing" } })])).toBe("Moved the ticket to Testing");
+    expect(doneText([vm({ tool: "add_ticket_comment", ref: null, result: { ok: true } })])).toBe("Commented on the ticket");
+  });
   it("editedArgs: only editable fields that changed (trimmed); hunks by index", () => {
     const card = vm({ editable: ["title", "priority"], fields: { title: "A", priority: "high", body: "b" }, preview: { title: "", lines: [], item: null } });
     expect(editedArgs(card, { title: " A ", priority: "high", body: "sneaky" })).toBeNull();
