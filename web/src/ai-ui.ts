@@ -110,7 +110,10 @@ export const AI_TIP = {
 } as const;
 /** A feed entry's tooltip names its own sources. */
 export const aiFeedTip = (sources: AiCite[], more: number): string =>
-  `Written by Trov from ${listWords(sources.map((c) => c.label), more)}. ${AI_NOT_OFFICIAL}`;
+  sources.length
+    ? `Written by Trov from ${listWords(sources.map((c) => c.label), more)}. ${AI_NOT_OFFICIAL}`
+    // No source could be read (no "From …" line either): never "from ."
+    : more > 0 ? `Written by Trov from ${more} sources. ${AI_NOT_OFFICIAL}` : `Written by Trov. ${AI_NOT_OFFICIAL}`;
 
 /** What each screen says when nothing has been written yet (the mock's words). */
 export const AI_EMPTY = {
