@@ -26,6 +26,10 @@ export const RESET_STATEMENTS = [
   "DELETE FROM ai_feedback",
   // AI (0058_ai_dirty): the router's stale scopes reference orgs.
   "DELETE FROM ai_dirty",
+  // AI (0064_repo_themes): the repo themes, each PR's theme and the captions.
+  "DELETE FROM pr_themes",
+  "DELETE FROM repo_theme_captions",
+  "DELETE FROM repo_themes",
   // AI (0059_ai_batches): the pass's open Message Batches — platform tables, no org_id (requests first).
   "DELETE FROM ai_batch_requests",
   "DELETE FROM ai_batches",

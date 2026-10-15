@@ -33,6 +33,7 @@ import type { RepoEventRow, RepoPrRow } from "../repo/types";
 import { listAllParts, type PartRow } from "../hosting/parts";
 import { PROVIDERS } from "../hosting/registry";
 import type { HostingProvider } from "../hosting/types";
+import { readRepoThemes } from "./themes";
 
 // The Repo dashboard: a D1-ONLY read projection, in the same class as My Work —
 // no live GitHub, no per-user token, nothing written. It reads what the webhook,
@@ -1296,8 +1297,18 @@ export async function getRepoDashboard(
     : new Set<string>();
   const everAny = (metrics: string[]) => metrics.some((m) => ever.has(m));
 
+  // "Where the work went" (./themes.ts): a D1 aggregation, ABSENT when the switch is off or the repository has no
+  // theme. It fails ALONE: a throw leaves the field out and the dashboard says it is degraded.
+  let themesFailed = false;
+  const themes = await readRepoThemes(ctx, repo, now).catch((e) => {
+    themesFailed = true;
+    console.error("repo dashboard", "themes", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
+    return undefined;
+  });
+
   return {
-    repo, generatedAt: nowAt, degraded: hostingFailed,
+    repo, generatedAt: nowAt, degraded: hostingFailed || themesFailed,
+    ...(themes ? { themes } : {}),
     usage: used.anyUsage ? ok(used.usage) : everAny(USAGE_METRICS) ? EMPTY : NOT_CONNECTED,
     providers: providerSection,
     product: produced.anyProduct ? ok(produced.product) : ever.has(`${PRODUCT_PREFIX}*`) ? EMPTY : NOT_CONNECTED,

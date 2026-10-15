@@ -34,7 +34,10 @@ const LIVE = {
 
 describe("providerFor: one table from a kind to its provider", () => {
   it("tag.fit is Jev's; the summaries and the plain-language filter are Claude's; no key → null", () => {
-    expect(KIND_PROVIDER).toEqual({ summary_pr: "claude", summary_issue: "claude", "tag.fit": "jev", filter: "claude" });
+    expect(KIND_PROVIDER).toEqual({
+      summary_pr: "claude", summary_issue: "claude", "tag.fit": "jev", filter: "claude",
+      "themes.propose": "claude", "themes.caption": "claude", "themes.backfill": "claude", "pr.theme": "jev",
+    });
     expect(providerFor("tag.fit", { apiKey: "k" })?.name).toBe("jev");
     expect(providerFor("tag.fit", { apiKey: "k" })?.model).toBe("jev-latest");
     expect(providerFor("summary_pr", { apiKey: "k" })?.name).toBe("claude");

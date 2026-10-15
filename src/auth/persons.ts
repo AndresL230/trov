@@ -293,6 +293,8 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["org_tag_suggestions", "suggested_by"], ["org_tag_suggestions", "resolved_by"],
   // Jev tagging: who turned the org's switch on or off, and who started a run.
   ["org_ai_settings", "updated_by"], ["org_tag_runs", "started_by"], ["org_tag_runs", "undone_by"],
+  // Repo themes (0064_repo_themes): who proposed (`trov`) and who decided a theme; who set a PR's theme by hand.
+  ["repo_themes", "created_by"], ["repo_themes", "decided_by"], ["pr_themes", "set_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

@@ -740,7 +740,7 @@ tenantRoot.get("/repo/dashboard", async (c) => {
   try {
     repo = (await orgPrimaryRepo(c.var.ctx))?.repo ?? "";
     const dash = await getRepoDashboard(c.var.ctx, repo, Date.now(), await orgEnvironments(c.var.ctx));
-    // `state` / `themes` (shared/repo.ts) are not sections and are omitted: nothing writes them yet.
+    // `state` / `themes` (shared/repo.ts) are not sections: `themes` is there when the repo has themes (src/tools/themes.ts).
     // LOCAL_AI_PREVIEW shows the samples under `wrangler dev` only (src/ai/preview.ts).
     const preview = aiPreview(c.env, c.req.url);
     return c.json(preview ? { ...dash, state: preview.repoState, themes: preview.themes } : dash);
