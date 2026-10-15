@@ -50,6 +50,18 @@ describe("server-ai e2e seed", { timeout: 30_000 }, () => {
     expect(once).toBeGreaterThan(0);
   });
 
+  // e2e TC-1 / TC-3 (Phase H): the ticket category / priority rows were stored as a bare `bug`, not the JSON the
+  // writer (src/data/ai.ts `JSON.stringify(value)`) stores, so the chips read "Suggested: null category" and Accept
+  // was refused.
+  it("stores every suggestion's value as the JSON the writer would (the reads JSON.parse it)", async () => {
+    await seed();
+    const rows = await env.DB.prepare("SELECT id, value_json FROM ai_suggestions").all<{ id: number; value_json: string }>();
+    const bad = rows.results.filter((r) => { try { JSON.parse(r.value_json); return false; } catch { return true; } }).map((r) => r.id);
+    expect(bad).toEqual([]);
+    const cat = await env.DB.prepare("SELECT value_json FROM ai_suggestions WHERE id = 5101").first<{ value_json: string }>();
+    expect(cat?.value_json).toBe('"bug"');
+  });
+
   it("only ever writes obviously fake rows: test- handles and org_test_ orgs", async () => {
     await seed();
     const persons = await env.DB.prepare("SELECT handle, email FROM persons WHERE handle LIKE 'test-%'").all<{ handle: string; email: string | null }>();
