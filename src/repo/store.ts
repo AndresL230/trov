@@ -358,9 +358,11 @@ export async function hostingReads(ctx: TenantContext, sinceIso: string, perPart
          FROM hosting_deploys WHERE org_id = ? AND created_at >= ?
           -- A production part's PREVIEWS (repo setups) are not its deploys: a preview row is left out of a part that
           -- has any non-preview row. A part that reads only previews (a staging = previews-of-main part) keeps them.
-          AND NOT (target = 'preview' AND EXISTS (
+          -- COALESCE: a row with NO target (a GitHub-sourced deploy, a Netlify deploy with no context) makes
+          -- the preview test NULL, and NOT (NULL AND true) is NULL — it would drop the row. It is not a preview.
+          AND NOT COALESCE(target = 'preview' AND EXISTS (
             SELECT 1 FROM hosting_deploys h2 WHERE h2.org_id = ? AND h2.env = hosting_deploys.env AND h2.part = hosting_deploys.part
-              AND h2.provider = hosting_deploys.provider AND (h2.target IS NULL OR h2.target <> 'preview')))
+              AND h2.provider = hosting_deploys.provider AND (h2.target IS NULL OR h2.target <> 'preview')), 0)
      ) WHERE rn <= ?
      UNION ALL
      SELECT 'config', kind, scope, '', config FROM org_integration_config WHERE org_id = ? AND scope = ''
