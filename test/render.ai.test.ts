@@ -448,7 +448,11 @@ describe("Org settings › AI", () => {
     expect(text(member)).toContain("Off");
     expect(text(member)).toContain("Auto mode in Ask Trov");
     expect(text(member)).toContain("Only an admin or an owner can change this.");
-    expect(tab(settings(), "ok", true)).toMatch(/role="switch" aria-checked="true"[^>]* disabled aria-busy="true"/);
+    // e2e EV-OA-admin-K: held while the write is out WITHOUT `disabled` — a disabled button drops the keyboard's
+    // focus to <body> the moment Space or Enter toggles it; the toggle's own guard refuses a second press.
+    const saving = tab(settings(), "ok", true);
+    expect(saving).toMatch(/role="switch" aria-checked="true"[^>]* aria-disabled="true" aria-busy="true"/);
+    expect(saving).not.toMatch(/role="switch"[^>]* disabled[ >]/);
   });
   it("all four allowances with this month's use, in order; unlimited when the plan has no cap; the resume date when one is used up", () => {
     const html = tab(settings());
