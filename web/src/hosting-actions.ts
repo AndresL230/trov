@@ -5,7 +5,8 @@
 // A TOKEN'S VALUE lives in exactly two places, and only while its form is open: the live <input>, and
 // `secretDraft` below — a private variable, never a field of AppState (the rule of org-actions.ts). It is put
 // back on the input after a repaint and dropped on save, on close and on leaving the tab. It never reaches the
-// URL, localStorage, a toast or a log line.
+// URL, localStorage, a toast or a log line. The part editor's app metrics token follows the same rule
+// (`metricsDraft`).
 //
 // "Preview with sample data" (web/src/hosting-sample.ts, a dynamic import — never in the main bundle) shows
 // every state of the tab without a provider credential. While it is on NOTHING is sent: a save, a connect, a
@@ -14,13 +15,14 @@
 import type { AppState } from "./render";
 import {
   ApiError, OrgApiError, Unauthorized, rateLimitText,
-  deleteEnvironmentPart, disconnectHosting, getHostingSetup, putEnvironmentPart, putOrgIntegrationConfig, rotateOrgIntegration, setOrgIntegration,
-  startHostingConnect, testHosting,
+  deleteEnvironmentPart, disconnectHosting, getHostingSetup, putEnvironmentPart, putOrgIntegrationConfig, removeHostingLeftovers, rotateOrgIntegration, setOrgIntegration,
+  startHostingConnect, testHosting, testOrgIntegration,
 } from "./api";
+import { notConnectedSentence } from "@shared/hosting-status-core";
 import { currentOrg, effectiveOrgTab, roleAtLeast } from "./org-settings";
 import {
-  bestMethod, connKey, connectionOf, draftKey, fieldOptions, hostingData, isHostingSampleKey, isHostingStackKey, partDraftProblems, providerOf, scopeFor, tokenFormOk, tokenMethod,
-  tokenWord, type HostingUi, type PartDraft,
+  bestMethod, connKey, connectionOf, draftKey, fieldOptions, hostingData, isHostingSampleKey, isHostingStackKey, leftoversOf, partDraftProblems, providerOf, providerStatusOf, scopeFor,
+  tokenFormOk, tokenMethod, tokenWord, type HostingUi, type PartDraft,
 } from "./hosting";
 import {
   HOSTING_INTEGRATION_KIND, isHostingProvider, isPartRole,
@@ -47,8 +49,9 @@ export interface HostingActions {
   act(name: string, arg: string | null, value: string | null): boolean;
   /** Read (or refresh) the org's Hosting setup. */
   load(): void;
-  /** The confirmation modal said yes: remove a part (`part`, arg `<env>/<part>`) or disconnect (`hosting`, arg `<provider>:<scope>`). */
-  runConfirm(what: "part" | "hosting", arg: string, done: (msg: string, ms?: number) => void, failed: (e: unknown, fallback: string) => void): void;
+  /** The confirmation modal said yes: remove a part (`part`, arg `<env>/<part>`), disconnect (`hosting`, arg
+   *  `<provider>:<scope>`) or remove a provider's old per-environment tokens (`leftovers`, arg `<provider>`). */
+  runConfirm(what: "part" | "hosting" | "leftovers", arg: string, done: (msg: string, ms?: number) => void, failed: (e: unknown, fallback: string) => void): void;
   afterPaint(): void;
 }
 
@@ -90,8 +93,15 @@ export function createHostingActions(host: HostingHost): HostingActions {
   const fail = (e: unknown): boolean => { if (e instanceof Unauthorized) { host.unauth(e); return true; } return false; };
   const go = (url: string): void => { if (host.go) host.go(url); else window.location.assign(url); };
 
-  // ── the token draft (see the header) ───────────────────────────────────────
+  // ── the token drafts (see the header) ──────────────────────────────────────
   let secretDraft = "";
+  /** The part editor's app metrics token, while it is open. Never in AppState. */
+  let metricsDraft = "";
+  const dropMetrics = (): void => {
+    metricsDraft = "";
+    const el = mount.querySelector<HTMLInputElement>("[data-hx-metrics-input]");
+    if (el) el.value = "";
+  };
   /** The `data-field` of the control that opened the dialog on screen, so focus returns to it. */
   let trigger: string | null = null;
   const dropSecret = (): void => {
@@ -108,7 +118,7 @@ export function createHostingActions(host: HostingHost): HostingActions {
     mount.querySelector<HTMLElement>("[data-hx-dialog] input:not([disabled]), [data-hx-dialog] .cnpy-dd:not([disabled])")?.focus();
   };
   const activeField = (): string | null => (document.activeElement as HTMLElement | null)?.getAttribute?.("data-field") ?? null;
-  const closeDialogs = (): void => { dropSecret(); const u = h(); u.part = null; u.connect = null; u.token = null; u.manage = null; };
+  const closeDialogs = (): void => { dropSecret(); dropMetrics(); const u = h(); u.part = null; u.connect = null; u.token = null; u.manage = null; };
 
   // ── the read ───────────────────────────────────────────────────────────────
   function load(): void {
@@ -193,17 +203,37 @@ export function createHostingActions(host: HostingHost): HostingActions {
     const settings: Record<string, string> = {};
     for (const f of p.part_settings) { const v = (dr.settings[f.key] ?? "").trim(); if (v) settings[f.key] = v; }
     const body: PartWrite = { provider: p.id, role: dr.role, settings, ...(dr.label.trim() ? { label: dr.label.trim() } : {}) };
+    // The app metrics token, when one was typed: the environment's own (`metrics_endpoint`, scoped to it), written
+    // through the same write-only Integrations API it always was — replaced when one is stored already.
+    const metrics = metricsDraft.trim();
+    const stored = d.environments.find((e) => e.key === dr.env)?.app_metrics?.configured === true;
     const after = (part: Pick<EnvironmentPartDTO, "label">, created: boolean): void => {
+      dropMetrics();
       u.part = null;
-      host.flash(`${created ? "Added" : "Saved"} ${envLabel} › ${part.label}`);
+      host.flash(`${created ? "Added" : "Saved"} ${envLabel} › ${part.label}${metrics ? ", and its app metrics token" : ""}`);
       refocus();
       if (thenConnect) openConnect(p.id, scopeFor(p, dr.env));
     };
     if (u.sample) { after({ label: dr.label.trim() || key }, dr.key === null); host.flash(SAMPLE_SAYS); rerender(); return; }
     dr.saving = true; dr.error = null; dr.errorField = null;
     rerender();
+    const rotate = (): Promise<unknown> => rotateOrgIntegration(o.slug, "metrics_endpoint", dr.env, metrics);
+    const saveMetrics = (): Promise<unknown> => !metrics ? Promise.resolve()
+      : stored ? rotate()
+      : setOrgIntegration(o.slug, "metrics_endpoint", dr.env, metrics).catch((e) => { if (e instanceof ApiError && e.message === "already_configured") return rotate(); throw e; });
     putEnvironmentPart(o.slug, dr.env, key, body)
-      .then((r) => { after(r.part, r.created); rerender(); load(); host.reloadSettings(); })
+      .then((r) => saveMetrics()
+        .then(() => { after(r.part, r.created); rerender(); load(); host.reloadSettings(); })
+        .catch((e) => {
+          // The part is saved; the token is not. The editor stays open on the token, now editing the stored part.
+          dr.saving = false;
+          dr.key = key;
+          if (fail(e)) return;
+          dr.errorField = "metrics";
+          dr.error = e instanceof OrgApiError && e.message === "invalid_secret" && e.detail ? sentence(e.detail.replace(/^secret\b/, "The token"))
+            : hostingErrorText(e, "The part is saved, but its app metrics token is not.");
+          rerender(); load(); host.reloadSettings();
+        }))
       .catch((e) => {
         dr.saving = false;
         if (fail(e)) return;
@@ -339,13 +369,19 @@ export function createHostingActions(host: HostingHost): HostingActions {
     if (!o || !d || u.tests[key]?.status === "running") return;
     const p = providerOf(d, provider);
     if (!p) return;
+    // Not connected (THE status function — what its card and its parts say): nothing is sent; the answer says so.
+    if (!providerStatusOf(d, provider).live) {
+      u.tests[key] = { status: "done", ok: false, detail: notConnectedSentence(p.label) };
+      rerender();
+      return;
+    }
     if (u.sample) {
       const c = connectionOf(d, provider, target.scope ?? "");
       u.tests[key] = { status: "running" };
       rerender();
       void import("./hosting-sample").then((m) => {
         const ok = !!c && c.status === "connected";
-        u.tests[key] = { status: "done", ok, detail: ok ? (provider === "fly" ? m.HOSTING_SAMPLE_TEST_OK.detail : `${p.label} answered.`) : c?.status === "error" ? m.HOSTING_SAMPLE_TEST_FAILED.detail : `${p.label} is not connected.` };
+        u.tests[key] = { status: "done", ok, detail: ok ? (provider === "fly" ? m.HOSTING_SAMPLE_TEST_OK.detail : `${p.label} answered.`) : m.HOSTING_SAMPLE_TEST_FAILED.detail };
         rerender();
       });
       return;
@@ -361,12 +397,45 @@ export function createHostingActions(host: HostingHost): HostingActions {
       });
   }
 
+  /** An environment's app metrics token, tested from the part editor (the Integrations test — it records its outcome). */
+  function testMetrics(envKey: string): void {
+    const o = org();
+    const u = h();
+    const d = data();
+    const key = `metrics:${envKey}`;
+    if (!o || !d || u.tests[key]?.status === "running" || !d.environments.some((e) => e.key === envKey)) return;
+    if (u.sample) { u.tests[key] = { status: "done", ok: true, detail: "The metrics endpoint answered with active users. (Sample data: nothing was sent.)" }; rerender(); return; }
+    u.tests[key] = { status: "running" };
+    rerender();
+    testOrgIntegration(o.slug, "metrics_endpoint", envKey)
+      .then((r) => { u.tests[key] = { status: "done", ok: r.ok, detail: r.detail }; rerender(); load(); host.reloadSettings(); })
+      .catch((e) => {
+        if (fail(e)) { delete u.tests[key]; return; }
+        u.tests[key] = { status: "done", ok: false, detail: hostingErrorText(e, "The test could not run.") };
+        rerender();
+      });
+  }
+
   // ── confirmations (the shared modal: org-settings.ts `orgConfirmCopy`) ──────
-  function runConfirm(what: "part" | "hosting", arg: string, done: (msg: string, ms?: number) => void, failed: (e: unknown, fallback: string) => void): void {
+  function runConfirm(what: "part" | "hosting" | "leftovers", arg: string, done: (msg: string, ms?: number) => void, failed: (e: unknown, fallback: string) => void): void {
     const o = org();
     const u = h();
     const d = data();
     if (!o || !d) { done(""); return; }
+    if (what === "leftovers") {
+      if (!isHostingProvider(arg)) { done(""); return; }
+      const label = providerOf(d, arg)?.label ?? arg;
+      const n = leftoversOf(d, arg).length;
+      if (u.sample) { done(SAMPLE_SAYS); return; }
+      removeHostingLeftovers(o.slug, arg)
+        .then((r) => {
+          adopt(r.connection);
+          done(`Removed ${r.removed === 1 ? "the old" : `${r.removed} old`} ${label} ${r.removed === 1 ? "token" : "tokens"}`);
+          load(); host.reloadSettings();
+        })
+        .catch((e) => { failed(e, `Couldn't remove the old ${label} ${n === 1 ? "token" : "tokens"}.`); load(); });
+      return;
+    }
     if (what === "part") {
       const at = arg.indexOf("/");
       const envKey = arg.slice(0, at), partKey = arg.slice(at + 1);
@@ -406,7 +475,7 @@ export function createHostingActions(host: HostingHost): HostingActions {
   // ── acts ───────────────────────────────────────────────────────────────────
   function act(name: string, arg: string | null, value: string | null): boolean {
     // Disconnect asks the page's confirmation (org-actions.ts handles it): the Manage dialog closes under it.
-    if (name === "orgConfirm" && (arg ?? "").startsWith("hosting:")) h().manage = null;
+    if (name === "orgConfirm" && /^(?:hosting|leftovers):/.test(arg ?? "")) h().manage = null;
     if (!name.startsWith("orgHx")) return false;
     const u = h();
     if (!admin()) return true;
@@ -429,7 +498,7 @@ export function createHostingActions(host: HostingHost): HostingActions {
       // The part editor
       case "orgHxPartNew": if (arg) newPart(arg); return true;
       case "orgHxPartEdit": if (arg) editPart(arg); return true;
-      case "orgHxPartClose": if (dr && !dr.saving) { u.part = null; rerender(); refocus(); } return true;
+      case "orgHxPartClose": if (dr && !dr.saving) { dropMetrics(); u.part = null; rerender(); refocus(); } return true;
       case "orgHxPartProvider": {
         const p = d && isHostingProvider(value) ? providerOf(d, value) : null;
         if (!dr || !d || !p || p.status !== "available" || dr.saving) return true;
@@ -457,6 +526,27 @@ export function createHostingActions(host: HostingHost): HostingActions {
         break;
       }
       case "orgHxPartSave": savePart(arg === "connect"); return true;
+      // The part editor's app metrics token: the value stays in `metricsDraft` (see the header), never in AppState.
+      case "orgHxPartMetrics": {
+        if (!dr) return true;
+        metricsDraft = value ?? "";
+        const has = metricsDraft.trim() !== "";
+        const changed = has !== (dr.metricsHasValue ?? false) || dr.errorField === "metrics";
+        dr.metricsHasValue = has;
+        if (dr.errorField === "metrics") { dr.error = null; dr.errorField = null; }
+        if (changed) rerender();
+        return true;
+      }
+      case "orgHxMetricsTest": if (arg) testMetrics(arg); return true;
+      case "orgHxMetricsDelete": {
+        // The page's confirmation, as Integrations' Delete was (org-actions.ts runs it, and reloads this tab).
+        if (!arg || !d?.environments.some((e) => e.key === arg)) return true;
+        if (u.sample) { host.flash(SAMPLE_SAYS); return true; }
+        state.org.confirm = { what: "secret", arg: `metrics_endpoint:${arg}`, busy: false };
+        rerender();
+        mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
+        return true;
+      }
 
       // Connecting
       case "orgHxConnect": {
@@ -538,8 +628,15 @@ export function createHostingActions(host: HostingHost): HostingActions {
     if (!onTab) {
       // Left the tab (or the screen) with a dialog open: the dialog and the value go with it.
       if (secretDraft) secretDraft = "";
+      if (metricsDraft) metricsDraft = "";
       if (u.part || u.connect || u.token || u.manage) { u.part = null; u.connect = null; u.token = null; u.manage = null; }
       return;
+    }
+    // The part editor's app metrics token: put back on its input after a repaint; gone once the editor is.
+    if (!u.part) { if (metricsDraft) metricsDraft = ""; }
+    else {
+      const mel = mount.querySelector<HTMLInputElement>("[data-hx-metrics-input]");
+      if (mel && mel.value !== metricsDraft) mel.value = metricsDraft;
     }
     if (!u.token) { if (secretDraft) secretDraft = ""; return; }
     const el = mount.querySelector<HTMLInputElement>("[data-hx-secret-input]");

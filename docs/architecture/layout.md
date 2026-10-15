@@ -215,8 +215,8 @@
   `web/src/tip.ts` the one styled bubble that shows a mark's tooltip (`data-mtip`); and
   `web/src/hash.ts` is the hash-route seam (`parseHash` / `hashForRoute` — `#tickets/7`, `#sprints/3`,
   `#repo/<tab>`). `web/src/repo.ts` is the Repo dashboard (ported from the Claude Design `Trov Repo
-  Dashboard.dc.html`), `web/src/repo-sample.ts` its design-placeholder set (a dynamic import, never in the main
-  bundle), and `web/src/sidebar.ts` + `web/src/morph.ts` the sidebar — see "Sidebar & motion" below.
+  Dashboard.dc.html`), `web/src/repo-sample.ts` its design-placeholder set and the Repo-setups scenarios A–N as `RepoFacts` (a
+  dynamic import, never in the main bundle), and `web/src/sidebar.ts` + `web/src/morph.ts` the sidebar — see "Sidebar & motion" below.
   Signed out, the app renders the **landing page** (`web/src/landing.ts`, ported from the Claude Design
   `Canopy Site.dc.html`); its nav's Sign in opens the GitHub/Google dialog, and its in-page links scroll
   rather than set the hash (the hash is the route and the sign-in return-to). Signed IN, the sidebar logo

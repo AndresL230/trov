@@ -8,12 +8,14 @@ import {
 } from "@shared/repo";
 import type { PersonColor } from "@shared/rows";
 import {
-  HOSTING_INTEGRATION_KIND, hostingMetricName, isDeployState, isHostingMetric, metricsForRole,
+  HOSTING_INTEGRATION_KIND, hostingMetricName, hostingRevokedReasonText, isDeployState, isHostingMetric, isHostingRevokedReason, metricsForRole,
   type DeployState, type HostingMetric, type HostingProviderId, type ProviderDeployDTO, type ProviderResources,
   type ProviderTrafficRange, type RepoProviderPart, type RepoProvidersSection,
 } from "@shared/hosting";
+import { hostingStatus, storedConnectionStatus } from "@shared/hosting-status-core";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
 import { type TenantContext, all, first, nowIso, ph } from "../data/sql";
+import { isLegacyOrg } from "../data/legacy";
 import { ISSUE_GONE_ACTIONS } from "./issue-gone";
 import { list_sprints } from "./sprints";
 import {
@@ -713,6 +715,25 @@ const isHttps = (u: string | null): u is string => {
 };
 
 /**
+ * A part's provider's org-wide connection as EVERY surface says it — the ONE status function
+ * (shared/hosting-status-core.ts `hostingStatus`), fed from `hostingReads`' metadata arms: the stored credential
+ * (`org_secrets`, scope '', never its value) and the install / OAuth row. The only fact this projection cannot
+ * read is SaplingLearn's legacy Worker secret (the decrypt path is off limits here — test/secrets.mcp.test.ts):
+ * for that org alone, a poll that found a credential (ok or failed — never `skipped`) is the evidence of it.
+ */
+function partConnectionOf(info: PartInfo, reads: HostingReads, legacyOrg: boolean): RepoProviderPart["connection"] {
+  const label = info.provider?.label ?? info.part.provider;
+  // A provider with no credential of its own (`github`) reads through the org's GitHub connection: always live.
+  if (info.provider?.credential === "github_app") return hostingStatus(null, label, true).state;
+  const secret = reads.secrets.get(HOSTING_INTEGRATION_KIND[info.part.provider] ?? "") ?? null;
+  const row = reads.connections.get(info.part.provider) ?? null;
+  const status = storedConnectionStatus(secret, row);
+  const reason = status === "revoked" && isHostingRevokedReason(row?.revoked_reason) ? hostingRevokedReasonText(row!.revoked_reason, label) : null;
+  const legacy = legacyOrg && !secret && info.state !== undefined && info.state.status !== "skipped";
+  return hostingStatus({ status, legacy_fallback: legacy, revoked_reason: reason }, label).state;
+}
+
+/**
  * The `providers` section: EVERY part of every environment (`listAllParts`, any provider), each as one
  * `RepoProviderPart`, derived IN MEMORY from reads the render already makes: the metric points ride the
  * Usage read (`metricsSince`, `hx_*`); deploys, every part's last poll and the org's provider settings are
@@ -737,16 +758,18 @@ const isHttps = (u: string | null): u is string => {
  *               else `neutral` (an in-flight or canceled newest deploy says nothing either way).
  *   console_url the provider's own `consoleUrl(part settings, org settings)`, https only, or null — the org
  *               settings come from `hostingReads` (scope ''), never through the secrets module.
+ *   connection  the part's provider's org-wide connection, as Org settings › Hosting says it (`partConnectionOf`).
  * Section: `ok` when any part is ok; `empty` when parts exist but none is; `not_connected` with no part.
  */
-function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingReads, endExcl: number, now: number): RepoProvidersSection {
+function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingReads, endExcl: number, now: number, legacyOrg = false): RepoProvidersSection {
   if (!infos.length) return NOT_CONNECTED;
   const series = (metric: string, envKey: string, part: string): UsagePoint[] =>
     rows.filter((r) => r.metric === metric && r.env === envKey && r.part === part)
       .map((r) => ({ t: Date.parse(r.at), value: r.value })).filter((p) => Number.isFinite(p.t));
   const complete = (pts: UsagePoint[]) => pts.filter((p) => p.t < endExcl);
 
-  const out: RepoProviderPart[] = infos.map(({ part, provider, state, unavailable, reads: reads_, covered, deploys }) => {
+  const out: RepoProviderPart[] = infos.map((info) => {
+    const { part, provider, state, unavailable, reads: reads_, covered, deploys } = info;
     let traffic: RepoProviderPart["traffic"] = null;
     let resources: RepoProviderPart["resources"] = null;
     let seenTraffic = false, seenResources = false;
@@ -794,6 +817,7 @@ function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingRe
       seen: { traffic: seenTraffic, resources: seenResources, deploys: deploys.length > 0 },
       unavailable, status, tone,
       last_poll: state ? { at: state.polled_at, status: state.status, detail: state.detail } : null,
+      connection: partConnectionOf(info, reads, legacyOrg),
     };
   });
   return out.some((p) => p.status === "ok") ? ok(out) : EMPTY;
@@ -1290,7 +1314,8 @@ export async function getRepoDashboard(
     : [[], []];
   const used = projectUsage(usageRows, envs, infos, usageEnd, now);
   const produced = projectProduct(productRows, envs, now);
-  const providerSection = hosted ? projectProviders(infos, usageRows, hosted, usageEnd, now) : NOT_CONNECTED;
+  // MT: SaplingLearn's legacy Worker secret is evidence only for org #1 (src/data/legacy.ts).
+  const providerSection = hosted ? projectProviders(infos, usageRows, hosted, usageEnd, now, isLegacyOrg(ctx)) : NOT_CONNECTED;
   const ever = envs.length && (!used.anyUsage || !produced.anyProduct)
     ? await metricsEver(ctx, USAGE_METRICS, [PRODUCT_PREFIX])
     : new Set<string>();

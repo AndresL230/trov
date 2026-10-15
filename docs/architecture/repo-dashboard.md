@@ -16,6 +16,13 @@ section has a capture path** — the old list of uncaptured sections is gone fro
 each one waits on: a setting or secret by NAME, a webhook event, the target repo's CI, or Sync GitHub. There
 is no connect button or flow. "Preview with sample data" swaps in `repo-sample.ts` client-side
 (session-only, labelled on screen); it never touches the Worker.
+`repo-sample.ts` also holds the Repo-setups design's scenarios A–N (`repoScenario(key, variant, { now, app })`,
+`REPO_SCENARIOS`, `SCENARIO_TITLES`, `SCENARIO_VARIANTS` — the design's variants plus G `signals`) as
+`RepoFacts` (`shared/repo-facts-core.ts`), narrowed by `narrowFacts` exactly as the server narrows (`app` = an
+app key, `REPO_WIDE` = no app rows, only the PR / CI-level facts). `test/repo-sample.scenarios.test.ts` holds
+every scenario × variant × App narrowing × Group by to the design's own `buildScreen` (same rule, opener and
+Group by from `layoutOf(layoutInputOf(facts))`), and checks unknown stays `null` and every part's app and
+environment exist. H's Cloud Run app uses provider `github` through a cast until Phase A adds it.
 
 Three capture shapes feed it: `repo_events` rows (through the `ingestRepoEvent` gate — see Core invariant),
 `repo_snapshots` (one JSON row per kind: `prs_reconciled`, `env_heads`, `drift`, `branches` —
@@ -465,7 +472,8 @@ says `empty` — whose copy is "No current usage reading — the hourly polls ha
 
 **Active users come from Sapling's own backend** — the one number Trov CANNOT compute. `pollSaplingMetrics`
 sends `GET {cfg.apiUrl}/api/internal/metrics` with `Authorization: Bearer <token>` — the org's
-`metrics_endpoint` secret stored for that environment (SaplingLearn's fallback: `SAPLING_METRICS_TOKEN`) —
+`metrics_endpoint` secret stored for that environment (set from its parts' editor on Org settings › Hosting since
+repo-setups Phase 0; SaplingLearn's fallback: `SAPLING_METRICS_TOKEN`) —
 (user-agent `canopy-metrics`, the 8s timeout) per environment and expects `200` → `{ "active_users": {
 "24h": n, "7d": n, "30d": n } }`. **The token goes to ONE place**: a non-`https:` `apiUrl` is never fetched,
 trailing slashes are normalised, and `redirect: "manual"` + "only a 200 is an answer" means a 3xx is a

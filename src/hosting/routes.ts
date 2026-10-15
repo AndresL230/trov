@@ -11,6 +11,8 @@
 //                                                         an org already connected is replaced at the callback
 //   POST   /hosting/:provider/disconnect         admin+   { connection: HostingConnectionDTO, upstream }   body { scope? }
 //   POST   /hosting/:provider/test               admin+   HostingTestDTO   body { scope?, env?, part? }
+//   DELETE /hosting/:provider/leftovers          admin+   HostingLeftoversRemovedDTO — "Remove old tokens": the
+//                                                         provider's credentials stored under a non-empty scope
 //
 // …and, at the app ROOT (a provider's redirect URI is fixed, so it cannot carry the org; the sealed intent in
 // the `trov_hx` cookie does). A PUBLIC path (src/auth/principal.ts — the session gate's 401 JSON never answers
@@ -30,6 +32,7 @@ import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { HOSTING_INTEGRATION_KIND, HOSTING_PROVIDERS, isHostingProvider, type HostingTestDTO } from "@shared/hosting";
+import { hostingStatus, notConnectedSentence } from "@shared/hosting-status-core";
 import { resolveSessionPrincipal, type AppEnv, type Principal } from "../auth/principal";
 import { RoleError, platform, requireRole } from "../data/context";
 import { adminOrgForInstallation } from "../platform/jobs";
@@ -39,7 +42,7 @@ import {
 import { testConnection } from "../integrations/probe";
 import { SettingsError } from "../integrations/settings";
 import {
-  CONNECT_COOKIE, CONNECT_COOKIE_PATH, CONNECT_TTL_MS, checkScope, completeConnect, connectionDTO, disconnect, startConnect,
+  CONNECT_COOKIE, CONNECT_COOKIE_PATH, CONNECT_TTL_MS, checkScope, completeConnect, connectionDTO, disconnect, removeLeftovers, startConnect,
 } from "./connections";
 import { deletePart, putPart, type ProviderMap } from "./part-writes";
 import { listAllParts } from "./parts";
@@ -157,10 +160,18 @@ export function makeHostingApp(o: HostingRouteOptions = {}): Hono<AppEnv> {
     // A provider with no credential of its own (`github`) has nothing to test here.
     if (!kind) return c.json({ error: "invalid", field: "provider", message: `${p.label} has no credential of its own: it reads through the organization's GitHub connection` }, 400);
     const scope = checkScope(p, scopeIn);
+    // Not connected (the one status function — what the card and the part row say): nothing to probe, and the
+    // answer says so in the card's own words — never "No secret is set".
+    const before = await connectionDTO(ctx, c.env, p.id, scope, providers);
+    if (!hostingStatus(before, p.label).live) return c.json({ ok: false, detail: notConnectedSentence(p.label), connection: before } satisfies HostingTestDTO);
     const result = await testConnection(ctx, c.env, kind, scope, originOf(c), Date.now(), o.fetchImpl, partKey);
     const out: HostingTestDTO = { ok: result.ok, detail: result.detail, connection: await connectionDTO(ctx, c.env, p.id, scope, providers) };
     return c.json(out);
   }));
+
+  // "Remove old tokens": the provider's leftover scoped credentials (Railway's per-environment project tokens from
+  // before 0057), deleted as this admin and audited — never the org-wide connection.
+  r.delete("/hosting/:provider/leftovers", (c) => guard(c, async () => c.json(await removeLeftovers(c.var.ctx, c.env, c.req.param("provider"), providers))));
 
   return r;
 }

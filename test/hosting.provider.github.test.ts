@@ -18,6 +18,7 @@ import { hostingPollCost, pollPart, providerPollCost } from "../src/hosting/poll
 import { PROVIDERS, providerDTO } from "../src/hosting/registry";
 import { getHostingSetup } from "../src/hosting/setup";
 import { SettingsError } from "../src/integrations/settings";
+import { VIA_GITHUB_WORD, hostingStatus } from "@shared/hosting-status-core";
 
 const e = env as unknown as Env;
 
@@ -79,5 +80,10 @@ describe("the setup read", () => {
     expect(dto.environments.find((x) => x.key === "staging")!.parts[0]).toMatchObject({ provider: "github", connection: "connected" });
     expect(dto.providers.find((p) => p.id === "github")).toMatchObject({ via_github: true, connection_methods: [] });
     expect(providerDTO(PROVIDERS.vercel, {}).via_github).toBeUndefined();
+  });
+
+  it("THE status function reads a credential-less provider as live — never Not connected", () => {
+    expect(hostingStatus(null, "GitHub deployments", true)).toEqual({ state: "connected", word: VIA_GITHUB_WORD, live: true, stored: false });
+    expect(hostingStatus(null, "Vercel").state).toBe("not_connected");
   });
 });

@@ -265,6 +265,9 @@ export interface HostingEnvironmentDTO {
   label: string;
   branch: string;
   parts: EnvironmentPartDTO[];
+  /** The environment's app metrics token (`org_secrets` kind `metrics_endpoint`, scope = the environment key), set
+   *  from its parts' editor (repo-setups Phase 0). Absent in a payload from before the field existed. */
+  app_metrics?: HostingAppMetricsDTO;
 }
 
 /** One line of the setup checklist — generated from the providers the org's parts actually use. */
@@ -331,6 +334,9 @@ export interface HostingSetupDTO {
   detection?: HostingDetectionStatusDTO;
   /** false: TROV_KEK is unusable, so no credential can be saved (every write answers 503). */
   secrets_available: boolean;
+  /** Credentials stored under a non-empty scope for a provider connected once per org — never a connection
+   *  (shared/hosting-status-core.ts). Absent in a payload from before the field existed. */
+  leftovers?: HostingLeftoverDTO[];
 }
 
 /** `PUT /api/o/:slug/environments/:env/parts/:part` body. */
@@ -346,6 +352,38 @@ export interface ConnectStartDTO { url: string; method: "install" | "oauth"; exp
 
 /** `POST /api/o/:slug/hosting/:provider/test` (and per part). */
 export interface HostingTestDTO { ok: boolean; detail: string; connection: HostingConnectionDTO }
+
+/**
+ * A credential stored under a NON-EMPTY scope for a provider that is connected once for the whole org — Railway's
+ * per-environment project tokens from before 0057. Nothing reads it: it is never a connection, never counted,
+ * and shown only inside its provider's card, where "Remove old tokens" deletes it (`DELETE …/hosting/:provider/leftovers`).
+ */
+export interface HostingLeftoverDTO {
+  provider: HostingProviderId;
+  scope: string;
+  /** The environment the scope names, when it still exists. */
+  scope_label: string | null;
+  /** How it was stored — "Project token" — never the provider's current connection method. */
+  label: string;
+  hint_last4: string;
+  created_by: string;
+  created_at: string;
+}
+
+/** `DELETE /api/o/:slug/hosting/:provider/leftovers` — how many were removed, and the org-wide connection now. */
+export interface HostingLeftoversRemovedDTO { removed: number; connection: HostingConnectionDTO }
+
+/** An environment's app metrics token, as its parts' editor shows it — metadata only, never the value. */
+export interface HostingAppMetricsDTO {
+  configured: boolean;
+  /** SaplingLearn's cut-over only: a legacy Worker secret answers for it. */
+  legacy_fallback: boolean;
+  hint_last4: string;
+  last_used_at: string | null;
+  last_error: string | null;
+  /** The environment's API URL the token is sent to (`<api_url>/api/internal/metrics`), or null when it has none. */
+  api_url: string | null;
+}
 
 // ── Repo dashboard › Usage: the provider-neutral section ────────────────────
 
@@ -413,6 +451,9 @@ export interface RepoProviderPart {
   status: "ok" | "empty" | "not_connected";
   tone: RepoTone;
   last_poll: { at: string; status: "ok" | "failed" | "skipped"; detail: string | null } | null;
+  /** The part's provider's org-wide connection, as every surface says it (shared/hosting-status-core.ts
+   *  `hostingStatus`). Absent in a payload from before the field existed. */
+  connection?: ConnectionStatus;
 }
 
 /** `RepoDashboard.providers`. */

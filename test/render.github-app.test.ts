@@ -376,7 +376,8 @@ describe("Integrations", () => {
     expect(g.indexOf('data-org-integration="github_token:"')).toBeGreaterThan(manualAt);
     expect(g.slice(manualAt)).toMatch(/id="xrow-github-manual" class="cnpy-xrow-b" hidden/);
     // The lead counts only what the org still owes; the token's old error is not a to-do any more.
-    expect(text(lead(html))).toContain("GitHub is connected through the GitHub App on acme-gh · 0 of 1 other credential set.");
+    // Nothing else is owed here (a hosting credential is Hosting's): no count at all, never "0 of 0".
+    expect(text(lead(html))).toMatch(/GitHub is connected through the GitHub App on acme-gh\s?\. A saved value/);
     expect(text(lead(html))).not.toContain("with an error");
     expect(accents(html)).toBe(0);
     expect(html).toMatch(/data-n="0" title="0 with an error"/);

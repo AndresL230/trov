@@ -319,7 +319,7 @@ export function createOrgController(host: OrgHost): OrgController {
           loadAdmin();
         })
         .catch((e) => { failed(e, "Couldn't disconnect GitHub."); loadGithub(); });
-    } else if (what === "part" || what === "hosting") {
+    } else if (what === "part" || what === "hosting" || what === "leftovers") {
       hosting.runConfirm(what, arg, (msg, ms) => { ui().confirm = null; if (msg) host.flash(msg, ms); else rerender(); }, failed);
     } else if (what === "env") {
       const label = ui().envs.data.find((x) => x.key === arg)?.label ?? arg;
@@ -338,7 +338,8 @@ export function createOrgController(host: OrgHost): OrgController {
       if (!k) { ui().confirm = null; rerender(); return; }
       const label = i ? integrationLabel(i) : "secret";
       deleteOrgIntegration(o.slug, k.kind, k.scope)
-        .then((row) => { replaceIntegration(row); delete ui().tests[arg]; done(`Deleted the ${label}`); loadAudit(); loadRepos(); })
+        // An app metrics token is deleted from its part's editor on Hosting: that tab reads it again too.
+        .then((row) => { replaceIntegration(row); delete ui().tests[arg]; done(`Deleted the ${label}`); loadAudit(); loadRepos(); if (k.kind === "metrics_endpoint") hosting.load(); })
         .catch((e) => failed(e, `Couldn't delete the ${label}.`));
     } else if (what === "member") {
       const m = ui().members.data.find((x) => x.handle.toLowerCase() === arg.toLowerCase());
@@ -803,7 +804,7 @@ export function createOrgController(host: OrgHost): OrgController {
       case "orgConfirm": {
         const at = (arg ?? "").indexOf(":");
         const what = (arg ?? "").slice(0, at);
-        if (!admin || at < 0 || !["repo", "env", "secret", "member", "key", "github", "part", "hosting"].includes(what)) return;
+        if (!admin || at < 0 || !["repo", "env", "secret", "member", "key", "github", "part", "hosting", "leftovers"].includes(what)) return;
         if (what === "key" && o?.role !== "owner") return;
         u.confirm = { what: what as OrgConfirm["what"], arg: (arg ?? "").slice(at + 1), busy: false };
         rerender();

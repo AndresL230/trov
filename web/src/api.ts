@@ -507,7 +507,11 @@ export function startHostingConnect(slug: string, provider: HostT.HostingProvide
 export function disconnectHosting(slug: string, provider: HostT.HostingProviderId, scope = ""): Promise<{ connection: HostT.HostingConnectionDTO; upstream: "revoked" | "failed" | "none" }> {
   return orgSend("POST", orgPath(slug, `/hosting/${provider}/disconnect`), scope ? { scope } : {});
 }
-/** Test connection — the credential alone, or against one part (`{ env, part }`). `scope` for Railway's per-environment token. */
+/** "Remove old tokens": a provider's leftover per-environment credentials (never its org-wide connection). */
+export function removeHostingLeftovers(slug: string, provider: HostT.HostingProviderId): Promise<HostT.HostingLeftoversRemovedDTO> {
+  return orgSend("DELETE", orgPath(slug, `/hosting/${provider}/leftovers`));
+}
+/** Test connection — the credential alone, or against one part (`{ env, part }`). */
 export function testHosting(slug: string, provider: HostT.HostingProviderId, target: { scope?: string; env?: string; part?: string } = {}): Promise<HostT.HostingTestDTO> {
   return orgSend("POST", orgPath(slug, `/hosting/${provider}/test`), target);
 }
