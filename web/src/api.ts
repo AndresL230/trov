@@ -327,6 +327,7 @@ import type * as IntT from "@shared/integrations";
 import type { BillingCheckoutRequest, BillingCheckoutResponse, BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
 import type * as GhT from "@shared/github-app";
 import { AI_ROUTES, type AiAcceptBody, type AiFeedbackBody, type AiSettings, type AiSettingsPut } from "@shared/ai-core";
+import { AI_FILTER_ROUTE, type AiFilterAnswer, type AiFilterBody } from "@shared/ai-filter-core";
 import type * as TagT from "@shared/tags-core";
 /** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
  *  `detail` the server's sentence, `field` the input it is about. */
@@ -408,6 +409,9 @@ export function acceptAiSuggestion(id: number, value?: unknown): Promise<unknown
 export function dismissAiSuggestion(id: number): Promise<unknown> { return orgSend("POST", AI_ROUTES.dismiss(id), {}); }
 /** "Wrong?": hides the item for this person from now on; never edits the record. */
 export function sendAiFeedback(body: AiFeedbackBody): Promise<unknown> { return orgSend("POST", AI_ROUTES.feedback, body); }
+/** The plain-language filter (#162): a sentence → the screen's own filter fields, checked by the server. A refusal
+ *  is an `OrgApiError` whose `detail` is the sentence to show (`unreadable`, `off`, `no_key`), or the house 402 / 429. */
+export function runAiFilter(slug: string, body: AiFilterBody): Promise<AiFilterAnswer> { return orgSend("POST", orgPath(slug, AI_FILTER_ROUTE), body); }
 export function putOrgSettings(slug: string, name: string): Promise<{ ok: true; org: OrgT.OrgSettings }> { return orgSend("PUT", orgPath(slug, "/settings"), { name }); }
 /** Upload the org's image (multipart `file`; the caller crops and downsizes it first — avatar.ts). Admin+.
  *  Refusals: `invalid_image` (400), `too_large` (413), `rate_limited` (429). Answers with the image that shows now. */

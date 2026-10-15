@@ -165,6 +165,8 @@ export interface QueueProps {
   filterOpen?: boolean;
   filterCat?: QueueFilterCat;
   fmOpening?: string | null;
+  /** The plain-language filter's box (ai-filter.ts), drawn above the toolbar; "" when the org's AI is off. */
+  aiFilter?: string;
   /** The queue's first read is still out: the toolbar is real, and the board's columns
    *  (or the table's rows) hold a skeleton instead of "Nothing here". */
   loading?: boolean;
@@ -489,7 +491,7 @@ function boardView(p: QueueProps, rows: TicketListItem[]): string {
 export function queueView(p: QueueProps): string {
   const rows = queueRows(p);
   return `<div style="${WORK_SHELL}">
-    ${filterRow(p, rows.length)}
+    ${p.aiFilter ?? ""}${filterRow(p, rows.length)}
     ${p.view === "board" ? boardView(p, rows) : tableView({ ...p, tickets: rows })}
   </div>`;
 }

@@ -166,6 +166,8 @@ export interface ArtProps {
   host: string;
   /** The filter menu (web/src/filter-menu.ts) that this render opens, if any — plays its entrance once. */
   fmOpening?: string | null;
+  /** The plain-language filter's box (ai-filter.ts) above the library's toolbar; "" when the org's AI is off. */
+  aiFilter?: string;
   /** The resolved theme — the mermaid cache is keyed by it (the diagram is drawn in its colours). */
   theme: string;
   tickets: ArtTicketRef[];
@@ -505,7 +507,7 @@ function libraryView(p: ArtProps): string {
   };
 
 
-  const toolbar = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 4px">
+  const toolbar = `${p.aiFilter ?? ""}<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 4px">
     ${searchFilterBar({
       search: { act: "artQ", field: "artQ", value: ui.q, placeholder: "Search by title, area, kind or ticket", clearAct: "artClearQ" },
       menu,

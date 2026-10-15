@@ -16,7 +16,8 @@ sticky at the page's own top padding `--cols-pad-top`, one column under an 880px
 failed read is 503 `{ error }`, never a 500): `{ days: [{date, count}], total, people, topTags, topAuthors }`
 over the WHOLE team in the viewer's LOCAL days (UTC when `tz` is absent), every day listed so a zero is a
 true zero — two statements, loaded on entering the Feed, never on a filter change; its tag and author chips
-apply the Feed's own `setTag` / `setAuthor` filter; and **Waiting on review**, the Review queue from the
+apply the Feed's own `setTag` / `setAuthor` filter (as does the plain-language filter box above the entries when the
+org's AI is on: it sets Author, Tag and Time — `ai.md` › The plain-language filter); and **Waiting on review**, the Review queue from the
 boot-loaded proposals + draft ADRs as `reviewHeadsFromReads` heads (no diff), each row `mwOpenReview`. The `record-session` skill always writes a brief; the
 body's soft target is ~2,500 characters. Pre-0034 entries were filled once by
 `scripts/backfill-feed-briefs.mjs` (local, Gemini, dry run by default, `--apply` only `WHERE brief IS NULL`).

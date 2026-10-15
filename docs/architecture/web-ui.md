@@ -928,8 +928,14 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
 - **Labels** in the brief's Now / Recently / Next and State's heading use `var(--label)` — the existing label
   style, which is Geist outside the sidebar (Archivo Narrow stays the sidebar's face only).
 - Radii are inline, at values the corners block already scales; nothing new needed a line there.
+- **The plain-language filter box** (`web/src/ai-filter.ts`, #162) above the toolbar of Tickets, the Feed and
+  Artifacts: the search bar's shape (`.cnpy-sfbar`, the AI mark where the magnifier is, Apply where Filter is), only
+  when the org's AI is on (no box when off, never a disabled one). Typing keeps the draft WITHOUT a repaint (Tickets
+  and the Feed are rebuilt on a paint); a refusal is the field's floating error (`fieldError`); once applied, one
+  plain line — "Filtered: Open · Assigned to you. Not a filter here: “overdue”." — and Undo. No pill, no select.
 - Tests: `test/render.ai.test.ts` (every screen in ready / empty / capped, themes proposed, admin vs member, the
-  chip, the cites, Org settings › AI, Platform's AI line), `test/render.ai-absent.test.ts`.
+  chip, the cites, Org settings › AI, Platform's AI line), `test/render.ai-absent.test.ts`,
+  `test/render.ai-filter.test.ts`.
 
 ## Fonts, contrast and focus — nothing from a third party, AA in both themes
 
