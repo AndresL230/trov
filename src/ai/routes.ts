@@ -10,19 +10,27 @@
 //   POST /ai/suggestions/:id/accept    the kind's handler's role (./suggestions.ts) — writes AS the caller
 //   POST /ai/suggestions/:id/dismiss   any member
 //   POST /ai/feedback                  any member — "Wrong?": hides the item for the caller, idempotent
+//   POST /ai/filter { screen, text }   any member — the plain-language filter (#162, ./filter.ts): the screen's
+//                                      own filter fields, checked against the org's rows; never results
 import { Hono, type Context } from "hono";
 import type { Env } from "../env";
 import type { AppEnv } from "../auth/principal";
 import {
   AI_ALLOWANCE_KEYS, AI_NEVER_SENT, AI_ROUTES, AI_SENDS, AiAcceptBodySchema, AiFeedbackBodySchema, AiSettingsPutSchema, type AiSettings,
 } from "@shared/ai";
-import { hasRole, type TenantContext } from "../data/context";
+import { hasRole, platform, type TenantContext } from "../data/context";
 import { recordFeedback, setAiAutomation, setAiChatAuto } from "../data/ai";
 import { cookieOnly } from "../orgs/routes";
 import { planAndAiSettings } from "../plans/gate";
-import { allowanceUse, eligibilityOf } from "./eligibility";
-import { aiPreview } from "./preview";
+import { aiAllowance, allowanceUse, eligibilityOf } from "./eligibility";
+import { aiPreview, aiPreviewMode } from "./preview";
 import { acceptSuggestion, dismissSuggestion, type SuggestionAnswer } from "./suggestions";
+import { AI_FILTER_MESSAGES, AI_FILTER_ROUTE, AiFilterBodySchema, type AiFilterAnswer, type AiFilterErrorCode } from "@shared/ai-filter";
+import { planRefusal, resolveEntitlements, type PlanRefusal } from "@shared/plans";
+import { PLAN_LIMIT_STATUS } from "../plans/state";
+import { aiRunCappedMetric, meterBy } from "../data/meter";
+import { rateLimited } from "../platform/limits";
+import { AI_FILTER_ACTOR, isEmptyFilter, previewAiFilter, runAiFilter } from "./filter";
 
 /** What Org settings › AI shows, from ONE statement: both switches, the eligibility, this month's use of all
  *  four AI allowances, and what is sent to whom. Any member reads it; `canEdit` says whether the switches
@@ -92,4 +100,52 @@ aiApp.post(AI_ROUTES.feedback, async (c) => {
   if (!parsed.success) return c.json({ error: "invalid", issues: parsed.error.issues }, 400);
   await recordFeedback(c.var.ctx, c.var.ctx.userId, parsed.data);
   return c.json({ ok: true });
+});
+
+// ── The plain-language filter (#162, ./filter.ts) ────────────────────────────
+// Gates in order, each spending nothing when it refuses: the body (400 `invalid`), the org's AI switch (403
+// `off` — the preview honours it too), then — unless `LOCAL_AI_PREVIEW` answers from the screen's fixture,
+// with no key, no call and no count — the key (503 `no_key`), the month's `ai_runs` (the house 402
+// `plan_limit`, one `ai_run_capped:filter` counted), the person's `ai_filter` rate (429). Then ONE call. An
+// answer that sets nothing is 422 `unreadable`, naming the request's words that are no filter here.
+const filterRefusal = (c: Context<AppEnv>, code: AiFilterErrorCode, status: 400 | 403 | 422 | 503, message: string = AI_FILTER_MESSAGES[code]) =>
+  c.json({ error: code, message }, status);
+
+const filterAnswer = (c: Context<AppEnv>, a: AiFilterAnswer | null) => {
+  if (a && !isEmptyFilter(a)) return c.json(a);
+  const not = a?.unmatched.length ? ` Not a filter here: ${a.unmatched.map((u) => `“${u}”`).join(", ")}.` : "";
+  return filterRefusal(c, "unreadable", 422, AI_FILTER_MESSAGES.unreadable + not);
+};
+
+/** The preview's `capped`: the refusal a Free org at its month's runs would get. */
+const previewCapped = (a: { plan: Parameters<typeof planRefusal>[0] }): PlanRefusal | null => {
+  const free = { ...a.plan, plan: "free" as const, overrides: {}, status: "active" as const };
+  return planRefusal(free, "ai_runs", resolveEntitlements("free").ai_runs ?? 0, 1);
+};
+
+aiApp.post(AI_FILTER_ROUTE, async (c) => {
+  const parsed = AiFilterBodySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return filterRefusal(c, "invalid", 400);
+  const ctx = c.var.ctx;
+  try {
+    const a = await aiAllowance(ctx, c.env);
+    if (!a.enabled) return filterRefusal(c, "off", 403);
+    // LOCAL DEVELOPMENT ONLY (./preview.ts): the fixture, checked exactly as a model's answer is.
+    const preview = aiPreviewMode(c.env, c.req.url);
+    if (preview === "capped") return c.json(previewCapped(a), PLAN_LIMIT_STATUS);
+    if (preview) return filterAnswer(c, await previewAiFilter(ctx, parsed.data, preview));
+    if (a.eligibility === "no_key") return filterRefusal(c, "no_key", 503);
+    // THE allowance (shared/plans.ts `ai_runs`): one call is one run.
+    const refusal = planRefusal(a.plan, "ai_runs", a.used, 1);
+    if (refusal) {
+      await meterBy(platform(c.env, ctx.userId), ctx.orgId, AI_FILTER_ACTOR, [[aiRunCappedMetric("filter"), 1]]);
+      return c.json(refusal, PLAN_LIMIT_STATUS);
+    }
+    const limited = await rateLimited(c, "ai_filter");
+    if (limited) return limited;
+    return filterAnswer(c, await runAiFilter(ctx, c.env, parsed.data));
+  } catch (e) {
+    console.error("ai filter", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
+    return c.json({ error: "Couldn't read what the filter needs." }, 503);
+  }
 });
