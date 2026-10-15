@@ -17,7 +17,7 @@ import { initialComposerUi, composerFocus, composerPart } from "./ask-composer";
 import { conversationPart } from "./ask-conversation";
 import { inspectorPart } from "./ask-inspector";
 import { actionsPart } from "./ask-actions";
-import { cmdjPart, cmdjToggle } from "./ask-cmdj";
+import { cmdjPart, cmdjRepaint, cmdjToggle, isCmdjKey, otherModalOpen } from "./ask-cmdj";
 import { phonePart } from "./ask-phone";
 import { threadsPart } from "./ask-threads";
 import { closeTop, type EscEntry } from "./ask-escape";
@@ -63,7 +63,9 @@ export function createAskController(host: AskHost): AskController {
   function paint(): void {
     if (paintQueued) return;
     paintQueued = true;
-    raf(() => { paintQueued = false; host.rerender(); });
+    // Away from the Ask screen only Ask's root overlays (the ⌘J panel, the hover card) change: they repaint alone,
+    // so the page behind is never rebuilt per keystroke or streamed word (ask-cmdj.ts `cmdjRepaint`).
+    raf(() => { paintQueued = false; if (cmdjRepaint(host.mount, s)) after(); else host.rerender(); });
   }
 
   function fail(e: unknown, fallback: string): void {
@@ -305,10 +307,11 @@ export function createAskController(host: AskHost): AskController {
   if (typeof document !== "undefined") {
     document.addEventListener("keydown", (e) => {
       if (s.view !== "app") return;
-      if ((e.metaKey || e.ctrlKey) && (e.key === "j" || e.key === "J")) {
+      if (isCmdjKey(e) && !otherModalOpen(document)) {
         e.preventDefault();
+        if (e.repeat) return;
         if (s.screen === "ask") composerFocus(host.mount, "page");
-        else { cmdjToggle(ctx); raf(() => raf(() => composerFocus(host.mount, "panel"))); }
+        else cmdjToggle(ctx);                       // opening focuses the panel's composer (ask-cmdj.ts)
         return;
       }
       if (e.key === "Escape" && askOnScreen() && closeTop(escEntries, ctx)) { e.preventDefault(); e.stopImmediatePropagation(); }
@@ -442,6 +445,18 @@ export function createAskController(host: AskHost): AskController {
     paint();
   }
 
+  function after(): void {
+    // The ⌘J scenario plays over another page (`?askReplay=cmdj#tickets/14`): the Ask screen never enters there.
+    if (bootReplay && !replayStarted && s.view === "app" && replayPlan(bootReplay.scenario).where === "panel") void startReplay(bootReplay);
+    if (!askOnScreen()) return;
+    for (const p of PARTS) p.afterPaint?.(ctx, host.mount);
+    // Motion (ask-motion.ts): new rows / messages / parts enter once; swapped cards tween their height.
+    askEnterNew(host.mount);
+    askTweenHeights(host.mount);
+    // The ⌘J panel on any page: make sure its state is read once.
+    if (ui().cmdj.open && ui().state.status === "idle" && !ui().replay) load();
+  }
+
   return {
     ctx,
     act(name, arg, value) {
@@ -454,14 +469,6 @@ export function createAskController(host: AskHost): AskController {
       return true;
     },
     enter,
-    afterPaint() {
-      if (!askOnScreen()) return;
-      for (const p of PARTS) p.afterPaint?.(ctx, host.mount);
-      // Motion (ask-motion.ts): new rows / messages / parts enter once; swapped cards tween their height.
-      askEnterNew(host.mount);
-      askTweenHeights(host.mount);
-      // The ⌘J panel on any page: make sure its state is read once.
-      if (ui().cmdj.open && ui().state.status === "idle" && !ui().replay) load();
-    },
+    afterPaint: () => after(),
   };
 }
