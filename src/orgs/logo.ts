@@ -34,9 +34,10 @@ import { sha256Hex } from "../tools/artifacts";
 import { scrubbedMessage } from "../repo/github";
 import { ORG_LOGO_MAX_BYTES, orgLogoOf, type OrgLogo, type OrgLogoSource } from "@shared/orgs";
 import { auditStmt } from "./repo";
+import { orgLogoKey } from "./logo-key";
 
 const SHA_RE = /^[0-9a-f]{64}$/;
-export const orgLogoKey = (sha: string): string => `org-logos/${sha}`;
+export { orgLogoKey };
 
 interface LogoRow { logo_sha: string | null; logo_source: OrgLogoSource | null; logo_by: string | null; logo_from: string | null; logo_at: string | null }
 const LOGO_COLS = `logo_sha, logo_source, logo_by, logo_from, logo_at`;
