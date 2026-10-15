@@ -394,9 +394,11 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
     || (appIndex.get(a.app ?? "") ?? -1) - (appIndex.get(b.app ?? "") ?? -1)
     || (envIndex.get(a.env ?? "") ?? -1) - (envIndex.get(b.env ?? "") ?? -1));
 
-  // ── the connect hint (admins): a part's host is not connected ───────────────
+  // ── the connect hint (everyone's): a part's host is not connected ───────────
+  // Members see the note too; only an admin gets the action (the SPA draws the button for an admin alone — the design's
+  // "Members see this note too; only an admin can connect a host"; e2e O15b).
   let connect: FactsConnect | null = null;
-  if (hasRole(ctx, "admin")) {
+  {
     const missing = parts.filter((p) => i.providers[p.provider]?.credential !== "github_app" && (p.connection === "not_connected" || p.connection === "revoked"));
     const provider = missing[0]?.provider;
     if (provider) {

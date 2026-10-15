@@ -229,7 +229,7 @@ Every field (null rules in brackets):
   `rolledBack` (the serving deploy has `rolled_back_from`; `nextSha` when one is in flight), `outOfStep`, `stale`
   (a stale health reading), `degraded` (an environment's CI fails; `app: null`), `waiting` (not shipped > 2
   commits and the oldest > 1 day — `WAITING_COUNT`, `WAITING_AGE_MS`), `previewFailing` (a streak ≥ 3; `env: null`).
-- `connect` — admins only: the first host in part order that is `not_connected` / `revoked` (never a `github_app`
+- `connect` — everyone's (members see the note, only an admin gets the action — the design's rule): the first host in part order that is `not_connected` / `revoked` (never a `github_app`
   provider), with its apps; `need: "metrics"` when GitHub already gives every such part its deploys, else
   `"deploys"`.
 

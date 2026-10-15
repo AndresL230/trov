@@ -283,9 +283,9 @@ describe("the facts read — snapshots, CI, attention, the week", () => {
     expect(await merged()).toEqual({ key: "mergedPrs", value: 3, delta: 2 });
   });
 
-  it("the connect hint is an admin's: the first host not connected, needing deploys (nothing comes through GitHub)", async () => {
+  it("the connect hint is everyone's — members see the note, only an admin gets the action (the design; e2e O15b): the first host not connected, needing deploys", async () => {
     await seedWorld();
-    expect((await factsOf()).f.connect).toBeNull(); // the system reader is not an admin
+    expect((await factsOf()).f.connect).toEqual({ provider: "cloudflare", need: "deploys", apps: ["frontend"] }); // a reader who is not an admin
     expect((await factsOf({ admin: true })).f.connect).toEqual({ provider: "cloudflare", need: "deploys", apps: ["frontend"] });
   });
 

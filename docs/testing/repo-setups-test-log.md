@@ -41,7 +41,7 @@ pinned by tests; one spot check only); signed-out (DEV_LOGIN always signs in loc
 ## Baseline
 
 - **Tests** — branch: typecheck 0 errors; `npm test` 312 files / 7259 tests passing (Phase E's run on this tree; the master
-  reruns after the follow-up fixes — see Final pass). Base `main` (6c965ac5): _filled when the run ends_.
+  reruns after the follow-up fixes — see Final pass). Base `main` (6c965ac5): typecheck 0 errors; `npm test` 277 files / 5706 tests, all passing.
 - **Pre-existing surfaces on base, same seed** (`docs/testing/repo-setups-shots/base/`): B01 Hosting providers — THREE
   Railway cards ("Railway · Staging / Production — Connected · Workspace token ••5024 / ••51b1 · not used by a part")
   while both Backend parts read "Not connected" (the bug Phase 0 fixes, reproduced); B02 Integrations lists Hosting tokens
