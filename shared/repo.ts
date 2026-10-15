@@ -296,7 +296,7 @@ export interface RepoDashboard {
   /** Overview's first section, "State". */
   state?: AiRepoState;
   /** Planning's first section, "Where the work went", per range (the screen switches client-side). */
-  themes?: Record<AiThemeRange, AiThemes>;
+  themes?: Partial<Record<AiThemeRange, AiThemes>>;
 }
 
 // ── Which section belongs to which tab — ONE mapping, two readers ────────────

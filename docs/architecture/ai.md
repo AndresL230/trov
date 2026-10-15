@@ -252,7 +252,10 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
   OPEN suggestion (counted from `seed_prs`, `suggestionId` set), at most 8; `prCount` = the PRs drawn; the newest caption
   on the 8-week range only, and only while every theme it names is still active. ABSENT when the switch is off, there is
   no repository, or neither an active theme nor a waiting proposal exists; a failed read leaves it out and marks the
-  dashboard `degraded`.
+  dashboard `degraded`. A range the READER marked "Wrong?" (`aiItemRef.themes(repo, range, generatedAt)`) is left out
+  for them (`hiddenFor`), so the field is `Partial<Record<AiThemeRange, AiThemes>>`; both flagged → absent; a newer
+  version (a new caption, a new theme) is a new ref and comes back. Deciding a proposal re-reads the dashboard
+  (`AiHost.reloadRepo`), so the lane shows what it became.
 - **`themeShares(ctx, repo, from, to)`** (`src/tools/themes.ts`) — each active theme's share of the PRs merged in a
   window, null with no active theme: the read the roadmap's drift (Phase E) calls.
 - **Local**: `fixtures/dev/themes.json` + `scripts/seed/themes-dev.mjs` (appended by `scripts/seed-dev.mjs`) seed four

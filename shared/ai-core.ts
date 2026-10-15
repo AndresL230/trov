@@ -125,6 +125,9 @@ export const AI_THEME_RANGE_WEEKS: Record<AiThemeRange, number> = { "8w": 8, qua
 export const AI_THEME_COLORS = ["moss", "fern", "sky", "slate", "plum", "rose", "rust", "ochre", "clay", "stone"] as const;
 export type AiThemeColor = (typeof AI_THEME_COLORS)[number];
 
+/** A theme name's longest (the accept handler's check, and the Rename field's maxlength). */
+export const AI_THEME_NAME_MAX = 40;
+
 export const AI_THEME_STATUSES = ["proposed", "active"] as const;
 export type AiThemeStatus = (typeof AI_THEME_STATUSES)[number];
 
@@ -143,8 +146,8 @@ export interface AiThemeLane {
   suggestionId: number | null;
 }
 
-/** `RepoDashboard.themes?` is `Record<AiThemeRange, AiThemes>`: the screen's 8 weeks / Quarter
- *  switch changes ranges client-side. On `empty`, lanes and weeks are []. */
+/** `RepoDashboard.themes?` is `Partial<Record<AiThemeRange, AiThemes>>`: the screen's 8 weeks / Quarter
+ *  switch changes ranges client-side; a range the person marked "Wrong?" is left out (for them only). On `empty`, lanes and weeks are []. */
 export interface AiThemes extends AiMeta {
   caption: string | null;
   /** "from N pull requests" — counted by the server; null when unknown. */

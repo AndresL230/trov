@@ -15,7 +15,7 @@
 // and its sections are untouched. Pure markup; the acts are ai-actions.ts's.
 
 import type { AiLine, AiRepoState, AiThemeLane, AiThemeRange, AiThemes } from "@shared/ai-core";
-import { AI_THEME_RANGES, AI_THEME_RANGE_LABELS, aiItemRef } from "@shared/ai-core";
+import { AI_THEME_NAME_MAX, AI_THEME_RANGES, AI_THEME_RANGE_LABELS, aiItemRef } from "@shared/ai-core";
 import { esc, attr, surface } from "./ui";
 import { glyph } from "./marks";
 import { segmented } from "./segmented";
@@ -137,7 +137,7 @@ function proposals(lanes: AiThemeLane[], p: RepoAiProps): string {
     const rename = renaming
       ? `<span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
           <label for="ai-rename-${id}" class="cnpy-sr">New name for ${esc(l.name)}</label>
-          <input id="ai-rename-${id}" data-act="aiRenameDraft" data-arg="${id}" data-field="aiRename:${id}" data-enter="aiRenameSave" value="${attr(ui.rename?.draft ?? "")}" maxlength="60" autocomplete="off" class="cnpy-input" style="height:26px;padding:0 8px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--fg);font-size:12.5px;width:180px;max-width:100%" />
+          <input id="ai-rename-${id}" data-act="aiRenameDraft" data-arg="${id}" data-field="aiRename:${id}" data-enter="aiRenameSave" value="${attr(ui.rename?.draft ?? "")}" maxlength="${AI_THEME_NAME_MAX}" autocomplete="off" class="cnpy-input" style="height:26px;padding:0 8px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--fg);font-size:12.5px;width:180px;max-width:100%" />
           <button type="button" data-act="aiRenameSave" data-arg="${id}" class="cnpy-ghostbtn" style="font-size:12px;font-weight:500;border:1px solid var(--border-strong);border-radius:6px;padding:2px 9px;min-height:26px">Save</button>
           <button type="button" data-act="aiRenameCancel" class="cnpy-mutelink" style="font-size:12px;font-weight:500;color:var(--fg-55);padding:2px 6px;min-height:26px">Cancel</button>
         </span>`
@@ -158,9 +158,9 @@ function proposals(lanes: AiThemeLane[], p: RepoAiProps): string {
 
 /** Planning's first section, from the range picked (`ui.themesRange`). "" when this person pressed
  *  "Wrong?" on it. */
-export function themesSection(all: Record<AiThemeRange, AiThemes>, p: RepoAiProps): string {
+export function themesSection(all: Partial<Record<AiThemeRange, AiThemes>>, p: RepoAiProps): string {
   const range = p.ui.themesRange;
-  const t = all[range] ?? all["8w"];
+  const t = all[range]; // absent: the person marked this range "Wrong?" (the read leaves it out for them)
   if (!t) return "";
   const ref = aiItemRef.themes(p.repo, range, t.generatedAt ?? "themes");
   if (aiIsHidden(p.ui, "themes", ref)) return "";

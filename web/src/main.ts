@@ -154,7 +154,10 @@ const tagsCtl = createTagsController({
 });
 // Trov's AI screens (web/src/ai-actions.ts): every `ai…` act — "Wrong?", the Feed's Source switch and
 // note, the themes' range and lane, Accept / Rename / Remove on a suggestion.
-const aiCtl = createAiController({ state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e) });
+const aiCtl = createAiController({
+  state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
+  reloadRepo: () => { if (!state.repoSample && state.repo.status !== "loading") loadRepo(); },
+});
 // The plain-language filter (web/src/ai-filter-actions.ts, #162): every `aiFilter…` act. Its answer is applied
 // to each screen's OWN filter state here — the same fields the Filter menu, the switch and the search box set.
 const aiFilterCtl = createAiFilterController({

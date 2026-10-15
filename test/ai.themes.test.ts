@@ -22,7 +22,8 @@ import { newBudget, CRON_SUBREQUEST_BUDGET } from "../src/repo/dispatch";
 import { batch as sqlBatch } from "../src/data/sql";
 import { orgRowDeletes } from "../src/deletion/tables";
 import { AI_ROUTES } from "@shared/ai";
-import { AiThemesSchema } from "@shared/ai";
+import { AiThemesSchema, aiItemRef } from "@shared/ai";
+import type { RepoDashboard } from "@shared/repo";
 import { all, first, run } from "./helpers/db";
 import { FIXTURE_ADMIN, cookieFor } from "./helpers/persons";
 import { ORG_A, ORG_B, systemCtx } from "./helpers/tenant";
@@ -441,7 +442,7 @@ describe("the read: RepoDashboard.themes (and get_repo_dashboard's planning tab)
     const sid = (await putSuggestion(systemCtx(), { itemType: "theme", itemRef: `${REPO}#${pid}`, kind: "themes.propose", value: { name: "Docs" }, confidence: null, reason: "The docs.", cites: [], model: "m", promptVersion: "propose-1" }))!;
     const t = (await readRepoThemes(systemCtx(), REPO))!;
     for (const r of ["8w", "quarter"] as const) expect(AiThemesSchema.safeParse(t[r]).success).toBe(true);
-    const w8 = t["8w"];
+    const w8 = t["8w"]!;
     expect(w8.weeks).toHaveLength(8);
     expect(w8.weeks.at(-1)).toBe(mondayOf(Date.now()));
     expect(w8.lanes.map((l) => [l.name, l.status, l.suggestionId])).toEqual([["Billing and plans", "active", null], ["Repo dashboard", "active", null], ["Docs", "proposed", sid]]);
@@ -454,16 +455,16 @@ describe("the read: RepoDashboard.themes (and get_repo_dashboard's planning tab)
     expect(w8.lanes[0].prs[0]).toEqual({ ref: "pr:1", label: "#1 Card 1", href: `https://github.com/${REPO}/pull/1` });
     expect(w8.caption).toBe("Most of it went to Billing and plans.");
     expect(w8.prCount).toBe(3);
-    const q = t.quarter;
+    const q = t.quarter!;
     expect(q.weeks).toHaveLength(13);
     expect(sum(q.lanes[0].counts)).toBe(3); // #4 at 10 weeks is in the quarter; #5 is not
     expect(q.caption).toBeNull(); // the caption speaks of eight weeks only
     // A caption naming a theme no longer active is not shown.
     await run(env.DB, `UPDATE repo_themes SET status = 'removed' WHERE id = ?`, billing);
-    expect((await readRepoThemes(systemCtx(), REPO))!["8w"].caption).toBeNull();
+    expect((await readRepoThemes(systemCtx(), REPO))!["8w"]!.caption).toBeNull();
     // MCP's planning tab carries it; another tab does not.
     const dash = await getRepoDashboard(systemCtx(), REPO);
-    expect(shapeRepoDashboard(dash, { tab: "planning" }).themes?.["8w"].lanes.length).toBeGreaterThan(0);
+    expect(shapeRepoDashboard(dash, { tab: "planning" }).themes?.["8w"]?.lanes.length).toBeGreaterThan(0);
     expect(shapeRepoDashboard(dash, { tab: "overview" }).themes).toBeUndefined();
   });
 
@@ -483,7 +484,7 @@ describe("the read: RepoDashboard.themes (and get_repo_dashboard's planning tab)
     for (const st of themesDevStatements(fx)) await env.DB.prepare(st).run();
     const t = (await readRepoThemes(systemCtx(), REPO))!;
     expect(t).toBeDefined();
-    const w8 = t["8w"];
+    const w8 = t["8w"]!;
     expect(w8.lanes.map((l) => [l.name, l.status])).toEqual([
       ["Repo dashboard", "active"], ["Tickets and sprints", "active"], ["Billing and plans", "active"], ["Organizations and sign-in", "active"], ["Emails and digests", "proposed"]]);
     expect(w8.lanes.every((l) => l.counts.length === 8)).toBe(true);
@@ -495,7 +496,27 @@ describe("the read: RepoDashboard.themes (and get_repo_dashboard's planning tab)
     // The proposal is decidable through the real route.
     const admin = await cookieFor(FIXTURE_ADMIN);
     expect((await call("POST", `${BASE}${AI_ROUTES.accept(w8.lanes[4].suggestionId!)}`, admin, { value: { name: "Emails" } })).status).toBe(200);
-    expect((await readRepoThemes(systemCtx(), REPO))!["8w"].lanes.at(-1)).toMatchObject({ name: "Emails", status: "active" });
+    expect((await readRepoThemes(systemCtx(), REPO))!["8w"]!.lanes.at(-1)).toMatchObject({ name: "Emails", status: "active" });
+  });
+
+  it("\"Wrong?\" on a range (the screen's own itemRef) leaves THAT range out of the reader's dashboard — only theirs; both → absent", async () => {
+    const fx = JSON.parse(Object.values(import.meta.glob("../fixtures/dev/themes.json", { query: "?raw", import: "default", eager: true }))[0] as string) as Record<string, unknown>;
+    for (const st of themesDevStatements(fx)) await env.DB.prepare(st).run();
+    const me = await cookieFor(FIXTURE_ADMIN);
+    const other = await cookieFor("theme-reader");
+    const dash = async (cookie: string) => (await call<RepoDashboard>("GET", `${BASE}/repo/dashboard`, cookie)).json.themes;
+    const before = (await dash(me))!;
+    expect(Object.keys(before).sort()).toEqual(["8w", "quarter"]);
+    const wrong = (r: "8w" | "quarter") => call("POST", `${BASE}${AI_ROUTES.feedback}`, me, {
+      itemType: "themes", itemRef: aiItemRef.themes(REPO, r, before[r]!.generatedAt!), kind: "themes", model: before[r]!.model, promptVersion: null });
+    expect((await wrong("8w")).status).toBe(200);
+    expect(Object.keys((await dash(me))!)).toEqual(["quarter"]);
+    expect(Object.keys((await dash(other))!).sort()).toEqual(["8w", "quarter"]);
+    expect((await wrong("quarter")).status).toBe(200);
+    expect(await dash(me)).toBeUndefined();
+    // A newer version (a new caption) is a new ref: the 8 weeks come back.
+    await run(env.DB, `UPDATE repo_theme_captions SET generated_at = ? WHERE org_id = ?`, new Date().toISOString(), ORG_A);
+    expect(Object.keys((await dash(me))!)).toEqual(["8w"]);
   });
 
   it("the cached prefix names the org's active themes", async () => {

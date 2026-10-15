@@ -55,7 +55,7 @@ export interface RepoAgentView {
   /** Written by Trov (shared/ai-core.ts): with `tab` overview or none, when the dashboard has it. */
   state?: AiRepoState;
   /** Written by Trov: with `tab` planning or none, when the dashboard has it. */
-  themes?: Record<AiThemeRange, AiThemes>;
+  themes?: Partial<Record<AiThemeRange, AiThemes>>;
 }
 
 const ALL_SECTIONS: readonly RepoSectionName[] = Object.values(REPO_TAB_SECTIONS).flat();

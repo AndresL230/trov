@@ -18,6 +18,8 @@ export interface AiHost {
   rerender(): void;
   flash(msg: string, ms?: number): void;
   unauth(e: unknown): void;
+  /** Re-read the Repo dashboard (after a proposed theme is decided, so the lane shows what it became). */
+  reloadRepo?(): void;
 }
 export interface AiController {
   act(act: string, arg: string | null, value: string | null): void;
@@ -76,6 +78,8 @@ export function createAiController(host: AiHost): AiController {
         if (u.rename?.id === id) u.rename = null;
         host.flash(how === "accept" ? "Accepted" : "Removed");
         rerender();
+        // A theme's answer changes the chart (proposed → active, merged or gone): read it again.
+        if (Object.values(host.state.repo.data?.themes ?? {}).some((t) => t.lanes.some((l) => l.suggestionId === id))) host.reloadRepo?.();
       })
       .catch((e) => {
         u.busy = without(u.busy, id);

@@ -4,18 +4,20 @@
 // the caption) is read back from rows; every number is counted here.
 //
 // The field is ABSENT (undefined) when the org's AI switch is off, when there is no repository, and when the
-// repository has no active theme and no proposed theme waiting on an admin — never an empty or "off" state.
+// repository has no active theme and no proposed theme waiting on an admin — never an empty or "off" state. A
+// range the reading person marked "Wrong?" is left out for them (`ai_feedback`, item type `themes`).
 //
 // `themeShares` is the small helper Phase E's roadmap drift calls: each active theme's share of the PRs merged in
 // a window, counted the same way the chart counts them.
 import {
-  AI_THEME_COLORS, AI_THEME_RANGES, AI_THEME_RANGE_WEEKS,
+  AI_THEME_COLORS, AI_THEME_RANGES, AI_THEME_RANGE_WEEKS, aiItemRef,
   type AiCite, type AiThemeColor, type AiThemeLane, type AiThemeRange, type AiThemes,
 } from "@shared/ai-core";
 import {
   aiSwitchOn, latestCaption, mergedPrsSince, openThemeSuggestions, repoThemes, seedPrsOf, type MergedPrRow, type ThemeRow,
 } from "../data/themes";
 import type { TenantContext } from "../data/sql";
+import { hiddenFor } from "../data/ai";
 
 const DAY = 86_400_000;
 /** The lanes the screen draws at most (shared/ai.ts `AiThemesSchema`). */
@@ -94,7 +96,7 @@ export function themesForRange(
 
 /** `RepoDashboard.themes`, or undefined (see the file header). D1 only; throws on a D1 failure (the dashboard
  *  then leaves the field out and says it is degraded). */
-export async function readRepoThemes(ctx: TenantContext, repo: string, now: number = Date.now()): Promise<Record<AiThemeRange, AiThemes> | undefined> {
+export async function readRepoThemes(ctx: TenantContext, repo: string, now: number = Date.now()): Promise<Partial<Record<AiThemeRange, AiThemes>> | undefined> {
   if (!repo) return undefined;
   if (!(await aiSwitchOn(ctx))) return undefined;
   const [themes, suggestions] = await Promise.all([repoThemes(ctx, repo, ["active", "proposed"]), openThemeSuggestions(ctx, repo)]);
@@ -111,7 +113,15 @@ export async function readRepoThemes(ctx: TenantContext, repo: string, now: numb
     try { ids = JSON.parse(cap.theme_ids); } catch { ids = null; }
     if (Array.isArray(ids) && ids.every((i) => activeIds.has(i as number))) caption = { text: cap.caption, generatedAt: cap.generated_at, model: cap.model };
   }
-  return Object.fromEntries(AI_THEME_RANGES.map((r) => [r, themesForRange(r, now, themes, suggestions, prs, r === "8w" ? caption : null)])) as Record<AiThemeRange, AiThemes>;
+  // "Wrong?" hides a range for the person who pressed it (its ref names the range and when it was written, so a
+  // newer version comes back): that range is left out for them; both flagged → absent.
+  const hidden = await hiddenFor(ctx, ctx.userId, "themes").catch(() => new Set<string>()); // unreadable: hide nothing
+  const out: Partial<Record<AiThemeRange, AiThemes>> = {};
+  for (const r of AI_THEME_RANGES) {
+    const t = themesForRange(r, now, themes, suggestions, prs, r === "8w" ? caption : null);
+    if (!hidden.has(aiItemRef.themes(repo, r, t.generatedAt ?? "themes"))) out[r] = t;
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 // ── shares (the caption's input, and Phase E's roadmap drift) ────────────────

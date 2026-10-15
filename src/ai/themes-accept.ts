@@ -9,7 +9,7 @@
 //
 // Accept, Rename and a Merge into an ACTIVE theme mark `theme_backfill:<repo>` (the router's `themes_accepted`),
 // so the batch backfill classifies the window's earlier PRs. Everything is written AS the admin who pressed it.
-import { AI_THEME_COLORS } from "@shared/ai-core";
+import { AI_THEME_COLORS, AI_THEME_NAME_MAX } from "@shared/ai-core";
 import type { TenantContext } from "../data/context";
 import type { AiSuggestionRow } from "../data/ai";
 import { activateTheme, getTheme, mergeTheme, removeTheme, THEME_ITEM_TYPE, THEME_SUGGESTION_KIND } from "../data/themes";
@@ -18,7 +18,7 @@ import { routeAi } from "./router";
 import { AcceptRefused, type AcceptHandler } from "./accept";
 
 /** A theme name as stored: whitespace collapsed, 1–40 characters. */
-export const THEME_NAME_MAX = 40;
+export const THEME_NAME_MAX = AI_THEME_NAME_MAX;
 export const themeName = (v: unknown): string | null => {
   if (typeof v !== "string") return null;
   const s = v.replace(/\s+/g, " ").trim();
