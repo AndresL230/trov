@@ -16,7 +16,7 @@
 //               tab filter does not name it: `state` travels with the overview
 //               (it is Overview's first block), `themes` with planning (Planning's
 //               first block), both with no `tab`. Absent on the dashboard = absent
-//               here — nothing writes either yet, so today neither ever travels.
+//               here (`themes`: src/tools/themes.ts, when the repo has themes and AI is on).
 // A section's STATUS is never touched: `not_connected` and `empty` pass through
 // as they are — unknown is never coerced into a zero or an empty list.
 //

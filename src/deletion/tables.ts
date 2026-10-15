@@ -49,6 +49,8 @@ export const ORG_TABLES = [
   // Ask Trov (0066_ask): the people's threads, their messages and search rows, write cards, attachment links, Ask
   // settings, and Review's "Flagged in Ask" lines.
   "chat_actions", "chat_artifacts", "chat_messages", "chat_fts", "chat_threads", "person_ask_settings", "ask_flags",
+  // Repo › Planning's themes (0064_repo_themes): each PR's theme, the captions, the themes.
+  "pr_themes", "repo_theme_captions", "repo_themes",
   // Email: the outbox (and its dev-only bodies), each member's preferences, the org's policy and settings.
   "notification_outbox_bodies", "notification_outbox", "notification_prefs", "notification_policy", "notification_settings",
   // Hosting (0057_hosting_providers): the parts and their poll state and deploys, the provider connections. The

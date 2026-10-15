@@ -45,6 +45,11 @@ export const KIND_PROVIDER = {
   "ask.smart": "claude",
   "ask.thinking": "claude",
   "ask.compact": "claude",
+  // Repo › Planning's themes (src/ai/themes.ts): propose, caption and backfill are Claude's; one PR's theme is Jev's.
+  "themes.propose": "claude",
+  "themes.caption": "claude",
+  "themes.backfill": "claude",
+  "pr.theme": "jev",
 } as const satisfies Record<string, AiProviderName>;
 
 /** What a call is for. */

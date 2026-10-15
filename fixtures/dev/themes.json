@@ -1,0 +1,43 @@
+{
+  "about": "Repo › Planning's \"Where the work went\" on localhost without LOCAL_AI_PREVIEW (scripts/seed/themes-dev.mjs): merged PRs over the last twelve weeks with their cards, four active themes with each PR's theme (one set by a person), a caption, and one proposed theme waiting on an admin (Accept / Rename / Remove). Times are RELATIVE (days_ago), stamped at seed time. PR numbers, titles and links are this repository's real ones.",
+  "themes": [
+    { "name": "Repo dashboard", "description": "Capturing the repository's activity for the Repo screen: PRs, CI, deploys, health, usage and hosting providers.", "color": "slate", "status": "active" },
+    { "name": "Tickets and sprints", "description": "Tickets, the board, sprints and GitHub issues mirrored as tickets.", "color": "fern", "status": "active" },
+    { "name": "Billing and plans", "description": "Plans and their limits, Stripe checkout, buying and gifting a plan.", "color": "ochre", "status": "active" },
+    { "name": "Organizations and sign-in", "description": "Multi-tenant organizations, the GitHub App install, and signing in with GitHub or Google.", "color": "sky", "status": "active" },
+    { "name": "Emails and digests", "description": "The daily and weekly digests, invites, and how Trov's emails look.", "color": "plum", "status": "proposed", "seed_prs": [34, 37, 43, 114, 127, 130] }
+  ],
+  "caption": "Most of the work early on went to the Repo dashboard and to Tickets and sprints; lately it moved to Organizations and sign-in and to Billing and plans.",
+  "prs": [
+    { "number": 55, "days_ago": 79, "title": "Repo capture, phase 2: environments, deploys, CI failures and check state", "what": "Environments, deploys, CI failures and check state are captured from webhooks and shown on the Repo screen.", "theme": "Repo dashboard" },
+    { "number": 56, "days_ago": 77, "title": "Repo capture, phase 3: drift, branches, health pings, and a 10-minute cron", "what": "Adds branch drift, health pings and a ten-minute cron that polls them.", "theme": "Repo dashboard" },
+    { "number": 44, "days_ago": 76, "title": "Tickets, sub-tickets, and sprints", "what": "Tickets become their own records with sub-tickets, and sprints replace milestones.", "theme": "Tickets and sprints" },
+    { "number": 57, "days_ago": 72, "title": "Repo capture, phase 4: coverage, bundle size and TODO counts from CI commit statuses", "what": "Coverage, bundle size and TODO counts are read from CI commit statuses.", "theme": "Repo dashboard" },
+    { "number": 47, "days_ago": 70, "title": "Tickets: sprint picker, full-width screens, status-as-property, Triage label", "what": "A sprint picker on tickets, full-width screens and status shown as a property.", "theme": "Tickets and sprints" },
+    { "number": 58, "days_ago": 65, "title": "Repo capture, phase 5: usage from Cloudflare, Railway and the app's own metrics endpoint", "what": "Usage comes from Cloudflare, Railway and the app's own metrics endpoint.", "theme": "Repo dashboard" },
+    { "number": 48, "days_ago": 63, "title": "Agent ticket and sprint writes over MCP", "what": "Agents can create, edit and move tickets and sprints over MCP, within their lane.", "theme": "Tickets and sprints" },
+    { "number": 62, "days_ago": 58, "title": "Repo dashboard: MCP read tool + skills, Usage redesign, and Poll now for every source", "what": "An MCP read tool for the dashboard, a redesigned Usage tab and Poll now for every source.", "theme": "Repo dashboard" },
+    { "number": 65, "days_ago": 52, "title": "Delete sprints, and open sprint writes to every member", "what": "A sprint can be deleted, and every member may write sprints.", "theme": "Tickets and sprints" },
+    { "number": 75, "days_ago": 50, "title": "Tickets: mirror every GitHub issue as a ticket (locked source link)", "what": "Every GitHub issue is mirrored as a ticket with a locked link to its source.", "theme": "Tickets and sprints" },
+    { "number": 78, "days_ago": 45, "title": "Tickets board: default view, Testing status, saved drag order, free moves", "what": "The board becomes the default view with a Testing status and a saved drag order.", "theme": "Tickets and sprints" },
+    { "number": 34, "days_ago": 44, "title": "Email notifications (daily/weekly digests via Resend)", "what": "Daily and weekly digests are sent through Resend.", "theme": null },
+    { "number": 37, "days_ago": 43, "title": "Admin email preview and send-test-to-me", "what": "Admins preview the digest and send a test to themselves.", "theme": null },
+    { "number": 43, "days_ago": 40, "title": "Brand band on every email, reworked invite", "what": "Every email carries the brand band; the invite is reworked.", "theme": null },
+    { "number": 88, "days_ago": 38, "title": "Tickets: free moves out of Done, and delete native tickets", "what": "A ticket can move out of Done freely, and a native ticket can be deleted.", "theme": "Tickets and sprints" },
+    { "number": 93, "days_ago": 31, "title": "Organizations: multi-tenant Trov, superadmin Platform area, org settings and keys", "what": "Trov becomes multi-tenant, with a superadmin Platform area and per-org settings and keys.", "theme": "Organizations and sign-in" },
+    { "number": 103, "days_ago": 30, "title": "GitHub App: connect repositories by installing Trov", "what": "An org connects its repositories by installing the Trov GitHub App.", "theme": "Organizations and sign-in" },
+    { "number": 104, "days_ago": 30, "title": "Plans and grants: Personal, Team and Enterprise tiers", "what": "Plan tiers with their limits, and grants that give someone an organization of their own.", "theme": "Billing and plans" },
+    { "number": 106, "days_ago": 29, "title": "Billing: buy a Personal or Team plan with Stripe", "what": "Buying a plan through Stripe Checkout and setting the organization up yourself.", "theme": "Billing and plans" },
+    { "number": 114, "days_ago": 28, "title": "Emails in the brand's purple", "what": "Every email moves to the brand's purple.", "theme": null },
+    { "number": 117, "days_ago": 28, "title": "Free plan, Pro per seat, and a downgrade to Free", "what": "A Free plan, Pro priced per seat, and a downgrade path to Free.", "theme": "Billing and plans" },
+    { "number": 111, "days_ago": 27, "title": "An org's address is /<slug>/ instead of /o/<slug>/", "what": "Organization addresses drop the /o/ prefix.", "theme": "Organizations and sign-in" },
+    { "number": 120, "days_ago": 27, "title": "Open Google sign-up", "what": "Anyone can sign up with Google.", "theme": "Organizations and sign-in" },
+    { "number": 123, "days_ago": 26, "title": "Gift a plan: free until a date, then the organization moves to Free", "what": "A plan can be gifted until a date, after which the organization moves to Free.", "theme": "Billing and plans" },
+    { "number": 127, "days_ago": 26, "title": "Emails: the banner takes the shape of the first-run card", "what": "The email banner matches the first-run card.", "theme": null },
+    { "number": 130, "days_ago": 26, "title": "Emails: fit a phone (the card is fluid, not 680px)", "what": "Emails fit a phone: the card is fluid up to 680px.", "theme": null },
+    { "number": 136, "days_ago": 15, "title": "Embedded checkout: pay for Pro inside Trov (off by default)", "what": "Pro can be bought on a Trov page with Stripe's embedded form; it ships switched off.", "theme": "Billing and plans" },
+    { "number": 168, "days_ago": 5, "title": "Fix: a new account that signed up to buy Pro goes on to checkout", "what": "A new account that chose Pro now reaches checkout after signing up.", "theme": "Billing and plans" },
+    { "number": 171, "days_ago": 3, "title": "One GitHub account, several orgs; connect with what you can read", "what": "Several orgs may share one GitHub App installation and connect the repositories they can read.", "theme": "Organizations and sign-in", "person": "AndresL230" },
+    { "number": 185, "days_ago": 0, "title": "Hosting providers: Vercel, Render, Netlify, Fly.io", "what": "One provider interface for hosting, with Org settings › Hosting and Repo › Hosting.", "theme": "Repo dashboard" }
+  ]
+}
