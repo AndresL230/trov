@@ -192,6 +192,16 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **Parts** (stubs with their interface in the file header): `ask-conversation.ts`, `ask-composer.ts`,
   `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
   Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
+- **Composer** (`ask-composer.ts`, one per conversation): every limit and flag from `GET /ask/state` (modes, the
+  allowance and its usage line under a fifth left, `autoAllowed`, `attach { maxFiles, maxBytes, kinds }`) — none in
+  the UI. Files upload ON ATTACH (`POST /ask/attachments`; a new conversation's first upload makes its thread, and
+  the question goes there); a file over `maxBytes` stays as a red "Too large" chip and is never sent. `@` searches
+  the org through the app's quick search (`AskApi.searchRefs`; PRs are not in it — only PRs Trov already shows
+  are offered), rows drawn from RefViews; `/` is the five commands, sent as `command` with the rest as the text.
+  The mode (only when the plan offers more than one) and the Auto switch are remembered per thread
+  (`PATCH /ask/threads/:id { mode | auto }`); Auto is never sent while an admin has it off. Unsent words are kept
+  per thread (here, and `PATCH … { draft }`, read back from the thread's detail; cleared on send). The phone's +
+  menu (`composerPlusMenu`) holds the same controls. Tests: `test/render.ask-composer.test.ts`.
 - **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on
   `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written.
 - Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`.
