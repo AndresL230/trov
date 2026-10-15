@@ -75,7 +75,7 @@ describe("entitlements — the plan's defaults with the org's overrides on top",
     });
     expect(PLANS.team).toEqual({
       id: "team", name: "Pro", description: "For a team, paid per seat.",
-      entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 500, tags: 50 },
+      entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 300, tags: 50 },
       features: [], offered: true, billing: null, perSeat: ["ai_chat"],
     });
     // An org or grant already on Personal keeps its limits.
@@ -93,33 +93,39 @@ describe("entitlements — the plan's defaults with the org's overrides on top",
   });
 
   it("an override replaces one limit and leaves the rest; null is unlimited; an absent key is the plan's", () => {
-    expect(resolveEntitlements("team", { seats: 25 })).toEqual({ ...PLANS.team.entitlements, seats: 25, ai_chat: 25 * 500 }); // Ask Trov is per seat on Pro
+    expect(resolveEntitlements("team", { seats: 25 })).toEqual({ ...PLANS.team.entitlements, seats: 25, ai_chat: 25 * 300 }); // Ask Trov is per seat on Pro
     expect(resolveEntitlements("team", { seats: null, repositories: 2 })).toEqual({ ...PLANS.team.entitlements, seats: null, repositories: 2, ai_chat: null });
     expect(resolveEntitlements("enterprise", { seats: 40 }).seats).toBe(40);
     expect(resolveEntitlements("personal", {})).toEqual(PLANS.personal.entitlements);
   });
 
-  it("Ask Trov (`ai_chat`, weighted units a month): 50 per org on Free and Personal, 500 PER SEAT on Pro (× the seats in force), unlimited on Enterprise; not listed", () => {
-    expect(LIMITS.ai_chat).toMatchObject({ per: "org", period: "month", unit: "count", listed: false });
+  it("Ask Trov (`ai_chat`, questions a month): 50 per org on Free and Personal, 300 PER SEAT on Pro (paid seats, else members), unlimited on Enterprise; not listed", () => {
+    expect(LIMITS.ai_chat).toMatchObject({ per: "org", period: "month", unit: "count", listed: false, one: "question", many: "questions" });
     expect(LISTED_LIMIT_KEYS).not.toContain("ai_chat");
-    expect([PLANS.free, PLANS.personal, PLANS.team, PLANS.enterprise].map((p) => p.entitlements.ai_chat)).toEqual([50, 50, 500, null]);
+    expect([PLANS.free, PLANS.personal, PLANS.team, PLANS.enterprise].map((p) => p.entitlements.ai_chat)).toEqual([50, 50, 300, null]);
     expect(PLANS.team.perSeat).toEqual(["ai_chat"]);
-    expect([PLANS.free, PLANS.personal, PLANS.enterprise].map((p) => p.perSeat)).toEqual([undefined, undefined, undefined]);
-    // Pro: the plan's 500 × the paid seats (the `seats` override a paid org holds) — computed at read time.
-    expect(resolveEntitlements("team", { seats: 3 }).ai_chat).toBe(1500);
-    expect(resolveEntitlements("team", { seats: 1 }).ai_chat).toBe(500);
-    expect(resolveEntitlements("team", {}).ai_chat).toBe(500 * 50); // no override: the plan's own seats
+    // Paid seats (the `seats` override a paid org holds) × 300.
+    expect(resolveEntitlements("team", { seats: 3 }).ai_chat).toBe(900);
+    expect(resolveEntitlements("team", { seats: 1 }).ai_chat).toBe(300);
+    expect(resolveEntitlements("team", { seats: 3 }, 12).ai_chat).toBe(900); // paid seats win over members
     expect(resolveEntitlements("team", { seats: null }).ai_chat).toBeNull(); // unlimited seats → unlimited
+    // No paid-seat count (a gifted Pro): × the members, at least 1 — never the plan's 50-seat most (owner, 2026-10-15).
+    expect(resolveEntitlements("team", {}, 4).ai_chat).toBe(1200);
+    expect(resolveEntitlements("team", {}, 0).ai_chat).toBe(300);
+    expect(resolveEntitlements("team", {}).ai_chat).toBe(300); // members unknown (a grant's preview): 1
     // An override of `ai_chat` itself is the org's whole cap — never multiplied.
     expect(resolveEntitlements("team", { seats: 3, ai_chat: 700 }).ai_chat).toBe(700);
-    // Per org elsewhere: seats never multiply it.
+    expect(resolveEntitlements("team", { ai_chat: 700 }, 9).ai_chat).toBe(700);
+    // Per org elsewhere, whatever the seats.
     expect(resolveEntitlements("free", { seats: 3 }).ai_chat).toBe(50);
     expect(resolveEntitlements("personal").ai_chat).toBe(50);
     expect(resolveEntitlements("enterprise", { seats: 40 }).ai_chat).toBeNull();
-    // The refusal reads the computed cap: a 3-seat Pro org may use 1,500 units.
+    // The refusal reads the computed cap: a 3-seat Pro org may ask 900 questions; a gifted one by its members.
     const pro3: OrgPlanState = { plan: "team", overrides: { seats: 3 }, status: "active", source: "billing" };
-    expect(planRefusal(pro3, "ai_chat", 1499, 1)).toBeNull();
-    expect(planRefusal(pro3, "ai_chat", 1500, 1)).toMatchObject({ limit: "ai_chat", cap: 1500 });
+    expect(planRefusal(pro3, "ai_chat", 899, 1)).toBeNull();
+    expect(planRefusal(pro3, "ai_chat", 900, 1)).toMatchObject({ limit: "ai_chat", cap: 900 });
+    const gifted: OrgPlanState = { plan: "team", overrides: {}, status: "active", source: "granted", members: 2 };
+    expect(planRefusal(gifted, "ai_chat", 600, 1)).toMatchObject({ limit: "ai_chat", cap: 600 });
   });
 
   it("an unknown plan id resolves to the smallest plan — a bad value can only make an org smaller", () => {
@@ -633,7 +639,7 @@ describe("GET /api/o/:slug/plan and PUT /api/platform/orgs/:slug/plan", () => {
     expect(view).toEqual({
       plan: "team", name: "Pro", description: "For a team, paid per seat.", status: "active", source: "granted", period_end: null,
       gift_until: null, // 0048_plan_gifts: this plan is not a gift
-      entitlements: { ...PLANS.team.entitlements, ai_chat: 500 * 50 }, overridden: [], seats: { members: 2, pending: 1 }, // Ask Trov: per seat (a granted Pro org: the plan's 50)
+      entitlements: { ...PLANS.team.entitlements, ai_chat: 300 * 2 }, overridden: [], seats: { members: 2, pending: 1 }, // Ask Trov: per seat (a granted Pro org: its members)
       usage: { seats: 3, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0, ai_runs: 0, jev_checks: 0, ai_chat: 0, tags: 6 }, over: [],
       billing: null, // a granted org: nothing about payment (0045_billing)
     });
@@ -728,7 +734,7 @@ describe("the functions billing will call (src/plans/billing.ts)", () => {
 
     const moved = await moveOrgToFree(p, "ended");
     // The customer and subscription ids stay (invoices, an upgrade); the period is left as it was.
-    expect(moved).toEqual({ plan: "free", overrides: {}, status: "active", source: "billing", period_end: "2026-11-07T00:00:00.000Z", customer_id: "cus_e", subscription_id: "sub_e", gift_until: null });
+    expect(moved).toEqual({ plan: "free", overrides: {}, status: "active", source: "billing", period_end: "2026-11-07T00:00:00.000Z", customer_id: "cus_e", subscription_id: "sub_e", gift_until: null, members: 4 }); // members: the org's (what a per-seat limit multiplies by)
     expect(await one(`SELECT plan, plan_overrides, plan_source, plan_status, plan_changed_by FROM orgs WHERE id = ?`, id))
       .toEqual({ plan: "free", plan_overrides: "{}", plan_source: "billing", plan_status: "active", plan_changed_by: "billing" });
     const audit = await rows<{ action: string; actor: string; target: string; detail: string }>(`SELECT action, actor, target, detail FROM org_admin_audit WHERE org_id = ? AND action LIKE 'plan.%' ORDER BY id`, id);

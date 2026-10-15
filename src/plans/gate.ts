@@ -79,12 +79,12 @@ export async function planAndAiRuns(ctx: TenantContext, now: Date = new Date()):
   return { plan: planOf(row), enabled: !!row && Number(row.ai_automation) !== 0, used: Number(row?.used ?? 0) };
 }
 
-/** Ask Trov's weighted units since the 1st — the same range read. */
+/** Ask Trov's questions since the 1st (a Thinking question counts as 5) — the same range read. */
 const AI_CHAT_USED = `SELECT COALESCE(SUM(count), 0) AS n FROM org_usage_daily WHERE org_id = ?1 AND day >= ?2 AND metric = '${METRIC_AI_CHAT}'`;
 /** `jev_checks`' count, as one subquery (what `suggestionsUsed` reads). */
 const JEV_CHECKS_USED = `SELECT COALESCE(SUM(count), 0) AS n FROM org_usage_daily WHERE org_id = ?1 AND day >= ?2 AND metric = '${METRIC_AI_SUGGEST}'`;
 
-/** Ask Trov's weighted units for the org this calendar month (UTC). */
+/** Ask Trov's questions for the org this calendar month (UTC). */
 export const aiChatUsed = (ctx: TenantContext, now: Date = new Date()): Promise<number> =>
   count(ctx, AI_CHAT_USED, ctx.orgId, monthStartDay(now));
 
@@ -136,7 +136,7 @@ export async function orgPlanView(ctx: TenantContext): Promise<OrgPlanView> {
     limitUse(ctx, "repositories"), limitUse(ctx, "environments"), limitUse(ctx, "artifact_bytes"), limitUse(ctx, "agent_connections"), limitUse(ctx, "tags"), limitUse(ctx, "jev_checks"), limitUse(ctx, "ai_chat"),
   ]);
   const def = planDef(state.plan);
-  const entitlements = resolveEntitlements(state.plan, state.overrides);
+  const entitlements = resolveEntitlements(state.plan, state.overrides, seats?.members ?? state.members);
   const split = { members: seats?.members ?? 0, pending: seats?.pending ?? 0 };
   const usage = { seats: split.members + split.pending, repositories, environments, artifact_bytes, agent_connections, ai_summaries, ai_runs, jev_checks, ai_chat, tags };
   return {

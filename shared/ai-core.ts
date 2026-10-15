@@ -239,7 +239,7 @@ export const AI_NEVER_SENT = "Source code, diffs, secrets, integration keys, and
 
 /** The four AI allowances Org settings › AI shows, by their `LimitKey` (shared/plans.ts), in order:
  *  capture-time summaries (Anthropic), what the AI pass writes (Anthropic), Sift's checks (TypeSafe AI),
- *  and Ask Trov (Anthropic, weighted units). */
+ *  and Ask Trov (Anthropic, questions). */
 export const AI_ALLOWANCE_KEYS = ["ai_summaries", "ai_runs", "jev_checks", "ai_chat"] as const;
 export type AiAllowanceKey = (typeof AI_ALLOWANCE_KEYS)[number];
 

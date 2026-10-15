@@ -109,7 +109,7 @@ describe("LOCAL_AI_PREVIEW under `wrangler dev`", () => {
       expect([...new Set(s.sends.map((l) => l.provider))], mode).toEqual(["Anthropic", "TypeSafe AI"]);
     }
     const ready = aiSettingsFixture("ready", now).allowances;
-    expect(ready.ai_chat).toEqual({ used: 1830, cap: 2500, resumesOn: null }); // a 5-seat Pro org: 500 per seat
+    expect(ready.ai_chat).toEqual({ used: 1120, cap: 1500, resumesOn: null }); // a 5-seat Pro org: 300 questions per seat
     expect(Object.values(aiSettingsFixture("empty", now).allowances).every((a) => a.used === 0 && a.cap !== null)).toBe(true);
     expect(Object.values(aiSettingsFixture("capped", now).allowances).every((a) => a.used === a.cap && a.resumesOn === nextMonthStart(now))).toBe(true);
     // The preview fills numbers, never a choice: an admin's switch shows through it.

@@ -178,15 +178,15 @@ export function themesFixture(mode: AiPreviewMode, range: AiThemeRange, now: Dat
 
 // ── Org settings › AI ───────────────────────────────────────────────────────
 /** What the preview puts on `GET /ai/settings`: the eligibility and all four allowances, as a 5-seat Pro org
- *  would see them (Ask Trov: 500 per seat). The switches (`enabled`, `chatAuto`), who may change them and what
+ *  would see them (Ask Trov: 300 questions per seat). The switches (`enabled`, `chatAuto`), who may change them and what
  *  is sent stay the org's real ones — the preview fills numbers, never a choice — and what is sent always names
  *  both providers. `ready` / `proposed`: partway through the month; `empty`: nothing used yet; `capped`:
  *  every allowance used up, each resuming on the 1st. */
 export function aiSettingsFixture(mode: AiPreviewMode, now: Date): Pick<AiSettings, "eligibility" | "allowances"> {
-  const caps: Record<AiAllowanceKey, number> = { ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 500 * 5 };
+  const caps: Record<AiAllowanceKey, number> = { ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 300 * 5 };
   const used: Record<AiAllowanceKey, number> = mode === "empty" ? { ai_summaries: 0, ai_runs: 0, jev_checks: 0, ai_chat: 0 }
     : mode === "capped" ? caps
-    : { ai_summaries: 212, ai_runs: 486, jev_checks: 1240, ai_chat: 1830 };
+    : { ai_summaries: 212, ai_runs: 486, jev_checks: 1240, ai_chat: 1120 };
   const resumesOn = mode === "capped" ? nextMonthStart(now) : null;
   const allowances = Object.fromEntries(AI_ALLOWANCE_KEYS.map((k) => [k, { used: used[k], cap: caps[k], resumesOn }])) as Record<AiAllowanceKey, AiAllowanceUse>;
   return { eligibility: mode === "capped" ? "capped" : "ok", allowances };

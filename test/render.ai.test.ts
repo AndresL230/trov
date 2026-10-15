@@ -434,9 +434,9 @@ describe("Org settings › AI", () => {
     const html = tab(settings());
     expect([...html.matchAll(/data-ai-allowance="([a-z_]+)"/g)].map((m) => m[1])).toEqual(["ai_summaries", "ai_runs", "jev_checks", "ai_chat"]);
     const t = text(html);
-    for (const line of ["212 of 3,000 summaries this month", "1,212 of 3,000 runs this month", "40 of 10,000 checks this month", "830 of 2,500 units this month"]) expect(t).toContain(line);
+    for (const line of ["212 of 3,000 summaries this month", "1,212 of 3,000 runs this month", "40 of 10,000 checks this month", "830 of 2,500 questions this month"]) expect(t).toContain(line);
     for (const name of ["Summaries", "Written by Trov", "Sift", "Ask Trov"]) expect(t).toContain(name);
-    expect(t).toContain("Fast is 1, Smart 5, Thinking 10");
+    expect(t).toContain("A Thinking question counts as 5");
     expect(html.match(/role="meter"/g)?.length).toBe(4);
     expect(allowanceLine("ai_runs", use(4, null))).toBe("4 runs this month (unlimited)");
     expect(allowanceLine("jev_checks", use(1, null))).toBe("1 check this month (unlimited)");

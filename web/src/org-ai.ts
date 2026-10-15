@@ -34,7 +34,7 @@ const ALLOWANCE: Record<AiAllowanceKey, { name: string; unit: [one: string, many
   ai_summaries: { name: "Summaries", unit: ["summary", "summaries"], what: "A summary of each new pull request and issue.", stops: "new pull requests and issues show an excerpt" },
   ai_runs: { name: "Written by Trov", unit: ["run", "runs"], what: "Briefs, repository state, themes and feed entries Trov writes on its own.", stops: "Trov writes nothing new" },
   jev_checks: { name: "Sift", unit: ["check", "checks"], what: "Checks of whether an existing item fits a tag.", stops: "Sift stops looking for items that fit a tag" },
-  ai_chat: { name: "Ask Trov", unit: ["unit", "units"], what: "Answers, weighted by mode: Fast is 1, Smart 5, Thinking 10.", stops: "Ask Trov pauses" },
+  ai_chat: { name: "Ask Trov", unit: ["question", "questions"], what: "Questions asked of Trov. A Thinking question counts as 5.", stops: "Ask Trov pauses" },
 };
 
 /** "12 of 300 runs this month" / "12 runs this month (unlimited)". */

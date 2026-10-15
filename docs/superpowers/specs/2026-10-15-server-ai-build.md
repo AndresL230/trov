@@ -131,6 +131,17 @@ Applies to everyone, whether AI is on or off.
 
 ### Phase F: Ask Trov (backend, contract, fixtures and tests — NO frontend)
 
+> **Superseded in part (2026-10-15): section 2 of Trov handoff #12 ("Contract and backend changes") wins over
+> this section wherever they conflict.** It counts the allowance in QUESTIONS (`ASK_MODES` in `shared/ai.ts`: Fast
+> and Smart 1, Thinking 5; Smart is the default and what Free uses; Fast is search/list tools plus stored cards, at
+> most 3 calls), sets Pro to 300 per seat (a gifted Pro × its members, at least 1; an admin override is the whole
+> cap — already in `shared/plans.ts`), and adds `/ask/state`, richer `activity` / `thinking` / `action` events,
+> `RefView` + `/ask/peek` + `/ask/item/:ref`, status cells, structured diagrams, `not_found` and `save_form` blocks,
+> editable / grouped actions with change-checked Undo, a Publish card that never runs in Auto, `read_attachment`,
+> "Flagged in Ask" in Review (reason only), threads grouped by date, `replaced_at` / `stopped`, the ⌘J thread
+> origin, Settings › Trov, and one SSE fixture per design scenario with a dev replay route. Its storage additions go
+> in `0066_ask`. The frontend is built from the design by handoff #12's session on `ai/ask`, stacked on `ai/screens`.
+
 - **Route.** `POST /api/o/:slug/ask`, cookie-only, streams with SSE. Gated by the org switch and a new `ai_chat` allowance.
 - **Modes** (`chat_messages.mode` records each):
 
@@ -141,7 +152,7 @@ Applies to everyone, whether AI is on or off.
   | Thinking | `claude-opus-5-5` with extended thinking (`thinking: {type: "adaptive"}`, verified 2026-10-15) | Pro and Enterprise | 10 |
 
   Free shows no switcher. Pro's default is Fast and a person's last choice is remembered. Regenerate can re-run an answer in another mode. Per turn: at most 8 tool calls, about 30s (90s in Thinking). Caching: the system prompt, tool definitions and the older part of the thread.
-- **Allowance.** `ai_chat` counts weighted units: Free 50 per org per month (Fast only), Pro 500 per seat, Enterprise unlimited. `PLANS` has no per-seat limit (`LimitDef.per` is `org | person`), so Pro's is computed as `cap × paid seats` at read time. The composer shows what's left under 20%.
+- **Allowance.** (Superseded — see the note above: questions, Pro 300 per seat.) `PLANS` has no per-seat limit (`LimitDef.per` is `org | person`), so `PlanDef.perSeat` computes Pro's at read time. The composer shows what's left under 20%.
 - **Tools: the whole MCP catalog, minus a short list.** Definitions from `shared/mcp-tools.generated.ts` (the names and input schemas MCP serves). Implementations call the same `src/tools/*` functions MCP calls, with the cookie person's context. Ask never imports `src/mcp.ts`, and nothing reachable from `src/mcp.ts` imports `src/ai/`. A parity test fails if an MCP tool is neither wired into Ask nor in the exclusion list. **Excluded:** `switch_org` (a thread belongs to one org), `get_connection` (no MCP connection here), `record_session` (Ask is not a coding session), binary `upload_asset` (files come through Ask's own attachment upload, stored as artifacts). Admin-only tools (e.g. `update_plan`) are offered only to an admin, exactly as MCP lists them. **Ask-only tools:** `trov_docs` (Trov's public docs), `save_artifact` (a write) and the show tools.
 - **Reads run freely; every write is a confirm card.** For a write tool (`send_handoff`, `claim_handoff`, `create_ticket`, `edit_ticket`, `transition_ticket`, `assign_ticket`, `add_ticket_comment`, sprint tools, `append_feed`, `propose_doc_update`, `save_prompt`, `artifact_update`, `update_plan`) the server does not run it: it stores a `chat_actions` row and streams an `action` event with a server-built preview (the item it becomes). **Confirm** (`POST /api/o/:slug/ask/actions/:id/confirm`, cookie) runs it as that person through the same lane-scoped writers MCP uses; the result returns to the thread as the tool's result. **Cancel** drops it.
   - **Auto mode** — a per-thread toggle ("Ask before changes" default, "Auto"). In Auto writes run at once and show as a done card; every write is still a `chat_actions` row (state `auto`). **Undo** wherever a reverse exists: ticket edit / transition / assign / sprint change → write back the previous value; `send_handoff` → expire it; `save_prompt` → drop the staged version; `save_artifact` → delete the private draft. At most 5 auto writes per turn (the 6th waits for Confirm). Never for `update_plan`. Admins can turn Auto off for the org (`orgs.ai_chat_auto`, default on).

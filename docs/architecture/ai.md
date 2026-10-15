@@ -92,11 +92,12 @@ the plan, `orgs.ai_automation` and the month's `ai_run:*` — gives `off` when t
   unlimited; overridable per org like every limit. One call is one run. It refuses nothing with a 402: past it the
   pass makes no call. It is **not listed** (`LimitDef.listed: false`, `LISTED_LIMIT_KEYS`): the pricing page, the
   Plan block and Settings › Limits leave it out until something uses it (`plans.md`).
-- **`ai_chat`** (Ask Trov, `shared/plans.ts`, monthly): WEIGHTED units — a Fast answer is 1, Smart 5, Thinking 10
-  (metric `ai_chat`). Free 50 and Personal 50 per org, Pro **500 per seat**, Enterprise unlimited. `LimitDef.per`
-  cannot say "per seat", so `PlanDef.perSeat` (Pro: `["ai_chat"]`) does: `resolveEntitlements` multiplies the plan's
-  per-seat amount by the seats in force — the org's `seats` override (a paid Pro org's: the seats it pays for),
-  else the plan's own 50 — at read time, so `planRefusal` and every screen see the org's whole cap. An override of
+- **`ai_chat`** (Ask Trov, `shared/plans.ts`, monthly): QUESTIONS (handoff #12) — a Fast or Smart question is 1, a
+  Thinking one 5 (`ASK_MODES`, metric `ai_chat`). Free 50 and Personal 50 per org, Pro **300 per seat**, Enterprise
+  unlimited. `LimitDef.per` cannot say "per seat", so `PlanDef.perSeat` (Pro: `["ai_chat"]`) does:
+  `resolveEntitlements` multiplies the plan's per-seat amount by the PAID seats (the org's `seats` override, a paid
+  Pro org's) or, with no paid-seat count (a gifted Pro), by the org's members, at least 1 (`PLAN_COLS` reads
+  `plan_members`) — never the plan's 50-seat most — at read time, so `planRefusal` and every screen see the org's whole cap. An override of
   `ai_chat` itself is the whole cap, never multiplied. Nothing writes the metric yet (Ask Trov is Phase F), so it
   reads 0. **Not listed**, like `ai_runs`.
 - **The switches** — `orgs.ai_automation` (0055, default on): every AI feature, Sift included. And

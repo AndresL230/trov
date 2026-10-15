@@ -48,7 +48,7 @@ export function eligibilityOf(env: Pick<Env, "ANTHROPIC_API_KEY">, enabled: bool
  *  ALLOWANCE that is used up (an ended plan resumes when it is renewed, not on a date). */
 export function allowanceUse(plan: OrgPlan, key: LimitKey, used: number, now: Date): { used: number; cap: number | null; resumesOn: string | null } {
   const spent = !!planRefusal(plan, key, used, 1) && plan.status !== "canceled";
-  return { used, cap: resolveEntitlements(plan.plan, plan.overrides)[key], resumesOn: spent ? nextMonthStart(now) : null };
+  return { used, cap: resolveEntitlements(plan.plan, plan.overrides, plan.members)[key], resumesOn: spent ? nextMonthStart(now) : null };
 }
 
 /** `ok` | `off` | `no_key` | `capped`. Never throws: with no key nothing is read; a failed read is `off`. */

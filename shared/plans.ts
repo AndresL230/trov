@@ -72,11 +72,12 @@ export const LIMITS: Record<LimitKey, LimitDef> = {
     label: "Tag checks", one: "tag check", many: "tag checks", counts: "Checks Sift made of whether an existing item fits a tag, this calendar month (UTC).",
     per: "org", unit: "count", min: 0, period: "month", atCap: "Trov stops looking for items that fit a tag until next month.",
   },
-  // Ask Trov (docs/architecture/ai.md): answers counted in WEIGHTED units — a Fast answer is 1, Smart 5,
-  // Thinking 10 (`ai_chat` metric). Per org on Free and Personal; on Pro it is PER SEAT (`PlanDef.perSeat`:
-  // `resolveEntitlements` multiplies by the seats in force). Nothing uses it yet, so it is NOT LISTED.
+  // Ask Trov (docs/architecture/ai.md): counted in QUESTIONS (handoff #12, 2026-10-15) — a Fast or Smart
+  // question is 1, a Thinking one 5 (`ASK_MODES` in shared/ai.ts; the `ai_chat` metric). Per org on Free and
+  // Personal; on Pro it is PER SEAT (`PlanDef.perSeat`: `resolveEntitlements` multiplies by the paid seats, or
+  // by the members when there is no paid-seat count). Nothing uses it yet, so it is NOT LISTED.
   ai_chat: {
-    label: "Ask Trov", one: "Ask Trov unit", many: "Ask Trov units", counts: "Ask Trov answers this calendar month (UTC), weighted: a Fast answer is 1, Smart 5, Thinking 10.",
+    label: "Ask Trov", one: "question", many: "questions", counts: "Questions asked of Trov this calendar month (UTC); a Thinking question counts as 5.",
     per: "org", unit: "count", min: 0, period: "month", atCap: "Ask Trov pauses until next month.", listed: false,
   },
   // The organization's tag list (0056_org_tags; src/tools/tags.ts). min 6: the starters are never removed.
@@ -131,7 +132,7 @@ const GB = 1024 * MB;
 // no change. `ai_summaries` (per calendar month) are sized so that one org cannot run up the platform's
 // one Anthropic bill, not from measured use (plans.md › AI summaries); `ai_runs` likewise (ai.md).
 // Tags and Sift's checks: the owner's numbers (2026-10-14). Personal follows Free, as everywhere. Ask Trov
-// (`ai_chat`, 2026-10-15): 50 per org on Free and Personal, 500 PER SEAT on Pro (`perSeat`), unlimited on Enterprise.
+// (`ai_chat`, questions, 2026-10-15): 50 per org on Free and Personal, 300 PER SEAT on Pro (`perSeat`), unlimited on Enterprise.
 
 export const PLANS: Record<PlanId, PlanDef> = {
   free: {
@@ -147,7 +148,7 @@ export const PLANS: Record<PlanId, PlanDef> = {
   },
   team: {
     id: "team", name: "Pro", description: "For a team, paid per seat.",
-    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 500, tags: 50 },
+    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 300, tags: 50 },
     features: [], offered: true, billing: null, perSeat: ["ai_chat"],
   },
   enterprise: {
@@ -180,6 +181,9 @@ export type PlanStatus = (typeof PLAN_STATUSES)[number];
 
 export interface OrgPlanState {
   plan: PlanId; overrides: PlanOverrides; status: PlanStatus;
+  /** The org's members, when the read carried them (`PLAN_COLS`): what a per-seat limit multiplies by when the
+   *  org has no paid-seat count (a gifted Pro). Absent = unknown, read as 1. */
+  members?: number;
   /** Who put the org on the plan. Only `billing` matters here: a refusal then says so (`PlanRefusal.paid`). */
   source?: PlanSource | null;
 }
@@ -278,15 +282,19 @@ export function storedOverrides(json: string | null | undefined): PlanOverrides 
 
 /** THE resolution: the plan's defaults with the org's overrides on top — and a per-seat limit
  *  (`PlanDef.perSeat`, Pro's `ai_chat`) computed HERE, at read time: the plan's amount for one seat × the
- *  seats in force (unlimited seats → unlimited). An override of that limit is the org's whole cap. */
-export function resolveEntitlements(plan: string | null | undefined, overrides: PlanOverrides = {}): Entitlements {
+ *  PAID seats (the `seats` override a paid org holds; unlimited → unlimited), or — with no paid-seat count, a
+ *  gifted Pro — × the org's members, at least 1 (the owner's call, 2026-10-15: never the plan's 50-seat most).
+ *  An override of that limit is the org's whole cap, never multiplied. */
+export function resolveEntitlements(plan: string | null | undefined, overrides: PlanOverrides = {}, members?: number): Entitlements {
   const def = planDef(plan);
   const out = { ...def.entitlements };
   const overridden = (k: LimitKey): boolean => k in overrides && overrides[k] !== undefined;
   for (const k of LIMIT_KEYS) if (overridden(k)) out[k] = overrides[k] as number | null;
   for (const k of def.perSeat ?? []) {
     const each = def.entitlements[k];
-    if (!overridden(k) && each !== null) out[k] = out.seats === null ? null : each * out.seats;
+    if (overridden(k) || each === null) continue;
+    const paid = overridden("seats");
+    out[k] = paid ? (out.seats === null ? null : each * out.seats) : each * Math.max(1, Math.floor(members ?? 1));
   }
   return out;
 }
@@ -326,7 +334,7 @@ export function planNext(state: OrgPlanState, limit: LimitKey | null): PlanNext 
   const def = planDef(state.plan);
   if (def.id === FREE_PLAN) return "upgrade";
   // A seat can be added only below the most the plan sells (Pro's 50): at it, more is a conversation with Trov.
-  const seats = resolveEntitlements(state.plan, state.overrides).seats;
+  const seats = resolveEntitlements(state.plan, state.overrides, state.members).seats;
   const most = def.entitlements.seats;
   if (limit === "seats" && state.source === "billing" && def.id === UPGRADE_PLAN && seats !== null && (most === null || seats < most)) return "add_seat";
   return null;
@@ -389,7 +397,7 @@ function refusalMessage(state: OrgPlanState, limit: LimitKey, cap: number): stri
  * kind and nothing else: reads, removals and everything the limit does not govern keep working.
  */
 export function planRefusal(state: OrgPlanState, limit: LimitKey, used: number, adding = 1): PlanRefusal | null {
-  const cap = resolveEntitlements(state.plan, state.overrides)[limit];
+  const cap = resolveEntitlements(state.plan, state.overrides, state.members)[limit];
   const plan = planDef(state.plan).id;
   const next = planNext(state, limit);
   const extra = { ...(state.source === "billing" ? { paid: true as const } : {}), ...(next ? { next } : {}) };

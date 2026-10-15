@@ -25,7 +25,7 @@ means unlimited. Plan ids are stored and never renamed: **`team` is the plan use
 | `agent_connections` | 5 | 10 | unlimited | 5 | PER PERSON: that person's live MCP tokens for the org + their connected apps that hold a row for it (`oauth_grant_orgs`) — see below | `mintToken`, `issueAuthorization` (the OAuth consent), `setGrantOrg` / `setGrantMode` (Settings), `admitGrantOrg` (a follow-the-repository connection's first call into the org) |
 | `ai_summaries` | 300 | 3,000 | unlimited | 300 | PER CALENDAR MONTH (UTC): summarizer calls attempted for the org | `orgSummarizers` (`src/plans/summaries.ts`) — it refuses nothing: past it an item shows its excerpt (below) |
 | `ai_runs` | 250 | 2,000 | unlimited | 250 | PER CALENDAR MONTH (UTC): model calls the AI pass attempted for the org (`ai_run:*`) | the AI pass (`src/ai/pass.ts`, via `aiEligibility`) — it refuses nothing: past it no call is made (`ai.md`). **Not listed yet** (below) |
-| `ai_chat` | 50 | **500 per seat** (× the seats in force) | unlimited | 50 | PER CALENDAR MONTH (UTC): Ask Trov's WEIGHTED units — a Fast answer 1, Smart 5, Thinking 10 (`org_usage_daily` metric `ai_chat`) | nothing yet: Ask Trov is a later phase, so it reads 0 (`ai.md`). **Not listed yet** (below) |
+| `ai_chat` | 50 | **300 per seat** (× the paid seats, else the members) | unlimited | 50 | PER CALENDAR MONTH (UTC): Ask Trov's QUESTIONS — a Fast or Smart question 1, a Thinking one 5 (`org_usage_daily` metric `ai_chat`) | nothing yet: Ask Trov is a later phase, so it reads 0 (`ai.md`). **Not listed yet** (below) |
 
 **A limit that is not listed** (`LimitDef.listed: false`): `ai_runs` and `ai_chat` are limits like any other —
 resolved, overridable per org in Platform's limit fields, enforced — but nothing uses them yet (the AI pass has no
@@ -34,14 +34,16 @@ settings › General) and Settings › Limits list `LISTED_LIMIT_KEYS` (every ke
 `LIMIT_KEYS`. `OrgPlanView.usage` still carries both (this month's `ai_run:*` and `ai_chat`). Org settings › AI
 shows them with `ai_summaries` and `jev_checks` (`organizations.md`). To list one: drop the flag
 (`test/render.pricing.test.ts`, `render.plans.test.ts`, `render.settings-plan.test.ts` pin that `ai_runs` is absent
-today; `render.pricing.test.ts` that no public page says "AI chat" or names Ask Trov's units).
+today; `render.pricing.test.ts` that no public page says "AI chat" or names Ask Trov's allowance).
 
 **A per-seat limit** (`PlanDef.perSeat`). `LimitDef.per` is `org | person` and cannot say "per seat", so a PLAN
 names the limits it gives per seat: Pro's `["ai_chat"]`. Its `entitlements` value is the amount for ONE seat, and
 `resolveEntitlements` — THE resolution, so `planRefusal`, `OrgPlanView`, a grant's preview and Org settings › AI all
-agree — multiplies it by the seats in force: the org's `seats` override (a paid Pro org's: the seats it pays for)
-or, with none, the plan's own 50; unlimited seats make it unlimited. An override of the per-seat limit itself is the
-org's WHOLE cap and is never multiplied. A 3-seat Pro org: 1,500 Ask Trov units a month.
+agree — multiplies it by the PAID seats: the org's `seats` override (a paid Pro org's: the seats it pays for); with
+none (a gifted or granted Pro) by the org's MEMBERS, at least 1 (`OrgPlanState.members`, read by `PLAN_COLS`; a
+grant's preview, with no org yet, counts 1) — never the plan's 50-seat most (the owner's call, 2026-10-15). Unlimited
+seats make it unlimited. An override of the per-seat limit itself is the org's WHOLE cap and is never multiplied. A
+3-seat Pro org: 900 Ask Trov questions a month.
 
 | `jev_checks` | 1,000 | 10,000 | unlimited | 1,000 | PER CALENDAR MONTH (UTC): Sift's checks (requests to TypeSafe AI's Jev — ONE request per candidate item; `org_usage_daily` metric `ai_suggest`) | `startTagFit` / `continueTagFit` (the Sift run, `src/ai/sift.ts`) — it refuses nothing with a 402: past it a run stops (`capped`) and the Tags tab says so |
 | `tags` | 30 | 50 | unlimited | 30 | LIVE `org_tags` rows (a retired tag does not count) | `addTag`, `restoreTag`, `resolveSuggestion` accept (`src/tools/tags.ts`) |

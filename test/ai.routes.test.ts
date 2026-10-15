@@ -80,12 +80,16 @@ describe("Org settings › AI — GET / PUT /ai/settings", () => {
     });
   });
 
-  it("Pro's Ask Trov allowance is 500 PER SEAT — the paid seats (the `seats` override) × 500, computed when read", async () => {
+  it("Pro's Ask Trov allowance is 300 questions PER SEAT — the paid seats × 300, or the members × 300 for a gifted Pro, computed when read", async () => {
     const cookie = await cookieFor(MEMBER);
     await run(env.DB, `UPDATE orgs SET plan = 'team', plan_source = 'billing', plan_overrides = ? WHERE id = ?`, JSON.stringify({ seats: 4 }), ORG_A);
-    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie)).json.allowances.ai_chat).toEqual({ used: 0, cap: 2000, resumesOn: null });
+    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie)).json.allowances.ai_chat).toEqual({ used: 0, cap: 1200, resumesOn: null });
     await run(env.DB, `UPDATE orgs SET plan_overrides = ? WHERE id = ?`, JSON.stringify({ seats: 7 }), ORG_A);
-    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie)).json.allowances.ai_chat.cap).toBe(3500);
+    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie)).json.allowances.ai_chat.cap).toBe(2100);
+    // A gifted Pro (no paid-seat count): × its members, at least 1 — never the plan's 50.
+    await run(env.DB, `UPDATE orgs SET plan_source = 'granted', plan_overrides = '{}' WHERE id = ?`, ORG_A);
+    const members = Number((await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM memberships WHERE org_id = ?`, ORG_A))?.n);
+    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie)).json.allowances.ai_chat.cap).toBe(300 * Math.max(1, members));
     // Free is per org, whatever its seats.
     await run(env.DB, `UPDATE orgs SET plan = 'free', plan_source = 'granted', plan_overrides = ? WHERE id = ?`, JSON.stringify({ seats: 7 }), ORG_A);
     expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie)).json.allowances.ai_chat.cap).toBe(50);
