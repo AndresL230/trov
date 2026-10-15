@@ -203,22 +203,22 @@ describe("Poll now — the hosting arm", () => {
     expect(JSON.stringify(res)).not.toContain(LONG_TOKEN);
   });
 
-  it("skipped part by part when the WHOLE refresh would not fit the 50 — GitHub keeps its reservation", async () => {
+  it("skipped part by part when the WHOLE refresh would not fit the 100 — GitHub keeps its reservation", async () => {
     await setOrgEnvironments(ENVS, ORG_A);                      // refreshSubrequests(2) = 36 before hosting (the releases arm's 2 included), + 1 for a mint
     await addPart(ORG_A, "staging", "web");
     await addPart(ORG_A, "production", "web");
     await connect(ORG_A, LONG_TOKEN);
     const parts = await listAllParts(systemCtx(ORG_A));
     const log: string[] = [];
-    // 2 × (6 + 1 for the rollback compare) = 14: 51 > 50 — skipped, nothing fetched for them.
-    expect(hostingPollCost(parts, { vercel: fakeVercel([], 6) })).toBe(14);
+    // 2 × (31 + 1 for the rollback compare) = 64: 36 + 1 + 64 = 101 > 100 — skipped, nothing fetched for them.
+    expect(hostingPollCost(parts, { vercel: fakeVercel([], 31) })).toBe(64);
     const w = world();
-    const skipped = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, w.fetchImpl, noReconcile, { vercel: fakeVercel(log, 6) });
+    const skipped = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, w.fetchImpl, noReconcile, { vercel: fakeVercel(log, 31) });
     expect(skipped.hosting).toEqual(parts.map((p) => ({ env: p.env, part: p.key, provider: "vercel", status: "skipped", written: 0, detail: BUDGET_SKIP })));
     expect(log).toEqual([]);
     expect(w.polls()).toEqual([]);
-    // 2 × (5 + 1) = 12: 49 fits.
-    const fits = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, world().fetchImpl, noReconcile, { vercel: fakeVercel(log, 5) });
+    // 2 × (30 + 1) = 62: 99 fits.
+    const fits = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, world().fetchImpl, noReconcile, { vercel: fakeVercel(log, 30) });
     expect((fits.hosting as { status: string }[]).map((o) => o.status)).toEqual(["ok", "ok"]);
   });
 });

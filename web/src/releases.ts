@@ -158,7 +158,7 @@ export const RELEASES: Release[] = [
         "A `pr` row's `raw` keeps the PR's label names (`labels`, ≤ 20) — from the webhook and the PR-list backfill",
         "`reconcileCost` and `refreshSubrequests` carry the releases arm's 2 requests (\"Poll now\": 20 + 5N, 30 for two environments)",
         "A hosting unit costs its provider's `pollCost` + 1 (the rollback compare)",
-        "The `drift` section's snapshot is the promotion chain's last step (for two environments, the same pair as before); `reconcileRequests(N)` = 16 + 2N + max(2, N) + 6 + 2 (the releases arm), so Poll now's GitHub arm runs for up to 4 environments (was 6) and leaves 13 requests for hosting with two",
+        "The `drift` section's snapshot is the promotion chain's last step (for two environments, the same pair as before); `reconcileRequests(N)` = 16 + 2N + max(2, N) + 6 + 2 (the releases arm), so Poll now's ceiling (`SUBREQUEST_CAP`) rises from the free plan's 50 to 100 — a tenth of Workers Paid's 1,000 — so its GitHub arm runs for up to 12 environments and leaves 63 requests for hosting with two",
         "`listRepoApps` moves to `src/repo/apps-read.ts` and the GitHub HTTP helpers to `src/repo/gh-http.ts` (both re-exported where they were)",
       ],
       fixed: [

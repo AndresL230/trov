@@ -82,12 +82,13 @@ const USAGE_OK = {
 };
 
 describe("the on-demand budget", () => {
-  it("is health 2N + usage N + reconcile (16 + 2N + max(2, N) + 6 + 2): 36 for two environments, inside the cap up to N = 4 (48) and past it at 5 (54)", () => {
+  it("is health 2N + usage N + reconcile (16 + 2N + max(2, N) + 6 + 2): 36 for two environments, inside the cap (100) up to N = 12 (96) and past it at 13 (102)", () => {
+    expect(SUBREQUEST_CAP).toBe(100);
     expect(refreshSubrequests(2)).toBe(36);
-    expect(refreshSubrequests(4)).toBe(48);
-    expect(refreshSubrequests(5)).toBe(54);
-    expect(refreshSubrequests(4)).toBeLessThanOrEqual(SUBREQUEST_CAP);
-    expect(refreshSubrequests(5)).toBeGreaterThan(SUBREQUEST_CAP);
+    expect(refreshSubrequests(12)).toBe(96);
+    expect(refreshSubrequests(13)).toBe(102);
+    expect(refreshSubrequests(12)).toBeLessThanOrEqual(SUBREQUEST_CAP);
+    expect(refreshSubrequests(13)).toBeGreaterThan(SUBREQUEST_CAP);
   });
 });
 
@@ -250,8 +251,8 @@ describe("runRepoRefresh", () => {
     });
   });
 
-  it("with 5 environments (54 > 50) the GitHub arm is SKIPPED and says so; health and usage still run", async () => {
-    const seven = Array.from({ length: 5 }, (_, i) => ({
+  it("with 13 environments (102 > 100) the GitHub arm is SKIPPED and says so; health and usage still run", async () => {
+    const seven = Array.from({ length: 13 }, (_, i) => ({
       ...ENVS[0], key: `env${i}`, label: `env${i}`, branch: `b${i}`,
       frontendUrl: `https://e${i}.example.com`, apiUrl: `https://api.e${i}.example.com`,
     }));
@@ -260,20 +261,20 @@ describe("runRepoRefresh", () => {
     expect(res.github).toEqual({ written: 0, unchanged: 0, failed: [BUDGET_SKIP] });
     expect(BUDGET_SKIP).toBe("skipped: would exceed the subrequest budget");
     expect(w.calls.filter((u) => u.startsWith(GH))).toEqual([]);
-    expect(res.health).toHaveLength(10);
-    expect(res.sapling).toHaveLength(5);
+    expect(res.health).toHaveLength(26);
+    expect(res.sapling).toHaveLength(13);
     expect(w.calls.length).toBeLessThanOrEqual(SUBREQUEST_CAP);
   });
 
-  it("with 4 environments (48) the GitHub arm still runs", async () => {
-    const six = Array.from({ length: 4 }, (_, i) => ({
+  it("with 12 environments (96) the GitHub arm still runs", async () => {
+    const six = Array.from({ length: 12 }, (_, i) => ({
       ...ENVS[0], key: `env${i}`, label: `env${i}`, branch: `b${i}`,
       frontendUrl: `https://e${i}.example.com`, apiUrl: `https://api.e${i}.example.com`,
     }));
     const w = world();
     const res = await runRepoRefresh(refreshEnv({ REPO_ENVIRONMENTS: JSON.stringify(six) }), NOW, w.fetchImpl);
     expect(res.github).toEqual({ written: 0, unchanged: 0, failed: [] });
-    expect(w.calls.length).toBeLessThanOrEqual(refreshSubrequests(4));
+    expect(w.calls.length).toBeLessThanOrEqual(refreshSubrequests(12));
   });
 
   // The worst case: every failure quotes its own request — headers AND body —

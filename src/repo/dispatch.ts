@@ -11,8 +11,8 @@ import { readCursor, writeCursor } from "../platform/jobs";
 /**
  * Outbound `fetch`es one cron invocation may make (D1 does not count). Workers Paid allows 1,000 per
  * invocation; the rest is headroom for a health ping that follows a redirect and for a job whose cost
- * is an estimate (`progress`). The free plan's cap is 50 — see `SUBREQUEST_CAP` in ./cron.ts, which
- * the on-demand "Poll now" still honours for ONE org.
+ * is an estimate (`progress`). ONE org's on-demand "Poll now" has its own ceiling, `SUBREQUEST_CAP` (100) in
+ * ./cron.ts.
  */
 export const CRON_SUBREQUEST_BUDGET = 900;
 /** Wall clock one invocation may spend serving units: every fetch is bounded (8–15 s) but units run

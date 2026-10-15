@@ -175,13 +175,15 @@ export async function runEnvJob(env: Env, orgId: string, envKey: string, job: En
   }
 }
 
-/** The free plan's cap on outbound `fetch` per invocation (D1 does not count) — what ONE org's
- *  on-demand refresh is still held to (`runRepoRefresh`). The cron's own budget: ./dispatch.ts. */
-export const SUBREQUEST_CAP = 50;
+/** What ONE org's on-demand refresh may spend on outbound `fetch` (D1 does not count) — `runRepoRefresh`'s ceiling.
+ *  Trov runs on Workers Paid (1,000 subrequests an invocation; the cron budgets 900 — ./dispatch.ts); this was the
+ *  free plan's 50 until repo setups' compares (the promotion chain, not shipped, out of step, releases) pushed a
+ *  five-environment org past it. 100 keeps Poll now a tenth of the invocation's allowance and fits N ≤ 12. */
+export const SUBREQUEST_CAP = 100;
 /** `runRepoRefresh`'s worst case for N environments: health 2N + usage N + reconcile (`reconcileRequests`:
  *  16 + 2N + max(2, N) + 6 + 2 — the promotion chain and the facts arms (repo setups Phase B) and the releases
- *  arm (Phase F)). 36 for two; 48 at N = 4; 54 at N = 5. (An org on the GitHub App may spend one more, minting
- *  its installation token: 49 at N = 4, still inside the cap.) */
+ *  arm (Phase F)). 36 for two; 96 at N = 12; 102 at N = 13. (An org on the GitHub App may spend one more, minting
+ *  its installation token: 97 at N = 12, still inside the cap.) */
 export const refreshSubrequests = (n: number): number => 3 * n + reconcileRequests(n);
 /** The one fixed phrase `github.failed` carries when the arm was not run — and every hosting part's
  *  `detail` when the hosting arm was not. */

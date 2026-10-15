@@ -265,9 +265,8 @@ goes first and, on a tick that also has a heavy job, may use at most HALF, so ne
 unit is started only while its worst-case cost still fits, what it really spent is counted through the
 budget's own `fetch`, and each job resumes after the unit its previous invocation stopped at (`cron_cursor`)
 — so more orgs than one invocation can serve lengthen the cycle; they never overrun it. With few orgs every
-tick serves every unit and the cursor is never written. The free plan's 50-subrequest cap is NOT what the
-cron is sized against any more; it survives only as `SUBREQUEST_CAP`, the ceiling ONE org's on-demand
-"Poll now" still honours (below).
+tick serves every unit and the cursor is never written. ONE org's on-demand "Poll now" has its own, smaller
+ceiling, `SUBREQUEST_CAP` = 100 (below; it was the free plan's 50 until repo setups' compares outgrew it).
 `src/index.ts` dispatches by EXACT string equality on `controller.cron`, so `REPO_CRON` and the expression
 in `wrangler.toml` must stay identical (pinned by a test).
 
@@ -517,9 +516,9 @@ words `timeout` / `HTTP <status>` / `unreachable`; `"not_configured"` with no en
 `{ written, unchanged, failed }` (`failed` = reconcile's ARM NAMES), `"not_configured"` without a primary
 repository and a GitHub credential, `failed: ["unexpected error"]` on an unexpected throw. **The cron
 does NOT call it** — its per-tick spreading stands. **Budget: health 2N + usage N + reconcile
-(`reconcileRequests(N)`) = `refreshSubrequests(N)` — 36 for two environments, and `SUBREQUEST_CAP` = 50 (the free
-plan's per-invocation cap, which this ONE-org refresh is still held to; the cron's own budget is 900) caps it at N ≤
-4** (48; 54 at five — it was N ≤ 6 before the promotion chain and the facts arms); past that the
+(`reconcileRequests(N)`) = `refreshSubrequests(N)` — 36 for two environments, and `SUBREQUEST_CAP` = 100 (a tenth of
+Workers Paid's 1,000 an invocation; the cron's own budget is 900 — it was the free plan's 50 until the promotion chain,
+the facts arms and releases pushed a five-environment org past it) caps it at N ≤ 12** (96; 102 at thirteen); past that the
 github arm is SKIPPED and says so (`failed: ["skipped: would exceed the subrequest budget"]`) rather than
 risk the invocation, while health and usage still run. The hosting arm runs only when the WHOLE refresh still
 fits (`refreshSubrequests(N)` + a mint + Σ `pollCost` ≤ 50 — 13 left for two environments), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
