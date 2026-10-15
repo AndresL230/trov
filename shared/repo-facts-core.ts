@@ -193,6 +193,7 @@ export interface FactsRelease {
   cadence: { tag: string; at: string }[];
 }
 
+/** `evidence` is a sentence, as the scan words it ("from apps/web/vercel.json") — drawn as given. */
 export interface FactsFoundApp { id: string; folder: string; kind: AppKind; provider: HostingProviderId | null; evidence: string }
 export interface FactsSignal { name: string; provider: HostingProviderId | null; count: number }
 export interface FactsFound { apps: FactsFoundApp[]; signals: FactsSignal[] }

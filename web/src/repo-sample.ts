@@ -931,9 +931,9 @@ const SC: Record<Exclude<ScenarioKey, "N">, (v: string, at: At) => Scenario> = {
     envs: [], apps: [], targets: [],
     found: {
       apps: [
-        { id: "apps/web", folder: "apps/web", kind: "Site", provider: "vercel", evidence: "apps/web/vercel.json" },
-        { id: "apps/worker", folder: "apps/worker", kind: "Worker", provider: "cloudflare", evidence: "apps/worker/wrangler.toml" },
-        { id: "packages/shared", folder: "packages/shared", kind: "Package", provider: null, evidence: "packages/shared/package.json" },
+        { id: "apps/web", folder: "apps/web", kind: "Site", provider: "vercel", evidence: "from apps/web/vercel.json" },
+        { id: "apps/worker", folder: "apps/worker", kind: "Worker", provider: "cloudflare", evidence: "from apps/worker/wrangler.toml" },
+        { id: "packages/shared", folder: "packages/shared", kind: "Package", provider: null, evidence: "from packages/shared/package.json" },
       ],
       signals: [{ name: "Production – new-thing-web", provider: "vercel", count: 12 }, { name: "Preview – new-thing-web", provider: "vercel", count: 41 }],
     },

@@ -28,6 +28,10 @@ describe("the found-apps card (R1) — scenario L", () => {
     expect(t).toMatch(/apps\/worker Worker Cloudflare from apps\/worker\/wrangler\.toml/);
     expect(t).toMatch(/packages\/shared Package no host from packages\/shared\/package\.json/);
     expect((draw().match(/aria-label="Suggested"/g) ?? []).length).toBe(3);
+    // Evidence arrives as a sentence (shared/repo-scan-core.ts SuggestionEvidence — "from apps/web/vercel.json"); the
+    // card shows it as given, never "from from …" (e2e O18b).
+    const server = { ...f, found: { ...f.found!, apps: f.found!.apps.map((a) => ({ ...a, evidence: a.evidence.startsWith("from ") ? a.evidence : `from ${a.evidence}` })) } };
+    expect(text(foundBlock(server, ctx(server)))).not.toContain("from from");
   });
 
   it("the deploy names GitHub has seen, with their counts", () => {

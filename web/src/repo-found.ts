@@ -46,7 +46,7 @@ function foundRow(a: FactsFoundApp, x: OverviewCtx): string {
     <span style="font-family:var(--label);font-size:12.5px;color:var(--fg);overflow-wrap:anywhere">${esc(a.folder)}</span>
     <span style="font-size:12.5px;color:var(--fg-70)">${esc(a.kind)}</span>
     <span style="font-size:12.5px;color:${host ? "var(--fg-70)" : "var(--fg-40)"}">${esc(host ?? "no host")}</span>
-    <span class="repo-found-ev" style="font-size:12px;color:var(--fg-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">from ${esc(a.evidence)}</span>
+    <span class="repo-found-ev" style="font-size:12px;color:var(--fg-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.evidence)}</span>
     ${actions}
   </div>`;
 }
