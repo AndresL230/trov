@@ -177,7 +177,13 @@ is replaced.
 - Settings › Trov: `GET / PUT /ask/settings` — instructions (≤ 500) and the default mode (Pro).
 - `GET /ask/state`: `{ enabled, eligibility, plan, modes, defaultMode, allowance { used, cap, resetsAt, low }, autoAllowed,
   attach { maxFiles, maxBytes, kinds }, starters }` — starters by plain rules (the person's top assigned ticket, the
-  active sprint, what is waiting on them), the design's four as the fallback.
+  active sprint, what is waiting on them), the design's four as the fallback. `allowance.cap` is the cap the gate
+  enforces (`resolveEntitlements` with the org's members): on Pro 300 × the paid seats, or × the members (at least
+  1) when there is no paid-seat count (a gifted Pro); an override of `ai_chat` is the whole cap, never multiplied.
+- No Ask route answers a malformed ref or id with a 500 (invariant 7; `test/ask.hardening.test.ts`): `GET
+  /ask/item/:ref` takes a ref that will not decode (`%25`) as it is, so it is the same `404 { ref, hidden: true }` as
+  an unknown one; `/ask/peek` refuses a malformed ref with `400 invalid` and hides a well-formed one that names
+  nothing; every `:id` route answers a non-id with its own 404 / 400.
 
 ## Deletion and renames
 

@@ -88,7 +88,9 @@ async function standing(ctx: TenantContext): Promise<Standing> {
 const defaultModeOf = (modes: readonly AskMode[], stored: AskMode | null): AskMode => (stored && modes.includes(stored) ? stored : ASK_DEFAULT_MODE);
 
 function allowanceOf(st: Standing, adding = 0) {
-  const cap = resolveEntitlements(st.plan.plan, st.plan.overrides).ai_chat;
+  // The cap the gate enforces (`planRefusal` reads the same): Pro's is per seat — × the paid seats, or × the members
+  // (at least 1) with no paid-seat count (a gifted Pro); an override of `ai_chat` is the whole cap (#12 §2.1).
+  const cap = resolveEntitlements(st.plan.plan, st.plan.overrides, st.plan.members).ai_chat;
   const used = st.used + adding;
   return { used, cap, resetsAt: nextMonthStart(nowDate()), low: cap !== null && cap - used < cap * ASK_LOW_SHARE };
 }
@@ -146,7 +148,12 @@ askApp.post(ASK_ROUTES.peek, async (c) => {
 });
 
 askApp.get("/ask/item/:ref", async (c) => {
-  const ref = normalRef(decodeURIComponent(c.req.param("ref")));
+  // Hono has already decoded the path once; a client that encoded twice is decoded again. A ref that will not decode
+  // (`%25` arrives as a bare `%`) is taken as it is — and, never a ref, it is the same 404 as an unknown one.
+  const raw = c.req.param("ref");
+  let decoded = raw;
+  try { decoded = decodeURIComponent(raw); } catch { /* not percent-encoded: already decoded */ }
+  const ref = normalRef(decoded);
   const p = parseAskRef(ref);
   const view = p ? (await resolveViews(c.var.ctx, me(c), [ref], nowDate())).get(ref) : undefined;
   if (!p || !view) return c.json({ ref, hidden: true }, 404);
