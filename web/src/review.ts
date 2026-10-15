@@ -108,7 +108,7 @@ export function reviewFilterSwitch(filter: ReviewFilter, counts: Record<ReviewFi
  *  up-right on the title row when the gate set it (nothing otherwise: every row here is
  *  waiting), 2-line summary, then a byline that folds the record type · identifier
  *  (label-face) into the author · date. */
-export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVerdict | null = null): string {
+export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVerdict | null = null, aiLeaving?: Record<number, number>): string {
   const { type, id } = splitEyebrow(it.eyebrow);
   const dot = `<span style="color:var(--fg-40)">·</span>`;
   // The row is the list's KEYED child (`data-morph-key`): a repaint patches it in place, so a card
@@ -127,7 +127,7 @@ export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVer
         ${type ? `<span>${esc(type)}</span>` : ""}
         ${id ? `${dot}<span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">${esc(id)}</span>` : ""}
         ${dot}<span style="display:inline-flex;align-items:center;gap:6px">${agentBit(it, 18)}</span>
-        ${dot}<span style="color:var(--fg-40)">${esc(it.time)}</span>${it.ai ? `${dot}${reviewRiskMark(it.ai)}` : ""}
+        ${dot}<span style="color:var(--fg-40)">${esc(it.time)}</span>${it.ai ? `${dot}${reviewRiskMark(it.ai, aiLeaving)}` : ""}
       </div>
     </div>
     <span class="cnpy-rv-verdict" aria-hidden="true">${verdict ? `${verdict === "rejected" ? X_ICON : CHECK_ICON}${VERDICT_LABEL[verdict]}` : ""}</span>
@@ -376,7 +376,7 @@ export function reviewView(p: ReviewProps): string {
   // inserts and removes rows and leaves every other row the element it was. When the last row is
   // leaving, the empty layout is already under it and rises as the row collapses — no jump.
   const list = p.loading ? `<div data-morph-key="rv-skel">${reviewListSkeleton()}</div>`
-    : `${visible.map((it) => reviewCard(it, sel !== null && it.id === sel.id, leaving[it.id] ?? null)).join("")}${visibleWaiting.length === 0 ? `<div data-morph-key="rv-empty">${reviewListEmpty(p.filter === "all")}</div>` : ""}`;
+    : `${visible.map((it) => reviewCard(it, sel !== null && it.id === sel.id, leaving[it.id] ?? null, p.aiUi?.leaving)).join("")}${visibleWaiting.length === 0 ? `<div data-morph-key="rv-empty">${reviewListEmpty(p.filter === "all")}</div>` : ""}`;
 
   // Under a tablet's width the two panes take turns (trov.css `.cnpy-rv`): the list, or —
   // once an item is picked by hand — its detail, with a back button to the list.

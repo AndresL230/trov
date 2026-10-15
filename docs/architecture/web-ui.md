@@ -469,7 +469,7 @@ one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 
 When a person acts on a row and the row should go (a verdict in Review; Add tag / Dismiss on a tag's To
 review tab — `reviewItem` in `tags.ts`, `TagsUi.reviewLeaving`, the same `.cnpy-rv-row`, slower by the owner's call — `.cnpy-tagreview-row`, `TAG_REVIEW_EXIT_MS` .7s, and the card slides aside as it closes; the
-next screen that removes a row reuses this, it does not invent another), the row **confirms, collapses, and the rows
+next screen that removes a row reuses this, it does not invent another — Phase C's suggestion chips do, see The AI kit), the row **confirms, collapses, and the rows
 under it move up as the same elements**. Four parts, each in one place:
 
 1. **A keyed list** (`web/src/morph.ts`). The screen is `data-morph`ed, the list's container carries
@@ -917,8 +917,14 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   never styled like a value a person set: a dashed `--border-strong` outline, the mark, muted words. The
   reason is a real disclosure button (`aria-expanded`, works on touch), the chip a container of buttons (never
   a button itself), and it wraps, so it fits a row, a card, a detail pane and a phone. A 409 `not_available`
-  (no accept handler for its kind yet — every kind today) replaces the buttons with "Not available yet". On a
-  live screen only the proposed themes use it so far.
+  (no accept handler for its kind yet) replaces the buttons with "Not available yet". Phase C's chips (the ticket
+  detail, Unplaced, Review's risk line — `web/src/ai-cards.ts`) sit in a `leaveBox`: they rise with their screen
+  (`.cnpy-rise`) and, once Accept / Dismiss answered, leave by the row-exit pattern below — state
+  (`AppState.aiLeaving`, id → when its exit began), a `.cnpy-ai-out` one-track grid going `1fr` → `0fr` and fading
+  after a .13s hold on `--fx-fast`, and the re-read held `AI_CHIP_EXIT_MS` (main.ts's `decided` hook). Those screens
+  are rebuilt on a paint, so it is a keyframe animation with a negative delay (`--leave-t`, the `--enter-t` trick),
+  never restarted by a repaint; a list row's mark fades the same way. Gone at once under reduced motion
+  (`test/render.ai-cards.test.ts` › motion).
 - **Acts** are `ai…`, in `web/src/ai-actions.ts`. The themes' Rename field keeps its draft WITHOUT a repaint
   (the Repo screen is rebuilt on a paint, not morphed), so typing never rebuilds the page.
 - **Where the work went** draws lanes as `aria-pressed` buttons (no button inside: the proposals' actions sit in

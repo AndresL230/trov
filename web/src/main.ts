@@ -85,6 +85,7 @@ import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createAiController, readNoteSeen } from "./ai-actions";
+import { AI_CHIP_EXIT_MS } from "./ai-cards";
 import { createAiFilterController } from "./ai-filter-actions";
 import type { AiFilterSnapshot } from "./ai-filter";
 import type { AiFilterByScreen, AiFilterScreen, ArtifactsAiFilter, FeedAiFilter, TicketsAiFilter } from "@shared/ai-filter-core";
@@ -156,11 +157,22 @@ const tagsCtl = createTagsController({
 // note, the themes' range and lane, Accept / Rename / Remove on a suggestion.
 const aiCtl = createAiController({
   state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
-  // Phase C: an accepted suggestion changed the ticket / filed the item, and a decided one is gone — re-read.
-  decided: () => {
-    if (state.screen === "ticketdetail" && state.ticketId !== null) loadTicketDetail(state.ticketId);
-    else if (state.screen === "maintenance") loadNeedsTriage();
-    else if (state.screen === "review") { loadProposals(); loadDraftAdrs(); }
+  // Phase C: an accepted suggestion changed the ticket / filed the item, and a decided one is gone. Its chip leaves
+  // by the one exit pattern (ai-cards.ts `leaveBox`, web-ui.md › A row leaving a list): state says it is leaving,
+  // CSS collapses it, and the re-read is HELD until the exit is done so a read landing mid-exit never pulls it out
+  // from under its own animation. Under reduced motion it is gone at once and the re-read goes out at once.
+  decided: (id) => {
+    const now = Date.now();
+    for (const [k, at] of Object.entries(state.aiLeaving)) if (now - at > 10_000) delete state.aiLeaving[Number(k)];
+    state.aiLeaving[id] = now;
+    rerender();
+    const screen = state.screen, ticketId = state.ticketId;
+    setTimeout(() => {
+      if (screen !== state.screen) return; // left the screen: the next visit reads afresh
+      if (screen === "ticketdetail" && ticketId !== null && state.ticketId === ticketId) loadTicketDetail(ticketId);
+      else if (screen === "maintenance") loadNeedsTriage();
+      else if (screen === "review") { loadProposals(); loadDraftAdrs(); }
+    }, reducedMotion() ? 0 : AI_CHIP_EXIT_MS);
   },
 });
 // The plain-language filter (web/src/ai-filter-actions.ts, #162): every `aiFilter…` act. Its answer is applied
