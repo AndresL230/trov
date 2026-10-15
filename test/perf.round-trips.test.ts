@@ -11,6 +11,9 @@ import { setOrgEnvironments } from "./helpers/org-config";
 import { addPart, deployRow, pollState } from "./helpers/dashboard-hosting";
 import { ingestEvent, ingestRepoEvent } from "../src/consumer";
 import { getRepoDashboard } from "../src/tools/repo";
+import { app } from "../src/routes";
+import { createSession } from "../src/auth/session";
+import { hmacSeal } from "../src/auth/crypto";
 import { putMetric, putSnapshot } from "../src/repo/store";
 import { create_sprint, set_sprint_active } from "../src/tools/sprints";
 import { SprintCreate } from "@shared/sprints";
@@ -64,7 +67,14 @@ async function seedBusyRepo(): Promise<void> {
   await set_sprint_active(ctx, sp.id, true);
 }
 
-const statuses = (d: object): Record<string, unknown> =>
+async function cookieFor(handle: string): Promise<string> {
+  const { id } = await createSession(platformCtx(), handle);
+  return `session=${await hmacSeal(id, "test-cookie-secret")}`;
+}
+/** What the gates cost a `/api/o/:slug/*` request before its handler runs. */
+const GATE = 2;
+
+const statuses =(d: object): Record<string, unknown> =>
   Object.fromEntries(Object.entries(d).filter(([, v]) => typeof v === "object" && v !== null).map(([k, v]) => [k, (v as { status: string }).status]));
 
 describe("D1 round trips", () => {
@@ -83,6 +93,28 @@ describe("D1 round trips", () => {
     expect(c.serial).toBeLessThanOrEqual(3);
     // The same answer as through the plain binding.
     expect(JSON.stringify(d)).toBe(JSON.stringify(await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)));
+  });
+
+  // Was 5 serial of 8: getPerson, listIdentities and the title each waited on the one before.
+  it("GET /auth/me: the session, then every read at once", async () => {
+    const cookie = await cookieFor("AndresL230");
+    const c = countingEnv();
+    const res = await app.request("/auth/me", { headers: { cookie } }, c.env);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ handle: "AndresL230", orgs: [{ slug: "saplinglearn" }] });
+    expect({ serial: c.serial, total: c.total }).toEqual({ serial: 2, total: 8 });
+  });
+
+  it("GET /api/o/:slug/repo/dashboard: the session gate, the org's repo + environments, the dashboard", async () => {
+    await seedBusyRepo();
+    const cookie = await cookieFor("AndresL230");
+    const c = countingEnv();
+    const res = await app.request("/api/o/saplinglearn/repo/dashboard", { headers: { cookie } }, c.env);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ degraded: false, prs: { status: "ok" }, environments: { status: "ok" } });
+    // Was 40 of 44 before the dashboard's reads ran as a dataflow.
+    expect(c.total).toBe(44);
+    expect(c.serial).toBe(GATE + 1 + 3);
   });
 
   it("the Repo dashboard, nothing captured: 32 statements, a chain of 2", async () => {
