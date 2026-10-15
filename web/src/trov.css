@@ -3090,6 +3090,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-iv-table td { padding:8px 2px; border-bottom:1px solid var(--border); color:var(--fg-70); }
 .ask-iv-table .is-num { text-align:right; font-variant-numeric:tabular-nums; color:var(--fg); }
 .ask-iv-table .is-total td { border-bottom:0; font-weight:600; color:var(--fg); }
+.ask-iv-figure { min-width:0; overflow-x:auto; }
 .ask-iv-datafrom { display:flex; align-items:center; gap:6px; margin-top:14px; font-size:12px; color:var(--fg-55); }
 [data-sheet="1"] .ask-iv-row { grid-template-columns:84px minmax(0, 1fr); }
 [data-sheet="1"] .ask-iv-two { grid-template-columns:1fr; }

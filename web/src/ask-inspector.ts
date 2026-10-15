@@ -58,6 +58,33 @@ import { renderMarkdown } from "./markdown";
 import { rawUrl, artifactFrame } from "./artifacts";
 import { getRepoDashboard, patchArtifact } from "./api";
 import { reducedMotion, ASK_EASE, ASK_FX } from "./ask-motion";
+import { cvRefWord, isCvRef } from "./ask-cvref";
+import * as Conversation from "./ask-conversation";
+import type { AskDiagram, AskThemesBlock } from "@shared/ai-ask-core";
+
+// ── the conversation part's items (`askcv:<where>:<key>:<kind>:<n>`, ask-cvref.ts) ────────────────────────────
+// "Open in inspector" on a chart, the theme strip, a diagram, an items block, a table or a question's file pushes an
+// `askcv:` ref. The conversation part primes it as hidden (so nothing peeks it) and holds what it names: the
+// inspector never reads it from the server, and draws it with the conversation's own figures (`cvItem`,
+// `chartFigure`, `themesFigure`, `diagramFigure`, `tableView`). Those are the conversation part's exports — read
+// through this one typed seam, so each part's branch builds alone; until the two meet, an `askcv:` ref says it is
+// not in the thread.
+type CvItem =
+  | { kind: "chart"; chart: AskChart }
+  | { kind: "themes"; themes: AskThemesBlock }
+  | { kind: "diagram"; diagram: AskDiagram }
+  | { kind: "items"; items: RefView[] }
+  | { kind: "table"; head: string[] | null; rows: string[][] }
+  | { kind: "upload"; attachment: AskAttachment };
+interface CvSeam {
+  cvItem?(ui: Pick<AskView["ui"], "page" | "panel">, ref: string): CvItem | null;
+  chartFigure?(c: AskChart, o?: { barH?: number }): string;
+  themesFigure?(t: AskThemesBlock): string;
+  diagramFigure?(v: Pick<AskView, "look">, d: AskDiagram): string;
+  tableView?(v: AskView, head: string[] | null, rows: string[][]): string;
+}
+const cv = Conversation as unknown as CvSeam;
+const cvItemOf = (v: AskView, ref: string): CvItem | null => (isCvRef(ref) && cv.cvItem ? cv.cvItem(v.ui, ref) : null);
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -121,6 +148,12 @@ export function localItemOf(v: AskView, ref: string): InspectorLocal | null {
 }
 /** The frame's type word and trail name for an item with no RefView (null for any other ref). */
 export function inspectorLocalHead(v: AskView, ref: string): { typeWord: string; short: string } | null {
+  if (isCvRef(ref)) {
+    const c = cvItemOf(v, ref);
+    const short = !c ? "an item" : c.kind === "chart" ? c.chart.title : c.kind === "themes" ? c.themes.title : c.kind === "diagram" ? c.diagram.title
+      : c.kind === "upload" ? c.attachment.title : c.kind === "table" ? "a table" : "items";
+    return { typeWord: cvRefWord(ref), short };
+  }
   const it = localItemOf(v, ref);
   if (!it) return /^(upload|chart):/.test(ref) ? { typeWord: ref.startsWith("upload:") ? "Upload" : "Chart", short: ref.startsWith("upload:") ? "a file" : "a chart" } : null;
   return it.kind === "upload" ? { typeWord: "Upload", short: it.att.title } : { typeWord: "Chart", short: it.chart.title };
@@ -188,8 +221,8 @@ function itemRow(ref: string, lead: string, num: string, t: string, trail = "", 
   return `<button type="button" class="ask-iv-item" data-act="askShOpen" data-arg="${attr(ref)}">${lead}${num ? `<span class="ask-iv-num">${esc(num)}</span>` : ""}<span class="ask-iv-t">${sub ? `<span class="ask-iv-t1">${esc(t)}</span><span class="ask-iv-sub">${esc(sub)}</span>` : esc(t)}</span>${trail}</button>`;
 }
 /** A ref's row when only its view is known: its status icon, short name, title. Unknown → plain words. */
-function refRow(v: AskView, ref: string, trail?: (x: RefView) => string): string {
-  const x = viewOf(v.look, ref);
+function refRow(v: AskView, ref: string, trail?: (x: RefView) => string, given?: RefView): string {
+  const x = viewOf(v.look, ref) ?? given ?? null;
   if (!x) return `<div class="ask-iv-item is-plain">${askIcon(REF_ICON[parseAskRef(ref)?.type ?? "doc"], 13, "var(--fg-40)")}<span class="ask-iv-t">${esc(refFallbackText(ref))}</span></div>`;
   const lead = x.status ? refStatusIcon(x.status, 13) : askIcon(REF_ICON[x.type], 13, "var(--fg-40)");
   const num = (x.type === "ticket" || x.type === "pr") && x.num != null ? `#${x.num}` : "";
@@ -626,6 +659,13 @@ function chartView(v: AskView, chart: AskChart, ref: string): string {
     id: "ask-insp-chart", ariaLabel: "Show as", value: view, act: "askInChartView", size: "sm", inertOn: true,
     options: [{ value: "chart", label: "Chart", arg: `${ref}|chart` }, { value: "table", label: "Table", arg: `${ref}|table` }],
   });
+  // The conversation's own figure, larger (it carries "Data from Trov" itself); the inspector's bars until it is here.
+  const figure = view === "chart" && chart.rows.length && cv.chartFigure ? cv.chartFigure(chart, { barH: 220 }) : null;
+  if (figure) {
+    return `<div class="ask-iv-charthead">${title(chart.title)}${sw}</div>
+      <div class="ask-iv-sm" style="margin-bottom:16px">${esc(chartLine(chart))}</div>
+      <div class="ask-iv-figure" data-morph-key="fig:${attr(ref)}">${figure}</div>`;
+  }
   const body = !chart.rows.length
     ? note("No rows for this chart yet.")
     : view === "chart"
@@ -644,11 +684,29 @@ function chartView(v: AskView, chart: AskChart, ref: string): string {
     <div class="ask-iv-datafrom">${trovMark(10)}${esc(`Data from Trov · ${QUERY_NOTE[chart.query]}`)}</div>`;
 }
 
+/** A conversation-held item, drawn with the conversation's figures (a chart keeps the Chart / Table switch; a
+ *  question's file is the upload view). */
+function cvBody(v: AskView, c: CvItem, ref: string): string {
+  switch (c.kind) {
+    case "chart": return chartView(v, c.chart, ref);
+    case "upload": return uploadView(c.attachment);
+    case "themes": return `${title(c.themes.title)}<div class="ask-iv-figure">${cv.themesFigure ? cv.themesFigure(c.themes) : ""}</div>`;
+    case "diagram": return `${title(c.diagram.title)}<div class="ask-iv-figure">${cv.diagramFigure ? cv.diagramFigure(v, c.diagram) : ""}</div>`;
+    case "table": return `<div class="ask-iv-figure">${cv.tableView ? cv.tableView(v, c.head, c.rows) : ""}</div>`;
+    case "items": return `${head(plural(c.items.length, "item"), "", 0)}<div class="ask-iv-list">${c.items.map((x) => refRow(v, x.ref, undefined, x)).join("")}</div>`;
+  }
+}
+
 // ── the body ─────────────────────────────────────────────────────────────────
 
 /** The body for one ref (the frame around it is the shell's). */
 export function inspectorBody(v: AskView, ref: string): string {
   const wrap = (type: string, html: string) => `<div class="ask-iv" data-ask-iv="${attr(type)}">${html}</div>`;
+  // A conversation-held item first: it is primed as hidden (so nothing peeks it), which is not "not yours to see".
+  if (isCvRef(ref)) {
+    const c = cvItemOf(v, ref);
+    return c ? wrap(c.kind, cvBody(v, c, ref)) : wrap("gone", note("This is no longer in this thread."));
+  }
   const local = localItemOf(v, ref);
   if (local) return wrap(local.kind, local.kind === "upload" ? uploadView(local.att) : chartView(v, local.chart, ref));
   const p = parseAskRef(ref);

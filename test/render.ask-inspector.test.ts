@@ -7,6 +7,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => `<md>${b}</md>`, renderMarkdownInline: (t: string) => t, sanitizeSvg: (s: string) => s }));
+// The conversation part's seam (its branch exports these; this branch's stub does not): the test stands them in.
+const cvStub = vi.hoisted(() => ({ items: {} as Record<string, unknown> }));
+vi.mock("../web/src/ask-conversation", async (orig) => ({
+  ...(await orig<object>()),
+  cvItem: (_ui: unknown, ref: string) => cvStub.items[ref] ?? null,
+  chartFigure: (c: { title: string }, o: { barH?: number } = {}) => `<fig-chart data-h="${o.barH}">${c.title}</fig-chart>`,
+  themesFigure: (t: { title: string }) => `<fig-themes>${t.title}</fig-themes>`,
+  diagramFigure: (_v: unknown, d: { title: string }) => `<fig-diagram>${d.title}</fig-diagram>`,
+  tableView: (_v: unknown, head: string[] | null, rows: string[][]) => `<fig-table>${(head ?? []).join("|")}/${rows.length}</fig-table>`,
+}));
 import { render, initialState, type AppState } from "../web/src/render";
 import { askView, type AskCtx } from "../web/src/ask-state";
 import { inspectorFrame } from "../web/src/ask-screen";
@@ -261,11 +271,11 @@ describe("upload and chart (no RefView: web-side fixtures — the contract gap)"
     expect(text(html)).toContain("48 merged pull requests on AndresL230/trov, Aug 24 – Oct 18");
     expect(html).toContain(`class="cnpy-seg cnpy-seg--sm"`);
     expect(html).toContain(`data-act="askInChartView" data-arg="${f.ref}|table"`);
-    expect(html.match(/class="ask-iv-barfill"/g)).toHaveLength(8);
-    expect(text(html)).toContain("Data from Trov · merged pull requests, by the week they merged");
+    expect(html).toContain(`<fig-chart data-h="220">Merged PRs by week</fig-chart>`);   // the conversation's figure, larger
     s.ask.inspectorUi.chartView[f.ref] = "table";
     html = body(s);
     const t = text(html);
+    expect(t).toContain("Data from Trov · merged pull requests, by the week they merged");
     expect(t).toMatch(/Week of\s+Merged pull requests/);
     expect(t).toMatch(/Oct 12\s+6/);
     expect(t).toMatch(/Total\s+48/);
@@ -282,6 +292,53 @@ describe("upload and chart (no RefView: web-side fixtures — the contract gap)"
 
   it("an upload or chart no longer in the thread says so", () => {
     expect(text(body(state([uploadRef(5)])))).toContain("This is no longer in this thread.");
+  });
+});
+
+describe("the conversation's items (askcv: refs — the conversation part's seam)", () => {
+  const CHART = "askcv:page:a1:chart:2", UP = "askcv:page:q1:upload:901", GONE = "askcv:page:a9:chart:0";
+  const primed = (refs: string[]) => (st: AppState) => { for (const r of refs) st.ask.refViews[r] = { ref: r, hidden: true }; };
+  beforeEach(() => {
+    cvStub.items = {
+      [CHART]: { kind: "chart", chart: CHART_FIXTURE },
+      [UP]: { kind: "upload", attachment: UPLOAD_FIXTURE },
+      "askcv:page:a1:themes:3": { kind: "themes", themes: { title: "Where the time went", caption: "Share of merged PRs", weeks: [], lanes: [] } },
+      "askcv:page:a1:diagram:4": { kind: "diagram", diagram: { title: "What waits on what", caption: "", layout: "chain", nodes: [], edges: [] } },
+      "askcv:page:a1:table:0.0": { kind: "table", head: ["Ticket", "Status"], rows: [["a", "b"], ["c", "d"]] },
+      "askcv:page:a1:items:1": { kind: "items", items: [askRefFixtures(NOW)["ticket:14"]] },
+    };
+  });
+
+  it("a chart: the conversation's figure, larger, under the Chart / Table switch; the table is the inspector's", () => {
+    const s = state([CHART], primed([CHART]));
+    let html = body(s);
+    expect(html).toContain(`<fig-chart data-h="220">Merged PRs by week</fig-chart>`);
+    expect(html).toContain(`data-act="askInChartView" data-arg="${CHART}|table"`);
+    expect(text(html)).not.toContain("not yours to see");          // primed hidden, never read as hidden
+    s.ask.inspectorUi.chartView[CHART] = "table";
+    html = body(s);
+    expect(text(html)).toMatch(/Total\s+48/);
+    expect(inspectorFrame(askView(s, "page"))).toContain(`<span class="ask-insp-type">Chart</span>`);
+  });
+
+  it("a question's file is the upload view; the frame says Upload", () => {
+    const s = state([UP], primed([UP]));
+    expect(text(body(s))).toContain("Attached to this thread. Trov reads it only when you ask about it.");
+    expect(inspectorFrame(askView(s, "page"))).toContain(`<span class="ask-insp-type">Upload</span>`);
+  });
+
+  it("the theme strip, a diagram, a table and an items block draw with the conversation's figures", () => {
+    expect(body(state(["askcv:page:a1:themes:3"]))).toContain("<fig-themes>Where the time went</fig-themes>");
+    expect(body(state(["askcv:page:a1:diagram:4"]))).toContain("<fig-diagram>What waits on what</fig-diagram>");
+    expect(body(state(["askcv:page:a1:table:0.0"]))).toContain("<fig-table>Ticket|Status/2</fig-table>");
+    expect(text(body(state(["askcv:page:a1:items:1"])))).toContain("Guided repository setup");
+  });
+
+  it("one that left the thread says so; and none is ever read from the server", () => {
+    expect(text(body(state([GONE], primed([GONE]))))).toContain("This is no longer in this thread.");
+    const getItem = vi.fn();
+    inspectorPart.afterPaint!(ctxFor(state([CHART], primed([CHART])), { getItem }), mount);
+    expect(getItem).not.toHaveBeenCalled();
   });
 });
 
