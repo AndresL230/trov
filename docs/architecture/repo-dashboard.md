@@ -545,9 +545,13 @@ reads — `sap_*` and the usage globs never match each other's names). `pr` / `p
 
 **Written by Trov — `state` and `themes`** (`shared/repo.ts`, typed in `shared/ai-core.ts`): Overview's first
 block ("State") and Planning's ("Where the work went", per range). They are NOT sections, so `REPO_TAB_SECTIONS`
-does not name them, and absent means off / nothing written — never a `not_connected` section. **Nothing writes
-them yet: production omits both** (`GET /repo/dashboard` and `get_repo_dashboard`); `LOCAL_AI_PREVIEW` fills
-them from the fixtures under `wrangler dev` only, never over MCP (`ai.md`). When the dashboard has them,
+does not name them, and absent means off / nothing written — never a `not_connected` section. **`state` is not
+written yet** (production omits it). **`themes` is** (`src/tools/themes.ts` `readRepoThemes`, called at the end of
+`getRepoDashboard`, so the route and `get_repo_dashboard` get the same field): a D1 aggregation on read — merged PRs
+per theme per UTC Monday week from `pr_themes`, a proposal's lane from the PRs it cited, the newest caption on the 8-week
+range — present only while the org's AI switch is on and the primary repository has an active theme or a proposal
+waiting on an admin; a failed read leaves it out and sets `degraded` (`ai.md` › Themes). `LOCAL_AI_PREVIEW` replaces both
+with the fixtures under `wrangler dev` only, never over MCP (`ai.md`). When the dashboard has them,
 `get_repo_dashboard` carries `state` with `tab: overview` (or no tab) and `themes` with `planning` (or no tab).
 
 **`get_repo_dashboard` is the Repo dashboard's read over MCP, for every principal too** — it exposes nothing
@@ -590,4 +594,6 @@ when present — absent, the tab is byte-for-byte what it was (`test/render.ai-a
   "Trov suggests these themes", each an `aiSuggestionChip` with Accept / Rename (an inline field, then accept
   with `{ value: { name } }`) / Remove (dismiss) for admins; a member reads "Waiting for an admin to accept
   themes". A 409 `not_available` shows "Not available yet". Empty: "Themes appear once this repo has 15 merged
-  pull requests."
+  pull requests." Accept / Rename / Remove are an admin's on the server too (the `themes.propose` handler's `role` and
+  `dismissRole`, `src/ai/themes-accept.ts`); production sends the field only when there is a lane to draw, so the
+  empty state is the preview's.

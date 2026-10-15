@@ -5,7 +5,7 @@ and the decided system, `docs/superpowers/specs/2026-10-15-server-ai-build.md` (
 `2026-10-14-server-ai.md`). The capture-time summaries and their allowance: `plans.md` › AI summaries. The keys:
 `env.md` › Summaries.
 
-**Nothing produces AI content yet** (Phases A and B of the decided build). The pass below has its machinery but
+**Repo themes are the first producer** (Phase D, "Themes" below); everything else is still the base (Phases A and B of the decided build). The pass below has its machinery but
 no job, no suggestion is ever written, and every AI field on the existing reads is omitted in production. What
 exists is the base: the client with both providers (and Claude's Message Batches), the allowances, the switches,
 the ROUTER (every write path marks the scopes it made stale in `ai_dirty`), the pass's machinery (debounce, stages,
@@ -49,7 +49,7 @@ ONLY in these places, all behind THE client (the decided build adds Ask Trov's r
 1. **The capture-time summary seams** — `src/tools/summarize.ts`, chosen per org by `orgSummarizers`
    (`src/plans/summaries.ts`), from the webhook and Sync GitHub. Kinds `summary_pr` / `summary_issue` (Claude).
 2. **The AI pass** — `src/ai/pass.ts` (and its batch half, `src/ai/batches.ts`), from the `*/10` repo tick. Jev
-   jobs and gates and Claude jobs (`src/ai/jobs.ts`); the registry is empty until Phases C and D.
+   jobs and gates and Claude jobs (`src/ai/jobs.ts`); the registry (`AI_JOBS`) holds the theme jobs (`src/ai/themes.ts`).
 3. **The Sift run** — `src/ai/sift.ts` (`startTagFit` / `continueTagFit`), started by an admin from the Tags routes
    (`src/tags/routes.ts`: adding a tag, accepting a suggested one, Find items) and run in the background
    (`waitUntil`). Kind `tag.fit` (Jev). Everything about Sift that is NOT a call — candidates, the switches' read,
@@ -79,7 +79,8 @@ either off stops a run in progress at its next request. The Tags tab says when t
 6-hourly progress / reconcile), AFTER the health pings, on what they left of the SAME `Budget`
 (`CRON_SUBREQUEST_BUDGET`, `CRON_WALL_BUDGET_MS` — `src/repo/dispatch.ts`, `repo-dashboard.md` › The repo cron).
 
-- **The job registry.** `AI_JOBS: readonly AiJob[]` is EMPTY (Phases C and D register the producers). A job
+- **The job registry.** `AI_JOBS: readonly AiJob[]` — one line per producer: `pr.theme`, `themes.propose`, `themes.caption`,
+  `themes.backfill` ("Themes" below; Phases C and D add the rest). A job
   (`src/ai/jobs.ts`) is one KIND of work over one scope (`scope`, and for a shared scope like `card` a `keyPrefix`):
   `input(ctx, scope)` reads its item from D1 (null = nothing to send: the scope is written as it is), and then —
   - a **Jev job** (`provider: "jev"`, a `JevKind`): `ask(item)` → ONE request (`state` + questions) per item;
@@ -142,7 +143,7 @@ never fails the write (`routeAi` logs the error's name with the org id).
 | doc proposal or ADR staged | `card:proposal:doc:<slug>:<version>` / `card:proposal:adr:<id>` | `ingestDocProposal`, `ingestAdrDraft` |
 | item lands in Unplaced | `card:unplaced:<id>` | `route_triage` |
 | doc promoted; artifact created or versioned | `card:tagfit:doc:<slug>` + `doc_drift:<slug>`; `card:tagfit:artifact:<slug>` + `doc_drift:artifact:<slug>` | `promote_doc`; `insertPage` (with a version) and `writeVersion` (`src/tools/artifacts.ts`) |
-| themes accepted | `theme_backfill:<repo>` | (Phase D's theme accept) |
+| themes accepted | `theme_backfill:<repo>` | the theme accept handler (`src/ai/themes-accept.ts`): Accept, Rename, a Merge into an active theme |
 | digest send hour one tick away | `person:<handle>`, URGENT | `prewarmDigests` (`src/notifications/cron.ts`), from the repo tick at `:50` |
 
 Some scopes are named by what the write knows and resolved in SQL in the same batch (`ScopeRef`): a GitHub login →
@@ -179,7 +180,7 @@ for any other scope, and clears when the scope is written.
 ## The cached org prefix (`src/ai/prefix.ts`)
 
 Every Haiku prompt starts with the org's prefix — `# Organization`, `# Tag vocabulary` (its live `org_tags`, not
-retired), `# Active themes` (none until Phase D), `# Active sprints` (`in_progress`), `# Plan narrative` — built ONCE
+retired), `# Active themes` (the org's active `repo_themes`, "name: description", at most 16), `# Active sprints` (`in_progress`), `# Plan narrative` — built ONCE
 per org turn (only when a Haiku call or batch request is about to be made), each part bounded and an empty part
 said as "none". It goes as the request's `prefix` with `cache: true`: the first user block, carrying
 `cache_control: {type: "ephemeral"}`, before the scope's input. One org per prompt: it is read through the org's own
@@ -188,7 +189,7 @@ context.
 ## Batches (`src/ai/batches.ts`, `0059_ai_batches`)
 
 Non-urgent kinds (theme proposals, theme backfill, captions, doc drift, the weekly recap, the narrative proposal —
-any Haiku job with `batch: true`; none exists yet) go through Anthropic's Message Batches API:
+any Haiku job with `batch: true`: today `themes.propose`, `themes.caption`, `themes.backfill`) go through Anthropic's Message Batches API:
 
 - **Submit.** During the tick their items are QUEUED (one item per request, past any gate, against `ai_runs`; at most
   `AI_BATCH_PER_TICK = 100`), and at its end ONE `batches.create` (one subrequest) carries them all, across orgs —
@@ -205,6 +206,61 @@ any Haiku job with `batch: true`; none exists yet) go through Anthropic's Messag
   `_canceled`, `no_answer`, `not_written`; a job gone or with a new prompt version: `batch_stale`). Then the batch
   keeps its counts (`collected`) and its request rows are deleted. A batch the provider no longer knows (404) is
   `lost`: its scopes are due again.
+
+## Themes — "Where the work went" (Phase D; `src/ai/themes.ts`, `src/ai/themes-accept.ts`, `src/tools/themes.ts`, `src/data/themes.ts`, `0064_repo_themes`)
+
+One lane per theme of the org's PRIMARY repository, a band per UTC Monday week sized by merged PRs. The model names
+themes and sorts PRs into them; an admin approves the themes; the server counts.
+
+- **Tables** (`0064_repo_themes`, all in `ORG_TABLES` and the reset seed): `repo_themes` (`proposed` → `active` |
+  `removed`; name unique among the repo's live themes; colour a `--p-*` key the SERVER picks; `seed_prs` the PRs the
+  proposal cited; `merged_into`; `created_by` = `trov` for a proposal and `decided_by` in `HANDLE_COLUMNS`),
+  `pr_themes` (one row per (repo, PR), `source` `ai` | `person`, `set_by` in `HANDLE_COLUMNS`), `repo_theme_captions`
+  (the last 10 per (repo, range), with the `basis_hash` of the shares they were written from). PRs are read from
+  `events` (`pr_merged`) by ORG — `events.repo` still holds 0042's constant default.
+- **`themes.propose`** (Haiku, Batch API, scope `theme_window:<repo>`, `promptVersion` `propose-1`): only when the repo
+  is the org's primary, has ≥ 15 CARDED PRs (a `pr_summaries` row with `what`) merged in 12 weeks, no proposal in the
+  last 30 days (the first time, then monthly — additions only: the active themes are listed as "do not repeat") and
+  none waiting on an admin; at most 8 live themes. Input: up to 120 PR cards (number, card title, what — never a body).
+  Output `{ themes: [{ name, description, prs }] }`, per theme (`checkProposal`): the name 1–40 characters, not taken;
+  only PR numbers from the input; ≥ 3 of them or the theme is not written. Each written theme is a `proposed` row and an
+  `ai_suggestions` row (item `theme` / `<repo>#<id>`, kind `themes.propose`, reason = its description, cites = its PRs).
+- **The admin's answers** (cookie routes, `src/ai/themes-accept.ts`; the handler's `role` and `dismissRole` are
+  `admin`): Accept `{}` (active as proposed), Rename `{ value: { name } }` (a live theme's name → `invalid`), Merge
+  `{ value: { mergeInto } }` (another live theme of the repo: this one is removed, its PRs join), Remove = dismiss.
+  Accept, Rename and a Merge into an active theme route `themes_accepted` → `theme_backfill:<repo>`.
+- **`pr.theme`** (Jev, `card:pr:<n>`, `pr-theme-1`): once the repo has an active theme, ONE `choice` request per merged PR
+  — the active themes (described) plus `(none of these)`; the state is the PR's card (title, what, why, impact). A pick
+  at ≥ 0.5 confidence is written `source='ai'` with the confidence (`prThemePick`); none-of-these or below is answered
+  and writes nothing. A PR a PERSON themed is never asked about; every AI write is an upsert guarded by
+  `WHERE pr_themes.source <> 'person'`.
+- **`themes.backfill`** (Haiku, Batch API, `theme_backfill:<repo>`): up to 100 PRs of the 12-week window that have no
+  theme, or an AI theme set before the newest acceptance — never a person's; output `{ prs: [{ pr, theme_id | null }] }`,
+  a pick outside the input or the active ids dropped (`checkBackfill`).
+- **`themes.caption`** (Haiku, Batch API, `theme_window:<repo>`): the SERVER computes each active theme's share of the
+  merged PRs per week of the 8 and per half (`captionBasis`) and passes them in; output `{ caption, theme_ids }`.
+  DISCARDED (`checkCaption`: nothing stored, the scope fails) when it has a digit (any script), names a theme id that is
+  not active or the name of a proposed / removed theme (unless an active name contains it), names none, or is outside
+  20–280 characters. The same shares as the stored caption make no call.
+- **The read** (`readRepoThemes`, from `getRepoDashboard` — so the screen and `get_repo_dashboard`'s planning tab): 8 weeks
+  and a quarter (13), each `AiThemes` with active lanes (PRs counted from `pr_themes`) and proposed lanes that have an
+  OPEN suggestion (counted from `seed_prs`, `suggestionId` set), at most 8; `prCount` = the PRs drawn; the newest caption
+  on the 8-week range only, and only while every theme it names is still active. ABSENT when the switch is off, there is
+  no repository, or neither an active theme nor a waiting proposal exists; a failed read leaves it out and marks the
+  dashboard `degraded`.
+- **`themeShares(ctx, repo, from, to)`** (`src/tools/themes.ts`) — each active theme's share of the PRs merged in a
+  window, null with no active theme: the read the roadmap's drift (Phase E) calls.
+- **Local**: `fixtures/dev/themes.json` + `scripts/seed/themes-dev.mjs` (appended by `scripts/seed-dev.mjs`) seed four
+  active themes, a person's pick, a caption and a proposal; `LOCAL_AI_PREVIEW` still overrides the field with fixtures.
+
+## Evals (`test/ai-evals/<kind>/`)
+
+Each kind's real examples with the expected answer, a live run by hand, and a CI test replaying the recorded answers
+at the `Response` level through THE client and the real job code. `test/ai-evals/run-live.mjs` (bundled with esbuild,
+keys read from a `.dev.vars` at run time) runs them: `pr.theme` — 39 of this repository's merged PRs (`gh pr list`),
+seven themes; live 2026-10-15: 38 / 39 (Jev tokens 26,384 in / 3,908 out). `themes.caption` — six eight-week windows of
+the same PRs; live: 6 / 6 kept by the rules (Claude tokens 3,954 in / 478 out / 3,820 cached). The replay
+(`test/ai-evals.themes.test.ts`) holds the floors: `pr.theme` ≥ 0.9, captions 1.0.
 
 ## Sections (`src/ai/sections.ts`)
 
@@ -305,13 +361,15 @@ the model cannot invent an item, because it returns no item. Three screens: Tick
 
 - **`ai_suggestions`** — a suggested value for one field of one item, with a REQUIRED reason, its cites, model and
   prompt version; `open` → `accepted` | `dismissed` (a person's decision, remembered) | `superseded` (a re-run of
-  the same kind for the same item replaces the OPEN one: `putSuggestion`, `src/data/ai.ts`). Nothing writes one yet.
+  the same kind for the same item replaces the OPEN one: `putSuggestion`, `src/data/ai.ts`). Theme proposals write them (kind `themes.propose`).
 - **Accept** — `POST /ai/suggestions/:id/accept { value? }` (`:id` is the row id; another org's id is
   `not_found`). In order: `not_found` (404) → `not_open` (409) → `not_available` (409: no handler for the kind) →
   `forbidden` (403: below the handler's role) → `invalid` (400: a body the contract refuses). Then the row is claimed by one guarded UPDATE, the handler writes the
   real field AS the cookie person, and on its throw the claim is undone. `AI_ACCEPT_HANDLERS` (`src/ai/suggestions.ts`)
-  is EMPTY, so today every accept is `not_available`. **A handler names its `role`**: `member` (anyone in the org)
-  or `admin`; **dismiss is open to every member** (`POST /ai/suggestions/:id/dismiss`). Theme accept / rename /
+  holds the theme handlers (kind `themes.propose`); any other kind is `not_available`. **A handler names its `role`**: `member` (anyone in the org)
+  or `admin`; **dismiss is open to every member** (`POST /ai/suggestions/:id/dismiss`) unless the handler names a `dismissRole` (a theme's
+  Remove is an admin's), and a handler may also act on a dismissal (`dismissed`), check a value before the claim (`valid`:
+  `invalid` 400) and refuse with a code (`AcceptRefused`) — `src/ai/accept.ts`. Theme accept / rename /
   remove go through the same two routes.
 - **"Wrong?"** — `POST /ai/feedback` (`AiFeedbackBody`) records `ai_feedback` for the cookie person, ONE row per
   (person, item), idempotent; it hides the item for that person (`hiddenFor(ctx, handle, itemType)`, what a
@@ -324,7 +382,7 @@ the model cannot invent an item, because it returns no item. Three screens: Tick
 
 The contracts are typed (`shared/ai-core.ts`, schemas in `shared/ai.ts`): `DashboardData.brief?` (`/me/dashboard`,
 `get_my_work`), `RepoDashboard.state?` / `themes?` (`/repo/dashboard`, `get_repo_dashboard`), `FeedRow.ai?` (`/feed`,
-`get_feed`). Production returns none of them. `get_repo_dashboard` carries `state` with `tab: overview` (or no
+`get_feed`). Production returns only `themes` ("Themes" below), and only when there is something to show. `get_repo_dashboard` carries `state` with `tab: overview` (or no
 tab) and `themes` with `planning` (or no tab) when the dashboard has them — they are not sections, so
 `REPO_TAB_SECTIONS` does not name them (`src/tools/repo-agent.ts`).
 
@@ -353,4 +411,6 @@ dismiss, "Wrong?"), `test/ai.preview.test.ts` (fields absent in production, the 
 parsing), `test/tag-fit.test.ts` (Sift: the run, its switches — the org's included, mid-run — and the allowance),
 `test/secrets.mcp.test.ts` (the call sites, the MCP boundary, TypeSafe's URL in one file),
 `test/plans.limits.test.ts` (`ai_chat`, per seat on Pro), `test/ai.filter.test.ts` and `test/render.ai-filter.test.ts`
-(the plain-language filter).
+(the plain-language filter), `test/ai.themes.test.ts` (themes: the threshold, the cadence, cites, person-over-AI, the
+caption rules, admin-only decisions, batch results for a deleted or switched-off org, the read and the dev seed) and
+`test/ai-evals.themes.test.ts` (the theme evals, replayed).

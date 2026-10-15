@@ -178,19 +178,23 @@
   to its provider — Claude or Jev — and `providerFor`) and `src/ai/schema.ts`; `src/tools/classify.ts` (the Jev
   provider, the one file that names TypeSafe's URL; only the client imports it); `src/ai/sift.ts` (the Sift run —
   the rest of Sift is `src/tools/tag-fit.ts`, which MCP reaches and which imports no client);
-  `src/ai/pass.ts` (the AI pass in the repo tick — its job registry `AI_JOBS` is empty) with `src/ai/jobs.ts` (the
+  `src/ai/pass.ts` (the AI pass in the repo tick — its job registry `AI_JOBS`) with `src/ai/jobs.ts` (the
   job interface), `src/ai/batches.ts` (its Message Batches half), `src/ai/prefix.ts` (the cached org prefix) and
   `src/ai/sections.ts` (section isolation); THE ROUTER `src/tools/ai-route.ts` (event → scopes, `routeAi`) and
   `src/data/ai-dirty.ts` (its rows) — outside `src/ai/` because MCP's writers call it — re-exported by
   `src/ai/router.ts`; `src/data/ai-batches.ts` (the batches' platform rows); `src/ai/eligibility.ts`
   (`aiEligibility`: ok / off / no_key / capped), `src/ai/routes.ts` (Org settings › AI, accept / dismiss,
-  "Wrong?" — cookie only, `/api/o/:slug/ai/…`), `src/ai/suggestions.ts` (`AI_ACCEPT_HANDLERS`, empty),
+  "Wrong?" — cookie only, `/api/o/:slug/ai/…`), `src/ai/suggestions.ts` (`AI_ACCEPT_HANDLERS`; the handler contract in `src/ai/accept.ts`), the repo themes —
+  `src/ai/themes.ts` (the `pr.theme`, `themes.propose`, `themes.caption`, `themes.backfill` jobs),
+  `src/ai/themes-accept.ts` (an admin's Accept / Rename / Merge / Remove), `src/tools/themes.ts` (the read behind
+  `RepoDashboard.themes`, and `themeShares`) and `src/data/themes.ts` (their rows) —,
   `src/ai/preview.ts` (`LOCAL_AI_PREVIEW`, `wrangler dev` only); the tables' one repository `src/data/ai.ts`;
   the screens' contracts `shared/ai-core.ts` (zod-free) + `shared/ai.ts` and the preview's
   `shared/ai-fixtures.ts`. Migration `0055_ai` (`orgs.ai_automation`, the switch, and
   `ai_suggestions`, `ai_feedback`), `0058_ai_dirty` (`ai_dirty`, the router's table, and
   `orgs.ai_chat_auto`, Ask Trov's Auto switch) and `0059_ai_batches` (the platform tables `ai_batches` /
-  `ai_batch_requests`, and `ai_dirty.marked_at` / `urgent`); the monthly `ai_runs` and `ai_chat` (Ask Trov, per seat on Pro)
+  `ai_batch_requests`, and `ai_dirty.marked_at` / `urgent`), `0064_repo_themes` (`repo_themes`, `pr_themes`,
+  `repo_theme_captions`); the monthly `ai_runs` and `ai_chat` (Ask Trov, per seat on Pro)
   allowances are in `PLANS`
   (not listed on the pricing page yet).
   Then `0057_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
