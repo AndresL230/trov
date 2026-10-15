@@ -7,7 +7,7 @@ import type { PollOutcome } from "@shared/repo";
 import type { TenantContext } from "../data/sql";
 import type { RepoEnvConfig } from "./config";
 import { countMetric, totalMetric } from "./product";
-import { putMetric, putMetrics } from "./store";
+import { deleteSnapshot, putMetric, putMetrics, putSnapshot } from "./store";
 import type { RepoMetric } from "./types";
 
 export type { PollOutcome };
@@ -233,6 +233,113 @@ export function saplingProductMetrics(body: unknown, clean: (s: string) => strin
   return { counts, totals, dropped, droppedCount, namesOmitted };
 }
 
+// ── app metrics contract v3 (docs/superpowers/specs/2026-10-15-app-metrics-v3.md) ──
+// The body SAYS what it holds: `version: 3`, optionally the `part` it describes and a `label`, and `groups` —
+// each with its own id, label, SHAPE (`ranked` / `stats` / `figure` / `status`), an optional note, and metrics that
+// are all windowed (`values: { 24h, 7d, 30d }`) or all point-in-time (`value`). The values are stored exactly as v2
+// stores `counts` / `totals` (`sap_c_<key>_<window>` / `sap_t_<key>`); the DESCRIPTION — labels, groups, shapes,
+// formats, tones, never a value — is the environment's `app_metrics:<env>` snapshot, so the screen draws whatever a
+// new producer reports with no Trov change. v1 and v2 bodies parse exactly as before (they carry no `version`).
+export const APP_METRICS_V3_SHAPES = ["ranked", "stats", "figure", "status"] as const;
+export type AppMetricsShape = (typeof APP_METRICS_V3_SHAPES)[number];
+const V3_GROUP_ID = /^[a-z][a-z0-9_]{0,31}$/;
+const V3_MAX_GROUPS = 12;
+const V3_MAX_METRICS_PER_GROUP = 24;
+const V3_LABEL_CHARS = 60;
+const V3_NOTE_CHARS = 160;
+/** A label or note: printable text, folded to one line, `1..max` characters after trimming — else null. Another
+ *  service's words: they are stored for the screen, which escapes them; nothing here interprets them. */
+const v3Text = (v: unknown, max: number, clean: (s: string) => string): string | null => {
+  if (typeof v !== "string") return null;
+  const s = clean(v).replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+  return s && s.length <= max ? s : null;
+};
+
+/** One metric of a v3 group, as the snapshot keeps it. */
+export interface AppMetricsV3Metric { key: string; label: string; format: "int" | "cents"; tone: "bad" | "neutral" | null }
+/** One group of a v3 body, as the snapshot keeps it — `window: "now"` = point-in-time values, else windowed. */
+export interface AppMetricsV3Group { id: string; label: string; shape: AppMetricsShape; note: string | null; window: "range" | "now"; metrics: AppMetricsV3Metric[] }
+/** The `app_metrics:<env>` snapshot: what the last body DESCRIBED (no value), or `{ version: 2 }` after a v1 / v2 body. */
+export type AppMetricsDescriptor = { version: 3; part: string | null; label: string | null; groups: AppMetricsV3Group[] } | { version: 2 };
+export const APP_METRICS_SNAPSHOT_PREFIX = "app_metrics:";
+export const appMetricsSnapshotKind = (envKey: string): string => `${APP_METRICS_SNAPSHOT_PREFIX}${envKey}`;
+
+export interface AppMetricsV3 {
+  descriptor: Extract<AppMetricsDescriptor, { version: 3 }>;
+  /** The values, in v2's two shapes — stored by the same writer. */
+  counts: Record<string, ProductWindows>;
+  totals: Record<string, number>;
+  /** What was refused, BY NAME (`groups.<id>`, `groups.<id>.<key>`), ≤ 20, each scrubbed before it is cut. */
+  dropped: string[];
+  droppedCount: number;
+}
+
+/**
+ * A v3 body's groups, validated PER GROUP and PER METRIC — one bad metric never costs its group, one bad group never
+ * the others, and nothing here depends on `active_users`. Pure; never throws. A group is dropped whole when it is not
+ * an object, its id is not `^[a-z][a-z0-9_]{0,31}$` (or repeats), its label is not 1–60 printable characters, its
+ * shape is not one of the four, it has no metric list, or the body holds more than 12 groups (the ones past 12). A
+ * metric is dropped when its key is not v2's key pattern or repeats one already kept anywhere in the body, its label is
+ * not 1–60 printable characters, its value is not v2's (a JSON integer in 0..1e12; windows exactly `24h` / `7d` / `30d`,
+ * nesting), it is the other kind than the group's first metric, or the group or body caps are full (24 a group; 48
+ * windowed and 24 point-in-time keys in the body, counting v2 `counts` / `totals` the caller already kept). A group
+ * left with no metric is dropped too.
+ */
+export function appMetricsV3(body: unknown, clean: (s: string) => string = (s) => s, taken: { counts: number; totals: number; keys: ReadonlySet<string> } = { counts: 0, totals: 0, keys: new Set() }): AppMetricsV3 {
+  const top = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
+  const counts = Object.create(null) as Record<string, ProductWindows>;
+  const totals = Object.create(null) as Record<string, number>;
+  const dropped: string[] = [];
+  let droppedCount = 0;
+  const drop = (name: string) => { droppedCount++; if (dropped.length < PRODUCT_DROPPED_NAMES) dropped.push(clean(name).slice(0, PRODUCT_NAME_CHARS * 2).replace(/[^\x20-\x7e]/g, "?")); };
+  const keys = new Set<string>(taken.keys);
+  let nCounts = taken.counts, nTotals = taken.totals;
+  const part = typeof top.part === "string" && /^[a-z0-9_-]{1,32}$/.test(top.part) ? top.part : null;
+  const label = v3Text(top.label, V3_LABEL_CHARS, clean);
+  const groups: AppMetricsV3Group[] = [];
+  const raw = Array.isArray(top.groups) ? top.groups : [];
+  raw.forEach((g, i) => {
+    const o = g && typeof g === "object" && !Array.isArray(g) ? (g as Record<string, unknown>) : null;
+    const id = o && typeof o.id === "string" && V3_GROUP_ID.test(o.id) ? o.id : null;
+    const name = `groups.${id ?? i}`;
+    const glabel = o ? v3Text(o.label, V3_LABEL_CHARS, clean) : null;
+    const shape = o && (APP_METRICS_V3_SHAPES as readonly unknown[]).includes(o.shape) ? (o.shape as AppMetricsShape) : null;
+    if (!o || !id || groups.some((x) => x.id === id) || !glabel || !shape || !Array.isArray(o.metrics) || groups.length >= V3_MAX_GROUPS) { drop(name); return; }
+    const note = v3Text(o.note, V3_NOTE_CHARS, clean);
+    let window: "range" | "now" | null = null;
+    const metrics: AppMetricsV3Metric[] = [];
+    for (const m of o.metrics as unknown[]) {
+      const mo = m && typeof m === "object" && !Array.isArray(m) ? (m as Record<string, unknown>) : {};
+      const key = typeof mo.key === "string" && PRODUCT_KEY.test(mo.key) ? mo.key : null;
+      const mname = `${name}.${typeof mo.key === "string" ? mo.key : "?"}`;
+      const mlabel = v3Text(mo.label, V3_LABEL_CHARS, clean);
+      const kind: "range" | "now" | null = Object.hasOwn(mo, "values") ? "range" : Object.hasOwn(mo, "value") ? "now" : null;
+      if (!key || keys.has(key) || !mlabel || !kind || (window && kind !== window) || metrics.length >= V3_MAX_METRICS_PER_GROUP) { drop(mname); continue; }
+      if (kind === "range") {
+        const v = mo.values;
+        const entry = v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+        const own = entry ? Object.keys(entry) : [];
+        const [h24, d7, d30] = SAPLING_RANGES.map((r) => entry?.[r]);
+        if (!entry || own.length !== 3 || !SAPLING_RANGES.every((r) => Object.hasOwn(entry, r)) || !productInt(h24) || !productInt(d7) || !productInt(d30)
+          || h24 > d7 || d7 > d30 || nCounts >= PRODUCT_MAX_COUNTS) { drop(mname); continue; }
+        counts[key] = { h24, d7, d30 };
+        nCounts++;
+      } else {
+        if (!productInt(mo.value) || nTotals >= PRODUCT_MAX_TOTALS) { drop(mname); continue; }
+        totals[key] = mo.value;
+        nTotals++;
+      }
+      window = kind;
+      keys.add(key);
+      metrics.push({ key, label: mlabel, format: mo.format === "cents" ? "cents" : "int", tone: mo.tone === "bad" || mo.tone === "neutral" ? mo.tone : null });
+    }
+    if (!metrics.length || !window) { drop(name); return; }
+    groups.push({ id, label: glabel, shape, note, window, metrics });
+  });
+  if (Object.hasOwn(top, "groups") && !Array.isArray(top.groups)) drop("groups.*");
+  return { descriptor: { version: 3, part, label, groups }, counts, totals, dropped, droppedCount };
+}
+
 /**
  * Hourly `active_users_24h` / `_7d` / `_30d` per environment, `env` = the
  * config key, `part` = "". Trov cannot compute these — only Sapling's
@@ -313,30 +420,49 @@ export async function pollSaplingMetrics(
       // whole-or-nothing, `counts` / `totals` are judged per key. Everything
       // that survives is ONE `putMetrics` call — batches of 50, not a D1
       // round-trip per row (a full v2 body is 171 rows).
-      const parsed = saplingActiveUsers(body);
+      // Contract v3 (`version: 3`): `active_users` becomes optional — absent, nothing is refused; present, it is judged
+      // exactly as before — and `groups` describe themselves (`appMetricsV3`). A v1 / v2 body has no `version`.
+      const isV3 = record(body).version === 3;
+      const usersAbsent = isV3 && !Object.hasOwn(record(body), "active_users");
+      const parsed = usersAbsent ? null : saplingActiveUsers(body);
       const product = saplingProductMetrics(body, scrub); // the scrub goes IN: a name is scrubbed before it is cut
+      const v3 = isV3 ? appMetricsV3(body, scrub, {
+        counts: Object.keys(product.counts).length, totals: Object.keys(product.totals).length,
+        keys: new Set([...Object.keys(product.counts), ...Object.keys(product.totals)]),
+      }) : null;
       const rows: RepoMetric[] = [];
       const gauge = (metric: string, value: number) => rows.push({ metric, env: cfg.key, part: "", value, at });
-      if (!("refused" in parsed)) for (const [i, range] of SAPLING_RANGES.entries()) gauge(`active_users_${range}`, parsed.values[i]);
-      for (const key of Object.keys(product.counts)) {
-        const c = product.counts[key];
+      if (parsed && !("refused" in parsed)) for (const [i, range] of SAPLING_RANGES.entries()) gauge(`active_users_${range}`, parsed.values[i]);
+      const allCounts = { ...product.counts, ...(v3?.counts ?? {}) };
+      const allTotals = { ...product.totals, ...(v3?.totals ?? {}) };
+      for (const key of Object.keys(allCounts)) {
+        const c = allCounts[key];
         gauge(countMetric(key, "24h"), c.h24);
         gauge(countMetric(key, "7d"), c.d7);
         gauge(countMetric(key, "30d"), c.d30);
       }
-      for (const key of Object.keys(product.totals)) gauge(totalMetric(key), product.totals[key]);
+      for (const key of Object.keys(allTotals)) gauge(totalMetric(key), allTotals[key]);
       written = await putMetrics(ctx, rows);
+      // What the body DESCRIBED (v3) — or, for a v1 / v2 body, no description at all (deleted, a no-op when there is
+      // none), so an older description never outlives a producer that went back to v2. A computed write, direct
+      // (src/repo/store.ts), like every snapshot.
+      if (v3) await putSnapshot(ctx, appMetricsSnapshotKind(cfg.key), v3.descriptor, new Date(now).toISOString());
+      else await deleteSnapshot(ctx, appMetricsSnapshotKind(cfg.key));
       // Dropped keys: NAMES only, handed to the outcome. Each name was scrubbed
       // INSIDE the validator, before it was cut to 40 characters — this second
       // scrub is belt and braces, and could not catch a token already cut.
-      const droppedNote = product.droppedCount
-        ? scrub(`${product.droppedCount} key${product.droppedCount === 1 ? "" : "s"} dropped: ${product.dropped.join(", ")}${product.namesOmitted ? ", …" : ""}`).slice(0, 200)
+      const droppedCount = product.droppedCount + (v3?.droppedCount ?? 0);
+      const allNames = [...product.dropped, ...(v3?.dropped ?? [])];
+      const droppedNames = allNames.slice(0, PRODUCT_DROPPED_NAMES);
+      const omitted = product.namesOmitted || (v3 !== null && v3.dropped.length < v3.droppedCount) || allNames.length > droppedNames.length;
+      const droppedNote = droppedCount
+        ? scrub(`${droppedCount} key${droppedCount === 1 ? "" : "s"} dropped: ${droppedNames.join(", ")}${omitted ? ", …" : ""}`).slice(0, 200)
         : "";
       // The contract's core part failing is still a FAILED poll — `written`
       // (kept by the catch below) says what the product half stored anyway, and
       // the refusal carries the dropped note with it: the catch builds the
       // outcome from this message alone, so a note left out here is never seen.
-      if ("refused" in parsed) throw new Error(`${parsed.refused}${droppedNote ? ` · ${droppedNote}` : ""}: ${excerpt(text)}`);
+      if (parsed && "refused" in parsed) throw new Error(`${parsed.refused}${droppedNote ? ` · ${droppedNote}` : ""}: ${excerpt(text)}`);
       // Logged once per environment (the refusal above logs it as part of its own line).
       if (droppedNote) console.error("pollSaplingMetrics", cfg.key, droppedNote);
       outcomes.push(okOutcome(cfg.key, written, droppedNote));

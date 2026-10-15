@@ -230,12 +230,29 @@ export interface RepoProductCount {
   raw: Record<RepoRange, number | null>;
   trend: number[];
   note?: string;
+  /** Contract v3, a `status` group: `neutral` never raises a colour when non-zero (`bad` is the default). */
+  tone?: "bad" | "neutral";
 }
 export interface RepoProductTotal { key: string; label: string; value: string | null; raw: number | null; trend: number[]; note?: string }
-export interface RepoProductGroup { id: string; title: string; metrics: RepoProductCount[] }
+/** How a contract-v3 group asks to be drawn (docs/superpowers/specs/2026-10-15-app-metrics-v3.md): a ranked bar list,
+ *  figures over labels, one feature figure, or a status list. */
+export type RepoProductShape = "ranked" | "stats" | "figure" | "status";
+export interface RepoProductGroup {
+  id: string;
+  title: string;
+  metrics: RepoProductCount[];
+  /** Contract v3 only: the group's own shape — the screen draws it by shape, never by `id` or a key. Absent: a v2
+   *  group, drawn by its registry `id` as before. */
+  shape?: RepoProductShape;
+  /** Contract v3: point-in-time values (the same figure in every range — "right now"). */
+  now?: boolean;
+  /** Contract v3: the group's one caveat line. */
+  note?: string;
+}
 /** Every configured environment is listed, in config order — one that has
- *  reported nothing has no groups and no totals. */
-export interface RepoProductEnv { name: string; groups: RepoProductGroup[]; totals: RepoProductTotal[] }
+ *  reported nothing has no groups and no totals. Contract v3 adds what the body
+ *  said about itself: its `version`, the `part` it describes and its `label`. */
+export interface RepoProductEnv { name: string; groups: RepoProductGroup[]; totals: RepoProductTotal[]; version?: 3; part?: string | null; label?: string | null }
 export type RepoProduct = RepoProductEnv[];
 
 // ── Team & Planning ─────────────────────────────────────────────────────────

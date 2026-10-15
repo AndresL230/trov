@@ -68,10 +68,28 @@ export async function putSnapshot(ctx: TenantContext, kind: string, data: unknow
     ctx.orgId, kind, JSON.stringify(data), now);
 }
 
+/** Remove one snapshot (a no-op when there is none) — what a producer that stopped describing itself leaves. */
+export async function deleteSnapshot(ctx: TenantContext, kind: string): Promise<void> {
+  await run(ctx, `DELETE FROM repo_snapshots WHERE org_id = ? AND kind = ?`, ctx.orgId, kind);
+}
+
 export async function getSnapshot<T>(ctx: TenantContext, kind: string): Promise<{ data: T; computedAt: string } | null> {
   const row = await first<{ json: string; computed_at: string }>(ctx, `SELECT json, computed_at FROM repo_snapshots WHERE org_id = ? AND kind = ?`, ctx.orgId, kind);
   if (!row) return null;
   try { return { data: JSON.parse(row.json) as T, computedAt: row.computed_at }; } catch { return null; }
+}
+
+/** Every snapshot whose kind starts with `prefix` (e.g. `app_metrics:` — one per environment), in ONE statement: a
+ *  range on the primary key (`kind >= prefix AND kind < prefix` with its last character bumped), never a LIKE. A row
+ *  whose JSON does not parse is left out. */
+export async function snapshotsByPrefix<T>(ctx: TenantContext, prefix: string): Promise<{ kind: string; data: T; computedAt: string }[]> {
+  if (!prefix) return [];
+  const upper = prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
+  const rows = await all<{ kind: string; json: string; computed_at: string }>(ctx,
+    `SELECT kind, json, computed_at FROM repo_snapshots WHERE org_id = ? AND kind >= ? AND kind < ?`, ctx.orgId, prefix, upper);
+  return rows.flatMap((r) => {
+    try { return [{ kind: r.kind, data: JSON.parse(r.json) as T, computedAt: r.computed_at }]; } catch { return []; }
+  });
 }
 
 /** THE format of `repo_metrics.at`, enforced at the one write seam. Every read
