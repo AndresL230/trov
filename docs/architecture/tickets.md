@@ -34,7 +34,26 @@ one whose neighbours are too close to split. The drag is POINTER-driven (`web/sr
 drag-and-drop — the browser's drag image is a shrunken snapshot the page cannot size: a full-size clone
 follows the pointer, a slot the other cards slide around (FLIP) marks where it will land, rerenders are
 HELD for the whole drag, and the click a drag's release fires is swallowed. Mouse and pen only — touch
-scrolls. The queue's search box and Filter menu (Assignee incl. any one person, Category, Priority, Sprint)
+scrolls.
+
+**The default view hides declined** (owner's ruling, 2026-10-15). The queue opens on **All** (`qSeg: "all"`, the
+board), and All is every status BUT `declined`: `SEG_STATUSES` in `web/src/tickets.ts` is both what a segment shows
+and the board's columns, so the All board has four columns (Triage, In progress, Testing, Done) and the table no
+declined row. Done stays in All. Declined tickets — Ask Trov's undone ones included — are reached on purpose through
+**Closed** (Done + Declined), the existing switch; its options' tooltips say what each holds. The narrowing is
+client-side (`segRows`, the first step of `queueRows`): the server's `seg=all` still returns every status, so MCP
+`list_tickets`, the attach dialog and the plain-language filter's `status: all` read the same as before. Every count
+is over what is shown — "N shown", a sprint group's count, a column's count and the Filter menu's Priority, Sprint
+and person counts. To decline from the board, open Closed and drop on Declined, or use the status menu on the
+ticket. A card that a refetch finds DECLINED while a view that hides declined is up (the screen is `tickets`)
+leaves by the AI kit's one exit (`web-ui.md` › The AI kit — Review's exit on a screen rebuilt per paint):
+`declinedLeavers(prev, next, seg)` names the rows, `state.qLeaving` holds each as it was shown with when its exit
+began, `queueView` draws it in its old place inside `aiLeave` (`--leave-t`, `inert`) for `AI_EXIT_MS`, counted
+nowhere, then a timer drops it; nothing under reduced motion. The saved drag order is unaffected: a declined
+ticket keeps its `board_rank`, and a drop's placement is computed over its target column only
+(`test/render.tickets.test.ts` › the default view hides declined tickets).
+
+The queue's search box and Filter menu (Assignee incl. any one person, Category, Priority, Sprint)
 are the Artifacts library's; Assignee (anyone / me / unassigned) and Category filter server-side, a person,
 Priority, Sprint and search narrow the loaded rows (`queueRows`). With the org's AI on, a plain-language filter box
 sits above them (`ai.md` › The plain-language filter): its answer sets these same controls — the Open / Closed / All

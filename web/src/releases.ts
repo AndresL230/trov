@@ -211,6 +211,7 @@ export const RELEASES: Release[] = [
       "Digests no longer list each merged pull request with What / Why / Impact, each assigned issue with its labels, or the whole plan change: My Work, the Feed and the Roadmap hold those. With Trov's AI off, the digest lists your three most recently updated assigned tickets instead of the brief.",
       "Org settings has an AI tab: whether Trov's AI is on for your organization, this month's use of each AI allowance, and exactly what is sent to Anthropic and to TypeSafe AI, and what never is. An admin turns it on or off; off stops Sift too.",
       "Turning Trov's AI off now also stops the summaries of new pull requests and issues, from GitHub and from Sync. Summaries already written stay as they are, and the next Sync after it is back on catches up.",
+      "Tickets no longer shows declined tickets in its All view, on the board or in the table, so tickets Ask Trov made and then undid stay out of the way. Pick Closed to see them beside the done ones.",
     ],
     ops: [
       "Apply `0058_ai_dirty` (the deploy does it). ADDITIVE: the `ai_dirty` table (the AI router writes it from `0059` on) and `orgs.ai_chat_auto` (on for every organization). Safe on the Worker from before it; the by-hand rollback is in the file's header.",
@@ -309,6 +310,7 @@ export const RELEASES: Release[] = [
         "Deleting an account also deletes its logins' `ai_sessions`; its digests stay, their `subject` tombstoned like every handle column. A reserved handle (`github-webhook`, `trov`) can never be deleted (#178)",
         "Trov plugin 0.9.0 (skill text only): `record-session` records decisions, findings and incidents and cites its commits — what shipped is Trov's session digest; `load-context` reads `get_repo_dashboard`'s `state` first; the `trov` skill says both (#178)",
         "The brief reads the session digests Trov wrote for the person (`origin = 'ai'`, `subject`): Now carries the latest `Status:` digest, Recently the week's digests beside their own notes (Q61) (#178)",
+        "The Tickets screen's default view hides declined tickets (owner's ruling, 2026-10-15): `SEG_STATUSES.all` in `web/src/tickets.ts` is every status but `declined`, so the All board draws no Declined column and the table no declined row; `segRows` narrows the loaded rows before search, the filter menu's counts and \"N shown\". Closed (Done + Declined) is the way to them, and the switch's tooltips say so. A card a refetch finds declined while All is up leaves by the AI kit's one exit (`declinedLeavers`, `state.qLeaving`, `aiLeave`). The server's `seg=all` and MCP `list_tickets` are unchanged (#178)",
         "Deleting an account also deletes the person's stored briefs (`person_brief`), in every organization (#178)",
         "`switchBtn` (`web/src/notifications.ts`) takes an optional accessible name and a busy state; without them its markup is unchanged (#178)",
         "My Work › Queued handoffs: the button is Claim & copy (`mwHandoffClaim`): it copies the newest handoff as a prompt and claims it, as the handoff screen's Claim does (#178)",
