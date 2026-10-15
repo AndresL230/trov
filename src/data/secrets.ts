@@ -277,8 +277,9 @@ const parseObject = (json: string): Record<string, unknown> => {
 /**
  * The org's recent audit rows, newest first: this module's secret trail (`org_audit`) merged with the
  * repository / environment changes src/integrations/settings.ts records in `org_admin_audit` — and the
- * GitHub App's (`github.*`, src/github-app/store.ts) — (0042_organizations —
- * `org_audit.action` has a CHECK that admits only the five secret actions). One list, the way
+ * GitHub App's (`github.*`, src/github-app/store.ts) and the hosting changes src/hosting/ records there
+ * (`part.*`, `hosting.*` — 0057_hosting_providers) — (0042_organizations — `org_audit.action` has a CHECK
+ * that admits only the five secret actions). One list, the way
  * `GET /api/platform/audit` merges the same two tables; ids are `s<n>` / `a<n>`. Rows of one batch share
  * their `at`: there the secret rows come first (a removed environment's secret deletions, then the
  * removal), each trail in its own id order.
@@ -289,7 +290,7 @@ export async function listOrgAudit(ctx: TenantContext, limit = 50): Promise<OrgA
        SELECT 's' || s.id AS id, s.actor, s.action, s.target, s.detail, s.at, s.id AS n, 1 AS secret FROM org_audit s WHERE s.org_id = ?
        UNION ALL
        SELECT 'a' || a.id AS id, a.actor, a.action, a.target, a.detail, a.at, a.id AS n, 0 AS secret FROM org_admin_audit a
-        WHERE a.org_id = ? AND (a.action LIKE 'repo.%' OR a.action LIKE 'environment.%' OR a.action LIKE 'github.%')
+        WHERE a.org_id = ? AND (a.action LIKE 'repo.%' OR a.action LIKE 'environment.%' OR a.action LIKE 'github.%' OR a.action LIKE 'part.%' OR a.action LIKE 'hosting.%')
      ) ORDER BY at DESC, secret DESC, n DESC LIMIT ?`, ctx.orgId, ctx.orgId, limit);
   return rows.map(({ n: _n, secret: _secret, ...r }) => ({ ...r, detail: parseObject(r.detail) }));
 }
@@ -378,6 +379,34 @@ export async function rotateSecret(ctx: TenantContext, kind: IntegrationKind, sc
 }
 
 /**
+ * The statements that STORE `value` as the org's secret for (kind, scope) — a set when none is stored, a
+ * rotate otherwise (one upsert either way, so a set that raced another lands as the rotate it is) — with
+ * its `secret.set` / `secret.rotate` audit row and, when given, the integration's `config` (+ its audit row),
+ * for a caller that must write them in ITS OWN batch beside another row: a hosting install binds its
+ * connection row and its credential atomically (src/hosting/connections.ts), so a lost race for the
+ * installation (a UNIQUE violation on that row) stores nothing. Admin+, the value checked like `setSecret`'s.
+ */
+export async function secretPutStmts(
+  ctx: TenantContext, kind: IntegrationKind, scope: string, value: string, config?: IntegrationConfig, at: string = nowIso()
+): Promise<Stmt[]> {
+  requireRole(ctx, "admin");
+  const problem = secretValueProblem(kind, value);
+  if (problem) throw new SecretValueError(problem);
+  const existed = (await getSecretMeta(ctx, kind, scope)) !== null;
+  const dek = await activeDek(ctx);
+  const sealed = await seal(dek.key, secretAad(ctx.orgId, kind, scope), value);
+  const hint = hintOf(value);
+  return [
+    stmt(ctx, `INSERT INTO org_secrets (org_id, kind, scope, ciphertext, iv, key_version, hint_last4, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(org_id, kind, scope) DO UPDATE SET ciphertext = excluded.ciphertext, iv = excluded.iv, key_version = excluded.key_version,
+                 hint_last4 = excluded.hint_last4, rotated_at = excluded.created_at, last_error = NULL`,
+      ctx.orgId, kind, scope, sealed.ciphertext, sealed.iv, dek.version, hint, ctx.userId, at),
+    auditStmt(ctx, existed ? "secret.rotate" : "secret.set", targetOf(kind, scope), { hint_last4: hint, key_version: dek.version }, at),
+    ...(config ? configStmts(ctx, kind, scope, config, at) : []),
+  ];
+}
+
+/**
  * The statements that delete each of `targets` that is actually stored, each with its `secret.delete`
  * audit row — for a caller that removes secrets inside its OWN batch (deleting an environment or a
  * repo deletes its secrets with it, §8.7.3). Empty when none is stored.
@@ -396,6 +425,26 @@ export async function secretDeleteStmts(
     );
   }
   return out;
+}
+
+/**
+ * `secretDeleteStmts` for ONE target, for the provider-side revocation path ONLY (src/hosting/webhook.ts):
+ * a hosting provider's VERIFIED "uninstalled" notice deletes the credential that installation granted, as the
+ * org's SYSTEM tenant — there is no person behind it, so the admin gate above cannot pass, and it is not
+ * weakened for this. This function asserts the opposite instead: a system context and nothing else (a
+ * person's session — whatever its role — and a bearer are refused). Same statements, same `secret.delete`
+ * audit shape (`actor` = the system tenant's actor). Empty when nothing is stored.
+ */
+export async function systemRevocationDeleteStmts(
+  ctx: TenantContext, kind: IntegrationKind, scope: string, reason: string, at: string = nowIso()
+): Promise<Stmt[]> {
+  if (ctx.role !== "system" || ctx.via !== "system") throw new SecretAccessError();
+  const meta = await getSecretMeta(ctx, kind, scope);
+  if (!meta) return [];
+  return [
+    stmt(ctx, `DELETE FROM org_secrets WHERE org_id = ? AND kind = ? AND scope = ?`, ctx.orgId, kind, scope),
+    auditStmt(ctx, "secret.delete", targetOf(kind, scope), { hint_last4: meta.hint_last4, reason }, at),
+  ];
 }
 
 /** Delete a secret (admin+). None stored → `SecretNotFoundError`. */
@@ -506,16 +555,12 @@ export async function currentKeyVersion(ctx: TenantContext): Promise<number | nu
 // kind / scope. Phase 7 deletes the fallback, this constant and those Worker secrets.
 const LEGACY_ENV_ORG = SAPLINGLEARN_ORG_ID;
 
-/** `RAILWAY_TOKEN_<KEY>` — src/repo/cron.ts `railwayTokens`' naming (key upper-cased, non-alphanumerics → `_`). */
-const railwayEnvName = (scope: string): string => `RAILWAY_TOKEN_${scope.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
-
 /** The legacy Worker secret that answers for (kind, scope), or null. Does NOT check the org. */
 async function legacyEnvValue(ctx: TenantContext, env: Env, kind: IntegrationKind, scope: string): Promise<string | null> {
   const pick = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
   switch (kind) {
     case "github_token": return scope === "" ? pick(env.GITHUB_SERVICE_TOKEN) : null;
     case "cloudflare_analytics": return scope === "" ? pick(env.CF_ANALYTICS_TOKEN) : null;
-    case "railway": return scope ? pick((env as unknown as Record<string, unknown>)[railwayEnvName(scope)]) : null;
     case "metrics_endpoint": return scope ? pick(env.SAPLING_METRICS_TOKEN) : null; // ONE token for every environment
     case "github_webhook": {
       // Only the repo the old /webhook/github still routes to (`legacy_hook = 1`, §8.5).
@@ -523,6 +568,10 @@ async function legacyEnvValue(ctx: TenantContext, env: Env, kind: IntegrationKin
       const repo = await first<{ legacy_hook: number }>(ctx, `SELECT legacy_hook FROM org_repos WHERE org_id = ? AND id = ?`, ctx.orgId, scope);
       return repo?.legacy_hook === 1 ? pick(env.GITHUB_WEBHOOK_SECRET) : null;
     }
+    // The hosting providers (0057_hosting_providers) arrived with per-org secrets: no Worker secret ever answered for them.
+    // Railway's old per-environment PROJECT tokens (`RAILWAY_TOKEN_<KEY>`) cannot answer for its org-wide
+    // connection, which is a workspace token sent as a bearer — so Railway has no fallback either.
+    case "railway": case "vercel": case "render": case "netlify": case "fly": case "aws": return null;
   }
 }
 
@@ -544,10 +593,18 @@ export async function hasLegacyCredential(ctx: TenantContext, env: Env, kind: In
   return ctx.orgId === LEGACY_ENV_ORG && (await legacyEnvValue(ctx, env, kind, scope)) !== null;
 }
 
-/** Cloudflare's account id (not a secret — `org_integration_config`), with the same SaplingLearn-only
- *  fallback to `CF_ANALYTICS_ACCOUNT_ID`. */
+/** The org's non-secret config for (kind, scope) as a poller should use it — `getIntegrationConfig`, with the
+ *  same SaplingLearn-only bridge as `resolveCredential`: while that org has not stored Cloudflare's account
+ *  id, `CF_ANALYTICS_ACCOUNT_ID` answers for it (the only setting a Worker secret ever held). A stored value
+ *  always wins. */
+export async function resolveIntegrationConfig(ctx: TenantContext, env: Env, kind: IntegrationKind, scope: string): Promise<IntegrationConfig> {
+  const stored = await getIntegrationConfig(ctx, kind, scope);
+  if (kind !== "cloudflare_analytics" || scope !== "" || stored.account_id || ctx.orgId !== LEGACY_ENV_ORG || !env.CF_ANALYTICS_ACCOUNT_ID) return stored;
+  return { ...stored, account_id: env.CF_ANALYTICS_ACCOUNT_ID };
+}
+
+/** Cloudflare's account id (not a secret — `org_integration_config`), with `resolveIntegrationConfig`'s
+ *  SaplingLearn-only fallback to `CF_ANALYTICS_ACCOUNT_ID`. */
 export async function resolveCloudflareAccountId(ctx: TenantContext, env: Env): Promise<string | null> {
-  const stored = (await getIntegrationConfig(ctx, "cloudflare_analytics", "")).account_id;
-  if (stored) return stored;
-  return ctx.orgId === LEGACY_ENV_ORG && env.CF_ANALYTICS_ACCOUNT_ID ? env.CF_ANALYTICS_ACCOUNT_ID : null;
+  return (await resolveIntegrationConfig(ctx, env, "cloudflare_analytics", "")).account_id || null;
 }

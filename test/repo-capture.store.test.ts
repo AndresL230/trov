@@ -237,22 +237,22 @@ describe("snapshots and metrics", () => {
   it("prunes hourly usage metrics past 100 days, keeps younger ones and never touches a slow metric", async () => {
     const now = Date.parse("2026-09-20T12:00:00Z");
     const daysAgo = (n: number) => new Date(now - n * 86_400_000).toISOString();
-    for (const metric of ["cf_requests", "cf_errors", "rw_cpu", "active_users_7d"]) {
+    for (const metric of ["hx_requests", "hx_errors", "hx_cpu", "active_users_7d"]) {
       await putMetric(systemCtx(), { metric, env: "staging", part: "frontend", value: 1, at: daysAgo(101) });
       await putMetric(systemCtx(), { metric, env: "staging", part: "frontend", value: 2, at: daysAgo(99) });
     }
     await putMetric(systemCtx(), { metric: "coverage", env: "", part: "", value: 78.4, at: daysAgo(400) });
     // A metric that merely CONTAINS a usage prefix is not a usage metric.
-    await putMetric(systemCtx(), { metric: "xcf_requests", env: "", part: "", value: 1, at: daysAgo(400) });
+    await putMetric(systemCtx(), { metric: "xhx_requests", env: "", part: "", value: 1, at: daysAgo(400) });
     // The 45-day rule is unchanged: a 60-day-old ping still goes, a 60-day-old usage point stays.
     await putMetric(systemCtx(), { metric: "health_up", env: "staging", part: "frontend", value: 1, at: daysAgo(60) });
-    await putMetric(systemCtx(), { metric: "cf_requests", env: "staging", part: "frontend", value: 3, at: daysAgo(60) });
+    await putMetric(systemCtx(), { metric: "hx_requests", env: "staging", part: "frontend", value: 3, at: daysAgo(60) });
     await pruneRepoCapture(platformCtx(), now);
     const kept = await all<{ metric: string; value: number }>(env.DB, `SELECT metric, value FROM repo_metrics ORDER BY metric, at`);
     expect(kept).toEqual([
-      { metric: "active_users_7d", value: 2 }, { metric: "cf_errors", value: 2 },
-      { metric: "cf_requests", value: 2 }, { metric: "cf_requests", value: 3 },
-      { metric: "coverage", value: 78.4 }, { metric: "rw_cpu", value: 2 }, { metric: "xcf_requests", value: 1 },
+      { metric: "active_users_7d", value: 2 }, { metric: "coverage", value: 78.4 },
+      { metric: "hx_cpu", value: 2 }, { metric: "hx_errors", value: 2 },
+      { metric: "hx_requests", value: 2 }, { metric: "hx_requests", value: 3 }, { metric: "xhx_requests", value: 1 },
     ]);
   });
 });

@@ -1,0 +1,20 @@
+{
+  "id": "evt_Pq4rS6tU8vW0xYHk7mN2",
+  "type": "deployment.succeeded",
+  "createdAt": 1791376260000,
+  "region": "iad1",
+  "payload": {
+    "team": { "id": "team_a1B2c3D4e5F6g7H8i9J0k1L2" },
+    "user": { "id": "Xk2mP9qL4rT7vW1yZ3bN5cD8" },
+    "deployment": {
+      "id": "dpl_7Hn1jKp4Lq8Rs2Tv6Wx0Yz3A",
+      "name": "acme-web",
+      "url": "acme-web-7hn1jkp4l-acme.vercel.app",
+      "meta": { "githubCommitSha": "9b04e7f1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7", "githubCommitRef": "main" }
+    },
+    "project": { "id": "prj_Qm3xT8vLp2Rk7Yw4Nf6Hs9Bd1Cz5" },
+    "target": "production",
+    "plan": "pro",
+    "regions": ["iad1"]
+  }
+}

@@ -3,6 +3,8 @@
 //   INTEGRATIONS  — the org's credentials (web/src/integrations.ts). Admin+ only.
 //   REPOSITORIES  — connected repos, one primary.
 //   ENVIRONMENTS  — the environments the Repo dashboard reports on, in drift order.
+//   HOSTING       — which host runs each part of each environment, and the org's connection to
+//                   each host (web/src/hosting.ts). Admin+ only.
 //   MEMBERS       — the people directory: org roles, titles, removal, invites by GitHub login
 //                   or email, and (admins) the unmatched logins to map to a person
 //                   (web/src/identity.ts — Maintenance › Identity until 2026-10-06).
@@ -14,7 +16,7 @@
 //   AI            — the switch for what Trov writes, this month's AI runs, what is sent to Anthropic
 //                   (web/src/org-ai.ts). Everyone reads it; an admin or an owner flips the switch.
 //   GENERAL       — the org's name; its slug, read-only.
-// A member who is not an admin sees what the API lets them read: no Integrations and no
+// A member who is not an admin sees what the API lets them read: no Integrations, no Hosting and no
 // Notifications tab, and the other four read-only. Above the tabs an admin of a new org gets a setup checklist,
 // each item derived from live data, gone once all four are done.
 //
@@ -29,7 +31,7 @@ import { isSoloPlan, type OrgPlanView } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
 import {
   O_LABEL, O_FIELD, O_HELP, O_ERR, YOU, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgEmpty, orgBanner, loadingNote, failedNote,
-  sliceNote, roleWord, ROLE_WORD, roleOption, roleAtLeast, sameHandle, textField, tabLead, leadFlag, openRow, type OrgSlice,
+  sliceNote, roleWord, ROLE_WORD, roleOption, roleAtLeast, sameHandle, textField, fieldError, tabLead, leadFlag, openRow, type OrgSlice,
 } from "./org-ui";
 import { kindMark } from "./marks";
 import { tagsTab, tagConfirmModal, tagAddModal, initialTagsUi, type TagsTabProps } from "./tags";
@@ -51,30 +53,30 @@ import { notificationsAdminSections, notifDropdowns, type NotifAdminProps } from
 import { orgLogoSection, initialOrgLogoUi, type OrgLogoUi } from "./org-logo";
 import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, githubAppRow, githubLink, lostBanner, mismatchBanner, repoPicker, suspendedBanner, type GithubNotice } from "./github-app";
 import type { GithubAppStatusDTO, GithubReposDTO } from "@shared/github-app";
+import { disconnectConfirmCopy, hostingData, hostingDropdowns, hostingOverlay, hostingTab, hostingTodo, initialHostingUi, partConfirmCopy, type HostingUi } from "./hosting";
 import { githubInstallHref } from "./api";
 import type { AiSettings } from "@shared/ai-core";
 import { aiTab } from "./org-ai";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
-export type OrgTab = "integrations" | "repos" | "environments" | "members" | "tags" | "notifications" | "ai" | "general";
-export const ORG_TABS: readonly OrgTab[] = ["integrations", "repos", "environments", "members", "tags", "notifications", "ai", "general"];
+export type OrgTab = "integrations" | "repos" | "environments" | "hosting" | "members" | "tags" | "notifications" | "ai" | "general";
+export const ORG_TABS: readonly OrgTab[] = ["integrations", "repos", "environments", "hosting", "members", "tags", "notifications", "ai", "general"];
 export const isOrgTab = (v: unknown): v is OrgTab => typeof v === "string" && (ORG_TABS as readonly string[]).includes(v);
-const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", members: "Members", tags: "Tags", notifications: "Notifications", ai: "AI", general: "General" };
+const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", hosting: "Hosting", members: "Members", tags: "Tags", notifications: "Notifications", ai: "AI", general: "General" };
 /** The tabs only an admin or an owner may open (their APIs are admin+). */
-const ADMIN_TABS: readonly OrgTab[] = ["integrations", "notifications"];
+const ADMIN_TABS: readonly OrgTab[] = ["integrations", "hosting", "notifications"];
 
 const idle = <T>(data: T): OrgSlice<T> => ({ status: "idle", data });
 
 /** The environment fields an admin edits (the DTO's, as text; `key` only when adding). */
-export const ENV_TEXT_FIELDS = ["label", "note", "branch", "frontend_url", "api_url", "health_path", "railway_env", "worker", "worker_check", "railway_environment_id", "railway_service_id"] as const;
+export const ENV_TEXT_FIELDS = ["label", "note", "branch", "frontend_url", "api_url", "health_path"] as const;
 export type EnvField = (typeof ENV_TEXT_FIELDS)[number];
 export interface EnvDraft {
   /** null = adding a new environment (its key is `keyDraft`). */
   key: string | null;
   keyDraft: string;
   fields: Record<EnvField, string>;
-  advanced: boolean;
   saving: boolean;
   error: string | null;
   /** The field a refusal is about (`key`, or one of the DTO's), so the message sits beside it. */
@@ -82,12 +84,9 @@ export interface EnvDraft {
 }
 export const blankEnvFields = (): Record<EnvField, string> => ({
   label: "", note: "", branch: "", frontend_url: "", api_url: "", health_path: "/",
-  railway_env: "", worker: "", worker_check: "", railway_environment_id: "", railway_service_id: "",
 });
 export const envFieldsOf = (e: OrgEnvironmentDTO): Record<EnvField, string> => ({
   label: e.label, note: e.note ?? "", branch: e.branch, frontend_url: e.frontend_url, api_url: e.api_url, health_path: e.health_path,
-  railway_env: e.railway_env, worker: e.worker, worker_check: e.worker_check,
-  railway_environment_id: e.railway_environment_id ?? "", railway_service_id: e.railway_service_id ?? "",
 });
 
 export interface MemberDraft {
@@ -100,8 +99,9 @@ export interface MemberDraft {
 }
 
 /** What the open confirmation modal is about. `arg` = a repo id, an environment key,
- *  `<kind>:<scope>`, a member's handle, or "" for the key. */
-export interface OrgConfirm { what: "repo" | "env" | "secret" | "member" | "key" | "github"; arg: string; busy: boolean }
+ *  `<kind>:<scope>`, a member's handle, "" for the key — or, on Hosting, a part (`<env>/<part>`) to
+ *  remove and a provider connection (`<provider>:<scope>`) to disconnect. */
+export interface OrgConfirm { what: "repo" | "env" | "secret" | "member" | "key" | "github" | "part" | "hosting"; arg: string; busy: boolean }
 
 /** Everything Org settings keeps in AppState (`state.org`). It NEVER holds a secret's value:
  *  a credential being typed lives only in the input and in org-actions.ts's private draft. */
@@ -161,6 +161,8 @@ export interface OrgUi {
   confirm: OrgConfirm | null;
   /** General › Plan's billing actions (org-plan.ts, org-billing-actions.ts). */
   billing: OrgBillingUi;
+  /** The Hosting tab (hosting.ts, hosting-actions.ts): its one read, the open dialog, tests in flight. */
+  hosting: HostingUi;
   /** General › Delete organization (an owner's; deletion.ts, deletion-actions.ts). */
   del: DeleteUi<OrgDeletionPreview>;
   /** AI (org-ai.ts): the switch, this month's runs, what is sent — everyone reads it; an admin flips it. */
@@ -179,6 +181,7 @@ export function initialOrgUi(): OrgUi {
     github: idle(null), githubRepos: idle(null), githubNotice: null, githubFilter: "", githubBusy: null,
     envEdit: null, envBusy: false,
     secretForm: null, tests: {}, auditOpen: false, openRows: [], confirm: null, billing: initialOrgBillingUi(),
+    hosting: initialHostingUi(),
     del: initialDeleteUi<OrgDeletionPreview>(),
     ai: idle(null), aiSaving: false,
   };
@@ -191,7 +194,7 @@ export function currentOrg(s: { orgSlug: string | null; myOrgs: { data: MyOrgsRe
   if (!s.orgSlug) return null;
   return s.myOrgs.data?.orgs.find((o) => o.slug === s.orgSlug) ?? s.me?.orgs.find((o) => o.slug === s.orgSlug) ?? null;
 }
-/** The tabs a role may open: Integrations and Notifications are admin+ (their APIs are). */
+/** The tabs a role may open: Integrations, Hosting and Notifications are admin+ (their APIs are). */
 export const orgTabsFor = (role: OrgRole | null): OrgTab[] => ORG_TABS.filter((t) => !ADMIN_TABS.includes(t) || roleAtLeast(role, "admin"));
 /** The tab on screen: the picked one, or — when the role may not open it — the first it may. */
 export function effectiveOrgTab(tab: OrgTab, role: OrgRole | null): OrgTab {
@@ -449,18 +452,12 @@ const ENV_META: Record<EnvField, { label: string; help: string; placeholder?: st
   frontend_url: { label: "Frontend URL", help: "Where the app is served. https only, no query string.", placeholder: "https://staging.example.com", max: 500 },
   api_url: { label: "API URL", help: "Your backend's base URL. Health checks and app metrics are read from it.", placeholder: "https://api.staging.example.com", max: 500 },
   health_path: { label: "Health path", help: "Added to the API URL for the health ping. Starts with /.", placeholder: "/api/health", max: 200 },
-  railway_env: { label: "GitHub deployment environment", help: "The environment name on this environment's GitHub deployments, for example “Acme / staging”.", max: 200 },
-  worker: { label: "Cloudflare Worker", help: "The frontend Worker's script name, for requests and error rate.", max: 200 },
-  worker_check: { label: "Workers Builds check", help: "The check run Workers Builds posts, for example “Workers Builds: frontend-staging”.", max: 200 },
-  railway_environment_id: { label: "Railway environment ID", help: "Needed with the Railway project token for CPU and memory.", max: 100 },
-  railway_service_id: { label: "Railway service ID", help: "The backend service inside that Railway environment.", max: 100 },
 };
 /** A field's name as the form shows it (`key` is the new environment's Key). */
 export const envFieldLabel = (field: string): string | null =>
   field === "key" ? "Key" : (ENV_META as Record<string, { label: string } | undefined>)[field]?.label ?? null;
 const ENV_BASIC: EnvField[] = ["label", "branch", "note"];
 const ENV_URLS: EnvField[] = ["frontend_url", "api_url", "health_path"];
-const ENV_ADVANCED: EnvField[] = ["railway_env", "worker", "worker_check", "railway_environment_id", "railway_service_id"];
 
 /** The add / edit form. `current` is the stored environment (null when adding); `metricsSet`
  *  whether its app metrics token is stored — what an API URL change would delete. */
@@ -476,8 +473,6 @@ export function envForm(d: EnvDraft, current: OrgEnvironmentDTO | null, metricsS
     `The token is only ever sent to the API URL it was saved for, so pointing <strong style="font-weight:600">${esc(d.fields.label || d.key || "this environment")}</strong> at another host removes it. ${metricsSet ? "After saving, set a new one in Integrations." : "None is stored right now, so nothing is lost."}`,
   )}</div>` : "";
   const general = d.error && (d.errorField === null || !(d.errorField === "key" || (ENV_TEXT_FIELDS as readonly string[]).includes(d.errorField)));
-  const advErr = !!d.errorField && (ENV_ADVANCED as string[]).includes(d.errorField);
-  const open = d.advanced || advErr;
   return `<section${framed ? surface("padding:18px 20px;margin-bottom:24px") : ` style="padding:4px 0 2px"`} data-org-envform aria-labelledby="org-envform-t">
     <h3 id="org-envform-t" style="margin:0 0 14px;font-size:13.5px;font-weight:600">${adding ? "Add an environment" : `Edit ${esc(current?.label ?? d.key ?? "")}`}</h3>
     <div class="cnpy-org-grid">
@@ -487,11 +482,7 @@ export function envForm(d: EnvDraft, current: OrgEnvironmentDTO | null, metricsS
     <div style="${O_LABEL};margin-top:20px">Where it runs</div>
     <div class="cnpy-org-grid" style="margin-top:10px">${ENV_URLS.map(f).join("")}</div>
     ${warn}
-    <button type="button" data-act="orgEnvAdvanced" data-field="orgEnvAdvanced" aria-expanded="${open}" aria-controls="org-env-adv" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;margin-top:18px;padding:4px 0;font-size:12.5px;font-weight:500;color:var(--fg-55);text-align:left"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="transform:${open ? "rotate(90deg)" : "none"};transition:transform .15s ease"><path d="M9 6l6 6-6 6"></path></svg>Advanced: GitHub, Cloudflare and Railway names</button>
-    <div id="org-env-adv"${open ? "" : " hidden"}>
-      <div style="${O_HELP};margin:4px 0 12px">Only needed for the dashboard cards that read these services. Leave any of them empty to skip that card.</div>
-      <div class="cnpy-org-grid">${ENV_ADVANCED.map(f).join("")}</div>
-    </div>
+    <div style="${O_HELP};margin-top:14px" data-org-env-hosting>What runs it — a Cloudflare Worker, a Railway service, a Vercel project — is set in ${goLink("Hosting", "orgTab", "hosting")}.</div>
     ${general ? `<div role="alert" style="${O_ERR};margin-top:14px">${esc(d.error ?? "")}</div>` : ""}
     <div class="cnpy-xrow-acts" style="margin-top:18px">
       ${accentBtn(d.saving ? "Saving…" : adding ? "Add environment" : moves && metricsSet ? "Save and delete token" : "Save changes", "orgEnvSave", { disabled: !envDraftOk(d) || d.saving, busy: d.saving })}
@@ -655,14 +646,13 @@ export function inviteSection(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDro
     : `<section aria-labelledby="org-invite-t">
       ${orgHead("Invite someone", "", null, "org-invite-t")}
       <div${surface("padding:14px 16px")}>
-        <div class="cnpy-org-invite">
+        <div class="cnpy-field-anchor"><div class="cnpy-org-invite">
           ${segmented({ id: "org-invite-by", ariaLabel: "Invite by", act: "orgInviteBy", value: ui.inviteBy, size: "sm", inertOn: true, options: [{ value: "github", label: "GitHub login" }, { value: "email", label: "Email" }] })}
           <input id="org-invite" data-act="orgInviteDraft" data-field="orgInvite" data-enter="orgInviteSend" value="${attr(ui.inviteDraft)}" placeholder="${ui.inviteBy === "github" ? "octocat" : "name@example.com"}" aria-label="${ui.inviteBy === "github" ? "GitHub login to invite" : "Email address to invite"}"${ui.inviteBy === "email" ? ' type="email" inputmode="email"' : ""} autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="org-invite-h${ui.inviteError ? " org-invite-e" : ""}"${ui.inviteError ? ' aria-invalid="true"' : ""} class="cnpy-input" style="${O_FIELD};flex:1 1 200px;width:auto;min-width:0;${ui.inviteError ? "border-color:var(--red);" : ""}" />
           ${ui.inviteBy === "email" ? `<input id="org-invite-name" data-act="orgInviteName" data-field="orgInviteName" data-enter="orgInviteSend" value="${attr(ui.inviteName)}" maxlength="${INVITE_NAME_MAX}" placeholder="Their name (optional)" aria-label="Their name, for the email's greeting (optional)" autocomplete="off" class="cnpy-input" style="${O_FIELD};flex:1 1 160px;width:auto;min-width:0" />` : ""}
           ${dropdown(inviteRoleDropdown(ui), dd)}
           ${accentBtn(ui.inviteBusy ? "Inviting…" : "Invite", "orgInviteSend", { disabled: !canSend, busy: ui.inviteBusy, extra: "height:36px" })}
-        </div>
-        ${ui.inviteError ? `<div id="org-invite-e" role="alert" style="${O_ERR}">${esc(ui.inviteError)}</div>` : ""}
+        </div>${ui.inviteError ? fieldError("org-invite-e", ui.inviteError) : ""}</div>
         <div id="org-invite-h" style="${O_HELP};margin-top:9px">${ui.inviteBy === "email"
           ? "Trov emails them the invitation. They join when they sign in with that address, with Google or GitHub, and accept."
           : "They see the invitation the next time they sign in with that GitHub account, and join when they accept. No email is sent: tell them it is waiting."}</div>
@@ -757,6 +747,7 @@ export function orgDropdowns(p: OrgSettingsProps): DropdownProps[] {
   if (!p.org || !roleAtLeast(p.org.role, "admin")) return [];
   const tab = effectiveOrgTab(p.ui.tab, p.org.role);
   if (tab === "notifications") return p.notif ? notifDropdowns(p.notif) : [];
+  if (tab === "hosting") return hostingDropdowns(p.ui.hosting);
   if (tab !== "members" || !p.ui.members.data.length) return [];
   const d = p.ui.memberEdit;
   const m = d ? p.ui.members.data.find((x) => sameHandle(x.handle, d.handle)) : undefined;
@@ -770,6 +761,10 @@ const quote = (s: string) => `“${s}”`;
 /** The words of the open confirmation: what is removed, and what stops working. Pure — exported for the tests. */
 export function orgConfirmCopy(c: OrgConfirm, org: MyOrg, ui: OrgUi): { title: string; body: string; confirmLabel: string; busyLabel: string } | null {
   const list = ui.integrations.data?.integrations ?? [];
+  if (c.what === "part" || c.what === "hosting") {
+    const d = hostingData(ui.hosting);
+    return d ? (c.what === "part" ? partConfirmCopy(d, c.arg) : disconnectConfirmCopy(d, c.arg, org.name)) : null;
+  }
   if (c.what === "repo") {
     const r = ui.repos.data.find((x) => x.id === c.arg);
     if (!r) return null;
@@ -843,13 +838,15 @@ export function orgOverlays(p: OrgSettingsProps): string {
     if (i) return menu + secretFormModal(i, f);
   }
   if (ui.del.open && p.org.role === "owner") return menu + orgDeleteModal(ui.del);
+  if (roleAtLeast(p.org.role, "admin") && effectiveOrgTab(ui.tab, p.org.role) === "hosting") return menu + hostingOverlay(ui.hosting, p.dd);
   return menu;
 }
 
 // ── the screen ───────────────────────────────────────────────────────────────
 
-/** The tab bar. Two tabs carry a count of what needs an admin there: integrations with an error,
- *  and (Members) logins waiting to be matched — `logins` is 0 for anyone who is not an admin. */
+/** The tab bar. Three tabs carry a count of what needs an admin there: integrations with an error,
+ *  (Hosting) connections with an error or ended on the provider's side, and (Members) logins
+ *  waiting to be matched — `logins` is 0 for anyone who is not an admin. */
 export function orgTabBar(tab: OrgTab, role: OrgRole | null, ui: OrgUi, logins = 0): string {
   // An org on the App does not need its token / webhook-secret rows: an old error on one is not a to-do.
   const inst = githubOf(ui)?.installation ?? null;
@@ -861,7 +858,9 @@ export function orgTabBar(tab: OrgTab, role: OrgRole | null, ui: OrgUi, logins =
     id: "org-tab", ariaLabel: "Org settings sections", act: "orgTab", value: tab,
     tabs: orgTabsFor(role).map((t) => ({
       value: t, label: TAB_LABEL[t],
-      trail: t === "integrations" ? badge(todo, `${todo} with an error`) : t === "members" ? badge(logins, `${logins} ${logins === 1 ? "login" : "logins"} to match`) : "",
+      trail: t === "integrations" ? badge(todo, `${todo} with an error`)
+        : t === "hosting" ? ((n) => badge(n, `${n} ${n === 1 ? "connection needs" : "connections need"} attention`))(hostingTodo(ui.hosting))
+        : t === "members" ? badge(logins, `${logins} ${logins === 1 ? "login" : "logins"} to match`) : "",
     })),
   });
 }
@@ -879,6 +878,7 @@ export function orgSettingsView(p: OrgSettingsProps): string {
   const body = tab === "integrations" ? integrationsTab(p.org, p.ui)
     : tab === "repos" ? reposTab(p.org, p.ui)
     : tab === "environments" ? environmentsTab(p.org, p.ui)
+    : tab === "hosting" ? hostingTab(p.org, p.ui, p.dd)
     : tab === "members" ? membersTab(p.org, p.ui, p.me, p.identity ?? null, p.dd)
     : tab === "tags" ? tagsTab(p.org, { list: p.tags?.list ?? { status: "loading", data: null }, ui: p.tags?.ui ?? initialTagsUi(), dd: p.dd })
     : tab === "notifications" ? notificationsTab(p.org, p.notif, p.dd)

@@ -13,6 +13,7 @@ import { notificationsApp } from "./notifications/routes";
 import { artifactsApp } from "./artifacts/routes";
 import { orgSettingsApp } from "./integrations/routes";
 import { githubAppRoutes } from "./github-app/routes";
+import { hostingApp, hostingCallbackApp } from "./hosting/routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runSyncBatch, syncStatus } from "./sync/runs";
@@ -180,6 +181,10 @@ app.route("/", oauthApp);
 app.route("/api/orgs", orgsApp);
 app.route("/api/invites", myInvitesApp);
 app.route("/api/platform", platformApp);
+// A hosting provider's install / OAuth callback (src/hosting/routes.ts): at the ROOT, because a provider's
+// redirect URI is fixed — the org rides in the sealed `state`, and the callback checks the person's admin
+// membership of it itself (src/data/gate.ts lets `/hosting/*` past the one-org alias).
+app.route("/hosting", hostingCallbackApp);
 // A bug report / support message (0049_support_reports): any signed-in person, with or without an org.
 app.route("/api/support", supportApp);
 // Billing (docs/architecture/billing.md): the purchase link, what the pricing page asks, the waiting room's poll.
@@ -783,9 +788,9 @@ tenantApi.get("/sync", async (c) => {
 });
 
 // ADMIN action (session-gated + admin-gated, NEVER an MCP tool): "Poll now" —
-// refresh what the Repo dashboard shows, on demand: health pings, the three
-// usage pollers, then the GitHub reconcile (`runRepoRefresh`, src/repo/cron.ts
-// — the budget, 19 + 7N subrequests, is stated there). NOT the issue-derived
+// refresh what the Repo dashboard shows, on demand: health pings, the usage
+// poller, the hosting providers, then the GitHub reconcile (`runRepoRefresh`,
+// src/repo/cron.ts — the budget, 18 + 5N subrequests, is stated there). NOT the issue-derived
 // sections (open issues / bugs, issues by label, the feed's issue lines): those
 // read `events`, whose only non-webhook writer is Sync GitHub's runBackfill. No
 // request body. 200 even when every source failed — the body says so; it
@@ -807,15 +812,15 @@ tenantRoot.post("/admin/poll", async (c) => {
   }
 });
 
-// The NARROWER, OLDER route — the three usage pollers only. "Poll now" calls
-// `/admin/poll` above; this one is kept, unchanged, so nothing that still calls
-// it breaks.
+// The NARROWER, OLDER route — the usage poller only (the app's metrics; a host's
+// usage is the hosting providers', in "Poll now"). "Poll now" calls
+// `/admin/poll` above; this one is kept so nothing that still calls it breaks.
 // ADMIN action (session-gated + admin-gated, NEVER an MCP tool): "Poll usage
-// now" — run the three hourly usage pollers on demand and SEE the outcome,
-// instead of waiting up to an hour for the repo cron's minute-0 tick and reading
-// a log line. The SAME function as that tick (`runUsagePolls`), so it is
-// idempotent with it: the pollers key on the hour floor and every write is
-// INSERT OR IGNORE. 3N subrequests for N environments (6 today). No request
+// now" — run the hourly usage poller on demand and SEE the outcome, instead of
+// waiting up to an hour for the repo cron's minute-0 tick and reading a log
+// line. The SAME function as that tick (`runUsagePolls`), so it is idempotent
+// with it: the poller keys on the hour floor and every write is INSERT OR
+// IGNORE. N subrequests for N environments (2 today). No request
 // body. 200 even when every source failed — the body says so; it carries
 // per-environment outcomes and NEVER a token, a header or an account id (a
 // `detail` is the poller's own scrubbed log message). Never a 500.
@@ -1160,6 +1165,7 @@ tenantRoot.post("/sprints/:id/complete", async (c) => {
 app.route("/api/o/:slug", orgTenantApp);
 app.route("/api/o/:slug", orgSettingsApp);
 app.route("/api/o/:slug", githubAppRoutes); // the GitHub App's connection (src/github-app/routes.ts)
+app.route("/api/o/:slug", hostingApp); // Org settings › Hosting: parts, connections, the setup read (src/hosting/routes.ts)
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
 app.route("/api/o/:slug", orgBillingApp); // an owner's billing for this org: the Stripe portal, a plan switch, a renewal (src/billing/routes.ts)
 app.route("/api/o/:slug", aiApp); // Org settings › AI, and the answers to a suggestion and to "Wrong?" — cookie only (src/ai/routes.ts)

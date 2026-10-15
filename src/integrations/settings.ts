@@ -1,7 +1,8 @@
 // The org's repositories and environments (canopy-multitenancy.md §2.1, D16): what GITHUB_REPO and
 // REPO_ENVIRONMENTS were, as rows an admin edits. The integrations hang off them — a repo's id is its
-// webhook path id and its `github_webhook` scope; an environment's key is the `railway` /
-// `metrics_endpoint` scope — so removing one removes its secrets in the SAME batch, audited.
+// webhook path id and its `github_webhook` scope; an environment's key is the `metrics_endpoint`
+// scope — so removing one removes its secrets in the SAME batch, audited. What HOSTS an environment
+// (Cloudflare, Railway, Vercel, …) is its parts (src/hosting/part-writes.ts), not a field here.
 //
 // Every change here writes an audit row in the SAME batch. `org_audit.action` (0042_organizations) has a CHECK that
 // admits only the five secret / key actions, so a repo or environment change goes to `org_admin_audit`
@@ -136,21 +137,20 @@ export async function removeRepo(ctx: TenantContext, id: string): Promise<string
 
 // ── environments ─────────────────────────────────────────────────────────────
 
-const ENV_COLS = `key, position, label, note, branch, railway_env, worker, worker_check, frontend_url, api_url, health_path,
-  railway_environment_id, railway_service_id, created_at, updated_at, updated_by`;
+const ENV_COLS = `key, position, label, note, branch, frontend_url, api_url, health_path, created_at, updated_at, updated_by`;
 const ENV_KEY = /^[a-z0-9_-]{1,32}$/; // the organizations migration's CHECK
-/** The integrations whose scope is an environment key. */
-const ENV_SECRET_KINDS: readonly IntegrationKind[] = ["railway", "metrics_endpoint"];
+/** The integrations whose scope is an environment key. (A per-environment Railway PROJECT token from
+ *  before 0057_hosting_providers is not one: it is unread, and stays until the org is deleted.) */
+const ENV_SECRET_KINDS: readonly IntegrationKind[] = ["metrics_endpoint"];
 
 export const listEnvironments = (ctx: TenantContext): Promise<OrgEnvironmentDTO[]> =>
   all<OrgEnvironmentDTO>(ctx, `SELECT ${ENV_COLS} FROM org_environments WHERE org_id = ? ORDER BY position`, ctx.orgId);
 
 type EnvFields = Omit<OrgEnvironmentDTO, "key" | "position" | "created_at" | "updated_at" | "updated_by">;
-const TEXT_FIELDS = ["label", "branch", "railway_env", "worker", "worker_check", "frontend_url", "api_url", "health_path"] as const;
-const NULLABLE_FIELDS = ["note", "railway_environment_id", "railway_service_id"] as const;
+const TEXT_FIELDS = ["label", "branch", "frontend_url", "api_url", "health_path"] as const;
+const NULLABLE_FIELDS = ["note"] as const;
 const FIELD_MAX: Record<keyof EnvFields, number> = {
-  label: 60, note: 120, branch: 255, railway_env: 200, worker: 200, worker_check: 200,
-  frontend_url: 500, api_url: 500, health_path: 200, railway_environment_id: 100, railway_service_id: 100,
+  label: 60, note: 120, branch: 255, frontend_url: 500, api_url: 500, health_path: 200,
 };
 
 /** `""`, or an https URL the Worker may fetch (`checkFetchUrl`: no credentials, no private / loopback /
@@ -167,11 +167,9 @@ const originOf = (url: string): string => { try { return new URL(url).origin; } 
 /** Merge a PUT body over the current row (or the defaults), then check the whole. Unknown fields are refused. */
 function mergeEnvironment(current: OrgEnvironmentDTO | null, key: string, body: Record<string, unknown>): EnvFields {
   const next: EnvFields = current
-    ? { label: current.label, note: current.note, branch: current.branch, railway_env: current.railway_env, worker: current.worker,
-        worker_check: current.worker_check, frontend_url: current.frontend_url, api_url: current.api_url, health_path: current.health_path,
-        railway_environment_id: current.railway_environment_id, railway_service_id: current.railway_service_id }
-    : { label: key, note: null, branch: "", railway_env: "", worker: "", worker_check: "", frontend_url: "", api_url: "", health_path: "/",
-        railway_environment_id: null, railway_service_id: null };
+    ? { label: current.label, note: current.note, branch: current.branch, frontend_url: current.frontend_url, api_url: current.api_url,
+        health_path: current.health_path }
+    : { label: key, note: null, branch: "", frontend_url: "", api_url: "", health_path: "/" };
   for (const field of Object.keys(body)) {
     const v = body[field];
     if ((TEXT_FIELDS as readonly string[]).includes(field)) {
@@ -195,9 +193,6 @@ function mergeEnvironment(current: OrgEnvironmentDTO | null, key: string, body: 
   if (!next.health_path.startsWith("/")) throw invalid("health_path", "health_path must start with /");
   checkUrlField("frontend_url", next.frontend_url);
   checkUrlField("api_url", next.api_url);
-  for (const field of ["railway_environment_id", "railway_service_id"] as const) {
-    if (next[field] !== null && !/^[A-Za-z0-9-]+$/.test(next[field]!)) throw invalid(field, `${field} must be an id (letters, digits and hyphens)`);
-  }
   return next;
 }
 
@@ -217,19 +212,18 @@ export async function putEnvironment(ctx: TenantContext, key: string, body: Reco
   if (!current) await requirePlan(ctx, "environments"); // a NEW environment counts against the plan (0044_plans); an edit does not
   const next = mergeEnvironment(current, key, body);
   const at = nowIso();
-  const values = [next.label, next.note, next.branch, next.railway_env, next.worker, next.worker_check, next.frontend_url, next.api_url,
-    next.health_path, next.railway_environment_id, next.railway_service_id];
+  const values = [next.label, next.note, next.branch, next.frontend_url, next.api_url, next.health_path];
   let secrets: Stmt[] = [];
   if (current && current.api_url && originOf(current.api_url) !== originOf(next.api_url)) {
     secrets = await secretDeleteStmts(ctx, [{ kind: "metrics_endpoint", scope: key }], "api_url_changed", at);
   }
   const write = current
-    ? stmt(ctx, `UPDATE org_environments SET label = ?, note = ?, branch = ?, railway_env = ?, worker = ?, worker_check = ?, frontend_url = ?, api_url = ?,
-                 health_path = ?, railway_environment_id = ?, railway_service_id = ?, updated_at = ?, updated_by = ? WHERE org_id = ? AND key = ?`,
+    ? stmt(ctx, `UPDATE org_environments SET label = ?, note = ?, branch = ?, frontend_url = ?, api_url = ?, health_path = ?,
+                 updated_at = ?, updated_by = ? WHERE org_id = ? AND key = ?`,
         ...values, at, ctx.userId, ctx.orgId, key)
-    : stmt(ctx, `INSERT INTO org_environments (org_id, key, position, label, note, branch, railway_env, worker, worker_check, frontend_url, api_url,
-                 health_path, railway_environment_id, railway_service_id, created_at, updated_at, updated_by)
-                 VALUES (?, ?, (SELECT COALESCE(MAX(e.position), -1) + 1 FROM org_environments e WHERE e.org_id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    : stmt(ctx, `INSERT INTO org_environments (org_id, key, position, label, note, branch, frontend_url, api_url, health_path,
+                 created_at, updated_at, updated_by)
+                 VALUES (?, ?, (SELECT COALESCE(MAX(e.position), -1) + 1 FROM org_environments e WHERE e.org_id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ctx.orgId, key, ctx.orgId, ...values, at, at, ctx.userId);
   const removed = secrets.length ? [`metrics_endpoint:${key}`] : [];
   // The audit row lists the FIELDS that changed, not their values.
@@ -263,24 +257,32 @@ export async function reorderEnvironments(ctx: TenantContext, order: unknown): P
   return listEnvironments(ctx);
 }
 
-/** Delete an environment, its `railway` / `metrics_endpoint` secrets and close the gap in the order —
- *  one batch (admin+, §8.7.3). Returns the audit targets of the secrets removed with it. */
+/** Delete an environment, its `metrics_endpoint` secret and close the gap in the order — one batch
+ *  (admin+, §8.7.3). Its hosting parts (0057_hosting_providers) go in the same batch, with each one's
+ *  last-poll row and deploy history: they describe a deployable of an environment that no longer exists.
+ *  Returns the audit targets of the secrets removed with it. */
 export async function deleteEnvironment(ctx: TenantContext, key: string): Promise<string[]> {
   requireRole(ctx, "admin");
   const row = await first<{ position: number }>(ctx, `SELECT position FROM org_environments WHERE org_id = ? AND key = ?`, ctx.orgId, key);
   if (!row) throw new SettingsError("not_found", 404, "no such environment");
   const targets = ENV_SECRET_KINDS.map((kind) => ({ kind, scope: key }));
   const held = new Set((await listSecretMeta(ctx)).map((s) => `${s.kind}:${s.scope}`));
+  const parts = (await all<{ part_key: string }>(ctx,
+    `SELECT part_key FROM org_environment_parts WHERE org_id = ? AND env_key = ? ORDER BY position, part_key`, ctx.orgId, key)).map((p) => p.part_key);
   const at = nowIso();
   const secrets = await secretDeleteStmts(ctx, targets, "environment_deleted", at);
   const removed = targets.map((t) => `${t.kind}:${t.scope}`).filter((t) => held.has(t));
   await batch(ctx, [
     ...secrets,
-    stmt(ctx, `DELETE FROM org_integration_config WHERE org_id = ? AND scope = ? AND kind IN ('railway', 'metrics_endpoint')`, ctx.orgId, key),
+    stmt(ctx, `DELETE FROM org_integration_config WHERE org_id = ? AND scope = ? AND kind = 'metrics_endpoint'`, ctx.orgId, key),
+    stmt(ctx, `DELETE FROM hosting_poll_state WHERE org_id = ? AND env = ?`, ctx.orgId, key),
+    stmt(ctx, `DELETE FROM hosting_deploys WHERE org_id = ? AND env = ?`, ctx.orgId, key),
+    stmt(ctx, `DELETE FROM org_environment_parts WHERE org_id = ? AND env_key = ?`, ctx.orgId, key),
     stmt(ctx, `DELETE FROM org_environments WHERE org_id = ? AND key = ?`, ctx.orgId, key),
     stmt(ctx, `UPDATE org_environments SET position = -position WHERE org_id = ? AND position > ?`, ctx.orgId, row.position),
     unparkStmt(ctx),
-    auditStmt(ctx, "environment.delete", key, { removed_secrets: removed }, at),
+    // `removed_parts` (the parts' KEYS) only when there were any, so an environment with none is audited as before.
+    auditStmt(ctx, "environment.delete", key, { removed_secrets: removed, ...(parts.length ? { removed_parts: parts } : {}) }, at),
   ]);
   return removed;
 }

@@ -5,11 +5,15 @@
 // loaded on demand (a dynamic import — not in the main bundle), and the screen
 // labels it "sample data" for as long as it is showing.
 
-import type {
-  RepoDashboard, RepoDeployRow, RepoEnvPart, RepoPartName, RepoPerson, RepoRange, RepoUsageEnv, RepoUsageMetric, RepoCfRow,
-  RepoActivityKind, RepoPrState, RepoProductEnv, RepoProductGroup,
+import {
+  deployDots, envPartOf,
+  type RepoDashboard, type RepoDeployRow, type RepoEnvPart, type RepoPerson, type RepoRange, type RepoUsageEnv, type RepoUsageMetric,
+  type RepoActivityKind, type RepoPrState, type RepoProductEnv, type RepoProductGroup,
 } from "@shared/repo";
 import type { PersonColor } from "@shared/rows";
+import type {
+  DeployState, HostingMetric, HostingProviderId, PartRole, ProviderDeployDTO, ProviderResources, ProviderTrafficRange, RepoProviderPart,
+} from "@shared/hosting";
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 
@@ -56,65 +60,31 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
     ["push", "tom-h", "pushed 1 commit to spike/edge-cache", 16 * DAY],
   ];
 
-  // ── two deployables per environment ───────────────────────────────────────
-  // Each environment ships a Railway API and a Cloudflare web build from the
-  // same commit; the frontend lands a couple of minutes behind the API.
+  // ── the Cloudflare frontend and the Railway backend: ordinary parts ────────
+  // Each environment ships a Railway API and a Cloudflare Workers web build from
+  // the same commit; the frontend lands a couple of minutes behind the API. Both
+  // are provider deploys like every other part's (`hostDeploys` below), and the
+  // environment cards and deploy strips are derived from the parts' deploys by
+  // the projection's own functions (`envPartOf` / `deployDots`).
   type Dot = [string, number, string, "ok" | "fail" | "cancel"];
-  const deploys = (rows: Dot[]) => rows.map(([sha, ms, by, result]) => ({ sha, at: at(ms), by, result }));
-  const web = (rows: Dot[]): Dot[] => rows.map((r, i) => (i === rows.length - 1 ? [r[0], r[1] - 2 * MIN, r[2], r[3]] : r));
   const API: Record<"staging" | "production", Dot[]> = {
     staging: [["8c11d02", 3 * DAY, "meilin", "ok"], ["e4907fa", 3 * DAY, "sanaok", "ok"], ["1b6c3e9", 2 * DAY, "jose-a", "ok"], ["77d20ba", 2 * DAY, "priya-k", "cancel"], ["f0a94c7", 2 * DAY, "priya-k", "ok"], ["93be511", DAY, "tom-h", "ok"], ["ab27e64", DAY, "dev-raj", "ok"], ["c58f1d3", 22 * HOUR, "dev-raj", "fail"], ["d94ea08", 21 * HOUR, "dev-raj", "ok"], ["a3f82c1", 26 * MIN, "dev-raj", "ok"]],
     production: [["41c9de7", 14 * DAY, "jose-a", "ok"], ["5b803af", 12 * DAY, "meilin", "ok"], ["68d1c42", 11 * DAY, "kenji-m", "ok"], ["7e5b9d0", 9 * DAY, "sanaok", "ok"], ["8f26a13", 8 * DAY, "meilin", "fail"], ["90ab7c5", 8 * DAY, "meilin", "ok"], ["a1c38e6", 6 * DAY, "meilin", "ok"], ["b273f19", 5 * DAY, "tom-h", "ok"], ["c3841da", 3 * DAY, "priya-k", "ok"], ["9d417be", 2 * DAY, "jose-a", "ok"]],
   };
-  const strips: Record<"staging" | "production", Record<RepoPartName, Dot[]>> = {
-    staging: { backend: API.staging, frontend: web(API.staging) },
-    production: { backend: API.production, frontend: web(API.production) },
-  };
-  const PART = { backend: ["api", "Railway"], frontend: ["web", "Cloudflare"] } as const;
-  const deployRows: RepoDeployRow[] = (["staging", "production"] as const).flatMap((env) =>
-    (["backend", "frontend"] as const).map((part) => ({ env, part, label: `${env} · ${PART[part][0]}`, deploys: deploys(strips[env][part]) })));
-  const envParts = (env: "staging" | "production"): RepoEnvPart[] =>
-    (["backend", "frontend"] as const).map((part) => {
-      const [sha, ms, by, result] = strips[env][part][strips[env][part].length - 1];
-      return { part, host: PART[part][1], sha, deployedAt: at(ms), deployedBy: by, result };
-    });
 
-  // Requests/error rate/active users connect independently (Cloudflare
-  // analytics vs. the app's own metrics endpoint) — the sample keeps them all
-  // live to show the section's finished shape; `tone: "neutral"` on
-  // requests/users is a required field, not a color decision (only the error
-  // metric's tone drives its value color).
+  // Requests / error rate (summed over each environment's web parts, below) and
+  // active users connect independently (the hosting providers vs. the app's own
+  // metrics endpoint) — the sample keeps them all live to show the section's
+  // finished shape; `tone: "neutral"` on requests/users is a required field,
+  // not a color decision (only the error metric's tone drives its value color).
   const metric = (value: string, trend: number[], tone: RepoUsageMetric["tone"]): RepoUsageMetric => ({ value, trend, tone });
-  const env = (name: string, host: string, d: { req: string; reqA: number[]; err: number; errA: number[]; users: string; usersA: number[] }, warn: boolean): RepoUsageEnv => ({
-    name, host,
-    requests: metric(d.req, d.reqA, "neutral"),
-    errorRate: metric(`${d.err.toFixed(2)}%`, d.errA, warn ? "warn" : "good"),
-    users: metric(d.users, d.usersA, "neutral"),
-    seen: { requests: true, users: true },
-  });
-  const usage: Record<RepoRange, RepoUsageEnv[]> = {
-    "24h": [
-      env("staging", "staging.example.com", { req: "12.4K", reqA: [8, 11, 9, 14, 12, 18, 22, 17, 13, 15, 19, 16], err: 2.41, errA: [0.4, 0.6, 0.5, 1.1, 2.8, 3.4, 2.9, 2.2, 2.6, 2.4, 2.5, 2.4], users: "6", usersA: [2, 3, 3, 4, 5, 6, 6, 5, 4, 5, 6, 6] }, true),
-      env("production", "example.com", { req: "168K", reqA: [110, 125, 140, 160, 175, 190, 210, 195, 180, 170, 165, 172], err: 0.18, errA: [0.2, 0.15, 0.2, 0.18, 0.22, 0.16, 0.14, 0.19, 0.2, 0.17, 0.18, 0.18], users: "74", usersA: [40, 52, 61, 70, 78, 82, 85, 80, 76, 72, 70, 74] }, false),
-    ],
-    "7d": [
-      env("staging", "staging.example.com", { req: "86.2K", reqA: [10, 12, 14, 11, 16, 13, 12], err: 2.41, errA: [0.5, 0.7, 0.6, 0.9, 1.8, 2.6, 2.4], users: "9", usersA: [5, 6, 7, 6, 8, 9, 9] }, true),
-      env("production", "example.com", { req: "1.24M", reqA: [150, 165, 172, 180, 176, 190, 184], err: 0.21, errA: [0.24, 0.2, 0.19, 0.25, 0.22, 0.18, 0.21], users: "318", usersA: [265, 280, 296, 305, 312, 322, 318] }, false),
-    ],
-    "30d": [
-      env("staging", "staging.example.com", { req: "402K", reqA: [9, 11, 12, 10, 13, 12, 14, 13, 15, 12, 14, 16, 13, 12], err: 1.12, errA: [0.6, 0.5, 0.8, 0.7, 0.6, 0.9, 0.8, 0.7, 1, 0.9, 1.4, 2, 2.6, 2.4], users: "9", usersA: [6, 6, 7, 7, 8, 7, 8, 8, 9, 8, 9, 9, 9, 9] }, true),
-      env("production", "example.com", { req: "5.1M", reqA: [120, 132, 140, 150, 148, 158, 164, 170, 168, 176, 182, 188, 186, 184], err: 0.24, errA: [0.3, 0.28, 0.26, 0.3, 0.25, 0.22, 0.24, 0.26, 0.23, 0.2, 0.22, 0.21, 0.2, 0.21], users: "318", usersA: [210, 226, 240, 252, 260, 272, 280, 290, 296, 304, 310, 318, 315, 318] }, false),
-    ],
+  const USERS: Record<"staging" | "production", Record<RepoRange, [string, number[]]>> = {
+    staging: { "24h": ["6", [2, 3, 3, 4, 5, 6, 6, 5, 4, 5, 6, 6]], "7d": ["9", [5, 6, 7, 6, 8, 9, 9]], "30d": ["9", [6, 6, 7, 7, 8, 7, 8, 8, 9, 8, 9, 9, 9, 9]] },
+    production: {
+      "24h": ["74", [40, 52, 61, 70, 78, 82, 85, 80, 76, 72, 70, 74]], "7d": ["318", [265, 280, 296, 305, 312, 322, 318]],
+      "30d": ["318", [210, 226, 240, 252, 260, 272, 280, 290, 296, 304, 310, 318, 315, 318]],
+    },
   };
-  // The Cloudflare panel's requests ARE the Requests metric's — the real
-  // projection formats both from one sum, so the sample reads them off the same
-  // field rather than keep a second set of numbers that can drift. Errors are
-  // that row's requests × its error rate.
-  const CF_ERRORS: Record<RepoRange, [string, string]> = { "24h": ["299", "302"], "7d": ["2.1K", "2.6K"], "30d": ["4.5K", "12.2K"] };
-  const cf = (range: RepoRange): RepoCfRow[] => usage[range].flatMap((e, i) => [
-    { env: e.name, label: "Workers requests", value: e.requests?.value ?? "0" },
-    { env: e.name, label: "Workers errors", value: CF_ERRORS[range][i] },
-  ]);
 
   // ── product metrics: what the app reports about itself ────────────────────
   // Production's numbers; staging is the same shape at a twelfth of the volume.
@@ -161,6 +131,215 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
     return { name, groups, totals };
   };
 
+  // ── hosting providers: every part of every environment, provider-neutral ──
+  // It holds every state the projection (src/tools/repo.ts `projectProviders`) can produce: a Cloudflare
+  // Workers frontend (requests and errors only) and a Railway backend (resources); Vercel and Netlify web
+  // parts with deploys and NO traffic (`traffic: null`, `unavailable` saying why — neither has a public
+  // usage API); Render, a service (CPU / memory with a 24-hour trend) and a web part (requests, errors,
+  // latency and bandwidth in every range); Fly.io, a service whose releases carry no sha and a web part;
+  // one part whose last poll FAILED and one that is `empty` (polled, nothing to show). Every total is the
+  // sum of its trend, every error rate errors ÷ requests — the numbers agree the way the Worker's do.
+  const hour0 = Math.floor(now / HOUR) * HOUR;               // the current hour's start; the last complete hour ends here
+  const isoAt = (t: number) => new Date(t).toISOString();
+  /** `n` values summing EXACTLY to `total`, shaped by `shape(i)` (deterministic, never random). */
+  const spread = (total: number, n: number, shape: (i: number) => number): number[] => {
+    const w = Array.from({ length: n }, (_, i) => Math.max(0.05, shape(i)));
+    const sum = w.reduce((a, b) => a + b, 0);
+    const out = w.map((x) => Math.floor((x / sum) * total));
+    out[n - 1] += total - out.reduce((a, b) => a + b, 0);
+    return out;
+  };
+  /** A day's traffic: low overnight (UTC), a peak mid-afternoon, a little wobble. */
+  const diurnal = (i: number) => 0.55 + 0.45 * Math.sin(((i - 9) / 24) * 2 * Math.PI) + ((i * 7) % 5) * 0.03;
+  const weekly = (i: number) => 1 + ((i * 3) % 7) * 0.04 - (i % 7 === 5 || i % 7 === 6 ? 0.18 : 0);
+  type Totals = { requests: number; errors: number; latency?: number; bandwidth?: number };
+  /** One web part's traffic in all three ranges, from each range's totals. Buckets end at the last complete
+   *  hour: hourly for 24h, daily for 7d / 30d. Bandwidth / latency are null where the provider has none. */
+  const traffic = (t: Record<RepoRange, Totals>): Record<RepoRange, ProviderTrafficRange> => {
+    const one = (range: RepoRange): ProviderTrafficRange => {
+      const n = range === "24h" ? 24 : range === "7d" ? 7 : 30;
+      const step = range === "24h" ? HOUR : DAY;
+      const shape = range === "24h" ? diurnal : weekly;
+      const req = spread(t[range].requests, n, shape);
+      const err = spread(t[range].errors, n, (i) => shape(i) * (i === n - 3 ? 3 : 1)); // one bad bucket
+      const start = hour0 - n * step;
+      return {
+        requests: t[range].requests, errors: t[range].errors,
+        error_rate: Math.round((t[range].errors / t[range].requests) * 10_000) / 100,
+        latency_p95_ms: t[range].latency ?? null, bandwidth_bytes: t[range].bandwidth ?? null,
+        trend: req.map((v, i) => ({ at: isoAt(start + i * step), requests: v, errors: err[i] })),
+      };
+    };
+    return { "24h": one("24h"), "7d": one("7d"), "30d": one("30d") };
+  };
+  /** A service part's last 24 hourly readings, never zero-filled — one hour missing (a poll that did not land). */
+  const resources = (cpu: number, mem: number, missing = 9): ProviderResources => {
+    const trend = Array.from({ length: 24 }, (_, i) => i).filter((i) => i !== missing).map((i) => ({
+      at: isoAt(hour0 - (24 - i) * HOUR),
+      cpu: Math.round(cpu * (0.7 + 0.3 * diurnal(i)) * 100) / 100,
+      mem_mb: Math.round(mem * (0.92 + 0.08 * diurnal(i)) * 10) / 10,
+    }));
+    trend[trend.length - 1] = { ...trend[trend.length - 1], cpu, mem_mb: mem };
+    return { cpu, mem_mb: mem, at: trend[trend.length - 1].at, trend };
+  };
+  type Dep = [id: string, state: DeployState, ms: number, sha: string | null, msg: string | null, by: string | null];
+  const SHA = (seed: string) => (seed.repeat(8) + "0123456789abcdef".repeat(3)).slice(0, 40);
+  const hostDeploys = (rows: Dep[], o: { branch: string | null; target: ProviderDeployDTO["target"]; url?: (id: string) => string; inspect: (id: string) => string }): ProviderDeployDTO[] =>
+    rows.map(([id, state, ms, sha, message, by]) => ({
+      id, state, target: o.target, sha, branch: o.branch, message, by, at: at(ms),
+      ready_at: state === "ready" || state === "error" ? at(ms - 2 * MIN) : null,
+      url: o.url && state === "ready" ? o.url(id) : null, inspect_url: o.inspect(id),
+    }));
+  /** The Cloudflare frontend's and the Railway backend's deploys, NEWEST first, from the `API` rows above: the
+   *  frontend (`lag` 2 minutes) lands a little after the API it ships with. */
+  const DOT_STATE = { ok: "ready", fail: "error", cancel: "canceled" } as const;
+  const stackDeploys = (envKey: "staging" | "production", half: "frontend" | "backend", branch: string): ProviderDeployDTO[] => {
+    const CF = `https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/workers/services/view/${envKey === "staging" ? "frontend-staging" : "frontend"}/production`;
+    const RW = "https://railway.com/project/5e1f0c2a-7b3d-4c8e-9a10-2b3c4d5e6f70/service/9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
+    return hostDeploys([...API[envKey]].reverse().map(([sha, ms, by, result]): Dep =>
+      [half === "frontend" ? `cfv-${sha}` : `rw-${sha}`, DOT_STATE[result], half === "frontend" ? ms - 2 * MIN : ms, SHA(sha), null, by]),
+    { branch, target: "production", inspect: (id) => (half === "frontend" ? `${CF}/deployments` : `${RW}?id=${id}`) });
+  };
+  const unavailableWeb = (reason: string): { metric: HostingMetric; reason: string }[] =>
+    (["requests", "errors", "latency_p50_ms", "latency_p95_ms", "bandwidth_bytes"] as const).map((metric) => ({ metric, reason }));
+  const LABELS: Record<HostingProviderId, string> = {
+    cloudflare: "Cloudflare Workers", railway: "Railway", vercel: "Vercel", render: "Render", netlify: "Netlify", fly: "Fly.io", aws: "AWS",
+  };
+  const polledOk = (ms: number, detail: string): RepoProviderPart["last_poll"] => ({ at: at(ms), status: "ok", detail });
+  const part = (envKey: "staging" | "production", key: string, label: string, role: PartRole, provider: HostingProviderId,
+    o: Partial<RepoProviderPart> & Pick<RepoProviderPart, "deploys" | "tone" | "status">): RepoProviderPart => ({
+    env: envKey, env_label: envKey, part: key, label, role, provider, provider_label: LABELS[provider], console_url: null,
+    traffic: null, resources: null, unavailable: [], last_poll: null,
+    seen: { traffic: role === "web" && !!o.traffic, resources: role === "service" && !!o.resources, deploys: o.deploys.length > 0 },
+    ...o,
+  });
+  const providers: RepoProviderPart[] = [
+    // ── staging ──
+    part("staging", "frontend", "Frontend", "web", "cloudflare", {
+      console_url: "https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/workers/services/view/frontend-staging/production",
+      deploys: stackDeploys("staging", "frontend", "main"), status: "ok", tone: "warn", // 2.41% errors in the last 24 h
+      traffic: traffic({ "24h": { requests: 12_400, errors: 299 }, "7d": { requests: 86_200, errors: 2_100 }, "30d": { requests: 402_000, errors: 4_500 } }),
+      last_poll: polledOk(18 * MIN, "2 new points, 1 new or changed deploy"),
+    }),
+    part("staging", "backend", "Backend", "service", "railway", {
+      deploys: stackDeploys("staging", "backend", "main"), status: "ok", tone: "good", resources: resources(0.12, 410),
+      last_poll: polledOk(18 * MIN, "2 new points, 1 new or changed deploy"),
+    }),
+    part("staging", "web", "Marketing site", "web", "vercel", {
+      console_url: "https://vercel.com/acme/marketing", status: "ok", tone: "neutral", // the newest deploy is still building
+      deploys: hostDeploys([
+        ["dpl_8Fq2kLm", "building", 4 * MIN, SHA("c91d2ae"), "rollup: batch D1 reads per window", "dev-raj"],
+        ["dpl_7Hn1jKp", "ready", 2 * HOUR, SHA("9b04e7f"), "sse: re-send bearer on reconnect", "jose-a"],
+        ["dpl_6Gm0hJo", "error", 5 * HOUR, SHA("7f92b45"), "docs: note D1 batch limits", "kenji-m"],
+        ["dpl_5Fl9gIn", "ready", DAY, SHA("6e15a3c"), "chore: bump wrangler 4.86 lockfile", "tom-h"],
+        ["dpl_4Ek8fHm", "canceled", DAY + 3 * HOUR, SHA("5d0c821"), "test: fix flaky keyset spec", "priya-k"],
+        ["dpl_3Dj7eGl", "ready", 2 * DAY, SHA("2f19c3a"), "hotfix: clamp digest window to 24h", "kenji-m"],
+      ], { branch: "main", target: "preview", url: (id) => `https://marketing-${id.slice(4, 10).toLowerCase()}-acme.vercel.app`, inspect: (id) => `https://vercel.com/acme/marketing/${id.slice(4)}` }),
+      unavailable: unavailableWeb("Vercel has no public usage API — traffic needs Observability Plus"),
+      last_poll: polledOk(18 * MIN, "0 new points, 2 new or changed deploys"),
+    }),
+    part("staging", "api", "API", "service", "render", {
+      console_url: "https://dashboard.render.com/web/srv-cq1a2b3c4d5e6f7g8h9i", status: "ok", tone: "good",
+      deploys: hostDeploys([
+        ["dep-cs1k9e2", "ready", 26 * MIN, SHA("a3f82c1"), "wire usage endpoint to rollup", null],
+        ["dep-cs0j8d1", "ready", 21 * HOUR, SHA("d94ea08"), "retry: idempotent digest send", null],
+        ["dep-cr9i7c0", "error", 22 * HOUR, SHA("c58f1d3"), "migration 0027: quiet_hours", null],
+      ], { branch: "main", target: null, inspect: (id) => `https://dashboard.render.com/web/srv-cq1a2b3c4d5e6f7g8h9i/deploys/${id}` }),
+      resources: resources(0.31, 742),
+      last_poll: polledOk(18 * MIN, "3 new points, 1 new or changed deploy"),
+    }),
+    part("staging", "edge", "Edge cache", "web", "fly", {
+      console_url: "https://fly.io/apps/acme-edge-staging", status: "ok", tone: "good",
+      deploys: hostDeploys([
+        ["01J9ZB6Q4X", "ready", 3 * HOUR, null, null, "kenji@acme.example"],
+        ["01J9Y2M7R1", "ready", 3 * DAY, null, null, "kenji@acme.example"],
+      ], { branch: null, target: "production", inspect: () => "https://fly.io/apps/acme-edge-staging/monitoring" }),
+      traffic: traffic({
+        "24h": { requests: 8_900, errors: 6, latency: 41, bandwidth: 1_840_000_000 },
+        "7d": { requests: 61_300, errors: 52, latency: 41, bandwidth: 12_600_000_000 },
+        "30d": { requests: 248_000, errors: 260, latency: 41, bandwidth: 51_200_000_000 },
+      }),
+      unavailable: [{ metric: "latency_p50_ms", reason: "Fly's edge histogram is read for p95 only" }],
+      last_poll: polledOk(18 * MIN, "6 new points, 0 new or changed deploys"),
+    }),
+    // ── production ──
+    part("production", "frontend", "Frontend", "web", "cloudflare", {
+      console_url: "https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/workers/services/view/frontend/production",
+      deploys: stackDeploys("production", "frontend", "production"), status: "ok", tone: "good",
+      traffic: traffic({ "24h": { requests: 168_000, errors: 302 }, "7d": { requests: 1_240_000, errors: 2_600 }, "30d": { requests: 5_100_000, errors: 12_200 } }),
+      last_poll: polledOk(18 * MIN, "2 new points, 0 new or changed deploys"),
+    }),
+    part("production", "backend", "Backend", "service", "railway", {
+      deploys: stackDeploys("production", "backend", "production"), status: "ok", tone: "good", resources: resources(0.48, 1229),
+      last_poll: polledOk(18 * MIN, "2 new points, 0 new or changed deploys"),
+    }),
+    part("production", "web", "Marketing site", "web", "netlify", {
+      console_url: "https://app.netlify.com/sites/acme-marketing", status: "ok", tone: "warn", // the last poll failed
+      deploys: hostDeploys([
+        ["66f0c1a2b3c4d5e6f7a8b9c0", "ready", 2 * DAY, SHA("9d417be"), "Release 0.14.2", "meilin"],
+        ["66ee71d0e1f2a3b4c5d6e7f8", "ready", 6 * DAY, SHA("a1c38e6"), "Pricing page copy", "ana-r"],
+        ["66ec2bf9a8b7c6d5e4f3a2b1", "error", 6 * DAY + 2 * HOUR, SHA("90ab7c5"), "Pricing page copy", "ana-r"],
+      ], { branch: "production", target: "production", url: () => "https://www.example.com", inspect: (id) => `https://app.netlify.com/sites/acme-marketing/deploys/${id}` }),
+      unavailable: unavailableWeb("Netlify has no documented usage API"),
+      last_poll: { at: at(18 * MIN), status: "failed", detail: "netlify deploys 401: Unauthorized — the credential is not valid" },
+    }),
+    part("production", "site", "Docs site", "web", "render", {
+      console_url: "https://dashboard.render.com/static/srv-d0k1l2m3n4o5p6q7r8s9", status: "ok", tone: "good",
+      deploys: hostDeploys([
+        ["dep-ct4n2h5", "ready", 2 * DAY, SHA("c3841da"), "docs: environments and parts", null],
+        ["dep-ct3m1g4", "ready", 9 * DAY, SHA("7e5b9d0"), "docs: Poll now", null],
+      ], { branch: "production", target: null, inspect: (id) => `https://dashboard.render.com/static/srv-d0k1l2m3n4o5p6q7r8s9/deploys/${id}` }),
+      traffic: traffic({
+        "24h": { requests: 41_200, errors: 37, latency: 212, bandwidth: 3_900_000_000 },
+        "7d": { requests: 296_000, errors: 310, latency: 198, bandwidth: 27_800_000_000 },
+        "30d": { requests: 1_210_000, errors: 1_420, latency: 205, bandwidth: 113_000_000_000 },
+      }),
+      last_poll: polledOk(18 * MIN, "4 new points, 0 new or changed deploys"),
+    }),
+    part("production", "worker", "Queue worker", "service", "fly", {
+      console_url: "https://fly.io/apps/acme-worker", status: "ok", tone: "bad", // the newest release failed
+      deploys: hostDeploys([
+        ["01JA0C2D3E", "error", 50 * MIN, null, null, "jose@acme.example"],
+        ["01J9X8Y7Z6", "ready", 2 * DAY, null, null, "jose@acme.example"],
+        ["01J9V5W4X3", "ready", 8 * DAY, null, null, "meilin@acme.example"],
+      ], { branch: null, target: "production", inspect: () => "https://fly.io/apps/acme-worker/monitoring" }),
+      resources: resources(0.9, 1830, 4),
+      last_poll: polledOk(18 * MIN, "2 new points, 1 new or changed deploy"),
+    }),
+    part("production", "docs", "Status page", "web", "netlify", {
+      console_url: "https://app.netlify.com/sites/acme-status", status: "empty", tone: "neutral", deploys: [], // polled: nothing in 90 days
+      unavailable: unavailableWeb("Netlify has no documented usage API"),
+      last_poll: polledOk(18 * MIN, "0 new points, 0 new or changed deploys"),
+    }),
+  ];
+
+  // ── what the projection derives from the parts: the environment cards' lines, the deploy strips, and the
+  // Usage compare's requests / error rate (each environment's web parts summed, as `projectUsage` does) ──
+  const envParts = (envKey: "staging" | "production"): RepoEnvPart[] =>
+    providers.filter((p) => p.env === envKey).map((p) => envPartOf(p, p.deploys));
+  const deployRows: RepoDeployRow[] = providers.flatMap((p) => {
+    const dots = deployDots(p.deploys);
+    return dots.length ? [{ env: p.env, part: p.part, label: `${p.env_label} · ${p.label}`, deploys: dots }] : [];
+  });
+  const usageEnv = (envKey: "staging" | "production", host: string, range: RepoRange): RepoUsageEnv => {
+    const web = providers.filter((p) => p.env === envKey && p.traffic).map((p) => p.traffic![range]);
+    const requests = web.reduce((n, t) => n + (t.requests ?? 0), 0);
+    const errors = web.reduce((n, t) => n + (t.errors ?? 0), 0);
+    const reqTrend = web[0].trend.map((_, i) => web.reduce((n, t) => n + (t.trend[i]?.requests ?? 0), 0));
+    const errTrend = web[0].trend.map((_, i) => web.reduce((n, t) => n + (t.trend[i]?.errors ?? 0), 0));
+    const rate = (errors / requests) * 100;
+    const [users, usersA] = USERS[envKey][range];
+    return {
+      name: envKey, host,
+      requests: metric(compact(requests), reqTrend, "neutral"),
+      errorRate: metric(`${rate.toFixed(2)}%`, errTrend.map((e, i) => (reqTrend[i] ? (e / reqTrend[i]) * 100 : 0)), rate >= 1 ? "warn" : "good"),
+      users: metric(users, usersA, "neutral"),
+      seen: { requests: true, users: true },
+    };
+  };
+  const usage = Object.fromEntries((["24h", "7d", "30d"] as const).map((r) =>
+    [r, [usageEnv("staging", "staging.example.com", r), usageEnv("production", "example.com", r)]])) as Record<RepoRange, RepoUsageEnv[]>;
+
   const cbVals = [3, 5, 2, 7, 4, 6, 1, 6, 7, 5, 8, 4, 7, 5];
   const commits = (rows: [string, string, number][]) => rows.map(([sha, msg, ms]) => ({ sha, msg, at: at(ms) }));
 
@@ -169,7 +348,8 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
 
     environments: { status: "ok", data: [
       { key: "staging", name: "staging", note: "main", tone: "warn", pill: "DEGRADED", parts: envParts("staging"), ci: "1 of 6 checks failing — e2e-smoke", ciTone: "bad", url: "https://staging.example.com" },
-      { key: "production", name: "production", note: "production", tone: "good", pill: "HEALTHY", parts: envParts("production"), ci: "All 6 checks passing", ciTone: "good", url: "https://example.com" },
+      // The queue worker's newest release failed: a failed part is FAILING whatever the checks say.
+      { key: "production", name: "production", note: "production", tone: "bad", pill: "FAILING", parts: envParts("production"), ci: "All 6 checks passing", ciTone: "good", url: "https://example.com" },
     ] },
     drift: { status: "ok", data: { head: "staging", base: "main", ahead: 12, behind: 1, groups: [
       { tag: "#482", kind: "pr", title: "Batch D1 reads in usage rollup", meta: "dev-raj · 3 commits", commits: commits([["c91d2ae", "rollup: batch D1 reads per window", 24 * MIN], ["b02f1cd", "fix window math off-by-one", HOUR], ["a3f82c1", "wire usage endpoint to rollup", 2 * HOUR]]) },
@@ -225,16 +405,7 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
     activity: { status: "ok", data: evRows.map(([kind, login, text, ms]) => ({ kind, actor: login ? person(login) : null, text, url: null, at: at(ms) })) },
 
     usage: { status: "ok", data: usage },
-    // The target app has no D1 (it runs on Supabase) — this panel is the
-    // frontend Workers only, so its second row is Workers errors, not D1 reads.
-    cloudflare: { status: "ok", data: { "24h": cf("24h"), "7d": cf("7d"), "30d": cf("30d") } },
-    // Placeholder rows like every other section: the banner promises EVERY
-    // section is shown with sample values, and an unconnected block here would
-    // tell someone previewing the screen to go and set a Railway secret.
-    hosting: { status: "ok", data: [
-      { env: "staging", cpu: "0.12 vCPU", memory: "410 MB" },
-      { env: "production", cpu: "0.48 vCPU", memory: "1229 MB" },
-    ] },
+    providers: { status: "ok", data: providers },
     product: { status: "ok", data: [productEnv("staging", 12), productEnv("production", 1)] },
 
     sprint: { status: "ok", data: { id: 0, label: "M6 — Notifications GA", due: new Date(now + 12 * DAY).toISOString().slice(0, 10), closed: 21, total: 34, pct: 62 } },

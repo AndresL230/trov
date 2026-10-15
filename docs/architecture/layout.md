@@ -8,7 +8,9 @@
   `contract.ts` (Zod ingest contract), `vocabulary.ts` (controlled vocab), `rows.ts` (one type per D1 table),
   `dashboard.ts` (the My Work DTO shared by the Worker and web), `people.ts` (the person-profile contract —
   zod-free: the caps, `avatarSrc`, the profile / directory / agent DTOs), `repo.ts` (the Repo dashboard DTO — zod-free,
-  since the SPA imports `REPO_TABS` as a value), `notifications.ts` (the digest DTOs), and the
+  since the SPA imports `REPO_TABS` as a value), `hosting.ts` (the hosting-provider contract — zod-free: providers,
+  parts, roles, connection methods, the `hx_<metric>` vocabulary, deploy states, the setup and dashboard DTOs; see
+  `hosting-providers.md`), `notifications.ts` (the digest DTOs), and the
   tickets pair-per-domain: `tickets.ts` / `sprints.ts` (zod rows, DTOs, payloads, `parseTicketLink`,
   `toSprintView`) over `tickets-core.ts` / `sprints-core.ts`. **The `*-core.ts` split is a rule**: anything
   the SPA imports as a VALUE (`canTransition` / `legalMoves` / `TICKET_STATUS_LABEL` / `isOpenStatus`,
@@ -44,7 +46,7 @@
   the legacy `repoEnvironments()` parser of the `REPO_ENVIRONMENTS` var is called only by tests), `capture.ts` (PURE delivery→`RepoEvent[]` derivation,
   `repoEventsFromDelivery` — no DB, no clock, no network, and stores only a SLICE of each payload in `raw`),
   `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the five snapshot kinds —
-  `prs_reconciled`, `env_heads`, `drift`, `branches`, `cf_polled`; `putMetric`, the ONE write seam that
+  `prs_reconciled`, `env_heads`, `drift`, `branches`; `putMetric`, the ONE write seam that
   normalises `repo_metrics.at`, and `putMetrics`, the same write for MANY rows in `db.batch` chunks of 50;
   the metric reads `metricSeries` / `latestMetric` / `latestHealth` and the Usage tab's whole-tab reads
   `metricsSince` / `productReadings` / `metricsEver`; and `pruneRepoCapture`, the retention rules),
@@ -53,9 +55,9 @@
   `recordingSince`, the earliest `recorded_at` per kind that the week-over-week deltas gate on, and the ONE
   non-decisive-conclusion policy at `foldResult`/`checkState`), `github.ts` (GitHub reads with the token its caller resolved for the org —
   `ghJson` / `ghGraphql`, `reconcileRepo` with its drift and branches arms, `refreshDrift`, `fillFailedJob` —
-  never on the render path), `poll.ts` (the four scheduled pulls, none of which may throw: `pingHealth` every tick,
-  and the three hourly usage pollers `pollCloudflare`, `pollRailway`, `pollSaplingMetrics`, each returning a
-  `PollOutcome` per environment), and `cron.ts`
+  never on the render path), `poll.ts` (the two scheduled pulls, neither of which may throw: `pingHealth` every
+  tick, and the hourly usage poller `pollSaplingMetrics`, returning a `PollOutcome` per environment — a host's
+  usage is the hosting providers', `src/hosting/`), and `cron.ts`
   (`handleRepoCron` — the repo trigger's one dispatcher, ONE heavy job per invocation, each job run for every
   org by ROTATION (`dispatch.ts`: units, budget, `cron_cursor`), the subrequest budget stated at the
   dispatcher — the job functions `runEnvJob` / `runOrgJob` / `runReconcileJob`; `runUsagePolls`, the org's
@@ -181,6 +183,16 @@
   `shared/ai-fixtures.ts`. Migration `0055_ai` (`orgs.ai_automation`, the switch, and
   `ai_suggestions`, `ai_feedback`); the monthly `ai_runs` allowance is in `PLANS`
   (not listed on the pricing page yet).
+  Then `0057_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
+  `hosting_poll_state`, and `org_secrets` REBUILT only to widen its kind CHECK to the five hosting kinds; rollback
+  `scripts/hosting/0057_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.
+- `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
+  (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
+  `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,
+  `routes.ts`, `webhook.ts`, `probe.ts`, `poll.ts`, `detect.ts` (the "Detected" suggestion, from captured GitHub
+  activity alone). Its screens: `web/src/hosting.ts` + `web/src/hosting-actions.ts` (Org settings › Hosting),
+  `web/src/repo-hosting.ts` (Repo dashboard › Usage › Hosting), `web/src/hosting-sample.ts` (the sample states — a
+  dynamic import, never in the main bundle).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, the Guide (Help › Guide, `#guide`; it was Get Started), the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard) served via the ASSETS binding (an email's Unsubscribe link is NOT a screen

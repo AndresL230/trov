@@ -1,0 +1,25 @@
+{
+  "id": "prj_Qm3xT8vLp2Rk7Yw4Nf6Hs9Bd1Cz5",
+  "name": "web",
+  "accountId": "team_a1B2c3D4e5F6g7H8i9J0k1L2",
+  "framework": "vite",
+  "nodeVersion": "22.x",
+  "createdAt": 1767225600000,
+  "updatedAt": 1791366182000,
+  "link": {
+    "type": "github",
+    "org": "acme",
+    "repo": "web",
+    "repoId": 812345678,
+    "productionBranch": "production",
+    "deployHooks": []
+  },
+  "targets": {
+    "production": {
+      "id": "dpl_6Co9IjK1mO5pQ8sT0uV2wX3yZ4aB",
+      "url": "web-n4j9u6h1m-acme.vercel.app",
+      "readyState": "READY",
+      "createdAt": 1791366082000
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "evt_W0xYHk7mN2Pq4rS6tU8v",
+  "type": "project.renamed",
+  "createdAt": 1791376320000,
+  "region": "iad1",
+  "payload": {
+    "team": { "id": "team_a1B2c3D4e5F6g7H8i9J0k1L2" },
+    "user": { "id": "Xk2mP9qL4rT7vW1yZ3bN5cD8" },
+    "project": { "id": "prj_Qm3xT8vLp2Rk7Yw4Nf6Hs9Bd1Cz5", "name": "acme-site" }
+  }
+}

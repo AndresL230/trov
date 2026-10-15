@@ -1,0 +1,68 @@
+{
+  "data": {
+    "deployments": {
+      "edges": [
+        {
+          "node": {
+            "id": "4f1c2a7e-8b3d-4e19-a6c0-2d5f7b9e1a34",
+            "status": "BUILDING",
+            "createdAt": "2026-10-07T11:58:12.000Z",
+            "statusUpdatedAt": "2026-10-07T11:58:40.000Z",
+            "projectId": "9e2b4c6d-1a3f-4b5e-8c7d-0f2a4b6c8d1e",
+            "url": null,
+            "staticUrl": "myapp-staging.up.railway.app",
+            "meta": { "commitHash": "a3f9c2e81b7d4c05e6f1a2b3c4d5e6f708192a3b", "branch": "main", "commitMessage": "Add the pricing page", "commitAuthor": "dana" }
+          }
+        },
+        {
+          "node": {
+            "id": "7b9d1e3f-2c4a-4f6b-9d8e-1a3c5e7f9b20",
+            "status": "SUCCESS",
+            "createdAt": "2026-10-06T16:40:03.000Z",
+            "statusUpdatedAt": "2026-10-06T16:42:10.000Z",
+            "projectId": "9e2b4c6d-1a3f-4b5e-8c7d-0f2a4b6c8d1e",
+            "url": null,
+            "staticUrl": "myapp-staging.up.railway.app",
+            "meta": { "commitHash": "5d8e2f1a9c3b7e40d6a1f2b3c4d5e6f7a8b9c0d1", "branch": "main", "commitMessage": "Fix the login redirect\n\nThe callback lost its state.", "commitAuthor": "omar" }
+          }
+        },
+        {
+          "node": {
+            "id": "2a4c6e8f-0b1d-4a3c-8e5f-7a9b1c3d5e60",
+            "status": "CRASHED",
+            "createdAt": "2026-10-06T10:05:44.000Z",
+            "statusUpdatedAt": "2026-10-06T10:09:01.000Z",
+            "projectId": "9e2b4c6d-1a3f-4b5e-8c7d-0f2a4b6c8d1e",
+            "url": null,
+            "staticUrl": "myapp-staging.up.railway.app",
+            "meta": { "commitHash": "c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0", "branch": "feat/queue", "commitMessage": "Queue worker", "commitAuthor": "dana" }
+          }
+        },
+        {
+          "node": {
+            "id": "8e0a2c4e-6f1b-4d3a-9c5e-3b7d9f1a2c40",
+            "status": "REMOVED",
+            "createdAt": "2026-10-05T09:12:44.000Z",
+            "statusUpdatedAt": "2026-10-06T16:42:11.000Z",
+            "projectId": "9e2b4c6d-1a3f-4b5e-8c7d-0f2a4b6c8d1e",
+            "url": null,
+            "staticUrl": "myapp-staging.up.railway.app",
+            "meta": { "image": "ghcr.io/acme/myapp:1.4.2" }
+          }
+        },
+        {
+          "node": {
+            "id": "1f3e5d7c-9b2a-4c4e-8f6d-5a7c9e1b3d50",
+            "status": "SKIPPED",
+            "createdAt": "2026-10-05T08:00:00.000Z",
+            "statusUpdatedAt": "2026-10-05T08:00:01.000Z",
+            "projectId": "9e2b4c6d-1a3f-4b5e-8c7d-0f2a4b6c8d1e",
+            "url": null,
+            "staticUrl": null,
+            "meta": null
+          }
+        }
+      ]
+    }
+  }
+}

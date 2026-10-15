@@ -1,0 +1,16 @@
+{
+  "data": {
+    "viewer": {
+      "accounts": [
+        {
+          "workersInvocationsAdaptive": [
+            { "dimensions": { "datetimeHour": "2026-10-07T09:00:00Z" }, "sum": { "requests": 1523, "errors": 2 } },
+            { "dimensions": { "datetimeHour": "2026-10-07T10:00:00Z" }, "sum": { "requests": 1610, "errors": 0 } },
+            { "dimensions": { "datetimeHour": "2026-10-07T12:00:00Z" }, "sum": { "requests": 311, "errors": 1 } }
+          ]
+        }
+      ]
+    }
+  },
+  "errors": null
+}

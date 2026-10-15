@@ -1,0 +1,24 @@
+{
+  "data": {
+    "metrics": [
+      {
+        "measurement": "CPU_USAGE",
+        "values": [
+          { "ts": 1791363600, "value": 0.0731 },
+          { "ts": 1791367200, "value": 0.0812 },
+          { "ts": 1791370800, "value": 0.0694 },
+          { "ts": 1791374400, "value": 0.2 }
+        ]
+      },
+      {
+        "measurement": "MEMORY_USAGE_GB",
+        "values": [
+          { "ts": 1791363600, "value": 0.2074 },
+          { "ts": 1791367200, "value": 0.2139 },
+          { "ts": 1791370800, "value": 0.2107 },
+          { "ts": 1791374400, "value": 0.5 }
+        ]
+      }
+    ]
+  }
+}

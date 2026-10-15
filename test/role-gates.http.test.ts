@@ -176,8 +176,8 @@ describe("the role is the ORG's, not the person's", () => {
     const NOT = "not_configured";
     const answers: [string, number, unknown][] = [
       ["/admin/backfill", 503, { error: "service token or repo not configured" }],
-      ["/admin/poll", 200, { health: NOT, cloudflare: NOT, railway: NOT, sapling: NOT, github: NOT }],
-      ["/admin/poll-usage", 200, { cloudflare: NOT, railway: NOT, sapling: NOT }],
+      ["/admin/poll", 200, { health: NOT, sapling: NOT, github: NOT }],
+      ["/admin/poll-usage", 200, { sapling: NOT }],
     ];
     for (const [suffix, status, json] of answers) {
       for (const path of [suffix, `/api/o/acme${suffix}`]) {

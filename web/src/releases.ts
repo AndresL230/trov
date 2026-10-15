@@ -71,6 +71,97 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Trov writes for you (#178): the AI screens, My Work's new layout, a handoff's reading list.
+  {
+    version: "0.34",
+    date: "2026-10-15",
+    title: "Trov writes for you",
+    headline: "Trov reads what your team captures and writes the short version: your brief, where the repo stands, and what each session shipped.",
+    highlights: [
+      "Claiming a handoff now lists what to read first: the docs, decisions, feed entries and artifacts that match what the handoff is about. It says plainly that the list is not complete.",
+      "My Work's Queued handoffs has Claim & copy: one press claims the newest handoff and copies it as a prompt for a fresh session.",
+      "My Work puts the date at the top right, and Needs your review says its count once.",
+    ],
+    headsUp: [
+      "Org settings has an AI tab: whether Trov's AI is on for your organization, and exactly what is sent to Anthropic and what never is. An admin turns it on or off.",
+    ],
+    ops: [],
+    patches: {
+      added: [
+        "The AI kit (`web/src/ai-ui.ts`): the Trov AI mark (`aiMark` in `marks.ts`, the Trov logo in the accent), the \"Written by Trov\" byline with its not-official tooltip, \"Wrong?\" as a thumbs-down icon button at the bottom right, source links (`AiCite`), \"Wrong?\" (`POST /ai/feedback`, hidden at once for the person, back on a failure), the suggestion chip (#157: dashed outline, the mark, a \"because…\" disclosure, Accept / Dismiss, \"Not available yet\" on a 409 `not_available`) and the capped / empty lines; acts in `web/src/ai-actions.ts` (#178)",
+        "Four AI screens, each drawn ONLY when its read carries the field (production omits them all, so nothing shows yet): My Work › Your brief (`briefTile`, `brief?`; with it the bento is laid out by area, `.mw-bento-brief`: Brief tall beside Review over Tickets, Your sessions tall beside Repo over Docs you own and Queued handoffs; every tile one fixed height, its overflow scrolling inside it), Repo › Overview › State and Repo › Planning › Where the work went (`web/src/repo-ai.ts`, `state?` / `themes?`: lanes, weekly bands, 8 weeks / Quarter, proposed themes with Accept / Rename / Remove), and Feed entries written by Trov (`FeedRow.ai?`) with a Source switch (All / Agents / Trov) and a one-time note (`trov.aiFeedNote`, per person on this browser). `test/render.ai-absent.test.ts` pins each screen's field-absent markup byte for byte; `test/render.ai.test.ts` covers every state (#178)",
+        "Org settings › AI (`web/src/org-ai.ts`, `#org/ai`): the switch (admin; `PUT /ai/settings`), this month's runs against the allowance, and what is sent to Anthropic; the web API client gains `getAiSettings` / `putAiSettings` / `acceptAiSuggestion` / `dismissAiSuggestion` / `sendAiFeedback` (`AI_ROUTES`) (#178)",
+        "Platform › Usage: AI runs, failures, capped runs and tokens per organization and in total, from `OrgUsage.ai` / `PlatformUsageResponse.ai` (nothing drawn when absent) (#178)",
+      ],
+      changed: [
+        "`switchBtn` (`web/src/notifications.ts`) takes an optional accessible name and a busy state; without them its markup is unchanged (#178)",
+        "My Work › Queued handoffs: the button is Claim & copy (`mwHandoffClaim`): it copies the newest handoff as a prompt and claims it, as the handoff screen's Claim does (#178)",
+        "My Work: the date sits top right of the greeting, and the line under the greeting is only what is waiting on you (`myWorkLayout` takes `date` and `stat`) (#178)",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [178],
+  },
+  // Hosting providers: Org settings › Hosting, the Repo dashboard's Hosting section, Detected, Vercel events.
+  {
+    version: "0.33",
+    date: "2026-10-15",
+    title: "Hosting providers",
+    headline: "Connect Vercel, Netlify, Render or Fly.io, and the Repo dashboard shows every part of every environment, whoever hosts it.",
+    highlights: [
+      "Org settings has a new Hosting tab. Say which host runs each part of each environment (the web app, the API, a worker) and connect Trov to it once: Cloudflare, Railway, Vercel, Netlify, Render or Fly.io, every one the same way. AWS is listed as coming later.",
+      "Where a host offers it, connecting is one click: Connect with Vercel installs Trov on the projects you pick, and Connect with Netlify signs in with Netlify. Otherwise you paste a token or a key, and Trov says what it can do and the only place it is ever sent.",
+      "The Repo dashboard's Usage tab has one Hosting section for every part: its last deploy and the ten before it, then requests, error rate, latency and bandwidth for a web part, or CPU and memory for a service.",
+      "A figure a host cannot report is a dash with the reason, never a zero. Vercel and Netlify publish no usage figures, so their parts show deploys and say so.",
+      "Trov looks for your host on your repository and says how it is going: what to connect or add first, that it is looking (Sync GitHub now does it straight away), that it found nothing it knows, or Detected: Vercel, which picks that host for you when you add the part. Nothing is connected until you connect it.",
+      "Vercel deploys show up as they happen: when a deploy starts, finishes or is rolled back, Trov reads that project again straight away instead of waiting for the hourly check.",
+    ],
+    ops: [
+      "Apply `migrations/0057_hosting_providers.sql` (merging to main applies it). It adds the hosting tables, REBUILDS `org_secrets` only to widen its kind CHECK, moves each environment's Cloudflare / Railway columns into parts (`frontend` / `backend`), renames their `cf_*` / `rw_*` metric history to `hx_*`, and DROPS the five columns (`worker`, `worker_check`, `railway_env`, `railway_environment_id`, `railway_service_id`). Rollback: `scripts/hosting/0057_hosting_providers.down.sql`, run before 0042's.",
+      "Railway: after the merge, SaplingLearn's Railway parts read nothing until Railway is connected ONCE on Org settings › Hosting with a workspace (team) token — the per-environment project tokens (`RAILWAY_TOKEN_*`, and `railway` secrets scoped to an environment) cannot serve the org-wide connection. Remove the `RAILWAY_TOKEN_*` Worker secrets once it is connected.",
+      "Cloudflare: its traffic keeps working with the current token; its deploys now come from Cloudflare's Workers Deployments API, which needs the token to ALSO have Account › Workers Scripts › Read. Edit the token in the Cloudflare dashboard (no new value to paste) — until then the Cloudflare part shows its traffic and no deploys.",
+      "No trigger change: the hosting job rides the existing `*/10` repo trigger at `:40`, so no `wrangler triggers deploy` is needed.",
+      "Optional, for Connect with Vercel: create a Vercel Integration (scopes Projects: Read, Deployments: Read, Team: Read, User: Read, Integration Configuration: Read/Write; Redirect URL `<origin>/hosting/vercel/callback`; Configuration URL `<origin>/hosting/vercel/configure`; Webhook URL `<origin>/webhook/hosting/vercel` with `integration-configuration.removed`, `deployment.created` / `ready` / `succeeded` / `error` / `canceled` and `project.removed` ticked) and set `VERCEL_INTEGRATION_CLIENT_ID`, `VERCEL_INTEGRATION_CLIENT_SECRET` (secrets) and `VERCEL_INTEGRATION_SLUG`. Without them, Vercel falls back to a pasted token.",
+      "Optional, for Connect with Netlify: register a Netlify OAuth application (Redirect URI `<origin>/hosting/netlify/callback`) and set `NETLIFY_OAUTH_CLIENT_ID` / `NETLIFY_OAUTH_CLIENT_SECRET`. Without them, Netlify falls back to a personal access token.",
+      "Before relying on a provider, check its UNCONFIRMED points against a live account — listed per provider in `docs/superpowers/specs/2026-10-07-hosting-providers-research.md` and each `fixtures/hosting/<provider>/README.md`.",
+    ],
+    patches: {
+      added: [
+        "Hosting providers behind one interface, issue #97: `shared/hosting.ts` (the contract — providers, parts, roles, connection methods, the `hx_<metric>` vocabulary, deploy states, setup and dashboard DTOs) and `src/hosting/` (`types.ts`, `http.ts` — the fixed-host fetch with scrubbed errors and the shared poll window —, `registry.ts`, `parts.ts`, `part-writes.ts`, `connections.ts`, `setup.ts`, `routes.ts`, `webhook.ts`, `probe.ts`, `poll.ts`) (#185)",
+        "Providers (issues #98–#102): Vercel — install or token —, Render — API key —, Netlify — OAuth or token —, Fly.io — a read-only token; AWS described as `later`; Cloudflare and Railway as the first two, LEGACY parts read from the environment's own columns (#185)",
+        "Migration `0057_hosting_providers`: `org_environment_parts`, `org_hosting_connections`, `hosting_deploys`, `hosting_poll_state`; `org_secrets.kind` admits `vercel` / `render` / `netlify` / `fly` / `aws` (#185)",
+        "Routes under `/api/o/:slug`: `GET /hosting`, `GET /hosting/providers`, `PUT|DELETE /environments/:key/parts/:part`, `POST /hosting/:provider/connect|disconnect|test`; the root `GET /hosting/:provider/callback` and the provider-side uninstall notice `POST /webhook/hosting/:provider` (#185)",
+        "The `hosting` job on the repo cron's `:40` tick (one unit per stored part, budgeted by the provider's `pollCost`), a `hosting` arm in Poll now, and the Repo dashboard's provider-neutral `providers` section (also in MCP `get_repo_dashboard`) (#185)",
+        "Data stubs for the UI: `web/src/hosting-sample.ts` (every Hosting setup state), the `providers` section of `web/src/repo-sample.ts`, recorded-shape API fixtures under `fixtures/hosting/<provider>/`; the design brief `docs/design/hosting-providers-claude-design-prompt.md` (#185)",
+        "Org settings › Hosting (`#org/hosting`, admins; `web/src/hosting.ts`, `web/src/hosting-actions.ts`): the setup checklist, a tile per environment with its parts, a grid of provider cards with each host's logo, what it is and what Trov reads (Cloudflare, Railway, Vercel, Render, Netlify, Fly.io; AWS as later), one Connect or Manage button each and no hint of which connects more easily; Manage opens a dialog with Test connection, Rotate, Disconnect and the rest, and three dialogs: the part editor (host, role, key, a form generated from the provider's part settings), the install / OAuth confirmation, and the paste-a-token form, which says what the token can do and where it is sent. Test connection, Rotate, Disconnect and Remove; a notice for every `?hosting=<outcome>` return (#185)",
+        "Repo dashboard › Usage › Hosting (`web/src/repo-hosting.ts`): one section for every part of every environment, whoever hosts it: the last deploy and a strip of the last ten, traffic per range for a web part, CPU and memory for a service. A figure a provider cannot read is a dash with its reason, never 0 (#185)",
+        "`HostingSetupDTO.detected` (`src/hosting/detect.ts`): the providers the captured GitHub check runs and deployments already show, read from `repo_events` alone. Org settings › Hosting says Detected: Vercel and preselects it in the part editor; it connects nothing (#185)",
+        "`POST /webhook/hosting/vercel` also takes `deployment.created` / `ready` / `succeeded` / `error` / `canceled` / `promoted` / `rollback` and `project.removed` / `project.renamed`: a verified one polls that project's parts again, after the response; any other event type is a 200 that does nothing (#185)",
+        "`GET /hosting/:provider/configure?configurationId=…` (Vercel's Configuration URL): Org settings › Hosting of the org that holds that installation, for a signed-in admin of it; everything else is the same redirect to `/` (#185)",
+        "Preview with sample data on Org settings › Hosting: five states from `web/src/hosting-sample.ts` (a dynamic import), with nothing sent while it is on (#185)",
+        "Both screens use the empty-layout system: one shape builder each behind the loading skeleton and the empty layouts (`envTilesShape` / `partRowsShape`, `hostingShapes`), and `?preview=empty` / `?preview=loading` cover the Hosting tab through `previewState` (#185)",
+        "Tests: `test/render.hosting.test.ts`, `test/render.repo-hosting.test.ts`, `test/hosting.detect.test.ts`, `test/hosting.webhook.events.test.ts` (#185)",
+        "Tests: `test/hosting.contract.test.ts` (every provider), `test/hosting.provider.<id>.test.ts`, `test/hosting.setup.*.test.ts`, `test/hosting.poll.test.ts`, `test/hosting.cron.test.ts`, `test/hosting.dashboard.test.ts`, `test/hosting.sample.test.ts` (#185)",
+      ],
+      changed: [
+        "`HostingSetupDTO.detection` (`readDetectionStatus`, src/hosting/detect.ts): no_repo → no_environment → looking → none / found, drawn in the Detected slot with its next step; the tab re-reads itself while looking; the Sync panel opens for an admin from any screen. Preview with sample data has two switchers, Flow × Stack (`hostingScenario`, 8 × 7 payloads, each held to the providers' checks) (#185)",
+        "Form errors float in a small box right under their input (`fieldError` / `anchoredField`, org-ui.ts) instead of a line that pushes the form down; every \"Where to get it\" is numbered steps then short notes (`howToHtml` reads `1. …` lines as a list) (#185)",
+        "Cloudflare and Railway are ordinary providers, with no legacy path left: their parts are `org_environment_parts` rows (0057 moves the environment's `worker` / `railway_*` columns into parts and drops the columns), each is connected ONCE for the org (Railway: a workspace token sent as Bearer — no per-environment project token; Cloudflare: Account Analytics Read + Workers Scripts Read), both are polled by the `:40` hosting job through `probe` / `poll` in `src/hosting/providers/`, and Railway serves both roles. `pollCloudflare` / `pollRailway`, the `cf_polled` marker, GitHub `deployment_status` capture and the check-run part tags are gone; the Repo dashboard's environment cards, deploy strips and Usage compare read `hosting_deploys` / `hx_*` for every part, and MCP `get_repo_dashboard` drops its `cloudflare` / `hosting` sections (#185)",
+        "`hx_*` metrics are pruned with the hourly usage metrics (100 days); `hosting_deploys` after 180 days (#185)",
+        "Repo dashboard › Usage: the Cloudflare — frontend Workers and Hosting — Railway backend blocks give way to the one Hosting section, where the Cloudflare frontend and the Railway backend are parts like any other. `parseCompact` / `errorShare` are gone with them (#185)",
+        "The hosting provider callback lands on `/<slug>/?hosting=<outcome>&provider=<id>#org/hosting` (was `#org`), and the page opens on the Hosting tab (#185)",
+        "Org settings › Environments points from its Cloudflare and Railway names to Hosting; quick search finds Org settings › Hosting (#185)",
+        "Deleting an environment also deletes its stored parts, their poll state and deploy history, in the same batch (#185)",
+        "`hosting` is a reserved org slug (`RESERVED_ORG_SLUGS`): the provider callback answers at the root, `/hosting/<provider>/callback`, and lands back on the org's own address, `/<slug>/?hosting=<outcome>` (#185)",
+        "Org settings › Integrations lists a hosting provider's credential once a part uses it; pasting a token over an installed connection supersedes the install (#185)",
+        "Connect with Vercel / Netlify holds the GitHub App's guarantees: one org per installation (a partial unique index; a second org gets `taken`), one live install per org — connecting a different one REPLACES it, no Disconnect first (the GitHub App's rule since #110; the replaced grant is removed on the provider's side, best effort), the installation id only from the provider's own answer, a random `state` with the sealed intent in the `trov_hx` cookie, a public callback that never answers JSON, the outcome as `?hosting=<outcome>` (`HOSTING_CONNECT_OUTCOMES`), the row, credential and config written in ONE batch, a provider-side 401 at Test connection ending the binding, `revoked_by = 'system'` and a CHECKed `revoked_reason`, and `manage_url` on every connection (#185)",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [185],
+  },
   // Tags of your own, sorted by Sift: one tag list per organization, automatic tagging, a tag's page (#179).
   {
     version: "0.32",
@@ -90,7 +181,6 @@ export const RELEASES: Release[] = [
       "Org settings no longer has a separate GitHub token step: Connect a repository is the GitHub step, done once Trov can read the repository.",
       "A tag list holds up to 30 tags on Free, 50 on Pro and any number on Enterprise. Retired tags do not count.",
       "While Trov looks, the tag's row shows a progress bar and a count of the items checked and tagged; the bar takes the tag's colour when it added the tag to something. Afterwards the row keeps the count, with Undo. A tag whose words match nothing still gets the newest items checked.",
-      "Org settings has an AI tab: whether Trov's AI is on for your organization, and exactly what is sent to Anthropic and what never is. An admin turns it on or off.",
     ],
     ops: [
       "Apply `0056_org_tags` (the deploy does it). It adds `org_tags` and `org_tag_suggestions`, gives every organization the six starter tags, and REBUILDS `entry_tags` without its reference to the global `tags` table: same columns and rows, a guard fails the migration if a row would be lost. Safe on the Worker from before it. Check first that every stored tag is one of the six: `SELECT tag, COUNT(*) FROM entry_tags WHERE tag NOT IN (SELECT tag FROM tags) GROUP BY tag` must return nothing. The by-hand rollback is in the file's header.",
@@ -112,19 +202,12 @@ export const RELEASES: Release[] = [
         "No review step (the owner's call, overriding issue 154's \"suggestions, never actions\" for this one feature): a fit at 0.85 or more ADDS the tag — the `entry_tags` row and its `org_tag_suggestions` provenance (`accepted`, resolved by `jev`, `run_id`) in one batch, one `tag.fit` audit row per run; `POST /tags/:name/undo-run` removes exactly that run's tags (`undone`); a person removing one is remembered (`removed`) and never re-added. The review list and `GET /tags/:name/fits`, `POST /tags/:name/fits/resolve` are removed; `jev` is a reserved handle (#179)",
         "Fewer than 20 keyword matches: the newest other items top the run up to 20; a topped-up fit's reason is `Sift rates it a fit (N%)`; an empty org ends the run with nothing checked, said plainly; the New tag modal says a description helps (#179)",
         "Web: Org settings › Tags (`web/src/tags.ts`, `tags-actions.ts`), a tag's page at `#tags/<name>`, a doc's Tags row, and `tagMark` / `tagWords` in `marks.ts` (a square and the word; plain words in a list, three then \"and N more\") (#179)",
-        "The AI kit (`web/src/ai-ui.ts`): the Trov AI mark (`aiMark` in `marks.ts`, the Trov logo in the accent), the \"Written by Trov\" byline with its not-official tooltip, \"Wrong?\" as a thumbs-down icon button at the bottom right, source links (`AiCite`), \"Wrong?\" (`POST /ai/feedback`, hidden at once for the person, back on a failure), the suggestion chip (#157: dashed outline, the mark, a \"because…\" disclosure, Accept / Dismiss, \"Not available yet\" on a 409 `not_available`) and the capped / empty lines; acts in `web/src/ai-actions.ts` (#178)",
-        "Four AI screens, each drawn ONLY when its read carries the field (production omits them all, so nothing shows yet): My Work › Your brief (`briefTile`, `brief?`; with it the bento is laid out by area, `.mw-bento-brief`: Brief tall beside Review over Tickets, Your sessions tall beside Repo over Docs you own and Queued handoffs; every tile one fixed height, its overflow scrolling inside it), Repo › Overview › State and Repo › Planning › Where the work went (`web/src/repo-ai.ts`, `state?` / `themes?`: lanes, weekly bands, 8 weeks / Quarter, proposed themes with Accept / Rename / Remove), and Feed entries written by Trov (`FeedRow.ai?`) with a Source switch (All / Agents / Trov) and a one-time note (`trov.aiFeedNote`, per person on this browser). `test/render.ai-absent.test.ts` pins each screen's field-absent markup byte for byte; `test/render.ai.test.ts` covers every state (#178)",
-        "Org settings › AI (`web/src/org-ai.ts`, `#org/ai`): the switch (admin; `PUT /ai/settings`), this month's runs against the allowance, and what is sent to Anthropic; the web API client gains `getAiSettings` / `putAiSettings` / `acceptAiSuggestion` / `dismissAiSuggestion` / `sendAiFeedback` (`AI_ROUTES`) (#178)",
-        "Platform › Usage: AI runs, failures, capped runs and tokens per organization and in total, from `OrgUsage.ai` / `PlatformUsageResponse.ai` (nothing drawn when absent) (#178)",
       ],
       changed: [
         "The gate (`ingestFeedEntry`) reads the ORG's live tag list instead of `shared/vocabulary.ts` `TAGS`: known tags are written, an unknown one is recorded in `org_tag_suggestions` and the entry is written without it, never sent to `needs_triage` for that. `append_feed` / `record_session` answer `suggested_tags`. Replay ledger, section and confidence routing unchanged (#179)",
         "`get_feed` (HTTP and MCP) carries each entry's `tags`; `GET /doc/:slug` carries the doc's. The Feed's tag filter and Unplaced's tag picker read the org's list (#179)",
         "`createOrg` seeds the six starter tags; `shared/vocabulary.ts` `TAGS` and `0002_seed_vocab` now name the STARTER set, not the gate's vocabulary (#179)",
         "`assign_triage` (feed): a picked tag must be on the org's list; with none picked, the item's own tags go through the gate as they came (#179)",
-        "`switchBtn` (`web/src/notifications.ts`) takes an optional accessible name and a busy state; without them its markup is unchanged (#178)",
-        "My Work › Queued handoffs: the button is Claim & copy (`mwHandoffClaim`): it copies the newest handoff as a prompt and claims it, as the handoff screen's Claim does (#178)",
-        "My Work: the date sits top right of the greeting, and the line under the greeting is only what is waiting on you (`myWorkLayout` takes `date` and `stat`) (#178)",
       ],
       fixed: [
         "A tag page's Who writes about it and Often seen with bars all took the tag's colour; each is now the person's or the other tag's own (`meters` `tone`, `TagPageProps.colorOf` / `tagColorOf`) (#180)",
@@ -134,7 +217,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [178, 179, 180, 182, 184],
+    prs: [179, 180, 182, 184],
   },
   // States drawn as marks instead of tags: the 2026-10 tag audit (#173).
   // Also: capture-time summaries move from Google Gemini to Anthropic's Claude, behind one model client (#176),

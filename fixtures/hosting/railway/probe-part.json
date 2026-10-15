@@ -1,0 +1,6 @@
+{
+  "data": {
+    "serviceInstance": { "serviceName": "api", "environmentId": "b7c1d3e5-f7a9-4b2c-8d4e-6f8a0b2c4d6e" },
+    "environment": { "name": "staging", "projectId": "9e2b4c6d-1a3f-4b5e-8c7d-0f2a4b6c8d1e" }
+  }
+}

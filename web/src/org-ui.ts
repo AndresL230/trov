@@ -163,13 +163,20 @@ export interface FieldOpts {
   id: string; label: string; act: string; value: string; field: string;
   arg?: string; placeholder?: string; help?: string; error?: string | null; max?: number; disabled?: boolean; enter?: string; required?: boolean;
 }
+/** A field's error: a small box FLOATING right under its input (`.cnpy-field-err`, absolutely placed inside
+ *  `.cnpy-field-anchor`), so a message that appears while typing never pushes the form down. The text is the
+ *  box's own (no icon before it), `role="alert"` so it is read the moment it appears. */
+export const fieldError = (id: string | null, message: string): string =>
+  `<div${id ? ` id="${attr(id)}"` : ""} role="alert" class="cnpy-field-err" style="border-radius:8px">${esc(message)}</div>`;
+/** The input (or picker) and its floating error, anchored together. */
+export const anchoredField = (control: string, error: string): string => `<div class="cnpy-field-anchor">${control}${error}</div>`;
+
 export function textField(o: FieldOpts): string {
   const describe = [o.help ? `${o.id}-h` : "", o.error ? `${o.id}-e` : ""].filter(Boolean).join(" ");
   return `<div class="cnpy-org-field">
     <label for="${attr(o.id)}" style="${O_LABEL}">${esc(o.label)}${o.required ? ` <span style="text-transform:none;letter-spacing:0;font-weight:500">(required)</span>` : ""}</label>
-    <input id="${attr(o.id)}" data-act="${attr(o.act)}"${o.arg !== undefined ? ` data-arg="${attr(o.arg)}"` : ""} data-field="${attr(o.field)}" value="${attr(o.value)}"${o.placeholder ? ` placeholder="${attr(o.placeholder)}"` : ""}${o.max ? ` maxlength="${o.max}"` : ""}${o.enter ? ` data-enter="${attr(o.enter)}"` : ""}${o.disabled ? " disabled" : ""}${describe ? ` aria-describedby="${attr(describe)}"` : ""}${o.error ? ' aria-invalid="true"' : ""} autocomplete="off" autocapitalize="off" spellcheck="false" class="cnpy-input" style="${O_FIELD};margin-top:7px;${o.error ? "border-color:var(--red);" : ""}" />
+    ${anchoredField(`<input id="${attr(o.id)}" data-act="${attr(o.act)}"${o.arg !== undefined ? ` data-arg="${attr(o.arg)}"` : ""} data-field="${attr(o.field)}" value="${attr(o.value)}"${o.placeholder ? ` placeholder="${attr(o.placeholder)}"` : ""}${o.max ? ` maxlength="${o.max}"` : ""}${o.enter ? ` data-enter="${attr(o.enter)}"` : ""}${o.disabled ? " disabled" : ""}${describe ? ` aria-describedby="${attr(describe)}"` : ""}${o.error ? ' aria-invalid="true"' : ""} autocomplete="off" autocapitalize="off" spellcheck="false" class="cnpy-input" style="${O_FIELD};margin-top:7px;${o.error ? "border-color:var(--red);" : ""}" />`, o.error ? fieldError(`${o.id}-e`, o.error) : "")}
     ${o.help ? `<div id="${attr(o.id)}-h" style="${O_HELP}">${o.help}</div>` : ""}
-    ${o.error ? `<div id="${attr(o.id)}-e" role="alert" style="${O_ERR}">${esc(o.error)}</div>` : ""}
   </div>`;
 }
 

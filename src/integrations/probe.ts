@@ -1,10 +1,11 @@
 // Test connection (canopy-multitenancy.md §8.7.4, D18): ONE outbound request per kind, shaped like the
 // poller's own, that writes no metric — only the integration's `last_error` (cleared on success).
 //
-// The GitHub probe IS the pollers' reader (`ghJson`, which takes its token as a parameter). The other
-// three pollers (`pollCloudflare`, `pollRailway`, `pollSaplingMetrics`, src/repo/poll.ts) take a D1
-// handle and write `repo_metrics` in the same breath as they fetch, so their request is restated here:
-// same endpoint, same headers, same query, the last hour only. Keep the two in step.
+// The GitHub probe IS the pollers' reader (`ghJson`, which takes its token as a parameter). The app's
+// metrics poller (`pollSaplingMetrics`, src/repo/poll.ts) takes a D1 handle and writes `repo_metrics` in
+// the same breath as it fetches, so its request is restated here: same endpoint, same headers. Keep the
+// two in step. Every hosting provider (Cloudflare and Railway included) is probed by its own `probe`
+// (src/hosting/probe.ts).
 //
 // Every `detail` is scrubbed of the credential BEFORE it is cut, logged, stored or returned.
 import { checkFetchUrl, FetchUrlError } from "../artifacts/fetch-url";
@@ -17,14 +18,21 @@ import type { Env } from "../env";
 import { ghJson } from "../repo/github";
 import type { IntegrationKind } from "@shared/integrations";
 import { listEnvironments, primaryRepo, webhookUrl } from "./settings";
+import { probeHostingKind } from "../hosting/probe";
+import { endRefusedConnection, liveInstallConnection } from "../hosting/connections";
+import { providerOfKind } from "@shared/hosting";
+import { providerOf } from "../hosting/registry";
 
-export interface ProbeResult { ok: boolean; detail: string }
+export interface ProbeResult {
+  ok: boolean;
+  detail: string;
+  /** A hosting provider's refusal status (src/hosting/http.ts `probeFailure`) — internal: `testConnection` reads
+   *  it and never returns it. */
+  status?: number;
+}
 
-const HOUR = 3_600_000;
 const TIMEOUT_MS = 10_000;
 const DETAIL_CHARS = 300;
-const REASON_READ_BYTES = 8192;
-const REASON_CHARS = 160;
 const METRICS_READ_BYTES = 262_144;
 
 const ok = (detail: string): ProbeResult => ({ ok: true, detail });
@@ -51,35 +59,6 @@ async function readCapped(res: Response, cap: number): Promise<{ text: string; c
   return { text: new TextDecoder().decode(all), cut };
 }
 
-const longest = (revealed: Revealed): number => {
-  if (Array.isArray(revealed)) return Math.max(0, ...(revealed as readonly Revealed[]).map(longest));
-  if (typeof revealed === "string") return revealed.length;
-  return revealed ? (revealed as Secret).reveal().length : 0;
-};
-
-/**
- * Why an upstream refused, from its body (bounded read): a GraphQL / REST `errors[0].message` or
- * `message`, else the raw text. An upstream may echo the request — its credential included — so the
- * text is scrubbed whole FIRST; and when the read was cut, the tail that could hold the first part of
- * a credential straddling the cut is dropped as well.
- */
-async function reasonOf(res: Response, revealed: Revealed): Promise<string> {
-  let text = "";
-  try {
-    const read = await readCapped(res, REASON_READ_BYTES);
-    text = scrub(read.text, revealed);
-    if (read.cut) text = text.slice(0, Math.max(0, text.length - 3 * longest(revealed) - 4)); // 3×: a URL-encoded spelling
-  } catch { return ""; }
-  let reason = "";
-  try {
-    const body = record(JSON.parse(text));
-    const first = record(Array.isArray(body.errors) ? body.errors[0] : null).message ?? body.message ?? body.error;
-    if (typeof first === "string") reason = first;
-  } catch { /* not JSON: the raw text below */ }
-  reason = (reason || text).replace(/\s+/g, " ").trim().slice(0, REASON_CHARS);
-  return reason ? `: ${reason}` : "";
-}
-
 /**
  * A thrown fetch or a thrown parse. Its message is NEVER quoted: a fetch error may repeat the request,
  * and a JSON SyntaxError quotes a slice of the body — a slice can hold PART of a credential, which no
@@ -91,80 +70,6 @@ const thrown = (what: string, e: unknown): ProbeResult => {
   if (name === "SyntaxError") return fail(`${what}: the response is not JSON`);
   return fail(`${what}: the request failed`);
 };
-
-// ── Cloudflare: a one-hour workersInvocationsAdaptive query for the org's account ────────────────────
-const CF_GRAPHQL = "https://api.cloudflare.com/client/v4/graphql";
-// The poller's CF_QUERY; the scriptName filter is left out only when no environment names a Worker yet.
-const cfQuery = (withScript: boolean) => `query($a: string!, ${withScript ? "$s: string!, " : ""}$from: Time!, $to: Time!) {
-  viewer { accounts(filter: { accountTag: $a }) {
-    workersInvocationsAdaptive(limit: 100, filter: { ${withScript ? "scriptName: $s, " : ""}datetime_geq: $from, datetime_leq: $to }, orderBy: [datetimeHour_ASC]) {
-      dimensions { datetimeHour }
-      sum { requests errors }
-    }
-  } }
-}`;
-const CF_STATUS_HINTS: Record<number, string> = {
-  400: " — the token value is malformed (quotes, spaces, or not an API token)",
-  401: " — the token is not valid",
-  403: " — the token lacks Account Analytics: Read",
-};
-
-async function probeCloudflare(ctx: TenantContext, env: Env, secret: Secret, now: number, fetchImpl: typeof fetch): Promise<ProbeResult> {
-  const accountId = await resolveCloudflareAccountId(ctx, env);
-  if (!accountId) return fail("the Cloudflare account id is not set");
-  const worker = (await listEnvironments(ctx)).find((e) => e.worker)?.worker;
-  const revealed: Revealed = [secret, accountId];
-  const to = Math.floor(now / HOUR) * HOUR;
-  try {
-    const res = await fetchImpl(CF_GRAPHQL, {
-      method: "POST",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { authorization: `Bearer ${secret.reveal()}`, "content-type": "application/json", "user-agent": "trov-analytics" },
-      body: JSON.stringify({
-        query: cfQuery(!!worker),
-        variables: { a: accountId, ...(worker ? { s: worker } : {}), from: new Date(to - HOUR).toISOString(), to: new Date(to).toISOString() },
-      }),
-    });
-    if (!res.ok) return fail(`cloudflare analytics ${res.status}${await reasonOf(res, revealed)}${CF_STATUS_HINTS[res.status] ?? ""}`);
-    const body = record(JSON.parse((await readCapped(res, METRICS_READ_BYTES)).text));
-    if (Array.isArray(body.errors) && body.errors.length) {
-      return fail(`cloudflare analytics: ${scrub(String(record(body.errors[0]).message ?? "graphql error"), revealed).slice(0, REASON_CHARS)}`);
-    }
-    const accounts = record(record(body.data).viewer).accounts;
-    if (!Array.isArray(accounts) || accounts.length === 0) return fail("cloudflare analytics: no account matched — check the account id, and that the token can see that account");
-    return ok(worker ? `Cloudflare answered for the account (Worker ${worker}).` : "Cloudflare answered for the account.");
-  } catch (e) {
-    return thrown("cloudflare analytics", e);
-  }
-}
-
-// ── Railway: the poller's `metrics` query for the last hour ──────────────────────────────────────────
-const RW_GRAPHQL = "https://backboard.railway.com/graphql/v2";
-const RW_QUERY = `query($e:String!,$s:String!,$start:DateTime!){metrics(environmentId:$e,serviceId:$s,startDate:$start,measurements:[CPU_USAGE,MEMORY_USAGE_GB],sampleRateSeconds:3600){measurement values{ts value}}}`;
-
-async function probeRailway(ctx: TenantContext, scope: string, secret: Secret, now: number, fetchImpl: typeof fetch): Promise<ProbeResult> {
-  const cfg = (await listEnvironments(ctx)).find((e) => e.key === scope);
-  if (!cfg) return fail("the environment no longer exists");
-  if (!cfg.railway_environment_id) return fail("the environment has no Railway environment id");
-  if (!cfg.railway_service_id) return fail("the environment has no Railway service id");
-  try {
-    const res = await fetchImpl(RW_GRAPHQL, {
-      method: "POST",
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { "Project-Access-Token": secret.reveal(), "content-type": "application/json", "user-agent": "trov-hosting" },
-      body: JSON.stringify({ query: RW_QUERY, variables: { e: cfg.railway_environment_id, s: cfg.railway_service_id, start: new Date(Math.floor(now / HOUR) * HOUR - HOUR).toISOString() } }),
-    });
-    if (!res.ok) return fail(`railway metrics ${res.status}${await reasonOf(res, secret)}`);
-    const body = record(JSON.parse((await readCapped(res, METRICS_READ_BYTES)).text));
-    if (Array.isArray(body.errors) && body.errors.length) {
-      return fail(`railway metrics: ${scrub(String(record(body.errors[0]).message ?? "graphql error"), secret).slice(0, REASON_CHARS)}`);
-    }
-    if (!Array.isArray(record(body.data).metrics)) return fail("railway metrics: no metrics in the response");
-    return ok("Railway answered with this environment's metrics.");
-  } catch (e) {
-    return thrown("railway metrics", e);
-  }
-}
 
 // ── the app's own metrics endpoint: the poller's GET, body validated ─────────────────────────────────
 const METRICS_PATH = "/api/internal/metrics";
@@ -225,10 +130,19 @@ async function probeGithub(ctx: TenantContext, secret: Secret, fetchImpl: typeof
 /**
  * Run Test connection for one integration. `SecretNotFoundError` when there is no credential to test.
  * A webhook secret has nothing to call: it reports the last VERIFIED delivery and the URL to configure,
- * and leaves `last_error` alone. Every other kind records its outcome on the org's row.
+ * and leaves `last_error` alone. Every other kind records its outcome on the org's row. `partKey` (a hosting
+ * provider's kind only — Org settings › Hosting's per-part Test) probes against THAT part's settings instead
+ * of the first part that uses the provider.
+ *
+ * A hosting provider that answers 401 for a credential an install / OAuth grant put there has had that grant
+ * revoked or removed on its side: the connection is ENDED, as the org's system tenant (secret deleted, row
+ * revoked `refused`, audited `hosting.revoked` — src/hosting/connections.ts `endRefusedConnection`), so it can
+ * be disconnected from either side even when the provider sends no notice. Only Test connection does this —
+ * a person asked, and saw the answer; a poll's 401 only records `last_error` (src/hosting/poll.ts).
  */
 export async function testConnection(
-  ctx: TenantContext, env: Env, kind: IntegrationKind, scope: string, origin: string, now: number = Date.now(), fetchImpl?: typeof fetch
+  ctx: TenantContext, env: Env, kind: IntegrationKind, scope: string, origin: string, now: number = Date.now(), fetchImpl?: typeof fetch,
+  partKey?: { env: string; part: string },
 ): Promise<ProbeResult> {
   if (kind === "github_webhook") {
     // Access is checked exactly as for a decrypt, though nothing is sent anywhere.
@@ -239,19 +153,30 @@ export async function testConnection(
       ? ok(`Last verified delivery at ${meta.last_used_at}. Payload URL: ${url}`)
       : fail(`No verified delivery yet. In the repository's webhook settings on GitHub set the Payload URL to ${url} and the secret to the value saved here.`);
   }
+  // Read BEFORE the probe: a refusal ends only the install / OAuth connection that was tested, never one made since.
+  const installed = providerOfKind(kind) ? await liveInstallConnection(ctx, kind, scope) : null;
   const secret = await resolveCredential(ctx, env, kind, scope);
   if (!secret) throw new SecretNotFoundError();
   const doFetch: typeof fetch = fetchImpl ?? ((input, init) => fetch(input, init));
   const revealed: Revealed = [secret, kind === "cloudflare_analytics" ? await resolveCloudflareAccountId(ctx, env) : null];
   let result: ProbeResult;
   switch (kind) {
-    case "cloudflare_analytics": result = await probeCloudflare(ctx, env, secret, now, doFetch); break;
-    case "railway": result = await probeRailway(ctx, scope, secret, now, doFetch); break;
     case "metrics_endpoint": result = await probeMetricsEndpoint(ctx, scope, secret, doFetch); break;
     case "github_token": result = await probeGithub(ctx, secret, fetchImpl); break;
+    // The hosting providers' own probe (src/hosting/probe.ts): the provider's cheapest authenticated read,
+    // through its fixed-host fetch, against the first part that uses it (or the credential alone).
+    case "cloudflare_analytics": case "railway": case "vercel": case "render": case "netlify": case "fly": case "aws":
+      result = await probeHostingKind(ctx, env, kind, secret, now, doFetch, partKey); break;
   }
+  const refused = !result.ok && result.status === 401;
   result = { ok: result.ok, detail: scrub(result.detail, revealed).replace(/\s+/g, " ").trim().slice(0, DETAIL_CHARS) };
   await recordSecretOutcome(ctx, kind, scope, result.ok ? { ok: true } : { ok: false, message: result.detail, revealed }, now);
   if (!result.ok) console.error("integration test failed", kind, scope, result.detail);
+  if (refused && installed && (await endRefusedConnection(env, ctx, kind, scope, installed.connected_at))) {
+    const id = providerOfKind(kind)!;
+    console.error("integration test: the provider refused an installed grant — the connection was ended", kind, scope);
+    const ended = ` — ${providerOf(id).label} no longer accepts the grant, so the connection was ended; connect it again`;
+    result = { ok: false, detail: `${result.detail.slice(0, DETAIL_CHARS - ended.length)}${ended}` };
+  }
   return result;
 }

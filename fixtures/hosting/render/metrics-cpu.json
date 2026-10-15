@@ -1,0 +1,20 @@
+[
+  {
+    "labels": [{ "field": "resource", "value": "srv-d3k9a2m7mgec73b4c5d0" }, { "field": "instance", "value": "srv-d3k9a2m7mgec73b4c5d0-7f9c4" }],
+    "unit": "CPU",
+    "values": [
+      { "timestamp": "2026-10-07T09:00:00Z", "value": 0.12 },
+      { "timestamp": "2026-10-07T10:00:00Z", "value": 0.2 },
+      { "timestamp": "2026-10-07T11:00:00Z", "value": 0.31 }
+    ]
+  },
+  {
+    "labels": [{ "field": "resource", "value": "srv-d3k9a2m7mgec73b4c5d0" }, { "field": "instance", "value": "srv-d3k9a2m7mgec73b4c5d0-2b6e1" }],
+    "unit": "CPU",
+    "values": [
+      { "timestamp": "2026-10-07T09:00:00Z", "value": 0.08 },
+      { "timestamp": "2026-10-07T10:00:00Z", "value": 0.1 },
+      { "timestamp": "2026-10-07T12:00:00Z", "value": 0.5 }
+    ]
+  }
+]

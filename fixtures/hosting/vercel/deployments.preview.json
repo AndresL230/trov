@@ -1,0 +1,150 @@
+{
+  "deployments": [
+    {
+      "uid": "dpl_Pv6aBcD7eFgH8iJkL9mNoP0qRsT1",
+      "name": "web",
+      "url": "web-git-main-acme.vercel.app",
+      "created": 1791374310000,
+      "createdAt": 1791374310000,
+      "buildingAt": 1791374312000,
+      "source": "git",
+      "state": "BUILDING",
+      "readyState": "BUILDING",
+      "type": "LAMBDAS",
+      "creator": { "uid": "Ym3nQ0rM5sU8wX2zA4cO6dE9", "username": "meilin" },
+      "inspectorUrl": "https://vercel.com/acme/web/Pv6aBcD7eFgH8iJkL9mNoP0qRsT1",
+      "meta": {
+        "githubCommitMessage": "Handoffs: expire on every tick",
+        "githubCommitRef": "main",
+        "githubCommitSha": "9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a09",
+        "githubDeployment": "1",
+        "githubPrId": "214"
+      },
+      "target": null,
+      "aliasAssigned": null,
+      "isRollbackCandidate": false
+    },
+    {
+      "uid": "dpl_Pv5zAbC6dEfG7hIjK8lMnO9pQrS0",
+      "name": "web",
+      "url": "web-git-feature-ticket-board-acme.vercel.app",
+      "created": 1791373212000,
+      "createdAt": 1791373212000,
+      "buildingAt": 1791373214000,
+      "ready": 1791373280000,
+      "source": "git",
+      "state": "READY",
+      "readyState": "READY",
+      "type": "LAMBDAS",
+      "creator": { "uid": "Xk2mP9qL4rT7vW1yZ3bN5cD8", "username": "andres", "githubLogin": "AndresL230" },
+      "inspectorUrl": "https://vercel.com/acme/web/Pv5zAbC6dEfG7hIjK8lMnO9pQrS0",
+      "meta": {
+        "githubCommitMessage": "Board: pointer-driven drag",
+        "githubCommitRef": "feature/ticket-board",
+        "githubCommitSha": "8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f98",
+        "githubDeployment": "1",
+        "githubPrId": "213"
+      },
+      "target": null,
+      "aliasAssigned": 1791373281000,
+      "isRollbackCandidate": false
+    },
+    {
+      "uid": "dpl_Pv4yZaB5cDeF6gHiJ7kLmN8oPqR9",
+      "name": "web",
+      "url": "web-git-main-acme.vercel.app",
+      "created": 1791367500000,
+      "createdAt": 1791367500000,
+      "buildingAt": 1791367502000,
+      "ready": 1791367591000,
+      "source": "git",
+      "state": "READY",
+      "readyState": "READY",
+      "type": "LAMBDAS",
+      "creator": { "uid": "Xk2mP9qL4rT7vW1yZ3bN5cD8", "username": "andres", "githubLogin": "AndresL230" },
+      "inspectorUrl": "https://vercel.com/acme/web/Pv4yZaB5cDeF6gHiJ7kLmN8oPqR9",
+      "meta": {
+        "githubCommitMessage": "Quick search: 1 s pause before painting",
+        "githubCommitRef": "main",
+        "githubCommitSha": "7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e87",
+        "githubDeployment": "1"
+      },
+      "target": null,
+      "aliasAssigned": 1791367592000,
+      "isRollbackCandidate": false
+    },
+    {
+      "uid": "dpl_6Co9IjK1mO5pQ8sT0uV2wX3yZ4aB",
+      "name": "web",
+      "url": "web-n4j9u6h1m-acme.vercel.app",
+      "created": 1791366082000,
+      "createdAt": 1791366082000,
+      "buildingAt": 1791366085000,
+      "ready": 1791366181000,
+      "source": "git",
+      "state": "READY",
+      "readyState": "READY",
+      "type": "LAMBDAS",
+      "creator": { "uid": "Xk2mP9qL4rT7vW1yZ3bN5cD8", "username": "andres", "githubLogin": "AndresL230" },
+      "inspectorUrl": "https://vercel.com/acme/web/6Co9IjK1mO5pQ8sT0uV2wX3yZ4aB",
+      "meta": {
+        "githubCommitMessage": "Repo dashboard: Poll now beside the refresh icon",
+        "githubCommitRef": "production",
+        "githubCommitSha": "1f8b6d4e9a3c5b7d0e2f4a6c8b9d1e3f5a7c9b18",
+        "githubDeployment": "1"
+      },
+      "target": "production",
+      "aliasAssigned": 1791366182000,
+      "isRollbackCandidate": true
+    },
+    {
+      "uid": "dpl_Pv3xYzA4bCdE5fGhI6jKlM7nOpQ8",
+      "name": "web",
+      "url": "web-env-staging-acme.vercel.app",
+      "created": 1791317564000,
+      "createdAt": 1791317564000,
+      "buildingAt": 1791317566000,
+      "ready": 1791317630000,
+      "source": "git",
+      "state": "READY",
+      "readyState": "READY",
+      "type": "LAMBDAS",
+      "creator": { "uid": "Ym3nQ0rM5sU8wX2zA4cO6dE9", "username": "meilin" },
+      "inspectorUrl": "https://vercel.com/acme/web/Pv3xYzA4bCdE5fGhI6jKlM7nOpQ8",
+      "meta": {
+        "githubCommitMessage": "Staging: custom environment smoke test",
+        "githubCommitRef": "staging",
+        "githubCommitSha": "6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d76",
+        "githubDeployment": "1"
+      },
+      "target": "staging",
+      "aliasAssigned": 1791317631000,
+      "isRollbackCandidate": false
+    },
+    {
+      "uid": "dpl_Pv2wXyZ3aBcD4eFgH5iJkL6mNoP7",
+      "name": "web",
+      "url": "web-git-main-acme.vercel.app",
+      "created": 1791307800000,
+      "createdAt": 1791307800000,
+      "buildingAt": 1791307802000,
+      "ready": 1791307870000,
+      "source": "git",
+      "state": "ERROR",
+      "readyState": "ERROR",
+      "type": "LAMBDAS",
+      "creator": { "uid": "Zn4oR1sN6tV9xY3aB5dP7eF0", "username": "sanaok" },
+      "inspectorUrl": "https://vercel.com/acme/web/Pv2wXyZ3aBcD4eFgH5iJkL6mNoP7",
+      "meta": {
+        "githubCommitMessage": "Typecheck the web bundle in CI",
+        "githubCommitRef": "main",
+        "githubCommitSha": "5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d7c65",
+        "githubDeployment": "1"
+      },
+      "target": null,
+      "aliasAssigned": null,
+      "isRollbackCandidate": false
+    }
+  ],
+  "pagination": { "count": 6, "next": 1791307799999, "prev": 1791374310001 }
+}

@@ -340,7 +340,8 @@ function panelParts(p: SyncProps): { body: string; foot: string } {
 /** The panel, as a root-level overlay: a click-away layer and the dialog. "" when it is closed
  *  (or the control it hangs from is not on this screen). */
 export function syncOverlay(p: SyncProps): string {
-  if (!p.ui.open || !syncShown(p)) return "";
+  // Opened explicitly by an admin anywhere (Org settings › Hosting's "Sync GitHub now"), it shows there too.
+  if (!p.ui.open || !(syncShown(p) || isAdmin(p))) return "";
   const repo = syncLive(p.ui)?.repo ?? p.ui.result?.repo ?? p.ui.status?.repo ?? "";
   const { body, foot } = panelParts(p);
   return `<div data-overlay="sync" class="sync-layer">

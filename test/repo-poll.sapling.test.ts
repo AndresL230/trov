@@ -20,8 +20,8 @@ import { pollSaplingMetrics } from "../src/repo/poll";
 import { putMetric } from "../src/repo/store";
 import { getRepoDashboard } from "../src/tools/repo";
 import { ENVS, LONG_TOKEN, leakedFragments } from "./helpers/repo";
-
-import { systemCtx } from "./helpers/tenant";
+import { setOrgEnvironments } from "./helpers/org-config";
+import { ORG_A, systemCtx } from "./helpers/tenant";
 const NOW = Date.parse("2026-09-20T12:05:00Z");
 const HOUR = 3_600_000;
 const AT = "2026-09-20T12:00:00.000Z";
@@ -251,9 +251,15 @@ const ok = <T>(s: { status: string; data?: T }): T => { expect(s.status).toBe("o
 const hoursBack = (h: number) => new Date(Date.parse(AT) - h * HOUR).toISOString();
 const gauge = (range: "24h" | "7d" | "30d", envKey: string, h: number, value: number) =>
   putMetric(systemCtx(), { metric: `active_users_${range}`, env: envKey, part: "", value, at: hoursBack(h) });
+/** One hour of the environment's Cloudflare Workers frontend — a web part, its `hx_*` points. */
 const cfPoint = async (envKey: string, h: number, requests: number, errors: number) => {
-  await putMetric(systemCtx(), { metric: "cf_requests", env: envKey, part: "frontend", value: requests, at: hoursBack(h) });
-  await putMetric(systemCtx(), { metric: "cf_errors", env: envKey, part: "frontend", value: errors, at: hoursBack(h) });
+  await setOrgEnvironments(ENVS, ORG_A);
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO org_environment_parts (org_id, env_key, part_key, position, label, role, provider, settings, created_at, updated_at, updated_by)
+     VALUES (?, ?, 'frontend', 0, 'Frontend', 'web', 'cloudflare', '{}', ?, ?, 'test')`,
+  ).bind(ORG_A, envKey, AT, AT).run();
+  await putMetric(systemCtx(), { metric: "hx_requests", env: envKey, part: "frontend", value: requests, at: hoursBack(h) });
+  await putMetric(systemCtx(), { metric: "hx_errors", env: envKey, part: "frontend", value: errors, at: hoursBack(h) });
 };
 
 describe("getRepoDashboard — active users from active_users_* gauges", () => {
@@ -363,13 +369,12 @@ describe("getRepoDashboard — active users from active_users_* gauges", () => {
     expect(staging.users).toBeNull();
   });
 
-  it("users live, requests null — and the Cloudflare panel stays unconnected", async () => {
+  it("users live, requests null — and the hosting section stays unconnected", async () => {
     await gauge("24h", "staging", 0, 74);
     const d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
     const [staging] = ok(d.usage)["24h"];
     expect(staging).toMatchObject({ requests: null, errorRate: null, users: { value: "74", trend: [74], tone: "neutral" } });
-    expect(d.cloudflare.status).toBe("not_connected");
-    expect(d.hosting.status).toBe("not_connected");
+    expect(d.providers.status).toBe("not_connected");
   });
 
   it("both live, side by side", async () => {

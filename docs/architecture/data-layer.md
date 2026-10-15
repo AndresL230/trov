@@ -144,7 +144,7 @@ of them is also in `ORG_TABLES` (`src/deletion/tables.ts`), what an organization
   `org_admin_audit` — an org's place on the platform, written by `src/orgs`, `src/platform`, `src/data/meter.ts`.
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.
 - **Global tables** (no `org_id`): `persons`, `identities`, `sessions`, `invites`, `oauth_clients`,
-  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags` (since 0056 only the STARTER tags' names: nothing reads it, an org's tags are `org_tags`),
+  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags` (since 0057 only the STARTER tags' names: nothing reads it, an org's tags are `org_tags`),
   and `org_grants`, `platform_outbox_bodies` (0044_plans — a grant is about a person before any org exists;
   its `used_org` is deliberately not named `org_id`), and `support_reports` (0049 — a person's report to the
   operator; the org it was sent from is `from_org`, for the same reason: `support.md`). An org's plan is columns on `orgs` (`plans.md`).
@@ -188,9 +188,10 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 
 | Where | Why |
 |---|---|
-| `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture`, `pruneSyncRuns`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
-| `src/platform/jobs.ts` (`org_repos`, `org_environments`, `org_github_installations`) | the cron's unit lists, the webhook's hook lookup and the GitHub App's lookups before any org is known, or past one (`installationOrgs`, `installationRepoOrgs` — 0053: which orgs an installation serves, and which of them a repository's delivery goes to) — ids, an environment key and a repo name |
+| `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture` (incl. `hosting_deploys`), `pruneSyncRuns`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
+| `src/platform/jobs.ts` (`org_repos`, `org_environments`, `org_github_installations`, `org_github_installation_repos`, `org_hosting_connections`) | the cron's unit lists, the webhook's hook lookup, the GitHub App's lookups before any org is known, or past one (`installationOrgs`, `installationRepoOrgs` — 0053: which orgs an installation serves, and which of them a repository's delivery goes to), and a hosting provider's installation → org lookup (`connectionsForExternalId`: the uninstall notice, and the connect callback's one-org-per-installation check) — ids, an environment key and a repo name |
 | `src/platform/repo.ts` `listPlatformOrgs` (`org_github_installations`) | the superadmin's org list: the GitHub account an org's installation is on — a name |
+| `src/platform/jobs.ts` `listPartUnits` (`org_environment_parts`) | the `hosting` job's units (0057): env / part keys and a provider id — the part's settings are re-read by the unit as its org's tenant |
 | `src/auth/tokens.ts` `resolveToken`; `src/auth/oauth.ts` `resolveOAuthAccessToken`, `exchangeAuthorizationCode`, `refreshAccessToken`, `revokeOAuthToken`, `grantRefusal`, `GRANT_STANDING` | credential lookup by HASH before any org is known (the row names the grant), its standing over the orgs it can reach, and the revoke of the one grant just found |
 | `src/auth/oauth.ts` `listGrants`, `revokeGrant`, `ownGrant`, `setGrantMode` | Connected apps is user-level: a person's own grants across their orgs, keyed by id AND person |
 | `src/auth/oauth.ts` `issueRepoAuthorization` | a grant that follows the repository is the person's and no org's: written with `org_id` '' |
@@ -216,6 +217,10 @@ belongs to) through `src/platform/jobs.ts`, then does its work as that org's `sy
 | the AI pass `runAiPass` (`src/ai/pass.ts`, from the repo cron on every tick with no heavy job — `ai.md`) | `listActiveOrgIds`, rotated on `cron_cursor` job `ai_pass` — and NOTHING is read while its job registry is empty (today) | `systemTenant(p, org, "system")` per org; meter rows as actor `ai-pass` |
 | `POST /webhook/github/:hookId`, legacy `/webhook/github` (`src/github-hook.ts`) | `hookRepo(p, id)` / `legacyHookRepo(p)` | `systemTenant(p, row.org_id, "github-webhook")` |
 | `POST /webhook/github/app` — the GitHub App's one endpoint (`src/github-app/webhook.ts`, `github-app.md`) | `installationOrgs(p, <the delivery's installation id>)` for the installation's own events, `installationRepoOrgs(p, <installation id>, <repository>)` for a repository's | the same |
+| repo cron `hosting` job at `:40` (`src/repo/cron.ts`, `src/hosting/poll.ts`) | `listPartUnits` — one per (org, environment, stored part) | `systemTenant(p, org, "system")` per unit |
+| `POST /webhook/hosting/:provider` (`src/hosting/webhook.ts`) | `connectionsForExternalId(p, provider, id)` after the provider's signature is verified | `systemTenant(p, org, "system")` per org — `systemRevocationDeleteStmts` deletes the secret |
+| `GET /hosting/:provider/callback` (`src/hosting/connections.ts`) | the HMAC-sealed intent in the `trov_hx` cookie, then a LIVE membership check of the signed-in admin (`resolveTenantById`) | that admin's own session tenant — a public path that reads the session cookie itself; exactly `/hosting/<provider>/callback` is a platform path in `src/data/gate.ts` |
+| Test connection's 401 on an install / OAuth credential (`src/integrations/probe.ts` → `endRefusedConnection`) | the admin's session tenant | `jobTenant(env, ctx)` — `systemRevocationDeleteStmts` deletes the secret |
 | Poll now / Poll usage / Sync GitHub (`runLockedRepoRefresh`, `runUsagePolls`, `runBackfill`, `runReconcileJob`) | the caller's `ctx` | `jobTenant(env, ctx)` — that org's system tenant; a bearer context is refused |
 
 **The rotation dispatcher** (`src/repo/dispatch.ts`). The repo trigger keeps its cadence — `health` every
@@ -267,9 +272,10 @@ contributes a sanitised display name only (`platformFrom`, `abuse-limits.md`). `
 
 **SaplingLearn's fallback (owner steps).** These Worker secrets are now read ONLY by `resolveCredential`'s
 `org_saplinglearn` fallback (and by the cron's log scrubber): `GITHUB_SERVICE_TOKEN`, `GITHUB_WEBHOOK_SECRET`,
-`CF_ANALYTICS_TOKEN` + `CF_ANALYTICS_ACCOUNT_ID`, `RAILWAY_TOKEN_<ENV>`, `SAPLING_METRICS_TOKEN`. Each stops
-being read the moment SaplingLearn's admin stores that integration on the Integrations screen (a stored
-secret wins). The cleanup phase deletes the fallback, those secrets, the legacy hook route and the
+`CF_ANALYTICS_TOKEN` + `CF_ANALYTICS_ACCOUNT_ID` (its Cloudflare hosting provider's token, and the account id
+through `resolveIntegrationConfig`), `SAPLING_METRICS_TOKEN`. Each stops being read the moment SaplingLearn's
+admin stores that integration (a stored secret wins). Railway has no fallback: the old per-environment
+`RAILWAY_TOKEN_<ENV>` project tokens cannot answer for its ONE org-wide workspace connection. The cleanup phase deletes the fallback, those secrets, the legacy hook route and the
 `legacy_hook` flag.
 
 ## Routes and gates (Phase 4 — spec §5, §6)

@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "forbidden",
+    "message": "Not authorized",
+    "invalidToken": true
+  }
+}
