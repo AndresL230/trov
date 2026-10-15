@@ -1,0 +1,371 @@
+{
+ "model": "jev-1.13.0",
+ "recordedAt": "2026-10-15T09:05:15.608Z",
+ "promptVersions": {
+  "ticket": "jev-ticket-1",
+  "review": "jev-risk-1",
+  "unplaced": "jev-place-1"
+ },
+ "cases": {
+  "e0fcf08e": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “organizations” (section reference).\n\nSummary: Only a superadmin adds an organization: self-serve creation is off by default\n\nRemoves:\n- ]. Platform is reachable two ways: the sidebar's Platform entry\n- inside any organization the superadmin belongs to, and , a page outside every organization —\n- so a superadmin who belongs to none still reaches it (the org picker and the switcher's menu link to it).\n- Anyone can also create an organization for themselves from the org picker (three per person by default;\n- Platform › Admins & limits changes one person's cap).\n\nAdds:\n- ]. Platform lives at , a page outside every\n- organization — so a superadmin who belongs to none still reaches it; the org switcher's menu and the org\n- picker link to it.\n- Nobody else can create an organization: self-serve creation is off ( ,\n- ). Platform › Admins & limits can give one named person an allowance.",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"decision\",\"confidence\":0.68,\"probabilities\":{\"decision\":0.76,\"contradicts\":0.02,\"process\":0.22,\"routine\":0.0}}},\"usage\":{\"input_tokens\":633,\"output_tokens\":47}}"
+  },
+  "c59da495": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “organizations” (section reference).\n\nSummary: An org's address is / / instead of /o/ /\n\nRemoves:\n- Give the organization a name, a slug (its address: , not editable later), the plan it starts\n\nAdds:\n- Give the organization a name, a slug (its address: , not editable later; a name the app itself answers on — , , , … — is refused), the plan it starts",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"routine\",\"confidence\":0.27,\"probabilities\":{\"decision\":0.45,\"contradicts\":0.07,\"process\":0.03,\"routine\":0.45}}},\"usage\":{\"input_tokens\":514,\"output_tokens\":47}}"
+  },
+  "8627bd11": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “feed-and-search” (section reference).\n\nSummary: Tag suggestions: classify with TypeSafe AI's Jev instead of Gemini\n\nRemoves:\n- org's EXISTING items fit it. The rules: suggestions, never actions (a run writes rows with\n- , , a one-sentence , , — never ); never\n- on a render path (the route starts the run and hands its work to ); a fixed set of answers (\"fits\" /\n- \"does not fit\", through ONE classify call that validates the model's JSON and discards anything else — a timeout\n- or an error is no suggestion, never surfaced); only \"fits\" at (0.7) or above is stored; metered\n- ( , ).\n- - What is sent: the tag's name and description, and per item an index, its title (≤ 200) and an excerpt of\n\nAdds:\n- org's EXISTING items fit it. The model is TypeSafe AI's Jev ( ,\n- ), a NON-generative decision model: ONE request per candidate item, the item's text as\n- and one (yes/no) question keyed with built from the tag's name and description,\n- at most 4 in flight. Its answer is a probability: \"fits\" at 0.5 or more, the confidence that probability.\n- Summaries stay on Gemini. The rules: suggestions, never actions (a run writes rows with\n- , , , — the version Jev reports, e.g. — and\n- ; never ); never on a render path (the route starts the run and hands its\n- work to ); a fixed set of answers (a must be a number 0–1, anything else is no judgement);\n- only \"fits\" at (0.7) or above is stored; metered ( , one per request, ).\n- - The reason is Trov's EVIDENCE, never the model's: Jev writes no text, and 157 shows no suggestion without\n- - Errors ( ): a 422, a body that is not JSON, a bad answer, a timeout (10 s) or a network",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"decision\",\"confidence\":0.96,\"probabilities\":{\"decision\":0.97,\"contradicts\":0.02,\"process\":0.01,\"routine\":0.0}}},\"usage\":{\"input_tokens\":879,\"output_tokens\":47}}"
+  },
+  "2d3f22ef": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “billing” (section reference).\n\nSummary: Free plan, Pro per seat, and a downgrade to Free\n\nRemoves:\n- Billing — paying for a plan through Stripe\n- A person buys Personal or Team and sets their organization up themselves, with nobody at Trov in\n- the loop. Enterprise is never bought here: it is arranged with Trov (\"contact us\"). Billing only ever\n- moves the things plans already have — a grant, an org's plan, its status — through the seam in\n- ; the limits and their enforcement are and are unchanged.\n- Code: (the wire, shared with the SPA and the pricing page), ( ,\n- , , , , , , , ),\n- , (the waiting room), +\n- (the Plan block). Migration: . Tests: ,\n- stores ids and a status.\n- , var ( ), monthly Price ids that plan cannot be bought monthly\n- , var, optional that plan is not offered yearly\n\nAdds:\n- Billing — paying for Pro through Stripe, per seat\n- A person buys Pro (plan id ), per seat, and sets their organization up themselves, with nobody\n- at Trov in the loop — or the owner of a Free organization upgrades it to Pro. Free is never bought\n- (anyone signed in creates one: › Free). Enterprise is never bought here: it is arranged with\n- Trov (\"contact us\"). Personal is no longer sold. Billing only ever moves the things plans already\n- have — a grant, an org's plan, its override, its status — through the seam in\n- ; the limits and their enforcement are .\n- Code: (the wire, shared with the SPA and the pricing page; ),\n- ( , , , , , , , ,\n- ), , (the waiting room), +\n- (the Plan block, and the Members tab's \"Add a seat\" / \"Upgrade to Pro\").\n- Migrations: , . Tests: ,\n- stores ids, a status and a seat count.",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"decision\",\"confidence\":0.69,\"probabilities\":{\"decision\":0.77,\"contradicts\":0.05,\"process\":0.16,\"routine\":0.02}}},\"usage\":{\"input_tokens\":838,\"output_tokens\":47}}"
+  },
+  "ba71b356": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “auth-identity-people” (section reference).\n\nSummary: Open Google sign-up: any Google account with a verified address creates an account\n\nRemoves:\n- Anyone with a GitHub account can sign in (no org gate since multitenancy — what that person can then do is\n- and ); a Google account needs a pending invite. Three auth classes, kept\n- separate:\n- (OAuth + PKCE, ID token verified against Google's JWKS, gated to admin invites). The fork: known\n- identity → session; verified email matches a person → link + session; invited (or any GitHub account) →\n- onboarding (a sealed 10-minute cookie; the person row is created only on\n- with handle + color); else denied. Link mode ( with a session) attaches a second provider in\n- got a grant after 90 days ( — long enough that a person denied at authorize,\n\nAdds:\n- Anyone with a GitHub account, or a Google account whose address Google has verified, can sign in and so\n- create an account (no org gate since multitenancy, no invitation gate on Google since open sign-up — what\n- that person can then do is and ). Three auth classes, kept separate:\n- (OAuth + PKCE, ID token verified against Google's JWKS; an address Google has NOT verified is refused in\n- the callback, , before the fork). The fork: known identity → session (denied only when\n- the login is on file under a different provider account id); verified email matches a person → link +\n- session; anyone else → onboarding (a sealed 10-minute cookie; the person row is created only on\n- with handle + color). Link mode ( with a session) attaches a second provider in\n- got a grant after 90 days ( — long enough that a person who abandons authorize",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"decision\",\"confidence\":0.92,\"probabilities\":{\"decision\":0.94,\"contradicts\":0.02,\"process\":0.04,\"routine\":0.0}}},\"usage\":{\"input_tokens\":824,\"output_tokens\":47}}"
+  },
+  "34f48988": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “plans” (section reference).\n\nSummary: Ask Trov's allowance counts questions: Pro 300 per seat, a gifted Pro x its members (handoff 12 section 2.1)\n\nRemoves:\n- 50 500 per seat (× the seats in force) unlimited 50 PER CALENDAR MONTH (UTC): Ask Trov's WEIGHTED units — a Fast answer 1, Smart 5, Thinking 10 ( metric ) nothing yet: Ask Trov is a later phase, so it\n- today; that no public page says \"AI chat\" or names Ask Trov's units).\n- agree — multiplies it by the seats in force: the org's override (a paid Pro org's: the seats it pays for)\n- or, with none, the plan's own 50; unlimited seats make it unlimited. An override of the per-seat limit itself is the\n- org's WHOLE cap and is never multiplied. A 3-seat Pro org: 1,500 Ask Trov units a month.\n\nAdds:\n- 50 300 per seat (× the paid seats, else the members) unlimited 50 PER CALENDAR MONTH (UTC): Ask Trov's QUESTIONS — a Fast or Smart question 1, a Thinking one 5 ( metric ) nothing yet: Ask Trov is a la\n- today; that no public page says \"AI chat\" or names Ask Trov's allowance).\n- agree — multiplies it by the PAID seats: the org's override (a paid Pro org's: the seats it pays for); with\n- none (a gifted or granted Pro) by the org's MEMBERS, at least 1 ( , read by ; a\n- grant's preview, with no org yet, counts 1) — never the plan's 50-seat most (the owner's call, 2026-10-15). Unlimited\n- seats make it unlimited. An override of the per-seat limit itself is the org's WHOLE cap and is never multiplied. A\n- 3-seat Pro org: 900 Ask Trov questions a month.",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"decision\",\"confidence\":0.88,\"probabilities\":{\"decision\":0.91,\"contradicts\":0.03,\"process\":0.01,\"routine\":0.05}}},\"usage\":{\"input_tokens\":891,\"output_tokens\":47}}"
+  },
+  "d038dc2e": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “env” (section reference).\n\nSummary: Docs: make the architecture docs say what the code does\n\nRemoves:\n- Secrets ( ; local: ): , ,\n- (Google OAuth client id for the second session-class provider — absent →\n- itself returns 503), (absent → the login redirect still\n- happens, but the code exchange fails and 401s ), ,\n- (HMAC for the LEGACY webhook URL — absent → that surface 401s),\n- (with , , and : read ONLY as\n- SaplingLearn's fallback, through , until its admin enters each on the Integrations screen —\n- every other org's credentials are per-org secrets; the cleanup phase deletes the fallback and these Worker\n- secrets. App-level token for the sprint-progress backstop, for — from Sync GitHub AND the repo cron\n- — and for the webhook's two follow-up reads, and ; absent → Sync GitHub 503s,\n\nAdds:\n- is the type; holds the bindings, the and the cron triggers. A secret\n- is set with (local: , see ) and never appears in\n- the repo, a log or a response. A var is a plain value in , and a deploy sets it\n- from THERE — a value changed only in the Cloudflare dashboard is put back by the next deploy. Changing a\n- secret creates a new deployment at once ( › Secrets). A var and a secret must never share a\n- name: the deploy fails.\n- Per-organization credentials are NOT here. An organization's GitHub access is its App installation or its\n- stored token, and its Cloudflare / Railway / app-metrics tokens are rows it enters on Org settings ›\n- Integrations, envelope-encrypted under ( › Configuration and credentials,\n- , ). Code reads them only through /\n- — never a Worker secret directly.\n- Bindings\n- Name What it is Missing →\n- --- --- ---\n- D1, database . Reached only through a context, inside ( ) nothing works",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"routine\",\"confidence\":0.92,\"probabilities\":{\"decision\":0.02,\"contradicts\":0.03,\"process\":0.01,\"routine\":0.94}}},\"usage\":{\"input_tokens\":865,\"output_tokens\":47}}"
+  },
+  "e5cf6051": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “feed-and-search” (section reference).\n\nSummary: Tag runs: a progress bar, and Jev adds the tag directly (with Undo)\n\nRemoves:\n- - What may fit — the model's suggestions (issues 154– 158, 166; , ).\n- org's EXISTING items fit it. The model is TypeSafe AI's Jev ( ,\n- ), a NON-generative decision model: ONE request per candidate item, the item's text as\n- and one (yes/no) question keyed with built from the tag's name and description,\n- at most 4 in flight. Its answer is a probability: \"fits\" at 0.5 or more, the confidence that probability.\n- Summaries stay on Gemini. The rules: suggestions, never actions (a run writes rows with\n- , , , — the version Jev reports, e.g. — and\n- ; never ); never on a render path (the route starts the run and hands its\n- work to ); a fixed set of answers (a must be a number 0–1, anything else is no judgement);\n\nAdds:\n- - Tagging existing items — Jev ADDS the tag (issues 154– 158, 166; , ).\n- org's EXISTING items fit it, and adds the tag to each item it judges a fit (≥ , 0.7). The model\n- is TypeSafe AI's Jev ( , ), a NON-generative\n- decision model: ONE request per candidate item, the item's text as and one (yes/no) question keyed\n- with built from the tag's name and description, at most 4 in flight. Its answer is a\n- probability: \"fits\" at 0.5 or more, the confidence that probability. Summaries stay on Gemini.\n- - A deliberate exception to 154's \"suggestions, never actions\" — the owner's call (2026-10-14): no review\n- - Provenance: each tag a run adds keeps an row — , ,\n- - The way back: (admins, cookie; ) removes EXACTLY the tags\n- - Live progress: the run writes , , and on AS IT GOES —\n- - The \"Suggested by agents\" queue is separate and unchanged: an AGENT's unknown tag still waits ( ) for",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"decision\",\"confidence\":0.95,\"probabilities\":{\"decision\":0.96,\"contradicts\":0.02,\"process\":0.02,\"routine\":0.0}}},\"usage\":{\"input_tokens\":941,\"output_tokens\":47}}"
+  },
+  "324a8e17": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “repo-dashboard” (section reference).\n\nSummary: Hosting: remove the legacy Cloudflare / Railway paths outside the hosting core\n\nRemoves:\n- list, set once on the App — ): , , , , ,\n- Without / / , reconcile is the ONLY source of deploys, checks\n- and runs (up to 6 hours late). The same now holds for and : without them the\n- ( , ); and, optionally, on Org settings › Integrations: Cloudflare\n- analytics (token + account id), and per environment a Railway project token and an app-metrics token\n- ( ). The Worker secrets of the same purpose ( , ,\n- , ) answer for SaplingLearn ALONE, only until it stores each\n- ( › Legacy); the vars / are read by nothing. The Cloudflare and Railway query shapes were\n- built to the vendors' documentation, never verified against a live call (no token was available to the\n\nAdds:\n- list, set once on the App — ): , , , ,\n- ( is no longer read — a delivery is verified and ignored: an environment's deploys come\n- from its hosting provider, .) Without / , reconcile is the\n- ONLY source of checks and runs (up to 6 hours late). The same now holds for and : without them the\n- ( , ); and, optionally, on Org settings › Integrations, an app-metrics\n- token per environment ( ). What HOSTS an environment — Cloudflare, Railway, Vercel, … — is\n- its parts, each provider with ONE org-wide credential (Org settings › Hosting, ). The\n- Worker secrets of the same purpose ( , , )\n- answer for SaplingLearn ALONE, only until it stores each ( › Legacy); the vars /\n- are read by nothing.\n- - , every hour — and no other heavy job: per (org, environment) the app's own metrics\n- endpoint ( → , 1 GET, so never a second hop), in a\n- guarded arm and skipped entirely when THAT org has no token for that environment. With",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"decision\",\"confidence\":0.43,\"probabilities\":{\"decision\":0.57,\"contradicts\":0.1,\"process\":0.31,\"routine\":0.02}}},\"usage\":{\"input_tokens\":875,\"output_tokens\":47}}"
+  },
+  "80fbe5cc": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “CLAUDE” (section reference).\n\nSummary: docs: slim CLAUDE.md to what applies to every change; per-area detail moves to docs/architecture\n\nRemoves:\n- Trov — a shared context store backend. One Cloudflare Worker on one origin serves the HTTP API,\n- a stateless MCP endpoint at , a GitHub webhook receiver at , and the static web\n- build (via the assets binding); a cron recomputes roadmap progress. Agents propose context\n- through a reconciling gate and humans confirm the consequential changes; authored (plan) and computed\n- (progress, summary) writes go direct.\n- Working memory (use the skills)\n- Trov is the team's working memory, and the skills under are the root of how it\n- stays living (orient → work → record), not a side feature. The core loop is three skills:\n- - — the umbrella/overview skill: the whole loop, the authority model, and the read/write\n\nAdds:\n- Trov — a multi-tenant shared context store. One Cloudflare Worker on one origin serves the HTTP API (Hono,\n- session cookie), a stateless MCP endpoint at (bearer), the GitHub webhooks (HMAC) and the web SPA via\n- the binding; runs the repo cron and two email-digest crons. Agents propose knowledge\n- through a reconciling gate and humans confirm it; authored and computed writes go direct.\n- This file holds only what applies to EVERY change. The detail for each area lives in —\n- read the matching file before changing that area (table at the bottom), and update it in the same PR\n- when you change behavior there. Don't grow this file with feature detail: a new rule belongs here only\n- if it applies to every change; everything else goes in the area file.\n- Working memory (use the skills)\n- Trov is the team's working memory; the skills under (symlinks into\n- — edit there) are how it stays living: orient → work → record.",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"process\",\"confidence\":0.4,\"probabilities\":{\"decision\":0.05,\"contradicts\":0.02,\"process\":0.55,\"routine\":0.38}}},\"usage\":{\"input_tokens\":864,\"output_tokens\":47}}"
+  },
+  "fddef5dc": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “organizations” (section reference).\n\nSummary: Docs: HANDOFF (done / next / decisions / owner steps), data-layer.md, organizations.md for the operator\n\nAdds:\n- Organizations — the operator's guide\n- For the person who runs a Trov deployment (the superadmin) and for an organization's owner. It\n- follows one organization from the day it is added to the day its team is working in it. The code behind\n- each step is named in brackets; the rules those modules obey are in and .\n- Who is who\n- Scope Becomes one by\n- --- --- ---\n- Superadmin the platform: the list of organizations, who owns each, suspension, usage, the audit trail a row in (0042 seeds andres); another superadmin adds more in Platform › Admins & limits\n- Owner one organization, everything in it creating the organization, accepting a superadmin's owner invitation, or being made one by another owner\n- Admin one organization, everything but owners and the encryption key an invitation \"as admin\", or a role change by an admin or owner\n- Member one organization: reads and the everyday writes an invitation \"as member\"",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"routine\",\"confidence\":0.96,\"probabilities\":{\"decision\":0.0,\"contradicts\":0.0,\"process\":0.03,\"routine\":0.97}}},\"usage\":{\"input_tokens\":677,\"output_tokens\":47}}"
+  },
+  "dbe9fccb": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “env” (section reference).\n\nSummary: Preview deployments on their own empty database; mail mode set in wrangler.toml\n\nRemoves:\n- ( default / ), (the App's URL name; empty = not\n\nAdds:\n- Preview deployments ( in ; ). A Workers Builds\n- build of any branch but deploys a Preview: the branch's code on its own URL, with ONLY the bindings\n- of the section — the empty D1 and the R2 bucket ,\n- , no GitHub App slug. It never gets production's database or bucket, so a\n- branch's migrations run against only ( exists solely so that database can be\n- migrated by name; nothing is deployed to it). The non-production deploy command in the Cloudflare\n- dashboard must be — never the production command: Cloudflare refuses `wrangler\n- deploy wrangler d1 migrations apply trov --remote`, which\n- would apply an unreviewed branch's migration to production. Build command for both: .\n- ( in production since 2026-10-07; writes bodies to a table and sends nothing — a deploy sets it from , so a dashboard-only change is undone by the next deploy), (the App's URL name; empty = not",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"routine\",\"confidence\":0.43,\"probabilities\":{\"decision\":0.06,\"contradicts\":0.07,\"process\":0.3,\"routine\":0.57}}},\"usage\":{\"input_tokens\":693,\"output_tokens\":47}}"
+  },
+  "9c783e4e": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “ai” (section reference).\n\nSummary: AI Phase A: the migration is 0058aidirty (main took 0057); the base spec's reserved numbers are the master's to update\n\nRemoves:\n- (0057, default on): whether Ask Trov's Auto mode (writes run without a Confirm card, with Undo)\n- The router's table (0057, Phase B)\n\nAdds:\n- (0058, default on): whether Ask Trov's Auto mode (writes run without a Confirm card, with Undo)\n- The router's table (0058, Phase B)",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"routine\",\"confidence\":0.25,\"probabilities\":{\"decision\":0.37,\"contradicts\":0.07,\"process\":0.12,\"routine\":0.44}}},\"usage\":{\"input_tokens\":561,\"output_tokens\":47}}"
+  },
+  "abb947a6": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “organizations” (section reference).\n\nSummary: Docs and release notes for the organization's image; its menu fits its footnote\n\nRemoves:\n- General the name; the slug, read-only everyone (read), admin+ (rename)\n\nAdds:\n- General the image; the name; the slug, read-only everyone (read), admin+ (image, rename)\n- The organization's image\n- An organization shows one image beside its name — the sidebar switcher and its menu, the org picker, an\n- invitation, Platform. Without one the SPA draws the first letter of the name [\n- ]. Migration ; code ; tests .\n- - Who changes it: an admin or an owner, in Org settings › General — the tile is the control, like the\n- profile photo: Upload image / Change image, and Remove image over an uploaded one\n- [ , ; cookie only; audited as / ].\n- The image is checked exactly like a person's photo (PNG, JPEG, WebP or GIF — never SVG — confirmed by\n- its bytes, at most 2 MB; the browser crops it to a square first) and each person may upload 20 a day\n- [ ]. Everyone else sees the image and where it came from.\n- - Where it is stored and served: R2, content-addressed at , served by",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"routine\",\"confidence\":0.48,\"probabilities\":{\"decision\":0.2,\"contradicts\":0.03,\"process\":0.16,\"routine\":0.61}}},\"usage\":{\"input_tokens\":704,\"output_tokens\":47}}"
+  },
+  "1034e547": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “web-ui” (section reference).\n\nSummary: AI screens: phone fixes, screenshots, docs and release notes\n\nAdds:\n- The AI kit — what Trov wrote, and how it says so ( )\n- Four screens show something Trov WROTE (shared/ai-core.ts; ):\n- My Work › Your brief, Repo › Overview › State, Repo › Planning › Where the work went, and Feed entries written by\n- Trov. Each is drawn ONLY when its read carries the field ( , /\n- , ); off is the field missing, never a state, and with it absent the screen is byte-for-byte\n- what it was ( , snapshots written before the kit existed). Production omits every\n- field until a producer exists; under fills them from .\n- - The mark is ( ): the mock's pennant ( , 24×24) in\n- . It is NOT the brand logo ( ): it marks a thing Trov wrote, as the robot\n- ( ) marks a thing an agent wrote. Its says what it was written from and ends \"Not\n- official; check the sources.\" ( , ).\n- - Every written item carries (\"Written by Trov, 12m ago\" — the app's ; \"from 6 events\"",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"routine\",\"confidence\":0.93,\"probabilities\":{\"decision\":0.03,\"contradicts\":0.01,\"process\":0.01,\"routine\":0.95}}},\"usage\":{\"input_tokens\":690,\"output_tokens\":47}}"
+  },
+  "ff330f51": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “github-app” (section reference).\n\nSummary: Docs and 0.19 notes: what each installation token is minted for, the id-set check and its cap, the revoke\n\nRemoves:\n- covers: of (user token) must equal that of\n- (installation token). The owner of a personal account's installation\n- skips the count (the installation IS their account).\n- the URL or the user's list. The user token is used for those reads and dropped.\n- hour. Cached per isolate, in memory, keyed by App id + installation id, handed out until ten minutes\n- before expiry; concurrent callers share one mint. Never in D1, never logged. A 401 on a read made with\n- it forgets it; the next use mints again.\n- id / key) or an outage → only; the binding stays. In every case the stored token answers\n- in the same run, and an ended or suspended binding is not asked again — no loop.\n\nAdds:\n- covers — see \"The no-escalation check\" below.\n- the URL or the user's list. The user token is used for those reads and then revoked (below).\n- The no-escalation check ( , )\n- Two lists of repository ids, each read to its end, 100 a page:\n- - what the installation covers — , with an installation token that spans\n- the installation and carries Metadata only;\n- - what the connecting account can read of it — , with the\n- user token. GitHub's 404 on the first page means \"none\".\n- The installation is bound only when every id of the first list is in the second. Ids, not counts: two\n- counts can agree while the repositories differ (the account reads two repositories, the installation\n- covers two, and only one is the same), and a count taken from one page says nothing of the others.\n- - A refusal says HOW MANY repositories the account cannot read ( ),",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"routine\",\"confidence\":0.53,\"probabilities\":{\"decision\":0.25,\"contradicts\":0.07,\"process\":0.03,\"routine\":0.65}}},\"usage\":{\"input_tokens\":843,\"output_tokens\":47}}"
+  },
+  "8dc5706c": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “CLAUDE” (section reference).\n\nSummary: Org settings' pickers are the app's own dropdown: styled, and animated open and closed\n\nAdds:\n- A pick-one with no room for a switch is ( ), never a native :\n- the trigger where the control sits, its menu a root-level overlay ( , the same props) that opens\n- and closes with an animation — Org settings' role and Notifications pickers.",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"routine\",\"confidence\":0.75,\"probabilities\":{\"decision\":0.14,\"contradicts\":0.05,\"process\":0.0,\"routine\":0.81}}},\"usage\":{\"input_tokens\":514,\"output_tokens\":47}}"
+  },
+  "16cc68ff": {
+   "request": {
+    "model": "jev-latest",
+    "state": "A proposed edit to the doc “notifications” (section reference).\n\nSummary: Emails: the card is fluid, so a phone no longer shows it 680px wide\n\nAdds:\n- The card is fluid\n- / ( ) wrap every mail: with , never a\n- fixed pixel width (a table cannot shrink, so a phone showed the mail 680px wide). Outlook ignores\n- and gets a fixed-width wrapper through a conditional comment. (in each mail's\n- ) tightens the gutter, hides the banner's faint mark and steps the headline down under 520px; a client\n- that drops still gets a card that fits.",
+    "questions": {
+     "risk": {
+      "type": "choice",
+      "instructions": "What does this change do to what the team has agreed?",
+      "criteria": {
+       "decision": "It changes, reverses or replaces a decision the team already made: a chosen approach, a rule, a ruling",
+       "contradicts": "It says something that contradicts what a live doc says is true, or removes what a doc relies on",
+       "process": "It changes how people work: a workflow, a step, a policy, who does what or when",
+       "routine": "Routine: it adds detail, documents something new, or fixes wording, without changing what was agreed"
+      }
+     }
+    }
+   },
+   "status": 200,
+   "response": "{\"model\":\"jev-1.13.0\",\"answers\":{\"risk\":{\"type\":\"choice\",\"choice\":\"decision\",\"confidence\":0.35,\"probabilities\":{\"decision\":0.51,\"contradicts\":0.15,\"process\":0.0,\"routine\":0.34}}},\"usage\":{\"input_tokens\":559,\"output_tokens\":47}}"
+  }
+ }
+}

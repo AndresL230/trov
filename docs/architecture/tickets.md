@@ -40,6 +40,19 @@ Priority, Sprint and search narrow the loaded rows (`queueRows`). With the org's
 sits above them (`ai.md` › The plain-language filter): its answer sets these same controls — the Open / Closed / All
 switch, Assignee or one person, Category, Priority, Sprint and the search — replacing what was set, with Undo.
 
+**Trov's suggestions on a ticket** (Phase C, `ai.md` › The kinds). With the org's AI on, the pass asks Jev ONE
+request per new ticket (`card:ticket:<n>`): its category while it is still `other`, its priority while it is still
+`normal` (what the form files when nobody picks — a value a person picked is never asked about or overwritten), and
+whether it is the same request as one of the top five full-text hits of the org (never itself, its parent or
+children, or a ticket it already links). The ticket detail's cookie read (`GET /tickets/:id`, `TicketDetail.ai?`;
+never MCP's `get_ticket`) carries the open ones, drawn as chips under Properties and above Linked work with Accept /
+Dismiss. Accepting a category or priority goes through `set_ticket_classification` (`src/tools/tickets.ts`: no MCP
+tool, no history row, a value outside the vocabulary is `bad_request`) as the person; accepting a possible duplicate
+only ADDS A LINK through `add_ticket_link` — to the other ticket's GitHub issue when it is mirrored, else to its
+in-app address (`<origin>/<org>/#tickets/<n>`, which `parseTicketLink` names `#<n>`, `TROV · TICKET`). Nothing
+closes, declines or merges either ticket (Invariant 5). Dismissed or accepted, a kind is never suggested again for
+that ticket.
+
 **The writer is a PERSON — over a cookie, or over their own bearer token.** Eight of those writers are also
 MCP tools (`src/tools/tickets-agent.ts`, the read side below), scoped so an agent writes only inside its
 principal's lane. That is a narrowing of the old "ticket writes are cookie-only" rule, not of the

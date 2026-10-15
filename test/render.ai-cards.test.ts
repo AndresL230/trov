@@ -18,6 +18,7 @@ import { render, initialState, type AppState } from "../web/src/render";
 import type { TicketDetail } from "@shared/tickets";
 import type { AdrRow, NeedsTriageRow } from "@shared/rows";
 import type { StagedProposal } from "../web/src/api";
+import { reviewRiskFixture, ticketSuggestionsFixture, unplacedSuggestionFixture } from "@shared/ai-fixtures";
 
 const NOW = new Date("2026-10-15T12:00:00.000Z");
 beforeAll(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });
@@ -73,5 +74,66 @@ describe("field absent — each screen renders exactly what it did before Phase 
   });
   it("Review (no row carries `ai`)", () => {
     expect(render(app({ screen: "review", proposals: { status: "ok", data: [proposal()] }, draftAdrs: { status: "ok", data: [adr()] } }))).toMatchSnapshot();
+  });
+});
+
+// ── field present ────────────────────────────────────────────────────────────
+const MODE = "ready" as const;
+const tSugg = ticketSuggestionsFixture(MODE, 14, { number: 9, title: "Blank login on Safari" });
+
+/** Every <button>…</button> span in `html`, and whether any holds another <button. */
+function nestedButtons(html: string): boolean {
+  let depth = 0;
+  for (const m of html.matchAll(/<\/?button\b/g)) {
+    if (m[0] === "<button") { if (depth > 0) return true; depth++; } else depth = Math.max(0, depth - 1);
+  }
+  return false;
+}
+
+describe("field present — Trov's suggestions on the three screens", () => {
+  it("ticket detail: category and priority chips under Properties, a possible duplicate above Linked work; Accept / Dismiss on each", () => {
+    const html = render(app({ screen: "ticketdetail", ticketId: 14, ticketDetail: { status: "ok", data: ticketDetail({ ai: tSugg }) } }));
+    expect(html).toContain("bug category");
+    expect(html).toContain("high priority");
+    expect(html).toContain("possible duplicate of #9 Blank login on Safari");
+    expect(html.match(/data-act="aiAccept"/g)).toHaveLength(3);
+    expect(html.match(/data-act="aiDismiss"/g)).toHaveLength(3);
+    // The reason is one tap away, hidden until opened; the duplicate cites the ticket in-app.
+    expect(html).toContain("because it says “…the login page is blank on Safari…”");
+    expect(html).toContain('href="#tickets/9"');
+    expect(html.indexOf("cnpy-ai-td-dup")).toBeLessThan(html.indexOf("cnpy-ai-td-fields")); // left column first
+    expect(nestedButtons(html)).toBe(false);
+    // The values a person set are still drawn as they were: the chip is beside them, never in place of them.
+    expect(html).toContain(">other</div>");
+  });
+
+  it("Unplaced: a chip above “File it as” on the item, and a mark (no button) on its row", () => {
+    const s = unplacedSuggestionFixture(MODE, 7)!;
+    const html = render(app({ screen: "maintenance", needsTriage: { status: "ok", data: [triageRow({ ai: [s] }), triageRow({ id: 8, raw: "a free-form note", reason: "Flagged by an agent" })] } }));
+    expect(html).toContain("file it as a doc in reference");
+    expect(html.indexOf("cnpy-ai-unplaced")).toBeLessThan(html.indexOf("File it as"));
+    expect(html.match(/cnpy-ai-row-mark/g)).toHaveLength(1);
+    expect(html.match(/data-act="aiAccept"/g)).toHaveLength(1);
+    expect(nestedButtons(html)).toBe(false);
+  });
+
+  it("Review: the risk as a quiet line — a mark on the list card, the reason and Dismiss in the detail; never an Accept, Promote or Reject of its own", () => {
+    const risk = reviewRiskFixture(MODE, "doc:auth-flow@3", 0)!;
+    const html = render(app({ screen: "review", proposals: { status: "ok", data: [proposal({ ai: [risk] })] }, draftAdrs: { status: "ok", data: [adr()] } }));
+    expect(html.match(/cnpy-ai-risk"/g)).toHaveLength(1); // the list card
+    expect(html).toContain("cnpy-ai-risk-line");
+    expect(html).toContain("Changes a decision");
+    expect(html).not.toContain('data-act="aiAccept"');
+    expect(html.match(/data-act="aiDismiss"/g)).toHaveLength(1);
+    // Review's own verdict buttons are the only Promote / Reject, exactly as before.
+    expect(html.match(/data-act="reviewAccept"/g)).toHaveLength(1);
+    expect(html.match(/data-act="reviewReject"/g)).toHaveLength(1);
+    expect(nestedButtons(html)).toBe(false);
+  });
+
+  it("a decided (not open) suggestion draws nothing", () => {
+    const decided = tSugg.map((s) => ({ ...s, state: "accepted" as const }));
+    const html = render(app({ screen: "ticketdetail", ticketId: 14, ticketDetail: { status: "ok", data: ticketDetail({ ai: decided }) } }));
+    expect(html).not.toContain("cnpy-ai-chip");
   });
 });

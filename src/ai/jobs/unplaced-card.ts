@@ -16,7 +16,7 @@ import { excerptOf, quoted, snippetEvidence } from "./text";
 
 export const UNPLACED_PROMPT_VERSION = "jev-place-1";
 /** Write a destination only at or above this probability (chosen on the eval set: test/ai-evals/unplaced.destination/). */
-export const UNPLACED_DESTINATION_MIN = 0.6;
+export const UNPLACED_DESTINATION_MIN = 0.55;
 /** Docs offered beside the sections: the top three full-text hits. */
 export const UNPLACED_DOC_CANDIDATES = 3;
 
@@ -64,7 +64,7 @@ export interface UnplacedValue { type: "doc"; section: PlaceableSection; near: s
 export interface UnplacedSuggestion { kind: "unplaced.destination"; value: UnplacedValue; confidence: number; reason: string; cites: AiCite[] }
 export interface UnplacedDecision { unanswered: boolean; suggestion: UnplacedSuggestion | null }
 
-export function unplacedDecide(input: UnplacedCardInput, answers: Record<string, JevAnswer | null>): UnplacedDecision {
+export function unplacedDecide(input: UnplacedCardInput, answers: Record<string, JevAnswer | null>, min: number = UNPLACED_DESTINATION_MIN): UnplacedDecision {
   const a = answers.destination;
   if (!a || a.type !== "choice") return { unanswered: true, suggestion: null };
   const docs = offeredDocs(input);
@@ -79,7 +79,7 @@ export function unplacedDecide(input: UnplacedCardInput, answers: Record<string,
   let best: PlaceableSection | null = null;
   let bestP = 0;
   for (const [s, p] of mass) if (p > bestP) { best = s; bestP = p; }
-  if (!best || bestP < UNPLACED_DESTINATION_MIN) return { unanswered: false, suggestion: null };
+  if (!best || bestP < min) return { unanswered: false, suggestion: null };
   // The doc that speaks for this section most strongly, if one was offered.
   let near: UnplacedDoc | null = null;
   let nearP = 0;
@@ -90,10 +90,10 @@ export function unplacedDecide(input: UnplacedCardInput, answers: Record<string,
   const n = near as UnplacedDoc | null;
   const snippet = n ? snippetEvidence(n.snippet) : null;
   const reason = n && snippet
-    ? `It mentions ${snippet}, like the doc “${excerptOf(n.title, 80)}” in ${best}`
+    ? `it mentions ${snippet}, like the doc “${excerptOf(n.title, 80)}” in ${best}`
     : input.filedUnder
-      ? `The agent filed it under “${excerptOf(input.filedUnder, 60)}”${(PLACEABLE_SECTIONS as readonly string[]).includes(input.filedUnder) ? "" : " (not a section)"}; it reads ${quoted(input.title, 80)}`
-      : quoted(input.title, 100) ? `It reads ${quoted(input.title, 100)}` : "";
+      ? `the agent filed it under “${excerptOf(input.filedUnder, 60)}”${(PLACEABLE_SECTIONS as readonly string[]).includes(input.filedUnder) ? "" : " (not a section)"}; it reads ${quoted(input.title, 80)}`
+      : quoted(input.title, 100) ? `it reads ${quoted(input.title, 100)}` : "";
   if (!reason) return { unanswered: false, suggestion: null };
   return {
     unanswered: false,

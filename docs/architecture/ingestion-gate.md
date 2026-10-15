@@ -112,3 +112,12 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
 - `GET /proposals` — server-joined queue of staged doc versions newer than the live doc (both bodies +
   reconciler metadata: `change_kind`, `low_confidence`, `base_version`). The web triage UI reads this
   instead of per-doc N+1 fetches. These are session-cookie HTTP routes, NEVER MCP tools.
+- **Trov's suggestions on Unplaced and Review** (Phase C, `ai.md` › The kinds) — information, never a gate decision.
+  With the org's AI on, an Unplaced item that is a doc (a slug and a body) gets ONE Jev request: which section
+  (the vocabulary's, less `needs-triage`) or "next to" which of the top three live docs (counted as that doc's
+  section). `GET /needs-triage` carries the open one as the row's `ai?`; **Accept files the item exactly as
+  "File it" does** — `assign_triage` as a `doc` in that section, through the SAME gate, as the person who pressed
+  it. A doc proposal or drafted ADR waiting in Review gets ONE request: does it change a decision, contradict a doc,
+  change a process, or is it routine. `GET /proposals` / `GET /adrs` carry a non-routine risk as `ai?`, drawn as a
+  quiet line on the card with Dismiss only: **a risk never promotes, rejects or ratifies anything** (no Accept
+  handler). Both are open suggestions only, only while the switch is on, cookie reads only.

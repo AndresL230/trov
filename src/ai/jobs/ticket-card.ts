@@ -24,7 +24,7 @@ export const TICKET_PROMPT_VERSION = "jev-ticket-1";
 /** Write a suggestion only at or above these probabilities (chosen on the eval sets: test/ai-evals/<kind>/). */
 export const TICKET_CATEGORY_MIN = 0.7;
 export const TICKET_PRIORITY_MIN = 0.75;
-export const TICKET_DUPLICATE_MIN = 0.6;
+export const TICKET_DUPLICATE_MIN = 0.9;
 /** The most duplicate candidates one request offers: the top five full-text hits. */
 export const DUPLICATE_CANDIDATES = 5;
 const BODY_MAX = 1200;
@@ -95,13 +95,13 @@ const PRIORITY_WORDS: Record<TicketPriority, RegExp | null> = {
   normal: null,
 };
 
-/** "It says “…words…”": the window around the first word matching the answer, in the title first, then the body;
+/** "it says “…words…”": the window around the first word matching the answer, in the title first, then the body;
  *  without one, the title. "" when the ticket has no words at all (then nothing is written). */
 export function wordsEvidence(input: Pick<TicketCardInput, "title" | "body">, re: RegExp | null): string {
   const w = re ? windowAround(input.title, re, 50) ?? windowAround(input.body, re, 50) : null;
-  if (w) return `It says “${w}”`;
+  if (w) return `it says “${w}”`;
   const t = quoted(input.title, 100);
-  return t ? `It says ${t}` : "";
+  return t ? `it says ${t}` : "";
 }
 
 // ── the decision ─────────────────────────────────────────────────────────────
@@ -124,20 +124,24 @@ const pOf = (a: JevAnswer | null | undefined): { choice: string; p: number } | n
   a && a.type === "choice" ? { choice: a.choice, p: a.probabilities[a.choice] ?? 0 } : null;
 
 /** What Jev's answers to `ticketRequest(input)` become. */
-export function ticketDecide(input: TicketCardInput, answers: Record<string, JevAnswer | null>): TicketDecision {
+/** The thresholds a decision uses — the module's own, unless an eval sweep passes others. */
+export interface TicketMins { category: number; priority: number; duplicate: number }
+export const TICKET_MINS: TicketMins = { category: TICKET_CATEGORY_MIN, priority: TICKET_PRIORITY_MIN, duplicate: TICKET_DUPLICATE_MIN };
+
+export function ticketDecide(input: TicketCardInput, answers: Record<string, JevAnswer | null>, mins: TicketMins = TICKET_MINS): TicketDecision {
   const req = ticketRequest(input);
   const asked = req ? Object.keys(req.questions) : [];
   const unanswered = asked.length > 0 && asked.every((k) => !answers[k]);
   const out: TicketSuggestion[] = [];
 
   const cat = input.askCategory ? pOf(answers.category) : null;
-  if (cat && (TICKET_CATEGORIES as readonly string[]).includes(cat.choice) && cat.choice !== "other" && cat.choice !== input.category && cat.p >= TICKET_CATEGORY_MIN) {
+  if (cat && (TICKET_CATEGORIES as readonly string[]).includes(cat.choice) && cat.choice !== "other" && cat.choice !== input.category && cat.p >= mins.category) {
     const reason = wordsEvidence(input, CATEGORY_WORDS[cat.choice as TicketCategory]);
     if (reason) out.push({ kind: "ticket.category", value: cat.choice, confidence: cat.p, reason, cites: [] });
   }
 
   const pri = input.askPriority ? pOf(answers.priority) : null;
-  if (pri && (TICKET_PRIORITIES as readonly string[]).includes(pri.choice) && pri.choice !== input.priority && pri.p >= TICKET_PRIORITY_MIN) {
+  if (pri && (TICKET_PRIORITIES as readonly string[]).includes(pri.choice) && pri.choice !== input.priority && pri.p >= mins.priority) {
     const reason = wordsEvidence(input, PRIORITY_WORDS[pri.choice as TicketPriority]);
     if (reason) out.push({ kind: "ticket.priority", value: pri.choice, confidence: pri.p, reason, cites: [] });
   }
@@ -146,10 +150,10 @@ export function ticketDecide(input: TicketCardInput, answers: Record<string, Jev
   const offered = input.candidates.slice(0, DUPLICATE_CANDIDATES);
   // Only a ticket that was OFFERED: an option outside the list is never a suggestion, whatever came back.
   const c = dup && dup.choice !== NONE ? offered.find((x) => candidateKey(x.number) === dup.choice) ?? null : null;
-  if (c && dup && dup.p >= TICKET_DUPLICATE_MIN) {
+  if (c && dup && dup.p >= mins.duplicate) {
     const shared = sharedWords(`${input.title} ${input.body}`, `${c.title} ${c.body}`);
     const snippet = snippetEvidence(c.snippet);
-    const reason = shared.length >= 2 ? `Both mention ${quoteList(shared)}` : snippet ? `#${c.number} says ${snippet}` : shared.length ? `Both mention ${quoteList(shared)}` : "";
+    const reason = shared.length >= 2 ? `both mention ${quoteList(shared)}` : snippet ? `#${c.number} says ${snippet}` : shared.length ? `both mention ${quoteList(shared)}` : "";
     if (reason) {
       out.push({
         kind: "ticket.duplicate",

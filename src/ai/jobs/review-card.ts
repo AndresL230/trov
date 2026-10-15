@@ -108,22 +108,22 @@ export interface ReviewDecision { unanswered: boolean; suggestion: ReviewSuggest
 function ownWords(input: ReviewCardInput): string {
   if (input.type === "adr") {
     const d = quoted(input.decision || input.title, 110);
-    return d ? `It decides ${d}` : "";
+    return d ? `it decides ${d}` : "";
   }
   const gone = input.removed.find((l) => excerptOf(l, 200));
   const now = input.added.find((l) => excerptOf(l, 200));
-  if (gone && now) return `It replaces ${quoted(gone, 70)} with ${quoted(now, 70)}`;
-  if (gone) return `It removes ${quoted(gone, 110)}`;
-  if (now) return `It adds ${quoted(now, 110)}`;
-  return input.summary ? `Its summary says ${quoted(input.summary, 110)}` : "";
+  if (gone && now) return `it replaces ${quoted(gone, 70)} with ${quoted(now, 70)}`;
+  if (gone) return `it removes ${quoted(gone, 110)}`;
+  if (now) return `it adds ${quoted(now, 110)}`;
+  return input.summary ? `its summary says ${quoted(input.summary, 110)}` : "";
 }
 
-export function reviewDecide(input: ReviewCardInput, answers: Record<string, JevAnswer | null>): ReviewDecision {
+export function reviewDecide(input: ReviewCardInput, answers: Record<string, JevAnswer | null>, min: number = REVIEW_RISK_MIN): ReviewDecision {
   const a = answers.risk;
   if (!a || a.type !== "choice") return { unanswered: true, suggestion: null };
   const risk = a.choice as ReviewRisk;
   const p = a.probabilities[a.choice] ?? 0;
-  if (!(REVIEW_RISKS as readonly string[]).includes(risk) || risk === "routine" || p < REVIEW_RISK_MIN) return { unanswered: false, suggestion: null };
+  if (!(REVIEW_RISKS as readonly string[]).includes(risk) || risk === "routine" || p < min) return { unanswered: false, suggestion: null };
   const words = ownWords(input);
   if (!words) return { unanswered: false, suggestion: null };
   const cites: AiCite[] = [];

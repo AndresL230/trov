@@ -233,13 +233,13 @@ export function ticketSuggestionsFixture(mode: AiPreviewMode, n: number, other: 
   if (mode === "empty" || mode === "capped") return [];
   const ref = String(n);
   const out: AiSuggestion[] = [
-    sugg({ id: 901, itemType: "ticket", itemRef: ref, kind: "ticket.category", value: "bug", reason: "It says “…the login page is blank on Safari…”", confidence: 0.91, cites: [] }),
-    sugg({ id: 902, itemType: "ticket", itemRef: ref, kind: "ticket.priority", value: "high", reason: "It says “…blocks everyone on the team from signing in…”", confidence: 0.83, cites: [] }),
+    sugg({ id: 901, itemType: "ticket", itemRef: ref, kind: "ticket.category", value: "bug", reason: "it says “…the login page is blank on Safari…”", confidence: 0.91, cites: [] }),
+    sugg({ id: 902, itemType: "ticket", itemRef: ref, kind: "ticket.priority", value: "high", reason: "it says “…blocks everyone on the team from signing in…”", confidence: 0.83, cites: [] }),
   ];
   if (other && other.number !== n) {
     out.push(sugg({
       id: 903, itemType: "ticket", itemRef: ref, kind: "ticket.duplicate", value: { number: other.number, label: `#${other.number} ${other.title}` },
-      label: `#${other.number} ${other.title}`, reason: "Both mention “login”, “safari” and “blank”", confidence: 0.74,
+      label: `#${other.number} ${other.title}`, reason: "both mention “login”, “safari” and “blank”", confidence: 0.94,
       cites: [{ ref: `ticket:${other.number}`, label: `#${other.number}`, href: `#tickets/${other.number}` }],
     }));
   }
@@ -252,7 +252,7 @@ export function unplacedSuggestionFixture(mode: AiPreviewMode, id: number): AiSu
   return sugg({
     id: 904, itemType: "unplaced", itemRef: String(id), kind: "unplaced.destination",
     value: { type: "doc", section: "reference", near: null, label: "reference" }, label: "reference",
-    reason: "The agent filed it under “runbooks” (not a section); it reads “Deploy checklist”", confidence: 0.81, cites: [],
+    reason: "the agent filed it under “runbooks” (not a section); it reads “Deploy checklist”", confidence: 0.81, cites: [],
   });
 }
 
@@ -262,11 +262,11 @@ export function reviewRiskFixture(mode: AiPreviewMode, ref: string, index: numbe
   return index === 0
     ? sugg({
         id: 905, itemType: "proposal", itemRef: ref, kind: "review.risk", value: { risk: "decision", label: "Changes a decision" }, label: "Changes a decision",
-        reason: "It replaces “A session lasts 7 days.” with “A session lasts 30 days.”; the ratified decision “Short sessions” covers the same ground",
+        reason: "it replaces “A session lasts 7 days.” with “A session lasts 30 days.”; the ratified decision “Short sessions” covers the same ground",
         confidence: 0.78, cites: [{ ref: "adr:3", label: "ADR-003", href: null }],
       })
     : sugg({
         id: 906, itemType: "proposal", itemRef: ref, kind: "review.risk", value: { risk: "contradicts", label: "Contradicts a doc" }, label: "Contradicts a doc",
-        reason: "It decides “Use D1's FTS5.”; the live doc “Search” covers the same ground", confidence: 0.66, cites: [{ ref: "doc:search", label: "Search", href: null }],
+        reason: "it decides “Use D1's FTS5.”; the live doc “Search” covers the same ground", confidence: 0.66, cites: [{ ref: "doc:search", label: "Search", href: null }],
       });
 }
