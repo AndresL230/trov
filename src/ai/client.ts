@@ -45,6 +45,8 @@ export const KIND_PROVIDER = {
   "ask.smart": "claude",
   "ask.thinking": "claude",
   "ask.compact": "claude",
+  // My Work's "Your brief": one person's Now / Recently / Next, written by the AI pass (src/ai/brief.ts).
+  "brief.person": "claude",
 } as const satisfies Record<string, AiProviderName>;
 
 /** What a call is for. */

@@ -1,5 +1,5 @@
-// The AI pass (src/ai/pass.ts, docs/architecture/ai.md): the machinery every AI job runs in. Its registry is EMPTY
-// in production — so the first suite proves it does nothing at all — and the rest register STAND-IN jobs
+// The AI pass (src/ai/pass.ts, docs/architecture/ai.md): the machinery every AI job runs in. Its registry holds the
+// real producers — the first suite proves it does nothing when none of their scopes is stale — and the rest register STAND-IN jobs
 // (test/helpers/ai-pass.ts) over real `ai_dirty` rows to drive the guards: the switch, the keys, the allowances,
 // the per-tick caps, the cron budget, the rotation cursor and metering. Both providers are stubs answering real
 // response bodies; the assertions are on meter rows, `ai_dirty` and the cursor.
@@ -53,12 +53,12 @@ async function moreOrgs(n: number): Promise<string[]> {
 const pass = (s: Stub, jobs: readonly AiJob[], limit = 900, e: Env = keyedEnv()) =>
   runAiPass(e, newBudget(s.fetchImpl, limit), { jobs, now: NOW });
 
-describe("the real registry is empty", () => {
-  it("AI_JOBS has nothing in it, and a pass with it makes zero calls and writes nothing — with both keys and stale scopes", async () => {
-    expect(AI_JOBS).toEqual([]);
+describe("the real registry", () => {
+  it("AI_JOBS holds only the registered producers; with none of THEIR scopes stale a pass makes zero calls and writes nothing — with both keys and stale scopes", async () => {
+    expect(AI_JOBS.map((j) => j.name)).toEqual(["brief.person"]); // Phase D: the brief (src/ai/brief.ts)
     await cards(ORG_A, 3);
     const s = stub();
-    expect(await runAiPass(keyedEnv(), newBudget(s.fetchImpl), { now: NOW })).toEqual({ calls: 0, haiku: 0, jev: 0, batched: 0, collected: 0, served: [], deferred: 0 });
+    expect(await runAiPass(keyedEnv(), newBudget(s.fetchImpl), { now: NOW })).toMatchObject({ calls: 0, haiku: 0, jev: 0, batched: 0, collected: 0, deferred: 0 });
     expect(s.haiku + s.jev + s.other).toBe(0);
     expect(await aiRows()).toEqual([]);
     expect(await cursor()).toBe(""); // nothing read, nothing written

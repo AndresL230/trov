@@ -1,0 +1,118 @@
+{
+  "kind": "brief.person",
+  "promptVersion": "brief.1",
+  "model": "claude-haiku-5-5",
+  "recordedAt": "2026-10-15T09:07:43.097Z",
+  "cases": {
+    "full-day": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":{\"text\":\"You have two open pull requests: #186 on repo setups (still a draft) and #178 on server-side AI. Your latest status note says server-side AI Phase B has landed on #178, with the plain-language filter working on Tickets, the Feed and Artifacts.\",\"cites\":[\"pr:186\",\"pr:178\",\"feed:118\"]},\"recently\":{\"text\":\"You merged five pull requests in the last 7 days, including hosting providers for Vercel, Render, Netlify and Fly.io, and org-wide tags with automatic tagging by Sift. Your session notes cover repo setups Phases 0 and A.\",\"cites\":[\"pr:185\",\"pr:184\",\"pr:182\",\"pr:180\",\"pr:179\",\"feed:117\",\"feed:119\"]},\"next\":[{\"ref\":\"handoff:12\",\"why\":\"You left this for yourself and nobody has claimed it, so Ask Trov's frontend has no owner yet.\"},{\"ref\":\"ticket:33\",\"why\":\"Without data in the local database, nothing you build can be tested, so this blocks your other work.\"},{\"ref\":\"ticket:34\",\"why\":\"Browser tests against seeded local data would catch breakage across the real app before it ships.\"}]}",
+      "usage": {
+        "inputTokens": 1697,
+        "outputTokens": 390,
+        "cachedTokens": 0,
+        "inputChars": 6589,
+        "outputChars": 1009
+      }
+    },
+    "next-only": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":null,\"recently\":null,\"next\":[{\"ref\":\"ticket:33\",\"why\":\"Nothing can be tested locally until the local database has data, so this unblocks your other work.\"},{\"ref\":\"ticket:34\",\"why\":\"Browser tests need seeded local data to run against, so this builds on the local database fix.\"}]}",
+      "usage": {
+        "inputTokens": 245,
+        "outputTokens": 105,
+        "cachedTokens": 1210,
+        "inputChars": 2586,
+        "outputChars": 287
+      }
+    },
+    "failing-pr": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":{\"text\":\"You have one open pull request, #179, which is failing its vitest test and has a red typecheck. Your latest status note says the AI base (#177) and AI screens frontend (#178) are open, stacked on #176, and all green.\",\"cites\":[\"pr:179\",\"run:18412000001\",\"feed:109\"]},\"recently\":{\"text\":\"You opened #176, which moves summaries to one model client (Claude Haiku 5.5) with the same fields and storage. It waits on an API key and a merge.\",\"cites\":[\"feed:108\"]},\"next\":[{\"ref\":\"run:18412000001\",\"why\":\"Its last run failed on today's date, so your #179 cannot pass its checks until this test is fixed.\"},{\"ref\":\"ticket:14\",\"why\":\"It is not started and sits in no sprint, so it will stay idle until you pick it up.\"}]}",
+      "usage": {
+        "inputTokens": 583,
+        "outputTokens": 274,
+        "cachedTokens": 1210,
+        "inputChars": 3400,
+        "outputChars": 728
+      }
+    },
+    "recently-only": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":null,\"recently\":{\"text\":\"You merged #185, which adds hosting providers for Vercel, Render, Netlify and Fly.io with a Hosting page in Org settings. You also merged #184, which shows a checkmark confirmation when you add or dismiss a suggestion. Two session notes cover the repo setup work on hosting cards and app deploy tracking.\",\"cites\":[\"pr:185\",\"pr:184\",\"feed:117\",\"feed:119\"]},\"next\":[]}",
+      "usage": {
+        "inputTokens": 781,
+        "outputTokens": 157,
+        "cachedTokens": 1210,
+        "inputChars": 4061,
+        "outputChars": 399
+      }
+    },
+    "status-and-handoff": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":{\"text\":\"Your latest status note says the server-side AI Phase A has landed on #178. Trov's AI now has one client with two providers, and Sift obeys the org's AI switch.\",\"cites\":[\"feed:115\"]},\"recently\":null,\"next\":[{\"ref\":\"handoff:10\",\"why\":\"Nobody has claimed this yet, and it is the next step on the server-side AI work you just landed.\"}]}",
+      "usage": {
+        "inputTokens": 328,
+        "outputTokens": 136,
+        "cachedTokens": 1210,
+        "inputChars": 2735,
+        "outputChars": 351
+      }
+    },
+    "overdue-sprint": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":null,\"recently\":null,\"next\":[{\"ref\":\"ticket:33\",\"why\":\"Nothing can be tested until the local database has data, and this ticket is past its due date and not started.\"},{\"ref\":\"ticket:34\",\"why\":\"Browser tests need seeded local data, so this depends on the local database work and is also past its due date.\"},{\"ref\":\"ticket:14\",\"why\":\"It is in progress and due soon, so it is the closest deadline on your list.\"}]}",
+      "usage": {
+        "inputTokens": 366,
+        "outputTokens": 149,
+        "cachedTokens": 1210,
+        "inputChars": 2899,
+        "outputChars": 420
+      }
+    },
+    "someone-waiting": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":null,\"recently\":null,\"next\":[{\"ref\":\"handoff:3\",\"why\":\"Nothing in this plan is built yet, and no one has claimed it, so it is open for you to pick up.\"},{\"ref\":\"handoff:11\",\"why\":\"Andres left it for anyone today and nobody has claimed it, so the Repo screen work is still waiting on an owner.\"}]}",
+      "usage": {
+        "inputTokens": 256,
+        "outputTokens": 123,
+        "cachedTokens": 1210,
+        "inputChars": 2547,
+        "outputChars": 303
+      }
+    },
+    "cut-to-five": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":null,\"recently\":null,\"next\":[{\"ref\":\"ticket:2\",\"why\":\"It is due soon, so starting it now keeps the repo dashboard on track for its sprint.\"},{\"ref\":\"handoff:12\",\"why\":\"You left it for yourself and nobody has claimed it, so the frontend work is still waiting on you.\"},{\"ref\":\"ticket:33\",\"why\":\"Nothing can be tested until the local database has data, so this blocks your other work.\"},{\"ref\":\"ticket:1\",\"why\":\"It covers repositories on one stack, which is a simpler case for the repo dashboard.\"},{\"ref\":\"ticket:3\",\"why\":\"It sets up a single-environment repository, the basic case the dashboard needs first.\"}]}",
+      "usage": {
+        "inputTokens": 465,
+        "outputTokens": 236,
+        "cachedTokens": 1210,
+        "inputChars": 3131,
+        "outputChars": 618
+      }
+    },
+    "numbers-heavy": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":{\"text\":\"You have one open pull request, #178, on the server-side AI screens, pipeline, Jev, Ask Trov and shorter emails. Its latest status note says the AI base and the AI screens frontend are open, stacked on #176, and all green.\",\"cites\":[\"pr:178\",\"feed:109\"]},\"recently\":{\"text\":\"You opened #176, which moves summaries to one model client built on Claude Haiku 5.5. It has the same fields and storage and waits on an API key and a merge.\",\"cites\":[\"feed:108\"]},\"next\":[]}",
+      "usage": {
+        "inputTokens": 445,
+        "outputTokens": 183,
+        "cachedTokens": 1210,
+        "inputChars": 3040,
+        "outputChars": 482
+      }
+    },
+    "draft-in-flight": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":{\"text\":\"You have one draft pull request open, #186, for the Repo screen that covers every repo setup. There is no status note under Now yet.\",\"cites\":[\"pr:186\"]},\"recently\":{\"text\":\"You finished Phase A of repo setups. It adds apps and deploy provenance, brings back GitHub deploy signals, and records a commit on every deploy or leaves it empty.\",\"cites\":[\"feed:119\"]},\"next\":[{\"ref\":\"ticket:33\",\"why\":\"Nothing can be tested until the local database has data, so this unblocks your testing work.\"}]}",
+      "usage": {
+        "inputTokens": 388,
+        "outputTokens": 189,
+        "cachedTokens": 1210,
+        "inputChars": 2909,
+        "outputChars": 508
+      }
+    }
+  }
+}

@@ -113,7 +113,7 @@ const PLATFORM_ALLOW: Allow[] = [
   // Deleting an ACCOUNT (src/deletion/person.ts) is a person's act across every org they are in: their own
   // credentials, connections, digests and e-mail preferences go wherever they are — keyed by the person, never by an org.
   { file: "src/deletion/person.ts", fn: "personStmts", tables: ["oauth_grants", "oauth_codes", "oauth_grant_orgs", "mcp_tokens", "notification_outbox_bodies", "notification_outbox", "notification_prefs", "org_login_map", "feed", "feed_fts", "ai_dirty",
-    "chat_actions", "chat_artifacts", "chat_messages", "chat_threads", "person_ask_settings"],
+    "chat_actions", "chat_artifacts", "chat_messages", "chat_threads", "person_ask_settings", "person_brief"],
     why: "an account's deletion removes the person's OWN rows in every org, in one batch — by person, never reading an org's content; the handoff sentence Trov generated with their handle names the tombstone; the AI router's scopes keyed on them (their brief, their GitHub sessions) go; their Ask Trov threads (0066_ask) are theirs alone" },
   { file: "src/deletion/person.ts", fn: "addressesOf", tables: ["org_login_map"], why: "the GitHub logins orgs attribute to the person being deleted, so the audit trail can be scrubbed of them — logins only" },
   // R2 after a deletion (src/deletion/r2.ts): content-addressed objects are shared across orgs, so whether ANY

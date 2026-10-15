@@ -47,11 +47,14 @@ import { providerFor, type AiProviderOpts, type AiUsage, type JevAsk, type JevKi
 import { groupOf, takes, validJob, customIdOf, type AiJob, type ClaudeJob, type JevGate, type JevJob, type JevRequest, type JobItem } from "./jobs";
 import { orgPrefix } from "./prefix";
 import { collectBatches, submitBatches, AI_BATCH_PER_TICK, type QueuedRequest } from "./batches";
+import { briefJob } from "./brief";
 
 export type { AiJob } from "./jobs";
 
-/** THE registry. Empty: Phase B ships the machinery; Phases C and D register the producers. */
-export const AI_JOBS: readonly AiJob[] = [];
+/** THE registry: the producers Phases C and D register, one line each. */
+export const AI_JOBS: readonly AiJob[] = [
+  briefJob, // person:<handle> — My Work's brief (Phase D)
+];
 
 /** Haiku calls one tick may make, across every org. */
 export const AI_RUNS_PER_TICK = 12;
