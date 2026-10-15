@@ -97,7 +97,8 @@ describe("the sprint forecast — math, computed on read (src/tools/sprints.ts)"
 
   it("the forecast's module reaches no model: src/tools/sprints.ts imports nothing from src/ai/", async () => {
     const src = (import.meta.glob("../src/tools/sprints.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>)["../src/tools/sprints.ts"];
-    expect(src).not.toMatch(/from\s+["'][^"']*\/ai\//);
+    // `from "…/ai/…"`, a bare `import "…/ai/…"` and a dynamic `import("…/ai/…")` alike.
+    expect(src).not.toMatch(/(?:\bfrom|\bimport)\s*\(?\s*["'][^"']*\/ai\//);
     expect(src).toMatch(/export function sprintForecast\(/);
   });
 });
