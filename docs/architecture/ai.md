@@ -416,7 +416,8 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
   on the 8-week range only, and only while every theme it names is still active. ABSENT when the switch is off, there is
   no repository, or neither an active theme nor a waiting proposal exists; a failed read leaves it out and marks the
   dashboard `degraded`. A range the READER marked "Wrong?" (`aiItemRef.themes(repo, range, generatedAt)`) is left out
-  for them (`hiddenFor`), so the field is `Partial<Record<AiThemeRange, AiThemes>>`; both flagged → absent; a newer
+  for them (`hiddenFor`), so the field is `Partial<Record<AiThemeRange, AiThemes>>` — the screen keeps the card and its
+  8 weeks / Quarter switch, saying the picked range is hidden, while the other is there; both flagged → absent; a newer
   version (a new caption, a new theme) is a new ref and comes back. Deciding a proposal re-reads the dashboard
   (`AiHost.reloadRepo`), so the lane shows what it became.
 - **`themeShares(ctx, repo, from, to)`** (`src/tools/themes.ts`) — each active theme's share of the PRs merged in a

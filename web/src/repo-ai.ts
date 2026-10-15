@@ -165,15 +165,30 @@ function proposals(lanes: AiThemeLane[], p: RepoAiProps): string {
  *  "Wrong?" on it. */
 export function themesSection(all: Partial<Record<AiThemeRange, AiThemes>>, p: RepoAiProps): string {
   const range = p.ui.themesRange;
-  const t = all[range]; // absent: the person marked this range "Wrong?" (the read leaves it out for them)
-  if (!t) return "";
-  const ref = aiItemRef.themes(p.repo, range, t.generatedAt ?? "themes");
-  if (aiIsHidden(p.ui, "themes", ref)) return "";
-  const proposed = t.lanes.filter((l) => l.status === "proposed");
+  // A range is out for this person when they marked it "Wrong?": the read leaves it out (absent), or they pressed it
+  // this session (hidden). With the OTHER range still there, the card stays — its 8 weeks / Quarter switch with it —
+  // and says why this range is not drawn; with both out, nothing.
+  const shownRange = (r: AiThemeRange): AiThemes | null => {
+    const x = all[r];
+    return x && !aiIsHidden(p.ui, "themes", aiItemRef.themes(p.repo, r, x.generatedAt ?? "themes")) ? x : null;
+  };
   const switcher = segmented({
     id: "repo-themes-range", ariaLabel: "Range", act: "aiThemesRange", value: range, size: "sm", inertOn: true,
     options: AI_THEME_RANGES.map((r) => ({ value: r, label: AI_THEME_RANGE_LABELS[r] })),
   });
+  const t = shownRange(range);
+  if (!t) {
+    if (!AI_THEME_RANGES.some((r) => r !== range && shownRange(r))) return "";
+    return `<section${surface(CARD, { cls: "repo-ai cnpy-rise" })} data-ai="themes" data-ai-state="wrong" aria-labelledby="repo-themes-h">
+      <div style="display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px">
+        <h2 id="repo-themes-h" style="margin:0;font-size:18px;font-weight:600;letter-spacing:-0.01em">Where the work went</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${switcher}</div>
+      </div>
+      <p style="margin:0;font-size:13px;color:var(--fg-55)">You marked this range wrong, so it is hidden for you until Trov writes it again.</p>
+    </section>`;
+  }
+  const ref = aiItemRef.themes(p.repo, range, t.generatedAt ?? "themes");
+  const proposed = t.lanes.filter((l) => l.status === "proposed");
   const edit = p.admin && t.state !== "empty"
     ? `<button type="button" data-act="aiThemesEdit" class="cnpy-ghostbtn" style="font-size:13px;font-weight:500;border:1px solid var(--border-strong);border-radius:6px;padding:5px 12px;min-height:32px;white-space:nowrap">Edit themes</button>` : "";
   const written = t.caption ? "Themes and caption written by Trov" : "Themes written by Trov";
