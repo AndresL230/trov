@@ -9,9 +9,17 @@ allowed-tools: Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(
 
 ## Overview
 
-At the **end** of a session, when a person asks for it, this skill observes what the session
-actually shipped, **reconciles it against what Trov already knows**, and emits ONE structured,
-per-target payload that declares exactly what was touched and from what base. The worker is the
+At the **end** of a session, when a person asks for it, this skill records what only the session
+knows — the **decisions** it made, the **findings** it produced and the **incidents** it hit — plus any
+doc or ADR change, **reconciles it against what Trov already knows**, and emits ONE structured,
+per-target payload that declares exactly what was touched and from what base.
+
+**What shipped is not yours to write any more.** Trov writes it: about 45 minutes after a person's
+last push, it reads the commits and merged pull requests and writes a `Shipped:` or `Status:` entry
+for them (a "session digest", authored by Trov). If you also wrote one, the feed would say it twice —
+so you do not, unless the person explicitly asks you for a `Shipped:` / `Status:` entry (say, their
+organization has Trov's AI turned off). Every entry you DO write **cites the session's commits**
+(`artifacts.commits`), so it links to the work it is about. The worker is the
 **gate**: it drops no-ops, stages only real deltas, classifies each doc change, and is replay-safe.
 You build the payload; you never bypass the gate and you never confirm (promote/ratify/complete).
 
@@ -93,9 +101,11 @@ not a blind overwrite:
 
 Build at most one of each, only for what the session genuinely touched:
 
-- **Feed** — one entry **per shipped unit** of work. `{ summary, brief, body, tags[], artifacts:{ prs[],
-  commits[], issues[] } }`. Artifacts are the observed git/gh values from step 1. This is the default;
-  almost everything is a feed entry. **Its size and shape are fixed — see "Feed entry format" below.**
+- **Feed** — one entry **per decision, finding or incident**. `{ summary, brief, body, tags[], artifacts:{ prs[],
+  commits[], issues[] } }`. Artifacts are the observed git/gh values from step 1 — **always cite the
+  session's commits** (the ones the entry is about) and its PR. No entry for "what shipped": Trov writes
+  that one. A session that only shipped code, with nothing decided, found or broken, writes **no feed
+  entry** (it may still stage a doc or an ADR). **Its size and shape are fixed — see "Feed entry format" below.**
 - **Doc** — only when the session durably changed a convention/architecture note that belongs in a doc.
   `{ slug, section, space, title?, body, change_summary, confidence, base_version }` (`base_version`
   from step 2; `space` is `product` for product docs, `technical` for engineering/tooling docs — the default).
@@ -148,8 +158,9 @@ Every entry is read two ways. The Feed's **For reading** view (the default, for 
 `summary` + `brief`. **For agents** — and `get_feed` / `query` — show the full `body`. Write each field
 for its reader.
 
-- `summary` — the title. **One line, ≤ 100 characters**, starting with the type word: `Shipped:`,
-  `Decision:`, `Triage:`, `Status:`, `Finding:`, `Incident:`. Inline markdown only.
+- `summary` — the title. **One line, ≤ 100 characters**, starting with the type word: `Decision:`,
+  `Finding:` or `Incident:` (`Shipped:` / `Status:` only when the person asked for one — see Overview).
+  Inline markdown only.
 - `brief` — **1–2 plain sentences, ≤ 280 characters (hard limit — over it the call fails).** The problem
   that was solved and who it helps, said so a person who uses or runs the product gets it in five
   seconds. No file names, function names, PR/issue numbers, commit shas, migrations or jargon — those go
@@ -160,39 +171,43 @@ for its reader.
   `**Label** text`; short `##` headings and short lists are fine after them. No tables, no pasted logs,
   no sign-off. Longer than that → link a doc, ADR or PR through `artifacts` instead of pasting it.
   Every character here is one the skill has to write, so don't pad.
-- **One entry = one type = one subject.** A session that did two things (a triage AND a status check)
+- **One entry = one type = one subject.** A session that did two things (a decision AND a finding)
   writes **two entries**.
 
-**The six types — choose by what the entry is FOR:**
+**The types you write — choose by what the entry is FOR:**
 
 | Type | Use it when | Body opens with, in this order |
 |---|---|---|
-| `Shipped:` | work merged / deployed (the default) | `**What**` · `**Why**` · `**Impact**` · `**Follow-up**` (optional) |
 | `Decision:` | a call was made that is not ADR-sized | `**Decided**` · `**Because**` · `**Instead of**` |
-| `Triage:` | PRs / issues / queue were closed, kept, split or moved | `**Closed**` · `**Kept**` · `**Moved to**` · `**Why**` |
-| `Status:` | where something in flight stands, incl. what it is waiting on | `**State**` · `**Blocked on**` · `**Next**` |
 | `Finding:` | an investigation or measurement produced a result | `**Found**` · `**Evidence**` · `**So**` |
 | `Incident:` | something broke in a shared environment | `**What broke**` · `**Cause**` · `**Fix**` · `**Guard**` |
+
+Only when the person explicitly asks for one (Trov writes these itself from the commits):
+
+| Type | Use it when | Body opens with, in this order |
+|---|---|---|
+| `Shipped:` | work merged / deployed | `**What**` · `**Why**` · `**Impact**` · `**Follow-up**` (optional) |
+| `Status:` | where something in flight stands, incl. what it is waiting on | `**State**` · `**Blocked on**` · `**Next**` |
 
 **Worked example:**
 
 ```
-summary: Shipped: document indexing is a tracked, retried job
-brief:   Course documents students upload no longer silently fail to reach the tutor — indexing now
-         retries on its own, and admins can see and re-run anything stuck.
+summary: Finding: failed document indexing was invisible to everyone
+brief:   Course documents students upload could silently never reach the tutor, and nobody could see
+         which ones — so a failure looked like a tutor that "forgot" the course.
 body:
-**What** documents.index_status is the indexing queue; a sweeper claims one per turn, three spaced attempts
-**Why** a failed index was invisible — a Gemini hiccup or a deploy left documents retrieval could never find
-**Impact** /upload/sync now indexes too, so syllabus uploads reach RAG; admin list + reindex endpoints
-**Follow-up** run the labelling backfill AFTER the shareability backfill (it deletes chunks it withdraws)
+**Found** a failed index left documents.index_status unset; nothing retried it and no screen listed it
+**Evidence** 37 syllabus uploads since August had no chunks; each matched a Gemini 503 or a deploy window
+**So** indexing becomes a tracked, retried job (this session's commits), with an admin list to re-run
 
 ## Found along the way
 - backfill_document_chunks.py re-indexed private documents as shared — now a caller of index_document
 - a wrong ENCRYPTION_KEY indexed ciphertext as course text — extracted_text now decrypts strictly
+artifacts: { commits: [<the session's shas, from git log>], prs: [<its PR>], issues: [] }
 ```
 
-A bad brief, and why: `Added index_status + sweeper (#658), retries 3x with lease backoff` — that is the
-body's first line; it names internals and says nothing about who was hurt before.
+A bad brief, and why: `Added index_status + sweeper (#658), retries 3x with lease backoff` — that is a
+changelog line; it names internals and says nothing about who was hurt before.
 
 ## Vocabulary (verify before tagging)
 
@@ -228,6 +243,8 @@ body's first line; it names internals and says nothing about who was hurt before
 - Forcing a tag or section onto work it doesn't describe → leave the tag off (or suggest one); a doc with no fitting section is low/triage.
 - Tagging from memory instead of `list_tags` → the organization's list is its own and changes.
 - Auto-firing at a natural stopping point instead of waiting for an explicit ask.
+- Writing a `Shipped:` entry for work Trov will digest on its own — the feed then says it twice.
+- A decision or finding with no `artifacts.commits` — cite the commits the session made.
 - Writing a feed entry as a report — tables, pasted logs, several subjects in one body. Pick one
   type, open with its labelled lines, stay near 2,500 characters, and split the rest into more
   entries or a doc.

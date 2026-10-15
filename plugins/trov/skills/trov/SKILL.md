@@ -38,11 +38,15 @@ orient (load-context)  →   do the work   →   record (record-session)
 ```
 
 1. **Orient — the `load-context` skill.** Auto-fires before you work an existing area or propose a doc
-   change. It pulls the relevant context (assembled bodies + ranked pointers, each authority-flagged)
-   so you build on what exists instead of guessing. Read-only.
+   change. It reads the repository's written **state** first (`get_repo_dashboard`'s `state`: shipped,
+   in flight, needs attention — kept by Trov), then pulls the relevant context (assembled bodies + ranked
+   pointers, each authority-flagged) so you build on what exists instead of guessing. Read-only.
 2. **Work** as normal.
 3. **Record — the `record-session` skill.** Explicit only ("record this session"). At the end it
-   batches what changed and stages it through the gate in one `record_session` call. It must never auto-fire.
+   batches the session's decisions, findings and incidents (each citing its commits) and any doc or ADR
+   change, and stages them through the gate in one `record_session` call. It must never auto-fire. What
+   SHIPPED is not its job: Trov writes a `Shipped:` / `Status:` entry from the commits itself, about 45
+   minutes after a person's last push (a session digest, authored by `trov`).
 
 > Why two skills, not one: a skill carries a single trigger setting. `load-context` **must** be
 > model-invocable (auto-orient); `record-session` **must** be explicit-only (never log on its own).
