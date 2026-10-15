@@ -10,7 +10,7 @@
 //                PROJECT tokens are not supported: one is bound to ONE environment, and a part may name any
 //                environment of the workspace. Railway has no read-only scope: a workspace token can change
 //                everything in its workspace, an account token everything the account can. One per org
-//                (`credentialScope: "org"`); sent only to backboard.railway.com.
+//                (one org-wide credential); sent only to backboard.railway.com.
 //   part         `environment_id` + `service_id` (both required), and an optional `project_id` that only builds
 //                the "Open in Railway" link (`consoleUrl` is synchronous and reads settings only). Roles: `web`
 //                (HTTP traffic and egress) and `service` (CPU and memory).
@@ -425,11 +425,10 @@ export const railway: HostingProvider = {
   id: "railway",
   label: "Railway",
   status: "available",
-  summary: "A Railway service: deploys from Railway's API, and HTTP requests, server errors, latency and egress (web) or CPU and memory (service) from Railway's metrics.",
+  summary: "A Railway service. Trov reads its deploys, and its traffic or CPU and memory.",
   roles: ["web", "service"],
   apiHosts: ["backboard.railway.com"],
   docsUrl: "https://docs.railway.com/reference/public-api",
-  credentialScope: "org",
   connectionMethods: [
     {
       method: "token",

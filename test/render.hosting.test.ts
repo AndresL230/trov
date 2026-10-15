@@ -183,7 +183,7 @@ describe("the tab, state by state (the sample payloads)", () => {
     expect(html).toContain("No parts yet in <strong>2</strong> environments");
   });
 
-  it("a mixed org mid-setup: every part with its host, role, identity and connection — legacy parts drawn like the rest", () => {
+  it("a mixed org mid-setup: every part with its host, role, identity and connection — Cloudflare and Railway like the rest", () => {
     const html = tab(HOSTING_SAMPLE_MIXED);
     const parts = [...html.matchAll(/data-org-part="([^"]+)" data-provider="([^"]+)" data-connection="([^"]+)"/g)].map((m) => m.slice(1).join(" "));
     expect(parts).toEqual([
@@ -192,7 +192,8 @@ describe("the tab, state by state (the sample payloads)", () => {
     ]);
     const web = rowOf(html, 'data-org-part="staging/web"');
     expect(web).toContain(">Web app<");
-    expect(web).toContain('data-hx-glyph="vercel"');
+    expect(web).not.toContain('data-hx-glyph="vercel"');                  // a part is the org's own: its tile, not the host's logo
+    expect(web).toContain("Vercel &middot; acme-web");
     expect(web).toContain("Vercel &middot; acme-web");                     // the provider's FIRST setting
     expect(web).toContain('data-hx-status="connected"');
     expect(web).toMatch(/>Web<\/span>/);
@@ -200,11 +201,11 @@ describe("the tab, state by state (the sample payloads)", () => {
     // A status is a mark (marks.ts: a shape in its kind's tone and the word), never a character or a chip.
     expect(web).toMatch(/data-hx-status="connected"[^>]*>.*var\(--green\).*Connected</);
     expect(rowOf(html, 'data-org-part="production/docs"')).toContain('data-hx-status="not_connected"');
-    // Legacy: the same row, a fixed key, and the pointer to Environments.
-    const legacy = rowOf(html, 'data-org-part="staging/frontend"');
-    expect(legacy).toContain("data-hx-legacy");
-    expect(legacy).toContain("Also editable under");
-    expect(legacy).toContain("Read by the hourly usage poll.");
+    // Cloudflare's part is a part like any other: no fixed key, no pointer elsewhere.
+    const frontend = rowOf(html, 'data-org-part="staging/frontend"');
+    expect(frontend).toContain("Cloudflare Workers &middot; acme-web-staging");
+    expect(frontend).not.toContain("data-hx-legacy");
+    expect(frontend).not.toContain("hourly usage poll");
     expect(html).toContain("<strong>8</strong> parts in <strong>2</strong> environments");
     expect(html).toContain("1 with an error");
     expect(html).not.toMatch(/undefined|NaN|\[object/);
@@ -253,7 +254,7 @@ describe("providers and their connections", () => {
     const html = tab(HOSTING_SAMPLE_MIXED);
     const group = (key: string) => { const a = html.indexOf(`data-org-group="${key}"`); const b = html.indexOf("data-org-group=", a + 1); return html.slice(a, b > -1 ? b : html.length); };
     const conns = (part: string) => [...part.matchAll(/data-org-hosting-conn="([^"]+)" data-state="([^"]+)"/g)].map((m) => `${m[1]} ${m[2]}`);
-    expect(conns(group("hosting-providers"))).toEqual(["cloudflare: connected", "railway:staging connected", "vercel: connected", "render: error", "netlify: not_connected", "fly: connected"]);
+    expect(conns(group("hosting-providers"))).toEqual(["cloudflare: connected", "railway: connected", "vercel: connected", "render: error", "netlify: not_connected", "fly: connected"]);
     expect(group("hosting-providers")).toContain('<ul class="cnpy-hx-cards">');
     expect(html).not.toContain('data-org-group="hosting-legacy"');
     expect(html).not.toContain(">Legacy<");
@@ -264,14 +265,11 @@ describe("providers and their connections", () => {
     const aws = rowOf(html, 'data-org-hosting-conn="aws:"');
     expect(aws.slice(0, aws.indexOf("</li>"))).not.toContain("<button");
     expect(html).toContain("5 of 6 connected");
-    // On a new org every provider still has a card to connect from — Railway's says its token belongs to an environment.
+    // On a new org every provider has a card to connect from — Railway's exactly like the others.
     const fresh = tab(HOSTING_SAMPLES.no_parts);
-    for (const id of ["vercel", "render", "netlify", "fly", "cloudflare"]) expect(fresh).toContain(`data-org-hosting-conn="${id}:" data-state="not_connected"`);
-    const railway = rowOf(fresh, 'data-org-hosting-conn="railway:"');
-    expect(railway).toContain('data-state="unused"');
-    expect(railway).toMatch(/data-act="orgHxPartNew" data-arg="[a-z0-9_-]+\|railway"[^>]*>Add part</);
-    expect(railway).toContain("per environment: add a Railway part to an environment");
-    expect(connectionsFor(HOSTING_SAMPLES.no_parts, provider("railway"))).toEqual([]);
+    for (const id of ["cloudflare", "railway", "vercel", "render", "netlify", "fly"]) expect(fresh).toContain(`data-org-hosting-conn="${id}:" data-state="not_connected"`);
+    expect(rowOf(fresh, 'data-org-hosting-conn="railway:"')).toMatch(/data-act="orgHxConnect" data-arg="railway:"[^>]*>Connect</);
+    expect(connectionsFor(HOSTING_SAMPLES.no_parts, provider("railway"))).toHaveLength(1);
   });
 
   it("a card shows what the host is and what Trov reads from it, without opening anything", () => {
@@ -556,15 +554,15 @@ describe("the part editor", () => {
     expect(partDraftProblems(draft({ provider: "render", settings: { service_id: "nope" } }), d)["settings.service_id"]).toContain("for example srv-");
     expect(partDraftProblems(draft({ label: "x".repeat(61) }), d).label).toBe("At most 60 characters.");
     expect(partDraftProblems(draft({ provider: "aws" }), d).provider).toBe("AWS is not supported yet.");
-    // A legacy provider's key is fixed: adding a second Cloudflare part to an environment that has one is refused here.
-    expect(partDraftProblems(draft({ provider: "cloudflare", keyDraft: "", settings: { worker: "w" } }), d).part).toBe("Staging already has a Cloudflare Workers part. Edit that one.");
-    expect(partDraftProblems(draft({ env: "production", provider: "cloudflare", keyDraft: "", settings: { worker: "w" } }), d)).toEqual({});
+    // Cloudflare takes any free key, like every other host — a second Worker in the same environment is fine.
+    expect(partDraftProblems(draft({ provider: "cloudflare", keyDraft: "edge", settings: { worker: "w" } }), d)).toEqual({});
+    expect(partDraftProblems(draft({ provider: "cloudflare", keyDraft: "frontend", settings: { worker: "w" } }), d).part).toBe("Staging already has a part with this key.");
     const bad = modal(draft({ keyDraft: "web" }));
     expect(bad).toMatch(/id="org-hx-key-e" role="alert"[^>]*>Staging already has a part with this key\./);
     expect(bad).toMatch(/data-field="orgHxPartSave" disabled/);
   });
 
-  it("editing: the key is permanent, Remove is there as text; a legacy part's host, key and label are fixed", () => {
+  it("editing: the key is permanent, Remove is there as text — for a Cloudflare part too, whose host and label can change", () => {
     const html = modal(draft({ key: "web", keyDraft: "web", label: "Web app", settings: { project: "acme-web", target: "preview", branch: "main" } }));
     expect(html).toContain("Edit Staging › Web app");
     expect(html).toMatch(/id="org-hx-key"[^>]*value="web"[^>]*disabled/);
@@ -572,9 +570,9 @@ describe("the part editor", () => {
     expect(html).toContain("Save changes");
     expect(html).toMatch(/data-arg="part:staging\/web"[^>]*class="cnpy-org-danger"/);
     const legacy = modal(draft({ key: "frontend", keyDraft: "frontend", provider: "cloudflare", settings: { worker: "acme-web-staging" } }));
-    expect(legacy).toMatch(/data-dd="org-hx-provider" disabled|id="org-hx-provider"[^>]*disabled/);
+    expect(legacy).not.toMatch(/data-dd="org-hx-provider" disabled|id="org-hx-provider"[^>]*disabled/);
     expect(legacy).toMatch(/id="org-hx-key"[^>]*value="frontend"[^>]*disabled/);
-    expect(legacy).toMatch(/id="org-hx-label"[^>]*value="Frontend"[^>]*disabled/);
+    expect(legacy).not.toMatch(/id="org-hx-label"[^>]*disabled/);
   });
 
   it("a server refusal sits beside its field; one about the whole form is said once, above the buttons", () => {
@@ -593,8 +591,12 @@ describe("the part editor", () => {
     expect(html).toContain("Netlify is not connected yet.");
     expect(html).toContain('data-act="orgHxPartSave" data-arg="connect"');
     expect(modal(draft())).not.toContain("data-hx-connect-hint");            // Vercel is connected
-    // Railway's token is per environment: the hint names it.
-    expect(modal(draft({ env: "production", provider: "railway", keyDraft: "", settings: { railway_env: "acme / production" } }))).toContain("Railway is not connected yet for Production.");
+    // Railway is connected once for the org, like every other host: the hint names no environment.
+    const d2 = clone(HOSTING_SAMPLE_MIXED);
+    d2.connections = d2.connections.filter((c) => c.provider !== "railway");
+    const rw = partEditorModal(d2, draft({ env: "production", provider: "railway", keyDraft: "svc", settings: { environment_id: "e1", service_id: "s1" } }), initialHostingUi());
+    expect(rw).toContain("Railway is not connected yet.");
+    expect(rw).not.toContain("for Production");
   });
 
   it("a Detected provider says where the suggestion came from, and its menu is the screen's open dropdown", () => {
@@ -678,11 +680,11 @@ describe("connecting", () => {
     const config = tokenModal(HOSTING_SAMPLE_MIXED, { ...set, mode: "config", hasValue: false, config: { org_slug: "acme" } });
     expect(config).toContain("Fly.io settings");
     expect(config).not.toContain("org-hx-secret\"");
-    // Over an installed connection: it says the install is replaced. Railway's is per environment, and says which.
+    // Over an installed connection: it says the install is replaced.
     const over = tokenModal(HOSTING_SAMPLE_MIXED, { ...set, provider: "vercel", mode: "rotate" });
     expect(over).toContain("It replaces the installed integration the moment you save.");
     expect(over).toContain("Replace connection");
-    expect(tokenModal(HOSTING_SAMPLE_MIXED, { ...set, provider: "railway", scope: "staging", mode: "rotate" })).toContain("Rotate the Railway project token for Staging");
+    expect(tokenModal(HOSTING_SAMPLE_MIXED, { ...set, provider: "railway", scope: "", mode: "rotate" })).toMatch(/Rotate the Railway [a-z ]+token/);
     const refused = tokenModal(HOSTING_SAMPLE_MIXED, { ...set, config: { org_slug: "acme" }, error: "The value is not a Fly.io token.", errorField: "secret" });
     expect(refused).toMatch(/id="org-hx-secret-e" role="alert"[^>]*>The value is not a Fly\.io token\./);
   });
@@ -707,20 +709,20 @@ describe("confirmations go through the shared modal", () => {
     const render = orgConfirmCopy({ what: "hosting", arg: "render:", busy: false }, org(), ui)!;
     expect(render.body).toContain("Deploys and usage of Staging › API and Production › API stop updating.");
     expect(render.body).toContain("The stored API key is erased here; delete it on Render too if you no longer need it.");
-    expect(orgConfirmCopy({ what: "hosting", arg: "railway:staging", busy: false }, org(), ui)!.title).toBe("Disconnect Railway for Staging from Acme Robotics?");
+    expect(orgConfirmCopy({ what: "hosting", arg: "railway:", busy: false }, org(), ui)!.title).toBe("Disconnect Railway from Acme Robotics?");
     expect(orgConfirmCopy({ what: "hosting", arg: "nope:", busy: false }, org(), ui)).toBeNull();
     const html = orgOverlays({ org: org(), orgsStatus: "ok", me: "andres", ui: { ...ui, confirm: { what: "hosting", arg: "vercel:", busy: false } } });
     expect(html).toContain('role="alertdialog"');
     expect(html).toContain('data-confirm-act="orgConfirmGo"');
   });
 
-  it("Remove a part says what goes with it; a legacy part says its environment's fields are cleared", () => {
+  it("Remove a part says what goes with it — the same words for every host", () => {
     const ui = uiFor(HOSTING_SAMPLE_MIXED);
     const web = orgConfirmCopy({ what: "part", arg: "staging/web", busy: false }, org(), ui)!;
     expect(web.title).toBe("Remove Staging › Web app?");
     expect(web.body).toBe("Its deploy history and poll state go with it; past figures stay until they age out.");
     expect(web.confirmLabel).toBe("Remove part");
-    expect(orgConfirmCopy({ what: "part", arg: "staging/frontend", busy: false }, org(), ui)!.body).toContain("Staging's Cloudflare Workers fields are cleared, here and under Environments");
+    expect(orgConfirmCopy({ what: "part", arg: "staging/frontend", busy: false }, org(), ui)!.body).toBe("Its deploy history and poll state go with it; past figures stay until they age out.");
     expect(orgConfirmCopy({ what: "part", arg: "staging/nope", busy: false }, org(), ui)).toBeNull();
     // The modal takes the place of the editor it was opened from (one dialog at a time).
     const both = orgOverlays({ org: org(), orgsStatus: "ok", me: "andres", ui: { ...uiFor(HOSTING_SAMPLE_MIXED, { part: draft({ key: "web", keyDraft: "web" }) }), confirm: { what: "part", arg: "staging/web", busy: false } } });

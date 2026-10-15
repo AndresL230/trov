@@ -17,7 +17,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
     "id": "cloudflare",
     "label": "Cloudflare Workers",
     "status": "available",
-    "summary": "A Worker (or Workers Builds) frontend: requests and error rate from Cloudflare's GraphQL Analytics API; deploys from the Workers Builds check run on GitHub.",
+    "summary": "A Cloudflare Worker. Trov reads its deploys, requests and errors.",
     "roles": [
       "web"
     ],
@@ -32,14 +32,14 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
     "api_hosts": [
       "api.cloudflare.com"
     ],
-    "credential_scope": "org",
     "connection_methods": [
       {
         "method": "token",
         "label": "Paste an API token",
-        "how_to": "In the Cloudflare dashboard open My Profile › API Tokens › Create Token › Create Custom Token and grant ONE permission: Account › Account Analytics › Read, limited to the account your frontend Workers live under. Paste the token here and set Account ID to that account's 32-character id (Workers & Pages › Overview). The token is only ever sent to api.cloudflare.com.",
+        "how_to": "In the Cloudflare dashboard open My Profile › API Tokens › Create Token › Create Custom Token and grant exactly two permissions: Account › Account Analytics › Read and Account › Workers Scripts › Read, with Account Resources limited to the ONE account your Workers live under. Both are read-only. Paste the token here and set Account ID to that account's 32-character id (Workers & Pages › Overview). The token is only ever sent to api.cloudflare.com.",
         "grants": [
-          "Account Analytics: Read on one account"
+          "Account Analytics: Read on one account",
+          "Workers Scripts: Read on that account (its Workers' deployments)"
         ],
         "available": true,
         "unavailable_reason": null
@@ -49,7 +49,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "key": "account_id",
         "label": "Account ID",
-        "description": "The 32-character id of the Cloudflare account the frontend Workers live under. Not a secret.",
+        "description": "The 32-character id of the Cloudflare account the Workers live under. Not a secret.",
         "required": true,
         "placeholder": "0123456789abcdef0123456789abcdef",
         "pattern": "^[0-9a-fA-F]{32}$"
@@ -63,30 +63,27 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
         "required": true,
         "placeholder": "frontend-staging",
         "pattern": "^[A-Za-z0-9_-]{1,63}$"
-      },
-      {
-        "key": "worker_check",
-        "label": "Workers Builds check",
-        "description": "The check run Workers Builds posts on GitHub for this Worker (its deploy record), e.g. \"Workers Builds: frontend-staging\".",
-        "required": false,
-        "placeholder": "Workers Builds: frontend-staging",
-        "pattern": null
       }
     ],
-    "docs_url": "https://developers.cloudflare.com/analytics/graphql-api/",
-    "legacy_part_key": "frontend"
+    "docs_url": "https://developers.cloudflare.com/analytics/graphql-api/"
   },
   {
     "id": "railway",
     "label": "Railway",
     "status": "available",
-    "summary": "A Railway service: CPU and memory from Railway's GraphQL API; deploys from the GitHub deployment statuses Railway posts.",
+    "summary": "A Railway service. Trov reads its deploys, and its traffic or CPU and memory.",
     "roles": [
+      "web",
       "service"
     ],
     "capabilities": {
       "deploys": true,
       "metrics": [
+        "requests",
+        "errors",
+        "latency_p50_ms",
+        "latency_p95_ms",
+        "bandwidth_bytes",
         "cpu",
         "mem_mb"
       ]
@@ -95,54 +92,61 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
     "api_hosts": [
       "backboard.railway.com"
     ],
-    "credential_scope": "environment",
     "connection_methods": [
       {
         "method": "token",
-        "label": "Paste a project token",
-        "how_to": "In Railway open the project › Settings › Tokens and create a PROJECT token for this environment. A project token is bound to one environment of one project, so every environment needs its own; an account or team token will not work (it is sent as Project-Access-Token, not as a bearer). Railway has no read-only scope: this token can also change that environment, and one environment of one project is the narrowest Railway offers. The token is only ever sent to backboard.railway.com.",
+        "label": "Paste a workspace token",
+        "how_to": "In Railway open Account Settings › Tokens (railway.com/account/tokens), create a token and, in its Workspace dropdown, pick the workspace that owns the project — a WORKSPACE token, limited to that workspace, is the narrowest Railway offers. An account token (\"No workspace\") also works but reaches every workspace you belong to; a project token does not work (it is bound to one environment). Railway has no read-only scope: the token can also change what is in its workspace. The token is only ever sent to backboard.railway.com.",
         "grants": [
-          "Full access to ONE environment of one project (Railway has no read-only token)"
+          "Full access to one Railway workspace — everything in it (Railway has no read-only token)"
         ],
         "available": true,
         "unavailable_reason": null
       }
     ],
-    "org_config_fields": [],
-    "part_settings": [
+    "org_config_fields": [
       {
-        "key": "railway_env",
-        "label": "GitHub deployment environment",
-        "description": "The environment name Railway's GitHub deployments carry, e.g. \"my-app / staging\" — how a deployment_status delivery is matched to this environment.",
-        "required": true,
-        "placeholder": "my-app / staging",
-        "pattern": null
-      },
-      {
-        "key": "railway_environment_id",
-        "label": "Railway environment ID",
-        "description": "Project › Settings › Environments, the environment's id. Needed for CPU and memory.",
-        "required": false,
-        "placeholder": null,
-        "pattern": "^[A-Za-z0-9-]{1,100}$"
-      },
-      {
-        "key": "railway_service_id",
-        "label": "Railway service ID",
-        "description": "The service's id (its Settings tab). The same in every environment.",
+        "key": "workspace_id",
+        "label": "Workspace ID",
+        "description": "Optional. The Railway workspace the token belongs to (Workspace settings). Test connection then checks the token against it. Not a secret.",
         "required": false,
         "placeholder": null,
         "pattern": "^[A-Za-z0-9-]{1,100}$"
       }
     ],
-    "docs_url": "https://docs.railway.com/reference/public-api",
-    "legacy_part_key": "backend"
+    "part_settings": [
+      {
+        "key": "environment_id",
+        "label": "Railway environment ID",
+        "description": "The environment's id: Project › Settings › Environments, or environmentId= in the service's URL.",
+        "required": true,
+        "placeholder": null,
+        "pattern": "^[A-Za-z0-9-]{1,100}$"
+      },
+      {
+        "key": "service_id",
+        "label": "Railway service ID",
+        "description": "The service's id: its Settings tab, or the part after /service/ in its URL. The same in every environment.",
+        "required": true,
+        "placeholder": null,
+        "pattern": "^[A-Za-z0-9-]{1,100}$"
+      },
+      {
+        "key": "project_id",
+        "label": "Railway project ID",
+        "description": "Optional. The project's id (Project › Settings, or the part after /project/ in its URL) — only for the Open in Railway link.",
+        "required": false,
+        "placeholder": null,
+        "pattern": "^[A-Za-z0-9-]{1,100}$"
+      }
+    ],
+    "docs_url": "https://docs.railway.com/reference/public-api"
   },
   {
     "id": "vercel",
     "label": "Vercel",
     "status": "available",
-    "summary": "A Vercel project: its production deploys (or one branch's previews) with commit, branch, state and URL from Vercel's REST API. Vercel has no public usage API, so no traffic figures.",
+    "summary": "A Vercel project. Trov reads its production or preview deploys.",
     "roles": [
       "web"
     ],
@@ -154,7 +158,6 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
     "api_hosts": [
       "api.vercel.com"
     ],
-    "credential_scope": "org",
     "connection_methods": [
       {
         "method": "install",
@@ -224,14 +227,13 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
         "pattern": "^[A-Za-z0-9][A-Za-z0-9._\\/+-]{0,199}$"
       }
     ],
-    "docs_url": "https://vercel.com/docs/rest-api",
-    "legacy_part_key": null
+    "docs_url": "https://vercel.com/docs/rest-api"
   },
   {
     "id": "render",
     "label": "Render",
     "status": "available",
-    "summary": "A Render web service, private service or background worker: deploys from Render's API, and HTTP requests, server errors, p95 latency and bandwidth (web) or CPU and memory (service) from Render's metrics API.",
+    "summary": "A Render service. Trov reads its deploys, and its traffic or CPU and memory.",
     "roles": [
       "web",
       "service"
@@ -251,7 +253,6 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
     "api_hosts": [
       "api.render.com"
     ],
-    "credential_scope": "org",
     "connection_methods": [
       {
         "method": "token",
@@ -284,14 +285,13 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
         "pattern": "^srv-[a-z0-9]{10,40}$"
       }
     ],
-    "docs_url": "https://api-docs.render.com/reference/introduction",
-    "legacy_part_key": null
+    "docs_url": "https://api-docs.render.com/reference/introduction"
   },
   {
     "id": "netlify",
     "label": "Netlify",
     "status": "available",
-    "summary": "A Netlify site: its production or branch deploys (state, commit, branch, link) from Netlify's API. Netlify has no public usage API, so no traffic figures.",
+    "summary": "A Netlify site. Trov reads its production or branch deploys.",
     "roles": [
       "web"
     ],
@@ -303,7 +303,6 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
     "api_hosts": [
       "api.netlify.com"
     ],
-    "credential_scope": "org",
     "connection_methods": [
       {
         "method": "oauth",
@@ -362,14 +361,13 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
         "pattern": "^[a-z0-9-]{1,63}$"
       }
     ],
-    "docs_url": "https://docs.netlify.com/api/get-started/",
-    "legacy_part_key": null
+    "docs_url": "https://docs.netlify.com/api/get-started/"
   },
   {
     "id": "fly",
     "label": "Fly.io",
     "status": "available",
-    "summary": "A Fly.io app: requests, server errors, p95 latency and bandwidth (web) or CPU and memory (service) from Fly's Prometheus metrics; its releases as deploys (version only — Fly reports no commit).",
+    "summary": "A Fly.io app. Trov reads its releases, and its traffic or CPU and memory.",
     "roles": [
       "web",
       "service"
@@ -390,7 +388,6 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       "api.machines.dev",
       "api.fly.io"
     ],
-    "credential_scope": "org",
     "connection_methods": [
       {
         "method": "token",
@@ -423,14 +420,13 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
         "pattern": "^[a-z0-9-]{2,63}$"
       }
     ],
-    "docs_url": "https://fly.io/docs/monitoring/metrics/",
-    "legacy_part_key": null
+    "docs_url": "https://fly.io/docs/monitoring/metrics/"
   },
   {
     "id": "aws",
     "label": "AWS",
     "status": "later",
-    "summary": "ECS, Lambda, App Runner, an ALB or API Gateway: CloudWatch metrics for one named resource through a read-only role you let Trov assume. Coming later.",
+    "summary": "An AWS service. Trov will read its CloudWatch metrics. Coming later.",
     "roles": [
       "web",
       "service"
@@ -449,7 +445,6 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
     "api_hosts": [
       "sts.amazonaws.com"
     ],
-    "credential_scope": "org",
     "connection_methods": [
       {
         "method": "assume_role",
@@ -499,8 +494,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
         "pattern": null
       }
     ],
-    "docs_url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-user_externalid.html",
-    "legacy_part_key": null
+    "docs_url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-user_externalid.html"
   }
 ];
 
@@ -521,11 +515,9 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
           "role": "web",
           "provider": "cloudflare",
           "settings": {
-            "worker": "acme-web-staging",
-            "worker_check": "Workers Builds: acme-web-staging"
+            "worker": "acme-web-staging"
           },
           "position": -2,
-          "legacy": true,
           "connection": "connected",
           "console_url": "https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/workers/services/view/acme-web-staging/production",
           "last_poll": null,
@@ -539,12 +531,10 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
           "role": "service",
           "provider": "railway",
           "settings": {
-            "railway_env": "acme / staging",
-            "railway_environment_id": "8f2c1a9e-4b7d-4e2a-9c1f-2d3e4f5a6b7c",
-            "railway_service_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+            "environment_id": "8f2c1a9e-4b7d-4e2a-9c1f-2d3e4f5a6b7c",
+            "service_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
           },
           "position": -1,
-          "legacy": true,
           "connection": "connected",
           "console_url": null,
           "last_poll": null,
@@ -563,7 +553,6 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
             "branch": "main"
           },
           "position": 0,
-          "legacy": false,
           "connection": "connected",
           "console_url": "https://vercel.com/acme/acme-web",
           "last_poll": {
@@ -608,7 +597,6 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
             "service_id": "srv-cn2k8h7c3k9s73a1b2c3"
           },
           "position": 1,
-          "legacy": false,
           "connection": "error",
           "console_url": "https://dashboard.render.com/web/srv-cn2k8h7c3k9s73a1b2c3",
           "last_poll": {
@@ -643,7 +631,6 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
             "target": "production"
           },
           "position": 0,
-          "legacy": false,
           "connection": "connected",
           "console_url": "https://vercel.com/acme/acme-web",
           "last_poll": {
@@ -688,7 +675,6 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
             "service_id": "srv-cp9f3l1d0j6c73d4e5f6"
           },
           "position": 1,
-          "legacy": false,
           "connection": "error",
           "console_url": "https://dashboard.render.com/web/srv-cp9f3l1d0j6c73d4e5f6",
           "last_poll": {
@@ -720,7 +706,6 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
             "app": "acme-worker"
           },
           "position": 2,
-          "legacy": false,
           "connection": "connected",
           "console_url": "https://fly.io/apps/acme-worker",
           "last_poll": {
@@ -749,7 +734,6 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
             "site_name": "acme-docs"
           },
           "position": 3,
-          "legacy": false,
           "connection": "not_connected",
           "console_url": "https://app.netlify.com/sites/acme-docs/overview",
           "last_poll": null,
@@ -788,8 +772,8 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
     },
     {
       "provider": "railway",
-      "scope": "staging",
-      "scope_label": "Staging",
+      "scope": "",
+      "scope_label": null,
       "status": "connected",
       "method": "token",
       "account": null,
@@ -1092,11 +1076,9 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
           "role": "web",
           "provider": "cloudflare",
           "settings": {
-            "worker": "acme-web-staging",
-            "worker_check": "Workers Builds: acme-web-staging"
+            "worker": "acme-web-staging"
           },
           "position": -2,
-          "legacy": true,
           "connection": "connected",
           "console_url": "https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/workers/services/view/acme-web-staging/production",
           "last_poll": null,
@@ -1110,12 +1092,10 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
           "role": "service",
           "provider": "railway",
           "settings": {
-            "railway_env": "acme / staging",
-            "railway_environment_id": "8f2c1a9e-4b7d-4e2a-9c1f-2d3e4f5a6b7c",
-            "railway_service_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+            "environment_id": "8f2c1a9e-4b7d-4e2a-9c1f-2d3e4f5a6b7c",
+            "service_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
           },
           "position": -1,
-          "legacy": true,
           "connection": "connected",
           "console_url": null,
           "last_poll": null,
@@ -1134,7 +1114,6 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
             "branch": "main"
           },
           "position": 0,
-          "legacy": false,
           "connection": "revoked",
           "console_url": "https://vercel.com/acme/acme-web",
           "last_poll": {
@@ -1179,7 +1158,6 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
             "service_id": "srv-cn2k8h7c3k9s73a1b2c3"
           },
           "position": 1,
-          "legacy": false,
           "connection": "error",
           "console_url": "https://dashboard.render.com/web/srv-cn2k8h7c3k9s73a1b2c3",
           "last_poll": {
@@ -1214,7 +1192,6 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
             "target": "production"
           },
           "position": 0,
-          "legacy": false,
           "connection": "revoked",
           "console_url": "https://vercel.com/acme/acme-web",
           "last_poll": {
@@ -1259,7 +1236,6 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
             "service_id": "srv-cp9f3l1d0j6c73d4e5f6"
           },
           "position": 1,
-          "legacy": false,
           "connection": "error",
           "console_url": "https://dashboard.render.com/web/srv-cp9f3l1d0j6c73d4e5f6",
           "last_poll": {
@@ -1291,7 +1267,6 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
             "app": "acme-worker"
           },
           "position": 2,
-          "legacy": false,
           "connection": "connected",
           "console_url": "https://fly.io/apps/acme-worker",
           "last_poll": {
@@ -1320,7 +1295,6 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
             "site_name": "acme-docs"
           },
           "position": 3,
-          "legacy": false,
           "connection": "not_connected",
           "console_url": "https://app.netlify.com/sites/acme-docs/overview",
           "last_poll": null,
@@ -1359,8 +1333,8 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
     },
     {
       "provider": "railway",
-      "scope": "staging",
-      "scope_label": "Staging",
+      "scope": "",
+      "scope_label": null,
       "status": "connected",
       "method": "token",
       "account": null,
@@ -1585,11 +1559,9 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
           "role": "web",
           "provider": "cloudflare",
           "settings": {
-            "worker": "acme-web-staging",
-            "worker_check": "Workers Builds: acme-web-staging"
+            "worker": "acme-web-staging"
           },
           "position": -2,
-          "legacy": true,
           "connection": "connected",
           "console_url": "https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/workers/services/view/acme-web-staging/production",
           "last_poll": null,
@@ -1603,12 +1575,10 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
           "role": "service",
           "provider": "railway",
           "settings": {
-            "railway_env": "acme / staging",
-            "railway_environment_id": "8f2c1a9e-4b7d-4e2a-9c1f-2d3e4f5a6b7c",
-            "railway_service_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
+            "environment_id": "8f2c1a9e-4b7d-4e2a-9c1f-2d3e4f5a6b7c",
+            "service_id": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d"
           },
           "position": -1,
-          "legacy": true,
           "connection": "connected",
           "console_url": null,
           "last_poll": null,
@@ -1627,7 +1597,6 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
             "branch": "main"
           },
           "position": 0,
-          "legacy": false,
           "connection": "connected",
           "console_url": "https://vercel.com/acme/acme-web",
           "last_poll": {
@@ -1672,7 +1641,6 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
             "service_id": "srv-cn2k8h7c3k9s73a1b2c3"
           },
           "position": 1,
-          "legacy": false,
           "connection": "error",
           "console_url": "https://dashboard.render.com/web/srv-cn2k8h7c3k9s73a1b2c3",
           "last_poll": {
@@ -1707,7 +1675,6 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
             "target": "production"
           },
           "position": 0,
-          "legacy": false,
           "connection": "connected",
           "console_url": "https://vercel.com/acme/acme-web",
           "last_poll": {
@@ -1752,7 +1719,6 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
             "service_id": "srv-cp9f3l1d0j6c73d4e5f6"
           },
           "position": 1,
-          "legacy": false,
           "connection": "error",
           "console_url": "https://dashboard.render.com/web/srv-cp9f3l1d0j6c73d4e5f6",
           "last_poll": {
@@ -1784,7 +1750,6 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
             "app": "acme-worker"
           },
           "position": 2,
-          "legacy": false,
           "connection": "connected",
           "console_url": "https://fly.io/apps/acme-worker",
           "last_poll": {
@@ -1813,7 +1778,6 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
             "site_name": "acme-docs"
           },
           "position": 3,
-          "legacy": false,
           "connection": "not_connected",
           "console_url": "https://app.netlify.com/sites/acme-docs/overview",
           "last_poll": null,
@@ -1852,8 +1816,8 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
     },
     {
       "provider": "railway",
-      "scope": "staging",
-      "scope_label": "Staging",
+      "scope": "",
+      "scope_label": null,
       "status": "connected",
       "method": "token",
       "account": null,

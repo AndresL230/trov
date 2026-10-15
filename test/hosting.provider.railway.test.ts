@@ -102,7 +102,6 @@ describe("railway descriptor", () => {
     expect(railway.id).toBe("railway");
     expect([...railway.apiHosts]).toEqual(["backboard.railway.com"]);
     expect([...railway.roles]).toEqual(["web", "service"]);
-    expect(railway.credentialScope).toBe("org");
     expect(railway.connectionMethods.map((m) => m.method)).toEqual(["token"]);
     const how = railway.connectionMethods[0].howTo;
     expect(how).toContain("Account Settings › Tokens");

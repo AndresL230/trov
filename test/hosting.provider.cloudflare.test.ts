@@ -83,7 +83,6 @@ describe("cloudflare descriptor", () => {
     expect(cloudflare.status).toBe("available");
     expect([...cloudflare.apiHosts]).toEqual(["api.cloudflare.com"]);
     expect([...cloudflare.roles]).toEqual(["web"]);
-    expect(cloudflare.credentialScope).toBe("org");
     expect(cloudflare.connectionMethods.map((m) => m.method)).toEqual(["token"]);
     const how = cloudflare.connectionMethods[0].howTo;
     expect(how).toContain("Account › Account Analytics › Read");

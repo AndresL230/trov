@@ -262,11 +262,10 @@ export const cloudflare: HostingProvider = {
   id: "cloudflare",
   label: "Cloudflare Workers",
   status: "available",
-  summary: "A Cloudflare Worker: requests and errors from Cloudflare's GraphQL Analytics API, and its deployments from the Workers Deployments API.",
+  summary: "A Cloudflare Worker. Trov reads its deploys, requests and errors.",
   roles: ["web"],
   apiHosts: ["api.cloudflare.com"],
   docsUrl: "https://developers.cloudflare.com/analytics/graphql-api/",
-  credentialScope: "org",
   connectionMethods: [
     {
       method: "token",
