@@ -25,7 +25,7 @@ import type { CapturedEvent } from "@shared/contract";
 import { all, first, run } from "./helpers/db";
 import { ORG_A, ORG_B, platformCtx, systemCtx } from "./helpers/tenant";
 import { addOrgRepo } from "./helpers/org-config";
-import { keyedEnv, stubProviders, succeededLine, type Stub } from "./helpers/ai-pass";
+import { keyedEnv, markRow, stubProviders, succeededLine, type Stub } from "./helpers/ai-pass";
 
 const REPO = "SaplingLearn/sapling";
 const TZ = "America/New_York";
@@ -122,7 +122,9 @@ describe("digest.week — one Batch API request per org per week, its cites chec
     expect(await count(`SELECT COALESCE(SUM(count), 0) AS n FROM org_usage_daily WHERE org_id = ? AND metric LIKE 'ai_run:%'`, ORG_B)).toBe(0);
 
     // The same week marked again before the answer is back (a re-run of the pre-warm): still ONE request.
-    await routeAi(systemCtx(ORG_A), { type: "digest_week", key: KEY });
+    // (a mark AFTER the hold, as a re-run of the pre-warm would make it — the router stamps the real clock, so the
+    // fixture writes the row at the pass's clock)
+    await markRow(ORG_A, "digest", KEY, new Date(submitAt.getTime() + 5 * 60_000).toISOString());
     const r2 = await pass(s, new Date(submitAt.getTime() + 10 * 60_000));
     expect(s.batchCreates).toBe(1);
     expect(r2.batched).toBe(0);
@@ -143,7 +145,7 @@ describe("digest.week — one Batch API request per org per week, its cites chec
     expect(await count(`SELECT COUNT(*) AS n FROM digest_highlights WHERE org_id = ?`, ORG_B)).toBe(0);
 
     // A week that has its highlights: marked again, it reads null — no request, ever.
-    await routeAi(systemCtx(ORG_A), { type: "digest_week", key: KEY });
+    await markRow(ORG_A, "digest", KEY, new Date(submitAt.getTime() + 90 * 60_000).toISOString());
     await pass(s, new Date(submitAt.getTime() + 2 * HOUR));
     expect([s.batchCreates, s.haiku]).toEqual([1, 0]);
 
