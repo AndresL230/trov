@@ -20,19 +20,27 @@ const humanizeSlug = (slug: string): string =>
 
 export async function append_feed(
   ctx: TenantContext,
-  entry: { author: string; summary: string; brief?: string; body?: string; artifacts?: unknown; tags?: string[] }
+  entry: {
+    author: string; summary: string; brief?: string; body?: string; artifacts?: unknown; tags?: string[];
+    /** Set ONLY for an entry Trov wrote (0061_ai_digests; the gate's `ingestFeedEntry` with `ai`): origin 'ai', the
+     *  model that wrote it and the member it was for. Absent = an agent's entry, exactly as before. */
+    ai?: { model: string; subject: string | null };
+  }
 ): Promise<number> {
   const created_at = nowIso();
   const res = await run(
     ctx,
-    `INSERT INTO feed (org_id, author, summary, brief, body, artifacts, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO feed (org_id, author, summary, brief, body, artifacts, created_at, origin, model, subject) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ctx.orgId,
     entry.author,
     entry.summary,
     entry.brief ?? null,
     entry.body ?? null,
     entry.artifacts !== undefined ? JSON.stringify(entry.artifacts) : null,
-    created_at
+    created_at,
+    entry.ai ? "ai" : "agent",
+    entry.ai?.model ?? null,
+    entry.ai?.subject ?? null
   );
   const id = res.meta.last_row_id as number;
   for (const tag of entry.tags ?? []) {
