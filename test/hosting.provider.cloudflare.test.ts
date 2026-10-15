@@ -244,8 +244,15 @@ describe("cloudflare poll — deploys", () => {
     await expect(cloudflare.poll(ctx(html.fetch), part())).rejects.toThrow("cloudflare deployments: the response is not JSON");
   });
 
-  it("any refusal throws a scrubbed HostingError carrying its status", async () => {
-    for (const status of [400, 401, 403, 429, 500]) {
+  it("a 403 on the deployments (a token without Workers Scripts Read) still reads the traffic, with no deploys", async () => {
+    const { fetch } = cfApi({ deployments: () => echo(403), graphql: () => json({ data: { viewer: { accounts: [{ workersInvocationsAdaptive: [] }] } } }) });
+    const r = await cloudflare.poll(ctx(fetch), part());
+    expect(r.deploys).toEqual([]);
+    expect(r.covered).toEqual({ from: "2026-10-07T09:00:00.000Z", to: "2026-10-07T12:00:00.000Z" });
+  });
+
+  it("any other refusal throws a scrubbed HostingError carrying its status", async () => {
+    for (const status of [400, 401, 429, 500]) {
       const { fetch } = cfApi({ deployments: () => echo(status) });
       const e = await cloudflare.poll(ctx(fetch), part()).catch((x: unknown) => x);
       expect(e).toBeInstanceOf(HostingError);

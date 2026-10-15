@@ -321,7 +321,15 @@ export const cloudflare: HostingProvider = {
   async poll(pc: ProviderContext, part: PartRef): Promise<PollResult> {
     const auth = cfAuth(pc);
     const worker = workerName(part);
-    const deploys = await readDeployments(pc, auth, worker);
+    // A token made before deploys were read here has Account Analytics but not Workers Scripts: Cloudflare refuses
+    // the deployments list with a 403 (UNCONFIRMED: 403, not 401, is what a missing permission answers). Its traffic
+    // is still read — the part shows no deploys until the token gains the permission; any other failure fails the poll.
+    let deploys: HostingDeploy[] = [];
+    try {
+      deploys = await readDeployments(pc, auth, worker);
+    } catch (e) {
+      if (!(e instanceof HostingError && e.status === 403)) throw e;
+    }
     const { from, to } = pollWindow(pc.now);
     const rows = await readAnalytics(pc, auth, worker, from, to, "cloudflare analytics");
     return {
