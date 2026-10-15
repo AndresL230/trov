@@ -216,7 +216,8 @@ Every field (null rules in brackets):
 - `release` — `readRelease(ctx, repo, app)` (below), else null.
 - `found` / `unseen` — the scan's read side (below).
 - `week` — all seven `WeekKey`s, each `{ key, value, delta }`, a null value always with a null delta:
-  `mergedPrs` (`events`; null until one was ever captured — its delta is not gated on a recording window),
+  `mergedPrs` (`events`; null until one was ever captured; a delta only when `recordingSince('pr')` predates two
+  weeks — this week is compared with last week, so capture must cover both),
   `deploys` / `failedDeploys` (settled production deploys of the parts in view; null with no deploy capture — no
   deploy row and no successful poll of a deploy-reporting provider; a delta only when every counted part's capture
   began two weeks ago, `MIN(recorded_at)`), `openPrs` (the `prs_reconciled` gate and its recording window),

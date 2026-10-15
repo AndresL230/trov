@@ -261,6 +261,28 @@ describe("the facts read — snapshots, CI, attention, the week", () => {
     expect(w.ciRuns).toEqual([null, null]);
   });
 
+  it("mergedPrs: a delta only once PR capture was recording before the comparison window (last week) began", async () => {
+    await seedOrgRepoConfig(env.DB, ORG_A, PRIMARY, ENVS);
+    const DAY_M = 24 * 60;
+    for (const [n, mins] of [[1, 60], [2, 120], [3, 3 * DAY_M], [4, 9 * DAY_M]] as const) {
+      const raw = { pr: { number: n, title: `PR ${n}`, html_url: `https://github.com/${PRIMARY}/pull/${n}`, merged: true, merged_at: ago(mins), user: { login: "ana" }, base: { ref: "main" } } };
+      await env.DB.prepare(`INSERT INTO events (org_id, repo, semantic_key, event_type, ref_number, subject_login, raw, provenance, occurred_at, recorded_at, recorded_by)
+        VALUES (?, ?, ?, 'pr_merged', ?, 'ana', ?, 'webhook', ?, ?, 'github-webhook')`).bind(ORG_A, PRIMARY, `gh:pr:${n}:merged`, n, JSON.stringify(raw), ago(mins), ago(mins)).run();
+    }
+    const capturedSince = async (mins: number) => {
+      await env.DB.prepare(`DELETE FROM repo_events WHERE org_id = ?`).bind(ORG_A).run();
+      await env.DB.prepare(`INSERT INTO repo_events (org_id, semantic_key, kind, number, state, raw, provenance, occurred_at, recorded_at)
+        VALUES (?, 'gh:pr:1:closed', 'pr', 1, 'merged', '{}', 'webhook', ?, ?)`).bind(ORG_A, ago(60), ago(mins)).run();
+    };
+    const merged = async () => (await factsOf()).f.week.find((x) => x.key === "mergedPrs");
+    await capturedSince(3 * DAY_M);   // capture began this week: last week was not recorded
+    expect(await merged()).toEqual({ key: "mergedPrs", value: 3, delta: null });
+    await capturedSince(10 * DAY_M);  // before this week, but inside last week: still not the whole window
+    expect(await merged()).toEqual({ key: "mergedPrs", value: 3, delta: null });
+    await capturedSince(20 * DAY_M);  // before last week began: 3 this week vs 1 last week
+    expect(await merged()).toEqual({ key: "mergedPrs", value: 3, delta: 2 });
+  });
+
   it("the connect hint is an admin's: the first host not connected, needing deploys (nothing comes through GitHub)", async () => {
     await seedWorld();
     expect((await factsOf()).f.connect).toBeNull(); // the system reader is not an admin
