@@ -468,8 +468,10 @@ const WEEK_KEY: Record<string, WeekKey> = {
   "Merged PRs": "mergedPrs", Deploys: "deploys", "Failed deploys": "failedDeploys", "Open PRs": "openPrs", Commits: "commits",
   Releases: "releases", "CI runs": "ciRuns",
 };
+// The design's scenario A is one real organization's repository; the SPA names no organization
+// (test/render.orgs.test.ts), so A reads as `acme/tutor` here — the same apps, environments, shas and people.
 const ORG_REPOS = {
-  sapling: ["SaplingLearn/sapling", "AndresL230/trov"],
+  own: ["acme/tutor", "AndresL230/trov"],
   acme: ["acme/storefront", "acme/platform", "acme/payments", "acme/ingest", "acme/ui-kit", "acme/core", "acme/web-app", "acme/web-api", "acme/site", "acme/dashboard"],
   acmeNew: ["acme/new-thing", "acme/mobile"],
 };
@@ -654,17 +656,17 @@ const SC: Record<Exclude<ScenarioKey, "N">, (v: string, at: At) => Scenario> = {
   A: (v, at): Scenario => {
     const oos = v === "outOfStep", down = v === "trouble";
     return {
-      org: "sapling", repo: "SaplingLearn/sapling", appSource: "migrated",
+      org: "own", repo: "acme/tutor", appSource: "migrated",
       envs: [{ name: "Staging", branch: "main" }, { name: "Production", branch: "production" }],
       apps: [{ name: "web", folder: "web/", kind: "Worker", host: "Cloudflare", prs: 4 }, { name: "api", folder: "api/", kind: "Service", host: "Railway", prs: 3 }],
       targets: [
-        { app: "web", env: "Staging", sha: "3e9a1f2", age: "26m", by: "dev-raj", url: "staging.saplinglearn.com", ms: 142 },
-        down ? { app: "api", env: "Staging", sha: "3e9a1f2", age: "2m", by: "dev-raj", url: "api.staging.saplinglearn.com", state: "building", prev: { sha: "d94ea08", age: "21h" }, health: "stale", staleFor: "34m" }
-          : { app: "api", env: "Staging", sha: "3e9a1f2", age: "28m", by: "dev-raj", url: "api.staging.saplinglearn.com", ms: 88 },
-        down ? { app: "web", env: "Production", sha: "b4c21de", age: "2h", by: "jose-a", url: "saplinglearn.com", health: "down" }
-          : { app: "web", env: "Production", sha: "b4c21de", age: "2h", by: "jose-a", url: "saplinglearn.com", ms: 131 },
-        oos ? { app: "api", env: "Production", sha: "71f0e3a", age: "2d", by: "meilin", url: "api.saplinglearn.com", ms: 94 }
-          : { app: "api", env: "Production", sha: "b4c21de", age: "2h", by: "jose-a", url: "api.saplinglearn.com", ms: 94 },
+        { app: "web", env: "Staging", sha: "3e9a1f2", age: "26m", by: "dev-raj", url: "staging.tutor.acme.com", ms: 142 },
+        down ? { app: "api", env: "Staging", sha: "3e9a1f2", age: "2m", by: "dev-raj", url: "api.staging.tutor.acme.com", state: "building", prev: { sha: "d94ea08", age: "21h" }, health: "stale", staleFor: "34m" }
+          : { app: "api", env: "Staging", sha: "3e9a1f2", age: "28m", by: "dev-raj", url: "api.staging.tutor.acme.com", ms: 88 },
+        down ? { app: "web", env: "Production", sha: "b4c21de", age: "2h", by: "jose-a", url: "tutor.acme.com", health: "down" }
+          : { app: "web", env: "Production", sha: "b4c21de", age: "2h", by: "jose-a", url: "tutor.acme.com", ms: 131 },
+        oos ? { app: "api", env: "Production", sha: "71f0e3a", age: "2d", by: "meilin", url: "api.tutor.acme.com", ms: 94 }
+          : { app: "api", env: "Production", sha: "b4c21de", age: "2h", by: "jose-a", url: "api.tutor.acme.com", ms: 94 },
       ],
       ci: [["Staging", "pass", 14, 0, "3e9a1f2"], ["Production", "pass", 14, 0, "b4c21de"]],
       drift: [{ from: "main", to: "production", ahead: 9, groups: [
@@ -676,7 +678,7 @@ const SC: Record<Exclude<ScenarioKey, "N">, (v: string, at: At) => Scenario> = {
       outOfStep: oos ? [{ env: "production", app: "api", sha: "71f0e3a", of: "web", ofSha: "b4c21de", behindBy: 3 }] : [],
       attention: oos ? [{ kind: "outOfStep", app: "api", env: "production", refs: { sha: "71f0e3a", behindBy: 3, of: "web", provider: "railway" } }]
         : down ? [
-          { kind: "down", app: "web", env: "production", refs: { url: "https://saplinglearn.com", since: at("6m") } },
+          { kind: "down", app: "web", env: "production", refs: { url: "https://tutor.acme.com", since: at("6m") } },
           { kind: "stale", app: "api", env: "staging", refs: { since: at("34m"), provider: "railway", nextSha: "3e9a1f2" } },
         ] : [],
       week: [["Merged PRs", 12, 3], ["Deploys", 18, 2], ["Failed deploys", 1, -1], ["Open PRs", 7, 0]],
@@ -693,7 +695,7 @@ const SC: Record<Exclude<ScenarioKey, "N">, (v: string, at: At) => Scenario> = {
         : tr ? { states: d20([2], { 18: "rolledBack", 19: "building" }), step: "14h", named: { 16: { sha: "c41e7d9", age: "1d", by: "andres" }, 17: { sha: "e07b3a2", age: "30m", by: "andres" }, 18: { sha: "c41e7d9", age: "8m", by: "andres", rolledFrom: "e07b3a2" }, 19: { sha: "f19ad20", age: "2m", by: "andres" } } }
           : { states: d20([7]), step: "14h", named: { 19: { sha: "c41e7d9", age: "41m", by: "andres" } } };
     return {
-      org: "sapling", repo: "AndresL230/trov",
+      org: "own", repo: "AndresL230/trov",
       envs: [{ name: "Production", branch: "main" }],
       apps: [{ name: "trov", folder: "/", kind: "Worker", host: "Cloudflare", prs: 2, previews: true }],
       targets: [{ app: "trov", env: "Production", url: "trov.dev", ms: tr ? 102 : 96 }],
