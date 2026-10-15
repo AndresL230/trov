@@ -132,7 +132,9 @@ function wrongArg(w: Web, html: string, marker: string): AiFeedbackBody {
   return body!;
 }
 
-describe("the AI screens over REAL rows: webhook → pass → reads → render", () => {
+// The whole pipeline plus the SPA's modules loaded at run time: ~2 s alone, past the 5 s default under a full
+// suite's load (the gate run of 2026-10-15) — so the file's own budget.
+describe("the AI screens over REAL rows: webhook → pass → reads → render", { timeout: 60_000 }, () => {
   it("absent: before the pass the reads carry no `state` / `ai`, and the screens draw no AI section", async () => {
     const w = await web();
     await addOrgRepo(REPO, ORG_A);
