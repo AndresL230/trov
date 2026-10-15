@@ -51,6 +51,11 @@ export interface AiLine {
   cites: AiCite[];
 }
 
+/** The reserved system person Trov's own writing is recorded as (`RESERVED_HANDLES` in src/auth/persons.ts; its
+ *  `persons` row arrives with `0061_ai_digests`): the author of AI feed entries and doc-drift proposals — the one
+ *  exception to "the author is the authenticated principal" (ingestion-gate.md). */
+export const TROV_SYSTEM_HANDLE = "trov";
+
 // ── My Work › "Your brief" ──────────────────────────────────────────────────
 /** What a Next row is; picks its state mark (Failing = red dot, Handoff = arrow, a ticket
  *  shows its `#N`, a sprint ticket due soon = the due mark). */
