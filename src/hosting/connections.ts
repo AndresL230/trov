@@ -2,8 +2,7 @@
 // the install / OAuth round trip, Disconnect from Trov, and the provider-side revocation.
 //
 //   the credential   always an `org_secrets` row (src/data/secrets.ts — write-only, encrypted, audited), under
-//                    the provider's kind (`HOSTING_INTEGRATION_KIND`) and scope ("" — or the environment key for
-//                    Railway's per-environment project token). A pasted token is ONLY that row.
+//                    the provider's kind (`HOSTING_INTEGRATION_KIND`) and scope "". A pasted token is ONLY that row.
 //   the connection   `org_hosting_connections` (0056): what an install / OAuth grant adds beside the secret —
 //                    the method, the provider-side installation id (`external_id`, what an uninstall notice
 //                    names), the account it reaches, and how it ended (`revoked_*`).
@@ -78,9 +77,8 @@ const listConnectionRows = (ctx: TenantContext): Promise<ConnectionRow[]> =>
 const connectionRow = (ctx: TenantContext, provider: HostingProviderId, scope: string): Promise<ConnectionRow | null> =>
   first<ConnectionRow>(ctx, `SELECT ${CONNECTION_COLS} FROM org_hosting_connections WHERE org_id = ? AND provider = ? AND scope = ?`, ctx.orgId, provider, scope);
 
-/** The credential scope a part of provider `p` uses: "" for an org-wide credential, the environment key for Railway's. */
-export const credentialScopeOf = (p: Pick<HostingProvider, "credentialScope">, part: Pick<PartRow, "env">): string =>
-  p.credentialScope === "environment" ? part.env : "";
+/** The credential scope a part uses: always "" — every provider has ONE org-wide credential. */
+export const credentialScopeOf = (_p: HostingProvider, _part: Pick<PartRow, "env">): string => "";
 
 /** Everything a connection DTO is built from, read once for a whole list. */
 export interface ConnectionState {
@@ -209,12 +207,11 @@ function knownProvider(providers: ProviderMap, id: string): HostingProvider {
   return providers[id];
 }
 
-/** The scope a request names, checked against the provider's credential scope (org-wide: ""; Railway: an environment key). */
+/** The scope a request names: every provider is connected once for the whole org, so it is "". */
 export function checkScope(p: HostingProvider, scope: unknown): string {
   const s = scope === undefined || scope === null ? "" : scope;
   if (typeof s !== "string") throw new SettingsError("invalid", 400, "scope must be a string", "scope");
-  if (p.credentialScope === "org" && s !== "") throw new SettingsError("invalid", 400, `${p.label} is connected once for the whole org: its scope is ""`, "scope");
-  if (p.credentialScope === "environment" && !/^[a-z0-9_-]{1,32}$/.test(s)) throw new SettingsError("invalid", 400, `${p.label} is connected per environment: scope must be an environment key`, "scope");
+  if (s !== "") throw new SettingsError("invalid", 400, `${p.label} is connected once for the whole org: its scope is ""`, "scope");
   return s;
 }
 
@@ -301,7 +298,7 @@ export interface ConnectStart {
 
 /**
  * Begin an install / OAuth connection (admin+). Refusals (409, fixed text): a provider not supported yet, one
- * with no install / OAuth method (paste a token instead), a credential kept per environment, or a deployment
+ * with no install / OAuth method (paste a token instead), or a deployment
  * that has not configured the provider's integration. An org that is already connected — by a pasted token or
  * by another install / OAuth grant — is NOT refused: the new grant replaces it at the callback. Returns where to
  * send the browser and the sealed intent the route sets in the `trov_hx` cookie.
@@ -315,7 +312,6 @@ export async function startConnect(
   if (!p.install || !p.connectionMethods.some((m) => m.method === "install" || m.method === "oauth")) {
     throw new SettingsError("not_installable", 409, `${p.label} has no install or OAuth connection — paste a token instead`);
   }
-  if (p.credentialScope !== "org") throw new SettingsError("not_installable", 409, `${p.label} is connected per environment — paste a token instead`);
   const choice = installChoice(p, env);
   if (!choice) throw new SettingsError("not_configured", 409, `this Trov deployment has no ${p.label} integration configured — paste a token instead`);
   const state = randomToken(16);

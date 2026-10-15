@@ -168,7 +168,6 @@ export interface HostingProvider {
   /** Exact hostnames the credential may be sent to. https only. */
   apiHosts: readonly string[];
   docsUrl: string;
-  credentialScope: "org" | "environment";
   /** Best first. */
   connectionMethods: readonly ConnectionMethodSpec[];
   orgConfigFields: readonly HostingField[];

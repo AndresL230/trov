@@ -254,11 +254,10 @@ export const vercel: HostingProvider = {
   id: "vercel",
   label: "Vercel",
   status: "available",
-  summary: "A Vercel project: its production deploys (or one branch's previews) with commit, branch, state and URL from Vercel's REST API. Vercel has no public usage API, so no traffic figures.",
+  summary: "A Vercel project. Trov reads its production or preview deploys.",
   roles: ["web"],
   apiHosts: ["api.vercel.com"],
   docsUrl: "https://vercel.com/docs/rest-api",
-  credentialScope: "org",
   connectionMethods: [
     {
       method: "install",

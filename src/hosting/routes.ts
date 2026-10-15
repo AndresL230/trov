@@ -152,10 +152,6 @@ export function makeHostingApp(o: HostingRouteOptions = {}): Hono<AppEnv> {
       const part = (await listAllParts(ctx)).find((x) => x.env === body.env && x.key === body.part && x.provider === p.id);
       if (!part) return c.json({ error: "not_found", message: `no such ${p.label} part` }, 404);
       partKey = { env: part.env, part: part.key };
-      if (p.credentialScope === "environment") {
-        if (scopeIn !== undefined && scopeIn !== part.env) return c.json({ error: "invalid", field: "scope", message: "scope must be the part's environment" }, 400);
-        scopeIn = part.env;
-      }
     }
     const scope = checkScope(p, scopeIn);
     const result = await testConnection(ctx, c.env, HOSTING_INTEGRATION_KIND[p.id], scope, originOf(c), Date.now(), o.fetchImpl, partKey);

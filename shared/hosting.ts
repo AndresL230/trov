@@ -10,8 +10,7 @@
 //               itself lives in `org_secrets` (write-only, src/data/secrets.ts) like every other credential.
 //   part        one deployable of one environment (web, api, worker…), pointing at a provider and that
 //               provider's per-part settings (project / service / site id, app name). `org_environment_parts`
-//               holds them; an environment's Cloudflare frontend and Railway backend are LEGACY parts, read
-//               from (and written to) the environment's own columns, so SaplingLearn changes nothing.
+//               holds every part, whoever hosts it.
 //   reading     what a poll brought back, NORMALISED: hourly `hx_<metric>` points in `repo_metrics`
 //               (env = environment key, part = part key) and deploy rows in `hosting_deploys`.
 //
@@ -28,18 +27,13 @@ export type HostingProviderId = (typeof HOSTING_PROVIDERS)[number];
 export const isHostingProvider = (v: unknown): v is HostingProviderId =>
   typeof v === "string" && (HOSTING_PROVIDERS as readonly string[]).includes(v);
 
-/** The `org_secrets.kind` each provider's credential is stored under. Cloudflare and Railway keep the kinds
- *  they had before providers existed, so their stored credentials are untouched. */
+/** The `org_secrets.kind` each provider's credential is stored under. Cloudflare and Railway keep the kind
+ *  names they had before providers existed (stored identifiers are never renamed). */
 export const HOSTING_INTEGRATION_KIND = {
   cloudflare: "cloudflare_analytics", railway: "railway", vercel: "vercel", render: "render", netlify: "netlify", fly: "fly", aws: "aws",
 } as const satisfies Record<HostingProviderId, IntegrationKind>;
 export const providerOfKind = (kind: IntegrationKind): HostingProviderId | null =>
   (Object.keys(HOSTING_INTEGRATION_KIND) as HostingProviderId[]).find((p) => HOSTING_INTEGRATION_KIND[p] === kind) ?? null;
-
-/** The providers whose part is stored in `org_environments`' own columns (one per environment, fixed key). */
-export const LEGACY_PART_KEY = { cloudflare: "frontend", railway: "backend" } as const;
-export type LegacyProviderId = keyof typeof LEGACY_PART_KEY;
-export const isLegacyProvider = (p: HostingProviderId): p is LegacyProviderId => p === "cloudflare" || p === "railway";
 
 /**
  * What a part IS, which decides the metric family the dashboard shows for it:
@@ -139,8 +133,6 @@ export interface HostingProviderDTO {
   plan_note: string | null;
   /** The ONLY hosts the credential is ever sent to — shown under the form ("Sent only to api.vercel.com"). */
   api_hosts: string[];
-  /** `org`: one credential for the whole org (scope ""); `environment`: one per environment (Railway). */
-  credential_scope: "org" | "environment";
   /** Best first. The screen offers the first AVAILABLE one and lists the rest as alternatives. */
   connection_methods: ConnectionMethodDTO[];
   /** Org-wide, non-secret settings stored beside the credential (`org_integration_config`). */
@@ -148,8 +140,6 @@ export interface HostingProviderDTO {
   /** What a part on this provider needs (project id, service id, site id, app name…). */
   part_settings: HostingFieldDTO[];
   docs_url: string;
-  /** Legacy providers live in the environment's own columns: one part per environment, fixed key. */
-  legacy_part_key: string | null;
 }
 
 // ── Org settings › Hosting: an org's connections and parts ──────────────────
@@ -205,7 +195,7 @@ export const isHostingConnectOutcome = (v: unknown): v is HostingConnectOutcome 
 
 export interface HostingConnectionDTO {
   provider: HostingProviderId;
-  /** "" for an org-wide credential; the environment key for a per-environment one (Railway). */
+  /** Always "" — every provider has ONE org-wide credential (the column stays for the stored rows). */
   scope: string;
   scope_label: string | null;
   status: ConnectionStatus;
@@ -255,9 +245,7 @@ export interface EnvironmentPartDTO {
   provider: HostingProviderId;
   settings: Record<string, string>;
   position: number;
-  /** true: the environment's own Cloudflare / Railway columns hold it (`LEGACY_PART_KEY`). */
-  legacy: boolean;
-  /** Is the part's provider connected for this part's scope? */
+  /** Is the part's provider connected? */
   connection: ConnectionStatus;
   /** A deep link to this part in the provider's own dashboard, or null when the settings do not make one. */
   console_url: string | null;

@@ -35,7 +35,7 @@ export interface HostingHost {
   unauth(e: unknown): void;
   /** Play the confirmation modal's exit, then run `then`. */
   confirmOut(then: () => void): void;
-  /** What else on Org settings a hosting write changed: the environments (a legacy part is their columns), the
+  /** What else on Org settings a hosting write changed: the environments, the
    *  Integrations list (a hosting credential is one of its rows) and the history. */
   reloadSettings(): void;
   /** Leave for the provider (a full navigation). Injected so a test can watch it. */
@@ -151,7 +151,7 @@ export function createHostingActions(host: HostingHost): HostingActions {
   // ── the part editor ────────────────────────────────────────────────────────
   /** A key to start from, when it is free in the environment: `web` for a web part, `api` for a service. */
   const suggestKey = (d: HostingSetupDTO, env: string, p: HostingProviderDTO | null, role: string): string => {
-    if (!p || p.legacy_part_key) return "";
+    if (!p) return "";
     const want = role === "service" ? "api" : "web";
     return d.environments.find((e) => e.key === env)?.parts.some((x) => x.key === want) ? "" : want;
   };
@@ -192,7 +192,7 @@ export function createHostingActions(host: HostingHost): HostingActions {
     const envLabel = d.environments.find((e) => e.key === dr.env)?.label ?? dr.env;
     const settings: Record<string, string> = {};
     for (const f of p.part_settings) { const v = (dr.settings[f.key] ?? "").trim(); if (v) settings[f.key] = v; }
-    const body: PartWrite = { provider: p.id, role: dr.role, settings, ...(!p.legacy_part_key && dr.label.trim() ? { label: dr.label.trim() } : {}) };
+    const body: PartWrite = { provider: p.id, role: dr.role, settings, ...(dr.label.trim() ? { label: dr.label.trim() } : {}) };
     const after = (part: Pick<EnvironmentPartDTO, "label">, created: boolean): void => {
       u.part = null;
       host.flash(`${created ? "Added" : "Saved"} ${envLabel} › ${part.label}`);

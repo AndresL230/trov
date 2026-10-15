@@ -263,11 +263,10 @@ export const netlify: HostingProvider = {
   id: "netlify",
   label: "Netlify",
   status: "available",
-  summary: "A Netlify site: its production or branch deploys (state, commit, branch, link) from Netlify's API. Netlify has no public usage API, so no traffic figures.",
+  summary: "A Netlify site. Trov reads its production or branch deploys.",
   roles: ["web"],
   apiHosts: ["api.netlify.com"],
   docsUrl: "https://docs.netlify.com/api/get-started/",
-  credentialScope: "org",
   connectionMethods: [
     {
       method: "oauth",

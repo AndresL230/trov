@@ -21,7 +21,7 @@ import { setSecret } from "../src/data/secrets";
 import { BUDGET_SKIP, HEALTH_COST, handleRepoCron, runPartJob, runRepoRefresh } from "../src/repo/cron";
 import { DEFAULT_HOSTING_COST, hostingPollCost, providerPollCost, type ProviderMap } from "../src/hosting/poll";
 import { PROVIDERS } from "../src/hosting/registry";
-import { listStoredParts } from "../src/hosting/parts";
+import { listAllParts } from "../src/hosting/parts";
 import { readCursor } from "../src/platform/jobs";
 import { pruneRepoCapture } from "../src/platform/sweeps";
 import { putMetrics } from "../src/repo/store";
@@ -203,7 +203,7 @@ describe("Poll now — the hosting arm", () => {
     await addPart(ORG_A, "staging", "web");
     await addPart(ORG_A, "production", "web");
     await connect(ORG_A, LONG_TOKEN);
-    const parts = await listStoredParts(systemCtx(ORG_A));
+    const parts = await listAllParts(systemCtx(ORG_A));
     const log: string[] = [];
     // 2 × 9 = 18: 51 > 50 — skipped, nothing fetched for them.
     expect(hostingPollCost(parts, { vercel: fakeVercel([], 9) })).toBe(18);

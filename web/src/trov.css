@@ -1345,10 +1345,10 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* Org settings › Hosting (web/src/hosting.ts). Environments are tiles side by side — comparing staging with
    production is the point — two to a line where the tab has room, one under the other below that. Every
    radius here is an inline value the corners block already scales. */
-/* The Providers grid: two cards a row (one at phone width), each the same height as its neighbour. A card shows
+/* The Providers grid: two cards a row (one at phone width), every card the same height (grid-auto-rows:1fr). A card shows
    everything but its dialogs: logo, name and status, the metadata, what the host is and what Trov reads, and ONE
    button at its top right, one width on every card. Its radius is inline (hosting.ts CARD). */
-.cnpy-hx-cards { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; align-items:stretch; list-style:none; margin:0; padding:0; }
+.cnpy-hx-cards { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); grid-auto-rows:1fr; gap:14px; align-items:stretch; list-style:none; margin:0; padding:0; }
 .cnpy-hx-card { display:flex; flex-direction:column; min-width:0; padding:18px 18px 16px; border:1px solid var(--border); background:var(--surface); box-shadow:var(--shadow); }
 .cnpy-hx-card-h { display:flex; align-items:flex-start; gap:12px; }
 .cnpy-hx-card-h > svg { margin-top:1px; }

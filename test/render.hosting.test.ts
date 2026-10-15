@@ -279,7 +279,8 @@ describe("providers and their connections", () => {
     const netlify = rowOf(html, 'data-org-hosting-conn="netlify:"');
     expect(netlify).toContain('data-hx-glyph="netlify"');                     // the logo
     expect(netlify).toContain(provider("netlify").summary.slice(0, 40));
-    expect(netlify).toContain("Netlify publishes no usage or analytics API"); // the plan note, on the card
+    expect(netlify).not.toContain("Netlify publishes no usage or analytics API"); // the plan note is the dialog's
+    expect(manage(HOSTING_SAMPLES.no_parts, "netlify:")).toContain("Netlify publishes no usage or analytics API");
     expect(netlify).toContain("data-hx-caps");
     expect(netlify).not.toContain("cnpy-xrow");                             // no row to open
   });

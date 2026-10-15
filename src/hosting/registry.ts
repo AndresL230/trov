@@ -4,7 +4,6 @@
 // is reachable from src/mcp.ts) may import it. See ./http.ts for why that matters.
 import {
   HOSTING_PROVIDERS, type ConnectionMethodDTO, type HostingFieldDTO, type HostingProviderDTO, type HostingProviderId,
-  LEGACY_PART_KEY, isLegacyProvider,
 } from "@shared/hosting";
 import type { HostingField, HostingProvider } from "./types";
 import { cloudflare } from "./providers/cloudflare";
@@ -47,12 +46,11 @@ export function providerDTO(p: HostingProvider, env: unknown): HostingProviderDT
   return {
     id: p.id, label: p.label, status: p.status, summary: p.summary, roles: [...p.roles],
     capabilities: { deploys: p.capabilities.deploys, metrics: [...p.capabilities.metrics] },
-    plan_note: p.planNote, api_hosts: [...p.apiHosts], credential_scope: p.credentialScope,
+    plan_note: p.planNote, api_hosts: [...p.apiHosts],
     connection_methods: methods,
     org_config_fields: p.orgConfigFields.map(fieldDTO),
     part_settings: p.partSettings.map(fieldDTO),
     docs_url: p.docsUrl,
-    legacy_part_key: isLegacyProvider(p.id) ? LEGACY_PART_KEY[p.id] : null,
   };
 }
 

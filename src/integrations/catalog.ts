@@ -12,7 +12,7 @@ import type { TenantContext } from "../data/sql";
 import { listEnvironments, listRepoRows, webhookUrl } from "./settings";
 import { githubAppStatus } from "../github-app/status";
 import { HOSTING_INTEGRATION_KIND, HOSTING_PROVIDERS, isLegacyProvider, providerOfKind, type HostingProviderId } from "@shared/hosting";
-import { listStoredParts } from "../hosting/parts";
+import { listAllParts } from "../hosting/parts";
 import { checkFields, providerOf } from "../hosting/registry";
 
 interface KindInfo {
@@ -120,7 +120,7 @@ interface Slot { kind: IntegrationKind; scope: string; scope_label: string | nul
  *  provider's org-wide credential is expected once a STORED part (src/hosting/parts.ts) uses that provider —
  *  never for an org that does not (Cloudflare and Railway keep their own slots, as before). */
 async function slots(ctx: TenantContext, origin: string, secrets: SecretMeta[]): Promise<Slot[]> {
-  const [repos, envs, stored] = [await listRepoRows(ctx), await listEnvironments(ctx), await listStoredParts(ctx)];
+  const [repos, envs, stored] = [await listRepoRows(ctx), await listEnvironments(ctx), await listAllParts(ctx)];
   const used = new Set(stored.map((p) => p.provider));
   const hosting = HOSTING_PROVIDERS.filter((id) => used.has(id) && !isLegacyProvider(id) && providerOf(id).credentialScope === "org");
   const out: Slot[] = [

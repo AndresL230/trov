@@ -39,7 +39,7 @@ import { jobTenant } from "../platform/jobs";
 import { DAY, HOSTING_DEPLOY_RETENTION_DAYS, USAGE_RETENTION_DAYS, putMetrics } from "../repo/store";
 import type { RepoMetric } from "../repo/types";
 import { HOUR, HostingError, asHostingError, hostFetch, hourFloor, iso } from "./http";
-import { listStoredParts, partRef, type PartRow } from "./parts";
+import { listAllParts, partRef, type PartRow } from "./parts";
 import { PROVIDERS } from "./registry";
 import type { HostingField, HostingProvider, PollResult } from "./types";
 
@@ -364,16 +364,11 @@ export async function pollPart(
     }
     return out;
   };
-  if (part.legacy) {
-    // Cloudflare's frontend and Railway's backend live in the environment's own columns and are polled by
-    // the `:00` usage job (src/repo/cron.ts `usageForEnv`) — never here, and no poll state is written.
-    return { ...base, status: "skipped", written: 0, detail: "polled by the hourly usage job" };
-  }
   try {
     const provider = providers[part.provider];
     if (!provider || provider.status !== "available") return await settle({ ...base, status: "skipped", written: 0, detail: "not supported yet" });
     const kind = HOSTING_INTEGRATION_KIND[part.provider];
-    const scope = provider.credentialScope === "org" ? "" : part.env;
+    const scope = "";
 
     let secret: Secret | null;
     try {
@@ -450,6 +445,6 @@ export async function runHostingPolls(
   env: Env, caller: TenantContext, now: number, fetchImpl?: typeof fetch, providers: ProviderMap = PROVIDERS,
 ): Promise<HostingPollOutcome[] | "not_configured"> {
   const ctx = jobTenant(env, caller);
-  const parts = await listStoredParts(ctx);
+  const parts = await listAllParts(ctx);
   return parts.length ? pollParts(env, ctx, parts, now, fetchImpl, providers) : "not_configured";
 }

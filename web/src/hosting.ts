@@ -27,6 +27,7 @@ import {
 } from "./org-ui";
 import { segmented } from "./segmented";
 import { hostLogo } from "./host-logos";
+import { orgTile } from "./org-logo";
 import { kindMark, type StateKind } from "./marks";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { howToHtml, type TestState } from "./integrations";
@@ -119,7 +120,7 @@ export const providerOf = (d: HostingSetupDTO, id: HostingProviderId | null): Ho
 export const connectionOf = (d: HostingSetupDTO, provider: HostingProviderId, scope: string): HostingConnectionDTO | null =>
   d.connections.find((c) => c.provider === provider && c.scope === scope) ?? null;
 /** The credential scope a part's provider is connected at: "" org-wide, or the part's environment (Railway). */
-export const scopeFor = (p: HostingProviderDTO, env: string): string => (p.credential_scope === "environment" ? env : "");
+export const scopeFor = (_p: HostingProviderDTO, _env: string): string => "";
 
 // ── vocabulary ───────────────────────────────────────────────────────────────
 
@@ -380,7 +381,7 @@ export function unavailableLines(unavailable: readonly { metric: HostingMetric; 
   return [...byReason.entries()].map(([reason, metrics]) => `${listed(metrics.map((m) => HOSTING_METRICS[m].label))} ${metrics.length === 1 ? "isn't" : "aren't"} available from ${providerLabel}: ${reason}.`.replace(/\.\.$/, "."));
 }
 
-interface TabCtx { d: HostingSetupDTO; ui: OrgUi; h: HostingUi }
+interface TabCtx { d: HostingSetupDTO; ui: OrgUi; h: HostingUi; org: MyOrg }
 
 function partRow(x: TabCtx, env: HostingEnvironmentDTO, part: EnvironmentPartDTO): string {
   const { d, ui, h } = x;
@@ -394,7 +395,7 @@ function partRow(x: TabCtx, env: HostingEnvironmentDTO, part: EnvironmentPartDTO
     ? `<div data-hx-pollfail style="${box("var(--red)")}">${FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">Last poll failed ${esc(relTime(poll.at))}.</strong> ${esc(poll.detail ?? "The provider did not answer.")}</div></div>` : "";
   const test = h.tests[key];
   const running = test?.status === "running";
-  const pollLine = !poll ? (part.legacy ? "Read by the hourly usage poll." : "Not polled yet. Polls run every hour; Poll now on the Repo dashboard runs one.")
+  const pollLine = !poll ? "Not polled yet. Polls run every hour; Poll now on the Repo dashboard runs one."
     : poll.status === "ok" ? `Polled ${relTime(poll.at)}${poll.detail ? `: ${poll.detail}` : ""}.`
     : poll.status === "skipped" ? `Last poll skipped ${relTime(poll.at)}${poll.detail ? `: ${poll.detail}` : ""}.`
     : `Last good poll ${poll.last_ok_at ? relTime(poll.last_ok_at) : "never"}.`;
@@ -403,7 +404,6 @@ function partRow(x: TabCtx, env: HostingEnvironmentDTO, part: EnvironmentPartDTO
     return v ? `<div style="margin-top:4px">${esc(f.label)}: <code style="font-family:var(--code);font-size:12px;color:var(--fg-70);overflow-wrap:anywhere">${esc(v)}</code></div>` : "";
   }).join("");
   const quiet = unavailableLines(poll?.unavailable ?? [], part.role, label).map((line) => `<div data-hx-unavailable style="margin-top:6px;color:var(--fg-55)">${esc(line)}</div>`).join("");
-  const legacy = part.legacy ? `<div data-hx-legacy style="margin-top:6px">Its key is fixed. Also editable under ${goLink("Environments", "orgTab", "environments")}</div>` : "";
   const actions = `<div class="cnpy-xrow-acts">
       ${outLink(`Open in ${label}`, part.console_url, `Open ${env.label} › ${part.label} in ${label}`)}
       ${quietBtn(running ? "Testing…" : "Test this part", "orgHxTestPart", { arg: ref, disabled: running, busy: running, field: `orgHxTestPart:${ref}`, label: `Test ${label} for ${env.label} › ${part.label}` })}
@@ -412,14 +412,14 @@ function partRow(x: TabCtx, env: HostingEnvironmentDTO, part: EnvironmentPartDTO
   const answer = testAnswer(test);
   return openRow({
     key, open: ui.openRows.includes(key), act: "orgRowToggle", label: `${env.label}, ${part.label}: ${ROLE_WORD[part.role].toLowerCase()} on ${label}, ${STATUS_WORD[part.connection].toLowerCase()}`,
-    head: `${providerGlyph(part.provider)}<span>${esc(part.label)}</span>${factWord(ROLE_WORD[part.role])}${statusDot(part.connection)}`,
+    head: `${orgTile(x.org.name, 18, x.org.logo_url ?? null, 5)}<span>${esc(part.label)}</span>${factWord(ROLE_WORD[part.role])}${statusDot(part.connection)}`,
     meta: `${esc(label)}${id ? ` &middot; ${esc(id)}` : ""}`,
     action: quietBtn("Edit", "orgHxPartEdit", { arg: ref, label: `Edit ${env.label} › ${part.label}`, field: `orgHxPartEdit:${ref}` }),
     always: failed || answer ? `${failed}${answer}` : "",
     body: `<div>Key <code style="font-family:var(--code);font-size:12px;color:var(--fg-70)">${esc(part.key)}</code> &middot; ${esc(ROLE_HINT[part.role])}</div>
       ${settings}
       <div style="font-size:12px;color:var(--fg-40);margin-top:6px">${esc(pollLine)}${part.updated_by ? ` Last changed by ${esc(part.updated_by)}${part.updated_at ? ` ${esc(relTime(part.updated_at))}` : ""}.` : ""}</div>
-      ${quiet}${legacy}${actions}`,
+      ${quiet}${actions}`,
     attrs: ` data-org-part="${attr(ref)}" data-provider="${attr(part.provider)}" data-connection="${part.connection}"`,
   });
 }
@@ -480,7 +480,7 @@ const blankConnection = (provider: HostingProviderId, scope = "", scope_label: s
 export function connectionsFor(d: HostingSetupDTO, p: HostingProviderDTO): HostingConnectionDTO[] {
   const own = d.connections.filter((c) => c.provider === p.id);
   if (own.length) return own;
-  return p.credential_scope === "org" ? [blankConnection(p.id)] : [];
+  return [blankConnection(p.id)];
 }
 
 /** A provider's CARD in the Providers grid (`.cnpy-hx-cards`): logo, name and status, the metadata, what the
@@ -491,7 +491,6 @@ function providerCard(o: { key: string; state: string; p: HostingProviderDTO; ti
   return `<li class="cnpy-hx-card" data-org-hosting-conn="${attr(o.key)}" data-state="${attr(o.state)}"${CARD}>
     <div class="cnpy-hx-card-h">${providerGlyph(o.p.id, 26)}<div style="min-width:0;flex:1 1 auto"><div class="cnpy-hx-card-n">${o.title}${o.status}</div>${o.meta ? `<div class="cnpy-hx-card-m">${o.meta}</div>` : ""}</div>${o.action ? `<div class="cnpy-hx-card-a">${o.action}</div>` : ""}</div>
     <p class="cnpy-hx-card-d">${esc(o.p.summary)}</p>
-    ${o.p.plan_note ? `<p class="cnpy-hx-card-d" style="margin-top:6px;color:var(--fg-40)">${esc(o.p.plan_note)}</p>` : ""}
     ${o.extra ? `<p class="cnpy-hx-card-d" style="margin-top:6px">${o.extra}</p>` : ""}
     <div style="margin-top:10px">${capabilityChips(o.p)}</div>
     ${o.always ? `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">${o.always}</div>` : ""}
@@ -604,6 +603,7 @@ export function manageModal(d: HostingSetupDTO, h: HostingUi): string {
           ${meta ? `<div>${meta}</div>` : ""}${facts}${usedBy}${config}
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">${lastErrorBox(c)}${testAnswer(test)}</div>
+        ${p.plan_note ? `<p style="margin:12px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-55)">${esc(p.plan_note)}</p>` : ""}
         ${grants}
         <p data-hx-sentto style="margin:10px 0 0;font-size:12px;color:var(--fg-40)">${esc(sentOnlyTo(p))}</p>
         <div style="font-size:12.5px">${unavailable}</div>
@@ -628,17 +628,6 @@ function methodsOff(p: HostingProviderDTO): string {
 /** A provider Trov describes but cannot connect yet (AWS): its card, with no button. */
 function laterRow(_x: TabCtx, p: HostingProviderDTO): string {
   return providerCard({ key: `${p.id}:`, state: "later", p, title: `<span style="color:var(--fg-55)">${esc(p.label)}</span>`, status: factWord("Coming later") });
-}
-
-/** An environment-scoped provider (Railway) nobody uses yet: its card says the token belongs to an environment,
- *  and its one action is adding the part that names one. */
-function scopedHintRow(x: TabCtx, p: HostingProviderDTO): string {
-  const env = x.d.environments[0] ?? null;
-  const action = env ? quietBtn("Add part", "orgHxPartNew", { arg: `${env.key}|${p.id}`, field: `orgHxScoped:${p.id}`, label: `Add a ${p.label} part to ${env.label}` }) : "";
-  return providerCard({
-    key: `${p.id}:`, state: "unused", p, title: `<span>${esc(p.label)}</span>`, status: statusDot("not_connected"),
-    extra: `${esc(cap(tokenWord(p)))} per environment: add a ${esc(p.label)} part to an environment, then connect it there.`, action,
-  });
 }
 
 // ── the tab ──────────────────────────────────────────────────────────────────
@@ -685,7 +674,7 @@ export function hostingTab(org: MyOrg, ui: OrgUi): string {
       : skeleton("org-hosting", "Loading hosting&hellip;", hostingTabShape());
     return `${hostingNotice(h.notice, null, org.name)}${note}${h.setup.status === "error" && !h.sample ? sampleFoot() : ""}`;
   }
-  const x: TabCtx = { d, ui, h };
+  const x: TabCtx = { d, ui, h, org };
   const locked = d.secrets_available ? "" : `<div style="margin-bottom:20px" data-org-unavailable>${orgBanner(
     "Credentials can't be saved right now",
     "The platform key is missing, so this Trov cannot store or use a credential for any organization. Connecting, rotating and pasting a token are off until whoever runs this Trov sets it. Parts can still be added and edited; nothing you set earlier is lost.",
@@ -707,7 +696,7 @@ export function hostingTab(org: MyOrg, ui: OrgUi): string {
   const accentIsConnect = next?.action.kind === "connect";
   const rowsOf = (list: HostingProviderDTO[]): string => list.map((p) => {
     const cs = connectionsFor(d, p);
-    return cs.length ? cs.map((c) => connectionRow(x, p, c, accentIsConnect)).join("") : scopedHintRow(x, p);
+    return cs.map((c) => connectionRow(x, p, c, accentIsConnect)).join("");
   }).join("");
   const connected = (list: HostingProviderDTO[]): number => list.filter((p) => d.connections.some((c) => c.provider === p.id && (c.status === "connected" || c.status === "error"))).length;
 
@@ -748,9 +737,9 @@ function matches(pattern: string | null, value: string): boolean {
   try { return new RegExp(pattern).test(value); } catch { return true; }
 }
 
-/** The key a draft will be saved under: fixed for a legacy provider, the stored one when editing, else what was typed. */
+/** The key a draft will be saved under: the stored one when editing, else what was typed. */
 export function draftKey(dr: PartDraft, p: HostingProviderDTO | null): string {
-  return dr.key ?? p?.legacy_part_key ?? dr.keyDraft.trim();
+  return dr.key ?? dr.keyDraft.trim();
 }
 
 /** What stops a draft from being saved, by field — the checks the server makes again. Empty = it can be saved. */
@@ -763,9 +752,9 @@ export function partDraftProblems(dr: PartDraft, d: HostingSetupDTO): Record<str
   const key = draftKey(dr, p);
   if (dr.key === null) {
     if (!PART_KEY_RE.test(key)) out.part = key ? "1 to 32 characters: a to z, 0 to 9, - or _." : "";
-    else if (env?.parts.some((x) => x.key === key)) out.part = p.legacy_part_key ? `${env.label} already has a ${p.label} part. Edit that one.` : `${env.label} already has a part with this key.`;
+    else if (env?.parts.some((x) => x.key === key)) out.part = `${env.label} already has a part with this key.`;
   }
-  if (!p.legacy_part_key && dr.label.trim().length > 60) out.label = "At most 60 characters.";
+  if (dr.label.trim().length > 60) out.label = "At most 60 characters.";
   for (const f of p.part_settings) {
     const v = (dr.settings[f.key] ?? "").trim();
     if (!v) { if (f.required) out[`settings.${f.key}`] = ""; continue; }
@@ -774,21 +763,17 @@ export function partDraftProblems(dr: PartDraft, d: HostingSetupDTO): Record<str
   return out;
 }
 
-/** The provider picker (dropdown.ts — never a native select). Legacy providers are offered only where their fixed key is free. */
+/** The provider picker (dropdown.ts — never a native select): every provider Trov can poll now. */
 export function partProviderDropdown(dr: PartDraft, d: HostingSetupDTO): DropdownProps {
   const env = d.environments.find((e) => e.key === dr.env);
   const current = dr.key === null ? null : env?.parts.find((p) => p.key === dr.key) ?? null;
-  const options = d.providers.filter((p) => p.status === "available").filter((p) => {
-    if (current?.legacy) return p.id === current.provider;            // a legacy part's host is its key
-    if (current) return p.legacy_part_key === null;                    // a stored part cannot become a legacy one
-    return true;
-  }).map((p) => ({
+  const options = d.providers.filter((p) => p.status === "available").map((p) => ({
     value: p.id, label: p.label,
     hint: `${p.roles.map((r) => ROLE_WORD[r]).join(" or ")} · ${[...(p.capabilities.deploys ? ["deploys"] : []), ...(p.capabilities.metrics.length ? ["usage"] : [])].join(" and ") || "nothing yet"}`,
   }));
   return {
     id: "org-hx-provider", act: "orgHxPartProvider", value: dr.provider ?? "", options: dr.provider ? options : [{ value: "", label: "Pick a host", shown: "Pick a host" }, ...options],
-    labelledBy: "org-hx-provider-l", fill: true, disabled: dr.saving || !!current?.legacy,
+    labelledBy: "org-hx-provider-l", fill: true, disabled: dr.saving,
   };
 }
 
@@ -819,13 +804,12 @@ export function partEditorModal(d: HostingSetupDTO, dr: PartDraft, h: HostingUi,
         <div style="${O_HELP}">${esc(ROLE_HINT[dr.role])}</div></div>`
     : `<div class="cnpy-org-field"><div style="${O_LABEL}">Role</div><div data-hx-role-fixed style="margin-top:7px;font-size:13.5px">${esc(ROLE_WORD[p.roles[0]])}</div><div style="${O_HELP}">${esc(ROLE_HINT[p.roles[0]])} ${esc(p.label)} serves only this role.</div></div>`;
 
-  const legacyKey = p?.legacy_part_key ?? null;
-  const fixedKey = !adding || !!legacyKey;
+  const fixedKey = !adding;
   const keyBlock = !p ? "" : `<div class="cnpy-org-grid">
       ${textField({ id: "org-hx-key", label: "Key", act: "orgHxPartKey", field: "orgHxPartKey", value: fixedKey ? draftKey(dr, p) : dr.keyDraft, max: 32, required: !fixedKey, disabled: fixedKey || dr.saving, placeholder: "web", enter: "orgHxPartSave", error: errOf("part"),
-        help: fixedKey ? (legacyKey ? `A ${esc(p.label)} part's key is always <code style="font-family:var(--code)">${esc(legacyKey)}</code>.` : "A part's key is permanent.") : "Its permanent id: lowercase letters, digits, - or _. For example <code style=\"font-family:var(--code)\">web</code> or <code style=\"font-family:var(--code)\">api</code>." })}
-      ${textField({ id: "org-hx-label", label: "Label", act: "orgHxPartLabel", field: "orgHxPartLabel", value: legacyKey ? (legacyKey === "frontend" ? "Frontend" : "Backend") : dr.label, max: 60, disabled: !!legacyKey || dr.saving, placeholder: "Web app", enter: "orgHxPartSave", error: errOf("label"),
-        help: legacyKey ? "Fixed for this host." : "The name on its dashboard card. Left empty, it is the key." })}
+        help: fixedKey ? "A part's key is permanent." : "Its permanent id: lowercase letters, digits, - or _. For example <code style=\"font-family:var(--code)\">web</code> or <code style=\"font-family:var(--code)\">api</code>." })}
+      ${textField({ id: "org-hx-label", label: "Label", act: "orgHxPartLabel", field: "orgHxPartLabel", value: dr.label, max: 60, disabled: dr.saving, placeholder: "Web app", enter: "orgHxPartSave", error: errOf("label"),
+        help: "The name on its dashboard card. Left empty, it is the key." })}
     </div>`;
 
   const settings = !p ? "" : p.part_settings.map((f) => {
@@ -847,7 +831,7 @@ export function partEditorModal(d: HostingSetupDTO, dr: PartDraft, h: HostingUi,
   const connected = !!conn && (conn.status === "connected" || conn.status === "error" || conn.legacy_fallback);
   const best = p ? bestMethod(p) : null;
   const hint = !p || connected ? "" : `<div data-hx-connect-hint style="${box("var(--fg-40)")};margin-top:16px;align-items:center;flex-wrap:wrap">
-      <div style="flex:1 1 240px;min-width:0"><strong style="font-weight:600;color:var(--fg)">${esc(p.label)} is not connected yet${p.credential_scope === "environment" && env ? ` for ${esc(env.label)}` : ""}.</strong> You can save the part now and connect after: it reads nothing until then.</div>
+      <div style="flex:1 1 240px;min-width:0"><strong style="font-weight:600;color:var(--fg)">${esc(p.label)} is not connected yet.</strong> You can save the part now and connect after: it reads nothing until then.</div>
       ${best ? quietBtn("Save and connect", "orgHxPartSave", { arg: "connect", disabled: !canSave || !d.secrets_available, busy: dr.saving, field: "orgHxPartSaveConnect", title: d.secrets_available ? undefined : WHY_LOCKED }) : ""}
     </div>`;
 
@@ -993,9 +977,7 @@ export function partConfirmCopy(d: HostingSetupDTO, ref: string): ConfirmCopy | 
   const p = providerOf(d, part.provider);
   return {
     title: `Remove ${env.label} › ${part.label}?`,
-    body: part.legacy
-      ? `${env.label}'s ${p?.label ?? part.provider} fields are cleared, here and under Environments, so the Repo dashboard stops reading it. Past figures stay until they age out.`
-      : "Its deploy history and poll state go with it; past figures stay until they age out.",
+    body: "Its deploy history and poll state go with it; past figures stay until they age out.",
     confirmLabel: "Remove part", busyLabel: "Removing…",
   };
 }

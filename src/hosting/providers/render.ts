@@ -519,11 +519,10 @@ export const render: HostingProvider = {
   id: "render",
   label: "Render",
   status: "available",
-  summary: "A Render web service, private service or background worker: deploys from Render's API, and HTTP requests, server errors, p95 latency and bandwidth (web) or CPU and memory (service) from Render's metrics API.",
+  summary: "A Render service. Trov reads its deploys, and its traffic or CPU and memory.",
   roles: ["web", "service"],
   apiHosts: ["api.render.com"],
   docsUrl: "https://api-docs.render.com/reference/introduction",
-  credentialScope: "org",
   connectionMethods: [
     {
       method: "token",

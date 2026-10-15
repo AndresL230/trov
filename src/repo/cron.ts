@@ -26,7 +26,7 @@ import { reconcileRepo, type ReconcileResult } from "./github";
 import { HEALTH_ON_DEMAND_BUCKET_MS, pingHealth, pollCloudflare, pollRailway, pollSaplingMetrics } from "./poll";
 import { getSnapshot } from "./store";
 import { expireDueHandoffs, pruneRepoCapture } from "../platform/sweeps";
-import { listStoredParts } from "../hosting/parts";
+import { listAllParts } from "../hosting/parts";
 import { type ProviderMap, hostingPollCost, pollPart, pollParts, providerPollCost } from "../hosting/poll";
 import { PROVIDERS } from "../hosting/registry";
 import { expireGifts } from "../plans/gifts";
@@ -289,7 +289,7 @@ export async function runPartJob(
 ): Promise<void> {
   try {
     const ctx = systemTenant(platform(env, "system"), orgId, "system");
-    const part = (await listStoredParts(ctx)).find((p) => p.env === envKey && p.key === partKey);
+    const part = (await listAllParts(ctx)).find((p) => p.env === envKey && p.key === partKey);
     if (!part) return;
     await pollPart(env, ctx, part, now, fetchImpl, providers);
   } catch (e) {
@@ -421,7 +421,7 @@ export async function runRepoRefresh(
   // can is the parts read itself — then there is no part to report on, and the key is left out (logged).
   let hosting: HostingPollOutcome[] | undefined;
   try {
-    const parts = await listStoredParts(ctx);
+    const parts = await listAllParts(ctx);
     if (parts.length) {
       hosting = refreshSubrequests(envs.length) + GITHUB_MINT_COST + hostingPollCost(parts, providers) > SUBREQUEST_CAP
         ? parts.map((p) => ({ env: p.env, part: p.key, provider: p.provider, status: "skipped" as const, written: 0, detail: BUDGET_SKIP }))

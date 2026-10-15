@@ -1,8 +1,8 @@
 -- 0056_hosting_providers — hosting providers behind one interface (issues #97–#102).
 --
--- Additive apart from section 1. Nothing here touches an existing row's meaning: an environment's
--- Cloudflare frontend and Railway backend stay in `org_environments`' own columns (the LEGACY parts,
--- src/hosting/parts.ts), so SaplingLearn's dashboard reads exactly what it read before. What is new:
+-- Every host is a provider behind ONE interface — Cloudflare and Railway exactly like the rest. Section 6
+-- moves an environment's Cloudflare frontend and Railway backend out of `org_environments`' own columns into
+-- parts, renames their metric history to the providers' names, and drops the columns. What changes:
 --
 --   1. org_secrets              REBUILT (create *_new, copy, drop, rename — SQLite cannot ALTER a CHECK, the
 --                               0033 pattern) only to admit the five hosting kinds in its `kind` CHECK.
@@ -17,6 +17,14 @@
 --                               a computed upsert, not first-write-wins.
 --   5. hosting_poll_state       the last poll of each part: outcome, the interval covered (no point inside
 --                               it = a true zero), the metrics the provider could not read and why.
+--   6. org_environments         its Cloudflare / Railway columns become parts (keys `frontend` / `backend`,
+--                               so their history keeps its part), `cf_*` / `rw_*` metric rows become
+--                               `hx_requests` / `hx_errors` / `hx_cpu` / `hx_mem_mb`, and the five columns
+--                               (`worker`, `worker_check`, `railway_env`, `railway_environment_id`,
+--                               `railway_service_id`) are dropped. A per-environment Railway PROJECT token
+--                               (`org_secrets` kind `railway`, scope = an environment key) cannot read through
+--                               the org-wide connection: it stays, unread, until the org is deleted; Railway
+--                               is connected again once, with a workspace token.
 --
 -- Normalised metric POINTS need no table: they are `repo_metrics` rows named `hx_<metric>` (env = the
 -- environment key, part = the part key), pruned with the other hourly usage metrics (src/repo/store.ts).
@@ -51,8 +59,7 @@ PRAGMA defer_foreign_keys = false;
 
 -- ── 2. parts ─────────────────────────────────────────────────────────────────
 -- `provider` is deliberately NOT CHECKed (like org_integration_config.kind): the registry in code
--- (src/hosting/registry.ts) is the vocabulary, so a provider is added without a rebuild. The two legacy
--- providers never have a row here — `putPart` refuses them (they are the environment's own columns).
+-- (src/hosting/registry.ts) is the vocabulary, so a provider is added without a rebuild.
 CREATE TABLE IF NOT EXISTS org_environment_parts (
   org_id      TEXT NOT NULL REFERENCES orgs(id),
   env_key     TEXT NOT NULL,
@@ -137,3 +144,24 @@ CREATE TABLE IF NOT EXISTS hosting_poll_state (
   unavailable  TEXT NOT NULL DEFAULT '[]',         -- JSON [{ metric, reason }]
   PRIMARY KEY (org_id, env, part)
 );
+
+-- ── 6. Cloudflare and Railway: from the environment's columns to parts ──────
+INSERT OR IGNORE INTO org_environment_parts (org_id, env_key, part_key, position, label, role, provider, settings, created_at, updated_at, updated_by)
+  SELECT org_id, key, 'frontend', 0, 'Frontend', 'web', 'cloudflare', json_object('worker', worker), created_at, updated_at, updated_by
+  FROM org_environments WHERE worker <> '';
+INSERT OR IGNORE INTO org_environment_parts (org_id, env_key, part_key, position, label, role, provider, settings, created_at, updated_at, updated_by)
+  SELECT org_id, key, 'backend', 1, 'Backend', 'service', 'railway',
+    json_object('environment_id', COALESCE(railway_environment_id, ''), 'service_id', COALESCE(railway_service_id, '')),
+    created_at, updated_at, updated_by
+  FROM org_environments WHERE COALESCE(railway_environment_id, '') <> '' OR COALESCE(railway_service_id, '') <> '';
+
+UPDATE OR IGNORE repo_metrics SET metric = 'hx_requests' WHERE metric = 'cf_requests';
+UPDATE OR IGNORE repo_metrics SET metric = 'hx_errors' WHERE metric = 'cf_errors';
+UPDATE OR IGNORE repo_metrics SET metric = 'hx_cpu' WHERE metric = 'rw_cpu';
+UPDATE OR IGNORE repo_metrics SET metric = 'hx_mem_mb' WHERE metric = 'rw_mem_mb';
+
+ALTER TABLE org_environments DROP COLUMN worker;
+ALTER TABLE org_environments DROP COLUMN worker_check;
+ALTER TABLE org_environments DROP COLUMN railway_env;
+ALTER TABLE org_environments DROP COLUMN railway_environment_id;
+ALTER TABLE org_environments DROP COLUMN railway_service_id;

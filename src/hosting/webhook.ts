@@ -26,7 +26,7 @@ import { platform, systemTenant } from "../data/context";
 import type { Env } from "../env";
 import { connectionsForAccount, connectionsForExternalId } from "../platform/jobs";
 import { endConnectionAsSystem } from "./connections";
-import { listStoredParts, type PartRow } from "./parts";
+import { listAllParts, type PartRow } from "./parts";
 import type { ProviderMap } from "./part-writes";
 import { pollPart } from "./poll";
 import { PROVIDERS } from "./registry";
@@ -109,7 +109,7 @@ export async function handleHostingWebhook(request: Request, env: Env, providerI
     if (idKey && names.size) {
       for (const row of await connectionsForAccount(p, provider.id, change.accountId)) {
         const ctx = systemTenant(p, row.org_id, "system");
-        for (const part of await listStoredParts(ctx)) {
+        for (const part of await listAllParts(ctx)) {
           if (part.provider === provider.id && names.has(part.settings[idKey] ?? "") && todo.length < HOSTING_WEBHOOK_MAX_REFRESH) todo.push({ ctx, part });
         }
       }

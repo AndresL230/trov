@@ -350,11 +350,10 @@ export const fly: HostingProvider = {
   id: "fly",
   label: "Fly.io",
   status: "available",
-  summary: "A Fly.io app: requests, server errors, p95 latency and bandwidth (web) or CPU and memory (service) from Fly's Prometheus metrics; its releases as deploys (version only — Fly reports no commit).",
+  summary: "A Fly.io app. Trov reads its releases, and its traffic or CPU and memory.",
   roles: ["web", "service"],
   apiHosts: [MACHINES_HOST, API_HOST],
   docsUrl: "https://fly.io/docs/monitoring/metrics/",
-  credentialScope: "org",
   connectionMethods: [
     {
       method: "token",

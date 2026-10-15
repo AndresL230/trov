@@ -88,7 +88,7 @@ interface PartContext {
 
 function partDTO(x: PartContext, part: PartRow): EnvironmentPartDTO {
   const provider = x.providers[part.provider];
-  const poll = part.legacy ? null : x.polls.find((r) => r.env === part.env && r.part === part.key && r.provider === part.provider) ?? null;
+  const poll = x.polls.find((r) => r.env === part.env && r.part === part.key && r.provider === part.provider) ?? null;
   return {
     env: part.env,
     key: part.key,
@@ -97,7 +97,6 @@ function partDTO(x: PartContext, part: PartRow): EnvironmentPartDTO {
     provider: part.provider,
     settings: { ...part.settings },
     position: part.position,
-    legacy: part.legacy,
     connection: partConnection(x.connections, provider, part),
     console_url: consoleUrlOf(provider, part, x.config(part.provider, credentialScopeOf(provider, part))),
     last_poll: poll ? pollDTO(poll) : null,

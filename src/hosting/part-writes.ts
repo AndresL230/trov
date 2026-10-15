@@ -2,30 +2,16 @@
 // (src/hosting/routes.ts). Admin+, every refusal a `SettingsError` with fixed text (it names the field and the
 // rule, never a submitted value).
 //
-// It is NOT in ./parts.ts on purpose: ./parts.ts is the READ side the Repo dashboard projection lists parts
-// through, and that projection is reachable from src/mcp.ts — which may import nothing under src/integrations/
-// and nothing that reaches src/data/secrets.ts (test/secrets.mcp.test.ts). A legacy part is written through
-// `putEnvironment` (src/integrations/settings.ts), so this module must never be imported from ./parts.ts.
-//
-//   legacy   provider `cloudflare` → key `frontend`, the environment's `worker` / `worker_check` columns;
-//            provider `railway` → key `backend`, its `railway_env` / `railway_environment_id` /
-//            `railway_service_id`. Written (and removed — the columns blanked) through `putEnvironment`, so its
-//            validation and its `environment.set` audit apply unchanged and SaplingLearn's jobs read the same
-//            columns they always did. A legacy provider is never stored under any other key (400), and a stored
-//            part never takes a legacy key while the environment has that legacy part (409).
-//   stored   every other provider: one `org_environment_parts` row, upserted, audited `part.set` /
-//            `part.delete` in `org_admin_audit` in the SAME batch. The audit names the provider and the KEYS of
-//            what changed — never a value. A part whose provider changes loses its `hosting_poll_state` row and
-//            the old provider's `hosting_deploys` rows in that batch: both describe what the OLD provider
-//            reported. Its normalised `hx_*` points stay — they are the part's traffic, whoever served it.
-import {
-  LEGACY_PART_KEY, MAX_PARTS_PER_ENVIRONMENT, PART_KEY_RE, isHostingProvider, isLegacyProvider, isPartRole,
-  type HostingProviderId, type LegacyProviderId, type PartRole,
-} from "@shared/hosting";
+// Every part is one `org_environment_parts` row, whoever hosts it: upserted, audited `part.set` / `part.delete`
+// in `org_admin_audit` in the SAME batch. The audit names the provider and the KEYS of what changed — never a
+// value. A part whose provider changes loses its `hosting_poll_state` row and the old provider's
+// `hosting_deploys` rows in that batch: both describe what the OLD provider reported. Its normalised `hx_*`
+// points stay — they are the part's traffic, whoever served it.
+import { MAX_PARTS_PER_ENVIRONMENT, PART_KEY_RE, isHostingProvider, isPartRole, type HostingProviderId, type PartRole } from "@shared/hosting";
 import type { OrgSettingsAuditAction } from "@shared/integrations";
 import { requireRole } from "../data/context";
 import { batch, nowIso, stmt, type Stmt, type TenantContext } from "../data/sql";
-import { SettingsError, listEnvironments, putEnvironment } from "../integrations/settings";
+import { SettingsError, listEnvironments } from "../integrations/settings";
 import { listAllParts, type PartRow } from "./parts";
 import { PROVIDERS, checkFields } from "./registry";
 import type { HostingProvider } from "./types";
@@ -36,8 +22,6 @@ export type ProviderMap = Readonly<Record<HostingProviderId, HostingProvider>>;
 const invalid = (field: string, message: string) => new SettingsError("invalid", 400, message, field);
 const PART_BODY_KEYS = ["provider", "role", "label", "settings"];
 export const PART_LABEL_MAX = 60;
-/** What a legacy part is called — the label ./parts.ts `legacyParts` gives it (it has no column to hold another). */
-const LEGACY_LABEL: Record<LegacyProviderId, string> = { cloudflare: "Frontend", railway: "Backend" };
 
 /** A new part's label when none is sent: the key, capitalised, separators as spaces (`api-gateway` → "Api gateway"). */
 export const defaultPartLabel = (key: string): string => {
@@ -109,17 +93,6 @@ export async function putPart(
   if ("field" in checked) throw invalid(checked.field, checked.message);
   const settings = checked.values;
 
-  if (isLegacyProvider(provider.id)) {
-    return await putLegacyPart(ctx, envKey, partKey, provider.id, label, existing, settings);
-  }
-
-  // A stored part may not take a legacy key the environment's own columns hold.
-  for (const legacy of ["cloudflare", "railway"] as const) {
-    if (partKey === LEGACY_PART_KEY[legacy] && existing?.legacy && existing.provider === legacy) {
-      throw new SettingsError("part_conflict", 409, `this environment's ${providers[legacy].label} part uses the key ${partKey} — remove it before giving the key to another provider`);
-    }
-  }
-
   const at = nowIso();
   const next = { label: label ?? existing?.label ?? defaultPartLabel(partKey), role, provider: provider.id, settings };
   const fields = (existing
@@ -148,51 +121,23 @@ export async function putPart(
   return { part: await partAfterWrite(ctx, envKey, partKey), created };
 }
 
-/** The legacy facade: a Cloudflare frontend / Railway backend IS the environment's columns. */
-async function putLegacyPart(
-  ctx: TenantContext, envKey: string, partKey: string, provider: LegacyProviderId, label: string | null,
-  existing: PartRow | null, settings: Record<string, string>,
-): Promise<PartWriteResult> {
-  const fixedKey = LEGACY_PART_KEY[provider];
-  if (partKey !== fixedKey) throw invalid("part", `a ${provider === "cloudflare" ? "Cloudflare" : "Railway"} part is the environment's ${fixedKey}: its key is ${fixedKey}`);
-  if (existing && !existing.legacy) {
-    throw new SettingsError("part_conflict", 409, `this environment has another part called ${fixedKey} — remove it before giving the key to ${provider === "cloudflare" ? "Cloudflare" : "Railway"}`);
-  }
-  if (label !== null && label.toLowerCase() !== LEGACY_LABEL[provider].toLowerCase()) {
-    throw invalid("label", `the ${LEGACY_LABEL[provider].toLowerCase()}'s label is fixed (${LEGACY_LABEL[provider]})`);
-  }
-  const columns: Record<string, string | null> = provider === "cloudflare"
-    ? { worker: settings.worker ?? "", worker_check: settings.worker_check ?? "" }
-    : { railway_env: settings.railway_env ?? "", railway_environment_id: settings.railway_environment_id ?? null, railway_service_id: settings.railway_service_id ?? null };
-  await putEnvironment(ctx, envKey, columns);
-  return { part: await partAfterWrite(ctx, envKey, partKey), created: existing === null };
-}
-
 async function partAfterWrite(ctx: TenantContext, envKey: string, partKey: string): Promise<PartRow> {
   const part = (await listAllParts(ctx)).find((p) => p.env === envKey && p.key === partKey);
   if (!part) throw new SettingsError("not_found", 404, "no such part"); // removed underneath us
   return part;
 }
 
-export interface PartDeleteResult { env: string; part: string; provider: HostingProviderId; legacy: boolean }
+export interface PartDeleteResult { env: string; part: string; provider: HostingProviderId }
 
 /**
- * Remove one part (admin+). A stored part: its row, its last-poll row and its deploy history, audited
- * `part.delete`, one batch. A legacy part: its environment columns blanked through `putEnvironment` (Cloudflare:
- * `worker` / `worker_check` → ""; Railway: `railway_env` → "", the two ids → null) — the environment itself and
- * its credentials stay. No such part → 404.
+ * Remove one part (admin+): its row, its last-poll row and its deploy history, audited `part.delete`, one
+ * batch. The environment itself and the provider's credential stay. No such part → 404.
  */
 export async function deletePart(ctx: TenantContext, envKey: string, partKey: string): Promise<PartDeleteResult> {
   requireRole(ctx, "admin");
   if (!(await listEnvironments(ctx)).some((e) => e.key === envKey)) throw new SettingsError("not_found", 404, "no such environment");
   const part = (await listAllParts(ctx)).find((p) => p.env === envKey && p.key === partKey);
   if (!part) throw new SettingsError("not_found", 404, "no such part");
-  if (part.legacy) {
-    await putEnvironment(ctx, envKey, part.provider === "cloudflare"
-      ? { worker: "", worker_check: "" }
-      : { railway_env: "", railway_environment_id: null, railway_service_id: null });
-    return { env: envKey, part: partKey, provider: part.provider, legacy: true };
-  }
   const at = nowIso();
   await batch(ctx, [
     stmt(ctx, `DELETE FROM hosting_poll_state WHERE org_id = ? AND env = ? AND part = ?`, ctx.orgId, envKey, partKey),
@@ -200,5 +145,5 @@ export async function deletePart(ctx: TenantContext, envKey: string, partKey: st
     stmt(ctx, `DELETE FROM org_environment_parts WHERE org_id = ? AND env_key = ? AND part_key = ?`, ctx.orgId, envKey, partKey),
     auditStmt(ctx, "part.delete", `${envKey}/${partKey}`, { provider: part.provider }, at),
   ]);
-  return { env: envKey, part: partKey, provider: part.provider, legacy: false };
+  return { env: envKey, part: partKey, provider: part.provider };
 }

@@ -22,11 +22,10 @@ export const aws: HostingProvider = {
   id: "aws",
   label: "AWS",
   status: "later",
-  summary: "ECS, Lambda, App Runner, an ALB or API Gateway: CloudWatch metrics for one named resource through a read-only role you let Trov assume. Coming later.",
+  summary: "An AWS service. Trov will read its CloudWatch metrics. Coming later.",
   roles: ["web", "service"],
   apiHosts: ["sts.amazonaws.com"],
   docsUrl: "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-user_externalid.html",
-  credentialScope: "org",
   connectionMethods: [
     {
       method: "assume_role",
