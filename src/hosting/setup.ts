@@ -1,13 +1,11 @@
 // Org settings › Hosting, read in ONE request (`GET /api/o/:slug/hosting`, admin+): the provider catalogue,
-// every environment with its parts (legacy and stored, each with its connection state, a console link and
-// its last poll), the org's connections, and a setup CHECKLIST generated from what the parts actually use —
+// every environment with its parts (each with its connection state, a console link and its last poll), the org's connections, and a setup CHECKLIST generated from what the parts actually use —
 // so an org on Vercel alone is never asked to connect Railway.
 //
 // Reads only: the parts (./parts.ts), the connections (./connections.ts), what the GitHub capture already shows of a
 // host (./detect.ts — a suggestion, from stored rows alone), the last-poll rows the hosting poll
-// job writes (`hosting_poll_state` — a legacy part has none: the usage job keeps no per-part state), and the
-// org's non-secret provider config (Cloudflare's account id falls back to SaplingLearn's legacy var, as the
-// poller's does). Nothing here reveals a credential.
+// job writes (`hosting_poll_state`), and the org's non-secret provider config (Cloudflare's account id falls
+// back to SaplingLearn's legacy Worker secret — `resolveIntegrationConfig`). Nothing here reveals a credential.
 import {
   HOSTING_INTEGRATION_KIND, HOSTING_PROVIDERS, isHostingMetric,
   type ConnectionStatus, type EnvironmentPartDTO, type HostingChecklistItem, type HostingConnectionDTO, type HostingEnvironmentDTO,
@@ -54,8 +52,9 @@ const pollDTO = (r: PollRow): PartPollStateDTO => ({
   unavailable: unavailableOf(r.unavailable),
 });
 
-/** The org's non-secret config per (provider, scope), as the pollers see it: Cloudflare's account id falls back
- *  to SaplingLearn's legacy Worker var (`resolveCloudflareAccountId`), exactly as the usage job's does. */
+/** The org's non-secret config per (provider, scope), as a poller should see it: Cloudflare's account id falls
+ *  back to SaplingLearn's legacy Worker secret (`resolveCloudflareAccountId` — src/data/secrets.ts
+ *  `resolveIntegrationConfig`, the same bridge `resolveCredential` is for its token). */
 async function effectiveConfigs(ctx: TenantContext, env: Env, s: ConnectionState): Promise<(provider: HostingProviderId, scope: string) => Record<string, string>> {
   const cfAccount = await resolveCloudflareAccountId(ctx, env);
   return (provider, scope) => {

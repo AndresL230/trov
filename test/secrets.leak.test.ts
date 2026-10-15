@@ -157,15 +157,15 @@ describe("never in a response", () => {
       ["GET", "/environments"],
       ["POST", "/integrations/github_token/test"],
       ["POST", "/integrations/cloudflare_analytics/test"],
-      ["POST", "/integrations/railway/staging/test"],
+      ["POST", "/integrations/railway/test"],
       ["POST", "/integrations/metrics_endpoint/production/test"],
       ["POST", `/integrations/github_webhook/${HOOK_A}/test`],
       ["PUT", "/integrations/github_token", await fresh("v2:conflict")],                 // 409
-      ["PUT", "/integrations/railway/staging", await fresh("v2:conflict-scoped")],       // 409
+      ["PUT", "/integrations/metrics_endpoint/staging", await fresh("v2:conflict-scoped")], // 409
       ["POST", "/integrations/github_token/rotate", await fresh("v2:github_token:")],
-      ["POST", "/integrations/railway/staging/rotate", await fresh("v2:railway:staging")],
+      ["POST", "/integrations/metrics_endpoint/staging/rotate", await fresh("v2:metrics_endpoint:staging")],
       ["PUT", "/integrations/cloudflare_analytics/config", { config: { account_id: ACCOUNT } }],
-      ["PUT", "/integrations/railway/staging/config", { config: { x: await canary("v2:config-value") } }], // 400
+      ["PUT", "/integrations/metrics_endpoint/staging/config", { config: { x: await canary("v2:config-value") } }], // 400
       ["POST", "/integrations/rotate-key"],
       ["GET", "/integrations"],
       ["GET", "/integrations/audit?limit=200"],
@@ -174,7 +174,7 @@ describe("never in a response", () => {
       ["PUT", "/environments/preview", { branch: "preview" }],
       ["POST", "/repos", { repo_full_name: "acme/widgets" }],
       ["DELETE", "/integrations/github_token"],
-      ["DELETE", "/integrations/railway/production"],
+      ["DELETE", "/integrations/metrics_endpoint/production"],
       ["DELETE", "/environments/staging"],
       ["DELETE", `/repos/${HOOK_A}`],                                                     // 409: the primary
       ["GET", "/integrations"],
@@ -215,9 +215,9 @@ describe("never in a response", () => {
       ["PUT", "/integrations/cloudflare_analytics", { secret: "a-perfectly-fine-token", config: { account_id: v } }],
       ["PUT", `/integrations/railway/${v}`, { secret: v }],
       ["PUT", `/integrations/${v}`, { secret: v }],
-      ["PUT", `/integrations/railway/staging/${v}`, { secret: v }],
-      ["POST", `/integrations/railway/${v}/test`, undefined],
-      ["DELETE", `/integrations/railway/${v}`, undefined],
+      ["PUT", `/integrations/metrics_endpoint/staging/${v}`, { secret: v }],
+      ["POST", `/integrations/metrics_endpoint/${v}/test`, undefined],
+      ["DELETE", `/integrations/metrics_endpoint/${v}`, undefined],
       ["PUT", "/environments/staging", { api_url: `http://${v}.example.com` }],
       ["PUT", "/environments/staging", { api_url: `https://api.example.com/?key=${v}` }],
       ["PUT", "/environments/staging", { frontend_url: `https://u:${v}@example.com` }],
@@ -252,7 +252,7 @@ describe("never in a log line or in D1", () => {
       await expectCleanResponse(res, "rotate");
     }
     await expectCleanD1("rotate");
-    expect(await rotateOrgKey(await tenantCtx("AndresL230"))).toMatchObject({ rotated: true, secrets: 7 });
+    expect(await rotateOrgKey(await tenantCtx("AndresL230"))).toMatchObject({ rotated: true, secrets: SLOTS.length });
     await expectCleanD1("rotate-key");
     // The secrets really are there, and really are the canaries — the scans above were not vacuous.
     for (const [kind, scope] of SLOTS) {
@@ -260,7 +260,7 @@ describe("never in a log line or in D1", () => {
     }
     for (const [kind, scope] of SLOTS) expect((await call(me, slotPath(kind, scope), { method: "DELETE" })).status).toBe(200);
     await expectCleanD1("delete");
-    expect((await env.DB.prepare(`SELECT COUNT(*) AS n FROM org_audit`).first<{ n: number }>())!.n).toBe(7 + 1 + 7 + 1 + 7); // 7 sets + cloudflare's config, 7 rotations, the key, 7 deletes
+    expect((await env.DB.prepare(`SELECT COUNT(*) AS n FROM org_audit`).first<{ n: number }>())!.n).toBe(6 + 1 + 6 + 1 + 6); // 6 sets + cloudflare's config, 6 rotations, the key, 6 deletes
   });
 
   for (const [name, echo] of Object.entries(ECHOES)) {
@@ -281,8 +281,10 @@ describe("never in a log line or in D1", () => {
           expect((body.integration.last_error ?? "").length).toBeLessThanOrEqual(300);
         }
       }
-      expect(upstream.calls).toBe(6); // one outbound request per kind and scope — a redirect is not followed
-      expect(upstream.credentials.map((c) => leak(c) !== null)).toEqual(Array(6).fill(true)); // …and each one really carried its canary
+      // One outbound request per kind and scope — a redirect is not followed. Cloudflare and Railway are the
+      // hosting providers' own probes (src/hosting/probe.ts), each ONE request through `hostFetch`.
+      expect(upstream.calls).toBe(5);
+      expect(upstream.credentials.map((c) => leak(c) !== null)).toEqual(Array(5).fill(true)); // …and each one really carried its canary
       expect(logged.length).toBeGreaterThan(0); // the failures WERE logged — and afterEach finds them clean
       await expectCleanD1(`Test connection (${name})`);
     });
@@ -293,10 +295,10 @@ describe("never in a log line or in D1", () => {
     const me = await ownerCookie();
     await setEveryCanary(me);
     const ctx = systemCtx();
-    const secret = (await getSecret(ctx, "railway", "staging"))!;
+    const secret = (await getSecret(ctx, "metrics_endpoint", "staging"))!;
     const v = secret.reveal();
-    await recordSecretOutcome(ctx, "railway", "staging", { ok: false, revealed: secret, message: `HTTP 401 Project-Access-Token: ${v} / ${encodeURIComponent(v)} / ${"z".repeat(280)}${v}` });
-    const stored = await env.DB.prepare(`SELECT last_error FROM org_secrets WHERE kind = 'railway' AND scope = 'staging'`).first<{ last_error: string }>();
+    await recordSecretOutcome(ctx, "metrics_endpoint", "staging", { ok: false, revealed: secret, message: `HTTP 401 Authorization: Bearer ${v} / ${encodeURIComponent(v)} / ${"z".repeat(280)}${v}` });
+    const stored = await env.DB.prepare(`SELECT last_error FROM org_secrets WHERE kind = 'metrics_endpoint' AND scope = 'staging'`).first<{ last_error: string }>();
     expect(stored!.last_error).toContain("[redacted]");
     expect(stored!.last_error.length).toBe(300);
     await expectCleanD1("recordSecretOutcome");

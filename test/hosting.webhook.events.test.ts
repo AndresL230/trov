@@ -104,8 +104,8 @@ describe("POST /webhook/hosting/:provider — a changed project", () => {
     await seedParts(f);
     // Org B is connected to another account, with a part on a project of the same name.
     await seedInstall(ORG_B, "boss", "icfg_b", "team_other");
-    await run(env.DB, `INSERT INTO org_environments (org_id, key, label, branch, position, frontend_url, api_url, health_path, railway_env, worker, worker_check, created_at, updated_at, updated_by)
-      VALUES (?, 'staging', 'Staging', 'main', 0, '', '', '/', '', '', '', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z', 'boss')`, ORG_B);
+    await run(env.DB, `INSERT INTO org_environments (org_id, key, label, branch, position, frontend_url, api_url, health_path, created_at, updated_at, updated_by)
+      VALUES (?, 'staging', 'Staging', 'main', 0, '', '', '/', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z', 'boss')`, ORG_B);
     await run(env.DB, `INSERT INTO org_environment_parts (org_id, env_key, part_key, position, label, role, provider, settings, created_at, updated_at, updated_by)
       VALUES (?, 'staging', 'web', 0, 'Web', 'web', 'vercel', '{"project":"site"}', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z', 'boss')`, ORG_B);
 

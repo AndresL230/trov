@@ -35,8 +35,6 @@ declare global {
       REPO_ENVIRONMENTS?: string;
       CF_ANALYTICS_TOKEN?: string;
       CF_ANALYTICS_ACCOUNT_ID?: string;
-      RAILWAY_TOKEN_STAGING?: string;
-      RAILWAY_TOKEN_PRODUCTION?: string;
       SAPLING_METRICS_TOKEN?: string;
       TROV_KEK?: string;
       TROV_KEK_PREVIOUS?: string;

@@ -3,7 +3,7 @@
 // settings pass its provider's own checks, and every reference (a part's provider, a connection's users, a
 // checklist action) points at something the payload holds.
 import { describe, expect, it } from "vitest";
-import { HOSTING_METRICS, LEGACY_PART_KEY, PART_KEY_RE, isLegacyProvider } from "@shared/hosting";
+import { HOSTING_METRICS, PART_KEY_RE } from "@shared/hosting";
 import { allProviders, checkFields, providerDTO, providerOf } from "../src/hosting/registry";
 import { HOSTING_SAMPLES, HOSTING_SAMPLE_PROVIDERS } from "../web/src/hosting-sample";
 
@@ -31,8 +31,6 @@ describe("the Hosting sample data", () => {
           const p = providerOf(part.provider);
           expect(p.roles).toContain(part.role);
           expect(checkFields(p.partSettings, part.settings, "settings")).toEqual({ values: part.settings });
-          expect(part.legacy).toBe(isLegacyProvider(part.provider));
-          if (isLegacyProvider(part.provider)) expect(part.key).toBe(LEGACY_PART_KEY[part.provider]);
           for (const u of part.last_poll?.unavailable ?? []) expect(HOSTING_METRICS[u.metric].role, `${part.key} ${u.metric}`).toBe(part.role);
         }
         expect(new Set(env.parts.map((p) => p.key)).size).toBe(env.parts.length);

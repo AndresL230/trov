@@ -65,13 +65,13 @@ async function defaultExchange(a: ExchangeArgs): Promise<InstallGrant> {
  *           `{ type: "removed", id }`); org config `team_id` (optional); part setting `project` (required).
  *   render  "Fakender" — a token-only host serving web AND service, with a REQUIRED org config field
  *           (`owner_id`) and a required part setting `service_id`.
- * Cloudflare, Railway and AWS are the registry's own (they are stable: legacy, and `later`).
+ * Cloudflare, Railway and AWS are the registry's own.
  */
 export function fakeProviders(o: FakeOpts = {}): Fakes {
   const calls: Fakes["calls"] = { authorize: [], exchange: [], revoke: [] };
   const fakecel: HostingProvider = {
     id: "vercel", label: "Fakecel", status: "available", summary: "A fake web host.", roles: ["web"], apiHosts: [FAKE_HOST],
-    docsUrl: "https://docs.fake-host.test", credentialScope: "org",
+    docsUrl: "https://docs.fake-host.test",
     connectionMethods: [
       { method: "install", label: "Connect with Fakecel", howTo: "Install it.", grants: ["Projects: read"], requires: Object.keys(FAKE_VARS) },
       { method: "token", label: "Paste a token", howTo: "Paste it.", grants: ["Everything"] },
@@ -106,7 +106,7 @@ export function fakeProviders(o: FakeOpts = {}): Fakes {
   };
   const fakender: HostingProvider = {
     id: "render", label: "Fakender", status: "available", summary: "A fake service host.", roles: ["service", "web"], apiHosts: [FAKE_HOST],
-    docsUrl: "https://docs.fake-host.test", credentialScope: "org",
+    docsUrl: "https://docs.fake-host.test",
     connectionMethods: [{ method: "token", label: "Paste an API key", howTo: "Paste it.", grants: ["Everything"] }],
     orgConfigFields: [{ key: "owner_id", label: "Owner ID", description: "The workspace's owner id.", required: true, pattern: /^own-[a-z0-9]+$/ }],
     partSettings: [{ key: "service_id", label: "Service ID", description: "The service's id.", required: true, pattern: /^srv-[a-z0-9]+$/ }],

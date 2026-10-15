@@ -5,7 +5,7 @@ import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
 import {
   Secret, SecretAccessError, SecretsUnavailableError,
-  resolveCloudflareAccountId, resolveCredential, setIntegrationConfig, setSecret,
+  resolveCloudflareAccountId, resolveCredential, resolveIntegrationConfig, setIntegrationConfig, setSecret,
 } from "../src/data/secrets";
 import { HOOK_A, seedOrgSettings } from "./helpers/integrations";
 import { ORG_A, ORG_B, systemCtx, tenantCtx } from "./helpers/tenant";
@@ -16,12 +16,13 @@ const LEGACY = {
   GITHUB_SERVICE_TOKEN: "legacy-github-service-token",
   CF_ANALYTICS_TOKEN: "legacy-cloudflare-token",
   CF_ANALYTICS_ACCOUNT_ID: "legacy-account-id",
+  // Railway's old per-environment PROJECT tokens: still set on the Worker, never an answer — Railway's connection
+  // is ONE org-wide workspace token, which a project token cannot be.
   RAILWAY_TOKEN_STAGING: "legacy-railway-staging",
   RAILWAY_TOKEN_PRODUCTION: "legacy-railway-production",
-  RAILWAY_TOKEN_PRE_PROD: "legacy-railway-pre-prod",
   SAPLING_METRICS_TOKEN: "legacy-metrics-token",
   GITHUB_WEBHOOK_SECRET: "legacy-webhook-secret",
-} as Env;
+} as unknown as Env;
 const STORED = "stored-" + "0123456789abcdef".repeat(3);
 const reveal = async (p: Promise<Secret | null>) => (await p)?.reveal() ?? null;
 
@@ -31,18 +32,19 @@ describe("resolveCredential", () => {
     const ctx = systemCtx(ORG_A);
     expect(await reveal(resolveCredential(ctx, LEGACY, "github_token", ""))).toBe("legacy-github-service-token");
     expect(await reveal(resolveCredential(ctx, LEGACY, "cloudflare_analytics", ""))).toBe("legacy-cloudflare-token");
-    expect(await reveal(resolveCredential(ctx, LEGACY, "railway", "staging"))).toBe("legacy-railway-staging");
-    expect(await reveal(resolveCredential(ctx, LEGACY, "railway", "production"))).toBe("legacy-railway-production");
-    expect(await reveal(resolveCredential(ctx, LEGACY, "railway", "pre-prod"))).toBe("legacy-railway-pre-prod"); // RAILWAY_TOKEN_<KEY>, non-alphanumerics → _
-    expect(await reveal(resolveCredential(ctx, LEGACY, "railway", "preview"))).toBeNull();
+    // Railway has no fallback, at any scope.
+    for (const scope of ["", "staging", "production"]) expect(await reveal(resolveCredential(ctx, LEGACY, "railway", scope))).toBeNull();
     expect(await reveal(resolveCredential(ctx, LEGACY, "metrics_endpoint", "staging"))).toBe("legacy-metrics-token");
     expect(await reveal(resolveCredential(ctx, LEGACY, "metrics_endpoint", "production"))).toBe("legacy-metrics-token"); // ONE token for every environment
     expect(await reveal(resolveCredential(ctx, LEGACY, "github_webhook", HOOK_A))).toBe("legacy-webhook-secret");
     expect(await resolveCredential(ctx, LEGACY, "github_token", "")).toBeInstanceOf(Secret);
     expect(await resolveCloudflareAccountId(ctx, LEGACY)).toBe("legacy-account-id");
+    // The account id is the Cloudflare provider's org config, so it reaches a poller through the generic resolver too.
+    expect(await resolveIntegrationConfig(ctx, LEGACY, "cloudflare_analytics", "")).toEqual({ account_id: "legacy-account-id" });
+    expect(await resolveIntegrationConfig(ctx, LEGACY, "vercel", "")).toEqual({});
     // A scope the kind does not take is never answered.
     expect(await reveal(resolveCredential(ctx, LEGACY, "github_token", "staging"))).toBeNull();
-    expect(await reveal(resolveCredential(ctx, LEGACY, "railway", ""))).toBeNull();
+    expect(await reveal(resolveCredential(ctx, LEGACY, "cloudflare_analytics", "staging"))).toBeNull();
     expect(await reveal(resolveCredential(ctx, LEGACY, "metrics_endpoint", ""))).toBeNull();
   });
 
@@ -60,23 +62,27 @@ describe("resolveCredential", () => {
     await seedOrgSettings();
     const owner = await tenantCtx("AndresL230");
     await setSecret(owner, "github_token", "", STORED);
-    await setSecret(owner, "railway", "staging", STORED + "-rw");
+    await setSecret(owner, "cloudflare_analytics", "", STORED + "-cf");
+    await setSecret(owner, "railway", "", STORED + "-rw");
     await setIntegrationConfig(owner, "cloudflare_analytics", "", { account_id: "0123456789abcdef0123456789abcdef" });
     const ctx = systemCtx(ORG_A);
     expect(await reveal(resolveCredential(ctx, LEGACY, "github_token", ""))).toBe(STORED);
-    expect(await reveal(resolveCredential(ctx, LEGACY, "railway", "staging"))).toBe(STORED + "-rw");
-    expect(await reveal(resolveCredential(ctx, LEGACY, "railway", "production"))).toBe("legacy-railway-production");
+    expect(await reveal(resolveCredential(ctx, LEGACY, "cloudflare_analytics", ""))).toBe(STORED + "-cf");
+    expect(await reveal(resolveCredential(ctx, LEGACY, "railway", ""))).toBe(STORED + "-rw");
+    expect(await reveal(resolveCredential(ctx, LEGACY, "metrics_endpoint", "staging"))).toBe("legacy-metrics-token");
     expect(await resolveCloudflareAccountId(ctx, LEGACY)).toBe("0123456789abcdef0123456789abcdef");
+    expect(await resolveIntegrationConfig(ctx, LEGACY, "cloudflare_analytics", "")).toEqual({ account_id: "0123456789abcdef0123456789abcdef" });
     expect(await reveal(resolveCredential(owner, LEGACY, "github_token", ""))).toBe(STORED); // an owner session too
   });
 
   it("no other org ever sees a Worker secret — even with a legacy-flagged repo row of its own", async () => {
     await seedOrgSettings(ORG_B, "hook_of_org_b"); // legacy_hook = 1, in the wrong org
     const ctx = systemCtx(ORG_B);
-    for (const [kind, scope] of [["github_token", ""], ["cloudflare_analytics", ""], ["railway", "staging"], ["metrics_endpoint", "staging"], ["github_webhook", "hook_of_org_b"], ["github_webhook", HOOK_A]] as const) {
+    for (const [kind, scope] of [["github_token", ""], ["cloudflare_analytics", ""], ["railway", ""], ["metrics_endpoint", "staging"], ["github_webhook", "hook_of_org_b"], ["github_webhook", HOOK_A]] as const) {
       expect(await resolveCredential(ctx, LEGACY, kind, scope)).toBeNull();
     }
     expect(await resolveCloudflareAccountId(ctx, LEGACY)).toBeNull();
+    expect(await resolveIntegrationConfig(ctx, LEGACY, "cloudflare_analytics", "")).toEqual({});
     // Its own stored secret is what it gets.
     await setSecret(await tenantCtx("bob-b", "owner", { orgId: ORG_B }), "github_token", "", STORED);
     expect(await reveal(resolveCredential(ctx, LEGACY, "github_token", ""))).toBe(STORED);
@@ -87,7 +93,7 @@ describe("resolveCredential", () => {
     await seedOrgSettings();
     const ctx = systemCtx(ORG_A);
     const blank = { ...e, GITHUB_WEBHOOK_SECRET: "" } as Env; // the suite's pool blanks the rest
-    for (const [kind, scope] of [["github_token", ""], ["cloudflare_analytics", ""], ["railway", "staging"], ["metrics_endpoint", "staging"], ["github_webhook", HOOK_A]] as const) {
+    for (const [kind, scope] of [["github_token", ""], ["cloudflare_analytics", ""], ["railway", ""], ["metrics_endpoint", "staging"], ["github_webhook", HOOK_A]] as const) {
       expect(await resolveCredential(ctx, blank, kind, scope)).toBeNull();
     }
     expect(await resolveCloudflareAccountId(ctx, blank)).toBeNull();
@@ -108,6 +114,6 @@ describe("resolveCredential", () => {
     expect(await reveal(resolveCredential(ctx, noKek, "github_token", ""))).toBe("legacy-github-service-token");
     await setSecret(await tenantCtx("AndresL230"), "github_token", "", STORED);
     await expect(resolveCredential(ctx, noKek, "github_token", "")).rejects.toBeInstanceOf(SecretsUnavailableError);
-    expect(await reveal(resolveCredential(ctx, noKek, "railway", "staging"))).toBe("legacy-railway-staging"); // other kinds are unaffected
+    expect(await reveal(resolveCredential(ctx, noKek, "cloudflare_analytics", ""))).toBe("legacy-cloudflare-token"); // other kinds are unaffected
   });
 });

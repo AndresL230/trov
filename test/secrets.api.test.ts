@@ -35,17 +35,32 @@ describe("GET /integrations", () => {
       for (const forbidden of ["ciphertext", "iv", "key_version", "secret", "wrapped_key"]) expect(i).not.toHaveProperty(forbidden);
     }
     // The suite's GITHUB_WEBHOOK_SECRET still answers for the repo the legacy /webhook/github routes to.
-    expect(body.integrations.map((i) => i.legacy_fallback)).toEqual([false, true, false, false, false, false, false]);
-    const [gh, hook, cf, rw] = body.integrations;
+    expect(body.integrations.map((i) => i.legacy_fallback)).toEqual([false, true, false, false, false, false]);
+    const [gh, hook, cf, rw, metrics] = body.integrations;
     expect(gh).toMatchObject({ scope_type: "org", scope_label: null, webhook_url: null });
     expect(hook).toMatchObject({ scope_type: "repo", scope_label: "SaplingLearn/sapling", webhook_url: `https://trov.test/webhook/github/${HOOK_A}` });
+    // Cloudflare and Railway are hosting providers like any other: ONE org-wide credential each, described by the provider.
+    expect(cf).toMatchObject({ scope_type: "org", scope_label: null });
     expect(cf.config_fields.map((f) => [f.key, f.required])).toEqual([["account_id", true]]);
-    expect(rw).toMatchObject({ scope_type: "environment", scope_label: "staging" });
+    expect(rw).toMatchObject({ scope_type: "org", scope_label: null });
+    expect(metrics).toMatchObject({ scope_type: "environment", scope_label: "staging" });
   });
 
-  it("an org with no repo and no environment expects only the two org-wide integrations", async () => {
+  it("an org with no repo, no environment and no part expects only the GitHub token", async () => {
     const body = await json<IntegrationsListDTO>(await call(await ownerCookie(), "/integrations"));
-    expect(body.integrations.map((i) => i.kind)).toEqual(["github_token", "cloudflare_analytics"]);
+    expect(body.integrations.map((i) => i.kind)).toEqual(["github_token"]);
+  });
+
+  it("a per-environment Railway project token stored before 0056 is neither listed nor addressable", async () => {
+    await seedOrgSettings();
+    const me = await ownerCookie();
+    await call(me, "/integrations/metrics_endpoint/staging", { method: "PUT", body: { secret: TOKEN } });
+    // What 0056 left behind: a `railway` row scoped to an environment key (nothing reads it).
+    await env.DB.prepare(`INSERT INTO org_secrets (org_id, kind, scope, ciphertext, iv, key_version, hint_last4, created_by, created_at)
+      SELECT org_id, 'railway', 'staging', ciphertext, iv, key_version, hint_last4, created_by, created_at FROM org_secrets WHERE kind = 'metrics_endpoint'`).run();
+    const body = await json<IntegrationsListDTO>(await call(me, "/integrations"));
+    expect(body.integrations.map((i) => [i.kind, i.scope])).toEqual(SLOTS);
+    expect((await call(me, "/integrations/railway/staging", { method: "PUT", body: { secret: TOKEN } })).status).toBe(404);
   });
 });
 
@@ -91,24 +106,27 @@ describe("set / rotate / delete", () => {
   it("scoped kinds need a scope the org has; an environment may even be called `config` or `rotate`", async () => {
     await seedOrgSettings();
     const me = await ownerCookie();
-    expect((await call(me, "/integrations/railway", { method: "PUT", body: { secret: TOKEN } })).status).toBe(404);
-    const unknown = await call(me, "/integrations/railway/nope", { method: "PUT", body: { secret: TOKEN } });
+    expect((await call(me, "/integrations/metrics_endpoint", { method: "PUT", body: { secret: TOKEN } })).status).toBe(404);
+    const unknown = await call(me, "/integrations/metrics_endpoint/nope", { method: "PUT", body: { secret: TOKEN } });
     expect(unknown.status).toBe(404);
     expect(await json(unknown)).toMatchObject({ error: "unknown_scope" });
     expect((await call(me, "/integrations/github_webhook/hook_of_another_org", { method: "PUT", body: { secret: TOKEN } })).status).toBe(404);
     expect((await call(me, "/integrations/not_a_kind", { method: "PUT", body: { secret: TOKEN } })).status).toBe(404);
     expect((await call(me, "/integrations/github_token/staging", { method: "PUT", body: { secret: TOKEN } })).status).toBe(404);
+    // Railway's credential is org-wide now: it takes no environment.
+    expect((await call(me, "/integrations/railway/staging", { method: "PUT", body: { secret: TOKEN } })).status).toBe(404);
     expect(await count("org_secrets")).toBe(0);
 
-    expect(await one(await call(me, "/integrations/railway/staging", { method: "PUT", body: { secret: TOKEN } }))).toMatchObject({ kind: "railway", scope: "staging", configured: true });
+    expect(await one(await call(me, "/integrations/metrics_endpoint/staging", { method: "PUT", body: { secret: TOKEN } }))).toMatchObject({ kind: "metrics_endpoint", scope: "staging", configured: true });
+    expect(await one(await call(me, "/integrations/railway", { method: "PUT", body: { secret: TOKEN } }))).toMatchObject({ kind: "railway", scope: "", configured: true });
     expect(await one(await call(me, `/integrations/github_webhook/${HOOK_A}`, { method: "PUT", body: { secret: OTHER } }))).toMatchObject({ kind: "github_webhook", scope: HOOK_A, configured: true });
 
     for (const key of ["config", "rotate"]) {
       expect((await call(me, `/environments/${key}`, { method: "PUT", body: { branch: "main" } })).status).toBe(201);
-      expect(await one(await call(me, `/integrations/railway/${key}`, { method: "PUT", body: { secret: TOKEN } }))).toMatchObject({ scope: key, configured: true });
-      expect(await one(await call(me, `/integrations/railway/${key}/rotate`, { method: "POST", body: { secret: OTHER } }))).toMatchObject({ scope: key, hint_last4: OTHER.slice(-4) });
+      expect(await one(await call(me, `/integrations/metrics_endpoint/${key}`, { method: "PUT", body: { secret: TOKEN } }))).toMatchObject({ scope: key, configured: true });
+      expect(await one(await call(me, `/integrations/metrics_endpoint/${key}/rotate`, { method: "POST", body: { secret: OTHER } }))).toMatchObject({ scope: key, hint_last4: OTHER.slice(-4) });
     }
-    const noSettings = await call(me, "/integrations/railway/config/config", { method: "PUT", body: { config: { x: "y" } } });
+    const noSettings = await call(me, "/integrations/metrics_endpoint/config/config", { method: "PUT", body: { config: { x: "y" } } });
     expect(noSettings.status).toBe(400);
     expect(await json(noSettings)).toMatchObject({ error: "invalid_config", field: "config" });
   });
@@ -144,7 +162,7 @@ describe("set / rotate / delete", () => {
 describe("config and the org's data key", () => {
   it("stores Cloudflare's account id beside the secret, audited without the value's being needed", async () => {
     const me = await ownerCookie();
-    const cfg = await call(me, "/integrations/cloudflare_analytics/config", { method: "PUT", body: { config: { account_id: ACCOUNT.toUpperCase() } } });
+    const cfg = await call(me, "/integrations/cloudflare_analytics/config", { method: "PUT", body: { config: { account_id: ACCOUNT } } });
     expect(cfg.status).toBe(200);
     expect(await one(cfg)).toMatchObject({ kind: "cloudflare_analytics", configured: false, config: { account_id: ACCOUNT } });
 
@@ -174,7 +192,7 @@ describe("config and the org's data key", () => {
     await seedOrgSettings();
     const me = await ownerCookie();
     await call(me, "/integrations/github_token", { method: "PUT", body: { secret: TOKEN } });
-    await call(me, "/integrations/railway/staging", { method: "PUT", body: { secret: OTHER } });
+    await call(me, "/integrations/metrics_endpoint/staging", { method: "PUT", body: { secret: OTHER } });
     const admin = await roleCookie("meilin", "admin");
     expect((await call(admin, "/integrations/rotate-key", { method: "POST" })).status).toBe(403);
     const res = await call(me, "/integrations/rotate-key", { method: "POST" });
@@ -217,12 +235,12 @@ describe("who may call it", () => {
     ["GET", "/integrations/audit"],
     ["POST", "/integrations/rotate-key"],
     ["PUT", "/integrations/github_token", { secret: TOKEN }],
-    ["PUT", "/integrations/railway/staging", { secret: TOKEN }],
-    ["PUT", "/integrations/railway/staging/config", { config: {} }],
+    ["PUT", "/integrations/metrics_endpoint/staging", { secret: TOKEN }],
+    ["PUT", "/integrations/metrics_endpoint/staging/config", { config: {} }],
     ["POST", "/integrations/github_token/rotate", { secret: TOKEN }],
-    ["POST", "/integrations/railway/staging/test"],
+    ["POST", "/integrations/metrics_endpoint/staging/test"],
     ["DELETE", "/integrations/github_token"],
-    ["DELETE", "/integrations/railway/staging"],
+    ["DELETE", "/integrations/metrics_endpoint/staging"],
     ["GET", "/repos"],
     ["POST", "/repos", { repo_full_name: "acme/widgets" }],
     ["DELETE", `/repos/${HOOK_A}`],
@@ -313,19 +331,17 @@ describe("Test connection", () => {
   const test = async (me: string, kind: string, scope = "") =>
     json<{ ok: boolean; detail: string; integration: IntegrationDTO; error?: string }>(await call(me, `${slotPath(kind, scope)}/test`, { method: "POST" }));
 
+  // Cloudflare and Railway are hosting providers: their Test connection is the provider's own `probe`
+  // (src/hosting/probe.ts), covered with every provider's in test/hosting.provider.<id>.test.ts.
   it("sends ONE request per kind, shaped like the poller's, and clears last_error on success", async () => {
     await seedOrgSettings();
     const me = await ownerCookie();
     await call(me, "/integrations/github_token", { method: "PUT", body: { secret: TOKEN } });
-    await call(me, "/integrations/cloudflare_analytics", { method: "PUT", body: { secret: TOKEN, config: { account_id: ACCOUNT } } });
-    await call(me, "/integrations/railway/staging", { method: "PUT", body: { secret: TOKEN } });
     await call(me, "/integrations/metrics_endpoint/production", { method: "PUT", body: { secret: TOKEN } });
     await env.DB.exec(`UPDATE org_secrets SET last_error = 'an earlier failure'`);
 
     const seen = upstream((req) => {
       if (req.url === "https://api.github.com/repos/SaplingLearn/sapling") return Response.json({ full_name: "SaplingLearn/sapling" });
-      if (req.url === "https://api.cloudflare.com/client/v4/graphql") return Response.json({ data: { viewer: { accounts: [{ workersInvocationsAdaptive: [] }] } } });
-      if (req.url === "https://backboard.railway.com/graphql/v2") return Response.json({ data: { metrics: [] } });
       if (req.url === "https://api.example.com/api/internal/metrics") return Response.json({ active_users: { "24h": 1, "7d": 2, "30d": 3 } });
       return new Response("unexpected", { status: 500 });
     });
@@ -336,27 +352,11 @@ describe("Test connection", () => {
     expect(gh.integration.last_used_at).not.toBeNull();
     expect(seen.at(-1)).toMatchObject({ method: "GET", headers: { authorization: `Bearer ${TOKEN}` } });
 
-    const cf = await test(me, "cloudflare_analytics");
-    expect(cf).toMatchObject({ ok: true });
-    const cfReq = seen.at(-1)!;
-    expect(cfReq).toMatchObject({ method: "POST", headers: { authorization: `Bearer ${TOKEN}` } });
-    const cfBody = JSON.parse(cfReq.body) as { query: string; variables: Record<string, string> };
-    expect(cfBody.query).toContain("workersInvocationsAdaptive");
-    expect(cfBody.variables).toMatchObject({ a: ACCOUNT, s: "frontend-staging" });
-    expect(Date.parse(cfBody.variables.to) - Date.parse(cfBody.variables.from)).toBe(3_600_000);
-
-    const rw = await test(me, "railway", "staging");
-    expect(rw).toMatchObject({ ok: true });
-    const rwReq = seen.at(-1)!;
-    expect(rwReq.headers["project-access-token"]).toBe(TOKEN);
-    expect(rwReq.headers.authorization).toBeUndefined(); // never as a bearer
-    expect((JSON.parse(rwReq.body) as { variables: Record<string, string> }).variables).toMatchObject({ e: "env-staging-id", s: "service-id" });
-
     const mx = await test(me, "metrics_endpoint", "production");
     expect(mx).toMatchObject({ ok: true });
     expect(seen.at(-1)).toMatchObject({ url: "https://api.example.com/api/internal/metrics", method: "GET", redirect: "manual", headers: { authorization: `Bearer ${TOKEN}` } });
 
-    expect(seen.length).toBe(4);
+    expect(seen.length).toBe(2);
     expect(await count("org_secrets WHERE last_error IS NOT NULL")).toBe(0);
     expect(await count("repo_metrics")).toBe(0); // a test writes no metric
   });
@@ -384,12 +384,8 @@ describe("Test connection", () => {
     expect(none.status).toBe(404);
     expect(await none.json()).toMatchObject({ error: "not_configured" });
 
-    await call(me, "/integrations/cloudflare_analytics", { method: "PUT", body: { secret: TOKEN } });
-    expect(await test(me, "cloudflare_analytics")).toMatchObject({ ok: false, detail: "the Cloudflare account id is not set" });
-    await env.DB.exec(`UPDATE org_environments SET railway_service_id = NULL, api_url = '' WHERE key = 'staging'`);
-    await call(me, "/integrations/railway/staging", { method: "PUT", body: { secret: TOKEN } });
+    await env.DB.exec(`UPDATE org_environments SET api_url = '' WHERE key = 'staging'`);
     await call(me, "/integrations/metrics_endpoint/staging", { method: "PUT", body: { secret: TOKEN } });
-    expect(await test(me, "railway", "staging")).toMatchObject({ ok: false, detail: "the environment has no Railway service id" });
     expect(await test(me, "metrics_endpoint", "staging")).toMatchObject({ ok: false, detail: "the environment has no API URL" });
     // A stored api_url is re-checked at use: one that names a private address is never fetched.
     await env.DB.exec(`UPDATE org_environments SET api_url = 'https://169.254.169.254' WHERE key = 'staging'`);
@@ -441,7 +437,7 @@ describe("Test connection", () => {
     const me = await ownerCookie();
     const legacy = { ...env, GITHUB_SERVICE_TOKEN: OTHER };
     const list = await json<IntegrationsListDTO>(await call(me, "/integrations", { env: legacy }));
-    expect(list.integrations.map((i) => i.legacy_fallback)).toEqual([true, true, false, false, false, false, false]); // the token, and the legacy hook's test secret
+    expect(list.integrations.map((i) => i.legacy_fallback)).toEqual([true, true, false, false, false, false]); // the token, and the legacy hook's test secret
     const seen = upstream(() => Response.json({}));
     const res = await call(me, "/integrations/github_token/test", { method: "POST", env: legacy });
     expect(await res.json()).toMatchObject({ ok: true, integration: { configured: false, legacy_fallback: true } });
@@ -522,16 +518,22 @@ describe("/environments", () => {
     const me = await ownerCookie();
     expect((await envs(me)).map((e) => [e.key, e.position])).toEqual([["staging", 0], ["production", 1]]);
 
-    const created = await call(me, "/environments/preview", { method: "PUT", body: { branch: "preview", api_url: "https://api.preview.example.com", railway_environment_id: " " } });
+    const created = await call(me, "/environments/preview", { method: "PUT", body: { branch: "preview", api_url: "https://api.preview.example.com", note: " " } });
     expect(created.status).toBe(201);
     expect(await created.json()).toMatchObject({
       created: true, removed_secrets: [],
-      environment: { key: "preview", position: 2, label: "preview", note: null, branch: "preview", api_url: "https://api.preview.example.com", health_path: "/", railway_environment_id: null, updated_by: "AndresL230" },
+      environment: { key: "preview", position: 2, label: "preview", note: null, branch: "preview", api_url: "https://api.preview.example.com", health_path: "/", updated_by: "AndresL230" },
     });
 
-    const updated = await call(me, "/environments/preview", { method: "PUT", body: { label: "Preview", worker: "frontend-preview" } });
+    const updated = await call(me, "/environments/preview", { method: "PUT", body: { label: "Preview", note: "the preview branch" } });
     expect(updated.status).toBe(200);
-    expect(await updated.json()).toMatchObject({ created: false, environment: { label: "Preview", worker: "frontend-preview", branch: "preview", api_url: "https://api.preview.example.com" } });
+    expect(await updated.json()).toMatchObject({ created: false, environment: { label: "Preview", note: "the preview branch", branch: "preview", api_url: "https://api.preview.example.com" } });
+    // What hosts an environment is its parts' (Org settings › Hosting), not a field of the environment.
+    for (const field of ["worker", "worker_check", "railway_env", "railway_environment_id", "railway_service_id"]) {
+      const res = await call(me, "/environments/preview", { method: "PUT", body: { [field]: "x" } });
+      expect([res.status, field]).toEqual([400, field]);
+      expect(await res.json()).toMatchObject({ error: "invalid", field: "body" });
+    }
 
     const reordered = await call(me, "/environments", { method: "PUT", body: { order: ["preview", "staging", "production"] } });
     expect(reordered.status).toBe(200);
@@ -562,7 +564,6 @@ describe("/environments", () => {
       [{ branch: "has space" }, "branch"],
       [{ health_path: "health" }, "health_path"],
       [{ label: 7 }, "label"],
-      [{ railway_service_id: "id with space" }, "railway_service_id"],
       [{ [TOKEN]: "x" }, "body"],
     ];
     for (const [body, field] of bad) {
@@ -578,34 +579,37 @@ describe("/environments", () => {
     expect((await envs(me)).map((e) => e.api_url)).toEqual(["https://api.staging.example.com", "https://api.example.com"]);
   });
 
-  it("deleting an environment deletes its railway / metrics secrets in the same batch, audited", async () => {
+  it("deleting an environment deletes its metrics secret and its parts in the same batch, audited — org-wide hosting credentials stay", async () => {
     await seedOrgSettings();
     const me = await ownerCookie();
     for (const [kind, scope] of SLOTS) await call(me, slotPath(kind, scope), { method: "PUT", body: { secret: TOKEN } });
-    expect(await count("org_secrets")).toBe(7);
+    expect(await count("org_secrets")).toBe(6);
 
     const res = await call(me, "/environments/staging", { method: "DELETE" });
     expect(res.status).toBe(200);
     const body = await json<{ ok: boolean; removed_secrets: string[]; environments: OrgEnvironmentDTO[] }>(res);
-    expect(body.removed_secrets).toEqual(["railway:staging", "metrics_endpoint:staging"]);
+    expect(body.removed_secrets).toEqual(["metrics_endpoint:staging"]);
     expect(body.environments.map((e) => [e.key, e.position])).toEqual([["production", 0]]); // the gap is closed
     expect((await env.DB.prepare(`SELECT kind, scope FROM org_secrets ORDER BY kind, scope`).all()).results).toEqual([
       { kind: "cloudflare_analytics", scope: "" }, { kind: "github_token", scope: "" }, { kind: "github_webhook", scope: HOOK_A },
-      { kind: "metrics_endpoint", scope: "production" }, { kind: "railway", scope: "production" },
+      { kind: "metrics_endpoint", scope: "production" }, { kind: "railway", scope: "" },
     ]);
-    expect((await audit(me)).slice(0, 2).map((a) => [a.action, a.target, a.detail.reason])).toEqual([
+    expect((await env.DB.prepare(`SELECT env_key, part_key FROM org_environment_parts ORDER BY env_key, part_key`).all()).results).toEqual([
+      { env_key: "production", part_key: "backend" }, { env_key: "production", part_key: "frontend" },
+    ]);
+    expect((await audit(me)).slice(0, 2).map((a) => [a.action, a.target, a.detail.reason ?? a.detail.removed_parts])).toEqual([
       ["secret.delete", "metrics_endpoint:staging", "environment_deleted"],
-      ["secret.delete", "railway:staging", "environment_deleted"],
+      ["environment.delete", "staging", ["frontend", "backend"]],
     ]);
     expect((await call(me, "/environments/staging", { method: "DELETE" })).status).toBe(404);
-    expect((await json<IntegrationsListDTO>(await call(me, "/integrations"))).integrations.map((i) => i.scope)).toEqual(["", HOOK_A, "", "production", "production"]);
+    expect((await json<IntegrationsListDTO>(await call(me, "/integrations"))).integrations.map((i) => i.scope)).toEqual(["", HOOK_A, "", "", "production"]);
   });
 
   it("re-aiming api_url at another origin drops the metrics token that would be sent there", async () => {
     await seedOrgSettings();
     const me = await ownerCookie();
     await call(me, "/integrations/metrics_endpoint/staging", { method: "PUT", body: { secret: TOKEN } });
-    await call(me, "/integrations/railway/staging", { method: "PUT", body: { secret: TOKEN } });
+    await call(me, "/integrations/railway", { method: "PUT", body: { secret: TOKEN } });
     // Same origin (a path change, a label change): the token stays.
     const same = await json<{ removed_secrets: string[] }>(await call(me, "/environments/staging", { method: "PUT", body: { api_url: "https://api.staging.example.com/v2", label: "Staging" } }));
     expect(same.removed_secrets).toEqual([]);
@@ -666,18 +670,18 @@ describe("repository and environment changes are audited", () => {
     await seedOrgSettings(ORG_B, "hook_b");
     await env.DB.prepare(`INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, 'bob-b', 'environment.set', 'b-only', '{}', '2099-01-01T00:00:00.000Z')`).bind(ORG_B).run();
     const me = await ownerCookie();
-    await call(me, slotPath("railway", "staging"), { method: "PUT", body: { secret: TOKEN } });
+    await call(me, slotPath("metrics_endpoint", "staging"), { method: "PUT", body: { secret: TOKEN } });
     await call(me, "/environments/preview", { method: "PUT", body: { branch: "preview" } });
     await call(me, slotPath("github_token", ""), { method: "PUT", body: { secret: TOKEN } });
     await call(me, "/environments/staging", { method: "DELETE" });
 
     const log = await audit(me);
     expect(log.map((r) => [r.action, r.target])).toEqual([
-      ["secret.delete", "railway:staging"],   // one batch: the secret it removed…
-      ["environment.delete", "staging"],      // …then the removal itself
+      ["secret.delete", "metrics_endpoint:staging"], // one batch: the secret it removed…
+      ["environment.delete", "staging"],             // …then the removal itself
       ["secret.set", "github_token:"],
       ["environment.set", "preview"],
-      ["secret.set", "railway:staging"],
+      ["secret.set", "metrics_endpoint:staging"],
     ]);
     expect(log.map((r) => r.id[0])).toEqual(["s", "a", "s", "a", "s"]);
     expect(new Set(log.map((r) => r.id)).size).toBe(5);

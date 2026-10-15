@@ -1,7 +1,7 @@
 // Org settings › Hosting — the ONE read (`GET /api/o/:slug/hosting`, src/hosting/setup.ts): providers,
-// environments with their parts (legacy and stored), connections and the checklist generated from what the
-// parts use; the provider catalogue for any member; the Integrations list expecting a provider's credential
-// once a stored part uses it; and org isolation.
+// environments with their parts, connections and the checklist generated from what the parts use; the provider
+// catalogue for any member; the Integrations list expecting a provider's credential once a part uses it; and org
+// isolation.
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { HOSTING_PROVIDERS, type HostingChecklistItem, type HostingProviderDTO, type HostingSetupDTO } from "@shared/hosting";
@@ -22,7 +22,7 @@ const TOKEN = "tok_" + "Pp4Qq5Rr".repeat(6);
 const ids = (items: HostingChecklistItem[]) => items.map((i) => [i.id, i.done]);
 
 describe("GET /hosting", () => {
-  it("SaplingLearn as migrated: two environments, each with its legacy frontend and backend; every provider described", async () => {
+  it("SaplingLearn as migrated: two environments, each with its Cloudflare frontend and Railway backend parts; every provider described", async () => {
     await seedOrgSettings();
     await setIntegrationConfig(await tenantCtx("AndresL230"), "cloudflare_analytics", "", { account_id: "0123456789abcdef0123456789abcdef" });
     const r = await send(app, "GET", `${A}/hosting`, await ownerCookie(), undefined, env as never);
@@ -36,20 +36,20 @@ describe("GET /hosting", () => {
     ]);
     const [fe, be] = dto.environments[0].parts;
     expect(fe).toMatchObject({
-      env: "staging", key: "frontend", label: "Frontend", role: "web", provider: "cloudflare", legacy: true, position: -2,
-      settings: { worker: "frontend-staging", worker_check: "Workers Builds: frontend-staging" }, last_poll: null, connection: "not_connected",
-      console_url: "https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/workers/services/view/frontend-staging/production",
+      env: "staging", key: "frontend", label: "Frontend", role: "web", provider: "cloudflare", position: 0,
+      settings: { worker: "frontend-staging" }, last_poll: null, connection: "not_connected",
+      console_url: expect.stringContaining("0123456789abcdef0123456789abcdef"),
     });
-    expect(be).toMatchObject({ key: "backend", provider: "railway", role: "service", legacy: true, console_url: null, settings: { railway_env: "Sapling / staging", railway_environment_id: "env-staging-id", railway_service_id: "service-id" } });
-    expect(dto.connections.map((c) => [c.provider, c.scope, c.status])).toEqual([
-      ["cloudflare", "", "not_connected"], ["railway", "staging", "not_connected"], ["railway", "production", "not_connected"],
-    ]);
+    expect(fe).not.toHaveProperty("legacy");
+    expect(be).toMatchObject({ key: "backend", provider: "railway", role: "service", position: 1, settings: { environment_id: "env-staging-id", service_id: "service-id" } });
+    // ONE org-wide connection per provider — Railway's too.
+    expect(dto.connections.map((c) => [c.provider, c.scope, c.status])).toEqual([["cloudflare", "", "not_connected"], ["railway", "", "not_connected"]]);
     expect(ids(dto.checklist)).toEqual([
       ["add_environment", true], ["add_part:staging", true], ["add_part:production", true],
-      ["connect:cloudflare:", false], ["connect:railway:staging", false], ["connect:railway:production", false],
+      ["connect:cloudflare:", false], ["connect:railway:", false],
     ]);
-    expect(dto.checklist.find((i) => i.id === "connect:railway:staging")).toMatchObject({
-      title: "Connect Railway for staging", detail: "Used by staging › Backend.", action: { kind: "connect", provider: "railway", scope: "staging" },
+    expect(dto.checklist.find((i) => i.id === "connect:railway:")).toMatchObject({
+      title: "Connect Railway", detail: "Used by staging › Backend, production › Backend.", action: { kind: "connect", provider: "railway", scope: "" },
     });
   });
 
@@ -131,14 +131,19 @@ describe("the checklist", () => {
     expect((await steps()).some((i) => i.id.includes("vercel"))).toBe(false);
   });
 
-  it("a part missing a required setting asks for it by name (a legacy frontend with only its check, here)", async () => {
+  it("a part missing a required setting asks for it by name (a Cloudflare frontend with no Worker, here)", async () => {
     await seedBareEnvironment(ORG_A, "staging", 0, "Staging");
-    await run(env.DB, `UPDATE org_environments SET worker_check = 'Workers Builds: x' WHERE org_id = ? AND key = 'staging'`, ORG_A);
+    await run(env.DB, `INSERT INTO org_environment_parts (org_id, env_key, part_key, position, label, role, provider, settings, created_at, updated_at, updated_by)
+      VALUES (?, 'staging', 'frontend', 0, 'Frontend', 'web', 'cloudflare', '{}', 'now', 'now', 'seed')`, ORG_A);
     const ctx = await tenantCtx("AndresL230");
-    const s = (await getHostingSetup(ctx, installEnv(), fakeProviders().providers)).checklist;
+    const { providers } = fakeProviders();
+    const cf = providers.cloudflare;
+    const [first, ...rest] = cf.partSettings.filter((f) => f.required);
+    const s = (await getHostingSetup(ctx, installEnv(), providers)).checklist;
     expect(s.find((i) => i.id === "edit_part:staging/frontend")).toEqual({
-      id: "edit_part:staging/frontend", title: "Set the Cloudflare Workers Worker name for Staging › Frontend",
-      detail: "The Worker script's name, as Workers & Pages lists it.", done: false, action: { kind: "edit_part", env: "staging", part: "frontend" },
+      id: "edit_part:staging/frontend", title: `Set the ${cf.label} ${first.label} for Staging › Frontend`,
+      detail: rest.length ? `Also missing: ${rest.map((f) => f.label).join(", ")}.` : first.description,
+      done: false, action: { kind: "edit_part", env: "staging", part: "frontend" },
     });
   });
 
@@ -162,8 +167,11 @@ describe("gates and isolation", () => {
     expect(cat.status).toBe(200);
     const providers = (cat.json as { providers: HostingProviderDTO[] }).providers;
     expect(providers.map((p) => p.id)).toEqual([...HOSTING_PROVIDERS]);
-    expect(providers.find((p) => p.id === "cloudflare")).toMatchObject({ legacy_part_key: "frontend", credential_scope: "org" });
-    expect(providers.find((p) => p.id === "railway")).toMatchObject({ legacy_part_key: "backend", credential_scope: "environment" });
+    // Cloudflare and Railway are described like every other provider: no legacy key, no per-environment credential.
+    for (const id of ["cloudflare", "railway"]) {
+      expect(providers.find((p) => p.id === id)).not.toHaveProperty("legacy_part_key");
+      expect(providers.find((p) => p.id === id)).not.toHaveProperty("credential_scope");
+    }
     expect((await send(app, "GET", `${A}/hosting/providers`, member, undefined, env as never, { authorization: "Bearer x" })).status).toBe(403);
     expect((await send(app, "GET", `${A}/hosting`, await roleCookie("admin-user", "admin"), undefined, env as never)).status).toBe(200);
   });
@@ -190,13 +198,14 @@ describe("gates and isolation", () => {
     expect((await send(web, "POST", "/api/o/acme/hosting/vercel/disconnect", boss, {})).status).toBe(404);
     // Under A's slug, B's people are not members: the one 404.
     for (const who of [boss, bob]) expect((await send(web, "GET", `${A}/hosting`, who)).json).toEqual({ error: "not_found" });
-    expect(await all(env.DB, `SELECT org_id, part_key FROM org_environment_parts`)).toEqual([{ org_id: ORG_A, part_key: "web" }]);
+    expect(await all(env.DB, `SELECT DISTINCT org_id FROM org_environment_parts`)).toEqual([{ org_id: ORG_A }]);
+    expect(await all(env.DB, `SELECT org_id, settings FROM org_environment_parts WHERE part_key = 'web'`)).toEqual([{ org_id: ORG_A, settings: '{"project":"a-site"}' }]);
     expect(await all(env.DB, `SELECT org_id FROM org_secrets WHERE kind = 'vercel'`)).toEqual([{ org_id: ORG_A }]);
   });
 });
 
-describe("Org settings › Integrations expects a provider's credential once a stored part uses it", () => {
-  it("adds one org-wide slot per used provider after Cloudflare — and nothing for an org without stored parts", async () => {
+describe("Org settings › Integrations expects a provider's credential once a part uses it", () => {
+  it("adds one org-wide slot per used provider, in registry order — and nothing for a provider no part uses", async () => {
     await seedOrgSettings();
     const me = await ownerCookie();
     const kinds = async () => (await (await call(me, "/integrations")).json() as IntegrationsListDTO).integrations.map((i) => [i.kind, i.scope, i.expected]);
@@ -208,8 +217,8 @@ describe("Org settings › Integrations expects a provider's credential once a s
     expect((await send(web, "PUT", `${A}/environments/production/parts/api`, me, { provider: "render", settings: { service_id: "srv-a" } })).status).toBe(201);
     expect(await kinds()).toEqual([
       ["github_token", "", true], ["github_webhook", "hook_saplinglearn_sapling", true], ["cloudflare_analytics", "", true],
-      ["vercel", "", true], ["render", "", true],
-      ["railway", "staging", true], ["metrics_endpoint", "staging", true], ["railway", "production", true], ["metrics_endpoint", "production", true],
+      ["railway", "", true], ["vercel", "", true], ["render", "", true],
+      ["metrics_endpoint", "staging", true], ["metrics_endpoint", "production", true],
     ]);
     // The slot is writable through the Integrations routes like any org-wide kind.
     const set = await call(me, "/integrations/vercel", { method: "PUT", body: { secret: TOKEN } });

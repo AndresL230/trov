@@ -555,16 +555,12 @@ export async function currentKeyVersion(ctx: TenantContext): Promise<number | nu
 // kind / scope. Phase 7 deletes the fallback, this constant and those Worker secrets.
 const LEGACY_ENV_ORG = SAPLINGLEARN_ORG_ID;
 
-/** `RAILWAY_TOKEN_<KEY>` — src/repo/cron.ts `railwayTokens`' naming (key upper-cased, non-alphanumerics → `_`). */
-const railwayEnvName = (scope: string): string => `RAILWAY_TOKEN_${scope.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
-
 /** The legacy Worker secret that answers for (kind, scope), or null. Does NOT check the org. */
 async function legacyEnvValue(ctx: TenantContext, env: Env, kind: IntegrationKind, scope: string): Promise<string | null> {
   const pick = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
   switch (kind) {
     case "github_token": return scope === "" ? pick(env.GITHUB_SERVICE_TOKEN) : null;
     case "cloudflare_analytics": return scope === "" ? pick(env.CF_ANALYTICS_TOKEN) : null;
-    case "railway": return scope ? pick((env as unknown as Record<string, unknown>)[railwayEnvName(scope)]) : null;
     case "metrics_endpoint": return scope ? pick(env.SAPLING_METRICS_TOKEN) : null; // ONE token for every environment
     case "github_webhook": {
       // Only the repo the old /webhook/github still routes to (`legacy_hook = 1`, §8.5).
@@ -573,7 +569,9 @@ async function legacyEnvValue(ctx: TenantContext, env: Env, kind: IntegrationKin
       return repo?.legacy_hook === 1 ? pick(env.GITHUB_WEBHOOK_SECRET) : null;
     }
     // The hosting providers (0056_hosting_providers) arrived with per-org secrets: no Worker secret ever answered for them.
-    case "vercel": case "render": case "netlify": case "fly": case "aws": return null;
+    // Railway's old per-environment PROJECT tokens (`RAILWAY_TOKEN_<KEY>`) cannot answer for its org-wide
+    // connection, which is a workspace token sent as a bearer — so Railway has no fallback either.
+    case "railway": case "vercel": case "render": case "netlify": case "fly": case "aws": return null;
   }
 }
 
@@ -595,10 +593,18 @@ export async function hasLegacyCredential(ctx: TenantContext, env: Env, kind: In
   return ctx.orgId === LEGACY_ENV_ORG && (await legacyEnvValue(ctx, env, kind, scope)) !== null;
 }
 
-/** Cloudflare's account id (not a secret — `org_integration_config`), with the same SaplingLearn-only
- *  fallback to `CF_ANALYTICS_ACCOUNT_ID`. */
+/** The org's non-secret config for (kind, scope) as a poller should use it — `getIntegrationConfig`, with the
+ *  same SaplingLearn-only bridge as `resolveCredential`: while that org has not stored Cloudflare's account
+ *  id, `CF_ANALYTICS_ACCOUNT_ID` answers for it (the only setting a Worker secret ever held). A stored value
+ *  always wins. */
+export async function resolveIntegrationConfig(ctx: TenantContext, env: Env, kind: IntegrationKind, scope: string): Promise<IntegrationConfig> {
+  const stored = await getIntegrationConfig(ctx, kind, scope);
+  if (kind !== "cloudflare_analytics" || scope !== "" || stored.account_id || ctx.orgId !== LEGACY_ENV_ORG || !env.CF_ANALYTICS_ACCOUNT_ID) return stored;
+  return { ...stored, account_id: env.CF_ANALYTICS_ACCOUNT_ID };
+}
+
+/** Cloudflare's account id (not a secret — `org_integration_config`), with `resolveIntegrationConfig`'s
+ *  SaplingLearn-only fallback to `CF_ANALYTICS_ACCOUNT_ID`. */
 export async function resolveCloudflareAccountId(ctx: TenantContext, env: Env): Promise<string | null> {
-  const stored = (await getIntegrationConfig(ctx, "cloudflare_analytics", "")).account_id;
-  if (stored) return stored;
-  return ctx.orgId === LEGACY_ENV_ORG && env.CF_ANALYTICS_ACCOUNT_ID ? env.CF_ANALYTICS_ACCOUNT_ID : null;
+  return (await resolveIntegrationConfig(ctx, env, "cloudflare_analytics", "")).account_id || null;
 }

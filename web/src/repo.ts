@@ -808,9 +808,9 @@ function productSection(p: RepoProps, i: number): string {
 }
 
 // ── "Poll now" — the admin's on-demand refresh of health, usage and GitHub ──
-// (POST /admin/poll: health pings, the three usage pollers, the GitHub reconcile.)
+// (POST /admin/poll: health pings, the usage poller, the hosting providers, the GitHub reconcile.)
 // "App metrics": the app's own endpoint answers active users AND product metrics in one response.
-const POLL_SOURCES: ["cloudflare" | "railway" | "sapling", string][] = [["cloudflare", "Cloudflare"], ["railway", "Railway"], ["sapling", "App metrics"]];
+const POLL_SOURCES: ["sapling", string][] = [["sapling", "App metrics"]];
 const MUTED = "var(--fg-40)";
 /** The two top-bar controls say different things: one re-reads D1, one goes out to the sources. */
 const REFRESH_TITLE = "Reload from Trov's database";

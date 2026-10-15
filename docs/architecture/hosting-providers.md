@@ -133,14 +133,15 @@ matched narrowly (a false "Detected" is worse than none):
 - **check runs** — every check run is captured (`fromCheckRun`) with its name, its details URL and, in `raw.app`,
   the slug of the GitHub App that posted it: `vercel`, `netlify`, `cloudflare-workers-and-pages` (also a details
   link to the host, or a name only that host uses — `netlify/…`, `Workers Builds: …`, `Vercel …`);
-- **deployments** — captured ONLY for an environment whose "GitHub deployment environment" is already configured,
-  with the creator's login (`railway-app[bot]`, `render[bot]`, `vercel[bot]`) and log link.
+- **deployments** — GitHub `deployment_status` deliveries are NOT captured any more (an environment's deploys come
+  from its provider); rows captured before 0056, with the creator's login (`railway-app[bot]`, `render[bot]`,
+  `vercel[bot]`) and log link, still count while inside the window.
 
 So it is exactly as good as that capture: Vercel, Netlify and Cloudflare Workers Builds are seen as soon as GitHub
 is connected and a check run arrives; Render, Railway and Fly.io report to GitHub through deployments (or not at
-all), which are dropped unless their environment is already configured — they are NOT detected. Closing that gap
-needs NEW capture, none of it built: (a) keep `deployment_status` deliveries whose environment is not configured
-(creator login + environment name, no env key); (b) keep commit `status` contexts other than `canopy/*` (`Vercel`,
+all), which are not captured — they are NOT detected. Closing that gap needs NEW capture, none of it built: (a)
+capture `deployment_status` deliveries again, untagged (creator login + environment name, no env key — and a
+retention for them); (b) keep commit `status` contexts other than `canopy/*` (`Vercel`,
 `netlify/…`, `Render`); (c) a root-file probe in the reconcile (`vercel.json`, `netlify.toml`, `fly.toml`,
 `render.yaml`, `wrangler.toml` — one contents read each, in the cron, never on a render path). The screen shows a
 suggestion only for an `available` provider no part uses yet (`shownDetections`); it preselects the provider in

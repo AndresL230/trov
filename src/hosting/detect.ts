@@ -6,11 +6,12 @@
 //   check    every check run is captured (src/repo/capture.ts `fromCheckRun`) with its name, its details URL
 //            and — in `raw` — the slug of the GitHub App that posted it. Vercel, Netlify and Cloudflare Workers
 //            Builds post check runs as their own apps.
-//   deploy   a deployment status is captured ONLY for an environment whose "GitHub deployment environment" is
-//            already configured, with the creator's login (`railway-app[bot]`, `render[bot]`, `vercel[bot]`).
+//   deploy   GitHub deployment statuses are NOT captured any more (an environment's deploys come from its
+//            hosting provider); rows captured before 0056 — with the creator's login (`railway-app[bot]`,
+//            `render[bot]`, `vercel[bot]`) — still count while they are inside the window.
 // So the suggestion is exactly as good as that capture: a provider that reports to GitHub only through
-// deployments of an environment nobody configured (Render, Railway, Fly.io) is not seen — see
-// docs/architecture/hosting-providers.md › Detection for what new capture would change that.
+// deployments (Render, Railway, Fly.io) is not seen — see docs/architecture/hosting-providers.md › Detection
+// for what new capture would change that.
 //
 // A suggestion preselects the provider in the part editor; it connects nothing and stores nothing.
 import { HOSTING_PROVIDERS, type HostingDetectionDTO, type HostingProviderId } from "@shared/hosting";

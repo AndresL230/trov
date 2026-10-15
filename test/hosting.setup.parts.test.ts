@@ -1,8 +1,8 @@
 // Org settings › Hosting — an environment's PARTS, written (src/hosting/part-writes.ts through
 // src/hosting/routes.ts): validation with fixed-text refusals, the audit trail (keys, never values), the
-// per-environment cap, the legacy facade over `org_environments`' Cloudflare / Railway columns, a provider
-// change clearing the old provider's poll state and deploys, the role and cookie-only gates, and an
-// environment's deletion taking its parts with it.
+// per-environment cap, Cloudflare and Railway stored like every other provider, a provider change clearing
+// the old provider's poll state and deploys, the role and cookie-only gates, and an environment's deletion
+// taking its parts with it.
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
@@ -18,8 +18,6 @@ const partsOf = (envKey: string) => all<{ part_key: string; provider: string; ro
   `SELECT part_key, provider, role, label, settings, position FROM org_environment_parts WHERE org_id = ? AND env_key = ? ORDER BY position`, ORG_A, envKey);
 const adminAudit = (action: string) => all<{ actor: string; target: string; detail: string }>(env.DB,
   `SELECT actor, target, detail FROM org_admin_audit WHERE org_id = ? AND action = ? ORDER BY id`, ORG_A, action);
-const envCols = (key: string) => first<Record<string, unknown>>(env.DB,
-  `SELECT worker, worker_check, railway_env, railway_environment_id, railway_service_id FROM org_environments WHERE org_id = ? AND key = ?`, ORG_A, key);
 
 async function seedPollAndDeploys(envKey: string, part: string, provider: string): Promise<void> {
   const at = "2026-10-06T10:00:00.000Z";
@@ -43,10 +41,11 @@ describe("a stored part", () => {
     const part = (made.json as { part: EnvironmentPartDTO; created: boolean });
     expect(part.created).toBe(true);
     expect(part.part).toMatchObject({
-      env: "staging", key: "web", label: "Web", role: "web", provider: "vercel", settings: { project: "secret-ish-project" }, legacy: false,
+      env: "staging", key: "web", label: "Web", role: "web", provider: "vercel", settings: { project: "secret-ish-project" },
       connection: "not_connected", console_url: "https://fake-host.test/personal/secret-ish-project", last_poll: null, updated_by: "AndresL230",
     });
-    expect(await partsOf("staging")).toEqual([{ part_key: "web", provider: "vercel", role: "web", label: "Web", settings: JSON.stringify({ project: "secret-ish-project" }), position: 0 }]);
+    // After the migrated Cloudflare frontend (0) and Railway backend (1).
+    expect((await partsOf("staging")).slice(2)).toEqual([{ part_key: "web", provider: "vercel", role: "web", label: "Web", settings: JSON.stringify({ project: "secret-ish-project" }), position: 2 }]);
 
     const replaced = await send(web, "PUT", partPath("staging", "web"), me, { provider: "vercel", label: "Marketing site", settings: { project: "other", branch: "main" } });
     expect(replaced.status).toBe(200);
@@ -54,8 +53,8 @@ describe("a stored part", () => {
     // A second part takes the next position; a label-only change keeps the stored settings (same provider).
     expect((await send(web, "PUT", partPath("staging", "docs"), me, { provider: "vercel", settings: { project: "docs" } })).status).toBe(201);
     expect((await send(web, "PUT", partPath("staging", "docs"), me, { provider: "vercel", label: "Docs site" })).status).toBe(200);
-    expect((await partsOf("staging")).map((p) => [p.part_key, p.label, p.position, JSON.parse(p.settings)])).toEqual([
-      ["web", "Marketing site", 0, { project: "other", branch: "main" }], ["docs", "Docs site", 1, { project: "docs" }],
+    expect((await partsOf("staging")).slice(2).map((p) => [p.part_key, p.label, p.position, JSON.parse(p.settings)])).toEqual([
+      ["web", "Marketing site", 2, { project: "other", branch: "main" }], ["docs", "Docs site", 3, { project: "docs" }],
     ]);
 
     const audit = await adminAudit("part.set");
@@ -74,6 +73,7 @@ describe("a stored part", () => {
     const web = hostingTestApp(providers);
     const me = await ownerCookie();
     const VALUE = "Zq-not-echoed-9";
+    const before = await partsOf("staging"); // the migrated Cloudflare frontend and Railway backend
     const cases: [path: string, body: unknown, status: number, error: string, field?: string][] = [
       [partPath("staging", "web"), "not json", 400, "invalid_json"],
       [partPath("staging", "web"), { provider: "vercel", settings: { project: "x" }, extra: VALUE }, 400, "invalid", "body"],
@@ -94,15 +94,15 @@ describe("a stored part", () => {
       expect([r.status, r.json?.error, r.json?.field], `${path} ${JSON.stringify(body)}`).toEqual([status, error, field]);
       expect(JSON.stringify(r.json)).not.toContain(VALUE);
     }
-    expect(await partsOf("staging")).toEqual([]);
+    expect(await partsOf("staging")).toEqual(before);
     expect(await adminAudit("part.set")).toEqual([]);
     // AWS is described but `later`: its refusal says so.
     const aws = await send(web, "PUT", partPath("staging", "web"), me, { provider: "aws", settings: { resource_type: "ecs", resource: "a/b" } });
     expect(aws.json?.message).toBe("AWS is not supported yet");
   });
 
-  it(`an environment holds at most ${MAX_PARTS_PER_ENVIRONMENT} parts, its legacy ones counted; replacing one at the cap is fine`, async () => {
-    await seedOrgSettings(); // staging already has a legacy frontend and backend
+  it(`an environment holds at most ${MAX_PARTS_PER_ENVIRONMENT} parts, its Cloudflare and Railway ones counted; replacing one at the cap is fine`, async () => {
+    await seedOrgSettings(); // staging already has a Cloudflare frontend and a Railway backend
     const { providers } = fakeProviders();
     const web = hostingTestApp(providers);
     const me = await ownerCookie();
@@ -112,7 +112,7 @@ describe("a stored part", () => {
     const over = await send(web, "PUT", partPath("staging", "one-more"), me, { provider: "vercel", settings: { project: "x" } });
     expect([over.status, over.json?.error]).toEqual([409, "too_many_parts"]);
     expect((await send(web, "PUT", partPath("staging", "p0"), me, { provider: "vercel", settings: { project: "renamed" } })).status).toBe(200);
-    expect((await partsOf("staging")).length).toBe(MAX_PARTS_PER_ENVIRONMENT - 2);
+    expect((await partsOf("staging")).length).toBe(MAX_PARTS_PER_ENVIRONMENT);
   });
 
   it("changing its provider drops its poll state and the OLD provider's deploys in the same write; a same-provider edit keeps them", async () => {
@@ -148,8 +148,8 @@ describe("a stored part", () => {
     await seedPollAndDeploys("staging", "docs", "vercel");
     const del = await send(web, "DELETE", partPath("staging", "web"), me);
     expect(del.status).toBe(200);
-    expect(del.json).toEqual({ ok: true, removed: { env: "staging", part: "web", provider: "vercel", legacy: false } });
-    expect((await partsOf("staging")).map((p) => p.part_key)).toEqual(["docs"]);
+    expect(del.json).toEqual({ ok: true, removed: { env: "staging", part: "web", provider: "vercel" } });
+    expect((await partsOf("staging")).map((p) => p.part_key)).toEqual(["frontend", "backend", "docs"]);
     expect(await all(env.DB, `SELECT part FROM hosting_poll_state WHERE org_id = ?`, ORG_A)).toEqual([{ part: "docs" }]);
     expect(await all(env.DB, `SELECT part FROM hosting_deploys WHERE org_id = ?`, ORG_A)).toEqual([{ part: "docs" }]);
     expect((await adminAudit("part.delete")).map((a) => [a.target, JSON.parse(a.detail)])).toEqual([["staging/web", { provider: "vercel" }]]);
@@ -158,55 +158,44 @@ describe("a stored part", () => {
   });
 });
 
-describe("the legacy facade: Cloudflare and Railway are the environment's own columns", () => {
-  it("writes and blanks the columns through putEnvironment (audited environment.set), on the main app", async () => {
+describe("Cloudflare and Railway are ordinary providers", () => {
+  it("are stored parts under any key, with their own settings — written, replaced and deleted like any other", async () => {
     await seedBareEnvironment(ORG_A, "qa", 0, "QA");
     const me = await ownerCookie();
     const put = (part: string, body: unknown) => send(app, "PUT", partPath("qa", part), me, body, env as never);
 
-    const fe = await put("frontend", { provider: "cloudflare", settings: { worker: "qa-frontend", worker_check: "Workers Builds: qa-frontend" } });
+    const fe = await put("edge", { provider: "cloudflare", settings: { worker: "qa-frontend" } });
     expect(fe.status).toBe(201);
-    expect(fe.json?.part).toMatchObject({ key: "frontend", label: "Frontend", provider: "cloudflare", role: "web", legacy: true, last_poll: null });
-    const be = await put("backend", { provider: "railway", settings: { railway_env: "App / qa", railway_service_id: "svc-1" } });
+    expect(fe.json?.part).toMatchObject({ key: "edge", label: "Edge", provider: "cloudflare", role: "web", settings: { worker: "qa-frontend" }, last_poll: null });
+    expect(fe.json?.part).not.toHaveProperty("legacy");
+    const be = await put("api", { provider: "railway", settings: { environment_id: "env-1", service_id: "svc-1" } });
     expect(be.status).toBe(201);
-    expect(be.json?.part).toMatchObject({ key: "backend", label: "Backend", provider: "railway", role: "service", legacy: true });
-    expect(await envCols("qa")).toEqual({ worker: "qa-frontend", worker_check: "Workers Builds: qa-frontend", railway_env: "App / qa", railway_environment_id: null, railway_service_id: "svc-1" });
-    // A second write replaces the columns; the frontend's label may be sent as long as it is the fixed one.
-    expect((await put("frontend", { provider: "cloudflare", label: "frontend", settings: { worker: "qa-frontend-2" } })).status).toBe(200);
-    expect((await envCols("qa"))!.worker_check).toBe("");
-    expect(await partsOf("qa")).toEqual([]); // never a stored row
-    expect((await adminAudit("environment.set")).map((a) => JSON.parse(a.detail).fields)).toEqual([
-      ["worker", "worker_check"], ["railway_env", "railway_service_id"], ["worker", "worker_check"],
+    expect(be.json?.part).toMatchObject({ key: "api", provider: "railway", role: "service", settings: { environment_id: "env-1", service_id: "svc-1" } });
+    expect((await partsOf("qa")).map((p) => [p.part_key, p.provider, JSON.parse(p.settings)])).toEqual([
+      ["edge", "cloudflare", { worker: "qa-frontend" }], ["api", "railway", { environment_id: "env-1", service_id: "svc-1" }],
+    ]);
+    expect((await put("edge", { provider: "cloudflare", label: "Frontend", settings: { worker: "qa-frontend-2" } })).status).toBe(200);
+    expect((await adminAudit("part.set")).map((a) => [a.target, JSON.parse(a.detail).fields])).toEqual([
+      ["qa/edge", ["settings.worker"]], ["qa/api", ["settings.environment_id", "settings.service_id"]], ["qa/edge", ["label", "settings.worker"]],
     ]);
 
-    expect((await send(app, "DELETE", partPath("qa", "frontend"), me, undefined, env as never)).json).toEqual({ ok: true, removed: { env: "qa", part: "frontend", provider: "cloudflare", legacy: true } });
-    expect((await send(app, "DELETE", partPath("qa", "backend"), me, undefined, env as never)).status).toBe(200);
-    expect(await envCols("qa")).toEqual({ worker: "", worker_check: "", railway_env: "", railway_environment_id: null, railway_service_id: null });
-    expect((await send(app, "DELETE", partPath("qa", "frontend"), me, undefined, env as never)).status).toBe(404);
+    expect((await send(app, "DELETE", partPath("qa", "edge"), me, undefined, env as never)).json).toEqual({ ok: true, removed: { env: "qa", part: "edge", provider: "cloudflare" } });
+    expect((await send(app, "DELETE", partPath("qa", "api"), me, undefined, env as never)).status).toBe(200);
+    expect(await partsOf("qa")).toEqual([]);
+    expect((await send(app, "DELETE", partPath("qa", "edge"), me, undefined, env as never)).status).toBe(404);
   });
 
-  it("keys: a legacy provider only under its own key (400), and never beside a stored part of that key (409) — nor the reverse", async () => {
-    await seedOrgSettings(); // staging: legacy frontend + backend
-    await seedBareEnvironment(ORG_A, "qa", 2);
+  it("a migrated `frontend` / `backend` part can move to another provider, and another provider's part can become Cloudflare", async () => {
+    await seedOrgSettings(); // staging: Cloudflare frontend + Railway backend
     const { providers } = fakeProviders();
     const web = hostingTestApp(providers);
     const me = await ownerCookie();
-    const r1 = await send(web, "PUT", partPath("qa", "web"), me, { provider: "cloudflare", settings: { worker: "w" } });
-    expect([r1.status, r1.json?.field]).toEqual([400, "part"]);
-    const r2 = await send(web, "PUT", partPath("qa", "api"), me, { provider: "railway", settings: { railway_env: "x" } });
-    expect([r2.status, r2.json?.field]).toEqual([400, "part"]);
-    const r3 = await send(web, "PUT", partPath("staging", "frontend"), me, { provider: "vercel", settings: { project: "x" } });
-    expect([r3.status, r3.json?.error]).toEqual([409, "part_conflict"]);
-    const r4 = await send(web, "PUT", partPath("staging", "backend"), me, { provider: "render", settings: { service_id: "srv-x" } });
-    expect([r4.status, r4.json?.error]).toEqual([409, "part_conflict"]);
-    // A stored part called `frontend` (no legacy one there) blocks Cloudflare from the key.
-    expect((await send(web, "PUT", partPath("qa", "frontend"), me, { provider: "vercel", settings: { project: "x" } })).status).toBe(201);
-    const r5 = await send(web, "PUT", partPath("qa", "frontend"), me, { provider: "cloudflare", settings: { worker: "w" } });
-    expect([r5.status, r5.json?.error]).toEqual([409, "part_conflict"]);
-    const r6 = await send(web, "PUT", partPath("staging", "frontend"), me, { provider: "cloudflare", label: "Edge", settings: { worker: "w" } });
-    expect([r6.status, r6.json?.field]).toEqual([400, "label"]);
-    expect((await envCols("qa"))!.worker).toBe("");
-    expect((await envCols("staging"))!.worker).toBe("frontend-staging");
+    const moved = await send(web, "PUT", partPath("staging", "frontend"), me, { provider: "vercel", settings: { project: "site" } });
+    expect(moved.status).toBe(200);
+    expect(JSON.parse((await adminAudit("part.set")).at(-1)!.detail)).toMatchObject({ provider: "vercel", previous_provider: "cloudflare" });
+    const back = await send(web, "PUT", partPath("staging", "frontend"), me, { provider: "cloudflare", settings: { worker: "w" } });
+    expect(back.status).toBe(200);
+    expect((await partsOf("staging")).map((p) => [p.part_key, p.provider])).toEqual([["frontend", "cloudflare"], ["backend", "railway"]]);
   });
 });
 
@@ -223,8 +212,7 @@ describe("gates", () => {
     const bearer = await send(web, "PUT", partPath("staging", "web"), owner, body, installEnv(), { authorization: "Bearer trov_mcp_x" });
     expect([bearer.status, bearer.json?.error]).toEqual([403, "forbidden"]);
     expect((await send(web, "DELETE", partPath("staging", "frontend"), owner, undefined, installEnv(), { authorization: "Bearer x" })).status).toBe(403);
-    expect(await partsOf("staging")).toEqual([]);
-    expect((await envCols("staging"))!.worker).toBe("frontend-staging");
+    expect((await partsOf("staging")).map((p) => p.part_key)).toEqual(["frontend", "backend"]);
     // An admin passes.
     expect((await send(web, "PUT", partPath("staging", "web"), await roleCookie("admin-user", "admin"), body)).status).toBe(201);
   });
@@ -242,10 +230,10 @@ describe("deleting an environment", () => {
     }
     const del = await send(app, "DELETE", `${A}/environments/staging`, me, undefined, env as never);
     expect(del.status).toBe(200);
-    expect(await all(env.DB, `SELECT env_key FROM org_environment_parts WHERE org_id = ?`, ORG_A)).toEqual([{ env_key: "production" }]);
+    expect(await all(env.DB, `SELECT DISTINCT env_key FROM org_environment_parts WHERE org_id = ?`, ORG_A)).toEqual([{ env_key: "production" }]);
     expect([await count("hosting_poll_state", "staging"), await count("hosting_deploys", "staging")]).toEqual([0, 0]);
     expect([await count("hosting_poll_state", "production"), await count("hosting_deploys", "production")]).toEqual([1, 1]);
     const [audit] = await adminAudit("environment.delete");
-    expect(JSON.parse(audit.detail)).toEqual({ removed_secrets: [], removed_parts: ["web"] });
+    expect(JSON.parse(audit.detail)).toEqual({ removed_secrets: [], removed_parts: ["frontend", "backend", "web"] });
   });
 });

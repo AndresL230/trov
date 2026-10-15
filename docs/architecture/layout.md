@@ -55,9 +55,9 @@
   `recordingSince`, the earliest `recorded_at` per kind that the week-over-week deltas gate on, and the ONE
   non-decisive-conclusion policy at `foldResult`/`checkState`), `github.ts` (GitHub reads with the token its caller resolved for the org —
   `ghJson` / `ghGraphql`, `reconcileRepo` with its drift and branches arms, `refreshDrift`, `fillFailedJob` —
-  never on the render path), `poll.ts` (the four scheduled pulls, none of which may throw: `pingHealth` every tick,
-  and the three hourly usage pollers `pollCloudflare`, `pollRailway`, `pollSaplingMetrics`, each returning a
-  `PollOutcome` per environment), and `cron.ts`
+  never on the render path), `poll.ts` (the two scheduled pulls, neither of which may throw: `pingHealth` every
+  tick, and the hourly usage poller `pollSaplingMetrics`, returning a `PollOutcome` per environment — a host's
+  usage is the hosting providers', `src/hosting/`), and `cron.ts`
   (`handleRepoCron` — the repo trigger's one dispatcher, ONE heavy job per invocation, each job run for every
   org by ROTATION (`dispatch.ts`: units, budget, `cron_cursor`), the subrequest budget stated at the
   dispatcher — the job functions `runEnvJob` / `runOrgJob` / `runReconcileJob`; `runUsagePolls`, the org's

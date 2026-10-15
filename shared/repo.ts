@@ -337,13 +337,15 @@ export interface PollOutcome {
 }
 /** Per source; `"not_configured"` = that source's secret(s) are absent. */
 export type UsagePollSource = PollOutcome[] | "not_configured";
-export interface UsagePollResult { cloudflare: UsagePollSource; railway: UsagePollSource; sapling: UsagePollSource }
+/** The hourly usage poll's one source: the app's own metrics endpoint. A host's usage (Cloudflare,
+ *  Railway, Vercel, …) is a hosting provider's, reported per part in `RepoRefreshResult.hosting`. */
+export interface UsagePollResult { sapling: UsagePollSource }
 
 // ── "Poll now" (POST /admin/poll) — health, usage and GitHub, on demand. TYPES ONLY ──
-/** `reconcileRepo`'s own result: `failed` holds ARM NAMES (`"deployments"`,
- *  `"runs"`, …) or one fixed phrase — never an error message, never a secret. */
+/** `reconcileRepo`'s own result: `failed` holds ARM NAMES (`"runs"`,
+ *  `"checks"`, …) or one fixed phrase — never an error message, never a secret. */
 export interface RepoRefreshGithub { written: number; unchanged: number; failed: string[] }
-/** `UsagePollResult`'s three sources plus the two the usage poll never ran.
+/** `UsagePollResult`'s source plus the ones the usage poll never ran.
  *  `health` is one `PollOutcome` per TARGET (two per environment, `part` set):
  *  `ok` = up, `failed` = down with a few fixed words (`timeout` / `HTTP 503` /
  *  `unreachable`), `written` = new `repo_metrics` rows; `"not_configured"` = no

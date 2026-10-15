@@ -114,14 +114,9 @@ export interface OrgEnvironmentDTO {
   label: string;
   note: string | null;
   branch: string;
-  railway_env: string;
-  worker: string;
-  worker_check: string;
   frontend_url: string;
   api_url: string;
   health_path: string;
-  railway_environment_id: string | null;
-  railway_service_id: string | null;
   created_at: string;
   updated_at: string;
   updated_by: string;

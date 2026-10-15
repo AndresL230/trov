@@ -421,7 +421,7 @@ export function createOrgController(host: OrgHost): OrgController {
       const v = d.fields[f].trim();
       // A new environment sends what was filled in; an edit sends only what changed.
       if (current ? v === base[f] : v === "" || (f === "health_path" && v === "/")) continue;
-      body[f] = v === "" && (f === "note" || f === "railway_environment_id" || f === "railway_service_id") ? null : v;
+      body[f] = v === "" && f === "note" ? null : v;
     }
     if (current && Object.keys(body).length === 0) { u.envEdit = null; rerender(); return; }
     d.saving = true; d.error = null; d.errorField = null;
@@ -442,7 +442,6 @@ export function createOrgController(host: OrgHost): OrgController {
         d.error = e instanceof OrgApiError && e.message === "invalid" && e.detail && d.errorField && label
           ? sentence(e.detail.replace(new RegExp(`^${d.errorField}:\\s*`), "").replace(new RegExp(`^${d.errorField}\\b`), label))
           : errorText(e, "Couldn't save the environment.");
-        if (d.errorField && !["key", "label", "note", "branch", "frontend_url", "api_url", "health_path"].includes(d.errorField)) d.advanced = true;
         rerender();
       });
   }
@@ -674,14 +673,14 @@ export function createOrgController(host: OrgHost): OrgController {
       // Environments
       case "orgEnvNew":
         if (!admin) return;
-        u.envEdit = { key: null, keyDraft: "", fields: blankEnvFields(), advanced: false, saving: false, error: null, errorField: null };
+        u.envEdit = { key: null, keyDraft: "", fields: blankEnvFields(), saving: false, error: null, errorField: null };
         rerender();
         mount.querySelector<HTMLElement>("#org-env-key")?.focus();
         return;
       case "orgEnvEdit": {
         const e = u.envs.data.find((x) => x.key === arg);
         if (!admin || !e) return;
-        u.envEdit = { key: e.key, keyDraft: e.key, fields: envFieldsOf(e), advanced: false, saving: false, error: null, errorField: null };
+        u.envEdit = { key: e.key, keyDraft: e.key, fields: envFieldsOf(e), saving: false, error: null, errorField: null };
         rerender();
         mount.querySelector<HTMLElement>("#org-env-label")?.focus();
         return;
@@ -693,7 +692,6 @@ export function createOrgController(host: OrgHost): OrgController {
           if (u.envEdit.errorField === arg) { u.envEdit.error = null; u.envEdit.errorField = null; }
         }
         break;
-      case "orgEnvAdvanced": if (u.envEdit) u.envEdit.advanced = !u.envEdit.advanced; break;
       case "orgEnvCancel": {
         const back = u.envEdit?.key ? `orgEnvEdit:${u.envEdit.key}` : "orgEnvNew";
         u.envEdit = null;

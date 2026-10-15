@@ -64,8 +64,9 @@ export interface RepoReviewRow {
 
 export interface RepoMetric { metric: string; env: string; part: string; value: number; at: string }
 
-/** The `repo_snapshots` kind recording what the Cloudflare analytics poll
- *  (src/repo/poll.ts) has LOOKED AT, per environment: `{ [envKey]: { from, to } }`
+/** The `repo_snapshots` kind recording what the LEGACY Cloudflare analytics poll
+ *  (removed with 0056_hosting_providers — nothing writes it any more; a Cloudflare part's
+ *  coverage is now its `hosting_poll_state` row) had LOOKED AT, per environment: `{ [envKey]: { from, to } }`
  *  — ONE contiguous covered interval, both ends hour floors, `to` EXCLUSIVE
  *  (covered through 11:00 means the 10:00 bucket is the last one a poll has
  *  seen). Cloudflare returns no row for a quiet hour, so this is what entitles

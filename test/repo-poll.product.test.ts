@@ -370,7 +370,7 @@ describe("pruneRepoCapture — sap_* rows", () => {
       await pruneRepoCapture(platformCtx(), Date.parse("2026-09-20T12:00:00Z"));
       const sql = prepare.mock.calls.map((c) => String(c[0]));
       expect(sql.some((q) => q.includes("metric GLOB 'sap_*'"))).toBe(true);
-      expect(sql.some((q) => q.includes("metric GLOB 'cf_*' OR metric GLOB 'rw_*' OR metric GLOB 'active_users_*'"))).toBe(true);
+      expect(sql.some((q) => q.includes("metric GLOB 'active_users_*' OR metric GLOB 'hx_*'"))).toBe(true);
       expect(sql.filter((q) => /GLOB\s*\?/.test(q))).toEqual([]);
     } finally { prepare.mockRestore(); }
   });

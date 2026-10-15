@@ -27,8 +27,8 @@ const HOOK = "hook_0123456789abcdef0123456789abcdef01234567";
 
 const org = (role: OrgRole = "owner"): MyOrg => ({ slug: "acme", name: "Acme Robotics", role });
 function integ(kind: IntegrationKind, o: Partial<IntegrationDTO> = {}): IntegrationDTO {
-  const scope_type = kind === "github_webhook" ? "repo" : kind === "railway" || kind === "metrics_endpoint" ? "environment" : "org";
-  const label = { github_token: "GitHub token", github_webhook: "GitHub webhook secret", cloudflare_analytics: "Cloudflare analytics", railway: "Railway project token", metrics_endpoint: "App metrics endpoint",
+  const scope_type = kind === "github_webhook" ? "repo" : kind === "metrics_endpoint" ? "environment" : "org";
+  const label = { github_token: "GitHub token", github_webhook: "GitHub webhook secret", cloudflare_analytics: "Cloudflare analytics", railway: "Railway token", metrics_endpoint: "App metrics endpoint",
     vercel: "Vercel connection", render: "Render API key", netlify: "Netlify connection", fly: "Fly.io token", aws: "AWS role" }[kind];
   return {
     kind, scope: scope_type === "org" ? "" : scope_type === "repo" ? HOOK : "staging", scope_type,
@@ -47,8 +47,8 @@ const repo = (o: Partial<OrgRepoDTO> = {}): OrgRepoDTO => ({
   webhook_secret_configured: false, connection: "manual", access_lost: false, created_at: "2026-10-01T10:00:00.000Z", created_by: "andres", ...o,
 });
 const env = (key: string, position: number, o: Partial<OrgEnvironmentDTO> = {}): OrgEnvironmentDTO => ({
-  key, position, label: key[0].toUpperCase() + key.slice(1), note: null, branch: key === "staging" ? "main" : key, railway_env: "", worker: "", worker_check: "",
-  frontend_url: `https://${key}.acme.dev`, api_url: `https://api.${key}.acme.dev`, health_path: "/api/health", railway_environment_id: null, railway_service_id: null,
+  key, position, label: key[0].toUpperCase() + key.slice(1), note: null, branch: key === "staging" ? "main" : key,
+  frontend_url: `https://${key}.acme.dev`, api_url: `https://api.${key}.acme.dev`, health_path: "/api/health",
   created_at: "2026-10-01T10:00:00.000Z", updated_at: "2026-10-01T10:00:00.000Z", updated_by: "andres", ...o,
 });
 const member = (handle: string, role: OrgRole, o: Partial<OrgMember> = {}): OrgMember => ({
@@ -65,7 +65,7 @@ function emptyUi(over: Partial<OrgUi> = {}): OrgUi {
     ...initialOrgUi(), slug: "acme",
     settings: ok({ org: { slug: "acme", name: "Acme Robotics", created_at: "2026-10-01T10:00:00.000Z", created_by: "andres" }, can_edit: true }),
     members: ok([member("andres", "owner")]), invites: ok([]), repos: ok([]), envs: ok([]),
-    integrations: ok({ integrations: [integ("github_token"), integ("cloudflare_analytics")], secrets_available: true, key_version: null }),
+    integrations: ok({ integrations: [integ("github_token")], secrets_available: true, key_version: null }),
     // The GitHub App is NOT configured on this deployment (the state every org was in before 0.19):
     // repositories are connected by name. The App's own states are test/render.github-app.test.ts.
     github: ok({ configured: false, installation: null, lost: null, mismatch: null }),
@@ -84,7 +84,7 @@ function fullUi(over: Partial<OrgUi> = {}): OrgUi {
         set("github_token", "1a2b"), set("github_webhook", "9f3a"),
         set("cloudflare_analytics", "aa11", { config: { account_id: "0123456789abcdef0123456789abcdef" } }),
         set("railway", "beef"), set("metrics_endpoint", "27bc"),
-        integ("railway", { scope: "production", scope_label: "Production" }), integ("metrics_endpoint", { scope: "production", scope_label: "Production" }),
+        integ("metrics_endpoint", { scope: "production", scope_label: "Production" }),
       ],
       secrets_available: true, key_version: 2,
     }),
@@ -259,9 +259,10 @@ describe("Integrations — status in words", () => {
     expect(integrationStatus(set("github_token", "1a2b", { last_error: "github 401" }))).toMatchObject({ state: "error", word: "Error" });
     expect(integrationStatus(set("railway", "beef", { expected: false }))).toMatchObject({ state: "orphan" });
   });
-  it("groups GitHub, Cloudflare, then one group per environment, then what nothing claims", () => {
-    const list = [...fullUi().integrations.data!.integrations, set("railway", "dead", { scope: "old", scope_label: null, expected: false })];
-    expect(groupIntegrations(list).map((g) => [g.key, g.rows.length])).toEqual([["github", 2], ["cloudflare", 1], ["env:staging", 2], ["env:production", 2], ["orphans", 1]]);
+  it("groups GitHub, Hosting (every provider a part uses), then one group per environment, then what nothing claims", () => {
+    const list = [...fullUi().integrations.data!.integrations, set("vercel", "v3rc"), set("railway", "dead", { scope: "old", scope_label: null, expected: false })];
+    expect(groupIntegrations(list).map((g) => [g.key, g.rows.length])).toEqual([["github", 2], ["hosting", 3], ["env:staging", 1], ["env:production", 1], ["orphans", 1]]);
+    expect(groupIntegrations(list).find((g) => g.key === "hosting")!.rows.map((i) => i.kind)).toEqual(["cloudflare_analytics", "railway", "vercel"]);
   });
 });
 
@@ -269,7 +270,7 @@ describe("Integrations — the states of the page", () => {
   it("empty org: every expected integration is listed as Not set, with where to go next", () => {
     const html = tabView(emptyUi(), "integrations");
     expect(html).toContain('data-org-integration="github_token:" data-state="unset"');
-    expect(html).toContain('data-org-integration="cloudflare_analytics:" data-state="unset"');
+    expect(html).not.toContain('data-org-integration="cloudflare_analytics:"'); // a host is expected only once a part uses it
     expect(html).toContain("Not set");
     expect(html).toContain("What GitHub token is used for.");
     expect(html).toContain('aria-label="Set the GitHub token"');
@@ -343,7 +344,7 @@ describe("Integrations — the states of the page", () => {
     expect(html).toContain("TROV_KEK");
     expect(html).toMatch(/data-field="orgSecretOpen:rotate:github_token:" disabled/);
     expect(html).toMatch(/data-field="orgSecretTest:github_token:" disabled/);
-    expect(html).toMatch(/data-field="orgSecretOpen:set:railway:production" disabled/);
+    expect(html).toMatch(/data-field="orgSecretOpen:set:metrics_endpoint:production" disabled/);
     expect(html).toMatch(/data-field="orgConfirm:key:" disabled/);
     expect(html).not.toMatch(/data-field="orgConfirm:secret:github_token:" disabled/);
     expect(tabView(fullUi(), "integrations")).not.toContain("data-org-unavailable");
@@ -419,7 +420,7 @@ describe("Integrations — the states of the page", () => {
     const a = (o: Partial<OrgAuditDTO>): OrgAuditDTO => ({ id: "s1", actor: "andres", action: "secret.delete", target: `github_webhook:${HOOK}`, detail: { hint_last4: "9f3a", reason: "repo_removed" }, at: "2026-10-05T10:00:00.000Z", ...o });
     expect(auditSentence(a({}), [])).toBe("deleted the GitHub webhook secret of a removed repository (ends in 9f3a) when its repository was removed");
     expect(auditSentence(a({ target: "metrics_endpoint:staging", detail: { hint_last4: "27bc", reason: "api_url_changed" } }), [])).toBe("deleted the App metrics endpoint for staging (ends in 27bc) when the environment's API URL moved to another host");
-    expect(auditSentence(a({ action: "integration.config", target: "cloudflare_analytics:", detail: { keys: ["account_id"] } }), [])).toBe("changed the settings of the Cloudflare analytics");
+    expect(auditSentence(a({ action: "integration.config", target: "cloudflare_analytics:", detail: { keys: ["account_id"] } }), [])).toBe("changed the settings of the Cloudflare token");
   });
 });
 
@@ -599,22 +600,20 @@ describe("Environments", () => {
     expect(html).toMatch(/data-act="orgEnvMove" data-arg="production:down"[^>]* disabled/);
     expect(html).not.toContain("draggable");
   });
-  it("the form has every field of the DTO, the less common ones under Advanced", () => {
-    const d = { key: null, keyDraft: "", fields: blankEnvFields(), advanced: false, saving: false, error: null, errorField: null };
+  it("the form has every field of the DTO — what hosts the environment is set in Hosting, not here", () => {
+    const d = { key: null, keyDraft: "", fields: blankEnvFields(), saving: false, error: null, errorField: null };
     const html = envForm(d, null, false);
-    for (const f of ["key", "label", "note", "branch", "frontend_url", "api_url", "health_path", "railway_env", "worker", "worker_check", "railway_environment_id", "railway_service_id"]) {
+    for (const f of ["key", "label", "note", "branch", "frontend_url", "api_url", "health_path"]) {
       expect(html, f).toContain(`id="org-env-${f}"`);
       expect(html, f).toContain(`<label for="org-env-${f}"`);
     }
-    expect(html).toContain('data-act="orgEnvAdvanced" data-field="orgEnvAdvanced" aria-expanded="false" aria-controls="org-env-adv"');
-    expect(html).toContain('<div id="org-env-adv" hidden>');
-    expect(html.indexOf('id="org-env-worker"')).toBeGreaterThan(html.indexOf('id="org-env-adv"'));
-    expect(html.indexOf('id="org-env-api_url"')).toBeLessThan(html.indexOf('id="org-env-adv"'));
-    expect(envForm({ ...d, advanced: true }, null, false)).toContain('<div id="org-env-adv">');
-    // An error on an advanced field opens the disclosure so the message is seen.
-    const err = envForm({ ...d, error: "Railway service ID must be an id (letters, digits and hyphens).", errorField: "railway_service_id" }, null, false);
-    expect(err).toContain('<div id="org-env-adv">');
-    expect(err).toContain('id="org-env-railway_service_id-e" role="alert"');
+    for (const gone of ["railway_env", "worker", "worker_check", "railway_environment_id", "railway_service_id"]) expect(html, gone).not.toContain(`id="org-env-${gone}"`);
+    expect(html).not.toContain("orgEnvAdvanced");
+    expect(html).toContain("data-org-env-hosting");
+    expect(html).toContain('data-act="orgTab" data-arg="hosting"');
+    // A refusal sits beside its field.
+    const err = envForm({ ...d, error: "API URL must be https.", errorField: "api_url" }, null, false);
+    expect(err).toContain('id="org-env-api_url-e" role="alert"');
   });
   it("warns BEFORE saving that an API host change deletes the metrics token", () => {
     const cur = env("staging", 0);
@@ -634,7 +633,7 @@ describe("Environments", () => {
     const ui = fullUi();
     const c = orgConfirmCopy({ what: "env", arg: "staging", busy: false }, org(), ui)!;
     expect(c.title).toBe("Delete the “Staging” environment?");
-    expect(c.body).toContain("Railway project token, App metrics endpoint");
+    expect(c.body).toContain("This secret is deleted with it and cannot be recovered: App metrics endpoint.");
     expect(orgConfirmCopy({ what: "env", arg: "production", busy: false }, org(), ui)!.body).toContain("No secrets are stored for it.");
   });
 });

@@ -1123,7 +1123,7 @@ describe("repoView — product metrics", () => {
 
 describe("Poll now — the Repo top bar, every tab", () => {
   const done = (result: RepoRefreshResult) => ({ status: "done" as const, result });
-  const NOT: RepoRefreshResult = { health: "not_configured", cloudflare: "not_configured", railway: "not_configured", sapling: "not_configured", github: "not_configured" };
+  const NOT: RepoRefreshResult = { health: "not_configured", sapling: "not_configured", github: "not_configured" };
   const TABS = REPO_TABS.map(([t]) => t);
   const stripText = (html: string) => html.slice(html.indexOf("repo-poll-strip")).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   const view = (over: Partial<RepoProps> = {}) => repoView(props({ admin: true, ...over }));
@@ -1231,7 +1231,7 @@ describe("Poll now — the Repo top bar, every tab", () => {
   it("Health is summarised: how many are up, and each one that is not, by name", () => {
     const up = (env: string, part: "frontend" | "backend") => ({ env, part, status: "ok" as const, written: 2 });
     const allUp = view({ poll: done({ ...NOT, health: [up("staging", "frontend"), up("staging", "backend"), up("production", "frontend"), up("production", "backend")] }) });
-    expect(stripText(allUp)).toContain("Health — 4 up Cloudflare");
+    expect(stripText(allUp)).toContain("Health — 4 up App metrics");
     expect(allUp).toMatch(/color:var\(--green\)[^>]*>4 up</);
 
     const oneDown = view({ poll: done({ ...NOT, health: [up("staging", "frontend"), { env: "staging", part: "backend", status: "failed", written: 2, detail: "timeout" }, up("production", "frontend"), up("production", "backend")] }) });
@@ -1259,22 +1259,23 @@ describe("Poll now — the Repo top bar, every tab", () => {
     expect(stripText(view({ poll: done(NOT) }))).toContain("GitHub — Not connected — set it up in Org settings › Integrations");
   });
 
-  it("the usage sources read as they always did: new rows, up to date, a failure's detail, a skip, not configured", () => {
+  it("the usage source reads as it always did: new rows, up to date, a failure's detail, a skip, not configured", () => {
     const html = view({ tab: "usage", poll: done({
       ...NOT,
-      cloudflare: [{ env: "staging", status: "ok", written: 3 }, { env: "production", status: "failed", written: 0, detail: "cloudflare analytics 403" }],
-      sapling: [{ env: "staging", status: "ok", written: 0 }, { env: "production", status: "skipped", written: 0, detail: "apiUrl is not https" }],
+      sapling: [{ env: "staging", status: "ok", written: 3 }, { env: "production", status: "failed", written: 0, detail: "HTTP 403" }],
     }) });
     const text = stripText(html);
-    expect(text).toContain("Cloudflare — staging ✓ 3 new · production ✗ cloudflare analytics 403");
-    expect(text).toContain("Railway — Not connected — set it up in Org settings › Integrations");
-    expect(text).toContain("App metrics — staging ✓ up to date · production – skipped: apiUrl is not https");
-    // The five lines, in the order the sources ran.
-    expect(text.indexOf("Health")).toBeLessThan(text.indexOf("Cloudflare"));
+    expect(text).toContain("App metrics — staging ✓ 3 new · production ✗ HTTP 403");
+    // A host's usage is not a usage source any more: no Cloudflare / Railway line (the hosting arm reports per provider).
+    expect(text).not.toMatch(/Cloudflare —|Railway —/);
+    // The lines, in the order the sources ran.
+    expect(text.indexOf("Health")).toBeLessThan(text.indexOf("App metrics"));
     expect(text.indexOf("App metrics")).toBeLessThan(text.indexOf("GitHub"));
     // Tone comes from the existing variables: good / bad / muted.
     expect(html).toMatch(/color:var\(--green\)[^>]*>✓ 3 new/);
-    expect(html).toMatch(/color:var\(--red\)[^>]*>✗ cloudflare analytics 403/);
+    expect(html).toMatch(/color:var\(--red\)[^>]*>✗ HTTP 403/);
+    const skips = stripText(view({ poll: done({ ...NOT, sapling: [{ env: "staging", status: "ok", written: 0 }, { env: "production", status: "skipped", written: 0, detail: "apiUrl is not https" }] }) }));
+    expect(skips).toContain("App metrics — staging ✓ up to date · production – skipped: apiUrl is not https");
     // A source the org has not set up is not a failure: muted, and it links to where it is set up.
     expect(html).toMatch(/<span data-poll-off style="color:var\(--fg-40\)">Not connected — <button type="button" data-act="orgGo" data-arg="integrations"[^>]*>set it up in Org settings › Integrations<\/button><\/span>/);
     expect(html).not.toMatch(/color:var\(--red\)[^>]*>[^<]*Not connected/);
@@ -1298,8 +1299,8 @@ describe("Poll now — the Repo top bar, every tab", () => {
   });
 
   it("a source with no environment says so, and the unexpected-error arm reads as all environments", () => {
-    const text = stripText(view({ poll: done({ ...NOT, cloudflare: [], sapling: [{ env: "*", status: "failed", written: 0, detail: "unexpected error" }] }) }));
-    expect(text).toContain("Cloudflare — no environment configured");
+    expect(stripText(view({ poll: done({ ...NOT, sapling: [] }) }))).toContain("App metrics — no environment configured");
+    const text = stripText(view({ poll: done({ ...NOT, sapling: [{ env: "*", status: "failed", written: 0, detail: "unexpected error" }] }) }));
     expect(text).toContain("App metrics — all ✗ unexpected error");
   });
 
@@ -1307,7 +1308,7 @@ describe("Poll now — the Repo top bar, every tab", () => {
     const html = view({ poll: done({
       ...NOT,
       health: [{ env: `<i>prod</i>`, part: `<u>p</u>` as never, status: "failed", written: 0, detail: `<svg onload=1>` }],
-      cloudflare: [{ env: `<b>stg</b>`, status: "failed", written: 0, detail: `<img src=x onerror=1>` }],
+      sapling: [{ env: `<b>stg</b>`, status: "failed", written: 0, detail: `<img src=x onerror=1>` }],
       github: { written: 0, unchanged: 0, failed: [`<script>alert(1)</script>`, `"><img src=y>`] },
     }) });
     for (const raw of ["<img src=x", "<b>stg</b>", "<i>prod</i>", "<u>p</u>", "<svg onload", "<script>alert", "<img src=y"]) expect(html, raw).not.toContain(raw);
@@ -1323,7 +1324,7 @@ describe("Poll now — the Repo top bar, every tab", () => {
     expect(html).toContain("No repository connected");
     expect(html).toContain("repo-poll-strip");
     const text = stripText(html);
-    for (const label of ["Health", "Cloudflare", "Railway", "App metrics", "GitHub"]) expect(text, label).toContain(`${label} — Not connected — set it up in Org settings › Integrations`);
+    for (const label of ["Health", "App metrics", "GitHub"]) expect(text, label).toContain(`${label} — Not connected — set it up in Org settings › Integrations`);
     expect(html).not.toMatch(/color:var\(--red\)/);
     // Before a poll, and for a member, the empty state stands alone.
     expect(view({ noRepo: true, poll: null })).not.toContain("repo-poll-strip");

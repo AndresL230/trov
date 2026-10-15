@@ -208,7 +208,7 @@ describe("reconcileRepo — the reviews arm", () => {
   // THE parity test: the polled row's key is what the webhook's own derivation
   // yields for the same review id — so whichever lands first, the other drops.
   it("writes the row the webhook fixture would have written for the same review — same semantic key, same fields", async () => {
-    const [fromWebhook] = repoEventsFromDelivery("pull_request_review", reviewFixture, ENVS);
+    const [fromWebhook] = repoEventsFromDelivery("pull_request_review", reviewFixture);
     expect(fromWebhook.semantic_key).toBe("gh:review:3001:submitted");
 
     const gh = fakeGithub({ reviewsGraphql: reviews({ number: 480, nodes: [reviewNode()] }) });
@@ -269,7 +269,7 @@ describe("reconcileRepo — the reviews arm", () => {
       ["gh:review:5264246626:submitted", 658, "commented", "github-code-quality[bot]"],
     ]);
     // The dismissal's key is the one the webhook's `dismissed` delivery writes.
-    const [dismissed] = repoEventsFromDelivery("pull_request_review", { action: "dismissed", review: { id: 12, state: "dismissed", submitted_at: "2026-09-20T10:00:00Z", user: { login: "AndresL230" } }, pull_request: { number: 658 } }, ENVS);
+    const [dismissed] = repoEventsFromDelivery("pull_request_review", { action: "dismissed", review: { id: 12, state: "dismissed", submitted_at: "2026-09-20T10:00:00Z", user: { login: "AndresL230" } }, pull_request: { number: 658 } });
     expect(dismissed.semantic_key).toBe("gh:review:12:dismissed");
   });
 
