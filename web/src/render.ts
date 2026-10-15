@@ -48,7 +48,7 @@ import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, bl
 import type { PromptView } from "./prompt-box";
 import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
 import { newDocView, blankDoc, type NewDocDraft } from "./newdoc";
-import type { HandoffView, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
+import type { HandoffView, HandoffReadingItem, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
 import { emailNotificationsSection, switchBtn, type NotifAdminProps } from "./notifications";
 import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow } from "./api";
@@ -386,6 +386,9 @@ export interface AppState {
   handoffExpireArm: boolean;
   /** The handoff's prompt, expanded over the page. */
   handoffPromptOpen: boolean;
+  /** The reading list (#167) the last claim in this session returned, for that handoff only. Not
+   *  stored on the server and never recomputed on a read, so a reload drops it. */
+  handoffReading: { id: number; items: HandoffReadingItem[] | null } | null;
   nh: NewHandoffDraft;
   // ── Prompt Library ─────────────────────────────────────────────────────────
   /** The whole library; the search / tag / sort filter runs client-side over it. */
@@ -560,7 +563,7 @@ export function initialState(): AppState {
     art: initialArtUi(),
     handoffs: { status: "idle", data: [] },
     handoffDetail: { status: "idle", data: null },
-    handoffId: null, handoffExpireArm: false, handoffPromptOpen: false,
+    handoffId: null, handoffExpireArm: false, handoffPromptOpen: false, handoffReading: null,
     nh: blankHandoff(),
     promptList: { status: "idle", data: [] },
     promptQ: "", promptTag: null, promptSort: "updated_desc", promptFilterOpen: false, promptFilterCat: "tag",
@@ -2802,7 +2805,7 @@ function screenBody(s: AppState): string {
     case "artifactnew":
     case "artifact": return artifactsView(artProps(s, s.screen));
     case "handoffs": return handoffsView({ status: s.handoffs.status, handoffs: s.handoffs.data, me: s.me?.handle ?? "", persons: s.persons.data });
-    case "handoff": return handoffDetailView({ status: s.handoffDetail.status, handoff: s.handoffDetail.data, me: s.me?.handle ?? "", persons: s.persons.data, expireArm: s.handoffExpireArm, promptView: s.promptView });
+    case "handoff": return handoffDetailView({ status: s.handoffDetail.status, handoff: s.handoffDetail.data, me: s.me?.handle ?? "", persons: s.persons.data, expireArm: s.handoffExpireArm, promptView: s.promptView, reading: s.handoffReading && s.handoffDetail.data && s.handoffReading.id === s.handoffDetail.data.id ? s.handoffReading.items : null });
     case "newhandoff": return newHandoffView({ draft: s.nh, me: s.me?.handle ?? "", persons: s.persons.data, primaryRepo: s.orgMe.data?.repos.primary ?? null });
     case "prompts": return promptLibraryView({ status: s.promptList.status, prompts: s.promptList.data, q: s.promptQ, tag: s.promptTag, sort: s.promptSort, filterOpen: s.promptFilterOpen, filterCat: s.promptFilterCat, fmOpening: s.fmOpening, persons: s.persons.data });
     case "prompt": return promptDetailView({

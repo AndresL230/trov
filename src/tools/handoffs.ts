@@ -18,9 +18,11 @@ import { z } from "zod";
 import { all, first, run, nowIso, type TenantContext } from "../data/sql";
 import { append_feed } from "./writes";
 import { memberHandle } from "../auth/persons";
+import { query } from "./reads";
+import type { QueryPrimary } from "@shared/contract";
 import {
-  EMPTY_CONTEXT, firstLine,
-  type HandoffBox, type HandoffContext, type HandoffStatus, type HandoffView,
+  EMPTY_CONTEXT, firstLine, HANDOFF_READING_MAX, HANDOFF_READING_HEADING,
+  type HandoffBox, type HandoffContext, type HandoffStatus, type HandoffView, type HandoffReadingItem, type HandoffReadingKind,
 } from "@shared/handoffs";
 
 export class HandoffError extends Error {
@@ -147,6 +149,7 @@ export async function createHandoff(
   }
   // The feed shows the handoff happened (who → whom, and its title). Direct
   // writer, no tags: an addressed message is not topic-tagged knowledge.
+  // HANDOFF_FEED_LINE (below) recognises this line, so no handoff's reading list lists an announcement.
   await append_feed(ctx, {
     author: sender,
     summary: `${sender} left a handoff for ${recipient === "anyone" ? "anyone" : recipient}: #${id} ${firstLine(input.body)}`.slice(0, 300),
@@ -220,4 +223,189 @@ export function handoffAsTask(h: HandoffView): string {
     list(c.files),
   ].join("\n"));
   return parts.join("\n\n");
+}
+
+// ── "Read these first (not complete)" (#167) ──────────────────────────────────
+//
+// Computed when a handoff is CLAIMED (a write path) and returned with the claim; never stored and
+// never computed on a render. It is retrieval, not judgement: the handoff's own words become a
+// `query()` — the same FTS5/bm25 engine as MCP `query` and /search — over the claiming org (`ctx`,
+// so another org's rows are never candidates). What the claimer could not see is never listed:
+// `viewer` is the claimer (a private artifact reaches only its author) and `include_staged: false`
+// keeps it to settled content, as /search does (no unpromoted doc, no draft decision or artifact).
+// No model, no network. Every surface heads it HANDOFF_READING_HEADING: it is never complete.
+
+const READING_TYPES: readonly HandoffReadingKind[] = ["doc", "decision", "feed", "artifact"];
+/** The query's words: enough to rank by, few enough that one common word cannot swamp them. */
+const READING_TERMS_MAX = 24;
+/** Candidates bm25 picks PER KIND (full bodies) before they are re-ranked, filtered and capped. */
+const READING_FETCH = 8;
+/** A handoff's own feed announcement (createHandoff's summary) — it echoes the handoff, so it is never "read first". */
+const HANDOFF_FEED_LINE = /^\S+ left a handoff for \S+: #\d+ /;
+
+// Words that carry no topic: English glue plus a handoff's own vocabulary.
+const READING_STOP = new Set((
+  "about above after again against all also and any are aren because been before being below between both but "
+  + "can cannot could did does doing done down during each few for from further had has have having her here hers "
+  + "him his how into its itself just let more most must nor not now off once only other our ours out over own "
+  + "same she should some still such than that the their theirs them then there these they this those through too "
+  + "under until very was were what when where which while who whom why will with would yet you your yours "
+  + "get got make made need needs use used using via per like one two three left right next last first new old "
+  + "handoff handoffs session task todo done next files file see read run runs ran work works working wip fix fixed "
+  + "add added adds remove removed change changed update updated thing things way bit lot ok yes"
+).split(" "));
+
+/** One query word and how much it says: the task's and the title's words count double. */
+export interface ReadingTerm { term: string; weight: number }
+
+/**
+ * The handoff's own words, most telling first: the task and the title (weight 2), then the file
+ * names, what is next, the rest of the body, what is done and the prompt's title (weight 1).
+ * Lowercased, de-duplicated, no stop words, no bare numbers, nothing under three letters; at most
+ * READING_TERMS_MAX.
+ */
+export function readingTerms(h: HandoffView): ReadingTerm[] {
+  const c = h.context;
+  const lines = h.body.split("\n");
+  const fi = lines.findIndex((l) => l.trim());
+  const rest = fi >= 0 ? lines.slice(fi + 1).join("\n") : "";
+  // A file path speaks through its name: `src/tools/handoffs.ts` → `handoffs`.
+  const stems = c.files.map((f) => (f.split("/").pop() ?? "").replace(/\.[^.]+$/, ""));
+  const sources: Array<[string, number]> = [
+    [c.task, 2], [firstLine(h.body), 2],
+    ...stems.map((x): [string, number] => [x, 1]), ...c.next.map((x): [string, number] => [x, 1]),
+    [rest, 1], ...c.done.map((x): [string, number] => [x, 1]), [h.prompt?.title ?? "", 1],
+  ];
+  const out: ReadingTerm[] = [];
+  for (const [text, weight] of sources) {
+    for (const w of words(text)) {
+      if (w.length < 3 || /^\d+$/.test(w) || READING_STOP.has(w) || out.some((t) => t.term === w)) continue;
+      out.push({ term: w, weight });
+      if (out.length >= READING_TERMS_MAX) return out;
+    }
+  }
+  return out;
+}
+
+const words = (text: string): string[] => text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+
+/** A word's matching stem: a long word drops its last two letters (`retries` → `retri`, `pages` → `page`). */
+const stemOf = (t: string): string => (t.length <= 4 ? t : t.slice(0, Math.max(4, t.length - 2)));
+
+/** The query words a text contains, by stem (a token that starts with the stem and is not much longer). */
+function termsIn(text: string, terms: ReadingTerm[]): Set<string> {
+  const tokens = new Set(words(text));
+  const hit = new Set<string>();
+  for (const t of terms) {
+    const st = stemOf(t.term);
+    for (const x of tokens) if (x.startsWith(st) && x.length <= st.length + 4) { hit.add(t.term); break; }
+  }
+  return hit;
+}
+
+/** The line of `body` holding the most of the query's weight — Trov's own text, as evidence. */
+function evidence(body: string, terms: ReadingTerm[]): string {
+  let best = "", bestW = 0;
+  for (const l of body.split(/\n+|(?<=[.!?])\s+/)) {
+    const hit = termsIn(l, terms);
+    const w = terms.reduce((sum, t) => sum + (hit.has(t.term) ? t.weight : 0), 0);
+    if (w > bestW) { best = l; bestW = w; }
+  }
+  const s = best.replace(/[#>*`|]+/g, " ").replace(/\s+/g, " ").trim();
+  return s.length > 200 ? `${s.slice(0, 199).trimEnd()}…` : s;
+}
+
+/**
+ * The reading list for a handoff `viewer` has just claimed: at most HANDOFF_READING_MAX items, best
+ * first. `[]` when the handoff has no searchable words or nothing matched well enough.
+ *
+ * Two passes, both plain retrieval. `query()` (bm25, OR of the words) picks READING_FETCH candidates
+ * of EACH kind — one call per kind, because bm25 from different FTS tables does not compare (a small
+ * table where every row holds a word scores ~0) — and its order is the tiebreak. The candidates are
+ * then ranked together by WHICH of the handoff's words they hold — each word
+ * worth its weight times how rare it is among the candidates, double in the title — because an OR
+ * query alone ranks a short entry that shares one word ("page") above the doc that shares five.
+ * An item holding fewer than two of the words (one, for a one-word handoff) is not listed.
+ */
+export async function handoffReadingList(ctx: TenantContext, h: HandoffView, viewer: string): Promise<HandoffReadingItem[]> {
+  const terms = readingTerms(h);
+  if (!terms.length) return [];
+  const q = terms.map((t) => t.term).join(" ");
+  const found: QueryPrimary[] = [];
+  for (const type of READING_TYPES) {
+    // A feed kind fetches one extra: a handoff announcement is dropped below.
+    const res = await query(ctx, { q, types: [type], include_staged: false, limit: READING_FETCH + (type === "feed" ? 1 : 0), pointer_limit: 0 }, viewer);
+    found.push(...res.primary.filter((p) => p.type === type));
+  }
+  const cands = found
+    .filter((p) => !(p.type === "feed" && HANDOFF_FEED_LINE.test(p.title)))
+    .map((p, rank) => ({
+      p, rank, inTitle: termsIn(p.title, terms), inAll: termsIn(`${p.title}\n${p.body}`, terms),
+      size: new Set(words(`${p.title}\n${p.body}`)).size,
+    }));
+  const df = new Map<string, number>();
+  for (const c of cands) for (const t of c.inAll) df.set(t, (df.get(t) ?? 0) + 1);
+  const idf = (t: string) => Math.log(1 + cands.length / (df.get(t) ?? 1));
+  // A long doc holds more of any word list by its length alone: its score is damped by its size
+  // against the candidates' average (bm25's own length rule, half strength).
+  const avgSize = cands.reduce((sum, c) => sum + c.size, 0) / Math.max(1, cands.length);
+  const need = Math.min(2, terms.length);
+  return cands
+    .filter((c) => c.inAll.size >= need)
+    .map((c) => ({
+      ...c,
+      score: terms.reduce((sum, t) => sum + (c.inAll.has(t.term) ? t.weight * idf(t.term) * (c.inTitle.has(t.term) ? 2 : 1) : 0), 0)
+        / (0.5 + 0.5 * (c.size / Math.max(1, avgSize))),
+    }))
+    .sort((x, y) => y.score - x.score || x.rank - y.rank)
+    .slice(0, HANDOFF_READING_MAX)
+    .map(({ p }) => ({ kind: p.type as HandoffReadingKind, id: p.id, title: p.title, snippet: evidence(p.body, terms) }));
+}
+
+/**
+ * Claim, then build the reading list. The claim is the write and it stands on its own: a list that
+ * cannot be built is `null` (logged without its text), never a failed claim.
+ */
+export async function claimHandoffWithReading(
+  ctx: TenantContext, id: number, me: string, session: string,
+): Promise<{ handoff: HandoffView; reading_list: HandoffReadingItem[] | null }> {
+  const handoff = await claimHandoff(ctx, id, me, session);
+  let reading_list: HandoffReadingItem[] | null;
+  try { reading_list = await handoffReadingList(ctx, handoff, me); }
+  catch (e) {
+    console.error("handoff reading list failed", e instanceof Error ? e.name : "error");
+    reading_list = null;
+  }
+  return { handoff, reading_list };
+}
+
+const READING_KIND_WORD: Record<HandoffReadingKind, string> = { doc: "Doc", decision: "Decision", feed: "Feed entry", artifact: "Artifact" };
+// How an agent opens each kind: docs and artifacts by slug; a decision or a feed entry has no
+// read-by-id tool, so `query` with its type finds it (the listed snippet is already its passage).
+const READING_OPEN: Record<HandoffReadingKind, (id: string) => string> = {
+  doc: (id) => `get_doc slug \`${id}\``,
+  decision: (id) => `decision #${id}, via query types ["decision"]`,
+  feed: (id) => `feed entry #${id}, via query types ["feed"]`,
+  artifact: (id) => `artifact_get slug \`${id}\``,
+};
+const clip = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t);
+
+/**
+ * The claim_handoff section for the list. Empty → "" (nothing is drawn); `null` → one line saying
+ * it could not be built, so an agent does not read silence as "nothing relevant".
+ */
+export function readingListAsMarkdown(items: HandoffReadingItem[] | null): string {
+  if (items === null) return `## ${HANDOFF_READING_HEADING}\n\nCouldn't build the reading list this time. Use \`query\` with the task's words.`;
+  if (!items.length) return "";
+  const rows = items.map((it) => {
+    const line = `- ${READING_KIND_WORD[it.kind]}: ${clip(it.title.replace(/\s+/g, " ").trim(), 140)} (${READING_OPEN[it.kind](it.id)})`;
+    return it.snippet ? `${line}\n  > ${clip(it.snippet, 200)}` : line;
+  });
+  return [
+    `## ${HANDOFF_READING_HEADING}`,
+    "",
+    "Ranked by a text search over this organization with the handoff's own words. It is a starting point, not everything that bears on the task; `query` finds more.",
+    "",
+    ...rows,
+  ].join("\n");
 }

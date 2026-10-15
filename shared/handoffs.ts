@@ -36,6 +36,37 @@ export interface HandoffView {
   context: HandoffContext;
 }
 
+/** What a reading-list item is: the knowledge `query` searches, minus the roadmap. */
+export type HandoffReadingKind = "doc" | "decision" | "feed" | "artifact";
+
+/**
+ * One "Read these first" item (#167): FTS-ranked against the handoff's own words when it is claimed
+ * (src/tools/handoffs.ts `handoffReadingList` — no model). `id` is what opens it: a doc's slug
+ * (`get_doc`), an artifact's slug (`artifact_get`), a decision's or feed entry's number.
+ * `snippet` is the matched passage, Trov's own text — the evidence for why it is listed.
+ */
+export interface HandoffReadingItem {
+  kind: HandoffReadingKind;
+  id: string;
+  title: string;
+  snippet: string;
+}
+
+/** At most this many items. The list is a starting point and never complete — every surface says so. */
+export const HANDOFF_READING_MAX = 5;
+/** The heading every surface uses, so none presents the list as complete. */
+export const HANDOFF_READING_HEADING = "Read these first (not complete)";
+
+/**
+ * POST /api/handoffs/:id/claim. `reading_list` is computed at the claim and not stored:
+ * `[]` = nothing in the org matched; `null` = it could not be built (the claim still stands).
+ */
+export interface HandoffClaimResult {
+  ok: true;
+  handoff: HandoffView;
+  reading_list: HandoffReadingItem[] | null;
+}
+
 /** POST /api/handoffs */
 export interface HandoffCreate {
   recipient?: string;

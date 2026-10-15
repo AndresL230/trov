@@ -54,8 +54,31 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
   `POST /api/docs/propose` (a person stages
   a NEW doc through `ingestDocProposal`; an existing slug is a 409). The Hono app stays cookie-only — agents
   reach these through MCP, not a bearer on `/api/*` (no new auth class).
+- **The reading list (#167)** — "Read these first (not complete)". `claimHandoffWithReading` claims, then builds
+  it with `handoffReadingList`: retrieval only, no model, no network, computed at the claim (a write path) and
+  NOT stored, so nothing on a render path computes it and a reload of the handoff page does not show it again.
+  `readingTerms` takes the handoff's own words (task and title at weight 2, then file-name stems, next, the rest
+  of the body, done, the prompt's title; stop words, numbers and words under 3 letters dropped; ≤ 24); `query()`
+  — the `query` / `/search` engine — runs ONCE PER KIND (doc, decision, feed, artifact; ≤ 8 each with full
+  bodies), because bm25 from different FTS tables does not compare (a small table where every row holds a word
+  scores ~0). The candidates are re-ranked together by which words they hold (weight × rarity among the
+  candidates, double in the title, damped by length), an item holding fewer than two of the words is dropped,
+  and the top 5 (`HANDOFF_READING_MAX`) are returned with an evidence line from Trov's own text. What the
+  claimer could not see is never listed: `ctx` is the claim's org (another org's rows are not candidates), the
+  claimer is `query()`'s `viewer` (a private artifact reaches only its author), and `include_staged: false`
+  keeps it to settled content as `/search` does (no unpromoted doc, no draft decision or draft artifact). A
+  handoff's own feed announcement (`HANDOFF_FEED_LINE`) is never listed. A list that throws is `null` and the
+  claim stands. Surfaces: `POST /api/handoffs/:id/claim` answers `{ ok, handoff, reading_list }`
+  (`HandoffClaimResult`, `shared/handoffs.ts`); MCP `claim_handoff` ends with `## Read these first (not
+  complete)` (each item: kind, title, and `get_doc` / `artifact_get` slug, or the decision / feed number for
+  `query`; an empty list draws no section, `null` says it could not be built); the handoff screen draws it
+  under the body after its own claim (`readingListBlock`: a plain list, the kind as a word, the title as the
+  same link `/search` uses — a decision is plain text; `state.handoffReading` holds it for that handoff only)
+  and Copy as prompt appends it. An empty list draws nothing. Tests: `test/handoffs.reading-list.test.ts`
+  (over the dev seed's fixtures — claiming #15 lists the Document Pipeline doc first) and
+  `test/render.handoffs.test.ts`.
 - **MCP** (every principal): `send_handoff`, `list_handoffs` (pending `me` + `anyone` by default; only `sent`
   shows claimed/expired), `get_handoff`, `claim_handoff` (returns one markdown block: prompt, `## Handoff
-  summary`, `## Context`), `expire_handoff`, `search_prompts`, `get_prompt` (fills `{{vars}}`, lists `unfilled`),
+  summary`, `## Context`, then `## Read these first (not complete)` when anything matched), `expire_handoff`, `search_prompts`, `get_prompt` (fills `{{vars}}`, lists `unfilled`),
   `save_prompt` (always staged). There is no per-token rate limit in Trov today.
 - Skills: `handoff`, `prompts`, and `load-context` (lists waiting handoffs at session start; never auto-claims).
