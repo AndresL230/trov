@@ -55,8 +55,8 @@ ticket keeps its `board_rank`, and a drop's placement is computed over its targe
 
 The queue's search box and Filter menu (Assignee incl. any one person, Category, Priority, Sprint)
 are the Artifacts library's; Assignee (anyone / me / unassigned) and Category filter server-side, a person,
-Priority, Sprint and search narrow the loaded rows (`queueRows`). With the org's AI on, a plain-language filter box
-sits above them (`ai.md` › The plain-language filter): its answer sets these same controls — the Open / Closed / All
+Priority, Sprint and search narrow the loaded rows (`queueRows`). With the org's AI on, the Filter menu opens on a
+"Describe a filter" row (`ai.md` › The plain-language filter): the typed sentence's answer sets these same controls — the Open / Closed / All
 switch, Assignee or one person, Category, Priority, Sprint and the search — replacing what was set, with Undo.
 
 **Trov's suggestions on a ticket** (Phase C, `ai.md` › The kinds). With the org's AI on, the pass asks Jev ONE

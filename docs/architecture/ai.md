@@ -91,7 +91,7 @@ ONLY in these places, all behind THE client (the fifth, Ask Trov, is `ask.md`):
    client (MCP reaches it through `src/tools/tags.ts`). Sift on NEW items runs in the pass (› Jobs); the admin's run
    over existing items stays here.
 4. **The plain-language filter route** — `POST /api/o/:slug/ai/filter` (`src/ai/routes.ts` → `src/ai/filter.ts`), on
-   a person's request only (Enter in the filter box). Kind `filter` (Claude). See "The plain-language filter" below.
+   a person's request only (Enter in the Filter menu's "Describe a filter" field). Kind `filter` (Claude). See "The plain-language filter" below.
 5. **Ask Trov** — `POST /api/o/:slug/ask` (`src/ai/ask/routes.ts`, cookie only): the turn (`src/ai/ask/turn.ts`,
    `askChatClient` — kinds `ask.fast` / `ask.smart` / `ask.thinking`, streamed with tools) and the one-time compaction
    of a long thread (`src/ai/ask/history.ts`, kind `ask.compact`). Gated by the org switch and `ai_chat` (questions,
@@ -688,12 +688,18 @@ the model cannot invent an item, because it returns no item. Three screens: Tick
   the request said it): the screen shows them as "Not a filter here: “overdue”", never model prose.
 - **Unreadable**: nothing left to set, a `refusal`, an answer cut at `max_tokens`, no JSON, or an error → 422
   `{ error: "unreadable", message }` in plain words (naming the request's words that were no filter here).
-- **The box** (`web/src/ai-filter.ts`, acts in `web/src/ai-filter-actions.ts`; `web-ui.md`): above each screen's
-  toolbar, shown only when `GET /ai/settings` (read once per org on entering the screen) says the switch is on and
-  there is a key — off is no box. Typing keeps a draft without a repaint; Enter or Apply calls the route; the answer
-  REPLACES the screen's filter state (`applyAiFilter` in `main.ts` — a field left out is "no filter"), so the
-  result is what the person would get setting those filters by hand, each visible in the Filter menu. A line says
-  what was set and what was not a filter here, with Undo back to the filters set by hand.
+- **In the Filter menu** (`web/src/ai-filter.ts`, acts in `web/src/ai-filter-actions.ts`; `web-ui.md`): each
+  screen's own Filter menu (`filter-menu.ts`; Tickets' `queue`, the Feed's `feed`, Artifacts' `art`) opens on a
+  first row, "Describe a filter" with the AI mark (`aiFilterMenuTop`, passed as `FilterMenuProps.top`), shown only
+  when `GET /ai/settings` (read once per org on entering the screen) says the switch is on and there is a key —
+  off is no row, and the menu is byte-for-byte what it was. Choosing the row grows its field open in place (the
+  controller flips the live popover's `data-open`, no repaint; every menu opens with it shut). Typing keeps a draft
+  without a repaint and clears a refusal; Enter or Apply calls the route; a refusal shows under the field, in the
+  menu. The answer REPLACES the screen's filter state (`applyAiFilter` in `main.ts` — a field left out is "no
+  filter"), so the result is what the person would get setting those filters by hand, each visible in the same
+  menu, which then closes on its exit. A line above the toolbar (`aiFilterLine`) says what was set and what was
+  not a filter here, with Undo back to the filters set by hand; after Undo it leaves by the kit's one exit
+  (`AiController.leave`, key `filter:<screen>`).
 - **`LOCAL_AI_PREVIEW`** answers from `aiFilterFixture` (`shared/ai-fixtures.ts`), checked by `resolveFilter` like a
   model's answer, with no key, no call and no count; `empty` is unreadable, `capped` the 402. The switch still holds.
 - Tests: `test/ai.filter.test.ts` (the call, the gates, the checks, the preview), `test/render.ai-filter.test.ts`.

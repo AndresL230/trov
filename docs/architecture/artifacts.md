@@ -69,7 +69,8 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   the LATEST version of a `published` page, and it refuses any request carrying an `Authorization` header. There
   is NO MCP ratify tool.
 - **The library's filters** (area, kind, author, status, sprint and the search, client-side over the list) can also be
-  set in words: with the org's AI on, the plain-language filter box above the toolbar sets exactly those, with Undo
+  set in words: with the org's AI on, the Filter menu opens on "Describe a filter", whose typed sentence sets exactly
+  those, with a "Filtered: …" line and Undo above the toolbar
   (`ai.md` › The plain-language filter).
 - **HTTP** (`src/artifacts/routes.ts`, mounted at `/api/artifacts`, session cookie): list (filters area, kind,
   author, status, sprint, ticket, q), get `?v=`, create (JSON text / multipart binary), PATCH, add version
