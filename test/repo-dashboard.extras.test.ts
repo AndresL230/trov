@@ -69,11 +69,13 @@ describe("the providers section carries the part's families and extras", () => {
       ["*/10 * * * *", 0, 0, null], ["0 13 * * *", 0, 0, null],
     ]);
     // A stored reason for schedules: coverage proves nothing for it.
-    await addPart(ORG_A, "production", "edge", "cloudflare", "web", { worker: "edge" }, 1);
+    await addPart(ORG_A, "production", "edge", "cloudflare", "web", { worker: "edge", crons: "*/5 * * * *" }, 1);
     await pollState(ORG_A, "production", "edge", "cloudflare", NOW, { covered: ["2026-10-07T06:00:00.000Z", "2026-10-07T12:00:00.000Z"], unavailable: [{ family: "schedules", reason: "Cloudflare did not answer for cron runs: 403" }] });
     const s = (await getRepoDashboard(systemCtx(ORG_A), "o/r", NOW, BARE)).providers;
     const edge = s.status === "ok" ? s.data.find((x) => x.part === "edge") : undefined;
-    expect(edge?.extras?.schedules).toMatchObject({ state: "unavailable", reason: "Cloudflare did not answer for cron runs: 403", crons: [] });
+    expect(edge?.extras?.schedules).toMatchObject({ state: "unavailable", reason: "Cloudflare did not answer for cron runs: 403" });
+    // Its configured cron is listed — with no figure: the covered window says nothing about a family that was not read.
+    expect(edge?.extras?.schedules?.crons).toEqual([{ expr: "*/5 * * * *", runs: { "24h": null, "7d": null, "30d": null }, failed: { "24h": null, "7d": null, "30d": null }, last_run: null }]);
     expect(edge?.extras?.storage).toMatchObject({ state: "none", databases: [] });
     expect(edge?.extras?.outcomes?.ranges["24h"]).toBeNull();
   });

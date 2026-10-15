@@ -138,6 +138,18 @@ describe("the targets — four states, #185's words", () => {
     }
   });
 
+  it("a host with nothing to read is 'not available' even while it is not connected — never 'Connect Netlify' for usage it cannot give", () => {
+    const [site] = partsOf("C");
+    for (const connection of ["not_connected", "revoked"] as const) {
+      const p: RepoProviderPart = { ...site, connection };
+      expect(targetState(p, "7d")).toBe("na");
+      const html = usageTargets([p], tools, { admin: true, sample: false });
+      expect(html).toContain("Not available from Netlify");
+      expect(html).not.toContain("Not connected");
+      expect(html).not.toContain("Connect Netlify");
+    }
+  });
+
   it("I (a package) and L (nothing accepted yet) have no target: one sentence, no card, no 'not connected'", () => {
     for (const key of ["I", "L"] as const) {
       const html = view(key);
