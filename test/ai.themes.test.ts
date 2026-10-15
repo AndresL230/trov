@@ -11,6 +11,7 @@ import { app } from "../src/routes";
 import { runAiPass, type AiJob, type AiPassResult } from "../src/ai/pass";
 import {
   PR_THEME_NONE, checkCaption, prThemeJob, themesBackfillJob, themesCaptionJob, themesProposeJob, captionBasis,
+  prState,
 } from "../src/ai/themes";
 import { orgPrefix } from "../src/ai/prefix";
 import { readRepoThemes, themeShares, mondayOf } from "../src/tools/themes";
@@ -274,6 +275,20 @@ describe("accept, rename, merge, remove — an ADMIN's, through the cookie sugge
     expect((await call("POST", `${BASE}${AI_ROUTES.dismiss(sugg[1])}`, admin, {})).status).toBe(200);
     rows = await themesRows();
     expect(rows.find((t) => t.id === ids[1])).toMatchObject({ status: "removed", decided_by: FIXTURE_ADMIN });
+  });
+});
+
+describe("pr.theme sends what the Privacy Policy says: a scrubbed card", () => {
+  it("no code (fenced or inline), no link target, nothing shaped like a credential reaches Jev", () => {
+    const s = prState({
+      number: 7, at: "2026-10-01T00:00:00Z", title: "t", url: null, card_title: "Fix `parseX` in the client",
+      what: "Rotated the key ghp_abcdefghijklmnopqrstuvwxyz0123456789 and fixed ```ts\nconst a = 1;\n``` see [docs](https://x.example/y)",
+      why: null, impact: "Faster", theme_id: null, theme_source: null, theme_set_at: null,
+    } as Parameters<typeof prState>[0]);
+    expect(s).toContain("Pull request #7: Fix in the client");
+    expect(s).not.toMatch(/parseX|ghp_|const a|x\.example/);
+    expect(s).toContain("What changed: Rotated the key and fixed see docs");
+    expect(s).toContain("Impact: Faster");
   });
 });
 

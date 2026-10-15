@@ -13,7 +13,7 @@
 // which closes most of that window; a photo or an org image has no token.
 import { type PlatformContext, fanOut, nowIso } from "../data/platform-sql";
 import { avatarKey } from "../tools/people";
-import { orgLogoKey } from "../orgs/logo";
+import { orgLogoKey } from "../orgs/logo-key";
 import { docImageKey } from "@shared/doc-images";
 
 const SHA_RE = /^[0-9a-f]{64}$/;

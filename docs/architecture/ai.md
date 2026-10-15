@@ -7,8 +7,8 @@ and the decided system, `docs/superpowers/specs/2026-10-15-server-ai-build.md` (
 
 **The first producers run**: Phase C's Jev jobs (› Jobs, › The kinds) — `feed.importance` rates new feed entries and
 merged PRs, Sift checks a newly promoted doc against the active tags, the ticket / Review / Unplaced cards suggest —
-Phase D's session digests and repo state (below), and the repo themes ("Themes"). Every other AI field on the existing
-reads is still omitted in production. What exists besides is the
+Phase D's session digests, repo state and My Work's brief (`brief.person`, "The brief" below), and the repo themes
+("Themes"). Every other AI field on the existing reads is still omitted in production. What exists besides is the
 base: the client with both providers (and Claude's Message Batches), the allowances, the switches,
 the ROUTER (every write path marks the scopes it made stale in `ai_dirty`), the pass's machinery (debounce, stages,
 grouping, gates, the cached org prefix, batches, section isolation, clearing, the caps), the suggestion and
@@ -28,7 +28,7 @@ A caller names a KIND, never a model. `KIND_PROVIDER` is the ONE table from a ki
 
 | Provider | Model | Kinds today | What it does |
 |---|---|---|---|
-| `claude` | `claude-haiku-5-5` (Anthropic, `ANTHROPIC_API_KEY`) | `summary_pr`, `summary_issue`, `filter`, `digest.session`, `repo.state`, the themes | `structured()`: one call, a system prompt and a text in, a zod-checked value out. It writes words. |
+| `claude` | `claude-haiku-5-5` (Anthropic, `ANTHROPIC_API_KEY`) | `summary_pr`, `summary_issue`, `filter`, `digest.session`, `repo.state`, `brief.person`, the themes | `structured()`: one call, a system prompt and a text in, a zod-checked value out. It writes words. |
 | `jev` | `jev-latest` (TypeSafe AI's Jev, `TYPESAFE_API_KEY`) | `tag.fit`, `feed.importance`, `pr.theme`, `gate.session`, `gate.state`; Phase C's cards: `ticket.category`, `ticket.priority`, `ticket.duplicate`, `review.risk`, `unplaced.destination` | `classify()`: a run of one yes/no question over many items; `ask()`: several `noul` / `choice` / `score` questions about ONE item in ONE request. Numbers only, no text. |
 
 - **The Jev provider is `src/tools/classify.ts`**, the ONLY file in `src/` and `shared/` that names TypeSafe's URL,
@@ -53,8 +53,8 @@ ONLY in these places, all behind THE client (the fifth, Ask Trov, is `ask.md`):
    Gated by the org switch (below).
 2. **The AI pass** — `src/ai/pass.ts` (and its batch half, `src/ai/batches.ts`), from the `*/10` repo tick. Jev
    jobs and gates and Claude jobs (`src/ai/jobs.ts`); the registry (`AI_JOBS`) holds Phase C's Jev jobs, the theme jobs
-   (`src/ai/themes.ts`), and `digest.session` and `repo.state` (`src/ai/digests.ts`, `src/ai/repo-state.ts` — they
-   import no client: the pass calls for them).
+   (`src/ai/themes.ts`), `digest.session` and `repo.state` (`src/ai/digests.ts`, `src/ai/repo-state.ts`) and
+   `brief.person` (`src/ai/brief.ts`) — they import no client: the pass calls for them.
 3. **The Sift run** — `src/ai/sift.ts` (`startTagFit` / `continueTagFit`), started by an admin from the Tags routes
    (`src/tags/routes.ts`: adding a tag, accepting a suggested one, Find items) and run in the background
    (`waitUntil`). Kind `tag.fit` (Jev). Everything about Sift that is NOT a call — candidates, the question, the
@@ -103,8 +103,8 @@ either off stops a run in progress at its next request. The Tags tab says when t
 
 - **The job registry.** `AI_JOBS: readonly AiJob[]` — one line per producer (› Jobs and › The kinds: Phase C's three Jev
   card jobs, `tag.fit` and `feed.importance`; Phase D's `digest.session` (`session`, gated by `gate.session`),
-  `repo.state` (`repo`, gated by `gate.state`), `pr.theme`, `themes.propose`, `themes.caption`, `themes.backfill`
-  ("Themes" below)). A job
+  `repo.state` (`repo`, gated by `gate.state`), `brief.person` (`briefJob`), `pr.theme`, `themes.propose`,
+  `themes.caption`, `themes.backfill` ("Themes" below)). A job
   (`src/ai/jobs.ts`) is one KIND of work over one scope (`scope`, and for a shared scope like `card` a `keyPrefix`):
   `input(ctx, scope)` reads its item from D1 (null = nothing to send: the scope is written as it is), and then —
   - a **Jev job** (`provider: "jev"`, a `JevKind`): `ask(item)` → ONE request (`state` + questions) per item;
@@ -260,6 +260,34 @@ nothing written, a row that no longer parses, the viewer's "Wrong?" on that vers
 (`aiItemRef.repoState(repo, generatedAt)`), or a failed read; `capped` once the month's `ai_runs` are spent (the
 last state, `resumesOn`, `upgrade` on Free); else `ready`. Two statements (plus "Wrong?"'s with a viewer).
 
+## The weekly highlights (`digest.week`, Phase E; `src/ai/week.ts`, `src/ai/week-core.ts`, 0067)
+
+The weekly e-mail's "This week" (`notifications.md` › The digest's shape): at most 3 cited highlights of ONE
+organization's week, written ONCE per org per week and shared by every member's weekly e-mail. A Haiku job
+(`KIND_PROVIDER["digest.week"] = "claude"`) on the scope `digest:week:<YYYY-Www>:<send instant>` (`weekScopeKey`;
+the key carries the send instant so the submit and the collect read the same window), through the Message Batches
+API (`batch: true`, half the price), the pass's last stage.
+
+- **Marked** by the digest pre-warm (`prewarmDigests`) `WEEK_HIGHLIGHTS_LEAD_MS` = 3 h before the org's weekly send,
+  only with `week_recap` on and someone to send to. The Batch API answers on a later tick, usually within the hour;
+  a week whose answer is not back by the send has no highlights (never a guess).
+- **Input** (`buildWeekInput`, D1 only): the week's merged PRs on the primary repo (the summary card's title and what
+  changed, Sift's `importance`), the Feed's entries as `get_feed` reads them (handoff lines left out), tickets a
+  person marked done, sprints completed — each with a ref and the server's cite; ordered breaking, notable, then the
+  rest, newest first; capped at 50 items.
+- **Once a week**: `input` reads null — no request — for a week that already has a row; the pass never submits a
+  scope whose request is in flight; `storeWeekHighlights` keeps the first answer (`INSERT OR IGNORE`) and the last 8
+  weeks. A week with nothing in it makes no request.
+- **Never guess** (`weekFromAnswer`): a cite not in the input is dropped and a highlight with no valid cite is not
+  written; a highlight with a number the input does not have, a ref in its text, or over 220 characters is dropped
+  (never cut); at most 3. The numbers line under it is the SERVER's (`renderers/week-recap.ts`), never the model's.
+- **Read** by the weekly e-mail only, while the org's switch is on; it never calls a model.
+- **Evals**: `test/ai-evals/digest.week/` (17 cases from Personal Dev's real rows and this repo's merged PRs, what
+  is arranged said per case), graded by `grade.ts`, recorded live with `scripts/ai-evals/week-live.ts` and replayed
+  in CI by `test/ai-evals.week.test.ts` (plus one answer at the `Response` level through the batch results path).
+  The live run (claude-haiku-5-5, `week.1`): about 490 uncached input tokens + the 821-token cached org prefix and
+  about 156 output tokens per org-week, so a few hundredths of a cent per org per week at batch prices.
+
 ## The router (`src/tools/ai-route.ts`, `src/data/ai-dirty.ts`; Phase B)
 
 Plain code, no model, no network: `routeAi(ctx, event)` turns a write that happened into the scopes it made stale
@@ -283,6 +311,7 @@ never fails the write (`routeAi` logs the error's name with the org id).
 | doc promoted; artifact created or versioned | `card:tagfit:doc:<slug>` + `doc_drift:<slug>`; `card:tagfit:artifact:<slug>` + `doc_drift:artifact:<slug>` | `promote_doc`; `insertPage` (with a version) and `writeVersion` (`src/tools/artifacts.ts`) |
 | themes accepted | `theme_backfill:<repo>` | the theme accept handler (`src/ai/themes-accept.ts`): Accept, Rename, a Merge into an active theme |
 | digest send hour one tick away | `person:<handle>`, URGENT | `prewarmDigests` (`src/notifications/cron.ts`), from the repo tick at `:50` |
+| weekly digest 3 hours away (Phase E) | `digest:week:<YYYY-Www>:<send instant>` | `prewarmDigests`, the same `:50` tick |
 
 Some scopes are named by what the write knows and resolved in SQL in the same batch (`ScopeRef`): a GitHub login →
 the member this org attributes it to (the attribution map, else a member's own sign-in — never a stranger); a PR's
@@ -310,6 +339,7 @@ its LAST mark, every other scope from its FIRST):
 | `theme_window` | daily | weekly |
 | `doc_drift` | weekly | monthly (30 days) |
 | `theme_backfill` | next tick (not in the design's table: the accept's own follow-up, through the Batch API) | same |
+| `digest` | next tick (Phase E: marked once, hours before the weekly send, through the Batch API) | same |
 
 `urgent` (`ai_dirty.urgent`, set by whoever marks): a BREAKING change skips a `repo`'s wait on Pro and Enterprise only
 (Phase C's `feed.importance` marks it); the digest pre-warm skips a `person`'s on every plan. It changes nothing
@@ -368,7 +398,8 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
   `{ value: { mergeInto } }` (another live theme of the repo: this one is removed, its PRs join), Remove = dismiss.
   Accept, Rename and a Merge into an active theme route `themes_accepted` → `theme_backfill:<repo>`.
 - **`pr.theme`** (Jev, `card:pr:<n>`, `pr-theme-1`): once the repo has an active theme, ONE `choice` request per merged PR
-  — the active themes (described) plus `(none of these)`; the state is the PR's card (title, what, why, impact). A pick
+  — the active themes (described) plus `(none of these)`; the state is the PR's card (title, what, why, impact), each part through `excerptOf` (no code, no link targets,
+  nothing shaped like a credential — what the Privacy Policy says TypeSafe AI is sent). A pick
   at ≥ 0.5 confidence is written `source='ai'` with the confidence (`prThemePick`); none-of-these or below is answered
   and writes nothing. A PR a PERSON themed is never asked about; every AI write is an upsert guarded by
   `WHERE pr_themes.source <> 'person'`.
@@ -386,7 +417,8 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
   on the 8-week range only, and only while every theme it names is still active. ABSENT when the switch is off, there is
   no repository, or neither an active theme nor a waiting proposal exists; a failed read leaves it out and marks the
   dashboard `degraded`. A range the READER marked "Wrong?" (`aiItemRef.themes(repo, range, generatedAt)`) is left out
-  for them (`hiddenFor`), so the field is `Partial<Record<AiThemeRange, AiThemes>>`; both flagged → absent; a newer
+  for them (`hiddenFor`), so the field is `Partial<Record<AiThemeRange, AiThemes>>` — the screen keeps the card and its
+  8 weeks / Quarter switch, saying the picked range is hidden, while the other is there; both flagged → absent; a newer
   version (a new caption, a new theme) is a new ref and comes back. Deciding a proposal re-reads the dashboard
   (`AiHost.reloadRepo`), so the lane shows what it became.
 - **`themeShares(ctx, repo, from, to)`** (`src/tools/themes.ts`) — each active theme's share of the PRs merged in a
@@ -399,7 +431,8 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
 Each kind's real examples with the expected answer, a live run by hand, and a CI test replaying the recorded answers
 at the `Response` level through THE client and the real job code. `test/ai-evals/run-live.mjs` (bundled with esbuild,
 keys read from a `.dev.vars` at run time) runs them: `pr.theme` — 39 of this repository's merged PRs (`gh pr list`),
-seven themes; live 2026-10-15: 38 / 39 (Jev tokens 26,384 in / 3,908 out). `themes.caption` — six eight-week windows of
+seven themes; live 2026-10-15: 38 / 39 (Jev tokens 26,384 in / 3,908 out; re-recorded with the scrubbed card the same
+day: 38 / 39, 26,245 in / 3,908 out). `themes.caption` — six eight-week windows of
 the same PRs; live: 6 / 6 kept by the rules (Claude tokens 3,954 in / 478 out / 3,820 cached). The replay
 (`test/ai-evals.themes.test.ts`) holds the floors: `pr.theme` ≥ 0.9, captions 1.0.
 
@@ -410,6 +443,64 @@ An answer is validated ONE SECTION AT A TIME, so a bad section is dropped and th
 per list item (a Haiku card call's 20 items), and `keep(value)` returns the valid ones and how many were dropped —
 a dropped section is MISSING, never a guessed default. The JSON Schema the model is constrained by is the sections'
 own; only Trov's check is per section.
+
+## The brief (`brief.person`, Phase D, #163; `src/ai/brief.ts`, `src/ai/brief-core.ts`, `0063_person_brief`)
+
+My Work's "Your brief" — ONE Haiku call per person, on the scope `person:<handle>` (stage "briefs"; marked by a PR
+merged, a failure on their PR, a ticket assigned / moved, a handoff sent, an agent feed entry, and URGENT by the
+digest pre-warm one tick before the send hour). Every prompt is led by the cached org prefix; the answer is
+structured (`BriefAnswerSchema`, each part checked on its own: `sections`).
+
+- **The input** (`buildBriefInput`, D1 only, the org's PRIMARY repository for GitHub activity, so a PR is `pr:<n>`):
+  - **Now** — their open PRs (the latest `repo_events` row per PR is `draft` / `review`, authored by a login the org
+    attributes to them, last event within 60 days; at most 8), each with its failing runs (the latest run per
+    workflow on its branch is `failure` / `timed_out`) and red checks (on its head sha), and their latest `Status:`
+    session note or digest (summary starts "Status:", last 7 days).
+  - **Recently** — the last 7 days of their session notes (their own agent entries, the handoff announcements left
+    out, AND the session digests Trov wrote for them: `origin = 'ai'`, author `trov`, `subject` = the member — Q61)
+    and merged-PR CARDS (`pr_summaries`' title / what / impact, the PR's own title and link — never a raw PR body).
+    A digest for them marks `person:<subject>` (the router), so the brief follows it.
+  - **Next** — ONLY items the server OFFERS, in the server's order (`orderNext`, by `NEXT_RULES`): **overdue** (an
+    assigned open ticket whose sprint, not done, is past its date — `sprintDueState`), **blocked** (a failing run on
+    their open PR), **waiting** (a pending, unexpired handoff someone else left for them, then one left for anyone),
+    **due soon** (an assigned ticket whose sprint is due within 7 days), then **assigned** (handoffs they left for
+    themselves, then their other assigned open tickets of both sources: in progress → testing → not started, high
+    priority first, most recently updated). The top `AI_LIST_MAX` (5) are offered, each with its own title (a
+    ticket's title, a handoff's first line, a run's job title) and the server's plain facts.
+  - Every citable ref carries the cite the SERVER built (`#12` → the PR's URL, `CI run 4812`, `#14` →
+    `#tickets/14`, `handoff #3`, a feed entry → `#feed`); headings carry the server's counts ("Open pull
+    requests (2)") — the only counts the model may use.
+- **The answer and the server's checks** (`briefFromAnswer`): `now` and `recently` are kept only when the input
+  has something for them, their text is ≤ `BRIEF_LINE_MAX` (400) — dropped, never cut — has NO ref written into it
+  (`REF_IN_TEXT`) and no number the input does not have (`numbersGrounded`: a whole date only if the input has it,
+  digits only if the input has them outside a date and a feed ref, a count in words only if the input says it in
+  words or digits), and at least one cite that is a ref of the input (an invented cite is dropped). **Next is the
+  server's list**: an item the model names that was not offered is dropped, its order is ignored, and each offered
+  item's "why" is the model's when it passes the same checks (≤ `BRIEF_WHY_MAX`, 160) — else the server's own
+  plain sentence ("Its sprint, Hosting, was due 2026-10-12."). Nothing valid at all writes nothing (a failed
+  attempt); a `refusal` or `max_tokens` is no answer (the client's rule): nothing written, `attempts + 1`.
+- **Only for people who need it** (`briefWanted`, `src/data/person-brief.ts`): a MEMBER who opened My Work in the
+  last 14 days (`memberships.mywork_opened_at`, written by `GET /me/dashboard` at most once an hour — never a model
+  call; `get_my_work` does not count) or who receives the digest (an address on file, not unsubscribed: the rule of
+  `digestRecipients`, asked for one person). Anyone else: `input` is null — no call, the scope written.
+- **No call when nothing changed**: `input_hash` (SHA-256 of the prompt version and the scope's input) equal to the
+  newest stored row's → null. **Nothing left to say** (no open PR, no note, no card, nothing offered) while the
+  newest stored brief said something → an EMPTY version (`model` NULL) is stored without a call, so My Work stops
+  showing what is no longer true.
+- **Storage** (`person_brief`, 0063): append-only versions per (org, handle), the newest 5 kept (`storeBrief`: the
+  insert and the trim in ONE batch). In `ORG_TABLES`, `HANDLE_COLUMNS` and the reset seed; deleting the account
+  DELETES the person's rows (`src/deletion/person.ts`), never hands them to the tombstone.
+- **The read** (`storedBrief`, `src/tools/mywork.ts`, plain D1 — reachable from MCP, so it imports nothing from
+  `src/ai/`): the newest row → `AiBrief`; ABSENT when the switch is off, there is none, it fails `AiBriefSchema`,
+  or the person pressed "Wrong?" on that version; `capped` (with `resumesOn`, `upgrade` on Free) when `ai_runs` are
+  spent; `empty` for a no-model version. `GET /me/dashboard`, `get_my_work` and — Phase E — the e-mail read it.
+- **Evals** (`test/ai-evals/brief.person/`): 10 cases built from Personal Dev's real rows (`cases.ts` says which
+  parts are arranged), graded by rules (`grade.ts`: cites in the input, Next only offered and in the server's order,
+  a why for each, numbers grounded, no refs in text, lengths, null when nothing, written when there is material).
+  `scripts/ai-evals/brief-live.ts` runs them live (by hand, a real key from the environment) and writes
+  `recorded.json`; `test/ai-evals.brief.test.ts` replays it — and an answer made worse on purpose — through the
+  server's checks. Measured 2026-10-15 (`brief.1`): 10/10 cases 1.0; per call 245–781 uncached input tokens plus
+  ~1,210 cached (system + prefix), 105–390 output tokens (≈ $0.0002 a brief at Haiku 5.5's prices).
 
 ## Eligibility, the allowance and the switch
 
@@ -538,20 +629,22 @@ so the eval runner and the recorded-response test build exactly what the pass se
 - **`ai_suggestions`** — a suggested value for one field of one item, with a REQUIRED reason, its cites, model and
   prompt version; `open` → `accepted` | `dismissed` (a person's decision, remembered) | `superseded` (a re-run of
   the same kind for the same item replaces the OPEN one: `putSuggestion`, `src/data/ai.ts`). Phase C's cards write
-  them (› The kinds), and theme proposals (kind `themes.propose`). A value that is an object names itself with a
-  `label` (`suggestionDto`).
+  them (› The kinds), theme proposals (kind `themes.propose`) and the Roadmap's two kinds (below). A value that is an
+  object names itself with a `label` (`suggestionDto`).
 - **Accept** — `POST /ai/suggestions/:id/accept { value? }` (`:id` is the row id; another org's id is
   `not_found`). In order: `not_found` (404) → `not_open` (409) → `not_available` (409: no handler for the kind) →
   `forbidden` (403: below the handler's role) → `invalid` (400: a body the contract refuses). Then the row is claimed by one guarded UPDATE, the handler writes the
   real field AS the cookie person, and on its throw the claim is undone. `AI_ACCEPT_HANDLERS` (`src/ai/suggestions.ts`)
-  holds Phase C's (`src/ai/jobs/accept.ts`) and the theme handlers (kind `themes.propose`); a kind with none
+  holds Phase C's (`src/ai/jobs/accept.ts`), the theme handlers (kind `themes.propose`) and the Roadmap's `sprint_draft` /
+  `plan_narrative` (admin; `src/ai/roadmap-accept.ts`); a kind with none
   (`review.risk`) is `not_available`. A handler gets the request's origin too (`AcceptRequest`: the in-app address a
   duplicate link points at). **A handler names its `role`**: `member` (anyone in the org)
   or `admin`; **dismiss is open to every member** (`POST /ai/suggestions/:id/dismiss`) unless the handler names a `dismissRole` (a theme's
   Remove is an admin's), and a handler may also act on a dismissal (`dismissed`), check a value before the claim (`valid`:
   `invalid` 400) and refuse with a code (`AcceptRefused`) — `src/ai/accept.ts`. A refusal is never a 500: Phase C's
   handlers check their value in `valid` and answer a writer's refusal after the claim (the ticket or triage item
-  gone) as `not_available` / `invalid` / `forbidden` (`refusing`, `src/ai/jobs/accept.ts`). Theme accept / rename /
+  gone) as `not_available` / `invalid` / `forbidden` (`refusing`, `src/ai/jobs/accept.ts`); a Roadmap writer refusing
+  (`SprintError` / `TicketError` / `PersonError`) is a 400 `invalid` with the writer's message. Theme accept / rename /
   remove go through the same two routes.
 - **"Wrong?"** — `POST /ai/feedback` (`AiFeedbackBody`) records `ai_feedback` for the cookie person, ONE row per
   (person, item), idempotent; it hides the item for that person (`hiddenFor(ctx, handle, itemType)`, what a
@@ -560,13 +653,68 @@ so the eval runner and the recorded-response test build exactly what the pass se
   `HANDLE_COLUMNS`. Every route refuses a request carrying an `Authorization` header (`cookieOnly`); none is an MCP
   tool and none has an old-path alias.
 
-## The screens' fields (omitted until a producer exists)
+## The Roadmap (Phase D, Feature E; `src/ai/roadmap.ts`, `src/ai/roadmap-accept.ts`, `0065_org_insights`)
+
+| job | kind | scope | how | writes |
+| --- | --- | --- | --- | --- |
+| `roadmap.sprint_note` | `org.rollup` | `sprint:<id>` | direct, ≤10 sprints a call | `org_insights` `sprint_note` — an ACTIVE sprint's one line |
+| `roadmap.plan_drift` | `org.rollup` | `org` | direct | `org_insights` `plan_drift` — only when a theme of ≥25% of the merged PRs is in no active sprint |
+| `roadmap.sprint_draft` | `sprint.draft` | `org` | Batch API | `ai_suggestions` `sprint_draft` — ≥8 open tickets outside every sprint and none active; at most one a week |
+| `roadmap.plan_narrative` | `plan.narrative` | `org` | Batch API | `ai_suggestions` `plan_narrative` — weekly |
+
+- **The forecast is not here**: `sprintForecast` (`src/tools/sprints.ts`) is arithmetic on read — closed tickets
+  per day since the start, carried over the open ones, against the due day; null when unknown. No model.
+- **The drift's numbers are the server's**: `themeShares` reads the themes module's per-repo shares (`themeShares`,
+  `src/tools/themes.ts` — 0064's `repo_themes` / `pr_themes`) for the primary repository over `AI_DRIFT_WINDOW_DAYS` (14), rounds them (`toAiThemeShares`) and marks
+  which an active sprint holds (its tickets' linked PRs, by theme). No active theme, nothing merged, no primary
+  repo → null: no call, nothing said. The model is given the shares and words them.
+- **Grounding** (`src/ai/grounding.ts`, every line of every job): cites only from the refs the input offered (the
+  server builds each `AiCite`); every number stated must be one the input gave (digits and number words); a ref
+  written in the text (`ticket:14`) states no number, is shown as its label (`#14`), and one not offered drops the
+  line; people's words go fenced as data (a document as its own text, `fencedText`). A note claiming the sprint is
+  done is dropped. Nothing here marks work done (invariant 5).
+- **Reads**: `org_insights` (newest of the last 10 versions per key) joins `orgs.ai_automation = 1`, so with the
+  switch off every field is ABSENT. `SprintView.note?` (active sprints only) and `PlanView.drift?` (until its
+  window passes) come with `GET /roadmap`, `GET /sprints` and MCP `get_roadmap`; `PlanView.suggestions?` (the open
+  Roadmap suggestions) only with the cookie `GET /roadmap`, only for an admin. "Wrong?" on a note or the drift
+  hides it for that person (`roadmapForPerson`, `src/data/org-insights.ts`).
+- **Accept** runs the existing writers AS the admin who pressed it: a draft → `create_sprint` per sprint (created
+  upcoming), then `set_ticket_sprint` for each of its tickets still open in the backlog (never moved out of another
+  sprint); a narrative → `write_plan` with the narrative and no sprint entries (versioned like any plan write).
+- The UI: `web/src/roadmap-ai.ts` over the AI kit (`aiByline`, `aiCites`, `aiWrongBtn`, `aiSuggestionChip`) — a
+  forecast and a note on each active sprint card, the drift line under the narrative, an admin's cards above it.
+
+## Doc drift (#161; `src/ai/doc-drift.ts`)
+
+Scope `doc_drift:<slug>` (marked by a doc promote; weekly on Pro / Enterprise, monthly otherwise), Batch API, behind
+**`gate.drift`**: Jev `noul` ("does an entry show something this doc states is no longer true?", with criteria) over
+the entries and the doc's paragraphs that share words with them (`gateState`, ≤4,000 characters — a doc's stale
+sentence is usually far from its opening); below `DRIFT_GATE_MIN` (0.6) no Haiku call; without Jev the rule is SKIP.
+The input is the live doc and up to six feed entries since its last promote (≤30 days) that its full-text index
+matches against its title — none, no call; Trov's own entries are never evidence; a doc with a Trov proposal still
+staged is not checked again. Haiku answers edits (`find` an exact passage, `replace`, `cites`); the SERVER applies
+them (`applyDrift`: a passage not in the doc exactly once, a number not given or no valid cite drops the edit) and
+the result goes **through the gate**: `ingestDocProposal` at `confidence: "low"`, authored by `trov`
+(`TROV_SYSTEM_HANDLE`, the documented exception to "the author is the principal"). Staged and flagged; only a
+person promotes or rejects it. An artifact's scope has no doc: null, cleared.
+
+## Evals
+
+Each kind's set lives in `test/ai-evals/<kind>/` (cases, the live run's `recorded.json`), and its CI test replays
+the recordings through THE client at the `Response` level and the REAL job code. Phase D's: `gate.drift` (20 of
+Personal Dev's docs with the entries the input would compare them with, labelled by hand), `doc.drift` (12) and
+`org.rollup` (6 sprint notes over Personal Dev's tickets and entries, 4 drifts over server-given shares); the live
+runner is `test/ai-evals/run-live-roadmap.mjs` (keys from a `.dev.vars` at run time, never committed), the grades
+`test/ai-evals/roadmap-grade.ts`, the replay `test/ai.evals-roadmap.test.ts`. Its "never" floors: no false gate
+pass, no proposal on a doc that agrees, only offered cites. A change to a question or a prompt needs a new live run.
+
+## The screens' fields (each omitted until its producer exists)
 
 The contracts are typed (`shared/ai-core.ts`, schemas in `shared/ai.ts`): `DashboardData.brief?` (`/me/dashboard`,
 `get_my_work`), `RepoDashboard.state?` / `themes?` (`/repo/dashboard`, `get_repo_dashboard`), `FeedRow.ai?` (`/feed`,
-`get_feed`). Production returns `state` (the newest `repo_state` version — Repo state above), the feed's `ai` on
-Trov's own entries (Session digests above) and `importance`, and `themes` ("Themes" below) when there is something to
-show; none of the others yet. `get_repo_dashboard` carries `state` with `tab: overview` (or no
+`get_feed`). Production returns `brief` (the stored brief — "The brief" above), `state` (the newest `repo_state`
+version — Repo state above), the feed's `ai` on Trov's own entries (Session digests above) and `importance`, and
+`themes` ("Themes" below) when there is something to show; none of the others yet. `get_repo_dashboard` carries `state` with `tab: overview` (or no
 tab) and `themes` with `planning` (or no tab) when the dashboard has them — they are not sections, so
 `REPO_TAB_SECTIONS` does not name them (`src/tools/repo-agent.ts`).
 
@@ -601,7 +749,13 @@ parsing), `test/tag-fit.test.ts` (Sift: the run, its switches — the org's incl
 `test/summaries.switch.test.ts` (the org switch over summaries: off = zero summarizer calls and nothing written on a
 merged-PR webhook, an assigned issue and Sync; an existing summary kept; on = as before),
 `test/secrets.mcp.test.ts` (the call sites, the MCP boundary, TypeSafe's URL in one file),
-`test/plans.limits.test.ts` (`ai_chat`, per seat on Pro), `test/ai.filter.test.ts` and `test/render.ai-filter.test.ts`
+`test/plans.limits.test.ts` (`ai_chat`, per seat on Pro), `test/ai.brief.test.ts` (the brief: the input and the
+server's order, the job's guards, who gets one, the 5 versions, the read, the route, the dev seed) and
+`test/ai-evals.brief.test.ts` (its recorded eval answers), `test/render.brief-real.test.ts` (the brief end to end over
+real data: the job's row → `/me/dashboard` / `getMyWork` → `render` → `briefTile`, and its "Wrong?" `data-arg` POSTed to
+`/ai/feedback` hiding it; the SPA is loaded at run time, so the file stays under `tsconfig.worker.json`),
+`test/render.brief-motion.test.ts` (the brief tile's entrance and settle fade, web-ui.md "The AI kit"),
+`test/ai.filter.test.ts` and `test/render.ai-filter.test.ts`
 (the plain-language filter), `test/ai.themes.test.ts` (themes: the threshold, the cadence, cites, person-over-AI, the
 caption rules, admin-only decisions, batch results for a deleted or switched-off org, the read and the dev seed),
 `test/ai-evals.themes.test.ts` (the theme evals, replayed), `test/ai.cards.test.ts` (Phase C's cards over real D1: the
@@ -617,7 +771,10 @@ input, hosting parts, cites, keep 20, the read — absent, the switch, capped, "
 `test/ai.hookup.test.ts` (THE HOOKUP, real rows end to end: webhook capture → the pass → `GET /repo/dashboard`,
 `get_repo_dashboard`, `GET /feed`, `get_feed` → the existing screens render State and the Trov entry; "Wrong?"'s
 exact button bodies through the real route hide each for the presser only; absent renders nothing),
-`test/ai-evals.digests.test.ts` (the digest evals' recorded live answers, replayed and graded in CI).
+`test/ai-evals.digests.test.ts` (the digest evals' recorded live answers, replayed and graded in CI). Phase D's Roadmap: `test/ai.roadmap.test.ts` (the forecast, notes, drift and its shares, drafts,
+the narrative, accept), `test/ai.doc-drift.test.ts`, `test/ai.grounding.test.ts`, `test/render.roadmap-ai.test.ts`,
+`test/render.roadmap-ai-exit.test.ts`, `test/render.roadmap-ai-real.test.ts` (real rows → the real reads → the real
+render), `test/ai.roadmap-seed.test.ts`, `test/ai.evals-roadmap.test.ts`.
 
 ## Evals: session digests and repo state (`test/ai-evals/<kind>/`)
 
@@ -642,4 +799,5 @@ raw response bodies, each with a hash of what was sent. `test/ai-evals.digests.t
 Live (2026-10-15): `gate.session` 17/17 (the plain rule 14/17), ~510 Jev tokens in / 22 out per call;
 `gate.state` 18/19 (the plain rule 12/19), ~416 in / 20 out; `digest.session` 10/10 raw and written, per call
 ~660 uncached + ~1,360 cached in, ~366 out (thinking included); `repo.state` 8/8 raw and written, ~508 uncached +
-~1,190 cached in, ~257 out. CI floors: 0.9, 0.85, 0.9, 0.9.
+~1,190 cached in, ~257 out (re-recorded the same day with parts named by their label, never the provider id: 8/8,
+~507 uncached + ~1,040 cached in, ~249 out). CI floors: 0.9, 0.85, 0.9, 0.9.

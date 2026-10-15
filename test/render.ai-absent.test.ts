@@ -14,6 +14,8 @@
  * "My Work (no `brief`)" was re-pinned with it — the brief is still absent from it. Re-pinned again for the review
  * tile's sentence (no count repeated under the number) and the `mw-scroll` class on the tiles' lists, which only
  * the layout with a brief styles.
+ * The Roadmap case (Phase D: no sprint `forecast` or `note`, no plan `drift`, no `suggestions`) was pinned at
+ * 15b639ef (`ai/screens`, before the Roadmap's AI pieces existed), and re-pinned after #186 (one empty whitespace line).
  */
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 
@@ -30,6 +32,7 @@ import { repoSample } from "../web/src/repo-sample";
 import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
 import type { FeedRow } from "@shared/rows";
 import type { OrgUsage, PlatformUsageResponse } from "@shared/orgs";
+import type { PlanView, SprintView } from "../web/src/api";
 
 const NOW = new Date("2026-10-14T12:00:00.000Z");
 beforeAll(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });
@@ -93,5 +96,18 @@ describe("field absent — each screen renders exactly what it did before the AI
     };
     expect(usageView({ status: "ok", usage, days: 7, open: "acme" })).toMatchSnapshot("usage");
     expect(orgUsageBlock(org, 7)).toMatchSnapshot("org");
+  });
+  it("Roadmap › Narrative, as an admin (no sprint `forecast` / `note`, no `drift`, no `suggestions`)", () => {
+    const sprint = (o: Partial<SprintView>): SprintView => ({
+      id: 1, label: "Hosting screens", summary: "Connect a host and see its deploys.", description: "The **hosting** tab.", phase: null,
+      dates: null, start: "2026-10-01", due: "2026-10-20", status: "in_progress", active: true, urgency: "normal", lead: "alice",
+      domain: null, github_ref: null, created_at: "2026-09-30T10:00:00Z", created_by: "alice", updated_at: null,
+      progress: { closed: 2, total: 5, pct: 40 }, issues: null, members: ["alice", "andres"], ...o,
+    });
+    const plan: PlanView = {
+      narrative: "Now: hosting. Next: billing.", version: 4, updated_at: iso(86_400_000), updated_by: "alice",
+      sprints: [sprint({}), sprint({ id: 2, label: "Billing", status: "upcoming", active: false, start: null, due: "2026-11-15", progress: { closed: 0, total: 0, pct: 0 }, members: [] })],
+    };
+    expect(render(app({ screen: "roadmap", roadmapTab: "narrative", roadmap: { status: "ok", data: plan }, roadmapFeed: { status: "ok", data: absentFeed() } }))).toMatchSnapshot();
   });
 });

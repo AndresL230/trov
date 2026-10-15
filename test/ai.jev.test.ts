@@ -36,6 +36,8 @@ describe("providerFor: one table from a kind to its provider", () => {
   it("the tag, importance, theme and card kinds are Jev's; the summaries, the filter, Ask Trov and the themes are Claude's; no key → null", () => {
     expect(KIND_PROVIDER).toEqual({
       summary_pr: "claude", summary_issue: "claude", "tag.fit": "jev", filter: "claude",
+      // Phase E: the weekly e-mail's "This week".
+      "digest.week": "claude",
       // Ask Trov (Phase F): one kind per mode, and the compaction of a long thread.
       "ask.fast": "claude", "ask.smart": "claude", "ask.thinking": "claude", "ask.compact": "claude",
       // Repo themes (Phase D).
@@ -46,6 +48,10 @@ describe("providerFor: one table from a kind to its provider", () => {
       "ticket.category": "jev", "ticket.priority": "jev", "ticket.duplicate": "jev", "review.risk": "jev", "unplaced.destination": "jev",
       // Phase D: the gates are Jev's, the producers Claude's.
       "gate.session": "jev", "digest.session": "claude", "gate.state": "jev", "repo.state": "claude",
+      // My Work's brief (Phase D).
+      "brief.person": "claude",
+      // Phase D (the Roadmap, doc drift): one line per kind.
+      "org.rollup": "claude", "sprint.draft": "claude", "plan.narrative": "claude", "doc.drift": "claude", "gate.drift": "jev",
     });
     expect(providerFor("tag.fit", { apiKey: "k" })?.name).toBe("jev");
     expect(providerFor("tag.fit", { apiKey: "k" })?.model).toBe("jev-latest");

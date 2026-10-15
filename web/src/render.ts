@@ -79,7 +79,8 @@ import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 import { previewBanner, previewState, type PreviewMode } from "./preview";
 import { aiItemRef } from "@shared/ai-core";
-import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, AI_NOTE_LEAVING, type AiUi } from "./ai-ui";
+import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, AI_NOTE_LEAVING, AI_EXIT_MS, type AiUi } from "./ai-ui";
+import { driftLine, roadmapSuggestionCards } from "./roadmap-ai";
 import { aiFilterBox, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
 import { initialAskUi, type AskUi } from "./ask-state";
 import { askScreenView, askHeader, askOverlays } from "./ask-screen";
@@ -331,6 +332,10 @@ export interface AppState {
   /** Unassigned + open, org-wide — the sidebar badge AND the queue's footer count. */
   ticketBadge: number;
   qSeg: TicketSeg;
+  /** Cards a refetch found DECLINED while a view that hides declined was up (main.ts
+   *  `leaveDeclined`): each as it was shown and when its exit began — drawn leaving for
+   *  `AI_EXIT_MS`, then dropped. Never under reduced motion. */
+  qLeaving: { row: TicketListItem; at: number }[];
   qAssignee: TicketAssigneeFilter;
   qCategory: TicketCategory | "all";
   qView: "table" | "board";
@@ -581,7 +586,7 @@ export function initialState(): AppState {
     ticketDetail: { status: "idle", data: null },
     ticketId: null,
     ticketBadge: 0,
-    qSeg: "all", qAssignee: "anyone", qCategory: "all", qView: "board",
+    qSeg: "all", qLeaving: [], qAssignee: "anyone", qCategory: "all", qView: "board",
     qQ: "", qPrio: "all", qSprint: "all", qPerson: "", qFilterOpen: false, qFilterCat: "assignee",
     fTitle: "", fCat: null, fPrio: "normal", fDesc: "", fAsgs: [], fLink: "", fSpr: null,
     commentDraft: "", mention: null, commentHeight: null, linkDraft: "",
@@ -1611,7 +1616,7 @@ function roadmapSprintGroups(s: AppState): string {
   const renderGroup = (items: SprintView[], heading: string, color: string): string =>
     items.length === 0
       ? ""
-      : `${sectionHeading(heading, color)}<div class="cnpy-stagger">${items.map((sp) => sprintCard(sp, s.persons.data, { done: isDone(sp), nextUp: sp.id === nextId, now })).join("")}</div>`;
+      : `${sectionHeading(heading, color)}<div class="cnpy-stagger">${items.map((sp) => sprintCard(sp, s.persons.data, { done: isDone(sp), nextUp: sp.id === nextId, now, ai: s.ai })).join("")}</div>`;
 
   return `${renderGroup(inProgress, "In Progress", "var(--amber)")}
     ${renderGroup(upcoming, "Upcoming", "var(--blue)")}
@@ -1726,7 +1731,10 @@ function roadmapNewSprint(s: AppState): string {
  * tab has no aside.
  */
 function roadmapDigest(s: AppState): string {
-  return asideColumns(`${roadmapNewSprint(s)}${planNarrativeBlock(s.roadmap.data.narrative, renderMarkdown)}${roadmapSprintGroups(s)}`, roadmapAside(s),
+  // Trov's pieces (./roadmap-ai.ts), each "" when its field is absent: an admin's suggestion cards above the
+  // narrative, the drift line under it.
+  const d = s.roadmap.data;
+  return asideColumns(`${roadmapNewSprint(s)}${roadmapSuggestionCards(d.suggestions, s.ai)}${planNarrativeBlock(d.narrative, renderMarkdown)}${driftLine(d.drift, s.ai)}${roadmapSprintGroups(s)}`, roadmapAside(s),
     { bar: roadmapTabBar(s), panel: tabPanelAttrs("roadmap-tab", s.roadmapTab) });
 }
 
@@ -2039,7 +2047,7 @@ function guideView(s: AppState): string {
     ${gFig("mywork", `${gEm("My Work")}: your tickets, the review queue, your sessions, and the repo at a glance.`)}
 
     ${sub("Tickets")}
-    <p style="${gP}">The team's request queue. Anyone can file a bug, request, question, or access ask with ${gStrong("Submit a ticket")}. The ${gStrong("Board")} is the default view, one column per status: ${gStrong("Triage")}, ${gStrong("In progress")}, ${gStrong("Testing")}, ${gStrong("Done")}, and ${gStrong("Declined")}. Drag a card to change its status or its place in a column. An open ticket can move to any column, and Testing is optional. ${gStrong("Table")} lists the same tickets grouped by sprint (no sprint means ${gStrong("Backlog")}). Both have a search box and a ${gStrong("Filter")} menu.</p>
+    <p style="${gP}">The team's request queue. Anyone can file a bug, request, question, or access ask with ${gStrong("Submit a ticket")}. The ${gStrong("Board")} is the default view, one column per status: ${gStrong("Triage")}, ${gStrong("In progress")}, ${gStrong("Testing")}, and ${gStrong("Done")}. Declined tickets are left out of ${gStrong("All")}; pick ${gStrong("Closed")} to see them in their own ${gStrong("Declined")} column. Drag a card to change its status or its place in a column. An open ticket can move to any column, and Testing is optional. ${gStrong("Table")} lists the same tickets grouped by sprint (no sprint means ${gStrong("Backlog")}). Both have a search box and a ${gStrong("Filter")} menu.</p>
     ${gFig("board", `${gEm("Board")}: a column per status, in the order people dragged them.`)}
     ${gFig("tickets", `${gEm("Table")}: the same tickets grouped by sprint.`)}
     <p style="${gP};margin-top:14px">Issues in the product's GitHub repo also show up as tickets, each with a locked link back to its issue. Closing or reopening the issue closes or reopens its ticket; everything else about it is edited in Trov. Apart from that, only a person closes a ticket: a merged PR never does.</p>
@@ -2779,6 +2787,8 @@ function ticketsScreen(s: AppState): string {
     aiFilter: aiFilterBox("tickets", s.aiFilter),
     // The first read is out: the toolbar is real, the columns / rows are skeletons.
     loading: slicePending(s.tickets),
+    // Cards declined while this view was up, mid-exit (the AI kit's clock: `--leave-t`).
+    leaving: s.qLeaving.map((l) => ({ row: l.row, t: Math.max(0, Date.now() - l.at) })).filter((l) => l.t < AI_EXIT_MS),
   });
 }
 
@@ -2963,7 +2973,11 @@ function appView(s: AppState): string {
     : s.screen === "tag" ? `tag:${s.tagName ?? ""}`
     // Ask: a keystroke, a streamed word or a hover card never rebuilds the page (the composer keeps its caret,
     // the conversation its scroll, and nothing that already entered replays its entrance).
-    : s.screen === "ask" ? "ask" : "";
+    : s.screen === "ask" ? "ask"
+    // The Roadmap's Narrative tab too: Trov's suggestion cards are a keyed list, so one an Accept / Dismiss took
+    // leaves with Review's exit, and a note or the drift collapses out the same way (roadmap-ai.ts › MOTION). The
+    // Timeline tab is rebuilt as before (another key, so a tab switch replaces the page).
+    : s.screen === "roadmap" && s.roadmapTab === "narrative" ? "roadmap:narrative" : "";
   // The skip link is the shell's first child (a fixed chip, out of the flex row): past the sidebar and the
   // header, to the screen itself. morph.ts patches the aside and swaps <main>; it never touches this.
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">

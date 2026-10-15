@@ -92,8 +92,11 @@ describe("sendWelcome", () => {
 
   it("states the org's digests as its policy has them: the registry's defaults, then an admin's change", async () => {
     expect(await welcomeDigests(systemCtx())).toEqual({ daily: true, weekly: true, sendHour: 8, timeZone: "America/New_York" });
-    await env.DB.prepare(`INSERT INTO notification_policy (org_id, kind, default_cadence, enabled, updated_at, updated_by) VALUES ('org_saplinglearn', 'roadmap_plan', 'weekly', 0, 'x', 'x')
-      ON CONFLICT(org_id, kind) DO UPDATE SET enabled = 0`).run();
+    // Both weekly kinds off (the sprint line, and Phase E's "This week"): no weekly e-mail is left.
+    for (const kind of ["roadmap_plan", "week_recap"]) {
+      await env.DB.prepare(`INSERT INTO notification_policy (org_id, kind, default_cadence, enabled, updated_at, updated_by) VALUES ('org_saplinglearn', ?, 'weekly', 0, 'x', 'x')
+        ON CONFLICT(org_id, kind) DO UPDATE SET enabled = 0`).bind(kind).run();
+    }
     expect(await welcomeDigests(systemCtx())).toMatchObject({ daily: true, weekly: false });
     await sendWelcome(env, systemCtx(), { email: "p@x.io", name: "P", handle: "priya", orgName: "Acme Robotics", orgSlug: "acme", origin: "https://trov.test" });
     expect((await bodies())[0].text).toContain("Email digests are on: Trov emails you one each weekday at 08:00 (America/New_York) when there is something for you. To change");

@@ -186,7 +186,7 @@ export interface AiSuggestion {
 }
 
 /** What "Wrong?" can be pressed on. */
-export const AI_ITEM_TYPES = ["brief", "repo_state", "feed", "themes", "suggestion"] as const;
+export const AI_ITEM_TYPES = ["brief", "repo_state", "feed", "themes", "suggestion", "sprint_note", "plan_drift"] as const;
 export type AiItemType = (typeof AI_ITEM_TYPES)[number];
 
 /** The `itemRef` "Wrong?" sends for each item type — ONE definition for the screen that sends it and
@@ -198,7 +198,43 @@ export const aiItemRef = {
   themes: (repo: string, range: AiThemeRange, generatedAt: string): string => `${repo}:${range}@${generatedAt}`,
   feed: (id: number): string => String(id),
   suggestion: (id: number): string => String(id),
+  sprintNote: (sprintId: number, generatedAt: string): string => `${sprintId}@${generatedAt}`,
+  planDrift: (generatedAt: string): string => generatedAt,
 } as const;
+
+// ── Roadmap (Phase D, Feature E): sprint notes, plan drift, and two suggestions ─────────────────────
+/** One written line on the Roadmap (`org_insights`, 0065): the words, their checked sources, and when and by
+ *  which model they were written. Only ever present while the org's switch is on (absent otherwise). */
+export interface AiRoadmapLine {
+  text: string;
+  cites: AiCite[];
+  generatedAt: string;
+  model: string | null;
+}
+/** `SprintView.note?` — one line per ACTIVE sprint ("Two of five done; the other three wait on hosting"). */
+export type AiSprintNote = AiRoadmapLine;
+/** A theme's share of the merged pull requests in the drift's window, COUNTED BY THE SERVER, and whether any
+ *  active sprint holds work of that theme. */
+export interface AiThemeShare { themeId: string; theme: string; pct: number; inSprint: boolean }
+/** `PlanView.drift?` — "The last two weeks went mostly to Billing, which isn't in any sprint". Every number in
+ *  `text` is one of the numbers in `shares` / `windowDays`: the model is given them and may use no other. */
+export interface AiPlanDrift extends AiRoadmapLine {
+  windowDays: number;
+  shares: AiThemeShare[];
+}
+/** How many days a drift describes, and how long the Roadmap shows it after it was written. */
+export const AI_DRIFT_WINDOW_DAYS = 14;
+
+/** The Roadmap's suggestion kinds (`ai_suggestions.kind`, item `roadmap` / `org`): an admin accepts them, and
+ *  accepting runs the existing writers as that admin. */
+export const AI_ROADMAP_SUGGESTION_KINDS = ["sprint_draft", "plan_narrative"] as const;
+export type AiRoadmapSuggestionKind = (typeof AI_ROADMAP_SUGGESTION_KINDS)[number];
+/** The item every Roadmap suggestion is about: the organization's plan. */
+export const AI_ROADMAP_ITEM = { itemType: "roadmap", itemRef: "org" } as const;
+/** A sprint draft's value: 2–4 sprints, each a name, a one-line goal, and backlog tickets by their NUMBER. */
+export interface AiSprintDraftValue { sprints: { name: string; goal: string; tickets: number[] }[] }
+/** A proposed plan narrative (at most `PLAN_NARRATIVE_MAX` characters). */
+export interface AiPlanNarrativeValue { narrative: string }
 
 /** `POST /ai/feedback` — hides the item for the person who pressed it; never edits the record. */
 export interface AiFeedbackBody {
@@ -250,8 +286,9 @@ export const AI_SENDS: readonly AiSendLine[] = [
     for: "Sift",
   },
 ];
-/** Never sent, whatever lands. */
-export const AI_NEVER_SENT = "Source code, diffs, secrets, integration keys, and anything from another organization.";
+/** Never sent, whatever lands — except a file a person attaches to Ask Trov, which is sent as it is (owner ruling
+ *  2026-10-15; the Privacy Policy says the same, web/src/legal.ts › Privacy 4). */
+export const AI_NEVER_SENT = "Source code (unless you attach a file to Ask), diffs, secrets, integration keys, and anything from another organization.";
 
 /** The four AI allowances Org settings › AI shows, by their `LimitKey` (shared/plans.ts), in order:
  *  capture-time summaries (Anthropic), what the AI pass writes (Anthropic), Sift's checks (TypeSafe AI),
@@ -304,16 +341,29 @@ export interface AiUsage {
  *  `ticket:14`, `feed:<id>`, `proposal:doc:<slug>:<version>` / `proposal:adr:<id>`, `unplaced:<id>`,
  *  `tagfit:doc:<slug>` / `tagfit:artifact:<slug>`; `session` → `<repo>:<login>`; `person` → a handle; `repo`,
  *  `theme_window`, `theme_backfill` → `owner/repo`; `sprint` → a sprint id; `org` → ''; `doc_drift` → a doc's slug
- *  (`artifact:<slug>` for an artifact). */
-export const AI_SCOPES = ["session", "card", "person", "repo", "org", "sprint", "theme_window", "theme_backfill", "doc_drift"] as const;
+ *  (`artifact:<slug>` for an artifact); `digest` → `week:<YYYY-Www>:<send instant>` (`weekScopeKey`, the weekly
+ *  e-mail's "This week", Phase E). */
+export const AI_SCOPES = ["session", "card", "person", "repo", "org", "sprint", "theme_window", "theme_backfill", "doc_drift", "digest"] as const;
 export type AiScope = (typeof AI_SCOPES)[number];
 export const isAiScope = (v: unknown): v is AiScope => typeof v === "string" && (AI_SCOPES as readonly string[]).includes(v);
 
 /** THE PASS ORDER: each org's due scopes run in these stages, first to last — sessions, cards, briefs, repo
- *  state, the org rollup, themes, doc drift — so a later stage reads what an earlier one just wrote. */
+ *  state, the org rollup, themes, doc drift, the weekly e-mail's highlights — so a later stage reads what an earlier
+ *  one just wrote. */
 export const AI_PASS_STAGES: readonly (readonly AiScope[])[] = [
-  ["session"], ["card"], ["person"], ["repo"], ["org", "sprint"], ["theme_window", "theme_backfill"], ["doc_drift"],
+  ["session"], ["card"], ["person"], ["repo"], ["org", "sprint"], ["theme_window", "theme_backfill"], ["doc_drift"], ["digest"],
 ];
+
+/** The `digest` scope's key for one weekly e-mail: its window id and the instant it is sent (the window's end). The
+ *  key carries the end so the job reads the SAME window when it submits and again when it collects the answer. */
+export const weekScopeKey = (weekId: string, sendAt: Date): string => `week:${weekId}:${sendAt.toISOString()}`;
+/** The parts of a `digest` key, or null (a key from elsewhere, or a malformed one). */
+export function parseWeekScopeKey(key: string): { weekId: string; end: Date } | null {
+  const m = /^week:(\d{4}-W\d{2}):(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z)$/.exec(key);
+  if (!m) return null;
+  const end = new Date(m[2]);
+  return Number.isFinite(end.getTime()) ? { weekId: m[1], end } : null;
+}
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -335,6 +385,7 @@ const SHORT_DEBOUNCE_PLANS: readonly string[] = ["team", "enterprise"];
  *   | `theme_window`   | daily                                     | weekly          |
  *   | `doc_drift`      | weekly                                    | monthly (30 d)  |
  *   | `theme_backfill` | next tick (0) — not in the table: it is the accept's own follow-up, through the Batch API |
+ *   | `digest`         | next tick (0) — Phase E: marked once, hours before the weekly send, through the Batch API |
  *
  * `urgent` (`ai_dirty.urgent`, set by the caller that marks): a BREAKING change on a `repo` skips the wait on Pro
  * and Enterprise only (the table's own parenthesis); the digest PRE-WARM on a `person` skips it on every plan (the
@@ -345,7 +396,7 @@ export function debounceMs(scope: AiScope, plan: string, opts: { urgent?: boolea
   const short = SHORT_DEBOUNCE_PLANS.includes(plan);
   switch (scope) {
     case "session": return 45 * MINUTE;
-    case "card": case "theme_backfill": return 0;
+    case "card": case "theme_backfill": case "digest": return 0;
     case "person": return opts.urgent ? 0 : short ? 30 * MINUTE : 2 * HOUR;
     case "repo": return opts.urgent && short ? 0 : short ? HOUR : 6 * HOUR;
     case "org": case "sprint": return short ? 6 * HOUR : DAY;

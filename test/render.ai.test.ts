@@ -22,11 +22,12 @@ import {
   AI_EMPTY, initialAiUi, aiCite, aiCapped, aiDay, aiSuggestionChip, aiWrongBtn, aiFeedback, aiFromLine, type AiUi,
 } from "../web/src/ai-ui";
 import { parseFeedbackArg } from "../web/src/ai-actions";
+import { aiHiddenKey } from "../web/src/ai-ui";
 import { aiMark } from "../web/src/marks";
 import { aiTab, allowanceLine } from "../web/src/org-ai";
 import { usageView, orgUsageBlock } from "../web/src/platform-usage";
 import { briefFixture, repoStateFixture, themesFixture, feedFixtures, aiPreviewFixtures } from "@shared/ai-fixtures";
-import { AI_NEVER_SENT, AI_SENDS, type AiSettings, type AiThemeRange, type AiThemes } from "@shared/ai-core";
+import { aiItemRef, AI_NEVER_SENT, AI_SENDS, type AiSettings, type AiThemeRange, type AiThemes } from "@shared/ai-core";
 import type { DashboardData } from "@shared/dashboard";
 import type { FeedRow } from "@shared/rows";
 import type { OrgUsage, PlatformUsageResponse } from "@shared/orgs";
@@ -162,7 +163,7 @@ describe("My Work › Your brief", () => {
   });
   it("ready: each Next row is a state mark, the item's linked title and a muted why", () => {
     const card = briefTile(briefFixture("ready", NOW));
-    const rows = card.split('class="mw-brief-next"').slice(1);
+    const rows = card.split(/class="mw-brief-next[ "]/).slice(1);
     expect(rows).toHaveLength(3);
     expect(text(rows[0])).toContain("Failing");
     expect(rows[0]).toContain("var(--red)");
@@ -286,6 +287,24 @@ describe("Repo › Planning › Where the work went", () => {
     expect(text(b.slice(b.indexOf("repo-lane-detail")))).toContain("Per-seat Pro, Stripe Checkout");
     // No button inside a lane button.
     for (const row of h.split('class="repo-lane"').slice(1)) expect(row.slice(0, row.indexOf("</button>"))).not.toContain("<button");
+  });
+  it("a range marked Wrong? keeps the card and its 8 weeks / Quarter switch while the other range is there; both out → nothing", () => {
+    const all = themes("ready");
+    const repo = "AndresL230/trov";
+    // The read left 8 weeks out for this person (Wrong? on a past visit): the switch stays, Quarter one press away.
+    const { "8w": _gone, ...onlyQuarter } = all;
+    const h = themesSection(onlyQuarter, rp());
+    expect(h).toContain('data-act="aiThemesRange"');
+    expect(h).toContain('data-arg="quarter"');
+    expect(text(h)).toContain("You marked this range wrong, so it is hidden for you until Trov writes it again.");
+    expect(h).not.toContain("repo-band");
+    expect(themesSection(onlyQuarter, rp({ ui: ui({ themesRange: "quarter" }) }))).toContain("repo-band");
+    // Pressed this session (hidden at once): the same.
+    const hidden = aiHiddenKey("themes", aiItemRef.themes(repo, "8w", all["8w"].generatedAt ?? "themes"));
+    expect(themesSection(all, rp({ ui: ui({ hidden: [hidden] }) }))).toContain('data-act="aiThemesRange"');
+    // Both out: no card.
+    const hiddenQ = aiHiddenKey("themes", aiItemRef.themes(repo, "quarter", all.quarter.generatedAt ?? "themes"));
+    expect(themesSection(onlyQuarter, rp({ ui: ui({ hidden: [hiddenQ] }) }))).toBe("");
   });
   it("bands are sized against the busiest week in view; a zero week draws no band", () => {
     expect(bandHeight(0, 6)).toBeNull();

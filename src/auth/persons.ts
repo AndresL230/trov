@@ -290,6 +290,10 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["ai_suggestions", "decided_by"], ["ai_feedback", "handle"],
   // Session digests (0061_ai_digests): the member a digest Trov wrote is FOR (its author is the reserved `trov`).
   ["feed", "subject"],
+  // My Work's brief (0063_person_brief): who it was written for.
+  ["person_brief", "handle"],
+  // The person's own e-mail options (0067_digest_email).
+  ["notification_person_prefs", "user_id"],
   // The org's tag list (0056_org_tags): who added, changed and retired a tag; who sent and settled a suggestion.
   ["org_tags", "created_by"], ["org_tags", "updated_by"], ["org_tags", "retired_by"],
   ["org_tag_suggestions", "suggested_by"], ["org_tag_suggestions", "resolved_by"],

@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { LEGAL_DOCS, LEGAL_ORDER, TERMS, PRIVACY, REFUNDS, LEGAL_CONTACT, LEGAL_OPERATOR, legalDate, legalTabs, legalView, type LegalDoc } from "../web/src/legal";
 import { landingView } from "../web/src/landing";
+import { AI_NEVER_SENT } from "@shared/ai-core";
 import { siteFooter } from "../web/src/site-chrome";
 
 const text = (doc: LegalDoc): string => [doc.lede, ...doc.brief, ...doc.sections.flatMap((s) => [s.title, ...s.body])].join(" ");
@@ -162,6 +163,51 @@ describe("legal pages", () => {
     for (const b of TERMS.brief) expect(html).toContain(`<li>${b}</li>`);
     expect(html).toContain('<span class="site-legal-n">5.</span>Plans, payment and renewal</h2>');
     expect(html).toContain('Also see the <a href="/privacy">Privacy Policy</a> and the <a href="/refunds">Refund and Cancellation Policy</a>.');
+  });
+
+  it("the server-side AI passages (#178 Phase G) are visibly DRAFT until the owner approves them; the approved Sift passages are unchanged", () => {
+    const DRAFT = "<b>DRAFT —</b> ";
+    const ai = section(TERMS, "ai");
+    // Approved 2026-10-14: the summaries and Sift paragraphs, word for word.
+    expect(TERMS.sections.find((s) => s.id === "ai")!.body[0]).toBe("<p>Trov uses an AI model (Anthropic Claude) to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete: they are a convenience, not a record. Check the pull request or issue before relying on one.</p>");
+    expect(TERMS.sections.find((s) => s.id === "ai")!.body[1]).toMatch(/^<p>If an admin of your organization turns on automatic tagging in Org settings › Tags, .* An admin can turn it off at any time, and nothing is sent while it is off\.<\/p>$/);
+    expect(section(PRIVACY, "sharing")).toContain("<td>TypeSafe AI</td><td>Automatic tagging (Sift), where an organization turns it on</td>");
+    // Every new passage carries the marker.
+    for (const start of ["While both switches are on, Sift also checks", "<b>Ask Trov.</b>", "<b>Notes, briefs and suggestions.</b>", "An admin can turn the organization's AI switch off"]) {
+      expect(ai).toContain(`${DRAFT}${start}`);
+    }
+    // Owner ruling (Legal 1): the switch covers summaries too (ai/summaries-switch), and the old exception is gone.
+    expect(ai).toContain("While it is off, nothing is sent to Anthropic or TypeSafe AI for any feature in this section, the summaries of pull requests and issues included. Summaries already written stay readable.</p>");
+    expect(ai).not.toContain("does not cover the summaries");
+    expect(ai).not.toContain("one exception");
+    // Ruling (Legal 3): Ask Trov reads source code only in a file the person attaches.
+    expect(ai).toContain("nor source code unless the person attaches a file of it");
+    expect(section(TERMS, "third-parties")).toContain(`${DRAFT}Anthropic Claude also answers Ask Trov`);
+    expect(section(TERMS, "third-parties")).toContain("(section 10, AI features)");
+    expect(section(PRIVACY, "collect")).toContain(`${DRAFT}<b>Ask Trov.</b>`);
+    expect(section(PRIVACY, "sharing")).toContain(`<td>Anthropic</td><td>${DRAFT}Ask Trov (Claude API), when a person asks</td>`);
+    expect(section(PRIVACY, "sharing")).toContain(`<td>TypeSafe AI</td><td>${DRAFT}Sorting and checking items`);
+    expect(section(PRIVACY, "email")).toContain(`${DRAFT}A digest leads with your brief`);
+    expect(section(PRIVACY, "retention")).toContain(`${DRAFT}Ask Trov conversations`);
+    expect(section(PRIVACY, "deletion")).toContain(`${DRAFT}It also removes your Ask Trov conversations, the files you attached in Ask Trov and did not publish to the organization,`);
+    expect(section(PRIVACY, "deletion")).not.toContain("stay as artifacts");
+    // Ruling (Legal 4): attachments go with the conversation (unless a ticket or doc refers to one) and the account.
+    expect(section(PRIVACY, "retention")).toContain("Deleting a conversation also deletes the files attached in it, except a file a ticket or doc still refers to or one you published to the organization. Deleting your account deletes the files you attached in Ask Trov and did not publish.");
+    // TypeSafe AI: its own model, hosted in the United States, no training on what Trov sends, its own subprocessors linked (DRAFT).
+    expect(section(PRIVACY, "sharing")).toContain(`${DRAFT}The model that sorts and checks items is TypeSafe AI's own, on services hosted in the United States, and TypeSafe AI does not train or fine-tune any model on what Trov sends it. TypeSafe AI's own subprocessors are listed at <a href="https://trust.typesafe.ai/subprocessors">trust.typesafe.ai/subprocessors</a>.`);
+    // Ruling (Legal 3): the same exception as the in-app "Never sent" (AI_NEVER_SENT).
+    expect(section(PRIVACY, "sharing")).toContain("Source code reaches Anthropic only when you attach a file of it to a question in Ask Trov");
+    expect(AI_NEVER_SENT).toContain("Source code (unless you attach a file to Ask)");
+    // Ruling (Legal 5): "Only when something needs me" decides with what Trov's AI judged, so Privacy says so.
+    expect(section(PRIVACY, "email")).toContain(`${DRAFT}If you choose "Only when something needs me"`);
+    expect(section(PRIVACY, "email")).toContain("the ratings Sift made earlier still count, so whether that email is sent can still depend on them.");
+    expect(section(PRIVACY, "email")).toContain("written by Anthropic Claude once a week for the whole organization");
+    // Ruling (Legal 2): Terms §10 is "AI features", and Privacy's link to it names it.
+    expect(TERMS.sections.find((s) => s.id === "ai")!.title).toBe("10. AI features");
+    expect(section(PRIVACY, "use")).toContain('>Terms, section 10, AI features</a>');
+    expect(section(PRIVACY, "cookies")).toContain(`<td>${DRAFT}<code>trov.aiFeedNote</code></td><td>Local storage</td>`);
+    // The public pages call TypeSafe AI's model Sift and never by its own name.
+    for (const doc of ALL) expect(text(doc)).not.toMatch(/\bJev\b/);
   });
 
   it("dates read in fixed English", () => {

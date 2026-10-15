@@ -132,7 +132,7 @@ describe("retryFailed — failed rows only", () => {
     const [row] = await outbox();
     expect(row).toMatchObject({ status: "sent", error: null });
     expect(row.sent_at).not.toBeNull();
-    expect((await bodies())[0].text).toContain("Pending decision");
+    expect((await bodies())[0].text).toContain("Review: 1 waiting");
   });
 
   it("leaves sent and skipped rows alone", async () => {

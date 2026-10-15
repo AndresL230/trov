@@ -1,0 +1,109 @@
+{
+ "source": "Personal Dev (org trov-dev), read 2026-10-15 through the Trov MCP read tools (list_docs, get_feed) — docs as live (version 1, promoted 2026-10-09), feed entries #108-#124 as written. READ ONLY.",
+ "entries": [
+  {
+   "id": 108,
+   "author": "andres",
+   "created_at": "2026-10-14T08:16:12.820Z",
+   "summary": "Shipped: PR #176 opens — summaries move from Gemini to Claude Haiku 5.5 behind a provider-agnostic client",
+   "brief": "Pull request and issue summaries now go through one model client (Claude Haiku 5.5), the base every later AI feature will use. Same fields and storage, no migration; waits on ANTHROPIC_API_KEY and a merge.",
+   "body": null
+  },
+  {
+   "id": 109,
+   "author": "andres",
+   "created_at": "2026-10-14T09:03:14.682Z",
+   "summary": "Status: AI base (#177) and the AI screens frontend (#178) are open, stacked on #176, all green",
+   "brief": "The AI groundwork is ready for review: a monthly AI allowance, an org AI switch, an empty AI pass in the cron, suggestions and \"Wrong?\" feedback, and the four new AI screens built but hidden until something writes their content.",
+   "body": null
+  },
+  {
+   "id": 110,
+   "author": "andres",
+   "created_at": "2026-10-15T02:29:09.341Z",
+   "summary": "andres left a handoff for anyone: #7 Land the hosting providers work on main (Vercel, Render, Netlify, Fly.io; issues #97–#101)",
+   "brief": null,
+   "body": "Task: Bring feat/hosting-screens (PR #107 backend + hosting screens) up to main, renumber its migration to 0056, open PR(s) (`feat/hosting-screens`)"
+  },
+  {
+   "id": 113,
+   "author": "andres",
+   "created_at": "2026-10-15T05:59:01.289Z",
+   "summary": "andres left a handoff for andres: #10 Build Trov's server-side AI system in PR #178 (replaces #9; Ask Trov is now full-featured)",
+   "brief": null,
+   "body": "Task: Build the full server-side AI system into PR #178, including a full-featured Ask Trov backend (modes, auto mode, attachments as artifacts, history); Ask frontend waits on design (`ai/screens`)"
+  },
+  {
+   "id": 114,
+   "author": "andres",
+   "created_at": "2026-10-15T07:05:37.957Z",
+   "summary": "andres left a handoff for anyone: #11 Build the Repo screen for every repo setup (feat/repo-setups)",
+   "brief": null,
+   "body": "Task: Build the modular Repo screen from the Claude Design prototype on top of #185's hosting model, plus the Org settings fixes"
+  },
+  {
+   "id": 115,
+   "author": "andres",
+   "created_at": "2026-10-15T07:12:30.908Z",
+   "summary": "Status: server-side AI Phase A landed on PR #178 (Jev as a provider, Sift under the org switch, ai_chat allowance, Org settings › AI)",
+   "brief": "Trov's AI now has one client with two providers, Sift obeys the org's AI switch, and Org settings › AI shows every AI allowance and both providers.",
+   "body": null
+  },
+  {
+   "id": 117,
+   "author": "andres",
+   "created_at": "2026-10-15T08:17:00.162Z",
+   "summary": "Repo setups Phase 0: Org settings › Hosting shows one card per provider; old per-environment Railway tokens are leftovers, not connections",
+   "brief": "Fixed the three-Railway-cards bug: one status function for every hosting surface, leftovers shown inside the card with Remove old tokens, and Integrations / Hosting / Environments each own one thing.",
+   "body": null
+  },
+  {
+   "id": 118,
+   "author": "andres",
+   "created_at": "2026-10-15T08:34:40.826Z",
+   "summary": "Status: server-side AI Phase B landed on PR #178 (router, scopes, the pass, batches) plus the plain-language filter",
+   "brief": "Every write now marks what it made stale, and the AI pass has its machinery (debounce, grouping, gates, caching, batches); the plain-language filter works on Tickets, the Feed and Artifacts.",
+   "body": null
+  },
+  {
+   "id": 119,
+   "author": "andres",
+   "created_at": "2026-10-15T08:46:32.142Z",
+   "summary": "Repo setups Phase A: apps (repo_apps), a credential-less GitHub hosting provider, and a commit on every deploy or an honest NULL",
+   "brief": "0070_repo_apps adds apps and deploy provenance; GitHub deploy signals are captured again; Cloudflare reads commits from Workers Builds; others join one GitHub signal within 10 minutes or stay NULL; rollbacks detected by one compare.",
+   "body": null
+  },
+  {
+   "id": 120,
+   "author": "andres",
+   "created_at": "2026-10-15T09:25:40.118Z",
+   "summary": "Repo setups Phase C: the Repo Overview drawn from RepoFacts with the design's blocks, header, Group by and a scenario switch",
+   "brief": "The Overview is now composed per the shared layout rules: attention, connect card, the rule-picked opener (production/previews, env cards/drift, apps table, release, found, unseen), not shipped, week, links. Verdict: Healthy only on passing checks, else Live.",
+   "body": null
+  },
+  {
+   "id": 121,
+   "author": "andres",
+   "created_at": "2026-10-15T10:10:37.846Z",
+   "summary": "Repo setups Phases B2, D, F: the server facts read (live repos get the new Overview), app detection + Org settings › Repositories › Apps, and releases",
+   "brief": "RepoFacts served by GET /repo/dashboard and MCP with the shared layout; repo scan + detectors + suggestions (accept/ignore/undo) and the Apps setup screen; releases captured through the gate with feat-only feature claims; Poll now cap 50 -> 100.",
+   "body": null
+  },
+  {
+   "id": 122,
+   "author": "andres",
+   "created_at": "2026-10-15T10:27:14.621Z",
+   "summary": "Repo setups Phase G: Usage reads metric families; Cloudflare outcomes / runtime / D1 / crons; app metrics v3 and Trov's own /api/internal/metrics",
+   "brief": "Usage tab is a card per target in one of four states; Cloudflare extras use real invocation-outcome names (no invented 4xx/5xx); v3 self-described metrics; Trov's own endpoint on the existing bearer class (CLAUDE.md invariant 8 wording updated, pending Andres's confirmation).",
+   "body": null
+  },
+  {
+   "id": 123,
+   "author": "andres",
+   "created_at": "2026-10-15T10:53:38.486Z",
+   "summary": "Repo setups Phases E and H: monorepo narrowing of Code and CI by the App menu, and docs/architecture/repo-apps.md",
+   "brief": "0073_commit_paths (commit paths, PR files, read markers) feeds App-menu narrowing and watch-path-filtered not shipped; unknown never guessed into an app. New repo-apps.md area reference + docs audit; audit gaps queued as follow-up fixes.",
+   "body": null
+  }
+ ]
+}

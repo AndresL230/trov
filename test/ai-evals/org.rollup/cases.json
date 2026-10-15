@@ -1,0 +1,463 @@
+{
+ "source": "Personal Dev (org trov-dev) has no sprints yet (get_roadmap / list_sprints: none, read 2026-10-15), so each note case is a SPRINT SCENARIO built from its real tickets (list_tickets: numbers, titles, assignees), this repository's real pull requests (#178, #185, #186) and its real feed entries (get_feed #115-#124); statuses, dates and sprint names are the scenario's. Drift cases are server-given theme shares over this repository's real themes (synthetic percentages). READ ONLY.",
+ "now": "2026-10-15T18:00:00Z",
+ "notes": [
+  {
+   "id": "ii-blocks",
+   "sprint": {
+    "sprintId": 41,
+    "title": "Instant intelligence: building blocks",
+    "status": "in_progress",
+    "start": "2026-10-08",
+    "due": "2026-10-22",
+    "tickets": [
+     {
+      "number": 16,
+      "title": "Instant intelligence · building block 1: one classify service",
+      "status": "done",
+      "priority": "normal",
+      "assignees": [
+       "andres"
+      ]
+     },
+     {
+      "number": 17,
+      "title": "Instant intelligence · building block 2: where suggestions live",
+      "status": "in_progress",
+      "priority": "normal",
+      "assignees": [
+       "andres"
+      ]
+     },
+     {
+      "number": 18,
+      "title": "Instant intelligence · building block 3: one way to show and answer a suggestion",
+      "status": "testing",
+      "priority": "normal",
+      "assignees": [
+       "andres"
+      ]
+     },
+     {
+      "number": 19,
+      "title": "Instant intelligence · building block 4: limits, consent, privacy and knowing whether it is any good",
+      "status": "submitted",
+      "priority": "normal",
+      "assignees": []
+     }
+    ],
+    "prs": [
+     {
+      "repo": "AndresL230/trov",
+      "n": 178,
+      "title": "AI screens: the server-side AI system (Phases A–H)",
+      "what": "Builds Trov's server-side AI: Jev and Claude behind one client, the router and the pass, the producers, Ask Trov."
+     }
+    ],
+    "entries": [
+     {
+      "id": 115,
+      "summary": "Status: server-side AI Phase A landed on PR #178 (Jev as a provider, Sift under the org switch, ai_chat allowance, Org settings › AI)",
+      "created_at": "2026-10-15T07:12:30.908Z"
+     },
+     {
+      "id": 118,
+      "summary": "Status: server-side AI Phase B landed on PR #178 (router, scopes, the pass, batches) plus the plain-language filter",
+      "created_at": "2026-10-15T08:34:40.826Z"
+     }
+    ],
+    "total": 4,
+    "closed": 1
+   }
+  },
+  {
+   "id": "repo-fit",
+   "sprint": {
+    "sprintId": 42,
+    "title": "Repo dashboard that fits the repository",
+    "status": "in_progress",
+    "start": "2026-10-06",
+    "due": "2026-10-20",
+    "tickets": [
+     {
+      "number": 1,
+      "title": "Repo dashboard: support repositories hosted on one stack (e.g. everything on one Cloudflare Worker)",
+      "status": "done",
+      "priority": "normal",
+      "assignees": [
+       "andres"
+      ]
+     },
+     {
+      "number": 2,
+      "title": "Repo dashboard: an environment with one part (no backend / frontend split)",
+      "status": "done",
+      "priority": "normal",
+      "assignees": [
+       "andres"
+      ]
+     },
+     {
+      "number": 3,
+      "title": "Repo dashboard: a repository with one environment (drift, previews, the environment list)",
+      "status": "in_progress",
+      "priority": "normal",
+      "assignees": [
+       "andres"
+      ]
+     },
+     {
+      "number": 4,
+      "title": "Repo dashboard: the Cloudflare Worker as the whole stack (Worker, D1, R2 and cron metrics)",
+      "status": "testing",
+      "priority": "normal",
+      "assignees": [
+       "andres"
+      ]
+     },
+     {
+      "number": 5,
+      "title": "Repo dashboard: recognise a single-stack repository at setup, and dogfood it on AndresL230/trov",
+      "status": "submitted",
+      "priority": "normal",
+      "assignees": []
+     }
+    ],
+    "prs": [
+     {
+      "repo": "AndresL230/trov",
+      "n": 186,
+      "title": "Repo setups: the Repo screen for every repository setup",
+      "what": "Apps, a credential-less GitHub hosting provider, the Overview from RepoFacts, detection, releases, monorepo narrowing."
+     }
+    ],
+    "entries": [
+     {
+      "id": 119,
+      "summary": "Repo setups Phase A: apps (repo_apps), a credential-less GitHub hosting provider, and a commit on every deploy or an honest NULL",
+      "created_at": "2026-10-15T08:46:32.142Z"
+     },
+     {
+      "id": 120,
+      "summary": "Repo setups Phase C: the Repo Overview drawn from RepoFacts with the design's blocks, header, Group by and a scenario switch",
+      "created_at": "2026-10-15T09:25:40.118Z"
+     },
+     {
+      "id": 121,
+      "summary": "Repo setups Phases B2, D, F: the server facts read (live repos get the new Overview), app detection + Org settings › Repositories › Apps, and releases",
+      "created_at": "2026-10-15T10:10:37.846Z"
+     },
+     {
+      "id": 124,
+      "summary": "Repo setups (PR #186): end-to-end browser pass done, 12 bugs fixed on the branch, final rerun green",
+      "created_at": "2026-10-15T12:41:47.866Z"
+     }
+    ],
+    "total": 5,
+    "closed": 2
+   }
+  },
+  {
+   "id": "local-dev-late",
+   "sprint": {
+    "sprintId": 43,
+    "title": "Local dev and end-to-end tests",
+    "status": "in_progress",
+    "start": "2026-10-01",
+    "due": "2026-10-10",
+    "tickets": [
+     {
+      "number": 33,
+      "title": "Local dev: the local database is empty, so nothing can be tested without hand-made data",
+      "status": "in_progress",
+      "priority": "high",
+      "assignees": [
+       "andres"
+      ]
+     },
+     {
+      "number": 34,
+      "title": "E2E testing system: browser tests that drive the real app against seeded local data",
+      "status": "submitted",
+      "priority": "normal",
+      "assignees": [
+       "andres"
+      ]
+     }
+    ],
+    "prs": [],
+    "entries": [],
+    "total": 2,
+    "closed": 0
+   }
+  },
+  {
+   "id": "accounts",
+   "sprint": {
+    "sprintId": 44,
+    "title": "Accounts and organizations",
+    "status": "in_progress",
+    "start": "2026-10-05",
+    "due": "2026-10-19",
+    "tickets": [
+     {
+      "number": 29,
+      "title": "Let a person delete their own account from Settings",
+      "status": "done",
+      "priority": "normal",
+      "assignees": [
+       "andres"
+      ]
+     },
+     {
+      "number": 30,
+      "title": "One GitHub account, several Trov organizations: connect different repositories to different orgs",
+      "status": "done",
+      "priority": "normal",
+      "assignees": [
+       "andres"
+      ]
+     },
+     {
+      "number": 31,
+      "title": "Repo dashboard: log ingestion (errors and log volume per environment)",
+      "status": "submitted",
+      "priority": "normal",
+      "assignees": []
+     }
+    ],
+    "prs": [],
+    "entries": [],
+    "total": 3,
+    "closed": 2
+   }
+  },
+  {
+   "id": "ii-uses-unassigned",
+   "sprint": {
+    "sprintId": 45,
+    "title": "Instant intelligence: first uses",
+    "status": "in_progress",
+    "start": "2026-10-14",
+    "due": "2026-11-04",
+    "tickets": [
+     {
+      "number": 20,
+      "title": "Instant intelligence · use: suggest where an Unplaced item belongs",
+      "status": "submitted",
+      "priority": "normal",
+      "assignees": []
+     },
+     {
+      "number": 21,
+      "title": "Instant intelligence · use: order Review by risk",
+      "status": "submitted",
+      "priority": "normal",
+      "assignees": []
+     },
+     {
+      "number": 22,
+      "title": "Instant intelligence · use: notice when a doc and recent work disagree",
+      "status": "submitted",
+      "priority": "normal",
+      "assignees": []
+     },
+     {
+      "number": 23,
+      "title": "Instant intelligence · use: filters from plain language",
+      "status": "submitted",
+      "priority": "normal",
+      "assignees": []
+     },
+     {
+      "number": 24,
+      "title": "Instant intelligence · use: My Work ordered by what needs you first",
+      "status": "submitted",
+      "priority": "normal",
+      "assignees": []
+     },
+     {
+      "number": 25,
+      "title": "Instant intelligence · use: feed entries with a priority, and digests that lead with what matters",
+      "status": "submitted",
+      "priority": "normal",
+      "assignees": []
+     },
+     {
+      "number": 26,
+      "title": "Instant intelligence · use: ticket intake — category, priority, duplicates, who should take it",
+      "status": "submitted",
+      "priority": "normal",
+      "assignees": []
+     },
+     {
+      "number": 27,
+      "title": "Instant intelligence · use: tags for artifacts and docs",
+      "status": "submitted",
+      "priority": "normal",
+      "assignees": []
+     },
+     {
+      "number": 28,
+      "title": "Instant intelligence · use: a reading list when someone claims a handoff",
+      "status": "submitted",
+      "priority": "normal",
+      "assignees": []
+     }
+    ],
+    "prs": [
+     {
+      "repo": "AndresL230/trov",
+      "n": 178,
+      "title": "AI screens: the server-side AI system (Phases A–H)",
+      "what": "Builds Trov's server-side AI: Jev and Claude behind one client, the router and the pass, the producers, Ask Trov."
+     }
+    ],
+    "entries": [
+     {
+      "id": 118,
+      "summary": "Status: server-side AI Phase B landed on PR #178 (router, scopes, the pass, batches) plus the plain-language filter",
+      "created_at": "2026-10-15T08:34:40.826Z"
+     }
+    ],
+    "total": 9,
+    "closed": 0
+   }
+  },
+  {
+   "id": "plugin-one",
+   "sprint": {
+    "sprintId": 46,
+    "title": "Plugin fixes",
+    "status": "in_progress",
+    "start": "2026-10-13",
+    "due": null,
+    "tickets": [
+     {
+      "number": 32,
+      "title": "Plugin skills marked disable-model-invocation can't be used when a person asks in words (handoff, record-session, tickets, update-plan)",
+      "status": "in_progress",
+      "priority": "normal",
+      "assignees": [
+       "andres"
+      ]
+     }
+    ],
+    "prs": [],
+    "entries": [],
+    "total": 1,
+    "closed": 0
+   }
+  }
+ ],
+ "drift": [
+  {
+   "id": "repo-offplan",
+   "sprints": [
+    {
+     "id": 41,
+     "title": "Instant intelligence: building blocks"
+    }
+   ],
+   "shares": [
+    {
+     "themeId": "repo",
+     "theme": "Repo dashboard",
+     "pct": 55,
+     "inSprint": false
+    },
+    {
+     "themeId": "ai",
+     "theme": "Server-side AI",
+     "pct": 30,
+     "inSprint": true
+    },
+    {
+     "themeId": "billing",
+     "theme": "Billing and plans",
+     "pct": 15,
+     "inSprint": false
+    }
+   ]
+  },
+  {
+   "id": "ai-offplan",
+   "sprints": [
+    {
+     "id": 42,
+     "title": "Repo dashboard that fits the repository"
+    }
+   ],
+   "shares": [
+    {
+     "themeId": "ai",
+     "theme": "Server-side AI",
+     "pct": 60,
+     "inSprint": false
+    },
+    {
+     "themeId": "repo",
+     "theme": "Repo dashboard",
+     "pct": 40,
+     "inSprint": true
+    }
+   ]
+  },
+  {
+   "id": "two-offplan",
+   "sprints": [
+    {
+     "id": 47,
+     "title": "Tickets board polish"
+    }
+   ],
+   "shares": [
+    {
+     "themeId": "hosting",
+     "theme": "Hosting providers",
+     "pct": 40,
+     "inSprint": false
+    },
+    {
+     "themeId": "repo",
+     "theme": "Repo dashboard",
+     "pct": 35,
+     "inSprint": false
+    },
+    {
+     "themeId": "tickets",
+     "theme": "Tickets",
+     "pct": 25,
+     "inSprint": true
+    }
+   ]
+  },
+  {
+   "id": "borderline",
+   "sprints": [
+    {
+     "id": 41,
+     "title": "Instant intelligence: building blocks"
+    },
+    {
+     "id": 44,
+     "title": "Accounts and organizations"
+    }
+   ],
+   "shares": [
+    {
+     "themeId": "ai",
+     "theme": "Server-side AI",
+     "pct": 75,
+     "inSprint": true
+    },
+    {
+     "themeId": "billing",
+     "theme": "Billing and plans",
+     "pct": 25,
+     "inSprint": false
+    }
+   ]
+  }
+ ]
+}

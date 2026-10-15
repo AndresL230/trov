@@ -49,10 +49,14 @@ import { orgPrefix } from "./prefix";
 import { collectBatches, submitBatches, AI_BATCH_PER_TICK, type QueuedRequest } from "./batches";
 import { ticketCardJob, reviewRiskJob, unplacedDestinationJob } from "./jobs/cards";
 import { prThemeJob, themesBackfillJob, themesCaptionJob, themesProposeJob } from "./themes";
+import { weekJob } from "./week";
 import { TAG_FIT_ITEM_JOB } from "./sift-items";
 import { IMPORTANCE_JOBS } from "./importance";
 import { sessionDigestJob } from "./digests";
 import { repoStateJob } from "./repo-state";
+import { briefJob } from "./brief";
+import { ROADMAP_JOBS } from "./roadmap";
+import { DOC_DRIFT_JOB } from "./doc-drift";
 
 export type { AiJob } from "./jobs";
 
@@ -65,10 +69,14 @@ export const AI_JOBS: readonly AiJob[] = [
   ...IMPORTANCE_JOBS, // feed.importance — card:feed:*, card:pr:*
   sessionDigestJob, // Phase D: session digests (`session`), behind `gate.session`
   repoStateJob, // Phase D: repo state (`repo`), behind `gate.state`
+  briefJob, // person:<handle> — My Work's brief (Phase D)
+  ...ROADMAP_JOBS, // Phase D: sprint notes, plan drift, sprint drafts, the weekly narrative proposal (./roadmap.ts)
+  DOC_DRIFT_JOB, // Phase D: doc drift (#161), past gate.drift (./doc-drift.ts)
   prThemeJob,
   themesProposeJob,
   themesCaptionJob,
   themesBackfillJob,
+  weekJob, // digest:week:* — the weekly e-mail's "This week" (Phase E, Batch API)
 ];
 
 /** Haiku calls one tick may make, across every org. */

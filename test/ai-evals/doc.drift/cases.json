@@ -1,0 +1,126 @@
+{
+ "source": "Personal Dev (org trov-dev), read 2026-10-15 through the Trov MCP read tools (list_docs, get_feed) — docs as live (version 1, promoted 2026-10-09), feed entries #108-#124 as written. READ ONLY. The positives the gate should pass, plus two it should not; the docs and entries are ../doc.drift/docs.json and entries.json.",
+ "cases": [
+  {
+   "id": "env-gemini-key",
+   "slug": "trov-environment",
+   "entries": [
+    108,
+    115,
+    109
+   ],
+   "expected": true,
+   "why": "says summaries call Gemini with GEMINI_API_KEY; #108 moved them to Claude Haiku 5.5 behind ANTHROPIC_API_KEY"
+  },
+  {
+   "id": "roadmap-summaries-gemini",
+   "slug": "trov-roadmap-sprints-my-work",
+   "entries": [
+    108,
+    118
+   ],
+   "expected": true,
+   "why": "says summaries are written by Google Gemini (gemini-2.5-flash-lite); #108 moved them to Claude Haiku 5.5"
+  },
+  {
+   "id": "plans-gemini-key",
+   "slug": "trov-plans-limits-grants",
+   "entries": [
+    108,
+    115
+   ],
+   "expected": true,
+   "why": "says one platform GEMINI_API_KEY pays for summaries; #108 replaced it with ANTHROPIC_API_KEY"
+  },
+  {
+   "id": "abuse-gemini-key",
+   "slug": "trov-abuse-limits",
+   "entries": [
+    108,
+    109
+   ],
+   "expected": true,
+   "why": "says every org's summaries use the Worker's one Gemini key; #108 moved them to Claude"
+  },
+  {
+   "id": "sync-gemini-key",
+   "slug": "trov-sync-github",
+   "entries": [
+    108,
+    118
+   ],
+   "expected": true,
+   "why": "says an item gets an excerpt when the deployment has no Gemini key; the key is now ANTHROPIC_API_KEY (#108)"
+  },
+  {
+   "id": "repo-railway-token",
+   "slug": "trov-repo-dashboard",
+   "entries": [
+    117,
+    119
+   ],
+   "expected": true,
+   "why": "says Railway is read with a per-environment project token; #117 says those tokens are leftovers and Railway connects once per org"
+  },
+  {
+   "id": "repo-pill-verdict",
+   "slug": "trov-repo-dashboard",
+   "entries": [
+    120,
+    121
+   ],
+   "expected": true,
+   "why": "lists the pill verdicts HEALTHY/UNKNOWN/DEGRADED/FAILING/DOWN; #120 makes the verdict Healthy only on passing checks, else Live"
+  },
+  {
+   "id": "overview-gemini",
+   "slug": "trov-overview",
+   "entries": [
+    108,
+    115
+   ],
+   "expected": true,
+   "why": "names Gemini as an external service read in crons; summaries now go to Claude (#108)"
+  },
+  {
+   "id": "testing-gemini",
+   "slug": "trov-testing",
+   "entries": [
+    108
+   ],
+   "expected": true,
+   "why": "names Gemini among the injected network clients; the summarizer now calls Claude (#108)"
+  },
+  {
+   "id": "gate-repo-events",
+   "slug": "trov-ingestion-gate",
+   "entries": [
+    119,
+    121
+   ],
+   "expected": true,
+   "why": "lists REPO_EVENT_NAMES without deployment, release or create; #119 and #121 capture deployment, release and create deliveries"
+  },
+  {
+   "id": "handoffs-handoffs",
+   "slug": "trov-handoffs-and-prompts",
+   "entries": [
+    113,
+    114,
+    110
+   ],
+   "expected": false,
+   "why": "handoff entries agree with how handoffs work"
+  },
+  {
+   "id": "auth-bearer-class",
+   "slug": "trov-auth-identity-people",
+   "entries": [
+    122,
+    115
+   ],
+   "expected": false,
+   "why": "#122 puts Trov's own endpoint on the EXISTING bearer class: agrees with three auth classes"
+  }
+ ]
+}

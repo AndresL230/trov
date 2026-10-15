@@ -260,6 +260,10 @@ export interface PlanView {
   updated_at: string | null;
   updated_by: string | null;
   sprints: SprintView[];
+  /** What Trov wrote about where the work went against the plan; absent with AI off or nothing written. */
+  drift?: AiPlanDrift;
+  /** An admin's open Roadmap suggestions (a sprint draft, a narrative); absent for everyone else. */
+  suggestions?: AiSuggestion[];
 }
 export function getRoadmap(): Promise<PlanView> {
   return getJson<PlanView>("/roadmap");
@@ -330,7 +334,7 @@ import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView,
 import type * as IntT from "@shared/integrations";
 import type { BillingCheckoutRequest, BillingCheckoutResponse, BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
 import type * as GhT from "@shared/github-app";
-import { AI_ROUTES, type AiAcceptBody, type AiFeedbackBody, type AiSettings, type AiSettingsPut, type AiSuggestion } from "@shared/ai-core";
+import { AI_ROUTES, type AiAcceptBody, type AiFeedbackBody, type AiSettings, type AiSettingsPut, type AiPlanDrift, type AiSuggestion } from "@shared/ai-core";
 import { AI_FILTER_ROUTE, type AiFilterAnswer, type AiFilterBody } from "@shared/ai-filter-core";
 import { ASK_ROUTES, type AskSettings, type AskSettingsPut, type AskState } from "@shared/ai-ask-core";
 import type * as TagT from "@shared/tags-core";
@@ -750,7 +754,7 @@ export function restoreIdentity(login: string): Promise<{ ok: true; login: strin
 export function getNotificationPrefs(): Promise<PrefsView> {
   return getJson<PrefsView>("/api/notifications/prefs");
 }
-export interface PrefsWrite { email?: string; unsubscribed?: boolean; prefs?: Record<string, Cadence | null>; }
+export interface PrefsWrite { email?: string; unsubscribed?: boolean; prefs?: Record<string, Cadence | null>; onlyWhenNeeded?: boolean; }
 export function putNotificationPrefs(body: PrefsWrite): Promise<PrefsView> {
   return putJson<PrefsView>("/api/notifications/prefs", body);
 }

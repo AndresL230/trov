@@ -33,6 +33,7 @@ import { PromptError } from "../../tools/prompts";
 import { PersonError } from "../../auth/persons";
 import { PlanFeatureError, PlanLimitError } from "../../plans/state";
 import { ChartError } from "./charts";
+import type { AttachmentNotice } from "./attachments";
 
 export type Emit = <K extends AskEventName>(event: K, data: AskEventMap[K]) => Promise<void>;
 
@@ -58,6 +59,9 @@ export interface TurnInput {
   emit: Emit;
   /** The request's own signal: the client went away (Stop). */
   signal: AbortSignal;
+  /** Attachments the model could not take (src/ai/ask/attachments.ts): each is the turn's first activity line, so the
+   *  person sees it before the answer. Tool steps number on after them. */
+  notices?: readonly AttachmentNotice[];
   fetchImpl?: typeof fetch;
   now: () => number;
 }
@@ -101,6 +105,8 @@ const resultLine = (n: number): string => (n === 0 ? "No results" : n === 1 ? "1
 /** What the turn tracks across its tool calls. */
 interface TurnState {
   calls: number;
+  /** Activity steps taken before any tool ran (the attachment notices): a tool call's step is `calls + firstStep`. */
+  firstStep: number;
   autoWrites: number;
   /** The previous tool call, when it was a write (consecutive calls to the same write share a group). */
   lastWrite: { tool: string; groupId: string } | null;
@@ -138,9 +144,19 @@ export async function runTurn(t: TurnInput): Promise<TurnResult> {
   const timer = setTimeout(() => stop("timeout"), def.timeoutMs);
 
   const splitter = new MetaSplitter();
-  const st: TurnState = { calls: 0, autoWrites: 0, lastWrite: null, groups: 0 };
+  const notices = t.notices ?? [];
+  const st: TurnState = { calls: 0, firstStep: notices.length, autoWrites: 0, lastWrite: null, groups: 0 };
   let thinkingMs = 0;
   const thinkingParts: string[] = [];
+
+  // An attachment the model could not take: the person is told first, as a finished activity line (and it is kept
+  // with the answer, so the thread shows it again).
+  for (const [i, n] of notices.entries()) {
+    const step = i + 1;
+    result.activity.push({ step, tool: "read_attachment", icon: "read", label: n.label, results: [], resultLine: "Not read" });
+    await t.emit("activity", { step, tool: "read_attachment", icon: "read", label: n.label, state: "run" });
+    await t.emit("activity", { step, state: "done", resultLine: "Not read" });
+  }
 
   try {
     for (let iter = 0; iter < def.maxCalls + 3 && !why; iter++) {
@@ -238,8 +254,8 @@ async function runTool(
 ): Promise<Anthropic.ToolResultBlockParam> {
   const err = (body: { error: string; code?: string }): Anthropic.ToolResultBlockParam =>
     ({ type: "tool_result", tool_use_id: use.id, is_error: true, content: JSON.stringify(body) });
-  const step = st.calls;
-  if (step > maxCalls) return err({ error: `The tool limit for this answer (${maxCalls}) is reached. Answer with what you have.`, code: "limit" });
+  const step = st.calls + st.firstStep;
+  if (st.calls > maxCalls) return err({ error: `The tool limit for this answer (${maxCalls}) is reached. Answer with what you have.`, code: "limit" });
   const spec: ToolSpec | undefined = ASK_TOOLS[use.name];
   if (!spec || !offered.has(use.name)) return err({ error: `There is no tool ${use.name} for you here.`, code: "unknown_tool" });
   const parsed = spec.input.safeParse(use.input ?? {});

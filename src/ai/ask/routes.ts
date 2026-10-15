@@ -21,7 +21,7 @@ import {
   type PeekResult, type RefView,
 } from "@shared/ai-ask";
 import {
-  attachActionsToMessage, createThread, deleteThread, finishAction, getAction, getAskSettings, getMessage, getThread, groupActions, insertAction,
+  attachActionsToMessage, createThread, finishAction, getAction, getAskSettings, getMessage, getThread, groupActions, insertAction,
   insertMessage, linkArtifact, listActions, listMessages, listThreads, markAttachmentsSent, markUndone, moveAction, patchThread, pendingAttachments,
   putAskSettings, recordAskWrong, replaceMessagesFrom, requestStop, rewriteAction, searchThreads, setMessageContent, setThreadTitle, startTurn,
   type ActionWithTurn, type ChatActionRow, type ChatMessageRow, type ChatThreadRow,
@@ -43,6 +43,7 @@ import { linkAnswer, normalRef, resolveViews } from "./refs";
 import { AttachError, attachmentBlocks, attachmentsOf, checkFiles, storeAttachments, type UploadFile } from "./attachments";
 import { partsHtml, partsMarkdown, type SavedPart } from "./render";
 import { shortDay } from "./charts";
+import { deleteAskThread } from "../../deletion/ask";
 
 /** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock. */
 export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () => number } = {};
@@ -87,7 +88,9 @@ async function standing(ctx: TenantContext): Promise<Standing> {
 const defaultModeOf = (modes: readonly AskMode[], stored: AskMode | null): AskMode => (stored && modes.includes(stored) ? stored : ASK_DEFAULT_MODE);
 
 function allowanceOf(st: Standing, adding = 0) {
-  const cap = resolveEntitlements(st.plan.plan, st.plan.overrides).ai_chat;
+  // The cap the gate enforces (`planRefusal` reads the same): Pro's is per seat — × the paid seats, or × the members
+  // (at least 1) with no paid-seat count (a gifted Pro); an override of `ai_chat` is the whole cap (#12 §2.1).
+  const cap = resolveEntitlements(st.plan.plan, st.plan.overrides, st.plan.members).ai_chat;
   const used = st.used + adding;
   return { used, cap, resetsAt: nextMonthStart(nowDate()), low: cap !== null && cap - used < cap * ASK_LOW_SHARE };
 }
@@ -145,7 +148,12 @@ askApp.post(ASK_ROUTES.peek, async (c) => {
 });
 
 askApp.get("/ask/item/:ref", async (c) => {
-  const ref = normalRef(decodeURIComponent(c.req.param("ref")));
+  // Hono has already decoded the path once; a client that encoded twice is decoded again. A ref that will not decode
+  // (`%25` arrives as a bare `%`) is taken as it is — and, never a ref, it is the same 404 as an unknown one.
+  const raw = c.req.param("ref");
+  let decoded = raw;
+  try { decoded = decodeURIComponent(raw); } catch { /* not percent-encoded: already decoded */ }
+  const ref = normalRef(decoded);
   const p = parseAskRef(ref);
   const view = p ? (await resolveViews(c.var.ctx, me(c), [ref], nowDate())).get(ref) : undefined;
   if (!p || !view) return c.json({ ref, hidden: true }, 404);
@@ -345,9 +353,12 @@ async function converse(c: C, v: Conversation): Promise<void> {
   const compacted = await maybeCompact(env, ctx, thread, earlier, askDeps.fetchImpl);
   const { messages: history, actionsNote } = await buildHistory(ctx, compacted, earlier, nonce);
   const ctxViews = (qc.context ?? []).length ? await resolveViews(ctx, handle, qc.context ?? [], nowDate()) : new Map();
+  // An attachment the model can't take (too large, or no room left in this request) is stored but not read: the
+  // model is told, and the person sees a notice (the turn's first activity lines).
+  const files = await attachmentBlocks(ctx, env.ARTIFACTS_BUCKET, handle, attachments, nonce);
   const user = [
     ...(actionsNote ? [{ type: "text" as const, text: actionsNote }] : []),
-    ...(await attachmentBlocks(ctx, env.ARTIFACTS_BUCKET, handle, attachments, nonce)),
+    ...files.blocks,
     ...(ctxViews.size ? [{ type: "text" as const, text: fence(nonce, "Items the person attached as context", JSON.stringify([...ctxViews.values()])) }] : []),
     ...(qc.command && qc.command !== "search" ? [{ type: "text" as const, text: COMMAND_NOTE[qc.command as Exclude<AskCommand, "search">] }] : []),
     { type: "text" as const, text: qc.text || "(no text)" },
@@ -363,7 +374,7 @@ async function converse(c: C, v: Conversation): Promise<void> {
       orgName: org?.name ?? "this organization", orgSlug, handle, role: ctx.role, mode,
       today: nowDate().toISOString().slice(0, 10), instructions: v.settings.instructions, autoMode: auto,
     }),
-    history, user, seen, autoMode: auto, autoAllowed: v.st.chatAuto, nonce, emit: v.emit, signal: v.signal,
+    history, user, seen, autoMode: auto, autoAllowed: v.st.chatAuto, nonce, emit: v.emit, signal: v.signal, notices: files.notices,
     fetchImpl: askDeps.fetchImpl, now: nowMs,
   });
   await meterBy(p, ctx.orgId, handle, [[METRIC_AI_TOKENS_IN, out.tokens.in], [METRIC_AI_TOKENS_OUT, out.tokens.out], [METRIC_AI_TOKENS_CACHED, out.tokens.cached]]);
@@ -581,7 +592,8 @@ askApp.patch("/ask/threads/:id", async (c) => {
 askApp.delete("/ask/threads/:id", async (c) => {
   const t = await threadOr404(c);
   if (t instanceof Response) return t;
-  await deleteThread(c.var.ctx, me(c), t.id);
+  // Its attachments go with it, except a file a ticket or a doc still refers to (src/deletion/ask.ts).
+  await deleteAskThread(c.var.ctx, platform(c.env, me(c)), c.env.ARTIFACTS_BUCKET, me(c), t.id);
   return c.json({ ok: true });
 });
 

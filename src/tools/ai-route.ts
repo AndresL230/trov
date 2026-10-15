@@ -46,7 +46,10 @@ export type AiEvent =
   /** Themes accepted for the primary repo (Phase D's theme accept calls this). */
   | { type: "themes_accepted" }
   /** A digest send hour is one tick away: pre-warm the person's brief (skips the debounce). */
-  | { type: "digest_prewarm"; handle: string };
+  | { type: "digest_prewarm"; handle: string }
+  /** A weekly digest is a few hours away (Phase E): its "This week" highlights, ONE batch request per org per week.
+   *  `key` is `weekScopeKey(weekId, sendAt)` (shared/ai-core.ts). */
+  | { type: "digest_week"; key: string };
 
 export type AiEventType = AiEvent["type"];
 
@@ -73,6 +76,7 @@ const SETTLED_DEPLOY = new Set(["ready", "error"]);
  *   | doc promoted; artifact saved        | card:tagfit:<type>:<id>, doc_drift:<slug> (`artifact:<slug>` for an artifact) |
  *   | themes accepted                     | theme_backfill:<repo>                                                        |
  *   | digest send hour one tick away      | person:<handle>, urgent                                                      |
+ *   | weekly digest a few hours away      | digest:week:<YYYY-Www>:<send instant> (Phase E)                              |
  */
 export const AI_ROUTES: { [T in AiEventType]: (e: Extract<AiEvent, { type: T }>) => ScopeRef[] } = {
   pr_merged: (e) => [
@@ -110,6 +114,7 @@ export const AI_ROUTES: { [T in AiEventType]: (e: Extract<AiEvent, { type: T }>)
   artifact_saved: (e) => [{ scope: "card", key: `tagfit:artifact:${e.slug}` }, { scope: "doc_drift", key: `artifact:${e.slug}` }],
   themes_accepted: () => [{ primaryRepo: "theme_backfill" }],
   digest_prewarm: (e) => [{ scope: "person", key: e.handle, urgent: true }],
+  digest_week: (e) => [{ scope: "digest", key: e.key }],
 };
 
 /** The scopes one event marks (pure — what the table says). */

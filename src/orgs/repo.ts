@@ -19,6 +19,7 @@ import {
   type OrgRole, type OrgAuditAction, type MyOrg, type MyInvite, type MyOrgsResponse, type OrgSettings,
   type OrgMember, type OrgInvite, type OrgMeResponse, type OrgLogoSource, type InviteMailStatus, INVITE_NAME_MAX, orgLogoSrc, orgLogoOf,
 } from "@shared/orgs";
+import { auditStmt } from "./audit";
 
 export type OrgErrorCode =
   | "invalid_slug" | "reserved_slug" | "invalid_name" | "invalid_invite" | "invalid_member"
@@ -42,11 +43,7 @@ export interface OrgRow {
 
 const isUniqueViolation = (e: unknown): boolean => /UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e));
 
-/** One `org_admin_audit` row — always a statement in the SAME batch as the change it records. */
-export function auditStmt(p: PlatformContext, orgId: string | null, action: OrgAuditAction, target: string, detail: Record<string, unknown> = {}, at: string = nowIso()): Stmt {
-  return stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, ?, ?, ?, ?)`,
-    orgId, p.actor, action, target, JSON.stringify(detail), at);
-}
+export { auditStmt };
 
 export function getOrgBySlug(p: PlatformContext, slug: string): Promise<OrgRow | null> {
   return first<OrgRow>(p, `SELECT id, slug, name, created_at, created_by, suspended_at, suspended_by, logo_sha FROM orgs WHERE slug = ?`, slug);

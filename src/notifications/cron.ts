@@ -14,7 +14,9 @@ import type { Env } from "../env";
 import { platform, systemTenant, type PlatformContext } from "../data/context";
 import { listActiveOrgIds } from "../platform/jobs";
 import { ensureNotificationPolicySeeded } from "./policy";
-import { localDate } from "./window";
+import { computeWindow, localDate } from "./window";
+import { weekScopeKey } from "@shared/ai-core";
+import { loadPolicies } from "./resolve";
 import { digestRecipients, runDigest, type RunReport } from "./run";
 import { routeAi } from "../tools/ai-route";
 import { retryFailed, type RetryReport } from "./retry";
@@ -67,6 +69,10 @@ export async function runOrgNotifications(env: Env, ctx: TenantContext, p: Platf
 
 /** How far ahead the pre-warm looks: one repo tick. */
 export const PREWARM_AHEAD_MS = 10 * 60_000;
+/** How long before an org's WEEKLY send its "This week" is marked (Phase E): the Batch API answers on a later tick,
+ *  usually within the hour; three hours leaves room. A week whose answer is not back by the send has no highlights. */
+export const WEEK_HIGHLIGHTS_LEAD_MS = 3 * 60 * 60_000;
+const HOUR_MS = 60 * 60_000;
 
 /**
  * THE BRIEF PRE-WARM (docs/architecture/ai.md › The router; notifications.md): run by the repo tick ONE TICK BEFORE
@@ -78,11 +84,18 @@ export const PREWARM_AHEAD_MS = 10 * 60_000;
 export async function prewarmDigests(env: Env, now: Date): Promise<number> {
   const p = platform(env, "system");
   const soon = new Date(now.getTime() + PREWARM_AHEAD_MS);
+  // The weekly send WEEK_HIGHLIGHTS_LEAD_MS after the coming hour: its "This week" is marked now (one scope per org per
+  // week), so the AI pass submits it on this tick and collects it before the send.
+  const weekSoon = new Date(soon.getTime() + WEEK_HIGHLIGHTS_LEAD_MS);
   let marked = 0;
   for (const orgId of await listActiveOrgIds(p)) {
     try {
       const ctx = systemTenant(p, orgId, "system");
       const settings = await loadSettings(ctx);
+      if (dueCadence(WEEKLY_CRON, weekSoon, settings) && (await weekRecapOn(ctx)) && (await digestRecipients(p, orgId)).length) {
+        const sendAt = new Date(Math.floor(weekSoon.getTime() / HOUR_MS) * HOUR_MS);
+        await routeAi(ctx, { type: "digest_week", key: weekScopeKey(computeWindow("weekly", sendAt, settings.timezone).id, sendAt) });
+      }
       if (!dueCadence(DAILY_CRON, soon, settings) && !dueCadence(WEEKLY_CRON, soon, settings)) continue;
       for (const handle of await digestRecipients(p, orgId)) {
         await routeAi(ctx, { type: "digest_prewarm", handle });
@@ -93,6 +106,12 @@ export async function prewarmDigests(env: Env, now: Date): Promise<number> {
     }
   }
   return marked;
+}
+
+/** Is the org's "This week" kind on (its policy row, or the registry default when it has none yet)? */
+async function weekRecapOn(ctx: TenantContext): Promise<boolean> {
+  const policy = (await loadPolicies(ctx)).get("week_recap");
+  return !policy || (policy.enabled === 1 && policy.default_cadence !== "off");
 }
 
 /**

@@ -9,6 +9,7 @@ import {
   AI_ALLOWANCE_KEYS, AI_MODEL, AI_THEME_RANGE_WEEKS, nextMonthStart,
   type AiBrief, type AiRepoState, type AiThemes, type AiThemeLane, type AiThemeRange, type AiCite, type AiState,
   type AiAllowanceKey, type AiAllowanceUse, type AiSettings, type AiSuggestion,
+  type AiSprintNote, type AiPlanDrift, type AiSprintDraftValue, type AiPlanNarrativeValue,
 } from "./ai-core";
 import type { AiFilterScreen } from "./ai-filter-core";
 import {
@@ -208,6 +209,7 @@ export function aiPreviewFixtures(mode: AiPreviewMode, now: Date = new Date()) {
     feedImportance: feedImportanceFixtures(now),
     themes: { "8w": themesFixture(mode, "8w", now), quarter: themesFixture(mode, "quarter", now) } as Record<AiThemeRange, AiThemes>,
     settings: aiSettingsFixture(mode, now),
+    roadmap: roadmapFixture(state, now),
   };
 }
 
@@ -705,4 +707,55 @@ export function reviewRiskFixture(mode: AiPreviewMode, ref: string, index: numbe
         id: 906, itemType: "proposal", itemRef: ref, kind: "review.risk", value: { risk: "contradicts", label: "Contradicts a doc" }, label: "Contradicts a doc",
         reason: "it decides “Use D1's FTS5.”; the live doc “Search” covers the same ground", confidence: 0.66, cites: [{ ref: "doc:search", label: "Search", href: null }],
       });
+}
+
+// ── Roadmap (Phase D): sprint notes, the drift line, an admin's suggestion cards ──────────────────────
+/** What the preview puts on `GET /roadmap`: one note per ACTIVE sprint (in roadmap order — the preview hands
+ *  them out to the active sprints it finds), the drift line, and the two open suggestions an ADMIN sees. `empty`
+ *  is nothing written (every field absent); `capped` keeps what was last written. The suggestion ids are the
+ *  preview's own: Accept on one answers as an unknown suggestion would. */
+export interface AiRoadmapFixture { notes: AiSprintNote[]; drift: AiPlanDrift; suggestions: AiSuggestion[] }
+
+export function roadmapFixture(state: AiState, now: Date): AiRoadmapFixture | null {
+  if (state === "empty") return null;
+  const at = ago(now, state === "capped" ? 6 * DAY : 4 * HOUR);
+  const note = (text: string, cites: AiCite[]): AiSprintNote => ({ text, cites, generatedAt: at, model: AI_MODEL });
+  const draft: AiSprintDraftValue = {
+    sprints: [
+      { name: "Hosting polish", goal: "Close out the hosting connect flow and its failing Netlify test.", tickets: [21, 24, 27, 30] },
+      { name: "Billing follow-ups", goal: "Seat changes and the receipts page.", tickets: [22, 25, 29] },
+      { name: "Docs and onboarding", goal: "The public docs gaps people asked about.", tickets: [23, 26, 28] },
+    ],
+  };
+  const narrative: AiPlanNarrativeValue = {
+    narrative: "Now: hosting connections and their deploy history. Next: billing follow-ups (seat changes, receipts). Later: the public docs and onboarding.",
+  };
+  return {
+    notes: [
+      note("Two of five done; the other three wait on the Netlify connect test.", [ticket(21), ticket(24), pr(173)]),
+      note("Seat changes landed; the receipts page has no owner yet.", [ticket(22), ticket(25)]),
+    ],
+    drift: {
+      text: "The last two weeks went mostly to Billing and plans, which isn't in any sprint.",
+      cites: [{ ref: "theme:billing", label: "Billing and plans", href: "#repo/planning" }],
+      generatedAt: at, model: AI_MODEL, windowDays: 14,
+      shares: [
+        { themeId: "billing", theme: "Billing and plans", pct: 46, inSprint: false },
+        { themeId: "repo", theme: "Repo dashboard", pct: 31, inSprint: true },
+        { themeId: "polish", theme: "UI polish", pct: 23, inSprint: false },
+      ],
+    },
+    suggestions: [
+      {
+        id: 9101, itemType: "roadmap", itemRef: "org", kind: "sprint_draft", value: draft, label: "3 sprints from 10 backlog tickets",
+        reason: "ten open tickets sit outside any sprint and none is active; they group by what they touch.",
+        confidence: null, cites: [ticket(21), ticket(22), ticket(23)], state: "open",
+      },
+      {
+        id: 9102, itemType: "roadmap", itemRef: "org", kind: "plan_narrative", value: narrative, label: "a new plan narrative",
+        reason: "the narrative still leads with tickets, and this week's work went to hosting and billing.",
+        confidence: null, cites: [pr(173), ticket(22)], state: "open",
+      },
+    ],
+  };
 }

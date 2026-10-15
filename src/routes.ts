@@ -43,6 +43,7 @@ import { listPrompts, getPrompt, recordPromptUse, listPromptVersions, savePrompt
 import { isSection } from "@shared/vocabulary";
 import { HANDOFF_BOXES, type HandoffBox, type HandoffClaimResult } from "@shared/handoffs";
 import { getMyWork } from "./tools/mywork";
+import { markMyWorkOpened } from "./data/person-brief";
 import { quickSearch } from "./tools/quick-search";
 import { QUICK_TYPES, type QuickType } from "@shared/quick-search";
 import { feedStats, isFeedStatsDays, isFeedStatsTz } from "./tools/feed-stats";
@@ -70,7 +71,8 @@ import { aiApp } from "./ai/routes";
 import { askApp } from "./ai/ask/routes";
 import { askFlagsFor } from "./data/ask";
 import { repoSettingsApp } from "./repo/settings-routes";
-import { aiPreview, previewFeedRows, withPreviewFeed } from "./ai/preview";
+import { aiPreview, previewFeedRows, withPreviewFeed, withPreviewRoadmap } from "./ai/preview";
+import { roadmapForPerson } from "./data/org-insights";
 import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions } from "./ai/attach";
 import { readRepoState } from "./tools/repo-state";
 import { hideWrongFor } from "./tools/feed-ai";
@@ -728,7 +730,16 @@ legacyOnly.post("/invites/:email/resend", async (c) => {
 
 // Roadmap read (session-gated): admin narrative + sprints in target-date order,
 // merged with cached progress from the plan store. No live GitHub, no per-user token.
-tenantRoot.get("/roadmap", async (c) => c.json(await get_plan(c.var.ctx)));
+// What Trov wrote (sprint notes, the drift) comes with it while the org's AI switch is on, minus what this
+// person pressed "Wrong?" on; an ADMIN also gets the open Roadmap suggestions (a sprint draft, a narrative) —
+// MCP's `get_roadmap` never does. LOCAL_AI_PREVIEW fills the samples under `wrangler dev` only.
+tenantRoot.get("/roadmap", async (c) => {
+  const ctx = c.var.ctx;
+  const admin = hasRole(ctx, "admin");
+  const plan = await roadmapForPerson(ctx, c.get("principal").handle, await get_plan(ctx), { admin });
+  const preview = aiPreview(c.env, c.req.url);
+  return c.json(preview ? withPreviewRoadmap(plan, preview.roadmap, { admin }) : plan);
+});
 
 // Personal dashboard (session-gated): the signed-in user's My Work projection —
 // previous activity (summarized merged/closed PRs), open assigned issues, and open
@@ -737,9 +748,14 @@ tenantRoot.get("/roadmap", async (c) => c.json(await get_plan(c.var.ctx)));
 tenantRoot.get("/me/dashboard", async (c) => {
   const login = c.get("principal").handle;
   try {
-    const data: DashboardData = await getMyWork(c.var.ctx, login);
-    // `brief` (shared/dashboard.ts) is omitted: nothing writes one yet. LOCAL_AI_PREVIEW shows the sample
-    // under `wrangler dev` only (src/ai/preview.ts); `get_my_work` never gets it.
+    // Opening My Work is what makes a person's brief worth writing (src/data/person-brief.ts `briefWanted`): one
+    // timestamp, at most one write an hour, never a model call; a failed write never fails the read.
+    const [data] = await Promise.all([
+      getMyWork(c.var.ctx, login) as Promise<DashboardData>,
+      markMyWorkOpened(c.var.ctx, login).catch((e) => console.error("mywork opened", e instanceof Error ? e.name : "error", `org=${c.var.ctx.orgId}`)),
+    ]);
+    // `brief` is the newest stored one (src/tools/mywork.ts `storedBrief`), absent when there is none. LOCAL_AI_PREVIEW
+    // shows the sample instead under `wrangler dev` only (src/ai/preview.ts); `get_my_work` never gets the sample.
     const preview = aiPreview(c.env, c.req.url);
     return c.json(preview ? { ...data, brief: preview.brief } : data);
   } catch {

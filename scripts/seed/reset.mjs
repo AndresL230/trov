@@ -33,6 +33,10 @@ export const RESET_STATEMENTS = [
   // AI (0061_ai_digests, 0062_repo_state): the session digests' bookkeeping and the written repo states.
   "DELETE FROM ai_sessions",
   "DELETE FROM repo_state",
+  // AI (0063_person_brief): each member's brief references orgs.
+  "DELETE FROM person_brief",
+  // AI (0065_org_insights): the org rollup's sprint notes and plan drift reference orgs.
+  "DELETE FROM org_insights",
   // AI (0059_ai_batches): the pass's open Message Batches — platform tables, no org_id (requests first).
   "DELETE FROM ai_batch_requests",
   "DELETE FROM ai_batches",
@@ -139,6 +143,8 @@ export const RESET_STATEMENTS = [
   "DELETE FROM notification_outbox_bodies",
   "DELETE FROM notification_outbox",
   "DELETE FROM notification_prefs",
+  "DELETE FROM notification_person_prefs", // 0067_digest_email
+  "DELETE FROM digest_highlights", // 0067_digest_email
   "DELETE FROM notification_policy",
   "DELETE FROM notification_settings WHERE org_id <> 'org_saplinglearn'",
   "INSERT OR IGNORE INTO notification_settings (org_id, send_hour, timezone, from_address) VALUES ('org_saplinglearn', 8, 'America/New_York', 'Trov <hello@trov.dev>')",

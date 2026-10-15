@@ -1,7 +1,7 @@
 // Ask Trov's rows (0066_ask; docs/architecture/ask.md). A TENANT module: every statement names `org_id`, bound
 // from the caller's context, AND the thread's OWNER — a thread is one person's, so another org's or another
 // person's thread, message, card or attachment is the one `null` / not found. Nothing here calls a model.
-import { all, batch, first, nowIso, run, stmt, type TenantContext } from "./sql";
+import { all, batch, first, nowIso, run, stmt, type Stmt, type TenantContext } from "./sql";
 import type { AskMode, AskOrigin, AskWrongReason } from "@shared/ai-ask-core";
 
 export interface ChatThreadRow {
@@ -142,11 +142,13 @@ export async function patchThread(ctx: TenantContext, handle: string, id: number
 }
 
 /** Delete one of the owner's threads with everything that hangs off it, in ONE batch (the FTS rows go with
- *  their messages, by trigger). The artifacts the thread carried or made stay in the person's library. */
-export async function deleteThread(ctx: TenantContext, handle: string, id: number): Promise<boolean> {
+ *  their messages, by trigger). `before` joins the same batch first: the attachments that go with the thread
+ *  (src/deletion/ask.ts, the one caller — it decides which go and which a ticket or a doc keeps). */
+export async function deleteThread(ctx: TenantContext, handle: string, id: number, before: Stmt[] = []): Promise<boolean> {
   const t = await getThread(ctx, handle, id);
   if (!t) return false;
   await batch(ctx, [
+    ...before,
     stmt(ctx, `DELETE FROM chat_actions WHERE thread_id = ? AND org_id = ?`, id, ctx.orgId),
     stmt(ctx, `DELETE FROM chat_artifacts WHERE thread_id = ? AND org_id = ?`, id, ctx.orgId),
     stmt(ctx, `DELETE FROM chat_messages WHERE thread_id = ? AND org_id = ?`, id, ctx.orgId),

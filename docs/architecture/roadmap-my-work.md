@@ -52,10 +52,20 @@ cron backstop (`recomputeAllProgress`, run per org with that org's GitHub creden
 numbers) resolved against the org's PRIMARY repository (`orgPrimaryRepo`, its `org_repos` row) — only by
 those two writers, never at render.
 
-**Your brief** (`DashboardData.brief?`, `shared/ai-core.ts` `AiBrief`) is what Trov would WRITE for the person
-— now, recently, what is next. Nothing produces one yet, so `/me/dashboard` and `get_my_work` omit it in
-production; `LOCAL_AI_PREVIEW` shows the sample on the screen under `wrangler dev` only, never over MCP
-(`ai.md`). Absent = the screen renders exactly as before.
+**Your brief** (`DashboardData.brief?`, `shared/ai-core.ts` `AiBrief`) is what Trov WROTE for the person — now,
+recently, what is next — by the AI pass's `brief.person` job (`src/ai/brief.ts`; `ai.md` › The brief), stored in
+`person_brief` (0063, the last 5 versions). `getMyWork` reads the NEWEST row (`storedBrief`, `src/tools/mywork.ts`,
+through `src/data/person-brief.ts` — plain D1, no model, nothing from `src/ai/`), so `/me/dashboard` and
+`get_my_work` carry the same one — and the digest e-mail will (Phase E). The field is ABSENT when the org's AI
+switch is off, nothing is stored, the stored row fails `AiBriefSchema`, or the person pressed "Wrong?" on that very
+version (`aiItemRef.brief(generatedAt)`; the next version shows again); `state` is `capped` (the last brief, its
+`resumesOn`, `upgrade` on Free) when the org's `ai_runs` are spent, `empty` for a version the pass wrote with no
+model when nothing was left to say. A failed brief read never degrades the rest of My Work. `GET /me/dashboard`
+also records `memberships.mywork_opened_at` (0063; at most one write an hour, never a model call; MCP's
+`get_my_work` does not count) — a brief is written only for someone who opened My Work in the last 14 days or who
+receives the digest. `LOCAL_AI_PREVIEW` replaces it with the sample on the screen under `wrangler dev` only, never
+over MCP; the local dev seed stores a real one for AndresL230 (`scripts/seed/brief-dev.mjs`). Absent = the screen
+renders exactly as before.
 
 **My Work** (`GET /me/dashboard`, MCP `get_my_work` → `getMyWork`) is a D1-only projection over captured
 events AND over the ticket queue: three separate lists — `previousActivity` (summarized merged/closed PRs
@@ -109,3 +119,31 @@ the item's own and linked to `cites[0]`, the model's one muted "why" — over a 
 byline and the thumbs-down "Wrong?" at the bottom right. Empty: "Trov writes your brief after your next push or when something is
 assigned to you. It reads your sessions, pull requests, tickets and handoffs." Capped: the last `now`, then the
 allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `get_my_work` carries the same `brief?`.
+
+## Roadmap intelligence (Phase D; `ai.md` › The Roadmap)
+
+- **Forecast** — `SprintView.forecast` on every sprint read (`sprintForecast`, `src/tools/sprints.ts`): ARITHMETIC,
+  never a model — tickets closed per day since the start day (day 1), carried over the open ones, against the due
+  day (`projected`, `daysLate`). Null for a sprint not active, with no start, or with nothing closed yet. The card
+  says "At this pace, done Nov 2, 3 days late" with no AI mark.
+- **Sprint notes** — `SprintView.note?`: one line Trov wrote about an ACTIVE sprint (its tickets, the PRs they link,
+  the week's entries naming them), with its cites, byline and "Wrong?". `org_insights` (0065), present only while
+  the org's AI switch is on.
+- **Drift** — `PlanView.drift?`: one sentence on where the merged work went against the plan, with the theme shares
+  the SERVER counted (`shares`, `windowDays`), drawn under the narrative.
+- **Suggestions** — `PlanView.suggestions?` (cookie `GET /roadmap`, admins only, never MCP): a sprint draft (2–4
+  sprints over the backlog, offered when ≥8 open tickets sit outside every sprint and none is active) and the weekly
+  narrative proposal. Accept runs `create_sprint` + `set_ticket_sprint` or `write_plan` AS that admin; nothing is
+  written before. Nothing here sets a sprint or ticket done.
+- With a field absent each piece renders nothing and the Roadmap is byte-for-byte what it was
+  (`test/render.ai-absent.test.ts`, `test/render.roadmap-ai-real.test.ts`) — but for one attribute that is not AI's:
+  the Narrative tab's `<main data-morph="roadmap:narrative">` (below).
+- **Motion** (the app's own; `web-ui.md` › A row leaving a list): the Narrative tab is `data-morph`ed (patched in
+  place; the Timeline is still rebuilt), the cards are a keyed list (`data-morph-list`, `s:<id>`) that rises with the
+  entrance (`.cnpy-stagger`), the drift rises (`.cnpy-rise`), the forecast and note come with their sprint card. A
+  card an Accept / Dismiss took — and a note or the drift "Wrong?" took — is Review's `.cnpy-rv-row`: `data-verdict`
+  + `inert`, collapsing over `AI_EXIT_MS` (= `REVIEW_EXIT_MS`), then not drawn (`state.ai.leaving` / `decided` in
+  `ai-actions.ts`, which only HIDE rows of the read). The write goes on the click; a failure puts the card back with a
+  toast; the Roadmap is read again once no card is collapsing (one read for several). Reduced motion: gone at once.
+  Off the Roadmap (a theme proposal on Repo) the kit's busy path is unchanged. Tests: `test/render.roadmap-ai.test.ts`
+  (markup, CSS), `test/render.roadmap-ai-exit.test.ts` (the controller).

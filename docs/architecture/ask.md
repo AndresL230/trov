@@ -17,6 +17,7 @@ the allowances and the switches: `ai.md`.
 | The turn | `src/ai/ask/turn.ts` (stream, tool loop, cards, Auto) |
 | Tools | `src/ai/ask/tools.ts` (catalog, reads, show tools), `actions.ts` (writes), `charts.ts`, `docs.ts`, `refs.ts` (grounding + ref views), `attachments.ts`, `history.ts`, `prompt.ts`, `render.ts`, `diff.ts`, `context.ts` |
 | Model client | `askChatClient(mode)` and the `ask.*` kinds in `src/ai/client.ts` |
+| Deletion | `src/deletion/ask.ts` (a thread and its attachments), `src/deletion/person.ts` (an account's private attachments) — › Deletion and renames |
 | Dev replay | `GET /api/o/:slug/ai/ask-replay[/:scenario]` in `src/ai/routes.ts` (behind `LOCAL_AI_PREVIEW`) |
 
 ## Modes and the allowance
@@ -38,7 +39,8 @@ the allowances and the switches: `ai.md`.
 
 Body (`AskRequestSchema`): `{ threadId?, text, command?, mode, auto, context[], attachments[], replaceFrom?, origin? }`.
 JSON refusals before the stream: `400 invalid`, `404 not_found` (another person's / org's thread), `403
-mode_unavailable`. Then SSE, in order: `thread` (again once the first exchange names it) → `thinking` run/done
+mode_unavailable`. Then SSE, in order: `thread` (again once the first exchange names it) → an attachment notice per
+file the model could not take (an `activity` line, run then done at once — › Attachments) → `thinking` run/done
 (Thinking only; the SUMMARY, never raw thinking) → `activity` run then done (`results` refs, `resultLine`) → `text`
 deltas → `block` → `action` / `action_result` / `artifact_saved` → `followups` → `done { messageId, cites, tokens,
 stopped? }`. `error { code: capped | off | no_key | timeout | too_large | failed }` ends it early.
@@ -125,15 +127,46 @@ is replaced.
   saved artifact → the private draft deleted. Each first checks the item is as the write left it (`updated_at`,
   status, version) — else `409 { error: "changed", message: "Changed since. Undo it by hand.", ref }`. A doc proposal
   has no Undo (the store has no withdraw path).
+- **A declined ticket stays out of the default views** (the owner's ruling on Undo): Ask's `list_tickets` (no `seg` =
+  `open`), its starters (the person's top OPEN assigned ticket), a person card's "working on" (in progress / testing),
+  My Work and its brief (`listAssignedTickets`, open only), and the queue's server default (`GET /tickets` with no
+  `seg`) all leave it out; asking for `closed` or `all` still finds it — declining is not deleting
+  (`test/ask.declined.test.ts`). The Tickets SCREEN itself opens on `seg=all` as a board, whose Declined column shows
+  it — that default predates this build (#78) and is left as it is.
 
 ## Attachments, saving, history
 
 - `POST /ask/attachments` (multipart, ≤ 5 files, 10 MB each, images / PDFs / text and code): checked whole first, then
   each stored as a PRIVATE artifact (`createPage`: D1 for a text kind, R2 for the rest; sha256; the artifact caps)
   and linked to the thread (`chat_artifacts`). A message names them by id; the model gets them read BACK from the
-  store (`readRaw`, as the person) — whole only in that turn (an image over 5 MB, or files past ~20 MB in one request,
-  are stored but the model is told it could not view them). Later turns carry one line; `read_attachment(id)` reads
+  store (`readRaw`, as the person) — whole only in that turn. Later turns carry one line; `read_attachment(id)` reads
   one again, this person's thread's only.
+- **An image over the model's limit** is stored, NOT read, and the person is told. The limits are the Messages API's
+  own on the Claude API, which Trov calls directly (platform.claude.com › Vision › Request limits; the pinned SDK,
+  0.133, types only `ImageBlockParam.transformations.oversized_image: "downsize" | "error"`, whose default already
+  scales an image past the model's VIEWING size — 2576 px on the long edge for the current models — so only the hard
+  limits matter): **10 MB per image base64-encoded** (`ASK_MODEL_IMAGE_B64_MAX`, read as decimal MB; about 7.5 MB of
+  file) and **8000 px on either side** (`ASK_MODEL_IMAGE_PX_MAX`, read from the PNG / GIF / JPEG / WebP header by
+  `imageSize`, no decoding; an unreadable header is sent and the API judges). Files past ~20 MB in one request
+  (`ASK_MODEL_FILES_MAX`, under the API's 32 MB) are likewise stored but not read. (The API's > 20 images rule — 2000
+  px each — cannot trigger: a message carries ≤ 5 files, later turns carry none, and a turn's ≤ 8 `read_attachment`
+  calls add at most 8.) The model gets a line saying it could not view the file. The PERSON gets a notice in the
+  existing contract — no new field: the turn's first `activity` lines, one per file, emitted run → done at once before
+  the model is called, `{ step, tool: "read_attachment", icon: "read", label: "<name> is too large for Trov to view, so
+  it was stored but not read." }` then `{ step, state: "done", resultLine: "Not read" }` ("<name> didn't fit in this
+  message, so it was stored but not read." for the request budget). They are kept in the answer's `activity`, so a
+  reopened thread shows them; tool steps number on after them.
+- **Downscaling was weighed and not built** (the owner: "downscale instead of skipping, if easy"). A Worker has no
+  canvas, and no new binding, WASM library or paid service is added without asking, so the only route is the browser
+  making a smaller copy at attach time while the original stays the stored artifact. Its server half is not small:
+  the copy needs a home bound to the original (a new `chat_artifacts` column — a migration — and a new R2 prefix, or a
+  second private artifact that would show in the person's library), and every deletion path (thread, account,
+  organization, and `sweepR2`'s reference check) would have to free it too. With the real limits above the gap is
+  narrow — an image between ~7.5 and 10 MB, or wider than 8000 px — so the notice ships alone. **For the Ask
+  frontend**: render these activity lines like any other (no special case is needed); nothing to downscale. If the
+  owner later wants downscaling, the client half is: on attach, for an image over 7.5 MB or 8000 px, draw it to a
+  canvas at ≤ 2576 px on the long edge, encode WebP/JPEG, and upload it as the original's model copy (a route that
+  does not exist yet).
 - Save as artifact: the footer / a block → `POST /ask/messages/:id/save-form` adds a `save_form` block (no model
   call); the model's `save_artifact` sends the same form (in Auto: saved private at once, a card with Undo).
   `POST /ask/threads/:id/save { messageId?, block?, title, kind: markdown | html, visibility }` writes it from the
@@ -152,13 +185,51 @@ is replaced.
   connected links its Org settings tab (`orgGo`: Integrations, Repositories, Hosting, Environments; the off line, AI).
 - `GET /ask/state`: `{ enabled, eligibility, plan, modes, defaultMode, allowance { used, cap, resetsAt, low }, autoAllowed,
   attach { maxFiles, maxBytes, kinds }, starters }` — starters by plain rules (the person's top assigned ticket, the
-  active sprint, what is waiting on them), the design's four as the fallback.
+  active sprint, what is waiting on them), the design's four as the fallback. `allowance.cap` is the cap the gate
+  enforces (`resolveEntitlements` with the org's members): on Pro 300 × the paid seats, or × the members (at least
+  1) when there is no paid-seat count (a gifted Pro); an override of `ai_chat` is the whole cap, never multiplied.
+- No Ask route answers a malformed ref or id with a 500 (invariant 7; `test/ask.hardening.test.ts`): `GET
+  /ask/item/:ref` takes a ref that will not decode (`%25`) as it is, so it is the same `404 { ref, hidden: true }` as
+  an unknown one; `/ask/peek` refuses a malformed ref with `400 invalid` and hides a well-formed one that names
+  nothing; every `:id` route answers a non-id with its own 404 / 400.
 
 ## Deletion and renames
 
 Every Ask table is in `ORG_TABLES` and the reset seed; `chat_threads.handle` and `person_ask_settings.handle` are in
-`HANDLE_COLUMNS`; deleting an account deletes the person's threads (with their messages, cards and attachment links)
-and settings — the artifacts stay in the library like every other of theirs.
+`HANDLE_COLUMNS` (no new table or handle column came with the deletion rules below).
+
+**Deleting a thread or an account** (the owner's ruling, 2026-10-15 — legal #4). An attachment is a private artifact
+the upload created (`chat_artifacts.role = 'attachment'`); a SAVED answer (`role = 'saved'`) is something the person
+chose to put in the library, and no Ask deletion touches it. Both are HARD deletes — with an organization's, the only
+artifacts ever hard-deleted (CLAUDE.md invariant 11): every version, link, pending upload token and search row of the
+page goes in ONE batch with the thread's (or account's) rows, and the R2 bytes are freed AFTER the commit, only when
+no row anywhere still points at the same sha (`src/deletion/r2.ts`).
+
+- **`DELETE /ask/threads/:id`** (`deleteAskThread`, `src/deletion/ask.ts`) deletes the thread and its attachments,
+  EXCEPT a file something still refers to (`planThreadAttachments`). "Referenced" is what the schema actually links:
+  - **a ticket** — an `artifact_links` row to a ticket (the library's Links, MCP `artifact_update`, `record_session`'s
+    `artifact_links`); or the artifact's address in a ticket's body, a comment, or the ticket's own links
+    (`ticket_links.url`);
+  - **a doc** — its address in a doc's body or in ANY version of it (a staged proposal may still be promoted; a
+    rejected one is restorable). Docs have no link table: the address is the only way a doc refers to an artifact. A doc
+    IMAGE (`/img/<sha>`) is its own copy in `doc_images` / `doc-images/<sha>` and never depends on this object.
+  - "The address" is `artifacts/<slug>` (the app's `#artifacts/<slug>`, `/api/artifacts/<slug>`), `raw/a/<slug>` (its
+    bytes, any version), or a ref token `[[artifact:<slug>`, followed by anything that cannot continue a slug — GLOB,
+    so a reference to `<slug>-2` never keeps `<slug>`.
+  - Links to a sprint, a PR or an issue do not keep a file: the ruling names tickets and docs.
+  - **Published** — an attachment the person moved to the org (`visibility = 'org'`) stays: it is the org's library
+    item now, which others may rely on, and the ruling (legal #4) is about private attachments. Likewise one another
+    thread links, or someone else authored (neither is made by Ask today).
+  - A kept file stays a private artifact of the person's in the library; only the thread's link to it goes.
+- **Deleting an account** (`src/deletion/person.ts`, `ASK_ATTACHMENTS_OF`) deletes the person's PRIVATE Ask
+  attachments in every org — referenced or not: a private page is readable only by its author, who is gone — in the
+  account's own batch, before its threads, then frees their bytes with the photo's. A published attachment stays,
+  its author the tombstone, like every other artifact of theirs.
+- **Deleting an organization** already removes every artifact of the org (attachments included) and its chat rows
+  (`ORG_TABLES`), and frees the bytes no other org shares.
+- Tests: `test/ask.deletion.test.ts` (kept when a ticket link, ticket text, a doc body or a staged version refers to
+  it, or it is published; rows and bytes gone otherwise; bytes kept when another artifact has them; a saved answer
+  kept; the account and the org cases).
 
 ## Fixtures and the replay
 
@@ -174,7 +245,8 @@ real pacing and `GET …/ai/ask-replay` lists the rest; anywhere else both are 4
 `test/ask.stream.test.ts` (the event order and contract, caching, grounding, the gate, modes by plan, the allowance,
 Stop, regenerate, tenant isolation, the fence), `test/ask.actions.test.ts` (Confirm / Cancel / expiry / edits / the
 lane, Auto and its cap, Confirm-only writes, Publish, Undo and "changed since", groups, saving),
-`test/ask.attachments.test.ts`, `test/ask.views.test.ts` (peek, the inspector, "Wrong?" and Review's flags, threads,
+`test/ask.attachments.test.ts` (with the over-the-limit notice and `imageSize`), `test/ask.deletion.test.ts`,
+`test/ask.declined.test.ts`, `test/ask.views.test.ts` (peek, the inspector, "Wrong?" and Review's flags, threads,
 /search, ⌘J, state, settings, account deletion), `test/ask.parity.test.ts`, `test/ask.contract.test.ts` (every
 fixture against the schemas, the transcript files, the replay's guard), `test/secrets.mcp.test.ts` (the boundary).
 The Anthropic stream is stubbed at the `Response` level (`test/helpers/ask.ts`) — never the network.

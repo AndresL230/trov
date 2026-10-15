@@ -1,137 +1,85 @@
 /**
- * Digest cards — the section bodies mirror the app's My Work cards and Review
- * rows (structured PR rows, issue rows, kind/priority/plan chips), on the shared
- * card/row/chip helpers in assemble.ts. Real D1 fixtures, same as
- * notifications.render.test.ts.
+ * The shorter e-mail's pieces (Phase E), drawn by the renderers' pure halves: "Your brief" (Now, Next, Also), a
+ * queue's one line, "This week". The per-PR What / Why / Impact cards, the issue rows and labels and the plan diff of
+ * the old digest are gone; these pin what replaced them.
  */
 import { describe, it, expect } from "vitest";
-import { env } from "cloudflare:test";
-import { platformCtx, systemCtx } from "./helpers/tenant";
-import { run } from "./helpers/db";
-import { ingestEvent, ingestDocProposal, ingestAdrDraft } from "../src/consumer";
-import { promote_doc } from "../src/tools/writes";
-import { storePrSummary, storeIssueSummary, type Summarizer, type PrSummary, type IssueSummary } from "../src/tools/summarize";
-import { write_plan } from "../src/tools/plan";
-import { getKind } from "../src/notifications/registry";
-import { THEME, EMAIL_CARD } from "../src/notifications/assemble";
+import { renderBrief, briefSubject, type BriefContent } from "../src/notifications/renderers/my-work";
+import { renderWeek, numbersLine } from "../src/notifications/renderers/week-recap";
+import { assembleMessage, appHref, queueLine } from "../src/notifications/assemble";
 import type { Window } from "@shared/notifications";
-import type { CapturedEvent } from "@shared/contract";
 
 const WINDOW: Window = { cadence: "daily", start: new Date("2026-09-10T12:00:00.000Z"), end: new Date("2026-09-11T12:00:00.000Z"), id: "2026-09-11" };
-const IN_WINDOW = "2026-09-11T03:00:00Z";
-const BEFORE_WINDOW = "2026-09-09T03:00:00Z";
-const LOGIN = "AndresL230";
+const brief = (o: Partial<BriefContent> = {}): BriefContent => ({
+  source: "brief",
+  now: "You have #171 open.",
+  next: [
+    { title: "Netlify test failing", href: "https://github.com/o/r/actions/runs/1", line: "It is failing on your pull request #171." },
+    { title: "Poll <Vercel> deploys", href: appHref("#tickets/2"), line: "Its sprint is due Friday." },
+  ],
+  nextTotal: 2,
+  also: [{ title: "Repository setups", href: "https://github.com/o/r/pull/172", importance: "breaking", at: "2026-09-11T08:00:00Z" }],
+  ...o,
+});
+const assemble = (sections: Parameters<typeof assembleMessage>[0]["sections"], window = WINDOW) =>
+  assembleMessage({ sections, window, timeZone: "America/New_York", origin: "https://trov.dev", appBase: "https://trov.dev/acme", login: "andres", unsubscribeUrl: "https://trov.dev/u/x" });
 
-function prEvent(number: number, occurredAt: string, title: string): CapturedEvent {
-  return {
-    semantic_key: `gh:pr:${number}:merged`, event_type: "pr_merged", ref_number: number, subject_login: LOGIN, provenance: "webhook", occurred_at: occurredAt,
-    raw: JSON.stringify({ pr: { number, title, body: "b", html_url: `https://github.com/o/r/pull/${number}`, merged: true, merged_at: occurredAt, user: { login: LOGIN }, base: { ref: "main" } } }),
-  };
-}
-// `milestone` here is GitHub's own key — not Trov vocabulary (a payload literal).
-function issueEvent(number: number, title: string, extra: { labels?: string[]; milestone?: { number?: number; title: string; due_on: string | null } | null } = {}): CapturedEvent {
-  return {
-    semantic_key: `gh:issue:${number}:open:${IN_WINDOW}`, event_type: "issue", ref_number: number, subject_login: LOGIN, provenance: "webhook", occurred_at: IN_WINDOW,
-    raw: JSON.stringify({ action: "assigned", issue: { number, title, html_url: `https://github.com/o/r/issues/${number}`, state: "open", updated_at: IN_WINDOW, user: { login: LOGIN }, assignees: [{ login: LOGIN }], labels: extra.labels ?? [], milestone: extra.milestone ?? null } }),
-  };
-}
-const prStub = (s: PrSummary): Summarizer<PrSummary> => ({ model: "stub", summarize: async () => s });
-const issueStub = (s: IssueSummary): Summarizer<IssueSummary> => ({ model: "stub", summarize: async () => s });
-
-describe("My Work items (ledger layout)", () => {
-  const kind = () => getKind("my_work")!;
-
-  it("renders a merged PR as a ledger item: title with the #number pill far right, What changed / Why / Impact rows, Merged mark into main", async () => {
-    await ingestEvent(systemCtx(), platformCtx(), prEvent(10, IN_WINDOW, "Raw ten"), "github-webhook");
-    await storePrSummary(systemCtx(), prStub({ title: "Humanized ten", what: "Did the thing", why: "Because reasons", impact: "Users win" }), { semantic_key: "gh:pr:10:merged", pr_number: 10, title: "Raw ten", body: "b" });
-    const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
-    // Ledger layout: title on the left, the #number pill (the item's only link, accent-coloured) far right on the same line; rows sit flush under. No box.
-    expect(s.html).toMatch(/<td data-title[^>]*>Humanized ten<\/td>\s*<td data-pill-cell[^>]*align="right"[^>]*>\s*<a data-pill [^>]*href="https:\/\/github\.com\/o\/r\/pull\/10"[^>]*>#10<\/a>/);
-    expect(s.html).toMatch(new RegExp(`<a data-pill [^>]*style="[^"]*color:${THEME.accentText.light}[^"]*background-color:${THEME.accentSoft.light}`));
-    expect(s.html).not.toContain("border-radius:11px");
-    expect(s.html).not.toMatch(/data-item[^>]*style="[^"]*border:1px solid/); // items are separated by a hairline, never boxed
-    expect(s.html).toMatch(/What changed[\s\S]*Did the thing/);
-    expect(s.html).toMatch(/Why[\s\S]*Because reasons/);
-    expect(s.html).toMatch(/Impact[\s\S]*Users win/);
-    expect(s.html).toMatch(/>Merged<[\s\S]*into <span[^>]*>main</); // base ref in the label face, like the app
-    expect(s.html).toContain(THEME.green.light); // the Merged mark's colour comes from the token map
-    expect(s.text).toMatch(/What changed:\s+Did the thing/);
+describe("Your brief", () => {
+  it("Now, then Next (title linked, its why under it), then Also with its mark; titles escaped", () => {
+    const s = renderBrief(brief())!;
+    expect(s.heading).toBe("Your brief");
+    expect(s.html).toMatch(/data-brief-now[\s\S]*NEXT[\s\S]*data-brief-next[\s\S]*ALSO[\s\S]*data-brief-also/);
+    expect(s.html).toContain("Poll &lt;Vercel&gt; deploys");
+    expect(s.html).toContain("It is failing on your pull request #171.");
+    expect(s.html).toMatch(/Repository setups<\/a>[\s\S]*data-mark[\s\S]*Breaking/);
+    expect(s.subject).toBe("Netlify test failing, plus 1 more");
   });
 
-  it("a PR without a summary keeps the placeholder row and no Why / Impact rows", async () => {
-    await ingestEvent(systemCtx(), platformCtx(), prEvent(12, IN_WINDOW, "Only raw"), "github-webhook");
-    await storePrSummary(systemCtx(), null, { semantic_key: "gh:pr:12:merged", pr_number: 12, title: "Only raw", body: "b" });
-    const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.html).toContain("No summary recorded for this PR.");
-    expect(s.html).not.toContain(">Why<");
-    expect(s.html).not.toContain(">Impact<");
+  it("with no brief, the assigned tickets under their own label; with only Also, the block is called Also", () => {
+    expect(renderBrief(brief({ source: "assigned", now: null }))!.html).toContain("ASSIGNED TO YOU");
+    const onlyAlso = renderBrief(brief({ now: null, next: [], nextTotal: 0 }))!;
+    expect(onlyAlso.heading).toBe("Also");
+    expect(onlyAlso.subject).toBeUndefined();
+    expect(renderBrief(brief({ now: null, next: [], nextTotal: 0, also: [] }))).toBeNull();
   });
 
-  it("caps merged PRs at five with a '+N more' line", async () => {
-    for (let n = 1; n <= 7; n++) await ingestEvent(systemCtx(), platformCtx(), prEvent(100 + n, IN_WINDOW, `PR ${100 + n}`), "github-webhook");
-    const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
-    expect((s.html.match(/>Merged<\/span>/g) ?? []).length).toBe(5); // 5 marks (the group label is a div, not a mark)
-    expect(s.html).toContain("+2 more in My Work");
-  });
-
-  it("renders an assigned issue as a card: Summary / Sprint · due / Next step rows, priority chip and label chips", async () => {
-    // `milestone` is GitHub's own key — not Trov vocabulary (a payload literal).
-    await ingestEvent(systemCtx(), platformCtx(), issueEvent(20, "[P1] Fix the gate", { labels: ["bug", "gate", "urgent", "fourth"], milestone: { title: "Launch", due_on: "2026-09-20" } }), "github-webhook");
-    await storeIssueSummary(systemCtx(), issueStub({ title: "Fix the gate", summary: "The gate drops items", next_step: "Add the missing branch" }), { issue_number: 20, title: "[P1] Fix the gate", body: "b" });
-    const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.html).toMatch(/Summary[\s\S]*The gate drops items/);
-    expect(s.html).toMatch(/Sprint[\s\S]*Launch[\s\S]*due Sep 20/);
-    expect(s.html).not.toContain("Milestone");
-    expect(s.html).toMatch(/Next step[\s\S]*Add the missing branch/);
-    expect(s.html).toMatch(/>P1</);
-    expect(s.html).toContain(THEME.amber.light);
-    expect(s.html).toMatch(/>bug<[\s\S]*>gate<[\s\S]*>urgent</);
-    expect(s.html).not.toMatch(/>fourth</); // labels capped at 3 like the app
-    expect(s.text).toMatch(/Next step:\s+Add the missing branch/);
+  it("the subject is the top Next item, plus how many more", () => {
+    expect(briefSubject({ next: [{ title: "A", href: null, line: "" }], nextTotal: 1 })).toBe("A");
+    expect(briefSubject({ next: [{ title: "A", href: null, line: "" }], nextTotal: 5 })).toBe("A, plus 4 more");
+    expect(briefSubject({ next: [], nextTotal: 0 })).toBeNull();
   });
 });
 
-describe("Review queue rows", () => {
-  it("each item names its kind in words (Proposal / Decision), the summary line, and 'by <author> · <confidence> confidence'", async () => {
-    await ingestDocProposal(systemCtx(), { slug: "auth-flow", section: "reference", title: "Auth flow", body: "v1", change_summary: "init", confidence: "high" }, "agent");
-    await promote_doc(systemCtx(), "auth-flow", 1, "human");
-    await ingestDocProposal(systemCtx(), { slug: "auth-flow", section: "reference", title: "Auth flow", body: "v2 proposed", change_summary: "clarify token rotation", confidence: "high" }, "mei");
-    await ingestAdrDraft(systemCtx(), { title: "Use D1 for outbox", context: "c", decision: "d", rationale: "r", confidence: "high" }, "dev");
-    const s = (await getKind("review_queue")!.render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.html).toMatch(/>Proposal<[\s\S]*Reference \/ Auth flow[\s\S]*clarify token rotation[\s\S]*by mei · high confidence/);
-    expect(s.html).toMatch(/>Decision<[\s\S]*ADR-\d+[\s\S]*Use D1 for outbox[\s\S]*by dev/);
-    expect(s.html).not.toContain("data-chip");
+describe("the assembled message", () => {
+  it("blocks first, then every queue line together, each the whole line a link; in-app links hang off the org", () => {
+    const m = assemble([queueLine({ label: "Review", rest: "3 waiting, 1 changes a decision", deepLink: "/#review", linkLabel: "Review" }), renderBrief(brief())!]);
+    expect(m.subject).toBe("Netlify test failing, plus 1 more");
+    expect(m.html.indexOf('data-section="block"')).toBeLessThan(m.html.indexOf('data-section="lines"'));
+    expect(m.html).toMatch(/<a href="https:\/\/trov\.dev\/acme\/#review"[^>]*><span[^>]*>Review:<\/span> 3 waiting, 1 changes a decision/);
+    expect(m.html).toContain('href="https://trov.dev/acme/#tickets/2"');
+    expect(m.html).not.toContain("{{trov-app}}");
+    expect(m.text).toContain("Review: 3 waiting, 1 changes a decision -> https://trov.dev/acme/#review");
+    expect(m.text).toContain("<https://trov.dev/acme/#tickets/2>");
   });
 
-  it("a low-confidence proposal gets an amber Low confidence mark", async () => {
-    await ingestDocProposal(systemCtx(), { slug: "shaky", section: "reference", title: "Shaky", body: "v1", change_summary: "init", confidence: "high" }, "agent");
-    await promote_doc(systemCtx(), "shaky", 1, "human");
-    await ingestDocProposal(systemCtx(), { slug: "shaky", section: "reference", title: "Shaky", body: "v2", change_summary: "guess", confidence: "low" }, "agent");
-    const s = (await getKind("review_queue")!.render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.html).toContain(EMAIL_CARD.mark("Low confidence", "amber"));
-    expect(s.html).toContain(THEME.amber.light);
+  it("the weekly keeps its dated subject even when the brief offers one", () => {
+    const m = assemble([renderBrief(brief())!], { cadence: "weekly", start: new Date("2026-09-07T12:00:00Z"), end: new Date("2026-09-14T12:00:00Z"), id: "2026-W38" });
+    expect(m.subject).toMatch(/^Trov weekly, Sep 7 to 11$/);
   });
 });
 
-describe("Roadmap plan chips", () => {
-  it("labels are marks: Added green, Done purple, Changed blue", async () => {
-    const r = await write_plan(systemCtx(), { narrative: "n", sprints: [
-      { label: "Ship it", due: "2026-10-01", status: "in_progress" },
-      { label: "Old name", due: "2026-10-15", status: "upcoming" },
-    ] }, "admin");
-    await run(env.DB, `UPDATE plan_versions SET created_at = ? WHERE version = (SELECT MAX(version) FROM plan_versions)`, BEFORE_WINDOW);
-    const ship = r.sprints.find((m) => m.title === "Ship it")!;
-    const old = r.sprints.find((m) => m.title === "Old name")!;
-    await write_plan(systemCtx(), { narrative: "n", sprints: [
-      { id: ship.id, label: "Ship it", due: "2026-10-01", status: "done" },
-      { id: old.id, label: "New name", due: "2026-10-15", status: "upcoming" },
-      { label: "Brand new", due: "2026-12-01", status: "upcoming" },
-    ] }, "admin");
-    await run(env.DB, `UPDATE plan_versions SET created_at = ? WHERE version = (SELECT MAX(version) FROM plan_versions)`, IN_WINDOW);
-    const s = (await getKind("roadmap_plan")!.render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.html).toContain(EMAIL_CARD.mark("Added", "green"));
-    expect(s.html).toContain(EMAIL_CARD.mark("Done", "accent"));
-    expect(s.html).toContain(EMAIL_CARD.mark("Changed", "blue"));
-    expect(s.html).not.toMatch(/>ADDED<|>DONE<|>CHANGED</);
+describe("This week", () => {
+  it("cited highlights, then the server's numbers line; none of either → nothing", () => {
+    const s = renderWeek([{ text: "Repository setups shipped.", cites: [{ ref: "pr:172", label: "#172", href: "https://github.com/o/r/pull/172" }, { ref: "ticket:4", label: "#4", href: "#tickets/4" }] }], "3 pull requests merged")!;
+    expect(s.heading).toBe("This week");
+    expect(s.html).toMatch(/Repository setups shipped\.[\s\S]*#172[\s\S]*data-week-numbers[^>]*>3 pull requests merged/);
+    expect(s.html).toContain(appHref("#tickets/4"));
+    expect(renderWeek([], null)).toBeNull();
+  });
+
+  it("the numbers line leaves out zeros and an unknown pull-request count — never a guessed 0", () => {
+    expect(numbersLine({ prsMerged: null, ticketsDone: 2, feedEntries: 1 })).toBe("2 tickets done, 1 entry in the Feed");
+    expect(numbersLine({ prsMerged: 1, ticketsDone: 0, feedEntries: 0 })).toBe("1 pull request merged");
+    expect(numbersLine({ prsMerged: 0, ticketsDone: 0, feedEntries: 0 })).toBeNull();
   });
 });

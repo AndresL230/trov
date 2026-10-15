@@ -45,6 +45,8 @@ input, select { font-family: inherit; }
 @keyframes cnpy-toast-out { to { opacity: 0; transform: translateY(4px); } }
 .cnpy-toast { animation: cnpy-pop .25s ease both, cnpy-toast-out .4s ease forwards; }
 @media (prefers-reduced-motion: reduce) { .cnpy-toast { animation: none; } }
+/* THE on/off switch (notifications.ts `switchBtn`): its track fades and its knob slides (inline, .15s) — still under reduced motion. */
+@media (prefers-reduced-motion: reduce) { button[role="switch"], button[role="switch"] > span { transition:none !important; } }
 
 [data-cnpy-theme="dark"] { --mark:#9aab65; --bg:#1c1a16; --surface:#221f1b; --shadow:0 1px 2px rgba(0,0,0,0.35); --fg:#ede9e2; --fg-70:rgba(237,233,226,0.72); --fg-55:rgba(237,233,226,0.55); --fg-40:rgba(237,233,226,0.52); --border:rgba(237,233,226,0.11); --border-strong:rgba(237,233,226,0.20); --border-input:rgba(237,233,226,0.38); --hover:rgba(237,233,226,0.07); --accent:#9aab65; --accent-fg:#131a07; --accent-soft:rgba(154,171,101,0.14); --focus:var(--accent); --green:#5ab86c; --amber:#d98a52; --blue:#6aa8c4; --red:#df7372; --red-fg:#1c1a16; --purple:#a98bd6; --sans:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --label:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 /* Light = the palette of the Claude Design `Canopy Restyled.dc.html` (2026-09-26): a cool neutral
@@ -2257,7 +2259,7 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .fxm-head { flex:none; display:flex; align-items:center; gap:10px; min-height:42px; padding:0 14px; border-bottom:1px solid var(--border); white-space:nowrap; overflow:hidden; }
 .fxm-body { flex:1; min-height:0; overflow:hidden; }
 .fxm-stack { display:flex; flex-direction:column; gap:12px; height:100%; }
-.fxm-board { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:9px; padding:12px; align-items:start; }
+.fxm-board { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:9px; padding:12px; align-items:start; }
 .fxm-lanes { --lab:160px; }
 .fxm-tiles { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; align-items:stretch; }
 /* The artifact in the Artifacts screen is somebody's OWN page in a sandboxed frame, so it wears its own

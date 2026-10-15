@@ -69,7 +69,7 @@ export function filterModelSchema(screen: AiFilterScreen) {
 
 const FIELDS: Record<AiFilterScreen, string> = {
   tickets: [
-    `- status: ${TICKET_FILTER_STATUSES.join(" | ")} — open tickets, closed (done or declined) ones, or all`,
+    `- status: ${TICKET_FILTER_STATUSES.join(" | ")} — open tickets; closed (done or declined) ones; or all, which is everything except declined — declined tickets are in closed`,
     `- assignee: ${TICKET_FILTER_ASSIGNEES.join(" | ")} — "me" is the person asking`,
     "- person: the handle of ONE member from the people list whose tickets to show (instead of assignee)",
     `- category: ${AI_FILTER_VALUES.ticketCategories.join(" | ")}`,

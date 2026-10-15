@@ -39,6 +39,18 @@ export function aiPreview(env: Pick<Env, "LOCAL_AI_PREVIEW"> & LiveKeyEnv, reque
   return mode ? aiPreviewFixtures(mode, now) : null;
 }
 
+/** `/roadmap` with the preview's roadmap samples (shared/ai-fixtures.ts `roadmapFixture`): a note on each ACTIVE
+ *  sprint, in roadmap order, while the samples last; the drift line; and — for an ADMIN only — the two suggestion
+ *  cards. `empty` (no fixture) leaves the read exactly as it was. */
+export function withPreviewRoadmap<P extends { sprints: { active: boolean; note?: unknown }[]; drift?: unknown; suggestions?: unknown }>(
+  plan: P, fx: AiPreview["roadmap"], o: { admin: boolean },
+): P {
+  if (!fx) return plan;
+  let i = 0;
+  const sprints = plan.sprints.map((s) => (s.active && i < fx.notes.length ? { ...s, note: fx.notes[i++] } : s));
+  return { ...plan, sprints, drift: fx.drift, ...(o.admin ? { suggestions: fx.suggestions } : {}) };
+}
+
 /** `/feed`'s page with the preview's entries merged in, newest first, as the page was asked for: none when
  *  it filters by another author or by tags (the fixtures have none), none older than `since`, cut to `limit`. */
 export function withPreviewFeed(rows: FeedRow[], extra: FeedRow[], filter: { author?: string; tags?: string[]; since?: string; limit?: number }): FeedRow[] {

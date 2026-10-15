@@ -9,6 +9,8 @@ import { cookieFor } from "./helpers/persons";
 import { ORG_A } from "./helpers/tenant";
 import { BASE, KEYED, ask, eventsOf, fakeModel, withAsk } from "./helpers/ask";
 import { app } from "../src/routes";
+import { imageSize } from "../src/ai/ask/attachments";
+import { AskEventSchemas } from "@shared/ai-ask";
 
 const ME = "ask-attacher";
 const final = "\n<trov-meta>{\"title\": \"Files\", \"followups\": []}</trov-meta>";
@@ -69,15 +71,84 @@ describe("attachments are artifacts first", () => {
     expect(await all(env.DB, `SELECT id FROM chat_threads WHERE org_id = ?`, ORG_A)).toEqual([]);
   });
 
-  it("an image over the API's 5 MB is stored, and the model is told it could not view it", async () => {
+});
+
+/** A PNG whose header says `w`×`h`, padded to `size` bytes. */
+function pngOf(w: number, h: number, size = 64): Uint8Array {
+  const b = new Uint8Array(size);
+  b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+  new DataView(b.buffer).setUint32(16, w);
+  new DataView(b.buffer).setUint32(20, h);
+  return b;
+}
+
+describe("an image over the model's limit: stored, not read, and the person is told", () => {
+  it("over 10 MB base64-encoded: the model is told, and the stream's first activity line is the notice — kept with the answer", async () => {
     const cookie = await cookieFor(ME);
-    const up = await upload(cookie, [{ name: "big.png", type: "image/png", bytes: new Uint8Array(5 * 1024 * 1024 + 10) }]);
+    // 7.6 MB raw is about 10.1 MB as base64: past the API's per-image limit, under the 10 MB attach cap.
+    const up = await upload(cookie, [{ name: "big.png", type: "image/png", bytes: pngOf(1200, 900, 7_600_000) }]);
     expect(up.status).toBe(200);
-    const model = fakeModel([[{ type: "text", text: `ok${final}` }]]);
-    await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { threadId: up.json.threadId, text: "see?", attachments: [up.json.attachments[0].id] }));
+    const model = fakeModel([[{ type: "tool_use", name: "list_tags", input: {} }], [{ type: "text", text: `ok${final}` }]]);
+    const r = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { threadId: up.json.threadId, text: "see?", attachments: [up.json.attachments[0].id] }));
     const blocks = firstUserBlocks(model.sent[0]);
     expect(blocks.some((b) => b.type === "image")).toBe(false);
-    expect(blocks.some((b) => /could not view it: the image is larger than 5 MB/.test(b.text ?? ""))).toBe(true);
+    expect(blocks.some((b) => /could not view it: the image is larger than the 10 MB the model takes/.test(b.text ?? ""))).toBe(true);
+    // The notice: step 1, before the model's own tool call (step 2), in the contract.
+    for (const e of r.events) expect(AskEventSchemas[e.event].safeParse(e.data).success, e.event).toBe(true);
+    const acts = eventsOf(r.events, "activity");
+    expect(acts[0]).toEqual({ step: 1, tool: "read_attachment", icon: "read", label: "big.png is too large for Trov to view, so it was stored but not read.", state: "run" });
+    expect(acts[1]).toEqual({ step: 1, state: "done", resultLine: "Not read" });
+    expect(acts[2]).toMatchObject({ step: 2, tool: "list_tags", state: "run" });
+    const names = r.events.map((e) => e.event);
+    expect(names.indexOf("activity")).toBeLessThan(names.indexOf("text"));
+    // Reopening the thread shows it again.
+    const thread = await app.request(`${BASE}/ask/threads/${up.json.threadId}`, { headers: { cookie } }, KEYED);
+    const answer = ((await thread.json()) as { messages: { role: string; activity: { label: string; resultLine: string | null }[] }[] }).messages.at(-1)!;
+    expect(answer.activity[0]).toMatchObject({ label: "big.png is too large for Trov to view, so it was stored but not read.", resultLine: "Not read" });
+  });
+
+  it("over 8000 pixels on a side (read from the header): the same notice; a large image within both limits is sent", async () => {
+    const cookie = await cookieFor(ME);
+    const up = await upload(cookie, [
+      { name: "wide.png", type: "image/png", bytes: pngOf(9000, 400) },
+      { name: "six-mb.png", type: "image/png", bytes: pngOf(2000, 1500, 6 * 1024 * 1024) }, // was refused under the old 5 MB rule
+    ]);
+    const model = fakeModel([[{ type: "text", text: `ok${final}` }]]);
+    const r = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { threadId: up.json.threadId, text: "see?", attachments: up.json.attachments.map((a: { id: number }) => a.id) }));
+    const blocks = firstUserBlocks(model.sent[0]);
+    expect(blocks.filter((b) => b.type === "image")).toHaveLength(1);
+    expect(blocks.some((b) => /wide\.png.*could not view it: the image is 9000×400 pixels/.test(b.text ?? ""))).toBe(true);
+    const acts = eventsOf(r.events, "activity");
+    expect(acts.filter((a) => a.state === "run").map((a) => a.label)).toEqual(["wide.png is too large for Trov to view, so it was stored but not read."]);
+  });
+
+  it("an image that fits says nothing", async () => {
+    const cookie = await cookieFor(ME);
+    const up = await upload(cookie, [{ name: "small.png", type: "image/png", bytes: pngOf(800, 600) }]);
+    const model = fakeModel([[{ type: "text", text: `ok${final}` }]]);
+    const r = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { threadId: up.json.threadId, text: "see?", attachments: [up.json.attachments[0].id] }));
+    expect(eventsOf(r.events, "activity")).toEqual([]);
+    expect(firstUserBlocks(model.sent[0]).some((b) => b.type === "image")).toBe(true);
+  });
+});
+
+describe("imageSize reads the pixel size from the header", () => {
+  it("PNG, GIF, JPEG and the three WebP forms; anything else is null", () => {
+    expect(imageSize(pngOf(9000, 12))).toEqual({ width: 9000, height: 12 });
+    expect(imageSize(new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x40, 0x1f, 0x20, 0x00]))).toEqual({ width: 8000, height: 32 });
+    // JPEG: SOI, an APP0 segment (length 16), then SOF0 with height 300 and width 8001.
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, ...new Array(14).fill(0), 0xff, 0xc0, 0x00, 0x11, 0x08, 0x01, 0x2c, 0x1f, 0x41, 0x03, 0, 0, 0, 0]);
+    expect(imageSize(jpeg)).toEqual({ width: 8001, height: 300 });
+    const riff = (chunk: string, body: number[]) => new Uint8Array([...new TextEncoder().encode("RIFF"), 0, 0, 0, 0, ...new TextEncoder().encode("WEBP"), ...new TextEncoder().encode(chunk), ...body]);
+    // VP8X: canvas width-1 and height-1 as 24-bit little-endian at 24 and 27.
+    expect(imageSize(riff("VP8X", [0, 0, 0, 0, 0, 0, 0, 0, 0x3f, 0x1f, 0x00, 0x63, 0x00, 0x00, 0, 0]))).toEqual({ width: 8000, height: 100 });
+    // VP8 (lossy): width and height as 14-bit little-endian at 26 and 28.
+    expect(imageSize(riff("VP8 ", [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x40, 0x1f, 0x64, 0x00, 0, 0]))).toEqual({ width: 8000, height: 100 });
+    // VP8L (lossless): the signature 0x2f, then 14-bit width-1 and height-1 packed.
+    const w = 8000 - 1, h = 100 - 1;
+    const bits = w | (h << 14);
+    expect(imageSize(riff("VP8L", [0, 0, 0, 0, 0x2f, bits & 0xff, (bits >> 8) & 0xff, (bits >> 16) & 0xff, (bits >>> 24) & 0xff, 0, 0, 0, 0, 0, 0, 0]))).toEqual({ width: 8000, height: 100 });
+    expect(imageSize(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]))).toBeNull();
   });
 });
 
