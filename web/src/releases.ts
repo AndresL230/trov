@@ -118,10 +118,13 @@ export const RELEASES: Release[] = [
         "`createOrg` seeds the six starter tags; `shared/vocabulary.ts` `TAGS` and `0002_seed_vocab` now name the STARTER set, not the gate's vocabulary (#179)",
         "`assign_triage` (feed): a picked tag must be on the org's list; with none picked, the item's own tags go through the gate as they came (#179)",
       ],
-      fixed: [],
+      fixed: [
+        "A tag page's Who writes about it and Often seen with bars all took the tag's colour; each is now the person's or the other tag's own (`meters` `tone`, `TagPageProps.colorOf` / `tagColorOf`) (#180)",
+        "The header's breadcrumb (\"Tags › auth\", a ticket, a sprint, an artifact) set the page's name smaller and lighter than the title before it; both are 15px semibold now, the page you are on in full strength (#180)",
+      ],
       removed: [],
     },
-    prs: [179],
+    prs: [179, 180],
   },
   // States drawn as marks instead of tags: the 2026-10 tag audit (#173).
   // Also: capture-time summaries move from Google Gemini to Anthropic's Claude, behind one model client (#176),

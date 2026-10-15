@@ -350,9 +350,10 @@ export function routeDetail(p: Pick<ArtProps, "route" | "ui">): ArtSlice<Artifac
 export function artifactsHeader(p: ArtProps): { title: string; crumb: string; controls: string } {
   const titleTop = `<h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0">Artifacts</h1>`;
   const titleBack = `<h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0;white-space:nowrap;flex:none"><button data-act="goArtifacts" style="font-size:15px;font-weight:600;letter-spacing:-0.01em;padding:0;color:var(--fg-55);cursor:pointer">Artifacts</button></h1>`;
-  const crumbSt = (last: boolean) => `font-size:13px;font-weight:500;color:${last ? "var(--fg-70)" : "var(--fg-55)"};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;padding:0;cursor:${last ? "default" : "pointer"}`;
+  // Set like the title (15px, semibold), as in the app header's crumb: the last is the page you are on.
+  const crumbSt = (last: boolean) => `font-size:15px;font-weight:600;letter-spacing:-0.01em;color:${last ? "var(--fg)" : "var(--fg-55)"};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;padding:0;cursor:${last ? "default" : "pointer"}`;
   const crumb = (label: string, act: string | null, arg = "") =>
-    `<span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:13px">›</span>${act
+    `<span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:15px">›</span>${act
       ? `<button data-act="${act}" data-arg="${attr(arg)}" style="${crumbSt(false)}">${esc(label)}</button>`
       : `<span style="${crumbSt(true)}">${esc(label)}</span>`}</span>`;
 

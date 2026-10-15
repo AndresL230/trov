@@ -373,6 +373,15 @@ describe("one tag's page", () => {
     expect(html).toContain("Who writes about it");
     expect(html).toContain("<b>@mara</b>");
     noPill(html);
+    // Each bar in its OWN colour: a person's (Who writes about it), the other tag's (Often seen with) — else the tag's.
+    const coloured = tagPageView({ name: "auth", page: { status: "ok", data: page() }, tab: "all", orgName: "Acme", who: (h) => h, now: NOW,
+      colorOf: (h) => (h === "mara" ? "rose" : null), tagColorOf: (n) => (n === "api" ? "sky" : n === "ui" ? "ochre" : null) });
+    const people = coloured.slice(coloured.indexOf(`data-tag-tile="people"`), coloured.indexOf("</section>", coloured.indexOf(`data-tag-tile="people"`)));
+    expect(people).toContain("background:var(--p-rose)");
+    const seen = coloured.slice(coloured.indexOf(`data-tag-tile="seen"`), coloured.indexOf("</section>", coloured.indexOf(`data-tag-tile="seen"`)));
+    expect(seen).toContain("background:var(--p-sky)");
+    expect(seen).toContain("background:var(--p-ochre)");
+    expect(html).not.toMatch(/cnpy-tagpage-meter[^>]*><span style="[^"]*background/);   // no colours known: the tag's own
   });
 
   it("counts items per week, oldest week first, and leaves out what is older than twelve weeks", () => {

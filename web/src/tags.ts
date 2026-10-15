@@ -424,6 +424,10 @@ export interface TagPageProps {
   now?: number;
   /** The write out (a review item's buttons wait: `review:<type>:<id>`). */
   busy?: string | null;
+  /** A person's colour (the one their name is drawn in), for their bar under Who writes about it; null = the tag's. */
+  colorOf?: (handle: string) => string | null;
+  /** Another tag's colour, for its bar under Often seen with; null = the tag's. */
+  tagColorOf?: (name: string) => string | null;
 }
 
 // The page (web-ui.md › Tags › One tag's page): a hero (square, name, what it is for, the counts by type and their
@@ -509,10 +513,11 @@ function tileHead(title: string, id: string, count: number | null = null, more =
   return `<div class="cnpy-tagpage-th"><h3 id="${attr(id)}">${esc(title)}</h3>${count === null ? "" : `<span class="cnpy-badge" data-n="${count}">${count}</span>`}${more ? `<span class="cnpy-tagpage-more">${more}</span>` : ""}</div>`;
 }
 const tileNote = (text: string): string => `<p class="cnpy-tagpage-none">${text}</p>`;
-/** Name and number per row, with a bar in the tag's colour scaled to the largest. `label` is markup. */
-function meters(rows: readonly { label: string; n: number }[]): string {
+/** Name and number per row, with a bar scaled to the largest — in the row's OWN colour (`tone`: the person's, the
+ *  other tag's), else the tag's. `label` is markup. */
+function meters(rows: readonly { label: string; n: number; tone?: string | null }[]): string {
   const peak = Math.max(1, ...rows.map((r) => r.n));
-  return `<ul class="cnpy-tagpage-meters">${rows.map((r) => `<li><span class="cnpy-tagpage-ml">${r.label}</span><span class="cnpy-tagpage-meter" aria-hidden="true"><span style="width:${Math.max(4, Math.round((r.n / peak) * 100))}%"></span></span><span class="cnpy-tagpage-mn">${r.n}</span></li>`).join("")}</ul>`;
+  return `<ul class="cnpy-tagpage-meters">${rows.map((r) => `<li><span class="cnpy-tagpage-ml">${r.label}</span><span class="cnpy-tagpage-meter" aria-hidden="true"><span style="width:${Math.max(4, Math.round((r.n / peak) * 100))}%${r.tone ? `;background:${tagTone(r.tone)}` : ""}"></span></span><span class="cnpy-tagpage-mn">${r.n}</span></li>`).join("")}</ul>`;
 }
 
 /** Items per week, oldest first, for the last `WEEKS` weeks before `now`. */
@@ -602,13 +607,13 @@ function jevTile(d: TagPageDTO, span: number, md: number): string {
   return tile(tileHead("Who tagged it", "tag-g-jev"), body, span, md, "row", ` data-tag-tile="jev" aria-labelledby="tag-g-jev"`);
 }
 
-function peopleTile(rows: readonly { handle: string; count: number }[], who: TagPageProps["who"], span: number, md: number, size: TagTileSize): string {
-  const body = rows.length ? meters(rows.map((a) => ({ label: who(a.handle), n: a.count }))) : tileNote("Nobody yet.");
+function peopleTile(rows: readonly { handle: string; count: number }[], who: TagPageProps["who"], span: number, md: number, size: TagTileSize, colorOf?: TagPageProps["colorOf"]): string {
+  const body = rows.length ? meters(rows.map((a) => ({ label: who(a.handle), n: a.count, tone: colorOf?.(a.handle) }))) : tileNote("Nobody yet.");
   return tile(tileHead("Who writes about it", "tag-g-people"), body, span, md, size, ` data-tag-tile="people" aria-labelledby="tag-g-people"`);
 }
 
-function seenTile(d: TagPageDTO, span: number, md: number): string {
-  const body = d.seen_with.length ? meters(d.seen_with.map((s) => ({ label: tagWords([s.name], { size: 13 }), n: s.count }))) : tileNote("It is not on anything with another tag.");
+function seenTile(d: TagPageDTO, span: number, md: number, tagColorOf?: TagPageProps["tagColorOf"]): string {
+  const body = d.seen_with.length ? meters(d.seen_with.map((s) => ({ label: tagWords([s.name], { size: 13 }), n: s.count, tone: tagColorOf?.(s.name) }))) : tileNote("It is not on anything with another tag.");
   return tile(tileHead("Often seen with", "tag-g-seen"), body, span, md, "row", ` data-tag-tile="seen" aria-labelledby="tag-g-seen"`);
 }
 
@@ -651,7 +656,7 @@ export function tagPageView(p: TagPageProps): string {
     body = `<div class="cnpy-tagpage-grid cnpy-stagger">
           <div class="cnpy-tagpage-col" style="--span:5;--md:6">${typeTile("doc", d, p.who, 12, 12, "half", emptyOf("doc"))}${typeTile("adr", d, p.who, 12, 12, "half", emptyOf("adr"))}</div>
           ${typeTile("feed", d, p.who, 7, 6, "tall", emptyOf("feed"))}
-          ${activityTile(PAGE_ORDER.flatMap((t) => items[t]), d, now, 3, 6)}${jevTile(d, 3, 6)}${peopleTile(d.authors, p.who, 3, 6, "row")}${seenTile(d, 3, 6)}
+          ${activityTile(PAGE_ORDER.flatMap((t) => items[t]), d, now, 3, 6)}${jevTile(d, 3, 6)}${peopleTile(d.authors, p.who, 3, 6, "row", p.colorOf)}${seenTile(d, 3, 6, p.tagColorOf)}
         </div>`;
   } else {
     const list = items[tab];
@@ -670,7 +675,7 @@ export function tagPageView(p: TagPageProps): string {
         ${tile(tileHead(capFirst(words.many), `tag-g-${tab}`, n), listBody, 8, 12, "full", ` data-tag-group="${tab}" aria-labelledby="tag-g-${tab}"`)}
         <div class="cnpy-tagpage-rail cnpy-stagger" style="--span:4;--md:12">
           ${activityTile(list, d, now, 12, 12, list.filter((i) => i.jev).length)}
-          ${peopleTile(people, p.who, 12, 12, "rest")}
+          ${peopleTile(people, p.who, 12, 12, "rest", p.colorOf)}
         </div>
       </div>`;
   }
