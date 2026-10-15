@@ -42,7 +42,7 @@ JSON refusals before the stream: `400 invalid`, `404 not_found` (another person'
 mode_unavailable`. Then SSE, in order: `thread` (again once the first exchange names it) → an attachment notice per
 file the model could not take (an `activity` line, run then done at once — › Attachments) → `thinking` run/done
 (Thinking only; the SUMMARY, never raw thinking) → `activity` run then done (`results` refs, `resultLine`) → `text`
-deltas → `block` → `action` / `action_result` / `artifact_saved` → `followups` → `done { messageId, questionId, cites, tokens,
+deltas → `block` → `action` / `action_result` / `artifact_saved` → `followups` → `action_result` carries the write itself (`tool`, `kind`, the card's `preview`) beside its decision. `done { messageId, questionId, cites, tokens,
 stopped? }` (`questionId`: the stored question this answers). The answer is stored with its `parts` in the order they
 streamed (`{ text md } | { block index } | { action id }` in `content_json`; `AskMessage.parts`), so a reload draws the
 live order — a row stored before it has none and reads as text, blocks, cards. `error { code: capped | off | no_key | timeout | too_large | failed }` ends it early.
@@ -207,6 +207,10 @@ artifacts ever hard-deleted (CLAUDE.md invariant 11): every version, link, pendi
 page goes in ONE batch with the thread's (or account's) rows, and the R2 bytes are freed AFTER the commit, only when
 no row anywhere still points at the same sha (`src/deletion/r2.ts`).
 
+- **Saving from a follow-up** (`save_artifact`, `saveTarget` in routes.ts): the answer saved — by the Save form's
+  `messageId` and by Auto's `scope: "answer"` — is the one the model names (`which: "this" | "previous"`), else THIS
+  answer when it has content of its own (a block, or 280+ characters), else the most recent earlier answer that has:
+  "save this as a doc" after an answer saves that answer, not the one-line reply.
 - **`DELETE /ask/attachments/:id`** (`deleteUnsentAttachment`, `src/deletion/ask.ts`): the composer removing an
   uploaded chip before it was sent deletes that one attachment the same way (its page's rows and its `chat_artifacts`
   link in ONE batch, re-checked inside it; R2 after the commit when nothing else holds the bytes). Refused with nothing
@@ -314,8 +318,8 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   rest of the group in one call) — and Cancel; a Publish whose `canPublish` is false shows Open in Review, never
   Confirm. A decided card is a line per outcome (done linked to `ref` with a time and Undo; Cancelled / Undone /
   Expired / Didn't work); Undo's `changed` keeps the line and says "Changed since. Undo it by hand." with a link. An
-  Auto result streams no tool, so on `done` the part reads the stored cards back (`GET /ask/threads/:id`) to name
-  them; nothing on the client ever decides a card. An Undo of a ticket write calls `ctx.refreshTickets` (main.ts
+  Auto result names its own write (`action_result { tool, kind, preview }`), so its line says what was done with no
+  read back; nothing on the client ever decides a card. An Undo of a ticket write calls `ctx.refreshTickets` (main.ts
   `loadTickets`, only once the queue was loaded) so an open board drops a declined ticket with its exit. `saveButton` / `wrongButton` are the footer's and a block's
   buttons (acts `askAcSaveForm`, `askAcWrong`). Tests: `test/render.ask-actions.test.ts` (every scenario from its
   transcript) and `test/ask.actions-hookup.test.ts` (the real routes into the real screen, the §4 guards).

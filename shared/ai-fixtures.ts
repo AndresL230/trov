@@ -501,11 +501,11 @@ function actionsAutoTurn(now: Date): AskTranscriptStep[] {
     ev("activity", { step: 1, state: "done", results: ["handoff:11"] }, 350),
     ev("activity", { step: 2, tool: "get_events", icon: "review", label: "Read the review on PR #178", state: "run" }, 80),
     ev("activity", { step: 2, state: "done", results: ["pr:178"] }, 400),
-    ev("action_result", { id: 41, groupId: "1-6-1", state: "auto", result: { id: 11, recipient: "anyone", url: "#handoffs/11" }, ref: "handoff:11", undo: true, at }, 300),
-    ev("action_result", { id: 42, groupId: "1-6-2", state: "auto", result: { id: 14, status: "in_progress" }, ref: "ticket:14", undo: true, at }, 250),
-    ev("action_result", { id: 43, groupId: "1-6-3", state: "auto", result: { id: 30, title: "Reconnect expired hosting tokens from Org settings" }, ref: "ticket:30", undo: true, at }, 250),
-    ev("action_result", { id: 44, groupId: "1-6-3", state: "auto", result: { id: 31, title: "Remove the pill styles left in trov.css" }, ref: "ticket:31", undo: true, at }, 200),
-    ev("action_result", { id: 45, groupId: "1-6-3", state: "auto", result: { id: 32, title: "Rename status helpers to marks" }, ref: "ticket:32", undo: true, at }, 200),
+    ev("action_result", { id: 41, groupId: "1-6-1", tool: "send_handoff", kind: "handoff", preview: { title: "Send a handoff to anyone", lines: [{ label: "Task", value: "Fix the Netlify connect test on main" }], item: null }, state: "auto", result: { id: 11, recipient: "anyone", url: "#handoffs/11" }, ref: "handoff:11", undo: true, at }, 300),
+    ev("action_result", { id: 42, groupId: "1-6-2", tool: "transition_ticket", kind: "move", preview: { title: "Move ticket #14 to In progress", lines: [{ label: "From", value: "Testing" }, { label: "To", value: "In progress" }], item: R["ticket:14"] }, state: "auto", result: { id: 14, status: "in_progress" }, ref: "ticket:14", undo: true, at }, 250),
+    ev("action_result", { id: 43, groupId: "1-6-3", tool: "create_ticket", kind: "ticket", preview: { title: "Reconnect expired hosting tokens from Org settings", lines: [{ label: "Category", value: "Bug" }], item: null }, state: "auto", result: { id: 30, title: "Reconnect expired hosting tokens from Org settings" }, ref: "ticket:30", undo: true, at }, 250),
+    ev("action_result", { id: 44, groupId: "1-6-3", tool: "create_ticket", kind: "ticket", preview: { title: "Remove the pill styles left in trov.css", lines: [{ label: "Category", value: "Chore" }], item: null }, state: "auto", result: { id: 31, title: "Remove the pill styles left in trov.css" }, ref: "ticket:31", undo: true, at }, 200),
+    ev("action_result", { id: 45, groupId: "1-6-3", tool: "create_ticket", kind: "ticket", preview: { title: "Rename status helpers to marks", lines: [{ label: "Category", value: "Chore" }], item: null }, state: "auto", result: { id: 32, title: "Rename status helpers to marks" }, ref: "ticket:32", undo: true, at }, 200),
     ev("action", {
       id: 46, groupId: "1-6-4", tool: "publish_doc", kind: "publish", state: "waiting", note: "Publishing waits for you, even on Auto.",
       preview: { title: "Publish Release 0.30 notes", item: R["doc:release-0-30-notes"], canPublish: true, lines: [

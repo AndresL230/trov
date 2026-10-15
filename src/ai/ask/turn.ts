@@ -83,6 +83,9 @@ export interface TurnResult {
   called: boolean;
   /** `save_artifact` asked for, in Auto: the route saves the stored answer as private. */
   autosave: { title: string | null; kind: "markdown" | "html"; scope: "answer" | "thread"; groupId: string } | null;
+  /** `save_artifact`'s `which`: the answer it saves — "this" one, the "previous" one, or null for the default (this
+   *  answer when it has content of its own, else the most recent earlier answer that has; routes.ts `saveTarget`). */
+  saveWhich: "this" | "previous" | null;
 }
 
 /** A domain refusal's code (what a tool error carries to the model); anything else is a plain failure. */
@@ -118,7 +121,7 @@ export async function runTurn(t: TurnInput): Promise<TurnResult> {
   const chat = askChatClient(t.mode, { apiKey: t.env.ANTHROPIC_API_KEY, fetchImpl: t.fetchImpl });
   const result: TurnResult = {
     text: "", title: null, followups: [], blocks: [], activity: [], thinking: null, model: chat?.model ?? def.model,
-    tokens: { in: 0, out: 0, cached: 0 }, ended: "done", called: false, autosave: null,
+    tokens: { in: 0, out: 0, cached: 0 }, ended: "done", called: false, autosave: null, saveWhich: null,
   };
   if (!chat) return { ...result, ended: "failed" };
 
@@ -298,6 +301,7 @@ async function runTool(
       await begin(activityLabel(use.name, args), "read");
       const kind = (args.kind as "markdown" | "html" | undefined) ?? "markdown";
       const scope = (args.scope as "answer" | "thread" | undefined) ?? "answer";
+      result.saveWhich = (args.which as "this" | "previous" | undefined) ?? null;
       if (t.autoMode && t.autoAllowed && st.autoWrites < ASK_AUTO_WRITES_MAX) {
         st.autoWrites++;
         result.autosave = { title: (args.title as string | undefined) ?? null, kind, scope, groupId: `${t.tool.threadId}-${t.turn}-save` };
@@ -347,12 +351,12 @@ async function runTool(
       await finishAction(t.ctx, id, "auto", ran.result, ran.undo);
       for (const r of refsFromResult(use.name, ran.result, args)) t.seen.add(r);
       if (ran.ref) t.seen.add(normalRef(ran.ref));
-      await t.emit("action_result", { id, groupId, state: "auto", result: ran.result, ref: ran.ref, undo: ran.undo !== null, at: new Date(t.now()).toISOString() });
+      await t.emit("action_result", { id, groupId, tool: use.name, kind: spec.card, preview, state: "auto", result: ran.result, ref: ran.ref, undo: ran.undo !== null, at: new Date(t.now()).toISOString() });
       return { type: "tool_result", tool_use_id: use.id, content: `Ran (Auto mode) as card #${id}; the person can undo it.\n${fence(t.nonce, `Result of ${use.name}`, json(ran.result))}` };
     } catch (e) {
       const body = errorBody(e);
       await finishAction(t.ctx, id, "failed", body, null);
-      await t.emit("action_result", { id, groupId, state: "failed", result: body, ref: null, undo: false, at: new Date(t.now()).toISOString() });
+      await t.emit("action_result", { id, groupId, tool: use.name, kind: spec.card, preview, state: "failed", result: body, ref: null, undo: false, at: new Date(t.now()).toISOString() });
       return err(body);
     }
   } catch (e) {

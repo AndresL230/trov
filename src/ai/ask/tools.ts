@@ -292,7 +292,7 @@ export const ASK_TOOLS: Record<string, ToolSpec> = {
   ...READS,
   ...SHOWS,
   ...Object.fromEntries(Object.entries(WRITES).map(([n, w]) => [n, { ...w, kind: "write" as const }])),
-  save_artifact: { kind: "show", icon: "read", input: z.object({ title: z.string().trim().min(1).max(200).optional(), kind: z.enum(["markdown", "html"]).optional(), scope: z.enum(["answer", "thread"]).optional() }),
+  save_artifact: { kind: "show", icon: "read", input: z.object({ title: z.string().trim().min(1).max(200).optional(), kind: z.enum(["markdown", "html"]).optional(), scope: z.enum(["answer", "thread"]).optional(), which: z.enum(["this", "previous"]).optional() }),
     show: async () => { throw new Error("save_artifact is handled by the turn"); } },
 };
 
@@ -316,10 +316,10 @@ const ASK_ONLY_DEFS: { name: string; description: string; input_schema: Record<s
   },
   {
     name: "save_artifact",
-    description: "When the person asks to save something from this conversation as a doc or artifact: shows a Save form under your answer (title, kind Markdown or HTML page, who can see it). The SERVER writes the artifact from your answer; you never write its content. In Auto mode it is saved as private at once. `scope`: \"answer\" (this answer, the default) or \"thread\" (the whole conversation).",
+    description: "When the person asks to save something from this conversation as a doc or artifact: shows a Save form under your answer (title, kind Markdown or HTML page, who can see it). The SERVER writes the artifact from an answer; you never write its content. In Auto mode it is saved as private at once. `scope`: \"answer\" (one answer, the default) or \"thread\" (the whole conversation). `which` (for scope answer): \"previous\" — your earlier answer the person means (\"save that\"), or \"this\" — the answer you are writing now; by default the server saves this answer when it has content of its own, else your most recent earlier answer that has.",
     input_schema: {
       type: "object",
-      properties: { title: { type: "string", maxLength: 200 }, kind: { type: "string", enum: ["markdown", "html"] }, scope: { type: "string", enum: ["answer", "thread"] } },
+      properties: { title: { type: "string", maxLength: 200 }, kind: { type: "string", enum: ["markdown", "html"] }, scope: { type: "string", enum: ["answer", "thread"] }, which: { type: "string", enum: ["this", "previous"] } },
     },
   },
   {

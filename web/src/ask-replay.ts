@@ -109,7 +109,8 @@ export function replayRoute(text: string): string {
 const now = (): string => new Date().toISOString();
 /** A write's sample answer: every card of its group (a group moves together), with the item the design's card makes. */
 const sample = (ids: number[], state: AskEventMap["action_result"]["state"], groups: Map<number, string> = new Map()): AskActionAnswer =>
-  ({ results: ids.map((id) => ({ id, groupId: groups.get(id) ?? null, state, result: state === "confirmed" ? REPLAY_WRITES[id]?.result ?? { sample: true } : { sample: true },
+  // The card is already on screen (its `action` event): the result keeps its tool, kind and preview.
+  ({ results: ids.map((id) => ({ id, groupId: groups.get(id) ?? null, tool: "", kind: "other" as const, preview: { title: "", lines: [], item: null }, state, result: state === "confirmed" ? REPLAY_WRITES[id]?.result ?? { sample: true } : { sample: true },
     ref: state === "confirmed" ? REPLAY_WRITES[id]?.ref ?? null : null, undo: state === "confirmed", at: now() })) });
 
 /** The replay's stand-in for `askApi`: fixtures for reads, transcripts for sends, sample answers for writes. */

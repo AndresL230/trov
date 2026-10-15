@@ -150,7 +150,8 @@ export function applyActionResult(t: AskTurn, d: AskEventMap["action_result"]): 
   const prev = t.actions[d.id];
   const vm: AskActionVm = prev
     ? { ...prev, state: d.state, result: d.result, ref: d.ref, undo: d.undo, at: d.at, groupId: d.groupId ?? prev.groupId }
-    : { id: d.id, groupId: d.groupId, tool: null, kind: null, state: d.state, preview: null, fields: {}, editable: [], note: null, result: d.result, ref: d.ref, undo: d.undo, at: d.at };
+    // An Auto write: the result names the write itself (tool, kind, the card's preview).
+    : { id: d.id, groupId: d.groupId, tool: d.tool ?? null, kind: d.kind ?? null, state: d.state, preview: d.preview ?? null, fields: {}, editable: [], note: null, result: d.result, ref: d.ref, undo: d.undo, at: d.at };
   const seen = t.parts.some((p) => p.kind === "action" && p.id === d.id);
   return { ...t, actions: { ...t.actions, [d.id]: vm }, parts: seen ? t.parts : [...t.parts, { kind: "action", id: d.id }] };
 }

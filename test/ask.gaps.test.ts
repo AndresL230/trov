@@ -134,3 +134,49 @@ describe("the stream names the question; a stored answer keeps its streamed orde
     expect(a.parts?.[2]).toMatchObject({ kind: "text", md: expect.stringContaining("After the card.") });
   });
 });
+
+describe("save_artifact from a follow-up saves the answer the person meant", () => {
+  const LONG = `The hosting work waits on the connect test. ${"It fails on main since the status marks changed, and the fix is small. ".repeat(4)}`;
+  async function twoTurns(cookie: string, save: Record<string, unknown>, auto = false) {
+    const model = fakeModel([
+      [{ type: "text", text: `${LONG}${final("Hosting")}` }],
+      [{ type: "tool_use", name: "save_artifact", input: save }],
+      [{ type: "text", text: `Done.${final("Hosting")}` }],
+    ]);
+    const r1 = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { text: "What's blocking hosting?" }));
+    const threadId = eventsOf(r1.events, "thread")[0].id;
+    const first = eventsOf(r1.events, "done")[0].messageId;
+    const r2 = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { threadId, text: "save this as a doc", auto }));
+    return { threadId, first, second: eventsOf(r2.events, "done")[0].messageId, r2 };
+  }
+
+  it("the Save form names the EARLIER answer by default (the follow-up's own reply is one line)", async () => {
+    const cookie = await cookieFor(ME);
+    const t = await twoTurns(cookie, {});
+    const form = eventsOf(t.r2.events, "block").find((b) => b.kind === "save_form");
+    expect(form).toBeTruthy();
+    const detail = AskThreadDetailSchema.parse((await call("GET", `${BASE}/ask/threads/${t.threadId}`, cookie)).json);
+    const stored = detail.messages.find((m) => m.id === t.second)!.blocks.find((b) => b.kind === "save_form");
+    expect(stored?.kind === "save_form" && stored.form.messageId).toBe(t.first);
+  });
+
+  it("which: \"this\" saves the follow-up's own answer", async () => {
+    const cookie = await cookieFor(ME);
+    const t = await twoTurns(cookie, { which: "this" });
+    const detail = AskThreadDetailSchema.parse((await call("GET", `${BASE}/ask/threads/${t.threadId}`, cookie)).json);
+    const stored = detail.messages.find((m) => m.id === t.second)!.blocks.find((b) => b.kind === "save_form");
+    expect(stored?.kind === "save_form" && stored.form.messageId).toBe(t.second);
+  });
+
+  it("in Auto, scope answer saves the earlier answer's words, not \"Done.\"", async () => {
+    const cookie = await cookieFor(ME);
+    const t = await twoTurns(cookie, {}, true);
+    const saved = eventsOf(t.r2.events, "artifact_saved")[0];
+    const page = await first<{ id: number }>(env.DB, `SELECT id FROM artifact_pages WHERE org_id = ? AND slug = ?`, ORG_A, saved.slug);
+    const body = (await first<{ content: string }>(env.DB, `SELECT content FROM artifact_versions WHERE page_id = ? AND org_id = ?`, page!.id, ORG_A))!.content;
+    expect(body).toContain("The hosting work waits on the connect test.");
+    // The Auto card names its write in the stream itself.
+    const card = eventsOf(t.r2.events, "action_result").find((x) => x.state === "auto");
+    expect(card).toMatchObject({ tool: "save_artifact", kind: "other" });
+  });
+});

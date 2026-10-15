@@ -313,7 +313,9 @@ export interface AskEventMap {
   text: { delta: string };
   block: AskBlock;
   action: Pick<AskAction, "id" | "groupId" | "tool" | "kind" | "preview" | "fields" | "editable" | "note"> & { state: "proposed" | "waiting" };
-  action_result: { id: number; groupId: string | null; state: "confirmed" | "auto" | "undone" | "cancelled" | "failed"; result: unknown; ref: string | null; undo: boolean; at: string };
+  /** A card's decision. It names the write itself (`tool`, `kind`, the card's `preview`), so an Auto write — a result
+   *  with no card before it — says what it did ("Created ticket #30", not "Changed ticket #30") with no re-read. */
+  action_result: { id: number; groupId: string | null; tool: string; kind: AskActionKind; preview: AskActionPreview; state: "confirmed" | "auto" | "undone" | "cancelled" | "failed"; result: unknown; ref: string | null; undo: boolean; at: string };
   artifact_saved: { slug: string; title: string; visibility: "private" | "org"; url: string };
   followups: { items: string[] };
   /** `questionId`: the stored id of the question this answers (edit-and-resend needs no read first); absent on a

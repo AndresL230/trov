@@ -353,7 +353,7 @@ const TENANT: Record<string, Row> = {
   "GET /ask/threads/:id/export": {}, "POST /ask/threads/:id/stop": J({}), "POST /ask/threads/:id/save": J({}),
   "POST /ask/messages/:id/save-form": J({}), "POST /ask/messages/:id/wrong": J({ reason: "source_wrong" }),
   "POST /ask/actions/:id/confirm": J({}), "POST /ask/actions/:id/cancel": J({}), "POST /ask/actions/:id/undo": J({}),
-  "POST /ask/attachments": J({}), "GET /ask/settings": {}, "PUT /ask/settings": J({ instructions: "hijacked" }),
+  "POST /ask/attachments": J({}), "DELETE /ask/attachments/:id": {}, "GET /ask/settings": {}, "PUT /ask/settings": J({ instructions: "hijacked" }),
   // src/repo/settings-routes.ts — the PATH's org's default for one of ITS repositories (0071_repo_settings): A's repo
   // is not B's, so B's admin gets 404 and B's member the 403; nothing is written for A.
   "PUT /repo/settings": J({ repo: "SaplingLearn/sapling", overview_group: "app" }),

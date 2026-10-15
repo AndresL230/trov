@@ -73,7 +73,8 @@ export const AskActionSchema = z.object({
 
 const tokens = z.object({ in: z.number(), out: z.number(), cached: z.number() });
 const actionResult = z.object({
-  id: z.number().int(), groupId: z.string().nullable(), state: z.enum(["confirmed", "auto", "undone", "cancelled", "failed"]),
+  id: z.number().int(), groupId: z.string().nullable(), tool: z.string(), kind: z.enum(ASK_ACTION_KINDS), preview: AskActionPreviewSchema,
+  state: z.enum(["confirmed", "auto", "undone", "cancelled", "failed"]),
   result: z.unknown(), ref: z.string().nullable(), undo: z.boolean(), at: z.string(),
 });
 

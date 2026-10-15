@@ -81,7 +81,7 @@ function cards(s: AppState, v: AskView = askView(s)): string[] {
   return shownParts(a.turn).flatMap((p) => (p.kind === "actions" ? [actionGroupView(v, a, p.ids)] : []));
 }
 const result = (id: number, state: AskEventMap["action_result"]["state"], ref: string | null, res: unknown = null, undo = state === "confirmed", groupId: string | null = null): AskEventMap["action_result"] =>
-  ({ id, groupId, state, result: res, ref, undo, at: NOW.toISOString() });
+  ({ id, groupId, tool: "", kind: "other", preview: { title: "", lines: [], item: null }, state, result: res, ref, undo, at: NOW.toISOString() });
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
 // ── actions-ask ─────────────────────────────────────────────────────────────
@@ -279,30 +279,26 @@ describe("actions-auto — done lines with Undo and a time, one grouped line, on
     for (const st of askTranscript("actions-auto", NOW)) {
       const e = st.event;
       s2.ask.page = e.event === "thread" ? foldThreadEvent(s2.ask.page, e.data) : withLastTurn(s2.ask.page, (t) => foldAskEvent(t, e, 0));
-      actionsPart.onEvent!(ctx, "page", e);
+      actionsPart.onEvent?.(ctx, "page", e);
     }
     await flush();
     expect(answerOf(s2).turn.actions[46]).toMatchObject({ tool: "publish_doc", state: "waiting" });
     expect(api.confirmAction).not.toHaveBeenCalled();
     expect(api.cancelAction).not.toHaveBeenCalled();
     expect(api.undoAction).not.toHaveBeenCalled();
-    // Its one read: the stored cards behind the Auto results (to name them), once the answer is stored.
-    expect(api.getThread).toHaveBeenCalledWith(1);
+    // No read at all: every Auto result names its own write (tool, kind, preview).
+    expect(api.getThread).not.toHaveBeenCalled();
+    expect(answerOf(s2).turn.actions[43]).toMatchObject({ tool: "create_ticket", kind: "ticket" });
   });
 
-  it("an Auto result names its write once the stored card is read back (the stream carries no tool)", async () => {
+  it("an Auto result names its write from the stream itself — a create is \"Created\", a move \"Moved\" — with no re-read", () => {
     const s2 = app(null);
     let t = newTurn("smart");
-    t = foldAskEvent(t, { event: "action_result", data: result(60, "auto", "ticket:40", { id: 40, title: "T", status: "submitted" }, true) }, 0);
+    t = foldAskEvent(t, { event: "action_result", data: { ...result(60, "auto", "ticket:40", { id: 40, title: "T", status: "submitted" }, true), tool: "create_ticket", kind: "ticket", preview: { title: "T", lines: [], item: null } } }, 0);
+    t = foldAskEvent(t, { event: "action_result", data: { ...result(61, "auto", "ticket:41", { id: 41, title: "U", status: "in_progress" }, true), tool: "transition_ticket", kind: "move", preview: { title: "Move ticket #41", lines: [], item: null } } }, 0);
     s2.ask.page = { ...s2.ask.page, threadId: 9, messages: [{ role: "assistant", key: "a9", turn: t }] };
-    expect(text(cards(s2)[0])).toBe("Changed ticket #40 Just now Undo");
-    const stored = { id: 60, groupId: "9-1-1", tool: "create_ticket", kind: "ticket", state: "auto", preview: { title: "New ticket", lines: [], item: null }, fields: { title: "T" }, editable: [], note: null, result: null, ref: "ticket:40", undo: true, createdAt: "", decidedAt: null };
-    const getThread = vi.fn(async () => ({ thread: {} as never, messages: [{ actions: [stored] } as never] }));
-    const { ctx } = ctxOf(s2, { getThread });
-    actionsPart.onEvent!(ctx, "page", { event: "done", data: { messageId: 2, cites: [], tokens: { in: 0, out: 0, cached: 0 } } });
-    await flush();
-    expect(getThread).toHaveBeenCalledWith(9);
     expect(text(cards(s2)[0])).toBe("Created ticket #40 Just now Undo");
+    expect(text(cards(s2)[1])).toMatch(/^Moved ticket #41 to In progress/);
   });
 
   it("GUARD — Publish confirms only for someone who may promote: canPublish false shows \"Open in Review\" and no Confirm", () => {

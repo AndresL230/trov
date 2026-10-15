@@ -409,7 +409,7 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   const failed = out.ended === "failed" || out.ended === "refused";
   const cites = failed ? [] : await linkAnswer(ctx, handle, out.text, seen, nowDate());
   const stopped = out.ended === "stopped" || out.ended === "timeout";
-  const messageId = await storeAnswer(ctx, thread.id, turn, mode, out, seen, cites, stopped || failed, def.countsAs, rec.parts);
+  const messageId = await storeAnswer(ctx, thread.id, turn, mode, out, seen, cites, stopped || failed, def.countsAs, rec.parts, lastAnswerWithContent(earlier));
   if (failed) return v.emit("error", { code: "failed", message: out.ended === "refused" ? "Trov can't answer that." : "Something went wrong. Nothing was changed. Try again." });
 
   const title = thread.title || out.title || fallbackTitle(qc.text ?? "");
@@ -419,14 +419,36 @@ async function converse(c: C, outer: Conversation): Promise<void> {
     await v.emit("thread", { id: thread.id, title, mode, auto, origin: thread.origin, contextRef: thread.context_ref });
   }
   if (out.autosave && !stopped) {
-    await autoSave(c, thread, turn, messageId, out.autosave, title, v.emit);
+    await autoSave(c, thread, turn, messageId, saveTarget(out, messageId, lastAnswerWithContent(earlier)), out.autosave, title, v.emit);
   }
   if (out.ended === "timeout") return v.emit("error", { code: "timeout", message: "Ask Trov ran out of time for this answer. What it said so far is kept." });
   if (out.followups.length && !stopped) await v.emit("followups", { items: out.followups });
   await v.emit("done", { messageId, questionId: question.id, cites, tokens: out.tokens, ...(stopped ? { stopped: true } : {}) });
 }
 
-async function storeAnswer(ctx: TenantContext, threadId: number, turn: number, mode: AskMode, out: TurnResult, seen: Set<string>, cites: RefView[], stopped: boolean, countsAs: number, parts?: AskMessagePart[]): Promise<number> {
+/** The most recent earlier answer that has content (text or a block other than a save form), or null. */
+function lastAnswerWithContent(rows: readonly ChatMessageRow[]): number | null {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i];
+    if (r.role !== "assistant") continue;
+    const c = contentOf(r);
+    if ((c.text ?? "").trim() || ((c.blocks ?? []) as AskBlock[]).some((b) => b.kind !== "save_form")) return r.id;
+  }
+  return null;
+}
+/** Answers shorter than this, with no block of their own, are a reply to "save that", not content to save. */
+const SAVE_CONTENT_CHARS = 280;
+/** The answer `save_artifact` saves: the one the model named (`which`), else THIS answer when it has content of its
+ *  own (a block, or more than a line or two), else the most recent earlier answer that has — "save this as a doc"
+ *  asked after an answer saves THAT answer, not the one-line reply. */
+function saveTarget(out: Pick<TurnResult, "text" | "blocks" | "saveWhich">, current: number, previous: number | null): number {
+  if (out.saveWhich === "this") return current;
+  if (out.saveWhich === "previous") return previous ?? current;
+  const own = out.blocks.some((b) => b.kind !== "save_form") || out.text.trim().length >= SAVE_CONTENT_CHARS;
+  return own || previous === null ? current : previous;
+}
+
+async function storeAnswer(ctx: TenantContext, threadId: number, turn: number, mode: AskMode, out: TurnResult, seen: Set<string>, cites: RefView[], stopped: boolean, countsAs: number, parts?: AskMessagePart[], previous: number | null = null): Promise<number> {
   const content: StoredContent = {
     text: out.text, refs: [...seen], blocks: out.blocks, activity: out.activity, followups: stopped ? [] : out.followups, thinking: out.thinking,
     ...(parts ? { parts } : {}),
@@ -437,7 +459,8 @@ async function storeAnswer(ctx: TenantContext, threadId: number, turn: number, m
   });
   // A save form names the answer it saves.
   if (out.blocks.some((b) => b.kind === "save_form")) {
-    content.blocks = out.blocks.map((b) => (b.kind === "save_form" ? { ...b, form: { ...b.form, messageId: id } } : b));
+    const target = saveTarget(out, id, previous);
+    content.blocks = out.blocks.map((b) => (b.kind === "save_form" ? { ...b, form: { ...b.form, messageId: target } } : b));
     await setMessageContent(ctx, id, content);
   }
   await attachActionsToMessage(ctx, threadId, turn, id);
@@ -464,7 +487,7 @@ async function answerSearch(c: C, v: Conversation, thread: ChatThreadRow, turn: 
   for (const i of items) seen.add(i.ref);
   const out: TurnResult = {
     text, title: null, followups: [], blocks: items.length ? [block] : [], activity: [{ step: 1, tool: "search", icon: "search", label: `Searched Trov for '${q}'`, results: items.map((i) => i.ref), resultLine: `${items.length} results` }],
-    thinking: null, model: "", tokens: { in: 0, out: 0, cached: 0 }, ended: "done", called: false, autosave: null,
+    thinking: null, model: "", tokens: { in: 0, out: 0, cached: 0 }, ended: "done", called: false, autosave: null, saveWhich: null,
   };
   const messageId = await storeAnswer(ctx, thread.id, turn, v.req.mode, out, seen, items, false, 0, parts);
   if (!thread.title) {
@@ -508,21 +531,21 @@ async function saveFromThread(c: C, thread: ChatThreadRow, s: SaveAsk): Promise<
 }
 
 /** `save_artifact` in Auto: saved as private at once, as a card with Undo (state `auto`). */
-async function autoSave(c: C, thread: ChatThreadRow, turn: number, messageId: number, a: NonNullable<TurnResult["autosave"]>, threadTitle: string, emit: Emit): Promise<void> {
+async function autoSave(c: C, thread: ChatThreadRow, turn: number, messageId: number, target: number, a: NonNullable<TurnResult["autosave"]>, threadTitle: string, emit: Emit): Promise<void> {
   const ctx = c.var.ctx;
   const title = a.title ?? `${threadTitle}, ${shortDay(nowDate().toISOString().slice(0, 10))}`;
   const preview = { title: `Save "${title}" as an artifact`, lines: [{ label: "Visibility", value: "Private" }], item: null };
   const id = await insertAction(ctx, { threadId: thread.id, turn, tool: "save_artifact", kind: "other", groupId: a.groupId, toolUseId: "", args: a, preview, state: "running" });
   try {
-    const saved = await saveFromThread(c, thread, { messageId: a.scope === "thread" ? null : messageId, block: null, title, kind: a.kind, visibility: "private" });
+    const saved = await saveFromThread(c, thread, { messageId: a.scope === "thread" ? null : target, block: null, title, kind: a.kind, visibility: "private" });
     await finishAction(ctx, id, "auto", saved, { slug: saved.slug });
     await attachActionsToMessage(ctx, thread.id, turn, messageId);
-    await emit("action_result", { id, groupId: a.groupId, state: "auto", result: saved, ref: `artifact:${saved.slug}`, undo: true, at: nowDate().toISOString() });
+    await emit("action_result", { id, groupId: a.groupId, tool: "save_artifact", kind: "other", preview, state: "auto", result: saved, ref: `artifact:${saved.slug}`, undo: true, at: nowDate().toISOString() });
     await emit("artifact_saved", saved);
   } catch (e) {
     const body = errorBody(e);
     await finishAction(ctx, id, "failed", body, null);
-    await emit("action_result", { id, groupId: a.groupId, state: "failed", result: body, ref: null, undo: false, at: nowDate().toISOString() });
+    await emit("action_result", { id, groupId: a.groupId, tool: "save_artifact", kind: "other", preview, state: "failed", result: body, ref: null, undo: false, at: nowDate().toISOString() });
   }
 }
 
@@ -708,7 +731,7 @@ async function targets(c: C, a: ActionWithTurn, only: boolean): Promise<ActionWi
 }
 
 const result = (a: ChatActionRow, state: AskEventMap["action_result"]["state"], res: unknown, ref: string | null, undo: boolean): AskEventMap["action_result"] =>
-  ({ id: a.id, groupId: a.group_id, state, result: res, ref, undo, at: nowDate().toISOString() });
+  ({ id: a.id, groupId: a.group_id, tool: a.tool, kind: a.kind as AskAction["kind"], preview: parseJson(a.preview_json, { title: a.tool, lines: [], item: null }), state, result: res, ref, undo, at: nowDate().toISOString() });
 
 askApp.post("/ask/actions/:id/confirm", async (c) => {
   const a = await actionOr404(c);
