@@ -16,6 +16,8 @@ import { createReplayApi, replayFromLocation, replayPlan, replayQuestionFiles, r
 import type { AskReplayIndex } from "../web/src/ask-api";
 import { setApiOrg } from "../web/src/api";
 import { emptyConvo } from "../web/src/ask-stream";
+import { threadsPart } from "../web/src/ask-threads";
+import type { AskCtx } from "../web/src/ask-state";
 import { askThreadsFixture, askRefFixtures, askStateFixture, askTranscript, askTranscriptSse } from "@shared/ai-fixtures";
 import css from "../web/src/trov.css?raw";
 
@@ -167,6 +169,38 @@ describe("Ask's borderless fields leave the focus ring to their box", () => {
     // …and the boxes keep the app's focus contrast (web-ui.md › focus rings): a --focus edge.
     expect(css).toMatch(/\.ask-box:focus-within \{ border-color:var\(--focus\)/);
     expect(css).toMatch(/\.ask-th-search:focus-within \{ border-color:var\(--focus\)/);
+  });
+});
+
+describe("the thread menu by keyboard", () => {
+  // e2e EV-AU-live-K: Enter on a row's ⋯ opened the menu but left focus on ⋯ — ↑↓ did nothing, and only Tab reached
+  // Rename. Like the composer's mode menu: opening focuses the first item, ↑↓ move (wrapping), Escape returns to ⋯.
+  type El = { name: string; focused: boolean; focus(): void; closest(sel: string): El | null; parentElement: El | null; querySelectorAll(sel: string): El[]; querySelector(sel: string): El | null };
+  function fakeMenu() {
+    let current: El | null = null;
+    const mk = (name: string): El => ({ name, focused: false, focus() { if (current) current.focused = false; this.focused = true; current = this; }, closest: () => null, parentElement: null, querySelectorAll: () => [], querySelector: () => null });
+    const menu = mk("menu");
+    const items = ["Rename", "Pin", "Export", "Delete"].map(mk);
+    for (const it of items) { it.parentElement = menu; it.closest = (sel: string) => (sel.includes("menuitem") ? it : null); }
+    menu.querySelectorAll = () => items;
+    const more = mk("more");
+    const mount = { querySelector: (sel: string) => (sel.includes("menuitem") ? items[0] : sel.includes("askThMore") ? more : null) };
+    return { items, more, mount, focused: () => current?.name ?? null };
+  }
+  it("opening focuses the first item; ↑↓ move and wrap; Escape hands focus back to ⋯", () => {
+    const s = askState();
+    const ctx = { ui: s.ask, paint() {}, exit: (_k: string, apply: () => void) => apply(), cancelExit() {} } as unknown as AskCtx;
+    const m = fakeMenu();
+    threadsPart.act!(ctx, "askThMore", "7", null);
+    threadsPart.afterPaint!(ctx, m.mount as unknown as HTMLElement);
+    expect(m.focused()).toBe("Rename");
+    const key = (k: string) => threadsPart.onKeyDown!(ctx, { key: k, target: m.items.find((i) => i.focused), preventDefault() {}, stopPropagation() {} } as unknown as KeyboardEvent);
+    expect(key("ArrowDown")).toBe(true); expect(m.focused()).toBe("Pin");
+    key("ArrowUp"); key("ArrowUp"); expect(m.focused()).toBe("Delete");
+    threadsPart.escape![0].close(ctx);
+    threadsPart.afterPaint!(ctx, m.mount as unknown as HTMLElement);
+    expect(s.ask.threadMenu).toBeNull();
+    expect(m.focused()).toBe("more");
   });
 });
 
