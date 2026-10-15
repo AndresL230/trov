@@ -2,8 +2,9 @@
 // "Your brief" for one person, written by the AI pass on the scope `person:<handle>` — ONE Haiku call per person,
 // led by the cached org prefix, its answer structured and cited.
 //
-//   • NOW       — their open pull requests (and what is failing on them) and their latest `Status:` note.
-//   • RECENTLY  — the last 7 days of their session notes and merged-PR CARDS (the summaries; never a raw PR body).
+//   • NOW       — their open pull requests (and what is failing on them) and their latest `Status:` note or digest.
+//   • RECENTLY  — the last 7 days of their session notes, the session digests Trov wrote for them (`origin = 'ai'`,
+//                 `subject`), and merged-PR CARDS (the summaries; never a raw PR body).
 //   • NEXT      — ONLY items the server OFFERS (assigned open tickets, handoffs left for them, failing runs on their
 //                 open PRs, sprint tickets due soon), ORDERED BY THE SERVER by plain rules — overdue, then blocked,
 //                 then someone waiting, then due soon, then the rest. The model adds one line, the "why", per item;
@@ -18,7 +19,7 @@
 // The stored brief (`person_brief`, 0063) is what My Work, MCP `get_my_work` and — from Phase E — the e-mail read
 // (src/tools/mywork.ts `storedBrief`): none of them calls a model, and none imports this file. The pure half — the
 // input's shape, the order, the prompt, the answer's checks — is ./brief-core.ts.
-import { AI_LIST_MAX, type AiBrief, type AiCite } from "@shared/ai";
+import { AI_LIST_MAX, TROV_SYSTEM_HANDLE, type AiBrief, type AiCite } from "@shared/ai";
 import { sprintDueState } from "@shared/sprints-core";
 import { all, nowIso, ph, type TenantContext } from "../data/sql";
 import { briefAudience, briefWanted, latestBrief, storeBrief } from "../data/person-brief";
@@ -133,11 +134,14 @@ export async function buildBriefInput(ctx: TenantContext, handle: string, now: D
   }
 
   // ── session notes: the latest Status, and the last 7 days ──
-  // SEAM: Phase D's session digests (0061) are written by `trov` FOR a person (`feed.subject`); once that column
-  // exists, `author = handle OR (author = 'trov' AND subject = handle)`. Until then a person's notes are their own.
+  // Their own entries AND the session digests Trov wrote FOR them (0061: `origin = 'ai'`, author `trov`,
+  // `feed.subject` = the member) — so Now carries the latest `Status:` digest and Recently the last 7 days of
+  // digests beside their own notes (Q61; spec handoff #10 Phase D).
   const notesRows = await all<{ id: number; summary: string; brief: string | null; created_at: string }>(ctx,
-    `SELECT id, summary, brief, created_at FROM feed WHERE org_id = ? AND author = ? COLLATE NOCASE AND created_at > ?
-      ORDER BY created_at DESC, id DESC LIMIT ${MAX_NOTES * 2}`, ctx.orgId, me.handle, recentSince);
+    `SELECT id, summary, brief, created_at FROM feed
+      WHERE org_id = ?1 AND created_at > ?3
+        AND ((author = ?2 COLLATE NOCASE AND origin = 'agent') OR (origin = 'ai' AND author = ?4 AND subject = ?2 COLLATE NOCASE))
+      ORDER BY created_at DESC, id DESC LIMIT ${MAX_NOTES * 2}`, ctx.orgId, me.handle, recentSince, TROV_SYSTEM_HANDLE);
   const notesAll = notesRows.filter((n) => !HANDOFF_LINE.test(n.summary));
   const statusRow = notesAll.find((n) => /^status:/i.test(n.summary.trim())) ?? null;
   const note = (n: { id: number; summary: string; brief: string | null; created_at: string }): BriefNote =>

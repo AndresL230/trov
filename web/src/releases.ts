@@ -288,6 +288,7 @@ export const RELEASES: Release[] = [
         "Deleting an account also deletes the AI router's scopes keyed on the person (their brief, their GitHub sessions) (#178)",
         "Deleting an account also deletes its logins' `ai_sessions`; its digests stay, their `subject` tombstoned like every handle column. A reserved handle (`github-webhook`, `trov`) can never be deleted (#178)",
         "Trov plugin 0.9.0 (skill text only): `record-session` records decisions, findings and incidents and cites its commits — what shipped is Trov's session digest; `load-context` reads `get_repo_dashboard`'s `state` first; the `trov` skill says both (#178)",
+        "The brief reads the session digests Trov wrote for the person (`origin = 'ai'`, `subject`): Now carries the latest `Status:` digest, Recently the week's digests beside their own notes (Q61) (#178)",
         "Deleting an account also deletes the person's stored briefs (`person_brief`), in every organization (#178)",
         "`switchBtn` (`web/src/notifications.ts`) takes an optional accessible name and a busy state; without them its markup is unchanged (#178)",
         "My Work › Queued handoffs: the button is Claim & copy (`mwHandoffClaim`): it copies the newest handoff as a prompt and claims it, as the handoff screen's Claim does (#178)",

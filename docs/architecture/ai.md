@@ -422,11 +422,11 @@ structured (`BriefAnswerSchema`, each part checked on its own: `sections`).
   - **Now** — their open PRs (the latest `repo_events` row per PR is `draft` / `review`, authored by a login the org
     attributes to them, last event within 60 days; at most 8), each with its failing runs (the latest run per
     workflow on its branch is `failure` / `timed_out`) and red checks (on its head sha), and their latest `Status:`
-    session note (a feed entry they wrote whose summary starts "Status:", last 7 days).
-  - **Recently** — the last 7 days of their session notes (their feed entries, the handoff announcements left out)
+    session note or digest (summary starts "Status:", last 7 days).
+  - **Recently** — the last 7 days of their session notes (their own agent entries, the handoff announcements left
+    out, AND the session digests Trov wrote for them: `origin = 'ai'`, author `trov`, `subject` = the member — Q61)
     and merged-PR CARDS (`pr_summaries`' title / what / impact, the PR's own title and link — never a raw PR body).
-    SEAM: Phase D's session digests are written by `trov` for a person (`feed.subject`, 0061); once that column
-    exists they join here.
+    A digest for them marks `person:<subject>` (the router), so the brief follows it.
   - **Next** — ONLY items the server OFFERS, in the server's order (`orderNext`, by `NEXT_RULES`): **overdue** (an
     assigned open ticket whose sprint, not done, is past its date — `sprintDueState`), **blocked** (a failing run on
     their open PR), **waiting** (a pending, unexpired handoff someone else left for them, then one left for anyone),

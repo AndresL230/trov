@@ -124,6 +124,21 @@ describe("the input: what the server offers, in the server's order", () => {
     expect(briefPromptInput(b)).not.toContain("RAW BODY NEVER SENT");
   });
 
+  it("Trov's session digests FOR this person count as their notes (Q61): the latest Status digest is Now, the week's digests are Recently — never another member's", async () => {
+    const digest = (summary: string, subject: string, ago: number) =>
+      run(env.DB, `INSERT INTO feed (org_id, author, summary, brief, created_at, origin, model, subject) VALUES (?, 'trov', ?, 'by Trov', ?, 'ai', 'claude-haiku-5-5', ?)`, ORG_A, summary, iso(ago), subject);
+    await digest("Status: Netlify connect step waits on the token check", ME, 20 * MIN); // newer than their own Status
+    await digest("Shipped: Hosting tab polish", ME, DAY);
+    await digest("Status: someone else's", "Jose-Gael-Cruz-Lopez", 5 * MIN);
+    await digest("Shipped: too old", ME, 9 * DAY);
+    const b = (await buildBriefInput(ctx(), ME))!;
+    expect(b.now.status?.summary).toBe("Status: Netlify connect step waits on the token check");
+    expect(b.recently.notes.map((n) => n.summary)).toEqual([
+      "Status: hosting screens half done, Netlify test failing", "Shipped: Hosting tab polish", "Shipped: status marks across the app",
+    ]);
+    expect(briefPromptInput(b)).not.toContain("someone else's");
+  });
+
   it("orderNext is the rule order whatever order the offers come in", () => {
     const o = (ref: string, rule: NextOffer["rule"], k = 0): NextOffer => ({ ref, rule, kind: "ticket", title: ref, facts: "", fallback: "x", cites: [{ ref, label: ref, href: null }], order: [k, 0, ref] });
     expect(orderNext([o("a", "assigned"), o("b", "due soon"), o("c", "waiting"), o("d", "blocked"), o("e", "overdue", 1), o("f", "overdue", -2)]).map((x) => x.ref))
