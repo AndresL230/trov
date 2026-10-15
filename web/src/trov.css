@@ -3251,11 +3251,13 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
    "Added" / "Dismissed" over it), then closes up and fades on the app's clock. Here only the tones and the
    card's frame are set. */
 .cnpy-tagreview-row + .cnpy-tagreview-row .cnpy-tagreview { border-top:1px solid var(--border); }
-.cnpy-tagreview { position:relative; transition:background .1s ease; }
+.cnpy-tagreview { position:relative; transition:background .1s ease, transform var(--fx-fast) var(--fx-ease); }
 .cnpy-rv-row[data-verdict="added"] { --rv-tone:var(--green); }
 .cnpy-rv-row[data-verdict="dismissed"] { --rv-tone:var(--fg-55); }
-.cnpy-rv-row[data-verdict] .cnpy-tagreview { background:color-mix(in srgb, var(--rv-tone) 9%, var(--surface)); }
-@media (prefers-reduced-motion: reduce) { .cnpy-tagreview { transition:none; } }
+/* …and, as it closes up (after the verdict's .13s, on the same clock), the card slides aside: one motion — it
+   slides off and fades while the rows under it slide up into its place. */
+.cnpy-rv-row[data-verdict] .cnpy-tagreview { background:color-mix(in srgb, var(--rv-tone) 9%, var(--surface)); transform:translateX(24px); transition-delay:0s, .13s; }
+@media (prefers-reduced-motion: reduce) { .cnpy-tagreview { transition:none; } .cnpy-rv-row[data-verdict] .cnpy-tagreview { transform:none; } }
 /* A number on the tag page that just changed (`data-bump`): it ticks up into place instead of swapping. */
 .cnpy-tagpage [data-bump] { display:inline-block; animation:cnpy-tagbump .42s cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes cnpy-tagbump { 0% { opacity:0; transform:translateY(55%); } 60% { opacity:1; } 100% { opacity:1; transform:none; } }
