@@ -92,6 +92,9 @@ export async function putPart(
   const checked = checkFields(provider.partSettings, given, "settings");
   if ("field" in checked) throw invalid(checked.field, checked.message);
   const settings = checked.values;
+  // What a field list cannot say ("exactly one of…" — the `github` provider's settings).
+  const cross = provider.checkSettings?.(settings) ?? null;
+  if (cross) throw invalid(cross.field, cross.message);
 
   const at = nowIso();
   const next = { label: label ?? existing?.label ?? defaultPartLabel(partKey), role, provider: provider.id, settings };

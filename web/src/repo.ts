@@ -872,7 +872,7 @@ function pollGithub(g: RepoRefreshGithub | "not_configured" | undefined): string
 /** A provider's name in the strip. The registry's labels live on the Worker (src/hosting/registry.ts);
  *  these are the short forms a one-line summary needs. */
 const PROVIDER_NAME: Record<HostingProviderId, string> = {
-  cloudflare: "Cloudflare", railway: "Railway", vercel: "Vercel", render: "Render", netlify: "Netlify", fly: "Fly.io", aws: "AWS",
+  cloudflare: "Cloudflare", railway: "Railway", vercel: "Vercel", render: "Render", netlify: "Netlify", fly: "Fly.io", aws: "AWS", github: "GitHub",
 };
 /** The hosting providers: ONE line per provider, in the order its first part was polled — how many parts
  *  polled cleanly, then each one that did not, by `<env> <part>`: `Vercel — 2 ok · staging web ✗ timeout`.

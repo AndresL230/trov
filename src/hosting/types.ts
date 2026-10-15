@@ -21,6 +21,9 @@
 //   - A metric the provider cannot read for this part (plan, add-on, not enabled) goes in `unavailable`
 //     with a reason, never as a zero.
 //   - `pollCost` is the worst-case number of fetches one `poll` makes — the cron budgets with it.
+//   - A provider with no credential of its own (`credential: "github_app"` — `github`, whose deploys come from
+//     the GitHub capture) offers NO connection method and has `pollCost` 0; every other provider offers at
+//     least one and costs at least 1.
 import type {
   ConnectionMethod, DeployState, DeployTarget, HostingMetric, HostingProviderId, PartRole,
 } from "@shared/hosting";
@@ -95,6 +98,9 @@ export interface HostingDeploy {
   readyAt: string | null;
   url: string | null;
   inspectUrl: string | null;
+  /** Why it failed, in the provider's own words (Netlify `error_message`, …), when it did and the provider says.
+   *  The framework scrubs it, keeps one line and cuts it to 140 characters; ignored for a deploy that did not fail. */
+  reason?: string | null;
 }
 
 export interface HostingPoint {
@@ -190,4 +196,12 @@ export interface HostingProvider {
   poll(pc: ProviderContext, part: PartRef): Promise<PollResult>;
   /** Present when `connectionMethods` offers `install` or `oauth`. */
   install?: InstallSpec;
+  /** `github_app`: the provider has NO credential of its own (repo setups, Phase A — `github`). It offers no
+   *  connection method, the poll framework never resolves a credential for it and never runs its `poll`
+   *  (`pollCost` 0), and anything it reads from GitHub goes through `resolveGithubCredential`. Absent: the
+   *  provider's own credential (`HOSTING_INTEGRATION_KIND`), as for every other provider. */
+  credential?: "github_app";
+  /** Cross-field checks `checkFields` cannot express ("set exactly one of…"), run on a part write after it:
+   *  the field and a fixed message, or null. */
+  checkSettings?(values: Readonly<Record<string, string>>): { field: string; message: string } | null;
 }

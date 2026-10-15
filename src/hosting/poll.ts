@@ -29,11 +29,11 @@
 // This module imports src/data/secrets.ts, so nothing reachable from src/mcp.ts may import it
 // (test/secrets.mcp.test.ts): its callers are src/repo/cron.ts (the `:40` job and Poll now) only.
 import {
-  HOSTING_INTEGRATION_KIND, HOSTING_METRICS, hostingMetricName, isDeployState, isHostingMetric, isHostingProvider,
-  type DeployState, type DeployTarget, type HostingMetric, type HostingPollOutcome, type HostingProviderId,
+  HOSTING_INTEGRATION_KIND, HOSTING_METRICS, hostingMetricName, isDeployState, isHostingMetric, isHostingProvider, metricsForRole,
+  type HostingMetric, type HostingPollOutcome, type HostingProviderId,
 } from "@shared/hosting";
 import type { Env } from "../env";
-import { type Stmt, type TenantContext, batch, first, run, stmt } from "../data/sql";
+import { type TenantContext, first, run } from "../data/sql";
 import { type Revealed, type Secret, lastErrorText, recordSecretOutcome, resolveCredential, resolveIntegrationConfig, scrub } from "../data/secrets";
 import { jobTenant } from "../platform/jobs";
 import { DAY, HOSTING_DEPLOY_RETENTION_DAYS, USAGE_RETENTION_DAYS, putMetrics } from "../repo/store";
@@ -42,6 +42,8 @@ import { HOUR, HostingError, asHostingError, hostFetch, hourFloor, iso } from ".
 import { listAllParts, partRef, type PartRow } from "./parts";
 import { PROVIDERS } from "./registry";
 import type { HostingField, HostingProvider, PollResult } from "./types";
+import { REASON_STORED_MAX, upsertDeploys, type CleanDeploy } from "./deploy-store";
+import { NO_GITHUB_METRICS } from "./providers/github";
 
 /** The providers a poll may run — the registry, or (tests) a map holding a fake. */
 export type ProviderMap = Readonly<Partial<Record<HostingProviderId, HostingProvider>>>;
@@ -53,7 +55,10 @@ export const DEFAULT_HOSTING_COST = 5;
  *  budget size a part by. `provider` is a stored string, so an id the code no longer knows (or a
  *  provider whose `pollCost` is not a positive number) is budgeted at `DEFAULT_HOSTING_COST`. */
 export function providerPollCost(providers: ProviderMap, provider: string): number {
-  const cost = isHostingProvider(provider) ? providers[provider]?.pollCost : undefined;
+  const p = isHostingProvider(provider) ? providers[provider] : undefined;
+  // A provider with no credential of its own (`github`) is never polled: its deploys come from the capture.
+  if (p?.credential === "github_app") return 0;
+  const cost = p?.pollCost;
   return typeof cost === "number" && Number.isFinite(cost) && cost >= 1 ? Math.ceil(cost) : DEFAULT_HOSTING_COST;
 }
 
@@ -90,11 +95,7 @@ const FUTURE_SLACK_MS = HOUR;
 /** Detail strings (`hosting_poll_state.detail`, an outcome's `detail`) — `lastErrorText`'s 300. */
 const DETAIL_MAX = 300;
 
-/** A deploy as it is stored — every string checked, scrubbed and capped, every instant normalised. */
-export interface CleanDeploy {
-  id: string; state: DeployState; target: DeployTarget; sha: string | null; branch: string | null; message: string | null;
-  by: string | null; createdAt: string; readyAt: string | null; url: string | null; inspectUrl: string | null;
-}
+export type { CleanDeploy } from "./deploy-store";
 export interface CleanPoll {
   points: RepoMetric[];
   deploys: CleanDeploy[];
@@ -197,6 +198,8 @@ export function validatePoll(result: unknown, part: Pick<PartRow, "env" | "key" 
       branch: ident(d.branch, BRANCH_MAX), message: prose(d.message, MESSAGE_MAX, revealed), by: prose(d.by, ACTOR_MAX, revealed),
       createdAt: iso(created), readyAt: ready === null ? null : iso(ready),
       url: httpsUrl(d.url, revealed), inspectUrl: httpsUrl(d.inspectUrl, revealed),
+      // A failure reason only for a deploy that failed — scrubbed FIRST, then one line, then cut to 140.
+      reason: d.state === "error" ? prose(d.reason, REASON_STORED_MAX, revealed) : null,
     });
   }
   // The newest `MAX_DEPLOYS_PER_POLL`; whatever a provider over-delivered beyond them is counted, not kept.
@@ -238,48 +241,6 @@ export function mergeCovered(prev: { from: number; to: number } | null, next: { 
 }
 
 // ── storage ──────────────────────────────────────────────────────────────────
-
-/**
- * ONE batch of upserts, keyed `(org_id, env, part, provider, deploy_id)`. A deploy's state moves (building →
- * ready), so a row is UPDATED — but only when something actually changed (the `WHERE`), so a re-poll of a
- * settled deploy writes nothing and `meta.changes` counts new OR changed rows only. A later poll that no
- * longer reports a field (a message, a URL) never erases one already known (`COALESCE`); the creation
- * instant and the first `recorded_at` are kept. Returns how many rows were new or changed.
- */
-async function upsertDeploys(ctx: TenantContext, part: PartRow, deploys: CleanDeploy[], now: number): Promise<number> {
-  if (!deploys.length) return 0;
-  const at = iso(now);
-  const stmts: Stmt[] = deploys.map((d) => stmt(ctx,
-    `INSERT INTO hosting_deploys (org_id, env, part, provider, deploy_id, state, target, sha, branch, message, actor, url, inspect_url,
-                                  created_at, ready_at, recorded_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(org_id, env, part, provider, deploy_id) DO UPDATE SET
-       state = excluded.state,
-       target = COALESCE(excluded.target, hosting_deploys.target),
-       sha = COALESCE(excluded.sha, hosting_deploys.sha),
-       branch = COALESCE(excluded.branch, hosting_deploys.branch),
-       message = COALESCE(excluded.message, hosting_deploys.message),
-       actor = COALESCE(excluded.actor, hosting_deploys.actor),
-       url = COALESCE(excluded.url, hosting_deploys.url),
-       inspect_url = COALESCE(excluded.inspect_url, hosting_deploys.inspect_url),
-       ready_at = COALESCE(excluded.ready_at, hosting_deploys.ready_at),
-       updated_at = excluded.updated_at
-     WHERE hosting_deploys.state IS NOT excluded.state
-        OR (excluded.target IS NOT NULL AND hosting_deploys.target IS NOT excluded.target)
-        OR (excluded.sha IS NOT NULL AND hosting_deploys.sha IS NOT excluded.sha)
-        OR (excluded.branch IS NOT NULL AND hosting_deploys.branch IS NOT excluded.branch)
-        OR (excluded.message IS NOT NULL AND hosting_deploys.message IS NOT excluded.message)
-        OR (excluded.actor IS NOT NULL AND hosting_deploys.actor IS NOT excluded.actor)
-        OR (excluded.url IS NOT NULL AND hosting_deploys.url IS NOT excluded.url)
-        OR (excluded.inspect_url IS NOT NULL AND hosting_deploys.inspect_url IS NOT excluded.inspect_url)
-        OR (excluded.ready_at IS NOT NULL AND hosting_deploys.ready_at IS NOT excluded.ready_at)`,
-    ctx.orgId, part.env, part.key, part.provider, d.id, d.state, d.target, d.sha, d.branch, d.message, d.by, d.url, d.inspectUrl,
-    d.createdAt, d.readyAt, at, at));
-  let changed = 0;
-  // ≤ MAX_DEPLOYS_PER_POLL (50) statements — exactly one D1 batch, one transaction.
-  for (const res of await batch(ctx, stmts)) if (res.meta.changes > 0) changed++;
-  return changed;
-}
 
 interface StateRow { provider: string; last_ok_at: string | null; covered_from: string | null; covered_to: string | null; unavailable: string }
 
@@ -367,6 +328,13 @@ export async function pollPart(
     const provider = providers[part.provider];
     if (!provider || provider.status !== "available") return await settle({ ...base, status: "skipped", written: 0, detail: "not supported yet" });
     const kind = HOSTING_INTEGRATION_KIND[part.provider];
+    // No credential of its own (`github`): nothing is resolved and nothing is fetched — its deploys are written
+    // from the GitHub capture (./github-deploys.ts). The state says so; GitHub reports no metric.
+    if (provider.credential === "github_app" || !kind) {
+      return await settle({ ...base, status: "ok", written: 0 },
+        { covered: null, unavailable: metricsForRole(part.role).map((metric) => ({ metric, reason: NO_GITHUB_METRICS })) },
+        "deploys come from GitHub — nothing to poll");
+    }
     const scope = "";
 
     let secret: Secret | null;
@@ -405,7 +373,7 @@ export async function pollPart(
 
     const clean = validatePoll(result, part, now, revealed);
     const newPoints = await putMetrics(ctx, clean.points);
-    const changedDeploys = await upsertDeploys(ctx, part, clean.deploys, now);
+    const changedDeploys = (await upsertDeploys(ctx, part, clean.deploys, now, "provider")).length;
     const dropped = droppedText(clean.dropped);
     if (dropped) console.warn("hosting poll", part.provider, part.env, part.key, dropped, `org=${ctx.orgId}`);
     await recordSecretOutcome(ctx, kind, scope, { ok: true }, now).catch(() => undefined);

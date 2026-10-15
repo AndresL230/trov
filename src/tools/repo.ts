@@ -783,7 +783,7 @@ function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingRe
     let consoleUrl: string | null = null;
     try {
       // Provider code, on the render path: a throw or a non-https answer is simply no link.
-      const u = provider?.consoleUrl({ settings: part.settings }, reads.config.get(HOSTING_INTEGRATION_KIND[part.provider]) ?? {}) ?? null;
+      const u = provider?.consoleUrl({ settings: part.settings }, reads.config.get(HOSTING_INTEGRATION_KIND[part.provider] ?? "") ?? {}) ?? null;
       consoleUrl = isHttps(u) ? u : null;
     } catch { consoleUrl = null; }
 

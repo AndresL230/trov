@@ -498,6 +498,54 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       }
     ],
     "docs_url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-user_externalid.html"
+  },
+  {
+    "id": "github",
+    "label": "GitHub deployments",
+    "status": "available",
+    "summary": "An app deployed from GitHub. Trov reads its deploys from GitHub: a deployment environment, a check run or a workflow.",
+    "roles": ["web", "service"],
+    "capabilities": { "deploys": true, "metrics": [] },
+    "plan_note": "GitHub reports deploys only: no traffic, CPU or memory.",
+    "api_hosts": ["api.github.com"],
+    "connection_methods": [],
+    "org_config_fields": [],
+    "part_settings": [
+      {
+        "key": "environment",
+        "label": "Deployment environment",
+        "description": "A GitHub deployment environment, exactly as GitHub names it (Repository › Deployments), e.g. Production – web.",
+        "required": false,
+        "placeholder": "Production – web",
+        "pattern": "^[^\\u0000-\\u001f\\u007f]{1,200}$"
+      },
+      {
+        "key": "check_app",
+        "label": "Check run app",
+        "description": "With Check run name: the GitHub App that posts the check (its slug), e.g. cloudflare-workers-and-pages.",
+        "required": false,
+        "placeholder": "cloudflare-workers-and-pages",
+        "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+      },
+      {
+        "key": "check_name",
+        "label": "Check run name",
+        "description": "With Check run app: the check's name as the commit's checks list shows it.",
+        "required": false,
+        "placeholder": "Workers Builds: web",
+        "pattern": "^[^\\u0000-\\u001f\\u007f]{1,200}$"
+      },
+      {
+        "key": "workflow",
+        "label": "Workflow file",
+        "description": "A GitHub Actions workflow whose completed runs on the environment's branch are the deploys, e.g. .github/workflows/deploy.yml.",
+        "required": false,
+        "placeholder": ".github/workflows/deploy.yml",
+        "pattern": "^(?:\\.github\\/workflows\\/)?[A-Za-z0-9._-]{1,100}\\.ya?ml$"
+      }
+    ],
+    "docs_url": "https://docs.github.com/en/actions/deployment/about-deployments",
+    "via_github": true
   }
 ];
 
@@ -2120,7 +2168,7 @@ const STACKS: Record<HostingStackKey, (env: EnvKey) => StackPart[]> = {
 };
 
 /** What a CONNECTED connection of each provider looks like (the way it is usually connected). */
-const CONNECTED: Record<Exclude<HostingProviderId, "aws">, Pick<HostingConnectionDTO, "method" | "account" | "external_id" | "config" | "hint_last4" | "manage_url">> = {
+const CONNECTED: Record<Exclude<HostingProviderId, "aws" | "github">, Pick<HostingConnectionDTO, "method" | "account" | "external_id" | "config" | "hint_last4" | "manage_url">> = {
   vercel: { method: "install", account: { id: "team_a1B2c3D4e5F6g7H8", label: "Acme" }, external_id: "icfg_9Xy8Wv7Ut6Sr5Qp4", config: { team_id: "team_a1B2c3D4e5F6g7H8", team_slug: "acme" }, hint_last4: "", manage_url: "https://vercel.com/acme/~/integrations" },
   netlify: { method: "oauth", account: { id: "5f1a2b3c4d5e6f7a8b9c0d1e", label: "Acme" }, external_id: null, config: {}, hint_last4: "", manage_url: "https://app.netlify.com/user/applications" },
   render: { method: "token", account: null, external_id: null, config: {}, hint_last4: "b2e4", manage_url: "https://dashboard.render.com/u/settings#api-keys" },
@@ -2180,7 +2228,7 @@ export function hostingScenario(flow: HostingSampleKey, stack: HostingStackKey):
   const connections: HostingConnectionDTO[] = (withParts ? used : []).map((id) => {
     const status = statusOf(id);
     const live = status === "connected" || status === "error";
-    const c = CONNECTED[id as Exclude<HostingProviderId, "aws">];
+    const c = CONNECTED[id as Exclude<HostingProviderId, "aws" | "github">];
     return {
       provider: id, scope: "", scope_label: null, status,
       method: live ? c.method : null, account: live || status === "revoked" ? c.account : null, external_id: live || status === "revoked" ? c.external_id : null,

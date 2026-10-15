@@ -728,7 +728,8 @@ export function hostingTab(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDropdo
     })
     : `<div class="cnpy-hx-envs">${d.environments.map((e) => envTile(x, e)).join("")}</div>`;
 
-  const available = d.providers.filter((p) => p.status === "available");
+  // A provider with no credential of its own (`via_github` — GitHub deployments) has nothing to connect: no card.
+  const available = d.providers.filter((p) => p.status === "available" && !p.via_github);
   const later = d.providers.filter((p) => p.status === "later");
   const accentIsConnect = next?.action.kind === "connect";
   const rowsOf = (list: HostingProviderDTO[]): string => list.map((p) => {

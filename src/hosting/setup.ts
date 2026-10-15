@@ -66,6 +66,8 @@ async function effectiveConfigs(ctx: TenantContext, env: Env, s: ConnectionState
 /** A part's connection, as the part sees it: a credential stored for its (provider, scope) — or, for
  *  SaplingLearn's cut-over, a legacy Worker secret that answers for it — reads `connected`. */
 function partConnection(connections: HostingConnectionDTO[], provider: HostingProvider, part: PartRow): ConnectionStatus {
+  // A provider with no credential of its own (`github`) reads through the org's GitHub connection: nothing to connect here.
+  if (provider.credential) return "connected";
   const c = connections.find((x) => x.provider === provider.id && x.scope === credentialScopeOf(provider, part));
   if (!c) return "not_connected";
   return c.status === "not_connected" && c.legacy_fallback ? "connected" : c.status;

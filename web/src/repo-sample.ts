@@ -203,7 +203,7 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
   const unavailableWeb = (reason: string): { metric: HostingMetric; reason: string }[] =>
     (["requests", "errors", "latency_p50_ms", "latency_p95_ms", "bandwidth_bytes"] as const).map((metric) => ({ metric, reason }));
   const LABELS: Record<HostingProviderId, string> = {
-    cloudflare: "Cloudflare Workers", railway: "Railway", vercel: "Vercel", render: "Render", netlify: "Netlify", fly: "Fly.io", aws: "AWS",
+    cloudflare: "Cloudflare Workers", railway: "Railway", vercel: "Vercel", render: "Render", netlify: "Netlify", fly: "Fly.io", aws: "AWS", github: "GitHub deployments",
   };
   const polledOk = (ms: number, detail: string): RepoProviderPart["last_poll"] => ({ at: at(ms), status: "ok", detail });
   const part = (envKey: "staging" | "production", key: string, label: string, role: PartRole, provider: HostingProviderId,
