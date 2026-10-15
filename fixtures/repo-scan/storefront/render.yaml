@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: storefront-api
+    runtime: node
+    rootDir: apps/api
+    buildCommand: pnpm install && pnpm build
+    startCommand: node dist/server.js
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: storefront-db
+          property: connectionString
+databases:
+  - name: storefront-db

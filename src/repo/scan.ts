@@ -198,7 +198,9 @@ export function buildParts(c: Candidate, signals: readonly SeenSignal[], envs: r
     const settings = fromWorkflow ?? fromSignal;
     if (settings) out.push({ env: envs[0].key, provider: "github", settings });
   }
-  return out;
+  // In the environments' own order (drift order), whatever order the signals came in.
+  const order = (env: string) => envs.findIndex((e) => e.key === env);
+  return out.sort((a, b) => order(a.env) - order(b.env));
 }
 
 /** Fold what the connected hosts said (`describe`) into the candidates: a project building a folder that has a
