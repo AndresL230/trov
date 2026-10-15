@@ -25,8 +25,8 @@ export function replayFromLocation(search: string): { scenario: string; speed: n
   return { scenario, speed: Number.isFinite(n) && n >= 0 ? Math.min(n, 50) : 1 };
 }
 
-/** The `insp:<type>` scenarios' items (refs in the replay index's `refs`). `upload` and `chart` have no RefView
- *  fixture yet (a gap the inspector's sibling fills: the design's ci-failure.png and the merged-PR chart). */
+/** The `insp:<type>` scenarios' items (refs in the replay index's `refs`). `upload` and `chart` have no RefView: the
+ *  inspector's web-side fixtures open the design's ci-failure.png and merged-PR chart (ask-inspector-fixtures.ts). */
 export const INSP_FIXTURE: Record<string, string> = {
   ticket: "ticket:14", pr: "pr:176", doc: "doc:release-0-30-notes", sprint: "sprint:7", repo: "repo:AndresL230/trov", handoff: "handoff:11",
   feed: "feed:41", person: "person:maya", artifact: "artifact:hosting-status-oct-15",
@@ -63,8 +63,15 @@ export function replayPlan(scenario: string): ReplayPlan {
     };
   }
   if (scenario.startsWith("insp:")) {
-    const ref = INSP_FIXTURE[scenario.slice(5)];
-    return { ...base, setup: (ctx) => { if (ref) ctx.openRef(ref); } };
+    const type = scenario.slice(5);
+    const ref = INSP_FIXTURE[type];
+    return {
+      ...base,
+      setup: (ctx) => {
+        if (ref) ctx.openRef(ref);
+        else if (type === "upload" || type === "chart") void import("./ask-inspector-fixtures").then((f) => f.openLocalFixture(ctx, type));
+      },
+    };
   }
   switch (scenario) {
     // The design's earlier exchange (a confirmed and a cancelled line; an undone one) above the streamed turn.
@@ -148,7 +155,9 @@ export function createReplayApi(index: AskReplayIndex, plan: ReplayPlan, speed: 
     getItem: async (ref) => {
       const v = index.refs[ref];
       if (!v) throw new Error("not_found");
-      return { view: v as RefView, detail: {} };
+      // The design's details for the inspector (loaded on demand: dev replay only).
+      const { inspectorDetailFixture } = await import("./ask-inspector-fixtures");
+      return { view: v as RefView, detail: inspectorDetailFixture(ref, Date.now(), index.refs) ?? {} };
     },
     confirmAction: async (id, body) => sample(body?.args ? [id] : group(id), "confirmed", groups),
     cancelAction: async (id) => sample(group(id), "cancelled", groups),

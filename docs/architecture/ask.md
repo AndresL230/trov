@@ -323,3 +323,21 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   real `input` event, Mode / Changes write `ComposerUi.mode / .auto`, from `ask/state` only) and the meta line reads
   "Smart · Asks first"; the inspector is the shell's frame as a full-height sheet (`data-sheet="1"`) with focus kept in
   it. Every phone control is ≥ 44px.
+- **Inspector** (`ask-inspector.ts`): one view per type (ticket, PR, doc, sprint, repo, handoff, feed, person,
+  artifact, plus an upload and a chart) under the shell's frame. The header of each is the RefView; the rest is
+  `GET /ask/item/:ref`, read once per ref after paint (a skeleton until then; a 404 and a peek `hidden` both show
+  one sentence and nothing of the item). A repository draws RepoFacts with the Overview's verdicts and marks; its
+  State is the Repo dashboard's own read (`GET /repo/dashboard`, `state`). An artifact's preview is the viewer's
+  sandboxed frame (`artifacts.ts` `artifactFrame`); Publish to org is offered to its author only, and writes
+  `PATCH /artifacts/:slug { visibility: "org" }`. A question's file and an answer's block have no RefView: there is ONE
+  kind of local ref for them, the conversation's `askcv:` (the dev replay's `insp:upload` / `insp:chart` register
+  theirs in `inspectorUi.local` under `askcv:page:replay:…`); the frame names them (`inspectorLocalHead`) and the
+  controller never peeks them. The conversation's "Open in inspector" pushes `askcv:<where>:<key>:<kind>:<n>` (`ask-cvref.ts`, primed hidden so nothing peeks it): the
+  inspector reads it with the conversation's `cvItem` and draws it with its `chartFigure` (larger, under the
+  Chart / Table switch), `themesFigure`, `diagramFigure` and `tableView`; a question's file is the upload view. The sprint's forecast line is
+  computed on the client from the closed tickets' pace since the start, and said only when it can be.
+- **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on
+  `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written. The
+  inspector's details come from `web/src/ask-inspector-fixtures.ts` (loaded on demand).
+- Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`, `test/render.ask-inspector.test.ts`,
+  `test/ask.inspector-contract.test.ts`.

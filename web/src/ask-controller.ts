@@ -26,7 +26,7 @@ import { HOVER_CARD, placeHoverCard, refsInText, viewOf } from "./ask-refs";
 import { ASK_FX, askEnterNew, askTweenHeights, reducedMotion } from "./ask-motion";
 import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan } from "./ask-replay";
 import { inspectorRef, type AskCtx, type AskPart, type AskSendInput, type AskWhere } from "./ask-state";
-import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, type AskEvent, type RefView } from "@shared/ai-ask-core";
+import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, parseAskRef, type AskEvent, type RefView } from "@shared/ai-ask-core";
 
 export interface AskHost {
   state: AppState;
@@ -253,7 +253,7 @@ export function createAskController(host: AskHost): AskController {
     else ui().inspector = { ...ins, where };
     cancelExit("hover");
     ui().hover = null;
-    want([ref]);
+    if (parseAskRef(ref)) want([ref]);            // an `askcv:` item has no view to peek (ask-cvref.ts)
     paint();
   }
   function closeInspector(): void {

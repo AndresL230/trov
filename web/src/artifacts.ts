@@ -637,20 +637,38 @@ function ratifyHint(d: ArtifactDetailDTO, isLatest: boolean, p: ArtProps): strin
   return "";
 }
 
+/** The viewer's sandboxed frame for the kinds that load the raw route (html, image, pdf, svg), else null — the ONE
+ *  markup the viewer below and Ask's inspector (ask-inspector.ts, the artifact's live preview) both draw. */
+export function artifactFrame(o: { kind: string; title: string; raw: string; key: string }): string | null {
+  switch (o.kind) {
+    case "html": {
+      const h = frameHeights.get(o.key) ?? FRAME_DEFAULT;
+      // allow-scripts WITHOUT allow-same-origin: the page runs in an opaque origin
+      // (no cookies, no parent DOM), and tells us its height by postMessage.
+      return `<div class="art-frame" data-art-key="${attr(o.key)}" style="position:relative;overflow:hidden;background:#fff;height:${h}px">
+        <iframe title="${attr(o.title)}" src="${attr(o.raw)}" sandbox="allow-scripts" referrerpolicy="no-referrer" style="display:block;width:100%;height:100%;border:0;background:#fff"></iframe>
+      </div>`;
+    }
+    case "svg":
+      // A drawing renders without script: `sandbox=""`, it can do nothing (the library card's rule).
+      return `<iframe title="${attr(o.title)}" src="${attr(o.raw)}" sandbox="" referrerpolicy="no-referrer" style="display:block;width:100%;height:320px;border:0;background:var(--bg)"></iframe>`;
+    case "image":
+      return `<div style="display:grid;place-items:center;padding:32px 24px;background:var(--bg)"><img src="${attr(o.raw)}" alt="${attr(o.title)}" style="display:block;max-width:100%;height:auto"></div>`;
+    case "pdf":
+      // NOT sandboxed — see the viewer's pdf case below for why that is safe.
+      return `<iframe title="${attr(o.title)}" src="${attr(o.raw)}" style="display:block;width:100%;height:78vh;min-height:480px;border:0;background:#fff"></iframe>`;
+    default:
+      return null;
+  }
+}
+
 /** The viewer's body for one version, per kind. */
 function contentBlock(p: ArtProps, d: ArtifactDetailDTO): string {
   const ver = d.version;
   const raw = rawOf(d.raw_url, d.slug, ver.version_no);
   const key = `${d.slug}@${ver.version_no}`;
   switch (d.kind) {
-    case "html": {
-      const h = frameHeights.get(key) ?? FRAME_DEFAULT;
-      // allow-scripts WITHOUT allow-same-origin: the page runs in an opaque origin
-      // (no cookies, no parent DOM), and tells us its height by postMessage.
-      return `<div class="art-frame" data-art-key="${attr(key)}" style="position:relative;overflow:hidden;background:#fff;height:${h}px">
-        <iframe title="${attr(d.title)}" src="${attr(raw)}" sandbox="allow-scripts" referrerpolicy="no-referrer" style="display:block;width:100%;height:100%;border:0;background:#fff"></iframe>
-      </div>`;
-    }
+    case "html": return artifactFrame({ kind: "html", title: d.title, raw, key })!;
     case "svg":
       return `<div class="art-svg" style="display:grid;place-items:center;padding:40px 24px;min-height:320px;background:var(--bg);color:var(--fg);overflow-x:auto">${sanitizeSvg(d.content ?? "")}</div>`;
     case "markdown":
