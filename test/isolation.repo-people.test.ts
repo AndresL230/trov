@@ -20,7 +20,7 @@ import { buildTrovMcpServer } from "../src/mcp";
 import { PersonError, listPersons, memberHandle, requireMember } from "../src/auth/persons";
 import { fillFailedJob } from "../src/repo/github";
 import {
-  approvedPrs, branchHeads, ciDailyRates, ciFailureRows, commitsByDay, deployHistories, hasCaptured, latestChecks,
+  approvedPrs, branchHeads, ciDailyRates, ciFailureRows, commitsByDay, hasCaptured, latestChecks,
   prStatesAsOf, pushRowsSince, recentPrRows, recordingSince, reviewRowsSince, untitledFailedRuns,
 } from "../src/repo/reads";
 import {
@@ -106,7 +106,6 @@ describe("repo capture is per org", () => {
       ["recentPrRows", (c) => recentPrRows(c, 10, since), []],
       ["commitsByDay", async (c) => [...(await commitsByDay(c, since))], []],
       ["pushRowsSince", (c) => pushRowsSince(c, since), []],
-      ["deployHistories", async (c) => [...(await deployHistories(c, NOW))], []],
       ["branchHeads", async (c) => [...(await branchHeads(c, ["main"]))], []],
       ["latestChecks", async (c) => [...(await latestChecks(c, [SHA]))], []],
       ["approvedPrs", async (c) => [...(await approvedPrs(c, [77]))], []],

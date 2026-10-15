@@ -28,6 +28,7 @@ import type { OrgInvite, OrgRole } from "@shared/orgs";
 import type { GithubAppStatusDTO } from "@shared/github-app";
 import { createOrgLogoActions } from "./org-logo-actions";
 import { createOrgBillingActions } from "./org-billing-actions";
+import { createHostingActions } from "./hosting-actions";
 
 export interface OrgHost {
   state: AppState;
@@ -103,6 +104,10 @@ export function createOrgController(host: OrgHost): OrgController {
   /** General's Plan block: the owner's billing actions, each of which leaves for Stripe (org-billing-actions.ts). */
   const billing = createOrgBillingActions(host);
 
+  /** The Hosting tab: its read, its dialogs and their writes (hosting-actions.ts). Its reloads of this
+   *  screen's other slices are wired below, once those loaders exist. */
+  const hosting = createHostingActions({ ...host, reloadSettings: () => reloadForHosting() });
+
   // ── the secret draft (see the header) ──────────────────────────────────────
   let secretDraft = "";
   /** The `data-field` of the button that opened the form, so focus returns to it. */
@@ -154,8 +159,11 @@ export function createOrgController(host: OrgHost): OrgController {
     if (plan) { loadPlan(); loadMembers(); loadAdmin(); } // what the page shows about the plan, and what it counts, was stale
     return plan ?? orgErrorText(e, fallback);
   };
-  /** The admin-only reads (their routes answer 403 to a member, so a member never asks). */
-  const loadAdmin = () => { if (roleAtLeast(org()?.role, "admin")) { loadInvites(); loadIntegrations(); loadAudit(); } };
+  /** The admin-only reads (their routes answer 403 to a member, so a member never asks). Hosting is one:
+   *  its tab's badge counts what needs attention there, and a new environment is a new place for parts. */
+  const loadAdmin = () => { if (roleAtLeast(org()?.role, "admin")) { loadInvites(); loadIntegrations(); loadAudit(); hosting.load(); } };
+  /** What a Hosting write changed elsewhere on this screen (never Hosting's own read: it made that itself). */
+  const reloadForHosting = () => { loadEnvs(); loadIntegrations(); loadAudit(); };
 
   // ── the GitHub App (github-app.ts) ─────────────────────────────────────────
   /** The connection as the server just reported it — into its own slice and the Integrations list's copy. */
@@ -232,8 +240,9 @@ export function createOrgController(host: OrgHost): OrgController {
     if (!o) return false;
     if (ui().slug !== o.slug) {
       dropSecret();
-      // (What the return from GitHub said arrives before the first load: it is kept.)
-      state.org = { ...initialOrgUi(), tab: ui().tab, slug: o.slug, githubNotice: ui().githubNotice };
+      // (What the return from GitHub — or from a hosting provider — said arrives before the first load: it is kept.)
+      const fresh = initialOrgUi();
+      state.org = { ...fresh, tab: ui().tab, slug: o.slug, githubNotice: ui().githubNotice, hosting: { ...fresh.hosting, notice: ui().hosting.notice } };
     }
     return true;
   }
@@ -310,6 +319,8 @@ export function createOrgController(host: OrgHost): OrgController {
           loadAdmin();
         })
         .catch((e) => { failed(e, "Couldn't disconnect GitHub."); loadGithub(); });
+    } else if (what === "part" || what === "hosting") {
+      hosting.runConfirm(what, arg, (msg, ms) => { ui().confirm = null; if (msg) host.flash(msg, ms); else rerender(); }, failed);
     } else if (what === "env") {
       const label = ui().envs.data.find((x) => x.key === arg)?.label ?? arg;
       deleteOrgEnvironment(o.slug, arg)
@@ -410,7 +421,7 @@ export function createOrgController(host: OrgHost): OrgController {
       const v = d.fields[f].trim();
       // A new environment sends what was filled in; an edit sends only what changed.
       if (current ? v === base[f] : v === "" || (f === "health_path" && v === "/")) continue;
-      body[f] = v === "" && (f === "note" || f === "railway_environment_id" || f === "railway_service_id") ? null : v;
+      body[f] = v === "" && f === "note" ? null : v;
     }
     if (current && Object.keys(body).length === 0) { u.envEdit = null; rerender(); return; }
     d.saving = true; d.error = null; d.errorField = null;
@@ -431,7 +442,6 @@ export function createOrgController(host: OrgHost): OrgController {
         d.error = e instanceof OrgApiError && e.message === "invalid" && e.detail && d.errorField && label
           ? sentence(e.detail.replace(new RegExp(`^${d.errorField}:\\s*`), "").replace(new RegExp(`^${d.errorField}\\b`), label))
           : errorText(e, "Couldn't save the environment.");
-        if (d.errorField && !["key", "label", "note", "branch", "frontend_url", "api_url", "health_path"].includes(d.errorField)) d.advanced = true;
         rerender();
       });
   }
@@ -625,6 +635,7 @@ export function createOrgController(host: OrgHost): OrgController {
   function act(name: string, arg: string | null, value: string | null): void {
     if (logo.act(name)) return;
     if (billing.act(name, arg)) return;
+    if (hosting.act(name, arg, value)) return;
     const u = ui();
     const o = org();
     const admin = roleAtLeast(o?.role, "admin");
@@ -662,14 +673,14 @@ export function createOrgController(host: OrgHost): OrgController {
       // Environments
       case "orgEnvNew":
         if (!admin) return;
-        u.envEdit = { key: null, keyDraft: "", fields: blankEnvFields(), advanced: false, saving: false, error: null, errorField: null };
+        u.envEdit = { key: null, keyDraft: "", fields: blankEnvFields(), saving: false, error: null, errorField: null };
         rerender();
         mount.querySelector<HTMLElement>("#org-env-key")?.focus();
         return;
       case "orgEnvEdit": {
         const e = u.envs.data.find((x) => x.key === arg);
         if (!admin || !e) return;
-        u.envEdit = { key: e.key, keyDraft: e.key, fields: envFieldsOf(e), advanced: false, saving: false, error: null, errorField: null };
+        u.envEdit = { key: e.key, keyDraft: e.key, fields: envFieldsOf(e), saving: false, error: null, errorField: null };
         rerender();
         mount.querySelector<HTMLElement>("#org-env-label")?.focus();
         return;
@@ -681,7 +692,6 @@ export function createOrgController(host: OrgHost): OrgController {
           if (u.envEdit.errorField === arg) { u.envEdit.error = null; u.envEdit.errorField = null; }
         }
         break;
-      case "orgEnvAdvanced": if (u.envEdit) u.envEdit.advanced = !u.envEdit.advanced; break;
       case "orgEnvCancel": {
         const back = u.envEdit?.key ? `orgEnvEdit:${u.envEdit.key}` : "orgEnvNew";
         u.envEdit = null;
@@ -793,7 +803,7 @@ export function createOrgController(host: OrgHost): OrgController {
       case "orgConfirm": {
         const at = (arg ?? "").indexOf(":");
         const what = (arg ?? "").slice(0, at);
-        if (!admin || at < 0 || !["repo", "env", "secret", "member", "key", "github"].includes(what)) return;
+        if (!admin || at < 0 || !["repo", "env", "secret", "member", "key", "github", "part", "hosting"].includes(what)) return;
         if (what === "key" && o?.role !== "owner") return;
         u.confirm = { what: what as OrgConfirm["what"], arg: (arg ?? "").slice(at + 1), busy: false };
         rerender();
@@ -808,6 +818,7 @@ export function createOrgController(host: OrgHost): OrgController {
   }
 
   function afterPaint(): void {
+    hosting.afterPaint();
     const onScreen = state.view === "app" && state.screen === "org";
     const f = onScreen ? ui().secretForm : null;
     if (!f) {

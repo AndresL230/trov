@@ -1,11 +1,12 @@
 /**
  * "Poll now" — EVERYTHING the Repo dashboard shows, on demand.
  *
- * `runRepoRefresh` (src/repo/cron.ts) runs health pings, then the three usage
- * pollers (`runUsagePolls`, unchanged), then the GitHub reconcile — each in its
- * own guarded arm — and `POST /admin/poll` returns what they report, behind a
- * `refresh_lock` snapshot. The budget is 19 + 7N subrequests; past the free
- * plan's 50 the GitHub arm is skipped and says so.
+ * `runRepoRefresh` (src/repo/cron.ts) runs health pings, then the usage poller
+ * (`runUsagePolls` — the app's metrics), then the hosting providers (only when
+ * the org has a part — none here; test/hosting.cron.test.ts), then the GitHub
+ * reconcile — each in its own guarded arm — and `POST /admin/poll` returns what
+ * they report, behind a `refresh_lock` snapshot. The budget is 18 + 5N
+ * subrequests; past the free plan's 50 the GitHub arm is skipped and says so.
  * The fetch is stubbed at the Response level; rows are asserted in real D1.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
@@ -27,26 +28,23 @@ import type { RepoRefreshResult } from "@shared/repo";
 import { platformCtx, systemCtx } from "./helpers/tenant";
 import { pruneRepoCapture } from "../src/platform/sweeps";
 const NOW = Date.parse("2026-09-20T12:37:12Z");
-const CF_URL = "https://api.cloudflare.com/client/v4/graphql";
-const RW_URL = "https://backboard.railway.com/graphql/v2";
 const GH = "https://api.github.com/";
 const METRICS_PATH = "/api/internal/metrics";
-const WITH_IDS = ENVS.map((e, i) => ({ ...e, railwayEnvironmentId: `env-${i}`, railwayServiceId: "svc" }));
+const METRICS_URLS = ENVS.map((e) => e.apiUrl + METRICS_PATH);
 const HEALTH_URLS = ENVS.flatMap((e) => [e.frontendUrl, e.apiUrl + e.healthPath]);
 
 const GH_TOKEN = `ghs_${LONG_TOKEN}`;
 const SECRETS = {
   CF_ANALYTICS_TOKEN: "cf-s3cret-token", CF_ANALYTICS_ACCOUNT_ID: "acct-1d-9f3b",
-  RAILWAY_TOKEN_STAGING: "rw-s3cret-staging", RAILWAY_TOKEN_PRODUCTION: "rw-s3cret-production",
   SAPLING_METRICS_TOKEN: "sp-s3cret-token", GITHUB_SERVICE_TOKEN: GH_TOKEN,
 } as const;
 const NONE = Object.fromEntries(Object.keys(SECRETS).map((k) => [k, undefined]));
 /** Every secret pinned — set or absent — so a local `.dev.vars` never decides a test. */
 const refreshEnv = (over: Partial<Env> = {}): Env =>
-  ({ ...env, REPO_ENVIRONMENTS: JSON.stringify(WITH_IDS), GITHUB_REPO: "o/r", ...SECRETS, ...over }) as unknown as Env;
+  ({ ...env, REPO_ENVIRONMENTS: JSON.stringify(ENVS), GITHUB_REPO: "o/r", ...SECRETS, ...over }) as unknown as Env;
 
 /** Every source answers: GitHub through `fakeGithub` (empty-but-valid), the
- *  pollers with one complete hour / one reading, a health target with a 200. */
+ *  app's metrics with one reading, a health target with a 200. */
 const world = (over: (url: string, init?: RequestInit) => Response | undefined | Promise<Response | undefined> = () => undefined) => {
   const calls: string[] = [];
   const gh = fakeGithub({});
@@ -56,13 +54,6 @@ const world = (over: (url: string, init?: RequestInit) => Response | undefined |
     const custom = await over(url, init);
     if (custom) return custom;
     if (url.startsWith(GH)) return gh.fetchImpl(u, init);
-    if (url === CF_URL) return new Response(JSON.stringify({ data: { viewer: { accounts: [{ workersInvocationsAdaptive: [
-      { dimensions: { datetimeHour: "2026-09-20T10:00:00Z" }, sum: { requests: 640, errors: 3 } },
-    ] }] } } }), { status: 200 });
-    if (url === RW_URL) return new Response(JSON.stringify({ data: { metrics: [
-      { measurement: "CPU_USAGE", values: [{ ts: Date.parse("2026-09-20T11:00:00Z") / 1000, value: 0.12 }] },
-      { measurement: "MEMORY_USAGE_GB", values: [{ ts: Date.parse("2026-09-20T11:00:00Z") / 1000, value: 0.4 }] },
-    ] } }), { status: 200 });
     if (url.endsWith(METRICS_PATH)) return new Response(JSON.stringify({ active_users: { "24h": 74, "7d": 318, "30d": 318 } }), { status: 200 });
     return new Response("ok", { status: 200 });
   }) as typeof fetch;
@@ -86,38 +77,35 @@ const putLock = (ageMs: number, at = Date.now()) => run(env.DB, `INSERT INTO rep
 const UP = (envKey: string, part: "frontend" | "backend", written = 2) => ({ env: envKey, part, status: "ok", written });
 const ALL_UP = [UP("staging", "frontend"), UP("staging", "backend"), UP("production", "frontend"), UP("production", "backend")];
 const USAGE_OK = {
-  cloudflare: [{ env: "staging", status: "ok", written: 2 }, { env: "production", status: "ok", written: 2 }],
-  railway: [{ env: "staging", status: "ok", written: 2 }, { env: "production", status: "ok", written: 2 }],
   sapling: [{ env: "staging", status: "ok", written: 3 }, { env: "production", status: "ok", written: 3 }],
 };
 
 describe("the on-demand budget", () => {
-  it("is 19 + 7N: 33 for two environments, inside the cap up to N = 4 (47) and past it at 5 (54)", () => {
-    expect(refreshSubrequests(2)).toBe(33);
-    expect(refreshSubrequests(4)).toBe(47);
-    expect(refreshSubrequests(5)).toBe(54);
-    expect(refreshSubrequests(4)).toBeLessThanOrEqual(SUBREQUEST_CAP);
-    expect(refreshSubrequests(5)).toBeGreaterThan(SUBREQUEST_CAP);
+  it("is 18 + 5N (health 2N + usage N + reconcile 18 + 2N): 28 for two environments, inside the cap up to N = 6 (48) and past it at 7 (53)", () => {
+    expect(refreshSubrequests(2)).toBe(28);
+    expect(refreshSubrequests(6)).toBe(48);
+    expect(refreshSubrequests(7)).toBe(53);
+    expect(refreshSubrequests(6)).toBeLessThanOrEqual(SUBREQUEST_CAP);
+    expect(refreshSubrequests(7)).toBeGreaterThan(SUBREQUEST_CAP);
   });
 });
 
 describe("runRepoRefresh", () => {
-  it("runs health, then usage, then GitHub — every arm's outcome, in order, at ≤ 33 requests for N = 2", async () => {
+  it("runs health, then usage, then GitHub — every arm's outcome, in order, at ≤ 28 requests for N = 2", async () => {
     const w = world();
     const res = await runRepoRefresh(refreshEnv(), NOW, w.fetchImpl);
     expect(res).toEqual({ health: ALL_UP, ...USAGE_OK, github: { written: 0, unchanged: 0, failed: [] } });
-    expect(Object.keys(res)).toEqual(["health", "cloudflare", "railway", "sapling", "github"]);
+    expect(Object.keys(res)).toEqual(["health", "sapling", "github"]);
 
     expect(w.calls.slice(0, 4)).toEqual(HEALTH_URLS);
-    expect(w.calls.slice(4, 10)).toEqual([
-      CF_URL, RW_URL, "https://api.staging.saplinglearn.com/api/internal/metrics", // one environment at a time —
-      CF_URL, RW_URL, "https://api.saplinglearn.com/api/internal/metrics",         // each is its own (org, environment) job
-    ]);
-    const github = w.calls.slice(10);
+    // One environment at a time — each is its own (org, environment) job. The legacy Cloudflare secrets
+    // in the env read nothing: a host's usage is a hosting provider's, per part.
+    expect(w.calls.slice(4, 6)).toEqual(METRICS_URLS);
+    const github = w.calls.slice(6);
     expect(github.length).toBeGreaterThan(0);
     for (const url of github) expect(url.startsWith(GH)).toBe(true);
     expect(w.calls.length).toBeLessThanOrEqual(refreshSubrequests(2));
-    expect(refreshSubrequests(2)).toBe(33);
+    expect(refreshSubrequests(2)).toBe(28);
     // Reconcile really ran: its completeness marker and its snapshots are in D1.
     const kinds = (await all<{ kind: string }>(env.DB, `SELECT kind FROM repo_snapshots ORDER BY kind`)).map((r) => r.kind);
     expect(kinds).toContain("prs_reconciled");
@@ -198,14 +186,14 @@ describe("runRepoRefresh", () => {
       const w = world();
       const res = await runRepoRefresh(refreshEnv({ REPO_ENVIRONMENTS: undefined }), NOW, w.fetchImpl);
       expect(res.health).toBe("not_configured");
-      expect(res.railway).toBe("not_configured"); // no environment → no token to look up
+      expect(res.sapling).toBe("not_configured"); // no environment → no token to look up
       expect(res.github).toEqual({ written: 0, unchanged: 0, failed: [] });
       for (const url of w.calls) expect(url.startsWith(GH)).toBe(true);
     });
 
-    it("the three usage sources — exactly as runUsagePolls reports them", async () => {
+    it("the usage source — exactly as runUsagePolls reports it", async () => {
       const res = await runRepoRefresh(refreshEnv({ ...NONE, GITHUB_SERVICE_TOKEN: GH_TOKEN }), NOW, world().fetchImpl);
-      expect(res).toMatchObject({ cloudflare: "not_configured", railway: "not_configured", sapling: "not_configured" });
+      expect(res).toMatchObject({ sapling: "not_configured" });
       expect(res.health).toEqual(ALL_UP);
     });
 
@@ -215,14 +203,14 @@ describe("runRepoRefresh", () => {
         const res = await runRepoRefresh(refreshEnv(over), NOW, w.fetchImpl);
         expect(res.github).toBe("not_configured");
         expect(w.calls.filter((u) => u.startsWith(GH))).toEqual([]);
-        expect(w.calls).toHaveLength(10); // health + usage still ran
+        expect(w.calls).toHaveLength(6); // health + usage still ran
       }
     });
 
     it("everything absent: nothing is fetched at all", async () => {
       const w = world();
       expect(await runRepoRefresh(refreshEnv({ ...NONE, REPO_ENVIRONMENTS: undefined }), NOW, w.fetchImpl)).toEqual({
-        health: "not_configured", cloudflare: "not_configured", railway: "not_configured", sapling: "not_configured", github: "not_configured",
+        health: "not_configured", sapling: "not_configured", github: "not_configured",
       });
       expect(w.calls).toEqual([]);
     });
@@ -234,7 +222,7 @@ describe("runRepoRefresh", () => {
       const res = await quietly(() => runRepoRefresh(refreshEnv(), NOW, w.fetchImpl));
       expect(res.health).toEqual(ALL_UP);
       expect(res).toMatchObject(USAGE_OK);
-      expect(res.github).toEqual({ written: 0, unchanged: 0, failed: ["open_prs", "closed_prs", "commits", "deployments", "runs", "env_heads", "checks", "statuses", "reviews", "branches", "drift"] });
+      expect(res.github).toEqual({ written: 0, unchanged: 0, failed: ["open_prs", "closed_prs", "commits", "runs", "env_heads", "checks", "statuses", "reviews", "branches", "drift"] });
     });
 
     it("reconcile itself throwing: a fixed phrase, and the other arms' results are kept", async () => {
@@ -247,45 +235,44 @@ describe("runRepoRefresh", () => {
       expect(leakedFragments(logged, GH_TOKEN)).toEqual([]);
     });
 
-    it("a poller failing, and every health target down: GitHub still runs", async () => {
+    it("the poller failing, and every health target down: GitHub still runs", async () => {
       const w = world((url) => {
-        if (url === CF_URL) return new Response("", { status: 500 });
+        if (url === METRICS_URLS[0]) return new Response("", { status: 500 });
         if (HEALTH_URLS.includes(url)) throw new Error("connection refused");
         return undefined;
       });
       const res = await quietly(() => runRepoRefresh(refreshEnv(), NOW, w.fetchImpl));
       expect((res.health as { status: string }[]).map((o) => o.status)).toEqual(["failed", "failed", "failed", "failed"]);
-      expect((res.cloudflare as { status: string }[]).map((o) => o.status)).toEqual(["failed", "failed"]);
-      expect(res.railway).toEqual(USAGE_OK.railway);
+      expect((res.sapling as { status: string }[]).map((o) => o.status)).toEqual(["failed", "ok"]);
       expect(res.github).toEqual({ written: 0, unchanged: 0, failed: [] });
       expect(w.calls.some((u) => u.startsWith(GH))).toBe(true);
     });
   });
 
-  it("with 5 environments (19 + 7·5 = 54 > 50) the GitHub arm is SKIPPED and says so; health and usage still run", async () => {
-    const five = Array.from({ length: 5 }, (_, i) => ({
-      ...WITH_IDS[0], key: `env${i}`, label: `env${i}`, branch: `b${i}`,
+  it("with 7 environments (18 + 5·7 = 53 > 50) the GitHub arm is SKIPPED and says so; health and usage still run", async () => {
+    const seven = Array.from({ length: 7 }, (_, i) => ({
+      ...ENVS[0], key: `env${i}`, label: `env${i}`, branch: `b${i}`,
       frontendUrl: `https://e${i}.example.com`, apiUrl: `https://api.e${i}.example.com`,
     }));
     const w = world();
-    const res = await runRepoRefresh(refreshEnv({ REPO_ENVIRONMENTS: JSON.stringify(five) }), NOW, w.fetchImpl);
+    const res = await runRepoRefresh(refreshEnv({ REPO_ENVIRONMENTS: JSON.stringify(seven) }), NOW, w.fetchImpl);
     expect(res.github).toEqual({ written: 0, unchanged: 0, failed: [BUDGET_SKIP] });
     expect(BUDGET_SKIP).toBe("skipped: would exceed the subrequest budget");
     expect(w.calls.filter((u) => u.startsWith(GH))).toEqual([]);
-    expect(res.health).toHaveLength(10);
-    expect(res.cloudflare).toHaveLength(5);
+    expect(res.health).toHaveLength(14);
+    expect(res.sapling).toHaveLength(7);
     expect(w.calls.length).toBeLessThanOrEqual(SUBREQUEST_CAP);
   });
 
-  it("with 4 environments (47) the GitHub arm still runs", async () => {
-    const four = Array.from({ length: 4 }, (_, i) => ({
-      ...WITH_IDS[0], key: `env${i}`, label: `env${i}`, branch: `b${i}`,
+  it("with 6 environments (48) the GitHub arm still runs", async () => {
+    const six = Array.from({ length: 6 }, (_, i) => ({
+      ...ENVS[0], key: `env${i}`, label: `env${i}`, branch: `b${i}`,
       frontendUrl: `https://e${i}.example.com`, apiUrl: `https://api.e${i}.example.com`,
     }));
     const w = world();
-    const res = await runRepoRefresh(refreshEnv({ REPO_ENVIRONMENTS: JSON.stringify(four) }), NOW, w.fetchImpl);
+    const res = await runRepoRefresh(refreshEnv({ REPO_ENVIRONMENTS: JSON.stringify(six) }), NOW, w.fetchImpl);
     expect(res.github).toEqual({ written: 0, unchanged: 0, failed: [] });
-    expect(w.calls.length).toBeLessThanOrEqual(refreshSubrequests(4));
+    expect(w.calls.length).toBeLessThanOrEqual(refreshSubrequests(6));
   });
 
   // The worst case: every failure quotes its own request — headers AND body —
@@ -343,8 +330,8 @@ describe("the repo cron's own log sites never print a secret", () => {
 
   // A context reads `env.DB` at each use, so a dead binding fails inside the first guarded read that
   // needs it. On a quiet tick that is the cron's own `safely` — health (its write is outside the ping's
-  // own guard) and the handoff sweep. The three pollers never throw: the same failure lands in their own
-  // logger, with their own scrub (the per-poller tests below), never in runUsagePolls' arm.
+  // own guard) and the handoff sweep. The usage poller never throws: the same failure lands in its own
+  // logger, with its own scrub, never in runUsagePolls' arm.
   it("the every-tick arms throwing — health and the handoff sweep — log scrubbed messages only", async () => {
     const tick = Date.parse("2026-09-20T12:40:00Z");
     const noDb = Object.defineProperty({ ...refreshEnv() }, "DB", {
@@ -355,16 +342,6 @@ describe("the repo cron's own log sites never print a secret", () => {
     for (const secret of Object.values(SECRETS)) expect(logged).not.toContain(secret);
     expect(leakedFragments(logged, GH_TOKEN)).toEqual([]);
     expect(logged).not.toContain("    at ");
-  });
-
-  it("pollCloudflare's own marker write failing logs its message with the Cloudflare secrets scrubbed", async () => {
-    const tick = Date.parse("2026-09-20T12:00:00Z");
-    const w = world();
-    const { logged } = await captured(() => handleRepoCron({ ...refreshEnv(), DB: poisonedDb(/repo_snapshots/) } as Env, tick, w.fetchImpl));
-    expect(logged).toContain('"pollCloudflare","cf_polled","D1 exploded');
-    for (const secret of [SECRETS.CF_ANALYTICS_TOKEN, SECRETS.CF_ANALYTICS_ACCOUNT_ID]) expect(logged).not.toContain(secret);
-    expect(logged).not.toContain("    at ");
-    expect(w.calls.filter((u) => u === RW_URL)).toHaveLength(2); // Railway, after Cloudflare, still ran
   });
 });
 
@@ -464,7 +441,7 @@ describe("POST /admin/poll (session- + admin-gated, never MCP)", () => {
     const seen = stubFetch(world().fetchImpl);
     const res = await post("admin-user", refreshEnv({ ...NONE, REPO_ENVIRONMENTS: undefined }));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ health: "not_configured", cloudflare: "not_configured", railway: "not_configured", sapling: "not_configured", github: "not_configured" });
+    expect(await res.json()).toEqual({ health: "not_configured", sapling: "not_configured", github: "not_configured" });
     expect(seen).toEqual([]);
   });
 
@@ -473,7 +450,7 @@ describe("POST /admin/poll (session- + admin-gated, never MCP)", () => {
     const res = await post("admin-user", refreshEnv());
     expect(res.status).toBe(200);
     const body = (await res.json()) as RepoRefreshResult;
-    expect(Object.keys(body)).toEqual(["health", "cloudflare", "railway", "sapling", "github"]);
+    expect(Object.keys(body)).toEqual(["health", "sapling", "github"]);
     expect(body.github).toEqual({ written: 0, unchanged: 0, failed: [] });
     expect(await lockRow()).toBeNull();
   });
@@ -508,7 +485,7 @@ describe("POST /admin/poll (session- + admin-gated, never MCP)", () => {
     const body = JSON.parse(text) as RepoRefreshResult;
     expect((body.health as { status: string }[]).map((o) => o.status)).toEqual(["failed", "failed", "failed", "failed"]);
     expect(body.github).toMatchObject({ written: 0, unchanged: 0 });
-    expect((body.github as { failed: string[] }).failed).toContain("deployments");
+    expect((body.github as { failed: string[] }).failed).toContain("runs");
     for (const secret of Object.values(SECRETS)) {
       expect(text).not.toContain(secret);
       expect(logged).not.toContain(secret);

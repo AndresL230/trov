@@ -1,0 +1,13 @@
+[
+  {
+    "labels": [{ "field": "resource", "value": "srv-d3k8q1j7mgec73a1b2c0" }, { "field": "quantile", "value": "0.95" }],
+    "unit": "ms",
+    "values": [
+      { "timestamp": "2026-10-07T08:00:00Z", "value": 410 },
+      { "timestamp": "2026-10-07T09:00:00Z", "value": 212.5 },
+      { "timestamp": "2026-10-07T10:00:00Z", "value": 180.25 },
+      { "timestamp": "2026-10-07T11:00:00Z", "value": 240 },
+      { "timestamp": "2026-10-07T12:00:00Z", "value": 999 }
+    ]
+  }
+]

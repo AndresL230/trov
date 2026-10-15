@@ -17,7 +17,7 @@ import { cookieFor } from "./helpers/persons";
 import { app } from "../src/routes";
 import { addOrgRepo, setOrgEnvironments } from "./helpers/org-config";
 import { ENVS, fakeGithub, leakedFragments } from "./helpers/repo";
-import { setIntegrationConfig, setSecret } from "../src/data/secrets";
+import { setSecret } from "../src/data/secrets";
 import { handleRepoCron, runReconcileJob, runUsagePolls, HEALTH_COST } from "../src/repo/cron";
 import { newBudget, rotated, serveJob, type Unit } from "../src/repo/dispatch";
 import { JobAccessError, readCursor } from "../src/platform/jobs";
@@ -29,48 +29,42 @@ const HOURLY = Date.parse("2026-09-20T12:00:00Z");
 const QUIET = Date.parse("2026-09-20T12:40:00Z");     // health only
 const PROGRESS = Date.parse("2026-09-20T12:10:00Z");
 const RECONCILE = Date.parse("2026-09-20T12:20:00Z");
-const CF_URL = "https://api.cloudflare.com/client/v4/graphql";
-const RW_URL = "https://backboard.railway.com/graphql/v2";
 const GH = "https://api.github.com/";
 
-interface OrgFixture { org: string; tag: string; repo: string; cfg: RepoEnvConfig; secrets: Record<"gh" | "cf" | "rw" | "app", string>; account: string }
+// A host's usage (Cloudflare, Railway, …) is the hosting providers' `:40` job, held to the same per-org rules
+// in test/hosting.cron.test.ts; the jobs here are health, the app's metrics and GitHub.
+interface OrgFixture { org: string; tag: string; repo: string; cfg: RepoEnvConfig; secrets: Record<"gh" | "app", string> }
 const fixture = (org: string, tag: string): OrgFixture => ({
   org, tag, repo: `${tag}-co/app`,
   cfg: {
-    ...ENVS[0], key: "live", label: "live", branch: "main", worker: `${tag}-worker`,
+    ...ENVS[0], key: "live", label: "live", branch: "main",
     frontendUrl: `https://${tag}.example.test`, apiUrl: `https://api.${tag}.example.test`, healthPath: "/health",
-    railwayEnvironmentId: `rw-env-${tag}`, railwayServiceId: `rw-svc-${tag}`,
   },
   secrets: {
-    gh: `ghs_${tag}_${"0123456789abcdef".repeat(3)}`, cf: `cf_${tag}_${"fedcba9876543210".repeat(2)}`,
-    rw: `rw_${tag}_${"13579bdf02468ace".repeat(2)}`, app: `app_${tag}_${"a1b2c3d4e5f60718".repeat(2)}`,
+    gh: `ghs_${tag}_${"0123456789abcdef".repeat(3)}`, app: `app_${tag}_${"a1b2c3d4e5f60718".repeat(2)}`,
   },
-  account: `acct-${tag}-7f3a91`,
 });
 const A = fixture(ORG_A, "alpha");
 const B = fixture(ORG_B, "beta");
-const everySecret = (f: OrgFixture): string[] => [...Object.values(f.secrets), f.account];
+const everySecret = (f: OrgFixture): string[] => Object.values(f.secrets);
 
-/** The org's repo, its one environment and all five kinds of credential — STORED, as an admin enters them. */
+/** The org's repo, its one environment and its GitHub and app-metrics credentials — STORED, as an admin enters them. */
 async function configure(f: OrgFixture): Promise<void> {
   const admin = f.org === ORG_A ? await tenantCtx("AndresL230") : await tenantCtx("bob", "admin", { orgId: f.org });
   await addOrgRepo(f.repo, f.org);
   await setOrgEnvironments([f.cfg], f.org);
   await setSecret(admin, "github_token", "", f.secrets.gh);
-  await setSecret(admin, "cloudflare_analytics", "", f.secrets.cf);
-  await setIntegrationConfig(admin, "cloudflare_analytics", "", { account_id: f.account });
-  await setSecret(admin, "railway", "live", f.secrets.rw);
   await setSecret(admin, "metrics_endpoint", "live", f.secrets.app);
 }
 
-interface Seen { url: string; auth: string | null; rwToken: string | null; body: string }
+interface Seen { url: string; auth: string | null; body: string }
 /** Every upstream answers; `over` may replace an answer. Records what each request carried. */
 function world(over: (s: Seen) => Response | undefined = () => undefined) {
   const seen: Seen[] = [];
   const gh = fakeGithub({ "/issues/1": { state: "closed" } });
   const fetchImpl = (async (u: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
-    const s: Seen = { url: String(u), auth: headers.get("authorization"), rwToken: headers.get("project-access-token"), body: String(init?.body ?? "") };
+    const s: Seen = { url: String(u), auth: headers.get("authorization"), body: String(init?.body ?? "") };
     seen.push(s);
     const custom = over(s);
     if (custom) return custom;
@@ -78,13 +72,6 @@ function world(over: (s: Seen) => Response | undefined = () => undefined) {
     if (s.url.startsWith(`${GH}users/`)) return Response.json({ login: s.url.slice(`${GH}users/`.length), avatar_url: "https://avatars.githubusercontent.com/u/1?v=4" });
     if (s.url.startsWith("https://avatars.githubusercontent.com/")) return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]));
     if (s.url.startsWith(GH)) return gh.fetchImpl(u, init);
-    if (s.url === CF_URL) return new Response(JSON.stringify({ data: { viewer: { accounts: [{ workersInvocationsAdaptive: [
-      { dimensions: { datetimeHour: "2026-09-20T10:00:00Z" }, sum: { requests: 640, errors: 3 } },
-    ] }] } } }), { status: 200 });
-    if (s.url === RW_URL) return new Response(JSON.stringify({ data: { metrics: [
-      { measurement: "CPU_USAGE", values: [{ ts: Date.parse("2026-09-20T11:00:00Z") / 1000, value: 0.12 }] },
-      { measurement: "MEMORY_USAGE_GB", values: [{ ts: Date.parse("2026-09-20T11:00:00Z") / 1000, value: 0.4 }] },
-    ] } }), { status: 200 });
     if (s.url.endsWith("/api/internal/metrics")) return new Response(JSON.stringify({ active_users: { "24h": 7, "7d": 30, "30d": 30 } }), { status: 200 });
     return new Response("ok", { status: 200 });
   }) as typeof fetch;
@@ -116,63 +103,56 @@ describe("the hourly tick, two orgs", () => {
 
     for (const f of [A, B]) {
       const other = f === A ? B : A;
-      const mine = w.seen.filter((s) => s.url.includes(`${f.tag}.example.test`) || s.body.includes(`${f.tag}-worker`) || s.body.includes(`rw-env-${f.tag}`));
-      expect(mine).toHaveLength(5); // 2 health pings + Cloudflare + Railway + the app's metrics
-      const cf = mine.find((s) => s.url === CF_URL)!;
-      expect(cf.auth).toBe(`Bearer ${f.secrets.cf}`);
-      expect((JSON.parse(cf.body) as { variables: { a: string } }).variables.a).toBe(f.account);
-      expect(mine.find((s) => s.url === RW_URL)!.rwToken).toBe(f.secrets.rw);
+      const mine = w.seen.filter((s) => s.url.includes(`${f.tag}.example.test`));
+      expect(mine).toHaveLength(3); // 2 health pings + the app's metrics
       expect(mine.find((s) => s.url.endsWith("/api/internal/metrics"))!.auth).toBe(`Bearer ${f.secrets.app}`);
       // …and never the other org's — in any header or body of any of its requests.
       for (const s of mine) for (const secret of everySecret(other)) expect(JSON.stringify(s)).not.toContain(secret);
 
       const rows = await metricsOf(f.org);
       expect(rows.map((r) => r.metric)).toEqual([
-        "active_users_24h", "active_users_30d", "active_users_7d", "cf_errors", "cf_requests",
-        "health_ms", "health_ms", "health_up", "health_up", "rw_cpu", "rw_mem_mb",
+        "active_users_24h", "active_users_30d", "active_users_7d", "health_ms", "health_ms", "health_up", "health_up",
       ]);
       expect(new Set(rows.map((r) => r.env))).toEqual(new Set(["live"]));
       // The Integrations screen: every credential that was used says so, and none carries an error.
       const used = (await secretRows(f.org)).filter((r) => r.kind !== "github_token");
-      expect(used.map((r) => [r.kind, r.scope])).toEqual([["cloudflare_analytics", ""], ["metrics_endpoint", "live"], ["railway", "live"]]);
+      expect(used.map((r) => [r.kind, r.scope])).toEqual([["metrics_endpoint", "live"]]);
       for (const r of used) { expect(r.last_used_at, r.kind).not.toBeNull(); expect(r.last_error, r.kind).toBeNull(); }
     }
-    expect(w.seen).toHaveLength(10);
+    expect(w.seen).toHaveLength(6);
     expect(await metricOrgs()).toEqual([ORG_B, ORG_A]);
-    expect(await all(env.DB, `SELECT org_id FROM repo_snapshots ORDER BY org_id`)).toEqual([{ org_id: ORG_B }, { org_id: ORG_A }]); // each org's own cf_polled
   });
 
   it("one org's upstreams failing — each echoing its request back — never stops the other, and no credential reaches a log line or a last_error", async () => {
     await configure(A);
     await configure(B);
-    // ORG_B sorts first, so its three failures happen BEFORE SaplingLearn's units are served.
+    // ORG_B sorts first, so its failures happen BEFORE SaplingLearn's units are served.
     const w = world((s) => {
-      const beta = s.url.includes("beta.example.test") || s.body.includes("beta-worker") || s.body.includes("rw-env-beta");
+      const beta = s.url.includes("beta.example.test");
       if (!beta || s.url === B.cfg.frontendUrl) return undefined;
-      const echo = `denied authorization=${s.auth} project-access-token=${s.rwToken} body=${s.body}`;
-      if (s.url === RW_URL) throw new Error(`connect failed: ${echo}`);
-      return new Response(JSON.stringify({ message: echo, errors: [{ message: echo }] }), { status: s.url === CF_URL ? 403 : 500 });
+      const echo = `denied authorization=${s.auth} body=${s.body}`;
+      if (s.url.endsWith("/api/internal/metrics")) throw new Error(`connect failed: ${echo}`);
+      return new Response(JSON.stringify({ message: echo, errors: [{ message: echo }] }), { status: 500 });
     });
     const { logged } = await captured(() => handleRepoCron(e, HOURLY, w.fetchImpl));
 
     // SaplingLearn's tick is whole.
     expect((await metricsOf(ORG_A)).map((r) => r.metric)).toEqual([
-      "active_users_24h", "active_users_30d", "active_users_7d", "cf_errors", "cf_requests",
-      "health_ms", "health_ms", "health_up", "health_up", "rw_cpu", "rw_mem_mb",
+      "active_users_24h", "active_users_30d", "active_users_7d", "health_ms", "health_ms", "health_up", "health_up",
     ]);
     for (const r of await secretRows(ORG_A)) expect(r.last_error, r.kind).toBeNull();
     // The failing org wrote its health readings and nothing else…
     expect([...new Set((await metricsOf(ORG_B)).map((r) => r.metric))]).toEqual(["health_ms", "health_up"]);
     // …and each failure is recorded on ITS integration row, scrubbed.
     const failed = (await secretRows(ORG_B)).filter((r) => r.kind !== "github_token");
-    expect(failed).toHaveLength(3);
+    expect(failed).toHaveLength(1);
     for (const r of failed) {
       expect(r.last_error, r.kind).toBeTruthy();
       for (const secret of [...everySecret(A), ...everySecret(B)]) expect(r.last_error, r.kind).not.toContain(secret);
     }
-    expect(failed.find((r) => r.kind === "railway")!.last_error).toContain("[redacted]");
+    expect(failed.find((r) => r.kind === "metrics_endpoint")!.last_error).toContain("[redacted]");
     // The failures WERE logged — with the org's id on nothing but the dispatcher's own lines, and no secret anywhere.
-    expect(logged).toContain("pollRailway");
+    expect(logged).toContain("pollSaplingMetrics");
     expect(logged).toContain("[redacted]");
     for (const secret of [...everySecret(A), ...everySecret(B)]) {
       expect(logged).not.toContain(secret);
@@ -186,7 +166,7 @@ describe("the hourly tick, two orgs", () => {
     await run(env.DB, `UPDATE orgs SET suspended_at = ?, suspended_by = 'AndresL230' WHERE id = ?`, nowIso(), ORG_B);
     const w = world();
     await handleRepoCron(e, HOURLY, w.fetchImpl);
-    expect(w.seen).toHaveLength(5);
+    expect(w.seen).toHaveLength(3);
     expect(w.seen.some((s) => JSON.stringify(s).includes("beta"))).toBe(false);
     expect(await metricOrgs()).toEqual([ORG_A]);
 
@@ -227,7 +207,7 @@ describe("an org with nothing configured", () => {
   it("the legacy Worker secrets answer for SaplingLearn ONLY — another org with the same environment key gets none of them", async () => {
     const legacy = {
       ...e, GITHUB_SERVICE_TOKEN: "legacy-github-token-000000", CF_ANALYTICS_TOKEN: "legacy-cf-token-0000000", CF_ANALYTICS_ACCOUNT_ID: "legacy-account",
-      RAILWAY_TOKEN_LIVE: "legacy-railway-live-00000", SAPLING_METRICS_TOKEN: "legacy-metrics-token-000",
+      SAPLING_METRICS_TOKEN: "legacy-metrics-token-000",
     } as unknown as Env;
     for (const f of [A, B]) { await addOrgRepo(f.repo, f.org); await setOrgEnvironments([f.cfg], f.org); }
     const w = world();
@@ -235,9 +215,9 @@ describe("an org with nothing configured", () => {
     await handleRepoCron(legacy, RECONCILE, w.fetchImpl);
     const beta = w.seen.filter((s) => JSON.stringify(s).includes("beta"));
     expect(beta.map((s) => s.url).sort()).toEqual([B.cfg.apiUrl + "/health", B.cfg.apiUrl + "/health", B.cfg.frontendUrl, B.cfg.frontendUrl]); // its health pings, twice
-    for (const s of beta) { expect(s.auth).toBeNull(); expect(s.rwToken).toBeNull(); }
+    for (const s of beta) expect(s.auth).toBeNull();
     // SaplingLearn polled and reconciled on the fallback, as it does in production today.
-    expect(w.seen.find((s) => s.url === RW_URL)!.rwToken).toBe("legacy-railway-live-00000");
+    expect(w.seen.find((s) => s.url === A.cfg.apiUrl + "/api/internal/metrics")!.auth).toBe("Bearer legacy-metrics-token-000");
     expect(w.seen.some((s) => s.url.startsWith(`${GH}repos/${A.repo}`) && s.auth === "Bearer legacy-github-token-000000")).toBe(true);
     expect(w.seen.some((s) => s.url.startsWith(`${GH}repos/${B.repo}`))).toBe(false);
   });
@@ -394,15 +374,15 @@ describe("rotation", () => {
     await configure(A);
     await configure(B);
     const w = world();
-    // 10 = the whole tick for two units (2 × (2 + 3)); health's half (5) fits both of its units' 2 + 2.
-    await captured(() => handleRepoCron(e, HOURLY, w.fetchImpl, 10));
-    expect(w.seen).toHaveLength(10);
-    // 6: health's half is 3 — ONE unit (2) — and the usage job still gets a unit (3) of the rest.
+    // 6 = the whole tick for two units (2 × (2 + 1)); health's half (3) fits only one of its units' 2 + 2…
+    // 8: health's half (4) fits both, and the usage job both of its units (1 + 1).
+    await captured(() => handleRepoCron(e, HOURLY, w.fetchImpl, 8));
+    expect(w.seen).toHaveLength(6);
+    // 5: health's half is 2.5 — ONE unit (2) — and the usage job still gets its units (1 each) from the rest.
     const tight = world();
-    await captured(() => handleRepoCron(e, HOURLY + 3_600_000, tight.fetchImpl, 6));
-    expect(tight.seen.map((s) => s.url)).toEqual([B.cfg.frontendUrl, B.cfg.apiUrl + "/health", CF_URL, RW_URL, B.cfg.apiUrl + "/api/internal/metrics"]);
+    await captured(() => handleRepoCron(e, HOURLY + 3_600_000, tight.fetchImpl, 5));
+    expect(tight.seen.map((s) => s.url)).toEqual([B.cfg.frontendUrl, B.cfg.apiUrl + "/health", B.cfg.apiUrl + "/api/internal/metrics", A.cfg.apiUrl + "/api/internal/metrics"]);
     expect(await readCursor(platformCtx("system"), "health")).toBe(`${ORG_B}/live`);
-    expect(await readCursor(platformCtx("system"), "usage")).toBe(`${ORG_B}/live`);
   });
 });
 
@@ -412,9 +392,7 @@ describe("on demand, for the caller's org", () => {
     await configure(B);
     const bob = await tenantCtx("bob", "admin", { orgId: ORG_B });
     const w = world();
-    expect(await runUsagePolls(e, bob, HOURLY, w.fetchImpl)).toEqual({
-      cloudflare: [{ env: "live", status: "ok", written: 2 }], railway: [{ env: "live", status: "ok", written: 2 }], sapling: [{ env: "live", status: "ok", written: 3 }],
-    });
+    expect(await runUsagePolls(e, bob, HOURLY, w.fetchImpl)).toEqual({ sapling: [{ env: "live", status: "ok", written: 3 }] });
     expect(await runReconcileJob(e, bob, HOURLY, { fetchImpl: w.fetchImpl })).toMatchObject({ failed: [] });
     const sync = await runBackfill(e, bob, "bob", { fetchImpl: w.fetchImpl, summarizer: null, issueSummarizer: null });
     expect(sync.ok).toBe(true);
@@ -456,7 +434,7 @@ describe("POST …/admin/{backfill,poll,poll-usage}: an admin acts on THEIR org 
   /** SaplingLearn's legacy Worker secrets, all set: what `resolveCredential` may fall back to for org #1 ALONE. */
   const LEGACY = {
     GITHUB_SERVICE_TOKEN: "legacy-github-token-000000", CF_ANALYTICS_TOKEN: "legacy-cf-token-0000000", CF_ANALYTICS_ACCOUNT_ID: "legacy-account-0000",
-    RAILWAY_TOKEN_LIVE: "legacy-railway-live-00000", SAPLING_METRICS_TOKEN: "legacy-metrics-token-000",
+    SAPLING_METRICS_TOKEN: "legacy-metrics-token-000",
   };
   const legacyEnv = { ...e, ...LEGACY } as unknown as Env;
 
@@ -496,8 +474,8 @@ describe("POST …/admin/{backfill,poll,poll-usage}: an admin acts on THEIR org 
     });
     for (const base of ["", "/api/o/acme"]) {
       expect(out[`${base}/admin/backfill`]).toEqual({ status: 503, json: { error: "service token or repo not configured" } });
-      expect(out[`${base}/admin/poll`]).toEqual({ status: 200, json: { health: NOT, cloudflare: NOT, railway: NOT, sapling: NOT, github: NOT } });
-      expect(out[`${base}/admin/poll-usage`]).toEqual({ status: 200, json: { cloudflare: NOT, railway: NOT, sapling: NOT } });
+      expect(out[`${base}/admin/poll`]).toEqual({ status: 200, json: { health: NOT, sapling: NOT, github: NOT } });
+      expect(out[`${base}/admin/poll-usage`]).toEqual({ status: 200, json: { sapling: NOT } });
     }
     expect(seen).toEqual([]);
     expect(await rowsOf(ORG_A)).toEqual(before);
@@ -515,11 +493,11 @@ describe("POST …/admin/{backfill,poll,poll-usage}: an admin acts on THEIR org 
       sync: await post("/api/o/acme/admin/backfill", cookie), poll: await post("/api/o/acme/admin/poll", cookie), usage: await post("/api/o/acme/admin/poll-usage", cookie),
     }));
     expect(out.sync).toEqual({ status: 503, json: { error: "service token or repo not configured" } });
-    expect(out.poll).toMatchObject({ status: 200, json: { cloudflare: NOT, railway: NOT, sapling: NOT, github: NOT } });
-    expect(out.usage).toEqual({ status: 200, json: { cloudflare: NOT, railway: NOT, sapling: NOT } });
+    expect(out.poll).toMatchObject({ status: 200, json: { sapling: NOT, github: NOT } });
+    expect(out.usage).toEqual({ status: 200, json: { sapling: NOT } });
     expect(seen.map((s) => s.url).sort()).toEqual([B.cfg.apiUrl + "/health", B.cfg.frontendUrl]);
     for (const s of seen) {
-      expect([s.auth, s.rwToken]).toEqual([null, null]);
+      expect(s.auth).toBeNull();
       expect(carries(s, [...Object.values(LEGACY), ...everySecret(A)])).toEqual([]);
     }
     expect(await rowsOf(ORG_A)).toEqual(before);
@@ -537,7 +515,7 @@ describe("POST …/admin/{backfill,poll,poll-usage}: an admin acts on THEIR org 
         return got;
       });
       expect(out.map((r) => r.status), slug).toEqual([200, 200, 200]);
-      expect(out[1].json, slug).toMatchObject({ github: { failed: [] }, cloudflare: [{ env: "live", status: "ok" }], railway: [{ env: "live", status: "ok" }], sapling: [{ env: "live", status: "ok" }] });
+      expect(out[1].json, slug).toMatchObject({ github: { failed: [] }, sapling: [{ env: "live", status: "ok" }] });
 
       // Every request is this org's: its repo, its hosts, its credentials — and no one else's, the Worker's included.
       expect(seen.length, slug).toBeGreaterThan(20);
@@ -546,11 +524,9 @@ describe("POST …/admin/{backfill,poll,poll-usage}: an admin acts on THEIR org 
         expect(JSON.stringify(s).includes(other.tag), `${slug} ${s.url}`).toBe(false);
         if (s.url.startsWith(GH)) expect(s.auth, s.url).toBe(`Bearer ${f.secrets.gh}`);
         if (s.url.startsWith(GH) && !s.url.endsWith("/graphql")) expect(s.url.startsWith(`${GH}repos/${f.repo}`), s.url).toBe(true);
-        if (s.url === CF_URL) expect(s.auth).toBe(`Bearer ${f.secrets.cf}`);
-        if (s.url === RW_URL) expect(s.rwToken).toBe(f.secrets.rw);
         if (s.url.endsWith("/api/internal/metrics")) expect(s.auth).toBe(`Bearer ${f.secrets.app}`);
       }
-      expect(seen.filter((s) => s.url === CF_URL || s.url === RW_URL || s.url.endsWith("/api/internal/metrics")), slug).toHaveLength(6); // Poll now + Poll usage now
+      expect(seen.filter((s) => s.url.endsWith("/api/internal/metrics")), slug).toHaveLength(2); // Poll now + Poll usage now
       expect((await metricsOf(f.org)).length, slug).toBeGreaterThan(0);
       expect((await all<{ kind: string }>(env.DB, `SELECT kind FROM repo_snapshots WHERE org_id = ?`, f.org)).map((r) => r.kind), slug).toContain("prs_reconciled");
       expect(await rowsOf(other.org), `${slug} changed a row of ${other.org}`).toEqual(before);

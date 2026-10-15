@@ -99,6 +99,19 @@ export function previewState(s: AppState, mode: PreviewMode, blank: AppState): A
 
   // Org settings and Platform keep their own state objects.
   out.org = blankSlices(s.org, blank.org, mode, mode === "empty" ? ["settings", "plan", "members", "integrations", "github", "githubRepos"] : []);
+  // The Hosting tab's one read sits inside `org.hosting` (hosting.ts), so `blankSlices` does not find it.
+  // Loading: still out. Empty: answered for a new organization — the provider catalogue is Trov's, not the
+  // org's, so it stays; no environment, no connection, nothing detected. Its own "Preview with sample data"
+  // keeps working under the preview, as the Repo dashboard's does.
+  const hx = s.org.hosting;
+  out.org = {
+    ...out.org,
+    hosting: hx.sample ? hx : {
+      ...hx, notice: null, part: null, connect: null, token: null, tests: {},
+      setup: mode === "loading" ? { status: "loading", data: null }
+        : { status: "ok", data: { providers: hx.setup.data?.providers ?? [], environments: [], connections: [], checklist: [], detected: [], secrets_available: hx.setup.data?.secrets_available ?? true } },
+    },
+  };
   out.plat = blankSlices(s.plat, blank.plat, mode, mode === "empty" ? ["detail", "usage", "admins"] : []);
 
   // Loading: whether the organization has a repository is "not known yet" too (the Repo dashboard and

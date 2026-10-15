@@ -295,9 +295,11 @@ async function progressSeam(ctx: TenantContext, payload: unknown): Promise<void>
 const WORK_EVENT_NAMES = ["pull_request", "issues"];
 /** Deliveries the repo dashboard capture (`repo_events`) reads. `status` (Task
  *  14) is a sibling arm: it feeds `repo_metrics`, not `repo_events` — see the
- *  branch below. The list is complete for the five-phase capture plan; GitHub
- *  only delivers the ones the repo's webhook is SUBSCRIBED to. */
-export const REPO_EVENT_NAMES: readonly string[] = ["pull_request", "push", "pull_request_review", "deployment_status", "check_run", "workflow_run", "status"];
+ *  branch below. GitHub only delivers the ones the repo's webhook is SUBSCRIBED
+ *  to. `deployment_status` is not read any more: an environment's deploys come
+ *  from its hosting provider (src/hosting/), so such a delivery is verified and
+ *  ignored like any other surface we do not capture. */
+export const REPO_EVENT_NAMES: readonly string[] = ["pull_request", "push", "pull_request_review", "check_run", "workflow_run", "status"];
 
 // ---------------------------------------------------------------------------
 // The capture of ONE VERIFIED delivery, for the org it was verified for. The
@@ -429,7 +431,7 @@ export async function captureDelivery(
           if (await putMetric(ctx, m)) repo.captured++; else repo.unchanged++;
         }
       } else {
-        for (const ev of repoEventsFromDelivery(eventName, payload, cfgs)) {
+        for (const ev of repoEventsFromDelivery(eventName, payload)) {
           const res = await ingestRepoEvent(ctx, ev);
           if (res.outcome !== "written") { repo.unchanged++; continue; }
           repo.captured++;

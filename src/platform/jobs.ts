@@ -2,8 +2,8 @@
 // run a job for, which org a webhook delivery belongs to, and where each job's rotation stands. These
 // are the only cross-org reads a background entry point makes — they return ids and a repo name, never
 // content and never a secret — and everything after them runs as ONE org's system tenant. The reads of
-// `org_repos` / `org_environments` / `org_github_installations` are declared in
-// test/data-layer.static.test.ts (PLATFORM_ALLOW).
+// `org_repos` / `org_environments` / `org_github_installations` / `org_environment_parts` /
+// `org_hosting_connections` are declared in test/data-layer.static.test.ts (PLATFORM_ALLOW).
 //
 // A SUSPENDED org (0042_organizations) is absent from every list here: its crons do not run and its hooks read as
 // unknown, exactly as it resolves for no member (src/data/context.ts).
@@ -36,6 +36,21 @@ export function listRepoUnits(p: PlatformContext): Promise<RepoUnit[]> {
     `SELECT r.org_id, (SELECT COUNT(*) FROM org_environments e WHERE e.org_id = r.org_id) AS envs
        FROM org_repos r JOIN orgs o ON o.id = r.org_id
       WHERE r.is_primary = 1 AND o.suspended_at IS NULL ORDER BY r.org_id`);
+}
+
+export interface PartUnit { org_id: string; env_key: string; part_key: string; provider: string }
+
+/** One row per STORED part (`org_environment_parts`, 0057_hosting_providers) of every active org — the
+ *  units of the `hosting` job — in org, environment `position`, part `position` order, so the rotation
+ *  is stable from tick to tick. A legacy Cloudflare / Railway part has no row here (it is the
+ *  environment's own columns, polled by `usage`), so an org without a stored part contributes nothing.
+ *  `provider` is what the cron sizes the unit's subrequest cost by (the registry's `pollCost`). */
+export function listPartUnits(p: PlatformContext): Promise<PartUnit[]> {
+  return all<PartUnit>(p,
+    `SELECT pt.org_id, pt.env_key, pt.part_key, pt.provider FROM org_environment_parts pt
+       JOIN org_environments e ON e.org_id = pt.org_id AND e.key = pt.env_key
+       JOIN orgs o ON o.id = pt.org_id
+      WHERE o.suspended_at IS NULL ORDER BY pt.org_id, e.position, pt.position, pt.part_key`);
 }
 
 export interface HookRepo { id: string; org_id: string; repo_full_name: string; is_primary: number }
@@ -90,6 +105,49 @@ export function installationRepoOrgs(p: PlatformContext, installationId: number,
         AND (i.repo_access = 'all' OR EXISTS (SELECT 1 FROM org_github_installation_repos a
               WHERE a.org_id = i.org_id AND a.binding_id = i.id AND a.repo_full_name = r.repo_full_name))
       ORDER BY i.id`, installationId, repo);
+}
+
+// ── hosting installations: which org holds one (0057_hosting_providers) ──────
+
+/**
+ * The orgs whose ACTIVE connection for hosting `provider` is the provider-side installation `externalId`,
+ * with its scope — before any org is known: the provider's uninstall notice names only the installation
+ * (src/hosting/webhook.ts), and the connect callback must see that an installation is already another org's
+ * (`taken`, src/hosting/connections.ts — 0057's unique index says so again at the write). A SUSPENDED org's
+ * row is returned too: its installation is still taken, and an uninstall must still end it. Org ids and a
+ * scope only; the connection itself is then read as that org's tenant.
+ */
+export function connectionsForExternalId(p: PlatformContext, provider: string, externalId: string): Promise<{ org_id: string; scope: string }[]> {
+  return all<{ org_id: string; scope: string }>(p,
+    `SELECT c.org_id, c.scope FROM org_hosting_connections c
+      WHERE c.provider = ? AND c.external_id = ? AND c.status = 'active' ORDER BY c.org_id, c.scope`, provider, externalId);
+}
+
+/**
+ * The ACTIVE orgs whose ACTIVE install / OAuth connection for hosting `provider` is on the provider-side account
+ * `accountId` (a Vercel team or user id) — before any org is known: a deployment or project event names the
+ * account and the project, never a Trov org (src/hosting/webhook.ts). A suspended org is left out: nothing is
+ * polled for it. Org ids only; its parts are then read as that org's system tenant.
+ */
+export function connectionsForAccount(p: PlatformContext, provider: string, accountId: string): Promise<{ org_id: string }[]> {
+  return all<{ org_id: string }>(p,
+    `SELECT DISTINCT c.org_id FROM org_hosting_connections c JOIN orgs o ON o.id = c.org_id
+      WHERE c.provider = ? AND c.account_id = ? AND c.status = 'active' AND o.suspended_at IS NULL ORDER BY c.org_id LIMIT 5`, provider, accountId);
+}
+
+/**
+ * The slug of the org `handle` ADMINISTERS that holds the provider-side installation `externalId` — the
+ * provider's "Configuration URL" (`GET /hosting/<provider>/configure`, src/hosting/routes.ts) names only the
+ * installation. ONE statement that answers null for an installation nobody holds, for one held by an org the
+ * person is not in, for a member who is not an admin and for a suspended org ALIKE — so the route's redirect
+ * cannot be used to learn whether an installation is connected to Trov at all.
+ */
+export async function adminOrgForInstallation(p: PlatformContext, provider: string, externalId: string, handle: string): Promise<string | null> {
+  const row = await first<{ slug: string }>(p,
+    `SELECT o.slug FROM org_hosting_connections c JOIN orgs o ON o.id = c.org_id JOIN memberships m ON m.org_id = c.org_id
+      WHERE c.provider = ? AND c.external_id = ? AND c.status = 'active' AND o.suspended_at IS NULL
+        AND m.user_id = ? COLLATE NOCASE AND m.role IN ('owner', 'admin') ORDER BY o.slug LIMIT 1`, provider, externalId, handle);
+  return row?.slug ?? null;
 }
 
 // ── the rotation cursor (`cron_cursor`, 0042_organizations) ──────────────────

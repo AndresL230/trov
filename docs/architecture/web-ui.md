@@ -14,7 +14,9 @@ itself looks fine and the bug is easy to miss.
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
 Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
-the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Inside a morphed page, a part that must be REPLACED when it becomes a different
+the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
+confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
+it. Inside a morphed page, a part that must be REPLACED when it becomes a different
 thing (a tab's panel, a wizard's step) names itself with `data-morph-key`. Do not fix a flicker by turning
 animations off in the affected region — that hides one symptom and leaves the rebuild.
 
@@ -656,7 +658,8 @@ empty, so a brand-new organization can see what the screen is for. The rules:
   adds Open Org settings › Repositories for an admin (`actionHtml`).
 - **Shapes are the skeleton's builders.** Each screen has ONE shape builder (`tableShapes`,
   `boardCardShapes`, `feedCardShape`, `sprintCardShape`, `timelineShapes`, `handoffRowsShape`,
-  `promptCardShape`, `libraryCardShape`, `reviewCardShape`, `unplacedShapes`, `skRowsShape`, …) used by its
+  `promptCardShape`, `libraryCardShape`, `reviewCardShape`, `unplacedShapes`, `skRowsShape`, Hosting's
+  `envTilesShape` / `partRowsShape` and the dashboard's `hostingShapes`, …) used by its
   loading skeleton AND its empty layout, so the two have the same columns and row heights and cannot drift.
 - **Never data (CLAUDE.md invariant 7).** A shape is a box: no name, title, number, date, avatar, control or
   status colour. Inside `.cnpy-empty-shapes` (`aria-hidden`, `pointer-events:none`) trov.css draws `.cnpy-sk`
@@ -968,3 +971,13 @@ radius needs a line in that block, else it renders square; `test/render.corners.
 A shape that only reads right as a CIRCLE (a halo ring, an overlapping avatar stack, a check in a bordered circle)
 needs a hook class and a rule in that block (`.cnpy-av`, `.cnpy-avstack`, `.cnpy-seal`, `.repo-envdot`, …), and
 a status dot must be an element, never a `●` character (`GDOT` in `repo.ts`).
+
+## Field errors and how-tos
+
+A field's error — whether it appears while you type (the part editor checks as you go) or after a save the
+server refused — is a small box FLOATING right under its input, never a line that pushes the form down:
+`fieldError` inside `anchoredField` (`web/src/org-ui.ts`; `.cnpy-field-anchor` / `.cnpy-field-err` in
+`trov.css`, its radius inline). `textField` does it for every text field; the token inputs, the invite row and
+the part editor's pickers use the same pair. A how-to ("Where to get it") is written as lines: `1. …` steps,
+then short notes; `howToHtml` (`web/src/integrations.ts`) draws the steps as a numbered list and each other line
+as its own paragraph, so no how-to is one long block.

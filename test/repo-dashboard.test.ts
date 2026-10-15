@@ -81,7 +81,7 @@ describe("getRepoDashboard — a D1-only projection", () => {
 
   it("on a cold start every captured section is not_connected — never guessed", async () => {
     const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
-    for (const k of ["environments", "drift", "health", "branches", "deploys", "ciFailures", "coverage", "bundle", "usage", "cloudflare", "hosting", "todos"] as const) {
+    for (const k of ["environments", "drift", "health", "branches", "deploys", "ciFailures", "coverage", "bundle", "usage", "providers", "todos"] as const) {
       expect(d[k].status, k).toBe("not_connected");
     }
   });

@@ -28,7 +28,7 @@
 //   #platform         → Platform (superadmin) › Organizations; #platform/usage, /support, /admins, /audit
 //                       its other tabs; #platform/orgs/<slug> one organization;
 //                       #platform/support/<id> one support report (in the Support tab)
-//   #org              → Org settings › Integrations; #org/repos, #org/environments,
+//   #org              → Org settings › Integrations; #org/repos, #org/environments, #org/hosting,
 //                       #org/members, #org/tags, #org/notifications and #org/general its other tabs
 //   #tags/<name>      → one tag's page: everything that carries it. The list itself is
 //                       Org settings › Tags (`#org/tags`), where a bare `#tags` lands

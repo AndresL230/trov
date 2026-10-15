@@ -1,0 +1,12 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "id": "0123456789abcdef0123456789abcdef",
+    "name": "Acme Labs",
+    "type": "standard",
+    "settings": { "enforce_twofactor": false },
+    "created_on": "2024-03-01T10:00:00.000Z"
+  }
+}

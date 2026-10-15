@@ -1,0 +1,13 @@
+{
+  "id": "5f9e2b7c4d1a3e0007c8b9a0",
+  "uid": null,
+  "full_name": "Ada Lovelace",
+  "avatar_url": "https://avatars.githubusercontent.com/u/1024025?v=4",
+  "email": "ada@acme.dev",
+  "affiliate_id": "",
+  "site_count": 4,
+  "created_at": "2024-03-11T15:02:44.120Z",
+  "last_login": "2026-10-06T08:12:03.551Z",
+  "login_providers": ["github"],
+  "onboarding_progress": { "slides": "done" }
+}

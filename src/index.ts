@@ -5,6 +5,7 @@ import { STRIPE_WEBHOOK_PATH, handleStripeWebhook } from "./billing/webhook";
 import { pruneEvents } from "./billing/store";
 import { BILLING_CHECKOUT_PATH, BILLING_DONE_PATH } from "@shared/billing";
 import { APP_WEBHOOK_PATH, handleGithubAppWebhook } from "./github-app/webhook";
+import { handleHostingWebhook, hostingWebhookPath } from "./hosting/webhook";
 import { resolveBearerConnection } from "./data/bearer";
 import { meterMcp, pruneUsage } from "./data/meter";
 import { pruneSyncRuns } from "./platform/sweeps";
@@ -58,6 +59,12 @@ async function serve(request: Request, env: Env, ctx: ExecutionContext, url: URL
   if (request.method === "POST" && url.pathname === APP_WEBHOOK_PATH) return handleGithubAppWebhook(request, env, { waitUntil: (p) => ctx.waitUntil(p) });
   const hook = request.method === "POST" ? webhookPath(url.pathname) : null;
   if (hook) return handleGithubWebhook(request, env, { hookId: hook.hookId, waitUntil: (p) => ctx.waitUntil(p) });
+  // A hosting provider's notices (src/hosting/webhook.ts): the signature over the raw body, keyed with the
+  // integration's client secret, is the auth. "Uninstalled" revokes that installation's credential in the
+  // org(s) that hold it; a deployment / project event polls that project's parts again, after the response.
+  // Never touches sessionGate; an unverified delivery is a bare 401 that writes nothing.
+  const hostingHook = request.method === "POST" ? hostingWebhookPath(url.pathname) : null;
+  if (hostingHook) return handleHostingWebhook(request, env, hostingHook.provider, { waitUntil: (p) => ctx.waitUntil(p) });
   // Signed unsubscribe (canopy-email.md §7): the single token exception. The HMAC token names ONE person
   // and can ONLY set email_unsubscribed = 1 for them, whoever is signed in here (src/notifications/
   // unsubscribe.ts). A GET (the footer link — and every mail scanner's prefetch) is a page that changes

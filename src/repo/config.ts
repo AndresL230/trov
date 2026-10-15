@@ -7,17 +7,14 @@ export interface RepoEnvConfig {
   label: string;          // card title
   note: string | null;    // the branch, shown beside the label
   branch: string;         // the git branch this environment deploys from
-  railwayEnv: string;     // GitHub deployment `environment`, e.g. "Sapling / staging"
-  worker: string;         // Cloudflare Worker script name
-  workerCheck: string;    // the check run Workers Builds posts, e.g. "Workers Builds: frontend-staging"
   frontendUrl: string;
   apiUrl: string;
   healthPath: string;     // appended to apiUrl
-  railwayEnvironmentId?: string;
-  railwayServiceId?: string;
 }
+// What hosts an environment (a Cloudflare Worker, a Railway service, a Vercel project, …) is not here:
+// those are its PARTS (`org_environment_parts`, src/hosting/parts.ts), read by the hosting providers.
 
-const REQUIRED = ["key", "label", "branch", "railwayEnv", "worker", "workerCheck", "frontendUrl", "apiUrl", "healthPath"] as const;
+const REQUIRED = ["key", "label", "branch", "frontendUrl", "apiUrl", "healthPath"] as const;
 
 /** Parse `REPO_ENVIRONMENTS`. Absent or malformed → [].
  *  LEGACY: the var is what 0042_organizations copied into `org_environments`. Nothing in src/ calls this any more —
@@ -30,7 +27,10 @@ export function repoEnvironments(env: { REPO_ENVIRONMENTS?: string }): RepoEnvCo
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((e): e is RepoEnvConfig =>
       !!e && typeof e === "object" && REQUIRED.every((k) => typeof (e as Record<string, unknown>)[k] === "string"))
-      .map((e) => ({ ...e, note: e.note ?? null }));
+      .map((e) => ({
+        key: e.key, label: e.label, note: e.note ?? null, branch: e.branch,
+        frontendUrl: e.frontendUrl, apiUrl: e.apiUrl, healthPath: e.healthPath,
+      }));
   } catch { return []; }
 }
 
@@ -40,15 +40,12 @@ export function repoEnvironments(env: { REPO_ENVIRONMENTS?: string }): RepoEnvCo
 // the cron, the webhook or the backfill reads the vars any more.
 
 interface EnvRow {
-  key: string; label: string; note: string | null; branch: string; railway_env: string; worker: string; worker_check: string;
-  frontend_url: string; api_url: string; health_path: string; railway_environment_id: string | null; railway_service_id: string | null;
+  key: string; label: string; note: string | null; branch: string; frontend_url: string; api_url: string; health_path: string;
 }
-const ENV_COLS = `key, label, note, branch, railway_env, worker, worker_check, frontend_url, api_url, health_path, railway_environment_id, railway_service_id`;
+const ENV_COLS = `key, label, note, branch, frontend_url, api_url, health_path`;
 const toConfig = (r: EnvRow): RepoEnvConfig => ({
-  key: r.key, label: r.label, note: r.note ?? null, branch: r.branch, railwayEnv: r.railway_env, worker: r.worker, workerCheck: r.worker_check,
+  key: r.key, label: r.label, note: r.note ?? null, branch: r.branch,
   frontendUrl: r.frontend_url, apiUrl: r.api_url, healthPath: r.health_path,
-  ...(r.railway_environment_id ? { railwayEnvironmentId: r.railway_environment_id } : {}),
-  ...(r.railway_service_id ? { railwayServiceId: r.railway_service_id } : {}),
 });
 
 /** The org's environments in `position` order — ORDER MATTERS, as it did in the var: [0] is the drift

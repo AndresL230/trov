@@ -1,0 +1,37 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "deployments": [
+      {
+        "id": "bcf48806-b317-4351-9ee7-36e7d557d4de",
+        "created_on": "2026-10-07T11:41:09.522Z",
+        "source": "wrangler",
+        "strategy": "percentage",
+        "versions": [{ "version_id": "7e2a6c1d-0f4b-4c9e-9a51-3d8b2f6e4a10", "percentage": 100 }],
+        "annotations": { "workers/message": "Ship the pricing page\n\nLonger body that is not shown", "workers/triggered_by": "deployment" },
+        "author_email": "dana@acme-labs.dev"
+      },
+      {
+        "id": "18f97339-c287-4872-9bdd-e2135c07ec12",
+        "created_on": "2026-10-06T16:40:03.000Z",
+        "source": "api",
+        "strategy": "percentage",
+        "versions": [
+          { "version_id": "5b1d9e3f-2a7c-4e60-8f14-9c0a3b7d2e51", "percentage": 90 },
+          { "version_id": "0c4e8a2b-6d1f-4b39-a7e5-1f9d3c5b8a20", "percentage": 10 }
+        ],
+        "annotations": { "workers/triggered_by": "rollback" },
+        "author_email": "omar@acme-labs.dev"
+      },
+      {
+        "id": "5c2d1b7a-9e3f-4a60-b8c4-2f1e0d9a7b35",
+        "created_on": "2026-10-05T09:12:44.000Z",
+        "source": "dash",
+        "strategy": "percentage",
+        "versions": [{ "version_id": "9a3f7c1e-4b2d-4e8a-b6f0-7d2c5e1a9b43", "percentage": 100 }]
+      }
+    ]
+  }
+}

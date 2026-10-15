@@ -1,0 +1,15 @@
+{
+  "id": "zx8kq2m9r1p0vy4w",
+  "name": "myapp-staging",
+  "internal_numeric_id": 4417309,
+  "network": "default",
+  "network_cidr": "fdaa:9:2b1c::/48",
+  "status": "deployed",
+  "machine_count": 2,
+  "volume_count": 0,
+  "organization": {
+    "name": "Acme Labs",
+    "slug": "acme-labs",
+    "internal_numeric_id": 118832
+  }
+}

@@ -20,7 +20,7 @@ const JOB_LOOKUP_DAYS = 7;
 export interface GhOpts { token: string; repo: string; fetchImpl?: typeof fetch }
 
 /** What one `reconcileRepo` reports: the gate's counts, plus the NAME of every
- *  arm whose `safely` block threw — a Sync that silently lost its deployments
+ *  arm whose `safely` block threw — a Sync that silently lost its workflow runs
  *  looked identical to one that had none. `/admin/backfill` passes this through
  *  as its `repo` object. */
 export interface ReconcileResult { written: number; unchanged: number; failed: string[] }
@@ -96,36 +96,10 @@ const commitToPushEvent = (c: GhCommit, branch: string): RepoEvent => ({
   provenance: "backfill", occurred_at: c.commit.committer.date,
 });
 
-// ── deployments over GraphQL ─────────────────────────────────────────────────
-//
-// ONE request replaces the old `GET /deployments?per_page=20` plus a
-// `/statuses` call per deployment (21 subrequests, most of them spent on
-// Railway's PR-preview environments). `environments:` filters server-side to the
-// environments this deployment reports on, and `statuses(first:10)` brings each
-// deployment's status rows along in the same round trip.
-//
-// Facts verified live against the target repo: `databaseId` EQUALS the REST /
-// webhook `deployment.id`, so `gh:deploy:<id>:<state>` still collides with a
-// webhook row (a redelivery overlap drops as `unchanged`); `state` arrives
-// UPPERCASE; a Bot creator's `login` arrives WITHOUT the `[bot]` suffix the
-// webhook carries; timestamps already have no milliseconds. GraphQL statuses
-// have no numeric id, so `raw.status_id` is null.
-const DEPLOYMENTS_QUERY = `query($owner:String!,$name:String!,$envs:[String!]){ repository(owner:$owner,name:$name){
-  deployments(environments:$envs, first:20, orderBy:{field:CREATED_AT,direction:DESC}){ nodes{
-    databaseId commitOid environment createdAt creator{ login __typename }
-    statuses(first:10){ nodes{ state createdAt logUrl } } } } } }`;
-
-interface GqlDeployment {
-  databaseId?: number | null; commitOid?: string | null; environment?: string | null; createdAt?: string | null;
-  creator?: { login?: string | null; __typename?: string | null } | null;
-  statuses?: { nodes?: ({ state?: string | null; createdAt?: string | null; logUrl?: string | null } | null)[] | null } | null;
-}
-interface GqlDeployments { repository?: { deployments?: { nodes?: (GqlDeployment | null)[] | null } | null } | null }
-
-/** The webhook says `railway-app[bot]`; GraphQL says `railway-app` with
+/** The webhook says `github-code-quality[bot]`; GraphQL says `github-code-quality` with
  *  `__typename: "Bot"`. Re-suffix so a backfilled row and a webhook row for the
- *  same deploy carry the same actor. */
-function creatorLogin(creator: GqlDeployment["creator"]): string | null {
+ *  same review carry the same actor. */
+function creatorLogin(creator: { login?: string | null; __typename?: string | null } | null | undefined): string | null {
   const login = typeof creator?.login === "string" && creator.login ? creator.login : null;
   if (!login) return null;
   return creator?.__typename === "Bot" && !login.endsWith("[bot]") ? `${login}[bot]` : login;
@@ -147,7 +121,7 @@ function creatorLogin(creator: GqlDeployment["creator"]): string | null {
 // arrives UPPERCASE (`fromReview` lower-cases it; done here too, so the payload
 // is the webhook's shape); a Bot author's `login` arrives WITHOUT the `[bot]`
 // suffix (`github-code-quality` vs `github-code-quality[bot]`) and is
-// re-suffixed by `creatorLogin`, exactly as the deployments arm does.
+// re-suffixed by `creatorLogin`.
 //
 // A DISMISSED review is wrapped as the webhook's `dismissed` action (key
 // `…:dismissed`, the same row the dismissal delivery writes) and NOT also as a
@@ -189,12 +163,13 @@ const MAX_STATUSES_PER_CONTEXT = 10;
  * GitHub, the cron's 6-hourly `:20` tick and the admin's "Poll now". Every arm
  * is its own `safely` block, named in `failed` when it throws.
  *
- * Worst case **19 + 2N outbound requests** for N environments (23 for today's
- * two): 2 PR lists + 1 pre-capture commit window + 1 GraphQL deployments + 1
- * workflow-run list + ≤5 job lookups + 1 commit-status list + 1 GraphQL reviews
- * + ≤5 GraphQL branch pages + ≤2 drift compares + 2 per environment (head
- * commit, head checks). The callers' budgets (src/repo/cron.ts) build on this
- * number: the `:20` tick is 19 + 4N with its pings, "Poll now" 19 + 7N.
+ * Worst case **18 + 2N outbound requests** for N environments (22 for today's
+ * two): 2 PR lists + 1 pre-capture commit window + 1 workflow-run list + ≤5 job
+ * lookups + 1 commit-status list + 1 GraphQL reviews + ≤5 GraphQL branch pages
+ * + ≤2 drift compares + 2 per environment (head commit, head checks). GitHub
+ * deployments are not read: an environment's deploys come from its hosting
+ * provider (src/hosting/). The callers' budgets (src/repo/cron.ts) build on this
+ * number: the `:20` tick is 18 + 4N with its pings, "Poll now" 18 + 5N.
  */
 export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now()): Promise<ReconcileResult> {
   const out: ReconcileResult = { written: 0, unchanged: 0, failed: [] };
@@ -207,8 +182,8 @@ export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: Repo
     }
   };
   // Each arm is independent: one failing must not starve the others. The arm's
-  // NAME lands in `failed` so a caller can tell "no deployments" from "the
-  // deployments read blew up" (each name appears at most once).
+  // NAME lands in `failed` so a caller can tell "no workflow runs" from "the
+  // runs read blew up" (each name appears at most once).
   const safely = async (arm: string, fn: () => Promise<void>) => {
     try { await fn(); } catch (e) {
       console.error("reconcileRepo", arm, scrubbedMessage(e, opts.token));
@@ -247,35 +222,11 @@ export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: Repo
 
   const asBackfill = (events: RepoEvent[]): RepoEvent[] => events.map((e) => ({ ...e, provenance: "backfill" as const }));
 
-  // Deployments: ONE GraphQL request, filtered to the configured environments
-  // (see DEPLOYMENTS_QUERY above). Each status is re-wrapped into the webhook's
-  // own `deployment_status` payload shape and put through the SAME pure arm, so
-  // there is one derivation of a deploy row, not two.
-  if (envs.length) await safely("deployments", async () => {
-    const [owner, name] = opts.repo.split("/");
-    const data = await ghGraphql<GqlDeployments>(opts, DEPLOYMENTS_QUERY, { owner, name, envs: envs.map((e) => e.railwayEnv) });
-    const nodes = data?.repository?.deployments?.nodes;
-    for (const node of Array.isArray(nodes) ? nodes : []) {
-      if (!node || typeof node.databaseId !== "number") continue;
-      const deployment = {
-        id: node.databaseId, sha: node.commitOid ?? null, ref: null, environment: node.environment ?? null,
-        created_at: node.createdAt ?? null, creator: { login: creatorLogin(node.creator) },
-      };
-      const statuses = node.statuses?.nodes;
-      for (const st of Array.isArray(statuses) ? statuses : []) {
-        if (!st || typeof st.state !== "string") continue;
-        // `id: null` — a GraphQL status carries no numeric id. Never invented.
-        const deployment_status = { id: null, state: st.state.toLowerCase(), created_at: st.createdAt ?? null, log_url: st.logUrl ?? null };
-        await take(asBackfill(repoEventsFromDelivery("deployment_status", { deployment_status, deployment }, envs)));
-      }
-    }
-  });
-
   // Completed workflow runs.
   await safely("runs", async () => {
     const { workflow_runs = [] } = await ghJson<{ workflow_runs?: Record<string, unknown>[] }>(opts, `/actions/runs?status=completed&per_page=100`);
     for (const workflow_run of workflow_runs) {
-      await take(asBackfill(repoEventsFromDelivery("workflow_run", { action: "completed", workflow_run }, envs)));
+      await take(asBackfill(repoEventsFromDelivery("workflow_run", { action: "completed", workflow_run })));
     }
   });
 
@@ -309,25 +260,18 @@ export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: Repo
   // let a stale sha outrank a newer captured push).
   if (heads.size) await safely("env_heads", () => putSnapshot(ctx, "env_heads", Object.fromEntries(heads), new Date(now).toISOString()));
 
-  // Each environment head's check runs (also the frontend deploy record: a
-  // Workers Builds check IS a deploy, but only on the branch that environment
-  // ships from). Independent per environment so one branch's failure never
-  // starves another's.
+  // Each environment head's check runs. Independent per environment so one
+  // branch's failure never starves another's. The list item may omit
+  // check_suite.head_branch, so the branch we asked for stands in (when two
+  // configured branches share a HEAD, the first one asked wins — the key is the
+  // check run's own id, first write wins).
   for (const cfg of envs) {
     await safely("checks", async () => {
       const { check_runs = [] } = await ghJson<{ check_runs?: Record<string, unknown>[] }>(opts, `/commits/${encodeURIComponent(cfg.branch)}/check-runs?per_page=100`);
       for (const cr of check_runs) {
         if (cr.status !== "completed") continue;
-        // The list item may omit check_suite.head_branch. Do NOT blindly inject
-        // the branch we asked for: when two configured branches share a HEAD,
-        // both environments' Workers Builds checks come back on the first branch
-        // asked, and tagging the other one with this branch leaves it untagged
-        // forever (the correctly-tagged row later drops as `unchanged`). The
-        // owner is the config whose workerCheck matches the run's NAME and whose
-        // head is the run's head sha; absent that, the branch we asked for.
-        const owner = envs.find((e) => e.workerCheck === cr.name && heads.get(e.branch) === cr.head_sha);
-        const check_run = { ...cr, check_suite: { head_branch: owner?.branch ?? cfg.branch } };
-        await take(asBackfill(repoEventsFromDelivery("check_run", { action: "completed", check_run }, envs)));
+        const check_run = { ...cr, check_suite: { head_branch: cfg.branch } };
+        await take(asBackfill(repoEventsFromDelivery("check_run", { action: "completed", check_run })));
       }
     });
   }
@@ -382,15 +326,14 @@ export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: Repo
       const reviews = pr.reviews?.nodes;
       for (const r of Array.isArray(reviews) ? reviews : []) {
         const delivery = r ? reviewDelivery(pr.number, r) : null;
-        if (delivery) await take(asBackfill(repoEventsFromDelivery("pull_request_review", delivery, envs)));
+        if (delivery) await take(asBackfill(repoEventsFromDelivery("pull_request_review", delivery)));
       }
     }
   });
 
   // Branches: every ref, ahead/behind `main` (envs[0]?.branch ?? "main" —
   // same fallback the `commits` arm above uses) and flagged stale, in ONE
-  // GraphQL page (see computeBranches below). Runs UNCONDITIONALLY — unlike
-  // `deployments`, which genuinely cannot filter without environment names,
+  // GraphQL page (see computeBranches below). Runs UNCONDITIONALLY —
   // computeBranches degrades correctly with envs: [] (empty exclusion set,
   // "main" as head), so a repo with no REPO_ENVIRONMENTS configured still
   // gets a branches list instead of losing it for no structural reason.

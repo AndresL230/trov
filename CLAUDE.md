@@ -46,7 +46,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 - `src/` — the Worker. `index.ts` (fetch + `scheduled()` dispatch), `routes.ts` (Hono), `mcp.ts` (MCP tools),
   `consumer.ts` (**the gate**), `webhook.ts` / `github-hook.ts`, `data/` (the ONLY place D1 is reached),
   `tools/` (one module per domain; writers in `tools/writes.ts`), `auth/`, `repo/` (Repo-dashboard capture),
-  `github-app/`, `sync/`, `orgs/`, `platform/`, `plans/`, `billing/`, `integrations/`, `artifacts/`,
+  `github-app/`, `hosting/`, `sync/`, `orgs/`, `platform/`, `plans/`, `billing/`, `integrations/`, `artifacts/`,
   `notifications/`, `deletion/` (deleting an account or an org).
 - `migrations/` — numbered, append-only D1 SQL; each file's header says what it does. Multi-part migrations
   use marker lines that tests cut on. `0042_organizations` is all-or-nothing and must stay under 100 KB; its
@@ -158,6 +158,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | `src/data/`, contexts, tenant vs platform SQL, bearer → org, background jobs | `data-layer.md` |
 | orgs, memberships, roles, invites, superadmin, how an org is set up; deleting an account or an org (`src/deletion/`) | `organizations.md` |
 | `src/github-app/`, the install flow, installation tokens, the App webhook | `github-app.md` |
+| `src/hosting/`, hosting providers, environment parts, provider connections, the `:40` hosting job | `hosting-providers.md` |
 | Sync GitHub, `src/sync/`, the sync panel's copy | `sync.md` |
 | plans, limits, grants, the pricing page, the summarizer allowance | `plans.md` |
 | `src/ai/`, where a model may be called, the AI pass, `ai_runs`, the AI switch, suggestions / "Wrong?", `LOCAL_AI_PREVIEW` | `ai.md` |

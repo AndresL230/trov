@@ -4,7 +4,12 @@
 
 import type { GithubAppStatusDTO } from "./github-app";
 
-export const INTEGRATION_KINDS = ["cloudflare_analytics", "railway", "metrics_endpoint", "github_token", "github_webhook"] as const;
+export const INTEGRATION_KINDS = [
+  "cloudflare_analytics", "railway", "metrics_endpoint", "github_token", "github_webhook",
+  // The hosting providers (0057_hosting_providers, shared/hosting.ts): one org-wide credential each, expected
+  // only once a part of one of the org's environments uses that provider.
+  "vercel", "render", "netlify", "fly", "aws",
+] as const;
 export type IntegrationKind = (typeof INTEGRATION_KINDS)[number];
 export const isIntegrationKind = (v: unknown): v is IntegrationKind =>
   typeof v === "string" && (INTEGRATION_KINDS as readonly string[]).includes(v);
@@ -64,7 +69,10 @@ export type OrgSettingsAuditAction =
   | "repo.add" | "repo.remove" | "repo.primary" | "environment.set" | "environment.delete" | "environment.reorder"
   // The GitHub App's installation (src/github-app/store.ts): connected / disconnected by an admin; the
   // rest arrive from GitHub (its webhook, or its answer to a token request) and are written as `system`.
-  | "github.connect" | "github.disconnect" | "github.uninstall" | "github.suspend" | "github.unsuspend" | "github.repos" | "github.permissions";
+  | "github.connect" | "github.disconnect" | "github.uninstall" | "github.suspend" | "github.unsuspend" | "github.repos" | "github.permissions"
+  // Hosting (0057_hosting_providers): a part set / removed, an install or OAuth grant connected, disconnected
+  // from Trov, or revoked from the provider's side.
+  | "part.set" | "part.delete" | "hosting.connect" | "hosting.disconnect" | "hosting.revoked";
 
 /** One row of `GET /api/o/:slug/integrations/audit`: the secret trail and the repository / environment
  *  trail as ONE list, newest first. `id` is unique across both: `s<n>` (secrets) or `a<n>` (settings). */
@@ -106,14 +114,9 @@ export interface OrgEnvironmentDTO {
   label: string;
   note: string | null;
   branch: string;
-  railway_env: string;
-  worker: string;
-  worker_check: string;
   frontend_url: string;
   api_url: string;
   health_path: string;
-  railway_environment_id: string | null;
-  railway_service_id: string | null;
   created_at: string;
   updated_at: string;
   updated_by: string;

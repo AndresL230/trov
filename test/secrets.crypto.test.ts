@@ -392,11 +392,13 @@ describe("two orgs with identical kinds, scopes and environment keys", () => {
 
   it("editing, reordering and deleting an environment in A leaves B's environment, config and secrets alone", async () => {
     const { a, b } = await both();
-    await setIntegrationConfig(b, "railway", "staging", { project: "b-project" });
+    await setSecret(a, "metrics_endpoint", "staging", TOKEN);
+    await setSecret(b, "metrics_endpoint", "staging", OTHER);
+    await setIntegrationConfig(b, "metrics_endpoint", "staging", { project: "b-project" });
     const snapshotB = async () => ({
       envs: (await listEnvironments(b)).map((x) => [x.key, x.position, x.label, x.updated_by]),
-      secret: (await getSecret(b, "railway", "staging"))?.reveal(),
-      config: await getIntegrationConfig(b, "railway", "staging"),
+      secret: (await getSecret(b, "metrics_endpoint", "staging"))?.reveal(),
+      config: await getIntegrationConfig(b, "metrics_endpoint", "staging"),
     });
     const before = await snapshotB();
 
@@ -405,9 +407,9 @@ describe("two orgs with identical kinds, scopes and environment keys", () => {
     expect(await snapshotB()).toEqual(before);
     expect((await listEnvironments(a)).map((x) => [x.key, x.label])).toEqual([["production", "production"], ["staging", "A staging"]]);
 
-    expect(await deleteEnvironment(a, "staging")).toEqual(["railway:staging"]);
+    expect(await deleteEnvironment(a, "staging")).toEqual(["metrics_endpoint:staging"]);
     expect(await snapshotB()).toEqual(before);
-    expect(await getSecret(a, "railway", "staging")).toBeNull();
+    expect(await getSecret(a, "metrics_endpoint", "staging")).toBeNull();
     expect((await listEnvironments(a)).map((x) => x.key)).toEqual(["production"]);
   });
 });

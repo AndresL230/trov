@@ -12,8 +12,8 @@ secret creates a new deployment at once** (`HANDOFF.md` › Secrets). A var and 
 name: the deploy fails.
 
 Per-organization credentials are NOT here. An organization's GitHub access is its App installation or its
-stored token, and its Cloudflare / Railway / app-metrics tokens are rows it enters on Org settings ›
-Integrations, envelope-encrypted under `TROV_KEK` (`data-layer.md` › Configuration and credentials,
+stored token, its hosting providers' credentials (Cloudflare, Railway, Vercel, … — ONE org-wide each) and its
+app-metrics tokens are rows it enters on Org settings › Hosting / Integrations, envelope-encrypted under `TROV_KEK` (`data-layer.md` › Configuration and credentials,
 `github-app.md`, `organizations.md`). Code reads them only through `resolveGithubCredential` /
 `resolveCredential` — never a Worker secret directly.
 
@@ -52,6 +52,20 @@ for an organization whose admin turned them on, in the background, each request 
 | `GITHUB_APP_PRIVATE_KEY` | secret | the whole `.pem` GitHub generated; signs the App JWT; never logged | as above |
 | `GITHUB_APP_SLUG` | var | the App's URL name, for the "Connect with GitHub" link (`https://github.com/apps/<slug>/installations/new`); empty = not configured | as above |
 | `GITHUB_APP_WEBHOOK_SECRET` | secret | verifies deliveries to `POST /webhook/github/app` | every delivery there is the bare 401 |
+
+### Hosting providers (`hosting-providers.md`)
+
+Optional install / OAuth methods for Org settings › Hosting. Absent, that method reads unavailable and the
+provider's pasted-token method is offered instead. Every provider CREDENTIAL is per org (Org settings), never
+a Worker secret.
+
+| Name | Kind | What it is | Missing → |
+|---|---|---|---|
+| `VERCEL_INTEGRATION_CLIENT_ID` | secret | the Vercel Integration's client id | with any of the three Vercel names missing, "Connect with Vercel" is unavailable; a pasted token still works |
+| `VERCEL_INTEGRATION_CLIENT_SECRET` | secret | its client secret; also verifies the uninstall notices at `POST /webhook/hosting/vercel`; never logged | as above, and every delivery there is the bare 401 |
+| `VERCEL_INTEGRATION_SLUG` | var | the Integration's URL name (`vercel.com/integrations/<slug>/new`); its Redirect URL is `<origin>/hosting/vercel/callback` | as above |
+| `NETLIFY_OAUTH_CLIENT_ID` | secret | the Netlify OAuth app's client id (Redirect URI `<origin>/hosting/netlify/callback`) | "Connect with Netlify" is unavailable; a pasted token still works |
+| `NETLIFY_OAUTH_CLIENT_SECRET` | secret | its client secret; never logged | as above |
 
 ### Mail (`notifications.md`, `support.md`, `abuse-limits.md`)
 
@@ -110,7 +124,7 @@ test pool (`vitest.config.ts`); a deployed Worker must not set it.
 ### Legacy — SaplingLearn's fallback, and two vars nothing reads
 
 These predate organizations. Each of the SECRETS below is read in exactly one way: as the fallback inside
-`resolveCredential` / `resolveGithubCredential` / `resolveCloudflareAccountId`, for `org_saplinglearn` ALONE,
+`resolveCredential` / `resolveGithubCredential` / `resolveIntegrationConfig`, for `org_saplinglearn` ALONE,
 and only until that organization's admin stores the same integration on Org settings › Integrations (a stored
 secret wins; no other organization ever reads one). The repo cron also names them so no log line can carry
 one (`legacyEnvSecrets`). The cleanup phase deletes the fallback and these secrets (`data-layer.md` ›
@@ -120,8 +134,7 @@ SaplingLearn's fallback).
 |---|---|---|---|
 | `GITHUB_SERVICE_TOKEN` | secret | its `github_token`, when it has no App installation and no stored token | it has no GitHub credential from this source: Sync GitHub says not configured, its `:10` / `:20` cron units and the webhook's two follow-up reads (`fillFailedJob`, `refreshDrift`) are skipped |
 | `GITHUB_WEBHOOK_SECRET` | secret | the HMAC of the LEGACY `POST /webhook/github`, which delivers only to the one `legacy_hook = 1` repo | that URL answers the bare 401 |
-| `CF_ANALYTICS_TOKEN` + `CF_ANALYTICS_ACCOUNT_ID` | secrets (both) | its Cloudflare analytics poll. The account id is a secret on purpose — it was created as one, and a var and a secret sharing a name fail the deploy. Neither is named `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`, the names the wrangler CLI itself authenticates with | absent either: `pollCloudflare` is not called and the Usage tab's requests / error rate and the Cloudflare panel stay `not_connected` |
-| `RAILWAY_TOKEN_STAGING`, `RAILWAY_TOKEN_PRODUCTION` | secrets | its Railway PROJECT tokens, one per environment, looked up by name: `RAILWAY_TOKEN_<environment key, upper-cased, non-alphanumerics → _>` (`railwayEnvName` in `src/data/secrets.ts`), sent as `Project-Access-Token`. **Not read-only** — Railway has no read-only scope | that environment's Railway poll is skipped; `hosting` stays `not_connected` with none |
+| `CF_ANALYTICS_TOKEN` + `CF_ANALYTICS_ACCOUNT_ID` | secrets (both) | its Cloudflare hosting provider's org-wide token (`cloudflare_analytics`) and account id (that provider's `account_id` setting, through `resolveIntegrationConfig`). The account id is a secret on purpose — it was created as one, and a var and a secret sharing a name fail the deploy. Neither is named `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`, the names the wrangler CLI itself authenticates with | absent either: its Cloudflare parts read not connected until a credential is stored on Org settings › Hosting |
 | `SAPLING_METRICS_TOKEN` | secret | the bearer its app's `GET {apiUrl}/api/internal/metrics` expects — ONE value for every environment | `pollSaplingMetrics` is not called; Active users and the Product blocks stay "not connected" |
 
 `GITHUB_REPO` and `REPO_ENVIRONMENTS` are **read by nothing in `src/`**. `0042_organizations` copied them
@@ -129,9 +142,15 @@ into SaplingLearn's `org_repos` / `org_environments` rows; an organization's rep
 rows it edits in Org settings, and neither var is in `wrangler.toml` any more. They remain in `Env` only as
 types: the parser `repoEnvironments()` (`src/repo/config.ts`) is called by the SaplingLearn-era test suites
 to seed those rows. The shape it parsed is the shape of an `org_environments` row (`RepoEnvConfig`): `key`,
-`label`, `note`, `branch`, `railwayEnv`, `worker` + `workerCheck`, `frontendUrl`, `apiUrl`, `healthPath`, and
-optional `railwayEnvironmentId` / `railwayServiceId`. What the order of an organization's environments means,
-and which capture reads which field, is `repo-dashboard.md`.
+`label`, `note`, `branch`, `frontendUrl`, `apiUrl`, `healthPath` (the Cloudflare / Railway names it once held
+are hosting parts since 0057 — `hosting-providers.md`; a stale `REPO_ENVIRONMENTS` carrying them is parsed and
+the extra keys dropped). What the order of an organization's environments means, and which capture reads which
+field, is `repo-dashboard.md`.
+
+`RAILWAY_TOKEN_STAGING` / `RAILWAY_TOKEN_PRODUCTION` (SaplingLearn's old per-environment Railway PROJECT tokens)
+are read by nothing any more and are no longer in `Env`: Railway is connected once, org-wide, with a workspace
+token sent as a bearer, which a project token cannot be. **Owner step: `wrangler secret delete
+RAILWAY_TOKEN_STAGING` and `RAILWAY_TOKEN_PRODUCTION`** once SaplingLearn's Railway connection is stored.
 
 ## Preview deployments
 

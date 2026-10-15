@@ -31,20 +31,14 @@ export interface Env {
   RESEND_API_KEY?: string; // Resend API key; required only when NOTIFICATIONS_MODE = "resend"
   SUPPORT_NOTIFY_EMAIL?: string; // VAR (wrangler.toml) — where each bug report / support message is mailed (the operator's inbox). Empty or absent → the report is stored and NOT mailed (mail outcome `skipped`)
   REPO_ENVIRONMENTS?: string; // LEGACY: read by nothing — environments are `org_environments` rows (0042_organizations copied this one); Phase 7 deletes it
-  // The five below are LEGACY too: SaplingLearn's fallback credentials (`resolveCredential`), each read only until its
-  // admin stores that integration on Org settings › Integrations, and never for another org. What each one is:
-  // Both SECRETS, and both needed: absent either → the hourly Cloudflare analytics poll (src/repo/poll.ts) is skipped
-  // and the Usage tab's requests/error-rate + Cloudflare panel stay not_connected. Deliberately NOT named
+  // The three below are LEGACY too: SaplingLearn's fallback credentials (`resolveCredential` /
+  // `resolveIntegrationConfig`), each read only until its admin stores that integration on Org settings, and
+  // never for another org. What each one is:
+  // Both SECRETS, and both needed: its Cloudflare hosting provider's token and account id — absent either, its
+  // Cloudflare parts (src/hosting/providers/cloudflare.ts) read not connected. Deliberately NOT named
   // CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID — those are the names the wrangler CLI authenticates with.
   CF_ANALYTICS_TOKEN?: string;      // Cloudflare API token with Account Analytics: Read
   CF_ANALYTICS_ACCOUNT_ID?: string; // the Cloudflare account tag the frontend Workers live under
-  // SECRETS — Railway PROJECT tokens, ONE PER ENVIRONMENT (a project token is bound to a single environment of a
-  // single project), named `RAILWAY_TOKEN_<cfg.key upper-cased>` and sent as `Project-Access-Token`, never as a
-  // bearer. Absent → the hourly Railway poll (src/repo/poll.ts) skips THAT environment; absent both → it is not
-  // called and the hosting block stays not_connected. Railway has no read-only scope: these are NOT read-only.
-  // A third environment needs only its secret (src/repo/cron.ts looks the name up) — plus a line here for the type.
-  RAILWAY_TOKEN_STAGING?: string;
-  RAILWAY_TOKEN_PRODUCTION?: string;
   // SECRET — the bearer token Sapling's own `GET {apiUrl}/api/internal/metrics` expects (the contract:
   // docs/superpowers/specs/2026-09-20-sapling-metrics-endpoint.md). ONE value for every environment, sent only to
   // an https `apiUrl` and never across a redirect. Absent/empty → the hourly active-users poll (src/repo/poll.ts)
@@ -57,6 +51,16 @@ export interface Env {
   // stored credentials. TROV_KEK_PREVIOUS is set only during a KEK rotation: the old key, picked by fingerprint.
   TROV_KEK?: string;
   TROV_KEK_PREVIOUS?: string;
+  // Hosting providers' install / OAuth apps (src/hosting/connections.ts; each provider's `install.clientIdVar` /
+  // `clientSecretVar` and its method's `requires` name them). Absent → that provider's install / OAuth method is
+  // listed unavailable and the screen offers a pasted token instead. The CLIENT SECRETS are secrets (they verify
+  // the provider's uninstall notice too — src/hosting/webhook.ts) and are never sent to the browser or logged;
+  // the ids and the slug are not secret. Each app's redirect URL is `<PUBLIC_ORIGIN>/hosting/<provider>/callback`.
+  VERCEL_INTEGRATION_CLIENT_ID?: string;
+  VERCEL_INTEGRATION_CLIENT_SECRET?: string;
+  VERCEL_INTEGRATION_SLUG?: string; // the integration's URL slug: https://vercel.com/integrations/<slug>/new
+  NETLIFY_OAUTH_CLIENT_ID?: string;
+  NETLIFY_OAUTH_CLIENT_SECRET?: string;
   // BILLING — Stripe (docs/architecture/billing.md; src/billing/config.ts is the only reader). Two SECRETS and the
   // price ids as VARS (wrangler.toml). Absent the key or the webhook secret → billing is off: every billing route
   // answers 503 `billing_unavailable`, the purchase buttons say so, and nothing else in the app changes. A plan
