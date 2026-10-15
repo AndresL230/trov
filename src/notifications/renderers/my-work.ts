@@ -162,11 +162,12 @@ export function renderBrief(c: BriefContent): Section | null {
     for (const n of c.next) text.push(`  - ${n.title}${n.href ? ` <${n.href}>` : ""}`, `    ${n.line}`);
   }
   if (c.also.length) {
-    html.push(LABEL("ALSO", !hasBrief));
-    html.push(`<table data-brief-also ${S.table}>` + c.also.map((a) =>
-      `<tr><td style="${S.body}"><a href="${escapeHtml(a.href)}" style="${S.link}">${escapeHtml(a.title)}</a><span style="padding-left:10px;">${K.mark(a.importance === "breaking" ? "Breaking" : "Notable", a.importance === "breaking" ? "amber" : "accent")}</span></td></tr>`).join("") + `</table>`);
+    // With no brief the section's own heading is "Also" (below): no second label under it.
+    if (hasBrief) html.push(LABEL("ALSO", false));
+    html.push(`${hasBrief ? "" : `<div style="padding-top:${SP.m}px;">`}<table data-brief-also ${S.table}>` + c.also.map((a) =>
+      `<tr><td style="${S.body}"><a href="${escapeHtml(a.href)}" style="${S.link}">${escapeHtml(a.title)}</a><span style="padding-left:10px;">${K.mark(a.importance === "breaking" ? "Breaking" : "Notable", a.importance === "breaking" ? "amber" : "accent")}</span></td></tr>`).join("") + `</table>${hasBrief ? "" : "</div>"}`);
     if (text.length) text.push("");
-    text.push("  ALSO");
+    if (hasBrief) text.push("  ALSO");
     for (const a of c.also) text.push(`  - ${a.title} (${a.importance}) <${a.href}>`);
   }
   const subject = briefSubject(c);
