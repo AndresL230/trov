@@ -75,7 +75,7 @@ export function aiTab(org: MyOrg, slice: OrgSlice<AiSettings | null>, saving: bo
   const a = slice.data;
   if (!a) return sliceNote(slice, "the AI settings", false, { form: true }) || "";
   const on = a.enabled;
-  const lead = tabLead(`Trov's AI is <strong>${on ? "on" : "off"}</strong> for ${esc(org.name)}: it writes briefs, the Repo dashboard's state and themes, and feed entries from your work, suggests values a person accepts, and runs Sift on your tags.${a.canEdit ? "" : " Only an admin or an owner can change this."}`);
+  const lead = tabLead(`Trov's AI is <strong>${on ? "on" : "off"}</strong> for ${esc(org.name)}: it summarizes new pull requests and issues, writes briefs, the Repo dashboard's state and themes, and feed entries from your work, suggests values a person accepts, and runs Sift on your tags.${a.canEdit ? "" : " Only an admin or an owner can change this."}`);
 
   // The switch every AI feature sits under — an admin's; a member reads its state as words.
   const note = ELIGIBILITY_LINE[a.eligibility];
@@ -85,7 +85,7 @@ export function aiTab(org: MyOrg, slice: OrgSlice<AiSettings | null>, saving: bo
         <span style="flex:none;margin-top:2px">${aiMark(15)}</span>
         <div style="flex:1 1 260px;min-width:0">
           <div style="${TITLE}">AI for this organization</div>
-          <div style="${SUB}">Off stops every new brief, state, theme, feed entry and suggestion, and Sift; what was already written stays until it is replaced.</div>
+          <div style="${SUB}">Off stops every new summary, brief, state, theme, feed entry and suggestion, and Sift; what was already written stays until it is replaced.</div>
           ${note ? `<div style="font-size:12.5px;color:var(--fg-70);margin-top:6px;line-height:1.55">${kindMark("No key", "waiting", 12)} ${esc(note)}</div>` : ""}
         </div>
         <div style="flex:none">${control(a, "orgAiToggle", on, "Trov's AI for this organization", "org-ai-switch-l", saving)}</div>

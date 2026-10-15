@@ -271,10 +271,11 @@ export async function runBackfill(
   await gh.markUsed();
 
   const doFetch = gh.fetch(opts?.fetchImpl) ?? fetch;
-  // THE summarizer choice for this org (src/plans/summaries.ts: the platform key, the plan's monthly
-  // allowance, every call counted against the admin who pressed Sync), read once for the batch and
-  // asked per item — it turns null the moment the allowance is spent. An explicit `opts` summarizer
-  // (null included) is a test's own and bypasses it.
+  // THE summarizer choice for this org (src/plans/summaries.ts: the platform key, the org's AI switch,
+  // the plan's monthly allowance, every call counted against the admin who pressed Sync), read once for
+  // the batch and asked per item — it turns null the moment the allowance is spent. With the org's AI
+  // switch off (`switchedOff()`) a batch writes no summary row at all, not even an excerpt. An explicit
+  // `opts` summarizer (null included) is a test's own and bypasses it.
   const sums = await orgSummarizers(env, ctx, { actor: principalLogin, ai: opts?.ai, now: opts?.now });
   const prSummarizer = (): Summarizer<PrSummary> | null => (opts?.summarizer !== undefined ? opts.summarizer : sums.pr());
   const issueSummarizerNow = (): Summarizer<IssueSummary> | null => (opts?.issueSummarizer !== undefined ? opts.issueSummarizer : sums.issue());
@@ -401,7 +402,8 @@ export async function runBackfill(
       // excerpt row once; one that already has it waits for a later Sync.
       const issueSummarizer = issueSummarizerNow();
       if (!issueSummarizer) {
-        if (existing === null) {
+        // The org's AI switch off: nothing written (the item stays pending for a sync once it is on).
+        if (existing === null && !(opts?.issueSummarizer === undefined && sums.switchedOff())) {
           await storeIssueSummary(ctx, null, { issue_number: issue.number, title: issue.title, body: issue.body ?? "" });
           await skip("issue", opts?.issueSummarizer !== undefined);
         }
@@ -466,7 +468,7 @@ export async function runBackfill(
       // No summarizer: the marker row once, outside the budget (see the issue loop).
       const summarizer = prSummarizer();
       if (!summarizer) {
-        if (existing === null) {
+        if (existing === null && !(opts?.summarizer === undefined && sums.switchedOff())) {
           await storePrSummary(ctx, null, { semantic_key: ev.semantic_key, pr_number: parsed.pr.number, title: parsed.pr.title, body: parsed.pr.body ?? "" });
           await skip("pr", opts?.summarizer !== undefined);
         }

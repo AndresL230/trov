@@ -104,8 +104,10 @@ export interface SyncRunView {
  *  has NO GitHub credential for its repository — neither an App installation that covers it nor a token. */
 export type SyncBlock = "no_repo" | "no_token" | "running";
 
-/** `off` — this deployment has no summaries key. `ended` — the org's plan has ended. */
-export type SummariesStatus = "off" | "on" | "capped" | "ended";
+/** `off` — this deployment has no summaries key. `disabled` — the org's AI switch (`orgs.ai_automation`,
+ *  Org settings › AI) is off: nothing is summarized and nothing is written, not even an excerpt.
+ *  `ended` — the org's plan has ended. */
+export type SummariesStatus = "off" | "disabled" | "on" | "capped" | "ended";
 
 export interface SyncSummariesView {
   status: SummariesStatus;
@@ -295,6 +297,7 @@ export function syncResultTitle(run: Pick<SyncRunView, "status" | "failures">): 
 export function syncSummariesText(s: SyncSummariesView): string {
   const n0 = (n: number): string => n.toLocaleString("en-US");
   if (s.status === "off") return "AI summaries are off on this deployment, so new items show an excerpt.";
+  if (s.status === "disabled") return "This organization's AI switch is off (Org settings › AI), so nothing new is summarized.";
   if (s.status === "ended") return "This organization's plan has ended, so new items show an excerpt.";
   if (s.status === "capped") return `This month's ${n0(s.cap ?? s.used)} AI summaries are used up, so new items show an excerpt until next month.`;
   // `pending` counts only items ALREADY stored with an excerpt: what GitHub has that Trov has not

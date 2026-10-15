@@ -382,7 +382,7 @@ export async function captureDelivery(
     payload = null; // both derivations treat a non-object payload as []
   }
 
-  // THE summarizer choice for this org (src/plans/summaries.ts: the platform key, the plan's monthly
+  // THE summarizer choice for this org (src/plans/summaries.ts: the platform key, the org's AI switch, the plan's monthly
   // allowance, every call counted) — made at most once per delivery, and only by an event that needs
   // a summary. Metering rides `waitUntil` when the delivery has one.
   let chosen: Promise<OrgSummarizers> | null = null;
@@ -397,6 +397,9 @@ export async function captureDelivery(
       if (res.outcome !== "written") { unchanged++; continue; }
       captured++;
       if (ev.event_type === "pr_merged" || ev.event_type === "pr_closed") {
+        // The org's AI switch off (Org settings › AI): no call and NOTHING written — not even the
+        // excerpt marker, so a summary already stored stays as it was.
+        if (opts?.summarizer === undefined && (await summarizers()).switchedOff()) continue;
         // `!== undefined`, not `??`: an EXPLICIT `summarizer: null` means "no
         // summarizer" — `??` skips null as well and fell through to the org's one.
         const summarizer = opts?.summarizer !== undefined ? opts.summarizer : (await summarizers()).pr();
@@ -405,6 +408,7 @@ export async function captureDelivery(
       } else if (ev.event_type === "issue") {
         await progressSeam(ctx, payload);
         if (!issueNeedsSummary(ev)) continue;
+        if (opts?.issueSummarizer === undefined && (await summarizers()).switchedOff()) continue;
         const issueSummarizer = opts?.issueSummarizer !== undefined ? opts.issueSummarizer : (await summarizers()).issue();
         await summarizeIssueSeam(ctx, issueSummarizer, ev);
         if (!issueSummarizer && opts?.issueSummarizer === undefined) await (await summarizers()).skipped("issue");

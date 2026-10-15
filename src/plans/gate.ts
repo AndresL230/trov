@@ -57,11 +57,13 @@ const SUMMARIES_USED = `SELECT COALESCE(SUM(count), 0) AS n FROM org_usage_daily
 export const summariesUsed = (ctx: TenantContext, now: Date = new Date()): Promise<number> =>
   count(ctx, SUMMARIES_USED, ctx.orgId, monthStartDay(now));
 
-/** The org's plan AND its summaries this month, in ONE statement — what the summarizer choice reads
- *  (./summaries.ts), once per webhook delivery or Sync batch. */
-export async function planAndSummaries(ctx: TenantContext, now: Date = new Date()): Promise<{ plan: OrgPlan; used: number }> {
-  const row = await first<OrgPlanRow & { used: number }>(ctx, `SELECT ${PLAN_COLS}, (${SUMMARIES_USED}) AS used FROM orgs WHERE id = ?1`, ctx.orgId, monthStartDay(now));
-  return { plan: planOf(row), used: Number(row?.used ?? 0) };
+/** The org's plan, its AI switch (`orgs.ai_automation`, 0055 — it covers summaries as it covers every AI
+ *  feature) AND its summaries this month, in ONE statement — what the summarizer choice reads
+ *  (./summaries.ts), once per webhook delivery or Sync batch. An org that is not there reads as switched off. */
+export async function planAndSummaries(ctx: TenantContext, now: Date = new Date()): Promise<{ plan: OrgPlan; enabled: boolean; used: number }> {
+  const row = await first<OrgPlanRow & { ai_automation: number; used: number }>(ctx,
+    `SELECT ${PLAN_COLS}, ai_automation, (${SUMMARIES_USED}) AS used FROM orgs WHERE id = ?1`, ctx.orgId, monthStartDay(now));
+  return { plan: planOf(row), enabled: !!row && Number(row.ai_automation) !== 0, used: Number(row?.used ?? 0) };
 }
 
 /** `ai_run:*` since the 1st — the same range read, for the AI pass's allowance. */
