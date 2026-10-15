@@ -3210,7 +3210,8 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
    own FILL, not just a lighter tone, so the parts read apart in any tag colour: docs solid, decisions striped, the
    feed a pale tint with a solid edge. The legend's swatches use the same fills. Decoration: the figures say it. */
 .cnpy-tagpage-split { display:flex; gap:3px; height:10px; margin-top:14px; }
-.cnpy-tagpage-split > span { min-width:4px; box-sizing:border-box; background:var(--tag-c); }
+.cnpy-tagpage-split > span { min-width:4px; box-sizing:border-box; background:var(--tag-c); transition:flex-grow var(--fx-base, .3s) var(--fx-ease, ease); }
+@media (prefers-reduced-motion: reduce) { .cnpy-tagpage-split > span { transition:none; } }
 .cnpy-tagpage-fig[data-type="adr"] .cnpy-tagpage-sw, .cnpy-tagpage-split > [data-type="adr"] { background:repeating-linear-gradient(135deg, var(--tag-c) 0 2px, transparent 2px 4.5px); box-shadow:inset 0 0 0 1px var(--tag-c); }
 .cnpy-tagpage-fig[data-type="feed"] .cnpy-tagpage-sw, .cnpy-tagpage-split > [data-type="feed"] { background:color-mix(in srgb, var(--tag-c) 22%, transparent); box-shadow:inset 0 0 0 1px var(--tag-c); }
 .cnpy-tagpage-split--jev { height:6px; gap:2px; margin:12px 16px 2px; }
@@ -3246,14 +3247,15 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 .cnpy-tagreview { display:flex; align-items:center; gap:10px 18px; flex-wrap:wrap; }
 .cnpy-tagreview > :first-child { flex:1 1 320px; }
 .cnpy-tagreview-acts { flex:none; display:flex; align-items:center; gap:8px; }
-/* Added or dismissed: the row slides out and closes up at once, whatever the write takes. */
-.cnpy-tagreview[data-leaving] { overflow:hidden; pointer-events:none; animation:cnpy-tagreview-out .26s cubic-bezier(.4, 0, .2, 1) forwards; }
-@keyframes cnpy-tagreview-out {
-  0% { opacity:1; transform:none; max-height:160px; }
-  55% { opacity:0; transform:translateX(16px); max-height:160px; }
-  100% { opacity:0; transform:translateX(16px); max-height:0; padding-top:0; padding-bottom:0; border-top-width:0; }
-}
-@media (prefers-reduced-motion: reduce) { .cnpy-tagreview[data-leaving] { animation:none; display:none; } }
+/* Added or dismissed: the app's one row exit (`.cnpy-rv-row`, Review's queue) — the row wears its verdict (tinted,
+   "Added" / "Dismissed" over it), then closes up and fades on the app's clock. Here only the tones and the
+   card's frame are set. */
+.cnpy-tagreview-row + .cnpy-tagreview-row .cnpy-tagreview { border-top:1px solid var(--border); }
+.cnpy-tagreview { position:relative; transition:background .1s ease; }
+.cnpy-rv-row[data-verdict="added"] { --rv-tone:var(--green); }
+.cnpy-rv-row[data-verdict="dismissed"] { --rv-tone:var(--fg-55); }
+.cnpy-rv-row[data-verdict] .cnpy-tagreview { background:color-mix(in srgb, var(--rv-tone) 9%, var(--surface)); }
+@media (prefers-reduced-motion: reduce) { .cnpy-tagreview { transition:none; } }
 /* A number on the tag page that just changed (`data-bump`): it ticks up into place instead of swapping. */
 .cnpy-tagpage [data-bump] { display:inline-block; animation:cnpy-tagbump .42s cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes cnpy-tagbump { 0% { opacity:0; transform:translateY(55%); } 60% { opacity:1; } 100% { opacity:1; transform:none; } }

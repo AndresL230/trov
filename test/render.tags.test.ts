@@ -457,14 +457,16 @@ describe("one tag's page", () => {
     expect(view(page(), "review")).toContain("Nothing to review");
     // Added or dismissed: ONLY that row slides out at once (its buttons off); the others stay as they are.
     const two = page({ review: [...withReview.review, { type: "doc", id: "keys", title: "Rotating keys", note: "reference", by: "mara", at: null, tags: [], jev: { confidence: 0.65, reason: null, at: "t" } }] });
-    const leaving = tagPageView({ name: "auth", page: { status: "ok", data: two }, tab: "review", orgName: "Acme", who: (h) => h, now: NOW, leaving: ["feed:52"] });
-    expect(leaving).toMatch(/data-tag-review="feed:52" data-morph-key="review:feed:52" data-leaving="1" aria-hidden="true"/);
-    expect(leaving).toMatch(/data-tag-review="doc:keys" data-morph-key="review:doc:keys">/);
+    const leaving = tagPageView({ name: "auth", page: { status: "ok", data: two }, tab: "review", orgName: "Acme", who: (h) => h, now: NOW, leaving: { "feed:52": "added" } });
+    // The app's ONE row exit (web-ui.md › A row leaving a list): a keyed .cnpy-rv-row that wears its verdict, then closes.
+    expect(leaving).toMatch(/<li class="cnpy-rv-row cnpy-tagreview-row" data-tag-review="feed:52" data-morph-key="review:feed:52" data-verdict="added" inert><div class="cnpy-rv-row-in">/);
+    expect(leaving).toMatch(/data-tag-review="feed:52"[\s\S]*?<span class="cnpy-rv-verdict" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg>Added<\/span>/);
+    expect(leaving).toMatch(/<li class="cnpy-rv-row cnpy-tagreview-row" data-tag-review="doc:keys" data-morph-key="review:doc:keys"><div/);
     expect(leaving).not.toContain("Adding…");
     const other = leaving.slice(leaving.indexOf(`data-tag-review="doc:keys"`));
     expect(other).toMatch(/data-act="tagReviewAdd" data-arg="doc:keys"(?![^>]*disabled)/);
-    expect(css).toMatch(/\.cnpy-tagreview\[data-leaving\] \{[^}]*animation:cnpy-tagreview-out/);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-tagreview\[data-leaving\] \{ animation:none; display:none; \} \}/);
+    expect(css).toMatch(/\.cnpy-rv-row\[data-verdict="added"\] \{ --rv-tone:var\(--green\); \}/);
+    expect(css).not.toContain("cnpy-tagreview-out");                         // no exit of its own
     // Rows pair by item, so settling one never moves another's markup into it.
     expect(leaving).toContain(`<ul class="cnpy-tagpage-list" data-morph-list>`);
     // A number that just changed ticks into place: the hero's figures and the tabs' counts.

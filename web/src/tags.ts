@@ -65,15 +65,15 @@ export interface TagsUi {
   colorOpen: string | null;
   /** The "What is sent" popover by the Jev switch is open. */
   aiInfo: boolean;
-  /** Sift's suggestions (`<type>:<id>`) a person just added or dismissed: their rows slide out at once, while the
-   *  write goes on in the background (each on its own — the others stay usable). */
-  reviewLeaving: string[];
+  /** Sift's suggestions (`<type>:<id>`) a person just added or dismissed, and which: their rows leave by the app's
+   *  one exit (web-ui.md › A row leaving a list) while the write goes on — each on its own, the others usable. */
+  reviewLeaving: Record<string, TagReviewVerdict>;
   /** The page's numbers that just changed (`items`, `feed`, `doc`, `adr`, `review`): they tick up into place. */
   bump: string[];
 }
 export const initialTagsUi = (): TagsUi => ({
   nameDraft: "", descDraft: "", addBusy: false, addError: null, addOpen: false, addColor: "moss", addScan: true, edit: null, busy: null, confirm: null, showRetired: false, pageTab: "all", itemBusy: false,
-  aiBusy: false, live: {}, menu: null, menuMerge: false, colorOpen: null, aiInfo: false, reviewLeaving: [], bump: [],
+  aiBusy: false, live: {}, menu: null, menuMerge: false, colorOpen: null, aiInfo: false, reviewLeaving: {}, bump: [],
 });
 
 /** Can this draft be added? A name that normalizes, not already on the list. */
@@ -427,8 +427,8 @@ export interface TagPageProps {
   who: (handle: string) => string;
   /** "Now" for the activity chart (a test pins it); the clock when absent. */
   now?: number;
-  /** The review rows on their way out (`TagsUi.reviewLeaving`). */
-  leaving?: readonly string[];
+  /** The review rows on their way out, and their verdict (`TagsUi.reviewLeaving`). */
+  leaving?: Readonly<Record<string, TagReviewVerdict>>;
   /** The numbers that just changed (`TagsUi.bump`): drawn with `data-bump`, so they tick into place. */
   bump?: readonly string[];
   /** A person's colour (the one their name is drawn in), for their bar under Who writes about it; null = the tag's. */
@@ -484,9 +484,19 @@ function pageItem(it: TagPageItem, who: TagPageProps["who"]): string {
 }
 
 /** One of Sift's suggestions on the To review tab: the item, how sure Sift was and why, and Add / Dismiss. */
-function reviewItem(it: TagPageItem, tag: string, who: TagPageProps["who"], leaving: readonly string[]): string {
+const REVIEW_CHECK = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>`;
+const REVIEW_X = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>`;
+/** What a person did with one of Sift's suggestions — the word its row shows as it leaves. */
+export type TagReviewVerdict = "added" | "dismissed";
+const REVIEW_VERDICT_WORD: Record<TagReviewVerdict, string> = { added: "Added", dismissed: "Dismissed" };
+
+/** One of Sift's suggestions on the To review tab, in the app's ONE exit for a row leaving a list (web-ui.md › A row
+ *  leaving a list; trov.css `.cnpy-rv-row`): a keyed one-track grid that, given a verdict, wears it for a moment
+ *  (tinted, the word over it) and then closes up — no measuring, one motion. */
+function reviewItem(it: TagPageItem, tag: string, who: TagPageProps["who"], leaving: Readonly<Record<string, TagReviewVerdict>>): string {
   const key = `${it.type}:${it.id}`;
-  const gone = leaving.includes(key);
+  const verdict = leaving[key];
+  const gone = !!verdict;
   const sure = it.jev ? `Sift is ${Math.round(it.jev.confidence * 100)}% sure` : "";
   const meta = [
     `<span style="white-space:nowrap">${esc(capFirst(TAG_ITEM_LABEL[it.type].one))}</span>`,
@@ -494,17 +504,18 @@ function reviewItem(it: TagPageItem, tag: string, who: TagPageProps["who"], leav
     it.at ? `<time datetime="${attr(it.at)}" style="white-space:nowrap">${esc(relTime(it.at))}</time>` : "",
     sure ? `<span${it.jev?.reason ? ` data-mtip="${attr(it.jev.reason)}"` : ""} style="white-space:nowrap;color:var(--fg-55)">${esc(sure)}</span>` : "",
   ].filter(Boolean).join(`<span aria-hidden="true">·</span>`);
-  return `<li class="cnpy-tagitem cnpy-tagreview" data-tag-review="${attr(key)}" data-morph-key="review:${attr(key)}"${gone ? ' data-leaving="1" aria-hidden="true"' : ""}>
-      <div style="min-width:0">
+  return `<li class="cnpy-rv-row cnpy-tagreview-row" data-tag-review="${attr(key)}" data-morph-key="review:${attr(key)}"${verdict ? ` data-verdict="${verdict}" inert` : ""}><div class="cnpy-rv-row-in"><div class="cnpy-tagitem cnpy-tagreview">
+      <div class="cnpy-rv-card-in" style="min-width:0">
         <button type="button" data-act="${ITEM_ACT[it.type]}" data-arg="${attr(it.type === "adr" ? it.title : it.id)}" class="cnpy-tagitem-t">${esc(it.title)}</button>
         ${it.type === "feed" && it.note ? `<div class="cnpy-tagitem-note">${esc(it.note)}</div>` : ""}
         <div class="cnpy-tagitem-meta">${meta}</div>
       </div>
-      <div class="cnpy-tagreview-acts">
+      <div class="cnpy-tagreview-acts cnpy-rv-card-in">
         ${accentBtn("Add tag", "tagReviewAdd", { arg: key, disabled: gone, label: `Add ${tag} to “${it.title}”`, extra: "height:30px;padding:0 11px;font-size:12.5px" })}
         ${quietBtn("Dismiss", "tagReviewDismiss", { arg: key, disabled: gone, label: `Dismiss Sift's suggestion of ${tag} for “${it.title}”`, extra: "height:30px;padding:0 11px;font-size:12.5px" })}
       </div>
-    </li>`;
+      <span class="cnpy-rv-verdict" aria-hidden="true">${verdict ? `${verdict === "added" ? REVIEW_CHECK : REVIEW_X}${REVIEW_VERDICT_WORD[verdict]}` : ""}</span>
+    </div></div></li>`;
 }
 
 /** A tile's FIXED height (trov.css `.cnpy-tagpage-tile[data-size]`), whatever it holds — 0 items, 1 or 50, or its
@@ -649,7 +660,7 @@ export function tagPageView(p: TagPageProps): string {
   let body: string;
   if (tab === "review") {
     const list = d.review.length
-      ? `<ul class="cnpy-tagpage-list" data-morph-list>${d.review.map((it) => reviewItem(it, tag.name, p.who, p.leaving ?? [])).join("")}</ul>`
+      ? `<ul class="cnpy-tagpage-list" data-morph-list>${d.review.map((it) => reviewItem(it, tag.name, p.who, p.leaving ?? {})).join("")}</ul>`
       : `<p class="cnpy-tagpage-none">Nothing to review: every item Sift suggested for ${esc(tag.name)} has been added or dismissed.</p>`;
     body = `<div class="cnpy-tagpage-grid">${tile(tileHead("Suggested by Sift", "tag-g-review", d.review.length || undefined, `<span class="cnpy-tagpage-sub">Sift was 60–85% sure: add the tag where it fits, or dismiss it.</span>`), list, 12, 12, "full", ` data-tag-group="review" aria-labelledby="tag-g-review"`)}</div>`;
   } else if (tab === "all") {

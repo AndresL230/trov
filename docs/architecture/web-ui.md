@@ -465,8 +465,9 @@ one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 
 ## A row leaving a list — the one exit pattern (Review's queue)
 
-When a person acts on a row and the row should go (a verdict in Review today; the next screen that
-removes a row reuses this, it does not invent another), the row **confirms, collapses, and the rows
+When a person acts on a row and the row should go (a verdict in Review; Add tag / Dismiss on a tag's To
+review tab — `reviewItem` in `tags.ts`, `TagsUi.reviewLeaving`, the same `.cnpy-rv-row` and `REVIEW_EXIT_MS`; the
+next screen that removes a row reuses this, it does not invent another), the row **confirms, collapses, and the rows
 under it move up as the same elements**. Four parts, each in one place:
 
 1. **A keyed list** (`web/src/morph.ts`). The screen is `data-morph`ed, the list's container carries

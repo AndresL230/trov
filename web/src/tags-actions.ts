@@ -9,6 +9,7 @@ import {
   findTagItems, undoTagRun, setTagSuggestions, getTagRun, settleTagReview,
 } from "./api";
 import { currentOrg, roleAtLeast } from "./org-settings";
+import { REVIEW_EXIT_MS } from "./review";
 import { isTagPageTab, nextTagColor, tagDraftProblem, type TagPageTab } from "./tags";
 import { isTagColor, isTagItemType, normalizeTagName } from "@shared/tags-core";
 import { POLL_MS, applyAnswer, barFill, barState, newLive, runCounter, shouldPoll, shownAt, type LiveRun } from "./fit-run";
@@ -42,9 +43,8 @@ export interface TagsController {
 }
 
 /** A refusal as words that say what to do next. */
-/** How long a settled review row takes to slide out (trov.css `cnpy-tagreview-out`), and how long a changed number
- *  keeps its tick (`cnpy-tagbump`). */
-const REVIEW_OUT_MS = 280;
+/** How long a changed number keeps its tick (trov.css `cnpy-tagbump`). A settled review row leaves on Review's clock,
+ *  `REVIEW_EXIT_MS` (review.ts). */
 const BUMP_MS = 700;
 
 export function tagErrorText(e: unknown, fallback: string): string {
@@ -423,18 +423,19 @@ export function createTagsController(host: TagsHost): TagsController {
         const type = (arg ?? "").slice(0, cut), id = (arg ?? "").slice(cut + 1);
         const tag = state.tagName;
         const key = arg ?? "";
-        if (cut < 1 || !tag || !isTagItemType(type) || u.reviewLeaving.includes(key)) return;
+        if (cut < 1 || !tag || !isTagItemType(type) || u.reviewLeaving[key]) return;
         const add = name === "tagReviewAdd";
-        // The row slides out NOW (only this one; the others stay usable); the write and the refresh follow in
-        // the background. Refused: the row comes back and the page says why.
-        u.reviewLeaving = [...u.reviewLeaving, key];
-        // …and the app's confirmation (the checkmark toast at the bottom) says what happened, at once.
+        // The app's one exit for a row leaving a list (web-ui.md › A row leaving a list): the row wears its verdict,
+        // then closes up (trov.css `.cnpy-rv-row`) over REVIEW_EXIT_MS — only this row; the others stay usable —
+        // while the write goes on. It is taken out of the list once its exit has played (at once under reduced
+        // motion); a refusal brings it back. The checkmark toast says what happened, at once.
+        const animate = !(typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches);
+        u.reviewLeaving = { ...u.reviewLeaving, [key]: add ? "added" : "dismissed" };
         const title = state.tagPage.data?.review.find((r) => `${r.type}:${r.id}` === key)?.title;
         const what = title ? `“${title.length > 60 ? `${title.slice(0, 59)}…` : title}”` : "the item";
         host.flash(add ? `Added ${tag} to ${what}` : `Dismissed ${tag} for ${what}`);
         rerender();
-        const settled = () => { u.reviewLeaving = u.reviewLeaving.filter((k) => k !== key); };
-        // The row stays in the page until its slide-out has played (`REVIEW_OUT_MS`), however fast the write.
+        const settled = () => { const { [key]: _gone, ...rest } = u.reviewLeaving; u.reviewLeaving = rest; };
         const startedAt = Date.now();
         settleTagReview(tag, { type, id }, add)
           .then(() => setTimeout(() => {
@@ -445,7 +446,7 @@ export function createTagsController(host: TagsHost): TagsController {
             rerender();
             refreshPage(tag);
             if (state.tags.status === "ok") load();
-          }, Math.max(0, REVIEW_OUT_MS - (Date.now() - startedAt))))
+          }, animate ? Math.max(0, REVIEW_EXIT_MS - (Date.now() - startedAt)) : 0))
           .catch((e) => { settled(); rerender(); if (fail(e)) return; host.flash(errorText(e, add ? "Couldn't add the tag." : "Couldn't dismiss it."), 6000); });
         return;
       }
