@@ -19,7 +19,7 @@ import { hoverCard, refShort, refTypeWord, viewOf, refFallbackText } from "./ask
 import { threadsView } from "./ask-threads";
 import { conversationView, emptyView } from "./ask-conversation";
 import { composerView } from "./ask-composer";
-import { inspectorBody } from "./ask-inspector";
+import { inspectorBody, inspectorLocalHead } from "./ask-inspector";
 import { cmdjOverlay } from "./ask-cmdj";
 import { threadsDrawer } from "./ask-phone";
 import { closingAttr } from "./ask-motion";
@@ -30,8 +30,9 @@ export function inspectorFrame(v: AskView): string {
   const ref = inspectorRef(v.ui);
   if (!ref || ins.where !== v.where) return "";
   const view = viewOf(v.look, ref);
-  const trail = ins.stack.slice(0, ins.idx).map((r) => { const x = viewOf(v.look, r); return x ? refShort(x) : refFallbackText(r); });
-  const typeWord = view ? refTypeWord(view) : "";
+  // An upload or an answer's chart has no RefView: the inspector part names it (`inspectorLocalHead`).
+  const trail = ins.stack.slice(0, ins.idx).map((r) => { const x = viewOf(v.look, r); return x ? refShort(x) : inspectorLocalHead(v, r)?.short ?? refFallbackText(r); });
+  const typeWord = view ? refTypeWord(view) : inspectorLocalHead(v, ref)?.typeWord ?? "";
   const sheet = v.app.phone;
   // Opening slides it in from its edge (the column under it makes room smoothly); closing is `data-closing`
   // (ask-motion.ts rule 3); `data-dragging` drops the width transition while the edge follows the pointer.

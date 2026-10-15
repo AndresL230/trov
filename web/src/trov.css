@@ -2879,6 +2879,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .ask-insp-frame, .ask-insp-frame[data-closing], .ask-insp-body, .ask-menu, .ask-menu[data-closing], .ask-hc, .ask-hc-layer[data-closing] .ask-hc,
   .ask-panel, .ask-scrim, .ask-panel-layer[data-closing] .ask-panel, .ask-panel-layer[data-closing] .ask-scrim, .ask-drawer, .ask-drawer-scrim,
   .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-line, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
+  .ask-iv-fill, .ask-iv-barfill, .ask-iv-table { animation:none !important; }
 }
 
 /* ── Ask: threads ── (ask-threads.ts; the shell's) */
@@ -2973,9 +2974,126 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-card-bar { display:flex; align-items:center; gap:8px; margin-top:10px; }
 .ask-line { display:flex; align-items:center; gap:8px; padding:6px 0; font-size:13px; color:var(--fg-70); animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
 
-/* ── Ask: inspector ── (ask-inspector.ts — the per-type views; the frame is the shell's, above) */
-.ask-insp-title { margin:0 0 8px; font-size:19px; font-weight:600; letter-spacing:-0.01em; }
-.ask-insp-note { margin:10px 0 0; font-size:12.5px; color:var(--fg-55); }
+/* ── Ask: inspector ── (ask-inspector.ts — the per-type views; the frame is the shell's, above). The design's
+   L796–1000: label-face eyebrows and field labels, 19px titles, 92px field rows, hairline lists, a --bg box for
+   excerpts and the repository's State. Motion: the bar wipes, the chart's bars grow (staggered by --i), the table
+   fades in; the view's Back / forward slide is ask-inspector.ts `animateNav` (Web Animations). */
+.ask-iv { min-width:0; }
+.ask-iv-eyebrow { margin-bottom:4px; font-family:var(--label); font-size:12px; color:var(--fg-40); }
+.ask-iv-title { margin:0 0 10px; font-size:19px; font-weight:600; letter-spacing:-0.02em; line-height:1.3; overflow-wrap:anywhere; text-wrap:pretty; }
+.ask-iv-title--mono { font-family:var(--code); font-size:16px; margin-bottom:14px; }
+.ask-iv-meta { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; margin-bottom:14px; font-size:12.5px; color:var(--fg-55); }
+.ask-iv-quiet { font-size:12px; font-weight:400; color:var(--fg-55); }
+.ask-iv-label { font-family:var(--label); font-size:12px; color:var(--fg-55); }
+.ask-iv-p { font-size:13.5px; line-height:1.65; color:var(--fg-70); overflow-wrap:anywhere; }
+.ask-iv-p--fg { color:var(--fg); }
+.ask-iv-brief { margin:0 0 12px; font-size:14px; font-weight:500; line-height:1.55; }
+.ask-iv-note { margin:10px 0 0; font-size:12.5px; line-height:1.5; color:var(--fg-55); }
+.ask-iv-fail { margin-top:14px; font-size:12.5px; color:var(--fg-70); }
+.ask-iv-fields { padding:6px 0 10px; border-top:1px solid var(--border); }
+.ask-iv-row { display:grid; grid-template-columns:92px minmax(0, 1fr); gap:10px; align-items:center; min-height:32px; }
+.ask-iv-lab { font-family:var(--label); font-size:11px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
+.ask-iv-val { font-size:12.5px; color:var(--fg-70); }
+.ask-iv-h { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin:20px 0 6px; font-family:var(--label); font-size:11.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
+.ask-iv-h--plain { font-family:inherit; text-transform:none; letter-spacing:0; }
+.ask-iv-count { font-size:12px; font-weight:400; letter-spacing:0; text-transform:none; color:var(--fg-55); }
+.ask-iv-inline { display:inline-flex; align-items:center; flex-wrap:wrap; gap:4px 8px; min-width:0; }
+.ask-iv-people { display:flex; flex-wrap:wrap; gap:4px 12px; }
+.ask-iv-person { display:inline-flex; align-items:center; gap:7px; min-width:0; padding:2px 8px 2px 2px; margin:-2px -8px -2px -2px; border-radius:7px; font:inherit; font-size:12.5px; font-weight:500; color:var(--fg); text-align:left; cursor:pointer; transition:background .12s ease; }
+.ask-iv-person:hover, .ask-iv-person:focus-visible { background:var(--hover); }
+.ask-iv-link { padding:0; font:inherit; font-weight:500; color:var(--accent); text-decoration:none; cursor:pointer; }
+.ask-iv-link:hover { text-decoration:underline; }
+.ask-iv-strong { display:inline-flex; align-items:center; gap:7px; justify-self:start; font-size:12.5px; color:var(--fg); text-align:left; }
+.ask-iv-list { display:flex; flex-direction:column; }
+.ask-iv-list--ruled > .ask-iv-item { border-bottom:1px solid var(--border); border-radius:0; min-height:38px; }
+.ask-iv-item { display:flex; align-items:center; gap:9px; width:calc(100% + 12px); box-sizing:border-box; min-height:34px; padding:4px 6px; margin:0 -6px; border-radius:7px; font:inherit; text-align:left; color:var(--fg); cursor:pointer; transition:background .12s ease; }
+.ask-iv-item:hover, .ask-iv-item:focus-visible { background:var(--hover); }
+.ask-iv-item.is-plain { cursor:default; }
+.ask-iv-item.is-plain:hover { background:none; }
+.ask-iv-num { flex:none; width:28px; font-family:var(--label); font-size:12px; color:var(--fg-40); }
+.ask-iv-t { flex:1; min-width:0; display:flex; flex-direction:column; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ask-iv-t1 { overflow:hidden; text-overflow:ellipsis; font-weight:500; }
+.ask-iv-sub { flex:none; font-size:11.5px; color:var(--fg-55); }
+.ask-iv-trail { flex:none; display:inline-flex; align-items:center; }
+.ask-iv-more { padding:6px 0 0 37px; font-size:12px; color:var(--fg-55); }
+.ask-iv-skrow { display:flex; align-items:center; gap:9px; min-height:34px; }
+.ask-iv-comments > .ask-iv-comment { display:flex; gap:10px; padding:10px 0; border-top:1px solid var(--border); }
+.ask-iv-cbody { margin-top:3px; font-size:13px; line-height:1.55; color:var(--fg-70); overflow-wrap:anywhere; }
+.ask-iv-mono { padding:2px 6px; border:1px solid var(--border); border-radius:5px; background:color-mix(in srgb, var(--fg) 5%, transparent); }
+.ask-iv-code, .ask-iv-mono { font-family:var(--code); font-size:11.5px; }
+.ask-iv-branches { display:inline-flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:16px; color:var(--fg-70); }
+.ask-iv-checks { padding:12px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+.ask-iv-checklist { display:flex; flex-wrap:wrap; gap:6px 16px; }
+.ask-iv-check { display:inline-flex; align-items:center; gap:6px; color:var(--fg-70); }
+.ask-iv-foot { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; padding-top:12px; border-top:1px solid var(--border); font-size:12.5px; color:var(--fg-55); }
+.ask-iv-add, .ask-iv-del { font-family:var(--label); font-weight:600; }
+.ask-iv-add { color:var(--green); }
+.ask-iv-del { color:var(--red); }
+.ask-iv-box { padding:14px 16px; border:1px solid var(--border); border-radius:10px; background:var(--bg); }
+.ask-iv-md { padding:4px 18px 8px; font-size:13.5px; line-height:1.65; color:var(--fg-70); overflow-wrap:anywhere; }
+.ask-iv-md h1, .ask-iv-md h2, .ask-iv-md h3, .ask-iv-md h4 { margin:14px 0 6px; font-size:15px; font-weight:640; letter-spacing:-0.006em; color:var(--fg); }
+.ask-iv-md p, .ask-iv-md ul, .ask-iv-md ol { margin:0 0 10px; }
+.ask-iv-md ul, .ask-iv-md ol { padding-left:18px; }
+.ask-iv-md li { margin-bottom:3px; }
+.ask-iv-md a { color:var(--accent); }
+.ask-iv-staged { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:12.5px; line-height:1.5; color:var(--fg-70); }
+.ask-iv-btn { display:inline-flex; align-items:center; gap:7px; padding:6px 12px; border:1px solid var(--border-strong); border-radius:8px; font:inherit; font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:background .12s ease, color .12s ease; }
+.ask-iv-btn:hover { background:var(--hover); color:var(--fg); }
+.ask-iv-bar { height:6px; border-radius:3px; background:var(--hover); overflow:hidden; }
+.ask-iv-fill { height:100%; border-radius:3px; background:var(--accent); animation:ask-iv-wipe .7s cubic-bezier(.2,.7,.2,1) .1s both; }
+@keyframes ask-iv-wipe { from { clip-path:inset(0 100% 0 0); } to { clip-path:inset(0 0 0 0); } }
+.ask-iv-forecast { display:flex; align-items:center; gap:8px; margin:12px 0 18px; font-size:13px; }
+.ask-iv-group { margin:0 0 14px; }
+.ask-iv-ghead { display:flex; align-items:center; gap:8px; padding-bottom:6px; margin-bottom:2px; border-bottom:1px solid var(--border); }
+.ask-iv-env { padding:4px 0; border-bottom:1px solid var(--border); }
+.ask-iv-envrow { display:flex; align-items:center; gap:10px; min-height:32px; }
+.ask-iv-envname { flex:none; width:84px; font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ask-iv-grow { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--fg-55); }
+.ask-iv-part { display:flex; flex-wrap:wrap; gap:2px 8px; padding:0 0 4px 94px; font-size:12px; color:var(--fg-70); }
+.ask-iv-two { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:16px 0; }
+.ask-iv-big { display:flex; align-items:center; font-size:13px; }
+.ask-iv-sm { margin-top:3px; font-size:12px; line-height:1.5; color:var(--fg-55); overflow-wrap:anywhere; }
+.ask-iv-headline { font-size:14.5px; font-weight:600; letter-spacing:-0.01em; line-height:1.45; text-wrap:pretty; }
+.ask-iv-slist { margin-top:14px; }
+.ask-iv-slabel { display:flex; align-items:center; gap:7px; margin-bottom:4px; font-size:12.5px; font-weight:600; }
+.ask-iv-sline { padding-left:16px; font-size:12.5px; line-height:1.7; color:var(--fg-70); }
+.ask-iv-att { display:flex; align-items:baseline; gap:9px; padding:5px 0; font-size:12.5px; line-height:1.5; color:var(--fg-70); }
+.ask-iv-att > svg { transform:translateY(1px); }
+.ask-iv-fromto { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); font-size:12.5px; }
+.ask-iv-step { display:flex; align-items:flex-start; gap:9px; padding:4px 0; font-size:13px; line-height:1.5; color:var(--fg-70); }
+.ask-iv-step > svg { margin-top:2px; }
+.ask-iv-file { display:flex; align-items:center; gap:8px; padding:4px 0; color:var(--fg-70); }
+.ask-iv-hero { display:flex; align-items:center; gap:14px; margin-bottom:16px; }
+.ask-iv-frame { border:1px solid var(--border-strong); border-radius:10px; overflow:hidden; background:var(--bg); }
+.ask-iv-chrome { display:flex; align-items:center; gap:8px; height:30px; padding:0 10px; border-bottom:1px solid var(--border); background:var(--surface); }
+.ask-iv-dots { display:flex; gap:4px; }
+.ask-iv-dots > span { width:7px; height:7px; border-radius:50%; background:var(--border-strong); }
+.ask-iv-chrome-t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; font-family:var(--code); font-size:10.5px; color:var(--fg-55); }
+.ask-iv-scroll { max-height:440px; overflow:auto; }
+.ask-iv-img { display:block; width:100%; max-height:360px; object-fit:contain; background:var(--surface); }
+.ask-iv-ph { display:grid; place-items:center; height:180px; padding:0 16px; text-align:center; font-size:12.5px; color:var(--fg-55); }
+.ask-iv-ph--stripe { height:240px; background:repeating-linear-gradient(135deg, var(--hover) 0 8px, transparent 8px 16px); font-family:var(--code); font-size:11px; }
+.ask-iv-pub { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-top:14px; padding:12px 14px; border:1px solid var(--border); border-radius:10px; }
+.ask-iv-pubtext { flex:1; min-width:180px; font-size:12.5px; line-height:1.5; color:var(--fg-70); }
+.ask-iv-charthead { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 12px; margin-bottom:6px; }
+.ask-iv-charthead .ask-iv-title { margin:0; }
+.ask-iv-bars { display:flex; align-items:flex-end; gap:10px; height:220px; border-bottom:1px solid var(--border); }
+.ask-iv-barcol { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:4px; height:100%; }
+.ask-iv-barv { font-family:var(--label); font-size:12px; font-weight:600; color:var(--fg-55); }
+.ask-iv-barfill { width:100%; border-radius:3px 3px 0 0; background:color-mix(in srgb, var(--accent) 78%, transparent); transform-origin:bottom; transition:background .12s ease; animation:ask-iv-grow .55s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(var(--i, 0) * 45ms + 60ms); }
+.ask-iv-barfill:hover { background:var(--accent); }
+@keyframes ask-iv-grow { from { transform:scaleY(0); } to { transform:none; } }
+.ask-iv-barlabels { display:flex; gap:10px; padding-top:6px; }
+.ask-iv-barlabels > span { flex:1; min-width:0; overflow:hidden; text-align:center; font-family:var(--label); font-size:11px; color:var(--fg-40); white-space:nowrap; }
+.ask-iv-table { width:100%; border-collapse:collapse; font-size:13.5px; animation:ask-fade-in .16s ease both; }
+.ask-iv-table th { padding:8px 2px; border-bottom:1.5px solid var(--border-strong); text-align:left; font-family:var(--label); font-size:11.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-55); }
+.ask-iv-table td { padding:8px 2px; border-bottom:1px solid var(--border); color:var(--fg-70); }
+.ask-iv-table .is-num { text-align:right; font-variant-numeric:tabular-nums; color:var(--fg); }
+.ask-iv-table .is-total td { border-bottom:0; font-weight:600; color:var(--fg); }
+.ask-iv-datafrom { display:flex; align-items:center; gap:6px; margin-top:14px; font-size:12px; color:var(--fg-55); }
+[data-sheet="1"] .ask-iv-row { grid-template-columns:84px minmax(0, 1fr); }
+[data-sheet="1"] .ask-iv-two { grid-template-columns:1fr; }
+[data-sheet="1"] .ask-iv-part { padding-left:0; }
 
 /* ── Ask: refs ── (ask-refs.ts: the chip, the status cell, the hover card — the foundation's) */
 .ask-chip { display:inline-flex; align-items:center; gap:5px; max-width:100%; vertical-align:-4px; margin:0 1px; padding:1px 7px 1px 5px; border:1px solid var(--border); border-radius:6px; background:var(--surface); font-size:13px; font-weight:500; line-height:20px; cursor:pointer; transition:border-color .12s ease, background .12s ease; }
@@ -3468,6 +3586,19 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 [data-cnpy-theme] .ask-blocked,
 [data-cnpy-theme] .ask-card { border-radius:calc(12px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-cursor { border-radius:calc(2px * var(--corner-scale)) !important; }
+/* Ask: inspector (ask-inspector.ts) */
+[data-cnpy-theme] .ask-iv-bar,
+[data-cnpy-theme] .ask-iv-fill { border-radius:calc(3px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-iv-barfill { border-radius:calc(3px * var(--corner-scale)) calc(3px * var(--corner-scale)) 0 0 !important; }
+[data-cnpy-theme] .ask-iv-mono { border-radius:calc(5px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-iv-person,
+[data-cnpy-theme] .ask-iv-item { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-iv-btn { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-iv-box,
+[data-cnpy-theme] .ask-iv-frame,
+[data-cnpy-theme] .ask-iv-pub { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-iv-dots > span { border-radius:50% !important; }
+[data-cnpy-theme] .ask-iv-list--ruled > .ask-iv-item { border-radius:0 !important; }
 /* ── Sync GitHub: the header control and the panel it opens (web/src/sync.ts) ──
    The control lives in a slot that is always in the header (empty = no box), so a progress tick
    repaints the slot alone. The panel is a root-level overlay hung under the button: main.ts
