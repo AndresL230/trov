@@ -656,6 +656,7 @@ export function createOrgController(host: OrgHost): OrgController {
       case "orgGo":
         state.screen = "org"; state.personCard = null;
         if (isOrgTab(arg)) u.tab = arg;
+        u.repoPage = null; // a tab opened from elsewhere is the tab itself, never a repository's page left from before
         load();
         return;
       case "orgTab":
