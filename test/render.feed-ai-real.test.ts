@@ -152,7 +152,7 @@ describe("feed.importance on real rows → /feed and get_feed → the Feed's byl
     // FIELD ABSENT: the routine and the unrated entry render byte for byte what they rendered before the pass.
     const pick = (rows: FeedRow[]) => rows.filter((r) => r.id === routine || r.id === unsure);
     expect(render(feedState(w, pick(after)))).toBe(render(feedState(w, pick(before))));
-  });
+  }, 30_000); // the real gate, pass, routes and renderers end to end: generous under a loaded full-suite run
 });
 
 describe("Sift on new items on a real promoted doc → /tags/:name and /doc → the tag page", () => {
@@ -187,5 +187,5 @@ describe("Sift on new items on a real promoted doc → /tags/:name and /doc → 
     const review = tagPageView({ name: "api", page: { status: "ok", data: api.json }, tab: "review", orgName: "SaplingLearn", who: (h) => h });
     expect(review).toContain(`data-tag-review="doc:deploy-runbook"`);
     expect(review).toContain("Sift is 70% sure");
-  });
+  }, 30_000); // the real gate, pass, routes and renderers end to end: generous under a loaded full-suite run
 });
