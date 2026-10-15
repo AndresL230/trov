@@ -69,6 +69,13 @@ describe("phone — the screen (`phone`)", () => {
     expect(rule('.ask-insp-frame[data-sheet="1"] .ask-insp-head > .ask-iconbtn')).toMatch(/width:44px; height:44px/);
   });
 
+  // e2e AU-27 (360px, real thread 801001): a write card's Cancel / Confirm (29–31px), its Edit (21px) and a done
+  // line's Undo / Open were left out of the conversation's 44px touch floor.
+  it("a write card's buttons and Edit, and a line's buttons, get the 44px hit area on a phone", () => {
+    expect(css).toMatch(/\[data-phone="1"\] \.ask-col \.ask-btn::after, \[data-phone="1"\] \.ask-act-edit::after/);
+    expect(css).toMatch(/\[data-phone="1"\] \.ask-col \.ask-btn, \[data-phone="1"\] \.ask-act-edit \{ position:relative; \}/);
+  });
+
   it("the composer: + · the meta line · Send (44×44), no Enter hint, no desktop toolbar", () => {
     const html = askScreenView(phoneState());
     expect(html).toMatch(/<div class="ask-ph-bar">\s*<button type="button" class="ask-ph-plusbtn" data-act="askPhPlus" data-arg="page" aria-label="More options" aria-expanded="false" aria-controls="ask-ph-plus-page">/);

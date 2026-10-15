@@ -3143,6 +3143,9 @@ button.ask-dn:hover { border-color:var(--border-strong); }
 [data-phone="1"] .ask-fu, [data-phone="1"] .ask-res, [data-phone="1"] .ask-src-r, [data-phone="1"] button.ask-step { min-height:44px; box-sizing:border-box; }
 [data-phone="1"] .ask-col .ask-chip, [data-phone="1"] .ask-fb, [data-phone="1"] .ask-q-edit, [data-phone="1"] .ask-nf-try, [data-phone="1"] .ask-qfile { position:relative; }
 [data-phone="1"] .ask-col .ask-chip::after, [data-phone="1"] .ask-fb::after, [data-phone="1"] .ask-q-edit::after, [data-phone="1"] .ask-nf-try::after, [data-phone="1"] .ask-qfile::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
+/* …and a write card's Cancel / Confirm / Edit and a line's Undo / Open (actions part). */
+[data-phone="1"] .ask-col .ask-btn, [data-phone="1"] .ask-act-edit { position:relative; }
+[data-phone="1"] .ask-col .ask-btn::after, [data-phone="1"] .ask-act-edit::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
 
 /* ── Ask: composer ── (ask-composer.ts; ask-trov.dc.html L658–780) */
 .ask-composer { flex:none; width:100%; box-sizing:border-box; padding:0 28px; }
