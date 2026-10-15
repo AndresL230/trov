@@ -94,8 +94,8 @@ const PROVIDERS_UPDATED = "2026-10-14";
 // the AI switch is its own paragraph, to delete when ai/summaries-switch ships; Ask attachments go with the
 // conversation and the account; "Only when something needs me" has its line (Phase E). The markers stay until the
 // owner OKs this revised text.
-// DRAFT (open question for Andres): TypeSafe AI is named because it receives the data (`JEV_URL`,
-// https://api.typesafe.ai/v1/systemone, src/tools/classify.ts, with Trov's own TYPESAFE_API_KEY). Nothing in the repo
+// DRAFT (open question for Andres): TypeSafe AI is named because it receives the data (`JEV_URL` in
+// src/tools/classify.ts is TypeSafe's own API, called with Trov's own TYPESAFE_API_KEY). Nothing in the repo
 // says whether TypeSafe AI runs Jev on an underlying model or hosting provider; if it does, that provider is listed
 // as TypeSafe AI's subprocessor in Privacy › 4 before the markers come off.
 const DRAFT = "<b>DRAFT —</b> ";
@@ -414,7 +414,7 @@ export const PRIVACY: LegalDoc = {
           ["TypeSafe AI", "Automatic tagging (Sift), where an organization turns it on", "The tag's name and description and, for each of the organization's feed entries, docs and decisions that may fit it, its title and up to 400 characters of its text, with code and anything that looks like a password or key removed"],
           // DRAFT: awaiting Andres's approval (#178 Phase G) — the widened TypeSafe AI list (Phase C's cards and gates).
           // DRAFT (open question for Andres, owner ruling Legal 6): TypeSafe AI is named because it is who receives this
-          // (src/tools/classify.ts `JEV_URL`, api.typesafe.ai). If TypeSafe AI runs Jev on an underlying model or hosting
+          // (src/tools/classify.ts `JEV_URL`, TypeSafe's own API). If TypeSafe AI runs Jev on an underlying model or hosting
           // provider, add that provider here as TypeSafe AI's subprocessor; the repo does not say which, so none is named.
           ["TypeSafe AI", `${DRAFT}Sorting and checking items, while the organization's AI switch is on`, "One item at a time — a ticket, feed entry, pull request summary, doc proposal or unplaced item — as its title and a short excerpt, with code and anything that looks like a password or key removed, and the choices it is judged against (categories, priorities, a few possible duplicates, sections or docs, themes); and, to decide whether something is worth writing about, commit messages and pull request titles, what changed in a repository, and a doc with the entries that may disagree with it"],
           ["Stripe", "Payments, invoices and receipts, fraud checks, tax calculation", "The buyer's email, handle, payment details and billing address, and the organization's address for an upgrade"],
