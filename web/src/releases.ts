@@ -93,13 +93,13 @@ export const RELEASES: Release[] = [
       "Optional, for Cloudflare deploys' commits: give the Cloudflare API token a third permission, Account › Workers CI › Read (it must be a USER token — My Profile › API Tokens). Without it the Cloudflare part's state says \"commit: the token needs Workers CI Read\" and the commit is matched from GitHub when it can be. UNVERIFIED: that Read (not Edit) suffices.",
       "The hosting job's cost per part grows by one (the possible GitHub compare for a rollback), and Cloudflare, Vercel and Netlify each make one more request per poll — still inside the `:40` budget; no trigger change.",
       "Apply `migrations/0071_repo_settings.sql` (merging to main applies it): ADDITIVE — the `repo_settings` table (an admin's per-repository Overview default). Rollback: `DROP TABLE repo_settings; DELETE FROM org_admin_audit WHERE action = 'repo.settings';`.",
-      "Apply `migrations/0074_releases.sql` (merging to main applies it): ADDITIVE — the `releases` table (a repository's releases and tags). Rollback: `DROP TABLE releases;`. Releases arrive through the App's `release` / `create` subscription (above); the first reconcile after the merge backfills the 30 newest releases (or tags). The reconcile costs 2 more GitHub requests (`reconcileCost`; \"Poll now\" is 20 + 5N) — no trigger change.",
+      "Apply `migrations/0074_releases.sql` (merging to main applies it): ADDITIVE — the `releases` table (a repository's releases and tags). Rollback: `DROP TABLE releases;`. Releases arrive through the App's `release` / `create` subscription (above); the first reconcile after the merge backfills the 30 newest releases (or tags). The reconcile costs 2 more GitHub requests (`reconcileCost`; \"Poll now\" is `refreshSubrequests(N)` = 24 + 5N + max(2, N), 36 for two environments) — no trigger change.",
       "Apply `migrations/0072_repo_scans.sql` (merging to main applies it): ADDITIVE — `repo_scans` and `repo_app_suggestions`. The `:20` reconcile unit now budgets the repo scan (`SCAN_COST` = 5: a tree read, and only when the default branch's tree changed a GraphQL file batch + one describe per connected Vercel / Render / Netlify) — no trigger change.",
       "Usage families (Phase G): no migration, no new secret, no trigger change. A Cloudflare part's poll now makes one more request every hour (its cron runs) and two more once a day (the day's CPU / wall-time quantiles and, when the part names D1 database ids, D1) — Cloudflare's `pollCost` is 6 (+1 rollback compare), inside the `:40` budget; the existing token's Account Analytics Read covers all of it. To see D1 on a Cloudflare part, set its D1 database ids in the part editor (the repo scan proposes them).",
-      "Optional — Trov's own Product block: in the org that runs Trov's repository, set the Production environment's API URL to Trov's origin and paste a member's `trov_mcp_` token as its app metrics token (Org settings › Hosting › the part editor); the `:00` poll then reads `GET /api/internal/metrics` (contract v3, `docs/superpowers/specs/2026-10-15-app-metrics-v3.md`).",
+      "Optional — Trov's own Product block: in the org that runs Trov's repository, set the Production environment's API URL to Trov's origin and paste a member's `trov_mcp_` token as its app metrics token (a Production part's editor, opened from Org settings › Repositories › a repo › Apps); the `:00` poll then reads `GET /api/internal/metrics` (contract v3, `docs/superpowers/specs/2026-10-15-app-metrics-v3.md`).",
     ],
     headsUp: [
-      "Hosting tokens and app metrics tokens moved from Integrations to Hosting. Nothing was reset: every token you saved is still there.",
+      "Hosting tokens moved from Integrations to Hosting, and each environment's app metrics token to its parts' editor (Org settings › Repositories › a repository › Apps). Nothing was reset: every token you saved is still there.",
     ],
     patches: {
       added: [
@@ -154,6 +154,7 @@ export const RELEASES: Release[] = [
         "`GET /api/internal/metrics` (`src/internal-metrics.ts`, `src/data/own-metrics.ts`): Trov's own v3 body for the bearer's one org — right now, MCP tool calls ranked, the gate, activity; D1 only",
         "`web/src/repo-usage.ts`: the Usage tab's targets (`targetState`: ok / stale / nc / na; `targetsFromFacts`, `partFromFacts`) and extra blocks (outcome bar, runtime, D1, crons); the Product block draws a v3 group by its shape; the sample's `repoScenarioUsage`",
         "Tests: `test/hosting.poll.families.test.ts`, `test/repo-dashboard.extras.test.ts`, `test/repo-poll.v3.test.ts`, `test/internal-metrics.test.ts`, `test/render.repo-usage.test.ts`; the Cloudflare provider test grows outcomes, schedules and the daily read",
+        "`docs/architecture/repo-apps.md`: the area reference for apps, the Overview's facts and layout, detection and Repositories › Apps, releases, their costs and guards (a row in CLAUDE.md's table); `repo-dashboard.md` and `hosting-providers.md` point to it instead of repeating it",
       ],
       changed: [
         "`listConnections` returns ONE org-wide row per provider; a scoped hosting credential is a leftover, never a connection, never counted.",
@@ -166,7 +167,7 @@ export const RELEASES: Release[] = [
         "Vercel and Netlify production parts read their previews too (a second list each — `pollCost` 2); the Repo dashboard's deploy strips leave a production part's previews out",
         "The webhook accepts `workflow_job` (verified, acknowledged, not captured yet); `release` and `create` are captured into `releases` (`RELEASE_EVENT_NAMES`)",
         "A `pr` row's `raw` keeps the PR's label names (`labels`, ≤ 20) — from the webhook and the PR-list backfill",
-        "`reconcileCost` and `refreshSubrequests` carry the releases arm's 2 requests (\"Poll now\": 20 + 5N, 30 for two environments)",
+        "`reconcileCost` and `refreshSubrequests` carry the releases arm's 2 requests (\"Poll now\": 24 + 5N + max(2, N), 36 for two environments)",
         "A hosting unit costs its provider's `pollCost` + 1 (the rollback compare)",
         "The `drift` section's snapshot is the promotion chain's last step (for two environments, the same pair as before); `reconcileRequests(N)` = 16 + 2N + max(2, N) + 6 + 2 (the releases arm), so Poll now's ceiling (`SUBREQUEST_CAP`) rises from the free plan's 50 to 100 — a tenth of Workers Paid's 1,000 — so its GitHub arm runs for up to 12 environments and leaves 63 requests for hosting with two",
         "`listRepoApps` moves to `src/repo/apps-read.ts` and the GitHub HTTP helpers to `src/repo/gh-http.ts` (both re-exported where they were)",
