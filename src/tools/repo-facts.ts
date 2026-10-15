@@ -36,6 +36,7 @@ import {
   type DriftChainSnapshot, type FactsDeployRow, type NotShippedSnapshot, type OutOfStepSnapshot,
 } from "../repo/facts-store";
 import { runCounts } from "../repo/reads";
+import { readRepoSettings } from "../data/repo-settings";
 import { getSnapshot, type HostingPollStateRow } from "../repo/store";
 import type { RepoPrRow } from "../repo/types";
 
@@ -187,13 +188,14 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
     .filter((p) => appIndex.has(p.key) && envIndex.has(p.env) && i.apps[appIndex.get(p.key)!].kind !== "Package")
     .sort((a, b) => appIndex.get(a.key)! - appIndex.get(b.key)! || envIndex.get(a.env)! - envIndex.get(b.env)!);
 
-  const [rows, weekRows, nsSnap, oosSnap, chainSnap, runs] = await Promise.all([
+  const [rows, weekRows, nsSnap, oosSnap, chainSnap, runs, settings] = await Promise.all([
     mine.length ? factsDeploys(ctx, previewSince) : Promise.resolve([] as FactsDeployRow[]),
     mine.length ? deployWeekCounts(ctx, weekAgo, twoWeeksAgo) : Promise.resolve([]),
     getSnapshot<NotShippedSnapshot>(ctx, "not_shipped"),
     getSnapshot<OutOfStepSnapshot>(ctx, "out_of_step"),
     getSnapshot<DriftChainSnapshot>(ctx, "drift_chain"),
     isPrimary && i.runs.captured ? runCounts(ctx, weekAgo, twoWeeksAgo) : Promise.resolve(null),
+    i.repo ? readRepoSettings(ctx, i.repo) : Promise.resolve(null),
   ]);
   const of = (p: PartRow) => (r: { env: string; part: string; provider: string }) => r.env === p.env && r.part === p.key && r.provider === p.provider;
 
@@ -226,6 +228,9 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
       serving, latest, history, health,
       url: target?.base ?? serving?.url ?? null,
       consoleUrl: i.consoleUrlOf(p),
+      // Any usage metric in the registry's capabilities (`github` reads none) — a capability,
+      // never a provider id.
+      reportsMetrics: (provider?.capabilities.metrics.length ?? 0) > 0,
     };
   });
 
@@ -383,7 +388,9 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
 
   const facts: RepoFacts = {
     repo: i.repo, app: null, repos: repos.map((r) => r.repo_full_name), allApps: apps, apps, envs, parts, previews, notShipped,
-    outOfStep, drift, ci, release: null, found: null, unseen: null, week, attention, connect, groupDefault: null,
+    outOfStep, drift, ci, release: null, found: null, unseen: null, week, attention, connect,
+    // the admin's default Group by for this repository (`repo_settings.overview_group`, 0071), else none
+    groupDefault: settings?.overview_group ?? null,
   };
   return narrowFacts(facts, i.app);
 }

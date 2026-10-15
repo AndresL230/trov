@@ -13,7 +13,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import { putMetrics, putSnapshot } from "../src/repo/store";
-import { emptyRepoDashboard } from "../src/tools/repo";
+import { emptyRepoDashboard, getRepoDashboard } from "../src/tools/repo";
+import { layoutInputOf, type RepoFacts } from "@shared/repo-facts-core";
+import { layoutOf } from "@shared/repo-layout-core";
 import { DRIFT_GROUP_LIMIT, shapeRepoDashboard, type RepoAgentView } from "../src/tools/repo-agent";
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoDashboard, type RepoDrift, type RepoRange, type RepoUsageEnv } from "@shared/repo";
 import type { Env } from "../src/env";
@@ -496,5 +498,45 @@ describe("get_repo_dashboard — size discipline", () => {
     shapeRepoDashboard(dash, {});
     shapeRepoDashboard(dash, { tab: "usage", range: "30d", includeTrends: true });
     expect(JSON.stringify(dash)).toBe(before);
+  });
+});
+
+describe("MCP get_repo_dashboard — the Overview's facts and layout (repo setups)", () => {
+  async function seedFacts(): Promise<RepoEnvConfig[]> {
+    const envs = JSON.parse((env as unknown as Env).REPO_ENVIRONMENTS ?? "[]") as RepoEnvConfig[];
+    await seedOrgRepoConfig(env.DB, ORG_A, "SaplingLearn/sapling", envs);
+    await env.DB.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_docs', ?, 'SaplingLearn/docs', 0, 0, '2026-10-06T00:00:00.000Z', 'seed')`).bind(ORG_A).run();
+    for (const e of ["staging", "production"]) {
+      await addPart(ORG_A, e, "frontend", "cloudflare", "web");
+      await addPart(ORG_A, e, "backend", "railway", "service", {}, 1);
+    }
+    return envs;
+  }
+
+  it("returns facts and the layout the screen decides from them — with the overview or no tab, never another tab", async () => {
+    const envs = await seedFacts();
+    const v = await view();
+    const facts = v.facts as RepoFacts;
+    const screen = (await getRepoDashboard(systemCtx(ORG_A), "SaplingLearn/sapling", Date.now(), envs.map((e) => ({ ...e }))))!.facts!;
+    expect(facts.parts.map((p) => `${p.app}@${p.env}`)).toEqual(screen.parts.map((p) => `${p.app}@${p.env}`));
+    expect(v.layout).toEqual(layoutOf(layoutInputOf(screen), screen.groupDefault));
+    expect(v.layout?.rule).toBe("envCards"); // two apps, both in the same two environments
+    expect((await view({ tab: "overview" })).layout).toEqual(v.layout);
+    const code = await view({ tab: "code" });
+    expect(code).not.toHaveProperty("facts");
+    expect(code).not.toHaveProperty("layout");
+  });
+
+  it("takes repo and app: an app narrows the facts and the layout follows; another repository of the org reads its own apps; an unknown one reads the primary", async () => {
+    await seedFacts();
+    const one = await view({ app: "backend" });
+    expect((one.facts as RepoFacts).apps.map((a) => a.key)).toEqual(["backend"]);
+    expect(one.layout?.rule).toBe("chain"); // one app, two environments
+    const docs = await view({ repo: "saplinglearn/docs" });
+    expect(docs.repo).toBe("SaplingLearn/docs");
+    expect((docs.facts as RepoFacts).apps).toEqual([]);
+    expect(docs.layout?.rule).toBe("unseen");
+    const elsewhere = await view({ repo: "someone/else" });
+    expect(elsewhere.repo).toBe("SaplingLearn/sapling");
   });
 });

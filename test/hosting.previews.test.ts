@@ -33,4 +33,14 @@ describe("previews", () => {
     const reads = await hostingReads(systemCtx(ORG_A), "2026-10-01T00:00:00.000Z", 10);
     expect(reads.deploys.map((x) => [x.env, x.id])).toEqual([["production", "prod-1"], ["staging", "st-1"]]);
   });
+
+  it("a deploy with NO target (a GitHub-sourced one) is a deploy, never left out as a preview", async () => {
+    const now = Date.parse("2026-10-15T12:00:00Z");
+    await upsertDeploys(systemCtx(ORG_A), { env: "production", key: "jobs", provider: "github" }, [
+      d("gh-run:1:1", null, "production", "2026-10-15T10:00:00.000Z"),
+      d("gh-run:2:1", null, "production", "2026-10-15T11:00:00.000Z"),
+    ], now);
+    const reads = await hostingReads(systemCtx(ORG_A), "2026-10-01T00:00:00.000Z", 10);
+    expect(reads.deploys.map((x) => x.id)).toEqual(["gh-run:2:1", "gh-run:1:1"]);
+  });
 });

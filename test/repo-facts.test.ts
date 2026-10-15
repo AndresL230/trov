@@ -19,6 +19,7 @@ import { ENVS, seedOrgRepoConfig } from "./helpers/repo";
 import { addPart } from "./helpers/dashboard-hosting";
 import { cookieFor } from "./helpers/persons";
 import { ORG_A, systemCtx, tenantCtx } from "./helpers/tenant";
+import { setRepoOverviewGroup } from "../src/data/repo-settings";
 
 const NOW = Date.parse("2026-10-15T12:00:00Z");
 const MIN = 60_000;
@@ -142,7 +143,9 @@ describe("the facts read — apps, environments, parts", () => {
     expect(f.envs).toEqual([{ key: "staging", name: "staging", branch: "main", position: 1 }, { key: "production", name: "production", branch: "production", position: 2 }]);
     expect(f.parts.map((p) => `${p.app}@${p.env}`)).toEqual(["frontend@staging", "frontend@production", "backend@staging", "backend@production", "docs@production"]);
     const docs = f.parts.find((p) => p.app === "docs")!;
-    expect(docs).toMatchObject({ provider: "vercel", host: "Vercel", role: "web", reportsDeploys: true, connection: "not_connected", viaGithub: false, via: null });
+    expect(docs).toMatchObject({ provider: "vercel", host: "Vercel", role: "web", reportsDeploys: true, reportsMetrics: false, connection: "not_connected", viaGithub: false, via: null });
+    // the registry's capabilities, never a provider id: Cloudflare and Railway report usage, Vercel none
+    expect(f.parts.map((p) => p.reportsMetrics)).toEqual([true, true, true, true, false]);
     // previews: only docs has any
     expect(f.allApps.map((a) => a.previews)).toEqual([false, false, true]);
     // three apps: which open PRs touch which needs PR files (Phase E) — null, never a share of the total
@@ -271,6 +274,15 @@ describe("the facts read — snapshots, CI, attention, the week", () => {
     const { f } = await factsOf({ admin: true });
     expect(f.connect).toEqual({ provider: "railway", need: "metrics", apps: ["backend"] });
     expect(f.parts[0]).toMatchObject({ viaGithub: true, serving: { id: "gh1", source: "github", target: null } });
+  });
+});
+
+describe("the admin's default Group by", () => {
+  it("is the repository's repo_settings.overview_group, else null", async () => {
+    await seedWorld();
+    expect((await factsOf()).f.groupDefault).toBeNull();
+    await setRepoOverviewGroup(await tenantCtx("admin-user", "admin"), PRIMARY, "app");
+    expect((await factsOf()).f.groupDefault).toBe("app");
   });
 });
 
