@@ -874,7 +874,7 @@ function productSection(p: RepoProps, i: number): string {
   // that carries none (the Worker never sends that; the fallback is total anyway,
   // and an `ok` with nothing in it reads as the section's empty state, never as nothing).
   if (!envs?.length) {
-    const copy = { nc: "No product metrics reported yet. They appear once the app's metrics endpoint serves `counts` / `totals` and the environment's app metrics token is set in Org settings › Integrations.", empty: "No current product reading — the hourly poll of the app's metrics endpoint has gone quiet.", lines: 3 };
+    const copy = { nc: "No product metrics reported yet. They appear once the app's metrics endpoint serves `counts` / `totals` and its app metrics token is set in the part's editor, in Org settings › Repositories › Apps.", empty: "No current product reading — the hourly poll of the app's metrics endpoint has gone quiet.", lines: 3 };
     const state = sec(p, (d) => d.product ?? { status: "not_connected" }, copy, () => emptyBlock(copy.empty));
     return `<div ${rise(i, `${TOP}`)}>${head()}<div style="padding:0 20px 14px">${state}</div></div>`;
   }
@@ -932,8 +932,10 @@ function pollOutcome(o: PollOutcome): string {
 }
 /** A source the org has not set up: said plainly, with the way to set it up — never as a failure. */
 export const NOT_CONNECTED = `<span data-poll-off style="color:${MUTED}">Not connected — <button type="button" data-act="orgGo" data-arg="integrations" class="cnpy-mutelink" style="padding:0;font:inherit;color:var(--fg-70);text-decoration:underline;text-underline-offset:2px;cursor:pointer">set it up in Org settings › Integrations</button></span>`;
+/** The app metrics source not set up: its token lives in a part's editor (Org settings › Repositories › an app). */
+const METRICS_NOT_CONNECTED = `<span data-poll-off style="color:${MUTED}">Not connected — <button type="button" data-act="orgGo" data-arg="repos" class="cnpy-mutelink" style="padding:0;font:inherit;color:var(--fg-70);text-decoration:underline;text-underline-offset:2px;cursor:pointer">set its token in a part's editor, in Org settings › Repositories</button></span>`;
 const pollSource = (s: UsagePollSource): string =>
-  s === "not_configured" || !Array.isArray(s) ? NOT_CONNECTED
+  s === "not_configured" || !Array.isArray(s) ? METRICS_NOT_CONNECTED
   : !s.length ? `<span style="color:${MUTED}">no environment configured</span>`
   : s.map(pollOutcome).join(SEP);
 

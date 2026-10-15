@@ -134,6 +134,8 @@ s.push(event({ kind: "pr", number: 314, state: "merged", ref: "test-quiz-timer",
 for (let i = 0; i < 3; i++) s.push(event({ kind: "deploy", sha: SHA.a, ref: SHA.a, number: 8100 + i, state: "success", name: "Production – sapling-docs", by: "vercel[bot]", title: "Deployment has completed", url: "https://example.test/vercel/docs", at: (i + 1) * 5 * HOUR, raw: { signal: "deployment", environment: "Production – sapling-docs" } }));
 s.push(event({ kind: "run", ref: "main", sha: SHA.a, number: 8200, state: "success", name: "Deploy docs", by: "dev-raj", url: "https://example.test/runs/8200", count: 1, at: 3 * HOUR, raw: { event: "push", path: ".github/workflows/deploy-docs.yml" } }));
 s.push(event({ kind: "deploy", sha: SHA.d, ref: SHA.d, number: 8300, state: "success", name: "Preview – stale-thing", by: "vercel[bot]", title: "Deployment has completed", url: "https://example.test/vercel/stale", at: 40 * DAY, raw: { signal: "deployment", environment: "Preview – stale-thing" } }));
+// The open-PR list has been read (the Code tab's `prs_reconciled` marker), so the PR figures and list are captured ones.
+s.push(row("repo_snapshots", { org_id: SAP, kind: "prs_reconciled", json: JSON.stringify({ at: ago(20 * MIN) }), computed_at: ago(20 * MIN) }));
 s.push(row("repo_snapshots", { org_id: SAP, kind: "env_heads", json: JSON.stringify({ main: SHA.a, production: SHA.c }), computed_at: ago(20 * MIN) }));
 
 // ── sapling-live: credentials (DUMMY metadata) ──────────────────────────────────────────────────────────────────

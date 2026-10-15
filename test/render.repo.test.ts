@@ -941,7 +941,9 @@ describe("repoView — product metrics", () => {
 
   it("not_connected and empty each say what they are waiting on; loading and error have their forms", () => {
     const nc = repoView(props({ tab: "usage", repo: { status: "ok", data: live() } }));
-    expect(nc).toContain("No product metrics reported yet. They appear once the app&#39;s metrics endpoint serves `counts` / `totals` and the environment&#39;s app metrics token is set in Org settings › Integrations.");
+    // The token lives in a part's editor since Phase 0 (e2e U3) — never Integrations.
+    expect(nc).toContain("No product metrics reported yet. They appear once the app&#39;s metrics endpoint serves `counts` / `totals` and its app metrics token is set in the part&#39;s editor, in Org settings › Repositories › Apps.");
+    expect(nc).not.toContain("token is set in Org settings › Integrations");
     const quiet = repoView(props({ tab: "usage", repo: { status: "ok", data: live({ product: EMPTY }) } }));
     expect(quiet).toContain("No current product reading — the hourly poll of the app&#39;s metrics endpoint has gone quiet.");
     expect(quiet).not.toContain("No product metrics reported yet");
@@ -1259,7 +1261,9 @@ describe("Poll now — the Repo top bar, every tab", () => {
     expect(html).toContain("No repository connected");
     expect(html).toContain("repo-poll-strip");
     const text = stripText(html);
-    for (const label of ["Health", "App metrics", "GitHub"]) expect(text, label).toContain(`${label} — Not connected — set it up in Org settings › Integrations`);
+    for (const label of ["Health", "GitHub"]) expect(text, label).toContain(`${label} — Not connected — set it up in Org settings › Integrations`);
+    // The app metrics token lives in a part's editor since Phase 0 (e2e U3).
+    expect(text).toContain("App metrics — Not connected — set its token in a part's editor, in Org settings › Repositories");
     expect(html).not.toMatch(/color:var\(--red\)/);
     // Before a poll, and for a member, the empty state stands alone.
     expect(view({ noRepo: true, poll: null })).not.toContain("repo-poll-strip");
