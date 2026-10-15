@@ -622,6 +622,9 @@ will be — so nothing moves when the read lands. The rules:
   each region's clock by `key` and hands it to the fresh DOM as a negative delay (`--skel-t`, as `--enter-t` does
   for the entrance), and when a region's skeleton is gone it gives what stands in its place ONE short opacity fade
   (`.cnpy-settle`, 240 ms) — only if the skeleton had actually been visible. A change of page forgets every clock.
+  Content a read brings in somewhere OTHER than where its skeleton stood names that skeleton's key in
+  `data-settle-with` (space-separated) and takes the same fade with it: My Work's brief tile, which exists only once
+  the dashboard read lands and re-lays the bento, settles with `mw-tickets` (`BRIEF_SETTLE_WITH` in `mywork.ts`).
   All of it is off under `prefers-reduced-motion`.
 - **The entrance belongs to the route.** `markEnter` plays the staggered entrance once, when a page opens — over
   the skeleton if the data is still out. A read landing inside it joins it (`--enter-t`); one landing later gets
@@ -928,6 +931,12 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
 - **Labels** in the brief's Now / Recently / Next and State's heading use `var(--label)` — the existing label
   style, which is Geist outside the sidebar (Archivo Narrow stays the sidebar's face only).
 - Radii are inline, at values the corners block already scales; nothing new needed a line there.
+- **Motion** is the app's own: the brief tile rises with the bento's `.cnpy-stagger`; its Now / Recently / Next
+  (label and line on one `--i`), each Next item and the byline rise in order (`.cnpy-rise`), only under
+  `[data-enter]`, so a rerender never replays them; landing after the entrance, the tile takes the dashboard
+  skeleton's settle fade (`data-settle-with`, Loading skeletons above). Off under reduced motion
+  (`test/render.brief-motion.test.ts`). The tile leaving on "Wrong?" has no exit yet: My Work is not `data-morph`ed,
+  and the bento switches layout when the brief goes.
 - **The plain-language filter box** (`web/src/ai-filter.ts`, #162) above the toolbar of Tickets, the Feed and
   Artifacts: the search bar's shape (`.cnpy-sfbar`, the AI mark where the magnifier is, Apply where Filter is), only
   when the org's AI is on (no box when off, never a disabled one). Typing keeps the draft WITHOUT a repaint (Tickets

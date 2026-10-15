@@ -415,5 +415,5 @@ server's order, the job's guards, who gets one, the 5 versions, the read, the ro
 `test/ai-evals.brief.test.ts` (its recorded eval answers), `test/render.brief-real.test.ts` (the brief end to end over
 real data: the job's row → `/me/dashboard` / `getMyWork` → `render` → `briefTile`, and its "Wrong?" `data-arg` POSTed to
 `/ai/feedback` hiding it; the SPA is loaded at run time, so the file stays under `tsconfig.worker.json`),
-`test/ai.filter.test.ts` and `test/render.ai-filter.test.ts`
-(the plain-language filter).
+`test/render.brief-motion.test.ts` (the brief tile's entrance and settle fade, web-ui.md "The AI kit"),
+`test/ai.filter.test.ts` and `test/render.ai-filter.test.ts` (the plain-language filter).
