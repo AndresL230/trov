@@ -30,6 +30,7 @@ vi.mock("../web/src/api", async (orig) => {
 import { render, initialState, type AppState } from "../web/src/render";
 import { cmdjOverlay, cmdjHeaderButton, cmdjPart, cmdjToggle, closePanel, openAsThread, openPanel, pageRef, panelShown, isCmdjKey, otherModalOpen, cmdjKeyLabel } from "../web/src/ask-cmdj";
 import { createAskController } from "../web/src/ask-controller";
+import { replayPlan } from "../web/src/ask-replay";
 import { topLayer, type EscEntry } from "../web/src/ask-escape";
 import { emptyConvo, foldAskEvent, foldThreadEvent, newTurn, withLastTurn, type AskConvo } from "../web/src/ask-stream";
 import { initialComposerUi } from "../web/src/ask-composer";
@@ -310,6 +311,15 @@ describe("the thread contract — a normal thread with origin panel and the page
     expect(paints).toBeGreaterThan(0);
     // It is listed like any other thread: the list is read again once the new thread exists.
     expect(calls.filter((c) => c.path === "/ask/threads").length).toBeGreaterThan(0);
+  });
+  it("the dev replay `?askReplay=cmdj#tickets/14` opens the panel over the ticket with the ticket as its context", () => {
+    const plan = replayPlan("cmdj");
+    expect(plan).toMatchObject({ where: "panel", play: ["cmdj"] });
+    const app = ticketState();
+    plan.setup!(fakeCtx(app).ctx);
+    expect(app.ask.cmdj).toEqual({ open: true, contextRef: "ticket:14" });
+    expect(app.ask.composer.panel.context).toEqual(["ticket:14"]);
+    expect(cmdjOverlay(app)).toContain(`data-overlay="ask-panel"`);
   });
   it("the recorded transcript's thread event is a panel thread about ticket #14 (the fixture the replay plays)", () => {
     const t = askTranscript("cmdj", NOW)[0].event;
