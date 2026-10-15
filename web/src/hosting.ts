@@ -8,7 +8,7 @@
 //   • "Detected: <provider>" — a host the captured GitHub activity already shows (src/hosting/detect.ts);
 //   • ENVIRONMENTS: a tile per environment (the General tab's bento tiles), its parts as rows;
 //   • PROVIDERS: the catalogue with each provider's connection — Vercel, Render, Netlify, Fly.io; then
-//     Cloudflare and Railway (legacy: their part lives in the environment's own fields); then AWS (later).
+//     Cloudflare and Railway among them (their part lives in the environment's own fields — not shown); then AWS (later).
 // …and three dialogs, each a root-level `data-overlay` (so a keystroke patches it — morph.ts): the part
 // editor, the "you are about to leave for <provider>" confirmation of an install / OAuth connection, and the
 // paste-a-token form.
@@ -26,6 +26,7 @@ import {
   tabLead, leadFlag, openRow, textField, type OrgSlice,
 } from "./org-ui";
 import { segmented } from "./segmented";
+import { hostLogo } from "./host-logos";
 import { kindMark, type StateKind } from "./marks";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { howToHtml, type TestState } from "./integrations";
@@ -120,10 +121,9 @@ export const scopeFor = (p: HostingProviderDTO, env: string): string => (p.crede
 
 // ── vocabulary ───────────────────────────────────────────────────────────────
 
-const GLYPH: Record<HostingProviderId, string> = { cloudflare: "CF", railway: "RW", vercel: "V", render: "R", netlify: "N", fly: "F", aws: "AW" };
-/** A provider's mark: a monochrome letterform in a small square — never a logo, never a brand colour. */
-export function providerGlyph(id: HostingProviderId, size = 20): string {
-  return `<span aria-hidden="true" data-hx-glyph="${attr(id)}" style="flex:none;display:inline-grid;place-items:center;width:${size}px;height:${size}px;border-radius:5px;border:1px solid var(--border-strong);background:var(--hover);font-family:var(--label);font-size:${Math.round(size * 0.46)}px;font-weight:700;letter-spacing:.01em;line-height:1;color:var(--fg-70)">${GLYPH[id]}</span>`;
+/** A provider's mark: its logo (host-logos.ts), decorative — its name is always written beside it. */
+export function providerGlyph(id: HostingProviderId, size = 18): string {
+  return hostLogo(id, size);
 }
 
 const ROLE_WORD: Record<PartRole, string> = { web: "Web", service: "Service" };
@@ -161,6 +161,8 @@ export function connectionStatus(c: HostingConnectionDTO, label: string): { word
 export function statusDot(state: ConnectionStatus, word = STATUS_WORD[state]): string {
   return `<span data-hx-status="${state}" style="display:inline-flex">${kindMark(word, STATUS_KIND[state], 12, STATUS_HINT[state])}</span>`;
 }
+/** A provider is a CARD in the Providers grid (`.cnpy-hx-provs`): its radius inline, so the corners layer scales it. */
+const CARD = ` style="border-radius:10px"`;
 /** A fact beside a name (a part's role, "Coming later"): plain muted text, never a chip (web-ui.md › Status marks). */
 const factWord = (w: string): string => `<span style="font-size:12px;font-weight:500;color:var(--fg-55)">${esc(w)}</span>`;
 
@@ -504,12 +506,10 @@ function connectionRow(x: TabCtx, p: HostingProviderDTO, c: HostingConnectionDTO
     if (c.connected_by) meta.push(`connected by ${esc(c.connected_by)}`);
   } else if (c.status === "revoked" && c.revoked_reason) meta.push(esc(c.revoked_reason));
   else if (c.legacy_fallback) meta.push("Using the platform's old secret");
-  else if (best && isRedirect(best)) meta.push("Recommended: no token to paste");
-  else if (best) meta.push(esc(best.label));
-  else meta.push("Not available on this Trov");
+  else if (!best) meta.push("Not available on this Trov");
 
   // The row's ONE visible action: check it once it is connected, connect it while it is not.
-  const connectBtn = best ? quietBtn(st.state === "revoked" ? `Connect ${p.label} again` : isRedirect(best) ? best.label : `Connect ${p.label}`, "orgHxConnect", {
+  const connectBtn = best ? quietBtn(st.state === "revoked" ? "Connect again" : "Connect", "orgHxConnect", {
     arg: ck, disabled: locked, title: why, field: `orgHxConnect:${ck}`, label: `${st.state === "revoked" ? "Connect again" : "Connect"}: ${p.label}${c.scope_label ? ` for ${c.scope_label}` : ""}`,
     extra: accentTaken ? "" : "color:var(--fg);border-color:var(--border-strong)",
   }) : "";
@@ -541,7 +541,17 @@ function connectionRow(x: TabCtx, p: HostingProviderDTO, c: HostingConnectionDTO
   if (c.legacy_fallback && !stored && token) more.push(quietBtn(cap(token.label), "orgHxToken", { arg: `set:${ck}`, disabled: locked, title: why, field: `orgHxToken:set:${ck}` }));
   if (stored) more.push(dangerLink("Disconnect", "orgConfirm", { arg: `hosting:${ck}`, label: `Disconnect ${p.label}${c.scope_label ? ` for ${c.scope_label}` : ""}`, field: `orgConfirm:hosting:${ck}` }));
 
-  const row = openRow({
+  // Connected by install / OAuth: the paste-a-token form is NOT offered beside it — it folds into the card's
+  // details as a quiet "Manual connection" block, as GitHub's token and webhook rows fold under the App.
+  const manual = stored && (c.method === "install" || c.method === "oauth") && token
+    ? `<div data-org-hosting-manual="${attr(p.id)}" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-weight:600;color:var(--fg-70)">Manual connection <span style="font-weight:400;color:var(--fg-40)">&middot; Not needed while ${esc(p.label)} is connected</span></div>
+        <div style="margin-top:4px;max-width:680px">${cap(/^[aeiou]/i.test(tokenWord(p)) ? "an" : "a")} ${esc(tokenWord(p))}: how ${esc(p.label)} is connected without ${c.method === "install" ? "the integration" : "signing in"}. Pasting one REPLACES the current connection.</div>
+        <div class="cnpy-xrow-acts" style="margin-top:8px">${quietBtn(cap(token.label), "orgHxToken", { arg: `rotate:${ck}`, disabled: locked, title: why, field: `orgHxToken:manual:${ck}` })}</div>
+      </div>`
+    : "";
+
+  return openRow({
     key, open: ui.openRows.includes(key), act: "orgRowToggle", label: `${p.label}${who ? `, ${who}` : ""}, ${st.word.toLowerCase()}`,
     head: `${providerGlyph(p.id)}${name}${statusDot(st.state, st.word)}`,
     meta: meta.join(" &middot; "), action,
@@ -552,22 +562,11 @@ function connectionRow(x: TabCtx, p: HostingProviderDTO, c: HostingConnectionDTO
       ${facts}${usedBy}${config}${grants}
       <div data-hx-sentto style="margin-top:8px;color:var(--fg-40)">${esc(sentOnlyTo(p))}</div>
       ${unavailable}
-      ${more.length ? `<div class="cnpy-xrow-acts">${more.join("")}</div>` : ""}`,
-    attrs: ` data-org-hosting-conn="${attr(ck)}" data-state="${st.state}"`,
+      ${more.length ? `<div class="cnpy-xrow-acts">${more.join("")}</div>` : ""}${manual}`,
+    attrs: ` data-org-hosting-conn="${attr(ck)}" data-state="${st.state}"${CARD}`,
   });
-
-  // Connected by install / OAuth: the paste-a-token form is NOT offered beside it — it folds under it, as
-  // GitHub's token and webhook rows fold under the App (integrations.ts `githubGroup`).
-  const manualKey = `hx-manual:${ck}`;
-  const manual = stored && (c.method === "install" || c.method === "oauth") && token ? openRow({
-    key: manualKey, open: ui.openRows.includes(manualKey), act: "orgRowToggle", label: `Manual connection, not needed while ${p.label} is connected`,
-    head: `<span>Manual connection</span>`, meta: `Not needed while ${esc(p.label)} is connected`,
-    body: `<div style="max-width:680px">${cap(/^[aeiou]/i.test(tokenWord(p)) ? "an" : "a")} ${esc(tokenWord(p))}: how ${esc(p.label)} is connected without ${c.method === "install" ? "the integration" : "signing in"}. Pasting one REPLACES the current connection.</div>
-      <div class="cnpy-xrow-acts">${quietBtn(cap(token.label), "orgHxToken", { arg: `rotate:${ck}`, disabled: locked, title: why, field: `orgHxToken:manual:${ck}` })}</div>`,
-    attrs: ` data-org-hosting-manual="${attr(p.id)}"`,
-  }) : "";
-  return row + manual;
 }
+
 
 /** A provider Trov describes but cannot connect yet (AWS): visible, disabled, with what it will need. */
 function laterRow(x: TabCtx, p: HostingProviderDTO): string {
@@ -576,22 +575,32 @@ function laterRow(x: TabCtx, p: HostingProviderDTO): string {
   return openRow({
     key, open: x.ui.openRows.includes(key), act: "orgRowToggle", label: `${p.label}, coming later`,
     head: `${providerGlyph(p.id)}<span style="color:var(--fg-55)">${esc(p.label)}</span>${factWord("Coming later")}`,
-    meta: m ? esc(m.label) : "",
+    meta: "",
     body: `<div style="max-width:680px">${esc(p.summary)}</div>
       ${p.plan_note ? `<div style="margin-top:6px;max-width:680px;color:var(--fg-40)">${esc(p.plan_note)}</div>` : ""}
       <div style="margin-top:8px">${capabilityChips(p)}</div>
       ${m ? `<div style="margin-top:8px"><span style="${O_LABEL};font-size:10px">What it will need</span><ul style="margin:4px 0 0;padding-left:18px">${m.grants.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></div>` : ""}`,
-    attrs: ` data-org-hosting-conn="${attr(`${p.id}:`)}" data-state="later"`,
+    attrs: ` data-org-hosting-conn="${attr(`${p.id}:`)}" data-state="later"${CARD}`,
   });
 }
 
-/** An environment-scoped provider (Railway) nobody uses yet: there is no credential to give until a part names its environment. */
-function scopedHintRow(p: HostingProviderDTO): string {
-  return `<li class="cnpy-org-row" style="align-items:center" data-org-hosting-conn="${attr(`${p.id}:`)}" data-state="unused">
-    ${providerGlyph(p.id)}
-    <div style="flex:1 1 260px;min-width:0"><div style="display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap"><span style="font-size:13.5px;font-weight:600">${esc(p.label)}</span>${statusDot("not_connected")}</div>
-      <div style="font-size:12px;color:var(--fg-40);margin-top:2px">${esc(cap(tokenWord(p)))} per environment: add a ${esc(p.label)} part to an environment, then connect it there.</div></div>
-  </li>`;
+/** An environment-scoped provider (Railway) nobody uses yet: a row that opens like every other, with what it reads
+ *  — there is no credential to give until a part names its environment, so its one action is adding that part. */
+function scopedHintRow(x: TabCtx, p: HostingProviderDTO): string {
+  const key = `hx:${p.id}:unused`;
+  const env = x.d.environments[0] ?? null;
+  const action = env ? quietBtn("Add part", "orgHxPartNew", { arg: `${env.key}|${p.id}`, field: `orgHxScoped:${p.id}`, label: `Add a ${p.label} part to ${env.label}` }) : "";
+  return openRow({
+    key, open: x.ui.openRows.includes(key), act: "orgRowToggle", label: `${p.label}, not connected`,
+    head: `${providerGlyph(p.id)}<span>${esc(p.label)}</span>${statusDot("not_connected")}`,
+    meta: "", action,
+    body: `<div style="max-width:680px">${esc(p.summary)}</div>
+      ${p.plan_note ? `<div style="margin-top:6px;max-width:680px;color:var(--fg-40)">${esc(p.plan_note)}</div>` : ""}
+      <div style="margin-top:8px">${capabilityChips(p)}</div>
+      <div style="margin-top:8px;max-width:680px">${esc(cap(tokenWord(p)))} per environment: add a ${esc(p.label)} part to an environment, then connect it there.</div>
+      <div data-hx-sentto style="margin-top:8px;color:var(--fg-40)">${esc(sentOnlyTo(p))}</div>`,
+    attrs: ` data-org-hosting-conn="${attr(`${p.id}:`)}" data-state="unused"${CARD}`,
+  });
 }
 
 // ── the tab ──────────────────────────────────────────────────────────────────
@@ -656,13 +665,11 @@ export function hostingTab(org: MyOrg, ui: OrgUi): string {
     : `<div class="cnpy-hx-envs">${d.environments.map((e) => envTile(x, e)).join("")}</div>`;
 
   const available = d.providers.filter((p) => p.status === "available");
-  const modern = available.filter((p) => p.legacy_part_key === null);
-  const legacy = available.filter((p) => p.legacy_part_key !== null);
   const later = d.providers.filter((p) => p.status === "later");
   const accentIsConnect = next?.action.kind === "connect";
   const rowsOf = (list: HostingProviderDTO[]): string => list.map((p) => {
     const cs = connectionsFor(d, p);
-    return cs.length ? cs.map((c) => connectionRow(x, p, c, accentIsConnect)).join("") : scopedHintRow(p);
+    return cs.length ? cs.map((c) => connectionRow(x, p, c, accentIsConnect)).join("") : scopedHintRow(x, p);
   }).join("");
   const connected = (list: HostingProviderDTO[]): number => list.filter((p) => d.connections.some((c) => c.provider === p.id && (c.status === "connected" || c.status === "error"))).length;
 
@@ -674,16 +681,12 @@ export function hostingTab(org: MyOrg, ui: OrgUi): string {
       ${envs}
     </section>
     <section aria-labelledby="org-hx-prov-t" data-org-group="hosting-providers">
-      ${orgHead("Providers", `${connected(modern)} of ${modern.length} connected`, null, "org-hx-prov-t")}
-      <ul${surface(LIST)}>${rowsOf(modern)}</ul>
+      ${orgHead("Providers", `${connected(available)} of ${available.length} connected`, null, "org-hx-prov-t")}
+      <ul class="cnpy-hx-provs">${rowsOf(available)}</ul>
     </section>
-    ${legacy.length ? `<section aria-labelledby="org-hx-legacy-t" data-org-group="hosting-legacy">
-      ${orgHead("Legacy", "the first two hosts Trov read: one part per environment, kept in the environment's own fields", null, "org-hx-legacy-t")}
-      <ul${surface(LIST)}>${rowsOf(legacy)}</ul>
-    </section>` : ""}
     ${later.length ? `<section aria-labelledby="org-hx-later-t" data-org-group="hosting-later">
       ${orgHead("Later", "described, not connectable yet", null, "org-hx-later-t")}
-      <ul${surface(LIST)}>${later.map((p) => laterRow(x, p)).join("")}</ul>
+      <ul class="cnpy-hx-provs">${later.map((p) => laterRow(x, p)).join("")}</ul>
     </section>` : ""}
     ${h.sample ? "" : sampleFoot()}`;
 }

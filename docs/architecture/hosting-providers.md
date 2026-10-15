@@ -154,13 +154,16 @@ a toast instead; one title + body per outcome in `hostingNoticeCopy`, tone ok / 
 banner); the "credentials can't be saved" banner (`secrets_available: false` — connect / rotate / paste are
 disabled with the reason; parts stay editable, since a part is not a credential); the LEAD, whose one accent action
 is the checklist's next step; the checklist the server generated (steps to do listed, done ones folded); "Detected";
-**Environments** — a tile per environment side by side (`.cnpy-hx-envs`), its parts as `openRow`s (glyph, label,
-role chip, a status dot + word; host · identifying setting as metadata; Edit as the one action; a failed last poll
+**Environments** — a tile per environment side by side (`.cnpy-hx-envs`), its parts as `openRow`s (the host's logo,
+label, role as plain text, a status mark; host · identifying setting as metadata; Edit as the one action; a failed last poll
 and a test's answer always visible; key, settings, last poll, the provider's "not available" reasons, Open in
-<provider>, Test this part and Remove behind the row); **Providers** — Vercel, Render, Netlify, Fly.io, one row per
-connection (or one not-connected row), **Legacy** — Cloudflare and Railway (Railway's token is per environment, so
-with no Railway part there is nothing to connect), **Later** — AWS, described and disabled. A connected row's one
-action is Test connection; behind it: what it is, what it can do (`grants`), "Sent only to <api_hosts>", Manage on
+<provider>, Test this part and Remove behind the row); **Providers** — ONE list in registry order (Cloudflare, Railway,
+Vercel, Render, Netlify, Fly.io; that Cloudflare and Railway keep their part in the environment's own fields is a
+storage detail the screen never shows), each with its logo (`web/src/host-logos.ts`, Simple Icons, CC0), one row per
+connection (or one not-connected row; Railway, whose token is per environment, has a row that opens like the others
+with "Add a Railway part" as its action), **Later** — AWS, described and disabled. A row says NOTHING about how a host
+connects (no "Recommended" / "Paste a…" hint, and every button reads "Connect <host>"): which method a host offers is
+not a reason to pick it. A connected row's one action is Test connection; behind it: what it is, what it can do (`grants`), "Sent only to <api_hosts>", Manage on
 <provider>, Rotate / Edit settings, Connect a different account, and Disconnect as quiet text. An install / OAuth
 connection folds its paste-a-token form under a quiet "Manual connection" row (the GitHub App's pattern).
 

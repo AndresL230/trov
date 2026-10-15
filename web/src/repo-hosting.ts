@@ -19,6 +19,7 @@ import type { RepoRange, RepoTone } from "@shared/repo";
 import type { DeployState, HostingMetric, HostingProviderId, ProviderDeployDTO, ProviderResources, ProviderTrafficRange, RepoProviderPart } from "@shared/hosting";
 import { esc, attr } from "./ui";
 import { kindMark, type StateKind } from "./marks";
+import { hostLogo } from "./host-logos";
 import { emptyLayout, emptyShapes, skBar, skBox, skLine, skeleton } from "./skeleton";
 
 /** What the section borrows from repo.ts (passed in, so the two modules do not import each other). */
@@ -35,7 +36,6 @@ const LABEL_SM = "font-family:var(--label);font-size:10px;font-weight:600;letter
 const NUM = "font-family:var(--label);font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap";
 const TONE: Record<RepoTone, string> = { neutral: "var(--fg-40)", good: "var(--green)", warn: "var(--amber)", bad: "var(--red)" };
 const TONE_WORD: Record<RepoTone, string> = { neutral: "no signal", good: "healthy", warn: "needs a look", bad: "failing" };
-const GLYPH: Record<HostingProviderId, string> = { cloudflare: "CF", railway: "RW", vercel: "V", render: "R", netlify: "N", fly: "F", aws: "AW" };
 const ROLE_WORD = { web: "Web", service: "Service" } as const;
 /** A captured URL must be https — never `javascript:` / `data:`. */
 const safeUrl = (u: string | null): string | null => (u && /^https:\/\//i.test(u) ? u : null);
@@ -224,7 +224,7 @@ function partCard(part: RepoProviderPart, t: RepoHostingTools): string {
   const head = `<div style="display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap">
       <span data-htone="${part.tone}" title="${attr(TONE_WORD[part.tone])}" style="flex:none;width:8px;height:8px;border-radius:50%;background:${TONE[part.tone]}"></span><span class="cnpy-sr">${esc(TONE_WORD[part.tone])}: </span>
       <span style="font-size:14px;font-weight:600;overflow-wrap:anywhere">${esc(part.label)}</span>
-      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-55);white-space:nowrap"><span aria-hidden="true" style="display:inline-grid;place-items:center;width:18px;height:18px;border-radius:5px;border:1px solid var(--border-strong);background:var(--hover);font-family:var(--label);font-size:8.5px;font-weight:700;line-height:1;color:var(--fg-70)">${GLYPH[part.provider] ?? "?"}</span>${esc(part.provider_label)}</span>
+      <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-55);white-space:nowrap">${hostLogo(part.provider, 16)}${esc(part.provider_label)}</span>
       <span style="font-size:12px;font-weight:500;color:var(--fg-55)">${esc(ROLE_WORD[part.role])}</span>
       ${console_ ? `<a href="${attr(console_)}" target="_blank" rel="noopener noreferrer" class="repo-quiet" style="margin-left:auto;font-size:11.5px;white-space:nowrap;${QUIET_LINK}">Open in ${esc(part.provider_label)}</a>` : ""}
     </div>`;

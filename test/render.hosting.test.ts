@@ -246,20 +246,26 @@ describe("the tab, state by state (the sample payloads)", () => {
 });
 
 describe("providers and their connections", () => {
-  it("lists the catalogue: Vercel, Render, Netlify, Fly.io; Cloudflare and Railway as legacy; AWS as later", () => {
+  it("lists the catalogue in ONE Providers list (Cloudflare and Railway beside the rest, never a Legacy group); AWS as later", () => {
     const html = tab(HOSTING_SAMPLE_MIXED);
     const group = (key: string) => { const a = html.indexOf(`data-org-group="${key}"`); const b = html.indexOf("data-org-group=", a + 1); return html.slice(a, b > -1 ? b : html.length); };
     const conns = (part: string) => [...part.matchAll(/data-org-hosting-conn="([^"]+)" data-state="([^"]+)"/g)].map((m) => `${m[1]} ${m[2]}`);
-    expect(conns(group("hosting-providers"))).toEqual(["vercel: connected", "render: error", "netlify: not_connected", "fly: connected"]);
-    expect(conns(group("hosting-legacy"))).toEqual(["cloudflare: connected", "railway:staging connected"]);
+    expect(conns(group("hosting-providers"))).toEqual(["cloudflare: connected", "railway:staging connected", "vercel: connected", "render: error", "netlify: not_connected", "fly: connected"]);
+    expect(html).not.toContain('data-org-group="hosting-legacy"');
+    expect(html).not.toContain(">Legacy<");
     expect(conns(group("hosting-later"))).toEqual(["aws: later"]);
     expect(group("hosting-later")).toContain("Coming later");
     expect(group("hosting-later")).not.toContain("orgHxConnect");
-    expect(html).toContain("3 of 4 connected");
+    expect(html).toContain("5 of 6 connected");
     // On a new org every provider still has a row to connect from — except Railway, whose token belongs to an environment.
     const fresh = tab(HOSTING_SAMPLES.no_parts);
     for (const id of ["vercel", "render", "netlify", "fly", "cloudflare"]) expect(fresh).toContain(`data-org-hosting-conn="${id}:" data-state="not_connected"`);
     expect(fresh).toContain('data-org-hosting-conn="railway:" data-state="unused"');
+    // Railway's row opens like every other one, and its one action is adding the part its token belongs to.
+    const railway = rowOf(tab(HOSTING_SAMPLES.no_parts, {}, ["hx:railway:unused"]), 'data-org-hosting-conn="railway:"');
+    expect(railway).toContain('class="cnpy-xrow" data-open="1"');
+    expect(railway).toMatch(/data-act="orgHxPartNew" data-arg="[a-z0-9_-]+\|railway"[^>]*>Add part</);
+    expect(railway).toContain("per environment: add a Railway part to an environment");
     expect(connectionsFor(HOSTING_SAMPLES.no_parts, provider("railway"))).toEqual([]);
   });
 
@@ -302,8 +308,9 @@ describe("providers and their connections", () => {
     const html = tab(HOSTING_SAMPLE_MIXED, {}, ["hx:netlify:"]);
     const netlify = rowOf(html, 'data-org-hosting-conn="netlify:"');
     expect(netlify).toContain(">Not connected<");
-    expect(netlify).toContain("Recommended: no token to paste");
-    expect(netlify).toMatch(/data-act="orgHxConnect" data-arg="netlify:"[^>]*>Connect with Netlify</);
+    // No "Recommended" / "Paste a…" hint beside the name: the button says how it connects.
+    expect(netlify).not.toContain("Recommended");
+    expect(netlify).toMatch(/data-act="orgHxConnect" data-arg="netlify:"[^>]*>Connect</);
     expect(netlify).toContain("Paste a personal access token");               // the other way, behind the row
     expect(netlify).toContain("Netlify publishes no usage or analytics API");
     // Mixed: the next step is Connect Netlify — the lead's accent button; every other button is quiet.
@@ -317,8 +324,7 @@ describe("providers and their connections", () => {
     v.connection_methods[0] = { ...v.connection_methods[0], available: false, unavailable_reason: "this Trov deployment has no Vercel integration configured" };
     const html = tab(d, {}, ["hx:vercel:"]);
     const row = rowOf(html, 'data-org-hosting-conn="vercel:"');
-    expect(row).toMatch(/data-act="orgHxConnect" data-arg="vercel:"[^>]*>Connect Vercel</);
-    expect(row).toContain("Paste an access token &middot;".replace(" &middot;", ""));
+    expect(row).toMatch(/data-act="orgHxConnect" data-arg="vercel:"[^>]*>Connect</);
     expect(row).toContain("data-hx-method-off");
     expect(row).toContain("Connect with Vercel is not offered here: this Trov deployment has no Vercel integration configured.");
     expect(row).not.toContain("Recommended: no token to paste");
@@ -345,7 +351,7 @@ describe("providers and their connections", () => {
     expect(row).toContain('data-state="revoked"');
     expect(row).toContain(">Removed<");
     expect(row).toContain("Removed on Vercel");
-    expect(row).toContain("Connect Vercel again");
+    expect(row).toContain(">Connect again<");
     expect(html).toContain("1 removed on the provider");
     expect(html).toMatch(/class="cnpy-accentbtn"[^>]*>Connect Vercel</);      // the checklist's "Reconnect Vercel"
     // An admin's own Disconnect: not connected, no banner.
