@@ -42,6 +42,7 @@ import { HOUR, HostingError, asHostingError, hostFetch, hourFloor, iso } from ".
 import { listAllParts, partRef, type PartRow } from "./parts";
 import { PROVIDERS } from "./registry";
 import type { HostingField, HostingProvider, PollResult } from "./types";
+import { routeAi } from "../tools/ai-route";
 
 /** The providers a poll may run — the registry, or (tests) a map holding a fake. */
 export type ProviderMap = Readonly<Partial<Record<HostingProviderId, HostingProvider>>>;
@@ -277,7 +278,12 @@ async function upsertDeploys(ctx: TenantContext, part: PartRow, deploys: CleanDe
     d.createdAt, d.readyAt, at, at));
   let changed = 0;
   // ≤ MAX_DEPLOYS_PER_POLL (50) statements — exactly one D1 batch, one transaction.
-  for (const res of await batch(ctx, stmts)) if (res.meta.changes > 0) changed++;
+  for (const [i, res] of (await batch(ctx, stmts)).entries()) {
+    if (!(res.meta.changes > 0)) continue;
+    changed++;
+    // The AI router, after the batch committed: a deploy new or changed (src/tools/ai-route.ts decides which matter).
+    await routeAi(ctx, { type: "hosting_deploy", env: part.env, branch: deploys[i].branch, state: deploys[i].state });
+  }
   return changed;
 }
 

@@ -139,4 +139,7 @@ export const AiUsageSchema = z.object({
   tokensIn: z.number().int().min(0),
   tokensOut: z.number().int().min(0),
   tokensCached: z.number().int().min(0),
+  jevChecks: z.number().int().min(0).optional(),
+  jevTokensIn: z.number().int().min(0).optional(),
+  jevTokensOut: z.number().int().min(0).optional(),
 }) satisfies z.ZodType<AiUsage>;

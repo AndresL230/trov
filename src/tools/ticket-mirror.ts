@@ -34,6 +34,7 @@ import type { PlatformContext } from "../data/platform-sql";
 import { priorityOf, stripPriority } from "./mywork";
 import { resolvePersonForLogin } from "../auth/persons";
 import { isIssueGone } from "./issue-gone";
+import { routeAi } from "./ai-route";
 
 /** The mirror's writer principal — a reserved handle with a persons row (0032). */
 export const MIRROR_ACTOR = "github-webhook";
@@ -163,6 +164,7 @@ export async function mirrorIssue(ctx: TenantContext, p: PlatformContext, repo: 
     // An issue that left the repo before it was ever mirrored has nothing to decline.
     if (isIssueGone(m.action)) return "unchanged";
     await createMirrored(ctx, p, m);
+    await routeAi(ctx, { type: "ticket_mirrored", sourceRef: m.sourceRef });
     return "created";
   }
 
@@ -181,6 +183,7 @@ export async function mirrorIssue(ctx: TenantContext, p: PlatformContext, repo: 
   const forced = alreadyApplied ? null : forcedStatus(m, existing.status);
   if (forced) {
     await forceStatus(ctx, existing.id, existing.status, forced, m.updatedAt);
+    await routeAi(ctx, { type: "ticket_changed", ticketId: existing.id });
     wrote = true;
   } else if (!alreadyApplied) {
     await run(ctx, `UPDATE tickets SET source_updated_at = ? WHERE id = ? AND org_id = ?`, m.updatedAt, existing.id, ctx.orgId);

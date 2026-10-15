@@ -107,10 +107,15 @@ export const METRIC_AI_RUN_PREFIX = "ai_run:";
 export const METRIC_AI_RUN_FAILED_PREFIX = "ai_run_failed:";
 /** `ai_run_capped:<kind>` — a job had work but the org's allowance (or an ended plan) let no call start. */
 export const METRIC_AI_RUN_CAPPED_PREFIX = "ai_run_capped:";
-/** The provider's own token counts, summed per day: uncached input, output, and input read from the cache. */
+/** The provider's own token counts, summed per day: uncached input, output, and input read from the cache.
+ *  These three are CLAUDE's (Anthropic's `usage`), per provider since Phase B; Jev's are below. */
 export const METRIC_AI_TOKENS_IN = "ai_tokens_in";
 export const METRIC_AI_TOKENS_OUT = "ai_tokens_out";
 export const METRIC_AI_TOKENS_CACHED = "ai_tokens_cached";
+/** JEV's token counts (TypeSafe AI's `usage`), summed per day — the AI pass's Jev requests (cards and gates). A
+ *  Jev request itself is `ai_suggest` (METRIC_AI_SUGGEST, below): what `jev_checks` counts, Sift's and the pass's. */
+export const METRIC_JEV_TOKENS_IN = "ai_jev_tokens_in";
+export const METRIC_JEV_TOKENS_OUT = "ai_jev_tokens_out";
 /** What `ai_runs` sums: `ai_run:*` only (GLOB has no single-character wildcard, so `ai_run_failed:*` is not matched). */
 export const AI_RUN_METRIC_GLOB = "ai_run:*";
 /** Every AI metric above: none of them is a PERSON's request (src/platform/usage.ts). */

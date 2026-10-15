@@ -275,4 +275,69 @@ export interface AiUsage {
   tokensIn: number;
   tokensOut: number;
   tokensCached: number;
+  /** TypeSafe AI's side (Phase B: token metrics per provider) — Jev requests (`ai_suggest`: Sift's and the AI
+   *  pass's, what `jev_checks` counts) and their tokens (`ai_jev_tokens_in` / `_out`). Optional: a read from before
+   *  them (and the preview fixtures) leaves them out, and the screen then draws exactly what it did. */
+  jevChecks?: number;
+  jevTokensIn?: number;
+  jevTokensOut?: number;
 }
+
+// ── The router's scopes and their debounce (docs/architecture/ai.md › Scopes and debounce) ──────────
+/** What a write can make stale (`ai_dirty.scope`, 0058). A scope's KEY says which one: `card` → `pr:173`,
+ *  `ticket:14`, `feed:<id>`, `proposal:doc:<slug>:<version>` / `proposal:adr:<id>`, `unplaced:<id>`,
+ *  `tagfit:doc:<slug>` / `tagfit:artifact:<slug>`; `session` → `<repo>:<login>`; `person` → a handle; `repo`,
+ *  `theme_window`, `theme_backfill` → `owner/repo`; `sprint` → a sprint id; `org` → ''; `doc_drift` → a doc's slug
+ *  (`artifact:<slug>` for an artifact). */
+export const AI_SCOPES = ["session", "card", "person", "repo", "org", "sprint", "theme_window", "theme_backfill", "doc_drift"] as const;
+export type AiScope = (typeof AI_SCOPES)[number];
+export const isAiScope = (v: unknown): v is AiScope => typeof v === "string" && (AI_SCOPES as readonly string[]).includes(v);
+
+/** THE PASS ORDER: each org's due scopes run in these stages, first to last — sessions, cards, briefs, repo
+ *  state, the org rollup, themes, doc drift — so a later stage reads what an earlier one just wrote. */
+export const AI_PASS_STAGES: readonly (readonly AiScope[])[] = [
+  ["session"], ["card"], ["person"], ["repo"], ["org", "sprint"], ["theme_window", "theme_backfill"], ["doc_drift"],
+];
+
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+/** The plan ids that get the short debounce (Pro is `team`, shared/plans.ts); every other plan — Free, Personal,
+ *  an unknown id — gets the long one. Kept as strings so this file needs nothing from shared/plans.ts. */
+const SHORT_DEBOUNCE_PLANS: readonly string[] = ["team", "enterprise"];
+
+/**
+ * How long a scope waits after it went stale before the pass runs it (the decided table, Phase B):
+ *
+ *   | scope            | Pro / Enterprise                          | Free / Personal |
+ *   | `session`        | closes 45 min after its LAST event        | same            |
+ *   | `card`           | next tick (0)                             | next tick (0)   |
+ *   | `person`         | 30 min                                    | 2 h             |
+ *   | `repo`           | 60 min — a breaking change skips it       | 6 h             |
+ *   | `org`, `sprint`  | 6 h                                       | 24 h            |
+ *   | `theme_window`   | daily                                     | weekly          |
+ *   | `doc_drift`      | weekly                                    | monthly (30 d)  |
+ *   | `theme_backfill` | next tick (0) — not in the table: it is the accept's own follow-up, through the Batch API |
+ *
+ * `urgent` (`ai_dirty.urgent`, set by the caller that marks): a BREAKING change on a `repo` skips the wait on Pro
+ * and Enterprise only (the table's own parenthesis); the digest PRE-WARM on a `person` skips it on every plan (the
+ * brief must be ready for the send). On any other scope it changes nothing. The wait counts from `dirty_since`
+ * (the FIRST mark since the last run), except a session's, which counts from its last mark (`debounceFrom`).
+ */
+export function debounceMs(scope: AiScope, plan: string, opts: { urgent?: boolean } = {}): number {
+  const short = SHORT_DEBOUNCE_PLANS.includes(plan);
+  switch (scope) {
+    case "session": return 45 * MINUTE;
+    case "card": case "theme_backfill": return 0;
+    case "person": return opts.urgent ? 0 : short ? 30 * MINUTE : 2 * HOUR;
+    case "repo": return opts.urgent && short ? 0 : short ? HOUR : 6 * HOUR;
+    case "org": case "sprint": return short ? 6 * HOUR : DAY;
+    case "theme_window": return short ? DAY : 7 * DAY;
+    case "doc_drift": return short ? 7 * DAY : 30 * DAY;
+  }
+}
+
+/** Which mark a scope's debounce counts from: a session's LAST event (`marked_at`); every other scope's FIRST
+ *  mark since its last run (`dirty_since`), so a steady trickle of marks cannot hold it back forever. */
+export const debounceFrom = (scope: AiScope): "last" | "first" => (scope === "session" ? "last" : "first");

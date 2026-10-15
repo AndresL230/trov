@@ -6,6 +6,7 @@ import { liveTagNames } from "./tags";
 import { type TenantContext, first, run, stmt, batch, nowIso } from "../data/sql";
 import type { PlatformContext } from "../data/platform-sql";
 import { memberPerson, resolvePersonForLogin } from "../auth/persons";
+import { routeAi } from "./ai-route";
 // NOTE: writes.ts ↔ consumer.ts is a deliberate circular import. consumer.ts
 // imports the low-level writers below; assign_triage imports the gate functions.
 // It is safe because every reference is INSIDE a function body (resolved lazily
@@ -161,6 +162,7 @@ export async function route_triage(
     item.source_author ?? null,
     created_at
   );
+  await routeAi(ctx, { type: "unplaced", id: res.meta.last_row_id as number });
   return res.meta.last_row_id as number;
 }
 
@@ -331,6 +333,7 @@ export async function promote_doc(
     ctx.orgId,
     slug
   );
+  await routeAi(ctx, { type: "doc_promoted", slug });
   return { slug, version, status: "promoted" };
 }
 

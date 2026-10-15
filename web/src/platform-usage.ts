@@ -102,7 +102,11 @@ export const SUMMARIES_OFF = "AI summaries are off on this deployment (no ANTHRO
 /** AI runs in the window — attempted, failed, refused at the allowance — and the tokens they used
  *  (`OrgUsage.ai` / `PlatformUsageResponse.ai`). Counts only. Absent `ai` draws nothing, never zeros. */
 export function aiFigures(a: AiUsage): string {
-  return `${FIGURE("Runs", formatNumber(a.runs))}${FIGURE("Failed", formatNumber(a.failed))}${FIGURE("Capped", formatNumber(a.capped))}${FIGURE("Tokens in", formatNumber(a.tokensIn))}${FIGURE("Tokens out", formatNumber(a.tokensOut))}${FIGURE("Cached", formatNumber(a.tokensCached))}`;
+  // Sift's side (TypeSafe AI) only when the read carries it — a read without it draws exactly what it did.
+  const jev = a.jevChecks !== undefined
+    ? `${FIGURE("Sift checks", formatNumber(a.jevChecks))}${a.jevTokensIn !== undefined ? FIGURE("Sift tokens in", formatNumber(a.jevTokensIn)) : ""}${a.jevTokensOut !== undefined ? FIGURE("Sift tokens out", formatNumber(a.jevTokensOut)) : ""}`
+    : "";
+  return `${FIGURE("Runs", formatNumber(a.runs))}${FIGURE("Failed", formatNumber(a.failed))}${FIGURE("Capped", formatNumber(a.capped))}${FIGURE("Tokens in", formatNumber(a.tokensIn))}${FIGURE("Tokens out", formatNumber(a.tokensOut))}${FIGURE("Cached", formatNumber(a.tokensCached))}${jev}`;
 }
 /** The AI runs line under the summaries line — only when the read carries `ai`. */
 const aiLine = (a: AiUsage | undefined, attrs: string): string => a

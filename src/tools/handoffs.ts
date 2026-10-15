@@ -19,6 +19,7 @@ import { all, first, run, nowIso, type TenantContext } from "../data/sql";
 import { append_feed } from "./writes";
 import { memberHandle } from "../auth/persons";
 import { query } from "./reads";
+import { routeAi } from "./ai-route";
 import type { QueryPrimary } from "@shared/contract";
 import {
   EMPTY_CONTEXT, firstLine, HANDOFF_READING_MAX, HANDOFF_READING_HEADING,
@@ -155,6 +156,7 @@ export async function createHandoff(
     summary: `${sender} left a handoff for ${recipient === "anyone" ? "anyone" : recipient}: #${id} ${firstLine(input.body)}`.slice(0, 300),
     body: context.task ? `Task: ${context.task}${context.branch ? ` (\`${context.branch}\`)` : ""}` : undefined,
   });
+  await routeAi(ctx, { type: "handoff_sent", recipient });
   return { handoff: (await getHandoff(ctx, id))!, replayed: false };
 }
 

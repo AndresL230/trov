@@ -146,6 +146,9 @@ of them is also in `ORG_TABLES` (`src/deletion/tables.ts`), what an organization
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.
 - **Global tables** (no `org_id`): `persons`, `identities`, `sessions`, `invites`, `oauth_clients`,
   `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags` (since 0057 only the STARTER tags' names: nothing reads it, an org's tags are `org_tags`),
+  `ai_batches` / `ai_batch_requests` (0059 — the AI pass's Message Batches, `src/data/ai-batches.ts`: a batch carries
+  several orgs' requests, so a request names its org only inside `custom_id`, and its row is deleted when the batch
+  is collected; `ai.md` › Batches),
   and `org_grants`, `platform_outbox_bodies` (0044_plans — a grant is about a person before any org exists;
   its `used_org` is deliberately not named `org_id`), and `support_reports` (0049 — a person's report to the
   operator; the org it was sent from is `from_org`, for the same reason: `support.md`). An org's plan is columns on `orgs` (`plans.md`).
@@ -215,7 +218,8 @@ belongs to) through `src/platform/jobs.ts`, then does its work as that org's `sy
 |---|---|---|
 | repo cron `handleRepoCron` (`src/repo/cron.ts`) | `listEnvUnits` / `listRepoUnits` — every non-suspended org | `systemTenant(p, org, "system")` per unit |
 | digest crons `handleNotificationCron` (`src/notifications/cron.ts`) | `listActiveOrgIds` | the same, per org |
-| the AI pass `runAiPass` (`src/ai/pass.ts`, from the repo cron on every tick with no heavy job — `ai.md`) | `listActiveOrgIds`, rotated on `cron_cursor` job `ai_pass` — and NOTHING is read while its job registry is empty (today) | `systemTenant(p, org, "system")` per org; meter rows as actor `ai-pass` |
+| the AI pass `runAiPass` (`src/ai/pass.ts`, from the repo cron on every tick with no heavy job — `ai.md`) | `listActiveOrgIds`, rotated on `cron_cursor` job `ai_pass` — and NOTHING is read while its job registry is empty (today); its batch half reads `ai_batches` (platform) | `systemTenant(p, org, "system")` per org (and per batch result's org, only if it still exists with AI on); meter rows as actor `ai-pass` |
+| the digest pre-warm `prewarmDigests` (`src/notifications/cron.ts`, from the repo cron at `:50`) | `listActiveOrgIds` | the same, per org: the AI router marks each recipient's `person` scope |
 | `POST /webhook/github/:hookId`, legacy `/webhook/github` (`src/github-hook.ts`) | `hookRepo(p, id)` / `legacyHookRepo(p)` | `systemTenant(p, row.org_id, "github-webhook")` |
 | `POST /webhook/github/app` — the GitHub App's one endpoint (`src/github-app/webhook.ts`, `github-app.md`) | `installationOrgs(p, <the delivery's installation id>)` for the installation's own events, `installationRepoOrgs(p, <installation id>, <repository>)` for a repository's | the same |
 | repo cron `hosting` job at `:40` (`src/repo/cron.ts`, `src/hosting/poll.ts`) | `listPartUnits` — one per (org, environment, stored part) | `systemTenant(p, org, "system")` per unit |
