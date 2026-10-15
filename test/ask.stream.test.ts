@@ -153,7 +153,9 @@ describe("the gate: key, switch, allowance (in questions), and mode access by pl
   it("the allowance counts questions by the mode: Thinking 5, Smart 1; past the cap → error capped, nothing called", async () => {
     await setPlan("team");
     const cookie = await cookieFor(ME);
-    const cap = resolveEntitlements("team", {}).ai_chat!;
+    // A Pro org with no paid-seat count (as here) is × its members (shared/plans.ts `resolveEntitlements`).
+    const members = Number((await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM memberships WHERE org_id = ?`, ORG_A))?.n);
+    const cap = resolveEntitlements("team", {}, members).ai_chat!;
     const model = fakeModel([[{ type: "text", text: `a${final}` }], [{ type: "text", text: `b${final}` }]]);
     await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { text: "q", mode: "thinking" }));
     expect(await chatUsed()).toBe(5);
