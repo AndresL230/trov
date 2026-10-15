@@ -1,0 +1,75 @@
+
+=== AU-OWNER-2 amended desktop
+{
+ "atCap": {
+  "h": 220,
+  "full": true,
+  "overflowY": "auto",
+  "scrollbarWidth": "none",
+  "barPx": 0,
+  "caretInView": true,
+  "scrollTop": 470
+ },
+ "ctrlHomeScrollTop": 13,
+ "afterWheel": 133,
+ "typedAtEnd": {
+  "caretInView": true,
+  "scrollTop": 493,
+  "max": 493
+ },
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}
+
+=== AU-OWNER-2 amended phone
+{
+ "atCap": {
+  "h": 220,
+  "full": true,
+  "overflowY": "auto",
+  "scrollbarWidth": "none",
+  "barPx": 0,
+  "caretInView": true,
+  "scrollTop": 540
+ },
+ "ctrlHomeScrollTop": 13,
+ "afterWheel": 133,
+ "typedAtEnd": {
+  "caretInView": true,
+  "scrollTop": 565,
+  "max": 565
+ },
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}
+
+=== AU-OWNER-2 amended cmdj
+{
+ "atCap": {
+  "h": 220,
+  "full": true,
+  "overflowY": "auto",
+  "scrollbarWidth": "none",
+  "barPx": 0,
+  "caretInView": true,
+  "scrollTop": 470
+ },
+ "ctrlHomeScrollTop": 12,
+ "afterWheel": 132,
+ "typedAtEnd": {
+  "caretInView": true,
+  "scrollTop": 493,
+  "max": 493
+ },
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}

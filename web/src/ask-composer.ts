@@ -100,12 +100,14 @@ export interface ComposerUi {
   notice: { kind: "too_large" | "unsupported" | "too_many"; name: string } | null;
   /** The input's height (px), measured after a paint; null = not measured yet. */
   h: number | null;
+  /** Its words are taller than the 220px cap: only then may it scroll (AU-OWNER-2 — no scrollbar while it grows). */
+  full: boolean;
   /** Where to put the caret after the next paint (a pick, a mention, a command). */
   caret: number | null;
 }
 export const initialComposerUi = (): ComposerUi => ({
   text: "", context: [], attachments: [], mode: null, auto: null, forced: null,
-  files: [], picker: null, modeMenu: false, drag: false, error: false, notice: null, h: null, caret: null,
+  files: [], picker: null, modeMenu: false, drag: false, error: false, notice: null, h: null, full: false, caret: null,
 });
 
 // ── what the composer reads from `ask/state` (never a constant) ──────────────
@@ -384,7 +386,8 @@ function boxView(v: AskView): string {
   const p = ui.picker;
   const chips = [...ui.files.map((f) => fileChip(v, f)), ...ui.context.map((r) => ctxChip(v, r))].join("");
   const style = ui.h !== null ? ` style="height:${ui.h}px"` : "";
-  const ta = `<textarea rows="1" class="ask-input" data-morph-key="ta" data-act="askCoText" data-arg="${v.where}" data-field="${fieldOf(v.where)}" data-ask-input="${v.where}" placeholder="${attr(placeholderOf(v))}" aria-label="Message Ask Trov"${p ? ` aria-controls="ask-co-pick-${v.where}" aria-expanded="true"` : ""}${style}>${esc(ui.text)}</textarea>`;
+  const full = ui.full ? ` data-full="1"` : "";
+  const ta = `<textarea rows="1" class="ask-input" data-morph-key="ta" data-act="askCoText" data-arg="${v.where}" data-field="${fieldOf(v.where)}" data-ask-input="${v.where}" placeholder="${attr(placeholderOf(v))}" aria-label="Message Ask Trov"${p ? ` aria-controls="ask-co-pick-${v.where}" aria-expanded="true"` : ""}${full}${style}>${esc(ui.text)}</textarea>`;
   // A phone: the phone part's bottom row (+, the meta line, Send / Stop) and its + menu — the ONE + menu, which
   // drives this composer's own controls (its file input, its box through a real input event, ComposerUi.mode / auto).
   const bar = phone
@@ -863,11 +866,18 @@ function grow(el: HTMLTextAreaElement, ui: ComposerUi): void {
   const tr = el.style.transition;
   el.style.transition = "none";
   el.style.height = "auto";
-  const want = Math.round(Math.min(max, Math.max(min, el.scrollHeight)));
+  const words = el.scrollHeight;
+  const want = Math.round(Math.min(max, Math.max(min, words)));
   el.style.height = prev;
   void el.offsetHeight;
   el.style.transition = tr;
+  // Past the cap it scrolls; under it the box clips while its height glides (never a flashing scrollbar).
+  const full = words > max + 1;
+  if (ui.full !== full) { ui.full = full; if (full) el.setAttribute("data-full", "1"); else el.removeAttribute("data-full"); }
   if (ui.h !== want) { ui.h = want; el.style.height = `${want}px`; }
+  // Keep the caret in view at the cap: words pasted or typed at the end while the box grew (clipped, then scrolling)
+  // leave it below the fold otherwise. The box has no visible scrollbar (AU-OWNER-2), so this is the only cue.
+  if (full && document.activeElement === el && el.selectionEnd === el.value.length) el.scrollTop = el.scrollHeight;
 }
 
 function afterPaintWhere(ctx: AskCtx, mount: HTMLElement, where: AskWhere): void {

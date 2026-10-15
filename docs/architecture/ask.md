@@ -363,7 +363,9 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **The composer's place** (Phase H, AU-OWNER-1): centred under an empty conversation (the design's spacer under the
   composer, `EMPTY_TAIL`, page and ⌘J panel), docked at the foot once there are messages; `data-ask-dock="center" |
   "dock"` on the composer, and `askGlideDock` (ask-motion.ts rule 8) glides it when that flips — at once under
-  reduced motion.
+  reduced motion. The box's input clips while its height glides and scrolls only past the 220px cap (`data-full`),
+  never with a visible scrollbar (`scrollbar-width:none`, the input only), and keeps the caret in view there
+  (AU-OWNER-2).
 - **Small rules the e2e pinned**: a decided card's `ref` is rebuilt by the thread read (`refOfAction`, routes.ts — no
   column keeps it), and a done line with no number says "the ticket", never "#null"; editing a command question shows
   "/search …" and Send parses it again (`parseCommand`); the thread menu takes focus on open, ↑↓ move, Escape returns
