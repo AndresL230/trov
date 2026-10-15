@@ -90,8 +90,8 @@ const PROVIDERS_UPDATED = "2026-10-14";
 // (docs/superpowers/specs/2026-10-15-server-ai-build.md › Phases C–E) — re-check those against the merged code
 // before the markers come off.
 // Revised 2026-10-15 to the owner's rulings on the Phase G questions (trov-ai-master STATE.md › Owner rulings, Legal
-// 1–6): Terms §10 is "AI features" (its id stays `ai`, so `/terms#ai` links still land); the summaries' exception to
-// the AI switch is its own paragraph, to delete when ai/summaries-switch ships; Ask attachments go with the
+// 1–6): Terms §10 is "AI features" (its id stays `ai`, so `/terms#ai` links still land); the AI switch covers PR and
+// issue summaries (ai/summaries-switch, merged into #178 before this branch); Ask attachments go with the
 // conversation and the account; "Only when something needs me" has its line (Phase E). The markers stay until the
 // owner OKs this revised text.
 // DRAFT (open question for Andres): TypeSafe AI is named because it receives the data (`JEV_URL` in
@@ -217,14 +217,10 @@ export const TERMS: LegalDoc = {
         // pass's producers (Phases C–D: session notes, repo state, the brief, themes, sprint notes and plan drift,
         // the weekly recap, doc drift; Jev's cards and gates).
         p(`${DRAFT}<b>Notes, briefs and suggestions.</b> When a person types a filter in plain words on Tickets, the Feed or Artifacts, Trov uses Anthropic Claude to set the screen's own filters from it. While an organization's AI switch is on, Trov also uses Anthropic Claude to write short texts from what the organization already holds in Trov: a note on what a burst of work in a connected repository shipped, where a repository stands, each person's brief (on My Work, for the agents they connect, and in their email), the themes of the work merged, notes on sprints and on drift from the plan, the weekly email's "This week" highlights, and changes to a doc that seems out of date. It uses a decision model from TypeSafe AI to sort and check items: a ticket's category and priority, a likely duplicate, how much a change matters, what a proposal changes, where an unplaced item belongs, which theme a pull request is part of, and whether something is worth writing about at all. These can be wrong: they are a convenience, not a record. They are shown as written by Trov, or as suggestions a person accepts or dismisses. None of them approves, promotes, rejects, resolves or closes anything, and a doc change Trov writes is staged for a person to approve, like an agent's.`),
-        // DRAFT: awaiting Andres's approval (#178 Phase G) — the org switch (orgs.ai_automation). Written to hold once
-        // the switch covers every feature in this section, summaries included (owner ruling, Legal 1).
-        p(`${DRAFT}An admin can turn the organization's AI switch off at any time. While it is off, nothing is sent to Anthropic or TypeSafe AI for any feature in this section.`),
-        // DRAFT: awaiting Andres's approval (#178 Phase G). TEMPORARY — DELETE THIS PARAGRAPH (and its pin in
-        // test/render.legal.test.ts) when ai/summaries-switch ships: capture-time summaries do not read the switch yet
-        // (src/plans/summaries.ts). Owner ruling (Legal 1): keep the disclosure until that code ships. Nothing else
-        // in this file needs to change with it.
-        p(`${DRAFT}For now, one exception: the summaries of pull requests and issues are still made while the switch is off.`),
+        // DRAFT: awaiting Andres's approval (#178 Phase G) — the org switch (orgs.ai_automation) covers every feature
+        // in this section, PR and issue summaries included (owner ruling, Legal 1; ai/summaries-switch: off = no call,
+        // no new summary row, and a summary already written is kept as it is — docs/architecture/ai.md).
+        p(`${DRAFT}An admin can turn the organization's AI switch off at any time. While it is off, nothing is sent to Anthropic or TypeSafe AI for any feature in this section, the summaries of pull requests and issues included. Summaries already written stay readable.`),
       ],
     },
     {

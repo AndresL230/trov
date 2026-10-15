@@ -176,10 +176,10 @@ describe("legal pages", () => {
     for (const start of ["While both switches are on, Sift also checks", "<b>Ask Trov.</b>", "<b>Notes, briefs and suggestions.</b>", "An admin can turn the organization's AI switch off"]) {
       expect(ai).toContain(`${DRAFT}${start}`);
     }
-    // Owner ruling (Legal 1): the switch paragraph holds once summaries obey it; the exception is its own paragraph,
-    // deleted (with this pin) when ai/summaries-switch ships.
-    expect(ai).toContain("While it is off, nothing is sent to Anthropic or TypeSafe AI for any feature in this section.</p>");
-    expect(TERMS.sections.find((s) => s.id === "ai")!.body).toContain(`<p>${DRAFT}For now, one exception: the summaries of pull requests and issues are still made while the switch is off.</p>`);
+    // Owner ruling (Legal 1): the switch covers summaries too (ai/summaries-switch), and the old exception is gone.
+    expect(ai).toContain("While it is off, nothing is sent to Anthropic or TypeSafe AI for any feature in this section, the summaries of pull requests and issues included. Summaries already written stay readable.</p>");
+    expect(ai).not.toContain("does not cover the summaries");
+    expect(ai).not.toContain("one exception");
     // Ruling (Legal 3): Ask Trov reads source code only in a file the person attaches.
     expect(ai).toContain("nor source code unless the person attaches a file of it");
     expect(section(TERMS, "third-parties")).toContain(`${DRAFT}Anthropic Claude also answers Ask Trov`);
