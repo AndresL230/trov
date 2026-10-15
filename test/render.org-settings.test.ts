@@ -281,9 +281,12 @@ describe("Integrations — the states of the page", () => {
     expect(html).toContain("What GitHub token is used for.");
     expect(html).toContain('aria-label="Set the GitHub token"');
     expect(html).toContain("None is connected yet.");
-    // Hosting credentials and app metrics tokens are on Hosting: one line, and the way there.
+    // Hosting credentials are on Hosting; an app's metrics token in its part's editor (Repositories › a repo › Apps): one
+    // line, and the way there.
     expect(html).toContain("data-org-int-hosting");
     expect(html).toMatch(/data-org-int-hosting[\s\S]*data-act="orgTab" data-arg="hosting"/);
+    expect(html).toContain("An app's metrics token is set in its part's editor, under Repositories › a repository › Apps.");
+    expect(html).not.toContain("are set on Hosting, beside the providers and parts");
     expect(html).not.toContain("No environment tokens yet");
     expect(html).toContain("There is no key yet.");
     expect(html).toContain("Nothing yet. Every secret set, rotated or deleted is recorded here.");

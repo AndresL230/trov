@@ -386,8 +386,8 @@ Scenario and Variant `dropdown()`s are session-only (`state.repoScenario`); a pi
 | N | Trouble states (A's '' and B's `trov`) | as A / B | R6 / R4 |
 
 G/after is one design-data slip the design's own view model cannot draw (`DESIGN_DATA_SLIPS` in
-`test/repo-layout.test.ts`); the sample still draws it (an apps table). H's Cloud Run app names `github` through a
-leftover cast (`GITHUB_PROVIDER`), now that `github` is a registered id. Tests: `test/repo-sample.scenarios.test.ts`
+`test/repo-layout.test.ts`); the sample still draws it (an apps table). H's Cloud Run app names the registered
+`github` provider (`GITHUB_PROVIDER`). Tests: `test/repo-sample.scenarios.test.ts`
 (every scenario × variant × App × Group by against `buildScreen`; unknown stays null; every part's app and
 environment exist).
 
@@ -545,16 +545,18 @@ app whose release_signal is workflow:<file>@<branch>),
 
 Every number is a worst case, counted from the code; the callers start a unit only while it fits (`repo-dashboard.md`
 › The budget).
-- **`reconcileRequests(N)` = 16 + 2N + max(2, N) + `FACTS_COMPARE_CAP` (6) + `RELEASES_RECONCILE_COST` (2)**
-  (`src/repo/github.ts`; 30 for two environments): 16 + 2N for the capture arms, `driftCompares(N)` for the promotion
-  chain, 6 for not shipped + out of step, 2 for releases.
-- **`reconcileCost(N)`** (`src/repo/cron.ts`, the `:20` unit) = `reconcileRequests(N)` + **`SCAN_COST` (5)** +
-  `LOGO_IMPORT_COST` (3) + `GITHUB_MINT_COST` (1).
-- **Poll now** (`runRepoRefresh`): `refreshSubrequests(N)` = 3N + `reconcileRequests(N)` (36 for two environments;
-  the scan is off). **`SUBREQUEST_CAP` = 100** (it was the free plan's 50 until the promotion chain, the facts arms
-  and releases pushed a five-environment org past it): the GitHub arm runs for N ≤ 12 (96; 102 at thirteen), else it
-  is skipped and says so; the hosting arm runs only when `refreshSubrequests(N)` + 1 (a mint) + Σ `providerPollCost`
-  ≤ 100 (63 left for two environments).
+- **`reconcileRequests(N)` = 16 + 2N + max(2, N) + `FACTS_COMPARE_CAP` (6) + `RELEASES_RECONCILE_COST` (2) +
+  `PR_FILES_REQUESTS` (9)** (`src/repo/github.ts`; 39 for two environments): 16 + 2N for the capture arms,
+  `driftCompares(N)` for the promotion chain, 6 for not shipped + out of step, 2 for releases, 9 for PR files. The
+  `github_deploys` arm (a `github` part's deploys from history, above) reads D1 only and costs nothing.
+- **`reconcileCost(N)`** (`src/repo/cron.ts`, the `:20` unit) = `reconcileRequests(N)` + (`PR_FILES_SYNC_REQUESTS` −
+  `PR_FILES_REQUESTS`, the cron's wider PR-files allowance) + **`SCAN_COST` (5)** + `LOGO_IMPORT_COST` (3) +
+  `GITHUB_MINT_COST` (1).
+- **Poll now** (`runRepoRefresh`): `refreshSubrequests(N)` = 3N + `reconcileRequests(N)` (45 for two environments;
+  the scan is off). **`SUBREQUEST_CAP` = 100** (it was the free plan's 50 until the promotion chain, the facts arms,
+  releases and PR files pushed a five-environment org past it): the GitHub arm runs for N ≤ 11 (99; 105 at twelve),
+  else it is skipped and says so; the hosting arm runs only when `refreshSubrequests(N)` + 1 (a mint) + Σ
+  `providerPollCost` ≤ `SUBREQUEST_CAP` (54 left for two environments).
 - **A hosting unit** (`:40`) = its provider's `pollCost` + `ROLLBACK_COMPARE_COST` (1) when the provider reports
   deploys; a `github` part 0. Cloudflare's `pollCost` is 6, Vercel's and Netlify's 2 (previews).
 - Tests: `test/repo-facts.reconcile.test.ts` › the cost, `test/repo-releases.test.ts` › is counted,

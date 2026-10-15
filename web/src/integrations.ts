@@ -2,9 +2,9 @@
 //
 // Every integration the org is EXPECTED to have is listed, set or not: GitHub (the App, or
 // the token and one webhook secret per repository) and every non-hosting integration. A
-// hosting provider's credential (Cloudflare, Railway, Vercel, …) and an environment's app
-// metrics token are NOT here: they are on Hosting, beside the provider and the part that use
-// them (one line says so). The tab reads top-down as a summary: a lead line
+// hosting provider's credential (Cloudflare, Railway, Vercel, …) and an app's metrics token
+// are NOT here: the credential is on Hosting, beside its provider; the token in its part's
+// editor (Org settings › Repositories › a repo › Apps) — one line says so. The tab reads top-down as a summary: a lead line
 // (how many are set, how many have an error), then per group a list of ROWS that each show
 // a name, its status in words and ONE action — Set while it has no value, Test once it
 // does. A row opens (org-ui.ts `openRow`) to the rest: what the credential is for, who set
@@ -416,8 +416,9 @@ export function integrationsTab(org: MyOrg, ui: OrgUi): string {
       <ul${surface(LIST)}>${g.rows.map((i) => integrationRow(i, { secretsAvailable: d.secrets_available, test: ui.tests[integrationKey(i)], open: ui.openRows.includes(integrationKey(i)) })).join("")}</ul>
     </section>`;
   }).join("");
-  // Hosting's credentials live with the providers and parts that use them: one line, and the way there.
-  const elsewhere = `<p data-org-int-hosting style="margin:24px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-55)">Hosting credentials (Cloudflare, Railway, Vercel and the rest) and each environment's app metrics token are set on Hosting, beside the providers and parts that use them. ${goLink("Open Hosting", "orgTab", "hosting")}</p>`;
+  // Hosting's credentials live with the providers that use them, an app's metrics token with its part (the part editor,
+  // opened from Org settings › Repositories › a repo › Apps): one line, and the way there.
+  const elsewhere = `<p data-org-int-hosting style="margin:24px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-55)">Hosting credentials (Cloudflare, Railway, Vercel and the rest) are set on Hosting. An app's metrics token is set in its part's editor, under Repositories › a repository › Apps. ${goLink("Open Hosting", "orgTab", "hosting")}</p>`;
   return `${banner}${lead}${sections}${elsewhere}
     <section aria-labelledby="org-int-safe" data-org-group="safe">
       ${orgHead("Key and history", "", null, "org-int-safe")}
