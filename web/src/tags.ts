@@ -68,10 +68,12 @@ export interface TagsUi {
   /** Sift's suggestions (`<type>:<id>`) a person just added or dismissed: their rows slide out at once, while the
    *  write goes on in the background (each on its own — the others stay usable). */
   reviewLeaving: string[];
+  /** The page's numbers that just changed (`items`, `feed`, `doc`, `adr`, `review`): they tick up into place. */
+  bump: string[];
 }
 export const initialTagsUi = (): TagsUi => ({
   nameDraft: "", descDraft: "", addBusy: false, addError: null, addOpen: false, addColor: "moss", addScan: true, edit: null, busy: null, confirm: null, showRetired: false, pageTab: "all", itemBusy: false,
-  aiBusy: false, live: {}, menu: null, menuMerge: false, colorOpen: null, aiInfo: false, reviewLeaving: [],
+  aiBusy: false, live: {}, menu: null, menuMerge: false, colorOpen: null, aiInfo: false, reviewLeaving: [], bump: [],
 });
 
 /** Can this draft be added? A name that normalizes, not already on the list. */
@@ -427,6 +429,8 @@ export interface TagPageProps {
   now?: number;
   /** The review rows on their way out (`TagsUi.reviewLeaving`). */
   leaving?: readonly string[];
+  /** The numbers that just changed (`TagsUi.bump`): drawn with `data-bump`, so they tick into place. */
+  bump?: readonly string[];
   /** A person's colour (the one their name is drawn in), for their bar under Who writes about it; null = the tag's. */
   colorOf?: (handle: string) => string | null;
   /** Another tag's colour, for its bar under Often seen with; null = the tag's. */
@@ -536,14 +540,14 @@ export function tagWeeks(items: readonly Pick<TagPageItem, "at">[], now: number)
 }
 
 /** The hero: the square and the name, what it is for, the counts by type and how they split. */
-function pageHero(d: TagPageDTO): string {
+function pageHero(d: TagPageDTO, bump: readonly string[] = []): string {
   const { tag } = d;
   const sum = total(tag.counts);
   const facts = [
     tag.starter ? `<span>Starter tag</span>` : "",
     tag.retired ? `${kindMark("Retired", "off", 12.5, "Nobody can pick it any more.")}<span>It stays on what has it and can no longer be picked.</span>` : "",
   ].filter(Boolean).join("");
-  const fig = (label: string, n: number, type = "") => `<div class="cnpy-tagpage-fig"${type ? ` data-type="${type}"` : ""}><dt>${type ? `<span class="cnpy-tagpage-sw" aria-hidden="true"></span>` : ""}${esc(label)}</dt><dd>${n}</dd></div>`;
+  const fig = (label: string, n: number, type = "") => `<div class="cnpy-tagpage-fig"${type ? ` data-type="${type}"` : ""}><dt>${type ? `<span class="cnpy-tagpage-sw" aria-hidden="true"></span>` : ""}${esc(label)}</dt><dd${bump.includes(type || "items") ? ` data-bump="${n}"` : ""}>${n}</dd></div>`;
   const split = sum ? `<div class="cnpy-tagpage-split">${PAGE_ORDER.filter((t) => tag.counts[t] > 0).map((t) => `<span data-type="${t}" style="flex-grow:${tag.counts[t]}" title="${attr(plural(tag.counts[t], TAG_ITEM_LABEL[t].one, TAG_ITEM_LABEL[t].many))}"></span>`).join("")}</div>` : "";
   return `<header class="cnpy-tagpage-hero">
       <div class="cnpy-tagpage-id">
@@ -639,13 +643,13 @@ export function tagPageView(p: TagPageProps): string {
     id: "tag-tab", ariaLabel: `What is tagged ${tag.name}`, act: "tagPageTab", value: tab,
     tabs: TAG_PAGE_TABS.filter((t) => t !== "review" || d.review.length > 0 || tab === "review").map((t) => {
       const n = t === "all" ? sum : t === "review" ? d.review.length : tag.counts[t];
-      return { value: t, label: TAB_LABEL[t], trail: `<span class="cnpy-badge" data-n="${n}">${n}</span>` };
+      return { value: t, label: TAB_LABEL[t], trail: `<span class="cnpy-badge" data-n="${n}"${(p.bump ?? []).includes(t === "all" ? "items" : t) ? ` data-bump="${n}"` : ""}>${n}</span>` };
     }),
   });
   let body: string;
   if (tab === "review") {
     const list = d.review.length
-      ? `<ul class="cnpy-tagpage-list">${d.review.map((it) => reviewItem(it, tag.name, p.who, p.leaving ?? [])).join("")}</ul>`
+      ? `<ul class="cnpy-tagpage-list" data-morph-list>${d.review.map((it) => reviewItem(it, tag.name, p.who, p.leaving ?? [])).join("")}</ul>`
       : `<p class="cnpy-tagpage-none">Nothing to review: every item Sift suggested for ${esc(tag.name)} has been added or dismissed.</p>`;
     body = `<div class="cnpy-tagpage-grid">${tile(tileHead("Suggested by Sift", "tag-g-review", d.review.length || undefined, `<span class="cnpy-tagpage-sub">Sift was 60–85% sure: add the tag where it fits, or dismiss it.</span>`), list, 12, 12, "full", ` data-tag-group="review" aria-labelledby="tag-g-review"`)}</div>`;
   } else if (tab === "all") {
@@ -682,7 +686,7 @@ export function tagPageView(p: TagPageProps): string {
         </div>
       </div>`;
   }
-  return shell(`${pageHero(d)}${bar}<div${tabPanelAttrs("tag-tab", tab)} class="cnpy-tagpage-panel">${body}</div>`, tagTone(tag.color));
+  return shell(`${pageHero(d, p.bump ?? [])}${bar}<div${tabPanelAttrs("tag-tab", tab)} class="cnpy-tagpage-panel">${body}</div>`, tagTone(tag.color));
 }
 
 // ── the Tags row on an item's own page ───────────────────────────────────────

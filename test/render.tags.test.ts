@@ -465,6 +465,16 @@ describe("one tag's page", () => {
     expect(other).toMatch(/data-act="tagReviewAdd" data-arg="doc:keys"(?![^>]*disabled)/);
     expect(css).toMatch(/\.cnpy-tagreview\[data-leaving\] \{[^}]*animation:cnpy-tagreview-out/);
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-tagreview\[data-leaving\] \{ animation:none; display:none; \} \}/);
+    // Rows pair by item, so settling one never moves another's markup into it.
+    expect(leaving).toContain(`<ul class="cnpy-tagpage-list" data-morph-list>`);
+    // A number that just changed ticks into place: the hero's figures and the tabs' counts.
+    const bumped = tagPageView({ name: "auth", page: { status: "ok", data: two }, tab: "review", orgName: "Acme", who: (h) => h, now: NOW, bump: ["items", "feed", "review"] });
+    expect(bumped).toMatch(/<dd data-bump="4">4<\/dd>/);                       // Items (2 + 1 + 1)
+    expect(bumped).toMatch(/data-type="feed"><dt><span[^>]*><\/span>[^<]*<\/dt><dd data-bump="2">2<\/dd>/);
+    expect(bumped).toMatch(/data-field="tab:tag-tab:review">To review<span class="cnpy-badge" data-n="2" data-bump="2">2<\/span>/);
+    expect(bumped).toMatch(/data-type="doc"><dt><span[^>]*><\/span>[^<]*<\/dt><dd>1<\/dd>/);    // unchanged: no tick
+    expect(css).toMatch(/\.cnpy-tagpage \[data-bump\] \{[^}]*animation:cnpy-tagbump/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-tagpage \[data-bump\] \{ animation:none; \} \}/);
   });
 
   it("the tab picked is the tab shown — every tab the bar offers, an empty type too (Decisions used to snap back to All)", () => {

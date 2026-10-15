@@ -2730,7 +2730,7 @@ function screenBody(s: AppState): string {
     case "platform": return platformView(s.plat, s.me?.handle ?? null);
     case "platformorg": return platformOrgView(s.plat);
     case "tag": return tagPageView({
-      name: s.tagName, page: { ...s.tagPage, status: s.tagPage.status === "unauth" ? "error" : s.tagPage.status }, tab: s.tagsUi.pageTab, leaving: s.tagsUi.reviewLeaving,
+      name: s.tagName, page: { ...s.tagPage, status: s.tagPage.status === "unauth" ? "error" : s.tagPage.status }, tab: s.tagsUi.pageTab, leaving: s.tagsUi.reviewLeaving, bump: s.tagsUi.bump,
       orgName: currentOrg(s)?.name ?? "this organization", who: (h) => handleLink(personFor(s, h), h),
       colorOf: (h) => personFor(s, h)?.color ?? null, tagColorOf: (n) => s.tags.data?.tags.find((t) => t.name === n)?.color ?? null,
     });
