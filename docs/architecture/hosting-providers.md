@@ -230,8 +230,10 @@ every provider that reports deploys (`providerPollCost`).
 **Previews:** a Vercel or Netlify PRODUCTION part also reads the project's / site's previews — a second list
 (`pollCost` 2 each), stored as `target = 'preview'` rows of that part with their branch (matched to open PRs at read
 time, Phase B). Render is not: a Render preview is a SEPARATE service with its own id (its provider's own notes),
-so a production service's deploys never include one. Until the facts read uses them, `hostingReads` leaves a
-production part's previews out of its strips (a part that reads ONLY previews keeps them).
+so a production service's deploys never include one. `hostingReads` leaves a production part's previews out of
+its strips (a part that reads ONLY previews keeps them; a deploy with NO target — every GitHub-sourced one — is
+never a preview: the test is `COALESCE`d, since `NOT (NULL AND …)` is NULL and dropped the row); the Overview's facts
+read them (`factsDeploys`, `repo-dashboard.md` › The Overview's facts): newest per branch, matched to open PRs.
 
 **Apps** (`repo_apps`, 0070; `src/repo/apps.ts`): an app is a part key with a home — repository, folder, kind (Site /
 Service / Worker / Job / Package; the role follows the kind, `shared/repo-apps-core.ts`), watch globs. 0070 wrote a

@@ -2,7 +2,7 @@
 // names it — with a home: the repository and folder it lives in, its kind (the role follows the kind,
 // shared/repo-apps-core.ts), the paths that count as its changes.
 //
-//   read    `listRepoApps(ctx, repo?)` — the org's `repo_apps` rows PLUS an app synthesised for every part
+//   read    `listRepoApps(ctx, repo?)` (./apps-read.ts) — the org's `repo_apps` rows PLUS an app synthesised for every part
 //           key that has no row (at the primary repository's root, kind from its part's role), so a part
 //           from before apps existed still reads as an app and nothing existing breaks. Reads only this
 //           org's rows through the tenant surface; never a secret — the dashboard and MCP may call it.
@@ -11,79 +11,20 @@
 //           No screen calls them yet (Org settings › Repositories › Apps is Phase D).
 import { PART_KEY_RE } from "@shared/hosting";
 import type { OrgSettingsAuditAction } from "@shared/integrations";
-import { APP_KINDS, isAppKind, kindForRole, type AppKind, type AppSource, type RepoApp } from "@shared/repo-apps-core";
+import { APP_KINDS, isAppKind, type AppKind, type AppSource, type RepoApp } from "@shared/repo-apps-core";
 import { requireRole } from "../data/context";
 import { all, batch, first, nowIso, stmt, type Stmt, type TenantContext } from "../data/sql";
-import { listAllParts } from "../hosting/parts";
 import { SettingsError } from "../integrations/settings";
+import { type AppRow, listRepoApps, parseWatch, sourceOf } from "./apps-read";
 
-interface AppRow {
-  key: string; repo: string; label: string; folder: string; kind: string; watch: string; release_signal: string | null;
-  source: string; position: number;
-}
+// The read half lives in ./apps-read.ts — it imports nothing that reaches the secrets module, so the Repo
+// dashboard's facts (reachable from src/mcp.ts, test/secrets.mcp.test.ts) may call it. Re-exported here.
+export { listRepoApps, repoAppOf } from "./apps-read";
 
 export const APP_LABEL_MAX = 60;
 export const APP_FOLDER_MAX = 200;
 export const APP_WATCH_MAX = 20;
 export const APP_RELEASE_SIGNAL_MAX = 200;
-
-const parseWatch = (json: string, folder: string): string[] => {
-  try {
-    const v = JSON.parse(json) as unknown;
-    if (Array.isArray(v)) {
-      const globs = v.filter((g): g is string => typeof g === "string" && g.length > 0);
-      if (globs.length) return globs;
-    }
-  } catch { /* fall through to the default */ }
-  return [folder];
-};
-
-const primaryRepo = async (ctx: TenantContext): Promise<string> =>
-  (await first<{ repo_full_name: string }>(ctx,
-    `SELECT repo_full_name FROM org_repos WHERE org_id = ? ORDER BY is_primary DESC, created_at, id LIMIT 1`, ctx.orgId))?.repo_full_name ?? "";
-
-const sourceOf = (v: string): AppSource => (v === "migrated" || v === "suggested" ? v : "manual");
-
-/**
- * The org's apps, in order (`position`, then key): every `repo_apps` row, then an app for each part key with
- * no row — repository = the primary one, folder `/`, kind from the role of the key's part in the FIRST
- * environment (drift order), label from that part. `repo` narrows to one repository (case-insensitive, as
- * GitHub compares names); a row stored with repo '' is the primary repository's.
- */
-export async function listRepoApps(ctx: TenantContext, repo?: string): Promise<RepoApp[]> {
-  const [rows, parts, primary] = [
-    await all<AppRow>(ctx, `SELECT key, repo, label, folder, kind, watch, release_signal, source, position
-      FROM repo_apps WHERE org_id = ? ORDER BY position, key`, ctx.orgId),
-    await listAllParts(ctx),
-    await primaryRepo(ctx),
-  ];
-  const out: RepoApp[] = [];
-  for (const r of rows) {
-    if (!isAppKind(r.kind)) continue; // a kind the code no longer knows is skipped, never guessed
-    out.push({
-      key: r.key, repo: r.repo || primary, label: r.label, folder: r.folder || "/", kind: r.kind,
-      watch: parseWatch(r.watch, r.folder || "/"), releaseSignal: r.release_signal, source: sourceOf(r.source), position: r.position,
-    });
-  }
-  const known = new Set(out.map((a) => a.key));
-  let next = out.reduce((m, a) => Math.max(m, a.position + 1), 0);
-  // `listAllParts` is in drift order, so the first part seen for a key is its first environment's.
-  for (const p of parts) {
-    if (known.has(p.key)) continue;
-    known.add(p.key);
-    out.push({
-      key: p.key, repo: primary, label: p.label, folder: "/", kind: kindForRole(p.role), watch: ["/"], releaseSignal: null,
-      source: "synthesised", position: next++,
-    });
-  }
-  const want = repo?.toLowerCase();
-  return want === undefined ? out : out.filter((a) => a.repo.toLowerCase() === want);
-}
-
-/** The app a part key belongs to, as `listRepoApps` reads it — or null. */
-export async function repoAppOf(ctx: TenantContext, key: string): Promise<RepoApp | null> {
-  return (await listRepoApps(ctx)).find((a) => a.key === key) ?? null;
-}
 
 // ── writes ───────────────────────────────────────────────────────────────────
 

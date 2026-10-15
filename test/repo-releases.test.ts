@@ -184,8 +184,9 @@ describe("reconcile's releases arm", () => {
 
   it("is counted: reconcileCost and the on-demand refresh both carry its 2 requests", () => {
     expect(RELEASES_RECONCILE_COST).toBe(2);
-    expect(reconcileCost(2)).toBe(18 + 2 * 2 + RELEASES_RECONCILE_COST + LOGO_IMPORT_COST + 1);
-    expect(refreshSubrequests(2)).toBe(18 + 5 * 2 + RELEASES_RECONCILE_COST);
+    // 16 + 2N + the promotion chain's max(2, N) + the facts arms' 6 (Phase B) + the releases arm
+    expect(reconcileCost(2)).toBe(16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST + LOGO_IMPORT_COST + 1);
+    expect(refreshSubrequests(2)).toBe(3 * 2 + 16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST);
   });
 
   it("tagCapture skips a tag with no date", () => {

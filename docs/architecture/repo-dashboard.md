@@ -24,6 +24,58 @@ every scenario × variant × App narrowing × Group by to the design's own `buil
 Group by from `layoutOf(layoutInputOf(facts))`), and checks unknown stays `null` and every part's app and
 environment exist. H's Cloud Run app uses provider `github` through a cast until Phase A adds it.
 
+**The Overview's facts (Repo setups, Phase B)** — `facts: RepoFacts` on the payload (`GET
+/repo/dashboard?repo=&app=` and MCP `get_repo_dashboard`), assembled INSIDE the one projection by
+`readRepoFacts` (`src/tools/repo-facts.ts`) from the reads `getRepoDashboard` already made (parts, hosting reads,
+branch heads and their checks, health rows, the PR / commit / run gates) plus its own: the repository's apps
+(`listRepoApps`, `src/repo/apps-read.ts` — the read half of `apps.ts`, split so nothing reachable from MCP imports
+the settings module), `factsDeploys` / `deployWeekCounts` (`src/repo/facts-store.ts`, one statement each),
+`runCounts`, `readRepoSettings` (the admin's default Group by → `groupDefault`) and three snapshots. Then
+`narrowFacts(facts, app)`. A throw there costs the facts alone (`emptyRepoFacts`, `degraded: true`).
+- `?repo=` is checked against `org_repos` (any case; absent → the primary; unknown → **404 `{ error: "unknown
+  repository" }`**). MCP's `repo` doubles as the connection scope's argument (an agent passes its checkout on
+  every call), so there an unknown one reads the primary and the output's `repo` says which. `?app=` is an app
+  key of that repository or `__repo` (`REPO_WIDE`); an unknown key reads as every app (`facts.app: null`). The
+  app ALSO narrows the per-part sections (environments' parts, `deploys`, `usage`, `providers`): an app IS a part
+  key, so they keep that key's parts (`REPO_WIDE`: none). The other sections stay the org's capture.
+- **apps** — `repo_apps` rows of the repository plus a part key with no row (`source: "implicit"`, at the primary's
+  root); `previews` = a preview landed in 30 days; `openPrs` = the open-PR count for a repository's only app,
+  `null` with two or more (which PR touches which is Phase E's). **envs** — only those with a part of the apps in
+  view, `position` the org's. **parts** (app × environment, apps' order then promotion order) — `serving` the
+  newest `ready` production deploy of the part's CURRENT provider (any age), `latest` the newest when it is not
+  that one, `history` the last ≤ 20 settled oldest first (a previews-only part reads its previews, as
+  `hostingReads` does); `connection` from the one status function (`partConnectionOf`); `reportsDeploys` /
+  `reportsMetrics` from the registry's capabilities; `viaGithub` for a `github` part, or a GitHub-sourced serving
+  deploy while the host is not live; `via` the workflow / environment / check a `github` part names.
+  **health** — the environment's two pinged targets (`frontend`, `backend`) are a part's only when the part
+  carries that key, or is the ONE part of the target's role in the environment and no other part carries the key
+  (two web parts: no health, never a guess); stale past 30 minutes (`stale: true`, shown as neither up nor down).
+- **previews** — a production part's `target = 'preview'` rows of 30 days, newest per branch, matched to OPEN PRs
+  by head branch from captured `pr` rows; a branch whose PR merged or closed (and none is open) is left out;
+  `failStreak` counts consecutive `error`s from the newest; ≤ 20 per app.
+- **notShipped** — one per part; the snapshot's entry only while the part still serves the sha it was computed
+  for, else `count: null`. **outOfStep** — an environment's rows only while its apps still serve the shas they
+  were computed for. **drift** — the chain's steps between two shown, adjacent environments of the current
+  config. **ci** — per shown environment (every environment for a packages-only repository): head checks, `fail`
+  with its failing names, `running` with `total` / `failing` null, `pass`, or all-null when nothing is captured.
+- **week** — all seven `WeekKey`s: `mergedPrs` (`events`, null until one was ever captured), `deploys` /
+  `failedDeploys` (settled production deploys of the parts in view, null with no deploy capture; a delta only when
+  every counted part's capture began two weeks ago, `MIN(recorded_at)`), `openPrs` (the `prs_reconciled` gate and
+  its recording window), `commits` (the Commits tile's gates), `releases` (`releaseWeekFigure`, Phase F), `ciRuns` (`run` rows;
+  delta when `recordingSince('run')` predates two weeks). A null value has a null delta.
+- **attention** (structured; worded in the SPA), most urgent first: `down` (fresh health down), `failed` (the
+  newest production deploy errored: `failedSha`, `sha` still serving, `reason`), `rolledBack` (the serving deploy
+  has `rolled_back_from`), `outOfStep`, `stale`, `degraded` (an environment's CI fails; `app: null`), `waiting`
+  (not shipped > 2 and the oldest > 1 day), `previewFailing` (a streak ≥ 3; `env: null`). **connect** — admins
+  only: the first host in part order that is not connected (`not_connected` / `revoked`, never a `github_app`
+  provider), `need: "metrics"` when GitHub already gives every such part its deploys, else `"deploys"`.
+- **The PR / CI facts are the PRIMARY repository's capture** (reconcile and the webhook capture one repository per
+  org): for another connected repository `ci`, `drift`, `outOfStep` are empty, `notShipped` counts and the PR /
+  commit / CI week figures null — its own parts, deploys and previews are its own. `release` is `readRelease(ctx, repo,
+  app)` (Phase F, `src/repo/releases.ts` — narrowed by the app's release signal when the App menu names one) and the
+  `releases` week figure `releaseWeekFigure` (null until reconcile read the repository's releases); `found` / `unseen`
+  stay null until Phase D.
+
 **The Overview's deploy blocks** (Repo setups, Phase C) are `OverviewBlock`s — `(facts, ctx) => html`
 (`web/src/repo-overview-ctx.ts`) — each in its own module and its own `trov.css` section, worded in the SPA from
 `RepoFacts` (nothing arrives worded): `envCardsBlock` (`repo-env-cards.ts`: a card per environment in promotion
@@ -76,7 +128,8 @@ Shared pieces (`repo-block-kit.ts`): the design's deploy-state `MARKS` on `state
 https only and plain text in sample mode, a handle as a person link (plain in sample mode).
 
 Three capture shapes feed it: `repo_events` rows (through the `ingestRepoEvent` gate — see Core invariant),
-`repo_snapshots` (one JSON row per kind: `prs_reconciled`, `env_heads`, `drift`, `branches` —
+`repo_snapshots` (one JSON row per kind: `prs_reconciled`, `env_heads`, `drift`, `branches`, and the Overview
+facts' `drift_chain`, `not_shipped`, `out_of_step` (`src/repo/facts-store.ts`) —
 plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no section) and
 `repo_metrics` points (`putMetric`). Every section, its source, and what triggers the capture:
 
@@ -193,8 +246,8 @@ on. An org with no environment and no primary repository has no unit and costs n
   failures). A HOST's usage (Cloudflare, Railway, …) is not read here: it is the `:40` `hosting` job's.
 - **every 6th hour** (UTC hour % 6 = 0) — `:10` `progress`: `recomputeAllProgress` per org, UNBOUNDED (one
   request per issue number of every array-ref sprint; budgeted as an estimate, `PROGRESS_COST_ESTIMATE`);
-  `:20` `reconcile`: `runReconcileJob` per org (`reconcileRepo`, 18 + 2N worst case for N environments plus
-  its releases arm's 2, below — plus one request when an App installation token has to be minted, and the org image's import that
+  `:20` `reconcile`: `runReconcileJob` per org (`reconcileRepo`, `reconcileRequests(N)` worst case for N environments (its releases arm included),
+  below — plus one request when an App installation token has to be minted, and the org image's import that
   rides the same unit: `reconcileCost`; logs `failed` when non-empty); `:30` `pruneRepoCapture` + `pruneOAuth`
   (D1 only, cross-org). `:10` and `:20` skip, without a word, an org with no primary repository or no GitHub
   credential; `:30` and the pings run regardless.
@@ -328,11 +381,14 @@ instant and exclude it; an unparseable bound returns `[]`, not every row ever wr
 `INSERT OR IGNORE` — **first write wins, forever** — and returns whether it wrote a NEW row. That permanence
 is why every poller below stores only values that can no longer change.
 
-**Drift and branches are snapshots, computed off the render path.** `computeDrift` (`src/repo/github.ts`)
-compares `envs[0]`'s branch (the head, e.g. `main`) against `envs[last]`'s (the base, e.g. `production`) via
-TWO `GET /compare/<base>...<head>` calls (compare returns only the AHEAD side's commits, so the BEHIND side
-needs its own), groups the ahead commits by the PR that landed them (a squash merge's trailing `(#123)`) or
-as a direct push, and stores one `RepoDrift` snapshot. The PR-title lookup fans out in chunks (`fanOut`,
+**Drift and branches are snapshots, computed off the render path.** `computeDrift` (`src/repo/github.ts`) first
+stores the PROMOTION CHAIN (`computeDriftChain`, `src/repo/facts-compute.ts`: one `GET /compare/<next>...<earlier>`
+per ADJACENT pair of environments whose branches differ, the ahead commits grouped by PR — the `drift_chain`
+snapshot the facts read), then the `drift` section's `RepoDrift` from the chain's LAST step (head = that step's
+earlier branch, base = the last environment's — for two environments exactly the old first↔last pair, request for
+request): the step's compare, plus a second `GET /compare/<head>...<base>` for the BEHIND side (compare returns only
+the AHEAD side's commits), grouped by the PR that landed them (a squash merge's trailing `(#123)`) or as a direct
+push. ≤ `driftCompares(N)` = max(2, N) requests. The PR-title lookup fans out in chunks (`fanOut`,
 `src/data/sql.ts`) — a compare returns up to 250 commits and D1 caps a statement at 100 bound parameters.
 `ahead`/`behind` are GitHub's own TOTALS while `groups` is built from the commits actually returned, so past
 the 250 cap the strip's HEADER stays truthful and only the expanded breakdown is partial. Two triggers: a
@@ -359,7 +415,8 @@ a GitHub credential (`resolveGithubCredential`: its App installation's token, el
 Its arms, each in its own `safely`
 block: open PRs (+ the `prs_reconciled` marker), closed PRs, the pre-capture commit window,
 completed workflow runs, the failing-job label pass, the environment heads, each environment's head checks,
-the `canopy/*` commit statuses, PR reviews, branches, drift. It returns `{ written, unchanged, failed: string[] }` — `failed` NAMES every arm that threw
+the `canopy/*` commit statuses, PR reviews, branches, drift (the promotion chain), and the Overview facts'
+`not_shipped` and `out_of_step` (below). It returns `{ written, unchanged, failed: string[] }` — `failed` NAMES every arm that threw
 (`"runs"`, `"checks"`, …); `/admin/backfill` passes that through as its `repo` object and the cron logs
 it.
 - **The failing-job label pass reads the BACKLOG, not this run's writes**: the ≤5 newest `run` rows of the
@@ -388,6 +445,21 @@ it.
   the webhook's `dismissed` action only (key `…:dismissed`) — its state at submission is no longer knowable,
   and a guessed `…:submitted` row would shadow the real one forever. PENDING reviews and ones with no author
   or no `submittedAt` are skipped.
+- **The facts arms** (`src/repo/facts-compute.ts`, repo setups Phase B), after drift, each its own `safely`:
+  `not_shipped` — per part of the PRIMARY repository's apps with a serving sha (`servingShas`), `GET
+  /compare/<serving sha>...<branch>`: GitHub's `ahead_by` as the count, the commits grouped by PR (`groupCommits`),
+  the oldest commit's date. In a repository with ≥ 2 apps the commits are kept to the app's watch paths
+  (`src/repo/watch.ts`) ONLY when every returned commit lists its `files` — GitHub's compare does not today (one
+  combined list for the range), so the groups stay unfiltered until Phase E's per-commit paths; filtered, the count
+  is exact only when the compare returned every commit, else `null`. Incremental: a part is compared again only
+  when its serving sha or its branch head (`branchHeads`) changed; never-computed parts first, then the oldest.
+  `out_of_step` — per environment whose parts serve different commits (a 7- and a 40-character sha are one): the
+  NEWEST serving deploy is the reference and one compare per other distinct sha (`<other>...<reference>`):
+  `ahead` → the other apps are behind by `ahead_by`; `behind` (the newest deploy runs older code) → the reference
+  apps are behind; recomputed only when the environment's shas changed. Both share **`FACTS_COMPARE_CAP` = 6**
+  compares per run (the rest keep their entries and go first next time); each stores what it computed before it
+  throws. The same arms run on a push to an environment branch (`refreshDrift(…, pushedBranch)` — not shipped only
+  for that branch's parts).
 - **The `releases` arm (Phase F, `reconcileReleases` in `src/repo/releases.ts`)**: ONE `GET /releases?per_page=30`
   (drafts skipped; a list shorter than the page is the whole history, so a captured release no longer in it is
   removed) and, ONLY when the repository has no published release, ONE GraphQL page of its 30 newest tags
@@ -395,11 +467,10 @@ it.
   dated by its tagger, a lightweight one by its commit). Every row goes through the gate's release arm
   (`ingestRepoRelease`), so a re-read writes nothing; a successful read writes the `releases_reconciled`
   snapshot (`{ repo }`), the week figure's "read" marker. `RELEASES_RECONCILE_COST` = 2.
-- Worst case **18 + 2N outbound requests** for N environments (22 for two): 2 PR lists + 1 commit window + 1
-  workflow-run list + ≤5 job lookups + 1 status list + 1 GraphQL reviews + ≤5 branch pages + ≤2 drift
-  compares + 2 per environment (head commit, head checks) — **plus 2 for the `releases` arm** (24 for two;
-  `reconcileCost` and `refreshSubrequests` carry it). Under an admin Sync it shares the invocation with
-  `runBackfill`'s ~13 (37 for two environments).
+- Worst case **`reconcileRequests(N)` = 16 + 2N + max(2, N) + 6 + 2** outbound requests for N environments (30 for two):
+  2 PR lists + 1 commit window + 1 workflow-run list + ≤5 job lookups + 1 status list + 1 GraphQL reviews + ≤5
+  branch pages + 2 per environment (head commit, head checks), the chain's max(2, N), the facts arms' 6 and the releases arm's 2. Under an
+  admin Sync it shares the invocation with `runBackfill`'s ~13.
 - **`/admin/backfill` runs it once per Sync, on the batch that ENDS the loop**: the batch whose
   `summaryBudgetExhausted` reads `false`, OR the one that hits the SPA's own cap while still exhausted —
   `isFinalBackfillBatch(result, batch?, of?)` (`src/tools/backfill.ts`); `runAdminBackfillLoop`
@@ -442,13 +513,13 @@ and PR reviews). The result is
 words `timeout` / `HTTP <status>` / `unreachable`; `"not_configured"` with no environment) — and `github`:
 `{ written, unchanged, failed }` (`failed` = reconcile's ARM NAMES), `"not_configured"` without a primary
 repository and a GitHub credential, `failed: ["unexpected error"]` on an unexpected throw. **The cron
-does NOT call it** — its per-tick spreading stands. **Budget: health 2N + usage N + reconcile (18 + 2N + 2 for
-its releases arm) = 20 + 5N subrequests — 30 for two environments, and `SUBREQUEST_CAP` = 50 (the free plan's per-invocation cap,
-which this ONE-org refresh is still held to; the cron's own budget is 900) caps it at N ≤ 6** (50 — 51 with an
-App token's mint; 55 at seven); past that the
+does NOT call it** — its per-tick spreading stands. **Budget: health 2N + usage N + reconcile
+(`reconcileRequests(N)`) = `refreshSubrequests(N)` — 36 for two environments, and `SUBREQUEST_CAP` = 50 (the free
+plan's per-invocation cap, which this ONE-org refresh is still held to; the cron's own budget is 900) caps it at N ≤
+4** (48; 54 at five — it was N ≤ 6 before the promotion chain and the facts arms); past that the
 github arm is SKIPPED and says so (`failed: ["skipped: would exceed the subrequest budget"]`) rather than
 risk the invocation, while health and usage still run. The hosting arm runs only when the WHOLE refresh still
-fits (20 + 5N + a mint + Σ `pollCost` ≤ 50), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
+fits (`refreshSubrequests(N)` + a mint + Σ `pollCost` ≤ 50 — 13 left for two environments), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
 (UNBOUNDED — the reason it has a tick of its own — and it feeds the Roadmap, not this dashboard),
 `pruneRepoCapture` (maintenance, not a refresh) and `runBackfill` / summaries (that is Sync GitHub: My Work's
 capture, with its own summary allowance). **That last exclusion has a visible cost**: `runBackfill` is also
@@ -703,5 +774,12 @@ touched — `not_connected` / `empty` pass through, never coerced to zeros — a
 the same of a `null` INSIDE an `ok` section (`usage[].requests`, a `product` value, `contributors[].reviews`,
 `ciFailures.rate`, `prs.openCount`, a delta): unknown, never zero, with `usage[].seen` saying whether the source ever
 reported. A projection throw is the degraded empty payload, not an MCP error. The view is per-call and only
-serialized — it SHARES structure with the projection, it is not a deep copy. Output: `{ repo, generatedAt,
-degraded, tab, range, sections }`.
+serialized — it SHARES structure with the projection, it is not a deep copy. **`repo` and `app`** (repo setups)
+pick the repository and narrow as the route does (an unknown `repo` reads the primary — see the facts above). With
+`tab` overview or no tab the view carries **`facts`** and **`layout`** = `layoutOf(layoutInputOf(facts),
+facts.groupDefault)` — the shared core the screen runs (`web/src/repo.ts` `factsView`), so the same facts draw the
+same opener on both (`test/repo-facts.parity.test.ts`, every scenario × variant × App × default Group by, is THE
+parity guard). Without `include_trends` each commit group in `facts` (not shipped, drift) carries `commitCount`
+(first 20, `groupCount` beside) and each part's `history` its newest 2 (`historyCount`); apps, environments and
+parts are never cut. The pure view is `src/tools/repo-agent-view.ts` (shared types only). Output: `{ repo,
+generatedAt, degraded, tab, range, sections, facts?, layout? }`.

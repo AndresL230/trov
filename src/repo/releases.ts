@@ -14,7 +14,7 @@
 import { type TenantContext, all, first, fanOut } from "../data/sql";
 import { ingestRepoRelease } from "../consumer";
 import type { ReleaseCapture } from "./release-store";
-import { type GhOpts, ghGraphql, ghJson } from "./github";
+import { type GhOpts, ghGraphql, ghJson } from "./gh-http";
 import { orgEnvironments } from "./config";
 import { recordingSince } from "./reads";
 import { getSnapshot, putSnapshot } from "./store";

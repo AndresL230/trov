@@ -469,7 +469,7 @@ export async function captureDelivery(
           if (ev.kind === "push" && cfgs.some((c) => c.branch === ev.ref)) {
             const ghOpts = await gh();
             if (ghOpts) {
-              const drift = refreshDrift(ctx, ghOpts, cfgs);
+              const drift = refreshDrift(ctx, ghOpts, cfgs, ev.ref ?? undefined);
               if (opts?.waitUntil) opts.waitUntil(drift); else await drift;
             }
           }

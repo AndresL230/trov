@@ -8,7 +8,13 @@ import { untitledFailedRuns } from "./reads";
 import type { RepoEnvConfig } from "./config";
 import type { RepoEvent } from "./types";
 import { labelNames, metricsFromStatus, repoEventsFromDelivery } from "./capture";
-import { reconcileReleases } from "./releases";
+import { reconcileReleases, RELEASES_RECONCILE_COST } from "./releases";
+import { ghGraphql, ghJson, ghJsonOrNull, scrubbedMessage, type GhOpts } from "./gh-http";
+import { FACTS_COMPARE_CAP, computeDriftChain, computeNotShipped, computeOutOfStep, driftCompares, factsBudget } from "./facts-compute";
+
+// The GitHub HTTP helpers live in ./gh-http.ts (so the facts arms, ./facts-compute.ts, can use them without an
+// import cycle); re-exported here for every existing caller.
+export { ghGraphql, ghJson, ghJsonOrNull, scrubbedMessage, type GhOpts } from "./gh-http";
 import type { RepoBranches, RepoDrift, RepoDriftGroup } from "@shared/repo";
 
 /** At most this many `.../jobs` lookups per `reconcileRepo` call, so a first
@@ -18,7 +24,6 @@ const MAX_JOB_LOOKUPS = 5;
 /** How far back the job-title pass looks for an untitled failed run. */
 const JOB_LOOKUP_DAYS = 7;
 
-export interface GhOpts { token: string; repo: string; fetchImpl?: typeof fetch }
 
 /** What one `reconcileRepo` reports: the gate's counts, plus the NAME of every
  *  arm whose `safely` block threw — a Sync that silently lost its workflow runs
@@ -27,56 +32,6 @@ export interface GhOpts { token: string; repo: string; fetchImpl?: typeof fetch 
 export interface ReconcileResult { written: number; unchanged: number; failed: string[] }
 
 const DAY = 86_400_000;
-/** What this module LOGS for a failed GitHub read: the error's MESSAGE with the
- *  service token scrubbed — never the Error object. A thrown fetch, or a
- *  GraphQL `errors` body, may quote the request (and so the `authorization`
- *  header) back, and `ghGraphql` puts that body's message in what it throws.
- *  The result objects never needed this: `failed` holds arm NAMES only. */
-export const scrubbedMessage = (e: unknown, token: string): string => {
-  const message = e instanceof Error ? e.message : String(e);
-  return token ? message.split(token).join("[redacted]") : message;
-};
-/** Every GitHub read is bounded, like every poller's fetch: an un-timed call
- *  let ONE hung connection hold a reconcile (and the refresh lock, and the
- *  admin's spinner) for as long as the platform allowed. A timeout is a thrown
- *  `TimeoutError`, so it surfaces exactly like any other failed read — in
- *  `reconcileRepo`, as that arm's name in `failed[]`. */
-const GH_TIMEOUT_MS = 15_000;
-const HEADERS = (token: string) => ({ authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "user-agent": "trov-worker" });
-
-export async function ghJson<T>(opts: GhOpts, path: string): Promise<T> {
-  const res = await (opts.fetchImpl ?? fetch)(`https://api.github.com/repos/${opts.repo}${path}`, { headers: HEADERS(opts.token), signal: AbortSignal.timeout(GH_TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`github ${res.status} ${path}`);
-  return (await res.json()) as T;
-}
-
-/** `ghJson`, where a 404 is an ANSWER (`null`), not a failure — a ref with
- *  nothing posted on it, or one that does not exist yet. Every other non-2xx
- *  still throws. */
-export async function ghJsonOrNull<T>(opts: GhOpts, path: string): Promise<T | null> {
-  const res = await (opts.fetchImpl ?? fetch)(`https://api.github.com/repos/${opts.repo}${path}`, { headers: HEADERS(opts.token), signal: AbortSignal.timeout(GH_TIMEOUT_MS) });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`github ${res.status} ${path}`);
-  return (await res.json()) as T;
-}
-
-/** The GraphQL sibling of `ghJson`: same auth/user-agent, POSTed to the v4
- *  endpoint. GraphQL answers 200 with an `errors` array on a bad query or a
- *  missing repo, so a non-2xx is NOT the only failure — both throw, and the
- *  caller's `safely` arm turns either into a named entry in `failed`. */
-export async function ghGraphql<T>(opts: GhOpts, query: string, variables: Record<string, unknown>): Promise<T> {
-  const res = await (opts.fetchImpl ?? fetch)(`https://api.github.com/graphql`, {
-    method: "POST",
-    headers: { ...HEADERS(opts.token), "content-type": "application/json" },
-    body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(GH_TIMEOUT_MS),
-  });
-  if (!res.ok) throw new Error(`github graphql ${res.status}`);
-  const body = (await res.json()) as { data?: T; errors?: { message?: string }[] };
-  if (body.errors?.length) throw new Error(`github graphql: ${body.errors.map((e) => e?.message ?? "error").join("; ")}`);
-  return (body.data ?? ({} as T)) as T;
-}
-
 interface GhPull { number: number; title: string; html_url: string; state: string; draft: boolean; merged_at: string | null; updated_at: string; user: { login: string }; head: { ref: string; sha: string }; base: { ref: string }; labels?: { name?: string }[] }
 interface GhCommit { sha: string; commit: { message: string; committer: { date: string } }; author: { login: string } | null }
 
@@ -164,16 +119,20 @@ const MAX_STATUSES_PER_CONTEXT = 10;
  * GitHub, the cron's 6-hourly `:20` tick and the admin's "Poll now". Every arm
  * is its own `safely` block, named in `failed` when it throws.
  *
- * Worst case **18 + 2N outbound requests** for N environments (22 for today's
- * two): 2 PR lists + 1 pre-capture commit window + 1 workflow-run list + ≤5 job
- * lookups + 1 commit-status list + 1 GraphQL reviews + ≤5 GraphQL branch pages
- * + ≤2 drift compares + 2 per environment (head commit, head checks) — plus
- * `RELEASES_RECONCILE_COST` (2: the releases list, the tags query) for the
- * `releases` arm (src/repo/releases.ts), counted by the callers' budgets. GitHub
- * deployments are not read: an environment's deploys come from its hosting
- * provider (src/hosting/). The callers' budgets (src/repo/cron.ts) build on this
- * number: the `:20` tick is 18 + 4N with its pings, "Poll now" 18 + 5N.
+ * Worst case **`reconcileRequests(N)`** outbound requests for N environments
+ * (30 for two): 2 PR lists + 1 pre-capture commit window + 1 workflow-run list +
+ * ≤5 job lookups + 1 commit-status list + 1 GraphQL reviews + ≤5 GraphQL branch
+ * pages + 2 per environment (head commit, head checks) — 16 + 2N — plus the
+ * promotion chain's compares (`driftCompares(N)` = max(2, N): N − 1 steps and the
+ * last step's behind side; it replaced the old ≤ 2 first↔last compares) and the
+ * facts arms' shared `FACTS_COMPARE_CAP` (6: not shipped + out of step,
+ * ./facts-compute.ts), and the `releases` arm's `RELEASES_RECONCILE_COST` (2: the releases list, the tags
+ * query, src/repo/releases.ts). GitHub deployments are not read: an environment's deploys
+ * come from its hosting provider (src/hosting/). The callers' budgets
+ * (src/repo/cron.ts) build on this number.
  */
+export const reconcileRequests = (n: number): number => 16 + 2 * n + driftCompares(n) + FACTS_COMPARE_CAP + RELEASES_RECONCILE_COST;
+
 export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now()): Promise<ReconcileResult> {
   const out: ReconcileResult = { written: 0, unchanged: 0, failed: [] };
   /** Every event goes through the SAME gate the webhook uses; a redelivery or a
@@ -350,6 +309,13 @@ export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: Repo
   // catch (Task 11 carry-over fix: it used to be invisible here).
   await safely("drift", () => computeDrift(ctx, opts, envs));
 
+  // The Overview's facts (./facts-compute.ts): what each part's branch has that it does not serve, and which
+  // apps of an environment run an older commit than the others. Both incremental and sharing one bound
+  // (`FACTS_COMPARE_CAP` compares); each stores what it computed before it throws.
+  const budget = factsBudget();
+  await safely("not_shipped", () => computeNotShipped(ctx, opts, envs, budget, now));
+  await safely("out_of_step", () => computeOutOfStep(ctx, opts, envs, budget, now));
+
   // Releases (Phase F, src/repo/releases.ts): the 30 newest releases, and the 30 newest tags only when there
   // are none — ≤ 2 requests (`RELEASES_RECONCILE_COST`), every row through the gate's release arm.
   await safely("releases", async () => {
@@ -380,20 +346,19 @@ interface GhCompare { ahead_by: number; behind_by: number; commits: GhCommit[] }
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
 /**
- * Computes and stores the drift snapshot — `envs[0]` is the head (deploys "up
- * front", e.g. `main`), `envs[last]` the base (e.g. `production`) — grouped by
- * the PR that brought each ahead commit. THROWS on any GitHub/D1 failure; the
- * never-throwing `refreshDrift` wrapper below is what callers outside
- * `reconcileRepo`'s `safely` arm should use.
+ * Computes and stores the PROMOTION CHAIN (`drift_chain`, ./facts-compute.ts — one step per adjacent pair of
+ * environments) and, from its LAST step, the `drift` section's snapshot: the head is the earlier branch of that
+ * step and the base the last environment's (e.g. `main` → `production`) — for two environments exactly the old
+ * first↔last pair, request for request. The ahead commits are grouped by the PR that brought each; the behind
+ * side (the base has commits the head lacks) needs its own, second compare, because GitHub's compare returns
+ * only the ahead side's commits. THROWS on any GitHub/D1 failure; the never-throwing `refreshDrift` wrapper
+ * below is what callers outside `reconcileRepo`'s `safely` arm should use. ≤ `driftCompares(N)` requests.
  */
 async function computeDrift(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[]): Promise<void> {
-  if (envs.length < 2) return;
-  const head = envs[0].branch;
-  const base = envs[envs.length - 1].branch;
-  if (head === base) return;
-  // GitHub's compare only returns the AHEAD side's commits, so the behind
-  // side (base has commits head lacks) needs its own, second compare.
-  const ahead = await ghJson<GhCompare>(opts, `/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`);
+  const last = await computeDriftChain(ctx, opts, envs);
+  if (!last) return;
+  const { head, base } = last;
+  const ahead = last.ahead as unknown as GhCompare;
   const behind = ahead.behind_by > 0 ? await ghJson<GhCompare>(opts, `/compare/${encodeURIComponent(head)}...${encodeURIComponent(base)}`) : null;
 
   const toCommit = (c: GhCommit) => ({ sha: c.sha.slice(0, 7), msg: c.commit.message.split("\n")[0].slice(0, 160), at: c.commit.committer.date });
@@ -446,17 +411,30 @@ async function computeDrift(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfi
 }
 
 /**
- * Snapshot the drift between the two environment branches. NEVER on the
- * render path: called off a push to either branch (`src/webhook.ts`) and,
- * later, from `reconcileRepo` via the throwing `computeDrift` directly (see
- * above). Never throws — GitHub failing leaves the previous snapshot (if any)
- * standing.
+ * Snapshot the drift along the environment branches, and the facts arms. NEVER
+ * on the render path: called off a push to an environment branch
+ * (`src/webhook.ts`, `pushedBranch` = the pushed one: only its parts' not-shipped
+ * are compared); `reconcileRepo` calls the throwing arms directly. Never throws —
+ * GitHub failing leaves the previous snapshots (if any) standing.
  */
-export async function refreshDrift(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[]): Promise<void> {
+export async function refreshDrift(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], pushedBranch?: string, now: number = Date.now()): Promise<void> {
   try {
     await computeDrift(ctx, opts, envs);
   } catch (e) {
     console.error("refreshDrift", scrubbedMessage(e, opts.token)); // the last good snapshot stands
+  }
+  // The facts arms ride the same trigger (./facts-compute.ts): what the pushed branch has that its parts do not
+  // serve, and — incremental, so usually free — the environments' out-of-step compares. Each on its own.
+  const budget = factsBudget();
+  try {
+    await computeNotShipped(ctx, opts, envs, budget, now, pushedBranch);
+  } catch (e) {
+    console.error("refreshDrift: not shipped", scrubbedMessage(e, opts.token));
+  }
+  try {
+    await computeOutOfStep(ctx, opts, envs, budget, now);
+  } catch (e) {
+    console.error("refreshDrift: out of step", scrubbedMessage(e, opts.token));
   }
 }
 

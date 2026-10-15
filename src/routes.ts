@@ -45,7 +45,7 @@ import { quickSearch } from "./tools/quick-search";
 import { QUICK_TYPES, type QuickType } from "@shared/quick-search";
 import { feedStats, isFeedStatsDays, isFeedStatsTz } from "./tools/feed-stats";
 import { getRepoDashboard, emptyRepoDashboard } from "./tools/repo";
-import { orgEnvironments, orgPrimaryRepo } from "./repo/config";
+import { dashboardRepo, orgEnvironments } from "./repo/config";
 import { runLockedRepoRefresh, runUsagePolls } from "./repo/cron";
 import type { DashboardData } from "@shared/dashboard";
 import { platformContext, soleTenantGate, tenantGate } from "./data/gate";
@@ -733,10 +733,16 @@ tenantRoot.get("/me/dashboard", async (c) => {
 // Stored nowhere; never 500s.
 tenantRoot.get("/repo/dashboard", async (c) => {
   // The org's own primary repository and environments (`org_repos`, `org_environments`).
+  // `?repo=` one of the org's repositories (any case; absent → the primary, as before; unknown → 404) and
+  // `?app=` an app key of it or `__repo` (REPO_WIDE). An unknown app reads as every app — the facts are not
+  // narrowed (`narrowFacts` leaves an unknown key alone), exactly like the design's App menu.
   let repo = "";
   try {
-    repo = (await orgPrimaryRepo(c.var.ctx))?.repo ?? "";
-    const dash = await getRepoDashboard(c.var.ctx, repo, Date.now(), await orgEnvironments(c.var.ctx));
+    const held = await dashboardRepo(c.var.ctx, c.req.query("repo"));
+    if (held === null) return c.json({ error: "unknown repository" }, 404);
+    repo = held;
+    const app = c.req.query("app") || null;
+    const dash = await getRepoDashboard(c.var.ctx, repo, Date.now(), await orgEnvironments(c.var.ctx), undefined, { app });
     // `state` / `themes` (shared/repo.ts) are not sections and are omitted: nothing writes them yet.
     // LOCAL_AI_PREVIEW shows the samples under `wrangler dev` only (src/ai/preview.ts).
     const preview = aiPreview(c.env, c.req.url);
