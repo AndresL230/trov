@@ -14,6 +14,14 @@ import type { PersonColor } from "@shared/rows";
 import type {
   DeployState, HostingMetric, HostingProviderId, PartRole, ProviderDeployDTO, ProviderResources, ProviderTrafficRange, RepoProviderPart,
 } from "@shared/hosting";
+import type { AppKind } from "@shared/repo-apps-core";
+import { APP_KIND_ROLE } from "@shared/repo-apps-core";
+import {
+  narrowFacts,
+  type FactsApp, type FactsAttention, type FactsCi, type FactsCommitGroup, type FactsConnect, type FactsDeploy, type FactsDriftStep,
+  type FactsFound, type FactsHealth, type FactsNotShipped, type FactsOutOfStep, type FactsPart, type FactsPreview, type FactsRelease,
+  type FactsUnseen, type FactsWeekFigure, type RepoFacts, type WeekKey,
+} from "@shared/repo-facts-core";
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 
@@ -414,4 +422,554 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
     labels: { status: "ok", data: { total: 24, rows: [{ name: "enhancement", count: 9 }, { name: "bug", count: 6 }, { name: "infra", count: 4 }, { name: "docs", count: 3 }, { name: "design", count: 2 }] } },
     todos: { status: "ok", data: { count: 43, delta: -18, since: "Aug 1", trend: [61, 58, 59, 54, 50, 51, 47, 44, 45, 43] } },
   };
+}
+
+// ── Repo setups: the design's scenarios A–N as `RepoFacts` ────────────────────
+// The scenarios of docs/superpowers/specs/repo-setups-design/repo-data.js (`SC.A` … `SC.N`, with their variants),
+// translated into the facts the server reads (shared/repo-facts-core.ts), so the Overview's sample switch and
+// the tests draw from the same object a live repository produces. Each scenario below is written in the
+// design's own shape (apps, envs, targets with ages like '26m') and `factsOf` turns it into `RepoFacts`: ages →
+// ISO times before `now`, hosts → provider ids, a target → a part with its serving / latest / history deploys
+// and health. test/repo-sample.scenarios.test.ts holds every fixture to the design's `buildScreen` (same rule,
+// opener and Group by) for every variant, App narrowing and Group by.
+
+export const SCENARIO_KEYS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N"] as const;
+export type ScenarioKey = (typeof SCENARIO_KEYS)[number];
+export const isScenarioKey = (v: unknown): v is ScenarioKey => typeof v === "string" && (SCENARIO_KEYS as readonly string[]).includes(v);
+
+/** The design's `SCENARIO_TITLES`, unchanged. */
+export const SCENARIO_TITLES: Record<ScenarioKey, string> = {
+  A: "Frontend and backend", B: "One Worker, main to production", C: "Static site with previews", D: "Full-stack on one host",
+  E: "Turborepo, five apps", F: "Large monorepo, 14 apps", G: "Backend services only", H: "Containers by GitHub Actions",
+  I: "Package with releases only", J: "Promotion chain", K: "One product, two repos", L: "Just connected", M: "Nothing recognised",
+  N: "Trouble states",
+};
+
+/** The variants per scenario ('' = calm), for the switcher. The design's, plus G `signals`: GitHub signals exist,
+ *  so the services' deploys arrive "via GitHub" and the card asks to connect Railway for CPU and memory only. */
+export const SCENARIO_VARIANTS: Record<ScenarioKey, readonly string[]> = {
+  A: ["", "outOfStep", "trouble"], B: ["", "failed", "trouble"], C: [""], D: [""], E: [""], F: [""], G: ["", "signals", "after"],
+  H: [""], I: [""], J: [""], K: [""], L: [""], M: [""], N: ["", "trov"],
+};
+
+// `github` joins HOSTING_PROVIDERS in Phase A (the GitHub-deployments provider); until then the one part that
+// needs it (H's normalizer, on Cloud Run, which no provider reads) names it through this cast.
+const GITHUB_PROVIDER = "github" as string as HostingProviderId;
+const PROVIDER_OF_HOST: Record<string, HostingProviderId> = {
+  Cloudflare: "cloudflare", "Cloudflare Pages": "cloudflare", Railway: "railway", Vercel: "vercel", Render: "render", Netlify: "netlify",
+  "Fly.io": "fly", "Cloud Run": GITHUB_PROVIDER,
+};
+/** The providers' labels as the registry has them (src/hosting/providers/*.ts). */
+const PROVIDER_LABEL: Record<string, string> = {
+  cloudflare: "Cloudflare Workers", railway: "Railway", vercel: "Vercel", render: "Render", netlify: "Netlify", fly: "Fly.io", aws: "AWS",
+  github: "GitHub deployments",
+};
+const WEEK_KEY: Record<string, WeekKey> = {
+  "Merged PRs": "mergedPrs", Deploys: "deploys", "Failed deploys": "failedDeploys", "Open PRs": "openPrs", Commits: "commits",
+  Releases: "releases", "CI runs": "ciRuns",
+};
+const ORG_REPOS = {
+  sapling: ["SaplingLearn/sapling", "AndresL230/trov"],
+  acme: ["acme/storefront", "acme/platform", "acme/payments", "acme/ingest", "acme/ui-kit", "acme/core", "acme/web-app", "acme/web-api", "acme/site", "acme/dashboard"],
+  acmeNew: ["acme/new-thing", "acme/mobile"],
+};
+
+const AGE_RE = /^(\d+)([mhd])$/;
+const ageMs = (age: string): number => {
+  const m = AGE_RE.exec(age);
+  if (!m) throw new Error(`not an age: ${age}`);
+  return Number(m[1]) * (m[2] === "m" ? MIN : m[2] === "h" ? HOUR : DAY);
+};
+/** A stable placeholder sha for the deploys a 20-deploy strip has and the design does not name. */
+const placeholderSha = (seed: string): string => {
+  let h = 2166136261;
+  for (const c of seed) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  return h.toString(16).padStart(8, "0").slice(0, 7);
+};
+
+type StripState = "live" | "failed" | "building" | "rolledBack";
+type PreviewState = "live" | "failed" | "building";
+/** The design's `D20`: 20 deploys, oldest first, `fails` failed and `extra` overriding single slots. */
+const d20 = (fails: number[] = [], extra: Record<number, StripState> = {}): StripState[] =>
+  Array.from({ length: 20 }, (_, i) => extra[i] ?? (fails.includes(i) ? "failed" : "live"));
+
+interface ScApp { name: string; folder: string; kind: AppKind; host?: string; via?: string; prs: number; previews?: boolean; usedBy?: string[] }
+interface ScTarget {
+  app: string; env: string; sha?: string; age?: string; by?: string; url?: string; ms?: number | null; via?: string;
+  state?: "building" | "failed"; prev?: { sha: string; age: string };
+  failedSha?: string; failedAge?: string; failedBy?: string; failedWhy?: string;
+  health?: "down" | "stale"; staleFor?: string;
+  /** The design's `unknown: true`: a target whose host reports nothing Trov can read yet. */
+  unknown?: boolean;
+}
+/** A single-target scenario's last 20 deploys: the states, the gap between unnamed ones, and the named ones. */
+interface ScStrip { states: StripState[]; step: string; named: Record<number, { sha: string; age: string; by?: string; reason?: string; rolledFrom?: string }> }
+interface ScPreview { pr: number; title: string; branch: string; by: string; state: PreviewState; age: string; url?: string; streak?: { count: number; since: string } }
+interface ScGroup { pr: number | null; title: string; by: string[]; merged: string | null; commits: [string, string, string][]; more?: number }
+interface Scenario {
+  org: keyof typeof ORG_REPOS; repo: string; appSource?: FactsApp["source"];
+  envs: { name: string; branch: string }[];
+  apps: ScApp[]; targets: ScTarget[];
+  /** Providers with no org connection (every other one is connected). */
+  notConnected?: HostingProviderId[];
+  strip?: ScStrip;
+  ci?: [env: string, state: FactsCi["state"], total: number, failing: number, sha: string, names?: string[]][];
+  drift?: { from: string; to: string; ahead: number; groups: ScGroup[] }[];
+  previews?: ScPreview[];
+  previewsByApp?: Record<string, PreviewState[]>;
+  /** Per app, in Production: [count (null = unknown), oldest age, groups]. */
+  notShippedByApp?: Record<string, [number | null, string?, ScGroup[]?]>;
+  outOfStep?: FactsOutOfStep[];
+  attention?: FactsAttention[];
+  week: [label: string, value: number | null, delta: number | null][];
+  release?: FactsRelease;
+  found?: FactsFound;
+  unseen?: FactsUnseen;
+  connect?: FactsConnect | null;
+}
+
+const DEPLOY_STATE: Record<StripState, DeployState> = { live: "ready", failed: "error", building: "building", rolledBack: "ready" };
+
+function factsOf(sc: Scenario, now: number): RepoFacts {
+  const ago = (ms: number): string => new Date(now - ms).toISOString();
+  const at = (age: string): string => ago(ageMs(age));
+  const envKey = (name: string): string => name.toLowerCase();
+  const messages = new Map<string, string>();
+  for (const g of [...(sc.drift ?? []).flatMap((d) => d.groups), ...Object.values(sc.notShippedByApp ?? {}).flatMap((n) => n[2] ?? [])]) {
+    for (const [sha, msg] of g.commits) messages.set(sha, msg);
+  }
+  const group = (g: ScGroup): FactsCommitGroup => ({
+    kind: g.pr === null ? "direct" : "pr", pr: g.pr, title: g.title, by: g.by, mergedAt: g.merged ? at(g.merged) : null,
+    commits: g.commits.map(([sha, msg, age]) => ({ sha, msg, at: at(age) })), more: g.more ?? 0,
+  });
+
+  const apps: FactsApp[] = sc.apps.map((a) => ({
+    key: a.name, label: a.name, folder: a.folder === "/" ? "/" : a.folder.replace(/\/$/, ""), kind: a.kind,
+    watch: [a.folder === "/" ? "**" : `${a.folder.replace(/\/$/, "")}/**`], source: sc.appSource ?? "manual",
+    usedBy: a.usedBy ?? null, previews: !!a.previews, openPrs: a.prs,
+  }));
+
+  const parts: FactsPart[] = sc.targets.map((t) => {
+    const a = sc.apps.find((x) => x.name === t.app);
+    const env = sc.envs.find((e) => e.name === t.env);
+    if (!a || !a.host || !env) throw new Error(`scenario ${sc.repo}: target ${t.app}/${t.env} has no app, host or environment`);
+    const provider = PROVIDER_OF_HOST[a.host];
+    const via = t.via ?? a.via ?? null;
+    const connection = provider === GITHUB_PROVIDER || !(sc.notConnected ?? []).includes(provider) ? "connected" : "not_connected";
+    const viaGithub = !t.unknown && connection === "not_connected" && provider !== GITHUB_PROVIDER;
+    const source = provider === GITHUB_PROVIDER || viaGithub ? "github" : "provider";
+    const key = `${t.app}-${envKey(t.env)}`;
+    const deploy = (n: number | string, state: DeployState, sha: string, ms: number, by: string | null, more: Partial<FactsDeploy> = {}): FactsDeploy => ({
+      id: `${key}-${n}`, state, target: "production", sha, shaSource: "provider", branch: env.branch, message: messages.get(sha) ?? null, by,
+      createdAt: ago(state === "ready" ? ms + 90_000 : ms), readyAt: state === "ready" ? ago(ms) : null,
+      url: null, logUrl: null, reason: null, rolledBackFrom: null, source, ...more,
+    });
+
+    let serving: FactsDeploy | null = null, latest: FactsDeploy | null = null, history: FactsDeploy[] = [];
+    if (t.unknown) {
+      // nothing reported: no deploys, `not_connected`
+    } else if (sc.strip) {
+      const { states, step, named } = sc.strip;
+      const ages: number[] = [];
+      for (let i = states.length - 1; i >= 0; i--) ages[i] = named[i] ? ageMs(named[i].age) : ages[i + 1] + ageMs(step);
+      const all = states.map((st, i) => deploy(i, DEPLOY_STATE[st], named[i]?.sha ?? placeholderSha(`${sc.repo}:${i}`), ages[i], named[i]?.by ?? null, {
+        reason: named[i]?.reason ?? null, rolledBackFrom: st === "rolledBack" ? named[i]?.rolledFrom ?? null : null,
+      }));
+      history = all.filter((d) => d.state === "ready" || d.state === "error" || d.state === "canceled");
+      serving = [...history].reverse().find((d) => d.state === "ready") ?? null;
+      const newest = all[all.length - 1];
+      latest = newest && newest !== serving ? newest : null;
+    } else if (t.sha && t.age) {
+      if (t.state === "building") {
+        serving = t.prev ? deploy("prev", "ready", t.prev.sha, ageMs(t.prev.age), null) : null;
+        latest = deploy("next", "building", t.sha, ageMs(t.age), t.by ?? null);
+      } else {
+        serving = deploy("serving", "ready", t.sha, ageMs(t.age), t.by ?? null);
+        if (t.state === "failed" && t.failedSha && t.failedAge) {
+          latest = deploy("failed", "error", t.failedSha, ageMs(t.failedAge), t.failedBy ?? null, { reason: t.failedWhy ?? null });
+        }
+      }
+      history = [serving, latest].filter((d): d is FactsDeploy => !!d && (d.state === "ready" || d.state === "error"));
+    }
+
+    const url = t.url ? `https://${t.url}` : null;
+    let health: FactsHealth | null = null;
+    if (url && t.health === "down") health = { url, up: false, ms: null, at: at("1m"), stale: false };
+    else if (url && t.health === "stale") health = { url, up: true, ms: null, at: at(t.staleFor ?? "31m"), stale: true };
+    else if (url && typeof t.ms === "number") health = { url, up: true, ms: t.ms, at: at("3m"), stale: false };
+
+    const role: PartRole = APP_KIND_ROLE[a.kind] ?? "service";
+    return {
+      app: t.app, env: envKey(t.env), label: t.app, role, provider, host: PROVIDER_LABEL[provider] ?? a.host,
+      via, connection, reportsDeploys: true, viaGithub, serving, latest, history, health, url, consoleUrl: null,
+    };
+  });
+
+  const envs = sc.envs.map((e, position) => ({ key: envKey(e.name), name: e.name, branch: e.branch, position }))
+    .filter((e) => parts.some((p) => p.env === e.key));
+
+  // Previews per app (E, F) are made the way the design's `narrow()` makes them, numbered down from #650 across
+  // the repository so no two apps' previews share a PR number.
+  let prNo = 650;
+  const byApp = Object.entries(sc.previewsByApp ?? {}).flatMap(([app, states]) => states.map((state, i): ScPreview & { app: string } => {
+    const pr = prNo; prNo -= 3;
+    const age = ["20m", "2h", "1d", "2d"][i % 4];
+    return {
+      app, pr, title: `${app}: preview ${i + 1}`, branch: `${app}-change-${i + 1}`, by: ["tom-h", "ana-r", "kenji-m", "dev-raj"][i % 4], state, age,
+      url: state === "live" ? `${app}-pr-${pr}.preview.acme.dev` : undefined,
+    };
+  }));
+  const previews: FactsPreview[] = [...(sc.previews ?? []).map((p) => ({ app: sc.apps[0].name, ...p })), ...byApp].map((p) => ({
+    app: p.app, pr: p.pr, title: p.title, branch: p.branch, by: p.by, state: DEPLOY_STATE[p.state], at: at(p.age),
+    url: p.url ? `https://${p.url}` : null, failStreak: p.state === "failed" ? p.streak?.count ?? 1 : 0,
+    failingSince: p.state === "failed" ? at(p.streak?.since ?? p.age) : null,
+  }));
+
+  const prodEnv = envs.find((e) => e.name === "Production")?.key ?? "production";
+  const notShipped: FactsNotShipped[] = Object.entries(sc.notShippedByApp ?? {}).map(([app, [count, oldest, groups]]) => ({
+    app, env: prodEnv, count, oldestAt: count && oldest ? at(oldest) : null, groups: (groups ?? []).map(group),
+  }));
+
+  const envOfBranch = (branch: string): string => envs.find((e) => e.branch === branch)?.key ?? branch;
+  const drift: FactsDriftStep[] = (sc.drift ?? []).map((d) => ({
+    fromEnv: envOfBranch(d.from), toEnv: envOfBranch(d.to), from: d.from, to: d.to, ahead: d.ahead, behind: 0, groups: d.groups.map(group),
+  }));
+
+  const ci: FactsCi[] = (sc.ci ?? []).map(([env, state, total, failing, sha, names]) => ({ env: envKey(env), sha, state, total, failing, names: names ?? [] }));
+  const week: FactsWeekFigure[] = sc.week.map(([label, value, delta]) => {
+    const key = WEEK_KEY[label];
+    if (!key) throw new Error(`no week key for ${label}`);
+    return { key, value, delta };
+  });
+
+  return {
+    repo: sc.repo, app: null, repos: ORG_REPOS[sc.org], allApps: apps, apps, envs, parts, previews, notShipped,
+    outOfStep: sc.outOfStep ?? [], drift, ci, release: sc.release ?? null, found: sc.found ?? null, unseen: sc.unseen ?? null, week,
+    attention: sc.attention ?? [], connect: sc.connect ?? null, groupDefault: null,
+  };
+}
+
+type At = (age: string) => string;
+const SC: Record<Exclude<ScenarioKey, "N">, (v: string, at: At) => Scenario> = {
+  A: (v, at): Scenario => {
+    const oos = v === "outOfStep", down = v === "trouble";
+    return {
+      org: "sapling", repo: "SaplingLearn/sapling", appSource: "migrated",
+      envs: [{ name: "Staging", branch: "main" }, { name: "Production", branch: "production" }],
+      apps: [{ name: "web", folder: "web/", kind: "Worker", host: "Cloudflare", prs: 4 }, { name: "api", folder: "api/", kind: "Service", host: "Railway", prs: 3 }],
+      targets: [
+        { app: "web", env: "Staging", sha: "3e9a1f2", age: "26m", by: "dev-raj", url: "staging.saplinglearn.com", ms: 142 },
+        down ? { app: "api", env: "Staging", sha: "3e9a1f2", age: "2m", by: "dev-raj", url: "api.staging.saplinglearn.com", state: "building", prev: { sha: "d94ea08", age: "21h" }, health: "stale", staleFor: "34m" }
+          : { app: "api", env: "Staging", sha: "3e9a1f2", age: "28m", by: "dev-raj", url: "api.staging.saplinglearn.com", ms: 88 },
+        down ? { app: "web", env: "Production", sha: "b4c21de", age: "2h", by: "jose-a", url: "saplinglearn.com", health: "down" }
+          : { app: "web", env: "Production", sha: "b4c21de", age: "2h", by: "jose-a", url: "saplinglearn.com", ms: 131 },
+        oos ? { app: "api", env: "Production", sha: "71f0e3a", age: "2d", by: "meilin", url: "api.saplinglearn.com", ms: 94 }
+          : { app: "api", env: "Production", sha: "b4c21de", age: "2h", by: "jose-a", url: "api.saplinglearn.com", ms: 94 },
+      ],
+      ci: [["Staging", "pass", 14, 0, "3e9a1f2"], ["Production", "pass", 14, 0, "b4c21de"]],
+      drift: [{ from: "main", to: "production", ahead: 9, groups: [
+        { pr: 214, title: "Tutor sessions resume from the last message", by: ["meilin"], merged: "5h", commits: [["3e9a1f2", "Resume tutor session from last message id", "5h"], ["9b02c4e", "Store last message id on the session", "6h"]] },
+        { pr: 212, title: "Quiz timer drifts when the tab is hidden", by: ["dev-raj"], merged: "1d", commits: [["a71d3f0", "Use performance.now for the quiz timer", "1d"], ["4c8e912", "Pause the timer on visibilitychange", "1d"], ["e2f6b07", "Test: hidden tab keeps time", "1d"]] },
+        { pr: 209, title: "api: rate limit /tutor/ask per user", by: ["jose-a"], merged: "2d", commits: [["5d1c8a4", "Token bucket per user on /tutor/ask", "2d"], ["0e7f2b9", "Return Retry-After on 429", "2d"]] },
+        { pr: null, title: "2 commits pushed straight to main", by: ["kenji-m", "tom-h"], merged: null, commits: [["8a6e1d3", "chore: bump wrangler 4.86", "1d"], ["c2b94f0", "docs: staging seed notes", "2d"]] },
+      ] }],
+      outOfStep: oos ? [{ env: "production", app: "api", sha: "71f0e3a", of: "web", ofSha: "b4c21de", behindBy: 3 }] : [],
+      attention: oos ? [{ kind: "outOfStep", app: "api", env: "production", refs: { sha: "71f0e3a", behindBy: 3, of: "web", provider: "railway" } }]
+        : down ? [
+          { kind: "down", app: "web", env: "production", refs: { url: "https://saplinglearn.com", since: at("6m") } },
+          { kind: "stale", app: "api", env: "staging", refs: { since: at("34m"), provider: "railway", nextSha: "3e9a1f2" } },
+        ] : [],
+      week: [["Merged PRs", 12, 3], ["Deploys", 18, 2], ["Failed deploys", 1, -1], ["Open PRs", 7, 0]],
+    };
+  },
+
+  B: (v, at): Scenario => {
+    const failed = v === "failed", tr = v === "trouble";
+    const signals: ScGroup = { pr: 320, title: "Repo: read deploy signals per target", by: ["andres"], merged: failed ? "14m" : "34m",
+      commits: failed ? [["e07b3a2", "Read deploy signals per target", "14m"]] : [["e07b3a2", "Read deploy signals per target", "34m"], ["f19ad20", "Fix: signal reader handles a missing environment", "3m"]] };
+    // B/trouble: c41e7d9 had been live a day, e07b3a2 replaced it, and the rollback put c41e7d9 back (slots 16–18
+    // name what the design's sentence says happened); f19ad20 is building.
+    const strip: ScStrip = failed ? { states: d20([2], { 19: "failed" }), step: "14h", named: { 18: { sha: "c41e7d9", age: "1d", by: "andres" }, 19: { sha: "e07b3a2", age: "12m", by: "andres", reason: "Build failed in Workers Builds: tsc found 2 errors" } } }
+        : tr ? { states: d20([2], { 18: "rolledBack", 19: "building" }), step: "14h", named: { 16: { sha: "c41e7d9", age: "1d", by: "andres" }, 17: { sha: "e07b3a2", age: "30m", by: "andres" }, 18: { sha: "c41e7d9", age: "8m", by: "andres", rolledFrom: "e07b3a2" }, 19: { sha: "f19ad20", age: "2m", by: "andres" } } }
+          : { states: d20([7]), step: "14h", named: { 19: { sha: "c41e7d9", age: "41m", by: "andres" } } };
+    return {
+      org: "sapling", repo: "AndresL230/trov",
+      envs: [{ name: "Production", branch: "main" }],
+      apps: [{ name: "trov", folder: "/", kind: "Worker", host: "Cloudflare", prs: 2, previews: true }],
+      targets: [{ app: "trov", env: "Production", url: "trov.dev", ms: tr ? 102 : 96 }],
+      strip,
+      ci: [failed ? ["Production", "fail", 9, 2, "e07b3a2"] : tr ? ["Production", "running", 9, 0, "f19ad20"] : ["Production", "pass", 9, 0, "c41e7d9"]],
+      previews: [
+        { pr: 318, title: "Repo screen: apps and targets", branch: "repo-apps", by: "andres", state: "live", age: "40m", url: "repo-apps.trov.workers.dev" },
+        { pr: 316, title: "Usage: Railway poller", branch: "railway-poller", by: "jose-a", state: "failed", age: tr ? "3d" : "3h", streak: tr ? { count: 4, since: "3d" } : undefined },
+      ],
+      notShippedByApp: failed ? { trov: [1, "12m", [signals]] } : tr ? { trov: [2, "30m", [signals]] } : {},
+      attention: failed ? [{ kind: "failed", app: "trov", env: "production", refs: { failedSha: "e07b3a2", sha: "c41e7d9", since: at("12m"), provider: "cloudflare", reason: "Build failed in Workers Builds: tsc found 2 errors" } }]
+        : tr ? [
+          { kind: "rolledBack", app: "trov", env: "production", refs: { sha: "c41e7d9", prevSha: "e07b3a2", nextSha: "f19ad20", since: at("8m") } },
+          { kind: "previewFailing", app: "trov", env: null, refs: { pr: 316, count: 4, since: at("3d") } },
+        ] : [],
+      week: [["Merged PRs", 9, 2], ["Deploys", 11, 1], ["Failed deploys", failed ? 1 : 0, failed ? 1 : 0], ["Open PRs", 2, -1]],
+    };
+  },
+
+  C: (): Scenario => ({
+    org: "acme", repo: "acme/site",
+    envs: [{ name: "Production", branch: "main" }],
+    apps: [{ name: "site", folder: "/", kind: "Site", host: "Netlify", prs: 6, previews: true }],
+    targets: [{ app: "site", env: "Production", url: "acme.com", ms: 48 }],
+    strip: { states: d20([11]), step: "1d", named: { 19: { sha: "5f2c0e8", age: "3h", by: "ana-r" } } },
+    ci: [["Production", "pass", 4, 0, "5f2c0e8"]],
+    previews: [
+      { pr: 88, title: "Pricing page: annual toggle", branch: "pricing-annual", by: "ana-r", state: "live", age: "20m", url: "deploy-preview-88--acme-site.netlify.app" },
+      { pr: 87, title: "Blog: RSS feed", branch: "blog-rss", by: "tom-h", state: "live", age: "2h", url: "deploy-preview-87--acme-site.netlify.app" },
+      { pr: 86, title: "Launch hero copy", branch: "hero-copy", by: "meilin", state: "building", age: "1m" },
+      { pr: 85, title: "Footer links on mobile", branch: "fix-footer", by: "dev-raj", state: "live", age: "5h", url: "deploy-preview-85--acme-site.netlify.app" },
+      { pr: 84, title: "Case studies index", branch: "case-studies", by: "ana-r", state: "live", age: "1d", url: "deploy-preview-84--acme-site.netlify.app" },
+      { pr: 83, title: "Docs navigation", branch: "docs-nav", by: "kenji-m", state: "failed", age: "1d" },
+    ],
+    week: [["Merged PRs", 5, 1], ["Deploys", 7, 0], ["Failed deploys", 0, 0], ["Open PRs", 6, 2]],
+  }),
+
+  D: (): Scenario => ({
+    org: "acme", repo: "acme/dashboard",
+    envs: [{ name: "Production", branch: "main" }],
+    apps: [{ name: "dashboard", folder: "/", kind: "Site", host: "Vercel", prs: 3, previews: true }],
+    targets: [{ app: "dashboard", env: "Production", url: "dashboard.acme.com", ms: 211 }],
+    strip: { states: d20([4, 13]), step: "17h", named: { 19: { sha: "8b31f6d", age: "1h", by: "priya-k" } } },
+    ci: [["Production", "pass", 6, 0, "8b31f6d"]],
+    previews: [
+      { pr: 402, title: "Orders: CSV export", branch: "orders-export", by: "tom-h", state: "live", age: "35m", url: "dashboard-git-orders-export-acme.vercel.app" },
+      { pr: 399, title: "Settings: team roles", branch: "team-roles", by: "kenji-m", state: "live", age: "4h", url: "dashboard-git-team-roles-acme.vercel.app" },
+      { pr: 397, title: "Move API routes to the app router", branch: "app-router-api", by: "priya-k", state: "live", age: "1d", url: "dashboard-git-app-router-api-acme.vercel.app" },
+    ],
+    week: [["Merged PRs", 8, 2], ["Deploys", 10, 3], ["Failed deploys", 0, -1], ["Open PRs", 3, 0]],
+  }),
+
+  E: (_v, at): Scenario => ({
+    org: "acme", repo: "acme/storefront",
+    envs: [{ name: "Production", branch: "main" }],
+    apps: [
+      { name: "web", folder: "apps/web", kind: "Site", host: "Vercel", prs: 4, previews: true },
+      { name: "api", folder: "apps/api", kind: "Service", host: "Render", prs: 3, previews: true },
+      { name: "docs", folder: "apps/docs", kind: "Site", host: "Cloudflare Pages", prs: 1, previews: true },
+      { name: "jobs", folder: "apps/jobs", kind: "Job", host: "Fly.io", via: "deploy-jobs.yml", prs: 1 },
+      { name: "ui", folder: "packages/ui", kind: "Package", usedBy: ["web", "docs"], prs: 2 },
+    ],
+    // Usage reads "from Render and Cloudflare": Fly.io is not connected, so jobs' deploys come via its workflow.
+    notConnected: ["fly"],
+    targets: [
+      { app: "web", env: "Production", sha: "9c4e2b1", age: "2d", by: "tom-h", url: "storefront.acme.com", ms: 188 },
+      { app: "api", env: "Production", sha: "2b8e6c4", age: "3d", by: "kenji-m", url: "api.storefront.acme.com", ms: 102, state: "failed", failedSha: "7f3a9d0", failedAge: "25m", failedBy: "priya-k", failedWhy: "Render: build exited with status 1" },
+      { app: "docs", env: "Production", sha: "a1d07e3", age: "5h", by: "ana-r", url: "docs.storefront.acme.com", ms: 64 },
+      { app: "jobs", env: "Production", sha: "e5b2f19", age: "1d", by: "kenji-m", via: "deploy-jobs.yml" },
+    ],
+    previewsByApp: { web: ["live", "live", "building"], api: ["live"], docs: ["live"] },
+    notShippedByApp: {
+      web: [4, "2d", [
+        { pr: 651, title: "Checkout: saved addresses", by: ["tom-h"], merged: "2d", commits: [["c8a1e40", "Saved addresses on checkout", "2d"], ["13fd9b2", "Address book API client", "2d"]] },
+        { pr: 648, title: "web: lazy-load the product gallery", by: ["ana-r"], merged: "2d", commits: [["6e02a7c", "Lazy-load gallery images", "2d"]] },
+        { pr: null, title: "1 commit pushed straight to main", by: ["dev-raj"], merged: null, commits: [["f4b7d21", "fix: typo in the cart drawer", "2d"]] },
+      ]],
+      api: [1, "25m"], docs: [0], jobs: [0],
+    },
+    attention: [
+      { kind: "failed", app: "api", env: "production", refs: { failedSha: "7f3a9d0", sha: "2b8e6c4", since: at("25m"), provider: "render", reason: "Render: build exited with status 1" } },
+      { kind: "waiting", app: "web", env: "production", refs: { count: 4, since: at("2d") } },
+    ],
+    week: [["Merged PRs", 21, 4], ["Deploys", 26, 5], ["Failed deploys", 2, 1], ["Open PRs", 11, 1]],
+  }),
+
+  F: (_v, at): Scenario => {
+    const A: [string, string, AppKind, string | null, StripState?, string?, string?, string?, [number, string?]?, PreviewState[]?][] = [
+      ["checkout", "services/checkout", "Service", "Render", "failed", "41b7e09", "18m", "tom-h", [3, "1h"], ["live", "failed"]],
+      ["search", "services/search", "Service", "Fly.io", "failed", "d2a6f31", "52m", "kenji-m", [1, "52m"], []],
+      ["admin", "apps/admin", "Site", "Vercel", "building", "7c19e5a", "3m", "ana-r", [0], ["live", "live"]],
+      ["web", "apps/web", "Site", "Vercel", "live", "0f4d8b2", "2h", "priya-k", [0], ["live", "live", "live", "building"]],
+      ["api", "services/api", "Service", "Render", "live", "b83e2c7", "4h", "dev-raj", [0], ["live"]],
+      ["auth", "services/auth", "Service", "Render", "live", "5a0c9d4", "1d", "meilin", [0], []],
+      ["billing", "services/billing", "Service", "Render", "live", "e61f3b8", "3d", "sanaok", [2, "3d"], []],
+      ["notifications", "workers/notifications", "Worker", "Cloudflare", "live", "92d4a7e", "6h", "jose-a", [0], ["live"]],
+      ["media", "workers/media", "Worker", "Cloudflare", "live", "3be8f10", "1d", "kenji-m", [0], []],
+      ["docs", "apps/docs", "Site", "Cloudflare Pages", "live", "aa47c62", "5h", "ana-r", [0], ["live"]],
+      ["status", "apps/status", "Site", "Netlify", "live", "1c9e0f5", "9d", "tom-h", [0], []],
+      ["reports", "jobs/reports", "Job", "Fly.io", "live", "6f2b3d1", "1d", "dev-raj", [0], []],
+      ["sdk", "packages/sdk", "Package", null],
+      ["tokens", "packages/tokens", "Package", null],
+    ];
+    const hosted = A.filter((a) => a[3]);
+    return {
+      org: "acme", repo: "acme/platform",
+      envs: [{ name: "Production", branch: "main" }],
+      apps: A.map(([name, folder, kind, host, , , , , , pv]) => ({
+        name, folder, kind, host: host ?? undefined, previews: !!(pv && pv.length), prs: pv ? pv.length : 1,
+        usedBy: kind === "Package" ? (name === "sdk" ? ["web", "admin", "checkout"] : ["web", "admin", "docs", "status"]) : undefined,
+      })),
+      targets: hosted.map(([app, , , , state, sha, age, by]): ScTarget => ({
+        app, env: "Production", sha, age, by, ms: 80, url: `${app}.platform.acme.com`,
+        ...(state === "failed" ? { state: "failed" as const, sha: app === "checkout" ? "c07a1e2" : "88e4b10", age: app === "checkout" ? "2d" : "4d", failedSha: sha, failedAge: age } : {}),
+        ...(state === "building" ? { state: "building" as const, prev: { sha: "2d91c08", age: "1d" } } : {}),
+      })),
+      previewsByApp: Object.fromEntries(hosted.map((a) => [a[0], a[9] ?? []])),
+      notShippedByApp: Object.fromEntries(hosted.map((a): [string, [number, string?]] => [a[0], a[8] ?? [0]])),
+      attention: [
+        { kind: "failed", app: "checkout", env: "production", refs: { failedSha: "41b7e09", sha: "c07a1e2", since: at("18m"), provider: "render" } },
+        { kind: "failed", app: "search", env: "production", refs: { failedSha: "d2a6f31", sha: "88e4b10", since: at("52m"), provider: "fly" } },
+      ],
+      week: [["Merged PRs", 64, 9], ["Deploys", 83, 12], ["Failed deploys", 5, 2], ["Open PRs", 23, -3]],
+    };
+  },
+
+  G: (v, at): Scenario => {
+    // '' = Railway not connected and nothing from GitHub; `signals` = GitHub deployments report the services, Railway
+    // still not connected (CPU and memory need it); `after` = Railway connected.
+    const after = v === "after", signals = v === "signals", known = after || signals;
+    const S: [string, string][] = [["gateway", "services/gateway"], ["ledger", "services/ledger"], ["notifier", "services/notifier"], ["settle", "jobs/settle"]];
+    const seen: Record<string, [string, string, string, string, "building"?][]> = {
+      gateway: [["Production", "6d0b3f9", "1d", "sanaok"], ["Staging", "a24e81c", "3h", "dev-raj"]],
+      ledger: [["Production", "6d0b3f9", "1d", "sanaok"], ["Staging", "a24e81c", "3h", "dev-raj", "building"]],
+      notifier: [["Production", "f13c9a7", "6d", "meilin"], ["Staging", "a24e81c", "3h", "dev-raj"]],
+      settle: [["Production", "6d0b3f9", "1d", "sanaok"], ["Staging", "a24e81c", "3h", "dev-raj"]],
+    };
+    return {
+      org: "acme", repo: "acme/payments",
+      envs: [{ name: "Production", branch: "production" }, { name: "Staging", branch: "main" }],
+      apps: S.map(([name, folder]) => ({ name, folder, kind: name === "settle" ? "Job" : "Service", host: "Railway", prs: name === "ledger" ? 2 : 1 })),
+      notConnected: after ? [] : ["railway"],
+      // ledger's Staging deploy is building with no earlier deploy in the design: nothing is serving there (never guessed).
+      targets: S.flatMap(([app]) => seen[app].map(([env, sha, age, by, st]): ScTarget => (known
+        ? { app, env, sha, age, by, state: st, ms: app === "settle" ? null : 70 }
+        : { app, env, unknown: true }))),
+      notShippedByApp: known ? { gateway: [3, "3h"], ledger: [3, "3h"], notifier: [5, "6d"], settle: [3, "3h"] } : { gateway: [null], ledger: [null], notifier: [null], settle: [null] },
+      connect: after ? null : { provider: "railway", need: signals ? "metrics" : "deploys", apps: S.map(([name]) => name) },
+      attention: known ? [{ kind: "waiting", app: "notifier", env: "production", refs: { sha: "f13c9a7", count: 5, since: at("6d") } }] : [],
+      week: [["Merged PRs", 7, 1], known ? ["Deploys", 14, 2] : ["Deploys", null, null], known ? ["Failed deploys", 0, 0] : ["Failed deploys", null, null], ["Open PRs", 5, 0]],
+    };
+  },
+
+  H: (): Scenario => ({
+    org: "acme", repo: "acme/ingest",
+    envs: [{ name: "Staging", branch: "main" }, { name: "Production", branch: "production" }],
+    apps: [
+      { name: "collector", folder: "collector/", kind: "Service", host: "Fly.io", via: "deploy-collector.yml", prs: 2 },
+      { name: "normalizer", folder: "normalizer/", kind: "Service", host: "Cloud Run", via: "deploy-normalizer.yml", prs: 1 },
+    ],
+    // Usage reads "not connected": collector's deploys come via its workflow while Fly.io is not connected;
+    // normalizer runs on Cloud Run, which no provider reads, so its parts are `github` parts on its workflow.
+    notConnected: ["fly"],
+    targets: [
+      { app: "collector", env: "Staging", sha: "4e1a9c7", age: "1h", by: "kenji-m", via: "deploy-collector.yml", url: "collector-staging.fly.dev", ms: 61 },
+      { app: "normalizer", env: "Staging", sha: "4e1a9c7", age: "4m", by: "kenji-m", via: "deploy-normalizer.yml", state: "building", prev: { sha: "0b72d3e", age: "1d" } },
+      { app: "collector", env: "Production", sha: "0b72d3e", age: "1d", by: "sanaok", via: "deploy-collector.yml", url: "collector.fly.dev", ms: 58 },
+      { app: "normalizer", env: "Production", sha: "0b72d3e", age: "1d", by: "sanaok", via: "deploy-normalizer.yml", url: "normalizer-prod-4kq.a.run.app", ms: 140 },
+    ],
+    ci: [["Staging", "running", 7, 0, "4e1a9c7", ["deploy-normalizer.yml"]], ["Production", "pass", 7, 0, "0b72d3e"]],
+    drift: [{ from: "main", to: "production", ahead: 3, groups: [
+      { pr: 77, title: "normalizer: drop events older than 7 days", by: ["kenji-m"], merged: "1h", commits: [["4e1a9c7", "Drop stale events before normalising", "1h"], ["9c3d0e1", "Config: max event age", "1h"]] },
+      { pr: null, title: "1 commit pushed straight to main", by: ["tom-h"], merged: null, commits: [["ba0f6e2", "ci: pin flyctl 0.3.40", "5h"]] },
+    ] }],
+    week: [["Merged PRs", 4, 0], ["Deploys", 9, 1], ["Failed deploys", 0, 0], ["Open PRs", 3, 1]],
+  }),
+
+  I: (_v, at): Scenario => ({
+    org: "acme", repo: "acme/ui-kit",
+    envs: [], apps: [{ name: "ui-kit", folder: "/", kind: "Package", prs: 6 }], targets: [],
+    release: {
+      tag: "v2.4.0", at: at("9d"), by: "meilin",
+      notes: "Select gains async options and a loading state. Tooltip waits 300 ms before opening. Fixes focus return in Dialog when it closes from Escape.",
+      since: { commits: 18, prs: 5 },
+      waiting: [
+        { pr: 231, title: "feat: DatePicker range mode", by: "ana-r", mergedAt: at("2d"), feature: true },
+        { pr: 228, title: "feat: Toast stacking and swipe to dismiss", by: "tom-h", mergedAt: at("4d"), feature: true },
+        { pr: 230, title: "fix: Menu keeps scroll position on reopen", by: "dev-raj", mergedAt: at("3d"), feature: false },
+        { pr: 227, title: "docs: theming guide", by: "meilin", mergedAt: at("6d"), feature: false },
+        { pr: 226, title: "chore: bump Storybook 9.1", by: "kenji-m", mergedAt: at("8d"), feature: false },
+      ],
+      cadence: [{ tag: "v2.1.0", at: at("91d") }, { tag: "v2.2.0", at: at("70d") }, { tag: "v2.3.0", at: at("56d") }, { tag: "v2.3.1", at: at("35d") }, { tag: "v2.3.2", at: at("23d") }],
+    },
+    week: [["Merged PRs", 5, 1], ["Commits", 18, 6], ["Releases", 0, -1], ["Open PRs", 6, 2]],
+  }),
+
+  J: (): Scenario => ({
+    org: "acme", repo: "acme/core",
+    envs: [{ name: "Dev", branch: "develop" }, { name: "Staging", branch: "main" }, { name: "Production", branch: "release" }],
+    apps: [{ name: "core", folder: "/", kind: "Service", host: "Render", prs: 5 }],
+    targets: [
+      { app: "core", env: "Dev", sha: "7aa3c90", age: "18m", by: "dev-raj", url: "core-dev.onrender.com", ms: 120 },
+      { app: "core", env: "Staging", sha: "2f6e14b", age: "1d", by: "meilin", url: "core-staging.onrender.com", ms: 104 },
+      { app: "core", env: "Production", sha: "c90b5d2", age: "8d", by: "sanaok", url: "core.acme.com", ms: 97 },
+    ],
+    ci: [["Dev", "fail", 11, 1, "7aa3c90", ["integration: outbox relay"]], ["Staging", "pass", 11, 0, "2f6e14b"], ["Production", "pass", 11, 0, "c90b5d2"]],
+    drift: [
+      { from: "develop", to: "main", ahead: 6, groups: [
+        { pr: 305, title: "Batch writes in the outbox relay", by: ["dev-raj"], merged: "18m", commits: [["7aa3c90", "Batch outbox writes", "18m"], ["31be7c2", "Outbox relay metrics", "1h"]] },
+        { pr: 303, title: "Retry policy per queue", by: ["jose-a"], merged: "1d", commits: [["e0d1f48", "Retry policy per queue", "1d"], ["b5c2a91", "Default retry policy", "1d"], ["44f7e0d", "Docs: retry policy", "1d"], ["0c3b6aa", "Test: retry backoff", "1d"]] },
+      ] },
+      { from: "main", to: "release", ahead: 14, groups: [
+        { pr: 298, title: "Tenant export endpoint", by: ["meilin"], merged: "1d", commits: [["2f6e14b", "Tenant export endpoint", "1d"]] },
+        // The design's "+ 6 PRs — 13 more commits since c90b5d2": the rest of the step, not returned commit by commit.
+        { pr: null, title: "13 more commits since c90b5d2", by: [], merged: null, commits: [], more: 13 },
+      ] },
+    ],
+    attention: [{ kind: "degraded", app: null, env: "dev", refs: { count: 1, check: "integration: outbox relay" } }],
+    week: [["Merged PRs", 9, 2], ["Deploys", 12, 0], ["Failed deploys", 0, 0], ["Open PRs", 5, 0]],
+  }),
+
+  K: (): Scenario => ({
+    org: "acme", repo: "acme/web-app",
+    envs: [{ name: "Staging", branch: "main" }, { name: "Production", branch: "production" }],
+    apps: [{ name: "web-app", folder: "/", kind: "Site", host: "Vercel", prs: 4, previews: true }],
+    targets: [
+      { app: "web-app", env: "Staging", sha: "1e8d4a0", age: "35m", by: "ana-r", url: "staging.app.acme.com", ms: 150 },
+      { app: "web-app", env: "Production", sha: "9f02b6c", age: "1d", by: "ana-r", url: "app.acme.com", ms: 142 },
+    ],
+    ci: [["Staging", "pass", 8, 0, "1e8d4a0"], ["Production", "pass", 8, 0, "9f02b6c"]],
+    drift: [{ from: "main", to: "production", ahead: 3, groups: [
+      { pr: 121, title: "Checkout reads prices from web-api v2", by: ["ana-r"], merged: "35m", commits: [["1e8d4a0", "Use /v2/prices", "35m"], ["6b3f9c2", "Price cache per region", "2h"], ["d05e7a1", "Test: v2 price shape", "2h"]] },
+    ] }],
+    week: [["Merged PRs", 6, 1], ["Deploys", 9, 2], ["Failed deploys", 0, 0], ["Open PRs", 4, 0]],
+  }),
+
+  L: (): Scenario => ({
+    org: "acmeNew", repo: "acme/new-thing",
+    envs: [], apps: [], targets: [],
+    found: {
+      apps: [
+        { id: "apps/web", folder: "apps/web", kind: "Site", provider: "vercel", evidence: "apps/web/vercel.json" },
+        { id: "apps/worker", folder: "apps/worker", kind: "Worker", provider: "cloudflare", evidence: "apps/worker/wrangler.toml" },
+        { id: "packages/shared", folder: "packages/shared", kind: "Package", provider: null, evidence: "packages/shared/package.json" },
+      ],
+      signals: [{ name: "Production – new-thing-web", provider: "vercel", count: 12 }, { name: "Preview – new-thing-web", provider: "vercel", count: 41 }],
+    },
+    week: [["Merged PRs", 6, null], ["Commits", 31, null], ["CI runs", 48, null], ["Open PRs", 4, null]],
+  }),
+
+  M: (_v, at): Scenario => ({
+    org: "acmeNew", repo: "acme/mobile",
+    envs: [], apps: [], targets: [], found: { apps: [], signals: [] },
+    unseen: {
+      looked: ["vercel.json", "netlify.toml", "wrangler.toml", "fly.toml", "render.yaml", "railway.json", "Dockerfile"],
+      tags: {
+        count: 14, latest: { tag: "v1.8.0", at: at("6d"), by: "ana-r" },
+        recent: [{ tag: "v1.8.0", at: at("6d"), by: "ana-r" }, { tag: "v1.7.2", at: at("19d"), by: "tom-h" }, { tag: "v1.7.1", at: at("27d"), by: "tom-h" }, { tag: "v1.7.0", at: at("41d"), by: "ana-r" }],
+      },
+      prs: { open: 4, mergedThisMonth: 9 },
+      workflows: ["eas-build.yml", "test.yml"],
+      deploymentsSeen30d: 0,
+    },
+    week: [["Merged PRs", 9, 2], ["Commits", 37, 4], ["CI runs", 52, 6], ["Open PRs", 4, 0]],
+  }),
+};
+
+/** Every scenario with its title and variants, for the Overview's sample switch. */
+export const REPO_SCENARIOS: Record<ScenarioKey, { title: string; variants: readonly string[] }> =
+  Object.fromEntries(SCENARIO_KEYS.map((k) => [k, { title: SCENARIO_TITLES[k], variants: SCENARIO_VARIANTS[k] }])) as Record<ScenarioKey, { title: string; variants: readonly string[] }>;
+
+/** One scenario as `RepoFacts`, narrowed by the App menu (`app`: an app key, `REPO_WIDE`, or null for all apps).
+ *  N is the trouble states: '' = A/trouble, `trov` = B/trouble. An unknown variant reads as the calm one. */
+export function repoScenario(key: ScenarioKey, variant = "", opts: { now?: number; app?: string | null } = {}): RepoFacts {
+  const now = opts.now ?? Date.now();
+  const at: At = (age) => new Date(now - ageMs(age)).toISOString();
+  const [k, v]: [Exclude<ScenarioKey, "N">, string] = key === "N" ? (variant === "trov" ? ["B", "trouble"] : ["A", "trouble"]) : [key, variant];
+  return narrowFacts(factsOf(SC[k](SCENARIO_VARIANTS[k].includes(v) ? v : "", at), now), opts.app ?? null);
 }
