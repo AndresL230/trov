@@ -140,12 +140,12 @@ describe("the scan: cost and the tree-sha skip", () => {
     expect(await scanRepo(ctxA(), gh(changed), { now: NOW + 7_200_000 })).toMatchObject({ skipped: false, treeSha: "tree2", requests: 2 });
   });
 
-  it("a truncated tree is scanned with what GitHub listed and says so; a refused tree records fixed words (no token) and throws", async () => {
+  it("a truncated tree is scanned with what GitHub listed and says so; a refused tree records fixed words (no token), never a throw", async () => {
     await seedOrgSettings();
     await scanRepo(ctxA(), gh(fakeGh(STOREFRONT, { truncated: true })), { now: NOW });
     expect((await readScan(ctxA(), REPO)).error).toBe("the repository is too large to list in one read; Trov looked at the files GitHub listed");
     expect((await listSuggestions(ctxA(), REPO, NOW)).length).toBe(5);
-    await expect(scanRepo(ctxA(), gh(fakeGh(STOREFRONT, { sha: "tree9", treeStatus: 403 })), { now: NOW })).rejects.toThrow();
+    expect(await scanRepo(ctxA(), gh(fakeGh(STOREFRONT, { sha: "tree9", treeStatus: 403 })), { now: NOW })).toMatchObject({ failed: true, requests: 1 });
     const scan = await readScan(ctxA(), REPO);
     expect(scan.error).toBe("GitHub refused to list the repository's files (HTTP 403)");
     expect(scan.treeSha).toBe("tree1"); // the last good sha stays
@@ -386,7 +386,7 @@ describe("the reconcile arm", () => {
     return json(url.includes("/compare/") ? { ahead_by: 0, behind_by: 0, commits: [] } : []);
   }) as typeof fetch;
 
-  it("runs the scan only when asked (not Poll now), guarded: a refused tree lands as `scan` in failed and costs no other arm", async () => {
+  it("runs the scan only when asked (not Poll now); a refusal is recorded on the scan; an unexpected throw is the guarded arm's", async () => {
     await seedOrgSettings();
     const f = fakeGh(STOREFRONT);
     const off = await reconcileRepo(ctxA(), { token: TOKEN, repo: REPO, fetchImpl: ghRoutes(f) }, ENVS, NOW);
@@ -396,9 +396,15 @@ describe("the reconcile arm", () => {
     expect(on.failed).toEqual([]);
     expect(f.calls.length).toBe(2);
     expect((await listSuggestions(ctxA(), REPO, NOW)).length).toBe(5);
+    // A GitHub refusal is the SCAN's to say (the Apps tab), never the reconcile's or the credential's.
     const bad = fakeGh(STOREFRONT, { sha: "x", treeStatus: 500 });
-    const failed = await reconcileRepo(ctxA(), { token: TOKEN, repo: REPO, fetchImpl: ghRoutes(bad) }, ENVS, NOW, {});
-    expect(failed.failed).toEqual(["scan"]);
+    const refused = await reconcileRepo(ctxA(), { token: TOKEN, repo: REPO, fetchImpl: ghRoutes(bad) }, ENVS, NOW, {});
+    expect(refused.failed).toEqual([]);
+    expect((await readScan(ctxA(), REPO)).error).toBe("GitHub could not list the repository's files (HTTP 500)");
+    // An unexpected error (a registry that cannot be read) is the guarded arm's: `scan` in failed, the other arms ran.
+    const broken = await reconcileRepo(ctxA(), { token: TOKEN, repo: REPO, fetchImpl: ghRoutes(fakeGh(STOREFRONT, { sha: "y" })) }, ENVS, NOW,
+      { providers: new Proxy({}, { get() { throw new Error("registry unreadable"); } }) as never });
+    expect(broken.failed).toEqual(["scan"]);
   });
 });
 

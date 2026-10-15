@@ -184,7 +184,9 @@ accepted / ignored, `decided_by` a handle).
   GraphQL batch of ≤ 24 files (`object(expression: "HEAD:<path>")`, paths passed as variables; step 0 confirmed a
   missing path is null), and ≤ 1 `describe` list call per CONNECTED host that has one. A truncated tree (GitHub's
   100,000 entries / 7 MB) is scanned with the entries GitHub listed and its sha stored; `error` says so. A refused
-  tree / batch records fixed words in `error` (the last good sha kept) and the arm lands in `failed` as `scan`.
+  tree / batch records fixed words in `error` (the last good sha kept) — and nothing else: a scan is detection, so a
+  refusal never marks the org's GitHub credential failing or a Sync partial; only an unexpected throw (D1) lands in
+  reconcile's `failed` as `scan`.
   `reconcileCost` counts `SCAN_COST`. The connected hosts' credentials are resolved by the caller
   (`describeSources`, src/repo/scan-store.ts — lazily, only past the guard); the scan itself is secret-free.
 - **The detector registry** (`src/repo/detect/<id>.ts`, `index.ts`; one interface: `patterns` to read, `seen` names

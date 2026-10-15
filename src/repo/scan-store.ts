@@ -180,8 +180,9 @@ export async function runScanNow(env: Env, ctx: TenantContext, repo?: string, op
       now, force: true, resetIgnored: true, providers: opts.providers,
       describe: () => describeSources(env, ctx, opts.fetchImpl, now, opts.providers),
     });
-    return done(true, out.added);
+    return done(!out.failed, out.added); // a refusal: scanRepo recorded why in repo_scans.error (fixed words)
   } catch {
-    return done(false, 0); // scanRepo recorded why in repo_scans.error (fixed words)
+    await recordScanError(ctx, name, "the repository's files could not be read", now).catch(() => undefined);
+    return done(false, 0);
   }
 }

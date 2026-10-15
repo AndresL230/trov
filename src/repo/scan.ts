@@ -59,6 +59,8 @@ export interface ScanOpts {
 export interface ScanOutcome {
   /** True when the tree sha was the stored one: nothing past the tree read was asked. */
   skipped: boolean;
+  /** GitHub refused the tree or the file batch; `repo_scans.error` says why. */
+  failed: boolean;
   treeSha: string | null;
   /** Pending suggestions after the scan (accepted ones excluded). */
   pending: number | null;
@@ -290,8 +292,11 @@ export async function recordScanError(ctx: TenantContext, repo: string, error: s
 }
 
 /**
- * Scan `gh.repo` (see the header). Throws when GitHub refuses the tree or the file batch — after recording why in
- * `repo_scans.error` — so `reconcileRepo`'s arm lands in `failed` as `scan`.
+ * Scan `gh.repo` (see the header). When GitHub refuses the tree or the file batch, the reason goes to
+ * `repo_scans.error` (fixed words — the Apps tab's "why the last scan could not run") and the outcome says
+ * `failed: true`; it does NOT throw: a scan is detection, not capture, so it never marks the org's GitHub
+ * credential as failing or a Sync as partial. Only an unexpected error (D1) throws — `reconcileRepo`'s guarded arm
+ * then names `scan` in `failed`.
  */
 export async function scanRepo(ctx: TenantContext, gh: GhOpts, opts: ScanOpts = {}): Promise<ScanOutcome> {
   const now = opts.now ?? Date.now();
@@ -308,14 +313,16 @@ export async function scanRepo(ctx: TenantContext, gh: GhOpts, opts: ScanOpts = 
     tree = await ghJson<GhTree>(gh, `/git/trees/HEAD?recursive=1`);
     if (typeof tree?.sha !== "string" || !Array.isArray(tree.tree)) throw new Error("github 502 tree: no sha");
     // THE GUARD: the same root tree as last time → nothing in the repository changed; no further request.
-    if (!opts.force && stored?.tree_sha === tree.sha) return { skipped: true, treeSha: tree.sha, pending: null, added: 0, requests };
+    if (!opts.force && stored?.tree_sha === tree.sha) return { skipped: true, failed: false, treeSha: tree.sha, pending: null, added: 0, requests };
     paths = tree.tree.filter((e) => e?.type === "blob" && typeof e.path === "string").map((e) => e.path!).filter(scannable);
     const pick = pickFiles(paths);
     files = new Map();
     if (pick.length) { requests++; files = await readFiles(gh, pick); }
   } catch (e) {
-    await recordScanError(ctx, repo, scanErrorText(e, gh.token), now).catch(() => undefined);
-    throw e;
+    const error = scanErrorText(e, gh.token);
+    // Not logged: the reason is the scan's own record (repo_scans.error), read on the Apps tab.
+    await recordScanError(ctx, repo, error, now);
+    return { skipped: false, failed: true, treeSha: null, pending: null, added: 0, requests };
   }
 
   let candidates = detectAll({ repo, tree: paths, files });
@@ -375,5 +382,5 @@ export async function scanRepo(ctx: TenantContext, gh: GhOpts, opts: ScanOpts = 
       ON CONFLICT(org_id, repo) DO UPDATE SET tree_sha = excluded.tree_sha, scanned_at = excluded.scanned_at, looked = excluded.looked, error = excluded.error`,
     ctx.orgId, repo, tree.sha, at, JSON.stringify(lookedFor()), error));
   await batch(ctx, stmts);
-  return { skipped: false, treeSha: tree.sha!, pending, added, requests };
+  return { skipped: false, failed: false, treeSha: tree.sha!, pending, added, requests };
 }
