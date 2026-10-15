@@ -256,9 +256,12 @@ credential comes from `resolveGithubCredential(ctx, env, { repo })` (`src/github
 `github-app.md`): the org's live App installation → an installation token, else its stored `github_token`,
 else SaplingLearn's legacy secret. Every other credential comes from
 `resolveCredential(ctx, env, kind, scope)`: `github_webhook` (the hook id),
-`cloudflare_analytics` (`""`, + `resolveCloudflareAccountId`), `railway` and `metrics_endpoint` (the
-environment key). Both are resolved ONLY in modules that `src/mcp.ts` cannot reach — `src/repo/cron.ts`,
-`src/github-hook.ts`, `src/tools/backfill.ts`, `src/integrations/*`, `src/github-app/*` — and the revealed value is passed down as a parameter
+`cloudflare_analytics` (`""`, + `resolveCloudflareAccountId`), `railway` and the other hosting kinds (`""`, ONE
+org-wide each — a scoped one is a leftover, `hosting-providers.md`) and `metrics_endpoint` (the environment key).
+Both are resolved ONLY in modules that
+`src/mcp.ts` cannot reach — `src/repo/cron.ts`, `src/github-hook.ts`, `src/tools/backfill.ts`, `src/integrations/*`,
+`src/github-app/*`, `src/hosting/poll.ts` (the poll, and the rollback compare's GitHub token), `src/repo/scan-store.ts`
+(Scan again, and the scan's `describe` hosts) — and the revealed value is passed down as a parameter
 (`src/webhook.ts` and `src/repo/github.ts` ARE reachable from MCP; `test/secrets.mcp.test.ts`). Every log
 line and stored `last_error` is scrubbed of every credential the unit revealed. Whether a credential EXISTS is not a
 secret: the Repo dashboard's `hostingReads` (`src/repo/store.ts`, MCP-reachable) selects `org_secrets` METADATA only —

@@ -16,122 +16,22 @@ section has a capture path** — the old list of uncaptured sections is gone fro
 each one waits on: a setting or secret by NAME, a webhook event, the target repo's CI, or Sync GitHub. There
 is no connect button or flow. "Preview with sample data" swaps in `repo-sample.ts` client-side
 (session-only, labelled on screen); it never touches the Worker.
-`repo-sample.ts` also holds the Repo-setups design's scenarios A–N (`repoScenario(key, variant, { now, app })`,
-`REPO_SCENARIOS`, `SCENARIO_TITLES`, `SCENARIO_VARIANTS` — the design's variants plus G `signals`) as
-`RepoFacts` (`shared/repo-facts-core.ts`), narrowed by `narrowFacts` exactly as the server narrows (`app` = an
-app key, `REPO_WIDE` = no app rows, only the PR / CI-level facts). `test/repo-sample.scenarios.test.ts` holds
-every scenario × variant × App narrowing × Group by to the design's own `buildScreen` (same rule, opener and
-Group by from `layoutOf(layoutInputOf(facts))`), and checks unknown stays `null` and every part's app and
-environment exist. H's Cloud Run app uses provider `github` through a cast until Phase A adds it.
+The Repo-setups design's scenarios A–N live in `repo-sample.ts` too, as `RepoFacts` (`repo-apps.md` › The sample
+scenarios A–N).
 
-**The Overview's facts (Repo setups, Phase B)** — `facts: RepoFacts` on the payload (`GET
-/repo/dashboard?repo=&app=` and MCP `get_repo_dashboard`), assembled INSIDE the one projection by
-`readRepoFacts` (`src/tools/repo-facts.ts`) from the reads `getRepoDashboard` already made (parts, hosting reads,
-branch heads and their checks, health rows, the PR / commit / run gates) plus its own: the repository's apps
-(`listRepoApps`, `src/repo/apps-read.ts` — the read half of `apps.ts`, split so nothing reachable from MCP imports
-the settings module), `factsDeploys` / `deployWeekCounts` (`src/repo/facts-store.ts`, one statement each),
-`runCounts`, `readRepoSettings` (the admin's default Group by → `groupDefault`) and three snapshots. Then
-`narrowFacts(facts, app)`. A throw there costs the facts alone (`emptyRepoFacts`, `degraded: true`).
-- `?repo=` is checked against `org_repos` (any case; absent → the primary; unknown → **404 `{ error: "unknown
-  repository" }`**). MCP's `repo` doubles as the connection scope's argument (an agent passes its checkout on
-  every call), so there an unknown one reads the primary and the output's `repo` says which. `?app=` is an app
-  key of that repository or `__repo` (`REPO_WIDE`); an unknown key reads as every app (`facts.app: null`). The
-  app ALSO narrows the per-part sections (environments' parts, `deploys`, `usage`, `providers`): an app IS a part
-  key, so they keep that key's parts (`REPO_WIDE`: none). The other sections stay the org's capture.
-- **apps** — `repo_apps` rows of the repository plus a part key with no row (`source: "implicit"`, at the primary's
-  root); `previews` = a preview landed in 30 days; `openPrs` = the open-PR count for a repository's only app; with
-  two or more, the open PRs whose files reach the app (Phase E — below), `null` while one open PR's files were never
-  read; `usedBy` (a Package) = the apps that use it, from the repo scan's workspace graph (`repo_app_suggestions.used_by`
-  folders matched to the apps' folders), `null` when the scan never described it. **envs** — only those with a part of the apps in
-  view, `position` the org's. **parts** (app × environment, apps' order then promotion order) — `serving` the
-  newest `ready` production deploy of the part's CURRENT provider (any age), `latest` the newest when it is not
-  that one, `history` the last ≤ 20 settled oldest first (a previews-only part reads its previews, as
-  `hostingReads` does); `connection` from the one status function (`partConnectionOf`); `reportsDeploys` /
-  `reportsMetrics` from the registry's capabilities; `viaGithub` for a `github` part, or a GitHub-sourced serving
-  deploy while the host is not live; `via` the workflow / environment / check a `github` part names.
-  **health** — the environment's two pinged targets (`frontend`, `backend`) are a part's only when the part
-  carries that key, or is the ONE part of the target's role in the environment and no other part carries the key
-  (two web parts: no health, never a guess); stale past 30 minutes (`stale: true`, shown as neither up nor down).
-- **previews** — a production part's `target = 'preview'` rows of 30 days, newest per branch, matched to OPEN PRs
-  by head branch from captured `pr` rows; a branch whose PR merged or closed (and none is open) is left out;
-  `failStreak` counts consecutive `error`s from the newest; ≤ 20 per app.
-- **notShipped** — one per part; the snapshot's entry only while the part still serves the sha it was computed
-  for, else `count: null`. **outOfStep** — an environment's rows only while its apps still serve the shas they
-  were computed for. **drift** — the chain's steps between two shown, adjacent environments of the current
-  config. **ci** — per shown environment (every environment for a packages-only repository): head checks, `fail`
-  with its failing names, `running` with `total` / `failing` null, `pass`, or all-null when nothing is captured.
-- **week** — all seven `WeekKey`s: `mergedPrs` (`events`, null until one was ever captured), `deploys` /
-  `failedDeploys` (settled production deploys of the parts in view, null with no deploy capture; a delta only when
-  every counted part's capture began two weeks ago, `MIN(recorded_at)`), `openPrs` (the `prs_reconciled` gate and
-  its recording window), `commits` (the Commits tile's gates), `releases` (`releaseWeekFigure`, Phase F), `ciRuns` (`run` rows;
-  delta when `recordingSince('run')` predates two weeks). A null value has a null delta.
-- **attention** (structured; worded in the SPA), most urgent first: `down` (fresh health down), `failed` (the
-  newest production deploy errored: `failedSha`, `sha` still serving, `reason`), `rolledBack` (the serving deploy
-  has `rolled_back_from`), `outOfStep`, `stale`, `degraded` (an environment's CI fails; `app: null`), `waiting`
-  (not shipped > 2 and the oldest > 1 day), `previewFailing` (a streak ≥ 3; `env: null`). **connect** — admins
-  only: the first host in part order that is not connected (`not_connected` / `revoked`, never a `github_app`
-  provider), `need: "metrics"` when GitHub already gives every such part its deploys, else `"deploys"`.
-- **The PR / CI facts are the PRIMARY repository's capture** (reconcile and the webhook capture one repository per
-  org): for another connected repository `ci`, `drift`, `outOfStep` are empty, `notShipped` counts and the PR /
-  commit / CI week figures null — its own parts, deploys and previews are its own. `release` is `readRelease(ctx, repo,
-  app)` (Phase F, `src/repo/releases.ts` — narrowed by the app's release signal when the App menu names one) and the
-  `releases` week figure `releaseWeekFigure` (null until reconcile read the repository's releases); `found` / `unseen`
-  stay null until Phase D.
-
-**The Overview's deploy blocks** (Repo setups, Phase C) are `OverviewBlock`s — `(facts, ctx) => html`
-(`web/src/repo-overview-ctx.ts`) — each in its own module and its own `trov.css` section, worded in the SPA from
-`RepoFacts` (nothing arrives worded): `envCardsBlock` (`repo-env-cards.ts`: a card per environment in promotion
-order, a row per part in the apps' order — sha, "<age> ago · by <who> · <host>[ via <workflow> | via GitHub]",
-URL, ms / Down / "Reading 34m old", a failed line with the reason and what still serves, a building line, a
-rollback line, the out-of-step flag; a part with no deploy is Unknown and says why — "<host> does not report
-deploys to GitHub" when its host is not connected — and the CI line worded from `FactsCi`, "<check> running on
-<sha>" while a running set has no total), `driftBlock` (`repo-drift.ts`: one strip, or the chain form for three or
-more environments), `appsTableBlock` (`repo-apps-table.ts`: worst first — failed, building, waiting (> 2 commits),
-unknown, live — Production, then Previews or the other environment, then Not shipped; a missing or `null` count
-is "Unknown", never "Up to date"; then the packages) and `notShippedBlock` (`repo-not-shipped.ts`: one deployed
-app → its production entry, "<app> is up to date in Production" at 0; several → the one with the most commits
-waiting, only when its commits are listed — E's web; nothing for a `null` count). The environment verdict is ONE
-function, `envVerdict(f, env)` (`repo-verdict.ts`, the design's `verdictFor`: unknown, down, failing, out of step,
-degraded, then Healthy only on passing checks, else Live — never Healthy on unknown checks; the header's
-pills and every block draw its tone and shape). What they share is `repo-block-kit.ts`: ONE table of the design's `MARKS` (`REPO_MARK`, drawn through marks.ts
-`stateMark` / `markShape` with the design's shape and tone per state — Building a blue ring pulsing by
-`.repo-kit-pulse`, still under reduced motion; `deployMark` is the same table), the sha chip (`shaOrNone` says "no
-commit" and why), the byline
-person (people.ts, never in sample mode), a URL that never links out in sample mode, and the commit groups drift
-and not-shipped both list. A disclosure is ONE act, `repoOpen` with the block's key in `data-arg`
-(`drift:<from>><to>`, `ns:<app>><env>`), read back from `ctx.open`; its panel is always emitted and shown by
-`data-open`. Tests: `test/render.repo-env-cards.test.ts`, `render.repo-drift`, `render.repo-apps-table`,
-`render.repo-not-shipped` (every scenario × variant, narrowed facts).
-
-**The Overview's blocks (Repo setups, Phase C)** are `OverviewBlock`s (`web/src/repo-overview-ctx.ts`: `(facts,
-ctx) => html`), one module each, drawn from `RepoFacts` alone — every sentence is made in the block, nothing is
-pre-worded by the server, and each returns `""` when its facts are absent:
-- **R4** `productionBlock` (`repo-production.ts`): the one app's part in the one environment — the verdict
-  (`envVerdict`, `repo-verdict.ts`), the serving row (sha or "no commit", age, who via people.ts, host and
-  `via`), the URL and its health (ms; "Reading 34m old" when stale; Down), a failed or cancelled newest deploy
-  ("e07b3a2 failed 12m ago", its reason, "c41e7d9 is still serving."), a deploy in flight as the Next row, a
-  rollback ("Rolled back from …"), CI on the head (`ciLine`: a count only when one is known — a running set
-  says "Checks running on …"), and the strip: `history` plus an in-flight `latest`, ≤ 20, newest right, ready
-  green / error red / building blue and pulsing (`.repo-kit-pulse` on a mark; the strip square blinks, both still under reduced motion) / rolled back amber
-  / canceled grey, with its sentence ("Last 20 deploys · 17 live, 1 failed, 1 rolled back, 1 building"). A part
-  with no deploy reads Unknown and why ("<host> does not report deploys to GitHub" when its host is not
-  connected and nothing came via GitHub).
-- `previewsBlock` (`repo-previews.ts`): "Previews · N open", a row per preview (a live one unmarked), the
-  failing streak only from two failures ("Failing for 3 days, last 4 builds"); nothing at all when no app in
-  view has previews, "No open pull requests, so no previews." when one has and none is open.
-- **R3** `releaseBlock` (`repo-release.ts`): tag, age in words, date, who, notes; since (commits / PRs, "—"
-  when unknown); the waiting PRs (merged glyph, "feature" only where `feature: true`); the cadence strip over
-  the last 100 days (wider for an older history) and the gaps sentence derived newest first.
-- **R1** `foundBlock` / **R2** `unseenBlock` (`repo-found.ts`): the suggested apps with Accept / Ignore for an
-  admin (`repoFoundAccept` / `repoFoundIgnore` + the suggestion id, wired in Phase D; disabled in sample mode)
-  and the seen deploy names; or what Trov looked for and what it does see (tags, PRs, CI workflows, GitHub
-  deployments in 30 days), the latest tags, and "Add an app by hand" (admin → Org settings › Repositories).
-Shared pieces (`repo-block-kit.ts`): the design's deploy-state `MARKS` on `stateMark` shapes, links that are
-https only and plain text in sample mode, a handle as a person link (plain in sample mode).
+**Apps, the Overview's facts and its blocks** (repo setups) are `repo-apps.md`: an app is a part key (`repo_apps`);
+`facts: RepoFacts` rides every `GET /repo/dashboard?repo=&app=` payload and MCP `get_repo_dashboard`, assembled
+INSIDE this one projection by `readRepoFacts` (`src/tools/repo-facts.ts`) from the reads `getRepoDashboard` already
+made, then narrowed by `narrowFacts` — a throw there costs the facts alone (`emptyRepoFacts`, `degraded: true`).
+`?repo=` is checked against `org_repos` (unknown → 404 `{ error: "unknown repository" }`; MCP reads the primary);
+`?app=` (an app key or `__repo`) ALSO narrows the per-part sections — environments' parts, `deploys`, `usage`,
+`providers` — to that key's parts; the other sections stay the org's capture. The layout is
+`layoutOf(layoutInputOf(facts), group)` (`shared/repo-layout-core.ts`), the same on the screen and over MCP.
 
 Three capture shapes feed it: `repo_events` rows (through the `ingestRepoEvent` gate — see Core invariant),
 `repo_snapshots` (one JSON row per kind: `prs_reconciled`, `env_heads`, `drift`, `branches`, and the Overview
-facts' `drift_chain`, `not_shipped`, `out_of_step` (`src/repo/facts-store.ts`) —
+facts' `drift_chain`, `not_shipped`, `out_of_step` (`src/repo/facts-store.ts`), the releases arm's
+`releases_reconciled` marker and contract v3's `app_metrics:<env>` descriptions —
 plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no section) and
 `repo_metrics` points (`putMetric`). Every section, its source, and what triggers the capture:
 
@@ -161,83 +61,25 @@ used to be webhook-only (`canopy/*` commit statuses, PR reviews). What stays web
 feeds `events` (My Work's capture, refreshed by Sync GitHub). The capture names a PR's AUTHOR and an
 issue's subject, not who merged/closed, so the feed never claims an actor it does not have.
 
-**Releases and tags (Repo setups, Phase F — `releases`, 0074; `src/repo/releases.ts`)** feed R3, the unseen card's
-tags and the week tile `releases`. Capture is gated: `release` (published / released / prereleased / edited →
-upsert; deleted / unpublished → the row goes; a DRAFT never) and `create` of a tag (dated by the delivery's
-`repository.pushed_at`, else nothing) are derived by `releaseEventsFromDelivery` and put through
-`ingestRepoRelease` (`src/consumer.ts` — identity `(org, repo, tag)`, content-hash dedupe; a tag never
-downgrades a release; a release over a tag row keeps the tag's sha), then written by
-`src/repo/release-store.ts`; reconcile's `releases` arm is the backfill (below). `author` is a GitHub login,
-mapped to a person on read. The reads, D1 only:
-- `readRelease(ctx, repo, app?)` → `FactsRelease | null`: the newest published non-prerelease release — or, for a
-  repository with no release, its newest tag (notes only for a release: headings and comments dropped, ≤ 280
-  characters). `app` narrows by that app's `release_signal` when it reads `tag:<glob>` (SQLite GLOB). `since`
-  is counted on the default branch (the first environment's, else `main`) from the push that carried the tagged
-  commit when one was captured, else from the release's date: `commits` sums captured pushes after it, `prs`
-  counts PRs merged into that branch after it (`raw.base`; a PR's merge is its FIRST merged row) — each `null`
-  unless its capture was recording by then (`recordingSince`), never a partial count. `waiting` lists those PRs
-  newest first (≤ 10; listed even when the count is unknown — they are facts). **`feature: true` ONLY by
-  `isFeaturePr`**: a `feat:` / `feat(scope):` title prefix (any case) or a label named `feature` / `enhancement`
-  (any case) — PR labels are now kept in the `pr` row's `raw.labels` by the webhook and the PR-list backfill.
-  `cadence` = the ≤ 8 releases before it, newest last.
-- `readTags(ctx, repo)` → `FactsUnseen.tags` (also `RepoAppsSetupDTO.tags`): every tag held, releases included.
-- `releaseWeekFigure(ctx, repo, now)` → `{ key: "releases", value, delta }` over the same pool: `null` until the
-  `releases_reconciled` snapshot names the repository (before a read, 0 would be a guess).
+**Releases and tags** (`releases`, 0074; `src/repo/releases.ts`) feed R3, the unseen card's tags and the week tile
+`releases`: gated capture of `release` / `create`, reconcile's backfill, and the reads `readRelease` / `readTags` /
+`releaseWeekFigure` — `repo-apps.md` › Releases.
 
-**Monorepos — which files a commit and a PR touched, and the App menu on Code and CI (Repo setups, Phase E;
-`0073_commit_paths`).** Two captures, both through the gate (`ingestion-gate.md`), both off the render path:
-- **Commit paths** (`src/repo/commit-paths.ts`, `src/repo/path-capture.ts`): a `push` delivery's own `commits[].added /
-  modified / removed` → `commit_paths` rows with `scope = 'commit'` (exactly that commit's files), written FIRST on the
-  delivery so the drift refresh's not-shipped compare already reads them. A push that lists `PUSH_PAYLOAD_COMMIT_CAP`
-  (20) commits, or a commit whose lists are missing or reach `PATHS_PER_COMMIT_CAP` (300 — UNVERIFIED: GitHub documents
-  no per-commit cap), was cut short; when the HEAD commit has no exact list and `before` is a real commit, ONE `compare`
-  (before...after, deferred under `waitUntil`) fills in — its `files` belong to the whole push, so they are stored under
-  the head commit as `scope = 'push'` (`'push_partial'` at the compare's own 300-file cap). A `push*` row is never read
-  as a commit's: the not-shipped filter and the commit counts read `commit` rows only; only CI's head-commit attribution
-  reads a push's, marked `approx`. A commit with neither is UNKNOWN. ≤ `PUSH_PATH_ROWS_CAP` (1,000) rows per push.
-- **PR files** (`src/repo/pr-files.ts`, `src/repo/pr-files-store.ts`): `GET /pulls/{n}/files`, ≤ 3 pages of 100 (three
-  full pages = `complete: false`), only for a repository with two or more apps (Packages count), for open PRs and PRs
-  merged in the last 14 days — on the `pull_request` webhook (opened / reopened / synchronize / closed-merged; no
-  request when the files were read for that head) and reconcile's `pr_files` arm (above). `pr_file_reads` holds the
-  head each list was read for: no row = never read = unknown.
-- **The narrowing** (`src/tools/repo-scope.ts`, `src/repo/app-scope.ts`; the rules in `shared/repo-scope-core.ts`, which
-  the SPA words with): a PR / commit / run TOUCHES the apps (not Packages) whose watch paths its files hit and the
-  Packages they hit; it REACHES an app it touches, or that uses a Package it touches (`usedBy`). Only in a repository
-  with two or more apps: under All apps each listed PR carries `touches` / `packages` (`null` = never read: no
-  "touches" line) and each CI failure `apps` (`null` = unknown) and `approx`; under an app key the Code tiles (Open
-  PRs, Merged this week, Commits this week — the week's pushed commits by their own files —, Contributors; a figure
-  with one unknown member is `value: null` with how many in its `sub`, "—" on screen), the 14-day bars (the app's
-  commits per push day, the note naming how many have unknown paths), the PR list (its 8 among the 100 most recently
-  touched PRs of 90 days, their checks and approvals read for just those) and the CI failures (the app's failed runs;
-  the 7-day rate over its decisive runs, `null` unless a week of run capture AND every run of the window is
-  attributed) are its own; `__repo` = touching no app and no package. **Unknown is never guessed into an app**, nor
-  into `__repo`; a PR read past its page cap belongs where it hits and is unknown where it does not. A run belongs to
-  the apps a `github` part's `workflow` setting names (by file name) or whose watch paths cover its workflow file,
-  plus its head commit's files. The deploy strips carry `envLabel` / `host`; the screen groups them per app. A throw
-  costs the narrowing alone (`degraded`, the narrowed sections empty). On screen (`web/src/repo-scope.ts`): the scope
-  line ("Pull requests that touch apps/api/** or packages/db/**", Show all apps), the touches cell (the apps it reaches,
-  "Repo-wide", and "via packages/ui" — under an app only when the app is reached through a Package alone), a failure's
-  apps after its workflow (All apps), strips per app. The sample narrows scenario E with `sampleScopes` (the design's
-  `CODE_E_API` / `CI_E`). Tests: `test/repo-monorepo.capture.test.ts`, `test/repo-monorepo.scope.test.ts`,
-  `test/render.repo-monorepo.test.ts`.
+**Monorepos — the App menu on Code and CI** (repo setups, Phase E; `0073_commit_paths`): which files a commit and a
+pull request touched (`commit_paths`, `pr_files`), and how the Code tiles, bars and PR list and the CI failures narrow
+to one app — `repo-apps.md` › Monorepos.
 
 **Owner prerequisites — what must be true OUTSIDE this repo** (the one place they are listed):
 - **The target repo's GitHub webhook must be SUBSCRIBED to every name in `REPO_EVENT_NAMES`**
   (`src/webhook.ts`; for an org connected through the GitHub App the subscription is the App's own event
   list, set once on the App — `github-app.md`): `pull_request`, `push`, `pull_request_review`, `check_run`,
   `workflow_run`, `status`, `deployment_status`, `deployment`. Every capture arm exists, but GitHub delivers only
-  what the hook subscribes to. The App is ALSO subscribed to `release` and `create` (`RELEASE_EVENT_NAMES`:
-  releases and tags, Phase F — below) and `workflow_job` (`LATER_EVENT_NAMES`: verified, acknowledged, not
-  captured yet). **GitHub deploy signals** (repo setups,
-  Phase A — `src/repo/capture.ts`): a `deployment` / `deployment_status` delivery and every commit status whose
-  context is NOT `canopy/*` become `repo_events` rows of kind `deploy`, UNTAGGED (`env` / `part` NULL), with
-  `raw.signal` = `deployment` | `status` — creator login, environment name exactly as the host spells it, state,
-  sha, ref, description, log / environment / target link, the workflow file of an Actions deployment, a status's
-  `branches` — through the gate's `ingestRepoEvent` (content-hash dedupe as every repo event), kept 90 days
-  (`DEPLOY_SIGNAL_RETENTION_DAYS`; a `deploy` row tagged with an environment from before 0057 is kept). They
-  feed detection (`hosting-providers.md` › Detection), a `github` part's deploys (only through its own setting,
-  `src/hosting/github-deploys.ts`) and the commit join (`src/hosting/sha-join.ts`) — never an environment's
-  deploys by name. Without `check_run` / `workflow_run`, reconcile is the
+  what the hook subscribes to. It must ALSO carry `release` and `create` (`RELEASE_EVENT_NAMES`: releases and
+  tags — `repo-apps.md` › Releases); the App is also subscribed to `workflow_job` (`LATER_EVENT_NAMES`: verified,
+  acknowledged, not captured yet). The `deployment` / `deployment_status` deliveries and every non-`canopy/*`
+  status are captured as UNTAGGED GitHub deploy signals (`repo_events` kind `deploy`, `raw.signal`, kept 90 days)
+  that feed Detected, the repo scan's seen signals, a `github` part's deploys and the commit join — never an
+  environment's deploys by name (`repo-apps.md` › The `github` provider). Without `check_run` / `workflow_run`, reconcile is the
   ONLY source of checks and runs (up to 6 hours late). The same now holds for `pull_request_review` and `status`: without them the
   reconcile's `reviews` and `statuses` arms are the only source (up to 6 hours late, or an admin's Poll now),
   and a review on a PR outside the 30 most recently updated OPEN ones, or older than that PR's last 10, is
@@ -257,9 +99,10 @@ mapped to a person on read. The reads, D1 only:
   more (`data-layer.md` › Configuration and credentials). The org needs a PRIMARY repository (Org settings ›
   Repositories, `org_repos`) and its environments (Org settings › Environments, `org_environments`, in
   `position` order); a GitHub credential — its App installation, else a stored `github_token`
-  (`resolveGithubCredential`, `github-app.md`); and, optionally, on Org settings › Integrations, an app-metrics
-  token per environment (`resolveCredential`). What HOSTS an environment — Cloudflare, Railway, Vercel, … — is
-  its parts, each provider with ONE org-wide credential (Org settings › Hosting, `hosting-providers.md`). The
+  (`resolveGithubCredential`, `github-app.md`); and, optionally, an app-metrics token per environment
+  (`resolveCredential`; set in a part's editor — Org settings › Repositories › a repo › Apps). What HOSTS an
+  environment — Cloudflare, Railway, Vercel, … — is its parts (set per app on that Apps page, `repo-apps.md`), each
+  provider with ONE org-wide credential (Org settings › Hosting, `hosting-providers.md`). The
   Worker secrets of the same purpose (`GITHUB_SERVICE_TOKEN`, `CF_ANALYTICS_*`, `SAPLING_METRICS_TOKEN`)
   answer for SaplingLearn ALONE, only until it stores each (`env.md` › Legacy); the vars `GITHUB_REPO` /
   `REPO_ENVIRONMENTS` are read by nothing.
@@ -362,11 +205,15 @@ cards, the strips, the Usage compare and the providers section. The CI tab's str
 part with a SETTLED deploy, labelled "<environment> · <part label>", oldest first) and the cards' lines are
 `deployDots` / `envPartOf` (`shared/repo.ts` — the sample uses the same two): a deploy still queued or
 building is not a dot; canceled is abandoned, never a failure. Nothing here reads GitHub's deployments or
-Workers Builds checks any more. **The pill is a verdict about CHECKS, with health as an override**:
+Workers Builds checks directly: a GitHub signal reaches a card only as a `github` part's own `hosting_deploys` row
+(`repo-apps.md` › The `github` provider). **The section's pill is a verdict about CHECKS, with health as an override**:
 `HEALTHY` needs checks captured on the branch head, none failing, and no failed part; a deploy that landed
 with NO checks captured reads `UNKNOWN`; a part whose newest deploy errored is a fact on its own, so
 `FAILING` does not wait for checks; failing head checks read `DEGRADED`; `DOWN` OUTRANKS everything — a fresh
-health ping saying the environment is unreachable is the headline. On screen the verdict is a status mark,
+health ping saying the environment is unreachable is the headline. `RepoEnv.pill` is still computed and served
+over MCP, but the screen draws it only for a payload WITHOUT `facts` — every Worker payload carries them now, and
+then the header pills and cards draw `envVerdict` (`repo-apps.md` › The Overview: Healthy only on passing checks,
+else Live). Without facts the verdict is a status mark,
 never a pill (`ENV_VERDICT` in `web/src/repo.ts` over `kindMark`: Healthy / Degraded / Failing / Down /
 Unknown, with what each means in its tooltip — `web-ui.md` › Status marks); a part's line is its label, the
 sha (when there is one), "<ago> ago · by <who> · <host>", FAILED in red or a quiet "deploying"; a part with no
@@ -454,10 +301,10 @@ Its arms, each in its own `safely`
 block: open PRs (+ the `prs_reconciled` marker), closed PRs, the pre-capture commit window,
 completed workflow runs, the failing-job label pass, the environment heads, each environment's head checks,
 the `canopy/*` commit statuses, PR reviews, branches, drift (the promotion chain), and the Overview facts'
-`not_shipped` and `out_of_step` (below) — and, when the caller asks (`runReconcileJob`'s
+`not_shipped` and `out_of_step` (below), releases (below) — and, when the caller asks (`runReconcileJob`'s
 `scan`: the cron and Sync GitHub, not Poll now), the repo scan (`scan`: one tree read, and only when the default
-branch's root tree sha changed, one GraphQL file batch + ≤ 1 describe per connected host — `hosting-providers.md` ›
-The repo scan). It returns `{ written, unchanged, failed: string[] }` — `failed` NAMES every arm that threw
+branch's root tree sha changed, one GraphQL file batch + ≤ 1 describe per connected host; ≤ `SCAN_COST` = 5 —
+`repo-apps.md` › Detection). It returns `{ written, unchanged, failed: string[] }` — `failed` NAMES every arm that threw
 (`"runs"`, `"checks"`, …); `/admin/backfill` passes that through as its `repo` object and the cron logs
 it.
 - **The failing-job label pass reads the BACKLOG, not this run's writes**: the ≤5 newest `run` rows of the
@@ -486,32 +333,12 @@ it.
   the webhook's `dismissed` action only (key `…:dismissed`) — its state at submission is no longer knowable,
   and a guessed `…:submitted` row would shadow the real one forever. PENDING reviews and ones with no author
   or no `submittedAt` are skipped.
-- **The facts arms** (`src/repo/facts-compute.ts`, repo setups Phase B), after drift, each its own `safely`:
-  `not_shipped` — per part of the PRIMARY repository's apps with a serving sha (`servingShas`), `GET
-  /compare/<serving sha>...<branch>`: GitHub's `ahead_by` as the count, the commits grouped by PR (`groupCommits`),
-  the oldest commit's date. In a repository with ≥ 2 apps the commits are kept to the app's watch paths
-  (`src/repo/watch.ts`), each commit's files read from `commit_paths` (Phase E — exact `commit` rows only; GitHub's
-  compare lists one combined file list for the range, which says nothing per commit). **A commit whose files are not
-  known stays IN** — counted, its group saying how many (`FactsCommitGroup.pathsUnknown`, "paths unknown" on screen) —
-  never dropped (the guard: `test/repo-monorepo.scope.test.ts`); with no commit known nothing is filtered and the count
-  is GitHub's total; filtered, the count is exact only when the compare returned every commit, else `null`. Incremental:
-  a part is compared again only when its serving sha or its branch head (`branchHeads`) changed, or when a commit it
-  kept as unknown (`NotShippedEntry.unknown`) has paths now — a D1 read, no GitHub request; never-computed parts first,
-  then the oldest.
-  `out_of_step` — per environment whose parts serve different commits (a 7- and a 40-character sha are one): the
-  NEWEST serving deploy is the reference and one compare per other distinct sha (`<other>...<reference>`):
-  `ahead` → the other apps are behind by `ahead_by`; `behind` (the newest deploy runs older code) → the reference
-  apps are behind; recomputed only when the environment's shas changed. Both share **`FACTS_COMPARE_CAP` = 6**
-  compares per run (the rest keep their entries and go first next time); each stores what it computed before it
-  throws. The same arms run on a push to an environment branch (`refreshDrift(…, pushedBranch)` — not shipped only
-  for that branch's parts).
-- **The `releases` arm (Phase F, `reconcileReleases` in `src/repo/releases.ts`)**: ONE `GET /releases?per_page=30`
-  (drafts skipped; a list shorter than the page is the whole history, so a captured release no longer in it is
-  removed) and, ONLY when the repository has no published release, ONE GraphQL page of its 30 newest tags
-  (`refs(refPrefix:"refs/tags/", orderBy: TAG_COMMIT_DATE)` — REST `/tags` carries no date; an annotated tag is
-  dated by its tagger, a lightweight one by its commit). Every row goes through the gate's release arm
-  (`ingestRepoRelease`), so a re-read writes nothing; a successful read writes the `releases_reconciled`
-  snapshot (`{ repo }`), the week figure's "read" marker. `RELEASES_RECONCILE_COST` = 2.
+- **The facts arms** (`not_shipped`, `out_of_step`, after drift — the promotion chain is the `drift` arm; each its
+  own `safely`, also run on a push to an environment branch; `FACTS_COMPARE_CAP` = 6 shared): `repo-apps.md` › The
+  reconcile's facts arms.
+- **The `releases` arm** (`reconcileReleases`, `src/repo/releases.ts`; ≤ `RELEASES_RECONCILE_COST` = 2 — the releases
+  list, and the tags query only when there is no release; every row through the gate's release arm; writes the
+  `releases_reconciled` marker): `repo-apps.md` › Releases.
 - **The `pr_files` arm (Phase E, `reconcilePrFiles` in `src/repo/pr-files.ts`)**: in a repository with two or more
   apps, the open PRs and the PRs merged in the last 14 days whose files were never read for their current head
   (`pr_file_reads.head_sha`) — open first, then merged, newest first — each `GET /pulls/{n}/files` ≤ 3 pages of 100,
@@ -558,8 +385,8 @@ CALLER's org — its repo, environments and stored credentials — which runs it
 its OWN guarded arm** (a failure in one never skips another): **health** (`pingHealth`), **usage**
 (`runUsagePolls` — the app's metrics), **hosting** (every part, through the hosting providers — present only when
 the org has a part; `hosting-providers.md`), **github** (`runReconcileJob` → `reconcileRepo`
-with the org's GitHub credential: checks, runs, branches, drift, open PRs, env heads, the `canopy/*` commit statuses
-and PR reviews). The result is
+with the org's GitHub credential: checks, runs, branches, drift, open PRs, env heads, the `canopy/*` commit statuses,
+PR reviews, the facts arms and releases — NOT the repo scan, which an admin runs with Scan again). The result is
 `RepoRefreshResult` (`shared/repo.ts`, types only): `UsagePollResult`'s `sapling`, plus `health` — one `PollOutcome` per TARGET (`part` set; `ok` = up, `failed` = down with FIXED
 words `timeout` / `HTTP <status>` / `unreachable`; `"not_configured"` with no environment) — and `github`:
 `{ written, unchanged, failed }` (`failed` = reconcile's ARM NAMES), `"not_configured"` without a primary
@@ -571,7 +398,7 @@ the facts arms and releases pushed a five-environment org past it) caps it at N 
 arm's 9 took it from twelve); past that the
 github arm is SKIPPED and says so (`failed: ["skipped: would exceed the subrequest budget"]`) rather than
 risk the invocation, while health and usage still run. The hosting arm runs only when the WHOLE refresh still
-fits (`refreshSubrequests(N)` + a mint + Σ `pollCost` ≤ `SUBREQUEST_CAP` — 54 left for two environments), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
+fits (`refreshSubrequests(N)` + a mint + Σ `providerPollCost` ≤ `SUBREQUEST_CAP` — 54 left for two environments), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
 (UNBOUNDED — the reason it has a tick of its own — and it feeds the Roadmap, not this dashboard),
 `pruneRepoCapture` (maintenance, not a refresh) and `runBackfill` / summaries (that is Sync GitHub: My Work's
 capture, with its own summary allowance). **That last exclusion has a visible cost**: `runBackfill` is also
@@ -680,8 +507,9 @@ says `empty` — whose copy is "No current usage reading — the hourly polls ha
 
 **Active users come from Sapling's own backend** — the one number Trov CANNOT compute. `pollSaplingMetrics`
 sends `GET {cfg.apiUrl}/api/internal/metrics` with `Authorization: Bearer <token>` — the org's
-`metrics_endpoint` secret stored for that environment (set from its parts' editor on Org settings › Hosting since
-repo-setups Phase 0; SaplingLearn's fallback: `SAPLING_METRICS_TOKEN`) —
+`metrics_endpoint` secret stored for that environment (set from a part's editor — opened from Org settings ›
+Repositories › a repo › Apps, or Hosting's checklist — since repo-setups Phase 0; SaplingLearn's fallback:
+`SAPLING_METRICS_TOKEN`) —
 (user-agent `canopy-metrics`, the 8s timeout) per environment and expects `200` → `{ "active_users": {
 "24h": n, "7d": n, "30d": n } }`. **The token goes to ONE place**: a non-`https:` `apiUrl` is never fetched,
 trailing slashes are normalised, and `redirect: "manual"` + "only a 200 is an answer" means a 3xx is a
@@ -754,7 +582,7 @@ meter's windows are whole UTC days and say so). Tests: `test/repo-poll.v3.test.t
 **On screen the Usage tab is a hierarchy, not tables** (`web/src/repo.ts`): the TARGETS (repo setups, Phase G — the
 design's UsageTarget, `web/src/repo-usage.ts`) → the EXTRA families of the parts that carry them → ONE **Product**
 section → the Hosting section. **A target is a part** (an app in an environment), narrowed by the App menu (Repo-wide
-only has none, and says so); with facts (the sample today) the targets are the facts' parts, each with its providers
+only has none, and says so); with facts (every Worker payload now, and the sample) the targets are the facts' parts, each with its providers
 figures when the section carries it, else `partFromFacts` (no figure). A card is in exactly ONE of four states
 (`targetState`), read from the part's role, `families` (what its provider reads — shared/usage-families-core.ts),
 `connection` (THE status function) and figures — NEVER its provider id: figures for the range (`ok`: requests and
@@ -792,15 +620,19 @@ drawn BY ITS SHAPE, never by id or key (`shapedGroups`): a point-in-time `stats`
 metrics' own tones; they come first, two to a row, then the v2 groups as above; the header reads "Product · <label>".
 Infrastructure is the ONE Hosting section (`providers`, `hosting-providers.md` › Repo dashboard › Usage › Hosting).
 
-**Pruning** (`pruneRepoCapture`, `src/repo/store.ts`, the cron's 6-hourly `:30` tick): `health_*` metrics
+**Pruning** (`pruneRepoCapture`, `src/platform/sweeps.ts` — the retention constants in `src/repo/store.ts` —, the
+cron's 6-hourly `:30` tick): `health_*` metrics
 and `check` rows older than 45 days — the `check` deletion ONLY `WHERE part IS NULL`, because a FRONTEND
 deploy record IS a `check` row (`part = 'frontend'`) and must be kept forever like `deploy` rows; and the
 HOURLY usage metrics (`hx_*` / `active_users_*`) older than 100 days; and `sap_*` product metrics
 older than **7 days, EXCEPT the rows stamped exactly 00:00 UTC, kept 100 days** (the daily totals the trend
-reads — `sap_*` and the usage globs never match each other's names). `pr` / `push` / `deploy` /
-`run` / `review` rows and `coverage` / `bundle_kb` / `todo_count` match no rule and are kept forever. Which files a
-commit touched (`commit_paths`, by the commit's own `at`) and a PR's files (`pr_files` / `pr_file_reads`, by the read's
-`fetched_at`) go after 100 days (`COMMIT_PATHS_RETENTION_DAYS`, Phase E); a PR still open past that is read again.
+reads — `sap_*` and the usage globs never match each other's names); UNTAGGED `deploy` rows (`env IS NULL`: the
+GitHub deploy signals) older than 90 days (`DEPLOY_SIGNAL_RETENTION_DAYS`); and `hosting_deploys` older than 180
+days by the provider's creation instant. `pr` / `push` / `run` / `review` rows, a `deploy` row tagged with an
+environment (from before 0057) and `coverage` / `bundle_kb` / `todo_count` match no rule and are kept forever. Which
+files a commit touched (`commit_paths`, by the commit's own `at`) and a PR's files (`pr_files` / `pr_file_reads`, by
+the read's `fetched_at`) go after 100 days (`COMMIT_PATHS_RETENTION_DAYS`, Phase E); a PR still open past that is read
+again.
 
 **Written by Trov — `state` and `themes`** (`shared/repo.ts`, typed in `shared/ai-core.ts`): Overview's first
 block ("State") and Planning's ("Where the work went", per range). They are NOT sections, so `REPO_TAB_SECTIONS`
@@ -809,46 +641,11 @@ them yet: production omits both** (`GET /repo/dashboard` and `get_repo_dashboard
 them from the fixtures under `wrangler dev` only, never over MCP (`ai.md`). When the dashboard has them,
 `get_repo_dashboard` carries `state` with `tab: overview` (or no tab) and `themes` with `planning` (or no tab).
 
-**The Overview from facts (Repo setups, Phase C)** — when the payload carries `facts` (`RepoDashboard.facts`,
-`shared/repo-facts-core.ts`; the sample sets it today, the Worker adds it with the facts read) the Overview is
-`overviewFacts` (`web/src/repo-overview.ts`), else today's sections. The composition is the design's `buildScreen`,
-top to bottom: `<div data-repo-state-slot>` (where #178's `state` block goes), Needs attention, the connect card, the
-opener by `layoutOf(layoutInputOf(facts), group).opener` (found / unseen / release / production + previews /
-chain and envCards → environment cards + drift / appsTable), not shipped where a part has commit groups waiting, the
-week tiles, and the links row. Every block is its own module exporting an `OverviewBlock` (`(f, x) => string`,
-`web/src/repo-overview-ctx.ts`) and is wrapped in `data-repo-block="<name>"` (an empty one takes no room); "Repo-wide
-only" (`REPO_WIDE`) draws its own note instead of an opener. The frame's modules:
-- `repo-attention.ts` WORDS each structured `FactsAttention` (kind + refs, never a sentence on the wire) into the
-  design's sentences — "Production deploy e07b3a2 failed 12m ago on Cloudflare Workers. c41e7d9 is still serving." —
-  naming the host by its part's `host` label (never a switch on a provider id) and an app first ("api: …") when the
-  repository has more than one deployed app. An action leaves Trov only with an https address and outside the
-  sample; otherwise it opens the tab that holds it.
-- `repo-verdict.ts` `envVerdict(f, envKey)` is THE environment verdict (Unknown → Down → Failing → Out of step →
-  Degraded, the design's `verdictFor`; then Healthy ONLY when checks pass on the branch head — with no checks
-  captured, or checks still running, live parts read Live, never Healthy on unknown checks), read by the header pills
-  and the environment cards alike; `ciLine(ci)` there is the one wording of a branch head's checks ("All 14 checks
-  passing on 3e9a1f2", "2 of 9 checks failing on e07b3a2", "Checks running on f19ad20", "<check> running on <sha>").
-- `repo-week.ts`: "—" for a null figure (never 0), ▲ / ▼, failed deploys inverted, "vs last week" / "since
-  connecting" / "unknown until <host> is connected". `repo-connect.ts`: need `deploys` → the design's G card; need
-  `metrics` → deploys arrive via GitHub and the card asks for CPU and memory only; the action (admins) opens Org
-  settings › Hosting, members read the note.
-- The links row's Usage line reads the parts' `reportsMetrics` capability and `connection`: "from <hosts>", "not
-  available from Netlify" (no host in view reports a metric) or "not connected" — so a repository never reads "not
-  connected" for a thing it does not have (`test/render.repo-overview.test.ts`, every scenario × variant × app).
-- The header (`repo-header.ts`): the repository menu (`dropdown()`, `facts.repos`, only with two or more), the App
-  menu (monorepos only: All apps, each app with its folder and open PRs, Repo-wide only), the environment pills, and
-  Group by (`segmented()`, only when `layout.canGroup`, above the panel). Repository and app are in the address
-  (`#repo[/<tab>]?repo=<owner%2Fname>&app=<key>`, hash.ts; the App menu is left out of the page key) and go to
-  `GET /repo/dashboard?repo=&app=`, which the Worker ignores until the facts read lands; the sample narrows with
-  `narrowFacts` client-side. Group by is the session's (`state.repoGroup`) over `facts.groupDefault`; after a flip
-  an admin (never in the sample) is offered "Make this the default" → `PUT /api/o/:slug/repo/settings
-  { repo, overview_group }` (`src/repo/settings-routes.ts`: admin, cookie only, 404 for a repository the org does not
-  have, audited `repo.settings` in `org_admin_audit`), stored in `repo_settings` (0071) and read back by
-  `readRepoSettings(ctx, repo)` (`src/data/repo-settings.ts`) for the facts read.
-- "Preview with sample data" gains a scenario switch: a `dropdown()` per axis in the sample bar — Scenario (A–N) and
-  Variant (when the scenario has more than one) — session-only (`state.repoScenario`). The names live in
-  `web/src/repo-sample-keys.ts` (no fixture data, like `hosting-keys.ts`), so the switch never pulls the sample into
-  the main bundle; a pick recomputes only `facts`, and picking a repository in the sample shows that scenario.
+**The Overview from facts** — whenever the payload carries `facts` (every Worker payload now, and the sample) the
+Overview is `overviewFacts` (`web/src/repo-overview.ts`), else the older section-built Overview: the composition, the
+blocks, the verdict, Needs attention, the connect card, week tiles, the header's repository / App menus and Group by,
+the address `#repo[/<tab>]?repo=&app=`, the admin's default Group by (`repo_settings`) and the sample's scenario switch
+are `repo-apps.md` › The Overview.
 
 **`get_repo_dashboard` is the Repo dashboard's read over MCP, for every principal too** — it exposes nothing
 a signed-in member cannot see at `#repo`, and nothing per-user. `src/tools/repo-agent.ts` is a VIEW over

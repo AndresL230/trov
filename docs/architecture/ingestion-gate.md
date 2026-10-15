@@ -63,7 +63,10 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   independently gate which deliveries feed which capture; a repo-capture failure is caught and logged, never
   costing the My Work capture, and the webhook's response body carries `repo: { captured, unchanged }`
   alongside the existing `captured` / `unchanged`. PR-close and issue capture into `events` is unchanged by
-  any of this.
+  any of this. A NEWLY captured deploy signal, check run or workflow run is then offered to
+  `writeGithubDeploys` (`src/hosting/github-deploys.ts`), which may write a `github` part's `hosting_deploys` row —
+  a computed, direct write from a row the gate already stored, only through the part's own setting, never a second
+  ingestion surface (`repo-apps.md` › The `github` provider).
 - **Releases are the repo capture's THIRD arm, `ingestRepoRelease`** (Repo setups, Phase F): the `release` /
   `create` deliveries (`RELEASE_EVENT_NAMES`) and reconcile's `releases` arm put each release or tag through it —
   never `/ingest`. A release CHANGES (edited, deleted), so it is not an append-only `repo_events` row: its
