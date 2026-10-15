@@ -75,6 +75,48 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // The trov.dev performance plan's P0 + P1 (handoff #3): caching, boot paints, a lazy What's new, D1 round trips, badges.
+  {
+    version: "0.34",
+    date: "2026-10-15",
+    title: "Faster Trov",
+    headline: "Trov opens sooner, asks the server for less, and stays quick while you work.",
+    highlights: [
+      "Trov opens faster: a screen's data now fills in with a few redraws instead of one per read, so the first screen settles sooner, most of all on slower machines.",
+      "Opening an organization asks for much less: the sidebar's counts arrive in one small read instead of seven full lists.",
+      "Every page in an organization answers sooner: fewer trips to the database for each one, and the Repo dashboard waits on three reads in a row instead of about forty.",
+      "Docs, Review and the Feed stay quick as you work: each document's text is formatted once instead of on every change on screen.",
+      "The app downloads less: Help › What's new loads only when you open it, and scripts and styles stay cached by your browser between visits.",
+    ],
+    ops: [
+      "Smart Placement (`[placement] mode = \"smart\"` in `wrangler.toml`) takes effect with the normal Workers Builds deploy. Cloudflare needs some traffic before it places the Worker near D1 (ENAM), so the gain may show gradually. To undo it, remove the `[placement]` block and deploy.",
+      "No migration, no secret or var, no trigger change.",
+      "After the deploy, check that a hashed script is cached for a year and HTML is not: `curl -sI https://trov.dev$(curl -s https://trov.dev/ | grep -o '/assets/[^\"]*\\.js' | head -1) | grep -i cache-control` says `public, max-age=31536000, immutable`; then compare Workers Observability wall time for `/api/o/:slug/repo/dashboard`, `/auth/me` and a tenant route with the days before.",
+      "From now on, the PR that opens an Unreleased entry or cuts a version also sets `LATEST_VERSION` in `web/src/release-latest.ts` to match (`test/releases.test.ts` fails until it does).",
+    ],
+    patches: {
+      added: [
+        "`GET /api/o/:slug/badges` (`src/tools/badges.ts`, `shared/badges.ts`): the sidebar's seven counts in one D1 batch, each its list's own WHERE clause, held to the list it stands for by `test/badges.routes.test.ts`; `badges` is a reserved org slug (#N)",
+        "Paint queue (`web/src/paint-queue.ts`): `rerender()` stays synchronous; `batchRender` wraps `enterOrg` and `loadForScreen`; loader completions use `rerenderSoon()` (one paint per animation frame, at least `SOON_GAP_MS` = 100 ms after the last landing or batch paint; a timeout when the tab is hidden). My Work boot: 27 full-app paints → 4–5 (#N)",
+        "`test/helpers/d1-count.ts` and `test/perf.round-trips.test.ts`: serial D1 round trips per path, pinned (#N)",
+      ],
+      changed: [
+        "`assetHeaders()` (`shared/site-pages.ts`) writes `/assets/*` → `public, max-age=31536000, immutable` and `/guide/*` → `public, max-age=604800` (`ASSET_CACHE`); HTML keeps ETag revalidation (#N)",
+        "`[placement] mode = \"smart\"` in `wrangler.toml`; `env.md` records the D1 region (ENAM) (#N)",
+        "`getRepoDashboard` (`src/tools/repo.ts`) starts each read as soon as what it depends on is known: 39 → 3 serial round trips (`GET /repo/dashboard` 40 → 5), same 43 statements, same answer (#N)",
+        "`/auth/me`: `getPerson`, `listIdentities` and `soleTitle` run in the existing `Promise.all`, 5 → 2 serial round trips (#N)",
+        "`sessionGate` reads the session and the membership for `/api/o/:slug/*` in ONE statement (`resolveSessionTenant` in `src/data/context.ts`, `resolveTenant`'s statement joined to the session row); `tenantGate` uses that `tenantHint` only for the same person and slug. Every tenant request: 2 → 1 round trip before its handler (#N)",
+        "`resolveToken` (`src/auth/tokens.ts`) writes `last_used_at` at most once a minute, best-effort, as OAuth already did (#N)",
+        "The boot reads `GET /badges` instead of the proposals, draft ADRs, Unplaced, identity tasks, ticket badge, handoffs and prompts lists, and no longer reads `GET /api/orgs` (`/auth/me`'s orgs back the rail until the switcher, the picker or Settings reads the full list). A list that lands writes its count into `state.badges`; `badgeCount` (`render.ts`) picks. The Feed's review box and a prompt's tag picker load what they show (#N)",
+        "Help › What's new renders from `import(\"./releases\")` (`web/src/releases-lazy.ts`) with skeletons; the newest version moves to `web/src/release-latest.ts` (`LATEST_VERSION`, pinned to `RELEASES[0]` by `test/releases.test.ts`). Main bundle 486 → 396 kB gz (#N)",
+        "`renderMarkdown` / `renderMarkdownInline` are cached in an LRU (`web/src/lru.ts`) keyed by repository, org and text; `extractOutline` is cached by body and returns frozen outlines (#N)",
+        "Repo readers in `src/repo/reads.ts` / `src/repo/store.ts` `return await` their statement, so a parallel wave's failure never surfaces as an unhandled rejection (#N)",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [],
+  },
   // Hosting providers: Org settings › Hosting, the Repo dashboard's Hosting section, Detected, Vercel events.
   {
     version: "0.33",
