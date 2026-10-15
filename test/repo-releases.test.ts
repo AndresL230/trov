@@ -11,6 +11,7 @@ import type { Env } from "../src/env";
 import { all, first, run } from "./helpers/db";
 import { ORG_A, ORG_B, systemCtx } from "./helpers/tenant";
 import { fakeGithub } from "./helpers/repo";
+import { addOrgRepo } from "./helpers/org-config";
 import { ingestRepoRelease } from "../src/consumer";
 import { captureDelivery } from "../src/webhook";
 import { reconcileRepo } from "../src/repo/github";
@@ -200,11 +201,11 @@ describe("reconcile's releases arm", () => {
 // ── the reads ───────────────────────────────────────────────────────────────
 
 /** A repo_events row written as capture would, with a chosen `recorded_at` (when capture began matters). */
-async function event(kind: "push" | "pr", f: { key: string; ref?: string; sha?: string; number?: number; state?: string; title?: string; login?: string; count?: number; raw?: unknown; at: string; recorded?: string }): Promise<void> {
+async function event(kind: "push" | "pr" | "run", f: { key: string; ref?: string; sha?: string; number?: number; state?: string; name?: string; title?: string; login?: string; count?: number; raw?: unknown; at: string; recorded?: string }): Promise<void> {
   await run(env.DB,
-    `INSERT INTO repo_events (org_id, repo, semantic_key, kind, ref, sha, number, state, title, actor_login, count, raw, provenance, occurred_at, recorded_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'webhook', ?, ?)`,
-    ORG_A, REPO, f.key, kind, f.ref ?? null, f.sha ?? null, f.number ?? null, f.state ?? null, f.title ?? null, f.login ?? null, f.count ?? null,
+    `INSERT INTO repo_events (org_id, repo, semantic_key, kind, ref, sha, number, state, name, title, actor_login, count, raw, provenance, occurred_at, recorded_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'webhook', ?, ?)`,
+    ORG_A, REPO, f.key, kind, f.ref ?? null, f.sha ?? null, f.number ?? null, f.state ?? null, f.name ?? null, f.title ?? null, f.login ?? null, f.count ?? null,
     JSON.stringify(f.raw ?? {}), f.at, f.recorded ?? iso(60));
 }
 const merge = (number: number, title: string, daysAgo: number, labels: string[] = [], base = "main") =>
@@ -302,6 +303,46 @@ describe("readRelease", () => {
 
   it("nothing captured → null", async () => {
     expect(await readRelease(systemCtx(ORG_A), REPO)).toBeNull();
+  });
+
+  it("an app whose release_signal is workflow:<file>@<branch> reads its latest SUCCESSFUL run of that file on that branch", async () => {
+    const ctx = systemCtx(ORG_A);
+    await addOrgRepo(REPO, ORG_A);
+    await addOrgRepo("acme/other", ORG_A, { primary: false });
+    const app = (key: string, repo: string, signal: string) => run(env.DB,
+      `INSERT INTO repo_apps (org_id, key, repo, label, kind, release_signal, created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, ?, 'Package', ?, ?, 'seed', ?, 'seed')`,
+      ORG_A, key, repo, key, signal, iso(100), iso(100));
+    await app("mobile", REPO, "workflow:release.yml@main");
+    await app("docs", REPO, "workflow:.github/workflows/docs.yml@main");
+    await app("elsewhere", "acme/other", "workflow:release.yml@main");
+    const runRow = (id: number, o: { sha: string; at: number; path?: string; ref?: string; state?: string; runNumber?: number }) => event("run", {
+      key: `gh:run:${id}:1`, number: id, name: "Release", ref: o.ref ?? "main", sha: o.sha, state: o.state ?? "success", login: "ana-gh", count: 1,
+      raw: { event: "push", started_at: iso(o.at), path: o.path ?? ".github/workflows/release.yml", ...(o.runNumber ? { run_number: o.runNumber } : {}) }, at: iso(o.at),
+    });
+    const TAGGED = "c".repeat(40);
+    await runRow(101, { sha: "1".repeat(40), at: 30 });
+    await runRow(102, { sha: "2".repeat(40), at: 20 });
+    await runRow(106, { sha: TAGGED, at: 9, runNumber: 42 });                          // the latest successful run
+    await runRow(107, { sha: "d".repeat(40), at: 6, state: "failure", runNumber: 43 });  // failed: not a release
+    await runRow(108, { sha: "e".repeat(40), at: 5, ref: "develop", runNumber: 44 });   // another branch
+    await runRow(109, { sha: "f".repeat(40), at: 4, path: ".github/workflows/ci.yml" }); // another workflow
+    await event("push", { key: "push:tagged", ref: "main", sha: TAGGED, count: 2, at: iso(10) });
+    await event("push", { key: "push:after", ref: "main", sha: "a1", count: 3, at: iso(5) });
+    await merge(31, "feat: offline mode", 4);
+    await ingestRepoRelease(ctx, { op: "tag", repo: REPO, tag: "v9.9.9", publishedAt: iso(1), provenance: "webhook" }); // a tag says nothing here
+
+    const r = await readRelease(ctx, REPO, "mobile");
+    expect(r).toEqual({
+      tag: "release.yml #42", at: iso(9), by: "ana-gh", notes: null,
+      since: { commits: 3, prs: 1 },
+      waiting: [{ pr: 31, title: "feat: offline mode", by: "ana-gh", mergedAt: iso(4), feature: true }],
+      cadence: [{ tag: "release.yml 1111111", at: iso(30) }, { tag: "release.yml 2222222", at: iso(20) }],
+    });
+    // No run of that workflow captured → null, never a tag in its place; another repository's app → null (runs are the
+    // primary repository's capture); the repository read without an app still reads its tags.
+    expect(await readRelease(ctx, REPO, "docs")).toBeNull();
+    expect(await readRelease(ctx, "acme/other", "elsewhere")).toBeNull();
+    expect((await readRelease(ctx, REPO))?.tag).toBe("v9.9.9");
   });
 });
 

@@ -52,9 +52,12 @@ the app, in every environment, carries the key as its `part_key`. The key alphab
   under what a glob matches. Read by the not-shipped arm (below) and by the App menu's narrowing of Code and CI (Monorepos, below).
 - **`release_signal`** — how a release of this app shows up (`web/src/repo-apps.ts` offers it for a Package or
   an app with no part): `tag:<glob>` (an SQLite GLOB on the tag — `tag:v*`, `tag:ui-kit@*`), `workflow:<file>@<branch>`
-  (a completed run of that workflow on that branch), or NULL (not tracked). The writer stores any one line ≤ 200;
-  **only `tag:` is read today** (`readRelease`'s narrowing, below) — a `workflow:` signal is stored and drawn and
-  read by nothing yet.
+  (the latest successful run of that workflow on that branch), or NULL (not tracked). ONE parser,
+  `parseReleaseSignal` (`shared/repo-apps-core.ts`), is both the writer's check and `readRelease`'s reading: the glob
+  1–100 of `A–Z a–z 0–9 . _ - @ / + * ? [ ] ! ^` with ≤ 10 wildcards; the file a workflow file name (the `github`
+  provider's own pattern, folder optional, no `..`); the branch no whitespace or control character, ≤ 200 (split at
+  the first `@` — a file has none). Anything else is a 400 on `release_signal`, said beside the field on the Apps tab
+  (above the form for an app on a host, whose page has no such field).
 - **The writers** (`src/repo/apps.ts`, admin+, each ONE batch with its audit row in `org_admin_audit`):
   `putRepoApp(ctx, key, body)` — body keys `repo`, `label`, `folder`, `kind`, `watch`, `release_signal`, `source`,
   `position`, any other refused; a new app needs `kind`; `repo` must be one of the org's repositories (default the
@@ -70,7 +73,8 @@ the app, in every environment, carries the key as its `part_key`. The key alphab
   is 409 `app_conflict`, never moved); `DELETE …/apps/:key` (the row; its parts stay unless `?parts=remove`, each
   then through `deletePart`, audited `part.delete`, its deploys and poll state with it; an implicit app IS its
   parts, so only `?parts=remove` removes it).
-- Tests: `test/repo-apps.test.ts` (0070, `listRepoApps`, the writers), `test/repo-apps-setup.test.ts` (the routes).
+- Tests: `test/repo-apps.test.ts` (0070, `listRepoApps`, the writers, › validates release_signal),
+  `test/repo-apps-setup.test.ts` (the routes).
 
 **Environments are hidden per repository.** Environments stay org-wide; the Repo screen for repository R shows
 R's apps and only the environments where one of them has a part (`FactsEnv`, in the org's `position` order). A
@@ -513,7 +517,13 @@ a GitHub LOGIN — not a handle column, mapped to a person on read; `notes` ≤ 
   `releases_reconciled` snapshot (`{ repo }`).
 - **`readRelease(ctx, repo, app?)`** → `FactsRelease | null`: the newest published non-prerelease release, or — for a
   repository with none — its newest tag (notes only for a release: headings and comments dropped, ≤ 280). `app`
-  narrows by that app's `release_signal` when it reads `tag:<glob>`. `since` is counted on the default branch (the
+  narrows by that app's `release_signal`: `tag:<glob>` keeps the matching tags; **`workflow:<file>@<branch>`** reads
+  the app's latest SUCCESSFUL captured `run` of that workflow file (`raw.path`) on that branch instead — tag
+  `<file> #<run number>` (`raw.run_number`, kept by the capture's `workflow_run` arm) or `<file> <short sha>` for a run
+  row from before it carried one, dated by the run's completion, by its actor, notes null, `since` / `waiting` from the run's head sha on
+  THAT branch, `cadence` the ≤ 8 successful runs before it (a re-run's attempts are one run); no run captured, or an
+  app of a repository that is not the primary (runs are its capture) → null, never a tag in its place. A run says
+  nothing about whether it reached a store, and the read claims nothing about it. `since` is counted on the default branch (the
   first environment's, else `main`) from the push that carried the tagged commit when one was captured, else from the
   release's date: `commits` sums captured pushes after it, `prs` counts PRs merged into that branch after it — each
   null unless its capture was recording by then (`recordingSince`), never a partial count. `waiting` lists those
@@ -526,7 +536,8 @@ a GitHub LOGIN — not a handle column, mapped to a person on read; `notes` ≤ 
 - On screen: `releaseBlock` (R3) — tag, age, date, who, notes; since ("—" when unknown); the waiting PRs (merged
   glyph, "feature" only where `feature: true`); the cadence strip over the last 100 days and the gaps sentence.
 
-Tests: `test/repo-releases.test.ts` (› a feature claim comes only from a feat prefix or a feature label (guard)),
+Tests: `test/repo-releases.test.ts` (› a feature claim comes only from a feat prefix or a feature label (guard); › an
+app whose release_signal is workflow:<file>@<branch>),
 `test/render.repo-release.test.ts`.
 
 ## Costs: the reconcile arms and Poll now

@@ -106,8 +106,9 @@ function fromWorkflowRun(p: Obj): RepoEvent[] {
     semantic_key: `gh:run:${id}:${attempt}`,
     kind: "run", number: id, name: str(run.name), ref: str(run.head_branch), sha: str(run.head_sha),
     state: str(run.conclusion) ?? "neutral", actor_login: str(obj(run.actor)?.login), url: str(run.html_url), count: attempt,
-    // `path` (`.github/workflows/<file>.yml`) is what a `github` part's workflow setting names (src/hosting/github-deploys.ts).
-    raw: JSON.stringify({ event: str(run.event), started_at: str(run.run_started_at), path: str(run.path) }),
+    // `path` (`.github/workflows/<file>.yml`) is what a `github` part's workflow setting names (src/hosting/github-deploys.ts)
+    // and a `workflow:` release signal follows; `run_number` is that release's tag (src/repo/releases.ts).
+    raw: JSON.stringify({ event: str(run.event), started_at: str(run.run_started_at), path: str(run.path), run_number: num(run.run_number) }),
     provenance: "webhook", occurred_at: at,
   }];
 }

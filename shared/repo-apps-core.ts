@@ -33,3 +33,34 @@ export interface RepoApp {
   source: AppSource | "synthesised";
   position: number;
 }
+
+// ── How a release of an app shows up (`repo_apps.release_signal`) ──
+/** A parsed release signal: `tag:<glob>` (an SQLite GLOB on the tag) or `workflow:<file>@<branch>` (the latest
+ *  successful run of that workflow file on that branch). */
+export type ReleaseSignal = { kind: "tag"; glob: string } | { kind: "workflow"; file: string; branch: string };
+
+/** A tag glob: 1–100 of letters, digits and `. _ - @ / + * ? [ ] ! ^`, at most 10 wildcards (`*` / `?`). */
+const TAG_GLOB = /^[A-Za-z0-9._@/+*?[\]!^-]{1,100}$/;
+const TAG_WILDCARDS_MAX = 10;
+/** A workflow file, with or without its folder — the `github` provider's own pattern (src/hosting/providers/github.ts). */
+const WORKFLOW_FILE = /^(?:\.github\/workflows\/)?[A-Za-z0-9._-]{1,100}\.ya?ml$/;
+/** A branch as an environment may name one: no whitespace, no control character, ≤ 200. */
+const BRANCH = /^[^\s\u0000-\u001f\u007f]{1,200}$/;
+
+/** The one reading of a release signal — what `putRepoApp` accepts and what `readRelease` follows. Null for
+ *  anything that is not exactly one of the two forms (and for a workflow file with `..` in it). */
+export function parseReleaseSignal(v: string | null | undefined): ReleaseSignal | null {
+  if (typeof v !== "string") return null;
+  if (v.startsWith("tag:")) {
+    const glob = v.slice(4);
+    return TAG_GLOB.test(glob) && (glob.match(/[*?]/g)?.length ?? 0) <= TAG_WILDCARDS_MAX ? { kind: "tag", glob } : null;
+  }
+  if (v.startsWith("workflow:")) {
+    const rest = v.slice(9);
+    const at = rest.indexOf("@"); // a workflow file has no `@`; a branch may
+    if (at < 0) return null;
+    const file = rest.slice(0, at), branch = rest.slice(at + 1);
+    return WORKFLOW_FILE.test(file) && !file.includes("..") && BRANCH.test(branch) ? { kind: "workflow", file, branch } : null;
+  }
+  return null;
+}

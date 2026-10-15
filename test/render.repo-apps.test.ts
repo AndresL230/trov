@@ -272,6 +272,19 @@ describe("Setup 3 · the deploy-signal picker (GUARD: only signals seen in 30 da
     expect(pickableSignals([])).toEqual([]);
   });
 
+  it("a refused release signal is said beside the field (app page and Add an app); on an app with a host, above the form", () => {
+    const d = setup();
+    const msg = "release_signal must be tag:<glob> (at most 100 characters) or workflow:<file>@<branch>";
+    const ui = repoAppsPage(route("app", "ui"), appsUi(d, { draft: { ...draftOf(d.apps.find((a) => a.key === "ui")!), error: msg, errorField: "release_signal" } }));
+    expect(ui).toMatch(/data-apps-release[\s\S]*cnpy-field-anchor[\s\S]*role="alert" class="cnpy-field-err"[^>]*>release_signal must be tag:&lt;glob&gt;/);
+    const add = page(route("new"), appsUi(d, { add: { key: "mobile", folder: "/", kind: "Package", release: "tag:v*", saving: false, error: msg, errorField: "release_signal" } }));
+    expect(add).toMatch(/org-apps-add-release-l[\s\S]*cnpy-field-anchor[\s\S]*role="alert" class="cnpy-field-err"[^>]*>release_signal must be/);
+    // An app on a host has no release field on its page: the refusal is the page's own alert, never lost.
+    const web = repoAppsPage(route("app", "web"), appsUi(d, { draft: { ...draftOf(d.apps.find((a) => a.key === "web")!), error: msg, errorField: "release_signal" } }), initialDropdownUi(), () => "");
+    expect(web).not.toContain("data-apps-release");
+    expect(web).toContain(`role="alert" style="font-size:12.5px;line-height:1.5;color:var(--red);margin-top:6px;margin:0 0 14px">release_signal must be`);
+  });
+
   it("a pick is staged in the draft until Save", () => {
     const d = setup();
     const dr = { ...draftOf(d.apps[1]), picks: { production: signalKey(SIGNALS[2]) } };

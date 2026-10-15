@@ -8,10 +8,11 @@
 //           org's rows through the tenant surface; never a secret — the dashboard and MCP may call it.
 //   write   `putRepoApp` / `deleteRepoApp` — AUTHORED writes (admin+), each audited `app.set` / `app.delete`
 //           in `org_admin_audit` in the same batch, the audit naming the KEYS that changed, never a value.
-//           No screen calls them yet (Org settings › Repositories › Apps is Phase D).
+//           Called by Org settings › Repositories › a repo › Apps (./apps-routes.ts) and the repo scan's Accept
+//           (./scan-store.ts).
 import { PART_KEY_RE } from "@shared/hosting";
 import type { OrgSettingsAuditAction } from "@shared/integrations";
-import { APP_KINDS, isAppKind, type AppKind, type AppSource, type RepoApp } from "@shared/repo-apps-core";
+import { APP_KINDS, isAppKind, parseReleaseSignal, type AppKind, type AppSource, type RepoApp } from "@shared/repo-apps-core";
 import { requireRole } from "../data/context";
 import { all, batch, first, nowIso, stmt, type Stmt, type TenantContext } from "../data/sql";
 import { SettingsError } from "../integrations/settings";
@@ -124,9 +125,15 @@ export async function putRepoApp(ctx: TenantContext, key: string, body: unknown)
   let releaseSignal = existing?.release_signal ?? null;
   if (b.release_signal !== undefined) {
     if (b.release_signal === null || b.release_signal === "") releaseSignal = null;
-    else if (typeof b.release_signal !== "string" || b.release_signal.length > APP_RELEASE_SIGNAL_MAX || CONTROL.test(b.release_signal)) {
-      throw invalid("release_signal", `release_signal must be one line of at most ${APP_RELEASE_SIGNAL_MAX} characters`);
-    } else releaseSignal = b.release_signal.trim();
+    else {
+      // Exactly one of the two forms `readRelease` follows (`parseReleaseSignal`, shared/repo-apps-core.ts) — never
+      // a free line that nothing reads.
+      const signal = typeof b.release_signal === "string" && b.release_signal.length <= APP_RELEASE_SIGNAL_MAX ? b.release_signal.trim() : null;
+      if (signal === null || !parseReleaseSignal(signal)) {
+        throw invalid("release_signal", "release_signal must be tag:<glob> (at most 100 characters) or workflow:<file>@<branch>");
+      }
+      releaseSignal = signal;
+    }
   }
 
   let source: AppSource = existing ? sourceOf(existing.source) : "manual";

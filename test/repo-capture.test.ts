@@ -138,6 +138,12 @@ describe("repoEventsFromDelivery — workflow_run and pull_request_review", () =
     expect(repoEventsFromDelivery("workflow_run", { ...workflowRun, action: "requested" })).toEqual([]);
   });
 
+  it("keeps the run's number (a workflow release's tag, src/repo/releases.ts) — null when the delivery has none", () => {
+    const numbered = { ...workflowRun, workflow_run: { ...workflowRun.workflow_run, run_number: 812 } };
+    expect(JSON.parse(repoEventsFromDelivery("workflow_run", numbered)[0].raw).run_number).toBe(812);
+    expect(JSON.parse(repoEventsFromDelivery("workflow_run", { ...workflowRun, workflow_run: { ...workflowRun.workflow_run, run_number: undefined } })[0].raw).run_number).toBeNull();
+  });
+
   it("captures a submitted review", () => {
     expect(repoEventsFromDelivery("pull_request_review", prReview)[0]).toMatchObject({
       semantic_key: "gh:review:3001:submitted", kind: "review", number: 480, state: "approved", actor_login: "Darkest-Teddy",
