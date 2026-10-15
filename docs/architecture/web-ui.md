@@ -931,7 +931,9 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   line), ONE constant (`AI_EXIT_MS`, 310 ms) and ONE helper (`aiLeaving`, over `aiLeavingT` / `aiLeave`). It covers
   "Wrong?" on State or a Trov entry (`aiHiddenKey`), "Got it" on the Feed's note (`AI_NOTE_LEAVING`), and every
   suggestion an Accept / Dismiss took — a chip, the risk line, a list row's mark, a proposed theme, a Roadmap card
-  (`aiSuggestionKey(id)`) — and a Roadmap note or the drift "Wrong?" took. It is Review's exit (› A row leaving a list) on a screen REBUILT per paint: the item is
+  (`aiSuggestionKey(id)`) — and a Roadmap note or the drift "Wrong?" took. The Tickets queue reuses `aiLeave` for a
+  card a refetch finds declined while All is up (its own `state.qLeaving`, `tickets.md` › The default view hides
+  declined). It is Review's exit (› A row leaving a list) on a screen REBUILT per paint: the item is
   still drawn for `AI_EXIT_MS`, `inert`, dimmed .13s, then the one-track grid goes `1fr` → `0fr` and fades over
   `--fx-fast` — a KEYFRAME clocked by `--leave-t` (the elapsed ms, negative — `--enter-t`'s trick), so a rebuild
   mid-exit joins it instead of replaying it; it outranks `[data-enter] .cnpy-stagger > *`. "Wrong?" / "Got it" hide
