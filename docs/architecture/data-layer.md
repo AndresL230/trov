@@ -254,7 +254,10 @@ else SaplingLearn's legacy secret. Every other credential comes from
 environment key). Both are resolved ONLY in modules that `src/mcp.ts` cannot reach — `src/repo/cron.ts`,
 `src/github-hook.ts`, `src/tools/backfill.ts`, `src/integrations/*`, `src/github-app/*` — and the revealed value is passed down as a parameter
 (`src/webhook.ts` and `src/repo/github.ts` ARE reachable from MCP; `test/secrets.mcp.test.ts`). Every log
-line and stored `last_error` is scrubbed of every credential the unit revealed.
+line and stored `last_error` is scrubbed of every credential the unit revealed. Whether a credential EXISTS is not a
+secret: the Repo dashboard's `hostingReads` (`src/repo/store.ts`, MCP-reachable) selects `org_secrets` METADATA only —
+`kind`, `last_error`, scope `''`, never `ciphertext` / `iv` / `key_version` — so the one hosting status function
+(`shared/hosting-status-core.ts`) says the same "connected / not connected" there as on Org settings › Hosting.
 
 **Webhooks.** `POST /webhook/github/:hookId`: look the row up, verify the HMAC against that repo's secret,
 require the payload to name that repo (else 202 ignored), then `captureDelivery` as the org. Every refusal —

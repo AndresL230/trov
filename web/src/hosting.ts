@@ -6,9 +6,13 @@
 //   • the return notice (`?hosting=<outcome>`), the lost banner, the "secrets can't be saved" banner;
 //   • the setup checklist the server generates from what the parts USE (gone once every step is done);
 //   • "Detected: <provider>" — a host the captured GitHub activity already shows (src/hosting/detect.ts);
-//   • ENVIRONMENTS: a tile per environment (the General tab's bento tiles), its parts as rows;
-//   • PROVIDERS: the catalogue with each provider's connection — Vercel, Render, Netlify, Fly.io; then
-//     Cloudflare and Railway among them (their part lives in the environment's own fields — not shown); then AWS (later).
+//   • PROVIDERS: ONE card per provider, in registry order, each with its org-wide connection (connected once for the
+//     whole org) and what uses it; a provider's leftover per-environment tokens are a quiet line inside its card,
+//     never a card or a connection; then AWS (later);
+//   • PARTS: a compact read-only list of each environment's parts, each with Edit (the part editor) — until
+//     Repositories › a repo › Apps owns them (repo-setups Phase D).
+// What a host's status IS comes from ONE function (shared/hosting-status-core.ts `hostingStatus`): the card, a part's
+// row, the checklist, the lead and Test this part all read it, so they cannot disagree.
 // …and three dialogs, each a root-level `data-overlay` (so a keystroke patches it — morph.ts): the part
 // editor, the "you are about to leave for <provider>" confirmation of an install / OAuth connection, and the
 // paste-a-token form.
@@ -31,13 +35,16 @@ import { orgTile } from "./org-logo";
 import { kindMark, type StateKind } from "./marks";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { howToHtml, type TestState } from "./integrations";
+import {
+  HOSTING_STATUS_WORD, endedOnProvider, hostingStatus, leftoverLine, notConnectedSentence, orgConnection, isLeftover, type HostingStatus,
+} from "@shared/hosting-status-core";
 import { emptyLayout, skBox, skCard, skLine, skRowsShape, skeleton } from "./skeleton";
 import type { MyOrg } from "@shared/orgs";
 import type { OrgUi } from "./org-settings";
 import {
   HOSTING_METRICS, MAX_PARTS_PER_ENVIRONMENT, PART_KEY_RE, hostingRevokedReasonText, isHostingProvider, metricsForRole,
   type ConnectionMethodDTO, type ConnectionStatus, type EnvironmentPartDTO, type HostingChecklistItem, type HostingConnectOutcome,
-  type HostingConnectionDTO, type HostingDetectionDTO, type HostingEnvironmentDTO, type HostingFieldDTO, type HostingMetric,
+  type HostingConnectionDTO, type HostingDetectionDTO, type HostingEnvironmentDTO, type HostingFieldDTO, type HostingLeftoverDTO, type HostingMetric,
   type HostingProviderDTO, type HostingProviderId, type HostingSetupDTO, type PartRole,
 } from "@shared/hosting";
 
@@ -61,8 +68,11 @@ export interface PartDraft {
   settings: Record<string, string>;
   saving: boolean;
   error: string | null;
-  /** `provider`, `part` (the key), `label`, `role`, `settings.<key>`, or null for the whole form. */
+  /** `provider`, `part` (the key), `label`, `role`, `settings.<key>`, `metrics`, or null for the whole form. */
   errorField: string | null;
+  /** The app metrics token field holds something to save. Its VALUE lives only in the live input and in a private
+   *  variable of hosting-actions.ts — never here (the rule of integrations.ts). Absent = empty. */
+  metricsHasValue?: boolean;
 }
 
 /** The "about to leave for <provider>" confirmation of an install / OAuth connection. */
@@ -96,7 +106,8 @@ export interface HostingUi {
   token: TokenForm | null;
   /** The Manage dialog's connection, `<provider>:<scope>` (manageModal); null = closed. */
   manage: string | null;
-  /** Test connection, by `<provider>:<scope>`; one part's test by `part:<env>/<part>`. */
+  /** Test connection, by `<provider>:<scope>`; one part's test by `part:<env>/<part>`; an environment's app metrics
+   *  token by `metrics:<env>`. */
   tests: Record<string, TestState>;
   /** The checklist's finished steps are shown. */
   doneOpen: boolean;
@@ -119,8 +130,16 @@ export const partRef = (p: { env: string; key: string }): string => `${p.env}/${
 export const providerOf = (d: HostingSetupDTO, id: HostingProviderId | null): HostingProviderDTO | null => d.providers.find((p) => p.id === id) ?? null;
 export const connectionOf = (d: HostingSetupDTO, provider: HostingProviderId, scope: string): HostingConnectionDTO | null =>
   d.connections.find((c) => c.provider === provider && c.scope === scope) ?? null;
-/** The credential scope a part's provider is connected at: "" org-wide, or the part's environment (Railway). */
+/** The credential scope a part's provider is connected at: always "" — every provider is connected once per org. */
 export const scopeFor = (_p: HostingProviderDTO, _env: string): string => "";
+
+/** A provider's status on this screen: THE status function over its ORG-WIDE connection — what its card, every part
+ *  on it, the checklist, the lead and Test this part say. */
+export function providerStatusOf(d: HostingSetupDTO, id: HostingProviderId): HostingStatus {
+  return hostingStatus(orgConnection(d.connections, id), providerOf(d, id)?.label ?? id);
+}
+/** A provider's leftover per-environment tokens (`HostingSetupDTO.leftovers`) — never a connection. */
+export const leftoversOf = (d: HostingSetupDTO, id: HostingProviderId): HostingLeftoverDTO[] => (d.leftovers ?? []).filter((l) => l.provider === id);
 
 // ── vocabulary ───────────────────────────────────────────────────────────────
 
@@ -138,7 +157,6 @@ const METRIC_CHIP: Record<HostingMetric, string> = {
   requests: "Requests", errors: "Errors", latency_p50_ms: "Latency p50", latency_p95_ms: "Latency", bandwidth_bytes: "Bandwidth", cpu: "CPU", mem_mb: "Memory",
 };
 
-const STATUS_WORD: Record<ConnectionStatus, string> = { connected: "Connected", error: "Error", not_connected: "Not connected", revoked: "Removed" };
 const STATUS_TONE: Record<ConnectionStatus, string> = { connected: "var(--green)", error: "var(--red)", not_connected: "var(--fg-40)", revoked: "var(--amber)" };
 /** What each status MEANS, as marks.ts draws it (the same shape and tone as every other connection in Org settings). */
 const STATUS_KIND: Record<ConnectionStatus, StateKind> = { connected: "good", error: "bad", not_connected: "waiting", revoked: "stopped" };
@@ -151,17 +169,17 @@ const STATUS_HINT: Record<ConnectionStatus, string> = {
 
 /** Was this connection ended on the PROVIDER's side (uninstalled there, or the grant refused) — not by an admin here? */
 export function lostOnProvider(c: HostingConnectionDTO, label: string): boolean {
-  return c.status === "revoked" && (c.revoked_reason === hostingRevokedReasonText("uninstalled", label) || c.revoked_reason === hostingRevokedReasonText("refused", label));
+  return endedOnProvider(c, label);
 }
-/** A connection's status as the row says it: an admin's own Disconnect reads "Not connected", never "Removed". */
+/** A connection's status as the card says it — `hostingStatus` (an admin's own Disconnect reads "Not connected",
+ *  never "Removed"; the legacy Worker secret reads "Connected"). */
 export function connectionStatus(c: HostingConnectionDTO, label: string): { word: string; tone: string; state: ConnectionStatus } {
-  const state: ConnectionStatus = c.status === "revoked" && !lostOnProvider(c, label) ? "not_connected"
-    : c.status === "not_connected" && c.legacy_fallback ? "connected" : c.status;
-  return { word: STATUS_WORD[state], tone: STATUS_TONE[state], state };
+  const s = hostingStatus(c, label);
+  return { word: s.word, tone: STATUS_TONE[s.state], state: s.state };
 }
 
 /** A status as a dot and a word. The dot is an element (the corners layer shapes it), the word carries the meaning. */
-export function statusDot(state: ConnectionStatus, word = STATUS_WORD[state]): string {
+export function statusDot(state: ConnectionStatus, word = HOSTING_STATUS_WORD[state]): string {
   return `<span data-hx-status="${state}" style="display:inline-flex">${kindMark(word, STATUS_KIND[state], 12, STATUS_HINT[state])}</span>`;
 }
 /** A provider is a CARD in the Providers grid (`.cnpy-hx-cards`): its radius inline, so the corners layer scales it. */
@@ -272,6 +290,14 @@ function userNames(d: HostingSetupDTO, c: HostingConnectionDTO): string[] {
   });
 }
 const listed = (names: string[]): string => (names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
+
+/** What uses a provider, as a card's plain metadata: "Backend in Staging and Production" — one phrase per part label,
+ *  its environments in drift order; "" when no part does. */
+export function usedByLine(d: HostingSetupDTO, provider: HostingProviderId): string {
+  const byLabel = new Map<string, string[]>();
+  for (const e of d.environments) for (const p of e.parts) if (p.provider === provider) byLabel.set(p.label, [...(byLabel.get(p.label) ?? []), e.label]);
+  return [...byLabel.entries()].map(([label, envs]) => `${label} in ${listed(envs)}`).join("; ");
+}
 
 /** A connection the PROVIDER ended, and nothing replaced: said until it is reconnected. Never after an admin's own Disconnect. */
 export function hostingLostBanners(d: HostingSetupDTO): string {
@@ -419,6 +445,24 @@ export function unavailableLines(unavailable: readonly { metric: HostingMetric; 
 
 interface TabCtx { d: HostingSetupDTO; ui: OrgUi; h: HostingUi; org: MyOrg }
 
+/** Test this part on a provider that is not connected: no request is sent — the answer is the card's own status, in
+ *  words, with the way to fix it. Never "No secret is set". */
+function notConnectedAnswer(x: TabCtx, p: HostingProviderDTO | null, providerId: HostingProviderId, ref: string): string {
+  const label = p?.label ?? providerId;
+  const locked = !x.d.secrets_available;
+  const connect = p && bestMethod(p)
+    ? quietBtn(`Connect ${label}`, "orgHxConnect", { arg: `${providerId}:`, disabled: locked, title: locked ? WHY_LOCKED : undefined, field: `orgHxTestConnect:${ref}` })
+    : "";
+  return `<div role="status" aria-live="polite" data-org-test="not_connected" style="${box("var(--amber)")};margin-top:10px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1 1 220px;min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">${esc(notConnectedSentence(label))}</strong> Its parts read nothing until it is.</div>
+      ${connect}
+    </div>`;
+}
+
+/** One part in the compact list: its name, role and its provider's status (THE status function), the host and its
+ *  identifying setting as metadata, and Edit — the part editor. Open, it shows what is not worth a row: its key and
+ *  settings, the last poll, the provider's "not available" reasons, Open in <provider> and Test this part. A failed
+ *  last poll and a test's answer are always visible. */
 function partRow(x: TabCtx, env: HostingEnvironmentDTO, part: EnvironmentPartDTO): string {
   const { d, ui, h } = x;
   const p = providerOf(d, part.provider);
@@ -426,6 +470,7 @@ function partRow(x: TabCtx, env: HostingEnvironmentDTO, part: EnvironmentPartDTO
   const ref = partRef(part);
   const key = `part:${ref}`;
   const id = partIdentity(part, p);
+  const st = providerStatusOf(d, part.provider);
   const poll = part.last_poll;
   const failed = poll?.status === "failed"
     ? `<div data-hx-pollfail style="${box("var(--red)")}">${FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">Last poll failed ${esc(relTime(poll.at))}.</strong> ${esc(poll.detail ?? "The provider did not answer.")}</div></div>` : "";
@@ -443,12 +488,12 @@ function partRow(x: TabCtx, env: HostingEnvironmentDTO, part: EnvironmentPartDTO
   const actions = `<div class="cnpy-xrow-acts">
       ${outLink(`Open in ${label}`, part.console_url, `Open ${env.label} › ${part.label} in ${label}`)}
       ${quietBtn(running ? "Testing…" : "Test this part", "orgHxTestPart", { arg: ref, disabled: running, busy: running, field: `orgHxTestPart:${ref}`, label: `Test ${label} for ${env.label} › ${part.label}` })}
-      ${dangerLink("Remove", "orgConfirm", { arg: `part:${ref}`, label: `Remove ${env.label} › ${part.label}`, field: `orgConfirm:part:${ref}` })}
     </div>`;
-  const answer = testAnswer(test);
+  // The provider is not connected: the test sent nothing, and says so in the card's words.
+  const answer = test?.status === "done" && !test.ok && !st.live ? notConnectedAnswer(x, p, part.provider, ref) : testAnswer(test);
   return openRow({
-    key, open: ui.openRows.includes(key), act: "orgRowToggle", label: `${env.label}, ${part.label}: ${ROLE_WORD[part.role].toLowerCase()} on ${label}, ${STATUS_WORD[part.connection].toLowerCase()}`,
-    head: `${orgTile(x.org.name, 18, x.org.logo_url ?? null, 5)}<span>${esc(part.label)}</span>${factWord(ROLE_WORD[part.role])}${statusDot(part.connection)}`,
+    key, open: ui.openRows.includes(key), act: "orgRowToggle", label: `${env.label}, ${part.label}: ${ROLE_WORD[part.role].toLowerCase()} on ${label}, ${st.word.toLowerCase()}`,
+    head: `<span>${esc(part.label)}</span>${factWord(ROLE_WORD[part.role])}${statusDot(st.state, st.word)}`,
     meta: `${esc(label)}${id ? ` &middot; ${esc(id)}` : ""}`,
     action: quietBtn("Edit", "orgHxPartEdit", { arg: ref, label: `Edit ${env.label} › ${part.label}`, field: `orgHxPartEdit:${ref}` }),
     always: failed || answer ? `${failed}${answer}` : "",
@@ -456,7 +501,7 @@ function partRow(x: TabCtx, env: HostingEnvironmentDTO, part: EnvironmentPartDTO
       ${settings}
       <div style="font-size:12px;color:var(--fg-40);margin-top:6px">${esc(pollLine)}${part.updated_by ? ` Last changed by ${esc(part.updated_by)}${part.updated_at ? ` ${esc(relTime(part.updated_at))}` : ""}.` : ""}</div>
       ${quiet}${actions}`,
-    attrs: ` data-org-part="${attr(ref)}" data-provider="${attr(part.provider)}" data-connection="${part.connection}"`,
+    attrs: ` data-org-part="${attr(ref)}" data-provider="${attr(part.provider)}" data-connection="${st.state}"`,
   });
 }
 
@@ -464,39 +509,38 @@ function partRow(x: TabCtx, env: HostingEnvironmentDTO, part: EnvironmentPartDTO
 
 /** A part's row as a shape: a name over its host, and the row's one action. Never data: boxes only. */
 export const partRowsShape = (n = 2): string => skRowsShape(n, { trail: 52, pad: "12px 16px" });
-/** One environment's tile as a shape: its head (a name, the Add part button), then its part rows. */
-export const envTileShape = (rows = 2): string =>
-  skCard(`<div class="cnpy-hx-envhead">${skLine(96, 13.5, 1.4)}<span style="margin-left:auto">${skBox(72, 30)}</span></div>${partRowsShape(rows)}`, "padding:0;overflow:hidden;min-width:0");
-/** The Environments region: tiles side by side, on the grid the real tiles use. */
-export const envTilesShape = (tiles = 2): string => `<div class="cnpy-hx-envs">${Array.from({ length: tiles }, () => envTileShape()).join("")}</div>`;
-/** The whole tab while its one read is out: a lead line, the environment tiles, the provider rows. */
+/** The Parts list as a shape: an environment's heading line, then its part rows — per environment. */
+export const partsListShape = (envs = 2): string =>
+  skCard(Array.from({ length: envs }, () => `<div class="cnpy-hx-envhead">${skLine(96, 13.5, 1.4)}<span style="margin-left:auto">${skBox(72, 30)}</span></div>${partRowsShape(2)}`).join(""), "padding:0;overflow:hidden;min-width:0");
+/** The whole tab while its one read is out: a lead line, the provider cards, the parts list. */
 const hostingTabShape = (): string =>
-  `${skLine("62%", 13, 1.55, "margin-bottom:24px")}${skLine(110, 10.5, 1.9, "margin-bottom:9px")}${envTilesShape()}${skLine(90, 10.5, 1.9, "margin:30px 0 9px")}${skCard(skRowsShape(4, { trail: 110, pad: "12px 16px" }), "padding:0;overflow:hidden")}`;
+  `${skLine("62%", 13, 1.55, "margin-bottom:24px")}${skLine(90, 10.5, 1.9, "margin-bottom:9px")}${skCard(skRowsShape(4, { trail: 110, pad: "12px 16px" }), "padding:0;overflow:hidden")}${skLine(110, 10.5, 1.9, "margin:30px 0 9px")}${partsListShape()}`;
 /** What each empty region says (exported: the tests and the Guide read the same words). */
-export const HOSTING_ENVS_EMPTY = "Each environment gets a tile here, with the parts it runs: the web app, the API, a worker. Add the places your app runs first, such as staging and production.";
+export const HOSTING_ENVS_EMPTY = "The parts each environment runs are listed here: the web app, the API, a worker. Add the places your app runs first, such as staging and production.";
 export const HOSTING_PARTS_EMPTY = "No parts yet. Add the web app, API or worker this environment runs.";
 
-/** One environment: a tile holding its parts as rows. */
-function envTile(x: TabCtx, env: HostingEnvironmentDTO): string {
+/** One environment in the Parts list: a heading line (its name, branch, how many parts, Add part), then its parts. */
+function envParts(x: TabCtx, env: HostingEnvironmentDTO): string {
   const full = env.parts.length >= MAX_PARTS_PER_ENVIRONMENT;
   const n = env.parts.length;
-  return `<section${surface("padding:0;overflow:hidden;min-width:0")} data-org-hosting-env="${attr(env.key)}" aria-labelledby="${attr(`org-hx-env-${env.key}`)}">
+  return `<li data-org-hosting-env="${attr(env.key)}" aria-labelledby="${attr(`org-hx-env-${env.key}`)}" style="border-bottom:1px solid var(--border);margin-bottom:-1px">
     <div class="cnpy-hx-envhead">
-      <h3 id="${attr(`org-hx-env-${env.key}`)}" style="margin:0;font-size:13.5px;font-weight:600;letter-spacing:-0.005em;overflow-wrap:anywhere">${esc(env.label)}</h3>
+      <h3 id="${attr(`org-hx-env-${env.key}`)}" style="margin:0;font-size:13px;font-weight:600;letter-spacing:-0.005em;overflow-wrap:anywhere">${esc(env.label)}</h3>
       <code title="The branch this environment deploys from" style="font-family:var(--code);font-size:11.5px;color:var(--fg-55)">${esc(env.branch)}</code>
       <span style="font-size:12px;color:var(--fg-40)">${n === 0 ? "No parts" : `${n} ${n === 1 ? "part" : "parts"}`}</span>
       <span style="margin-left:auto">${quietBtn("Add part", "orgHxPartNew", { arg: env.key, field: `orgHxPartNew:${env.key}`, disabled: full, title: full ? `An environment has at most ${MAX_PARTS_PER_ENVIRONMENT} parts` : undefined, label: `Add a part to ${env.label}` })}</span>
     </div>
     ${n ? `<ul style="${LIST}">${env.parts.map((p) => partRow(x, env, p)).join("")}</ul>`
-      // Loaded, and this environment holds nothing: its rows drawn empty, under the one sentence (the tile's
-      // own Add part button, above, is the action).
-      : `<div data-hx-noparts>${emptyLayout(`org-hosting-parts-${env.key}`, { text: HOSTING_PARTS_EMPTY, plain: true, sayStyle: "padding:14px 16px 2px", shapes: partRowsShape(2) })}</div>`}
-  </section>`;
+      // Loaded, and this environment holds nothing: its rows drawn empty, under the one sentence (its heading's
+      // Add part button, above, is the action).
+      : `<div data-hx-noparts>${emptyLayout(`org-hosting-parts-${env.key}`, { text: HOSTING_PARTS_EMPTY, plain: true, sayStyle: "padding:2px 16px 2px", shapes: partRowsShape(2) })}</div>`}
+  </li>`;
 }
 
 // ── providers and their connections ──────────────────────────────────────────
 
-/** How a connection is held, as the row's quiet metadata. */
+/** How a connection is held, as the card's quiet metadata. A token is named by how it was STORED (the org-wide
+ *  credential the provider takes); a leftover's own label is "Project token" (`leftoverRows`). */
 function howConnected(c: HostingConnectionDTO, p: HostingProviderDTO): string {
   if (c.method === "install") return "Installed";
   if (c.method === "oauth") return "Connected with OAuth";
@@ -505,24 +549,22 @@ function howConnected(c: HostingConnectionDTO, p: HostingProviderDTO): string {
   return "";
 }
 
-/** A (provider, scope) no part uses and nothing is stored for: what its row is drawn from. */
+/** A (provider, scope) no part uses and nothing is stored for: what its card is drawn from. */
 const blankConnection = (provider: HostingProviderId, scope = "", scope_label: string | null = null): HostingConnectionDTO => ({
   provider, scope, scope_label, status: "not_connected", method: null, account: null, external_id: null, config: {}, hint_last4: "",
   connected_by: null, connected_at: null, last_used_at: null, last_error: null, legacy_fallback: false, revoked_reason: null, manage_url: null, used_by: [],
 });
 
-/** The connections drawn for one provider: its real ones, or — when it has none — one not-connected row. An
- *  environment-scoped provider (Railway) with no connection has no row to connect: a token belongs to a part's environment. */
+/** The ONE connection a provider's card is drawn from: its org-wide connection, or a not-connected one. A credential
+ *  under a non-empty scope is a leftover (shown inside the card), never a card of its own. */
 export function connectionsFor(d: HostingSetupDTO, p: HostingProviderDTO): HostingConnectionDTO[] {
-  const own = d.connections.filter((c) => c.provider === p.id);
-  if (own.length) return own;
-  return [blankConnection(p.id)];
+  return [orgConnection(d.connections, p.id) ?? blankConnection(p.id)];
 }
 
 /** A provider's CARD in the Providers grid (`.cnpy-hx-cards`): logo, name and status, the metadata, what the
  *  host is and what Trov reads from it — all visible, nothing behind a toggle — and ONE button at the top right
- *  (Connect, Manage or Add part, one width on every card). Everything you need only while connecting or managing
- *  is in that button's dialog. */
+ *  (Connect or Manage, one width on every card). Everything you need only while connecting or managing is in that
+ *  button's dialog. */
 function providerCard(o: { key: string; state: string; p: HostingProviderDTO; title: string; status: string; meta?: string; extra?: string; always?: string; action?: string }): string {
   return `<li class="cnpy-hx-card" data-org-hosting-conn="${attr(o.key)}" data-state="${attr(o.state)}"${CARD}>
     <div class="cnpy-hx-card-h">${providerGlyph(o.p.id, 26)}<div style="min-width:0;flex:1 1 auto"><div class="cnpy-hx-card-n">${o.title}${o.status}</div>${o.meta ? `<div class="cnpy-hx-card-m">${o.meta}</div>` : ""}</div>${o.action ? `<div class="cnpy-hx-card-a">${o.action}</div>` : ""}</div>
@@ -533,18 +575,30 @@ function providerCard(o: { key: string; state: string; p: HostingProviderDTO; ti
   </li>`;
 }
 
-/** The metadata line under a connection's name: how it is connected and who uses it, or why it is not. */
-function connectionMeta(p: HostingProviderDTO, c: HostingConnectionDTO): string {
-  const stored = c.status === "connected" || c.status === "error";
+/** The metadata line under a provider's name: how it is connected, then what uses it ("Backend in Staging and
+ *  Production") — or why it is not connected. */
+function connectionMeta(d: HostingSetupDTO, p: HostingProviderDTO, c: HostingConnectionDTO): string {
+  const st = hostingStatus(c, p.label);
+  const uses = usedByLine(d, p.id);
   const meta: string[] = [];
-  if (stored) {
+  if (st.stored) {
     const how = howConnected(c, p);
     if (how) meta.push(how);
-    meta.push(c.used_by.length ? `used by ${c.used_by.length} ${c.used_by.length === 1 ? "part" : "parts"}` : "not used by a part");
   } else if (c.status === "revoked" && c.revoked_reason) meta.push(esc(c.revoked_reason));
-  else if (c.legacy_fallback) meta.push("Using the platform's old secret");
+  else if (c.legacy_fallback && st.live) meta.push("Using the platform's old secret");
   else if (!bestMethod(p)) meta.push("Not available on this Trov");
+  if (uses) meta.push(esc(uses));
+  else if (st.stored) meta.push("not used by a part");
   return meta.join(" &middot; ");
+}
+
+/** The quiet line a card carries while old per-environment tokens remain — "2 old per-environment tokens from before
+ *  Oct 15 aren't used. Connect Railway once with a workspace token." — and the way to them (the Manage dialog). */
+function leftoverNote(d: HostingSetupDTO, p: HostingProviderDTO, st: HostingStatus): string {
+  const n = leftoversOf(d, p.id).length;
+  if (!n) return "";
+  const ck = `${p.id}:`;
+  return `<span data-hx-leftovers="${n}">${esc(leftoverLine(n, p.label, tokenWord(p), st.live))}</span> <button type="button" data-act="orgHxManage" data-arg="${attr(ck)}" data-field="${attr(`orgHxLeftovers:${p.id}`)}" class="cnpy-mutelink" style="padding:0;font-size:inherit;font-weight:500;color:var(--fg-55)">Review old tokens</button>`;
 }
 
 const lastErrorBox = (c: HostingConnectionDTO): string => c.last_error
@@ -552,54 +606,64 @@ const lastErrorBox = (c: HostingConnectionDTO): string => c.last_error
 
 function connectionRow(x: TabCtx, p: HostingProviderDTO, c: HostingConnectionDTO, accentTaken: boolean): string {
   const { d, h } = x;
-  const st = connectionStatus(c, p.label);
+  const st = hostingStatus(c, p.label);
   const ck = connKey(c);
   const locked = !d.secrets_available;
   const best = bestMethod(p);
-  const stored = c.status === "connected" || c.status === "error";
-  const live = stored || c.legacy_fallback;
-  const who = c.scope_label ?? c.account?.label ?? "";
-  const scoped = c.scope_label ? ` for ${c.scope_label}` : "";
+  const who = c.account?.label ?? "";
   const title = `<span>${esc(p.label)}${who ? ` <span style="font-weight:500;color:var(--fg-55)">&middot; ${esc(who)}</span>` : ""}</span>`;
   // The card's ONE action: Manage once it is connected (Test, Rotate, Disconnect… live in that dialog),
   // Connect while it is not (the provider's own dialog: its install confirmation or its token form).
-  const action = live
-    ? quietBtn("Manage", "orgHxManage", { arg: ck, field: `orgHxManage:${ck}`, label: `Manage ${p.label}${scoped}` })
+  const action = st.live
+    ? quietBtn("Manage", "orgHxManage", { arg: ck, field: `orgHxManage:${ck}`, label: `Manage ${p.label}` })
     : best ? quietBtn(st.state === "revoked" ? "Reconnect" : "Connect", "orgHxConnect", {
-      arg: ck, disabled: locked, title: locked ? WHY_LOCKED : undefined, field: `orgHxConnect:${ck}`, label: `${st.state === "revoked" ? "Connect again" : "Connect"}: ${p.label}${scoped}`,
+      arg: ck, disabled: locked, title: locked ? WHY_LOCKED : undefined, field: `orgHxConnect:${ck}`, label: `${st.state === "revoked" ? "Connect again" : "Connect"}: ${p.label}`,
       extra: accentTaken ? "" : "color:var(--fg);border-color:var(--border-strong)",
     }) : "";
-  const fallback = c.legacy_fallback && !stored ? `<div data-org-legacy style="font-size:12.5px;color:var(--fg-70)">Using the platform's old secret. Save your own to take over.</div>` : "";
+  const fallback = c.legacy_fallback && st.live && !st.stored ? `<div data-org-legacy style="font-size:12.5px;color:var(--fg-70)">Using the platform's old secret. Save your own to take over.</div>` : "";
   return providerCard({
-    key: ck, state: st.state, p, title, status: statusDot(st.state, st.word), meta: connectionMeta(p, c),
+    key: ck, state: st.state, p, title, status: statusDot(st.state, st.word), meta: connectionMeta(d, p, c), extra: leftoverNote(d, p, st),
     always: `${fallback}${lastErrorBox(c)}${testAnswer(h.tests[ck])}`, action,
   });
 }
 
-/** The Manage dialog of one connection (`h.manage`): everything that is not on its card — when and by whom it was
- *  connected, what uses it, its settings, what it can do, where the credential goes — and every action: Test
- *  connection, Manage on <provider>, Connect a different account, Rotate, Edit settings, the folded manual
- *  connection, and Disconnect last, as quiet text. */
+/** A provider's leftover tokens in its Manage dialog: each as it was stored ("Project token (no longer used)"), and
+ *  "Remove old tokens" behind the page's confirmation. */
+function leftoverRows(d: HostingSetupDTO, p: HostingProviderDTO): string {
+  const list = leftoversOf(d, p.id);
+  if (!list.length) return "";
+  const rows = list.map((l) => `<li data-hx-leftover="${attr(l.scope)}" style="margin-top:4px">${esc(l.label)} (no longer used) &middot; ${esc(l.scope_label ?? l.scope)}${l.hint_last4 ? ` &middot; &bull;&bull;&bull;&bull;${esc(l.hint_last4)}` : ""} &middot; saved by ${esc(l.created_by)} ${esc(relTime(l.created_at))}</li>`).join("");
+  return `<div data-org-hosting-leftovers="${attr(p.id)}" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-weight:600;color:var(--fg-70)">Old tokens <span style="font-weight:400;color:var(--fg-40)">&middot; nothing reads them</span></div>
+      <div style="margin-top:4px">Per-environment tokens stored before ${esc(p.label)} was connected once for the whole organization. Removing them changes nothing that works.</div>
+      <ul style="margin:6px 0 0;padding-left:18px">${rows}</ul>
+      <div class="cnpy-xrow-acts" style="margin-top:8px">${dangerLink("Remove old tokens", "orgConfirm", { arg: `leftovers:${p.id}`, label: `Remove the old ${p.label} tokens`, field: `orgConfirm:leftovers:${p.id}` })}</div>
+    </div>`;
+}
+
+/** The Manage dialog of one provider (`h.manage`, `<provider>:`): everything that is not on its card — when and by
+ *  whom it was connected, what uses it, its settings, what it can do, where the credential goes, its old tokens —
+ *  and every action: Test connection, Manage on <provider>, Connect a different account, Rotate, Edit settings, the
+ *  folded manual connection, Remove old tokens, and Disconnect last, as quiet text. */
 export function manageModal(d: HostingSetupDTO, h: HostingUi): string {
   const ck = h.manage ?? "";
   const at = ck.indexOf(":");
   const pid = ck.slice(0, at);
   const p = at > 0 && isHostingProvider(pid) ? providerOf(d, pid) : null;
   const c = p ? connectionOf(d, p.id, ck.slice(at + 1)) ?? (ck.slice(at + 1) === "" ? blankConnection(p.id) : null) : null;
-  if (!p || !c) return "";
-  const st = connectionStatus(c, p.label);
+  if (!p || !c || isLeftover(c)) return "";
+  const st = hostingStatus(c, p.label);
   const locked = !d.secrets_available;
   const why = locked ? WHY_LOCKED : undefined;
   const best = bestMethod(p);
   const token = tokenMethod(p);
-  const stored = c.status === "connected" || c.status === "error";
-  const live = stored || c.legacy_fallback;
+  const stored = st.stored;
+  const live = st.live;
   const test = h.tests[ck];
   const running = test?.status === "running";
   const users = userNames(d, c);
-  const scoped = c.scope_label ? ` for ${c.scope_label}` : "";
-  const who = c.scope_label ?? c.account?.label ?? "";
-  const meta = connectionMeta(p, c);
+  const who = c.account?.label ?? "";
+  const meta = connectionMeta(d, p, c);
 
   const method = p.connection_methods.find((m) => m.method === c.method) ?? best;
   const grants = method?.grants.length ? `<div style="margin-top:16px"><div style="${O_LABEL}">${stored ? "What this connection can do" : `What ${esc(p.label)} grants`}</div><ul data-hx-grants style="margin:7px 0 0;padding-left:18px;font-size:13px;line-height:1.6;color:var(--fg-70)">${method.grants.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></div>` : "";
@@ -612,11 +676,13 @@ export function manageModal(d: HostingSetupDTO, h: HostingUi): string {
   const unavailable = methodsOff(p);
 
   const more: string[] = [];
+  // Reached while not connected (its old tokens' "Review"): the way to connect it is here too.
+  if (!live && best) more.push(quietBtn(st.state === "revoked" ? `Reconnect ${p.label}` : `Connect ${p.label}`, "orgHxConnect", { arg: ck, disabled: locked, title: why, field: `orgHxManageConnect:${ck}`, extra: "height:36px;color:var(--fg);border-color:var(--border-strong)" }));
   if (stored && c.manage_url) more.push(outLink(`Manage on ${p.label}`, c.manage_url, `Manage this connection on ${p.label}`));
   if (live && best && isRedirect(best)) more.push(quietBtn("Connect a different account", "orgHxConnect", { arg: ck, disabled: locked, title: why, field: `orgHxReconnect:${ck}` }));
   if (stored && c.method === "token" && token) more.push(quietBtn("Rotate", "orgHxToken", { arg: `rotate:${ck}`, disabled: locked, title: why, field: `orgHxToken:rotate:${ck}`, label: `Rotate the ${p.label} ${tokenWord(p)}` }));
   if (stored && p.org_config_fields.length) more.push(quietBtn("Edit settings", "orgHxToken", { arg: `config:${ck}`, field: `orgHxToken:config:${ck}`, label: `Edit the ${p.label} settings` }));
-  if (c.legacy_fallback && !stored && token) more.push(quietBtn(cap(token.label), "orgHxToken", { arg: `set:${ck}`, disabled: locked, title: why, field: `orgHxToken:set:${ck}` }));
+  if (c.legacy_fallback && live && !stored && token) more.push(quietBtn(cap(token.label), "orgHxToken", { arg: `set:${ck}`, disabled: locked, title: why, field: `orgHxToken:set:${ck}` }));
 
   // Connected by install / OAuth: the paste-a-token form is NOT offered beside it — it folds in as a quiet
   // "Manual connection" block, as GitHub's token and webhook rows fold under the App.
@@ -627,7 +693,7 @@ export function manageModal(d: HostingSetupDTO, h: HostingUi): string {
         <div class="cnpy-xrow-acts" style="margin-top:8px">${quietBtn(cap(token.label), "orgHxToken", { arg: `rotate:${ck}`, disabled: locked, title: why, field: `orgHxToken:manual:${ck}` })}</div>
       </div>`
     : "";
-  const disconnect = stored ? dangerLink("Disconnect", "orgConfirm", { arg: `hosting:${ck}`, label: `Disconnect ${p.label}${scoped}`, field: `orgConfirm:hosting:${ck}` }) : "";
+  const disconnect = stored ? dangerLink("Disconnect", "orgConfirm", { arg: `hosting:${ck}`, label: `Disconnect ${p.label}`, field: `orgConfirm:hosting:${ck}` }) : "";
 
   return `<div data-overlay="org-hx-manage" class="cnpy-cmodal">
     <div data-act="orgHxManageClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
@@ -644,11 +710,11 @@ export function manageModal(d: HostingSetupDTO, h: HostingUi): string {
         <p data-hx-sentto style="margin:10px 0 0;font-size:12px;color:var(--fg-40)">${esc(sentOnlyTo(p))}</p>
         <div style="font-size:12.5px">${unavailable}</div>
         <div class="cnpy-cmodal-btns" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px">
-          ${live ? quietBtn(running ? "Testing…" : "Test connection", "orgHxTest", { arg: ck, disabled: running, busy: running, field: `orgHxTest:${ck}`, label: `Test the ${p.label} connection${scoped}`, extra: "height:36px;color:var(--fg);border-color:var(--border-strong)" }) : ""}
+          ${live ? quietBtn(running ? "Testing…" : "Test connection", "orgHxTest", { arg: ck, disabled: running, busy: running, field: `orgHxTest:${ck}`, label: `Test the ${p.label} connection`, extra: "height:36px;color:var(--fg);border-color:var(--border-strong)" }) : ""}
           ${more.join("")}
           ${disconnect ? `<span style="margin-left:auto">${disconnect}</span>` : ""}
         </div>
-        <div style="font-size:12.5px;line-height:1.55;color:var(--fg-55)">${manual}</div>
+        <div style="font-size:12.5px;line-height:1.55;color:var(--fg-55)">${manual}${leftoverRows(d, p)}</div>
       </div>
     </div>
   </div>`;
@@ -668,14 +734,16 @@ function laterRow(_x: TabCtx, p: HostingProviderDTO): string {
 
 // ── the tab ──────────────────────────────────────────────────────────────────
 
-/** The lead's sentence: how much is set up, and what needs attention. */
+/** The lead's sentence: how much is set up, and what needs attention — every count from THE status function over
+ *  each provider's org-wide connection (a leftover token is never one of them). */
 function hostingLead(d: HostingSetupDTO, action: string): string {
   const parts = d.environments.reduce((n, e) => n + e.parts.length, 0);
   const envs = d.environments.length;
-  const used = d.connections.filter((c) => c.used_by.length > 0);
-  const live = used.filter((c) => c.status === "connected" || (c.status === "not_connected" && c.legacy_fallback)).length;
-  const errors = d.connections.filter((c) => c.status === "error").length;
-  const lost = d.connections.filter((c) => { const p = providerOf(d, c.provider); return !!p && lostOnProvider(c, p.label); }).length;
+  const used = d.providers.filter((p) => d.environments.some((e) => e.parts.some((x) => x.provider === p.id)));
+  const states = used.map((p) => providerStatusOf(d, p.id).state);
+  const live = states.filter((s) => s === "connected").length;
+  const errors = d.providers.filter((p) => providerStatusOf(d, p.id).state === "error").length;
+  const lost = d.providers.filter((p) => providerStatusOf(d, p.id).state === "revoked").length;
   const failed = d.environments.reduce((n, e) => n + e.parts.filter((p) => p.last_poll?.status === "failed").length, 0);
   if (envs === 0) return tabLead("No environment yet. An environment is a branch that deploys somewhere; its parts are what runs it, each on its own host.", action);
   const bits = [
@@ -721,32 +789,30 @@ export function hostingTab(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDropdo
   const next = d.checklist.find((i) => !i.done) ?? null;
   const lead = hostingLead(d, next ? stepButton(next, d, accentBtn, "lead") : "");
 
-  const envs = d.environments.length === 0
+  const parts = d.environments.length === 0
     ? emptyLayout("org-hosting-envs", {
       title: "No environments yet", text: HOSTING_ENVS_EMPTY, cls: "cnpy-org-empty", sayStyle: "margin-bottom:14px",
-      actionHtml: quietBtn("Open Environments", "orgTab", { arg: "environments", field: "orgHxEnvs" }), shapes: envTilesShape(),
+      actionHtml: quietBtn("Open Environments", "orgTab", { arg: "environments", field: "orgHxEnvs" }), shapes: partsListShape(),
     })
-    : `<div class="cnpy-hx-envs">${d.environments.map((e) => envTile(x, e)).join("")}</div>`;
+    : `<ul${surface(`${LIST};min-width:0`)}>${d.environments.map((e) => envParts(x, e)).join("")}</ul>`;
 
   const available = d.providers.filter((p) => p.status === "available");
   const later = d.providers.filter((p) => p.status === "later");
   const accentIsConnect = next?.action.kind === "connect";
-  const rowsOf = (list: HostingProviderDTO[]): string => list.map((p) => {
-    const cs = connectionsFor(d, p);
-    return cs.map((c) => connectionRow(x, p, c, accentIsConnect)).join("");
-  }).join("");
-  const connected = (list: HostingProviderDTO[]): number => list.filter((p) => d.connections.some((c) => c.provider === p.id && (c.status === "connected" || c.status === "error"))).length;
+  // ONE card per provider — its org-wide connection — whatever is stored under other scopes.
+  const rowsOf = (list: HostingProviderDTO[]): string => list.map((p) => connectionRow(x, p, connectionsFor(d, p)[0], accentIsConnect)).join("");
+  const connected = (list: HostingProviderDTO[]): number => list.filter((p) => providerStatusOf(d, p.id).stored).length;
 
   return `${h.sample ? sampleBar(h, dd) : ""}${hostingNotice(h.notice, d, org.name)}${hostingLostBanners(d)}${locked}${lead}
     ${hostingChecklist(d, h)}
     ${hostingDetected(d, h)}
-    <section aria-labelledby="org-hx-envs-t" data-org-group="hosting-envs">
-      ${orgHead("Environments", d.environments.length > 1 ? "in drift order: the first deploys from the head branch, the last is production" : "", d.environments.length, "org-hx-envs-t")}
-      ${envs}
-    </section>
     <section aria-labelledby="org-hx-prov-t" data-org-group="hosting-providers">
       ${orgHead("Providers", `${connected(available)} of ${available.length} connected`, null, "org-hx-prov-t")}
       <ul class="cnpy-hx-cards">${rowsOf(available)}</ul>
+    </section>
+    <section aria-labelledby="org-hx-plist-t" data-org-group="hosting-parts">
+      ${orgHead("Parts", d.environments.length ? "what each environment runs, and on which host" : "", d.environments.reduce((n, e) => n + e.parts.length, 0), "org-hx-plist-t")}
+      ${parts}
     </section>
     ${later.length ? `<section aria-labelledby="org-hx-later-t" data-org-group="hosting-later">
       ${orgHead("Later", "described, not connectable yet", null, "org-hx-later-t")}
@@ -755,11 +821,13 @@ export function hostingTab(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDropdo
     ${h.sample ? "" : sampleFoot()}`;
 }
 
-/** What the tab bar's badge counts on Hosting: connections with an error, or ended on the provider's side. */
+/** What the tab bar's badge counts on Hosting: providers whose connection has an error or was ended on the provider's
+ *  side (THE status function), and environments whose app metrics token failed its last use. */
 export function hostingTodo(h: HostingUi): number {
   const d = h.setup.data;
   if (!d) return 0;
-  return d.connections.filter((c) => { const p = providerOf(d, c.provider); return c.status === "error" || (!!p && lostOnProvider(c, p.label)); }).length;
+  const providers = d.providers.filter((p) => { const s = providerStatusOf(d, p.id).state; return s === "error" || s === "revoked"; }).length;
+  return providers + d.environments.filter((e) => e.app_metrics?.configured && e.app_metrics.last_error).length;
 }
 
 // ── the part editor ──────────────────────────────────────────────────────────
@@ -861,16 +929,15 @@ export function partEditorModal(d: HostingSetupDTO, dr: PartDraft, h: HostingUi,
     return `<div data-hx-setting="${attr(f.key)}">${textField({ id: `org-hx-set-${f.key}`, label: f.label, act: "orgHxPartSetting", arg: f.key, field: `orgHxPartSetting:${f.key}`, value, required: f.required, placeholder: f.placeholder ?? undefined, max: 300, disabled: dr.saving, enter: "orgHxPartSave", help: esc(f.description), error: errOf(field) })}</div>`;
   }).join("");
 
-  // Is this provider connected for this part's scope? Saving is allowed before connecting; the checklist reminds.
-  const conn = p ? connectionOf(d, p.id, scopeFor(p, dr.env)) : null;
-  const connected = !!conn && (conn.status === "connected" || conn.status === "error" || conn.legacy_fallback);
+  // Is this provider connected (THE status function)? Saving is allowed before connecting; the checklist reminds.
+  const connected = !!p && providerStatusOf(d, p.id).live;
   const best = p ? bestMethod(p) : null;
   const hint = !p || connected ? "" : `<div data-hx-connect-hint style="${box("var(--fg-40)")};margin-top:16px;align-items:center;flex-wrap:wrap">
       <div style="flex:1 1 240px;min-width:0"><strong style="font-weight:600;color:var(--fg)">${esc(p.label)} is not connected yet.</strong> You can save the part now and connect after: it reads nothing until then.</div>
       ${best ? quietBtn("Save and connect", "orgHxPartSave", { arg: "connect", disabled: !canSave || !d.secrets_available, busy: dr.saving, field: "orgHxPartSaveConnect", title: d.secrets_available ? undefined : WHY_LOCKED }) : ""}
     </div>`;
 
-  const general = dr.error && (dr.errorField === null || !["provider", "part", "label"].includes(dr.errorField) && !(p?.part_settings ?? []).some((f) => `settings.${f.key}` === dr.errorField));
+  const general = dr.error && (dr.errorField === null || !["provider", "part", "label", "metrics"].includes(dr.errorField) && !(p?.part_settings ?? []).some((f) => `settings.${f.key}` === dr.errorField));
   const title = adding ? `Add a part to ${env?.label ?? dr.env}` : `Edit ${env?.label ?? dr.env} › ${current?.label ?? dr.key ?? ""}`;
   return `<div data-overlay="org-hx-part" class="cnpy-cmodal">
     <div data-act="orgHxPartClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
@@ -882,6 +949,7 @@ export function partEditorModal(d: HostingSetupDTO, dr: PartDraft, h: HostingUi,
         <div class="cnpy-hx-form">
           ${providerBlock}${roleBlock}${keyBlock}
           ${settings ? `<div style="${O_LABEL};margin-top:4px">On ${esc(p?.label ?? "")}</div><div class="cnpy-org-grid">${settings}</div>` : ""}
+          ${p && env ? appMetricsBlock(env, dr, h, d.secrets_available) : ""}
         </div>
         ${hint}
         ${general ? `<div role="alert" style="${O_ERR};margin-top:14px">${esc(dr.error ?? "")}</div>` : ""}
@@ -893,6 +961,40 @@ export function partEditorModal(d: HostingSetupDTO, dr: PartDraft, h: HostingUi,
       </div>
     </div>
   </div>`;
+}
+
+/**
+ * The app metrics token, in the part editor (it moved here from Integrations): active users and product counters,
+ * read hourly from `<API URL>/api/internal/metrics`. Stored as it always was — `metrics_endpoint`, scoped to the
+ * ENVIRONMENT, through the write-only Integrations API — so the `:00` poller reads it unchanged, and every part of
+ * the environment shares it until Phase G gives each part its own. The password input has NO `value` in any state:
+ * hosting-actions.ts keeps the draft in a private variable and saves it with the part.
+ */
+export function appMetricsBlock(env: HostingEnvironmentDTO, dr: PartDraft, h: HostingUi, secretsAvailable: boolean): string {
+  const m = env.app_metrics;
+  if (!m) return "";
+  const test = h.tests[`metrics:${env.key}`];
+  const running = test?.status === "running";
+  const err = dr.errorField === "metrics" ? dr.error : null;
+  const endpoint = m.api_url ? `<code style="font-family:var(--code);font-size:12px;color:var(--fg-70);overflow-wrap:anywhere">${esc(m.api_url.replace(/\/+$/, ""))}/api/internal/metrics</code>` : null;
+  const state = m.configured
+    ? `${kindMark(m.last_error ? "Error" : "Set", m.last_error ? "bad" : "good", 12)}<span>${m.hint_last4 ? `ends in ${esc(m.hint_last4)} &middot; ` : ""}${m.last_used_at ? `last used ${esc(relTime(m.last_used_at))}` : "not used yet"}</span>`
+    : m.legacy_fallback ? `${kindMark("Using legacy credential", "warn", 12, "Trov's shared credential answers until you set your own.")}`
+    : `${kindMark("Not set", "waiting", 12)}`;
+  const off = !secretsAvailable || dr.saving;
+  const acts = m.configured ? `<div class="cnpy-xrow-acts" style="margin-top:8px">
+      ${quietBtn(running ? "Testing…" : "Test token", "orgHxMetricsTest", { arg: env.key, disabled: running || dr.saving, busy: running, field: `orgHxMetricsTest:${env.key}`, label: `Test the app metrics token of ${env.label}` })}
+      ${dangerLink("Delete token", "orgHxMetricsDelete", { arg: env.key, disabled: dr.saving, label: `Delete the app metrics token of ${env.label}`, field: `orgHxMetricsDelete:${env.key}` })}
+    </div>` : "";
+  return `<div class="cnpy-org-field" data-hx-metrics="${attr(env.key)}" data-state="${m.configured ? (m.last_error ? "error" : "set") : m.legacy_fallback ? "legacy" : "unset"}" style="margin-top:4px">
+      <label for="org-hx-metrics" style="${O_LABEL}">App metrics token</label>
+      <div style="display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap;margin-top:7px;font-size:12.5px;color:var(--fg-55)">${state}</div>
+      ${anchoredField(`<input id="org-hx-metrics" data-hx-metrics-input data-act="orgHxPartMetrics" data-field="orgHxPartMetrics" data-enter="orgHxPartSave" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"${off ? " disabled" : ""}${err ? ' aria-invalid="true"' : ""} aria-describedby="org-hx-metrics-h${err ? " org-hx-metrics-e" : ""}" placeholder="${m.configured ? "Paste a new token to replace it" : "Optional: paste the token"}" class="cnpy-input" style="${O_FIELD};margin-top:7px;font-family:var(--code);font-size:12.5px;${err ? "border-color:var(--red);" : ""}" />`, err ? fieldError("org-hx-metrics-e", err) : "")}
+      <div id="org-hx-metrics-h" style="${O_HELP}">Active users and product counters, read every hour from ${endpoint ?? `this environment's API URL, which ${esc(env.label)} does not have yet: set it in Environments`} with <code style="font-family:var(--code)">Authorization: Bearer</code> and this token. One token per environment: every part of ${esc(env.label)} shares it. Saved with the part, encrypted, and never shown again.</div>
+      ${m.configured && m.last_error ? `<div data-org-lasterror style="${box("var(--red)")};margin-top:8px">${FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">Last error.</strong> ${esc(m.last_error)}</div></div>` : ""}
+      ${testAnswer(test)}
+      ${acts}
+    </div>`;
 }
 
 // ── connecting: the install / OAuth confirmation ─────────────────────────────
@@ -1030,9 +1132,22 @@ export function disconnectConfirmCopy(d: HostingSetupDTO, key: string, orgName: 
     : c.method === "oauth" ? ` Trov also asks ${p.label} to end the grant.`
     : ` The stored ${tokenWord(p)} is erased here; delete it on ${p.label} too if you no longer need it.`;
   return {
-    title: `Disconnect ${p.label}${c.scope_label ? ` for ${c.scope_label}` : ""} from ${orgName}?`,
+    title: `Disconnect ${p.label} from ${orgName}?`,
     body: `${stops}${upstream} The parts stay, and read again once ${p.label} is connected.`,
     confirmLabel: "Disconnect", busyLabel: "Disconnecting…",
+  };
+}
+
+/** Remove a provider's old per-environment tokens (`<provider>`): what goes, and that nothing that works changes. Pure. */
+export function leftoversConfirmCopy(d: HostingSetupDTO, provider: string): ConfirmCopy | null {
+  const p = isHostingProvider(provider) ? providerOf(d, provider) : null;
+  const n = p ? leftoversOf(d, p.id).length : 0;
+  if (!p || !n) return null;
+  const live = providerStatusOf(d, p.id).live;
+  return {
+    title: n === 1 ? `Remove the old ${p.label} token?` : `Remove ${n} old ${p.label} tokens?`,
+    body: `${n === 1 ? "It is a per-environment token" : "They are per-environment tokens"} from before ${p.label} was connected once for the whole organization. Nothing reads ${n === 1 ? "it" : "them"}, so removing ${n === 1 ? "it" : "them"} changes nothing that works.${live ? "" : ` The parts read ${p.label} once it is connected with ${/^[aeiou]/i.test(tokenWord(p)) ? "an" : "a"} ${tokenWord(p)}.`} The stored ${n === 1 ? "value is" : "values are"} erased and cannot be recovered.`,
+    confirmLabel: "Remove old tokens", busyLabel: "Removing…",
   };
 }
 

@@ -33,8 +33,9 @@
 import {
   HOSTING_INTEGRATION_KIND, HOSTING_PROVIDERS, hostingRevokedReasonText, isHostingProvider, isHostingRevokedReason, providerOfKind,
   type ConnectStartDTO, type ConnectionMethod, type ConnectionStatus, type HostingConnectOutcome, type HostingConnectionDTO,
-  type HostingProviderId, type HostingRevokedReason,
+  type HostingLeftoverDTO, type HostingLeftoversRemovedDTO, type HostingProviderId, type HostingRevokedReason,
 } from "@shared/hosting";
+import { LEFTOVER_TOKEN_LABEL, isLeftover, storedConnectionStatus } from "@shared/hosting-status-core";
 import type { IntegrationKind, OrgSettingsAuditAction } from "@shared/integrations";
 import { b64uDecode, b64uEncode, hmacSeal, hmacUnseal, randomToken } from "../auth/crypto";
 import { hasRole, platform, requireRole, resolveTenantById } from "../data/context";
@@ -101,10 +102,10 @@ export async function loadConnectionState(ctx: TenantContext): Promise<Connectio
   };
 }
 
-/** A connection's status, from the secret and the connection row (the rule the DTO documents). */
+/** A connection's status, from the secret and the connection row (the rule the DTO documents — shared, so the Repo
+ *  dashboard derives it from its own reads the same way). */
 export function connectionStatusOf(meta: SecretMeta | null, row: ConnectionRow | null): ConnectionStatus {
-  if (meta) return meta.last_error ? "error" : "connected";
-  return row?.status === "revoked" ? "revoked" : "not_connected";
+  return storedConnectionStatus(meta, row);
 }
 
 export async function describeConnection(
@@ -144,29 +145,56 @@ export async function describeConnection(
 }
 
 /**
- * `HostingSetupDTO.connections`: one row per (provider, scope) a part USES, plus every provider the org holds
- * a credential or a connection row for (an unused one can be disconnected without breaking anything). In
- * picker order, an org-wide scope before the environments in drift order.
+ * `HostingSetupDTO.connections`: ONE row per provider — its org-wide (scope "") connection — for every provider a
+ * part USES, or the org holds an org-wide credential or a connection row for (an unused one can be disconnected
+ * without breaking anything). In picker order. A credential stored under a non-empty scope is a LEFTOVER
+ * (`listLeftovers`), never a connection: it does not make a row, and it is never counted or called Connected.
  */
 export async function listConnections(ctx: TenantContext, env: Env, providers: ProviderMap = PROVIDERS, state?: ConnectionState): Promise<HostingConnectionDTO[]> {
   const s = state ?? (await loadConnectionState(ctx));
-  const keys = new Map<string, { provider: HostingProviderId; scope: string }>();
-  const add = (provider: HostingProviderId, scope: string) => keys.set(`${provider}\u0000${scope}`, { provider, scope });
-  for (const p of s.parts) add(p.provider, credentialScopeOf(providers[p.provider], p));
+  const used = new Set<HostingProviderId>();
+  for (const p of s.parts) used.add(p.provider);
   for (const m of s.secrets) {
     const provider = providerOfKind(m.kind);
-    if (provider) add(provider, m.scope);
+    if (provider && !isLeftover(m)) used.add(provider);
   }
-  for (const r of s.rows) if (isHostingProvider(r.provider)) add(r.provider, r.scope);
-  const order = (k: { provider: HostingProviderId; scope: string }): [number, number, string] =>
-    [HOSTING_PROVIDERS.indexOf(k.provider), k.scope === "" ? -1 : s.envOrder.get(k.scope) ?? Number.MAX_SAFE_INTEGER, k.scope];
-  const sorted = [...keys.values()].sort((a, b) => {
-    const [pa, ea, sa] = order(a), [pb, eb, sb] = order(b);
-    return pa - pb || ea - eb || (sa < sb ? -1 : sa > sb ? 1 : 0);
-  });
+  for (const r of s.rows) if (isHostingProvider(r.provider) && !isLeftover(r)) used.add(r.provider);
   const out: HostingConnectionDTO[] = [];
-  for (const k of sorted) out.push(await describeConnection(ctx, env, s, providers[k.provider], k.scope));
+  for (const id of HOSTING_PROVIDERS) if (used.has(id)) out.push(await describeConnection(ctx, env, s, providers[id], ""));
   return out;
+}
+
+/** `HostingSetupDTO.leftovers`: every hosting credential stored under a non-empty scope (Railway's per-environment
+ *  project tokens from before 0057) — unread by anything, in picker order, then the environments' drift order. */
+export function listLeftovers(s: ConnectionState): HostingLeftoverDTO[] {
+  const rank = (m: SecretMeta): [number, number] => [HOSTING_PROVIDERS.indexOf(providerOfKind(m.kind)!), s.envOrder.get(m.scope) ?? Number.MAX_SAFE_INTEGER];
+  return s.secrets
+    .filter((m) => providerOfKind(m.kind) !== null && isLeftover(m))
+    .sort((a, b) => { const [pa, ea] = rank(a), [pb, eb] = rank(b); return pa - pb || ea - eb || (a.scope < b.scope ? -1 : a.scope > b.scope ? 1 : 0); })
+    .map((m) => ({
+      provider: providerOfKind(m.kind)!, scope: m.scope, scope_label: s.envLabels.get(m.scope) ?? null, label: LEFTOVER_TOKEN_LABEL,
+      hint_last4: m.hint_last4, created_by: m.created_by, created_at: m.created_at,
+    }));
+}
+
+/**
+ * "Remove old tokens" (admin+, `DELETE /hosting/:provider/leftovers`): delete every credential of the provider's
+ * kind stored under a non-empty scope — leftovers nothing reads — each with its `secret.delete` audit row (reason
+ * `leftover`), and one `hosting.leftovers_removed` row in the admin trail; ONE batch. The org-wide credential is
+ * never touched. None to remove → 404.
+ */
+export async function removeLeftovers(ctx: TenantContext, env: Env, providerId: string, providers: ProviderMap = PROVIDERS): Promise<HostingLeftoversRemovedDTO> {
+  requireRole(ctx, "admin");
+  const p = knownProvider(providers, providerId);
+  const kind = HOSTING_INTEGRATION_KIND[p.id];
+  const scopes = (await listSecretMeta(ctx)).filter((m) => m.kind === kind && isLeftover(m)).map((m) => m.scope);
+  if (scopes.length === 0) throw new SettingsError("not_found", 404, `${p.label} has no old tokens to remove`);
+  const at = nowIso();
+  await batch(ctx, [
+    ...(await secretDeleteStmts(ctx, scopes.map((scope) => ({ kind, scope })), "leftover", at)),
+    auditStmt(ctx, "hosting.leftovers_removed", p.id, { provider: p.id, scopes, count: scopes.length }, at),
+  ]);
+  return { removed: scopes.length, connection: await connectionDTO(ctx, env, p.id, "", providers) };
 }
 
 /** One connection's DTO (what a disconnect / test answers with) — also for a (provider, scope) no part uses. */

@@ -71,6 +71,43 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Repo setups (handoff #11, `feat/repo-setups`). Phase 0: Org settings bugs, and one place for each thing.
+  {
+    version: "Unreleased",
+    date: "2026-10-15",
+    unreleased: true,
+    title: "Repo setups",
+    headline: "Org settings says plainly what is connected, and keeps each thing in one place.",
+    highlights: [
+      "Hosting shows one card per host. Railway's old per-environment tokens no longer pose as two extra connections: the Railway card says Not connected, and one quiet line counts the old tokens and offers to remove them.",
+      "A host's status reads the same on its card, on every part it runs, in the setup checklist and in the Repo dashboard. Testing a part on a host that is not connected says so, with a Connect button.",
+      "Integrations is for GitHub and the other integrations; the hosting tokens are on Hosting, beside the hosts that use them.",
+      "An environment's app metrics token is set in its parts' editor on Hosting, and each host's card says which parts use it.",
+    ],
+    headsUp: [
+      "Hosting tokens and app metrics tokens moved from Integrations to Hosting. Nothing was reset: every token you saved is still there.",
+    ],
+    patches: {
+      added: [
+        "`shared/hosting-status-core.ts`: THE status function (`hostingStatus`, `providerStatus`, `orgConnection`) — the provider card, part rows, checklist, lead, Test this part and the Repo dashboard's not-connected copy all read it.",
+        "`DELETE /api/o/:slug/hosting/:provider/leftovers` (admin, cookie only): removes a provider's credentials stored under a non-empty scope, audited `hosting.leftovers_removed` (+ `secret.delete` reason `leftover`); \"Remove old tokens\" in the provider's Manage dialog, behind the page's confirmation.",
+        "`HostingSetupDTO.leftovers` and `HostingEnvironmentDTO.app_metrics`; `RepoProviderPart.connection` (the part's provider status, from `org_secrets` metadata and `org_hosting_connections` — never a value).",
+        "The Hosting sample preview's Flow switcher gains \"Leftover tokens\"; a test holds the card, the part rows, the checklist and Test this part to the same status for every Flow × Stack.",
+        "The part editor's app metrics token field (stored as before: `metrics_endpoint`, scoped to the environment, so the `:00` poller reads it unchanged).",
+      ],
+      changed: [
+        "`listConnections` returns ONE org-wide row per provider; a scoped hosting credential is a leftover, never a connection, never counted.",
+        "Org settings › Hosting: the environment tiles are gone — a compact read-only parts list with Edit stays until Repositories › Apps; a card lists what uses it (\"Backend in Staging and Production\").",
+        "`POST /hosting/:provider/test` on a provider that is not connected answers `{ ok: false, detail: \"<Provider> isn't connected.\" }` without probing (was 404 \"No secret is set\").",
+        "Org settings › Integrations lists GitHub and the non-hosting integrations only, with one line to Hosting; Environments links to Hosting for what each one runs.",
+      ],
+      fixed: [
+        "Railway's old per-environment project tokens showed as two Connected \"workspace token\" cards while the org-wide connection the Backend parts need did not exist.",
+        "A host disconnected by an admin read Removed on its parts but Not connected on its card.",
+      ],
+      removed: [],
+    },
+  },
   // Hosting providers: Org settings › Hosting, the Repo dashboard's Hosting section, Detected, Vercel events.
   {
     version: "0.33",

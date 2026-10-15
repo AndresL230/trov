@@ -1,9 +1,10 @@
 // Org settings › Integrations — the org's credentials (canopy-multitenancy.md §8.7).
 //
-// Every integration the org is EXPECTED to have is listed, set or not, grouped: GitHub
-// (the token, one webhook secret per repository), Hosting (each provider a part uses —
-// Cloudflare, Railway, Vercel, …, one org-wide credential each), then one group per
-// environment (its app metrics token). The tab reads top-down as a summary: a lead line
+// Every integration the org is EXPECTED to have is listed, set or not: GitHub (the App, or
+// the token and one webhook secret per repository) and every non-hosting integration. A
+// hosting provider's credential (Cloudflare, Railway, Vercel, …) and an environment's app
+// metrics token are NOT here: they are on Hosting, beside the provider and the part that use
+// them (one line says so). The tab reads top-down as a summary: a lead line
 // (how many are set, how many have an error), then per group a list of ROWS that each show
 // a name, its status in words and ONE action — Set while it has no value, Test once it
 // does. A row opens (org-ui.ts `openRow`) to the rest: what the credential is for, who set
@@ -108,6 +109,10 @@ const INTEGRATION_HINT: Record<IntegrationState, string | null> = {
   error: "The last use failed. Open the row to see the error.",
   orphan: "Its environment or repository is gone, so nothing reads it.",
 };
+/** Is this integration Integrations' to show? Hosting credentials (`HOSTING_INTEGRATION_KIND`) and an environment's
+ *  app metrics token belong to Hosting — beside the provider and the part that use them — never here. */
+export const onIntegrationsTab = (i: Pick<IntegrationDTO, "kind">): boolean => providerOfKind(i.kind) === null && i.kind !== "metrics_endpoint";
+
 /** One status per row, in words (a colour only ever repeats what the words say). */
 export function integrationStatus(i: IntegrationDTO): { state: IntegrationState; word: string; kind: StateKind } {
   if (i.configured && !i.expected) return { state: "orphan", word: "No longer used", kind: "off" };
@@ -129,19 +134,14 @@ export function integrationCounts(list: IntegrationDTO[]): { expected: number; s
 }
 
 export interface IntegrationGroup { key: string; title: string; hint: string; rows: IntegrationDTO[] }
-/** The page's groups, in order: GitHub, Hosting, one per environment, then stored secrets nothing claims. */
-export function groupIntegrations(list: IntegrationDTO[]): IntegrationGroup[] {
+/** The page's groups, in order: GitHub, then stored secrets nothing claims — of what this tab owns
+ *  (`onIntegrationsTab`: hosting credentials and app metrics tokens are Hosting's). */
+export function groupIntegrations(all: IntegrationDTO[]): IntegrationGroup[] {
+  const list = all.filter(onIntegrationsTab);
   const expected = list.filter((i) => i.expected);
   const groups: IntegrationGroup[] = [
     { key: "github", title: "GitHub", hint: "Reading the primary repository, and checking each repository's webhook deliveries.", rows: expected.filter((i) => i.kind === "github_token" || i.kind === "github_webhook") },
-    { key: "hosting", title: "Hosting", hint: "One credential for each host your environments' parts run on.", rows: expected.filter((i) => providerOfKind(i.kind) !== null) },
   ];
-  for (const i of expected.filter((x) => x.scope_type === "environment")) {
-    const key = `env:${i.scope}`;
-    let g = groups.find((x) => x.key === key);
-    if (!g) { g = { key, title: `${i.scope_label ?? i.scope} environment`, hint: "This environment's active users and product counters.", rows: [] }; groups.push(g); }
-    g.rows.push(i);
-  }
   const orphans = list.filter((i) => !i.expected);
   if (orphans.length) groups.push({ key: "orphans", title: "No longer used", hint: "Stored for an environment or repository that is gone. Each can only be deleted.", rows: orphans });
   return groups.filter((g) => g.rows.length > 0);
@@ -262,6 +262,7 @@ const REASON: Record<string, string> = {
   repo_removed: " when its repository was removed",
   environment_deleted: " when its environment was deleted",
   api_url_changed: " when the environment's API URL moved to another host",
+  leftover: ", an old per-environment token nothing read",
 };
 /** One history line as a sentence: who did what to which integration. Never a value — the
  *  audit row holds none; the last four characters are the most it can say. */
@@ -285,6 +286,10 @@ export function auditSentence(a: OrgAuditDTO, list: IntegrationDTO[]): string {
   if (a.action === "github.suspend") return `saw the GitHub App on ${a.target} suspended`;
   if (a.action === "github.unsuspend") return `saw the GitHub App on ${a.target} unsuspended`;
   if (a.action === "github.permissions") return `saw new permissions accepted for the GitHub App on ${a.target}`;
+  if (a.action === "hosting.leftovers_removed") {
+    const n = typeof d.count === "number" ? d.count : null;
+    return `removed ${n === null ? "the old" : n === 1 ? "1 old" : `${n} old`} per-environment ${a.target} ${n === 1 ? "token" : "tokens"}`;
+  }
   if (a.action === "github.repos") {
     const n = (v: unknown): number => (Array.isArray(v) ? v.length : 0);
     return `saw the GitHub App's repositories on ${a.target} change (${n(d.added)} added, ${n(d.removed)} removed)`;
@@ -385,16 +390,18 @@ export function integrationsTab(org: MyOrg, ui: OrgUi): string {
   const inst = app?.installation ?? null;
   const offered = app?.configured === true;
   const groups = groupIntegrations(d.integrations);
-  // An org on the App does not need its GitHub token or webhook secrets: they are not counted as owed.
-  const n = integrationCounts(inst ? d.integrations.filter((i) => !(i.expected && isGithubManual(i))) : d.integrations);
+  // What this tab owns (hosting credentials and app metrics tokens are Hosting's). An org on the App does not need
+  // its GitHub token or webhook secrets: they are not counted as owed.
+  const own = d.integrations.filter(onIntegrationsTab);
+  const n = integrationCounts(inst ? own.filter((i) => !(i.expected && isGithubManual(i))) : own);
   const noRepo = ui.repos.status === "ok" && ui.repos.data.length === 0;
-  const noEnv = ui.envs.status === "ok" && ui.envs.data.length === 0;
   // The lead: the state of the whole tab in one sentence. Its action is the one thing nothing works
   // without — GitHub — while it is not connected: through the App where this Trov offers it, else the token.
   const token = d.integrations.find((i) => i.kind === "github_token" && i.expected);
   const needToken = !inst && !!token && !token.configured && !token.legacy_fallback;
   const lead = tabLead(
-    `${inst ? `${inst.suspended_at ? appLeadPhrase(inst) : `GitHub is connected ${appLeadPhrase(inst)}`} &middot; ` : ""}<strong>${n.set} of ${n.expected}</strong> ${inst ? "other " : ""}${n.expected === 1 ? "credential" : "credentials"} set${n.errors ? ` &middot; ${leadFlag(`${n.errors} with an error`)}` : ""}${n.orphans ? ` &middot; ${n.orphans} no longer used` : ""}. A saved value is never shown again, only its last four characters.`,
+    // Nothing else owed (the App connected, and every other credential is Hosting's): no "0 of 0".
+    `${inst ? `${inst.suspended_at ? appLeadPhrase(inst) : `GitHub is connected ${appLeadPhrase(inst)}`}${n.expected || n.orphans ? " &middot; " : ""}` : ""}${inst && n.expected === 0 ? "" : `<strong>${n.set} of ${n.expected}</strong> ${inst ? "other " : ""}${n.expected === 1 ? "credential" : "credentials"} set`}${n.errors ? ` &middot; ${leadFlag(`${n.errors} with an error`)}` : ""}${n.orphans ? `${inst && n.expected === 0 ? "" : " &middot; "}${n.orphans} no longer used` : ""}. A saved value is never shown again, only its last four characters.`,
     !needToken || !token ? ""
       : offered ? connectLink(org.slug, "Connect with GitHub", "orgLeadGithub")
       : accentBtn("Set the GitHub token", "orgSecretOpen", { arg: `set:${integrationKey(token)}`, disabled: !d.secrets_available, field: "orgLeadToken", label: "Set the GitHub token" }),
@@ -409,8 +416,9 @@ export function integrationsTab(org: MyOrg, ui: OrgUi): string {
       <ul${surface(LIST)}>${g.rows.map((i) => integrationRow(i, { secretsAvailable: d.secrets_available, test: ui.tests[integrationKey(i)], open: ui.openRows.includes(integrationKey(i)) })).join("")}</ul>
     </section>`;
   }).join("");
-  const envHint = noEnv ? `<div style="margin-top:30px">${orgEmpty("No environment tokens yet", "Each environment gets an app metrics token. Add an environment first.", quietBtn("Open Environments", "orgTab", { arg: "environments" }))}</div>` : "";
-  return `${banner}${lead}${sections}${envHint}
+  // Hosting's credentials live with the providers and parts that use them: one line, and the way there.
+  const elsewhere = `<p data-org-int-hosting style="margin:24px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-55)">Hosting credentials (Cloudflare, Railway, Vercel and the rest) and each environment's app metrics token are set on Hosting, beside the providers and parts that use them. ${goLink("Open Hosting", "orgTab", "hosting")}</p>`;
+  return `${banner}${lead}${sections}${elsewhere}
     <section aria-labelledby="org-int-safe" data-org-group="safe">
       ${orgHead("Key and history", "", null, "org-int-safe")}
       <ul${surface(LIST)}>${keyRow(org, ui)}${auditRow(ui)}</ul>

@@ -303,9 +303,14 @@ export interface HostingReads {
   states: HostingPollStateRow[];
   /** Per (env, part, provider) the newest `perPart`, NEWEST FIRST. */
   deploys: HostingDeployRow[];
-  /** The org-wide (`scope = ''`) `org_integration_config` of every kind, by kind — NOT a secret (the
-   *  secrets are `org_secrets`, which this never names): a provider's console link is built from it. */
+  /** The org-wide (`scope = ''`) `org_integration_config` of every kind, by kind — NOT a secret: a provider's
+   *  console link is built from it. */
   config: Map<string, Record<string, string>>;
+  /** Which kinds have an org-wide (`scope = ''`) credential STORED, by kind, with its last error — `org_secrets`
+   *  METADATA only (never `ciphertext` / `iv`): what the one status function needs to say "connected". */
+  secrets: Map<string, { last_error: string | null }>;
+  /** The org-wide install / OAuth connection rows (`org_hosting_connections`, scope ''), by provider. */
+  connections: Map<string, { status: string; revoked_reason: string | null }>;
 }
 
 const jsonRecord = (text: string | null): Record<string, unknown> => {
@@ -326,6 +331,10 @@ const strOrNull = (v: unknown): string | null => (typeof v === "string" ? v : nu
  *           built from. Read HERE, by a tenant statement, rather than through src/data/secrets.ts's
  *           `getIntegrationConfig`: the projection is reachable from src/mcp.ts, and nothing reachable from
  *           there may import the decrypt path (test/secrets.mcp.test.ts). It is configuration, not a secret.
+ *   secret  which kinds have an org-wide credential stored, and its `last_error` — `org_secrets` METADATA,
+ *           never `ciphertext` / `iv` / `key_version` — and
+ *   conn    the org-wide install / OAuth rows (`org_hosting_connections`): together what the ONE status
+ *           function (shared/hosting-status-core.ts) reads to tell "not connected" from "not read yet".
  * The metric points themselves ride `metricsSince` (the Usage read) — so the whole section costs the render
  * this one statement beyond the parts list. An unparseable bound reads no deploys rather than all of them.
  */
@@ -345,9 +354,13 @@ export async function hostingReads(ctx: TenantContext, sinceIso: string, perPart
          FROM hosting_deploys WHERE org_id = ? AND created_at >= ?
      ) WHERE rn <= ?
      UNION ALL
-     SELECT 'config', kind, scope, '', config FROM org_integration_config WHERE org_id = ? AND scope = ''`,
-    ctx.orgId, ctx.orgId, since, perPart, ctx.orgId);
-  const out: HostingReads = { states: [], deploys: [], config: new Map() };
+     SELECT 'config', kind, scope, '', config FROM org_integration_config WHERE org_id = ? AND scope = ''
+     UNION ALL
+     SELECT 'secret', kind, scope, '', json_object('last_error', last_error) FROM org_secrets WHERE org_id = ? AND scope = ''
+     UNION ALL
+     SELECT 'conn', provider, scope, '', json_object('status', status, 'revoked_reason', revoked_reason) FROM org_hosting_connections WHERE org_id = ? AND scope = ''`,
+    ctx.orgId, ctx.orgId, since, perPart, ctx.orgId, ctx.orgId, ctx.orgId);
+  const out: HostingReads = { states: [], deploys: [], config: new Map(), secrets: new Map(), connections: new Map() };
   for (const r of rows) {
     const j = jsonRecord(r.j);
     if (r.src === "state") {
@@ -366,6 +379,10 @@ export async function hostingReads(ctx: TenantContext, sinceIso: string, perPart
       });
     } else if (r.src === "config") {
       out.config.set(r.a, Object.fromEntries(Object.entries(j).filter((e): e is [string, string] => typeof e[1] === "string")));
+    } else if (r.src === "secret") {
+      out.secrets.set(r.a, { last_error: strOrNull(j.last_error) });
+    } else if (r.src === "conn") {
+      if (typeof j.status === "string") out.connections.set(r.a, { status: j.status, revoked_reason: strOrNull(j.revoked_reason) });
     }
   }
   // The arms come back in no promised order: newest first within each part, the order the DTO carries.

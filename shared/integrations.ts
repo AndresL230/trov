@@ -72,7 +72,9 @@ export type OrgSettingsAuditAction =
   | "github.connect" | "github.disconnect" | "github.uninstall" | "github.suspend" | "github.unsuspend" | "github.repos" | "github.permissions"
   // Hosting (0057_hosting_providers): a part set / removed, an install or OAuth grant connected, disconnected
   // from Trov, or revoked from the provider's side.
-  | "part.set" | "part.delete" | "hosting.connect" | "hosting.disconnect" | "hosting.revoked";
+  | "part.set" | "part.delete" | "hosting.connect" | "hosting.disconnect" | "hosting.revoked"
+  // A provider's leftover per-environment tokens removed by an admin (repo-setups Phase 0).
+  | "hosting.leftovers_removed";
 
 /** One row of `GET /api/o/:slug/integrations/audit`: the secret trail and the repository / environment
  *  trail as ONE list, newest first. `id` is unique across both: `s<n>` (secrets) or `a<n>` (settings). */

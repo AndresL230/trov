@@ -20,6 +20,7 @@ import { esc, attr } from "./ui";
 import { kindMark, type StateKind } from "./marks";
 import { hostLogo } from "./host-logos";
 import { emptyLayout, emptyShapes, skBar, skBox, skLine, skeleton } from "./skeleton";
+import { notConnectedSentence } from "@shared/hosting-status-core";
 
 /** What the section borrows from repo.ts (passed in, so the two modules do not import each other). */
 export interface RepoHostingTools {
@@ -67,12 +68,16 @@ export function duration(from: string, to: string | null): string | null {
 }
 
 /** Why a figure is absent, in this order: the provider cannot read it (its reason), else the source has gone
- *  quiet, else it never reported. Three different, calm states — none of them is "0". */
-export function absentHint(part: Pick<RepoProviderPart, "unavailable" | "provider_label">, metric: HostingMetric, seen: boolean): string {
+ *  quiet (or its host IS connected and has not reported yet — THE status function's `connection`, so the card on
+ *  Org settings › Hosting and this never disagree), else it is not connected. Three different, calm states — none
+ *  of them is "0". */
+export function absentHint(part: Pick<RepoProviderPart, "unavailable" | "provider_label" | "connection">, metric: HostingMetric, seen: boolean): string {
   const u = part.unavailable.find((x) => x.metric === metric);
   if (u) return `not available from ${part.provider_label}: ${u.reason}`;
-  return seen ? "no recent reading" : "not connected";
+  return seen || connectedHost(part) ? "no recent reading" : "not connected";
 }
+/** The part's host is connected (a credential answers), as THE status function said on the server. */
+const connectedHost = (part: Pick<RepoProviderPart, "connection">): boolean => part.connection === "connected" || part.connection === "error";
 
 interface Fig { key: string; label: string; value: string | null; hint: string; tone?: RepoTone; count?: number | null; unit?: string }
 /** One figure over its label. Absent, it is "—" with the reason under the label. */
@@ -186,7 +191,7 @@ function trafficBlock(part: RepoProviderPart, t: RepoHostingTools): string {
   if (!part.traffic) {
     const reason = part.unavailable.find((u) => HEADLINE_WEB.includes(u.metric))?.reason;
     const line = reason ? `Usage isn't available from ${part.provider_label}: ${reason}.`.replace(/\.\.$/, ".")
-      : part.seen.traffic ? "No recent traffic reading." : `Traffic: not connected. Nothing has been read from ${part.provider_label} for this part yet.`;
+      : part.seen.traffic || connectedHost(part) ? "No recent traffic reading." : `Traffic: not connected. Nothing has been read from ${part.provider_label} for this part yet.`;
     return `<div data-htraffic="${reason ? "unavailable" : part.seen.traffic ? "stale" : "none"}" style="margin-top:12px;font-size:12px;line-height:1.5;color:var(--fg-40)">${esc(line)}</div>`;
   }
   const r = part.traffic[t.range];
@@ -218,6 +223,16 @@ function resourcesBlock(part: RepoProviderPart): string {
     </div>`;
 }
 
+/** A part nothing has been read for yet, in the words its provider's card on Org settings › Hosting uses: the part's
+ *  `connection` is THE status function's answer (shared/hosting-status-core.ts), so a host that IS connected is never
+ *  called "not connected" here just because its first poll has not run. */
+export function neverReadLine(part: Pick<RepoProviderPart, "provider_label" | "connection">): string {
+  const label = esc(part.provider_label);
+  if (part.connection === "connected" || part.connection === "error") return `Connected, not read yet: the hourly poll reads ${label} for this part next.`;
+  if (part.connection === "not_connected" || part.connection === "revoked") return `${esc(notConnectedSentence(part.provider_label))} Nothing is read for this part until it is: Org settings › Hosting.`;
+  return `Not connected: nothing has been read from ${label} for this part yet.`;
+}
+
 function partCard(part: RepoProviderPart, t: RepoHostingTools): string {
   const console_ = safeUrl(part.console_url);
   const head = `<div style="display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap">
@@ -231,7 +246,7 @@ function partCard(part: RepoProviderPart, t: RepoHostingTools): string {
     : `<div data-hdeploy="none" style="margin-top:10px;font-size:12px;color:var(--fg-40)">${part.seen.deploys ? "No deploy in the last 90 days." : "No deploy read yet."}</div>`;
   // `not_connected` = never polled: there is nothing to draw but the fact. `empty` = polled, nothing in range.
   const body = part.status === "not_connected"
-    ? `<div data-hstate="not_connected" style="margin-top:10px;font-size:12px;line-height:1.5;color:var(--fg-40)">Not connected: nothing has been read from ${esc(part.provider_label)} for this part yet.</div>`
+    ? `<div data-hstate="not_connected" style="margin-top:10px;font-size:12px;line-height:1.5;color:var(--fg-40)">${neverReadLine(part)}</div>`
     : `${deploys}${part.role === "web" ? trafficBlock(part, t) : resourcesBlock(part)}${part.status === "empty" ? `<div data-hstate="empty" style="margin-top:10px;font-size:12px;color:var(--fg-40)">Polled, but nothing to show in the last 30 days.</div>` : ""}`;
   const failed = part.last_poll?.status === "failed"
     ? `<div data-hpollfail role="status" style="margin-top:12px;border:1px solid color-mix(in srgb,var(--amber) 40%,transparent);background:color-mix(in srgb,var(--amber) 7%,transparent);border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.5;color:var(--fg-70);overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">Last poll failed ${esc(t.ago(part.last_poll.at, t.now))} ago.</strong> ${esc(part.last_poll.detail ?? "The provider did not answer.")}</div>` : "";

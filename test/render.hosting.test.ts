@@ -11,9 +11,11 @@ import { orgSettingsView, orgOverlays, orgTabBar, initialOrgUi, orgTabsFor, effe
 import {
   hostingNoticeCopy, hostingTab, partEditorModal, connectModal, tokenModal, manageModal, partDraftProblems, fieldOptions, unavailableLines, connectionStatus, lostOnProvider,
   shownDetections, tokenWord, sentOnlyTo, connectionsFor, hostingTodo, tokenFormOk, initialHostingUi, HOSTING_SAMPLE_KEYS, HOSTING_STACK_KEYS, STACK_LABEL,
-  HOSTING_ENVS_EMPTY, HOSTING_PARTS_EMPTY, envTilesShape, partRowsShape,
+  HOSTING_ENVS_EMPTY, HOSTING_PARTS_EMPTY, partsListShape, partRowsShape, providerStatusOf, leftoversConfirmCopy,
   type HostingUi, type PartDraft, type TokenForm,
 } from "../web/src/hosting";
+import { neverReadLine } from "../web/src/repo-hosting";
+import { hostingStatus, notConnectedSentence, orgConnection } from "@shared/hosting-status-core";
 import { hostingErrorText } from "../web/src/hosting-actions";
 import { OrgApiError } from "../web/src/api";
 import { HOSTING_SAMPLES, HOSTING_SAMPLE_MIXED, HOSTING_SAMPLE_PROVIDERS, hostingScenario } from "../web/src/hosting-sample";
@@ -57,10 +59,10 @@ describe("Hosting is an admin's tab of Org settings", () => {
     expect(hashForRoute({ ...parseHash("#org/hosting") })).toBe("#org/hosting");
     const html = page(uiFor(HOSTING_SAMPLE_MIXED));
     expect(html).toMatch(/id="org-tab-hosting"[^>]*aria-selected="true"|aria-selected="true"[^>]*id="org-tab-hosting"/);
-    expect(html).toContain('data-org-group="hosting-envs"');
+    expect(html).toContain('data-org-group="hosting-parts"');
     // A member who typed the address gets the first tab they may open, and none of Hosting.
     const member = page(uiFor(HOSTING_SAMPLE_MIXED), "member");
-    expect(member).not.toContain("data-org-group=\"hosting-envs\"");
+    expect(member).not.toContain("data-org-group=\"hosting-parts\"");
     expect(member).not.toContain('id="org-tab-hosting"');
   });
 
@@ -100,9 +102,9 @@ describe("empty layouts and the state preview (web-ui.md › Empty layouts)", ()
     const html = tab(HOSTING_SAMPLES.fresh);
     expect(html).toContain('data-empty="org-hosting-envs"');
     expect(html).toContain(HOSTING_ENVS_EMPTY);
-    expect(html).toContain(`<div class="cnpy-empty-shapes" aria-hidden="true">${envTilesShape()}</div>`);
+    expect(html).toContain(`<div class="cnpy-empty-shapes" aria-hidden="true">${partsListShape()}</div>`);
     expect(html).toMatch(/class="cnpy-empty-acts"><button[^>]*data-act="orgTab" data-arg="environments"[^>]*>Open Environments</);
-    picture(envTilesShape());
+    picture(partsListShape());
   });
 
   it("an environment with no part: its rows drawn empty under one sentence, inside the tile (its Add part button is the action)", () => {
@@ -120,7 +122,7 @@ describe("empty layouts and the state preview (web-ui.md › Empty layouts)", ()
     const loading = tab(null);
     expect(loading).toMatch(/data-skel="org-hosting"/);
     expect(loading).toContain('aria-busy="true"');
-    expect(loading).toContain(envTilesShape());
+    expect(loading).toContain(partsListShape());
     expect(loading).not.toContain("data-empty=");
     expect(loading).not.toContain("cnpy-empty-shapes");
   });
@@ -226,7 +228,7 @@ describe("the tab, state by state (the sample payloads)", () => {
     expect(unavailableLines([], "web", "Render")).toEqual([]);
   });
 
-  it("opening a part shows its key, settings, last poll, Open in <provider>, Test this part and Remove — last, as text", () => {
+  it("opening a part shows its key, settings, last poll, Open in <provider> and Test this part — Remove is the part editor's", () => {
     const html = tab(HOSTING_SAMPLE_MIXED, {}, ["part:production/worker"]);
     const row = rowOf(html, 'data-org-part="production/worker"');
     expect(row).toContain('aria-expanded="true"');
@@ -235,8 +237,9 @@ describe("the tab, state by state (the sample payloads)", () => {
     expect(row).toMatch(/href="https:\/\/fly\.io\/apps\/acme-worker" target="_blank" rel="noopener noreferrer"/);
     expect(row).toContain("Open in Fly.io");
     expect(row).toContain('data-act="orgHxTestPart" data-arg="production/worker"');
-    expect(row).toMatch(/data-act="orgConfirm" data-arg="part:production\/worker"[^>]*class="cnpy-org-danger"/);
-    expect(row.indexOf("orgHxTestPart")).toBeLessThan(row.indexOf("orgConfirm"));
+    // The list is read-only: Edit opens the part editor, which holds Remove part.
+    expect(row).not.toContain("orgConfirm");
+    expect(row).toMatch(/data-act="orgHxPartEdit" data-arg="production\/worker"/);
   });
 
   it("an environment at six parts cannot take a seventh", () => {
@@ -289,7 +292,8 @@ describe("providers and their connections", () => {
     expect(vercel).toContain("Vercel <span");
     expect(vercel).toContain("&middot; Acme</span>");
     expect(vercel).toContain(">Connected<");
-    expect(vercel).toContain("Installed &middot; used by 2 parts");
+    // How it is connected, then what uses it — as plain metadata, by part and environment.
+    expect(vercel).toMatch(/class="cnpy-hx-card-m">Installed &middot; [^<]+ in (Staging|Production)/);
     expect(vercel).toMatch(/data-act="orgHxManage" data-arg="vercel:"[^>]*>Manage</);
     expect(vercel).not.toContain("orgHxTest");
     expect(vercel).not.toContain("orgConfirm");
@@ -815,8 +819,150 @@ describe("house rules", () => {
     const html = tab(HOSTING_SAMPLE_MIXED, { doneOpen: true }, ["part:staging/web", "hx:vercel:", "hx-manual:vercel:"]);
     expect(html).not.toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<button/);
     const block = css.slice(css.indexOf("/* Org settings › Hosting"), css.indexOf(".cnpy-org-how {"));
-    expect(block).toContain(".cnpy-hx-envs");
+    expect(block).toContain(".cnpy-hx-envhead");
     expect(block).not.toContain("border-radius");
     expect(block).not.toMatch(/animation|transition/);                        // nothing here moves
+  });
+});
+
+describe("ONE status, everywhere (repo-setups Phase 0)", () => {
+  const available = HOSTING_SAMPLE_PROVIDERS.filter((p) => p.status === "available");
+  const cardState = (html: string, id: HostingProviderId): string | null => new RegExp(`data-org-hosting-conn="${id}:" data-state="([a-z_]+)"`).exec(html)?.[1] ?? null;
+
+  // GUARD 2: for every Flow × Stack the sample preview can show, the provider's card, every part row on it, the
+  // payload's own part status, the checklist and Test this part say the SAME thing — THE status function's.
+  it.each(HOSTING_SAMPLE_KEYS.flatMap((f) => HOSTING_STACK_KEYS.map((st) => [f, st] as const)))("%s × %s: the card, the part rows, the checklist and Test this part agree", (flow, stack) => {
+    const d = hostingScenario(flow, stack);
+    const html = tab(d);
+    for (const p of available) {
+      const st = hostingStatus(orgConnection(d.connections, p.id), p.label);
+      expect(providerStatusOf(d, p.id), p.id).toEqual(st);
+      // ONE card per provider, whatever else is stored.
+      expect((html.match(new RegExp(`data-org-hosting-conn="${p.id}:`, "g")) ?? []).length, `${p.id} cards`).toBe(1);
+      expect(cardState(html, p.id), `${p.id} card`).toBe(st.state);
+      const users = d.environments.flatMap((e) => e.parts.filter((x) => x.provider === p.id));
+      for (const part of users) {
+        expect(part.connection, `${part.env}/${part.key} payload`).toBe(st.state);
+        expect(html, `${part.env}/${part.key} row`).toContain(`data-org-part="${part.env}/${part.key}" data-provider="${p.id}" data-connection="${st.state}"`);
+        // Test this part: not live → the card's own words and its Connect; live → never that answer.
+        const tested = tab(d, { tests: { [`part:${part.env}/${part.key}`]: { status: "done", ok: false, detail: notConnectedSentence(p.label) } } });
+        const row = rowOf(tested, `data-org-part="${part.env}/${part.key}"`);
+        if (st.live) expect(row, `${part.env}/${part.key} test`).not.toContain('data-org-test="not_connected"');
+        else {
+          expect(row, `${part.env}/${part.key} test`).toContain('data-org-test="not_connected"');
+          expect(row).toContain(`${p.label} isn&#39;t connected.`);
+          expect(row).toMatch(new RegExp(`data-act="orgHxConnect" data-arg="${p.id}:"`));
+          expect(row).not.toContain("No secret");
+        }
+      }
+      // The checklist: a provider a part uses has its connect step, done exactly when the card says it is live.
+      if (users.length) {
+        const step = d.checklist.find((i) => i.id === `connect:${p.id}` || i.id === `connect:${p.id}:`);
+        expect(step, `${p.id} checklist`).toBeDefined();
+        expect(step!.done, `${p.id} checklist`).toBe(st.live);
+      }
+    }
+  });
+
+  it("Leftover tokens: Railway's card says Not connected with ONE quiet line, its Manage holds Remove old tokens, and the lead counts no leftover", () => {
+    const d = hostingScenario("leftovers", "cloudflare_railway");
+    const html = tab(d);
+    const card = rowOf(html, 'data-org-hosting-conn="railway:"');
+    expect(card).toContain('data-state="not_connected"');
+    expect(card).toContain(">Not connected<");
+    expect(card).not.toContain(">Connected<");
+    expect(card).toContain("2 old per-environment tokens from before Oct 15 aren&#39;t used. Connect Railway once with a workspace token.");
+    expect(card).toContain("Backend in Staging and Production");
+    expect(card).toMatch(/data-act="orgHxManage" data-arg="railway:"[^>]*>Review old tokens</);
+    expect(html).not.toContain('data-org-hosting-conn="railway:staging"');
+    // The lead: Cloudflare works, Railway does not — the two old tokens are not connections.
+    expect(html).toContain("<strong>1 of 2</strong> connections working");
+    const dlg = manage(d, "railway:");
+    expect(dlg).toContain("Project token (no longer used) &middot; Staging &middot; &bull;&bull;&bull;&bull;5024");
+    expect(dlg).toContain("Project token (no longer used) &middot; Production &middot; &bull;&bull;&bull;&bull;51b1");
+    expect(dlg).toMatch(/data-act="orgConfirm" data-arg="leftovers:railway"[^>]*class="cnpy-org-danger"[^>]*>Remove old tokens</);
+    expect(dlg).toMatch(/data-act="orgHxConnect" data-arg="railway:"[^>]*>Connect Railway</);
+    expect(leftoversConfirmCopy(d, "railway")).toMatchObject({ title: "Remove 2 old Railway tokens?", confirmLabel: "Remove old tokens" });
+    // …through the page's confirmation modal.
+    expect(orgConfirmCopy({ what: "leftovers", arg: "railway", busy: false }, org(), uiFor(d))).toMatchObject({ title: "Remove 2 old Railway tokens?" });
+    // Connected once for the org: Connected, and the line keeps only the count.
+    const live = clone(d);
+    const rw = live.connections.find((c) => c.provider === "railway")!;
+    Object.assign(rw, { status: "connected", method: "token", hint_last4: "c71e", connected_by: "andres", connected_at: "2026-10-15T09:00:00.000Z" });
+    const liveCard = rowOf(tab(live), 'data-org-hosting-conn="railway:"');
+    expect(liveCard).toContain('data-state="connected"');
+    expect(liveCard).toContain("2 old per-environment tokens from before Oct 15 aren&#39;t used.");
+    expect(liveCard).not.toContain("Connect Railway once");
+    expect(liveCard).toContain("Workspace token &bull;&bull;&bull;&bull;c71e");
+  });
+
+  // GUARD 1 (the screen's half; the server's is test/hosting.leftovers.test.ts): a payload from before this fix —
+  // scoped Railway rows among the connections — still draws ONE Railway card, from the org-wide row, never Connected.
+  it("an old payload with scoped connection rows still draws one card per provider, and never counts them", () => {
+    const d = clone(hostingScenario("parts", "cloudflare_railway"));
+    const rw = d.connections.find((c) => c.provider === "railway")!;
+    for (const scope of ["staging", "production"]) d.connections.push({ ...rw, scope, scope_label: scope, status: "connected", method: "token", hint_last4: scope === "staging" ? "5024" : "51b1" });
+    const html = tab(d);
+    expect((html.match(/data-org-hosting-conn="railway:/g) ?? []).length).toBe(1);
+    expect(cardState(html, "railway")).toBe("not_connected");
+    expect(html).not.toContain("5024");
+    expect(html).toContain("<strong>0 of 2</strong> connections working");
+    for (const e of d.environments) expect(html).toContain(`data-org-part="${e.key}/backend" data-provider="railway" data-connection="not_connected"`);
+  });
+
+  it("the Repo dashboard's never-read copy follows the same status", () => {
+    expect(neverReadLine({ provider_label: "Railway", connection: "not_connected" })).toContain("Railway isn&#39;t connected.");
+    expect(neverReadLine({ provider_label: "Railway", connection: "connected" })).toContain("Connected, not read yet");
+    expect(neverReadLine({ provider_label: "Railway", connection: "connected" })).not.toContain("isn&#39;t connected");
+    expect(neverReadLine({ provider_label: "Railway" })).toContain("Not connected: nothing has been read from Railway");
+  });
+});
+
+describe("the app metrics token lives in the part editor (it left Integrations)", () => {
+  const live = () => clone(hostingScenario("live", "cloudflare_railway"));
+  const editor = (d: HostingSetupDTO, env: string, key: string, over: Partial<PartDraft> = {}, h: Partial<HostingUi> = {}) => {
+    const part = d.environments.find((e) => e.key === env)!.parts.find((p) => p.key === key)!;
+    return partEditorModal(d, draft({ env, key, keyDraft: key, label: part.label, provider: part.provider, role: part.role, settings: { ...part.settings }, ...over }), { ...initialHostingUi(), setup: { status: "ok", data: d }, ...h });
+  };
+
+  it("set: its last four, when it was last used, Test token and Delete token — and the input never carries a value", () => {
+    const html = editor(live(), "production", "backend", { metricsHasValue: true });
+    expect(html).toContain('data-hx-metrics="production" data-state="set"');
+    expect(html).toContain("ends in 7f3c");
+    expect(html).toContain("https://api.acme.dev/api/internal/metrics");
+    expect(html).toContain("every part of Production shares it");
+    expect(html).toMatch(/data-act="orgHxMetricsTest" data-arg="production"/);
+    expect(html).toMatch(/data-act="orgHxMetricsDelete" data-arg="production"[^>]*class="cnpy-org-danger"/);
+    const input = /<input id="org-hx-metrics"[^>]*>/.exec(html)![0];
+    expect(input).toContain('type="password"');
+    expect(input).not.toMatch(/\svalue=/);
+    expect(input).toContain('placeholder="Paste a new token to replace it"');
+  });
+
+  it("not set: an optional field saved with the part; a failed save is shown at the field; locked while secrets can't be saved", () => {
+    const d = live();
+    const html = editor(d, "staging", "backend");
+    expect(html).toContain('data-hx-metrics="staging" data-state="unset"');
+    expect(html).toContain(">Not set<");
+    expect(html).not.toContain("orgHxMetricsDelete");
+    expect(editor(d, "staging", "backend", { error: "The token must be at least 16 characters.", errorField: "metrics" })).toContain('id="org-hx-metrics-e"');
+    const locked = { ...d, secrets_available: false };
+    expect(/<input id="org-hx-metrics"[^>]*>/.exec(editor(locked, "staging", "backend"))![0]).toContain(" disabled");
+    // An environment with no API URL says where to set one.
+    d.environments[0].app_metrics = { ...d.environments[0].app_metrics!, api_url: null };
+    expect(editor(d, "staging", "backend")).toContain("does not have yet: set it in Environments");
+  });
+
+  it("a payload from before the field existed shows no block (never a guess)", () => {
+    const d = live();
+    delete d.environments[1].app_metrics;
+    expect(editor(d, "production", "backend")).not.toContain("data-hx-metrics");
+  });
+
+  it("an app metrics token that failed its last use counts on Hosting's badge", () => {
+    const d = live();
+    d.environments[1].app_metrics = { ...d.environments[1].app_metrics!, last_error: "metrics endpoint: HTTP 401" };
+    expect(hostingTodo(uiFor(d).hosting)).toBe(1);
+    expect(editor(d, "production", "backend")).toContain("metrics endpoint: HTTP 401");
   });
 });
