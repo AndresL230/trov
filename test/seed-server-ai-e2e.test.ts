@@ -26,8 +26,9 @@ async function count(sql: string): Promise<number> {
   const row = await env.DB.prepare(sql).first<{ n: number }>();
   return Number(row?.n ?? 0);
 }
-
-describe("server-ai e2e seed", () => {
+// The idempotence case writes the whole seed twice: 30 s per case (5 s ran out under a loaded full suite).
+// The seed writes a few thousand statements twice in one test: 30 s each (5 s ran out under a loaded full suite).
+describe("server-ai e2e seed", { timeout: 30_000 }, () => {
   it("runs every section this schema can take, and every fixture of those sections is present", async () => {
     const { sections, fixtures } = await seed();
     const s = await schema();
