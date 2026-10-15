@@ -124,6 +124,10 @@ describe("My Work › Your brief, from a stored person_brief row through the rea
     expect(t.indexOf("Finish the Render provider")).toBeGreaterThan(t.indexOf("Netlify connect flow"));
     expect(t).toContain(WHY_TICKET);
     expect(tile).not.toContain("mock-live-md"); // nothing rendered as markdown
+    // The app's motion hooks on the real tile: the rows rise in order on the entrance; landing later, the tile
+    // fades with the dashboard read's skeleton (test/render.brief-motion.test.ts pins the mechanics).
+    expect(tile).toContain('data-settle-with="mw-tickets"');
+    expect([...tile.matchAll(/class="(?:mw-brief-next )?cnpy-rise" style="--i:(\d+);/g)].map((m) => Number(m[1]))).toEqual([1, 1, 2, 2, 3, 4]);
 
     // "Wrong?": exactly what the button carries, sent as the web client sends it.
     const arg = /data-act="aiWrong" data-arg="([^"]+)"/.exec(tile)?.[1];

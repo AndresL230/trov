@@ -423,22 +423,30 @@ export function briefNextMark(it: AiBriefNextItem): string {
   return kindWord(TICKET_BOX, it.cites[0]?.label ?? "Ticket");
 }
 
-function briefLine(line: AiLine): string {
-  return `<div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+function briefLine(line: AiLine, i: number): string {
+  return `<div class="cnpy-rise" style="--i:${i};display:flex;flex-direction:column;gap:6px;min-width:0">
       <p style="margin:0;line-height:1.55;overflow-wrap:anywhere">${esc(line.text)}</p>
       ${line.cites.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px">${aiCites(line.cites)}</div>` : ""}
     </div>`;
 }
-function briefNextRow(it: AiBriefNextItem): string {
+function briefNextRow(it: AiBriefNextItem, i: number): string {
   const c = it.cites[0];
   const title = c ? aiCite({ ...c, label: it.title }, "color:var(--fg);font-weight:500") : `<span style="color:var(--fg);font-weight:500">${esc(it.title)}</span>`;
-  return `<li class="mw-brief-next" style="display:flex;gap:12px;align-items:baseline;min-width:0">
+  return `<li class="mw-brief-next cnpy-rise" style="--i:${i};display:flex;gap:12px;align-items:baseline;min-width:0">
       <span style="flex:0 0 auto;min-width:76px">${briefNextMark(it)}</span>
       <div style="display:flex;flex-direction:column;min-width:0">${title}<span style="color:var(--fg-55);font-size:13px;line-height:1.5">${esc(it.why)}</span></div>
     </li>`;
 }
 
-/** My Work's brief tile. `hidden` = this person pressed "Wrong?" on it: nothing is drawn. */
+/** The dashboard read's skeleton (the Tickets tile's, `tileSkeleton("tickets")`): the brief comes in that read. */
+export const BRIEF_SETTLE_WITH = "mw-tickets";
+
+/** My Work's brief tile. `hidden` = this person pressed "Wrong?" on it: nothing is drawn.
+ *  Motion (the app's own, web-ui.md "Sidebar & motion" / "Loading skeletons"): the tile rises with the bento's
+ *  `.cnpy-stagger` on the page entrance, then its Now / Recently / Next rows (and each Next item, and the byline)
+ *  rise in order (`.cnpy-rise` + `--i`) — all under `[data-enter]`, so a rerender joins the entrance and never
+ *  replays it. Landing after the entrance, the tile takes the dashboard skeleton's one fade (`data-settle-with`,
+ *  skeleton.ts `syncSkeletons`). Off under reduced motion. */
 export function briefTile(b: AiBrief, hidden = false, span = 7): string {
   if (hidden) return "";
   const written = b.generatedAt !== null;
@@ -448,17 +456,24 @@ export function briefTile(b: AiBrief, hidden = false, span = 7): string {
     </div>`;
   const line = (l: AiLine, color = "var(--fg)") => `<p style="margin:0;font-size:14px;line-height:1.55;color:${color};overflow-wrap:anywhere;text-wrap:pretty">${esc(l.text)}</p>`;
   let body: string;
+  let riseLast = 1;
   if (b.state === "empty" || (b.state !== "capped" && !b.now && !b.recently && !b.next.items.length)) body = aiEmpty(AI_EMPTY.brief);
   else if (b.state === "capped") body = `${b.now ? line(b.now, "var(--fg-70)") : ""}${aiCapped(b, `your brief resumes ${aiDay(b.resumesOn)}`)}`;
   else {
     const rows: string[] = [];
-    if (b.now) rows.push(`<div style="${BRIEF_LABEL}">Now</div>${briefLine(b.now)}`);
-    if (b.recently) rows.push(`<div style="${BRIEF_LABEL}">Recently</div>${briefLine(b.recently)}`);
-    if (b.next.items.length) rows.push(`<div style="${BRIEF_LABEL}">Next</div><ol style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;min-width:0">${b.next.items.map(briefNextRow).join("")}</ol>`);
+    // A row's label and its content rise together (one `--i`); Next's items follow one step apart.
+    const label = (i: number, word: string) => `<div class="cnpy-rise" style="--i:${i};${BRIEF_LABEL}">${word}</div>`;
+    if (b.now) rows.push(`${label(rows.length + 1, "Now")}${briefLine(b.now, rows.length + 1)}`);
+    if (b.recently) rows.push(`${label(rows.length + 1, "Recently")}${briefLine(b.recently, rows.length + 1)}`);
+    if (b.next.items.length) {
+      const r = rows.length + 1;
+      rows.push(`${label(r, "Next")}<ol style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;min-width:0">${b.next.items.map((it, k) => briefNextRow(it, r + k)).join("")}</ol>`);
+    }
+    riseLast = rows.length + Math.max(0, b.next.items.length - 1) + 1;
     body = `<div class="mw-brief-grid">${rows.join("")}</div>`;
   }
-  const foot = written ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px 8px 16px;border-top:1px solid var(--border);margin-top:auto">${aiByline(b.generatedAt, AI_TIP.brief, { size: 12 })}${wrong}</div>` : "";
-  return `<section${surface(`min-width:0;display:flex;flex-direction:column;overflow:hidden;--span:${span}`, { cls: "mw-tile mw-brief cnpy-rise" })} data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}<div class="mw-scroll" style="display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px;min-width:0">${body}</div>${foot}</section>`;
+  const foot = written ? `<div class="cnpy-rise" style="--i:${riseLast};display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px 8px 16px;border-top:1px solid var(--border);margin-top:auto">${aiByline(b.generatedAt, AI_TIP.brief, { size: 12 })}${wrong}</div>` : "";
+  return `<section${surface(`min-width:0;display:flex;flex-direction:column;overflow:hidden;--span:${span}`, { cls: "mw-tile mw-brief cnpy-rise" })} data-settle-with="${BRIEF_SETTLE_WITH}" data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}<div class="mw-scroll" style="display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px;min-width:0">${body}</div>${foot}</section>`;
 }
 
 // ── the page ─────────────────────────────────────────────────────────────────

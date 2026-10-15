@@ -162,7 +162,7 @@ describe("My Work › Your brief", () => {
   });
   it("ready: each Next row is a state mark, the item's linked title and a muted why", () => {
     const card = briefTile(briefFixture("ready", NOW));
-    const rows = card.split('class="mw-brief-next"').slice(1);
+    const rows = card.split(/class="mw-brief-next[ "]/).slice(1);
     expect(rows).toHaveLength(3);
     expect(text(rows[0])).toContain("Failing");
     expect(rows[0]).toContain("var(--red)");
