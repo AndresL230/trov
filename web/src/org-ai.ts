@@ -108,7 +108,7 @@ export function aiTab(org: MyOrg, slice: OrgSlice<AiSettings | null>, saving: bo
 
   // What leaves Trov, and to whom — one list per provider, so it grows as features land.
   const sendRow = (s: AiSettings["sends"][number]) =>
-    `<li style="${ROW}"><div style="min-width:0"><div style="font-size:13.5px;line-height:1.5">${esc(s.what)}</div><div style="font-size:12px;color:var(--fg-55);margin-top:2px">For ${esc(s.for === "Sift" ? s.for : s.for.charAt(0).toLowerCase() + s.for.slice(1))}</div></div></li>`;
+    `<li style="${ROW}"><div style="min-width:0"><div style="font-size:13.5px;line-height:1.5">${esc(s.what)}</div><div style="font-size:12px;color:var(--fg-55);margin-top:2px">For ${esc(/^(Sift|Ask Trov)\b/.test(s.for) ? s.for : s.for.charAt(0).toLowerCase() + s.for.slice(1))}</div></div></li>`;
   const byProvider = AI_PROVIDER_NAMES.map((p) => {
     const lines = a.sends.filter((s) => s.provider === p);
     const body = lines.length ? lines.map(sendRow).join("") : `<li style="${ROW}"><span style="font-size:13px;color:var(--fg-55)">Nothing is sent yet.</span></li>`;

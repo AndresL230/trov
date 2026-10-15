@@ -26,6 +26,7 @@ import { aiHiddenKey } from "../web/src/ai-ui";
 import { aiMark } from "../web/src/marks";
 import { aiTab, allowanceLine } from "../web/src/org-ai";
 import { usageView, orgUsageBlock } from "../web/src/platform-usage";
+import { PRIVACY } from "../web/src/legal";
 import { briefFixture, repoStateFixture, themesFixture, feedFixtures, aiPreviewFixtures } from "@shared/ai-fixtures";
 import { aiItemRef, AI_NEVER_SENT, AI_SENDS, type AiSettings, type AiThemeRange, type AiThemes } from "@shared/ai-core";
 import type { DashboardData } from "@shared/dashboard";
@@ -481,6 +482,17 @@ describe("Org settings › AI", () => {
     expect(t).toContain(AI_NEVER_SENT);
     expect(t).not.toMatch(/\bJev\b/);
     expect(html).not.toMatch(/\bJev\b/);
+  });
+  it("what is sent lists every feature the Privacy Policy names for Anthropic and TypeSafe AI, not only summaries and Sift (e2e OA-1 / LG-2)", () => {
+    const t = text(tab(settings()));
+    // Anthropic: summaries, Ask Trov, the plain-language filter, and what the AI pass writes; TypeSafe AI: Sift, and the pass's sorting and checking.
+    for (const line of ["For summaries", "For Ask Trov", "For filters typed in plain words", "For notes, briefs, the weekly email", "For Sift", "For sorting and checking items"]) {
+      expect(t).toContain(line);
+    }
+    // One line per provider row of the Privacy Policy's service-provider table (web/src/legal.ts › sharing).
+    const sharing = PRIVACY.sections.find((s) => s.id === "sharing")!.body.join(" ");
+    const rows = (sharing.match(/<td>(Anthropic|TypeSafe AI)<\/td>/g) ?? []).length;
+    expect(AI_SENDS.length).toBe(rows);
   });
   it("no key on this Trov: said as a fact", () => {
     expect(text(tab(settings({ eligibility: "no_key" })))).toContain("This Trov has no Anthropic key");

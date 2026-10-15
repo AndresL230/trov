@@ -50,7 +50,11 @@ describe("Org settings › AI — GET / PUT /ai/settings", () => {
       sends: [...AI_SENDS], neverSent: AI_NEVER_SENT,
     });
     // Both providers, by their legal names, and what each receives.
-    expect(r.json.sends.map((s) => [s.provider, s.for])).toEqual([["Anthropic", "Summaries"], ["TypeSafe AI", "Sift"]]);
+    expect(r.json.sends.map((s) => [s.provider, s.for])).toEqual([
+      ["Anthropic", "Summaries"], ["Anthropic", "Ask Trov"], ["Anthropic", "Filters typed in plain words"],
+      ["Anthropic", "Notes, briefs, the weekly email's highlights and suggestions"],
+      ["TypeSafe AI", "Sift"], ["TypeSafe AI", "Sorting and checking items"],
+    ]);
     expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, await cookieFor(FIXTURE_ADMIN))).json.canEdit).toBe(true);
   });
 
