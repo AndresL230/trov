@@ -24,7 +24,9 @@
 //      `HANDLE_COLUMNS` list a rename uses. The `persons` row itself becomes that tombstone: no name, e-mail,
 //      photo or profile — it stays only because content (a ticket's requester) must point at a person row.
 //      One `person.delete` audit row records it, naming the tombstone, never the old handle.
-//   4. R2, after the commit: their uploaded photo, if no one else's points at the same bytes (./r2.ts).
+//      Their PRIVATE Ask attachments go in the same batch, hard-deleted (`ASK_ATTACHMENTS_OF`; the owner's ruling).
+//   4. R2, after the commit: their uploaded photo and their private Ask attachments' bytes, each only if no one
+//      else's row points at the same bytes (./r2.ts).
 import type { Env } from "../env";
 import { type PlatformContext, type Stmt, all, first, stmt, batch, ph, nowIso } from "../data/platform-sql";
 import { isSuperadmin } from "../data/context";
@@ -38,7 +40,21 @@ import type { OrgRole } from "@shared/orgs";
 import {
   DeletionError, deleteOrganization, endAtStripe, openCheckouts, orgForDeletion, orgSubscriptions, type OrgToDelete,
 } from "./org";
-import { noCandidates, sweepR2, type R2Sweep } from "./r2";
+import { artifactShas, noCandidates, sweepR2, type R2Sweep } from "./r2";
+
+/** The person's PRIVATE Ask attachments, in every org (the owner's ruling — docs/architecture/ask.md › Deleting a
+ *  thread or an account): pages they authored, still private, that one of their own threads carries as an
+ *  attachment. A subquery; binds ?1 = the handle. */
+const ASK_ATTACHMENTS_OF = `SELECT p.id FROM artifact_pages p
+    JOIN chat_artifacts ca ON ca.artifact_id = p.id AND ca.org_id = p.org_id AND ca.role = 'attachment'
+    JOIN chat_threads t ON t.id = ca.thread_id AND t.org_id = ca.org_id
+   WHERE t.handle = ?1 COLLATE NOCASE AND p.author_id = ?1 COLLATE NOCASE AND p.visibility = 'private'`;
+
+/** The R2 keys of those attachments' versions — read BEFORE the batch, freed after it. */
+async function askAttachmentKeys(p: PlatformContext, handle: string): Promise<string[]> {
+  const rows = await all<{ r2_key: string | null }>(p, `SELECT r2_key FROM artifact_versions WHERE page_id IN (${ASK_ATTACHMENTS_OF})`, handle);
+  return rows.map((r) => r.r2_key).filter((k): k is string => !!k);
+}
 
 /** Who is asking: the person (`self`), or a superadmin in Platform (`platform`, `actor` = their handle). */
 export interface AccountAsk { by: DeletionBy; actor: string }
@@ -198,8 +214,16 @@ function personStmts(p: PlatformContext, h: string, tomb: string, a: { logins: s
     stmt(p, `DELETE FROM notification_outbox WHERE user_id = ? COLLATE NOCASE`, h),
     stmt(p, `DELETE FROM notification_prefs WHERE user_id = ? COLLATE NOCASE`, h),
     stmt(p, `DELETE FROM notification_person_prefs WHERE user_id = ? COLLATE NOCASE`, h), // 0067: "only when something needs me"
-    // Ask Trov (0066_ask): their threads, in every org, with everything that hangs off them, and their settings.
-    // (The artifacts a thread carried or saved stay in the library, as every artifact of theirs does.)
+    // Ask Trov (0066_ask): their PRIVATE attachments first (`ASK_ATTACHMENTS_OF`; they go with the account — every
+    // version, link and search row; the bytes after the commit), then their threads, in every org, with everything
+    // that hangs off them, and their settings. An attachment they published to the org, and every answer they SAVED,
+    // stay in the library as every artifact of theirs does. These run BEFORE the threads go (the subquery reads
+    // `chat_artifacts`) and before the handle becomes the tombstone.
+    stmt(p, `DELETE FROM artifact_upload_tokens WHERE page_id IN (${ASK_ATTACHMENTS_OF})`, h),
+    stmt(p, `DELETE FROM artifact_links WHERE page_id IN (${ASK_ATTACHMENTS_OF})`, h),
+    stmt(p, `DELETE FROM artifact_versions WHERE page_id IN (${ASK_ATTACHMENTS_OF})`, h),
+    stmt(p, `DELETE FROM artifacts_fts WHERE CAST(page_id AS INTEGER) IN (${ASK_ATTACHMENTS_OF})`, h),
+    stmt(p, `DELETE FROM artifact_pages WHERE id IN (${ASK_ATTACHMENTS_OF})`, h),
     stmt(p, `DELETE FROM chat_actions WHERE thread_id IN (SELECT id FROM chat_threads WHERE handle = ? COLLATE NOCASE)`, h),
     stmt(p, `DELETE FROM chat_artifacts WHERE thread_id IN (SELECT id FROM chat_threads WHERE handle = ? COLLATE NOCASE)`, h),
     stmt(p, `DELETE FROM chat_messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE handle = ? COLLATE NOCASE)`, h),
@@ -294,6 +318,7 @@ export async function deleteAccount(env: Env, p: PlatformContext, handle: string
   // 3. The person — one batch. A tombstone that is somehow taken already aborts it whole; one retry.
   const at = nowIso();
   const avatar = person.avatar_sha;
+  const askKeys = await askAttachmentKeys(p, h);
   const ref = await deletionRef(env.COOKIE_SECRET, h);
   let tomb = tombstoneHandle();
   try {
@@ -304,7 +329,7 @@ export async function deleteAccount(env: Env, p: PlatformContext, handle: string
     await batch(p, personStmts(p, h, tomb, addresses, ask, orgs.map((o) => o.slug), at, ref));
   }
 
-  // 4. Their photo, if nobody else's is the same bytes.
-  const r2 = await sweepR2(p, env.ARTIFACTS_BUCKET, { ...noCandidates(), avatars: avatar ? [avatar] : [] });
+  // 4. Their photo and their private Ask attachments' bytes, each if nobody else's is the same bytes.
+  const r2 = await sweepR2(p, env.ARTIFACTS_BUCKET, { ...noCandidates(), artifacts: artifactShas(askKeys), avatars: avatar ? [avatar] : [] });
   return { tombstone: tomb, orgs_deleted: orgs.map((o) => o.slug), cancelled, r2 };
 }

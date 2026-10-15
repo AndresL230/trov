@@ -21,7 +21,7 @@ import {
   type PeekResult, type RefView,
 } from "@shared/ai-ask";
 import {
-  attachActionsToMessage, createThread, deleteThread, finishAction, getAction, getAskSettings, getMessage, getThread, groupActions, insertAction,
+  attachActionsToMessage, createThread, finishAction, getAction, getAskSettings, getMessage, getThread, groupActions, insertAction,
   insertMessage, linkArtifact, listActions, listMessages, listThreads, markAttachmentsSent, markUndone, moveAction, patchThread, pendingAttachments,
   putAskSettings, recordAskWrong, replaceMessagesFrom, requestStop, rewriteAction, searchThreads, setMessageContent, setThreadTitle, startTurn,
   type ActionWithTurn, type ChatActionRow, type ChatMessageRow, type ChatThreadRow,
@@ -43,6 +43,7 @@ import { linkAnswer, normalRef, resolveViews } from "./refs";
 import { AttachError, attachmentBlocks, attachmentsOf, checkFiles, storeAttachments, type UploadFile } from "./attachments";
 import { partsHtml, partsMarkdown, type SavedPart } from "./render";
 import { shortDay } from "./charts";
+import { deleteAskThread } from "../../deletion/ask";
 
 /** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock. */
 export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () => number } = {};
@@ -581,7 +582,8 @@ askApp.patch("/ask/threads/:id", async (c) => {
 askApp.delete("/ask/threads/:id", async (c) => {
   const t = await threadOr404(c);
   if (t instanceof Response) return t;
-  await deleteThread(c.var.ctx, me(c), t.id);
+  // Its attachments go with it, except a file a ticket or a doc still refers to (src/deletion/ask.ts).
+  await deleteAskThread(c.var.ctx, platform(c.env, me(c)), c.env.ARTIFACTS_BUCKET, me(c), t.id);
   return c.json({ ok: true });
 });
 
