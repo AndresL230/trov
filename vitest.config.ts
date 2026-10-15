@@ -67,6 +67,8 @@ export default defineConfig({
           // hermetic and fixture text never leaves the machine. A test that needs
           // one passes its own value through a per-test env object.
           ANTHROPIC_API_KEY: "",
+          // The tag-suggestion classifier (TypeSafe AI's Jev): blanked like Gemini; tests inject a stub fetch.
+          TYPESAFE_API_KEY: "",
           GITHUB_SERVICE_TOKEN: "",
           RESEND_API_KEY: "",
           CF_ANALYTICS_TOKEN: "",

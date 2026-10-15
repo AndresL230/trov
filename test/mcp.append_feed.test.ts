@@ -74,13 +74,15 @@ describe("registered MCP append_feed tool carries prs/commits through the gate",
     expect(artifacts.issues).toEqual([7]);
   });
 
-  it("an out-of-vocab tag routes the whole entry to needs_triage (gate still holds on the real tool)", async () => {
+  // 0056_org_tags: the gate reads the ORG's tag list. A tag that is not on it no longer holds the
+  // entry back — it is written without the tag, which is recorded as a suggestion by the bearer.
+  it("a tag that is not on the org's list is reported as suggested; the entry is still written (the gate decides, on the real tool)", async () => {
     const res = await callTool("append_feed", { summary: "bad", tags: ["not-a-real-tag"], prs: ["1"] });
-    expect(JSON.parse(res.text).outcome).toBe("triaged");
+    expect(JSON.parse(res.text)).toMatchObject({ outcome: "written", tags: [], suggested_tags: ["not-a-real-tag"] });
 
-    expect((await all<FeedRow>(env.DB, `SELECT * FROM feed`)).length).toBe(0);
-    const triage = await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`);
-    expect(triage.length).toBe(1);
-    expect(triage[0].source_author).toBe(AUTHOR);
+    expect((await all<FeedRow>(env.DB, `SELECT * FROM feed`)).length).toBe(1);
+    expect(await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`)).toEqual([]);
+    expect(await all<{ tag: string; suggested_by: string }>(env.DB, `SELECT tag, suggested_by FROM org_tag_suggestions`)).toEqual([{ tag: "not-a-real-tag", suggested_by: AUTHOR }]);
+    expect(await all(env.DB, `SELECT 1 FROM entry_tags`)).toEqual([]);
   });
 });

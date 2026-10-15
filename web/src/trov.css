@@ -3133,3 +3133,256 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
   /* Still plainly "no total": a dashed track, not a moving one. */
   .sync-bar.is-open > span { animation:none !important; width:100%; border-radius:0; opacity:.5; background:repeating-linear-gradient(90deg, var(--accent) 0 6px, transparent 6px 12px); }
 }
+
+/* ── tags (web/src/tags.ts, marks.ts `tagMark` / `tagWords`) ───────────────────
+   A tag is a small SQUARE and a word, or — in a list — the word alone. No rule here draws a box
+   round one and none declares a radius: a tag is never a pill. */
+.cnpy-taglink { padding:0; font:inherit; color:inherit; cursor:pointer; text-align:left; }
+.cnpy-taglink:hover, .cnpy-taglink:focus-visible { color:var(--fg); text-decoration:underline; text-underline-offset:3px; }
+.cnpy-tagwords .cnpy-taglink:hover, .cnpy-tagwords .cnpy-taglink:focus-visible { color:var(--fg-70); }
+/* Above a card's `hitArea`, like a person's name. */
+.cnpy-tagwords, .cnpy-tagmark { position:relative; z-index:1; }
+/* Org settings › Tags: ONE line per tag — tag, what it is for, items, what Jev added, actions — on one column
+   template the list sets (`--tagcols`, web/src/tags.ts), so the head and every row line up whatever a row holds.
+   Every row is the same height; a run never adds a line (it lives in the Jev cell, below). */
+.cnpy-tagrow { display:grid; grid-template-columns:var(--tagcols); gap:4px 16px; align-items:center; min-height:52px; padding:10px 16px; box-sizing:border-box; }
+.cnpy-tagrow > [data-col="small"] { display:none; }
+.cnpy-tagrow-wrap + .cnpy-tagrow-wrap, .cnpy-taghead + .cnpy-tagrow-wrap, .cnpy-tagitem + .cnpy-tagitem { border-top:1px solid var(--border); }
+.cnpy-taghead { min-height:52px; font-size:12.5px; font-weight:600; color:var(--fg-55); padding-top:10px; padding-bottom:10px; }
+/* Items is a short number under a short word: both centred in their column. The Jev column keeps a clear gap
+   from it (its words never run into the count). */
+.cnpy-taghead > [data-col="n"] { text-align:center; }
+.cnpy-taghead > [data-col="jev"], .cnpy-tagrow > [data-col="jev"] { margin-left:14px; }
+.cnpy-tagrow-name { min-width:0; display:flex; align-items:center; gap:8px; }
+.cnpy-tagrow-note { font-size:12px; color:var(--fg-40); white-space:nowrap; }
+.cnpy-tagrow-desc { min-width:0; font-size:13px; line-height:1.45; color:var(--fg-55); overflow-wrap:anywhere; }
+.cnpy-tagrow-n { font-size:13px; color:var(--fg-70); font-variant-numeric:tabular-nums; text-align:center; }
+.cnpy-tagrow-n[data-zero] { color:var(--fg-40); }
+.cnpy-tagrow-small { font-size:12px; color:var(--fg-40); }
+.cnpy-tagrow-acts { display:flex; align-items:center; justify-content:flex-end; gap:8px; min-width:0; }
+.cnpy-tagrow-wrap[data-retired] .cnpy-tagrow-desc { color:var(--fg-40); }
+/* Editing in place (web/src/tags.ts): what it is for is a button over its own words (a click edits it); the field
+   that takes its place is the same height and starts where the words did, so nothing moves. The square opens the
+   colour picker. Radii are inline (the corners block). */
+/* The words and the field are the SAME box — 30px, a 1px border (clear on the words), 8px in — so a click swaps
+   one for the other without the text or the row moving by a pixel. */
+.cnpy-tagdesc-btn { display:flex; align-items:center; box-sizing:border-box; min-height:30px; max-width:calc(100% + 9px); margin-left:-9px; padding:2px 8px; border:1px solid transparent; font:inherit; line-height:1.45; color:inherit; text-align:left; cursor:text; overflow-wrap:anywhere; transition:background .12s ease, border-color .12s ease; }
+.cnpy-tagdesc-btn:hover, .cnpy-tagdesc-btn:focus-visible { background:var(--hover); }
+.cnpy-taginline { display:block; box-sizing:border-box; width:calc(100% + 9px); height:30px; margin:0 0 0 -9px; padding:0 8px; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg); font-family:var(--sans); font-size:13px; line-height:28px; outline:none; }
+.cnpy-taginline:focus { border-color:var(--accent); }
+/* New tag, in the head's actions column (the table's top right). Its radius is inline (the corners block). */
+.cnpy-tagnew-btn { display:inline-flex; align-items:center; gap:7px; height:32px; padding:0 13px; background:var(--accent); color:var(--accent-fg); font-size:12.5px; font-weight:600; white-space:nowrap; cursor:pointer; }
+.cnpy-tagnew-btn:disabled { background:transparent; color:var(--fg-40); box-shadow:inset 0 0 0 1px var(--border); cursor:default; }
+.cnpy-tagnew-btn:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+/* The New tag modal's form (web/src/tags.ts tagAddModal), in confirmModal's detail slot. */
+.cnpy-tagnew { display:flex; flex-direction:column; gap:14px; margin-top:16px; }
+.cnpy-tagnew-l { display:block; margin-bottom:6px; font-size:12.5px; font-weight:500; color:var(--fg-70); }
+.cnpy-tagnew-in { display:block; width:100%; box-sizing:border-box; height:36px; padding:0 11px; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg); font-size:13.5px; font-family:var(--sans); outline:none; }
+.cnpy-tagnew-in:focus { border-color:var(--accent); }
+.cnpy-tagnew-in[aria-invalid="true"] { border-color:var(--red); }
+.cnpy-tagnew-help { margin-top:5px; font-size:12px; line-height:1.45; color:var(--fg-40); }
+.cnpy-tagnew-scan { display:flex; align-items:flex-start; gap:12px; padding-top:14px; border-top:1px solid var(--border); }
+.cnpy-tagnew-scan[data-off] .cnpy-tagnew-l { color:var(--fg-40); }
+.cnpy-tagnew-err { font-size:12.5px; line-height:1.5; color:var(--red); }
+.cnpy-tagrow-name .cnpy-taginline { width:calc(100% + 9px); font-size:13.5px; }
+.cnpy-tagcolor { position:relative; flex:none; display:inline-flex; align-self:center; }
+.cnpy-tagcolor-btn { display:grid; place-items:center; width:20px; height:20px; margin:-6px 0 -6px -6px; cursor:pointer; transition:background .12s ease; }
+.cnpy-tagcolor-btn:hover, .cnpy-tagcolor-btn:focus-visible, .cnpy-tagcolor-btn[aria-expanded="true"] { background:var(--hover); }
+.cnpy-tagcolor-box { position:absolute; top:calc(100% + 10px); left:-10px; z-index:30; padding:6px; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); animation:cnpy-pop .14s ease both; }
+.cnpy-tagrow-name > .cnpy-tagmark { min-width:0; }
+/* One tag's page (web/src/tags.ts tagPageView): a hero, the type tabs, then a bento on a 12-column grid whose tiles
+   say their own width (--span, and --md under a mid-width page); one column under an 820px page. The tag's own
+   colour (--tag-c, set on the page) draws every chart. No rule here declares a radius: the tiles are surfaces. */
+.cnpy-tagpage { container:tagpage / inline-size; }
+.cnpy-tagpage-hero { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:20px 44px; align-items:end; padding:4px 0 16px; }
+.cnpy-tagpage-name { display:flex; align-items:center; gap:12px; margin:0; font-size:30px; font-weight:600; letter-spacing:-0.02em; line-height:1.15; color:var(--fg); }
+.cnpy-tagpage-name > span { min-width:0; overflow-wrap:anywhere; }
+.cnpy-tagpage-desc { margin:10px 0 0; max-width:62ch; font-size:15px; line-height:1.55; color:var(--fg-70); }
+.cnpy-tagpage-desc[data-none] { color:var(--fg-40); }
+.cnpy-tagpage-facts { display:flex; align-items:center; flex-wrap:wrap; gap:6px 12px; margin-top:10px; font-size:12.5px; color:var(--fg-55); }
+.cnpy-tagpage-count { min-width:300px; }
+.cnpy-tagpage-figs { display:flex; gap:26px; margin:0; }
+.cnpy-tagpage-fig { display:flex; flex-direction:column-reverse; gap:4px; }
+.cnpy-tagpage-fig dd { margin:0; font-size:28px; font-weight:600; letter-spacing:-0.02em; line-height:1; font-variant-numeric:tabular-nums; color:var(--fg); }
+.cnpy-tagpage-fig dt { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-55); white-space:nowrap; }
+.cnpy-tagpage-sw { flex:none; width:12px; height:8px; box-sizing:border-box; background:var(--tag-c); }
+/* How the items split: by type in the hero, and Jev against people on the Who tagged it tile. Each type has its
+   own FILL, not just a lighter tone, so the parts read apart in any tag colour: docs solid, decisions striped, the
+   feed a pale tint with a solid edge. The legend's swatches use the same fills. Decoration: the figures say it. */
+.cnpy-tagpage-split { display:flex; gap:3px; height:10px; margin-top:14px; }
+.cnpy-tagpage-split > span { min-width:4px; box-sizing:border-box; background:var(--tag-c); }
+.cnpy-tagpage-fig[data-type="adr"] .cnpy-tagpage-sw, .cnpy-tagpage-split > [data-type="adr"] { background:repeating-linear-gradient(135deg, var(--tag-c) 0 2px, transparent 2px 4.5px); box-shadow:inset 0 0 0 1px var(--tag-c); }
+.cnpy-tagpage-fig[data-type="feed"] .cnpy-tagpage-sw, .cnpy-tagpage-split > [data-type="feed"] { background:color-mix(in srgb, var(--tag-c) 22%, transparent); box-shadow:inset 0 0 0 1px var(--tag-c); }
+.cnpy-tagpage-split--jev { height:6px; gap:2px; margin:12px 16px 2px; }
+.cnpy-tagpage-split--jev > [data-by="people"] { background:var(--fg-40); opacity:.4; }
+.cnpy-tagpage-panel { padding-top:14px; }
+/* Every tile has a FIXED height, whatever it holds (0 items, 1 or 50, or its empty sentence), and its body scrolls:
+   a tile never grows or shrinks with its content, and tiles in a row end on one line. half + gap + half = tall (Docs
+   over Decisions beside the feed; a type's list), row (the second row; the rail's Activity), and rest = tall − row −
+   gap (the rail's people), so the rail ends where the list does.
+   The sizes come from the WINDOW, not the content: --tp-fit is the room under the tabs (the window less the app
+   header, the tag's hero and the tabs — about 252px), so the All tab's two rows end at the bottom of the screen —
+   the second row about 38% of it. Clamped: never taller than 556 + 12 + 320 (a tall window keeps those sizes),
+   never shorter than 520 (a short one scrolls the page instead of crushing the tiles). */
+.cnpy-tagpage { --tp-gap:12px; --tp-fit:clamp(520px, calc(100dvh - 252px), 888px); --tp-row:clamp(204px, calc(var(--tp-fit) * 0.38), 320px); --tp-half:calc((var(--tp-fit) - var(--tp-row) - var(--tp-gap) * 2) / 2); --tp-tall:calc(var(--tp-half) * 2 + var(--tp-gap)); --tp-full:var(--tp-fit); --tp-rest:calc(var(--tp-full) - var(--tp-row) - var(--tp-gap)); }
+.cnpy-tagpage-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:var(--tp-gap); align-items:start; }
+.cnpy-tagpage-grid > * { grid-column:span var(--span, 12); min-width:0; }
+.cnpy-tagpage-rail, .cnpy-tagpage-col { display:flex; flex-direction:column; gap:var(--tp-gap); }
+.cnpy-tagpage-tile { display:flex; flex-direction:column; box-sizing:border-box; overflow:hidden; }
+.cnpy-tagpage-tile[data-size="half"] { height:var(--tp-half); }
+.cnpy-tagpage-tile[data-size="tall"] { height:var(--tp-tall); }
+.cnpy-tagpage-tile[data-size="row"] { height:var(--tp-row); }
+.cnpy-tagpage-tile[data-size="rest"] { height:var(--tp-rest); }
+/* A type's tab (Feed, Docs, Decisions): its list takes ALL the room under the tabs; the rail beside it (Activity,
+   then its people — rest) ends on the same line. */
+.cnpy-tagpage-tile[data-size="full"] { height:var(--tp-full); }
+.cnpy-tagpage-body { flex:1 1 0; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding-bottom:4px; }
+.cnpy-tagpage-th { flex:none; display:flex; align-items:center; gap:8px; min-height:20px; padding:14px 16px 10px; }
+.cnpy-tagpage-th h3 { margin:0; font-size:14px; font-weight:500; color:var(--fg); }
+.cnpy-tagpage-more { margin-left:auto; }
+.cnpy-tagpage-sub { font-size:12.5px; color:var(--fg-40); }
+/* To review: one of Sift's suggestions per row — the item on the left, Add tag / Dismiss on the right (under it
+   on a narrow page). */
+.cnpy-tagreview { display:flex; align-items:center; gap:10px 18px; flex-wrap:wrap; }
+.cnpy-tagreview > :first-child { flex:1 1 320px; }
+.cnpy-tagreview-acts { flex:none; display:flex; align-items:center; gap:8px; }
+.cnpy-tagpage-more > button { display:inline-flex; align-items:center; gap:4px; padding:0; font-size:12.5px; color:var(--fg-40); white-space:nowrap; cursor:pointer; }
+.cnpy-tagpage-none { margin:0; padding:12px 16px 14px; border-top:1px solid var(--border); font-size:13px; line-height:1.5; color:var(--fg-40); }
+.cnpy-tagpage-list { list-style:none; margin:0; padding:0; }
+.cnpy-tagpage-tile .cnpy-tagpage-list { border-top:1px solid var(--border); }
+/* An item: its title (a button), a feed entry's brief (two lines in a tile), and one line of facts. */
+.cnpy-tagitem { padding:12px 16px; }
+.cnpy-tagpage-tile .cnpy-tagitem { padding:11px 16px; }
+.cnpy-tagitem-t { padding:0; font-size:14px; font-weight:500; line-height:1.45; color:var(--fg); text-align:left; cursor:pointer; overflow-wrap:anywhere; }
+.cnpy-tagitem-t:hover, .cnpy-tagitem-t:focus-visible { text-decoration:underline; text-underline-offset:3px; }
+.cnpy-tagitem-note { margin-top:3px; font-size:13px; line-height:1.55; color:var(--fg-55); overflow-wrap:anywhere; }
+.cnpy-tagpage-tile .cnpy-tagitem-note { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.cnpy-tagitem-meta { display:flex; align-items:center; flex-wrap:wrap; gap:4px 6px; margin-top:5px; font-size:12px; color:var(--fg-40); }
+/* Activity: three facts, then a bar per week for twelve weeks (an empty week is a hairline). */
+.cnpy-tagpage-facts2 { display:grid; grid-template-columns:repeat(auto-fit, minmax(76px, 1fr)); gap:10px 14px; margin:0; padding:0 16px 14px; }
+.cnpy-tagpage-facts2 dt { font-size:12px; color:var(--fg-55); }
+.cnpy-tagpage-facts2 dd { margin:3px 0 0; font-size:17px; font-weight:600; letter-spacing:-0.01em; font-variant-numeric:tabular-nums; color:var(--fg); }
+.cnpy-tagpage-weeks { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:4px; align-items:end; height:clamp(40px, calc(var(--tp-row) - 150px), 84px); padding:0 16px; }
+.cnpy-tagpage-wk { display:block; height:var(--h); min-height:2px; background:var(--tag-c); transform-origin:bottom; }
+.cnpy-tagpage-wk[data-zero] { height:1px; min-height:1px; background:var(--border-strong); }
+.cnpy-tagpage-axis { display:flex; justify-content:space-between; padding:6px 16px 0; font-size:11.5px; color:var(--fg-40); }
+.cnpy-tagpage-foot { margin:8px 16px 0; font-size:11.5px; color:var(--fg-40); }
+@keyframes cnpy-tagwk { from { transform:scaleY(0); } to { transform:none; } }
+[data-enter] .cnpy-tagpage-wk { animation:cnpy-tagwk .5s cubic-bezier(.2,.7,.2,1) .18s both; }
+/* Who tagged it: Jev against people and their agents, then what Jev added last. */
+.cnpy-tagpage-who { display:flex; gap:28px; padding:0 16px; }
+.cnpy-tagpage-who > div { display:flex; flex-direction:column; gap:3px; }
+.cnpy-tagpage-who b { font-size:24px; font-weight:600; letter-spacing:-0.02em; line-height:1.1; font-variant-numeric:tabular-nums; color:var(--fg); }
+.cnpy-tagpage-who span { font-size:12px; color:var(--fg-55); }
+.cnpy-tagpage-jevs { list-style:none; margin:12px 0 0; padding:0; border-top:1px solid var(--border); }
+.cnpy-tagpage-jevs li { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:9px 16px; }
+.cnpy-tagpage-jevs li + li { border-top:1px solid var(--border); }
+.cnpy-tagpage-jevs .cnpy-tagitem-t { min-width:0; font-size:13px; }
+.cnpy-tagpage-jevs li > span { flex:none; font-size:12px; color:var(--fg-40); font-variant-numeric:tabular-nums; }
+/* Who writes about it, Often seen with: a name and its number, a bar under them scaled to the largest. */
+.cnpy-tagpage-meters { list-style:none; margin:0; padding:2px 16px 14px; display:grid; gap:11px; }
+.cnpy-tagpage-meters li { display:grid; grid-template-columns:minmax(0, 1fr) auto; align-items:center; gap:5px 12px; font-size:13px; color:var(--fg-70); }
+.cnpy-tagpage-ml { grid-column:1; grid-row:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-tagpage-meter { grid-column:1 / -1; grid-row:2; height:4px; background:var(--hover); }
+.cnpy-tagpage-meter > span { display:block; height:100%; background:var(--tag-c); opacity:.75; }
+.cnpy-tagpage-mn { grid-column:2; grid-row:1; text-align:right; font-size:12px; color:var(--fg-40); font-variant-numeric:tabular-nums; }
+@container tagpage (max-width:1000px) { .cnpy-tagpage-grid > * { grid-column:span var(--md, 12); } }
+@container tagpage (max-width:820px) {
+  .cnpy-tagpage-grid > * { grid-column:span 12; }
+  .cnpy-tagpage-hero { grid-template-columns:minmax(0, 1fr); align-items:start; padding-bottom:20px; }
+  .cnpy-tagpage-count { min-width:0; }
+  .cnpy-tagpage-figs { flex-wrap:wrap; gap:14px 22px; }
+  .cnpy-tagpage-name { font-size:24px; }
+}
+@media (prefers-reduced-motion: reduce) { .cnpy-tagpage-wk { animation:none !important; } }
+/* The Tags row on an item's own page: each tag (square, word) with its small remove button, then the picker. */
+.cnpy-itemtags { display:flex; align-items:center; flex-wrap:wrap; gap:8px 14px; margin-top:14px; }
+.cnpy-itemtag { display:inline-flex; align-items:center; gap:4px; }
+.cnpy-itemtag-x { display:grid; place-items:center; width:18px; height:18px; color:var(--fg-40); cursor:pointer; }
+.cnpy-itemtag-x:hover, .cnpy-itemtag-x:focus-visible { color:var(--fg); }
+.cnpy-itemtag-x:disabled { opacity:.5; cursor:default; }
+.cnpy-tagpage button:focus-visible, .cnpy-itemtags button:focus-visible, .cnpy-taglink:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+@media (max-width:860px) {
+  /* Narrow: tag and actions on the first line, the description under them, then what it is on and what Jev added. */
+  .cnpy-tagrow { grid-template-columns:minmax(0, 1fr) auto; }
+  .cnpy-tagrow > [data-col="n"] { display:none; }
+  .cnpy-tagrow > [data-col="tag"] { grid-column:1; grid-row:1; }
+  .cnpy-tagrow > [data-col="acts"] { grid-column:2; grid-row:1; }
+  .cnpy-tagrow > [data-col="desc"] { grid-column:1 / -1; grid-row:2; }
+  .cnpy-tagrow > [data-col="small"] { grid-column:1; grid-row:3; display:block; }
+  .cnpy-tagrow > [data-col="jev"] { grid-column:2; grid-row:3; justify-content:flex-end; margin-bottom:8px; }
+  /* Narrow: the head keeps only New tag (at the right); a member's head, with nothing to do, is not drawn. */
+  .cnpy-taghead > [aria-hidden="true"] { display:none; }
+  .cnpy-taghead:not(:has([data-act="tagNew"])) { display:none; }
+}
+/* The Tags tab's header (web/src/tags.ts): ONE card of cells — the list against the plan, what agents suggested,
+   Jev — each a small label, a figure, an optional meter and one quiet line; "What is sent" opens a last row. */
+.cnpy-tagshead { margin-bottom:18px; }
+.cnpy-tagshead-cells { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); }
+.cnpy-tagshead-cell { min-width:0; display:flex; flex-direction:column; gap:6px; padding:16px 18px; box-shadow:-1px 0 0 var(--border); }
+.cnpy-tagshead-k { font-size:12px; font-weight:500; color:var(--fg-55); }
+.cnpy-tagshead-v { font-size:14px; color:var(--fg-55); font-variant-numeric:tabular-nums; }
+.cnpy-tagshead-v strong { font-size:24px; font-weight:600; letter-spacing:-0.02em; color:var(--fg); margin-right:2px; }
+.cnpy-tagshead-jev .cnpy-tagshead-v { font-size:14px; font-weight:500; color:var(--fg); }
+.cnpy-tagshead-jevrow { display:flex; align-items:center; gap:10px; min-height:30px; }
+.cnpy-tagshead-meterwrap { min-height:4px; }
+.cnpy-tagshead-meterwrap[data-off] { opacity:.35; }
+.cnpy-tagshead-meter { position:relative; height:4px; background:var(--hover); overflow:hidden; }
+.cnpy-tagshead-meter > span { position:absolute; inset:0; background:var(--accent); transform-origin:left center; }
+.cnpy-tagshead-meter[data-full] > span { background:var(--amber); }
+.cnpy-tagshead-sub { font-size:12.5px; line-height:1.5; color:var(--fg-40); }
+.cnpy-tagshead-more { margin-left:4px; padding:0; font-size:12.5px; }
+.cnpy-tagshead-more[aria-expanded="true"] { color:var(--fg); }
+/* "What is sent": a small popover under the link, over the page (a click outside or Escape closes it). */
+.cnpy-tagshead-pop { position:relative; display:inline-block; }
+.cnpy-tagshead-info { position:absolute; top:calc(100% + 8px); right:0; z-index:30; width:300px; max-width:calc(100vw - 32px); box-sizing:border-box; margin:0; padding:12px 14px; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); font-size:12.5px; line-height:1.55; color:var(--fg-70); text-align:left; transform-origin:top right; animation:cnpy-pop .14s ease both; }
+@media (prefers-reduced-motion: reduce) { .cnpy-tagshead-info { animation:none; } }
+/* An agent's suggestion as a row of the list (web/src/tags.ts suggestionRow): not on the list yet, so not drawn
+   like a tag — a HOLLOW square, the name muted, a "Suggested" mark. Approve is the row's action, in the accent. */
+.cnpy-tagrow-wrap[data-suggested] { background:color-mix(in srgb, var(--accent) 8%, transparent); }
+/* The last row follows the card's own corners, so its tint stays inside them (the list is not overflow:hidden:
+   a row's ⋯ menu opens over the rows below). Longhands, so the corners block's reset does not apply to it. */
+.cnpy-tagrow-wrap[data-suggested]:last-child { border-bottom-left-radius:inherit !important; border-bottom-right-radius:inherit !important; }
+.cnpy-tagsug-sq { flex:none; width:8px; height:8px; box-sizing:border-box; border:1.5px solid var(--accent); }
+.cnpy-tagsug-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13.5px; color:var(--fg-55); }
+.cnpy-tagsug-desc { font-size:12.5px; color:var(--fg-40); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-tagfind.cnpy-tagapprove { color:var(--accent); font-weight:600; }
+.cnpy-tagfind.cnpy-tagapprove:disabled { color:var(--fg-40); }
+/* Find items: the row's one frequent action, as quiet text (it repeats on every row) that underlines on hover. */
+.cnpy-tagfind { padding:4px 2px; font-size:12.5px; font-weight:500; color:var(--fg-55); white-space:nowrap; cursor:pointer; text-decoration:underline; text-decoration-color:transparent; text-underline-offset:3px; transition:color .12s ease, text-decoration-color .12s ease; }
+.cnpy-tagfind:hover, .cnpy-tagfind:focus-visible { color:var(--fg); text-decoration-color:currentColor; }
+.cnpy-tagfind:disabled { color:var(--fg-40); text-decoration-color:transparent; cursor:default; }
+/* A row's ⋯ menu (web/src/tags.ts rowMenu): Edit, Merge into…, Retire. Its radii are inline (the corners block). */
+.cnpy-tagmenu { position:relative; flex:none; }
+.cnpy-tagmenu-btn { display:grid; place-items:center; width:28px; height:28px; color:var(--fg-55); cursor:pointer; }
+.cnpy-tagmenu-btn[aria-expanded="true"] { background:var(--hover); color:var(--fg); }
+.cnpy-tagmenu-btn:disabled { opacity:.45; cursor:default; }
+.cnpy-tagmenu-back { position:fixed; inset:0; z-index:29; }
+.cnpy-tagmenu-box { position:absolute; top:calc(100% + 6px); right:0; z-index:30; width:180px; padding:5px; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); animation:cnpy-pop .14s ease both; }
+.cnpy-tagmenu-row { display:block; width:100%; padding:7px 10px; text-align:left; font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; }
+.cnpy-tagmenu-row:hover, .cnpy-tagmenu-row:focus-visible { background:var(--hover); color:var(--fg); }
+.cnpy-tagmenu-row[data-danger] { color:var(--red); }
+.cnpy-tagmenu-sep { height:1px; margin:5px 4px; background:var(--border); }
+.cnpy-tagmenu-head { padding:6px 10px 4px; font-size:11.5px; font-weight:500; color:var(--fg-40); }
+.cnpy-tagmenu-list { max-height:320px; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:none; }
+.cnpy-tagmenu-list::-webkit-scrollbar { display:none; }
+.cnpy-tagmenu-list .cnpy-tagmenu-row { display:flex; align-items:center; gap:8px; color:var(--fg-70); }
+/* A row's "Added by Jev" cell (web/src/fit-run.ts fitCell): the latest result ("7 added", Undo) or a run drawn live.
+   ONE structure live and at rest, so the row never changes shape: the bar is a thin line UNDER the words, out of
+   the flow, shown only while a run is drawn (`data-live`). Its fill is checked / candidates (a transform); its
+   colour says how it ended — the tag's own (--fit-c) when it added the tag to something, a quiet tone when not —
+   then it fades and Undo fades in beside the same words. */
+.cnpy-tagjev { position:relative; display:flex; align-items:baseline; gap:10px; min-width:0; font-size:12px; color:var(--fg-55); font-variant-numeric:tabular-nums; }
+.cnpy-tagjev[data-state="idle"] { color:var(--fg-40); }
+.cnpy-tagjev-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-tagjev-undo { flex:none; padding:0; font:inherit; color:var(--fg-55); cursor:pointer; text-decoration:underline; text-decoration-color:transparent; text-underline-offset:3px; animation:cnpy-tagjev-in .4s ease both; }
+.cnpy-tagjev-undo:hover, .cnpy-tagjev-undo:focus-visible { color:var(--fg); text-decoration-color:currentColor; }
+.cnpy-tagjev-undo:disabled { opacity:.5; cursor:default; }
+@keyframes cnpy-tagjev-in { from { opacity:0; } }
+.cnpy-tagjev .cnpy-fitrun-bar { position:absolute; left:0; right:0; top:calc(100% + 5px); height:3px; background:var(--hover); overflow:hidden; opacity:0; pointer-events:none; transition:opacity .6s cubic-bezier(0.4, 0, 0.2, 1); }
+.cnpy-tagjev[data-live] .cnpy-fitrun-bar { opacity:1; transition-duration:.25s; }
+.cnpy-fitrun-bar > span { position:absolute; inset:0; background:var(--accent); transform-origin:left center; transition:background-color .45s cubic-bezier(0.4, 0, 0.2, 1); }
+.cnpy-tagjev[data-state="added"] .cnpy-fitrun-bar > span { background:var(--fit-c, var(--accent)); }
+.cnpy-tagjev[data-state="none"] .cnpy-fitrun-bar > span { background:var(--fg-40); }
+/* Reduced motion: the bar jumps to each answer (no frame loop runs); colour, fades and Undo's entrance are instant. */
+@media (prefers-reduced-motion: reduce) { .cnpy-fitrun-bar > span, .cnpy-tagjev .cnpy-fitrun-bar { transition:none; } .cnpy-tagjev-undo { animation:none; } }

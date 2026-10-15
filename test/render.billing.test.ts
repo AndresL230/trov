@@ -29,7 +29,7 @@ const freeBill = (o: Partial<OrgBillingView> = {}): OrgBillingView => bill({ sub
 const view = (plan: PlanId = "team", o: Partial<OrgPlanView> = {}): OrgPlanView => ({
   plan, name: PLANS[plan].name, description: PLANS[plan].description, status: "active", source: "billing", period_end: PERIOD, gift_until: null,
   entitlements: plan === "team" ? { ...PLANS.team.entitlements, seats: 5 } : PLANS[plan].entitlements, overridden: plan === "team" ? ["seats"] : [], seats: { members: 3, pending: 0 },
-  usage: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 1024 ** 2, agent_connections: 1, ai_summaries: 1212, ai_runs: 0 }, over: [], billing: plan === "free" ? freeBill() : bill(), ...o,
+  usage: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 1024 ** 2, agent_connections: 1, ai_summaries: 1212, ai_runs: 0, jev_checks: 0, tags: 6 }, over: [], billing: plan === "free" ? freeBill() : bill(), ...o,
 });
 const block = (v: OrgPlanView, role: MyOrg["role"] = "owner", b: OrgBillingUi = initialOrgBillingUi()) => planBlock({ status: "ok", data: v }, role, b);
 const buttons = (html: string): string[] => [...html.matchAll(/<button[^>]*data-act="(orgBilling\w+)"(?: data-arg="(\w+)")?[^>]*>([^<]+)<\/button>/g)].map((m) => `${m[3]}|${m[1]}${m[2] ? `:${m[2]}` : ""}`);
@@ -56,7 +56,7 @@ describe("Org settings › General — the Plan block of an org that pays, or ca
     const row = (h: string): string => words(h.slice(h.indexOf('data-limit="ai_summaries"')).split("</li>")[0]);
     expect(row(html)).toMatch(/AI summaries .* 1,212 of 3,000 this month\s*$/);
     expect(html).not.toContain("3000");
-    expect(html.match(/data-limit="/g)).toHaveLength(6);
+    expect(html.match(/data-limit="/g)).toHaveLength(8);
     // Billing's line and buttons are exactly what they were without it.
     expect(html).toContain('data-org-billing="active"');
     expect(buttons(html)).toEqual(["Change seats|orgBillingSeats", "Manage billing|orgBillingPortal", "Cancel plan|orgBillingCancel"]);
@@ -65,7 +65,7 @@ describe("Org settings › General — the Plan block of an org that pays, or ca
     expect(row(due)).toMatch(/1,212 of 3,000 this month\s*$/);
     expect(due).toContain('data-org-billing="past_due"');
     // Used up on Free: the row says what happens, and the org is not "over" anything.
-    const used = block(view("free", { usage: { seats: 1, repositories: 1, environments: 1, artifact_bytes: 0, agent_connections: 0, ai_summaries: 300, ai_runs: 0 } }));
+    const used = block(view("free", { usage: { seats: 1, repositories: 1, environments: 1, artifact_bytes: 0, agent_connections: 0, ai_summaries: 300, ai_runs: 0, jev_checks: 0, tags: 6 } }));
     expect(row(used)).toMatch(/300 of 300 this month\s*$/);
     expect(used).not.toContain("Over the limit");
     expect(used).toContain("New pull requests and issues show an excerpt until next month.");
@@ -273,9 +273,9 @@ describe("a plan refusal's pointer", () => {
     e.plan = planRefusal(paid, "seats", 1);
     expect(planLimitText(e, "owner")).toMatch(/You can upgrade or manage billing in Org settings\.$/);
     expect(planLimitText(e, "member")).toMatch(/Ask one of this organization's owners\.$/);
-    const gate = inviteGate(view("personal", { billing: null, usage: { seats: 1, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0, ai_runs: 0 } }), "owner");
+    const gate = inviteGate(view("personal", { billing: null, usage: { seats: 1, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0, ai_runs: 0, jev_checks: 0, tags: 6 } }), "owner");
     expect(gate).toMatchObject({ kind: "solo", sentence: expect.stringMatching(/You can upgrade or manage billing in Org settings\.$/), next: null });
-    expect(inviteGate(view("personal", { source: "granted", billing: null, usage: { seats: 1, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0, ai_runs: 0 } }), "owner")).toMatchObject({ sentence: expect.stringMatching(/Ask Trov to change your plan\.$/) });
+    expect(inviteGate(view("personal", { source: "granted", billing: null, usage: { seats: 1, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0, ai_runs: 0, jev_checks: 0, tags: 6 } }), "owner")).toMatchObject({ sentence: expect.stringMatching(/Ask Trov to change your plan\.$/) });
     // A full Pro org: "Add a seat"; a full Free org: "Upgrade to Pro".
     const fullPro = view("team", { usage: { ...view().usage, seats: 5 } });
     expect(inviteGate(fullPro, "owner")).toMatchObject({ kind: "full", next: "add_seat" });

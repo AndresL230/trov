@@ -35,7 +35,7 @@ export const MCP_TOOL_GROUPS: readonly McpToolGroup[] = [
   {
     key: "read", label: "Read",
     blurb: "Read-only. Orient with these before working an existing area; every result says whether it is settled (live) or only proposed.",
-    tools: ["query", "get_doc", "list_docs", "get_feed", "get_roadmap", "get_my_work", "get_events", "get_repo_dashboard", "list_people"],
+    tools: ["query", "get_doc", "list_docs", "get_feed", "list_tags", "get_roadmap", "get_my_work", "get_events", "get_repo_dashboard", "list_people"],
   },
   {
     key: "contribute", label: "Contribute",

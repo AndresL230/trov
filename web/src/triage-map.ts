@@ -10,7 +10,7 @@ import type { IdentityGroup, DiscardedLogin } from "./identity";
 import { collapsedLineDiff } from "./diff";
 import { initialsOf, relTime } from "./ui";
 import { initialsOfName } from "./people";
-import { SECTIONS, TAGS } from "@shared/vocabulary";
+import { SECTIONS } from "@shared/vocabulary";
 
 // ── shared derivations ───────────────────────────────────────────────────────
 /** First non-empty line of a body — the card-summary fallback. */
@@ -125,7 +125,9 @@ export function decodeReviewId(id: string): ReviewRef | null {
 
 // ── Unplaced · assign vocabulary ──────────────────────────────────────────
 /** The real assign options: gate types × @shared/vocabulary targets.
- *  'needs-triage' is the queue itself, never an assignable section. */
+ *  'needs-triage' is the queue itself, never an assignable section. `tags` is empty HERE: a feed
+ *  entry's tags are the organization's own list (0056_org_tags), which render.ts fills in from
+ *  `state.tags` — there is no fixed set any more. */
 export const ASSIGN_OPTIONS: AssignOptions = {
   kinds: [
     { key: "doc", label: "Doc section" },
@@ -134,7 +136,7 @@ export const ASSIGN_OPTIONS: AssignOptions = {
   ],
   sections: SECTIONS.filter((s) => s !== "needs-triage"),
   spaces: ["technical", "product"],
-  tags: [...TAGS],
+  tags: [],
 };
 
 // ── Unplaced · the queue ─────────────────────────────────────────────────────

@@ -66,6 +66,8 @@ export interface FeedRow {
   body: string | null;
   artifacts: string | null;
   created_at: string;
+  /** The entry's tags, by name (`entry_tags`, 0056_org_tags) — set by `get_feed`; not a column. */
+  tags?: string[];
   /** Set only on an entry written by Trov (shared/ai-core.ts); absent on every agent entry. */
   ai?: AiFeedMeta;
 }

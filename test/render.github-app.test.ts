@@ -433,19 +433,22 @@ describe("Integrations", () => {
 
 describe("the setup checklist", () => {
   const withRepo = { repos: ok([repo("acme-gh/web", { is_primary: true, connection: "app" })]) };
-  it("an installation with a primary repository satisfies both GitHub steps — no token needed", () => {
+  it("where the App is offered there is NO GitHub or token step: connecting a repository through the App is the step", () => {
     const steps = setupSteps(ui(status({ installation: inst() }), withRepo))!;
-    expect(steps.map((s) => [s.key, s.title, s.done])).toEqual([["repo", "Connect a repository", true], ["env", "Add an environment", false], ["token", "Connect GitHub", true], ["team", "Invite your team", false]]);
+    expect(steps.map((s) => [s.key, s.title, s.done])).toEqual([["repo", "Connect a repository", true], ["env", "Add an environment", false], ["team", "Invite your team", false]]);
+    expect(steps.find((s) => s.key === "repo")!.why).toContain("Install the Trov App on GitHub");
   });
-  it("where the App is offered the step is Connect GitHub and points at Repositories; a token satisfies it too", () => {
-    const steps = setupSteps(ui(status()))!;
-    expect(steps.find((s) => s.key === "token")).toMatchObject({ title: "Connect GitHub", tab: "repos", done: false });
-    const byToken = ui(status(), { integrations: ok({ integrations: [integ("github_token", { configured: true })], github_app: status(), secrets_available: true, key_version: 1 }) });
-    expect(setupSteps(byToken)!.find((s) => s.key === "token")!.done).toBe(true);
+  it("…and that step is done only once a repository is connected AND GitHub can be read (the App, or a token as the fallback)", () => {
+    expect(setupSteps(ui(status()))!.find((s) => s.key === "repo")).toMatchObject({ tab: "repos", done: false });
+    expect(setupSteps(ui(status(), withRepo))!.find((s) => s.key === "repo")!.done).toBe(false); // a repository, nothing to read it with
+    const byToken = ui(status(), { ...withRepo, integrations: ok({ integrations: [integ("github_token", { configured: true })], github_app: status(), secrets_available: true, key_version: 1 }) });
+    expect(setupSteps(byToken)!.find((s) => s.key === "repo")!.done).toBe(true);
+    expect(setupSteps(byToken)!.some((s) => s.key === "token")).toBe(false);
   });
-  it("where it is not, the step is the token's, as before", () => {
+  it("where it is not, there is still no token step: the token is part of Connect a repository", () => {
     const off = status({ configured: false });
-    expect(setupSteps(ui(off))!.find((s) => s.key === "token")).toMatchObject({ title: "Set the GitHub token", tab: "integrations", done: false });
+    expect(setupSteps(ui(off))!.some((s) => s.key === "token")).toBe(false);
+    expect(setupSteps(ui(off))!.find((s) => s.key === "repo")!.why).toContain("set a GitHub token");
     expect(githubOf(ui(off))).toEqual(off);
   });
 });

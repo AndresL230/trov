@@ -202,6 +202,8 @@ const MATRIX: Record<string, Entry> = {
   get_doc: (o) => [refused({ slug: o.doc }), read({ slug: SHARED_DOC })],
   list_docs: () => [read(), read({ section: "reference" })],
   get_feed: () => [read(), read({ author: "dana" })],
+  // The org's tag list (0056_org_tags): the token's own org's, whatever is passed. It names tags, not content — no canary to see.
+  list_tags: () => [{ args: {}, expect: "inert" }],
   append_feed: () => [{ args: { summary: "written under the other token", body: "b", tags: ["api"] }, expect: "own" }],
   propose_doc_update: (o) => [{ args: { slug: o.doc, section: "reference", title: "t", body: "an attempt on the other org's doc", change_summary: "s", confidence: "high", base_version: 1 }, expect: "own" }],
   record_session: (o, m) => [{

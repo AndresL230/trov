@@ -91,6 +91,11 @@ export const RESET_STATEMENTS = [
   "DELETE FROM docs",
   "DELETE FROM feed",
   "DELETE FROM entry_tags",
+  // The org's tag list (0056_org_tags): suggestions go, and each seed org is back to the six starters below.
+  "DELETE FROM org_tag_suggestions",
+  "DELETE FROM org_tag_runs",
+  "DELETE FROM org_ai_settings",
+  "DELETE FROM org_tags",
   "DELETE FROM adrs",
   "DELETE FROM needs_triage",
   "DELETE FROM identity_tasks",
@@ -134,6 +139,13 @@ export const RESET_STATEMENTS = [
   // The two seed orgs (multitenancy): SaplingLearn holds the six persons above — what 0042_organizations produces from
   // them, AndresL230 its owner — and `org_b` (Acme) is the empty neighbour the isolation suite fills.
   "INSERT OR IGNORE INTO orgs (id, slug, name, created_at, created_by, plan, plan_source) VALUES ('org_saplinglearn', 'saplinglearn', 'SaplingLearn', '2026-10-06T00:00:00.000Z', 'migration', 'enterprise', 'granted'), ('org_b', 'acme', 'Acme', '2026-10-06T00:00:00.000Z', 'migration', 'enterprise', 'granted')",
+  // …each with the six starter tags (0056_org_tags; the rows of shared/tags-core.ts STARTER_TAGS — test/tags.migration.test.ts compares them).
+  "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'auth', 'Sign-in, sessions, tokens, permissions', 'plum', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
+  "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'architecture', 'How the system is put together', 'slate', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
+  "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'infra', 'Deploys, hosting, CI', 'rust', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
+  "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'api', 'Routes and what they return', 'sky', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
+  "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'ui', 'Screens and components', 'rose', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
+  "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'data', 'Tables, migrations, storage', 'fern', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
   "INSERT INTO memberships (org_id, user_id, role, title, responsibilities, created_at, created_by) SELECT 'org_saplinglearn', handle, CASE WHEN handle = 'AndresL230' THEN 'owner' ELSE 'member' END, role, responsibilities, created_at, 'seed' FROM persons WHERE handle <> 'github-webhook'",
   "INSERT INTO org_login_map (org_id, github_login, person, mapped_at, mapped_by) SELECT 'org_saplinglearn', subject, person, linked_at, 'seed' FROM identities WHERE provider = 'github'",
   "UPDATE identities SET verified_email = lower(label) WHERE provider = 'google'",

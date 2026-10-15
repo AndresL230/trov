@@ -28,6 +28,10 @@ Integrations, envelope-encrypted under `TROV_KEK` (`data-layer.md` › Configura
 Capture-time summaries call Anthropic's Messages API (`ANTHROPIC_API_KEY`, through the one model client
 `src/ai/client.ts`), never at render — not a Cloudflare binding,
 so there is no `[ai]` block.
+Automatic tagging of existing items (which existing items fit a new tag, which are then tagged: `src/tools/classify.ts`,
+`src/tools/tag-fit.ts`) use a DIFFERENT provider and key: TypeSafe AI's Jev over REST (`TYPESAFE_API_KEY`) — only
+for an organization whose admin turned them on, in the background, each request counted against `jev_checks`
+(`feed-and-search.md` › Tags › Tagging existing items).
 
 ### Sign-in and sessions
 
@@ -63,6 +67,7 @@ so there is no `[ai]` block.
 | Name | Kind | What it is | Missing → |
 |---|---|---|---|
 | `ANTHROPIC_API_KEY` | secret | the ONE Anthropic API key that serves every organization's capture-time PR / issue summaries (Claude Haiku, `claude-haiku-5-5`; `src/ai/client.ts`), each call counted against that organization's monthly allowance (`plans.md` › AI summaries, `sync.md`); and the AI pass (`src/ai/pass.ts`, `ai.md`), which has no job yet. Without it the pass reads nothing and every org's AI eligibility is `no_key` | the excerpt fallback: an item shows its excerpt, and a later Sync fills it in |
+| `TYPESAFE_API_KEY` | secret | TypeSafe AI's key for Jev (`POST https://api.typesafe.ai/v1/systemone`, `Authorization: Bearer`), the classifier behind automatic tagging of existing items (an admin adds a tag or presses Find items; Jev judges, the tag is added) — used only for an org whose admin turned them on, each request counted against that org's monthly `jev_checks` (`plans.md`) | no tag suggestions: nothing is sent, Find items and a new tag answer `no_key`, and the Tags tab says no key is set. Nothing else is affected |
 
 ### Stored credentials
 

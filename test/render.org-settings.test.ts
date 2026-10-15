@@ -153,9 +153,9 @@ describe("route, hash and sidebar", () => {
 
 describe("who sees what — admin vs member", () => {
   it("Integrations and Notifications are admin+; a member's picked tab falls to the first they may open", () => {
-    expect(orgTabsFor("owner")).toEqual(["integrations", "repos", "environments", "members", "notifications", "general"]);
+    expect(orgTabsFor("owner")).toEqual(["integrations", "repos", "environments", "members", "tags", "notifications", "general"]);
     expect(orgTabsFor("admin")).toEqual(orgTabsFor("owner"));
-    expect(orgTabsFor("member")).toEqual(["repos", "environments", "members", "general"]);
+    expect(orgTabsFor("member")).toEqual(["repos", "environments", "members", "tags", "general"]);
     expect(effectiveOrgTab("integrations", "member")).toBe("repos");
     expect(effectiveOrgTab("notifications", "member")).toBe("repos");
     expect(effectiveOrgTab("integrations", "admin")).toBe("integrations");
@@ -200,29 +200,33 @@ describe("who sees what — admin vs member", () => {
 });
 
 describe("the setup checklist", () => {
-  it("lists the four steps for a new org's admin, each linking to its tab", () => {
+  it("lists the three steps for a new org's admin, each linking to its tab — no separate GitHub token step", () => {
     const steps = setupSteps(emptyUi())!;
-    expect(steps.map((s) => [s.key, s.tab, s.done])).toEqual([["repo", "repos", false], ["env", "environments", false], ["token", "integrations", false], ["team", "members", false]]);
+    expect(steps.map((s) => [s.key, s.tab, s.done])).toEqual([["repo", "repos", false], ["env", "environments", false], ["team", "members", false]]);
     const html = view(emptyUi());
     expect(html).toContain("Finish setting up Acme Robotics");
-    expect(html).toContain("0 of 4 done");
-    for (const t of ["repos", "environments", "integrations", "members"]) expect(html).toContain(`data-act="orgTab" data-arg="${t}"`);
+    expect(html).toContain("0 of 3 done");
+    expect(setupChecklist(org(), emptyUi())).not.toContain("Set the GitHub token");
+    for (const t of ["repos", "environments", "members"]) expect(html).toContain(`data-act="orgTab" data-arg="${t}"`);
     // Status is words, not a colour: each step's name says it, and why it matters is its tooltip.
     expect(html).toContain('aria-label="Connect a repository: to do. Open Repositories"');
-    expect(html).toContain('title="Trov reads its deployments, checks, pull requests and issues."');
+    expect(html).toContain('title="Add the repository and set a GitHub token: Trov reads its deployments, checks, pull requests and issues."');
     // ONE line above the tabs: a single heading, no paragraph per step.
     const card = html.slice(html.indexOf("data-org-setup "), html.indexOf("</section>"));
     expect(card.match(/<h2/g)?.length).toBe(1);
     expect(card).not.toContain("<p");
   });
-  it("derives each step from live data", () => {
-    const ui = emptyUi({ repos: ok([repo()]), invites: ok([invite()]) });
+  it("derives each step from live data; with no App a repository needs its token too, and the step leads there", () => {
+    const token = ok({ integrations: [integ("github_token", { configured: true })], secrets_available: true, key_version: 1 });
+    const ui = emptyUi({ repos: ok([repo()]), invites: ok([invite()]), integrations: token });
     const steps = setupSteps(ui)!;
     expect(steps.find((s) => s.key === "repo")!.done).toBe(true);
     expect(steps.find((s) => s.key === "team")!.done).toBe(true);
     expect(steps.find((s) => s.key === "env")!.done).toBe(false);
+    // A repository but no token: not done, and the step now opens Integrations for the token.
+    expect(setupSteps(emptyUi({ repos: ok([repo()]) }))!.find((s) => s.key === "repo")).toMatchObject({ done: false, tab: "integrations", why: "Set the GitHub token so Trov can read the repository." });
     const html = setupChecklist(org(), ui);
-    expect(html).toContain("2 of 4 done");
+    expect(html).toContain("2 of 3 done");
     expect(html).toMatch(/data-step="repo" data-done="1">[\s\S]*?<span class="cnpy-sr">: done<\/span>/);
     // A finished step keeps no button.
     expect(html).not.toContain('data-arg="repos"');
@@ -236,8 +240,8 @@ describe("the setup checklist", () => {
     expect(team(emptyUi({ members: ok([member("ines", "owner"), member("sam", "member")]) }))).toBe(true);
   });
   it("counts the platform's legacy credential as a set GitHub token", () => {
-    const ui = emptyUi({ integrations: ok({ integrations: [integ("github_token", { legacy_fallback: true })], secrets_available: true, key_version: null }) });
-    expect(setupSteps(ui)!.find((s) => s.key === "token")!.done).toBe(true);
+    const ui = emptyUi({ repos: ok([repo()]), integrations: ok({ integrations: [integ("github_token", { legacy_fallback: true })], secrets_available: true, key_version: null }) });
+    expect(setupSteps(ui)!.find((s) => s.key === "repo")!.done).toBe(true);
   });
   it("disappears once complete, is never shown to a member, and waits for the data", () => {
     expect(setupChecklist(org(), fullUi())).toBe("");
