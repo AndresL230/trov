@@ -338,6 +338,7 @@ export const ASK_ROUTES = {
   cancel: (id: number) => `/ask/actions/${id}/cancel`,                // POST { only? } → AskActionAnswer
   undo: (id: number) => `/ask/actions/${id}/undo`,                    // POST → AskActionAnswer
   attachments: "/ask/attachments",                                    // POST multipart (file × ≤5, threadId?) → AskAttachmentUpload
+  attachment: (id: number) => `/ask/attachments/${id}`,               // DELETE (never sent: hard-deleted) → { ok }; 409 sent / published / referenced
   wrong: (messageId: number) => `/ask/messages/${messageId}/wrong`,   // POST { reason } → { ok }
   settings: "/ask/settings",                                          // GET → AskSettings; PUT AskSettingsPut
 } as const;
@@ -380,6 +381,9 @@ export interface AskState {
   autoAllowed: boolean;
   attach: { maxFiles: number; maxBytes: number; kinds: AskAttachKind[] };
   starters: string[];
+  /** Pro's questions a month PER SEAT (`PLANS.team`, `perSeat`): the upsell's number, read from the server, never a
+   *  client copy of the plans; null when Pro has no cap. */
+  proPerSeat: number | null;
 }
 
 export const ASK_THREAD_GROUPS = ["pinned", "today", "week", "earlier"] as const;
@@ -459,6 +463,10 @@ export interface AskSaveBody {
 /** Confirm / Cancel / Undo answer: every card it touched (a group moves together). Refusals: `not_found` 404;
  *  `not_proposed` / `expired` / `no_undo` / `already` / `changed` (Undo: "Changed since. Undo it by hand.") 409;
  *  `invalid` 400 (edited args the schema refuses). A write's own refusal is `state: "failed"`. */
+/** `POST /ask/actions/:id/confirm`'s body: edited fields (the card's `editable` only), and `only` = this card, not
+ *  its whole group. `cancel` takes `{ only }`. (The zod schemas in shared/ai-ask.ts are pinned to these.) */
+export interface AskConfirmBody { args?: Record<string, unknown>; only?: boolean }
+export interface AskCancelBody { only?: boolean }
 export interface AskActionAnswer {
   results: AskEventMap["action_result"][];
   artifact?: AskEventMap["artifact_saved"];

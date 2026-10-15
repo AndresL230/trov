@@ -327,6 +327,7 @@ export function askStateFixture(plan: "pro" | "free", now: Date): AskState {
     autoAllowed: true,
     attach: { maxFiles: ASK_ATTACH_FILES_MAX, maxBytes: ASK_ATTACH_BYTES_MAX, kinds: ["image", "pdf", "text"] },
     starters: [...ASK_STARTERS_FALLBACK],
+    proPerSeat: 300,
   };
 }
 

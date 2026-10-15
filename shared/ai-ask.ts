@@ -7,7 +7,7 @@ import {
   ASK_ACTION_KINDS, ASK_ACTION_STATES, ASK_ACTIVITY_ICONS, ASK_ATTACH_FILES_MAX, ASK_ATTACH_KINDS, ASK_CHART_QUERIES, ASK_COMMANDS,
   ASK_DIAGRAM_NODES_MAX, ASK_DRAFT_MAX, ASK_ERROR_CODES, ASK_FOLLOWUPS_MAX, ASK_INSTRUCTIONS_MAX, ASK_MARKS, ASK_MODE_IDS, ASK_ORIGINS,
   ASK_PEEK_MAX, ASK_REF_TYPES, ASK_REFS_MAX, ASK_TEXT_MAX, ASK_THREAD_GROUPS, ASK_TITLE_MAX, ASK_TONES, ASK_WRONG_REASONS,
-  type AskAction, type AskActionPreview, type AskAttachment, type AskBlock, type AskEventMap, type AskEventName, type AskMessage,
+  type AskAction, type AskActionPreview, type AskAttachment, type AskBlock, type AskCancelBody, type AskConfirmBody, type AskEventMap, type AskEventName, type AskMessage,
   type AskRequest, type AskSaveBody, type AskSearchHit, type AskSettings, type AskSettingsPut, type AskState, type AskThreadDetail,
   type AskThreadPatch, type AskThreadSummary, type PeekResult, type RefView,
 } from "./ai-ask-core";
@@ -128,7 +128,8 @@ export const AskSaveBodySchema = z.strictObject({
   visibility: z.enum(["private", "org"]).optional(),
 }) satisfies z.ZodType<AskSaveBody>;
 
-export const AskConfirmBodySchema = z.strictObject({ args: z.record(z.string(), z.unknown()).optional(), only: z.boolean().optional() });
+export const AskConfirmBodySchema = z.strictObject({ args: z.record(z.string(), z.unknown()).optional(), only: z.boolean().optional() }) satisfies z.ZodType<AskConfirmBody>;
+export const AskCancelBodySchema = z.strictObject({ only: z.boolean().optional() }) satisfies z.ZodType<AskCancelBody>;
 export const AskWrongBodySchema = z.strictObject({ reason: z.enum(ASK_WRONG_REASONS) });
 
 export const AskSettingsPutSchema = z.strictObject({
@@ -150,6 +151,7 @@ export const AskStateSchema = z.object({
   autoAllowed: z.boolean(),
   attach: z.object({ maxFiles: z.number().int(), maxBytes: z.number().int(), kinds: z.array(z.enum(ASK_ATTACH_KINDS)) }),
   starters: z.array(z.string()).min(1).max(6),
+  proPerSeat: z.number().int().min(1).nullable(),
 }) satisfies z.ZodType<AskState>;
 
 export const AskAttachmentSchema = z.object({

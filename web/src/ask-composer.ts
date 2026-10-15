@@ -50,7 +50,6 @@ import {
   type AskAttachKind, type AskAttachment, type AskCommand, type AskMode, type AskRefType, type AskState,
 } from "@shared/ai-ask-core";
 import { QUICK_MIN_CHARS } from "@shared/quick-search";
-import { PLANS } from "@shared/plans";
 
 export const COMPOSER_STATES = ["quota", "off", "autoOff", "error", "tooLarge", "at", "slash", "files", "drag", "free", "low", "busy"] as const;
 export type ComposerForced = (typeof COMPOSER_STATES)[number];
@@ -406,7 +405,7 @@ function blockView(v: AskView, b: Exclude<ComposerBlock, null>): string {
   const st = stateOf(v);
   const day = st ? resetDay(st.allowance.resetsAt) : "";
   const free = !st || st.plan === "free" || st.plan === "personal";
-  const pro = PLANS.team.entitlements.ai_chat;
+  const pro = st?.proPerSeat ?? null;            // from ask/state — the server's plan table, never a client copy
   const sub = `${day ? `Resets ${day}.` : ""}${free && pro ? ` Pro includes ${pro} a month, plus Thinking mode.` : ""}`.trim();
   return `<div class="ask-blocked ask-blocked--quota" data-morph-key="quota" role="status"><div class="ask-blocked-b"><div class="ask-blocked-h">You've used this month's questions.</div>${sub ? `<div class="ask-blocked-s">${esc(sub)}</div>` : ""}</div>${free ? `<button type="button" class="ask-co-upgrade" data-act="orgGo" data-arg="general">Upgrade to Pro</button>` : ""}</div>`;
 }
@@ -489,10 +488,8 @@ function rt(ctx: AskCtx): ComposerRt {
   return r;
 }
 const draftKey = (where: AskWhere, id: number | null): string | null => (id === null ? null : `${where}:${id}`);
-const serverDraftOf = (thread: unknown): string => {
-  const d = (thread as { draft?: unknown } | null)?.draft;
-  return typeof d === "string" ? d : "";
-};
+/** The words the server kept for a conversation's thread (AskConvo.draft, read from the thread's detail). */
+const serverDraftOf = (c: { draft: string }): string => c.draft;
 
 /** Keep the words per thread: here at once, on the thread after a pause. */
 function saveDraft(ctx: AskCtx, where: AskWhere): void {
@@ -517,7 +514,7 @@ function clearDraft(ctx: AskCtx, where: AskWhere, id: number | null): void {
   if (k) r.drafts.delete(k);
   const t = r.draftTimer[where];
   if (t) { clearTimeout(t); delete r.draftTimer[where]; }
-  if (id !== null && (r.serverDrafts.has(id) || serverDraftOf(ctx.ui[where].thread))) {
+  if (id !== null && (r.serverDrafts.has(id) || serverDraftOf(ctx.ui[where]))) {
     r.serverDrafts.delete(id);
     ctx.api.patchThread(id, { draft: "" }).catch(() => undefined);
   }
@@ -535,7 +532,7 @@ function syncThread(ctx: AskCtx, where: AskWhere): boolean {
   if (b.uid !== c.uid) {
     r.bound[where] = { uid: c.uid, threadId: c.threadId, loaded: c.status !== "loading" };
     const k = draftKey(where, c.threadId);
-    const text = (k && r.drafts.get(k)) || serverDraftOf(c.thread);
+    const text = (k && r.drafts.get(k)) || serverDraftOf(c);
     // Uploaded files belong to the thread they were attached in: they do not follow to another one.
     for (const f of ui.files) if (f.preview) revoke(f.preview);
     if (c.threadId !== null || ui.text || ui.files.length) {
@@ -552,7 +549,7 @@ function syncThread(ctx: AskCtx, where: AskWhere): boolean {
   if (!nb.loaded && c.status !== "loading") {
     nb.loaded = true;
     const k = draftKey(where, c.threadId);
-    const text = (k && r.drafts.get(k)) || serverDraftOf(c.thread);
+    const text = (k && r.drafts.get(k)) || serverDraftOf(c);
     if (text && !ctx.ui.composer[where].text) { ctx.ui.composer[where] = { ...ctx.ui.composer[where], text, caret: text.length }; changed = true; }
   }
   return changed;
@@ -760,6 +757,8 @@ function removeChip(ctx: AskCtx, where: AskWhere, key: string): void {
     const id = key.slice(2);
     const gone = ui.files.find((f) => f.key === id);
     if (gone?.preview) revoke(gone.preview);
+    // Uploaded and never sent: the server deletes it for good (no orphan private artifact is left behind).
+    if (gone?.att) ctx.api.deleteAttachment(gone.att.id).catch(() => undefined);
     rt(ctx).failed.delete(id);
     const files = ui.files.filter((f) => f.key !== id);
     ctx.ui.composer[where] = {

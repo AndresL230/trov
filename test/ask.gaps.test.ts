@@ -1,0 +1,105 @@
+// Ask Trov — the contract gaps the frontend build found, closed on the server (the integrator's tests; ask.md):
+// a thread's draft is cleared when a send is accepted; `ask/state` carries Pro's questions per seat; an uploaded
+// attachment removed before it was ever sent is hard-deleted through src/deletion/ (and one never sent goes with its
+// thread); the question's stored id is streamed; an answer keeps its parts in the order they streamed.
+import { describe, it, expect } from "vitest";
+import { env } from "cloudflare:test";
+import { app } from "../src/routes";
+import { PLANS } from "@shared/plans";
+import { AskStateSchema, AskThreadDetailSchema } from "@shared/ai-ask";
+import { all, first } from "./helpers/db";
+import { cookieFor } from "./helpers/persons";
+import { ORG_A } from "./helpers/tenant";
+import { BASE, KEYED, ask, call, eventsOf, fakeModel, withAsk } from "./helpers/ask";
+
+const ME = "ask-gaps";
+const final = (title = "Gaps") => `\n<trov-meta>{"title": "${title}", "followups": []}</trov-meta>`;
+const png = (n: number) => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, n, n + 1, n + 2, n + 3]);
+const inR2 = async (sha: string) => (await env.ARTIFACTS_BUCKET.head(`artifacts/${sha}`)) !== null;
+
+interface Att { id: number; slug: string; sha256: string }
+async function upload(cookie: string, n: number, threadId?: number): Promise<{ threadId: number; attachments: Att[] }> {
+  const form = new FormData();
+  form.append("file", new File([png(n)], `shot-${n}.png`, { type: "image/png" }));
+  if (threadId) form.append("threadId", String(threadId));
+  const res = await app.request(`${BASE}/ask/attachments`, { method: "POST", headers: { cookie }, body: form }, KEYED);
+  expect(res.status).toBe(200);
+  return res.json();
+}
+const pageRows = async (slug: string) => (await all(env.DB, `SELECT id FROM artifact_pages WHERE org_id = ? AND slug = ?`, ORG_A, slug)).length;
+
+describe("draft — cleared when a send is accepted", () => {
+  it("a thread's kept words go once a question is sent from it", async () => {
+    const cookie = await cookieFor(ME);
+    const model = fakeModel([[{ type: "text", text: `One.${final()}` }], [{ type: "text", text: `Two.${final()}` }]]);
+    const r1 = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { text: "First" }));
+    const id = eventsOf(r1.events, "thread")[0].id;
+    await call("PATCH", `${BASE}/ask/threads/${id}`, cookie, { draft: "half a thought" });
+    expect(AskThreadDetailSchema.parse((await call("GET", `${BASE}/ask/threads/${id}`, cookie)).json).thread.draft).toBe("half a thought");
+    await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { threadId: id, text: "half a thought, finished" }));
+    const after = AskThreadDetailSchema.parse((await call("GET", `${BASE}/ask/threads/${id}`, cookie)).json).thread;
+    expect(after.draft).toBe("");
+    expect(after.hasDraft).toBe(false);
+  });
+});
+
+describe("ask/state — the upsell's number comes from the server", () => {
+  it("proPerSeat is Pro's questions per seat from the one plan table", async () => {
+    const st = AskStateSchema.parse((await call("GET", `${BASE}/ask/state`, await cookieFor(ME))).json);
+    expect(st.proPerSeat).toBe(PLANS.team.entitlements.ai_chat);
+    expect(PLANS.team.perSeat).toContain("ai_chat");
+  });
+});
+
+describe("an attachment removed before it was sent — a hard delete through src/deletion/", () => {
+  it("deletes its page, versions and link in one go and frees its bytes; nothing of another person's moves", async () => {
+    const cookie = await cookieFor(ME);
+    const up = await upload(cookie, 40);
+    const [a] = up.attachments;
+    expect(await inR2(a.sha256)).toBe(true);
+    // Another person cannot remove it.
+    expect((await call("DELETE", `${BASE}/ask/attachments/${a.id}`, await cookieFor("ask-gaps-stranger"))).status).toBe(404);
+    expect(await pageRows(a.slug)).toBe(1);
+    const r = await call("DELETE", `${BASE}/ask/attachments/${a.id}`, cookie);
+    expect(r.status).toBe(200);
+    expect(await pageRows(a.slug)).toBe(0);
+    expect(await all(env.DB, `SELECT id FROM chat_artifacts WHERE org_id = ? AND id = ?`, ORG_A, a.id)).toEqual([]);
+    expect(await all(env.DB, `SELECT id FROM artifact_versions WHERE org_id = ? AND r2_key = ?`, ORG_A, `artifacts/${a.sha256}`)).toEqual([]);
+    expect(await inR2(a.sha256)).toBe(false);
+    // Gone: a second call is a 404.
+    expect((await call("DELETE", `${BASE}/ask/attachments/${a.id}`, cookie)).status).toBe(404);
+  });
+
+  it("one already sent with a question is refused (409 sent) and stays whole", async () => {
+    const cookie = await cookieFor(ME);
+    const up = await upload(cookie, 50);
+    const [a] = up.attachments;
+    await withAsk({ fetchImpl: fakeModel([[{ type: "text", text: `Seen.${final()}` }]]).fetchImpl }, () => ask(cookie, { threadId: up.threadId, text: "Look", attachments: [a.id] }));
+    const r = await call("DELETE", `${BASE}/ask/attachments/${a.id}`, cookie);
+    expect(r.status).toBe(409);
+    expect(r.json.error).toBe("sent");
+    expect(await pageRows(a.slug)).toBe(1);
+    expect(await inR2(a.sha256)).toBe(true);
+  });
+
+  it("one published to the org is refused (409 published)", async () => {
+    const cookie = await cookieFor(ME);
+    const [a] = (await upload(cookie, 60)).attachments;
+    await env.DB.prepare(`UPDATE artifact_pages SET visibility = 'org' WHERE org_id = ? AND slug = ?`).bind(ORG_A, a.slug).run();
+    const r = await call("DELETE", `${BASE}/ask/attachments/${a.id}`, cookie);
+    expect(r.status).toBe(409);
+    expect(r.json.error).toBe("published");
+    expect(await pageRows(a.slug)).toBe(1);
+  });
+
+  it("deleting its thread takes a never-sent attachment with it (deleteAskThread)", async () => {
+    const cookie = await cookieFor(ME);
+    const up = await upload(cookie, 70);
+    const [a] = up.attachments;
+    const link = await first<{ message_id: number | null }>(env.DB, `SELECT message_id FROM chat_artifacts WHERE org_id = ? AND id = ?`, ORG_A, a.id);
+    expect(link?.message_id).toBeNull();
+    expect((await call("DELETE", `${BASE}/ask/threads/${up.threadId}`, cookie)).status).toBe(200);
+    expect(await pageRows(a.slug)).toBe(0);
+    expect(await inR2(a.sha256)).toBe(false);
+  });
+});

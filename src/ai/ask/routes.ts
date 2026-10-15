@@ -10,11 +10,11 @@ import { platform, type TenantContext } from "../../data/context";
 import { all, first } from "../../data/sql";
 import { meterBy, METRIC_AI_CHAT, METRIC_AI_TOKENS_CACHED, METRIC_AI_TOKENS_IN, METRIC_AI_TOKENS_OUT } from "../../data/meter";
 import { planAndAiSettings } from "../../plans/gate";
-import { planRefusal, resolveEntitlements } from "@shared/plans";
+import { PLANS, planRefusal, resolveEntitlements } from "@shared/plans";
 import { nextMonthStart } from "@shared/ai-core";
 import {
   ASK_ATTACH_BYTES_MAX, ASK_ATTACH_FILES_MAX, ASK_ATTACH_KINDS, ASK_DEFAULT_MODE, ASK_FLAG_REASONS, ASK_LOW_SHARE, ASK_MODES, ASK_ROUTES,
-  ASK_STARTERS_FALLBACK, askMode, askModesFor, AskConfirmBodySchema, AskPeekBodySchema, AskRequestSchema, AskSaveBodySchema, AskSettingsPutSchema,
+  ASK_STARTERS_FALLBACK, askMode, askModesFor, AskCancelBodySchema, AskConfirmBodySchema, AskPeekBodySchema, AskRequestSchema, AskSaveBodySchema, AskSettingsPutSchema,
   AskThreadPatchSchema, AskWrongBodySchema, parseAskRef,
   type AskAction, type AskActionAnswer, type AskAttachment, type AskBlock, type AskCommand, type AskEventMap, type AskMessage, type AskMode,
   type AskSaveForm, type AskSearchHit, type AskSettings, type AskState, type AskThreadDetail, type AskThreadGroup, type AskThreadSummary,
@@ -43,7 +43,7 @@ import { linkAnswer, normalRef, resolveViews } from "./refs";
 import { AttachError, attachmentBlocks, attachmentsOf, checkFiles, storeAttachments, type UploadFile } from "./attachments";
 import { partsHtml, partsMarkdown, type SavedPart } from "./render";
 import { shortDay } from "./charts";
-import { deleteAskThread } from "../../deletion/ask";
+import { deleteAskThread, deleteUnsentAttachment } from "../../deletion/ask";
 
 /** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock. */
 export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () => number } = {};
@@ -127,6 +127,8 @@ askApp.get(ASK_ROUTES.state, async (c) => {
       autoAllowed: st.chatAuto,
       attach: { maxFiles: ASK_ATTACH_FILES_MAX, maxBytes: ASK_ATTACH_BYTES_MAX, kinds: [...ASK_ATTACH_KINDS] },
       starters: await starters(c.var.ctx, me(c)),
+      // The upsell's number: Pro's questions per seat, from the one plan table (the client keeps no copy of it).
+      proPerSeat: PLANS.team.entitlements.ai_chat,
     };
     return c.json(body);
   } catch (e) {
@@ -338,6 +340,8 @@ async function converse(c: C, v: Conversation): Promise<void> {
     const content: StoredContent = { text: v.text, command: v.req.command ?? null, context, refs: context, attached: attachments.map((a) => ({ id: a.id, title: a.title })) };
     const id = await insertMessage(ctx, thread.id, { role: "user", mode, content, attachments });
     await markAttachmentsSent(ctx, pending.map((p) => p.id), id);
+    // The words were sent: the thread keeps no draft of them (a reload or another device opens an empty box).
+    if (thread.draft) await patchThread(ctx, handle, thread.id, { draft: "" });
     question = (await getMessage(ctx, handle, id))!;
   }
   const qc = contentOf(question);
@@ -737,9 +741,10 @@ askApp.post("/ask/actions/:id/confirm", async (c) => {
 askApp.post("/ask/actions/:id/cancel", async (c) => {
   const a = await actionOr404(c);
   if (a instanceof Response) return a;
-  const body = (await c.req.json().catch(() => null)) as { only?: unknown } | null;
+  const parsed = AskCancelBodySchema.safeParse((await c.req.json().catch(() => null)) ?? {});
+  if (!parsed.success) return c.json({ error: "invalid", issues: parsed.error.issues }, 400);
   const results: AskEventMap["action_result"][] = [];
-  for (const one of await targets(c, a, body?.only === true)) {
+  for (const one of await targets(c, a, parsed.data.only === true)) {
     if (await moveAction(c.var.ctx, one.id, ["proposed", "waiting"], "cancelled")) results.push(result(one, "cancelled", null, null, false));
     else if (one.id === a.id) return c.json({ error: a.state === "expired" ? "expired" : "not_proposed", message: `This card is ${a.state}.` }, 409);
   }
@@ -814,6 +819,19 @@ askApp.post(ASK_ROUTES.attachments, async (c) => {
     const b = errorBody(e);
     return c.json({ error: b.code ?? "failed", message: b.error }, b.code === "plan_limit" ? 402 : b.code === "too_large" ? 413 : 400);
   }
+});
+
+/** Remove an uploaded attachment that was never sent (the composer's chip ✕): a HARD delete through src/deletion/
+ *  (the owner's ruling, CLAUDE.md invariant 11) — refused when it was sent, published, referred to, or not theirs. */
+askApp.delete("/ask/attachments/:id", async (c) => {
+  const id = positiveId(c.req.param("id"));
+  if (id === null) return c.json({ error: "not_found" }, 404);
+  const r = await deleteUnsentAttachment(c.var.ctx, platform(c.env, me(c)), c.env.ARTIFACTS_BUCKET, me(c), id);
+  if (r.ok) return c.json({ ok: true });
+  const message = r.why === "sent" ? "It was sent with a question: it stays with the thread."
+    : r.why === "published" ? "It is in Artifacts for the org now: delete it there."
+    : r.why === "referenced" ? "A ticket or a doc refers to it: it stays." : "Not found.";
+  return c.json({ error: r.why, message }, r.why === "not_found" ? 404 : 409);
 });
 
 // ── "Wrong?" ─────────────────────────────────────────────────────────────────

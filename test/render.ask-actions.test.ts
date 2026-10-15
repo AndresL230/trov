@@ -38,7 +38,7 @@ const PERSONS = [
 
 /** The conversation after a scenario's transcript streamed (its question, then the folded answer). */
 function convoOf(scenario: AskScenario): AskConvo {
-  let c: AskConvo = { uid: "c1", threadId: null, thread: null, title: "", status: "ok", busy: false,
+  let c: AskConvo = { uid: "c1", threadId: null, thread: null, draft: "", title: "", status: "ok", busy: false,
     messages: [{ role: "user", key: "q1", id: null, text: "Q", context: [], attachments: [], command: null }, { role: "assistant", key: "a1", turn: newTurn("smart") }] };
   for (const s of askTranscript(scenario, NOW)) {
     const e = s.event;

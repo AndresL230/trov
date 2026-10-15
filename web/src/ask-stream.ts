@@ -240,6 +240,9 @@ export interface AskConvo {
   /** The thread on screen; null for a new one until its `thread` event arrives. */
   threadId: number | null;
   thread: AskThreadSummary | null;
+  /** The thread's unsent words as the server kept them (`AskThreadDetail.thread.draft`; "" for a new thread). Read
+   *  from the detail explicitly — the composer brings them back into its box on opening the thread. */
+  draft: string;
   /** The thread's title as the `thread` event names it ("" until the first exchange is named). */
   title: string;
   messages: AskMsg[];
@@ -249,12 +252,13 @@ export interface AskConvo {
   busy: boolean;
 }
 let convoSeq = 0;
-export const emptyConvo = (): AskConvo => ({ uid: `c${++convoSeq}`, threadId: null, thread: null, title: "", messages: [], status: "idle", busy: false });
+export const emptyConvo = (): AskConvo => ({ uid: `c${++convoSeq}`, threadId: null, thread: null, draft: "", title: "", messages: [], status: "idle", busy: false });
 
 /** The conversation from a stored thread. */
-export function convoFromDetail(d: { thread: AskThreadSummary; messages: AskMessage[] }): AskConvo {
+export function convoFromDetail(d: { thread: AskThreadSummary & { draft?: string }; messages: AskMessage[] }): AskConvo {
+  const { draft, ...thread } = d.thread;
   return {
-    uid: `t${d.thread.id}`, threadId: d.thread.id, thread: d.thread, title: d.thread.title, status: "ok", busy: false,
+    uid: `t${d.thread.id}`, threadId: d.thread.id, thread, draft: typeof draft === "string" ? draft : "", title: d.thread.title, status: "ok", busy: false,
     messages: d.messages.map((m): AskMsg => m.role === "user"
       ? { role: "user", key: `m${m.id}`, id: m.id, text: m.text, context: m.context, attachments: m.attachments, command: m.command }
       : { role: "assistant", key: `m${m.id}`, turn: turnFromMessage(m) }),

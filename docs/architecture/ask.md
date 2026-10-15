@@ -205,6 +205,11 @@ artifacts ever hard-deleted (CLAUDE.md invariant 11): every version, link, pendi
 page goes in ONE batch with the thread's (or account's) rows, and the R2 bytes are freed AFTER the commit, only when
 no row anywhere still points at the same sha (`src/deletion/r2.ts`).
 
+- **`DELETE /ask/attachments/:id`** (`deleteUnsentAttachment`, `src/deletion/ask.ts`): the composer removing an
+  uploaded chip before it was sent deletes that one attachment the same way (its page's rows and its `chat_artifacts`
+  link in ONE batch, re-checked inside it; R2 after the commit when nothing else holds the bytes). Refused with nothing
+  deleted: not the person's (404), already sent (`sent`), published (`published`), or referred to by a ticket or a doc
+  (`referenced`) — 409 each. A never-sent attachment also goes with its thread (`deleteAskThread`).
 - **`DELETE /ask/threads/:id`** (`deleteAskThread`, `src/deletion/ask.ts`) deletes the thread and its attachments,
   EXCEPT a file something still refers to (`planThreadAttachments`). "Referenced" is what the schema actually links:
   - **a ticket** — an `artifact_links` row to a ticket (the library's Links, MCP `artifact_update`, `record_session`'s

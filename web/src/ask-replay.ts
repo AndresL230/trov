@@ -168,6 +168,7 @@ export function createReplayApi(index: AskReplayIndex, plan: ReplayPlan, speed: 
       threadId: threadId ?? 1,
       attachments: files.map((f, i) => ({ id: 900 + i, slug: `sample-${i}`, title: f.name, kind: f.type.startsWith("image/") ? "image" : f.type === "application/pdf" ? "pdf" : "text", contentType: f.type, size: f.size, sha256: "" })),
     }),
+    deleteAttachment: async () => undefined,
     markWrong: async () => undefined,
     getSettings: async () => index.settings[plan.plan],
     putSettings: async (body) => ({ ...index.settings[plan.plan], ...body, modes: index.settings[plan.plan].modes }),

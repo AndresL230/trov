@@ -482,7 +482,7 @@ describe("drafts — kept per thread", () => {
       // Another thread, read from the server with a stored draft: its words, its own mode.
       composerReplaySetup(ctx, "page", "files");                     // files uploaded to thread 3…
       s.ask.composer.page.text = "half a question";
-      s.ask.page = { ...emptyConvo(), uid: "t5", threadId: 5, thread: { ...th[4], draft: "from yesterday" } as AskThreadSummary, status: "ok" };
+      s.ask.page = { ...emptyConvo(), uid: "t5", threadId: 5, thread: th[4], draft: "from yesterday", status: "ok" };   // AskConvo.draft (convoFromDetail)
       paint();
       expect(s.ask.composer.page.text).toBe("from yesterday");
       expect(s.ask.composer.page.mode).toBeNull();
@@ -496,7 +496,7 @@ describe("drafts — kept per thread", () => {
       s.ask.page = { ...emptyConvo(), uid: "t6", threadId: 6, status: "loading" };
       paint();
       expect(s.ask.composer.page.text).toBe("");
-      s.ask.page = { ...s.ask.page, status: "ok", thread: { ...th[5], draft: "stored" } as AskThreadSummary };
+      s.ask.page = { ...s.ask.page, status: "ok", thread: th[5], draft: "stored" };
       paint();
       expect(s.ask.composer.page.text).toBe("stored");
       // A new thread being named (null → its id) keeps what is typed.

@@ -11,7 +11,7 @@ import { apiFetch, tenantHref, Unauthorized, quickSearch } from "./api";
 import { readAskStream } from "./ask-sse";
 import {
   ASK_ROUTES, parseAskRef,
-  type AskActionAnswer, type AskAttachmentUpload, type AskEvent, type AskEventMap, type AskItem, type AskRequest, type AskSaveBody, type AskSearchHit,
+  type AskActionAnswer, type AskAttachmentUpload, type AskCancelBody, type AskConfirmBody, type AskEvent, type AskEventMap, type AskItem, type AskRequest, type AskSaveBody, type AskSearchHit,
   type AskSettings, type AskSettingsPut, type AskState, type AskThreadDetail, type AskThreadPatch, type AskThreadSummary, type AskWrongReason, type PeekResult,
   type AskRefType,
 } from "@shared/ai-ask-core";
@@ -86,12 +86,14 @@ export interface AskApi {
   /** The composer's @ picker: the org's quick search (`GET /search/quick`), as refs. */
   searchRefs(q: string, signal?: AbortSignal): Promise<AskRefHit[]>;
   getItem(ref: string): Promise<AskItem>;
-  confirmAction(id: number, body?: { args?: Record<string, unknown>; only?: number }): Promise<AskActionAnswer>;
-  cancelAction(id: number, body?: { only?: number }): Promise<AskActionAnswer>;
+  confirmAction(id: number, body?: AskConfirmBody): Promise<AskActionAnswer>;
+  cancelAction(id: number, body?: AskCancelBody): Promise<AskActionAnswer>;
   undoAction(id: number): Promise<AskActionAnswer>;
   saveForm(messageId: number, block?: number): Promise<{ block: Extract<import("@shared/ai-ask-core").AskBlock, { kind: "save_form" }>; index: number }>;
   saveThread(threadId: number, body: AskSaveBody): Promise<AskEventMap["artifact_saved"]>;
   uploadAttachments(files: File[], threadId?: number | null): Promise<AskAttachmentUpload>;
+  /** Remove an uploaded attachment never sent (its chip's ✕): deleted for good on the server. */
+  deleteAttachment(id: number): Promise<void>;
   markWrong(messageId: number, reason: AskWrongReason): Promise<void>;
   getSettings(): Promise<AskSettings>;
   putSettings(body: AskSettingsPut): Promise<AskSettings>;
@@ -131,6 +133,7 @@ export const askApi: AskApi = {
     if (!res.ok) throw await refused(res);
     return res.json() as Promise<AskAttachmentUpload>;
   },
+  deleteAttachment: (id) => send<unknown>("DELETE", ASK_ROUTES.attachment(id)).then(() => undefined),
   markWrong: (messageId, reason) => send<unknown>("POST", ASK_ROUTES.wrong(messageId), { reason }).then(() => undefined),
   getSettings: () => send<AskSettings>("GET", ASK_ROUTES.settings),
   putSettings: (body) => send<AskSettings>("PUT", ASK_ROUTES.settings, body),

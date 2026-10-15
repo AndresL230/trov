@@ -7,6 +7,8 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, renderMarkdownInline: (t: string) => t }));
 import { render, initialState, type AppState } from "../web/src/render";
 import { actionsPart } from "../web/src/ask-actions";
+import { composerPart } from "../web/src/ask-composer";
+import { convoFromDetail } from "../web/src/ask-stream";
 import { SseParser, askEventOf } from "../web/src/ask-sse";
 import { emptyConvo, foldAskEvent, foldThreadEvent, newTurn, withLastTurn, type AskConvo } from "../web/src/ask-stream";
 import type { AskApi } from "../web/src/ask-api";
@@ -72,5 +74,37 @@ describe("Save as artifact and Wrong? — the conversation speaks the actions pa
     actionsPart.act!(ctxOf(s, {}), "askAcWrong", arg, null);
     expect(s.ask.actions.wrongOpen.a1).toBe(true);
     expect(render(s)).toMatch(/data-act="askAcWrong" data-arg="a1" aria-expanded="true"/);
+  });
+});
+
+describe("the composer's contract gaps, closed", () => {
+  it("a thread's stored draft is kept on the conversation explicitly (AskConvo.draft), not riding on the thread", () => {
+    const t = askThreadsFixture(NOW)[0];
+    const c = convoFromDetail({ thread: { ...t, draft: "half a thought" }, messages: [] });
+    expect(c.draft).toBe("half a thought");
+    expect("draft" in (c.thread as object)).toBe(false);
+    expect(convoFromDetail({ thread: t, messages: [] }).draft).toBe("");
+  });
+
+  it("the quota upsell reads Pro's per-seat number from ask/state, not the client's plans", () => {
+    const s = answered();
+    s.ask.state = { status: "ok", data: { ...askStateFixture("free", NOW), allowance: { used: 50, cap: 50, resetsAt: "2026-11-01T00:00:00Z", low: true }, proPerSeat: 123 } };
+    expect(render(s)).toContain("Pro includes 123 a month");
+  });
+
+  it("removing an uploaded chip deletes the attachment on the server; a chip still uploading asks nothing", () => {
+    const s = answered();
+    const att = { id: 77, slug: "shot-png", title: "shot.png", kind: "image" as const, contentType: "image/png", size: 10, sha256: "x" };
+    s.ask.composer.page = { ...s.ask.composer.page, files: [
+      { key: "k1", name: "shot.png", size: 10, kind: "image", state: "ready", att, preview: null },
+      { key: "k2", name: "big.png", size: 10, kind: "image", state: "uploading", att: null, preview: null },
+    ], attachments: [att] };
+    const deleted: number[] = [];
+    const ctx = ctxOf(s, { deleteAttachment: async (id: number) => { deleted.push(id); } });
+    composerPart.act!(ctx, "askCoRemove", "page|f:k1", null);
+    composerPart.act!(ctx, "askCoRemove", "page|f:k2", null);
+    expect(deleted).toEqual([77]);
+    expect(s.ask.composer.page.files).toEqual([]);
+    expect(s.ask.composer.page.attachments).toEqual([]);
   });
 });
