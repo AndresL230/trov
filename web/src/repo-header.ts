@@ -16,7 +16,6 @@ import type { RepoLayout } from "@shared/repo-layout-core";
 import { esc, attr } from "./ui";
 import { dropdown, type DropdownProps, type DropdownUi } from "./dropdown";
 import { segmented } from "./segmented";
-import { STATE_KIND } from "./marks";
 import { envVerdict } from "./repo-verdict";
 
 /** The App menu's value for "All apps" (a dropdown option needs a string). */
@@ -69,7 +68,7 @@ export function envPillsHtml(f: RepoFacts): string {
   if (!f.envs.length || !f.parts.length) return "";
   return f.envs.map((e) => {
     const v = envVerdict(f, e.key);
-    const k = STATE_KIND[v.kind];
+    const k = { tone: v.tone, shape: v.shape };
     const calm = k.shape === "dot" || k.shape === "ring";
     return `<span data-env-pill="${attr(e.key)}" data-verdict="${v.key}" data-mtip="${attr(`${e.name}: ${v.word}. ${v.tip}`)}" style="display:inline-flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;color:var(--fg-70)"><span class="repo-envdot${calm ? "" : " repo-pulse"}" style="--c:${k.tone};width:7px;height:7px;border-radius:50%;background:${k.tone};box-shadow:0 0 0 3px color-mix(in srgb,${k.tone} 16%,transparent)"></span>${esc(e.name)}</span>`;
   }).join("");

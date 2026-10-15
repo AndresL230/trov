@@ -3513,3 +3513,33 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 /* The design offers Group by on a wide screen only: a phone draws the opener the rules picked. */
 [data-phone="1"] .repo-groupby { display:none; }
 .repo-sample-switch { display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+/* ── repo-production (web/src/repo-production.ts) ─────────────────────────────
+   The Production card (rule R4). Its deploy strip is a 14px square per deploy, newest on the right, the
+   newest ringed; a building one blinks, and so does a Building mark's shape anywhere on the Overview
+   (`.repo-blink`, repo-block-kit.ts) — both still under reduced motion. Radii are inline (3px / 4px), so the
+   corners block already scales them. */
+.repo-prod-sq.is-last { outline:1px solid var(--border-strong); outline-offset:2px; }
+.repo-prod-sq.is-building, .repo-blink svg { animation:repo-blink 1.6s ease-in-out infinite; }
+@keyframes repo-blink { 0%, 100% { opacity:1; } 50% { opacity:.35; } }
+@media (prefers-reduced-motion: reduce) { .repo-prod-sq.is-building, .repo-blink svg { animation:none !important; } }
+
+/* ── repo-previews (web/src/repo-previews.ts) ─────────────────────────────────
+   The Previews list under the Production card: a row per open pull request's preview. */
+.repo-pv-row { transition:background .14s ease; }
+.repo-pv-row:hover { background:var(--hover); }
+@media (prefers-reduced-motion: reduce) { .repo-pv-row { transition:none; } }
+
+/* ── repo-found (web/src/repo-found.ts) ───────────────────────────────────────
+   The found-apps card (rule R1): one grid row per suggested app — the ring, folder, kind, host, evidence and,
+   for an admin, Accept / Ignore. Under 640px of card a row folds: the folder beside its buttons, then kind,
+   host and evidence under it. No radius here (the buttons' are inline). */
+.repo-found { container-type:inline-size; }
+.repo-found-row { display:grid; grid-template-columns:18px minmax(140px,1fr) minmax(90px,.55fr) minmax(110px,.7fr) minmax(0,1.5fr); gap:4px 14px; align-items:baseline; }
+.repo-found-row.has-act { grid-template-columns:18px minmax(140px,1fr) minmax(90px,.55fr) minmax(110px,.7fr) minmax(0,1.5fr) auto; align-items:center; }
+@container (max-width: 640px) {
+  .repo-found-row, .repo-found-row.has-act { grid-template-columns:18px minmax(0,1fr) auto; row-gap:2px; }
+  .repo-found-row > :nth-child(n+3):nth-child(-n+5) { grid-column:2 / -1; }
+  .repo-found-row .repo-found-ev { white-space:normal !important; }
+  .repo-found-act { grid-column:3; grid-row:1; }
+}

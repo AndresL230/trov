@@ -16,7 +16,7 @@
 // = good, live = good, degraded / out of step = warn, failing = bad, down = stopped, unknown = waiting. A stale health reading is
 // never read as up or down (it is "no recent reading", repo-facts-core.ts `FactsHealth.stale`).
 import type { FactsCi, FactsPart, RepoFacts } from "@shared/repo-facts-core";
-import type { StateKind } from "./marks";
+import type { MarkShape, StateKind } from "./marks";
 
 export type VerdictKey = "healthy" | "live" | "degraded" | "failing" | "down" | "unknown" | "outOfStep";
 
@@ -25,18 +25,21 @@ export interface EnvVerdict {
   /** The mark's word ("Healthy"). */
   word: string;
   kind: StateKind;
+  /** The design's tone and shape for it (repo-data.js `MARKS`) — what every block and the header's pills draw. */
+  tone: string;
+  shape: MarkShape;
   /** What it means — the mark's `data-mtip` (the design's MARKS tips). */
   tip: string;
 }
 
 export const VERDICT: Record<VerdictKey, Omit<EnvVerdict, "key">> = {
-  healthy: { word: "Healthy", kind: "good", tip: "Checks pass on the branch head and every app here is live." },
-  live: { word: "Live", kind: "good", tip: "Serving traffic." },
-  degraded: { word: "Degraded", kind: "warn", tip: "Checks are failing on the branch head." },
-  failing: { word: "Failing", kind: "bad", tip: "A deploy here failed." },
-  down: { word: "Down", kind: "stopped", tip: "Its health check gets no answer." },
-  unknown: { word: "Unknown", kind: "waiting", tip: "Trov has not seen a deploy here yet." },
-  outOfStep: { word: "Out of step", kind: "warn", tip: "Apps in this environment run different commits." },
+  healthy: { word: "Healthy", kind: "good", tone: "var(--green)", shape: "dot", tip: "Checks pass on the branch head and every app here is live." },
+  live: { word: "Live", kind: "good", tone: "var(--green)", shape: "dot", tip: "Serving traffic." },
+  degraded: { word: "Degraded", kind: "warn", tone: "var(--amber)", shape: "triangle", tip: "Checks are failing on the branch head." },
+  failing: { word: "Failing", kind: "bad", tone: "var(--red)", shape: "diamond", tip: "A deploy here failed." },
+  down: { word: "Down", kind: "stopped", tone: "var(--red)", shape: "square", tip: "Its health check gets no answer." },
+  unknown: { word: "Unknown", kind: "waiting", tone: "var(--fg-55)", shape: "ring", tip: "Trov has not seen a deploy here yet." },
+  outOfStep: { word: "Out of step", kind: "warn", tone: "var(--amber)", shape: "triangle", tip: "Apps in this environment run different commits." },
 };
 
 /** A part Trov has seen nothing from: no serving deploy, none in flight, no history (the design's `unknown: true`). */

@@ -196,7 +196,8 @@ describe("no “not connected” for a thing the repository does not have", () =
   it("B has no Railway, and never mentions it", () => {
     for (const v of SCENARIO_VARIANTS.B) {
       const html = repoView(props(repoScenario("B", v, { now: NOW })));
-      expect(html).not.toContain("Railway");
+      // B's sample has a preview for a PR titled "Usage: Railway poller" (the design's data) — a title, not a host.
+      expect(html.replace(/Usage: Railway poller/g, "")).not.toContain("Railway");
       expect(panel(html)).not.toMatch(/not connected/i);
     }
   });
