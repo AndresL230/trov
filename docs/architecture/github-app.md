@@ -385,8 +385,8 @@ Nothing 500s.
    Workflow job. The App's permissions already cover all twelve (Deployments, Contents, Actions, Checks,
    Statuses: read), so adding the last four needs no re-approval by installations. `deployment` /
    `deployment_status` and every non-`canopy/*` status are captured as untagged GitHub deploy signals
-   (`repo-dashboard.md`); `release` / `create` feed the release capture (`RELEASE_EVENT_NAMES`, Phase F —
-   `releases`, `repo-dashboard.md`); `workflow_job` is verified and acknowledged and not captured yet
+   (`repo-apps.md` › The `github` provider); `release` / `create` feed the release capture (`RELEASE_EVENT_NAMES`,
+   Phase F — `releases`, `repo-apps.md` › Releases); `workflow_job` is verified and acknowledged and not captured yet
    (`LATER_EVENT_NAMES` in `src/webhook.ts` — CI per app comes in a later phase). Leave `https://trov.dev/auth/callback` as the FIRST callback
    URL (GitHub returns there after an install) and "Request user authorization (OAuth) during
    installation" on.
