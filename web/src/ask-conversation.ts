@@ -668,7 +668,16 @@ export const conversationPart: AskPart = {
     const [w, key, extra] = (arg ?? "").split(":");
     switch (name) {
       // A starter, a follow-up, a rephrase chip: send its words as the next question.
-      case "askCvSend": if (arg) ctx.send({ text: arg, where: ctx.ui.cmdj.open && ctx.app.screen !== "ask" ? "panel" : "page" }); return;
+      // In the ⌘J panel it carries the panel's context, the page's item first (a panel thread's `contextRef`).
+      case "askCvSend": {
+        if (!arg) return;
+        if (ctx.ui.cmdj.open && ctx.app.screen !== "ask") {
+          const page = ctx.ui.cmdj.contextRef;
+          const context = [...new Set([...(page ? [page] : []), ...ctx.ui.composer.panel.context])];
+          ctx.send({ text: arg, where: "panel", context });
+        } else ctx.send({ text: arg, where: "page" });
+        return;
+      }
       case "askCvToggle": if (arg) toggle(ctx, arg); return;
       // A block or a file of the conversation, beside the thread: primed as hidden so no peek ever names it.
       case "askCvOpen": {

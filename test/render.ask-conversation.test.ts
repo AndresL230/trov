@@ -395,6 +395,19 @@ describe("acts — edit-and-resend and regenerate go through replaceFrom", () =>
     expect(sent[0]).toMatchObject({ text: HQ, replaceFrom: 5 });
   });
 
+  it("a starter or follow-up sent in the ⌘J panel carries the panel's context, the page's item first", () => {
+    const s = base();
+    s.screen = "ticketdetail";
+    s.ask.cmdj = { ...s.ask.cmdj, open: true, contextRef: "ticket:14" };
+    s.ask.composer.panel.context = ["person:maya", "ticket:14"];
+    const { ctx, sent } = fakeCtx(s);
+    act(ctx, "askCvSend", "What's left before this can close?");
+    expect(sent).toEqual([{ text: "What's left before this can close?", where: "panel", context: ["ticket:14", "person:maya"] }]);
+    s.screen = "ask";
+    act(ctx, "askCvSend", "What shipped this week?");
+    expect(sent[1]).toEqual({ text: "What shipped this week?", where: "page" });
+  });
+
   it("disclosures open at once and close through their exit; Copy says Copied", () => {
     const s = base();
     s.ask.page = { ...convoOf("answer"), busy: false };
