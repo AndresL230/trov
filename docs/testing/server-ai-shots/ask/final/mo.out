@@ -1,0 +1,195 @@
+
+=== MOTION
+{
+ "MO-42 entrance on #mywork → #ask (running animations)": {
+  "count": 20,
+  "sample": [
+   {
+    "name": "background-color",
+    "cls": "cnpy-navrow.n-mywork",
+    "key": null,
+    "state": "running",
+    "dur": 150
+   },
+   {
+    "name": "box-shadow",
+    "cls": "cnpy-navrow.n-mywork",
+    "key": null,
+    "state": "running",
+    "dur": 150
+   },
+   {
+    "name": "color",
+    "cls": "cnpy-nav-i",
+    "key": null,
+    "state": "running",
+    "dur": 120
+   },
+   {
+    "name": "background-color",
+    "cls": "cnpy-navrow.n-ask",
+    "key": null,
+    "state": "running",
+    "dur": 150
+   },
+   {
+    "name": "box-shadow",
+    "cls": "cnpy-navrow.n-ask",
+    "key": null,
+    "state": "running",
+    "dur": 150
+   },
+   {
+    "name": "color",
+    "cls": "cnpy-nav-i",
+    "key": null,
+    "state": "running",
+    "dur": 120
+   },
+   {
+    "name": "cnpy-screen",
+    "cls": "ask-h1",
+    "key": null,
+    "state": "running",
+    "dur": 280
+   },
+   {
+    "name": "cnpy-screen",
+    "cls": "ask-screen",
+    "key": null,
+    "state": "running",
+    "dur": 320
+   }
+  ]
+ },
+ "MO-43a typing in the composer: animations": [
+  {
+   "name": "border-bottom-color",
+   "cls": "ask-box",
+   "key": "box",
+   "state": "running",
+   "dur": 150
+  },
+  {
+   "name": "border-left-color",
+   "cls": "ask-box",
+   "key": "box",
+   "state": "running",
+   "dur": 150
+  },
+  {
+   "name": "border-right-color",
+   "cls": "ask-box",
+   "key": "box",
+   "state": "running",
+   "dur": 150
+  },
+  {
+   "name": "border-top-color",
+   "cls": "ask-box",
+   "key": "box",
+   "state": "running",
+   "dur": 150
+  },
+  {
+   "name": "box-shadow",
+   "cls": "ask-box",
+   "key": "box",
+   "state": "running",
+   "dur": 150
+  },
+  {
+   "name": "background-color",
+   "cls": "ask-send.is-on",
+   "key": "send",
+   "state": "running",
+   "dur": 150
+  },
+  {
+   "name": "color",
+   "cls": "ask-send.is-on",
+   "key": "send",
+   "state": "running",
+   "dur": 150
+  }
+ ],
+ "MO-43 the question bubble animating while the answer streams (should be ≤ its one entrance)": {
+  "qAnimSamples": 0,
+  "uniq": []
+ },
+ "MO-50 activity steps animating": {
+  "samples": 1,
+  "uniq": [
+   "s:5|Animation"
+  ]
+ },
+ "MO-52 cursor anim during stream": {
+  "cursor": 10
+ },
+ "MO-43 scroller sticks to bottom": {
+  "top": 1052,
+  "max": 1052
+ },
+ "MO-51 thinking": {
+  "t1": "Searched docs for 'hosting'· 3 results",
+  "t2": "Thinking… 5s",
+  "enterAnims": [],
+  "pulse": 6
+ },
+ "MO-44 Cancel: animations right after": [
+  "ask-line.is-off|ask-line-in|360",
+  "ask-part|Animation|240",
+  "ask-acts|Animation|240"
+ ],
+ "MO-46 inspector opens": [
+  "ask-chip.ask-chip--inline|background-color",
+  "ask-chip.ask-chip--inline|border-bottom-color",
+  "ask-chip.ask-chip--inline|border-left-color",
+  "ask-chip.ask-chip--inline|border-right-color",
+  "ask-chip.ask-chip--inline|border-top-color",
+  "ask-iconbtn.ask-th-toggle|color",
+  "ask-threads|border-right-color",
+  "ask-threads|opacity",
+  "ask-threads|width",
+  "ask-insp-frame|ask-insp-in",
+  "ask-insp-body|ask-view-in"
+ ],
+ "MO-47 Back: what animates (the frame must not)": [
+  "ask-iconbtn|background-color",
+  "ask-iconbtn|color",
+  "ask-insp-body|ask-view-in",
+  "ask-iv|Animation",
+  "[object.SVGAnimatedString]|Animation"
+ ],
+ "MO-48 inspector close": {
+  "closingAttr": true,
+  "anims": [
+   "ask-insp-frame|ask-insp-out"
+  ],
+  "goneAfter": true
+ },
+ "MO-48 picker close": {
+  "closing": true,
+  "anims": [
+   "ask-co-pick|ask-pop-out"
+  ]
+ },
+ "MO-46/48 ⌘J panel open / close": {
+  "open": [
+   "ask-box|border-bottom-color",
+   "ask-box|border-left-color",
+   "ask-box|border-right-color",
+   "ask-box|border-top-color",
+   "ask-box|box-shadow",
+   "ask-scrim|ask-fade-in",
+   "ask-panel|ask-panel-in",
+   "ask-empty|ask-fade-in",
+   "ask-co-ctx|ask-fade-in"
+  ],
+  "close": [
+   "ask-scrim|ask-fade-out",
+   "ask-panel|ask-panel-out"
+  ],
+  "closing": true
+ }
+}

@@ -1,0 +1,14 @@
+
+=== active+search
+{
+ "active": "ask-th-q",
+ "bc": "rgb(82, 92, 195)",
+ "sh": "rgb(82, 92, 195) 0px 0px 0px 1px",
+ "css": true
+}
+
+=== after typing
+{
+ "active": "ask-th-q",
+ "bc": "rgb(82, 92, 195)"
+}

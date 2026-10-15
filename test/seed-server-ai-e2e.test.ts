@@ -8,6 +8,7 @@ import {
   SECTIONS, SCHEMA_SQL, insert, isoWeekId, missingFrom, schemaFromRows, serverAiE2eStatements, allFixtures,
 } from "../scripts/seed/server-ai-e2e.mjs";
 import { targetsRemote } from "../scripts/seed/build.mjs";
+import { RefViewSchema } from "@shared/ai-ask";
 
 const NOW = new Date("2026-10-15T12:00:00.000Z");
 
@@ -48,6 +49,20 @@ describe("server-ai e2e seed", { timeout: 30_000 }, () => {
     await seed();
     expect(await tally()).toBe(once);
     expect(once).toBeGreaterThan(0);
+  });
+
+  // e2e AU-6: a seeded cite whose mark is not one of ASK_MARKS drew "undefined" in the chip. A stored cite is a
+  // RefView the server built, so every seeded one must pass the contract's own schema.
+  it("stores Ask cites that are valid RefViews (the contract's marks and tones)", async () => {
+    await seed();
+    const rows = await env.DB.prepare("SELECT id, cites_json FROM chat_messages WHERE org_id LIKE 'org_test_%' AND cites_json <> '[]'").all<{ id: number; cites_json: string }>();
+    expect(rows.results.length).toBeGreaterThan(0);
+    const bad: string[] = [];
+    for (const r of rows.results) for (const v of JSON.parse(r.cites_json) as unknown[]) {
+      const p = RefViewSchema.safeParse(v);
+      if (!p.success) bad.push(`${r.id}: ${JSON.stringify(p.error.issues.map((i) => i.path.join(".")))}`);
+    }
+    expect(bad).toEqual([]);
   });
 
   it("only ever writes obviously fake rows: test- handles and org_test_ orgs", async () => {

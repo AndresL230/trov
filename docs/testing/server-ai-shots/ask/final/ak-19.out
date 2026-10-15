@@ -1,0 +1,974 @@
+
+=== AK-33 thread 801001 full
+{
+ "status": 200,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "thread": {
+   "id": 801001,
+   "title": "test-What is blocking #1?",
+   "pinned": false,
+   "mode": "smart",
+   "auto": false,
+   "origin": "page",
+   "contextRef": null,
+   "hasDraft": false,
+   "group": "today",
+   "createdAt": "2026-10-15T21:54:07.038Z",
+   "updatedAt": "2026-10-15T21:54:07.038Z",
+   "draft": ""
+  },
+  "messages": [
+   {
+    "id": 801101,
+    "role": "user",
+    "mode": "smart",
+    "text": "What is blocking #1?",
+    "command": null,
+    "context": [],
+    "blocks": [],
+    "activity": [],
+    "followups": [],
+    "thinking": null,
+    "cites": [],
+    "attachments": [],
+    "actions": [],
+    "stopped": false,
+    "model": null,
+    "units": 0,
+    "createdAt": "2026-10-15T21:48:07.038Z"
+   },
+   {
+    "id": 801102,
+    "role": "assistant",
+    "mode": "smart",
+    "text": "[[ticket:1]] waits on the CSP fix; [[ticket:2]] looks like the same report.",
+    "command": null,
+    "context": [],
+    "blocks": [],
+    "activity": [],
+    "followups": [
+     "test- What changed since?"
+    ],
+    "thinking": null,
+    "cites": [
+     {
+      "ref": "ticket:1",
+      "type": "ticket",
+      "num": 1,
+      "title": "test-Login page is blank on Safari",
+      "status": {
+       "mark": "half",
+       "tone": "accent",
+       "word": "In progress",
+       "tip": "In progress."
+      },
+      "owner": "test-member",
+      "updated": null,
+      "href": "#tickets/1",
+      "extra": {
+       "priority": "high",
+       "assignees": [
+        "test-member"
+       ],
+       "sprint": null
+      }
+     },
+     {
+      "ref": "ticket:2",
+      "type": "ticket",
+      "num": 2,
+      "title": "test-Blank login screen after the Safari update",
+      "status": {
+       "mark": "todo",
+       "tone": "accent",
+       "word": "Triage",
+       "tip": "Triage."
+      },
+      "owner": "test-member",
+      "updated": null,
+      "href": "#tickets/2",
+      "extra": {
+       "priority": "high",
+       "assignees": [
+        "test-member"
+       ],
+       "sprint": null
+      }
+     }
+    ],
+    "attachments": [],
+    "actions": [
+     {
+      "id": 801201,
+      "groupId": null,
+      "tool": "create_ticket",
+      "kind": "ticket",
+      "state": "proposed",
+      "preview": {
+       "title": "New ticket",
+       "lines": [
+        {
+         "label": "Title",
+         "value": "test-E2E ticket from Ask"
+        }
+       ],
+       "item": null
+      },
+      "fields": {
+       "title": "test-E2E ticket from Ask",
+       "body": "",
+       "category": "bug",
+       "priority": "normal",
+       "assignee": null,
+       "sprint_id": null
+      },
+      "editable": [
+       "title",
+       "category",
+       "priority",
+       "assignee"
+      ],
+      "note": null,
+      "result": null,
+      "ref": null,
+      "undo": false,
+      "createdAt": "2026-10-15T21:54:07.038Z",
+      "decidedAt": null
+     },
+     {
+      "id": 801202,
+      "groupId": null,
+      "tool": "transition_ticket",
+      "kind": "move",
+      "state": "proposed",
+      "preview": {
+       "title": "Move #1 to Testing",
+       "lines": [
+        {
+         "label": "Status",
+         "value": "In progress → Testing"
+        }
+       ],
+       "item": null
+      },
+      "fields": {
+       "to": "testing"
+      },
+      "editable": [],
+      "note": null,
+      "result": null,
+      "ref": null,
+      "undo": false,
+      "createdAt": "2026-10-15T21:54:07.038Z",
+      "decidedAt": null
+     },
+     {
+      "id": 801203,
+      "groupId": "test-group-1",
+      "tool": "create_ticket",
+      "kind": "ticket",
+      "state": "proposed",
+      "preview": {
+       "title": "New ticket",
+       "lines": [
+        {
+         "label": "Title",
+         "value": "test-Grouped ticket A"
+        }
+       ],
+       "item": null
+      },
+      "fields": {
+       "title": "test-Grouped ticket A",
+       "body": "",
+       "category": "other",
+       "priority": "normal",
+       "assignee": null,
+       "sprint_id": null
+      },
+      "editable": [
+       "title",
+       "category",
+       "priority",
+       "assignee"
+      ],
+      "note": null,
+      "result": null,
+      "ref": null,
+      "undo": false,
+      "createdAt": "2026-10-15T21:54:07.038Z",
+      "decidedAt": null
+     },
+     {
+      "id": 801204,
+      "groupId": "test-group-1",
+      "tool": "create_ticket",
+      "kind": "ticket",
+      "state": "proposed",
+      "preview": {
+       "title": "New ticket",
+       "lines": [
+        {
+         "label": "Title",
+         "value": "test-Grouped ticket B"
+        }
+       ],
+       "item": null
+      },
+      "fields": {
+       "title": "test-Grouped ticket B",
+       "body": "",
+       "category": "other",
+       "priority": "normal",
+       "assignee": null,
+       "sprint_id": null
+      },
+      "editable": [
+       "title",
+       "category",
+       "priority",
+       "assignee"
+      ],
+      "note": null,
+      "result": null,
+      "ref": null,
+      "undo": false,
+      "createdAt": "2026-10-15T21:54:07.038Z",
+      "decidedAt": null
+     },
+     {
+      "id": 801205,
+      "groupId": null,
+      "tool": "send_handoff",
+      "kind": "handoff",
+      "state": "proposed",
+      "preview": {
+       "title": "New handoff",
+       "lines": [
+        {
+         "label": "To",
+         "value": "@test-member2"
+        }
+       ],
+       "item": null
+      },
+      "fields": {
+       "recipient": "test-member2",
+       "task": "test- Fix the connect test",
+       "done": [],
+       "next": [],
+       "files": []
+      },
+      "editable": [
+       "recipient",
+       "task"
+      ],
+      "note": null,
+      "result": null,
+      "ref": null,
+      "undo": false,
+      "createdAt": "2026-10-15T21:54:07.038Z",
+      "decidedAt": null
+     },
+     {
+      "id": 801206,
+      "groupId": null,
+      "tool": "publish_doc",
+      "kind": "publish",
+      "state": "waiting",
+      "preview": {
+       "title": "Publish test-Auth sessions v2",
+       "lines": [],
+       "item": null,
+       "canPublish": true
+      },
+      "fields": {
+       "slug": "test-auth-sessions",
+       "version": null
+      },
+      "editable": [],
+      "note": null,
+      "result": null,
+      "ref": null,
+      "undo": false,
+      "createdAt": "2026-10-15T21:54:07.038Z",
+      "decidedAt": null
+     },
+     {
+      "id": 801207,
+      "groupId": null,
+      "tool": "create_ticket",
+      "kind": "ticket",
+      "state": "expired",
+      "preview": {
+       "title": "New ticket",
+       "lines": [],
+       "item": null
+      },
+      "fields": {
+       "title": "test-Expired card",
+       "body": "",
+       "category": "other",
+       "priority": "normal",
+       "assignee": null,
+       "sprint_id": null
+      },
+      "editable": [],
+      "note": null,
+      "result": null,
+      "ref": null,
+      "undo": false,
+      "createdAt": "2026-10-15T21:54:07.038Z",
+      "decidedAt": "2026-10-15T21:55:07.038Z"
+     },
+     {
+      "id": 801208,
+      "groupId": null,
+      "tool": "create_ticket",
+      "kind": "ticket",
+      "state": "proposed",
+      "preview": {
+       "title": "New ticket",
+       "lines": [],
+       "item": null
+      },
+      "fields": {
+       "title": "test-Stale-turn card",
+       "body": "",
+       "category": "other",
+       "priority": "normal",
+       "assignee": null,
+       "sprint_id": null
+      },
+      "editable": [
+       "title",
+       "category",
+       "priority",
+       "assignee"
+      ],
+      "note": null,
+      "result": null,
+      "ref": null,
+      "undo": false,
+      "createdAt": "2026-10-15T21:54:07.038Z",
+      "decidedAt": null
+     },
+     {
+      "id": 801209,
+      "groupId": null,
+      "tool": "add_ticket_comment",
+      "kind": "other",
+      "state": "confirmed",
+      "preview": {
+       "title": "Comment on #1",
+       "lines": [],
+       "item": null
+      },
+      "fields": {},
+      "editable": [],
+      "note": null,
+      "result": {
+       "ok": true
+      },
+      "ref": "ticket:1",
+      "undo": false,
+      "createdAt": "2026-10-15T21:54:07.038Z",
+      "decidedAt": "2026-10-15T21:55:07.038Z"
+     },
+     {
+      "id": 801210,
+      "groupId": null,
+      "tool": "create_ticket",
+      "kind": "ticket",
+      "state": "cancelled",
+      "preview": {
+       "title": "New ticket",
+       "lines": [],
+       "item": null
+      },
+      "fields": {
+       "title": "test-Cancelled card",
+       "body": "",
+       "category": "other",
+       "priority": "normal",
+       "assignee": null,
+       "sprint_id": null
+      },
+      "editable": [],
+      "note": null,
+      "result": null,
+      "ref": null,
+      "undo": false,
+      "createdAt": "2026-10-15T21:54:07.038Z",
+      "decidedAt": "2026-10-15T21:55:07.038Z"
+     },
+     {
+      "id": 801211,
+      "groupId": null,
+      "tool": "transition_ticket",
+      "kind": "move",
+      "state": "auto",
+      "preview": {
+       "title": "Move #1 to In progress",
+       "lines": [],
+       "item": null
+      },
+      "fields": {
+       "to": "in_progress"
+      },
+      "editable": [],
+      "note": null,
+      "result": {
+       "ok": true
+      },
+      "ref": "ticket:1",
+      "undo": true,
+      "createdAt": "2026-10-15T21:54:07.038Z",
+      "decidedAt": "2026-10-15T21:55:07.038Z"
+     },
+     {
+      "id": 801212,
+      "groupId": null,
+      "tool": "transition_ticket",
+      "kind": "move",
+      "state": "auto",
+      "preview": {
+       "title": "Move #4 to Testing",
+       "lines": [],
+       "item": null
+      },
+      "fields": {
+       "to": "testing"
+      },
+      "editable": [],
+      "note": null,
+      "result": {
+       "ok": true
+      },
+      "ref": "ticket:4",
+      "undo": true,
+      "createdAt": "2026-10-15T21:54:07.038Z",
+      "decidedAt": "2026-10-15T21:55:07.038Z"
+     },
+     {
+      "id": 801214,
+      "groupId": null,
+      "tool": "transition_ticket",
+      "kind": "move",
+      "state": "proposed",
+      "preview": {
+       "title": "Move #7 to In progress",
+       "lines": [],
+       "item": null
+      },
+      "fields": {
+       "to": "in_progress"
+      },
+      "editable": [],
+      "note": null,
+      "result": null,
+      "ref": null,
+      "undo": false,
+      "createdAt": "2026-10-15T21:54:07.038Z",
+      "decidedAt": null
+     }
+    ],
+    "stopped": false,
+    "model": "claude-sonnet-5-5",
+    "units": 1,
+    "createdAt": "2026-10-15T21:49:07.038Z"
+   }
+  ]
+ }
+}
+
+=== AK-19 search netlify (client contract: text without the /search word)
+{
+ "status": 200,
+ "type": "text/event-stream; charset=utf-8",
+ "events": [
+  {
+   "event": "thread",
+   "data": {
+    "id": 899012,
+    "title": "",
+    "mode": "smart",
+    "auto": false,
+    "origin": "page",
+    "contextRef": null
+   }
+  },
+  {
+   "event": "activity",
+   "data": {
+    "step": 1,
+    "tool": "search",
+    "icon": "search",
+    "label": "Searched Trov for 'netlify'",
+    "state": "run"
+   }
+  },
+  {
+   "event": "activity",
+   "data": {
+    "step": 1,
+    "state": "done",
+    "results": [
+     "ticket:5",
+     "doc:test-deploy-checklist",
+     "handoff:1",
+     "feed:701005"
+    ],
+    "resultLine": "4 results"
+   }
+  },
+  {
+   "event": "text",
+   "data": {
+    "delta": "4 items match best:"
+   }
+  },
+  {
+   "event": "block",
+   "data": {
+    "kind": "items",
+    "items": [
+     {
+      "ref": "ticket:5",
+      "type": "ticket",
+      "num": 5,
+      "title": "test-Netlify deploy preview is failing",
+      "status": {
+       "word": "Done",
+       "mark": "done",
+       "tone": "accent",
+       "tip": "Done. Closed as done."
+      },
+      "owner": "test-member",
+      "updated": "2026-09-30T22:44:07.038Z",
+      "href": "#tickets/5",
+      "extra": {
+       "priority": "high",
+       "assignees": [
+        "test-member"
+       ],
+       "sprint": "test-Sprint Hosting"
+      }
+     },
+     {
+      "ref": "doc:test-deploy-checklist",
+      "type": "doc",
+      "title": "test-Deploy checklist",
+      "status": {
+       "mark": "dot",
+       "tone": "green",
+       "word": "Live",
+       "tip": "Promoted. This is the version agents read."
+      },
+      "owner": "test-owner",
+      "updated": "2026-10-05T22:44:07.038Z",
+      "href": null,
+      "extra": {
+       "space": "technical",
+       "version": 1,
+       "owner": "test-owner",
+       "excerpt": "Before a Netlify deploy: check the redirect rules, the cache headers and the preview URL.",
+       "staged": false
+      }
+     },
+     {
+      "ref": "handoff:1",
+      "type": "handoff",
+      "num": 1,
+      "title": "Finish the deploy checklist for the Netlify preview: the redirect rules and the cache headers.",
+      "status": {
+       "mark": "ring",
+       "tone": "blue",
+       "word": "Pending",
+       "tip": "Waiting for a session to claim it. Unclaimed handoffs expire after 7 days."
+      },
+      "owner": "test-member2",
+      "updated": "2026-10-15T21:14:07.038Z",
+      "href": "#handoffs/1",
+      "extra": {
+       "from": "test-member2",
+       "to": "test-member",
+       "task": "Deploy checklist: Netlify redirect rules and cache headers"
+      }
+     },
+     {
+      "ref": "feed:701005",
+      "type": "feed",
+      "num": 701005,
+      "title": "Shipped: test- the Netlify redirect fix",
+      "status": null,
+      "owner": "test-member",
+      "updated": "2026-10-15T21:44:07.038Z",
+      "href": null,
+      "extra": {
+       "brief": null
+      }
+     }
+    ]
+   }
+  },
+  {
+   "event": "thread",
+   "data": {
+    "id": 899012,
+    "title": "Search: netlify",
+    "mode": "smart",
+    "auto": false,
+    "origin": "page",
+    "contextRef": null
+   }
+  },
+  {
+   "event": "done",
+   "data": {
+    "messageId": 899124,
+    "questionId": 899123,
+    "cites": [
+     {
+      "ref": "ticket:5",
+      "type": "ticket",
+      "num": 5,
+      "title": "test-Netlify deploy preview is failing",
+      "status": {
+       "word": "Done",
+       "mark": "done",
+       "tone": "accent",
+       "tip": "Done. Closed as done."
+      },
+      "owner": "test-member",
+      "updated": "2026-09-30T22:44:07.038Z",
+      "href": "#tickets/5",
+      "extra": {
+       "priority": "high",
+       "assignees": [
+        "test-member"
+       ],
+       "sprint": "test-Sprint Hosting"
+      }
+     },
+     {
+      "ref": "doc:test-deploy-checklist",
+      "type": "doc",
+      "title": "test-Deploy checklist",
+      "status": {
+       "mark": "dot",
+       "tone": "green",
+       "word": "Live",
+       "tip": "Promoted. This is the version agents read."
+      },
+      "owner": "test-owner",
+      "updated": "2026-10-05T22:44:07.038Z",
+      "href": null,
+      "extra": {
+       "space": "technical",
+       "version": 1,
+       "owner": "test-owner",
+       "excerpt": "Before a Netlify deploy: check the redirect rules, the cache headers and the preview URL.",
+       "staged": false
+      }
+     },
+     {
+      "ref": "handoff:1",
+      "type": "handoff",
+      "num": 1,
+      "title": "Finish the deploy checklist for the Netlify preview: the redirect rules and the cache headers.",
+      "status": {
+       "mark": "ring",
+       "tone": "blue",
+       "word": "Pending",
+       "tip": "Waiting for a session to claim it. Unclaimed handoffs expire after 7 days."
+      },
+      "owner": "test-member2",
+      "updated": "2026-10-15T21:14:07.038Z",
+      "href": "#handoffs/1",
+      "extra": {
+       "from": "test-member2",
+       "to": "test-member",
+       "task": "Deploy checklist: Netlify redirect rules and cache headers"
+      }
+     },
+     {
+      "ref": "feed:701005",
+      "type": "feed",
+      "num": 701005,
+      "title": "Shipped: test- the Netlify redirect fix",
+      "status": null,
+      "owner": "test-member",
+      "updated": "2026-10-15T21:44:07.038Z",
+      "href": null,
+      "extra": {
+       "brief": null
+      }
+     }
+    ],
+    "tokens": {
+     "in": 0,
+     "out": 0,
+     "cached": 0
+    }
+   }
+  }
+ ],
+ "ms": 251,
+ "bytes": 3653
+}
+
+=== AK-19 stored thread
+{
+ "status": 200,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "thread": {
+   "id": 899012,
+   "title": "Search: netlify",
+   "pinned": false,
+   "mode": "smart",
+   "auto": false,
+   "origin": "page",
+   "contextRef": null,
+   "hasDraft": false,
+   "group": "today",
+   "createdAt": "2026-10-15T22:44:42.923Z",
+   "updatedAt": "2026-10-15T22:44:42.930Z",
+   "draft": ""
+  },
+  "messages": [
+   {
+    "id": 899123,
+    "role": "user",
+    "mode": "smart",
+    "text": "netlify",
+    "command": "search",
+    "context": [],
+    "blocks": [],
+    "activity": [],
+    "followups": [],
+    "thinking": null,
+    "cites": [],
+    "attachments": [],
+    "actions": [],
+    "stopped": false,
+    "model": null,
+    "units": 0,
+    "createdAt": "2026-10-15T22:44:42.936Z"
+   },
+   {
+    "id": 899124,
+    "role": "assistant",
+    "mode": "smart",
+    "text": "4 items match best:",
+    "command": null,
+    "context": [],
+    "blocks": [
+     {
+      "kind": "items",
+      "items": [
+       {
+        "ref": "ticket:5",
+        "type": "ticket",
+        "num": 5,
+        "title": "test-Netlify deploy preview is failing",
+        "status": {
+         "word": "Done",
+         "mark": "done",
+         "tone": "accent",
+         "tip": "Done. Closed as done."
+        },
+        "owner": "test-member",
+        "updated": "2026-09-30T22:44:07.038Z",
+        "href": "#tickets/5",
+        "extra": {
+         "priority": "high",
+         "assignees": [
+          "test-member"
+         ],
+         "sprint": "test-Sprint Hosting"
+        }
+       },
+       {
+        "ref": "doc:test-deploy-checklist",
+        "type": "doc",
+        "title": "test-Deploy checklist",
+        "status": {
+         "mark": "dot",
+         "tone": "green",
+         "word": "Live",
+         "tip": "Promoted. This is the version agents read."
+        },
+        "owner": "test-owner",
+        "updated": "2026-10-05T22:44:07.038Z",
+        "href": null,
+        "extra": {
+         "space": "technical",
+         "version": 1,
+         "owner": "test-owner",
+         "excerpt": "Before a Netlify deploy: check the redirect rules, the cache headers and the preview URL.",
+         "staged": false
+        }
+       },
+       {
+        "ref": "handoff:1",
+        "type": "handoff",
+        "num": 1,
+        "title": "Finish the deploy checklist for the Netlify preview: the redirect rules and the cache headers.",
+        "status": {
+         "mark": "ring",
+         "tone": "blue",
+         "word": "Pending",
+         "tip": "Waiting for a session to claim it. Unclaimed handoffs expire after 7 days."
+        },
+        "owner": "test-member2",
+        "updated": "2026-10-15T21:14:07.038Z",
+        "href": "#handoffs/1",
+        "extra": {
+         "from": "test-member2",
+         "to": "test-member",
+         "task": "Deploy checklist: Netlify redirect rules and cache headers"
+        }
+       },
+       {
+        "ref": "feed:701005",
+        "type": "feed",
+        "num": 701005,
+        "title": "Shipped: test- the Netlify redirect fix",
+        "status": null,
+        "owner": "test-member",
+        "updated": "2026-10-15T21:44:07.038Z",
+        "href": null,
+        "extra": {
+         "brief": null
+        }
+       }
+      ]
+     }
+    ],
+    "activity": [
+     {
+      "step": 1,
+      "tool": "search",
+      "icon": "search",
+      "label": "Searched Trov for 'netlify'",
+      "results": [
+       "ticket:5",
+       "doc:test-deploy-checklist",
+       "handoff:1",
+       "feed:701005"
+      ],
+      "resultLine": "4 results"
+     }
+    ],
+    "followups": [],
+    "thinking": null,
+    "cites": [
+     {
+      "ref": "ticket:5",
+      "type": "ticket",
+      "num": 5,
+      "title": "test-Netlify deploy preview is failing",
+      "status": {
+       "word": "Done",
+       "mark": "done",
+       "tone": "accent",
+       "tip": "Done. Closed as done."
+      },
+      "owner": "test-member",
+      "updated": "2026-09-30T22:44:07.038Z",
+      "href": "#tickets/5",
+      "extra": {
+       "priority": "high",
+       "assignees": [
+        "test-member"
+       ],
+       "sprint": "test-Sprint Hosting"
+      }
+     },
+     {
+      "ref": "doc:test-deploy-checklist",
+      "type": "doc",
+      "title": "test-Deploy checklist",
+      "status": {
+       "mark": "dot",
+       "tone": "green",
+       "word": "Live",
+       "tip": "Promoted. This is the version agents read."
+      },
+      "owner": "test-owner",
+      "updated": "2026-10-05T22:44:07.038Z",
+      "href": null,
+      "extra": {
+       "space": "technical",
+       "version": 1,
+       "owner": "test-owner",
+       "excerpt": "Before a Netlify deploy: check the redirect rules, the cache headers and the preview URL.",
+       "staged": false
+      }
+     },
+     {
+      "ref": "handoff:1",
+      "type": "handoff",
+      "num": 1,
+      "title": "Finish the deploy checklist for the Netlify preview: the redirect rules and the cache headers.",
+      "status": {
+       "mark": "ring",
+       "tone": "blue",
+       "word": "Pending",
+       "tip": "Waiting for a session to claim it. Unclaimed handoffs expire after 7 days."
+      },
+      "owner": "test-member2",
+      "updated": "2026-10-15T21:14:07.038Z",
+      "href": "#handoffs/1",
+      "extra": {
+       "from": "test-member2",
+       "to": "test-member",
+       "task": "Deploy checklist: Netlify redirect rules and cache headers"
+      }
+     },
+     {
+      "ref": "feed:701005",
+      "type": "feed",
+      "num": 701005,
+      "title": "Shipped: test- the Netlify redirect fix",
+      "status": null,
+      "owner": "test-member",
+      "updated": "2026-10-15T21:44:07.038Z",
+      "href": null,
+      "extra": {
+       "brief": null
+      }
+     }
+    ],
+    "attachments": [],
+    "actions": [],
+    "parts": [
+     {
+      "kind": "text",
+      "md": "4 items match best:"
+     },
+     {
+      "kind": "block",
+      "index": 0
+     }
+    ],
+    "stopped": false,
+    "model": "",
+    "units": 0,
+    "createdAt": "2026-10-15T22:44:42.956Z"
+   }
+  ]
+ }
+}
+
+=== console/failed
+{
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}

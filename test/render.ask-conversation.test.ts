@@ -332,6 +332,28 @@ describe("acts — edit-and-resend and regenerate go through replaceFrom", () =>
     expect(s.ask.conversation.editing).toBeNull();
   });
 
+  // e2e AU-30: editing a `/search netlify` question showed "netlify" and resent it with no command — a search (no
+  // model, nothing counted) became a model question. The box shows the command, and what is sent is parsed like the
+  // composer's words (`parseCommand`).
+  it("a command question keeps its command: the box shows '/search …', and the words are parsed again on Send", async () => {
+    const s = base();
+    const c = convoOf("answer", { qid: 41 });
+    s.ask.page = { ...c, busy: false, messages: c.messages.map((m) => (m.role === "user" ? { ...m, text: "netlify", command: "search" } : m)) };
+    const { ctx, sent } = fakeCtx(s);
+    act(ctx, "askCvEdit", "page:qk1");
+    expect(s.ask.conversation.editing?.text).toBe("/search netlify");
+    act(ctx, "askCvEditText", null, "/search webhook");
+    act(ctx, "askCvEditSend", null);
+    await flush();
+    expect(sent[0]).toMatchObject({ text: "webhook", command: "search", replaceFrom: 41 });
+    act(ctx, "askCvEdit", "page:qk1");
+    act(ctx, "askCvEditText", null, "What about webhooks?");
+    act(ctx, "askCvEditSend", null);
+    await flush();
+    expect(sent[1]).toMatchObject({ text: "What about webhooks?", replaceFrom: 41 });
+    expect(sent[1].command).toBeUndefined();
+  });
+
   it("a question asked this session: its stored id is read back from the thread first", async () => {
     const s = base();
     s.ask.page = { ...convoOf("answer"), busy: false };

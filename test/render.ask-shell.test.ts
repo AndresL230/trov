@@ -11,10 +11,14 @@ import { sidebarView, navKeyOf, NAV_CLOSED } from "../web/src/sidebar";
 import { parseHash, hashForRoute, pageKey } from "../web/src/hash";
 import { askLayout, clampInspector, layoutBucket } from "../web/src/ask-layout";
 import { ESC_LAYERS, closeTop, topLayer, type EscEntry } from "../web/src/ask-escape";
-import { askEnterNew, askTweenHeights, closingAttr } from "../web/src/ask-motion";
-import { replayFromLocation, replayPlan, replayRoute } from "../web/src/ask-replay";
+import { askEnterNew, askGlideDock, askTweenHeights, closingAttr } from "../web/src/ask-motion";
+import { createReplayApi, replayFromLocation, replayPlan, replayQuestionFiles, replayRoute } from "../web/src/ask-replay";
+import type { AskReplayIndex } from "../web/src/ask-api";
+import { setApiOrg } from "../web/src/api";
 import { emptyConvo } from "../web/src/ask-stream";
-import { askThreadsFixture, askRefFixtures, askStateFixture } from "@shared/ai-fixtures";
+import { threadsPart } from "../web/src/ask-threads";
+import type { AskCtx } from "../web/src/ask-state";
+import { askThreadsFixture, askRefFixtures, askStateFixture, askTranscript, askTranscriptSse } from "@shared/ai-fixtures";
 import css from "../web/src/trov.css?raw";
 
 const NOW = new Date("2026-10-15T12:00:00Z");
@@ -144,6 +148,105 @@ describe("Escape — one layer at a time, in the design's order", () => {
   });
 });
 
+describe("the thread list — a row's ⋯ takes the time's place", () => {
+  // e2e AU-24 search: on a search hit the ⋯ (shown on hover / while its menu is open) sat ON the time ("Tue" drawn
+  // through the button): the rule that hides the time left hits out. The design hides it on every row (L239).
+  it("hides the time on hover and while the menu is open, search hits included", () => {
+    expect(css).not.toMatch(/:not\(\.ask-th-b--hit\)\s*\.ask-th-at/);
+    expect(css).toMatch(/\.ask-th-in:hover \.ask-th-at,\s*\.ask-th\.is-menu \.ask-th-at\s*\{\s*opacity:\s*0/);
+  });
+});
+
+describe("Ask's borderless fields leave the focus ring to their box", () => {
+  // e2e AU-24 composer:busy / AU-14: a focused composer drew TWO rings — the box's (the design's accent ring) and the
+  // app-wide field ring on the borderless textarea inside it; the thread search box likewise. Like .cnpy-search-in,
+  // they are left out of the field rule and their box draws the focus.
+  it("excludes .ask-input and the thread search input from the app-wide field ring", () => {
+    const rule = css.split("\n").find((l) => l.includes(":focus-visible { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus)") && l.includes("textarea):not("))!;
+    expect(rule).toContain(".ask-input");
+    expect(rule).toContain(".ask-th-q");
+    expect(render(askState())).toMatch(/<input class="ask-th-q"/);
+    // …and the boxes keep the app's focus contrast (web-ui.md › focus rings): a --focus edge.
+    expect(css).toMatch(/\.ask-box:focus-within \{ border-color:var\(--focus\)/);
+    expect(css).toMatch(/\.ask-th-search:focus-within \{ border-color:var\(--focus\)/);
+  });
+});
+
+describe("the thread menu by keyboard", () => {
+  // e2e EV-AU-live-K: Enter on a row's ⋯ opened the menu but left focus on ⋯ — ↑↓ did nothing, and only Tab reached
+  // Rename. Like the composer's mode menu: opening focuses the first item, ↑↓ move (wrapping), Escape returns to ⋯.
+  type El = { name: string; focused: boolean; focus(): void; closest(sel: string): El | null; parentElement: El | null; querySelectorAll(sel: string): El[]; querySelector(sel: string): El | null };
+  function fakeMenu() {
+    let current: El | null = null;
+    const mk = (name: string): El => ({ name, focused: false, focus() { if (current) current.focused = false; this.focused = true; current = this; }, closest: () => null, parentElement: null, querySelectorAll: () => [], querySelector: () => null });
+    const menu = mk("menu");
+    const items = ["Rename", "Pin", "Export", "Delete"].map(mk);
+    for (const it of items) { it.parentElement = menu; it.closest = (sel: string) => (sel.includes("menuitem") ? it : null); }
+    menu.querySelectorAll = () => items;
+    const more = mk("more");
+    const mount = { querySelector: (sel: string) => (sel.includes("menuitem") ? items[0] : sel.includes("askThMore") ? more : null) };
+    return { items, more, mount, focused: () => current?.name ?? null };
+  }
+  it("opening focuses the first item; ↑↓ move and wrap; Escape hands focus back to ⋯", () => {
+    const s = askState();
+    const ctx = { ui: s.ask, paint() {}, exit: (_k: string, apply: () => void) => apply(), cancelExit() {} } as unknown as AskCtx;
+    const m = fakeMenu();
+    threadsPart.act!(ctx, "askThMore", "7", null);
+    threadsPart.afterPaint!(ctx, m.mount as unknown as HTMLElement);
+    expect(m.focused()).toBe("Rename");
+    const key = (k: string) => threadsPart.onKeyDown!(ctx, { key: k, target: m.items.find((i) => i.focused), preventDefault() {}, stopPropagation() {} } as unknown as KeyboardEvent);
+    expect(key("ArrowDown")).toBe(true); expect(m.focused()).toBe("Pin");
+    key("ArrowUp"); key("ArrowUp"); expect(m.focused()).toBe("Delete");
+    threadsPart.escape![0].close(ctx);
+    threadsPart.afterPaint!(ctx, m.mount as unknown as HTMLElement);
+    expect(s.ask.threadMenu).toBeNull();
+    expect(m.focused()).toBe("more");
+  });
+});
+
+describe("the empty conversation — centred as the design draws it", () => {
+  // e2e AU-2 (`live`): the design puts a flexible spacer UNDER the composer while the conversation is empty
+  // (ask-trov.dc.html L770 `flex:1 1 0;min-height:24px`), so the mark, the heading, the starters and the composer sit
+  // in the middle of the column; the app had none, and drew the whole block at the bottom of the page.
+  it("has the spacer under the composer while empty, and none once there are messages", () => {
+    const empty = render(askState());
+    expect(empty).toMatch(/data-ask-composer="page"[\s\S]*class="ask-empty-tail"/);
+    const busy = render(askState((s) => { s.ask.page = { ...emptyConvo(), uid: "c9", threadId: 3, status: "loading" }; }));
+    expect(busy).not.toContain("ask-empty-tail");
+    expect(css).toMatch(/\.ask-empty-tail\s*\{[^}]*flex:\s*1 1 0/);
+  });
+
+  // AU-OWNER-1 (the owner, on the af26ce3c preview): the empty screen must START centred — heading, starters and the
+  // composer in the middle of the column (design `live`) — and the composer docks at the foot once the first
+  // question is sent, gliding there (rule 8); re-opening an empty thread centres it again.
+  it("AU-OWNER-1: centred while empty (the spacer under a 'center' composer), docked with messages", () => {
+    const empty = render(askState());
+    expect(empty).toMatch(/data-ask-composer="page" data-ask-dock="center"/);
+    expect(empty).toMatch(/data-ask-dock="center"[\s\S]*class="ask-empty-tail"/);
+    const docked = render(askState((s) => {
+      s.ask.page = { ...emptyConvo(), uid: "c7", threadId: 3, status: "ok", messages: [{ role: "user", key: "q1", id: 1, text: "hi", context: [], attachments: [], command: null }] as typeof s.ask.page.messages };
+    }));
+    expect(docked).toMatch(/data-ask-composer="page" data-ask-dock="dock"/);
+    expect(docked).not.toContain("ask-empty-tail");
+    const again = render(askState((s) => { s.ask.page = { ...emptyConvo(), uid: "c8" }; }));
+    expect(again).toMatch(/data-ask-dock="center"/);
+  });
+
+  it("AU-OWNER-1: the composer glides between its places when data-ask-dock flips — never under reduced motion, never on a plain repaint", () => {
+    const calls: { frames: Keyframe[] }[] = [];
+    let top = 400, at = "center";
+    const el = { getAttribute: () => at, getBoundingClientRect: () => ({ top }), animate: (frames: Keyframe[]) => { calls.push({ frames }); return {}; } };
+    const root = { querySelectorAll: () => [el] } as unknown as ParentNode;
+    expect(askGlideDock(root, false)).toBe(0);          // first paint: remembered only
+    top = 380; expect(askGlideDock(root, false)).toBe(0); // a repaint that moves it (the box grows): no glide
+    at = "dock"; top = 760;
+    expect(askGlideDock(root, false)).toBe(1);
+    expect(calls[0].frames[0]).toEqual({ transform: "translateY(-380px)" });
+    at = "center"; top = 400;
+    expect(askGlideDock(root, true)).toBe(0);          // reduced motion: it just moves
+  });
+});
+
 describe("the dev replay — the recipe's flags", () => {
   it("reads ?askReplay and ?askSpeed, and every design scenario has a plan", () => {
     expect(replayFromLocation("?askReplay=answer&askSpeed=4")).toEqual({ scenario: "answer", speed: 4 });
@@ -154,6 +257,64 @@ describe("the dev replay — the recipe's flags", () => {
     expect(replayPlan("cmdj").where).toBe("panel");
     expect(replayPlan("live").play).toEqual([]);
     expect(replayRoute("What's blocking the hosting work?")).toBe("answer");
+  });
+
+  // e2e AU-24 streaming: the transcript is recorded mid-answer (no `done`); the route ends the HTTP stream there, and
+  // the client took that end as a failed turn ("Something went wrong.") instead of the design's held answer
+  // (busy, the soft cursor, Stop). The replay holds it until Stop aborts the request.
+  // e2e AU-24 answer: the diagram's "CI on main" node (a repo ref) drew "Unknown" — the transcript's repo view has no
+  // facts; the index's (filled from the Overview's sample) does. The replay draws the index's view.
+  it("gives a transcript's repo views the index's facts (the diagram's CI node is not 'Unknown')", async () => {
+    vi.stubGlobal("fetch", async () => new Response(askTranscriptSse(askTranscript("answer", NOW)), { headers: { "content-type": "text/event-stream" } }));
+    setApiOrg("saplinglearn");
+    try {
+      const refs = askRefFixtures(NOW);
+      const repo = Object.values(refs).find((v) => v.type === "repo")!;
+      const facts = { sample: true };
+      const index = { scenarios: [], questions: {}, state: { pro: askStateFixture("pro", NOW), free: askStateFixture("free", NOW) }, settings: {}, threads: [], search: { q: "", hits: [] },
+        refs: { ...refs, [repo.ref]: { ...repo, extra: { ...repo.extra, facts } } } } as unknown as AskReplayIndex;
+      const api = createReplayApi(index, replayPlan("answer"), 0);
+      const nodes: { ref?: string | null; view?: { extra: Record<string, unknown> } | null }[] = [];
+      await api.ask({ text: "x", mode: "smart", auto: false, context: [], attachments: [] }, { onEvent: (e) => { if (e.event === "block" && e.data.kind === "diagram") nodes.push(...e.data.diagram.nodes); } });
+      const ci = nodes.find((n) => n.ref === repo.ref);
+      expect(ci?.view?.extra.facts).toEqual(facts);
+    } finally {
+      vi.unstubAllGlobals();
+      setApiOrg(null);
+    }
+  });
+
+  // e2e AU-24 streaming / answer: the design's question carries its file (ci-failure.png, an image card above the
+  // bubble); the replay sent only the text and the context chip, dropping the scenario's attachments.
+  it("sends a scenario question's files with it (the question's file card)", () => {
+    const files = replayQuestionFiles({ text: "x", context: [], attachments: [{ title: "ci-failure.png", kind: "image", size: 421_888 }] });
+    expect(files).toEqual([expect.objectContaining({ title: "ci-failure.png", kind: "image", size: 421_888, contentType: "image/png" })]);
+    expect(replayQuestionFiles(null)).toEqual([]);
+  });
+
+  it("holds a transcript that ends mid-answer until Stop aborts it", async () => {
+    const sse = askTranscriptSse(askTranscript("streaming", NOW));
+    vi.stubGlobal("fetch", async () => new Response(sse, { headers: { "content-type": "text/event-stream" } }));
+    setApiOrg("saplinglearn");
+    try {
+      const index = { scenarios: [], questions: {}, state: { pro: askStateFixture("pro", NOW), free: askStateFixture("free", NOW) }, settings: {}, threads: [], search: { q: "", hits: [] }, refs: {} } as unknown as AskReplayIndex;
+      const api = createReplayApi(index, replayPlan("streaming"), 0);
+      const ctl = new AbortController();
+      const seen: string[] = [];
+      let settled: "pending" | "resolved" | "aborted" = "pending";
+      const run = api.ask({ text: "x", mode: "smart", auto: false, context: [], attachments: [] }, { signal: ctl.signal, onEvent: (e) => seen.push(e.event) })
+        .then(() => { settled = "resolved"; }, (e: unknown) => { settled = e instanceof Error && e.name === "AbortError" ? "aborted" : "resolved"; });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(seen.at(-1)).toBe("text");
+      expect(seen).not.toContain("done");
+      expect(settled).toBe("pending");
+      ctl.abort();
+      await run;
+      expect(settled).toBe("aborted");
+    } finally {
+      vi.unstubAllGlobals();
+      setApiOrg(null);
+    }
   });
 });
 

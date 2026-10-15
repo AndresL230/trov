@@ -1,0 +1,141 @@
+
+=== tiles text
+Settings
+PROFILE
+TM
+Display name
+Save
+Handle @test-member Change
+Your color
+ACCOUNT
+Sign-in methods · keep one linked
+GitHub
+not linked
+Link GitHub
+Google
+test-member@example.com
+Unlink
+Your only way in. Link the other one before unlinking it.
+PLAN
+Compare plans →
+Test Enterprise · you are a member
+Enterprise
+Custom pricing
+Limits set for the organization by Trov.
+An owner of this organization can ask Trov to change the plan.
+Org settings →
+LIMITS
+Test Enterprise
+Seats
+6 used · Unlimited
+Members plus pending invitations.
+Repositories
+1 of 10
+Connected repositories.
+Environments
+0 of 10
+Environments the Repo dashboard reports on.
+Artifact storage
+86 B used · Unlimited
+Every stored version of every artifact.
+Agent connections yours
+1 used · Unlimited
+Your own MCP tokens and connected apps for this organization.
+AI summaries this month
+412 used · Unlimited
+Summaries of pull requests and issues attempted this calendar month (UTC).
+Tag checks this month
+1,520 used · Unlimited
+Checks Sift made of whether an existing item fits a tag, this calendar month (UTC).
+Tags
+7 used · Unlimited
+Tags on the list. Retired tags do not count.
+ORGANIZATIONS
+12
+T
+Test AI Off
+Member
+Enterprise
+T
+Test At Cap
+Member
+Free
+T
+Test Auto Off
+Member · paid for by its owners
+Pro
+T
+Test Canceled
+Member
+Pro
+T
+Test Chat Low
+Member · paid for by its owners
+Pro
+T
+Test Chat Override
+Member
+Enterprise
+T
+Test Empty
+Member
+Enterprise
+T
+Test Enterprise
+Member · open now
+Enterprise
+T
+Test Free
+Member
+Free
+T
+Test Gifted Pro
+Member
+Pro
+T
+Test Past Cap
+Member
+Free
+T
+Test Pro
+Member · paid for by its owners
+Pro
+Create organization
+A Free organization of your own: one owned at a time.
+MCP ACCESS
+Set it up without the plugin →
+Sign Claude Code in with your browser; it acts as you, in one of your organizations at a time. Connections you approve as @test-member show up here.
+Install the Trov plugin in Claude Code:
+/plugin marketplace add AndresL230/trov
+/plugin install trov@trov
+Run /mcp, choose trov, then Authenticate.
+Your browser opens Trov. Choose how the connection picks an organization (you're in Test Enterprise now), then click Allow — it shows up under Connected apps.
+One connection covers all your organizations. When you allow it you choose how it picks one: follow the repository you are working in, or the organizations you tick, one at a time. You can change that later in Settings. Not using Claude Code? Claude on the web, Cursor and other clients →
+Connected apps
+No apps connected yet. Once you ap
+
+=== links in What Trov can see
+[
+ "Org settings → -> general",
+ "Integrations -> integrations",
+ "Repositories -> repos",
+ "Hosting -> hosting",
+ "Environments -> environments"
+]
+
+=== textarea value
+test- Answer briefly, in bullet points.
+
+=== overflow
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false
+}
+
+=== logs
+{
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}

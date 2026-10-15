@@ -94,7 +94,7 @@ export function threadsView(v: AskView): string {
   return `<div class="ask-threads-in">
     <div class="ask-th-top">
       <button type="button" class="ask-th-new" data-act="askShNew">${askIcon("plus", 14, null, 2.2)}New thread</button>
-      <div class="ask-th-search">${askIcon("search", 14)}<input data-act="askThQ" data-field="askThQ" value="${attr(ui.threadQ)}" placeholder="Search threads" aria-label="Search threads" spellcheck="false" autocomplete="off" />${q ? `<button type="button" class="ask-th-clear" data-act="askThClear" aria-label="Clear search">${askIcon("close", 11, null, 2.4)}</button>` : ""}</div>
+      <div class="ask-th-search">${askIcon("search", 14)}<input class="ask-th-q" data-act="askThQ" data-field="askThQ" value="${attr(ui.threadQ)}" placeholder="Search threads" aria-label="Search threads" spellcheck="false" autocomplete="off" />${q ? `<button type="button" class="ask-th-clear" data-act="askThClear" aria-label="Clear search">${askIcon("close", 11, null, 2.4)}</button>` : ""}</div>
     </div>
     <div class="ask-th-scroll">${body}</div>
   </div>`;
@@ -143,8 +143,18 @@ function download(url: string, name: string): void {
   document.body.appendChild(a); a.click(); a.remove();
 }
 
+// The menu's keyboard (the composer's mode menu does the same): opening it focuses its first item, ↑↓ move, and
+// Escape hands focus back to the row's ⋯. Set by an act, applied by the next paint.
+let focusMenu = false;
+let focusMore: number | null = null;
+const MENU_ITEM = ".ask-th-menu [role='menuitem']";
+
 export const threadsPart: AskPart = {
   code: "Th",
+  afterPaint(_ctx, mount) {
+    if (focusMenu) { focusMenu = false; mount.querySelector<HTMLElement>(MENU_ITEM)?.focus(); }
+    if (focusMore !== null) { const id = focusMore; focusMore = null; mount.querySelector<HTMLElement>(`[data-act="askThMore"][data-arg="${id}"]`)?.focus(); }
+  },
   act(ctx, name, arg, value) {
     const id = Number(arg);
     switch (name) {
@@ -154,7 +164,7 @@ export const threadsPart: AskPart = {
       case "askThMore":
         if (ctx.ui.threadMenu === id) { ctx.exit("menu", () => { ctx.ui.threadMenu = null; }, 120); return; }
         ctx.cancelExit("menu");
-        ctx.ui.threadMenu = id; ctx.paint(); return;
+        ctx.ui.threadMenu = id; focusMenu = true; ctx.paint(); return;
       case "askThRename": {
         const t = threadById(ctx, id);
         ctx.ui.threadMenu = null;
@@ -198,6 +208,14 @@ export const threadsPart: AskPart = {
     }
   },
   onKeyDown(ctx, e) {
+    const mi = (e.target as Element | null)?.closest?.<HTMLElement>(MENU_ITEM);
+    if (mi && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      const items = Array.from(mi.parentElement?.querySelectorAll<HTMLElement>("[role='menuitem']") ?? []);
+      const i = items.indexOf(mi);
+      items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
+      e.preventDefault();
+      return true;
+    }
     const el = (e.target as Element | null)?.closest?.<HTMLInputElement>("[data-ask-rename]");
     if (!el) return false;
     if (e.key === "Enter") { e.preventDefault(); ctx.ui.renaming && (ctx.ui.renaming.text = el.value); commitRename(ctx); return true; }
@@ -209,5 +227,5 @@ export const threadsPart: AskPart = {
     if (e.type === "focusout" && (e.target as Element | null)?.closest?.("[data-ask-rename]")) { commitRename(ctx); return true; }
     return false;
   },
-  escape: [{ layer: "menu", isOpen: (ctx) => ctx.ui.threadMenu !== null, close: (ctx) => ctx.exit("menu", () => { ctx.ui.threadMenu = null; }, 120) }],
+  escape: [{ layer: "menu", isOpen: (ctx) => ctx.ui.threadMenu !== null, close: (ctx) => { focusMore = ctx.ui.threadMenu; ctx.exit("menu", () => { ctx.ui.threadMenu = null; }, 120); } }],
 };

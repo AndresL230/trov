@@ -812,10 +812,10 @@ input, select { font-family: inherit; }
    never showed. So: a field's edge is --border-input (3:1), and a focused field draws a 2px --focus ring (its
    border plus a 1px shadow); a field marked `aria-invalid` keeps its red edge and doubles it. A borderless
    field inside a bordered box (`@` + handle, `prompts/` + slug, tags, search) puts both on the box, and the
-   class-styled search inputs (.cnpy-search-in, .cnpy-qs-in) leave both to their box's own rule. Buttons,
+   class-styled search inputs (.cnpy-search-in, .cnpy-qs-in, and Ask's composer .ask-input and thread search .ask-th-q) leave both to their box's own rule. Buttons,
    checkboxes and radios are not fields: they keep their own `:focus-visible` rules (or the browser's ring). */
-[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in):not([aria-invalid="true"]) { border-color:var(--border-input) !important; }
-[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in):not([aria-invalid="true"]):focus-visible { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
+[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in, .ask-input, .ask-th-q):not([aria-invalid="true"]) { border-color:var(--border-input) !important; }
+[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in, .ask-input, .ask-th-q):not([aria-invalid="true"]):focus-visible { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
 [data-cnpy-theme] :is(input, textarea)[aria-invalid="true"]:not([style*="border:none"]):focus-visible { box-shadow:0 0 0 1px var(--red) !important; }
 [data-cnpy-theme] :is(div, label, span):has(> :is(input, textarea)[style*="border:none"]) { border-color:var(--border-input) !important; }
 [data-cnpy-theme] :is(div, label, span):has(> :is(input, textarea)[style*="border:none"]:focus-visible) { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
@@ -2935,7 +2935,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-th-new { display:flex; align-items:center; justify-content:center; gap:7px; height:34px; border:1px solid var(--border-strong); border-radius:9px; background:var(--surface); box-shadow:var(--shadow); font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:color .12s ease, border-color .12s ease; }
 .ask-th-new:hover { color:var(--fg); border-color:var(--border-input); }
 .ask-th-search { display:flex; align-items:center; gap:7px; height:34px; padding:0 8px 0 10px; border:1px solid var(--border); border-radius:9px; color:var(--fg-40); }
-.ask-th-search:focus-within { border-color:var(--border-input); }
+.ask-th-search:focus-within { border-color:var(--focus); box-shadow:0 0 0 1px var(--focus); }
 .ask-th-search input { flex:1; min-width:0; border:0; background:none; outline:none; font:inherit; font-size:13px; color:var(--fg); }
 .ask-th-clear { display:grid; place-items:center; width:20px; height:20px; border-radius:5px; color:var(--fg-40); cursor:pointer; }
 .ask-th-clear:hover { background:var(--hover); color:var(--fg); }
@@ -2960,7 +2960,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-hl { padding:0 1px; border-radius:3px; background:var(--accent-soft); color:var(--fg); font-weight:600; }
 .ask-th-more { position:absolute; top:5px; right:6px; display:grid; place-items:center; width:24px; height:24px; border-radius:6px; color:var(--fg-55); opacity:0; cursor:pointer; transition:opacity .12s ease, background .12s ease; }
 .ask-th-in:hover .ask-th-more, .ask-th.is-menu .ask-th-more, .ask-th-more:focus-visible { opacity:1; }
-.ask-th-in:hover .ask-th-b:not(.ask-th-b--hit) .ask-th-at, .ask-th.is-menu .ask-th-b:not(.ask-th-b--hit) .ask-th-at { opacity:0; }
+.ask-th-in:hover .ask-th-at, .ask-th.is-menu .ask-th-at { opacity:0; }
 .ask-th-more:hover, .ask-th-more[aria-expanded="true"] { background:var(--hover); color:var(--fg); }
 .ask-th-rename { width:100%; height:32px; box-sizing:border-box; padding:0 10px; border:1px solid var(--accent); border-radius:8px; background:var(--surface); outline:none; font:inherit; font-size:13px; color:var(--fg); }
 .ask-menu { position:absolute; z-index:30; display:flex; flex-direction:column; gap:1px; width:196px; box-sizing:border-box; padding:5px; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:var(--menu-shadow); }
@@ -2975,6 +2975,9 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-col { animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
 .ask-empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:safe flex-end; gap:14px; width:100%; max-width:720px; box-sizing:border-box; margin:0 auto; padding:40px 28px 18px; text-align:center; animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
 [data-phone="1"] .ask-empty { padding:24px 16px 14px; }
+/* The design's spacer under the composer while empty (L770): the empty block and the composer sit mid-column. */
+.ask-scroll:has(> .ask-empty) { flex:1 1 auto; }
+.ask-empty-tail { flex:1 1 0; min-height:24px; }
 .ask-empty-h { margin:0; font-size:24px; font-weight:600; letter-spacing:-0.02em; text-wrap:balance; }
 .ask-starters { display:grid; grid-template-columns:1fr 1fr; gap:8px; width:100%; max-width:560px; margin-top:6px; }
 [data-phone="1"] .ask-starters, .ask-panel .ask-starters { grid-template-columns:1fr; }
@@ -3063,6 +3066,8 @@ button.ask-step:hover { background:var(--hover); color:var(--fg-70); }
 .ask-ci-ft { display:flex; align-items:center; gap:6px; min-width:0; padding-top:8px; border-top:1px solid var(--border); font-size:11.5px; color:var(--fg-55); }
 .ask-ci-up { font-family:var(--label); color:var(--fg-40); white-space:nowrap; }
 .ask-fig { margin:0; padding:14px 16px 12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); }
+/* The inspector's chart: the bars alone (the view draws the title, the line and the note — design L990–1003). */
+.ask-fig.ask-fig--bare { padding:0; background:none; border:0; box-shadow:none; }
 .ask-fig-cap { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 12px; margin-bottom:12px; }
 .ask-fig-t { font-size:13px; font-weight:600; }
 .ask-fig-s { font-size:12px; color:var(--fg-55); }
@@ -3138,6 +3143,9 @@ button.ask-dn:hover { border-color:var(--border-strong); }
 [data-phone="1"] .ask-fu, [data-phone="1"] .ask-res, [data-phone="1"] .ask-src-r, [data-phone="1"] button.ask-step { min-height:44px; box-sizing:border-box; }
 [data-phone="1"] .ask-col .ask-chip, [data-phone="1"] .ask-fb, [data-phone="1"] .ask-q-edit, [data-phone="1"] .ask-nf-try, [data-phone="1"] .ask-qfile { position:relative; }
 [data-phone="1"] .ask-col .ask-chip::after, [data-phone="1"] .ask-fb::after, [data-phone="1"] .ask-q-edit::after, [data-phone="1"] .ask-nf-try::after, [data-phone="1"] .ask-qfile::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
+/* …and a write card's Cancel / Confirm / Edit and a line's Undo / Open (actions part). */
+[data-phone="1"] .ask-col .ask-btn, [data-phone="1"] .ask-act-edit { position:relative; }
+[data-phone="1"] .ask-col .ask-btn::after, [data-phone="1"] .ask-act-edit::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
 
 /* ── Ask: composer ── (ask-composer.ts; ask-trov.dc.html L658–780) */
 .ask-composer { flex:none; width:100%; box-sizing:border-box; padding:0 28px; }
@@ -3146,7 +3154,7 @@ button.ask-dn:hover { border-color:var(--border-strong); }
 .ask-panel .ask-co-in { max-width:none; }
 .ask-co-file { display:none; }
 .ask-box { border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); transition:border-color .15s ease, box-shadow .15s ease; }
-.ask-box:focus-within { border-color:var(--border-input); box-shadow:0 0 0 3px var(--accent-soft), var(--shadow); }
+.ask-box:focus-within { border-color:var(--focus); box-shadow:0 0 0 3px var(--accent-soft), var(--shadow); }
 /* The chips: a keyed list (new ones pop in, ask-motion.ts rule 2; a removed one pops out on data-closing). */
 .ask-co-chips { display:flex; flex-wrap:wrap; gap:6px; padding:10px 10px 0; }
 .ask-co-chips:empty { display:none; }

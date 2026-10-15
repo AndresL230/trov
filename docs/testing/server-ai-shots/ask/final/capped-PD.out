@@ -1,0 +1,28 @@
+
+=== text
+Skip to content
+Trov
+Ask anything about your team's work
+What shipped this week?
+Summarize ticket #4
+What's blocking the test-Sprint Hosting work?
+What's waiting on me?
+You've used this month's questions.
+Resets Nov 1. Pro includes 300 a month, plus Thinking mode.
+Upgrade to Pro
+
+Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.
+
+=== overflow
+{
+ "docW": 360,
+ "winW": 360,
+ "hscroll": false
+}
+
+=== logs
+{
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}

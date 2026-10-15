@@ -357,7 +357,17 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   `filePaths`, `filesComplete`) and its added / deleted lines, stored nowhere, stay null and are not drawn.
 - **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on
   `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written. The
-  inspector's details come from `web/src/ask-inspector-fixtures.ts` (loaded on demand).
+  inspector's details come from `web/src/ask-inspector-fixtures.ts` (loaded on demand). A transcript recorded
+  mid-answer (`streaming`, no `done`) is HELD — busy, the cursor, Stop — until Stop; a scenario question's files ride
+  with it (`replayQuestionFiles`); a transcript's repo views get the index's RepoFacts (`withRepoFacts`).
+- **The composer's place** (Phase H, AU-OWNER-1): centred under an empty conversation (the design's spacer under the
+  composer, `EMPTY_TAIL`, page and ⌘J panel), docked at the foot once there are messages; `data-ask-dock="center" |
+  "dock"` on the composer, and `askGlideDock` (ask-motion.ts rule 8) glides it when that flips — at once under
+  reduced motion.
+- **Small rules the e2e pinned**: a decided card's `ref` is rebuilt by the thread read (`refOfAction`, routes.ts — no
+  column keeps it), and a done line with no number says "the ticket", never "#null"; editing a command question shows
+  "/search …" and Send parses it again (`parseCommand`); the thread menu takes focus on open, ↑↓ move, Escape returns
+  to ⋯; on a phone the actions' buttons have the 44px hit area too.
 - Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`, `test/render.ask-inspector.test.ts`,
   `test/ask.inspector-contract.test.ts`; where the parts meet and the contract gaps the build closed:
   `test/render.ask-integration.test.ts` (client) and `test/ask.gaps.test.ts` (server).

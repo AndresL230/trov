@@ -616,13 +616,39 @@ askApp.get(ASK_ROUTES.threads, async (c) => {
   return c.json({ hits });
 });
 
+/** The item a decided write touched — what `WRITES[tool].run` returned as `ref` when it ran (the action_result and
+ *  the confirm answer carry it), rebuilt for the thread read from the stored args and result, since no column keeps
+ *  it. Without it a reloaded done line lost its number and its link. Unknown → null, never a guess. */
+export function refOfAction(tool: string, state: string, args: unknown, result: unknown): string | null {
+  if (state !== "confirmed" && state !== "auto" && state !== "undone") return null;
+  const a = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
+  const r = (result && typeof result === "object" ? result : {}) as Record<string, unknown>;
+  const num = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v > 0 ? v : null);
+  const txt = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+  const ref = (type: string, key: string | number | null): string | null => (key === null ? null : `${type}:${key}`);
+  switch (tool) {
+    case "create_ticket": return ref("ticket", num(r.id));
+    case "edit_ticket": case "transition_ticket": case "add_ticket_comment": case "add_ticket_link": case "set_ticket_sprint":
+    case "set_ticket_parent": case "assign_ticket": return ref("ticket", num(a.id) ?? num(r.id));
+    case "append_feed": return r.outcome === "written" ? ref("feed", num(r.id)) : null;
+    case "propose_doc_update": case "publish_doc": return ref("doc", txt(a.slug) ?? txt(r.slug));
+    case "artifact_update": case "save_artifact": return ref("artifact", txt(r.slug) ?? txt(a.slug));
+    case "create_sprint": return ref("sprint", num(r.id));
+    case "set_sprint_active": case "complete_sprint": case "add_sprint_resource": return ref("sprint", num(a.id) ?? num(r.id));
+    case "send_handoff": case "claim_handoff": return ref("handoff", num(r.id) ?? num(a.id));
+    case "expire_handoff": return ref("handoff", num(a.id) ?? num(r.id));
+    case "save_prompt": return ref("prompt", txt(r.slug));
+    default: return null;
+  }
+}
+
 const actionOf = (a: ChatActionRow): AskAction => {
   const result = parseJson<unknown>(a.result_json, null);
   return {
     id: a.id, groupId: a.group_id, tool: a.tool, kind: a.kind as AskAction["kind"], state: a.state as AskAction["state"],
     preview: parseJson(a.preview_json, { title: a.tool, lines: [], item: null }),
     ...cardFieldsOf(a), note: null, result,
-    ref: (result && typeof result === "object" && "slug" in result && a.tool === "save_artifact") ? `artifact:${(result as { slug: string }).slug}` : null,
+    ref: refOfAction(a.tool, a.state, parseJson<unknown>(a.args_json, {}), result),
     undo: a.undo_json !== null && (a.state === "confirmed" || a.state === "auto"),
     createdAt: a.created_at, decidedAt: a.decided_at,
   };

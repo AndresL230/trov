@@ -71,6 +71,18 @@ const key = (k: string, el: { value: string; where?: AskWhere }, mods: Partial<K
   return { e: e as unknown as KeyboardEvent, prevented: () => (e.preventDefault as ReturnType<typeof vi.fn>).mock.calls.length > 0 };
 };
 
+describe("the @ picker's group heads", () => {
+  // e2e AU-14: a feed entry's group read "FEED ENTRYS" (the type word + "s").
+  it("are plural words: Tickets, Pull requests, People, Feed entries…", async () => {
+    const { refTypeGroup } = await import("../web/src/ask-refs");
+    expect(refTypeGroup("feed")).toBe("Feed entries");
+    expect(refTypeGroup("ticket")).toBe("Tickets");
+    expect(refTypeGroup("person")).toBe("People");
+    expect(refTypeGroup("pr")).toBe("Pull requests");
+    for (const t of ["ticket", "pr", "doc", "decision", "feed", "sprint", "handoff", "artifact", "person", "prompt", "repo"] as const) expect(refTypeGroup(t)).not.toMatch(/ys$/);
+  });
+});
+
 describe("the box — a new thread on Pro", () => {
   it("the input, the toolbar (attach, mention, commands), the mode menu, the Auto switch and Send", () => {
     const h = html(askState());
@@ -96,7 +108,7 @@ describe("the box — a new thread on Pro", () => {
 
   it("every conditional piece sits in a keyed list, so the box (its focus and caret) is never replaced", () => {
     const h = html(askState());
-    expect(h).toMatch(/<div class="ask-composer" data-ask-composer="page" data-morph-list>/);
+    expect(h).toMatch(/<div class="ask-composer" data-ask-composer="page" data-ask-dock="(center|dock)" data-morph-list>/);
     expect(h).toMatch(/<div class="ask-co-in" data-morph-key="in" data-morph-list>/);
     expect(h).toMatch(/<div class="ask-box" data-morph-key="box" data-morph-list><div class="ask-co-chips" data-morph-key="chips" data-morph-list data-ask-enter="pop"><\/div><textarea[^>]*data-morph-key="ta"/);
   });

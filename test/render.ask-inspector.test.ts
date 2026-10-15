@@ -10,10 +10,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => `<md>${b}</md>`, renderMarkdownInline: (t: string) => t, sanitizeSvg: (s: string) => s }));
 // The conversation part's seam (its branch exports these; this branch's stub does not): the test stands them in.
 const cvStub = vi.hoisted(() => ({ items: {} as Record<string, unknown> }));
+const chartFigureCalls = vi.hoisted(() => [] as { barH?: number; bare?: boolean }[]);
 vi.mock("../web/src/ask-conversation", async (orig) => ({
   ...(await orig<object>()),
   cvItem: (_ui: unknown, ref: string) => cvStub.items[ref] ?? null,
-  chartFigure: (c: { title: string }, o: { barH?: number } = {}) => `<fig-chart data-h="${o.barH}">${c.title}</fig-chart>`,
+  chartFigure: (c: { title: string }, o: { barH?: number; bare?: boolean } = {}) => { chartFigureCalls.push(o); return `<fig-chart data-h="${o.barH}">${c.title}</fig-chart>`; },
   themesFigure: (t: { title: string }) => `<fig-themes>${t.title}</fig-themes>`,
   diagramFigure: (_v: unknown, d: { title: string }) => `<fig-diagram>${d.title}</fig-diagram>`,
   tableView: (_v: unknown, head: string[] | null, rows: string[][]) => `<fig-table>${(head ?? []).join("|")}/${rows.length}</fig-table>`,
@@ -248,6 +249,16 @@ describe("repo: the Overview's facts (#186) — RepoFacts, its verdicts, stateMa
     expect(html).toContain(`href="#org/repos/AndresL230/trov"`);
   });
 
+  // e2e AU-26 (SaplingLearn/sapling, repo-setups' scenario A): a part named like its app read "Frontend · Frontend".
+  it("a monorepo's part named like its app is named once", () => {
+    const many = SCENARIO_KEYS.map((k) => askRepoFacts(repoScenario(k, SCENARIO_VARIANTS[k][0], { now: NOW.getTime() }))).find((f) => f.apps.filter((a) => a.kind !== "Package").length > 1)!;
+    const app = many.apps.find((a) => many.parts.some((p) => p.app === a.key))!;
+    const same = { ...many, parts: many.parts.map((p) => (p.app === app.key ? { ...p, label: app.label } : p)) };
+    const t = text(body(state([REPO], (st) => { st.ask.refViews[REPO] = { ...(st.ask.refViews[REPO] as RefView), extra: { facts: same } }; })));
+    expect(t).toContain(app.label);
+    expect(t).not.toContain(`${app.label} · ${app.label}`);
+  });
+
   it("a monorepo names its apps; a narrowed read names the one app", () => {
     const many = SCENARIO_KEYS.map((k) => askRepoFacts(repoScenario(k, SCENARIO_VARIANTS[k][0], { now: NOW.getTime() }))).find((f) => f.apps.filter((a) => a.kind !== "Package").length > 1);
     expect(many).toBeDefined();
@@ -280,6 +291,11 @@ describe("upload and chart (no RefView: ONE kind of local ref, the conversation'
     expect(html).toContain(`class="cnpy-seg cnpy-seg--sm"`);
     expect(html).toContain(`data-act="askInChartView" data-arg="${f.ref}|table"`);
     expect(html).toContain(`<fig-chart data-h="220">Merged PRs by week</fig-chart>`);   // the conversation's figure, larger
+    // e2e AU-I-chart: the figure came with its own caption ("Merged PRs by week · 48 in 8 weeks") under the view's
+    // title, and its plain "Data from Trov" — the query's note (design: "Data from Trov · merged PRs only…") was lost.
+    // The inspector asks for the bare figure and says the note itself, in both views.
+    expect(chartFigureCalls.at(-1)?.bare).toBe(true);
+    expect(text(html)).toContain("Data from Trov · merged pull requests, by the week they merged");
     s.ask.inspectorUi.chartView[f.ref] = "table";
     html = body(s);
     const t = text(html);

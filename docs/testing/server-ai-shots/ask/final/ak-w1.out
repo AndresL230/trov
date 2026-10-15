@@ -1,0 +1,754 @@
+
+=== AK-55 undo 801211
+{
+ "status": 200,
+ "body": {
+  "results": [
+   {
+    "id": 801211,
+    "groupId": null,
+    "tool": "transition_ticket",
+    "kind": "move",
+    "preview": {
+     "title": "Move #1 to In progress",
+     "lines": [],
+     "item": null
+    },
+    "state": "undone",
+    "result": {
+     "id": 1,
+     "title": "test-Login page is blank on Safari",
+     "body": "The login page renders blank on Safari 18 after the update. Console shows a CSP error.",
+     "category": "bug",
+     "priority": "high",
+     "status": "submitted",
+     "requester": "test-owner",
+     "parent_id": null,
+     "sprint_id": 100101,
+     "created_at": "2026-09-26T22:44:44.936Z",
+     "updated_at": "2026-10-15T22:45:14.781Z",
+     "source": "canopy",
+     "source_ref": null,
+     "source_author": null,
+     "source_updated_at": null,
+     "board_rank": null,
+     "org_id": "org_test_ent",
+     "assignees": [
+      "test-member"
+     ],
+     "links": [],
+     "comments": [],
+     "events": [
+      {
+       "id": 3794,
+       "ticket_id": 1,
+       "actor": "test-owner",
+       "from_status": null,
+       "to_status": "submitted",
+       "created_at": "2026-09-26T22:44:44.936Z",
+       "org_id": "org_test_ent"
+      },
+      {
+       "id": 3795,
+       "ticket_id": 1,
+       "actor": "test-owner",
+       "from_status": "submitted",
+       "to_status": "in_progress",
+       "created_at": "2026-09-26T22:44:44.936Z",
+       "org_id": "org_test_ent"
+      },
+      {
+       "id": 4032,
+       "ticket_id": 1,
+       "actor": "test-member",
+       "from_status": "in_progress",
+       "to_status": "submitted",
+       "created_at": "2026-10-15T22:45:14.781Z",
+       "org_id": "org_test_ent"
+      }
+     ],
+     "parent": null,
+     "children": [],
+     "sprint": {
+      "id": 100101,
+      "label": "test-Sprint Hosting"
+     }
+    },
+    "ref": null,
+    "undo": false,
+    "at": "2026-10-15T22:45:14.815Z"
+   }
+  ]
+ }
+}
+
+=== AK-44 confirm 801201
+{
+ "status": 200,
+ "body": {
+  "results": [
+   {
+    "id": 801201,
+    "groupId": null,
+    "tool": "create_ticket",
+    "kind": "ticket",
+    "preview": {
+     "title": "New ticket",
+     "lines": [
+      {
+       "label": "Title",
+       "value": "test-E2E ticket from Ask"
+      }
+     ],
+     "item": null
+    },
+    "state": "confirmed",
+    "result": {
+     "id": 15,
+     "title": "test-E2E ticket from Ask",
+     "body": "",
+     "category": "bug",
+     "priority": "normal",
+     "status": "submitted",
+     "requester": "test-member",
+     "parent_id": null,
+     "sprint_id": null,
+     "created_at": "2026-10-15T22:45:15.293Z",
+     "updated_at": "2026-10-15T22:45:15.293Z",
+     "source": "canopy",
+     "source_ref": null,
+     "source_author": null,
+     "source_updated_at": null,
+     "board_rank": null,
+     "org_id": "org_test_ent",
+     "assignees": [],
+     "links": [],
+     "comments": [],
+     "events": [
+      {
+       "id": 4033,
+       "ticket_id": 15,
+       "actor": "test-member",
+       "from_status": null,
+       "to_status": "submitted",
+       "created_at": "2026-10-15T22:45:15.293Z",
+       "org_id": "org_test_ent"
+      }
+     ],
+     "parent": null,
+     "children": [],
+     "sprint": null
+    },
+    "ref": "ticket:15",
+    "undo": true,
+    "at": "2026-10-15T22:45:15.327Z"
+   }
+  ]
+ }
+}
+
+=== AK-45 confirm 801202
+{
+ "status": 200,
+ "body": {
+  "results": [
+   {
+    "id": 801202,
+    "groupId": null,
+    "tool": "transition_ticket",
+    "kind": "move",
+    "preview": {
+     "title": "Move #1 to Testing",
+     "lines": [
+      {
+       "label": "Status",
+       "value": "In progress → Testing"
+      }
+     ],
+     "item": null
+    },
+    "state": "confirmed",
+    "result": {
+     "id": 1,
+     "title": "test-Login page is blank on Safari",
+     "body": "The login page renders blank on Safari 18 after the update. Console shows a CSP error.",
+     "category": "bug",
+     "priority": "high",
+     "status": "testing",
+     "requester": "test-owner",
+     "parent_id": null,
+     "sprint_id": 100101,
+     "created_at": "2026-09-26T22:44:44.936Z",
+     "updated_at": "2026-10-15T22:45:15.424Z",
+     "source": "canopy",
+     "source_ref": null,
+     "source_author": null,
+     "source_updated_at": null,
+     "board_rank": null,
+     "org_id": "org_test_ent",
+     "assignees": [
+      "test-member"
+     ],
+     "links": [],
+     "comments": [],
+     "events": [
+      {
+       "id": 3794,
+       "ticket_id": 1,
+       "actor": "test-owner",
+       "from_status": null,
+       "to_status": "submitted",
+       "created_at": "2026-09-26T22:44:44.936Z",
+       "org_id": "org_test_ent"
+      },
+      {
+       "id": 3795,
+       "ticket_id": 1,
+       "actor": "test-owner",
+       "from_status": "submitted",
+       "to_status": "in_progress",
+       "created_at": "2026-09-26T22:44:44.936Z",
+       "org_id": "org_test_ent"
+      },
+      {
+       "id": 4032,
+       "ticket_id": 1,
+       "actor": "test-member",
+       "from_status": "in_progress",
+       "to_status": "submitted",
+       "created_at": "2026-10-15T22:45:14.781Z",
+       "org_id": "org_test_ent"
+      },
+      {
+       "id": 4034,
+       "ticket_id": 1,
+       "actor": "test-member",
+       "from_status": "submitted",
+       "to_status": "testing",
+       "created_at": "2026-10-15T22:45:15.424Z",
+       "org_id": "org_test_ent"
+      }
+     ],
+     "parent": null,
+     "children": [],
+     "sprint": {
+      "id": 100101,
+      "label": "test-Sprint Hosting"
+     }
+    },
+    "ref": "ticket:1",
+    "undo": true,
+    "at": "2026-10-15T22:45:15.451Z"
+   }
+  ]
+ }
+}
+
+=== AK-46 confirm 801214
+{
+ "status": 200,
+ "body": {
+  "results": [
+   {
+    "id": 801214,
+    "groupId": null,
+    "tool": "transition_ticket",
+    "kind": "move",
+    "preview": {
+     "title": "Move #7 to In progress",
+     "lines": [],
+     "item": null
+    },
+    "state": "failed",
+    "result": {
+     "error": "ticket 7 is not assigned to you — an admin, its requester or one of its assignees can add you (assign_ticket, or the web UI)",
+     "code": "forbidden"
+    },
+    "ref": null,
+    "undo": false,
+    "at": "2026-10-15T22:45:15.493Z"
+   }
+  ]
+ }
+}
+
+=== AK-47 confirm 801203 (group)
+{
+ "status": 200,
+ "body": {
+  "results": [
+   {
+    "id": 801203,
+    "groupId": "test-group-1",
+    "tool": "create_ticket",
+    "kind": "ticket",
+    "preview": {
+     "title": "New ticket",
+     "lines": [
+      {
+       "label": "Title",
+       "value": "test-Grouped ticket A"
+      }
+     ],
+     "item": null
+    },
+    "state": "confirmed",
+    "result": {
+     "id": 16,
+     "title": "test-Grouped ticket A",
+     "body": "",
+     "category": "other",
+     "priority": "normal",
+     "status": "submitted",
+     "requester": "test-member",
+     "parent_id": null,
+     "sprint_id": null,
+     "created_at": "2026-10-15T22:45:15.522Z",
+     "updated_at": "2026-10-15T22:45:15.522Z",
+     "source": "canopy",
+     "source_ref": null,
+     "source_author": null,
+     "source_updated_at": null,
+     "board_rank": null,
+     "org_id": "org_test_ent",
+     "assignees": [],
+     "links": [],
+     "comments": [],
+     "events": [
+      {
+       "id": 4035,
+       "ticket_id": 16,
+       "actor": "test-member",
+       "from_status": null,
+       "to_status": "submitted",
+       "created_at": "2026-10-15T22:45:15.522Z",
+       "org_id": "org_test_ent"
+      }
+     ],
+     "parent": null,
+     "children": [],
+     "sprint": null
+    },
+    "ref": "ticket:16",
+    "undo": true,
+    "at": "2026-10-15T22:45:15.549Z"
+   },
+   {
+    "id": 801204,
+    "groupId": "test-group-1",
+    "tool": "create_ticket",
+    "kind": "ticket",
+    "preview": {
+     "title": "New ticket",
+     "lines": [
+      {
+       "label": "Title",
+       "value": "test-Grouped ticket B"
+      }
+     ],
+     "item": null
+    },
+    "state": "confirmed",
+    "result": {
+     "id": 17,
+     "title": "test-Grouped ticket B",
+     "body": "",
+     "category": "other",
+     "priority": "normal",
+     "status": "submitted",
+     "requester": "test-member",
+     "parent_id": null,
+     "sprint_id": null,
+     "created_at": "2026-10-15T22:45:15.555Z",
+     "updated_at": "2026-10-15T22:45:15.555Z",
+     "source": "canopy",
+     "source_ref": null,
+     "source_author": null,
+     "source_updated_at": null,
+     "board_rank": null,
+     "org_id": "org_test_ent",
+     "assignees": [],
+     "links": [],
+     "comments": [],
+     "events": [
+      {
+       "id": 4036,
+       "ticket_id": 17,
+       "actor": "test-member",
+       "from_status": null,
+       "to_status": "submitted",
+       "created_at": "2026-10-15T22:45:15.555Z",
+       "org_id": "org_test_ent"
+      }
+     ],
+     "parent": null,
+     "children": [],
+     "sprint": null
+    },
+    "ref": "ticket:17",
+    "undo": true,
+    "at": "2026-10-15T22:45:15.584Z"
+   }
+  ]
+ }
+}
+
+=== AK-49 confirm 801207 expired
+{
+ "status": 409,
+ "body": {
+  "error": "expired",
+  "message": "This card expired with its turn. Ask again.",
+  "hint": "The current state does not allow this (it already happened, or another change got there first). Read the item again before deciding. Nothing was changed."
+ }
+}
+
+=== AK-49 confirm 801208 stale turn
+{
+ "status": 409,
+ "body": {
+  "error": "expired",
+  "message": "This card expired with its turn. Ask again.",
+  "hint": "The current state does not allow this (it already happened, or another change got there first). Read the item again before deciding. Nothing was changed."
+ }
+}
+
+=== AK-51 confirm 801206 publish
+{
+ "status": 200,
+ "body": {
+  "results": [
+   {
+    "id": 801206,
+    "groupId": null,
+    "tool": "publish_doc",
+    "kind": "publish",
+    "preview": {
+     "title": "Publish test-Auth sessions v2",
+     "lines": [],
+     "item": null,
+     "canPublish": true
+    },
+    "state": "confirmed",
+    "result": {
+     "slug": "test-auth-sessions",
+     "version": 2,
+     "status": "promoted"
+    },
+    "ref": "doc:test-auth-sessions",
+    "undo": false,
+    "at": "2026-10-15T22:45:15.662Z"
+   }
+  ]
+ }
+}
+
+=== AK-54 cancel 801205
+{
+ "status": 200,
+ "body": {
+  "results": [
+   {
+    "id": 801205,
+    "groupId": null,
+    "tool": "send_handoff",
+    "kind": "handoff",
+    "preview": {
+     "title": "New handoff",
+     "lines": [
+      {
+       "label": "To",
+       "value": "@test-member2"
+      }
+     ],
+     "item": null
+    },
+    "state": "cancelled",
+    "result": null,
+    "ref": null,
+    "undo": false,
+    "at": "2026-10-15T22:45:15.680Z"
+   }
+  ]
+ }
+}
+
+=== AK-54 cancel 801207 (expired)
+{
+ "status": 409,
+ "body": {
+  "error": "expired",
+  "message": "This card is expired.",
+  "hint": "The current state does not allow this (it already happened, or another change got there first). Read the item again before deciding. Nothing was changed."
+ }
+}
+
+=== AK-56 undo 801212 stale
+{
+ "status": 409,
+ "body": {
+  "error": "changed",
+  "message": "Changed since. Undo it by hand.",
+  "ref": "ticket:4",
+  "results": [],
+  "hint": "The current state does not allow this (it already happened, or another change got there first). Read the item again before deciding. Nothing was changed."
+ }
+}
+
+=== AK-63 wrong source_wrong #1
+{
+ "status": 200,
+ "body": {
+  "ok": true
+ }
+}
+
+=== AK-63 wrong source_wrong #2
+{
+ "status": 200,
+ "body": {
+  "ok": true
+ }
+}
+
+=== AK-37 pin 801003
+{
+ "status": 200,
+ "body": {
+  "thread": {
+   "id": 801003,
+   "title": "test-This week: webhook retries",
+   "pinned": true,
+   "mode": "smart",
+   "auto": false,
+   "origin": "page",
+   "contextRef": null,
+   "hasDraft": false,
+   "group": "pinned",
+   "createdAt": "2026-10-12T22:44:44.936Z",
+   "updatedAt": "2026-10-12T22:44:44.936Z"
+  }
+ }
+}
+
+=== AK-37 list after pin
+[
+ "801003|pinned|2026-10-12T22:44:44.936Z",
+ "801002|pinned|2026-09-25T22:44:44.936Z",
+ "801005|today|2026-10-15T22:39:44.936Z",
+ "801007|today|2026-10-15T21:59:44.936Z",
+ "801001|today|2026-10-15T21:54:44.936Z",
+ "801004|earlier|2026-09-15T22:44:44.936Z"
+]
+
+=== AK-38 delete 801003
+{
+ "status": 200,
+ "body": {
+  "ok": true
+ }
+}
+
+=== AK-38 delete 801003 again
+{
+ "status": 404,
+ "body": {
+  "error": "not_found",
+  "hint": "Nothing at this address that you can see. A missing item and one in an organization you are not in answer the same, on purpose. Check the id or slug, or list what exists first."
+ }
+}
+
+=== AK-39 export 801004
+{
+ "status": 200,
+ "type": "text/markdown; charset=utf-8",
+ "disp": "attachment; filename=\"test-img-srcx-onerroralert1-Rsum.md\"",
+ "body": "# test-<img src=x onerror=alert(1)> Résumé 🚀 日本語\n\n---\n\n**You** · 2026-09-15 22:44\n\n<script>alert('test-xss')</script> **bold** 日本語 🚀\n\n---\n\n**Trov (smart)** · 2026-09-15 22:44\n\nPlain answer with <b>tags</b>, [a link](javascript:alert(1)) and `code`.\n"
+}
+
+=== AK-40 save-form 801102 #1
+{
+ "status": 200,
+ "body": {
+  "block": {
+   "kind": "save_form",
+   "form": {
+    "messageId": 801102,
+    "block": null,
+    "title": "test-What is blocking #1?, Oct 15",
+    "kind": "markdown",
+    "visibility": "private",
+    "saved": null
+   }
+  },
+  "index": 0
+ }
+}
+
+=== AK-40 save-form 801102 #2
+{
+ "status": 200,
+ "body": {
+  "block": {
+   "kind": "save_form",
+   "form": {
+    "messageId": 801102,
+    "block": null,
+    "title": "test-What is blocking #1?, Oct 15",
+    "kind": "markdown",
+    "visibility": "private",
+    "saved": null
+   }
+  },
+  "index": 1
+ }
+}
+
+=== AK-42 save
+{
+ "status": 200,
+ "body": {
+  "slug": "test-saved",
+  "title": "test-Saved",
+  "visibility": "private",
+  "url": "#artifacts/test-saved"
+ }
+}
+
+=== AK-58/59 attachments
+{
+ "ok": {
+  "status": 200,
+  "body": {
+   "threadId": 899013,
+   "attachments": [
+    {
+     "id": 8,
+     "slug": "test-10485760-txt",
+     "title": "test-10485760.txt",
+     "kind": "text",
+     "contentType": "text/plain",
+     "size": 10485760,
+     "sha256": "b5eec3f68ef64d15e82dad91ff908582c5f081e61a62e22427af9bec2cd35f8d"
+    }
+   ]
+  }
+ },
+ "big": {
+  "status": 413,
+  "body": {
+   "error": "too_large",
+   "message": "test-10485761.txt is too large. Files can be up to 10 MB.",
+   "hint": "The body is over the size limit; `message`, when present, gives it. Nothing was changed."
+  }
+ }
+}
+
+=== AK-67 put 501
+400
+
+=== AK-67 put 250 rockets
+{
+ "status": 200,
+ "body": {
+  "instructions": "🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀",
+  "defaultMode": "fast",
+  "modes": [
+   "fast",
+   "smart",
+   "thinking"
+  ]
+ }
+}
+
+=== AK-69 put empty
+{
+ "status": 200,
+ "body": {
+  "instructions": "",
+  "defaultMode": "fast",
+  "modes": [
+   "fast",
+   "smart",
+   "thinking"
+  ]
+ }
+}
+
+=== AK-70 stop 801001
+{
+ "status": 200,
+ "body": {
+  "ok": true
+ }
+}
+
+=== AK-28 thread events
+[
+ {
+  "event": "thread",
+  "data": {
+   "id": 899014,
+   "title": "",
+   "mode": "smart",
+   "auto": false,
+   "origin": "panel",
+   "contextRef": "ticket:1"
+  }
+ },
+ {
+  "event": "thread",
+  "data": {
+   "id": 899014,
+   "title": "Search: netlify",
+   "mode": "smart",
+   "auto": false,
+   "origin": "panel",
+   "contextRef": "ticket:1"
+  }
+ }
+]
+
+=== AK-28 stored
+{
+ "thread": {
+  "id": 899014,
+  "title": "Search: netlify",
+  "pinned": false,
+  "mode": "smart",
+  "auto": false,
+  "origin": "panel",
+  "contextRef": "ticket:1",
+  "hasDraft": false,
+  "group": "today",
+  "createdAt": "2026-10-15T22:45:16.441Z",
+  "updatedAt": "2026-10-15T22:45:16.446Z",
+  "draft": ""
+ },
+ "q": [
+  "ticket:1"
+ ]
+}
+
+=== console/failed
+{
+ "console": [
+  "error: Failed to load resource: the server responded with a status of 409 (Conflict)",
+  "error: Failed to load resource: the server responded with a status of 409 (Conflict)",
+  "error: Failed to load resource: the server responded with a status of 409 (Conflict)",
+  "error: Failed to load resource: the server responded with a status of 409 (Conflict)",
+  "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+  "error: Failed to load resource: the server responded with a status of 413 (Payload Too Large)",
+  "error: Failed to load resource: the server responded with a status of 400 (Bad Request)"
+ ],
+ "failed": [
+  "409 POST /api/o/test-ent/ask/actions/801207/confirm",
+  "409 POST /api/o/test-ent/ask/actions/801208/confirm",
+  "409 POST /api/o/test-ent/ask/actions/801207/cancel",
+  "409 POST /api/o/test-ent/ask/actions/801212/undo",
+  "404 DELETE /api/o/test-ent/ask/threads/801003",
+  "413 POST /api/o/test-ent/ask/attachments",
+  "400 PUT /api/o/test-ent/ask/settings"
+ ],
+ "pageerrors": []
+}

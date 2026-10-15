@@ -438,7 +438,7 @@ function buildAsk(c, s) {
   // test-member's threads in org-enterprise: one per list group, a pinned one, an injection one, an untitled one.
   thread(ent, 1, { handle: "test-member", title: "test-What is blocking #1?", updated_at: c.ago(50) });
   msg(ent, 101, 1, "user", userText("What is blocking #1?"), { at: c.ago(56) });
-  msg(ent, 102, 1, "assistant", answer("[[ticket:1]] waits on the CSP fix; [[ticket:2]] looks like the same report.", ["ticket:1", "ticket:2"]), { cites: [refView(1, "test-Login page is blank on Safari"), refView(2, "test-Blank login screen after the Safari update", "Triage", "open")] });
+  msg(ent, 102, 1, "assistant", answer("[[ticket:1]] waits on the CSP fix; [[ticket:2]] looks like the same report.", ["ticket:1", "ticket:2"]), { cites: [refView(1, "test-Login page is blank on Safari"), refView(2, "test-Blank login screen after the Safari update", "Triage", "todo")] });
   thread(ent, 2, { handle: "test-member", title: "test-Pinned: sprint plan", pinned: 1, updated_at: c.days(20) });
   msg(ent, 103, 2, "user", userText("Plan the hosting sprint"), { at: c.days(20) });
   msg(ent, 104, 2, "assistant", answer("Here is a plan for the hosting sprint."), { at: c.days(20) });

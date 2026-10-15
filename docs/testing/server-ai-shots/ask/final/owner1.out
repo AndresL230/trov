@@ -1,0 +1,194 @@
+
+=== AU-OWNER-1 1440
+{
+ "before": {
+  "dock": "center",
+  "conv": [
+   57,
+   900
+  ],
+  "composer": [
+   527,
+   690
+  ],
+  "boxW": 720,
+  "boxX": 111,
+  "heading": 350,
+  "blockCentre": 520,
+  "convCentre": 479
+ },
+ "midSend": {
+  "dock": "dock",
+  "transform": "matrix(1, 0, 0, 1, 0, -74.0837)"
+ },
+ "after": {
+  "dock": "dock",
+  "conv": [
+   57,
+   900
+  ],
+  "composer": [
+   770,
+   900
+  ],
+  "boxW": 720,
+  "boxX": 111,
+  "heading": null,
+  "blockCentre": null,
+  "convCentre": 479
+ },
+ "glideKeyframes": [
+  "{\"offset\":null,\"easing\":\"linear\",\"composite\":\"auto\",\"transform\":\"translateY(-243px)\",\"computedOffset\":0}"
+ ],
+ "newThread": {
+  "dock": "center",
+  "conv": [
+   57,
+   900
+  ],
+  "composer": [
+   527,
+   690
+  ],
+  "boxW": 720,
+  "boxX": 111,
+  "heading": 350,
+  "blockCentre": 520,
+  "convCentre": 479
+ },
+ "logs": {
+  "console": [],
+  "failed": [
+   "FAILED POST /api/o/test-ent/ask net::ERR_ABORTED"
+  ],
+  "pageerrors": []
+ }
+}
+
+=== AU-OWNER-1 360
+{
+ "before": {
+  "dock": "center",
+  "conv": [
+   61,
+   780
+  ],
+  "composer": [
+   522,
+   688
+  ],
+  "boxW": 318,
+  "boxX": 16,
+  "heading": 219,
+  "blockCentre": 454,
+  "convCentre": 421
+ },
+ "midSend": {
+  "dock": "dock",
+  "transform": "matrix(1, 0, 0, 1, 0, -43.5817)"
+ },
+ "after": {
+  "dock": "dock",
+  "conv": [
+   61,
+   780
+  ],
+  "composer": [
+   666,
+   780
+  ],
+  "boxW": 318,
+  "boxX": 16,
+  "heading": null,
+  "blockCentre": null,
+  "convCentre": 421
+ },
+ "glideKeyframes": [
+  "{\"offset\":null,\"easing\":\"linear\",\"composite\":\"auto\",\"transform\":\"translateY(-143px)\",\"computedOffset\":0}"
+ ],
+ "newThread": {
+  "dock": "center",
+  "conv": [
+   61,
+   780
+  ],
+  "composer": [
+   522,
+   688
+  ],
+  "boxW": 318,
+  "boxX": 16,
+  "heading": 219,
+  "blockCentre": 454,
+  "convCentre": 421
+ },
+ "logs": {
+  "console": [],
+  "failed": [
+   "FAILED POST /api/o/test-ent/ask net::ERR_ABORTED"
+  ],
+  "pageerrors": []
+ }
+}
+
+=== AU-OWNER-1 1440-rm
+{
+ "before": {
+  "dock": "center",
+  "conv": [
+   57,
+   900
+  ],
+  "composer": [
+   527,
+   690
+  ],
+  "boxW": 720,
+  "boxX": 111,
+  "heading": 350,
+  "blockCentre": 520,
+  "convCentre": 479
+ },
+ "midSend": {
+  "dock": "dock",
+  "transform": "none"
+ },
+ "after": {
+  "dock": "dock",
+  "conv": [
+   57,
+   900
+  ],
+  "composer": [
+   770,
+   900
+  ],
+  "boxW": 720,
+  "boxX": 111,
+  "heading": null,
+  "blockCentre": null,
+  "convCentre": 479
+ },
+ "glideKeyframes": [],
+ "newThread": {
+  "dock": "center",
+  "conv": [
+   57,
+   900
+  ],
+  "composer": [
+   527,
+   690
+  ],
+  "boxW": 720,
+  "boxX": 111,
+  "heading": 350,
+  "blockCentre": 520,
+  "convCentre": 479
+ },
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}

@@ -431,7 +431,7 @@ function repoView(v: AskView, x: RefView, ref: string): string {
     const hosts = parts.map((p) => {
       const appLabel = f.apps.find((a) => a.key === p.app)?.label ?? p.app;
       const off = p.connection === "not_connected" || p.connection === "revoked";
-      return `<div class="ask-iv-part"><span>${esc(many ? `${appLabel} · ${p.label}` : p.label)}</span><span class="ask-iv-quiet">on ${esc(p.host)}${off ? " · not connected" : ""}</span></div>`;
+      return `<div class="ask-iv-part"><span>${esc(many && p.label !== appLabel ? `${appLabel} · ${p.label}` : p.label)}</span><span class="ask-iv-quiet">on ${esc(p.host)}${off ? " · not connected" : ""}</span></div>`;
     }).join("");
     return `<div class="ask-iv-env">
       <div class="ask-iv-envrow"><span class="ask-iv-envname">${esc(env.name)}</span><span class="ask-iv-code ask-iv-grow">${esc(url)}</span>${verdictMark(verdict, 12.5)}</div>
@@ -621,12 +621,15 @@ function chartView(v: AskView, chart: AskChart, ref: string): string {
     id: "ask-insp-chart", ariaLabel: "Show as", value: view, act: "askInChartView", size: "sm", inertOn: true,
     options: [{ value: "chart", label: "Chart", arg: `${ref}|chart` }, { value: "table", label: "Table", arg: `${ref}|table` }],
   });
-  // The conversation's own figure, larger (it carries "Data from Trov" itself); the inspector's bars until it is here.
-  const figure = view === "chart" && chart.rows.length ? chartFigure(chart, { barH: 220 }) : null;
+  // The conversation's own figure, larger and bare (the title, the line and the query's note are the view's own,
+  // as the design draws them); the inspector's bars until it is here.
+  const dataFrom = `<div class="ask-iv-datafrom">${trovMark(10)}${esc(`Data from Trov · ${QUERY_NOTE[chart.query]}`)}</div>`;
+  const figure = view === "chart" && chart.rows.length ? chartFigure(chart, { barH: 220, bare: true }) : null;
   if (figure) {
     return `<div class="ask-iv-charthead">${title(chart.title)}${sw}</div>
       <div class="ask-iv-sm" style="margin-bottom:16px">${esc(chartLine(chart))}</div>
-      <div class="ask-iv-figure" data-morph-key="fig:${attr(ref)}">${figure}</div>`;
+      <div class="ask-iv-figure" data-morph-key="fig:${attr(ref)}">${figure}</div>
+      ${dataFrom}`;
   }
   const body = !chart.rows.length
     ? note("No rows for this chart yet.")
@@ -643,7 +646,7 @@ function chartView(v: AskView, chart: AskChart, ref: string): string {
   return `<div class="ask-iv-charthead">${title(chart.title)}${sw}</div>
     <div class="ask-iv-sm" style="margin-bottom:16px">${esc(chartLine(chart))}</div>
     ${body}
-    <div class="ask-iv-datafrom">${trovMark(10)}${esc(`Data from Trov · ${QUERY_NOTE[chart.query]}`)}</div>`;
+    ${dataFrom}`;
 }
 
 /** A conversation-held item, drawn with the conversation's figures (a chart keeps the Chart / Table switch; a

@@ -117,21 +117,24 @@ export function doneText(vms: AskActionVm[]): string {
   const n = nums[0] ?? keyOf(vm.preview?.item?.ref ?? null);
   const r = rec(vm.result);
   const more = (s: string) => (vms.length > 1 ? `${s} and ${vms.length - 1} more` : s);
+  // The item's name with its number, or without one when the number is unknown (never "#null": invariant 7).
+  const ticket = n ? `ticket #${n}` : "the ticket";
+  const handoff = n ? `handoff #${n}` : "the handoff";
   switch (tool) {
     case "create_ticket": return vms.length > 1 && nums.length ? `Filed tickets ${listNumbers(nums)}` : n ? `Created ticket #${n}` : "Created the ticket";
-    case "transition_ticket": return more(`Moved ticket #${n} to ${statusWord(r.status) ?? statusWord(vm.fields.to) ?? "its new status"}`);
-    case "edit_ticket": return more(`Edited ticket #${n}`);
-    case "add_ticket_comment": return more(`Commented on ticket #${n}`);
-    case "add_ticket_link": return more(`Linked work to ticket #${n}`);
-    case "set_ticket_sprint": return more(`Moved ticket #${n} to ${str(rec(r.sprint).label) ?? "the backlog"}`);
-    case "set_ticket_parent": return more(`Nested a sub-ticket under ticket #${n}`);
-    case "assign_ticket": return more(`Changed who is on ticket #${n}`);
+    case "transition_ticket": return more(`Moved ${ticket} to ${statusWord(r.status) ?? statusWord(vm.fields.to) ?? "its new status"}`);
+    case "edit_ticket": return more(`Edited ${ticket}`);
+    case "add_ticket_comment": return more(`Commented on ${ticket}`);
+    case "add_ticket_link": return more(`Linked work to ${ticket}`);
+    case "set_ticket_sprint": return more(`Moved ${ticket} to ${str(rec(r.sprint).label) ?? "the backlog"}`);
+    case "set_ticket_parent": return more(`Nested a sub-ticket under ${ticket}`);
+    case "assign_ticket": return more(`Changed who is on ${ticket}`);
     case "send_handoff": {
       const to = str(r.recipient) ?? str(vm.fields.recipient);
-      return more(`Sent handoff #${n} to ${!to || to === "anyone" ? "anyone" : `@${to}`}`);
+      return more(`Sent ${handoff} to ${!to || to === "anyone" ? "anyone" : `@${to}`}`);
     }
-    case "claim_handoff": return `Claimed handoff #${n}`;
-    case "expire_handoff": return `Expired handoff #${n}`;
+    case "claim_handoff": return `Claimed ${handoff}`;
+    case "expire_handoff": return `Expired ${handoff}`;
     case "propose_doc_update": return `Proposed an edit to ${docTitle(vm)}. It waits in Review.`;
     case "publish_doc": return `Published ${docTitle(vm)} to the org`;
     case "create_sprint": return more(`Created the sprint ${str(r.label) ?? ""}`.trim());

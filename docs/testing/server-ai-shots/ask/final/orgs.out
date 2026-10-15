@@ -1,0 +1,105 @@
+
+=== AU-16 test-free
+{
+ "composer": "Ask before changes ⏎ Auto ⏎ Enter to send · Shift+Enter for a new line ⏎  ⏎ Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.",
+ "modeBtn": null,
+ "auto": {
+  "cls": "ask-co-auto",
+  "disabled": null,
+  "tip": null
+ },
+ "send": "<button type=\"button\" class=\"ask-send\" data-morph-key=\"send\" data-act=\"askCoSend\" data-arg=\"page\" aria-label=\"Send\" data-mtip=\"Send\" aria-disabled=\"true\"><svg w",
+ "textarea": true,
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}
+
+=== AU-17 test-pro
+{
+ "composer": "Smart ⏎ Ask before changes ⏎ Auto ⏎ Enter to send · Shift+Enter for a new line ⏎  ⏎ Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.",
+ "modeBtn": "Smart",
+ "auto": {
+  "cls": "ask-co-auto",
+  "disabled": null,
+  "tip": null
+ },
+ "send": "<button type=\"button\" class=\"ask-send\" data-morph-key=\"send\" data-act=\"askCoSend\" data-arg=\"page\" aria-label=\"Send\" data-mtip=\"Send\" aria-disabled=\"true\"><svg w",
+ "textarea": true,
+ "menu": "Fast ⏎ Quick answers from what Trov has already indexed. ⏎ Smart ⏎ Reads the items it finds before answering. The default. ⏎ Thinking ⏎ Works through harder questions first. Slower. Counts as 5 questions.",
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}
+
+=== AU-18 test-auto-off
+{
+ "composer": "Smart ⏎ Ask before changes ⏎ Auto ⏎ Enter to send · Shift+Enter for a new line ⏎  ⏎ Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.",
+ "modeBtn": "Smart",
+ "auto": {
+  "cls": "ask-co-auto is-off",
+  "disabled": "true",
+  "tip": "An admin turned off Auto for this org. Trov asks before every change."
+ },
+ "send": "<button type=\"button\" class=\"ask-send\" data-morph-key=\"send\" data-act=\"askCoSend\" data-arg=\"page\" aria-label=\"Send\" data-mtip=\"Send\" aria-disabled=\"true\"><svg w",
+ "textarea": true,
+ "tooltipShown": [
+  "An admin turned off Auto for this org. Trov asks before every change."
+ ],
+ "autoAfterClick": "Ask before changes",
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}
+
+=== AU-19 test-chat-low
+{
+ "composer": "Smart ⏎ Ask before changes ⏎ Auto ⏎ Enter to send · Shift+Enter for a new line ⏎ 3 of 300 questions left this month · Resets Nov 1 ⏎  ⏎ Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.",
+ "modeBtn": "Smart",
+ "auto": {
+  "cls": "ask-co-auto",
+  "disabled": null,
+  "tip": null
+ },
+ "send": "<button type=\"button\" class=\"ask-send\" data-morph-key=\"send\" data-act=\"askCoSend\" data-arg=\"page\" aria-label=\"Send\" data-mtip=\"Send\" aria-disabled=\"true\"><svg w",
+ "textarea": true,
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}
+
+=== AU-20 test-at-cap
+{
+ "composer": "You've used this month's questions. ⏎ Resets Nov 1. Pro includes 300 a month, plus Thinking mode. ⏎ Upgrade to Pro ⏎ Enter to send · Shift+Enter for a new line ⏎  ⏎ Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.",
+ "modeBtn": null,
+ "auto": null,
+ "send": null,
+ "textarea": false,
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}
+
+=== AU-21 test-ai-off
+{
+ "composer": "Ask Trov is off for this org. ⏎ An admin can turn it on in Org settings › AI. ⏎ Enter to send · Shift+Enter for a new line ⏎  ⏎ Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.",
+ "modeBtn": null,
+ "auto": null,
+ "send": null,
+ "textarea": false,
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}

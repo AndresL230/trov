@@ -1,0 +1,65 @@
+
+=== AU-12 header button
+Ask about this Ctrl J
+
+=== AU-12 panel
+{
+ "w": 420,
+ "x": 1020,
+ "text": "Ask Trov ⏎ Ctrl J ⏎ Open as thread ⏎ Ask anything about your team's work ⏎ What shipped this week? ⏎ Summarize ticket #4 ⏎ What's blocking the test-Sprint Hosting work? ⏎ What's waiting on me? ⏎ About ticket #1: test-Login page is blank on Safari ⏎ #1 ⏎ Ticket ⏎ Fast ⏎ Ask first ⏎ Auto ⏎ Enter to send · Shift+Enter for a new line",
+ "focus": "ask-input",
+ "modal": "true"
+}
+
+=== AU-12 focus after 12 Tabs is inside the panel
+true
+
+=== AU-13 after Escape with picker open: panel still open
+true
+
+=== AU-12 stored thread
+id	origin	context_ref	title
+899018	panel	ticket:1	Search: netlify
+
+=== AU-13 hover then Escape
+{
+ "hoverBefore": false,
+ "after1": {
+  "hover": false,
+  "panel": true
+ }
+}
+
+=== AU-12 Open as thread → url
+http://localhost:8810/test-ent/#ask/899018
+
+=== AU-12 ⌘J on Ask focuses the composer
+{
+ "focus": "ask-input",
+ "panel": false
+}
+
+=== AU-13 Ask screen: menu+inspector → Esc → Esc
+{
+ "s0": {
+  "menu": true,
+  "insp": true
+ },
+ "s1": {
+  "menu": false,
+  "insp": true
+ },
+ "s2": {
+  "menu": false,
+  "insp": false
+ }
+}
+
+=== logs
+{
+ "console": [],
+ "failed": [
+  "FAILED POST /api/o/test-ent/ask net::ERR_ABORTED"
+ ],
+ "pageerrors": []
+}
