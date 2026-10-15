@@ -180,7 +180,14 @@ Applies to everyone, whether AI is on or off.
 - **CLAUDE.md invariants:** the call-site rule; the switch covering every AI feature; Jev reasons are always evidence.
 - **`releases.ts` lines** for each phase.
 - **Screenshots** (`LOCAL_AI_PREVIEW` plus real data in a local seed) of every AI screen and email, light and dark, desktop and phone. Ask has no screen yet: a sample SSE transcript per state instead.
+  **Folded into Phase H** (owner, 2026-10-15): the end-to-end browser run produces these screenshots.
 - **Legal.** Privacy Policy and Terms passages for Ask Trov (what is sent when a person asks), the weekly recap, and the widened Anthropic list — added with **DRAFT markers**, and the build stops for Andres's approval before they are removed. The approved Sift passages stay as they are.
+
+### Phase H: end to end in the browser (the very last step)
+
+After A–G are merged: `2026-10-15-server-ai-e2e.md` — a seeded local run of every surface × state in a real
+browser, with a test log, one fix + test + retest per bug, and a final clean pass. Over 150 cases: show Andres the
+matrix and the count first.
 
 ## Migrations
 
