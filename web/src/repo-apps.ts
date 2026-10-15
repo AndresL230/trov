@@ -298,7 +298,7 @@ function appsList(route: OrgRepoRoute, d: RepoAppsSetupDTO, ui: RepoAppsUi): str
       <ul${surface(LIST)}>${pending.map((s) => suggestionRow(d, s, ui)).join("")}</ul>
     </section>` : `<section aria-labelledby="org-apps-sugg-t" data-apps-group="suggestions">${orgHead("Suggestions", scanned, 0, "org-apps-sugg-t")}${scanError}
       <div data-apps-nosugg style="font-size:12.5px;color:var(--fg-55);padding:2px 0 4px">${d.scan.looked.length
-        ? `Nothing to suggest. Trov looked for ${esc(listed(d.scan.looked.slice(0, 6)))}${d.scan.looked.length > 6 ? " and more" : ""} and at the deploys GitHub reported.`
+        ? `Nothing to suggest. Trov looked for ${esc(listed(d.scan.looked.length > 6 ? [...d.scan.looked.slice(0, 6), "more"] : d.scan.looked))}, and at the deploys GitHub reported.`
         : "Nothing to suggest yet."} Add an app by hand if it ships some other way.</div>
     </section>`;
   const apps = `<section aria-labelledby="org-apps-apps-t" data-apps-group="apps" style="margin-top:30px">

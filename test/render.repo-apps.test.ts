@@ -126,7 +126,10 @@ describe("Setup 1 · suggestions", () => {
     const none = page(route("apps"), appsUi(setup({ suggestions: [] })));
     expect(none).toMatch(/data-act="orgAppsAcceptAll"[^>]*disabled/);
     expect(none).toContain("Trov found nothing more in this repo.");
-    expect(none).toContain("Nothing to suggest. Trov looked for vercel.json and fly.toml");
+    expect(none).toContain("Nothing to suggest. Trov looked for vercel.json and fly.toml, and at the deploys GitHub reported.");
+    // More than six files: one list, "and more" its last item — never "… and railway.json and more and at …" (e2e A15b).
+    const many = page(route("apps"), appsUi(setup({ suggestions: [], scan: { ...setup().scan, looked: ["vercel.json", "netlify.toml", "wrangler.toml", "fly.toml", "render.yaml", "railway.json", "Dockerfile"] } })));
+    expect(many).toContain("Trov looked for vercel.json, netlify.toml, wrangler.toml, fly.toml, render.yaml, railway.json and more, and at the deploys GitHub reported.");
     const busy = page(route("apps"), appsUi(setup(), { busy: ["s-docs"] }));
     expect(busy).toMatch(/data-act="orgAppsAccept" data-arg="s-docs"[^>]*disabled[^>]*>Working…</);
   });
