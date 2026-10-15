@@ -26,6 +26,16 @@ export const ASK_ICON_PATHS = {
   file: `<path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path>`,
   csv: `<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 10h18M9 4v16"></path>`,
   clock: `<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>`,
+  // The conversation's (ask-trov.dc.html L352–L650): not found, the footer, a rich block's toolbar, follow-ups, disclosures.
+  searchMinus: `<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path><path d="M8.5 11h5"></path>`,
+  copy: `<rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path>`,
+  regen: `<path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 4v5h-5"></path>`,
+  saveArtifact: `<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M12 12v5M9.5 14.5h5"></path>`,
+  openBeside: `<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M15 4v16"></path>`,
+  followUp: `<path d="M4 4v7a4 4 0 0 0 4 4h12"></path><path d="m15 10 5 5-5 5"></path>`,
+  chevRight: `<path d="M9 6l6 6-6 6"></path>`,
+  chevDown: `<path d="m6 9 6 6 6-6"></path>`,
+  check: `<path d="m5 12.5 4.5 4.5L19 7.5"></path>`,
   sprint: `<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`,
   cmd: `<path d="M15 4 9 20"></path>`,
   // The phone (ask-phone.ts): the header's Open threads (not the app's nav hamburger beside it). Its + menu's
@@ -50,7 +60,6 @@ export const ASK_ICON_PATHS = {
   attach: `<path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"></path>`,
   at: `<circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"></path>`,
   upload: `<path d="M12 15V3"></path><path d="m7 8 5-5 5 5"></path><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"></path>`,
-  check: `<path d="m5 12.5 4.5 4.5L19 7.5"></path>`,
   chevron: `<path d="m6 9 6 6 6-6"></path>`,
 } as const;
 export type AskIconName = keyof typeof ASK_ICON_PATHS;
