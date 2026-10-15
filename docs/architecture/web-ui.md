@@ -82,12 +82,16 @@ calls it directly), in one of three ways:
 - **`rerenderSoon()` is a read landing** (a loader's `.then` / `.catch`): every read that lands before the next
   animation frame shares one paint. A hidden document (a background or automation tab, where rAF never fires) or
   one without rAF uses a timeout instead, and a visible one keeps a 100 ms timeout as a backstop in case it is
-  hidden before its frame. Any paint made in the meantime takes the waiting one's place.
+  hidden before its frame. Reads that land a frame or two apart would still paint once each, so a landing paints
+  no sooner than `SOON_GAP_MS` (100 ms) after the last landing or batch paint, measured from that paint's END; an
+  interactive paint does not hold one back (search results still show between keystrokes). Any paint made in the
+  meantime takes the waiting one's place.
 
 **Rule:** a loader's completion calls `rerenderSoon()`; its start (the "loading" state) and everything a person
 does call `rerender()`. An expired session (`Unauthorized`) still leaves with `rerender()`. A controller module
 gets `rerenderSoon` on its host where it has a read the boot starts (`tags-actions.ts`). Never call
-`rerenderSoon()` where the next line reads the DOM. Boot paints went from 25 (measured) to a handful; tests:
+`rerenderSoon()` where the next line reads the DOM. Measured on My Work against `wrangler dev` (2026-10-15):
+27 full-app paints at boot before, 4–5 after; the longest task at 4× CPU throttling 1.7 s → about 0.2 s. Tests:
 `test/paint-queue.test.ts`.
 
 ## Markdown is rendered once per body (`web/src/markdown.ts`, `web/src/outline.ts`, `web/src/lru.ts`)
