@@ -63,7 +63,14 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   independently gate which deliveries feed which capture; a repo-capture failure is caught and logged, never
   costing the My Work capture, and the webhook's response body carries `repo: { captured, unchanged }`
   alongside the existing `captured` / `unchanged`. PR-close and issue capture into `events` is unchanged by
-  any of this. **`repo_metrics` points and `repo_snapshots` are computed writes, not gated ingestion**: the
+  any of this.
+- **Releases are the repo capture's THIRD arm, `ingestRepoRelease`** (Repo setups, Phase F): the `release` /
+  `create` deliveries (`RELEASE_EVENT_NAMES`) and reconcile's `releases` arm put each release or tag through it —
+  never `/ingest`. A release CHANGES (edited, deleted), so it is not an append-only `repo_events` row: its
+  identity is `(org, repo, tag)` and its dedupe is the gate's content hash over the settled row (a redelivery,
+  a no-op edit or a re-read writes nothing); the write itself is `releases` (`src/repo/release-store.ts`).
+  A draft is never captured, a tag never downgrades a release, and a row without GitHub's own date is not
+  written. **`repo_metrics` points and `repo_snapshots` are computed writes, not gated ingestion**: the
   `status` delivery's `metricsFromStatus` arm, the cron's pollers and reconcile's snapshots write them direct
   through `putMetric` / `putSnapshot` (`src/repo/store.ts`) — each validates its own input, and `putMetric`
   is first-write-wins.
