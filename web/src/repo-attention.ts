@@ -12,6 +12,7 @@ import type { RepoTab } from "@shared/repo";
 import { esc, attr } from "./ui";
 import { markShape, STATE_KIND, type StateKind } from "./marks";
 import { ago } from "./repo";
+import { short as shortSha } from "./repo-block-kit";
 import type { OverviewBlock, OverviewCtx } from "./repo-overview-ctx";
 
 /** The mark per kind (the design's `attentionModel`: the kind's own MARK, `waiting` for waiting). */
@@ -73,17 +74,21 @@ export function attentionLine(a: FactsAttention, f: RepoFacts, now: number): Att
     ? ext(`Open ${app || "it"} on ${host}`, part?.consoleUrl ?? null, fallbackTab)
     : ext("Open the host", null, fallbackTab));
 
+  // A sha in a sentence reads as 7 characters, as everywhere else on the screen (the facts carry GitHub's full 40);
+  // a link (Compare) keeps the full ones.
+  const sh = (x: string | null | undefined): string | null => (x ? shortSha(x) : null);
+
   switch (a.kind) {
     case "failed": {
-      const serving = r.sha ? `${r.sha} is still serving.` : "Nothing is serving yet.";
-      return { kind, text: `${lead(`${env} deploy ${r.failedSha ?? "of the newest commit"} failed ${ago(r.since ?? "", now)} ago${host ? ` on ${host}` : ""}.`)} ${serving}`,
+      const serving = r.sha ? `${sh(r.sha)} is still serving.` : "Nothing is serving yet.";
+      return { kind, text: `${lead(`${env} deploy ${sh(r.failedSha) ?? "of the newest commit"} failed ${ago(r.since ?? "", now)} ago${host ? ` on ${host}` : ""}.`)} ${serving}`,
         action: ext("View build log", part?.latest?.logUrl ?? part?.consoleUrl ?? null, "ci") };
     }
     case "rolledBack": {
       const by = part?.serving?.by ? ` by ${part.serving.by}` : "";
-      const next = r.nextSha && part?.latest?.sha === r.nextSha && (part.latest.state === "building" || part.latest.state === "queued") ? `; ${r.nextSha} is building` : "";
+      const next = r.nextSha && part?.latest?.sha === r.nextSha && (part.latest.state === "building" || part.latest.state === "queued") ? `; ${sh(r.nextSha)} is building` : "";
       const compare = r.sha && r.prevSha ? `https://github.com/${f.repo}/compare/${r.sha}...${r.prevSha}` : null;
-      return { kind, text: `${lead(`${env} was rolled back to ${r.sha ?? "an earlier commit"}${by} ${ago(r.since ?? "", now)} ago.`)}${r.prevSha ? ` ${r.prevSha} is no longer live${next}.` : ""}`,
+      return { kind, text: `${lead(`${env} was rolled back to ${sh(r.sha) ?? "an earlier commit"}${by} ${ago(r.since ?? "", now)} ago.`)}${r.prevSha ? ` ${sh(r.prevSha)} is no longer live${next}.` : ""}`,
         action: ext("Compare", compare, "ci") };
     }
     case "down": {
@@ -93,7 +98,7 @@ export function attentionLine(a: FactsAttention, f: RepoFacts, now: number): Att
         action: url ? ext(`Open ${hostname(url)}`, url, "usage") : onHost("usage") };
     }
     case "stale": {
-      const building = r.nextSha && host && part?.latest?.sha === r.nextSha && (part.latest.state === "building" || part.latest.state === "queued") ? ` ${host} is building ${r.nextSha}.` : "";
+      const building = r.nextSha && host && part?.latest?.sha === r.nextSha && (part.latest.state === "building" || part.latest.state === "queued") ? ` ${host} is building ${sh(r.nextSha)}.` : "";
       return { kind, text: `${Env}: ${app || "its"}’s health reading is ${longFor(r.since, now)} old.${building}`, action: onHost("usage") };
     }
     case "outOfStep": {
@@ -102,14 +107,14 @@ export function attentionLine(a: FactsAttention, f: RepoFacts, now: number): Att
       const ofSha = o?.ofSha ?? (of ? f.parts.find((p) => p.app === of && p.env === a.env)?.serving?.sha ?? null : null);
       const n = r.behindBy ?? o?.behindBy ?? null;
       const behind = n === null ? "behind" : `${plural(n, "commit")} behind`;
-      return { kind, text: `${Env}: ${app} runs ${r.sha ?? o?.sha ?? "an older commit"}, ${behind}${of ? ` ${of}` : ""}${ofSha ? ` (${ofSha})` : ""}.${host ? ` ${host} has not deployed ${app} since the last promotion.` : ""}`,
+      return { kind, text: `${Env}: ${app} runs ${sh(r.sha ?? o?.sha) ?? "an older commit"}, ${behind}${of ? ` ${of}` : ""}${ofSha ? ` (${sh(ofSha)})` : ""}.${host ? ` ${host} has not deployed ${app} since the last promotion.` : ""}`,
         action: onHost("usage") };
     }
     case "waiting": {
       const n = r.count ?? null;
       const what = n === null ? "Commits" : plural(n, "commit");
       const text = r.sha
-        ? lead(`${Env} runs ${r.sha} from ${longFor(r.since, now)} ago; ${n === null ? "commits are" : `${what} ${n === 1 ? "is" : "are"}`} waiting.`)
+        ? lead(`${Env} runs ${sh(r.sha)} from ${longFor(r.since, now)} ago; ${n === null ? "commits are" : `${what} ${n === 1 ? "is" : "are"}`} waiting.`)
         : lead(`${what} merged ${longFor(r.since, now)} ago ${n === 1 ? "is" : "are"} not in ${env}.`);
       return { kind, text, action: { label: "See what is waiting", href: null, external: false, tab: null, act: "repoSeeWaiting", arg: app } };
     }

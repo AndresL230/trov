@@ -57,7 +57,7 @@ export const TOP = "border-top:1px solid var(--border)";
 const SHA = "font-family:var(--label);font-size:12.5px;color:var(--fg);background:var(--hover);border:1px solid var(--border);border-radius:4px;padding:0 5px;line-height:18px;white-space:nowrap";
 
 /** A commit as the design's chip; nothing for an unknown sha (never guessed). */
-export const shaChip = (sha: string | null): string => (sha ? `<span style="${SHA}">${esc(sha)}</span>` : "");
+export const shaChip = (sha: string | null): string => (sha ? `<span style="${SHA}">${esc(short(sha))}</span>` : "");
 
 /** A short sha for a sentence (the facts carry what the source reported; a full sha is cut to 7). */
 /** A deploy's commit, or — when there is none — "no commit" with why (the single-app blocks name every deploy's

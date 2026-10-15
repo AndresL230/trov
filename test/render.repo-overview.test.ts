@@ -99,6 +99,23 @@ describe("the Overview draws the design's blocks for every scenario", () => {
   });
 });
 
+describe("full shas from the server read as 7 characters everywhere on the Overview (e2e O4)", () => {
+  // The sample's shas are already 7 long; the Worker's facts carry GitHub's full 40. Lengthen every sha in a fixture and
+  // nothing a person reads may change — no 40-character sha in a sentence, a cell or a chip.
+  const long = <T,>(v: T): T => JSON.parse(JSON.stringify(v), (_k, x) => (typeof x === "string" && /^[0-9a-f]{7}$/.test(x) ? x + "a".repeat(33) : x)) as T;
+  for (const [k, v] of [["A", "outOfStep"], ["B", "failed"], ["B", "trouble"], ["E", ""], ["F", ""]] as [ScenarioKey, string][]) {
+    it(`${k}/${v}`, () => {
+      const f = repoScenario(k, v, { now: NOW });
+      const lf = long(f);
+      expect(lf.attention.map((a) => attentionLine(a, lf, NOW).text)).toEqual(f.attention.map((a) => attentionLine(a, f, NOW).text));
+      for (const group of [undefined, "app", "env"] as (GroupBy | undefined)[]) {
+        const html = repoView(props(lf, { group: group ?? null }));
+        expect(html.match(/[0-9a-f]{40}/g) ?? [], `${k}/${v} group=${group}`).toEqual([]);
+      }
+    });
+  }
+});
+
 describe("Needs attention reads as the design's sentences, from refs alone", () => {
   const lines = (k: ScenarioKey, v = "", app: string | null = null) => {
     const f = repoScenario(k, v, { now: NOW, app });
