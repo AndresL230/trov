@@ -60,7 +60,7 @@ describe("main.ts — the entrance and Back / Forward", () => {
     expect(mainSrc).not.toMatch(/hashForRoute\(\{ \.\.\.currentRoute\(\), [^}]*Tab: undefined/);
   });
   it("Back / Forward between two Org settings tabs is the tab's own act, not a reload of the page", () => {
-    expect(mainSrc).toMatch(/if \(r\.screen === "org" && cur\.screen === "org"\) \{ orgCtl\.act\("orgTab", r\.orgTab \?\? "integrations", null\); return; \}/);
+    expect(mainSrc).toMatch(/if \(r\.screen === "org" && cur\.screen === "org"\) \{ orgCtl\.act\("orgTab", r\.orgTab \?\? "integrations", "route"\); return; \}/);
   });
 });
 

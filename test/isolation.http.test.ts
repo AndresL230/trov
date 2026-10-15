@@ -204,14 +204,15 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
     case "handle": return ALICE;
     case "sha": return fx.imgSha;
     case "ver": return "v1";
-    case "key": return fx.envKey;
+    case "key": return under("/repos/") ? "web" : fx.envKey;
+    case "owner": return "canary-a"; // A's repository (`canary-a/<CANARY>-repo`): never B's, so B is refused 404 / 403
     case "kind": return "github_token";
     case "a": case "b": return "nope"; // never `test`: Test connection would reach for the network
     case "email": return encodeURIComponent(INVITED);
     case "ref": return fx.artifactSlug;
     case "part": return "web";
     case "provider": return "vercel"; // never `test` against a configured credential: B has none, and A's is never B's
-    case "name": return "auth"; // a tag: every org has the starter of that name, each its own row
+    case "name": return under("/repos/") ? `${CANARY}-repo` : "auth"; // A's repository's name; else a tag: every org has the starter of that name, each its own row
     default: throw new Error(`no fixture value for :${name} in ${suffix}`);
   }
 }
@@ -300,6 +301,9 @@ const TENANT: Record<string, Row> = {
   "POST /integrations/:kind/:a": J({ secret: "x" }), "POST /integrations/:kind/:a/:b": J({ secret: "x" }),
   "DELETE /integrations/:kind": {}, "DELETE /integrations/:kind/:a": {},
   "GET /repos": {}, "POST /repos": J({ repo_full_name: "acme/matrix" }), "DELETE /repos/:id": {},
+  // src/repo/apps-routes.ts — Org settings › Repositories › a repo › Apps: A's repository in the path is not B's, so B's
+  // admin gets 404 and B's member the 403; nothing is read or written for A.
+  "GET /repos/:owner/:name/apps": {}, "PUT /repos/:owner/:name/apps/:key": J({ kind: "Site", label: "hijacked" }), "DELETE /repos/:owner/:name/apps/:key": {},
   // src/github-app/routes.ts — the GitHub App's connection. `GET /github/install` only ever redirects (to GitHub for an
   // admin of the org in the path, back to its own Repositories tab otherwise); B has no installation, so the rest answer
   // B's own "not connected" and never reach for the network.
