@@ -26,10 +26,10 @@ vi.mock("../web/src/api", async (importOriginal) => ({
 }));
 
 import { render, initialState, type AppState } from "../web/src/render";
-import { repoStateSection, type RepoAiProps } from "../web/src/repo-ai";
+import { repoStateSection, themesSection, type RepoAiProps } from "../web/src/repo-ai";
 import { AI_EXIT_MS, AI_NOTE_LEAVING, aiHiddenKey, aiLeavingT, aiSuggestionKey, initialAiUi, aiFeedback, type AiUi } from "../web/src/ai-ui";
 import { createAiController } from "../web/src/ai-actions";
-import { repoStateFixture, feedFixtures, briefFixture } from "@shared/ai-fixtures";
+import { repoStateFixture, feedFixtures, briefFixture, themesFixture } from "@shared/ai-fixtures";
 import { aiItemRef } from "@shared/ai-core";
 import type { DashboardData } from "@shared/dashboard";
 import type { FeedRow } from "@shared/rows";
@@ -217,6 +217,33 @@ describe("the controller (ai-actions.ts)", () => {
       await vi.advanceTimersByTimeAsync(AI_EXIT_MS);
       expect(flashed).toEqual(reduce ? [] : [".mw-bento"]);
     }
+  });
+});
+
+describe("Where the work went: Wrong? on a range leaves by the kit's one exit (e2e TH-16 / MO-26)", () => {
+  const all = () => ({ "8w": themesFixture("ready", "8w", NOW), quarter: themesFixture("ready", "quarter", NOW) });
+  const key8w = () => aiHiddenKey("themes", aiItemRef.themes(REPO, "8w", all()["8w"].generatedAt ?? "themes"));
+  it("while it leaves, the card keeps its head and switch and what Trov wrote collapses inside it; then the card says why", () => {
+    const during = themesSection(all(), rp({ hidden: [key8w()], leaving: [{ key: key8w(), at: T - 25 }] }));
+    expect(during).toContain('data-act="aiThemesRange"');
+    expect(leaving(during)?.[1]).toBe("-25");
+    const inside = during.slice(during.indexOf('class="cnpy-ai-leave"'));
+    expect(inside).toContain("repo-band");
+    // the caption and the byline leave with it (only the heading and the switch stay)
+    expect(all()["8w"].caption).toBeTruthy();
+    expect(inside).toContain(all()["8w"].caption!);
+    expect(inside).toContain("Themes and caption written by Trov");
+    expect(during).not.toContain("You marked this range wrong");
+    const after = themesSection(all(), rp({ hidden: [key8w()], leaving: [{ key: key8w(), at: T - AI_EXIT_MS }] }));
+    expect(after).not.toContain("cnpy-ai-leave");
+    expect(after).toContain("You marked this range wrong, so it is hidden for you until Trov writes it again.");
+  });
+  it("both ranges out: the whole card leaves, then nothing", () => {
+    const { "8w": _g, ...onlyQuarter } = all();
+    const keyQ = aiHiddenKey("themes", aiItemRef.themes(REPO, "quarter", all().quarter.generatedAt ?? "themes"));
+    const p = (at: number) => rp({ themesRange: "quarter", hidden: [keyQ], leaving: [{ key: keyQ, at }] });
+    expect(leaving(themesSection(onlyQuarter, p(T - 25)))).not.toBeNull();
+    expect(themesSection(onlyQuarter, p(T - AI_EXIT_MS))).toBe("");
   });
 });
 

@@ -163,14 +163,20 @@ function proposals(lanes: AiThemeLane[], p: RepoAiProps): string {
 
 /** Planning's first section, from the range picked (`ui.themesRange`). "" when this person pressed
  *  "Wrong?" on it. */
-export function themesSection(all: Partial<Record<AiThemeRange, AiThemes>>, p: RepoAiProps): string {
+export function themesSection(all: Partial<Record<AiThemeRange, AiThemes>>, p: RepoAiProps, now = Date.now()): string {
   const range = p.ui.themesRange;
   // A range is out for this person when they marked it "Wrong?": the read leaves it out (absent), or they pressed it
   // this session (hidden). With the OTHER range still there, the card stays — its 8 weeks / Quarter switch with it —
-  // and says why this range is not drawn; with both out, nothing.
+  // and says why this range is not drawn; with both out, nothing. Pressed just now, what Trov wrote leaves first by
+  // the kit's one exit (ai-ui.ts › Leaving): inside the card when it stays, the whole card when it goes.
+  const keyOf = (r: AiThemeRange, x: AiThemes): string => aiHiddenKey("themes", aiItemRef.themes(p.repo, r, x.generatedAt ?? "themes"));
+  const outT = (r: AiThemeRange): number | null => {
+    const x = all[r];
+    return x && p.ui.hidden.includes(keyOf(r, x)) ? aiLeavingT(p.ui, keyOf(r, x), now) : null;
+  };
   const shownRange = (r: AiThemeRange): AiThemes | null => {
     const x = all[r];
-    return x && !aiIsHidden(p.ui, "themes", aiItemRef.themes(p.repo, r, x.generatedAt ?? "themes")) ? x : null;
+    return x && (!p.ui.hidden.includes(keyOf(r, x)) || outT(r) !== null) ? x : null;
   };
   const switcher = segmented({
     id: "repo-themes-range", ariaLabel: "Range", act: "aiThemesRange", value: range, size: "sm", inertOn: true,
@@ -195,13 +201,17 @@ export function themesSection(all: Partial<Record<AiThemeRange, AiThemes>>, p: R
   const count = t.state === "empty" ? "" : aiByline(t.generatedAt, AI_TIP.themes, {
     lead: written, from: t.prCount === null ? undefined : `${t.prCount} pull ${t.prCount === 1 ? "request" : "requests"}`,
   });
+  // Pressed "Wrong?" just now with the other range still there: the caption and byline leave with the chart.
+  const leavingT = outT(range);
+  const stays = leavingT !== null && AI_THEME_RANGES.some((r) => r !== range && shownRange(r) && outT(r) === null);
+  const writ = `${t.caption ? `<p style="margin:0;color:var(--fg-70);max-width:62ch;line-height:1.55">${esc(t.caption)}</p>` : ""}
+        ${count}`;
   const head = `<div style="display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px">
       <div style="display:flex;flex-direction:column;gap:6px;flex:1 1 420px;min-width:0">
         <h2 id="repo-themes-h" style="margin:0;font-size:18px;font-weight:600;letter-spacing:-0.01em">Where the work went</h2>
-        ${t.caption ? `<p style="margin:0;color:var(--fg-70);max-width:62ch;line-height:1.55">${esc(t.caption)}</p>` : ""}
-        ${count}
+        ${stays && writ.trim() ? aiLeave(`<div style="display:flex;flex-direction:column;gap:6px">${writ}</div>`, leavingT) : writ}
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${switcher}${edit}</div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${switcher}${stays ? "" : edit}</div>
     </div>`;
   if (t.state === "empty" || !t.lanes.length) {
     return `<section${surface(CARD, { cls: "repo-ai cnpy-rise" })} data-ai="themes" data-ai-state="${t.state}" aria-labelledby="repo-themes-h">${head}${aiEmpty(AI_EMPTY.themes)}</section>`;
@@ -209,13 +219,15 @@ export function themesSection(all: Partial<Record<AiThemeRange, AiThemes>>, p: R
   const picked = lanePicked(t, p.ui);
   const capped = t.state === "capped" ? aiCapped(t, `themes resume ${aiDay(t.resumesOn)}`) : "";
   const wrong = t.generatedAt ? aiWrongBtn(aiFeedback("themes", ref, "themes", t.model), 12) : "";
-  return `<section${surface(CARD, { cls: "repo-ai cnpy-rise" })} data-ai="themes" data-ai-state="${proposed.length ? "proposed" : t.state}" aria-labelledby="repo-themes-h">
-      ${head}${capped}
+  const body = `${capped}
       ${proposed.length ? proposals(proposed, p) : ""}
       ${chart(t, picked)}
       ${picked ? laneDetail(picked) : ""}
       <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px">
         <p style="margin:0;font-size:12px;color:var(--fg-55)">Band height is merged pull requests per week.</p>${wrong}
-      </div>
+      </div>`;
+  const section = `<section${surface(CARD, { cls: "repo-ai cnpy-rise" })} data-ai="themes" data-ai-state="${proposed.length ? "proposed" : t.state}" aria-labelledby="repo-themes-h">
+      ${head}${stays ? aiLeave(`<div style="display:flex;flex-direction:column;gap:18px">${body}</div>`, leavingT) : body}
     </section>`;
+  return leavingT !== null && !stays ? aiLeave(section, leavingT) : section;
 }

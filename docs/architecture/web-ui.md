@@ -929,7 +929,9 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   (`.cnpy-rise` + `--i`). **Leaving — ONE exit for the whole kit** (`ai-ui.ts` › Leaving): ONE state
   (`state.ai.leaving`, key → when its exit began), ONE class (`.cnpy-ai-leave`, `[data-inline]` for a mark inside a
   line), ONE constant (`AI_EXIT_MS`, 310 ms) and ONE helper (`aiLeaving`, over `aiLeavingT` / `aiLeave`). It covers
-  "Wrong?" on State or a Trov entry (`aiHiddenKey`), "Got it" on the Feed's note (`AI_NOTE_LEAVING`), and every
+  "Wrong?" on State, a Trov entry, the brief tile or a themes range (`aiHiddenKey`; on Where the work went the
+  caption, byline and chart leave INSIDE the card while the other range stays, else the whole card), "Got it" on the
+  Feed's note (`AI_NOTE_LEAVING`), and every
   suggestion an Accept / Dismiss took — a chip, the risk line, a list row's mark, a proposed theme, a Roadmap card
   (`aiSuggestionKey(id)`) — and a Roadmap note or the drift "Wrong?" took. The Tickets queue reuses `aiLeave` for a
   card a refetch finds declined while All is up (its own `state.qLeaving`, `tickets.md` › The default view hides
