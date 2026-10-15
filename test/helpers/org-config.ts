@@ -22,11 +22,9 @@ export async function setOrgEnvironments(envs: RepoEnvConfig[], orgId: string = 
   await env.DB.prepare(`DELETE FROM org_environments WHERE org_id = ?`).bind(orgId).run();
   for (const [i, c] of envs.entries()) {
     await env.DB.prepare(
-      `INSERT INTO org_environments (org_id, key, position, label, note, branch, railway_env, worker, worker_check, frontend_url, api_url,
-         health_path, railway_environment_id, railway_service_id, created_at, updated_at, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'test')`,
-    ).bind(orgId, c.key, i, c.label, c.note ?? null, c.branch, c.railwayEnv, c.worker, c.workerCheck, c.frontendUrl, c.apiUrl,
-      c.healthPath, c.railwayEnvironmentId ?? null, c.railwayServiceId ?? null, AT, AT).run();
+      `INSERT INTO org_environments (org_id, key, position, label, note, branch, frontend_url, api_url, health_path, created_at, updated_at, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'test')`,
+    ).bind(orgId, c.key, i, c.label, c.note ?? null, c.branch, c.frontendUrl, c.apiUrl, c.healthPath, AT, AT).run();
   }
 }
 

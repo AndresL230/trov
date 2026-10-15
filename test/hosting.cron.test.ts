@@ -1,10 +1,10 @@
 /**
  * The hosting providers in the repo cron and Poll now (src/repo/cron.ts) — and their retention.
  *
- *   :40      the `hosting` job: one unit per (org, environment, STORED part) of every active org, costed at
+ *   :40      the `hosting` job: one unit per (org, environment, part) of every active org, costed at
  *            its provider's `pollCost`, served by rotation after health's half of the budget — and NOT a
- *            job at all (health keeps the whole tick) when no org has a stored part.
- *   Poll now a `hosting` arm after usage, present in the result ONLY when the org has a stored part, skipped
+ *            job at all (health keeps the whole tick) when no org has a part.
+ *   Poll now a `hosting` arm after usage, present in the result ONLY when the org has a part, skipped
  *            part by part (`BUDGET_SKIP`) when the whole refresh would not fit the free plan's 50.
  *   prune    `hx_*` points with the other hourly usage series (100 days), `hosting_deploys` at 180 days.
  *
@@ -38,7 +38,7 @@ const API = "https://api.vercel.test";
 function fakeVercel(log: string[], cost = 2): HostingProvider {
   return {
     id: "vercel", label: "Vercel", status: "available", summary: "", roles: ["web"], apiHosts: ["api.vercel.test"], docsUrl: "",
-    credentialScope: "org", connectionMethods: [], orgConfigFields: [], partSettings: [], capabilities: { deploys: true, metrics: ["requests"] },
+    connectionMethods: [], orgConfigFields: [], partSettings: [], capabilities: { deploys: true, metrics: ["requests"] },
     planNote: null, pollCost: cost, consoleUrl: () => null, probe: async () => ({ ok: true, detail: "" }),
     async poll(pc: ProviderContext, part) {
       for (let i = 0; i < cost; i++) await pc.fetch(`${API}/poll/${part.env}/${part.key}`, { headers: { authorization: `Bearer ${pc.credential.secret.reveal()}` } });
@@ -177,10 +177,10 @@ describe("the :40 tick — the hosting job", () => {
 describe("Poll now — the hosting arm", () => {
   const noReconcile = async () => ({ written: 0, unchanged: 0, failed: [] });
 
-  it("an org with no stored part gets exactly the result it always did — no `hosting` key", async () => {
+  it("an org with no part gets no `hosting` key", async () => {
     await setOrgEnvironments(ENVS, ORG_A);
     const res = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, world().fetchImpl, noReconcile, { vercel: fakeVercel([]) });
-    expect(Object.keys(res)).toEqual(["health", "cloudflare", "railway", "sapling", "github"]);
+    expect(Object.keys(res)).toEqual(["health", "sapling", "github"]);
   });
 
   it("with stored parts, one outcome per part — after usage, before GitHub", async () => {
@@ -190,7 +190,7 @@ describe("Poll now — the hosting arm", () => {
     await connect(ORG_A, LONG_TOKEN);
     const log: string[] = [];
     const res = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, world().fetchImpl, noReconcile, { vercel: fakeVercel(log) });
-    expect(Object.keys(res)).toEqual(["health", "cloudflare", "railway", "sapling", "hosting", "github"]);
+    expect(Object.keys(res)).toEqual(["health", "sapling", "hosting", "github"]);
     expect(res.hosting).toEqual([
       { env: "staging", part: "web", provider: "vercel", status: "ok", written: 1 },
       { env: "production", part: "web", provider: "vercel", status: "ok", written: 1 },
@@ -199,21 +199,21 @@ describe("Poll now — the hosting arm", () => {
   });
 
   it("skipped part by part when the WHOLE refresh would not fit the 50 — GitHub keeps its reservation", async () => {
-    await setOrgEnvironments(ENVS, ORG_A);                      // 19 + 7 × 2 = 33 before hosting
+    await setOrgEnvironments(ENVS, ORG_A);                      // 18 + 5 × 2 = 28 before hosting, + 1 for a mint
     await addPart(ORG_A, "staging", "web");
     await addPart(ORG_A, "production", "web");
     await connect(ORG_A, LONG_TOKEN);
     const parts = await listAllParts(systemCtx(ORG_A));
     const log: string[] = [];
-    // 2 × 9 = 18: 51 > 50 — skipped, nothing fetched for them.
-    expect(hostingPollCost(parts, { vercel: fakeVercel([], 9) })).toBe(18);
+    // 2 × 11 = 22: 51 > 50 — skipped, nothing fetched for them.
+    expect(hostingPollCost(parts, { vercel: fakeVercel([], 11) })).toBe(22);
     const w = world();
-    const skipped = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, w.fetchImpl, noReconcile, { vercel: fakeVercel(log, 9) });
+    const skipped = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, w.fetchImpl, noReconcile, { vercel: fakeVercel(log, 11) });
     expect(skipped.hosting).toEqual(parts.map((p) => ({ env: p.env, part: p.key, provider: "vercel", status: "skipped", written: 0, detail: BUDGET_SKIP })));
     expect(log).toEqual([]);
     expect(w.polls()).toEqual([]);
-    // 2 × 8 = 16: 49 fits.
-    const fits = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, world().fetchImpl, noReconcile, { vercel: fakeVercel(log, 8) });
+    // 2 × 10 = 20: 49 fits.
+    const fits = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, world().fetchImpl, noReconcile, { vercel: fakeVercel(log, 10) });
     expect((fits.hosting as { status: string }[]).map((o) => o.status)).toEqual(["ok", "ok"]);
   });
 });

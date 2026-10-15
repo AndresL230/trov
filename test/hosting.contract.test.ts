@@ -3,7 +3,7 @@
 // its state mapping) is tested in test/hosting.provider.<id>.test.ts; this file checks what they must all share.
 import { describe, expect, it } from "vitest";
 import {
-  HOSTING_INTEGRATION_KIND, HOSTING_METRICS, HOSTING_PROVIDERS, LEGACY_PART_KEY, isLegacyProvider, type HostingProviderId,
+  HOSTING_INTEGRATION_KIND, HOSTING_METRICS, HOSTING_PROVIDERS, type HostingProviderId,
 } from "@shared/hosting";
 import { INTEGRATION_KINDS } from "@shared/integrations";
 import { PROVIDERS, allProviders, checkFields, providerDTO } from "../src/hosting/registry";
@@ -95,7 +95,6 @@ describe.each(HOSTING_PROVIDERS.map((id) => [id] as [HostingProviderId]))("provi
     expect(p.pollCost).toBeLessThanOrEqual(10);
     const dto = providerDTO(p, {});
     expect(JSON.parse(JSON.stringify(dto))).toEqual(dto);
-    expect(dto.legacy_part_key).toBe(isLegacyProvider(id) ? LEGACY_PART_KEY[id] : null);
     for (const f of dto.part_settings) if (f.pattern) expect(() => new RegExp(f.pattern!)).not.toThrow();
     // With no Worker vars, nothing that needs one is offered as available.
     for (const m of dto.connection_methods) {

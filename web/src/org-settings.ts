@@ -63,14 +63,13 @@ const ADMIN_TABS: readonly OrgTab[] = ["integrations", "hosting", "notifications
 const idle = <T>(data: T): OrgSlice<T> => ({ status: "idle", data });
 
 /** The environment fields an admin edits (the DTO's, as text; `key` only when adding). */
-export const ENV_TEXT_FIELDS = ["label", "note", "branch", "frontend_url", "api_url", "health_path", "railway_env", "worker", "worker_check", "railway_environment_id", "railway_service_id"] as const;
+export const ENV_TEXT_FIELDS = ["label", "note", "branch", "frontend_url", "api_url", "health_path"] as const;
 export type EnvField = (typeof ENV_TEXT_FIELDS)[number];
 export interface EnvDraft {
   /** null = adding a new environment (its key is `keyDraft`). */
   key: string | null;
   keyDraft: string;
   fields: Record<EnvField, string>;
-  advanced: boolean;
   saving: boolean;
   error: string | null;
   /** The field a refusal is about (`key`, or one of the DTO's), so the message sits beside it. */
@@ -78,12 +77,9 @@ export interface EnvDraft {
 }
 export const blankEnvFields = (): Record<EnvField, string> => ({
   label: "", note: "", branch: "", frontend_url: "", api_url: "", health_path: "/",
-  railway_env: "", worker: "", worker_check: "", railway_environment_id: "", railway_service_id: "",
 });
 export const envFieldsOf = (e: OrgEnvironmentDTO): Record<EnvField, string> => ({
   label: e.label, note: e.note ?? "", branch: e.branch, frontend_url: e.frontend_url, api_url: e.api_url, health_path: e.health_path,
-  railway_env: e.railway_env, worker: e.worker, worker_check: e.worker_check,
-  railway_environment_id: e.railway_environment_id ?? "", railway_service_id: e.railway_service_id ?? "",
 });
 
 export interface MemberDraft {
@@ -435,18 +431,12 @@ const ENV_META: Record<EnvField, { label: string; help: string; placeholder?: st
   frontend_url: { label: "Frontend URL", help: "Where the app is served. https only, no query string.", placeholder: "https://staging.example.com", max: 500 },
   api_url: { label: "API URL", help: "Your backend's base URL. Health checks and app metrics are read from it.", placeholder: "https://api.staging.example.com", max: 500 },
   health_path: { label: "Health path", help: "Added to the API URL for the health ping. Starts with /.", placeholder: "/api/health", max: 200 },
-  railway_env: { label: "GitHub deployment environment", help: "The environment name on this environment's GitHub deployments, for example “Acme / staging”.", max: 200 },
-  worker: { label: "Cloudflare Worker", help: "The frontend Worker's script name, for requests and error rate.", max: 200 },
-  worker_check: { label: "Workers Builds check", help: "The check run Workers Builds posts, for example “Workers Builds: frontend-staging”.", max: 200 },
-  railway_environment_id: { label: "Railway environment ID", help: "Needed with the Railway project token for CPU and memory.", max: 100 },
-  railway_service_id: { label: "Railway service ID", help: "The backend service inside that Railway environment.", max: 100 },
 };
 /** A field's name as the form shows it (`key` is the new environment's Key). */
 export const envFieldLabel = (field: string): string | null =>
   field === "key" ? "Key" : (ENV_META as Record<string, { label: string } | undefined>)[field]?.label ?? null;
 const ENV_BASIC: EnvField[] = ["label", "branch", "note"];
 const ENV_URLS: EnvField[] = ["frontend_url", "api_url", "health_path"];
-const ENV_ADVANCED: EnvField[] = ["railway_env", "worker", "worker_check", "railway_environment_id", "railway_service_id"];
 
 /** The add / edit form. `current` is the stored environment (null when adding); `metricsSet`
  *  whether its app metrics token is stored — what an API URL change would delete. */
@@ -462,8 +452,6 @@ export function envForm(d: EnvDraft, current: OrgEnvironmentDTO | null, metricsS
     `The token is only ever sent to the API URL it was saved for, so pointing <strong style="font-weight:600">${esc(d.fields.label || d.key || "this environment")}</strong> at another host removes it. ${metricsSet ? "After saving, set a new one in Integrations." : "None is stored right now, so nothing is lost."}`,
   )}</div>` : "";
   const general = d.error && (d.errorField === null || !(d.errorField === "key" || (ENV_TEXT_FIELDS as readonly string[]).includes(d.errorField)));
-  const advErr = !!d.errorField && (ENV_ADVANCED as string[]).includes(d.errorField);
-  const open = d.advanced || advErr;
   return `<section${framed ? surface("padding:18px 20px;margin-bottom:24px") : ` style="padding:4px 0 2px"`} data-org-envform aria-labelledby="org-envform-t">
     <h3 id="org-envform-t" style="margin:0 0 14px;font-size:13.5px;font-weight:600">${adding ? "Add an environment" : `Edit ${esc(current?.label ?? d.key ?? "")}`}</h3>
     <div class="cnpy-org-grid">
@@ -473,11 +461,7 @@ export function envForm(d: EnvDraft, current: OrgEnvironmentDTO | null, metricsS
     <div style="${O_LABEL};margin-top:20px">Where it runs</div>
     <div class="cnpy-org-grid" style="margin-top:10px">${ENV_URLS.map(f).join("")}</div>
     ${warn}
-    <button type="button" data-act="orgEnvAdvanced" data-field="orgEnvAdvanced" aria-expanded="${open}" aria-controls="org-env-adv" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;margin-top:18px;padding:4px 0;font-size:12.5px;font-weight:500;color:var(--fg-55);text-align:left"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="transform:${open ? "rotate(90deg)" : "none"};transition:transform .15s ease"><path d="M9 6l6 6-6 6"></path></svg>Advanced: GitHub, Cloudflare and Railway names</button>
-    <div id="org-env-adv"${open ? "" : " hidden"}>
-      <div style="${O_HELP};margin:4px 0 12px">Only needed for the dashboard cards that read these services. Leave any of them empty to skip that card. <span data-org-env-hosting>The Cloudflare and Railway names are this environment's frontend and backend parts; parts on other hosts are set in ${goLink("Hosting", "orgTab", "hosting")}</span></div>
-      <div class="cnpy-org-grid">${ENV_ADVANCED.map(f).join("")}</div>
-    </div>
+    <div style="${O_HELP};margin-top:14px" data-org-env-hosting>What runs it — a Cloudflare Worker, a Railway service, a Vercel project — is set in ${goLink("Hosting", "orgTab", "hosting")}.</div>
     ${general ? `<div role="alert" style="${O_ERR};margin-top:14px">${esc(d.error ?? "")}</div>` : ""}
     <div class="cnpy-xrow-acts" style="margin-top:18px">
       ${accentBtn(d.saving ? "Saving…" : adding ? "Add environment" : moves && metricsSet ? "Save and delete token" : "Save changes", "orgEnvSave", { disabled: !envDraftOk(d) || d.saving, busy: d.saving })}

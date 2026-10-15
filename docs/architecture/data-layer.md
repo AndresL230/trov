@@ -270,9 +270,10 @@ contributes a sanitised display name only (`platformFrom`, `abuse-limits.md`). `
 
 **SaplingLearn's fallback (owner steps).** These Worker secrets are now read ONLY by `resolveCredential`'s
 `org_saplinglearn` fallback (and by the cron's log scrubber): `GITHUB_SERVICE_TOKEN`, `GITHUB_WEBHOOK_SECRET`,
-`CF_ANALYTICS_TOKEN` + `CF_ANALYTICS_ACCOUNT_ID`, `RAILWAY_TOKEN_<ENV>`, `SAPLING_METRICS_TOKEN`. Each stops
-being read the moment SaplingLearn's admin stores that integration on the Integrations screen (a stored
-secret wins). The cleanup phase deletes the fallback, those secrets, the legacy hook route and the
+`CF_ANALYTICS_TOKEN` + `CF_ANALYTICS_ACCOUNT_ID` (its Cloudflare hosting provider's token, and the account id
+through `resolveIntegrationConfig`), `SAPLING_METRICS_TOKEN`. Each stops being read the moment SaplingLearn's
+admin stores that integration (a stored secret wins). Railway has no fallback: the old per-environment
+`RAILWAY_TOKEN_<ENV>` project tokens cannot answer for its ONE org-wide workspace connection. The cleanup phase deletes the fallback, those secrets, the legacy hook route and the
 `legacy_hook` flag.
 
 ## Routes and gates (Phase 4 — spec §5, §6)

@@ -36,9 +36,9 @@ requests. While items are still waiting, the browser asks for another batch — 
 
 The batch that **ends** the run (nothing left to summarize, or the tenth) then runs the **closing
 refresh** — `reconcileRepo`, the same job as the scheduled one: open and recently closed pull requests,
-recent commits, deployments, workflow runs and failed job names, each environment's latest commit and its
-check runs, commit statuses, reviews, branches and branch drift (19 + 2N GitHub requests for N
-environments). Each part is independent: one that fails is named, and the others still land.
+recent commits, workflow runs and failed job names, each environment's latest commit and its
+check runs, commit statuses, reviews, branches and branch drift (18 + 2N GitHub requests for N
+environments; an environment's deploys come from its hosting provider, not GitHub). Each part is independent: one that fails is named, and the others still land.
 
 ### The credential
 

@@ -66,26 +66,10 @@ function fromPullRequest(p: Obj): RepoEvent[] {
   }];
 }
 
-function fromDeploymentStatus(p: Obj, envs: RepoEnvConfig[]): RepoEvent[] {
-  const st = obj(p.deployment_status);
-  const dep = obj(p.deployment);
-  const id = num(dep?.id);
-  const state = str(st?.state);
-  const at = str(st?.created_at);
-  const ghEnv = str(dep?.environment);
-  if (!st || !dep || id === null || !state || !at || !ghEnv) return [];
-  const cfg = envs.find((e) => e.railwayEnv === ghEnv);
-  if (!cfg) return []; // preview / unknown environment — not one the dashboard reports on
-  return [{
-    semantic_key: `gh:deploy:${id}:${state}`,
-    kind: "deploy", number: id, env: cfg.key, part: "backend", sha: str(dep.sha), state, name: ghEnv,
-    actor_login: str(obj(dep.creator)?.login), url: str(st.log_url),
-    raw: JSON.stringify({ ref: str(dep.ref), status_id: num(st.id), deployment_created_at: str(dep.created_at) }),
-    provenance: "webhook", occurred_at: at,
-  }];
-}
-
-function fromCheckRun(p: Obj, envs: RepoEnvConfig[]): RepoEvent[] {
+/** Every check run, as it is: name, conclusion, details link and — in `raw` — the GitHub App that posted it
+ *  (src/hosting/detect.ts reads that). It is never an environment's DEPLOY any more: a host's deploys come
+ *  from its provider (`hosting_deploys`), so `env` / `part` stay null. */
+function fromCheckRun(p: Obj): RepoEvent[] {
   const action = str(p.action);
   const cr = obj(p.check_run);
   if (!cr || (action !== "created" && action !== "completed")) return [];
@@ -95,13 +79,11 @@ function fromCheckRun(p: Obj, envs: RepoEnvConfig[]): RepoEvent[] {
   const at = action === "completed" ? str(cr.completed_at) : str(cr.started_at);
   if (id === null || !name || !sha || !at) return [];
   const ref = str(obj(cr.check_suite)?.head_branch);
-  // A Workers Builds check is a DEPLOY only on the branch that environment ships from.
-  const cfg = envs.find((e) => e.workerCheck === name && e.branch === ref) ?? null;
   return [{
     semantic_key: `gh:check:${id}:${action}`,
     kind: "check", number: id, sha, ref, name,
     state: action === "completed" ? (str(cr.conclusion) ?? "neutral") : "pending",
-    env: cfg?.key ?? null, part: cfg ? "frontend" : null, url: str(cr.details_url),
+    url: str(cr.details_url),
     raw: JSON.stringify({ app: str(obj(cr.app)?.slug), status: str(cr.status) }),
     provenance: "webhook", occurred_at: at,
   }];
@@ -223,14 +205,16 @@ export function metricsFromStatus(payload: unknown, envs: RepoEnvConfig[]): Stat
   return { metrics: [{ metric: spec.metric, env: "", part: "", value, at }], dropped: null };
 }
 
-export function repoEventsFromDelivery(eventName: string, payload: unknown, envs: RepoEnvConfig[]): RepoEvent[] {
+/** A `deployment_status` is no longer captured: an environment's deploys come from its hosting
+ *  provider (src/hosting/, `hosting_deploys`), not from GitHub deployments matched to a configured
+ *  environment name. Rows captured before 0056 (`kind = 'deploy'`) stay as they are. */
+export function repoEventsFromDelivery(eventName: string, payload: unknown): RepoEvent[] {
   const p = obj(payload);
   if (!p) return [];
   switch (eventName) {
     case "push": return fromPush(p);
     case "pull_request": return fromPullRequest(p);
-    case "deployment_status": return fromDeploymentStatus(p, envs);
-    case "check_run": return fromCheckRun(p, envs);
+    case "check_run": return fromCheckRun(p);
     case "workflow_run": return fromWorkflowRun(p);
     case "pull_request_review": return fromReview(p);
     default: return [];

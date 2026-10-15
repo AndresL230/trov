@@ -104,7 +104,6 @@ describe("fly descriptor", () => {
     expect([...fly.apiHosts]).toEqual(["api.machines.dev", "api.fly.io"]);
     for (const h of fly.apiHosts) expect(h).toMatch(/^[a-z0-9.-]+$/);
     expect([...fly.roles]).toEqual(["web", "service"]);
-    expect(fly.credentialScope).toBe("org");
     expect(fly.connectionMethods.map((m) => m.method)).toEqual(["token"]);
     const how = fly.connectionMethods[0].howTo;
     expect(how).toContain("fly tokens create readonly");

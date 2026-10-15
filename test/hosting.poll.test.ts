@@ -18,7 +18,7 @@ import { setOrgEnvironments } from "./helpers/org-config";
 import { ORG_A, ORG_B, bearerCtx, systemCtx, tenantCtx } from "./helpers/tenant";
 import { ENVS } from "./helpers/repo";
 import { setIntegrationConfig, setSecret } from "../src/data/secrets";
-import { listStoredParts } from "../src/hosting/parts";
+import { listAllParts } from "../src/hosting/parts";
 import { HostingError } from "../src/hosting/http";
 import { mergeCovered, pollPart, runHostingPolls, validatePoll, type ProviderMap } from "../src/hosting/poll";
 import { JobAccessError } from "../src/platform/jobs";
@@ -34,7 +34,7 @@ const API = "https://api.vercel.test";
 function fake(poll: (pc: ProviderContext) => Promise<Partial<PollResult>>, over: Partial<HostingProvider> = {}): HostingProvider {
   return {
     id: "vercel", label: "Vercel", status: "available", summary: "", roles: ["web"], apiHosts: ["api.vercel.test"], docsUrl: "",
-    credentialScope: "org", connectionMethods: [],
+    connectionMethods: [],
     orgConfigFields: [{ key: "team", label: "Team", description: "", required: false, pattern: /^[a-z-]+$/ }],
     partSettings: [{ key: "project_id", label: "Project ID", description: "", required: true, pattern: /^prj_[A-Za-z0-9]+$/ }],
     capabilities: { deploys: true, metrics: ["requests", "errors", "latency_p95_ms", "bandwidth_bytes"] }, planNote: null, pollCost: 2,
@@ -71,12 +71,12 @@ async function setup(o: { credential?: boolean } = {}) {
     await setSecret(admin, "vercel", "", LONG_TOKEN);
     await setIntegrationConfig(admin, "vercel", "", { team: "acme" });
   }
-  const [part] = await listStoredParts(systemCtx(ORG_A));
+  const [part] = await listAllParts(systemCtx(ORG_A));
   return part;
 }
 
 const poll = async (provider: HostingProvider, now = NOW, fetchImpl: typeof fetch = recorder().fetchImpl): Promise<HostingPollOutcome> => {
-  const [part] = await listStoredParts(systemCtx(ORG_A));
+  const [part] = await listAllParts(systemCtx(ORG_A));
   return pollPart(e, systemCtx(ORG_A), part, now, fetchImpl, { vercel: provider } as ProviderMap);
 };
 const metrics = () => all<{ metric: string; env: string; part: string; at: string; value: number }>(env.DB,
@@ -271,7 +271,7 @@ describe("pollPart — the covered interval", () => {
     // The part re-pointed to another provider: the old provider's history is not the new one's.
     await env.DB.prepare(`UPDATE org_environment_parts SET provider = 'render', settings = '{}' WHERE org_id = ? AND part_key = 'web'`).bind(ORG_A).run();
     await setSecret(await tenantCtx("AndresL230"), "render", "", `rnd_${LONG_TOKEN}`);
-    const [part] = await listStoredParts(systemCtx(ORG_A));
+    const [part] = await listAllParts(systemCtx(ORG_A));
     const render = fake(async () => ({ covered: { from: "2026-09-20T19:00:00Z", to: "2026-09-20T22:00:00Z" } }), { id: "render", label: "Render", partSettings: [] });
     await pollPart(e, systemCtx(ORG_A), part, NOW + 10 * HOUR, recorder().fetchImpl, { render });
     expect(await state()).toMatchObject({ provider: "render", status: "ok", covered_from: "2026-09-20T19:00:00.000Z", covered_to: "2026-09-20T22:00:00.000Z" });
@@ -295,7 +295,7 @@ describe("pollPart — skipped before any request", () => {
     const polled = vi.fn(async () => ({}));
     expect(await poll(fake(polled, { status: "later" }))).toMatchObject({ status: "skipped", detail: "not supported yet" });
     // No provider in the map at all reads the same.
-    const [part] = await listStoredParts(systemCtx(ORG_A));
+    const [part] = await listAllParts(systemCtx(ORG_A));
     expect(await pollPart(e, systemCtx(ORG_A), part, NOW, recorder().fetchImpl, {})).toMatchObject({ status: "skipped", detail: "not supported yet" });
     await env.DB.prepare(`UPDATE org_environment_parts SET settings = '{"project_id":"oops value"}' WHERE org_id = ?`).bind(ORG_A).run();
     expect(await poll(fake(polled))).toMatchObject({ status: "skipped", detail: "Project ID is not in the expected form" });
@@ -308,16 +308,6 @@ describe("pollPart — skipped before any request", () => {
     expect(polled).not.toHaveBeenCalled();
     // A skip uses no credential: nothing recorded on the integration row.
     expect(await secretRow()).toEqual({ last_used_at: null, last_error: null });
-  });
-
-  it("a legacy part is the usage job's — never polled here, no state written", async () => {
-    await setOrgEnvironments(ENVS, ORG_A);
-    const [legacy] = (await import("../src/hosting/parts")).legacyParts({
-      key: "staging", label: "staging", branch: "main", position: 0, railway_env: "", worker: "frontend-staging", worker_check: "",
-      railway_environment_id: null, railway_service_id: null, updated_at: "", updated_by: "",
-    });
-    expect(await pollPart(e, systemCtx(ORG_A), legacy, NOW)).toMatchObject({ status: "skipped", detail: "polled by the hourly usage job" });
-    expect(await all(env.DB, `SELECT 1 FROM hosting_poll_state`)).toEqual([]);
   });
 });
 
@@ -386,9 +376,9 @@ describe("pollPart — a failure never lets the credential out", () => {
   });
 });
 
-describe("runHostingPolls — one org's stored parts, as that org", () => {
-  it("not_configured with no stored part (an org on the legacy parts alone included); a bearer context is refused", async () => {
-    await setOrgEnvironments(ENVS, ORG_A); // legacy Cloudflare + Railway parts, no stored one
+describe("runHostingPolls — one org's parts, as that org", () => {
+  it("not_configured with no part (environments alone are not parts); a bearer context is refused", async () => {
+    await setOrgEnvironments(ENVS, ORG_A); // environments, no part
     expect(await runHostingPolls(e, systemCtx(ORG_A), NOW, recorder().fetchImpl, {})).toBe("not_configured");
     await expect(runHostingPolls(e, await bearerCtx("AndresL230"), NOW)).rejects.toBeInstanceOf(JobAccessError);
   });

@@ -1,8 +1,9 @@
 // Org settings › Integrations — the org's credentials (canopy-multitenancy.md §8.7).
 //
 // Every integration the org is EXPECTED to have is listed, set or not, grouped: GitHub
-// (the token, one webhook secret per repository), Cloudflare, then one group per
-// environment (Railway, app metrics). The tab reads top-down as a summary: a lead line
+// (the token, one webhook secret per repository), Hosting (each provider a part uses —
+// Cloudflare, Railway, Vercel, …, one org-wide credential each), then one group per
+// environment (its app metrics token). The tab reads top-down as a summary: a lead line
 // (how many are set, how many have an error), then per group a list of ROWS that each show
 // a name, its status in words and ONE action — Set while it has no value, Test once it
 // does. A row opens (org-ui.ts `openRow`) to the rest: what the credential is for, who set
@@ -27,6 +28,7 @@ import {
 import { kindMark, type StateKind } from "./marks";
 import type { MyOrg } from "@shared/orgs";
 import type { IntegrationDTO, IntegrationKind, OrgAuditDTO } from "@shared/integrations";
+import { providerOfKind } from "@shared/hosting";
 import type { OrgUi } from "./org-settings";
 import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, existingLink, githubAppRow } from "./github-app";
 import type { GithubAppStatusDTO } from "@shared/github-app";
@@ -69,21 +71,21 @@ export const WEBHOOKS_LIVE = true;
 
 /** Each kind's name when the list no longer carries it (the history of a deleted one) — the catalog's own labels. */
 const KIND_NAME: Record<IntegrationKind, string> = {
-  github_token: "GitHub token", github_webhook: "GitHub webhook secret", cloudflare_analytics: "Cloudflare analytics",
-  railway: "Railway project token", metrics_endpoint: "App metrics endpoint",
+  github_token: "GitHub token", github_webhook: "GitHub webhook secret", cloudflare_analytics: "Cloudflare token",
+  railway: "Railway token", metrics_endpoint: "App metrics endpoint",
   vercel: "Vercel connection", render: "Render API key", netlify: "Netlify connection", fly: "Fly.io token", aws: "AWS role",
 };
 /** What the field holds, in the form's own words. */
 const VALUE_WORD: Record<IntegrationKind, string> = {
-  github_token: "Token", github_webhook: "Secret", cloudflare_analytics: "API token", railway: "Project token", metrics_endpoint: "Token",
+  github_token: "Token", github_webhook: "Secret", cloudflare_analytics: "API token", railway: "Token", metrics_endpoint: "Token",
   vercel: "Access token", render: "API key", netlify: "Access token", fly: "Token", aws: "Role",
 };
 /** What stops working when the credential is deleted — the confirmation's first sentence. */
 export const SECRET_DELETE_EFFECT: Record<IntegrationKind, string> = {
   github_token: "Sync GitHub, the scheduled reconcile and the Repo dashboard's reads of the primary repository stop until a new token is set.",
   github_webhook: "Deliveries to this repository's webhook can no longer be verified, so they are rejected until a new secret is set.",
-  cloudflare_analytics: "Requests and error rate for every environment's frontend stop updating.",
-  railway: "CPU and memory for this environment's backend stop updating.",
+  cloudflare_analytics: "Requests and error rate of every part hosted on Cloudflare stop updating.",
+  railway: "Every part hosted on Railway stops updating.",
   metrics_endpoint: "Active users and product counters for this environment stop updating.",
   vercel: "Deploys and usage of every part hosted on Vercel stop updating.",
   render: "Deploys, CPU and memory of every part hosted on Render stop updating.",
@@ -92,7 +94,7 @@ export const SECRET_DELETE_EFFECT: Record<IntegrationKind, string> = {
   aws: "CloudWatch metrics of every part hosted on AWS stop updating.",
 };
 
-/** An integration named in a sentence: "GitHub token", "Railway project token for Staging". */
+/** An integration named in a sentence: "GitHub token", "App metrics endpoint for Staging". */
 export function integrationLabel(i: Pick<IntegrationDTO, "label" | "scope_label">): string {
   return i.scope_label ? `${i.label} for ${i.scope_label}` : i.label;
 }
@@ -127,17 +129,17 @@ export function integrationCounts(list: IntegrationDTO[]): { expected: number; s
 }
 
 export interface IntegrationGroup { key: string; title: string; hint: string; rows: IntegrationDTO[] }
-/** The page's groups, in order: GitHub, Cloudflare, one per environment, then stored secrets nothing claims. */
+/** The page's groups, in order: GitHub, Hosting, one per environment, then stored secrets nothing claims. */
 export function groupIntegrations(list: IntegrationDTO[]): IntegrationGroup[] {
   const expected = list.filter((i) => i.expected);
   const groups: IntegrationGroup[] = [
     { key: "github", title: "GitHub", hint: "Reading the primary repository, and checking each repository's webhook deliveries.", rows: expected.filter((i) => i.kind === "github_token" || i.kind === "github_webhook") },
-    { key: "cloudflare", title: "Cloudflare", hint: "Requests and error rate for every environment's frontend Worker.", rows: expected.filter((i) => i.kind === "cloudflare_analytics") },
+    { key: "hosting", title: "Hosting", hint: "One credential for each host your environments' parts run on.", rows: expected.filter((i) => providerOfKind(i.kind) !== null) },
   ];
   for (const i of expected.filter((x) => x.scope_type === "environment")) {
     const key = `env:${i.scope}`;
     let g = groups.find((x) => x.key === key);
-    if (!g) { g = { key, title: `${i.scope_label ?? i.scope} environment`, hint: "This environment's backend metrics and product counters.", rows: [] }; groups.push(g); }
+    if (!g) { g = { key, title: `${i.scope_label ?? i.scope} environment`, hint: "This environment's active users and product counters.", rows: [] }; groups.push(g); }
     g.rows.push(i);
   }
   const orphans = list.filter((i) => !i.expected);
@@ -407,7 +409,7 @@ export function integrationsTab(org: MyOrg, ui: OrgUi): string {
       <ul${surface(LIST)}>${g.rows.map((i) => integrationRow(i, { secretsAvailable: d.secrets_available, test: ui.tests[integrationKey(i)], open: ui.openRows.includes(integrationKey(i)) })).join("")}</ul>
     </section>`;
   }).join("");
-  const envHint = noEnv ? `<div style="margin-top:30px">${orgEmpty("No environment tokens yet", "Each environment gets a Railway project token and an app metrics token. Add an environment first.", quietBtn("Open Environments", "orgTab", { arg: "environments" }))}</div>` : "";
+  const envHint = noEnv ? `<div style="margin-top:30px">${orgEmpty("No environment tokens yet", "Each environment gets an app metrics token. Add an environment first.", quietBtn("Open Environments", "orgTab", { arg: "environments" }))}</div>` : "";
   return `${banner}${lead}${sections}${envHint}
     <section aria-labelledby="org-int-safe" data-org-group="safe">
       ${orgHead("Key and history", "", null, "org-int-safe")}

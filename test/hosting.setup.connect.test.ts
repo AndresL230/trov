@@ -113,11 +113,12 @@ describe("the connection list", () => {
     const byKey = (l: HostingConnectionDTO[]) => Object.fromEntries(l.map((c) => [`${c.provider}:${c.scope}`, c]));
 
     let l = byKey(await list());
-    expect(Object.keys(l)).toEqual(["cloudflare:", "railway:staging", "railway:production", "vercel:"]);
+    expect(Object.keys(l)).toEqual(["cloudflare:", "railway:", "vercel:"]);
     expect(l["vercel:"]).toMatchObject({ status: "not_connected", method: null, account: null, legacy_fallback: false, used_by: [{ env: "staging", part: "web" }], scope_label: null, manage_url: null });
     // SaplingLearn's cut-over: a legacy Worker secret answers for Cloudflare (the list says so; it is not "connected").
     expect(l["cloudflare:"]).toMatchObject({ status: "not_connected", legacy_fallback: true, used_by: [{ env: "staging", part: "frontend" }, { env: "production", part: "frontend" }] });
-    expect(l["railway:staging"]).toMatchObject({ scope_label: "staging", used_by: [{ env: "staging", part: "backend" }], manage_url: null });
+    // Railway's credential is ONE org-wide connection, used by every environment's backend.
+    expect(l["railway:"]).toMatchObject({ scope_label: null, legacy_fallback: false, used_by: [{ env: "staging", part: "backend" }, { env: "production", part: "backend" }] });
 
     await setSecret(ctx, "vercel", "", PASTED);
     l = byKey(await list());
@@ -732,7 +733,7 @@ describe("the Integrations page keeps an install row honest", () => {
 });
 
 describe("test connection: POST /hosting/:provider/test", () => {
-  it("Cloudflare runs its Integrations probe and records the outcome; the answer carries the connection", async () => {
+  it("Cloudflare runs its provider's probe (one request, to Cloudflare only) and records the outcome; the answer carries the connection", async () => {
     await seedOrgSettings();
     const ctx = await tenantCtx("AndresL230");
     await setSecret(ctx, "cloudflare_analytics", "", LONG_TOKEN);
@@ -747,10 +748,10 @@ describe("test connection: POST /hosting/:provider/test", () => {
     expect(r.status).toBe(200);
     const dto = r.json as unknown as HostingTestDTO;
     expect(dto.ok).toBe(true);
-    expect(dto.detail).toContain("Cloudflare answered");
     expect(dto.connection).toMatchObject({ provider: "cloudflare", status: "connected", last_error: null, manage_url: "https://dash.cloudflare.com/profile/api-tokens" });
     expect(dto.connection.last_used_at).not.toBeNull();
-    expect(seen).toEqual(["https://api.cloudflare.com/client/v4/graphql"]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].startsWith("https://api.cloudflare.com/")).toBe(true);
     expect(leakedFragments(JSON.stringify(r.json), LONG_TOKEN)).toEqual([]);
   });
 
@@ -763,9 +764,10 @@ describe("test connection: POST /hosting/:provider/test", () => {
     expect((await t("vercel", { env: "staging", part: "frontend" })).status).toBe(404);
     expect((await t("vercel", { env: "staging" })).status).toBe(400);
     expect((await t("vercel", { scope: "staging" })).json).toMatchObject({ field: "scope" });
-    expect((await t("railway", {})).json).toMatchObject({ field: "scope" });
-    expect((await t("railway", { env: "staging", part: "backend", scope: "production" })).json).toMatchObject({ field: "scope" });
-    expect((await t("railway", { env: "staging", part: "backend" })).json).toMatchObject({ error: "not_configured" }); // scope = the part's environment
+    // Railway's credential is org-wide like every provider's: it takes no scope.
+    expect((await t("railway", {})).json).toMatchObject({ error: "not_configured" });
+    expect((await t("railway", { scope: "staging" })).json).toMatchObject({ field: "scope" });
+    expect((await t("railway", { env: "staging", part: "backend" })).json).toMatchObject({ error: "not_configured" });
     expect((await t("vercel", {}, await roleCookie("casey", "member"))).status).toBe(403);
   });
 });

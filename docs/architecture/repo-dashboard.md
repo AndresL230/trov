@@ -52,10 +52,11 @@ issue's subject, not who merged/closed, so the feed never claims an actor it doe
 **Owner prerequisites — what must be true OUTSIDE this repo** (the one place they are listed):
 - **The target repo's GitHub webhook must be SUBSCRIBED to every name in `REPO_EVENT_NAMES`**
   (`src/webhook.ts`; for an org connected through the GitHub App the subscription is the App's own event
-  list, set once on the App — `github-app.md`): `pull_request`, `push`, `pull_request_review`, `deployment_status`, `check_run`,
+  list, set once on the App — `github-app.md`): `pull_request`, `push`, `pull_request_review`, `check_run`,
   `workflow_run`, `status`. Every capture arm exists, but GitHub delivers only what the hook subscribes to.
-  Without `deployment_status` / `check_run` / `workflow_run`, reconcile is the ONLY source of deploys, checks
-  and runs (up to 6 hours late). The same now holds for `pull_request_review` and `status`: without them the
+  (`deployment_status` is no longer read — a delivery is verified and ignored: an environment's deploys come
+  from its hosting provider, `hosting-providers.md`.) Without `check_run` / `workflow_run`, reconcile is the
+  ONLY source of checks and runs (up to 6 hours late). The same now holds for `pull_request_review` and `status`: without them the
   reconcile's `reviews` and `statuses` arms are the only source (up to 6 hours late, or an admin's Poll now),
   and a review on a PR outside the 30 most recently updated OPEN ones, or older than that PR's last 10, is
   never backfilled (which is why a polled review never opens the contributors' `R` gate — see below).
@@ -74,15 +75,12 @@ issue's subject, not who merged/closed, so the feed never claims an actor it doe
   more (`data-layer.md` › Configuration and credentials). The org needs a PRIMARY repository (Org settings ›
   Repositories, `org_repos`) and its environments (Org settings › Environments, `org_environments`, in
   `position` order); a GitHub credential — its App installation, else a stored `github_token`
-  (`resolveGithubCredential`, `github-app.md`); and, optionally, on Org settings › Integrations: Cloudflare
-  analytics (token + account id), and per environment a Railway project token and an app-metrics token
-  (`resolveCredential`). The Worker secrets of the same purpose (`GITHUB_SERVICE_TOKEN`, `CF_ANALYTICS_*`,
-  `RAILWAY_TOKEN_*`, `SAPLING_METRICS_TOKEN`) answer for SaplingLearn ALONE, only until it stores each
-  (`env.md` › Legacy); the vars `GITHUB_REPO` / `REPO_ENVIRONMENTS` are read by nothing. **The Cloudflare and Railway query shapes were
-  built to the vendors' documentation, never verified against a live call** (no token was available to the
-  build), and Railway's docs do not confirm a PROJECT token may read `metrics` — the first live poll of each
-  is an owner check. A refusal is a logged failure: nothing is written, the section stays `not_connected`,
-  nothing false is ever shown.
+  (`resolveGithubCredential`, `github-app.md`); and, optionally, on Org settings › Integrations, an app-metrics
+  token per environment (`resolveCredential`). What HOSTS an environment — Cloudflare, Railway, Vercel, … — is
+  its parts, each provider with ONE org-wide credential (Org settings › Hosting, `hosting-providers.md`). The
+  Worker secrets of the same purpose (`GITHUB_SERVICE_TOKEN`, `CF_ANALYTICS_*`, `SAPLING_METRICS_TOKEN`)
+  answer for SaplingLearn ALONE, only until it stores each (`env.md` › Legacy); the vars `GITHUB_REPO` /
+  `REPO_ENVIRONMENTS` are read by nothing.
 - **After a merge that changes `[triggers] crons`, run `wrangler triggers deploy`** — a Workers Builds deploy
   did NOT update the schedule (observed 2026-09-20).
 
@@ -97,26 +95,24 @@ arm: a failure is logged scrubbed with `org=<id>`, recorded on THAT org's integr
 on. An org with no environment and no primary repository has no unit and costs nothing.
 - **every tick** — `health`: `pingHealth`, 2 requests per (org, environment), no credential. Also two D1-only
   cross-org sweeps: `expireDueHandoffs` and `expireGifts` (a lapsed gifted plan moves to Free).
-- **`:00`, every hour** — `usage` and no other heavy job: per (org, environment) the three pollers
-  (`usageForEnv`), each in its own guarded arm and each skipped entirely when THAT org has no credential for
-  it: `pollCloudflare` (1 GraphQL request; needs the org's `cloudflare_analytics` token AND its account id),
-  `pollRailway` (1; the `railway` token stored for that environment), `pollSaplingMetrics` (1 GET,
-  `redirect: "manual"` so never a second hop; the `metrics_endpoint` token stored for that environment). With
-  the tick's own pings that is **5 requests per environment** (`HEALTH_COST` 2 + `USAGE_COST` 3). The pollers
-  run one after another, each fetch under its own timeout: worst case ≈ 64 s of wall clock for two
-  environments, all I/O wait. The cron ignores the outcomes (the pollers log their own failures).
+- **`:00`, every hour** — `usage` and no other heavy job: per (org, environment) the app's own metrics
+  endpoint (`usageForEnv` → `pollSaplingMetrics`, 1 GET, `redirect: "manual"` so never a second hop), in a
+  guarded arm and skipped entirely when THAT org has no `metrics_endpoint` token for that environment. With
+  the tick's own pings that is **3 requests per environment** (`HEALTH_COST` 2 + `USAGE_COST` 1); worst case
+  ≈ 16 s of wall clock per environment, all I/O wait. The cron ignores the outcomes (the poller logs its own
+  failures). A HOST's usage (Cloudflare, Railway, …) is not read here: it is the `:40` `hosting` job's.
 - **every 6th hour** (UTC hour % 6 = 0) — `:10` `progress`: `recomputeAllProgress` per org, UNBOUNDED (one
   request per issue number of every array-ref sprint; budgeted as an estimate, `PROGRESS_COST_ESTIMATE`);
-  `:20` `reconcile`: `runReconcileJob` per org (`reconcileRepo`, 19 + 2N worst case for N environments,
+  `:20` `reconcile`: `runReconcileJob` per org (`reconcileRepo`, 18 + 2N worst case for N environments,
   below — plus one request when an App installation token has to be minted, and the org image's import that
   rides the same unit: `reconcileCost`; logs `failed` when non-empty); `:30` `pruneRepoCapture` + `pruneOAuth`
   (D1 only, cross-org). `:10` and `:20` skip, without a word, an org with no primary repository or no GitHub
   credential; `:30` and the pings run regardless.
-- **`:40`, every hour** — the `hosting` job (0056; `hosting-providers.md`): one unit per (org, environment, STORED
-  part) from `listPartUnits`, each costing its provider's `pollCost` (≤ 6), served by rotation like the others; health
-  keeps half the budget on this tick only when some org has a stored part. With no stored part anywhere `:40` has
-  no heavy job and is a plain health tick (below). Legacy Cloudflare / Railway parts stay on the `:00` usage job.
-- `:50`, `:40` when no org has a stored part, and `:10`–`:30` of any other hour, ping health and nothing else — and then the AI pass
+- **`:40`, every hour** — the `hosting` job (0056; `hosting-providers.md`): one unit per (org, environment, part)
+  from `listPartUnits` — Cloudflare and Railway parts included — each costing its provider's `pollCost` (≤ 6),
+  served by rotation like the others; health keeps half the budget on this tick only when some org has a part.
+  With no part anywhere `:40` has no heavy job and is a plain health tick (below).
+- `:50`, `:40` when no org has a part, and `:10`–`:30` of any other hour, ping health and nothing else — and then the AI pass
   (`src/ai/pass.ts`, `ai.md`) on what the pings left of the budget, on every tick with no heavy job. Its job
   registry is empty, so today it reads and fetches nothing.
 
@@ -263,28 +259,18 @@ GitHub (`POST /admin/backfill`) and the cron's 6-hourly `:20` tick, so a repo no
 heals within 6 hours (an admin's "Poll now" runs it too). Every caller needs the org's primary repository and
 a GitHub credential (`resolveGithubCredential`: its App installation's token, else its stored `github_token`).
 Its arms, each in its own `safely`
-block: open PRs (+ the `prs_reconciled` marker), closed PRs, the pre-capture commit window, deployments,
+block: open PRs (+ the `prs_reconciled` marker), closed PRs, the pre-capture commit window,
 completed workflow runs, the failing-job label pass, the environment heads, each environment's head checks,
 the `canopy/*` commit statuses, PR reviews, branches, drift. It returns `{ written, unchanged, failed: string[] }` — `failed` NAMES every arm that threw
-(`"deployments"`, `"runs"`, …); `/admin/backfill` passes that through as its `repo` object and the cron logs
+(`"runs"`, `"checks"`, …); `/admin/backfill` passes that through as its `repo` object and the cron logs
 it.
-- **Deployments are ONE GraphQL request** (`ghGraphql` beside `ghJson`; throws on non-2xx AND on an `errors`
-  body), filtered server-side by `environments: [<every cfg.railwayEnv>]` with `statuses(first:10)` inline —
-  deployments are selected by ENVIRONMENT NAME, only heads and checks are per branch; the arm is skipped when
-  no environment is configured. Each status is re-wrapped into the WEBHOOK's `deployment_status` payload
-  shape and put back through the pure `repoEventsFromDelivery`, so there is one derivation of a deploy row.
-  Verified live: `databaseId` EQUALS the REST/webhook `deployment.id` (so `gh:deploy:<id>:<state>` still
-  collides with a webhook row), `state` arrives UPPERCASE and is lowercased, a Bot creator's `login` arrives
-  WITHOUT the `[bot]` suffix and is re-suffixed, and a GraphQL status has no numeric id, so `raw.status_id` is
-  `null`, never invented.
 - **The failing-job label pass reads the BACKLOG, not this run's writes**: the ≤5 newest `run` rows of the
   last 7 days whose state is `failure`/`timed_out` and whose `title IS NULL` (`untitledFailedRuns`) each get
   a `fillFailedJob`, so a first Sync's leftovers drain over later ones. (The webhook calls `fillFailedJob`
   itself for a failed `workflow_run` delivery.)
-- **Which environment a Workers Builds check belongs to is decided by NAME + HEAD SHA**, not by the branch
-  the poll asked for: the owner is the config whose `workerCheck` matches the run's name AND whose captured
-  head equals the run's `head_sha` (falling back to the polled branch) — two branches sharing a HEAD
-  otherwise left one environment permanently untagged.
+- **A head check run is captured as it is** (name, conclusion, details link, the posting App's slug in `raw`
+  — `src/hosting/detect.ts` reads it), never as an environment's deploy; the list item may omit
+  `check_suite.head_branch`, so the branch the poll asked for stands in.
 - **The `statuses` arm closes coverage / bundle / TODO** (they used to arrive ONLY as `status` deliveries):
   ONE `GET /commits/<ref>/statuses?per_page=100`, `<ref>` = the head sha the env_heads arm just read for the
   FIRST environment's branch (the branch name when that read failed; `main` with no environment). Each
@@ -304,10 +290,10 @@ it.
   the webhook's `dismissed` action only (key `…:dismissed`) — its state at submission is no longer knowable,
   and a guessed `…:submitted` row would shadow the real one forever. PENDING reviews and ones with no author
   or no `submittedAt` are skipped.
-- Worst case **19 + 2N outbound requests** for N environments (23 for two): 2 PR lists + 1 commit window + 1
-  GraphQL deployments + 1 workflow-run list + ≤5 job lookups + 1 status list + 1 GraphQL reviews + ≤5 branch
-  pages + ≤2 drift compares + 2 per environment (head commit, head checks). Under an admin Sync it shares the
-  invocation with `runBackfill`'s ~13 (36 for two environments).
+- Worst case **18 + 2N outbound requests** for N environments (22 for two): 2 PR lists + 1 commit window + 1
+  workflow-run list + ≤5 job lookups + 1 status list + 1 GraphQL reviews + ≤5 branch pages + ≤2 drift
+  compares + 2 per environment (head commit, head checks). Under an admin Sync it shares the invocation with
+  `runBackfill`'s ~13 (35 for two environments).
 - **`/admin/backfill` runs it once per Sync, on the batch that ENDS the loop**: the batch whose
   `summaryBudgetExhausted` reads `false`, OR the one that hits the SPA's own cap while still exhausted —
   `isFinalBackfillBatch(result, batch?, of?)` (`src/tools/backfill.ts`); `runAdminBackfillLoop`
@@ -340,21 +326,22 @@ points. All three read `empty`, not `not_connected`, once a point has EVER lande
 **"Poll now" — health, usage and GitHub on demand; NOT the issue-derived sections** (`POST /admin/poll`; session-cookie,
 admin-only — a non-admin is 403 `{ error: "admin only" }` — no request body, NEVER an MCP tool). It calls
 `runLockedRepoRefresh(env, ctx, handle, Date.now())` → `runRepoRefresh` (`src/repo/cron.ts`) for the
-CALLER's org — its repo, environments and stored credentials — which runs three sources **in this order, each in
+CALLER's org — its repo, environments and stored credentials — which runs its sources **in this order, each in
 its OWN guarded arm** (a failure in one never skips another): **health** (`pingHealth`), **usage**
-(`runUsagePolls` — Cloudflare, Railway, the app's metrics), **github** (`runReconcileJob` → `reconcileRepo`
-with the org's GitHub credential: deploys, checks, runs, branches, drift, open PRs, env heads, the `canopy/*` commit statuses
+(`runUsagePolls` — the app's metrics), **hosting** (every part, through the hosting providers — present only when
+the org has a part; `hosting-providers.md`), **github** (`runReconcileJob` → `reconcileRepo`
+with the org's GitHub credential: checks, runs, branches, drift, open PRs, env heads, the `canopy/*` commit statuses
 and PR reviews). The result is
-`RepoRefreshResult` (`shared/repo.ts`, types only): `UsagePollResult`'s `cloudflare` / `railway` /
-`sapling`, plus `health` — one `PollOutcome` per TARGET (`part` set; `ok` = up, `failed` = down with FIXED
+`RepoRefreshResult` (`shared/repo.ts`, types only): `UsagePollResult`'s `sapling`, plus `health` — one `PollOutcome` per TARGET (`part` set; `ok` = up, `failed` = down with FIXED
 words `timeout` / `HTTP <status>` / `unreachable`; `"not_configured"` with no environment) — and `github`:
 `{ written, unchanged, failed }` (`failed` = reconcile's ARM NAMES), `"not_configured"` without a primary
 repository and a GitHub credential, `failed: ["unexpected error"]` on an unexpected throw. **The cron
-does NOT call it** — its per-tick spreading stands. **Budget: health 2N + usage 3N + reconcile (19 + 2N) =
-19 + 7N subrequests — 33 for two environments, and `SUBREQUEST_CAP` = 50 (the free plan's per-invocation cap,
-which this ONE-org refresh is still held to; the cron's own budget is 900) caps it at N ≤ 4** (47; 54 at five); past that the
+does NOT call it** — its per-tick spreading stands. **Budget: health 2N + usage N + reconcile (18 + 2N) =
+18 + 5N subrequests — 28 for two environments, and `SUBREQUEST_CAP` = 50 (the free plan's per-invocation cap,
+which this ONE-org refresh is still held to; the cron's own budget is 900) caps it at N ≤ 6** (48; 53 at seven); past that the
 github arm is SKIPPED and says so (`failed: ["skipped: would exceed the subrequest budget"]`) rather than
-risk the invocation, while health and usage still run. **Deliberately excluded**: `recomputeAllProgress`
+risk the invocation, while health and usage still run. The hosting arm runs only when the WHOLE refresh still
+fits (18 + 5N + a mint + Σ `pollCost` ≤ 50), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
 (UNBOUNDED — the reason it has a tick of its own — and it feeds the Roadmap, not this dashboard),
 `pruneRepoCapture` (maintenance, not a refresh) and `runBackfill` / summaries (that is Sync GitHub: My Work's
 capture, with its own summary allowance). **That last exclusion has a visible cost**: `runBackfill` is also
@@ -400,55 +387,30 @@ controls (281px) are narrower than a non-admin's (343px). While in flight it is 
 completion the dashboard reloads (the payload stays on screen, so the entrance is not replayed) and a
 dismissible strip flashes in at the top of WHICHEVER tab is open, under the tab bar's line (`state.repoPoll`, `repoPollFor`:
 session-only, survives a tab switch, cleared on leaving the Repo screen): `Health — 3 up · staging api ✗
-timeout`, the three usage lines as below, `GitHub — 12 new · 240 unchanged` / `✗ failed: deployments, runs`
+timeout`, the usage line as below, a line per hosting provider, `GitHub — 12 new · 240 unchanged` / `✗ failed: runs, checks`
 / `– skipped: …` / `not configured`; a 409 reads "A refresh is already running — try again in a minute.",
 any other failure "Poll failed — try again."
 
-**`POST /admin/poll-usage` remains — the narrower, older route** (same gate, no lock): the three usage
-pollers only, via `runUsagePolls(env, ctx, Date.now())` (`src/repo/cron.ts`) for the caller's org — it runs
-the `:00` tick's own per-environment job (`usageForEnv`) for each of the org's environments; the SPA no
-longer calls it. **Idempotent with the cron**: every poller keys on the HOUR
-FLOOR of `now` and every write is `INSERT OR IGNORE`, so a run at any minute asks for the same hours and
-writes the same rows. **3N subrequests** (6 for two environments; no health pings). Each poller returns one `PollOutcome`
+**`POST /admin/poll-usage` remains — the narrower, older route** (same gate, no lock): the usage poller only,
+via `runUsagePolls(env, ctx, Date.now())` (`src/repo/cron.ts`) for the caller's org — it runs the `:00`
+tick's own per-environment job (`usageForEnv`) for each of the org's environments; the SPA no longer calls it.
+**Idempotent with the cron**: the poller keys on the HOUR FLOOR of `now` and every write is `INSERT OR
+IGNORE`. **N subrequests** (2 for two environments; no health pings). The poller returns one `PollOutcome`
 per environment (`shared/repo.ts`, types only: `ok` with `written` = NEW `repo_metrics` rows — `0` is a
-legitimate re-poll; `failed` with `detail` = the SAME scrubbed message it logs (scrubbed BEFORE any cut, on the non-2xx AND the 200-with-`errors` path; an error body is read to at most 8 KB); `skipped` with a
-few fixed words — no worker / no project token / no `railwayEnvironmentId` / no `railwayServiceId` /
-`apiUrl` not https — or no token for THAT environment while another has one), and `UsagePollResult` is those
-per source, or `"not_configured"` when NO environment of the org has that source's credential — exactly when
-the cron skips it. The response is 200 even when every source failed
-(the body says so), 502 `{ error: "poll failed" }` only if `runUsagePolls` itself throws, never a 500 — and
-it carries outcomes but **never a token, a header or an account id** (`pollCloudflare`'s one scrub covers
-the account id as well as the token). A Cloudflare or Railway **non-2xx says why**: the body's
-`errors[0].message` (+ `code`), else the raw text's start, scrubbed BEFORE it is cut (`failureReason`), and
-Cloudflare's 400 / 401 / 403 each append a fixed hint (malformed token value / invalid token / lacks Account
-Analytics: Read). In the strip the
-Sapling line is labelled "App metrics" (one response carries active users AND product metrics); an `ok`
-outcome's `detail` (dropped product keys) and a `failed` outcome's partial `written` are both shown.
+legitimate re-poll; `failed` with `detail` = the SAME scrubbed message it logs; `skipped` with a few fixed
+words — `apiUrl` not https — or no token for THAT environment while another has one), and `UsagePollResult`
+is `{ sapling }`: those outcomes, or `"not_configured"` when NO environment of the org has the credential —
+exactly when the cron skips it. The response is 200 even when the source failed (the body says so), 502
+`{ error: "poll failed" }` only if `runUsagePolls` itself throws, never a 500 — and it never carries a token
+or a header. In the strip the line is labelled "App metrics" (one response carries active users AND product
+metrics); an `ok` outcome's `detail` (dropped product keys) and a `failed` outcome's partial `written` are
+both shown.
 
-**Cloudflare Workers analytics** (`pollCloudflare`, `src/repo/poll.ts`) asks Cloudflare's GraphQL analytics
-API (`https://api.cloudflare.com/client/v4/graphql`, dataset `workersInvocationsAdaptive`, `scriptName` =
-each environment's `cfg.worker`, grouped by `datetimeHour`, `sum { requests errors }`) and writes hourly
-`cf_requests` / `cf_errors` (`env` = the config key, `part = 'frontend'`). Cloudflare's schema spells its
-scalar **`string`, lowercase** — `String!` is rejected. **The window is LAGGED one hour** — `to` = the
-current hour's floor − 1h, `from` = `to` − 3h (at 12:00 it reads 08:00–11:00): the poll fires seconds after
-an hour closes, when the adaptive dataset may not have caught up, and a short count would be permanent.
-`datetime_leq` is inclusive, so the bucket AT `to` is skipped (`at >= to`); the overlap heals a missed tick
-and cannot re-count a written hour. A GraphQL failure arrives as HTTP **200 with an `errors` array** — that,
-a non-2xx, a thrown fetch, or a body with no account in it costs THAT environment the tick (logged; `data`
-is never read beside `errors`) and the loop moves on; a malformed row is skipped on its own. Never throws.
-**The `cf_polled` marker — no row ≠ zero unless we know we looked**: Cloudflare returns NO row for an hour
-with no invocations, so a quiet hour and a dead poll look identical in `repo_metrics`. Each environment whose
-poll SUCCEEDED (even with zero rows) has its window merged into ONE snapshot row, `cf_polled` (`CF_POLLED` in
-`src/repo/types.ts`): `{ [envKey]: { from, to } }` — ONE contiguous covered INTERVAL, `to` exclusive. An
-interval, not a high-water bound, because a bound cannot say a stretch in the middle was never looked at: when
-the previous interval reaches the new window (`prev.to >= window.from`) it keeps its `from` and `to` becomes
-the max; otherwise (no previous, or a GAP — an outage longer than the 3-hour window) `from` RESTARTS at the
-window's start, and that jump is the record of the hole. One read + at most one write per poll (an unlocked
-read-modify-write, safe because ticks never overlap and a lost update re-writes identically); a failed
-environment keeps its interval, and within one run neither end moves BACKWARDS (the write is an unlocked
-read-modify-write, so an on-demand run overlapping a cron tick can put back an older `to` — accepted: that
-stretch draws unknown, never zero, and the next poll re-extends it). A LEGACY string value (the pre-interval
-shape, still in local dev DBs) reads through `cfCovered` as `{ from: bound − 3h, to: bound }`.
+**A host's usage is a hosting provider's** (`hosting-providers.md`): the legacy `pollCloudflare` /
+`pollRailway` (and the `cf_polled` coverage snapshot they kept) are gone with 0056, whose rows became
+`hx_requests` / `hx_errors` / `hx_cpu` / `hx_mem_mb`; a Cloudflare or Railway part's covered interval is its
+`hosting_poll_state` row like any other part's.
+
 The projection (`projectUsage`) costs the render **ONE statement** — `metricsSince` (`src/repo/store.ts`)
 for every range, environment and series, sliced in memory. It takes GROUPS, each with its OWN bound
 (`(metric IN (…) AND at >= ?) OR (…)`, `usageReadGroups` in `src/tools/repo.ts`): `cf_*` and
@@ -480,23 +442,7 @@ rate follows `seen.requests`, keeping its "—" beside live requests. `seen` loo
 source silent for longer reads "not connected" per metric again while the section-level `metricsEver` (any
 age) still says `empty` — whose copy is "No current usage reading — the hourly polls have gone quiet."
 
-**Railway CPU and memory** (`pollRailway`) asks Railway's public GraphQL API
-(`https://backboard.railway.com/graphql/v2`, `metrics(environmentId, serviceId, startDate, measurements:
-[CPU_USAGE, MEMORY_USAGE_GB], sampleRateSeconds: 3600)`, `ts` in unix SECONDS) once per environment and
-writes hourly `rw_cpu` (vCPU) / `rw_mem_mb` (GB × 1024, one decimal), `part = 'backend'`. **Auth is a PROJECT
-token PER ENVIRONMENT, sent as `Project-Access-Token` — never `Authorization`** (a project token is refused
-as a bearer): the token is the org's `railway` secret stored for that environment
-(`resolveCredential(ctx, env, "railway", cfg.key)`, entered on Org settings › Integrations), so a third
-environment is one more stored token and no code. (SaplingLearn alone falls back to the Worker secret
-`RAILWAY_TOKEN_<KEY>` — key upper-cased, anything outside A–Z/0–9 → `_` — until it stores one.) An environment with no token, no `railwayEnvironmentId` or no `railwayServiceId` is
-skipped while the others poll. **A token is never logged** — only `cfg.key` and the error's MESSAGE, scrubbed
-of every token in the map. Only COMPLETE hours are stored: a sample stamped at or after the current hour's
-floor, or before the 3-hour window, is skipped; each is bucketed to its hour; values are validated one by one
-(finite, ≥ 0, under 1024 vCPU / 4096 GB); an unknown measurement is ignored. **Within ONE response, per
-metric per hour bucket, the valid sample with the LATEST `ts` is the one written** (Railway's array order is
-undocumented) — but a row an EARLIER poll stored for that bucket still wins. These are gauges, so — unlike
-Cloudflare's counts — there is NO extra hour of lag. A non-2xx, a thrown fetch, a 200 carrying `errors`, or
-no metrics list costs THAT environment the tick; never throws. The projection costs **NO new statement**:
+For the `hosting` section the projection costs **NO new statement**:
 `rw_*` ride the same `metricsSince` read, and `projectHosting` picks each environment's latest backend point
 in memory. The sources share a read but NOT a state — a Railway row never connects `usage`, a Cloudflare row
 never connects `hosting`. **A "current" figure must be current: a value shows only while its latest point is

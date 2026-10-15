@@ -13,74 +13,34 @@ const NOW = Date.parse("2026-09-20T12:00:00Z");
 const openPr = { number: 482, title: "Batch D1 reads", html_url: "https://github.com/o/r/pull/482", state: "open", draft: false, merged_at: null, updated_at: "2026-09-20T09:10:00Z", user: { login: "lpcooper-arch" }, head: { ref: "feature/usage-rollup", sha: "c91d2ae" }, base: { ref: "main" } };
 const commit = { sha: "f00d", commit: { message: "old work\n\nbody", committer: { date: "2026-09-10T08:00:00Z" } }, author: { login: "AndresL230" } };
 
-/** The live shape of the deployments GraphQL response (verified against the
- *  target repo): UPPERCASE states, a Bot creator whose login has no `[bot]`
- *  suffix, `databaseId` = the REST/webhook `deployment.id`, no status ids. */
-const deployNode = (over: Record<string, unknown> = {}) => ({
-  databaseId: 7001, commitOid: "becdbac", environment: "Sapling / staging", createdAt: "2026-09-20T09:04:47Z",
-  creator: { login: "railway-app", __typename: "Bot" },
-  statuses: { nodes: [
-    { state: "SUCCESS", createdAt: "2026-09-20T09:05:34Z", logUrl: "https://railway.com/l" },
-    { state: "IN_PROGRESS", createdAt: "2026-09-20T09:04:47Z", logUrl: null },
-  ] },
-  ...over,
-});
-const deployments = (...nodes: unknown[]) => ({ data: { repository: { deployments: { nodes } } } });
-
-describe("reconcileRepo — deployments, workflow runs and env-head checks", () => {
-  it("backfills Railway deployments with their statuses, recent runs, and env-head checks", async () => {
+describe("reconcileRepo — workflow runs and env-head checks", () => {
+  it("backfills recent runs and env-head checks — and never asks GitHub for deployments (a host's deploys are its provider's)", async () => {
     const gh = fakeGithub({
-      graphql: deployments(deployNode()),
       "/actions/runs?": { workflow_runs: [{ id: 99, name: "CI", head_branch: "main", head_sha: "becdbac", status: "completed", conclusion: "success", run_attempt: 1, event: "push", html_url: "https://github.com/o/r/actions/runs/99", updated_at: "2026-09-20T09:10:00Z", run_started_at: "2026-09-20T09:05:00Z", actor: { login: "AndresL230" } }] },
       "/commits/main/check-runs": { check_runs: [{ id: 5001, name: "Workers Builds: frontend-staging", status: "completed", conclusion: "success", head_sha: "becdbac", details_url: "https://dash", started_at: "2026-09-20T09:05:00Z", completed_at: "2026-09-20T09:06:32Z", app: { slug: "cloudflare-workers-and-pages" }, check_suite: { head_branch: "main" } }] },
     });
     await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     const kinds = await all<{ kind: string; n: number }>(env.DB, `SELECT kind, COUNT(*) AS n FROM repo_events GROUP BY kind ORDER BY kind`);
-    expect(kinds).toEqual([{ kind: "check", n: 1 }, { kind: "deploy", n: 2 }, { kind: "run", n: 1 }]);
-    // The check-runs list omits check_suite.head_branch reliably only per-ref: the branch we ASKED for is the branch.
-    expect(await all(env.DB, `SELECT env, part FROM repo_events WHERE kind = 'check'`)).toEqual([{ env: "staging", part: "frontend" }]);
-    // One GraphQL request replaces the old 1 + 20 REST deployment calls; a
-    // second GraphQL request is Task 12's branches refs query (both env's
-    // request the same URL, routed by query text — see fakeGithub above); a
-    // third is the PR-reviews query.
-    expect(gh.calls.filter((c) => c.endsWith("/graphql")).length).toBe(3);
+    expect(kinds).toEqual([{ kind: "check", n: 1 }, { kind: "run", n: 1 }]);
+    // A check run is captured as it is — the posting App in `raw` (src/hosting/detect.ts) — never as a deploy.
+    expect(await all(env.DB, `SELECT env, part, ref, json_extract(raw, '$.app') AS app FROM repo_events WHERE kind = 'check'`))
+      .toEqual([{ env: null, part: null, ref: "main", app: "cloudflare-workers-and-pages" }]);
+    // Two GraphQL requests: the branches refs query and the PR-reviews query (same URL, routed by query text).
+    expect(gh.calls.filter((c) => c.endsWith("/graphql")).length).toBe(2);
+    expect(gh.graphql.some((c) => c.query.includes("deployments("))).toBe(false);
     expect(gh.calls.some((c) => c.includes("/deployments"))).toBe(false);
   });
 
-  it("lowercases the GraphQL states and re-suffixes a Bot creator so backfill and webhook rows agree", async () => {
-    const gh = fakeGithub({ graphql: deployments(deployNode()) });
-    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
-    const rows = await all<RepoEventRow>(env.DB, `SELECT * FROM repo_events WHERE kind = 'deploy' ORDER BY occurred_at`);
-    expect(rows.map((r) => [r.semantic_key, r.state, r.env, r.part, r.actor_login, r.sha, r.provenance])).toEqual([
-      ["gh:deploy:7001:in_progress", "in_progress", "staging", "backend", "railway-app[bot]", "becdbac", "backfill"],
-      ["gh:deploy:7001:success", "success", "staging", "backend", "railway-app[bot]", "becdbac", "backfill"],
-    ]);
-    // GraphQL statuses have no numeric id — `raw` records that honestly.
-    expect(JSON.parse(rows[1].raw).status_id).toBeNull();
-  });
-
-  it("asks GraphQL only for the configured environments, so a preview deployment can never appear", async () => {
-    const gh = fakeGithub({ graphql: deployments(deployNode({ databaseId: 8002, environment: "Sapling / pr-91" })) });
-    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
-    expect(gh.graphql[0].variables).toEqual({ owner: "o", name: "r", envs: ["Sapling / staging", "Sapling / production"] });
-    expect(await all(env.DB, `SELECT * FROM repo_events WHERE kind = 'deploy'`)).toEqual([]);
-  });
-
-  it("skips the deployments request entirely when no environment is configured — but the branches refs query still runs", async () => {
+  it("with no environment configured the branches refs query still runs", async () => {
     const gh = fakeGithub({});
     await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, [], NOW);
-    // `deployments` genuinely cannot filter without environment names, so it
-    // stays gated; `branches` degrades fine with envs: [] (see the dedicated
-    // test below), so a refs query is legitimate here — only the deployments
-    // query must be absent.
-    expect(gh.graphql.some((c) => c.query.includes("deployments("))).toBe(false);
     expect(gh.graphql.some((c) => c.query.includes("refs(refPrefix"))).toBe(true);
   });
 
   // Fix round 1, Finding 1: `computeBranches` degrades correctly with no
   // environments configured — empty exclusion set, "main" as the compare
-  // head (the same fallback the `commits` arm above uses) — so unlike
-  // `deployments`, the `branches` arm runs UNCONDITIONALLY.
+  // head (the same fallback the `commits` arm above uses) — so the
+  // `branches` arm runs UNCONDITIONALLY.
   it("writes a branches snapshot compared against main with nothing excluded when no environment is configured", async () => {
     const gh = fakeGithub({
       refsGraphql: { data: { repository: { refs: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [
@@ -92,20 +52,6 @@ describe("reconcileRepo — deployments, workflow runs and env-head checks", () 
     expect(call?.variables).toMatchObject({ owner: "o", name: "r", head: "main" });
     const snap = await getSnapshot(systemCtx(), "branches");
     expect(snap?.data).toEqual({ active: 1, stale: 0, head: "main", rows: [{ name: "feature/x", at: "2026-09-19T00:00:00Z", ahead: 2, behind: 0, stale: false }] });
-  });
-
-  it("an errors body writes nothing, does not throw, and names the arm in `failed`", async () => {
-    const gh = fakeGithub({ graphql: { data: { repository: null }, errors: [{ message: "Could not resolve to a Repository" }] } });
-    const res = await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
-    expect(await all(env.DB, `SELECT * FROM repo_events WHERE kind = 'deploy'`)).toEqual([]);
-    expect(res.failed).toContain("deployments");
-  });
-
-  it("survives a GraphQL body with no nodes at all", async () => {
-    const gh = fakeGithub({ graphql: { data: {} } });
-    const res = await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
-    expect(res.failed).not.toContain("deployments");
-    expect(await all(env.DB, `SELECT * FROM repo_events WHERE kind = 'deploy'`)).toEqual([]);
   });
 
   it("records each configured environment branch's head as an env_heads snapshot, not a synthetic push row", async () => {
@@ -121,10 +67,9 @@ describe("reconcileRepo — deployments, workflow runs and env-head checks", () 
     expect(await all(env.DB, `SELECT * FROM repo_events WHERE kind = 'push' AND ref IN ('main','production')`)).toEqual([]);
   });
 
-  it("tags a Workers Builds check for the environment whose workerCheck matches, even when two branches share a head", async () => {
-    // Both configured branches point at the SAME commit, so BOTH check runs come
-    // back on the first branch we ask about. The production build must not be
-    // tagged (and permanently frozen as `unchanged`) with staging's branch.
+  it("two configured branches sharing a head: each check run is captured once, under the first branch asked", async () => {
+    // Both configured branches point at the SAME commit, so BOTH check runs come back on each branch's list;
+    // the key is the check run's own id, so the second list writes nothing new.
     const head = { sha: "shared00", commit: { message: "same head", committer: { date: "2026-09-20T10:00:00Z" } }, author: { login: "AndresL230" } };
     const check = (id: number, name: string) => ({ id, name, status: "completed", conclusion: "success", head_sha: "shared00", details_url: "https://dash", started_at: "2026-09-20T09:05:00Z", completed_at: "2026-09-20T09:06:32Z", app: { slug: "cloudflare-workers-and-pages" } });
     const runs = { check_runs: [check(5001, "Workers Builds: frontend-staging"), check(5002, "Workers Builds: frontend")] };
@@ -134,8 +79,8 @@ describe("reconcileRepo — deployments, workflow runs and env-head checks", () 
     });
     await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     expect(await all(env.DB, `SELECT number, env, part, ref FROM repo_events WHERE kind = 'check' ORDER BY number`)).toEqual([
-      { number: 5001, env: "staging", part: "frontend", ref: "main" },
-      { number: 5002, env: "production", part: "frontend", ref: "production" },
+      { number: 5001, env: null, part: null, ref: "main" },
+      { number: 5002, env: null, part: null, ref: "main" },
     ]);
   });
 
@@ -200,7 +145,7 @@ describe("reconcileRepo", () => {
       return new Response("nope", { status: 500 });
     }) as typeof fetch;
     const res = await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW);
-    expect(res).toEqual({ written: 0, unchanged: 0, failed: ["open_prs", "closed_prs", "commits", "deployments", "runs", "env_heads", "checks", "statuses", "reviews", "branches", "drift"] });
+    expect(res).toEqual({ written: 0, unchanged: 0, failed: ["open_prs", "closed_prs", "commits", "runs", "env_heads", "checks", "statuses", "reviews", "branches", "drift"] });
     expect(calls.length).toBeGreaterThan(0);
     for (const init of calls) {
       expect((init.headers as Record<string, string>).authorization).toBe("Bearer t");
@@ -251,7 +196,6 @@ describe("reconcileRepo", () => {
     const compareCommit = { sha: "abc1234def", commit: { message: "msg", committer: { date: "2026-09-20T09:00:00Z" } }, author: { login: "AndresL230" } };
     const gh = fakeGithub({
       "/pulls?state=open": [openPr], "/pulls?state=closed": [openPr], "/commits?sha=main&since=": [commit],
-      graphql: deployments(...Array.from({ length: 20 }, (_, i) => deployNode({ databaseId: 7000 + i, commitOid: `sha${i}` }))),
       "/actions/runs?": { workflow_runs: runs },
       "/jobs": { jobs: [{ name: "e2e", conclusion: "failure", steps: [] }] },
       "/commits?sha=main&per_page=1": [commit], "/commits?sha=production&per_page=1": [commit],
@@ -260,7 +204,7 @@ describe("reconcileRepo", () => {
       "/compare/main...production": { ahead_by: 1, behind_by: 1, commits: [compareCommit] },
     });
     await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
-    expect(gh.calls.length).toBe(19); // 5 + 5 job lookups + 2 environments × 2 + 1 status list + 1 reviews query + 1 branches refs page + 2 drift compares
+    expect(gh.calls.length).toBe(18); // 4 + 5 job lookups + 2 environments × 2 + 1 status list + 1 reviews query + 1 branches refs page + 2 drift compares
   });
 });
 

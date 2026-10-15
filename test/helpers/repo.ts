@@ -1,8 +1,8 @@
 import type { RepoEnvConfig } from "../../src/repo/config";
 
 export const ENVS: RepoEnvConfig[] = [
-  { key: "staging", label: "staging", note: "main", branch: "main", railwayEnv: "Sapling / staging", worker: "frontend-staging", workerCheck: "Workers Builds: frontend-staging", frontendUrl: "https://staging.saplinglearn.com", apiUrl: "https://api.staging.saplinglearn.com", healthPath: "/api/health" },
-  { key: "production", label: "production", note: "production", branch: "production", railwayEnv: "Sapling / production", worker: "frontend", workerCheck: "Workers Builds: frontend", frontendUrl: "https://saplinglearn.com", apiUrl: "https://api.saplinglearn.com", healthPath: "/api/health" },
+  { key: "staging", label: "staging", note: "main", branch: "main", frontendUrl: "https://staging.saplinglearn.com", apiUrl: "https://api.staging.saplinglearn.com", healthPath: "/api/health" },
+  { key: "production", label: "production", note: "production", branch: "production", frontendUrl: "https://saplinglearn.com", apiUrl: "https://api.saplinglearn.com", healthPath: "/api/health" },
 ];
 
 /** A 64-character stand-in for a real `SAPLING_METRICS_TOKEN` — the length
@@ -25,12 +25,12 @@ export function leakedFragments(text: string, secret: string, size = 8): string[
 
 interface GraphqlCall { query: string; variables: Record<string, unknown> }
 
-/** A fake api.github.com keyed by path prefix. Two GraphQL queries POST to the
- *  same `https://api.github.com/graphql` URL (deployments, and branches), so a
- *  graphql call is routed by its QUERY TEXT rather than the URL: the key
- *  `"graphql"` supplies the deployments response (as before), `"refsGraphql"`
- *  the branches response — each defaults to an empty-but-valid shape so a test
- *  that cares about neither doesn't have to mock either. Every call's body is
+/** A fake api.github.com keyed by path prefix. The GraphQL queries POST to the
+ *  same `https://api.github.com/graphql` URL (branches, PR reviews), so a
+ *  graphql call is routed by its QUERY TEXT rather than the URL: `"refsGraphql"`
+ *  supplies the branches response, `"reviewsGraphql"` the reviews one, and
+ *  `"graphql"` any other query — each defaults to an empty-but-valid shape so a
+ *  test that cares about none doesn't have to mock them. Every call's body is
  *  parsed and recorded (a test can then assert what the query was filtered
  *  by). A `/compare/...` REST call similarly defaults to a zero-diff shape
  *  rather than the generic `"[]"`, so a test that doesn't care about drift
@@ -42,7 +42,7 @@ export function fakeGithub(routes: Record<string, unknown>): { fetchImpl: typeof
   const calls: string[] = [];
   const graphql: GraphqlCall[] = [];
   const EMPTY_REFS = { data: { repository: { refs: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } } };
-  const EMPTY_DEPLOYMENTS = { data: { repository: { deployments: { nodes: [] } } } };
+  const EMPTY_OTHER = { data: { repository: null } };
   const EMPTY_REVIEWS = { data: { repository: { pullRequests: { nodes: [] } } } };
   const EMPTY_COMPARE = { ahead_by: 0, behind_by: 0, commits: [] };
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -55,7 +55,7 @@ export function fakeGithub(routes: Record<string, unknown>): { fetchImpl: typeof
       // The PR-reviews query (`"reviewsGraphql"`) is the third to share the URL.
       const isReviews = typeof call.query === "string" && call.query.includes("pullRequests(");
       const key = isRefs ? "refsGraphql" : isReviews ? "reviewsGraphql" : "graphql";
-      const body = key in routes ? routes[key] : isRefs ? EMPTY_REFS : isReviews ? EMPTY_REVIEWS : EMPTY_DEPLOYMENTS;
+      const body = key in routes ? routes[key] : isRefs ? EMPTY_REFS : isReviews ? EMPTY_REVIEWS : EMPTY_OTHER;
       return new Response(JSON.stringify(body), { status: 200 });
     }
     const hit = Object.keys(routes).find((k) => k !== "graphql" && k !== "refsGraphql" && k !== "reviewsGraphql" && url.includes(k));
@@ -73,10 +73,8 @@ export async function seedOrgRepoConfig(db: D1Database, orgId: string, repo: str
     db.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES (?, ?, ?, 1, 0, ?, 'seed')`)
       .bind(`hook_${orgId}`, orgId, repo, at),
     ...envs.map((e, i) => db.prepare(
-      `INSERT INTO org_environments (org_id, key, position, label, note, branch, railway_env, worker, worker_check, frontend_url, api_url,
-         health_path, railway_environment_id, railway_service_id, created_at, updated_at, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seed')`,
-    ).bind(orgId, e.key, i, e.label, e.note, e.branch, e.railwayEnv, e.worker, e.workerCheck, e.frontendUrl, e.apiUrl, e.healthPath,
-      e.railwayEnvironmentId ?? null, e.railwayServiceId ?? null, at, at)),
+      `INSERT INTO org_environments (org_id, key, position, label, note, branch, frontend_url, api_url, health_path, created_at, updated_at, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seed')`,
+    ).bind(orgId, e.key, i, e.label, e.note, e.branch, e.frontendUrl, e.apiUrl, e.healthPath, at, at)),
   ]);
 }

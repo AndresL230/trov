@@ -10,14 +10,14 @@ export const DAY = 86_400_000;
 export const FAST_METRICS = ["health_up", "health_ms"];
 export const FAST_KINDS = ["check"];
 export const FAST_RETENTION_DAYS = 45;
-/** Hourly usage series — Cloudflare analytics (`cf_*`), and the Railway
- *  (`rw_*`) and active-user (`active_users_*`) gauges later tasks add, and the
+/** Hourly usage series — the active-user gauges (`active_users_*`) and the
  *  hosting providers' normalised points (`hx_*`, shared/hosting.ts — one per
- *  part per metric per complete hour). The Usage tab reads 30 days at most, so
+ *  part per metric per complete hour; 0056_hosting_providers renamed the legacy
+ *  `cf_*` / `rw_*` rows into them). The Usage tab reads 30 days at most, so
  *  100 days is ample; unbounded, two environments add ~35,000 rows a year. GLOB,
- *  not LIKE: in LIKE `_` is itself a wildcard (`cf_%` would also match `cfx…`),
+ *  not LIKE: in LIKE `_` is itself a wildcard (`hx_%` would also match `hxy…`),
  *  and GLOB is case-sensitive like the names. */
-const USAGE_METRIC_GLOBS = ["cf_*", "rw_*", "active_users_*", "hx_*"];
+const USAGE_METRIC_GLOBS = ["active_users_*", "hx_*"];
 export const USAGE_RETENTION_DAYS = 100;
 /** Sapling's product metrics (`sap_c_*` / `sap_t_*`, src/repo/poll.ts) are the
  *  widest hourly series by far — up to 168 metrics per environment — and the
