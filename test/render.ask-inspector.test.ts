@@ -22,7 +22,7 @@ import { render, initialState, type AppState } from "../web/src/render";
 import { askView, type AskCtx } from "../web/src/ask-state";
 import { inspectorFrame } from "../web/src/ask-screen";
 import {
-  animateNav, chartLine, clipMarkdown, fmtSize, inspectorBody, inspectorIo, inspectorPart, sprintForecast,
+  animateNav, chartLine, clipMarkdown, fmtSize, inspectorBody, inspectorIo, inspectorPart, sprintForecastLine,
 } from "../web/src/ask-inspector";
 import { CHART_FIXTURE, INSPECTOR_LOCAL_FIXTURES, UPLOAD_FIXTURE, inspectorDetailFixture, repoStateFixture } from "../web/src/ask-inspector-fixtures";
 import { INSP_FIXTURE, replayPlan } from "../web/src/ask-replay";
@@ -129,7 +129,7 @@ describe("every insp:<type> scenario renders its view from the fixtures (#12 §3
     const html = body(state(["sprint:7"]));
     const t = text(html);
     for (const s of ["Hosting", "Oct 5 – 30", "Due Fri, Oct 30", "Andres Lopez", "Any org can connect Netlify or Vercel", "58%", "7 of 12 tickets done",
-      "At this pace, done", "In progress", "Testing", "Triage", "Done", "and 3 more"]) expect(t).toContain(s);
+      "At this pace, done Nov 2, 3 days late", "In progress", "Testing", "Triage", "Done", "and 3 more"]) expect(t).toContain(s);
     expect(html).toMatch(/role="progressbar"[^>]*aria-valuenow="58"/);
     expect(html).toContain(`class="ask-iv-fill" style="width:58%"`);
   });
@@ -527,13 +527,11 @@ describe("the part's reads and acts", () => {
 });
 
 describe("helpers", () => {
-  it("the sprint forecast is said only when it can be: pace since the start, carried forward", () => {
-    const s = { start: "2026-10-05", due: "2026-10-30", status: "in_progress" as const, progress: { closed: 7, total: 12, pct: 58 } };
-    expect(sprintForecast(s, NOW.getTime())).toEqual({ late: -7, text: "At this pace, done Oct 23, 7 days early" });
-    expect(sprintForecast({ ...s, progress: { closed: 2, total: 12, pct: 17 } }, NOW.getTime())?.text).toBe("At this pace, done Dec 4, 35 days late");
-    expect(sprintForecast({ ...s, progress: { closed: 0, total: 12, pct: 0 } }, NOW.getTime())).toBeNull();
-    expect(sprintForecast({ ...s, start: null }, NOW.getTime())).toBeNull();
-    expect(sprintForecast({ ...s, status: "done" }, NOW.getTime())).toBeNull();
+  it("the sprint forecast is the SERVER's (no client math), in the Roadmap's words", () => {
+    expect(sprintForecastLine({ remaining: 5, perDay: 0.64, projected: "2026-11-02", daysLate: 3 })).toEqual({ late: true, text: "At this pace, done Nov 2, 3 days late" });
+    expect(sprintForecastLine({ remaining: 5, perDay: 1, projected: "2026-10-23", daysLate: -7 })).toEqual({ late: false, text: "At this pace, done Oct 23, 7 days early" });
+    expect(sprintForecastLine(null)).toBeNull();
+    expect(sprintForecastLine(undefined)).toBeNull();
   });
   it("chart lines, sizes, excerpts", () => {
     expect(chartLine(CHART_FIXTURE, 2026)).toBe("48 merged pull requests on AndresL230/trov, Aug 24 – Oct 18");

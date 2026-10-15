@@ -346,10 +346,16 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   theirs in `inspectorUi.local` under `askcv:page:replay:…`); the frame names them (`inspectorLocalHead`) and the
   controller never peeks them. The conversation's "Open in inspector" pushes `askcv:<where>:<key>:<kind>:<n>` (`ask-cvref.ts`, primed hidden so nothing peeks it): the
   inspector reads it with the conversation's `cvItem` and draws it with its `chartFigure` (larger, under the
-  Chart / Table switch), `themesFigure`, `diagramFigure` and `tableView`; a question's file is the upload view. The sprint's forecast line is
-  computed on the client from the closed tickets' pace since the start, and said only when it can be.
+  Chart / Table switch), `themesFigure`, `diagramFigure` and `tableView`; a question's file is the upload view. Every detail is the
+  server's own projection — no client math: a sprint's forecast is `SprintDetail.forecast` (`sprintForecast`, the
+  Roadmap's) in the Roadmap's words (`forecastWords`); a staged doc's excerpt is `detail.staged.body` (the version
+  waiting in Review), the live `body` beside it; a feed entry is the Feed's projection (`ai` on one Trov wrote — its
+  origin and model —, Sift's `importance`, its tags; a feed entry has no kind column, so no "Shipped" is guessed); a
+  pull request's changed files are what Repo setups' capture stored (`pr_files`: `files` when the read was complete,
+  `filePaths`, `filesComplete`) and its added / deleted lines, stored nowhere, stay null and are not drawn.
 - **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on
   `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written. The
   inspector's details come from `web/src/ask-inspector-fixtures.ts` (loaded on demand).
 - Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`, `test/render.ask-inspector.test.ts`,
-  `test/ask.inspector-contract.test.ts`.
+  `test/ask.inspector-contract.test.ts`; where the parts meet and the contract gaps the build closed:
+  `test/render.ask-integration.test.ts` (client) and `test/ask.gaps.test.ts` (server).

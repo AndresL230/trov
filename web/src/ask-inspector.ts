@@ -34,7 +34,9 @@ import type { AiRepoState } from "@shared/ai-core";
 import { TROV_SYSTEM_HANDLE } from "@shared/ai-core";
 import type { TicketDetail, TicketStatus, TicketPriority } from "@shared/tickets";
 import { TICKET_STATUS_LABEL } from "@shared/tickets-core";
-import type { SprintDetail } from "@shared/sprints";
+import type { SprintDetail, SprintForecast } from "@shared/sprints";
+import type { FeedRow } from "@shared/rows";
+import { forecastWords } from "./roadmap-ai";
 import { sprintDatesLabel } from "@shared/sprints-core";
 import type { HandoffView } from "@shared/handoffs";
 import type { RepoFacts } from "@shared/repo-facts-core";
@@ -47,7 +49,7 @@ import {
 import { askIcon, REF_ICON, trovMark } from "./ask-icons";
 import { AskApiError, isUnauthorized } from "./ask-api";
 import {
-  agentMark, aiMark, glyph, handoffMark, kindMark, markShape, priorityMark, stateMark, ticketStatusIcon, STATE_KIND, type StateKind,
+  agentMark, aiMark, glyph, handoffMark, importanceMark, kindMark, markShape, priorityMark, stateMark, tagWords, ticketStatusIcon, STATE_KIND, type StateKind,
 } from "./marks";
 import { ciLine } from "./repo-verdict";
 import { attentionLine } from "./repo-attention";
@@ -287,17 +289,20 @@ function prView(v: AskView, x: RefView, ref: string): string {
   return top + detailOr(v, ref, (d) => {
     const what = str(d.what), why = str(d.why), impact = str(d.impact);
     const linked = strs(d.linkedTo);
+    // Changed files as Repo setups' capture stored them (`/ask/item` › pr): the count when the read was complete, "N+"
+    // when it stopped at its page cap. Added / deleted lines are stored nowhere: null, so nothing is drawn for them.
     const files = typeof d.files === "number" ? d.files : null;
+    const atLeast = files === null && strs(d.filePaths).length && d.filesComplete === false ? strs(d.filePaths).length : null;
     const add = typeof d.additions === "number" ? d.additions : null;
     const del = typeof d.deletions === "number" ? d.deletions : null;
     const para = (h: string, t: string | null, last = false) => (t ? `<div class="ask-iv-h" style="margin:${last ? "0" : "0"} 0 4px">${esc(h)}</div><p class="ask-iv-p ask-iv-p--fg" style="margin:0 0 ${last ? 16 : 12}px">${esc(t)}</p>` : "");
     const summary = what || why || impact
       ? `<div style="margin-top:16px">${para("What", what)}${para("Why", why)}${para("Impact", impact, true)}</div>`
       : `<p class="ask-iv-note" style="margin:16px 0">Trov has no summary of this pull request yet.</p>`;
-    const counts = files !== null || add !== null || del !== null;
+    const counts = files !== null || atLeast !== null || add !== null || del !== null;
     return `${summary}
       ${counts || linked.length ? `<div class="ask-iv-foot">
-        ${files !== null ? `<span>${esc(plural(files, "file"))}</span>` : ""}${add !== null ? `<span class="ask-iv-add">+${add}</span>` : ""}${del !== null ? `<span class="ask-iv-del">−${del}</span>` : ""}
+        ${files !== null ? `<span>${esc(plural(files, "file"))}</span>` : atLeast !== null ? `<span>${esc(`${atLeast}+ files`)}</span>` : ""}${add !== null ? `<span class="ask-iv-add">+${add}</span>` : ""}${del !== null ? `<span class="ask-iv-del">−${del}</span>` : ""}
         <span style="flex:1"></span>
         ${linked.length ? `<span>Linked to</span>${linked.map((r) => refChip(r, v.look, { size: "cell" })).join("")}` : ""}
       </div>` : ""}`;
@@ -316,7 +321,9 @@ function docView(v: AskView, x: RefView, ref: string): string {
     const stagedV = versions.filter((s) => s.status === "staged").reduce<number | null>((m, s) => Math.max(m ?? 0, s.version), null);
     const shownV = staged && stagedV !== null ? stagedV : liveV ?? (typeof e.version === "number" ? e.version : null);
     const space = str(e.space);
-    const body = str(d.body) ?? str(e.excerpt) ?? "";
+    // Staged: the excerpt is the version waiting in Review (the server's `staged.body`), never the live one.
+    const waiting = d.staged && typeof d.staged === "object" ? str((d.staged as { body?: unknown }).body) : null;
+    const body = (staged ? waiting : null) ?? str(d.body) ?? str(e.excerpt) ?? "";
     const excerpt = clipMarkdown(body);
     return `<div class="ask-iv-meta" style="margin-bottom:16px">
         ${x.status ? refStatusMark(x.status, 12.5) : ""}
@@ -345,20 +352,13 @@ export function clipMarkdown(md: string, max = 900): string {
 
 const STATUS_ORDER: TicketStatus[] = ["in_progress", "testing", "submitted", "done", "declined"];
 const GROUP_SHOWN = 4;
-/** "At this pace, done Nov 2, 3 days late": the closed tickets' daily pace since the start, carried forward. null when
- *  it can't be said (no start, nothing closed yet, nothing left, no due date). Never a guess past what it says. */
-export function sprintForecast(s: Pick<SprintDetail, "start" | "due" | "progress" | "status">, now: number = Date.now()): { late: number; text: string } | null {
-  const { closed, total } = s.progress;
-  if (s.status === "done" || !s.start || !s.due || closed === 0 || closed >= total) return null;
-  const dayMs = 86_400_000;
-  const start = Date.parse(`${s.start}T00:00:00Z`), due = Date.parse(`${s.due}T00:00:00Z`);
-  const today = Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate());
-  if (Number.isNaN(start) || Number.isNaN(due) || today <= start) return null;
-  const pace = closed / ((today - start) / dayMs);
-  const end = today + Math.ceil((total - closed) / pace) * dayMs;
-  const late = Math.round((end - due) / dayMs);
-  const day = `${MONTHS[new Date(end).getUTCMonth()]} ${new Date(end).getUTCDate()}`;
-  return { late, text: `At this pace, done ${day}, ${late > 0 ? `${plural(late, "day")} late` : late === 0 ? "on its due date" : `${plural(-late, "day")} early`}` };
+/** The sprint's forecast line — the SERVER's (`SprintDetail.forecast`, src/tools/sprints.ts `sprintForecast`, the one
+ *  the Roadmap shows), in the Roadmap's words (`forecastWords`). No client math: nothing here can disagree with the
+ *  sprint's status. null when the server says none. */
+export function sprintForecastLine(f: SprintForecast | null | undefined): { late: boolean; text: string } | null {
+  if (!f) return null;
+  const w = forecastWords(f);
+  return { late: w.late, text: w.delta ? `${w.lead}, ${w.delta}` : w.lead };
 }
 function sprintView(v: AskView, x: RefView, ref: string): string {
   return title(x.title) + detailOr(v, ref, (d) => {
@@ -367,14 +367,14 @@ function sprintView(v: AskView, x: RefView, ref: string): string {
     const dates = sprintDatesLabel(s);
     const { closed, total } = s.progress;
     const pct = total ? Math.round((closed / total) * 100) : 0;
-    const fc = sprintForecast(s);
+    const fc = sprintForecastLine(s.forecast);
     const goal = s.summary ?? (s.description ? s.description.split(/\n\s*\n/)[0] : null);
     const groups = STATUS_ORDER.map((st) => ({ st, rows: s.tickets.filter((t) => t.status === st) })).filter((g) => g.rows.length);
     return `<div class="ask-iv-meta" style="margin-bottom:12px">${dates ? `<span>${esc(dates)}</span>` : ""}${s.due ? `<span style="color:var(--fg)">Due ${esc(weekdayDay(s.due))}</span>` : ""}${s.lead ? personBtn(v, s.lead, 18) : ""}</div>
       ${goal ? `<p class="ask-iv-p ask-iv-p--fg" style="margin:0 0 16px">${esc(goal)}</p>` : ""}
       <div class="ask-iv-h ask-iv-h--plain" style="margin:0 0 6px"><span style="font-size:13px;font-weight:600;color:var(--fg)">${total ? `${pct}%` : "—"}</span><span class="ask-iv-count">${esc(total ? `${closed} of ${plural(total, "ticket")} done` : "No tickets yet")}</span></div>
       <div class="ask-iv-bar" role="progressbar" aria-label="Sprint progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div class="ask-iv-fill" style="width:${pct}%"></div></div>
-      ${fc ? `<div class="ask-iv-forecast">${fc.late > 0 ? glyph("warn", "var(--amber)", 14) : markShape("dot", "var(--green)", 9)}${esc(fc.text)}</div>` : `<div style="height:18px"></div>`}
+      ${fc ? `<div class="ask-iv-forecast">${fc.late ? glyph("warn", "var(--amber)", 14) : markShape("dot", "var(--green)", 9)}${esc(fc.text)}</div>` : `<div style="height:18px"></div>`}
       ${groups.map((g) => {
         const shown = g.rows.slice(0, GROUP_SHOWN);
         const more = g.rows.length - shown.length;
@@ -499,9 +499,10 @@ function handoffView(v: AskView, x: RefView, ref: string): string {
 
 function feedView(v: AskView, x: RefView, ref: string): string {
   return detailOr(v, ref, (d) => {
-    const e = (d.entry ?? null) as { author: string; summary: string; brief: string | null; body: string | null; artifacts: string | null; created_at: string } | null;
+    // The Feed's own projection of the entry (`/ask/item` › feed): `ai` on one Trov wrote, Sift's `importance`, tags.
+    const e = (d.entry ?? null) as (Pick<FeedRow, "author" | "summary" | "brief" | "body" | "artifacts" | "created_at" | "ai" | "importance" | "tags">) | null;
     const author = e?.author ?? x.owner ?? null;
-    const byTrov = author === TROV_SYSTEM_HANDLE;
+    const byTrov = e ? e.ai?.origin === "ai" : author === TROV_SYSTEM_HANDLE;
     let src: { prs?: unknown[]; commits?: unknown[]; issues?: unknown[] } = {};
     try { src = e?.artifacts ? JSON.parse(e.artifacts) : {}; } catch { src = {}; }
     const prs = (src.prs ?? []).map((p) => String(p).match(/(\d+)\s*$/)?.[1]).filter((n): n is string => !!n).map((n) => `pr:${n}`);
@@ -515,9 +516,11 @@ function feedView(v: AskView, x: RefView, ref: string): string {
       ...issues.map((i) => `<div class="ask-iv-item is-plain">${askIcon("tickets", 13, "var(--fg-40)")}<span class="ask-iv-t">#${esc(String(i))}</span><span class="ask-iv-sub">Issue</span></div>`),
     ];
     return `<div class="ask-iv-meta" style="margin-bottom:8px">
+        ${importanceMark(e?.importance, 12)}
         ${author ? (byTrov ? `<span class="ask-iv-inline">${trovMark(14)}<span style="font-size:12.5px;font-weight:500">Trov</span></span>${aiMark(12)}` : `${personBtn(v, author)}${agentMark(12)}`) : ""}
         ${quiet(whenLabel(e?.created_at ?? x.updated ?? null))}
       </div>
+      ${e?.tags?.length ? `<div class="ask-iv-meta" style="margin-bottom:8px">${tagWords(e.tags, { size: 12 })}</div>` : ""}
       ${title(x.title)}
       ${brief ? `<p class="ask-iv-brief">${esc(brief)}</p>` : ""}
       ${paras.map((p) => `<p class="ask-iv-p" style="margin:0 0 10px">${esc(p)}</p>`).join("")}

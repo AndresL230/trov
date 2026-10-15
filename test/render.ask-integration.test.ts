@@ -8,6 +8,9 @@ vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, render
 import { render, initialState, type AppState } from "../web/src/render";
 import { actionsPart } from "../web/src/ask-actions";
 import { composerPart } from "../web/src/ask-composer";
+import { inspectorBody } from "../web/src/ask-inspector";
+import { askView } from "../web/src/ask-state";
+import type { RefView } from "@shared/ai-ask-core";
 import { convoFromDetail, storedParts, withQuestionId } from "../web/src/ask-stream";
 import { SseParser, askEventOf } from "../web/src/ask-sse";
 import { emptyConvo, foldAskEvent, foldThreadEvent, newTurn, withLastTurn, type AskConvo } from "../web/src/ask-stream";
@@ -125,5 +128,38 @@ describe("the conversation's contract gaps, closed", () => {
       parts: [{ kind: "text" as const, md: "Before. " }, { kind: "block" as const, index: 0 }, { kind: "text" as const, md: "After." }] };
     expect(storedParts(m as never).map((p) => p.kind === "block" ? `block:${p.block.kind}` : p.kind)).toEqual(["text", "block:not_found", "text", "block:save_form"]);
     expect(storedParts({ ...m, parts: undefined } as never).map((p) => p.kind === "block" ? `block:${p.block.kind}` : p.kind)).toEqual(["text", "block:not_found", "block:save_form"]);
+  });
+});
+
+describe("the inspector's contract gaps, closed (it draws the server's projections)", () => {
+  const withItem = (ref: string, view: RefView, detail: Record<string, unknown>) => {
+    const s = answered();
+    s.ask.refViews = { ...s.ask.refViews, [ref]: view };
+    s.ask.inspector = { ...s.ask.inspector, stack: [ref], idx: 0 };
+    s.ask.inspectorUi.items[ref] = { status: "ok", data: { view, detail } };
+    return inspectorBody(askView(s, "page"), ref).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  };
+
+  it("a staged doc's excerpt is the staged body", () => {
+    const view: RefView = { ref: "doc:d", type: "doc", title: "D", status: { mark: "ring", tone: "amber", word: "Staged, not approved", tip: "" }, href: null, extra: { staged: true } };
+    const t = withItem("doc:d", view, { body: "The live words.", staged: { version: 2, body: "The words waiting in Review." }, versions: [{ version: 1, status: "promoted" }, { version: 2, status: "staged" }] });
+    expect(t).toContain("The words waiting in Review.");
+    expect(t).not.toContain("The live words.");
+  });
+
+  it("a feed entry Trov wrote is Trov's by its ai origin, with Sift's importance", () => {
+    const view: RefView = { ref: "feed:9", type: "feed", title: "Weekly", status: null, href: null, extra: {} };
+    const t = withItem("feed:9", view, { entry: { author: "someone", summary: "Weekly", brief: null, body: null, artifacts: null, created_at: "2026-10-15T09:00:00Z", ai: { origin: "ai", subject: null, sources: [], moreCount: 0, generatedAt: null, model: "m" }, importance: "breaking", tags: ["hosting"] } });
+    expect(t).toContain("Trov");
+    expect(t).toContain("Breaking");
+    expect(t).toContain("hosting");
+  });
+
+  it("a pull request's files: the count when complete, N+ when the read stopped short; no line counts drawn", () => {
+    const view: RefView = { ref: "pr:5", type: "pr", num: 5, title: "P", status: null, href: null, extra: {} };
+    expect(withItem("pr:5", view, { files: 3, filePaths: ["a", "b", "c"], filesComplete: true, additions: null, deletions: null, linkedTo: [] })).toContain("3 files");
+    const partial = withItem("pr:5", view, { files: null, filePaths: ["a", "b"], filesComplete: false, additions: null, deletions: null, linkedTo: [] });
+    expect(partial).toContain("2+ files");
+    expect(partial).not.toMatch(/\+\d+ −/);
   });
 });

@@ -40,7 +40,7 @@ interface Web {
   shownParts(t: any): any[];
   withLastTurn(c: any, f: (t: any) => any): any;
   AskApiError: new (status: number, code: string, message: string) => any;
-  actionsPart: { onEvent(ctx: any, where: string, e: any): void };
+  actionsPart: { onEvent?(ctx: any, where: string, e: any): void };
 }
 const WEB = "../web/src/";
 const web = async (): Promise<Web> => ({
@@ -67,7 +67,7 @@ async function screenFrom(w: Web, events: AskEventRead[], cookie: string) {
   const { ctx, flashes } = ctxOf(s, apiFor(w, cookie));
   for (const e of events) {
     s.ask.page = e.event === "thread" ? w.foldThreadEvent(s.ask.page, e.data) : w.withLastTurn(s.ask.page, (t) => w.foldAskEvent(t, e, 0));
-    w.actionsPart.onEvent(ctx, "page", e);
+    w.actionsPart.onEvent?.(ctx, "page", e);   // (the actions part no longer needs the stream: an Auto result names its write)
   }
   await new Promise((r) => setTimeout(r, 50));
   return { s, ctx, flashes };

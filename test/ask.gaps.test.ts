@@ -6,10 +6,14 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
 import { create_ticket } from "../src/tools/tickets";
+import { create_sprint } from "../src/tools/sprints";
+import { get_sprint } from "../src/tools/reads";
+import { promote_doc } from "../src/tools/writes";
+import { ingestDocProposal } from "../src/consumer";
 import { tenantCtx } from "./helpers/tenant";
 import { PLANS } from "@shared/plans";
 import { AskStateSchema, AskThreadDetailSchema } from "@shared/ai-ask";
-import { all, first } from "./helpers/db";
+import { all, first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
 import { ORG_A } from "./helpers/tenant";
 import { BASE, KEYED, ask, call, eventsOf, fakeModel, withAsk } from "./helpers/ask";
@@ -178,5 +182,58 @@ describe("save_artifact from a follow-up saves the answer the person meant", () 
     // The Auto card names its write in the stream itself.
     const card = eventsOf(t.r2.events, "action_result").find((x) => x.state === "auto");
     expect(card).toMatchObject({ tool: "save_artifact", kind: "other" });
+  });
+});
+
+describe("the inspector's reads (/ask/item) — the server's own projections, never client math", () => {
+  const item = async (cookie: string, ref: string) => (await call("GET", `${BASE}/ask/item/${encodeURIComponent(ref)}`, cookie)).json;
+
+  it("a sprint carries the server's forecast — the one the Roadmap shows", async () => {
+    const cookie = await cookieFor(ME);
+    const ctx = await tenantCtx("AndresL230");
+    const sp = await create_sprint(ctx, { label: "Forecast sprint", urgency: "normal", start: "2026-01-05", due: "2099-01-30" }, "AndresL230");
+    await env.DB.prepare(`UPDATE sprints SET status = 'in_progress' WHERE org_id = ? AND id = ?`).bind(ORG_A, sp.id).run();
+    for (const [title, status] of [["One", "done"], ["Two", "in_progress"], ["Three", "submitted"]] as const) {
+      const n = await create_ticket(ctx, { title, body: "", category: "bug", priority: "normal", assignees: [] }, "AndresL230");
+      await env.DB.prepare(`UPDATE tickets SET sprint_id = ?, status = ? WHERE org_id = ? AND number = ?`).bind(sp.id, status, ORG_A, n).run();
+    }
+    const d = await item(cookie, `sprint:${sp.id}`);
+    const server = (await get_sprint(ctx, sp.id))!.forecast;
+    expect(server).not.toBeNull();
+    expect(d.detail.sprint.forecast).toEqual(server);
+  });
+
+  it("a doc with a change waiting in Review: the STAGED body beside the live one", async () => {
+    const cookie = await cookieFor(ME);
+    const ctx = await tenantCtx("AndresL230");
+    await ingestDocProposal(ctx, { slug: "staged-doc", section: "reference", title: "Staged doc", body: "# Staged doc\n\nThe live words.", change_summary: "new", confidence: "high" }, "AndresL230");
+    await promote_doc(ctx, "staged-doc", 1, "AndresL230");
+    await ingestDocProposal(ctx, { slug: "staged-doc", section: "reference", title: "Staged doc", body: "# Staged doc\n\nThe words waiting in Review.", change_summary: "edit", confidence: "high", base_version: 1 }, "AndresL230");
+    const d = await item(cookie, "doc:staged-doc");
+    expect(d.detail.body).toContain("The live words.");
+    expect(d.detail.staged).toMatchObject({ version: 2 });
+    expect(d.detail.staged.body).toContain("The words waiting in Review.");
+  });
+
+  it("a feed entry Trov wrote says so (ai.origin, model) with Sift's importance and its tags; no column leaks", async () => {
+    const cookie = await cookieFor(ME);
+    const res = await env.DB.prepare(`INSERT INTO feed (org_id, author, summary, brief, body, created_at, origin, model, importance) VALUES (?, 'trov', 'Weekly summary', 'What shipped', 'Body', ?, 'ai', 'claude-x', 'notable') RETURNING id`)
+      .bind(ORG_A, "2026-10-15T09:00:00Z").first<{ id: number }>();
+    const d = await item(cookie, `feed:${res!.id}`);
+    expect(d.detail.entry.ai).toMatchObject({ origin: "ai", model: "claude-x" });
+    expect(d.detail.entry.importance).toBe("notable");
+    expect(Array.isArray(d.detail.entry.tags)).toBe(true);
+    expect("origin" in d.detail.entry).toBe(false);
+  });
+
+  it("a pull request's changed files come from what capture stored; its line counts are stored nowhere, so null", async () => {
+    const cookie = await cookieFor(ME);
+    await run(env.DB, `INSERT INTO repo_events (org_id, repo, semantic_key, kind, ref, sha, number, state, actor_login, title, url, raw, provenance, occurred_at, recorded_at)
+      VALUES (?, 'acme/files', 'gh:prs:77:opened', 'pr', 'feat/x', 'sha77', 77, 'review', 'AndresL230', 'Files PR', 'https://github.com/acme/files/pull/77', '{}', 'webhook', ?, ?)`, ORG_A, "2026-10-15T08:00:00Z", "2026-10-15T08:00:00Z");
+    for (const path of ["a.ts", "b.ts", "c.ts"]) await run(env.DB, `INSERT INTO pr_files (org_id, repo, number, path) VALUES (?, 'acme/files', 77, ?)`, ORG_A, path);
+    await run(env.DB, `INSERT INTO pr_file_reads (org_id, repo, number, head_sha, complete, content_hash, fetched_at) VALUES (?, 'acme/files', 77, 'sha77', 1, 'h', ?)`, ORG_A, "2026-10-15T08:01:00Z");
+    const d = await item(cookie, "pr:77");
+    expect(d.detail).toMatchObject({ files: 3, filesComplete: true, additions: null, deletions: null });
+    expect(d.detail.filePaths.sort()).toEqual(["a.ts", "b.ts", "c.ts"]);
   });
 });

@@ -27,7 +27,10 @@ import {
   type ActionWithTurn, type ChatActionRow, type ChatMessageRow, type ChatThreadRow,
 } from "../../data/ask";
 import { orgIdentityOf, appBase } from "../../tools/org-links";
-import { buildMatch, get_ticket, get_doc, get_sprint } from "../../tools/reads";
+import { buildMatch, get_ticket, get_doc, get_sprint, withImportance } from "../../tools/reads";
+import { withAiMeta, type FeedDbRow } from "../../tools/feed-ai";
+import { prFilesFor } from "../../repo/pr-files-store";
+import { tagsOfItems } from "../../tools/tags";
 import { quickSearch } from "../../tools/quick-search";
 import { createPage, deletePage, getPage } from "../../tools/artifacts";
 import { getHandoff } from "../../tools/handoffs";
@@ -171,17 +174,44 @@ askApp.get("/ask/item/:ref", async (c) => {
     case "pr": {
       const s = await first<{ what: string | null; why: string | null; impact: string | null }>(ctx, `SELECT what, why, impact FROM pr_summaries WHERE org_id = ? AND pr_number = ?`, ctx.orgId, Number(p.key));
       const linked = await all<{ number: number }>(ctx, `SELECT DISTINCT t.number FROM ticket_links l JOIN tickets t ON t.id = l.ticket_id AND t.org_id = l.org_id WHERE l.org_id = ? AND l.url LIKE ?`, ctx.orgId, `%/pull/${p.key}`);
-      detail = { what: s?.what ?? null, why: s?.why ?? null, impact: s?.impact ?? null, linkedTo: linked.map((l) => `ticket:${l.number}`), files: null, additions: null, deletions: null };
+      // Changed files: what Repo setups' capture stored (`pr_files`, 0073 — paths only, read by the gate's PR-files arm),
+      // a count only when that read was complete. Added / deleted LINES are stored nowhere, so they stay null (hidden):
+      // a read never calls GitHub (CLAUDE.md invariant 7).
+      const at = await first<{ repo: string }>(ctx, `SELECT repo FROM repo_events WHERE org_id = ? AND kind = 'pr' AND number = ? ORDER BY occurred_at DESC LIMIT 1`, ctx.orgId, Number(p.key));
+      const pf = at ? (await prFilesFor(ctx, at.repo, [Number(p.key)])).get(Number(p.key)) ?? null : null;
+      detail = {
+        what: s?.what ?? null, why: s?.why ?? null, impact: s?.impact ?? null, linkedTo: linked.map((l) => `ticket:${l.number}`),
+        files: pf && pf.complete ? pf.paths.length : null, filePaths: pf ? pf.paths.slice(0, 30) : [], filesComplete: pf ? pf.complete : null,
+        additions: null, deletions: null,
+      };
       break;
     }
     case "doc": {
       const d = await get_doc(ctx, p.key);
-      detail = d ? { body: d.doc.body, versions: d.versions.map((v) => ({ version: v.version, status: v.status, created_by: v.created_by, created_at: v.created_at })) } : {};
+      // A doc with a change waiting in Review: its excerpt is the STAGED version's body (what the person asked about),
+      // the live body beside it; `staged` is null when nothing waits.
+      const live = d ? d.versions.filter((v) => v.status === "promoted").reduce((m, v) => Math.max(m, v.version), 0) : 0;
+      const waiting = d ? [...d.versions].reverse().find((v) => v.status === "staged" && v.version > live) ?? null : null;
+      detail = d ? {
+        body: d.doc.body, staged: waiting ? { version: waiting.version, body: waiting.body, created_by: waiting.created_by, created_at: waiting.created_at } : null,
+        versions: d.versions.map((v) => ({ version: v.version, status: v.status, created_by: v.created_by, created_at: v.created_at })),
+      } : {};
       break;
     }
     case "sprint": detail = { sprint: await get_sprint(ctx, Number(p.key)) }; break;
     case "handoff": detail = { handoff: await getHandoff(ctx, Number(p.key)) }; break;
-    case "feed": detail = { entry: await first(ctx, `SELECT id, author, summary, brief, body, artifacts, created_at FROM feed WHERE org_id = ? AND id = ?`, ctx.orgId, Number(p.key)) }; break;
+    case "feed": {
+      // The entry as the Feed reads it (`get_feed`'s projection): who wrote it — Trov's own carries `ai` (origin,
+      // model, subject, sources) — Sift's `importance` when rated, and its tags. A feed entry has no kind column: the
+      // inspector shows these, never a guessed "Shipped".
+      const row = await first<FeedDbRow>(ctx, `SELECT * FROM feed WHERE org_id = ? AND id = ?`, ctx.orgId, Number(p.key));
+      if (row) {
+        const [withAi] = await withAiMeta(ctx, [row]);
+        const { origin: _o, model: _m, subject: _s, ...plain } = withImportance(withAi) as FeedDbRow;
+        detail = { entry: { ...plain, tags: (await tagsOfItems(ctx, "feed", [String(row.id)])).get(String(row.id)) ?? [] } };
+      } else detail = { entry: null };
+      break;
+    }
     case "person": {
       const logins = await all<{ github_login: string }>(ctx, `SELECT github_login FROM org_login_map WHERE org_id = ? AND person = ? COLLATE NOCASE`, ctx.orgId, p.key);
       const prs = logins.length ? await all<{ number: number }>(ctx,

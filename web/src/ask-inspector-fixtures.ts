@@ -91,6 +91,8 @@ export function inspectorDetailFixture(ref: string, nowMs: number = Date.now(), 
           id: 7, label: "Hosting", summary: "Any org can connect Netlify or Vercel and see its deploys in Trov.", description: null, phase: null, dates: null,
           start: "2026-10-05", due: "2026-10-30", status: "in_progress", active: true, urgency: "normal", lead: "andres", domain: null, github_ref: null,
           created_at: "2026-10-01T09:00:00Z", created_by: "andres", updated_at: ago(H), progress: { closed: 7, total: 12, pct: 58 }, issues: null,
+          // The server's forecast (src/tools/sprints.ts `sprintForecast`), as the Roadmap shows it: 3 days late, like its status.
+          forecast: { remaining: 5, perDay: 0.64, projected: "2026-11-02", daysLate: 3 },
           members: ["andres", "maya", "jon", "priya"],
           tickets: [
             ticketRow(14, "Guided repository setup", "in_progress", ["maya"]),
