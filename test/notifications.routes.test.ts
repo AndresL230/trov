@@ -25,7 +25,7 @@ const json = (method: string, body: unknown, cookie: string): RequestInit => ({
   method, headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body),
 });
 interface PrefsView {
-  email: string | null; unsubscribed: boolean;
+  email: string | null; unsubscribed: boolean; onlyWhenNeeded: boolean;
   kinds: { id: string; label: string; allowedCadences: string[]; cadence: string; orgDefault: string; inherited: boolean }[];
 }
 

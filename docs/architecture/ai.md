@@ -158,6 +158,34 @@ live (and re-record) with `scripts/ai-evals/run-live.ts` before a prompt, thresh
 
 Neither job imports the client (the pass asks Jev for them); both are reachable only from `src/ai/pass.ts`.
 
+## The weekly highlights (`digest.week`, Phase E; `src/ai/week.ts`, `src/ai/week-core.ts`, 0067)
+
+The weekly e-mail's "This week" (`notifications.md` › The digest's shape): at most 3 cited highlights of ONE
+organization's week, written ONCE per org per week and shared by every member's weekly e-mail. A Haiku job
+(`KIND_PROVIDER["digest.week"] = "claude"`) on the scope `digest:week:<YYYY-Www>:<send instant>` (`weekScopeKey`;
+the key carries the send instant so the submit and the collect read the same window), through the Message Batches
+API (`batch: true`, half the price), the pass's last stage.
+
+- **Marked** by the digest pre-warm (`prewarmDigests`) `WEEK_HIGHLIGHTS_LEAD_MS` = 3 h before the org's weekly send,
+  only with `week_recap` on and someone to send to. The Batch API answers on a later tick, usually within the hour;
+  a week whose answer is not back by the send has no highlights (never a guess).
+- **Input** (`buildWeekInput`, D1 only): the week's merged PRs on the primary repo (the summary card's title and what
+  changed, Sift's `importance`), the Feed's entries as `get_feed` reads them (handoff lines left out), tickets a
+  person marked done, sprints completed — each with a ref and the server's cite; ordered breaking, notable, then the
+  rest, newest first; capped at 50 items.
+- **Once a week**: `input` reads null — no request — for a week that already has a row; the pass never submits a
+  scope whose request is in flight; `storeWeekHighlights` keeps the first answer (`INSERT OR IGNORE`) and the last 8
+  weeks. A week with nothing in it makes no request.
+- **Never guess** (`weekFromAnswer`): a cite not in the input is dropped and a highlight with no valid cite is not
+  written; a highlight with a number the input does not have, a ref in its text, or over 220 characters is dropped
+  (never cut); at most 3. The numbers line under it is the SERVER's (`renderers/week-recap.ts`), never the model's.
+- **Read** by the weekly e-mail only, while the org's switch is on; it never calls a model.
+- **Evals**: `test/ai-evals/digest.week/` (17 cases from Personal Dev's real rows and this repo's merged PRs, what
+  is arranged said per case), graded by `grade.ts`, recorded live with `scripts/ai-evals/week-live.ts` and replayed
+  in CI by `test/ai-evals.week.test.ts` (plus one answer at the `Response` level through the batch results path).
+  The live run (claude-haiku-5-5, `week.1`): about 490 uncached input tokens + the 821-token cached org prefix and
+  about 156 output tokens per org-week, so a few hundredths of a cent per org per week at batch prices.
+
 ## The router (`src/tools/ai-route.ts`, `src/data/ai-dirty.ts`; Phase B)
 
 Plain code, no model, no network: `routeAi(ctx, event)` turns a write that happened into the scopes it made stale
@@ -181,6 +209,7 @@ never fails the write (`routeAi` logs the error's name with the org id).
 | doc promoted; artifact created or versioned | `card:tagfit:doc:<slug>` + `doc_drift:<slug>`; `card:tagfit:artifact:<slug>` + `doc_drift:artifact:<slug>` | `promote_doc`; `insertPage` (with a version) and `writeVersion` (`src/tools/artifacts.ts`) |
 | themes accepted | `theme_backfill:<repo>` | (Phase D's theme accept) |
 | digest send hour one tick away | `person:<handle>`, URGENT | `prewarmDigests` (`src/notifications/cron.ts`), from the repo tick at `:50` |
+| weekly digest 3 hours away (Phase E) | `digest:week:<YYYY-Www>:<send instant>` | `prewarmDigests`, the same `:50` tick |
 
 Some scopes are named by what the write knows and resolved in SQL in the same batch (`ScopeRef`): a GitHub login →
 the member this org attributes it to (the attribution map, else a member's own sign-in — never a stranger); a PR's
@@ -208,6 +237,7 @@ its LAST mark, every other scope from its FIRST):
 | `theme_window` | daily | weekly |
 | `doc_drift` | weekly | monthly (30 days) |
 | `theme_backfill` | next tick (not in the design's table: the accept's own follow-up, through the Batch API) | same |
+| `digest` | next tick (Phase E: marked once, hours before the weekly send, through the Batch API) | same |
 
 `urgent` (`ai_dirty.urgent`, set by whoever marks): a BREAKING change skips a `repo`'s wait on Pro and Enterprise only
 (Phase C's `feed.importance` marks it); the digest pre-warm skips a `person`'s on every plan. It changes nothing
