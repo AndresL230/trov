@@ -114,6 +114,14 @@ export interface AiFeedMeta {
 /** How many sources an entry shows before "and N more". */
 export const AI_FEED_SOURCES_SHOWN = 3;
 
+// ── feed.importance (Phase C; 0060_ai_importance) ───────────────────────────
+/** How much a feed entry or a merged PR matters, as Sift rated it (`feed.importance`, `pr_summaries.importance`):
+ *  a COMPUTED fact, not a suggestion. Absent on a read = unknown (never rated, or Sift was unsure) — never a guessed
+ *  `routine`. The Feed marks `notable` and `breaking` only; `routine` and absent draw nothing. */
+export const FEED_IMPORTANCES = ["routine", "notable", "breaking"] as const;
+export type FeedImportance = (typeof FEED_IMPORTANCES)[number];
+export const isFeedImportance = (v: unknown): v is FeedImportance => typeof v === "string" && (FEED_IMPORTANCES as readonly string[]).includes(v);
+
 // ── Repo › Planning › "Where the work went" ─────────────────────────────────
 export const AI_THEME_RANGES = ["8w", "quarter"] as const;
 export type AiThemeRange = (typeof AI_THEME_RANGES)[number];

@@ -47,11 +47,16 @@ import { providerFor, type AiProviderOpts, type AiUsage, type JevAsk, type JevKi
 import { groupOf, takes, validJob, customIdOf, type AiJob, type ClaudeJob, type JevGate, type JevJob, type JevRequest, type JobItem } from "./jobs";
 import { orgPrefix } from "./prefix";
 import { collectBatches, submitBatches, AI_BATCH_PER_TICK, type QueuedRequest } from "./batches";
+import { TAG_FIT_ITEM_JOB } from "./sift-items";
+import { IMPORTANCE_JOBS } from "./importance";
 
 export type { AiJob } from "./jobs";
 
-/** THE registry. Empty: Phase B ships the machinery; Phases C and D register the producers. */
-export const AI_JOBS: readonly AiJob[] = [];
+/** THE registry: one line per kind (Phases C and D). */
+export const AI_JOBS: readonly AiJob[] = [
+  TAG_FIT_ITEM_JOB, // tag.fit — Sift on new items (card:tagfit:*)
+  ...IMPORTANCE_JOBS, // feed.importance — card:feed:*, card:pr:*
+];
 
 /** Haiku calls one tick may make, across every org. */
 export const AI_RUNS_PER_TICK = 12;

@@ -5,9 +5,10 @@ and the decided system, `docs/superpowers/specs/2026-10-15-server-ai-build.md` (
 `2026-10-14-server-ai.md`). The capture-time summaries and their allowance: `plans.md` › AI summaries. The keys:
 `env.md` › Summaries.
 
-**Nothing produces AI content yet** (Phases A and B of the decided build). The pass below has its machinery but
-no job, no suggestion is ever written, and every AI field on the existing reads is omitted in production. What
-exists is the base: the client with both providers (and Claude's Message Batches), the allowances, the switches,
+**Phase C's Jev jobs are the first producers** (below, › Jobs): `feed.importance` rates new feed entries and merged
+PRs, and Sift checks a newly promoted doc against the active tags. Nothing else writes AI content yet: no suggestion
+is written, and every AI field on the existing reads but `importance` is omitted in production. What exists is the
+base: the client with both providers (and Claude's Message Batches), the allowances, the switches,
 the ROUTER (every write path marks the scopes it made stale in `ai_dirty`), the pass's machinery (debounce, stages,
 grouping, gates, the cached org prefix, batches, section isolation, clearing, the caps), the suggestion and
 "Wrong?" tables and routes, the screens' contracts, and a local preview. Sift (tagging existing items,
@@ -27,7 +28,7 @@ A caller names a KIND, never a model. `KIND_PROVIDER` is the ONE table from a ki
 | Provider | Model | Kinds today | What it does |
 |---|---|---|---|
 | `claude` | `claude-haiku-5-5` (Anthropic, `ANTHROPIC_API_KEY`) | `summary_pr`, `summary_issue`, `filter` | `structured()`: one call, a system prompt and a text in, a zod-checked value out. It writes words. |
-| `jev` | `jev-latest` (TypeSafe AI's Jev, `TYPESAFE_API_KEY`) | `tag.fit` | `classify()`: a run of one yes/no question over many items; `ask()`: several `noul` / `choice` / `score` questions about ONE item in ONE request. Numbers only, no text. |
+| `jev` | `jev-latest` (TypeSafe AI's Jev, `TYPESAFE_API_KEY`) | `tag.fit`, `feed.importance` | `classify()`: a run of one yes/no question over many items; `ask()`: several `noul` / `choice` / `score` questions about ONE item in ONE request. Numbers only, no text. |
 
 - **The Jev provider is `src/tools/classify.ts`**, the ONLY file in `src/` and `shared/` that names TypeSafe's URL,
   and only `src/ai/client.ts` imports it (`test/secrets.mcp.test.ts`). `classify` is Sift's run, unchanged by the
@@ -52,9 +53,10 @@ ONLY in these places, all behind THE client (the decided build adds Ask Trov's r
    jobs and gates and Claude jobs (`src/ai/jobs.ts`); the registry is empty until Phases C and D.
 3. **The Sift run** — `src/ai/sift.ts` (`startTagFit` / `continueTagFit`), started by an admin from the Tags routes
    (`src/tags/routes.ts`: adding a tag, accepting a suggested one, Find items) and run in the background
-   (`waitUntil`). Kind `tag.fit` (Jev). Everything about Sift that is NOT a call — candidates, the switches' read,
-   Undo, review counts — is `src/tools/tag-fit.ts`, which imports no client (MCP reaches it through
-   `src/tools/tags.ts`). The decided build moves this run into the pass (Phase C).
+   (`waitUntil`). Kind `tag.fit` (Jev). Everything about Sift that is NOT a call — candidates, the question, the
+   bands and their writer, the switches' read, Undo, review counts — is `src/tools/tag-fit.ts`, which imports no
+   client (MCP reaches it through `src/tools/tags.ts`). Sift on NEW items runs in the pass (› Jobs); the admin's run
+   over existing items stays here.
 4. **The plain-language filter route** — `POST /api/o/:slug/ai/filter` (`src/ai/routes.ts` → `src/ai/filter.ts`), on
    a person's request only (Enter in the filter box). Kind `filter` (Claude). See "The plain-language filter" below.
 
@@ -79,7 +81,8 @@ either off stops a run in progress at its next request. The Tags tab says when t
 6-hourly progress / reconcile), AFTER the health pings, on what they left of the SAME `Budget`
 (`CRON_SUBREQUEST_BUDGET`, `CRON_WALL_BUDGET_MS` — `src/repo/dispatch.ts`, `repo-dashboard.md` › The repo cron).
 
-- **The job registry.** `AI_JOBS: readonly AiJob[]` is EMPTY (Phases C and D register the producers). A job
+- **The job registry.** `AI_JOBS: readonly AiJob[]` — one line per kind (› Jobs: Phase C's `tag.fit` and
+  `feed.importance`; Phase D adds the Haiku producers). A job
   (`src/ai/jobs.ts`) is one KIND of work over one scope (`scope`, and for a shared scope like `card` a `keyPrefix`):
   `input(ctx, scope)` reads its item from D1 (null = nothing to send: the scope is written as it is), and then —
   - a **Jev job** (`provider: "jev"`, a `JevKind`): `ask(item)` → ONE request (`state` + questions) per item;
@@ -120,6 +123,35 @@ either off stops a run in progress at its next request. The Tags tab says when t
   `attempts`).
 - **Isolation.** A read, `input`, `prompt` or `write` that throws is logged by name with `org=<id>` (the scope fails)
   and the loop moves on; nothing throws out of `runAiPass`.
+
+## Jobs (Phase C: Jev)
+
+Each kind ships an eval set (`test/ai-evals/<kind>/cases.json`: real items with the expected answer and a one-line
+why, and the live run's result) and its recorded answers (`recorded.json`), replayed in CI by `test/ai.evals.test.ts`
+through the REAL pass and job: a request the job builds differently from the recorded one fails the test. Re-run
+live (and re-record) with `scripts/ai-evals/run-live.ts` before a prompt, threshold or what is sent changes.
+
+- **`feed.importance`** (`src/ai/importance.ts`; scopes `card:feed:<id>`, `card:pr:<n>` — two job objects, one kind):
+  ONE Jev `choice` question (`IMPORTANCE_QUESTION`: routine / notable / breaking, each option described) per item,
+  one request each. Sent: a feed entry's title, brief and a 600-character scrubbed excerpt of its body
+  (`feedImportanceText`); a merged PR's title and capture-time summary — what / why / impact — or, with no summary
+  content, a scrubbed excerpt of its body (`prImportanceText`). A PR whose summary row is not written yet fails the
+  attempt (`SummaryPending`) and a later tick retries. Stored as a COMPUTED FACT (not a suggestion) on
+  `feed.importance` / `pr_summaries.importance` (`0060_ai_importance`) ONLY when Jev's `confidence` is at least
+  `IMPORTANCE_MIN_CONFIDENCE` = 0.7 (the eval's choice: on 25 real items, 18 rated and all 18 right; 7 left unknown);
+  below it nothing is written and the column stays NULL — unknown, never a guessed `routine` — and the card is done.
+  A malformed answer is a failed attempt. An item already rated is never asked again, and a stored value is never
+  overwritten (`… AND importance IS NULL`); `storePrSummary` upserts its own columns, so a re-summarized PR keeps
+  its rating. A BREAKING item marks the org's primary repo `{ scope: "repo", urgent: true }` through `markDirty`,
+  so the repo state skips its wait on Pro and Enterprise (› Scopes and debounce). No reason is stored or shown.
+  Read by: the Feed's mark (`feed-and-search.md` › Importance), `get_feed`, My Work's merged PRs; Phase E's
+  "notable or breaking" lines.
+- **`tag.fit` on new items** (`src/ai/sift-items.ts`; scope `card:tagfit:<type>:<id>`): Sift's question for every
+  active tag in ONE request about the new item, Sift's bands, provenance and Undo, both switches, `ai_suggest` —
+  `feed-and-search.md` › Tags › Sift on NEW items. It shares the question, the bands and the writer with the run
+  (`fitQuestion`, `fitBand`, `storeFit` in `src/tools/tag-fit.ts`).
+
+Neither job imports the client (the pass asks Jev for them); both are reachable only from `src/ai/pass.ts`.
 
 ## The router (`src/tools/ai-route.ts`, `src/data/ai-dirty.ts`; Phase B)
 
@@ -339,13 +371,16 @@ from its fixtures (above).
 
 ## Tests
 
-`test/ai.pass.test.ts` (the empty registry; stand-in jobs over real `ai_dirty` rows drive the guards — the switch,
+`test/ai.pass.test.ts` (the real registry; stand-in jobs over real `ai_dirty` rows drive the guards — the switch,
 the keys, both allowances, the per-tick cap, the budget, the rotation, metering —; eligibility; Platform usage per
 provider), `test/ai.router.test.ts` (the table, pure; `markDirty`'s keep / reset / switch and the derived scopes; the
 debounce; every write path's marks; a failed mark never fails the write), `test/ai.harness.test.ts` (THE PASS HARNESS:
 ten pushes plus a merge give ONE repo call, 25 ticket cards give 25 Jev requests and zero Haiku calls, a
 non-substantive burst gives one Jev call and no Haiku call; grouping, the Jev cap, the prefix, section isolation,
 clearing, batches — a deleted or switched-off org's result writes nothing — and the measured spend per tick),
+`test/ai.importance.test.ts` and `test/ai.sift-items.test.ts` (Phase C's jobs through the real pass: the question,
+the threshold — never guessed —, the switches, the urgent mark, Sift's bands, Undo and person-over-AI on new items),
+`test/ai.evals.test.ts` (the eval sets replayed), `test/render.feed-importance.test.ts` (the Feed's mark),
 `test/ai.routes.test.ts` (settings — all four allowances, Pro's per-seat Ask Trov cap, the Auto switch —, accept /
 dismiss, "Wrong?"), `test/ai.preview.test.ts` (fields absent in production, the preview and its guard — Org settings
 › AI in every mode —, the MCP tab mapping), `test/ai.contracts.test.ts` (the fixtures against the schemas),

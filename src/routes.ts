@@ -65,7 +65,7 @@ import { AVATAR_MAX_BYTES } from "@shared/people";
 import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
 import { aiApp } from "./ai/routes";
-import { aiPreview, withPreviewFeed } from "./ai/preview";
+import { aiPreview, previewFeedRows, withPreviewFeed } from "./ai/preview";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
 
 export const app = new Hono<AppEnv>();
@@ -246,7 +246,7 @@ tenantRoot.get("/feed", async (c) => {
   // An entry written by Trov carries `ai` (shared/rows.ts). Nothing writes one yet, so production rows have
   // none; under `wrangler dev` with LOCAL_AI_PREVIEW the sample entries are merged in (src/ai/preview.ts).
   const preview = aiPreview(c.env, c.req.url);
-  return c.json({ feed: preview ? withPreviewFeed(feed, preview.feed, filter) : feed });
+  return c.json({ feed: preview ? withPreviewFeed(feed, previewFeedRows(preview), filter) : feed });
 });
 
 // The Feed aside's "This week": entry counts per day, people, top tags and authors over

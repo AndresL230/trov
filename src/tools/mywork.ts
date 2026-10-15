@@ -1,6 +1,7 @@
 import type { DashboardData, MyWorkPr, MyWorkTodo, MyWorkTicket } from "@shared/dashboard";
 import type { EventRow, PersonRow } from "@shared/rows";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
+import { isFeedImportance } from "@shared/ai-core";
 import { type TenantContext, all, first } from "../data/sql";
 import { memberPerson, memberGithubLogins } from "../auth/persons";
 import { isIssueGone } from "./issue-gone";
@@ -35,6 +36,8 @@ export interface PrEventJoinRow extends EventRow {
   s_what: string | null;
   s_why: string | null;
   s_impact: string | null;
+  /** `pr_summaries.importance` (0060), when the read selects it. */
+  s_importance?: string | null;
 }
 
 interface RawPr {
@@ -102,6 +105,8 @@ export function toMyWorkPr(row: PrEventJoinRow): MyWorkPr {
     why: row.s_why,
     impact: row.s_impact,
     baseRef: parsed.pr.base?.ref ?? null,
+    // Sift's rating, only when there is one: unknown is absent, never a guessed `routine`.
+    ...(isFeedImportance(row.s_importance) ? { importance: row.s_importance } : {}),
   };
 }
 
@@ -273,7 +278,7 @@ export async function getMyWork(ctx: TenantContext, handle: string): Promise<MyW
 
     const prRows = await all<PrEventJoinRow>(
       ctx,
-      `SELECT e.*, s.title AS s_title, s.what AS s_what, s.why AS s_why, s.impact AS s_impact
+      `SELECT e.*, s.title AS s_title, s.what AS s_what, s.why AS s_why, s.impact AS s_impact, s.importance AS s_importance
          FROM events e
          LEFT JOIN pr_summaries s ON s.semantic_key = e.semantic_key AND s.org_id = ?
         WHERE e.org_id = ?

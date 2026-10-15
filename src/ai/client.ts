@@ -38,6 +38,8 @@ export const KIND_PROVIDER = {
   "tag.fit": "jev",
   // The plain-language filter (#162): a person's request → the screen's own filter fields (src/ai/filter.ts).
   filter: "claude",
+  // Phase C: how much a feed entry or a merged PR matters, routine / notable / breaking (src/ai/importance.ts).
+  "feed.importance": "jev",
 } as const satisfies Record<string, AiProviderName>;
 
 /** What a call is for. */

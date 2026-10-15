@@ -200,6 +200,8 @@ export function aiPreviewFixtures(mode: AiPreviewMode, now: Date = new Date()) {
     brief: briefFixture(state, now),
     repoState: repoStateFixture(state, now),
     feed: feedFixtures(now),
+    // Phase C: agent entries Sift rated notable / breaking (merged into `/feed` beside `feed`).
+    feedImportance: feedImportanceFixtures(now),
     themes: { "8w": themesFixture(mode, "8w", now), quarter: themesFixture(mode, "quarter", now) } as Record<AiThemeRange, AiThemes>,
     settings: aiSettingsFixture(mode, now),
   };
@@ -218,4 +220,35 @@ export function aiFilterFixture(screen: AiFilterScreen, mode: AiPreviewMode): { 
     case "feed": return { filter: { author: "me", range: "7d" }, unmatched: ["about deploys"] };
     case "artifacts": return { filter: { status: "published", kind: "html", text: "checkout" }, unmatched: [] };
   }
+}
+
+// ── feed.importance (Phase C) ───────────────────────────────────────────────
+/** Two AGENT entries Sift rated, as `/feed` rows, so the Feed's notable and breaking marks show under `wrangler dev`
+ *  (merged in beside `feedFixtures` by the preview: src/ai/preview.ts `previewFeedRows`). A routine or unrated entry
+ *  draws no mark, so neither needs a sample. Ids sit far above any real row's, like the Trov entries'. */
+export function feedImportanceFixtures(now: Date): FeedRow[] {
+  return [
+    {
+      id: 990_101,
+      author: "andres",
+      summary: "Organization addresses move from /o/<slug>/ to /<slug>/",
+      brief: "Every link to an organization changes. Old /o/ links redirect for now; update bookmarks and any agent config that names the old path.",
+      body: null,
+      artifacts: JSON.stringify({ prs: ["111"], commits: [], issues: [] }),
+      created_at: ago(now, 3 * HOUR),
+      tags: ["api"],
+      importance: "breaking",
+    },
+    {
+      id: 990_102,
+      author: "andres",
+      summary: "Tags of your own, sorted by Sift",
+      brief: "Each organization now keeps its own tag list, and Sift tags existing feed entries, docs and decisions when a tag is added.",
+      body: null,
+      artifacts: JSON.stringify({ prs: ["179"], commits: [], issues: [] }),
+      created_at: ago(now, 26 * HOUR),
+      tags: ["ui"],
+      importance: "notable",
+    },
+  ];
 }
