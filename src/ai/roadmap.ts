@@ -28,7 +28,7 @@ import { lastRoadmapSuggestionAt, planDrift, putInsight, sprintNotes } from "../
 import { putSuggestion } from "../data/ai";
 import { sprintForecast, ticketCountsBySprint } from "../tools/sprints";
 import { each, keep, sections } from "./sections";
-import { allowedNumbers, cleanLine, fenced, FENCE_RULE, numbersGiven, sendable, validCites } from "./grounding";
+import { allowedNumbers, cleanLine, fenced, FENCE_RULE, groundedLine, numbersGiven, sendable, tidyRefs, validCites } from "./grounding";
 import type { AiJob, ClaudeJob, JobItem } from "./jobs";
 
 const DAY = 86_400_000;
@@ -64,7 +64,7 @@ Rules you never break:
 - Use only facts in the input. Never invent a person, ticket, pull request, theme, date or number.
 - NUMBERS: state only numbers that appear in the input exactly as given. Never compute, round, estimate or convert one. When unsure, use words ("most", "a few") instead.
 - Never say work is done, finished, complete or should be closed or marked done — people decide that.
-- Cite the refs from the input that support what you wrote (exactly as written, e.g. "ticket:14", "pr:173").
+- Cite the refs from the input that support what you wrote (exactly as written, e.g. "ticket:14", "pr:173") in "cites". In the text itself write a ticket or pull request as #14, a sprint or theme by its name — never a ref, and never an id the reader was not shown.
 - Plain sentences: no markdown, no lists, no quotes, no emoji.`;
 
 // ── sprint notes (`sprint:<id>`) ─────────────────────────────────────────────
@@ -117,42 +117,68 @@ export async function noteInput(ctx: TenantContext, key: string, now: Date = new
   }).slice(0, 5);
 
   const c = counts.get(id) ?? { total: tickets.length, closed: 0 };
-  const forecast = sprintForecast({ status: sp.status, start: sp.start_date, due: sp.target_date || null, closed: c.closed, total: c.total }, now);
+  return buildNoteInput({
+    sprintId: id, title: sp.title, status: sp.status, start: sp.start_date, due: sp.target_date || null, closed: c.closed, total: c.total,
+    tickets: tickets.map((t) => ({ ...t, assignees: assignees.filter((a) => a.ticket_id === t.id).map((a) => a.login) })),
+    prs: prNums.map((p) => {
+      const card = cards.find((x) => x.pr_number === p.n && x.repo.toLowerCase() === p.repo.toLowerCase());
+      return { repo: p.repo, n: p.n, title: card?.title ?? null, what: card?.what ?? null };
+    }),
+    entries,
+  }, now);
+}
+
+/** What `noteInput` read, before it is shaped. */
+export interface NoteRaw {
+  sprintId: number;
+  title: string;
+  status: string;
+  start: string | null;
+  due: string | null;
+  closed: number;
+  total: number;
+  tickets: { number: number; title: string; status: string; priority: string; assignees: string[] }[];
+  prs: { repo: string; n: number; title: string | null; what: string | null }[];
+  entries: { id: number; summary: string; created_at: string }[];
+}
+
+/** A note's input from what was read — PURE (the evals build theirs with it): the forecast, the cites the server
+ *  offers, and the numbers the model may state. */
+export function buildNoteInput(r: NoteRaw, now: Date = new Date()): NoteInput {
+  const forecast = sprintForecast({ status: r.status, start: r.start, due: r.due, closed: r.closed, total: r.total }, now);
   const offered = new Map<string, AiCite>();
-  for (const t of tickets) offered.set(`ticket:${t.number}`, ticketCite(t.number));
-  const prs = prNums.map((p) => {
-    const card = cards.find((x) => x.pr_number === p.n && x.repo.toLowerCase() === p.repo.toLowerCase());
+  for (const t of r.tickets) offered.set(`ticket:${t.number}`, ticketCite(t.number));
+  const prs = r.prs.map((p) => {
     offered.set(`pr:${p.n}`, prCite(p.repo, p.n));
-    return { ref: `pr:${p.n}`, title: sendable(card?.title ?? `pull request ${p.n}`, 140), what: sendable(card?.what ?? "", 300) };
+    return { ref: `pr:${p.n}`, title: sendable(p.title ?? `pull request ${p.n}`, 140), what: sendable(p.what ?? "", 300) };
   });
-  for (const f of entries) offered.set(`feed:${f.id}`, feedCite(f.id, f.summary));
-  const due = sp.target_date || null;
+  for (const f of r.entries) offered.set(`feed:${f.id}`, feedCite(f.id, f.summary));
   return {
-    sprintId: id, title: sp.title, due, closed: c.closed, total: c.total, forecast,
-    tickets: tickets.map((t) => ({
-      ref: `ticket:${t.number}`, title: sendable(t.title, 140), status: t.status, priority: t.priority,
-      assignees: assignees.filter((a) => a.ticket_id === t.id).map((a) => a.login),
-    })),
+    sprintId: r.sprintId, title: r.title, due: r.due, closed: r.closed, total: r.total, forecast,
+    tickets: r.tickets.map((t) => ({ ref: `ticket:${t.number}`, title: sendable(t.title, 140), status: t.status, priority: t.priority, assignees: t.assignees })),
     prs,
-    entries: entries.map((f) => ({ ref: `feed:${f.id}`, summary: sendable(f.summary, 200), at: f.created_at.slice(0, 10) })),
+    entries: r.entries.map((f) => ({ ref: `feed:${f.id}`, summary: sendable(f.summary, 200), at: f.created_at.slice(0, 10) })),
     offered,
     allowed: allowedNumbers(
-      c.closed, c.total, c.total - c.closed, ...tickets.map((t) => t.number), ...prNums.map((p) => p.n),
-      forecast?.remaining, forecast ? Math.abs(forecast.daysLate ?? 0) : null, ...dayParts(due), ...dayParts(forecast?.projected),
+      r.closed, r.total, r.total - r.closed, ...r.tickets.map((t) => t.number), ...r.prs.map((p) => p.n),
+      forecast?.remaining, forecast ? Math.abs(forecast.daysLate ?? 0) : null, ...dayParts(r.due), ...dayParts(forecast?.projected),
     ),
   };
 }
 
+/** The refs an answer cites. Generous on purpose: a sprint of nine tickets drew ten cites on the live eval, and a
+ *  capped array fails the WHOLE answer — the server keeps the first valid few (`validCites`). */
+const CITES = z.array(z.string().max(80)).min(1).max(20);
 const NoteItem = z.object({
   sprint: z.number().int(),
   text: z.string().min(1).max(240),
-  cites: z.array(z.string().max(80)).min(1).max(6),
+  cites: CITES,
 });
 export const NotesAnswer = sections({ notes: z.array(each(NoteItem)).max(20) });
 type NotesAnswer = z.infer<typeof NotesAnswer>;
 
 export const NOTE_SYSTEM = `${SYSTEM_HEAD}
-Task: for EACH sprint in the input write ONE note — one sentence, at most 200 characters — saying where the sprint stands and what its open work waits on (a blocker, an unassigned ticket, a failing or open pull request). Return one entry per sprint with its "sprint" id, the "text", and 1–4 "cites".`;
+Task: for EACH sprint in the input write ONE note — one sentence, at most 200 characters — saying where the sprint stands and what its open work waits on (a blocker, an unassigned ticket, a failing or open pull request). The note is shown on the sprint's own row: do not name the sprint or give its id. Return one entry per sprint with its "sprint" id, the "text", and 1–4 "cites".`;
 
 export function notePrompt(items: readonly JobItem<NoteInput>[]): { system: string; input: string } {
   return {
@@ -168,8 +194,8 @@ export function notePrompt(items: readonly JobItem<NoteInput>[]): { system: stri
 
 /** One answered note as it may be stored, or null (no valid cite, a number it was not given, no text). */
 export function checkNote(i: NoteInput, n: { text: string; cites: string[] }): { text: string; cites: AiCite[] } | null {
-  const text = cleanLine(n.text, 240);
-  if (!text || !numbersGiven(text, i.allowed)) return null;
+  const text = groundedLine(n.text, i, 240);
+  if (!text) return null;
   if (/\b(?:is|are|was|now) (?:done|finished|complete)\b|\bmark(?:ed)? (?:it |them |the sprint )?(?:as )?done\b|\bclose (?:the|this) sprint\b/i.test(text)) return null;
   const cites = validCites(n.cites, i.offered, 4);
   return cites.length ? { text, cites } : null;
@@ -260,10 +286,18 @@ export interface DriftInput {
 export async function driftInput(ctx: TenantContext, now: Date = new Date(), shares?: AiThemeShare[] | null): Promise<DriftInput | null> {
   const s = shares === undefined ? await themeShares(ctx, now) : shares;
   if (!s?.length) return null;
-  const offPlan = s.filter((x) => x.pct >= DRIFT_MIN_PCT && !x.inSprint).map((x) => x.themeId);
+  const offPlan = offPlanThemes(s);
   if (!offPlan.length) return null;
   const sprints = await all<{ id: number; title: string }>(ctx,
     `SELECT id, title FROM sprints WHERE org_id = ? AND status = 'in_progress' ORDER BY id LIMIT 10`, ctx.orgId);
+  return buildDriftInput(s, offPlan, sprints);
+}
+
+/** The themes that are drift: at least `DRIFT_MIN_PCT` of the window's merged work, in no active sprint. */
+export const offPlanThemes = (s: readonly AiThemeShare[]): string[] => s.filter((x) => x.pct >= DRIFT_MIN_PCT && !x.inSprint).map((x) => x.themeId);
+
+/** The drift's input from the server's shares and the active sprints — PURE (the evals build theirs with it). */
+export function buildDriftInput(s: AiThemeShare[], offPlan: string[], sprints: { id: number; title: string }[]): DriftInput {
   const offered = new Map<string, AiCite>();
   for (const x of s) offered.set(`theme:${x.themeId}`, themeCite(x.themeId, x.theme));
   for (const sp of sprints) offered.set(`sprint:${sp.id}`, sprintCite(sp.id, sp.title));
@@ -275,7 +309,7 @@ export async function driftInput(ctx: TenantContext, now: Date = new Date(), sha
   };
 }
 
-const DriftItem = z.object({ text: z.string().min(1).max(240), cites: z.array(z.string().max(80)).min(1).max(4) });
+const DriftItem = z.object({ text: z.string().min(1).max(240), cites: CITES });
 export const DriftAnswer = sections({ drift: DriftItem });
 type DriftAnswer = z.infer<typeof DriftAnswer>;
 
@@ -298,8 +332,8 @@ export function driftPrompt(items: readonly JobItem<DriftInput>[]): { system: st
 /** The drift as it may be stored, or null: it must name (cite) an off-plan theme and state no number it was not
  *  given. */
 export function checkDrift(i: DriftInput, d: { text: string; cites: string[] }): { text: string; cites: AiCite[] } | null {
-  const text = cleanLine(d.text, 240);
-  if (!text || !numbersGiven(text, i.allowed)) return null;
+  const text = groundedLine(d.text, i, 240);
+  if (!text) return null;
   const cites = validCites(d.cites, i.offered, 4);
   if (!cites.some((c) => i.offPlan.includes(c.ref.slice("theme:".length)) && c.ref.startsWith("theme:"))) return null;
   return { text, cites };
@@ -371,11 +405,14 @@ export function draftPrompt(items: readonly JobItem<DraftInput>[]): { system: st
   return { system: DRAFT_SYSTEM, input: fenced("backlog", items[0].input.tickets.map(({ number, title, category, priority, parent, links }) => ({ number, title, category, priority, parent, links }))) };
 }
 
+/** The tickets a draft's reason may name, as the server labels them. */
+const draftOffered = (i: DraftInput): Map<string, AiCite> => new Map([...i.numbers].map((n) => [`ticket:${n}`, ticketCite(n)]));
+
 /** The draft as it may be suggested, or null: only backlog tickets, each once; names and goals with no number
  *  they were not given; at least two sprints left. */
 export function checkDraft(i: DraftInput, a: Partial<DraftAnswer>): { value: AiSprintDraftValue; reason: string; cites: AiCite[] } | null {
-  const reason = cleanLine(a.reason, 200);
-  if (!reason || !numbersGiven(reason, i.allowed)) return null;
+  const reason = groundedLine(a.reason, { offered: draftOffered(i), allowed: i.allowed }, 200);
+  if (!reason) return null;
   const used = new Set<number>();
   const sprints: AiSprintDraftValue["sprints"] = [];
   for (const sp of a.sprints ?? []) {
@@ -457,7 +494,7 @@ export async function narrativeInput(ctx: TenantContext, now: Date = new Date())
 export const NarrativeAnswer = sections({
   narrative: z.string().min(1).max(PLAN_NARRATIVE_MAX),
   reason: z.string().min(1).max(200),
-  cites: z.array(z.string().max(80)).min(1).max(6),
+  cites: CITES,
 });
 type NarrativeAnswer = z.infer<typeof NarrativeAnswer>;
 
@@ -475,11 +512,12 @@ export function narrativePrompt(items: readonly JobItem<NarrativeInput>[]): { sy
 /** The proposal as it may be suggested, or null: within the cap, different from today's, no number it was not
  *  given, at least one valid cite. */
 export function checkNarrative(i: NarrativeInput, a: Partial<NarrativeAnswer>): { narrative: string; reason: string; cites: AiCite[] } | null {
-  const narrative = typeof a.narrative === "string" ? a.narrative.replace(/<[^>]*>/g, "").trim() : "";
+  const written = typeof a.narrative === "string" ? a.narrative.replace(/<[^>]*>/g, "").trim() : "";
+  if (!written || !numbersGiven(written, i.allowed)) return null;
+  const narrative = tidyRefs(written, i.offered);
   if (!narrative || planNarrativeProblem(narrative) || narrative === i.current.trim()) return null;
-  if (!numbersGiven(narrative, i.allowed)) return null;
-  const reason = cleanLine(a.reason, 200);
-  if (!reason || !numbersGiven(reason, i.allowed)) return null;
+  const reason = groundedLine(a.reason, i, 200);
+  if (!reason) return null;
   const cites = validCites(a.cites, i.offered, 4);
   return cites.length ? { narrative, reason, cites } : null;
 }

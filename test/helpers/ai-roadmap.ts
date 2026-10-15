@@ -12,7 +12,8 @@ import { keyedEnv, type Stub } from "./ai-pass";
 export function fencedBlocks(input: string): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const re = new RegExp(`<<<${FENCE} ([^>]+)>>>\\n([\\s\\S]*?)\\n<<<END ${FENCE}>>>`, "g");
-  for (const m of input.matchAll(re)) out[m[1]] = JSON.parse(m[2]);
+  // A JSON block parsed; a text block (a document, `fencedText`) as its text.
+  for (const m of input.matchAll(re)) { try { out[m[1]] = JSON.parse(m[2]); } catch { out[m[1]] = m[2]; } }
   return out;
 }
 

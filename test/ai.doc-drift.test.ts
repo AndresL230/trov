@@ -104,7 +104,8 @@ describe("past the gate: a cited disagreement is a LOW-CONFIDENCE proposal throu
     const { s, r1, r2 } = await driftRound(0.9, GOOD, id);
     expect([s.jev, r1.batched, s.batchCreates, s.haiku, r2.collected]).toEqual([1, 1, 1, 0, 1]);
     const sent = fencedBlocks((s.batchBodies[0].requests[0].params as { messages: { content: { text: string }[] }[] }).messages[0].content.at(-1)!.text);
-    expect(Object.keys(sent)).toEqual(["document", "recent entries"]);
+    expect(Object.keys(sent)).toEqual([`document "Deploys" (${SLUG})`, "recent entries"]);
+    expect(Object.values(sent)[0]).toBe(BODY); // the doc as its own text (what an edit's passage is quoted from)
     const rows = await staged();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ version: 2, created_by: "trov", confidence: "low", low_confidence: 1, status: "staged" });

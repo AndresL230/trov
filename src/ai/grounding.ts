@@ -23,6 +23,7 @@ const WORDS: Record<string, number> = {
  *  as strings. */
 export function numbersIn(text: string): Set<string> {
   const out = new Set<string>();
+  text = text.replace(REF, " "); // a ref the model wrote (`feed:121`) names a source; it states no number
   for (const m of text.matchAll(/\d+(?:[.,]\d+)?/g)) out.add(String(Number(m[0].replace(",", "."))));
   for (const m of text.toLowerCase().matchAll(/\b[a-z]+\b/g)) if (Object.hasOwn(WORDS, m[0])) out.add(String(WORDS[m[0]]));
   return out;
@@ -58,6 +59,37 @@ export function validCites(named: readonly string[] | undefined, offered: Readon
     if (out.length >= max) break;
   }
   return out;
+}
+
+/** A ref as the model writes it in its text (`ticket:14`, `pr:173`, `feed:107`, `sprint:3`, `theme:billing`). */
+const REF = /\b(?:ticket|pr|feed|sprint|theme):[\w.-]*\w/gi;
+
+/** The model's text as a person reads it: each ref it wrote is replaced by the label the server built for it
+ *  (`ticket:14` → `#14`, `theme:billing` → `Billing`). Null when it wrote a ref that was not offered — a source it
+ *  made up. (Found on the live eval: Haiku writes refs into its sentences as often as not.) */
+export function tidyRefs(text: string, offered: ReadonlyMap<string, AiCite>): string | null {
+  let unknown = false;
+  const out = text.replace(REF, (ref) => {
+    const c = offered.get(ref) ?? offered.get(ref.toLowerCase());
+    if (!c) { unknown = true; return ref; }
+    return c.label;
+  });
+  return unknown ? null : out;
+}
+
+/** One line of model text as it may be stored — clean (`cleanLine`), stating only numbers it was given
+ *  (`numbersGiven`), its refs read as labels (`tidyRefs`) — or null. */
+export function groundedLine(text: unknown, g: { offered: ReadonlyMap<string, AiCite>; allowed: ReadonlySet<string> }, max = 240): string | null {
+  const t = cleanLine(text, max);
+  if (!t || !numbersGiven(t, g.allowed)) return null;
+  const tidy = tidyRefs(t, g.offered);
+  return tidy && tidy.length <= max ? tidy : null;
+}
+
+/** People's words as a block of TEXT (a document), fenced like `fenced` — not JSON-encoded, so a passage the model
+ *  quotes back is the document's own characters, not their JSON escapes. */
+export function fencedText(label: string, text: string): string {
+  return `<<<${FENCE} ${label}>>>\n${text.split(FENCE).join("")}\n<<<END ${FENCE}>>>`;
 }
 
 /** One line of model text as it may be stored: one line, trimmed, at most `max` characters, no markup. Null when
