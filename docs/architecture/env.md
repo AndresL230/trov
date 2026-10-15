@@ -25,6 +25,19 @@ app-metrics tokens are rows it enters on Org settings › Hosting / Integrations
 | `ASSETS` | the static assets binding over `web/dist` (the prerendered public pages, the app shell `app.html`, the scripts and images, and the generated `_redirects` / `_headers`). It serves a file BEFORE the Worker runs, except `/`, which `run_worker_first = ["/"]` sends to the Worker first (the landing or the app shell, `web-ui.md` › The public pages, for crawlers) | no page is served |
 | `ARTIFACTS_BUCKET` | R2, bucket `trov-artifacts`: binary artifact bodies at `artifacts/<sha256>`, doc images, and uploaded avatars and organization images (`avatars/<sha256>`, `org-logos/<sha256>`) — `artifacts.md` | **the bucket must exist before the first deploy that carries the binding** (`wrangler r2 bucket create trov-artifacts`), or the deploy fails |
 
+`ASSETS`' caching (which files a browser may keep, and for how long) is `_headers`: `web-ui.md` › Browser caching.
+
+### Placement
+
+`[placement] mode = "smart"` (`wrangler.toml`). The D1 primary of `trov` runs in **ENAM** (eastern North
+America; `wrangler d1 info trov`, 2026-10-15 — read replication off). A Worker request makes several D1 round
+trips in series, each one paying the distance to that region; Smart Placement lets Cloudflare run the Worker
+near the database instead of near the visitor when its own measurements of the Worker's traffic say that is
+faster. It decides per Worker after it has seen traffic, and can take a while to settle after a deploy. It
+moves only the Worker: the static files `ASSETS` serves before the Worker runs are still answered at the
+visitor's edge. Nothing in
+the code depends on where the Worker runs; removing the block is a plain deploy.
+
 Capture-time summaries call Anthropic's Messages API (`ANTHROPIC_API_KEY`, through the one model client
 `src/ai/client.ts`), never at render — not a Cloudflare binding,
 so there is no `[ai]` block.
