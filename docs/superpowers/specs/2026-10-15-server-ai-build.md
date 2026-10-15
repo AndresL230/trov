@@ -1,6 +1,8 @@
 # Server-side AI: the decided build (2026-10-15)
 
 > **Decided.** This is the design of Trov handoff #10 (claimed 2026-10-15), built into PR #178 on `ai/screens`.
+> Updated 2026-10-15 after merging `main` with #185 (hosting providers): migrations moved to 0058–0067, and
+> hosting deploys feed the router and repo state.
 > Where `2026-10-14-server-ai.md` (the older background spec) disagrees, this file wins. What was verified before
 > building, and the migration numbers, are in `2026-10-14-ai-base.md`.
 
@@ -48,6 +50,7 @@ Each phase is committed to `ai/screens` in order, green at every boundary (`npm 
   |---|---|
   | PR merged | `card:pr:<n>`, `repo:<repo>`, `person:<author>`, `sprint:<id>` (linked tickets), `theme_window:<repo>` |
   | Push, PR opened, run, check, deploy | `session:<repo>:<actor>`; plus `repo:<repo>` for a default-branch push, a deploy or a default-branch run failure; plus `person:<PR author>` for a failure on their PR |
+  | Hosting deploy recorded or changing state (`hosting_deploys`, from the `:40` hosting poll or a provider event — #185) | `repo:<repo>` when it lands ready or fails on an environment's branch; no `session` (a host is not an actor) |
   | Ticket created (native or mirrored) | `card:ticket:<n>`, `org` |
   | Ticket assigned, status or sprint changed | `person:<assignee>`, `sprint:<id>`, `org` |
   | Handoff sent | `person:<recipient>` (members, capped, for `anyone`) |
@@ -104,7 +107,7 @@ Jev has a native `choice` type (verified 2026-10-15, `2026-10-14-ai-base.md`), s
 Every output is structured (`output_config.format`) and carries `cites`. A Jev gate runs before each one, where the table above has one.
 
 - **Session digests** (Feature A of the background spec). Input: the burst's commit subjects plus the cards of merged PRs. Output: a `Shipped:` or `Status:` entry written through `ingestFeedEntry`. Feed columns: `origin='ai'`, `model`, `subject`, `importance`. The author is the reserved system person `trov` — recorded as the one exception to "author = principal" in `ingestion-gate.md`. Dedupe: an agent feed entry citing the same commits or PRs skips the digest, with zero calls. The `record-session` skill now records only decisions, findings and incidents, and cites its commits.
-- **Repo state** (Feature B). `repo_state` is append-only; keep the last 20. Updated incrementally from the previous state plus cards and digests since. The Repo › Overview `state` section and `get_repo_dashboard` read it, and `load-context` reads it first.
+- **Repo state** (Feature B). `repo_state` is append-only; keep the last 20. Updated incrementally from the previous state plus cards and digests since, and the environments' hosting part statuses and deploys (`RepoDashboard.providers`, `hosting_deploys` — every host is a provider since #185). The Repo › Overview `state` section and `get_repo_dashboard` read it, and `load-context` reads it first.
 - **The brief** (Feature C, #163). Home: `person_brief`; keep the last 5 versions. **Now:** open PRs, red checks and the latest `Status` digest. **Recently:** the last 7 days of digests and PR cards. **Next:** only offered items (assigned tickets, handoffs, failing runs on their PRs, sprint tickets due soon), ordered by plain rules (overdue, then blocked, then someone waiting); the model adds only the one-line why. Only for people who opened My Work in the last 14 days, or who receive the digest. The same stored brief is what My Work, `get_my_work` and the email show.
 - **Themes** (Feature D). The proposal (Batch API) runs when there are ≥15 carded PRs in 12 weeks with no active themes, then monthly. An admin accepts, renames, merges or removes themes through the suggestion routes. Classification: `pr.theme` (Jev). Backfill: `theme_backfill`, through the Batch API. Caption: Haiku; the server passes the theme shares in; a caption containing a digit, or naming an inactive theme, is discarded. Chart: a D1 aggregation on read.
 - **Roadmap** (Feature E). `org_insights` stores sprint notes and drift; keep the last 10 per key. Sprint forecast is math, computed on read in `src/tools/sprints.ts`. Sprint notes and plan drift come from the org rollup; the server computes theme shares against sprint contents for the drift. Sprint drafts (when ≥8 open tickets sit outside any sprint and none is active) and the weekly narrative proposal go through the Batch API into `ai_suggestions`; an admin accepts, and accepting runs the existing writers as that admin (`write_plan` for the narrative). Roadmap UI: a forecast and a note per sprint row, a drift line, and suggestion cards for admins.
