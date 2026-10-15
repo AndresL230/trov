@@ -14,6 +14,8 @@ import noAccountJson from "../fixtures/hosting/cloudflare/analytics-no-account.j
 import analyticsErrorJson from "../fixtures/hosting/cloudflare/analytics-error.json";
 import accountJson from "../fixtures/hosting/cloudflare/account.json";
 import notFoundJson from "../fixtures/hosting/cloudflare/script-not-found.json";
+import buildsJson from "../fixtures/hosting/cloudflare/builds.json";
+import { COMMIT_NEEDS_CI_READ, COMMIT_UNREAD } from "../src/hosting/providers/cloudflare";
 
 // 2026-10-07 12:20 UTC → the poll window is 09:00–12:00.
 const NOW = Date.parse("2026-10-07T12:20:00Z");
@@ -56,9 +58,10 @@ const part = (settings: Record<string, string> = { worker: "frontend-staging" })
 const DEPLOYMENTS_PATH = `/client/v4/accounts/${ACCOUNT}/workers/scripts/frontend-staging/deployments`;
 
 /** The happy path, every route from the fixtures. `over` replaces one. */
-function cfApi(over: { deployments?: () => Response; graphql?: (body: Record<string, unknown> | null) => Response; account?: () => Response } = {}) {
+function cfApi(over: { deployments?: () => Response; graphql?: (body: Record<string, unknown> | null) => Response; account?: () => Response; builds?: (u: URL) => Response } = {}) {
   return stubbed((u, body) => {
     if (u.pathname === DEPLOYMENTS_PATH) return over.deployments?.() ?? json(deploymentsJson);
+    if (u.pathname === `/client/v4/accounts/${ACCOUNT}/builds/builds`) return over.builds?.(u) ?? json(buildsJson);
     if (u.pathname === "/client/v4/graphql") return over.graphql?.(body) ?? json(analyticsJson);
     if (u.pathname === `/client/v4/accounts/${ACCOUNT}`) return over.account?.() ?? json(accountJson);
     throw new Error(`unexpected request ${u}`);
@@ -88,8 +91,10 @@ describe("cloudflare descriptor", () => {
     expect(how).toContain("Account › Account Analytics › Read");
     expect(how).toContain("Account › Workers Scripts › Read");
     expect(how).toContain("only ever sent to api.cloudflare.com");
+    expect(how).toContain("Account › Workers CI › Read");
     expect(cloudflare.connectionMethods[0].grants).toEqual([
       "Account Analytics: Read on one account", "Workers Scripts: Read on that account (its Workers' deployments)",
+      "Optional — Workers CI: Read (the commit each deploy was built from)",
     ]);
     expect(cloudflare.install).toBeUndefined();
     expect(cloudflare.capabilities).toEqual({ deploys: true, metrics: ["requests", "errors"] });
@@ -115,8 +120,8 @@ describe("cloudflare descriptor", () => {
     expect(cloudflare.manageUrl?.({}, "oauth")).toBeNull();
   });
 
-  it("budgets two fetches a poll", () => {
-    expect(cloudflare.pollCost).toBe(2);
+  it("budgets three fetches a poll: deployments, the newest deployment's build, analytics", () => {
+    expect(cloudflare.pollCost).toBe(3);
   });
 });
 
@@ -198,7 +203,8 @@ describe("cloudflare poll — deploys", () => {
     const inspect = `https://dash.cloudflare.com/${ACCOUNT}/workers/services/view/frontend-staging/production/deployments`;
     expect(r.deploys).toEqual([
       {
-        id: "bcf48806-b317-4351-9ee7-36e7d557d4de", state: "ready", target: "production", sha: null, branch: null,
+        // The newest deployment's commit and branch come from the Workers Builds API (its version's build).
+        id: "bcf48806-b317-4351-9ee7-36e7d557d4de", state: "ready", target: "production", sha: "6c965ac5f99429b7af6fa244ad577e3557211071", branch: "main",
         message: "Ship the pricing page", by: "dana@acme-labs.dev", createdAt: "2026-10-07T11:41:09.522Z", readyAt: null,
         url: null, inspectUrl: inspect,
       },
@@ -211,6 +217,44 @@ describe("cloudflare poll — deploys", () => {
         message: null, by: null, createdAt: "2026-10-05T09:12:44.000Z", readyAt: null, url: null, inspectUrl: inspect,
       },
     ]);
+  });
+
+  it("asks Workers Builds once, for the newest deployment's version; a split rollout asks nothing", async () => {
+    const { calls, fetch } = cfApi();
+    const r = await cloudflare.poll(ctx(fetch), part());
+    const builds = calls.filter((c) => c.url.pathname.endsWith("/builds/builds"));
+    expect(builds.map((c) => c.url.searchParams.get("version_ids"))).toEqual(["7e2a6c1d-0f4b-4c9e-9a51-3d8b2f6e4a10"]);
+    expect(r.notes).toBeUndefined();
+    expect(calls).toHaveLength(3);
+    expectWellFormed(calls);
+    // The newest one serves two versions (90 / 10): no single commit is "the" deploy's — nothing is asked.
+    const split = { ...deploymentsJson, result: { deployments: [deploymentsJson.result.deployments[1]] } };
+    const s2 = cfApi({ deployments: () => json(split) });
+    const r2 = await cloudflare.poll(ctx(s2.fetch), part());
+    expect(s2.calls.filter((c) => c.url.pathname.endsWith("/builds/builds"))).toEqual([]);
+    expect(r2.deploys[0].sha).toBeNull();
+  });
+
+  it("a refused Builds read notes the missing permission and leaves the commit to the join — never a failed poll, never a guess", async () => {
+    for (const refused of [() => echo(403), () => echo(401)]) {
+      const { fetch } = cfApi({ builds: refused });
+      const r = await cloudflare.poll(ctx(fetch), part());
+      expect(r.deploys[0].sha).toBeNull();
+      expect(r.notes).toEqual([COMMIT_NEEDS_CI_READ]);
+      expect(r.points.length).toBeGreaterThan(0);
+      noLeak(JSON.stringify(r));
+    }
+    const broken = cfApi({ builds: () => json({ oops: true }, 500) });
+    expect((await cloudflare.poll(ctx(broken.fetch), part())).notes).toEqual([COMMIT_UNREAD]);
+    // Two builds with different commits for one version, or none with a commit: no sha.
+    const two = { success: true, errors: [], result: [
+      { build_trigger_metadata: { commit_hash: "a".repeat(40), branch: "main" } }, { build_trigger_metadata: { commit_hash: "b".repeat(40), branch: "main" } },
+    ] };
+    expect((await cloudflare.poll(ctx(cfApi({ builds: () => json(two) }).fetch), part())).deploys[0].sha).toBeNull();
+    const none = { success: true, errors: [], result: { builds: {} } };
+    const r3 = await cloudflare.poll(ctx(cfApi({ builds: () => json(none) }).fetch), part());
+    expect(r3.deploys[0].sha).toBeNull();
+    expect(r3.notes).toBeUndefined();
   });
 
   it("skips what it cannot place, dedupes, scrubs a message, and keeps at most 20", async () => {
@@ -274,10 +318,10 @@ describe("cloudflare poll — metrics", () => {
   it("one analytics query over the window: requests and errors per settled hour, the inclusive end dropped", async () => {
     const { calls, fetch } = cfApi();
     const r = await cloudflare.poll(ctx(fetch), part());
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3); // deployments, the newest deployment's build, analytics
     expect(calls.length).toBeLessThanOrEqual(cloudflare.pollCost);
     expectWellFormed(calls);
-    const q = calls[1];
+    const q = calls[2];
     expect(q.method).toBe("POST");
     expect(q.headers.get("content-type")).toBe("application/json");
     expect(q.body?.variables).toEqual({ a: ACCOUNT, s: "frontend-staging", from: "2026-10-07T09:00:00.000Z", to: "2026-10-07T12:00:00.000Z" });

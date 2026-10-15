@@ -39,10 +39,11 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "method": "token",
         "label": "Paste an API token",
-        "how_to": "1. In the Cloudflare dashboard, open My Profile › API Tokens › Create Token › Create Custom Token.\n2. Add two permissions, both read-only: Account › Account Analytics › Read, and Account › Workers Scripts › Read.\n3. Under Account Resources, pick only the account your Workers live under.\n4. Paste the token here, and set Account ID to that account's 32-character id (Workers & Pages › Overview).\nThe token is only ever sent to api.cloudflare.com.",
+        "how_to": "1. In the Cloudflare dashboard, open My Profile › API Tokens › Create Token › Create Custom Token.\n2. Add two permissions, both read-only: Account › Account Analytics › Read, and Account › Workers Scripts › Read.\n3. Optional, for the commit behind each deploy: also add Account › Workers CI › Read (Workers Builds). Without it Trov finds the commit from GitHub when it can.\n4. Under Account Resources, pick only the account your Workers live under.\n5. Paste the token here, and set Account ID to that account's 32-character id (Workers & Pages › Overview).\nThe token is only ever sent to api.cloudflare.com.",
         "grants": [
           "Account Analytics: Read on one account",
-          "Workers Scripts: Read on that account (its Workers' deployments)"
+          "Workers Scripts: Read on that account (its Workers' deployments)",
+          "Optional — Workers CI: Read (the commit each deploy was built from)"
         ],
         "available": true,
         "unavailable_reason": null
