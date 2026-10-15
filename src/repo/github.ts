@@ -12,6 +12,7 @@ import { reconcileReleases, RELEASES_RECONCILE_COST } from "./releases";
 import { ghGraphql, ghJson, ghJsonOrNull, scrubbedMessage, type GhOpts } from "./gh-http";
 import { FACTS_COMPARE_CAP, computeDriftChain, computeNotShipped, computeOutOfStep, driftCompares, factsBudget } from "./facts-compute";
 import { PR_FILES_REQUESTS, reconcilePrFiles } from "./pr-files";
+import { backfillGithubDeploys } from "../hosting/github-deploys";
 
 // The GitHub HTTP helpers live in ./gh-http.ts (so the facts arms, ./facts-compute.ts, can use them without an
 // import cycle); re-exported here for every existing caller.
@@ -303,6 +304,12 @@ export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: Repo
       }
     }
   });
+
+  // A `github` part's deploys from what the arms above backfilled (src/hosting/github-deploys.ts): the captured,
+  // untagged deployment / check-run / workflow-run signals of 30 days, each through the part's OWN setting
+  // (`signalMatchesPart`, THE GUARD) — a live delivery's path never sees a backfilled run or check. D1 only: no
+  // GitHub request, so `reconcileRequests` is unchanged.
+  await safely("github_deploys", async () => { await backfillGithubDeploys(ctx, now); });
 
   // Branches: every ref, ahead/behind `main` (envs[0]?.branch ?? "main" —
   // same fallback the `commits` arm above uses) and flagged stale, in ONE

@@ -13,9 +13,12 @@ import type { Env } from "../src/env";
 import { all, first } from "./helpers/db";
 import { SAPLING_HOOK, addOrgRepo, setOrgEnvironments } from "./helpers/org-config";
 import { handleGithubWebhook } from "../src/github-hook";
-import { ORG_A, systemCtx } from "./helpers/tenant";
-import { ENVS } from "./helpers/repo";
-import { deployFromSignal, signalMatchesPart, writeGithubDeploys } from "../src/hosting/github-deploys";
+import { ORG_A, systemCtx, tenantCtx } from "./helpers/tenant";
+import { ENVS, fakeGithub } from "./helpers/repo";
+import { backfillGithubDeploys, deployFromSignal, signalMatchesPart, writeGithubDeploys } from "../src/hosting/github-deploys";
+import { putPart } from "../src/hosting/part-writes";
+import { reconcileRepo } from "../src/repo/github";
+import { ingestRepoEvent } from "../src/consumer";
 import { checkRollback } from "../src/hosting/rollback";
 import { upsertDeploys, type CleanDeploy } from "../src/hosting/deploy-store";
 import { repoEventsFromDelivery } from "../src/repo/capture";
@@ -170,5 +173,69 @@ describe("THE ROLLBACK COMPARE", () => {
     const broken = gh(null);
     expect(await checkRollback(systemCtx(ORG_A), ref, "live", broken.get)).toBe("skipped");
     expect(await rolledBack("live")).toBeNull();
+  });
+});
+
+describe("history: a github part is filled from signals captured before it, or by reconcile (THE GUARD holds)", () => {
+  const DAY = 86_400_000;
+  const NOW = Date.parse("2026-10-14T12:00:00Z");
+  const at = (now: number, daysAgo: number) => new Date(now - daysAgo * DAY).toISOString().replace(/\.\d{3}Z$/, "Z");
+  const ghRun = (id: number, o: { path?: string; branch?: string; conclusion?: string; at: string }) => ({
+    id, name: "Deploy jobs", path: o.path ?? ".github/workflows/deploy-jobs.yml", head_branch: o.branch ?? "main", head_sha: SHA2,
+    conclusion: o.conclusion ?? "success", run_attempt: 1, updated_at: o.at, run_started_at: o.at, html_url: `https://github.com/SaplingLearn/sapling/actions/runs/${id}`,
+    actor: { login: "AndresL230" }, event: "push", status: "completed",
+  });
+  const ghCheck = (id: number, o: { app: string; name: string; at: string }) => ({
+    id, name: o.name, head_sha: SHA3, status: "completed", conclusion: "success", started_at: o.at, completed_at: o.at,
+    details_url: "https://dash.cloudflare.com/x", app: { slug: o.app }, output: { title: null },
+  });
+
+  it("reconcile's backfilled workflow runs and check runs become a matching part's deploys — a look-alike never does", async () => {
+    await setOrgEnvironments(ENVS, ORG_A);
+    await addGithubPart("staging", "jobs", { workflow: "deploy-jobs.yml" }, "service");
+    await addGithubPart("staging", "web", { check_app: "cloudflare-workers-and-pages", check_name: "Workers Builds: web" });
+    const gh = fakeGithub({
+      "/actions/runs?status=completed": { workflow_runs: [
+        ghRun(77, { at: at(NOW, 2) }),                                           // the setting's file on the environment's branch
+        ghRun(78, { at: at(NOW, 1), branch: "feat/x" }),                         // same file, another branch: not this part's
+        ghRun(79, { at: at(NOW, 1), path: ".github/workflows/ci.yml" }),         // same branch, another file
+      ] },
+      "/commits/main/check-runs": { check_runs: [
+        ghCheck(501, { app: "cloudflare-workers-and-pages", name: "Workers Builds: web", at: at(NOW, 3) }),
+        ghCheck(502, { app: "github-actions", name: "Workers Builds: web", at: at(NOW, 1) }),  // same name, another App
+      ] },
+    });
+    const res = await reconcileRepo(systemCtx(ORG_A), { token: "t", repo: "SaplingLearn/sapling", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    expect(res.failed).toEqual([]);
+    expect(await deploys()).toMatchObject([
+      { env: "staging", part: "jobs", provider: "github", deploy_id: "gh-run:77:1", state: "ready", sha: SHA2, sha_source: "provider", source: "github" },
+      { env: "staging", part: "web", provider: "github", deploy_id: "gh-check:501", state: "ready", sha: SHA3, source: "github" },
+    ]);
+    expect((await deploys()).length).toBe(2);
+    // Idempotent: a second pass over the same history changes nothing, and costs no GitHub request of its own.
+    const before = gh.calls.length;
+    expect(await backfillGithubDeploys(systemCtx(ORG_A), NOW)).toEqual([]);
+    expect(gh.calls.length).toBe(before);
+  });
+
+  it("a part created (or re-pointed) after its signals were captured is filled from the last 30 days on save", async () => {
+    await setOrgEnvironments(ENVS, ORG_A);
+    const now = Date.now();
+    const ctx = systemCtx(ORG_A);
+    const take = async (name: string, payload: unknown) => { for (const e of repoEventsFromDelivery(name, payload)) expect((await ingestRepoEvent(ctx, e)).outcome).toBe("written"); };
+    // Captured while no part named them: one deployment's states, a look-alike on a feature branch, one too old.
+    await take("deployment_status", deploymentStatus({ id: 1, state: "in_progress", ref: "main", at: at(now, 3) }));
+    await take("deployment_status", deploymentStatus({ id: 1, state: "success", ref: "main", at: at(now, 3) }));
+    await take("deployment_status", deploymentStatus({ id: 2, state: "success", ref: "feat/x", at: at(now, 2) }));
+    await take("deployment_status", deploymentStatus({ id: 3, state: "success", ref: "main", at: at(now, 40) }));
+    await take("deployment_status", deploymentStatus({ id: 4, state: "failure", environment: "api / staging", ref: "main", at: at(now, 1), description: "Build failed" }));
+    expect(await deploys()).toEqual([]);
+    const admin = await tenantCtx("AndresL230");
+    await putPart(admin, "staging", "web", { provider: "github", role: "web", settings: { environment: "web / staging" } });
+    expect(await deploys()).toMatchObject([{ env: "staging", part: "web", deploy_id: "gh-deployment:1", state: "ready", sha: SHA1, source: "github" }]);
+    expect((await deploys()).length).toBe(1);
+    // Re-pointed at another deployment environment: its history arrives too.
+    await putPart(admin, "staging", "web", { provider: "github", role: "web", settings: { environment: "api / staging" } });
+    expect((await deploys()).map((d) => [d.deploy_id, d.state, d.reason])).toEqual([["gh-deployment:1", "ready", null], ["gh-deployment:4", "error", "Build failed"]]);
   });
 });

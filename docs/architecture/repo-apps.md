@@ -106,9 +106,18 @@ every `github` part whose OWN setting it matches — `signalMatchesPart`, THE gu
 exact environment name (a branch ref must be the environment's branch; a sha ref says nothing), a check run of that
 app and name on the branch, a completed workflow run of that file on the branch. A failed one's `reason` is the
 deployment's description or the check's `output.title`; neutral is skipped. The write may run the rollback check
-(below) with the GitHub token the webhook entry point resolved. Its own failure never costs the capture. Only the
-webhook calls it: a check run or workflow run that reconcile backfills, and a signal captured before the part (or its
-setting) existed, write no deploy — the part's first deploy is the next matching delivery.
+(below) with the GitHub token the webhook entry point resolved. Its own failure never costs the capture.
+
+**History-fed deploys** (`backfillGithubDeploys`, same module): a live delivery is not the only source. The check
+runs and workflow runs that RECONCILE backfills, and the signals captured before a `github` part — or its current
+setting — existed (the Apps tab's deploy-signal picker names exactly those), are replayed through the SAME matcher:
+the captured, untagged (`env IS NULL`) deployment / check-run / workflow-run rows of the last 30 days
+(`GITHUB_DEPLOY_HISTORY_DAYS`; ≤ 500 newest rows, pre-narrowed in SQL by the names and workflow paths the settings
+carry — the decision is still `signalMatchesPart`'s), oldest first, each deploy folded to its newest state and
+upserted once (≤ 50 per part; a second pass writes nothing). It runs as reconcile's guarded `github_deploys` arm
+(after the capture arms; every `github` part of the org) and right after `putPart` writes a `github` part (that part
+only — the Apps tab's Save, the scan's Accept, Hosting's part editor; a failure is logged and never costs the write).
+D1 only: no GitHub request, so no rollback compare and `reconcileRequests` is unchanged.
 
 **Deploy provenance — `hosting_deploys` columns (0070)**, written through ONE upsert, `src/hosting/deploy-store.ts`
 (secret-free, so the webhook may call it):
@@ -141,7 +150,8 @@ test is `COALESCE`d (`NOT (NULL AND …)` is NULL and once dropped the row). A p
 them as its deploys. The facts match them to open PRs by branch (below).
 
 Tests: `test/hosting.provider.github.test.ts`, `test/hosting.github-deploys.test.ts` (› THE GUARD —
-`signalMatchesPart`; › THE ROLLBACK COMPARE), `test/hosting.sha-join.test.ts` (› THE ONE-CANDIDATE RULE),
+`signalMatchesPart`; › history — reconcile's backfilled runs and checks, and a part created or re-pointed later, filled
+through the guard, a look-alike never; › THE ROLLBACK COMPARE), `test/hosting.sha-join.test.ts` (› THE ONE-CANDIDATE RULE),
 `test/hosting.previews.test.ts`, `test/repo-capture.test.ts`.
 
 ## `RepoFacts` — the Overview's one read

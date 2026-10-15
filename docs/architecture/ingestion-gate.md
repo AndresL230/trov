@@ -66,7 +66,9 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   any of this. A NEWLY captured deploy signal, check run or workflow run is then offered to
   `writeGithubDeploys` (`src/hosting/github-deploys.ts`), which may write a `github` part's `hosting_deploys` row —
   a computed, direct write from a row the gate already stored, only through the part's own setting, never a second
-  ingestion surface (`repo-apps.md` › The `github` provider).
+  ingestion surface (`repo-apps.md` › The `github` provider). Reconcile and a `github` part's write replay the
+  already-stored signals of 30 days through the same matcher (`backfillGithubDeploys`) — still computed from gated
+  rows, no new surface.
 - **Releases are the repo capture's THIRD arm, `ingestRepoRelease`** (Repo setups, Phase F): the `release` /
   `create` deliveries (`RELEASE_EVENT_NAMES`) and reconcile's `releases` arm put each release or tag through it —
   never `/ingest`. A release CHANGES (edited, deleted), so it is not an append-only `repo_events` row: its
