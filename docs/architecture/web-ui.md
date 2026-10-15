@@ -903,7 +903,9 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   official; check the sources." (`AI_TIP`, `AI_NOT_OFFICIAL`).
 - **Every written item** carries `aiByline` ("Written by Trov, 12m ago" — the app's `relTime`; "from 6 events"
   when the server counted them, never a guessed 0), its sources (`aiCite`: a GitHub URL opens in a new tab, an
-  in-app route stays, anything else is text, never a link) and **"Wrong?"** (`aiWrongBtn`): it POSTs
+  in-app route stays, anything else is text, never a link) and **"Wrong?"** (`aiWrongBtn`), a
+  28px thumbs-down icon button at the item's bottom right — no visible word; its `aria-label` and `data-mtip`
+  say "Wrong?" and what pressing it does. It POSTs
   `/ai/feedback` and hides the item for that person at once (`state.ai.hidden`), back with a toast if the write
   fails. Nothing written is ever shown without the mark.
 - **Capped and empty** are the screen's own words (`aiCapped`, `AI_EMPTY`): "Monthly AI allowance used; <what>

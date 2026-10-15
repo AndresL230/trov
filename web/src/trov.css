@@ -92,10 +92,10 @@ input, select { font-family: inherit; }
 /* ── Written by Trov (web/src/ai-ui.ts; mywork.ts `briefTile`, repo-ai.ts, the Feed's Trov entries) ──
    Drawn only when a read carries its AI field. Every radius is inline (values the corners block
    already scales); nothing here declares one. */
-.mw-brief-grid { display:grid; grid-template-columns:92px minmax(0,1fr); column-gap:18px; row-gap:16px; min-width:0; }
+.mw-brief-grid { display:grid; grid-template-columns:76px minmax(0,1fr); column-gap:14px; row-gap:12px; min-width:0; }
 @container mwmain (max-width: 560px) {
   .mw-brief-grid { grid-template-columns:minmax(0,1fr); row-gap:4px; }
-  .mw-brief-grid > :nth-child(2n):not(:last-child) { margin-bottom:12px; }
+  .mw-brief-grid > :nth-child(2n):not(:last-child) { margin-bottom:10px; }
 }
 .repo-state-cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr)); gap:20px; }
 .cnpy-ai-cite:hover { text-decoration:underline; text-underline-offset:2px; }

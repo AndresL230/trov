@@ -132,9 +132,11 @@ export function aiByline(generatedAt: string | null, tip: string, o: { from?: st
 export function aiFeedback(itemType: AiItemType, itemRef: string, kind: string, model: string | null): AiFeedbackBody {
   return { itemType, itemRef, kind, model, promptVersion: null };
 }
-/** "Wrong?" — hides the item for the person who pressed it, and tells Trov. */
-export function aiWrongBtn(body: AiFeedbackBody, size = 12.5): string {
-  return `<button type="button" data-act="aiWrong" data-arg="${attr(JSON.stringify(body))}" class="cnpy-ghostbtn cnpy-ai-wrong" aria-label="Wrong? Hide this and tell Trov it is wrong" title="Hide this and tell Trov it is wrong" style="font-size:${size}px;font-weight:500;color:var(--fg-70);border:1px solid var(--border-strong);border-radius:6px;padding:3px 10px;min-height:28px;white-space:nowrap;background:transparent">Wrong?</button>`;
+/** "Wrong?" as a thumbs-down icon button — hides the item for the person who pressed it, and tells Trov.
+ *  It sits at the bottom right of what it judges. `size` is the icon's size in px. */
+const THUMBS_DOWN = (size: number): string => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 14V2"></path><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path></svg>`;
+export function aiWrongBtn(body: AiFeedbackBody, size = 14): string {
+  return `<button type="button" data-act="aiWrong" data-arg="${attr(JSON.stringify(body))}" class="cnpy-ghostbtn cnpy-ai-wrong" aria-label="Wrong? Hide this and tell Trov it is wrong" data-mtip="Wrong? Hides this for you and tells Trov." style="display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;color:var(--fg-55);border:1px solid var(--border-strong);border-radius:6px;background:transparent">${THUMBS_DOWN(size)}</button>`;
 }
 
 /** "Monthly AI allowance used; <clause>." — `clause` says what resumes when ("your brief resumes

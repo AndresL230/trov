@@ -384,10 +384,10 @@ export function mwSpans(order: string[], strips: string[]): Record<string, numbe
 }
 
 // ── Your brief (written by Trov) ─────────────────────────────────────────────
-// The first card, shown ONLY when the dashboard carries `brief` (shared/ai-core.ts): with the field
-// absent My Work is exactly the five tiles above. Now / Recently / Next, each line with its sources;
-// a Next row is a real item (its title is the item's own, from its row) with the model's one muted
-// "why". The kit's pieces (ai-ui.ts) say who wrote it and offer "Wrong?".
+// The lead bento tile, in Tickets' wide slot, shown ONLY when the dashboard carries `brief`
+// (shared/ai-core.ts): with the field absent My Work is exactly the five tiles above. Now / Recently /
+// Next, each line with its sources; a Next row is a real item (its title is the item's own, from its
+// row) with the model's one muted "why". The kit's pieces (ai-ui.ts) say who wrote it and offer "Wrong?".
 
 const BRIEF_LABEL = "font-family:var(--label);font-weight:600;color:var(--fg-55);font-size:13.5px;padding-top:1px";
 const ARROW_MARK = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="flex:none"><path d="M4 12h12M12 6l6 6-6 6"></path></svg>`;
@@ -418,42 +418,46 @@ function briefNextRow(it: AiBriefNextItem): string {
     </li>`;
 }
 
-/** My Work's first card. `hidden` = this person pressed "Wrong?" on it: nothing is drawn. */
-export function briefTile(b: AiBrief, hidden = false): string {
+/** My Work's brief tile. `hidden` = this person pressed "Wrong?" on it: nothing is drawn. */
+export function briefTile(b: AiBrief, hidden = false, span = 7): string {
   if (hidden) return "";
   const written = b.generatedAt !== null;
   const wrong = written && b.state !== "empty" ? aiWrongBtn(aiFeedback("brief", aiItemRef.brief(b.generatedAt ?? "brief"), "brief", b.model)) : "";
-  const head = `<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px">
-      <h2 id="mw-brief-h" style="margin:0;font-size:16px;font-weight:600;letter-spacing:-0.01em">Your brief</h2>
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">${aiByline(b.generatedAt, AI_TIP.brief)}${wrong}</div>
+  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px 0">
+      <h2 id="mw-brief-h" style="margin:0;font-size:14px;font-weight:500;white-space:nowrap">Your brief</h2>
     </div>`;
+  const line = (l: AiLine, color = "var(--fg)") => `<p style="margin:0;font-size:14px;line-height:1.55;color:${color};overflow-wrap:anywhere;text-wrap:pretty">${esc(l.text)}</p>`;
   let body: string;
-  if (b.state === "empty") body = aiEmpty(AI_EMPTY.brief);
-  else if (b.state === "capped") {
-    const last = [b.now, b.recently].filter((l): l is AiLine => l !== null)
-      .map((l) => `<p style="margin:0;color:var(--fg-70);line-height:1.55;overflow-wrap:anywhere">${esc(l.text)}</p>`).join("");
-    body = `<div style="display:flex;flex-direction:column;gap:8px">${last}${aiCapped(b, `your brief resumes ${aiDay(b.resumesOn)}`)}</div>`;
-  } else {
+  if (b.state === "empty" || (b.state !== "capped" && !b.now && !b.recently && !b.next.items.length)) body = aiEmpty(AI_EMPTY.brief);
+  else if (b.state === "capped") body = `${b.now ? line(b.now, "var(--fg-70)") : ""}${aiCapped(b, `your brief resumes ${aiDay(b.resumesOn)}`)}`;
+  else {
     const rows: string[] = [];
     if (b.now) rows.push(`<div style="${BRIEF_LABEL}">Now</div>${briefLine(b.now)}`);
     if (b.recently) rows.push(`<div style="${BRIEF_LABEL}">Recently</div>${briefLine(b.recently)}`);
-    if (b.next.items.length) rows.push(`<div style="${BRIEF_LABEL}">Next</div><ol style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;min-width:0">${b.next.items.map(briefNextRow).join("")}</ol>`);
-    body = rows.length ? `<div class="mw-brief-grid">${rows.join("")}</div>` : aiEmpty(AI_EMPTY.brief);
+    if (b.next.items.length) rows.push(`<div style="${BRIEF_LABEL}">Next</div><ol style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;min-width:0">${b.next.items.map(briefNextRow).join("")}</ol>`);
+    body = `<div class="mw-brief-grid">${rows.join("")}</div>`;
   }
-  return `<section${surface("--span:12;padding:20px 22px;display:flex;flex-direction:column;gap:16px;min-width:0", { cls: "mw-tile mw-brief cnpy-rise" })} data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}${body}</section>`;
+  const foot = written ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px 8px 16px;border-top:1px solid var(--border);margin-top:auto">${aiByline(b.generatedAt, AI_TIP.brief, { size: 12 })}${wrong}</div>` : "";
+  return `<section${surface(`min-width:0;display:flex;flex-direction:column;overflow:hidden;--span:${span}`, { cls: "mw-tile mw-brief cnpy-rise" })} data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}<div style="display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px;min-width:0">${body}</div>${foot}</section>`;
 }
 
 // ── the page ─────────────────────────────────────────────────────────────────
 export interface MyWorkLayout {
   greeting: string;
-  dateLine: string;
+  /** "Thursday, October 15", top right. */
+  date: string;
+  /** "1 ticket open, 3 to review, …" under the greeting; "" draws nothing. */
+  stat: string;
   tiles: string[];
 }
 export function myWorkLayout(p: MyWorkLayout): string {
   return `<div class="cnpy-scroll" style="max-width:1180px;margin:0 auto;padding:28px 32px 80px">
-    <div style="margin-bottom:22px;min-width:0">
-      <h2 style="font-size:22px;font-weight:500;letter-spacing:-0.02em;margin:0;line-height:1.2">${p.greeting}</h2>
-      <div style="font-size:13.5px;color:var(--fg-55);margin-top:6px;text-wrap:balance">${p.dateLine}</div>
+    <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px;margin-bottom:22px;min-width:0">
+      <div style="min-width:0">
+        <h2 style="font-size:22px;font-weight:500;letter-spacing:-0.02em;margin:0;line-height:1.2">${p.greeting}</h2>
+        ${p.stat ? `<div style="font-size:13.5px;color:var(--fg-55);margin-top:6px;text-wrap:balance">${p.stat}</div>` : ""}
+      </div>
+      <div style="font-size:13.5px;color:var(--fg-55);white-space:nowrap">${p.date}</div>
     </div>
     <div class="mw-main"><div class="mw-bento cnpy-stagger">${p.tiles.join("")}</div></div>
   </div>`;

@@ -79,7 +79,11 @@ describe("the kit (ai-ui.ts)", () => {
     const b = aiFeedback("feed", "990001", "feed", "claude-haiku-5-5");
     const btn = aiWrongBtn(b);
     expect(btn).toContain('data-act="aiWrong"');
-    expect(btn).toContain(">Wrong?</button>");
+    // A thumbs-down icon button: no visible word, its name and tooltip say what it does.
+    expect(btn).toContain('aria-label="Wrong? Hide this and tell Trov it is wrong"');
+    expect(btn).toContain('data-mtip="Wrong? Hides this for you and tells Trov."');
+    expect(btn).toContain("<svg");
+    expect(btn).not.toContain(">Wrong?<");
     const arg = btn.match(/data-arg="([^"]+)"/)![1].replace(/&quot;/g, '"').replace(/&amp;/g, "&");
     expect(parseFeedbackArg(arg)).toEqual({ itemType: "feed", itemRef: "990001", kind: "feed", model: "claude-haiku-5-5", promptVersion: null });
     expect(parseFeedbackArg(JSON.stringify({ itemType: "nope", itemRef: "1", kind: "x" }))).toBeNull();
@@ -141,17 +145,19 @@ describe("My Work › Your brief", () => {
   const mw = (state: "ready" | "empty" | "capped", o: Partial<AppState> = {}) =>
     render(app({ screen: "mywork", mywork: { status: "ok", data: dash({ brief: briefFixture(state, NOW) }) }, ...o }));
 
-  it("ready: the first card — header, byline, Wrong?, then Now / Recently / Next with their sources", () => {
+  it("ready: the lead bento tile, beside Needs your review — Now / Recently / Next, the byline, the thumbs-down", () => {
     const html = mw("ready");
     const labels = [...html.matchAll(/data-screen-label="My Work · ([^"]+)"/g)].map((m) => m[1]);
-    expect(labels[0]).toBe("Your brief");
-    expect(labels.slice(1)).toEqual(["Tickets for you", "Needs your review", "Your sessions", "Repo monitor", "Your library"]);
-    const card = html.slice(html.indexOf('data-mw="brief"'), html.indexOf('data-mw="tickets"'));
+    expect(labels).toEqual(["Your brief", "Needs your review", "Tickets for you", "Your sessions", "Repo monitor", "Your library"]);
+    const card = html.slice(html.lastIndexOf("<section", html.indexOf('data-mw="brief"')), html.lastIndexOf("<section", html.indexOf('data-mw="review"')));
+    expect(card).toContain("--span:7");
     const t = text(card);
     expect(t).toContain("Your brief");
+    expect(t).toContain("You are partway through the hosting screens");
     expect(t).toContain("Written by Trov, 12m ago");
     expect(card).toContain("Written by Trov from your sessions, pull requests, tickets and handoffs. Not official; check the sources.");
-    expect(card).toContain(">Wrong?</button>");
+    // The thumbs-down sits at the bottom right, after the byline.
+    expect(card.indexOf('data-act="aiWrong"')).toBeGreaterThan(card.indexOf("Written by Trov, 12m ago"));
     for (const w of ["Now", "Recently", "Next", "feat/hosting-screens", "CI run 4812", "#173", "#172", "#171"]) expect(t).toContain(w);
   });
   it("ready: each Next row is a state mark, the item's linked title and a muted why", () => {
@@ -167,11 +173,18 @@ describe("My Work › Your brief", () => {
     expect(text(rows[2])).toContain("#14");
     expect(rows[2]).toMatch(/<a href="#tickets\/14"[^>]*>Guided repository setup<\/a>/);
   });
+  it("Brief 7 | Needs your review 5 lead; Tickets | Your sessions | Repo share the second row at 4/4/4", () => {
+    const spans = (html: string) => Object.fromEntries([...html.matchAll(/data-mw="(\w+)"/g)].map((m) => {
+      const open = html.lastIndexOf("<section", m.index);
+      return [m[1], Number(/--span:(\d+)/.exec(html.slice(open, m.index))?.[1])];
+    }));
+    expect(spans(mw("ready"))).toMatchObject({ brief: 7, review: 5, tickets: 4, sessions: 4, repo: 4 });
+  });
   it("empty: the mock's sentence, no grid, no Wrong?", () => {
     const card = briefTile(briefFixture("empty", NOW));
     expect(text(card)).toContain(AI_EMPTY.brief);
     expect(card).not.toContain("mw-brief-grid");
-    expect(card).not.toContain(">Wrong?<");
+    expect(card).not.toContain('data-act="aiWrong"');
     expect(card).toContain('data-ai-state="empty"');
   });
   it("capped: the last brief, then the allowance line with its resume date and Upgrade to Pro (Free only)", () => {
@@ -207,7 +220,7 @@ describe("Repo › Overview › State", () => {
     expect(h).toContain(">#173</a>");
     expect(h).toContain(">handoff #3</a>");
     expect(h).toContain(">Tickets</a>");
-    expect(h).toContain(">Wrong?</button>");
+    expect(h).toContain('data-act="aiWrong"');
     expect(h).toContain("repo-state-cols");
   });
   it("omits 'from N events' when the count is unknown — never a guessed 0", () => {
@@ -344,7 +357,7 @@ describe("Feed — entries written by Trov", () => {
     expect(one).toContain('data-act="openPerson" data-arg="andres"');
     expect(text(one)).toContain("From #173 , 65b9f1f , a1c04e2 and 2 more");
     expect(one).toContain("Written by Trov from #173, 65b9f1f, a1c04e2 and 2 more. Not official; check the sources.");
-    expect(one).toContain(">Wrong?</button>");
+    expect(one).toContain('data-act="aiWrong"');
     expect(one).not.toContain("cnpy-issuechip");
   });
   it("the Source switch sits beside the view switch, and filters on origin", () => {

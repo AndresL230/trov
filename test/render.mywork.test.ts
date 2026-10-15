@@ -519,10 +519,11 @@ describe("My Work — audit fixes", () => {
   // 3. the greeting's claim
   it("says 'nothing is waiting on you' only when every contributing slice loaded ok", () => {
     expect(dateLine(render(loaded()))).toContain("nothing is waiting on you");
-    // Still loading: just the date.
+    // Still loading: no claim under the greeting; the date stays top right.
     const loading = render(loaded({ proposals: { status: "loading", data: [] } }));
     expect(loading).not.toContain("nothing is waiting on you");
-    expect(dateLine(loading)).not.toContain("·");
+    expect(loading).not.toMatch(/margin-top:6px;text-wrap:balance">[^<]*·/);
+    expect(loading).toMatch(/white-space:nowrap">\w+day, \w+ \d+</);
     expect(render(loaded({ mywork: { status: "loading", data: null } }))).not.toContain("nothing is waiting on you");
     expect(render(loaded({ handoffs: { status: "idle", data: [] } }))).not.toContain("nothing is waiting on you");
     // Failed: no claim either way.

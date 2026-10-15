@@ -2632,10 +2632,15 @@ function myWorkView(s: AppState): string {
   // screen, and a tile never appears or leaves when a count crosses zero. A CLEAR review
   // queue (loaded, empty) steps out of the lead pair to sit beside Repo:
   // Tickets 7 | Sessions 5, then Repo 7 | Needs your review 5.
+  // Your brief (written by Trov) is a tile of its own, ONLY when the dashboard carries one and this
+  // person has not pressed "Wrong?" on it: it takes Tickets' wide lead slot (Brief 7 | Needs your review 5)
+  // and Tickets opens the second row, Tickets | Your sessions | Repo at 4/4/4.
   const reviewClear = reviewLoad === "ok" && reviewItems.length === 0;
+  const brief = d?.brief && !aiIsHidden(s.ai, "brief", aiItemRef.brief(d.brief.generatedAt ?? "brief")) ? d.brief : null;
   const strips = ["library"];
-  const order = reviewClear ? ["tickets", "sessions", "repo", "review"] : ["tickets", "review", "sessions", "repo"];
-  const span = reviewClear
+  const lead = reviewClear ? ["tickets", "sessions", "repo", "review"] : ["tickets", "review", "sessions", "repo"];
+  const order = brief ? [...lead.slice(0, 2).map((k) => (k === "tickets" ? "brief" : k)), "tickets", ...lead.slice(2)] : lead;
+  const span: Record<string, number> = reviewClear && !brief
     ? { tickets: 7, sessions: 5, repo: 7, review: 5, library: 12 }
     : mwSpans(order, strips);
   const tile: Record<string, () => string> = {
@@ -2644,13 +2649,14 @@ function myWorkView(s: AppState): string {
     sessions: () => sessionsTile(sessions, feedLoad, waiting, span.sessions),
     repo: () => repoTile(s.repo.data, mwLoad(s.repo.status, !!s.repo.data), s.mwRepoTab, span.repo, { noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, admin: viewerIsAdmin(s) }),
     library: () => libraryStrip(library, span.library),
+    brief: () => (brief ? briefTile(brief, false, span.brief) : ""),
   };
 
   return myWorkLayout({
     greeting: `${greetingFor()}, ${esc(s.displayName || s.me?.name || s.me?.handle || "there")}`,
-    dateLine: stat ? `${esc(today)} · ${esc(stat)}` : esc(today),
-    // Your brief (written by Trov) leads — ONLY when the dashboard carries one (mywork.ts `briefTile`).
-    tiles: [...(d?.brief ? [briefTile(d.brief, aiIsHidden(s.ai, "brief", aiItemRef.brief(d.brief.generatedAt ?? "brief")))] : []), ...[...order, ...strips].map((k) => tile[k]())],
+    date: esc(today),
+    stat: esc(stat),
+    tiles: [...order, ...strips].map((k) => tile[k]()),
   });
 }
 

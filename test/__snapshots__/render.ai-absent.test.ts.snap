@@ -113,6 +113,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
             <span data-mtip="Written by an agent session, recorded as this person." style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--fg-55);white-space:nowrap"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="flex:none;display:block;color:currentColor" aria-hidden="true"><rect x="4" y="8" width="16" height="11" rx="2" stroke="currentColor" stroke-width="2"/><path d="M12 8V4M8.5 13h.01M15.5 13h.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>agent</span>
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
             <span style="font-size:12px;color:var(--fg-40)">3h ago</span>
+            
             <div style="flex:1"></div>
           </div>
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">
@@ -131,6 +132,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
             <span data-mtip="Written by an agent session, recorded as this person." style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--fg-55);white-space:nowrap"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="flex:none;display:block;color:currentColor" aria-hidden="true"><rect x="4" y="8" width="16" height="11" rx="2" stroke="currentColor" stroke-width="2"/><path d="M12 8V4M8.5 13h.01M15.5 13h.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>agent</span>
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
             <span style="font-size:12px;color:var(--fg-40)">1d ago</span>
+            
             <div style="flex:1"></div>
           </div>
           
@@ -146,6 +148,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     </main>
     <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
   </div>
+    
     
     
     
@@ -281,6 +284,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
             <span data-mtip="Written by an agent session, recorded as this person." style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--fg-55);white-space:nowrap"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="flex:none;display:block;color:currentColor" aria-hidden="true"><rect x="4" y="8" width="16" height="11" rx="2" stroke="currentColor" stroke-width="2"/><path d="M12 8V4M8.5 13h.01M15.5 13h.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>agent</span>
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
             <span style="font-size:12px;color:var(--fg-40)">3h ago</span>
+            
             <div style="flex:1"></div>
           </div>
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">
@@ -299,6 +303,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
             <span data-mtip="Written by an agent session, recorded as this person." style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--fg-55);white-space:nowrap"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" style="flex:none;display:block;color:currentColor" aria-hidden="true"><rect x="4" y="8" width="16" height="11" rx="2" stroke="currentColor" stroke-width="2"/><path d="M12 8V4M8.5 13h.01M15.5 13h.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>agent</span>
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
             <span style="font-size:12px;color:var(--fg-40)">1d ago</span>
+            
             <div style="flex:1"></div>
           </div>
           
@@ -314,6 +319,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     </main>
     <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
   </div>
+    
     
     
     
@@ -433,9 +439,12 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     </div>
   </header>
       <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div class="cnpy-scroll" style="max-width:1180px;margin:0 auto;padding:28px 32px 80px">
-    <div style="margin-bottom:22px;min-width:0">
-      <h2 style="font-size:22px;font-weight:500;letter-spacing:-0.02em;margin:0;line-height:1.2">Good afternoon, Alice</h2>
-      <div style="font-size:13.5px;color:var(--fg-55);margin-top:6px;text-wrap:balance">Wednesday, October 14 · 2 tickets open</div>
+    <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px;margin-bottom:22px;min-width:0">
+      <div style="min-width:0">
+        <h2 style="font-size:22px;font-weight:500;letter-spacing:-0.02em;margin:0;line-height:1.2">Good afternoon, Alice</h2>
+        <div style="font-size:13.5px;color:var(--fg-55);margin-top:6px;text-wrap:balance">2 tickets open</div>
+      </div>
+      <div style="font-size:13.5px;color:var(--fg-55);white-space:nowrap">Wednesday, October 14</div>
     </div>
     <div class="mw-main"><div class="mw-bento cnpy-stagger"><section class="cnpy-surface mw-tile cnpy-rise" style="min-width:0;display:flex;flex-direction:column;overflow:hidden;--span:7" data-mw="tickets" data-screen-label="My Work · Tickets for you"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px 0">
     <span style="display:inline-flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap"><span style="font-size:14px;font-weight:500">Tickets for you</span></span><button data-act="goTickets" class="mw-more" style="display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--fg-40);white-space:nowrap;padding:0">Queue<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
@@ -493,6 +502,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     </main>
     <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
   </div>
+    
     
     
     
@@ -915,6 +925,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     
     
     
+    
   </div>"
 `;
 
@@ -1112,6 +1123,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     </main>
     <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
   </div>
+    
     
     
     
