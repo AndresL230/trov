@@ -6,7 +6,7 @@ The Repo dashboard was built around one stack (a Cloudflare Worker frontend, a R
 host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free — the SPA imports its vocabularies):
 
 - **Provider** — CODE: `src/hosting/providers/<id>.ts`, registered once in `src/hosting/registry.ts`. Today:
-  `cloudflare`, `railway` (the two LEGACY providers), `vercel` (#98), `render` (#99), `netlify` (#100), `fly` (#101),
+  `cloudflare`, `railway`, `vercel` (#98), `render` (#99), `netlify` (#100), `fly` (#101),
   and `aws` (#102) described with `status: "later"` — listed, never choosable, never polled. A provider declares its
   roles, its exact `apiHosts`, its connection methods BEST FIRST, its org-wide config fields and per-part settings
   (anchored patterns, checked by `checkFields`), the metrics it can really read, `pollCost` (worst-case fetches of one
@@ -18,24 +18,26 @@ host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free �
   build — facts come from the vendors' own SDK / OpenAPI / CLI source).
 - **Connection** — how an org is connected: `install` (Vercel's Integration: projects picked at install, uninstall
   webhook), `oauth` (Netlify — no scopes on Netlify's side), `token` (every provider; the narrowest scope it has,
-  said plainly — Render keys have none, Fly's is a READ-ONLY org token, Vercel has no read-only token), `assume_role`
+  said plainly — Render keys have none, Fly's is a READ-ONLY org token, Vercel has no read-only token, Railway's is a
+  workspace token sent as Bearer, Cloudflare's needs Account Analytics Read + Workers Scripts Read), `assume_role`
   (AWS, later). The secret is an ordinary write-only `org_secrets` row (kinds `vercel` / `render` / `netlify` / `fly` /
   `aws`; Cloudflare and Railway keep `cloudflare_analytics` / `railway` — `HOSTING_INTEGRATION_KIND`); an install / OAuth
-  grant also writes `org_hosting_connections` (method, provider-side installation id, account). An install / OAuth
+  grant also writes `org_hosting_connections` (method, provider-side installation id, account). EVERY provider is
+  connected ONCE for the org (scope ""; the per-environment Railway project token is gone — a project token reads
+  one environment only, so it cannot serve the org-wide connection). An install / OAuth
   method needs Trov-side Worker vars (its `requires`) — absent, it is listed `available: false` and the token method is
   offered. Pasting a token over an install supersedes it (`supersedeConnection`).
 - **Part** — one deployable of one environment, with a ROLE: `web` (requests, 5xx errors, latency, bandwidth) or
-  `service` (CPU, memory). Stored parts are `org_environment_parts` rows; the LEGACY parts are the environment's own
-  columns — the Cloudflare frontend (`worker` / `worker_check`, key `frontend`) and the Railway backend (`railway_env` /
-  ids, key `backend`) — read by `legacyParts` and WRITTEN through `putEnvironment` (`src/hosting/part-writes.ts`), so the
-  webhook capture, the reconcile and the `:00` usage job read exactly what they read before. `src/hosting/parts.ts` is
+  `service` (CPU, memory). EVERY part, whoever hosts it, is an `org_environment_parts` row — Cloudflare and Railway
+  exactly like the rest (0056 moved the environment's old `worker` / `railway_*` columns into parts keyed `frontend` /
+  `backend`, renamed their `cf_*` / `rw_*` history to `hx_*`, and dropped the columns). `src/hosting/parts.ts` is
   the read side and is reachable from src/mcp.ts (the projection), so it — like `types.ts`, `http.ts`, `registry.ts`
   and `providers/*` — must never import src/data/secrets.ts (`http.ts` carries this layer's own `scrub`).
 - **Reading** — normalised: hourly `hx_<metric>` points in `repo_metrics` (env = environment key, part = part key,
   complete hours only, `pollWindow`: the last 3 hours closed ≥ 15 min — first write wins, so a running hour is never
   stored), deploys upserted into `hosting_deploys` (state moves building → ready), the last poll in
   `hosting_poll_state` (outcome, scrubbed detail, the metrics the provider could not read and why, and the contiguous
-  COVERED interval — merged like `cf_polled`: inside it, an hour with no point is a true zero).
+  COVERED interval: inside it, an hour with no point is a true zero).
 
 **Every provider fetch goes through `hostFetch`** (`src/hosting/http.ts`): https only, the hostname exactly one of the
 provider's `apiHosts` (refused BEFORE anything is sent), `redirect: "manual"` (a credential never crosses a redirect),
@@ -43,7 +45,7 @@ a timeout. A provider throws only `HostingError`, scrubbed at construction; `ref
 upstream body BEFORE cutting it. A metric a provider cannot read (Vercel and Netlify have no public usage API; Render's
 HTTP metrics are web-services only) is reported in `unavailable` with a reason — never as a zero.
 
-**Polling** (`src/hosting/poll.ts`): `pollPart` skips a legacy part, a `later` provider, a missing credential (no request
+**Polling** (`src/hosting/poll.ts`): `pollPart` skips a `later` provider, a missing credential (no request
 — "an org without it costs no requests") and a missing required setting; otherwise it runs the provider and VALIDATES
 what came back before storing (role-matched metrics, complete past hours, finite non-negative values under a cap;
 deploys with an id, a known state, sane times, https URLs) — dropped items counted in `detail`. It records the
@@ -51,10 +53,8 @@ credential outcome (`recordSecretOutcome`) and never throws. Runs at the repo cr
 `hosting` arm (after usage, before GitHub; budgeted so GitHub keeps its reservation — `hosting` is in the result only
 when the org has stored parts). `hx_*` are pruned at 100 days, `hosting_deploys` at 180.
 
-**The dashboard's `providers` section** (Usage tab; `RepoProviderPart` per part — legacy and stored alike — so ONE
-panel can replace the Cloudflare / Railway blocks): deploys (stored: `hosting_deploys`; legacy: the GitHub deploy
-strips), `traffic` per range for a web part (the Usage tab's own fill rule; a stored part's covered interval is
-evidence for a zero, Cloudflare's `cf_polled` for the legacy frontend; `latency_p95_ms` is the latest point in range;
+**The dashboard's `providers` section** (Usage tab; `RepoProviderPart` per part): deploys (`hosting_deploys`),
+`traffic` per range for a web part (the Usage tab's own fill rule; the part's covered interval is evidence for a zero; `latency_p95_ms` is the latest point in range;
 `traffic: null` for a web part whose provider reads no usage at all), `resources` for a service part (latest ≤ 3 h old,
 24 h trend never zero-filled), `seen`, `unavailable`, `status`, `tone`, `last_poll`, `console_url` (org config read
 directly — the projection never touches the secrets module). Three extra statements; a failed read costs only this
@@ -154,17 +154,18 @@ a toast instead; one title + body per outcome in `hostingNoticeCopy`, tone ok / 
 banner); the "credentials can't be saved" banner (`secrets_available: false` — connect / rotate / paste are
 disabled with the reason; parts stay editable, since a part is not a credential); the LEAD, whose one accent action
 is the checklist's next step; the checklist the server generated (steps to do listed, done ones folded); "Detected";
-**Environments** — a tile per environment side by side (`.cnpy-hx-envs`), its parts as `openRow`s (the host's logo,
-label, role as plain text, a status mark; host · identifying setting as metadata; Edit as the one action; a failed last poll
+**Environments** — a tile per environment side by side (`.cnpy-hx-envs`), its parts as `openRow`s (the ORG's tile
+— a part is the org's own app; the host is named in the metadata — label, role as plain text, a status mark; host · identifying setting as metadata; Edit as the one action; a failed last poll
 and a test's answer always visible; key, settings, last poll, the provider's "not available" reasons, Open in
 <provider>, Test this part and Remove behind the row); **Providers** — ONE grid of cards (`.cnpy-hx-cards`, two a row, one at
-phone width) in registry order (Cloudflare, Railway, Vercel, Render, Netlify, Fly.io; that Cloudflare and Railway keep
-their part in the environment's own fields is a storage detail the screen never shows), then **Later** — AWS. A card is
+phone width, every card the same height) in registry order (Cloudflare, Railway, Vercel, Render, Netlify, Fly.io), then
+**Later** — AWS. A card is
 NOT a dropdown: it shows its logo (`web/src/host-logos.ts`, Simple Icons, CC0), name and status, the metadata (how it is
-connected, how many parts use it), the provider's summary and plan note, what Trov reads (`capabilityChips`), a last
-error or a test's answer — and ONE button at its foot, one width on every card: **Connect** (the provider's own dialog:
-its install / OAuth confirmation, or the token form), **Manage** once connected, **Add part** for Railway (its token is
-per environment). Nothing on a card says how a host connects (no "Recommended" / "Paste a…" hint): which method a host
+connected, how many parts use it), the provider's one-line summary (every summary reads "A <thing> on <host>. Trov
+reads its …"), what Trov reads (`capabilityChips`), a last error or a test's answer — and ONE button at its top right,
+one width on every card: **Connect** (the provider's own dialog: its install / OAuth confirmation, or the token form)
+or **Manage** once connected. The plan note ("Vercel has no public usage API…") is in the Manage dialog and the part
+editor. Nothing on a card says how a host connects (no "Recommended" / "Paste a…" hint): which method a host
 offers is not a reason to pick it. **Manage** opens a dialog (`manageModal`, `h.manage`) with everything else: when and
 by whom it was connected, what uses it, its settings, what it can do (`grants`), "Sent only to <api_hosts>", Test
 connection, Manage on <provider>, Connect a different account, Rotate / Edit settings, Disconnect as quiet text (it
@@ -176,7 +177,7 @@ Three dialogs, each a root-level `data-overlay` (so a keystroke patches it — O
 a time, Escape closes, Tab stays inside, focus returns to the control that opened it:
 - **the part editor** (`partEditorModal`) — host (`dropdown()`, with the provider's summary, capability chips and
   plan note under it; AWS is not an option), role (`segmented()` only where the provider serves both), key + label
-  (fixed for a legacy provider), and a form generated from `part_settings` — a setting whose pattern is a short
+  and a form generated from `part_settings` — a setting whose pattern is a short
   list of words (`^(?:production|preview)$`, `fieldOptions`) is a `segmented()`, anything else a text field checked
   against its pattern (`partDraftProblems`, the server's own rules; the server's refusal lands beside its field).
   Not connected yet → "Save and connect". Save is `PUT …/environments/:env/parts/:part`.
@@ -231,7 +232,8 @@ only. Render tests: `test/render.hosting.test.ts`, `test/render.repo-hosting.tes
 The `hosting` job (`src/repo/cron.ts`; the cron itself is described in `repo-dashboard.md` › The repo cron): one
 unit per (org, environment, STORED part) from `listPartUnits` (`src/platform/jobs.ts`), each costing its provider's
 `pollCost` (≤ 6), served by rotation like the other jobs; health keeps half the budget on this tick only when some
-org has a stored part. Legacy Cloudflare / Railway parts stay on the `:00` usage job. Background-job tenancy (the
+org has a stored part. Cloudflare and Railway are polled here like every other provider; the `:00` usage job reads
+only the app-metrics endpoint. Background-job tenancy (the
 unit runs as its org's system tenant) is in `data-layer.md`.
 
 ## Env
