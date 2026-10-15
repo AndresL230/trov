@@ -148,6 +148,21 @@ suggestion only for an `available` provider no part uses yet (`shownDetections`)
 the part editor and connects nothing — the credential is still the admin's to give. A dismissal is per browser
 (`localStorage` `trov.hosting.dismissed.<slug>`).
 
+**Where detection stands** (`HostingSetupDTO.detection`, `readDetectionStatus`): so a new org sees what Trov is doing
+instead of nothing. `no_repo` (no repository connected) → `no_environment` (a repository, but no environment names a
+branch — the reconcile reads each environment branch head's check runs, so it needs one) → `looking` (a sync is
+running, or no reconcile has run since: no `prs_reconciled` snapshot) → `none` (read, no host Trov knows) or `found`
+(`detected` is not empty). Three reads of the org's own rows; a failed read is `looking`. The screen draws it in the
+Detected slot when there is no suggestion (`detectionStatus`, web/src/hosting.ts), each with its next step — Connect a
+repository, Add an environment, Sync GitHub now (the Sync panel, which an admin may open from any screen); while
+`looking` the tab re-reads itself every 20 s (hosting-actions.ts `afterPaint`).
+
+**The sample preview's two switchers** (web/src/hosting-keys.ts, `hostingScenario` in web/src/hosting-sample.ts):
+a FLOW — New org, Looking, Found, Parts added, Connecting, Live, Broken, Locked — × a STACK — Vercel + Render,
+Netlify + Fly.io, Cloudflare + Railway, All on Render, All on Railway, Vercel only, Five hosts. Every combination is
+a whole `HostingSetupDTO` built from the real catalogue; detection follows what Trov can see (a stack of only Render
+/ Railway / Fly.io finds nothing). `test/hosting.sample.test.ts` holds every combination to the providers' own checks.
+
 ## The screens
 
 **Org settings › Hosting** (`#org/hosting`, admins only — `ADMIN_TABS`; `web/src/hosting.ts` pure views,

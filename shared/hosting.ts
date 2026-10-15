@@ -293,6 +293,26 @@ export interface HostingDetectionDTO {
   in_use: boolean;
 }
 
+/**
+ * Where "which host is this repository on?" stands, so a new org sees what Trov is doing rather than nothing:
+ *   no_repo          no repository is connected yet — there is nothing to look at
+ *   no_environment   a repository is connected but no environment names a branch: the checks Trov reads are those
+ *                    of each environment's branch head
+ *   looking          Trov has not read the repository's checks yet (a GitHub sync is running, or none has run
+ *                    since the repository was connected)
+ *   none             it has, and no host it knows posted any of them — pick yours by hand
+ *   found            `detected` lists at least one host
+ */
+export const HOSTING_DETECTION_STATES = ["no_repo", "no_environment", "looking", "none", "found"] as const;
+export type HostingDetectionState = (typeof HOSTING_DETECTION_STATES)[number];
+export interface HostingDetectionStatusDTO {
+  state: HostingDetectionState;
+  /** The primary repository (`owner/name`), or null when none is connected. */
+  repo: string | null;
+  /** When its checks were last read (the reconcile), or null when never. */
+  checked_at: string | null;
+}
+
 /** `GET /api/o/:slug/hosting` — the whole Hosting setup in one read (admin). */
 export interface HostingSetupDTO {
   providers: HostingProviderDTO[];
@@ -301,6 +321,8 @@ export interface HostingSetupDTO {
   checklist: HostingChecklistItem[];
   /** Providers seen in captured GitHub activity, in picker order (empty when none, or when nothing is captured). */
   detected: HostingDetectionDTO[];
+  /** Where detection stands (absent in a payload from before the field existed: the screen then shows only `detected`). */
+  detection?: HostingDetectionStatusDTO;
   /** false: TROV_KEK is unusable, so no credential can be saved (every write answers 503). */
   secrets_available: boolean;
 }

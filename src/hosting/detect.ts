@@ -14,8 +14,8 @@
 // for what new capture would change that.
 //
 // A suggestion preselects the provider in the part editor; it connects nothing and stores nothing.
-import { HOSTING_PROVIDERS, type HostingDetectionDTO, type HostingProviderId } from "@shared/hosting";
-import { all, type TenantContext } from "../data/sql";
+import { HOSTING_PROVIDERS, type HostingDetectionDTO, type HostingDetectionStatusDTO, type HostingProviderId } from "@shared/hosting";
+import { all, first, type TenantContext } from "../data/sql";
 
 /** How far back a sign counts: the capture's own retention is longer, but a host left months ago is not a suggestion. */
 export const DETECT_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
@@ -107,4 +107,29 @@ export async function readDetections(
   ctx: TenantContext, labels: Readonly<Record<HostingProviderId, string>>, inUse: ReadonlySet<HostingProviderId>, now: number = Date.now(),
 ): Promise<HostingDetectionDTO[]> {
   try { return detectProviders(await listDetectRows(ctx, now), labels, inUse); } catch { return []; }
+}
+
+/**
+ * `HostingSetupDTO.detection` — where detection stands (shared/hosting.ts `HostingDetectionState`). Three reads, all
+ * this org's rows: the primary repository, its newest sync run, and the reconcile's marker (`prs_reconciled`, the
+ * last time the repository's checks were read — the reconcile reads each environment branch head's check runs).
+ * `detected` is the list the screen already has. A failed read is "looking": never an error on the setup screen.
+ */
+export async function readDetectionStatus(
+  ctx: TenantContext, detected: readonly HostingDetectionDTO[], environments: number,
+): Promise<HostingDetectionStatusDTO> {
+  try {
+    const repo = (await first<{ repo_full_name: string }>(ctx,
+      `SELECT repo_full_name FROM org_repos WHERE org_id = ? ORDER BY is_primary DESC, created_at, id LIMIT 1`, ctx.orgId))?.repo_full_name ?? null;
+    if (!repo) return { state: "no_repo", repo: null, checked_at: null };
+    const checked = (await first<{ computed_at: string }>(ctx,
+      `SELECT computed_at FROM repo_snapshots WHERE org_id = ? AND kind = 'prs_reconciled'`, ctx.orgId))?.computed_at ?? null;
+    if (detected.length) return { state: "found", repo, checked_at: checked };
+    if (environments === 0) return { state: "no_environment", repo, checked_at: checked };
+    const running = await first<{ id: number }>(ctx,
+      `SELECT id FROM sync_runs WHERE org_id = ? AND status = 'running' ORDER BY id DESC LIMIT 1`, ctx.orgId);
+    return { state: running || !checked ? "looking" : "none", repo, checked_at: checked };
+  } catch {
+    return { state: "looking", repo: null, checked_at: null };
+  }
 }

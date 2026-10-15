@@ -19,7 +19,7 @@ import {
 } from "./api";
 import { currentOrg, effectiveOrgTab, roleAtLeast } from "./org-settings";
 import {
-  bestMethod, connKey, connectionOf, draftKey, fieldOptions, hostingData, isHostingSampleKey, partDraftProblems, providerOf, scopeFor, tokenFormOk, tokenMethod,
+  bestMethod, connKey, connectionOf, draftKey, fieldOptions, hostingData, isHostingSampleKey, isHostingStackKey, partDraftProblems, providerOf, scopeFor, tokenFormOk, tokenMethod,
   tokenWord, type HostingUi, type PartDraft,
 } from "./hosting";
 import {
@@ -143,7 +143,7 @@ export function createHostingActions(host: HostingHost): HostingActions {
     void import("./hosting-sample").then((m) => {
       if (h().sample !== arg) return; // picked another, or went back to live data, mid-flight
       // A copy: nothing done to the preview may reach the module's own constants.
-      h().sampleData = structuredClone(m.HOSTING_SAMPLES[arg]);
+      h().sampleData = m.hostingScenario(arg, h().sampleStack);
       rerender();
     }).catch(() => { if (h().sample === arg) { h().sample = null; host.flash("Couldn't load the sample data."); } });
   }
@@ -414,6 +414,8 @@ export function createHostingActions(host: HostingHost): HostingActions {
     switch (name) {
       case "orgHxReload": load(); break;
       case "orgHxSample": sample(arg); return true;
+      // The sample's second switcher: the same flow, on another stack.
+      case "orgHxSampleStack": if (isHostingStackKey(value) && u.sample) { u.sampleStack = value; sample(u.sample); } return true;
       case "orgHxNoticeClose": u.notice = null; break;
       case "orgHxDoneToggle": u.doneOpen = !u.doneOpen; break;
       case "orgHxDetectDismiss":
@@ -520,13 +522,22 @@ export function createHostingActions(host: HostingHost): HostingActions {
     return true;
   }
 
+  /** While Trov is still looking for the host (a sync running, or none run yet), the tab reads itself again every
+   *  20 seconds — so "Looking for your host" turns into the suggestion without a reload. One timer at a time; not
+   *  for the sample, not off the tab, not while a dialog is open. */
+  let lookAgain: ReturnType<typeof setTimeout> | null = null;
+  const LOOK_AGAIN_MS = 20_000;
+
   function afterPaint(): void {
     const onTab = state.view === "app" && state.screen === "org" && effectiveOrgTab(state.org.tab, org()?.role ?? null) === "hosting";
     const u = h();
+    if (onTab && !u.sample && !lookAgain && u.setup.status === "ok" && u.setup.data?.detection?.state === "looking" && !u.part && !u.connect && !u.token && !u.manage) {
+      lookAgain = setTimeout(() => { lookAgain = null; if (h().setup.data?.detection?.state === "looking" && !h().sample) load(); }, LOOK_AGAIN_MS);
+    }
     if (!onTab) {
       // Left the tab (or the screen) with a dialog open: the dialog and the value go with it.
       if (secretDraft) secretDraft = "";
-      if (u.part || u.connect || u.token) { u.part = null; u.connect = null; u.token = null; }
+      if (u.part || u.connect || u.token || u.manage) { u.part = null; u.connect = null; u.token = null; u.manage = null; }
       return;
     }
     if (!u.token) { if (secretDraft) secretDraft = ""; return; }

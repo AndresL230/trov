@@ -10,13 +10,13 @@ import hostingSrc from "../web/src/hosting.ts?raw";
 import { orgSettingsView, orgOverlays, orgTabBar, initialOrgUi, orgTabsFor, effectiveOrgTab, orgConfirmCopy, orgDropdowns, type OrgUi } from "../web/src/org-settings";
 import {
   hostingNoticeCopy, hostingTab, partEditorModal, connectModal, tokenModal, manageModal, partDraftProblems, fieldOptions, unavailableLines, connectionStatus, lostOnProvider,
-  shownDetections, tokenWord, sentOnlyTo, connectionsFor, hostingTodo, tokenFormOk, initialHostingUi, HOSTING_SAMPLE_KEYS,
+  shownDetections, tokenWord, sentOnlyTo, connectionsFor, hostingTodo, tokenFormOk, initialHostingUi, HOSTING_SAMPLE_KEYS, HOSTING_STACK_KEYS, STACK_LABEL,
   HOSTING_ENVS_EMPTY, HOSTING_PARTS_EMPTY, envTilesShape, partRowsShape,
   type HostingUi, type PartDraft, type TokenForm,
 } from "../web/src/hosting";
 import { hostingErrorText } from "../web/src/hosting-actions";
 import { OrgApiError } from "../web/src/api";
-import { HOSTING_SAMPLES, HOSTING_SAMPLE_MIXED, HOSTING_SAMPLE_PROVIDERS } from "../web/src/hosting-sample";
+import { HOSTING_SAMPLES, HOSTING_SAMPLE_MIXED, HOSTING_SAMPLE_PROVIDERS, hostingScenario } from "../web/src/hosting-sample";
 import { parseHash, hashForRoute } from "../web/src/hash";
 import { render, initialState, type AppState } from "../web/src/render";
 import { previewState } from "../web/src/preview";
@@ -148,9 +148,9 @@ describe("empty layouts and the state preview (web-ui.md › Empty layouts)", ()
     expect(JSON.stringify(base.org.hosting)).toBe(before);
 
     // Its own "Preview with sample data" keeps working under the preview, labelled as sample data.
-    const sampled = previewState({ ...base, org: uiFor(null, { sample: "mixed", sampleData: HOSTING_SAMPLE_MIXED }) }, "empty", initialState());
-    expect(sampled.org.hosting.sample).toBe("mixed");
-    expect(render({ ...sampled })).toContain('data-org-hosting-sample="mixed"');
+    const sampled = previewState({ ...base, org: uiFor(null, { sample: "live", sampleData: HOSTING_SAMPLE_MIXED }) }, "empty", initialState());
+    expect(sampled.org.hosting.sample).toBe("live");
+    expect(render({ ...sampled })).toContain('data-org-hosting-sample="live"');
     // Nothing loaded yet and no catalogue to show: still an answered, empty read — never a crash.
     const cold = previewState({ ...base, org: uiFor(null) }, "empty", initialState());
     expect(cold.org.hosting.setup).toMatchObject({ status: "ok", data: { providers: [], environments: [], connections: [] } });
@@ -372,7 +372,7 @@ describe("providers and their connections", () => {
     expect(row).toContain('data-state="revoked"');
     expect(row).toContain(">Removed<");
     expect(row).toContain("Removed on Vercel");
-    expect(row).toContain(">Connect again<");
+    expect(row).toContain(">Reconnect<");
     expect(html).toContain("1 removed on the provider");
     expect(html).toMatch(/class="cnpy-accentbtn"[^>]*>Connect Vercel</);      // the checklist's "Reconnect Vercel"
     // An admin's own Disconnect: not connected, no banner.
@@ -462,6 +462,36 @@ describe("the setup checklist and the Detected suggestion", () => {
     const old = clone(d) as Partial<HostingSetupDTO>;
     delete old.detected;
     expect(tab(old as HostingSetupDTO)).not.toContain("data-org-hosting-detected");
+  });
+});
+
+describe("where detection stands, for a new org", () => {
+  it("says what Trov is doing until it finds a host — and the next step for each", () => {
+    const say = (flow: (typeof HOSTING_SAMPLE_KEYS)[number], stack: (typeof HOSTING_STACK_KEYS)[number]) => tab(hostingScenario(flow, stack));
+    const start = say("start", "vercel_render");
+    expect(start).toContain('data-org-hosting-detection="no_repo"');
+    expect(start).toContain("Trov can find your host for you");
+    expect(start).toMatch(/data-act="orgTab" data-arg="repos"[^>]*>Connect a repository/);
+    const looking = say("looking", "vercel_render");
+    expect(looking).toContain('data-org-hosting-detection="looking"');
+    expect(looking).toContain("Looking for your host on <code");
+    expect(looking).toContain('data-act="syncToggle"');
+    // A stack whose hosts post check runs is found; one whose hosts do not finds nothing, and says why.
+    expect(say("found", "vercel_render")).toContain('data-org-hosting-detected="vercel"');
+    expect(say("found", "vercel_render")).not.toContain("data-org-hosting-detection=");
+    const none = say("found", "render_only");
+    expect(none).toContain('data-org-hosting-detection="none"');
+    expect(none).toContain("Render, Railway and Fly.io do not");
+    // Once its parts use the host, the suggestion is gone and nothing else takes its place.
+    expect(say("parts", "vercel_render")).not.toMatch(/data-org-hosting-detect(ed|ion)=/);
+    // A repository with no environment: what to add first.
+    const noEnv = hostingScenario("looking", "vercel_render");
+    noEnv.detection = { state: "no_environment", repo: "acme/web", checked_at: null };
+    expect(tab(noEnv)).toMatch(/data-act="orgTab" data-arg="environments"[^>]*>Add an environment/);
+    // A payload from before the field existed shows no status line.
+    const old = hostingScenario("looking", "vercel_render");
+    delete old.detection;
+    expect(tab(old)).not.toContain("data-org-hosting-detection");
   });
 });
 
@@ -732,19 +762,23 @@ describe("confirmations go through the shared modal", () => {
 });
 
 describe("Preview with sample data", () => {
-  it("every sample state renders, labelled as sample data, with a switch between states and the way back", () => {
-    for (const key of HOSTING_SAMPLE_KEYS) {
-      const html = tab(null, { sample: key, sampleData: HOSTING_SAMPLES[key] });
-      expect(html, key).toContain(`data-org-hosting-sample="${key}"`);
-      expect(html, key).toContain("Sample data");
-      expect(html, key).toContain('data-seg="org-hx-sample"');
-      expect(html, key).toContain('data-act="orgHxSample" data-arg="off"');
-      expect(html, key).toContain('data-org-group="hosting-providers"');
-      expect(html, key).not.toMatch(/undefined|NaN|\[object/);
-      expect(html, key).not.toContain("Preview with sample data");
+  it("every flow × stack renders, labelled as sample data, with both switchers and the way back", () => {
+    for (const flow of HOSTING_SAMPLE_KEYS) {
+      for (const stack of HOSTING_STACK_KEYS) {
+        const at = `${flow} × ${stack}`;
+        const html = tab(null, { sample: flow, sampleStack: stack, sampleData: hostingScenario(flow, stack) });
+        expect(html, at).toContain(`data-org-hosting-sample="${flow}"`);
+        expect(html, at).toContain("Sample data");
+        expect(html, at).toContain('data-seg="org-hx-sample"');
+        expect(html, at).toMatch(new RegExp(`id="org-hx-sample-stack"[\\s\\S]*?${STACK_LABEL[stack].replace(/[.+]/g, "\\$&")}`));
+        expect(html, at).toContain('data-act="orgHxSample" data-arg="off"');
+        expect(html, at).toContain('data-org-group="hosting-providers"');
+        expect(html, at).not.toMatch(/undefined|NaN|\[object/);
+        expect(html, at).not.toContain("Preview with sample data");
+      }
     }
-    expect(tab(null, { sample: "mixed", sampleData: null })).toContain("data-skel=");   // the chunk is still loading
-    expect(tab(HOSTING_SAMPLE_MIXED)).toContain('data-act="orgHxSample" data-arg="mixed"');
+    expect(tab(null, { sample: "live", sampleData: null })).toContain("data-skel=");   // the chunk is still loading
+    expect(tab(HOSTING_SAMPLE_MIXED)).toContain('data-act="orgHxSample" data-arg="start"');
     // The sample is a dynamic import: it must never be in the main bundle.
     expect(hostingSrc).not.toMatch(/from "\.\/hosting-sample"/);
     expect(mainSrc).not.toContain("hosting-sample");

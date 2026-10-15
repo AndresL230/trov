@@ -19,7 +19,7 @@ import { listEnvironments } from "../integrations/settings";
 import { credentialScopeOf, listConnections, loadConnectionState, type ConnectionState } from "./connections";
 import type { PartRow } from "./parts";
 import type { ProviderMap } from "./part-writes";
-import { readDetections } from "./detect";
+import { readDetectionStatus, readDetections } from "./detect";
 import { PROVIDERS, providerDTO } from "./registry";
 import type { HostingProvider } from "./types";
 
@@ -208,15 +208,17 @@ export async function getHostingSetup(ctx: TenantContext, env: Env, providers: P
     key: e.key, label: e.label, branch: e.branch,
     parts: s.parts.filter((p) => p.env === e.key).map((p) => partDTO(x, p)),
   }));
+  const detected = await readDetections(
+    ctx, Object.fromEntries(HOSTING_PROVIDERS.map((id) => [id, providers[id].label])) as Record<HostingProviderId, string>,
+    new Set(s.parts.map((p) => p.provider)),
+  );
   return {
     providers: HOSTING_PROVIDERS.map((id) => providerDTO(providers[id], env)),
     environments,
     connections: x.connections,
     checklist: buildChecklist(envs, s.parts, x.connections, providers, x.config),
-    detected: await readDetections(
-      ctx, Object.fromEntries(HOSTING_PROVIDERS.map((id) => [id, providers[id].label])) as Record<HostingProviderId, string>,
-      new Set(s.parts.map((p) => p.provider)),
-    ),
+    detected,
+    detection: await readDetectionStatus(ctx, detected, envs.length),
     secrets_available: await secretsAvailable(env),
   };
 }

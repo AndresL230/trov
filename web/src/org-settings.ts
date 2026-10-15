@@ -854,7 +854,7 @@ export function orgSettingsView(p: OrgSettingsProps): string {
   const body = tab === "integrations" ? integrationsTab(p.org, p.ui)
     : tab === "repos" ? reposTab(p.org, p.ui)
     : tab === "environments" ? environmentsTab(p.org, p.ui)
-    : tab === "hosting" ? hostingTab(p.org, p.ui)
+    : tab === "hosting" ? hostingTab(p.org, p.ui, p.dd)
     : tab === "members" ? membersTab(p.org, p.ui, p.me, p.identity ?? null, p.dd)
     : tab === "notifications" ? notificationsTab(p.org, p.notif, p.dd)
     : generalTab(p.org, p.ui);

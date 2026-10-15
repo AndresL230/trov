@@ -121,9 +121,10 @@ describe("the header control", () => {
 });
 
 describe("the panel — a labelled dialog", () => {
-  it("is nothing when closed, and nothing where its control is not shown", () => {
+  it("is nothing when closed; off My Work it opens only for an admin who opened it (Hosting's Sync GitHub now)", () => {
     expect(syncOverlay(props())).toBe("");
-    expect(syncOverlay(props({ open: true }, { home: false }))).toBe("");
+    expect(syncOverlay(props({ open: true }, { home: false }))).toContain('data-overlay="sync"');
+    expect(syncOverlay(props({ open: true, status: status({ admin: false }) }, { home: false, admin: false }))).toBe("");
   });
   it("role, label, a close button, a click-away layer, the repository named", () => {
     const html = panel();

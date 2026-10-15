@@ -3,9 +3,10 @@
 // settings pass its provider's own checks, and every reference (a part's provider, a connection's users, a
 // checklist action) points at something the payload holds.
 import { describe, expect, it } from "vitest";
-import { HOSTING_METRICS, PART_KEY_RE } from "@shared/hosting";
+import { type HostingSetupDTO, HOSTING_METRICS, PART_KEY_RE } from "@shared/hosting";
 import { allProviders, checkFields, providerDTO, providerOf } from "../src/hosting/registry";
-import { HOSTING_SAMPLES, HOSTING_SAMPLE_PROVIDERS } from "../web/src/hosting-sample";
+import { HOSTING_SAMPLES, HOSTING_SAMPLE_PROVIDERS, hostingScenario } from "../web/src/hosting-sample";
+import { HOSTING_SAMPLE_KEYS, HOSTING_STACK_KEYS } from "../web/src/hosting-keys";
 
 // The deployment the sample describes: the Vercel integration and the Netlify OAuth app both configured.
 const SAMPLE_ENV = {
@@ -18,7 +19,29 @@ describe("the Hosting sample data", () => {
     expect(HOSTING_SAMPLE_PROVIDERS).toEqual(allProviders().map((p) => providerDTO(p, SAMPLE_ENV)));
   });
 
-  describe.each(Object.entries(HOSTING_SAMPLES))("state %s", (_name, setup) => {
+  // The fixed states the render tests use, and every flow × stack the preview's two switchers can show.
+  const ALL: [string, HostingSetupDTO][] = [
+    ...Object.entries(HOSTING_SAMPLES),
+    ...HOSTING_SAMPLE_KEYS.flatMap((f) => HOSTING_STACK_KEYS.map((st): [string, HostingSetupDTO] => [`${f} × ${st}`, hostingScenario(f, st)])),
+  ];
+
+  it("a scenario's detection agrees with what it holds", () => {
+    for (const f of HOSTING_SAMPLE_KEYS) {
+      for (const st of HOSTING_STACK_KEYS) {
+        const d = hostingScenario(f, st);
+        const at = `${f} × ${st}`;
+        expect(d.detection, at).toBeDefined();
+        if (f === "start") expect(d.detection, at).toEqual({ state: "no_repo", repo: null, checked_at: null });
+        if (d.detection!.state === "found") expect(d.detected.length, at).toBeGreaterThan(0);
+        if (d.detection!.state === "none") expect(d.detected, at).toEqual([]);
+        // Only hosts that post GitHub check runs are ever detected.
+        for (const x of d.detected) expect(["cloudflare", "vercel", "netlify"], at).toContain(x.provider);
+        expect(d.secrets_available, at).toBe(f !== "locked");
+      }
+    }
+  });
+
+  describe.each(ALL)("state %s", (_name, setup) => {
     it("uses the one provider catalogue", () => {
       expect(setup.providers).toBe(HOSTING_SAMPLE_PROVIDERS);
     });
@@ -42,8 +65,9 @@ describe("the Hosting sample data", () => {
       for (const c of setup.connections) {
         for (const u of c.used_by) expect(parts.has(`${u.env}/${u.part}`), `${c.provider} used by ${u.env}/${u.part}`).toBe(true);
         const fields = providerOf(c.provider).orgConfigFields;
-        expect(checkFields(fields, c.config, "config")).toEqual({ values: c.config });
-        if (c.status === "not_connected") expect(c.method).toBeNull();
+        // Nothing connected holds no settings yet (as the server answers); anything else holds valid ones.
+        if (c.status === "not_connected") { expect(c.method).toBeNull(); expect(c.config).toEqual({}); }
+        else expect(checkFields(fields, c.config, "config")).toEqual({ values: c.config });
       }
     });
 

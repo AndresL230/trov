@@ -8,9 +8,12 @@
 // deployment that has the Vercel integration and the Netlify OAuth app configured. test/hosting.sample.test.ts
 // fails when a provider changes and this copy does not — regenerate it from src/hosting/registry.ts.
 import {
-  HOSTING_CONNECT_OUTCOMES,
-  type ConnectStartDTO, type HostingConnectOutcome, type HostingPollOutcome, type HostingProviderDTO, type HostingSetupDTO, type HostingTestDTO,
+  HOSTING_CONNECT_OUTCOMES, HOSTING_PROVIDERS, metricsForRole,
+  type ConnectStartDTO, type ConnectionStatus, type EnvironmentPartDTO, type HostingChecklistItem, type HostingConnectOutcome, type HostingConnectionDTO,
+  type HostingDetectionDTO, type HostingDetectionStatusDTO, type HostingEnvironmentDTO, type HostingPollOutcome, type HostingProviderDTO,
+  type HostingProviderId, type HostingSetupDTO, type HostingTestDTO, type PartRole,
 } from "@shared/hosting";
+import type { HostingSampleKey, HostingStackKey } from "./hosting-keys";
 
 export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
   {
@@ -2064,3 +2067,157 @@ export const HOSTING_SAMPLE_POLL: HostingPollOutcome[] = [
  *  refusals — every outcome but `connected` — each of which the UI words as a sentence. */
 export const HOSTING_CONNECT_ERROR_CODES: readonly Exclude<HostingConnectOutcome, "connected">[] =
   HOSTING_CONNECT_OUTCOMES.filter((o): o is Exclude<HostingConnectOutcome, "connected"> => o !== "connected");
+
+// ── the scenario switchers: a FLOW (where a new org stands) × a STACK (which hosts it runs on) ────────────────
+//
+// `hostingScenario(flow, stack)` builds a whole `HostingSetupDTO` from the catalogue above and the shapes the
+// server returns (src/hosting/setup.ts) — so every combination of the two switchers is a payload the screen could
+// really receive. Detection follows what Trov can really see: Cloudflare, Vercel and Netlify post GitHub check
+// runs, so a stack of theirs is FOUND; Render, Railway and Fly.io do not, so a stack of only theirs finds NONE.
+
+type EnvKey = "staging" | "production";
+interface StackPart { key: string; label: string; role: PartRole; provider: HostingProviderId; settings: Readonly<Record<string, string | undefined>> }
+/** The settings with no unset key (a ternary's other branch leaves some `undefined`). */
+const clean = (o: Readonly<Record<string, string | undefined>>): Record<string, string> =>
+  Object.fromEntries(Object.entries(o).filter((e): e is [string, string] => typeof e[1] === "string"));
+
+const RAILWAY_ENV: Record<EnvKey, string> = { staging: "8f2c1a9e-4b7d-4e2a-9c1f-2d3e4f5a6b7c", production: "2b7d9e4f-1a3c-4d5e-8f6a-7b8c9d0e1f2a" };
+const STACKS: Record<HostingStackKey, (env: EnvKey) => StackPart[]> = {
+  vercel_render: (e) => [
+    { key: "web", label: "Web app", role: "web", provider: "vercel", settings: e === "staging" ? { project: "acme-web", target: "preview", branch: "main" } : { project: "acme-web", target: "production" } },
+    { key: "api", label: "API", role: "web", provider: "render", settings: { service_id: e === "staging" ? "srv-st4g1ngap1k8q1j7mg" : "srv-pr0dap1k8q1j7mgec7" } },
+  ],
+  netlify_fly: (e) => [
+    { key: "site", label: "Site", role: "web", provider: "netlify", settings: e === "staging" ? { site_id: "3f2a9c1e-7b4d-4e8a-9c2f-5d6e7f8a9b0c", context: "branch", branch: "staging" } : { site_id: "3f2a9c1e-7b4d-4e8a-9c2f-5d6e7f8a9b0c", context: "production" } },
+    { key: "api", label: "API", role: "web", provider: "fly", settings: { app: e === "staging" ? "acme-api-staging" : "acme-api" } },
+  ],
+  cloudflare_railway: (e) => [
+    { key: "frontend", label: "Frontend", role: "web", provider: "cloudflare", settings: { worker: e === "staging" ? "acme-web-staging" : "acme-web" } },
+    { key: "backend", label: "Backend", role: "service", provider: "railway", settings: { environment_id: RAILWAY_ENV[e], service_id: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d" } },
+  ],
+  render_only: (e) => [
+    { key: "web", label: "Web app", role: "web", provider: "render", settings: { service_id: e === "staging" ? "srv-st4g1ngweb8q1j7mg" : "srv-pr0dweb8q1j7mgec7" } },
+    { key: "worker", label: "Worker", role: "service", provider: "render", settings: { service_id: e === "staging" ? "srv-st4g1ngwrk8q1j7mg" : "srv-pr0dwrk8q1j7mgec7" } },
+  ],
+  railway_only: (e) => [
+    { key: "web", label: "Web app", role: "web", provider: "railway", settings: { environment_id: RAILWAY_ENV[e], service_id: "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b" } },
+    { key: "api", label: "API", role: "service", provider: "railway", settings: { environment_id: RAILWAY_ENV[e], service_id: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d" } },
+  ],
+  vercel_only: (e) => [
+    { key: "web", label: "Web app", role: "web", provider: "vercel", settings: e === "staging" ? { project: "acme-web", target: "preview", branch: "main" } : { project: "acme-web", target: "production" } },
+  ],
+  mixed: (e) => e === "staging" ? [
+    { key: "frontend", label: "Frontend", role: "web", provider: "cloudflare", settings: { worker: "acme-web-staging" } },
+    { key: "backend", label: "Backend", role: "service", provider: "railway", settings: { environment_id: RAILWAY_ENV.staging, service_id: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d" } },
+    { key: "web", label: "Web app", role: "web", provider: "vercel", settings: { project: "acme-web", target: "preview", branch: "main" } },
+    { key: "api", label: "API", role: "web", provider: "render", settings: { service_id: "srv-st4g1ngap1k8q1j7mg" } },
+  ] : [
+    { key: "web", label: "Web app", role: "web", provider: "vercel", settings: { project: "acme-web", target: "production" } },
+    { key: "api", label: "API", role: "web", provider: "render", settings: { service_id: "srv-pr0dap1k8q1j7mgec7" } },
+    { key: "worker", label: "Queue worker", role: "service", provider: "fly", settings: { app: "acme-worker" } },
+    { key: "docs", label: "Docs site", role: "web", provider: "netlify", settings: { site_id: "7c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f", context: "production" } },
+  ],
+};
+
+/** What a CONNECTED connection of each provider looks like (the way it is usually connected). */
+const CONNECTED: Record<Exclude<HostingProviderId, "aws">, Pick<HostingConnectionDTO, "method" | "account" | "external_id" | "config" | "hint_last4" | "manage_url">> = {
+  vercel: { method: "install", account: { id: "team_a1B2c3D4e5F6g7H8", label: "Acme" }, external_id: "icfg_9Xy8Wv7Ut6Sr5Qp4", config: { team_id: "team_a1B2c3D4e5F6g7H8", team_slug: "acme" }, hint_last4: "", manage_url: "https://vercel.com/acme/~/integrations" },
+  netlify: { method: "oauth", account: { id: "5f1a2b3c4d5e6f7a8b9c0d1e", label: "Acme" }, external_id: null, config: {}, hint_last4: "", manage_url: "https://app.netlify.com/user/applications" },
+  render: { method: "token", account: null, external_id: null, config: {}, hint_last4: "b2e4", manage_url: "https://dashboard.render.com/u/settings#api-keys" },
+  fly: { method: "token", account: null, external_id: null, config: { org_slug: "acme" }, hint_last4: "Q2xk", manage_url: null },
+  cloudflare: { method: "token", account: null, external_id: null, config: { account_id: "0123456789abcdef0123456789abcdef" }, hint_last4: "9f3a", manage_url: "https://dash.cloudflare.com/profile/api-tokens" },
+  railway: { method: "token", account: null, external_id: null, config: {}, hint_last4: "c71e", manage_url: null },
+};
+
+/** The GitHub signs `src/hosting/detect.ts` reads — check runs only, from the hosts that post them. */
+const DETECTABLE: Partial<Record<HostingProviderId, string>> = {
+  cloudflare: "GitHub check runs posted by the Cloudflare Workers app",
+  vercel: "GitHub check runs posted by the Vercel app",
+  netlify: "GitHub check runs posted by the Netlify app",
+};
+
+const AT = "2026-10-07T12:40:11.000Z";
+const CHECKED = "2026-10-07T12:35:00.000Z";
+const REPO = "acme/web";
+const label = (id: HostingProviderId): string => HOSTING_SAMPLE_PROVIDERS.find((p) => p.id === id)?.label ?? id;
+
+export function hostingScenario(flow: HostingSampleKey, stack: HostingStackKey): HostingSetupDTO {
+  const envKeys: EnvKey[] = flow === "start" ? [] : ["staging", "production"];
+  const withParts = !["start", "looking", "found"].includes(flow);
+  const envParts = envKeys.map((e) => ({ env: e, parts: STACKS[stack](e) }));
+  const used = [...new Set(envParts.flatMap((e) => e.parts.map((p) => p.provider)))].sort((a, b) => HOSTING_PROVIDERS.indexOf(a) - HOSTING_PROVIDERS.indexOf(b));
+  const stackProviders = [...new Set((["staging", "production"] as EnvKey[]).flatMap((e) => STACKS[stack](e).map((p) => p.provider)))]
+    .sort((a, b) => HOSTING_PROVIDERS.indexOf(a) - HOSTING_PROVIDERS.indexOf(b));
+  const first = used[0];
+
+  // Each provider's connection status in this flow.
+  const statusOf = (id: HostingProviderId): ConnectionStatus => {
+    if (!withParts || flow === "parts" || flow === "locked") return "not_connected";
+    if (flow === "connecting") return id === first ? "connected" : "not_connected";
+    if (flow === "broken" && id === first) return id === "vercel" || id === "netlify" ? "revoked" : "error";
+    return "connected";
+  };
+  const polled = (id: HostingProviderId): boolean => (flow === "live" || flow === "broken") && statusOf(id) === "connected";
+
+  const environments: HostingEnvironmentDTO[] = envKeys.map((e) => ({
+    key: e, label: e === "staging" ? "Staging" : "Production", branch: e === "staging" ? "main" : "production",
+    parts: withParts ? STACKS[stack](e).map((p, i): EnvironmentPartDTO => {
+      const prov = HOSTING_SAMPLE_PROVIDERS.find((x) => x.id === p.provider)!;
+      const unread = metricsForRole(p.role).filter((m) => !prov.capabilities.metrics.includes(m));
+      return {
+        env: e, key: p.key, label: p.label, role: p.role, provider: p.provider, settings: clean(p.settings), position: i,
+        connection: statusOf(p.provider), console_url: null,
+        last_poll: polled(p.provider) ? {
+          at: AT, status: "ok", detail: null, last_ok_at: AT, covered: { from: "2026-10-07T09:00:00.000Z", to: "2026-10-07T12:00:00.000Z" },
+          unavailable: unread.map((m) => ({ metric: m, reason: `${prov.label} does not report it through its API` })),
+        } : null,
+        updated_at: "2026-10-06T16:20:00.000Z", updated_by: "andres",
+      };
+    }) : [],
+  }));
+
+  const usedBy = (id: HostingProviderId) => environments.flatMap((e) => e.parts.filter((p) => p.provider === id).map((p) => ({ env: e.key, part: p.key })));
+  const connections: HostingConnectionDTO[] = (withParts ? used : []).map((id) => {
+    const status = statusOf(id);
+    const live = status === "connected" || status === "error";
+    const c = CONNECTED[id as Exclude<HostingProviderId, "aws">];
+    return {
+      provider: id, scope: "", scope_label: null, status,
+      method: live ? c.method : null, account: live || status === "revoked" ? c.account : null, external_id: live || status === "revoked" ? c.external_id : null,
+      config: live || status === "revoked" ? { ...c.config } : {}, hint_last4: live ? c.hint_last4 : "",
+      connected_by: live || status === "revoked" ? "andres" : null, connected_at: live || status === "revoked" ? "2026-10-06T16:05:00.000Z" : null,
+      last_used_at: polled(id) || status === "error" ? AT : null,
+      last_error: status === "error" ? `${id} deployments 401: Unauthorized — the credential is not valid` : null,
+      legacy_fallback: false, revoked_reason: status === "revoked" ? `Removed on ${label(id)}` : null,
+      manage_url: live || status === "revoked" ? c.manage_url : null, used_by: usedBy(id),
+    };
+  });
+
+  const detected: HostingDetectionDTO[] = flow === "start" || flow === "looking" ? [] : stackProviders
+    .filter((id) => DETECTABLE[id])
+    .map((id) => ({ provider: id, evidence: DETECTABLE[id]!, last_seen: CHECKED, in_use: withParts }));
+  const detection: HostingDetectionStatusDTO = flow === "start" ? { state: "no_repo", repo: null, checked_at: null }
+    : flow === "looking" ? { state: "looking", repo: REPO, checked_at: null }
+    : { state: detected.length ? "found" : "none", repo: REPO, checked_at: CHECKED };
+
+  // The checklist, as src/hosting/setup.ts `buildChecklist` words it.
+  const checklist: HostingChecklistItem[] = [
+    { id: "environments", title: "Add an environment", detail: envKeys.length ? null : "An environment is a branch that deploys somewhere — staging, production.", done: envKeys.length > 0, action: envKeys.length ? { kind: "none" } : { kind: "add_environment" } },
+    ...environments.map((e): HostingChecklistItem => ({
+      id: `parts:${e.key}`, title: `Add the parts ${e.label} runs`, detail: e.parts.length ? null : "The web app, API or worker this environment deploys.",
+      done: e.parts.length > 0, action: e.parts.length ? { kind: "none" } : { kind: "add_part", env: e.key },
+    })),
+    ...connections.flatMap((c): HostingChecklistItem[] => {
+      const users = c.used_by.map((u) => `${environments.find((e) => e.key === u.env)!.label} › ${environments.find((e) => e.key === u.env)!.parts.find((p) => p.key === u.part)!.label}`).join(", ");
+      if (c.status === "error") return [{ id: `test:${c.provider}`, title: `Fix the ${label(c.provider)} connection`, detail: `The last poll was refused: ${c.last_error}.`, done: false, action: { kind: "test", provider: c.provider, scope: "" } }];
+      const done = c.status === "connected";
+      return [{
+        id: `connect:${c.provider}`, title: c.status === "revoked" ? `Reconnect ${label(c.provider)}` : `Connect ${label(c.provider)}`,
+        detail: done ? null : c.status === "revoked" ? `${c.revoked_reason}. Used by ${users}.` : `${users} read nothing until ${label(c.provider)} is connected.`,
+        done, action: done ? { kind: "none" } : { kind: "connect", provider: c.provider, scope: "" },
+      }];
+    }),
+  ];
+
+  return { providers: HOSTING_SAMPLE_PROVIDERS, environments, connections, checklist, detected, detection, secrets_available: flow !== "locked" };
+}

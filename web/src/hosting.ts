@@ -44,10 +44,8 @@ import {
 // ── state ────────────────────────────────────────────────────────────────────
 
 /** The sample states "Preview with sample data" can show (web/src/hosting-sample.ts `HOSTING_SAMPLES`). */
-export const HOSTING_SAMPLE_KEYS = ["mixed", "no_parts", "fresh", "revoked", "secrets_locked"] as const;
-export type HostingSampleKey = (typeof HOSTING_SAMPLE_KEYS)[number];
-export const isHostingSampleKey = (v: unknown): v is HostingSampleKey => typeof v === "string" && (HOSTING_SAMPLE_KEYS as readonly string[]).includes(v);
-const SAMPLE_LABEL: Record<HostingSampleKey, string> = { mixed: "Mid-setup", no_parts: "No parts", fresh: "New org", revoked: "Removed", secrets_locked: "Locked" };
+import { HOSTING_SAMPLE_KEYS, HOSTING_STACK_KEYS, SAMPLE_LABEL, STACK_LABEL, isHostingSampleKey, isHostingStackKey, type HostingSampleKey, type HostingStackKey } from "./hosting-keys";
+export { HOSTING_SAMPLE_KEYS, HOSTING_STACK_KEYS, SAMPLE_LABEL, STACK_LABEL, isHostingSampleKey, isHostingStackKey, type HostingSampleKey, type HostingStackKey };
 
 /** What came back from a provider (`?hosting=<outcome>&provider=<id>` on the page the callback redirects to). */
 export interface HostingNotice { outcome: HostingConnectOutcome; provider: HostingProviderId | null }
@@ -89,6 +87,8 @@ export interface HostingUi {
   setup: OrgSlice<HostingSetupDTO | null>;
   /** "Preview with sample data": which state is shown, and its payload. null = the org's own data. */
   sample: HostingSampleKey | null;
+  /** The sample's stack (its second switcher). */
+  sampleStack: HostingStackKey;
   sampleData: HostingSetupDTO | null;
   notice: HostingNotice | null;
   part: PartDraft | null;
@@ -106,7 +106,7 @@ export interface HostingUi {
 
 export function initialHostingUi(): HostingUi {
   return {
-    setup: { status: "idle", data: null }, sample: null, sampleData: null, notice: null, part: null, connect: null, token: null, manage: null,
+    setup: { status: "idle", data: null }, sample: null, sampleStack: "vercel_render", sampleData: null, notice: null, part: null, connect: null, token: null, manage: null,
     tests: {}, doneOpen: false, dismissed: [],
   };
 }
@@ -346,7 +346,7 @@ export function shownDetections(d: HostingSetupDTO, h: Pick<HostingUi, "dismisse
  *  part editor; it connects nothing (the credential is still the admin's to give). */
 export function hostingDetected(d: HostingSetupDTO, h: HostingUi): string {
   const list = shownDetections(d, h);
-  if (!list.length) return "";
+  if (!list.length) return detectionStatus(d);
   // The environment the part editor opens on: the first with no part yet, else the first.
   const env = d.environments.find((e) => e.parts.length === 0) ?? d.environments[0] ?? null;
   return list.map((x) => {
@@ -359,6 +359,42 @@ export function hostingDetected(d: HostingSetupDTO, h: HostingUi): string {
       <button type="button" data-act="orgHxDetectDismiss" data-arg="${attr(x.provider)}" data-field="${attr(`orgHxDetectDismiss:${x.provider}`)}" aria-label="Dismiss the ${attr(p.label)} suggestion" title="Dismiss" class="cnpy-iconbtn" style="flex:none;width:26px;height:26px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
     </div>`;
   }).join("");
+}
+
+/** Where detection stands when there is no suggestion to show (`HostingSetupDTO.detection`): what Trov is doing
+ *  about "which host is this?", in one line, with the next step as its button. Nothing once a host was found
+ *  (its suggestion was used or dismissed), and nothing for a payload from before the field existed. */
+export function detectionStatus(d: HostingSetupDTO): string {
+  const s = d.detection;
+  if (!s || s.state === "found") return "";
+  const repo = s.repo ? `<code style="font-family:var(--code);font-size:12px;color:var(--fg-70)">${esc(s.repo)}</code>` : "your repository";
+  const copy: Record<Exclude<typeof s.state, "found">, { mark: string; title: string; body: string; action: string }> = {
+    no_repo: {
+      mark: kindMark("No repository", "waiting", 12), title: "Trov can find your host for you",
+      body: "Connect the repository you ship from, and Trov looks at its checks for the host that deploys it.",
+      action: goLink("Connect a repository", "orgTab", "repos"),
+    },
+    no_environment: {
+      mark: kindMark("Waiting", "waiting", 12), title: `Add an environment to look at ${repo}`,
+      body: "Trov reads the checks GitHub has for each environment's branch, so it needs one before it can find your host.",
+      action: goLink("Add an environment", "orgTab", "environments"),
+    },
+    looking: {
+      mark: kindMark("Looking", "waiting", 12), title: `Looking for your host on ${repo}`,
+      body: "Trov reads the checks GitHub has for each environment's branch. A GitHub sync does it now; otherwise the next scheduled one does, within six hours.",
+      action: quietBtn("Sync GitHub now", "syncToggle", { field: "orgHxDetectSync" }),
+    },
+    none: {
+      mark: kindMark("No host found", "off", 12), title: `No host found on ${repo}`,
+      body: "None of its recent checks came from a host Trov knows. Cloudflare, Vercel and Netlify post checks; Render, Railway and Fly.io do not, so pick yours below.",
+      action: "",
+    },
+  };
+  const c = copy[s.state];
+  return `<div${surface("display:flex;align-items:center;gap:10px 12px;flex-wrap:wrap;padding:10px 14px;margin-bottom:12px")} role="status" data-org-hosting-detection="${attr(s.state)}">
+      <div style="flex:1 1 280px;min-width:0;font-size:12.5px;line-height:1.5;color:var(--fg-55)"><div style="display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap"><strong style="font-weight:600;color:var(--fg)">${c.title}</strong>${c.mark}</div><div style="margin-top:2px">${c.body}${s.checked_at && s.state === "none" ? ` Last looked ${esc(relTime(s.checked_at))}.` : ""}</div></div>
+      ${c.action}
+    </div>`;
 }
 
 // ── environments and their parts ─────────────────────────────────────────────
@@ -529,7 +565,7 @@ function connectionRow(x: TabCtx, p: HostingProviderDTO, c: HostingConnectionDTO
   // Connect while it is not (the provider's own dialog: its install confirmation or its token form).
   const action = live
     ? quietBtn("Manage", "orgHxManage", { arg: ck, field: `orgHxManage:${ck}`, label: `Manage ${p.label}${scoped}` })
-    : best ? quietBtn(st.state === "revoked" ? "Connect again" : "Connect", "orgHxConnect", {
+    : best ? quietBtn(st.state === "revoked" ? "Reconnect" : "Connect", "orgHxConnect", {
       arg: ck, disabled: locked, title: locked ? WHY_LOCKED : undefined, field: `orgHxConnect:${ck}`, label: `${st.state === "revoked" ? "Connect again" : "Connect"}: ${p.label}${scoped}`,
       extra: accentTaken ? "" : "color:var(--fg);border-color:var(--border-strong)",
     }) : "";
@@ -654,17 +690,18 @@ function hostingLead(d: HostingSetupDTO, action: string): string {
 
 const INFO = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="1.8" aria-hidden="true" style="flex:none"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>`;
 /** While previewing: what is shown, which state, and the way back. */
-function sampleBar(h: HostingUi): string {
+function sampleBar(h: HostingUi, dd: DropdownUi = initialDropdownUi()): string {
   return `<div data-org-hosting-sample="${attr(h.sample ?? "")}" style="display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin:0 0 18px;font-size:12.5px;color:var(--fg-55)">${INFO}
     <span><strong style="font-weight:600;color:var(--fg)">Sample data</strong> &mdash; placeholder values, not this organization's. Nothing you do here is saved.</span>
-    ${segmented({ id: "org-hx-sample", ariaLabel: "Sample state", act: "orgHxSample", value: h.sample ?? "mixed", size: "xs", inertOn: true, options: HOSTING_SAMPLE_KEYS.map((k) => ({ value: k, label: SAMPLE_LABEL[k] })) })}
+    <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap"><span id="org-hx-sample-flow-l" style="font-size:12px;color:var(--fg-40)">Flow</span>${segmented({ id: "org-hx-sample", ariaLabel: "Sample flow", act: "orgHxSample", value: h.sample ?? "start", size: "xs", inertOn: true, options: HOSTING_SAMPLE_KEYS.map((k) => ({ value: k, label: SAMPLE_LABEL[k] })) })}</span>
+    <span style="display:inline-flex;align-items:center;gap:8px"><span id="org-hx-sample-stack-l" style="font-size:12px;color:var(--fg-40)">Stack</span><span style="min-width:190px">${dropdown(sampleStackDropdown(h), dd)}</span></span>
     <button type="button" data-act="orgHxSample" data-arg="off" data-field="orgHxSampleOff" class="cnpy-mutelink" style="margin-left:auto;padding:0;font-size:12.5px;font-weight:500;color:var(--accent);white-space:nowrap">Back to live data</button>
   </div>`;
 }
 const sampleFoot = (): string => `<div style="display:flex;align-items:center;gap:9px;margin-top:22px;font-size:12px;color:var(--fg-40)">${INFO}<span>Want to see every state of this page?</span>
-    <button type="button" data-act="orgHxSample" data-arg="mixed" data-field="orgHxSampleOn" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--accent);white-space:nowrap">Preview with sample data</button></div>`;
+    <button type="button" data-act="orgHxSample" data-arg="start" data-field="orgHxSampleOn" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--accent);white-space:nowrap">Preview with sample data</button></div>`;
 
-export function hostingTab(org: MyOrg, ui: OrgUi): string {
+export function hostingTab(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDropdownUi()): string {
   const h = ui.hosting;
   const d = hostingData(h);
   if (!d) {
@@ -700,7 +737,7 @@ export function hostingTab(org: MyOrg, ui: OrgUi): string {
   }).join("");
   const connected = (list: HostingProviderDTO[]): number => list.filter((p) => d.connections.some((c) => c.provider === p.id && (c.status === "connected" || c.status === "error"))).length;
 
-  return `${h.sample ? sampleBar(h) : ""}${hostingNotice(h.notice, d, org.name)}${hostingLostBanners(d)}${locked}${lead}
+  return `${h.sample ? sampleBar(h, dd) : ""}${hostingNotice(h.notice, d, org.name)}${hostingLostBanners(d)}${locked}${lead}
     ${hostingChecklist(d, h)}
     ${hostingDetected(d, h)}
     <section aria-labelledby="org-hx-envs-t" data-org-group="hosting-envs">
@@ -1002,9 +1039,17 @@ export function disconnectConfirmCopy(d: HostingSetupDTO, key: string, orgName: 
 // ── overlays ─────────────────────────────────────────────────────────────────
 
 /** The dropdowns the open dialog shows (the part editor's host picker) — what `orgOverlays` renders the open menu from. */
+/** The sample's stack picker (dropdown.ts): which hosts the sample org runs on. */
+export function sampleStackDropdown(h: HostingUi): DropdownProps {
+  return {
+    id: "org-hx-sample-stack", act: "orgHxSampleStack", value: h.sampleStack, labelledBy: "org-hx-sample-stack-l", size: "sm",
+    options: HOSTING_STACK_KEYS.map((k) => ({ value: k, label: STACK_LABEL[k] })),
+  };
+}
+
 export function hostingDropdowns(h: HostingUi): DropdownProps[] {
   const d = hostingData(h);
-  return d && h.part ? [partProviderDropdown(h.part, d)] : [];
+  return [...(h.sample ? [sampleStackDropdown(h)] : []), ...(d && h.part ? [partProviderDropdown(h.part, d)] : [])];
 }
 
 /** The Hosting tab's open dialog, if any (one at a time). */

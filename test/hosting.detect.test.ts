@@ -6,12 +6,13 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import type { HostingProviderId, HostingSetupDTO } from "@shared/hosting";
 import { app } from "../src/routes";
-import { DETECT_WINDOW_MS, detectProviders, listDetectRows, type DetectRow } from "../src/hosting/detect";
+import { DETECT_WINDOW_MS, detectProviders, listDetectRows, readDetectionStatus, type DetectRow } from "../src/hosting/detect";
 import { PROVIDERS } from "../src/hosting/registry";
 import { run } from "./helpers/db";
 import { ownerCookie, seedOrgSettings } from "./helpers/integrations";
 import { send } from "./helpers/hosting-setup";
 import { ORG_A, ORG_B, systemCtx } from "./helpers/tenant";
+import { seedOrgRepoConfig } from "./helpers/repo";
 
 const A = "/api/o/saplinglearn";
 const LABELS = Object.fromEntries(Object.values(PROVIDERS).map((p) => [p.id, p.label])) as Record<HostingProviderId, string>;
@@ -122,5 +123,38 @@ describe("GET /hosting carries what was detected", () => {
 
     expect((await send(app, "PUT", `${A}/environments/staging/parts/web`, me, { provider: "vercel", settings: { project: "acme-web" } }, env as never)).status).toBe(201);
     expect((await read()).detected.find((d) => d.provider === "vercel")).toMatchObject({ in_use: true });
+  });
+});
+
+describe("readDetectionStatus — where detection stands, for a new org", () => {
+  const status = (detected: Parameters<typeof readDetectionStatus>[1] = [], envs = 2) => readDetectionStatus(systemCtx(ORG_B), detected, envs);
+  const found = [{ provider: "vercel" as const, evidence: "GitHub check runs posted by the Vercel app", last_seen: "2026-10-07T12:00:00.000Z", in_use: false }];
+
+  it("walks no repository → no environment → looking → nothing found / found, from this org's own rows", async () => {
+    expect(await status()).toEqual({ state: "no_repo", repo: null, checked_at: null });
+    await seedOrgRepoConfig(env.DB, ORG_B, "acme/web", []);
+    expect(await status([], 0)).toEqual({ state: "no_environment", repo: "acme/web", checked_at: null });
+    // A repository and environments, but its checks never read: looking.
+    expect(await status()).toEqual({ state: "looking", repo: "acme/web", checked_at: null });
+    // A reconcile read them and found no host Trov knows.
+    await run(env.DB, `INSERT INTO repo_snapshots (org_id, kind, json, computed_at) VALUES (?, 'prs_reconciled', '{}', ?)`, ORG_B, "2026-10-07T12:30:00.000Z");
+    expect(await status()).toEqual({ state: "none", repo: "acme/web", checked_at: "2026-10-07T12:30:00.000Z" });
+    // A sync under way is looking again (it ends with a reconcile).
+    await run(env.DB, `INSERT INTO sync_runs (org_id, repo, started_by, started_at, updated_at) VALUES (?, 'acme/web', 'andres', ?, ?)`, ORG_B, "2026-10-07T12:40:00.000Z", "2026-10-07T12:40:00.000Z");
+    expect((await status()).state).toBe("looking");
+    // Anything detected is found, whatever else is going on.
+    expect((await status(found)).state).toBe("found");
+  });
+
+  it("never reads another org's rows", async () => {
+    await seedOrgRepoConfig(env.DB, ORG_A, "other/repo", []);
+    expect((await status()).state).toBe("no_repo");
+  });
+
+  it("GET /hosting carries it", async () => {
+    await seedOrgSettings();
+    const r = await send(app, "GET", `${A}/hosting`, await ownerCookie(), undefined, env as never);
+    expect(r.status).toBe(200);
+    expect((r.json as unknown as HostingSetupDTO).detection).toMatchObject({ state: expect.stringMatching(/^(no_repo|no_environment|looking|none|found)$/) });
   });
 });
