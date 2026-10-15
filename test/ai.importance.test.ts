@@ -18,7 +18,9 @@ import { all, first, run } from "./helpers/db";
 import { ORG_A, ORG_B, systemCtx } from "./helpers/tenant";
 import { dirtyRow, keyedEnv, markRow } from "./helpers/ai-pass";
 
-const NOW = new Date("2026-10-15T12:40:00.000Z");
+// The pass's clock: after BEFORE, and after the REAL clock too — the gate and the router stamp `marked_at` with it, and
+// a mark later than the pass's `now` is not due yet.
+const NOW = new Date(Math.max(Date.parse("2026-10-15T12:40:00.000Z"), Date.now() + 60 * 60_000));
 const BEFORE = "2026-10-15T12:00:00.000Z";
 const OWNER = "AndresL230";
 
