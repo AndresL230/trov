@@ -72,6 +72,7 @@ import { setWriteBlock } from "./api";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { createPlatform } from "./platform-actions";
+import { createTagsController } from "./tags-actions";
 import { PLATFORM_PATH, isPlatformPath } from "./platform";
 import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";
 import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo";
@@ -141,6 +142,11 @@ const syncCtl = createSyncController({
 const orgCtl = createOrgController({
   state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
   reloadOrgs: () => loadMyOrgs(), leaveOrg: () => showPicker(null),
+});
+// The organization's tag list (web/src/tags-actions.ts): every `tag…` act, the list's read, a tag's page.
+const tagsCtl = createTagsController({
+  state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+  search: (q) => { openSearchScreen(q); }, planChanged: () => orgCtl.loadPlan(), goList: () => dispatch("orgGo", "tags", null),
 });
 // Organizations as a person meets them (web/src/org-picker-actions.ts): the switcher's menu, the
 // picker, the create dialog — every `orgs…` act. Opening an org is a page load.
@@ -566,6 +572,7 @@ function currentRoute(): Route {
   }
   if (state.screen === "platformorg" && state.plat.orgSlug) r.platOrg = state.plat.orgSlug;
   if (state.screen === "org") r.orgTab = state.org.tab;
+  if (state.screen === "tag" && state.tagName) r.tagName = state.tagName;
   // The step ON SCREEN: a member who opens `#welcome` (the admin's first step) is on their own first.
   if (state.screen === "welcome") r.welcomeStep = effectiveWelcomeStep(state.welcome.step, welcomeStepsFor(currentOrg(state)?.role, state.org));
   return r;
@@ -596,6 +603,7 @@ function applyRoute(r: Route): void {
   if (r.screen === "platform") state.plat.support.reportId = r.platTab === "support" ? r.platReport ?? null : null;
   if (r.platOrg) state.plat.orgSlug = r.platOrg;
   if (r.orgTab) state.org.tab = r.orgTab;
+  if (r.tagName) state.tagName = r.tagName;
   if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
 }
 
@@ -614,6 +622,7 @@ function loadForScreen(screen: Screen): void {
     case "prompt": if (state.promptSlug) openPrompt(state.promptSlug); else rerender(); break;
     case "promptedit": openEditor(state.promptMode, state.promptSlug); break;
     case "newdoc": startNewDoc(); break;
+    case "tag": if (state.tagName) tagsCtl.open(state.tagName); else rerender(); break;
     case "search": loadSearchIfNeeded(); break;
     case "mywork": loadMyWorkIfNeeded(); break;
     case "repo": loadRepoIfNeeded(); break;
@@ -882,6 +891,8 @@ function enterOrg(slug: string, hash: string): void {
   // The persons directory backs every colored chip (sidebar, feed, docs,
   // Settings › Profile, Org settings › Members) — load it on every screen too.
   loadPersons();
+  // The org's tag list backs the Feed's filter, the Unplaced picker, a doc's Tags row and Org settings › Tags.
+  tagsCtl.load();
 }
 /** A write's failure as a toast: the server's `{ error }` (a 409's "handoff is claimed"), else a fallback. */
 function writeErr(e: unknown, fallback: string): void {
@@ -3901,6 +3912,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
       // `orgs…` (the switcher, the picker, the create dialog) before `org…` (Org settings).
       if (act.startsWith("welcome")) { welcomeCtl.act(act, arg); return; }
+      // The org's tag list, a tag's page, a doc's Tags row (tags-actions.ts).
+      if (act.startsWith("tag")) { tagsCtl.act(act, arg, value); return; }
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }
       if (act.startsWith("org")) { if (act === "orgGo") loadOrgAdminExtras(); orgCtl.act(act, arg, value); return; }
       // Every Artifacts act goes to the one reducer in artifacts.ts.

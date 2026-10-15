@@ -29,7 +29,9 @@
 //                       its other tabs; #platform/orgs/<slug> one organization;
 //                       #platform/support/<id> one support report (in the Support tab)
 //   #org              → Org settings › Integrations; #org/repos, #org/environments, #org/hosting,
-//                       #org/members, #org/notifications and #org/general its other tabs
+//                       #org/members, #org/tags, #org/notifications and #org/general its other tabs
+//   #tags/<name>      → one tag's page: everything that carries it. The list itself is
+//                       Org settings › Tags (`#org/tags`), where a bare `#tags` lands
 //   #welcome          → the guided first-run setup, at its first step; #welcome/agent,
 //                       #welcome/team and #welcome/done its others (welcome.ts)
 //   #<screen>         → every other screen, named exactly as the Screen union
@@ -46,6 +48,7 @@ import { PLAT_TABS, type PlatTab } from "./platform";
 import { ORG_SLUG_RE } from "@shared/orgs";
 import { isOrgTab, type OrgTab } from "./org-settings";
 import { isWelcomeStep, type WelcomeStep } from "./welcome";
+import { normalizeTagName } from "@shared/tags-core";
 
 /** Every screen addressable by its bare name (`#feed`). The compound ticket /
  *  sprint routes are parsed separately below. */
@@ -86,6 +89,8 @@ export interface Route {
   orgTab?: OrgTab;
   /** Set only on `welcome` (the guided setup's step). */
   welcomeStep?: WelcomeStep;
+  /** Set only on `tag` (the tag's name). */
+  tagName?: string;
 }
 
 /** Whether two routes name the same place (the hashchange no-op check). */
@@ -94,7 +99,7 @@ export function sameRoute(a: Route, b: Route): boolean {
     && a.handoffId === b.handoffId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.roadmapTab === b.roadmapTab
     && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
     && a.platTab === b.platTab && a.platOrg === b.platOrg && a.platReport === b.platReport
-    && a.orgTab === b.orgTab && a.welcomeStep === b.welcomeStep
+    && a.orgTab === b.orgTab && a.welcomeStep === b.welcomeStep && a.tagName === b.tagName
     && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null);
 }
 
@@ -231,6 +236,12 @@ export function parseHash(hash: string): Route {
     if (parts.length === 2 && isOrgTab(parts[1])) return { screen: "org", ...base, orgTab: parts[1] };
     return none;
   }
+  // One tag's page. The list is a tab of Org settings, so `#tags` alone goes there.
+  if (parts[0] === "tags") {
+    if (parts.length === 1) return { screen: "org", ...base, orgTab: "tags" };
+    const name = parts.length === 2 ? normalizeTagName(seg(parts[1])) : null;
+    return name ? { screen: "tag", ...base, tagName: name } : none;
+  }
   // The guided setup: `#welcome` is its first step (the canonical spelling; `#welcome/github` still
   // resolves). A step this person's flow does not have (a member's `#welcome/team`) shows their first.
   if (parts[0] === "welcome") {
@@ -275,6 +286,7 @@ export function hashForRoute(r: Route): string {
   if (r.screen === "platform") return !r.platTab || r.platTab === "orgs" ? "#platform" : r.platTab === "support" && r.platReport ? `#platform/support/${r.platReport}` : `#platform/${r.platTab}`;
   if (r.screen === "platformorg") return r.platOrg ? `#platform/orgs/${r.platOrg}` : "#platform";
   if (r.screen === "org") return !r.orgTab || r.orgTab === "integrations" ? "#org" : `#org/${r.orgTab}`;
+  if (r.screen === "tag") return r.tagName ? `#tags/${encodeURIComponent(r.tagName)}` : "#org/tags";
   if (r.screen === "welcome") return !r.welcomeStep || r.welcomeStep === "github" ? "#welcome" : `#welcome/${r.welcomeStep}`;
   return `#${r.screen}`;
 }

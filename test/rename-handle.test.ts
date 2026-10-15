@@ -7,7 +7,7 @@ import { renamePerson, HANDLE_COLUMNS, getPerson } from "../src/auth/persons";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { createSession } from "../src/auth/session";
 import { createInvite, acceptInvite } from "../src/auth/invites";
-import { ingestEvent, ingestFeedEntry } from "../src/consumer";
+import { ingestAdrDraft, ingestEvent, ingestFeedEntry } from "../src/consumer";
 import { createPage as createArtifact, setStatus as setArtifactStatus, ratify as ratifyArtifact, mintUploadToken, deletePage as deleteArtifact } from "../src/tools/artifacts";
 import { write_plan } from "../src/tools/plan";
 import {
@@ -48,14 +48,23 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   );
   const tid = await route_triage(systemCtx(), { raw: "x", reason: "y" });
   await resolve_triage(systemCtx(), tid, handle); // needs_triage.resolved_by
-  // needs_triage.source_author: route an out-of-vocab feed entry through the REAL
-  // gate (src/consumer.ts ingestFeedEntry), not a direct insert — this is the
-  // actual writer of that column on every triage-routing path.
+  // needs_triage.source_author: route a low-confidence decision through the REAL gate
+  // (src/consumer.ts ingestAdrDraft), not a direct insert — this is the actual writer of
+  // that column on every triage-routing path.
+  await ingestAdrDraft(systemCtx(), { title: "unsure", context: "c", decision: "d", rationale: "r", confidence: "low" }, handle); // needs_triage.source_author
+  // The org's tag list (0056_org_tags). org_tag_suggestions.suggested_by through the REAL gate: a feed
+  // entry with a tag that is not on the list. The rest are an admin's writes — direct inserts here.
   await ingestFeedEntry(
     systemCtx(),
     { summary: "bad", body: "b", tags: ["not-a-real-tag"], artifacts: { prs: [], commits: [], issues: [] } },
     handle
-  ); // needs_triage.source_author
+  ); // org_tag_suggestions.suggested_by
+  await run(env.DB, `UPDATE org_tag_suggestions SET state = 'dismissed', resolved_at = ?, resolved_by = ? WHERE suggested_by = ?`, nowIso(), handle, handle);
+  // Model suggestions: the org's switch and a run the person started.
+  await run(env.DB, `INSERT INTO org_ai_settings (org_id, kind, enabled, updated_at, updated_by) VALUES ('org_saplinglearn', ?, 1, ?, ?)`, `rename-${handle}`, nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_tag_runs (org_id, tag, status, started_by, started_at, undone_at, undone_by) VALUES ('org_saplinglearn', ?, 'done', ?, ?, ?, ?)`, `rename-${handle}`, handle, nowIso(), nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_tags (org_id, name, created_at, created_by, updated_at, updated_by, retired_at, retired_by) VALUES ('org_saplinglearn', ?, ?, ?, ?, ?, ?, ?)`,
+    `rename-${handle}`, nowIso(), handle, nowIso(), handle, nowIso(), handle);
   await ensure_identity_task(systemCtx(), platformCtx(), "unmapped-login-1");
   await map_identity(systemCtx(), platformCtx(), "unmapped-login-1", handle, handle); // org_login_map.person / mapped_by + identity_tasks.resolved_by
   // identities.linked_by: the map no longer writes `identities` (Phase 4, C-1) — a second provider the person linked themselves.

@@ -9,6 +9,7 @@ export const MCP_TOOL_NAMES: readonly McpToolName[] = [
   {"name":"get_doc","admin":false},
   {"name":"list_docs","admin":false},
   {"name":"get_feed","admin":false},
+  {"name":"list_tags","admin":false},
   {"name":"append_feed","admin":false},
   {"name":"propose_doc_update","admin":false},
   {"name":"get_roadmap","admin":false},
@@ -156,7 +157,7 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
   },
   {
     "name": "get_feed",
-    "description": "Read the feed with optional author/tags/since/limit filters.",
+    "description": "Read the feed with optional author/tags/since/limit filters. Each entry carries its `tags`; `tags` filters to entries that carry ANY of the given ones (names from list_tags).",
     "admin": false,
     "inputSchema": {
       "type": "object",
@@ -189,8 +190,27 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
     }
   },
   {
+    "name": "list_tags",
+    "description": "List this organization's tags: the only tags a feed entry may carry. Each has a `name` and a one-line `description` of what it is for. The list is the organization's own (its admins add, rename, merge and retire tags in Org settings), so read it rather than assuming one — and pick from it. Read-only.",
+    "admin": false,
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "repo": {
+          "description": "The GitHub repository you are working in, as owner/name (from `git remote get-url origin`). A connection that follows the repository acts in the organization that has it connected, and reads and writes nothing without it; any other connection ignores it. With no checkout (a chat on the web), ask the person which repository they mean — never guess one.",
+          "type": "string"
+        },
+        "org": {
+          "description": "An organization's slug, to act there for THIS call only — one this connection is allowed to use (see get_connection). Omit it to act in the connection's organization.",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
     "name": "append_feed",
-    "description": "Append a feed entry through the vocabulary gate (an out-of-vocab tag routes the entry to needs_triage). `summary` is the one-line title. `brief` is what PEOPLE read in the Feed: 1–2 plain sentences (≤ 280 characters) on the problem solved and who it helps — no file names, PR/issue numbers or jargon. `body` is the full record agents read (what changed, why, evidence, follow-ups). Optional prs/commits/issues record the artifacts (PR urls, commit shas, GitHub issue numbers) this session observed.",
+    "description": "Append a feed entry through the gate. `tags` must come from THIS organization's tag list — read it with list_tags; every organization has its own. A tag that is not on the list does not hold the entry back: the entry is written with the tags that are, and the other is returned under `suggested_tags` and waits for an admin to accept, map or dismiss it (you cannot add a tag to the list). `summary` is the one-line title. `brief` is what PEOPLE read in the Feed: 1–2 plain sentences (≤ 280 characters) on the problem solved and who it helps — no file names, PR/issue numbers or jargon. `body` is the full record agents read (what changed, why, evidence, follow-ups). Optional prs/commits/issues record the artifacts (PR urls, commit shas, GitHub issue numbers) this session observed.",
     "admin": false,
     "inputSchema": {
       "type": "object",
@@ -849,7 +869,7 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
   },
   {
     "name": "record_session",
-    "description": "Record a whole Claude Code session into Trov in ONE reconciled batch: pass a full IngestPayload (session + feed_entries / doc_proposals / adr_drafts / needs_triage, and optional artifact_links). A doc proposal may embed only uploaded doc images (`![alt](/img/<sha256>)`, uploaded with upload_asset destination \"doc\" BEFORE this call); one that breaks that rule is listed under `refused` with its reason and is not ledgered, so re-sending the same batch after uploading stages it. Routes through the SAME gate as /ingest — drops no-ops, stages real deltas, classifies each doc change, and is replay-safe on session.id. The author is your authenticated bearer principal; session.author is advisory and ignored. Returns per-type outcome counts. `artifact_links` ([{slug, target_type: ticket|sprint|pr|issue, target_ref}], for artifacts this session produced) are NOT staged: after the batch is reconciled each is linked directly, as you, and reported in `artifact_links` as linked / not_found / error (idempotent — a replay re-links nothing). Used by the record-session skill at session end; you only ever stage knowledge — humans confirm.",
+    "description": "Record a whole Claude Code session into Trov in ONE reconciled batch: pass a full IngestPayload (session + feed_entries / doc_proposals / adr_drafts / needs_triage, and optional artifact_links). A doc proposal may embed only uploaded doc images (`![alt](/img/<sha256>)`, uploaded with upload_asset destination \"doc\" BEFORE this call); one that breaks that rule is listed under `refused` with its reason and is not ledgered, so re-sending the same batch after uploading stages it. Routes through the SAME gate as /ingest — drops no-ops, stages real deltas, classifies each doc change, and is replay-safe on session.id. The author is your authenticated bearer principal; session.author is advisory and ignored. Returns per-type outcome counts. A feed entry's `tags` must come from the organization's list (list_tags): an entry with a tag that is not on it is still written, without that tag, and the tag is listed under `suggested_tags` for an admin to decide. `artifact_links` ([{slug, target_type: ticket|sprint|pr|issue, target_ref}], for artifacts this session produced) are NOT staged: after the batch is reconciled each is linked directly, as you, and reported in `artifact_links` as linked / not_found / error (idempotent — a replay re-links nothing). Used by the record-session skill at session end; you only ever stage knowledge — humans confirm.",
     "admin": false,
     "inputSchema": {
       "type": "object",

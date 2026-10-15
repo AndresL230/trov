@@ -24,7 +24,21 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   read, surfacing stale-edit warnings. Both are stored on `doc_versions`.
 - **Low-confidence nuance**: low-conf on a NEW slug → triage; low-conf on an EXISTING slug → stage and
   flag (`low_confidence = 1`) for human scrutiny. Only low-conf new slugs go directly to triage.
-- Out-of-vocab tag/section → routed to `needs_triage` (nothing is guessed).
+- Out-of-vocab **section** → routed to `needs_triage` (nothing is guessed). Sections are fixed
+  (`shared/vocabulary.ts` `SECTIONS`).
+- **Feed tags are the ORGANIZATION's own list** (`0056_org_tags`; `feed-and-search.md` › Tags), read inside
+  `ingestFeedEntry` through `sortAgentTags` (`src/tools/tags.ts`) — never a constant. An agent's tag is
+  normalized (`normalizeTagName`: case, spaces, underscores) and sorted: **on the list and live** → written
+  to `entry_tags` (a name merged into another reads as that one); **well-formed but not on the list, or
+  retired** → the entry is STILL WRITTEN, without it, and the tag is recorded as a suggestion
+  (`recordTagSuggestions` → `org_tag_suggestions`: the item, the tag, who sent it) for an admin to accept,
+  map or dismiss; **not a tag at all** → dropped. An unknown tag therefore never sends a feed entry to
+  `needs_triage` (it did until 0056 — a deliberate change: one odd word was holding whole entries back). The
+  result says what happened: `{ outcome: "written", id, tags, suggested_tags?, ignored_tags? }`, and a batch
+  lists `suggested_tags` (only when non-empty, like `refused`). **Nothing an agent sends adds a tag to the
+  list** — only an admin does, over a cookie route. The ledger is checked first, so a replay records no
+  second suggestion; `shared/vocabulary.ts` `TAGS` and `0002_seed_vocab.sql` still agree, but they now name
+  the STARTER tags every org begins with, not the gate's vocabulary.
 - **Doc images**: a doc body may embed only UPLOADED images (`![alt](/img/<sha256>)`). A `/img/` ref with
   no `doc_images` row, or any other image source (external URL, `data:` URI), makes the proposal
   `refused` — checked first, nothing staged or triaged, NOT ledgered (so a resend after the upload
@@ -91,7 +105,9 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
   triage-assign kinds are now exactly `doc` / `adr` / `feed`.
 - Triage write-back: `POST /needs-triage/:id/discard` (soft dismiss) and `POST /needs-triage/:id/assign`
   (re-runs the item's `raw` through the SAME gate for the target type, then records `resolution='assigned'`
-  with `assigned_ref`). All triage exits are soft — nothing is hard-deleted; `resolved=1` + audit columns
+  with `assigned_ref`). Placing an item as a feed entry: tags the PERSON picks must be live on the org's
+  list (400 otherwise); with none picked, the item's own tags go to the gate as they came — an item held
+  before 0056 for an unknown tag is placed with the tags it may have, the other becoming a suggestion. All triage exits are soft — nothing is hard-deleted; `resolved=1` + audit columns
   (`resolved_at`, `resolved_by`, `resolution`, `assigned_ref`) record how each item left the queue.
 - `GET /proposals` — server-joined queue of staged doc versions newer than the live doc (both bodies +
   reconciler metadata: `change_kind`, `low_confidence`, `base_version`). The web triage UI reads this

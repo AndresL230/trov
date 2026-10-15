@@ -137,12 +137,14 @@ of them is also in `ORG_TABLES` (`src/deletion/tables.ts`), what an organization
   org's own configuration: `org_repos`, `org_environments`, `org_integration_config`, `org_login_map`,
   `org_secrets`, `org_keys`, `org_audit` (read through a tenant ctx by `src/integrations/*`, `src/data/secrets.ts`)
   and `org_github_installations` (0043_github_app — the org's GitHub App installation, `src/github-app/store.ts`), and the
-  AI tables `ai_suggestions` / `ai_feedback` (0055, read and written by `src/data/ai.ts`).
+  AI tables `ai_suggestions` / `ai_feedback` (0055, read and written by `src/data/ai.ts`),
+  and `org_tags`, `org_tag_suggestions` (0056_org_tags — the org's tag list and what was suggested for it,
+  `src/tools/tags.ts`; `feed-and-search.md` › Tags).
 - **Platform-owned org-keyed tables**: `memberships`, `org_invites`, `org_counters`, `org_usage_daily`,
   `org_admin_audit` — an org's place on the platform, written by `src/orgs`, `src/platform`, `src/data/meter.ts`.
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.
 - **Global tables** (no `org_id`): `persons`, `identities`, `sessions`, `invites`, `oauth_clients`,
-  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags`,
+  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags` (since 0056 only the STARTER tags' names: nothing reads it, an org's tags are `org_tags`),
   and `org_grants`, `platform_outbox_bodies` (0044_plans — a grant is about a person before any org exists;
   its `used_org` is deliberately not named `org_id`), and `support_reports` (0049 — a person's report to the
   operator; the org it was sent from is `from_org`, for the same reason: `support.md`). An org's plan is columns on `orgs` (`plans.md`).

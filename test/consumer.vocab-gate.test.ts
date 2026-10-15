@@ -10,7 +10,9 @@ import type { NeedsTriageRow, DocVersionRow } from "@shared/rows";
 const session = { id: "sess-vocab", author: "andres", ended_at: "2026-06-24T00:00:00Z", skill_version: "1.0" };
 
 describe("vocabulary gate", () => {
-  it("writes in-vocab feed entries and routes out-of-vocab tags to needs_triage", async () => {
+  // 0056_org_tags: a tag that is not on the org's list no longer sends the entry to triage. The entry
+  // is written without it and the tag waits as a suggestion (test/tags.gate.test.ts has the detail).
+  it("writes feed entries with the tags on the org's list; an unknown tag is a suggestion, never a triage item", async () => {
     const payload = IngestPayload.parse({
       session,
       feed_entries: [
@@ -20,16 +22,16 @@ describe("vocabulary gate", () => {
     });
 
     const result = await consume(systemCtx(), payload, { handle: "andres" });
-    expect(result.feed.written).toBe(1);
-    expect(result.feed.triaged).toBe(1);
+    expect(result.feed.written).toBe(2);
+    expect(result.feed.triaged).toBe(0);
+    expect(result.suggested_tags).toEqual(["not-a-real-tag"]);
 
     const feed = await get_feed(systemCtx(), {});
-    expect(feed.some((f) => f.summary === "known")).toBe(true);
-    expect(feed.some((f) => f.summary === "unknown")).toBe(false);
+    expect(feed.find((f) => f.summary === "known")?.tags).toEqual(["auth"]);
+    expect(feed.find((f) => f.summary === "unknown")?.tags).toEqual([]);
 
-    const triage = await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`);
-    expect(triage.length).toBe(1);
-    expect(triage[0].reason).toContain("not-a-real-tag");
+    expect(await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`)).toEqual([]);
+    expect(await all<{ tag: string; state: string }>(env.DB, `SELECT tag, state FROM org_tag_suggestions`)).toEqual([{ tag: "not-a-real-tag", state: "open" }]);
   });
 
   it("routes out-of-vocab doc sections and low-confidence items to triage, stages valid ones", async () => {

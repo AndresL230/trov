@@ -13,7 +13,7 @@ itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
-Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
@@ -467,8 +467,9 @@ one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 
 ## A row leaving a list — the one exit pattern (Review's queue)
 
-When a person acts on a row and the row should go (a verdict in Review today; the next screen that
-removes a row reuses this, it does not invent another), the row **confirms, collapses, and the rows
+When a person acts on a row and the row should go (a verdict in Review; Add tag / Dismiss on a tag's To
+review tab — `reviewItem` in `tags.ts`, `TagsUi.reviewLeaving`, the same `.cnpy-rv-row`, slower by the owner's call — `.cnpy-tagreview-row`, `TAG_REVIEW_EXIT_MS` .7s, and the card slides aside as it closes; the
+next screen that removes a row reuses this, it does not invent another), the row **confirms, collapses, and the rows
 under it move up as the same elements**. Four parts, each in one place:
 
 1. **A keyed list** (`web/src/morph.ts`). The screen is `data-morph`ed, the list's container carries
@@ -781,6 +782,95 @@ relation, an area, a kind (`metaWord` in `tickets.ts`), a prompt card's tags. **
 hairline**: a link chip (a PR / commit / issue reference), a filter chip, a removable tag, the visibility
 switch. Never `text-transform:uppercase` on a state, never a `●` character (every shape is an SVG element
 with no border-radius, so the corners block leaves it alone), never a coloured left edge on a card.
+
+### Tags — a square and a word, or the word alone (`marks.ts` `tagMark` / `tagWords`)
+
+A tag is a FACT about an item, not a state, and `marks.ts` is the one place it is drawn ("option C"):
+
+- **In a LIST** an item's tags are plain muted words joined by " · ", at most three and then "and N more"
+  (`tagWords`; `shared/tags-core.ts` `tagLineParts`) — no colour, no shape, so a row never grows because of its
+  tags. The Feed's cards and a tag page's items use it.
+- **On an item's OWN page, in a tag picker and in Org settings** a tag is a small coloured SQUARE and the word
+  (`tagMark`, `tagSquare`): 8px, square corners, the tag's colour from the person palette's variables
+  (`var(--p-<key>)`, `TAG_COLORS`). The square is deliberate: circles, rings and triangles mean a state.
+- Never a pill, never uppercase, no box round a tag; the tags block of `trov.css` declares no radius
+  (`test/render.tags.test.ts`). A tag's word is a `tagOpen` button to its page unless `link: false`.
+
+**Screens** (`web/src/tags.ts` views, `web/src/tags-actions.ts` controller — every act starts with `tag`;
+`state.tags` is the org's list, read at boot and after every write, because the Feed's filter, Unplaced's
+picker, a doc's Tags row and the tab all draw from it):
+- **Org settings › Tags** (`#org/tags`, every member; `tagsTab`): a header card of cells — Tags ("12 of 30 tags"
+  with a meter), for admins Suggested by agents ("2 waiting") and Jev (the switch, a checks meter, and "What is
+  sent": a small popover with the one sentence on what is sent, to whom and the way back; a click outside or
+  Escape closes it) —
+  then the list — its head row (52px, the column names, and for an admin New tag in the actions column at the
+  top right; disabled at the plan's cap, saying why; under 860px the head keeps only New tag) — and the
+  retired tags behind a disclosure (Restore). **New tag** opens a modal (`tagAddModal`, built on `confirmModal`:
+  Enter adds, Escape closes, Tab stays inside): name, what it is for, the colour (a `segmented()` of squares, the
+  first colour no live tag uses), and — when Jev may look — "Find the items that fit it now", ON by default (the
+  button says "Add and find items"); off, the tag is added to nothing ("Add tag"). A bad name is said in the modal. The list is ONE line per tag, every row the same height, on
+  ONE column template the list sets (`--tagcols`) so the head and every row line up: square and name ("Starter"
+  beside a starter), what it is for, Items (the total; its tooltip says by type), for admins "Added by Sift" (below)
+  and the actions — Find items as quiet text (it repeats on every row) and a ⋯ menu (`rowMenu`: Rename, and for a
+  non-starter Merge into… and Retire; Escape or a click outside closes it). Nothing ever adds a second line under
+  a row, and there is no editor panel: an admin edits IN PLACE — a click on what it is for (or the menu's Rename)
+  puts a field exactly where the words were (Enter or leaving it saves, Escape puts the words back), and the
+  square opens a colour `segmented()` whose options are the squares (a pick saves). When a name or description
+  changes and Jev may look, a neutral `confirmModal` offers Find items again. Merge into… turns the open menu into
+  the list of live tags (no visible scrollbar); a pick asks first. **Agents' suggestions** (admins) are rows at the
+  BOTTOM of the same list in a suggested state (`suggestionRow`), the whole row tinted in the accent: a hollow square, the name muted, a `waiting` "Suggested" mark, who sent
+  it on what (and a look-alike); Approve on the row puts it on the list (the row then draws like any tag), and its
+  ⋯ menu offers the look-alike ("Use auth instead"), Use an existing tag… (the list of live tags) and Dismiss.
+  Retire, merge and dismiss ask in `confirmModal`. Under 860px a row folds to the name and actions, then the
+  description, then the item count and the Jev cell. The tab is inside Org settings' `data-morph`, so typing in
+  its fields patches the page.
+- **One tag's page** (`#tags/<name>`, screen `tag`, a child of Org settings › Tags in the header; `tagPageView`):
+  in the work screens' frame (`WORK_SHELL`, fluid to 1440px), a hero (the square at 16px and the name, what it is
+  for, Starter tag / a Retired `kindMark`, and the counts by type as figures over one bar split by type), a
+  `tabBar()` (All / Feed / Docs / Decisions with counts), then a bento on a 12-column grid (`.cnpy-tagpage-grid`;
+  each tile says its width in `--span`, and `--md` under a 1000px page; ONE column under an 820px page — a container
+  query on `.cnpy-tagpage`). **Every tile has a FIXED height** (`data-size`: `half`, `tall` = half + gap + half,
+  `row`, `full`, `rest` = full − row − gap; the `--tp-*` variables) whatever it holds — none, one or fifty items, or its
+  empty sentence — and its body scrolls inside it, so tiles in a row always end on one line; the empty tag keeps
+  the whole bento, each tile saying it is empty. The heights come from the WINDOW: `--tp-fit` is the room under
+  the tabs (`100dvh` less about 252px, clamped 520–888px), so every tab ends at the bottom of the screen — All's
+  second row about 38% of it, a type's list (`full`) all of it; a short window scrolls instead of crushing the
+  tiles. Under **All**: Docs over Decisions (two `half` tiles) beside
+  **Recent in the feed** (`tall`), each type's tile its newest ten and an "All N →" link to its tab; then one row of
+  **Activity** (newest, oldest listed, the last 12 weeks as one bar per week — `tagWeeks`), **Who tagged it** (Sift
+  against people and their agents, from `jev_added`, and Sift's latest with how sure it was), **Who writes about
+  it** (authors across the three types) and **Often seen with**, the last two as name-number-bar rows. Under a
+  **type's tab**: that type's whole list (`full`) beside a rail of its own Activity (`row`, with how many Jev
+  added) and its people (`rest`), an empty type in the same boxes. The tab picked is ALWAYS the tab shown — the
+  view never swaps a picked tab for All (it once did for a type with no items, so Decisions snapped back). An item:
+  its title, a feed entry's brief (two lines in a tile), then a doc's section, a decision's state as a mark
+  (Ratified `kindMark` done, Draft `authorityMark`), who, when, "Added by Sift" (plain words, a fact — the tooltip
+  holds Jev's reason and how sure; `TagPageItem.jev`, from the run's provenance row) and its other tags as
+  `tagWords`. The tag's colour (`--tag-c`) draws every chart; nothing declares a radius (the tiles are
+  `surface()`s); the week bars grow in on entry, not under reduced motion. A decision has no screen, so its row
+  opens Search on its title.
+- **A doc's Tags row** (`itemTagsRow`): each tag as `tagMark` with a remove button, and an Add a tag
+  `dropdown()` of the live tags it lacks. Feed entries and decisions have no page of their own, so they have
+  no picker yet (`POST /item-tags` accepts them).
+- **Tagging existing items** (admins, on the Tags tab; `aiSection`, `jevCell`): the switch (`switchBtn`, OFF by
+  default) in the header's Jev cell, with ONE sentence on what is sent, to whom, and that the tag is ADDED (with the
+  way back), and where the month's checks stand. A row's "Added by Sift" cell holds the latest run's result in a few words, the whole
+  sentence as its tooltip (`resultWords`): "7 added" with Undo (a `confirmModal` that says exactly what it takes
+  back), "None fit", "Nothing to check", "Stopped · 2 added", "Undone", or "—" before any run. Find items (on the
+  row, while the switch is on and checks are left) waits while a run goes. There is no review list: the owner chose
+  no review step (`feed-and-search.md` › Tags).
+- **A run, live** (`web/src/fit-run.ts`, the controller in `tags-actions.ts`): while a run goes, its row polls
+  `GET …/tags/:name/run` every 600 ms (stops when the run ends, while the tab is hidden — resuming when shown — and
+  after 300 reads) and draws it from those REAL numbers only: ONE bar whose fill is exactly `checked / candidates`
+  (a `scaleX` transform), a thin line under the words of the row's Jev cell and out of the flow, and the words
+  ("23 of 40 · 5 added"). Pressing Find items shows it at once ("Starting…"). Between answers one
+  `requestAnimationFrame` loop eases the fill toward the latest answer (`easeToward`, never past it) and writes it
+  straight into the row's elements — no repaint per frame. The cell is the SAME structure live and at rest
+  (`fitCell`), so the two morph into each other in place: when the run ends and the bar has caught up it changes
+  colour (`data-state`: the tag's own colour when it added the tag to something, a quiet tone when not) and the
+  words become the result's own ("7 added"); a moment later the list takes over, `data-live` goes, the bar fades
+  and Undo fades in beside the same words. The row never changes height. Under `prefers-reduced-motion` the fill
+  jumps to each answer (no frame loop) and the colour, the fade and Undo's entrance are instant.
 
 **Tooltips.** A mark carries `data-mtip`: a sentence on what its state means ("Built, and being checked
 before it is done."), not the word again; a glyph alone puts its name first ("Testing. Built, …"). ONE

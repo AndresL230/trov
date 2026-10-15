@@ -31,6 +31,8 @@ import { getRepoDashboardForAgent, orgRepoConfig } from "./tools/repo-agent";
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoTab } from "@shared/repo";
 import { ingestFeedEntry, ingestDocProposal, recordBatch } from "./consumer";
 import { feedEntryFromMcpArgs } from "./mcp-args";
+// The tag list is READ here and nowhere written: changing it is an admin's cookie route (src/tags/routes.ts).
+import { listTagRefs } from "./tools/tags";
 import { FEED_BRIEF_MAX, IngestPayload, QueryType } from "@shared/contract";
 import { ArtifactError } from "./tools/artifacts";
 import { PlanFeatureError, PlanLimitError } from "./plans/state";
@@ -127,14 +129,21 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
 
   server.tool(
     "get_feed",
-    "Read the feed with optional author/tags/since/limit filters.",
+    "Read the feed with optional author/tags/since/limit filters. Each entry carries its `tags`; `tags` filters to entries that carry ANY of the given ones (names from list_tags).",
     { author: z.string().optional(), tags: z.array(z.string()).optional(), since: z.string().optional(), limit: z.number().optional() },
     async (args) => runTool(() => get_feed(ctx, args))
   );
 
   server.tool(
+    "list_tags",
+    "List this organization's tags: the only tags a feed entry may carry. Each has a `name` and a one-line `description` of what it is for. The list is the organization's own (its admins add, rename, merge and retire tags in Org settings), so read it rather than assuming one — and pick from it. Read-only.",
+    {},
+    async () => runTool(() => listTagRefs(ctx))
+  );
+
+  server.tool(
     "append_feed",
-    "Append a feed entry through the vocabulary gate (an out-of-vocab tag routes the entry to needs_triage). `summary` is the one-line title. `brief` is what PEOPLE read in the Feed: 1–2 plain sentences (≤ 280 characters) on the problem solved and who it helps — no file names, PR/issue numbers or jargon. `body` is the full record agents read (what changed, why, evidence, follow-ups). Optional prs/commits/issues record the artifacts (PR urls, commit shas, GitHub issue numbers) this session observed.",
+    "Append a feed entry through the gate. `tags` must come from THIS organization's tag list — read it with list_tags; every organization has its own. A tag that is not on the list does not hold the entry back: the entry is written with the tags that are, and the other is returned under `suggested_tags` and waits for an admin to accept, map or dismiss it (you cannot add a tag to the list). `summary` is the one-line title. `brief` is what PEOPLE read in the Feed: 1–2 plain sentences (≤ 280 characters) on the problem solved and who it helps — no file names, PR/issue numbers or jargon. `body` is the full record agents read (what changed, why, evidence, follow-ups). Optional prs/commits/issues record the artifacts (PR urls, commit shas, GitHub issue numbers) this session observed.",
     {
       summary: z.string(),
       brief: z.string().trim().min(1).max(FEED_BRIEF_MAX).optional(),
@@ -387,7 +396,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
 
   server.tool(
     "record_session",
-    "Record a whole Claude Code session into Trov in ONE reconciled batch: pass a full IngestPayload (session + feed_entries / doc_proposals / adr_drafts / needs_triage, and optional artifact_links). A doc proposal may embed only uploaded doc images (`![alt](/img/<sha256>)`, uploaded with upload_asset destination \"doc\" BEFORE this call); one that breaks that rule is listed under `refused` with its reason and is not ledgered, so re-sending the same batch after uploading stages it. Routes through the SAME gate as /ingest — drops no-ops, stages real deltas, classifies each doc change, and is replay-safe on session.id. The author is your authenticated bearer principal; session.author is advisory and ignored. Returns per-type outcome counts. `artifact_links` ([{slug, target_type: ticket|sprint|pr|issue, target_ref}], for artifacts this session produced) are NOT staged: after the batch is reconciled each is linked directly, as you, and reported in `artifact_links` as linked / not_found / error (idempotent — a replay re-links nothing). Used by the record-session skill at session end; you only ever stage knowledge — humans confirm.",
+    "Record a whole Claude Code session into Trov in ONE reconciled batch: pass a full IngestPayload (session + feed_entries / doc_proposals / adr_drafts / needs_triage, and optional artifact_links). A doc proposal may embed only uploaded doc images (`![alt](/img/<sha256>)`, uploaded with upload_asset destination \"doc\" BEFORE this call); one that breaks that rule is listed under `refused` with its reason and is not ledgered, so re-sending the same batch after uploading stages it. Routes through the SAME gate as /ingest — drops no-ops, stages real deltas, classifies each doc change, and is replay-safe on session.id. The author is your authenticated bearer principal; session.author is advisory and ignored. Returns per-type outcome counts. A feed entry's `tags` must come from the organization's list (list_tags): an entry with a tag that is not on it is still written, without that tag, and the tag is listed under `suggested_tags` for an admin to decide. `artifact_links` ([{slug, target_type: ticket|sprint|pr|issue, target_ref}], for artifacts this session produced) are NOT staged: after the batch is reconciled each is linked directly, as you, and reported in `artifact_links` as linked / not_found / error (idempotent — a replay re-links nothing). Used by the record-session skill at session end; you only ever stage knowledge — humans confirm.",
     IngestPayload.shape,
     // Same reconciling path as the cookie /ingest route: forward the full payload to
     // consume() under the bearer principal already in scope. Re-parse with the contract
