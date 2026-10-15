@@ -1,24 +1,48 @@
-// THE model client (docs/architecture/env.md › ANTHROPIC_API_KEY): one structured call — a system prompt
-// and a text in, a zod-checked value out — behind a provider-agnostic interface, so a caller names WHAT it
-// asks for (`AiKind`) and never which model answers. `providerFor` is the one place that choice is made;
-// today every kind goes to Claude (claude-haiku-5-5), and another provider slots in there without a
-// caller changing.
+// THE model client (docs/architecture/ai.md › Where a model call may happen; env.md): a caller names WHAT it
+// asks for (`AiKind`) and never which model answers. `KIND_PROVIDER` is the ONE table from a kind to its
+// provider, and `providerFor` the one place that choice is made:
+//   • `claude` — Anthropic's Messages API (claude-haiku-5-5): one structured call — a system prompt and a
+//     text in, a zod-checked value out. It writes words: the summaries today, the AI pass's producers later.
+//   • `jev`    — TypeSafe AI's Jev (src/tools/classify.ts, the ONLY file that names TypeSafe's URL): a
+//     non-generative decision model that answers yes/no, pick-one and score questions with numbers. It
+//     classifies and gates: Sift (`tag.fit`) today.
 //
 // The house rules every call keeps:
 //   • It NEVER throws. A missing key, a network error, a timeout, a 4xx/5xx, a refusal, an answer cut off
-//     at `max_tokens`, text that is not JSON, or JSON the schema rejects: all of it resolves to null, and
-//     the caller falls back to what it does without a model (the excerpt, for summaries).
-//   • It is never on a render path and never reachable from src/mcp.ts: only the capture-time summary
-//     seams (src/tools/summarize.ts, via src/plans/summaries.ts) import it.
-//   • Tests inject `fetchImpl` and answer with real Messages API `Response` bodies — never the network.
-//   • No retries inside a call (`maxRetries: 0`): the next Sync or tick is the retry.
+//     at `max_tokens`, text that is not JSON, or JSON the schema rejects: all of it resolves to null (for
+//     Jev, no judgement), and the caller falls back to what it does without a model.
+//   • It is never on a render path and never reachable from src/mcp.ts (test/secrets.mcp.test.ts pins who
+//     imports it: the capture-time summary seams, the AI pass and the Sift run).
+//   • Tests inject `fetchImpl` and answer with real `Response` bodies — never the network.
+//   • No retries inside a Claude call (`maxRetries: 0`): the next Sync or tick is the retry. A Jev run keeps
+//     its one retry of a 429 / 529 (src/tools/classify.ts).
 //   • Nothing the call carries reaches a log: a failure logs its error NAME and HTTP status only.
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { toClaudeSchema } from "./schema";
+import { jevProvider, type JevProvider } from "../tools/classify";
 
-/** What a call is for. A new use is one more member here (and a line in `providerFor`). */
-export type AiKind = "summary_pr" | "summary_issue";
+export type {
+  JevProvider, JevQuestion, JevAnswer, JevAsk, Classifier, ClassifyItem, ClassifyRequest, ClassifyHooks, ClassifyResult, Judgement,
+} from "../tools/classify";
+
+/** Who answers. */
+export type AiProviderName = "claude" | "jev";
+
+/** THE table: what a call is for → who answers it. A new use is one more line here; later phases add Jev's
+ *  ticket, feed, review and gate kinds and Claude's producers (docs/superpowers/specs/2026-10-15-server-ai-build.md). */
+export const KIND_PROVIDER = {
+  summary_pr: "claude",
+  summary_issue: "claude",
+  // Sift: "does this item fit this tag?" (src/ai/sift.ts).
+  "tag.fit": "jev",
+} as const satisfies Record<string, AiProviderName>;
+
+/** What a call is for. */
+export type AiKind = keyof typeof KIND_PROVIDER;
+/** The kinds each provider answers. */
+export type ClaudeKind = { [K in AiKind]: (typeof KIND_PROVIDER)[K] extends "claude" ? K : never }[AiKind];
+export type JevKind = { [K in AiKind]: (typeof KIND_PROVIDER)[K] extends "jev" ? K : never }[AiKind];
 
 /** One call's size, for metering. Tokens are the provider's own counts: `inputTokens` the uncached input,
  *  `cachedTokens` the input served from the prompt cache (`cache_read_input_tokens`). Characters are
@@ -32,7 +56,7 @@ export interface AiUsage {
 }
 
 export interface StructuredRequest<T> {
-  kind: AiKind;
+  kind: ClaudeKind;
   system: string;
   /** A stable block sent before `input` (what a cache breakpoint marks, when `cache` is set). */
   prefix?: string;
@@ -45,14 +69,21 @@ export interface StructuredRequest<T> {
   cache?: boolean;
 }
 
-export interface AiProvider {
+export interface ClaudeProvider {
+  readonly name: "claude";
   /** The model that answers — the provenance a caller records beside what it stores. */
   readonly model: string;
   /** The checked answer and its size, or null on ANY failure (see the file header). Never throws. */
   structured<T>(req: StructuredRequest<T>): Promise<{ value: T; usage: AiUsage } | null>;
 }
 
+/** Either provider; `name` tells them apart. */
+export type AiProvider = ClaudeProvider | JevProvider;
+/** The provider a kind gets. */
+export type ProviderOf<K extends AiKind> = (typeof KIND_PROVIDER)[K] extends "jev" ? JevProvider : ClaudeProvider;
+
 export interface AiProviderOpts {
+  /** The key of the provider the kind goes to: `ANTHROPIC_API_KEY` for Claude, `TYPESAFE_API_KEY` for Jev. */
   apiKey?: string;
   /** The fetch the SDK sends through (stubbed in tests; the local stand-in under `wrangler dev`). */
   fetchImpl?: typeof fetch;
@@ -62,27 +93,27 @@ export interface AiProviderOpts {
   /** Told the size of every call a response came back for — a refusal or an unparseable answer included,
    *  so metering sees the tokens it was billed. Never told the text. */
   onCall?: (usage: AiUsage) => void;
+  /** Jev only: the wait before a run's one retry of a 429 / 529, and how many requests a run keeps in flight. */
+  retryDelayMs?: number;
+  concurrency?: number;
 }
 
 export const CLAUDE_MODEL = "claude-haiku-5-5";
 export const AI_TIMEOUT_MS = 10_000;
 
-/** The provider for `kind`, or null when the deployment has no key (the caller's no-model path). */
-export function providerFor(kind: AiKind, opts: AiProviderOpts): AiProvider | null {
+/** The provider for `kind`, or null when the deployment has no key for it (the caller's no-model path). */
+export function providerFor<K extends AiKind>(kind: K, opts: AiProviderOpts): ProviderOf<K> | null {
   if (!opts.apiKey) return null;
-  return PROVIDERS[kind](opts.apiKey, opts);
+  const name: AiProviderName = KIND_PROVIDER[kind];
+  return (name === "jev" ? jevProvider(opts.apiKey, opts) : claudeProvider(opts.apiKey, opts)) as ProviderOf<K>;
 }
 
-const PROVIDERS: Record<AiKind, (apiKey: string, opts: AiProviderOpts) => AiProvider> = {
-  summary_pr: claudeProvider,
-  summary_issue: claudeProvider,
-};
-
 /** Claude over the Messages API, with structured outputs (`output_config.format: json_schema`). */
-function claudeProvider(apiKey: string, opts: AiProviderOpts): AiProvider {
+function claudeProvider(apiKey: string, opts: AiProviderOpts): ClaudeProvider {
   const model = opts.model ?? CLAUDE_MODEL;
   const client = new Anthropic({ apiKey, fetch: opts.fetchImpl, timeout: opts.timeoutMs ?? AI_TIMEOUT_MS, maxRetries: 0 });
   return {
+    name: "claude",
     model,
     async structured<T>(req: StructuredRequest<T>): Promise<{ value: T; usage: AiUsage } | null> {
       try {

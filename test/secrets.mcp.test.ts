@@ -100,8 +100,8 @@ describe("deletion is a person's, never an agent's (invariant 2)", () => {
   });
 });
 
-describe("the model client is a capture-time seam and the AI pass's, never an agent's", () => {
-  it("nothing reachable from src/mcp.ts imports src/ai/, and only the summarizer and the AI pass import the client", () => {
+describe("the model client is the summary seams', the AI pass's and the Sift run's, never an agent's (docs/architecture/ai.md)", () => {
+  it("nothing reachable from src/mcp.ts imports src/ai/ or the Jev provider; only the call sites import the client", () => {
     const fromMcp = reachable("src/mcp.ts");
     expect(SOURCES.has("src/ai/client.ts")).toBe(true);
     // The walker finds it from where it IS used: the webhook (and Sync, through the backfill).
@@ -110,13 +110,30 @@ describe("the model client is a capture-time seam and the AI pass's, never an ag
     // …and the repo tick, through the AI pass (docs/architecture/ai.md); the AI routes from the HTTP app.
     expect(reachable("src/repo/cron.ts").has("src/ai/pass.ts")).toBe(true);
     expect(reachable("src/routes.ts").has("src/ai/routes.ts")).toBe(true);
+    // …and the Sift run, from the Tags routes — and through it the Jev provider.
+    expect(reachable("src/routes.ts").has("src/ai/sift.ts")).toBe(true);
+    expect(reachable("src/ai/sift.ts").has("src/tools/classify.ts")).toBe(true);
+    // MCP reaches the tags module (and its Sift helpers), but no model client and no provider.
+    expect(fromMcp.has("src/tools/tag-fit.ts")).toBe(true);
     expect([...fromMcp].filter((f) => f.startsWith("src/ai/"))).toEqual([]);
+    expect(fromMcp.has("src/tools/classify.ts")).toBe(false);
+    // THE call sites (ai.md › Where a model call may happen): the summary seams, the AI pass, the Sift run.
     const importers = [...SOURCES.keys()].filter((f) => f !== "src/ai/client.ts" && reachableDirect(f).has("src/ai/client.ts")).sort();
-    expect(importers).toEqual(["src/ai/pass.ts", "src/tools/summarize.ts"]);
+    expect(importers).toEqual(["src/ai/pass.ts", "src/ai/sift.ts", "src/tools/summarize.ts"]);
     // The key is read where summaries are chosen, where AI eligibility is answered and the pass starts (and
     // where Platform says whether they are on) — nowhere else.
     const readers = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /\.ANTHROPIC_API_KEY\b/.test(text)).map(([f]) => f).sort();
     expect(readers).toEqual(["src/ai/eligibility.ts", "src/ai/pass.ts", "src/plans/summaries.ts", "src/platform/routes.ts"]);
+    // TypeSafe's key: the Sift run sends with it; the Tags list says whether one is set.
+    const jevReaders = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /\.TYPESAFE_API_KEY\b/.test(text)).map(([f]) => f).sort();
+    expect(jevReaders).toEqual(["src/ai/sift.ts", "src/tags/routes.ts"]);
+  });
+
+  it("the Jev provider is the client's alone: only src/ai/client.ts imports it, and only it names TypeSafe's URL", () => {
+    const providerImporters = [...SOURCES.keys()].filter((f) => reachableDirect(f).has("src/tools/classify.ts")).sort();
+    expect(providerImporters).toEqual(["src/ai/client.ts"]);
+    const namers = [...SOURCES].filter(([, text]) => /typesafe\.ai/i.test(text)).map(([f]) => f).sort();
+    expect(namers).toEqual(["src/tools/classify.ts"]);
   });
 });
 

@@ -1,7 +1,7 @@
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
 import { z } from "zod";
 import { type TenantContext, run, nowIso } from "../data/sql";
-import { AI_TIMEOUT_MS, CLAUDE_MODEL, providerFor, type AiKind, type AiUsage } from "../ai/client";
+import { AI_TIMEOUT_MS, CLAUDE_MODEL, providerFor, type AiUsage, type ClaudeKind } from "../ai/client";
 
 export type { AiUsage };
 
@@ -106,7 +106,7 @@ export interface AiOpts {
  *  (src/ai/client.ts), which aborts the in-flight request at the deadline. */
 function makeClaudeSummarizer<T>(
   apiKey: string,
-  kind: AiKind,
+  kind: ClaudeKind,
   systemPrompt: string,
   schema: z.ZodType<T>,
   opts?: AiOpts

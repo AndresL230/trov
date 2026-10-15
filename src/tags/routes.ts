@@ -27,7 +27,8 @@ import type { AppEnv } from "../auth/principal";
 import { RoleError, requireRole } from "../data/context";
 import { PlanFeatureError, PlanLimitError } from "../plans/state";
 import { TagError, addTag, editTag, listTags, mergeTag, resolveSuggestion, restoreTag, retireTag, setItemTags, tagPage } from "../tools/tags";
-import { continueTagFit, setAiEnabled, settleFitSuggestion, startTagFit, tagRun, undoTagFit, type FitStart } from "../tools/tag-fit";
+import { setAiEnabled, settleFitSuggestion, tagRun, undoTagFit } from "../tools/tag-fit";
+import { continueTagFit, startTagFit, type FitStart } from "../ai/sift";
 
 /**
  * Start a model run for `tag` and hand its work to the request's `waitUntil` — never on the response's

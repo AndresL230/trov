@@ -592,7 +592,7 @@ describe("shared helpers", () => {
 });
 
 describe("tags added by Jev, on the Tags tab (the owner's call: no review step)", () => {
-  const ai = (o: Partial<TagAiDTO> = {}): TagAiDTO => ({ enabled: true, available: true, used: 12, cap: 300, spent: false, ...o });
+  const ai = (o: Partial<TagAiDTO> = {}): TagAiDTO => ({ enabled: true, org: true, available: true, used: 12, cap: 300, spent: false, ...o });
   const run = (o: Partial<TagRunDTO> = {}): TagRunDTO => ({ id: 4, status: "done", started_at: "t", ended_at: "t", candidates: 20, checked: 20, added: 7, undone_at: null, ...o });
   const t = (name: string): OrgTagDTO => tag(name, { color: "ochre" });
 
@@ -618,6 +618,10 @@ describe("tags added by Jev, on the Tags tab (the owner's call: no review step)"
     const nokey = aiSection(ai({ available: false, enabled: false }), initialTagsUi());
     expect(nokey).toContain("no TypeSafe AI key set, so nothing is sent and nothing is tagged");
     expect(nokey).toMatch(/role="switch"[^>]*disabled|disabled[^>]*role="switch"/);
+    // The organization's AI switch off: Sift's own may be on, but nothing is sent — and Find items is not offered.
+    const orgOff = aiSection(ai({ org: false }), initialTagsUi());
+    expect(orgOff).toContain("Trov&#39;s AI is off for this organization (Org settings › AI), so nothing is sent.");
+    expect(orgOff).toContain(`data-off="1"`);
   });
 
   it("after a run the row's Jev cell says what it did: \"7 added\" with Undo (confirmModal); none fit; nothing to check; undone; stopped", () => {
