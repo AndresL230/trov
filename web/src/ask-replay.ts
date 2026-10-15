@@ -78,7 +78,8 @@ export function replayPlan(scenario: string): ReplayPlan {
       return { ...base, play: ["answer"], after: (ctx) => { ctx.openRef("ticket:14"); ctx.openRef("pr:176"); ctx.openRef("pr:173"); ctx.ui.threadsForced = false; ctx.paint(); } };
     case "artifact": case "artifact-saved": return { ...base, play: ["answer", scenario] };
     case "search": return { ...base, play: ["search"], setup: (ctx) => { ctx.ui.threadQ = "netlify"; ctx.ui.threadMenu = 5; } };
-    case "cmdj": return { ...base, play: ["cmdj"], where: "panel", setup: (ctx) => { ctx.ui.cmdj.open = true; ctx.ui.cmdj.contextRef = "ticket:14"; } };
+    // The panel over the ticket (`?askReplay=cmdj#tickets/14`): the item is its context chip, as ⌘J there makes it.
+    case "cmdj": return { ...base, play: ["cmdj"], where: "panel", setup: (ctx) => { ctx.ui.cmdj.open = true; ctx.ui.cmdj.contextRef = "ticket:14"; ctx.ui.composer.panel.context = ["ticket:14"]; } };
     default: return base;
   }
 }

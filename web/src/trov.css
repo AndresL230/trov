@@ -3027,19 +3027,32 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-hc-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:12px; padding-top:10px; border-top:1px solid var(--border); font-size:11.5px; color:var(--fg-40); }
 .ask-hc-open { padding:4px 10px; border-radius:7px; background:var(--accent); color:var(--accent-fg); font-size:12px; font-weight:600; cursor:pointer; }
 
-/* ── Ask: cmdj ── (ask-cmdj.ts — the ⌘J panel; a sibling replaces the stub's styles here) */
+/* ── Ask: cmdj ── (ask-cmdj.ts — the ⌘J panel over any page; design L284–297, L1811–1830)
+   The layer is a root `data-overlay`: the scrim fades, the panel slides in from the right (z 2) and the inspector it
+   opened sits to its LEFT (z 1, so it slides out from behind the panel and back). `data-closing` on the layer runs the
+   panel and the scrim out, and the inspector rides out with the panel (420px further). On a phone the panel is the
+   whole screen and its inspector the shell's full-height sheet, above it. Every animation here is listed (by its base
+   class) in the `Ask: motion` block's reduced-motion switch. */
 .ask-panel-layer { position:fixed; inset:0; z-index:80; }
 .ask-scrim { position:absolute; inset:0; background:var(--ask-scrim); animation:ask-fade-in .16s ease both; }
-.ask-panel { position:absolute; top:0; right:0; bottom:0; display:flex; flex-direction:column; width:420px; max-width:100%; background:var(--surface); border-left:1px solid var(--border-strong); box-shadow:var(--lift-shadow); animation:ask-panel-in .28s var(--fx-ease) both; }
-[data-phone="1"] .ask-panel { width:100%; border-left:0; }
+.ask-panel { position:absolute; top:0; right:0; bottom:0; z-index:2; display:flex; flex-direction:column; width:420px; max-width:100%; background:var(--surface); border-left:1px solid var(--border-strong); box-shadow:var(--lift-shadow); animation:ask-panel-in .28s cubic-bezier(.2,.7,.2,1) both; }
+[data-phone="1"] .ask-panel { width:100%; border-left:0; box-shadow:none; }
 .ask-panel-layer[data-closing] .ask-panel { animation:ask-panel-out var(--fx-base) var(--fx-ease) both; }
 .ask-panel-layer[data-closing] .ask-scrim { animation:ask-fade-out var(--fx-base) ease both; }
 .ask-panel-layer[data-closing] { pointer-events:none; }
 @keyframes ask-panel-in { from { transform:translateX(100%); } to { transform:none; } }
 @keyframes ask-panel-out { from { transform:none; } to { transform:translateX(100%); } }
-.ask-panel-layer > .ask-insp-frame { position:absolute; top:0; bottom:0; right:420px; box-shadow:var(--lift-shadow); }
-.ask-panel-head { display:flex; align-items:center; gap:8px; height:57px; flex:none; box-sizing:border-box; padding:0 12px 0 16px; border-bottom:1px solid var(--border); }
-.ask-panel-t { font-size:14px; font-weight:600; }
+.ask-panel-head { display:flex; align-items:center; gap:10px; height:57px; flex:none; box-sizing:border-box; padding:0 12px 0 18px; border-bottom:1px solid var(--border); }
+.ask-panel-t { font-size:14px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; }
+.ask-panel-gap { flex:1; }
+/* The panel's inspector: to its left at its own width (never wider than the room beside the panel). */
+.ask-panel-layer > .ask-insp-frame[data-sheet="0"] { position:absolute; top:0; bottom:0; right:420px; z-index:1; max-width:calc(100vw - 420px); box-shadow:var(--lift-shadow); animation:ask-cj-insp-in var(--fx-slow) cubic-bezier(.2,.7,.2,1) both; }
+.ask-panel-layer > .ask-insp-frame[data-sheet="0"][data-closing] { animation:ask-cj-insp-out var(--fx-base) var(--fx-ease) both; }
+.ask-panel-layer[data-closing] > .ask-insp-frame[data-sheet="0"] { animation:ask-cj-insp-away var(--fx-base) var(--fx-ease) both; }
+.ask-panel-layer > .ask-insp-frame[data-sheet="1"] { z-index:3; }
+@keyframes ask-cj-insp-in { from { opacity:0; transform:translateX(18px); } to { opacity:1; transform:none; } }
+@keyframes ask-cj-insp-out { from { opacity:1; transform:none; } to { opacity:0; transform:translateX(18px); } }
+@keyframes ask-cj-insp-away { from { transform:none; } to { transform:translateX(420px); } }
 
 /* ── Ask: phone ── (ask-phone.ts — a sibling replaces the stub's styles here) */
 .ask-drawer-layer { position:fixed; inset:0; z-index:85; }
