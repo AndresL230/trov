@@ -1,0 +1,21 @@
+name: Deploy api
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_KEY }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./services/api
+          push: true
+          tags: gcr.io/acme/api:${{ github.sha }}
+      - uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: api
+          image: gcr.io/acme/api:${{ github.sha }}

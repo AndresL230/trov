@@ -189,9 +189,10 @@ captured for the **primary** repository only.
 read-only: Metadata, Contents, Pull requests, Issues, Actions, Checks, Deployments, Commit statuses) and,
 per repository, a webhook: each repository row shows its own delivery URL, `/webhook/github/<id>`, and a
 webhook secret (*Set* generates one). In the repository's GitHub settings add a webhook to that URL with
-that secret, content type JSON; pull requests, issues, pushes, reviews, deployments, checks, workflow runs
-and commit statuses are what Trov reads. *Check deliveries* reports the last one received. Until it is set
-up, Sync GitHub and the hourly reconcile still fill the dashboard from the token.
+that secret, content type JSON; pull requests, issues, pushes, reviews, deployments and deployment statuses,
+checks, workflow runs, commit statuses, releases and tag creation are what Trov reads. *Check deliveries* reports
+the last one received. Until it is set up, Sync GitHub and the 6-hourly reconcile still fill the dashboard from the
+token.
 
 Until a source is set up the Repo dashboard and *Poll now* say **Not connected** and link back to
 Integrations; nothing is requested on the organization's behalf.
@@ -254,10 +255,10 @@ One place: **Org settings**, opened from the switcher at the top of the sidebar 
 
 | Tab | What it holds | Who sees it |
 |---|---|---|
-| Integrations | the GitHub App's connection (or, by hand, the token and webhook secrets); the other credentials; the encryption key and the history of changes | admin, owner |
-| Hosting | which host runs each part of each environment; each provider's connection (connect, test, rotate, disconnect) — `hosting-providers.md` › The screens | admin, owner |
-| Repositories | Connect with GitHub; connected repositories, one primary; what the App can see to track; a by-hand repository's webhook URL | everyone (read), admin+ (write) |
-| Environments | the environments the Repo dashboard reports on, in drift order | everyone (read), admin+ (write) |
+| Integrations | the GitHub App's connection (or, by hand, the token and webhook secrets) and every NON-hosting integration; the encryption key and the history of changes. No hosting credential (`cloudflare_analytics`, `railway`, `vercel`, `render`, `netlify`, `fly`, `aws`) and no app metrics token: one line links to Hosting (`onIntegrationsTab`, `web/src/integrations.ts`) | admin, owner |
+| Hosting | each provider's connection — ONE card per provider (connect, test, rotate, disconnect, its leftover per-environment tokens and "Remove old tokens"), what uses it; Detected; one line per environment pointing to where its parts are set (Repositories › a repo › Apps) — `hosting-providers.md` › The screens | admin, owner |
+| Repositories | Connect with GitHub; connected repositories, one primary; what the App can see to track; a by-hand repository's webhook URL; per repository (admins) its **Apps** page — suggestions, apps, their parts and deploy signals (`repo-apps.md` › Org settings › Repositories › a repo › Apps) | everyone (read), admin+ (write) |
+| Environments | the environments the Repo dashboard reports on, in drift order: name, branch, URLs, health path. Not their parts (Repositories › a repo › Apps, `repo-apps.md`) | everyone (read), admin+ (write) |
 | Members | the people directory; for admins also invitations, roles and titles, removal, and **Unmatched logins** — GitHub logins in captured activity to map to a person or discard [`web/src/identity.ts`] | everyone (read), admin+ (write) |
 | Notifications | the e-mail digests: which exist and their default cadence, send hour, timezone and sender name, preview, test send, the outbox [`web/src/notifications.ts`] | admin, owner |
 | AI (the screen is the frontend's next PR; the routes exist) | the AI switch (`orgs.ai_automation`, 0055 — on by default), this month's AI runs against the plan's `ai_runs`, what is sent to Anthropic and what never is: `GET` / `PUT /api/o/:slug/ai/settings`, cookie only, the change audited `org.ai` (`ai.md`) | everyone (read), admin+ (the switch) |

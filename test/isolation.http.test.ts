@@ -204,14 +204,15 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
     case "handle": return ALICE;
     case "sha": return fx.imgSha;
     case "ver": return "v1";
-    case "key": return fx.envKey;
+    case "key": return under("/repos/") ? "web" : fx.envKey;
     case "kind": return "github_token";
     case "a": case "b": return "nope"; // never `test`: Test connection would reach for the network
     case "email": return encodeURIComponent(INVITED);
     case "ref": return fx.artifactSlug;
     case "part": return "web";
     case "provider": return "vercel"; // never `test` against a configured credential: B has none, and A's is never B's
-    case "name": return "auth"; // a tag: every org has the starter of that name, each its own row
+    case "name": return under("/repos") ? "sapling" : "auth"; // a repository's name (A's), else a tag: every org has the starter of that name, each its own row
+    case "owner": return "SaplingLearn"; // A's repository owner
     default: throw new Error(`no fixture value for :${name} in ${suffix}`);
   }
 }
@@ -300,6 +301,9 @@ const TENANT: Record<string, Row> = {
   "POST /integrations/:kind/:a": J({ secret: "x" }), "POST /integrations/:kind/:a/:b": J({ secret: "x" }),
   "DELETE /integrations/:kind": {}, "DELETE /integrations/:kind/:a": {},
   "GET /repos": {}, "POST /repos": J({ repo_full_name: "acme/matrix" }), "DELETE /repos/:id": {},
+  // src/repo/apps-routes.ts — Org settings › Repositories › a repo › Apps: A's repository in the path is not B's, so B's
+  // admin gets 404 and B's member the 403; nothing is read or written for A.
+  "GET /repos/:owner/:name/apps": {}, "PUT /repos/:owner/:name/apps/:key": J({ kind: "Site", label: "hijacked" }), "DELETE /repos/:owner/:name/apps/:key": {},
   // src/github-app/routes.ts — the GitHub App's connection. `GET /github/install` only ever redirects (to GitHub for an
   // admin of the org in the path, back to its own Repositories tab otherwise); B has no installation, so the rest answer
   // B's own "not connected" and never reach for the network.
@@ -310,6 +314,7 @@ const TENANT: Record<string, Row> = {
   "GET /hosting": {}, "GET /hosting/providers": {},
   "PUT /environments/:key/parts/:part": J({ provider: "cloudflare", settings: { worker: "hijacked" } }), "DELETE /environments/:key/parts/:part": {},
   "POST /hosting/:provider/connect": J({}), "POST /hosting/:provider/disconnect": J({}), "POST /hosting/:provider/test": J({ env: "canary-env", part: "web" }),
+  "DELETE /hosting/:provider/leftovers": {},
   // src/auth/token-routes.ts — the caller's OWN tokens for the org in the path (`:id` is alice's token in A)
   "GET /mcp-tokens": {}, "POST /mcp-tokens": J({}), "POST /mcp-tokens/:id/revoke": J({}),
   // src/billing/routes.ts — an OWNER's billing for the org in the path (0045_billing). Billing is off in the pool,
@@ -325,13 +330,20 @@ const TENANT: Record<string, Row> = {
   "GET /ai/settings": {}, "PUT /ai/settings": J({ enabled: false }),
   "POST /ai/suggestions/:id/accept": J({}), "POST /ai/suggestions/:id/dismiss": J({}),
   "POST /ai/feedback": J({ itemType: "brief", itemRef: "x", kind: "brief", model: null, promptVersion: null }),
+  // src/repo/settings-routes.ts — the PATH's org's default for one of ITS repositories (0071_repo_settings): A's repo
+  // is not B's, so B's admin gets 404 and B's member the 403; nothing is written for A.
+  "PUT /repo/settings": J({ repo: "SaplingLearn/sapling", overview_group: "app" }),
+  // src/repo/scan-routes.ts — Scan again and the suggestions of one of the PATH org's repositories (0072_repo_scans): A's
+  // repository is not B's, so B's admin gets 404 and B's member the 403; nothing of A's is read or written.
+  "POST /repos/:owner/:name/scan": J({}), "POST /repos/:owner/:name/suggestions/undo": J({ undo: "x" }),
+  "POST /repos/:owner/:name/suggestions/:id/accept": J({}), "POST /repos/:owner/:name/suggestions/:id/ignore": J({}),
 };
 
 /** The org surface (src/orgs, src/integrations, src/hosting, Org settings › AI in src/ai/routes.ts) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under
  *  `/api/o/:slug`; every other tenant route also has an alias at its old path. The tokens' old paths are not twins of
  *  these — `/auth/mcp-token…` is person-level and resolves the caller's one org itself (PLATFORM, below). */
 const NO_ALIAS = (suffix: string): boolean =>
-  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/hosting", "/mcp-tokens", "/billing", "/github", "/deletion", "/delete", "/ai"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
+  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/hosting", "/mcp-tokens", "/billing", "/github", "/deletion", "/delete", "/ai", "/repo/settings"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
 
 /** Old paths whose `/api/o/:slug` form is a DIFFERENT route (or none): behind `soleTenantGate`, exercised in their own test below. */
 const LEGACY_ONLY: Record<string, Row> = {

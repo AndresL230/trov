@@ -1,0 +1,15 @@
+name: shop
+region: nyc
+services:
+  - name: api
+    source_dir: services/api
+    github:
+      repo: acme/shop
+      branch: main
+static_sites:
+  - name: www
+    source_dir: /web
+jobs:
+  - name: nightly
+    source_dir: services/cron
+    kind: PRE_DEPLOY

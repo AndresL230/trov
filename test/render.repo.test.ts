@@ -72,7 +72,8 @@ describe("repoView — section states", () => {
 
   it("shows 'Source not connected' for a section nothing has been captured for, with no dead button", () => {
     const html = repoView(props({ tab: "usage" }));
-    expect((html.match(/Source not connected/g) ?? []).length).toBe(2); // usage, product
+    expect((html.match(/Source not connected/g) ?? []).length).toBe(1); // product — the targets say it per target (repo-usage.ts)
+    expect(html).toContain('data-utargets="none"');
     // Hosting says it in its own quiet line (repo-hosting.ts) — the old Cloudflare / Railway blocks are gone.
     expect(html).toContain('data-hosting="not_connected"');
     expect(html).not.toContain("Connect Cloudflare");
@@ -93,7 +94,7 @@ describe("repoView — section states", () => {
     // P5-8: no branch NAME — the screen does not know which branch the first environment deploys from.
     expect(ci).toContain("posts a canopy/coverage commit status on a push to the default environment branch; it is read from a status webhook event, the 6-hourly GitHub reconcile, or Poll now.");
     expect(ci).toContain("posts a canopy/bundle-kb commit status on a push to the default environment branch; it is read from a status webhook event, the 6-hourly GitHub reconcile, or Poll now.");
-    expect(usage).toContain("Requests and error rate come from each environment&#39;s web parts, polled hourly from their hosting provider (Org settings › Hosting)");
+    expect(usage).toContain("Usage is read per target. Accept the apps Trov found in Org settings, give each a target and a host connection, and their traffic or CPU and memory show here.");
     expect(usage).toContain("No hosting provider is connected. An admin sets up each environment&#39;s parts in Org settings › Hosting; their deploys, traffic and resources then show here.");
     // No Worker variable or secret is named any more: an org's admin cannot set one.
     for (const html of [overview, code, ci, usage, planning]) {
@@ -251,86 +252,20 @@ describe("repoView — live content", () => {
     expect(open).toContain("12</span> commits ahead");
   });
 
-  it("the usage range picks its own series", () => {
+  // The Usage tab's targets (repo setups, Phase G — web/src/repo-usage.ts): one card per part, its figures following
+  // the range. Every state and every scenario: test/render.repo-usage.test.ts.
+  it("the usage range picks each target's own series", () => {
     const data = repoSample();
-    // Staging's web parts summed: 12.4K (Cloudflare) + 8.9K (Fly.io) in 24 h; production's 5.1M + 1.21M in 30 days.
-    expect(repoView(props({ tab: "usage", range: "24h", repo: { status: "ok", data } }))).toContain("21.3K");
-    expect(repoView(props({ tab: "usage", range: "30d", repo: { status: "ok", data } }))).toContain("6.31M");
-  });
-
-  it("a usage metric with no source says so in place, without blanking its neighbours", () => {
-    const envRow = { name: "staging", host: "staging.saplinglearn.com", requests: { value: "12.4K", trend: [1, 2, 3], tone: "neutral" as const }, errorRate: { value: "2.41%", trend: [1, 2], tone: "warn" as const }, users: null, seen: { requests: true, users: false } };
-    const data = live({ usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } } });
-    const html = repoView(props({ tab: "usage", repo: { status: "ok", data } }));
-    expect(html).toContain("12.4K");
-    expect(html).toContain("Active users");
-    expect(html).toContain("not connected");
-  });
-
-  it("a usage env with every metric unconnected still renders its name, host, and three not-connected rows", () => {
-    const envRow = { name: "staging", host: "staging.saplinglearn.com", requests: null, errorRate: null, users: null, seen: { requests: false, users: false } };
-    const data = live({
-      usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } },
-      product: EMPTY,
-    });
-    const html = repoView(props({ tab: "usage", repo: { status: "ok", data } }));
-    expect(html).toContain("staging");
-    expect(html).toContain("staging.saplinglearn.com");
-    expect((html.match(/not connected/g) ?? []).length).toBe(3);
-    expect(html).not.toMatch(/undefined|NaN/);
-  });
-
-  // Task 16b: `errorRate: null` beside LIVE requests is not "not connected" —
-  // the source is connected, there were simply no requests to take a rate of.
-  it("an error rate with nothing to take a rate of reads a quiet dash, not 'not connected'", () => {
-    const envRow = { name: "staging", host: "staging.saplinglearn.com", requests: { value: "0", trend: [0, 0, 0], tone: "neutral" as const }, errorRate: null, users: { value: "4", trend: [3, 4], tone: "neutral" as const }, seen: { requests: true, users: true } };
-    const data = live({ usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } }, product: EMPTY });
-    const html = repoView(props({ tab: "usage", repo: { status: "ok", data } }));
-    const errRow = html.slice(html.indexOf("Error rate"), html.indexOf("Active users"));
-    expect(errRow).toContain(">—<");
-    expect(errRow).not.toContain("not connected");
-    expect(errRow).not.toContain("<svg"); // no sparkline for a rate that does not exist
-    expect(html).not.toContain("not connected"); // nothing on this card is unconnected
-    expect(html).not.toMatch(/undefined|NaN/);
-  });
-
-  it("an error rate whose requests are ALSO unconnected still says 'not connected'", () => {
-    const envRow = { name: "staging", host: "staging.saplinglearn.com", requests: null, errorRate: null, users: { value: "4", trend: [3, 4], tone: "neutral" as const }, seen: { requests: false, users: true } };
-    const data = live({ usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } }, product: EMPTY });
-    const html = repoView(props({ tab: "usage", repo: { status: "ok", data } }));
-    const errRow = html.slice(html.indexOf("Error rate"), html.indexOf("Active users"));
-    expect(errRow).toContain("not connected");
-    expect(errRow).not.toContain(">—<");
-    expect((html.match(/not connected/g) ?? []).length).toBe(2);
-  });
-
-  // P5-2: a null metric whose source HAS reported (inside the 30-day read) is
-  // connected and quiet — saying "not connected" there was false.
-  it("a null metric whose source has been seen reads 'no recent reading', never 'not connected'", () => {
-    const envRow = { name: "staging", host: "staging.saplinglearn.com", requests: null, errorRate: null, users: null, seen: { requests: true, users: true } };
-    const data = live({ usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } }, product: EMPTY });
-    const html = repoView(props({ tab: "usage", repo: { status: "ok", data } }));
-    expect((html.match(/no recent reading/g) ?? []).length).toBe(3); // requests, error rate (follows requests), users
-    expect(html).not.toContain("not connected");
-    expect(html).not.toMatch(/undefined|NaN|<svg viewBox="0 0 100 26"/);
-  });
-
-  it("the two labels sit side by side: requests seen and quiet, users never connected", () => {
-    const envRow = { name: "staging", host: "staging.saplinglearn.com", requests: null, errorRate: null, users: null, seen: { requests: true, users: false } };
-    const data = live({ usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } }, product: EMPTY });
-    const html = repoView(props({ tab: "usage", repo: { status: "ok", data } }));
-    const row = (from: string, to: string) => html.slice(html.indexOf(from), html.indexOf(to));
-    expect(row("Requests", "Error rate")).toContain("no recent reading");
-    expect(row("Error rate", "Active users")).toContain("no recent reading");
-    const usersRow = html.slice(html.indexOf("Active users"));
-    expect(usersRow).toContain("not connected");
-    expect(usersRow).not.toContain("no recent reading");
-  });
-
-  it("usage empty says the polls have gone quiet — never that nothing was recorded in 30 days", () => {
-    const html = repoView(props({ tab: "usage", repo: { status: "ok", data: live({ usage: EMPTY }) } }));
-    expect(html).toContain("No current usage reading — the hourly polls have gone quiet.");
-    expect(html).not.toContain("No usage recorded in the last 30 days.");
+    const parts = data.providers.status === "ok" ? data.providers.data : [];
+    for (const range of ["24h", "30d"] as const) {
+      const html = repoView(props({ tab: "usage", range, repo: { status: "ok", data } }));
+      const web = parts.filter((p) => p.traffic && p.traffic[range].requests !== null);
+      expect(web.length).toBeGreaterThan(0);
+      for (const p of web) {
+        const card = html.slice(html.indexOf(`data-utarget="${p.env}/${p.part}"`));
+        expect(card.slice(0, card.indexOf("data-utarget=", 20) > 0 ? card.indexOf("data-utarget=", 20) : undefined), `${range} ${p.env}/${p.part}`).toContain(`Requests · ${range}`);
+      }
+    }
   });
 
   it("M11: renders a null reviews count as an em dash, excluded from the bar width", () => {
@@ -1006,7 +941,9 @@ describe("repoView — product metrics", () => {
 
   it("not_connected and empty each say what they are waiting on; loading and error have their forms", () => {
     const nc = repoView(props({ tab: "usage", repo: { status: "ok", data: live() } }));
-    expect(nc).toContain("No product metrics reported yet. They appear once the app&#39;s metrics endpoint serves `counts` / `totals` and the environment&#39;s app metrics token is set in Org settings › Integrations.");
+    // The token lives in a part's editor since Phase 0 (e2e U3) — never Integrations.
+    expect(nc).toContain("No product metrics reported yet. They appear once the app&#39;s metrics endpoint serves `counts` / `totals` and its app metrics token is set in the part&#39;s editor, in Org settings › Repositories › Apps.");
+    expect(nc).not.toContain("token is set in Org settings › Integrations");
     const quiet = repoView(props({ tab: "usage", repo: { status: "ok", data: live({ product: EMPTY }) } }));
     expect(quiet).toContain("No current product reading — the hourly poll of the app&#39;s metrics endpoint has gone quiet.");
     expect(quiet).not.toContain("No product metrics reported yet");
@@ -1113,8 +1050,8 @@ describe("repoView — product metrics", () => {
     const html = view();
     const product = html.slice(html.indexOf(">Product<"), html.lastIndexOf('<div class="cnpy-rise"', html.indexOf("data-usage-hosting")));
     expect(product).toMatch(/class="repo-swap repo-pswap" data-penv="staging"/);
-    expect([...product.matchAll(/class="cnpy-rise" style="--i:(\d+);/g)].map((m) => m[1])).toEqual(["2", "3", "4"]); // strip, tiles, blocks
-    expect(html).toMatch(/class="cnpy-rise" style="--i:2;"><div[^>]*><span[^>]*>Product</); // the header enters with the strip
+    expect([...product.matchAll(/class="cnpy-rise" style="--i:(\d+);/g)].map((m) => m[1])).toEqual(["3", "4", "5"]); // strip, tiles, blocks
+    expect(html).toMatch(/class="cnpy-rise" style="--i:3;"><div[^>]*><span[^>]*>Product</); // the header enters with the strip
     expect(product).toContain("data-count=");
     expect(product).toContain('class="repo-spark"');
     expect(product).not.toMatch(/animation|transition|@keyframes/);
@@ -1324,7 +1261,9 @@ describe("Poll now — the Repo top bar, every tab", () => {
     expect(html).toContain("No repository connected");
     expect(html).toContain("repo-poll-strip");
     const text = stripText(html);
-    for (const label of ["Health", "App metrics", "GitHub"]) expect(text, label).toContain(`${label} — Not connected — set it up in Org settings › Integrations`);
+    for (const label of ["Health", "GitHub"]) expect(text, label).toContain(`${label} — Not connected — set it up in Org settings › Integrations`);
+    // The app metrics token lives in a part's editor since Phase 0 (e2e U3).
+    expect(text).toContain("App metrics — Not connected — set its token in a part's editor, in Org settings › Repositories");
     expect(html).not.toMatch(/color:var\(--red\)/);
     // Before a poll, and for a member, the empty state stands alone.
     expect(view({ noRepo: true, poll: null })).not.toContain("repo-poll-strip");

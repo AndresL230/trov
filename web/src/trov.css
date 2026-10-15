@@ -1363,7 +1363,6 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .cnpy-field-anchor { position:relative; }
 .cnpy-field-err { position:absolute; left:0; top:calc(100% + 7px); z-index:6; box-sizing:border-box; max-width:min(100%, 440px); padding:7px 11px; font-size:12.5px; line-height:1.45; color:var(--red); background:var(--surface); border:1px solid color-mix(in srgb, var(--red) 50%, var(--border)); box-shadow:0 6px 20px color-mix(in srgb, var(--fg) 14%, transparent); pointer-events:none; }
 .cnpy-field-err::before { content:""; position:absolute; top:-5px; left:14px; width:8px; height:8px; background:var(--surface); border-left:1px solid color-mix(in srgb, var(--red) 50%, var(--border)); border-top:1px solid color-mix(in srgb, var(--red) 50%, var(--border)); transform:rotate(45deg); }
-.cnpy-hx-envs { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap:14px; align-items:start; }
 .cnpy-hx-envhead { display:flex; align-items:center; gap:6px 10px; flex-wrap:wrap; min-height:52px; padding:9px 12px 9px 16px; border-bottom:1px solid var(--border); box-sizing:border-box; }
 .cnpy-hx-step { display:flex; align-items:flex-start; gap:10px 12px; flex-wrap:wrap; padding:11px 16px; border-bottom:1px solid var(--border); margin-bottom:-1px; }
 /* A part's name, role and status stay on one line; the host and its project (the quiet metadata) give way first. */
@@ -1681,6 +1680,44 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
   .repo-tip, .repo-dot, .repo-row, .repo-chev, .repo-rank-l { transition:none !important; }
   .cnpy-statusbtn, .cnpy-statusbtn svg:last-child { transition:none !important; }
   .cnpy-avbtn-veil, .cnpy-avbtn-veil svg { transition:none !important; animation:none !important; }
+}
+
+/* ── repo-block-kit (web/src/repo-block-kit.ts): what the Overview's deploy blocks share ── */
+/* Building pulses its ring (the design's pulse); still under reduced motion. */
+.repo-kit-pulse svg { animation:cnpy-blink 1.4s ease-in-out infinite; }
+
+/* ── repo-env-cards (web/src/repo-env-cards.ts): a card per environment, side by side as room allows ── */
+.repo-envcards { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(var(--card-min, 340px), 100%), 1fr)); margin:-1px 0 0 -1px; overflow:hidden; }
+.repo-envcell { min-width:0; border-left:1px solid var(--border); border-top:1px solid var(--border); }
+.repo-envcard { padding:20px 22px 12px; min-width:0; box-sizing:border-box; }
+.repo-envrow { display:grid; grid-template-columns:84px minmax(0,1fr) auto; gap:4px 12px; padding:11px 0; align-items:start; }
+.repo-envci { display:grid; grid-template-columns:84px minmax(0,1fr); gap:12px; padding:11px 0 6px; align-items:baseline; }
+/* phone: the health reading drops under the app's name instead of squeezing the commit line */
+@media (max-width:480px) {
+  .repo-envrow { grid-template-columns:72px minmax(0,1fr); }
+  .repo-envrow-health { grid-column:1; grid-row:2; justify-content:flex-start !important; }
+  .repo-envci { grid-template-columns:72px minmax(0,1fr); }
+}
+
+/* ── repo-drift (web/src/repo-drift.ts): one strip, or the chain's step buttons ── */
+.repo-driftstep { display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 9px; border:1px solid var(--border); border-radius:7px; background:transparent; font-size:12.5px; color:var(--fg-70); transition:border-color .14s ease, color .14s ease, background .14s ease; }
+.repo-driftstep:hover { border-color:var(--border-strong); color:var(--fg); }
+.repo-driftstep.is-open { border-color:var(--border-strong); background:var(--hover); }
+.repo-driftstep:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+
+/* ── repo-apps-table (web/src/repo-apps-table.ts): a row per app, worst first; scrolls sideways inside on a phone ── */
+.repo-appstable-scroll { overflow-x:auto; overflow-y:hidden; }
+.repo-appstable-in { min-width:820px; }
+.repo-appsrow { display:grid; grid-template-columns:20px minmax(170px,1.2fr) minmax(220px,1.5fr) minmax(160px,1fr) minmax(120px,.8fr); gap:0 16px; padding:11px 20px; border-bottom:1px solid var(--border); align-items:start; transition:background .14s ease; }
+.repo-appsrow:not(.repo-appshead):hover { background:var(--hover); }
+.repo-appsrow.is-failed { background:color-mix(in srgb, var(--red) 4%, transparent); }
+.repo-appshead { padding:10px 20px; }
+.repo-appspkghead { display:flex; align-items:baseline; gap:8px; padding:9px 20px; border-bottom:1px solid var(--border); background:color-mix(in srgb, var(--fg) 2%, transparent); }
+.repo-appspkg { display:grid; grid-template-columns:20px minmax(170px,1.2fr) minmax(0,3.3fr); gap:0 16px; padding:11px 20px; border-bottom:1px solid var(--border); align-items:baseline; }
+
+@media (prefers-reduced-motion: reduce) {
+  .repo-kit-pulse svg { animation:none !important; }
+  .repo-driftstep, .repo-appsrow { transition:none !important; }
 }
 
 /* ── landing (signed-out screen, web/src/landing.ts) ──────────────────────────
@@ -3079,6 +3116,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 [data-cnpy-theme] .cnpy-av-anon { border-color:transparent !important; background:color-mix(in srgb,var(--fg) 14%,transparent) !important; }
 [data-cnpy-theme] .cnpy-dot { box-shadow:none; }
 [data-cnpy-theme] .repo-envdot { box-shadow:none !important; width:8px !important; height:8px !important; }
+[data-cnpy-theme] .repo-driftstep { border-radius:calc(7px * var(--corner-scale)) !important; }
 /* A growing boxy frame is not a pulse; a boxy LED blinks instead. */
 [data-cnpy-theme] .repo-envdot.repo-pulse { animation:cnpy-blink 1.4s ease-in-out infinite; }
 @keyframes cnpy-blink { 50% { opacity:.3; } }
@@ -3442,3 +3480,73 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 .cnpy-tagjev[data-state="none"] .cnpy-fitrun-bar > span { background:var(--fg-40); }
 /* Reduced motion: the bar jumps to each answer (no frame loop runs); colour, fades and Undo's entrance are instant. */
 @media (prefers-reduced-motion: reduce) { .cnpy-fitrun-bar > span, .cnpy-tagjev .cnpy-fitrun-bar { transition:none; } .cnpy-tagjev-undo { animation:none; } }
+
+/* ── repo-overview (web/src/repo-overview.ts): the Overview drawn from facts ─────────────────────────────────
+   Every block sits in a `.repo-block` wrapper (its name in `data-repo-block`); one that drew nothing takes no
+   room. Blocks are divided by hairlines inside the one panel, like the rest of the dashboard. */
+.repo-block:empty { display:none; }
+.repo-block + .repo-block:not(:empty) { border-top:1px solid var(--border); }
+.repo-block[data-repo-block="attention"] + .repo-block { border-top:0; }
+.repo-links { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); margin:-1px 0 0 -1px; overflow:hidden; }
+.repo-link-cell { display:flex; flex-direction:column; align-items:flex-start; gap:3px; min-width:0; padding:14px 22px; text-align:left; border-left:1px solid var(--border); border-top:1px solid var(--border); transition:background .12s ease; cursor:pointer; }
+.repo-link-cell:hover { background:var(--hover); }
+.repo-link-cell:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
+@media (prefers-reduced-motion: reduce) { .repo-link-cell { transition:none; } }
+
+/* ── repo-attention (web/src/repo-attention.ts): Needs attention, first under the state slot ──────────────── */
+.repo-att { padding:14px 22px 6px; background:color-mix(in srgb, var(--accent) 4%, var(--surface)); border-bottom:1px solid var(--border); }
+.repo-att-row { display:flex; align-items:center; gap:8px 12px; padding:10px 0; flex-wrap:wrap; }
+.repo-att-act { cursor:pointer; }
+.repo-att-act:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+
+/* ── repo-connect (web/src/repo-connect.ts): the connect card above the opener (its radius is inline) ──────── */
+.repo-connect { padding:18px 22px; }
+.repo-connect-card { border:1px dashed color-mix(in srgb, var(--accent) 45%, transparent); padding:18px 20px; background:color-mix(in srgb, var(--accent) 4%, transparent); display:flex; align-items:center; gap:12px 20px; flex-wrap:wrap; }
+
+/* ── repo-week (web/src/repo-week.ts): this week's figures ───────────────────────────────────────────────── */
+.repo-week { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); margin:-1px 0 0 -1px; overflow:hidden; }
+.repo-week-tile { padding:16px 22px; min-width:0; border-left:1px solid var(--border); border-top:1px solid var(--border); }
+
+/* ── repo-header (web/src/repo-header.ts): the repository / App menus, the pills, Group by ────────────────── */
+.repo-scope-dd { display:inline-flex; min-width:0; max-width:260px; }
+/* A phone keeps the repository's name: the "updated …" / synced text gives up its room (the refresh button's title
+   still says it) and the scope menus never shrink below their names — the header wraps its controls to a second line
+   instead (e2e P-phone: `.repo-scope` clipped the repository menu to an empty chip). */
+[data-phone="1"] [data-repo-updated], [data-phone="1"] .sync-repo-l { display:none; }
+/* (it outranks the phone header's crumb rule, `.cnpy-hdr-l > span { contain:inline-size; flex:1 1 0; overflow:hidden }`,
+   whose inline-size containment gives a span no width of its own) */
+[data-phone="1"] .cnpy-hdr-l > span.repo-scope { contain:none; flex:1 0 auto; max-width:100%; overflow:visible; }
+.repo-groupby { display:flex; align-items:center; justify-content:flex-end; gap:10px 16px; margin-bottom:12px; flex-wrap:wrap; }
+/* The design offers Group by on a wide screen only: a phone draws the opener the rules picked. */
+[data-phone="1"] .repo-groupby { display:none; }
+.repo-sample-switch { display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+/* ── repo-production (web/src/repo-production.ts) ─────────────────────────────
+   The Production card (rule R4). Its deploy strip is a 14px square per deploy, newest on the right, the
+   newest ringed; a building one blinks, and so does a Building mark's shape anywhere on the Overview
+   (`.repo-blink`, repo-block-kit.ts) — both still under reduced motion. Radii are inline (3px / 4px), so the
+   corners block already scales them. */
+.repo-prod-sq.is-last { outline:1px solid var(--border-strong); outline-offset:2px; }
+.repo-prod-sq.is-building, .repo-blink svg { animation:repo-blink 1.6s ease-in-out infinite; }
+@keyframes repo-blink { 0%, 100% { opacity:1; } 50% { opacity:.35; } }
+@media (prefers-reduced-motion: reduce) { .repo-prod-sq.is-building, .repo-blink svg { animation:none !important; } }
+
+/* ── repo-previews (web/src/repo-previews.ts) ─────────────────────────────────
+   The Previews list under the Production card: a row per open pull request's preview. */
+.repo-pv-row { transition:background .14s ease; }
+.repo-pv-row:hover { background:var(--hover); }
+@media (prefers-reduced-motion: reduce) { .repo-pv-row { transition:none; } }
+
+/* ── repo-found (web/src/repo-found.ts) ───────────────────────────────────────
+   The found-apps card (rule R1): one grid row per suggested app — the ring, folder, kind, host, evidence and,
+   for an admin, Accept / Ignore. Under 640px of card a row folds: the folder beside its buttons, then kind,
+   host and evidence under it. No radius here (the buttons' are inline). */
+.repo-found { container-type:inline-size; }
+.repo-found-row { display:grid; grid-template-columns:18px minmax(140px,1fr) minmax(90px,.55fr) minmax(110px,.7fr) minmax(0,1.5fr); gap:4px 14px; align-items:baseline; }
+.repo-found-row.has-act { grid-template-columns:18px minmax(140px,1fr) minmax(90px,.55fr) minmax(110px,.7fr) minmax(0,1.5fr) auto; align-items:center; }
+@container (max-width: 640px) {
+  .repo-found-row, .repo-found-row.has-act { grid-template-columns:18px minmax(0,1fr) auto; row-gap:2px; }
+  .repo-found-row > :nth-child(n+3):nth-child(-n+5) { grid-column:2 / -1; }
+  .repo-found-row .repo-found-ev { white-space:normal !important; }
+  .repo-found-act { grid-column:3; grid-row:1; }
+}

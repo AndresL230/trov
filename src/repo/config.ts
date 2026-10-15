@@ -66,3 +66,18 @@ export async function orgPrimaryRepo(ctx: TenantContext): Promise<{ id: string; 
   const row = await first<{ id: string; repo_full_name: string }>(ctx, `SELECT id, repo_full_name FROM org_repos WHERE org_id = ? AND is_primary = 1`, ctx.orgId);
   return row ? { id: row.id, repo: row.repo_full_name } : null;
 }
+
+/** The org's repositories, the primary first — what `GET /repo/dashboard?repo=` and MCP `get_repo_dashboard`'s
+ *  `repo` are checked against. */
+export async function orgRepoNames(ctx: TenantContext): Promise<string[]> {
+  return (await all<{ repo_full_name: string }>(ctx,
+    `SELECT repo_full_name FROM org_repos WHERE org_id = ? ORDER BY is_primary DESC, created_at, id`, ctx.orgId)).map((r) => r.repo_full_name);
+}
+
+/** The repository a dashboard read asks for: `asked` (any case) when the org has it, the primary when nothing is
+ *  asked ('' with none), and `null` when it names one the org does not have. */
+export async function dashboardRepo(ctx: TenantContext, asked: string | undefined | null): Promise<string | null> {
+  if (asked === undefined || asked === null || asked === "") return (await orgPrimaryRepo(ctx))?.repo ?? "";
+  const want = asked.trim().toLowerCase();
+  return (await orgRepoNames(ctx)).find((r) => r.toLowerCase() === want) ?? null;
+}

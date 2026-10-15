@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><style>@keyframes trov-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } } @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }</style></helmet><span title="{{ tip }}" role="{{ role }}" aria-label="{{ aria }}" style="display:inline-flex;align-items:center;gap:{{ gap }};font-size:{{ fs }};line-height:1.25;color:var(--fg-70);white-space:nowrap;vertical-align:middle"><sc-if value="{{ pulse }}" hint-placeholder-val="{{ false }}"><svg width="{{ box }}" height="{{ box }}" viewBox="{{ vb }}" fill="none" aria-hidden="true" style="flex:none;display:block;color:{{ tone }};animation:trov-pulse 1.6s ease-in-out infinite"><path d="{{ d1 }}" fill="{{ f1 }}" stroke="{{ s1 }}" stroke-width="{{ w1 }}" stroke-dasharray="{{ dash }}"></path><path d="{{ d2 }}" fill="currentColor"></path><path d="{{ d3 }}" fill="none" stroke-width="{{ w3 }}" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--surface)"></path></svg></sc-if><sc-if value="{{ still }}" hint-placeholder-val="{{ true }}"><svg width="{{ box }}" height="{{ box }}" viewBox="{{ vb }}" fill="none" aria-hidden="true" style="flex:none;display:block;color:{{ tone }}"><path d="{{ d1 }}" fill="{{ f1 }}" stroke="{{ s1 }}" stroke-width="{{ w1 }}" stroke-dasharray="{{ dash }}"></path><path d="{{ d2 }}" fill="currentColor"></path><path d="{{ d3 }}" fill="none" stroke-width="{{ w3 }}" stroke-linecap="round" stroke-linejoin="round" style="stroke:var(--surface)"></path></svg></sc-if><sc-if value="{{ hasWord }}" hint-placeholder-val="{{ false }}"><span>{{ word }}</span></sc-if></span>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:160,&quot;height&quot;:40},&quot;m&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;object&quot;},&quot;shape&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dot&quot;,&quot;ring&quot;,&quot;triangle&quot;,&quot;diamond&quot;,&quot;square&quot;,&quot;check&quot;,&quot;g-todo&quot;,&quot;g-half&quot;,&quot;g-most&quot;,&quot;g-done&quot;],&quot;default&quot;:&quot;dot&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;tone&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;var(--green)&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;word&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Healthy&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;size&quot;:{&quot;editor&quot;:&quot;float&quot;,&quot;default&quot;:12.5,&quot;tsType&quot;:&quot;number&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const m = this.props.m || {};
+    const shape = this.props.shape || m.shape || 'dot';
+    const tone = this.props.tone || m.tone || 'var(--fg-55)';
+    const word = this.props.word ?? m.word ?? '';
+    const size = Number(this.props.size || m.size || 12.5);
+    const glyph = shape.startsWith('g-');
+    const RING14 = 'M7 1.5a5.5 5.5 0 1 1 0 11a5.5 5.5 0 1 1 0-11Z';
+    const S = {
+      dot: ['M5 1a4 4 0 1 1 0 8a4 4 0 1 1 0-8Z', 'currentColor', 'none', 0],
+      ring: ['M5 1.4a3.6 3.6 0 1 1 0 7.2a3.6 3.6 0 1 1 0-7.2Z', 'none', 'currentColor', 1.6],
+      triangle: ['M5 .8 9.5 9H.5Z', 'currentColor', 'none', 0],
+      diamond: ['M5 .3 9.7 5 5 9.7.3 5Z', 'currentColor', 'none', 0],
+      square: ['M2 .8h6A1.2 1.2 0 0 1 9.2 2v6A1.2 1.2 0 0 1 8 9.2H2A1.2 1.2 0 0 1 .8 8V2A1.2 1.2 0 0 1 2 .8Z', 'currentColor', 'none', 0],
+      check: ['M5 .3a4.7 4.7 0 1 1 0 9.4a4.7 4.7 0 1 1 0-9.4Z', 'currentColor', 'none', 0, '', 'M2.9 5.2l1.4 1.4 2.8-2.9', 1.3],
+      'g-todo': [RING14, 'none', 'currentColor', 1.5, '', '', 0, '2.4 1.9'],
+      'g-half': [RING14, 'none', 'currentColor', 1.5, 'M7 7V3.5A3.5 3.5 0 0 1 7 10.5Z'],
+      'g-most': [RING14, 'none', 'currentColor', 1.5, 'M7 7V3.5A3.5 3.5 0 1 1 3.5 7Z'],
+      'g-done': ['M7 .75a6.25 6.25 0 1 1 0 12.5a6.25 6.25 0 1 1 0-12.5Z', 'currentColor', 'none', 0, '', 'M4.3 7.2l1.9 1.9 3.6-3.8', 1.6],
+      'g-declined': ['M7 .75a6.25 6.25 0 1 1 0 12.5a6.25 6.25 0 1 1 0-12.5Z', 'currentColor', 'none', 0, '', 'M5 5l4 4M9 5l-4 4', 1.6],
+    };
+    const p = S[shape] || S.dot;
+    const pulse = !!(this.props.pulse ?? m.pulse);
+    return {
+      tip: m.tip || this.props.tip || undefined,
+      role: word ? undefined : 'img', aria: word ? undefined : (m.aria || m.tip || shape),
+      gap: (size < 12 ? 5 : 6) + 'px', fs: size + 'px',
+      box: glyph ? Math.round(size + 1.5) : Math.round(size * 0.72),
+      vb: glyph ? '0 0 14 14' : '0 0 10 10',
+      tone, d1: p[0], f1: p[1], s1: p[2], w1: p[3] || 0, d2: p[4] || '', d3: p[5] || '', w3: p[6] || 1.3, dash: p[7] || undefined,
+      pulse, still: !pulse, hasWord: !!word, word,
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -4,9 +4,12 @@
       "accounts": [
         {
           "workersInvocationsAdaptive": [
-            { "dimensions": { "datetimeHour": "2026-10-07T09:00:00Z" }, "sum": { "requests": 1523, "errors": 2 } },
-            { "dimensions": { "datetimeHour": "2026-10-07T10:00:00Z" }, "sum": { "requests": 1610, "errors": 0 } },
-            { "dimensions": { "datetimeHour": "2026-10-07T12:00:00Z" }, "sum": { "requests": 311, "errors": 1 } }
+            { "dimensions": { "datetimeHour": "2026-10-07T09:00:00Z", "status": "success" }, "sum": { "requests": 1500, "errors": 0, "subrequests": 904 } },
+            { "dimensions": { "datetimeHour": "2026-10-07T09:00:00Z", "status": "clientDisconnected" }, "sum": { "requests": 21, "errors": 0, "subrequests": 12 } },
+            { "dimensions": { "datetimeHour": "2026-10-07T09:00:00Z", "status": "scriptThrewException" }, "sum": { "requests": 2, "errors": 2, "subrequests": 1 } },
+            { "dimensions": { "datetimeHour": "2026-10-07T10:00:00Z", "status": "success" }, "sum": { "requests": 1610, "errors": 0, "subrequests": 1022 } },
+            { "dimensions": { "datetimeHour": "2026-10-07T12:00:00Z", "status": "success" }, "sum": { "requests": 310, "errors": 0, "subrequests": 180 } },
+            { "dimensions": { "datetimeHour": "2026-10-07T12:00:00Z", "status": "exceededResources" }, "sum": { "requests": 1, "errors": 1, "subrequests": 0 } }
           ]
         }
       ]

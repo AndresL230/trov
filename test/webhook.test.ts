@@ -388,14 +388,34 @@ describe("handleGithubWebhook — status capture (coverage/bundle/TODO metrics)"
   });
 
   // Commit statuses from other apps (Railway, CodeRabbit) arrive constantly
-  // once the webhook is subscribed to Statuses — an unrelated context must
-  // cost nothing beyond one cheap parse: zero repo_metrics rows written.
-  it("a status with an unrelated context writes nothing", async () => {
+  // once the webhook is subscribed to Statuses — an unrelated context is never
+  // a metric; it is kept as ONE untagged deploy signal (repo setups, Phase A).
+  it("a status with an unrelated context writes no metric — one untagged deploy signal", async () => {
     const other = { ...statusFixture, context: "Railway", description: "Deploy succeeded" };
     const res = await postWebhook("status", other, withEnvs);
-    expect(await res.json()).toEqual({ ok: true, captured: 0, unchanged: 0, repo: { captured: 0, unchanged: 0 } });
+    expect(await res.json()).toEqual({ ok: true, captured: 0, unchanged: 0, repo: { captured: 1, unchanged: 0 } });
     expect(await all(env.DB, `SELECT * FROM repo_metrics`)).toHaveLength(0);
+    expect(await all(env.DB, `SELECT kind, name, env, part, state FROM repo_events`)).toEqual([{ kind: "deploy", name: "Railway", env: null, part: null, state: "success" }]);
+  });
+
+  it("workflow_job is verified and acknowledged, and captures nothing yet", async () => {
+    const res = await postWebhook("workflow_job", { action: "completed", repository: { full_name: "SaplingLearn/sapling" } }, withEnvs);
+    expect(await res.json()).toEqual({ ok: true, ignored: true, later: true });
     expect(await all(env.DB, `SELECT * FROM repo_events`)).toHaveLength(0);
+    expect(await all(env.DB, `SELECT * FROM events`)).toHaveLength(0);
+  });
+
+  it("release and create reach the release capture (Phase F): a release without a release object writes nothing; a published one writes its row", async () => {
+    for (const name of ["release", "create"]) {
+      const res = await postWebhook(name, { action: "published", repository: { full_name: "SaplingLearn/sapling" } }, withEnvs);
+      expect(await res.json()).toEqual({ ok: true, captured: 0, unchanged: 0, repo: { captured: 0, unchanged: 0 } });
+    }
+    const release = { tag_name: "v1.0.0", name: "One", draft: false, prerelease: false, published_at: "2026-10-01T10:00:00Z", author: { login: "AndresL230" }, body: "First." };
+    const res = await postWebhook("release", { action: "published", release, repository: { full_name: "SaplingLearn/sapling" } }, withEnvs);
+    expect(await res.json()).toEqual({ ok: true, captured: 0, unchanged: 0, repo: { captured: 1, unchanged: 0 } });
+    expect(await all(env.DB, `SELECT org_id, repo, tag, source FROM releases`)).toEqual([{ org_id: "org_saplinglearn", repo: "SaplingLearn/sapling", tag: "v1.0.0", source: "release" }]);
+    expect(await all(env.DB, `SELECT * FROM repo_events`)).toHaveLength(0);
+    expect(await all(env.DB, `SELECT * FROM events`)).toHaveLength(0);
   });
 
   // M13: "main" only counts when it IS the first configured environment's

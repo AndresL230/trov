@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><style>@font-face { font-family:'Geist'; font-style:normal; font-weight:100 900; font-display:swap; src:url("fonts/geist-latin.woff2") format("woff2"); } @font-face { font-family:'Geist'; font-style:normal; font-weight:100 900; font-display:swap; src:url("fonts/geist-latin-ext.woff2") format("woff2"); unicode-range:U+0100-02BA, U+1E00-1EFF, U+2020, U+20A0-20AB; } @font-face { font-family:'Archivo Narrow'; font-style:normal; font-weight:400 700; font-display:swap; src:url("fonts/archivo-narrow-latin.woff2") format("woff2"); }
+:root { --mark:#616ACB; --bg:#f6f6f7; --surface:#ffffff; --fg:#16161a; --fg-70:#4f4f58; --fg-55:#6e6e78; --fg-40:#70707a; --border:rgba(20,20,30,0.08); --border-strong:rgba(20,20,30,0.15); --hover:rgba(20,20,30,0.04); --accent:#525cc3; --accent-fg:#ffffff; --accent-soft:rgba(82,92,195,0.12); --green:#007545; --amber:#945800; --blue:#2467af; --red:#c22231; --red-fg:#ffffff; --shadow:0 1px 2px rgba(20,20,30,0.05); --menu-shadow:0 14px 38px rgba(20,20,30,0.16); --sans:'Geist',system-ui,-apple-system,sans-serif; --label:'Geist',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; --nav-on-bg:#ffffff; --nav-on-ring:0 1px 2px rgba(20,20,30,0.05),0 0 0 1px rgba(20,20,30,0.08); --p-moss:#607a29; --p-fern:#2f7d57; --p-sky:#3e6f8a; --p-slate:#5b6b8c; --p-plum:#7a4f8f; --p-rose:#a84a68; --p-rust:#b4562c; --p-ochre:#966800; --p-stone:#6e6e78; --p-ink:#ffffff; }
+* { box-sizing:border-box; } html, body { margin:0; height:100%; background:var(--bg); color:var(--fg); font-family:var(--sans); -webkit-font-smoothing:antialiased; } button, input { font-family:inherit; cursor:pointer; } input { cursor:text; } a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; text-underline-offset:3px; } ::selection { background:var(--accent); color:var(--accent-fg); }
+@keyframes trov-spin { to { transform:rotate(360deg); } } @keyframes trov-rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } } @keyframes trov-pulse { 0%, 100% { opacity:1; } 50% { opacity:.35; } } @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }</style></helmet>
+<div style="height:100vh;overflow:hidden;background:var(--bg)">
+  <sc-if value="{{ onRepo }}" hint-placeholder-val="{{ true }}">
+    <dc-import name="RepoScreen" key="{{ screenKey }}" scenario="{{ scenario }}" variant="{{ variant }}" phone="{{ phone }}" dark="{{ dark }}" admin="{{ admin }}" fill="{{ true }}" orgs="{{ orgs }}" onOrg="{{ pickOrg }}" onRepo="{{ pickRepo }}" onNav="{{ nav }}" onTheme="{{ toggleTheme }}" hint-size="100%,100vh"></dc-import>
+  </sc-if>
+  <sc-if value="{{ onOrg }}" hint-placeholder-val="{{ false }}">
+    <dc-import name="OrgSetup" screen="{{ setupScreen }}" fill="{{ true }}" dark="{{ dark }}" org="{{ orgInfo }}" me="{{ me }}" orgs="{{ orgs }}" onOrg="{{ pickOrg }}" onNav="{{ nav }}" onTheme="{{ toggleTheme }}" hint-size="100%,100vh"></dc-import>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;startRepo&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;SaplingLearn/sapling&quot;,&quot;AndresL230/trov&quot;,&quot;acme/storefront&quot;,&quot;acme/platform&quot;,&quot;acme/payments&quot;,&quot;acme/ingest&quot;,&quot;acme/site&quot;,&quot;acme/dashboard&quot;,&quot;acme/ui-kit&quot;,&quot;acme/core&quot;,&quot;acme/web-app&quot;,&quot;acme/new-thing&quot;,&quot;acme/mobile&quot;],&quot;default&quot;:&quot;SaplingLearn/sapling&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;moment&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;calm&quot;,&quot;problem&quot;,&quot;trouble&quot;],&quot;default&quot;:&quot;calm&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;admin&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;dark&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Prototype&quot;}}">
+const DARK = { '--mark': '#9aab65', '--bg': '#1c1a16', '--surface': '#221f1b', '--shadow': '0 1px 2px rgba(0,0,0,0.35)', '--fg': '#ede9e2', '--fg-70': 'rgba(237,233,226,0.72)', '--fg-55': 'rgba(237,233,226,0.55)', '--fg-40': 'rgba(237,233,226,0.52)', '--border': 'rgba(237,233,226,0.11)', '--border-strong': 'rgba(237,233,226,0.20)', '--hover': 'rgba(237,233,226,0.07)', '--accent': '#9aab65', '--accent-fg': '#131a07', '--accent-soft': 'rgba(154,171,101,0.14)', '--green': '#5ab86c', '--amber': '#d98a52', '--blue': '#6aa8c4', '--red': '#df7372', '--red-fg': '#1c1a16', '--menu-shadow': '0 14px 38px rgba(0,0,0,0.38)', '--nav-on-bg': 'rgba(237,233,226,0.07)', '--nav-on-ring': 'none', '--p-moss': '#9aab65', '--p-fern': '#5ab88a', '--p-sky': '#6aa8c4', '--p-slate': '#8d9bc0', '--p-plum': '#b48ac8', '--p-rose': '#d47a97', '--p-rust': '#d98a52', '--p-ochre': '#d4a84a', '--p-stone': '#a8a29a', '--p-ink': '#1c1a16' };
+const ORG = {
+  sapling: { name: 'SaplingLearn', letter: 'S', me: { handle: 'andres', name: 'Andres Lopez', color: 'moss', initials: 'AL' }, first: 'SaplingLearn/sapling' },
+  acme: { name: 'Acme', letter: 'A', me: { handle: 'priya-k', name: 'Priya Kumar', color: 'fern', initials: 'PK' }, first: 'acme/storefront' },
+  acmeNew: { name: 'Acme Labs', letter: 'A', me: { handle: 'priya-k', name: 'Priya Kumar', color: 'fern', initials: 'PK' }, first: 'acme/new-thing' },
+};
+const REPO = { 'SaplingLearn/sapling': ['A', 'sapling'], 'AndresL230/trov': ['B', 'sapling'], 'acme/site': ['C', 'acme'], 'acme/dashboard': ['D', 'acme'], 'acme/storefront': ['E', 'acme'], 'acme/platform': ['F', 'acme'], 'acme/payments': ['G', 'acme'], 'acme/ingest': ['H', 'acme'], 'acme/ui-kit': ['I', 'acme'], 'acme/core': ['J', 'acme'], 'acme/web-app': ['K', 'acme'], 'acme/web-api': ['K', 'acme'], 'acme/new-thing': ['L', 'acmeNew'], 'acme/mobile': ['M', 'acmeNew'] };
+const MOMENT = { A: { problem: 'outOfStep', trouble: 'trouble' }, B: { problem: 'failed', trouble: 'trouble' }, G: { calm: 'after', problem: '', trouble: '' } };
+
+class Component extends DCLogic {
+  state = { repo: null, dark: null, phone: false, screen: 'repo', setup: 'suggestions', n: 0 };
+  componentDidMount() {
+    this._rs = () => this.setState({ phone: window.innerWidth < 760 });
+    this._rs(); window.addEventListener('resize', this._rs);
+    this.applyTheme();
+  }
+  componentWillUnmount() { window.removeEventListener('resize', this._rs); }
+  componentDidUpdate() { this.applyTheme(); }
+  isDark() { return this.state.dark ?? !!this.props.dark; }
+  applyTheme() {
+    const el = document.documentElement, d = this.isDark();
+    if (this._applied === d) return; this._applied = d;
+    Object.entries(DARK).forEach(([k, v]) => (d ? el.style.setProperty(k, v) : el.style.removeProperty(k)));
+  }
+  renderVals() {
+    const repo = this.state.repo || this.props.startRepo || 'SaplingLearn/sapling';
+    const [scenario, orgKey] = REPO[repo] || ['A', 'sapling'];
+    const moment = this.props.moment || 'calm';
+    const m = MOMENT[scenario] || {};
+    const variant = m[moment] ?? '';
+    const org = ORG[orgKey];
+    const go = (r) => this.setState((s) => ({ repo: r, screen: 'repo', n: s.n + 1 }));
+    return {
+      onRepo: this.state.screen === 'repo', onOrg: this.state.screen === 'org',
+      screenKey: `${repo}|${variant}|${this.state.n}`,
+      scenario, variant, phone: this.state.phone, dark: this.isDark(), admin: this.props.admin ?? true,
+      orgInfo: { name: org.name, letter: org.letter }, me: org.me,
+      orgs: Object.entries(ORG).map(([key, o]) => ({ key, name: o.name, letter: o.letter, on: key === orgKey })),
+      pickOrg: (k) => go(ORG[k].first),
+      pickRepo: (r) => { if (r && REPO[r]) go(r); },
+      nav: (label) => {
+        if (label === 'Org settings') this.setState({ screen: 'org', setup: scenario === 'M' ? 'new' : 'suggestions' });
+        else if (label === 'Repo') this.setState({ screen: 'repo' });
+      },
+      setupScreen: this.state.setup,
+      toggleTheme: () => this.setState({ dark: !this.isDark() }),
+    };
+  }
+}
+</script>
+</body>
+</html>

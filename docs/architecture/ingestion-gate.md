@@ -58,14 +58,34 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   `resolveGithubCredential` — run by an admin's Sync GitHub and Poll now and by the repo cron, never on the
   render path) — never through `/ingest` or `record_session`.
   `src/webhook.ts`'s `WORK_EVENT_NAMES` (`pull_request` / `issues`) and `REPO_EVENT_NAMES` (`pull_request` /
-  `push` / `pull_request_review` / `check_run` / `workflow_run` / `status`)
+  `push` / `pull_request_review` / `check_run` / `workflow_run` / `status` / `deployment_status` / `deployment` —
+  the last two, and a non-`canopy/*` status, as untagged GitHub deploy signals through `ingestRepoEvent`)
   independently gate which deliveries feed which capture; a repo-capture failure is caught and logged, never
   costing the My Work capture, and the webhook's response body carries `repo: { captured, unchanged }`
   alongside the existing `captured` / `unchanged`. PR-close and issue capture into `events` is unchanged by
-  any of this. **`repo_metrics` points and `repo_snapshots` are computed writes, not gated ingestion**: the
+  any of this. A NEWLY captured deploy signal, check run or workflow run is then offered to
+  `writeGithubDeploys` (`src/hosting/github-deploys.ts`), which may write a `github` part's `hosting_deploys` row —
+  a computed, direct write from a row the gate already stored, only through the part's own setting, never a second
+  ingestion surface (`repo-apps.md` › The `github` provider). Reconcile and a `github` part's write replay the
+  already-stored signals of 30 days through the same matcher (`backfillGithubDeploys`) — still computed from gated
+  rows, no new surface.
+- **Releases are the repo capture's THIRD arm, `ingestRepoRelease`** (Repo setups, Phase F): the `release` /
+  `create` deliveries (`RELEASE_EVENT_NAMES`) and reconcile's `releases` arm put each release or tag through it —
+  never `/ingest`. A release CHANGES (edited, deleted), so it is not an append-only `repo_events` row: its
+  identity is `(org, repo, tag)` and its dedupe is the gate's content hash over the settled row (a redelivery,
+  a no-op edit or a re-read writes nothing); the write itself is `releases` (`src/repo/release-store.ts`).
+  A draft is never captured, a tag never downgrades a release, and a row without GitHub's own date is not
+  written. **`repo_metrics` points and `repo_snapshots` are computed writes, not gated ingestion**: the
   `status` delivery's `metricsFromStatus` arm, the cron's pollers and reconcile's snapshots write them direct
   through `putMetric` / `putSnapshot` (`src/repo/store.ts`) — each validates its own input, and `putMetric`
   is first-write-wins.
+- **Which files a commit and a pull request touched are the repo capture's FOURTH and FIFTH arms** (Repo setups,
+  Phase E — `0073_commit_paths`): `ingestCommitPaths` (a `push` delivery's own lists, and the ONE compare that fills in a
+  head commit the delivery cut short — `src/repo/commit-paths.ts`; identity (repo, sha, path), INSERT OR IGNORE, a row's
+  `scope` saying whether it is the commit's own or its push's) and `ingestPrFiles` (`GET /pulls/{n}/files` from the
+  `pull_request` webhook and reconcile's `pr_files` arm — identity (repo, number), content-hash dedupe over the sorted
+  list: the same list read again only records the head it was read for; a new one replaces the PR's rows whole). From
+  the HMAC-verified webhook and reconcile only — never `/ingest`.
 
 Authored and computed writes are **direct, in the `promote` class** — NOT the ingestion gate — exactly
 like `promote_doc` / `ratify_adr` / `complete_sprint` always have been: the plan write

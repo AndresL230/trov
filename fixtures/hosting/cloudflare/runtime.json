@@ -1,0 +1,14 @@
+{
+  "data": {
+    "viewer": {
+      "accounts": [
+        {
+          "workersInvocationsAdaptive": [
+            { "dimensions": { "date": "2026-10-06" }, "quantiles": { "cpuTimeP50": 2257, "cpuTimeP99": 55106, "wallTimeP50": 23491 } }
+          ]
+        }
+      ]
+    }
+  },
+  "errors": null
+}

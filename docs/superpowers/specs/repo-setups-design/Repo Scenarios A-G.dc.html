@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><meta name="design_doc_mode" content="canvas"><style>@font-face { font-family:'Geist'; font-style:normal; font-weight:100 900; font-display:swap; src:url("fonts/geist-latin.woff2") format("woff2"); } @font-face { font-family:'Geist'; font-style:normal; font-weight:100 900; font-display:swap; src:url("fonts/geist-latin-ext.woff2") format("woff2"); unicode-range:U+0100-02BA, U+1E00-1EFF, U+2020, U+20A0-20AB; } @font-face { font-family:'Archivo Narrow'; font-style:normal; font-weight:400 700; font-display:swap; src:url("fonts/archivo-narrow-latin.woff2") format("woff2"); }
+:root { --mark:#616ACB; --bg:#f6f6f7; --surface:#ffffff; --fg:#16161a; --fg-70:#4f4f58; --fg-55:#6e6e78; --fg-40:#70707a; --border:rgba(20,20,30,0.08); --border-strong:rgba(20,20,30,0.15); --hover:rgba(20,20,30,0.04); --accent:#525cc3; --accent-fg:#ffffff; --accent-soft:rgba(82,92,195,0.12); --green:#007545; --amber:#945800; --blue:#2467af; --red:#c22231; --red-fg:#ffffff; --shadow:0 1px 2px rgba(20,20,30,0.05); --menu-shadow:0 14px 38px rgba(20,20,30,0.16); --sans:'Geist',system-ui,-apple-system,sans-serif; --label:'Geist',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; --nav-on-bg:#ffffff; --nav-on-ring:0 1px 2px rgba(20,20,30,0.05),0 0 0 1px rgba(20,20,30,0.08); --p-moss:#607a29; --p-fern:#2f7d57; --p-sky:#3e6f8a; --p-slate:#5b6b8c; --p-plum:#7a4f8f; --p-rose:#a84a68; --p-rust:#b4562c; --p-ochre:#966800; --p-stone:#6e6e78; --p-ink:#ffffff; }
+* { box-sizing:border-box; } body { margin:0; background:#e4e4e8; font-family:'Geist',system-ui,sans-serif; color:#16161a; -webkit-font-smoothing:antialiased; } button, input { font-family:inherit; cursor:pointer; } a { color:var(--accent); } a:hover { text-decoration:underline; text-underline-offset:3px; }
+@keyframes trov-rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } } @keyframes trov-pulse { 0%, 100% { opacity:1; } 50% { opacity:.35; } } @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }</style></helmet>
+
+<section id="page-head" style="padding:64px 80px 0"><div style="font-size:13px;font-weight:600;color:#525cc3">Trov · Repo screen</div><div style="margin-top:8px;font-size:15px;color:#4f4f58">Page 2 · Scenarios A–G</div><nav style="display:flex;gap:10px;flex-wrap:wrap;margin-top:24px"><a href="Repo Prototype.dc.html" style="font-size:13px;font-weight:600;padding:7px 12px;border:1px solid transparent;border-radius:3.2px;background:#525cc3;color:#fff;text-decoration:none;white-space:nowrap">Open the clickable prototype →</a><a href="Repo Screen Redesign.dc.html#system" style="font-size:13px;font-weight:500;padding:7px 12px;border:1px solid rgba(20,20,30,.15);border-radius:3.2px;background:#fff;color:#16161a;text-decoration:none;white-space:nowrap">1 · System</a>
+    <a href="Repo Scenarios A-G.dc.html" style="font-size:13px;font-weight:500;padding:7px 12px;border:1px solid rgba(20,20,30,.15);border-radius:3.2px;background:#fff;color:#16161a;text-decoration:none;white-space:nowrap">2 · Scenarios A–G</a>
+    <a href="Repo Scenarios H-N.dc.html" style="font-size:13px;font-weight:500;padding:7px 12px;border:1px solid rgba(20,20,30,.15);border-radius:3.2px;background:#fff;color:#16161a;text-decoration:none;white-space:nowrap">2 · Scenarios H–N</a>
+    <a href="Repo Phone and Dark.dc.html" style="font-size:13px;font-weight:500;padding:7px 12px;border:1px solid rgba(20,20,30,.15);border-radius:3.2px;background:#fff;color:#16161a;text-decoration:none;white-space:nowrap">3 · Phone · 4 · Dark</a>
+    <a href="Repo Setup.dc.html" style="font-size:13px;font-weight:500;padding:7px 12px;border:1px solid rgba(20,20,30,.15);border-radius:3.2px;background:#fff;color:#16161a;text-decoration:none;white-space:nowrap">5 · Setup</a>
+    <a href="Repo Screen Redesign.dc.html#notes" style="font-size:13px;font-weight:500;padding:7px 12px;border:1px solid rgba(20,20,30,.15);border-radius:3.2px;background:#fff;color:#16161a;text-decoration:none;white-space:nowrap">6 · Notes</a></nav></section>
+
+<section id="scenarios" style="padding:80px;display:flex;flex-direction:column;gap:72px">
+  <div><div style="font-size:13px;font-weight:600;color:#525cc3">2</div><h2 style="margin:6px 0 0;font-size:34px;font-weight:600;letter-spacing:-0.02em">Scenarios A to G</h2><p style="margin:10px 0 0;max-width:760px;font-size:15px;line-height:1.6;color:#4f4f58">Desktop, light theme, 1440 wide. Each row is one scenario; its first artboard is the Overview the rules chose. Tabs, Group by, the App menu and the drift strips are live.</p></div>
+  <sc-for list="{{ rows }}" as="row" hint-placeholder-count="3">
+    <div id="{{ row.id }}" style="display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap"><span style="font-size:28px;font-weight:600;color:#525cc3;width:30px">{{ row.letter }}</span><span style="font-size:22px;font-weight:600;letter-spacing:-0.01em">{{ row.title }}</span><span style="font-size:13px;color:#4f4f58;font-family:ui-monospace,Menlo,monospace">{{ row.repo }}</span><span style="font-size:13px;color:#525cc3;font-weight:500">{{ row.rule }}</span></div>
+      <div style="display:flex;gap:56px;align-items:flex-start">
+        <sc-for list="{{ row.boards }}" as="b" hint-placeholder-count="2">
+          <div id="{{ b.id }}" style="display:flex;flex-direction:column;gap:10px;flex:none;width:{{ b.w }}">
+            <div style="font-size:14px;font-weight:600;color:#16161a">{{ b.title }}</div>
+            <div style="background:var(--bg);border-radius:4px;overflow:hidden;box-shadow:0 0 0 1px rgba(20,20,30,.1),0 10px 30px rgba(20,20,30,.08)">
+              <dc-import name="RepoScreen" scenario="{{ b.sc }}" variant="{{ b.variant }}" tab="{{ b.tab }}" app="{{ b.app }}" menu="{{ b.menu }}" driftOpen="{{ b.drift }}" driftStep="{{ b.step }}" hint-size="100%,960px"></dc-import>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ row.product }}">
+          <div id="K-product" style="display:flex;flex-direction:column;gap:10px;flex:none;width:1180px">
+            <div style="font-size:14px;font-weight:600;color:#16161a">K · One product, two repos · Product view (exploration)</div>
+            <div style="background:var(--bg);border-radius:4px;box-shadow:0 0 0 1px rgba(20,20,30,.1),0 10px 30px rgba(20,20,30,.08);padding:28px 32px 32px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:15px;font-weight:600">Web app</span><span style="font-size:12px;color:var(--fg-40)">a product · acme/web-app and acme/web-api</span><span style="margin-left:auto;font-size:11.5px;color:var(--fg-40)">Org settings › Products</span></div>
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);overflow:hidden;margin-top:16px">
+                <div style="overflow:hidden"><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:-1px 0 0 -1px">
+                  <sc-for list="{{ product }}" as="pc" hint-placeholder-count="2"><div style="border-left:1px solid var(--border);border-top:1px solid var(--border);min-width:0"><dc-import name="EnvCard" env="{{ pc }}" hint-size="100%,260px"></dc-import></div></sc-for>
+                </div></div>
+                <div style="border-top:1px solid var(--border);padding:12px 22px;font-size:12.5px;color:var(--fg-70);display:flex;gap:8px;align-items:center"><dc-import name="Mark" shape="ring" tone="var(--fg-55)" word="" size="12" hint-size="9px,9px"></dc-import>Production: web-app went live 1 day ago, web-api 3 days ago. Trov cannot say they are out of step: the shas belong to different repos.</div>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;margin-top:22px">
+                <div style="font-size:13px;line-height:1.6;color:var(--fg-70)"><div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin-bottom:6px">What it gives</div>One place to see both halves of a release. Environment names line up (Staging, Production in both repos), so cards can hold rows from either repo, each row naming its repo.</div>
+                <div style="font-size:13px;line-height:1.6;color:var(--fg-70)"><div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin-bottom:6px">Verdict: not yet</div>“Out of step” and drift need one history; across repos Trov can only compare times, which invites guessing. Ship the Repository menu first, with a “Related repo” link on each Overview. Revisit if teams ask for a joined release view.</div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-for>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { M: null };
+  componentDidMount() {
+    window.__trovData = window.__trovData || import('./repo-data.js');
+    window.__trovData.then((M) => this.setState({ M }));
+  }
+  renderVals() {
+    const PAGE = 'ABCDEFG';
+    const M = this.state.M;
+    const B = (id, title, sc, o = {}) => ({ id, title, sc, variant: o.variant || '', tab: o.tab || 'overview', app: o.app || '', menu: o.menu || '', drift: !!o.drift, step: o.step || 0, w: o.w || '1440px' });
+    const rule = (sc, v) => { if (!M) return ''; const r = M.buildScreen({ scenario: sc, variant: v }).rule; return `${r.id} · ${r.name}`; };
+    const R = (letter, title, repo, boards, extra = {}) => ({ id: letter, letter, title, repo, rule: rule(letter === 'N' ? 'A' : letter, letter === 'N' ? 'trouble' : boards[0].variant), boards, product: !!extra.product });
+    const rows = [
+      R('A', 'Frontend and backend, two environments', 'SaplingLearn/sapling', [B('A1', 'A · Frontend and backend · Overview, healthy', 'A'), B('A2', 'A · Frontend and backend · Overview, out of step', 'A', { variant: 'outOfStep', drift: true }), B('A3', 'A · Frontend and backend · Usage', 'A', { tab: 'usage' })]),
+      R('B', 'One Worker, main straight to production', 'AndresL230/trov', [B('B1', 'B · One Worker · Overview, a calm day', 'B'), B('B2', 'B · One Worker · Overview, production deploy failed', 'B', { variant: 'failed' })]),
+      R('C', 'Static marketing site with previews', 'acme/site', [B('C1', 'C · Static site · Overview', 'C'), B('C2', 'C · Static site · Usage, not available from Netlify', 'C', { tab: 'usage' })]),
+      R('D', 'Full-stack framework on one host', 'acme/dashboard', [B('D1', 'D · Next.js on Vercel · Overview', 'D')]),
+      R('E', 'Turborepo monorepo, five apps', 'acme/storefront', [B('E1', 'E · Turborepo · Overview', 'E'), B('E2', 'E · Turborepo · Code, filtered to api', 'E', { tab: 'code', app: 'api' }), B('E3', 'E · Turborepo · CI & deploys, all apps', 'E', { tab: 'ci' })]),
+      R('F', 'Large monorepo, 14 apps', 'acme/platform', [B('F1', 'F · 14 apps · Overview', 'F')]),
+      R('G', 'Backend services only', 'acme/payments', [B('G1', 'G · Railway services · Overview, before Railway is connected', 'G'), B('G2', 'G · Railway services · Overview, after', 'G', { variant: 'after' })]),
+      R('H', 'Containers deployed by GitHub Actions', 'acme/ingest', [B('H1', 'H · Actions to Fly.io and Cloud Run · Overview', 'H', { drift: false }), B('H2', 'H · Actions · Usage, not connected', 'H', { tab: 'usage' })]),
+      R('I', 'Package with releases only', 'acme/ui-kit', [B('I1', 'I · Package · Overview', 'I'), B('I2', 'I · Package · CI', 'I', { tab: 'ci' })]),
+      R('J', 'Three environments, promotion chain', 'acme/core', [B('J1', 'J · Promotion chain · Overview, one step open', 'J', { drift: true, step: 1 })]),
+      R('K', 'One product across two repos', 'acme/web-app', [B('K1', 'K · Two repos · Overview with the Repository menu open', 'K', { menu: 'repo' })], { product: true }),
+      R('L', 'Just connected, nothing set up', 'acme/new-thing', [B('L1', 'L · Just connected · Overview', 'L'), B('L2', 'L · Just connected · CI & deploys before setup', 'L', { tab: 'ci' }), B('L3', 'L · Just connected · Usage before setup', 'L', { tab: 'usage' }), B('L4', 'L · Just connected · Code (works without setup)', 'L', { tab: 'code' })]),
+      R('M', 'Nothing recognised', 'acme/mobile', [B('M1', 'M · Expo app · Overview', 'M')]),
+      R('N', 'Trouble states', 'SaplingLearn/sapling · AndresL230/trov', [B('N1', 'N · Down, building, stale reading · on A', 'A', { variant: 'trouble' }), B('N2', 'N · Rollback, building, preview failing 3 days · on B', 'B', { variant: 'trouble' }), B('N3', 'N · Stale usage reading · on A', 'A', { variant: 'trouble', tab: 'usage' })]),
+    ];
+    const sys = M ? M.systemModels() : { marks: [], env: {}, prod: {}, usage: {} };
+    const e = sys.env || {};
+    const envStates = M ? [['Healthy', e.healthy], ['Out of step', e.oos], ['Failing: a deploy failed, the previous one serves', e.failing], ['Down: health check gets no answer', e.down], ['Building, with a workflow run in progress', e.building], ['Degraded: checks failing on the branch head', e.degraded], ['Unknown: host does not report to GitHub', e.unknown]].map(([label, env]) => ({ label, env })) : [];
+    const u = sys.usage || {};
+    const usageStates = M ? [['Live · requests and error rate (Worker)', u.traffic], ['Live · CPU and memory (Service)', u.compute], ['Not connected: connect a host to see this', u.nc], ['No recent reading: the source went quiet', u.stale], ['Not available from this host', u.na]].map(([label, x]) => ({ label, u: x })) : [];
+    const S = (letter, title, rule, why) => ({ letter, title, rule, why });
+    return {
+      rows: rows.filter((r) => PAGE.includes(r.letter)), sys, envStates, usageStates,
+      rules: M ? Object.values(M.RULES) : [],
+      product: M ? M.productView() : [],
+      phones: [B('P-A', 'A · Phone · Overview, out of step', 'A', { variant: 'outOfStep' }), B('P-B', 'B · Phone · Overview, deploy failed', 'B', { variant: 'failed' }), B('P-E', 'E · Phone · Overview', 'E'), B('P-I', 'I · Phone · Overview', 'I')],
+      darks: [B('D-A', 'A · Dark · Overview, out of step', 'A', { variant: 'outOfStep', drift: true }), B('D-E', 'E · Dark · Overview', 'E'), B('D-N', 'N · Dark · Down, building, stale', 'A', { variant: 'trouble' })],
+      setups: [
+        { id: 'SU1', title: 'Setup 1 · Suggestions: Trov found 5 apps, one accepted (toast with Undo)', screen: 'suggestions' },
+        { id: 'SU2', title: 'Setup 2 · An app’s page: api, its watch paths and targets', screen: 'app' },
+        { id: 'SU3', title: 'Setup 3 · Deploy signal picker: only signals seen in 30 days', screen: 'signal' },
+        { id: 'SU4', title: 'Setup 4 · Unassigned signals: 2 deploy names belong to no app', screen: 'unassigned' },
+        { id: 'SU5', title: 'Setup 5 · Add an app by hand (acme/mobile)', screen: 'new' },
+        { id: 'SU6', title: 'Setup 6 · Remove an app: the shared confirmation modal', screen: 'remove' },
+      ],
+      stickies: [
+        S('A', 'Frontend and backend', 'R6 · Environment cards', '2 apps with targets (web, api), both in Staging and Production. Environments ship from different branches, so the drift strip shows. Out of step is per card.'),
+        S('B', 'One Worker', 'R4 · Production card', '1 app, 1 environment. Previews list follows. No drift: Production ships from main. A failed deploy shows what still serves first.'),
+        S('C', 'Static site', 'R4 · Production card', 'Same rule as B. Usage says Netlify has no usage API, in plain text with no box, so it reads as a fact rather than a fault.'),
+        S('D', 'Next.js on Vercel', 'R4 · Production card', 'Frontend and API ship in one deploy, so it is one app with one target. Nothing anywhere mentions a backend.'),
+        S('E', 'Turborepo', 'R7 · Apps table', '5 apps, 4 with targets (ui is a Package). 4 or more → table. ui sits in the Packages footer. Needs attention lists api’s failed deploy and web’s waiting commits.'),
+        S('F', '14 apps', 'R7 · Apps table', '12 with targets. 8 or more rows turns on filter, group by kind and sort, and folds the 9 healthy rows into one line.'),
+        S('G', 'Railway services', 'R7 · Apps table', '4 apps share Staging and Production; 4 or more → table. No previews, so the second column is Staging. Before connecting: one connect block, Unknown cells, deploy figures “—”.'),
+        S('H', 'Actions to Fly and Cloud Run', 'R6 · Environment cards', '2 apps, same environments. Deploys are known from GitHub environments; the running workflow shows as Building with its step.'),
+        S('I', 'Package', 'R3 · Release block', 'Apps exist but none has a target. Usage is hidden and CI & deploys becomes CI.'),
+        S('J', 'Promotion chain', 'R5 · Promotion chain', '1 app, 3 named environments. Cards in promotion order, one row each; the strip shows each step (develop → main → release).'),
+        S('K', 'Two repos', 'R5 · Promotion chain', 'Within acme/web-app: 1 app, 2 environments. The Repository menu switches repos. The Product view is an exploration, not a rule.'),
+        S('L', 'Just connected', 'R1 · Found apps', 'No app accepted, 3 found. Code and Planning work fully; CI shows runs; Deploys and Usage say what they wait for.'),
+        S('M', 'Expo app', 'R2 · Nothing recognised', 'No app, nothing found. It lists what Trov looked for and what it does see (14 tags), and offers to add an app by hand.'),
+        S('N', 'Trouble states', 'R6 on A · R4 on B', 'Down is a square, Building pulses, a rollback is a triangle on the serving row, a stale reading keeps its last line dashed with its age, and a preview failing for 3 days says so.'),
+      ],
+      changes: [
+        { n: '1', rule: 'Count apps with a target, not apps.', why: 'A Package never deploys, so it should not push a repo from cards to a table. E has 5 apps but 4 with targets; I has 1 app and none with a target, which is what makes it a release repo.' },
+        { n: '2', rule: 'One app with 2 or more environments is its own rule: the promotion chain.', why: 'Same cards, but drift is drawn between each adjacent pair in promotion order. With three branches, “main is ahead of production” hides where the commits are stuck.' },
+        { n: '3', rule: 'The Apps table’s second column is decided, not fixed.', why: 'Previews when any app has a preview target; otherwise the next shared environment (G shows Staging). A Previews column of dashes says nothing.' },
+        { n: '4', rule: 'Needs attention moves above the opener.', why: 'On a 14-row table, below the opener is off screen. It is still absent when nothing is wrong, so a calm day starts with the opener.' },
+        { n: '5', rule: '8 or more rows turn on the table’s tools and fold healthy rows.', why: 'Filter, group by kind and sort only earn their room on a big repo. Order is failed, building, waiting, then healthy.' },
+        { n: '6', rule: 'Group by shows only when both groupings mean something.', why: 'Needs 2 or more apps with targets and 2 or more named environments. On B, C, D, E, F and I one of the two views would be a single card or a single column.' },
+        { n: '7', rule: 'The App menu shows at 2 or more apps, and picking one re-runs the rules.', why: 'A (web/, api/) is not called a monorepo but still benefits. E › api is one app, one environment, so it becomes a Production card, not a one-row table.' },
+        { n: '8', rule: 'A host that never reports to GitHub adds one connect block above the opener.', why: 'The opener still draws, with Unknown cells and “—” figures, so the shape of the repo is visible before the host is connected and nothing reads as zero.' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

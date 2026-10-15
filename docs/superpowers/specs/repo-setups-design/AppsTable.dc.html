@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div>
+  <sc-if value="{{ large }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--border)">
+      <label style="display:flex;align-items:center;gap:7px;height:30px;box-sizing:border-box;padding:0 10px;border:1px solid var(--border);border-radius:3.2px;background:var(--surface);color:var(--fg-40);width:220px;max-width:100%">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex:none"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+        <input aria-label="Filter apps" placeholder="Filter apps" value="{{ q }}" onInput="{{ onQ }}" style="flex:1;min-width:0;border:none;outline:none;background:none;font:inherit;font-size:12.5px;color:var(--fg);padding:0">
+      </label>
+      <button type="button" aria-haspopup="listbox" style="display:inline-flex;align-items:center;gap:8px;height:30px;box-sizing:border-box;padding:0 8px 0 10px;border:1px solid var(--border);border-radius:3.2px;background:var(--surface);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap" style-hover="border-color:var(--fg-40)">Kind: All<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+      <span style="font-size:12px;color:var(--fg-55);margin-left:6px">Group</span>
+      <div role="group" aria-label="Group apps" style="display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--border);border-radius:3.6px">
+        <sc-for list="{{ groupOpts }}" as="o" hint-placeholder-count="2"><button type="button" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}" style="display:inline-flex;align-items:center;padding:4px 12px;border-radius:2.8px;font-size:12px;font-weight:500;white-space:nowrap;color:{{ o.color }};background:{{ o.bg }};border:none" style-hover="color:var(--fg)">{{ o.label }}</button></sc-for>
+      </div>
+      <span style="font-size:12px;color:var(--fg-55);margin-left:6px">Sort</span>
+      <div role="group" aria-label="Sort apps" style="display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--border);border-radius:3.6px">
+        <sc-for list="{{ sortOpts }}" as="o" hint-placeholder-count="2"><button type="button" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}" style="display:inline-flex;align-items:center;padding:4px 12px;border-radius:2.8px;font-size:12px;font-weight:500;white-space:nowrap;color:{{ o.color }};background:{{ o.bg }};border:none" style-hover="color:var(--fg)">{{ o.label }}</button></sc-for>
+      </div>
+      <span style="margin-left:auto;font-size:12px;color:var(--fg-40);white-space:nowrap">{{ summary }}</span>
+    </div>
+  </sc-if>
+  <div style="overflow-x:auto;overflow-y:hidden">
+    <div role="table" aria-label="Apps" style="min-width:820px">
+      <div role="row" style="display:grid;grid-template-columns:20px minmax(170px,1.2fr) minmax(220px,1.5fr) minmax(160px,1fr) minmax(120px,.8fr);gap:0 16px;padding:10px 20px;border-bottom:1px solid var(--border)">
+        <span role="columnheader" aria-label="State"></span>
+        <span role="columnheader" style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">App</span>
+        <span role="columnheader" style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">Production</span>
+        <span role="columnheader" style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">{{ t.secLabel }}</span>
+        <span role="columnheader" style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">Not shipped</span>
+      </div>
+      <sc-for list="{{ items }}" as="it" hint-placeholder-count="4">
+        <div>
+          <sc-if value="{{ it.isGroup }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:baseline;gap:8px;padding:9px 20px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--fg) 2%,transparent)"><span style="font-size:12px;font-weight:600;color:var(--fg-70)">{{ it.label }}</span><span style="font-size:11.5px;color:var(--fg-40)">{{ it.n }}</span></div>
+          </sc-if>
+          <sc-if value="{{ it.isCollapsed }}" hint-placeholder-val="{{ false }}">
+            <button type="button" onClick="{{ toggleHealthy }}" style="display:flex;align-items:center;gap:12px;width:100%;padding:11px 20px;border:none;border-bottom:1px solid var(--border);background:none;text-align:left;font-size:12.5px;color:var(--fg-55)" style-hover="background:var(--hover)">
+              <span style="width:20px;display:flex;justify-content:center;flex:none"><dc-import name="Mark" m="{{ dotMark }}" size="13" hint-size="9px,9px"></dc-import></span>
+              <span style="color:var(--fg-70);font-weight:500">{{ it.label }}</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.names }}</span>
+              <span style="margin-left:auto;color:var(--accent);font-weight:500;white-space:nowrap">{{ it.action }}</span>
+            </button>
+          </sc-if>
+          <sc-if value="{{ it.isRow }}" hint-placeholder-val="{{ true }}">
+            <div role="row" style="display:grid;grid-template-columns:20px minmax(170px,1.2fr) minmax(220px,1.5fr) minmax(160px,1fr) minmax(120px,.8fr);gap:0 16px;padding:11px 20px;border-bottom:1px solid var(--border);align-items:start;background:{{ it.bg }}" style-hover="background:var(--hover)">
+              <span role="cell" style="display:flex;justify-content:center;padding-top:5px"><dc-import name="Mark" m="{{ it.status }}" size="13" hint-size="9px,9px"></dc-import></span>
+              <div role="cell" style="min-width:0;display:flex;flex-direction:column;gap:3px">
+                <span style="display:flex;align-items:baseline;gap:8px;min-width:0"><span style="font-size:13.5px;font-weight:600">{{ it.name }}</span><span style="font-family:var(--code);font-size:11px;color:var(--fg-40);white-space:nowrap">{{ it.folder }}</span></span>
+                <span style="font-size:12px;color:var(--fg-55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.kind }} · {{ it.host }}</span>
+              </div>
+              <div role="cell" style="min-width:0;display:flex;flex-direction:column;gap:4px">
+                <span style="display:flex;align-items:center;gap:8px;min-height:20px"><sc-if value="{{ it.prod.sha }}"><span style="font-family:var(--label);font-size:12.5px;color:var(--fg);background:var(--hover);border:1px solid var(--border);border-radius:1.6px;padding:0 5px;line-height:18px">{{ it.prod.sha }}</span></sc-if><span style="font-size:12px;color:var(--fg-55);white-space:nowrap">{{ it.prod.age }}</span></span>
+                <sc-if value="{{ it.prod.m }}" hint-placeholder-val="{{ false }}"><dc-import name="Mark" m="{{ it.prod.m }}" size="12" hint-size="140px,16px"></dc-import></sc-if>
+                <span style="font-size:12px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.prod.sub }}</span>
+              </div>
+              <div role="cell" style="min-width:0;display:flex;flex-direction:column;gap:4px">
+                <sc-if value="{{ it.secPrev }}" hint-placeholder-val="{{ true }}">
+                  <span style="display:flex;align-items:center;gap:8px;min-height:20px"><span style="font-size:12.5px;color:{{ it.secColor }};white-space:nowrap">{{ it.sec.text }}</span><span style="display:inline-flex;gap:4px;align-items:center"><sc-for list="{{ it.sec.marks }}" as="pm"><dc-import name="Mark" m="{{ pm }}" size="12" hint-size="9px,9px"></dc-import></sc-for></span></span>
+                </sc-if>
+                <sc-if value="{{ it.secEnv }}" hint-placeholder-val="{{ false }}">
+                  <span style="display:flex;align-items:center;gap:8px;min-height:20px;flex-wrap:wrap"><sc-if value="{{ it.sec.sha }}"><span style="font-family:var(--label);font-size:12.5px;color:var(--fg);background:var(--hover);border:1px solid var(--border);border-radius:1.6px;padding:0 5px;line-height:18px">{{ it.sec.sha }}</span></sc-if><span style="font-size:12px;color:var(--fg-55);white-space:nowrap">{{ it.sec.age }}</span><sc-if value="{{ it.sec.m }}"><dc-import name="Mark" m="{{ it.sec.m }}" size="12" hint-size="70px,16px"></dc-import></sc-if></span>
+                </sc-if>
+              </div>
+              <div role="cell" style="min-width:0;display:flex;flex-direction:column;gap:2px;padding-top:1px">
+                <span style="font-size:12.5px;color:{{ it.nsColor }};white-space:nowrap">{{ it.ns.text }}</span>
+                <span style="font-size:11.5px;color:var(--fg-40);white-space:nowrap">{{ it.ns.sub }}</span>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+      <sc-if value="{{ hasPackages }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:baseline;gap:8px;padding:9px 20px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--fg) 2%,transparent)"><span style="font-size:12px;font-weight:600;color:var(--fg-70)">Packages</span><span style="font-size:11.5px;color:var(--fg-40)">{{ pkgCount }}</span><span style="margin-left:auto;font-size:11.5px;color:var(--fg-40)">no deploys; they ship inside the apps that use them</span></div>
+        <sc-for list="{{ t.packages }}" as="pk" hint-placeholder-count="1">
+          <div role="row" style="display:grid;grid-template-columns:20px minmax(170px,1.2fr) minmax(0,3.3fr);gap:0 16px;padding:11px 20px;border-bottom:1px solid var(--border);align-items:baseline">
+            <span role="cell"></span>
+            <span role="cell" style="display:flex;align-items:baseline;gap:8px;min-width:0"><span style="font-size:13.5px;font-weight:600">{{ pk.name }}</span><span style="font-family:var(--code);font-size:11px;color:var(--fg-40)">{{ pk.folder }}</span></span>
+            <span role="cell" style="font-size:12.5px;color:var(--fg-55)">{{ pk.text }}</span>
+          </div>
+        </sc-for>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:500},&quot;table&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;AppsTableModel&quot;},&quot;large&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;groupKind&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = { q: '', group: null, sort: 'status', showHealthy: null };
+  renderVals() {
+    const t = this.props.table || { rows: [], packages: [] };
+    const large = !!this.props.large;
+    const group = this.state.group ?? (this.props.groupKind ? 'kind' : 'none');
+    const showHealthy = this.state.showHealthy ?? !large;
+    const q = this.state.q.trim().toLowerCase();
+    let rows = t.rows.filter((r) => !q || r.name.includes(q) || (r.folder || '').includes(q) || (r.host || '').toLowerCase().includes(q));
+    rows = rows.slice().sort((a, b) => this.state.sort === 'name' ? a.name.localeCompare(b.name) : (a.rank - b.rank) || a.name.localeCompare(b.name));
+    const view = (r) => ({
+      ...r, isRow: true, bg: r.rank === 0 ? 'color-mix(in srgb,var(--red) 4%,transparent)' : 'transparent',
+      secPrev: r.sec && (r.sec.kind === 'previews' || r.sec.kind === 'none'), secEnv: r.sec && r.sec.kind === 'env',
+      secColor: r.sec && r.sec.kind === 'none' ? 'var(--fg-40)' : 'var(--fg-70)',
+      nsColor: r.ns.quiet ? 'var(--fg-40)' : 'var(--fg-70)',
+      sec: r.sec ? { marks: [], ...r.sec, sha: r.sec.sha || '', text: r.sec.text || '' } : { marks: [], text: '' },
+    });
+    let items = [];
+    if (group === 'kind') {
+      const order = ['Service', 'Site', 'Worker', 'Job'];
+      const plural = { Service: 'Services', Site: 'Sites', Worker: 'Workers', Job: 'Jobs' };
+      order.forEach((k) => { const rs = rows.filter((r) => r.kind === k); if (rs.length) { items.push({ isGroup: true, label: plural[k], n: String(rs.length) }); rs.forEach((r) => items.push(view(r))); } });
+    } else {
+      const bad = rows.filter((r) => !r.healthy), good = rows.filter((r) => r.healthy);
+      bad.forEach((r) => items.push(view(r)));
+      if (large && good.length && !q) {
+        if (showHealthy) good.forEach((r) => items.push(view(r)));
+        items.push({ isCollapsed: true, label: showHealthy ? `Hide ${good.length} healthy apps` : `${good.length} healthy apps`, names: showHealthy ? '' : good.map((r) => r.name).join(', '), action: showHealthy ? 'Hide' : 'Show' });
+      } else good.forEach((r) => items.push(view(r)));
+    }
+    const opt = (cur, list, key) => list.map(([v, label]) => ({ label, on: cur === v, color: cur === v ? 'var(--fg)' : 'var(--fg-55)', bg: cur === v ? 'var(--hover)' : 'transparent', pick: () => this.setState({ [key]: v }) }));
+    const failing = t.rows.filter((r) => r.rank === 0).length, building = t.rows.filter((r) => r.rank === 1).length;
+    return {
+      t, large, items, q: this.state.q, onQ: (e) => this.setState({ q: e.target.value }),
+      groupOpts: opt(group, [['none', 'None'], ['kind', 'Kind']], 'group'),
+      sortOpts: opt(this.state.sort, [['status', 'Status'], ['name', 'Name']], 'sort'),
+      toggleHealthy: () => this.setState({ showHealthy: !showHealthy }),
+      dotMark: { shape: 'dot', tone: 'var(--green)', word: '' },
+      summary: `${t.total} apps · ${failing} failing · ${building} building`,
+      hasPackages: (t.packages || []).length > 0, pkgCount: String((t.packages || []).length),
+    };
+  }
+}
+</script>
+</body>
+</html>

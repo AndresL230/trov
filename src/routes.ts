@@ -14,6 +14,8 @@ import { artifactsApp } from "./artifacts/routes";
 import { orgSettingsApp } from "./integrations/routes";
 import { githubAppRoutes } from "./github-app/routes";
 import { hostingApp, hostingCallbackApp } from "./hosting/routes";
+import { repoAppsApp } from "./repo/apps-routes";
+import { scanApp } from "./repo/scan-routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runSyncBatch, syncStatus } from "./sync/runs";
@@ -45,7 +47,7 @@ import { quickSearch } from "./tools/quick-search";
 import { QUICK_TYPES, type QuickType } from "@shared/quick-search";
 import { feedStats, isFeedStatsDays, isFeedStatsTz } from "./tools/feed-stats";
 import { getRepoDashboard, emptyRepoDashboard } from "./tools/repo";
-import { orgEnvironments, orgPrimaryRepo } from "./repo/config";
+import { dashboardRepo, orgEnvironments } from "./repo/config";
 import { runLockedRepoRefresh, runUsagePolls } from "./repo/cron";
 import type { DashboardData } from "@shared/dashboard";
 import { platformContext, soleTenantGate, tenantGate } from "./data/gate";
@@ -65,6 +67,7 @@ import { AVATAR_MAX_BYTES } from "@shared/people";
 import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
 import { aiApp } from "./ai/routes";
+import { repoSettingsApp } from "./repo/settings-routes";
 import { aiPreview, withPreviewFeed } from "./ai/preview";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
 
@@ -732,10 +735,16 @@ tenantRoot.get("/me/dashboard", async (c) => {
 // Stored nowhere; never 500s.
 tenantRoot.get("/repo/dashboard", async (c) => {
   // The org's own primary repository and environments (`org_repos`, `org_environments`).
+  // `?repo=` one of the org's repositories (any case; absent → the primary, as before; unknown → 404) and
+  // `?app=` an app key of it or `__repo` (REPO_WIDE). An unknown app reads as every app — the facts are not
+  // narrowed (`narrowFacts` leaves an unknown key alone), exactly like the design's App menu.
   let repo = "";
   try {
-    repo = (await orgPrimaryRepo(c.var.ctx))?.repo ?? "";
-    const dash = await getRepoDashboard(c.var.ctx, repo, Date.now(), await orgEnvironments(c.var.ctx));
+    const held = await dashboardRepo(c.var.ctx, c.req.query("repo"));
+    if (held === null) return c.json({ error: "unknown repository" }, 404);
+    repo = held;
+    const app = c.req.query("app") || null;
+    const dash = await getRepoDashboard(c.var.ctx, repo, Date.now(), await orgEnvironments(c.var.ctx), undefined, { app });
     // `state` / `themes` (shared/repo.ts) are not sections and are omitted: nothing writes them yet.
     // LOCAL_AI_PREVIEW shows the samples under `wrangler dev` only (src/ai/preview.ts).
     const preview = aiPreview(c.env, c.req.url);
@@ -1166,9 +1175,12 @@ app.route("/api/o/:slug", orgTenantApp);
 app.route("/api/o/:slug", orgSettingsApp);
 app.route("/api/o/:slug", githubAppRoutes); // the GitHub App's connection (src/github-app/routes.ts)
 app.route("/api/o/:slug", hostingApp); // Org settings › Hosting: parts, connections, the setup read (src/hosting/routes.ts)
+app.route("/api/o/:slug", repoAppsApp); // Org settings › Repositories › a repo › Apps: the read and the app writes (src/repo/apps-routes.ts)
+app.route("/api/o/:slug", scanApp); // Repositories › a repo › Apps: Scan again, accept / ignore / undo a suggestion (src/repo/scan-routes.ts)
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
 app.route("/api/o/:slug", orgBillingApp); // an owner's billing for this org: the Stripe portal, a plan switch, a renewal (src/billing/routes.ts)
 app.route("/api/o/:slug", aiApp); // Org settings › AI, and the answers to a suggestion and to "Wrong?" — cookie only (src/ai/routes.ts)
+app.route("/api/o/:slug", repoSettingsApp); // the Repo screen's per-repository defaults (0071_repo_settings) — admin, cookie only (src/repo/settings-routes.ts)
 // The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of
 // their own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name
 // twice. Nothing reads `:org` — `tenantGate` (mounted on `/api/o/:slug/*` above) resolved the org from

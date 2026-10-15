@@ -231,6 +231,19 @@ describe("snapshots and metrics", () => {
     expect(kept.map((r) => r.semantic_key)).toEqual(["frontend-deploy"]);
   });
 
+  // Repo setups, Phase A: GitHub deploy signals are captured untagged (env NULL) and kept 90 days; a deploy row
+  // tagged with an environment (captured before 0057) is a deploy record and stays.
+  it("prunes untagged deploy signals past 90 days, keeps younger ones and tagged deploy rows", async () => {
+    const now = Date.parse("2026-09-20T12:00:00Z");
+    const daysAgo = (n: number) => new Date(now - n * 86_400_000).toISOString();
+    await ingestRepoEvent(systemCtx(), push({ semantic_key: "sig-old", kind: "deploy", env: null, part: null, occurred_at: daysAgo(91) }));
+    await ingestRepoEvent(systemCtx(), push({ semantic_key: "sig-young", kind: "deploy", env: null, part: null, occurred_at: daysAgo(89) }));
+    await ingestRepoEvent(systemCtx(), push({ semantic_key: "tagged-old", kind: "deploy", env: "staging", part: "backend", occurred_at: daysAgo(400) }));
+    await pruneRepoCapture(platformCtx(), now);
+    const kept = await all<{ semantic_key: string }>(env.DB, `SELECT semantic_key FROM repo_events ORDER BY semantic_key`);
+    expect(kept.map((r) => r.semantic_key)).toEqual(["sig-young", "tagged-old"]);
+  });
+
   // Task 16: hourly usage series (Cloudflare analytics, later Railway and the
   // active-user gauges) are read over 30 days at most — 100 days is ample, and
   // without a bound two environments add ~35,000 rows a year.

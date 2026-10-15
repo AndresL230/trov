@@ -18,11 +18,12 @@
 
 import type { IntegrationKind } from "./integrations";
 import type { RepoRange, RepoSection, RepoTone } from "./repo";
+import type { PartExtras, UsageFamily } from "./usage-families-core";
 
 // ── vocabularies ────────────────────────────────────────────────────────────
 
 /** Every provider Trov knows, in the order the picker lists them. `aws` is described but not pollable yet. */
-export const HOSTING_PROVIDERS = ["cloudflare", "railway", "vercel", "render", "netlify", "fly", "aws"] as const;
+export const HOSTING_PROVIDERS = ["cloudflare", "railway", "vercel", "render", "netlify", "fly", "aws", "github"] as const;
 export type HostingProviderId = (typeof HOSTING_PROVIDERS)[number];
 export const isHostingProvider = (v: unknown): v is HostingProviderId =>
   typeof v === "string" && (HOSTING_PROVIDERS as readonly string[]).includes(v);
@@ -31,7 +32,10 @@ export const isHostingProvider = (v: unknown): v is HostingProviderId =>
  *  names they had before providers existed (stored identifiers are never renamed). */
 export const HOSTING_INTEGRATION_KIND = {
   cloudflare: "cloudflare_analytics", railway: "railway", vercel: "vercel", render: "render", netlify: "netlify", fly: "fly", aws: "aws",
-} as const satisfies Record<HostingProviderId, IntegrationKind>;
+  // `github` (repo setups, Phase A) has NO credential of its own: its deploys come from the GitHub capture, and
+  // anything it reads from GitHub goes through the org's GitHub connection (`resolveGithubCredential`).
+  github: null,
+} as const satisfies Record<HostingProviderId, IntegrationKind | null>;
 export const providerOfKind = (kind: IntegrationKind): HostingProviderId | null =>
   (Object.keys(HOSTING_INTEGRATION_KIND) as HostingProviderId[]).find((p) => HOSTING_INTEGRATION_KIND[p] === kind) ?? null;
 
@@ -140,6 +144,9 @@ export interface HostingProviderDTO {
   /** What a part on this provider needs (project id, service id, site id, app name…). */
   part_settings: HostingFieldDTO[];
   docs_url: string;
+  /** Present (true) only for a provider with NO credential of its own, read through the org's GitHub connection
+   *  (`github`): nothing to connect, rotate or test on its card — its parts are as connected as GitHub is. */
+  via_github?: true;
 }
 
 // ── Org settings › Hosting: an org's connections and parts ──────────────────
@@ -259,6 +266,9 @@ export interface HostingEnvironmentDTO {
   label: string;
   branch: string;
   parts: EnvironmentPartDTO[];
+  /** The environment's app metrics token (`org_secrets` kind `metrics_endpoint`, scope = the environment key), set
+   *  from its parts' editor (repo-setups Phase 0). Absent in a payload from before the field existed. */
+  app_metrics?: HostingAppMetricsDTO;
 }
 
 /** One line of the setup checklist — generated from the providers the org's parts actually use. */
@@ -325,6 +335,9 @@ export interface HostingSetupDTO {
   detection?: HostingDetectionStatusDTO;
   /** false: TROV_KEK is unusable, so no credential can be saved (every write answers 503). */
   secrets_available: boolean;
+  /** Credentials stored under a non-empty scope for a provider connected once per org — never a connection
+   *  (shared/hosting-status-core.ts). Absent in a payload from before the field existed. */
+  leftovers?: HostingLeftoverDTO[];
 }
 
 /** `PUT /api/o/:slug/environments/:env/parts/:part` body. */
@@ -340,6 +353,38 @@ export interface ConnectStartDTO { url: string; method: "install" | "oauth"; exp
 
 /** `POST /api/o/:slug/hosting/:provider/test` (and per part). */
 export interface HostingTestDTO { ok: boolean; detail: string; connection: HostingConnectionDTO }
+
+/**
+ * A credential stored under a NON-EMPTY scope for a provider that is connected once for the whole org — Railway's
+ * per-environment project tokens from before 0057. Nothing reads it: it is never a connection, never counted,
+ * and shown only inside its provider's card, where "Remove old tokens" deletes it (`DELETE …/hosting/:provider/leftovers`).
+ */
+export interface HostingLeftoverDTO {
+  provider: HostingProviderId;
+  scope: string;
+  /** The environment the scope names, when it still exists. */
+  scope_label: string | null;
+  /** How it was stored — "Project token" — never the provider's current connection method. */
+  label: string;
+  hint_last4: string;
+  created_by: string;
+  created_at: string;
+}
+
+/** `DELETE /api/o/:slug/hosting/:provider/leftovers` — how many were removed, and the org-wide connection now. */
+export interface HostingLeftoversRemovedDTO { removed: number; connection: HostingConnectionDTO }
+
+/** An environment's app metrics token, as its parts' editor shows it — metadata only, never the value. */
+export interface HostingAppMetricsDTO {
+  configured: boolean;
+  /** SaplingLearn's cut-over only: a legacy Worker secret answers for it. */
+  legacy_fallback: boolean;
+  hint_last4: string;
+  last_used_at: string | null;
+  last_error: string | null;
+  /** The environment's API URL the token is sent to (`<api_url>/api/internal/metrics`), or null when it has none. */
+  api_url: string | null;
+}
 
 // ── Repo dashboard › Usage: the provider-neutral section ────────────────────
 
@@ -407,6 +452,15 @@ export interface RepoProviderPart {
   status: "ok" | "empty" | "not_connected";
   tone: RepoTone;
   last_poll: { at: string; status: "ok" | "failed" | "skipped"; detail: string | null } | null;
+  /** The part's provider's org-wide connection, as every surface says it (shared/hosting-status-core.ts
+   *  `hostingStatus`). Absent in a payload from before the field existed. */
+  connection?: ConnectionStatus;
+  /** The usage families its provider reads (shared/usage-families-core.ts `familiesOf`) — what the Usage tab draws
+   *  for it; the SPA never branches on `provider`. Absent in a payload from before repo setups Phase G. */
+  families?: UsageFamily[];
+  /** What its provider's EXTRA families say (outcomes, runtime, storage, schedules) — one entry per extra family it
+   *  reads; absent when it reads none. */
+  extras?: PartExtras;
 }
 
 /** `RepoDashboard.providers`. */

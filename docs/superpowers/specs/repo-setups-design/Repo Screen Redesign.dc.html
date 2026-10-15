@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><meta name="design_doc_mode" content="canvas"><style>@font-face { font-family:'Geist'; font-style:normal; font-weight:100 900; font-display:swap; src:url("fonts/geist-latin.woff2") format("woff2"); } @font-face { font-family:'Geist'; font-style:normal; font-weight:100 900; font-display:swap; src:url("fonts/geist-latin-ext.woff2") format("woff2"); unicode-range:U+0100-02BA, U+1E00-1EFF, U+2020, U+20A0-20AB; } @font-face { font-family:'Archivo Narrow'; font-style:normal; font-weight:400 700; font-display:swap; src:url("fonts/archivo-narrow-latin.woff2") format("woff2"); }
+:root { --mark:#616ACB; --bg:#f6f6f7; --surface:#ffffff; --fg:#16161a; --fg-70:#4f4f58; --fg-55:#6e6e78; --fg-40:#70707a; --border:rgba(20,20,30,0.08); --border-strong:rgba(20,20,30,0.15); --hover:rgba(20,20,30,0.04); --accent:#525cc3; --accent-fg:#ffffff; --accent-soft:rgba(82,92,195,0.12); --green:#007545; --amber:#945800; --blue:#2467af; --red:#c22231; --red-fg:#ffffff; --shadow:0 1px 2px rgba(20,20,30,0.05); --menu-shadow:0 14px 38px rgba(20,20,30,0.16); --sans:'Geist',system-ui,-apple-system,sans-serif; --label:'Geist',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; --nav-on-bg:#ffffff; --nav-on-ring:0 1px 2px rgba(20,20,30,0.05),0 0 0 1px rgba(20,20,30,0.08); --p-moss:#607a29; --p-fern:#2f7d57; --p-sky:#3e6f8a; --p-slate:#5b6b8c; --p-plum:#7a4f8f; --p-rose:#a84a68; --p-rust:#b4562c; --p-ochre:#966800; --p-stone:#6e6e78; --p-ink:#ffffff; }
+* { box-sizing:border-box; } body { margin:0; background:#e4e4e8; font-family:'Geist',system-ui,sans-serif; color:#16161a; -webkit-font-smoothing:antialiased; } button, input { font-family:inherit; cursor:pointer; } a { color:var(--accent); } a:hover { text-decoration:underline; text-underline-offset:3px; }
+@keyframes trov-rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } } @keyframes trov-pulse { 0%, 100% { opacity:1; } 50% { opacity:.35; } } @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }</style></helmet>
+
+<section id="intro" style="padding:80px 80px 0;max-width:1600px">
+  <div style="font-size:13px;font-weight:600;color:#525cc3;letter-spacing:.02em">Trov · Repo screen</div>
+  <h1 style="margin:10px 0 0;font-size:44px;line-height:1.1;font-weight:600;letter-spacing:-0.025em">A Repo screen for every repo setup</h1>
+  <p style="margin:16px 0 0;max-width:820px;font-size:16px;line-height:1.6;color:#4f4f58;text-wrap:pretty">Twelve blocks and seven rules. Trov reads the facts it already has (apps, their kinds, which environments each targets) and the rules pick the Overview’s opener. The same data always draws the same screen. Every artboard below is drawn by that one engine from the scenario’s data.</p>
+  <nav style="display:flex;gap:10px;flex-wrap:wrap;margin-top:24px"><a href="Repo Prototype.dc.html" style="font-size:13px;font-weight:600;padding:7px 12px;border:1px solid transparent;border-radius:3.2px;background:#525cc3;color:#fff;text-decoration:none;white-space:nowrap">Open the clickable prototype →</a><a href="Repo Screen Redesign.dc.html#system" style="font-size:13px;font-weight:500;padding:7px 12px;border:1px solid rgba(20,20,30,.15);border-radius:3.2px;background:#fff;color:#16161a;text-decoration:none;white-space:nowrap">1 · System</a>
+    <a href="Repo Scenarios A-G.dc.html" style="font-size:13px;font-weight:500;padding:7px 12px;border:1px solid rgba(20,20,30,.15);border-radius:3.2px;background:#fff;color:#16161a;text-decoration:none;white-space:nowrap">2 · Scenarios A–G</a>
+    <a href="Repo Scenarios H-N.dc.html" style="font-size:13px;font-weight:500;padding:7px 12px;border:1px solid rgba(20,20,30,.15);border-radius:3.2px;background:#fff;color:#16161a;text-decoration:none;white-space:nowrap">2 · Scenarios H–N</a>
+    <a href="Repo Phone and Dark.dc.html" style="font-size:13px;font-weight:500;padding:7px 12px;border:1px solid rgba(20,20,30,.15);border-radius:3.2px;background:#fff;color:#16161a;text-decoration:none;white-space:nowrap">3 · Phone · 4 · Dark</a>
+    <a href="Repo Setup.dc.html" style="font-size:13px;font-weight:500;padding:7px 12px;border:1px solid rgba(20,20,30,.15);border-radius:3.2px;background:#fff;color:#16161a;text-decoration:none;white-space:nowrap">5 · Setup</a>
+    <a href="Repo Screen Redesign.dc.html#notes" style="font-size:13px;font-weight:500;padding:7px 12px;border:1px solid rgba(20,20,30,.15);border-radius:3.2px;background:#fff;color:#16161a;text-decoration:none;white-space:nowrap">6 · Notes</a></nav>
+</section>
+
+<section id="system" style="padding:80px;display:flex;flex-direction:column;gap:56px">
+  <div><div style="font-size:13px;font-weight:600;color:#525cc3">1</div><h2 style="margin:6px 0 0;font-size:34px;font-weight:600;letter-spacing:-0.02em">System</h2><p style="margin:10px 0 0;max-width:760px;font-size:15px;line-height:1.6;color:#4f4f58">The blocks, each in its states, and the layout rules as they finally stand.</p></div>
+
+  <div style="display:flex;gap:56px;flex-wrap:wrap;align-items:flex-start">
+    <div id="S-rules" style="width:1000px;display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:15px;font-weight:600">S · Layout rules · final</div>
+      <div style="background:#fff;border:1px solid rgba(20,20,30,.08);border-radius:4px;padding:26px 28px">
+        <p style="margin:0 0 16px;font-size:13.5px;line-height:1.6;color:#4f4f58;max-width:84ch">Decided top to bottom; the first rule that matches wins. “Apps with a target” excludes Packages. Every shape then has, in this order: <strong style="color:#16161a">Needs attention</strong> (only when something is wrong, and first), the opener, this week’s figures, and links into the tabs.</p>
+        <sc-for list="{{ rules }}" as="r" hint-placeholder-count="7">
+          <div style="display:grid;grid-template-columns:44px minmax(0,1fr) minmax(0,1.3fr);gap:16px;padding:12px 0;border-top:1px solid rgba(20,20,30,.08);align-items:baseline">
+            <span style="font-size:13px;font-weight:600;color:#525cc3">{{ r.id }}</span>
+            <span style="font-size:13.5px;line-height:1.5"><strong style="font-weight:600">{{ r.name }}</strong><br><span style="color:#6e6e78;font-size:12.5px">{{ r.when }}</span></span>
+            <span style="font-size:12.5px;line-height:1.55;color:#4f4f58">{{ r.opener }}</span>
+          </div>
+        </sc-for>
+        <div style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:16px;padding:12px 0 0;border-top:1px solid rgba(20,20,30,.08)">
+          <span style="font-size:13px;font-weight:600;color:#525cc3">+</span>
+          <span style="font-size:12.5px;line-height:1.6;color:#4f4f58"><strong style="color:#16161a;font-weight:600">Group by: Environment · App</strong> shows only when 2+ apps have targets and there are 2+ named environments; an admin sets the default. <strong style="color:#16161a;font-weight:600">App menu</strong> shows when a repo has 2+ apps; picking one re-runs these rules on that app alone. <strong style="color:#16161a;font-weight:600">Repository menu</strong> shows when the org has 2+ repos. A host that never reports to GitHub adds one connect block above the opener until it is connected.</span>
+        </div>
+      </div>
+    </div>
+    <div id="S-marks" style="width:620px;display:flex;flex-direction:column;gap:12px">
+      <div style="font-size:15px;font-weight:600">S · Marks</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:22px 24px">
+        <sc-for list="{{ sys.marks }}" as="g" hint-placeholder-count="4">
+          <div style="padding:12px 0;border-top:1px solid var(--border)">
+            <div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin-bottom:10px">{{ g.title }}</div>
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 20px">
+              <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="4"><div style="display:flex;flex-direction:column;gap:3px"><dc-import name="Mark" m="{{ it.m }}" size="12.5" hint-size="100px,16px"></dc-import><span style="font-size:11.5px;line-height:1.45;color:var(--fg-55)">{{ it.tip }}</span></div></sc-for>
+            </div>
+          </div>
+        </sc-for>
+        <p style="margin:10px 0 0;font-size:12px;line-height:1.55;color:var(--fg-55)">Shape carries the meaning, so a mark reads without colour: dot fine, ring waiting, triangle warning, diamond failed, square stopped, check settled. Live is the normal state of a deploy, so rows that show a sha and an age draw nothing for it.</p>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div style="font-size:15px;font-weight:600">S · 1 Environment card · states</div>
+    <div style="display:grid;grid-template-columns:repeat(4,560px);gap:24px">
+      <sc-for list="{{ envStates }}" as="es" hint-placeholder-count="8">
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12.5px;color:#6e6e78">{{ es.label }}</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);overflow:hidden"><dc-import name="EnvCard" env="{{ es.env }}" hint-size="100%,260px"></dc-import></div></div>
+      </sc-for>
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12.5px;color:#6e6e78">Loading</span>
+        <div aria-busy="true" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);padding:20px 22px 16px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;justify-content:space-between"><span style="width:120px;height:16px;border-radius:1.6px;background:var(--hover);box-shadow:inset 0 0 0 1px var(--border)"></span><span style="width:70px;height:14px;border-radius:1.6px;background:var(--hover)"></span></div>
+          <span style="width:92%;height:12px;border-radius:1.6px;background:var(--hover)"></span><span style="width:68%;height:12px;border-radius:1.6px;background:var(--hover)"></span><span style="width:80%;height:12px;border-radius:1.6px;background:var(--hover)"></span><span style="width:54%;height:12px;border-radius:1.6px;background:var(--hover)"></span>
+          <span style="font-size:11.5px;color:var(--fg-40)">Loading…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start">
+    <div style="display:flex;flex-direction:column;gap:8px;width:1116px"><span style="font-size:15px;font-weight:600">S · 2 Apps table · failed, waiting, healthy rows, a package</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);overflow:hidden"><dc-import name="AppsTable" table="{{ sys.tableE }}" hint-size="100%,360px"></dc-import></div></div>
+    <div style="display:flex;flex-direction:column;gap:8px;width:1116px"><span style="font-size:15px;font-weight:600">S · 2 Apps table · deploys unknown (host not connected), second column is Staging</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);overflow:hidden"><dc-import name="AppsTable" table="{{ sys.tableG }}" hint-size="100%,300px"></dc-import></div></div>
+  </div>
+
+  <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start">
+    <div style="display:flex;flex-direction:column;gap:8px;width:1116px"><span style="font-size:15px;font-weight:600">S · 3 Production card · calm</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);overflow:hidden"><dc-import name="ProductionCard" p="{{ sys.prod.calm }}" hint-size="100%,260px"></dc-import></div></div>
+    <div style="display:flex;flex-direction:column;gap:8px;width:1116px"><span style="font-size:15px;font-weight:600">S · 3 Production card · last deploy failed, previous still serving</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);overflow:hidden"><dc-import name="ProductionCard" p="{{ sys.prod.failed }}" hint-size="100%,300px"></dc-import></div></div>
+    <div style="display:flex;flex-direction:column;gap:8px;width:1116px"><span style="font-size:15px;font-weight:600">S · 3 Production card · rolled back, next building</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);overflow:hidden"><dc-import name="ProductionCard" p="{{ sys.prod.rolled }}" hint-size="100%,300px"></dc-import></div></div>
+  </div>
+
+  <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start">
+    <div style="display:flex;flex-direction:column;gap:8px;width:900px"><span style="font-size:15px;font-weight:600">S · 4 Previews list · live, building, failed</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);overflow:hidden;margin-top:-1px"><dc-import name="PreviewsList" pv="{{ sys.previews }}" hint-size="100%,300px"></dc-import></div></div>
+    <div style="display:flex;flex-direction:column;gap:8px;width:600px"><span style="font-size:15px;font-weight:600">S · 4 Previews list · empty</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);overflow:hidden"><dc-import name="PreviewsList" pv="{{ sys.previewsEmpty }}" hint-size="100%,90px"></dc-import></div></div>
+  </div>
+
+  <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start">
+    <div style="display:flex;flex-direction:column;gap:8px;width:900px"><span style="font-size:15px;font-weight:600">S · 5 Drift strip · collapsed</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden"><dc-import name="DriftStrip" drift="{{ sys.drift }}" hint-size="100%,46px"></dc-import></div></div>
+    <div style="display:flex;flex-direction:column;gap:8px;width:900px"><span style="font-size:15px;font-weight:600">S · 5 Drift strip · expanded to the PRs behind it</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden"><dc-import name="DriftStrip" drift="{{ sys.drift }}" open="{{ true }}" hint-size="100%,420px"></dc-import></div></div>
+    <div style="display:flex;flex-direction:column;gap:8px;width:900px"><span style="font-size:15px;font-weight:600">S · 5 Drift strip · promotion chain, one step open</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden"><dc-import name="DriftStrip" drift="{{ sys.chain }}" open="{{ true }}" openStep="{{ 0 }}" hint-size="100%,300px"></dc-import></div></div>
+  </div>
+
+  <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start">
+    <div style="display:flex;flex-direction:column;gap:8px;width:900px"><span style="font-size:15px;font-weight:600">S · 6 Not shipped · grouped by PR</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-top:-1px"><dc-import name="NotShipped" ns="{{ sys.notShipped }}" hint-size="100%,280px"></dc-import></div></div>
+    <div style="display:flex;flex-direction:column;gap:8px;width:600px"><span style="font-size:15px;font-weight:600">S · 6 Not shipped · empty</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-top:-1px"><dc-import name="NotShipped" ns="{{ sys.notShippedEmpty }}" hint-size="100%,50px"></dc-import></div></div>
+  </div>
+
+  <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start">
+    <div style="display:flex;flex-direction:column;gap:8px;width:1116px"><span style="font-size:15px;font-weight:600">S · 7 Release block</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);overflow:hidden"><dc-import name="ReleaseBlock" r="{{ sys.release }}" hint-size="100%,440px"></dc-import></div></div>
+    <div style="display:flex;flex-direction:column;gap:8px;width:900px"><span style="font-size:15px;font-weight:600">S · 8 Needs attention · one action per row</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;overflow:hidden"><dc-import name="NeedsAttention" items="{{ sys.attention }}" hint-size="100%,140px"></dc-import></div></div>
+  </div>
+
+  <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:flex-start">
+    <div style="display:flex;flex-direction:column;gap:8px;width:420px"><span style="font-size:15px;font-weight:600">S · 9 App menu</span><div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:16px;height:440px"><dc-import name="ScopeMenu" kind="app" items="{{ sys.appMenu }}" label="All apps" open="{{ true }}" hint-size="120px,30px"></dc-import></div></div>
+    <div style="display:flex;flex-direction:column;gap:8px;width:420px"><span style="font-size:15px;font-weight:600">S · 10 Repository menu</span><div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:16px;height:500px"><dc-import name="ScopeMenu" kind="repo" items="{{ sys.repos }}" label="acme/storefront" open="{{ true }}" hint-size="200px,30px"></dc-import></div></div>
+    <div style="display:flex;flex-direction:column;gap:8px;width:900px"><span style="font-size:15px;font-weight:600">S · 12 Found-apps card</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);overflow:hidden"><dc-import name="FoundApps" f="{{ sys.found }}" repo="acme/new-thing" hint-size="100%,280px"></dc-import></div><span style="font-size:12px;color:#6e6e78;margin-top:6px">The suggestion row it leads to is in Setup › Suggestions.</span></div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div style="font-size:15px;font-weight:600">S · 11 Usage per target · two live, three calm empties that look different</div>
+    <div style="display:grid;grid-template-columns:repeat(5,380px);gap:24px;align-items:stretch">
+      <sc-for list="{{ usageStates }}" as="us" hint-placeholder-count="5">
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12.5px;color:#6e6e78">{{ us.label }}</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);overflow:hidden;flex:1"><dc-import name="UsageTarget" u="{{ us.u }}" hint-size="100%,260px"></dc-import></div></div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div style="font-size:15px;font-weight:600">S · Section states every block shares</div>
+    <div style="display:grid;grid-template-columns:repeat(3,420px);gap:24px">
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12.5px;color:#6e6e78">Empty: read, holds nothing in this window</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px 22px"><div style="border:1px dashed var(--border-strong);border-radius:4px;padding:16px 18px"><div style="font-size:13.5px;font-weight:500;color:var(--fg-70)">Nothing here yet</div><div style="font-size:12.5px;color:var(--fg-55);margin-top:4px">No pull requests updated in the last 90 days.</div></div></div></div>
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12.5px;color:#6e6e78">Failed: the read itself failed</span><div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:16px 22px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg><div><div style="font-size:13.5px;font-weight:500;color:var(--fg-70)">Couldn’t load this section</div><div style="font-size:12.5px;color:var(--fg-40);margin-top:3px">The dashboard request failed.</div></div><button type="button" style="padding:6px 14px;border-radius:3.2px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);background:none">Retry now</button></div></div>
+      <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12.5px;color:#6e6e78">Loading: bars where the figures will land</span><div aria-busy="true" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:18px 22px;display:flex;flex-direction:column;gap:10px"><span style="width:68%;height:12px;border-radius:1.6px;background:var(--hover)"></span><span style="width:92%;height:12px;border-radius:1.6px;background:var(--hover)"></span><span style="width:54%;height:12px;border-radius:1.6px;background:var(--hover)"></span></div></div>
+    </div>
+  </div>
+</section>
+
+<section id="notes" style="padding:80px 80px 120px;display:flex;flex-direction:column;gap:40px">
+  <div><div style="font-size:13px;font-weight:600;color:#525cc3">6</div><h2 style="margin:6px 0 0;font-size:34px;font-weight:600;letter-spacing:-0.02em">Notes</h2><p style="margin:10px 0 0;max-width:760px;font-size:15px;line-height:1.6;color:#4f4f58">Which rule chose each Overview, and the rules I changed.</p></div>
+  <div style="display:grid;grid-template-columns:repeat(7,260px);gap:20px">
+    <sc-for list="{{ stickies }}" as="n" hint-placeholder-count="14">
+      <div style="background:#fbf3c9;padding:16px 16px 18px;box-shadow:0 1px 2px rgba(60,50,10,.12),0 6px 16px rgba(60,50,10,.08);min-height:200px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:baseline;gap:8px"><span style="font-size:20px;font-weight:700;color:#3d3510">{{ n.letter }}</span><span style="font-size:12.5px;font-weight:600;color:#3d3510">{{ n.title }}</span></div>
+        <div style="font-size:12px;font-weight:600;color:#5e5213">{{ n.rule }}</div>
+        <div style="font-size:12.5px;line-height:1.5;color:#4a4218">{{ n.why }}</div>
+      </div>
+    </sc-for>
+  </div>
+  <div style="background:#fff;border:1px solid rgba(20,20,30,.08);border-radius:4px;padding:26px 28px;max-width:1260px">
+    <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">Rules I changed, and why</div>
+    <sc-for list="{{ changes }}" as="c" hint-placeholder-count="8">
+      <div style="display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1.2fr);gap:16px;padding:14px 0;border-top:1px solid rgba(20,20,30,.08);margin-top:12px">
+        <span style="font-size:13px;font-weight:600;color:#525cc3">{{ c.n }}</span>
+        <span style="font-size:13.5px;font-weight:600;line-height:1.5">{{ c.rule }}</span>
+        <span style="font-size:13px;line-height:1.55;color:#4f4f58">{{ c.why }}</span>
+      </div>
+    </sc-for>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { M: null };
+  componentDidMount() {
+    window.__trovData = window.__trovData || import('./repo-data.js');
+    window.__trovData.then((M) => this.setState({ M }));
+  }
+  renderVals() {
+    const PAGE = '';
+    const M = this.state.M;
+    const B = (id, title, sc, o = {}) => ({ id, title, sc, variant: o.variant || '', tab: o.tab || 'overview', app: o.app || '', menu: o.menu || '', drift: !!o.drift, step: o.step || 0, w: o.w || '1440px' });
+    const rule = (sc, v) => { if (!M) return ''; const r = M.buildScreen({ scenario: sc, variant: v }).rule; return `${r.id} · ${r.name}`; };
+    const R = (letter, title, repo, boards, extra = {}) => ({ id: letter, letter, title, repo, rule: rule(letter === 'N' ? 'A' : letter, letter === 'N' ? 'trouble' : boards[0].variant), boards, product: !!extra.product });
+    const rows = [
+      R('A', 'Frontend and backend, two environments', 'SaplingLearn/sapling', [B('A1', 'A · Frontend and backend · Overview, healthy', 'A'), B('A2', 'A · Frontend and backend · Overview, out of step', 'A', { variant: 'outOfStep', drift: true }), B('A3', 'A · Frontend and backend · Usage', 'A', { tab: 'usage' })]),
+      R('B', 'One Worker, main straight to production', 'AndresL230/trov', [B('B1', 'B · One Worker · Overview, a calm day', 'B'), B('B2', 'B · One Worker · Overview, production deploy failed', 'B', { variant: 'failed' })]),
+      R('C', 'Static marketing site with previews', 'acme/site', [B('C1', 'C · Static site · Overview', 'C'), B('C2', 'C · Static site · Usage, not available from Netlify', 'C', { tab: 'usage' })]),
+      R('D', 'Full-stack framework on one host', 'acme/dashboard', [B('D1', 'D · Next.js on Vercel · Overview', 'D')]),
+      R('E', 'Turborepo monorepo, five apps', 'acme/storefront', [B('E1', 'E · Turborepo · Overview', 'E'), B('E2', 'E · Turborepo · Code, filtered to api', 'E', { tab: 'code', app: 'api' }), B('E3', 'E · Turborepo · CI & deploys, all apps', 'E', { tab: 'ci' })]),
+      R('F', 'Large monorepo, 14 apps', 'acme/platform', [B('F1', 'F · 14 apps · Overview', 'F')]),
+      R('G', 'Backend services only', 'acme/payments', [B('G1', 'G · Railway services · Overview, before Railway is connected', 'G'), B('G2', 'G · Railway services · Overview, after', 'G', { variant: 'after' })]),
+      R('H', 'Containers deployed by GitHub Actions', 'acme/ingest', [B('H1', 'H · Actions to Fly.io and Cloud Run · Overview', 'H', { drift: false }), B('H2', 'H · Actions · Usage, not connected', 'H', { tab: 'usage' })]),
+      R('I', 'Package with releases only', 'acme/ui-kit', [B('I1', 'I · Package · Overview', 'I'), B('I2', 'I · Package · CI', 'I', { tab: 'ci' })]),
+      R('J', 'Three environments, promotion chain', 'acme/core', [B('J1', 'J · Promotion chain · Overview, one step open', 'J', { drift: true, step: 1 })]),
+      R('K', 'One product across two repos', 'acme/web-app', [B('K1', 'K · Two repos · Overview with the Repository menu open', 'K', { menu: 'repo' })], { product: true }),
+      R('L', 'Just connected, nothing set up', 'acme/new-thing', [B('L1', 'L · Just connected · Overview', 'L'), B('L2', 'L · Just connected · CI & deploys before setup', 'L', { tab: 'ci' }), B('L3', 'L · Just connected · Usage before setup', 'L', { tab: 'usage' }), B('L4', 'L · Just connected · Code (works without setup)', 'L', { tab: 'code' })]),
+      R('M', 'Nothing recognised', 'acme/mobile', [B('M1', 'M · Expo app · Overview', 'M')]),
+      R('N', 'Trouble states', 'SaplingLearn/sapling · AndresL230/trov', [B('N1', 'N · Down, building, stale reading · on A', 'A', { variant: 'trouble' }), B('N2', 'N · Rollback, building, preview failing 3 days · on B', 'B', { variant: 'trouble' }), B('N3', 'N · Stale usage reading · on A', 'A', { variant: 'trouble', tab: 'usage' })]),
+    ];
+    const sys = M ? M.systemModels() : { marks: [], env: {}, prod: {}, usage: {} };
+    const e = sys.env || {};
+    const envStates = M ? [['Healthy', e.healthy], ['Out of step', e.oos], ['Failing: a deploy failed, the previous one serves', e.failing], ['Down: health check gets no answer', e.down], ['Building, with a workflow run in progress', e.building], ['Degraded: checks failing on the branch head', e.degraded], ['Unknown: host does not report to GitHub', e.unknown]].map(([label, env]) => ({ label, env })) : [];
+    const u = sys.usage || {};
+    const usageStates = M ? [['Live · requests and error rate (Worker)', u.traffic], ['Live · CPU and memory (Service)', u.compute], ['Not connected: connect a host to see this', u.nc], ['No recent reading: the source went quiet', u.stale], ['Not available from this host', u.na]].map(([label, x]) => ({ label, u: x })) : [];
+    const S = (letter, title, rule, why) => ({ letter, title, rule, why });
+    return {
+      rows: rows.filter((r) => PAGE.includes(r.letter)), sys, envStates, usageStates,
+      rules: M ? Object.values(M.RULES) : [],
+      product: M ? M.productView() : [],
+      phones: [B('P-A', 'A · Phone · Overview, out of step', 'A', { variant: 'outOfStep' }), B('P-B', 'B · Phone · Overview, deploy failed', 'B', { variant: 'failed' }), B('P-E', 'E · Phone · Overview', 'E'), B('P-I', 'I · Phone · Overview', 'I')],
+      darks: [B('D-A', 'A · Dark · Overview, out of step', 'A', { variant: 'outOfStep', drift: true }), B('D-E', 'E · Dark · Overview', 'E'), B('D-N', 'N · Dark · Down, building, stale', 'A', { variant: 'trouble' })],
+      setups: [
+        { id: 'SU1', title: 'Setup 1 · Suggestions: Trov found 5 apps, one accepted (toast with Undo)', screen: 'suggestions' },
+        { id: 'SU2', title: 'Setup 2 · An app’s page: api, its watch paths and targets', screen: 'app' },
+        { id: 'SU3', title: 'Setup 3 · Deploy signal picker: only signals seen in 30 days', screen: 'signal' },
+        { id: 'SU4', title: 'Setup 4 · Unassigned signals: 2 deploy names belong to no app', screen: 'unassigned' },
+        { id: 'SU5', title: 'Setup 5 · Add an app by hand (acme/mobile)', screen: 'new' },
+        { id: 'SU6', title: 'Setup 6 · Remove an app: the shared confirmation modal', screen: 'remove' },
+      ],
+      stickies: [
+        S('A', 'Frontend and backend', 'R6 · Environment cards', '2 apps with targets (web, api), both in Staging and Production. Environments ship from different branches, so the drift strip shows. Out of step is per card.'),
+        S('B', 'One Worker', 'R4 · Production card', '1 app, 1 environment. Previews list follows. No drift: Production ships from main. A failed deploy shows what still serves first.'),
+        S('C', 'Static site', 'R4 · Production card', 'Same rule as B. Usage says Netlify has no usage API, in plain text with no box, so it reads as a fact rather than a fault.'),
+        S('D', 'Next.js on Vercel', 'R4 · Production card', 'Frontend and API ship in one deploy, so it is one app with one target. Nothing anywhere mentions a backend.'),
+        S('E', 'Turborepo', 'R7 · Apps table', '5 apps, 4 with targets (ui is a Package). 4 or more → table. ui sits in the Packages footer. Needs attention lists api’s failed deploy and web’s waiting commits.'),
+        S('F', '14 apps', 'R7 · Apps table', '12 with targets. 8 or more rows turns on filter, group by kind and sort, and folds the 9 healthy rows into one line.'),
+        S('G', 'Railway services', 'R7 · Apps table', '4 apps share Staging and Production; 4 or more → table. No previews, so the second column is Staging. Before connecting: one connect block, Unknown cells, deploy figures “—”.'),
+        S('H', 'Actions to Fly and Cloud Run', 'R6 · Environment cards', '2 apps, same environments. Deploys are known from GitHub environments; the running workflow shows as Building with its step.'),
+        S('I', 'Package', 'R3 · Release block', 'Apps exist but none has a target. Usage is hidden and CI & deploys becomes CI.'),
+        S('J', 'Promotion chain', 'R5 · Promotion chain', '1 app, 3 named environments. Cards in promotion order, one row each; the strip shows each step (develop → main → release).'),
+        S('K', 'Two repos', 'R5 · Promotion chain', 'Within acme/web-app: 1 app, 2 environments. The Repository menu switches repos. The Product view is an exploration, not a rule.'),
+        S('L', 'Just connected', 'R1 · Found apps', 'No app accepted, 3 found. Code and Planning work fully; CI shows runs; Deploys and Usage say what they wait for.'),
+        S('M', 'Expo app', 'R2 · Nothing recognised', 'No app, nothing found. It lists what Trov looked for and what it does see (14 tags), and offers to add an app by hand.'),
+        S('N', 'Trouble states', 'R6 on A · R4 on B', 'Down is a square, Building pulses, a rollback is a triangle on the serving row, a stale reading keeps its last line dashed with its age, and a preview failing for 3 days says so.'),
+      ],
+      changes: [
+        { n: '1', rule: 'Count apps with a target, not apps.', why: 'A Package never deploys, so it should not push a repo from cards to a table. E has 5 apps but 4 with targets; I has 1 app and none with a target, which is what makes it a release repo.' },
+        { n: '2', rule: 'One app with 2 or more environments is its own rule: the promotion chain.', why: 'Same cards, but drift is drawn between each adjacent pair in promotion order. With three branches, “main is ahead of production” hides where the commits are stuck.' },
+        { n: '3', rule: 'The Apps table’s second column is decided, not fixed.', why: 'Previews when any app has a preview target; otherwise the next shared environment (G shows Staging). A Previews column of dashes says nothing.' },
+        { n: '4', rule: 'Needs attention moves above the opener.', why: 'On a 14-row table, below the opener is off screen. It is still absent when nothing is wrong, so a calm day starts with the opener.' },
+        { n: '5', rule: '8 or more rows turn on the table’s tools and fold healthy rows.', why: 'Filter, group by kind and sort only earn their room on a big repo. Order is failed, building, waiting, then healthy.' },
+        { n: '6', rule: 'Group by shows only when both groupings mean something.', why: 'Needs 2 or more apps with targets and 2 or more named environments. On B, C, D, E, F and I one of the two views would be a single card or a single column.' },
+        { n: '7', rule: 'The App menu shows at 2 or more apps, and picking one re-runs the rules.', why: 'A (web/, api/) is not called a monorepo but still benefits. E › api is one app, one environment, so it becomes a Production card, not a one-row table.' },
+        { n: '8', rule: 'A host that never reports to GitHub adds one connect block above the opener.', why: 'The opener still draws, with Unknown cells and “—” figures, so the shape of the repo is visible before the host is connected and nothing reads as zero.' },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

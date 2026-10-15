@@ -1,0 +1,25 @@
+{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "builds": {
+      "7e2a6c1d-0f4b-4c9e-9a51-3d8b2f6e4a10": {
+        "build_uuid": "d92c9bc0-5a1e-4f3b-9c7d-2e8a6b4f1c30",
+        "status": "stopped",
+        "build_outcome": "success",
+        "created_on": "2026-10-07T11:38:40.112Z",
+        "trigger": { "trigger_uuid": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d" },
+        "build_trigger_metadata": {
+          "build_trigger_source": "push_event",
+          "branch": "main",
+          "commit_hash": "6c965ac5f99429b7af6fa244ad577e3557211071",
+          "commit_message": "Ship the pricing page",
+          "author": "dana",
+          "repo_name": "acme-web",
+          "provider_type": "github"
+        }
+      }
+    }
+  }
+}

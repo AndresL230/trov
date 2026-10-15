@@ -86,7 +86,8 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
    degrade (`degraded: true`, 503 `{ error }`) — never a 500. Nothing on a render path calls GitHub or any
    other external service; external reads happen in the webhook, reconcile, Sync or cron.
 8. **Three auth classes, don't add a fourth:** session cookie (GitHub + Google feeding one sign-in fork),
-   bearer on `/mcp` (pasted `trov_mcp_` or OAuth `trov_oat_`; each names a person), HMAC on the webhooks.
+   bearer on `/mcp` and Trov's own app-metrics endpoint `/api/internal/metrics` (pasted `trov_mcp_` or OAuth
+   `trov_oat_`; each names a person, its org chosen only by `resolveBearerTenant`), HMAC on the webhooks.
    The Hono app is cookie-only. Signed-token exceptions (`/u/`, artifact upload/download) sit in
    `src/index.ts` before the session gate.
 9. **Admin is the ORG role** (`hasRole(ctx, "admin")`) — there is no handle allowlist. Superadmin is a
@@ -150,6 +151,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | `reads.ts` / `query`, `/search`, quick search, the feed brief & stats, the org's tag list | `feed-and-search.md` |
 | plan, sprints, progress, My Work, summaries | `roadmap-my-work.md` |
 | `src/repo/`, `tools/repo*.ts`, the Repo screen, the repo cron, pollers | `repo-dashboard.md` |
+| apps, the Repo Overview's facts and layout, detection and Repositories › Apps, releases | `repo-apps.md` |
 | `src/auth/`, MCP OAuth, identity, persons, avatars, roles, Settings › MCP | `auth-identity-people.md` |
 | artifacts, doc images, R2 | `artifacts.md` (+ `docs/artifact-contract.md`) |
 | handoffs, the Prompt Library | `handoffs-prompts.md` |

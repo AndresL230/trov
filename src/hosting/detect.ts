@@ -6,12 +6,12 @@
 //   check    every check run is captured (src/repo/capture.ts `fromCheckRun`) with its name, its details URL
 //            and — in `raw` — the slug of the GitHub App that posted it. Vercel, Netlify and Cloudflare Workers
 //            Builds post check runs as their own apps.
-//   deploy   GitHub deployment statuses are NOT captured any more (an environment's deploys come from its
-//            hosting provider); rows captured before 0057 — with the creator's login (`railway-app[bot]`,
-//            `render[bot]`, `vercel[bot]`) — still count while they are inside the window.
-// So the suggestion is exactly as good as that capture: a provider that reports to GitHub only through
-// deployments (Render, Railway, Fly.io) is not seen — see docs/architecture/hosting-providers.md › Detection
-// for what new capture would change that.
+//   deploy   GitHub deploy SIGNALS (repo setups, Phase A — src/repo/capture.ts), captured untagged: a
+//            deployment / deployment status with the creator's login (`railway-app[bot]`, `render[bot]`,
+//            `vercel[bot]`) and its log / environment link (`raw.signal = 'deployment'`, and rows from before
+//            0057), and a commit status other than `canopy/*` by its context (`Vercel`, `netlify/<site>/…`,
+//            `Render` — `raw.signal = 'status'`).
+// So Render, Railway and Fly.io — which report to GitHub through deployments, not check runs — are seen too.
 //
 // A suggestion preselects the provider in the part editor; it connects nothing and stores nothing.
 import { HOSTING_PROVIDERS, type HostingDetectionDTO, type HostingDetectionStatusDTO, type HostingProviderId } from "@shared/hosting";
@@ -20,9 +20,13 @@ import { all, first, type TenantContext } from "../data/sql";
 /** How far back a sign counts: the capture's own retention is longer, but a host left months ago is not a suggestion. */
 export const DETECT_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
-/** One group of captured rows: a check run's (app, name) or a deployment's (creator, environment). */
+/** One group of captured rows: a check run's (app, name), a deployment's (creator, environment) or a commit
+ *  status's context. */
 export interface DetectRow {
   kind: "check" | "deploy";
+  /** For a `deploy` row: `status` (a commit status — `name` is its context) or `deployment` (also a row with no
+   *  signal, captured before 0057); null for a check run. */
+  signal?: string | null;
   name: string | null;
   url: string | null;
   actor_login: string | null;
@@ -41,16 +45,18 @@ interface Sign {
   host: RegExp | null;
   /** A check-run name that is this provider's own — only where the name cannot be anyone else's. */
   name: RegExp | null;
+  /** A commit-status context that is this provider's own — likewise narrow. */
+  context: RegExp | null;
 }
 
 /** What each provider looks like from GitHub. Deliberately narrow: a false "Detected" is worse than none. */
 const SIGNS: Partial<Record<HostingProviderId, Sign>> = {
-  cloudflare: { apps: ["cloudflare-workers-and-pages"], logins: ["cloudflare-workers-and-pages[bot]"], host: /(^|\.)(dash\.cloudflare\.com|pages\.dev|workers\.dev)$/, name: /^(workers builds|cloudflare pages)\b/i },
-  railway: { apps: ["railway-app"], logins: ["railway-app[bot]"], host: /(^|\.)railway\.(app|com)$/, name: null },
-  vercel: { apps: ["vercel"], logins: ["vercel[bot]"], host: /(^|\.)vercel\.(com|app)$/, name: /^vercel\b/i },
-  render: { apps: ["render"], logins: ["render[bot]"], host: /(^|\.)(render\.com|onrender\.com)$/, name: null },
-  netlify: { apps: ["netlify"], logins: ["netlify[bot]"], host: /(^|\.)netlify\.(com|app)$/, name: /^netlify\// },
-  fly: { apps: [], logins: [], host: /(^|\.)fly\.(io|dev)$/, name: null },
+  cloudflare: { apps: ["cloudflare-workers-and-pages"], logins: ["cloudflare-workers-and-pages[bot]"], host: /(^|\.)(dash\.cloudflare\.com|pages\.dev|workers\.dev)$/, name: /^(workers builds|cloudflare pages)\b/i, context: /^(workers builds|cloudflare pages)\b/i },
+  railway: { apps: ["railway-app"], logins: ["railway-app[bot]"], host: /(^|\.)railway\.(app|com)$/, name: null, context: null },
+  vercel: { apps: ["vercel"], logins: ["vercel[bot]"], host: /(^|\.)vercel\.(com|app)$/, name: /^vercel\b/i, context: /^vercel\b/i },
+  render: { apps: ["render"], logins: ["render[bot]"], host: /(^|\.)(render\.com|onrender\.com)$/, name: null, context: /^render$/i },
+  netlify: { apps: ["netlify"], logins: ["netlify[bot]"], host: /(^|\.)netlify\.(com|app)$/, name: /^netlify\//, context: /^netlify\// },
+  fly: { apps: [], logins: [], host: /(^|\.)fly\.(io|dev)$/, name: null, context: null },
 };
 
 const hostOf = (url: string | null): string | null => {
@@ -65,6 +71,12 @@ function evidenceOf(row: DetectRow, sign: Sign, label: string): string | null {
     if (row.app && sign.apps.includes(row.app.toLowerCase())) return `GitHub check runs posted by the ${label} app`;
     if (host && sign.host?.test(host)) return `GitHub check runs that link to ${host}`;
     if (row.name && sign.name?.test(row.name)) return `a GitHub check run named ${row.name.slice(0, 80)}`;
+    return null;
+  }
+  if (row.signal === "status") {
+    // A commit status: its CONTEXT names the poster (who posted it — `sender` — may be any person or bot).
+    if (row.name && sign.context?.test(row.name)) return `GitHub commit statuses named ${row.name.slice(0, 80)}`;
+    if (host && sign.host?.test(host)) return `GitHub commit statuses that link to ${host}`;
     return null;
   }
   if (row.actor_login && sign.logins.includes(row.actor_login.toLowerCase())) return `GitHub deployments created by ${row.actor_login}`;
@@ -97,9 +109,10 @@ export function detectProviders(
 /** The captured check runs and deployments of the last `DETECT_WINDOW_MS`, grouped — ONE statement, this org's rows. */
 export async function listDetectRows(ctx: TenantContext, now: number = Date.now()): Promise<DetectRow[]> {
   const since = new Date(now - DETECT_WINDOW_MS).toISOString();
-  return await all<DetectRow>(ctx, `SELECT kind, name, url, actor_login, json_extract(raw, '$.app') AS app, MAX(occurred_at) AS last_at, COUNT(*) AS n
+  return await all<DetectRow>(ctx, `SELECT kind, json_extract(raw, '$.signal') AS signal, name, url, actor_login, json_extract(raw, '$.app') AS app,
+           MAX(occurred_at) AS last_at, COUNT(*) AS n
     FROM repo_events WHERE org_id = ? AND kind IN ('check', 'deploy') AND occurred_at >= ?
-    GROUP BY kind, name, actor_login, json_extract(raw, '$.app') ORDER BY last_at DESC LIMIT 200`, ctx.orgId, since);
+    GROUP BY kind, json_extract(raw, '$.signal'), name, actor_login, json_extract(raw, '$.app') ORDER BY last_at DESC LIMIT 200`, ctx.orgId, since);
 }
 
 /** `HostingSetupDTO.detected`. A failed read is no suggestion — never an error on the setup screen. */

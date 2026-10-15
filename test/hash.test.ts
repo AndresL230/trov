@@ -9,7 +9,7 @@
  * needs D1.
  */
 import { describe, it, expect } from "vitest";
-import { parseHash, hashForRoute } from "../web/src/hash";
+import { parseHash, hashForRoute, pageKey, sameRoute } from "../web/src/hash";
 
 describe("parseHash", () => {
   it("parses the four ticket/sprint routes (§C.11)", () => {
@@ -142,6 +142,25 @@ describe("hashForRoute", () => {
     // An unknown tab is a junk hash like any other.
     expect(parseHash("#repo/nope").screen).toBe("mywork");
     expect(parseHash("#repo/ci/extra").screen).toBe("mywork");
+  });
+
+  it("carries the Repo screen's repository and App menu in a query, round-trips it, and keeps it out of the page key", () => {
+    const base = { screen: "repo", ticketId: null, sprintId: null } as const;
+    expect(parseHash("#repo?repo=acme%2Fstorefront&app=web")).toEqual({ ...base, repoTab: "overview", repoSlug: "acme/storefront", repoApp: "web" });
+    expect(parseHash("#repo/ci?app=__repo")).toEqual({ ...base, repoTab: "ci", repoApp: "__repo" });
+    // an unencoded slash still reads, in either order
+    expect(parseHash("#repo/code?app=api&repo=acme/platform")).toEqual({ ...base, repoTab: "code", repoSlug: "acme/platform", repoApp: "api" });
+    // a malformed value is no scope (never a junk route)
+    expect(parseHash("#repo?repo=..%2F..&app=Not%20A%20Key")).toEqual({ ...base, repoTab: "overview" });
+    expect(parseHash("#repo/nope?app=web").screen).toBe("mywork");
+    for (const r of [{ ...base, repoTab: "overview", repoSlug: "acme/storefront" }, { ...base, repoTab: "usage", repoSlug: "acme/storefront", repoApp: "web" }, { ...base, repoTab: "overview", repoApp: "__repo" }] as const) {
+      expect(parseHash(hashForRoute(r))).toEqual(r);
+    }
+    expect(hashForRoute({ ...base, repoTab: "usage", repoSlug: "acme/storefront", repoApp: "web" })).toBe("#repo/usage?repo=acme%2Fstorefront&app=web");
+    // the App menu is a view of the same page (no entrance replay); another repository is another page
+    expect(pageKey({ ...base, repoTab: "ci", repoApp: "web" })).toBe(pageKey({ ...base, repoTab: "overview" }));
+    expect(pageKey({ ...base, repoTab: "overview", repoSlug: "acme/site" })).not.toBe(pageKey({ ...base, repoTab: "overview" }));
+    expect(sameRoute({ ...base, repoTab: "overview", repoApp: "web" }, { ...base, repoTab: "overview" })).toBe(false);
   });
 
   it("routes the Artifacts library, form, viewer, a version and a diff — and round-trips each", () => {
