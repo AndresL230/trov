@@ -5,7 +5,7 @@
  * (`runUsagePolls` — the app's metrics), then the hosting providers (only when
  * the org has a part — none here; test/hosting.cron.test.ts), then the GitHub
  * reconcile — each in its own guarded arm — and `POST /admin/poll` returns what
- * they report, behind a `refresh_lock` snapshot. The budget is 18 + 5N
+ * they report, behind a `refresh_lock` snapshot. The budget is 20 + 5N
  * subrequests; past the free plan's 50 the GitHub arm is skipped and says so.
  * The fetch is stubbed at the Response level; rows are asserted in real D1.
  */
@@ -81,17 +81,17 @@ const USAGE_OK = {
 };
 
 describe("the on-demand budget", () => {
-  it("is 18 + 5N (health 2N + usage N + reconcile 18 + 2N): 28 for two environments, inside the cap up to N = 6 (48) and past it at 7 (53)", () => {
-    expect(refreshSubrequests(2)).toBe(28);
-    expect(refreshSubrequests(6)).toBe(48);
-    expect(refreshSubrequests(7)).toBe(53);
+  it("is 20 + 5N (health 2N + usage N + reconcile 18 + 2N + its releases arm 2): 30 for two environments, inside the cap up to N = 6 (50) and past it at 7 (55)", () => {
+    expect(refreshSubrequests(2)).toBe(30);
+    expect(refreshSubrequests(6)).toBe(50);
+    expect(refreshSubrequests(7)).toBe(55);
     expect(refreshSubrequests(6)).toBeLessThanOrEqual(SUBREQUEST_CAP);
     expect(refreshSubrequests(7)).toBeGreaterThan(SUBREQUEST_CAP);
   });
 });
 
 describe("runRepoRefresh", () => {
-  it("runs health, then usage, then GitHub — every arm's outcome, in order, at ≤ 28 requests for N = 2", async () => {
+  it("runs health, then usage, then GitHub — every arm's outcome, in order, at ≤ 30 requests for N = 2", async () => {
     const w = world();
     const res = await runRepoRefresh(refreshEnv(), NOW, w.fetchImpl);
     expect(res).toEqual({ health: ALL_UP, ...USAGE_OK, github: { written: 0, unchanged: 0, failed: [] } });
@@ -105,7 +105,7 @@ describe("runRepoRefresh", () => {
     expect(github.length).toBeGreaterThan(0);
     for (const url of github) expect(url.startsWith(GH)).toBe(true);
     expect(w.calls.length).toBeLessThanOrEqual(refreshSubrequests(2));
-    expect(refreshSubrequests(2)).toBe(28);
+    expect(refreshSubrequests(2)).toBe(30);
     // Reconcile really ran: its completeness marker and its snapshots are in D1.
     const kinds = (await all<{ kind: string }>(env.DB, `SELECT kind FROM repo_snapshots ORDER BY kind`)).map((r) => r.kind);
     expect(kinds).toContain("prs_reconciled");
@@ -222,7 +222,7 @@ describe("runRepoRefresh", () => {
       const res = await quietly(() => runRepoRefresh(refreshEnv(), NOW, w.fetchImpl));
       expect(res.health).toEqual(ALL_UP);
       expect(res).toMatchObject(USAGE_OK);
-      expect(res.github).toEqual({ written: 0, unchanged: 0, failed: ["open_prs", "closed_prs", "commits", "runs", "env_heads", "checks", "statuses", "reviews", "branches", "drift"] });
+      expect(res.github).toEqual({ written: 0, unchanged: 0, failed: ["open_prs", "closed_prs", "commits", "runs", "env_heads", "checks", "statuses", "reviews", "branches", "drift", "releases"] });
     });
 
     it("reconcile itself throwing: a fixed phrase, and the other arms' results are kept", async () => {
@@ -249,7 +249,7 @@ describe("runRepoRefresh", () => {
     });
   });
 
-  it("with 7 environments (18 + 5·7 = 53 > 50) the GitHub arm is SKIPPED and says so; health and usage still run", async () => {
+  it("with 7 environments (20 + 5·7 = 55 > 50) the GitHub arm is SKIPPED and says so; health and usage still run", async () => {
     const seven = Array.from({ length: 7 }, (_, i) => ({
       ...ENVS[0], key: `env${i}`, label: `env${i}`, branch: `b${i}`,
       frontendUrl: `https://e${i}.example.com`, apiUrl: `https://api.e${i}.example.com`,
@@ -264,7 +264,7 @@ describe("runRepoRefresh", () => {
     expect(w.calls.length).toBeLessThanOrEqual(SUBREQUEST_CAP);
   });
 
-  it("with 6 environments (48) the GitHub arm still runs", async () => {
+  it("with 6 environments (50) the GitHub arm still runs", async () => {
     const six = Array.from({ length: 6 }, (_, i) => ({
       ...ENVS[0], key: `env${i}`, label: `env${i}`, branch: `b${i}`,
       frontendUrl: `https://e${i}.example.com`, apiUrl: `https://api.e${i}.example.com`,
