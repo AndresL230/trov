@@ -218,6 +218,8 @@ function personStmts(p: PlatformContext, h: string, tomb: string, a: { logins: s
     // The AI router's stale scopes that name them (0058_ai_dirty): their brief (`person:<handle>`) and their GitHub
     // sessions (`session:<repo>:<login>`). No other scope key names a person.
     stmt(p, `DELETE FROM ai_dirty WHERE scope = 'person' AND scope_key = ? COLLATE NOCASE`, h),
+    // Their briefs (0063_person_brief): written about them, for them alone — gone with the account, never renamed.
+    stmt(p, `DELETE FROM person_brief WHERE handle = ? COLLATE NOCASE`, h),
     ...[h, ...a.logins].map((n) => stmt(p, `DELETE FROM ai_dirty WHERE scope = 'session' AND lower(substr(scope_key, -length(?1) - 1)) = lower(':' || ?1)`, n)),
     // Rate-limit counters (two days at most anyway), by handle and by the sign-ins they were onboarded with.
     stmt(p, `DELETE FROM abuse_counters WHERE subject = ? COLLATE NOCASE${counters.length ? ` OR subject IN (${ph(counters.length)})` : ""}`, h, ...counters),

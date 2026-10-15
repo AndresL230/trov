@@ -67,6 +67,8 @@ async function zedsWork(): Promise<number> {
   await exec(`INSERT INTO oauth_tokens (token_hash, grant_id, kind, created_at, expires_at) VALUES ('zt', ?, 'access', ?, '2099-01-01')`, g, T);
   await exec(`INSERT INTO oauth_codes (code_hash, client_id, person, grant_id, redirect_uri, code_challenge, resource, created_at, expires_at, org_id) VALUES ('zc', 'cl', ?, ?, 'http://localhost', 'x', 'r', ?, '2099-01-01', ?)`, ZED, g, T, ORG_A);
   await exec(`INSERT INTO notification_prefs (org_id, user_id, kind, cadence, updated_at) VALUES (?, ?, 'my_work', 'weekly', ?)`, ORG_A, ZED, T);
+  // Their brief (0063_person_brief): written for them alone.
+  await exec(`INSERT INTO person_brief (org_id, handle, version, generated_at, model, prompt_version, input_hash, brief_json) VALUES (?, ?, 1, ?, 'claude-haiku-5-5', 'brief.1', 'h', '{"now":null,"recently":null,"next":{"items":[]}}')`, ORG_A, ZED, T);
   await exec(`INSERT INTO notification_outbox (idempotency_key, user_id, cadence, window_id, kinds, status, created_at, org_id) VALUES (?, ?, 'daily', 'w', '[]', 'sent', ?, ?)`, `${ORG_A}:${ZED}:daily:w`, ZED, T, ORG_A);
   await exec(`INSERT INTO notification_outbox_bodies (idempotency_key, to_address, subject, html, text, created_at, org_id) VALUES (?, ?, 's', 'h', 't', ?, ?)`, `${ORG_A}:${ZED}:daily:w`, EMAILS[2], T, ORG_A);
   await exec(`INSERT INTO platform_outbox_bodies (idempotency_key, to_address, subject, html, text, created_at) VALUES ('pk', ?, 's', 'h', 't', ?)`, EMAILS[0], T);
@@ -146,6 +148,7 @@ describe("deleting your own account", () => {
       expect(await one<{ n: number }>(`SELECT COUNT(*) AS n FROM ${t} WHERE ${col} = ?`, tomb), t).toEqual({ n: 0 });
     }
     expect(await one(`SELECT COUNT(*) AS n FROM oauth_tokens WHERE token_hash = 'zt'`)).toEqual({ n: 0 });
+    expect(await one(`SELECT COUNT(*) AS n FROM person_brief`)).toEqual({ n: 0 }); // deleted, not handed to the tombstone
     // Each org they left says so, and one platform row records the deletion — by the tombstone, never the old handle.
     expect(await rows(`SELECT org_id, actor, target FROM org_admin_audit WHERE action = 'member.leave' ORDER BY org_id`))
       .toEqual([{ org_id: ORG_B, actor: tomb, target: tomb }, { org_id: ORG_A, actor: tomb, target: tomb }].sort((x, y) => x.org_id.localeCompare(y.org_id)));

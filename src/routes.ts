@@ -41,6 +41,7 @@ import { listPrompts, getPrompt, recordPromptUse, listPromptVersions, savePrompt
 import { isSection } from "@shared/vocabulary";
 import { HANDOFF_BOXES, type HandoffBox, type HandoffClaimResult } from "@shared/handoffs";
 import { getMyWork } from "./tools/mywork";
+import { markMyWorkOpened } from "./data/person-brief";
 import { quickSearch } from "./tools/quick-search";
 import { QUICK_TYPES, type QuickType } from "@shared/quick-search";
 import { feedStats, isFeedStatsDays, isFeedStatsTz } from "./tools/feed-stats";
@@ -718,9 +719,14 @@ tenantRoot.get("/roadmap", async (c) => c.json(await get_plan(c.var.ctx)));
 tenantRoot.get("/me/dashboard", async (c) => {
   const login = c.get("principal").handle;
   try {
-    const data: DashboardData = await getMyWork(c.var.ctx, login);
-    // `brief` (shared/dashboard.ts) is omitted: nothing writes one yet. LOCAL_AI_PREVIEW shows the sample
-    // under `wrangler dev` only (src/ai/preview.ts); `get_my_work` never gets it.
+    // Opening My Work is what makes a person's brief worth writing (src/data/person-brief.ts `briefWanted`): one
+    // timestamp, at most one write an hour, never a model call; a failed write never fails the read.
+    const [data] = await Promise.all([
+      getMyWork(c.var.ctx, login) as Promise<DashboardData>,
+      markMyWorkOpened(c.var.ctx, login).catch((e) => console.error("mywork opened", e instanceof Error ? e.name : "error", `org=${c.var.ctx.orgId}`)),
+    ]);
+    // `brief` is the newest stored one (src/tools/mywork.ts `storedBrief`), absent when there is none. LOCAL_AI_PREVIEW
+    // shows the sample instead under `wrangler dev` only (src/ai/preview.ts); `get_my_work` never gets the sample.
     const preview = aiPreview(c.env, c.req.url);
     return c.json(preview ? { ...data, brief: preview.brief } : data);
   } catch {
