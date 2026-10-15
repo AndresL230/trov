@@ -192,6 +192,15 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **Parts** (stubs with their interface in the file header): `ask-conversation.ts`, `ask-composer.ts`,
   `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
   Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
+- **Conversation** (`ask-conversation.ts`, `test/render.ask-conversation.test.ts`): the answer draws in stream order —
+  steps (a `show_*` / `save_artifact` step stays quiet), thinking, then the parts — with its own small markdown
+  reader (headings, lists, code, tables split outside ref tokens so `[[ticket:14|status]]` is one cell). Edit-and-resend
+  and regenerate go through `replaceFrom`; a question streamed this session has no id yet (`done` names only the
+  answer), so its id is read back from `GET /ask/threads/:id` first. Save as artifact and Wrong? are the actions part's
+  acts (`askAcSaveForm` `<where>:<answerKey>[:<block>]`, `askAcWrong` `<answerKey>`). A block or a question's file
+  opens in the inspector as a conversation-held ref, `askcv:<where>:<key>:<kind>:<n>` (`ask-cvref.ts`): primed as
+  hidden so it is never peeked, resolved by `cvItem`, drawn bigger with `chartFigure` / `themesFigure` /
+  `diagramFigure` / `tableView`.
 - **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on
   `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written.
 - Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`.
