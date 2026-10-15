@@ -121,10 +121,11 @@ export const RELEASES: Release[] = [
       fixed: [
         "A tag page's Who writes about it and Often seen with bars all took the tag's colour; each is now the person's or the other tag's own (`meters` `tone`, `TagPageProps.colorOf` / `tagColorOf`) (#180)",
         "The header's breadcrumb (\"Tags › auth\", a ticket, a sprint, an artifact) set the page's name smaller and lighter than the title before it; both are 15px semibold now, the page you are on in full strength (#180)",
+        "To review: adding or dismissing one of Sift's suggestions turned EVERY row's button to \"Adding…\" and waited for the whole page to reload; now only that row slides out at once (`TagsUi.reviewLeaving`, `data-leaving`), the write and a quiet refresh follow (`refreshPage`), and a refusal brings the row back (#181)",
       ],
       removed: [],
     },
-    prs: [179, 180],
+    prs: [179, 180, 181],
   },
   // States drawn as marks instead of tags: the 2026-10 tag audit (#173).
   // Also: capture-time summaries move from Google Gemini to Anthropic's Claude, behind one model client (#176),
