@@ -78,7 +78,7 @@ import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 import { previewBanner, previewState, type PreviewMode } from "./preview";
 import { aiItemRef } from "@shared/ai-core";
-import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, AI_NOTE_LEAVING, type AiUi } from "./ai-ui";
+import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, AI_NOTE_LEAVING, AI_EXIT_MS, type AiUi } from "./ai-ui";
 import { driftLine, roadmapSuggestionCards } from "./roadmap-ai";
 import { aiFilterBox, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
 
@@ -320,6 +320,10 @@ export interface AppState {
   /** Unassigned + open, org-wide — the sidebar badge AND the queue's footer count. */
   ticketBadge: number;
   qSeg: TicketSeg;
+  /** Cards a refetch found DECLINED while a view that hides declined was up (main.ts
+   *  `leaveDeclined`): each as it was shown and when its exit began — drawn leaving for
+   *  `AI_EXIT_MS`, then dropped. Never under reduced motion. */
+  qLeaving: { row: TicketListItem; at: number }[];
   qAssignee: TicketAssigneeFilter;
   qCategory: TicketCategory | "all";
   qView: "table" | "board";
@@ -568,7 +572,7 @@ export function initialState(): AppState {
     ticketDetail: { status: "idle", data: null },
     ticketId: null,
     ticketBadge: 0,
-    qSeg: "all", qAssignee: "anyone", qCategory: "all", qView: "board",
+    qSeg: "all", qLeaving: [], qAssignee: "anyone", qCategory: "all", qView: "board",
     qQ: "", qPrio: "all", qSprint: "all", qPerson: "", qFilterOpen: false, qFilterCat: "assignee",
     fTitle: "", fCat: null, fPrio: "normal", fDesc: "", fAsgs: [], fLink: "", fSpr: null,
     commentDraft: "", mention: null, commentHeight: null, linkDraft: "",
@@ -2760,6 +2764,8 @@ function ticketsScreen(s: AppState): string {
     aiFilter: aiFilterBox("tickets", s.aiFilter),
     // The first read is out: the toolbar is real, the columns / rows are skeletons.
     loading: slicePending(s.tickets),
+    // Cards declined while this view was up, mid-exit (the AI kit's clock: `--leave-t`).
+    leaving: s.qLeaving.map((l) => ({ row: l.row, t: Math.max(0, Date.now() - l.at) })).filter((l) => l.t < AI_EXIT_MS),
   });
 }
 

@@ -32,6 +32,7 @@ import { dangerTrigger, confirmModal } from "./confirm";
 import { skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse, emptyLayout, emptyShapes } from "./skeleton";
 import { ticketStatusIcon, ticketStatusMark, priorityMark } from "./marks";
 import { ticketDuplicateChip, ticketFieldChips, type AiChipUi } from "./ai-cards";
+import { aiLeave } from "./ai-ui";
 
 const NO_AI_UI: AiChipUi = { busy: [], unavailable: [], reasonOpen: null };
 
@@ -103,11 +104,21 @@ function assigneeLabel(handles: string[], persons: PersonSummary[]): string {
   return `${firstNameOf(persons, handles[0])} +${handles.length - 1}`;
 }
 
-/** The statuses a segment covers — also the board's columns, in this order. */
+/** The statuses a segment SHOWS — also the board's columns, in this order. "All", the queue's
+ *  default view, leaves DECLINED out (owner's ruling, 2026-10-15 — tickets.md › The default view
+ *  hides declined): a declined ticket, Ask Trov's undone ones included, is reached on purpose
+ *  through Closed. Done stays in All. The server's `seg=all` still returns every status (MCP
+ *  `list_tickets` is unchanged); the queue narrows the loaded rows here (`segRows`). */
 export const SEG_STATUSES: Record<TicketSeg, TicketStatus[]> = {
   open: [...OPEN_STATUSES],
   closed: ["done", "declined"],
-  all: [...TICKET_STATUSES],
+  all: TICKET_STATUSES.filter((st) => st !== "declined"),
+};
+/** What each option of the Open / Closed / All switch holds, as its tooltip. */
+const SEG_TITLE: Record<TicketSeg, string> = {
+  open: "Triage, In progress and Testing",
+  closed: "Done and declined",
+  all: "Everything but declined tickets. Closed shows those.",
 };
 
 /** Design call #6 — "needs attention" = unassigned AND `submitted` (Triage). Rendered as the
@@ -173,6 +184,32 @@ export interface QueueProps {
   /** The queue's first read is still out: the toolbar is real, and the board's columns
    *  (or the table's rows) hold a skeleton instead of "Nothing here". */
   loading?: boolean;
+  /** Cards declined while a view that hides declined was up (`declinedLeavers`), each as it was
+   *  shown and how far into its exit it is (ms): drawn leaving by the AI kit's one exit
+   *  (`aiLeave`), counted nowhere. */
+  leaving?: QueueLeaving[];
+}
+
+/** A card on its way out of the queue: the row as it was last shown, and the exit's elapsed ms. */
+export interface QueueLeaving { row: TicketListItem; t: number }
+
+/** The loaded rows the picked segment shows — "All" leaves declined out (`SEG_STATUSES`). */
+export function segRows(p: Pick<QueueProps, "tickets" | "seg">): TicketListItem[] {
+  const statuses = SEG_STATUSES[p.seg];
+  return p.tickets.filter((t) => statuses.includes(t.status));
+}
+
+/** The rows a refetch DECLINED out of the view on screen: shown before (their old status is one
+ *  the segment shows), declined now, in a segment that hides declined. Each comes back as it was
+ *  shown, so its card leaves from where it sat. */
+export function declinedLeavers(prev: TicketListItem[], next: TicketListItem[], seg: TicketSeg): TicketListItem[] {
+  const statuses = SEG_STATUSES[seg];
+  if (statuses.includes("declined")) return [];
+  const before = new Map(prev.map((t) => [t.id, t]));
+  return next.flatMap((t) => {
+    const was = before.get(t.id);
+    return t.status === "declined" && was && statuses.includes(was.status) ? [was] : [];
+  });
 }
 
 export const QUEUE_FILTER_CATS = ["assignee", "category", "priority", "sprint"] as const;
@@ -201,7 +238,7 @@ export function queueRows(p: QueueProps): TicketListItem[] {
   const prio = p.priority ?? "all";
   const sprint = p.sprint ?? "all";
   const who = (p.person ?? "").toLowerCase();
-  return p.tickets
+  return segRows(p)
     .filter((t) => !who || t.assignees.some((h) => h.toLowerCase() === who))
     .filter((t) => prio === "all" || t.priority === prio)
     .filter((t) => inSprint(t, sprint))
@@ -216,6 +253,7 @@ export function queueRows(p: QueueProps): TicketListItem[] {
  *  and Sprint narrow the loaded rows. Counts only where they are honest — the
  *  two client-side groups, counted over what the server returned. */
 function queueFilterMenu(p: QueueProps, shown: number): FilterMenuProps {
+  const inSeg = segRows(p);   // counted over what the segment shows — never a declined row in All
   const prio = p.priority ?? "all";
   const sprint = p.sprint ?? "all";
   const person = p.person ?? "";
@@ -235,7 +273,7 @@ function queueFilterMenu(p: QueueProps, shown: number): FilterMenuProps {
           ...[...p.persons].sort((a, b) => (a.name || a.handle).localeCompare(b.name || b.handle)).map((pp) => ({
             v: `@${pp.handle}`, l: pp.name || pp.handle, act: "queueAssignee", arg: `@${pp.handle}`,
             lead: personChip(pp, 18, pp.handle),
-            n: p.assignee === "anyone" ? p.tickets.filter((t) => t.assignees.some((h) => h.toLowerCase() === pp.handle.toLowerCase())).length : undefined,
+            n: p.assignee === "anyone" ? inSeg.filter((t) => t.assignees.some((h) => h.toLowerCase() === pp.handle.toLowerCase())).length : undefined,
           })),
         ],
       },
@@ -247,11 +285,11 @@ function queueFilterMenu(p: QueueProps, shown: number): FilterMenuProps {
       {
         key: "priority", label: "Priority", value: prio, none: "all",
         options: [["all", "Any priority"] as [string, string], ...[...TICKET_PRIORITIES].reverse().map((x): [string, string] => [x, cap(x)])]
-          .map(([v, l]) => ({ v, l, act: "queuePriority", arg: v, n: v === "all" ? p.tickets.length : p.tickets.filter((t) => t.priority === v).length })),
+          .map(([v, l]) => ({ v, l, act: "queuePriority", arg: v, n: v === "all" ? inSeg.length : inSeg.filter((t) => t.priority === v).length })),
       },
       {
         key: "sprint", label: "Sprint", value: sprint, none: "all",
-        options: sprintOpts.map(([v, l]) => ({ v, l, act: "queueSprint", arg: v, n: p.tickets.filter((t) => inSprint(t, v)).length })),
+        options: sprintOpts.map(([v, l]) => ({ v, l, act: "queueSprint", arg: v, n: inSeg.filter((t) => inSprint(t, v)).length })),
       },
     ],
   };
@@ -263,7 +301,7 @@ function filterRow(p: QueueProps, shown: number): string {
   const segs: [TicketSeg, string][] = [["all", "All"], ["open", "Open"], ["closed", "Closed"]];
   const segment = segmented({
     id: "queue-seg", ariaLabel: "Ticket status", act: "queueSeg", value: p.seg, size: "sm", className: "cnpy-seg--bar",
-    options: segs.map(([value, label]) => ({ value, label })),
+    options: segs.map(([value, label]) => ({ value, label, title: SEG_TITLE[value] })),
   });
 
   const menu = queueFilterMenu(p, shown);
@@ -345,7 +383,8 @@ export function queueGroups(tickets: TicketListItem[], sprints: SprintView[]): Q
   return defs.filter((g) => g.rows.length > 0);
 }
 
-function groupHeader(g: QueueGroup): string {
+/** `n`: the group's count — its rows less any on their way out (a leaving row is counted nowhere). */
+function groupHeader(g: QueueGroup, n = g.rows.length): string {
   const openLink = g.key !== null
     ? `<button data-act="openSprint" data-arg="${g.key}" title="Open sprint screen" class="cnpy-grouplink" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:500;color:var(--fg-55);white-space:nowrap;flex:none;padding:2px 6px">Open sprint →</button>`
     : "";
@@ -356,7 +395,7 @@ function groupHeader(g: QueueGroup): string {
     ${meta}
     ${openLink}
     <div style="flex:1"></div>
-    <span style="font-family:var(--label);font-size:10px;font-weight:600;color:var(--fg-40);white-space:nowrap;flex:none">${g.rows.length} ${g.rows.length === 1 ? "ticket" : "tickets"}</span>
+    <span style="font-family:var(--label);font-size:10px;font-weight:600;color:var(--fg-40);white-space:nowrap;flex:none">${n} ${n === 1 ? "ticket" : "tickets"}</span>
   </div>`;
 }
 
@@ -389,9 +428,18 @@ function tableView(p: QueueProps): string {
   const head = `<div class="cnpy-thead" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;padding:14px 20px 10px;border-bottom:1px solid var(--border);font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">
     <div>TITLE</div><div>OPENED BY</div><div>CATEGORY</div><div>PRIORITY</div><div>STATUS</div><div>ASSIGNEE</div><div style="text-align:right">AGE</div>
   </div>`;
-  // Each group is a `.cnpy-tgroup`; trov.css draws the ONE hairline between groups.
-  const groups = queueGroups(p.tickets, p.sprints)
-    .map((g) => `<div class="cnpy-stagger cnpy-tgroup">${groupHeader(g)}${g.rows.map((t) => tableRow(t, p.persons)).join("")}</div>`)
+  // Each group is a `.cnpy-tgroup`; trov.css draws the ONE hairline between groups. A row on its
+  // way out (`leaving`) sits where it was — the server's order, newest-updated first — and leaves
+  // by the AI kit's one exit; no count includes it.
+  const out = new Map((p.leaving ?? []).map((l) => [l.row.id, l.t]));
+  const drawn = out.size === 0 ? p.tickets
+    : [...p.tickets, ...(p.leaving ?? []).map((l) => l.row)].sort((a, b) => b.updated_at.localeCompare(a.updated_at) || b.id - a.id);
+  const groups = queueGroups(drawn, p.sprints)
+    .map((g) => `<div class="cnpy-stagger cnpy-tgroup">${groupHeader(g, g.rows.filter((t) => !out.has(t.id)).length)}${g.rows.map((t) => {
+      const row = tableRow(t, p.persons);
+      const t0 = out.get(t.id);
+      return t0 === undefined ? row : aiLeave(row, t0);
+    }).join("")}</div>`)
     .join("");
   const empty = p.loading ? tableSkeleton()
     : p.tickets.length === 0
@@ -463,10 +511,16 @@ function boardView(p: QueueProps, rows: TicketListItem[]): string {
   // No filter is on and the queue answered with nothing: every column keeps its heading and
   // draws its cards empty — the sentence and Submit a ticket in the first one.
   const blank = !p.loading && rows.length === 0 && !queueNarrowed(p);
+  // Cards declined while this view is up leave from the column they sat in (`leaving`, the row as
+  // it was shown), by the AI kit's one exit; the column's count and its "Nothing here" already
+  // leave them out, so the empty state rises under the last one as it collapses.
+  const out = new Map((p.leaving ?? []).map((l) => [l.row.id, l.t]));
   const cols = statuses.map((st, ci) => {
     // A column is in its saved board order (`boardOrder`, tickets-core — the order
     // `move_ticket` places into), not the table's newest-first.
     const cards = rows.filter((t) => t.status === st).sort(boardOrder);
+    const drawn = out.size === 0 ? cards
+      : [...cards, ...(p.leaving ?? []).map((l) => l.row).filter((t) => t.status === st)].sort(boardOrder);
     const empty = p.loading ? ""
       : blank ? (ci === 0
         ? emptyLayout("tickets-board", { text: QUEUE_EMPTY, action: QUEUE_EMPTY_ACTION, sayStyle: "margin-bottom:8px", shapes: boardCardShapes(1) })
@@ -480,7 +534,11 @@ function boardView(p: QueueProps, rows: TicketListItem[]): string {
         <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--fg);white-space:nowrap">${ticketStatusIcon(st, 14, false)}${esc(TICKET_STATUS_LABEL[st])}</span>
         <span style="font-size:12px;color:var(--fg-40);white-space:nowrap;flex:none">${p.loading ? "" : cards.length}</span>
       </div>
-      <div class="cnpy-stagger">${p.loading ? boardColumnSkeleton(st) : cards.map((t) => boardCard(t, p.persons)).join("")}</div>
+      <div class="cnpy-stagger">${p.loading ? boardColumnSkeleton(st) : drawn.map((t) => {
+        const card = boardCard(t, p.persons);
+        const t0 = out.get(t.id);
+        return t0 === undefined ? card : aiLeave(card, t0);
+      }).join("")}</div>
       ${empty}
       <div style="flex:1;min-height:40px"></div>
     </div>`;
@@ -493,9 +551,15 @@ function boardView(p: QueueProps, rows: TicketListItem[]): string {
 /** The whole queue screen: toolbar + Board or Table. */
 export function queueView(p: QueueProps): string {
   const rows = queueRows(p);
+  // A leaving card is drawn only where it was shown: through the same narrowing (a search, a
+  // filter, the segment — by the status it had), and never beside a row with its id.
+  const shown = new Set(rows.map((t) => t.id));
+  const keep = new Set(queueRows({ ...p, tickets: (p.leaving ?? []).map((l) => l.row) }).map((t) => t.id));
+  const leaving = (p.leaving ?? []).filter((l) => keep.has(l.row.id) && !shown.has(l.row.id));
+  const q = { ...p, leaving };
   return `<div style="${WORK_SHELL}">
     ${p.aiFilter ?? ""}${filterRow(p, rows.length)}
-    ${p.view === "board" ? boardView(p, rows) : tableView({ ...p, tickets: rows })}
+    ${p.view === "board" ? boardView(q, rows) : tableView({ ...q, tickets: rows })}
   </div>`;
 }
 
