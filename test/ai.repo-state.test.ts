@@ -236,6 +236,16 @@ describe("THE READ: absent unless there is a state to show", () => {
     expect((await getRepoDashboardForAgent(await tenantCtx("meilin"), REPO, [])).state).toBeUndefined();
   });
 
+  it("a deploy of a part no longer configured is left out — no cite named by a bare key or a provider (Q62)", async () => {
+    await setOrgEnvironments(ENVS);
+    await addPart(ORG_A, "staging", "api", "railway", "service");
+    await deployRow(ORG_A, "production", "gone", "vercel", "dpl_9", "ready", new Date().toISOString(), { branch: "main" });
+    const inp = await stateInput(systemCtx(), { scope: "repo", key: REPO, dirtySince: new Date(Date.now() - 60_000).toISOString(), markedAt: new Date().toISOString(), attempts: 0, urgent: false });
+    expect(inp!.deploys).toEqual([]);
+    expect(Object.keys(inp!.cites).filter((r) => r.startsWith("deploy:"))).toEqual(["deploy:staging/api"]);
+    expect(Object.values(inp!.cites).map((c) => c.label)).not.toContain("production gone");
+  });
+
   it("the input reads hosting for every part, from D1 only", async () => {
     await setOrgEnvironments(ENVS);
     await addPart(ORG_A, "staging", "api", "railway", "service");

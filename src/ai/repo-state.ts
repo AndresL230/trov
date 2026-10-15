@@ -143,9 +143,10 @@ export async function stateInput(ctx: TenantContext, scope: DirtyScope): Promise
     cites[ref] = { ref, label: partLabel(p.env_key, p.part_key, p.label), href: safeHttps(d?.inspect_url) ?? safeHttps(d?.url) };
     return { ref, label: partLabel(p.env_key, p.part_key, p.label), provider: p.provider, latest: d?.state ?? null, poll: pollOf.get(key) ?? null };
   });
-  const deploys = deployRows.filter((d) => d.updated_at > since).slice(0, 12).map((d) => {
+  // Only a CONFIGURED part's deploys (what RepoFacts draws): a host is named by its part's label, never a provider
+  // id or a bare part key (#186, Q62).
+  const deploys = deployRows.filter((d) => d.updated_at > since && cites[`deploy:${d.env}/${d.part}`]).slice(0, 12).map((d) => {
     const ref = `deploy:${d.env}/${d.part}`;
-    cites[ref] ??= { ref, label: partLabel(d.env, d.part), href: safeHttps(d.inspect_url) ?? safeHttps(d.url) };
     return { ref, label: cites[ref].label, state: d.state, branch: d.branch, message: clean(d.message, 120) || null };
   });
 

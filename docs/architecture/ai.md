@@ -239,7 +239,9 @@ a breaking change skips it — 6 h otherwise).
    `main` / `master` / an environment's branch), every environment PART's newest `hosting_deploys` row and last
    `hosting_poll_state` status (#185: every host is a provider), and the deploys since. Every ref the model may cite
    is built HERE with its cite (`pr:<n>`, `run:<id>`, `feed:<id>` → `#feed`, `deploy:<env>/<part>` → the deploy's
-   inspect link). `eventCount` = merged + digests + new default-branch failures + deploys since.
+   inspect link). A deploy cite names its host by the part's label (`<env label> <part label>`, from
+   `org_environment_parts.label` — the label RepoFacts draws), never a provider id; a deploy of a part no longer
+   configured is left out (Q62). `eventCount` = merged + digests + new default-branch failures + deploys since.
 2. **`gate.state`** (Jev, one `noul` over the delta: did it change what is shipped, in flight or needing
    attention?) — below `STATE_GATE_MIN` (0.5) no call, nothing written, the scope clears. Without Jev: a merged
    PR, a deploy, or a red default branch. What Jev reads (`stateGateText`) is a merged PR with its card's `what`,
