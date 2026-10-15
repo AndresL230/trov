@@ -40,6 +40,11 @@ describe("Your brief", () => {
     const onlyAlso = renderBrief(brief({ now: null, next: [], nextTotal: 0 }))!;
     expect(onlyAlso.heading).toBe("Also");
     expect(onlyAlso.subject).toBeUndefined();
+    // e2e EM-4: the heading already says Also — no second "ALSO" label under it, in either part.
+    expect(onlyAlso.html).not.toContain(">ALSO<");
+    expect(onlyAlso.text).not.toContain("ALSO");
+    expect(onlyAlso.html).toContain("data-brief-also");
+    expect(onlyAlso.text).toContain("- Repository setups (breaking) <https://github.com/o/r/pull/172>");
     expect(renderBrief(brief({ now: null, next: [], nextTotal: 0, also: [] }))).toBeNull();
   });
 

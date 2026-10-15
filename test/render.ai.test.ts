@@ -26,6 +26,7 @@ import { aiHiddenKey } from "../web/src/ai-ui";
 import { aiMark } from "../web/src/marks";
 import { aiTab, allowanceLine } from "../web/src/org-ai";
 import { usageView, orgUsageBlock } from "../web/src/platform-usage";
+import { PRIVACY } from "../web/src/legal";
 import { briefFixture, repoStateFixture, themesFixture, feedFixtures, aiPreviewFixtures } from "@shared/ai-fixtures";
 import { aiItemRef, AI_NEVER_SENT, AI_SENDS, type AiSettings, type AiThemeRange, type AiThemes } from "@shared/ai-core";
 import type { DashboardData } from "@shared/dashboard";
@@ -447,7 +448,11 @@ describe("Org settings › AI", () => {
     expect(text(member)).toContain("Off");
     expect(text(member)).toContain("Auto mode in Ask Trov");
     expect(text(member)).toContain("Only an admin or an owner can change this.");
-    expect(tab(settings(), "ok", true)).toMatch(/role="switch" aria-checked="true"[^>]* disabled aria-busy="true"/);
+    // e2e EV-OA-admin-K: held while the write is out WITHOUT `disabled` — a disabled button drops the keyboard's
+    // focus to <body> the moment Space or Enter toggles it; the toggle's own guard refuses a second press.
+    const saving = tab(settings(), "ok", true);
+    expect(saving).toMatch(/role="switch" aria-checked="true"[^>]* aria-disabled="true" aria-busy="true"/);
+    expect(saving).not.toMatch(/role="switch"[^>]* disabled[ >]/);
   });
   it("all four allowances with this month's use, in order; unlimited when the plan has no cap; the resume date when one is used up", () => {
     const html = tab(settings());
@@ -481,6 +486,17 @@ describe("Org settings › AI", () => {
     expect(t).toContain(AI_NEVER_SENT);
     expect(t).not.toMatch(/\bJev\b/);
     expect(html).not.toMatch(/\bJev\b/);
+  });
+  it("what is sent lists every feature the Privacy Policy names for Anthropic and TypeSafe AI, not only summaries and Sift (e2e OA-1 / LG-2)", () => {
+    const t = text(tab(settings()));
+    // Anthropic: summaries, Ask Trov, the plain-language filter, and what the AI pass writes; TypeSafe AI: Sift, and the pass's sorting and checking.
+    for (const line of ["For summaries", "For Ask Trov", "For filters typed in plain words", "For notes, briefs, the weekly email", "For Sift", "For sorting and checking items"]) {
+      expect(t).toContain(line);
+    }
+    // One line per provider row of the Privacy Policy's service-provider table (web/src/legal.ts › sharing).
+    const sharing = PRIVACY.sections.find((s) => s.id === "sharing")!.body.join(" ");
+    const rows = (sharing.match(/<td>(Anthropic|TypeSafe AI)<\/td>/g) ?? []).length;
+    expect(AI_SENDS.length).toBe(rows);
   });
   it("no key on this Trov: said as a fact", () => {
     expect(text(tab(settings({ eligibility: "no_key" })))).toContain("This Trov has no Anthropic key");

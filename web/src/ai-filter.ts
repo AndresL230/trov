@@ -13,6 +13,7 @@ import {
 } from "@shared/ai-filter-core";
 import { artifactKindLabel } from "@shared/artifacts-core";
 import { aiMark } from "./marks";
+import { AI_EXIT_MS, aiLeave } from "./ai-ui";
 import { anchoredField, fieldError } from "./org-ui";
 import { esc, attr } from "./ui";
 
@@ -25,7 +26,12 @@ export interface AiFilterApplied {
   /** The request's words this screen cannot filter by. */
   unmatched: string[];
   undo: AiFilterSnapshot;
+  /** When it was applied (Date.now()): the line rises in once from then (`appliedLine`). */
+  at?: number;
 }
+
+/** How long the applied line's rise lasts (the app's one-shot `.cnpy-flash`, .3 s). */
+export const AI_FILTER_RISE_MS = 300;
 
 export interface AiFilterUi {
   /** The org the switch was read for, and whether the box is shown there (`enabled`, and a key). */
@@ -35,10 +41,12 @@ export interface AiFilterUi {
   busy: AiFilterScreen | null;
   error: Partial<Record<AiFilterScreen, string>>;
   applied: Partial<Record<AiFilterScreen, AiFilterApplied>>;
+  /** A line Undo took, on its way out (the AI kit's one exit, `aiLeave`) — gone after `AI_EXIT_MS`. */
+  leaving?: Partial<Record<AiFilterScreen, { applied: AiFilterApplied; at: number }>>;
 }
 
 export function initialAiFilterUi(): AiFilterUi {
-  return { org: null, on: false, drafts: { tickets: "", feed: "", artifacts: "" }, busy: null, error: {}, applied: {} };
+  return { org: null, on: false, drafts: { tickets: "", feed: "", artifacts: "" }, busy: null, error: {}, applied: {}, leaving: {} };
 }
 
 /** The app screen a filter box serves, or null. */
@@ -50,7 +58,7 @@ const SEND_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" s
 
 /** The box: the field (Enter applies), its Apply button, a floating error, and — once applied — what was set,
  *  what was not a filter here, and Undo. Empty when the org's AI is off. */
-export function aiFilterBox(screen: AiFilterScreen, ui: AiFilterUi): string {
+export function aiFilterBox(screen: AiFilterScreen, ui: AiFilterUi, now: number = Date.now()): string {
   if (!ui.on) return "";
   const busy = ui.busy === screen;
   const err = ui.error[screen] ?? null;
@@ -64,17 +72,24 @@ export function aiFilterBox(screen: AiFilterScreen, ui: AiFilterUi): string {
       <span class="cnpy-sfbar-div" aria-hidden="true"></span>
       <button data-act="aiFilterRun" data-arg="${screen}" class="cnpy-ghostbtn fm-btn" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;border:none;height:100%;padding:0 12px;white-space:nowrap;color:var(--fg-70)"${busy ? ' disabled aria-busy="true"' : ""}>${busy ? "Reading&hellip;" : `Apply${SEND_ICON}`}</button>
     </div>`;
-  const note = applied ? appliedLine(applied) : "";
+  // The screens are rebuilt per repaint, so both motions are clocked (a negative delay): a repaint inside one
+  // joins it where the last left off, and none after it moves. Off under reduced motion (trov.css).
+  const gone = ui.leaving?.[screen];
+  const goneT = gone ? now - gone.at : null;
+  const note = applied ? appliedLine(applied, now)
+    : gone && goneT !== null && goneT >= 0 && goneT < AI_EXIT_MS ? aiLeave(appliedLine(gone.applied, null), goneT) : "";
   return `<div class="cnpy-aifilter-row" data-ai-filter="${screen}" style="margin:0 0 10px">
     ${anchoredField(field, err ? fieldError(`${id}-e`, err) : "")}
     ${note}
   </div>`;
 }
 
-function appliedLine(a: AiFilterApplied): string {
+function appliedLine(a: AiFilterApplied, now: number | null): string {
   const set = a.labels.length ? `Filtered: ${a.labels.map(esc).join(" · ")}.` : "";
   const not = a.unmatched.length ? ` Not a filter here: ${a.unmatched.map((u) => `“${esc(u)}”`).join(", ")}.` : "";
-  return `<div role="status" style="display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;margin-top:7px;font-size:12px;line-height:1.5;color:var(--fg-55)">
+  const t = now !== null && a.at !== undefined ? now - a.at : null;
+  const rise = t !== null && t >= 0 && t < AI_FILTER_RISE_MS ? ` class="cnpy-flash" style="animation-delay:-${Math.round(t)}ms;` : ` style="`;
+  return `<div role="status"${rise}display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;margin-top:7px;font-size:12px;line-height:1.5;color:var(--fg-55)">
     <span>${set}${not}</span>
     <button data-act="aiFilterUndo" class="cnpy-mutelink" style="font-size:12px;font-weight:500;padding:0">Undo</button>
   </div>`;

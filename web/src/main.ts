@@ -3587,7 +3587,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       claimHandoff(h.id, session)
         .then(({ handoff: nh, reading_list }) => {
           // The claim's reading list (#167) shows on this page and rides along in the copied prompt.
-          state.handoffReading = { id: nh.id, items: reading_list };
+          // `at`: the list rises in once from here (handoffs.ts `readingListBlock`); this page is rebuilt per repaint,
+          // so each repaint inside the rise joins it where the last left off, and none after it replays it.
+          state.handoffReading = { id: nh.id, items: reading_list, at: Date.now() };
           return copyToClipboard(handoffAsPrompt(nh, reading_list ?? [])).then((ok) =>
             applyHandoff(nh, ok ? `Claimed #${nh.id} · copied as prompt` : `Claimed #${nh.id} — couldn't reach the clipboard`));
         })

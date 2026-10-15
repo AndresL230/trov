@@ -278,12 +278,35 @@ export type AiProviderLabel = (typeof AI_PROVIDER_NAMES)[number];
 
 /** One line of "What is sent": to whom, what, and for which feature. Grows as features land. */
 export interface AiSendLine { provider: AiProviderLabel; what: string; for: string }
+//   One line per AI row of the Privacy Policy's service-provider table (web/src/legal.ts › sharing), in its words,
+//   shortened — test/render.ai.test.ts holds the two to the same count. The Ask Trov, filter, notes and sorting
+//   lines follow passages still marked DRAFT there; change both together.
 export const AI_SENDS: readonly AiSendLine[] = [
   { provider: "Anthropic", what: "Pull request and issue titles and descriptions (up to 8,000 characters each)", for: "Summaries" },
+  {
+    provider: "Anthropic",
+    what: "The question and the conversation so far, the person's handle and role and what they said about how to answer them, the items Ask Trov reads to answer (only ones that person can see), and any file they attach",
+    for: "Ask Trov",
+  },
+  {
+    provider: "Anthropic",
+    what: "What a person types in a filter, with the organization's members' handles and names and its sprints' titles or its tags",
+    for: "Filters typed in plain words",
+  },
+  {
+    provider: "Anthropic",
+    what: "The organization's name, tags, active themes, sprints and plan, and what is being written from: the summaries Trov already made, commit messages and pull request titles, check and deploy results, tickets, handoffs and feed entries, and a doc with the entries that may disagree with it",
+    for: "Notes, briefs, the weekly email's highlights and suggestions",
+  },
   {
     provider: "TypeSafe AI",
     what: "A tag's name and description, and the title and first 400 characters of each feed entry, doc or decision that may fit it (code and anything shaped like a credential removed)",
     for: "Sift",
+  },
+  {
+    provider: "TypeSafe AI",
+    what: "One item at a time (a ticket, feed entry, pull request summary, doc proposal or unplaced item) as its title and a short excerpt, code and anything shaped like a credential removed, with the choices it is judged against; and, to decide whether something is worth writing about, commit messages, pull request titles and what changed in a repository",
+    for: "Sorting and checking items",
   },
 ];
 /** Never sent, whatever lands — except a file a person attaches to Ask Trov, which is sent as it is (owner ruling
