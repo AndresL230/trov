@@ -18,6 +18,7 @@ import {
 } from "./render";
 import {
   getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard,
+  acceptRepoSuggestion, ignoreRepoSuggestion, undoRepoSuggestion,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
   listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, mapIdentity, discardIdentity, restoreIdentity, type AssignTarget,
@@ -140,7 +141,7 @@ const syncCtl = createSyncController({
 
 // Org settings (web/src/org-actions.ts): every `org…` act, its loads, and the secret form's draft.
 const orgCtl = createOrgController({
-  state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+  state, mount, rerender: () => rerender(), flash: (m, ms, a) => flash(m, ms, a ?? null), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
   reloadOrgs: () => loadMyOrgs(), leaveOrg: () => showPicker(null),
 });
 // The organization's tag list (web/src/tags-actions.ts): every `tag…` act, the list's read, a tag's page.
@@ -465,7 +466,7 @@ window.addEventListener("hashchange", () => {
   // Back / Forward between two tabs of Org settings: the page is already loaded, so the tab's
   // body swaps in place — exactly what clicking the tab does. (Every other screen's loader is
   // already a no-op once its data is in; Platform's reads only what the tab has not got yet.)
-  if (r.screen === "org" && cur.screen === "org") { orgCtl.act("orgTab", r.orgTab ?? "integrations", null); return; }
+  if (r.screen === "org" && cur.screen === "org") { orgCtl.act("orgTab", r.orgTab ?? "integrations", "route"); return; }
   // Back / Forward between two steps of the guided setup: its reads are already in.
   if (r.screen === "welcome" && cur.screen === "welcome") { welcomeCtl.moved(); return; }
   loadForScreen(r.screen);
@@ -571,7 +572,10 @@ function currentRoute(): Route {
     if (state.plat.tab === "support" && state.plat.support.reportId !== null) r.platReport = state.plat.support.reportId;
   }
   if (state.screen === "platformorg" && state.plat.orgSlug) r.platOrg = state.plat.orgSlug;
-  if (state.screen === "org") r.orgTab = state.org.tab;
+  if (state.screen === "org") {
+    r.orgTab = state.org.tab;
+    if (state.org.tab === "repos" && state.org.repoPage) r.orgRepo = state.org.repoPage;
+  }
   if (state.screen === "tag" && state.tagName) r.tagName = state.tagName;
   // The step ON SCREEN: a member who opens `#welcome` (the admin's first step) is on their own first.
   if (state.screen === "welcome") r.welcomeStep = effectiveWelcomeStep(state.welcome.step, welcomeStepsFor(currentOrg(state)?.role, state.org));
@@ -603,6 +607,8 @@ function applyRoute(r: Route): void {
   if (r.screen === "platform") state.plat.support.reportId = r.platTab === "support" ? r.platReport ?? null : null;
   if (r.platOrg) state.plat.orgSlug = r.platOrg;
   if (r.orgTab) state.org.tab = r.orgTab;
+  // Org settings › Repositories: one repository's Apps page, or the list.
+  if (r.screen === "org") state.org.repoPage = r.orgRepo ?? null;
   if (r.tagName) state.tagName = r.tagName;
   if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
 }
@@ -2161,6 +2167,8 @@ function flash(msg: string, ms = 2200, action: ToastAction | null = null): void 
 }
 /** How long a toast carrying an Undo stays up — long enough to read it and reach the button. */
 const UNDO_TOAST_MS = 8000;
+/** The found-apps card's accept / ignore toast: the 5 seconds of Org settings › Repositories › Apps. */
+const FOUND_UNDO_MS = 5000;
 /** The confirmation modal's exit (trov.css `.cnpy-cmodal[data-closing]`), then `then` — which
  *  closes it in state. Instant under prefers-reduced-motion or when no modal is open. */
 const CONFIRM_OUT_MS = 140;
@@ -2512,6 +2520,35 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       break;
     }
     case "repoRefresh": if (state.repo.status !== "loading") loadRepo(); return;
+    // The Repo screen's found-apps card (web/src/repo-found.ts): a suggestion accepted or ignored in place, with the
+    // same toast and Undo as Org settings › Repositories › Apps, then the dashboard read again.
+    case "repoFoundAccept": case "repoFoundIgnore": {
+      const slug = state.orgSlug;
+      const repo = state.repo.data?.repo;
+      if (!arg || !slug || !repo || state.repo.data?.sample) return;
+      const accepting = act === "repoFoundAccept";
+      (accepting ? acceptRepoSuggestion(slug, repo, arg) : ignoreRepoSuggestion(slug, repo, arg))
+        .then((r) => {
+          const undo = r && typeof r === "object" ? r.undo : undefined;
+          flash(accepting ? "Accepted. The Repo screen now shows it." : "Ignored. Scan again brings it back.", FOUND_UNDO_MS,
+            undo ? { label: "Undo", act: "repoFoundUndo", arg: undo } : null);
+          loadRepo();
+        })
+        .catch((e) => {
+          if (e instanceof Unauthorized) { unauth(e); return; }
+          flash(accepting ? "Couldn't accept it. Try again." : "Couldn't ignore it. Try again.", 6000);
+        });
+      return;
+    }
+    case "repoFoundUndo": {
+      const slug = state.orgSlug;
+      const repo = state.repo.data?.repo;
+      if (!arg || !slug || !repo) return;
+      undoRepoSuggestion(slug, repo, arg)
+        .then(() => { flash("Undone."); loadRepo(); })
+        .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } flash("Couldn't undo it.", 6000); loadRepo(); });
+      return;
+    }
     case "repoRange":
       if (!(REPO_RANGES as readonly string[]).includes(arg ?? "") || arg === state.repoRange) return;
       state.repoRange = arg as RepoRange;

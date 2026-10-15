@@ -29,7 +29,10 @@
 //                       its other tabs; #platform/orgs/<slug> one organization;
 //                       #platform/support/<id> one support report (in the Support tab)
 //   #org              → Org settings › Integrations; #org/repos, #org/environments, #org/hosting,
-//                       #org/members, #org/tags, #org/notifications and #org/general its other tabs
+//                       #org/members, #org/tags, #org/notifications and #org/general its other tabs;
+//                       #org/repos/<owner>/<name> one repository's Apps (repo setups, Phase D2),
+//                       #org/repos/<owner>/<name>/apps/<key> one app, #org/repos/<owner>/<name>/new
+//                       Add an app — all three on the Repositories tab
 //   #tags/<name>      → one tag's page: everything that carries it. The list itself is
 //                       Org settings › Tags (`#org/tags`), where a bare `#tags` lands
 //   #welcome          → the guided first-run setup, at its first step; #welcome/agent,
@@ -87,11 +90,18 @@ export interface Route {
   platReport?: number;
   /** Set only on `org` (Org settings' tab). */
   orgTab?: OrgTab;
+  /** Set only on `org` › Repositories: one repository's Apps page (absent = the list of repositories). */
+  orgRepo?: OrgRepoRoute;
   /** Set only on `welcome` (the guided setup's step). */
   welcomeStep?: WelcomeStep;
   /** Set only on `tag` (the tag's name). */
   tagName?: string;
 }
+
+/** One repository's page under Org settings › Repositories: its Apps (`apps`), one app (`app`), or Add an app (`new`). */
+export interface OrgRepoRoute { repo: string; view: "apps" | "app" | "new"; app?: string }
+const REPO_SEG = /^[A-Za-z0-9_.-]{1,100}$/;
+const APP_KEY_SEG = /^[a-z0-9_-]{1,32}$/;
 
 /** Whether two routes name the same place (the hashchange no-op check). */
 export function sameRoute(a: Route, b: Route): boolean {
@@ -100,7 +110,8 @@ export function sameRoute(a: Route, b: Route): boolean {
     && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
     && a.platTab === b.platTab && a.platOrg === b.platOrg && a.platReport === b.platReport
     && a.orgTab === b.orgTab && a.welcomeStep === b.welcomeStep && a.tagName === b.tagName
-    && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null);
+    && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null)
+    && JSON.stringify(a.orgRepo ?? null) === JSON.stringify(b.orgRepo ?? null);
 }
 
 /**
@@ -110,7 +121,7 @@ export function sameRoute(a: Route, b: Route): boolean {
  * screen entrance and nothing to load again (main.ts `markEnter`, the hashchange handler).
  */
 export function pageKey(r: Route): string {
-  return hashForRoute({ ...r, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, platTab: undefined, platReport: undefined, orgTab: undefined });
+  return hashForRoute({ ...r, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
 }
 
 /** A URL path segment decoded, or null when it is malformed. */
@@ -234,6 +245,15 @@ export function parseHash(hash: string): Route {
   if (parts[0] === "org") {
     if (parts.length === 1) return { screen: "org", ...base, orgTab: "integrations" };
     if (parts.length === 2 && isOrgTab(parts[1])) return { screen: "org", ...base, orgTab: parts[1] };
+    // One repository's Apps, one of its apps, or Add an app (Org settings › Repositories › <repo> › Apps).
+    if (parts.length >= 4 && parts[1] === "repos") {
+      const owner = seg(parts[2]), name = seg(parts[3]);
+      if (!owner || !name || !REPO_SEG.test(owner) || !REPO_SEG.test(name)) return none;
+      const repo = `${owner}/${name}`;
+      if (parts.length === 4) return { screen: "org", ...base, orgTab: "repos", orgRepo: { repo, view: "apps" } };
+      if (parts.length === 5 && parts[4] === "new") return { screen: "org", ...base, orgTab: "repos", orgRepo: { repo, view: "new" } };
+      if (parts.length === 6 && parts[4] === "apps" && APP_KEY_SEG.test(parts[5])) return { screen: "org", ...base, orgTab: "repos", orgRepo: { repo, view: "app", app: parts[5] } };
+    }
     return none;
   }
   // One tag's page. The list is a tab of Org settings, so `#tags` alone goes there.
@@ -285,7 +305,14 @@ export function hashForRoute(r: Route): string {
   if (r.screen === "maintenance") return "#unplaced";
   if (r.screen === "platform") return !r.platTab || r.platTab === "orgs" ? "#platform" : r.platTab === "support" && r.platReport ? `#platform/support/${r.platReport}` : `#platform/${r.platTab}`;
   if (r.screen === "platformorg") return r.platOrg ? `#platform/orgs/${r.platOrg}` : "#platform";
-  if (r.screen === "org") return !r.orgTab || r.orgTab === "integrations" ? "#org" : `#org/${r.orgTab}`;
+  if (r.screen === "org") {
+    const p = r.orgRepo;
+    if (p && r.orgTab === "repos") {
+      const base = `#org/repos/${p.repo.split("/").map(encodeURIComponent).join("/")}`;
+      return p.view === "new" ? `${base}/new` : p.view === "app" && p.app ? `${base}/apps/${p.app}` : base;
+    }
+    return !r.orgTab || r.orgTab === "integrations" ? "#org" : `#org/${r.orgTab}`;
+  }
   if (r.screen === "tag") return r.tagName ? `#tags/${encodeURIComponent(r.tagName)}` : "#org/tags";
   if (r.screen === "welcome") return !r.welcomeStep || r.welcomeStep === "github" ? "#welcome" : `#welcome/${r.welcomeStep}`;
   return `#${r.screen}`;

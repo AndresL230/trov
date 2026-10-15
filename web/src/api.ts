@@ -516,6 +516,39 @@ export function testHosting(slug: string, provider: HostT.HostingProviderId, tar
   return orgSend("POST", orgPath(slug, `/hosting/${provider}/test`), target);
 }
 
+// ── Org settings › Repositories › a repo › Apps (repo setups, Phase D2; src/repo/apps-routes.ts, admin+) ──
+/** `/api/o/<slug>/repos/<owner>/<name><rest>`. */
+const repoPath = (slug: string, repo: string, rest: string): string => orgPath(slug, `/repos/${repo.split("/").map(encodeURIComponent).join("/")}${rest}`);
+/** Everything the Apps tab draws for one repository, in one read. */
+export function getRepoAppsSetup(slug: string, repo: string): Promise<ScanT.RepoAppsSetupDTO> { return orgSend("GET", repoPath(slug, repo, "/apps")); }
+/** An app's own fields, as the Apps tab writes them (src/repo/apps.ts `putRepoApp`). */
+export interface RepoAppBody { kind?: AppsT.AppKind; label?: string; folder?: string; watch?: string[]; release_signal?: string | null }
+/** Create or change an app of this repository. Refusals: `invalid` (+ `field`), `app_conflict` (the key is another repository's). */
+export function putRepoAppSetup(slug: string, repo: string, key: string, body: RepoAppBody): Promise<{ app: AppsT.RepoApp; created: boolean }> {
+  return orgSend("PUT", repoPath(slug, repo, `/apps/${encodeURIComponent(key)}`), body);
+}
+/** Remove an app; `removeParts` takes its parts (and their deploy history) with it. */
+export function deleteRepoAppSetup(slug: string, repo: string, key: string, removeParts: boolean): Promise<{ key: string; removed_parts: { env: string; part: string }[]; kept_parts: number }> {
+  return orgSend("DELETE", repoPath(slug, repo, `/apps/${encodeURIComponent(key)}${removeParts ? "?parts=remove" : ""}`));
+}
+// The scan's own routes (the scan and the suggestion lifecycle, Phase D1): called here, written there.
+/** Scan again: read the repository's config files now. */
+export function scanRepoNow(slug: string, repo: string): Promise<unknown> { return orgSend("POST", repoPath(slug, repo, "/scan")); }
+/** Accept a suggestion: its app and parts are written as you. `undo` takes it back. */
+export function acceptRepoSuggestion(slug: string, repo: string, id: string): Promise<{ undo?: string }> {
+  return orgSend("POST", repoPath(slug, repo, `/suggestions/${encodeURIComponent(id)}/accept`));
+}
+/** Ignore a suggestion until the next Scan again. */
+export function ignoreRepoSuggestion(slug: string, repo: string, id: string): Promise<{ undo?: string } | null> {
+  return orgSend("POST", repoPath(slug, repo, `/suggestions/${encodeURIComponent(id)}/ignore`));
+}
+/** Take back an accept (or an ignore) by the token it answered. */
+export function undoRepoSuggestion(slug: string, repo: string, undo: string): Promise<unknown> {
+  return orgSend("POST", repoPath(slug, repo, "/suggestions/undo"), { undo });
+}
+import type * as ScanT from "@shared/repo-scan-core";
+import type * as AppsT from "@shared/repo-apps-core";
+
 // ADMIN action: trigger the server-side GitHub backfill (admin-only route). The
 // worker holds the service token and fetches GitHub directly — no webhook secret.
 // `batch` (1-based) / `of` (the client's own cap) let the server run the
