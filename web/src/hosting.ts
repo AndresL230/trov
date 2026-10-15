@@ -484,18 +484,17 @@ export function connectionsFor(d: HostingSetupDTO, p: HostingProviderDTO): Hosti
 }
 
 /** A provider's CARD in the Providers grid (`.cnpy-hx-cards`): logo, name and status, the metadata, what the
- *  host is and what Trov reads from it — all visible, nothing behind a toggle — and ONE button at the foot
+ *  host is and what Trov reads from it — all visible, nothing behind a toggle — and ONE button at the top right
  *  (Connect, Manage or Add part, one width on every card). Everything you need only while connecting or managing
  *  is in that button's dialog. */
 function providerCard(o: { key: string; state: string; p: HostingProviderDTO; title: string; status: string; meta?: string; extra?: string; always?: string; action?: string }): string {
   return `<li class="cnpy-hx-card" data-org-hosting-conn="${attr(o.key)}" data-state="${attr(o.state)}"${CARD}>
-    <div class="cnpy-hx-card-h">${providerGlyph(o.p.id, 26)}<div style="min-width:0;flex:1 1 auto"><div class="cnpy-hx-card-n">${o.title}${o.status}</div>${o.meta ? `<div class="cnpy-hx-card-m">${o.meta}</div>` : ""}</div></div>
+    <div class="cnpy-hx-card-h">${providerGlyph(o.p.id, 26)}<div style="min-width:0;flex:1 1 auto"><div class="cnpy-hx-card-n">${o.title}${o.status}</div>${o.meta ? `<div class="cnpy-hx-card-m">${o.meta}</div>` : ""}</div>${o.action ? `<div class="cnpy-hx-card-a">${o.action}</div>` : ""}</div>
     <p class="cnpy-hx-card-d">${esc(o.p.summary)}</p>
     ${o.p.plan_note ? `<p class="cnpy-hx-card-d" style="margin-top:6px;color:var(--fg-40)">${esc(o.p.plan_note)}</p>` : ""}
     ${o.extra ? `<p class="cnpy-hx-card-d" style="margin-top:6px">${o.extra}</p>` : ""}
     <div style="margin-top:10px">${capabilityChips(o.p)}</div>
     ${o.always ? `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">${o.always}</div>` : ""}
-    ${o.action ? `<div class="cnpy-hx-card-a">${o.action}</div>` : ""}
   </li>`;
 }
 

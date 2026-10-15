@@ -1347,7 +1347,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    radius here is an inline value the corners block already scales. */
 /* The Providers grid: two cards a row (one at phone width), each the same height as its neighbour. A card shows
    everything but its dialogs: logo, name and status, the metadata, what the host is and what Trov reads, and ONE
-   button at its foot, one width on every card. Its radius is inline (hosting.ts CARD). */
+   button at its top right, one width on every card. Its radius is inline (hosting.ts CARD). */
 .cnpy-hx-cards { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; align-items:stretch; list-style:none; margin:0; padding:0; }
 .cnpy-hx-card { display:flex; flex-direction:column; min-width:0; padding:18px 18px 16px; border:1px solid var(--border); background:var(--surface); box-shadow:var(--shadow); }
 .cnpy-hx-card-h { display:flex; align-items:flex-start; gap:12px; }
@@ -1355,8 +1355,8 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .cnpy-hx-card-n { display:flex; align-items:center; gap:4px 10px; flex-wrap:wrap; min-width:0; font-size:14.5px; font-weight:600; letter-spacing:-0.005em; overflow-wrap:anywhere; }
 .cnpy-hx-card-m { margin-top:3px; font-size:12px; line-height:1.5; color:var(--fg-40); overflow-wrap:anywhere; }
 .cnpy-hx-card-d { margin:12px 0 0; font-size:13px; line-height:1.55; color:var(--fg-55); overflow-wrap:anywhere; }
-.cnpy-hx-card-a { margin-top:auto; padding-top:16px; display:flex; }
-.cnpy-hx-card-a > button { width:128px; justify-content:center; }
+.cnpy-hx-card-a { flex:none; display:flex; margin:-2px 0 0 auto; }
+.cnpy-hx-card-a > button { width:112px; justify-content:center; }
 @media (max-width:700px) { .cnpy-hx-cards { grid-template-columns:minmax(0, 1fr); } .cnpy-hx-card-a > button { min-height:36px; } }
 .cnpy-hx-envs { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap:14px; align-items:start; }
 .cnpy-hx-envhead { display:flex; align-items:center; gap:6px 10px; flex-wrap:wrap; min-height:52px; padding:9px 12px 9px 16px; border-bottom:1px solid var(--border); box-sizing:border-box; }
