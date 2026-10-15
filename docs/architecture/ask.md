@@ -195,3 +195,11 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on
   `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written.
 - Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`.
+- **Phone** (`ask-phone.ts`, ≤ 640px; `test/render.ask-phone.test.ts`): the header's Open threads + New thread (the
+  app's nav button stays; bug and theme leave the Ask header); the thread list is a modal side drawer (focus in, Tab
+  kept in, Escape / scrim / Close / a pick close it through its exit, focus back — it opts out of the app's phone
+  modal-as-bottom-sheet rule); the composer renders `phoneComposerBar(v)` in place of its toolbar: the + menu drives
+  the composer's OWN controls (Attach clicks its file input, Mention / Run a command type `@` / `/` into its box as a
+  real `input` event, Mode / Changes write `ComposerUi.mode / .auto`, from `ask/state` only) and the meta line reads
+  "Smart · Asks first"; the inspector is the shell's frame as a full-height sheet (`data-sheet="1"`) with focus kept in
+  it. Every phone control is ≥ 44px.
