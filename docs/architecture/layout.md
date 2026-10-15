@@ -198,7 +198,12 @@
   `rollback.ts` (the one-compare rollback check), `detect.ts` (the "Detected" suggestion, from captured GitHub
   activity alone). Its screens: `web/src/hosting.ts` + `web/src/hosting-actions.ts` (Org settings › Hosting),
   `web/src/repo-hosting.ts` (Repo dashboard › Usage › Hosting), `web/src/hosting-sample.ts` (the sample states — a
-  dynamic import, never in the main bundle).
+  dynamic import, never in the main bundle). Usage families (repo setups, Phase G): `shared/usage-families-core.ts`
+  (traffic / latency / compute and the extra outcomes / runtime / storage / schedules, their stored `hx_` names, the
+  projection's types), `src/tools/repo-extras.ts` (a part's extra families, MCP-reachable), `web/src/repo-usage.ts`
+  (the Usage tab's targets and extra blocks). App metrics contract v3: `appMetricsV3` in `src/repo/poll.ts`
+  (`docs/superpowers/specs/2026-10-15-app-metrics-v3.md`); Trov's own `GET /api/internal/metrics` is
+  `src/internal-metrics.ts` over `src/data/own-metrics.ts` (the bearer class, D1 only).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, the Guide (Help › Guide, `#guide`; it was Get Started), the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard) served via the ASSETS binding (an email's Unsubscribe link is NOT a screen
