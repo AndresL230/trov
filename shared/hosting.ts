@@ -18,6 +18,7 @@
 
 import type { IntegrationKind } from "./integrations";
 import type { RepoRange, RepoSection, RepoTone } from "./repo";
+import type { PartExtras, UsageFamily } from "./usage-families-core";
 
 // ── vocabularies ────────────────────────────────────────────────────────────
 
@@ -454,6 +455,12 @@ export interface RepoProviderPart {
   /** The part's provider's org-wide connection, as every surface says it (shared/hosting-status-core.ts
    *  `hostingStatus`). Absent in a payload from before the field existed. */
   connection?: ConnectionStatus;
+  /** The usage families its provider reads (shared/usage-families-core.ts `familiesOf`) — what the Usage tab draws
+   *  for it; the SPA never branches on `provider`. Absent in a payload from before repo setups Phase G. */
+  families?: UsageFamily[];
+  /** What its provider's EXTRA families say (outcomes, runtime, storage, schedules) — one entry per extra family it
+   *  reads; absent when it reads none. */
+  extras?: PartExtras;
 }
 
 /** `RepoDashboard.providers`. */

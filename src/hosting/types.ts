@@ -27,6 +27,7 @@
 import type {
   ConnectionMethod, DeployState, DeployTarget, HostingMetric, HostingProviderId, PartRole,
 } from "@shared/hosting";
+import type { ExtraFamily } from "@shared/usage-families-core";
 import type { HostFetch, SecretLike } from "./http";
 
 /** A field an admin fills (an org-wide provider setting or a part setting). `pattern` is anchored. */
@@ -73,6 +74,10 @@ export interface ProviderContext {
   credential: ProviderCredential;
   /** The current instant (ms). Windows key on its hour floor, so a re-poll asks for the same hours. */
   now: number;
+  /** The completed UTC day (`YYYY-MM-DD`) whose DAILY figures this poll should read (quantiles, D1) — handed only to a
+   *  provider that declares a daily family (`runtime` / `storage`), and only while that day has not been read yet
+   *  (./poll.ts, the once-a-day rule). Absent or null: read no daily figure. */
+  daily?: string | null;
 }
 
 export interface ProbeResult {
@@ -120,6 +125,13 @@ export interface PollResult {
   /** Short fixed notes about what this poll could NOT read that is not a metric ("commit: the token needs
    *  Workers CI Read") — scrubbed and appended to the poll state's detail. */
   notes?: string[];
+  /** Points of the provider's EXTRA usage families (shared/usage-families-core.ts — outcomes, runtime, storage,
+   *  schedules), named by its builders: hourly ones at a complete hour's start, daily ones at 00:00 UTC of a
+   *  completed day. Validated by the framework like every point; only for families the provider declares. */
+  extraPoints?: { metric: string; at: string; value: number }[];
+  /** Each extra family this poll ATTEMPTED: `reason` null = read, else why it could not be (scrubbed, ≤ 200). A
+   *  family not listed was not attempted this poll (a daily one between days) and keeps its last state. */
+  families?: { family: ExtraFamily; reason: string | null }[];
 }
 
 /** What an install / OAuth code exchange yields — stored as the org's secret + connection row. */
@@ -181,7 +193,8 @@ export interface HostingProvider {
   connectionMethods: readonly ConnectionMethodSpec[];
   orgConfigFields: readonly HostingField[];
   partSettings: readonly HostingField[];
-  capabilities: { deploys: boolean; metrics: readonly HostingMetric[] };
+  /** `families`: the EXTRA usage families it reads (shared/usage-families-core.ts) — absent = none. */
+  capabilities: { deploys: boolean; metrics: readonly HostingMetric[]; families?: readonly ExtraFamily[] };
   planNote: string | null;
   /** Worst-case fetches of one `poll`. */
   pollCost: number;
