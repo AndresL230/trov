@@ -39,8 +39,10 @@ the settings module), `factsDeploys` / `deployWeekCounts` (`src/repo/facts-store
   app ALSO narrows the per-part sections (environments' parts, `deploys`, `usage`, `providers`): an app IS a part
   key, so they keep that key's parts (`REPO_WIDE`: none). The other sections stay the org's capture.
 - **apps** — `repo_apps` rows of the repository plus a part key with no row (`source: "implicit"`, at the primary's
-  root); `previews` = a preview landed in 30 days; `openPrs` = the open-PR count for a repository's only app,
-  `null` with two or more (which PR touches which is Phase E's). **envs** — only those with a part of the apps in
+  root); `previews` = a preview landed in 30 days; `openPrs` = the open-PR count for a repository's only app; with
+  two or more, the open PRs whose files reach the app (Phase E — below), `null` while one open PR's files were never
+  read; `usedBy` (a Package) = the apps that use it, from the repo scan's workspace graph (`repo_app_suggestions.used_by`
+  folders matched to the apps' folders), `null` when the scan never described it. **envs** — only those with a part of the apps in
   view, `position` the org's. **parts** (app × environment, apps' order then promotion order) — `serving` the
   newest `ready` production deploy of the part's CURRENT provider (any age), `latest` the newest when it is not
   that one, `history` the last ≤ 20 settled oldest first (a previews-only part reads its previews, as
@@ -139,10 +141,10 @@ plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no secti
 | `environments` | every part of the environment (`org_environment_parts`, any host) with its newest `hosting_deploys` row, a part's successful poll (`hosting_poll_state`), head checks, fresh `health_*` metrics | cron `:40` — `pollPart` per part; webhook `check_run`; reconcile `env_heads` / `checks` arms; cron health ping |
 | `drift` | snapshot `drift` | webhook `push` to a configured environment branch; reconcile `drift` arm |
 | `health` | metrics `health_up` / `health_ms` | cron, every tick |
-| `codeStats`, `bars`, `prs` (Code) | `repo_events` `pr` / `push`; merged/closed PRs in `events` as the fallback | webhook `pull_request` / `push`; reconcile open + closed PR lists and the pre-capture commit window |
+| `codeStats`, `bars`, `prs` (Code) | `repo_events` `pr` / `push`; merged/closed PRs in `events` as the fallback; under the App menu `pr_files` / `commit_paths` (Phase E) | webhook `pull_request` / `push`; reconcile open + closed PR lists and the pre-capture commit window |
 | `branches` (+ the Active branches tile) | snapshot `branches` | reconcile `branches` arm only |
 | `deploys` (CI) | each part's settled `hosting_deploys` rows (a dot strip per part); checks and health excluded | cron `:40` — `pollPart` per part |
-| `ciFailures` | `run` rows | webhook `workflow_run` (+ `fillFailedJob`); reconcile `runs` + `job_titles` arms |
+| `ciFailures` | `run` rows (by app: the run's workflow file and head commit's `commit_paths`, Phase E) | webhook `workflow_run` (+ `fillFailedJob`); reconcile `runs` + `job_titles` arms |
 | `coverage`, `bundle` (CI); `todos` (Planning) | metrics `coverage` / `bundle_kb` / `todo_count` | a `canopy/*` commit status the target repo's CI posts — webhook `status`; reconcile `statuses` arm |
 | `activity` | PR closes + issue moves from `events`; webhook `push` rows, `review` rows, landed deploys | the captures above |
 | `usage` (Usage) | each environment's WEB parts' `hx_requests` / `hx_errors` summed (requests, error rate; covered intervals from `hosting_poll_state`) and `active_users_*` — on screen only the active users (on the environment's first web target) | cron `:40` — `pollPart`; cron `:00` — `pollSaplingMetrics` |
@@ -181,6 +183,43 @@ mapped to a person on read. The reads, D1 only:
 - `readTags(ctx, repo)` → `FactsUnseen.tags` (also `RepoAppsSetupDTO.tags`): every tag held, releases included.
 - `releaseWeekFigure(ctx, repo, now)` → `{ key: "releases", value, delta }` over the same pool: `null` until the
   `releases_reconciled` snapshot names the repository (before a read, 0 would be a guess).
+
+**Monorepos — which files a commit and a PR touched, and the App menu on Code and CI (Repo setups, Phase E;
+`0073_commit_paths`).** Two captures, both through the gate (`ingestion-gate.md`), both off the render path:
+- **Commit paths** (`src/repo/commit-paths.ts`, `src/repo/path-capture.ts`): a `push` delivery's own `commits[].added /
+  modified / removed` → `commit_paths` rows with `scope = 'commit'` (exactly that commit's files), written FIRST on the
+  delivery so the drift refresh's not-shipped compare already reads them. A push that lists `PUSH_PAYLOAD_COMMIT_CAP`
+  (20) commits, or a commit whose lists are missing or reach `PATHS_PER_COMMIT_CAP` (300 — UNVERIFIED: GitHub documents
+  no per-commit cap), was cut short; when the HEAD commit has no exact list and `before` is a real commit, ONE `compare`
+  (before...after, deferred under `waitUntil`) fills in — its `files` belong to the whole push, so they are stored under
+  the head commit as `scope = 'push'` (`'push_partial'` at the compare's own 300-file cap). A `push*` row is never read
+  as a commit's: the not-shipped filter and the commit counts read `commit` rows only; only CI's head-commit attribution
+  reads a push's, marked `approx`. A commit with neither is UNKNOWN. ≤ `PUSH_PATH_ROWS_CAP` (1,000) rows per push.
+- **PR files** (`src/repo/pr-files.ts`, `src/repo/pr-files-store.ts`): `GET /pulls/{n}/files`, ≤ 3 pages of 100 (three
+  full pages = `complete: false`), only for a repository with two or more apps (Packages count), for open PRs and PRs
+  merged in the last 14 days — on the `pull_request` webhook (opened / reopened / synchronize / closed-merged; no
+  request when the files were read for that head) and reconcile's `pr_files` arm (above). `pr_file_reads` holds the
+  head each list was read for: no row = never read = unknown.
+- **The narrowing** (`src/tools/repo-scope.ts`, `src/repo/app-scope.ts`; the rules in `shared/repo-scope-core.ts`, which
+  the SPA words with): a PR / commit / run TOUCHES the apps (not Packages) whose watch paths its files hit and the
+  Packages they hit; it REACHES an app it touches, or that uses a Package it touches (`usedBy`). Only in a repository
+  with two or more apps: under All apps each listed PR carries `touches` / `packages` (`null` = never read: no
+  "touches" line) and each CI failure `apps` (`null` = unknown) and `approx`; under an app key the Code tiles (Open
+  PRs, Merged this week, Commits this week — the week's pushed commits by their own files —, Contributors; a figure
+  with one unknown member is `value: null` with how many in its `sub`, "—" on screen), the 14-day bars (the app's
+  commits per push day, the note naming how many have unknown paths), the PR list (its 8 among the 100 most recently
+  touched PRs of 90 days, their checks and approvals read for just those) and the CI failures (the app's failed runs;
+  the 7-day rate over its decisive runs, `null` unless a week of run capture AND every run of the window is
+  attributed) are its own; `__repo` = touching no app and no package. **Unknown is never guessed into an app**, nor
+  into `__repo`; a PR read past its page cap belongs where it hits and is unknown where it does not. A run belongs to
+  the apps a `github` part's `workflow` setting names (by file name) or whose watch paths cover its workflow file,
+  plus its head commit's files. The deploy strips carry `envLabel` / `host`; the screen groups them per app. A throw
+  costs the narrowing alone (`degraded`, the narrowed sections empty). On screen (`web/src/repo-scope.ts`): the scope
+  line ("Pull requests that touch apps/api/** or packages/db/**", Show all apps), the touches cell (the apps it reaches,
+  "Repo-wide", and "via packages/ui" — under an app only when the app is reached through a Package alone), a failure's
+  apps after its workflow (All apps), strips per app. The sample narrows scenario E with `sampleScopes` (the design's
+  `CODE_E_API` / `CI_E`). Tests: `test/repo-monorepo.capture.test.ts`, `test/repo-monorepo.scope.test.ts`,
+  `test/render.repo-monorepo.test.ts`.
 
 **Owner prerequisites — what must be true OUTSIDE this repo** (the one place they are listed):
 - **The target repo's GitHub webhook must be SUBSCRIBED to every name in `REPO_EVENT_NAMES`**
@@ -451,10 +490,14 @@ it.
   `not_shipped` — per part of the PRIMARY repository's apps with a serving sha (`servingShas`), `GET
   /compare/<serving sha>...<branch>`: GitHub's `ahead_by` as the count, the commits grouped by PR (`groupCommits`),
   the oldest commit's date. In a repository with ≥ 2 apps the commits are kept to the app's watch paths
-  (`src/repo/watch.ts`) ONLY when every returned commit lists its `files` — GitHub's compare does not today (one
-  combined list for the range), so the groups stay unfiltered until Phase E's per-commit paths; filtered, the count
-  is exact only when the compare returned every commit, else `null`. Incremental: a part is compared again only
-  when its serving sha or its branch head (`branchHeads`) changed; never-computed parts first, then the oldest.
+  (`src/repo/watch.ts`), each commit's files read from `commit_paths` (Phase E — exact `commit` rows only; GitHub's
+  compare lists one combined file list for the range, which says nothing per commit). **A commit whose files are not
+  known stays IN** — counted, its group saying how many (`FactsCommitGroup.pathsUnknown`, "paths unknown" on screen) —
+  never dropped (the guard: `test/repo-monorepo.scope.test.ts`); with no commit known nothing is filtered and the count
+  is GitHub's total; filtered, the count is exact only when the compare returned every commit, else `null`. Incremental:
+  a part is compared again only when its serving sha or its branch head (`branchHeads`) changed, or when a commit it
+  kept as unknown (`NotShippedEntry.unknown`) has paths now — a D1 read, no GitHub request; never-computed parts first,
+  then the oldest.
   `out_of_step` — per environment whose parts serve different commits (a 7- and a 40-character sha are one): the
   NEWEST serving deploy is the reference and one compare per other distinct sha (`<other>...<reference>`):
   `ahead` → the other apps are behind by `ahead_by`; `behind` (the newest deploy runs older code) → the reference
@@ -469,10 +512,16 @@ it.
   dated by its tagger, a lightweight one by its commit). Every row goes through the gate's release arm
   (`ingestRepoRelease`), so a re-read writes nothing; a successful read writes the `releases_reconciled`
   snapshot (`{ repo }`), the week figure's "read" marker. `RELEASES_RECONCILE_COST` = 2.
-- Worst case **`reconcileRequests(N)` = 16 + 2N + max(2, N) + 6 + 2** outbound requests for N environments (30 for two):
+- **The `pr_files` arm (Phase E, `reconcilePrFiles` in `src/repo/pr-files.ts`)**: in a repository with two or more
+  apps, the open PRs and the PRs merged in the last 14 days whose files were never read for their current head
+  (`pr_file_reads.head_sha`) — open first, then merged, newest first — each `GET /pulls/{n}/files` ≤ 3 pages of 100,
+  started only while a whole PR (3 requests) still fits the allowance: `PR_FILES_REQUESTS` = 9 (counted in
+  `reconcileRequests` — Poll now), `PR_FILES_SYNC_REQUESTS` = 30 for the cron's unit and Sync GitHub
+  (`ReconcileLimits`; `reconcileCost` counts the difference). Every list through the gate's PR-files arm.
+- Worst case **`reconcileRequests(N)` = 16 + 2N + max(2, N) + 6 + 2 + 9** outbound requests for N environments (39 for two):
   2 PR lists + 1 commit window + 1 workflow-run list + ≤5 job lookups + 1 status list + 1 GraphQL reviews + ≤5
-  branch pages + 2 per environment (head commit, head checks), the chain's max(2, N), the facts arms' 6 and the releases arm's 2. Under an
-  admin Sync it shares the invocation with `runBackfill`'s ~13.
+  branch pages + 2 per environment (head commit, head checks), the chain's max(2, N), the facts arms' 6, the releases arm's 2
+  and the PR-files arm's 9. Under an admin Sync it shares the invocation with `runBackfill`'s ~13.
 - **`/admin/backfill` runs it once per Sync, on the batch that ENDS the loop**: the batch whose
   `summaryBudgetExhausted` reads `false`, OR the one that hits the SPA's own cap while still exhausted —
   `isFinalBackfillBatch(result, batch?, of?)` (`src/tools/backfill.ts`); `runAdminBackfillLoop`
@@ -516,12 +565,13 @@ words `timeout` / `HTTP <status>` / `unreachable`; `"not_configured"` with no en
 `{ written, unchanged, failed }` (`failed` = reconcile's ARM NAMES), `"not_configured"` without a primary
 repository and a GitHub credential, `failed: ["unexpected error"]` on an unexpected throw. **The cron
 does NOT call it** — its per-tick spreading stands. **Budget: health 2N + usage N + reconcile
-(`reconcileRequests(N)`) = `refreshSubrequests(N)` — 36 for two environments, and `SUBREQUEST_CAP` = 100 (a tenth of
+(`reconcileRequests(N)`) = `refreshSubrequests(N)` — 45 for two environments, and `SUBREQUEST_CAP` = 100 (a tenth of
 Workers Paid's 1,000 an invocation; the cron's own budget is 900 — it was the free plan's 50 until the promotion chain,
-the facts arms and releases pushed a five-environment org past it) caps it at N ≤ 12** (96; 102 at thirteen); past that the
+the facts arms and releases pushed a five-environment org past it) caps it at N ≤ 11** (99; 105 at twelve — the PR-files
+arm's 9 took it from twelve); past that the
 github arm is SKIPPED and says so (`failed: ["skipped: would exceed the subrequest budget"]`) rather than
 risk the invocation, while health and usage still run. The hosting arm runs only when the WHOLE refresh still
-fits (`refreshSubrequests(N)` + a mint + Σ `pollCost` ≤ 50 — 13 left for two environments), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
+fits (`refreshSubrequests(N)` + a mint + Σ `pollCost` ≤ `SUBREQUEST_CAP` — 54 left for two environments), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
 (UNBOUNDED — the reason it has a tick of its own — and it feeds the Roadmap, not this dashboard),
 `pruneRepoCapture` (maintenance, not a refresh) and `runBackfill` / summaries (that is Sync GitHub: My Work's
 capture, with its own summary allowance). **That last exclusion has a visible cost**: `runBackfill` is also
@@ -748,7 +798,9 @@ deploy record IS a `check` row (`part = 'frontend'`) and must be kept forever li
 HOURLY usage metrics (`hx_*` / `active_users_*`) older than 100 days; and `sap_*` product metrics
 older than **7 days, EXCEPT the rows stamped exactly 00:00 UTC, kept 100 days** (the daily totals the trend
 reads — `sap_*` and the usage globs never match each other's names). `pr` / `push` / `deploy` /
-`run` / `review` rows and `coverage` / `bundle_kb` / `todo_count` match no rule and are kept forever.
+`run` / `review` rows and `coverage` / `bundle_kb` / `todo_count` match no rule and are kept forever. Which files a
+commit touched (`commit_paths`, by the commit's own `at`) and a PR's files (`pr_files` / `pr_file_reads`, by the read's
+`fetched_at`) go after 100 days (`COMMIT_PATHS_RETENTION_DAYS`, Phase E); a PR still open past that is read again.
 
 **Written by Trov — `state` and `themes`** (`shared/repo.ts`, typed in `shared/ai-core.ts`): Overview's first
 block ("State") and Planning's ("Where the work went", per range). They are NOT sections, so `REPO_TAB_SECTIONS`

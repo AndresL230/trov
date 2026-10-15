@@ -55,6 +55,11 @@
   `releases.ts` (0074_releases, Phase F: the `release` / `create` derivation, reconcile's `releases` arm, and the
   reads `readRelease` / `readTags` / `releaseWeekFigure`; `isFeaturePr` is the one feature rule) and
   `release-store.ts` (the `releases` writers, called only by the gate's `ingestRepoRelease`),
+  monorepos (0073_commit_paths, Phase E — `repo-dashboard.md` › Monorepos): `commit-paths.ts` (the push derivation,
+  the writer the gate's `ingestCommitPaths` calls, the read), `path-capture.ts` (the webhook's push arm and its one
+  compare), `pr-files.ts` (the PR-files read from GitHub: the webhook trigger and reconcile's `pr_files` arm),
+  `pr-files-store.ts` (the writer the gate's `ingestPrFiles` calls, and the reads), `app-scope.ts` (what a set of files,
+  a Package and a run touch — D1 only, for `src/tools/repo-scope.ts`, the Code / CI narrowing),
   the repo scan (repo setups, Phase D — `hosting-providers.md` › The repo scan): `scan.ts` (the guarded reconcile arm),
   `detect/` (the detector registry, the subset parsers, the signal token rules), `signals.ts` (seen signals),
   `scan-reads.ts` (the secret-free read side the facts read uses), `scan-store.ts` (accept / ignore / undo, Scan
@@ -203,6 +208,8 @@
   Then `0070_repo_apps` (repo setups, Phase A; 0070–0079 are reserved for that build) [`repo_apps` with a row per
   existing part key, and `hosting_deploys.source` / `reason` / `sha_source` / `rolled_back_from`; additive].
   Then `0072_repo_scans` (Phase D) [`repo_scans`, `repo_app_suggestions`; additive].
+  Then `0073_commit_paths` (Phase E) [`commit_paths`, `pr_files`, `pr_file_reads`: which files a commit and a pull
+  request touched; additive].
   Then `0074_releases` (Phase F) [`releases`: a repository's releases and bare tags, PK `(org_id, repo, tag)`;
   additive].
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
@@ -240,7 +247,9 @@
   the Overview drawn from facts with one module per block (`repo-attention.ts`, `repo-week.ts`, `repo-connect.ts`,
   `repo-env-cards.ts`, `repo-drift.ts`, `repo-apps-table.ts`, `repo-not-shipped.ts`, `repo-production.ts`,
   `repo-previews.ts`, `repo-release.ts`, `repo-found.ts`), `web/src/repo-header.ts` its repository / App menus,
-  environment pills and Group by, and `web/src/repo-verdict.ts` the one environment verdict (`repo-dashboard.md`).
+  environment pills and Group by, `web/src/repo-verdict.ts` the one environment verdict, and `web/src/repo-scope.ts`
+  the Code / CI tabs under the App menu (Phase E: the scope line, the touches cell, failures by app, strips per app;
+  rules in `shared/repo-scope-core.ts`, the Worker side `src/tools/repo-scope.ts`) (`repo-dashboard.md`).
   Migration `0071_repo_settings` (`repo_settings`: an admin's per-repository Overview default; `src/data/repo-settings.ts`,
   `src/repo/settings-routes.ts`). Org settings › Repositories › a repo › Apps: `web/src/repo-apps.ts` (views) and
   `web/src/repo-apps-actions.ts` (controller), served by `src/repo/apps-routes.ts` + `src/repo/apps-setup.ts`, the

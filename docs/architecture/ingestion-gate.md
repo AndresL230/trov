@@ -74,6 +74,13 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   `status` delivery's `metricsFromStatus` arm, the cron's pollers and reconcile's snapshots write them direct
   through `putMetric` / `putSnapshot` (`src/repo/store.ts`) — each validates its own input, and `putMetric`
   is first-write-wins.
+- **Which files a commit and a pull request touched are the repo capture's FOURTH and FIFTH arms** (Repo setups,
+  Phase E — `0073_commit_paths`): `ingestCommitPaths` (a `push` delivery's own lists, and the ONE compare that fills in a
+  head commit the delivery cut short — `src/repo/commit-paths.ts`; identity (repo, sha, path), INSERT OR IGNORE, a row's
+  `scope` saying whether it is the commit's own or its push's) and `ingestPrFiles` (`GET /pulls/{n}/files` from the
+  `pull_request` webhook and reconcile's `pr_files` arm — identity (repo, number), content-hash dedupe over the sorted
+  list: the same list read again only records the head it was read for; a new one replaces the PR's rows whole). From
+  the HMAC-verified webhook and reconcile only — never `/ingest`.
 
 Authored and computed writes are **direct, in the `promote` class** — NOT the ingestion gate — exactly
 like `promote_doc` / `ratify_adr` / `complete_sprint` always have been: the plan write
