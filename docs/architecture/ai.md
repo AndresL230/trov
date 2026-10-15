@@ -707,8 +707,8 @@ thinking, 8 calls, 90 s, counts 5) — gated by the org switch and `ai_chat` (�
 catalog (the same `src/tools/*` functions, as the cookie person) less a short exclusion list; reads run freely and
 every write is a confirm card (`chat_actions`), or runs at once in Auto (at most 5 a turn, with Undo; never
 `update_plan`). Ask imports nothing from `src/mcp.ts`, secrets, the GitHub App or billing (`test/secrets.mcp.test.ts`).
-Attachments are stored as private artifacts before the model sees them. Its frontend is built from Andres's design
-(handoff #12) on `ai/ask`.
+Attachments are stored as private artifacts before the model sees them. The screen — the Ask page, the ⌘J panel, the
+composer, the inspector, Settings › Trov — is built from Andres's design (handoff #12): `ask.md` › The screen.
 
 ## The e-mails (Phase E; in full: `notifications.md` › The digest's shape)
 

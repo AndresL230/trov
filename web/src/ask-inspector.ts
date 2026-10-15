@@ -62,6 +62,7 @@ import { reducedMotion, ASK_EASE, ASK_FX } from "./ask-motion";
 import { cvRefWord, isCvRef } from "./ask-cvref";
 import { chartFigure, cvItem, diagramFigure, tableView, themesFigure, type CvItem } from "./ask-conversation";
 import type { AskDiagram, AskThemesBlock } from "@shared/ai-ask-core";
+import { feedKind } from "./feed-kind";
 
 // ── the conversation part's items (`askcv:<where>:<key>:<kind>:<n>`, ask-cvref.ts) ────────────────────────────
 // "Open in inspector" on a chart, the theme strip, a diagram, an items block, a table or a question's file pushes an
@@ -515,13 +516,17 @@ function feedView(v: AskView, x: RefView, ref: string): string {
       ...commits.map((s) => `<div class="ask-iv-item is-plain">${askIcon("ci", 13, "var(--fg-40)")}<span class="ask-iv-t ask-iv-code">${esc(s.slice(0, 7))}</span><span class="ask-iv-sub">Commit</span></div>`),
       ...issues.map((i) => `<div class="ask-iv-item is-plain">${askIcon("tickets", 13, "var(--fg-40)")}<span class="ask-iv-t">#${esc(String(i))}</span><span class="ask-iv-sub">Issue</span></div>`),
     ];
+    // The entry's kind is the leading "Word:" of its summary (Shipped, Status, Decision, Finding, Incident, Triage —
+    // `feedKind`): shown as a plain word in the meta line, the title the rest.
+    const k = feedKind(e?.summary ?? x.title);
     return `<div class="ask-iv-meta" style="margin-bottom:8px">
+        ${k.kind ? `<span class="ask-iv-label" data-feed-kind="${esc(k.kind.toLowerCase())}">${esc(k.kind)}</span>` : ""}
         ${importanceMark(e?.importance, 12)}
         ${author ? (byTrov ? `<span class="ask-iv-inline">${trovMark(14)}<span style="font-size:12.5px;font-weight:500">Trov</span></span>${aiMark(12)}` : `${personBtn(v, author)}${agentMark(12)}`) : ""}
         ${quiet(whenLabel(e?.created_at ?? x.updated ?? null))}
       </div>
       ${e?.tags?.length ? `<div class="ask-iv-meta" style="margin-bottom:8px">${tagWords(e.tags, { size: 12 })}</div>` : ""}
-      ${title(x.title)}
+      ${title(k.kind ? k.rest : x.title)}
       ${brief ? `<p class="ask-iv-brief">${esc(brief)}</p>` : ""}
       ${paras.map((p) => `<p class="ask-iv-p" style="margin:0 0 10px">${esc(p)}</p>`).join("")}
       ${sources.length ? `${head("Sources", "", 16)}<div class="ask-iv-list">${sources.join("")}</div>` : ""}`;

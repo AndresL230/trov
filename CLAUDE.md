@@ -173,7 +173,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | Sync GitHub, `src/sync/`, the sync panel's copy | `sync.md` |
 | plans, limits, grants, the pricing page, the summarizer allowance | `plans.md` |
 | `src/ai/`, where a model may be called, the router and the AI pass, the kinds and their evals, `ai_runs`, the AI switch, suggestions / "Wrong?", AI cost, `LOCAL_AI_PREVIEW` | `ai.md` |
-| Ask Trov: `src/ai/ask/`, the `/ask` routes and SSE contract, `chat_*` tables, `ai_chat` | `ask.md` |
+| Ask Trov: `src/ai/ask/`, the `/ask` routes and SSE contract, `chat_*` tables, `ai_chat`; the Ask screen (`web/src/ask-*.ts`) | `ask.md` |
 | Stripe, checkout, `src/billing/` | `billing.md` |
 | rate limits, the mail sender, what a stranger can do | `abuse-limits.md` |
 | the bug-report / support form, `support_reports`, Platform › Support | `support.md` |

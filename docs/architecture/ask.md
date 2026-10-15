@@ -350,7 +350,9 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   server's own projection — no client math: a sprint's forecast is `SprintDetail.forecast` (`sprintForecast`, the
   Roadmap's) in the Roadmap's words (`forecastWords`); a staged doc's excerpt is `detail.staged.body` (the version
   waiting in Review), the live `body` beside it; a feed entry is the Feed's projection (`ai` on one Trov wrote — its
-  origin and model —, Sift's `importance`, its tags; a feed entry has no kind column, so no "Shipped" is guessed); a
+  origin and model —, Sift's `importance`, its tags; its kind is the summary's leading `Shipped:` / `Status:` / `Decision:` / `Finding:` / `Incident:` /
+  `Triage:`, read by `feedKind` (`web/src/feed-kind.ts`) and shown as a plain word in the meta line with the rest as the
+  title — no column, and a summary with no known word has no kind); a
   pull request's changed files are what Repo setups' capture stored (`pr_files`: `files` when the read was complete,
   `filePaths`, `filesComplete`) and its added / deleted lines, stored nowhere, stay null and are not drawn.
 - **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on

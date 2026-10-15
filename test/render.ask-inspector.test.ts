@@ -150,6 +150,23 @@ describe("every insp:<type> scenario renders its view from the fixtures (#12 §3
     expect(html).toContain(`data-act="askShOpen" data-arg="pr:173"`);
   });
 
+  it("feed: the entry's kind — the summary's leading \"Word:\" — is a plain word in the meta line, the title the rest (feedKind)", async () => {
+    const { feedKind } = await import("../web/src/feed-kind");
+    expect(feedKind("Shipped: hosting connect flow")).toEqual({ kind: "Shipped", rest: "hosting connect flow" });
+    expect(feedKind("decision: keep D1")).toEqual({ kind: "Decision", rest: "keep D1" });
+    expect(feedKind("Note: not a kind")).toEqual({ kind: null, rest: "Note: not a kind" });
+    expect(feedKind("Status marks replace pills")).toEqual({ kind: null, rest: "Status marks replace pills" });
+    // The fixture's entry has no kind word: nothing is added and the title is the summary.
+    expect(body(state(["feed:41"]))).not.toContain("data-feed-kind");
+    // One that opens with "Finding:" shows the word in the meta line and the rest as the title — plain text, no pill.
+    const html = body(state(["feed:41"], (s) => {
+      const it = s.ask.inspectorUi.items["feed:41"] as unknown as { status: "ok"; data: { detail: { entry: { summary: string } } } };
+      it.data.detail.entry.summary = "Finding: failed indexing was invisible";
+    }));
+    expect(html).toContain('<span class="ask-iv-label" data-feed-kind="finding">Finding</span>');
+    expect(html).toContain('<h2 class="ask-iv-title">failed indexing was invisible</h2>');
+  });
+
   it("person: avatar through people.ts, @handle, role, Working on now, recent pull requests", () => {
     const html = body(state(["person:maya"]));
     const t = text(html);
