@@ -34,11 +34,11 @@ import {
 import { SprintCreate, SprintActiveSet, SprintResourceAdd } from "@shared/sprints";
 import { get_plan } from "./tools/plan";
 import {
-  listHandoffs, getHandoff, createHandoff, claimHandoff, expireHandoff, HandoffCreateInput, HandoffError, HANDOFF_ERROR_STATUS,
+  listHandoffs, getHandoff, createHandoff, claimHandoffWithReading, expireHandoff, HandoffCreateInput, HandoffError, HANDOFF_ERROR_STATUS,
 } from "./tools/handoffs";
 import { listPrompts, getPrompt, recordPromptUse, listPromptVersions, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt, PromptSaveInput, PromptError, PROMPT_ERROR_STATUS } from "./tools/prompts";
 import { isSection } from "@shared/vocabulary";
-import { HANDOFF_BOXES, type HandoffBox } from "@shared/handoffs";
+import { HANDOFF_BOXES, type HandoffBox, type HandoffClaimResult } from "@shared/handoffs";
 import { getMyWork } from "./tools/mywork";
 import { quickSearch } from "./tools/quick-search";
 import { QUICK_TYPES, type QuickType } from "@shared/quick-search";
@@ -364,7 +364,11 @@ tenantApi.post("/handoffs/:id/claim", async (c) => {
   if (id === null) return c.json({ error: "not found" }, 404);
   const body = (await c.req.json().catch(() => ({}))) as { session?: unknown };
   const session = typeof body.session === "string" && body.session.trim() ? body.session.trim().slice(0, 120) : `web_${crypto.randomUUID().slice(0, 8)}`;
-  try { return c.json({ ok: true, handoff: await claimHandoff(c.var.ctx, id, c.get("principal").handle, session) }); }
+  // The claim, plus its "Read these first (not complete)" list (#167) — built here, at the write, never on a read.
+  try {
+    const { handoff, reading_list } = await claimHandoffWithReading(c.var.ctx, id, c.get("principal").handle, session);
+    return c.json({ ok: true, handoff, reading_list } satisfies HandoffClaimResult);
+  }
   catch (e) { return handoffFail(c, e); }
 });
 tenantApi.post("/handoffs/:id/expire", async (c) => {

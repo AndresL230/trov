@@ -3277,14 +3277,16 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const copied = copyToClipboard(handoffAsPrompt(h));
       const session = "sess_web_" + Math.random().toString(36).slice(2, 10).toUpperCase();
       claimHandoff(h.id, session)
-        .then(() => copied.then((ok) => { loadHandoffs(); flash(ok ? `Claimed #${h.id} · copied as prompt` : `Claimed #${h.id} — couldn't reach the clipboard`); }))
+        .then((r) => { state.handoffReading = { id: r.handoff.id, items: r.reading_list }; return copied; })
+        .then((ok) => { loadHandoffs(); flash(ok ? `Claimed #${h.id} · copied as prompt` : `Claimed #${h.id} — couldn't reach the clipboard`); })
         .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } writeErr(e, "Couldn't claim this handoff"); loadHandoffs(); });
       return;
     }
     case "handoffCopy": {
       const h = state.handoffDetail.data;
       if (!h || h.id !== Number(arg)) return;
-      copyToClipboard(handoffAsPrompt(h)).then((ok) => flash(ok ? "Copied as prompt" : "Couldn't reach the clipboard"));
+      const reading = state.handoffReading && state.handoffReading.id === h.id ? state.handoffReading.items ?? [] : [];
+      copyToClipboard(handoffAsPrompt(h, reading)).then((ok) => flash(ok ? "Copied as prompt" : "Couldn't reach the clipboard"));
       return;
     }
     case "handoffClaim": {
@@ -3292,8 +3294,12 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (!h || h.id !== Number(arg)) return;
       const session = "sess_web_" + Math.random().toString(36).slice(2, 10).toUpperCase();
       claimHandoff(h.id, session)
-        .then((nh) => copyToClipboard(handoffAsPrompt(nh)).then((ok) =>
-          applyHandoff(nh, ok ? `Claimed #${nh.id} · copied as prompt` : `Claimed #${nh.id} — couldn't reach the clipboard`)))
+        .then(({ handoff: nh, reading_list }) => {
+          // The claim's reading list (#167) shows on this page and rides along in the copied prompt.
+          state.handoffReading = { id: nh.id, items: reading_list };
+          return copyToClipboard(handoffAsPrompt(nh, reading_list ?? [])).then((ok) =>
+            applyHandoff(nh, ok ? `Claimed #${nh.id} · copied as prompt` : `Claimed #${nh.id} — couldn't reach the clipboard`));
+        })
         .catch((e) => { writeErr(e, "Couldn't claim this handoff"); openHandoff(h.id); loadHandoffs(); });
       return;
     }

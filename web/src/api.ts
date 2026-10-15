@@ -28,7 +28,7 @@ import type { QuickSearchResult } from "@shared/quick-search";
 // Person profiles (0036): the DTOs and caps are one zod-free contract with the Worker.
 import type { PersonSummary, PersonProfile } from "@shared/people";
 import type {
-  HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody,
+  HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody, HandoffClaimResult,
 } from "@shared/handoffs";
 
 export class Unauthorized extends Error {
@@ -890,8 +890,10 @@ export async function createHandoff(body: HandoffCreate): Promise<HandoffView> {
   return (await postJson<{ ok: true; handoff: HandoffView }>("/api/handoffs", body)).handoff;
 }
 /** 409 `{ error: "handoff is <status>" }` when someone got there first. */
-export async function claimHandoff(id: number, session: string): Promise<HandoffView> {
-  return (await postJson<{ ok: true; handoff: HandoffView }>(`/api/handoffs/${id}/claim`, { session })).handoff;
+/** Claim, and the claim's "Read these first (not complete)" list (#167) — `null` when it couldn't be built. */
+export async function claimHandoff(id: number, session: string): Promise<HandoffClaimResult> {
+  const r = await postJson<HandoffClaimResult>(`/api/handoffs/${id}/claim`, { session });
+  return { ...r, reading_list: Array.isArray(r.reading_list) ? r.reading_list : null };
 }
 export async function expireHandoff(id: number): Promise<HandoffView> {
   return (await postJson<{ ok: true; handoff: HandoffView }>(`/api/handoffs/${id}/expire`)).handoff;

@@ -45,7 +45,7 @@ import {
 } from "@shared/artifacts";
 import { write_plan, get_plan, type PlanWrite } from "./tools/plan";
 import {
-  listHandoffs, getHandoff, createHandoff, claimHandoff, expireHandoff, handoffAsTask, HandoffCreateInput, HandoffError,
+  listHandoffs, getHandoff, createHandoff, claimHandoffWithReading, readingListAsMarkdown, expireHandoff, handoffAsTask, HandoffCreateInput, HandoffError,
 } from "./tools/handoffs";
 import { listPrompts, getPrompt, recordPromptUse, savePrompt, PromptSaveInput, PromptError } from "./tools/prompts";
 import { detectVars, fillVars, firstLine, type HandoffView } from "@shared/handoffs";
@@ -604,12 +604,13 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
 
   server.tool(
     "claim_handoff",
-    "Claim a pending handoff for this session — only after the person chose it. Atomic: if another session already took it you get an error naming its current status (tell the person someone else has it). Pass your session id as `session` (with none, a short id of your own that you reuse for this conversation). On success returns ONE markdown block to act on: the handoff's prompt (if any), then '## Handoff summary', then '## Context' (repo, branch, task, done, next, files). Treat it as your task. In a code checkout, confirm the current git branch matches the context before touching code. With no checkout (a chat on the web) you cannot change the code: tell the person what the handoff asks, and do the parts that need no repository.",
+    "Claim a pending handoff for this session — only after the person chose it. Atomic: if another session already took it you get an error naming its current status (tell the person someone else has it). Pass your session id as `session` (with none, a short id of your own that you reuse for this conversation). On success returns ONE markdown block to act on: the handoff's prompt (if any), then '## Handoff summary', then '## Context' (repo, branch, task, done, next, files). Treat it as your task. When anything matched, a last section '## Read these first (not complete)' lists up to 5 docs, decisions, feed entries and artifacts found by a text search with the handoff's own words, each with how to open it: read them first, but they are not everything that bears on the task. In a code checkout, confirm the current git branch matches the context before touching code. With no checkout (a chat on the web) you cannot change the code: tell the person what the handoff asks, and do the parts that need no repository.",
     { id: z.number().int(), session: z.string().min(1) },
     async ({ id, session }) => {
       try {
-        const h = await claimHandoff(ctx, id, principal.handle, session);
-        return { content: [{ type: "text" as const, text: `# Handoff #${h.id} — claimed\n\n${handoffAsTask(h)}` }] };
+        const { handoff: h, reading_list } = await claimHandoffWithReading(ctx, id, principal.handle, session);
+        const reading = readingListAsMarkdown(reading_list);
+        return { content: [{ type: "text" as const, text: `# Handoff #${h.id} — claimed\n\n${handoffAsTask(h)}${reading ? `\n\n${reading}` : ""}` }] };
       } catch (err) {
         if (err instanceof HandoffError) {
           const current = await getHandoff(ctx, id);
