@@ -514,6 +514,14 @@ describe("one tag's page", () => {
     expect(view(page({ tag: tag("auth", { retired: true, counts: { feed: 2, doc: 1, adr: 1 } }) }))).toContain("can no longer be picked");
   });
 
+  it("the tag page is morphed in place, by tag — so a To review row can play its exit and numbers tick, never rebuilt", () => {
+    const st: AppState = initialState();
+    st.view = "app"; st.screen = "tag"; st.tagName = "auth"; st.orgSlug = "acme";
+    st.me = { handle: "andres", name: "Andres", color: "moss", avatar_url: null, orgs: [org("owner")], pending_invites: 0 } as unknown as AppState["me"];
+    st.tagPage = { status: "ok", data: page() };
+    expect(render(st)).toContain(`<main data-morph="tag:auth"`);
+  });
+
   it("the app renders it as a child screen of Tags, crumbed with the tag's name", () => {
     const s: AppState = initialState();
     s.view = "app"; s.screen = "tag"; s.tagName = "auth"; s.orgSlug = "acme";

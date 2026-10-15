@@ -2805,7 +2805,10 @@ function appView(s: AppState): string {
   const morphKey = isArtScreen(s.screen) ? `${s.screen}:${JSON.stringify(s.screen === "artifact" ? s.artRoute : null)}`
     // Review too: its list is keyed (`data-morph-list`), so a filter or a verdict never rebuilds it —
     // a card can leave with an animation, and the two switches' indicators slide on the same element.
-    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen : "";
+    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen
+    // A tag's page too, by tag (another tag is another page): its To review list is keyed, so a row can leave with
+    // its animation, and the numbers tick in place instead of the page being rebuilt under them.
+    : s.screen === "tag" ? `tag:${s.tagName ?? ""}` : "";
   // The skip link is the shell's first child (a fixed chip, out of the flex row): past the sidebar and the
   // header, to the screen itself. morph.ts patches the aside and swaps <main>; it never touches this.
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
