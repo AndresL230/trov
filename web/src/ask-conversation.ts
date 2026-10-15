@@ -44,6 +44,7 @@ import { ciLine } from "./repo-verdict";
 import { aiDay } from "./ai-ui";
 import { closingAttr } from "./ask-motion";
 import { cvRef, parseCvRef } from "./ask-cvref";
+import { parseCommand } from "./ask-composer";
 
 export interface ConversationUi {
   /** Disclosures by key (`<answerKey>:s<step>`, `<answerKey>:think`, `<answerKey>:src`). */
@@ -655,7 +656,8 @@ async function resend(ctx: AskCtx, where: AskWhere, qKey: string, text: string):
   } else if (id === null) {
     ctx.ui[where] = { ...c, messages: c.messages.slice(0, qi) };
   }
-  ctx.send({ text, where, context: q.context, replaceFrom: id ?? undefined });
+  const parsed = parseCommand(text);
+  ctx.send({ text: parsed.text, ...(parsed.command ? { command: parsed.command } : {}), where, context: q.context, replaceFrom: id ?? undefined });
 }
 
 let copyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -732,7 +734,8 @@ export const conversationPart: AskPart = {
         const where = whereOf(w);
         const q = ctx.ui[where].messages.find((m) => m.key === key);
         if (!q || q.role !== "user" || ctx.ui[where].busy) return;
-        ui.editing = { where, key: q.key, text: q.text };
+        // A command question shows its command, so Send keeps it (or the person deletes it): parsed again on Send.
+        ui.editing = { where, key: q.key, text: q.command ? `/${q.command} ${q.text}`.trim() : q.text };
         focusNext = "edit";
         ctx.paint();
         return;
