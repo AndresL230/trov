@@ -2,6 +2,8 @@
 // anchor ids the reader's headings carry. Both sides derive ids from the SAME
 // slugify + de-dup logic so a tree link always resolves to a reader heading.
 
+import { createLru } from "./lru";
+
 export interface OutlineItem {
   level: number; // 2 or 3
   text: string;
@@ -21,12 +23,27 @@ export function slugifyHeading(text: string): string {
     .replace(/^-|-$/g, "");
 }
 
+// The Docs tree draws every doc's outline on every paint, so it is memoized by body (the output
+// depends on nothing else). A cached outline is FROZEN — the array and each item — so no caller can
+// change what the next paint gets. Sized above a large org's doc count: a tree that cycles through
+// more docs than the cache holds would miss on every one.
+const outlineCache = createLru<readonly Readonly<OutlineItem>[]>(500);
+
 /**
  * H2/H3 outline of a markdown body, skipping fenced code blocks. De-dups ids
  * across ALL heading levels (h1–h6) in document order so the counters match the
- * ids assigned to every rendered heading in markdown.ts.
+ * ids assigned to every rendered heading in markdown.ts. Memoized; the result is frozen.
  */
-export function extractOutline(body: string): OutlineItem[] {
+export function extractOutline(body: string): readonly Readonly<OutlineItem>[] {
+  const key = body ?? "";
+  const hit = outlineCache.get(key);
+  if (hit) return hit;
+  const out = Object.freeze(computeOutline(key).map((it) => Object.freeze(it)));
+  outlineCache.set(key, out);
+  return out;
+}
+
+function computeOutline(body: string): OutlineItem[] {
   const out: OutlineItem[] = [];
   const seen = new Map<string, number>();
   let inFence = false;

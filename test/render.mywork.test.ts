@@ -601,7 +601,7 @@ describe("My Work — audit fixes", () => {
     expect(body("loadMwDocs")).toContain("listDocMeta()");
     expect(body("loadMwSessions")).toContain("limit: 2");
     // The boot reads the sidebar's counts from GET /badges, never the lists they count…
-    const boot = body("enterOrg");
+    const boot = body("enterOrgNow"); // `enterOrg` is its batchRender wrapper
     expect(boot).toContain("loadBadges()");
     for (const list of ["loadProposals", "loadDraftAdrs", "loadNeedsTriage", "loadIdentityTasks", "loadHandoffs", "loadPrompts", "loadTicketBadge"])
       expect(boot, list).not.toMatch(new RegExp(`\\b${list}\\(`));

@@ -1,7 +1,8 @@
 import { marked, type Tokens } from "marked";
 import DOMPurify from "dompurify";
 import { repoUrl } from "./github";
-import { tenantHref } from "./api";
+import { tenantHref, apiOrgSlug } from "./api";
+import { createLru } from "./lru";
 import { slugifyHeading } from "./outline";
 import { issueRefStart, matchIssueRef } from "./issue-ref";
 import { DOC_IMAGE_PATH_RE } from "@shared/doc-images";
@@ -36,6 +37,17 @@ marked.use({
   ],
 });
 
+// Memoized (web-ui.md › Markdown is rendered once per body): every paint rebuilds the whole app's
+// markup, and marked + DOMPurify + `enhance` per doc, per paint, was the slowest part of a paint on
+// Docs and Review. The output depends on the body and on two pieces of page state — the org's main
+// repository (`repoUrl()`, which bare `#12` refs link to) and the org on screen (`tenantHref`, which
+// doc images are pointed at) — so all three are the key. The values are strings: nothing can
+// mutate a cached result. Inline summaries (a feed row each) get their own, larger cache, so a long
+// feed does not push every doc body out.
+const blockCache = createLru<string>(100);
+const inlineCache = createLru<string>(300);
+const cacheKey = (text: string): string => `${repoUrl() ?? ""}\u0000${apiOrgSlug() ?? ""}\u0000${text ?? ""}`;
+
 /**
  * Render a markdown doc body to sanitized HTML for innerHTML. Doc bodies are agent-written
  * and reach the DOM via template-string innerHTML, so every body passes through DOMPurify —
@@ -43,9 +55,14 @@ marked.use({
  * before it is inserted. This is the one place raw HTML enters the docs reader.
  */
 export function renderMarkdown(body: string): string {
+  const key = cacheKey(body);
+  const hit = blockCache.get(key);
+  if (hit !== undefined) return hit;
   const html = marked.parse(body ?? "", { async: false }) as string;
   const clean = DOMPurify.sanitize(html);
-  return enhance(clean);
+  const out = enhance(clean);
+  blockCache.set(key, out);
+  return out;
 }
 
 /**
@@ -54,8 +71,13 @@ export function renderMarkdown(body: string): string {
  * into a heading or a list. Same trust boundary as `renderMarkdown`: marked, then DOMPurify.
  */
 export function renderMarkdownInline(text: string): string {
+  const key = cacheKey(text);
+  const hit = inlineCache.get(key);
+  if (hit !== undefined) return hit;
   const html = marked.parseInline(text ?? "", { async: false }) as string;
-  return DOMPurify.sanitize(html);
+  const out = DOMPurify.sanitize(html);
+  inlineCache.set(key, out);
+  return out;
 }
 
 /**

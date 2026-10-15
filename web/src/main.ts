@@ -89,7 +89,8 @@ import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
 import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
-import { RELEASES } from "./releases";
+import { LATEST_RELEASE } from "./release-latest";
+import { releasesLoaded, releasesFailed, loadReleases } from "./releases-lazy";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
 import { currentOrg, roleAtLeast } from "./org-settings";
@@ -107,12 +108,22 @@ import { setPrimaryRepo } from "./github";
 import { GITHUB_LOGIN_RE, type MyOrgsResponse } from "@shared/orgs";
 import { isGithubConnectOutcome } from "@shared/github-app";
 import { isHostingConnectOutcome, isHostingProvider } from "@shared/hosting";
+import { createPaintQueue } from "./paint-queue";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Trov: #app mount point missing");
 const mount = root;
 
 const state: AppState = initialState();
+
+// When a paint runs (web/src/paint-queue.ts; web-ui.md › Paints: now, batched, or once a frame).
+// `rerender()` paints NOW — its callers focus or measure right after it. `rerenderSoon()` is a read
+// landing: every one that lands before the next frame shares one paint. `batchRender(fn)` folds the
+// paints `fn` asks for into one, made before it returns (the boot, a screen's loaders).
+const paints = createPaintQueue(() => paintApp());
+function rerender(): void { paints.now(); }
+function rerenderSoon(): void { paints.soon(); }
+function batchRender<T>(fn: () => T): T { return paints.batch(fn); }
 
 // The state preview (web/src/preview.ts): `?preview=empty` / `?preview=loading`, read once here
 // and kept in the address bar while it is on (a reload stays in it). While it is on api.ts
@@ -147,7 +158,7 @@ const orgCtl = createOrgController({
 });
 // The organization's tag list (web/src/tags-actions.ts): every `tag…` act, the list's read, a tag's page.
 const tagsCtl = createTagsController({
-  state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+  state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
   search: (q) => { openSearchScreen(q); }, planChanged: () => orgCtl.loadPlan(), goList: () => dispatch("orgGo", "tags", null),
 });
 // Organizations as a person meets them (web/src/org-picker-actions.ts): the switcher's menu, the
@@ -184,7 +195,7 @@ const supportCtl = createSupport({
   signedIn: () => state.view !== "auth",
   context: () => (state.view === "auth"
     ? { route: `${location.pathname}${location.hash}`, org: null, version: "", userAgent: navigator.userAgent }
-    : { route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: RELEASES[0]?.version ?? "", userAgent: navigator.userAgent }),
+    : { route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: LATEST_RELEASE.version, userAgent: navigator.userAgent }),
 });
 
 // Deleting one's account (Settings) and an organization (Org settings › General, its owner) — web/src/deletion-actions.ts.
@@ -339,10 +350,21 @@ let drawerRoute = "";
 /** The group the app opened on its own (so it may close it again). */
 let autoOpened: NavGroup | null = null;
 
-function rerender(): void {
+let releasesWanted = false;
+function wantReleases(): void {
+  if (releasesWanted) return;
+  releasesWanted = true;
+  loadReleases().catch(() => undefined).finally(() => { releasesWanted = false; rerenderSoon(); });
+}
+
+/** The paint itself — reached only through the paint queue (`rerender`, `rerenderSoon`, `batchRender`). */
+function paintApp(): void {
   // A board drag holds the DOM: swapping <main> would drop the card mid-drag.
   // The held paint runs when the drag ends (clearBoardDrag).
   if (boardDrag) { rerenderHeld = true; return; }
+  // Help › What's new renders from its own chunk (releases-lazy.ts): a paint on the screen without
+  // it draws the skeleton and starts the load, and its arrival paints again.
+  if (state.view === "app" && state.screen === "releases" && !releasesLoaded() && !releasesFailed()) wantReleases();
   // The phone drawer closes whenever the route changes (a nav row, a search, Back).
   const drawerKey = state.view === "app" ? hashForRoute(currentRoute()) : state.view;
   if (drawerKey !== drawerRoute) { drawerRoute = drawerKey; state.drawer = false; }
@@ -609,8 +631,12 @@ function applyRoute(r: Route): void {
   if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
 }
 
-// Kick off the data load for a screen (mirrors the go* dispatch cases).
+// Kick off the data load for a screen (mirrors the go* dispatch cases). Batched: a screen that
+// starts several reads (My Work starts eight) paints once, before this returns — not once per read.
 function loadForScreen(screen: Screen): void {
+  batchRender(() => startScreenLoads(screen));
+}
+function startScreenLoads(screen: Screen): void {
   switch (screen) {
     case "feed": loadFeedIfNeeded(); loadFeedStats(); loadFeedReview(); break;
     case "docs": loadDocsIfNeeded(); break;
@@ -659,7 +685,7 @@ function loadHandoffs(): void {
   state.handoffs = { status: "loading", data: state.handoffs.data };
   rerender();
   listHandoffs("mine")
-    .then((data) => { state.handoffs = { status: "ok", data }; listed("handoffs", handoffsForMe(data, state.me?.handle ?? "").length); rerender(); })
+    .then((data) => { state.handoffs = { status: "ok", data }; listed("handoffs", handoffsForMe(data, state.me?.handle ?? "").length); rerenderSoon(); })
     .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } state.handoffs = { status: "error", data: state.handoffs.data, error: String(e) }; rerender(); });
 }
 function openHandoff(id: number): void {
@@ -671,20 +697,20 @@ function openHandoff(id: number): void {
   state.handoffDetail = { status: "loading", data: known };
   rerender();
   getHandoff(id)
-    .then((h) => { if (state.handoffId !== id) return; state.handoffDetail = { status: "ok", data: h }; rerender(); })
+    .then((h) => { if (state.handoffId !== id) return; state.handoffDetail = { status: "ok", data: h }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (state.handoffId !== id) return;
       const missing = e instanceof ApiError && e.status === 404;
       state.handoffDetail = { status: missing ? "ok" : "error", data: null, error: String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadPrompts(): void {
   state.promptList = { status: "loading", data: state.promptList.data };
   rerender();
   listPrompts()
-    .then((data) => { state.promptList = { status: "ok", data }; listed("prompts", stagedPrompts(data)); rerender(); })
+    .then((data) => { state.promptList = { status: "ok", data }; listed("prompts", stagedPrompts(data)); rerenderSoon(); })
     .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } state.promptList = { status: "error", data: state.promptList.data, error: String(e) }; rerender(); });
 }
 function openPrompt(slug: string): void {
@@ -696,13 +722,13 @@ function openPrompt(slug: string): void {
   state.promptDetail = { status: "loading", data: same ? state.promptDetail.data : null };
   rerender();
   Promise.all([getPrompt(slug), getPromptVersions(slug)])
-    .then(([prompt, versions]) => { if (state.promptSlug !== slug) return; state.promptDetail = { status: "ok", data: { prompt, versions } }; rerender(); })
+    .then(([prompt, versions]) => { if (state.promptSlug !== slug) return; state.promptDetail = { status: "ok", data: { prompt, versions } }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (state.promptSlug !== slug) return;
       const missing = e instanceof ApiError && e.status === 404;
       state.promptDetail = { status: missing ? "ok" : "error", data: null, error: String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** The editor: blank for a new prompt, else seeded from the prompt it edits (or versions). */
@@ -716,7 +742,7 @@ function openEditor(mode: "new" | "edit" | "version", slug: string | null): void
   state.promptEd = null;
   rerender();
   getPrompt(slug)
-    .then((p) => { if (state.screen !== "promptedit" || state.promptSlug !== slug) return; state.promptEd = draftFromPrompt(p, mode); rerender(); })
+    .then((p) => { if (state.screen !== "promptedit" || state.promptSlug !== slug) return; state.promptEd = draftFromPrompt(p, mode); rerenderSoon(); })
     .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } flash("Couldn't load that prompt"); state.screen = "prompts"; loadPrompts(); });
 }
 function startNewDoc(): void {
@@ -741,13 +767,13 @@ function loadMyOrgs(): Promise<MyOrgsResponse | null> {
       if (state.me) { state.me.orgs = data.orgs; state.me.superadmin = data.superadmin; state.me.pending_invites = data.invites.length; }
       // The org on screen is no longer mine (removed, or it was suspended): the picker.
       if (state.view === "app" && state.orgSlug && !data.orgs.some((o) => o.slug === state.orgSlug)) showPicker(state.orgSlug);
-      else rerender();
+      else rerenderSoon();
       return data;
     })
     .catch((e): null => {
       if (e instanceof Unauthorized) { unauth(e); return null; }
       state.myOrgs = { status: "error", data: state.myOrgs.data, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
       return null;
     })
     .finally(() => { orgsLoad = null; });
@@ -768,14 +794,14 @@ function loadOrgMe(): void {
       // Forms opened before this landed pick the repo up now, unless something was typed.
       if (!state.art.c.repo) state.art.c.repo = data.repos.all[0] ?? "";
       if (!state.nh.repo) state.nh.repo = data.repos.primary ?? "";
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (state.orgSlug !== slug) return;
       if (e instanceof ApiError && e.status === 404) { showPicker(slug); return; }
       state.orgMe = { status: "error", data: state.orgMe.data, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -827,7 +853,12 @@ function enterPlatform(hash: string): void {
  *  `/<slug>/` with the hash route after it, and this browser remembers it as last used. */
 /** This page has entered an org (so it holds that org's data): a second one is opened by a page load. */
 let enteredAnOrg = false;
+/** Batched: the boot starts a dozen and a half reads here, and their "loading" paints are ONE paint,
+ *  made before this returns (each read's landing is a `rerenderSoon`). */
 function enterOrg(slug: string, hash: string): void {
+  batchRender(() => enterOrgNow(slug, hash));
+}
+function enterOrgNow(slug: string, hash: string): void {
   enteredAnOrg = true;
   const query = new URLSearchParams(location.search);
   const link = query.get("link");
@@ -933,12 +964,12 @@ function loadFeed(): void {
       state.feed = { status: "ok", data: rows };
       // Capture the author chip set only from the unfiltered view, so filtering doesn't shrink it.
       if (!author && !tags) state.feedAuthors = [...new Set(rows.map((r) => r.author))];
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.feed = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadFeedIfNeeded(): void {
@@ -961,13 +992,13 @@ function loadFeedStats(): void {
     .then((data) => {
       if (seq !== feedStatsSeq) return;
       state.feedStats = { status: "ok", data };
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (seq !== feedStatsSeq) return;
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.feedStats = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -977,12 +1008,12 @@ function loadMyWork(): void {
   getMyDashboard()
     .then((data) => {
       state.mywork = { status: "ok", data };
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.mywork = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Your sessions: MY two latest feed entries — My Work's own read, so the Feed
@@ -992,11 +1023,11 @@ function loadMwSessions(): void {
   if (!me) return;
   state.mwSessions = { status: "loading", data: state.mwSessions.data };
   getFeed({ author: me, limit: 2 })
-    .then((rows) => { state.mwSessions = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { state.mwSessions = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       state.mwSessions = { status: "error", data: state.mwSessions.data, error: String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Docs you own: the doc list WITHOUT bodies — never `loadDocs`, which also opens
@@ -1004,11 +1035,11 @@ function loadMwSessions(): void {
 function loadMwDocs(): void {
   state.mwDocs = { status: "loading", data: state.mwDocs.data };
   listDocMeta()
-    .then((rows) => { state.mwDocs = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { state.mwDocs = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       state.mwDocs = { status: "error", data: state.mwDocs.data, error: String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** My Work reads its own DTO plus the slices its tiles and rail are built on —
@@ -1039,12 +1070,12 @@ function loadRepo(): void {
       if (sample !== state.repoSample) return; // switched source mid-flight — the newer load wins
       state.repo = { status: "ok", data };
       state.repoFetchedAt = Date.now();
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.repo = { status: "error", data: state.repo.data, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 // "Poll now" (admins, the Repo top bar — every tab): refresh the sources the
@@ -1093,11 +1124,11 @@ function loadNotifPrefs(): void {
   state.notifPrefs = { status: "loading", data: state.notifPrefs.data };
   rerender();
   getNotificationPrefs()
-    .then((data) => { state.notifPrefs = { status: "ok", data }; rerender(); })
+    .then((data) => { state.notifPrefs = { status: "ok", data }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.notifPrefs = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 // Settings › MCP access › Connected apps. No rerender of its own on entry: every caller
@@ -1105,11 +1136,11 @@ function loadNotifPrefs(): void {
 function loadGrants(): void {
   state.grants = { status: "loading", data: state.grants.data };
   listOAuthGrants()
-    .then((data) => { state.grants = { status: "ok", data }; rerender(); })
+    .then((data) => { state.grants = { status: "ok", data }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.grants = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Everything personal Settings reads: my connections, my digest preferences, the plan of the org on
@@ -1183,11 +1214,11 @@ function loadGrantsIfNeeded(): void {
 function loadMcpTokens(): void {
   state.mcpTokens = { status: "loading", data: state.mcpTokens.data };
   listMcpTokens()
-    .then((data) => { state.mcpTokens = { status: "ok", data }; rerender(); })
+    .then((data) => { state.mcpTokens = { status: "ok", data }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       state.mcpTokens = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadNotifPrefsIfNeeded(): void {
@@ -1211,14 +1242,14 @@ function loadNotifAdmin(): void {
   rerender();
   const unauth = (e: unknown) => { if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); } };
   getNotificationPolicy()
-    .then(({ kinds }) => { state.notifPolicy = { status: "ok", data: kinds }; rerender(); })
-    .catch((e) => { unauth(e); state.notifPolicy = { status: "error", data: [], error: String(e) }; rerender(); });
+    .then(({ kinds }) => { state.notifPolicy = { status: "ok", data: kinds }; rerenderSoon(); })
+    .catch((e) => { unauth(e); state.notifPolicy = { status: "error", data: [], error: String(e) }; rerenderSoon(); });
   getNotificationSettings()
-    .then((data) => { state.notifSettings = { status: "ok", data }; rerender(); })
-    .catch((e) => { unauth(e); state.notifSettings = { status: "error", data: null, error: String(e) }; rerender(); });
+    .then((data) => { state.notifSettings = { status: "ok", data }; rerenderSoon(); })
+    .catch((e) => { unauth(e); state.notifSettings = { status: "error", data: null, error: String(e) }; rerenderSoon(); });
   listNotificationOutbox()
-    .then(({ rows }) => { state.notifOutbox = { status: "ok", data: rows }; rerender(); })
-    .catch((e) => { unauth(e); state.notifOutbox = { status: "error", data: [], error: String(e) }; rerender(); });
+    .then(({ rows }) => { state.notifOutbox = { status: "ok", data: rows }; rerenderSoon(); })
+    .catch((e) => { unauth(e); state.notifOutbox = { status: "error", data: [], error: String(e) }; rerenderSoon(); });
 }
 /** What Org settings shows an ADMIN beyond the org controller's own reads: the e-mail digests
  *  (its Notifications tab) and the logins to match (Members). Both are no-ops once loaded, and
@@ -1247,13 +1278,13 @@ function loadDoc(slug: string): void {
       state.docDetail = { status: "ok", data: result };
       state.docSpace = result.doc.space;
       state.docOutlineOpen[result.doc.slug] = true;
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-      if (e instanceof NotFound) { state.docDetail = { status: "ok", data: null }; rerender(); return; }
+      if (e instanceof NotFound) { state.docDetail = { status: "ok", data: null }; rerenderSoon(); return; }
       state.docDetail = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1348,13 +1379,13 @@ function loadDocs(): void {
         state.docOutlineOpen[first.slug] = true;
         loadDoc(first.slug);
       } else {
-        rerender();
+        rerenderSoon();
       }
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.docsList = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1373,12 +1404,12 @@ function loadSearch(): void {
   search(state.searchQuery)
     .then((result) => {
       state.searchResults = { status: "ok", data: result };
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.searchResults = { status: "error", data: EMPTY_QUERY_RESULT, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1406,7 +1437,7 @@ function loadRoadmap(): void {
   getRoadmap()
     .then((planView) => {
       state.roadmap = { status: "ok", data: planView };
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
@@ -1415,7 +1446,7 @@ function loadRoadmap(): void {
         data: { narrative: "", version: 0, updated_at: null, updated_by: null, sprints: [] },
         error: e instanceof Error ? e.message : String(e),
       };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1440,13 +1471,13 @@ function loadRoadmapFeed(): void {
     .then((rows) => {
       if (seq !== roadmapFeedSeq) return;
       state.roadmapFeed = { status: "ok", data: rows };
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (seq !== roadmapFeedSeq) return;
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.roadmapFeed = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1461,13 +1492,13 @@ function loadProposals(after?: () => void): void {
   state.proposals = { status: "loading", data: state.proposals.data };
   rerender();
   listStagedProposals()
-    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; listed("proposals", rows.length); after?.(); pruneReviewLeaving(); rerender(); })
+    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; listed("proposals", rows.length); after?.(); pruneReviewLeaving(); rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== proposalsSeq) return;
       state.proposals = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       after?.(); pruneReviewLeaving();
-      rerender();
+      rerenderSoon();
     });
 }
 /** The Feed's "Waiting on review" box lists Review's two reads — the boot no longer loads them
@@ -1487,13 +1518,13 @@ function loadDraftAdrs(after?: () => void): void {
   state.draftAdrs = { status: "loading", data: state.draftAdrs.data };
   rerender();
   listAdrs("draft")
-    .then((rows) => { if (seq !== draftAdrsSeq) return; state.draftAdrs = { status: "ok", data: rows }; listed("decisions", rows.length); after?.(); pruneReviewLeaving(); rerender(); })
+    .then((rows) => { if (seq !== draftAdrsSeq) return; state.draftAdrs = { status: "ok", data: rows }; listed("decisions", rows.length); after?.(); pruneReviewLeaving(); rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== draftAdrsSeq) return;
       state.draftAdrs = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       after?.(); pruneReviewLeaving();
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1590,12 +1621,12 @@ function loadNeedsTriage(): void {
   state.needsTriage = { status: "loading", data: state.needsTriage.data };
   rerender();
   listNeedsTriage()
-    .then((rows) => { if (seq !== needsTriageSeq) return; state.needsTriage = { status: "ok", data: rows }; listed("unplaced", rows.length); rerender(); })
+    .then((rows) => { if (seq !== needsTriageSeq) return; state.needsTriage = { status: "ok", data: rows }; listed("unplaced", rows.length); rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== needsTriageSeq) return;
       state.needsTriage = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadNeedsTriageIfNeeded(): void {
@@ -1615,13 +1646,13 @@ function loadIdentityTasks(): void {
       listed("logins", r.tasks.length);
       state.identityDiscarded = r.discarded;
       if (r.discarded.length === 0) state.identityShowDiscarded = false;
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== identityTasksSeq) return;
       state.identityTasks = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1642,12 +1673,12 @@ function loadTickets(): void {
   if (!ticketsLanded) state.tickets = { status: "loading", data: state.tickets.data };
   rerender();
   listTickets({ seg: state.qSeg, assignee: state.qAssignee, category: state.qCategory })
-    .then((rows) => { if (seq !== ticketsSeq) return; state.tickets = { status: "ok", data: rows }; ticketsLanded = true; rerender(); })
+    .then((rows) => { if (seq !== ticketsSeq) return; state.tickets = { status: "ok", data: rows }; ticketsLanded = true; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== ticketsSeq) return;
       state.tickets = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadTicketsIfNeeded(): void {
@@ -1664,14 +1695,14 @@ function loadTicketDetail(id: number): void {
   loadTicketArtifacts(id);            // the Artifacts block under Linked work
   rerender();
   getTicket(id)
-    .then((t) => { if (seq !== ticketDetailSeq) return; state.ticketDetail = { status: "ok", data: t }; rerender(); })
+    .then((t) => { if (seq !== ticketDetailSeq) return; state.ticketDetail = { status: "ok", data: t }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== ticketDetailSeq) return;
       // A deleted/unknown id is "no such ticket", not a failure to load.
-      if (e instanceof ApiError && e.status === 404) { state.ticketDetail = { status: "ok", data: null }; rerender(); return; }
+      if (e instanceof ApiError && e.status === 404) { state.ticketDetail = { status: "ok", data: null }; rerenderSoon(); return; }
       state.ticketDetail = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1695,13 +1726,13 @@ function loadBadges(): void {
       for (const k of Object.keys(b) as (keyof SidebarBadges)[]) if (!landed.has(k)) next[k] = b[k];
       state.badges = next;
       if (!landed.has("tickets")) state.ticketBadge = b.tickets;
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => { if (e instanceof Unauthorized) unauth(e); });
 }
 function loadTicketBadge(): void {
   getTicketBadge()
-    .then((count) => { state.ticketBadge = count; listed("tickets", count); rerender(); })
+    .then((count) => { state.ticketBadge = count; listed("tickets", count); rerenderSoon(); })
     .catch((e) => { if (e instanceof Unauthorized) unauth(e); });
 }
 
@@ -1710,12 +1741,12 @@ function loadSprints(): void {
   const seq = ++sprintsSeq;
   state.sprints = { status: "loading", data: state.sprints.data };
   listSprints()
-    .then((rows) => { if (seq !== sprintsSeq) return; state.sprints = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== sprintsSeq) return; state.sprints = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== sprintsSeq) return;
       state.sprints = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Unlike the other IfNeeded loaders this one never rerenders on a hit — its
@@ -1733,14 +1764,14 @@ function loadSprintDetail(id: number): void {
   state.sprintDetail = { status: "loading", data: keep };
   rerender();
   getSprint(id)
-    .then((sp) => { if (seq !== sprintDetailSeq) return; state.sprintDetail = { status: "ok", data: sp }; rerender(); })
+    .then((sp) => { if (seq !== sprintDetailSeq) return; state.sprintDetail = { status: "ok", data: sp }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== sprintDetailSeq) return;
       // A deleted/unknown id is "no such sprint", not a failure to load.
-      if (e instanceof ApiError && e.status === 404) { state.sprintDetail = { status: "ok", data: null }; rerender(); return; }
+      if (e instanceof ApiError && e.status === 404) { state.sprintDetail = { status: "ok", data: null }; rerenderSoon(); return; }
       state.sprintDetail = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1809,11 +1840,11 @@ function loadPersons(): void {
   const seq = ++personsSeq;
   state.persons = { status: "loading", data: state.persons.data };
   listPersons()
-    .then((rows) => { if (seq !== personsSeq) return; state.persons = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== personsSeq) return; state.persons = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } if (seq !== personsSeq) return; state.persons = { status: "error", data: state.persons.data, error: String(e) }; rerender(); });
 }
 function refreshMe(): void {
-  getMe().then((me) => { state.me = me; state.displayName = me.name ?? me.handle; rerender(); }).catch(() => undefined);
+  getMe().then((me) => { state.me = me; state.displayName = me.name ?? me.handle; rerenderSoon(); }).catch(() => undefined);
 }
 
 // ── The person card (a click on a name), and Settings › Profile's photo ──
@@ -1829,12 +1860,12 @@ function openPersonCard(handle: string): void {
   rerender();
   mount.querySelector<HTMLElement>("[data-person-card]")?.focus();
   getPersonProfile(handle)
-    .then((pr) => { if (seq !== personSeq) return; state.personDetail = { status: "ok", data: pr }; rerender(); })
+    .then((pr) => { if (seq !== personSeq) return; state.personDetail = { status: "ok", data: pr }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== personSeq) return;
       state.personDetail = { status: e instanceof NotFound ? "ok" : "error", data: null, error: errMsg(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Close Settings › MCP access's by-hand setup modal; focus goes back to the link that opened it. */
@@ -1884,12 +1915,12 @@ function loadArtifactList(force = false): void {
   const seq = nextArtSeq("list");
   state.art.list = { status: "loading", data: cur.data };
   listArtifacts()
-    .then((rows) => { if (seq !== artSeq.get("list")) return; state.art.list = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== artSeq.get("list")) return; state.art.list = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== artSeq.get("list")) return;
       state.art.list = { status: "error", data: state.art.list.data, error: errMsg(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadArtifactDetail(slug: string, v: number | null, force = false): void {
@@ -1899,12 +1930,12 @@ function loadArtifactDetail(slug: string, v: number | null, force = false): void
   const seq = nextArtSeq(`d:${key}`);
   state.art.details[key] = { status: "loading", data: cur?.data ?? null };
   getArtifact(slug, v)
-    .then((d) => { if (seq !== artSeq.get(`d:${key}`)) return; state.art.details[key] = { status: "ok", data: d }; rerender(); })
+    .then((d) => { if (seq !== artSeq.get(`d:${key}`)) return; state.art.details[key] = { status: "ok", data: d }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== artSeq.get(`d:${key}`)) return;
       state.art.details[key] = e instanceof NotFound ? { status: "missing", data: null } : { status: "error", data: null, error: errMsg(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadArtifactDiff(slug: string, a: number, b: number, force = false): void {
@@ -1914,12 +1945,12 @@ function loadArtifactDiff(slug: string, a: number, b: number, force = false): vo
   const seq = nextArtSeq(`x:${key}`);
   state.art.diffs[key] = { status: "loading", data: cur?.data ?? null };
   getArtifactDiff(slug, a, b)
-    .then((d) => { if (seq !== artSeq.get(`x:${key}`)) return; state.art.diffs[key] = { status: "ok", data: d }; rerender(); })
+    .then((d) => { if (seq !== artSeq.get(`x:${key}`)) return; state.art.diffs[key] = { status: "ok", data: d }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== artSeq.get(`x:${key}`)) return;
       state.art.diffs[key] = { status: e instanceof NotFound ? "missing" : "error", data: null, error: errMsg(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** The ticket detail's Artifacts block: `GET /api/artifacts?ticket=<id>`. */
@@ -1928,12 +1959,12 @@ function loadTicketArtifacts(id: number): void {
   const cur = state.art.ticketArts[id];
   state.art.ticketArts[id] = { status: "loading", data: cur?.data ?? null };
   listArtifacts({ ticket: id })
-    .then((rows) => { if (seq !== artSeq.get(`t:${id}`)) return; state.art.ticketArts[id] = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== artSeq.get(`t:${id}`)) return; state.art.ticketArts[id] = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== artSeq.get(`t:${id}`)) return;
       state.art.ticketArts[id] = { status: "error", data: state.art.ticketArts[id]?.data ?? null, error: errMsg(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Every ticket (seg=all) — the attach dialog's list and the library's ticket search. */
@@ -1946,13 +1977,13 @@ function loadAttachTickets(): void {
     .then((rows) => {
       if (seq !== artSeq.get("tix")) return;
       state.art.attachTickets = { status: "ok", data: rows.map((t) => ({ id: t.id, title: t.title, status: t.status })) };
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== artSeq.get("tix")) return;
       state.art.attachTickets = { status: "error", data: state.art.attachTickets.data, error: errMsg(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Load what the current Artifacts screen reads. `fresh` refetches (keeping what is
@@ -3125,7 +3156,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
     case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
-    // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
+    // Help › What's new (its chunk is loaded by the paint: releases-lazy.ts). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
     // One release's page (arg = its slug, "0.14" / "unreleased"), and its notes / patches switch.
     case "openRelease": if (!arg) return; state.screen = "releases"; state.releaseVersion = arg.toLowerCase(); state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;

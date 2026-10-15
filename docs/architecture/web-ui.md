@@ -67,6 +67,63 @@ it. That is the cause of "the screen behind refreshes on every step", not a rebu
 subtree: true })` on the backdrop after a step change; it must be 0. From the picker, an org just created or joined is entered IN PLACE (`enterNew` in `main.ts`) when the
 page has held no other org's data; opening an org from anywhere else stays a page load.
 
+## Paints: now, batched, or once a frame (`web/src/paint-queue.ts`)
+
+A paint renders the WHOLE app to a string and `paint()` parses it, so one costs tens to hundreds of
+milliseconds on a big screen. Every paint goes through one queue in `main.ts` (`paintApp` is the paint; nothing
+calls it directly), in one of three ways:
+
+- **`rerender()` paints now.** It is the interactive paint — a click, a keystroke, a write's answer — and stays
+  synchronous because its callers focus an element, measure, or read the DOM on the next line. Focus, caret and
+  scroll restoration and `data-morph` all happen inside the paint, exactly as before.
+- **`batchRender(fn)` folds the paints `fn` asks for into ONE**, made before it returns (so the DOM is current
+  for whatever follows). `enterOrg` (the boot: about eighteen reads, each painting its "loading" state) and
+  `loadForScreen` (My Work alone starts eight) run inside one. Batches nest; only the outermost paints.
+- **`rerenderSoon()` is a read landing** (a loader's `.then` / `.catch`): every read that lands before the next
+  animation frame shares one paint. A hidden document (a background or automation tab, where rAF never fires) or
+  one without rAF uses a timeout instead, and a visible one keeps a 100 ms timeout as a backstop in case it is
+  hidden before its frame. Reads that land a frame or two apart would still paint once each, so a landing paints
+  no sooner than `SOON_GAP_MS` (100 ms) after the last landing or batch paint, measured from that paint's END; an
+  interactive paint does not hold one back (search results still show between keystrokes). Any paint made in the
+  meantime takes the waiting one's place.
+
+**Rule:** a loader's completion calls `rerenderSoon()`; its start (the "loading" state) and everything a person
+does call `rerender()`. An expired session (`Unauthorized`) still leaves with `rerender()`. A controller module
+gets `rerenderSoon` on its host where it has a read the boot starts (`tags-actions.ts`). Never call
+`rerenderSoon()` where the next line reads the DOM. Measured on My Work against `wrangler dev` (2026-10-15):
+27 full-app paints at boot before, 4–5 after; the longest task at 4× CPU throttling 1.7 s → about 0.2 s. Tests:
+`test/paint-queue.test.ts`.
+
+## Markdown is rendered once per body (`web/src/markdown.ts`, `web/src/outline.ts`, `web/src/lru.ts`)
+
+Because every paint rebuilds the whole app's markup, `renderMarkdown` (marked → DOMPurify → `enhance`) and
+`renderMarkdownInline` ran for every doc, ticket and feed summary on screen on EVERY paint — the slowest part of
+a paint on Docs and Review. Both are memoized in an LRU (`createLru`): 100 block bodies, 300 inline summaries (so
+a long feed does not push the doc bodies out). The key is everything the output depends on: the org's main
+repository (`repoUrl()`, what a bare `#12` links to), the org on screen (`apiOrgSlug()`, what a doc image's
+`tenantHref` points at) and the text. A new input to either renderer (an option, another piece of page state it
+reads) must join the key. Results are strings, so a cached one cannot be mutated. `extractOutline` (the Docs tree
+draws every doc's outline on every paint) is memoized by body in a 500-entry LRU — larger than a big org's doc
+count, because a tree that cycles through more docs than the cache holds would miss on every one — and hands out
+a FROZEN array of frozen items. `sanitizeSvg` is not cached. Tests: `test/markdown-memo.test.ts`.
+
+## Help › What's new is its own chunk (`web/src/releases-lazy.ts`, `web/src/release-latest.ts`)
+
+`web/src/releases.ts` is every release's notes and patch lines — the largest module in the app, and every PR adds
+to it — so the app bundle does not carry it. Like the Repo screen's sample data (`repo-sample.ts`), the screen is
+rendered from `import("./releases")`: `render.ts` calls `releasesView` / `releaseCrumb` (releases-lazy.ts), which
+draw the screen's own frame with skeletons (`data-skel="releases"`, `release-head`, `release-body`) until the chunk
+is in, then `releasesScreen` itself. `paintApp` starts the load whenever it paints the screen without the chunk,
+and the arrival repaints (`rerenderSoon`). A chunk that fails (an old page after a deploy, whose chunk names are
+gone) says so — "Reload the page to try again" — and is not retried in a loop.
+
+- **No app module imports releases.ts as a value** (`import type` only; a test reads every `web/src/*.ts`). The
+  build-time readers keep the full import: `docs-changelog.ts` (the public `/docs/changelog`), and the tests.
+- **The newest version is `release-latest.ts`** (`LATEST_VERSION`, and `LATEST_RELEASE` with its slug): the
+  support form's attached version and the legacy `#releases/patches` route read it. It is kept by hand and pinned
+  to `RELEASES[0]` by `test/releases.test.ts`: the PR that opens an "Unreleased" entry sets it to "Unreleased",
+  and the PR that cuts it into `0.N` sets "0.N" (the releases.ts header says so).
+
 ## The signed-out site — one banner, carried through the page (`web/src/landing.ts`)
 
 The landing page has ONE idea: the first-run card's purple banner is Trov speaking, and the product is the
