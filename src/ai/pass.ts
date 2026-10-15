@@ -48,11 +48,15 @@ import { groupOf, takes, validJob, customIdOf, type AiJob, type ClaudeJob, type 
 import { orgPrefix } from "./prefix";
 import { collectBatches, submitBatches, AI_BATCH_PER_TICK, type QueuedRequest } from "./batches";
 import { prThemeJob, themesBackfillJob, themesCaptionJob, themesProposeJob } from "./themes";
+import { TAG_FIT_ITEM_JOB } from "./sift-items";
+import { IMPORTANCE_JOBS } from "./importance";
 
 export type { AiJob } from "./jobs";
 
 /** THE registry: one line per producer (Phases C and D). */
 export const AI_JOBS: readonly AiJob[] = [
+  TAG_FIT_ITEM_JOB, // tag.fit — Sift on new items (card:tagfit:*)
+  ...IMPORTANCE_JOBS, // feed.importance — card:feed:*, card:pr:*
   prThemeJob,
   themesProposeJob,
   themesCaptionJob,

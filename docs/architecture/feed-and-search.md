@@ -143,8 +143,36 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   - **Agents' suggestions are separate and unchanged**: an AGENT's unknown tag (sent on a feed entry through the
     gate, `recordTagSuggestions`) still waits (`open`) for an admin to approve, map or dismiss it. They are drawn
     as suggested rows at the top of the tag list (`web-ui.md` › Tags).
-  - Not built: the content-hash cache of #155, the per-kind test set and the rates in Platform of #158.
+  - **Sift on NEW items** (Phase C, `src/ai/sift-items.ts`; `ai.md` › Jobs): when a doc is PROMOTED the router marks
+    `card:tagfit:doc:<slug>` (an artifact's `card:tagfit:artifact:<slug>` too — artifacts carry no tags yet, so its
+    card is written with no request; a feed entry is not marked for it). The AI pass then asks Jev ONE request about
+    that item: Sift's own question (`fitQuestion`, the same words a run sends) once per ACTIVE tag the item does not
+    carry and that nobody said no to on it (`itemFitInput`: no `dismissed`, `open`, `removed` or `undone` row — the
+    same rule as a run's candidates), the tags whose words the item's text matches first, at most
+    `NEW_ITEM_TAGS_MAX` = 60 (Jev answered 60 questions in one request, live). The state is what a run sends: the
+    title and the 400-character scrubbed excerpt. Each answer goes through the SAME bands and writer as a run
+    (`fitBand`, `storeFit`): ≥ 0.85 ADDS with provenance, 0.6–0.85 SUGGESTS, below nothing; never more added than
+    `ITEM_TAGS_MAX` allows (surest first). Each tag it touched is recorded as a ONE-ITEM RUN of that tag
+    (`storeNewItemFit`: `org_tag_runs`, `done`, 1 candidate, `started_by` the pass's `system`, one `tag.fit` audit
+    row naming the item), so the Tags tab shows it as that tag's latest run and its Undo takes exactly that tag off
+    that item. Both switches hold (the pass serves an org only with its AI switch on; the job reads `siftSwitches`
+    and sends nothing with Sift's off); metering is the pass's (`ai_suggest`, `jev_checks`); the reason is the
+    item's own words around the tag's (`evidenceOf` over the org's FTS), else Sift's score. Prompt version
+    `jev-fit-items-1`. Eval set: `test/ai-evals/tag.fit/`.
+  - Not built: the content-hash cache of #155 and the rates in Platform of #158.
 - Screens: `web-ui.md` › Tags.
+
+**Importance** (`FeedRow.importance?`, `0060_ai_importance`; `ai.md` › Jobs › `feed.importance`): how much an entry
+matters as Sift rated it — `routine`, `notable` or `breaking` — a COMPUTED fact the AI pass writes on `feed.importance`
+(and on `pr_summaries.importance` for a merged PR; My Work's `MyWorkPr.importance`). `get_feed` (the Feed and MCP)
+carries the key ONLY when the column is set: an unrated entry has no `importance` at all (`withImportance`), never a
+guessed `routine`. The Feed draws a quiet mark in the byline after the time and tags — notable an accent dot,
+breaking an amber triangle, each with its word and a tooltip saying it is Sift's rating and not official
+(`importanceMark`, `web/src/marks.ts`) — and NOTHING for routine or unrated, byte for byte
+(`test/render.feed-importance.test.ts`). The mark has no motion of its own: it enters with its row (the Feed's
+`.cnpy-stagger` entrance, on a route change only, off under reduced motion), so a rerender never replays it.
+`LOCAL_AI_PREVIEW` merges two rated agent entries (`feedImportanceFixtures`)
+into `/feed`; the dev seed rates a few entries and PRs.
 
 **Entries written by Trov** (`FeedRow.ai?`, `shared/ai-core.ts` `AiFeedMeta`: `origin: "ai"`, the person it was
 written for, its sources). An entry with no `ai` is an agent's — every entry today: nothing writes one yet, so

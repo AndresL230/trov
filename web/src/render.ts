@@ -10,7 +10,7 @@ import type { QueryResult, QueryPrimary, QueryPointer, SprintView, SprintDetail,
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
 import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
-import { agentMark, aiMark, authorityMark, markShape, stateMark, tagWords } from "./marks";
+import { agentMark, aiMark, authorityMark, importanceMark, markShape, stateMark, tagWords } from "./marks";
 import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId } from "./sprints";
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline, timelineShapes } from "./timeline";
@@ -1206,6 +1206,13 @@ function feedBrief(brief: string | null): string {
   return `<div class="cnpy-feed-brief" style="font-size:13.5px;color:var(--fg-70);line-height:1.6;margin-top:5px">${esc(brief)}</div>`;
 }
 
+/** Sift's rating in a byline (`feed.importance`): a dot and the mark for notable or breaking; NOTHING for routine or an
+ *  unrated entry, so a row without one is exactly what it was. */
+function feedImportance(e: FeedRow): string {
+  const m = importanceMark(e.importance);
+  return m ? `<span style="font-size:12px;color:var(--fg-40)">&middot;</span><span data-importance="${e.importance}" style="display:inline-flex;align-items:center">${m}</span>` : "";
+}
+
 /** A feed entry's `@author`: a link to their person card when the author is a known person. */
 function feedAuthorTag(s: AppState, author: string): string {
   return handleLink(personFor(s, author), author);
@@ -1257,7 +1264,7 @@ function feedTrovCard(s: AppState, e: FeedRow & { ai: NonNullable<FeedRow["ai"]>
             <span style="font-size:12px;font-weight:600;color:var(--fg)">Trov</span>
             ${subject}
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
-            <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>
+            <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>${feedImportance(e)}
           </div>
           <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-55)">
             ${from || "<span></span>"}${aiWrongBtn(aiFeedback("feed", aiItemRef.feed(e.id), "feed", a.model), 12.5)}
@@ -1295,7 +1302,7 @@ function feedView(s: AppState): string {
             ${agentMark()}
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
             <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>
-            ${e.tags && e.tags.length ? `<span style="font-size:12px;color:var(--fg-40)">&middot;</span>${tagWords(e.tags)}` : ""}
+            ${e.tags && e.tags.length ? `<span style="font-size:12px;color:var(--fg-40)">&middot;</span>${tagWords(e.tags)}` : ""}${feedImportance(e)}
             <div style="flex:1"></div>
           </div>
           ${artifactRow}

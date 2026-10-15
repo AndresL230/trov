@@ -59,6 +59,8 @@ export function buildSeedStatements(fx) {
     for (const t of f.tags ?? []) {
       s.push(`INSERT INTO entry_tags (tag, entry_type, entry_id) VALUES (${q(t)}, 'feed', ${q(String(f.id))})`);
     }
+    // Sift's rating (0060 `feed.importance`), only where the fixture carries one — the Feed's notable / breaking marks.
+    if (f.importance) s.push(`UPDATE feed SET importance = ${q(f.importance)} WHERE org_id = 'org_saplinglearn' AND id = ${num(f.id)}`);
   }
 
   for (const a of fx.adrs?.adrs ?? []) {
@@ -171,6 +173,8 @@ export function buildSeedStatements(fx) {
         `INSERT INTO pr_summaries (semantic_key, pr_number, model, created_at, title, what, why, impact) VALUES (` +
           `${q(e.semantic_key)}, ${num(e.ref_number)}, ${q(model)}, ${q(e.recorded_at)}, ${q(p.title)}, ${q(p.what)}, ${q(p.why)}, ${q(p.impact)})`
       );
+      // Sift's rating (0060 `pr_summaries.importance`), only where the fixture carries one.
+      if (p.importance) s.push(`UPDATE pr_summaries SET importance = ${q(p.importance)} WHERE org_id = 'org_saplinglearn' AND semantic_key = ${q(e.semantic_key)}`);
     }
     if (e.issue_summary) {
       const i = e.issue_summary;

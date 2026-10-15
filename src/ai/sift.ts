@@ -17,9 +17,7 @@ import { normalizeTagName, type TagRunDTO } from "@shared/tags-core";
 import { platform, type TenantContext } from "../data/context";
 import { METRIC_AI_SUGGEST, meter } from "../data/meter";
 import { batch, first, nowIso, run, stmt } from "../data/sql";
-import {
-  FIT_ANSWERS, FIT_APPLY, FIT_SUGGEST, JEV_ACTOR, TAG_FIT_KIND, fitAuditStmt, fitCandidates, scoreReason, siftSwitches, suggestAllowance,
-} from "../tools/tag-fit";
+import { FIT_ANSWERS, TAG_FIT_KIND, fitAuditStmt, fitCandidates, fitQuestion, siftSwitches, storeFit, suggestAllowance } from "../tools/tag-fit";
 import { providerFor, type AiProviderOpts, type Classifier } from "./client";
 
 /** A run still "running" after this long died with its Worker: the next start takes over. */
@@ -85,16 +83,15 @@ export async function continueTagFit(env: Env, ctx: TenantContext, runId: number
         candidates, calls, checked, added, ctx.orgId, runId).catch(() => undefined);
     await progress();
     const classifier = opts.classifier ?? providerFor(TAG_FIT_KIND, { ...opts.jev, apiKey: env.TYPESAFE_API_KEY });
+    const question = fitQuestion(tag, desc);
     if (!classifier) status = "failed";
     else if (list.length) {
       let capped = false;
       const result = await classifier.classify({
         kind: TAG_FIT_KIND,
-        question: `Is this item about the tag "${tag}"${desc ? ` (${desc})` : ""}? Say yes only when the item is clearly about it.`,
-        criteria: {
-          true: `The item is about ${tag}${desc ? `: ${desc}` : ""}.`,
-          false: `The item is not about ${tag}, or only mentions it in passing.`,
-        },
+        // THE question (src/tools/tag-fit.ts `fitQuestion`): the same one a new item is asked (./sift-items.ts).
+        question: question.instructions,
+        criteria: question.criteria,
         answers: FIT_ANSWERS,
         items: list.map((c, k) => ({ id: String(k), text: `${c.title}${c.text ? `\n\n${c.text}` : ""}`, evidence: c.evidence })),
       }, {
@@ -107,31 +104,18 @@ export async function continueTagFit(env: Env, ctx: TenantContext, runId: number
           calls++;
           return true;
         },
-        // Each answer as it comes: a confident "fits" ADDS the tag to the item at once — the entry_tags row
-        // and its provenance in ONE batch — and the run's counts move on.
+        // Each answer as it comes, by its band (src/tools/tag-fit.ts `storeFit`, the ONE writer of Sift's results):
+        // a confident "fits" ADDS the tag to the item at once — the entry_tags row and its provenance in ONE batch —
+        // a less sure one is SUGGESTED, and the run's counts move on.
         onItem: async (it, j) => {
           checked++;
-          const fits = !!j && j.answer === FIT_ANSWERS[0];
-          if (j && fits && j.confidence >= FIT_SUGGEST && j.confidence < FIT_APPLY) {
-            // Not sure enough to add on its own: suggested, for a person to add or dismiss.
+          if (j) {
             const c = list[Number(it.id)];
-            await run(ctx,
-              `INSERT OR IGNORE INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, confidence, reason, model, prompt_version, suggested_by, suggested_at, state, run_id)
-               VALUES (?, ?, ?, ?, 'model', ?, ?, ?, ?, 'system', ?, 'open', ?)`,
-              ctx.orgId, c.type, c.id, tag, j.confidence, j.reason ?? scoreReason(j.confidence), j.model, classifier.promptVersion, nowIso(), runId);
-          }
-          if (j && fits && j.confidence >= FIT_APPLY) {
-            const c = list[Number(it.id)];
-            const at = nowIso();
-            const [tagged] = await batch(ctx, [
-              stmt(ctx, `INSERT OR IGNORE INTO entry_tags (org_id, tag, entry_type, entry_id) VALUES (?, ?, ?, ?)`, ctx.orgId, tag, c.type, c.id),
-              stmt(ctx,
-                `INSERT INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, confidence, reason, model, prompt_version, suggested_by, suggested_at,
-                                                  state, resolved_to, resolved_at, resolved_by, run_id)
-                 SELECT ?, ?, ?, ?, 'model', ?, ?, ?, ?, 'system', ?, 'accepted', ?, ?, '${JEV_ACTOR}', ? WHERE changes() > 0`,
-                ctx.orgId, c.type, c.id, tag, j.confidence, j.reason ?? scoreReason(j.confidence), j.model, classifier.promptVersion, at, tag, at, runId),
-            ]);
-            added += tagged.meta.changes ?? 0;
+            const did = await storeFit(ctx, {
+              type: c.type, id: c.id, tag, fits: j.answer === FIT_ANSWERS[0], confidence: j.confidence, reason: j.reason,
+              model: j.model, promptVersion: classifier.promptVersion, runId,
+            });
+            if (did === "added") added++;
           }
           await progress();
         },

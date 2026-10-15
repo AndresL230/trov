@@ -50,6 +50,8 @@ export const KIND_PROVIDER = {
   "themes.caption": "claude",
   "themes.backfill": "claude",
   "pr.theme": "jev",
+  // Phase C: how much a feed entry or a merged PR matters, routine / notable / breaking (src/ai/importance.ts).
+  "feed.importance": "jev",
 } as const satisfies Record<string, AiProviderName>;
 
 /** What a call is for. */

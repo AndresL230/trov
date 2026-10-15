@@ -1,0 +1,22 @@
+-- 0060_ai_importance: how much a feed entry or a merged pull request matters, as Sift rated it — a COMPUTED fact the
+-- AI pass writes (docs/architecture/ai.md › Jobs › feed.importance; docs/superpowers/specs/2026-10-15-server-ai-build.md
+-- › Phase C). ADDITIVE ONLY: one nullable column on each of two existing tables; no row is rewritten, and a Worker
+-- from before it keeps working (it names neither column, and `SELECT *` only gains one).
+--
+--   feed.importance          the entry's importance (`card:feed:<id>`, src/ai/importance.ts)
+--   pr_summaries.importance  the merged PR's importance (`card:pr:<n>`, the same job; the row of `gh:pr:<n>:merged`)
+--
+-- Values: `routine` | `notable` | `breaking` (shared/ai-core.ts `FEED_IMPORTANCES`), the answer of ONE Jev `choice`
+-- question per item. NULL = UNKNOWN — never answered, Jev unsure (below `IMPORTANCE_MIN_CONFIDENCE`), the org's AI
+-- switch off, or no key — and every screen draws NULL exactly as before this migration: never a guessed `routine`.
+-- It is not a suggestion (nothing to accept) and not authored: no person sets it, and nothing official reads it as a
+-- decision. A re-summarized PR keeps it (src/tools/summarize.ts upserts the summary's own columns only).
+--
+-- No new table, no handle column: ORG_TABLES, HANDLE_COLUMNS and the reset seed are unchanged.
+--
+-- ROLLBACK (by hand, with `wrangler rollback` to the Worker from before it; it loses only the ratings):
+--   ALTER TABLE pr_summaries DROP COLUMN importance;
+--   ALTER TABLE feed DROP COLUMN importance;
+--   DELETE FROM d1_migrations WHERE name = '0060_ai_importance.sql';
+ALTER TABLE feed ADD COLUMN importance TEXT CHECK (importance IS NULL OR importance IN ('routine', 'notable', 'breaking'));
+ALTER TABLE pr_summaries ADD COLUMN importance TEXT CHECK (importance IS NULL OR importance IN ('routine', 'notable', 'breaking'));

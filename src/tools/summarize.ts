@@ -163,8 +163,8 @@ export function excerptSummary(title: string, body: string): string {
  * Try the summarizer; on any null/throw store a marker row (model:'excerpt',
  * NULL structured columns) with no content — a PR is structured-only, so the
  * fallback is just a "not summarized yet" marker that Sync retries (not a prose
- * excerpt). On success, title/what/why/impact are stored. INSERT OR REPLACE
- * keeps one row per semantic_key. NEVER throws — a summary failure must not fail
+ * excerpt). On success, title/what/why/impact are stored. The upsert keeps one
+ * row per semantic_key (and the row's computed `importance`). NEVER throws — a summary failure must not fail
  * the webhook capture that triggered it.
  */
 export async function storePrSummary(
@@ -185,8 +185,12 @@ export async function storePrSummary(
   const created_at = nowIso();
   await run(
     ctx,
-    `INSERT OR REPLACE INTO pr_summaries (org_id, semantic_key, pr_number, model, created_at, title, what, why, impact)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    // An upsert of the summary's OWN columns, never a REPLACE: a re-summarized PR keeps what the AI pass computed
+    // about it (`importance`, 0060 — src/ai/importance.ts).
+    `INSERT INTO pr_summaries (org_id, semantic_key, pr_number, model, created_at, title, what, why, impact)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(org_id, repo, semantic_key) DO UPDATE SET pr_number = excluded.pr_number, model = excluded.model, created_at = excluded.created_at,
+       title = excluded.title, what = excluded.what, why = excluded.why, impact = excluded.impact`,
     ctx.orgId,
     pr.semantic_key,
     pr.pr_number,

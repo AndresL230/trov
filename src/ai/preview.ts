@@ -30,6 +30,9 @@ export function aiPreviewMode(env: Pick<Env, "LOCAL_AI_PREVIEW"> & LiveKeyEnv, r
 
 export type AiPreview = ReturnType<typeof aiPreviewFixtures>;
 
+/** Every sample row the preview merges into `/feed`: the entries Trov wrote, and the agent entries Sift rated. */
+export const previewFeedRows = (p: AiPreview): FeedRow[] => [...p.feed, ...p.feedImportance];
+
 /** The fixtures for this request, or null (see `aiPreviewMode`). */
 export function aiPreview(env: Pick<Env, "LOCAL_AI_PREVIEW"> & LiveKeyEnv, requestUrl: string, now: Date = new Date()): AiPreview | null {
   const mode = aiPreviewMode(env, requestUrl);

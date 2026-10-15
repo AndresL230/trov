@@ -33,13 +33,15 @@ const LIVE = {
 };
 
 describe("providerFor: one table from a kind to its provider", () => {
-  it("tag.fit and pr.theme are Jev's; the summaries, the filter, Ask Trov and the themes are Claude's; no key → null", () => {
+  it("tag.fit, feed.importance and pr.theme are Jev's; the summaries, the filter, Ask Trov and the themes are Claude's; no key → null", () => {
     expect(KIND_PROVIDER).toEqual({
       summary_pr: "claude", summary_issue: "claude", "tag.fit": "jev", filter: "claude",
       // Ask Trov (Phase F): one kind per mode, and the compaction of a long thread.
       "ask.fast": "claude", "ask.smart": "claude", "ask.thinking": "claude", "ask.compact": "claude",
       // Repo themes (Phase D).
       "themes.propose": "claude", "themes.caption": "claude", "themes.backfill": "claude", "pr.theme": "jev",
+      // Feed importance (Phase C).
+      "feed.importance": "jev",
     });
     expect(providerFor("tag.fit", { apiKey: "k" })?.name).toBe("jev");
     expect(providerFor("tag.fit", { apiKey: "k" })?.model).toBe("jev-latest");
