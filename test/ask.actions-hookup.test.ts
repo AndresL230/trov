@@ -181,9 +181,12 @@ describe("Ask's write cards, the real routes into the real screen", () => {
     const ids = eventsOf(r.events, "action_result").map((x: any) => x.id);
     const nums = eventsOf(r.events, "action_result").map((x: any) => x.ref.split(":")[1]);
     expect(text(lines(w, s)[0])).toBe(`Filed tickets #${nums[0]} and #${nums[1]} Just now Undo`);
+    const refreshTickets = vi.fn();
+    (ctx as any).refreshTickets = refreshTickets;
     await w.undoCards(ctx, ids);
     expect(text(lines(w, s)[0])).toBe(`Undone: filed tickets #${nums[0]} and #${nums[1]}`);
     expect((await ticketRow(Number(nums[0])))?.status).toBe("declined");
+    expect(refreshTickets).toHaveBeenCalledTimes(1);     // an open Tickets board refetches: the declined cards leave it
   });
 
   it("GUARD — a replaced answer's cards expire: Confirm on one collapses it to its Expired line, nothing is written", async () => {

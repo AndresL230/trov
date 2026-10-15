@@ -198,7 +198,8 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   Confirm. A decided card is a line per outcome (done linked to `ref` with a time and Undo; Cancelled / Undone /
   Expired / Didn't work); Undo's `changed` keeps the line and says "Changed since. Undo it by hand." with a link. An
   Auto result streams no tool, so on `done` the part reads the stored cards back (`GET /ask/threads/:id`) to name
-  them; nothing on the client ever decides a card. `saveButton` / `wrongButton` are the footer's and a block's
+  them; nothing on the client ever decides a card. An Undo of a ticket write calls `ctx.refreshTickets` (main.ts
+  `loadTickets`, only once the queue was loaded) so an open board drops a declined ticket with its exit. `saveButton` / `wrongButton` are the footer's and a block's
   buttons (acts `askAcSaveForm`, `askAcWrong`). Tests: `test/render.ask-actions.test.ts` (every scenario from its
   transcript) and `test/ask.actions-hookup.test.ts` (the real routes into the real screen, the §4 guards).
 - **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on

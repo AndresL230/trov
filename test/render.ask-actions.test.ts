@@ -238,10 +238,25 @@ describe("actions-auto — done lines with Undo and a time, one grouped line, on
     const s2 = app("actions-auto");
     const undoAction = vi.fn(async () => ({ results: [45, 44, 43].map((id) => result(id, "undone", null, null, false, "1-6-3")) }));
     const { ctx } = ctxOf(s2, { undoAction });
+    const refreshTickets = vi.fn();
+    ctx.refreshTickets = refreshTickets;
     actionsPart.act!(ctx, "askAcUndo", "43,44,45", null);
     await flush();
     expect(undoAction).toHaveBeenCalledTimes(1);
     expect(text(cards(s2)[2])).toBe("Undone: filed tickets #30, #31 and #32");
+    // The declined tickets leave the queue's default views: an open Tickets board refetches (once).
+    expect(refreshTickets).toHaveBeenCalledTimes(1);
+  });
+
+  it("undoing a handoff leaves the Tickets queue alone", async () => {
+    const s2 = app("actions-auto");
+    const { ctx } = ctxOf(s2, { undoAction: vi.fn(async () => ({ results: [result(41, "undone", null, null, false, "1-6-1")] })) });
+    const refreshTickets = vi.fn();
+    ctx.refreshTickets = refreshTickets;
+    actionsPart.act!(ctx, "askAcUndo", "41", null);
+    await flush();
+    expect(text(cards(s2)[0])).toBe("Undone: sent handoff #11 to anyone");
+    expect(refreshTickets).not.toHaveBeenCalled();
   });
 
   it("the waiting Publish card says why it waits — \"Publishing waits for you, even on Auto.\" — and offers Confirm to someone who may promote", () => {

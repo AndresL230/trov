@@ -534,6 +534,9 @@ export function editedArgs(vm: AskActionVm, draft: Record<string, unknown> | und
   return Object.keys(out).length ? out : null;
 }
 
+/** The write changed a ticket the queue shows (a created ticket, a move, an edit…). */
+const touchesTicket = (vm: AskActionVm | null): boolean =>
+  !!vm && ((vm.ref ?? vm.preview?.item?.ref ?? "").startsWith("ticket:") || (toolOf(vm) ?? "").includes("ticket"));
 const parseIds = (arg: string | null): number[] => (arg ?? "").split(",").map(Number).filter((n) => Number.isInteger(n) && n > 0);
 function setBusy(ctx: AskCtx, ids: number[], on: boolean): void {
   const next = { ...ctx.ui.actions.busy };
@@ -605,8 +608,12 @@ export async function undoCards(ctx: AskCtx, ids: number[]): Promise<void> {
   setBusy(ctx, ids, true);
   ctx.paint();
   try {
-    applyResults(ctx, await ctx.api.undoAction(ids[0]));
+    const ans = await ctx.api.undoAction(ids[0]);
+    applyResults(ctx, ans);
     ctx.flash("Undone");
+    // A created ticket's Undo DECLINES it, and declined tickets leave the queue's default views: an open board
+    // refetches so the card leaves with its exit (main.ts `loadTickets`, only once the queue was loaded).
+    if (ans.results.some((r) => r.state === "undone" && touchesTicket(actionVm(ctx, r.id)))) ctx.refreshTickets?.();
   } catch (e) {
     if (e instanceof AskApiError && Array.isArray(e.body.results)) applyResults(ctx, { results: e.body.results as AskEventMap["action_result"][] });
     if (e instanceof AskApiError && e.code === "changed") {

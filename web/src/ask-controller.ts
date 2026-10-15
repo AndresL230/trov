@@ -36,6 +36,8 @@ export interface AskHost {
   unauth(e: unknown): void;
   /** Read the page's address (the replay flag). Injected so a test can set it. */
   search?(): string;
+  /** Refetch the Tickets queue if it is already loaded (main.ts `loadTickets`): an Ask write the queue shows changed. */
+  refreshTickets?(): void;
 }
 
 export interface AskController {
@@ -264,6 +266,7 @@ export function createAskController(host: AskHost): AskController {
     get replay() { return s.ask.replay !== null; },
     look: () => ({ views: ui().refViews, persons: s.persons.data }),
     paint, flash: (m, ms) => host.flash(m, ms), fail, want,
+    refreshTickets: () => host.refreshTickets?.(),
     send: (input) => { void run(input); },
     stop, openRef, closeInspector, newThread, openThread, reloadThreads, exit, cancelExit,
   };
