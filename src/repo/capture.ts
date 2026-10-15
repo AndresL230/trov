@@ -11,6 +11,10 @@ const str = (v: unknown): string | null => (typeof v === "string" && v ? v : nul
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const subject = (message: unknown): string => (str(message) ?? "").split("\n")[0].slice(0, 200);
 
+/** A PR's label names, as GitHub lists them (`[{ name }]`), at most 20. */
+export const labelNames = (labels: unknown): string[] =>
+  (Array.isArray(labels) ? labels : []).map((l) => str(obj(l)?.name)).filter((n): n is string => n !== null).map((n) => n.slice(0, 100)).slice(0, 20);
+
 /** PR actions that change something the dashboard shows (state, head, title). */
 const PR_ACTIONS = ["opened", "reopened", "closed", "ready_for_review", "converted_to_draft", "synchronize", "edited"];
 
@@ -61,7 +65,8 @@ function fromPullRequest(p: Obj): RepoEvent[] {
     semantic_key: `gh:prs:${number}:${action}:${at}`,
     kind: "pr", number, state, ref: str(head?.ref), sha: str(head?.sha),
     actor_login: str(obj(pr.user)?.login), title: (str(pr.title) ?? "").slice(0, 300), url: str(pr.html_url),
-    raw: JSON.stringify({ action, base: str(obj(pr.base)?.ref), draft: pr.draft === true }),
+    // `labels` (names, ≤ 20): a release's waiting PR is a feature by a `feature` / `enhancement` label (src/repo/releases.ts).
+    raw: JSON.stringify({ action, base: str(obj(pr.base)?.ref), draft: pr.draft === true, labels: labelNames(pr.labels) }),
     provenance: "webhook", occurred_at: at,
   }];
 }

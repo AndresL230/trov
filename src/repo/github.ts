@@ -7,7 +7,8 @@ import { putMetric, putSnapshot } from "./store";
 import { untitledFailedRuns } from "./reads";
 import type { RepoEnvConfig } from "./config";
 import type { RepoEvent } from "./types";
-import { metricsFromStatus, repoEventsFromDelivery } from "./capture";
+import { labelNames, metricsFromStatus, repoEventsFromDelivery } from "./capture";
+import { reconcileReleases } from "./releases";
 import type { RepoBranches, RepoDrift, RepoDriftGroup } from "@shared/repo";
 
 /** At most this many `.../jobs` lookups per `reconcileRepo` call, so a first
@@ -76,7 +77,7 @@ export async function ghGraphql<T>(opts: GhOpts, query: string, variables: Recor
   return (body.data ?? ({} as T)) as T;
 }
 
-interface GhPull { number: number; title: string; html_url: string; state: string; draft: boolean; merged_at: string | null; updated_at: string; user: { login: string }; head: { ref: string; sha: string }; base: { ref: string } }
+interface GhPull { number: number; title: string; html_url: string; state: string; draft: boolean; merged_at: string | null; updated_at: string; user: { login: string }; head: { ref: string; sha: string }; base: { ref: string }; labels?: { name?: string }[] }
 interface GhCommit { sha: string; commit: { message: string; committer: { date: string } }; author: { login: string } | null }
 
 const prEvent = (pr: GhPull): RepoEvent => ({
@@ -84,7 +85,7 @@ const prEvent = (pr: GhPull): RepoEvent => ({
   kind: "pr", number: pr.number,
   state: pr.merged_at ? "merged" : pr.state === "closed" ? "closed" : pr.draft ? "draft" : "review",
   ref: pr.head.ref, sha: pr.head.sha, actor_login: pr.user.login, title: pr.title.slice(0, 300), url: pr.html_url,
-  raw: JSON.stringify({ action: "backfill", base: pr.base.ref, draft: pr.draft }),
+  raw: JSON.stringify({ action: "backfill", base: pr.base.ref, draft: pr.draft, labels: labelNames(pr.labels) }),
   provenance: "backfill", occurred_at: pr.merged_at ?? pr.updated_at,
 });
 
@@ -166,7 +167,9 @@ const MAX_STATUSES_PER_CONTEXT = 10;
  * Worst case **18 + 2N outbound requests** for N environments (22 for today's
  * two): 2 PR lists + 1 pre-capture commit window + 1 workflow-run list + ≤5 job
  * lookups + 1 commit-status list + 1 GraphQL reviews + ≤5 GraphQL branch pages
- * + ≤2 drift compares + 2 per environment (head commit, head checks). GitHub
+ * + ≤2 drift compares + 2 per environment (head commit, head checks) — plus
+ * `RELEASES_RECONCILE_COST` (2: the releases list, the tags query) for the
+ * `releases` arm (src/repo/releases.ts), counted by the callers' budgets. GitHub
  * deployments are not read: an environment's deploys come from its hosting
  * provider (src/hosting/). The callers' budgets (src/repo/cron.ts) build on this
  * number: the `:20` tick is 18 + 4N with its pings, "Poll now" 18 + 5N.
@@ -346,6 +349,14 @@ export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: Repo
   // failing compare lands in `failed` instead of vanishing into a swallowed
   // catch (Task 11 carry-over fix: it used to be invisible here).
   await safely("drift", () => computeDrift(ctx, opts, envs));
+
+  // Releases (Phase F, src/repo/releases.ts): the 30 newest releases, and the 30 newest tags only when there
+  // are none — ≤ 2 requests (`RELEASES_RECONCILE_COST`), every row through the gate's release arm.
+  await safely("releases", async () => {
+    const r = await reconcileReleases(ctx, opts, now);
+    out.written += r.written;
+    out.unchanged += r.unchanged;
+  });
 
   return out;
 }

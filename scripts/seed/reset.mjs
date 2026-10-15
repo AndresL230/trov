@@ -38,6 +38,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM repo_apps",
   "INSERT INTO repo_apps (org_id, key, repo, label, folder, kind, watch, release_signal, source, position, created_at, created_by, updated_at, updated_by) VALUES ('org_saplinglearn', 'frontend', 'SaplingLearn/sapling', 'Frontend', '/', 'Worker', '[\"/\"]', NULL, 'migrated', 0, '2026-10-15T00:00:00.000Z', 'migration', '2026-10-15T00:00:00.000Z', 'migration'), ('org_saplinglearn', 'backend', 'SaplingLearn/sapling', 'Backend', '/', 'Service', '[\"/\"]', NULL, 'migrated', 1, '2026-10-15T00:00:00.000Z', 'migration', '2026-10-15T00:00:00.000Z', 'migration')",
   "DELETE FROM repo_settings", // 0071_repo_settings: the Repo screen's per-repository defaults
+  "DELETE FROM releases", // 0074_releases: a repository's releases and tags
   "DELETE FROM org_secrets",
   "DELETE FROM org_keys",
   "DELETE FROM org_integration_config",
