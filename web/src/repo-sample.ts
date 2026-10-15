@@ -5,9 +5,10 @@
 // loaded on demand (a dynamic import — not in the main bundle), and the screen
 // labels it "sample data" for as long as it is showing.
 
-import type {
-  RepoDashboard, RepoDeployRow, RepoEnvPart, RepoPartName, RepoPerson, RepoRange, RepoUsageEnv, RepoUsageMetric, RepoCfRow,
-  RepoActivityKind, RepoPrState, RepoProductEnv, RepoProductGroup,
+import {
+  deployDots, envPartOf,
+  type RepoDashboard, type RepoDeployRow, type RepoEnvPart, type RepoPerson, type RepoRange, type RepoUsageEnv, type RepoUsageMetric,
+  type RepoActivityKind, type RepoPrState, type RepoProductEnv, type RepoProductGroup,
 } from "@shared/repo";
 import type { PersonColor } from "@shared/rows";
 import type {
@@ -59,65 +60,31 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
     ["push", "tom-h", "pushed 1 commit to spike/edge-cache", 16 * DAY],
   ];
 
-  // ── two deployables per environment ───────────────────────────────────────
-  // Each environment ships a Railway API and a Cloudflare web build from the
-  // same commit; the frontend lands a couple of minutes behind the API.
+  // ── the Cloudflare frontend and the Railway backend: ordinary parts ────────
+  // Each environment ships a Railway API and a Cloudflare Workers web build from
+  // the same commit; the frontend lands a couple of minutes behind the API. Both
+  // are provider deploys like every other part's (`hostDeploys` below), and the
+  // environment cards and deploy strips are derived from the parts' deploys by
+  // the projection's own functions (`envPartOf` / `deployDots`).
   type Dot = [string, number, string, "ok" | "fail" | "cancel"];
-  const deploys = (rows: Dot[]) => rows.map(([sha, ms, by, result]) => ({ sha, at: at(ms), by, result }));
-  const web = (rows: Dot[]): Dot[] => rows.map((r, i) => (i === rows.length - 1 ? [r[0], r[1] - 2 * MIN, r[2], r[3]] : r));
   const API: Record<"staging" | "production", Dot[]> = {
     staging: [["8c11d02", 3 * DAY, "meilin", "ok"], ["e4907fa", 3 * DAY, "sanaok", "ok"], ["1b6c3e9", 2 * DAY, "jose-a", "ok"], ["77d20ba", 2 * DAY, "priya-k", "cancel"], ["f0a94c7", 2 * DAY, "priya-k", "ok"], ["93be511", DAY, "tom-h", "ok"], ["ab27e64", DAY, "dev-raj", "ok"], ["c58f1d3", 22 * HOUR, "dev-raj", "fail"], ["d94ea08", 21 * HOUR, "dev-raj", "ok"], ["a3f82c1", 26 * MIN, "dev-raj", "ok"]],
     production: [["41c9de7", 14 * DAY, "jose-a", "ok"], ["5b803af", 12 * DAY, "meilin", "ok"], ["68d1c42", 11 * DAY, "kenji-m", "ok"], ["7e5b9d0", 9 * DAY, "sanaok", "ok"], ["8f26a13", 8 * DAY, "meilin", "fail"], ["90ab7c5", 8 * DAY, "meilin", "ok"], ["a1c38e6", 6 * DAY, "meilin", "ok"], ["b273f19", 5 * DAY, "tom-h", "ok"], ["c3841da", 3 * DAY, "priya-k", "ok"], ["9d417be", 2 * DAY, "jose-a", "ok"]],
   };
-  const strips: Record<"staging" | "production", Record<RepoPartName, Dot[]>> = {
-    staging: { backend: API.staging, frontend: web(API.staging) },
-    production: { backend: API.production, frontend: web(API.production) },
-  };
-  const PART = { backend: ["api", "Railway"], frontend: ["web", "Cloudflare"] } as const;
-  const deployRows: RepoDeployRow[] = (["staging", "production"] as const).flatMap((env) =>
-    (["backend", "frontend"] as const).map((part) => ({ env, part, label: `${env} · ${PART[part][0]}`, deploys: deploys(strips[env][part]) })));
-  const envParts = (env: "staging" | "production"): RepoEnvPart[] =>
-    (["backend", "frontend"] as const).map((part) => {
-      const [sha, ms, by, result] = strips[env][part][strips[env][part].length - 1];
-      return { part, host: PART[part][1], sha, deployedAt: at(ms), deployedBy: by, result };
-    });
 
-  // Requests/error rate/active users connect independently (Cloudflare
-  // analytics vs. the app's own metrics endpoint) — the sample keeps them all
-  // live to show the section's finished shape; `tone: "neutral"` on
-  // requests/users is a required field, not a color decision (only the error
-  // metric's tone drives its value color).
+  // Requests / error rate (summed over each environment's web parts, below) and
+  // active users connect independently (the hosting providers vs. the app's own
+  // metrics endpoint) — the sample keeps them all live to show the section's
+  // finished shape; `tone: "neutral"` on requests/users is a required field,
+  // not a color decision (only the error metric's tone drives its value color).
   const metric = (value: string, trend: number[], tone: RepoUsageMetric["tone"]): RepoUsageMetric => ({ value, trend, tone });
-  const env = (name: string, host: string, d: { req: string; reqA: number[]; err: number; errA: number[]; users: string; usersA: number[] }, warn: boolean): RepoUsageEnv => ({
-    name, host,
-    requests: metric(d.req, d.reqA, "neutral"),
-    errorRate: metric(`${d.err.toFixed(2)}%`, d.errA, warn ? "warn" : "good"),
-    users: metric(d.users, d.usersA, "neutral"),
-    seen: { requests: true, users: true },
-  });
-  const usage: Record<RepoRange, RepoUsageEnv[]> = {
-    "24h": [
-      env("staging", "staging.example.com", { req: "12.4K", reqA: [8, 11, 9, 14, 12, 18, 22, 17, 13, 15, 19, 16], err: 2.41, errA: [0.4, 0.6, 0.5, 1.1, 2.8, 3.4, 2.9, 2.2, 2.6, 2.4, 2.5, 2.4], users: "6", usersA: [2, 3, 3, 4, 5, 6, 6, 5, 4, 5, 6, 6] }, true),
-      env("production", "example.com", { req: "168K", reqA: [110, 125, 140, 160, 175, 190, 210, 195, 180, 170, 165, 172], err: 0.18, errA: [0.2, 0.15, 0.2, 0.18, 0.22, 0.16, 0.14, 0.19, 0.2, 0.17, 0.18, 0.18], users: "74", usersA: [40, 52, 61, 70, 78, 82, 85, 80, 76, 72, 70, 74] }, false),
-    ],
-    "7d": [
-      env("staging", "staging.example.com", { req: "86.2K", reqA: [10, 12, 14, 11, 16, 13, 12], err: 2.41, errA: [0.5, 0.7, 0.6, 0.9, 1.8, 2.6, 2.4], users: "9", usersA: [5, 6, 7, 6, 8, 9, 9] }, true),
-      env("production", "example.com", { req: "1.24M", reqA: [150, 165, 172, 180, 176, 190, 184], err: 0.21, errA: [0.24, 0.2, 0.19, 0.25, 0.22, 0.18, 0.21], users: "318", usersA: [265, 280, 296, 305, 312, 322, 318] }, false),
-    ],
-    "30d": [
-      env("staging", "staging.example.com", { req: "402K", reqA: [9, 11, 12, 10, 13, 12, 14, 13, 15, 12, 14, 16, 13, 12], err: 1.12, errA: [0.6, 0.5, 0.8, 0.7, 0.6, 0.9, 0.8, 0.7, 1, 0.9, 1.4, 2, 2.6, 2.4], users: "9", usersA: [6, 6, 7, 7, 8, 7, 8, 8, 9, 8, 9, 9, 9, 9] }, true),
-      env("production", "example.com", { req: "5.1M", reqA: [120, 132, 140, 150, 148, 158, 164, 170, 168, 176, 182, 188, 186, 184], err: 0.24, errA: [0.3, 0.28, 0.26, 0.3, 0.25, 0.22, 0.24, 0.26, 0.23, 0.2, 0.22, 0.21, 0.2, 0.21], users: "318", usersA: [210, 226, 240, 252, 260, 272, 280, 290, 296, 304, 310, 318, 315, 318] }, false),
-    ],
+  const USERS: Record<"staging" | "production", Record<RepoRange, [string, number[]]>> = {
+    staging: { "24h": ["6", [2, 3, 3, 4, 5, 6, 6, 5, 4, 5, 6, 6]], "7d": ["9", [5, 6, 7, 6, 8, 9, 9]], "30d": ["9", [6, 6, 7, 7, 8, 7, 8, 8, 9, 8, 9, 9, 9, 9]] },
+    production: {
+      "24h": ["74", [40, 52, 61, 70, 78, 82, 85, 80, 76, 72, 70, 74]], "7d": ["318", [265, 280, 296, 305, 312, 322, 318]],
+      "30d": ["318", [210, 226, 240, 252, 260, 272, 280, 290, 296, 304, 310, 318, 315, 318]],
+    },
   };
-  // The Cloudflare panel's requests ARE the Requests metric's — the real
-  // projection formats both from one sum, so the sample reads them off the same
-  // field rather than keep a second set of numbers that can drift. Errors are
-  // that row's requests × its error rate.
-  const CF_ERRORS: Record<RepoRange, [string, string]> = { "24h": ["299", "302"], "7d": ["2.1K", "2.6K"], "30d": ["4.5K", "12.2K"] };
-  const cf = (range: RepoRange): RepoCfRow[] => usage[range].flatMap((e, i) => [
-    { env: e.name, label: "Workers requests", value: e.requests?.value ?? "0" },
-    { env: e.name, label: "Workers errors", value: CF_ERRORS[range][i] },
-  ]);
 
   // ── product metrics: what the app reports about itself ────────────────────
   // Production's numbers; staging is the same shape at a twelfth of the volume.
@@ -165,9 +132,8 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
   };
 
   // ── hosting providers: every part of every environment, provider-neutral ──
-  // A DATA STUB the Usage tab's providers block is designed against (no block draws it yet). It holds every
-  // state the projection (src/tools/repo.ts `projectProviders`) can produce: the legacy Cloudflare frontend
-  // (traffic) and Railway backend (resources) mapped in from their own captures; Vercel and Netlify web
+  // It holds every state the projection (src/tools/repo.ts `projectProviders`) can produce: a Cloudflare
+  // Workers frontend (requests and errors only) and a Railway backend (resources); Vercel and Netlify web
   // parts with deploys and NO traffic (`traffic: null`, `unavailable` saying why — neither has a public
   // usage API); Render, a service (CPU / memory with a 24-hour trend) and a web part (requests, errors,
   // latency and bandwidth in every range); Fly.io, a service whose releases carry no sha and a web part;
@@ -224,12 +190,16 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
       ready_at: state === "ready" || state === "error" ? at(ms - 2 * MIN) : null,
       url: o.url && state === "ready" ? o.url(id) : null, inspect_url: o.inspect(id),
     }));
-  /** The legacy halves read their deploys off the same GitHub-captured strips as the deploy dots above. */
-  const legacyDeploys = (envKey: "staging" | "production", half: RepoPartName, branch: string | null): ProviderDeployDTO[] =>
-    [...strips[envKey][half]].reverse().map(([sha, ms, by, result]) => ({
-      id: `github:${sha}@${at(ms)}`, state: ({ ok: "ready", fail: "error", cancel: "canceled" } as const)[result], target: null, sha, branch,
-      message: null, by, at: at(ms), ready_at: result === "cancel" ? null : at(ms), url: null, inspect_url: null,
-    }));
+  /** The Cloudflare frontend's and the Railway backend's deploys, NEWEST first, from the `API` rows above: the
+   *  frontend (`lag` 2 minutes) lands a little after the API it ships with. */
+  const DOT_STATE = { ok: "ready", fail: "error", cancel: "canceled" } as const;
+  const stackDeploys = (envKey: "staging" | "production", half: "frontend" | "backend", branch: string): ProviderDeployDTO[] => {
+    const CF = `https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/workers/services/view/${envKey === "staging" ? "frontend-staging" : "frontend"}/production`;
+    const RW = "https://railway.com/project/5e1f0c2a-7b3d-4c8e-9a10-2b3c4d5e6f70/service/9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
+    return hostDeploys([...API[envKey]].reverse().map(([sha, ms, by, result]): Dep =>
+      [half === "frontend" ? `cfv-${sha}` : `rw-${sha}`, DOT_STATE[result], half === "frontend" ? ms - 2 * MIN : ms, SHA(sha), null, by]),
+    { branch, target: "production", inspect: (id) => (half === "frontend" ? `${CF}/deployments` : `${RW}?id=${id}`) });
+  };
   const unavailableWeb = (reason: string): { metric: HostingMetric; reason: string }[] =>
     (["requests", "errors", "latency_p50_ms", "latency_p95_ms", "bandwidth_bytes"] as const).map((metric) => ({ metric, reason }));
   const LABELS: Record<HostingProviderId, string> = {
@@ -247,11 +217,13 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
     // ── staging ──
     part("staging", "frontend", "Frontend", "web", "cloudflare", {
       console_url: "https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/workers/services/view/frontend-staging/production",
-      deploys: legacyDeploys("staging", "frontend", "main"), status: "ok", tone: "warn", // 2.41% errors in the last 24 h
+      deploys: stackDeploys("staging", "frontend", "main"), status: "ok", tone: "warn", // 2.41% errors in the last 24 h
       traffic: traffic({ "24h": { requests: 12_400, errors: 299 }, "7d": { requests: 86_200, errors: 2_100 }, "30d": { requests: 402_000, errors: 4_500 } }),
+      last_poll: polledOk(18 * MIN, "2 new points, 1 new or changed deploy"),
     }),
     part("staging", "backend", "Backend", "service", "railway", {
-      deploys: legacyDeploys("staging", "backend", null), status: "ok", tone: "good", resources: resources(0.12, 410),
+      deploys: stackDeploys("staging", "backend", "main"), status: "ok", tone: "good", resources: resources(0.12, 410),
+      last_poll: polledOk(18 * MIN, "2 new points, 1 new or changed deploy"),
     }),
     part("staging", "web", "Marketing site", "web", "vercel", {
       console_url: "https://vercel.com/acme/marketing", status: "ok", tone: "neutral", // the newest deploy is still building
@@ -293,11 +265,13 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
     // ── production ──
     part("production", "frontend", "Frontend", "web", "cloudflare", {
       console_url: "https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/workers/services/view/frontend/production",
-      deploys: legacyDeploys("production", "frontend", "production"), status: "ok", tone: "good",
+      deploys: stackDeploys("production", "frontend", "production"), status: "ok", tone: "good",
       traffic: traffic({ "24h": { requests: 168_000, errors: 302 }, "7d": { requests: 1_240_000, errors: 2_600 }, "30d": { requests: 5_100_000, errors: 12_200 } }),
+      last_poll: polledOk(18 * MIN, "2 new points, 0 new or changed deploys"),
     }),
     part("production", "backend", "Backend", "service", "railway", {
-      deploys: legacyDeploys("production", "backend", null), status: "ok", tone: "good", resources: resources(0.48, 1229),
+      deploys: stackDeploys("production", "backend", "production"), status: "ok", tone: "good", resources: resources(0.48, 1229),
+      last_poll: polledOk(18 * MIN, "2 new points, 0 new or changed deploys"),
     }),
     part("production", "web", "Marketing site", "web", "netlify", {
       console_url: "https://app.netlify.com/sites/acme-marketing", status: "ok", tone: "warn", // the last poll failed
@@ -339,6 +313,33 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
     }),
   ];
 
+  // ── what the projection derives from the parts: the environment cards' lines, the deploy strips, and the
+  // Usage compare's requests / error rate (each environment's web parts summed, as `projectUsage` does) ──
+  const envParts = (envKey: "staging" | "production"): RepoEnvPart[] =>
+    providers.filter((p) => p.env === envKey).map((p) => envPartOf(p, p.deploys));
+  const deployRows: RepoDeployRow[] = providers.flatMap((p) => {
+    const dots = deployDots(p.deploys);
+    return dots.length ? [{ env: p.env, part: p.part, label: `${p.env_label} · ${p.label}`, deploys: dots }] : [];
+  });
+  const usageEnv = (envKey: "staging" | "production", host: string, range: RepoRange): RepoUsageEnv => {
+    const web = providers.filter((p) => p.env === envKey && p.traffic).map((p) => p.traffic![range]);
+    const requests = web.reduce((n, t) => n + (t.requests ?? 0), 0);
+    const errors = web.reduce((n, t) => n + (t.errors ?? 0), 0);
+    const reqTrend = web[0].trend.map((_, i) => web.reduce((n, t) => n + (t.trend[i]?.requests ?? 0), 0));
+    const errTrend = web[0].trend.map((_, i) => web.reduce((n, t) => n + (t.trend[i]?.errors ?? 0), 0));
+    const rate = (errors / requests) * 100;
+    const [users, usersA] = USERS[envKey][range];
+    return {
+      name: envKey, host,
+      requests: metric(compact(requests), reqTrend, "neutral"),
+      errorRate: metric(`${rate.toFixed(2)}%`, errTrend.map((e, i) => (reqTrend[i] ? (e / reqTrend[i]) * 100 : 0)), rate >= 1 ? "warn" : "good"),
+      users: metric(users, usersA, "neutral"),
+      seen: { requests: true, users: true },
+    };
+  };
+  const usage = Object.fromEntries((["24h", "7d", "30d"] as const).map((r) =>
+    [r, [usageEnv("staging", "staging.example.com", r), usageEnv("production", "example.com", r)]])) as Record<RepoRange, RepoUsageEnv[]>;
+
   const cbVals = [3, 5, 2, 7, 4, 6, 1, 6, 7, 5, 8, 4, 7, 5];
   const commits = (rows: [string, string, number][]) => rows.map(([sha, msg, ms]) => ({ sha, msg, at: at(ms) }));
 
@@ -347,7 +348,8 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
 
     environments: { status: "ok", data: [
       { key: "staging", name: "staging", note: "main", tone: "warn", pill: "DEGRADED", parts: envParts("staging"), ci: "1 of 6 checks failing — e2e-smoke", ciTone: "bad", url: "https://staging.example.com" },
-      { key: "production", name: "production", note: "production", tone: "good", pill: "HEALTHY", parts: envParts("production"), ci: "All 6 checks passing", ciTone: "good", url: "https://example.com" },
+      // The queue worker's newest release failed: a failed part is FAILING whatever the checks say.
+      { key: "production", name: "production", note: "production", tone: "bad", pill: "FAILING", parts: envParts("production"), ci: "All 6 checks passing", ciTone: "good", url: "https://example.com" },
     ] },
     drift: { status: "ok", data: { head: "staging", base: "main", ahead: 12, behind: 1, groups: [
       { tag: "#482", kind: "pr", title: "Batch D1 reads in usage rollup", meta: "dev-raj · 3 commits", commits: commits([["c91d2ae", "rollup: batch D1 reads per window", 24 * MIN], ["b02f1cd", "fix window math off-by-one", HOUR], ["a3f82c1", "wire usage endpoint to rollup", 2 * HOUR]]) },
@@ -403,16 +405,6 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
     activity: { status: "ok", data: evRows.map(([kind, login, text, ms]) => ({ kind, actor: login ? person(login) : null, text, url: null, at: at(ms) })) },
 
     usage: { status: "ok", data: usage },
-    // The target app has no D1 (it runs on Supabase) — this panel is the
-    // frontend Workers only, so its second row is Workers errors, not D1 reads.
-    cloudflare: { status: "ok", data: { "24h": cf("24h"), "7d": cf("7d"), "30d": cf("30d") } },
-    // Placeholder rows like every other section: the banner promises EVERY
-    // section is shown with sample values, and an unconnected block here would
-    // tell someone previewing the screen to go and set a Railway secret.
-    hosting: { status: "ok", data: [
-      { env: "staging", cpu: "0.12 vCPU", memory: "410 MB" },
-      { env: "production", cpu: "0.48 vCPU", memory: "1229 MB" },
-    ] },
     providers: { status: "ok", data: providers },
     product: { status: "ok", data: [productEnv("staging", 12), productEnv("production", 1)] },
 

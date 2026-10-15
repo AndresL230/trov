@@ -73,10 +73,8 @@ export async function seedOrgRepoConfig(db: D1Database, orgId: string, repo: str
     db.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES (?, ?, ?, 1, 0, ?, 'seed')`)
       .bind(`hook_${orgId}`, orgId, repo, at),
     ...envs.map((e, i) => db.prepare(
-      `INSERT INTO org_environments (org_id, key, position, label, note, branch, railway_env, worker, worker_check, frontend_url, api_url,
-         health_path, railway_environment_id, railway_service_id, created_at, updated_at, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seed')`,
-    ).bind(orgId, e.key, i, e.label, e.note, e.branch, e.railwayEnv, e.worker, e.workerCheck, e.frontendUrl, e.apiUrl, e.healthPath,
-      e.railwayEnvironmentId ?? null, e.railwayServiceId ?? null, at, at)),
+      `INSERT INTO org_environments (org_id, key, position, label, note, branch, frontend_url, api_url, health_path, created_at, updated_at, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seed')`,
+    ).bind(orgId, e.key, i, e.label, e.note, e.branch, e.frontendUrl, e.apiUrl, e.healthPath, at, at)),
   ]);
 }

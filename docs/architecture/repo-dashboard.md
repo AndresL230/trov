@@ -25,20 +25,18 @@ plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no secti
 | Section (tab) | Source | Trigger |
 | --- | --- | --- |
 | `stats` tiles (Overview) | open issues / bugs from `events` issue snapshots (latest per issue, now vs 7 days ago, read with `json_extract` so bodies never leave D1); Open PRs / Awaiting review from `repo_events` `pr` | webhook `issues`, `pull_request`; reconcile PR lists |
-| `environments` | `deploy` rows (backend), `check` rows with `part = 'frontend'`, head checks, fresh `health_*` metrics | webhook `deployment_status` / `check_run`; reconcile `deployments` / `env_heads` / `checks` arms; cron health ping |
+| `environments` | every part of the environment (`org_environment_parts`, any host) with its newest `hosting_deploys` row, a part's successful poll (`hosting_poll_state`), head checks, fresh `health_*` metrics | cron `:40` — `pollPart` per part; webhook `check_run`; reconcile `env_heads` / `checks` arms; cron health ping |
 | `drift` | snapshot `drift` | webhook `push` to a configured environment branch; reconcile `drift` arm |
 | `health` | metrics `health_up` / `health_ms` | cron, every tick |
 | `codeStats`, `bars`, `prs` (Code) | `repo_events` `pr` / `push`; merged/closed PRs in `events` as the fallback | webhook `pull_request` / `push`; reconcile open + closed PR lists and the pre-capture commit window |
 | `branches` (+ the Active branches tile) | snapshot `branches` | reconcile `branches` arm only |
-| `deploys` (CI) | the same `deploy` / frontend-`check` rows as `environments`, health excluded | as `environments`, minus the ping |
+| `deploys` (CI) | each part's settled `hosting_deploys` rows (a dot strip per part); checks and health excluded | cron `:40` — `pollPart` per part |
 | `ciFailures` | `run` rows | webhook `workflow_run` (+ `fillFailedJob`); reconcile `runs` + `job_titles` arms |
 | `coverage`, `bundle` (CI); `todos` (Planning) | metrics `coverage` / `bundle_kb` / `todo_count` | a `canopy/*` commit status the target repo's CI posts — webhook `status`; reconcile `statuses` arm |
 | `activity` | PR closes + issue moves from `events`; webhook `push` rows, `review` rows, landed deploys | the captures above |
-| `usage` (Usage) | metrics `cf_requests` / `cf_errors` (requests, error rate) and `active_users_*` | cron `:00` — `pollCloudflare`, `pollSaplingMetrics` |
-| `cloudflare` | metrics `cf_*` + snapshot `cf_polled` | cron `:00` — `pollCloudflare` |
-| `hosting` | metrics `rw_cpu` / `rw_mem_mb` | cron `:00` — `pollRailway` |
+| `usage` (Usage) | each environment's WEB parts' `hx_requests` / `hx_errors` summed (requests, error rate; covered intervals from `hosting_poll_state`) and `active_users_*` | cron `:40` — `pollPart`; cron `:00` — `pollSaplingMetrics` |
 | `product` (Usage) | metrics `sap_c_<key>_<24h\|7d\|30d>` / `sap_t_<key>` — whatever keys the app reports | cron `:00` — `pollSaplingMetrics` (the same response as active users) |
-| `providers` (Usage — the tab's ONE Hosting section, `web/src/repo-hosting.ts`; the `cloudflare` / `hosting` rows above are no longer drawn there) | every part of every environment, provider-neutral: stored parts' `hx_*` metrics, `hosting_deploys`, `hosting_poll_state`; legacy parts' `cf_*` (+ `cf_polled`) / `rw_*` and their GitHub deploy strips | cron `:40` — `pollPart` per stored part; the legacy parts' own captures |
+| `providers` (Usage — the tab's ONE Hosting section, `web/src/repo-hosting.ts`) | every part of every environment, provider-neutral (Cloudflare and Railway like the rest): `hx_*` metrics, `hosting_deploys`, `hosting_poll_state` | cron `:40` — `pollPart` per part |
 | `sprint`, `labels`, `contributors` (Planning) | live D1: the sprint a person marked `active` (the Roadmap's `sprintProgress`); open-issue snapshots; webhook pushes · merged PRs · `review` rows this week | none / webhook `issues` / `push`, `pull_request`, `pull_request_review`; reconcile `reviews` arm |
 
 "Reconcile" is `reconcileRepo` (`src/repo/github.ts`), run by an admin's Sync GitHub and by the cron's
@@ -172,32 +170,40 @@ are NOT gated** and use polled rows at once: they ask only about OPEN PRs — th
 on a positive fact; what the arm misses leaves a PR reading "awaiting review", which is what every open PR
 read before the arm existed.
 
-**Environments and deploys — each environment ships two deployables, on two hosts** (`HOSTS` / `PARTS` in
-`src/tools/repo.ts`): **Backend** is a Railway `deployment_status`, matched by `deployment.environment`
-equalling `cfg.railwayEnv`; **Frontend** is the Cloudflare "Workers Builds" `check_run`, which counts as THAT
-environment's frontend deploy only when BOTH its name matches `cfg.workerCheck` AND its branch matches
-`cfg.branch` (`fromCheckRun` in `src/repo/capture.ts`) — the same check on a PR branch is just a check.
-`deployHistories` (`src/repo/reads.ts`) builds the per-part dot strips and carries its own 90-day bound,
-because deploy rows are never pruned. **The pill is a verdict about CHECKS, with health as an override**:
+**Environments and deploys — an environment ships its PARTS, on whatever hosts** (`hosting-providers.md`): a card
+lists every part of its environment (`org_environment_parts`, in position order — a Cloudflare Workers
+frontend and a Railway backend exactly like a Vercel site or a Fly.io app) with its NEWEST deploy as the
+hosting job stored it in `hosting_deploys` (`RepoEnvPart`: the part's key and label, its provider and the
+provider's label as `host`, the sha cut to 7 — null when the provider reports none —, `ready_at` else the
+creation instant, who triggered it on the provider, and `result`: ready → `ok`, error → `fail`, canceled →
+`cancel`, queued / building → `running`). The deploys are the providers section's own read (`hostingReads`:
+the newest 10 of each part created in the last 90 days, of its CURRENT provider only — a re-pointed part's
+old host's rows are not its history) and one derivation (`partInfos` in `src/tools/repo.ts`) feeds the
+cards, the strips, the Usage compare and the providers section. The CI tab's strips (`RepoDeployRow`, one per
+part with a SETTLED deploy, labelled "<environment> · <part label>", oldest first) and the cards' lines are
+`deployDots` / `envPartOf` (`shared/repo.ts` — the sample uses the same two): a deploy still queued or
+building is not a dot; canceled is abandoned, never a failure. Nothing here reads GitHub's deployments or
+Workers Builds checks any more. **The pill is a verdict about CHECKS, with health as an override**:
 `HEALTHY` needs checks captured on the branch head, none failing, and no failed part; a deploy that landed
-with NO checks captured reads `UNKNOWN`; a failed part is a fact on its own, so `FAILING` does not wait for
-checks; failing head checks read `DEGRADED`; `DOWN` OUTRANKS everything — a fresh health ping saying the
-environment is unreachable is the headline. On screen the verdict is a status mark, never a pill
-(`ENV_VERDICT` in `web/src/repo.ts` over `kindMark`: Healthy / Degraded / Failing / Down / Unknown, with what
-each means in its tooltip — `web-ui.md` › Status marks); a PR's state is the progress glyphs (Draft → In
-review → Approved → Merged, Closed the cross), and a stale branch (no commit in 14 days) a warning mark. Whether the `environments` section is CONNECTED is a separate
-question: it is `ok` once any part has a result, any head check is captured, OR a fresh health ping landed —
-a ping alone connects the card but never makes it `HEALTHY`. **`deploys` is gated on a narrower flag** (a
-part with a result OR head checks — health EXCLUDED): a ping is not grounds for "No deploys recorded", so
-`deploys` stays `not_connected` until deploy capture itself exists.
+with NO checks captured reads `UNKNOWN`; a part whose newest deploy errored is a fact on its own, so
+`FAILING` does not wait for checks; failing head checks read `DEGRADED`; `DOWN` OUTRANKS everything — a fresh
+health ping saying the environment is unreachable is the headline. On screen the verdict is a status mark,
+never a pill (`ENV_VERDICT` in `web/src/repo.ts` over `kindMark`: Healthy / Degraded / Failing / Down /
+Unknown, with what each means in its tooltip — `web-ui.md` › Status marks); a part's line is its label, the
+sha (when there is one), "<ago> ago · by <who> · <host>", FAILED in red or a quiet "deploying"; a part with no
+deploy reads "No <host> deploy captured yet". A PR's state is the progress glyphs (Draft → In review →
+Approved → Merged, Closed the cross), and a stale branch (no commit in 14 days) a warning mark. Whether the
+`environments` section is CONNECTED is a separate question: it is `ok` once deploy capture exists for it
+(below), any head check is captured, OR a fresh health ping landed — a ping alone connects the card but never
+makes it `HEALTHY`. **`deploys` is gated on a narrower flag — deploy capture**: a deploy on record (in flight
+included), or a part whose provider reads deploys and was polled SUCCESSFULLY (`last_ok_at`) — so "No deploys
+recorded." is something a poll looked for and did not find. A check, a health ping or a failed / skipped poll
+is not grounds for it: `deploys` stays `not_connected`. A failed hosting read (the tables missing) leaves the
+cards without parts, `deploys` and `providers` `not_connected`, and the dashboard `degraded`.
 
-**ONE policy for a non-decisive conclusion**, stated at `foldResult` and again at `checkState`
-(`src/repo/reads.ts`) and shared by the deploy dots and the PR checks column: `success` = ok;
-`failure`/`error`/`timed_out` = fail; `stale`/`action_required`/`cancelled`/`inactive`-without-a-preceding-
-success = cancel (abandoned, not failed — `inactive` AFTER a success is just the supersede marker of a
-deploy that DID land, which is why `success` is tested first); `neutral`/`skipped` = nothing happened, so
-NOT a dot at all, and a pass for the checks icon. The checks column has only pass/fail/run, so the cancel
-bucket reads there as not-failing.
+**The checks column** (`checkState`, `src/repo/reads.ts`): `failure`/`error`/`timed_out` = fail, `pending` =
+running, and everything else — `success`, `neutral`/`skipped` (nothing happened), and the abandoned bucket
+(`cancelled`/`stale`/`action_required`) — is not failing.
 
 **A branch's head comes from `branchHeads`** (`src/repo/reads.ts`), which reads TWO sources and takes the
 newer: that branch's latest captured `push` row, and the **`env_heads` snapshot** (`{ [branch]: sha }`)
@@ -449,36 +455,43 @@ environment keeps its interval, and within one run neither end moves BACKWARDS (
 read-modify-write, so an on-demand run overlapping a cron tick can put back an older `to` — accepted: that
 stretch draws unknown, never zero, and the next poll re-extends it). A LEGACY string value (the pre-interval
 shape, still in local dev DBs) reads through `cfCovered` as `{ from: bound − 3h, to: bound }`.
-The projection (`projectUsage`) costs the render **ONE statement** — `metricsSince` (`src/repo/store.ts`)
-for every range, environment and series, sliced in memory. It takes GROUPS, each with its OWN bound
-(`(metric IN (…) AND at >= ?) OR (…)`, `usageReadGroups` in `src/tools/repo.ts`): `cf_*` and
-`active_users_30d` over 30 days, `active_users_7d` over 7, `active_users_24h` over 24 hours, and `rw_*` over
-the 3-hour staleness window — every row left out is one the projection already discarded (over half of the
-~10,000 a flat 30-day read returned). It sits beside ONE
-`getSnapshot('cf_polled')`, plus ONE `metricsEver` only on the not-`ok` path. A range is its last N COMPLETE
-hours (24 / 168 / 720) in equal buckets (1h / 24h / 24h) ending at the last complete hour, never at UTC
-midnight. The trend is DENSE but zero only where a zero is entitled: the fill STARTS at the first captured
-point (or the range's start when capture predates it) — **unless that would cross a HOLE** (an hour before
-the covered `from` with no real point: nothing ever looked at it), in which case the series starts at the
-covered `from` and shows the contiguous covered stretch only, while totals still sum every real point in the
-range — and ENDS at `min(last complete hour, that environment's covered `to`)`; with NO marker it ends at the
-last real point, so a dead poll draws no zeros after it. **The first bucket drawn is the first WHOLE one**: a
-7d/30d day-bucket that capture or coverage began inside is counted in the total but not drawn as a day.
-`requests` is non-null when something is known in the range — a point in range, or capture predating the
-range AND covered hours inside it (a "0" that is true of the COVERED hours — known limit: when only part of
-the range was covered, e.g. a poll that resumed three quiet hours ago after a long outage, the card still
-reads "0" for the whole range label) — otherwise `null`, never "0". `errorRate`
-needs a real point in range: points summing to 0 requests read "0.00%", but with NO point 0 of 0 is not a
-rate → `null` (the screen shows "—" beside live requests). Totals are sums of real points only. `usage` is
-`ok` when any metric of any range is non-null; the `cloudflare` panel when the WIDEST (30d) range has rows,
-so a narrower range can be `[]` ("Nothing recorded in this range." — never "no requests": the range may be
-one no poll covered). **A per-metric `null` does not say WHY**, so each `RepoUsageEnv` carries `seen: {
-requests, users }` — whether that environment's `cf_requests` / any `active_users_*` point exists AT ALL in
-the one 30-day read, the same in every range. `null` + seen renders **"no recent reading"** (no point in this
-range, a poll that stopped, a gauge gone stale); `null` + not seen renders **"not connected"**; the error
-rate follows `seen.requests`, keeping its "—" beside live requests. `seen` looks back those 30 days only: a
-source silent for longer reads "not connected" per metric again while the section-level `metricsEver` (any
-age) still says `empty` — whose copy is "No current usage reading — the hourly polls have gone quiet."
+
+**The Usage compare — requests and error rate are the environment's WEB parts, summed** (`projectUsage`,
+`src/tools/repo.ts`). Each environment's `requests` / `errorRate` are its web parts' hourly `hx_requests` /
+`hx_errors` (whoever hosts the part; a service part and a part of another environment never count), each
+part's covered interval its last poll's `covered_from` / `covered_to` (`hosting_poll_state`, current provider
+only). The render costs **ONE statement** for every range, environment, part and series — `metricsSince`
+(`src/repo/store.ts`), sliced in memory. It takes GROUPS, each with its OWN bound (`(metric IN (…) AND at >= ?)
+OR (…)`, `usageReadGroups`): the web `hx_*` series and `active_users_30d` over 30 days, `active_users_7d` over
+7, `active_users_24h` over 24 hours, and the service gauges (`hx_cpu` / `hx_mem_mb`) over 24 hours — plus ONE
+`metricsEver` only on the not-`ok` path (`USAGE_METRICS`: `hx_requests`, `hx_errors`, `active_users_*`). The
+covered intervals come from the hosting read the cards already made. Nothing reads `cf_*`, `rw_*` or the
+`cf_polled` snapshot any more. A range is its last N COMPLETE hours (24 / 168 / 720) in equal buckets (1h / 24h
+/ 24h) ending at the last complete hour, never at UTC midnight. Per part the trend is DENSE but zero only where
+a zero is entitled (`knownStretch`, the same rule as the providers section): the fill STARTS at the first
+captured point (or the range's start when capture predates it) — **unless that would cross a HOLE** (an hour
+before the covered `from` with no real point: nothing ever looked at it), in which case it starts at the
+covered `from` — and ENDS at `max(covered to, the last real point + 1h)`, clamped to the last complete hour;
+with no covered interval it ends at the last real point, so a dead poll draws no zeros after it. **A covered
+interval is evidence** (the provider's contract, `src/hosting/types.ts`: inside it, an hour with no point is a
+true zero) — but only for a metric the provider READS (its capabilities, minus what its last poll called
+`unavailable`): a quiet, freshly polled Cloudflare part reads "0"; a Vercel part's coverage proves nothing about
+requests. **Summing**: a part counts in a range only when something about it is known there (else it is left
+out — it says nothing, it is not a zero); the trend is drawn over the INTERSECTION of the counted parts'
+stretches (a bucket is a sum only where every summed part is known; an empty intersection draws no trend);
+**the first bucket drawn is the first WHOLE one** (a 7d/30d day-bucket capture or coverage began inside is
+counted in the total but not drawn). Totals are sums of real points only. `requests` is non-null when some web
+part is known in the range — otherwise `null`, never "0". `errorRate` needs a real request point in range AND
+known errors for every counted part (its provider reads errors, or it has an error point): points summing to
+0 requests read "0.00%", but with NO point 0 of 0 is not a rate → `null` (the screen shows "—" beside live
+requests). `usage` is `ok` when any metric of any range is non-null. **A per-metric `null` does not say WHY**,
+so each `RepoUsageEnv` carries `seen: { requests, users }` — whether any of that environment's web parts has an
+`hx_requests` point / any `active_users_*` point exists AT ALL in the one 30-day read, the same in every range.
+`null` + seen renders **"no recent reading"**; `null` + not seen renders **"not connected"**; the error rate
+follows `seen.requests`, keeping its "—" beside live requests. `seen` looks back those 30 days only: a source
+silent for longer reads "not connected" per metric again while the section-level `metricsEver` (any age) still
+says `empty` — whose copy is "No current usage reading — the hourly polls have gone quiet." Tests:
+`test/repo-dashboard.usage.test.ts`.
 
 **Railway CPU and memory** (`pollRailway`) asks Railway's public GraphQL API
 (`https://backboard.railway.com/graphql/v2`, `metrics(environmentId, serviceId, startDate, measurements:
@@ -496,12 +509,8 @@ floor, or before the 3-hour window, is skipped; each is bucketed to its hour; va
 metric per hour bucket, the valid sample with the LATEST `ts` is the one written** (Railway's array order is
 undocumented) — but a row an EARLIER poll stored for that bucket still wins. These are gauges, so — unlike
 Cloudflare's counts — there is NO extra hour of lag. A non-2xx, a thrown fetch, a 200 carrying `errors`, or
-no metrics list costs THAT environment the tick; never throws. The projection costs **NO new statement**:
-`rw_*` ride the same `metricsSince` read, and `projectHosting` picks each environment's latest backend point
-in memory. The sources share a read but NOT a state — a Railway row never connects `usage`, a Cloudflare row
-never connects `hosting`. **A "current" figure must be current: a value shows only while its latest point is
-≤ 3 hours older than `now`**, else that cell reads "—"; `hosting` is `empty` when an `rw_*` row has EVER
-landed but none is fresh ("No fresh hosting reading — the last Railway sample is over 3 hours old.").
+no metrics list costs THAT environment the tick; never throws. (The dashboard does not read `rw_*`: a service
+part's CPU / memory is the providers section's, from `hx_cpu` / `hx_mem_mb`.)
 
 **Active users come from Sapling's own backend** — the one number Trov CANNOT compute. `pollSaplingMetrics`
 sends `GET {cfg.apiUrl}/api/internal/metrics` with `Authorization: Bearer <token>` — the org's
@@ -575,11 +584,8 @@ block's `min-height` is its tallest form across every range and environment so a
 it), `growth` / `community` stat pairs, and `other` or ANY unrecognised group id as quiet rows at the end — no
 shape may depend on a key existing. `data-count` now takes an optional `data-count-fmt` (`compact` / `usd`,
 `formatCount`): `countUp` formats the in-between frames and LANDS on the element's own rendered text, so a
-compacted or dollar figure counts up without the browser ever re-deriving the Worker's string. Cloudflare and
-Railway are figure-over-label blocks per environment; the Cloudflare error-share bar is `errorShare` over the
-two compact strings that block itself shows (`parseCompact`), drawn only when both parse and requests > 0, and
-it prints NO percentage (the Worker's own error rate sits in the compare block above — a second, re-derived
-figure could disagree with it by a rounding).
+compacted or dollar figure counts up without the browser ever re-deriving the Worker's string. Infrastructure
+is the ONE Hosting section (`providers`, `hosting-providers.md` › Repo dashboard › Usage › Hosting).
 
 **Pruning** (`pruneRepoCapture`, `src/repo/store.ts`, the cron's 6-hourly `:30` tick): `health_*` metrics
 and `check` rows older than 45 days — the `check` deletion ONLY `WHERE part IS NULL`, because a FRONTEND
@@ -601,8 +607,9 @@ a signed-in member cannot see at `#repo`, and nothing per-user. `src/tools/repo-
 `getRepoDashboard` (the same D1-only projection the route serves — never a second projection, never a
 fetch): `tab` returns only that tab's sections via `REPO_TAB_SECTIONS` (`shared/repo.ts` — the ONE
 section→tab mapping, also read by the screen's "not connected" footer, and compile-time exhaustive over
-`RepoDashboard`'s sections); `range` (default `7d`) collapses `usage` / `cloudflare` / each `product` count
-to that one range; `include_trends` (default `false`) governs every `trend` array and the drift breakdown —
+`RepoDashboard`'s sections — the usage tab is `usage`, `providers`, `product`; the old `cloudflare` / `hosting`
+sections are gone); `range` (default `7d`) collapses `usage`, each `product` count and each provider part's
+`traffic` to that one range; `include_trends` (default `false`) governs every `trend` array and the drift breakdown —
 drift is the one section with no small bound, TWICE over (up to 250 commits a side, and one group per
 squash-merged PR among them, on the OVERVIEW tab), so without the flag a group carries `commitCount` instead
 of its `commits` AND only the first `DRIFT_GROUP_LIMIT` (20) groups travel, with `groupCount` the full number

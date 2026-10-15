@@ -1,9 +1,8 @@
 /**
  * The Repo dashboard's `providers` section (src/tools/repo.ts `projectProviders`) — every part of every
- * environment, provider-neutral, read back from what the polls stored: `hx_*` points, `hosting_deploys`,
- * `hosting_poll_state` — and, for the LEGACY Cloudflare frontend / Railway backend, from their own captures
- * (`cf_*` + `cf_polled`, `rw_*`, the GitHub deploy strips). D1 only; providers are FAKES (labels,
- * capabilities, console links) beside the real legacy descriptors.
+ * environment, provider-neutral (Cloudflare and Railway like the rest), read back from what the polls stored:
+ * `hx_*` points, `hosting_deploys`, `hosting_poll_state`. D1 only; providers are FAKES (labels, capabilities,
+ * console links) beside the real registry's.
  *
  * Never guess: a missing hour is zero only inside the covered interval, a figure is null when nothing is
  * known, a gauge only while it is current, a part never polled is `not_connected`.
@@ -13,15 +12,14 @@ import { env } from "cloudflare:test";
 import type { ProviderTrafficRange, RepoProviderPart } from "@shared/hosting";
 import { ENVS } from "./helpers/repo";
 import { setOrgEnvironments } from "./helpers/org-config";
+import { addPart, deployRow, hxPoint, pollState as storePollState } from "./helpers/dashboard-hosting";
 import { ORG_A, ORG_B, systemCtx } from "./helpers/tenant";
-import { ingestRepoEvent } from "../src/consumer";
-import { emptyRepoDashboard, getRepoDashboard } from "../src/tools/repo";
+import { emptyRepoDashboard, getRepoDashboard, type RepoDashboardEnv } from "../src/tools/repo";
+import type { RepoEnvConfig } from "../src/repo/config";
 import { shapeRepoDashboard, PROVIDER_DEPLOY_VIEW_LIMIT } from "../src/tools/repo-agent";
-import { putMetrics, putSnapshot } from "../src/repo/store";
+import { putMetrics } from "../src/repo/store";
 import { PROVIDERS } from "../src/hosting/registry";
 import type { HostingProvider } from "../src/hosting/types";
-import type { RepoEnvConfig } from "../src/repo/config";
-import type { RepoEvent } from "../src/repo/types";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -31,7 +29,7 @@ const ago = (ms: number) => new Date(NOW - ms).toISOString();
 
 function provider(id: HostingProvider["id"], label: string, metrics: HostingProvider["capabilities"]["metrics"], consoleUrl: HostingProvider["consoleUrl"]): HostingProvider {
   return {
-    id, label, status: "available", summary: "", roles: ["web", "service"], apiHosts: [], docsUrl: "", credentialScope: "org",
+    id, label, status: "available", summary: "", roles: ["web", "service"], apiHosts: [], docsUrl: "",
     connectionMethods: [], orgConfigFields: [], partSettings: [], capabilities: { deploys: true, metrics }, planNote: null, pollCost: 1,
     consoleUrl, probe: async () => ({ ok: true, detail: "" }), poll: async () => { throw new Error("never polled here"); },
   };
@@ -44,44 +42,22 @@ const FAKES = {
   netlify: provider("netlify", "Netlify", [], () => { throw new Error("boom"); }),
 };
 
-/** Environments with NO legacy columns, so only stored parts exist. */
-const bare = (key: string): RepoEnvConfig => ({ ...ENVS[0], key, label: key, worker: "", workerCheck: "", railwayEnv: "" });
+const bare = (key: string): RepoEnvConfig => ({ ...ENVS[0], key, label: key });
 const BARE = [bare("staging"), bare("production")];
 
-async function addPart(orgId: string, envKey: string, key: string, provider: string, role: "web" | "service", settings: Record<string, string> = {}, position = 0): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO org_environment_parts (org_id, env_key, part_key, position, label, role, provider, settings, created_at, updated_at, updated_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z', 'test')`,
-  ).bind(orgId, envKey, key, position, `${key} label`, role, provider, JSON.stringify(settings)).run();
-}
-async function pollState(orgId: string, envKey: string, part: string, provider: string,
-  o: { status?: string; detail?: string | null; covered?: [string, string]; unavailable?: unknown[]; lastOk?: string | null } = {}): Promise<void> {
-  const status = o.status ?? "ok";
-  await env.DB.prepare(
-    `INSERT INTO hosting_poll_state (org_id, env, part, provider, polled_at, status, detail, last_ok_at, covered_from, covered_to, unavailable)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(orgId, envKey, part, provider, ago(20 * 60_000), status, o.detail ?? null,
-    o.lastOk !== undefined ? o.lastOk : status === "ok" ? ago(20 * 60_000) : null,
-    o.covered?.[0] ?? null, o.covered?.[1] ?? null, JSON.stringify(o.unavailable ?? [])).run();
-}
-async function deployRow(orgId: string, envKey: string, part: string, provider: string, id: string, state: string, createdAt: string): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO hosting_deploys (org_id, env, part, provider, deploy_id, state, target, sha, branch, message, actor, url, inspect_url, created_at, ready_at, recorded_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'production', 'abc1234', 'main', ?, 'jose-a', 'https://x.example', 'https://x.example/i', ?, NULL, ?, ?)`,
-  ).bind(orgId, envKey, part, provider, id, state, `msg ${id}`, createdAt, createdAt, createdAt).run();
-}
-const hx = (metric: string, envKey: string, part: string, at: string, value: number, orgId = ORG_A) =>
-  putMetrics(systemCtx(orgId), [{ metric: `hx_${metric}`, env: envKey, part, at: t(at), value }]);
+const pollState = (orgId: string, envKey: string, part: string, provider: string, o: Parameters<typeof storePollState>[5] = {}) =>
+  storePollState(orgId, envKey, part, provider, NOW, o);
+const hx = hxPoint;
 
-async function section(envs: RepoEnvConfig[] = BARE, now = NOW, orgId = ORG_A) {
+async function section(envs: RepoDashboardEnv[] = BARE, now = NOW, orgId = ORG_A) {
   return (await getRepoDashboard(systemCtx(orgId), "o/r", now, envs, FAKES)).providers;
 }
-async function parts(envs: RepoEnvConfig[] = BARE, now = NOW, orgId = ORG_A): Promise<RepoProviderPart[]> {
+async function parts(envs: RepoDashboardEnv[] = BARE, now = NOW, orgId = ORG_A): Promise<RepoProviderPart[]> {
   const s = await section(envs, now, orgId);
   expect(s.status).not.toBe("not_connected");
   return s.status === "ok" ? s.data : [];
 }
-const partOf = async (key: string, envKey = "staging", envs: RepoEnvConfig[] = BARE, now = NOW) => {
+const partOf = async (key: string, envKey = "staging", envs: RepoDashboardEnv[] = BARE, now = NOW) => {
   const s = await section(envs, now);
   if (s.status !== "ok") throw new Error(`section is ${s.status}`);
   return s.data.find((p) => p.part === key && p.env === envKey)!;
@@ -224,28 +200,24 @@ describe("a stored SERVICE part — resources", () => {
   });
 });
 
-describe("the LEGACY parts — SaplingLearn's Cloudflare frontend and Railway backend, from their own captures", () => {
-  const base = { raw: "{}", provenance: "webhook" as const };
-  const deploy = (id: number, state: string, sha: string, at: string): RepoEvent =>
-    ({ ...base, semantic_key: `gh:deploy:${id}:${state}`, kind: "deploy", number: id, env: "staging", part: "backend", sha, state, actor_login: "railway-app[bot]", occurred_at: at });
-  const check = (id: number, state: string, sha: string, at: string): RepoEvent =>
-    ({ ...base, semantic_key: `gh:check:${id}:completed`, kind: "check", number: id, name: "Workers Builds: frontend-staging", state, sha, ref: "main", env: "staging", part: "frontend", occurred_at: at });
-
-  it("maps the cf_* series (with cf_polled coverage), the rw_* gauges and the GitHub deploy strips into provider parts", async () => {
+describe("Cloudflare and Railway — ordinary parts, read like every other", () => {
+  it("a Cloudflare Workers frontend (requests / errors, its covered interval) and a Railway backend (CPU / memory), deploys from hosting_deploys", async () => {
     await setOrgEnvironments(ENVS, ORG_A);
-    await putSnapshot(systemCtx(), "cf_polled", { staging: { from: t("2026-09-20T08:00:00Z"), to: t("2026-09-20T11:00:00Z") } });
-    await putMetrics(systemCtx(), [
-      { metric: "cf_requests", env: "staging", part: "frontend", value: 400, at: t("2026-09-20T08:00:00Z") },
-      { metric: "cf_errors", env: "staging", part: "frontend", value: 2, at: t("2026-09-20T08:00:00Z") },
-      { metric: "cf_requests", env: "staging", part: "frontend", value: 600, at: t("2026-09-20T10:00:00Z") },
-      { metric: "rw_cpu", env: "staging", part: "backend", value: 0.12, at: t("2026-09-20T11:00:00Z") },
-      { metric: "rw_mem_mb", env: "staging", part: "backend", value: 409.6, at: t("2026-09-20T11:00:00Z") },
-    ]);
+    await addPart(ORG_A, "staging", "frontend", "cloudflare", "web", { worker: "frontend-staging" }, 0, "Frontend");
+    await addPart(ORG_A, "staging", "backend", "railway", "service", {}, 1, "Backend");
+    await addPart(ORG_A, "production", "frontend", "cloudflare", "web", { worker: "frontend" }, 0, "Frontend");
+    await addPart(ORG_A, "production", "backend", "railway", "service", {}, 1, "Backend");
+    await pollState(ORG_A, "staging", "frontend", "cloudflare", { covered: [t("2026-09-20T08:00:00Z"), t("2026-09-20T11:00:00Z")] });
+    await hx("requests", "staging", "frontend", "2026-09-20T08:00:00Z", 400);
+    await hx("errors", "staging", "frontend", "2026-09-20T08:00:00Z", 2);
+    await hx("requests", "staging", "frontend", "2026-09-20T10:00:00Z", 600);
+    await hx("cpu", "staging", "backend", "2026-09-20T11:00:00Z", 0.12);
+    await hx("mem_mb", "staging", "backend", "2026-09-20T11:00:00Z", 409.6);
     await env.DB.prepare(`INSERT INTO org_integration_config (org_id, kind, scope, config, updated_at, updated_by) VALUES (?, 'cloudflare_analytics', '', ?, 'x', 'test')`)
       .bind(ORG_A, JSON.stringify({ account_id: "0123456789abcdef0123456789abcdef" })).run();
-    for (const ev of [deploy(1, "success", "aaaaaaa1111", ago(3 * HOUR)), deploy(2, "failure", "bbbbbbb2222", ago(HOUR)), check(10, "success", "aaaaaaa1111", ago(2 * HOUR))]) {
-      await ingestRepoEvent(systemCtx(), ev);
-    }
+    await deployRow(ORG_A, "staging", "frontend", "cloudflare", "ver-1", "ready", ago(2 * HOUR), { sha: "aaaaaaa1111", readyAt: ago(2 * HOUR - 60_000), actor: null, message: null });
+    await deployRow(ORG_A, "staging", "backend", "railway", "rw-1", "ready", ago(3 * HOUR), { sha: "aaaaaaa1111", branch: null });
+    await deployRow(ORG_A, "staging", "backend", "railway", "rw-2", "error", ago(HOUR), { sha: "bbbbbbb2222", branch: null });
     const all = await parts(ENVS);
     expect(all.map((p) => `${p.env}/${p.part}:${p.provider}:${p.role}:${p.status}`)).toEqual([
       "staging/frontend:cloudflare:web:ok", "staging/backend:railway:service:ok",
@@ -253,34 +225,45 @@ describe("the LEGACY parts — SaplingLearn's Cloudflare frontend and Railway ba
     ]);
     const [front, back] = all;
     expect(front).toMatchObject({
-      label: "Frontend", provider_label: "Cloudflare Workers", unavailable: [], last_poll: null, tone: "good",
+      label: "Frontend", provider_label: "Cloudflare Workers", unavailable: [], tone: "good", last_poll: { status: "ok" },
       console_url: "https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/workers/services/view/frontend-staging/production",
     });
-    // Requests and errors only — Cloudflare's poll reads no latency or bandwidth.
+    // Requests and errors only — Cloudflare reads no latency or bandwidth, so those stay unknown, never 0.
     expect(strip(front.traffic!["24h"])).toEqual({
       requests: 1000, errors: 2, error_rate: 0.2, latency_p95_ms: null, bandwidth_bytes: null,
       trend: [["09-20T08:00", 400, 2], ["09-20T09:00", 0, 0], ["09-20T10:00", 600, 0]],
     });
     expect(front.deploys).toEqual([{
-      id: `github:aaaaaaa@${ago(2 * HOUR)}`, state: "ready", target: null, sha: "aaaaaaa", branch: "main", message: null, by: null,
-      at: ago(2 * HOUR), ready_at: ago(2 * HOUR), url: null, inspect_url: null,
+      id: "ver-1", state: "ready", target: "production", sha: "aaaaaaa1111", branch: "main", message: null, by: null,
+      at: ago(2 * HOUR), ready_at: ago(2 * HOUR - 60_000), url: "https://x.example", inspect_url: "https://x.example/i",
     }]);
     expect(back).toMatchObject({ label: "Backend", provider_label: "Railway", console_url: null, traffic: null, tone: "bad" });   // its newest deploy failed
     expect(back.resources).toMatchObject({ cpu: 0.12, mem_mb: 409.6, at: "2026-09-20T11:00:00.000Z" });
-    expect(back.deploys.map((d) => [d.state, d.sha, d.branch, d.by])).toEqual([["error", "bbbbbbb", null, "railway-app[bot]"], ["ready", "aaaaaaa", null, "railway-app[bot]"]]);
+    expect(back.deploys.map((d) => [d.id, d.state, d.sha, d.branch])).toEqual([["rw-2", "error", "bbbbbbb2222", null], ["rw-1", "ready", "aaaaaaa1111", null]]);
   });
 
-  it("Cloudflare's marker alone is not a reading (a Worker it does not know answers with no rows too): requests unknown, the part `empty`", async () => {
+  it("a covered interval alone is a known zero for Cloudflare too — the part reads 0 requests, ok", async () => {
     await setOrgEnvironments([ENVS[0]], ORG_A);
-    await putSnapshot(systemCtx(), "cf_polled", { staging: { from: t("2026-09-20T08:00:00Z"), to: t("2026-09-20T11:00:00Z") } });
-    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, [ENVS[0]], FAKES)).providers).toEqual({ status: "empty" });
-    // A sibling with something to show makes the section ok, so the legacy part's own state can be read.
-    await addPart(ORG_A, "staging", "web", "render", "web");
-    await deployRow(ORG_A, "staging", "web", "render", "anchor", "ready", ago(HOUR));
-    const [front, back] = await parts([ENVS[0]]);
-    expect(front).toMatchObject({ part: "frontend", status: "empty", seen: { traffic: false } });
-    expect(front.traffic!["24h"]).toEqual({ requests: null, errors: null, error_rate: null, latency_p95_ms: null, bandwidth_bytes: null, trend: [] });
-    expect(back).toMatchObject({ part: "backend", status: "not_connected" });
+    await addPart(ORG_A, "staging", "frontend", "cloudflare", "web", { worker: "frontend-staging" });
+    await pollState(ORG_A, "staging", "frontend", "cloudflare", { covered: [t("2026-09-20T09:00:00Z"), t("2026-09-20T12:00:00Z")] });
+    const [front] = await parts([ENVS[0]]);
+    expect(front).toMatchObject({ status: "ok", seen: { traffic: false } });
+    expect(strip(front.traffic!["24h"])).toEqual({
+      requests: 0, errors: 0, error_rate: null, latency_p95_ms: null, bandwidth_bytes: null,
+      trend: [["09-20T09:00", 0, 0], ["09-20T10:00", 0, 0], ["09-20T11:00", 0, 0]],
+    });
+  });
+
+  it("no cf_* / rw_* series is read any more: a stray old-named row shows nowhere", async () => {
+    await setOrgEnvironments([ENVS[0]], ORG_A);
+    await addPart(ORG_A, "staging", "frontend", "cloudflare", "web");
+    await putMetrics(systemCtx(), [
+      { metric: "cf_requests", env: "staging", part: "frontend", value: 400, at: t("2026-09-20T10:00:00Z") },
+      { metric: "rw_cpu", env: "staging", part: "backend", value: 0.5, at: t("2026-09-20T11:00:00Z") },
+    ]);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW, [ENVS[0]], FAKES);
+    expect(d.providers).toEqual({ status: "empty" });   // the part exists; nothing of ITS series
+    expect(d.usage).toEqual({ status: "not_connected" });
   });
 });
 
@@ -335,9 +318,12 @@ describe("statuses and tones", () => {
 });
 
 describe("a failed hosting read", () => {
-  it("costs the providers section alone — not_connected, and the dashboard says it is degraded", async () => {
+  it("costs what it feeds — providers and deploys not_connected, no parts on the cards — and the dashboard says it is degraded", async () => {
     await setOrgEnvironments(ENVS, ORG_A);
-    await putMetrics(systemCtx(), [{ metric: "rw_cpu", env: "staging", part: "backend", value: 0.12, at: t("2026-09-20T11:00:00Z") }]);
+    await addPart(ORG_A, "staging", "frontend", "cloudflare", "web");
+    await deployRow(ORG_A, "staging", "frontend", "cloudflare", "d1", "ready", ago(HOUR));
+    await putMetrics(systemCtx(), [{ metric: "active_users_24h", env: "staging", part: "", value: 41, at: t("2026-09-20T11:00:00Z") }]);
+    await putMetrics(systemCtx(), [{ metric: "health_up", env: "staging", part: "frontend", value: 1, at: t("2026-09-20T12:00:00Z") }]);
     // A database without the hosting tables yet (code deployed before its migration): the read throws.
     await env.DB.prepare(`ALTER TABLE hosting_poll_state RENAME TO hosting_poll_state_away`).run();
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -345,7 +331,10 @@ describe("a failed hosting read", () => {
       const d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS, FAKES);
       expect(d.degraded).toBe(true);
       expect(d.providers).toEqual({ status: "not_connected" });
-      expect(d.hosting.status).toBe("ok");               // every other section is read as before
+      expect(d.deploys).toEqual({ status: "not_connected" });   // never "No deploys recorded" off a failed read
+      // Every other section is read as before: the users gauge, the card (connected by its health ping).
+      expect(d.usage.status === "ok" && d.usage.data["24h"][0]).toMatchObject({ requests: null, users: { value: "41" } });
+      expect(d.environments.status === "ok" && d.environments.data[0].parts).toEqual([]);
       expect(JSON.stringify(spy.mock.calls)).toContain("org=org_saplinglearn");
     } finally {
       spy.mockRestore();
