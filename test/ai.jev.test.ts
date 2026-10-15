@@ -34,7 +34,11 @@ const LIVE = {
 
 describe("providerFor: one table from a kind to its provider", () => {
   it("tag.fit is Jev's; the summaries and the plain-language filter are Claude's; no key → null", () => {
-    expect(KIND_PROVIDER).toEqual({ summary_pr: "claude", summary_issue: "claude", "tag.fit": "jev", filter: "claude" });
+    expect(KIND_PROVIDER).toEqual({
+      summary_pr: "claude", summary_issue: "claude", "tag.fit": "jev", filter: "claude",
+      // Phase C's cards: all Jev.
+      "ticket.category": "jev", "ticket.priority": "jev", "ticket.duplicate": "jev", "review.risk": "jev", "unplaced.destination": "jev",
+    });
     expect(providerFor("tag.fit", { apiKey: "k" })?.name).toBe("jev");
     expect(providerFor("tag.fit", { apiKey: "k" })?.model).toBe("jev-latest");
     expect(providerFor("summary_pr", { apiKey: "k" })?.name).toBe("claude");

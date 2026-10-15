@@ -14,6 +14,10 @@ import { renderedDoc } from "./review-rendered";
 import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
 import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse } from "./skeleton";
+import type { AiSuggestion } from "@shared/ai-core";
+import { reviewRiskLine, reviewRiskMark, type AiChipUi } from "./ai-cards";
+
+const NO_AI_UI: AiChipUi = { busy: [], unavailable: [], reasonOpen: null };
 
 // ── prop shapes (loose for now — reshaped at wire time) ──────────────────────
 export type ReviewKind = "proposal" | "decision";
@@ -63,6 +67,8 @@ export interface ReviewItem {
   /** Nothing is live under this slug yet: the proposal is the doc's first version. */
   isNew?: boolean;
   adr?: AdrSection[]; // decisions
+  /** Trov's open `review.risk` for it (src/ai/attach.ts); absent when there is none — the card draws nothing then. */
+  ai?: AiSuggestion[];
 }
 
 export interface ReviewProps {
@@ -78,6 +84,8 @@ export interface ReviewProps {
   /** The queue's first read is still out: the frame and filter are real, the list and
    *  the detail pane hold skeletons (never "Queue is clear" before it is known). */
   loading?: boolean;
+  /** Trov's risk line's state (`state.ai`): only read when an item carries `ai`. */
+  aiUi?: AiChipUi;
 }
 
 // ── list pane ────────────────────────────────────────────────────────────────
@@ -119,7 +127,7 @@ export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVer
         ${type ? `<span>${esc(type)}</span>` : ""}
         ${id ? `${dot}<span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">${esc(id)}</span>` : ""}
         ${dot}<span style="display:inline-flex;align-items:center;gap:6px">${agentBit(it, 18)}</span>
-        ${dot}<span style="color:var(--fg-40)">${esc(it.time)}</span>
+        ${dot}<span style="color:var(--fg-40)">${esc(it.time)}</span>${it.ai ? `${dot}${reviewRiskMark(it.ai)}` : ""}
       </div>
     </div>
     <span class="cnpy-rv-verdict" aria-hidden="true">${verdict ? `${verdict === "rejected" ? X_ICON : CHECK_ICON}${VERDICT_LABEL[verdict]}` : ""}</span>
@@ -280,7 +288,7 @@ function splitEyebrow(eyebrow: string): { type: string; id: string } {
 // The header's status chips and its two buttons are ONE height, so the row reads as a set.
 const HEAD_BTN = "box-sizing:border-box;height:34px;display:inline-flex;align-items:center;border-radius:8px;font-size:12.5px";
 
-export function reviewDetail(it: ReviewItem, diffView: DiffViewMode): string {
+export function reviewDetail(it: ReviewItem, diffView: DiffViewMode, aiUi: AiChipUi = NO_AI_UI): string {
   const acceptLabel = it.kind === "decision" ? "Ratify" : "Promote";
   const content = it.kind === "decision"
     ? adrRecord(it.adr ?? [])
@@ -306,7 +314,7 @@ export function reviewDetail(it: ReviewItem, diffView: DiffViewMode): string {
         <button data-act="reviewAccept" data-arg="${attr(it.id)}" class="cnpy-accentbtn" style="${HEAD_BTN};background:var(--accent);color:var(--accent-fg);border:1px solid var(--accent);padding:0 17px;font-weight:600">${acceptLabel}</button>
       </div>
     </div>
-    ${it.stale && it.staleNote ? staleBaseWarning(it.staleNote) : ""}
+    ${it.ai ? reviewRiskLine(it.ai, aiUi) : ""}${it.stale && it.staleNote ? staleBaseWarning(it.staleNote) : ""}
     ${content}
   </div>`;
 }
@@ -383,7 +391,7 @@ export function reviewView(p: ReviewProps): string {
     </div>
     <div class="cnpy-scroll cnpy-rv-detail" style="flex:1;min-width:0;overflow-y:auto">
       <button data-act="reviewBack" class="cnpy-rv-back">${BACK_ICON}All items</button>
-      ${p.loading ? reviewDetailSkeleton() : sel ? reviewDetail(sel, p.diffView) : reviewQueueClear()}
+      ${p.loading ? reviewDetailSkeleton() : sel ? reviewDetail(sel, p.diffView, p.aiUi) : reviewQueueClear()}
     </div>
   </div>`;
 }

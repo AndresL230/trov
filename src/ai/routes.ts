@@ -86,7 +86,7 @@ aiApp.post("/ai/suggestions/:id/accept", async (c) => {
   if (id === null) return c.json({ error: "not_found" }, 404);
   // An empty or unreadable body is `{}`; one the contract refuses is answered only after the id is found.
   const parsed = AiAcceptBodySchema.safeParse((await c.req.json().catch(() => null)) ?? {});
-  return answer(c, await acceptSuggestion(c.var.ctx, id, parsed.success ? parsed.data : null));
+  return answer(c, await acceptSuggestion(c.var.ctx, id, parsed.success ? parsed.data : null, undefined, { origin: new URL(c.req.url).origin }));
 });
 
 aiApp.post("/ai/suggestions/:id/dismiss", async (c) => {

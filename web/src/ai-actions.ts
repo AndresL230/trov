@@ -18,6 +18,9 @@ export interface AiHost {
   rerender(): void;
   flash(msg: string, ms?: number): void;
   unauth(e: unknown): void;
+  /** A suggestion was accepted or dismissed: the screen it was on re-reads what changed (Phase C — the ticket, the
+   *  Unplaced queue, Review). */
+  decided?(id: number, how: "accept" | "dismiss"): void;
 }
 export interface AiController {
   act(act: string, arg: string | null, value: string | null): void;
@@ -76,6 +79,7 @@ export function createAiController(host: AiHost): AiController {
         if (u.rename?.id === id) u.rename = null;
         host.flash(how === "accept" ? "Accepted" : "Removed");
         rerender();
+        host.decided?.(id, how);
       })
       .catch((e) => {
         u.busy = without(u.busy, id);

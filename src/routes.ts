@@ -66,6 +66,7 @@ import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
 import { aiApp } from "./ai/routes";
 import { aiPreview, withPreviewFeed } from "./ai/preview";
+import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions } from "./ai/attach";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
 
 export const app = new Hono<AppEnv>();
@@ -315,9 +316,10 @@ tenantRoot.get("/search/quick", async (c) => {
 
 // SEAM: POST /ask — retrieve via query(), synthesize a grounded, slug-citing answer. Out of scope.
 
-tenantRoot.get("/needs-triage", async (c) => c.json({ items: await list_needs_triage(c.var.ctx) }));
+// Each item carries Trov's open `unplaced.destination` as `ai` when it has one (src/ai/attach.ts; Phase C).
+tenantRoot.get("/needs-triage", async (c) => c.json({ items: await withUnplacedSuggestions(c, await list_needs_triage(c.var.ctx)) }));
 
-tenantRoot.get("/adrs", async (c) => c.json({ adrs: await list_adrs(c.var.ctx, c.req.query("status")) }));
+tenantRoot.get("/adrs", async (c) => c.json({ adrs: (await withReviewSuggestions(c, [], await list_adrs(c.var.ctx, c.req.query("status")))).adrs }));
 
 // ── Review group (session-cookie only, NEVER MCP): Proposals (staged doc
 // versions) + Decisions (ADR drafts) — GET /proposals, GET /adrs, and their
@@ -326,7 +328,8 @@ tenantRoot.get("/adrs", async (c) => c.json({ adrs: await list_adrs(c.var.ctx, c
 // The Proposals queue (Phase 3): staged doc versions newer than their live doc,
 // not rejected, server-joined with both bodies + reconciler metadata. Kills the
 // old web N+1 (audit G9) and is the data source Phase 4's detail pane renders.
-tenantRoot.get("/proposals", async (c) => c.json({ proposals: await list_proposals(c.var.ctx) }));
+// Each proposal (and each drafted decision on `/adrs`) carries Trov's open `review.risk` as `ai` (src/ai/attach.ts).
+tenantRoot.get("/proposals", async (c) => c.json({ proposals: (await withReviewSuggestions(c, await list_proposals(c.var.ctx), [])).proposals }));
 
 // ── Handoffs + Prompt Library (session-cookie; the MCP tools are the agent side) ──
 // A handoff is an addressed message, not knowledge: its writers are direct (NOT
@@ -913,7 +916,8 @@ tenantRoot.get("/tickets/:id", async (c) => {
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const ticket = await get_ticket(c.var.ctx, id);
   if (!ticket) return c.json({ error: "not found" }, 404);
-  return c.json(ticket);
+  // Trov's open suggestions for it, as `ai` (src/ai/attach.ts; Phase C) — this cookie read only, never MCP's get_ticket.
+  return c.json(await withTicketSuggestions(c, ticket));
 });
 
 // Edit the title and/or body — a mirrored ticket's too (seeded from the issue at

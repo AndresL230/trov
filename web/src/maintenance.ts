@@ -18,6 +18,10 @@ import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skLines, skList, skW } from "./skeleton";
 import { stateMark } from "./marks";
+import type { AiSuggestion } from "@shared/ai-core";
+import { unplacedChip, unplacedRowMark, type AiChipUi } from "./ai-cards";
+
+const NO_AI_UI: AiChipUi = { busy: [], unavailable: [], reasonOpen: null };
 
 // ── prop shapes ──────────────────────────────────────────────────────────────
 export interface UnplacedItem {
@@ -31,6 +35,8 @@ export interface UnplacedItem {
   author?: string | null;
   /** Relative time it landed, e.g. "2h ago". */
   when?: string;
+  /** Trov's open `unplaced.destination` for it (src/ai/attach.ts); absent when there is none. */
+  ai?: AiSuggestion[];
 }
 
 export type AssignKind = "doc" | "adr" | "feed";
@@ -61,6 +67,8 @@ export interface MaintenanceProps {
   discardArm: boolean;
   /** The persons directory: an item's author gets their own chip and colour. */
   people: Person[];
+  /** Trov's suggestion chip's state (`state.ai`): only read when an item carries `ai`. */
+  aiUi?: AiChipUi;
 }
 
 // ── shared atoms ─────────────────────────────────────────────────────────────
@@ -121,7 +129,7 @@ function unplacedTab(p: MaintenanceProps): string {
     const on = u.id === sel.id;
     return `<button data-act="maintSelect" data-arg="${attr(u.id)}" class="cnpy-trow" style="display:block;width:100%;text-align:left;padding:13px 16px;border-bottom:1px solid var(--border);background:${on ? "var(--hover)" : "transparent"};transition:background .12s ease">
       <div style="font-size:13px;line-height:1.5;color:var(--fg);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(u.title)}</div>
-      <div style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11.5px;color:var(--fg-40);min-width:0;white-space:nowrap;overflow:hidden">${chipOf(au, 16, u.author ?? "?")}${handleTag(au?.color ? { handle: au.id, color: au.color } : null, u.author ?? "unknown", 11)}<span style="flex:none">&middot; ${esc(u.when ?? "")}</span></div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11.5px;color:var(--fg-40);min-width:0;white-space:nowrap;overflow:hidden">${chipOf(au, 16, u.author ?? "?")}${handleTag(au?.color ? { handle: au.id, color: au.color } : null, u.author ?? "unknown", 11)}<span style="flex:none">&middot; ${esc(u.when ?? "")}</span>${u.ai ? unplacedRowMark(u.ai) : ""}</div>
     </button>`;
   }).join("");
 
@@ -147,7 +155,7 @@ function unplacedTab(p: MaintenanceProps): string {
       </div>
       ${bigText}
       <div style="font-size:12.5px;line-height:1.55;color:var(--fg-40);margin-top:10px"><span style="color:var(--fg-55);font-weight:500">Why it wasn't placed:</span> ${esc(sel.reasonNote)}</div>
-      ${assignPanel(sel.id, p.assign, kind, section, kind ? p.assignSpace : null, kind ? p.assignTags : [])}
+      ${sel.ai ? unplacedChip(sel.ai, p.aiUi ?? NO_AI_UI) : ""}${assignPanel(sel.id, p.assign, kind, section, kind ? p.assignSpace : null, kind ? p.assignTags : [])}
       <div style="flex:1;min-height:24px"></div>
       <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-top:16px;border-top:1px solid var(--border)">
         <button data-act="maintDiscard" data-arg="${attr(sel.id)}" class="cnpy-mutelink" style="font-size:12.5px;font-weight:500;white-space:nowrap;color:${p.discardArm ? "var(--red)" : "var(--fg-55)"}">${p.discardArm ? "Click again to discard" : "Discard"}</button>

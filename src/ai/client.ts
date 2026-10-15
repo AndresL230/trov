@@ -38,6 +38,13 @@ export const KIND_PROVIDER = {
   "tag.fit": "jev",
   // The plain-language filter (#162): a person's request → the screen's own filter fields (src/ai/filter.ts).
   filter: "claude",
+  // Phase C cards (src/ai/jobs/cards.ts): a ticket's category, priority and possible duplicate (one request), a
+  // Review item's risk, an Unplaced item's destination.
+  "ticket.category": "jev",
+  "ticket.priority": "jev",
+  "ticket.duplicate": "jev",
+  "review.risk": "jev",
+  "unplaced.destination": "jev",
 } as const satisfies Record<string, AiProviderName>;
 
 /** What a call is for. */

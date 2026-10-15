@@ -154,7 +154,15 @@ const tagsCtl = createTagsController({
 });
 // Trov's AI screens (web/src/ai-actions.ts): every `ai…` act — "Wrong?", the Feed's Source switch and
 // note, the themes' range and lane, Accept / Rename / Remove on a suggestion.
-const aiCtl = createAiController({ state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e) });
+const aiCtl = createAiController({
+  state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
+  // Phase C: an accepted suggestion changed the ticket / filed the item, and a decided one is gone — re-read.
+  decided: () => {
+    if (state.screen === "ticketdetail" && state.ticketId !== null) loadTicketDetail(state.ticketId);
+    else if (state.screen === "maintenance") loadNeedsTriage();
+    else if (state.screen === "review") { loadProposals(); loadDraftAdrs(); }
+  },
+});
 // The plain-language filter (web/src/ai-filter-actions.ts, #162): every `aiFilter…` act. Its answer is applied
 // to each screen's OWN filter state here — the same fields the Filter menu, the switch and the search box set.
 const aiFilterCtl = createAiFilterController({
@@ -1815,6 +1823,9 @@ const claimTicketDetail = (): number => ++ticketDetailSeq;
  *  write/load has since claimed the slice — see `claimTicketDetail`), toast,
  *  refresh the badge, and refetch the queue when it is already on screen / cached. */
 function applyTicketWrite(t: TicketDetail, msg: string, seq: number): void {
+  // A write's answer is the bare detail: Trov's suggestions (`ai`, the cookie read's) stay until the next read.
+  const prev = state.ticketDetail.data;
+  if (prev?.ai && !t.ai && prev.id === t.id) t = { ...t, ai: prev.ai };
   if (seq === ticketDetailSeq) state.ticketDetail = { status: "ok", data: t };
   loadTicketBadge();
   if (state.tickets.status !== "idle") loadTickets();

@@ -63,6 +63,7 @@ export function proposalReviewItem(p: StagedProposal): ReviewItem {
     liveBody: p.promotedBody,
     proposedBody: p.stagedBody,
     isNew: p.current_version === 0 || p.promotedBody.trim() === "",
+    ...(p.ai ? { ai: p.ai } : {}),
   };
 }
 
@@ -81,6 +82,7 @@ export function adrReviewItem(a: AdrRow): ReviewItem {
     agentInitials: initialsOf(a.created_by),
     time: relTime(a.created_at),
     adr: sections,
+    ...(a.ai ? { ai: a.ai } : {}),
   };
 }
 
@@ -173,6 +175,7 @@ export function unplacedFromRow(r: NeedsTriageRow): UnplacedItem {
     reasonNote: r.reason,
     author: r.source_author ?? null,
     when: relTime(r.created_at),
+    ...(r.ai ? { ai: r.ai } : {}),
   };
 }
 

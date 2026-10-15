@@ -132,9 +132,17 @@ describe("the model client is the summary seams', the AI pass's, the Sift run's 
     expect([...fromMcp].filter((f) => f.startsWith("src/ai/"))).toEqual([]);
     expect(fromMcp.has("src/tools/classify.ts")).toBe(false);
     // THE call sites (ai.md › Where a model call may happen): the summary seams, the AI pass (with its batch half
-    // and its job interface — types only), the Sift run, the filter route.
+    // and its job interface — types only — and Phase C's card logic, Jev's answer types only), the Sift run, the filter route.
     const importers = [...SOURCES.keys()].filter((f) => f !== "src/ai/client.ts" && reachableDirect(f).has("src/ai/client.ts")).sort();
-    expect(importers).toEqual(["src/ai/batches.ts", "src/ai/filter.ts", "src/ai/jobs.ts", "src/ai/pass.ts", "src/ai/sift.ts", "src/tools/summarize.ts"]);
+    expect(importers).toEqual([
+      "src/ai/batches.ts", "src/ai/filter.ts", "src/ai/jobs.ts", "src/ai/jobs/review-card.ts", "src/ai/jobs/ticket-card.ts", "src/ai/jobs/unplaced-card.ts",
+      "src/ai/pass.ts", "src/ai/sift.ts", "src/tools/summarize.ts",
+    ]);
+    // …and those three import its TYPES only: no value of the client (no provider, no call) is in them.
+    for (const f of ["src/ai/jobs/review-card.ts", "src/ai/jobs/ticket-card.ts", "src/ai/jobs/unplaced-card.ts"]) {
+      expect(SOURCES.get(f), f).toMatch(/import type \{[^}]*\} from "\.\.\/client";/);
+      expect(SOURCES.get(f), f).not.toMatch(/import \{[^}]*\} from "\.\.\/client";/);
+    }
     // The filter's ONE way in is its cookie route (src/ai/routes.ts `POST /ai/filter`): nothing else imports it.
     expect(reachable("src/routes.ts").has("src/ai/filter.ts")).toBe(true);
     expect([...SOURCES.keys()].filter((f) => reachableDirect(f).has("src/ai/filter.ts") && f !== "src/ai/filter.ts")).toEqual(["src/ai/routes.ts"]);

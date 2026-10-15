@@ -2,26 +2,33 @@
 // REAL field, as the person who pressed it; Dismiss is remembered. A person's action over a cookie route
 // (./routes.ts), never an agent's — nothing reachable from src/mcp.ts imports this.
 //
-// Accepting is a per-KIND handler from `AI_ACCEPT_HANDLERS`. The registry is EMPTY today — no producer
-// writes a suggestion yet — so accept answers `not_available` for every kind. A handler declares who may
+// Accepting is a per-KIND handler from `AI_ACCEPT_HANDLERS` (Phase C registers the card kinds' — ./jobs/accept.ts);
+// a kind with none (`review.risk`: information only) answers `not_available`. A handler declares who may
 // accept its kind (`role`: a ticket's category may be any member's call, a theme an admin's); dismissing is
 // open to every member.
 import type { AiSuggestion, AiSuggestionError } from "@shared/ai";
 import { hasRole, type TenantContext } from "../data/context";
 import { decideSuggestion, getSuggestion, reopenSuggestion, suggestionDto, type AiSuggestionRow } from "../data/ai";
 import { nowIso } from "../data/sql";
+import { CARD_ACCEPT_HANDLERS } from "./jobs/accept";
 
 export interface AcceptHandler {
   /** Who may accept this kind: any member, or an admin (admin or owner) of the org. */
   role: "member" | "admin";
   /** Write the real field AS `ctx`'s person (the signed-in caller's own context — the author is always the
    *  authenticated principal). `value` is the suggested one, or the person's replacement (Rename). Throw to
-   *  refuse: the suggestion goes back to open. A `PlanLimitError` reaches the app's 402 as usual. */
-  apply(ctx: TenantContext, suggestion: AiSuggestionRow, value: unknown): Promise<void>;
+   *  refuse: the suggestion goes back to open. A `PlanLimitError` reaches the app's 402 as usual. `req` is what
+   *  the request knows that the context does not: the app's origin (an in-app link, Phase C's duplicate). */
+  apply(ctx: TenantContext, suggestion: AiSuggestionRow, value: unknown, req?: AcceptRequest): Promise<void>;
 }
 
-/** THE registry, by `ai_suggestions.kind`. Empty: nothing produces a suggestion yet. */
-export const AI_ACCEPT_HANDLERS: Readonly<Record<string, AcceptHandler>> = {};
+/** What the accept request knows beyond the context. */
+export interface AcceptRequest { origin: string | null }
+
+/** THE registry, by `ai_suggestions.kind`. */
+export const AI_ACCEPT_HANDLERS: Readonly<Record<string, AcceptHandler>> = {
+  ...CARD_ACCEPT_HANDLERS, // Phase C: ticket.category / ticket.priority / ticket.duplicate / unplaced.destination (./jobs/accept.ts)
+};
 
 export type SuggestionAnswer =
   | { ok: true; suggestion: AiSuggestion }
@@ -40,6 +47,7 @@ const refuse = (error: AiSuggestionError): SuggestionAnswer => ({ ok: false, sta
  */
 export async function acceptSuggestion(
   ctx: TenantContext, id: number, body: { value?: unknown } | null, handlers: Readonly<Record<string, AcceptHandler>> = AI_ACCEPT_HANDLERS,
+  req: AcceptRequest = { origin: null },
 ): Promise<SuggestionAnswer> {
   const row = await getSuggestion(ctx, id);
   if (!row) return refuse("not_found");
@@ -55,7 +63,7 @@ export async function acceptSuggestion(
     try { value = JSON.parse(row.value_json); } catch { value = null; }
   }
   try {
-    await handler.apply(ctx, row, value);
+    await handler.apply(ctx, row, value, req);
   } catch (e) {
     await reopenSuggestion(ctx, id, ctx.userId, at);
     throw e;

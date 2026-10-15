@@ -53,15 +53,18 @@ async function moreOrgs(n: number): Promise<string[]> {
 const pass = (s: Stub, jobs: readonly AiJob[], limit = 900, e: Env = keyedEnv()) =>
   runAiPass(e, newBudget(s.fetchImpl, limit), { jobs, now: NOW });
 
-describe("the real registry is empty", () => {
-  it("AI_JOBS has nothing in it, and a pass with it makes zero calls and writes nothing — with both keys and stale scopes", async () => {
-    expect(AI_JOBS).toEqual([]);
+describe("the real registry: Phase C's Jev cards only", () => {
+  it("AI_JOBS holds the three card jobs (Jev, cards only); a scope none of them takes makes zero calls and stays dirty", async () => {
+    expect(AI_JOBS.map((j) => [j.name, j.provider, j.scope, j.keyPrefix])).toEqual([
+      ["ticket.card", "jev", "card", "ticket:"], ["review.risk", "jev", "card", "proposal:"], ["unplaced.destination", "jev", "card", "unplaced:"],
+    ]);
     await cards(ORG_A, 3);
     const s = stub();
-    expect(await runAiPass(keyedEnv(), newBudget(s.fetchImpl), { now: NOW })).toEqual({ calls: 0, haiku: 0, jev: 0, batched: 0, collected: 0, served: [], deferred: 0 });
+    const r = await runAiPass(keyedEnv(), newBudget(s.fetchImpl), { now: NOW });
+    expect([r.calls, r.haiku, r.jev, r.batched, r.collected, r.deferred]).toEqual([0, 0, 0, 0, 0, 0]);
     expect(s.haiku + s.jev + s.other).toBe(0);
     expect(await aiRows()).toEqual([]);
-    expect(await cursor()).toBe(""); // nothing read, nothing written
+    expect(await cursor()).toBe("");
     expect((await dirtyRow(ORG_A, "card", "x:1"))!.last_run_at).toBeNull();
   });
 

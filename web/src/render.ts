@@ -610,6 +610,7 @@ export function reviewProps(s: AppState): ReviewProps {
     filter: s.reviewFilter,
     selectedId: s.reviewSel,
     diffView: s.reviewDiffView,
+    aiUi: s.ai,
   };
 }
 
@@ -625,6 +626,7 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
     assignSpace: s.assignSpace,
     assignTags: s.assignTags,
     people: peopleFromPersons(s.persons.data),
+    aiUi: s.ai,
   };
 }
 
@@ -2766,6 +2768,7 @@ function ticketDetailScreen(s: AppState): string {
     artifactsBlock: ticketArtifactsBlock(s.art.ticketArts[slice.data.id]),
     edit: s.tdEdit,
     deleteArm: s.tdDeleteArm,
+    aiUi: s.ai,
   });
 }
 
