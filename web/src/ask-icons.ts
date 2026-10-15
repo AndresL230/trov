@@ -28,6 +28,11 @@ export const ASK_ICON_PATHS = {
   clock: `<circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>`,
   sprint: `<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`,
   cmd: `<path d="M15 4 9 20"></path>`,
+  // The phone (ask-phone.ts): the header's Open threads (not the app's nav hamburger beside it), and the + menu's
+  // Attach / Mention rows (the design's paperclip and @, L681–682).
+  phThreads: `<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z"></path><path d="M8.5 10.5h7M8.5 14h4.5"></path>`,
+  phAttach: `<path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"></path>`,
+  phAt: `<circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"></path>`,
   // The shell's own controls.
   panel: `<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path>`,
   plus: `<path d="M12 5v14M5 12h14"></path>`,

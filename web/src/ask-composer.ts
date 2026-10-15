@@ -21,6 +21,7 @@ import { esc, attr } from "./ui";
 import type { AskCtx, AskPart, AskView, AskWhere } from "./ask-state";
 import { convoOf } from "./ask-state";
 import { askIcon } from "./ask-icons";
+import { phoneComposerBar } from "./ask-phone";   // HOOK (phone): the bottom row + the + menu on a phone
 import type { AskAttachment, AskMode } from "@shared/ai-ask-core";
 
 export const COMPOSER_STATES = ["quota", "off", "autoOff", "error", "tooLarge", "at", "slash", "files", "drag", "free", "low", "busy"] as const;
@@ -56,12 +57,12 @@ export function composerView(v: AskView): string {
   return `<div class="ask-composer" data-ask-composer="${v.where}">
     <div class="ask-box">
       <textarea rows="1" class="ask-input" data-act="askCoText" data-arg="${v.where}" data-field="${fieldOf(v.where)}" data-ask-input="${v.where}" placeholder="${attr(placeholder)}" aria-label="Message Ask Trov">${esc(ui.text)}</textarea>
-      <div class="ask-box-bar">
+      ${v.app.phone ? phoneComposerBar(v) : `<div class="ask-box-bar">
         <span style="flex:1"></span>
         <button type="button" class="ask-send${busy ? " is-busy" : can ? " is-on" : ""}" data-act="${busy ? "askCoStop" : "askCoSend"}" data-arg="${v.where}" aria-label="${busy ? "Stop answering" : "Send"}">${busy
           ? `<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><rect x="1" y="1" width="10" height="10" rx="2" fill="currentColor"></rect></svg>`
           : askIcon("send", 16, null, 2.2)}</button>
-      </div>
+      </div>`}
     </div>
     ${v.app.phone ? "" : `<div class="ask-hint">Enter to send · Shift+Enter for a new line</div>`}
     ${empty && v.where === "page" ? `<p class="ask-disclaimer">Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.</p>` : ""}

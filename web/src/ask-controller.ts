@@ -18,7 +18,7 @@ import { conversationPart } from "./ask-conversation";
 import { inspectorPart } from "./ask-inspector";
 import { actionsPart } from "./ask-actions";
 import { cmdjPart, cmdjToggle } from "./ask-cmdj";
-import { phonePart } from "./ask-phone";
+import { phonePart, closeDrawer } from "./ask-phone";
 import { threadsPart } from "./ask-threads";
 import { closeTop, type EscEntry } from "./ask-escape";
 import { askLayout, clampInspector, layoutBucket } from "./ask-layout";
@@ -209,14 +209,14 @@ export function createAskController(host: AskHost): AskController {
     setConvo(where, emptyConvo());
     ui().composer[where] = { ...initialComposerUi(), forced: ui().composer[where].forced };
     if (ui().inspector.where === where) ui().inspector = { ...ui().inspector, stack: [], idx: -1 };
-    if (where === "page") { s.screen = "ask"; ui().phone.drawer = false; }
+    if (where === "page") { s.screen = "ask"; closeDrawer(ctx); }
     paint();
     raf(() => composerFocus(host.mount, where));
   }
 
   function openThread(id: number): void {
     s.screen = "ask";
-    ui().phone.drawer = false;
+    closeDrawer(ctx);                                 // the phone drawer slides out (its exit), the thread opens under it
     if (ui().panel.threadId === id) {                 // ⌘J's "Open as thread": the panel's conversation moves over
       setConvo("page", ui().panel);
       setConvo("panel", emptyConvo());
