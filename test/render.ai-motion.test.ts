@@ -21,11 +21,13 @@ const feedback = vi.hoisted(() => ({ next: (): Promise<unknown> => Promise.resol
 vi.mock("../web/src/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../web/src/api")>()),
   sendAiFeedback: () => feedback.next(),
+  acceptAiSuggestion: () => Promise.resolve({ ok: true }),
+  dismissAiSuggestion: () => Promise.resolve({ ok: true }),
 }));
 
 import { render, initialState, type AppState } from "../web/src/render";
 import { repoStateSection, type RepoAiProps } from "../web/src/repo-ai";
-import { AI_EXIT_MS, AI_NOTE_LEAVING, aiHiddenKey, aiLeavingT, initialAiUi, aiFeedback, type AiUi } from "../web/src/ai-ui";
+import { AI_EXIT_MS, AI_NOTE_LEAVING, aiHiddenKey, aiLeavingT, aiSuggestionKey, initialAiUi, aiFeedback, type AiUi } from "../web/src/ai-ui";
 import { createAiController } from "../web/src/ai-actions";
 import { repoStateFixture, feedFixtures } from "@shared/ai-fixtures";
 import { aiItemRef } from "@shared/ai-core";
@@ -152,6 +154,38 @@ describe("the controller (ai-actions.ts)", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(s.ai.hidden).toEqual([]);
     expect(s.ai.leaving).toEqual([]);
+  });
+  it("Accept / Dismiss on ANY suggestion starts the kit's one exit, held (no timer clears it); the screen re-reads after AI_EXIT_MS", async () => {
+    motion(false);
+    const s = feed(ui());
+    const decided: [number, string, number][] = [];
+    const ctl = createAiController({ state: s, mount: {} as HTMLElement, rerender: () => {}, flash: () => {}, unauth: () => {}, decided: (id, how, ms) => { decided.push([id, how, ms]); } });
+    ctl.act("aiAccept", "42", null);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.ai.leaving).toEqual([{ key: aiSuggestionKey(42), at: T }]);
+    expect(decided).toEqual([[42, "accept", AI_EXIT_MS]]);
+    await vi.advanceTimersByTimeAsync(AI_EXIT_MS * 3);
+    expect(s.ai.leaving).toEqual([{ key: aiSuggestionKey(42), at: T }]); // held until the re-read drops the chip
+    // A later exit drops entries older than 10 s.
+    vi.setSystemTime(T + 11_000);
+    ctl.act("aiDismiss", "43", null);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.ai.leaving).toEqual([{ key: aiSuggestionKey(43), at: T + 11_000 }]);
+  });
+  it("a theme proposal's answer re-reads the Repo dashboard only after the exit; under reduced motion at once and nothing leaves", async () => {
+    for (const reduce of [false, true]) {
+      motion(reduce);
+      vi.setSystemTime(NOW);
+      const s = { ...feed(ui()), repo: { status: "ok", data: { themes: { "8w": { lanes: [{ suggestionId: 7 }] } } } } } as unknown as AppState;
+      let reloads = 0;
+      const ctl = createAiController({ state: s, mount: {} as HTMLElement, rerender: () => {}, flash: () => {}, unauth: () => {}, reloadRepo: () => { reloads++; } });
+      ctl.act("aiAccept", "7", null);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(s.ai.leaving).toEqual(reduce ? [] : [{ key: aiSuggestionKey(7), at: T }]);
+      expect(reloads).toBe(reduce ? 1 : 0);
+      await vi.advanceTimersByTimeAsync(AI_EXIT_MS);
+      expect(reloads).toBe(1);
+    }
   });
   it("Got it starts the note's exit", () => {
     motion(false);

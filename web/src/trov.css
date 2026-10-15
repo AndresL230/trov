@@ -135,10 +135,12 @@ input, select { font-family: inherit; }
 .repo-lane[data-on="0"]:hover { opacity:.8 !important; }
 .repo-themes-proposed:focus-visible { outline:2px solid var(--focus); outline-offset:4px; }
 @media (prefers-reduced-motion: reduce) { .repo-lane { transition:none; } }
-/* Leaving ("Wrong?", the Feed note's "Got it"; ai-ui.ts › Leaving): Review's exit (› a row leaving a
+/* THE AI kit's one exit (ai-ui.ts › Leaving: "Wrong?", the Feed note's "Got it", and a suggestion chip,
+   the risk line or a row's mark once Accept / Dismiss answered): Review's exit (› a row leaving a
    list) on a screen that is rebuilt per paint — dimmed for .13s, then the one-track grid goes
    `1fr` → `0fr` and fades over `--fx-fast` on `--fx-ease`: `AI_EXIT_MS` in all. A keyframe, not a
-   transition, with `--leave-t` (elapsed, negative) as its delay, so a rebuild mid-exit joins it. */
+   transition, with `--leave-t` (elapsed, negative) as its delay, so a rebuild mid-exit joins it.
+   `[data-inline]`: a mark inside a line of text (an inline grid, same keyframe). */
 @keyframes cnpy-ai-leave {
   0% { grid-template-rows:1fr; opacity:1; }
   42% { grid-template-rows:1fr; opacity:.35; }
@@ -147,6 +149,7 @@ input, select { font-family: inherit; }
 /* (named again under [data-enter] so a screen's entrance never takes over an exit) */
 .cnpy-ai-leave, [data-enter] .cnpy-ai-leave, [data-enter] .cnpy-stagger > .cnpy-ai-leave { display:grid; grid-template-rows:0fr; opacity:0; pointer-events:none; animation:cnpy-ai-leave calc(.13s + var(--fx-fast)) var(--fx-ease) both; animation-delay:var(--leave-t, 0ms); }
 .cnpy-ai-leave-in { min-height:0; overflow:hidden; }
+.cnpy-ai-leave[data-inline], [data-enter] .cnpy-ai-leave[data-inline] { display:inline-grid; vertical-align:middle; }
 @media (prefers-reduced-motion: reduce) { .cnpy-ai-leave { animation:none !important; display:none; } }
 @media (max-width:640px) { .repo-themes-chart { --lane-w:136px; } }
 
@@ -475,22 +478,6 @@ input, select { font-family: inherit; }
 /* Reduced motion: no movement — main.ts takes the row out at once, and nothing here eases. */
 @media (prefers-reduced-motion: reduce) {
   .cnpy-rv-row, .cnpy-rv-row .cnpy-titem, .cnpy-rv-card-in, .cnpy-rv-verdict { transition:none !important; }
-}
-/* The same exit for a suggestion Trov made (web/src/ai-cards.ts `leaveBox`; Phase C's chips on the ticket detail,
-   Unplaced and Review): once Accept / Dismiss answered, the box holds .13s, then its one track goes `1fr` → `0fr` and
-   it fades over `--fx-fast` on `--fx-ease` — `AI_CHIP_EXIT_MS`, after which main.ts re-reads. Those screens are
-   rebuilt on a paint, so it is a keyframe animation whose negative delay (`--leave-t`, set from the time already
-   spent leaving) makes a rebuilt box join it where the old one was; a list's mark just fades the same way. The
-   chip itself enters with the screen (`.cnpy-rise`). Reduced motion: gone at once. */
-@keyframes cnpy-ai-out { from { grid-template-rows:1fr; opacity:1; } to { grid-template-rows:0fr; opacity:0; } }
-@keyframes cnpy-ai-fade { from { opacity:1; } to { opacity:0; } }
-.cnpy-ai-out { display:grid; grid-template-rows:1fr; }
-.cnpy-ai-out-in { min-height:0; }
-.cnpy-ai-out[data-leaving] { animation:cnpy-ai-out var(--fx-fast) var(--fx-ease) both; animation-delay:calc(.13s + var(--leave-t, 0ms)); pointer-events:none; }
-.cnpy-ai-out[data-leaving] > .cnpy-ai-out-in { overflow:hidden; }
-.cnpy-ai-risk[data-leaving], .cnpy-ai-row-mark[data-leaving] { animation:cnpy-ai-fade var(--fx-fast) var(--fx-ease) both; animation-delay:calc(.13s + var(--leave-t, 0ms)); }
-@media (prefers-reduced-motion: reduce) {
-  .cnpy-ai-out[data-leaving], .cnpy-ai-risk[data-leaving], .cnpy-ai-row-mark[data-leaving] { animation:none !important; display:none !important; }
 }
 /* How many are waiting, on a switch's option (Review's All / Proposals / Decisions). */
 .cnpy-seg-n { font-family:var(--label); font-size:11px; font-weight:600; color:var(--fg-40); font-variant-numeric:tabular-nums; }

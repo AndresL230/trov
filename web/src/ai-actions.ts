@@ -8,7 +8,7 @@
 // for its kind exists (every kind, today): the chip then says "Not available yet" in place of its buttons.
 
 import type { AppState } from "./render";
-import { AI_EXIT_MS, AI_FEED_SOURCES, AI_NOTE_KEY, AI_NOTE_LEAVING, aiHiddenKey, type AiFeedSource } from "./ai-ui";
+import { AI_EXIT_MS, AI_FEED_SOURCES, AI_NOTE_KEY, AI_NOTE_LEAVING, aiHiddenKey, aiSuggestionKey, type AiFeedSource } from "./ai-ui";
 import { AI_ITEM_TYPES, AI_THEME_RANGES, type AiFeedbackBody, type AiThemeRange } from "@shared/ai-core";
 import { ApiError, PreviewBlocked, Unauthorized, acceptAiSuggestion, dismissAiSuggestion, sendAiFeedback } from "./api";
 
@@ -22,7 +22,7 @@ export interface AiHost {
   reloadRepo?(): void;
   /** A suggestion was accepted or dismissed: the screen it was on re-reads what changed (Phase C — the ticket, the
    *  Unplaced queue, Review). */
-  decided?(id: number, how: "accept" | "dismiss"): void;
+  decided?(id: number, how: "accept" | "dismiss", exitMs: number): void;
   /** One-shot `.cnpy-flash` on what matches, after the next paint (main.ts `pendingFlash`). */
   flashNext?(selector: string): void;
 }
@@ -56,11 +56,14 @@ export function createAiController(host: AiHost): AiController {
   const without = (xs: number[], id: number) => xs.filter((x) => x !== id);
   const reduced = (): boolean => { try { return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false; } catch { return false; } };
   const stopLeaving = (key: string) => { ui().leaving = ui().leaving.filter((l) => l.key !== key); };
-  /** Draw `key` leaving for AI_EXIT_MS (ai-ui.ts › Leaving), then let it go. Gone at once under reduced motion. */
-  function leave(key: string): void {
+  /** Draw `key` leaving for AI_EXIT_MS (ai-ui.ts › Leaving), then let it go. Gone at once under reduced motion.
+   *  `hold`: a decided suggestion — it stays drawn collapsed until its screen's re-read drops it (`aiLeaving`'s
+   *  `hold`), so its entry is not cleared on a timer; entries older than 10 s are dropped on the next exit. */
+  function leave(key: string, hold = false): void {
     if (reduced()) return;
     const at = Date.now();
-    ui().leaving = [...ui().leaving.filter((l) => l.key !== key), { key, at }];
+    ui().leaving = [...ui().leaving.filter((l) => l.key !== key && at - l.at < 10_000), { key, at }];
+    if (hold) return;
     setTimeout(() => {
       if (!ui().leaving.some((l) => l.key === key && l.at === at)) return;
       stopLeaving(key);
@@ -97,10 +100,14 @@ export function createAiController(host: AiHost): AiController {
         u.busy = without(u.busy, id);
         if (u.rename?.id === id) u.rename = null;
         host.flash(how === "accept" ? "Accepted" : "Removed");
+        // It leaves by the kit's one exit (ai-ui.ts › Leaving) — every chip, the risk line and a row's mark alike —
+        // and its screen re-reads once the exit is done, so the read never pulls it out mid-exit.
+        leave(aiSuggestionKey(id), true);
         rerender();
+        const exitMs = reduced() ? 0 : AI_EXIT_MS;
         // A theme's answer changes the chart (proposed → active, merged or gone): read it again.
-        if (Object.values(host.state.repo.data?.themes ?? {}).some((t) => t.lanes.some((l) => l.suggestionId === id))) host.reloadRepo?.();
-        host.decided?.(id, how);
+        if (Object.values(host.state.repo.data?.themes ?? {}).some((t) => t.lanes.some((l) => l.suggestionId === id))) setTimeout(() => host.reloadRepo?.(), exitMs);
+        host.decided?.(id, how, exitMs);
       })
       .catch((e) => {
         u.busy = without(u.busy, id);

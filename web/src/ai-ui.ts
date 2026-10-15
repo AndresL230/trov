@@ -46,8 +46,9 @@ export interface AiUi {
   unavailable: number[];
   /** The suggestion chip whose reason is open (its key), or null. */
   reasonOpen: string | null;
-  /** Items on their way out (`aiHiddenKey`, or `AI_NOTE_LEAVING` for the Feed's note) and when they
-   *  started: drawn collapsing for `AI_EXIT_MS`, then gone (`aiLeavingT`). Never under reduced motion. */
+  /** Items on their way out (`aiHiddenKey`; `AI_NOTE_LEAVING` for the Feed's note; `aiSuggestionKey` for a decided
+   *  suggestion) and when they started: drawn collapsing for `AI_EXIT_MS`, then gone (› Leaving). Never under
+   *  reduced motion. */
   leaving: { key: string; at: number }[];
 }
 export function initialAiUi(): AiUi {
@@ -61,25 +62,42 @@ export const aiHiddenKey = (itemType: AiItemType, itemRef: string): string => `$
 export const aiIsHidden = (ui: Pick<AiUi, "hidden">, itemType: AiItemType, itemRef: string): boolean =>
   ui.hidden.includes(aiHiddenKey(itemType, itemRef));
 
-// ── Leaving: "Wrong?" and the note's "Got it" (web-ui.md › A row leaving a list) ──
-// The item is hidden at once in state (`hidden`, `noteSeen`) — every count already leaves it out — but
-// is still DRAWN for `AI_EXIT_MS`: `inert`, dimmed for .13s, then collapsed (a one-track grid, `1fr` →
-// `0fr`) and faded over `--fx-fast`, Review's timing. The Feed and the Repo screen are rebuilt on a
-// paint, so the motion is a keyframe whose clock is a NEGATIVE delay (`--leave-t`, elapsed ms) — the
-// same trick as `--enter-t`: a rerender mid-exit joins it where it was, never replays it.
+// ── Leaving: THE exit for everything Trov drew (web-ui.md › The AI kit; › A row leaving a list) ──
+// One state (`AiUi.leaving`: key → when its exit began), one class (`.cnpy-ai-leave`), one constant (`AI_EXIT_MS`)
+// and one helper (`aiLeaving`, over `aiLeavingT` / `aiLeave`) for every item that goes: "Wrong?" on State or a Trov
+// feed entry, "Got it" on the Feed's note, and a suggestion chip, the risk line and a row's mark once Accept /
+// Dismiss answered (`aiSuggestionKey`). The item is still DRAWN for `AI_EXIT_MS`: `inert`, dimmed for .13s, then
+// collapsed (a one-track grid, `1fr` → `0fr`) and faded over `--fx-fast`, Review's timing. The screens it sits on
+// are rebuilt on a paint, so the motion is a keyframe whose clock is a NEGATIVE delay (`--leave-t`, elapsed ms) —
+// the same trick as `--enter-t`: a rerender mid-exit joins it where it was, never replays it. Gone at once under
+// reduced motion (the controller starts no exit; the class is `display:none` there).
 export const AI_EXIT_MS = 310;
 /** The Feed's one-time note, while it leaves after "Got it". */
 export const AI_NOTE_LEAVING = "note:feed";
-/** How far into its exit an item is (ms), or null when it is not leaving (or done leaving). */
-export function aiLeavingT(ui: Pick<AiUi, "leaving">, key: string, now = Date.now()): number | null {
-  const l = ui.leaving.find((x) => x.key === key);
+/** A suggestion (chip, risk line, row mark) on its way out after Accept / Dismiss. */
+export const aiSuggestionKey = (id: number): string => `suggestion:${id}`;
+/** How far into its exit an item is (ms), or null when it is not leaving (or done leaving). `hold`: an item whose
+ *  screen re-reads only after the exit (a suggestion) stays drawn collapsed, at the exit's end, until it is gone
+ *  from the read. */
+export function aiLeavingT(ui: Partial<Pick<AiUi, "leaving">>, key: string, now = Date.now(), hold = false): number | null {
+  const l = ui.leaving?.find((x) => x.key === key);
   if (!l) return null;
   const t = Math.max(0, now - l.at);
-  return t < AI_EXIT_MS ? t : null;
+  return t < AI_EXIT_MS ? t : hold ? AI_EXIT_MS : null;
 }
-/** An item drawn on its way out. */
-export const aiLeave = (html: string, t: number): string =>
-  `<div class="cnpy-ai-leave" data-ai-leaving inert style="--leave-t:-${Math.round(t)}ms"><div class="cnpy-ai-leave-in">${html}</div></div>`;
+/** An item drawn on its way out (`inline`: a mark inside a line of text). */
+export const aiLeave = (html: string, t: number, inline = false): string => {
+  const tag = inline ? "span" : "div";
+  return `<${tag} class="cnpy-ai-leave"${inline ? " data-inline" : ""} data-ai-leaving inert style="--leave-t:-${Math.round(t)}ms"><${tag} class="cnpy-ai-leave-in">${html}</${tag}></${tag}>`;
+};
+/** `html` as it is, or on its way out while `key`'s exit runs — THE helper a screen calls for an item that can
+ *  leave. With `hold`, a finished exit keeps it collapsed (see `aiLeavingT`); without, a finished exit draws "". */
+export function aiLeaving(ui: Partial<Pick<AiUi, "leaving">>, key: string, html: string, o: { hold?: boolean; inline?: boolean; now?: number } = {}): string {
+  const l = ui.leaving?.find((x) => x.key === key);
+  if (!l) return html;
+  const t = aiLeavingT(ui, key, o.now ?? Date.now(), o.hold ?? false);
+  return t === null ? "" : aiLeave(html, t, o.inline ?? false);
+}
 
 // ── words ────────────────────────────────────────────────────────────────────
 

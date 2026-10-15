@@ -16,6 +16,7 @@ import type { PersonColor } from "@shared/rows";
 import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse } from "./skeleton";
 import type { AiSuggestion } from "@shared/ai-core";
 import { reviewRiskLine, reviewRiskMark, type AiChipUi } from "./ai-cards";
+import type { AiUi } from "./ai-ui";
 
 const NO_AI_UI: AiChipUi = { busy: [], unavailable: [], reasonOpen: null };
 
@@ -108,7 +109,7 @@ export function reviewFilterSwitch(filter: ReviewFilter, counts: Record<ReviewFi
  *  up-right on the title row when the gate set it (nothing otherwise: every row here is
  *  waiting), 2-line summary, then a byline that folds the record type · identifier
  *  (label-face) into the author · date. */
-export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVerdict | null = null, aiLeaving?: Record<number, number>): string {
+export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVerdict | null = null, aiLeaving?: AiUi["leaving"]): string {
   const { type, id } = splitEyebrow(it.eyebrow);
   const dot = `<span style="color:var(--fg-40)">·</span>`;
   // The row is the list's KEYED child (`data-morph-key`): a repaint patches it in place, so a card

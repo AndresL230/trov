@@ -20,7 +20,7 @@ import type { TicketDetail } from "@shared/tickets";
 import type { AdrRow, NeedsTriageRow } from "@shared/rows";
 import type { StagedProposal } from "../web/src/api";
 import { reviewRiskFixture, ticketSuggestionsFixture, unplacedSuggestionFixture } from "@shared/ai-fixtures";
-import { AI_CHIP_EXIT_MS } from "../web/src/ai-cards";
+import { AI_EXIT_MS, aiSuggestionKey, initialAiUi } from "../web/src/ai-ui";
 import css from "../web/src/trov.css?raw";
 import mainSrc from "../web/src/main.ts?raw";
 
@@ -142,53 +142,51 @@ describe("field present — Trov's suggestions on the three screens", () => {
   });
 });
 
-// ── motion (web-ui.md › Sidebar & motion; › A row leaving a list; RULES §8) ──────────────────────
-describe("motion — a suggestion enters with its screen and leaves by the one exit pattern", () => {
+// ── motion (web-ui.md › The AI kit; › A row leaving a list; RULES §8) ─────────────────────────────
+// Phase C's chips use the AI kit's ONE exit (ai-ui.ts › Leaving: `AiUi.leaving`, `.cnpy-ai-leave`, `AI_EXIT_MS`,
+// `aiLeaving`) — the same as "Wrong?", the Feed's note and the themes' chips (test/render.ai-motion.test.ts).
+describe("motion — a suggestion enters with its screen and leaves by the AI kit's one exit", () => {
   const risk = () => reviewRiskFixture(MODE, "doc:auth-flow@3", 0)!;
   const unplaced = () => unplacedSuggestionFixture(MODE, 7)!;
+  const at = (o: Record<number, number>) => ({ ...initialAiUi(), leaving: Object.entries(o).map(([id, t]) => ({ key: aiSuggestionKey(Number(id)), at: t })) });
   const screens = (leaving: Record<number, number> = {}) => ({
-    ticket: render(app({ screen: "ticketdetail", ticketId: 14, ticketDetail: { status: "ok", data: ticketDetail({ ai: tSugg }) }, aiLeaving: leaving })),
-    unplaced: render(app({ screen: "maintenance", needsTriage: { status: "ok", data: [triageRow({ ai: [unplaced()] })] }, aiLeaving: leaving })),
-    review: render(app({ screen: "review", proposals: { status: "ok", data: [proposal({ ai: [risk()] })] }, draftAdrs: { status: "ok", data: [] }, aiLeaving: leaving })),
+    ticket: render(app({ screen: "ticketdetail", ticketId: 14, ticketDetail: { status: "ok", data: ticketDetail({ ai: tSugg }) }, ai: at(leaving) })),
+    unplaced: render(app({ screen: "maintenance", needsTriage: { status: "ok", data: [triageRow({ ai: [unplaced()] })] }, ai: at(leaving) })),
+    review: render(app({ screen: "review", proposals: { status: "ok", data: [proposal({ ai: [risk()] })] }, draftAdrs: { status: "ok", data: [] }, ai: at(leaving) })),
   });
 
-  it("every chip and the risk line sit in a leave box around a `.cnpy-rise` (the screen entrance; nothing replays on a rerender)", () => {
+  it("every chip and the risk line rise with the screen (`.cnpy-rise`; nothing replays on a rerender); nothing leaving, no exit drawn", () => {
     const { ticket, unplaced: u, review } = screens();
-    const box = /<div class="cnpy-ai-out[^"]*"><div class="cnpy-ai-out-in"><div class="cnpy-rise" style="--i:\d;[^"]*"><div class="cnpy-ai-(chip|risk-line)"/g;
+    const box = /<div class="cnpy-rise[^"]*" style="--i:\d;[^"]*"><div class="cnpy-ai-(chip|risk-line)"/g;
     expect(ticket.match(box)).toHaveLength(3);
     expect(u.match(box)).toHaveLength(1);
     expect(review.match(box)).toHaveLength(1);
-    // Nothing is leaving: no exit is drawn.
-    for (const h of [ticket, u, review]) expect(h).not.toContain("data-leaving");
+    for (const h of [ticket, u, review]) expect(h).not.toContain("cnpy-ai-leave");
   });
 
-  it("a decided suggestion is drawn leaving, with the time it has already spent leaving as a negative delay; the others are untouched", () => {
+  it("a decided suggestion is drawn leaving in `.cnpy-ai-leave`, its elapsed time a negative delay; the others are untouched", () => {
     const cat = tSugg.find((x) => x.kind === "ticket.category")!;
     const { ticket, unplaced: u, review } = screens({ [cat.id]: NOW.getTime() - 120, [unplaced().id]: NOW.getTime(), [risk().id]: NOW.getTime() - 40 });
-    expect(ticket.match(/data-leaving/g)).toHaveLength(1);
-    expect(ticket).toMatch(/<div class="cnpy-ai-out" data-leaving style="--leave-t:-120ms"><div class="cnpy-ai-out-in"><div class="cnpy-rise"[^>]*><div class="cnpy-ai-chip" data-ai-chip="ticket\.category-/);
-    expect(u).toContain('<div class="cnpy-ai-out cnpy-ai-unplaced" data-leaving style="--leave-t:0ms">');
-    expect(u).toMatch(/<span class="cnpy-ai-row-mark" data-leaving style="--leave-t:0ms"/); // the list row's mark fades with it
-    expect(review).toMatch(/<div class="cnpy-ai-out" data-leaving style="--leave-t:-40ms"><div class="cnpy-ai-out-in"><div class="cnpy-rise"[^>]*><div class="cnpy-ai-risk-line"/);
-    expect(review).toMatch(/<span class="cnpy-ai-risk" data-leaving style="--leave-t:-40ms"/);
+    expect(ticket.match(/class="cnpy-ai-leave"/g)).toHaveLength(1);
+    expect(ticket).toMatch(/<div class="cnpy-ai-leave" data-ai-leaving inert style="--leave-t:-120ms"><div class="cnpy-ai-leave-in"><div class="cnpy-rise"[^>]*><div class="cnpy-ai-chip" data-ai-chip="ticket\.category-/);
+    expect(u).toMatch(/<div class="cnpy-ai-leave" data-ai-leaving inert style="--leave-t:-0ms"><div class="cnpy-ai-leave-in"><div class="cnpy-rise cnpy-ai-unplaced"/);
+    // The list row's mark leaves with it, inline.
+    expect(u).toMatch(/<span class="cnpy-ai-leave" data-inline data-ai-leaving inert style="--leave-t:-0ms"><span class="cnpy-ai-leave-in"><span class="cnpy-ai-row-mark"/);
+    expect(review).toMatch(/<div class="cnpy-ai-leave" data-ai-leaving inert style="--leave-t:-40ms"><div class="cnpy-ai-leave-in"><div class="cnpy-rise"[^>]*><div class="cnpy-ai-risk-line"/);
+    expect(review).toMatch(/<span class="cnpy-ai-leave" data-inline data-ai-leaving inert style="--leave-t:-40ms"><span class="cnpy-ai-leave-in"><span class="cnpy-ai-risk"/);
   });
 
-  const rule = (sel: string) => css.match(new RegExp(`${sel.replace(/[.[\]"=*]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
-  it("CSS: a one-track grid that goes 1fr → 0fr and fades after a .13s hold, on the app's one clock, joined through --leave-t", () => {
-    expect(rule(".cnpy-ai-out")).toContain("grid-template-rows:1fr");
-    expect(rule(".cnpy-ai-out-in")).toContain("min-height:0");
-    expect(css).toContain("@keyframes cnpy-ai-out { from { grid-template-rows:1fr; opacity:1; } to { grid-template-rows:0fr; opacity:0; } }");
-    expect(rule(".cnpy-ai-out[data-leaving]")).toContain("animation:cnpy-ai-out var(--fx-fast) var(--fx-ease) both");
-    expect(rule(".cnpy-ai-out[data-leaving]")).toContain("animation-delay:calc(.13s + var(--leave-t, 0ms))");
-    expect(rule(".cnpy-ai-out[data-leaving] > .cnpy-ai-out-in")).toContain("overflow:hidden");
+  it("past the exit a suggestion stays collapsed (held at AI_EXIT_MS) until its screen's re-read drops it", () => {
+    const cat = tSugg.find((x) => x.kind === "ticket.category")!;
+    const { ticket } = screens({ [cat.id]: NOW.getTime() - 5_000 });
+    expect(ticket).toContain(`style="--leave-t:-${AI_EXIT_MS}ms"><div class="cnpy-ai-leave-in">`);
   });
-  it("the re-read waits for the hold plus the collapse (under 350ms), and nothing moves under reduced motion", () => {
-    const fast = Number(css.match(/--fx-fast:\.(\d+)s/)?.[1]) * 10; // ".18s" → 180
-    expect(AI_CHIP_EXIT_MS).toBe(130 + fast);
-    expect(AI_CHIP_EXIT_MS).toBeLessThanOrEqual(350);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.cnpy-ai-out\[data-leaving\], \.cnpy-ai-risk\[data-leaving\], \.cnpy-ai-row-mark\[data-leaving\] \{ animation:none !important; display:none !important; \}/);
-    const hook = mainSrc.slice(mainSrc.indexOf("decided: (id) =>"), mainSrc.indexOf("const aiFilterCtl"));
-    expect(hook).toContain("state.aiLeaving[id] = now;");
-    expect(hook).toContain("reducedMotion() ? 0 : AI_CHIP_EXIT_MS");
+
+  it("ONE exit in the kit: no second class, constant or state for chips; main.ts holds the re-read for the exit", () => {
+    expect(css).not.toContain("cnpy-ai-out");
+    expect(css).toContain(".cnpy-ai-leave[data-inline], [data-enter] .cnpy-ai-leave[data-inline] { display:inline-grid; vertical-align:middle; }");
+    expect(Object.keys(initialState())).not.toContain("aiLeaving");
+    const hook = mainSrc.slice(mainSrc.indexOf("decided: (_id, _how, exitMs) =>"), mainSrc.indexOf("const aiFilterCtl"));
+    expect(hook).toContain("}, exitMs);");
   });
 });

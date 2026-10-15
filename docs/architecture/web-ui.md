@@ -917,26 +917,26 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   never styled like a value a person set: a dashed `--border-strong` outline, the mark, muted words. The
   reason is a real disclosure button (`aria-expanded`, works on touch), the chip a container of buttons (never
   a button itself), and it wraps, so it fits a row, a card, a detail pane and a phone. A 409 `not_available`
-  (no accept handler for its kind yet) replaces the buttons with "Not available yet". Phase C's chips (the ticket
-  detail, Unplaced, Review's risk line — `web/src/ai-cards.ts`) sit in a `leaveBox`: they rise with their screen
-  (`.cnpy-rise`) and, once Accept / Dismiss answered, leave by the row-exit pattern below — state
-  (`AppState.aiLeaving`, id → when its exit began), a `.cnpy-ai-out` one-track grid going `1fr` → `0fr` and fading
-  after a .13s hold on `--fx-fast`, and the re-read held `AI_CHIP_EXIT_MS` (main.ts's `decided` hook). Those screens
-  are rebuilt on a paint, so it is a keyframe animation with a negative delay (`--leave-t`, the `--enter-t` trick),
-  never restarted by a repaint; a list row's mark fades the same way. Gone at once under reduced motion
-  (`test/render.ai-cards.test.ts` › motion).
-  (no accept handler for its kind yet — every kind today) replaces the buttons with "Not available yet". On a
-  live screen only the proposed themes use it so far.
+  (no accept handler for its kind) replaces the buttons with "Not available yet". It is used by Phase C's cards
+  (the ticket detail, Unplaced, Review's risk line — `web/src/ai-cards.ts`) and the proposed themes.
 - **Motion** is the app's: State rises with the page (`.cnpy-rise`) and flashes with the panel on a Repo tab
   switch (`pendingFlash` includes `.repo-ai`); a Trov entry cascades in the feed's `.cnpy-stagger`, and the Source
-  switch flashes the list (`AiHost.flashNext`). **Leaving** — "Wrong?" on State or a Trov entry, "Got it" on the
-  Feed's note — is Review's exit (› A row leaving a list) on a screen REBUILT per paint: the item is hidden in
-  state at once (every count already leaves it out) but still drawn for `AI_EXIT_MS` (310 ms) from
-  `state.ai.leaving`, `inert`, in `.cnpy-ai-leave` (dimmed .13s, then the one-track grid `1fr` → `0fr` and a fade
-  over `--fx-fast`). It is a KEYFRAME clocked by `--leave-t` (the elapsed ms, negative — `--enter-t`'s trick), so a
-  rebuild mid-exit joins it instead of replaying it; it outranks `[data-enter] .cnpy-stagger > *`. A failed write
-  stops the exit and the item is back. Under reduced motion nothing leaves: it is gone at once
-  (`test/render.ai-motion.test.ts`).
+  switch flashes the list (`AiHost.flashNext`); Phase C's chips and the risk line rise with their screen
+  (`.cnpy-rise` + `--i`). **Leaving — ONE exit for the whole kit** (`ai-ui.ts` › Leaving): ONE state
+  (`state.ai.leaving`, key → when its exit began), ONE class (`.cnpy-ai-leave`, `[data-inline]` for a mark inside a
+  line), ONE constant (`AI_EXIT_MS`, 310 ms) and ONE helper (`aiLeaving`, over `aiLeavingT` / `aiLeave`). It covers
+  "Wrong?" on State or a Trov entry (`aiHiddenKey`), "Got it" on the Feed's note (`AI_NOTE_LEAVING`), and every
+  suggestion once Accept / Dismiss answered — a chip, the risk line, a list row's mark, a proposed theme
+  (`aiSuggestionKey(id)`). It is Review's exit (› A row leaving a list) on a screen REBUILT per paint: the item is
+  still drawn for `AI_EXIT_MS`, `inert`, dimmed .13s, then the one-track grid goes `1fr` → `0fr` and fades over
+  `--fx-fast` — a KEYFRAME clocked by `--leave-t` (the elapsed ms, negative — `--enter-t`'s trick), so a rebuild
+  mid-exit joins it instead of replaying it; it outranks `[data-enter] .cnpy-stagger > *`. "Wrong?" / "Got it" hide
+  the item in state at once (every count already leaves it out) and the exit's entry clears after `AI_EXIT_MS`; a
+  failed write stops it and the item is back. A suggestion's exit is HELD (`hold`): its screen re-reads only after
+  `AI_EXIT_MS` (`AiHost.decided`'s `exitMs`, the themes' `reloadRepo`), and until the read drops it, it stays drawn
+  collapsed. The controller starts every exit (`ai-actions.ts` `leave`). Under reduced motion nothing leaves: it is
+  gone at once and the re-read goes out at once (`test/render.ai-motion.test.ts`, `test/render.ai-cards.test.ts` ›
+  motion).
 - **Acts** are `ai…`, in `web/src/ai-actions.ts`. The themes' Rename field keeps its draft WITHOUT a repaint
   (the Repo screen is rebuilt on a paint, not morphed), so typing never rebuilds the page.
 - **Where the work went** draws lanes as `aria-pressed` buttons (no button inside: the proposals' actions sit in

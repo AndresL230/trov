@@ -20,7 +20,7 @@ import { esc, attr, surface } from "./ui";
 import { glyph } from "./marks";
 import { segmented } from "./segmented";
 import {
-  AI_EMPTY, AI_TIP, aiByline, aiCapped, aiCite, aiCites, aiDay, aiEmpty, aiFeedback, aiHiddenKey, aiIsHidden, aiLeave, aiLeavingT, aiSuggestionChip, aiWrongBtn, type AiUi,
+  AI_EMPTY, AI_TIP, aiByline, aiCapped, aiCite, aiCites, aiDay, aiEmpty, aiFeedback, aiHiddenKey, aiIsHidden, aiLeave, aiLeaving, aiLeavingT, aiSuggestionChip, aiSuggestionKey, aiWrongBtn, type AiUi,
 } from "./ai-ui";
 
 /** What the two sections need from the screen besides the field. */
@@ -146,10 +146,11 @@ function proposals(lanes: AiThemeLane[], p: RepoAiProps): string {
           <button type="button" data-act="aiRenameCancel" class="cnpy-mutelink" style="font-size:12px;font-weight:500;color:var(--fg-55);padding:2px 6px;min-height:26px">Cancel</button>
         </span>`
       : `<button type="button" data-act="aiRenameOpen" data-arg="${id}" data-field="aiRenameOpen:${id}" class="cnpy-mutelink" style="font-size:12px;font-weight:500;color:var(--fg-70);border-radius:6px;padding:2px 9px;min-height:26px;white-space:nowrap">Rename</button>`;
-    return `<li style="min-width:0">${aiSuggestionChip(
+    // Accept / Rename / Remove: it leaves by the kit's one exit, then the dashboard is read again (ai-ui.ts › Leaving).
+    return `<li style="min-width:0">${aiLeaving(ui, aiSuggestionKey(id), aiSuggestionChip(
       { key: `theme-${id}`, id, label: l.name, reason: l.description, cites: l.prs.slice(0, 3) },
       { open: ui.reasonOpen === `theme-${id}`, busy: ui.busy.includes(id), unavailable: ui.unavailable.includes(id), canAct: p.admin, dismissLabel: "Remove", extra: rename },
-    )}</li>`;
+    ), { hold: true })}</li>`;
   }).join("");
   return `<div id="repo-themes-proposed" class="repo-themes-proposed" tabindex="-1" style="display:flex;flex-direction:column;gap:10px">
       <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px">
