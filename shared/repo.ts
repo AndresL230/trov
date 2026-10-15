@@ -8,6 +8,7 @@
 // is `not_connected`, never guessed.
 
 import type { AiRepoState, AiThemes, AiThemeRange } from "./ai-core";
+import type { RepoFacts } from "./repo-facts-core";
 import type { PersonColor } from "./rows";
 // TYPES only, in both directions: shared/hosting.ts imports `RepoRange` / `RepoSection` / `RepoTone` from
 // here, and this file its section and Poll-now shapes from there. A type-only cycle is erased at compile
@@ -291,6 +292,10 @@ export interface RepoDashboard {
   contributors: RepoSection<RepoContributor[]>;
   labels: RepoSection<RepoLabels>;
   todos: RepoSection<RepoTodos>;
+
+  /** The Overview's facts (repo setups) — one object the layout rules read on both sides (shared/repo-facts-core.ts).
+   *  Absent in the client-side sample set. Not a section. */
+  facts?: RepoFacts;
 
   // ── Written by Trov (shared/ai-core.ts) — NOT sections: absent = off / nothing written ──
   /** Overview's first section, "State". */

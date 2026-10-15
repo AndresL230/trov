@@ -12,6 +12,11 @@
 //   · trends  — sparkline arrays are stripped, the drift breakdown is cut
 //               to a bounded list of group headers, and each provider part's
 //               deploy strip to its newest few, unless asked for;
+//   · facts   — the Overview's facts (shared/repo-facts-core.ts) and the LAYOUT they decide
+//               (`layoutOf(layoutInputOf(facts), facts.groupDefault)` — the very function the screen runs, so
+//               the same facts draw the same opener here and there) travel with the overview tab (or no tab);
+//               without trends a commit group carries a count instead of its commits and a part's history its
+//               newest few (the drift rule below);
 //   · written — what Trov WROTE about the repository is not a section, so the
 //               tab filter does not name it: `state` travels with the overview
 //               (it is Overview's first block), `themes` with planning (Planning's
@@ -30,6 +35,8 @@ import {
   type RepoDashboard, type RepoDrift, type RepoProduct, type RepoRange, type RepoSection, type RepoSectionName, type RepoTab,
 } from "@shared/repo";
 import type { RepoProviderPart } from "@shared/hosting";
+import { layoutInputOf, type FactsCommitGroup, type RepoFacts } from "@shared/repo-facts-core";
+import { layoutOf, type RepoLayout } from "@shared/repo-layout-core";
 import { type TenantContext, all, first } from "../data/sql";
 import { emptyRepoDashboard, getRepoDashboard, type RepoDashboardEnv } from "./repo";
 
@@ -43,6 +50,8 @@ export interface RepoAgentOptions {
   /** Omitted → false: no `trend` arrays, and drift is cut to `DRIFT_GROUP_LIMIT`
    *  groups, each carrying a count rather than its commits. */
   includeTrends?: boolean;
+  /** The App menu's narrowing (an app key, `__repo`); omitted / unknown → every app. */
+  app?: string | null;
 }
 
 export interface RepoAgentView {
@@ -56,6 +65,10 @@ export interface RepoAgentView {
   state?: AiRepoState;
   /** Written by Trov: with `tab` planning or none, when the dashboard has it. */
   themes?: Record<AiThemeRange, AiThemes>;
+  /** The Overview's facts (with `tab` overview or none) — shaped by `factsView`. */
+  facts?: unknown;
+  /** What the facts decide — the screen's own `layoutOf(layoutInputOf(facts), facts.groupDefault)`. */
+  layout?: RepoLayout;
 }
 
 const ALL_SECTIONS: readonly RepoSectionName[] = Object.values(REPO_TAB_SECTIONS).flat();
@@ -115,6 +128,27 @@ function driftView(drift: RepoDrift, includeTrends: boolean): unknown {
   };
 }
 
+/** A commit-group list as an agent gets it without `include_trends`: the first `DRIFT_GROUP_LIMIT` groups, each
+ *  with `commitCount` instead of its commits (the drift rule), `groupCount` the full number beside it. */
+function groupsView(groups: FactsCommitGroup[], includeTrends: boolean): { groups: unknown[]; groupCount: number } {
+  if (includeTrends) return { groups, groupCount: groups.length };
+  return { groups: groups.slice(0, DRIFT_GROUP_LIMIT).map(({ commits, ...g }) => ({ ...g, commitCount: commits.length })), groupCount: groups.length };
+}
+
+/** The facts as an agent gets them. With `include_trends`: as the screen gets them. Without: every commit group
+ *  list cut as `groupsView` says, and each part's history (≤ 20 deploys, a series like a dot strip) to its newest
+ *  `PROVIDER_DEPLOY_VIEW_LIMIT`, with `historyCount` the full number. Apps, environments and parts — all the
+ *  layout reads — are never cut, so `layoutOf` over this view equals `layout`. */
+export function factsView(facts: RepoFacts, includeTrends: boolean): unknown {
+  if (includeTrends) return facts;
+  return {
+    ...facts,
+    parts: facts.parts.map((p) => ({ ...p, historyCount: p.history.length, history: p.history.slice(-PROVIDER_DEPLOY_VIEW_LIMIT) })),
+    notShipped: facts.notShipped.map((n) => ({ ...n, ...groupsView(n.groups, false) })),
+    drift: facts.drift.map((d) => ({ ...d, ...groupsView(d.groups, false) })),
+  };
+}
+
 /** A copy — fresh objects and arrays all the way down — without any key named
  *  `trend`: every sparkline series in the DTO is spelled that way (usage
  *  metrics, product counts/totals, CI failures, coverage, bundle, TODOs, a
@@ -159,6 +193,12 @@ export function shapeRepoDashboard(dash: RepoDashboard, opts: RepoAgentOptions =
   const view: RepoAgentView = { repo: dash.repo, generatedAt: dash.generatedAt, degraded: dash.degraded, tab: opts.tab ?? "all", range, sections };
   if (dash.state && (!opts.tab || opts.tab === "overview")) view.state = dash.state;
   if (dash.themes && (!opts.tab || opts.tab === "planning")) view.themes = dash.themes;
+  if (dash.facts && (!opts.tab || opts.tab === "overview")) {
+    // THE parity rule: the layout is the shared core's, over the facts as the screen receives them — never a
+    // second decision here (test/repo-facts.mcp.test.ts holds it to the SPA's for every scenario).
+    view.layout = layoutOf(layoutInputOf(dash.facts), dash.facts.groupDefault);
+    view.facts = factsView(dash.facts, includeTrends);
+  }
   return view;
 }
 
@@ -204,7 +244,7 @@ export async function getRepoDashboardForAgent(
 ): Promise<RepoAgentView> {
   let dash: RepoDashboard;
   try {
-    dash = await getRepoDashboard(ctx, repo, now, envs);
+    dash = await getRepoDashboard(ctx, repo, now, envs, undefined, { app: opts.app ?? null });
   } catch {
     dash = emptyRepoDashboard(repo, true);
   }

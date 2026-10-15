@@ -127,13 +127,13 @@ async function seedDashboard(): Promise<void> {
 }
 
 describe("MCP get_repo_dashboard — registration", () => {
-  it("is listed for a NON-admin principal, with the three optional inputs", async () => {
+  it("is listed for a NON-admin principal, with its optional inputs", async () => {
     const tools = await withClient("beatrix", testEnv(), async (c) => (await c.listTools()).tools);
     const names = tools.map((t) => t.name);
     expect(names).not.toContain("update_plan"); // beatrix really is non-admin
     expect(names).toContain("get_repo_dashboard");
     const tool = tools.find((t) => t.name === "get_repo_dashboard")!;
-    expect(Object.keys(tool.inputSchema.properties ?? {}).sort()).toEqual(["include_trends", "org", "range", "repo", "tab"]); // its three, and the two every tool takes to say WHICH org (0051)
+    expect(Object.keys(tool.inputSchema.properties ?? {}).sort()).toEqual(["app", "include_trends", "org", "range", "repo", "tab"]); // its own (repo setups: `repo` and `app` too — `repo` doubles as the scope argument every tool takes, 0051), and `org`
     expect(tool.inputSchema.required ?? []).toEqual([]);
     expect(tool.description).toMatch(/not_connected/);
     // …and the FIELD-level rule: a null inside an `ok` section is unknown too.
@@ -162,7 +162,8 @@ describe("MCP get_repo_dashboard — the default call", () => {
     expect(v.tab).toBe("all");
     expect(v.range).toBe("7d");
     expect(Number.isNaN(Date.parse(v.generatedAt))).toBe(false);
-    expect(Object.keys(v).sort()).toEqual(["degraded", "generatedAt", "range", "repo", "sections", "tab"]);
+    // `facts` and `layout` travel with the overview (and with no tab) — repo setups, Phase B.
+    expect(Object.keys(v).sort()).toEqual(["degraded", "facts", "generatedAt", "layout", "range", "repo", "sections", "tab"]);
     expect(Object.keys(v.sections).sort()).toEqual([...ALL_SECTIONS].sort());
 
     // usage: ONE range's environments (an array), not the three-range record.
