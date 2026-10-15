@@ -281,6 +281,14 @@ script then takes over the SAME markup. Everything else is the app, and is never
   alone (a webhook's bare 401 stays bare). On a host that is not PUBLIC_ORIGIN's (a Preview) the Worker tags
   everything, and `_headers` (`assetHeaders`) tags every static file on a `*.workers.dev` address, plus `/app`
   and `/404` anywhere. Loopback counts as the public host, so `wrangler dev` answers as production does.
+- **Browser caching** (`_headers`, `ASSET_CACHE` in `shared/site-pages.ts` — the ONLY rules that say
+  `Cache-Control`): Vite's `/assets/*` carry a content hash in their names, so they are `public,
+  max-age=31536000, immutable`; the Guide's screenshots (`/guide/*`, stable names) are `public, max-age=604800`.
+  Everything else the binding serves — the pages, the app shell, `/fonts/`, the text files — keeps the binding's
+  default (revalidated by ETag on every use), so a deploy is seen on the next load. The binding gives a path that
+  matches several rules ALL their headers and joins a header two rules both set, which is why only one rule may
+  name `Cache-Control` for any path (`test/site-pages.test.ts`). A file that must change under the same name never
+  goes in `/assets/`.
 - **robots.txt** disallows only the API, sign-in and token endpoints and the session-gated bytes
   (`ROBOTS_DISALLOW`). The app's pages are deliberately NOT disallowed: a crawler that may not fetch a URL
   never sees its `noindex` (nor that it is no longer the home page's HTML), and a disallowed URL can still be

@@ -254,6 +254,33 @@ describe("what the assets binding is told", () => {
     for (const p of indexed) expect(h).not.toContain(`\n${p.path}\n`);
   });
 
+  it("_headers: hashed /assets/* are immutable for a year, /guide/* kept a week, and no other rule says Cache-Control", () => {
+    const h = assetHeaders();
+    expect(h).toContain("\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n");
+    expect(h).toContain("\n/guide/*\n  Cache-Control: public, max-age=604800\n");
+    // Read the file the way the binding does: a rule line, then its indented headers. A path matching several
+    // rules gets every rule's headers (a header set twice is joined with a comma), so at most ONE rule may set
+    // Cache-Control on any path — and none on a page, the app shell, the fonts or the text files.
+    const rules: { pattern: string; headers: string[] }[] = [];
+    for (const line of h.split("\n")) {
+      if (!line || line.startsWith("#")) continue;
+      if (line.startsWith("  ")) rules[rules.length - 1].headers.push(line.trim());
+      else rules.push({ pattern: line, headers: [] });
+    }
+    const matches = (pattern: string, path: string): boolean => {
+      const rel = pattern.replace(/^https:\/\/[^/]+/, ""); // a host rule's path (workers.dev: every path)
+      return rel.endsWith("*") ? path.startsWith(rel.slice(0, -1)) : path === rel;
+    };
+    const cacheOf = (path: string): string[] =>
+      rules.filter((r) => matches(r.pattern, path)).flatMap((r) => r.headers.filter((x) => x.startsWith("Cache-Control:")));
+    expect(cacheOf("/assets/main-AbC123.js")).toEqual(["Cache-Control: public, max-age=31536000, immutable"]);
+    expect(cacheOf("/assets/trov-9f8e7d.css")).toEqual(["Cache-Control: public, max-age=31536000, immutable"]);
+    expect(cacheOf("/guide/board-dark.png")).toEqual(["Cache-Control: public, max-age=604800"]);
+    for (const path of ["/", APP_SHELL_PATH, NOT_FOUND_PAGE.path, LLMS_TXT, LLMS_FULL_TXT, "/fonts/x.woff2", "/favicon.svg", ...SITE_PAGES.map((p) => p.path)])
+      expect(cacheOf(path), path).toEqual([]);
+    expect(rules.filter((r) => r.headers.some((x) => x.startsWith("Cache-Control:"))).map((r) => r.pattern)).toEqual(["/assets/*", "/guide/*"]);
+  });
+
   it("_headers: each page's Markdown is UTF-8 text/markdown whose canonical is the page; llms.txt and llms-full.txt are UTF-8 text", () => {
     const h = assetHeaders();
     const md = SITE_PAGES.filter((p) => p.markdown);

@@ -62,6 +62,37 @@ export async function resolveTenant(env: Env, userId: string, slug: string): Pro
   return row ? tenant(env, row.id, userId, row.role, "session") : null;
 }
 
+/** What the session gate learns for a `/api/o/:slug/*` request in ONE statement (`resolveSessionTenant`). */
+export interface SessionTenant {
+  person: string;
+  expiresAt: string;
+  /** EXACTLY what `resolveTenant(env, person, slug)` answers: the context, or null for an unknown slug, a
+   *  non-member and a suspended org alike. */
+  ctx: TenantContext | null;
+}
+
+/**
+ * The session row by id AND, joined to it, `resolveTenant`'s membership row for `slug` — so a tenant
+ * request costs one round trip before its handler, not two (src/auth/principal.ts `sessionGate`, and
+ * src/data/gate.ts `tenantGate`, which uses `ctx` only for the same person and slug). The tenant half is
+ * `resolveTenant`'s statement verbatim with the session's `person` as the user: a LEFT JOIN, so a session
+ * with no tenant still answers (the gate's 404 is `tenantGate`'s, after the session's 401 as before). null =
+ * no such session. Whether the session has EXPIRED is the caller's (`sessionLive`), as for `getSessionUser`.
+ */
+export async function resolveSessionTenant(env: Env, sessionId: string, slug: string): Promise<SessionTenant | null> {
+  const row = await env.DB.prepare(
+    `SELECT s.person, s.expires_at, t.id, t.role FROM sessions s
+       LEFT JOIN (SELECT o.id, m.role, m.user_id FROM orgs o JOIN memberships m ON m.org_id = o.id
+                   WHERE o.slug = ? AND o.suspended_at IS NULL) t ON t.user_id = s.person COLLATE NOCASE
+      WHERE s.id = ?`
+  ).bind(slug, sessionId).first<{ person: string; expires_at: string; id: string | null; role: OrgRole | null }>();
+  if (!row) return null;
+  return {
+    person: row.person, expiresAt: row.expires_at,
+    ctx: row.id !== null && row.role !== null ? tenant(env, row.id, row.person, row.role, "session") : null,
+  };
+}
+
 /** The same check by org ID, for a credential that names its org (an MCP token or OAuth grant —
  *  ./bearer.ts — or a signed download URL): `userId`'s LIVE membership of a non-suspended `orgId`, or null. */
 export async function resolveTenantById(env: Env, userId: string, orgId: string, via: "session" | "bearer"): Promise<TenantContext | null> {

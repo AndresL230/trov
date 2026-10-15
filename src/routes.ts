@@ -733,15 +733,19 @@ tenantRoot.get("/me/dashboard", async (c) => {
 // Stored nowhere; never 500s.
 tenantRoot.get("/repo/dashboard", async (c) => {
   // The org's own primary repository and environments (`org_repos`, `org_environments`).
+  // Both read side by side; `repo` is set as soon as it is known, so a failure of the other read still
+  // names it in the degraded answer, as when they ran one after the other.
   let repo = "";
+  const repoP = orgPrimaryRepo(c.var.ctx).then((r) => { repo = r?.repo ?? ""; });
   try {
-    repo = (await orgPrimaryRepo(c.var.ctx))?.repo ?? "";
-    const dash = await getRepoDashboard(c.var.ctx, repo, Date.now(), await orgEnvironments(c.var.ctx));
+    const [, envs] = await Promise.all([repoP, orgEnvironments(c.var.ctx)]);
+    const dash = await getRepoDashboard(c.var.ctx, repo, Date.now(), envs);
     // `state` / `themes` (shared/repo.ts) are not sections and are omitted: nothing writes them yet.
     // LOCAL_AI_PREVIEW shows the samples under `wrangler dev` only (src/ai/preview.ts).
     const preview = aiPreview(c.env, c.req.url);
     return c.json(preview ? { ...dash, state: preview.repoState, themes: preview.themes } : dash);
   } catch {
+    await repoP.catch(() => undefined); // the repository's name, if its own read succeeded
     return c.json(emptyRepoDashboard(repo, true));
   }
 });

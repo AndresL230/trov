@@ -2,6 +2,8 @@ import { type TenantContext, type Stmt, all, first, run, stmt, batch, nowIso, ph
 import { PRODUCT_PREFIX } from "./product";
 import type { RepoMetric } from "./types";
 
+// An async reader here AWAITS its statement (`return await all(…)`) — see the note atop ./reads.ts.
+
 export const DAY = 86_400_000;
 /** High-frequency series and rows that lose their value quickly. Deliberately
  *  does NOT cover `pr` / `push` — those stay forever (the dashboard's
@@ -137,7 +139,7 @@ export async function putMetrics(ctx: TenantContext, rows: RepoMetric[]): Promis
 export async function metricSeries(ctx: TenantContext, metric: string, env: string, part: string, sinceIso: string): Promise<{ at: string; value: number }[]> {
   const since = normaliseAt(sinceIso);
   if (since === null) return [];
-  return all<{ at: string; value: number }>(ctx,
+  return await all<{ at: string; value: number }>(ctx,
     `SELECT at, value FROM repo_metrics WHERE org_id = ? AND metric = ? AND env = ? AND part = ? AND at >= ? ORDER BY at ASC`,
     ctx.orgId, metric, env, part, since);
 }
@@ -164,7 +166,7 @@ export async function metricsSince(ctx: TenantContext, groups: MetricGroup[]): P
     binds.push(...g.metrics, since);
   }
   if (!clauses.length) return [];
-  return all<{ metric: string; env: string; part: string; at: string; value: number }>(ctx,
+  return await all<{ metric: string; env: string; part: string; at: string; value: number }>(ctx,
     `SELECT metric, env, part, at, value FROM repo_metrics WHERE org_id = ? AND (${clauses.join(" OR ")}) ORDER BY at ASC, id ASC`,
     ctx.orgId, ...binds);
 }
@@ -255,16 +257,16 @@ export async function productReadings(
   const trendArm = `SELECT r.metric, r.env, r.at, r.value FROM names CROSS JOIN envs CROSS JOIN mids CROSS JOIN repo_metrics r
        WHERE names.m IS NOT NULL AND (names.m GLOB '${PRODUCT_PREFIX}c_*_24h' OR names.m GLOB '${PRODUCT_PREFIX}t_*')
          AND r.org_id = ? AND r.metric = names.m AND r.env = envs.e AND r.part = '' AND r.at = mids.a`;
-  return midnights.length
+  return await (midnights.length
     ? all(ctx,
         `WITH RECURSIVE ${names}, mids(a) AS (VALUES ${midnights.map(() => "(?)").join(", ")})
          ${freshArm} UNION ALL ${trendArm} ORDER BY 3 ASC`,
         ctx.orgId, ctx.orgId, ...envKeys, ...midnights, ctx.orgId, fresh, ctx.orgId)
-    : all(ctx, `WITH RECURSIVE ${names} ${freshArm} ORDER BY 3 ASC`, ctx.orgId, ctx.orgId, ...envKeys, ctx.orgId, fresh);
+    : all(ctx, `WITH RECURSIVE ${names} ${freshArm} ORDER BY 3 ASC`, ctx.orgId, ctx.orgId, ...envKeys, ctx.orgId, fresh));
 }
 
 export async function latestMetric(ctx: TenantContext, metric: string, env: string, part: string): Promise<{ at: string; value: number } | null> {
-  return first<{ at: string; value: number }>(ctx,
+  return await first<{ at: string; value: number }>(ctx,
     `SELECT at, value FROM repo_metrics WHERE org_id = ? AND metric = ? AND env = ? AND part = ? ORDER BY at DESC LIMIT 1`, ctx.orgId, metric, env, part);
 }
 

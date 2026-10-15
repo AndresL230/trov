@@ -182,16 +182,19 @@ const isBug = (i: OpenIssue): boolean => i.labels.some((l) => l.toLowerCase() ==
  *  NATIVE tickets only: the tile sits beside the open-ISSUE tiles, and a ticket
  *  mirrored from an issue (0032) is already counted there. */
 async function ticketCounts(ctx: TenantContext, since: string): Promise<{ open: number; delta: number }> {
-  const open = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ? AND status IN ${OPEN_STATUS_SQL} AND source = 'canopy'`, ctx.orgId);
-  const filed = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ? AND created_at > ? AND source = 'canopy'`, ctx.orgId, since);
-  const moves = await first<{ resolved: number | null; reopened: number | null }>(
-    ctx,
-    `SELECT SUM(CASE WHEN e.to_status IN ('done','declined') AND (e.from_status IS NULL OR e.from_status NOT IN ('done','declined')) THEN 1 ELSE 0 END) AS resolved,
-            SUM(CASE WHEN e.from_status IN ('done','declined') AND e.to_status NOT IN ('done','declined') THEN 1 ELSE 0 END) AS reopened
-       FROM ticket_events e JOIN tickets t ON t.id = e.ticket_id AND t.org_id = ? AND t.source = 'canopy'
-      WHERE e.org_id = ? AND e.created_at > ?`,
-    ctx.orgId, ctx.orgId, since
-  );
+  // Three independent counts, side by side (one round trip's wait, not three).
+  const [open, filed, moves] = await Promise.all([
+    first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ? AND status IN ${OPEN_STATUS_SQL} AND source = 'canopy'`, ctx.orgId),
+    first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ? AND created_at > ? AND source = 'canopy'`, ctx.orgId, since),
+    first<{ resolved: number | null; reopened: number | null }>(
+      ctx,
+      `SELECT SUM(CASE WHEN e.to_status IN ('done','declined') AND (e.from_status IS NULL OR e.from_status NOT IN ('done','declined')) THEN 1 ELSE 0 END) AS resolved,
+              SUM(CASE WHEN e.from_status IN ('done','declined') AND e.to_status NOT IN ('done','declined') THEN 1 ELSE 0 END) AS reopened
+         FROM ticket_events e JOIN tickets t ON t.id = e.ticket_id AND t.org_id = ? AND t.source = 'canopy'
+        WHERE e.org_id = ? AND e.created_at > ?`,
+      ctx.orgId, ctx.orgId, since
+    ),
+  ]);
   return { open: open?.n ?? 0, delta: (filed?.n ?? 0) - (moves?.resolved ?? 0) + (moves?.reopened ?? 0) };
 }
 
@@ -854,32 +857,33 @@ export async function getRepoDashboard(
   const twoWeeksAgo = new Date(now - 14 * DAY).toISOString();
   const ninetyDaysAgo = new Date(now - RECENT_PR_DAYS * DAY).toISOString();
 
+  // ── every read, as a dataflow ─────────────────────────────────────────────
+  // Each read below starts as soon as what it depends on is known, and the projection waits ONCE for all of
+  // them: a read that needs nothing starts at once, one that needs a gate (`prs_reconciled`, a captured
+  // run, any push) starts the moment that gate's own read is back, and the two reads that need two others
+  // (the checks: the environment heads AND the listed PRs' heads; the usage "ever?" read: the usage points
+  // AND the parts) wait for exactly those. The longest chain is three statements, whatever the rest costs
+  // (`test/perf.round-trips.test.ts`; `data-layer.md` › Round trips). Every conditional read is still taken
+  // only on the path that needs it, so the statements run are the same as when they ran one by one, and so
+  // is the answer. A failed read fails the whole projection exactly as before (the route answers its empty
+  // dashboard); the hosting read alone fails by itself (below).
+
   // Never on the render path: GitHub's GraphQL refs query is called off
   // reconcileRepo only — this only reads back the snapshot it wrote. No
   // snapshot yet → not_connected; a stale one is still shown, same as `drift`
   // below — and NOTHING on screen says how old it is (`computedAt` is stored
   // but never travels in the DTO).
-  const branchSnap = await getSnapshot<RepoBranches>(ctx, "branches");
-
-  const people = await personsByLogin(ctx);
+  const branchSnapP = getSnapshot<RepoBranches>(ctx, "branches");
 
   // Two weeks of PR closes cover the week-over-week delta AND the 14-day bars.
-  const recentPrs = await all<PrRow>(
+  const recentPrsP = all<PrRow>(
     ctx, `SELECT ${PR_COLS} FROM events WHERE org_id = ? AND event_type IN ('pr_merged','pr_closed') AND ${AT} > ? ORDER BY ${AT} DESC, id DESC`,
     ctx.orgId, twoWeeksAgo
   );
   // The list and the feed are NOT window-scoped: a quiet fortnight still shows the last PRs.
-  const latestPrs = await all<PrRow>(
+  const latestPrsP = all<PrRow>(
     ctx, `SELECT ${PR_COLS} FROM events WHERE org_id = ? AND event_type IN ('pr_merged','pr_closed') ORDER BY ${AT} DESC, id DESC LIMIT ?`, ctx.orgId, ACTIVITY_LIMIT
   );
-  const listPrs = latestPrs.slice(0, PR_LIMIT);
-  const merged = recentPrs.filter((p) => p.event_type === "pr_merged");
-  const mergedThisWeek = merged.filter((p) => p.at > weekAgo);
-  const mergedLastWeek = merged.filter((p) => p.at <= weekAgo && p.at > twoWeeksAgo);
-  const closedUnmerged = recentPrs.filter((p) => p.event_type === "pr_closed" && p.at > weekAgo);
-
-  const openNow = await openIssuesAsOf(ctx, nowAt);
-  const openThen = await openIssuesAsOf(ctx, weekAgo);
 
   // ── repo capture (sources A, B) ───────────────────────────────────────────
   // `prCaptured` is a COMPLETENESS marker (`prs_reconciled`, written by
@@ -887,31 +891,35 @@ export async function getRepoDashboard(
   // "any pr row exists" — a single webhook delivery must not claim a complete
   // open-PR count. Same field name/shape as before; only what it gates on
   // changed.
-  const prCaptured = (await getSnapshot(ctx, "prs_reconciled")) !== null;
-  const isOpen = (r: RepoPrRow) => r.state === "draft" || r.state === "review";
-  const prsNow = prCaptured ? (await prStatesAsOf(ctx, nowAt)).filter(isOpen) : [];
-  const prsThen = prCaptured ? (await prStatesAsOf(ctx, weekAgo)).filter(isOpen) : [];
-  // The PR list: the latest state per PR, unknown states dropped (never guessed).
-  const prRows = prCaptured ? (await recentPrRows(ctx, PR_LIMIT, ninetyDaysAgo)).filter((r) => isKnownPrState(r.state)) : [];
-  // ONE approval read for both consumers below — the listed PRs and the open-PR
-  // tile. An approved PR is no longer "awaiting review".
-  const approved = await approvedPrs(ctx, [...prsNow, ...prRows].filter((r) => r.state === "review").map((r) => r.number ?? 0));
-  const awaiting = (rows: RepoPrRow[], done: Set<number> = new Set()) =>
-    rows.filter((r) => r.state === "review" && !done.has(r.number ?? -1)).length;
   // A delta is only real once capture was RECORDING for the whole comparison
   // window — otherwise "now vs a week ago" is really "now vs whenever capture
   // began", which reads as a spurious spike. `tickets` is the fallback tile's
   // own read, so skip it entirely once PR capture makes that tile unreachable.
-  const prRecordingSince = prCaptured ? await recordingSince(ctx, "pr") : null;
-  const prDeltaOk = prRecordingSince !== null && prRecordingSince <= weekAgo;
-  const tickets = prCaptured ? { open: 0, delta: 0 } : await ticketCounts(ctx, weekAgo);
-  const pushes = await pushRowsSince(ctx, twoWeeksAgo);
-  const pushesThisWeek = pushes.filter((p) => p.occurred_at > weekAgo);
-  const sum = (rows: RepoEventRow[]) => rows.reduce((n, r) => n + (r.count ?? 0), 0);
-  const commitsThisWeek = sum(pushesThisWeek);
-  const commitsLastWeek = sum(pushes.filter((p) => p.occurred_at <= weekAgo));
-  const pushRecordingSince = pushes.length ? await recordingSince(ctx, "push") : null;
-  const pushDeltaOk = pushRecordingSince !== null && pushRecordingSince <= twoWeeksAgo;
+  const isOpen = (r: RepoPrRow) => r.state === "draft" || r.state === "review";
+  const prP = getSnapshot(ctx, "prs_reconciled").then(async (snap) => {
+    if (snap === null) {
+      return { prCaptured: false, prsNow: [] as RepoPrRow[], prsThen: [] as RepoPrRow[], prRows: [] as RepoPrRow[], prRecordingSince: null as string | null, tickets: await ticketCounts(ctx, weekAgo) };
+    }
+    const [statesNow, statesThen, recentRows, since] = await Promise.all([
+      prStatesAsOf(ctx, nowAt), prStatesAsOf(ctx, weekAgo), recentPrRows(ctx, PR_LIMIT, ninetyDaysAgo), recordingSince(ctx, "pr"),
+    ]);
+    return {
+      prCaptured: true, prsNow: statesNow.filter(isOpen), prsThen: statesThen.filter(isOpen),
+      // The PR list: the latest state per PR, unknown states dropped (never guessed).
+      prRows: recentRows.filter((r) => isKnownPrState(r.state)),
+      prRecordingSince: since, tickets: { open: 0, delta: 0 },
+    };
+  });
+  // ONE approval read for both consumers below — the listed PRs and the open-PR
+  // tile. An approved PR is no longer "awaiting review".
+  const approvedP = prP.then((pr) => approvedPrs(ctx, [...pr.prsNow, ...pr.prRows].filter((r) => r.state === "review").map((r) => r.number ?? 0)));
+
+  const pushP = pushRowsSince(ctx, twoWeeksAgo).then(async (pushes) => {
+    if (!pushes.length) return { pushes, pushRecordingSince: null as string | null, commitDays: null as Map<string, number> | null };
+    // Commits once pushes are captured; merges (what `events` has always had) until then.
+    const [since, commitDays] = await Promise.all([recordingSince(ctx, "push"), commitsByDay(ctx, twoWeeksAgo)]);
+    return { pushes, pushRecordingSince: since, commitDays };
+  });
 
   // ── environments: every PART of each, whoever hosts it ───────────────────
   // The org's parts (`listAllParts` — its environments and its stored parts, two statements; a part's
@@ -933,12 +941,127 @@ export async function getRepoDashboard(
       return [[], null] as const;
     }
   };
-  const [allParts, hosted] = envs.length ? await hostingRead() : [[] as PartRow[], null] as const;
+  const hostingP = envs.length ? hostingRead() : Promise.resolve([[] as PartRow[], null] as const);
+  const headsP = envs.length ? branchHeads(ctx, envs.map((e) => e.branch)) : Promise.resolve(new Map<string, string>());
+  const checksP = Promise.all([headsP, prP]).then(([heads, pr]) => latestChecks(ctx, [...heads.values(), ...pr.prRows.map((r) => r.sha ?? "")]));
+  // Environment health: ONE query for every environment half (read below).
+  const healthP = envs.length ? latestHealth(ctx) : Promise.resolve(new Map<string, { at: string; value: number }>());
+
+  // CI is `not_connected` until a workflow run has ever been captured; the seven-day rate waits for capture
+  // to cover the week (read below).
+  const runsP = hasCaptured(ctx, "run").then(async (runCaptured) => {
+    if (!runCaptured) return { runCaptured, ciRates: null, failureRows: [] as Awaited<ReturnType<typeof ciFailureRows>>, failureTotal: 0 };
+    const [runRecordingSince, failureRows] = await Promise.all([recordingSince(ctx, "run"), ciFailureRows(ctx, weekAgo, CI_FAILURE_LIMIT)]);
+    const [ciRates, failureTotal] = await Promise.all([
+      runRecordingSince !== null && runRecordingSince <= weekAgo ? ciDailyRates(ctx, now) : null,
+      // The list is capped; the COUNT is not. Same window and definition as
+      // `ciFailureRows` (a failed/timed-out run after `weekAgo`), so "N failures"
+      // never reads the cap off the list.
+      failureRows.length < CI_FAILURE_LIMIT ? failureRows.length
+        : first<{ n: number }>(ctx,
+            `SELECT COUNT(*) AS n FROM repo_events WHERE org_id = ? AND kind = 'run' AND state IN ('failure', 'timed_out') AND occurred_at > ?`, ctx.orgId, weekAgo)
+          .then((row) => row?.n ?? failureRows.length),
+    ]);
+    return { runCaptured, ciRates, failureRows, failureTotal };
+  });
+
+  const issueEventsP = all<IssueRow>(
+    ctx,
+    `SELECT ref_number, subject_login, ${AT} AS at,
+            json_extract(raw, '$.action') AS action, json_extract(raw, '$.issue.title') AS title,
+            json_extract(raw, '$.issue.html_url') AS url, json_extract(raw, '$.issue.user.login') AS author
+       FROM events WHERE org_id = ? AND event_type = 'issue'
+        AND json_extract(raw, '$.action') IN ('opened','closed','reopened','assigned')
+      ORDER BY ${AT} DESC, id DESC LIMIT ?`,
+    // Enough to fill the feed AND cover a busy week of opens/closes for the tiles.
+    ctx.orgId, 200
+  );
+
+  // ── coverage / bundle / TODO count — repo_metrics, fed by the target repo's
+  // CI posting a commit status that `handleGithubWebhook`'s `status` branch
+  // (src/webhook.ts) turns into a metric point. Never a live scan at render time.
+  const monthAgo = new Date(now - 30 * DAY).toISOString();
+  // A wider window than coverage/bundle (90 days, not 30): the TODO count
+  // moves slowly, so a 30-day window would too often hold only one point.
+  const todoWindowStart = new Date(now - 90 * DAY).toISOString();
+  // I2: a metric that has gone QUIET (nothing in the window) is not the same
+  // as one that was never connected. `latestMetric` with no time bound answers
+  // "has ANYTHING ever landed for this metric" — non-null → `empty` ("no
+  // reading in the window"), null → `not_connected` ("nothing reports this at
+  // all"). Only reached on the empty path, so it costs nothing once the
+  // window already has points.
+  const trendP = (metric: string, since: string) => metricSeries(ctx, metric, "", "", since).then(async (pts) => ({
+    pts,
+    ifEmpty: pts.length ? EMPTY : (await latestMetric(ctx, metric, "", "")) !== null ? EMPTY : NOT_CONNECTED,
+  }));
+
+  // ── usage — the web parts' hourly `hx_requests` / `hx_errors` (any provider; src/hosting/poll.ts) and the
+  // app's `active_users_*` gauges. ONE statement for every range, environment, part and series; the 24h /
+  // 7d / 30d views are sliced in memory, and each web part's covered interval comes from the hosting read
+  // above (`hosting_poll_state`). Same three states as health and coverage: `ok` with something to show,
+  // `empty` when a point has EVER landed but nothing is in the window (the polls have gone quiet),
+  // `not_connected` when none ever did — and that existence read (`metricsEver`, one more statement) is only
+  // made on the not-ok path. No environment configured → nothing to attribute a part to: not_connected.
+  // The providers section's metric points (web and service) are named groups of the SAME read.
+  const usageEnd = Math.floor(now / HOUR) * HOUR;
+  // Product metrics (contract v2) are ONE more statement beside it —
+  // `productReadings`: their names are dynamic, so they cannot be a named
+  // `metricsSince` group. Its states are its own (a `sap_*` row says nothing
+  // about whether usage is connected), but its "has anything EVER landed?"
+  // question rides the SAME `metricsEver` statement, as a prefix family.
+  const usageReadP = envs.length
+    ? Promise.all([
+        metricsSince(ctx, usageReadGroups(usageEnd, now)),
+        // DISTINCT keys: the read joins against a `VALUES` list of them, so a key
+        // listed twice in the environments would return every row twice — and
+        // every midnight would be pushed into its trend twice.
+        productReadings(ctx, [...envKeys], new Date(now - HOSTING_STALE_MS).toISOString(), new Date(now - PRODUCT_TREND_DAYS * DAY).toISOString()),
+      ])
+    : Promise.resolve([[], []] as [Awaited<ReturnType<typeof metricsSince>>, Awaited<ReturnType<typeof productReadings>>]);
   // Only the environments this projection reports on: the parts list reads the org's rows, the rest of the
   // dashboard reads `envs` — in production they are the same rows (src/routes.ts, src/tools/repo-agent.ts).
-  const infos = hosted ? partInfos(allParts.filter((p) => envKeys.has(p.env)), hosted, providers) : [];
-  const heads = envs.length ? await branchHeads(ctx, envs.map((e) => e.branch)) : new Map<string, string>();
-  const checks = await latestChecks(ctx, [...heads.values(), ...prRows.map((r) => r.sha ?? "")]);
+  const infosP = hostingP.then(([allParts, hosted]) => (hosted ? partInfos(allParts.filter((p) => envKeys.has(p.env)), hosted, providers) : []));
+  const usageP = Promise.all([usageReadP, infosP]).then(async ([[usageRows, productRows], infos]) => {
+    const used = projectUsage(usageRows, envs, infos, usageEnd, now);
+    const produced = projectProduct(productRows, envs, now);
+    const ever = envs.length && (!used.anyUsage || !produced.anyProduct)
+      ? await metricsEver(ctx, USAGE_METRICS, [PRODUCT_PREFIX])
+      : new Set<string>();
+    return { usageRows, used, produced, ever };
+  });
+
+  const [
+    branchSnap, people, recentPrs, latestPrs, openNow, openThen, pr, approved, push,
+    [, hosted], infos, heads, checks, healthRows, runs, reviews, issueEvents, sprints,
+    // Never on the render path: GitHub's compare API is called off a push
+    // webhook or reconcileRepo, never here — this only reads back what one of
+    // those already wrote. No snapshot yet → not_connected; a stale one is
+    // still shown, with nothing on screen saying how old it is (see `branches`).
+    driftSnap, cov, bun, todo, usage, hasReviewCapture,
+  ] = await Promise.all([
+    branchSnapP, personsByLogin(ctx), recentPrsP, latestPrsP, openIssuesAsOf(ctx, nowAt), openIssuesAsOf(ctx, weekAgo),
+    prP, approvedP, pushP, hostingP, infosP, headsP, checksP, healthP, runsP,
+    reviewRowsSince(ctx, twoWeeksAgo), issueEventsP, list_sprints(ctx), getSnapshot<RepoDrift>(ctx, "drift"),
+    trendP("coverage", monthAgo), trendP("bundle_kb", monthAgo), trendP("todo_count", todoWindowStart), usageP,
+    // See the review gate below (Team & Planning).
+    hasCaptured(ctx, "review", "webhook"),
+  ]);
+
+  const { prCaptured, prsNow, prsThen, prRows, prRecordingSince, tickets } = pr;
+  const { pushes, pushRecordingSince, commitDays } = push;
+  const listPrs = latestPrs.slice(0, PR_LIMIT);
+  const merged = recentPrs.filter((p) => p.event_type === "pr_merged");
+  const mergedThisWeek = merged.filter((p) => p.at > weekAgo);
+  const mergedLastWeek = merged.filter((p) => p.at <= weekAgo && p.at > twoWeeksAgo);
+  const closedUnmerged = recentPrs.filter((p) => p.event_type === "pr_closed" && p.at > weekAgo);
+  const awaiting = (rows: RepoPrRow[], done: Set<number> = new Set()) =>
+    rows.filter((r) => r.state === "review" && !done.has(r.number ?? -1)).length;
+  const prDeltaOk = prRecordingSince !== null && prRecordingSince <= weekAgo;
+  const pushesThisWeek = pushes.filter((p) => p.occurred_at > weekAgo);
+  const sum = (rows: RepoEventRow[]) => rows.reduce((n, r) => n + (r.count ?? 0), 0);
+  const commitsThisWeek = sum(pushesThisWeek);
+  const commitsLastWeek = sum(pushes.filter((p) => p.occurred_at <= weekAgo));
+  const pushDeltaOk = pushRecordingSince !== null && pushRecordingSince <= twoWeeksAgo;
 
   // Environment health: 10-minute pings the repo cron writes (src/repo/poll.ts).
   // A row older than HEALTH_STALE_MS means the cron has stopped — never guess
@@ -948,7 +1071,6 @@ export async function getRepoDashboard(
   // from never having been set up: `healthEver` carries that apart, so the
   // block can read `empty` ("the last ping is old") rather than claiming
   // nothing pings these URLs. ONE query for every environment half.
-  const healthRows = envs.length ? await latestHealth(ctx) : new Map<string, { at: string; value: number }>();
   const health: RepoHealth[] = [];
   let healthEver = false;
   for (const cfg of envs) {
@@ -1020,30 +1142,9 @@ export async function getRepoDashboard(
   // commit deltas use: until `run` capture predates the whole week, a day with
   // no captured runs is a day capture was not running, not a green day. The
   // failures LIST is not gated — those rows are facts.
-  const runCaptured = await hasCaptured(ctx, "run");
-  const runRecordingSince = runCaptured ? await recordingSince(ctx, "run") : null;
-  const ciRates = runRecordingSince !== null && runRecordingSince <= weekAgo ? await ciDailyRates(ctx, now) : null;
-  const failureRows = runCaptured ? await ciFailureRows(ctx, weekAgo, CI_FAILURE_LIMIT) : [];
-  // The list is capped; the COUNT is not. Same window and definition as
-  // `ciFailureRows` (a failed/timed-out run after `weekAgo`), so "N failures"
-  // never reads the cap off the list.
-  const failureTotal = !runCaptured ? 0
-    : failureRows.length < CI_FAILURE_LIMIT ? failureRows.length
-    : (await first<{ n: number }>(ctx,
-        `SELECT COUNT(*) AS n FROM repo_events WHERE org_id = ? AND kind = 'run' AND state IN ('failure', 'timed_out') AND occurred_at > ?`, ctx.orgId, weekAgo))?.n ?? failureRows.length;
-  const reviews = await reviewRowsSince(ctx, twoWeeksAgo);
+  // (Read above, in `runsP`.)
+  const { runCaptured, ciRates, failureRows, failureTotal } = runs;
 
-  const issueEvents = await all<IssueRow>(
-    ctx,
-    `SELECT ref_number, subject_login, ${AT} AS at,
-            json_extract(raw, '$.action') AS action, json_extract(raw, '$.issue.title') AS title,
-            json_extract(raw, '$.issue.html_url') AS url, json_extract(raw, '$.issue.user.login') AS author
-       FROM events WHERE org_id = ? AND event_type = 'issue'
-        AND json_extract(raw, '$.action') IN ('opened','closed','reopened','assigned')
-      ORDER BY ${AT} DESC, id DESC LIMIT ?`,
-    // Enough to fill the feed AND cover a busy week of opens/closes for the tiles.
-    ctx.orgId, 200
-  );
   const issuesThisWeek = issueEvents.filter((e) => e.at > weekAgo);
   const openedThisWeek = issuesThisWeek.filter((e) => e.action === "opened");
   const closedThisWeek = issuesThisWeek.filter((e) => e.action === "closed");
@@ -1094,7 +1195,6 @@ export async function getRepoDashboard(
   ];
 
   // Commits once pushes are captured; merges (what `events` has always had) until then.
-  const commitDays = pushes.length ? await commitsByDay(ctx, twoWeeksAgo) : null;
   const perDay = new Map<string, number>();
   for (const p of merged) perDay.set(p.at.slice(0, 10), (perDay.get(p.at.slice(0, 10)) ?? 0) + 1);
   const days = lastDays(now, BAR_DAYS).map((date) => ({ date, count: (commitDays ?? perDay).get(date) ?? 0 }));
@@ -1164,7 +1264,6 @@ export async function getRepoDashboard(
   // miss (an open PR past the 30th, an approval buried under 10 later reviews)
   // leaves that PR reading "awaiting review", which is what EVERY open PR read
   // before the arm existed: a polled row can only make that tile more right.
-  const hasReviewCapture = await hasCaptured(ctx, "review", "webhook");
   // Tallied only with the gate open: a hidden count must not order the list or
   // add a row ("0 · 0 · —") for someone known only by a polled review. Same
   // rule as the pushes above: a review bot (CodeRabbit, Copilot) is not a
@@ -1186,7 +1285,7 @@ export async function getRepoDashboard(
   };
 
   // The sprint a person marked active (roadmap order) — never inferred from dates.
-  const current = (await list_sprints(ctx)).find((sp) => sp.active) ?? null;
+  const current = sprints.find((sp) => sp.active) ?? null;
   const sprint: RepoSprint | null = current
     ? { id: current.id, label: current.label, due: current.due, closed: current.progress.closed, total: current.progress.total, pct: current.progress.pct }
     : null;
@@ -1205,32 +1304,12 @@ export async function getRepoDashboard(
     : listPrs.map((p) => prOf(people, p));
 
   const some = <T>(rows: T[]): RepoSection<T[]> => (rows.length ? ok(rows) : EMPTY);
-  // Never on the render path: GitHub's compare API is called off a push
-  // webhook or reconcileRepo, never here — this only reads back what one of
-  // those already wrote. No snapshot yet → not_connected; a stale one is
-  // still shown, with nothing on screen saying how old it is (see `branches`).
-  const driftSnap = await getSnapshot<RepoDrift>(ctx, "drift");
 
-  // ── coverage / bundle / TODO count — repo_metrics, fed by the target repo's
-  // CI posting a commit status that `handleGithubWebhook`'s `status` branch
-  // (src/webhook.ts) turns into a metric point. Never a live scan at render time.
-  const monthAgo = new Date(now - 30 * DAY).toISOString();
-  // A wider window than coverage/bundle (90 days, not 30): the TODO count
-  // moves slowly, so a 30-day window would too often hold only one point.
-  const todoWindowStart = new Date(now - 90 * DAY).toISOString();
-  // Three independent reads (M9) — batched rather than three sequential round-trips.
-  const [covPts, bunPts, todoPts] = await Promise.all([
-    metricSeries(ctx, "coverage", "", "", monthAgo),
-    metricSeries(ctx, "bundle_kb", "", "", monthAgo),
-    metricSeries(ctx, "todo_count", "", "", todoWindowStart),
-  ]);
-  // I2: a metric that has gone QUIET (nothing in the window) is not the same
-  // as one that was never connected. `latestMetric` with no time bound answers
-  // "has ANYTHING ever landed for this metric" — non-null → `empty` ("no
-  // reading in the window"), null → `not_connected` ("nothing reports this at
-  // all"). Only reached on the empty path, so it costs nothing once the
-  // window already has points.
-  const everEmpty = async (metric: string) => ((await latestMetric(ctx, metric, "", "")) !== null ? EMPTY : NOT_CONNECTED);
+  // ── coverage / bundle / TODO count (read above, in `trendP`: the three series, and each empty one's
+  // "ever?" read — I2).
+  const { pts: covPts, ifEmpty: covEmpty } = cov;
+  const { pts: bunPts, ifEmpty: bunEmpty } = bun;
+  const { pts: todoPts, ifEmpty: todoEmpty } = todo;
   // windowDelta's baseline is the window's FIRST point — once a series holds
   // more than 10 readings, that baseline can lie to the LEFT of the 10-point
   // sparkline drawn below (`.slice(-10)`): the delta and the drawn trend may
@@ -1244,7 +1323,7 @@ export async function getRepoDashboard(
         tone: covDelta === null ? "neutral" : covDelta >= 0 ? "good" : "warn",
         note: "over 30 days",
       })
-    : await everEmpty("coverage");
+    : covEmpty;
   const bunDelta = windowDelta(bunPts);
   const bundle: RepoSection<RepoTrend> = bunPts.length
     ? ok({
@@ -1254,7 +1333,7 @@ export async function getRepoDashboard(
         tone: bunDelta === null ? "neutral" : bunDelta > 0 ? "warn" : "good",
         note: "over 30 days · gzip",
       })
-    : await everEmpty("bundle_kb");
+    : bunEmpty;
   const todoDelta = windowDelta(todoPts);
   const todos: RepoSection<RepoTodos> = todoPts.length
     ? ok({
@@ -1263,37 +1342,11 @@ export async function getRepoDashboard(
         since: todoDelta === null ? "" : new Date(todoPts[0].at).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }),
         trend: todoPts.slice(-10).map((p) => p.value),
       })
-    : await everEmpty("todo_count");
+    : todoEmpty;
 
-  // ── usage — the web parts' hourly `hx_requests` / `hx_errors` (any provider; src/hosting/poll.ts) and the
-  // app's `active_users_*` gauges. ONE statement for every range, environment, part and series; the 24h /
-  // 7d / 30d views are sliced in memory, and each web part's covered interval comes from the hosting read
-  // above (`hosting_poll_state`). Same three states as health and coverage: `ok` with something to show,
-  // `empty` when a point has EVER landed but nothing is in the window (the polls have gone quiet),
-  // `not_connected` when none ever did — and that existence read (`metricsEver`, one more statement) is only
-  // made on the not-ok path. No environment configured → nothing to attribute a part to: not_connected.
-  // The providers section's metric points (web and service) are named groups of the SAME read.
-  const usageEnd = Math.floor(now / HOUR) * HOUR;
-  // Product metrics (contract v2) are ONE more statement beside it —
-  // `productReadings`: their names are dynamic, so they cannot be a named
-  // `metricsSince` group. Its states are its own (a `sap_*` row says nothing
-  // about whether usage is connected), but its "has anything EVER landed?"
-  // question rides the SAME `metricsEver` statement, as a prefix family.
-  const [usageRows, productRows] = envs.length
-    ? await Promise.all([
-        metricsSince(ctx, usageReadGroups(usageEnd, now)),
-        // DISTINCT keys: the read joins against a `VALUES` list of them, so a key
-        // listed twice in the environments would return every row twice — and
-        // every midnight would be pushed into its trend twice.
-        productReadings(ctx, [...envKeys], new Date(now - HOSTING_STALE_MS).toISOString(), new Date(now - PRODUCT_TREND_DAYS * DAY).toISOString()),
-      ])
-    : [[], []];
-  const used = projectUsage(usageRows, envs, infos, usageEnd, now);
-  const produced = projectProduct(productRows, envs, now);
+  // ── usage (read above, in `usageP` — `metricsEver` only on the not-ok path).
+  const { usageRows, used, produced, ever } = usage;
   const providerSection = hosted ? projectProviders(infos, usageRows, hosted, usageEnd, now) : NOT_CONNECTED;
-  const ever = envs.length && (!used.anyUsage || !produced.anyProduct)
-    ? await metricsEver(ctx, USAGE_METRICS, [PRODUCT_PREFIX])
-    : new Set<string>();
   const everAny = (metrics: string[]) => metrics.some((m) => ever.has(m));
 
   return {
