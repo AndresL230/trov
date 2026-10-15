@@ -1,8 +1,7 @@
 // Every SELECT over the repo capture tables. D1 only — nothing here may fetch.
 import { type TenantContext, all, first, fanOut, ph } from "../data/sql";
-import type { RepoDeploy } from "@shared/repo";
 import { getSnapshot } from "./store";
-import type { RepoEventKind, RepoEventRow, RepoPart, RepoPrRow, RepoReviewRow, RepoRunRow } from "./types";
+import type { RepoEventKind, RepoEventRow, RepoPrRow, RepoReviewRow, RepoRunRow } from "./types";
 
 /** The columns a `pr` reader needs — never `raw`, and never the columns no PR
  *  reader touches. Shared by `prStatesAsOf` / `recentPrRows` so both stay
@@ -72,111 +71,20 @@ export async function pushRowsSince(ctx: TenantContext, sinceIso: string): Promi
     `SELECT * FROM repo_events WHERE org_id = ? AND kind = 'push' AND occurred_at > ? ORDER BY occurred_at DESC, id DESC`, ctx.orgId, sinceIso);
 }
 
-// ── deploys, checks, workflow runs, reviews (Task 7's capture) ───────────────
+// ── checks, workflow runs, reviews (Task 7's capture) ────────────────────────
 //
 // Every read below is BATCHED on purpose. The dashboard renders N environments
-// × 2 deployables and a page of PRs; a per-row or per-environment query would
-// cost dozens of D1 round-trips on the render path. Each function here is ONE
-// statement (plus, for deploy history, one pusher lookup) whatever N is.
-
-/** How many dots one deploy strip shows. */
-const DEPLOY_HISTORY = 10;
-/** How far back the strip looks. `deploy` rows — and the `check` rows that ARE
- *  frontend deploys — are deliberately never pruned (src/repo/store.ts), so
- *  this read needs its own bound or it groups the whole table forever; a deploy
- *  older than this is not part of "recent deploy history" by any reading. */
-const DEPLOY_HISTORY_DAYS = 90;
+// and a page of PRs; a per-row or per-environment query would cost dozens of D1
+// round-trips on the render path. Each function here is ONE statement whatever
+// N is. (Deploys are not read here: every part's deploys are its hosting
+// provider's, `hosting_deploys` — `hostingReads` in ./store.ts.)
 
 /** Only these run conclusions are decisive — a cancelled or skipped run says
  *  nothing about whether CI is healthy, so it is not in the denominator. */
 const DECISIVE = ["success", "failure", "timed_out"];
 
-// ── the ONE policy for a non-decisive conclusion ─────────────────────────────
-//
-// GitHub deployment states and check/run conclusions overlap but are not the
-// same set, and both surfaces (a deploy dot, a checks icon) must read them the
-// same way. There is exactly one table, stated here and again at `checkState`:
-//
-//   success                                   → ok      (a deploy landed / a check passed)
-//   failure · error · timed_out               → fail
-//   stale · action_required · cancelled ·
-//     inactive WITHOUT a preceding success    → cancel   (it was abandoned, not failed)
-//   neutral · skipped                         → NOTHING HAPPENED: not a dot at
-//                                               all for a deploy, and a pass for
-//                                               the checks icon (a skipped check
-//                                               is not a failing one)
-//
-// `inactive` AFTER a success is just the supersede marker of a deploy that DID
-// land, which is why `success` is checked first.
-
-/** Non-decisive conclusions, by the table above. */
-const CANCEL_STATES = ["stale", "action_required", "cancelled", "inactive"];
+/** A check conclusion that is a failure (see `checkState`). */
 const FAIL_STATES = ["failure", "error", "timed_out"];
-
-/** Fold one deployment's (or one Workers Builds check run's) status rows into a
- *  single dot, by the policy above: a superseded deploy (success → inactive)
- *  still DEPLOYED, one that never succeeded and went inactive/cancelled/stale
- *  was cancelled, and one still in flight (or neutral/skipped) is not a dot at
- *  all (null). */
-function foldResult(states: string[]): RepoDeploy["result"] | null {
-  if (states.includes("success")) return "ok";
-  if (states.some((s) => FAIL_STATES.includes(s))) return "fail";
-  if (states.some((s) => CANCEL_STATES.includes(s))) return "cancel";
-  return null;
-}
-
-/** Who pushed each of these commits — the human behind a deploying bot. The
- *  FIRST push row for a sha wins (a re-push of the same head is the same
- *  person's commit).
- *
- *  CAVEAT: on a BACKFILLED push row (`provenance = 'backfill'`, written by the
- *  pre-capture commit fill in src/repo/github.ts) `actor_login` is the commit
- *  AUTHOR, not the pusher — the commits API cannot say who pushed. So on a
- *  squash merge "deployed by" can name the PR author rather than whoever
- *  pressed merge. A webhook push row carries the real pusher. */
-async function pushersFor(ctx: TenantContext, shas: string[]): Promise<Map<string, string>> {
-  const ids = [...new Set(shas.filter(Boolean))];
-  if (!ids.length) return new Map();
-  const rows = await fanOut<{ sha: string; actor_login: string }>(ctx, ids, (p) =>
-    `SELECT sha, actor_login FROM (
-       SELECT sha, actor_login, ROW_NUMBER() OVER (PARTITION BY sha ORDER BY id ASC) AS rn
-         FROM repo_events WHERE org_id = ? AND kind = 'push' AND sha IN (${p})
-     ) WHERE rn = 1 AND actor_login IS NOT NULL`, [ctx.orgId]);
-  return new Map(rows.map((r) => [r.sha, r.actor_login]));
-}
-
-/** The last `limit` deploys of EVERY environment half, OLDEST first (the dots
- *  read left→right), keyed `<env>:<part>`. Backend halves come from `deploy`
- *  rows (Railway, via GitHub deployment statuses), frontend halves from the
- *  `check` rows the capture tagged with an env + `part='frontend'` (a Workers
- *  Builds run on that environment's own branch). Two queries total, however
- *  many environments there are. */
-export async function deployHistories(ctx: TenantContext, now: number = Date.now(), limit: number = DEPLOY_HISTORY): Promise<Map<string, RepoDeploy[]>> {
-  const since = new Date(now - DEPLOY_HISTORY_DAYS * 86_400_000).toISOString();
-  const rows = await all<{ env: string; part: RepoPart; sha: string | null; states: string; at: string; actor: string | null }>(ctx,
-    // One deployment / check run = several status rows, so fold by `number`
-    // FIRST and take the per-strip window over the folded groups.
-    `SELECT env, part, sha, states, at, actor FROM (
-       SELECT env, part, MAX(sha) AS sha, GROUP_CONCAT(state) AS states,
-              MAX(occurred_at) AS at, MIN(occurred_at) AS started, MAX(actor_login) AS actor,
-              ROW_NUMBER() OVER (PARTITION BY env, part ORDER BY MIN(occurred_at) DESC) AS rn
-         FROM repo_events
-        WHERE org_id = ? AND kind IN ('deploy', 'check') AND env IS NOT NULL AND part IS NOT NULL
-          AND occurred_at > ?
-        GROUP BY env, part, number
-     ) WHERE rn <= ? ORDER BY env, part, started ASC`, ctx.orgId, since, limit);
-  const pushers = await pushersFor(ctx, rows.map((r) => r.sha ?? ""));
-  const out = new Map<string, RepoDeploy[]>();
-  for (const r of rows) {
-    const result = foldResult(r.states.split(","));
-    if (!result) continue; // still running — not a dot yet
-    const key = `${r.env}:${r.part}`;
-    const strip = out.get(key) ?? [];
-    strip.push({ sha: (r.sha ?? "").slice(0, 7), at: r.at, by: pushers.get(r.sha ?? "") ?? r.actor ?? "unknown", result });
-    out.set(key, strip);
-  }
-  return out;
-}
 
 /** The head sha of each branch — the newer of two sources, never a third query
  *  per branch:
@@ -236,12 +144,12 @@ export async function latestChecks(ctx: TenantContext, shas: string[]): Promise<
 /** One commit's checks as a single verdict — null when nothing is captured for
  *  it, so the PR list's checks column renders nothing rather than a guess.
  *
- *  Same ONE policy as `foldResult` above: `failure` / `error` / `timed_out` are
- *  a fail, `pending` is still running, and everything else — `success`,
- *  `neutral`, `skipped`, and the cancel bucket (`cancelled` / `stale` /
- *  `action_required`) — is NOT a failing check. This column has only
- *  pass/fail/run, and "abandoned" is a statement about a DEPLOY, not about the
- *  code under review, so the cancel bucket reads here as "nothing failing". */
+ *  `failure` / `error` / `timed_out` are a fail, `pending` is still running,
+ *  and everything else — `success`, `neutral`, `skipped` (nothing happened),
+ *  and the abandoned bucket (`cancelled` / `stale` / `action_required`) — is
+ *  NOT a failing check. This column has only pass/fail/run, and "abandoned" is
+ *  not a statement about the code under review, so it reads as "nothing
+ *  failing". */
 export function checkState(checks: { state: string }[] | undefined): "pass" | "fail" | "run" | null {
   if (!checks?.length) return null;
   if (checks.some((c) => FAIL_STATES.includes(c.state))) return "fail";

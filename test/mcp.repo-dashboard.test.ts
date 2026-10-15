@@ -18,6 +18,7 @@ import { DRIFT_GROUP_LIMIT, shapeRepoDashboard, type RepoAgentView } from "../sr
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoDashboard, type RepoDrift, type RepoRange, type RepoUsageEnv } from "@shared/repo";
 import type { Env } from "../src/env";
 import { LONG_TOKEN, leakedFragments, seedOrgRepoConfig } from "./helpers/repo";
+import { addPart } from "./helpers/dashboard-hosting";
 import type { RepoEnvConfig } from "../src/repo/config";
 import { bearerCtx, systemCtx, ORG_A } from "./helpers/tenant";
 
@@ -87,20 +88,21 @@ function trendPaths(v: unknown, path = "$", out: string[] = []): string[] {
   return out;
 }
 
-/** Usage (Cloudflare + active users), product metrics, coverage and a drift
+/** Usage (a Cloudflare Workers web part + active users), product metrics, coverage and a drift
  *  snapshot — relative to the real clock, because the tool reads `Date.now()`.
- *  Hosting, branches, health, environments… are deliberately left uncaptured. */
+ *  Deploys, branches, health, environments… are deliberately left uncaptured. */
 async function seedDashboard(): Promise<void> {
   // The dashboard reads the ORG's configuration (org_repos / org_environments), as 0042_organizations seeded it from these vars.
   await seedOrgRepoConfig(env.DB, ORG_A, "SaplingLearn/sapling", JSON.parse((env as unknown as Env).REPO_ENVIRONMENTS ?? "[]") as RepoEnvConfig[]);
+  await addPart(ORG_A, "staging", "frontend", "cloudflare", "web", { worker: "frontend-staging" }, 0, "Frontend");
   const hourFloor = Math.floor(Date.now() / HOUR) * HOUR;
   const midnight = Math.floor(Date.now() / DAY) * DAY;
   const iso = (ms: number) => new Date(ms).toISOString();
   const rows: Parameters<typeof putMetrics>[1] = [];
-  // 10 days of hourly Cloudflare points, ending at the last complete hour.
+  // 10 days of the frontend's hourly points, ending at the last complete hour.
   for (let h = 1; h <= 10 * 24; h++) {
-    rows.push({ metric: "cf_requests", env: "staging", part: "frontend", value: 100 + (h % 7), at: iso(hourFloor - h * HOUR) });
-    rows.push({ metric: "cf_errors", env: "staging", part: "frontend", value: h % 3, at: iso(hourFloor - h * HOUR) });
+    rows.push({ metric: "hx_requests", env: "staging", part: "frontend", value: 100 + (h % 7), at: iso(hourFloor - h * HOUR) });
+    rows.push({ metric: "hx_errors", env: "staging", part: "frontend", value: h % 3, at: iso(hourFloor - h * HOUR) });
   }
   for (const [w, n] of [["24h", 74], ["7d", 310], ["30d", 1204]] as const)
     rows.push({ metric: `active_users_${w}`, env: "staging", part: "", value: n, at: iso(hourFloor) });
@@ -169,7 +171,12 @@ describe("MCP get_repo_dashboard — the default call", () => {
     const staging = usage.find((u) => u.name === "staging")!;
     expect(staging.requests?.value).toBeTruthy();
     expect(staging.users?.value).toBe("310"); // the 7d gauge, not 24h's 74 or 30d's 1.2K
-    expect(okData<unknown[]>(v.sections.cloudflare)).toBeInstanceOf(Array);
+    expect(v.sections).not.toHaveProperty("cloudflare");
+    expect(v.sections).not.toHaveProperty("hosting");
+    // providers: the frontend part, its traffic collapsed to the range.
+    const [front] = okData<{ part: string; provider: string; traffic: Record<string, unknown> }[]>(v.sections.providers);
+    expect(front).toMatchObject({ part: "frontend", provider: "cloudflare" });
+    expect(front.traffic.requests).toEqual(expect.any(Number));
 
     // product: each count collapsed to the range's single figure.
     const product = okData<{ name: string; groups: { metrics: Record<string, unknown>[] }[]; totals: Record<string, unknown>[] }[]>(v.sections.product);
@@ -218,7 +225,7 @@ describe("MCP get_repo_dashboard — the default call", () => {
   it("never coerces: not_connected stays not_connected, empty stays empty", async () => {
     await seedDashboard();
     const v = await view();
-    for (const name of ["hosting", "branches", "health", "environments", "deploys", "ciFailures", "bundle", "todos"] as const)
+    for (const name of ["branches", "health", "environments", "deploys", "ciFailures", "bundle", "todos"] as const)
       expect(v.sections[name], name).toEqual({ status: "not_connected" });
     expect(v.sections.sprint).toEqual({ status: "empty" });
     // …and on an untouched database nothing is invented either.
@@ -247,7 +254,7 @@ describe("MCP get_repo_dashboard — tab, range, include_trends", () => {
       expect(v.tab).toBe(tab);
       expect(Object.keys(v.sections)).toEqual([...REPO_TAB_SECTIONS[tab]]);
     }
-    expect(Object.keys((await view({ tab: "usage" })).sections)).toEqual(["usage", "cloudflare", "hosting", "providers", "product"]);
+    expect(Object.keys((await view({ tab: "usage" })).sections)).toEqual(["usage", "providers", "product"]);
   });
 
   it("range picks that range's view", async () => {
@@ -343,7 +350,9 @@ describe("MCP get_repo_dashboard — never an MCP error, never a secret", () => 
       for (const cfg of configured) {
         for (const field of NEVER_IN_DTO) {
           const value = cfg[field];
-          expect(typeof value, `${cfg.key}.${field} is configured`).toBe("string");
+          // The environment no longer stores these (0056 moved them into parts); a var that still lists one
+          // must not leak it either.
+          if (typeof value !== "string" || !value) continue;
           // Production's Worker is literally named "frontend" — also the DTO's own
           // part name, so its absence proves nothing; every other value is distinctive.
           if (DTO_WORDS.has(value as string)) continue;
@@ -381,7 +390,10 @@ function richDashboard(): RepoDashboard {
     repo: "SaplingLearn/sapling", generatedAt: at, degraded: false,
     environments: ok(["staging", "production"].map((key) => ({
       key, name: key, note: key, tone: "good" as const, pill: "HEALTHY", ci: "All 8 checks passing", ciTone: "good" as const, url: `https://${key}.example.com`,
-      parts: (["backend", "frontend"] as const).map((part) => ({ part, host: part === "backend" ? "Railway" as const : "Cloudflare" as const, sha: "abc1234", deployedAt: at, deployedBy: "jose-a", result: "ok" as const })),
+      parts: (["backend", "frontend"] as const).map((part) => ({
+        part, label: part === "backend" ? "Backend" : "Frontend", provider: part === "backend" ? "railway" as const : "cloudflare" as const,
+        host: part === "backend" ? "Railway" : "Cloudflare Workers", sha: "abc1234", deployedAt: at, deployedBy: "jose-a", result: "ok" as const,
+      })),
     }))),
     drift: ok({
       // The compare cap in a squash-merge repo: 250 commits = 250 PRs = 250 groups.
@@ -408,8 +420,6 @@ function richDashboard(): RepoDashboard {
     bundle: ok({ value: "412 KB", trend: trend(10), delta: "-8", tone: "good" as const, note: "over 30 days" }),
     activity: ok(Array.from({ length: 20 }, (_, i) => ({ kind: "push" as const, actor: person("jose-a"), text: `pushed 3 commits to feat/branch-${i}`, url: "https://github.com/SaplingLearn/sapling/commit/abc", at }))),
     usage: ok(byRange(() => [usageEnv("staging"), usageEnv("production")])),
-    cloudflare: ok(byRange(() => Array.from({ length: 6 }, (_, i) => ({ env: "staging", label: `Cloudflare row ${i}`, value: "12,345" })))),
-    hosting: ok([{ env: "staging", cpu: "0.4 vCPU", memory: "512 MB" }, { env: "production", cpu: "1.1 vCPU", memory: "900 MB" }]),
     // A web and a service part per environment, each with its full ten deploys and every figure known.
     providers: ok(["staging", "production"].flatMap((envKey) => (["web", "service"] as const).map((role) => ({
       env: envKey, env_label: envKey, part: role === "web" ? "web" : "api", label: role === "web" ? "Web" : "API", role,

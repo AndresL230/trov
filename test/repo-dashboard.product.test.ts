@@ -218,14 +218,14 @@ describe("getRepoDashboard — product metrics", () => {
     expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).product).toEqual({ status: "empty" });
   });
 
-  it("the product section never changes the usage / hosting sections' states, nor they its own", async () => {
+  it("the product section never changes the usage / providers sections' states, nor they its own", async () => {
     await seed(count("signups", "staging", AT, 3, 21, 96));
     const d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
-    expect([d.usage.status, d.cloudflare.status, d.hosting.status, d.product.status]).toEqual(["not_connected", "not_connected", "not_connected", "ok"]);
+    expect([d.usage.status, d.providers.status, d.product.status]).toEqual(["not_connected", "not_connected", "ok"]);
     await env.DB.prepare(`DELETE FROM repo_metrics`).run();
-    await seed([["active_users_24h", "staging", AT, 74], ["rw_cpu", "staging", AT - 9 * HOUR, 1]]);
+    await seed([["active_users_24h", "staging", AT, 74], ["hx_cpu", "staging", AT - 9 * HOUR, 1]]);
     const e = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
-    expect([e.usage.status, e.cloudflare.status, e.hosting.status, e.product.status]).toEqual(["ok", "not_connected", "empty", "not_connected"]);
+    expect([e.usage.status, e.providers.status, e.product.status]).toEqual(["ok", "not_connected", "not_connected"]);
   });
 
   it("the render adds exactly ONE statement for product metrics — and none beyond the shared existence check when it is quiet", async () => {

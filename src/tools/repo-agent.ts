@@ -6,7 +6,7 @@
 // file does is make it fit an agent's context:
 //   · `tab`   — only the sections that tab shows (`REPO_TAB_SECTIONS`, the ONE
 //               section→tab mapping, shared with web/src/repo.ts);
-//   · `range` — the usage / cloudflare / product sections, and each provider
+//   · `range` — the usage / product sections, and each provider
 //               part's traffic, carry three ranges for the screen's
 //               selector; an agent gets ONE;
 //   · trends  — sparkline arrays are stripped, the drift breakdown is cut
@@ -31,8 +31,7 @@ import {
 } from "@shared/repo";
 import type { RepoProviderPart } from "@shared/hosting";
 import { type TenantContext, all, first } from "../data/sql";
-import type { RepoEnvConfig } from "../repo/config";
-import { emptyRepoDashboard, getRepoDashboard } from "./repo";
+import { emptyRepoDashboard, getRepoDashboard, type RepoDashboardEnv } from "./repo";
 
 export const DEFAULT_AGENT_RANGE: RepoRange = "7d";
 
@@ -62,7 +61,7 @@ export interface RepoAgentView {
 const ALL_SECTIONS: readonly RepoSectionName[] = Object.values(REPO_TAB_SECTIONS).flat();
 
 /** The sections whose data is `Record<RepoRange, …>` on the wire. */
-const RANGED: ReadonlySet<RepoSectionName> = new Set<RepoSectionName>(["usage", "cloudflare"]);
+const RANGED: ReadonlySet<RepoSectionName> = new Set<RepoSectionName>(["usage"]);
 
 /** A product count carries one figure per range; an agent gets the asked one. */
 function productForRange(product: RepoProduct, range: RepoRange): unknown {
@@ -171,28 +170,22 @@ export function shapeRepoDashboard(dash: RepoDashboard, opts: RepoAgentOptions =
  * org's repository name or environment list. A failed read is the same empty configuration — the
  * projection below then reports `degraded`, as it does for any other database failure.
  */
-interface EnvRow {
-  key: string; label: string; note: string | null; branch: string; railway_env: string; worker: string; worker_check: string;
-  frontend_url: string; api_url: string; health_path: string; railway_environment_id: string | null; railway_service_id: string | null;
-}
-export async function orgRepoConfig(ctx: TenantContext): Promise<{ repo: string; envs: RepoEnvConfig[] }> {
+interface EnvRow { key: string; label: string; note: string | null; branch: string; frontend_url: string; api_url: string; health_path: string }
+export async function orgRepoConfig(ctx: TenantContext): Promise<{ repo: string; envs: RepoDashboardEnv[] }> {
   try {
     // Read here, not through src/integrations/settings.ts: nothing reachable from src/mcp.ts may import
     // the Integrations API or the secrets module (D14; test/secrets.mcp.test.ts walks the import graph).
+    // Only what the projection reads — an environment's hosts are its parts, which the projection reads itself.
     const [repo, rows] = await Promise.all([
       first<{ repo_full_name: string }>(ctx, `SELECT repo_full_name FROM org_repos WHERE org_id = ? AND is_primary = 1`, ctx.orgId),
       all<EnvRow>(ctx,
-        `SELECT key, label, note, branch, railway_env, worker, worker_check, frontend_url, api_url, health_path,
-                railway_environment_id, railway_service_id
+        `SELECT key, label, note, branch, frontend_url, api_url, health_path
            FROM org_environments WHERE org_id = ? ORDER BY position`, ctx.orgId),
     ]);
     return {
       repo: repo?.repo_full_name ?? "",
       envs: rows.map((r) => ({
-        key: r.key, label: r.label, note: r.note, branch: r.branch, railwayEnv: r.railway_env, worker: r.worker,
-        workerCheck: r.worker_check, frontendUrl: r.frontend_url, apiUrl: r.api_url, healthPath: r.health_path,
-        ...(r.railway_environment_id ? { railwayEnvironmentId: r.railway_environment_id } : {}),
-        ...(r.railway_service_id ? { railwayServiceId: r.railway_service_id } : {}),
+        key: r.key, label: r.label, note: r.note, branch: r.branch, frontendUrl: r.frontend_url, apiUrl: r.api_url, healthPath: r.health_path,
       })),
     };
   } catch {
@@ -205,7 +198,7 @@ export async function orgRepoConfig(ctx: TenantContext): Promise<{ repo: string;
 export async function getRepoDashboardForAgent(
   ctx: TenantContext,
   repo: string,
-  envs: RepoEnvConfig[],
+  envs: RepoDashboardEnv[],
   opts: RepoAgentOptions = {},
   now: number = Date.now()
 ): Promise<RepoAgentView> {

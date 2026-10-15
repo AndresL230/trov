@@ -51,14 +51,17 @@ credential outcome (`recordSecretOutcome`) and never throws. Runs at the repo cr
 `hosting` arm (after usage, before GitHub; budgeted so GitHub keeps its reservation — `hosting` is in the result only
 when the org has stored parts). `hx_*` are pruned at 100 days, `hosting_deploys` at 180.
 
-**The dashboard's `providers` section** (Usage tab; `RepoProviderPart` per part — legacy and stored alike — so ONE
-panel can replace the Cloudflare / Railway blocks): deploys (stored: `hosting_deploys`; legacy: the GitHub deploy
-strips), `traffic` per range for a web part (the Usage tab's own fill rule; a stored part's covered interval is
-evidence for a zero, Cloudflare's `cf_polled` for the legacy frontend; `latency_p95_ms` is the latest point in range;
-`traffic: null` for a web part whose provider reads no usage at all), `resources` for a service part (latest ≤ 3 h old,
-24 h trend never zero-filled), `seen`, `unavailable`, `status`, `tone`, `last_poll`, `console_url` (org config read
-directly — the projection never touches the secrets module). Three extra statements; a failed read costs only this
-section (`not_connected`, `degraded: true`). MCP `get_repo_dashboard` collapses `traffic` to the range and, without
+**The dashboard reads hosting data only** (`src/tools/repo.ts`, `repo-dashboard.md`). The `providers` section
+(Usage tab; `RepoProviderPart` per part, any provider): deploys (`hosting_deploys`, the part's current provider's),
+`traffic` per range for a web part (the Usage tab's own fill rule; the part's covered interval is evidence for a
+zero for a metric its provider reads; `latency_p95_ms` is the latest point in range; `traffic: null` for a web part
+whose provider reads no usage at all), `resources` for a service part (latest ≤ 3 h old, 24 h trend never
+zero-filled), `seen`, `unavailable`, `status`, `tone`, `last_poll`, `console_url` (org config read directly — the
+projection never touches the secrets module). The SAME reads feed the environment cards (each part's newest deploy),
+the CI tab's deploy strips (each part's settled deploys) and the Usage compare (requests / error rate summed over
+each environment's web parts) — nothing on the dashboard reads `cf_*`, `rw_*`, `cf_polled` or GitHub deployments any
+more. Three extra statements; a failed read costs what it feeds (`providers` and `deploys` `not_connected`, no parts
+on the cards, `degraded: true`). MCP `get_repo_dashboard` collapses `traffic` to the range and, without
 `include_trends`, drops trends and keeps the newest 2 deploys per part (+ `deployCount`).
 
 **Setup API** (`src/hosting/routes.ts`, cookie only — an `Authorization` header is a 403; admin unless noted), under
@@ -211,8 +214,7 @@ it is on NOTHING is sent (a save, a connect, a test and a disconnect each answer
 sample's provider catalogue is pinned to the registry by `test/hosting.sample.test.ts`.
 
 **Repo dashboard › Usage › Hosting** (`web/src/repo-hosting.ts`, called from `repo.ts` `usageTab`): ONE section
-from `providers`, replacing the "Cloudflare — frontend Workers" and "Hosting — Railway backend" blocks (their
-`cloudflare` / `hosting` sections stay in the payload for MCP; `SUPERSEDED` keeps them out of the footer).
+from `providers` (the old `cloudflare` / `hosting` sections are gone from the payload and from MCP).
 Environments side by side on the `.repo-cells` lattice, parts stacked: a tone dot, the label, the provider's glyph
 and name, the role, Open in <provider>; the last deploy (state pill — in flight pulses —, short sha when there is
 one, branch, the message's first line, who, when, "ready in 1m 42s", Open / Log) and a strip of the last ≤ 10 as

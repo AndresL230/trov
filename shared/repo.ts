@@ -12,7 +12,7 @@ import type { PersonColor } from "./rows";
 // TYPES only, in both directions: shared/hosting.ts imports `RepoRange` / `RepoSection` / `RepoTone` from
 // here, and this file its section and Poll-now shapes from there. A type-only cycle is erased at compile
 // time, so neither module loads the other.
-import type { HostingPollOutcome, RepoProvidersSection } from "./hosting";
+import type { DeployState, HostingPollOutcome, HostingProviderId, ProviderDeployDTO, RepoProvidersSection } from "./hosting";
 
 export const REPO_TABS = [
   ["overview", "Overview"],
@@ -44,17 +44,24 @@ export interface RepoPerson {
 }
 
 // ── Overview ────────────────────────────────────────────────────────────────
-/** An environment ships TWO deployables: a Railway backend and a Cloudflare
- *  frontend. They move independently, so each half carries its own sha. */
-export type RepoPartName = "backend" | "frontend";
+/** One PART of an environment (`org_environment_parts`, shared/hosting.ts) — any host, any number of them —
+ *  with its newest deploy as its provider's poll stored it (`hosting_deploys`). Parts move independently,
+ *  so each carries its own sha. */
 export interface RepoEnvPart {
-  part: RepoPartName;
-  host: "Railway" | "Cloudflare";
-  /** Null = no deploy captured for this half yet — never a guessed sha. */
+  /** The part's key inside its environment ("frontend", "api"). */
+  part: string;
+  /** Its label ("Frontend", "Marketing site"). */
+  label: string;
+  provider: HostingProviderId;
+  /** The provider's label, from the registry ("Cloudflare Workers", "Vercel"). */
+  host: string;
+  /** The newest deploy's commit, cut to 7 — null when none is captured or the provider reports no sha. */
   sha: string | null;
+  /** When the newest deploy finished (its `ready_at`), else when it was created. Null = no deploy captured. */
   deployedAt: string | null;
-  /** The human who pushed that sha; the deploying bot when no push was captured. */
+  /** Who triggered it on the provider (a login or a name), when the provider says. */
   deployedBy: string | null;
+  /** `running` = the newest deploy is still queued / building. */
   result: "ok" | "fail" | "cancel" | "running" | null;
 }
 export interface RepoEnv {
@@ -115,9 +122,39 @@ export interface RepoBranch { name: string; at: string; ahead: number; behind: n
 export interface RepoBranches { active: number; stale: number; head?: string; rows: RepoBranch[] }
 
 // ── CI & Deploys ────────────────────────────────────────────────────────────
+/** One deploy dot. `sha` is "" when the provider reports none; `by` "unknown" when it names nobody. */
 export interface RepoDeploy { sha: string; at: string; by: string; result: "ok" | "fail" | "cancel" }
-/** One dot strip: the last deploys of ONE half of ONE environment. */
-export interface RepoDeployRow { env: string; part: RepoPartName; label: string; deploys: RepoDeploy[] }
+/** One dot strip: the last SETTLED deploys of ONE part of ONE environment, oldest first. `part` is the part's
+ *  key, `label` "<environment> · <part label>". */
+export interface RepoDeployRow { env: string; part: string; label: string; deploys: RepoDeploy[] }
+
+/** A provider deploy's state as an environment card's `result`. */
+const ENV_PART_RESULT: Record<DeployState, RepoEnvPart["result"]> = { ready: "ok", error: "fail", canceled: "cancel", queued: "running", building: "running" };
+
+/** One part's environment-card line from its deploys (NEWEST first, as `RepoProviderPart.deploys`). The ONE
+ *  derivation — the Worker's projection and the sample both use it. PURE. */
+export function envPartOf(
+  part: { part: string; label: string; provider: HostingProviderId; provider_label: string }, deploys: ProviderDeployDTO[],
+): RepoEnvPart {
+  const d = deploys[0];
+  return {
+    part: part.part, label: part.label, provider: part.provider, host: part.provider_label,
+    sha: d?.sha ? d.sha.slice(0, 7) : null, deployedAt: d ? d.ready_at ?? d.at : null, deployedBy: d?.by ?? null,
+    result: d ? ENV_PART_RESULT[d.state] : null,
+  };
+}
+
+/** One part's deploy dots from its deploys (NEWEST first): the SETTLED ones only — a deploy still queued or
+ *  building is not a dot yet — OLDEST first, so the strip reads left to right. `ready` landed, `error` failed,
+ *  `canceled` was abandoned (never a failure). PURE; the Worker's projection and the sample both use it. */
+export function deployDots(deploys: ProviderDeployDTO[]): RepoDeploy[] {
+  const out: RepoDeploy[] = [];
+  for (const d of deploys) {
+    const result = d.state === "ready" ? "ok" : d.state === "error" ? "fail" : d.state === "canceled" ? "cancel" : null;
+    if (result) out.push({ sha: d.sha ? d.sha.slice(0, 7) : "", at: d.ready_at ?? d.at, by: d.by ?? "unknown", result });
+  }
+  return out.reverse();
+}
 export interface RepoCiFailure { workflow: string; branch: string; job: string; at: string; url: string }
 /** `rate`/`trend` are the SEVEN-day picture, so they are published only once run
  *  capture had been recording for the whole week — before that a "0.0%" day is
@@ -151,8 +188,9 @@ export interface RepoActivity {
 }
 
 // ── Usage ───────────────────────────────────────────────────────────────────
-// Requests/errors come from Cloudflare analytics, active users from the target
-// app's own metrics endpoint — different sources that connect independently,
+// Requests/errors come from the environment's WEB parts (their providers' hourly
+// `hx_requests` / `hx_errors`, summed), active users from the target app's own
+// metrics endpoint — different sources that connect independently,
 // so each metric travels as its own nullable value: `null` = nothing to show
 // for THAT metric in this range, never a guessed number next to its live
 // neighbours. A `null` alone does not say WHY — never connected, no point in
@@ -165,13 +203,11 @@ export interface RepoUsageEnv {
   name: string;
   host: string;
   requests: RepoUsageMetric | null;
-  /** Follows `seen.requests` — it is derived from the same Cloudflare series. */
+  /** Follows `seen.requests` — it is derived from the same web parts' series. */
   errorRate: RepoUsageMetric | null;
   users: RepoUsageMetric | null;
   seen: { requests: boolean; users: boolean };
 }
-export interface RepoCfRow { env: string; label: string; value: string }
-export interface RepoHosting { env: string; cpu: string; memory: string }
 
 // ── Usage › Product metrics ─────────────────────────────────────────────────
 // What the target app reports about ITSELF (contract:
@@ -246,11 +282,8 @@ export interface RepoDashboard {
   activity: RepoSection<RepoActivity[]>;
 
   usage: RepoSection<Record<RepoRange, RepoUsageEnv[]>>;
-  cloudflare: RepoSection<Record<RepoRange, RepoCfRow[]>>;
-  hosting: RepoSection<RepoHosting[]>;
   /** Every part of every environment (shared/hosting.ts): the provider-neutral view of deploys, traffic
-   *  and resources — the legacy Cloudflare frontend and Railway backend included, mapped in from their
-   *  own captures. `not_connected` = the org has no part at all. */
+   *  and resources, whoever hosts the part. `not_connected` = the org has no part at all. */
   providers: RepoProvidersSection;
   product: RepoSection<RepoProduct>;
 
@@ -280,7 +313,7 @@ export const REPO_TAB_SECTIONS = {
   overview: ["environments", "drift", "stats", "health"],
   code: ["codeStats", "bars", "prs", "branches"],
   ci: ["deploys", "ciFailures", "coverage", "bundle", "activity"],
-  usage: ["usage", "cloudflare", "hosting", "providers", "product"],
+  usage: ["usage", "providers", "product"],
   planning: ["sprint", "contributors", "labels", "todos"],
 } as const satisfies Record<RepoTab, readonly RepoSectionName[]>;
 

@@ -23,7 +23,7 @@ function live(over: Partial<RepoDashboard> = {}): RepoDashboard {
   return {
     repo: "SaplingLearn/sapling", generatedAt: new Date().toISOString(), degraded: false,
     environments: NC, drift: NC, health: NC, branches: NC, deploys: NC, ciFailures: NC, coverage: NC, bundle: NC,
-    usage: NC, cloudflare: NC, hosting: NC, providers: NC, product: NC, todos: NC,
+    usage: NC, providers: NC, product: NC, todos: NC,
     stats: EMPTY, codeStats: EMPTY, bars: EMPTY, prs: EMPTY, activity: EMPTY, sprint: EMPTY, contributors: EMPTY, labels: EMPTY,
     ...over,
   };
@@ -46,17 +46,23 @@ describe("repoView — section states", () => {
   // P5-12: the banner says EVERY section shows placeholder values — so none may
   // sit unconnected (telling a previewer to set a secret), and two numbers the
   // real projection derives from one sum may not disagree.
-  it("the sample set has no unconnected section, and its Cloudflare panel agrees with its Requests metric", () => {
+  it("the sample set has no unconnected section, and what it derives from its parts agrees with them", () => {
     const data = repoSample();
     for (const [key, value] of Object.entries(data)) {
       if (value && typeof value === "object" && "status" in value) expect((value as { status: string }).status, key).toBe("ok");
     }
     const okOf = <T>(s: { status: string; data?: T }) => (s as { data: T }).data;
-    expect(okOf(data.hosting).map((h) => h.env)).toEqual(["staging", "production"]);
+    const parts = okOf(data.providers);
+    // The cards list every part of their environment; the strips are the parts with a settled deploy.
+    for (const e of okOf(data.environments)) {
+      expect(e.parts.map((p) => `${p.part}:${p.provider}`), e.key).toEqual(parts.filter((p) => p.env === e.key).map((p) => `${p.part}:${p.provider}`));
+    }
+    expect(okOf(data.deploys).map((r) => `${r.env}:${r.part}`)).toEqual(parts.filter((p) => p.deploys.some((d) => ["ready", "error", "canceled"].includes(d.state))).map((p) => `${p.env}:${p.part}`));
+    // The Usage compare's requests are its web parts' summed, bucket by bucket — the Worker's arithmetic.
     for (const range of ["24h", "7d", "30d"] as const) {
       for (const e of okOf(data.usage)[range]) {
-        const row = okOf(data.cloudflare)[range].find((r) => r.env === e.name && r.label === "Workers requests");
-        expect(row?.value, `${range} ${e.name}`).toBe(e.requests?.value);
+        const web = parts.filter((p) => p.env === e.name && p.traffic).map((p) => p.traffic![range]);
+        expect(e.requests?.trend, `${range} ${e.name}`).toEqual(web[0].trend.map((_, i) => web.reduce((n, t) => n + t.trend[i].requests, 0)));
       }
     }
     const html = repoView(props({ tab: "usage", repo: { status: "ok", data }, sample: true }));
@@ -82,12 +88,12 @@ describe("repoView — section states", () => {
     expect(overview).toContain("Cards appear once Org settings › Environments lists an environment");
     expect(overview).toContain("Trov pings each environment in Org settings › Environments every 10 minutes");
     expect(code).toContain("No branch snapshot yet. One is taken when an admin runs Sync GitHub and by the 6-hourly GitHub reconcile — both need the GitHub token in Org settings › Integrations.");
-    expect(ci).toContain("Deploys arrive when the GitHub webhook delivers deployment_status and check_run events, or when an admin runs Sync GitHub");
+    expect(ci).toContain("Each part&#39;s deploys come from its hosting provider, polled every hour; an admin sets up the parts in Org settings › Hosting.");
     expect(ci).toContain("Runs arrive when the GitHub webhook delivers workflow_run events, or when an admin runs Sync GitHub.");
     // P5-8: no branch NAME — the screen does not know which branch the first environment deploys from.
     expect(ci).toContain("posts a canopy/coverage commit status on a push to the default environment branch; it is read from a status webhook event, the 6-hourly GitHub reconcile, or Poll now.");
     expect(ci).toContain("posts a canopy/bundle-kb commit status on a push to the default environment branch; it is read from a status webhook event, the 6-hourly GitHub reconcile, or Poll now.");
-    expect(usage).toContain("Both need an environment in Org settings › Environments and their credential in Org settings › Integrations.");
+    expect(usage).toContain("Requests and error rate come from each environment&#39;s web parts, polled hourly from their hosting provider (Org settings › Hosting)");
     expect(usage).toContain("No hosting provider is connected. An admin sets up each environment&#39;s parts in Org settings › Hosting; their deploys, traffic and resources then show here.");
     // No Worker variable or secret is named any more: an org's admin cannot set one.
     for (const html of [overview, code, ci, usage, planning]) {
@@ -142,7 +148,7 @@ describe("repoView — section states", () => {
   });
 
   it("offers the sample preview only while something on the tab is unconnected", () => {
-    const allLive = { ...repoSample(), sample: undefined, hosting: { status: "ok", data: [] } } as RepoDashboard;
+    const allLive = { ...repoSample(), sample: undefined } as RepoDashboard;
     expect(repoView(props({ tab: "usage", repo: { status: "ok", data: allLive } }))).not.toContain("repoSampleOn");
     expect(repoView(props({ tab: "usage", sample: true, repo: { status: "ok", data: repoSample() } }))).toContain('data-act="repoSampleOff"');
   });
@@ -247,8 +253,9 @@ describe("repoView — live content", () => {
 
   it("the usage range picks its own series", () => {
     const data = repoSample();
-    expect(repoView(props({ tab: "usage", range: "24h", repo: { status: "ok", data } }))).toContain("12.4K");
-    expect(repoView(props({ tab: "usage", range: "30d", repo: { status: "ok", data } }))).toContain("5.1M");
+    // Staging's web parts summed: 12.4K (Cloudflare) + 8.9K (Fly.io) in 24 h; production's 5.1M + 1.21M in 30 days.
+    expect(repoView(props({ tab: "usage", range: "24h", repo: { status: "ok", data } }))).toContain("21.3K");
+    expect(repoView(props({ tab: "usage", range: "30d", repo: { status: "ok", data } }))).toContain("6.31M");
   });
 
   it("a usage metric with no source says so in place, without blanking its neighbours", () => {
@@ -264,7 +271,7 @@ describe("repoView — live content", () => {
     const envRow = { name: "staging", host: "staging.saplinglearn.com", requests: null, errorRate: null, users: null, seen: { requests: false, users: false } };
     const data = live({
       usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } },
-      cloudflare: EMPTY, hosting: EMPTY, product: EMPTY,
+      product: EMPTY,
     });
     const html = repoView(props({ tab: "usage", repo: { status: "ok", data } }));
     expect(html).toContain("staging");
@@ -277,7 +284,7 @@ describe("repoView — live content", () => {
   // the source is connected, there were simply no requests to take a rate of.
   it("an error rate with nothing to take a rate of reads a quiet dash, not 'not connected'", () => {
     const envRow = { name: "staging", host: "staging.saplinglearn.com", requests: { value: "0", trend: [0, 0, 0], tone: "neutral" as const }, errorRate: null, users: { value: "4", trend: [3, 4], tone: "neutral" as const }, seen: { requests: true, users: true } };
-    const data = live({ usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } }, cloudflare: EMPTY, hosting: EMPTY, product: EMPTY });
+    const data = live({ usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } }, product: EMPTY });
     const html = repoView(props({ tab: "usage", repo: { status: "ok", data } }));
     const errRow = html.slice(html.indexOf("Error rate"), html.indexOf("Active users"));
     expect(errRow).toContain(">—<");
@@ -289,7 +296,7 @@ describe("repoView — live content", () => {
 
   it("an error rate whose requests are ALSO unconnected still says 'not connected'", () => {
     const envRow = { name: "staging", host: "staging.saplinglearn.com", requests: null, errorRate: null, users: { value: "4", trend: [3, 4], tone: "neutral" as const }, seen: { requests: false, users: true } };
-    const data = live({ usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } }, cloudflare: EMPTY, hosting: EMPTY, product: EMPTY });
+    const data = live({ usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } }, product: EMPTY });
     const html = repoView(props({ tab: "usage", repo: { status: "ok", data } }));
     const errRow = html.slice(html.indexOf("Error rate"), html.indexOf("Active users"));
     expect(errRow).toContain("not connected");
@@ -301,7 +308,7 @@ describe("repoView — live content", () => {
   // connected and quiet — saying "not connected" there was false.
   it("a null metric whose source has been seen reads 'no recent reading', never 'not connected'", () => {
     const envRow = { name: "staging", host: "staging.saplinglearn.com", requests: null, errorRate: null, users: null, seen: { requests: true, users: true } };
-    const data = live({ usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } }, cloudflare: EMPTY, hosting: EMPTY, product: EMPTY });
+    const data = live({ usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } }, product: EMPTY });
     const html = repoView(props({ tab: "usage", repo: { status: "ok", data } }));
     expect((html.match(/no recent reading/g) ?? []).length).toBe(3); // requests, error rate (follows requests), users
     expect(html).not.toContain("not connected");
@@ -310,7 +317,7 @@ describe("repoView — live content", () => {
 
   it("the two labels sit side by side: requests seen and quiet, users never connected", () => {
     const envRow = { name: "staging", host: "staging.saplinglearn.com", requests: null, errorRate: null, users: null, seen: { requests: true, users: false } };
-    const data = live({ usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } }, cloudflare: EMPTY, hosting: EMPTY, product: EMPTY });
+    const data = live({ usage: { status: "ok", data: { "24h": [envRow], "7d": [envRow], "30d": [envRow] } }, product: EMPTY });
     const html = repoView(props({ tab: "usage", repo: { status: "ok", data } }));
     const row = (from: string, to: string) => html.slice(html.indexOf(from), html.indexOf(to));
     expect(row("Requests", "Error rate")).toContain("no recent reading");
@@ -345,14 +352,23 @@ describe("repoView — live content", () => {
     expect(html).not.toMatch(/undefined|NaN/);
   });
 
-  it("an environment card shows a line per deployable and says when one has no capture", () => {
+  it("an environment card shows a line per part, by its label and host, and says when one has no capture", () => {
+    const now = new Date().toISOString();
     const data = live({ environments: { status: "ok", data: [{ key: "staging", name: "staging", note: "main", tone: "good", pill: "HEALTHY", ci: "All 8 checks passing", ciTone: "good", url: "https://staging.saplinglearn.com",
-      parts: [{ part: "backend", host: "Railway", sha: "abc1234", deployedAt: new Date().toISOString(), deployedBy: "AndresL230", result: "ok" }, { part: "frontend", host: "Cloudflare", sha: null, deployedAt: null, deployedBy: null, result: null }] }] } });
+      parts: [
+        { part: "backend", label: "Backend", provider: "railway", host: "Railway", sha: "abc1234", deployedAt: now, deployedBy: "AndresL230", result: "ok" },
+        { part: "frontend", label: "Frontend", provider: "cloudflare", host: "Cloudflare Workers", sha: null, deployedAt: null, deployedBy: null, result: null },
+        { part: "edge", label: "Edge <cache>", provider: "fly", host: "Fly.io", sha: null, deployedAt: now, deployedBy: null, result: "running" },
+      ] }] } });
     const html = repoView(props({ repo: { status: "ok", data } }));
     expect(html).toContain("Backend");
     expect(html).toContain("by AndresL230 · Railway");
-    expect(html).toContain("No Cloudflare deploy captured yet");
-    expect(html).not.toMatch(/undefined|NaN/);
+    expect(html).toContain("No Cloudflare Workers deploy captured yet");
+    // A deploy with no sha (a Fly.io release) still shows when and where — and that it is still going.
+    expect(html).toContain("Edge &lt;cache&gt;");
+    expect(html).toContain("ago · Fly.io");
+    expect(html).toContain("deploying");
+    expect(html).not.toMatch(/undefined|NaN|by null/);
   });
 
   // F3: `rate: null` = run capture has not covered a whole week yet. The header
@@ -387,9 +403,9 @@ describe("repoView — live content", () => {
     expect(html).not.toContain("No CI failures this week.");
   });
 
-  it("labels each deploy strip with its environment AND its half", () => {
+  it("labels each deploy strip with its environment AND its part", () => {
     const html = repoView(props({ tab: "ci", repo: { status: "ok", data: repoSample() }, sample: true }));
-    for (const label of ["staging · api", "staging · web", "production · api", "production · web"]) expect(html).toContain(label);
+    for (const label of ["staging · Backend", "staging · Frontend", "staging · Marketing site", "production · Queue worker"]) expect(html).toContain(label);
   });
 
   // Task 14, controller ruling M2: a delta ("" for RepoTrend, null for
@@ -461,7 +477,7 @@ describe("repo header chrome", () => {
     expect(repoControls(props())).not.toContain("staging");
     const withEnvs = repoControls(props({ repo: { status: "ok", data: repoSample() } }));
     expect(withEnvs).toContain('data-mtip="staging: Degraded. Checks are failing on the branch head."');
-    expect(withEnvs).toContain('data-mtip="production: Healthy.');
+    expect(withEnvs).toContain('data-mtip="production: Failing.'); // the sample's queue worker's newest release failed
     expect(withEnvs).not.toMatch(/title="(?:staging|production)/); // the styled tooltip, never a native one
   });
 
@@ -1011,10 +1027,11 @@ describe("repoView — product metrics", () => {
     const both = repoView(props({ tab: "usage", repo: { status: "ok", data: { ...others, providers: NC, usage: NC } } }));
     expect(both).toContain("Sections marked");
     expect(both).not.toContain("data-nc-quiet");
-    // The sections no block draws any more cannot put the footer up on their own.
-    const superseded = repoView(props({ tab: "usage", repo: { status: "ok", data: { ...others, cloudflare: NC, hosting: NC } } }));
-    expect(superseded).not.toContain("Sections marked");
-    expect(superseded).not.toContain("repoSampleOn");
+    // A payload from before 0056 still carrying the old `cloudflare` / `hosting` keys: the tab no longer names
+    // them, so they cannot put the footer up.
+    const stale = repoView(props({ tab: "usage", repo: { status: "ok", data: { ...others, cloudflare: NC, hosting: NC } as RepoDashboard } }));
+    expect(stale).not.toContain("Sections marked");
+    expect(stale).not.toContain("repoSampleOn");
     expect(repoView(props({ tab: "usage", repo: { status: "ok", data: others } }))).not.toContain("data-nc-quiet");
     expect(repoView(props({ tab: "code", repo: { status: "ok", data: { ...others, providers: NC } } }))).not.toContain("data-nc-quiet");
   });

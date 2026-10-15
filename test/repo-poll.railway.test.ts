@@ -3,19 +3,16 @@
  *
  * `pollRailway` writes hourly `rw_cpu` (vCPU) / `rw_mem_mb` per environment's
  * BACKEND service, authenticating each environment with ITS OWN project token
- * (`Project-Access-Token`, never `Authorization`); `getRepoDashboard` projects
- * the hosting block from the SAME one read the Usage tab already makes, and
- * shows a figure only while it is current (≤ 3 hours old).
- * The fetch is stubbed at the Response level; every assertion is on D1 rows or
- * on the projection built from them.
+ * (`Project-Access-Token`, never `Authorization`). (The dashboard no longer
+ * reads these: it reads the hosting job's `hx_*` points —
+ * test/hosting.dashboard.test.ts.)
+ * The fetch is stubbed at the Response level; every assertion is on D1 rows.
  */
 import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
 import { all } from "./helpers/db";
 import { pollRailway } from "../src/repo/poll";
 import { repoEnvironments } from "../src/repo/config";
-import { putMetric } from "../src/repo/store";
-import { getRepoDashboard } from "../src/tools/repo";
 import { ENVS } from "./helpers/repo";
 
 import { systemCtx } from "./helpers/tenant";
@@ -278,75 +275,5 @@ describe("REPO_ENVIRONMENTS, the legacy shape the test pool still carries", () =
       ["staging", "76bb36e5-cf12-4b1e-b47f-d276a56c3b85", "c67bfc38-32a9-41a7-9440-f033d255af30"],
       ["production", "dd058398-45bc-4c7d-80b1-12d46e3f28fb", "c67bfc38-32a9-41a7-9440-f033d255af30"],
     ]);
-  });
-});
-
-// ── the projection ───────────────────────────────────────────────────────────
-const ok = <T>(s: { status: string; data?: T }): T => { expect(s.status).toBe("ok"); return (s as { data: T }).data; };
-/** The start of the hour `h` complete hours before NOW's own (12:00): h=1 → 11:00. */
-const hoursBack = (h: number) => new Date(Date.parse("2026-09-20T12:00:00Z") - h * HOUR).toISOString();
-const rw = (metric: "rw_cpu" | "rw_mem_mb", envKey: string, at: string, value: number) =>
-  putMetric(systemCtx(), { metric, env: envKey, part: "backend", value, at });
-
-describe("getRepoDashboard — hosting from rw_* metrics", () => {
-  it("nothing captured → not_connected", async () => {
-    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting.status).toBe("not_connected");
-  });
-
-  it("shows each environment's LATEST cpu and memory", async () => {
-    await rw("rw_cpu", "staging", hoursBack(2), 0.5);
-    await rw("rw_cpu", "staging", hoursBack(1), 0.123);
-    await rw("rw_mem_mb", "staging", hoursBack(1), 409.6);
-    await rw("rw_cpu", "production", hoursBack(1), 1.5);
-    await rw("rw_mem_mb", "production", hoursBack(1), 2048);
-    expect(ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting)).toEqual([
-      { env: "staging", cpu: "0.12 vCPU", memory: "410 MB" },
-      { env: "production", cpu: "1.50 vCPU", memory: "2048 MB" },
-    ]);
-  });
-
-  // A "current" figure must be current: the poll is hourly over complete hours,
-  // so a healthy poller's newest point is 1–2 hours old. Past 3 hours it is "—".
-  it("a metric whose latest point is over 3 hours old reads — while a fresh one beside it still shows", async () => {
-    await rw("rw_cpu", "staging", new Date(NOW - 3 * HOUR - 60_000).toISOString(), 0.5);
-    await rw("rw_mem_mb", "staging", new Date(NOW - 3 * HOUR).toISOString(), 300); // exactly 3h: still current
-    expect(ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting)).toEqual([{ env: "staging", cpu: "—", memory: "300 MB" }]);
-  });
-
-  it("an environment with nothing fresh is left out while another still shows", async () => {
-    await rw("rw_cpu", "staging", hoursBack(10), 0.5);
-    await rw("rw_cpu", "production", hoursBack(1), 0.25);
-    expect(ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting)).toEqual([{ env: "production", cpu: "0.25 vCPU", memory: "—" }]);
-  });
-
-  it("every reading stale → empty (the poll has stopped), not not_connected — even aged out of the 30-day read", async () => {
-    await rw("rw_cpu", "staging", hoursBack(5), 0.5);
-    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting.status).toBe("empty");
-    await env.DB.prepare(`DELETE FROM repo_metrics`).run();
-    await rw("rw_mem_mb", "production", hoursBack(40 * 24), 512);
-    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting.status).toBe("empty");
-  });
-
-  it("only the backend series of a configured environment counts", async () => {
-    await rw("rw_cpu", "preview", hoursBack(1), 0.5);
-    await putMetric(systemCtx(), { metric: "rw_cpu", env: "staging", part: "frontend", value: 0.5, at: hoursBack(1) });
-    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting.status).toBe("empty");
-  });
-
-  it("no environment configured → not_connected whatever is stored", async () => {
-    await rw("rw_cpu", "staging", hoursBack(1), 0.5);
-    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, []).then((d) => d.hosting.status))).toBe("not_connected");
-  });
-
-  // The two sources share ONE read but not one state.
-  it("Railway rows never connect usage or Cloudflare, and Cloudflare rows never connect hosting", async () => {
-    await rw("rw_cpu", "staging", hoursBack(1), 0.5);
-    let d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
-    expect([d.hosting.status, d.usage.status, d.cloudflare.status]).toEqual(["ok", "not_connected", "not_connected"]);
-    await env.DB.prepare(`DELETE FROM repo_metrics`).run();
-    await putMetric(systemCtx(), { metric: "cf_requests", env: "staging", part: "frontend", value: 10, at: hoursBack(1) });
-    await putMetric(systemCtx(), { metric: "cf_errors", env: "staging", part: "frontend", value: 0, at: hoursBack(1) });
-    d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
-    expect([d.hosting.status, d.usage.status, d.cloudflare.status]).toEqual(["not_connected", "ok", "ok"]);
   });
 });

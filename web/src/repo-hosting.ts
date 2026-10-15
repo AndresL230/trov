@@ -1,7 +1,6 @@
 // Repo dashboard › Usage › Hosting — ONE provider-neutral panel for every part of every environment, whoever
-// hosts it (`RepoDashboard.providers`, shared/hosting.ts `RepoProviderPart`). It replaces the two blocks that
-// only understood one stack ("Cloudflare — frontend Workers", "Hosting — Railway backend"): the legacy
-// Cloudflare frontend and Railway backend are parts here like any other.
+// hosts it (`RepoDashboard.providers`, shared/hosting.ts `RepoProviderPart`) — a Cloudflare Workers frontend
+// and a Railway backend are parts here like any other.
 //
 // Environments sit side by side (comparing them is the point), their parts stacked inside. A part shows its
 // last deploy and a strip of the last ten, then what its ROLE reads: traffic for a web part (per range),

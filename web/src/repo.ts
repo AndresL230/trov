@@ -248,16 +248,16 @@ const kv = (k: string, v: string): string =>
 
 function overviewTab(p: RepoProps): string {
   const now = Date.now();
-  const envs = sec(p, (d) => d.environments, { nc: "Nothing captured for a configured environment yet. Cards appear once Org settings › Environments lists an environment and a health ping, a deploy or a head check lands for it — from the 10-minute check, the GitHub webhook, or an admin's Sync GitHub.", empty: "No environments recorded." }, (rows) =>
+  const envs = sec(p, (d) => d.environments, { nc: "Nothing captured for a configured environment yet. Cards appear once Org settings › Environments lists an environment and a health ping, a deploy or a head check lands for it — from the 10-minute check, the hourly hosting poll, the GitHub webhook, or an admin's Sync GitHub.", empty: "No environments recorded." }, (rows) =>
     `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${rows.map((e, i) => {
       return `<div style="padding:20px 22px 10px;min-width:0;${i ? LEFT : ""}">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
           <span style="font-size:16.5px;font-weight:600;letter-spacing:-0.01em;flex:1">${esc(e.name)}${e.note ? ` <span style="font-size:11.5px;font-weight:500;color:var(--fg-40)">${esc(e.note)}</span>` : ""}</span>
           ${(({ word, kind, hint }) => kindMark(word, kind, 12.5, hint || null))(envVerdict(e.pill))}
         </div>
-        ${e.parts.map((pt) => kv(pt.part === "backend" ? "Backend" : "Frontend",
-          pt.sha
-            ? `<div style="font-size:13.5px;line-height:1.6;color:var(--fg-70);display:flex;align-items:center;gap:9px;flex-wrap:wrap"><span style="${CODE}">${esc(pt.sha)}</span><span style="font-size:12px;color:var(--fg-40);white-space:nowrap">${esc(ago(pt.deployedAt ?? "", now))} ago · by ${esc(pt.deployedBy ?? "unknown")} · ${esc(pt.host)}</span>${pt.result === "fail" ? `<span style="font-family:var(--label);font-size:10px;font-weight:600;color:var(--red)">FAILED</span>` : ""}</div>`
+        ${e.parts.map((pt) => kv(esc(pt.label),
+          pt.deployedAt
+            ? `<div style="font-size:13.5px;line-height:1.6;color:var(--fg-70);display:flex;align-items:center;gap:9px;flex-wrap:wrap">${pt.sha ? `<span style="${CODE}">${esc(pt.sha)}</span>` : ""}<span style="font-size:12px;color:var(--fg-40);white-space:nowrap">${esc(ago(pt.deployedAt, now))} ago${pt.deployedBy ? ` · by ${esc(pt.deployedBy)}` : ""} · ${esc(pt.host)}</span>${pt.result === "fail" ? `<span style="font-family:var(--label);font-size:10px;font-weight:600;color:var(--red)">FAILED</span>` : pt.result === "running" ? `<span style="font-size:12px;color:var(--fg-40)">deploying</span>` : ""}</div>`
             : `<div style="font-size:12.5px;color:var(--fg-40)">No ${esc(pt.host)} deploy captured yet</div>`)).join("")}
         ${kv("CI on head", `<div style="font-size:13.5px;line-height:1.6;display:flex;align-items:center;gap:7px;color:${TONE[e.ciTone]}"><span style="font-family:var(--label);font-size:13px">${e.ciTone === "good" ? "✓" : e.ciTone === "bad" ? "✕" : GDOT}</span>${esc(e.ci)}</div>`)}
         ${kv("URL", `<div style="font-size:13.5px;line-height:1.6"><a href="${attr(safeUrl(e.url))}" target="_blank" rel="noopener" class="repo-link" style="font-family:var(--label);font-size:12.5px">${esc(e.url.replace(/^https?:\/\//, ""))} ↗</a></div>`)}
@@ -443,7 +443,7 @@ const titled = (title: string, body: string): string => `<div style="${LABEL}">$
 function ciTab(p: RepoProps): string {
   const now = Date.now();
   const RESULT = { ok: ["var(--green)", "DEPLOYED"], fail: ["var(--red)", "FAILED"], cancel: ["var(--amber)", "CANCELLED"] } as const;
-  const deploys = sec(p, (d) => d.deploys, { nc: "No deploy captured for a configured environment yet. Deploys arrive when the GitHub webhook delivers deployment_status and check_run events, or when an admin runs Sync GitHub; environments come from Org settings › Environments.", empty: "No deploys recorded.", lines: 2 }, (rows) =>
+  const deploys = sec(p, (d) => d.deploys, { nc: "No deploy captured for a configured environment yet. Each part's deploys come from its hosting provider, polled every hour; an admin sets up the parts in Org settings › Hosting.", empty: "No deploys recorded.", lines: 2 }, (rows) =>
     rows.map((row) => {
       const okCount = row.deploys.filter((d) => d.result === "ok").length;
       const last = row.deploys[row.deploys.length - 1];
@@ -916,12 +916,10 @@ function usageTab(p: RepoProps): string {
     options: REPO_RANGES.map((r) => ({ value: r, label: r })),
   });
 
-  const usage = sec(p, (d) => d.usage, { nc: "No usage captured yet. Requests and error rate come from the hourly Cloudflare analytics poll; active users come from the app's own metrics endpoint. Both need an environment in Org settings › Environments and their credential in Org settings › Integrations.", empty: "No current usage reading — the hourly polls have gone quiet.", lines: 4 }, (u) =>
+  const usage = sec(p, (d) => d.usage, { nc: "No usage captured yet. Requests and error rate come from each environment's web parts, polled hourly from their hosting provider (Org settings › Hosting); active users come from the app's own metrics endpoint (Org settings › Integrations).", empty: "No current usage reading — the hourly polls have gone quiet.", lines: 4 }, (u) =>
     `<div class="repo-swap" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${u[p.range].map(usageEnv).join("")}</div>`);
   // Hosting — ONE provider-neutral section (repo-hosting.ts), built from `providers`: every part of every
-  // environment, whoever hosts it. It replaces the two blocks that only understood Cloudflare and Railway —
-  // their frontend and backend are parts here like any other (the `cloudflare` / `hosting` sections stay in
-  // the payload for the MCP tool; nothing on this screen draws them).
+  // environment, whoever hosts it.
   const tools = { range: p.range, now: Date.now(), ago, sparkPoints: (v: number[]) => sparkPoints(v) };
   const phase = phaseOf(p);
   // `?? not_connected`: a payload from before the section existed lacks its key.
@@ -1033,10 +1031,6 @@ function planningTab(p: RepoProps): string {
 // ── the screen ───────────────────────────────────────────────────────────────
 const SCREEN_LABEL: Record<RepoTab, string> = { overview: "Overview", code: "Code", ci: "CI and Deploys", usage: "Usage", planning: "Planning" };
 
-/** Sections in the payload that NO block on this screen draws, on purpose: Usage › Hosting reads the
- *  provider-neutral `providers` section, which holds the Cloudflare frontend and the Railway backend as parts.
- *  They cannot be "marked not connected" by a block, so the footer does not speak for them. */
-const SUPERSEDED: readonly RepoSectionName[] = ["cloudflare", "hosting"];
 /** Sections whose block says "nothing yet" in its own quiet words (one line and the way to set it up) rather
  *  than the dashed "Source not connected" box — Usage › Hosting (repo-hosting.ts `hostingNotConnected`). */
 const QUIET_NC: readonly RepoSectionName[] = ["providers"];
@@ -1048,7 +1042,7 @@ function uncaptured(p: RepoProps): { drawn: boolean; quiet: RepoSectionName[] } 
   if (!d) return { drawn: false, quiet: [] };
   // The ONE section→tab mapping (shared with the MCP `get_repo_dashboard` tool).
   // `?? not_connected`: a payload from before a section existed lacks its key.
-  const nc = REPO_TAB_SECTIONS[p.tab].filter((k) => !SUPERSEDED.includes(k) && ((d[k] as RepoSection<unknown> | undefined)?.status ?? "not_connected") === "not_connected");
+  const nc = REPO_TAB_SECTIONS[p.tab].filter((k) => ((d[k] as RepoSection<unknown> | undefined)?.status ?? "not_connected") === "not_connected");
   return { drawn: nc.some((k) => !QUIET_NC.includes(k)), quiet: nc.filter((k) => QUIET_NC.includes(k)) };
 }
 
