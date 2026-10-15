@@ -431,7 +431,7 @@ function repoView(v: AskView, x: RefView, ref: string): string {
     const hosts = parts.map((p) => {
       const appLabel = f.apps.find((a) => a.key === p.app)?.label ?? p.app;
       const off = p.connection === "not_connected" || p.connection === "revoked";
-      return `<div class="ask-iv-part"><span>${esc(many ? `${appLabel} · ${p.label}` : p.label)}</span><span class="ask-iv-quiet">on ${esc(p.host)}${off ? " · not connected" : ""}</span></div>`;
+      return `<div class="ask-iv-part"><span>${esc(many && p.label !== appLabel ? `${appLabel} · ${p.label}` : p.label)}</span><span class="ask-iv-quiet">on ${esc(p.host)}${off ? " · not connected" : ""}</span></div>`;
     }).join("");
     return `<div class="ask-iv-env">
       <div class="ask-iv-envrow"><span class="ask-iv-envname">${esc(env.name)}</span><span class="ask-iv-code ask-iv-grow">${esc(url)}</span>${verdictMark(verdict, 12.5)}</div>

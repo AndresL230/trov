@@ -249,6 +249,16 @@ describe("repo: the Overview's facts (#186) — RepoFacts, its verdicts, stateMa
     expect(html).toContain(`href="#org/repos/AndresL230/trov"`);
   });
 
+  // e2e AU-26 (SaplingLearn/sapling, repo-setups' scenario A): a part named like its app read "Frontend · Frontend".
+  it("a monorepo's part named like its app is named once", () => {
+    const many = SCENARIO_KEYS.map((k) => askRepoFacts(repoScenario(k, SCENARIO_VARIANTS[k][0], { now: NOW.getTime() }))).find((f) => f.apps.filter((a) => a.kind !== "Package").length > 1)!;
+    const app = many.apps.find((a) => many.parts.some((p) => p.app === a.key))!;
+    const same = { ...many, parts: many.parts.map((p) => (p.app === app.key ? { ...p, label: app.label } : p)) };
+    const t = text(body(state([REPO], (st) => { st.ask.refViews[REPO] = { ...(st.ask.refViews[REPO] as RefView), extra: { facts: same } }; })));
+    expect(t).toContain(app.label);
+    expect(t).not.toContain(`${app.label} · ${app.label}`);
+  });
+
   it("a monorepo names its apps; a narrowed read names the one app", () => {
     const many = SCENARIO_KEYS.map((k) => askRepoFacts(repoScenario(k, SCENARIO_VARIANTS[k][0], { now: NOW.getTime() }))).find((f) => f.apps.filter((a) => a.kind !== "Package").length > 1);
     expect(many).toBeDefined();
