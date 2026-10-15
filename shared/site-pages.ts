@@ -197,11 +197,23 @@ export function sourceRedirect(commit: string | null = null): string {
  *  alias): the site is SITE_ORIGIN. The Worker says the same for what it serves (src/site.ts).
  *  And the text files' types, said outright (UTF-8 — the binding's guess for `.md` names no charset): a
  *  page's Markdown is `text/markdown` with an HTTP `Link` naming the HTML page as canonical, so a search
- *  engine indexes the page and not its source; llms.txt and llms-full.txt are `text/plain`. */
+ *  engine indexes the page and not its source; llms.txt and llms-full.txt are `text/plain`.
+ *  And how long a browser keeps a file: Vite's `/assets/*` carry a content hash in their name, so a new build
+ *  names new files and the old ones may be kept for good (`immutable`, a year); the Guide's screenshots
+ *  (`/guide/*`) have stable names and are kept a week. Every OTHER file — the pages, the app shell, the
+ *  fonts' stable copies, the text files — keeps the binding's default: revalidated by ETag on each use, so a
+ *  deploy is seen at once. No other rule here names Cache-Control, and a path matching several rules gets
+ *  the headers of all of them (a header two rules both set would be joined with a comma): ASSET_CACHE is
+ *  the only place it is said. */
+export const ASSET_CACHE: readonly (readonly [rule: string, cacheControl: string])[] = [
+  ["/assets/*", "public, max-age=31536000, immutable"],
+  ["/guide/*", "public, max-age=604800"],
+];
 export function assetHeaders(): string {
   const noindex = (rule: string) => `${rule}\n  X-Robots-Tag: noindex`;
   return [
     "# Written by the build from shared/site-pages.ts (assetHeaders): do not edit.",
+    ...ASSET_CACHE.map(([rule, value]) => `${rule}\n  Cache-Control: ${value}`),
     noindex("https://:version.:account.workers.dev/*"),
     noindex(APP_SHELL_PATH),
     ...SITE_PAGES.filter((p) => !p.indexed).map((p) => noindex(p.path)),
