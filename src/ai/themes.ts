@@ -30,7 +30,7 @@ import { orgPrimaryRepo } from "../repo/config";
 import { TROV_SYSTEM_HANDLE, type AiCite } from "@shared/ai-core";
 import { sharesOf, weekIndex, weeksEnding } from "../tools/themes";
 import { each, keep, sections } from "./sections";
-import type { ClaudeJob, JevJob, JobItem } from "./jobs";
+import type { ClaudeJob, JevAnswers, JevJob, JobItem } from "./jobs";
 import { freeColors, themeName, THEME_NAME_MAX } from "./themes-accept";
 
 const DAY = 86_400_000;
@@ -324,15 +324,21 @@ export const prThemeJob: JevJob<PrThemeInput> = {
     return { state: prState(item.input.pr), questions: { theme: { type: "choice", instructions: PR_THEME_INSTRUCTIONS, criteria } } };
   },
   async write(ctx, item, answer) {
-    const a = answer.answers.theme;
-    if (!a || a.type !== "choice") return false; // malformed: a failed attempt, never a guess
-    const theme = item.input.themes.find((t) => t.name === a.choice);
-    // "None of these", or not sure enough: answered — the PR simply has no theme.
-    if (!theme || a.confidence < PR_THEME_MIN) return true;
-    await putAiPrThemes(ctx, item.input.repo, [{ pr: item.input.pr.number, themeId: theme.id, confidence: a.confidence, model: answer.model, promptVersion: prThemeJob.promptVersion }]);
+    const pick = prThemePick(item.input.themes, answer.answers.theme);
+    if (pick === undefined) return false; // malformed: a failed attempt, never a guess
+    if (pick === null) return true; // "none of these", or not sure enough: answered — the PR simply has no theme
+    await putAiPrThemes(ctx, item.input.repo, [{ pr: item.input.pr.number, themeId: pick.id, confidence: pick.confidence, model: answer.model, promptVersion: prThemeJob.promptVersion }]);
     return true;
   },
 };
+
+/** PURE: what Jev's answer decides — the theme (with its confidence); null for "none of these" or a pick below
+ *  PR_THEME_MIN; undefined for a malformed answer. (The evals score this same function.) */
+export function prThemePick(themes: readonly { id: number; name: string }[], a: JevAnswers["answers"][string] | undefined): { id: number; confidence: number } | null | undefined {
+  if (!a || a.type !== "choice") return undefined;
+  const theme = themes.find((t) => t.name === a.choice);
+  return theme && a.confidence >= PR_THEME_MIN ? { id: theme.id, confidence: a.confidence } : null;
+}
 
 // ── themes.backfill ──────────────────────────────────────────────────────────
 
