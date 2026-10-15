@@ -32,6 +32,7 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await createSession(platformCtx(), handle); // sessions.person
   await mintTokenFor(handle); // mcp_tokens.person
   await append_feed(systemCtx(), { author: handle, summary: "did a thing" }); // feed.author
+  await append_feed(systemCtx(), { author: "trov", summary: "Shipped: a thing", ai: { model: "claude-haiku-5-5", subject: handle } }); // feed.subject (0061)
   await propose_doc_update(
     systemCtx(),
     { slug: "rename-test-doc", section: "reference", title: "T", body: "b", change_summary: "s", confidence: "high" },

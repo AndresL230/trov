@@ -1,6 +1,7 @@
 import type { DocRow, DocMetaRow, DocVersionRow, FeedRow, AdrRow, NeedsTriageRow, SprintRow, PlanRow, EventRow, IdentityTaskRow, TicketRow, TicketLinkRow, TicketCommentRow, TicketEventRow } from "@shared/rows";
 import { tagsOfItems } from "./tags";
 import { isFeedImportance, type FeedImportance } from "@shared/ai-core";
+import { withAiMeta, type FeedDbRow } from "./feed-ai";
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
@@ -75,7 +76,7 @@ export async function get_feed(ctx: TenantContext, filter: FeedFilter = {}): Pro
   // Clamp to a safe integer; interpolated (not bound) because SQLite rejects bound LIMIT in some drivers.
   const limit = Math.trunc(Math.min(Math.max(filter.limit ?? 50, 1), 500));
 
-  const rows = await all<FeedRow>(
+  const rows = await all<FeedDbRow>(
     ctx,
     `SELECT DISTINCT f.* FROM feed f ${join} WHERE f.org_id = ?${clauses.map((c) => ` AND ${c}`).join("")}
       ORDER BY f.created_at DESC, f.id DESC LIMIT ${limit}`,
@@ -84,7 +85,8 @@ export async function get_feed(ctx: TenantContext, filter: FeedFilter = {}): Pro
   );
   // Each entry's tags, in one more read (chunked): the Feed and an agent both see what an entry is about.
   const tags = await tagsOfItems(ctx, "feed", rows.map((r) => String(r.id)));
-  return rows.map((r) => ({ ...withImportance(r), tags: tags.get(String(r.id)) ?? [] }));
+  // An entry Trov wrote (0061_ai_digests) carries `ai`; an agent's carries nothing new. `importance` only when rated.
+  return (await withAiMeta(ctx, rows)).map((r) => ({ ...withImportance(r), tags: tags.get(String(r.id)) ?? [] }));
 }
 
 /** A feed row as a read returns it: `importance` (0060) only when Sift rated it — a NULL column is LEFT OUT, so an

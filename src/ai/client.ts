@@ -59,6 +59,11 @@ export const KIND_PROVIDER = {
   "ticket.duplicate": "jev",
   "review.risk": "jev",
   "unplaced.destination": "jev",
+  // Phase D: session digests and repo state (src/ai/digests.ts, src/ai/repo-state.ts), each behind its Jev gate.
+  "gate.session": "jev",
+  "digest.session": "claude",
+  "gate.state": "jev",
+  "repo.state": "claude",
 } as const satisfies Record<string, AiProviderName>;
 
 /** What a call is for. */

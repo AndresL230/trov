@@ -15,6 +15,8 @@ import roadmap from "../fixtures/dev/roadmap.json";
 import events from "../fixtures/dev/events.json";
 import identity from "../fixtures/dev/identity.json";
 import tickets from "../fixtures/dev/tickets.json";
+import ai from "../fixtures/dev/ai.json";
+import { readRepoState } from "../src/tools/repo-state";
 
 const fx = { docs, feed, adrs, triage, roadmap, events, identity, tickets };
 
@@ -93,9 +95,9 @@ describe("dev seed lights up every surface", () => {
   });
 
   it("People: the four engineers plus the two non-engineer requesters", async () => {
-    // `github-webhook` (0032) is a system principal, not a person: the GitHub
-    // mirror's fallback requester. It is never listed or assignable.
-    const persons = await all<{ handle: string }>(env.DB, `SELECT handle FROM persons WHERE handle != 'github-webhook' ORDER BY handle`);
+    // `github-webhook` (0032) and `trov` (0061) are system principals, not persons: the GitHub
+    // mirror's fallback requester and the author of what Trov writes. Never listed or assignable.
+    const persons = await all<{ handle: string }>(env.DB, `SELECT handle FROM persons WHERE handle NOT IN ('github-webhook', 'trov') ORDER BY handle`);
     expect(persons.map((p) => p.handle)).toEqual(
       ["AndresL230", "Darkest-Teddy", "Jose-Gael-Cruz-Lopez", "lpcooper-arch", "meilin", "sanaok"].sort()
     );
@@ -168,5 +170,23 @@ describe("dev seed lights up every surface", () => {
     expect((await list_needs_triage(systemCtx())).length).toBeGreaterThan(0);
     expect((await list_adrs(systemCtx(), "draft")).length).toBeGreaterThan(0);
     expect((await list_identity_tasks(systemCtx())).length).toBeGreaterThan(0);
+  });
+});
+
+describe("dev seed: what Trov wrote shows without LOCAL_AI_PREVIEW (fixtures/dev/ai.json)", () => {
+  it("the Feed carries Trov's digests with `ai`, and Repo › Overview's state reads the newest repo_state version", async () => {
+    for (const stmt of buildSeedStatements({ ...fx, ai })) await env.DB.prepare(stmt).run();
+    const feed = await get_feed(systemCtx(), {});
+    const trov = feed.filter((r) => r.ai);
+    expect(trov.map((r) => r.id).sort()).toEqual([101, 102, 103]);
+    expect(trov.every((r) => r.author === "trov" && /^(Shipped|Status): /.test(r.summary))).toBe(true);
+    // Sources are linked to the session's repository (its ai_sessions row).
+    expect(trov.find((r) => r.id === 101)!.ai!.sources[0]).toMatchObject({ ref: "pr:162", href: "https://github.com/SaplingLearn/sapling/pull/162" });
+    expect(feed.filter((r) => !r.ai).length).toBe(feed.length - 3); // the agents' entries are unchanged
+    const state = await readRepoState(systemCtx(), "SaplingLearn/sapling");
+    expect(state).toMatchObject({ state: "ready", eventCount: 4, headline: expect.stringContaining("structured summaries") });
+    expect(state!.shipped.length).toBe(3);
+    expect(state!.inFlight.length).toBe(1);
+    expect(state!.attention.length).toBe(1);
   });
 });

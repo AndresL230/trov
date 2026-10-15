@@ -51,16 +51,20 @@ import { ticketCardJob, reviewRiskJob, unplacedDestinationJob } from "./jobs/car
 import { prThemeJob, themesBackfillJob, themesCaptionJob, themesProposeJob } from "./themes";
 import { TAG_FIT_ITEM_JOB } from "./sift-items";
 import { IMPORTANCE_JOBS } from "./importance";
+import { sessionDigestJob } from "./digests";
+import { repoStateJob } from "./repo-state";
 
 export type { AiJob } from "./jobs";
 
-/** THE registry: one line per producer — Phase C's Jev cards, then (Phase D) the Haiku producers. */
+/** THE registry: one line per producer (Phases C and D); the pass runs them in its stage order. */
 export const AI_JOBS: readonly AiJob[] = [
   ticketCardJob, // card:ticket — ticket.category / ticket.priority / ticket.duplicate, one request (./jobs/cards.ts)
   reviewRiskJob, // card:proposal — review.risk
   unplacedDestinationJob, // card:unplaced — unplaced.destination
   TAG_FIT_ITEM_JOB, // tag.fit — Sift on new items (card:tagfit:*)
   ...IMPORTANCE_JOBS, // feed.importance — card:feed:*, card:pr:*
+  sessionDigestJob, // Phase D: session digests (`session`), behind `gate.session`
+  repoStateJob, // Phase D: repo state (`repo`), behind `gate.state`
   prThemeJob,
   themesProposeJob,
   themesCaptionJob,

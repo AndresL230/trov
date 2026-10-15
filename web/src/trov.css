@@ -135,6 +135,19 @@ input, select { font-family: inherit; }
 .repo-lane[data-on="0"]:hover { opacity:.8 !important; }
 .repo-themes-proposed:focus-visible { outline:2px solid var(--focus); outline-offset:4px; }
 @media (prefers-reduced-motion: reduce) { .repo-lane { transition:none; } }
+/* Leaving ("Wrong?", the Feed note's "Got it"; ai-ui.ts › Leaving): Review's exit (› a row leaving a
+   list) on a screen that is rebuilt per paint — dimmed for .13s, then the one-track grid goes
+   `1fr` → `0fr` and fades over `--fx-fast` on `--fx-ease`: `AI_EXIT_MS` in all. A keyframe, not a
+   transition, with `--leave-t` (elapsed, negative) as its delay, so a rebuild mid-exit joins it. */
+@keyframes cnpy-ai-leave {
+  0% { grid-template-rows:1fr; opacity:1; }
+  42% { grid-template-rows:1fr; opacity:.35; }
+  100% { grid-template-rows:0fr; opacity:0; }
+}
+/* (named again under [data-enter] so a screen's entrance never takes over an exit) */
+.cnpy-ai-leave, [data-enter] .cnpy-ai-leave, [data-enter] .cnpy-stagger > .cnpy-ai-leave { display:grid; grid-template-rows:0fr; opacity:0; pointer-events:none; animation:cnpy-ai-leave calc(.13s + var(--fx-fast)) var(--fx-ease) both; animation-delay:var(--leave-t, 0ms); }
+.cnpy-ai-leave-in { min-height:0; overflow:hidden; }
+@media (prefers-reduced-motion: reduce) { .cnpy-ai-leave { animation:none !important; display:none; } }
 @media (max-width:640px) { .repo-themes-chart { --lane-w:136px; } }
 
 /* ── Two columns + a sticky aside (ui.ts `asideColumns`) — Roadmap › Narrative (the

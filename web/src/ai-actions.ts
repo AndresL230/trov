@@ -8,7 +8,7 @@
 // for its kind exists (every kind, today): the chip then says "Not available yet" in place of its buttons.
 
 import type { AppState } from "./render";
-import { AI_FEED_SOURCES, AI_NOTE_KEY, aiHiddenKey, type AiFeedSource } from "./ai-ui";
+import { AI_EXIT_MS, AI_FEED_SOURCES, AI_NOTE_KEY, AI_NOTE_LEAVING, aiHiddenKey, type AiFeedSource } from "./ai-ui";
 import { AI_ITEM_TYPES, AI_THEME_RANGES, type AiFeedbackBody, type AiThemeRange } from "@shared/ai-core";
 import { ApiError, PreviewBlocked, Unauthorized, acceptAiSuggestion, dismissAiSuggestion, sendAiFeedback } from "./api";
 
@@ -23,6 +23,8 @@ export interface AiHost {
   /** A suggestion was accepted or dismissed: the screen it was on re-reads what changed (Phase C — the ticket, the
    *  Unplaced queue, Review). */
   decided?(id: number, how: "accept" | "dismiss"): void;
+  /** One-shot `.cnpy-flash` on what matches, after the next paint (main.ts `pendingFlash`). */
+  flashNext?(selector: string): void;
 }
 export interface AiController {
   act(act: string, arg: string | null, value: string | null): void;
@@ -52,16 +54,31 @@ export function createAiController(host: AiHost): AiController {
   const ui = () => state.ai;
   const rerender = () => host.rerender();
   const without = (xs: number[], id: number) => xs.filter((x) => x !== id);
+  const reduced = (): boolean => { try { return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false; } catch { return false; } };
+  const stopLeaving = (key: string) => { ui().leaving = ui().leaving.filter((l) => l.key !== key); };
+  /** Draw `key` leaving for AI_EXIT_MS (ai-ui.ts › Leaving), then let it go. Gone at once under reduced motion. */
+  function leave(key: string): void {
+    if (reduced()) return;
+    const at = Date.now();
+    ui().leaving = [...ui().leaving.filter((l) => l.key !== key), { key, at }];
+    setTimeout(() => {
+      if (!ui().leaving.some((l) => l.key === key && l.at === at)) return;
+      stopLeaving(key);
+      rerender();
+    }, AI_EXIT_MS);
+  }
 
   function wrong(body: AiFeedbackBody): void {
     const key = aiHiddenKey(body.itemType, body.itemRef);
     if (ui().hidden.includes(key)) return;
     ui().hidden = [...ui().hidden, key];
+    leave(key);
     rerender();
     sendAiFeedback(body)
       .then(() => host.flash("Hidden for you. Thanks: Trov is told it was wrong."))
       .catch((e) => {
         ui().hidden = ui().hidden.filter((k) => k !== key);
+        stopLeaving(key);
         if (e instanceof Unauthorized) { host.unauth(e); return; }
         if (!(e instanceof PreviewBlocked)) host.flash("Couldn't send that. It is back on screen; try again.", 5000);
         rerender();
@@ -103,12 +120,15 @@ export function createAiController(host: AiHost): AiController {
     switch (name) {
       case "aiWrong": { const b = parseFeedbackArg(arg); if (b) wrong(b); return; }
       case "aiFeedSource":
-        if ((AI_FEED_SOURCES as readonly string[]).includes(arg ?? "")) u.feedSource = arg as AiFeedSource;
+        if (!(AI_FEED_SOURCES as readonly string[]).includes(arg ?? "") || arg === u.feedSource) return;
+        u.feedSource = arg as AiFeedSource;
+        // The list under the switch is another set of entries: it rises in, as a Repo range switch does.
+        host.flashNext?.("#cnpy-main .cnpy-stagger");
         break;
       case "aiNoteGotIt": {
         const me = state.me?.handle;
         if (!me) return;
-        if (!u.noteSeen.some((h) => h.toLowerCase() === me.toLowerCase())) u.noteSeen = [...u.noteSeen, me];
+        if (!u.noteSeen.some((h) => h.toLowerCase() === me.toLowerCase())) { u.noteSeen = [...u.noteSeen, me]; leave(AI_NOTE_LEAVING); }
         try { localStorage.setItem(AI_NOTE_KEY, JSON.stringify(u.noteSeen)); } catch { /* ignore */ }
         break;
       }
@@ -120,8 +140,7 @@ export function createAiController(host: AiHost): AiController {
         // The proposed themes are the only editing there is yet: go to them; otherwise say so.
         const target = host.mount.querySelector<HTMLElement>("#repo-themes-proposed");
         if (target) {
-          const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-          target.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+          target.scrollIntoView({ block: "center", behavior: reduced() ? "auto" : "smooth" });
           target.focus({ preventScroll: true });
         } else host.flash("Editing themes is not available yet.");
         return;

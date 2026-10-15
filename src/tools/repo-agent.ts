@@ -21,7 +21,8 @@
 //               tab filter does not name it: `state` travels with the overview
 //               (it is Overview's first block), `themes` with planning (Planning's
 //               first block), both with no `tab`. Absent on the dashboard = absent
-//               here (`themes`: src/tools/themes.ts, when the repo has themes and AI is on).
+//               here. `state` is the newest `repo_state` version (`readRepoState`,
+//               src/tools/repo-state.ts); `themes`: src/tools/themes.ts, when the repo has themes and AI is on.
 // A section's STATUS is never touched: `not_connected` and `empty` pass through
 // as they are — unknown is never coerced into a zero or an empty list.
 //
@@ -33,6 +34,7 @@ import { type TenantContext, all, first } from "../data/sql";
 import { emptyRepoDashboard, getRepoDashboard, type RepoDashboardEnv } from "./repo";
 import type { RepoDashboard } from "@shared/repo";
 import { shapeRepoDashboard, type RepoAgentOptions, type RepoAgentView } from "./repo-agent-view";
+import { readRepoState } from "./repo-state";
 
 // The pure view (shaping, limits, the facts' layout) lives in ./repo-agent-view.ts; re-exported for every caller.
 export {
@@ -85,6 +87,12 @@ export async function getRepoDashboardForAgent(
     dash = await getRepoDashboard(ctx, repo, now, envs, undefined, { app: opts.app ?? null });
   } catch {
     dash = emptyRepoDashboard(repo, true);
+  }
+  // What Trov wrote about the repository (0062_repo_state), only when the tab carries it — the same read the
+  // screen makes, absent when there is none (src/tools/repo-state.ts).
+  if (!opts.tab || opts.tab === "overview") {
+    const state = await readRepoState(ctx, repo, { viewer: ctx.role === "system" ? null : ctx.userId, now: new Date(now) });
+    if (state) dash = { ...dash, state };
   }
   return shapeRepoDashboard(dash, opts);
 }

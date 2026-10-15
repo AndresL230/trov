@@ -20,7 +20,7 @@ import { esc, attr, surface } from "./ui";
 import { glyph } from "./marks";
 import { segmented } from "./segmented";
 import {
-  AI_EMPTY, AI_TIP, aiByline, aiCapped, aiCite, aiCites, aiDay, aiEmpty, aiFeedback, aiIsHidden, aiSuggestionChip, aiWrongBtn, type AiUi,
+  AI_EMPTY, AI_TIP, aiByline, aiCapped, aiCite, aiCites, aiDay, aiEmpty, aiFeedback, aiHiddenKey, aiIsHidden, aiLeave, aiLeavingT, aiSuggestionChip, aiWrongBtn, type AiUi,
 } from "./ai-ui";
 
 /** What the two sections need from the screen besides the field. */
@@ -46,10 +46,14 @@ function stateLine(l: AiLine): string {
   return `<li style="line-height:1.55;overflow-wrap:anywhere">${esc(l.text)}${l.cites.length ? ` <span style="display:inline-flex;flex-wrap:wrap;gap:6px">${aiCites(l.cites)}</span>` : ""}</li>`;
 }
 
-/** Overview's first section. "" when this person pressed "Wrong?" on it. */
-export function repoStateSection(st: AiRepoState, p: RepoAiProps): string {
+/** Overview's first section. "" when this person pressed "Wrong?" on it — after its exit, while it
+ *  leaves (ai-ui.ts › Leaving). */
+export function repoStateSection(st: AiRepoState, p: RepoAiProps, now = Date.now()): string {
   const ref = aiItemRef.repoState(p.repo, st.generatedAt ?? "state");
-  if (aiIsHidden(p.ui, "repo_state", ref)) return "";
+  if (aiIsHidden(p.ui, "repo_state", ref)) {
+    const t = aiLeavingT(p.ui, aiHiddenKey("repo_state", ref), now);
+    return t === null ? "" : aiLeave(repoStateSection(st, { ...p, ui: { ...p.ui, hidden: [] } }, now), t);
+  }
   const from = st.eventCount === null ? undefined : `${st.eventCount} ${st.eventCount === 1 ? "event" : "events"}`;
   const head = `<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px">
       <h2 id="repo-state-h" style="${HEAD}">State</h2>${aiByline(st.generatedAt, AI_TIP.state, { from })}

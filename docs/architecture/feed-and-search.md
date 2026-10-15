@@ -175,10 +175,22 @@ breaking an amber triangle, each with its word and a tooltip saying it is Sift's
 into `/feed`; the dev seed rates a few entries and PRs.
 
 **Entries written by Trov** (`FeedRow.ai?`, `shared/ai-core.ts` `AiFeedMeta`: `origin: "ai"`, the person it was
-written for, its sources). An entry with no `ai` is an agent's — every entry today: nothing writes one yet, so
-`/feed` and `get_feed` carry no `ai` in production. `LOCAL_AI_PREVIEW` merges two sample entries into `/feed`
-by `created_at` (respecting `author` / `tags` / `since` / `limit`) under `wrangler dev` only, never over MCP
-(`ai.md`).
+written for, its sources). The SESSION DIGESTS (`ai.md` › Session digests): a `Shipped:` / `Status:` entry the AI
+pass writes from one person's burst of commits and PRs, through the gate, authored by `trov`
+(`ingestion-gate.md` › the one exception), with `feed.origin = 'ai'`, `feed.model` and `feed.subject` (0061). Every
+read of the feed (`get_feed`: `/feed` and MCP) folds those three columns into `ai` (`withAiMeta`,
+`src/tools/feed-ai.ts`) — `subject`, `sources` (the server's cites built from the entry's own `artifacts`: PRs, then
+commits, linked to the digest's repository from `ai_sessions`; no repository = no link, never a guess), the
+first `AI_FEED_SOURCES_SHOWN` (3) and `moreCount` the rest, `generatedAt` (`created_at`) and `model` — and drops them
+from the row; an agent's entry carries no `ai`, exactly as before. `/feed` and MCP `get_feed` both leave out a
+Trov entry the caller flagged "Wrong?" (`hideWrongFor`: `ai_feedback` item type `feed`, ref = the entry's id —
+`aiItemRef.feed`, what the Feed's button sends; for them only; the record stays). Its `importance` is Phase C's `feed.importance` (Jev,
+`card:feed`), which the router's `feed_ingested` mark asks for like any entry. `LOCAL_AI_PREVIEW` merges two
+sample entries into `/feed` by `created_at` (respecting `author` / `tags` / `since` / `limit`) under `wrangler
+dev` only, never over MCP (`ai.md`); the local seed (`npm run seed`) has REAL Trov rows too — three digests with
+their `ai_sessions`, a skipped session and two `repo_state` versions (`fixtures/dev/ai.json`,
+`scripts/seed/build.mjs` › `aiStatements`; left out of the Guide demo), so the Feed and Repo › Overview show them
+without the preview. `test/ai.hookup.test.ts` proves the whole path on real rows.
 
 **Entries written by Trov** (`FeedRow.ai?`, `AiFeedMeta`). An entry with no `ai`, or `ai.origin === "agent"`, is an
 agent's and renders as before. One with `origin: "ai"` takes the AI mark as its avatar, "Trov" as the name and

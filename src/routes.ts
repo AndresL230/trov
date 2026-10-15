@@ -72,6 +72,8 @@ import { askFlagsFor } from "./data/ask";
 import { repoSettingsApp } from "./repo/settings-routes";
 import { aiPreview, previewFeedRows, withPreviewFeed } from "./ai/preview";
 import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions } from "./ai/attach";
+import { readRepoState } from "./tools/repo-state";
+import { hideWrongFor } from "./tools/feed-ai";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
 
 export const app = new Hono<AppEnv>();
@@ -248,9 +250,10 @@ tenantRoot.get("/feed", async (c) => {
     since: c.req.query("since"),
     limit: limit ? Number(limit) : undefined,
   };
-  const feed = await get_feed(c.var.ctx, filter);
-  // An entry written by Trov carries `ai` (shared/rows.ts). Nothing writes one yet, so production rows have
-  // none; under `wrangler dev` with LOCAL_AI_PREVIEW the sample entries are merged in (src/ai/preview.ts).
+  // An entry written by Trov carries `ai` (shared/rows.ts, 0061_ai_digests). One this person flagged "Wrong?" is
+  // hidden for them (and only them); the record stays. Under `wrangler dev` with LOCAL_AI_PREVIEW the sample entries
+  // are merged in (src/ai/preview.ts).
+  const feed = await hideWrongFor(c.var.ctx, c.get("principal").handle, await get_feed(c.var.ctx, filter));
   const preview = aiPreview(c.env, c.req.url);
   return c.json({ feed: preview ? withPreviewFeed(feed, previewFeedRows(preview), filter) : feed });
 });
@@ -761,11 +764,17 @@ tenantRoot.get("/repo/dashboard", async (c) => {
     if (held === null) return c.json({ error: "unknown repository" }, 404);
     repo = held;
     const app = c.req.query("app") || null;
-    const dash = await getRepoDashboard(c.var.ctx, repo, Date.now(), await orgEnvironments(c.var.ctx), undefined, { app });
-    // `state` / `themes` (shared/repo.ts) are not sections: `themes` is there when the repo has themes (src/tools/themes.ts).
-    // LOCAL_AI_PREVIEW shows the samples under `wrangler dev` only (src/ai/preview.ts).
+    const [dash, state] = await Promise.all([
+      getRepoDashboard(c.var.ctx, repo, Date.now(), await orgEnvironments(c.var.ctx), undefined, { app }),
+      // `state` (shared/repo.ts, not a section): the newest version Trov wrote (0062_repo_state), absent when there
+      // is none, the switch is off, or this person flagged it "Wrong?" (src/tools/repo-state.ts).
+      readRepoState(c.var.ctx, repo, { viewer: c.get("principal").handle }),
+    ]);
+    const written = state ? { ...dash, state } : dash;
+    // `themes` (not a section) is there when the repo has themes (src/tools/themes.ts). LOCAL_AI_PREVIEW shows the
+    // samples under `wrangler dev` only (src/ai/preview.ts), over the real state.
     const preview = aiPreview(c.env, c.req.url);
-    return c.json(preview ? { ...dash, state: preview.repoState, themes: preview.themes } : dash);
+    return c.json(preview ? { ...written, state: preview.repoState, themes: preview.themes } : written);
   } catch {
     return c.json(emptyRepoDashboard(repo, true));
   }

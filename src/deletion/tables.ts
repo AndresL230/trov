@@ -44,8 +44,9 @@ export const ORG_TABLES = [
   "pr_summaries", "issue_summaries", "events", "identity_tasks", "repo_events", "repo_snapshots", "repo_metrics", "sync_runs",
   // What the model suggested and the "Wrong?" people pressed (0055_ai).
   "ai_suggestions", "ai_feedback",
-  // What the AI router marked stale for the pass (0058_ai_dirty).
-  "ai_dirty",
+  // What the AI router marked stale for the pass (0058_ai_dirty); the session digests' bookkeeping (0061_ai_digests)
+  // and the written repository states (0062_repo_state).
+  "ai_dirty", "ai_sessions", "repo_state",
   // Ask Trov (0066_ask): the people's threads, their messages and search rows, write cards, attachment links, Ask
   // settings, and Review's "Flagged in Ask" lines.
   "chat_actions", "chat_artifacts", "chat_messages", "chat_fts", "chat_threads", "person_ask_settings", "ask_flags",

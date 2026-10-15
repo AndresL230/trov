@@ -10,6 +10,7 @@ import { admitCall, pinnedConnection, resolveCall, switchOrg, type BearerConnect
 import { meterMcpTool } from "./data/meter";
 import { appBase, orgIdentityOf } from "./tools/org-links";
 import { get_doc, list_docs, get_feed, query, list_tickets, get_ticket, list_sprints, get_sprint } from "./tools/reads";
+import { hideWrongFor } from "./tools/feed-ai";
 import {
   TicketSeg, TicketAssigneeFilter, TicketCategory,
   TicketCreate, TicketEdit, TicketTransition, TicketCommentAdd, TicketLinkAdd, TicketSprintSet, TicketParentSet,
@@ -132,7 +133,8 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
     "get_feed",
     "Read the feed with optional author/tags/since/limit filters. Each entry carries its `tags`; `tags` filters to entries that carry ANY of the given ones (names from list_tags).",
     { author: z.string().optional(), tags: z.array(z.string()).optional(), since: z.string().optional(), limit: z.number().optional() },
-    async (args) => runTool(() => get_feed(ctx, args))
+    // An entry Trov wrote that this person flagged "Wrong?" is left out, as on the Feed (src/tools/feed-ai.ts).
+    async (args) => runTool(async () => hideWrongFor(ctx, ctx.userId, await get_feed(ctx, args)))
   );
 
   server.tool(

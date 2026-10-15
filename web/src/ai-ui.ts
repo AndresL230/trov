@@ -46,9 +46,12 @@ export interface AiUi {
   unavailable: number[];
   /** The suggestion chip whose reason is open (its key), or null. */
   reasonOpen: string | null;
+  /** Items on their way out (`aiHiddenKey`, or `AI_NOTE_LEAVING` for the Feed's note) and when they
+   *  started: drawn collapsing for `AI_EXIT_MS`, then gone (`aiLeavingT`). Never under reduced motion. */
+  leaving: { key: string; at: number }[];
 }
 export function initialAiUi(): AiUi {
-  return { hidden: [], feedSource: "all", noteSeen: [], themesRange: "8w", themesLane: null, rename: null, busy: [], unavailable: [], reasonOpen: null };
+  return { hidden: [], feedSource: "all", noteSeen: [], themesRange: "8w", themesLane: null, rename: null, busy: [], unavailable: [], reasonOpen: null, leaving: [] };
 }
 /** The localStorage key "Got it" is remembered under: a JSON list of handles (per person, per browser). */
 export const AI_NOTE_KEY = "trov.aiFeedNote";
@@ -57,6 +60,26 @@ export const AI_NOTE_KEY = "trov.aiFeedNote";
 export const aiHiddenKey = (itemType: AiItemType, itemRef: string): string => `${itemType}:${itemRef}`;
 export const aiIsHidden = (ui: Pick<AiUi, "hidden">, itemType: AiItemType, itemRef: string): boolean =>
   ui.hidden.includes(aiHiddenKey(itemType, itemRef));
+
+// ── Leaving: "Wrong?" and the note's "Got it" (web-ui.md › A row leaving a list) ──
+// The item is hidden at once in state (`hidden`, `noteSeen`) — every count already leaves it out — but
+// is still DRAWN for `AI_EXIT_MS`: `inert`, dimmed for .13s, then collapsed (a one-track grid, `1fr` →
+// `0fr`) and faded over `--fx-fast`, Review's timing. The Feed and the Repo screen are rebuilt on a
+// paint, so the motion is a keyframe whose clock is a NEGATIVE delay (`--leave-t`, elapsed ms) — the
+// same trick as `--enter-t`: a rerender mid-exit joins it where it was, never replays it.
+export const AI_EXIT_MS = 310;
+/** The Feed's one-time note, while it leaves after "Got it". */
+export const AI_NOTE_LEAVING = "note:feed";
+/** How far into its exit an item is (ms), or null when it is not leaving (or done leaving). */
+export function aiLeavingT(ui: Pick<AiUi, "leaving">, key: string, now = Date.now()): number | null {
+  const l = ui.leaving.find((x) => x.key === key);
+  if (!l) return null;
+  const t = Math.max(0, now - l.at);
+  return t < AI_EXIT_MS ? t : null;
+}
+/** An item drawn on its way out. */
+export const aiLeave = (html: string, t: number): string =>
+  `<div class="cnpy-ai-leave" data-ai-leaving inert style="--leave-t:-${Math.round(t)}ms"><div class="cnpy-ai-leave-in">${html}</div></div>`;
 
 // ── words ────────────────────────────────────────────────────────────────────
 

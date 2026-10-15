@@ -28,7 +28,7 @@
 import type { Env } from "../env";
 import { type PlatformContext, type Stmt, all, first, stmt, batch, ph, nowIso } from "../data/platform-sql";
 import { isSuperadmin } from "../data/context";
-import { getPerson, HANDLE_COLUMNS } from "../auth/persons";
+import { getPerson, HANDLE_COLUMNS, RESERVED_HANDLES } from "../auth/persons";
 import { hmacSeal } from "../auth/crypto";
 import { subscriptionEnded } from "../billing/cancel";
 import {
@@ -123,7 +123,9 @@ async function unusedPaidGrants(p: PlatformContext, handle: string, a: { logins:
  */
 export async function accountDeletionPreview(p: PlatformContext, handle: string, ask: AccountAsk): Promise<AccountDeletionPreview | null> {
   const person = await getPerson(p, handle);
-  if (!person || person.handle.toLowerCase().startsWith(TOMBSTONE_PREFIX)) return null;
+  // A tombstone is gone already; a RESERVED handle (`github-webhook`, `trov`, …) is a system principal that content
+  // must keep pointing at, never an account anyone can delete.
+  if (!person || person.handle.toLowerCase().startsWith(TOMBSTONE_PREFIX) || RESERVED_HANDLES.includes(person.handle.toLowerCase())) return null;
   const h = person.handle;
   const self = ask.by === "self";
   const you = self ? "You're" : `@${h} is`;
@@ -226,6 +228,9 @@ function personStmts(p: PlatformContext, h: string, tomb: string, a: { logins: s
     // sessions (`session:<repo>:<login>`). No other scope key names a person.
     stmt(p, `DELETE FROM ai_dirty WHERE scope = 'person' AND scope_key = ? COLLATE NOCASE`, h),
     ...[h, ...a.logins].map((n) => stmt(p, `DELETE FROM ai_dirty WHERE scope = 'session' AND lower(substr(scope_key, -length(?1) - 1)) = lower(':' || ?1)`, n)),
+    // The session digests' bookkeeping (0061_ai_digests) keyed by those logins. The digests themselves stay, as
+    // content: their `subject` becomes the tombstone through HANDLE_COLUMNS, like every other entry.
+    ...(a.logins.length ? [stmt(p, `DELETE FROM ai_sessions WHERE lower(actor_login) IN (${a.logins.map((_, i) => `lower(?${i + 1})`).join(", ")})`, ...a.logins)] : []),
     // Rate-limit counters (two days at most anyway), by handle and by the sign-ins they were onboarded with.
     stmt(p, `DELETE FROM abuse_counters WHERE subject = ? COLLATE NOCASE${counters.length ? ` OR subject IN (${ph(counters.length)})` : ""}`, h, ...counters),
     // The ONE sentence Trov writes with a handle in it (src/tools/handoffs.ts: "<sender> left a handoff for

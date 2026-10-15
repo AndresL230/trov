@@ -162,6 +162,7 @@ const tagsCtl = createTagsController({
 // note, the themes' range and lane, Accept / Rename / Remove on a suggestion.
 const aiCtl = createAiController({
   state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
+  flashNext: (sel) => { pendingFlash = sel; },
   reloadRepo: () => { if (!state.repoSample && state.repo.status !== "loading") loadRepo(); },
   // Phase C: an accepted suggestion changed the ticket / filed the item, and a decided one is gone. Its chip leaves
   // by the one exit pattern (ai-cards.ts `leaveBox`, web-ui.md › A row leaving a list): state says it is leaving,
@@ -2634,12 +2635,13 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // The page's tab bar: the one dashboard payload covers every tab, so a switch is ONE
     // rerender with nothing to load — goRepo's load would rebuild the bar and cut its slide.
     // The entrance is not replayed (markEnter), so the new tab's content flashes in instead:
-    // a short rise, and its sparklines / fills / bars grow again.
+    // a short rise, and its sparklines / fills / bars grow again — and the section Trov wrote above
+    // the panel (Overview › State, Planning › Where the work went, `.repo-ai`) with it.
     case "setRepoTab": {
       const tab = arg ?? "";
       if (!isRepoTab(tab) || tab === state.repoTab) return;
       state.repoTab = tab;
-      pendingFlash = ".repo-panel > :not(.repo-poll-strip)";
+      pendingFlash = ".repo-panel > :not(.repo-poll-strip), .repo-ai";
       break;
     }
     case "repoRefresh": if (state.repo.status !== "loading") loadRepo(); return;

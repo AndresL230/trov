@@ -8,6 +8,7 @@ import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
 import { AI_JOBS, AI_PASS_ACTOR, AI_PASS_JOB, AI_RUNS_PER_TICK, runAiPass, type AiJob } from "../src/ai/pass";
 import { aiEligibility } from "../src/ai/eligibility";
+import { KIND_PROVIDER } from "../src/ai/client";
 import { newBudget } from "../src/repo/dispatch";
 import { handleRepoCron } from "../src/repo/cron";
 import { PLANS } from "@shared/plans";
@@ -54,11 +55,13 @@ const pass = (s: Stub, jobs: readonly AiJob[], limit = 900, e: Env = keyedEnv())
   runAiPass(e, newBudget(s.fetchImpl, limit), { jobs, now: NOW });
 
 describe("the real registry, with nothing it takes", () => {
-  it("AI_JOBS holds the producers; over scopes none of them takes it makes zero calls and writes nothing — with both keys and stale scopes", async () => {
+  it("AI_JOBS holds the producers (unique names, each kind's own provider); over scopes none of them takes it makes zero calls and writes nothing — with both keys and stale scopes", async () => {
     expect(AI_JOBS.map((j) => j.name)).toEqual([
       "ticket.card", "review.risk", "unplaced.destination", "tag.fit:new-item", "feed.importance:feed", "feed.importance:pr",
-      "pr.theme", "themes.propose", "themes.caption", "themes.backfill",
+      "digest.session", "repo.state", "pr.theme", "themes.propose", "themes.caption", "themes.backfill",
     ]);
+    expect(new Set(AI_JOBS.map((j) => j.name)).size).toBe(AI_JOBS.length);
+    for (const j of AI_JOBS) expect(KIND_PROVIDER[j.kind], j.name).toBe(j.provider);
     // Phase C's cards: Jev, cards only, each on its own key prefix.
     expect(AI_JOBS.slice(0, 3).map((j) => [j.name, j.provider, j.scope, j.keyPrefix])).toEqual([
       ["ticket.card", "jev", "card", "ticket:"], ["review.risk", "jev", "card", "proposal:"], ["unplaced.destination", "jev", "card", "unplaced:"],
@@ -72,7 +75,7 @@ describe("the real registry, with nothing it takes", () => {
     expect((await dirtyRow(ORG_A, "card", "x:1"))!.last_run_at).toBeNull();
   });
 
-  it("the */10 tick runs it after the health pings and it still does nothing", async () => {
+  it("the */10 tick runs it after the health pings and, with nothing stale, it does nothing", async () => {
     await setOrgEnvironments([ENVS[0]]);
     const s = stub();
     await handleRepoCron(keyedEnv(), NOW.getTime(), s.fetchImpl);

@@ -109,7 +109,8 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
   const createdKeys = Object.keys(CREATED_SQL) as (keyof UsageCreated)[];
   const stmts: Stmt[] = [
     stmt(p, `SELECT id, slug, name, created_at, suspended_at, logo_sha FROM orgs ORDER BY name COLLATE NOCASE ASC`),
-    stmt(p, `SELECT COUNT(*) AS n FROM persons WHERE handle <> 'github-webhook'`),
+    // The system persons (`github-webhook`, 0032; `trov`, 0061) are not people.
+    stmt(p, `SELECT COUNT(*) AS n FROM persons WHERE handle NOT IN ('github-webhook', 'trov')`),
     stmt(p, TICKETS_SQL),
     stmt(p, EMAILS_SQL, sinceIso),
     stmt(p, `SELECT org_id, day, metric, SUM(count) AS n FROM org_usage_daily WHERE day >= ? GROUP BY org_id, day, metric`, since),

@@ -35,13 +35,16 @@ const fx = {
   handoffs: load("handoffs.json"),
   prompts: load("prompts.json"),
   themes: load("themes.json"),
+  // What Trov wrote (0061, 0062): session digests, a skipped session, the repository's state versions.
+  ai: load("ai.json"),
 };
 
 // …plus the Platform (superadmin) screens' demo rows: usage for both seed orgs, Acme's owner, audit; and Repo ›
 // Planning's themes (scripts/seed/themes-dev.mjs: real rows, no LOCAL_AI_PREVIEW needed).
 // The Guide demo has no superadmin, so it leaves those out.
 const guideDemo = argv.includes("--guide-demo");
-const statements = guideDemo ? guideDemoStatements(fx) : [...buildSeedStatements(fx), ...platformDevStatements(), ...themesDevStatements(fx.themes)];
+// The Guide demo leaves Trov's own writing out: its screenshots show the product without it.
+const statements = guideDemo ? guideDemoStatements({ ...fx, ai: undefined }) : [...buildSeedStatements(fx), ...platformDevStatements(), ...themesDevStatements(fx.themes)];
 
 // Applied 8 statements at a time, by the D1 BINDING: one file holding the whole seed is refused
 // by the local execute (SQLITE_TOOBIG), and the database's name has changed before.

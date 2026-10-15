@@ -1,0 +1,101 @@
+{
+ "model": "jev-latest",
+ "recordedAt": "2026-10-15T13:53:06.031Z",
+ "responses": {
+  "first-179": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.91}},\"usage\":{\"input_tokens\":433,\"output_tokens\":20}}",
+   "key": "c9ffa1dfb4909539"
+  },
+  "add-180": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.91}},\"usage\":{\"input_tokens\":425,\"output_tokens\":20}}",
+   "key": "9801a964922c4872"
+  },
+  "add-182-red-branch": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.9}},\"usage\":{\"input_tokens\":426,\"output_tokens\":20}}",
+   "key": "fbca5e6b2d6e0e99"
+  },
+  "add-184": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.9}},\"usage\":{\"input_tokens\":437,\"output_tokens\":20}}",
+   "key": "2511b062430f161a"
+  },
+  "add-185": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.96}},\"usage\":{\"input_tokens\":448,\"output_tokens\":20}}",
+   "key": "a1e8b0797728cd95"
+  },
+  "digests-only": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.6}},\"usage\":{\"input_tokens\":429,\"output_tokens\":20}}",
+   "key": "8addda526c52adbc"
+  },
+  "red-main": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.83}},\"usage\":{\"input_tokens\":363,\"output_tokens\":20}}",
+   "key": "6fea08bb7d17f6bb"
+  },
+  "deploy-and-merge": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.96}},\"usage\":{\"input_tokens\":468,\"output_tokens\":20}}",
+   "key": "e651ee085d8a24aa"
+  },
+  "merged-179": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.91}},\"usage\":{\"input_tokens\":433,\"output_tokens\":20}}",
+   "key": "c9ffa1dfb4909539"
+  },
+  "merged-180": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.89}},\"usage\":{\"input_tokens\":434,\"output_tokens\":20}}",
+   "key": "bb7f552c340e8edc"
+  },
+  "merged-182": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.87}},\"usage\":{\"input_tokens\":434,\"output_tokens\":20}}",
+   "key": "febadbf37033bbf3"
+  },
+  "merged-184": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.88}},\"usage\":{\"input_tokens\":445,\"output_tokens\":20}}",
+   "key": "adb0f3768ab9a304"
+  },
+  "merged-185": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.93}},\"usage\":{\"input_tokens\":456,\"output_tokens\":20}}",
+   "key": "55ec9d9d59624caf"
+  },
+  "quiet-rn-link-185": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.22}},\"usage\":{\"input_tokens\":378,\"output_tokens\":20}}",
+   "key": "ff2e842578f8f3b3"
+  },
+  "quiet-rn-link-184-182": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.21}},\"usage\":{\"input_tokens\":378,\"output_tokens\":20}}",
+   "key": "04fee3d0166a4682"
+  },
+  "quiet-rn-quote": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.24}},\"usage\":{\"input_tokens\":380,\"output_tokens\":20}}",
+   "key": "49086e39b603a94f"
+  },
+  "quiet-rn-cite-133-132": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.56}},\"usage\":{\"input_tokens\":382,\"output_tokens\":20}}",
+   "key": "01595b32ee21bb5c"
+  },
+  "quiet-rn-link-177-176": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.22}},\"usage\":{\"input_tokens\":378,\"output_tokens\":20}}",
+   "key": "111169266820224e"
+  },
+  "quiet-rn-cite-120-117": {
+   "status": 200,
+   "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"changed\":{\"type\":\"noul\",\"noul\":0.46}},\"usage\":{\"input_tokens\":386,\"output_tokens\":20}}",
+   "key": "9ef5ea705e7c3240"
+  }
+ }
+}

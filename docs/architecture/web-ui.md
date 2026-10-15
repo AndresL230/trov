@@ -925,6 +925,18 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   are rebuilt on a paint, so it is a keyframe animation with a negative delay (`--leave-t`, the `--enter-t` trick),
   never restarted by a repaint; a list row's mark fades the same way. Gone at once under reduced motion
   (`test/render.ai-cards.test.ts` › motion).
+  (no accept handler for its kind yet — every kind today) replaces the buttons with "Not available yet". On a
+  live screen only the proposed themes use it so far.
+- **Motion** is the app's: State rises with the page (`.cnpy-rise`) and flashes with the panel on a Repo tab
+  switch (`pendingFlash` includes `.repo-ai`); a Trov entry cascades in the feed's `.cnpy-stagger`, and the Source
+  switch flashes the list (`AiHost.flashNext`). **Leaving** — "Wrong?" on State or a Trov entry, "Got it" on the
+  Feed's note — is Review's exit (› A row leaving a list) on a screen REBUILT per paint: the item is hidden in
+  state at once (every count already leaves it out) but still drawn for `AI_EXIT_MS` (310 ms) from
+  `state.ai.leaving`, `inert`, in `.cnpy-ai-leave` (dimmed .13s, then the one-track grid `1fr` → `0fr` and a fade
+  over `--fx-fast`). It is a KEYFRAME clocked by `--leave-t` (the elapsed ms, negative — `--enter-t`'s trick), so a
+  rebuild mid-exit joins it instead of replaying it; it outranks `[data-enter] .cnpy-stagger > *`. A failed write
+  stops the exit and the item is back. Under reduced motion nothing leaves: it is gone at once
+  (`test/render.ai-motion.test.ts`).
 - **Acts** are `ai…`, in `web/src/ai-actions.ts`. The themes' Rename field keeps its draft WITHOUT a repaint
   (the Repo screen is rebuilt on a paint, not morphed), so typing never rebuilds the page.
 - **Where the work went** draws lanes as `aria-pressed` buttons (no button inside: the proposals' actions sit in
@@ -940,7 +952,7 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   and the Feed are rebuilt on a paint); a refusal is the field's floating error (`fieldError`); once applied, one
   plain line — "Filtered: Open · Assigned to you. Not a filter here: “overdue”." — and Undo. No pill, no select.
 - Tests: `test/render.ai.test.ts` (every screen in ready / empty / capped, themes proposed, admin vs member, the
-  chip, the cites, Org settings › AI, Platform's AI line), `test/render.ai-absent.test.ts`,
+  chip, the cites, Org settings › AI, Platform's AI line), `test/render.ai-absent.test.ts`, `test/render.ai-motion.test.ts`,
   `test/render.ai-filter.test.ts`.
 
 ## Fonts, contrast and focus — nothing from a third party, AA in both themes

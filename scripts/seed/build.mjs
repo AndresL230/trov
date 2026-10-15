@@ -231,5 +231,48 @@ export function buildSeedStatements(fx) {
     );
   }
 
+  if (fx.ai) s.push(...aiStatements(fx.ai, agoIso));
+
+  return s;
+}
+
+/**
+ * What Trov wrote (fixtures/dev/ai.json — 0061_ai_digests, 0062_repo_state), as the AI pass would have left it, so
+ * localhost shows real rows without LOCAL_AI_PREVIEW: the org's primary repository (the Repo screen reads its state
+ * by it), each session digest as a feed entry by `trov` with `origin = 'ai'` and its `ai_sessions` row (the Feed links
+ * its sources by that row's repo), a skipped session, and the `repo_state` versions. Times are relative.
+ */
+export function aiStatements(ai, agoIso) {
+  const ORG = "'org_saplinglearn'";
+  const s = [
+    `INSERT OR IGNORE INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_saplinglearn_sapling', ${ORG}, ${q(ai.repo)}, 1, 0, '2026-10-06T00:00:00.000Z', 'seed')`,
+  ];
+  for (const d of ai.digests ?? []) {
+    const at = agoIso(d.created_ago_min);
+    s.push(
+      `INSERT INTO feed (id, org_id, author, summary, brief, body, artifacts, created_at, origin, model, subject) VALUES (` +
+        `${num(d.id)}, ${ORG}, 'trov', ${q(d.summary)}, ${q(d.brief)}, ${q(d.body)}, ${jsonLit(d.artifacts)}, ${q(at)}, 'ai', ${q(ai.model)}, ${q(d.subject)})`
+    );
+    for (const t of d.tags ?? []) s.push(`INSERT INTO entry_tags (tag, entry_type, entry_id) VALUES (${q(t)}, 'feed', ${q(String(d.id))})`);
+    s.push(
+      `INSERT INTO ai_sessions (org_id, repo, actor_login, started_at, ended_at, status, reason, shas, prs, feed_id, model, prompt_version, created_at) VALUES (` +
+        `${ORG}, ${q(ai.repo)}, ${q(d.login)}, ${q(agoIso(d.started_ago_min))}, ${q(agoIso(d.ended_ago_min))}, 'done', NULL, ` +
+        `${jsonLit(d.artifacts?.commits ?? [])}, ${jsonLit((d.artifacts?.prs ?? []).map(Number))}, ${num(d.id)}, ${q(ai.model)}, 'digest-1', ${q(at)})`
+    );
+  }
+  for (const k of ai.skipped ?? []) {
+    s.push(
+      `INSERT INTO ai_sessions (org_id, repo, actor_login, started_at, ended_at, status, reason, shas, prs, feed_id, model, prompt_version, created_at) VALUES (` +
+        `${ORG}, ${q(ai.repo)}, ${q(k.login)}, ${q(agoIso(k.started_ago_min))}, ${q(agoIso(k.ended_ago_min))}, 'skipped', ${q(k.reason)}, ` +
+        `${jsonLit(k.shas ?? [])}, '[]', NULL, NULL, NULL, ${q(agoIso(k.ended_ago_min))})`
+    );
+  }
+  for (const v of ai.repo_state ?? []) {
+    const at = agoIso(v.generated_ago_min);
+    s.push(
+      `INSERT INTO repo_state (org_id, repo, version, generated_at, basis_until, model, prompt_version, event_count, state_json) VALUES (` +
+        `${ORG}, ${q(ai.repo)}, ${num(v.version)}, ${q(at)}, ${q(at)}, ${q(ai.model)}, 'state-1', ${num(v.event_count)}, ${jsonLit(v.state)})`
+    );
+  }
   return s;
 }

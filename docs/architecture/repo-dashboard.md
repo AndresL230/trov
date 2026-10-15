@@ -642,14 +642,25 @@ again.
 
 **Written by Trov — `state` and `themes`** (`shared/repo.ts`, typed in `shared/ai-core.ts`): Overview's first
 block ("State") and Planning's ("Where the work went", per range). They are NOT sections, so `REPO_TAB_SECTIONS`
-does not name them, and absent means off / nothing written — never a `not_connected` section. **`state` is not
-written yet** (production omits it). **`themes` is** (`src/tools/themes.ts` `readRepoThemes`, called at the end of
-`getRepoDashboard`, so the route and `get_repo_dashboard` get the same field): a D1 aggregation on read — merged PRs
-per theme per UTC Monday week from `pr_themes`, a proposal's lane from the PRs it cited, the newest caption on the 8-week
-range — present only while the org's AI switch is on and the primary repository has an active theme or a proposal
-waiting on an admin; a failed read leaves it out and sets `degraded` (`ai.md` › Themes). `LOCAL_AI_PREVIEW` replaces both
-with the fixtures under `wrangler dev` only, never over MCP (`ai.md`). When the dashboard has them,
-`get_repo_dashboard` carries `state` with `tab: overview` (or no tab) and `themes` with `planning` (or no tab).
+does not name them, and absent means off / nothing written — never a `not_connected` section. **`state` is the
+newest `repo_state` version** (0062; written by the AI pass's `repo.state` job — `ai.md` › Repo state), read by
+`readRepoState` (`src/tools/repo-state.ts`) beside the projection — `GET /repo/dashboard` (`src/routes.ts`) and
+`get_repo_dashboard` (`getRepoDashboardForAgent`) make the same read, never a model call. It is ABSENT with no
+repository, with the org's AI switch off, with nothing written yet, for the person who flagged that version
+"Wrong?", or on any failed read (never a 500, never a degraded dashboard); `ready` otherwise, and `capped` (same
+content, `resumesOn`, `upgrade` on Free) once the month's `ai_runs` are spent. `eventCount` is the server's count
+of what the version was written from. **`themes` is written too** (`src/tools/themes.ts` `readRepoThemes`, called at
+the end of `getRepoDashboard`, so the route and `get_repo_dashboard` get the same field): a D1 aggregation on read —
+merged PRs per theme per UTC Monday week from `pr_themes`, a proposal's lane from the PRs it cited, the newest caption
+on the 8-week range — present only while the org's AI switch is on and the repository has an active theme or a
+proposal waiting on an admin; a failed read leaves it out and sets `degraded` (`ai.md` › Themes). `LOCAL_AI_PREVIEW`
+fills both from the fixtures under `wrangler dev` only, over the real state, never over MCP (`ai.md`).
+`get_repo_dashboard` carries `state` with `tab: overview` (or no tab) and `themes` with `planning` (or no tab);
+the `load-context` skill reads it FIRST, before any query. The screen is `web/src/repo-ai.ts` `repoStateSection`
+(via `repoAiSection` in `repo.ts`); its "Wrong?" sends `itemRef = <repo>@<generatedAt>` (`aiItemRef.repoState`), the
+same ref the read checks, so the next read leaves that version out for that person only (`test/ai.hookup.test.ts`,
+real rows). The local seed writes the primary repository (`SaplingLearn/sapling`) and two versions
+(`fixtures/dev/ai.json`), so Overview shows a real State on localhost.
 
 **The Overview from facts** — whenever the payload carries `facts` (every Worker payload now, and the sample) the
 Overview is `overviewFacts` (`web/src/repo-overview.ts`), else the older section-built Overview: the composition, the
