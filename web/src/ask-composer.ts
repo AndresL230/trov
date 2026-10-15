@@ -563,8 +563,10 @@ function syncThread(ctx: AskCtx, where: AskWhere): boolean {
     r.bound[where] = { uid: c.uid, threadId: c.threadId, loaded: c.status !== "loading" };
     const k = draftKey(where, c.threadId);
     const text = (k && r.drafts.get(k)) || serverDraftOf(c.thread);
-    if (c.threadId !== null || ui.text) {
-      ctx.ui.composer[where] = { ...ui, text, mode: null, auto: null, picker: null, modeMenu: false, caret: text.length };
+    // Uploaded files belong to the thread they were attached in: they do not follow to another one.
+    for (const f of ui.files) if (f.preview) revoke(f.preview);
+    if (c.threadId !== null || ui.text || ui.files.length) {
+      ctx.ui.composer[where] = { ...ui, text, mode: null, auto: null, picker: null, modeMenu: false, caret: text.length, files: [], attachments: [], notice: null, error: false };
       changed = true;
     }
   } else if (b.threadId !== c.threadId) {

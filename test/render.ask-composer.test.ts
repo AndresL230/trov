@@ -479,10 +479,14 @@ describe("drafts — kept per thread", () => {
       vi.advanceTimersByTime(800);
       expect(ctx.patches).toContainEqual([3, { draft: "half a question" }]);
       // Another thread, read from the server with a stored draft: its words, its own mode.
+      composerReplaySetup(ctx, "page", "files");                     // files uploaded to thread 3…
+      s.ask.composer.page.text = "half a question";
       s.ask.page = { ...emptyConvo(), uid: "t5", threadId: 5, thread: { ...th[4], draft: "from yesterday" } as AskThreadSummary, status: "ok" };
       paint();
       expect(s.ask.composer.page.text).toBe("from yesterday");
       expect(s.ask.composer.page.mode).toBeNull();
+      expect(s.ask.composer.page.files).toEqual([]);                 // …do not follow to thread 5
+      expect(s.ask.composer.page.attachments).toEqual([]);
       // Back to thread 3: what was being typed.
       s.ask.page = { ...emptyConvo(), uid: "t3b", threadId: 3, thread: th[2], status: "ok" };
       paint();
