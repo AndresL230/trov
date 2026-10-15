@@ -192,6 +192,18 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **Parts** (stubs with their interface in the file header): `ask-conversation.ts`, `ask-composer.ts`,
   `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
   Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
+- **Inspector** (`ask-inspector.ts`): one view per type (ticket, PR, doc, sprint, repo, handoff, feed, person,
+  artifact, plus an upload and a chart) under the shell's frame. The header of each is the RefView; the rest is
+  `GET /ask/item/:ref`, read once per ref after paint (a skeleton until then; a 404 and a peek `hidden` both show
+  one sentence and nothing of the item). A repository draws RepoFacts with the Overview's verdicts and marks; its
+  State is the Repo dashboard's own read (`GET /repo/dashboard`, `state`). An artifact's preview is the viewer's
+  sandboxed frame (`artifacts.ts` `artifactFrame`); Publish to org is offered to its author only, and writes
+  `PATCH /artifacts/:slug { visibility: "org" }`. An upload (`upload:<attachment id>`) and an answer's chart
+  (`chart:<answer key>.<part>`, `chartRef`) have no RefView: the inspector finds them in the conversation and
+  names them in the frame (`inspectorLocalHead`); the controller never peeks them. The sprint's forecast line is
+  computed on the client from the closed tickets' pace since the start, and said only when it can be.
 - **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on
-  `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written.
-- Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`.
+  `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written. The
+  inspector's details come from `web/src/ask-inspector-fixtures.ts` (loaded on demand).
+- Tests: `test/render.ask-stream.test.ts`, `test/render.ask-shell.test.ts`, `test/render.ask-inspector.test.ts`,
+  `test/ask.inspector-contract.test.ts`.
