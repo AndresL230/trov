@@ -151,6 +151,17 @@ describe("the scan: cost and the tree-sha skip", () => {
     expect(scan.treeSha).toBe("tree1"); // the last good sha stays
     expect(leakedFragments(JSON.stringify(scan), TOKEN)).toEqual([]);
   });
+
+  it("a refused scan never claims to have scanned: it keeps the last good scan's time (or none), and only says why (e2e A8b)", async () => {
+    await seedOrgSettings();
+    // Never scanned, refused: no scan time — the Apps tab reads "not scanned yet" beside the reason.
+    await scanRepo(ctxA(), gh(fakeGh(STOREFRONT, { treeStatus: 403 })), { now: NOW });
+    expect(await readScan(ctxA(), REPO)).toMatchObject({ scannedAt: null, error: "GitHub refused to list the repository's files (HTTP 403)" });
+    // A good scan, then a refused one an hour later: the time stays the good scan's.
+    await scanRepo(ctxA(), gh(fakeGh(STOREFRONT)), { now: NOW });
+    await scanRepo(ctxA(), gh(fakeGh(STOREFRONT, { sha: "tree9", treeStatus: 403 })), { now: NOW + 3_600_000 });
+    expect(await readScan(ctxA(), REPO)).toMatchObject({ scannedAt: new Date(NOW).toISOString(), error: "GitHub refused to list the repository's files (HTTP 403)" });
+  });
 });
 
 describe("seen signals", () => {

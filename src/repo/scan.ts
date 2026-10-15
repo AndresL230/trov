@@ -284,11 +284,13 @@ export function scanErrorText(e: unknown, token: string): string {
   return "the repository's files could not be read";
 }
 
-/** Record a failed scan (keeping the last good tree sha, so the next reconcile tries again only on a change). */
-export async function recordScanError(ctx: TenantContext, repo: string, error: string, now: number): Promise<void> {
-  await batch(ctx, [stmt(ctx, `INSERT INTO repo_scans (org_id, repo, tree_sha, scanned_at, looked, error) VALUES (?, ?, NULL, ?, ?, ?)
-    ON CONFLICT(org_id, repo) DO UPDATE SET scanned_at = excluded.scanned_at, error = excluded.error`,
-    ctx.orgId, repo, new Date(now).toISOString(), JSON.stringify(lookedFor()), error.slice(0, 200))]);
+/** Record a failed scan: only WHY. It keeps the last good tree sha (so the next reconcile tries again only on a
+ *  change) and the last good scan's time — a scan that read nothing never claims to have scanned (a first one leaves
+ *  `scanned_at` NULL: the Apps tab says "not scanned yet" beside the reason). */
+export async function recordScanError(ctx: TenantContext, repo: string, error: string, _now: number): Promise<void> {
+  await batch(ctx, [stmt(ctx, `INSERT INTO repo_scans (org_id, repo, tree_sha, scanned_at, looked, error) VALUES (?, ?, NULL, NULL, ?, ?)
+    ON CONFLICT(org_id, repo) DO UPDATE SET error = excluded.error`,
+    ctx.orgId, repo, JSON.stringify(lookedFor()), error.slice(0, 200))]);
 }
 
 /**
