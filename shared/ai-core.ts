@@ -286,8 +286,9 @@ export const AI_SENDS: readonly AiSendLine[] = [
     for: "Sift",
   },
 ];
-/** Never sent, whatever lands. */
-export const AI_NEVER_SENT = "Source code, diffs, secrets, integration keys, and anything from another organization.";
+/** Never sent, whatever lands — except a file a person attaches to Ask Trov, which is sent as it is (owner ruling
+ *  2026-10-15; the Privacy Policy says the same, web/src/legal.ts › Privacy 4). */
+export const AI_NEVER_SENT = "Source code (unless you attach a file to Ask), diffs, secrets, integration keys, and anything from another organization.";
 
 /** The four AI allowances Org settings › AI shows, by their `LimitKey` (shared/plans.ts), in order:
  *  capture-time summaries (Anthropic), what the AI pass writes (Anthropic), Sift's checks (TypeSafe AI),

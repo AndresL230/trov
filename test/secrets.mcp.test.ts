@@ -174,11 +174,12 @@ describe("the model client is the summary seams', the AI pass's, the Sift run's 
     expect(providerImporters).toEqual(["src/ai/client.ts"]);
     const namers = [...SOURCES].filter(([, text]) => /typesafe\.ai/i.test(text)).map(([f]) => f).sort();
     expect(namers).toEqual(["src/tools/classify.ts"]);
-    // …and the SPA never names it either (the browser never calls a model).
+    // …and the SPA never names its API host either (the browser never calls a model). The Privacy Policy may link
+    // TypeSafe AI's trust center (its subprocessors list); that is not the API.
     const web = (import.meta as unknown as { glob: (pattern: string[], o: { query: string; import: string; eager: true }) => Record<string, string> })
       .glob(["../web/src/**/*.ts"], { query: "?raw", import: "default", eager: true });
     expect(Object.keys(web).length).toBeGreaterThan(20);
-    expect(Object.entries(web).filter(([, text]) => /typesafe\.ai/i.test(text)).map(([f]) => f)).toEqual([]);
+    expect(Object.entries(web).filter(([, text]) => /api\.typesafe\.ai/i.test(text)).map(([f]) => f)).toEqual([]);
   });
 });
 
