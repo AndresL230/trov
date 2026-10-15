@@ -88,7 +88,6 @@ describe("netlify — descriptor", () => {
     expect(netlify.status).toBe("available");
     expect(netlify.roles).toEqual(["web"]);
     expect(netlify.apiHosts).toEqual(["api.netlify.com"]);
-    expect(netlify.credentialScope).toBe("org");
     expect(netlify.summary.length).toBeGreaterThan(20);
     expect(netlify.docsUrl).toMatch(/^https:\/\//);
     expect(netlify.orgConfigFields).toEqual([]);

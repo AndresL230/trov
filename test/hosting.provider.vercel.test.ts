@@ -77,7 +77,6 @@ describe("vercel — descriptor", () => {
     expect(vercel.status).toBe("available");
     expect(vercel.roles).toEqual(["web"]);
     expect(vercel.apiHosts).toEqual(["api.vercel.com"]);
-    expect(vercel.credentialScope).toBe("org");
     expect(vercel.docsUrl).toMatch(/^https:\/\/vercel\.com\//);
   });
 

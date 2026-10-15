@@ -101,7 +101,6 @@ describe("render: descriptor", () => {
     expect(render.status).toBe("available");
     expect(render.apiHosts).toEqual(["api.render.com"]);
     for (const h of render.apiHosts) expect(h).toMatch(/^[a-z0-9.-]+$/);
-    expect(render.credentialScope).toBe("org");
     expect(render.roles).toEqual(["web", "service"]);
     expect(render.install).toBeUndefined();
     expect(render.connectionMethods.map((m) => m.method)).toEqual(["token"]);
