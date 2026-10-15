@@ -237,7 +237,9 @@
   `repo-previews.ts`, `repo-release.ts`, `repo-found.ts`), `web/src/repo-header.ts` its repository / App menus,
   environment pills and Group by, and `web/src/repo-verdict.ts` the one environment verdict (`repo-dashboard.md`).
   Migration `0071_repo_settings` (`repo_settings`: an admin's per-repository Overview default; `src/data/repo-settings.ts`,
-  `src/repo/settings-routes.ts`). And `web/src/sidebar.ts` + `web/src/morph.ts` the sidebar — see "Sidebar & motion" below.
+  `src/repo/settings-routes.ts`). Org settings › Repositories › a repo › Apps: `web/src/repo-apps.ts` (views) and
+  `web/src/repo-apps-actions.ts` (controller), served by `src/repo/apps-routes.ts` + `src/repo/apps-setup.ts`, the
+  signal rules in `shared/repo-apps-setup-core.ts` (`hosting-providers.md` › The screens). And `web/src/sidebar.ts` + `web/src/morph.ts` the sidebar — see "Sidebar & motion" below.
   Signed out, the app renders the **landing page** (`web/src/landing.ts`, ported from the Claude Design
   `Canopy Site.dc.html`); its nav's Sign in opens the GitHub/Google dialog, and its in-page links scroll
   rather than set the hash (the hash is the route and the sign-in return-to). Signed IN, the sidebar logo

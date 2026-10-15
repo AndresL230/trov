@@ -11,7 +11,7 @@ import { orgSettingsView, orgOverlays, orgTabBar, initialOrgUi, orgTabsFor, effe
 import {
   hostingNoticeCopy, hostingTab, partEditorModal, connectModal, tokenModal, manageModal, partDraftProblems, fieldOptions, unavailableLines, connectionStatus, lostOnProvider,
   shownDetections, tokenWord, sentOnlyTo, connectionsFor, hostingTodo, tokenFormOk, initialHostingUi, HOSTING_SAMPLE_KEYS, HOSTING_STACK_KEYS, STACK_LABEL,
-  HOSTING_ENVS_EMPTY, HOSTING_PARTS_EMPTY, partsListShape, partRowsShape, providerStatusOf, leftoversConfirmCopy,
+  HOSTING_ENVS_EMPTY, partsListShape, hostingPartRow, providerStatusOf, leftoversConfirmCopy,
   type HostingUi, type PartDraft, type TokenForm,
 } from "../web/src/hosting";
 import { neverReadLine } from "../web/src/repo-hosting";
@@ -36,6 +36,13 @@ function uiFor(data: HostingSetupDTO | null, over: Partial<HostingUi> = {}, open
 const tab = (data: HostingSetupDTO | null, over: Partial<HostingUi> = {}, openRows: string[] = [], role: OrgRole = "owner"): string =>
   hostingTab(org(role), uiFor(data, over, openRows));
 const page = (ui: OrgUi, role: OrgRole = "owner"): string => orgSettingsView({ org: org(role), orgsStatus: "ok", me: "andres", ui });
+/** Every part's row as a repository's Apps page draws it (`hostingPartRow` — the row left the Hosting tab in repo
+ *  setups Phase D2; Hosting keeps one line per environment). */
+const rows = (data: HostingSetupDTO, over: Partial<HostingUi> = {}, openRows: string[] = []): string => {
+  const ui = uiFor(data, over, openRows);
+  return data.environments.flatMap((e) => e.parts.map((x) => hostingPartRow(org(), ui, e.key, x.key))).join("");
+};
+const withRepo = (ui: OrgUi): OrgUi => ({ ...ui, repos: { status: "ok", data: [{ id: "r1", repo_full_name: "acme/shop", is_primary: true } as never] } });
 const provider = (id: HostingProviderId): HostingProviderDTO => HOSTING_SAMPLE_PROVIDERS.find((p) => p.id === id)!;
 /** The markup of one row (an <li>) that carries `marker`. */
 const rowOf = (html: string, marker: string): string => {
@@ -107,15 +114,20 @@ describe("empty layouts and the state preview (web-ui.md › Empty layouts)", ()
     picture(partsListShape());
   });
 
-  it("an environment with no part: its rows drawn empty under one sentence, inside the tile (its Add part button is the action)", () => {
-    const html = tab(HOSTING_SAMPLES.no_parts);
-    for (const env of ["staging", "production"]) expect(html).toContain(`data-empty="org-hosting-parts-${env}"`);
-    expect(html).toContain(`<p class="cnpy-empty-text">${HOSTING_PARTS_EMPTY}</p>`);
-    expect(html).toContain(`<div class="cnpy-empty-shapes" aria-hidden="true">${partRowsShape(2)}</div>`);
-    expect(html).toContain('class="cnpy-empty-say is-plain"');
-    picture(partRowsShape(2));
-    // An environment that HAS parts draws them, not a layout.
-    expect(tab(HOSTING_SAMPLE_MIXED)).not.toContain("data-empty=");
+  it("Parts are one line per environment pointing to where they are set — per app, in Repositories › <repo> › Apps (repo setups Phase D2)", () => {
+    const html = hostingTab(org(), withRepo(uiFor(HOSTING_SAMPLES.no_parts)));
+    expect((html.match(/data-org-hosting-env="/g) ?? []).length).toBe(2);
+    expect(html).toMatch(/data-act="orgAppsGo" data-arg="repo:acme\/shop"[^>]*>Parts are set per app in Repositories › acme\/shop › Apps/);
+    expect(html).not.toContain("data-org-part=");          // no part row, no Edit, no Test this part here any more
+    expect(html).not.toContain('data-act="orgHxTestPart"');
+    expect(html).not.toContain("data-empty=\"org-hosting-parts");
+    expect((html.match(/data-hx-env-count[^>]*>No parts</g) ?? []).length).toBe(2);
+    // An environment that HAS parts counts them; still no rows.
+    const mixed = hostingTab(org(), withRepo(uiFor(HOSTING_SAMPLE_MIXED)));
+    expect(mixed).toMatch(/data-org-hosting-env="production"[\s\S]*?data-hx-env-count[^>]*>4 parts</);
+    expect(mixed).not.toContain("data-org-part=");
+    // No repository yet: the line says so and goes to Repositories.
+    expect(tab(HOSTING_SAMPLES.no_parts)).toMatch(/data-act="orgTab" data-arg="repos"[^>]*>Parts are set per app: connect a repository first/);
   });
 
   it("the loading skeleton is built from the SAME shapes, so the two cannot drift — and it is a skeleton, not an empty layout", () => {
@@ -137,7 +149,7 @@ describe("empty layouts and the state preview (web-ui.md › Empty layouts)", ()
     };
     const before = JSON.stringify(base.org.hosting);
     const real = render(base);
-    expect(real).toContain('data-org-part="staging/web"');
+    expect(real).toContain('data-org-hosting-env="staging"');
 
     const empty = render({ ...base, preview: "empty" });
     expect(empty).toContain('data-empty="org-hosting-envs"');
@@ -173,12 +185,10 @@ describe("the tab, state by state (the sample payloads)", () => {
     expect(html).toContain('data-org-hosting-conn="vercel:"');
   });
 
-  it("environments but no parts: an empty tile each, Add part, and the checklist's next step as the accent action", () => {
+  it("environments but no parts: a line each, and the checklist's next step as the accent action", () => {
     const html = tab(HOSTING_SAMPLES.no_parts);
     expect((html.match(/data-org-hosting-env="/g) ?? []).length).toBe(2);
-    expect((html.match(/data-hx-noparts/g) ?? []).length).toBe(2);
-    expect(html).toContain("No parts yet. Add the web app, API or worker this environment runs.");
-    expect(html).toContain('data-field="orgHxPartNew:staging"');
+    expect((html.match(/data-hx-env-count[^>]*>No parts</g) ?? []).length).toBe(2);
     expect(html).toMatch(/class="cnpy-accentbtn"[^>]*>Add a part</);
     expect((html.match(/class="cnpy-accentbtn"/g) ?? []).length).toBe(1);
     expect(html).toContain("1 of 3 done");
@@ -186,7 +196,8 @@ describe("the tab, state by state (the sample payloads)", () => {
   });
 
   it("a mixed org mid-setup: every part with its host, role, identity and connection — Cloudflare and Railway like the rest", () => {
-    const html = tab(HOSTING_SAMPLE_MIXED);
+    const html = rows(HOSTING_SAMPLE_MIXED);
+    const lead = tab(HOSTING_SAMPLE_MIXED);
     const parts = [...html.matchAll(/data-org-part="([^"]+)" data-provider="([^"]+)" data-connection="([^"]+)"/g)].map((m) => m.slice(1).join(" "));
     expect(parts).toEqual([
       "staging/frontend cloudflare connected", "staging/backend railway connected", "staging/web vercel connected", "staging/api render error",
@@ -208,13 +219,13 @@ describe("the tab, state by state (the sample payloads)", () => {
     expect(frontend).toContain("Cloudflare Workers &middot; acme-web-staging");
     expect(frontend).not.toContain("data-hx-legacy");
     expect(frontend).not.toContain("hourly usage poll");
-    expect(html).toContain("<strong>8</strong> parts in <strong>2</strong> environments");
-    expect(html).toContain("1 with an error");
-    expect(html).not.toMatch(/undefined|NaN|\[object/);
+    expect(lead).toContain("<strong>8</strong> parts in <strong>2</strong> environments");
+    expect(lead).toContain("1 with an error");
+    expect(html + lead).not.toMatch(/undefined|NaN|\[object/);
   });
 
   it("a part whose last poll failed says so under its row, always visible; one with unavailable metrics says why, calmly", () => {
-    const html = tab(HOSTING_SAMPLE_MIXED);
+    const html = rows(HOSTING_SAMPLE_MIXED);
     const api = rowOf(html, 'data-org-part="staging/api"');
     expect(api).toContain("data-hx-pollfail");
     expect(api).toContain("Last poll failed");
@@ -229,7 +240,7 @@ describe("the tab, state by state (the sample payloads)", () => {
   });
 
   it("opening a part shows its key, settings, last poll, Open in <provider> and Test this part — Remove is the part editor's", () => {
-    const html = tab(HOSTING_SAMPLE_MIXED, {}, ["part:production/worker"]);
+    const html = rows(HOSTING_SAMPLE_MIXED, {}, ["part:production/worker"]);
     const row = rowOf(html, 'data-org-part="production/worker"');
     expect(row).toContain('aria-expanded="true"');
     expect(row).toContain("App name: <code");
@@ -242,13 +253,9 @@ describe("the tab, state by state (the sample payloads)", () => {
     expect(row).toMatch(/data-act="orgHxPartEdit" data-arg="production\/worker"/);
   });
 
-  it("an environment at six parts cannot take a seventh", () => {
-    const d = clone(HOSTING_SAMPLE_MIXED);
-    const prod = d.environments[1];
-    while (prod.parts.length < 6) prod.parts.push({ ...prod.parts[0], key: `extra${prod.parts.length}`, label: "Extra" });
-    const html = tab(d);
-    expect(html).toMatch(/data-field="orgHxPartNew:production" disabled[^>]*title="An environment has at most 6 parts"/);
-    expect(html).not.toMatch(/data-field="orgHxPartNew:staging" disabled/);
+  it("a part row asked for a part Hosting does not hold (or before its read is in) is nothing — never a broken row", () => {
+    expect(hostingPartRow(org(), uiFor(HOSTING_SAMPLE_MIXED), "production", "nope")).toBe("");
+    expect(hostingPartRow(org(), uiFor(null), "production", "worker")).toBe("");
   });
 });
 
@@ -810,7 +817,7 @@ describe("house rules", () => {
     const d = clone(HOSTING_SAMPLE_MIXED);
     d.environments[1].parts[2].console_url = "javascript:alert(1)";
     d.connections.find((c) => c.provider === "render")!.manage_url = "javascript:alert(1)";
-    const html = tab(d, {}, ["part:production/worker", "hx:render:"]);
+    const html = tab(d, {}, ["hx:render:"]) + rows(d, {}, ["part:production/worker"]);
     expect(html).not.toContain("javascript:");
     expect(rowOf(html, 'data-org-part="production/worker"')).not.toContain("Open in Fly.io");
   });
@@ -844,9 +851,10 @@ describe("ONE status, everywhere (repo-setups Phase 0)", () => {
       const users = d.environments.flatMap((e) => e.parts.filter((x) => x.provider === p.id));
       for (const part of users) {
         expect(part.connection, `${part.env}/${part.key} payload`).toBe(st.state);
-        expect(html, `${part.env}/${part.key} row`).toContain(`data-org-part="${part.env}/${part.key}" data-provider="${p.id}" data-connection="${st.state}"`);
+        // The part's row — drawn on its app's page (`hostingPartRow`) — reads the same status.
+        expect(rows(d), `${part.env}/${part.key} row`).toContain(`data-org-part="${part.env}/${part.key}" data-provider="${p.id}" data-connection="${st.state}"`);
         // Test this part: not live → the card's own words and its Connect; live → never that answer.
-        const tested = tab(d, { tests: { [`part:${part.env}/${part.key}`]: { status: "done", ok: false, detail: notConnectedSentence(p.label) } } });
+        const tested = rows(d, { tests: { [`part:${part.env}/${part.key}`]: { status: "done", ok: false, detail: notConnectedSentence(p.label) } } });
         const row = rowOf(tested, `data-org-part="${part.env}/${part.key}"`);
         if (st.live) expect(row, `${part.env}/${part.key} test`).not.toContain('data-org-test="not_connected"');
         else {
@@ -908,7 +916,7 @@ describe("ONE status, everywhere (repo-setups Phase 0)", () => {
     expect(cardState(html, "railway")).toBe("not_connected");
     expect(html).not.toContain("5024");
     expect(html).toContain("<strong>0 of 2</strong> connections working");
-    for (const e of d.environments) expect(html).toContain(`data-org-part="${e.key}/backend" data-provider="railway" data-connection="not_connected"`);
+    for (const e of d.environments) expect(rows(d)).toContain(`data-org-part="${e.key}/backend" data-provider="railway" data-connection="not_connected"`);
   });
 
   it("the Repo dashboard's never-read copy follows the same status", () => {

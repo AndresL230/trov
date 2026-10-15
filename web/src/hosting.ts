@@ -9,8 +9,9 @@
 //   • PROVIDERS: ONE card per provider, in registry order, each with its org-wide connection (connected once for the
 //     whole org) and what uses it; a provider's leftover per-environment tokens are a quiet line inside its card,
 //     never a card or a connection; then AWS (later);
-//   • PARTS: a compact read-only list of each environment's parts, each with Edit (the part editor) — until
-//     Repositories › a repo › Apps owns them (repo-setups Phase D).
+//   • PARTS: one line per environment (its name, branch, how many parts) pointing to where parts are set — per app,
+//     in Repositories › <repo> › Apps (repo setups, Phase D2). Hosting is the home of connections only; a part's
+//     row (`hostingPartRow` — status, last poll, Test this part, Edit) is drawn on the app's page.
 // What a host's status IS comes from ONE function (shared/hosting-status-core.ts `hostingStatus`): the card, a part's
 // row, the checklist, the lead and Test this part all read it, so they cannot disagree.
 // …and three dialogs, each a root-level `data-overlay` (so a keystroke patches it — morph.ts): the part
@@ -73,6 +74,8 @@ export interface PartDraft {
   /** The app metrics token field holds something to save. Its VALUE lives only in the live input and in a private
    *  variable of hosting-actions.ts — never here (the rule of integrations.ts). Absent = empty. */
   metricsHasValue?: boolean;
+  /** Opened from a repository's Apps page for this app: the part's key IS the app key, and cannot be changed. */
+  app?: string;
 }
 
 /** The "about to leave for <provider>" confirmation of an install / OAuth connection. */
@@ -460,10 +463,11 @@ function notConnectedAnswer(x: TabCtx, p: HostingProviderDTO | null, providerId:
     </div>`;
 }
 
-/** One part in the compact list: its name, role and its provider's status (THE status function), the host and its
- *  identifying setting as metadata, and Edit — the part editor. Open, it shows what is not worth a row: its key and
- *  settings, the last poll, the provider's "not available" reasons, Open in <provider> and Test this part. A failed
- *  last poll and a test's answer are always visible. */
+/** One part's row: its name, role and its provider's status (THE status function), the host and its identifying
+ *  setting as metadata, and Edit — the part editor. Open, it shows what is not worth a row: its key and settings, the
+ *  last poll, the provider's "not available" reasons, Open in <provider> and Test this part. A failed last poll and a
+ *  test's answer are always visible. Drawn on a repository's Apps page, an app's target per environment
+ *  (`hostingPartRow`). */
 function partRow(x: TabCtx, env: HostingEnvironmentDTO, part: EnvironmentPartDTO): string {
   const { d, ui, h } = x;
   const p = providerOf(d, part.provider);
@@ -510,32 +514,42 @@ function partRow(x: TabCtx, env: HostingEnvironmentDTO, part: EnvironmentPartDTO
 
 /** A part's row as a shape: a name over its host, and the row's one action. Never data: boxes only. */
 export const partRowsShape = (n = 2): string => skRowsShape(n, { trail: 52, pad: "12px 16px" });
-/** The Parts list as a shape: an environment's heading line, then its part rows — per environment. */
+/** The Parts lines as a shape: one environment's line each — its name, then where its parts are set. */
 export const partsListShape = (envs = 2): string =>
-  skCard(Array.from({ length: envs }, () => `<div class="cnpy-hx-envhead">${skLine(96, 13.5, 1.4)}<span style="margin-left:auto">${skBox(72, 30)}</span></div>${partRowsShape(2)}`).join(""), "padding:0;overflow:hidden;min-width:0");
+  skCard(Array.from({ length: envs }, () => `<div class="cnpy-hx-envhead">${skLine(96, 13.5, 1.4)}<span style="margin-left:auto">${skLine(220, 12, 1.4)}</span></div>`).join(""), "padding:0;overflow:hidden;min-width:0");
 /** The whole tab while its one read is out: a lead line, the provider cards, the parts list. */
 const hostingTabShape = (): string =>
   `${skLine("62%", 13, 1.55, "margin-bottom:24px")}${skLine(90, 10.5, 1.9, "margin-bottom:9px")}${skCard(skRowsShape(4, { trail: 110, pad: "12px 16px" }), "padding:0;overflow:hidden")}${skLine(110, 10.5, 1.9, "margin:30px 0 9px")}${partsListShape()}`;
 /** What each empty region says (exported: the tests and the Guide read the same words). */
 export const HOSTING_ENVS_EMPTY = "The parts each environment runs are listed here: the web app, the API, a worker. Add the places your app runs first, such as staging and production.";
-export const HOSTING_PARTS_EMPTY = "No parts yet. Add the web app, API or worker this environment runs.";
+/** The repository whose Apps page sets parts: the primary one (Org settings' Repositories list), or null. */
+const appsRepoOf = (ui: OrgUi): string | null => ui.repos.data.find((r) => r.is_primary)?.repo_full_name ?? ui.repos.data[0]?.repo_full_name ?? null;
 
-/** One environment in the Parts list: a heading line (its name, branch, how many parts, Add part), then its parts. */
+/** One environment in the Parts lines: its name, branch and how many parts — and where they are set: per app, in
+ *  Repositories › <repo> › Apps. Hosting holds the connections; nothing here edits a part. */
 function envParts(x: TabCtx, env: HostingEnvironmentDTO): string {
-  const full = env.parts.length >= MAX_PARTS_PER_ENVIRONMENT;
   const n = env.parts.length;
+  const repo = appsRepoOf(x.ui);
+  const where = repo
+    ? `<button type="button" data-act="orgAppsGo" data-arg="${attr(`repo:${repo}`)}" data-field="${attr(`orgHxApps:${env.key}`)}" class="cnpy-mutelink cnpy-org-link" style="padding:0;font-size:12.5px;font-weight:500;color:var(--fg-55);text-align:left">Parts are set per app in Repositories › ${esc(repo)} › Apps &rarr;</button>`
+    : `<button type="button" data-act="orgTab" data-arg="repos" data-field="${attr(`orgHxApps:${env.key}`)}" class="cnpy-mutelink cnpy-org-link" style="padding:0;font-size:12.5px;font-weight:500;color:var(--fg-55);text-align:left">Parts are set per app: connect a repository first &rarr;</button>`;
   return `<li data-org-hosting-env="${attr(env.key)}" aria-labelledby="${attr(`org-hx-env-${env.key}`)}" style="border-bottom:1px solid var(--border);margin-bottom:-1px">
     <div class="cnpy-hx-envhead">
       <h3 id="${attr(`org-hx-env-${env.key}`)}" style="margin:0;font-size:13px;font-weight:600;letter-spacing:-0.005em;overflow-wrap:anywhere">${esc(env.label)}</h3>
       <code title="The branch this environment deploys from" style="font-family:var(--code);font-size:11.5px;color:var(--fg-55)">${esc(env.branch)}</code>
-      <span style="font-size:12px;color:var(--fg-40)">${n === 0 ? "No parts" : `${n} ${n === 1 ? "part" : "parts"}`}</span>
-      <span style="margin-left:auto">${quietBtn("Add part", "orgHxPartNew", { arg: env.key, field: `orgHxPartNew:${env.key}`, disabled: full, title: full ? `An environment has at most ${MAX_PARTS_PER_ENVIRONMENT} parts` : undefined, label: `Add a part to ${env.label}` })}</span>
+      <span data-hx-env-count style="font-size:12px;color:var(--fg-40)">${n === 0 ? "No parts" : `${n} ${n === 1 ? "part" : "parts"}`}</span>
+      <span data-hx-parts-where style="margin-left:auto">${where}</span>
     </div>
-    ${n ? `<ul style="${LIST}">${env.parts.map((p) => partRow(x, env, p)).join("")}</ul>`
-      // Loaded, and this environment holds nothing: its rows drawn empty, under the one sentence (its heading's
-      // Add part button, above, is the action).
-      : `<div data-hx-noparts>${emptyLayout(`org-hosting-parts-${env.key}`, { text: HOSTING_PARTS_EMPTY, plain: true, sayStyle: "padding:2px 16px 2px", shapes: partRowsShape(2) })}</div>`}
   </li>`;
+}
+
+/** One part's row (`partRow`), for a repository's Apps page: "" until Hosting's read is in, or for a part it does not
+ *  hold. THE status function decides its mark, as on every other surface. */
+export function hostingPartRow(org: MyOrg, ui: OrgUi, envKey: string, partKey: string): string {
+  const d = hostingData(ui.hosting);
+  const env = d?.environments.find((e) => e.key === envKey);
+  const part = env?.parts.find((p) => p.key === partKey);
+  return d && env && part ? partRow({ d, ui, h: ui.hosting, org }, env, part) : "";
 }
 
 // ── providers and their connections ──────────────────────────────────────────
@@ -813,7 +827,7 @@ export function hostingTab(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDropdo
       <ul class="cnpy-hx-cards">${rowsOf(available)}</ul>
     </section>
     <section aria-labelledby="org-hx-plist-t" data-org-group="hosting-parts">
-      ${orgHead("Parts", d.environments.length ? "what each environment runs, and on which host" : "", d.environments.reduce((n, e) => n + e.parts.length, 0), "org-hx-plist-t")}
+      ${orgHead("Parts", d.environments.length ? "set per app, in Repositories" : "", d.environments.reduce((n, e) => n + e.parts.length, 0), "org-hx-plist-t")}
       ${parts}
     </section>
     ${later.length ? `<section aria-labelledby="org-hx-later-t" data-org-group="hosting-later">
@@ -910,10 +924,10 @@ export function partEditorModal(d: HostingSetupDTO, dr: PartDraft, h: HostingUi,
         <div style="${O_HELP}">${esc(ROLE_HINT[dr.role])}</div></div>`
     : `<div class="cnpy-org-field"><div style="${O_LABEL}">Role</div><div data-hx-role-fixed style="margin-top:7px;font-size:13.5px">${esc(ROLE_WORD[p.roles[0]])}</div><div style="${O_HELP}">${esc(ROLE_HINT[p.roles[0]])} ${esc(p.label)} serves only this role.</div></div>`;
 
-  const fixedKey = !adding;
+  const fixedKey = !adding || !!dr.app;
   const keyBlock = !p ? "" : `<div class="cnpy-org-grid">
       ${textField({ id: "org-hx-key", label: "Key", act: "orgHxPartKey", field: "orgHxPartKey", value: fixedKey ? draftKey(dr, p) : dr.keyDraft, max: 32, required: !fixedKey, disabled: fixedKey || dr.saving, placeholder: "web", enter: "orgHxPartSave", error: errOf("part"),
-        help: fixedKey ? "A part's key is permanent." : "Its permanent id: lowercase letters, digits, - or _. For example <code style=\"font-family:var(--code)\">web</code> or <code style=\"font-family:var(--code)\">api</code>." })}
+        help: dr.app && adding ? `The app's key: every part of ${esc(dr.app)} carries it.` : fixedKey ? "A part's key is permanent." : "Its permanent id: lowercase letters, digits, - or _. For example <code style=\"font-family:var(--code)\">web</code> or <code style=\"font-family:var(--code)\">api</code>." })}
       ${textField({ id: "org-hx-label", label: "Label", act: "orgHxPartLabel", field: "orgHxPartLabel", value: dr.label, max: 60, disabled: dr.saving, placeholder: "Web app", enter: "orgHxPartSave", error: errOf("label"),
         help: "The name on its dashboard card. Left empty, it is the key." })}
     </div>`;

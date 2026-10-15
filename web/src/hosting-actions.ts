@@ -25,7 +25,7 @@ import {
   tokenFormOk, tokenMethod, tokenWord, type HostingUi, type PartDraft,
 } from "./hosting";
 import {
-  HOSTING_INTEGRATION_KIND, isHostingProvider, isPartRole,
+  HOSTING_INTEGRATION_KIND, PART_KEY_RE, isHostingProvider, isPartRole,
   type EnvironmentPartDTO, type HostingConnectionDTO, type HostingProviderDTO, type HostingProviderId, type HostingSetupDTO, type PartWrite,
 } from "@shared/hosting";
 
@@ -173,13 +173,19 @@ export function createHostingActions(host: HostingHost): HostingActions {
     rerender();
     focusDialog();
   }
+  /** `<env>|<provider>|<app key>`: the provider and the app are optional. From a repository's Apps page the part
+   *  is the APP's (`app`): its key is the app key, fixed. */
   function newPart(arg: string): void {
     const d = data();
-    const [env, pick] = arg.split("|");
+    const [env, pick, app] = arg.split("|");
     if (!d || !d.environments.some((e) => e.key === env)) return;
     const p = providerOf(d, isHostingProvider(pick) ? pick : null);
     const role = p?.roles[0] ?? "web";
-    openPart({ env, key: null, keyDraft: suggestKey(d, env, p, role), label: "", provider: p?.id ?? null, role, settings: {}, saving: false, error: null, errorField: null });
+    const appKey = app && PART_KEY_RE.test(app) ? app : null;
+    openPart({
+      env, key: null, keyDraft: appKey ?? suggestKey(d, env, p, role), label: "", provider: p?.id ?? null, role, settings: {}, saving: false, error: null, errorField: null,
+      ...(appKey ? { app: appKey } : {}),
+    });
   }
   function editPart(ref: string): void {
     const d = data();
@@ -512,7 +518,7 @@ export function createHostingActions(host: HostingHost): HostingActions {
         break;
       }
       case "orgHxPartRole": if (dr && isPartRole(arg) && !dr.saving) { dr.role = arg; clearError(dr, "role"); } break;
-      case "orgHxPartKey": if (dr && dr.key === null) { dr.keyDraft = value ?? ""; clearError(dr, "part"); } break;
+      case "orgHxPartKey": if (dr && dr.key === null && !dr.app) { dr.keyDraft = value ?? ""; clearError(dr, "part"); } break;
       case "orgHxPartLabel": if (dr) { dr.label = value ?? ""; clearError(dr, "label"); } break;
       case "orgHxPartSetting": if (dr && arg) { dr.settings[arg] = value ?? ""; clearError(dr, `settings.${arg}`); } break;
       case "orgHxPartPick": {
@@ -620,9 +626,12 @@ export function createHostingActions(host: HostingHost): HostingActions {
   const LOOK_AGAIN_MS = 20_000;
 
   function afterPaint(): void {
-    const onTab = state.view === "app" && state.screen === "org" && effectiveOrgTab(state.org.tab, org()?.role ?? null) === "hosting";
+    const tab = effectiveOrgTab(state.org.tab, org()?.role ?? null);
+    // The part editor also opens over a repository's Apps page (Repositories › <repo> › Apps).
+    const onTab = state.view === "app" && state.screen === "org" && (tab === "hosting" || (tab === "repos" && !!state.org.repoPage));
+    const lookingTab = onTab && tab === "hosting";
     const u = h();
-    if (onTab && !u.sample && !lookAgain && u.setup.status === "ok" && u.setup.data?.detection?.state === "looking" && !u.part && !u.connect && !u.token && !u.manage) {
+    if (lookingTab && !u.sample && !lookAgain && u.setup.status === "ok" && u.setup.data?.detection?.state === "looking" && !u.part && !u.connect && !u.token && !u.manage) {
       lookAgain = setTimeout(() => { lookAgain = null; if (h().setup.data?.detection?.state === "looking" && !h().sample) load(); }, LOOK_AGAIN_MS);
     }
     if (!onTab) {
