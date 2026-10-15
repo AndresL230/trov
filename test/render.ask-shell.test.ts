@@ -11,7 +11,7 @@ import { sidebarView, navKeyOf, NAV_CLOSED } from "../web/src/sidebar";
 import { parseHash, hashForRoute, pageKey } from "../web/src/hash";
 import { askLayout, clampInspector, layoutBucket } from "../web/src/ask-layout";
 import { ESC_LAYERS, closeTop, topLayer, type EscEntry } from "../web/src/ask-escape";
-import { askEnterNew, askTweenHeights, closingAttr } from "../web/src/ask-motion";
+import { askEnterNew, askGlideDock, askTweenHeights, closingAttr } from "../web/src/ask-motion";
 import { createReplayApi, replayFromLocation, replayPlan, replayQuestionFiles, replayRoute } from "../web/src/ask-replay";
 import type { AskReplayIndex } from "../web/src/ask-api";
 import { setApiOrg } from "../web/src/api";
@@ -214,6 +214,36 @@ describe("the empty conversation — centred as the design draws it", () => {
     const busy = render(askState((s) => { s.ask.page = { ...emptyConvo(), uid: "c9", threadId: 3, status: "loading" }; }));
     expect(busy).not.toContain("ask-empty-tail");
     expect(css).toMatch(/\.ask-empty-tail\s*\{[^}]*flex:\s*1 1 0/);
+  });
+
+  // AU-OWNER-1 (the owner, on the af26ce3c preview): the empty screen must START centred — heading, starters and the
+  // composer in the middle of the column (design `live`) — and the composer docks at the foot once the first
+  // question is sent, gliding there (rule 8); re-opening an empty thread centres it again.
+  it("AU-OWNER-1: centred while empty (the spacer under a 'center' composer), docked with messages", () => {
+    const empty = render(askState());
+    expect(empty).toMatch(/data-ask-composer="page" data-ask-dock="center"/);
+    expect(empty).toMatch(/data-ask-dock="center"[\s\S]*class="ask-empty-tail"/);
+    const docked = render(askState((s) => {
+      s.ask.page = { ...emptyConvo(), uid: "c7", threadId: 3, status: "ok", messages: [{ role: "user", key: "q1", id: 1, text: "hi", context: [], attachments: [], command: null }] as typeof s.ask.page.messages };
+    }));
+    expect(docked).toMatch(/data-ask-composer="page" data-ask-dock="dock"/);
+    expect(docked).not.toContain("ask-empty-tail");
+    const again = render(askState((s) => { s.ask.page = { ...emptyConvo(), uid: "c8" }; }));
+    expect(again).toMatch(/data-ask-dock="center"/);
+  });
+
+  it("AU-OWNER-1: the composer glides between its places when data-ask-dock flips — never under reduced motion, never on a plain repaint", () => {
+    const calls: { frames: Keyframe[] }[] = [];
+    let top = 400, at = "center";
+    const el = { getAttribute: () => at, getBoundingClientRect: () => ({ top }), animate: (frames: Keyframe[]) => { calls.push({ frames }); return {}; } };
+    const root = { querySelectorAll: () => [el] } as unknown as ParentNode;
+    expect(askGlideDock(root, false)).toBe(0);          // first paint: remembered only
+    top = 380; expect(askGlideDock(root, false)).toBe(0); // a repaint that moves it (the box grows): no glide
+    at = "dock"; top = 760;
+    expect(askGlideDock(root, false)).toBe(1);
+    expect(calls[0].frames[0]).toEqual({ transform: "translateY(-380px)" });
+    at = "center"; top = 400;
+    expect(askGlideDock(root, true)).toBe(0);          // reduced motion: it just moves
   });
 });
 

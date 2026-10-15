@@ -108,7 +108,7 @@ describe("the box — a new thread on Pro", () => {
 
   it("every conditional piece sits in a keyed list, so the box (its focus and caret) is never replaced", () => {
     const h = html(askState());
-    expect(h).toMatch(/<div class="ask-composer" data-ask-composer="page" data-morph-list>/);
+    expect(h).toMatch(/<div class="ask-composer" data-ask-composer="page" data-ask-dock="(center|dock)" data-morph-list>/);
     expect(h).toMatch(/<div class="ask-co-in" data-morph-key="in" data-morph-list>/);
     expect(h).toMatch(/<div class="ask-box" data-morph-key="box" data-morph-list><div class="ask-co-chips" data-morph-key="chips" data-morph-list data-ask-enter="pop"><\/div><textarea[^>]*data-morph-key="ta"/);
   });

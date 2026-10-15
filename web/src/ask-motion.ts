@@ -24,6 +24,8 @@
 //      this paint's, so the conversation under it glides instead of jumping.
 //   5. SKELETON → CONTENT: skeleton.ts `skeleton(key, …)` for anything still being read (the thread list, a thread);
 //      main.ts `syncSkeletons` gives what replaces it the settle fade.
+//   8. THE COMPOSER'S PLACE: `data-ask-dock="center" | "dock"` on the composer; `askGlideDock` glides it between the
+//      empty conversation's centre and its docked foot when that flips (below).
 //   6. SMOOTH OPEN / CLOSE of the columns: the thread list's width and the inspector's margin are CSS transitions /
 //      keyframes on attributes the shell sets (`data-threads`, `data-closing`, `data-dragging`), in trov.css.
 
@@ -68,6 +70,24 @@ export function askEnterNew(root: ParentNode, reduce = reducedMotion()): number 
       (child as HTMLElement).animate(fx.frames, { duration: fx.ms, easing: fx.easing, delay: Math.min(i++, 8) * 28, fill: "backwards" });
       n++;
     }
+  }
+  return n;
+}
+
+const docks = new WeakMap<Element, { top: number; at: string }>();
+/** Rule 8: the composer's place. It sits centred under an empty conversation (the design's `live`) and docks at the
+ *  foot once the first question is sent; when its `data-ask-dock` flips (either way: a new or re-opened empty thread
+ *  centres it again) it GLIDES from where it was to where it is, on the app's clock. Reduced motion: it just moves. */
+export function askGlideDock(root: ParentNode, reduce = reducedMotion()): number {
+  let n = 0;
+  for (const el of Array.from(root.querySelectorAll<HTMLElement>("[data-ask-dock]"))) {
+    const at = el.getAttribute("data-ask-dock") ?? "";
+    const top = el.getBoundingClientRect().top;
+    const was = docks.get(el);
+    docks.set(el, { top, at });
+    if (!was || was.at === at || reduce || Math.abs(was.top - top) < 2 || typeof el.animate !== "function") continue;
+    el.animate([{ transform: `translateY(${Math.round(was.top - top)}px)` }, { transform: "none" }], { duration: ASK_FX.slow, easing: ASK_EASE.fx });
+    n++;
   }
   return n;
 }

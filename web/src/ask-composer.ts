@@ -442,7 +442,9 @@ export function composerView(v: AskView): string {
   const drop = ui.drag && !block
     ? `<div class="ask-co-drop" data-morph-key="drop" aria-hidden="true"${closingAttr(v.ui.closing, chipKey(v.where, "drop"))}><div class="ask-co-drop-in">${askIcon("upload", 26, "var(--accent)", 1.7)}<span class="ask-co-drop-t">Drop files to attach</span><span class="ask-co-drop-s">${esc(st ? `${kindsPhrase(st.attach.kinds)}, up to ${maxMb} each` : "")}</span></div></div>`
     : "";
-  return `<div class="ask-composer" data-ask-composer="${v.where}" data-morph-list>
+  // Its place (ask-motion.ts rule 8): centred under an empty conversation, docked at the foot once it has messages.
+  const centred = convoOf(v).messages.length === 0 && convoOf(v).status !== "loading";
+  return `<div class="ask-composer" data-ask-composer="${v.where}" data-ask-dock="${centred ? "center" : "dock"}" data-morph-list>
     <div class="ask-co-in" data-morph-key="in" data-morph-list>${inner.join("")}</div>
     <input type="file" multiple class="ask-co-file" data-morph-key="file" data-co-file="${v.where}"${accept ? ` accept="${attr(accept)}"` : ""} aria-hidden="true" tabindex="-1">${drop}
   </div>`;

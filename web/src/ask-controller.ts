@@ -23,7 +23,7 @@ import { threadsPart } from "./ask-threads";
 import { closeTop, type EscEntry } from "./ask-escape";
 import { askLayout, clampInspector, layoutBucket } from "./ask-layout";
 import { HOVER_CARD, placeHoverCard, refsInText, viewOf } from "./ask-refs";
-import { ASK_FX, askEnterNew, askTweenHeights, reducedMotion } from "./ask-motion";
+import { ASK_FX, askEnterNew, askGlideDock, askTweenHeights, reducedMotion } from "./ask-motion";
 import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan, replayQuestionFiles } from "./ask-replay";
 import { inspectorRef, type AskCtx, type AskPart, type AskSendInput, type AskWhere } from "./ask-state";
 import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, parseAskRef, type AskEvent, type RefView } from "@shared/ai-ask-core";
@@ -457,6 +457,7 @@ export function createAskController(host: AskHost): AskController {
     // Motion (ask-motion.ts): new rows / messages / parts enter once; swapped cards tween their height.
     askEnterNew(host.mount);
     askTweenHeights(host.mount);
+    askGlideDock(host.mount);
     // The ⌘J panel on any page: make sure its state is read once.
     if (ui().cmdj.open && ui().state.status === "idle" && !ui().replay) load();
   }
