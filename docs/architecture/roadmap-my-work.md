@@ -91,10 +91,11 @@ that renders a "No summary recorded" placeholder. Stored as columns on `pr_summa
 
 **Your brief** (`DashboardData.brief?`, `AiBrief` in `shared/ai-core.ts`; `briefTile` in `web/src/mywork.ts`) is
 a bento TILE — drawn ONLY when the dashboard carries `brief` and the person has not pressed "Wrong?" on it (off, no
-key, or nothing written: the field is absent and the bento is exactly its five tiles). It takes Tickets'
-wide lead slot — Brief 7 | Needs your review 5 — and Tickets opens the second row, Tickets | Your sessions | Repo
-at 4/4/4 (`mwSpans`; with a clear review queue, Brief 7 | Your sessions 5, then Tickets | Repo | Needs your
-review). Ready: Now / Recently (each a sentence and its sources) and Next — rows that are real items
+key, or nothing written: the field is absent and the bento is exactly its five tiles). With it, every row is one wide tile and one
+narrow one (7/5): Brief | Needs your review, Tickets | Your sessions, Repo | the library STACKED (Docs you own over
+Artifacts; no Queued handoffs — Your sessions already shows the handoffs waiting). A clear review queue trades places
+with Your sessions and steps down beside Repo. Without a brief the page is unchanged (7/5, then `mwSpans`, then the
+library strip across the page). Ready: Now / Recently (each a sentence and its sources) and Next — rows that are real items
 (Failing = the app's failing mark, Handoff = an arrow, a ticket = its `#N`, Due soon = the warning mark), the title
 the item's own and linked to `cites[0]`, the model's one muted "why" — over a footer with the "Written by Trov"
 byline and the thumbs-down "Wrong?" at the bottom right. Empty: "Trov writes your brief after your next push or when something is

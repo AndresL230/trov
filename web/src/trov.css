@@ -68,6 +68,8 @@ input, select { font-family: inherit; }
 .mw-tile { grid-column:span var(--span, 12); }
 .mw-lib { display:grid; grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr) 1px minmax(0,1fr); }
 .mw-libdiv { width:1px; height:100%; }
+.mw-lib-stack { grid-template-columns:minmax(0,1fr); }
+.mw-lib-stack .mw-libdiv { width:100%; height:1px; }
 .mw-row { transition:background .12s ease; }
 .mw-row:hover { background:var(--hover); }
 .mw-more { transition:color .12s ease; }

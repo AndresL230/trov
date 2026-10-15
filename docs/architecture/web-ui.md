@@ -897,9 +897,8 @@ Trov. **Each is drawn ONLY when its read carries the field** (`DashboardData.bri
 what it was (`test/render.ai-absent.test.ts`, snapshots written before the kit existed). Production omits every
 field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills them from `shared/ai-fixtures.ts`.
 
-- **The mark** is `aiMark` (`marks.ts`): the mock's pennant (`M4 4h16v6l-4 4h-4v6H8v-6L4 10z`, 24×24) in
-  `--accent`. It is NOT the brand logo (`shared/mark.ts` `trovMark`): it marks a thing Trov wrote, as the robot
-  (`agentMark`) marks a thing an agent wrote. Its `data-mtip` says what it was written from and ends "Not
+- **The mark** is `aiMark` (`marks.ts`): the Trov logo (`shared/mark.ts` `TROV_MARK_PATH`, 100×100) filled in
+  `--accent` — "Written by Trov" carries Trov's own mark, as the robot (`agentMark`) marks a thing an agent wrote. Its `data-mtip` says what it was written from and ends "Not
   official; check the sources." (`AI_TIP`, `AI_NOT_OFFICIAL`).
 - **Every written item** carries `aiByline` ("Written by Trov, 12m ago" — the app's `relTime`; "from 6 events"
   when the server counted them, never a guessed 0), its sources (`aiCite`: a GitHub URL opens in a new tab, an

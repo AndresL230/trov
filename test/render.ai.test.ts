@@ -12,6 +12,7 @@ vi.mock("../web/src/markdown", () => ({
   renderMarkdown: (body: string) => `<div class="mock-live-md">${mdMock(body)}</div>`,
   renderMarkdownInline: (text: string) => mdMock(text),
 }));
+import { TROV_MARK_PATH } from "../shared/mark";
 import { render, initialState, feedShown, FEED_AI_NOTE, type AppState } from "../web/src/render";
 import { briefTile } from "../web/src/mywork";
 import { repoStateSection, themesSection, bandHeight, weekLabel, type RepoAiProps } from "../web/src/repo-ai";
@@ -49,10 +50,10 @@ const themes = (mode: "ready" | "empty" | "capped" | "proposed"): Record<AiTheme
 // ── the kit ─────────────────────────────────────────────────────────────────
 
 describe("the kit (ai-ui.ts)", () => {
-  it("the AI mark is the mock's pennant in the accent, an SVG element with its tooltip — never a pill", () => {
+  it("the AI mark is the Trov logo in the accent, an SVG element with its tooltip — never a pill", () => {
     const m = aiMark(12, "Written by Trov from x. Not official; check the sources.");
-    expect(m).toContain('d="M4 4h16v6l-4 4h-4v6H8v-6L4 10z"');
-    expect(m).toContain('viewBox="0 0 24 24"');
+    expect(m).toContain(`d="${TROV_MARK_PATH}"`);
+    expect(m).toContain('viewBox="0 0 100 100"');
     expect(m).toContain("color:var(--accent)");
     expect(m).toContain('data-mtip="Written by Trov from x. Not official; check the sources."');
     expect(m).toContain('aria-hidden="true"');
@@ -106,7 +107,7 @@ describe("the suggestion chip (#157)", () => {
   it("is drawn unlike a value a person set: a dashed outline, the AI mark, muted words", () => {
     const h = chip();
     expect(h).toContain("border:1px dashed var(--border-strong)");
-    expect(h).toContain('d="M4 4h16v6l-4 4h-4v6H8v-6L4 10z"');
+    expect(h).toContain(`d="${TROV_MARK_PATH}"`);
     expect(h).toContain("color:var(--fg-55)");
     expect(text(h)).toContain("Suggested: Billing , because…");
   });
@@ -173,12 +174,18 @@ describe("My Work › Your brief", () => {
     expect(text(rows[2])).toContain("#14");
     expect(rows[2]).toMatch(/<a href="#tickets\/14"[^>]*>Guided repository setup<\/a>/);
   });
-  it("Brief 7 | Needs your review 5 lead; Tickets | Your sessions | Repo share the second row at 4/4/4", () => {
+  it("with a brief, every row is 7/5: Brief | Review, Tickets | Sessions, Repo | the stacked library", () => {
     const spans = (html: string) => Object.fromEntries([...html.matchAll(/data-mw="(\w+)"/g)].map((m) => {
       const open = html.lastIndexOf("<section", m.index);
       return [m[1], Number(/--span:(\d+)/.exec(html.slice(open, m.index))?.[1])];
     }));
-    expect(spans(mw("ready"))).toMatchObject({ brief: 7, review: 5, tickets: 4, sessions: 4, repo: 4 });
+    const html = mw("ready");
+    expect(spans(html)).toEqual({ brief: 7, review: 5, tickets: 7, sessions: 5, repo: 7, library: 5 });
+    // The narrow library: Docs and Artifacts stacked, no Queued handoffs (Your sessions shows them).
+    const lib = html.slice(html.indexOf('data-mw="library"'));
+    expect(lib).toContain("mw-lib-stack");
+    expect(text(lib)).toContain("Docs you own");
+    expect(text(lib)).not.toContain("Queued handoffs");
   });
   it("empty: the mock's sentence, no grid, no Wrong?", () => {
     const card = briefTile(briefFixture("empty", NOW));
@@ -352,7 +359,7 @@ describe("Feed — entries written by Trov", () => {
     const card = html.slice(html.indexOf('data-feed-id="990001"'));
     const one = card.slice(0, card.indexOf('data-feed-id="990002"'));
     expect(one).toContain("cnpy-ai-av");
-    expect(one).toContain('d="M4 4h16v6l-4 4h-4v6H8v-6L4 10z"');
+    expect(one).toContain(`d="${TROV_MARK_PATH}"`);
     expect(text(one)).toContain("Trov for @andres");
     expect(one).toContain('data-act="openPerson" data-arg="andres"');
     expect(text(one)).toContain("From #173 , 65b9f1f , a1c04e2 and 2 more");

@@ -335,7 +335,10 @@ export interface MwLibrary {
   /** Queued handoffs: `handoffsForMe` (the badge's definition), newest first. */
   handoffs: { load: MwLoad; count: number; newest: { id: number; title: string; at: string } | null };
 }
-export function libraryStrip(lib: MwLibrary, span: number): string {
+/** The library: Docs you own, Artifacts and Queued handoffs side by side across the page. `stacked` (beside
+ *  Repo, when Your brief leads the page) is the narrow tile — Docs and Artifacts one above the other, and no
+ *  Queued handoffs: Your sessions already shows the handoffs waiting for you. */
+export function libraryStrip(lib: MwLibrary, span: number, o: { stacked?: boolean } = {}): string {
   const cell = (title: string, link: { act: string; label: string }, body: string): string =>
     `<div style="min-width:0;display:flex;flex-direction:column;gap:6px;padding:14px 16px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:2px 10px"><span style="font-size:14px;font-weight:500;white-space:nowrap">${title}</span><button data-act="${link.act}" class="mw-more" style="display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--fg-40);white-space:nowrap;padding:0">${esc(link.label)}${ARROW}</button></div>${body}</div>`;
@@ -360,6 +363,12 @@ export function libraryStrip(lib: MwLibrary, span: number): string {
       : quiet("No handoffs queued.")
 
   const div = `<div class="mw-libdiv" style="background:var(--border)"></div>`;
+  if (o.stacked) {
+    return tile("library", span, "Your library", `<div class="mw-lib mw-lib-stack">
+    ${cell("Docs you own", { act: "goDocs", label: "Docs" }, docs)}${div}
+    ${cell("Artifacts", { act: "goArtifacts", label: "Library" }, arts)}
+  </div>`);
+  }
   return tile("library", span, "Your library", `<div class="mw-lib">
     ${cell("Docs you own", { act: "goDocs", label: "Docs" }, docs)}${div}
     ${cell("Artifacts", { act: "goArtifacts", label: "Library" }, arts)}${div}
