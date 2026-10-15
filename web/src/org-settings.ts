@@ -51,7 +51,8 @@ import { notificationsAdminSections, notifDropdowns, type NotifAdminProps } from
 import { orgLogoSection, initialOrgLogoUi, type OrgLogoUi } from "./org-logo";
 import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, githubAppRow, githubLink, lostBanner, mismatchBanner, repoPicker, suspendedBanner, type GithubNotice } from "./github-app";
 import type { GithubAppStatusDTO, GithubReposDTO } from "@shared/github-app";
-import { disconnectConfirmCopy, hostingData, hostingDropdowns, hostingOverlay, hostingTab, hostingTodo, initialHostingUi, partConfirmCopy, type HostingUi } from "./hosting";
+import { disconnectConfirmCopy, hostingData, hostingDropdowns, hostingOverlay, hostingTab, hostingTodo, initialHostingUi, leftoversConfirmCopy, partConfirmCopy, type HostingUi } from "./hosting";
+import { onIntegrationsTab } from "./integrations";
 import { githubInstallHref } from "./api";
 
 // ── state ────────────────────────────────────────────────────────────────────
@@ -97,7 +98,7 @@ export interface MemberDraft {
 /** What the open confirmation modal is about. `arg` = a repo id, an environment key,
  *  `<kind>:<scope>`, a member's handle, "" for the key — or, on Hosting, a part (`<env>/<part>`) to
  *  remove and a provider connection (`<provider>:<scope>`) to disconnect. */
-export interface OrgConfirm { what: "repo" | "env" | "secret" | "member" | "key" | "github" | "part" | "hosting"; arg: string; busy: boolean }
+export interface OrgConfirm { what: "repo" | "env" | "secret" | "member" | "key" | "github" | "part" | "hosting" | "leftovers"; arg: string; busy: boolean }
 
 /** Everything Org settings keeps in AppState (`state.org`). It NEVER holds a secret's value:
  *  a credential being typed lives only in the input and in org-actions.ts's private draft. */
@@ -461,7 +462,7 @@ export function envForm(d: EnvDraft, current: OrgEnvironmentDTO | null, metricsS
   const moves = apiUrlMoves(current, d.fields.api_url);
   const warn = moves ? `<div style="margin-top:12px">${orgBanner(
     metricsSet ? "Saving this deletes the app metrics token" : "Changing the API host clears the app metrics token",
-    `The token is only ever sent to the API URL it was saved for, so pointing <strong style="font-weight:600">${esc(d.fields.label || d.key || "this environment")}</strong> at another host removes it. ${metricsSet ? "After saving, set a new one in Integrations." : "None is stored right now, so nothing is lost."}`,
+    `The token is only ever sent to the API URL it was saved for, so pointing <strong style="font-weight:600">${esc(d.fields.label || d.key || "this environment")}</strong> at another host removes it. ${metricsSet ? "After saving, set a new one in one of its parts, on Hosting." : "None is stored right now, so nothing is lost."}`,
   )}</div>` : "";
   const general = d.error && (d.errorField === null || !(d.errorField === "key" || (ENV_TEXT_FIELDS as readonly string[]).includes(d.errorField)));
   return `<section${framed ? surface("padding:18px 20px;margin-bottom:24px") : ` style="padding:4px 0 2px"`} data-org-envform aria-labelledby="org-envform-t">
@@ -473,7 +474,7 @@ export function envForm(d: EnvDraft, current: OrgEnvironmentDTO | null, metricsS
     <div style="${O_LABEL};margin-top:20px">Where it runs</div>
     <div class="cnpy-org-grid" style="margin-top:10px">${ENV_URLS.map(f).join("")}</div>
     ${warn}
-    <div style="${O_HELP};margin-top:14px" data-org-env-hosting>What runs it — a Cloudflare Worker, a Railway service, a Vercel project — is set in ${goLink("Hosting", "orgTab", "hosting")}.</div>
+    <div style="${O_HELP};margin-top:14px" data-org-env-hosting>What runs it — a Cloudflare Worker, a Railway service, a Vercel project — and its app metrics token are set in ${goLink("Hosting", "orgTab", "hosting")}.</div>
     ${general ? `<div role="alert" style="${O_ERR};margin-top:14px">${esc(d.error ?? "")}</div>` : ""}
     <div class="cnpy-xrow-acts" style="margin-top:18px">
       ${accentBtn(d.saving ? "Saving…" : adding ? "Add environment" : moves && metricsSet ? "Save and delete token" : "Save changes", "orgEnvSave", { disabled: !envDraftOk(d) || d.saving, busy: d.saving })}
@@ -531,7 +532,7 @@ export function environmentsTab(org: MyOrg, ui: OrgUi): string {
     </li>`;
   }).join("");
   return `${lead}${adding}
-    ${orgHead("In drift order", admin ? goLink("Set their tokens in Integrations", "orgTab", "integrations") : "", envs.length)}
+    ${orgHead("In drift order", admin ? goLink("What each one runs is in Hosting", "orgTab", "hosting") : "", envs.length)}
     <ol${surface(LIST)}>${rows}</ol>`;
 }
 
@@ -752,9 +753,9 @@ const quote = (s: string) => `“${s}”`;
 /** The words of the open confirmation: what is removed, and what stops working. Pure — exported for the tests. */
 export function orgConfirmCopy(c: OrgConfirm, org: MyOrg, ui: OrgUi): { title: string; body: string; confirmLabel: string; busyLabel: string } | null {
   const list = ui.integrations.data?.integrations ?? [];
-  if (c.what === "part" || c.what === "hosting") {
+  if (c.what === "part" || c.what === "hosting" || c.what === "leftovers") {
     const d = hostingData(ui.hosting);
-    return d ? (c.what === "part" ? partConfirmCopy(d, c.arg) : disconnectConfirmCopy(d, c.arg, org.name)) : null;
+    return d ? (c.what === "part" ? partConfirmCopy(d, c.arg) : c.what === "leftovers" ? leftoversConfirmCopy(d, c.arg) : disconnectConfirmCopy(d, c.arg, org.name)) : null;
   }
   if (c.what === "repo") {
     const r = ui.repos.data.find((x) => x.id === c.arg);
@@ -842,7 +843,8 @@ export function orgTabBar(tab: OrgTab, role: OrgRole | null, ui: OrgUi, logins =
   // An org on the App does not need its token / webhook-secret rows: an old error on one is not a to-do.
   const inst = githubOf(ui)?.installation ?? null;
   const manual = (i: IntegrationDTO): boolean => i.kind === "github_token" || i.kind === "github_webhook";
-  const todo = (ui.integrations.data ? ui.integrations.data.integrations.filter((i) => i.expected && i.last_error !== null && !(inst && manual(i))).length : 0)
+  // Hosting credentials and app metrics tokens live on Hosting now: their errors are its badge's (`hostingTodo`).
+  const todo = (ui.integrations.data ? ui.integrations.data.integrations.filter((i) => onIntegrationsTab(i) && i.expected && i.last_error !== null && !(inst && manual(i))).length : 0)
     + (inst && (inst.suspended_at || inst.last_error) ? 1 : 0);
   const badge = (n: number, title: string) => `<span class="cnpy-badge" data-n="${n}" title="${attr(title)}">${n}</span>`;
   return tabBar({
