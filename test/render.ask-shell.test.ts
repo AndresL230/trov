@@ -161,6 +161,28 @@ describe("the dev replay — the recipe's flags", () => {
   // e2e AU-24 streaming: the transcript is recorded mid-answer (no `done`); the route ends the HTTP stream there, and
   // the client took that end as a failed turn ("Something went wrong.") instead of the design's held answer
   // (busy, the soft cursor, Stop). The replay holds it until Stop aborts the request.
+  // e2e AU-24 answer: the diagram's "CI on main" node (a repo ref) drew "Unknown" — the transcript's repo view has no
+  // facts; the index's (filled from the Overview's sample) does. The replay draws the index's view.
+  it("gives a transcript's repo views the index's facts (the diagram's CI node is not 'Unknown')", async () => {
+    vi.stubGlobal("fetch", async () => new Response(askTranscriptSse(askTranscript("answer", NOW)), { headers: { "content-type": "text/event-stream" } }));
+    setApiOrg("saplinglearn");
+    try {
+      const refs = askRefFixtures(NOW);
+      const repo = Object.values(refs).find((v) => v.type === "repo")!;
+      const facts = { sample: true };
+      const index = { scenarios: [], questions: {}, state: { pro: askStateFixture("pro", NOW), free: askStateFixture("free", NOW) }, settings: {}, threads: [], search: { q: "", hits: [] },
+        refs: { ...refs, [repo.ref]: { ...repo, extra: { ...repo.extra, facts } } } } as unknown as AskReplayIndex;
+      const api = createReplayApi(index, replayPlan("answer"), 0);
+      const nodes: { ref?: string | null; view?: { extra: Record<string, unknown> } | null }[] = [];
+      await api.ask({ text: "x", mode: "smart", auto: false, context: [], attachments: [] }, { onEvent: (e) => { if (e.event === "block" && e.data.kind === "diagram") nodes.push(...e.data.diagram.nodes); } });
+      const ci = nodes.find((n) => n.ref === repo.ref);
+      expect(ci?.view?.extra.facts).toEqual(facts);
+    } finally {
+      vi.unstubAllGlobals();
+      setApiOrg(null);
+    }
+  });
+
   it("holds a transcript that ends mid-answer until Stop aborts it", async () => {
     const sse = askTranscriptSse(askTranscript("streaming", NOW));
     vi.stubGlobal("fetch", async () => new Response(sse, { headers: { "content-type": "text/event-stream" } }));

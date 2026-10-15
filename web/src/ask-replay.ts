@@ -113,6 +113,22 @@ const sample = (ids: number[], state: AskEventMap["action_result"]["state"], gro
   ({ results: ids.map((id) => ({ id, groupId: groups.get(id) ?? null, tool: "", kind: "other" as const, preview: { title: "", lines: [], item: null }, state, result: state === "confirmed" ? REPLAY_WRITES[id]?.result ?? { sample: true } : { sample: true },
     ref: state === "confirmed" ? REPLAY_WRITES[id]?.ref ?? null : null, undo: state === "confirmed", at: now() })) });
 
+/** A transcript's own repo views carry no facts (the recorded fixtures leave them out; `loadReplayIndex` fills the
+ *  INDEX's from the Overview's sample), so a diagram node or a cite on a repository would draw "Unknown" where the
+ *  server's view — which always has its facts — draws the Overview's verdict. Swap in the index's view. */
+export function withRepoFacts(e: AskEvent, index: Pick<AskReplayIndex, "refs">): AskEvent {
+  const fill = (v: RefView): RefView => {
+    const x = v.type === "repo" && !v.extra.facts ? index.refs[v.ref] : undefined;
+    return x && !("hidden" in x) ? x : v;
+  };
+  if (e.event === "block" && e.data.kind === "diagram") {
+    return { ...e, data: { ...e.data, diagram: { ...e.data.diagram, nodes: e.data.diagram.nodes.map((n) => (n.view ? { ...n, view: fill(n.view) } : n)) } } } as AskEvent;
+  }
+  if (e.event === "block" && e.data.kind === "items") return { ...e, data: { ...e.data, items: e.data.items.map(fill) } } as AskEvent;
+  if (e.event === "done") return { ...e, data: { ...e.data, cites: e.data.cites.map(fill) } } as AskEvent;
+  return e;
+}
+
 /** The replay's stand-in for `askApi`: fixtures for reads, transcripts for sends, sample answers for writes. */
 export function createReplayApi(index: AskReplayIndex, plan: ReplayPlan, speed: number): AskApi {
   const state = (plan.state ?? ((s: AskState) => s))(index.state[plan.plan]);
@@ -144,7 +160,7 @@ export function createReplayApi(index: AskReplayIndex, plan: ReplayPlan, speed: 
     async ask(req, o) {
       const scenario = queue.shift() ?? replayRoute(req.text);
       let ended = false;
-      await streamReplay(scenario, speed, { onEvent: (e: AskEvent) => { if (e.event === "done" || e.event === "error") ended = true; note(e); o.onEvent(e); }, signal: o.signal });
+      await streamReplay(scenario, speed, { onEvent: (raw: AskEvent) => { const e = withRepoFacts(raw, index); if (e.event === "done" || e.event === "error") ended = true; note(e); o.onEvent(e); }, signal: o.signal });
       // A transcript recorded mid-answer (`streaming`: no `done`) is HELD as the design shows it — busy, the soft
       // cursor, Stop — until Stop aborts the request; the route itself ends the HTTP stream with the last event.
       const signal = o.signal;
