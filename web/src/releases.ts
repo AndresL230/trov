@@ -97,7 +97,7 @@ export const RELEASES: Release[] = [
       "A tag list holds up to 30 tags on Free, 50 on Pro, and any number on Enterprise; Sift checks up to 1,000 items a month on Free, 10,000 on Pro, and any number on Enterprise.",
       "Automatic tagging needs a NEW secret, `TYPESAFE_API_KEY` (TypeSafe AI's Jev); without it nothing is sent and the Tags tab says no key is set. Suggestions are OFF for every organization until one of its admins turns them on. The monthly allowance `jev_checks` is one per Jev request (a run makes up to 60). The Privacy Policy and Terms name TypeSafe AI as a new processor for automatic tagging (approved by the owner, dated 2026-10-14).",
       "Trov plugin 0.8.2 (skill text only): feed tags come from the organization's list (`list_tags`), and an unknown tag is a suggestion, not a triage item. Update the plugin from the marketplace.",
-      "Apply `0057_ai_dirty` (the deploy does it). ADDITIVE: the empty `ai_dirty` table (nothing writes it yet) and `orgs.ai_chat_auto` (on for every organization). Safe on the Worker from before it; the by-hand rollback is in the file's header.",
+      "Apply `0058_ai_dirty` (the deploy does it). ADDITIVE: the empty `ai_dirty` table (nothing writes it yet) and `orgs.ai_chat_auto` (on for every organization). Safe on the Worker from before it; the by-hand rollback is in the file's header.",
     ],
     patches: {
       added: [
@@ -119,7 +119,7 @@ export const RELEASES: Release[] = [
         "Platform › Usage: AI runs, failures, capped runs and tokens per organization and in total, from `OrgUsage.ai` / `PlatformUsageResponse.ai` (nothing drawn when absent) (#178)",
         "`src/ai/client.ts`: `KIND_PROVIDER`, the ONE table from a kind to its provider (`claude` | `jev`); `providerFor(kind)` returns the provider typed by its kind (`tag.fit` → Jev). `src/tools/classify.ts` is the Jev provider — its `classify` unchanged — and gains `ask`: several `noul` / `choice` / `score` questions about one item in one request, each answer parsed against its question and null when malformed (#178)",
         "`ai_chat` (Ask Trov) in `PLANS`: weighted units a month (Fast 1, Smart 5, Thinking 10; metric `ai_chat`, nothing writes it yet), 50 on Free and Personal, 500 PER SEAT on Pro (`PlanDef.perSeat`: `resolveEntitlements` multiplies by the seats in force), unlimited on Enterprise; not listed (`listed: false`) (#178)",
-        "`0057_ai_dirty`: `ai_dirty` (the AI router's stale scopes, PK `(org_id, scope, scope_key)`; in `ORG_TABLES` and the reset seed; nothing writes it yet) and `orgs.ai_chat_auto` (Ask Trov's Auto switch, moved here from the reserved 0065) (#178)",
+        "`0058_ai_dirty`: `ai_dirty` (the AI router's stale scopes, PK `(org_id, scope, scope_key)`; in `ORG_TABLES` and the reset seed; nothing writes it yet) and `orgs.ai_chat_auto` (Ask Trov's Auto switch, moved here from the reserved 0066_ask) (#178)",
       ],
       changed: [
         "The gate (`ingestFeedEntry`) reads the ORG's live tag list instead of `shared/vocabulary.ts` `TAGS`: known tags are written, an unknown one is recorded in `org_tag_suggestions` and the entry is written without it, never sent to `needs_triage` for that. `append_feed` / `record_session` answer `suggested_tags`. Replay ledger, section and confidence routing unchanged (#179)",

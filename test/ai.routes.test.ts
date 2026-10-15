@@ -46,7 +46,7 @@ describe("Org settings › AI — GET / PUT /ai/settings", () => {
     expect(AiSettingsSchema.parse(r.json)).toEqual({
       enabled: true, canEdit: false, eligibility: "no_key", // the pool has no key
       allowances: { ai_summaries: unlimited, ai_runs: unlimited, jev_checks: unlimited, ai_chat: unlimited },
-      chatAuto: true, // 0057: on for every org
+      chatAuto: true, // 0058: on for every org
       sends: [...AI_SENDS], neverSent: AI_NEVER_SENT,
     });
     // Both providers, by their legal names, and what each receives.

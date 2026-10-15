@@ -100,7 +100,7 @@ the plan, `orgs.ai_automation` and the month's `ai_run:*` — gives `off` when t
   `ai_chat` itself is the whole cap, never multiplied. Nothing writes the metric yet (Ask Trov is Phase F), so it
   reads 0. **Not listed**, like `ai_runs`.
 - **The switches** — `orgs.ai_automation` (0055, default on): every AI feature, Sift included. And
-  `orgs.ai_chat_auto` (0057, default on): whether Ask Trov's Auto mode (writes run without a Confirm card, with Undo)
+  `orgs.ai_chat_auto` (0058, default on): whether Ask Trov's Auto mode (writes run without a Confirm card, with Undo)
   may be used in the org. Org settings › AI, cookie routes only (`src/ai/routes.ts`, `AI_ROUTES` in
   `shared/ai-core.ts`; `organizations.md`):
 
@@ -158,7 +158,7 @@ org's real ones, and what is sent names both providers in every mode) — when i
 `capped` / `proposed`), the request came to a loopback `http://` origin (what `wrangler dev` serves on; no deployed
 Worker is reached there) and no live Stripe key is set. Never over MCP.
 
-## The router's table (0057, Phase B)
+## The router's table (0058, Phase B)
 
 `ai_dirty(org_id, scope, scope_key, dirty_since, last_run_at, attempts, last_error)`, PK `(org_id, scope,
 scope_key)`: one row per stale scope of an org (`card`, `session`, `person`, `repo`, `org`, `sprint`, `theme_window`,

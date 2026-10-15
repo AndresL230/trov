@@ -1,4 +1,4 @@
--- 0057_ai_dirty: what the AI router marks stale, and the organization's Auto switch for Ask Trov
+-- 0058_ai_dirty: what the AI router marks stale, and the organization's Auto switch for Ask Trov
 -- (docs/architecture/ai.md; docs/superpowers/specs/2026-10-15-server-ai-build.md › Phases A, B and F).
 -- ADDITIVE ONLY: one new TENANT table and one column on `orgs`; nothing existing changes, no row is rewritten,
 -- and a Worker from before it keeps working (it names neither).
@@ -19,14 +19,14 @@
 -- AI). Ask Trov's "Auto" lets a person's writes run without a Confirm card (Phase F); an admin turns it off for
 -- the whole organization in Org settings › AI (`PUT /api/o/:slug/ai/settings { chatAuto }`, a cookie route —
 -- never MCP), audited `org.ai_chat_auto`. ON for every org (existing and new). It moved here from
--- 0065_ask, so Org settings › AI has a column for the switch from Phase A.
+-- 0066_ask (the Ask migration), so Org settings › AI has a column for the switch from Phase A.
 --
 -- ROLLBACK (by hand, with `wrangler rollback` to the Worker from before it). It LOSES every stale mark (the
 -- pass re-marks on the next writes) and the admins' Auto choices:
 --   DROP INDEX IF EXISTS idx_ai_dirty_since;
 --   DROP TABLE IF EXISTS ai_dirty;
 --   ALTER TABLE orgs DROP COLUMN ai_chat_auto;
---   DELETE FROM d1_migrations WHERE name = '0057_ai_dirty.sql';
+--   DELETE FROM d1_migrations WHERE name = '0058_ai_dirty.sql';
 CREATE TABLE IF NOT EXISTS ai_dirty (
   org_id       TEXT NOT NULL REFERENCES orgs(id),
   scope        TEXT NOT NULL,

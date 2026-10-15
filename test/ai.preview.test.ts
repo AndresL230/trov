@@ -104,7 +104,7 @@ describe("LOCAL_AI_PREVIEW under `wrangler dev`", () => {
       expect(Object.keys(s.allowances), mode).toEqual([...AI_ALLOWANCE_KEYS]);
       expect(s.allowances, mode).toEqual(aiSettingsFixture(mode, now).allowances);
       expect(s.eligibility, mode).toBe(mode === "capped" ? "capped" : "ok");
-      expect(s.chatAuto, mode).toBe(true);                       // the org's real switch (0057, default on)
+      expect(s.chatAuto, mode).toBe(true);                       // the org's real switch (0058, default on)
       expect(s.enabled, mode).toBe(true);
       expect([...new Set(s.sends.map((l) => l.provider))], mode).toEqual(["Anthropic", "TypeSafe AI"]);
     }

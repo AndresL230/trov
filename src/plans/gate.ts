@@ -89,7 +89,7 @@ export const aiChatUsed = (ctx: TenantContext, now: Date = new Date()): Promise<
   count(ctx, AI_CHAT_USED, ctx.orgId, monthStartDay(now));
 
 /** Everything Org settings › AI reads, in ONE statement: the plan, both of the org's AI switches
- *  (`ai_automation`, 0055; `ai_chat_auto`, 0057) and this month's use of each AI allowance. An org that is not
+ *  (`ai_automation`, 0055; `ai_chat_auto`, 0058) and this month's use of each AI allowance. An org that is not
  *  there reads as switched off. */
 export async function planAndAiSettings(ctx: TenantContext, now: Date = new Date()): Promise<{
   plan: OrgPlan; enabled: boolean; chatAuto: boolean; used: Record<AiAllowanceKey, number>;

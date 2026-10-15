@@ -24,7 +24,7 @@ export const RESET_STATEMENTS = [
   // AI (0055_ai): suggestions and "Wrong?" reference orgs.
   "DELETE FROM ai_suggestions",
   "DELETE FROM ai_feedback",
-  // AI (0057_ai_dirty): the router's stale scopes reference orgs.
+  // AI (0058_ai_dirty): the router's stale scopes reference orgs.
   "DELETE FROM ai_dirty",
   "DELETE FROM org_usage_daily",
   "DELETE FROM org_admin_audit",

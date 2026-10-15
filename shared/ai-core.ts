@@ -255,7 +255,7 @@ export interface AiSettings {
   eligibility: AiEligibility;
   /** This month's use of each AI allowance. */
   allowances: Record<AiAllowanceKey, AiAllowanceUse>;
-  /** `orgs.ai_chat_auto` (0057) — whether Ask Trov's Auto mode (writes run without a Confirm, with Undo)
+  /** `orgs.ai_chat_auto` (0058) — whether Ask Trov's Auto mode (writes run without a Confirm, with Undo)
    *  may be used in this organization. */
   chatAuto: boolean;
   sends: AiSendLine[];

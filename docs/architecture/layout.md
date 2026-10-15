@@ -182,7 +182,7 @@
   `src/ai/preview.ts` (`LOCAL_AI_PREVIEW`, `wrangler dev` only); the tables' one repository `src/data/ai.ts`;
   the screens' contracts `shared/ai-core.ts` (zod-free) + `shared/ai.ts` and the preview's
   `shared/ai-fixtures.ts`. Migration `0055_ai` (`orgs.ai_automation`, the switch, and
-  `ai_suggestions`, `ai_feedback`) and `0057_ai_dirty` (`ai_dirty`, the router's table — nothing writes it yet — and
+  `ai_suggestions`, `ai_feedback`) and `0058_ai_dirty` (`ai_dirty`, the router's table — nothing writes it yet — and
   `orgs.ai_chat_auto`, Ask Trov's Auto switch); the monthly `ai_runs` and `ai_chat` (Ask Trov, per seat on Pro)
   allowances are in `PLANS`
   (not listed on the pricing page yet).
