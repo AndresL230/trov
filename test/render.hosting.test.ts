@@ -50,7 +50,7 @@ const draft = (over: Partial<PartDraft> = {}): PartDraft => ({ env: "staging", k
 
 describe("Hosting is an admin's tab of Org settings", () => {
   it("sits after Environments, at #org/hosting, for admins and owners only", () => {
-    expect(orgTabsFor("owner")).toEqual(["integrations", "repos", "environments", "hosting", "members", "tags", "notifications", "general"]);
+    expect(orgTabsFor("owner")).toEqual(["integrations", "repos", "environments", "hosting", "members", "tags", "notifications", "ai", "general"]);
     expect(orgTabsFor("member")).not.toContain("hosting");
     expect(effectiveOrgTab("hosting", "member")).toBe("repos");
     expect(parseHash("#org/hosting")).toMatchObject({ screen: "org", orgTab: "hosting" });
