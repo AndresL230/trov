@@ -43,6 +43,12 @@ describe("no write runs without Confirm (unless Auto is on and allowed)", () => 
     expect(made).toHaveLength(1);
     expect(made[0].requester).toBe(ME); // the author is the cookie person
     expect(ok.json.results[0].ref).toBe(`ticket:${made[0].number}`);
+    // e2e AU-9: the thread read gives the decided card the same ref, so a reloaded done line still says
+    // "Created ticket #N" and links it (it said "Created ticket #null" / "Created the ticket").
+    const tid = eventsOf(r.events, "thread")[0].id;
+    const read = await call("GET", `${BASE}/ask/threads/${tid}`, cookie);
+    const stored = (read.json.messages as { actions: { id: number; ref: string | null }[] }[]).flatMap((m) => m.actions).find((x) => x.id === card.id);
+    expect(stored?.ref).toBe(`ticket:${made[0].number}`);
     // Never twice.
     const again = await call("POST", `${BASE}/ask/actions/${card.id}/confirm`, cookie, {});
     expect(again.status).toBe(409);
