@@ -146,6 +146,19 @@ describe("Escape — one layer at a time, in the design's order", () => {
   });
 });
 
+describe("the empty conversation — centred as the design draws it", () => {
+  // e2e AU-2 (`live`): the design puts a flexible spacer UNDER the composer while the conversation is empty
+  // (ask-trov.dc.html L770 `flex:1 1 0;min-height:24px`), so the mark, the heading, the starters and the composer sit
+  // in the middle of the column; the app had none, and drew the whole block at the bottom of the page.
+  it("has the spacer under the composer while empty, and none once there are messages", () => {
+    const empty = render(askState());
+    expect(empty).toMatch(/data-ask-composer="page"[\s\S]*class="ask-empty-tail"/);
+    const busy = render(askState((s) => { s.ask.page = { ...emptyConvo(), uid: "c9", threadId: 3, status: "loading" }; }));
+    expect(busy).not.toContain("ask-empty-tail");
+    expect(css).toMatch(/\.ask-empty-tail\s*\{[^}]*flex:\s*1 1 0/);
+  });
+});
+
 describe("the dev replay — the recipe's flags", () => {
   it("reads ?askReplay and ?askSpeed, and every design scenario has a plan", () => {
     expect(replayFromLocation("?askReplay=answer&askSpeed=4")).toEqual({ scenario: "answer", speed: 4 });

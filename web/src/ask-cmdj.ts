@@ -30,7 +30,7 @@ import { askView, inspectorRef } from "./ask-state";
 import { askIcon, trovMark } from "./ask-icons";
 import { conversationView, emptyView } from "./ask-conversation";
 import { composerFocus, composerView, initialComposerUi } from "./ask-composer";
-import { askOverlays, inspectorFrame } from "./ask-screen";
+import { EMPTY_TAIL, askOverlays, inspectorFrame } from "./ask-screen";
 import { closingAttr } from "./ask-motion";
 import { morph } from "./morph";
 import { syncSegments } from "./segmented";
@@ -98,7 +98,7 @@ export function cmdjOverlay(app: AppState): string {
         <button type="button" class="ask-iconbtn" data-act="askCjClose" aria-label="Close" data-tip="Close (Esc)">${askIcon("close", 13, null, 2.2)}</button>
       </div>
       <div class="ask-scroll" data-ask-scroll="panel">${empty ? emptyView(v) : conversationView(v)}</div>
-      ${composerView(v)}
+      ${composerView(v)}${empty ? EMPTY_TAIL : ""}
     </section>
   </div>`;
 }

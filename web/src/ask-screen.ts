@@ -50,6 +50,10 @@ export function inspectorFrame(v: AskView): string {
   </aside>`;
 }
 
+/** Under the composer while the conversation is empty: the design's flexible spacer (ask-trov.dc.html L770), so the
+ *  mark, the heading, the starters and the composer sit in the middle of the column, not at its foot. */
+export const EMPTY_TAIL = `<div class="ask-empty-tail" aria-hidden="true" data-morph-key="tail"></div>`;
+
 /** The Ask page (the screen body under the app's header). */
 export function askScreenView(app: AppState): string {
   const v = askView(app, "page");
@@ -65,7 +69,7 @@ export function askScreenView(app: AppState): string {
     <aside class="ask-threads" aria-label="Threads"${shut ? ` inert aria-hidden="true"` : ""}>${app.phone ? "" : threadsView(v)}</aside>
     <section class="ask-conv" aria-label="Conversation" data-ask-drop="page">
       <div class="ask-scroll" data-ask-scroll="page">${empty ? emptyView(v) : conversationView(v)}</div>
-      ${composerView(v)}
+      ${composerView(v)}${empty ? EMPTY_TAIL : ""}
     </section>
     <div class="ask-insp-slot">${lay.inspector === "closed" ? "" : inspectorFrame(v)}</div>
     <div class="ask-drawer-slot">${threadsDrawer(v)}</div>

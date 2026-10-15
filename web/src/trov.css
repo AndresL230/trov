@@ -2975,6 +2975,9 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-col { animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
 .ask-empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:safe flex-end; gap:14px; width:100%; max-width:720px; box-sizing:border-box; margin:0 auto; padding:40px 28px 18px; text-align:center; animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
 [data-phone="1"] .ask-empty { padding:24px 16px 14px; }
+/* The design's spacer under the composer while empty (L770): the empty block and the composer sit mid-column. */
+.ask-scroll:has(> .ask-empty) { flex:1 1 auto; }
+.ask-empty-tail { flex:1 1 0; min-height:24px; }
 .ask-empty-h { margin:0; font-size:24px; font-weight:600; letter-spacing:-0.02em; text-wrap:balance; }
 .ask-starters { display:grid; grid-template-columns:1fr 1fr; gap:8px; width:100%; max-width:560px; margin-top:6px; }
 [data-phone="1"] .ask-starters, .ask-panel .ask-starters { grid-template-columns:1fr; }
