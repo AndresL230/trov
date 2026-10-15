@@ -49,6 +49,8 @@ export const ORG_TABLES = [
   // Hosting (0057_hosting_providers): the parts and their poll state and deploys, the provider connections. The
   // provider-side install (a Vercel Integration, a Netlify grant) is not revoked: its secret goes with org_secrets.
   "hosting_poll_state", "hosting_deploys", "org_hosting_connections", "org_environment_parts",
+  // The Repo screen's per-repository defaults (0071_repo_settings).
+  "repo_settings",
   // Configuration and credentials: the GitHub App binding, encrypted secrets and their keys, repositories, environments.
   "org_github_installation_repos", "org_github_installations",
   "org_secrets", "org_keys", "org_integration_config", "org_audit",

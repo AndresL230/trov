@@ -293,6 +293,8 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["org_tag_suggestions", "suggested_by"], ["org_tag_suggestions", "resolved_by"],
   // Jev tagging: who turned the org's switch on or off, and who started a run.
   ["org_ai_settings", "updated_by"], ["org_tag_runs", "started_by"], ["org_tag_runs", "undone_by"],
+  // The Repo screen's per-repository defaults (0071_repo_settings): who set one.
+  ["repo_settings", "updated_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

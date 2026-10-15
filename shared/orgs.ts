@@ -102,6 +102,8 @@ export const ORG_AUDIT_ACTIONS = [
   "org.delete", "person.delete",
   // The organization's AI switch (0055_ai, Org settings › AI): an admin turned it on or off.
   "org.ai",
+  // A repository's Repo-screen defaults (0071_repo_settings, src/data/repo-settings.ts): the Overview's Group by.
+  "repo.settings",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 

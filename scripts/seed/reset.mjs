@@ -33,6 +33,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM hosting_deploys",
   "DELETE FROM org_hosting_connections",
   "DELETE FROM org_environment_parts",
+  "DELETE FROM repo_settings", // 0071_repo_settings: the Repo screen's per-repository defaults
   "DELETE FROM org_secrets",
   "DELETE FROM org_keys",
   "DELETE FROM org_integration_config",
