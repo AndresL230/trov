@@ -172,6 +172,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     
     
     
+    
   </div>"
 `;
 
@@ -326,6 +327,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     </main>
     <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
   </div>
+    
     
     
     
@@ -513,6 +515,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     </main>
     <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
   </div>
+    
     
     
     
@@ -943,6 +946,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     
     
     
+    
   </div>"
 `;
 
@@ -1144,6 +1148,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     </main>
     <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
   </div>
+    
     
     
     
