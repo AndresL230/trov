@@ -455,8 +455,16 @@ describe("one tag's page", () => {
     expect(html).toMatch(/data-size="full" data-tag-group="review"/);
     // Settled everything: the tab still shows while picked, and says so.
     expect(view(page(), "review")).toContain("Nothing to review");
-    // A write out: its buttons wait.
-    expect(tagPageView({ name: "auth", page: { status: "ok", data: withReview }, tab: "review", orgName: "Acme", who: (h) => h, now: NOW, busy: "review:feed:52" })).toContain("Adding…");
+    // Added or dismissed: ONLY that row slides out at once (its buttons off); the others stay as they are.
+    const two = page({ review: [...withReview.review, { type: "doc", id: "keys", title: "Rotating keys", note: "reference", by: "mara", at: null, tags: [], jev: { confidence: 0.65, reason: null, at: "t" } }] });
+    const leaving = tagPageView({ name: "auth", page: { status: "ok", data: two }, tab: "review", orgName: "Acme", who: (h) => h, now: NOW, leaving: ["feed:52"] });
+    expect(leaving).toMatch(/data-tag-review="feed:52" data-morph-key="review:feed:52" data-leaving="1" aria-hidden="true"/);
+    expect(leaving).toMatch(/data-tag-review="doc:keys" data-morph-key="review:doc:keys">/);
+    expect(leaving).not.toContain("Adding…");
+    const other = leaving.slice(leaving.indexOf(`data-tag-review="doc:keys"`));
+    expect(other).toMatch(/data-act="tagReviewAdd" data-arg="doc:keys"(?![^>]*disabled)/);
+    expect(css).toMatch(/\.cnpy-tagreview\[data-leaving\] \{[^}]*animation:cnpy-tagreview-out/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-tagreview\[data-leaving\] \{ animation:none; display:none; \} \}/);
   });
 
   it("the tab picked is the tab shown — every tab the bar offers, an empty type too (Decisions used to snap back to All)", () => {

@@ -214,6 +214,14 @@ export function createTagsController(host: TagsHost): TagsController {
         rerender();
       });
   }
+  /** Read the tag's page again without showing it loading (after a write on it): the page just updates. */
+  function refreshPage(name: string): void {
+    const mine = ++pageSeq;
+    getTagPage(name)
+      .then((data) => { if (mine !== pageSeq || state.tagName !== name) return; state.tagPage = { status: "ok", data }; rerender(); })
+      .catch(() => undefined);
+  }
+
   function open(name: string, tab: TagPageTab = "all"): void {
     state.screen = "tag";
     state.tagName = name;
@@ -390,13 +398,24 @@ export function createTagsController(host: TagsHost): TagsController {
         const cut = (arg ?? "").indexOf(":");
         const type = (arg ?? "").slice(0, cut), id = (arg ?? "").slice(cut + 1);
         const tag = state.tagName;
-        if (cut < 1 || !tag || u.busy || !isTagItemType(type)) return;
+        const key = arg ?? "";
+        if (cut < 1 || !tag || !isTagItemType(type) || u.reviewLeaving.includes(key)) return;
         const add = name === "tagReviewAdd";
-        u.busy = `review:${arg}`;
+        // The row slides out NOW (only this one; the others stay usable); the write and the refresh follow in
+        // the background. Refused: the row comes back and the page says why.
+        u.reviewLeaving = [...u.reviewLeaving, key];
         rerender();
+        const settled = () => { u.reviewLeaving = u.reviewLeaving.filter((k) => k !== key); };
         settleTagReview(tag, { type, id }, add)
-          .then(() => { u.busy = null; host.flash(add ? `Added ${tag}` : "Dismissed"); loadPage(tag); if (state.tags.status === "ok") load(); })
-          .catch((e) => { u.busy = null; if (fail(e)) return; host.flash(errorText(e, add ? "Couldn't add the tag." : "Couldn't dismiss it."), 6000); loadPage(tag); });
+          .then(() => {
+            const d = state.tagPage.data;
+            if (d && d.tag.name === tag) d.review = d.review.filter((r) => `${r.type}:${r.id}` !== key);
+            settled();
+            rerender();
+            refreshPage(tag);
+            if (state.tags.status === "ok") load();
+          })
+          .catch((e) => { settled(); rerender(); if (fail(e)) return; host.flash(errorText(e, add ? "Couldn't add the tag." : "Couldn't dismiss it."), 6000); });
         return;
       }
       case "tagPageReload": if (state.tagName) loadPage(state.tagName); return;
