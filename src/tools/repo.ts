@@ -1,6 +1,6 @@
 import {
   REPO_RANGES, deployDots, envPartOf,
-  type RepoActivity, type RepoBars, type RepoBranches, type RepoCodeStat, type RepoContributor,
+  type RepoActivity, type RepoBars, type RepoBranches, type RepoCiFailure, type RepoCodeStat, type RepoContributor,
   type RepoDashboard, type RepoDeployRow, type RepoDrift, type RepoEnv,
   type RepoHealth, type RepoLabels, type RepoPerson, type RepoPr, type RepoProductCount, type RepoProductEnv,
   type RepoProductGroup, type RepoProductTotal, type RepoRange, type RepoSection, type RepoSprint,
@@ -19,6 +19,10 @@ import { isLegacyOrg } from "../data/legacy";
 import { ISSUE_GONE_ACTIONS } from "./issue-gone";
 import { list_sprints } from "./sprints";
 import { emptyRepoFacts, readRepoFacts } from "./repo-facts";
+import {
+  commitTouch, countIn, failureOf, prTouch, pushedCommits, readScope, scoped, scopedBars, scopedCi, scopedCodeStats, touchWire, type RunTouch,
+} from "./repo-scope";
+import { runRowsSince, runTouch } from "../repo/app-scope";
 import { REPO_WIDE, type RepoFacts } from "@shared/repo-facts-core";
 import type { RepoApp } from "@shared/repo-apps-core";
 import { listRepoApps } from "../repo/apps-read";
@@ -80,6 +84,8 @@ import type { HostingProvider } from "../hosting/types";
 
 const DAY = 86_400_000;
 const PR_LIMIT = 8;
+/** Under one app, the PR list picks its 8 from this many most recently touched PRs (90 days). */
+const SCOPED_PR_CANDIDATES = 100;
 const ACTIVITY_LIMIT = 20;
 const CONTRIBUTOR_LIMIT = 8;
 const LABEL_LIMIT = 6;
@@ -1060,7 +1066,7 @@ export async function getRepoDashboard(
       const dots = deployDots(i.deploys);
       // A part with no settled deploy gets no dot strip at all — an empty one would
       // read as "nothing has deployed", which is not what is known.
-      if (dots.length) deployRows.push({ env: cfg.key, part: i.part.key, label: `${cfg.label} · ${i.part.label}`, deploys: dots });
+      if (dots.length) deployRows.push({ env: cfg.key, part: i.part.key, label: `${cfg.label} · ${i.part.label}`, deploys: dots, envLabel: cfg.label, host: providerLabel(i.part, i.provider) });
       return envPartOf({ part: i.part.key, label: i.part.label, provider: i.part.provider, provider_label: providerLabel(i.part, i.provider) }, i.deploys);
     });
     // Deploy CAPTURE for this environment: a deploy on record (in flight included), or a part whose
@@ -1406,6 +1412,82 @@ export async function getRepoDashboard(
     : new Set<string>();
   const everAny = (metrics: string[]) => metrics.some((m) => ever.has(m));
 
+  // ── the App menu's narrowing of Code and CI (Repo setups, Phase E — ./repo-scope.ts) ──────────────────────
+  // Only in a repository with two or more apps. Under All apps each listed PR says which apps it touches and each
+  // failure which apps its run belongs to; under one app (or "Repo-wide only") the tiles, the bars, the PR list and
+  // the CI failures are that app's — what is unknown (files never read) is never counted into one. A throw here
+  // costs the narrowing alone: the narrowed sections read empty and the dashboard says it is `degraded`.
+  const multi = (repoApps?.length ?? 0) >= 2;
+  let codeStatsOut = codeStats, barsOut: RepoBars | null = barTotal > 0 ? bars : null, prRowsOut = capturedPrs;
+  let openCountOut: number | null = prCaptured ? prsNow.length : null;
+  let failuresOut: RepoCiFailure[] = failureRows.map((r) => ({ workflow: r.name ?? "workflow", branch: r.ref ?? "", job: r.title ?? "—", at: r.occurred_at, url: r.url ?? "" }));
+  let failureTotalOut = failureTotal, rateOut = ciRates?.rate ?? null, trendOut = ciRates?.days ?? [];
+  let openPrsByApp: Record<string, number | null> | undefined;
+  let packageUsedBy: Map<string, string[] | null> | undefined;
+  let scopeFailed = false;
+  if (multi && repoApps) {
+    try {
+      const apps = repoApps;
+      const scopedList = narrowTo !== null && prCaptured
+        ? (await recentPrRows(ctx, SCOPED_PR_CANDIDATES, ninetyDaysAgo)).filter((r) => isKnownPrState(r.state)) : [];
+      const allCommits = pushes.flatMap(pushedCommits);
+      const weekCommits = allCommits.filter((c) => c.at > weekAgo);
+      const runs = runCaptured ? await runRowsSince(ctx, weekAgo) : [];
+      const s = await readScope(ctx, repo, apps, {
+        prs: [...prsNow, ...prRows, ...scopedList].map((r) => r.number ?? 0)
+          .concat(recentPrs.map((p) => p.ref_number), latestPrs.map((p) => p.ref_number)),
+        commits: allCommits.map((c) => c.sha ?? "").filter(Boolean),
+        runs: runs.map((r) => r.sha ?? "").filter(Boolean),
+      });
+      packageUsedBy = s.users;
+      const runTouches: RunTouch[] = runs.map((run) => ({ run, t: runTouch(run, run.sha ? s.runHeads.get(run.sha.toLowerCase()) : undefined, apps, allParts) }));
+      const failedRuns = runTouches.filter((r) => r.run.state === "failure" || r.run.state === "timed_out");
+      if (prCaptured) openPrsByApp = Object.fromEntries(apps.map((a) => [a.key, countIn(s, a.key, prsNow.map((r) => prTouch(s, r.number)))]));
+      if (narrowTo === null) {
+        prRowsOut = capturedPrs.map((pr) => ({ ...pr, ...touchWire(prTouch(s, pr.number)) }));
+        failuresOut = failedRuns.slice(0, CI_FAILURE_LIMIT).map((r) => failureOf(r, true));
+      } else {
+        const app = narrowTo;
+        const label = app === REPO_WIDE ? "" : apps.find((a) => a.key === app)?.label ?? app;
+        codeStatsOut = scopedCodeStats(s, {
+          app, prCaptured,
+          open: prsNow.map((r) => ({ number: r.number, awaiting: r.state === "review" && !approved.has(r.number ?? -1) })),
+          merged: mergedThisWeek.map((p) => ({ number: p.ref_number, author: p.subject_login })),
+          closedUnmerged: closedUnmerged.map((p) => ({ number: p.ref_number })),
+          commits: weekCommits, pushesCaptured: pushes.length > 0,
+        }, openedThisWeek.length);
+        const dayList = lastDays(now, BAR_DAYS);
+        barsOut = pushes.length
+          ? scopedBars(s, app, label, dayList, allCommits.map((c) => ({ at: c.at, t: commitTouch(s, c.sha) })), true)
+          : scopedBars(s, app, label, dayList, merged.map((p) => ({ at: p.at, t: prTouch(s, p.ref_number) })), false);
+        if (prCaptured) {
+          // The app's PRs among the 90-day list, newest first — their checks and approvals read for just those.
+          const mine = scopedList.filter((r) => scoped(s, app, prTouch(s, r.number)) === true).slice(0, PR_LIMIT);
+          const [mineChecks, mineApproved] = await Promise.all([
+            latestChecks(ctx, mine.map((r) => r.sha ?? "")),
+            approvedPrs(ctx, mine.filter((r) => r.state === "review").map((r) => r.number ?? 0)),
+          ]);
+          prRowsOut = mine.map((r) => ({
+            number: r.number ?? 0, title: r.title ?? `PR #${r.number}`, url: r.url ?? "",
+            author: personOf(people, r.actor_login ?? "unknown"), branch: r.ref,
+            state: r.state === "review" && mineApproved.has(r.number ?? -1) ? "approved" : (r.state as RepoPr["state"]),
+            checks: checkState(mineChecks.get(r.sha ?? "")), at: r.occurred_at, ...touchWire(prTouch(s, r.number)),
+          }));
+          openCountOut = codeStatsOut[0]?.value ?? null;
+        } else {
+          prRowsOut = latestPrs.filter((p) => scoped(s, app, prTouch(s, p.ref_number)) === true).slice(0, PR_LIMIT)
+            .map((p) => ({ ...prOf(people, p), ...touchWire(prTouch(s, p.ref_number)) }));
+        }
+        const ci = scopedCi(s, app, runTouches, weekAgo, now, CI_FAILURE_LIMIT, ciRates !== null);
+        failuresOut = ci.rows; failureTotalOut = ci.total; rateOut = ci.rate; trendOut = ci.trend;
+      }
+    } catch (e) {
+      scopeFailed = true;
+      console.error("repo dashboard", "scope", e instanceof Error ? e.message : String(e), `org=${ctx.orgId}`);
+      if (narrowTo !== null) { codeStatsOut = []; barsOut = null; prRowsOut = []; openCountOut = null; failuresOut = []; failureTotalOut = 0; rateOut = null; trendOut = []; }
+    }
+  }
+
   // ── the Overview's facts (src/tools/repo-facts.ts) — from the reads above; a throw there costs the facts
   // alone (the empty facts, and `degraded`), never the sections.
   let facts: RepoFacts = emptyRepoFacts(repo);
@@ -1424,6 +1506,7 @@ export async function getRepoDashboard(
       merged: { any: latestPrs.length > 0, thisWeek: mergedThisWeek.length, lastWeek: mergedLastWeek.length },
       commits: { captured: pushes.length > 0, thisWeek: commitsThisWeek, lastWeek: commitsLastWeek, deltaOk: pushDeltaOk },
       runs: { captured: runCaptured, recordingSince: runRecordingSince },
+      openPrsByApp, packageUsedBy,
     });
   } catch (e) {
     factsFailed = true;
@@ -1431,7 +1514,7 @@ export async function getRepoDashboard(
   }
 
   return {
-    repo, generatedAt: nowAt, degraded: hostingFailed || factsFailed, facts,
+    repo, generatedAt: nowAt, degraded: hostingFailed || factsFailed || scopeFailed, facts,
     usage: used.anyUsage ? ok(used.usage) : everAny(USAGE_METRICS) ? EMPTY : NOT_CONNECTED,
     providers: providerSection,
     product: produced.anyProduct ? ok(produced.product) : ever.has(`${PRODUCT_PREFIX}*`) ? EMPTY : NOT_CONNECTED,
@@ -1450,23 +1533,17 @@ export async function getRepoDashboard(
     // hosting read knows nothing about deploys either — never "No deploys recorded" off it.
     deploys: deployRows.length ? ok(deployRows) : envs.length && anyDeployCapture ? EMPTY : NOT_CONNECTED,
     ciFailures: runCaptured
-      ? ok({
-          // null / [] until the week is covered — never a rate over a partial window.
-          rate: ciRates?.rate ?? null, trend: ciRates?.days ?? [],
-          rows: failureRows.map((r) => ({
-            workflow: r.name ?? "workflow", branch: r.ref ?? "", job: r.title ?? "—",
-            at: r.occurred_at, url: r.url ?? "",
-          })),
-          total: failureTotal,
-        })
+      // null / [] until the week is covered — never a rate over a partial window (narrowed: nor over a window
+      // with a run nobody can attribute).
+      ? ok({ rate: rateOut, trend: trendOut, rows: failuresOut, total: failureTotalOut })
       : NOT_CONNECTED,
     stats: ok(stats),
-    codeStats: ok(codeStats),
-    bars: barTotal > 0 ? ok(bars) : EMPTY,
-    // `openCount` is the "Open PRs" tile's own figure (`prsNow`), so the list's
+    codeStats: codeStatsOut.length ? ok(codeStatsOut) : EMPTY,
+    bars: barsOut ? ok(barsOut) : EMPTY,
+    // `openCount` is the "Open PRs" tile's own figure (`prsNow`, narrowed: the app's), so the list's
     // consumers never count open PRs off the capped rows — and it is `null`
     // until the `prs_reconciled` marker makes it a complete count.
-    prs: capturedPrs.length || prCaptured ? ok({ rows: capturedPrs, openCount: prCaptured ? prsNow.length : null }) : EMPTY,
+    prs: prRowsOut.length || prCaptured ? ok({ rows: prRowsOut, openCount: openCountOut }) : EMPTY,
     activity: some(activity),
     sprint: sprint ? ok(sprint) : EMPTY,
     contributors: some(contributors),

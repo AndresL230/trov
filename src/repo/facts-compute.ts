@@ -72,9 +72,10 @@ const commitAt = (c: GhCompareCommit): string => c.commit.committer?.date ?? c.c
  * Commits grouped the way the Overview shows them: one group per PR a squash merge names (`(#123)` at the end of
  * the first line), newest PR first, with the PR's captured title and author (`repo_events` `pr` rows) when known;
  * then the rest as one `direct` group. Commits newest first, 7-character shas. `more` stays 0: a compare's 250-commit
- * cap cannot be attributed to a group (the count beside the groups is GitHub's own total).
+ * cap cannot be attributed to a group (the count beside the groups is GitHub's own total). `unknown` (Phase E): the full
+ * shas whose changed files are not known — each group counts its own (`pathsUnknown`, set only when > 0).
  */
-export async function groupCommits(ctx: TenantContext, commits: GhCompareCommit[], branch: string): Promise<FactsCommitGroup[]> {
+export async function groupCommits(ctx: TenantContext, commits: GhCompareCommit[], branch: string, unknown: ReadonlySet<string> = new Set()): Promise<FactsCommitGroup[]> {
   const byPr = new Map<number, GhCompareCommit[]>();
   const direct: GhCompareCommit[] = [];
   for (const c of commits) {
@@ -91,19 +92,24 @@ export async function groupCommits(ctx: TenantContext, commits: GhCompareCommit[
   const toCommit = (c: GhCompareCommit) => ({ sha: c.sha.slice(0, 7), msg: firstLine(c).slice(0, 160), at: commitAt(c) });
   const newestFirst = (rows: GhCompareCommit[]) => rows.map(toCommit).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
   const groups: FactsCommitGroup[] = [];
+  const flag = (g: FactsCommitGroup, list: GhCompareCommit[]): FactsCommitGroup => {
+    const n = list.filter((c) => unknown.has(c.sha.toLowerCase())).length;
+    if (n) g.pathsUnknown = n;
+    return g;
+  };
   for (const [pr, list] of [...byPr.entries()].sort((a, b) => b[0] - a[0])) {
     const k = known.find((r) => r.number === pr);
     const cs = newestFirst(list);
     const by = k?.actor_login ?? list[0].author?.login ?? null;
-    groups.push({
+    groups.push(flag({
       kind: "pr", pr, title: k?.title ?? firstLine(list[0]), by: by ? [by] : [],
       // A squash merge's commit IS the merge (GitHub commits it), so its date stands in when no `pr` row says.
       mergedAt: k?.merged_at ?? cs[0]?.at ?? null, commits: cs, more: 0,
-    });
+    }, list));
   }
   if (direct.length) {
     const by = [...new Set(direct.map((c) => c.author?.login).filter((l): l is string => !!l))];
-    groups.push({ kind: "direct", pr: null, title: `Direct pushes to ${branch}`, by, mergedAt: null, commits: newestFirst(direct), more: 0 });
+    groups.push(flag({ kind: "direct", pr: null, title: `Direct pushes to ${branch}`, by, mergedAt: null, commits: newestFirst(direct), more: 0 }, direct));
   }
   return groups;
 }
@@ -214,14 +220,7 @@ export async function computeNotShipped(
       // every commit (the unknown ones are in it).
       const count = !filter ? cmp.ahead_by : commits.length >= cmp.ahead_by ? kept.length : null;
       const dates = kept.map(commitAt).filter(Boolean).sort();
-      const groups = await groupCommits(ctx, kept, p.part.branch);
-      if (unknown.length) {
-        const short = new Set(unknown.map((s) => s.slice(0, 7)));
-        for (const g of groups) {
-          const n = g.commits.filter((x) => short.has(x.sha.toLowerCase())).length;
-          if (n) g.pathsUnknown = n;
-        }
-      }
+      const groups = await groupCommits(ctx, kept, p.part.branch, new Set(unknown));
       next[notShippedKey(p.part.env, p.app)] = {
         env: p.part.env, app: p.app, servingSha: p.sha, branch: p.part.branch, head: heads.get(p.part.branch) ?? null,
         count, oldestAt: count ? dates[0] ?? null : null, groups, computedAt: at,
