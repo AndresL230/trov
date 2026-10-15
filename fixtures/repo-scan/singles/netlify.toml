@@ -1,0 +1,9 @@
+[build]
+  base = "sites/marketing"
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/old"
+  to = "/new"
+  status = 301

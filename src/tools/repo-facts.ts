@@ -38,6 +38,7 @@ import {
 import { runCounts } from "../repo/reads";
 import { readRepoSettings } from "../data/repo-settings";
 import { readRelease, releaseWeekFigure } from "../repo/releases";
+import { readFound, readUnseen } from "../repo/scan-reads";
 import { getSnapshot, type HostingPollStateRow } from "../repo/store";
 import type { RepoPrRow } from "../repo/types";
 
@@ -192,7 +193,7 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
   // The release block reads the repository's releases (`releases`, per repository — so any connected one), narrowed by
   // the app's own release signal when the App menu names an app of this repository.
   const releaseApp = i.app && i.app !== REPO_WIDE && appIndex.has(i.app) ? i.app : null;
-  const [rows, weekRows, nsSnap, oosSnap, chainSnap, runs, settings, release, releasesWeek] = await Promise.all([
+  const [rows, weekRows, nsSnap, oosSnap, chainSnap, runs, settings, release, releasesWeek, found, unseen] = await Promise.all([
     mine.length ? factsDeploys(ctx, previewSince) : Promise.resolve([] as FactsDeployRow[]),
     mine.length ? deployWeekCounts(ctx, weekAgo, twoWeeksAgo) : Promise.resolve([]),
     getSnapshot<NotShippedSnapshot>(ctx, "not_shipped"),
@@ -202,6 +203,10 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
     i.repo ? readRepoSettings(ctx, i.repo) : Promise.resolve(null),
     i.repo ? readRelease(ctx, i.repo, releaseApp) : Promise.resolve(null),
     i.repo ? releaseWeekFigure(ctx, i.repo, i.now) : Promise.resolve(null),
+    // What the repo scan suggested (pending only) and what it looked for (Phase D, src/repo/scan-reads.ts — the
+    // secret-free read side). The layout draws them only while no app is accepted (`decide`: R1 / R2).
+    i.repo ? readFound(ctx, i.repo, i.now) : Promise.resolve(null),
+    i.repo ? readUnseen(ctx, i.repo, i.now) : Promise.resolve(null),
   ]);
   const of = (p: PartRow) => (r: { env: string; part: string; provider: string }) => r.env === p.env && r.part === p.key && r.provider === p.provider;
 
@@ -395,7 +400,7 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
 
   const facts: RepoFacts = {
     repo: i.repo, app: null, repos: repos.map((r) => r.repo_full_name), allApps: apps, apps, envs, parts, previews, notShipped,
-    outOfStep, drift, ci, release, found: null, unseen: null, week, attention, connect,
+    outOfStep, drift, ci, release, found, unseen, week, attention, connect,
     // the admin's default Group by for this repository (`repo_settings.overview_group`, 0071), else none
     groupDefault: settings?.overview_group ?? null,
   };

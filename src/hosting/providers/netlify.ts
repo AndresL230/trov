@@ -37,8 +37,8 @@
 //     its log page (Netlify renamed sites to "projects" in its UI; the /sites/ links are expected to redirect);
 //   - the token endpoint's response (`access_token` is all Trov reads) and the OAuth error body.
 import { metricsForRole, type DeployState } from "@shared/hosting";
-import type { HostingDeploy, HostingField, HostingProvider, InstallGrant, PartRef, ProviderContext } from "../types";
-import { HostingError, type Revealed, type SecretLike, asHostingError, instant, probeFailure, readJson, record, refuse, str } from "../http";
+import type { DescribedProject, HostingDeploy, HostingField, HostingProvider, InstallGrant, PartRef, ProviderContext } from "../types";
+import { HostingError, type Revealed, type SecretLike, asHostingError, describedFolder, githubRepoOf, instant, probeFailure, readJson, record, refuse, str } from "../http";
 
 const API = "https://api.netlify.com/api/v1";
 const TOKEN_URL = "https://api.netlify.com/oauth/token";
@@ -364,6 +364,27 @@ export const netlify: HostingProvider = {
     // A production part also reads the site's previews: the unfiltered list, every non-production context kept.
     const previews = reads.production ? await list(previewsUrl(siteId), (d) => d.target === "preview") : [];
     return { deploys: [...deploys, ...previews], points: [], unavailable, covered: null };
+  },
+
+  // ONE fetch (repo setups, Phase D — the repo scan only): `GET /sites?per_page=100` → the sites whose
+  // `build_settings.repo_url` (or `repo_path`) is this GitHub repository, each with the folder it builds
+  // (`build_settings.base`, '' = the root). Shape from Netlify's OpenAPI; UNCONFIRMED against a live account. An
+  // account with more than 100 sites may leave some out.
+  async describe(pc, repo) {
+    const body = await getJson(pc, `${API}/sites?per_page=100`, "netlify sites", SITE_HINTS);
+    const want = repo.toLowerCase();
+    const out: DescribedProject[] = [];
+    for (const item of Array.isArray(body) ? body : []) {
+      const site = record(item);
+      const build = record(site.build_settings);
+      const id = str(site.id);
+      const name = str(site.name);
+      const folder = describedFolder(build.base);
+      const linked = githubRepoOf(build.repo_url) ?? githubRepoOf(build.repo_path);
+      if (!id || !name || !folder || linked !== want) continue;
+      out.push({ name, folder, settings: { site_id: id, site_name: name }, kind: "Site" });
+    }
+    return out;
   },
 
   install: {

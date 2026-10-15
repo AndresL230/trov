@@ -168,6 +168,19 @@ export interface InstallSpec {
   };
 }
 
+/** One project / service / site a connected host builds from a repository (`describe`, repo setups Phase D). */
+export interface DescribedProject {
+  /** The host's name for it ("storefront-web"). */
+  name: string;
+  /** The repository folder it builds: '/' for the root, else a path without leading / trailing '/'. */
+  folder: string;
+  /** The part settings that would name it (`project`, `service_id`, `site_id`…) — checked by the scan with
+   *  `checkFields` before any is proposed. */
+  settings: Record<string, string>;
+  /** What the host says it is, when it says (a Render cron job is a Job, a static site a Site). */
+  kind?: "Site" | "Service" | "Worker" | "Job";
+}
+
 export interface HostingProvider {
   id: HostingProviderId;
   label: string;
@@ -207,4 +220,11 @@ export interface HostingProvider {
   /** Cross-field checks `checkFields` cannot express ("set exactly one of…"), run on a part write after it:
    *  the field and a fixed message, or null. */
   checkSettings?(values: Readonly<Record<string, string>>): { field: string; message: string } | null;
+  /** Optional (repo setups, Phase D): for a CONNECTED host, the projects it builds from `repo` (`owner/name`) and
+   *  the folder each builds — ONE list call (`DESCRIBE_COST`), run only by the repo scan (src/repo/scan.ts), never
+   *  on a render path. Throws `HostingError` (scrubbed) like `poll`; the scan then goes on without it. */
+  describe?(pc: ProviderContext, repo: string): Promise<DescribedProject[]>;
 }
+
+/** The fetches one `describe` makes — the scan's cost counts one per connected provider that has it. */
+export const DESCRIBE_COST = 1;

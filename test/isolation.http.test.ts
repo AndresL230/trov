@@ -211,7 +211,8 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
     case "ref": return fx.artifactSlug;
     case "part": return "web";
     case "provider": return "vercel"; // never `test` against a configured credential: B has none, and A's is never B's
-    case "name": return "auth"; // a tag: every org has the starter of that name, each its own row
+    case "name": return under("/repos") ? "sapling" : "auth"; // a repository's name (A's), else a tag: every org has the starter of that name, each its own row
+    case "owner": return "SaplingLearn"; // A's repository owner
     default: throw new Error(`no fixture value for :${name} in ${suffix}`);
   }
 }
@@ -329,6 +330,10 @@ const TENANT: Record<string, Row> = {
   // src/repo/settings-routes.ts — the PATH's org's default for one of ITS repositories (0071_repo_settings): A's repo
   // is not B's, so B's admin gets 404 and B's member the 403; nothing is written for A.
   "PUT /repo/settings": J({ repo: "SaplingLearn/sapling", overview_group: "app" }),
+  // src/repo/scan-routes.ts — Scan again and the suggestions of one of the PATH org's repositories (0072_repo_scans): A's
+  // repository is not B's, so B's admin gets 404 and B's member the 403; nothing of A's is read or written.
+  "POST /repos/:owner/:name/scan": J({}), "POST /repos/:owner/:name/suggestions/undo": J({ undo: "x" }),
+  "POST /repos/:owner/:name/suggestions/:id/accept": J({}), "POST /repos/:owner/:name/suggestions/:id/ignore": J({}),
 };
 
 /** The org surface (src/orgs, src/integrations, src/hosting, Org settings › AI in src/ai/routes.ts) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under

@@ -15,6 +15,7 @@ import { FACTS_COMPARE_CAP, computeDriftChain, computeNotShipped, computeOutOfSt
 // The GitHub HTTP helpers live in ./gh-http.ts (so the facts arms, ./facts-compute.ts, can use them without an
 // import cycle); re-exported here for every existing caller.
 export { ghGraphql, ghJson, ghJsonOrNull, scrubbedMessage, type GhOpts } from "./gh-http";
+import { scanRepo, type ScanOpts } from "./scan";
 import type { RepoBranches, RepoDrift, RepoDriftGroup } from "@shared/repo";
 
 /** At most this many `.../jobs` lookups per `reconcileRepo` call, so a first
@@ -129,11 +130,12 @@ const MAX_STATUSES_PER_CONTEXT = 10;
  * ./facts-compute.ts), and the `releases` arm's `RELEASES_RECONCILE_COST` (2: the releases list, the tags
  * query, src/repo/releases.ts). GitHub deployments are not read: an environment's deploys
  * come from its hosting provider (src/hosting/). The callers' budgets
- * (src/repo/cron.ts) build on this number.
+ * (src/repo/cron.ts) build on this number. With `scan` (the cron's and Sync's reconcile, not Poll now),
+ * + `SCAN_COST` (src/repo/scan.ts).
  */
 export const reconcileRequests = (n: number): number => 16 + 2 * n + driftCompares(n) + FACTS_COMPARE_CAP + RELEASES_RECONCILE_COST;
 
-export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now()): Promise<ReconcileResult> {
+export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now(), scan?: ScanOpts): Promise<ReconcileResult> {
   const out: ReconcileResult = { written: 0, unchanged: 0, failed: [] };
   /** Every event goes through the SAME gate the webhook uses; a redelivery or a
    *  backfill overlap drops as `unchanged` on the UNIQUE semantic key. */
@@ -323,6 +325,11 @@ export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: Repo
     out.written += r.written;
     out.unchanged += r.unchanged;
   });
+
+  // The repo scan (repo setups, Phase D — src/repo/scan.ts): which apps the repository holds, as SUGGESTIONS. Only
+  // when the caller asks (`scan` — the cron's and Sync's reconcile; not Poll now) and only when the default branch's
+  // root tree changed since the last scan: same sha → no request past the tree read. ≤ SCAN_COST requests.
+  if (scan) await safely("scan", async () => { await scanRepo(ctx, opts, { ...scan, now }); });
 
   return out;
 }

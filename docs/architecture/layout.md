@@ -55,6 +55,10 @@
   `releases.ts` (0074_releases, Phase F: the `release` / `create` derivation, reconcile's `releases` arm, and the
   reads `readRelease` / `readTags` / `releaseWeekFigure`; `isFeaturePr` is the one feature rule) and
   `release-store.ts` (the `releases` writers, called only by the gate's `ingestRepoRelease`),
+  the repo scan (repo setups, Phase D — `hosting-providers.md` › The repo scan): `scan.ts` (the guarded reconcile arm),
+  `detect/` (the detector registry, the subset parsers, the signal token rules), `signals.ts` (seen signals),
+  `scan-reads.ts` (the secret-free read side the facts read uses), `scan-store.ts` (accept / ignore / undo, Scan
+  again — credentialed) and `scan-routes.ts`,
   `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the snapshot kinds —
   `prs_reconciled`, `env_heads`, `drift`, `branches`, `drift_chain`, `not_shipped`, `out_of_step`; `putMetric`, the ONE write seam that
   normalises `repo_metrics.at`, and `putMetrics`, the same write for MANY rows in `db.batch` chunks of 50;
@@ -198,6 +202,7 @@
   `scripts/hosting/0057_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.
   Then `0070_repo_apps` (repo setups, Phase A; 0070–0079 are reserved for that build) [`repo_apps` with a row per
   existing part key, and `hosting_deploys.source` / `reason` / `sha_source` / `rolled_back_from`; additive].
+  Then `0072_repo_scans` (Phase D) [`repo_scans`, `repo_app_suggestions`; additive].
   Then `0074_releases` (Phase F) [`releases`: a repository's releases and bare tags, PK `(org_id, repo, tag)`;
   additive].
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
