@@ -8,7 +8,7 @@ import type { Env } from "../src/env";
 import { app } from "../src/routes";
 import { KIND_PROVIDER, providerFor } from "../src/ai/client";
 import { toClaudeSchema } from "../src/ai/schema";
-import { filterCandidates, filterModelSchema, resolveFilter, runAiFilter } from "../src/ai/filter";
+import { filterCandidates, filterInput, filterModelSchema, resolveFilter, runAiFilter } from "../src/ai/filter";
 import {
   AI_FILTER_MESSAGES, AI_FILTER_ROUTE, AI_FILTER_SCHEMAS, AiFilterAnswerSchema, type AiFilterAnswer,
 } from "@shared/ai-filter";
@@ -87,6 +87,13 @@ describe("the kind and the call", () => {
     expect(input).toContain(`- ${mine}: Hosting screens`);
     expect(input).not.toContain("outsider");
     expect(input).not.toContain("Their sprint");
+  });
+});
+
+describe("the tickets' status field (declined is hidden from All — the owner's ruling)", () => {
+  it("tells the model All is everything EXCEPT declined, and that declined tickets are in closed", () => {
+    const input = filterInput("tickets", { people: [], sprints: [], tags: [] }, "show everything including declined", "n");
+    expect(input).toContain("all, which is everything except declined — declined tickets are in closed");
   });
 });
 

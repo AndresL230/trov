@@ -2228,7 +2228,7 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .fxm-head { flex:none; display:flex; align-items:center; gap:10px; min-height:42px; padding:0 14px; border-bottom:1px solid var(--border); white-space:nowrap; overflow:hidden; }
 .fxm-body { flex:1; min-height:0; overflow:hidden; }
 .fxm-stack { display:flex; flex-direction:column; gap:12px; height:100%; }
-.fxm-board { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:9px; padding:12px; align-items:start; }
+.fxm-board { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:9px; padding:12px; align-items:start; }
 .fxm-lanes { --lab:160px; }
 .fxm-tiles { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; align-items:stretch; }
 /* The artifact in the Artifacts screen is somebody's OWN page in a sandboxed frame, so it wears its own
