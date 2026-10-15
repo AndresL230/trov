@@ -3955,6 +3955,10 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .repo-gdot { border-radius:min(calc(12px * var(--corner-scale)), 25%) !important; }
 /* The Filter button inside the search + Filter bar: rounded only where the bar is. */
 [data-cnpy-theme] .cnpy-sfbar .fm-btn { border-radius:0 calc(7px * var(--corner-scale)) calc(7px * var(--corner-scale)) 0 !important; }
+/* The Filter menu's typed filter (ai-filter.ts): its row and field like the menu's rows; Apply rounded where the field is. */
+[data-cnpy-theme] .fm-ai-opt,
+[data-cnpy-theme] .fm-ai-field { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .fm-ai-run { border-radius:0 calc(7px * var(--corner-scale)) calc(7px * var(--corner-scale)) 0 !important; }
 [data-cnpy-theme] .cnpy-md blockquote { border-radius:0 calc(8px * var(--corner-scale)) calc(8px * var(--corner-scale)) 0 !important; }
 [data-cnpy-theme] .cnpy-md .cnpy-code pre { border-radius:0 !important; }
 [data-cnpy-theme] .cnpy-selbar { border-radius:inherit !important; }
