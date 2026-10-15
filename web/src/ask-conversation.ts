@@ -445,7 +445,7 @@ function thinkView(v: AskView, a: AskAnswer): string {
   if (!th) return "";
   const clock = `<span class="ask-step-i">${askIcon("clock", 14, "var(--fg-40)")}</span>`;
   if (th.state === "run") {
-    return `<div class="ask-think" data-ask-tween><div class="ask-step is-run" role="status">${clock}<span class="ask-think-l" data-ask-think="${th.startedAt}">${thinkingLabel(th.startedAt)}</span></div></div>`;
+    return `<div class="ask-think" data-ask-tween><div class="ask-step is-run">${clock}<span class="ask-think-l" data-ask-think="${th.startedAt}">${thinkingLabel(th.startedAt)}</span></div></div>`;
   }
   const key = `${a.key}:think`;
   const open = v.ui.conversation.open[key] === true;
