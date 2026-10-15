@@ -72,7 +72,7 @@ const TYPE_WORD: Record<AskRefType, string> = {
 };
 export const refTypeWord = (v: Pick<RefView, "type">): string => TYPE_WORD[v.type];
 /** The plural for a picker group ("Tickets", "Pull requests", "People"). */
-export const refTypeGroup = (t: AskRefType): string => (t === "person" ? "People" : t === "pr" ? "Pull requests" : `${TYPE_WORD[t]}s`);
+export const refTypeGroup = (t: AskRefType): string => (t === "person" ? "People" : t === "pr" ? "Pull requests" : t === "feed" ? "Feed entries" : `${TYPE_WORD[t]}s`);
 
 const handleOf = (v: RefView): string => (typeof v.extra.handle === "string" ? v.extra.handle : parseAskRef(v.ref)?.key ?? v.ref);
 

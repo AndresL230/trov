@@ -71,6 +71,18 @@ const key = (k: string, el: { value: string; where?: AskWhere }, mods: Partial<K
   return { e: e as unknown as KeyboardEvent, prevented: () => (e.preventDefault as ReturnType<typeof vi.fn>).mock.calls.length > 0 };
 };
 
+describe("the @ picker's group heads", () => {
+  // e2e AU-14: a feed entry's group read "FEED ENTRYS" (the type word + "s").
+  it("are plural words: Tickets, Pull requests, People, Feed entries…", async () => {
+    const { refTypeGroup } = await import("../web/src/ask-refs");
+    expect(refTypeGroup("feed")).toBe("Feed entries");
+    expect(refTypeGroup("ticket")).toBe("Tickets");
+    expect(refTypeGroup("person")).toBe("People");
+    expect(refTypeGroup("pr")).toBe("Pull requests");
+    for (const t of ["ticket", "pr", "doc", "decision", "feed", "sprint", "handoff", "artifact", "person", "prompt", "repo"] as const) expect(refTypeGroup(t)).not.toMatch(/ys$/);
+  });
+});
+
 describe("the box — a new thread on Pro", () => {
   it("the input, the toolbar (attach, mention, commands), the mode menu, the Auto switch and Send", () => {
     const h = html(askState());
