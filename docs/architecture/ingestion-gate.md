@@ -82,6 +82,11 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
   copies it into the live doc and bumps `current_version` (non-destructive; prior versions remain).
   Reject (soft): `POST /doc/:slug/reject` flips a staged version to `status='rejected'`; the row
   and body remain (non-destructive). Idempotent.
+- Doc drift (#161, `src/ai/doc-drift.ts`; `ai.md` › Doc drift): when Trov finds a doc that recent feed entries show
+  is out of date, its edit is a doc proposal THROUGH THIS GATE — `ingestDocProposal` with `confidence: "low"`, so it
+  is staged and flagged like any low-confidence edit of an existing doc — authored by the reserved system person
+  `trov` (`TROV_SYSTEM_HANDLE`): the one documented exception to "the author is the authenticated principal",
+  because no person wrote it. Only a person promotes or rejects it in Review; Trov never does.
 - ADRs: an ADR draft arrives in a batch — `adr_drafts` of MCP `record_session` or of `POST /ingest` — and
   the gate's `ingestAdrDraft` stages it as a `draft` through the writer `stage_adr` (`src/tools/writes.ts`;
   a function, NOT an MCP tool — there is no per-entry ADR tool). `POST /adr/:id/ratify` flips it to `ratified`.

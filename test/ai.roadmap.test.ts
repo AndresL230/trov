@@ -11,7 +11,7 @@ import { get_plan } from "../src/tools/plan";
 import { create_sprint, set_sprint_active, sprintForecast, list_sprints, get_sprint } from "../src/tools/sprints";
 import { create_ticket, set_ticket_sprint, transition_ticket, add_ticket_link } from "../src/tools/tickets";
 import {
-  DRAFT_MIN_BACKLOG, PLAN_DRIFT_JOB, PLAN_NARRATIVE_JOB, SPRINT_DRAFT_JOB, SPRINT_NOTE_JOB, ROADMAP_JOBS, driftInput, themeShares,
+  DRAFT_MIN_BACKLOG, PLAN_DRIFT_JOB, PLAN_NARRATIVE_JOB, SPRINT_DRAFT_JOB, SPRINT_NOTE_JOB, ROADMAP_JOBS, driftInput, themeShares, toAiThemeShares,
 } from "../src/ai/roadmap";
 import { AI_JOBS } from "../src/ai/pass";
 import { KIND_PROVIDER } from "../src/ai/client";
@@ -24,7 +24,8 @@ import { all, first, run } from "./helpers/db";
 import { FIXTURE_ADMIN, cookieFor } from "./helpers/persons";
 import { ORG_A, ORG_B, systemCtx } from "./helpers/tenant";
 import { markRow, stubProviders, succeededLine, type ClaudeReply } from "./helpers/ai-pass";
-import { fencedBlocks, inputOf, tick } from "./helpers/ai-roadmap";
+import { fencedBlocks, inputOf, tick, withThemes } from "./helpers/ai-roadmap";
+import { addOrgRepo } from "./helpers/org-config";
 
 const e = env as unknown as Env;
 const HOUR = 3_600_000;
@@ -239,27 +240,37 @@ describe("plan drift — the SERVER counts the theme shares; the model only word
     }
   });
 
-  it("themeShares reads 0064's tables defensively and counts merged PRs per active theme; inSprint from the active sprints' PR links", async () => {
-    await run(env.DB, `CREATE TABLE IF NOT EXISTS repo_themes (org_id TEXT, repo TEXT, id TEXT, name TEXT, status TEXT)`);
-    await run(env.DB, `CREATE TABLE IF NOT EXISTS pr_themes (org_id TEXT, repo TEXT, pr_number INTEGER, theme_id TEXT)`);
-    try {
-      const R = "SaplingLearn/sapling";
-      for (const [id, name] of [["billing", "Billing"], ["hosting", "Hosting"]]) await run(env.DB, `INSERT INTO repo_themes VALUES (?, ?, ?, ?, 'active')`, ORG_A, R, id, name);
-      const merge = (n: number) => run(env.DB, `INSERT INTO events (org_id, repo, semantic_key, event_type, ref_number, subject_login, raw, provenance, occurred_at, recorded_at, recorded_by)
-        VALUES (?, ?, ?, 'pr_merged', ?, 'x', '{}', 'webhook', ?, ?, 'test')`, ORG_A, R, `gh:pr:${n}:merged`, n, new Date().toISOString(), new Date().toISOString());
-      for (const [n, t] of [[1, "billing"], [2, "billing"], [3, "billing"], [4, "hosting"]] as const) { await merge(n); await run(env.DB, `INSERT INTO pr_themes VALUES (?, ?, ?, ?)`, ORG_A, R, n, t); }
+  it("themeShares: the primary repo's merged PRs per active theme (the themes module's read), counted by the server; inSprint from the active sprints' PR links", async () => {
+    const R = "SaplingLearn/sapling";
+    expect(await themeShares(ctx(), new Date())).toBeNull(); // no primary repository
+    await addOrgRepo(R, ORG_A, { primary: true });
+    expect(await themeShares(ctx(), new Date())).toBeNull(); // 0064 not here, or no active theme: says nothing
+    await withThemes(async ({ theme, prTheme }) => {
+      expect(await themeShares(ctx(), new Date())).toBeNull(); // the tables, but no active theme
+      const billing = await theme(ORG_A, R, "Billing");
+      const hosting = await theme(ORG_A, R, "Hosting");
+      expect(await themeShares(ctx(), new Date())).toBeNull(); // nothing merged
+      const merge = (n: number, at = new Date()) => run(env.DB, `INSERT INTO events (org_id, repo, semantic_key, event_type, ref_number, subject_login, raw, provenance, occurred_at, recorded_at, recorded_by)
+        VALUES (?, ?, ?, 'pr_merged', ?, 'x', '{}', 'webhook', ?, ?, 'test')`, ORG_A, R, `gh:pr:${n}:merged`, n, at.toISOString(), at.toISOString());
+      for (const [n, t] of [[1, billing], [2, billing], [3, billing], [4, hosting]] as const) { await merge(n); await prTheme(ORG_A, R, n, t); }
       await merge(5); // unthemed: counts in the total only
+      await merge(6, new Date(Date.now() - 20 * 86_400_000)); await prTheme(ORG_A, R, 6, hosting); // outside the window
       const { tickets } = await activeSprint();
       await add_ticket_link(ctx(), tickets[3], `https://github.com/${R}/pull/4`, "AndresL230");
       expect(await themeShares(ctx(), new Date())).toEqual([
-        { themeId: "billing", theme: "Billing", pct: 60, inSprint: false },
-        { themeId: "hosting", theme: "Hosting", pct: 20, inSprint: true },
+        { themeId: String(billing), theme: "Billing", pct: 60, inSprint: false },
+        { themeId: String(hosting), theme: "Hosting", pct: 20, inSprint: true },
       ]);
-      expect(await themeShares(systemCtx(ORG_B), new Date())).toBeNull();
-    } finally {
-      await run(env.DB, `DROP TABLE IF EXISTS pr_themes`);
-      await run(env.DB, `DROP TABLE IF EXISTS repo_themes`);
-    }
+      expect(await themeShares(systemCtx(ORG_B), new Date())).toBeNull(); // another org: nothing of A's
+    });
+  });
+
+  it("toAiThemeShares rounds the shares itself, drops empty themes and keeps the biggest eight", () => {
+    const s = { total: 3, unthemed: 0, themes: [{ id: 1, name: "A", count: 2, share: 2 / 3 }, { id: 2, name: "B", count: 1, share: 1 / 3 }, { id: 3, name: "C", count: 0, share: 0 }] };
+    expect(toAiThemeShares(s, new Set(["2"]))).toEqual([
+      { themeId: "1", theme: "A", pct: 67, inSprint: false },
+      { themeId: "2", theme: "B", pct: 33, inSprint: true },
+    ]);
   });
 });
 

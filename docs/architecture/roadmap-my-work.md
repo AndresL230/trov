@@ -109,3 +109,21 @@ the item's own and linked to `cites[0]`, the model's one muted "why" — over a 
 byline and the thumbs-down "Wrong?" at the bottom right. Empty: "Trov writes your brief after your next push or when something is
 assigned to you. It reads your sessions, pull requests, tickets and handoffs." Capped: the last `now`, then the
 allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `get_my_work` carries the same `brief?`.
+
+## Roadmap intelligence (Phase D; `ai.md` › The Roadmap)
+
+- **Forecast** — `SprintView.forecast` on every sprint read (`sprintForecast`, `src/tools/sprints.ts`): ARITHMETIC,
+  never a model — tickets closed per day since the start day (day 1), carried over the open ones, against the due
+  day (`projected`, `daysLate`). Null for a sprint not active, with no start, or with nothing closed yet. The card
+  says "At this pace, done Nov 2, 3 days late" with no AI mark.
+- **Sprint notes** — `SprintView.note?`: one line Trov wrote about an ACTIVE sprint (its tickets, the PRs they link,
+  the week's entries naming them), with its cites, byline and "Wrong?". `org_insights` (0065), present only while
+  the org's AI switch is on.
+- **Drift** — `PlanView.drift?`: one sentence on where the merged work went against the plan, with the theme shares
+  the SERVER counted (`shares`, `windowDays`), drawn under the narrative.
+- **Suggestions** — `PlanView.suggestions?` (cookie `GET /roadmap`, admins only, never MCP): a sprint draft (2–4
+  sprints over the backlog, offered when ≥8 open tickets sit outside every sprint and none is active) and the weekly
+  narrative proposal. Accept runs `create_sprint` + `set_ticket_sprint` or `write_plan` AS that admin; nothing is
+  written before. Nothing here sets a sprint or ticket done.
+- With a field absent each piece renders nothing and the Roadmap is byte-for-byte what it was
+  (`test/render.ai-absent.test.ts`, `test/render.roadmap-ai-real.test.ts`).

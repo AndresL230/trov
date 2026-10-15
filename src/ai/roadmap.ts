@@ -222,54 +222,76 @@ export const SPRINT_NOTE_JOB: ClaudeJob<NoteInput, NotesAnswer> = {
 
 // ── plan drift (`org`) ───────────────────────────────────────────────────────
 
-/** Theme shares of the window's merged pull requests — COUNTED HERE, never by a model — and whether an active
- *  sprint holds work of each theme. Reads Phase D's `repo_themes` / `pr_themes` (0064, another job's tables) through
- *  this ONE helper: until they exist (or with no active theme, or nothing merged) it answers null and the drift
- *  says nothing. Switch to the themes module's own reader when it lands. */
-export async function themeShares(ctx: TenantContext, now: Date, windowDays = AI_DRIFT_WINDOW_DAYS): Promise<AiThemeShare[] | null> {
-  const since = new Date(now.getTime() - windowDays * DAY).toISOString();
-  let merged: { repo: string; ref_number: number }[];
-  let themed: { repo: string; pr_number: number; theme_id: string; name: string }[];
+/** What the themes module's read answers (`themeShares` in src/tools/themes.ts, 0064 — another Phase D job): each
+ *  ACTIVE theme's count and share (0..1) of the PRs merged in a window, or null when the repository has no active
+ *  theme. Mirrored here so this job does not wait on it. */
+export interface RepoThemeShares {
+  total: number;
+  themes: { id: number | string; name: string; count: number; share: number }[];
+  unthemed: number;
+}
+
+/** SWITCH AT MERGE — the ONE line to change when src/tools/themes.ts is on this branch: delete this function and
+ *  `import { themeShares as repoThemeShares } from "../tools/themes";` (same signature, same answer). Until then it
+ *  reads 0064's tables itself, defensively: tables not there yet → null, and the drift says nothing. */
+async function repoThemeShares(ctx: TenantContext, repo: string, from: string, to: string): Promise<RepoThemeShares | null> {
   try {
-    merged = await all<{ repo: string; ref_number: number }>(ctx,
-      `SELECT repo, ref_number FROM events WHERE org_id = ? AND event_type = 'pr_merged' AND occurred_at >= ?`, ctx.orgId, since);
-    if (!merged.length) return null;
-    themed = await all<{ repo: string; pr_number: number; theme_id: string; name: string }>(ctx,
-      `SELECT p.repo AS repo, p.pr_number AS pr_number, p.theme_id AS theme_id, t.name AS name
-         FROM pr_themes p JOIN repo_themes t ON t.org_id = ? AND t.repo = p.repo AND t.id = p.theme_id AND t.status = 'active'
-        WHERE p.org_id = ? AND p.theme_id IS NOT NULL`, ctx.orgId, ctx.orgId);
+    const active = await all<{ id: number | string; name: string }>(ctx,
+      `SELECT id, name FROM repo_themes WHERE org_id = ? AND repo = ? COLLATE NOCASE AND status = 'active' ORDER BY id`, ctx.orgId, repo);
+    if (!active.length) return null;
+    const prs = await all<{ theme_id: number | string | null }>(ctx,
+      `SELECT p.theme_id AS theme_id FROM events e
+         LEFT JOIN pr_themes p ON p.org_id = e.org_id AND p.repo = e.repo COLLATE NOCASE AND p.pr_number = e.ref_number
+        WHERE e.org_id = ? AND e.repo = ? COLLATE NOCASE AND e.event_type = 'pr_merged'
+          AND COALESCE(e.occurred_at, e.recorded_at) >= ? AND COALESCE(e.occurred_at, e.recorded_at) < ?`, ctx.orgId, repo, from, to);
+    const total = prs.length;
+    const themes = active.map((t) => {
+      const count = prs.filter((p) => p.theme_id !== null && String(p.theme_id) === String(t.id)).length;
+      return { id: t.id, name: t.name, count, share: total ? count / total : 0 };
+    });
+    return { total, themes, unthemed: total - themes.reduce((n, t) => n + t.count, 0) };
   } catch {
-    return null; // the themes tables are not there yet (0064): the drift says nothing
+    return null; // 0064 is not here yet
   }
-  if (!themed.length) return null;
-  const key = (repo: string, n: number) => `${repo.toLowerCase()}#${n}`;
-  const themeOf = new Map(themed.map((t) => [key(t.repo, t.pr_number), t]));
-  const counts = new Map<string, { name: string; n: number }>();
-  for (const m of merged) {
-    const t = themeOf.get(key(m.repo, m.ref_number));
-    if (!t) continue;
-    const c = counts.get(t.theme_id) ?? { name: t.name, n: 0 };
-    c.n++;
-    counts.set(t.theme_id, c);
-  }
-  if (!counts.size) return null;
-  // Which themes the ACTIVE sprints hold: their tickets' linked PRs, by theme.
+}
+
+/** PURE: the drift's shares from the themes read — percentages of the window's merged PRs, rounded HERE (the model
+ *  is given these and no other), biggest first, at most 8 — and whether an active sprint holds work of each. */
+export function toAiThemeShares(s: RepoThemeShares, inSprint: ReadonlySet<string>): AiThemeShare[] {
+  return s.themes
+    .map((t) => ({ themeId: String(t.id), theme: t.name, pct: Math.round(100 * t.share), inSprint: inSprint.has(String(t.id)) }))
+    .filter((x) => x.pct > 0)
+    .sort((a, b) => b.pct - a.pct || a.theme.localeCompare(b.theme))
+    .slice(0, 8);
+}
+
+/** Theme shares of the primary repository's merged pull requests over the last `windowDays` — COUNTED BY THE
+ *  SERVER (the themes module's read), never by a model — and whether an active sprint holds work of each theme
+ *  (its tickets' linked PRs, by their theme). Null when there is nothing to say: no primary repository, no active
+ *  theme, nothing merged. */
+export async function themeShares(ctx: TenantContext, now: Date, windowDays = AI_DRIFT_WINDOW_DAYS): Promise<AiThemeShare[] | null> {
+  const primary = await first<{ repo_full_name: string }>(ctx, `SELECT repo_full_name FROM org_repos WHERE org_id = ? AND is_primary = 1`, ctx.orgId);
+  if (!primary) return null;
+  const repo = primary.repo_full_name;
+  const s = await repoThemeShares(ctx, repo, new Date(now.getTime() - windowDays * DAY).toISOString(), now.toISOString());
+  if (!s || !s.total) return null;
   const links = await all<{ url: string }>(ctx,
     `SELECT tl.url AS url FROM ticket_links tl
        JOIN tickets t ON t.org_id = ? AND t.id = tl.ticket_id
-       JOIN sprints s ON s.org_id = ? AND s.id = t.sprint_id AND s.status = 'in_progress'
+       JOIN sprints sp ON sp.org_id = ? AND sp.id = t.sprint_id AND sp.status = 'in_progress'
       WHERE tl.org_id = ? AND tl.kind = 'github'`, ctx.orgId, ctx.orgId, ctx.orgId);
+  const nums = [...new Set(links.map((l) => prOfUrl(l.url)).filter((p): p is { repo: string; n: number } => !!p && p.repo.toLowerCase() === repo.toLowerCase()).map((p) => p.n))];
   const inSprint = new Set<string>();
-  for (const l of links) {
-    const p = prOfUrl(l.url);
-    const t = p ? themeOf.get(key(p.repo, p.n)) : undefined;
-    if (t) inSprint.add(t.theme_id);
+  if (nums.length) {
+    try {
+      const rows = await all<{ theme_id: number | string }>(ctx,
+        `SELECT DISTINCT theme_id FROM pr_themes WHERE org_id = ? AND repo = ? COLLATE NOCASE AND theme_id IS NOT NULL AND pr_number IN (${ph(nums.length)})`,
+        ctx.orgId, repo, ...nums);
+      for (const r of rows) inSprint.add(String(r.theme_id));
+    } catch { /* 0064 not here: no theme is in a sprint */ }
   }
-  return [...counts.entries()]
-    .map(([themeId, c]) => ({ themeId, theme: c.name, pct: Math.round((100 * c.n) / merged.length), inSprint: inSprint.has(themeId) }))
-    .filter((s) => s.pct > 0)
-    .sort((a, b) => b.pct - a.pct || a.theme.localeCompare(b.theme))
-    .slice(0, 8);
+  const out = toAiThemeShares(s, inSprint);
+  return out.length ? out : null;
 }
 
 export interface DriftInput {
