@@ -99,6 +99,18 @@ describe("the Overview draws the design's blocks for every scenario", () => {
   });
 });
 
+describe("a phone draws the opener the rules picked — Group by (hidden there) and the admin's default do not apply (e2e O16b)", () => {
+  it("A with an admin default of App: the apps table on a wide screen, environment cards on a phone", () => {
+    const f = { ...repoScenario("A", "", { now: NOW }), groupDefault: "app" as const };
+    expect(blocksIn(repoView(props(f)))).toContain("appsTable");
+    const phone = blocksIn(repoView(props(f, { phone: true })));
+    expect(phone).toContain("envCards");
+    expect(phone).not.toContain("appsTable");
+    // a session flip does not reach the phone either
+    expect(blocksIn(repoView(props(f, { phone: true, group: "app" })))).toContain("envCards");
+  });
+});
+
 describe("full shas from the server read as 7 characters everywhere on the Overview (e2e O4)", () => {
   // The sample's shas are already 7 long; the Worker's facts carry GitHub's full 40. Lengthen every sha in a fixture and
   // nothing a person reads may change — no 40-character sha in a sentence, a cell or a chip.

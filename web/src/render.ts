@@ -2791,7 +2791,7 @@ function repoProps(s: AppState): RepoProps {
     tab: s.repoTab, range: s.repoRange, driftOpen: s.repoDriftOpen, repo: s.repo, fetchedAt: s.repoFetchedAt, sample: s.repoSample,
     admin: viewerIsAdmin(s), noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, poll: s.repoPoll, productEnv: s.repoProductEnv, persons: s.persons.data,
     synced: syncRepoLabel(s.sync, Date.now()),
-    app: s.repoApp, group: s.repoGroup, groupFlipped: s.repoGroupFlipped, scenario: s.repoSample ? s.repoScenario : undefined, dd: s.dd, open: s.repoOpen,
+    app: s.repoApp, group: s.repoGroup, groupFlipped: s.repoGroupFlipped, phone: s.phone, scenario: s.repoSample ? s.repoScenario : undefined, dd: s.dd, open: s.repoOpen,
   };
 }
 

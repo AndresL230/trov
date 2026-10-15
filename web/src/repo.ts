@@ -65,6 +65,8 @@ export interface RepoProps {
   app?: string | null;
   /** Group by, this session; null = the admin's default (`facts.groupDefault`). */
   group?: GroupBy | null;
+  /** Phone width: Group by is not offered, so the opener is the rules' own (the design's phone rule). */
+  phone?: boolean;
   /** The viewer flipped Group by this session: an admin is offered "Make this the default". */
   groupFlipped?: boolean;
   /** Sample mode's scenario and variant (the preview bar's switch). */
@@ -208,12 +210,14 @@ function okData<T>(p: RepoProps, pick: (d: RepoDashboard) => RepoSection<T>): T 
  *  already narrowed to it: the sample, and the server until it reads `?app=`) — and the layout the shared rules
  *  decide, with the session's Group by over the admin's default. null when the payload has no facts (today's
  *  overview then draws), or there is nothing to read. */
-export function factsView(p: Pick<RepoProps, "repo" | "app" | "group" | "noRepo" | "sample">): { f: RepoFacts; layout: RepoLayout } | null {
+export function factsView(p: Pick<RepoProps, "repo" | "app" | "group" | "noRepo" | "sample" | "phone">): { f: RepoFacts; layout: RepoLayout } | null {
   const raw = phaseOf(p as RepoProps) === "ready" ? p.repo.data?.facts ?? null : null;
   if (!raw) return null;
   const app = p.app ?? null;
   const f = raw.app === app ? raw : narrowFacts(raw, app);
-  return { f, layout: layoutOf(layoutInputOf(f), p.group ?? f.groupDefault) };
+  // A phone has no Group by (the design hides it there), so it draws the opener the rules picked — neither the
+  // session's flip nor the admin's default applies (e2e O16b).
+  return { f, layout: layoutOf(layoutInputOf(f), p.phone ? null : p.group ?? f.groupDefault) };
 }
 
 // ── header chrome ────────────────────────────────────────────────────────────
