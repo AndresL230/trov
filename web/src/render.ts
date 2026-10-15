@@ -2907,7 +2907,11 @@ function appView(s: AppState): string {
     : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen
     // A tag's page too, by tag (another tag is another page): its To review list is keyed, so a row can leave with
     // its animation, and the numbers tick in place instead of the page being rebuilt under them.
-    : s.screen === "tag" ? `tag:${s.tagName ?? ""}` : "";
+    : s.screen === "tag" ? `tag:${s.tagName ?? ""}`
+    // The Roadmap's Narrative tab too: Trov's suggestion cards are a keyed list, so one an Accept / Dismiss took
+    // leaves with Review's exit, and a note or the drift collapses out the same way (roadmap-ai.ts › MOTION). The
+    // Timeline tab is rebuilt as before (another key, so a tab switch replaces the page).
+    : s.screen === "roadmap" && s.roadmapTab === "narrative" ? "roadmap:narrative" : "";
   // The skip link is the shell's first child (a fixed chip, out of the flex row): past the sidebar and the
   // header, to the screen itself. morph.ts patches the aside and swaps <main>; it never touches this.
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">

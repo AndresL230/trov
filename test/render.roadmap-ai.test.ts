@@ -12,7 +12,10 @@ vi.mock("../web/src/markdown", () => ({
 import { render, initialState, type AppState } from "../web/src/render";
 import { forecastLine, forecastWords, sprintNoteBlock, driftLine, roadmapSuggestionCards } from "../web/src/roadmap-ai";
 import { sprintCard } from "../web/src/sprints";
-import { initialAiUi } from "../web/src/ai-ui";
+import { AI_EXIT_MS, aiLeaveKey, initialAiUi } from "../web/src/ai-ui";
+import { REVIEW_EXIT_MS } from "../web/src/review";
+import { aiItemRef } from "@shared/ai-core";
+import css from "../web/src/trov.css?raw";
 import { roadmapFixture } from "@shared/ai-fixtures";
 import type { PlanView, SprintView } from "../web/src/api";
 
@@ -103,5 +106,57 @@ describe("the drift line and the suggestion cards on the Roadmap", () => {
     expect(at("rm-suggestions")).toBeLessThan(at("What's happening"));
     expect(at("What's happening")).toBeLessThan(at("rm-drift"));
     expect(at("rm-drift")).toBeLessThan(at("rm-note"));
+  });
+});
+
+// RULES §8 (the owner's ruling): Trov's Roadmap pieces move with the app's own motion — entrances with the screen's,
+// and a card that goes leaves by Review's exit (web-ui.md › A row leaving a list), never a new mechanism.
+describe("motion — the app's entrance and Review's exit, nothing new", () => {
+  it("the Narrative tab is patched in place (data-morph) — the Timeline is rebuilt as before", () => {
+    const plan: PlanView = { narrative: "x", version: 1, updated_at: null, updated_by: null, sprints: [sprint()], suggestions: fx.suggestions };
+    expect(render(app(plan))).toContain('<main data-morph="roadmap:narrative"');
+    expect(render({ ...app(plan), roadmapTab: "timeline" })).not.toContain("data-morph=\"roadmap");
+  });
+
+  it("the cards are a keyed list that rises with the entrance; the drift rises too; each is Review's leaving row", () => {
+    const cards = roadmapSuggestionCards(fx.suggestions, initialAiUi());
+    expect(cards).toMatch(/^<section class="rm-suggestions cnpy-stagger"[^>]*data-morph-list/);
+    for (const s of fx.suggestions) expect(cards).toContain(`class="cnpy-rv-row rm-suggestion-row" data-morph-key="s:${s.id}"><div class="cnpy-rv-row-in">`);
+    expect(cards).not.toMatch(/<\/div>\s+<div class="cnpy-rv-row/); // children joined with nothing between (morphList)
+    expect(cards).not.toContain("data-verdict");
+    expect(driftLine(fx.drift, initialAiUi())).toMatch(/^<div class="cnpy-rv-row rm-drift-row cnpy-rise"><div class="cnpy-rv-row-in">/);
+    expect(sprintNoteBlock(sprint(), fx.notes[0], initialAiUi())).toMatch(/^<div class="cnpy-rv-row rm-note-row"><div class="cnpy-rv-row-in">/);
+  });
+
+  it("a card an Accept / Dismiss took collapses (data-verdict, inert) while leaving, then is not drawn; the others stay", () => {
+    const [a, b] = fx.suggestions;
+    const leaving = { ...initialAiUi(), decided: [a.id], leaving: [aiLeaveKey.suggestion(a.id)] };
+    const html = roadmapSuggestionCards(fx.suggestions, leaving);
+    expect(html).toContain(`data-morph-key="s:${a.id}" data-verdict="out" inert>`);
+    expect(html).toContain(`data-morph-key="s:${b.id}"><div`);
+    const gone = roadmapSuggestionCards(fx.suggestions, { ...initialAiUi(), decided: [a.id] });
+    expect(gone).not.toContain(`s:${a.id}`);
+    expect(gone).toContain(`s:${b.id}`);
+    // The last card gone: no section at all (it had collapsed to nothing, so nothing jumps).
+    expect(roadmapSuggestionCards(fx.suggestions, { ...initialAiUi(), decided: fx.suggestions.map((s) => s.id) })).toBe("");
+  });
+
+  it("'Wrong?' on a note or the drift: collapsing while leaving, then not drawn", () => {
+    const noteKey = `sprint_note:${aiItemRef.sprintNote(1, fx.notes[0].generatedAt)}`;
+    const driftKey = `plan_drift:${aiItemRef.planDrift(fx.drift.generatedAt)}`;
+    const ui = { ...initialAiUi(), hidden: [noteKey, driftKey], leaving: [noteKey, driftKey] };
+    expect(sprintNoteBlock(sprint(), fx.notes[0], ui)).toContain('class="cnpy-rv-row rm-note-row" data-verdict="out" inert>');
+    expect(driftLine(fx.drift, ui)).toContain('data-verdict="out" inert>');
+    const after = { ...ui, leaving: [] };
+    expect(sprintNoteBlock(sprint(), fx.notes[0], after)).toBe("");
+    expect(driftLine(fx.drift, after)).toBe("");
+  });
+
+  it("the exit is Review's: the same clock, the same CSS, still for reduced motion", () => {
+    expect(AI_EXIT_MS).toBe(REVIEW_EXIT_MS);
+    expect(css).toMatch(/\.cnpy-rv-row\[data-verdict\] \{ grid-template-rows:0fr; opacity:0;/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.cnpy-rv-row,[^}]*transition:none !important;/);
+    expect(css).toMatch(/\[data-enter\] \.cnpy-rise \{/);
+    expect(css).toMatch(/\[data-enter\] \.cnpy-stagger > \* \{/);
   });
 });

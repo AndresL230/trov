@@ -46,9 +46,16 @@ export interface AiUi {
   unavailable: number[];
   /** The suggestion chip whose reason is open (its key), or null. */
   reasonOpen: string | null;
+  /** What is on its way out (web-ui.md › A row leaving a list), on a screen that draws the exit — the Roadmap:
+   *  `aiLeaveKey.suggestion(id)` for a card an Accept / Dismiss took, or an `aiHiddenKey` for a note or the drift
+   *  "Wrong?" took. It only says the row is still drawn, collapsing; `AI_EXIT_MS` later it goes. */
+  leaving: string[];
+  /** Suggestions an Accept / Dismiss took on such a screen: not drawn once their exit is over, until the read no
+   *  longer holds them. It only HIDES rows of the read; a failed write takes the id out again. */
+  decided: number[];
 }
 export function initialAiUi(): AiUi {
-  return { hidden: [], feedSource: "all", noteSeen: [], themesRange: "8w", themesLane: null, rename: null, busy: [], unavailable: [], reasonOpen: null };
+  return { hidden: [], feedSource: "all", noteSeen: [], themesRange: "8w", themesLane: null, rename: null, busy: [], unavailable: [], reasonOpen: null, leaving: [], decided: [] };
 }
 /** The localStorage key "Got it" is remembered under: a JSON list of handles (per person, per browser). */
 export const AI_NOTE_KEY = "trov.aiFeedNote";
@@ -57,6 +64,13 @@ export const AI_NOTE_KEY = "trov.aiFeedNote";
 export const aiHiddenKey = (itemType: AiItemType, itemRef: string): string => `${itemType}:${itemRef}`;
 export const aiIsHidden = (ui: Pick<AiUi, "hidden">, itemType: AiItemType, itemRef: string): boolean =>
   ui.hidden.includes(aiHiddenKey(itemType, itemRef));
+
+/** How long a row takes to leave: Review's exit, the app's one (review.ts `REVIEW_EXIT_MS`, `.cnpy-rv-row`). */
+export const AI_EXIT_MS = 310;
+/** What `leaving` holds for a suggestion's card. */
+export const aiLeaveKey = { suggestion: (id: number): string => `suggestion:${id}` } as const;
+/** Is this key leaving (still drawn, collapsing)? */
+export const aiIsLeaving = (ui: Partial<Pick<AiUi, "leaving">> | null | undefined, key: string): boolean => !!ui?.leaving?.includes(key);
 
 // ── words ────────────────────────────────────────────────────────────────────
 

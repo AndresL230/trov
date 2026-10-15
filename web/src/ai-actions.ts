@@ -6,9 +6,15 @@
 // "Wrong?" is optimistic: the item is hidden for this person at once (`state.ai.hidden`) and back, with a
 // toast, if the write fails. Accept / Dismiss on a suggestion answer 409 `not_available` until a handler
 // for its kind exists (every kind, today): the chip then says "Not available yet" in place of its buttons.
+//
+// On the Roadmap (its Narrative tab is `data-morph`ed) a thing that goes LEAVES with Review's exit (web-ui.md › A
+// row leaving a list): an Accept / Dismiss on a suggestion card is sent at once and the card collapses
+// (`leaving`, then `decided` hides it until the re-read no longer holds it; the re-read waits until no card is
+// collapsing); "Wrong?" on a sprint note or the drift collapses it the same way. A failed write takes the entry
+// out and the card is back as it was. Under reduced motion, or anywhere else, it goes at once.
 
 import type { AppState } from "./render";
-import { AI_FEED_SOURCES, AI_NOTE_KEY, aiHiddenKey, type AiFeedSource } from "./ai-ui";
+import { AI_EXIT_MS, AI_FEED_SOURCES, AI_NOTE_KEY, aiHiddenKey, aiLeaveKey, type AiFeedSource } from "./ai-ui";
 import { AI_ITEM_TYPES, AI_THEME_RANGES, type AiFeedbackBody, type AiThemeRange } from "@shared/ai-core";
 import { ApiError, PreviewBlocked, Unauthorized, acceptAiSuggestion, dismissAiSuggestion, sendAiFeedback } from "./api";
 
@@ -50,15 +56,38 @@ export function createAiController(host: AiHost): AiController {
   const ui = () => state.ai;
   const rerender = () => host.rerender();
   const without = (xs: number[], id: number) => xs.filter((x) => x !== id);
+  const reduced = (): boolean => { try { return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false; } catch { return false; } };
+  const onRoadmap = (): boolean => state.screen === "roadmap" && state.roadmapTab === "narrative";
+  /** Start a row's exit (unless motion is off): `leaving` holds `key` for AI_EXIT_MS. Returns its timer. */
+  function leave(key: string, then: () => void): ReturnType<typeof setTimeout> | null {
+    if (reduced()) { then(); return null; }
+    ui().leaving = [...ui().leaving, key];
+    return setTimeout(() => { ui().leaving = ui().leaving.filter((k) => k !== key); rerender(); then(); }, AI_EXIT_MS);
+  }
+  const stopLeaving = (key: string, timer: ReturnType<typeof setTimeout> | null): void => {
+    if (timer !== null) clearTimeout(timer);
+    ui().leaving = ui().leaving.filter((k) => k !== key);
+  };
+  /** A decision went through: the Roadmap is read again once no card is still collapsing (one read for several). */
+  let refetch: { id: number; how: "accept" | "dismiss" } | null = null;
+  function settle(): void {
+    if (!refetch || ui().leaving.some((k) => k.startsWith("suggestion:"))) return;
+    const r = refetch;
+    refetch = null;
+    host.afterDecide?.(r.id, r.how);
+  }
 
   function wrong(body: AiFeedbackBody): void {
     const key = aiHiddenKey(body.itemType, body.itemRef);
     if (ui().hidden.includes(key)) return;
     ui().hidden = [...ui().hidden, key];
+    // The Roadmap's note and drift collapse out (roadmap-ai.ts); everywhere else the item goes at once.
+    const timer = onRoadmap() && (body.itemType === "sprint_note" || body.itemType === "plan_drift") ? leave(key, () => {}) : null;
     rerender();
     sendAiFeedback(body)
       .then(() => host.flash("Hidden for you. Thanks: Trov is told it was wrong."))
       .catch((e) => {
+        stopLeaving(key, timer);
         ui().hidden = ui().hidden.filter((k) => k !== key);
         if (e instanceof Unauthorized) { host.unauth(e); return; }
         if (!(e instanceof PreviewBlocked)) host.flash("Couldn't send that. It is back on screen; try again.", 5000);
@@ -66,9 +95,39 @@ export function createAiController(host: AiHost): AiController {
       });
   }
 
+  /** A Roadmap card: the write goes out on the click and the card leaves at once (optimistic, exactly restorable). */
+  function decideLeaving(id: number, how: "accept" | "dismiss"): void {
+    const u = ui();
+    if (u.decided.includes(id)) return;   // already taken (a second click)
+    const key = aiLeaveKey.suggestion(id);
+    u.decided = [...u.decided, id];
+    const timer = leave(key, settle);
+    rerender();
+    (how === "accept" ? acceptAiSuggestion(id) : dismissAiSuggestion(id))
+      .then(() => {
+        host.flash(how === "accept" ? "Accepted" : "Removed");
+        refetch = { id, how };
+        settle();
+      })
+      .catch((e) => {
+        // The write did not happen: the card is back where it was.
+        stopLeaving(key, timer);
+        u.decided = without(u.decided, id);
+        if (e instanceof Unauthorized) { host.unauth(e); return; }
+        if (e instanceof ApiError && e.message === "not_available") {
+          if (!u.unavailable.includes(id)) u.unavailable = [...u.unavailable, id];
+        } else if (!(e instanceof PreviewBlocked)) {
+          host.flash(e instanceof ApiError && e.message === "not_open" ? "Someone already answered that suggestion." : "Couldn't do that. Try again.", 5000);
+        }
+        rerender();
+        settle();
+      });
+  }
+
   /** Accept (with a renamed value) or dismiss one suggestion. */
   function decide(id: number, how: "accept" | "dismiss", value?: unknown): void {
     const u = ui();
+    if (value === undefined && onRoadmap() && state.roadmap.data.suggestions?.some((x) => x.id === id)) { decideLeaving(id, how); return; }
     if (u.busy.includes(id)) return;
     u.busy = [...u.busy, id];
     rerender();

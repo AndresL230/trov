@@ -90,7 +90,7 @@ export interface SprintCardOpts {
   /** The clock (ms), injected for tests; defaults to `Date.now()`. */
   now?: number;
   /** What this person pressed "Wrong?" on (a hidden note is not drawn). */
-  ai?: Pick<AiUi, "hidden">;
+  ai?: Pick<AiUi, "hidden"> & Partial<Pick<AiUi, "leaving">>;
 }
 
 /**
