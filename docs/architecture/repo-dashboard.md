@@ -16,6 +16,13 @@ section has a capture path** — the old list of uncaptured sections is gone fro
 each one waits on: a setting or secret by NAME, a webhook event, the target repo's CI, or Sync GitHub. There
 is no connect button or flow. "Preview with sample data" swaps in `repo-sample.ts` client-side
 (session-only, labelled on screen); it never touches the Worker.
+`repo-sample.ts` also holds the Repo-setups design's scenarios A–N (`repoScenario(key, variant, { now, app })`,
+`REPO_SCENARIOS`, `SCENARIO_TITLES`, `SCENARIO_VARIANTS` — the design's variants plus G `signals`) as
+`RepoFacts` (`shared/repo-facts-core.ts`), narrowed by `narrowFacts` exactly as the server narrows (`app` = an
+app key, `REPO_WIDE` = no app rows, only the PR / CI-level facts). `test/repo-sample.scenarios.test.ts` holds
+every scenario × variant × App narrowing × Group by to the design's own `buildScreen` (same rule, opener and
+Group by from `layoutOf(layoutInputOf(facts))`), and checks unknown stays `null` and every part's app and
+environment exist. H's Cloud Run app uses provider `github` through a cast until Phase A adds it.
 
 Three capture shapes feed it: `repo_events` rows (through the `ingestRepoEvent` gate — see Core invariant),
 `repo_snapshots` (one JSON row per kind: `prs_reconciled`, `env_heads`, `drift`, `branches` —
