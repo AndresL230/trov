@@ -47,6 +47,9 @@
   `repoEventsFromDelivery` — no DB, no clock, no network, and stores only a SLICE of each payload in `raw`; GitHub
   deploy signals land here as untagged `deploy` rows), `apps.ts` (0070_repo_apps: `listRepoApps` — the rows plus an
   app synthesised for every part key with none — and the admin writers `putRepoApp` / `deleteRepoApp`),
+  `releases.ts` (0074_releases, Phase F: the `release` / `create` derivation, reconcile's `releases` arm, and the
+  reads `readRelease` / `readTags` / `releaseWeekFigure`; `isFeaturePr` is the one feature rule) and
+  `release-store.ts` (the `releases` writers, called only by the gate's `ingestRepoRelease`),
   `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the five snapshot kinds —
   `prs_reconciled`, `env_heads`, `drift`, `branches`; `putMetric`, the ONE write seam that
   normalises `repo_metrics.at`, and `putMetrics`, the same write for MANY rows in `db.batch` chunks of 50;
@@ -190,6 +193,8 @@
   `scripts/hosting/0057_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.
   Then `0070_repo_apps` (repo setups, Phase A; 0070–0079 are reserved for that build) [`repo_apps` with a row per
   existing part key, and `hosting_deploys.source` / `reason` / `sha_source` / `rolled_back_from`; additive].
+  Then `0074_releases` (Phase F) [`releases`: a repository's releases and bare tags, PK `(org_id, repo, tag)`;
+  additive].
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,

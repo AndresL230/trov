@@ -12,6 +12,7 @@ import { contentHash } from "./hash";
 import { changeKind } from "./diff";
 import type { Principal } from "./auth/principal";
 import type { RepoEvent } from "./repo/types";
+import { type ReleaseCapture, RELEASE_NOTES_MAX, releaseRow, removeRelease, writeRelease } from "./repo/release-store";
 import { applyArtifactLinks, type ArtifactLinkOutcome } from "./tools/artifacts-agent";
 import { docImageProblems } from "./tools/doc-images";
 import { recordTagSuggestions, sortAgentTags } from "./tools/tags";
@@ -288,6 +289,38 @@ export async function ingestRepoEvent(ctx: TenantContext, ev: RepoEvent): Promis
     ev.raw, ev.provenance, ev.occurred_at, nowIso()
   );
   return { outcome: (res.meta.changes ?? 0) > 0 ? "written" : "unchanged" };
+}
+
+/**
+ * Repo capture's RELEASE arm (Repo setups, Phase F) — a sibling of `ingestRepoEvent` for the `release` /
+ * `create` deliveries and reconcile's `releases` arm, reached from nowhere else (never `/ingest`). A release is
+ * a row that CHANGES (edited, deleted), not an append-only fact, so its identity is (repo, tag) and its dedupe
+ * is the gate's content hash: the settled row is hashed and compared with the stored one, and only a
+ * difference writes (`releases`, through src/repo/release-store.ts — the computed write). Rules:
+ *   - `upsert` (a published release) replaces whatever holds the tag; a bare tag's sha is kept when the
+ *     release names none.
+ *   - `tag` writes only where no RELEASE holds the tag (a release is never downgraded); over a tag row it
+ *     refreshes the date / sha when the source said something new.
+ *   - `remove` deletes a release row; a bare tag row is left alone.
+ * Without a tag, or an `upsert` / `tag` without GitHub's own instant, nothing is written (never guessed).
+ */
+export async function ingestRepoRelease(ctx: TenantContext, ev: ReleaseCapture): Promise<{ outcome: "written" | "unchanged" }> {
+  if (!ev.repo || !ev.tag) return { outcome: "unchanged" };
+  if (ev.op === "remove") return { outcome: (await removeRelease(ctx, ev.repo, ev.tag)) ? "written" : "unchanged" };
+  if (!ev.publishedAt) return { outcome: "unchanged" };
+  const existing = await releaseRow(ctx, ev.repo, ev.tag);
+  if (ev.op === "tag" && existing?.source === "release") return { outcome: "unchanged" };
+  const settled = {
+    repo: ev.repo, tag: ev.tag, name: ev.name ?? null, publishedAt: ev.publishedAt, author: ev.author ?? null,
+    notes: ev.notes ? ev.notes.slice(0, RELEASE_NOTES_MAX) : null, prerelease: ev.prerelease === true,
+    sha: ev.sha ?? existing?.sha ?? null, source: ev.op === "upsert" ? ("release" as const) : ("tag" as const),
+  };
+  const hash = await contentHash(JSON.stringify([
+    settled.tag, settled.name, settled.publishedAt, settled.author, settled.notes, settled.prerelease, settled.sha, settled.source,
+  ]));
+  if (existing?.content_hash === hash) return { outcome: "unchanged" };
+  await writeRelease(ctx, { ...settled, hash });
+  return { outcome: "written" };
 }
 
 /**

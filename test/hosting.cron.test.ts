@@ -204,21 +204,21 @@ describe("Poll now — the hosting arm", () => {
   });
 
   it("skipped part by part when the WHOLE refresh would not fit the 50 — GitHub keeps its reservation", async () => {
-    await setOrgEnvironments(ENVS, ORG_A);                      // 18 + 5 × 2 = 28 before hosting, + 1 for a mint
+    await setOrgEnvironments(ENVS, ORG_A);                      // 18 + 5 × 2 + 2 (releases) = 30 before hosting, + 1 for a mint
     await addPart(ORG_A, "staging", "web");
     await addPart(ORG_A, "production", "web");
     await connect(ORG_A, LONG_TOKEN);
     const parts = await listAllParts(systemCtx(ORG_A));
     const log: string[] = [];
-    // 2 × (10 + 1 for the rollback compare) = 22: 51 > 50 — skipped, nothing fetched for them.
+    // 2 × (10 + 1 for the rollback compare) = 22: 53 > 50 — skipped, nothing fetched for them.
     expect(hostingPollCost(parts, { vercel: fakeVercel([], 10) })).toBe(22);
     const w = world();
     const skipped = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, w.fetchImpl, noReconcile, { vercel: fakeVercel(log, 10) });
     expect(skipped.hosting).toEqual(parts.map((p) => ({ env: p.env, part: p.key, provider: "vercel", status: "skipped", written: 0, detail: BUDGET_SKIP })));
     expect(log).toEqual([]);
     expect(w.polls()).toEqual([]);
-    // 2 × (9 + 1) = 20: 49 fits.
-    const fits = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, world().fetchImpl, noReconcile, { vercel: fakeVercel(log, 9) });
+    // 2 × (8 + 1) = 18: 49 fits.
+    const fits = await runRepoRefresh(e, systemCtx(ORG_A), AT_40, world().fetchImpl, noReconcile, { vercel: fakeVercel(log, 8) });
     expect((fits.hosting as { status: string }[]).map((o) => o.status)).toEqual(["ok", "ok"]);
   });
 });
