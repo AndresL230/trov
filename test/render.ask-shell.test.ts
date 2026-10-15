@@ -155,6 +155,21 @@ describe("the thread list — a row's ⋯ takes the time's place", () => {
   });
 });
 
+describe("Ask's borderless fields leave the focus ring to their box", () => {
+  // e2e AU-24 composer:busy / AU-14: a focused composer drew TWO rings — the box's (the design's accent ring) and the
+  // app-wide field ring on the borderless textarea inside it; the thread search box likewise. Like .cnpy-search-in,
+  // they are left out of the field rule and their box draws the focus.
+  it("excludes .ask-input and the thread search input from the app-wide field ring", () => {
+    const rule = css.split("\n").find((l) => l.includes(":focus-visible { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus)") && l.includes("textarea):not("))!;
+    expect(rule).toContain(".ask-input");
+    expect(rule).toContain(".ask-th-q");
+    expect(render(askState())).toMatch(/<input class="ask-th-q"/);
+    // …and the boxes keep the app's focus contrast (web-ui.md › focus rings): a --focus edge.
+    expect(css).toMatch(/\.ask-box:focus-within \{ border-color:var\(--focus\)/);
+    expect(css).toMatch(/\.ask-th-search:focus-within \{ border-color:var\(--focus\)/);
+  });
+});
+
 describe("the empty conversation — centred as the design draws it", () => {
   // e2e AU-2 (`live`): the design puts a flexible spacer UNDER the composer while the conversation is empty
   // (ask-trov.dc.html L770 `flex:1 1 0;min-height:24px`), so the mark, the heading, the starters and the composer sit

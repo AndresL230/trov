@@ -812,10 +812,10 @@ input, select { font-family: inherit; }
    never showed. So: a field's edge is --border-input (3:1), and a focused field draws a 2px --focus ring (its
    border plus a 1px shadow); a field marked `aria-invalid` keeps its red edge and doubles it. A borderless
    field inside a bordered box (`@` + handle, `prompts/` + slug, tags, search) puts both on the box, and the
-   class-styled search inputs (.cnpy-search-in, .cnpy-qs-in) leave both to their box's own rule. Buttons,
+   class-styled search inputs (.cnpy-search-in, .cnpy-qs-in, and Ask's composer .ask-input and thread search .ask-th-q) leave both to their box's own rule. Buttons,
    checkboxes and radios are not fields: they keep their own `:focus-visible` rules (or the browser's ring). */
-[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in):not([aria-invalid="true"]) { border-color:var(--border-input) !important; }
-[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in):not([aria-invalid="true"]):focus-visible { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
+[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in, .ask-input, .ask-th-q):not([aria-invalid="true"]) { border-color:var(--border-input) !important; }
+[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in, .ask-input, .ask-th-q):not([aria-invalid="true"]):focus-visible { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
 [data-cnpy-theme] :is(input, textarea)[aria-invalid="true"]:not([style*="border:none"]):focus-visible { box-shadow:0 0 0 1px var(--red) !important; }
 [data-cnpy-theme] :is(div, label, span):has(> :is(input, textarea)[style*="border:none"]) { border-color:var(--border-input) !important; }
 [data-cnpy-theme] :is(div, label, span):has(> :is(input, textarea)[style*="border:none"]:focus-visible) { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
@@ -2935,7 +2935,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-th-new { display:flex; align-items:center; justify-content:center; gap:7px; height:34px; border:1px solid var(--border-strong); border-radius:9px; background:var(--surface); box-shadow:var(--shadow); font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:color .12s ease, border-color .12s ease; }
 .ask-th-new:hover { color:var(--fg); border-color:var(--border-input); }
 .ask-th-search { display:flex; align-items:center; gap:7px; height:34px; padding:0 8px 0 10px; border:1px solid var(--border); border-radius:9px; color:var(--fg-40); }
-.ask-th-search:focus-within { border-color:var(--border-input); }
+.ask-th-search:focus-within { border-color:var(--focus); box-shadow:0 0 0 1px var(--focus); }
 .ask-th-search input { flex:1; min-width:0; border:0; background:none; outline:none; font:inherit; font-size:13px; color:var(--fg); }
 .ask-th-clear { display:grid; place-items:center; width:20px; height:20px; border-radius:5px; color:var(--fg-40); cursor:pointer; }
 .ask-th-clear:hover { background:var(--hover); color:var(--fg); }
@@ -3149,7 +3149,7 @@ button.ask-dn:hover { border-color:var(--border-strong); }
 .ask-panel .ask-co-in { max-width:none; }
 .ask-co-file { display:none; }
 .ask-box { border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); transition:border-color .15s ease, box-shadow .15s ease; }
-.ask-box:focus-within { border-color:var(--border-input); box-shadow:0 0 0 3px var(--accent-soft), var(--shadow); }
+.ask-box:focus-within { border-color:var(--focus); box-shadow:0 0 0 3px var(--accent-soft), var(--shadow); }
 /* The chips: a keyed list (new ones pop in, ask-motion.ts rule 2; a removed one pops out on data-closing). */
 .ask-co-chips { display:flex; flex-wrap:wrap; gap:6px; padding:10px 10px 0; }
 .ask-co-chips:empty { display:none; }
