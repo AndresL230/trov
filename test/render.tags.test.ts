@@ -457,14 +457,27 @@ describe("one tag's page", () => {
     expect(view(page(), "review")).toContain("Nothing to review");
     // Added or dismissed: ONLY that row slides out at once (its buttons off); the others stay as they are.
     const two = page({ review: [...withReview.review, { type: "doc", id: "keys", title: "Rotating keys", note: "reference", by: "mara", at: null, tags: [], jev: { confidence: 0.65, reason: null, at: "t" } }] });
-    const leaving = tagPageView({ name: "auth", page: { status: "ok", data: two }, tab: "review", orgName: "Acme", who: (h) => h, now: NOW, leaving: ["feed:52"] });
-    expect(leaving).toMatch(/data-tag-review="feed:52" data-morph-key="review:feed:52" data-leaving="1" aria-hidden="true"/);
-    expect(leaving).toMatch(/data-tag-review="doc:keys" data-morph-key="review:doc:keys">/);
+    const leaving = tagPageView({ name: "auth", page: { status: "ok", data: two }, tab: "review", orgName: "Acme", who: (h) => h, now: NOW, leaving: { "feed:52": "added" } });
+    // The app's ONE row exit (web-ui.md › A row leaving a list): a keyed .cnpy-rv-row that wears its verdict, then closes.
+    expect(leaving).toMatch(/<li class="cnpy-rv-row cnpy-tagreview-row" data-tag-review="feed:52" data-morph-key="review:feed:52" data-verdict="added" inert><div class="cnpy-rv-row-in">/);
+    expect(leaving).toMatch(/data-tag-review="feed:52"[\s\S]*?<span class="cnpy-rv-verdict" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg>Added<\/span>/);
+    expect(leaving).toMatch(/<li class="cnpy-rv-row cnpy-tagreview-row" data-tag-review="doc:keys" data-morph-key="review:doc:keys"><div/);
     expect(leaving).not.toContain("Adding…");
     const other = leaving.slice(leaving.indexOf(`data-tag-review="doc:keys"`));
     expect(other).toMatch(/data-act="tagReviewAdd" data-arg="doc:keys"(?![^>]*disabled)/);
-    expect(css).toMatch(/\.cnpy-tagreview\[data-leaving\] \{[^}]*animation:cnpy-tagreview-out/);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-tagreview\[data-leaving\] \{ animation:none; display:none; \} \}/);
+    expect(css).toMatch(/\.cnpy-rv-row\[data-verdict="added"\] \{ --rv-tone:var\(--green\); \}/);
+    expect(css).not.toContain("cnpy-tagreview-out");                         // no exit of its own
+    expect(css).toMatch(/\.cnpy-rv-row\[data-verdict\] \.cnpy-tagreview \{[^}]*transform:translateX\(24px\); transition-delay:0s, \.26s;/);   // it slides aside as it closes
+    // Rows pair by item, so settling one never moves another's markup into it.
+    expect(leaving).toContain(`<ul class="cnpy-tagpage-list" data-morph-list>`);
+    // A number that just changed ticks into place: the hero's figures and the tabs' counts.
+    const bumped = tagPageView({ name: "auth", page: { status: "ok", data: two }, tab: "review", orgName: "Acme", who: (h) => h, now: NOW, bump: ["items", "feed", "review"] });
+    expect(bumped).toMatch(/<dd data-bump="4">4<\/dd>/);                       // Items (2 + 1 + 1)
+    expect(bumped).toMatch(/data-type="feed"><dt><span[^>]*><\/span>[^<]*<\/dt><dd data-bump="2">2<\/dd>/);
+    expect(bumped).toMatch(/data-field="tab:tag-tab:review">To review<span class="cnpy-badge" data-n="2" data-bump="2">2<\/span>/);
+    expect(bumped).toMatch(/data-type="doc"><dt><span[^>]*><\/span>[^<]*<\/dt><dd>1<\/dd>/);    // unchanged: no tick
+    expect(css).toMatch(/\.cnpy-tagpage \[data-bump\] \{[^}]*animation:cnpy-tagbump/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-tagpage \[data-bump\] \{ animation:none; \} \}/);
   });
 
   it("the tab picked is the tab shown — every tab the bar offers, an empty type too (Decisions used to snap back to All)", () => {
@@ -499,6 +512,14 @@ describe("one tag's page", () => {
     expect(view(null, "all", "loading")).toContain("Loading");
     expect(view(null, "all", "error")).toContain(`data-act="tagPageReload"`);
     expect(view(page({ tag: tag("auth", { retired: true, counts: { feed: 2, doc: 1, adr: 1 } }) }))).toContain("can no longer be picked");
+  });
+
+  it("the tag page is morphed in place, by tag — so a To review row can play its exit and numbers tick, never rebuilt", () => {
+    const st: AppState = initialState();
+    st.view = "app"; st.screen = "tag"; st.tagName = "auth"; st.orgSlug = "acme";
+    st.me = { handle: "andres", name: "Andres", color: "moss", avatar_url: null, orgs: [org("owner")], pending_invites: 0 } as unknown as AppState["me"];
+    st.tagPage = { status: "ok", data: page() };
+    expect(render(st)).toContain(`<main data-morph="tag:auth"`);
   });
 
   it("the app renders it as a child screen of Tags, crumbed with the tag's name", () => {

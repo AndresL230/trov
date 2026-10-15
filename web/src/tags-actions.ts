@@ -42,6 +42,12 @@ export interface TagsController {
 }
 
 /** A refusal as words that say what to do next. */
+/** How long a changed number keeps its tick (trov.css `cnpy-tagbump`). */
+const BUMP_MS = 700;
+/** How long a settled To review row takes to leave: the verdict's .26s hold, then .4s of slide, fade and close-up
+ *  (trov.css `.cnpy-tagreview-row`) — slower than Review's `REVIEW_EXIT_MS`, the owner's call. */
+const TAG_REVIEW_EXIT_MS = 700;
+
 export function tagErrorText(e: unknown, fallback: string): string {
   if (!(e instanceof ApiError)) return `${fallback} Check your connection and try again.`;
   const detail = e instanceof OrgApiError ? e.detail : null;
@@ -214,11 +220,30 @@ export function createTagsController(host: TagsHost): TagsController {
         rerender();
       });
   }
-  /** Read the tag's page again without showing it loading (after a write on it): the page just updates. */
+  /** Read the tag's page again without showing it loading (after a write on it): the page just updates, and
+   *  the numbers that changed tick into place (`TagsUi.bump`, cleared after `BUMP_MS`). */
+  let bumpTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Mark numbers as just changed (added to any still ticking), and clear them all after `BUMP_MS`. */
+  function bump(keys: readonly string[]): void {
+    if (!keys.length) return;
+    ui().bump = [...new Set([...ui().bump, ...keys])];
+    if (bumpTimer) clearTimeout(bumpTimer);
+    bumpTimer = setTimeout(() => { bumpTimer = null; ui().bump = []; rerender(); }, BUMP_MS);
+  }
   function refreshPage(name: string): void {
     const mine = ++pageSeq;
     getTagPage(name)
-      .then((data) => { if (mine !== pageSeq || state.tagName !== name) return; state.tagPage = { status: "ok", data }; rerender(); })
+      .then((data) => {
+        if (mine !== pageSeq || state.tagName !== name) return;
+        const before = state.tagPage.data;
+        const count = (d: typeof data) => ({ items: d.tag.counts.feed + d.tag.counts.doc + d.tag.counts.adr, feed: d.tag.counts.feed, doc: d.tag.counts.doc, adr: d.tag.counts.adr, review: d.review.length });
+        if (before && before.tag.name === name) {
+          const [a, b] = [count(before), count(data)];
+          bump((Object.keys(b) as (keyof typeof b)[]).filter((k) => a[k] !== b[k]));
+        }
+        state.tagPage = { status: "ok", data };
+        rerender();
+      })
       .catch(() => undefined);
   }
 
@@ -399,22 +424,30 @@ export function createTagsController(host: TagsHost): TagsController {
         const type = (arg ?? "").slice(0, cut), id = (arg ?? "").slice(cut + 1);
         const tag = state.tagName;
         const key = arg ?? "";
-        if (cut < 1 || !tag || !isTagItemType(type) || u.reviewLeaving.includes(key)) return;
+        if (cut < 1 || !tag || !isTagItemType(type) || u.reviewLeaving[key]) return;
         const add = name === "tagReviewAdd";
-        // The row slides out NOW (only this one; the others stay usable); the write and the refresh follow in
-        // the background. Refused: the row comes back and the page says why.
-        u.reviewLeaving = [...u.reviewLeaving, key];
+        // The app's one exit for a row leaving a list (web-ui.md › A row leaving a list): the row wears its verdict,
+        // then closes up (trov.css `.cnpy-rv-row`, `.cnpy-tagreview-row`) over TAG_REVIEW_EXIT_MS — only this row; the others stay usable —
+        // while the write goes on. It is taken out of the list once its exit has played (at once under reduced
+        // motion); a refusal brings it back. The checkmark toast says what happened, at once.
+        const animate = !(typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches);
+        u.reviewLeaving = { ...u.reviewLeaving, [key]: add ? "added" : "dismissed" };
+        const title = state.tagPage.data?.review.find((r) => `${r.type}:${r.id}` === key)?.title;
+        const what = title ? `“${title.length > 60 ? `${title.slice(0, 59)}…` : title}”` : "the item";
+        host.flash(add ? `Added ${tag} to ${what}` : `Dismissed ${tag} for ${what}`);
         rerender();
-        const settled = () => { u.reviewLeaving = u.reviewLeaving.filter((k) => k !== key); };
+        const settled = () => { const { [key]: _gone, ...rest } = u.reviewLeaving; u.reviewLeaving = rest; };
+        const startedAt = Date.now();
         settleTagReview(tag, { type, id }, add)
-          .then(() => {
+          .then(() => setTimeout(() => {
             const d = state.tagPage.data;
             if (d && d.tag.name === tag) d.review = d.review.filter((r) => `${r.type}:${r.id}` !== key);
+            bump(["review"]);
             settled();
             rerender();
             refreshPage(tag);
             if (state.tags.status === "ok") load();
-          })
+          }, animate ? Math.max(0, TAG_REVIEW_EXIT_MS - (Date.now() - startedAt)) : 0))
           .catch((e) => { settled(); rerender(); if (fail(e)) return; host.flash(errorText(e, add ? "Couldn't add the tag." : "Couldn't dismiss it."), 6000); });
         return;
       }
