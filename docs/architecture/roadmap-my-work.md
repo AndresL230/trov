@@ -126,4 +126,14 @@ allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `
   narrative proposal. Accept runs `create_sprint` + `set_ticket_sprint` or `write_plan` AS that admin; nothing is
   written before. Nothing here sets a sprint or ticket done.
 - With a field absent each piece renders nothing and the Roadmap is byte-for-byte what it was
-  (`test/render.ai-absent.test.ts`, `test/render.roadmap-ai-real.test.ts`).
+  (`test/render.ai-absent.test.ts`, `test/render.roadmap-ai-real.test.ts`) — but for one attribute that is not AI's:
+  the Narrative tab's `<main data-morph="roadmap:narrative">` (below).
+- **Motion** (the app's own; `web-ui.md` › A row leaving a list): the Narrative tab is `data-morph`ed (patched in
+  place; the Timeline is still rebuilt), the cards are a keyed list (`data-morph-list`, `s:<id>`) that rises with the
+  entrance (`.cnpy-stagger`), the drift rises (`.cnpy-rise`), the forecast and note come with their sprint card. A
+  card an Accept / Dismiss took — and a note or the drift "Wrong?" took — is Review's `.cnpy-rv-row`: `data-verdict`
+  + `inert`, collapsing over `AI_EXIT_MS` (= `REVIEW_EXIT_MS`), then not drawn (`state.ai.leaving` / `decided` in
+  `ai-actions.ts`, which only HIDE rows of the read). The write goes on the click; a failure puts the card back with a
+  toast; the Roadmap is read again once no card is collapsing (one read for several). Reduced motion: gone at once.
+  Off the Roadmap (a theme proposal on Repo) the kit's busy path is unchanged. Tests: `test/render.roadmap-ai.test.ts`
+  (markup, CSS), `test/render.roadmap-ai-exit.test.ts` (the controller).

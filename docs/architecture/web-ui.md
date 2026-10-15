@@ -13,7 +13,7 @@ itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
-Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
@@ -468,7 +468,7 @@ one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 ## A row leaving a list — the one exit pattern (Review's queue)
 
 When a person acts on a row and the row should go (a verdict in Review; Add tag / Dismiss on a tag's To
-review tab — `reviewItem` in `tags.ts`, `TagsUi.reviewLeaving`, the same `.cnpy-rv-row`, slower by the owner's call — `.cnpy-tagreview-row`, `TAG_REVIEW_EXIT_MS` .7s, and the card slides aside as it closes; the
+review tab — `reviewItem` in `tags.ts`, `TagsUi.reviewLeaving`, the same `.cnpy-rv-row`, slower by the owner's call — `.cnpy-tagreview-row`, `TAG_REVIEW_EXIT_MS` .7s, and the card slides aside as it closes; Accept / Dismiss on a Roadmap suggestion card and "Wrong?" on a Roadmap note or the drift — `roadmap-ai.ts`, `AiUi.leaving` / `decided`, the same `.cnpy-rv-row` at `AI_EXIT_MS` = `REVIEW_EXIT_MS`; the
 next screen that removes a row reuses this, it does not invent another), the row **confirms, collapses, and the rows
 under it move up as the same elements**. Four parts, each in one place:
 
@@ -909,7 +909,8 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   28px thumbs-down icon button at the item's bottom right — no visible word; its `aria-label` and `data-mtip`
   say "Wrong?" and what pressing it does. It POSTs
   `/ai/feedback` and hides the item for that person at once (`state.ai.hidden`), back with a toast if the write
-  fails. Nothing written is ever shown without the mark.
+  fails. On the Roadmap (patched in place) a note or the drift collapses out by Review's exit instead
+  (`state.ai.leaving`; the same goes for a suggestion card an Accept / Dismiss took there). Nothing written is ever shown without the mark.
 - **Capped and empty** are the screen's own words (`aiCapped`, `AI_EMPTY`): "Monthly AI allowance used; <what>
   resumes Nov 1." with "Upgrade to Pro" (to Org settings › General, where the plan is changed) only when
   `upgrade` is true.
