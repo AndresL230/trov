@@ -101,9 +101,11 @@ const READS: Record<string, ReadSpec<any>> = { // eslint-disable-line @typescrip
     "pr", (c, a) => list_events(c.ctx, a)),
   get_repo_dashboard: read(z.object({
     tab: z.enum(Object.keys(REPO_TAB_SECTIONS) as [RepoTab, ...RepoTab[]]).optional(), range: z.enum(REPO_RANGES).optional(), include_trends: z.boolean().optional(),
+    // MCP's `app` narrowing (#186): an app key, or `__repo`; unknown reads as every app.
+    app: z.string().max(40).optional(),
   }), "ci", async (c, a) => {
     const { repo, envs } = await orgRepoConfig(c.ctx);
-    return getRepoDashboardForAgent(c.ctx, repo, envs, { tab: a.tab, range: a.range, includeTrends: a.include_trends });
+    return getRepoDashboardForAgent(c.ctx, repo, envs, { tab: a.tab, range: a.range, includeTrends: a.include_trends, app: a.app ?? null });
   }),
   artifact_get: read(z.object({ slug: z.string().min(1), version: z.number().int().min(1).optional(), include_content: z.boolean().optional(), include_file: z.boolean().optional() }),
     // `include_file` is MCP's shape; Ask attaches no file (the person opens the artifact itself).
