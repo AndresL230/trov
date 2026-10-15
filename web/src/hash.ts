@@ -9,6 +9,9 @@
 //   #roadmap          → the Roadmap's Narrative tab; #roadmap/timeline its Timeline
 //   #repo             → the Repo dashboard's Overview
 //   #repo/<tab>       → one of its other tabs (code / ci / usage / planning)
+//   #repo[/<tab>]?repo=<owner%2Fname>&app=<key>
+//                     → the same, for another of the org's repositories and / or narrowed by the App menu
+//                       (`app` = an app key, or `__repo` for "Repo-wide only"); both optional, any order
 //   #artifacts        → the Artifacts library
 //   #artifacts/new    → the new-artifact form
 //   #artifacts/<slug>[/v<n>]           → one artifact (a version other than the latest;
@@ -68,6 +71,10 @@ export interface Route {
   sprintId: number | null;
   /** Set only on `repo` (absent everywhere else, so older routes compare equal). */
   repoTab?: RepoTab;
+  /** Set only on `repo`, when it reads a repository other than the primary (`?repo=owner/name`). */
+  repoSlug?: string;
+  /** Set only on `repo`, when the App menu narrows it (`?app=<key>`). */
+  repoApp?: string;
   /** Set only on `artifact` (absent everywhere else, like `repoTab`). */
   art?: ArtRoute;
   /** Set only on `handoff` (a positive integer, rendered `#12`). */
@@ -106,6 +113,7 @@ const APP_KEY_SEG = /^[a-z0-9_-]{1,32}$/;
 /** Whether two routes name the same place (the hashchange no-op check). */
 export function sameRoute(a: Route, b: Route): boolean {
   return a.screen === b.screen && a.ticketId === b.ticketId && a.sprintId === b.sprintId && a.repoTab === b.repoTab
+    && a.repoSlug === b.repoSlug && a.repoApp === b.repoApp
     && a.handoffId === b.handoffId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.roadmapTab === b.roadmapTab
     && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
     && a.platTab === b.platTab && a.platOrg === b.platOrg && a.platReport === b.platReport
@@ -121,7 +129,7 @@ export function sameRoute(a: Route, b: Route): boolean {
  * screen entrance and nothing to load again (main.ts `markEnter`, the hashchange handler).
  */
 export function pageKey(r: Route): string {
-  return hashForRoute({ ...r, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
+  return hashForRoute({ ...r, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
 }
 
 /** A URL path segment decoded, or null when it is malformed. */
@@ -137,6 +145,24 @@ function intSeg(v: string): number | null {
   if (!/^\d+$/.test(v)) return null;
   const n = Number(v);
   return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/** A repository's full name (`owner/name`, GitHub's alphabet) and an app key (a part key) or `__repo`. */
+const REPO_SLUG_RE = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/;
+const APP_KEY_RE = /^(?:[a-z0-9_-]{1,32}|__repo)$/;
+/** The Repo screen's scope from its query: only well-formed values, the rest dropped (a junk value is no scope). */
+function repoScope(query: string): Pick<Route, "repoSlug" | "repoApp"> {
+  const out: Pick<Route, "repoSlug" | "repoApp"> = {};
+  for (const pair of query.split("&")) {
+    const i = pair.indexOf("=");
+    if (i < 0) continue;
+    const v = seg(pair.slice(i + 1));
+    if (!v) continue;
+    const k = pair.slice(0, i);
+    if (k === "repo" && REPO_SLUG_RE.test(v)) out.repoSlug = v;
+    if (k === "app" && APP_KEY_RE.test(v)) out.repoApp = v;
+  }
+  return out;
 }
 
 /** Parse a location hash (with or without the leading `#`) into a route. */
@@ -166,10 +192,15 @@ export function parseHash(hash: string): Route {
     if (parts.length === 2 && (parts[1] === "narrative" || parts[1] === "timeline")) return { screen: "roadmap", ticketId: null, sprintId: null, roadmapTab: parts[1] };
     return none;
   }
-  if (parts[0] === "repo") {
-    if (parts.length === 1) return { screen: "repo", ticketId: null, sprintId: null, repoTab: "overview" };
+  if (parts[0] === "repo" || parts[0].startsWith("repo?")) {
+    // The query (`?repo=…&app=…`) is the screen's scope; the path before it is the tab, as always.
+    const q = raw.indexOf("?");
+    const path = (q < 0 ? raw : raw.slice(0, q)).split("/");
+    const scope = repoScope(q < 0 ? "" : raw.slice(q + 1));
+    if (path[0] !== "repo") return none;
+    if (path.length === 1) return { screen: "repo", ticketId: null, sprintId: null, repoTab: "overview", ...scope };
     // `#repo/overview` is not canonical (the bare `#repo` is), but it still resolves.
-    if (parts.length === 2 && isRepoTab(parts[1])) return { screen: "repo", ticketId: null, sprintId: null, repoTab: parts[1] };
+    if (path.length === 2 && isRepoTab(path[1])) return { screen: "repo", ticketId: null, sprintId: null, repoTab: path[1], ...scope };
     return none;
   }
   if (parts[0] === "artifacts") {
@@ -281,7 +312,10 @@ export function hashForRoute(r: Route): string {
   if (r.screen === "ticketdetail") return r.ticketId !== null ? `#tickets/${r.ticketId}` : "#tickets";
   if (r.screen === "newticket") return "#tickets/new";
   if (r.screen === "roadmap") return r.roadmapTab === "timeline" ? "#roadmap/timeline" : "#roadmap";
-  if (r.screen === "repo") return !r.repoTab || r.repoTab === "overview" ? "#repo" : `#repo/${r.repoTab}`;
+  if (r.screen === "repo") {
+    const q = [r.repoSlug ? `repo=${encodeURIComponent(r.repoSlug)}` : "", r.repoApp ? `app=${encodeURIComponent(r.repoApp)}` : ""].filter(Boolean).join("&");
+    return `${!r.repoTab || r.repoTab === "overview" ? "#repo" : `#repo/${r.repoTab}`}${q ? `?${q}` : ""}`;
+  }
   if (r.screen === "artifactnew") return "#artifacts/new";
   if (r.screen === "artifact") {
     const a = r.art;

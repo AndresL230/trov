@@ -24,6 +24,57 @@ every scenario × variant × App narrowing × Group by to the design's own `buil
 Group by from `layoutOf(layoutInputOf(facts))`), and checks unknown stays `null` and every part's app and
 environment exist. H's Cloud Run app uses provider `github` through a cast until Phase A adds it.
 
+**The Overview's deploy blocks** (Repo setups, Phase C) are `OverviewBlock`s — `(facts, ctx) => html`
+(`web/src/repo-overview-ctx.ts`) — each in its own module and its own `trov.css` section, worded in the SPA from
+`RepoFacts` (nothing arrives worded): `envCardsBlock` (`repo-env-cards.ts`: a card per environment in promotion
+order, a row per part in the apps' order — sha, "<age> ago · by <who> · <host>[ via <workflow> | via GitHub]",
+URL, ms / Down / "Reading 34m old", a failed line with the reason and what still serves, a building line, a
+rollback line, the out-of-step flag; a part with no deploy is Unknown and says why — "<host> does not report
+deploys to GitHub" when its host is not connected — and the CI line worded from `FactsCi`, "<check> running on
+<sha>" while a running set has no total), `driftBlock` (`repo-drift.ts`: one strip, or the chain form for three or
+more environments), `appsTableBlock` (`repo-apps-table.ts`: worst first — failed, building, waiting (> 2 commits),
+unknown, live — Production, then Previews or the other environment, then Not shipped; a missing or `null` count
+is "Unknown", never "Up to date"; then the packages) and `notShippedBlock` (`repo-not-shipped.ts`: one deployed
+app → its production entry, "<app> is up to date in Production" at 0; several → the one with the most commits
+waiting, only when its commits are listed — E's web; nothing for a `null` count). The environment verdict is ONE
+function, `envVerdict(f, env)` (`repo-verdict.ts`, the design's `verdictFor`: unknown, down, failing, out of step,
+degraded, then Healthy only on passing checks, else Live — never Healthy on unknown checks; the header's
+pills and every block draw its tone and shape). What they share is `repo-block-kit.ts`: ONE table of the design's `MARKS` (`REPO_MARK`, drawn through marks.ts
+`stateMark` / `markShape` with the design's shape and tone per state — Building a blue ring pulsing by
+`.repo-kit-pulse`, still under reduced motion; `deployMark` is the same table), the sha chip (`shaOrNone` says "no
+commit" and why), the byline
+person (people.ts, never in sample mode), a URL that never links out in sample mode, and the commit groups drift
+and not-shipped both list. A disclosure is ONE act, `repoOpen` with the block's key in `data-arg`
+(`drift:<from>><to>`, `ns:<app>><env>`), read back from `ctx.open`; its panel is always emitted and shown by
+`data-open`. Tests: `test/render.repo-env-cards.test.ts`, `render.repo-drift`, `render.repo-apps-table`,
+`render.repo-not-shipped` (every scenario × variant, narrowed facts).
+
+**The Overview's blocks (Repo setups, Phase C)** are `OverviewBlock`s (`web/src/repo-overview-ctx.ts`: `(facts,
+ctx) => html`), one module each, drawn from `RepoFacts` alone — every sentence is made in the block, nothing is
+pre-worded by the server, and each returns `""` when its facts are absent:
+- **R4** `productionBlock` (`repo-production.ts`): the one app's part in the one environment — the verdict
+  (`envVerdict`, `repo-verdict.ts`), the serving row (sha or "no commit", age, who via people.ts, host and
+  `via`), the URL and its health (ms; "Reading 34m old" when stale; Down), a failed or cancelled newest deploy
+  ("e07b3a2 failed 12m ago", its reason, "c41e7d9 is still serving."), a deploy in flight as the Next row, a
+  rollback ("Rolled back from …"), CI on the head (`ciLine`: a count only when one is known — a running set
+  says "Checks running on …"), and the strip: `history` plus an in-flight `latest`, ≤ 20, newest right, ready
+  green / error red / building blue and pulsing (`.repo-kit-pulse` on a mark; the strip square blinks, both still under reduced motion) / rolled back amber
+  / canceled grey, with its sentence ("Last 20 deploys · 17 live, 1 failed, 1 rolled back, 1 building"). A part
+  with no deploy reads Unknown and why ("<host> does not report deploys to GitHub" when its host is not
+  connected and nothing came via GitHub).
+- `previewsBlock` (`repo-previews.ts`): "Previews · N open", a row per preview (a live one unmarked), the
+  failing streak only from two failures ("Failing for 3 days, last 4 builds"); nothing at all when no app in
+  view has previews, "No open pull requests, so no previews." when one has and none is open.
+- **R3** `releaseBlock` (`repo-release.ts`): tag, age in words, date, who, notes; since (commits / PRs, "—"
+  when unknown); the waiting PRs (merged glyph, "feature" only where `feature: true`); the cadence strip over
+  the last 100 days (wider for an older history) and the gaps sentence derived newest first.
+- **R1** `foundBlock` / **R2** `unseenBlock` (`repo-found.ts`): the suggested apps with Accept / Ignore for an
+  admin (`repoFoundAccept` / `repoFoundIgnore` + the suggestion id, wired in Phase D; disabled in sample mode)
+  and the seen deploy names; or what Trov looked for and what it does see (tags, PRs, CI workflows, GitHub
+  deployments in 30 days), the latest tags, and "Add an app by hand" (admin → Org settings › Repositories).
+Shared pieces (`repo-block-kit.ts`): the design's deploy-state `MARKS` on `stateMark` shapes, links that are
+https only and plain text in sample mode, a handle as a person link (plain in sample mode).
+
 Three capture shapes feed it: `repo_events` rows (through the `ingestRepoEvent` gate — see Core invariant),
 `repo_snapshots` (one JSON row per kind: `prs_reconciled`, `env_heads`, `drift`, `branches` —
 plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no section) and
@@ -560,6 +611,47 @@ does not name them, and absent means off / nothing written — never a `not_conn
 them yet: production omits both** (`GET /repo/dashboard` and `get_repo_dashboard`); `LOCAL_AI_PREVIEW` fills
 them from the fixtures under `wrangler dev` only, never over MCP (`ai.md`). When the dashboard has them,
 `get_repo_dashboard` carries `state` with `tab: overview` (or no tab) and `themes` with `planning` (or no tab).
+
+**The Overview from facts (Repo setups, Phase C)** — when the payload carries `facts` (`RepoDashboard.facts`,
+`shared/repo-facts-core.ts`; the sample sets it today, the Worker adds it with the facts read) the Overview is
+`overviewFacts` (`web/src/repo-overview.ts`), else today's sections. The composition is the design's `buildScreen`,
+top to bottom: `<div data-repo-state-slot>` (where #178's `state` block goes), Needs attention, the connect card, the
+opener by `layoutOf(layoutInputOf(facts), group).opener` (found / unseen / release / production + previews /
+chain and envCards → environment cards + drift / appsTable), not shipped where a part has commit groups waiting, the
+week tiles, and the links row. Every block is its own module exporting an `OverviewBlock` (`(f, x) => string`,
+`web/src/repo-overview-ctx.ts`) and is wrapped in `data-repo-block="<name>"` (an empty one takes no room); "Repo-wide
+only" (`REPO_WIDE`) draws its own note instead of an opener. The frame's modules:
+- `repo-attention.ts` WORDS each structured `FactsAttention` (kind + refs, never a sentence on the wire) into the
+  design's sentences — "Production deploy e07b3a2 failed 12m ago on Cloudflare Workers. c41e7d9 is still serving." —
+  naming the host by its part's `host` label (never a switch on a provider id) and an app first ("api: …") when the
+  repository has more than one deployed app. An action leaves Trov only with an https address and outside the
+  sample; otherwise it opens the tab that holds it.
+- `repo-verdict.ts` `envVerdict(f, envKey)` is THE environment verdict (Unknown → Down → Failing → Out of step →
+  Degraded, the design's `verdictFor`; then Healthy ONLY when checks pass on the branch head — with no checks
+  captured, or checks still running, live parts read Live, never Healthy on unknown checks), read by the header pills
+  and the environment cards alike; `ciLine(ci)` there is the one wording of a branch head's checks ("All 14 checks
+  passing on 3e9a1f2", "2 of 9 checks failing on e07b3a2", "Checks running on f19ad20", "<check> running on <sha>").
+- `repo-week.ts`: "—" for a null figure (never 0), ▲ / ▼, failed deploys inverted, "vs last week" / "since
+  connecting" / "unknown until <host> is connected". `repo-connect.ts`: need `deploys` → the design's G card; need
+  `metrics` → deploys arrive via GitHub and the card asks for CPU and memory only; the action (admins) opens Org
+  settings › Hosting, members read the note.
+- The links row's Usage line reads the parts' `reportsMetrics` capability and `connection`: "from <hosts>", "not
+  available from Netlify" (no host in view reports a metric) or "not connected" — so a repository never reads "not
+  connected" for a thing it does not have (`test/render.repo-overview.test.ts`, every scenario × variant × app).
+- The header (`repo-header.ts`): the repository menu (`dropdown()`, `facts.repos`, only with two or more), the App
+  menu (monorepos only: All apps, each app with its folder and open PRs, Repo-wide only), the environment pills, and
+  Group by (`segmented()`, only when `layout.canGroup`, above the panel). Repository and app are in the address
+  (`#repo[/<tab>]?repo=<owner%2Fname>&app=<key>`, hash.ts; the App menu is left out of the page key) and go to
+  `GET /repo/dashboard?repo=&app=`, which the Worker ignores until the facts read lands; the sample narrows with
+  `narrowFacts` client-side. Group by is the session's (`state.repoGroup`) over `facts.groupDefault`; after a flip
+  an admin (never in the sample) is offered "Make this the default" → `PUT /api/o/:slug/repo/settings
+  { repo, overview_group }` (`src/repo/settings-routes.ts`: admin, cookie only, 404 for a repository the org does not
+  have, audited `repo.settings` in `org_admin_audit`), stored in `repo_settings` (0071) and read back by
+  `readRepoSettings(ctx, repo)` (`src/data/repo-settings.ts`) for the facts read.
+- "Preview with sample data" gains a scenario switch: a `dropdown()` per axis in the sample bar — Scenario (A–N) and
+  Variant (when the scenario has more than one) — session-only (`state.repoScenario`). The names live in
+  `web/src/repo-sample-keys.ts` (no fixture data, like `hosting-keys.ts`), so the switch never pulls the sample into
+  the main bundle; a pick recomputes only `facts`, and picking a repository in the sample shows that scenario.
 
 **`get_repo_dashboard` is the Repo dashboard's read over MCP, for every principal too** — it exposes nothing
 a signed-in member cannot see at `#repo`, and nothing per-user. `src/tools/repo-agent.ts` is a VIEW over

@@ -134,6 +134,12 @@ took `0057`, so it will renumber into roughly `0058`–`0067`. This build takes 
   quantiles; app metrics v3 and Trov's own endpoint. Unconfirmed datasets read "not available" with the reason.
 - **Phase H** — docs (`repo-dashboard.md`, `hosting-providers.md`, new `repo-apps.md` in CLAUDE.md's table),
   `releases.ts` lines, screenshots (A, B, E, I, L, N; light/dark; desktop/phone), the `ops` list.
+- **Last: the end-to-end browser test** (Andres's request, 2026-10-15): the feature driven in a real browser against a
+  local D1 seeded per state (`scripts/seed/repo-setups.*`), a test matrix (surfaces × roles × data states ×
+  phone/desktop × light/dark), expected-before-actual, evidence per case, one fix + one test + one retest per bug, a
+  log at `docs/testing/repo-setups-test-log.md`. Phase H's screenshots come out of this pass, not a separate one; the
+  sample scenarios A–N are reused as the screen-state coverage, and the seed adds only what samples cannot show (roles,
+  real routes, writes: accept/undo, remove old tokens, repo settings).
 
 ## Rules every phase keeps
 

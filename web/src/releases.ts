@@ -71,27 +71,28 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // Repo setups (handoff #11, `feat/repo-setups`). Phase 0: Org settings bugs, and one place for each thing. Phase A: apps,
-  // the GitHub provider, a commit on every deploy.
+  // Repo setups (handoff #11, `feat/repo-setups`), in progress. Phase 0: Org settings bugs, and one place for each thing.
+  // Phase A: apps, the GitHub provider, a commit on every deploy. Phase C: the Overview from facts.
   {
     version: "Unreleased",
     date: "2026-10-15",
     unreleased: true,
     title: "Repo setups",
-    headline: "Org settings says plainly what is connected, and keeps each thing in one place.",
+    headline: "The Repo screen fits every kind of repository, every deploy carries its commit, and Org settings says plainly what is connected.",
     highlights: [
-      "Hosting shows one card per host. Railway's old per-environment tokens no longer pose as two extra connections: the Railway card says Not connected, and one quiet line counts the old tokens and offers to remove them.",
-      "A host's status reads the same on its card, on every part it runs, in the setup checklist and in the Repo dashboard. Testing a part on a host that is not connected says so, with a Connect button.",
-      "Integrations is for GitHub and the other integrations; the hosting tokens are on Hosting, beside the hosts that use them.",
-      "An environment's app metrics token is set in its parts' editor on Hosting, and each host's card says which parts use it.",
-      "An app deployed by GitHub Actions — or on a host Trov cannot read yet — can be a part too: pick GitHub deployments as its host and name its deployment environment, check run or workflow. Render, Railway and Fly.io are now detected from what they report to GitHub.",
-      "Every deploy shows the commit it shipped, or says it doesn't know (a host that reports none is matched to the one commit GitHub finished just before, only when there is exactly one); a failed deploy says why, a production deploy that went back to an older commit is marked as a rollback, and Vercel and Netlify previews are read with their branch.",
+      "The Repo screen's Overview takes the shape of the repository — its apps and environments — and opens with what needs attention, in plain sentences: a deploy that failed and what is still serving, an app that is down, a rollback, a check failing, commits merged and not yet live.",
+      "A repository with several apps gets an App menu that narrows every tab to one app; an organization with several repositories gets a repository menu. Each environment's state sits in the header, and Group by switches between environment cards and a table of apps (an admin can make either the default).",
+      "Every deploy shows the commit it shipped, or says it doesn't know; a failed deploy says why, a production deploy that went back to an older commit is marked as a rollback, and Vercel and Netlify previews are read with their branch.",
+      "An app deployed by GitHub Actions — or on a host Trov cannot read yet — can be a part too: pick GitHub deployments as its host. Render, Railway and Fly.io are now detected from what they report to GitHub.",
+      "Org settings › Hosting shows one card per host, and a host's status reads the same everywhere. Railway's old per-environment tokens no longer pose as two extra connections: the card counts them and offers to remove them.",
+      "Integrations is for GitHub and the other integrations; hosting and app-metrics tokens live on Hosting, beside the parts that use them. Preview with sample data gains a switch over fourteen kinds of repository.",
     ],
     ops: [
       "Apply `migrations/0070_repo_apps.sql` (merging to main applies it): ADDITIVE — the `repo_apps` table with a row per existing part key (SaplingLearn's `frontend` / `backend`), and four `hosting_deploys` columns (`source`, `reason`, `sha_source`, `rolled_back_from`). No rebuild, no data removed.",
       "Subscribe the GitHub App to deployment, release, create, workflow_job (GitHub › Developer settings › GitHub Apps › trov-by-trovlabs › Permissions & events › Subscribe to events). It already has the permissions they need (Deployments, Contents, Actions: read), so installations need not re-approve. It is already subscribed to `deployment_status` and `status`, which Trov now captures.",
       "Optional, for Cloudflare deploys' commits: give the Cloudflare API token a third permission, Account › Workers CI › Read (it must be a USER token — My Profile › API Tokens). Without it the Cloudflare part's state says \"commit: the token needs Workers CI Read\" and the commit is matched from GitHub when it can be. UNVERIFIED: that Read (not Edit) suffices.",
       "The hosting job's cost per part grows by one (the possible GitHub compare for a rollback), and Cloudflare, Vercel and Netlify each make one more request per poll — still inside the `:40` budget; no trigger change.",
+      "Apply `migrations/0071_repo_settings.sql` (merging to main applies it): ADDITIVE — the `repo_settings` table (an admin's per-repository Overview default). Rollback: `DROP TABLE repo_settings; DELETE FROM org_admin_audit WHERE action = 'repo.settings';`.",
     ],
     headsUp: [
       "Hosting tokens and app metrics tokens moved from Integrations to Hosting. Nothing was reset: every token you saved is still there.",
@@ -112,6 +113,15 @@ export const RELEASES: Release[] = [
         "`src/hosting/deploy-store.ts`: the `hosting_deploys` upsert, shared by the poll and the capture (secret-free, so the webhook may call it)",
         "Cloudflare reads the newest deployment's commit from the Workers Builds API (`/builds/builds?version_ids=`) — `pollCost` 3; refused, the poll notes it (`PollResult.notes`) and the join takes over",
         "Tests: `test/repo-apps.test.ts`, `test/hosting.provider.github.test.ts`, `test/hosting.github-deploys.test.ts`, `test/hosting.sha-join.test.ts`, `test/hosting.previews.test.ts`",
+        "The Overview from facts: `web/src/repo-overview.ts` (`overviewFacts` — the state slot, attention, the connect card, the opener by `layoutOf`, not shipped, week, links; each block wrapped in `data-repo-block`), `repo-attention.ts` (structured attention worded into the design's sentences, hosts by their part's label), `repo-week.ts`, `repo-connect.ts`, `repo-verdict.ts` (`envVerdict`, shared with the environment cards), `repo-header.ts` (repository / App menus, environment pills, Group by)",
+        "Migration `0071_repo_settings`: `repo_settings` (PK `(org_id, repo)`, `overview_group` env / app / NULL); `PUT /api/o/:slug/repo/settings` (admin, cookie only, audited `repo.settings`); `readRepoSettings(ctx, repo)` for the facts read",
+        "`#repo[/<tab>]?repo=<owner%2Fname>&app=<key>` and `GET /repo/dashboard?repo=&app=` (read by the Worker with the facts read); `RepoDashboard.facts`; `FactsPart.reportsMetrics`",
+        "The sample's scenario switch (Scenario × Variant dropdowns; names in `web/src/repo-sample-keys.ts`)",
+        "Tests: `test/render.repo-overview.test.ts` (every scenario × variant × app × Group by against the design's `buildScreen`; no \"not connected\" for absent things), `test/repo-settings.routes.test.ts`, hash routes",
+        "Repo › Overview blocks (Phase C2), each an `OverviewBlock` over `RepoFacts`: `envCardsBlock` (`web/src/repo-env-cards.ts`), `driftBlock` (`web/src/repo-drift.ts`), `appsTableBlock` (`web/src/repo-apps-table.ts`), `notShippedBlock` (`web/src/repo-not-shipped.ts`); `envVerdict(f, env)` (`web/src/repo-verdict.ts`, the design's `verdictFor`); the shared marks, sha chip, byline, URL and commit groups in `web/src/repo-block-kit.ts`; disclosures through one act, `repoOpen` + the block's key",
+        "Tests: `test/render.repo-env-cards.test.ts`, `test/render.repo-drift.test.ts`, `test/render.repo-apps-table.test.ts`, `test/render.repo-not-shipped.test.ts`",
+        "Overview blocks from `RepoFacts`, per the Repo-setups design: `productionBlock` (`web/src/repo-production.ts`: verdict, serving row, failed / cancelled block, Next row, URL and health, CI on head, the last-20 strip and its sentence), `previewsBlock` (`web/src/repo-previews.ts`), `releaseBlock` (`web/src/repo-release.ts`: since, waiting PRs, cadence strip, gaps sentence), `foundBlock` and `unseenBlock` (`web/src/repo-found.ts`: Accept / Ignore as `repoFoundAccept` / `repoFoundIgnore`, disabled in sample mode); shared pieces in `web/src/repo-block-kit.ts` (deploy-state marks on `stateMark`, https-only links that never leave sample data)",
+        "Tests: `test/render.repo-production.test.ts`, `test/render.repo-previews.test.ts`, `test/render.repo-release.test.ts`, `test/render.repo-found.test.ts` — every scenario that opens on each block, narrowed facts, unknown drawn as unknown, no \"not connected\" for a thing the repository does not have",
       ],
       changed: [
         "`listConnections` returns ONE org-wide row per provider; a scoped hosting credential is a leftover, never a connection, never counted.",
