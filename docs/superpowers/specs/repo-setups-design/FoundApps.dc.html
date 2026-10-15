@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="padding:20px 22px 16px">
+  <div style="display:flex;align-items:flex-start;gap:10px 16px;flex-wrap:wrap">
+    <div style="flex:1 1 360px;min-width:0">
+      <div style="font-size:16.5px;font-weight:600;letter-spacing:-0.01em">Trov found {{ count }} apps in {{ repo }}</div>
+      <p style="margin:5px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55);max-width:70ch">{{ lead }}</p>
+    </div>
+    <div style="display:flex;gap:8px;flex:none">
+      <sc-if value="{{ admin }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ review }}" style="height:32px;padding:0 13px;border-radius:3.2px;font-size:12.5px;font-weight:600;background:var(--accent);color:var(--accent-fg);border:1px solid transparent;white-space:nowrap" style-hover="filter:brightness(1.06)">Review in Org settings</button></sc-if>
+    </div>
+  </div>
+  <div style="margin-top:14px">
+    <sc-for list="{{ apps }}" as="a" hint-placeholder-count="3">
+      <div style="display:grid;grid-template-columns:18px minmax(140px,1fr) minmax(90px,.55fr) minmax(110px,.7fr) minmax(0,1.5fr);gap:4px 14px;align-items:baseline;padding:10px 0;border-top:1px solid var(--border)">
+        <span style="align-self:center;display:flex"><dc-import name="Mark" m="{{ ring }}" size="12.5" hint-size="9px,9px"></dc-import></span>
+        <span style="font-family:var(--code);font-size:12.5px;color:var(--fg)">{{ a.folder }}</span>
+        <span style="font-size:12.5px;color:var(--fg-70)">{{ a.kind }}</span>
+        <span style="font-size:12.5px;color:var(--fg-70)">{{ a.hostText }}</span>
+        <span style="font-size:12px;color:var(--fg-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ a.evidence }}</span>
+      </div>
+    </sc-for>
+    <sc-if value="{{ hasSignals }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;gap:6px 10px;flex-wrap:wrap;padding:10px 0 2px;border-top:1px solid var(--border);font-size:12px;color:var(--fg-55)">
+        <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);padding-top:2px">Deploys seen</span>
+        <sc-for list="{{ signals }}" as="s" hint-placeholder-count="2"><span><span style="color:var(--fg-70)">{{ s.name }}</span> · {{ s.src }}, {{ s.n }} times</span></sc-for>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1000,&quot;height&quot;:300},&quot;f&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;Found&quot;},&quot;repo&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;acme/new-thing&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;admin&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const f = this.props.f || { apps: [], signals: [] };
+    const admin = this.props.admin ?? true;
+    return {
+      repo: this.props.repo || '', admin, review: () => this.props.onReview && this.props.onReview(), count: String(f.apps.length),
+      lead: admin ? 'Nothing changes until you accept them. Until then this page shows pull requests, CI and this week’s figures, which need no setup.' : 'Nothing changes until an admin accepts them in Org settings. Pull requests, CI and this week’s figures already work.',
+      apps: f.apps.map((a) => ({ ...a, hostText: a.host || 'no host' })),
+      ring: { shape: 'ring', tone: 'var(--blue)', word: '', tip: 'Suggested, not accepted' },
+      hasSignals: (f.signals || []).length > 0,
+      signals: (f.signals || []).map(([name, src, n]) => ({ name, src, n })),
+    };
+  }
+}
+</script>
+</body>
+</html>
