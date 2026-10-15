@@ -310,6 +310,7 @@ const TENANT: Record<string, Row> = {
   "GET /hosting": {}, "GET /hosting/providers": {},
   "PUT /environments/:key/parts/:part": J({ provider: "cloudflare", settings: { worker: "hijacked" } }), "DELETE /environments/:key/parts/:part": {},
   "POST /hosting/:provider/connect": J({}), "POST /hosting/:provider/disconnect": J({}), "POST /hosting/:provider/test": J({ env: "canary-env", part: "web" }),
+  "DELETE /hosting/:provider/leftovers": {},
   // src/auth/token-routes.ts — the caller's OWN tokens for the org in the path (`:id` is alice's token in A)
   "GET /mcp-tokens": {}, "POST /mcp-tokens": J({}), "POST /mcp-tokens/:id/revoke": J({}),
   // src/billing/routes.ts — an OWNER's billing for the org in the path (0045_billing). Billing is off in the pool,

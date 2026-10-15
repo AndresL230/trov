@@ -11,12 +11,13 @@ import {
   type ConnectionStatus, type EnvironmentPartDTO, type HostingChecklistItem, type HostingConnectionDTO, type HostingEnvironmentDTO,
   type HostingMetric, type HostingProviderId, type HostingSetupDTO, type PartPollStateDTO,
 } from "@shared/hosting";
+import { hostingStatus } from "@shared/hosting-status-core";
 import { requireRole } from "../data/context";
-import { resolveCloudflareAccountId, secretsAvailable } from "../data/secrets";
+import { hasLegacyCredential, resolveCloudflareAccountId, secretsAvailable } from "../data/secrets";
 import { all, type TenantContext } from "../data/sql";
 import type { Env } from "../env";
 import { listEnvironments } from "../integrations/settings";
-import { credentialScopeOf, listConnections, loadConnectionState, type ConnectionState } from "./connections";
+import { credentialScopeOf, listConnections, listLeftovers, loadConnectionState, type ConnectionState } from "./connections";
 import type { PartRow } from "./parts";
 import type { ProviderMap } from "./part-writes";
 import { readDetectionStatus, readDetections } from "./detect";
@@ -63,12 +64,11 @@ async function effectiveConfigs(ctx: TenantContext, env: Env, s: ConnectionState
   };
 }
 
-/** A part's connection, as the part sees it: a credential stored for its (provider, scope) — or, for
- *  SaplingLearn's cut-over, a legacy Worker secret that answers for it — reads `connected`. */
+/** A part's connection: its provider's org-wide connection, as EVERY surface says it (`hostingStatus` — the
+ *  card, the checklist, the lead and Test this part read the same function). */
 function partConnection(connections: HostingConnectionDTO[], provider: HostingProvider, part: PartRow): ConnectionStatus {
-  const c = connections.find((x) => x.provider === provider.id && x.scope === credentialScopeOf(provider, part));
-  if (!c) return "not_connected";
-  return c.status === "not_connected" && c.legacy_fallback ? "connected" : c.status;
+  const c = connections.find((x) => x.provider === provider.id && x.scope === credentialScopeOf(provider, part)) ?? null;
+  return hostingStatus(c, provider.label).state;
 }
 
 function consoleUrlOf(provider: HostingProvider, part: PartRow, config: Record<string, string>): string | null {
@@ -159,8 +159,10 @@ export function buildChecklist(
   for (const c of connections) {
     if (c.used_by.length === 0) continue;
     const provider = providers[c.provider];
-    const stored = c.status === "connected" || c.status === "error";
-    const connected = stored || c.legacy_fallback;
+    // The one status function: a step is done exactly when the provider's card says it is live.
+    const status = hostingStatus(c, provider.label);
+    const stored = status.stored;
+    const connected = status.live;
     const users = c.used_by.map((u) => {
       const part = parts.find((p) => p.env === u.env && p.key === u.part);
       return part ? `${part.envLabel} › ${part.label}` : `${u.env}/${u.part}`;
@@ -204,10 +206,21 @@ export async function getHostingSetup(ctx: TenantContext, env: Env, providers: P
   const s = await loadConnectionState(ctx);
   const envs = await listEnvironments(ctx);
   const x = await partContext(ctx, env, providers, s);
-  const environments: HostingEnvironmentDTO[] = envs.map((e) => ({
-    key: e.key, label: e.label, branch: e.branch,
-    parts: s.parts.filter((p) => p.env === e.key).map((p) => partDTO(x, p)),
-  }));
+  const environments: HostingEnvironmentDTO[] = [];
+  for (const e of envs) {
+    // The environment's app metrics token — set from its parts' editor; metadata only, never the value.
+    const meta = s.secrets.find((m) => m.kind === "metrics_endpoint" && m.scope === e.key) ?? null;
+    environments.push({
+      key: e.key, label: e.label, branch: e.branch,
+      parts: s.parts.filter((p) => p.env === e.key).map((p) => partDTO(x, p)),
+      app_metrics: {
+        configured: meta !== null,
+        legacy_fallback: meta === null && (await hasLegacyCredential(ctx, env, "metrics_endpoint", e.key)),
+        hint_last4: meta?.hint_last4 ?? "", last_used_at: meta?.last_used_at ?? null, last_error: meta?.last_error ?? null,
+        api_url: e.api_url || null,
+      },
+    });
+  }
   const detected = await readDetections(
     ctx, Object.fromEntries(HOSTING_PROVIDERS.map((id) => [id, providers[id].label])) as Record<HostingProviderId, string>,
     new Set(s.parts.map((p) => p.provider)),
@@ -220,5 +233,6 @@ export async function getHostingSetup(ctx: TenantContext, env: Env, providers: P
     detected,
     detection: await readDetectionStatus(ctx, detected, envs.length),
     secrets_available: await secretsAvailable(env),
+    leftovers: listLeftovers(s),
   };
 }

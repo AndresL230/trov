@@ -617,8 +617,8 @@ describe("disconnect", () => {
     expect(JSON.parse((await secretAudit()).at(-1)!.detail).reason).toBe("refused");
     expect(fakes.calls.revoke).toEqual([]); // the provider already let it go: nothing to remove there
     expect(leakedFragments(await everything(JSON.stringify(r.json)), LONG_TOKEN)).toEqual([]);
-    // Nothing left to test.
-    expect((await send(web, "POST", `${A}/hosting/vercel/test`, me, {})).json).toMatchObject({ error: "not_configured" });
+    // Nothing left to test: not connected, in the card's own words (THE status function) — nothing is probed.
+    expect((await send(web, "POST", `${A}/hosting/vercel/test`, me, {})).json).toMatchObject({ ok: false, detail: "Fakecel isn't connected.", connection: { status: "revoked" } });
   });
 
   it("…but never a pasted token's, and never on another refusal: those only record last_error", async () => {
@@ -758,19 +758,20 @@ describe("test connection: POST /hosting/:provider/test", () => {
     expect(leakedFragments(JSON.stringify(r.json), LONG_TOKEN)).toEqual([]);
   });
 
-  it("refuses: no credential (404 not_configured), a part of another provider (404), a scope a provider does not take (400), a member (403)", async () => {
+  it("not connected: says so in the card's words, probing nothing; refuses a part of another provider (404), a scope a provider does not take (400), a member (403)", async () => {
     await seedOrgSettings();
     const web = hostingTestApp(fakeProviders().providers);
     const me = await ownerCookie();
     const t = (p: string, body: unknown, cookie = me) => send(web, "POST", `${A}/hosting/${p}/test`, cookie, body);
-    expect((await t("vercel", {})).json).toMatchObject({ error: "not_configured" });
+    // Never "No secret is set": the provider's status, as its card says it.
+    expect((await t("vercel", {})).json).toMatchObject({ ok: false, detail: expect.stringMatching(/^\S+ isn't connected\.$/), connection: { provider: "vercel", status: "not_connected" } });
     expect((await t("vercel", { env: "staging", part: "frontend" })).status).toBe(404);
     expect((await t("vercel", { env: "staging" })).status).toBe(400);
     expect((await t("vercel", { scope: "staging" })).json).toMatchObject({ field: "scope" });
     // Railway's credential is org-wide like every provider's: it takes no scope.
-    expect((await t("railway", {})).json).toMatchObject({ error: "not_configured" });
+    expect((await t("railway", {})).json).toMatchObject({ ok: false, detail: expect.stringMatching(/isn't connected\.$/) });
     expect((await t("railway", { scope: "staging" })).json).toMatchObject({ field: "scope" });
-    expect((await t("railway", { env: "staging", part: "backend" })).json).toMatchObject({ error: "not_configured" });
+    expect((await t("railway", { env: "staging", part: "backend" })).json).toMatchObject({ ok: false, detail: expect.stringMatching(/isn't connected\.$/) });
     expect((await t("vercel", {}, await roleCookie("casey", "member"))).status).toBe(403);
   });
 });
