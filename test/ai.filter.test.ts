@@ -324,6 +324,13 @@ describe("runAiFilter / resolveFilter (the pieces)", () => {
     expect(none).toBeNull();
   });
 
+  it("resolveFilter checks each field against the schema itself, whatever reached it (unknown keys and values dropped)", async () => {
+    const c = await filterCandidates(await tenantCtx(ME));
+    const raw = { filter: { priority: "urgent", due: "overdue", category: "bug", status: 7, text: "x".repeat(500), assignee: "me" } };
+    expect(resolveFilter("tickets", raw, c, ME, "my urgent overdue bugs").filter).toEqual({ category: "bug", assignee: "me" });
+    expect(resolveFilter("feed", { filter: { range: "30d", tag: "auth", text: "deploys" } }, c, ME, "auth").filter).toEqual({ tag: "auth" });
+  });
+
   it("resolveFilter is pure: the candidates decide", async () => {
     const c = await filterCandidates(await tenantCtx(ME));
     expect(resolveFilter("artifacts", { filter: { author: "@lpcooper-arch", area: "ui" } }, c, ME, "luke's ui").filter).toEqual({ author: "lpcooper-arch", area: "ui" });
