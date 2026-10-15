@@ -66,7 +66,7 @@ describe("the detectors, each on its fixture", () => {
     const ids = Array.from({ length: 7 }, (_, i) => `00000000-0000-4000-8000-00000000000${i}`);
     const toml = `name = "big"\nmain = "src/index.ts"\n${ids.map((id) => `[[d1_databases]]\nbinding = "DB"\ndatabase_name = "d"\ndatabase_id = "${id}"\n`).join("")}[triggers]\ncrons = [${Array.from({ length: 12 }, (_, i) => `"${i} * * * *"`).join(", ")}]\n`;
     const [c] = run("wrangler", input({ "wrangler.toml": toml }));
-    const settings = c.parts?.[0]?.settings ?? (c as unknown as { settings?: Record<string, string> }).settings ?? {};
+    const settings = c.settings ?? {};
     expect(settings.d1_database_ids?.split(",")).toEqual(ids.slice(0, 5));
     expect(settings.crons?.split(";")).toHaveLength(10);
     const { PROVIDERS } = await import("../src/hosting/registry");
