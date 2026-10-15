@@ -697,7 +697,7 @@ describe("Preview with sample data", () => {
     for (const key of HOSTING_SAMPLE_KEYS) {
       const html = tab(null, { sample: key, sampleData: HOSTING_SAMPLES[key] });
       expect(html, key).toContain(`data-org-hosting-sample="${key}"`);
-      expect(html, key).toContain("sample data");
+      expect(html, key).toContain("Sample data");
       expect(html, key).toContain('data-seg="org-hx-sample"');
       expect(html, key).toContain('data-act="orgHxSample" data-arg="off"');
       expect(html, key).toContain('data-org-group="hosting-providers"');

@@ -620,7 +620,7 @@ const INFO = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke
 /** While previewing: what is shown, which state, and the way back. */
 function sampleBar(h: HostingUi): string {
   return `<div data-org-hosting-sample="${attr(h.sample ?? "")}" style="display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin:0 0 18px;font-size:12.5px;color:var(--fg-55)">${INFO}
-    <span><span style="font-family:var(--label);font-size:11.5px;color:var(--fg);background:var(--hover);border:1px solid var(--border);border-radius:4px;padding:0 5px">sample data</span> &mdash; placeholder values, not this organization's. Nothing you do here is saved.</span>
+    <span><strong style="font-weight:600;color:var(--fg)">Sample data</strong> &mdash; placeholder values, not this organization's. Nothing you do here is saved.</span>
     ${segmented({ id: "org-hx-sample", ariaLabel: "Sample state", act: "orgHxSample", value: h.sample ?? "mixed", size: "xs", inertOn: true, options: HOSTING_SAMPLE_KEYS.map((k) => ({ value: k, label: SAMPLE_LABEL[k] })) })}
     <button type="button" data-act="orgHxSample" data-arg="off" data-field="orgHxSampleOff" class="cnpy-mutelink" style="margin-left:auto;padding:0;font-size:12.5px;font-weight:500;color:var(--accent);white-space:nowrap">Back to live data</button>
   </div>`;
