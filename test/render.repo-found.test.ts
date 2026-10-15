@@ -105,6 +105,10 @@ describe("the unseen card (R2) — scenario M", () => {
   it("unknown counts read \"—\", never 0", () => {
     const u = { ...f.unseen!, prs: { open: null, mergedThisMonth: null } };
     expect(unseenSees(u, NOW)[1]).toEqual(["Pull requests", "— open, — merged this month"]);
+    // Tags are unknown (null) until the capture keeps them (Phase F): "—", and no Latest tags list.
+    const noTags = { ...f.unseen!, tags: null };
+    expect(unseenSees(noTags, NOW)[0]).toEqual(["Tags", "—"]);
+    expect(text(unseenBlock({ ...f, unseen: noTags }, ctx(f)))).not.toMatch(/Latest tags/);
   });
 
   it("draws nothing where something was found (L) or apps exist", () => {
