@@ -24,6 +24,7 @@ import { LOGO_IMPORT_COST } from "../orgs/logo";
 import { CRON_SUBREQUEST_BUDGET, newBudget, serveJob, type Unit } from "./dispatch";
 import { reconcileRepo, reconcileRequests, type ReconcileResult } from "./github";
 import { SCAN_COST } from "./scan";
+import { PR_FILES_REQUESTS, PR_FILES_SYNC_REQUESTS } from "./pr-files";
 import { describeSources } from "./scan-store";
 import { HEALTH_ON_DEMAND_BUCKET_MS, pingHealth, pollSaplingMetrics } from "./poll";
 import { getSnapshot } from "./store";
@@ -178,12 +179,13 @@ export async function runEnvJob(env: Env, orgId: string, envKey: string, job: En
 /** What ONE org's on-demand refresh may spend on outbound `fetch` (D1 does not count) — `runRepoRefresh`'s ceiling.
  *  Trov runs on Workers Paid (1,000 subrequests an invocation; the cron budgets 900 — ./dispatch.ts); this was the
  *  free plan's 50 until repo setups' compares (the promotion chain, not shipped, out of step, releases) pushed a
- *  five-environment org past it. 100 keeps Poll now a tenth of the invocation's allowance and fits N ≤ 12. */
+ *  five-environment org past it. 100 keeps Poll now a tenth of the invocation's allowance and fits N ≤ 11. */
 export const SUBREQUEST_CAP = 100;
 /** `runRepoRefresh`'s worst case for N environments: health 2N + usage N + reconcile (`reconcileRequests`:
- *  16 + 2N + max(2, N) + 6 + 2 — the promotion chain and the facts arms (repo setups Phase B) and the releases
- *  arm (Phase F)). 36 for two; 96 at N = 12; 102 at N = 13. (An org on the GitHub App may spend one more, minting
- *  its installation token: 97 at N = 12, still inside the cap.) */
+ *  16 + 2N + max(2, N) + 6 + 2 + 9 — the promotion chain and the facts arms (repo setups Phase B), the releases
+ *  arm (Phase F) and the PR-files arm (Phase E, three PRs' 3 pages)). 45 for two; 99 at N = 11; 105 at N = 12.
+ *  (An org on the GitHub App may spend one more, minting its installation token: 100 at N = 11, still inside the
+ *  cap.) */
 export const refreshSubrequests = (n: number): number => 3 * n + reconcileRequests(n);
 /** The one fixed phrase `github.failed` carries when the arm was not run — and every hosting part's
  *  `detail` when the hosting arm was not. */
@@ -224,7 +226,10 @@ export async function runReconcileJob(env: Env, caller: TenantContext, now: numb
     if (opts.budgetSkip && refreshSubrequests(envs.length) > SUBREQUEST_CAP) return { written: 0, unchanged: 0, failed: [BUDGET_SKIP] };
     // The scan's connected hosts are resolved lazily — only when the tree changed (`describeSources`, D1 only).
     const scan = opts.scan === false ? undefined : { describe: () => describeSources(env, ctx, opts.fetchImpl, now) };
-    const res = await (opts.reconcile ?? reconcileRepo)(ctx, { token: gh.token.reveal(), repo: repo.repo, fetchImpl: gh.fetch(opts.fetchImpl) }, envs, now, scan);
+    // The PR-files arm's allowance: Poll now keeps `reconcileRequests`' own (inside `SUBREQUEST_CAP`); the cron's
+    // unit and Sync GitHub — the callers that scan — read up to ten PRs (`reconcileCost` counts the difference).
+    const limits = scan ? { prFiles: PR_FILES_SYNC_REQUESTS } : {};
+    const res = await (opts.reconcile ?? reconcileRepo)(ctx, { token: gh.token.reveal(), repo: repo.repo, fetchImpl: gh.fetch(opts.fetchImpl) }, envs, now, scan, limits);
     if (res.failed.length) console.error(`${label} reconcile: arms failed`, res.failed, `org=${ctx.orgId}`);
     // `failed` is arm NAMES — nothing an upstream wrote — so it is safe to keep as the last error.
     await gh.recordOutcome(res.failed.length ? { ok: false, message: `reconcile: arms failed: ${res.failed.join(", ")}`, revealed } : { ok: true }, now);
@@ -347,18 +352,18 @@ export async function runUsagePolls(env: Env, caller: TenantContext, now: number
  * THE CRON DOES NOT CALL THIS. `handleRepoCron` below spreads one heavy job per
  * tick; this function fits one invocation only because it leaves the unbounded
  * one out. The on-demand budget, counted from the code: health 2N + usage N +
- * reconcile (`reconcileRequests(N)`) = **`refreshSubrequests(N)`** subrequests — 36 for two environments,
- * and the free plan's 50 caps it at **N ≤ 4** (48; N = 5 is 54). Past that the
+ * reconcile (`reconcileRequests(N)`) = **`refreshSubrequests(N)`** subrequests — 45 for two environments,
+ * and `SUBREQUEST_CAP` (100) caps it at **N ≤ 11** (99; N = 12 is 105). Past that the
  * GITHUB arm is SKIPPED and says so (`BUDGET_SKIP`) rather than risk the whole
  * invocation dying half-way — health and usage (3N) still run. The formula is
  * the worst case on purpose: it does not discount an unconfigured poller.
  * The HOSTING arm costs Σ `pollCost` over the org's parts (each provider's
  * declared worst case; `DEFAULT_HOSTING_COST` = 5 when unusable), and runs
- * only when the WHOLE refresh still fits: refreshSubrequests(N) + 1 (a mint) + Σ pollCost ≤ 50.
+ * only when the WHOLE refresh still fits: refreshSubrequests(N) + 1 (a mint) + Σ pollCost ≤ `SUBREQUEST_CAP`.
  * GitHub keeps its reservation — its own check above is unchanged, so a
  * hosting part can never cost an org its reconcile — and otherwise EVERY part
  * reads `skipped` with `BUDGET_SKIP` (nothing is fetched). For two environments
- * that leaves 13 subrequests for hosting.
+ * that leaves 54 subrequests for hosting.
  *
  * Deliberately NOT here:
  *   `recomputeAllProgress`  UNBOUNDED — one request per issue number of every
@@ -486,9 +491,11 @@ export const USAGE_COST = 1;                                    // the app's met
 /** An installation token's mint: one POST, when the isolate holds no fresh one (src/github-app/api.ts). */
 export const GITHUB_MINT_COST = 1;
 /** `reconcileRepo`'s `reconcileRequests(N)` (16 + 2N + the promotion chain's max(2, N) + the facts arms' 6 + the
- *  releases arm's `RELEASES_RECONCILE_COST`) and its repo scan (`SCAN_COST`, src/repo/scan.ts), plus the org image's
+ *  releases arm's `RELEASES_RECONCILE_COST` + the PR-files arm's `PR_FILES_REQUESTS`, widened here to
+ *  `PR_FILES_SYNC_REQUESTS`) and its repo scan (`SCAN_COST`, src/repo/scan.ts), plus the org image's
  *  import that rides the same unit (`runOrgJob`) and a mint. */
-export const reconcileCost = (envs: number): number => reconcileRequests(envs) + SCAN_COST + LOGO_IMPORT_COST + GITHUB_MINT_COST;
+export const reconcileCost = (envs: number): number =>
+  reconcileRequests(envs) + (PR_FILES_SYNC_REQUESTS - PR_FILES_REQUESTS) + SCAN_COST + LOGO_IMPORT_COST + GITHUB_MINT_COST;
 /** `recomputeAllProgress` is UNBOUNDED (one request per issue number of every array-ref sprint), so
  *  this is an ESTIMATE for deciding whether another org may start; what a unit really spent is
  *  counted (`Budget.spent`), so one large org shortens the slice instead of overrunning it. */

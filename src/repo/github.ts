@@ -11,6 +11,7 @@ import { labelNames, metricsFromStatus, repoEventsFromDelivery } from "./capture
 import { reconcileReleases, RELEASES_RECONCILE_COST } from "./releases";
 import { ghGraphql, ghJson, ghJsonOrNull, scrubbedMessage, type GhOpts } from "./gh-http";
 import { FACTS_COMPARE_CAP, computeDriftChain, computeNotShipped, computeOutOfStep, driftCompares, factsBudget } from "./facts-compute";
+import { PR_FILES_REQUESTS, reconcilePrFiles } from "./pr-files";
 
 // The GitHub HTTP helpers live in ./gh-http.ts (so the facts arms, ./facts-compute.ts, can use them without an
 // import cycle); re-exported here for every existing caller.
@@ -121,21 +122,29 @@ const MAX_STATUSES_PER_CONTEXT = 10;
  * is its own `safely` block, named in `failed` when it throws.
  *
  * Worst case **`reconcileRequests(N)`** outbound requests for N environments
- * (30 for two): 2 PR lists + 1 pre-capture commit window + 1 workflow-run list +
+ * (39 for two): 2 PR lists + 1 pre-capture commit window + 1 workflow-run list +
  * ≤5 job lookups + 1 commit-status list + 1 GraphQL reviews + ≤5 GraphQL branch
  * pages + 2 per environment (head commit, head checks) — 16 + 2N — plus the
  * promotion chain's compares (`driftCompares(N)` = max(2, N): N − 1 steps and the
  * last step's behind side; it replaced the old ≤ 2 first↔last compares) and the
  * facts arms' shared `FACTS_COMPARE_CAP` (6: not shipped + out of step,
  * ./facts-compute.ts), and the `releases` arm's `RELEASES_RECONCILE_COST` (2: the releases list, the tags
- * query, src/repo/releases.ts). GitHub deployments are not read: an environment's deploys
+ * query, src/repo/releases.ts), and the `pr_files` arm's `PR_FILES_REQUESTS` (9: three PRs' 3 pages,
+ * src/repo/pr-files.ts — the cron and Sync GitHub widen it, `ReconcileLimits`). GitHub deployments are not read: an environment's deploys
  * come from its hosting provider (src/hosting/). The callers' budgets
  * (src/repo/cron.ts) build on this number. With `scan` (the cron's and Sync's reconcile, not Poll now),
  * + `SCAN_COST` (src/repo/scan.ts).
  */
-export const reconcileRequests = (n: number): number => 16 + 2 * n + driftCompares(n) + FACTS_COMPARE_CAP + RELEASES_RECONCILE_COST;
+export const reconcileRequests = (n: number): number => 16 + 2 * n + driftCompares(n) + FACTS_COMPARE_CAP + RELEASES_RECONCILE_COST + PR_FILES_REQUESTS;
 
-export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now(), scan?: ScanOpts): Promise<ReconcileResult> {
+/** What a caller may widen beyond Poll now's bound. */
+export interface ReconcileLimits {
+  /** The `pr_files` arm's request allowance (src/repo/pr-files.ts): `PR_FILES_REQUESTS` (counted in
+   *  `reconcileRequests`) unless the caller's budget says more — the cron and Sync GitHub pass `PR_FILES_SYNC_REQUESTS`. */
+  prFiles?: number;
+}
+
+export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now(), scan?: ScanOpts, limits: ReconcileLimits = {}): Promise<ReconcileResult> {
   const out: ReconcileResult = { written: 0, unchanged: 0, failed: [] };
   /** Every event goes through the SAME gate the webhook uses; a redelivery or a
    *  backfill overlap drops as `unchanged` on the UNIQUE semantic key. */
@@ -322,6 +331,15 @@ export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: Repo
   // are none — ≤ 2 requests (`RELEASES_RECONCILE_COST`), every row through the gate's release arm.
   await safely("releases", async () => {
     const r = await reconcileReleases(ctx, opts, now);
+    out.written += r.written;
+    out.unchanged += r.unchanged;
+  });
+
+  // PR files (Phase E, src/repo/pr-files.ts): the open PRs and those merged in 14 days whose files were never read
+  // for their head — only in a repository with two or more apps, a PR started only while its 3 pages still fit the
+  // allowance, every list through the gate's PR-files arm. After the PR lists above, so a new head is seen.
+  await safely("pr_files", async () => {
+    const r = await reconcilePrFiles(ctx, opts, now, limits.prFiles ?? PR_FILES_REQUESTS);
     out.written += r.written;
     out.unchanged += r.unchanged;
   });

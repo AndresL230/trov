@@ -101,6 +101,9 @@ export interface NotShippedEntry {
   oldestAt: string | null;
   groups: FactsCommitGroup[];
   computedAt: string;
+  /** Phase E: the full shas of the kept commits whose paths were UNKNOWN (in a repository with two or more apps) —
+   *  the arm computes the part again, at no GitHub cost to find out, once one of them has paths. Absent = none. */
+  unknown?: string[];
 }
 export interface NotShippedSnapshot { parts: Record<string, NotShippedEntry> }
 export const notShippedKey = (env: string, app: string): string => `${env}/${app}`;

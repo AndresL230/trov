@@ -144,6 +144,9 @@ export interface FactsCommitGroup {
   commits: FactsCommit[];
   /** Commits in the group beyond what was returned (a compare's 250 cap). */
   more: number;
+  /** Phase E: commits in the group whose changed files are not known (a multi-app repository's not shipped keeps
+   *  them IN — counted, never dropped by the watch-path filter). Absent = none. */
+  pathsUnknown?: number;
 }
 
 /** What is merged on an environment's branch and not serving, for one app (watch paths applied). */

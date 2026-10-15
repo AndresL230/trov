@@ -11,6 +11,7 @@ import {
   PRODUCT_GLOB_SQL, PRODUCT_HOURLY_RETENTION_DAYS, USAGE_GLOB_SQL, USAGE_RETENTION_DAYS,
 } from "../repo/store";
 import { SYNC_RUN_RETENTION_DAYS } from "@shared/sync";
+import { COMMIT_PATHS_RETENTION_DAYS } from "../repo/commit-paths";
 
 /** Every pending handoff, in any org, past its `expires_at` flips to expired. Returns how many flipped. */
 export async function expireDueHandoffs(p: PlatformContext, nowMs: number): Promise<number> {
@@ -53,4 +54,11 @@ export async function pruneRepoCapture(p: PlatformContext, now: number): Promise
   // The hosting providers' deploy rows, by the provider's own creation instant. `hosting_poll_state` is
   // one row per part — it never grows, so it has no rule.
   await run(p, `DELETE FROM hosting_deploys WHERE created_at < ?`, new Date(now - HOSTING_DEPLOY_RETENTION_DAYS * DAY).toISOString());
+  // Which files a commit / a PR touched (0073_commit_paths, Repo setups Phase E): a commit's by its own instant, a
+  // PR's with its read — both 100 days (`COMMIT_PATHS_RETENTION_DAYS`). A PR still open past that is read again by
+  // reconcile (no read row = never read). Its files first, while the read row still names them.
+  const pathsCutoff = new Date(now - COMMIT_PATHS_RETENTION_DAYS * DAY).toISOString();
+  await run(p, `DELETE FROM commit_paths WHERE at < ?`, pathsCutoff);
+  await run(p, `DELETE FROM pr_files WHERE (org_id, repo, number) IN (SELECT org_id, repo, number FROM pr_file_reads WHERE fetched_at < ?)`, pathsCutoff);
+  await run(p, `DELETE FROM pr_file_reads WHERE fetched_at < ?`, pathsCutoff);
 }
