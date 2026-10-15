@@ -78,12 +78,12 @@ const bodies = () => all<{ idempotency_key: string; to_address: string; subject:
 const kindsOf = (row: NotificationOutboxRow) => JSON.parse(row.kinds) as string[];
 
 describe("registry entry", () => {
-  it("is the fourth kind, with the brief's label, description and defaults", () => {
-    expect(REGISTRY.map((k) => k.id)).toEqual(["my_work", "review_queue", "roadmap_plan", "ticketq"]);
+  it("is the last kind (Phase E: a queue's one line), with its label, description and defaults", () => {
+    expect(REGISTRY.map((k) => k.id)).toEqual(["my_work", "week_recap", "review_queue", "roadmap_plan", "ticketq"]);
     expect(kind()).toMatchObject({
       id: "ticketq",
-      label: "Ticket queue",
-      description: "New and unassigned tickets across the org.",
+      label: "Tickets",
+      description: "One line: tickets nobody has picked up, and how many are yours.",
       defaultCadence: "daily",
       allowedCadences: ["daily", "weekly", "off"],
     });
@@ -113,67 +113,28 @@ describe("ticketq renderer", () => {
     expect(await kind().render(systemCtx(), LOGIN, WINDOW)).toBeNull();
   });
 
-  it("lists submitted tickets with no assignees, newest first — not an in_progress one, not an assigned one", async () => {
-    const older = await file("Older unassigned ask", { at: "2026-09-08T12:00:00Z", category: "request", priority: "high" });
-    const newest = await file("Newest unassigned ask", { at: "2026-09-10T12:00:00Z", category: "access" });
+  it("ONE line (Phase E): counts submitted native tickets with no assignee — not an in_progress one, not an assigned one, not a mirrored one", async () => {
+    await file("Older unassigned ask", { at: "2026-09-08T12:00:00Z", category: "request", priority: "high" });
+    await file("Newest unassigned ask", { at: "2026-09-10T12:00:00Z", category: "access" });
     const started = await file("Unassigned but started", { at: "2026-09-09T12:00:00Z" });
     await transition_ticket(systemCtx(), started, "in_progress", LOGIN); // still nobody on it — only the status differs
     await file("Submitted but assigned", { assignees: [OTHER], at: "2026-09-09T12:00:00Z" });
+    const mirrored = await file("Mirrored from GitHub", { at: "2026-09-09T12:00:00Z" });
+    await run(env.DB, `UPDATE tickets SET source = 'github' WHERE id = ?`, mirrored);
 
     const before = await tableCounts();
-    // Rendered for a recipient with nothing assigned, so this half stands alone.
     const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
     expect(await tableCounts()).toEqual(before); // pure read
 
-    expect(s).not.toBeNull();
-    expect(s.heading).toBe("Ticket queue");
-    expect(s.deepLink).toBe("/#tickets");
-    expect(s.linkLabel).toBe("Tickets");
-    expect(s.summary).toBe("2 tickets unassigned");
-
-    expect(s.html).toContain("Newest unassigned ask");
-    expect(s.html).toContain("Older unassigned ask");
-    expect(s.html).not.toContain("Unassigned but started"); // in_progress is not "new"
-    expect(s.html).not.toContain("Submitted but assigned"); // somebody already has it
-    // newest created_at first
-    expect(s.html.indexOf("Newest unassigned ask")).toBeLessThan(s.html.indexOf("Older unassigned ask"));
-
-    // each line carries category, priority, requester and age
-    expect(s.html).toContain("request");
-    expect(s.html).toContain("High priority");
-    expect(s.html).not.toContain("data-chip"); // priority is words, never a chip
-    expect(s.html).toContain("Meilin Zhao"); // the requester, by name
-    expect(s.html).toContain("3d"); // 2026-09-08 → window end 2026-09-11
-    expect(s.text).toContain("Older unassigned ask");
-    expect(s.text).toContain("Meilin Zhao");
-
-    // NO numeric id, in either alternative: a ticket's id is an internal D1 key.
-    // (The HTML carries `#rrggbb` CSS colors, so this checks the ids themselves.)
-    for (const id of [older, newest]) {
-      expect(s.html).not.toContain(`#${id} `);
-      expect(s.html).not.toContain(`#${id}&`);
-      expect(s.text).not.toContain(`#${id}`);
-    }
-    expect(s.html).not.toContain("&middot; opened");   // the id used to lead this footer
-    expect(s.text).not.toMatch(/#\d/);                 // the text ledger has no CSS at all
+    expect(s).toMatchObject({ heading: "Tickets", layout: "line", deepLink: "/#tickets", linkLabel: "Tickets" });
+    expect(s.text).toBe("Tickets: 2 waiting for someone");
+    expect(s.html).toBe("2 waiting for someone");
+    // No titles, no rows: the per-ticket list of the old digest is gone.
+    expect(s.html).not.toContain("Newest unassigned ask");
+    expect(s.text).not.toContain("Older unassigned ask");
   });
 
-  it("lists at most 5 unassigned tickets and counts the rest as '+N more waiting in Tickets'", async () => {
-    // TOP = 5: a digest is a nudge, not the queue. The cap and the overflow line
-    // are the contract — without the line the reader would think the org has 5.
-    for (let i = 1; i <= 6; i++) await file(`Unassigned ${i}`, { at: `2026-09-0${i}T12:00:00Z` });
-
-    const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.summary).toBe("6 tickets unassigned");
-    // newest first, so 6 … 2 are shown and the OLDEST (1) is the one that rolls up
-    for (const i of [6, 5, 4, 3, 2]) expect(s.html).toContain(`Unassigned ${i}`);
-    expect(s.html).not.toContain("Unassigned 1<");
-    expect(s.html).toContain("+1 more waiting in Tickets");
-    expect(s.text).toContain("+1 more waiting in Tickets");
-    expect(s.text.split("\n").filter((l) => l.includes("unassigned  ")).length).toBe(5);
-  });
-
-  it("lists the recipient's open assigned tickets with status and sprint, omitting closed ones and other people's", async () => {
+  it("counts the recipient's open NATIVE assigned tickets — not done or declined ones, not other people's", async () => {
     const sprint = (await create_sprint(systemCtx(), SprintCreate.parse({ label: "Queue hardening" }), LOGIN)).id;
     await file("Mine, in progress", { assignees: [LOGIN], sprint_id: sprint, at: "2026-09-10T12:00:00Z" }).then((id) =>
       transition_ticket(systemCtx(), id, "in_progress", LOGIN)
@@ -187,32 +148,22 @@ describe("ticketq renderer", () => {
     await file("Luke's ticket", { assignees: [OTHER] });
 
     const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s).not.toBeNull();
-    expect(s.html).toContain("Mine, in progress");
-    expect(s.html).toContain("Mine, submitted");
-    expect(s.html).not.toContain("Mine, declined");
-    expect(s.html).not.toContain("Mine, done");
-    expect(s.html).not.toContain("Luke&#39;s ticket");
-    expect(s.html).not.toContain("Luke's ticket");
-
-    expect(s.html).toContain("In progress"); // the status pill's label text
-    expect(s.html).toContain("Queue hardening"); // the sprint label
-    expect(s.summary).toBe("2 tickets assigned to you");
-    expect(s.text).toContain("Mine, submitted");
+    expect(s.text).toBe("Tickets: 2 assigned to you");
   });
 
-  it("summarises both halves in one line, singular included", async () => {
+  it("joins both halves in one line; a zero half is left out", async () => {
     await file("Nobody has this", { at: "2026-09-10T12:00:00Z" });
     await file("I have this", { assignees: [LOGIN], at: "2026-09-10T12:00:00Z" });
     const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.summary).toBe("1 ticket unassigned · 1 assigned to you");
+    expect(s.text).toBe("Tickets: 1 waiting for someone, 1 assigned to you");
+    expect((await kind().render(systemCtx(), OTHER, WINDOW))!.text).toBe("Tickets: 1 waiting for someone");
   });
 
-  it("escapes HTML in a ticket title", async () => {
+  it("never carries a ticket's title, so a hostile title cannot reach the mail", async () => {
     await file(`<img src=x onerror=alert(1)>`);
     const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.html).not.toContain("<img src=x");
-    expect(s.html).toContain("&lt;img src=x");
+    expect(s.html).not.toContain("<img");
+    expect(s.html).not.toContain("&lt;img");
   });
 });
 
@@ -233,9 +184,8 @@ describe("runDigest with ticketq", () => {
 
     const b = await bodies();
     expect(b).toHaveLength(1);
-    expect(b[0].html).toContain("Ticket queue");
-    expect(b[0].html).toContain("Projector in room 3 is dead");
-    expect(b[0].text).toContain("Projector in room 3 is dead");
+    expect(b[0].html).toContain("Tickets:</span> 1 waiting for someone");
+    expect(b[0].text).toContain("Tickets: 1 waiting for someone -> /#tickets");
   });
 
   it("a run where every kind renders null writes a skipped row and no body", async () => {
@@ -263,7 +213,7 @@ describe("runDigest with ticketq", () => {
     expect(kindsOf(weekly)).toContain("ticketq");
     expect(weekly.status).toBe("sent");
     const b = (await bodies()).find((x) => x.idempotency_key === weekly.idempotency_key)!;
-    expect(b.text).toContain("Badge reader at the side door");
+    expect(b.text).toContain("Tickets: 1 waiting for someone");
   });
 });
 
@@ -275,8 +225,8 @@ describe("policy + prefs surfaces", () => {
     const view = (await res.json()) as { kinds: { id: string; label: string; description: string; registryDefault: string; enabled: boolean; default_cadence: string; allowedCadences: string[] }[] };
     expect(view.kinds.map((k) => k.id)).toContain("ticketq");
     expect(view.kinds.find((k) => k.id === "ticketq")).toMatchObject({
-      label: "Ticket queue",
-      description: "New and unassigned tickets across the org.",
+      label: "Tickets",
+      description: "One line: tickets nobody has picked up, and how many are yours.",
       registryDefault: "daily",
       default_cadence: "daily",
       enabled: true,

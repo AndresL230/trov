@@ -1,106 +1,87 @@
-// Canned sections for the admin preview / test send when the store has nothing
-// to say (a fresh org, a quiet window). Built on the same card/row/chip helpers
-// as the live renderers so the full layout is visible. Clearly marked as sample.
-import type { Section } from "@shared/notifications";
-import { EMAIL_STYLE as S, EMAIL_CARD as K, EMAIL_SPACE as SP, EMAIL_FONT, THEME } from "./assemble";
+// The preview fixtures (Phase E): canned digests for the admin preview (`GET …/notifications/preview?sample=<name>`)
+// and the sample test send, so every shape of the shorter e-mail can be seen on localhost without a busy org or a
+// model. Built with the REAL renderers' pure halves (`renderBrief`, `renderWeek`, `queueLine`) over sample content —
+// the same markup a real run produces. Every one is marked as sample data in its words.
+import type { RunCadence, Section } from "@shared/notifications";
+import type { AiLine } from "@shared/ai";
+import { renderBrief, type BriefContent } from "./renderers/my-work";
+import { renderWeek } from "./renderers/week-recap";
+import { appHref, queueLine } from "./assemble";
 
-const pr = (n: number, title: string, what: string, why: string | null, impact: string | null, first = false) =>
-  K.item({
-    title, number: n, url: `https://github.com/SaplingLearn/sapling/pull/${n}`,
-    rows: [K.row("What changed", K.prose(what)), ...(why ? [K.row("Why", K.prose(why))] : []), ...(impact ? [K.row("Impact", K.prose(impact))] : [])],
-    footer: `${K.mark("Merged", "green")}<span style="padding-left:8px;">into <span style="${EMAIL_FONT.label}">main</span></span>`,
-    first,
-  });
-const issue = (n: number, title: string, summary: string, sprint: string | null, next: string | null, prio: string | null, labels: string[], first = false) =>
-  K.item({
-    title, number: n, url: `https://github.com/SaplingLearn/sapling/issues/${n}`,
-    rows: [K.row("Summary", K.prose(summary)), ...(sprint ? [K.row("Sprint", sprint)] : []), ...(next ? [K.row("Next step", K.prose(next), "accent")] : [])],
-    footer: [prio ? K.mark(prio, "amber") : "", labels.map((l) => `<span>${l}</span>`).join(" &middot; ")].filter(Boolean).join(`<span style="padding-left:10px;"></span>`) || undefined,
-    first,
-  });
-const review = (kind: "proposal" | "decision", title: string, summary: string, meta: string, low = false, first = false) =>
-  `<tr><td style="padding:${first ? 0 : SP.m - SP.xs}px 0 ${SP.m - SP.xs}px 0;${first ? "" : `border-top:1px solid ${THEME.border.light};`}">` +
-  `<div><span style="${S.muted}">${kind === "proposal" ? "Proposal" : "Decision"}</span><span style="${S.body}font-weight:500;padding-left:8px;">${title}</span>${low ? `<span style="padding-left:10px;">${K.mark("Low confidence", "amber")}</span>` : ""}</div>` +
-  `<div style="${S.muted}padding-top:${SP.xs}px;">${summary}</div><div style="${S.muted}font-size:12px;line-height:16px;padding-top:${SP.xs}px;">${meta}</div></td></tr>`;
-/** A ticketq card, mirroring renderers/ticket-queue.ts's two halves exactly. */
-const unassigned = (title: string, category: string, prio: string, requester: string, old: string, first = false) =>
-  K.item({
-    title, number: null, url: null,
-    rows: [K.row("Category", category), K.row("Requester", requester)],
-    footer: `${prio}<span style="padding-left:10px;">opened ${old} ago</span>`,
-    first,
-  });
-const assigned = (title: string, status: string, tone: "accent" | "amber" | "muted", prio: string, sprint: string, updated: string, first = false) =>
-  K.item({
-    title, number: null, url: null,
-    rows: [K.row("Sprint", sprint)],
-    footer: `${K.mark(status, tone)}<span style="padding-left:10px;">${prio}</span><span style="padding-left:10px;">updated ${updated} ago</span>`,
-    first,
-  });
-const plan = (label: "added" | "changed" | "reordered" | "done", t: string) =>
-  `<tr><td width="96" style="vertical-align:top;padding:${SP.xs}px 8px ${SP.xs}px 0;">${K.mark(label.charAt(0).toUpperCase() + label.slice(1), { added: "green", changed: "blue", reordered: "muted", done: "accent" }[label] as "green" | "blue" | "muted" | "accent")}</td><td style="${S.body}">${t}</td></tr>`;
+export const SAMPLE_SCENARIOS = ["daily-ai", "daily-off", "daily-empty", "weekly-ai", "weekly-off", "only-when-needed"] as const;
+export type SampleScenario = (typeof SAMPLE_SCENARIOS)[number];
+export const isSampleScenario = (v: unknown): v is SampleScenario => typeof v === "string" && (SAMPLE_SCENARIOS as readonly string[]).includes(v);
 
+/** What each fixture shows, for the preview's index. */
+export const SAMPLE_LABEL: Record<SampleScenario, string> = {
+  "daily-ai": "Daily, AI on: the brief's Now and Next, Also, and the queue lines",
+  "daily-off": "Daily, AI off: the 3 most recent assigned tickets in plain words, and the queue lines",
+  "daily-empty": "Daily with almost nothing: every empty section left out — one line",
+  "weekly-ai": "Weekly, AI on: the brief, This week's cited highlights and the numbers line",
+  "weekly-off": "Weekly, AI off: the assigned tickets and the numbers line",
+  "only-when-needed": "\"Only when something needs me\" with nothing that does: not sent",
+};
+
+const GH = "https://github.com/AndresL230/trov";
+
+const BRIEF_AI: BriefContent = {
+  source: "brief",
+  now: "You have the hosting providers pull request #171 open, and its Netlify preview test is failing. (Sample data.)",
+  next: [
+    { title: "Netlify test failing", href: `${GH}/actions/runs/4812`, line: "It is failing on your pull request #171, so it cannot merge." },
+    { title: "Poll Vercel deploys", href: appHref("#tickets/41"), line: "Its sprint, Hosting, is due Friday." },
+    { title: "Review the hosting docs page", href: appHref("#handoffs/7"), line: "Luke left it for you." },
+  ],
+  nextTotal: 4,
+  also: [
+    { title: "Repository setups", href: `${GH}/pull/172`, importance: "breaking", at: "2026-09-11T08:00:00Z" },
+    { title: "Hosting deploys now poll every hour", href: appHref("#feed"), importance: "notable", at: "2026-09-11T06:00:00Z" },
+  ],
+};
+
+const BRIEF_OFF: BriefContent = {
+  source: "assigned",
+  now: null,
+  next: [
+    { title: "Netlify test failing (sample)", href: appHref("#tickets/40"), line: "In progress, in the Hosting sprint" },
+    { title: "Poll Vercel deploys (sample)", href: appHref("#tickets/41"), line: "Not started, in the Hosting sprint, high priority" },
+    { title: "Hosting docs page (sample)", href: appHref("#tickets/42"), line: "Not started" },
+  ],
+  nextTotal: 3,
+  also: [],
+};
+
+const HIGHLIGHTS: AiLine[] = [
+  { text: "Repository setups shipped: each repository now names its environments and the branch each one deploys. (Sample data.)", cites: [{ ref: "pr:172", label: "#172", href: `${GH}/pull/172` }] },
+  { text: "Netlify and Vercel joined Cloudflare as hosting providers, with deploys polled every hour.", cites: [{ ref: "pr:171", label: "#171", href: `${GH}/pull/171` }, { ref: "feed:118", label: "Hosting deploys now poll every hour", href: "#feed" }] },
+  { text: "The Hosting sprint's provider connection card and deploy list are done.", cites: [{ ref: "ticket:38", label: "#38", href: "#tickets/38" }, { ref: "ticket:39", label: "#39", href: "#tickets/39" }] },
+];
+
+const REVIEW = queueLine({ label: "Review", rest: "2 waiting, 1 changes a decision", deepLink: "/#review", linkLabel: "Review" });
+const REVIEW_OFF = queueLine({ label: "Review", rest: "2 waiting", deepLink: "/#review", linkLabel: "Review" });
+const SPRINT = queueLine({ label: "Sprint", rest: "Hosting, due Fri, 2 of 5 done", deepLink: "/#roadmap", linkLabel: "Roadmap" });
+const TICKETS = queueLine({ label: "Tickets", rest: "2 waiting for someone, 3 assigned to you", deepLink: "/#tickets", linkLabel: "Tickets" });
+const NUMBERS = "12 pull requests merged, 4 tickets done, 9 entries in the Feed";
+
+const must = (s: Section | null): Section[] => (s ? [s] : []);
+
+/** One fixture: its cadence and sections — or `skipped`, what a run does instead of sending. */
+export function sampleDigest(scenario: SampleScenario): { cadence: RunCadence; sections: Section[]; skipped?: string } {
+  switch (scenario) {
+    case "daily-ai": return { cadence: "daily", sections: [...must(renderBrief(BRIEF_AI)), REVIEW, TICKETS] };
+    case "daily-off": return { cadence: "daily", sections: [...must(renderBrief(BRIEF_OFF)), REVIEW_OFF, TICKETS] };
+    case "daily-empty": return { cadence: "daily", sections: [queueLine({ label: "Tickets", rest: "1 waiting for someone", deepLink: "/#tickets", linkLabel: "Tickets" })] };
+    case "weekly-ai": return { cadence: "weekly", sections: [...must(renderBrief({ ...BRIEF_AI, also: [] })), ...must(renderWeek(HIGHLIGHTS, NUMBERS)), SPRINT] };
+    case "weekly-off": return { cadence: "weekly", sections: [...must(renderBrief(BRIEF_OFF)), ...must(renderWeek([], NUMBERS)), SPRINT] };
+    case "only-when-needed": return {
+      cadence: "daily",
+      sections: [REVIEW_OFF],
+      skipped: "This person chose \"Only when something needs me\": their brief has no Next item and nothing notable or breaking touched their work, so the run marks them skipped and sends nothing (the Review line alone is not enough).",
+    };
+  }
+}
+
+/** The sample sections the sample test send mails (the daily, AI on). */
 export function sampleSections(): Section[] {
-  return [
-    {
-      heading: "My Work",
-      summary: "2 PRs merged · 2 assigned issues open (sample data)",
-      linkLabel: "My Work",
-      deepLink: "/#mywork",
-      html:
-        `<div style="${S.label}padding-top:${SP.l}px;padding-bottom:${SP.s}px;">MERGED</div>` +
-        pr(142, "Constant-time MCP token comparison", "Bearer tokens are now compared with `timingSafeEqual` instead of `===`, and the hash lookup no longer short-circuits on length.", "A timing side-channel could leak how many leading bytes of a token matched.", "Token checks take the same time whether or not a token is valid. No change for callers.", true) +
-        pr(139, "GitHub org-membership check on sign-in", "The OAuth callback now calls `GET /user/memberships/orgs/SaplingLearn` and rejects anyone who is not an active member.", null, "Non-members land on the “not a member” screen instead of an empty app.") +
-        `<div style="${S.label}padding-top:${SP.l}px;padding-bottom:${SP.s}px;">OPEN &amp; ASSIGNED</div>` +
-        issue(175, "Audit retention + compaction policy", "Decide how long raw webhook payloads are kept and when they compact into summaries.", "Sprint 12 <span style=\"font-size:11.5px;\">&middot; due Sep 20</span>", "Draft the retention table for the ADR and get it in front of the team.", "P1", ["policy", "storage"], true) +
-        issue(227, "Progress bar from closed/total", "Sprint cards should show progress from the stored closed/total counts, never a live GitHub call.", null, "Wire `sprint_progress` into the roadmap card.", null, ["roadmap"]),
-      text: "  merged  #142  Constant-time MCP token comparison\n                What changed: Bearer tokens are now compared with timingSafeEqual instead of ===.\n  merged  #139  GitHub org-membership check on sign-in\n  open    #175  [P1] Audit retention + compaction policy\n                Next step: Draft the retention table for the ADR and get it in front of the team.\n  open    #227  Progress bar from closed/total\n                Next step: Wire sprint_progress into the roadmap card.",
-    },
-    {
-      heading: "Review queue",
-      summary: "2 proposals, 1 decision waiting on review (sample data)",
-      linkLabel: "Review",
-      deepLink: "/#review",
-      html:
-        `<table ${S.table} style="margin-top:${SP.m}px;">` +
-        review("proposal", "Reference / MCP Server", "Clarify token rotation and what happens to sessions on revoke.", "by mei · high confidence", false, true) +
-        review("proposal", "Context / Glossary", "Promoted vs staged definitions.", "by sana · low confidence", true) +
-        review("decision", "ADR-003 — Agent write contract", "ready to ratify", "by dev") +
-        `</table>`,
-      text: "  proposal  Reference / MCP Server — Clarify token rotation (by mei · high confidence)\n  proposal  Context / Glossary — Promoted vs staged definitions (by sana · low confidence, LOW CONFIDENCE)\n  decision  ADR-003 — Agent write contract — ready to ratify (by dev)",
-    },
-    {
-      heading: "Roadmap plan changes",
-      summary: "4 plan changes this week (sample data)",
-      linkLabel: "Roadmap",
-      deepLink: "/#roadmap",
-      html:
-        `<table ${S.table} style="margin-top:${SP.m}px;">` +
-        plan("added", "Self-host &amp; deploy guide — targeting Sep 20") +
-        plan("changed", "Semantic search ranking — target moved Jul 4 → Jul 18") +
-        plan("reordered", "Multi-agent session attribution now ahead of Self-host &amp; deploy guide") +
-        plan("done", "Docs handbook + diagram rendering — confirmed complete") +
-        `</table>`,
-      text: "  added      Self-host & deploy guide — targeting Sep 20\n  changed    Semantic search ranking — target moved Jul 4 -> Jul 18\n  reordered  Multi-agent session attribution now ahead of Self-host & deploy guide\n  done       Docs handbook + diagram rendering — confirmed complete",
-    },
-    {
-      heading: "Ticket queue",
-      summary: "2 tickets unassigned · 1 assigned to you (sample data)",
-      linkLabel: "Tickets",
-      deepLink: "/#tickets",
-      html:
-        `<div style="${S.label}padding-top:${SP.l}px;padding-bottom:${SP.s}px;">UNASSIGNED</div>` +
-        unassigned("Gradebook export comes back empty", "bug", "High priority", "Meilin Zhao", "3h", true) +
-        unassigned("Access to the staging analytics dashboard", "access", "Normal priority", "Sana Okafor", "2d") +
-        `<div style="${S.label}padding-top:${SP.l}px;padding-bottom:${SP.s}px;">ASSIGNED TO YOU</div>` +
-        assigned("Roster import drops middle names", "In progress", "accent", "Normal priority", "Ticket queue", "6h", true),
-      text:
-        "  unassigned  #214  Gradebook export comes back empty\n" +
-        "                    bug · high · filed by Meilin Zhao · 3h old\n" +
-        "  unassigned  #211  Access to the staging analytics dashboard\n" +
-        "                    access · normal · filed by Sana Okafor · 2d old\n" +
-        "  assigned    #207  Roster import drops middle names\n" +
-        "                    In progress · Ticket queue",
-    },
-  ];
+  return sampleDigest("daily-ai").sections;
 }

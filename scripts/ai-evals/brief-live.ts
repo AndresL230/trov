@@ -6,7 +6,8 @@
 //
 // NEVER part of the suite, and it spends real money (about $0.001 a case). Run by hand:
 //   npx esbuild scripts/ai-evals/brief-live.ts --bundle --platform=node --format=esm --packages=external \
-//     --outfile=<scratch>/brief-live.mjs && ANTHROPIC_API_KEY=… node <scratch>/brief-live.mjs
+//     --alias:@shared=./shared --outfile=.brief-live.tmp.mjs && ANTHROPIC_API_KEY=… node .brief-live.tmp.mjs; rm .brief-live.tmp.mjs
+// (the bundle sits in the repository so its external packages resolve from node_modules)
 // The key comes from the environment only; nothing here prints or stores it.
 import { writeFileSync } from "node:fs";
 import { providerFor, type AiUsage } from "../../src/ai/client";

@@ -197,6 +197,7 @@ function personStmts(p: PlatformContext, h: string, tomb: string, a: { logins: s
     stmt(p, `DELETE FROM notification_outbox_bodies WHERE idempotency_key IN (SELECT idempotency_key FROM notification_outbox WHERE user_id = ? COLLATE NOCASE)`, h),
     stmt(p, `DELETE FROM notification_outbox WHERE user_id = ? COLLATE NOCASE`, h),
     stmt(p, `DELETE FROM notification_prefs WHERE user_id = ? COLLATE NOCASE`, h),
+    stmt(p, `DELETE FROM notification_person_prefs WHERE user_id = ? COLLATE NOCASE`, h), // 0067: "only when something needs me"
     // Ask Trov (0066_ask): their threads, in every org, with everything that hangs off them, and their settings.
     // (The artifacts a thread carried or saved stay in the library, as every artifact of theirs does.)
     stmt(p, `DELETE FROM chat_actions WHERE thread_id IN (SELECT id FROM chat_threads WHERE handle = ? COLLATE NOCASE)`, h),

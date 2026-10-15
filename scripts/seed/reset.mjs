@@ -143,6 +143,8 @@ export const RESET_STATEMENTS = [
   "DELETE FROM notification_outbox_bodies",
   "DELETE FROM notification_outbox",
   "DELETE FROM notification_prefs",
+  "DELETE FROM notification_person_prefs", // 0067_digest_email
+  "DELETE FROM digest_highlights", // 0067_digest_email
   "DELETE FROM notification_policy",
   "DELETE FROM notification_settings WHERE org_id <> 'org_saplinglearn'",
   "INSERT OR IGNORE INTO notification_settings (org_id, send_hour, timezone, from_address) VALUES ('org_saplinglearn', 8, 'America/New_York', 'Trov <hello@trov.dev>')",

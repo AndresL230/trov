@@ -200,14 +200,15 @@ export const RELEASES: Release[] = [
     title: "Trov writes for you",
     headline: "Trov reads what your team captures and writes the short version: your brief, where the repo stands, and what each session shipped.",
     highlights: [
-      "Claiming a handoff now lists what to read first: the docs, decisions, feed entries and artifacts that match what the handoff is about. It says plainly that the list is not complete.",
-      "My Work's Queued handoffs has Claim & copy: one press claims the newest handoff and copies it as a prompt for a fresh session. The date sits at the top right, and Needs your review says its count once.",
+      "My Work's Queued handoffs has Claim & copy: one press claims the newest handoff and copies it as a prompt for a fresh session, and claiming one lists what to read first (the docs, decisions, feed entries and artifacts that match it; it says plainly the list is not complete). The date sits at the top right, and Needs your review says its count once.",
       "Trov writes the Feed's record of what shipped: about 45 minutes after your last push, it reads your commits and merged pull requests and writes one short entry for you, with links to its sources. Press Wrong? on one to hide it.",
       "Repo › Overview opens with where the repository stands: what shipped recently, what is in flight and what needs attention, kept current by Trov from merges, sessions, CI and every host's deploys.",
+      "Digest e-mails are shorter and lead with your brief: what you are in the middle of and the next three things, then at most three notable or breaking changes that touched your work, then one line per queue. The weekly adds \"This week\": up to three highlights of the team's week, each with its sources, and the week's numbers. Settings › Email notifications has a new switch, \"Only when something needs me\".",
       "Tickets, the Feed and Artifacts can be filtered in your own words: type \"my open high-priority bugs\" and Trov sets the screen's filters for you. You see each one in the Filter menu, change any of them, or press Undo. When part of what you asked is not a filter there, it says so.",
       "With your organization's AI on, Trov suggests a new ticket's category and priority, and points out when it looks like the same request as another ticket. It also suggests where an unplaced doc belongs, and marks a Review item that changes a decision, contradicts a doc or changes a process. Each suggestion shows the words it is based on; you accept or dismiss it, and accepting a duplicate only links the two tickets.",
     ],
     headsUp: [
+      "Digests no longer list each merged pull request with What / Why / Impact, each assigned issue with its labels, or the whole plan change: My Work, the Feed and the Roadmap hold those. With Trov's AI off, the digest lists your three most recently updated assigned tickets instead of the brief.",
       "Org settings has an AI tab: whether Trov's AI is on for your organization, this month's use of each AI allowance, and exactly what is sent to Anthropic and to TypeSafe AI, and what never is. An admin turns it on or off; off stops Sift too.",
       "Turning Trov's AI off now also stops the summaries of new pull requests and issues, from GitHub and from Sync. Summaries already written stay as they are, and the next Sync after it is back on catches up.",
     ],
@@ -223,6 +224,7 @@ export const RELEASES: Release[] = [
       "From this deploy the AI pass runs Phase C's Jev cards (ticket category / priority / duplicate, Review risk, Unplaced destination) for organizations with AI on, when `TYPESAFE_API_KEY` is set: Jev requests count against `jev_checks`. No migration.",
       "Apply `0063_person_brief` (the deploy does it). ADDITIVE: the `person_brief` table (each member's last 5 briefs, written by the AI pass) and `memberships.mywork_opened_at` (NULL for everyone until they next open My Work). Safe on the Worker from before it; the by-hand rollback is in the migration's header and loses only stored briefs and those timestamps.",
       "Apply `0065_org_insights` (the deploy does it). ADDITIVE: the `org_insights` table (the Roadmap's sprint notes and drift line, the last 10 per key; in `ORG_TABLES`). Nothing writes it until the AI pass runs with `ANTHROPIC_API_KEY` set; doc drift also needs `TYPESAFE_API_KEY` (without Jev it is skipped, never guessed) (#178)",
+      "Apply `0067_digest_email` (the deploy does it). ADDITIVE: two tenant tables — `notification_person_prefs` (a member's \"Only when something needs me\"; no row = off) and `digest_highlights` (the weekly's \"This week\", written by the AI pass's `digest.week` job through the Batch API). Nothing existing changes; the by-hand rollback is in the file's header. No new secret: the weekly job runs on the existing `ANTHROPIC_API_KEY` and each org's AI switch.",
     ],
     patches: {
       added: [
@@ -290,9 +292,15 @@ export const RELEASES: Release[] = [
         "The Roadmap's AI pieces (`web/src/roadmap-ai.ts`, over the AI kit): the forecast and the note on each active sprint card, the drift line under the narrative, and an admin's suggestion cards (Accept / Dismiss) above it; each renders nothing when its field is absent (#178)",
         "The Roadmap's AI pieces move like the rest of the app: the cards and the drift rise with the screen, and a card you accept or dismiss — or a note or the drift you mark Wrong? — leaves by the AI kit's one exit (#178)",
         "Evals (`test/ai-evals/gate.drift`, `doc.drift`, `org.rollup`: 20 / 12 / 10 cases from Personal Dev) run live once and replayed in CI by `test/ai.evals-roadmap.test.ts` (#178)",
+        "Phase E, the shorter e-mail (`notifications.md` › The digest's shape): `my_work` is \"Your brief\" — the SAME stored brief My Work's `briefTile` reads (`storedBrief`), its Now and up to 3 Next items, the subject from its top item (\"Netlify test failing, plus 1 more\"); with no brief, the 3 most recently updated assigned tickets (`listAssignedTickets`) — and \"Also\": at most 3 notable or breaking merged PRs (`toMyWorkPr`) and feed entries (`get_feed`) that touched the person's work in the window. The queues are one line each (`queueLine`): Review (with Sift's \"changes a decision\" count while AI is on), Sprint, Tickets; empty sections are left out (#178)",
+        "Phase E, the weekly's \"This week\" (`week_recap`, `renderers/week-recap.ts`): the stored highlights, then one numbers line the server computes (pull requests merged — only with a repository connected —, tickets done, Feed entries; zero parts left out). The `digest.week` job (`src/ai/week.ts`, `week-core.ts`; `KIND_PROVIDER`, `AI_JOBS`, scope `digest`, stage last): ONE Batch API request per org per week, marked by the `:50` pre-warm 3 hours before the weekly send (`WEEK_HIGHLIGHTS_LEAD_MS`, router event `digest_week`); cites checked by the server, ungrounded numbers and refs in text dropped, at most 3; `0067_digest_email` `digest_highlights` (in `ORG_TABLES` and the reset seed) (#178)",
+        "Phase E, \"Only when something needs me\" (`notification_person_prefs`, 0067; `PUT /api/notifications/prefs { onlyWhenNeeded }`; Settings › Email notifications): the run marks the row `skipped` unless the brief has a Next item or something notable or breaking touched the person's work (`needsMe`) (#178)",
+        "Phase E, the e-mail previews: `GET /api/notifications/preview?sample=index` lists six fixtures (`sample.ts`: daily AI on / off / nearly empty, weekly AI on / off, only-when-needed skipped), built with the renderers' own pure halves; screenshots in `docs/superpowers/specs/ai-screens-shots/email-*.png` (#178)",
+        "Phase E evals: `test/ai-evals/digest.week/` (17 real cases), `scripts/ai-evals/week-live.ts`, recorded answers replayed by `test/ai-evals.week.test.ts`; `test/ai.week.test.ts` runs the job through the real router, pass and Batch API; `test/notifications.digest-length.test.ts` holds the daily under half the old one's words (#178)",
       ],
       changed: [
         "The org's AI switch (`orgs.ai_automation`) covers PR and issue summaries: `planAndSummaries` reads it in the same statement as the plan, `summaryAllowance` answers `disabled` (a new `SummariesStatus`) when it is off, and `orgSummarizers().switchedOff()` makes the webhook (`captureDelivery`) and Sync (`runBackfill`) write nothing for the item — no call, no summary row (not even the excerpt), no meter — so an existing summary is never replaced. The Sync panel says the switch is why; Org settings › AI lists summaries among what off stops. `test/summaries.switch.test.ts` (#178)",
+        "Every on/off switch (`switchBtn`) stands still under reduced motion: its knob slide and track fade are off (`trov.css`) (#178)",
         "Sift's run (`src/ai/sift.ts`) reads its question, bands and writer from `src/tools/tag-fit.ts` (`fitQuestion`, `fitBand`, `storeFit`) — the same ones Sift on new items uses; behaviour unchanged. `storePrSummary` upserts the summary's own columns instead of `INSERT OR REPLACE`, so a re-summarized PR keeps its rating (#178)",
         "Deleting an account also deletes the AI router's scopes keyed on the person (their brief, their GitHub sessions) (#178)",
         "Deleting an account also deletes its logins' `ai_sessions`; its digests stay, their `subject` tombstoned like every handle column. A reserved handle (`github-webhook`, `trov`) can never be deleted (#178)",
@@ -309,7 +317,9 @@ export const RELEASES: Release[] = [
         "`test/secrets.mcp.test.ts` also pins Ask's call sites (`src/ai/ask/turn.ts`, `history.ts`) and its boundary: nothing under `src/ai/ask/` reaches `src/data/secrets.ts`, `src/github-app/`, `src/billing/` or `src/mcp.ts`. Review's `GET /proposals` and `GET /adrs` carry `askFlags` (the reason and a count per item, never thread text). `KIND_PROVIDER` gains `ask.fast` / `ask.smart` / `ask.thinking` / `ask.compact`; `askChatClient` hands Ask's turn the SDK client for a mode (#178)",
       ],
       fixed: [],
-      removed: [],
+      removed: [
+        "The digest's per-PR What / Why / Impact cards, its assigned-issue rows and labels, the ticket queue's per-ticket rows and the Roadmap section's plan diff (Phase E: one line per queue) (#178)",
+      ],
     },
     prs: [178],
   },

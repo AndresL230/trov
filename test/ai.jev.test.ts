@@ -36,6 +36,8 @@ describe("providerFor: one table from a kind to its provider", () => {
   it("the tag, importance, theme and card kinds are Jev's; the summaries, the filter, Ask Trov and the themes are Claude's; no key → null", () => {
     expect(KIND_PROVIDER).toEqual({
       summary_pr: "claude", summary_issue: "claude", "tag.fit": "jev", filter: "claude",
+      // Phase E: the weekly e-mail's "This week".
+      "digest.week": "claude",
       // Ask Trov (Phase F): one kind per mode, and the compaction of a long thread.
       "ask.fast": "claude", "ask.smart": "claude", "ask.thinking": "claude", "ask.compact": "claude",
       // Repo themes (Phase D).

@@ -41,7 +41,7 @@ const clean = () => run(env.DB, `DELETE FROM ai_dirty`);
 describe("THE TABLE (pure): each event → exactly the design's scopes", () => {
   it("every row of the design's table, plus the hosting-deploy row", () => {
     expect(Object.keys(AI_ROUTES).sort()).toEqual([
-      "artifact_saved", "digest_prewarm", "doc_promoted", "feed_ingested", "handoff_sent", "hosting_deploy", "pr_merged", "proposal_staged",
+      "artifact_saved", "digest_prewarm", "digest_week", "doc_promoted", "feed_ingested", "handoff_sent", "hosting_deploy", "pr_merged", "proposal_staged",
       "repo_activity", "themes_accepted", "ticket_changed", "ticket_created", "ticket_mirrored", "unplaced",
     ]);
     expect(scopesFor({ type: "pr_merged", number: 173, author: "AndresL230" })).toEqual([
@@ -84,6 +84,8 @@ describe("THE TABLE (pure): each event → exactly the design's scopes", () => {
     expect(scopesFor({ type: "artifact_saved", slug: "logo" })).toEqual([{ scope: "card", key: "tagfit:artifact:logo" }, { scope: "doc_drift", key: "artifact:logo" }]);
     expect(scopesFor({ type: "themes_accepted" })).toEqual([{ primaryRepo: "theme_backfill" }]);
     expect(scopesFor({ type: "digest_prewarm", handle: "meilin" })).toEqual([{ scope: "person", key: "meilin", urgent: true }]);
+    // Phase E: the weekly e-mail's "This week", one scope per org per week.
+    expect(scopesFor({ type: "digest_week", key: "week:2026-W38:2026-09-14T12:00:00.000Z" })).toEqual([{ scope: "digest", key: "week:2026-W38:2026-09-14T12:00:00.000Z" }]);
   });
 });
 
@@ -151,6 +153,7 @@ describe("THE DEBOUNCE (shared/ai-core.ts)", () => {
     expect([pro("theme_window"), free("theme_window")]).toEqual([D, 7 * D]);
     expect([pro("doc_drift"), free("doc_drift")]).toEqual([7 * D, 30 * D]);
     expect([pro("theme_backfill"), free("theme_backfill")]).toEqual([0, 0]);
+    expect([pro("digest"), free("digest")]).toEqual([0, 0]); // Phase E: marked hours before the weekly send
     // A breaking change skips the repo's wait on Pro / Enterprise only; the pre-warm skips a person's on every plan.
     expect([pro("repo", { urgent: true }), free("repo", { urgent: true })]).toEqual([0, 6 * H]);
     expect([pro("person", { urgent: true }), free("person", { urgent: true })]).toEqual([0, 0]);

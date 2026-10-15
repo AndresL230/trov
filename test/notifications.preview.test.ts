@@ -35,7 +35,7 @@ describe("GET /api/notifications/preview", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     const html = await res.text();
-    expect(html).toContain("Pending decision");
+    expect(html).toContain("Review:</span> 1 waiting"); // the caller's own "off" pref is ignored
     expect(html).toContain("Daily digest");
     expect(await all(env.DB, `SELECT * FROM notification_outbox`)).toHaveLength(0);
   });
@@ -55,16 +55,37 @@ describe("GET /api/notifications/preview", () => {
     expect(await empty.text()).toContain("Nothing to render");
     const sample = await app.request("/api/notifications/preview?cadence=daily&sample=1", { headers: { cookie } }, env);
     const html = await sample.text();
-    expect(html).toContain("My Work");
-    expect(html).toContain("Review queue");
-    expect(html).toContain("Roadmap plan changes");
-    // …one canned section per registry kind, ticketq included, so the preview
-    // shows the whole digest rather than three quarters of it.
-    expect(html).toContain("Ticket queue");
-    expect(html).toContain("UNASSIGNED");
-    expect(html).toContain("ASSIGNED TO YOU");
-    expect(html).toContain("Gradebook export comes back empty");
-    expect(html).toContain("sample");
+    // sample=1 is the daily with the AI on: the brief (Now, Next, Also) and the queue lines.
+    expect(html).toContain("<title>Netlify test failing, plus 3 more</title>");
+    expect(html).toContain("Your brief");
+    expect(html).toContain("NEXT");
+    expect(html).toContain("ALSO");
+    expect(html).toContain("Review:</span> 2 waiting, 1 changes a decision");
+    expect(html).toContain("Tickets:</span> 2 waiting for someone, 3 assigned to you");
+    expect(html).toContain("Sample data.");
+  });
+
+  it("sample=index lists every Phase E fixture, and each renders its own shape (AI off, empty sections, only-when-needed skipped)", async () => {
+    const cookie = await cookieFor("admin-user");
+    const get = async (q: string) => (await app.request(`/api/notifications/preview?${q}`, { headers: { cookie } }, env)).text();
+    const index = await get("sample=index");
+    for (const s of ["daily-ai", "daily-off", "daily-empty", "weekly-ai", "weekly-off", "only-when-needed"]) expect(index).toContain(`sample=${s}`);
+    const off = await get("sample=daily-off");
+    expect(off).toContain("ASSIGNED TO YOU");
+    expect(off).not.toContain("NEXT");
+    expect(off).not.toContain("ALSO");
+    const empty = await get("sample=daily-empty");
+    expect(empty).not.toContain("Your brief");
+    expect(empty).not.toContain('data-section="block"');
+    expect(empty).toContain('data-section="lines"');
+    const weekly = await get("sample=weekly-ai");
+    expect(weekly).toContain("This week");
+    expect(weekly).toContain("data-week-highlights");
+    expect(weekly).toContain("12 pull requests merged, 4 tickets done, 9 entries in the Feed");
+    expect(weekly).toContain("<title>Trov weekly,");
+    expect(await get("sample=weekly-off")).not.toContain("data-week-highlights");
+    expect(await get("sample=only-when-needed")).toContain("Not sent");
+    expect(await all(env.DB, `SELECT * FROM notification_outbox`)).toHaveLength(0);
   });
 
   it("rejects an unknown cadence", async () => {
@@ -95,7 +116,7 @@ describe("POST /api/notifications/test-send", () => {
     const bodies = await all<{ to_address: string; subject: string; html: string }>(env.DB, `SELECT * FROM notification_outbox_bodies`);
     expect(bodies[0].to_address).toBe("admin@example.com");
     expect(bodies[0].subject).toMatch(/^Trov daily, /);
-    expect(bodies[0].html).toContain("Pending decision");
+    expect(bodies[0].html).toContain("Review:</span> 1 waiting");
   });
 
   it("does not consume the real window: a later scheduled run for the same window still sends", async () => {
@@ -120,6 +141,7 @@ describe("POST /api/notifications/test-send", () => {
     expect(sample.status).toBe(200);
     const bodies = await all<{ subject: string; html: string }>(env.DB, `SELECT * FROM notification_outbox_bodies`);
     expect(bodies).toHaveLength(1);
-    expect(bodies[0].html).toContain("Roadmap plan changes");
+    expect(bodies[0].html).toContain("This week"); // the weekly sample
+    expect(bodies[0].html).toContain("data-week-highlights");
   });
 });

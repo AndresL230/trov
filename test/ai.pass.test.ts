@@ -60,7 +60,7 @@ describe("the real registry, with nothing it takes", () => {
       "ticket.card", "review.risk", "unplaced.destination", "tag.fit:new-item", "feed.importance:feed", "feed.importance:pr",
       "digest.session", "repo.state", "brief.person",
       "roadmap.sprint_note", "roadmap.plan_drift", "roadmap.sprint_draft", "roadmap.plan_narrative", "doc.drift",
-      "pr.theme", "themes.propose", "themes.caption", "themes.backfill",
+      "pr.theme", "themes.propose", "themes.caption", "themes.backfill", "digest.week",
     ]);
     expect(new Set(AI_JOBS.map((j) => j.name)).size).toBe(AI_JOBS.length);
     for (const j of AI_JOBS) expect(KIND_PROVIDER[j.kind], j.name).toBe(j.provider);

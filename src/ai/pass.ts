@@ -49,6 +49,7 @@ import { orgPrefix } from "./prefix";
 import { collectBatches, submitBatches, AI_BATCH_PER_TICK, type QueuedRequest } from "./batches";
 import { ticketCardJob, reviewRiskJob, unplacedDestinationJob } from "./jobs/cards";
 import { prThemeJob, themesBackfillJob, themesCaptionJob, themesProposeJob } from "./themes";
+import { weekJob } from "./week";
 import { TAG_FIT_ITEM_JOB } from "./sift-items";
 import { IMPORTANCE_JOBS } from "./importance";
 import { sessionDigestJob } from "./digests";
@@ -75,6 +76,7 @@ export const AI_JOBS: readonly AiJob[] = [
   themesProposeJob,
   themesCaptionJob,
   themesBackfillJob,
+  weekJob, // digest:week:* — the weekly e-mail's "This week" (Phase E, Batch API)
 ];
 
 /** Haiku calls one tick may make, across every org. */

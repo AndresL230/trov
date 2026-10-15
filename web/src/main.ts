@@ -3923,6 +3923,11 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       writePrefs({ unsubscribed: next }, next ? "Email is off" : "Email is back on");
       return;
     }
+    case "toggleOnlyWhenNeeded": {
+      const next = !(state.notifPrefs.data?.onlyWhenNeeded ?? false);
+      writePrefs({ onlyWhenNeeded: next }, next ? "Digests only when something needs you" : "Every digest again");
+      return;
+    }
 
     // ── Org settings › Notifications (admin) ─────────────────────────────────
     case "policyToggle": {

@@ -15,6 +15,8 @@ import { runDigest } from "../src/notifications/run";
 import { localDelivery } from "../src/notifications/delivery";
 import { REGISTRY } from "../src/notifications/registry";
 import { seedPerson } from "./helpers/persons";
+import { create_ticket } from "../src/tools/tickets";
+import { TicketCreate } from "@shared/tickets";
 import type { NotificationKind } from "@shared/notifications";
 import type { NotificationOutboxRow } from "@shared/rows";
 import type { CapturedEvent } from "@shared/contract";
@@ -33,13 +35,9 @@ async function user(login: string, email: string | null, unsubscribed = 0): Prom
   await seedPerson(login, { name: login, email, unsubscribed: unsubscribed as 0 | 1 });
   await run(env.DB, `UPDATE persons SET email = ?, email_unsubscribed = ? WHERE handle = ?`, email, unsubscribed, login);
 }
-function openIssue(number: number, login: string): CapturedEvent {
-  const updatedAt = "2026-09-10T15:00:00Z";
-  return {
-    semantic_key: `gh:issue:${number}:assigned:${updatedAt}`, event_type: "issue", ref_number: number, subject_login: login, provenance: "webhook", occurred_at: updatedAt,
-    // GitHub's own key — not Trov vocabulary (a payload literal).
-    raw: JSON.stringify({ action: "assigned", issue: { number, title: `Issue ${number}`, html_url: `https://github.com/o/r/issues/${number}`, state: "open", updated_at: updatedAt, user: { login }, assignees: [{ login }], labels: [], milestone: null } }),
-  };
+/** A ticket assigned to `login` — what the brief's AI-off fallback ("ASSIGNED TO YOU") lists (Phase E). */
+async function assigned(title: string, login: string): Promise<void> {
+  await create_ticket(systemCtx(), TicketCreate.parse({ title, assignees: [login] }), login);
 }
 const outbox = () => all<NotificationOutboxRow>(env.DB, `SELECT * FROM notification_outbox ORDER BY user_id, cadence`);
 const bodies = () => all<{ idempotency_key: string; to_address: string; subject: string; html: string; text: string }>(env.DB, `SELECT * FROM notification_outbox_bodies ORDER BY idempotency_key`);
@@ -163,29 +161,29 @@ describe("runDigest (local mode)", () => {
     await run(env.DB, `UPDATE notification_policy SET enabled = 0 WHERE kind = 'review_queue'`);
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('AndresL230', 'review_queue', 'daily', 'now')`);
     await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
-    await ingestEvent(systemCtx(), platformCtx(), openIssue(1, "AndresL230"), "github-webhook");
+    await assigned("Issue 1", "AndresL230");
 
     await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery() });
     const [row] = await outbox();
     expect(row.status).toBe("sent");
-    expect(kindsOf(row)).toEqual(["my_work"]);
+    expect(kindsOf(row)).toEqual(["my_work", "ticketq"]);
     const [body] = await bodies();
-    expect(body.html).not.toContain("Pending decision");
-    expect(body.text).not.toContain("Review queue");
+    expect(body.html).not.toContain("Review:");
+    expect(body.text).not.toContain("Review:");
   });
 
   it("a weekly pref on my_work excludes it from the daily run and includes it in the weekly run", async () => {
     await user("AndresL230", "andres@example.com");
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('AndresL230', 'my_work', 'weekly', 'now')`);
-    await ingestEvent(systemCtx(), platformCtx(), openIssue(1, "AndresL230"), "github-webhook");
+    await assigned("Issue 1", "AndresL230");
 
     await runDigest(systemCtx(), platformCtx(), "daily", MON, { delivery: delivery() });
     await runDigest(systemCtx(), platformCtx(), "weekly", MON, { delivery: delivery() });
     const rows = await outbox();
     const daily = rows.find((r) => r.cadence === "daily")!;
     const weekly = rows.find((r) => r.cadence === "weekly")!;
-    expect(daily.status).toBe("skipped"); // nothing else renders for a fresh store
-    expect(kindsOf(daily)).not.toContain("my_work");
+    expect(kindsOf(daily)).not.toContain("my_work"); // the ticket's one line still goes daily
+    expect(kindsOf(daily)).toEqual(["ticketq"]);
     expect(weekly.status).toBe("sent");
     expect(kindsOf(weekly)).toContain("my_work");
     const b = (await bodies()).find((x) => x.idempotency_key === weekly.idempotency_key)!;
@@ -195,27 +193,26 @@ describe("runDigest (local mode)", () => {
   it("assembles one message per user with the spec subject, all sections, and absolute deep links", async () => {
     await user("AndresL230", "andres@example.com");
     await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
-    await ingestEvent(systemCtx(), platformCtx(), openIssue(1, "AndresL230"), "github-webhook");
+    await assigned("Issue 1", "AndresL230");
 
     await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery(), origin: "https://trov.example" });
     const [row] = await outbox();
     expect(row).toMatchObject({ status: "sent", user_id: "AndresL230", window_id: "2026-09-11" });
-    expect(kindsOf(row)).toEqual(["my_work", "review_queue"]);
+    expect(kindsOf(row)).toEqual(["my_work", "review_queue", "ticketq"]);
     expect(row.sent_at).not.toBeNull();
     const [body] = await bodies();
     expect(body.to_address).toBe("andres@example.com");
-    expect(body.subject).toBe("Trov daily, Sep 11");
-    expect(body.html).toContain("My Work");
-    expect(body.html).toContain("Review queue");
+    expect(body.subject).toBe("Issue 1"); // Phase E: no brief (none stored) → the first assigned item names the mail
+    expect(body.html).toContain("Your brief");
+    expect(body.html).toContain("Review:</span> 1 waiting");
     expect(body.html).toContain(`href="https://trov.example/#mywork"`);
-    expect(body.text).toContain("https://trov.example/#review");
+    expect(body.text).toContain("Review: 1 waiting -> https://trov.example/#review");
     expect(body.text).toContain("Issue 1");
-    expect(body.text).toContain("Pending decision");
   });
 
   it("weekly subject names the work week", async () => {
     await user("AndresL230", "andres@example.com");
-    await ingestEvent(systemCtx(), platformCtx(), openIssue(1, "AndresL230"), "github-webhook");
+    await assigned("Issue 1", "AndresL230");
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('AndresL230', 'my_work', 'weekly', 'now')`);
     await runDigest(systemCtx(), platformCtx(), "weekly", MON, { delivery: delivery() });
     const [body] = await bodies();
@@ -260,18 +257,61 @@ describe("assembled message follows the designed template", () => {
   it("carries a preheader, the section sublines, the footer unsubscribe link, and the text layout", async () => {
     await user("AndresL230", "andres@example.com");
     await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
-    await ingestEvent(systemCtx(), platformCtx(), openIssue(1, "AndresL230"), "github-webhook");
+    await assigned("Issue 1", "AndresL230");
     await runDigest(systemCtx(), platformCtx(), "daily", FRI, {
       delivery: localDelivery(systemCtx()), origin: "https://trov.example",
       unsubscribeUrl: async (login) => `https://trov.example/u/${login}.sig`,
     });
     const [b] = await bodies();
-    expect(b.html).toContain("1 assigned issue open");           // section subline
-    expect(b.html).toContain("1 decision waiting");                // review subline
+    expect(b.html).toContain(`max-height:0px;overflow:hidden;">Issue 1 · Review: 1 waiting · Tickets: 1 assigned to you.</div>`); // the preheader
     expect(b.html).toContain(`href="https://trov.example/u/AndresL230.sig"`); // footer
     expect(b.html).toContain("daily Trov digest for AndresL230");
     expect(b.text).toContain("TROV DAILY — SEP 11");
     expect(b.text).toContain("Unsubscribe: https://trov.example/u/AndresL230.sig");
-    expect(b.text).toMatch(/open\s+#1\s+Issue 1/);
+    expect(b.text).toMatch(/ASSIGNED TO YOU\n  - Issue 1 <https:\/\/trov\.example\/#tickets\/1>\n    Not started/);
+  });
+});
+
+describe("\"Only when something needs me\" (0067, Phase E)", () => {
+  const needed = (login: string) => run(env.DB, `INSERT INTO notification_person_prefs (org_id, user_id, only_when_needed, updated_at) VALUES ('org_saplinglearn', ?, 1, 'now')`, login);
+  const pending = () => ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+
+  it("with nothing next and nothing notable, a queue line alone is not enough: the row is skipped and nothing is sent — someone without the option still gets it", async () => {
+    await user("AndresL230", "andres@example.com");
+    await user("lpcooper-arch", "luke@example.com");
+    await needed("AndresL230");
+    await pending();
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: localDelivery(systemCtx()) });
+    const rows = await outbox();
+    expect(rows.map((r) => [r.user_id, r.status, kindsOf(r)])).toEqual([["AndresL230", "skipped", []], ["lpcooper-arch", "sent", ["review_queue"]]]);
+    expect((await bodies()).map((b) => b.to_address)).toEqual(["luke@example.com"]);
+  });
+
+  it("a Next item (with no brief: an assigned ticket) sends the whole digest", async () => {
+    await user("AndresL230", "andres@example.com");
+    await needed("AndresL230");
+    await pending();
+    await assigned("Issue 1", "AndresL230");
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: localDelivery(systemCtx()) });
+    const [row] = await outbox();
+    expect(row.status).toBe("sent");
+    expect(kindsOf(row)).toEqual(["my_work", "review_queue", "ticketq"]);
+  });
+
+  it("something notable that touched their work in the window sends it, even with nothing next", async () => {
+    await user("AndresL230", "andres@example.com");
+    await needed("AndresL230");
+    await run(env.DB, `INSERT INTO feed (org_id, author, summary, created_at, importance) VALUES ('org_saplinglearn', 'AndresL230', 'Hosting deploys now poll every hour', '2026-09-11T03:00:00Z', 'notable')`);
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: localDelivery(systemCtx()) });
+    const [row] = await outbox();
+    expect(row.status).toBe("sent");
+    const [b] = await bodies();
+    expect(b.html).toContain("Hosting deploys now poll every hour");
+    // A routine one does not count.
+    await run(env.DB, `DELETE FROM notification_outbox`);
+    await run(env.DB, `DELETE FROM notification_outbox_bodies`);
+    await run(env.DB, `UPDATE feed SET importance = 'routine'`);
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: localDelivery(systemCtx()) });
+    expect((await outbox())[0].status).toBe("skipped");
   });
 });
