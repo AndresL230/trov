@@ -1,0 +1,29 @@
+{
+  "data": {
+    "httpMetricsGroupedByStatus": [
+      {
+        "statusCode": 200,
+        "samples": [
+          { "ts": 1791363600, "value": 1480 },
+          { "ts": 1791367200, "value": 1561 },
+          { "ts": 1791370800, "value": 1452 },
+          { "ts": 1791374400, "value": 300 }
+        ]
+      },
+      {
+        "statusCode": 404,
+        "samples": [
+          { "ts": 1791363600, "value": 43 },
+          { "ts": 1791367200, "value": 46 },
+          { "ts": 1791370800, "value": 47 }
+        ]
+      },
+      {
+        "statusCode": 503,
+        "samples": [
+          { "ts": 1791367200, "value": 3 }
+        ]
+      }
+    ]
+  }
+}

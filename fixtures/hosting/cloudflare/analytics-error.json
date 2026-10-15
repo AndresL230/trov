@@ -1,0 +1,6 @@
+{
+  "data": null,
+  "errors": [
+    { "message": "not authorized for that account", "path": ["viewer", "accounts"], "extensions": { "code": "authz", "timestamp": "2026-10-07T12:20:01.123Z" } }
+  ]
+}
