@@ -35,6 +35,9 @@ export const RESET_STATEMENTS = [
   "DELETE FROM org_environment_parts",
   // Apps (0070_repo_apps): SaplingLearn's two, matching the parts 0057 made of its environments (a
   // Cloudflare Worker frontend, a Railway backend) — what 0070 writes for it in production.
+  // The repo scan (0072_repo_scans): its suggestions and the last scan of each repository.
+  "DELETE FROM repo_app_suggestions",
+  "DELETE FROM repo_scans",
   "DELETE FROM repo_apps",
   "INSERT INTO repo_apps (org_id, key, repo, label, folder, kind, watch, release_signal, source, position, created_at, created_by, updated_at, updated_by) VALUES ('org_saplinglearn', 'frontend', 'SaplingLearn/sapling', 'Frontend', '/', 'Worker', '[\"/\"]', NULL, 'migrated', 0, '2026-10-15T00:00:00.000Z', 'migration', '2026-10-15T00:00:00.000Z', 'migration'), ('org_saplinglearn', 'backend', 'SaplingLearn/sapling', 'Backend', '/', 'Service', '[\"/\"]', NULL, 'migrated', 1, '2026-10-15T00:00:00.000Z', 'migration', '2026-10-15T00:00:00.000Z', 'migration')",
   "DELETE FROM org_secrets",

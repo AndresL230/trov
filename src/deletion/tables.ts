@@ -51,6 +51,8 @@ export const ORG_TABLES = [
   "hosting_poll_state", "hosting_deploys", "org_hosting_connections", "org_environment_parts",
   // Apps (0070_repo_apps): what each repository ships.
   "repo_apps",
+  // The repo scan and its suggestions (0072_repo_scans).
+  "repo_scans", "repo_app_suggestions",
   // Configuration and credentials: the GitHub App binding, encrypted secrets and their keys, repositories, environments.
   "org_github_installation_repos", "org_github_installations",
   "org_secrets", "org_keys", "org_integration_config", "org_audit",
