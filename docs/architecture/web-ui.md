@@ -90,6 +90,19 @@ gets `rerenderSoon` on its host where it has a read the boot starts (`tags-actio
 `rerenderSoon()` where the next line reads the DOM. Boot paints went from 25 (measured) to a handful; tests:
 `test/paint-queue.test.ts`.
 
+## Markdown is rendered once per body (`web/src/markdown.ts`, `web/src/outline.ts`, `web/src/lru.ts`)
+
+Because every paint rebuilds the whole app's markup, `renderMarkdown` (marked → DOMPurify → `enhance`) and
+`renderMarkdownInline` ran for every doc, ticket and feed summary on screen on EVERY paint — the slowest part of
+a paint on Docs and Review. Both are memoized in an LRU (`createLru`): 100 block bodies, 300 inline summaries (so
+a long feed does not push the doc bodies out). The key is everything the output depends on: the org's main
+repository (`repoUrl()`, what a bare `#12` links to), the org on screen (`apiOrgSlug()`, what a doc image's
+`tenantHref` points at) and the text. A new input to either renderer (an option, another piece of page state it
+reads) must join the key. Results are strings, so a cached one cannot be mutated. `extractOutline` (the Docs tree
+draws every doc's outline on every paint) is memoized by body in a 500-entry LRU — larger than a big org's doc
+count, because a tree that cycles through more docs than the cache holds would miss on every one — and hands out
+a FROZEN array of frozen items. `sanitizeSvg` is not cached. Tests: `test/markdown-memo.test.ts`.
+
 ## Help › What's new is its own chunk (`web/src/releases-lazy.ts`, `web/src/release-latest.ts`)
 
 `web/src/releases.ts` is every release's notes and patch lines — the largest module in the app, and every PR adds
