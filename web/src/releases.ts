@@ -115,6 +115,7 @@ export const RELEASES: Release[] = [
         "`0063_person_brief`: `person_brief` (the last 5 versions per member; in `ORG_TABLES`, `HANDLE_COLUMNS` and the reset seed; `src/data/person-brief.ts`) and `memberships.mywork_opened_at` — `GET /me/dashboard` records it at most once an hour, and a brief is written only for someone who opened My Work in 14 days or receives the digest (#178)",
         "`GET /me/dashboard` and MCP `get_my_work` carry the newest stored brief (`storedBrief`, `src/tools/mywork.ts`: plain D1, nothing from `src/ai/`): absent when the org's AI is off, none is stored, or the person pressed \"Wrong?\" on that version; `capped` keeps the last one with the day it resumes (#178)",
         "The brief's eval set (`test/ai-evals/brief.person/`: 10 cases from Personal Dev's real rows, graded by rules), its live runner (`scripts/ai-evals/brief-live.ts`, by hand) and the recorded answers replayed in CI (`test/ai-evals.brief.test.ts`); the local dev seed stores a brief for AndresL230 (`scripts/seed/brief-dev.mjs`) (#178)",
+        "`test/render.brief-real.test.ts`: My Work › Your brief end to end over real data — real rows, the real `brief.person` job, `GET /me/dashboard` and `getMyWork`, the real `render` into `briefTile` — and its \"Wrong?\" button's own `data-arg` POSTed to `/ai/feedback`, after which the read leaves the field out (#178)",
       ],
       changed: [
         "Deleting an account also deletes the AI router's scopes keyed on the person (their brief, their GitHub sessions) (#178)",

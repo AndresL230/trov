@@ -412,5 +412,8 @@ parsing), `test/tag-fit.test.ts` (Sift: the run, its switches — the org's incl
 `test/secrets.mcp.test.ts` (the call sites, the MCP boundary, TypeSafe's URL in one file),
 `test/plans.limits.test.ts` (`ai_chat`, per seat on Pro), `test/ai.brief.test.ts` (the brief: the input and the
 server's order, the job's guards, who gets one, the 5 versions, the read, the route, the dev seed) and
-`test/ai-evals.brief.test.ts` (its recorded eval answers), `test/ai.filter.test.ts` and `test/render.ai-filter.test.ts`
+`test/ai-evals.brief.test.ts` (its recorded eval answers), `test/render.brief-real.test.ts` (the brief end to end over
+real data: the job's row → `/me/dashboard` / `getMyWork` → `render` → `briefTile`, and its "Wrong?" `data-arg` POSTed to
+`/ai/feedback` hiding it; the SPA is loaded at run time, so the file stays under `tsconfig.worker.json`),
+`test/ai.filter.test.ts` and `test/render.ai-filter.test.ts`
 (the plain-language filter).
