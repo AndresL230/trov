@@ -393,14 +393,15 @@ describe("motion — the hooks every part inherits (web/src/ask-motion.ts)", () 
     expect(askTweenHeights(root as unknown as ParentNode, true)).toBe(0);
   });
 
-  it("a height glide clips with overflow:clip — hidden would stop a first child's margin collapsing, and it snapped at the end", () => {
+  it("a height glide clips its height only (overflow-y:clip) — hidden would stop a first child's margin collapsing; X would cut the left overhang", () => {
     const card = new El({ "data-ask-tween": "" });
     card.offsetHeight = 40;
     askTweenHeights(new El({}, [card]) as unknown as ParentNode, false);
     card.offsetHeight = 90;
     askTweenHeights(new El({}, [card]) as unknown as ParentNode, false);
     const [frames] = card.anims[0] as [Keyframe[], unknown];
-    expect(frames.map((f) => f.overflow)).toEqual(["clip", "clip"]);
+    expect(frames.map((f) => f.overflowY)).toEqual(["clip", "clip"]);
+    expect(frames.every((f) => f.overflow === undefined && f.overflowX === undefined)).toBe(true);
   });
 
   it("the bottom (rule 7): only scrolling UP lets go; reaching the bottom holds on; the pins' own scrolls never let go", () => {

@@ -108,8 +108,10 @@ export function askTweenHeights(root: ParentNode, reduce = reducedMotion()): num
     heights.set(el, h);
     if (was === undefined || reduce || Math.abs(was - h) < 2 || typeof el.animate !== "function") continue;
     // `clip`, not `hidden`: hidden makes the box a block formatting context, so its first child's top margin (the
-    // footer's 8px) stopped collapsing through it for the glide and the row snapped up 8px when the glide ended.
-    el.animate([{ height: `${was}px`, overflow: "clip" }, { height: `${h}px`, overflow: "clip" }], { duration: ASK_FX.base, easing: ASK_EASE.fx });
+    // footer's 8px) stopped collapsing through it for the glide and the row snapped up 8px when the glide ended. And
+    // only the Y axis: clipping X cut what overhangs the column's left edge (the footer's mark, a step's hover
+    // background) for the glide and showed it again after.
+    el.animate([{ height: `${was}px`, overflowY: "clip" }, { height: `${h}px`, overflowY: "clip" }], { duration: ASK_FX.base, easing: ASK_EASE.fx });
     n++;
   }
   return n;
