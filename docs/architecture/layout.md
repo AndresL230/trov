@@ -217,13 +217,16 @@
   `src/ai/preview.ts` (`LOCAL_AI_PREVIEW`, `wrangler dev` only); the tables' one repository `src/data/ai.ts`;
   the screens' contracts `shared/ai-core.ts` (zod-free) + `shared/ai.ts` and the preview's
   `shared/ai-fixtures.ts`. Migration `0055_ai` (`orgs.ai_automation`, the switch, and
-  `ai_suggestions`, `ai_feedback`), `0058_ai_dirty` (`ai_dirty`, the router's table, and
-  `orgs.ai_chat_auto`, Ask Trov's Auto switch) and `0059_ai_batches` (the platform tables `ai_batches` /
-  `ai_batch_requests`, and `ai_dirty.marked_at` / `urgent`), `0064_repo_themes` (`repo_themes`, `pr_themes`,
-  `repo_theme_captions`); the monthly `ai_runs` and `ai_chat` (Ask Trov, per seat on Pro)
+  `ai_suggestions`, `ai_feedback`), then `0058_server_ai` — ONE migration for the whole server-side AI build and
+  Ask Trov (#178), consolidated from eleven files before any reached production; each part keeps its old name as a
+  `-- ══ part … ══` marker and its own header and rollback: `0058_ai_dirty` (`ai_dirty`, the router's table, and
+  `orgs.ai_chat_auto`, Ask Trov's Auto switch), `0059_ai_batches` (the platform tables `ai_batches` /
+  `ai_batch_requests`, and `ai_dirty.marked_at` / `urgent`), `0060_ai_importance` … `0065_org_insights` (the
+  pass's written rows), `0064_repo_themes` (`repo_themes`, `pr_themes`, `repo_theme_captions`), `0066_ask` (Ask
+  Trov's tables), `0067_digest_email` and `0068_ask_pending`; the monthly `ai_runs` and `ai_chat` (Ask Trov, per seat on Pro)
   allowances are in `PLANS`
   (not listed on the pricing page yet).
-  Then `0068_ask_pending` (Ask Trov, the owner's ruling Q60) [`chat_threads.pending`: the person's hidden holder of
+  Its last part, `0068_ask_pending` (Ask Trov, the owner's ruling Q60) [`chat_threads.pending`: the person's hidden holder of
   attachments uploaded before their conversation existed; swept 24 h unsent by `src/deletion/ask-pending.ts` on the
   hourly digest trigger; additive] — `ask.md` › Attachments.
   Then `0057_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /

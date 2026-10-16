@@ -121,7 +121,7 @@ describe("RELEASES — the data", () => {
       expect(ops("unreleased")).toMatch(/deployment, release, create and workflow_job/);
     }
     // 0.11 (formerly 0.34) is #178 cut together with #186 / #187: its own migrations to 0068, the App events, the plugin.
-    expect(ops("0.11")).toMatch(/0058_ai_dirty.*0068_ask_pending/);
+    expect(ops("0.11")).toMatch(/0058_server_ai/);
     expect(ops("0.11")).toMatch(/deployment, release, create and workflow_job/);
     expect(ops("0.11")).toMatch(/plugin 0\.9\.0/);
   });

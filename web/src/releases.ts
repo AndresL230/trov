@@ -123,7 +123,7 @@ export const RELEASES: Release[] = [
       "Tickets no longer shows declined tickets in All, on the board or in the table; pick Closed to see them.",
     ],
     ops: [
-      "Apply migrations `0058_ai_dirty` to `0068_ask_pending` (eleven files; merging to main applies them in order; `0070`–`0075` already shipped with #186 and #187). All additive; each file's header has its rollback.",
+      "Apply migration `0058_server_ai` (one file for the whole AI build; merging to main applies it; `0070`–`0075` already shipped with #186 and #187). All additive; each part's header has its rollback.",
       "No new secret, var or trigger: Ask, briefs, digests and Roadmap notes run on `ANTHROPIC_API_KEY`, ratings and card suggestions on `TYPESAFE_API_KEY`; unsent Ask files are swept on the existing hourly trigger.",
       "Publish the Trov plugin 0.9.0 (skill text only): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
       "Subscribe the GitHub App to the deployment, release, create and workflow_job events (Developer settings › GitHub Apps › trov-by-trovlabs › Permissions & events). Installations need not re-approve.",
