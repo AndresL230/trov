@@ -1002,7 +1002,7 @@ function header(s: AppState): string {
   // `.cnpy-menubtn`), where the header also wraps its controls under the title (`.cnpy-hdr`).
   const menuBtn = `<button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="${s.drawer}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button>`;
 
-  // Ask Trov draws its own title ("Trov" is a button: a new thread), crumb (the thread) and, on a phone, the
+  // Ask Trov draws its own title ("Ask Trov", plain text — AU-OWNER-3), crumb (the thread) and, on a phone, the
   // threads drawer and New thread (ask-screen.ts / ask-phone.ts). The Tickets page gains "Ask about this ⌘J".
   const ask = s.screen === "ask" ? askHeader(s) : null;
   const askControls = s.screen === "ask" ? phoneHeaderControls(s) : cmdjHeaderButton(s);

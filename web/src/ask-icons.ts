@@ -34,6 +34,8 @@ export const ASK_ICON_PATHS = {
   openBeside: `<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M15 4v16"></path>`,
   followUp: `<path d="M4 4v7a4 4 0 0 0 4 4h12"></path><path d="m15 10 5 5-5 5"></path>`,
   chevRight: `<path d="M9 6l6 6-6 6"></path>`,
+  /** « — Hide threads (AU-OWNER-3), in the threads column beside New thread. */
+  chevsLeft: `<path d="m11 17-5-5 5-5"></path><path d="m18 17-5-5 5-5"></path>`,
   chevDown: `<path d="m6 9 6 6 6-6"></path>`,
   check: `<path d="m5 12.5 4.5 4.5L19 7.5"></path>`,
   sprint: `<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`,

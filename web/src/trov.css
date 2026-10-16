@@ -2878,11 +2878,9 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-insp-slot { display:contents; }
 .ask-drawer-slot { display:contents; }
 .ask-h1 { margin:0; font-size:15px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; flex:none; }
-.ask-h1-b { padding:0; font:inherit; color:var(--fg); cursor:pointer; transition:color .12s ease; }
-.ask-h1-b.is-parent { color:var(--fg-55); }
-.ask-h1-b:hover { color:var(--fg); }
-/* A phone's touch floor: the title (a New thread button) is 44px tall and at least as wide. */
-[data-phone="1"] .ask-h1-b { display:inline-flex; align-items:center; min-height:44px; min-width:44px; }
+/* "Ask Trov" — plain text, not a button (AU-OWNER-3); muted while a thread's title follows it. */
+.ask-h1-t { color:var(--fg); }
+.ask-h1-t.is-parent { color:var(--fg-55); }
 .ask-crumb { display:inline-flex; align-items:center; gap:10px; min-width:0; }
 .ask-crumb-sep { color:var(--fg-40); font-size:15px; }
 .ask-crumb-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:600; letter-spacing:-0.01em; }
@@ -2891,7 +2889,6 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-iconbtn:disabled { color:var(--fg-40); opacity:.5; cursor:default; background:none; }
 .ask-iconbtn--40 { width:40px; height:40px; border-radius:8px; }
 .ask-iconbtn--outline { border:1px solid var(--border-strong); }
-.ask-th-toggle[aria-pressed="false"] { color:var(--fg-40); }
 .ask-kbd { display:inline-block; padding:0 5px; border:1px solid var(--border); border-radius:4px; font-family:var(--label); font-size:10.5px; line-height:16px; color:var(--fg-40); }
 .ask-ghostbtn { display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border-radius:7px; font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; white-space:nowrap; transition:background .12s ease, color .12s ease; }
 .ask-ghostbtn:hover { background:var(--hover); color:var(--fg); }
@@ -2937,7 +2934,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-menu { animation:ask-pop-in .14s cubic-bezier(.2,.9,.3,1.2) both; }
 .ask-menu[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
 @media (prefers-reduced-motion: reduce) {
-  .ask-threads, .ask-insp-frame, .ask-insp-resize::after, .ask-th, .ask-th-more, .ask-th-at, .ask-send, .ask-chip, .ask-starters > button { transition:none !important; }
+  .ask-threads, .ask-insp-frame, .ask-insp-resize::after, .ask-th, .ask-th-more, .ask-th-at, .ask-send, .ask-chip, .ask-starters > button, .ask-th-show, .ask-th-hide { transition:none !important; }
   .ask-insp-frame, .ask-insp-frame[data-closing], .ask-insp-body, .ask-menu, .ask-menu[data-closing], .ask-hc, .ask-hc-layer[data-closing] .ask-hc,
   .ask-panel, .ask-scrim, .ask-panel-layer[data-closing] .ask-panel, .ask-panel-layer[data-closing] .ask-scrim, .ask-drawer, .ask-drawer-scrim,
   .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-line, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
@@ -2959,6 +2956,16 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 /* ── Ask: threads ── (ask-threads.ts; the shell's) */
 .ask-threads-in { display:flex; flex-direction:column; width:260px; height:100%; min-height:0; box-sizing:border-box; }
 .ask-th-top { display:flex; flex-direction:column; gap:8px; padding:12px 12px 6px; }
+/* AU-OWNER-3: Hide threads sits on the New thread row (the header no longer holds a panel toggle). */
+.ask-th-newrow { display:flex; gap:6px; }
+.ask-th-newrow > .ask-th-new { flex:1; min-width:0; }
+.ask-th-hide { display:grid; place-items:center; flex:none; width:34px; height:34px; border:1px solid var(--border-strong); border-radius:9px; background:var(--surface); color:var(--fg-55); cursor:pointer; transition:color .12s ease, border-color .12s ease; }
+.ask-th-hide:hover { color:var(--fg); border-color:var(--border-input); }
+/* …and "Threads ›" brings the list back from the conversation's leading edge, fading in once the list is shut. */
+.ask-th-show { position:absolute; top:12px; left:12px; z-index:2; display:inline-flex; align-items:center; gap:4px; height:28px; padding:0 8px 0 10px; border:1px solid var(--border-strong); border-radius:8px; background:var(--surface); box-shadow:var(--shadow); font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer;
+  opacity:0; visibility:hidden; pointer-events:none; transition:opacity var(--fx-base) var(--fx-ease), visibility 0s linear var(--fx-base), color .12s ease; }
+.ask-th-show:hover { color:var(--fg); }
+.ask-screen[data-threads="hidden"] .ask-th-show { opacity:1; visibility:visible; pointer-events:auto; transition:opacity var(--fx-base) var(--fx-ease), visibility 0s, color .12s ease; }
 .ask-th-new { display:flex; align-items:center; justify-content:center; gap:7px; height:34px; border:1px solid var(--border-strong); border-radius:9px; background:var(--surface); box-shadow:var(--shadow); font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:color .12s ease, border-color .12s ease; }
 .ask-th-new:hover { color:var(--fg); border-color:var(--border-input); }
 .ask-th-search { display:flex; align-items:center; gap:7px; height:34px; padding:0 8px 0 10px; border:1px solid var(--border); border-radius:9px; color:var(--fg-40); }
@@ -4045,11 +4052,13 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .ask-iconbtn--40,
 [data-cnpy-theme] .ask-ghostbtn--outline,
 [data-cnpy-theme] .ask-btn,
+[data-cnpy-theme] .ask-th-show,
 [data-cnpy-theme] .ask-th-b,
 [data-cnpy-theme] .ask-th-rename,
 [data-cnpy-theme] .ask-send,
 [data-cnpy-theme] .ask-chip--tag { border-radius:calc(8px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-th-new,
+[data-cnpy-theme] .ask-th-hide,
 [data-cnpy-theme] .ask-th-search { border-radius:calc(9px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-menu,
 [data-cnpy-theme] .ask-starters > button,
