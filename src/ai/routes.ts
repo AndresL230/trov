@@ -9,7 +9,9 @@
 //                                      `org.ai_chat_auto`); → `AiSettings`
 //   POST /ai/suggestions/:id/accept    the kind's handler's role (./suggestions.ts) — writes AS the caller
 //   POST /ai/suggestions/:id/dismiss   any member
-//   POST /ai/feedback                  any member — "Wrong?": hides the item for the caller, idempotent
+//   POST /ai/feedback                  any member — "Wrong?": hides the item for the caller, idempotent; an
+//                                      omitted `model` / `promptVersion` is null. A failed write (here and
+//                                      on PUT /ai/settings) is 503 `{ error }`, never a 500
 //   POST /ai/filter { screen, text }   any member — the plain-language filter (#162, ./filter.ts): the screen's
 //                                      own filter fields, checked against the org's rows; never results
 import { Hono, type Context } from "hono";
@@ -73,8 +75,14 @@ aiApp.put(AI_ROUTES.settings, async (c) => {
   if (!hasRole(c.var.ctx, "admin")) return c.json({ error: "forbidden" }, 403);
   const parsed = AiSettingsPutSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid", message: "Send { enabled: true | false }, { chatAuto: true | false }, or both." }, 400);
-  if (parsed.data.enabled !== undefined) await setAiAutomation(c.var.ctx, parsed.data.enabled);
-  if (parsed.data.chatAuto !== undefined) await setAiChatAuto(c.var.ctx, parsed.data.chatAuto);
+  // A failed write is 503 `{ error }`, never a 500 (invariant 7).
+  try {
+    if (parsed.data.enabled !== undefined) await setAiAutomation(c.var.ctx, parsed.data.enabled);
+    if (parsed.data.chatAuto !== undefined) await setAiChatAuto(c.var.ctx, parsed.data.chatAuto);
+  } catch (e) {
+    console.error("ai settings write", e instanceof Error ? e.name : "error", `org=${c.var.ctx.orgId}`);
+    return c.json({ error: "Couldn't save the AI settings" }, 503);
+  }
   return settingsOr503(c);
 });
 
@@ -111,7 +119,12 @@ aiApp.post("/ai/suggestions/:id/dismiss", async (c) => {
 aiApp.post(AI_ROUTES.feedback, async (c) => {
   const parsed = AiFeedbackBodySchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid", issues: parsed.error.issues }, 400);
-  await recordFeedback(c.var.ctx, c.var.ctx.userId, parsed.data);
+  try {
+    await recordFeedback(c.var.ctx, c.var.ctx.userId, parsed.data);
+  } catch (e) {
+    console.error("ai feedback", e instanceof Error ? e.name : "error", `org=${c.var.ctx.orgId}`);
+    return c.json({ error: "Couldn't save that" }, 503);
+  }
   return c.json({ ok: true });
 });
 

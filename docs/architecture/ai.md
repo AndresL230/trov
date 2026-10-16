@@ -298,7 +298,7 @@ the plan, `orgs.ai_automation` and the month's `ai_run:*` — gives `off` when t
 | Route (`/api/o/:slug…`) | Who | Does |
 |---|---|---|
 | `GET /ai/settings` | any member | `AiSettings` from ONE statement (`planAndAiSettings`, `src/plans/gate.ts`): `enabled`, `chatAuto`, `canEdit` (admin+), `eligibility`, `allowances` — `ai_summaries`, `ai_runs`, `jev_checks` (Sift), `ai_chat` (Ask Trov), each `{ used, cap, resumesOn }` (`cap` from `resolveEntitlements`, so Pro's `ai_chat` is already per seat; `resumesOn` = the 1st of next month, only when that allowance is spent) — what is sent to whom (`AI_SENDS`: each line names its provider, Anthropic or TypeSafe AI) and what never is (`AI_NEVER_SENT`). A failed read is 503 `{ error }` |
-| `PUT /ai/settings { enabled?, chatAuto? }` | admin+ (403 otherwise) | either switch or both (neither, another key or a wrong type is 400): `enabled` audited `org.ai`, `chatAuto` audited `org.ai_chat_auto`, in `org_admin_audit`; returns `AiSettings` |
+| `PUT /ai/settings { enabled?, chatAuto? }` | admin+ (403 otherwise) | either switch or both (neither, another key or a wrong type is 400): `enabled` audited `org.ai`, `chatAuto` audited `org.ai_chat_auto`, in `org_admin_audit`; returns `AiSettings`. A failed write is 503 `{ error }`, never a 500 |
 
 On the screen, TypeSafe AI's model is **Sift** — never its own name; the providers' legal names appear only where
 the tab says what is SENT (`web-ui.md`, the Privacy Policy).
@@ -686,7 +686,8 @@ API (`batch: true`, half the price), the pass's last stage.
   remove go through the same two routes.
 - **"Wrong?"** — `POST /ai/feedback` (`AiFeedbackBody`) records `ai_feedback` for the cookie person, ONE row per
   (person, item), idempotent; it hides the item for that person (`hiddenFor(ctx, handle, itemType)`, what a
-  producer reads) and never edits the record.
+  producer reads) and never edits the record. `model` and `promptVersion` are nullable, and an omitted one is null;
+  a failed write is 503 `{ error }`, never a 500.
 - Both tables are in `ORG_TABLES` and the reset seed; `ai_suggestions.decided_by` and `ai_feedback.handle` are in
   `HANDLE_COLUMNS`. Every route refuses a request carrying an `Authorization` header (`cookieOnly`); none is an MCP
   tool and none has an old-path alias.

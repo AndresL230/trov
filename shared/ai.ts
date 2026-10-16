@@ -109,9 +109,10 @@ export const AiFeedbackBodySchema = z.object({
   itemType: z.enum(AI_ITEM_TYPES),
   itemRef: z.string().min(1).max(200),
   kind: z.string().min(1).max(60),
-  model: z.string().max(80).nullable(),
-  promptVersion: z.string().max(40).nullable(),
-}) satisfies z.ZodType<AiFeedbackBody>;
+  // Nullable, and an OMITTED one is null (Q15): a client that does not know how the item was written leaves them out.
+  model: z.string().max(80).nullish().transform((v) => v ?? null),
+  promptVersion: z.string().max(40).nullish().transform((v) => v ?? null),
+}) satisfies z.ZodType<AiFeedbackBody, unknown>;
 
 export const AiAcceptBodySchema = z.object({ value: z.unknown().optional() }) satisfies z.ZodType<AiAcceptBody>;
 

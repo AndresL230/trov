@@ -253,9 +253,38 @@ describe('"Wrong?" — POST /ai/feedback', () => {
     expect([...(await hiddenFor(systemCtx(ORG_B), MEMBER, "brief"))]).toEqual([]);
   });
 
+  // Q15 (owner ruling 2026-10-16): an omitted nullable field is null, not a refusal.
+  it("an omitted `model` / `promptVersion` is stored as null", async () => {
+    const cookie = await cookieFor(MEMBER);
+    expect(await call("POST", `${BASE}${AI_ROUTES.feedback}`, cookie, { itemType: "brief", itemRef: "person:x", kind: "brief" })).toEqual({ status: 200, json: { ok: true } });
+    expect(await all(env.DB, `SELECT item_ref, model, prompt_version FROM ai_feedback`)).toEqual([{ item_ref: "person:x", model: null, prompt_version: null }]);
+  });
+
+  // Q14 (owner ruling 2026-10-16; invariant 7): a D1 failure on either write is a 503 `{ error }`, never a 500.
+  it("a D1 failure on POST /ai/feedback or PUT /ai/settings is 503 `{ error }`, never a 500", async () => {
+    const broken = new Proxy(env.DB, {
+      get(t, k) {
+        if (k === "batch") return () => Promise.reject(new Error("D1 is down"));
+        if (k === "prepare") return (sql: string) => /INSERT INTO ai_feedback/.test(sql)
+          ? { bind: () => ({ run: () => { throw new Error("D1 is down"); } }) }
+          : t.prepare(sql);
+        const v = Reflect.get(t, k);
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    });
+    const down = { ...(env as unknown as Env), DB: broken } as unknown as Env;
+    const fb = await call<{ error: string }>("POST", `${BASE}${AI_ROUTES.feedback}`, await cookieFor(MEMBER), body, down);
+    expect(fb.status).toBe(503);
+    expect(typeof fb.json.error).toBe("string");
+    const put = await call<{ error: string }>("PUT", `${BASE}${AI_ROUTES.settings}`, await cookieFor(FIXTURE_ADMIN), { enabled: false }, down);
+    expect(put.status).toBe(503);
+    expect(typeof put.json.error).toBe("string");
+    expect(await first(env.DB, `SELECT ai_automation FROM orgs WHERE id = ?`, ORG_A)).toEqual({ ai_automation: 1 });
+  });
+
   it("a body the contract refuses is 400 and writes nothing", async () => {
     const cookie = await cookieFor(MEMBER);
-    for (const bad of [{ ...body, itemType: "ticket" }, { ...body, itemRef: "" }, { itemType: "brief" }, null]) {
+    for (const bad of [{ ...body, itemType: "ticket" }, { ...body, itemRef: "" }, { itemType: "brief" }, { ...body, model: 7 }, null]) {
       expect((await call("POST", `${BASE}${AI_ROUTES.feedback}`, cookie, bad)).status).toBe(400);
     }
     expect(await all(env.DB, `SELECT id FROM ai_feedback`)).toEqual([]);
