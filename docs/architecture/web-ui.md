@@ -1063,6 +1063,8 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   say "Wrong?" and what pressing it does. It POSTs
   `/ai/feedback` and hides the item for that person at once (`state.ai.hidden`), back with a toast if the write
   fails; it leaves by the kit's one exit (› Motion below) — on the Roadmap too. Nothing written is ever shown without the mark.
+  An importance mark's "Wrong?" (`aiRatingWrongBtn`: 24px, borderless, after the mark in the byline) is the one that
+  hides nothing: it tells Trov, for the evals, and stays pressed; the rating stays as rated (Q34; `ai.md`).
 - **Capped and empty** are the screen's own words (`aiCapped`, `AI_EMPTY`): "Monthly AI allowance used; <what>
   resumes Nov 1." with "Upgrade to Pro" (to Org settings › General, where the plan is changed) only when
   `upgrade` is true.

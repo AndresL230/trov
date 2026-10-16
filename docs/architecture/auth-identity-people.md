@@ -223,7 +223,8 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   avatar opens the card** (`web/src/people.ts`): photo + name as ONE chip where both fit (`personLink`), a photo alone
   (`personAvatarLink`, and `avatarStack(…, linked)`), a name or `@handle` in a line of text (`personNameLink` /
   `handleLink`) — each resolved through `GET /persons` case-insensitively, so an unknown handle, a bot, the GitHub
-  mirror's `github-webhook` and Repo sample data stay plain. A card or row that opens something else (queue rows and
+  mirror's `github-webhook` and Repo sample data stay plain; a deleted account's tombstone (`deleted-…`) is the words
+  "Deleted user" as plain text, never an `@handle` or a link (`handleTag` / `handleLink` → `deletedUserTag`; Q31). A card or row that opens something else (queue rows and
   board cards, sprint ticket boxes, handoff rows, prompt and artifact cards, the Feed's review rows) is a plain
   container whose own target is an empty button laid over it (`ui.ts` `hitArea` + `HITBOX`), with the people above it
   — never a button inside a button. Left plain on purpose: pickers and filter menus (a click there selects), the

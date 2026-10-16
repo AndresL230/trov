@@ -8,10 +8,13 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const calls = vi.hoisted(() => ({ accept: [] as Array<(ok: boolean) => void>, dismiss: [] as Array<(ok: boolean) => void>, feedback: [] as Array<(ok: boolean) => void> }));
+/** A pending call is answered with true (200), false (a bare 400 `invalid`), the error to reject with, or a 200's
+ *  body (`{ body }`). */
+type Answer = (ok: boolean | Error | { body: unknown }) => void;
+const calls = vi.hoisted(() => ({ accept: [] as Array<Answer>, dismiss: [] as Array<Answer>, feedback: [] as Array<Answer> }));
 vi.mock("../web/src/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../web/src/api")>();
-  const pending = (list: Array<(ok: boolean) => void>) => new Promise<unknown>((res, rej) => list.push((ok) => (ok ? res({}) : rej(new real.ApiError(400, "invalid")))));
+  const pending = (list: Array<Answer>) => new Promise<unknown>((res, rej) => list.push((ok) => (ok === true ? res({}) : ok instanceof Error ? rej(ok) : ok === false ? rej(new real.ApiError(400, "invalid")) : res(ok.body))));
   return {
     ...real,
     acceptAiSuggestion: () => pending(calls.accept),
@@ -22,10 +25,11 @@ vi.mock("../web/src/api", async (importOriginal) => {
 vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, renderMarkdownInline: (t: string) => t }));
 
 import { createAiController } from "../web/src/ai-actions";
+import { OrgApiError } from "../web/src/api";
 import { AI_EXIT_MS, aiSuggestionKey } from "../web/src/ai-ui";
 import { initialState, type AppState } from "../web/src/render";
 import { roadmapSuggestionCards } from "../web/src/roadmap-ai";
-import { roadmapFixture } from "@shared/ai-fixtures";
+import { roadmapFixture, themesFixture } from "@shared/ai-fixtures";
 import { aiItemRef } from "@shared/ai-core";
 
 const fx = roadmapFixture("ready", new Date("2026-10-14T12:00:00Z"))!;
@@ -103,6 +107,28 @@ describe("a Roadmap card leaves by the AI kit's one exit", () => {
     expect(h.log.afterDecide).toEqual([]);
   });
 
+  it("a 400 that carries the server's sentence says it as it is (Q21/Q40: a Roadmap writer; Q20: a theme name)", async () => {
+    const h = harness();
+    h.ctl.act("aiAccept", String(A.id), null);
+    calls.accept[0](new OrgApiError(400, "invalid", "that sprint draft is not one Trov can create", null));
+    await flush();
+    expect(h.log.flashes).toEqual(["that sprint draft is not one Trov can create"]);
+    expect(h.state.ai.leaving).toEqual([]); // back exactly, as any failure
+    const r = harness("repo");
+    r.state.ai.rename = { id: B.id, draft: "Billing" };
+    r.ctl.act("aiRenameSave", null, null);
+    calls.accept[1](new OrgApiError(400, "invalid", "A theme named Billing already exists.", null));
+    await flush();
+    expect(r.log.flashes).toEqual(["A theme named Billing already exists."]);
+    expect(r.state.ai.rename).toEqual({ id: B.id, draft: "Billing" }); // the field stays open to change the name
+    // A 409 with no sentence keeps its own words.
+    const n = harness();
+    n.ctl.act("aiDismiss", String(A.id), null);
+    calls.dismiss[0](new OrgApiError(409, "not_open", null, null));
+    await flush();
+    expect(n.log.flashes).toEqual(["Someone already answered that suggestion."]);
+  });
+
   it("reduced motion: gone at once (the exit's class is display:none there), and the re-read goes at once", async () => {
     reduced = true;
     const h = harness();
@@ -120,6 +146,45 @@ describe("a Roadmap card leaves by the AI kit's one exit", () => {
     h.ctl.act("aiAccept", String(A.id), null);
     expect(h.state.ai.busy).toEqual([A.id]);
     expect(h.state.ai.leaving).toEqual([{ key: aiSuggestionKey(A.id), at: NOW }]);
+  });
+});
+
+describe("LOCAL_AI_PREVIEW: a sample's decision is taken locally, with 'Not saved in preview' (Q5)", () => {
+  const PREVIEW = { body: { ok: true, preview: true } };
+  it("a Roadmap card leaves and STAYS gone (no re-read would bring the sample back), whatever exits follow", async () => {
+    vi.setSystemTime(NOW);
+    const h = harness();
+    h.ctl.act("aiAccept", String(A.id), null);
+    calls.accept[0](PREVIEW);
+    await flush();
+    expect(h.log.flashes).toEqual(["Not saved in preview"]);
+    expect(h.state.ai.busy).toEqual([]);
+    expect(h.state.ai.previewDecided).toEqual([A.id]);
+    vi.advanceTimersByTime(20_000);
+    expect(h.log.afterDecide).toEqual([]); // nothing was saved: nothing to re-read
+    h.ctl.act("aiDismiss", String(B.id), null); // a later exit does not drop A's held one
+    expect(h.state.ai.leaving.map((l) => l.key)).toEqual([aiSuggestionKey(A.id), aiSuggestionKey(B.id)]);
+    expect(h.cards()).toMatch(leavingCard(A.id));
+  });
+  it("a proposed theme: Accept (renamed) makes the lane active under its name, Remove takes it off the chart", async () => {
+    const now = new Date(NOW);
+    const h = harness("repo");
+    h.state.repo = { status: "ok", data: { themes: { "8w": themesFixture("proposed", "8w", now), quarter: themesFixture("proposed", "quarter", now) } } as never };
+    const [l0, l1] = h.state.repo.data!.themes!["8w"]!.lanes;
+    h.state.ai.rename = { id: l0.suggestionId!, draft: "Org work" };
+    h.ctl.act("aiRenameSave", null, null);
+    calls.accept[0](PREVIEW);
+    await flush();
+    h.ctl.act("aiDismiss", String(l1.suggestionId), null);
+    calls.dismiss[0](PREVIEW);
+    await flush();
+    for (const range of ["8w", "quarter"] as const) {
+      const lanes = h.state.repo.data!.themes![range]!.lanes;
+      expect(lanes.find((l) => l.id === l0.id)).toMatchObject({ name: "Org work", status: "active", suggestionId: null });
+      expect(lanes.find((l) => l.id === l1.id)).toBeUndefined();
+    }
+    expect(h.state.ai.rename).toBeNull();
+    expect(h.log.flashes).toEqual(["Not saved in preview", "Not saved in preview"]);
   });
 });
 

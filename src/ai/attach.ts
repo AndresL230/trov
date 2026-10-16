@@ -73,8 +73,11 @@ export function withReviewSuggestions<P extends ProposalRow, A extends AdrRow>(c
     let all: AiSuggestion[];
     if (preview) {
       if (!(await aiSwitchOn(c.var.ctx))) return { proposals, adrs };
-      const refs = [...proposals.map(pRef), ...adrs.filter((a) => a.status === "draft").map(aRef)];
-      all = refs.map((r, i) => reviewRiskFixture(preview, r, i)).filter((s): s is AiSuggestion => s !== null);
+      // Each list its own samples, with their own ids (Q38): /proposals and /adrs are read apart.
+      all = [
+        ...proposals.map((p, i) => reviewRiskFixture(preview, pRef(p), i, "proposals")),
+        ...adrs.filter((a) => a.status === "draft").map((a, i) => reviewRiskFixture(preview, aRef(a), i, "adrs")),
+      ].filter((s): s is AiSuggestion => s !== null);
     } else {
       all = await openSuggestions(c.var.ctx, CARD_ITEM_TYPES.proposal, [...proposals.map(pRef), ...adrs.map(aRef)], ["review.risk"]);
     }

@@ -6,6 +6,7 @@ import { trovMark } from "@shared/mark";
 import { esc, attr, initialsOf, surface } from "./ui";
 import { agreeHtml } from "@shared/legal-core";
 import type { OnboardPrefill } from "./api";
+import { isTombstoneHandle, TOMBSTONE_NAME } from "@shared/deletion-core";
 
 export const COLOR_NAMES: readonly PersonColor[] = PERSON_COLORS;
 
@@ -33,7 +34,14 @@ export function initialsOfName(name: string | null | undefined, fallback: string
 }
 
 /** `@handle` in the person's color (Geist, 500 — a name, not a label chip). Unmapped → muted, no color. */
+/** A deleted account's tombstone handle (`deleted-…`, shared/deletion-core.ts) is "Deleted user" as PLAIN TEXT —
+ *  never an @handle, never a link to a card (Q31: a Trov entry about someone who deleted their account). */
+export function deletedUserTag(size = 12): string {
+  return `<span data-deleted-user style="font-family:var(--sans);font-size:${size}px;color:var(--fg-55)">${esc(TOMBSTONE_NAME)}</span>`;
+}
+
 export function handleTag(p: { handle: string; color: PersonColor } | null, fallback: string, size = 12): string {
+  if (isTombstoneHandle(p?.handle ?? fallback)) return deletedUserTag(size);
   if (!p) return `<span style="font-family:var(--sans);font-size:${size}px;color:var(--fg-55)">@${esc(fallback)}</span>`;
   return `<span style="font-family:var(--sans);font-size:${size}px;font-weight:500;color:var(--p-${p.color})">@${esc(p.handle)}</span>`;
 }
@@ -100,6 +108,7 @@ export function personNameLink(person: { handle: string; name?: string | null } 
 /** `handleTag` as the button that opens the person's card (the Feed's author line, a doc's
  *  "Updated by"). Unmapped → the plain muted tag. */
 export function handleLink(p: { handle: string; name?: string | null; color: PersonColor } | null, fallback: string, size = 12): string {
+  if (isTombstoneHandle(p?.handle ?? fallback)) return deletedUserTag(size); // the non-clickable case
   return p
     ? `<button data-act="openPerson" data-arg="${attr(p.handle)}" class="cnpy-personlink" title="${attr(p.name || p.handle)}" style="padding:0">${handleTag(p, fallback, size)}</button>`
     : handleTag(null, fallback, size);

@@ -13,8 +13,8 @@ vi.mock("../web/src/markdown", () => ({
   renderMarkdownInline: (text: string) => mdMock(text),
 }));
 import { TROV_MARK_PATH } from "../shared/mark";
-import { render, initialState, feedShown, FEED_AI_NOTE, type AppState } from "../web/src/render";
-import { briefTile } from "../web/src/mywork";
+import { render, initialState, feedShown, FEED_AI_NOTE, FEED_NO_TROV, type AppState } from "../web/src/render";
+import { briefTile, sessionsTile } from "../web/src/mywork";
 import { repoStateSection, themesSection, bandHeight, weekLabel, type RepoAiProps } from "../web/src/repo-ai";
 import { repoView, type RepoProps } from "../web/src/repo";
 import { repoSample } from "../web/src/repo-sample";
@@ -22,7 +22,7 @@ import {
   AI_EMPTY, initialAiUi, aiCite, aiCapped, aiDay, aiSuggestionChip, aiWrongBtn, aiFeedback, aiFromLine, aiFeedTip, type AiUi,
 } from "../web/src/ai-ui";
 import { parseFeedbackArg } from "../web/src/ai-actions";
-import { aiHiddenKey } from "../web/src/ai-ui";
+import { aiHiddenKey, AI_TIP } from "../web/src/ai-ui";
 import { aiMark, AI_NOT_OFFICIAL } from "../web/src/marks";
 import { aiTab, allowanceLine } from "../web/src/org-ai";
 import { usageView, orgUsageBlock } from "../web/src/platform-usage";
@@ -446,7 +446,7 @@ describe("Repo › Planning › Where the work went", () => {
     expect((block.match(/data-act="aiAccept"/g) ?? []).length).toBe(6);
     expect((block.match(/data-act="aiRenameOpen"/g) ?? []).length).toBe(6);
     expect((block.match(/>Remove<\/button>/g) ?? []).length).toBe(6);
-    expect(block).toContain('data-act="aiAccept" data-arg="900"');
+    expect(block).toContain('data-act="aiAccept" data-arg="910"');
     expect(block).not.toContain("Waiting for an admin");
   });
   it("proposed (member): no buttons, 'Waiting for an admin to accept themes'", () => {
@@ -456,12 +456,12 @@ describe("Repo › Planning › Where the work went", () => {
     expect(h).not.toContain("aiRenameOpen");
   });
   it("Rename is an inline labelled field; a 409 not_available says 'Not available yet'", () => {
-    const h = themesSection(themes("proposed"), rp({ ui: ui({ rename: { id: 901, draft: "Tickets" } }) }));
-    expect(h).toMatch(/<label for="ai-rename-901" class="cnpy-sr">New name for Tickets and sprints<\/label>/);
-    expect(h).toMatch(/<input id="ai-rename-901" data-act="aiRenameDraft" data-arg="901"[^>]*value="Tickets"/);
-    expect(h).toContain('data-act="aiRenameSave" data-arg="901"');
-    const na = themesSection(themes("proposed"), rp({ ui: ui({ unavailable: [902] }) }));
-    const chip = na.slice(na.indexOf('data-ai-chip="theme-902"'));
+    const h = themesSection(themes("proposed"), rp({ ui: ui({ rename: { id: 911, draft: "Tickets" } }) }));
+    expect(h).toMatch(/<label for="ai-rename-911" class="cnpy-sr">New name for Tickets and sprints<\/label>/);
+    expect(h).toMatch(/<input id="ai-rename-911" data-act="aiRenameDraft" data-arg="911"[^>]*value="Tickets"/);
+    expect(h).toContain('data-act="aiRenameSave" data-arg="911"');
+    const na = themesSection(themes("proposed"), rp({ ui: ui({ unavailable: [912] }) }));
+    const chip = na.slice(na.indexOf('data-ai-chip="theme-912"'));
     expect(chip.slice(0, chip.indexOf("</li>"))).toContain("Not available yet");
   });
   it("is Planning's first section, above the panel", () => {
@@ -517,6 +517,34 @@ describe("Feed — entries written by Trov", () => {
     expect(render(feed({ ai: ui({ noteSeen: ["Andres"] }) }))).not.toContain("cnpy-ai-note");
     // Above the first Trov entry ON SCREEN: with Agents picked, there is none, so no note.
     expect(render(feed({ ai: ui({ feedSource: "agents" }) }))).not.toContain("cnpy-ai-note");
+  });
+  it("Source = Trov with no Trov entry on the page says so (Q27)", () => {
+    const tagged = { ...agent, ai: { origin: "agent" as const, subject: null, sources: [], moreCount: 0, generatedAt: null, model: null } };
+    const html = render(feed({ feed: { status: "ok", data: [tagged] }, ai: ui({ feedSource: "trov" }) }));
+    expect(text(html)).toContain(FEED_NO_TROV);
+    expect(text(html)).not.toContain("No entries match this filter.");
+    // Agents or All with nothing shown keep the filter's words.
+    expect(text(render(feed({ feed: { status: "ok", data: [rows()[0]] }, ai: ui({ feedSource: "agents" }) })))).toContain("No entries match this filter.");
+  });
+  it("My Work › Your sessions draws a digest Trov wrote about me with the AI mark (Q30); my own entries as before", () => {
+    const html = sessionsTile([
+      { id: 1, summaryHtml: "Shipped: hosting", brief: null, at: NOW.toISOString(), trov: true },
+      { id: 2, summaryHtml: "Decision: read-only", brief: null, at: NOW.toISOString() },
+    ], "ok", [], 6);
+    const rowsOf = html.split('class="mw-row"');
+    expect(rowsOf[1]).toContain('data-ai="session"');
+    expect(rowsOf[1]).toContain(AI_TIP.session);
+    expect(rowsOf[2]).not.toContain('data-ai="session"');
+  });
+  it("a Trov entry about a deleted account says \"Deleted user\" as plain text, never a link (Q31)", () => {
+    const [a] = feedFixtures(NOW);
+    const gone = { ...a, ai: { ...a.ai!, subject: "deleted-x7k2" } };
+    const persons = { status: "ok" as const, data: [...PERSONS, { handle: "deleted-x7k2", name: "Deleted user", color: "sky" as const, avatar_url: null, role: null }] };
+    const html = render(feed({ feed: { status: "ok", data: [gone] }, persons }));
+    const card = html.slice(html.indexOf(`data-feed-id="${a.id}"`));
+    expect(text(card)).toContain("Trov for Deleted user");
+    expect(card).not.toContain('data-arg="deleted-x7k2"');
+    expect(card).not.toContain("@deleted-x7k2");
   });
   it("Wrong? hides the entry for this person", () => {
     const html = render(feed({ ai: ui({ hidden: ["feed:990001"] }) }));

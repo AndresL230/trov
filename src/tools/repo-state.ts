@@ -79,14 +79,24 @@ export async function appendRepoState(ctx: TenantContext, repo: string, v: {
 /**
  * `RepoDashboard.state` for `repo` — what the screen and `get_repo_dashboard` carry, or undefined (absent). Two
  * statements (the switch, plan and month's runs in one; the newest version), plus one for "Wrong?" when there is a
- * viewer. Never throws.
+ * viewer. Never throws. `emptyWhenNone` (the screens', with a key — Q23): with the switch on and nothing written yet,
+ * an `empty` state (`capped` once the runs are spent) so the screen says when Trov writes it; MCP leaves it absent.
  */
-export async function readRepoState(ctx: TenantContext, repo: string, opts: { viewer?: string | null; now?: Date } = {}): Promise<AiRepoState | undefined> {
+export async function readRepoState(ctx: TenantContext, repo: string, opts: { viewer?: string | null; now?: Date; emptyWhenNone?: boolean } = {}): Promise<AiRepoState | undefined> {
   if (!repo) return undefined;
   try {
     const now = opts.now ?? new Date();
     const [gate, row] = await Promise.all([planAndAiRuns(ctx, now), latestRepoState(ctx, repo)]);
-    if (!gate.enabled || !row) return undefined;
+    if (!gate.enabled) return undefined;
+    if (!row) {
+      if (!opts.emptyWhenNone) return undefined;
+      const capped = !!planRefusal(gate.plan, "ai_runs", gate.used, 1);
+      return {
+        state: capped ? "capped" : "empty", generatedAt: null, model: null,
+        resumesOn: capped ? nextMonthStart(now) : null, upgrade: capped && gate.plan.plan === FREE_PLAN,
+        headline: null, shipped: [], inFlight: [], attention: [], eventCount: null,
+      };
+    }
     const stored = parseStoredState(row.state_json);
     if (!stored) return undefined;
     if (opts.viewer && (await hiddenFor(ctx, opts.viewer, "repo_state")).has(aiItemRef.repoState(repo, row.generated_at))) return undefined;

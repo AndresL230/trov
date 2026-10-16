@@ -19,7 +19,7 @@ import {
   stagedPrompts,
 } from "./render";
 import {
-  getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
+  getFeed, getFeedPage, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
   acceptRepoSuggestion, ignoreRepoSuggestion, undoRepoSuggestion,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
@@ -1153,9 +1153,10 @@ function loadFeed(): void {
   rerender();
   const author = state.feedAuthor !== "all" ? state.feedAuthor : undefined;
   const tags = state.feedTag !== "all" ? [state.feedTag] : undefined;
-  getFeed({ author, tags })
-    .then((rows) => {
+  getFeedPage({ author, tags })
+    .then(({ feed: rows, aiOff }) => {
       state.feed = { status: "ok", data: rows };
+      state.ai.feedAiOff = aiOff;
       // Capture the author chip set only from the unfiltered view, so filtering doesn't shrink it.
       if (!author && !tags) state.feedAuthors = [...new Set(rows.map((r) => r.author))];
       rerenderSoon();
@@ -1211,13 +1212,13 @@ function loadMyWork(): void {
       rerenderSoon();
     });
 }
-/** Your sessions: MY two latest feed entries — My Work's own read, so the Feed
- *  screen's author/tag filters (which shape `state.feed`) never reach it. */
+/** Your sessions: MY two latest feed entries, and the session digests Trov wrote about me (Q30) — My Work's own
+ *  read, so the Feed screen's author/tag filters (which shape `state.feed`) never reach it. */
 function loadMwSessions(): void {
   const me = state.me?.handle;
   if (!me) return;
   state.mwSessions = { status: "loading", data: state.mwSessions.data };
-  getFeed({ author: me, limit: 2 })
+  getFeed({ author: me, about: true, limit: 2 })
     .then((rows) => { state.mwSessions = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }

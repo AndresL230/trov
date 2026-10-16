@@ -20,6 +20,7 @@ import { ticketDecide, ticketRequest, wordsEvidence, type TicketCardInput } from
 import { unplacedDecide, type UnplacedCardInput } from "../src/ai/jobs/unplaced-card";
 import { reviewDecide, type ReviewCardInput } from "../src/ai/jobs/review-card";
 import type { TicketDetail } from "@shared/tickets";
+import { AI_PREVIEW_SUGGESTION_IDS, reviewRiskFixture, roadmapFixture, themesFixture, ticketSuggestionsFixture, unplacedSuggestionFixture } from "@shared/ai-fixtures";
 import type { NeedsTriageRow, AdrRow } from "@shared/rows";
 import { all, first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
@@ -310,6 +311,37 @@ describe("the Review and Unplaced cards through the pass, and the screens' reads
 });
 
 describe("LOCAL_AI_PREVIEW: the sample suggestions on the three screens' real rows (wrangler dev only)", () => {
+  it("every sample suggestion has its own id, on every screen (Q38)", () => {
+    const now = new Date("2026-10-14T12:00:00Z");
+    const ids = [
+      ...ticketSuggestionsFixture("ready", 2, { number: 1, title: "t" }),
+      unplacedSuggestionFixture("ready", 1),
+      reviewRiskFixture("ready", "doc:a@1", 0), reviewRiskFixture("ready", "doc:b@1", 1),
+      reviewRiskFixture("ready", "adr:1", 0, "adrs"), reviewRiskFixture("ready", "adr:2", 1, "adrs"),
+      ...roadmapFixture("ready", now)!.suggestions,
+    ].map((s) => s!.id).concat(themesFixture("proposed", "8w", now).lanes.map((l) => l.suggestionId!));
+    expect(ids.length).toBe(16);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect([...ids].sort((a, b) => a - b)).toEqual([...AI_PREVIEW_SUGGESTION_IDS]);
+  });
+  it("Accept / Dismiss on a sample answers { ok, preview } under the preview and writes nothing; elsewhere not_found (Q5)", async () => {
+    const e = withVars({ LOCAL_AI_PREVIEW: "proposed" });
+    const post = async (origin: string, path: string, en: Env, body: unknown = {}) => {
+      const res = await app.request(`${origin}/api/o/saplinglearn${path}`, { method: "POST", headers: { cookie: await cookieFor("AndresL230"), "content-type": "application/json" }, body: JSON.stringify(body) }, en);
+      return { status: res.status, json: await res.json() };
+    };
+    const before = await all(env.DB, `SELECT id FROM ai_suggestions`);
+    for (const id of [905, 910]) {
+      expect(await post(LOCAL, `/ai/suggestions/${id}/accept`, e)).toEqual({ status: 200, json: { ok: true, preview: true } });
+      expect(await post(LOCAL, `/ai/suggestions/${id}/dismiss`, e)).toEqual({ status: 200, json: { ok: true, preview: true } });
+    }
+    expect(await post(LOCAL, `/ai/suggestions/911/accept`, e, { value: { name: "Billing" } })).toEqual({ status: 200, json: { ok: true, preview: true } });
+    expect(await all(env.DB, `SELECT id FROM ai_suggestions`)).toEqual(before);
+    // Not a sample, not the preview, not a loopback origin: the usual 404.
+    expect((await post(LOCAL, `/ai/suggestions/909/accept`, e)).status).toBe(404);
+    expect((await post(LOCAL, `/ai/suggestions/905/accept`, env as unknown as Env)).status).toBe(404);
+    expect((await post("https://trov.dev", `/ai/suggestions/905/dismiss`, e)).status).toBe(404);
+  });
   const LOCAL = "http://localhost:8787";
   const withVars = (over: Partial<Env>): Env => ({ ...(env as unknown as Env), ...over });
   async function get<T>(origin: string, path: string, e: Env): Promise<T> {
@@ -330,8 +362,14 @@ describe("LOCAL_AI_PREVIEW: the sample suggestions on the three screens' real ro
     const items = (await get<{ items: NeedsTriageRow[] }>(LOCAL, "/needs-triage", e)).items;
     expect(items.filter((i) => i.ai).map((i) => [i.id, i.ai?.[0].kind])).toEqual([[doc, "unplaced.destination"]]);
     await ingestDocProposal(await tenantCtx("AndresL230"), { slug: "p1", section: "reference", body: "b", change_summary: "c", confidence: "high" } as never, "AndresL230");
-    const proposals = (await get<{ proposals: { ai?: { label: string }[] }[] }>(LOCAL, "/proposals", e)).proposals;
+    const proposals = (await get<{ proposals: { ai?: { id: number; label: string }[] }[] }>(LOCAL, "/proposals", e)).proposals;
     expect(proposals[0].ai?.map((s) => s.label)).toEqual(["Changes a decision"]);
+    // A drafted decision gets its own sample, with its OWN id (Q38: proposals and drafts once shared 905/906, so
+    // "because…" on one opened the other too).
+    await ingestAdrDraft(await tenantCtx("AndresL230"), { title: "Use D1 for search", context: "c", decision: "Use FTS5.", rationale: "r", confidence: "high" } as never, "AndresL230");
+    const adrs = (await get<{ adrs: { ai?: { id: number; label: string }[] }[] }>(LOCAL, "/adrs?status=draft", e)).adrs;
+    expect(adrs[0].ai?.map((s) => s.label)).toEqual(["Changes a decision"]);
+    expect(adrs[0].ai![0].id).not.toBe(proposals[0].ai![0].id);
     // empty: none; a deployed origin, or no var: none.
     expect(await get<TicketDetail>(LOCAL, `/tickets/${b}`, withVars({ LOCAL_AI_PREVIEW: "empty" }))).not.toHaveProperty("ai");
     expect(await get<TicketDetail>("https://trov.dev", `/tickets/${b}`, e)).not.toHaveProperty("ai");

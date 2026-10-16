@@ -203,7 +203,9 @@ export interface AiSuggestion {
 }
 
 /** What "Wrong?" can be pressed on. */
-export const AI_ITEM_TYPES = ["brief", "repo_state", "feed", "themes", "suggestion", "sprint_note", "plan_drift"] as const;
+/** `importance`: "Wrong?" on Sift's importance rating — feedback for the evals ONLY (Q34): it never hides the rating,
+ *  which is a computed fact, and nothing reads it to hide anything. */
+export const AI_ITEM_TYPES = ["brief", "repo_state", "feed", "themes", "suggestion", "sprint_note", "plan_drift", "importance"] as const;
 export type AiItemType = (typeof AI_ITEM_TYPES)[number];
 
 /** The `itemRef` "Wrong?" sends for each item type — ONE definition for the screen that sends it and
@@ -214,6 +216,8 @@ export const aiItemRef = {
   repoState: (repo: string, generatedAt: string): string => `${repo}@${generatedAt}`,
   themes: (repo: string, range: AiThemeRange, generatedAt: string): string => `${repo}:${range}@${generatedAt}`,
   feed: (id: number): string => String(id),
+  /** A feed entry's importance rating (Q34). */
+  importance: (feedId: number): string => `feed:${feedId}`,
   suggestion: (id: number): string => String(id),
   sprintNote: (sprintId: number, generatedAt: string): string => `${sprintId}@${generatedAt}`,
   planDrift: (generatedAt: string): string => generatedAt,
