@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
-  trovSettingsTiles, trovOrbDropdown, initialTrovPrefs, counterTone, oneModeLine, TROV_ORB_NOTE,
+  trovSettingsTiles, initialTrovPrefs, counterTone, oneModeLine,
   TROV_TRY, TROV_SEES, TROV_DOES_NOT, TROV_GATE, TROV_OFF, TROV_SAVED, TROV_WHERE, type TrovPrefsUi,
 } from "../web/src/ask-settings";
 import { createTrovPrefs, appendTry } from "../web/src/ask-settings-actions";
@@ -20,10 +20,6 @@ import { setApiOrg } from "../web/src/api";
 import { esc } from "../web/src/ui";
 import { askSettingsFixture, askStateFixture } from "@shared/ai-fixtures";
 import { ASK_INSTRUCTIONS_MAX, ASK_MODES, type AskSettings, type AskState } from "@shared/ai-ask-core";
-import { dropdownMenu, initialDropdownUi } from "../web/src/dropdown";
-import { ASK_ORB_CHOICES, ASK_ORB_KEY, ASK_ORB_MATCH_TOUR, askOrbState, parseAskOrb, type AskOrbChoice } from "../web/src/ask-orb";
-import { thinkingOrbTour, tourState, TOUR_SECONDS } from "../web/src/thinking-orb";
-import mainSrc from "../web/src/main.ts?raw";
 import css from "../web/src/trov.css?raw";
 
 const NOW = new Date("2026-10-15T12:00:00Z");
@@ -189,93 +185,6 @@ describe("the design's copy and the states around it", () => {
   });
 });
 
-describe("While it works — the thinking orb Ask shows (ask-orb.ts)", () => {
-  const trigger = (html: string): string => html.match(/<button type="button" id="trov-orb"[^]*?<\/button>/)?.[0] ?? "";
-
-  it("closes the Default mode tile on any plan: its label, its note and ONE dropdown (never a <select>), default Match", () => {
-    for (const plan of ["pro", "free"] as const) {
-      const html = tiles(ui(plan));
-      const mode = html.slice(html.indexOf("cnpy-set-trov-mode"), html.indexOf("cnpy-set-trov-see"));
-      expect(mode).toContain('<div id="trov-orb-l"');
-      expect(mode).toContain(">While it works</div>");
-      expect(mode).toContain(esc(TROV_ORB_NOTE));
-      expect(mode).toContain('data-dd="trov-orb"');
-      expect(mode).not.toContain("<select");
-      const t = trigger(html);
-      expect(t).toContain('data-act="ddToggle" data-arg="trov-orb"');
-      expect(t).toContain('aria-labelledby="trov-orb-l trov-orb"');
-      expect(t).toContain(`<span class="cnpy-dd-v">${esc("Match what it's doing")}</span>`);
-      // Match previews itself as a tour of the orbs Ask really uses, decorative beside its words.
-      expect(t).toContain(`data-orb="tour" data-orb-tour="${ASK_ORB_MATCH_TOUR.join(" ")}"`);
-      expect(t).toMatch(/<span class="cnpy-dd-icon" aria-hidden="true"><canvas class="cnpy-orb"[^>]*aria-hidden="true"/);
-    }
-    // It does not wait for the server: it is there while the rows load, and when their read failed.
-    expect(tiles({ ...initialTrovPrefs(), slug: "acme" })).toContain('data-dd="trov-orb"');
-    expect(tiles({ ...initialTrovPrefs(), slug: "acme", settings: { status: "error", data: null } })).toContain('data-dd="trov-orb"');
-  });
-
-  it("shows the pick in the trigger — its plain name and its own orb animating", () => {
-    const html = trovSettingsTiles(ui("pro"), "acme", { choice: "searching", dd: initialDropdownUi() });
-    const t = trigger(html);
-    expect(t).toContain('<span class="cnpy-dd-v">Globe</span>');
-    expect(t).toMatch(/<canvas class="cnpy-orb" data-orb="searching" data-orb-size="20"/);
-    expect(trigger(trovSettingsTiles(ui("pro"), "acme", { choice: "solving", dd: { open: "trov-orb", opening: false, closing: false } }))).toContain('aria-expanded="true"');
-  });
-
-  it("its menu: Match, then the six animations by name, each row with its 20px orb; the pick check-marked", () => {
-    expect(ASK_ORB_CHOICES.map((c) => c.label)).toEqual(["Match what it's doing", "Orbits", "Globe", "Cube", "Wave", "Ribbon", "Shapes"]);
-    const menu = dropdownMenu([trovOrbDropdown("listening")], { open: "trov-orb", opening: true, closing: false });
-    expect(menu).toContain('role="listbox" aria-labelledby="trov-orb-l"');
-    expect(menu).toContain('data-dd-act="trovSetOrb"');
-    const rows = menu.match(/<button type="button" role="option"[^]*?<\/button>/g) ?? [];
-    expect(rows).toHaveLength(7);
-    ASK_ORB_CHOICES.forEach((c, i) => {
-      expect(rows[i]).toContain(`data-arg="${c.value}"`);
-      expect(rows[i]).toContain(`<span class="cnpy-dd-optl">${esc(c.label)}</span>`);
-      expect(rows[i]).toMatch(c.value === "match" ? /data-orb="tour"/ : new RegExp(`data-orb="${c.value}" data-orb-size="20"`));
-      expect(rows[i]).toContain(`aria-selected="${c.value === "listening"}"`);
-    });
-    expect(rows[0]).toContain('<span class="cnpy-dd-opth">Searching, thinking and writing each look different.</span>');
-  });
-
-  it("the Settings screen draws its menu among the root overlays while it is open", () => {
-    const me = { handle: "alice", name: null, avatar_url: null, color: "moss" as const, identities: [], orgs: [{ slug: "acme", name: "Acme", role: "owner" as const }], superadmin: false, pending_invites: 0 };
-    const s = { ...initialState(), view: "app" as const, screen: "settings" as const, me, orgSlug: "acme", trovPrefs: ui("pro") };
-    s.ask = { ...s.ask, orb: "composing" };
-    expect(render(s)).not.toContain('data-overlay="dd-trov-orb"');
-    s.dd = { open: "trov-orb", opening: false, closing: false };
-    const html = render(s);
-    expect(html).toContain('data-overlay="dd-trov-orb"');
-    expect(html).toContain('<span class="cnpy-dd-v">Ribbon</span>');
-  });
-
-  it("the choice: Match follows what each place means; one animation replaces them all; a bad stored value is Match", () => {
-    expect(askOrbState("match", "searching")).toBe("searching");
-    expect(askOrbState("match", "solving")).toBe("solving");
-    expect(askOrbState("listening", "searching")).toBe("listening");
-    expect(askOrbState("shaping", "composing")).toBe("shaping");
-    expect(parseAskOrb("solving")).toBe("solving");
-    for (const bad of [null, undefined, "", "tour", "spinner", 3]) expect(parseAskOrb(bad)).toBe("match");
-    // main.ts reads it at start, per browser.
-    expect(mainSrc).toContain("state.ask.orb = parseAskOrb(localStorage.getItem(ASK_ORB_KEY))");
-  });
-
-  it("a tour shows each state in turn on the shared clock; under reduced motion (t = 0.6s) its first", () => {
-    const tour = ["working", "searching", "solving"];
-    expect(tourState(tour, 0.6)).toBe("working");
-    expect(tourState(tour, TOUR_SECONDS + 0.1)).toBe("searching");
-    expect(tourState(tour, TOUR_SECONDS * 3 + 0.1)).toBe("working");
-    expect(tourState([], 1)).toBeUndefined();
-    expect(thinkingOrbTour(["solving", "working"], 20, null)).toMatch(/^<canvas class="cnpy-orb" data-orb="tour" data-orb-tour="solving working" data-orb-size="20"[^>]*aria-hidden="true"/);
-  });
-
-  it("the trigger and its rows lay the orb out before the words (trov.css)", () => {
-    expect(css).toMatch(/\.cnpy-dd-lead \{ display:flex; align-items:center;/);
-    expect(css).toMatch(/\.cnpy-dd-icon \{[^}]*width:20px; height:20px;/);
-    expect(css).toMatch(/\.cnpy-trov-orb \{ padding-top:14px; border-top:1px solid var\(--border\); \}/);
-  });
-});
-
 describe("motion (web-ui.md › Sidebar & motion)", () => {
   it("eases what changes in place, \"Saved\" rises once as its own node, and all of it is off under reduced motion", () => {
     expect(tiles(ui("pro"))).toContain('class="cnpy-trov-count"');
@@ -317,7 +226,7 @@ describe("the controller (ask-settings-actions.ts)", () => {
       "PUT /ask/settings": () => json({ ...askSettingsFixture(plan), instructions: "saved" }),
     };
     const flashes: string[] = [];
-    const h = { state: { trovPrefs: initialTrovPrefs(), orgSlug: "acme" as string | null, ask: { orb: "match" as AskOrbChoice } }, rerender: () => {}, unauth: () => {}, flash: (m: string) => { flashes.push(m); } };
+    const h = { state: { trovPrefs: initialTrovPrefs(), orgSlug: "acme" as string | null }, rerender: () => {}, unauth: () => {}, flash: (m: string) => { flashes.push(m); } };
     return { h, ctl: createTrovPrefs(h), flashes };
   };
 
@@ -365,28 +274,5 @@ describe("the controller (ask-settings-actions.ts)", () => {
     expect(appendTry("x".repeat(499), "Long line")).toHaveLength(ASK_INSTRUCTIONS_MAX);
     expect(appendTry("", "Line")).toBe("Line");
     expect(appendTry("Text  \n", "Line")).toBe("Text Line");
-  });
-
-  it("a thinking-orb pick applies at once and is kept in this browser — not part of Save", async () => {
-    const store: Record<string, string> = {};
-    vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; } });
-    const { h, ctl } = host("pro");
-    await ctl.load();
-    let paints = 0;
-    h.rerender = () => { paints++; };
-    ctl.act("trovSetOrb", null, "listening");
-    expect(h.state.ask.orb).toBe("listening");
-    expect(store[ASK_ORB_KEY]).toBe("listening");
-    expect(paints).toBe(1);
-    ctl.act("trovSetOrb", null, "spinner"); // not a choice: ignored, nothing stored
-    expect(h.state.ask.orb).toBe("listening");
-    expect(store[ASK_ORB_KEY]).toBe("listening");
-    ctl.act("trovSetOrb", null, "match");
-    expect(h.state.ask.orb).toBe("match");
-    expect(asked.some((a) => a.method === "PUT")).toBe(false);
-    // Storage that throws (a private window) still applies the pick for this session.
-    vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => { throw new Error("quota"); } });
-    ctl.act("trovSetOrb", null, "shaping");
-    expect(h.state.ask.orb).toBe("shaping");
   });
 });

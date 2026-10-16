@@ -1,12 +1,14 @@
-// Which thinking orb Ask Trov shows while it works — the person's pick (Settings › Trov, ask-settings.ts).
+// Which thinking orb Ask Trov shows while it works — the person's pick, from the Ask screen's header: a compact
+// dropdown beside the bug button whose trigger is the picked orb, animating (render.ts places it on `ask` only).
 //
 //   "match"      the default: the orb says what Trov is doing (ask-conversation.ts picks it — a search step
 //                searches, the thinking row solves, the wait works, a reply being written composes)
 //   an OrbState  that one animation for every orb in Ask: the steps, the thinking row and the wait
 //
-// Kept PER BROWSER (localStorage `trov.askOrb`, read once at start in main.ts, written on a pick): Ask's server-side
-// settings (`person_ask_settings`) have fixed columns, and a look is not worth a migration. Pure; no DOM.
-import type { OrbState } from "./thinking-orb";
+// Kept PER BROWSER (localStorage `trov.askOrb`, read once at start in main.ts, written by its `setAskOrb` act): Ask's
+// server-side settings (`person_ask_settings`) have fixed columns, and a look is not worth a migration. Pure markup.
+import { thinkingOrb, thinkingOrbTour, type OrbState } from "./thinking-orb";
+import type { DropdownProps } from "./dropdown";
 
 export type AskOrbChoice = "match" | OrbState;
 
@@ -34,3 +36,16 @@ export const parseAskOrb = (raw: unknown): AskOrbChoice => (typeof raw === "stri
 
 /** The orb to draw: the pick, or — on "match" — what the place in the answer means. */
 export const askOrbState = (choice: AskOrbChoice, natural: OrbState): OrbState => (choice === "match" ? natural : choice);
+
+/** The header dropdown's props — its trigger in the Ask header and its menu among the root overlays (render.ts).
+ *  Each option previews its orb (20px, decorative: the label names it); "Match what it's doing" tours the ones Ask
+ *  uses. The trigger is the picked one's orb and a caret (`iconOnly`), named "Thinking animation: <choice>". */
+export function askOrbDropdown(choice: AskOrbChoice): DropdownProps {
+  return {
+    id: "ask-orb", act: "setAskOrb", value: choice, ariaLabel: "Thinking animation", iconOnly: true,
+    options: ASK_ORB_CHOICES.map((c) => ({
+      value: c.value, label: c.label, ...(c.hint ? { hint: c.hint } : {}),
+      icon: c.value === "match" ? thinkingOrbTour(ASK_ORB_MATCH_TOUR, 20, null) : thinkingOrb(c.value, 20, null),
+    })),
+  };
+}
