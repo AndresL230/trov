@@ -1,13 +1,12 @@
-// The gallery page's own behaviour (no app code): every specimen follows the viewer's theme (the host's `data-theme`
-// on the root, else the system's), the frames are built from each specimen's <template> as they come near the
+// The gallery page's own behaviour (no app code): every specimen is in the app's light theme, the frames are built from each specimen's <template> as they come near the
 // screen (sharing the page's one copy of the app's CSS and the orb runtime) and scale to fit, the "Thinking… Ns"
 // clock counts, and nothing inside a specimen navigates or submits (its buttons have no handlers here).
 
 type Theme = "light" | "dark";
 
 const root = document.documentElement;
-const mq = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : null;
-const theme = (): Theme => (root.dataset.theme === "dark" ? "dark" : root.dataset.theme === "light" ? "light" : mq?.matches ? "dark" : "light");
+// Light only (the owner, 2026-10-16): the specimens stay in the app's light theme whatever the viewer's is.
+const theme = (): Theme => "light";
 const kickOrbs = (): void => { (window as unknown as { __gxOrbKick?: () => void }).__gxOrbKick?.(); };
 
 // ── frames ───────────────────────────────────────────────────────────────────
@@ -59,7 +58,6 @@ function apply(): void {
   }
   kickOrbs();
 }
-mq?.addEventListener?.("change", apply);
 new MutationObserver(apply).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
 
 // ── the "Thinking… Ns" clock (the app ticks it between paints) ───────────────

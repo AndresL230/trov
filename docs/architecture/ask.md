@@ -277,13 +277,13 @@ real pacing and `GET …/ai/ask-replay` lists the rest; anywhere else both are 4
 
 **The gallery** (for reviewing how Ask looks): `npm run ask:gallery [-- <out.html>]` writes ONE self-contained page
 (default `.ask-gallery/ask-gallery.html`, gitignored) with every surface Ask can put on screen in every state — one
-plain scroll in conversation order, a one-line caption each, following the viewer's light / dark theme (the owner: "I
+plain scroll in conversation order, a one-line caption each, in the app's light theme only (the owner) (the owner: "I
 just want to be able to see everything", nothing complicated); whole screens (1440 and a 390 phone, in frames) last,
 and each part cut out of a real render with its ancestors kept. Nothing in it
 is hand-drawn: `scripts/ask-gallery/specimens.ts` sets states up as the controller would (these fixtures, the
 inspector's `ask-inspector-fixtures.ts`, the Repo Overview's sample) and calls the SPA's renderers in headless Chromium
 (Playwright; the app's CSS is loaded there so an open dropdown is placed by `createDropdowns`); `build.ts` inlines
-`trov.css` with its fonts, the orb loop (`orb.ts`) and the page's runtime (`runtime.ts`: the viewer's theme, lazy frames,
+`trov.css` with its fonts, the orb loop (`orb.ts`) and the page's runtime (`runtime.ts`: light only, lazy frames,
 inert specimens). It has no `<html>`/`<head>`/`<body>` (it is published as a claude.ai
 Artifact, which wraps it). A new part or state goes in `specimens.ts` as one more `inline(…)` / `desktop(…)` /
 `phone(…)`; typecheck it with `npx tsc -p scripts/ask-gallery`.

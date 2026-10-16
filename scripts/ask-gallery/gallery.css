@@ -1,19 +1,9 @@
 /* The gallery's own chrome — a plain scroll: a title, short headings, a one-line caption per specimen. The specimens
-   are the app's CSS (inlined before this) and follow the viewer's theme. */
+   are the app's CSS (inlined before this). Light only (the owner, 2026-10-16): one look, whatever the viewer's theme. */
 :root {
   --gx-bg: #f3f3f4; --gx-panel: #ffffff; --gx-fg: #17171b; --gx-muted: #5d5d66; --gx-line: rgba(20, 20, 30, 0.10);
   --gx-sans: 'Geist', 'Geist Fallback', system-ui, -apple-system, sans-serif;
   color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --gx-bg: #141311; --gx-panel: #1c1a17; --gx-fg: #ece8e1; --gx-muted: #aaa49a; --gx-line: rgba(237, 233, 226, 0.10);
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --gx-bg: #141311; --gx-panel: #1c1a17; --gx-fg: #ece8e1; --gx-muted: #aaa49a; --gx-line: rgba(237, 233, 226, 0.10);
-  color-scheme: dark;
 }
 body { background: var(--gx-bg); color: var(--gx-fg); font-family: var(--gx-sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
 .gx-wrap {
