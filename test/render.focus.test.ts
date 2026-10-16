@@ -8,6 +8,8 @@ import { describe, it, expect } from "vitest";
 import css from "../web/src/trov.css?raw";
 import { newDocView, blankDoc } from "../web/src/newdoc";
 import { newSprintPanel, type NewSprintState } from "../web/src/sprints";
+import { segmented, segKeyTarget, type SegOption } from "../web/src/segmented";
+import mainSrc from "../web/src/main.ts?raw";
 
 const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
 /** [selector, declarations] of every top-level or nested rule. */
@@ -66,5 +68,42 @@ describe("focus — every focusable element shows a ring", () => {
       expect(f, "a bordered field, so the field rule (not the box rule) draws its ring").not.toContain("border:none");
       expect(f).toMatch(/border:1px solid var\(--border-strong\)/); // the inline edge the !important rule recolours
     }
+  });
+});
+
+describe("segmented() — one Tab stop, on the picked option (a roving tabindex)", () => {
+  const opts: SegOption[] = [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }, { value: "c", label: "Gamma" }];
+  const stops = (html: string) => [...html.matchAll(/<button type="button" tabindex="(-?\d)"[^>]*>([^<]+)</g)].map((m) => `${m[2]}:${m[1]}`);
+
+  it("the picked option is tabindex 0 and every other option -1 — Tab lands on the picked one, not the first", () => {
+    expect(stops(segmented({ id: "x", ariaLabel: "X", act: "pick", value: "b", options: opts }))).toEqual(["Alpha:-1", "Beta:0", "Gamma:-1"]);
+    expect(stops(segmented({ id: "x", ariaLabel: "X", act: "pick", value: "c", options: opts }))).toEqual(["Alpha:-1", "Beta:-1", "Gamma:0"]);
+    // An inert picked option (no act) is still the stop.
+    expect(stops(segmented({ id: "x", ariaLabel: "X", act: "pick", value: "b", options: opts, inertOn: true }))).toEqual(["Alpha:-1", "Beta:0", "Gamma:-1"]);
+  });
+
+  it("with nothing pickable picked, the stop is the first option that is not locked", () => {
+    expect(stops(segmented({ id: "x", ariaLabel: "X", act: "pick", value: "zzz", options: opts }))).toEqual(["Alpha:0", "Beta:-1", "Gamma:-1"]);
+    const locked = [{ ...opts[0], locked: true }, opts[1], opts[2]];
+    expect(stops(segmented({ id: "x", ariaLabel: "X", act: "pick", value: "a", options: locked }))).toEqual(["Alpha:-1", "Beta:0", "Gamma:-1"]);
+  });
+
+  it("←/→ step through the options that are not locked, wrapping; Home/End jump; other keys are not the switch's", () => {
+    const off = [false, false, false];
+    expect(segKeyTarget("ArrowRight", 0, off)).toBe(1);
+    expect(segKeyTarget("ArrowRight", 2, off)).toBe(0);
+    expect(segKeyTarget("ArrowLeft", 0, off)).toBe(2);
+    expect(segKeyTarget("Home", 2, off)).toBe(0);
+    expect(segKeyTarget("End", 0, off)).toBe(2);
+    expect(segKeyTarget("Enter", 1, off)).toBeNull();
+    expect(segKeyTarget("ArrowDown", 1, off)).toBeNull();
+    // A locked (disabled) option is skipped.
+    expect(segKeyTarget("ArrowRight", 0, [false, true, false])).toBe(2);
+    expect(segKeyTarget("Home", 2, [true, false, false])).toBe(1);
+    expect(segKeyTarget("ArrowRight", 0, [false, true, true])).toBe(0);
+  });
+
+  it("the keyboard is wired once, for every switch on the page", () => {
+    expect(mainSrc).toContain('document.addEventListener("keydown", onSegmentedKey);');
   });
 });

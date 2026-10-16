@@ -221,6 +221,7 @@ export const RELEASES: Release[] = [
         "A host disconnected by an admin read Removed on its parts but Not connected on its card.",
         "A deploy with no target (every GitHub-sourced deploy) was dropped from the Repo dashboard's deploy reads: `NOT (NULL AND …)` is NULL in SQL.",
         "On a phone, the Open navigation button is a full 44×44 touch target (was 40px); the header around it does not move (#0)",
+        "Tab into any switch (Board / Table, a range, a status…) lands on the option that is picked, not the first one; ← / → move between its options and Home / End jump (#0)",
       ],
       removed: [],
     },

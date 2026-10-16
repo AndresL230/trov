@@ -7,7 +7,7 @@ import "./trov.css";
 import { installMarkTips } from "./tip";
 import { migrateBrowserStorage } from "./storage-migrate";
 import { openLightbox, closeLightbox } from "./lightbox";
-import { syncSegments } from "./segmented";
+import { syncSegments, onSegmentedKey } from "./segmented";
 import { REVIEW_EXIT_MS, type ReviewVerdict } from "./review";
 import { syncTabBars, onTabBarKey } from "./tabs";
 import { syncFavicon } from "./favicon";
@@ -4312,6 +4312,9 @@ window.addEventListener("resize", syncIndicators);
 void document.fonts?.ready.then(syncIndicators);
 // A tab bar's keyboard: ←/→ step between its tabs, Home/End jump (./tabs `onTabBarKey`).
 mount.addEventListener("keydown", onTabBarKey);
+// A segmented switch's keyboard: ←/→ move focus between its options, Home/End jump
+// (./segmented `onSegmentedKey`). On the document: a switch can sit in an overlay.
+document.addEventListener("keydown", onSegmentedKey);
 // Escape closes an open filter menu.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
