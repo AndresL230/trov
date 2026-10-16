@@ -1816,7 +1816,7 @@ function searchView(s: AppState): string {
 }
 
 // ── get started / guide ──────────────────────────────────────────────────────
-/** What each Guide screenshot shows (web/public/guide/<name>-<theme>.png), as its text alternative. Generic
+/** What each Guide screenshot shows (web/public/guide/<name>-<theme>[-1720].webp), as its text alternative. Generic
  *  on purpose: the screen, not what one capture holds — the captures will be retaken. */
 export const GUIDE_ALT: Record<string, string> = {
   mywork: "The My Work screen: your open tickets, what needs your review, and recent activity",
@@ -1842,6 +1842,15 @@ export const GUIDE_ALT: Record<string, string> = {
   releases: "The What's new screen",
 };
 export const guideAlt = (name: string): string => GUIDE_ALT[name] ?? "A screenshot of Trov";
+/** The column-sized capture's width: twice the guide column's 860 px. scripts/guide-images.mjs
+ *  (`GUIDE_COLUMN_W`) writes `<name>-<theme>-1720.webp` beside the full 2560-wide `<name>-<theme>.webp`. */
+const GUIDE_SHOT_W = 1720;
+/** One Guide figure's image: the column-sized WebP, the full one offered for a 3× screen, decoded off the
+ *  main thread; `data-full` is what the lightbox opens (main.ts `guideZoom`). */
+export function guideImg(name: string, theme: string): string {
+  const base = `/guide/${name}-${theme}`;
+  return `<img src="${base}-${GUIDE_SHOT_W}.webp" srcset="${base}-${GUIDE_SHOT_W}.webp ${GUIDE_SHOT_W}w, ${base}.webp 2560w" sizes="(max-width: 860px) 100vw, 860px" data-full="${base}.webp" alt="${attr(guideAlt(name))}" loading="lazy" decoding="async" width="2560" height="1600" />`;
+}
 
 function guideView(s: AppState): string {
   // Screenshots are captured per theme (dark/light) by scripts/capture-guide.mjs;
@@ -1864,7 +1873,7 @@ function guideView(s: AppState): string {
   // will be retaken, so it never describes what one capture happens to hold); the button's name repeats it.
   const gFig = (name: string, cap: string) => `<figure style="margin:18px 0 4px">
       <button data-act="guideZoom" data-arg="${name}" class="cnpy-guide-shot" aria-label="${attr(`Expand screenshot: ${guideAlt(name)}`)}">
-        <img src="/guide/${name}-${th}.png" alt="${attr(guideAlt(name))}" loading="lazy" width="2560" height="1600" />
+        ${guideImg(name, th)}
       </button>
       <figcaption style="font-size:12px;color:var(--fg-40);margin-top:8px">${cap}</figcaption>
     </figure>`;

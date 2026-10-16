@@ -15,7 +15,7 @@ vi.mock("../web/src/markdown", () => ({
   sanitizeSvg: (s: string) => s,
 }));
 
-import { render, initialState } from "../web/src/render";
+import { render, initialState, GUIDE_ALT } from "../web/src/render";
 import { mwTicketRow, reviewTile, repoTile, ticketsTile, mwSpans, libraryStrip } from "../web/src/mywork";
 import type { MyWorkPr, MyWorkTodo, MyWorkTicket, DashboardData } from "@shared/dashboard";
 import type { PersonSummary } from "../web/src/api";
@@ -404,6 +404,30 @@ describe("render() — the Get Started guide", () => {
     const html = render(guideState());
     for (const name of ["mywork", "tickets", "board", "ticket", "roadmap", "sprint", "repo", "repo-usage", "feed", "docs", "search", "review", "maintenance", "settings", "handoffs", "artifacts", "artifact", "prompts", "timeline", "quicksearch", "releases"]) {
       expect(html).toContain(`/guide/${name}-`);
+    }
+  });
+
+  it("each figure is the column-sized WebP with the full capture in its srcset and for the lightbox, and both files exist", () => {
+    const html = render(guideState());
+    const imgs = [...html.matchAll(/<button data-act="guideZoom"[^>]*>\s*(<img [^>]*>)/g)].map((m) => m[1]);
+    expect(imgs.length).toBeGreaterThan(15);
+    expect(html).not.toMatch(/\/guide\/[^"]*\.png/);
+    const files = new Set(Object.keys(import.meta.glob("../web/public/guide/*.webp")).map((p) => p.replace("../web/public", "")));
+    for (const img of imgs) {
+      const base = /src="(\/guide\/[a-z-]+-(?:dark|light))-1720\.webp"/.exec(img)?.[1];
+      expect(base, img).toBeTruthy();
+      expect(img).toContain(`srcset="${base}-1720.webp 1720w, ${base}.webp 2560w"`);
+      expect(img).toContain('sizes="(max-width: 860px) 100vw, 860px"');
+      expect(img).toContain(`data-full="${base}.webp"`);
+      expect(img).toContain('decoding="async"');
+      expect(img).toContain('loading="lazy"');
+      expect(files.has(`${base}-1720.webp`), base).toBe(true);
+      expect(files.has(`${base}.webp`), base).toBe(true);
+    }
+    // Both themes of every figure are on disk, whichever the viewer picks.
+    for (const name of Object.keys(GUIDE_ALT)) for (const th of ["dark", "light"]) {
+      expect(files.has(`/guide/${name}-${th}-1720.webp`), `${name}-${th}`).toBe(true);
+      expect(files.has(`/guide/${name}-${th}.webp`), `${name}-${th}`).toBe(true);
     }
   });
 

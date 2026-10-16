@@ -54,6 +54,15 @@ Trov works") is the REFERENCE — the skills, how a change is staged and confirm
 accounts, connecting an agent, troubleshooting. It has no numbered "Step 1 / 2 / 3": a reader is already
 signed in. The welcome e-mail links the guided setup, not the Guide. A new rule about signing in or
 connecting goes in ONE of these and is linked from the others.
+**The Guide's screenshots** (`web/public/guide/`, alt text `GUIDE_ALT`) are WebP only, two per figure and theme:
+`<name>-<theme>-1720.webp` (twice the 860 px column) and the full 2560×1600 capture `<name>-<theme>.webp`.
+`guideImg` (`render.ts`) draws the column file as `src` with both in `srcset` (`sizes="(max-width: 860px) 100vw,
+860px"`, so a 3× screen takes the full one), `loading="lazy"`, `decoding="async"`, and the full one as `data-full`,
+which the lightbox opens (`main.ts` `guideZoom`). No PNG fallback: every supported browser decodes WebP.
+`scripts/capture-guide.mjs` writes both through `scripts/guide-images.mjs` (`writeGuideImages`: sharp, quality 82 /
+85, smart chroma subsampling); run on its own, that script converts stray PNG captures and removes them. The
+column files are 3.1 MB for all 42 (the PNGs were 10.3 MB, −70%); `test/render.mywork.test.ts` holds the markup
+and that every file exists.
 
 Inside an organization (the guided setup) the backdrop is the REAL My Work of the org on screen
 (`firstRunBackdrop(s)`), read while the person is in the setup (`loadHome`); leaving the setup for My Work is a
@@ -283,7 +292,7 @@ script then takes over the SAME markup. Everything else is the app, and is never
   and `/404` anywhere. Loopback counts as the public host, so `wrangler dev` answers as production does.
 - **Browser caching** (`_headers`, `ASSET_CACHE` in `shared/site-pages.ts` — the ONLY rules that say
   `Cache-Control`): Vite's `/assets/*` carry a content hash in their names, so they are `public,
-  max-age=31536000, immutable`; the Guide's screenshots (`/guide/*`, stable names) are `public, max-age=604800`.
+  max-age=31536000, immutable`; the Guide's screenshots (`/guide/*.webp`, stable names) are `public, max-age=604800`.
   Everything else the binding serves — the pages, the app shell, `/fonts/`, the text files — keeps the binding's
   default (revalidated by ETag on every use), so a deploy is seen on the next load. The binding gives a path that
   matches several rules ALL their headers and joins a header two rules both set, which is why only one rule may

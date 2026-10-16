@@ -18,15 +18,17 @@
 //
 // Then look at every image (no real name, no loading skeleton, the right theme) before committing.
 //
-// Writes web/public/guide/<name>-<theme>.png for each surface × theme (dark/light),
-// so the guide can show the variant matching the viewer's active theme. Override the target
-// dir with TROV_SHOT_DIR, the base URL with TROV_URL, or the theme list with
+// Writes web/public/guide/<name>-<theme>-1720.webp (the column) and <name>-<theme>.webp (the full
+// capture, for the lightbox) for each surface × theme (dark/light) — scripts/guide-images.mjs
+// `writeGuideImages` — so the guide can show the variant matching the viewer's active theme.
+// Override the target dir with TROV_SHOT_DIR, the base URL with TROV_URL, or the theme list with
 // TROV_THEMES (comma-separated). `node scripts/capture-guide.mjs docs search` captures
 // only those figures.
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { writeGuideImages } from "./guide-images.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.TROV_URL ?? "http://localhost:8787";
@@ -154,21 +156,6 @@ async function prepareArtifacts(context) {
   await page.close();
 }
 
-// Chromium's PNG filters each row adaptively, which costs a flat UI about a quarter more bytes than no
-// filter at all. Re-encode LOSSLESSLY (same pixels, checked) with sharp — miniflare's own dependency,
-// so present wherever wrangler is — and keep Chromium's bytes if it is missing or the result is larger.
-let sharp = null;
-try { sharp = (await import("sharp")).default; } catch { /* keep Chromium's encoding */ }
-async function savePng(path, png) {
-  let out = png;
-  if (sharp) {
-    const smaller = await sharp(png).png({ compressionLevel: 9, adaptiveFiltering: false }).toBuffer();
-    const same = (await sharp(png).raw().toBuffer()).equals(await sharp(smaller).raw().toBuffer());
-    if (same && smaller.length < png.length) out = smaller;
-  }
-  writeFileSync(path, out);
-}
-
 const only = process.argv.slice(2);
 const shots = only.length ? SHOTS.filter((s) => only.includes(s.name)) : SHOTS;
 
@@ -205,9 +192,8 @@ for (const theme of THEMES) {
     }
     await page.waitForTimeout(shot.settle ?? 1400);
     if (shot.dress) await shot.dress(page);
-    const path = join(OUT_DIR, `${shot.name}-${theme}.png`);
-    await savePng(path, await page.screenshot());
-    process.stdout.write(`${path}\n`);
+    const paths = await writeGuideImages(OUT_DIR, `${shot.name}-${theme}`, await page.screenshot());
+    process.stdout.write(`${paths.join("\n")}\n`);
     if (shot.after) await shot.after(page);
     await page.close();
   }

@@ -275,7 +275,7 @@ describe("what the assets binding is told", () => {
       rules.filter((r) => matches(r.pattern, path)).flatMap((r) => r.headers.filter((x) => x.startsWith("Cache-Control:")));
     expect(cacheOf("/assets/main-AbC123.js")).toEqual(["Cache-Control: public, max-age=31536000, immutable"]);
     expect(cacheOf("/assets/trov-9f8e7d.css")).toEqual(["Cache-Control: public, max-age=31536000, immutable"]);
-    expect(cacheOf("/guide/board-dark.png")).toEqual(["Cache-Control: public, max-age=604800"]);
+    expect(cacheOf("/guide/board-dark-1720.webp")).toEqual(["Cache-Control: public, max-age=604800"]);
     for (const path of ["/", APP_SHELL_PATH, NOT_FOUND_PAGE.path, LLMS_TXT, LLMS_FULL_TXT, "/fonts/x.woff2", "/favicon.svg", ...SITE_PAGES.map((p) => p.path)])
       expect(cacheOf(path), path).toEqual([]);
     expect(rules.filter((r) => r.headers.some((x) => x.startsWith("Cache-Control:"))).map((r) => r.pattern)).toEqual(["/assets/*", "/guide/*"]);

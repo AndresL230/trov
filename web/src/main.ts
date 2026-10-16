@@ -3454,7 +3454,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const cap = btn.closest("figure")?.querySelector("figcaption");
       const title = cap?.querySelector("strong")?.textContent?.trim() || "Screenshot";
       const rest = cap ? cap.innerHTML.replace(/^\s*<strong[^>]*>[\s\S]*?<\/strong>\s*:?\s*/, "") : "";
-      openLightbox({ src: img.getAttribute("src") ?? "", alt: cap?.textContent?.trim() ?? title, title, captionHtml: rest });
+      // The full-size capture (`data-full`, render.ts `guideImg`), not the column-sized one on the page.
+      openLightbox({ src: img.getAttribute("data-full") ?? img.getAttribute("src") ?? "", alt: cap?.textContent?.trim() ?? title, title, captionHtml: rest });
       return;
     }
 
