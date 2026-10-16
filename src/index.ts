@@ -14,6 +14,7 @@ import { pruneLimits } from "./platform/limits";
 import { mcpUnauthorized, oauthOrigin } from "./auth/oauth";
 import { DAILY_CRON, WEEKLY_CRON, handleNotificationCron } from "./notifications/cron";
 import { REPO_CRON, handleRepoCron } from "./repo/cron";
+import { sweepPendingAskAttachments } from "./deletion/ask-pending";
 import { UNSUBSCRIBE_PREFIX, handleUnsubscribe } from "./notifications/unsubscribe";
 import { handleArtifactUpload, isUploadRequest } from "./artifacts/upload";
 import { handleArtifactDownload, isDownloadRequest } from "./artifacts/download";
@@ -149,6 +150,8 @@ export default {
       await pruneLimits(platform(env, "system")).catch(() => undefined); // abuse_counters of past windows
       await pruneEvents(platform(env, "system")).catch(() => undefined); // billing_events past Stripe's retry horizon
       await pruneSyncRuns(platform(env, "system"), controller.scheduledTime).catch(() => undefined); // sync_runs retention (90 days)
+      // Ask attachments uploaded with no conversation and never sent: gone after 24 h (0068_ask_pending; ask.md).
+      await sweepPendingAskAttachments(platform(env, "system"), env.ARTIFACTS_BUCKET, controller.scheduledTime).catch(() => undefined);
       await handleNotificationCron(env, controller.cron, new Date(controller.scheduledTime));
       return;
     }

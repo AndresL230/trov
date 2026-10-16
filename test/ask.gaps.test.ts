@@ -16,7 +16,7 @@ import { AskStateSchema, AskThreadDetailSchema } from "@shared/ai-ask";
 import { all, first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
 import { ORG_A } from "./helpers/tenant";
-import { BASE, KEYED, ask, call, eventsOf, fakeModel, withAsk } from "./helpers/ask";
+import { BASE, KEYED, ask, call, eventsOf, fakeModel, threadOf, withAsk } from "./helpers/ask";
 
 const ME = "ask-gaps";
 const final = (title = "Gaps") => `\n<trov-meta>{"title": "${title}", "followups": []}</trov-meta>`;
@@ -27,7 +27,8 @@ interface Att { id: number; slug: string; sha256: string }
 async function upload(cookie: string, n: number, threadId?: number): Promise<{ threadId: number; attachments: Att[] }> {
   const form = new FormData();
   form.append("file", new File([png(n)], `shot-${n}.png`, { type: "image/png" }));
-  if (threadId) form.append("threadId", String(threadId));
+  // With no thread given, a real one: an upload with no thread is PENDING (Q60), and these are a thread's files.
+  form.append("threadId", String(threadId ?? (await threadOf(cookie))));
   const res = await app.request(`${BASE}/ask/attachments`, { method: "POST", headers: { cookie }, body: form }, KEYED);
   expect(res.status).toBe(200);
   return res.json();

@@ -54,7 +54,8 @@ live order — a row stored before it has none and reads as text, blocks, cards.
   cached), the older thread (its last block cached) and the question. Tool calls run between iterations; past the
   mode's call limit the next request sets `tool_choice: none`. Within the turn the newest tool results carry the
   fourth breakpoint.
-- **Commands**: `/search` answers with item cards from Trov's own quick search, no model; `/ticket`, `/handoff`,
+- **Commands**: `/search` answers with item cards from Trov's own quick search, no model (its step says "No
+  results" / "1 result" / "N results" — `resultLine`, the one wording, streamed and stored; Q51); `/ticket`, `/handoff`,
   `/summarize`, `/brief` add one instruction in front of the person's words.
 - **Stop**: the request's own abort signal (the client went away) or `POST /ask/threads/:id/stop` (a flag read
   between steps) ends the turn; the partial answer is stored with `stopped = 1`; tools that ran stay done.
@@ -155,7 +156,9 @@ is replaced.
   was on it when the card was made — the card draws the change from those two. A replacement is two writes (remove,
   add) in one group. Undo checks THAT person's assignment is as the write left it (not the ticket's `updated_at`: the
   group's first undo touches the ticket, and a stamp check refused the second every time).
-- **Auto** (`auto: true` on the request, only while `orgs.ai_chat_auto` is on): writes run at once (`auto`), at most 5
+- **Auto** (`auto: true` on the request, only while `orgs.ai_chat_auto` is on — asked for while it is off, the answer
+  runs asking first and the `thread` event carries `autoOff: true`, so the composer's switch turns to "Asks first"
+  with the admin's reason (the owner, Q52)): writes run at once (`auto`), at most 5
   per answer; past it, and for `update_plan`, completing a sprint and Publish, the card WAITS with its note. Moving
   a ticket to Done is an ordinary write.
 - **Publish a staged doc** (`publish_doc`): Confirm calls `promote_doc` — the web promote path — as the person, only
@@ -178,7 +181,17 @@ is replaced.
 
 - `POST /ask/attachments` (multipart, ≤ 5 files, 10 MB each, images / PDFs / text and code): checked whole first, then
   each stored as a PRIVATE artifact (`createPage`: D1 for a text kind, R2 for the rest; sha256; the artifact caps)
-  and linked to the thread (`chat_artifacts`). A message names them by id; the model gets them read BACK from the
+  and linked to the thread (`chat_artifacts`). Past the org's artifact storage it is the app's ONE 402 body
+  (`plan_limit` with `limit` / `used` / `cap` / `plan` / `status` / `message`; Save as artifact too — Q59).
+  **With no `threadId` the files are PENDING** (the owner, Q60; `0068_ask_pending`): linked, unsent, to the person's
+  hidden HOLDER thread (`chat_threads.pending = 1`), which no route lists, searches, opens or writes, and the answer's
+  `threadId` is null — no visible untitled thread. The question that names them binds them to its thread
+  (`bindPendingAttachments`, the person's own holder only). Never sent, they go 24 hours after the upload
+  (`sweepPendingAskAttachments`, src/deletion/ask-pending.ts, on the hourly digest trigger `0 * * * *` — no cron of
+  its own), by the composer ✕'s hard delete; one published or referenced meanwhile keeps its artifact and loses only
+  the link; an empty holder goes too. The holder is an ordinary thread of the person's, so account and org deletion
+  already take it. The composer sends EACH FILE AS ITS OWN REQUEST, so one failure is that chip's alone (no batch
+  atomicity). A message names them by id; the model gets them read BACK from the
   store (`readRaw`, as the person) — whole only in that turn. Later turns carry one line; `read_attachment(id)` reads
   one again, this person's thread's only.
 - **An image over the model's limit** is stored, NOT read, and the person is told. The limits are the Messages API's
@@ -212,9 +225,12 @@ is replaced.
   `POST /ask/threads/:id/save { messageId?, block?, title, kind: markdown | html, visibility }` writes it from the
   STORED answer: Markdown with refs as links, or an HTML page rendered by the server (charts as SVG, every string
   escaped). Linked to the thread and to the tickets and sprints it cites.
-- Threads: `GET /ask/threads` (grouped pinned / today / week / earlier), `?q=` (titles and the person's own messages
-  through `chat_fts`; `{ thread, snippet { text, matches }, matchCount }`), `PATCH` (title, pinned, auto, mode,
-  draft), `DELETE`, `/export` (markdown). A ⌘J thread records `origin: panel` and `context_ref`.
+- Threads: `GET /ask/threads` (grouped pinned / today / week / earlier), `?q=` (titles and the thread's messages —
+  the person's questions AND Trov's answers — through `chat_fts`; the owner kept answers searchable, Q54; `{ thread,
+  snippet { text, matches }, matchCount }`), `PATCH` (title, pinned, auto, mode, draft), `DELETE`, `/export`
+  (markdown, named by `askExportName`: the title transliterated to ASCII — é → e, ß → ss —, `ask-trov` only when
+  nothing is left (Q56); the client's download name is the same function). A ⌘J thread records `origin: panel` and
+  `context_ref` — the first context item the person can SEE; a hidden item never enters a thread (Q53).
 - "Wrong?" (`POST /ask/messages/:id/wrong { reason }`): `ai_feedback` (item type `ask`, `detail_json`: reason, mode,
   messageId, cites). "A source is wrong" / "It is out of date" also add one `ask_flags` row per cited item — the
   reason only, no handle, no thread, no text — which Review reads (`askFlags` on `GET /proposals` and `GET /adrs`).
@@ -369,8 +385,8 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   from the controller's after-paint for a panel plan, since the Ask screen never enters there).
 - **Composer** (`ask-composer.ts`, one per conversation): every limit and flag from `GET /ask/state` (modes, the
   allowance and its usage line under a fifth left, `autoAllowed`, `attach { maxFiles, maxBytes, kinds }`) — none in
-  the UI. Files upload ON ATTACH (`POST /ask/attachments`; a new conversation's first upload makes its thread, and
-  the question goes there); a file over `maxBytes` stays as a red "Too large" chip and is never sent. **What is
+  the UI. Files upload ON ATTACH, one request per file (`POST /ask/attachments`; in a new conversation they are
+  pending until the first question binds them — › Attachments; a failed file is its own chip's failure); a file over `maxBytes` stays as a red "Too large" chip and is never sent. **What is
   attached sits ABOVE the box** (the owner): the file chips (every state, an image's thumbnail) then the context chips
   are one keyed row (`.ask-co-chips`, `data-ask-enter="pop"` + `data-ask-tween`) between the notes and the box, on the
   box's edges; the box holds only the words and the toolbar. The row wraps; on a phone past two rows it is one line

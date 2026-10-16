@@ -125,6 +125,19 @@ export function askRefTokens(text: string): string[] {
 }
 
 /** `type:key` → its parts, or null for anything that is not a ref. */
+/** Letters that do not decompose into a base letter + marks (NFKD leaves them whole). */
+const TRANSLIT: Record<string, string> = {
+  ß: "ss", æ: "ae", Æ: "AE", œ: "oe", Œ: "OE", ø: "o", Ø: "O", đ: "d", Đ: "D", ð: "d", Ð: "D", þ: "th", Þ: "Th",
+  ł: "l", Ł: "L", ı: "i", ħ: "h", Ħ: "H", ŋ: "n", Ŋ: "N",
+};
+/** An exported thread's file name, without `.md` (the owner, Q56): the title transliterated to ASCII (é → e, ß → ss),
+ *  then only letters, digits, spaces, `_` and `-` kept, spaces to `-`, at most 60 characters — `ask-trov` only when
+ *  nothing is left. The server's `content-disposition` and the client's download name are this one function. */
+export function askExportName(title: string | null | undefined): string {
+  const ascii = (title ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\u0000-\u007f]/g, (ch) => TRANSLIT[ch] ?? "");
+  return ascii.replace(/[^A-Za-z0-9 _-]+/g, "").trim().replace(/\s+/g, "-").slice(0, 60).replace(/-+$/, "") || "ask-trov";
+}
+
 export function parseAskRef(ref: string): { type: AskRefType; key: string } | null {
   const m = /^([a-z]+):([A-Za-z0-9][A-Za-z0-9_.@/-]{0,99})$/.exec(ref);
   if (!m || !(ASK_REF_TYPES as readonly string[]).includes(m[1])) return null;
@@ -312,7 +325,8 @@ export type AskActivityEvent =
   | { step: number; state: "done"; results?: string[]; resultLine?: string };
 
 export interface AskEventMap {
-  thread: { id: number; title: string; mode: AskMode; auto: boolean; origin: AskOrigin; contextRef: string | null };
+  /** `autoOff`: the request asked for Auto but the org has it off, so this answer runs as not-auto ("Asks first"). */
+  thread: { id: number; title: string; mode: AskMode; auto: boolean; origin: AskOrigin; contextRef: string | null; autoOff?: true };
   /** `run` while it thinks (the client counts the seconds), then `done` with the SUMMARY — never raw thinking. */
   thinking: { state: "run" } | { state: "done"; seconds: number; summary: string };
   activity: AskActivityEvent;
@@ -347,7 +361,7 @@ export const ASK_ROUTES = {
   confirm: (id: number) => `/ask/actions/${id}/confirm`,              // POST { args?, only? } → AskActionAnswer
   cancel: (id: number) => `/ask/actions/${id}/cancel`,                // POST { only? } → AskActionAnswer
   undo: (id: number) => `/ask/actions/${id}/undo`,                    // POST → AskActionAnswer
-  attachments: "/ask/attachments",                                    // POST multipart (file × ≤5, threadId?) → AskAttachmentUpload
+  attachments: "/ask/attachments",                                    // POST multipart (file × ≤5, threadId?) → AskAttachmentUpload (no threadId: pending)
   attachment: (id: number) => `/ask/attachments/${id}`,               // DELETE (never sent: hard-deleted) → { ok }; 409 sent / published / referenced
   wrong: (messageId: number) => `/ask/messages/${messageId}/wrong`,   // POST { reason } → { ok }
   settings: "/ask/settings",                                          // GET → AskSettings; PUT AskSettingsPut
@@ -488,7 +502,9 @@ export interface AskActionAnswer {
 }
 export const ASK_ACTION_REFUSALS = ["not_found", "not_proposed", "expired", "no_undo", "already", "changed", "invalid"] as const;
 
-export interface AskAttachmentUpload { threadId: number; attachments: AskAttachment[] }
+/** `threadId`: the thread the files were linked to, or null — uploaded before the conversation existed, they are
+ *  PENDING until the question that names them is sent (and are swept after 24 h unsent; Q60). */
+export interface AskAttachmentUpload { threadId: number | null; attachments: AskAttachment[] }
 
 /** "Wrong?" (#12 §2.14). The first two reach Review as "Flagged in Ask" on the cited items — the reason only. */
 export const ASK_WRONG_REASONS = ["source_wrong", "out_of_date", "missed"] as const;

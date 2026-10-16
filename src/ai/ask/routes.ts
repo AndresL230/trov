@@ -15,14 +15,14 @@ import { nextMonthStart } from "@shared/ai-core";
 import {
   ASK_ATTACH_BYTES_MAX, ASK_ATTACH_FILES_MAX, ASK_ATTACH_KINDS, ASK_DEFAULT_MODE, ASK_FLAG_REASONS, ASK_LOW_SHARE, ASK_MODES, ASK_ROUTES,
   ASK_STARTERS_FALLBACK, askMode, askModesFor, AskCancelBodySchema, AskConfirmBodySchema, AskPeekBodySchema, AskRequestSchema, AskSaveBodySchema, AskSettingsPutSchema,
-  AskThreadPatchSchema, AskWrongBodySchema, parseAskRef,
-  type AskAction, type AskActionAnswer, type AskAttachment, type AskBlock, type AskCommand, type AskEventMap, type AskMessage, type AskMessagePart, type AskMode,
+  AskThreadPatchSchema, AskWrongBodySchema, askExportName, parseAskRef,
+  type AskAction, type AskActionAnswer, type AskAttachment, type AskAttachmentUpload, type AskBlock, type AskCommand, type AskEventMap, type AskMessage, type AskMessagePart, type AskMode,
   type AskSaveForm, type AskSearchHit, type AskSettings, type AskState, type AskThreadDetail, type AskThreadGroup, type AskThreadSummary,
   type PeekResult, type RefView,
 } from "@shared/ai-ask";
 import {
-  attachActionsToMessage, createThread, finishAction, getAction, getAskSettings, getMessage, getThread, groupActions, insertAction,
-  insertMessage, linkArtifact, listActions, listMessages, listThreads, markAttachmentsSent, markUndone, moveAction, patchThread, pendingAttachments,
+  attachActionsToMessage, bindPendingAttachments, createThread, finishAction, getAction, getAskSettings, getMessage, getThread, groupActions, insertAction,
+  insertMessage, linkArtifact, listActions, listMessages, listThreads, markAttachmentsSent, markUndone, moveAction, patchThread, pendingAttachments, pendingHolder,
   putAskSettings, recordAskWrong, replaceMessagesFrom, requestStop, rewriteAction, searchThreads, setMessageContent, setThreadTitle, startTurn,
   type ActionWithTurn, type ChatActionRow, type ChatMessageRow, type ChatThreadRow,
 } from "../../data/ask";
@@ -37,7 +37,8 @@ import { getHandoff } from "../../tools/handoffs";
 import { artifactOrigin, artifactsForTicket } from "../../tools/artifacts-agent";
 import { listAssignedTickets } from "../../tools/mywork";
 import { WRITES, ChangedSince, assertMayRunNow, waitingNote } from "./actions";
-import { errorBody, runTurn, type Emit, type TurnResult } from "./turn";
+import { errorBody, resultLine, runTurn, type Emit, type TurnResult } from "./turn";
+import { PlanFeatureError, PlanLimitError, PLAN_LIMIT_STATUS } from "../../plans/state";
 import type { AskToolCtx } from "./context";
 import { assetsDocs, type DocsSource } from "./docs";
 import { buildHistory, contentOf, maybeCompact, seenRefs, type StoredContent } from "./history";
@@ -363,14 +364,22 @@ async function converse(c: C, outer: Conversation): Promise<void> {
     return v.emit("error", { code: "capped", message: `You've used this month's questions. Resets ${shortDay(nextMonthStart(nowDate()))}.` });
   }
 
+  // Auto asked for while the org has it off: the answer runs as not-auto (the safe direction), and the `thread` event
+  // says so (`autoOff`), so the composer shows "Asks first" (the owner, Q52).
   const auto = v.req.auto && v.st.chatAuto;
+  const autoOff = v.req.auto && !v.st.chatAuto ? { autoOff: true as const } : {};
   const org = await orgIdentityOf(ctx);
   const orgSlug = org?.slug ?? "";
+  // Context chips: kept only when they name something the person can see. A hidden item never enters a thread — not
+  // its question, not a panel thread's `context_ref` (the owner, Q53).
+  const askedContext = v.req.context.map(normalRef);
+  const ctxSeen = askedContext.length ? await resolveViews(ctx, handle, askedContext, nowDate()) : new Map<string, RefView>();
+  const visibleContext = askedContext.filter((r) => ctxSeen.has(r));
   const thread = v.thread ?? (await getThread(ctx, handle, await createThread(ctx, handle, {
-    mode, auto, origin: v.req.origin ?? "page", contextRef: v.req.origin === "panel" ? (v.req.context[0] ? normalRef(v.req.context[0]) : null) : null,
+    mode, auto, origin: v.req.origin ?? "page", contextRef: v.req.origin === "panel" ? visibleContext[0] ?? null : null,
   })))!;
   const turn = await startTurn(ctx, thread.id, mode, auto);
-  await v.emit("thread", { id: thread.id, title: thread.title, mode, auto, origin: thread.origin, contextRef: thread.context_ref });
+  await v.emit("thread", { id: thread.id, title: thread.title, mode, auto, origin: thread.origin, contextRef: thread.context_ref, ...autoOff });
 
   // The question: kept (regenerate), replaced (edit — its attachments carried over), or new.
   let question: ChatMessageRow;
@@ -384,12 +393,12 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   if (v.replace?.regenerate) {
     question = v.replace.question;
   } else {
-    // New attachments: this thread's, uploaded and not sent yet — each ALREADY an artifact.
+    // New attachments: this thread's, uploaded and not sent yet — each ALREADY an artifact. Files uploaded before the
+    // thread existed are pending on the person's holder: the ones this question names move onto it first (Q60).
+    await bindPendingAttachments(ctx, handle, thread.id, v.req.attachments);
     const pending = await pendingAttachments(ctx, thread.id, v.req.attachments);
     attachments = [...attachments, ...(await attachmentsOf(ctx, pending, orgSlug))];
-    // Context chips: kept only when they name something the person can see.
-    const ctxViews = await resolveViews(ctx, handle, v.req.context.map(normalRef), nowDate());
-    const context = v.req.context.map(normalRef).filter((r) => ctxViews.has(r));
+    const context = visibleContext;
     const content: StoredContent = { text: v.text, command: v.req.command ?? null, context, refs: context, attached: attachments.map((a) => ({ id: a.id, title: a.title })) };
     const id = await insertMessage(ctx, thread.id, { role: "user", mode, content, attachments });
     await markAttachmentsSent(ctx, pending.map((p) => p.id), id);
@@ -509,14 +518,14 @@ async function answerSearch(c: C, v: Conversation, thread: ChatThreadRow, turn: 
   })).filter((r) => parseAskRef(r) !== null).slice(0, 9);
   const views = await resolveViews(ctx, me(c), refs, nowDate());
   const items = refs.flatMap((r) => (views.has(r) ? [views.get(r)!] : []));
-  await v.emit("activity", { step: 1, state: "done", results: items.map((i) => i.ref), resultLine: items.length === 1 ? "1 result" : items.length ? `${items.length} results` : "No results" });
+  await v.emit("activity", { step: 1, state: "done", results: items.map((i) => i.ref), resultLine: resultLine(items.length) });
   const text = items.length ? (items.length === 1 ? "One item matches:" : `${items.length === 3 ? "Three" : items.length} items match best:`) : `Nothing in Trov matches “${q}”.`;
   await v.emit("text", { delta: text });
   const block: AskBlock = { kind: "items", items };
   if (items.length) await v.emit("block", block);
   for (const i of items) seen.add(i.ref);
   const out: TurnResult = {
-    text, title: null, followups: [], blocks: items.length ? [block] : [], activity: [{ step: 1, tool: "search", icon: "search", label: `Searched Trov for '${q}'`, results: items.map((i) => i.ref), resultLine: `${items.length} results` }],
+    text, title: null, followups: [], blocks: items.length ? [block] : [], activity: [{ step: 1, tool: "search", icon: "search", label: `Searched Trov for '${q}'`, results: items.map((i) => i.ref), resultLine: resultLine(items.length) }],
     thinking: null, model: "", tokens: { in: 0, out: 0, cached: 0 }, ended: "done", called: false, autosave: null, saveWhich: null,
   };
   const messageId = await storeAnswer(ctx, thread.id, turn, v.req.mode, out, seen, items, false, 0, parts);
@@ -720,7 +729,7 @@ askApp.get("/ask/threads/:id/export", async (c) => {
     const content = contentOf(m);
     return { who: m.role === "user" ? "person" : "trov", mode: m.mode, at: m.created_at, text: content.text ?? "", blocks: ((content.blocks ?? []) as AskBlock[]).filter((b) => b.kind !== "save_form"), cites: parseJson<RefView[]>(m.cites_json, []) };
   }), base);
-  const name = (t.title || "ask-trov").replace(/[^A-Za-z0-9 _-]+/g, "").trim().replace(/\s+/g, "-").slice(0, 60) || "ask-trov";
+  const name = askExportName(t.title);
   return new Response(md, { headers: { "content-type": "text/markdown; charset=utf-8", "content-disposition": `attachment; filename="${name}.md"`, "cache-control": "no-store" } });
 });
 
@@ -761,8 +770,10 @@ askApp.post("/ask/threads/:id/save", async (c) => {
     }
     return c.json(saved);
   } catch (e) {
+    // A plan refusal is the app's ONE 402 body (`limit`, `used`, `cap`, `plan`, `status`, `message`; Q59).
+    if (e instanceof PlanLimitError || e instanceof PlanFeatureError) return c.json(e.refusal, PLAN_LIMIT_STATUS);
     const b = errorBody(e);
-    return c.json({ error: b.code ?? "failed", message: b.error }, b.code === "plan_limit" ? 402 : 400);
+    return c.json({ error: b.code ?? "failed", message: b.error }, 400);
   }
 });
 
@@ -911,16 +922,17 @@ askApp.post(ASK_ROUTES.attachments, async (c) => {
     files.push({ name: v.name || "attachment", type: v.type || "application/octet-stream", bytes: new Uint8Array(await v.arrayBuffer()) });
   }
   try {
-    checkFiles(files); // before a thread is made, so a refused upload leaves nothing behind
-    if (!threadId) {
-      const st = await standing(ctx);
-      threadId = await createThread(ctx, me(c), { mode: defaultModeOf(st.modes, (await getAskSettings(ctx, me(c))).default_mode) });
-    }
+    checkFiles(files); // before anything is stored, so a refused upload leaves nothing behind
+    // No conversation yet: the files are PENDING — on the person's hidden holder, never a visible thread — until the
+    // question that sends them binds them to its thread; never sent, they go after 24 h (Q60; 0068_ask_pending).
+    const holder = threadId ? null : await pendingHolder(ctx, me(c));
     const org = await orgIdentityOf(ctx);
-    const attachments = await storeAttachments(ctx, c.env.ARTIFACTS_BUCKET, me(c), org?.slug ?? "", threadId, files);
-    return c.json({ threadId, attachments });
+    const attachments = await storeAttachments(ctx, c.env.ARTIFACTS_BUCKET, me(c), org?.slug ?? "", threadId || holder!, files);
+    const body: AskAttachmentUpload = { threadId: threadId || null, attachments };
+    return c.json(body);
   } catch (e) {
     if (e instanceof AttachError) return c.json({ error: e.code, message: e.message }, e.status);
+    if (e instanceof PlanLimitError || e instanceof PlanFeatureError) return c.json(e.refusal, PLAN_LIMIT_STATUS); // Q59
     const b = errorBody(e);
     return c.json({ error: b.code ?? "failed", message: b.error }, b.code === "plan_limit" ? 402 : b.code === "too_large" ? 413 : 400);
   }

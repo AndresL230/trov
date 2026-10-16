@@ -103,7 +103,8 @@ const json = (v: unknown, max = 40_000): string => {
   const s = JSON.stringify(v ?? null);
   return s.length > max ? `${s.slice(0, max)}… (truncated)` : s;
 };
-const resultLine = (n: number): string => (n === 0 ? "No results" : n === 1 ? "1 result" : `${n} results`);
+/** A search step's count, the ONE wording everywhere — streamed and stored (Q51). */
+export const resultLine = (n: number): string => (n === 0 ? "No results" : n === 1 ? "1 result" : `${n} results`);
 
 /** What the turn tracks across its tool calls. */
 interface TurnState {

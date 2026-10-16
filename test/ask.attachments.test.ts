@@ -7,7 +7,7 @@ import { env } from "cloudflare:test";
 import { all, first } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
 import { ORG_A } from "./helpers/tenant";
-import { BASE, KEYED, ask, eventsOf, fakeModel, withAsk } from "./helpers/ask";
+import { BASE, KEYED, ask, eventsOf, fakeModel, threadOf, withAsk } from "./helpers/ask";
 import { app } from "../src/routes";
 import { imageSize } from "../src/ai/ask/attachments";
 import { AskEventSchemas } from "@shared/ai-ask";
@@ -29,6 +29,7 @@ const firstUserBlocks = (req: { messages: { role: string; content: unknown }[] }
 
 describe("attachments are artifacts first", () => {
   it("upload stores each file as a PRIVATE artifact of the person, linked to the thread, not sent yet", async () => {
+    // (With no thread yet the link is PENDING, on the person's hidden holder — Q60, test/ask.rulings.test.ts.)
     const cookie = await cookieFor(ME);
     const r = await upload(cookie, [{ name: "ci-failure.png", type: "image/png", bytes: PNG }, { name: "notes.md", type: "text/markdown", bytes: new TextEncoder().encode("# Notes\n\nthe connect test") }]);
     expect(r.status).toBe(200);
@@ -37,7 +38,9 @@ describe("attachments are artifacts first", () => {
     const pages = await all<{ visibility: string; author_id: string; kind: string }>(env.DB, `SELECT visibility, author_id, kind FROM artifact_pages WHERE org_id = ? ORDER BY id`, ORG_A);
     expect(pages).toEqual([{ visibility: "private", author_id: ME, kind: "image" }, { visibility: "private", author_id: ME, kind: "markdown" }]);
     const links = await all<{ thread_id: number; message_id: number | null }>(env.DB, `SELECT thread_id, message_id FROM chat_artifacts WHERE org_id = ?`, ORG_A);
-    expect(links.every((l) => l.thread_id === r.json.threadId && l.message_id === null)).toBe(true);
+    expect(r.json.threadId).toBeNull();
+    const holder = await first<{ id: number }>(env.DB, `SELECT id FROM chat_threads WHERE org_id = ? AND handle = ? AND pending = 1`, ORG_A, ME);
+    expect(links.every((l) => l.thread_id === holder!.id && l.message_id === null)).toBe(true);
   });
 
   it("what the model sees is read BACK from the store: with the stored bytes gone, the model gets a note, never the upload", async () => {
@@ -102,7 +105,7 @@ describe("an image over the model's limit: stored, not read, and the person is t
     const names = r.events.map((e) => e.event);
     expect(names.indexOf("activity")).toBeLessThan(names.indexOf("text"));
     // Reopening the thread shows it again.
-    const thread = await app.request(`${BASE}/ask/threads/${up.json.threadId}`, { headers: { cookie } }, KEYED);
+    const thread = await app.request(`${BASE}/ask/threads/${eventsOf(r.events, "thread")[0].id}`, { headers: { cookie } }, KEYED);
     const answer = ((await thread.json()) as { messages: { role: string; activity: { label: string; resultLine: string | null }[] }[] }).messages.at(-1)!;
     expect(answer.activity[0]).toMatchObject({ label: "big.png is too large for Trov to view, so it was stored but not read.", resultLine: "Not read" });
   });
@@ -164,8 +167,8 @@ describe("a file goes whole only in its own turn; read_attachment reads this thr
       [{ type: "tool_use", name: "read_attachment", input: { id: att.id } }, { type: "tool_use", name: "read_attachment", input: { id: otherAtt.id } }],
       [{ type: "text", text: `Second.${final}` }],
     ]);
-    await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { threadId: up.json.threadId, text: "look", attachments: [att.id] }));
-    await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { threadId: up.json.threadId, text: "and the screenshot again?" }));
+    const r1 = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { threadId: up.json.threadId, text: "look", attachments: [att.id] }));
+    await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { threadId: eventsOf(r1.events, "thread")[0].id, text: "and the screenshot again?" }));
     // Turn 2's request: the earlier question carries one line, and no image block anywhere in the history.
     const second = model.sent[1];
     const history = JSON.stringify(second.messages);
@@ -180,7 +183,7 @@ describe("a file goes whole only in its own turn; read_attachment reads this thr
 
   it("another person can neither send nor read your attachment", async () => {
     const cookie = await cookieFor(ME);
-    const up = await upload(cookie, [{ name: "mine.png", type: "image/png", bytes: PNG }]);
+    const up = await upload(cookie, [{ name: "mine.png", type: "image/png", bytes: PNG }], await threadOf(cookie));
     const other = await cookieFor("ask-snoop");
     // Their own new thread: the id names nothing pending there.
     const model = fakeModel([[{ type: "text", text: `ok${final}` }]]);

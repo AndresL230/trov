@@ -738,7 +738,8 @@ export function addFiles(ctx: AskCtx, where: AskWhere, list: readonly File[]): v
   ctx.ui.composer[where] = { ...ui, files: [...ui.files, ...added], notice, error: false, drag: false };
   rt(ctx).focus[where] = "input";
   ctx.paint();
-  if (send.length) void upload(ctx, where, send);
+  // Each file is its own request (Q60): one that fails is that chip's failure alone, the others land.
+  for (const x of send) void upload(ctx, where, [x]);
 }
 
 async function upload(ctx: AskCtx, where: AskWhere, items: { f: ComposerFile; file: File }[]): Promise<void> {
@@ -755,8 +756,8 @@ async function upload(ctx: AskCtx, where: AskWhere, items: { f: ComposerFile; fi
     if (ctx.ui[where].uid !== uid) return;                     // another thread now: these stay on the old one
     patch((f, i) => (r.attachments[i] ? { ...f, state: "ready", att: r.attachments[i] } : { ...f, state: "failed" }));
     for (const x of items) rt(ctx).failed.delete(x.f.key);
-    // The upload made the thread (a new conversation's first attach): the question goes to it.
-    if (ctx.ui[where].threadId === null) ctx.ui[where] = { ...ctx.ui[where], threadId: r.threadId };
+    // No thread yet: the server keeps the files PENDING (no visible thread) until the question names them (Q60).
+    if (ctx.ui[where].threadId === null && r.threadId !== null) ctx.ui[where] = { ...ctx.ui[where], threadId: r.threadId };
   } catch (e) {
     if (ctx.ui[where].uid !== uid) return;
     if (isUnauthorized(e)) { ctx.fail(e, ""); return; }
@@ -808,7 +809,7 @@ function retry(ctx: AskCtx, where: AskWhere): void {
     files: ui.files.map((f) => (items.some((x) => x.f.key === f.key) ? { ...f, state: "uploading" as const } : f)),
   };
   ctx.paint();
-  if (items.length) void upload(ctx, where, items);
+  for (const x of items) void upload(ctx, where, [x]);
 }
 
 /** Pick the mode here (and remember it on the thread). The phone's + menu calls it too. */

@@ -178,7 +178,11 @@ export function createAskController(host: AskHost): AskController {
     let textSeen = "";
     const deliver = (e: AskEvent) => {
       if (streams[where] !== ctl) return;
-      if (e.event === "thread") setConvo(where, foldThreadEvent(ui()[where], e.data));
+      if (e.event === "thread") {
+        setConvo(where, foldThreadEvent(ui()[where], e.data));
+        // Q52: Auto was asked for but the org has it off — the answer ran asking first, and the switch says so now.
+        if (e.data.autoOff) autoTurnedOff(where);
+      }
       else if (e.event === "done") setConvo(where, withLastTurn(withQuestionId(ui()[where], e.data.questionId), (t) => foldAskEvent(t, e, Date.now())));
       else setConvo(where, withLastTurn(ui()[where], (t) => foldAskEvent(t, e, Date.now())));
       primeFromEvent(e);
@@ -214,6 +218,14 @@ export function createAskController(host: AskHost): AskController {
       paint();
       if (wasNew || where === "page") reloadThreads();
     }
+  }
+
+  /** The server said the org has Auto off (a `thread` event's `autoOff`): what the state said when it loaded is out of
+   *  date, so the switch reads "Asks first", disabled with the admin's reason, as `/ask/state` would now say. */
+  function autoTurnedOff(where: AskWhere): void {
+    const st = ui().state;
+    if (st.data) ui().state = { ...st, data: { ...st.data, autoAllowed: false } };
+    ui().composer[where] = { ...ui().composer[where], auto: null };
   }
 
   function stop(where: AskWhere = "page"): void {
