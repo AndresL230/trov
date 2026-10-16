@@ -47,6 +47,7 @@ describe("Org settings › AI — GET / PUT /ai/settings", () => {
       enabled: true, canEdit: false, eligibility: "no_key", // the pool has no key
       allowances: { ai_summaries: unlimited, ai_runs: unlimited, jev_checks: unlimited, ai_chat: unlimited },
       chatAuto: true, // 0058: on for every org
+      keys: { anthropic: false, typesafe: false }, planEnded: null, // Q8 / Q10
       sends: [...AI_SENDS], neverSent: AI_NEVER_SENT,
     });
     // Both providers, by their legal names, and what each receives.
@@ -82,6 +83,21 @@ describe("Org settings › AI — GET / PUT /ai/settings", () => {
         ai_chat: { used: 30, cap: 50, resumesOn: null },
       },
     });
+  });
+
+  // Q8, Q10 (owner ruling 2026-10-16).
+  it("says per provider whether its key is set, and names a plan that has ended", async () => {
+    const cookie = await cookieFor(MEMBER);
+    const both = { ...(env as unknown as Env), ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY, TYPESAFE_API_KEY: "ts-test-key" };
+    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie, undefined, both)).json.keys).toEqual({ anthropic: true, typesafe: true });
+    const siftOnly = { ...(env as unknown as Env), TYPESAFE_API_KEY: "ts-test-key" };
+    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie, undefined, siftOnly)).json.keys).toEqual({ anthropic: false, typesafe: true });
+    await run(env.DB, `UPDATE orgs SET plan = 'team', plan_status = 'canceled' WHERE id = ?`, ORG_A);
+    const ended = (await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie, undefined, both)).json;
+    expect(ended).toMatchObject({ planEnded: "Pro", eligibility: "capped" });
+    expect(ended.allowances.ai_runs.resumesOn).toBeNull(); // not a date: it resumes when renewed
+    await run(env.DB, `UPDATE orgs SET plan_status = 'active' WHERE id = ?`, ORG_A);
+    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie, undefined, both)).json.planEnded).toBeNull();
   });
 
   it("Pro's Ask Trov allowance is 300 questions PER SEAT — the paid seats × 300, or the members × 300 for a gifted Pro, computed when read", async () => {

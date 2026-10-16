@@ -132,6 +132,8 @@ export const AiSettingsSchema = z.object({
     ai_summaries: AiAllowanceUseSchema, ai_runs: AiAllowanceUseSchema, jev_checks: AiAllowanceUseSchema, ai_chat: AiAllowanceUseSchema,
   }),
   chatAuto: z.boolean(),
+  keys: z.object({ anthropic: z.boolean(), typesafe: z.boolean() }),
+  planEnded: z.string().nullable(),
   sends: z.array(z.object({ provider: z.enum(AI_PROVIDER_NAMES), what: z.string(), for: z.string() })),
   neverSent: z.string(),
 }) satisfies z.ZodType<AiSettings>;

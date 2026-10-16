@@ -32,7 +32,7 @@ import {
 } from "@shared/ai-fixtures";
 import { acceptSuggestion, dismissSuggestion, type SuggestionAnswer } from "./suggestions";
 import { AI_FILTER_MESSAGES, AI_FILTER_ROUTE, AiFilterBodySchema, aiFilterUnreadable, type AiFilterAnswer, type AiFilterErrorCode, type AiFilterScreen } from "@shared/ai-filter";
-import { planRefusal, resolveEntitlements, type PlanRefusal } from "@shared/plans";
+import { planDef, planRefusal, resolveEntitlements, type PlanRefusal } from "@shared/plans";
 import { PLAN_LIMIT_STATUS } from "../plans/state";
 import { aiRunCappedMetric, meterBy } from "../data/meter";
 import { rateLimited } from "../platform/limits";
@@ -41,7 +41,7 @@ import { AI_FILTER_ACTOR, isEmptyFilter, previewAiFilter, runAiFilter } from "./
 /** What Org settings › AI shows, from ONE statement: both switches, the eligibility, this month's use of all
  *  four AI allowances, and what is sent to whom. Any member reads it; `canEdit` says whether the switches
  *  are theirs. Nothing here calls a model. */
-export async function aiSettings(env: Pick<Env, "ANTHROPIC_API_KEY">, ctx: TenantContext, now: Date = new Date()): Promise<AiSettings> {
+export async function aiSettings(env: Pick<Env, "ANTHROPIC_API_KEY" | "TYPESAFE_API_KEY">, ctx: TenantContext, now: Date = new Date()): Promise<AiSettings> {
   const a = await planAndAiSettings(ctx, now);
   return {
     enabled: a.enabled,
@@ -49,6 +49,8 @@ export async function aiSettings(env: Pick<Env, "ANTHROPIC_API_KEY">, ctx: Tenan
     eligibility: eligibilityOf(env, a.enabled, a.plan, a.used.ai_runs),
     allowances: Object.fromEntries(AI_ALLOWANCE_KEYS.map((k) => [k, allowanceUse(a.plan, k, a.used[k], now)])) as AiSettings["allowances"],
     chatAuto: a.chatAuto,
+    keys: { anthropic: !!env.ANTHROPIC_API_KEY, typesafe: !!env.TYPESAFE_API_KEY },
+    planEnded: a.plan.status === "canceled" ? planDef(a.plan.plan).name : null,
     sends: [...AI_SENDS],
     neverSent: AI_NEVER_SENT,
   };

@@ -349,6 +349,12 @@ export interface AiSettings {
   /** `orgs.ai_chat_auto` (0058) — whether Ask Trov's Auto mode (writes run without a Confirm, with Undo)
    *  may be used in this organization. */
   chatAuto: boolean;
+  /** Whether each provider's key is set on this deployment (owner ruling Q8): Org settings › AI says it per provider —
+   *  Anthropic for everything Trov writes, TypeSafe AI for Sift. A fact about the deployment, never a secret. */
+  keys: { anthropic: boolean; typesafe: boolean };
+  /** The plan's name when the organization's plan has ENDED (`plan_status = 'canceled'`): Trov's AI is paused until it
+   *  is renewed, not until a date (owner ruling Q10). Null otherwise. */
+  planEnded: string | null;
   sends: AiSendLine[];
   neverSent: string;
 }

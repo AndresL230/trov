@@ -537,7 +537,7 @@ describe("Org settings › AI", () => {
   const settings = (o: Partial<AiSettings> = {}): AiSettings => ({
     enabled: true, canEdit: true, eligibility: "ok",
     allowances: { ai_summaries: use(212, 3000), ai_runs: use(1212, 3000), jev_checks: use(40, 10000), ai_chat: use(830, 2500) },
-    chatAuto: true, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT, ...o,
+    chatAuto: true, keys: { anthropic: true, typesafe: true }, planEnded: null, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT, ...o,
   });
   const tab = (a: AiSettings | null, status: "ok" | "loading" | "error" = "ok", saving = false) => aiTab(org, { status, data: a }, saving);
 
@@ -603,7 +603,31 @@ describe("Org settings › AI", () => {
     expect(AI_SENDS.length).toBe(rows);
   });
   it("no key on this Trov: said as a fact", () => {
-    expect(text(tab(settings({ eligibility: "no_key" })))).toContain("This Trov has no Anthropic key");
+    expect(text(tab(settings({ eligibility: "no_key", keys: { anthropic: false, typesafe: true } })))).toContain("This Trov has no Anthropic key");
+  });
+  // Q8 (owner ruling 2026-10-16): the TypeSafe key was said only on Tags; now each provider has its own status.
+  it("each provider's key has its own status: Anthropic and TypeSafe AI, set (a plain fact) or missing (a mark and what it stops)", () => {
+    const both = tab(settings());
+    expect([...both.matchAll(/data-ai-key="([a-z]+)" data-set="(\d)"/g)].map((m) => [m[1], m[2]])).toEqual([["anthropic", "1"], ["typesafe", "1"]]);
+    expect(text(both)).toContain("Providers");
+    expect(text(both).match(/Key set/g)?.length).toBe(2);
+    expect(both).not.toContain("No key");
+    const noSift = tab(settings({ keys: { anthropic: true, typesafe: false } }));
+    expect(text(noSift)).toContain("This Trov has no TypeSafe AI key, so Sift tags, sorts and checks nothing whatever the switch says.");
+    expect(noSift).toMatch(/data-ai-key="typesafe" data-set="0"[\s\S]*No key/);
+    expect(noSift.slice(noSift.indexOf('data-ai-key="anthropic"'), noSift.indexOf('data-ai-key="typesafe"'))).not.toContain("No key");
+    expect(text(noSift)).not.toContain("no Anthropic key");
+    const neither = text(tab(settings({ eligibility: "no_key", keys: { anthropic: false, typesafe: false } })));
+    expect(neither).toContain("This Trov has no Anthropic key");
+    expect(neither).toContain("This Trov has no TypeSafe AI key");
+    expect(neither).not.toMatch(/\bJev\b/);
+  });
+  // Q10 (owner ruling 2026-10-16): a canceled plan read as `capped` with no sentence and no "Used up" line.
+  it("an ended plan says so under the switch, with the way to the plan (Org settings › General)", () => {
+    const html = tab(settings({ eligibility: "capped", planEnded: "Pro" }));
+    expect(text(html).replace(/&#39;/g, "'")).toContain("This organization's Pro plan has ended, so Trov's AI is paused until it is renewed.");
+    expect(html).toMatch(/data-ai-plan-ended[\s\S]*data-act="orgGo" data-arg="general"[^>]*>Plan and billing/);
+    expect(tab(settings())).not.toContain("data-ai-plan-ended");
   });
   it("not read yet is a skeleton; a failed read says so", () => {
     expect(tab(null, "loading")).toContain("aria-busy");
