@@ -90,8 +90,9 @@ export function releasesView(slug: string | null, page: ReleasePage): string {
   return slug ? pageSkeleton() : indexSkeleton();
 }
 
-/** The header's "›" crumb on a release page: "v0.33", "v0.1–0.4", "Unreleased", with " · Patch notes".
- *  Before the chunk is in it is read off the slug (a slug IS the version, or "unreleased"). */
+/** The header's "›" crumb on a release page: "v0.10", "v0.1", "Unreleased", with " · Patch notes".
+ *  Before the chunk is in it is read off the slug (a slug IS the version, or "unreleased"); once
+ *  it is, an old pre-renumbering link (`#releases/0.25`) reads as the release it lands on ("v0.7"). */
 export function releaseCrumb(slug: string | null, page: ReleasePage): string {
   if (!slug) return "";
   let name: string;

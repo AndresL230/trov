@@ -453,9 +453,10 @@ describe("the changelog: the release notes, never the deploy steps or the patch 
     const shipped = publicReleases();
     expect(shipped.length).toBe(RELEASES.filter((r) => !r.unreleased).length);
     expect([...md.matchAll(/^## ([0-9.]+): /gm)].map((m) => m[1])).toEqual(shipped.map((r) => r.version));
+    expect(md).not.toMatch(/\(versions /);
     for (const r of shipped) {
-      const range = r.covers?.length ? ` (versions ${r.covers[r.covers.length - 1]} to ${r.version})` : "";
-      expect(md).toContain(`## ${r.version}: ${r.title}\n\nReleased ${r.date}${range}. ${r.headline}`);
+      // Just the date: the old pre-renumbering numbers (`formerly`) are the app's concern, not the changelog's.
+      expect(md).toContain(`## ${r.version}: ${r.title}\n\nReleased ${r.date}. ${r.headline}`);
       for (const h of r.highlights) expect(md).toContain(`- ${h}`);
       for (const h of r.headsUp ?? []) expect(md).toContain(`- ${h}`);
     }

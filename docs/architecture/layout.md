@@ -310,8 +310,8 @@
   `#releases/<v>` (release notes — for USERS: no PRs, no migrations) and `#releases/<v>/patches` (patch notes — for
   builders: `ops` upgrade notes, Added / Changed / Fixed / Removed, PR links), flipped by a `segmented()` switch;
   `<v>` is `0.N` or `unreleased`; the old `#releases/patches` opens the newest release's patches. Static `RELEASES`
-  data (`0.N` per milestone, newest first; older versions folded into milestone entries listed in `covers`, whose
-  old links still resolve) plus a pure renderer, loaded as its OWN chunk through
+  data (`0.N` per milestone, numbered 0.1 … in order, newest first; renumbered in October 2026 — each entry's old
+  numbers, which ran to 0.34, are in its `formerly`, so old links still resolve, current numbers first) plus a pure renderer, loaded as its OWN chunk through
   `releases-lazy.ts` (app modules import it as a type only); the newest version is `release-latest.ts`
   (`LATEST_VERSION`, pinned to `RELEASES[0]` by `test/releases.test.ts`). **Every shipped PR adds ONE patch line to
   the top entry** (a user-visible change in product words ending `(#N)`; deploy steps in `ops`; highlights only for

@@ -136,11 +136,15 @@ gone) says so — "Reload the page to try again" — and is not retried in a loo
 
 - **No app module imports releases.ts as a value** (`import type` only; a test reads every `web/src/*.ts`). The
   build-time readers keep the full import: `docs-changelog.ts` (the public `/docs/changelog`), and the tests.
-- **The record is kept short** (#190): 35 releases were folded into 12 entries (milestones; same-day versions
+- **The record is kept short** (#190): 35 releases were folded into 11 entries (milestones; same-day versions
   together), each ≤ 4 highlights and ≤ 20 patch lines in product words, held by `RELEASE_CAPS` in
-  `test/releases.test.ts`. A folded version is listed in its entry's `covers`: `findRelease` resolves it, so an old
-  `#releases/0.3` or `#releases/0.3/patches` opens that entry, and `releaseName` labels it `v0.1–0.4` (the meta row,
-  the crumb). The chunk went from ~131 kB to ~20 kB gzip (esbuild, the module with its imports). It stays ONE chunk:
+  `test/releases.test.ts`. The entries were then **renumbered in order, 0.1 … 0.11** (one `0.N` per milestone, no
+  gaps — the test holds it; the next batch is 0.12). Every old number (they ran to 0.34) is in its entry's
+  `formerly` (its own old version first, then the ones folded in), and `findRelease` resolves a slug by the CURRENT
+  versions first, then by `formerly`: an old `#releases/0.25` opens 0.7 and `#releases/0.34/patches` opens 0.11's
+  patch notes, while an old number that is a current one today (0.1–0.11, e.g. `#releases/0.4`, once Foundations)
+  opens the release that has that number now — current numbers win. `releaseName` is just `v0.N` (the meta row,
+  the crumb; an old slug's crumb names the entry it lands on once the chunk is in). The chunk went from ~131 kB to ~20 kB gzip (esbuild, the module with its imports). It stays ONE chunk:
   the index draws every entry's title and headline, so splitting off the old entries would add a second request
   and a loading state to save a few kB.
 - **The newest version is `release-latest.ts`** (`LATEST_VERSION`, and `LATEST_RELEASE` with its slug): the

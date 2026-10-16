@@ -1,6 +1,6 @@
 // What's new (Help › What's new): `#releases` is a grid of every release; each release
 // has two pages, `#releases/<v>` (its release notes) and `#releases/<v>/patches` (its
-// patch notes), where `<v>` is the version ("0.14") or "unreleased".
+// patch notes), where `<v>` is the version ("0.7") or "unreleased".
 //
 // Pure data + a pure renderer, no backend: RELEASES below is the whole record, and
 // `releasesScreen` turns it into the screen's markup. Every string goes through `esc`.
@@ -26,8 +26,9 @@
 //     log: no file paths, function names, tables, tests or numbers from a profiler; a purely
 //     internal PR adds no line, only its number to `prs`. `code` in backticks is rare.
 //   • `prs`        — every pull request the release carries (chips on the patch notes).
-//   • `covers`     — on a consolidated entry: the older versions folded into it. Their old
-//     links (`#releases/0.3`) open this entry (`findRelease`).
+//   • `formerly`   — every number the entry answered to before the October 2026 renumbering
+//     (its own old version first, then the ones folded into it, newest first). Old links
+//     resolve through it (`findRelease`); a new release never sets it.
 // RELEASE_CAPS below holds the limits and test/releases.test.ts enforces them (per line
 // and per release). A merge to `main` IS a production deploy, so the PR that merges a batch
 // also cuts it: set `version` to the next `0.N`, `date` to the merge day (YYYY-MM-DD) and
@@ -37,11 +38,16 @@
 // adds its one line (and PR) to the newest version instead of a version of its own.
 // Newest first; dates never increase down the list.
 //
-// Versioning: `0.N`, one number per feature milestone (the merges that shipped together),
-// counted from the first deploy in June 2026. In October 2026 (#190) the 35 releases up to
-// 0.34 were folded into fewer entries — by milestone, same-day versions together — and cut
-// to what people read; the full old log is in git history. Every line below is traceable
-// to a merged pull request, or — for Unreleased — the working tree it describes.
+// Versioning: one `0.N` per milestone (the merges that shipped together), numbered in order
+// from the first deploy (0.1, June 2026) — no gaps, newest first. In October 2026 (#190) the
+// 35 releases up to 0.34 were folded into fewer entries — by milestone, same-day versions
+// together — and cut to what people read (the full old log is in git history); then the
+// entries were renumbered 0.1 … 0.11. The old numbers (which ran to 0.34) live in each
+// entry's `formerly`, so an old link still lands: `findRelease` matches the CURRENT versions
+// first, then `formerly` — `#releases/0.25` opens 0.7, `#releases/0.34/patches` opens 0.11's
+// patch notes, while an old number that is now a current one (0.1–0.11) opens the release
+// that has that number today (current numbers win). The next batch is 0.12. Every line below
+// is traceable to a merged pull request, or — for Unreleased — the working tree it describes.
 
 import { esc, attr, surface } from "./ui";
 import { segmented } from "./segmented";
@@ -60,9 +66,11 @@ export interface Release {
   version: string;
   /** YYYY-MM-DD — the day it merged (for Unreleased: the day the entry was last updated). */
   date: string;
-  /** A consolidated entry: the older versions folded into it, newest first ("0.31"). Their
-   *  links resolve here; `version` is the newest of the range. */
-  covers?: string[];
+  /** The numbers this entry answered to before the October 2026 renumbering: its own old
+   *  version first, then the older ones folded into it, newest first (["0.29", "0.28", …]).
+   *  Old links resolve here unless the number is a current version (`findRelease`). Only the
+   *  renumbered entries have it; a new release never does. */
+  formerly?: string[];
   /** Not deployed yet: rendered with an "Unreleased" tag instead of a ship date. */
   unreleased?: boolean;
   title: string;
@@ -98,8 +106,9 @@ export const RELEASES: Release[] = [
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.
   {
-    version: "0.34",
+    version: "0.11",
     date: "2026-10-16",
+    formerly: ["0.34"],
     title: "Trov writes for you, and the Repo screen fits every setup",
     headline: "Trov reads what your team captures and writes the short version, the Repo screen takes the shape of your repository, and every page loads faster.",
     highlights: [
@@ -157,8 +166,9 @@ export const RELEASES: Release[] = [
   },
   // Hosting providers (#185): Org settings › Hosting and the Repo dashboard's Hosting section.
   {
-    version: "0.33",
+    version: "0.10",
     date: "2026-10-15",
+    formerly: ["0.33"],
     title: "Hosting providers",
     headline: "Connect Vercel, Netlify, Render or Fly.io, and the Repo dashboard shows every part of every environment, whoever hosts it.",
     highlights: [
@@ -192,11 +202,11 @@ export const RELEASES: Release[] = [
     },
     prs: [185],
   },
-  // Tags of your own, sorted by Sift (#179–#184), with 0.31 folded in: states drawn as marks, summaries by Claude, the AI base (#173–#177).
+  // Tags of your own, sorted by Sift (#179–#184), with the old 0.31 folded in: states drawn as marks, summaries by Claude, the AI base (#173–#177).
   {
-    version: "0.32",
+    version: "0.9",
     date: "2026-10-14",
-    covers: ["0.31"],
+    formerly: ["0.32", "0.31"],
     title: "Your own tags, sorted by Sift, and calmer status",
     headline: "Each organization keeps its own tag list that Sift helps fill, and every state is a small shape and a plain word instead of a coloured tag.",
     highlights: [
@@ -243,8 +253,9 @@ export const RELEASES: Release[] = [
   },
   // The public site readable by search engines and agents, public docs, self-serve deletion, and the compliance pass (#172).
   {
-    version: "0.30",
+    version: "0.8",
     date: "2026-10-12",
+    formerly: ["0.30"],
     title: "Public docs, deleting your data, and plain terms",
     headline: "The public site and new docs are readable by search engines and AI assistants, and you can delete your account or organization yourself.",
     highlights: [
@@ -293,11 +304,11 @@ export const RELEASES: Release[] = [
     },
     prs: [172],
   },
-  // A new front page, the site on a phone, Review for a long queue, pay inside Trov, one GitHub account for several orgs (0.25–0.29).
+  // A new front page, the site on a phone, Review for a long queue, pay inside Trov, one GitHub account for several orgs (formerly 0.25–0.29).
   {
-    version: "0.29",
+    version: "0.7",
     date: "2026-10-11",
-    covers: ["0.28", "0.27", "0.26", "0.25"],
+    formerly: ["0.29", "0.28", "0.27", "0.26", "0.25"],
     title: "A new front page, and one account across organizations",
     headline: "A new site that works on a phone, a faster Review, and GitHub and Claude Code connections shared across your organizations.",
     highlights: [
@@ -346,11 +357,11 @@ export const RELEASES: Release[] = [
     },
     prs: [171, 136, 139, 138, 134, 137, 168],
   },
-  // 0.19–0.24 (2026-10-07 – 08): the GitHub App, plans and billing, Sync you can see, Free and Pro per seat, the guided setup.
+  // Formerly 0.19–0.24 (2026-10-07 – 08): the GitHub App, plans and billing, Sync you can see, Free and Pro per seat, the guided setup.
   {
-    version: "0.24",
+    version: "0.6",
     date: "2026-10-08",
-    covers: ["0.23", "0.22", "0.21", "0.20", "0.19"],
+    formerly: ["0.24", "0.23", "0.22", "0.21", "0.20", "0.19"],
     title: "Plans, the GitHub App and a guided setup",
     headline: "Connect GitHub by installing the Trov App, start Free or pay per seat for Pro, and a new organization opens on a guided setup.",
     highlights: [
@@ -401,11 +412,11 @@ export const RELEASES: Release[] = [
     },
     prs: [121, 122, 123, 124, 125, 126, 127, 128, 130, 134, 117, 119, 120, 109, 110, 111, 105, 106, 104, 103],
   },
-  // 0.17–0.18 (2026-10-06): Canopy is renamed Trov, and Trov holds any number of organizations.
+  // Formerly 0.17–0.18 (2026-10-06): Canopy is renamed Trov, and Trov holds any number of organizations.
   {
-    version: "0.18",
+    version: "0.5",
     date: "2026-10-06",
-    covers: ["0.17"],
+    formerly: ["0.18", "0.17"],
     title: "Trov, with organizations",
     headline: "Canopy is now Trov, and it runs for any number of teams: each has its own organization, invites its own people, and you switch between them.",
     highlights: [
@@ -454,11 +465,11 @@ export const RELEASES: Release[] = [
       removed: [],
     },
   },
-  // The board, feed briefs, My Work tiles and person cards (0.14–0.16, Sep 26–27).
+  // The board, feed briefs, My Work tiles and person cards (formerly 0.14–0.16, Sep 26–27).
   {
-    version: "0.16",
+    version: "0.4",
     date: "2026-09-27",
-    covers: ["0.15", "0.14"],
+    formerly: ["0.16", "0.15", "0.14"],
     title: "The board, My Work tiles and person cards",
     headline: "Tickets open on a board, My Work becomes tiles, the Roadmap gets a timeline, and every name opens that person's card.",
     highlights: [
@@ -504,11 +515,11 @@ export const RELEASES: Release[] = [
     },
     prs: [89, 91, 84, 85, 86, 87, 88, 77, 78, 79, 80, 81, 82, 83],
   },
-  // Artifacts, browser sign-in for agents and GitHub issues as tickets (0.11–0.13, Sep 24–25).
+  // Artifacts, browser sign-in for agents and GitHub issues as tickets (formerly 0.11–0.13, Sep 24–25).
   {
-    version: "0.13",
+    version: "0.3",
     date: "2026-09-25",
-    covers: ["0.12", "0.11"],
+    formerly: ["0.13", "0.12", "0.11"],
     title: "Artifacts, browser sign-in and GitHub issues",
     headline: "Agents keep their pages as artifacts, connect by signing in through the browser, and every GitHub issue becomes a ticket.",
     highlights: [
@@ -546,11 +557,11 @@ export const RELEASES: Release[] = [
     },
     prs: [65, 75, 76, 74, 71, 72, 73],
   },
-  // 0.5–0.10 (Sep 13–23): email digests, Google sign-in, tickets and sprints, the landing page, the Repo dashboard, handoffs.
+  // Formerly 0.5–0.10 (Sep 13–23): email digests, Google sign-in, tickets and sprints, the landing page, the Repo dashboard, handoffs.
   {
-    version: "0.10",
+    version: "0.2",
     date: "2026-09-23",
-    covers: ["0.9", "0.8", "0.7", "0.6", "0.5"],
+    formerly: ["0.10", "0.9", "0.8", "0.7", "0.6", "0.5"],
     title: "Tickets, the Repo dashboard and handoffs",
     headline: "Tickets and sprints, a Repo dashboard, handoffs between sessions, Google sign-in and email digests.",
     highlights: [
@@ -600,11 +611,11 @@ export const RELEASES: Release[] = [
     },
     prs: [66, 67, 68, 69, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 49, 50, 44, 47, 48, 41, 42, 43, 34, 35, 36, 37, 38, 39],
   },
-  // 0.1–0.4 (Jun 29 – Jul 10): the gate, the plugin, My Work / Roadmap / Review, summaries and the Docs reader.
+  // Formerly 0.1–0.4 (Jun 29 – Jul 10): the gate, the plugin, My Work / Roadmap / Review, summaries and the Docs reader.
   {
-    version: "0.4",
+    version: "0.1",
     date: "2026-07-10",
-    covers: ["0.3", "0.2", "0.1"],
+    formerly: ["0.4", "0.3", "0.2", "0.1"],
     title: "Foundations",
     headline: "The first Canopy: agents propose context through a gate, people confirm it, and the team reads it on My Work, Docs and the Roadmap.",
     highlights: [
@@ -653,7 +664,7 @@ export const RELEASES: Release[] = [
 //   #releases                  → the index: a grid of release cards, newest first
 //   #releases/<v>              → one release's notes (highlights, Heads-up)
 //   #releases/<v>/patches      → the same release's patch notes (Added / Changed / …)
-// `<v>` is `releaseSlug`: the version ("0.14"), or "unreleased". Cards, the back link
+// `<v>` is `releaseSlug`: the version ("0.7"), or "unreleased". Cards, the back link
 // and the newer/older links are real `<a href="#…">` (the hash is the route, so Back
 // works); the page's Release notes / Patch notes switch is a `segmented()`.
 
@@ -663,20 +674,19 @@ export type ReleasePage = "notes" | "patches";
 export const releaseSlug = (r: Pick<Release, "version" | "unreleased">): string =>
   r.unreleased ? "unreleased" : r.version.toLowerCase();
 
-/** The release a URL segment names, or null. A version folded into a consolidated entry
- *  (`covers`) names that entry, so an old `#releases/0.3` link still lands. */
+/** The release a URL segment names, or null. Current versions win; then an old number
+ *  from before the renumbering (`formerly`), so an old `#releases/0.25` link still lands on
+ *  the entry that holds it. An old number that is now a current version opens the current one. */
 export function findRelease(slug: string, releases: readonly Release[] = RELEASES): Release | null {
   const s = slug.toLowerCase();
   return releases.find((r) => releaseSlug(r) === s)
-    ?? releases.find((r) => r.covers?.some((v) => v.toLowerCase() === s))
+    ?? releases.find((r) => r.formerly?.some((v) => v.toLowerCase() === s))
     ?? null;
 }
 
-/** How a release is named: "Unreleased", "v0.33", or a consolidated entry's range "v0.1–0.4". */
-export function releaseName(r: Pick<Release, "version" | "unreleased" | "covers">): string {
-  if (r.unreleased) return "Unreleased";
-  const oldest = r.covers?.length ? r.covers[r.covers.length - 1] : null;
-  return oldest ? `v${oldest}–${r.version}` : `v${r.version}`;
+/** How a release is named: "Unreleased" or "v0.7". */
+export function releaseName(r: Pick<Release, "version" | "unreleased">): string {
+  return r.unreleased ? "Unreleased" : `v${r.version}`;
 }
 
 /** The hash of a releases page (the index when `slug` is null). */
@@ -723,7 +733,7 @@ const patchCount = (r: Release): number =>
   r.patches.added.length + r.patches.changed.length + r.patches.fixed.length + r.patches.removed.length;
 const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : "s"}`;
 
-/** "v0.14 · Sep 26, 2026", or the Unreleased tag. */
+/** "v0.7 · Oct 11, 2026", or the Unreleased tag. */
 function metaRow(r: Release): string {
   const inner = r.unreleased
     ? `${stateMark("Unreleased", "var(--accent)", "ring", 12, "Merged, not deployed yet.")}<span aria-hidden="true">·</span><span>Not deployed yet</span>`
