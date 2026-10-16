@@ -58,32 +58,42 @@ you are working in. Once per session, run `git remote get-url origin` and reduce
    If `organization` is null, say what `unresolved.message` says and STOP: nothing below can read
    anything, and a write would go nowhere. Never continue in an organization the person did not expect
    without telling them.
-1. **Query focused.** Call `mcp__trov__query` with a tight `q` (the subsystem / concept), narrowing
+1. **Read where the repository stands — before anything else.** Call `mcp__trov__get_repo_dashboard`
+   with `tab: "overview"` (and `repo`) and read its **`state`** first: a headline and three short lists —
+   shipped recently, in flight, needs attention — that Trov keeps current from merged pull requests,
+   session digests, the default branch's CI and every environment's deploys, each line with its sources
+   and when it was written (`generatedAt`). Lead your orientation with it instead of rebuilding it from
+   the feed. It is **written by Trov, not reviewed by a person**: trust its sources over its wording, say
+   how old it is, and never present it as settled fact. `state: "capped"` is the last state written before
+   the organization's monthly allowance ran out (still its newest). **No `state` field** means none is
+   written (AI off for the organization, nothing yet, or a new repository): say nothing about it, and
+   orient from steps 2–4 as usual — never invent one.
+2. **Query focused.** Call `mcp__trov__query` with a tight `q` (the subsystem / concept), narrowing
    with `types` (`doc` / `decision` / `feed` / `sprint` / `artifact`) and `section` when you can. Keep it
    specific — a focused query returns better-assembled bodies than a broad one.
-2. **Read the `primary` bodies.** These are full authoritative bodies, not snippets. Skim `pointers`
+3. **Read the `primary` bodies.** These are full authoritative bodies, not snippets. Skim `pointers`
    for anything worth opening; fetch the exact doc with `mcp__trov__get_doc <slug>` when you need
    all versions.
-3. **Respect the authority flag on every result:**
+4. **Respect the authority flag on every result:**
    - `live` — settled. Trust it.
    - `staged_pending` — a newer version is staged but unpromoted; the `body` you see is still the live
      one. Do **not** treat the pending change as settled.
    - `unpromoted` — never promoted; exists only as staged content. Treat as a draft, not as truth.
    - `draft` — an unratified decision. Not settled.
    Never present `staged_pending` / `unpromoted` / `draft` content as established fact.
-4. **If you're about to write a doc,** note the doc's `current_version` from the query/`get_doc`
+5. **If you're about to write a doc,** note the doc's `current_version` from the query/`get_doc`
    result — that's the **base** the `record-session` writer should declare for its proposal.
-5. **At session start, also call `mcp__trov__get_my_work`** (no args but `repo`) so orientation includes the
+6. **At session start, also call `mcp__trov__get_my_work`** (no args but `repo`) so orientation includes the
    person's own open work — recent shipped activity and their to-do — alongside the area context from
-   steps 1–3. This is still read-only: report it, don't act on it unprompted.
-6. **When the area has an open queue or a live sprint,** add `mcp__trov__list_tickets` (e.g.
+   steps 1–4. This is still read-only: report it, don't act on it unprompted.
+7. **When the area has an open queue or a live sprint,** add `mcp__trov__list_tickets` (e.g.
    `{ assignee: "me" }` for what's on the caller's plate, or `{ category: "bug" }` for what the org has
    reported about the area) and `mcp__trov__get_sprint <id>` (the sprint's tickets, resources and
    ticket-inclusive progress — the id comes from a `sprint`-typed `query` hit or `get_roadmap`). Both
    calls are reads, and **orientation stays a read**: ticket and sprint write tools DO exist over MCP
    now, but they are never this skill's to call. Report what the queue says; if a write is warranted,
    that is the explicit-only `tickets` skill, asked for by a person.
-7. **When the work is a specific ticket,** call `mcp__trov__get_ticket <id>` and read its
+8. **When the work is a specific ticket,** call `mcp__trov__get_ticket <id>` and read its
    `artifacts` — `[{ slug, title, kind, status, version }]`, the artifact pages (designs, diagrams,
    specs, PDFs) linked to that ticket that you can see. Open the relevant ones with
    `mcp__trov__artifact_get <slug>` — text kinds return their `content`, which is usually enough to
@@ -95,7 +105,7 @@ you are working in. Once per session, run `git remote get-url origin` and reduce
    one person's word. Artifacts also surface in `query` (type `artifact`, id = slug, body starting
    `Status: <status> · v<n>`) and in `artifact_list { ticket: <id> }`. Creating or versioning an
    artifact is not this skill's job (contract: `docs/artifact-contract.md`).
-8. **When the work touches deploys, CI health, usage or product metrics,** add
+9. **When the work touches deploys, CI health, usage or product metrics,** add
    `mcp__trov__get_repo_dashboard` with the matching `tab` (`overview` / `code` / `ci` / `usage` /
    `planning`; `range` `24h` / `7d` / `30d` for usage) — the Repo dashboard, read from Trov's own
    database, never live GitHub. Every section is `ok`, `empty` or `not_connected`: **anything not `ok`
@@ -103,7 +113,7 @@ you are working in. Once per session, run `git remote get-url origin` and reduce
    goes for a `null` figure *inside* an `ok` section (`usage[].requests`, a `product` value,
    `contributors[].reviews`, `ciFailures.rate`, a delta): unknown, never zero — `usage[].seen` says
    whether that source has ever reported.
-9. **At session start, check for handoffs.** Call `mcp__trov__list_handoffs` (no args but `repo` — handoffs
+10. **At session start, check for handoffs.** Call `mcp__trov__list_handoffs` (no args but `repo` — handoffs
    left for you plus those left for `anyone`, pending only). If any are pending, tell the person:
    **"You have N handoffs: #12 <task> from <sender>, #9 <task> from <sender>"** and ask which to claim.
    `mcp__trov__get_handoff <id>` shows one in full without claiming it.

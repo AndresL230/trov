@@ -14,6 +14,8 @@
 //   NOTIFICATIONS — the e-mail digests: which exist and their default cadence, the send hour,
 //                   timezone and sender name, preview and test send, the outbox
 //                   (web/src/notifications.ts — under Maintenance › People until then). Admin+ only.
+//   AI            — the switch for what Trov writes, this month's AI runs, what is sent to Anthropic
+//                   (web/src/org-ai.ts). Everyone reads it; an admin or an owner flips the switch.
 //   GENERAL       — the org's name; its slug, read-only.
 // A member who is not an admin sees what the API lets them read: no Integrations, no Hosting and no
 // Notifications tab, and the other four read-only. Above the tabs an admin of a new org gets a setup checklist,
@@ -52,6 +54,7 @@ import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existin
 import { disconnectConfirmCopy, hostingData, hostingDropdowns, hostingOverlay, hostingPartRow, hostingTab, hostingTodo, leftoversConfirmCopy, partConfirmCopy } from "./hosting";
 import { onIntegrationsTab } from "./integrations";
 import { githubInstallHref } from "./api";
+import { aiTab } from "./org-ai";
 import { appRemoveCopy, repoAppsDropdowns, repoAppsPage } from "./repo-apps";
 // The state (OrgUi and its first value), the tabs and the current org are org-core.ts; the invite form
 // (Members' and the first-run setup's) is org-invite.ts — both in the app's first download. This module
@@ -66,7 +69,7 @@ import {
 } from "./org-core";
 export { inviteDraftOk, inviteRoleDropdown, inviteMailNote, inviteSection } from "./org-invite";
 import { inviteRoleDropdown, inviteMailNote, inviteSection } from "./org-invite";
-const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", hosting: "Hosting", members: "Members", tags: "Tags", notifications: "Notifications", general: "General" };
+const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", hosting: "Hosting", members: "Members", tags: "Tags", notifications: "Notifications", ai: "AI", general: "General" };
 
 // ── setup checklist ──────────────────────────────────────────────────────────
 
@@ -682,6 +685,7 @@ export function orgSettingsView(p: OrgSettingsProps): string {
     : tab === "members" ? membersTab(p.org, p.ui, p.me, p.identity ?? null, p.dd)
     : tab === "tags" ? tagsTab(p.org, { list: p.tags?.list ?? { status: "loading", data: null }, ui: p.tags?.ui ?? initialTagsUi(), dd: p.dd })
     : tab === "notifications" ? notificationsTab(p.org, p.notif, p.dd)
+    : tab === "ai" ? aiTab(p.org, p.ui.ai, p.ui.aiSaving)
     : generalTab(p.org, p.ui);
   const logins = roleAtLeast(p.org.role, "admin") ? p.identity?.groups.length ?? 0 : 0;
   // The checklist's slot is always there (empty once setup is done), so the tab bar under it is

@@ -26,9 +26,9 @@ export type NavOpen = Record<NavGroup, boolean>;
 export const NAV_CLOSED: NavOpen = { docs: false };
 
 /** The nav entry a screen lights up (a ticket lights Tickets, a sprint lights Roadmap). */
-export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases" | "platform" | "org";
+export type NavKey = "mywork" | "ask" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases" | "platform" | "org";
 const NAV_OF: Record<string, NavKey> = {
-  mywork: "mywork", feed: "feed", docs: "docs", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
+  mywork: "mywork", ask: "ask", feed: "feed", docs: "docs", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
   review: "review", maintenance: "maintenance", guide: "guide", releases: "releases",
   tickets: "tickets", ticketdetail: "tickets", newticket: "tickets",
   artifacts: "artifacts", artifactnew: "artifacts", artifact: "artifacts",
@@ -69,6 +69,8 @@ const ICON = (paths: string): string =>
 
 const ICONS: Record<NavKey | "search" | "collapse", string> = {
   mywork: ICON(`<path d="M3 12 12 3l9 9"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path>`),
+  // A constellation: Ask Trov (the design's `askGraph`; ask-icons.ts holds the same path).
+  ask: ICON(`<circle cx="12" cy="12" r="2.6"></circle><circle cx="5" cy="5.5" r="1.9"></circle><circle cx="19" cy="6.5" r="1.9"></circle><circle cx="17.5" cy="19" r="1.9"></circle><circle cx="5.5" cy="17.5" r="1.9"></circle><path d="M10 10.2 6.4 6.9M14.2 10.7l3.3-2.7M13.6 14.1l2.7 3.3M10 13.8l-3.1 2.4"></path>`),
   tickets: ICON(`<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path>`),
   roadmap: ICON(`<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`),
   handoffs: ICON(`<path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path>`),
@@ -160,6 +162,7 @@ export function sidebarView(p: SidebarProps): string {
       </div>
       ${section("Workspace", true)}
       ${item("mywork", "goMyWork", "My Work")}
+      ${item("ask", "goAsk", "Trov")}
       ${item("tickets", "goTickets", "Tickets", c.tickets)}
       ${item("roadmap", "goRoadmap", "Roadmap")}
       ${item("handoffs", "goHandoffs", "Handoffs", c.handoffs)}

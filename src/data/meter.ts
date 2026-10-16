@@ -80,7 +80,7 @@ export async function meterMcpTool(env: Env, ctx: TenantContext, tool: string): 
 // from the webhook (actor `github-webhook`) and from Sync GitHub (actor = the admin). Counts and sizes
 // only: no title, no body, no summary text ever reaches this table.
 export type SummaryKind = "pr" | "issue";
-/** One model call for a suggestion (src/tools/tag-fit.ts) — what the monthly `jev_checks` allowance counts. */
+/** One model call for a suggestion (the Sift run, src/ai/sift.ts) — what the monthly `jev_checks` allowance counts. */
 export const METRIC_AI_SUGGEST = "ai_suggest";
 /** An attempted summarizer call — what the monthly allowance (`ai_summaries`) counts. */
 export const METRIC_SUMMARY: Record<SummaryKind, string> = { pr: "summary:pr", issue: "summary:issue" };
@@ -107,10 +107,15 @@ export const METRIC_AI_RUN_PREFIX = "ai_run:";
 export const METRIC_AI_RUN_FAILED_PREFIX = "ai_run_failed:";
 /** `ai_run_capped:<kind>` — a job had work but the org's allowance (or an ended plan) let no call start. */
 export const METRIC_AI_RUN_CAPPED_PREFIX = "ai_run_capped:";
-/** The provider's own token counts, summed per day: uncached input, output, and input read from the cache. */
+/** The provider's own token counts, summed per day: uncached input, output, and input read from the cache.
+ *  These three are CLAUDE's (Anthropic's `usage`), per provider since Phase B; Jev's are below. */
 export const METRIC_AI_TOKENS_IN = "ai_tokens_in";
 export const METRIC_AI_TOKENS_OUT = "ai_tokens_out";
 export const METRIC_AI_TOKENS_CACHED = "ai_tokens_cached";
+/** JEV's token counts (TypeSafe AI's `usage`), summed per day — the AI pass's Jev requests (cards and gates). A
+ *  Jev request itself is `ai_suggest` (METRIC_AI_SUGGEST, below): what `jev_checks` counts, Sift's and the pass's. */
+export const METRIC_JEV_TOKENS_IN = "ai_jev_tokens_in";
+export const METRIC_JEV_TOKENS_OUT = "ai_jev_tokens_out";
 /** What `ai_runs` sums: `ai_run:*` only (GLOB has no single-character wildcard, so `ai_run_failed:*` is not matched). */
 export const AI_RUN_METRIC_GLOB = "ai_run:*";
 /** Every AI metric above: none of them is a PERSON's request (src/platform/usage.ts). */
@@ -118,6 +123,9 @@ export const AI_METRIC_GLOB = "ai_*";
 export const aiRunMetric = (kind: string): string => METRIC_AI_RUN_PREFIX + kind;
 export const aiRunFailedMetric = (kind: string): string => METRIC_AI_RUN_FAILED_PREFIX + kind;
 export const aiRunCappedMetric = (kind: string): string => METRIC_AI_RUN_CAPPED_PREFIX + kind;
+/** `ai_chat` — Ask Trov's WEIGHTED units (a Fast answer 1, Smart 5, Thinking 10): what the monthly `ai_chat`
+ *  allowance counts (shared/plans.ts). Nothing writes it yet (Ask Trov is a later phase), so it reads 0. */
+export const METRIC_AI_CHAT = "ai_chat";
 
 const UPSERT_BY = `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, ?, ?, ?, ?, ?)
   ON CONFLICT(org_id, day, metric, actor) DO UPDATE SET count = count + excluded.count, last_at = excluded.last_at`;
@@ -127,6 +135,21 @@ export async function meterBy(p: PlatformContext, orgId: string, actor: string, 
   try {
     const rows = entries.filter(([, n]) => Number.isFinite(n) && n > 0);
     if (rows.length) await batch(p, rows.map(([metric, n]) => stmt(p, UPSERT_BY, orgId, at.slice(0, 10), metric, actor, Math.round(n), at)));
+  } catch {
+    // metering is never the caller's problem
+  }
+}
+
+/** Take back what `meterBy` added at `at` (same day, same actor), never below 0 — Ask's answer that wrote nothing
+ *  (no words, no block, no card) does not count as a question (the owner, Q-F2). Never rejects. */
+export async function unmeterBy(p: PlatformContext, orgId: string, actor: string, entries: [metric: string, n: number][], at: string): Promise<void> {
+  try {
+    const rows = entries.filter(([, n]) => Number.isFinite(n) && n > 0);
+    if (rows.length) {
+      await batch(p, rows.map(([metric, n]) => stmt(p,
+        `UPDATE org_usage_daily SET count = MAX(0, count - ?) WHERE org_id = ? AND day = ? AND metric = ? AND actor = ?`,
+        Math.round(n), orgId, at.slice(0, 10), metric, actor)));
+    }
   } catch {
     // metering is never the caller's problem
   }

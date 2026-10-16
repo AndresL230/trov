@@ -23,6 +23,7 @@
 
 import { z } from "zod";
 import type { TicketRow } from "./tickets";
+import type { AiSprintNote } from "./ai-core";
 import {
   SPRINT_URGENCIES, SPRINT_DOMAINS, SPRINT_STATUSES, SPRINT_RESOURCE_KINDS,
   PLAN_NARRATIVE_MAX, planNarrativeProblem, sprintDateProblem, sprintDatesProblem,
@@ -108,8 +109,22 @@ export interface SprintIssueCounts {
   total: number;
 }
 
+/** "At this pace, done Nov 2, 3 days late" — ARITHMETIC on the sprint's own tickets, never a model
+ *  (`sprintForecast` in src/tools/sprints.ts, computed on read): the tickets closed so far over the whole
+ *  days since the sprint's start, carried forward over the ones still open. */
+export interface SprintForecast {
+  /** Tickets still open. */
+  remaining: number;
+  /** Tickets closed per day since the start, as computed (not rounded). */
+  perDay: number;
+  /** The day the open tickets would all close at that pace, YYYY-MM-DD (UTC). */
+  projected: string;
+  /** Whole days `projected` falls after the due day (negative = before it); null with no due day. */
+  daysLate: number | null;
+}
+
 /** One sprint as every read surface exposes it: the row in the product's
- *  vocabulary, plus the two computed fields. */
+ *  vocabulary, plus the computed fields. */
 export interface SprintView {
   id: number;
   label: string;                  // = row.title
@@ -131,6 +146,12 @@ export interface SprintView {
   progress: SprintProgress;       // TICKETS only (done + declined over total)
   issues: SprintIssueCounts | null; // the GitHub half, from the sprint_progress cache
   members: string[];              // distinct assignee handles over the sprint's tickets
+  /** The pace forecast (an ACTIVE sprint with a start, open tickets and at least one closed); null when it
+   *  cannot be computed — never a guessed 0. Absent on a read that does not compute it. */
+  forecast?: SprintForecast | null;
+  /** What Trov wrote about this ACTIVE sprint (0065 `org_insights`); absent with the org's AI switch off or
+   *  nothing written. */
+  note?: AiSprintNote;
 }
 
 /** A ticket as the sprint screen lists it: the row, its nesting depth, and its

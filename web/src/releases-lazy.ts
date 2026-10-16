@@ -1,5 +1,5 @@
 // Help › What's new, loaded when it is opened. releases.ts holds every release's notes and patch
-// lines (~185 KB, and every PR adds to it), so the app bundle does not carry it: the screen is
+// lines (~68 KB since #190 trimmed it; every PR adds a line), so the app bundle does not carry it: the screen is
 // rendered from `import("./releases")` (its own chunk), with a skeleton in the screen's own frame
 // until the chunk is in — the pattern of the Repo screen's sample data (repo-sample.ts). Nothing
 // else in the app imports releases.ts as a value; the newest version is release-latest.ts.
@@ -90,14 +90,15 @@ export function releasesView(slug: string | null, page: ReleasePage): string {
   return slug ? pageSkeleton() : indexSkeleton();
 }
 
-/** The header's "›" crumb on a release page: "v0.14", "Unreleased", with " · Patch notes".
- *  Before the chunk is in it is read off the slug (a slug IS the version, or "unreleased"). */
+/** The header's "›" crumb on a release page: "v0.10", "v0.1", "Unreleased", with " · Patch notes".
+ *  Before the chunk is in it is read off the slug (a slug IS the version, or "unreleased"); once
+ *  it is, an old pre-renumbering link (`#releases/0.25`) reads as the release it lands on ("v0.7"). */
 export function releaseCrumb(slug: string | null, page: ReleasePage): string {
   if (!slug) return "";
   let name: string;
   if (mod) {
     const r = mod.findRelease(slug);
-    name = r ? (r.unreleased ? "Unreleased" : `v${r.version}`) : slug;
+    name = r ? mod.releaseName(r) : slug;
   } else {
     name = slug === "unreleased" ? "Unreleased" : `v${slug}`;
   }

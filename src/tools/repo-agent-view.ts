@@ -35,7 +35,7 @@ export interface RepoAgentView {
   /** Written by Trov (shared/ai-core.ts): with `tab` overview or none, when the dashboard has it. */
   state?: AiRepoState;
   /** Written by Trov: with `tab` planning or none, when the dashboard has it. */
-  themes?: Record<AiThemeRange, AiThemes>;
+  themes?: Partial<Record<AiThemeRange, AiThemes>>;
   /** The Overview's facts (with `tab` overview or none) — shaped by `factsView`. */
   facts?: unknown;
   /** What the facts decide — the screen's own `layoutOf(layoutInputOf(facts), facts.groupDefault)`. */

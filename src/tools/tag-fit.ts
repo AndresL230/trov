@@ -11,10 +11,12 @@
 //     id), written in the SAME batch as the `entry_tags` row, and one `tag.fit` audit row per run. The way back:
 //     `undoTagFit` removes exactly what a run added; a person removing the tag from one item is remembered
 //     (`removed`), so no later run adds it again.
-//   • NEVER ON A RENDER PATH. A run starts after a tag is added (or a suggested one accepted) and from
-//     "Find items" — in the background (`waitUntil`), never while a page loads.
-//   • A FIXED SET OF ANSWERS: "fits" / "does not fit", through the one classify call (./classify.ts) —
-//     TypeSafe AI's Jev, a non-generative decision model: a yes/no probability per item, and no text. The
+//   • NEVER ON A RENDER PATH, NEVER FROM MCP. The run — the only part that calls a model — is src/ai/sift.ts:
+//     it starts after a tag is added (or a suggested one accepted) and from "Find items", in the background
+//     (`waitUntil`), never while a page loads. THIS file holds the rest (candidates, switches, Undo, review)
+//     and imports no model client, so src/tools/tags.ts (which MCP reaches) can use it.
+//   • A FIXED SET OF ANSWERS: "fits" / "does not fit", through the `tag.fit` kind's provider (src/ai/client.ts:
+//     TypeSafe AI's Jev, a non-generative decision model: a yes/no probability per item, and no text). The
 //     REASON a suggestion shows is Trov's own evidence: the full-text snippet that made the item a candidate.
 //   • TWO BANDS (the owner's numbers, 2026-10-14). A "fits" at `FIT_APPLY` (0.85) or more ADDS the tag on its own;
 //     from `FIT_SUGGEST` (0.6) up to it, the item is SUGGESTED — an `open` model row a person adds or dismisses
@@ -22,18 +24,16 @@
 //     A suggestion a person adds is theirs (`resolved_by` = them), never "added by Sift", and no Undo takes it.
 //   • METERED. Every model call counts against the month's `jev_checks` (shared/plans.ts); past it the
 //     run stops (`capped`) and the Tags tab says so.
-//   • CONSENT. Nothing is sent unless an admin turned the org's switch on (`org_ai_settings`, kind
-//     `tag.fit`), and the platform has a key (`TYPESAFE_API_KEY`). What is sent, one item per request: a title and an excerpt of at most
+//   • CONSENT. Nothing is sent unless BOTH switches are on — the organization's AI switch (`orgs.ai_automation`,
+//     Org settings › AI, which gates every AI feature) and Sift's own (`org_ai_settings`, kind `tag.fit`, which
+//     an admin turns on) — and the platform has a key (`TYPESAFE_API_KEY`). What is sent, one item per request: a title and an excerpt of at most
 //     `EXCERPT_MAX` characters — code blocks, inline code and anything shaped like a credential removed —
 //     of THIS org's items only, picked without the model first by the org's own full-text index.
-import type { Env } from "../env";
 import { ITEM_TAGS_MAX, isTagItemType, normalizeTagName, type TagItemType, type TagRunDTO } from "@shared/tags-core";
 import { planRefusal, resolveEntitlements } from "@shared/plans";
-import { platform, requireRole, type TenantContext } from "../data/context";
-import { METRIC_AI_SUGGEST, meter } from "../data/meter";
+import { requireRole, type TenantContext } from "../data/context";
 import { all, batch, first, nowIso, run, stmt, type Stmt } from "../data/sql";
 import { planFor, suggestionsUsed } from "../plans/gate";
-import { jevClassifier, type Classifier, type ClassifierOpts } from "./classify";
 import { TagError } from "./tags";
 
 export const TAG_FIT_KIND = "tag.fit";
@@ -57,16 +57,29 @@ export const NO_SNIPPET_REASON = "Matches the tag's description";
 /** The most of an item's text that is sent (its title goes whole, up to `TITLE_MAX`). */
 export const EXCERPT_MAX = 400;
 const TITLE_MAX = 200;
-/** A run still "running" after this long died with its Worker: the next start takes over. */
-const STALE_MS = 15 * 60 * 1000;
-
-const auditStmt = (ctx: TenantContext, action: string, target: string, detail: Record<string, unknown>, at: string): Stmt =>
+/** One row of the org's admin trail for a Sift act (its switch, a run, an Undo). */
+export const fitAuditStmt = (ctx: TenantContext, action: string, target: string, detail: Record<string, unknown>, at: string): Stmt =>
   stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, ?, ?, ?, ?)`,
     ctx.orgId, ctx.userId, action, target, JSON.stringify(detail), at);
 
 // ── the switch ───────────────────────────────────────────────────────────────
 
-/** Is the org's switch for `kind` on? Off when there is no row. */
+/**
+ * Both switches a Sift request needs, in ONE statement: the organization's AI switch (`orgs.ai_automation`,
+ * 0055_ai — Org settings › AI, which gates every AI feature) and Sift's own (`org_ai_settings`, kind
+ * `tag.fit` — off when there is no row). `on` only when both are. An org that is not there reads as off.
+ * What src/ai/sift.ts asks before a run and before every request, so turning either off stops a run.
+ */
+export async function siftSwitches(ctx: TenantContext): Promise<{ org: boolean; sift: boolean; on: boolean }> {
+  const r = await first<{ org: number; sift: number | null }>(ctx,
+    `SELECT o.ai_automation AS org, (SELECT s.enabled FROM org_ai_settings s WHERE s.org_id = ?1 AND s.kind = ?2) AS sift FROM orgs o WHERE o.id = ?1`,
+    ctx.orgId, TAG_FIT_KIND);
+  const org = !!r && Number(r.org) !== 0;
+  const sift = r?.sift === 1;
+  return { org, sift, on: org && sift };
+}
+
+/** Is Sift's own switch for `kind` on? Off when there is no row. (Not the org's AI switch: `siftSwitches`.) */
 export async function aiEnabled(ctx: TenantContext, kind = TAG_FIT_KIND): Promise<boolean> {
   return (await first<{ enabled: number }>(ctx, `SELECT enabled FROM org_ai_settings WHERE org_id = ? AND kind = ?`, ctx.orgId, kind))?.enabled === 1;
 }
@@ -80,7 +93,7 @@ export async function setAiEnabled(ctx: TenantContext, on: unknown, kind = TAG_F
     stmt(ctx, `INSERT INTO org_ai_settings (org_id, kind, enabled, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)
                ON CONFLICT(org_id, kind) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
       ctx.orgId, kind, on ? 1 : 0, at, ctx.userId),
-    auditStmt(ctx, on ? "ai.enable" : "ai.disable", kind, {}, at),
+    fitAuditStmt(ctx, on ? "ai.enable" : "ai.disable", kind, {}, at),
   ]);
   return { enabled: on };
 }
@@ -155,11 +168,15 @@ export async function fitCandidates(ctx: TenantContext, tag: string, description
   return [...matched, ...more.filter((c) => !held.has(`${c.type}:${c.id}`))].slice(0, Math.max(TOP_UP_TO, matched.length));
 }
 
-/** `NOT EXISTS` clauses: the item does not carry the tag, and no one has said no to it there — a dismissed or open
- *  suggestion, a person's removal of a tag a run had added (`removed`), or an undone run (`undone`). */
+/** The states of an item's suggestion that keep Sift from asking about that tag there again: a person dismissed it, it
+ *  is already waiting for one (`open`), a person took off a tag a run had added (`removed`), or a run was undone
+ *  (`undone`). PERSON OVER AI: what a person said no to is never added or suggested again. */
+const SAID_NO = `('dismissed', 'open', 'removed', 'undone')`;
+
+/** `NOT EXISTS` clauses: the item does not carry the tag, and no one has said no to it there (`SAID_NO`). */
 const notTagged = (type: TagItemType, idExpr: string) =>
   `NOT EXISTS (SELECT 1 FROM entry_tags et WHERE et.org_id = ? AND et.entry_type = '${type}' AND et.entry_id = ${idExpr} AND et.tag = ?)
-   AND NOT EXISTS (SELECT 1 FROM org_tag_suggestions s WHERE s.org_id = ? AND s.entry_type = '${type}' AND s.entry_id = ${idExpr} AND s.tag = ? AND s.state IN ('dismissed', 'open', 'removed', 'undone'))`;
+   AND NOT EXISTS (SELECT 1 FROM org_tag_suggestions s WHERE s.org_id = ? AND s.entry_type = '${type}' AND s.entry_id = ${idExpr} AND s.tag = ? AND s.state IN ${SAID_NO})`;
 const byNewest = (a: FitCandidate, b: FitCandidate): number => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0);
 
 /** The newest feed entries, live docs and decisions of THIS org that are not tagged and not dismissed for it. */
@@ -210,141 +227,151 @@ async function keywordCandidates(ctx: TenantContext, tag: string, q: string): Pr
   return out.sort(byNewest).slice(0, CANDIDATE_CAP);
 }
 
-// ── a run ────────────────────────────────────────────────────────────────────
+// ── the question and the bands: ONE definition for the run and for new items ─
+// Sift asks the same thing two ways: a RUN asks one tag of many existing items (src/ai/sift.ts `continueTagFit`),
+// and the AI pass asks one NEW item about every active tag (src/ai/sift-items.ts, `card:tagfit:<type>:<id>`). Both
+// read the question, the bands and the write from here, so they can never drift apart.
 
-export type FitStart =
-  | { status: "started"; run: number }
-  | { status: "off" | "no_key" | "busy" | "capped" | "not_found" };
+/** Sift's yes/no question about one tag (Jev `noul`: `instructions` + what yes and no mean). */
+export function fitQuestion(tag: string, description: string): { instructions: string; criteria: { true: string; false: string } } {
+  return {
+    instructions: `Is this item about the tag "${tag}"${description ? ` (${description})` : ""}? Say yes only when the item is clearly about it.`,
+    criteria: {
+      true: `The item is about ${tag}${description ? `: ${description}` : ""}.`,
+      false: `The item is not about ${tag}, or only mentions it in passing.`,
+    },
+  };
+}
+
+/** The two bands (the owner's numbers): a "fits" at `FIT_APPLY` or more ADDS the tag; from `FIT_SUGGEST` up to it,
+ *  the tag is SUGGESTED; below — or a "does not fit" — nothing. */
+export function fitBand(fits: boolean, confidence: number): "add" | "suggest" | null {
+  if (!fits || !Number.isFinite(confidence)) return null;
+  if (confidence >= FIT_APPLY) return "add";
+  return confidence >= FIT_SUGGEST ? "suggest" : null;
+}
+
+/** One judgement to store: the item, the tag, how sure Jev was that it FITS, the reason (Trov's own evidence —
+ *  never model text; null = the score, said as such), the model and prompt version, and the run it belongs to. */
+export interface FitVerdict {
+  type: TagItemType; id: string; tag: string;
+  fits: boolean; confidence: number; reason: string | null; model: string; promptVersion: string; runId: number;
+}
 
 /**
- * Begin a run for `tag` — the checks a person waits on, and the run's row. Nothing is sent here; the
- * caller hands `continueTagFit` to the request's `waitUntil`. Refused (no row, no call) when the
- * platform has no key, the org's switch is off, the tag is not live, the month's allowance is spent, or
- * a run for the tag is already going.
+ * Store one judgement by its band — the ONE writer of Sift's results:
+ *   • `add`: the `entry_tags` row AND its provenance (`source = 'model'`, `accepted`, `resolved_by = 'jev'`, the run)
+ *     in ONE batch, the provenance written only when the tag was not already there — what Undo removes;
+ *   • `suggest`: an `open` model row for a person to add or dismiss (`settleFitSuggestion`);
+ *   • otherwise nothing.
+ * Returns what it did (`added` only when the tag was really added).
  */
-export async function startTagFit(env: Pick<Env, "TYPESAFE_API_KEY">, ctx: TenantContext, rawTag: unknown): Promise<FitStart> {
-  const tag = normalizeTagName(rawTag);
-  if (!tag) return { status: "not_found" };
-  if (!env.TYPESAFE_API_KEY) return { status: "no_key" };
-  if (!(await aiEnabled(ctx))) return { status: "off" };
-  const row = await first<{ retired_at: string | null }>(ctx, `SELECT retired_at FROM org_tags WHERE org_id = ? AND name = ?`, ctx.orgId, tag);
-  if (!row || row.retired_at !== null) return { status: "not_found" };
-  if ((await suggestAllowance(ctx)).spent) return { status: "capped" };
+export async function storeFit(ctx: TenantContext, v: FitVerdict): Promise<"added" | "suggested" | null> {
+  const band = fitBand(v.fits, v.confidence);
+  if (!band) return null;
+  const reason = v.reason ?? scoreReason(v.confidence);
   const at = nowIso();
-  // A run whose Worker died is let go, so it never blocks the tag for good.
-  await run(ctx, `UPDATE org_tag_runs SET status = 'failed', ended_at = ? WHERE org_id = ? AND tag = ? AND status = 'running' AND started_at < ?`,
-    at, ctx.orgId, tag, new Date(Date.now() - STALE_MS).toISOString());
-  try {
-    const res = await run(ctx, `INSERT INTO org_tag_runs (org_id, tag, status, started_by, started_at) VALUES (?, ?, 'running', ?, ?)`, ctx.orgId, tag, ctx.userId, at);
-    return { status: "started", run: res.meta.last_row_id as number };
-  } catch (e) {
-    if (/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) return { status: "busy" };
-    throw e;
+  if (band === "suggest") {
+    await run(ctx,
+      `INSERT OR IGNORE INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, confidence, reason, model, prompt_version, suggested_by, suggested_at, state, run_id)
+       VALUES (?, ?, ?, ?, 'model', ?, ?, ?, ?, 'system', ?, 'open', ?)`,
+      ctx.orgId, v.type, v.id, v.tag, v.confidence, reason, v.model, v.promptVersion, at, v.runId);
+    return "suggested";
   }
+  const [tagged] = await batch(ctx, [
+    stmt(ctx, `INSERT OR IGNORE INTO entry_tags (org_id, tag, entry_type, entry_id) VALUES (?, ?, ?, ?)`, ctx.orgId, v.tag, v.type, v.id),
+    stmt(ctx,
+      `INSERT INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, confidence, reason, model, prompt_version, suggested_by, suggested_at,
+                                        state, resolved_to, resolved_at, resolved_by, run_id)
+       SELECT ?, ?, ?, ?, 'model', ?, ?, ?, ?, 'system', ?, 'accepted', ?, ?, '${JEV_ACTOR}', ? WHERE changes() > 0`,
+      ctx.orgId, v.type, v.id, v.tag, v.confidence, reason, v.model, v.promptVersion, at, v.tag, at, v.runId),
+  ]);
+  return (tagged.meta.changes ?? 0) > 0 ? "added" : null;
 }
 
-export interface FitRunOpts {
-  /** The classify call. Default: Jev with the platform key (`TYPESAFE_API_KEY`). */
-  classifier?: Classifier;
-  /** Test seams for the default classifier: its fetch (stubbed at the Response level), timeout, retry delay. */
-  jev?: ClassifierOpts;
+// ── a NEW item (Sift on new items: the AI pass's `tag.fit` job, src/ai/sift-items.ts) ──
+
+/** The most tags one new item is asked about in its ONE request (Jev answered 60 `noul` questions in one request,
+ *  live, 2026-10-15). With more active tags, those whose words the item's text matches go first, then by name. */
+export const NEW_ITEM_TAGS_MAX = 60;
+
+/** A tag a new item may be asked about, and Trov's evidence for it there (null = none: the score is the reason). */
+export interface ItemFitTag { name: string; description: string; evidence: string | null }
+/** What the new-item job sends and what it may write: the item's title and excerpt (cut and scrubbed exactly as a
+ *  run's candidates are), the tags to ask about, and how many more tags the item may carry (`ITEM_TAGS_MAX`). */
+export interface ItemFitInput { type: TagItemType; id: string; title: string; text: string; tags: ItemFitTag[]; room: number }
+
+const ITEM_ROW: Record<TagItemType, string> = {
+  feed: `SELECT summary AS title, COALESCE(brief, body) AS text FROM feed WHERE org_id = ? AND CAST(id AS TEXT) = ?`,
+  doc: `SELECT title, body AS text FROM docs WHERE org_id = ? AND slug = ? AND current_version > 0`,
+  adr: `SELECT title, decision AS text FROM adrs WHERE org_id = ? AND CAST(id AS TEXT) = ? AND status != 'rejected'`,
+};
+/** The FTS snippet of the item's text around the tag's words — the same evidence a run shows (`evidenceOf`). */
+const ITEM_SNIPPET: Record<TagItemType, string> = {
+  feed: `SELECT snippet(feed_fts, -1, ${SNIP}) AS snip FROM feed_fts WHERE feed_fts MATCH ? AND feed_fts.org_id = ? AND feed_fts.feed_id = ? LIMIT 1`,
+  doc: `SELECT snippet(docs_fts, -1, ${SNIP}) AS snip FROM docs_fts WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND docs_fts.slug = ? LIMIT 1`,
+  adr: `SELECT snippet(adrs_fts, -1, ${SNIP}) AS snip FROM adrs_fts WHERE adrs_fts MATCH ? AND adrs_fts.org_id = ? AND adrs_fts.adr_id = ? LIMIT 1`,
+};
+
+/**
+ * A new item's input, without the model: the item (a live doc, a feed entry, a decision that was not rejected) and
+ * every ACTIVE tag (not retired) that it does not carry and that nobody said no to on it (`SAID_NO` — person over AI),
+ * each with its evidence from the org's own full-text index. null = nothing to ask: the item is gone or not taggable
+ * (an artifact cannot carry tags yet), it already carries `ITEM_TAGS_MAX`, or no tag is left to ask about.
+ */
+export async function itemFitInput(ctx: TenantContext, type: string, id: string): Promise<ItemFitInput | null> {
+  if (!isTagItemType(type) || !id) return null;
+  const o = ctx.orgId;
+  const item = await first<{ title: string | null; text: string | null }>(ctx, ITEM_ROW[type], o, id);
+  if (!item) return null;
+  const held = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM entry_tags WHERE org_id = ? AND entry_type = ? AND entry_id = ?`, o, type, id);
+  const room = ITEM_TAGS_MAX - Number(held?.n ?? 0);
+  if (room <= 0) return null;
+  const tags = await all<{ name: string; description: string }>(ctx,
+    `SELECT t.name, t.description FROM org_tags t
+      WHERE t.org_id = ? AND t.retired_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM entry_tags et WHERE et.org_id = ? AND et.entry_type = ? AND et.entry_id = ? AND et.tag = t.name)
+        AND NOT EXISTS (SELECT 1 FROM org_tag_suggestions s WHERE s.org_id = ? AND s.entry_type = ? AND s.entry_id = ? AND s.tag = t.name AND s.state IN ${SAID_NO})
+      ORDER BY t.name`, o, o, type, id, o, type, id);
+  if (!tags.length) return null;
+  // Each tag's evidence in ONE batch: the snippet around its words, where the item's text has them.
+  const asked = tags.map((t) => ({ ...t, q: fitQuery(t.name, t.description) }));
+  const withQ = asked.filter((t): t is typeof t & { q: string } => t.q !== null);
+  const snips = withQ.length ? await batch<{ snip: string | null }>(ctx, withQ.map((t) => stmt(ctx, ITEM_SNIPPET[type], t.q, o, id))) : [];
+  const evidence = new Map(withQ.map((t, k) => {
+    const row = snips[k]?.results?.[0];
+    return [t.name, row ? evidenceOf(row.snip) : null] as const;
+  }));
+  const out: ItemFitTag[] = asked.map((t) => ({ name: t.name, description: t.description, evidence: evidence.get(t.name) ?? null }));
+  // Matched tags first, so a cut keeps the likeliest.
+  out.sort((a, b) => Number(b.evidence !== null) - Number(a.evidence !== null) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return {
+    type, id,
+    title: excerptOf(item.title ?? "", TITLE_MAX),
+    text: excerptOf(item.text),
+    tags: out.slice(0, NEW_ITEM_TAGS_MAX),
+    room,
+  };
 }
 
 /**
- * The run itself, in the background: supersede the tag's open model suggestions, pre-select candidates,
- * then ask about each one — every request counted BEFORE it is made, and refused once the allowance is
- * spent or the switch is off — and store each confident "fits". Never throws; ends the run's row with
- * what happened (`capped` when the allowance stopped it, `failed` when the provider did).
+ * Record ONE tag's result for a new item as a RUN of that tag (`org_tag_runs`, already `done`: one item checked), so
+ * the Tags tab shows it as the tag's latest run and its Undo (`undoTagFit`) takes exactly what it added, like any
+ * run's. Written only for a tag that got a band; one `tag.fit` audit row per run (counts only). Returns what was done.
  */
-export async function continueTagFit(env: Env, ctx: TenantContext, runId: number, rawTag: string, opts: FitRunOpts = {}): Promise<TagRunDTO["status"]> {
-  const tag = normalizeTagName(rawTag) ?? "";
-  let calls = 0, added = 0, candidates = 0;
-  let status: TagRunDTO["status"] = "done";
-  try {
-    const desc = (await first<{ description: string }>(ctx, `SELECT description FROM org_tags WHERE org_id = ? AND name = ?`, ctx.orgId, tag))?.description ?? "";
-    await run(ctx, `UPDATE org_tag_suggestions SET state = 'superseded', resolved_at = ? WHERE org_id = ? AND tag = ? AND source = 'model' AND state = 'open'`, nowIso(), ctx.orgId, tag);
-    const list = await fitCandidates(ctx, tag, desc);
-    candidates = list.length;
-    // The run, as it goes: what the Tags tab draws live (`GET …/tags/:name/run`).
-    let checked = 0;
-    const progress = (): Promise<unknown> =>
-      run(ctx, `UPDATE org_tag_runs SET candidates = ?, calls = ?, checked = ?, added = ? WHERE org_id = ? AND id = ? AND status = 'running'`,
-        candidates, calls, checked, added, ctx.orgId, runId).catch(() => undefined);
-    await progress();
-    const classifier = opts.classifier ?? (env.TYPESAFE_API_KEY ? jevClassifier(env.TYPESAFE_API_KEY, opts.jev) : null);
-    if (!classifier) status = "failed";
-    else if (list.length) {
-      let capped = false;
-      const result = await classifier.classify({
-        kind: TAG_FIT_KIND,
-        question: `Is this item about the tag "${tag}"${desc ? ` (${desc})` : ""}? Say yes only when the item is clearly about it.`,
-        criteria: {
-          true: `The item is about ${tag}${desc ? `: ${desc}` : ""}.`,
-          false: `The item is not about ${tag}, or only mentions it in passing.`,
-        },
-        answers: FIT_ANSWERS,
-        items: list.map((c, k) => ({ id: String(k), text: `${c.title}${c.text ? `\n\n${c.text}` : ""}`, evidence: c.evidence })),
-      }, {
-        // Before EACH request: the switch can be turned off mid-run, and the month's allowance is
-        // checked — then the request is counted, before it is made.
-        gate: async () => {
-          if (!(await aiEnabled(ctx))) return false;
-          if ((await suggestAllowance(ctx)).spent) { capped = true; return false; }
-          await meter(platform(env, ctx.userId), ctx.orgId, ctx.userId, METRIC_AI_SUGGEST);
-          calls++;
-          return true;
-        },
-        // Each answer as it comes: a confident "fits" ADDS the tag to the item at once — the entry_tags row
-        // and its provenance in ONE batch — and the run's counts move on.
-        onItem: async (it, j) => {
-          checked++;
-          const fits = !!j && j.answer === FIT_ANSWERS[0];
-          if (j && fits && j.confidence >= FIT_SUGGEST && j.confidence < FIT_APPLY) {
-            // Not sure enough to add on its own: suggested, for a person to add or dismiss.
-            const c = list[Number(it.id)];
-            await run(ctx,
-              `INSERT OR IGNORE INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, confidence, reason, model, prompt_version, suggested_by, suggested_at, state, run_id)
-               VALUES (?, ?, ?, ?, 'model', ?, ?, ?, ?, 'system', ?, 'open', ?)`,
-              ctx.orgId, c.type, c.id, tag, j.confidence, j.reason ?? scoreReason(j.confidence), j.model, classifier.promptVersion, nowIso(), runId);
-          }
-          if (j && fits && j.confidence >= FIT_APPLY) {
-            const c = list[Number(it.id)];
-            const at = nowIso();
-            const [tagged] = await batch(ctx, [
-              stmt(ctx, `INSERT OR IGNORE INTO entry_tags (org_id, tag, entry_type, entry_id) VALUES (?, ?, ?, ?)`, ctx.orgId, tag, c.type, c.id),
-              stmt(ctx,
-                `INSERT INTO org_tag_suggestions (org_id, entry_type, entry_id, tag, source, confidence, reason, model, prompt_version, suggested_by, suggested_at,
-                                                  state, resolved_to, resolved_at, resolved_by, run_id)
-                 SELECT ?, ?, ?, ?, 'model', ?, ?, ?, ?, 'system', ?, 'accepted', ?, ?, '${JEV_ACTOR}', ? WHERE changes() > 0`,
-                ctx.orgId, c.type, c.id, tag, j.confidence, j.reason ?? scoreReason(j.confidence), j.model, classifier.promptVersion, at, tag, at, runId),
-            ]);
-            added += tagged.meta.changes ?? 0;
-          }
-          await progress();
-        },
-      });
-      calls = result.calls;
-      if (capped) status = "capped";
-      else if (result.stopped === "provider") status = "failed";
-    }
-  } catch (e) {
-    status = "failed";
-    console.error("tag fit run failed", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
-  }
-  const end = nowIso();
-  // The run's end, and ONE audit row for it (counts only), in one batch.
+export async function storeNewItemFit(ctx: TenantContext, v: Omit<FitVerdict, "runId">): Promise<"added" | "suggested" | null> {
+  if (!fitBand(v.fits, v.confidence)) return null;
+  const at = nowIso();
+  const res = await run(ctx,
+    `INSERT INTO org_tag_runs (org_id, tag, status, started_by, started_at, ended_at, candidates, calls, checked, added) VALUES (?, ?, 'done', ?, ?, ?, 1, 1, 1, 0)`,
+    ctx.orgId, v.tag, ctx.userId, at, at);
+  const runId = Number(res.meta.last_row_id);
+  const did = await storeFit(ctx, { ...v, runId });
   await batch(ctx, [
-    stmt(ctx, `UPDATE org_tag_runs SET status = ?, ended_at = ?, candidates = ?, calls = ?, added = MAX(added, ?) WHERE org_id = ? AND id = ?`,
-      status, end, candidates, calls, added, ctx.orgId, runId),
-    auditStmt(ctx, "tag.fit", tag, { run: runId, status, candidates, calls, added }, end),
-  ]).catch(() => undefined);
-  return status;
-}
-
-/** Start and finish a run in one go (Find items without a `waitUntil`, and tests). */
-export async function runTagFit(env: Env, ctx: TenantContext, tag: string, opts: FitRunOpts = {}): Promise<FitStart["status"] | TagRunDTO["status"]> {
-  const s = await startTagFit(env, ctx, tag);
-  return s.status === "started" ? continueTagFit(env, ctx, s.run, tag, opts) : s.status;
+    stmt(ctx, `UPDATE org_tag_runs SET added = ? WHERE org_id = ? AND id = ?`, did === "added" ? 1 : 0, ctx.orgId, runId),
+    fitAuditStmt(ctx, "tag.fit", v.tag, { run: runId, status: "done", item: `${v.type}:${v.id}`, candidates: 1, calls: 1, added: did === "added" ? 1 : 0, suggested: did === "suggested" ? 1 : 0 }, at),
+  ]);
+  return did;
 }
 
 // ── the result, and the way back ─────────────────────────────────────────────
@@ -394,7 +421,7 @@ export async function undoTagFit(ctx: TenantContext, rawTag: unknown, runId?: un
     // What the run only SUGGESTED and nobody settled goes with it.
     stmt(ctx, `UPDATE org_tag_suggestions SET state = 'undone', resolved_at = ?, resolved_by = ? WHERE org_id = ? AND tag = ? AND source = 'model' AND run_id = ? AND state = 'open'`, at, ctx.userId, ctx.orgId, tag, r.id),
     stmt(ctx, `UPDATE org_tag_runs SET undone_at = COALESCE(undone_at, ?), undone_by = COALESCE(undone_by, ?) WHERE org_id = ? AND id = ?`, at, ctx.userId, ctx.orgId, r.id),
-    auditStmt(ctx, "tag.fit.undo", tag, { run: r.id, items: rows.length }, at),
+    fitAuditStmt(ctx, "tag.fit.undo", tag, { run: r.id, items: rows.length }, at),
   ]);
   return { removed: rows.length };
 }

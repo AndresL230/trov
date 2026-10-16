@@ -232,7 +232,7 @@ when the limit turns over [`abuse-limits.md`].
 | Repositories, environments, integrations (set / rotate / delete a credential) | | ✓ | ✓ |
 | Sync GitHub, Poll now; map a GitHub login to a person; the e-mail digest policy, schedule and sender name; rewrite the plan over MCP | | ✓ | ✓ |
 | Delete another person's prompt or artifact; rename the organization | | ✓ | ✓ |
-| Turn the organization's AI on or off (Org settings › AI, `ai.md`) | | ✓ | ✓ |
+| Turn the organization's AI on or off, and allow or stop Auto mode in Ask Trov (Org settings › AI, `ai.md`) | | ✓ | ✓ |
 | Dismiss a suggestion Trov made, or press "Wrong?" on what it wrote; accept a suggestion whose kind is a member's call (an admin's kind needs admin+) | ✓ | ✓ | ✓ |
 | Make or unmake an owner; rotate the organization's encryption key | | | ✓ |
 | Delete the organization (§8) | | | ✓ |
@@ -261,7 +261,7 @@ One place: **Org settings**, opened from the switcher at the top of the sidebar 
 | Environments | the environments the Repo dashboard reports on, in drift order: name, branch, URLs, health path. Not their parts (Repositories › a repo › Apps, `repo-apps.md`) | everyone (read), admin+ (write) |
 | Members | the people directory; for admins also invitations, roles and titles, removal, and **Unmatched logins** — GitHub logins in captured activity to map to a person or discard [`web/src/identity.ts`] | everyone (read), admin+ (write) |
 | Notifications | the e-mail digests: which exist and their default cadence, send hour, timezone and sender name, preview, test send, the outbox [`web/src/notifications.ts`] | admin, owner |
-| AI (the screen is the frontend's next PR; the routes exist) | the AI switch (`orgs.ai_automation`, 0055 — on by default), this month's AI runs against the plan's `ai_runs`, what is sent to Anthropic and what never is: `GET` / `PUT /api/o/:slug/ai/settings`, cookie only, the change audited `org.ai` (`ai.md`) | everyone (read), admin+ (the switch) |
+| AI | **Automation**: the switch every AI feature sits under, Sift and the PR / issue summaries included (`orgs.ai_automation`), and **Auto mode in Ask Trov** (`orgs.ai_chat_auto`, 0058 — off: every change Ask Trov proposes waits for the person to confirm it) — with, under the switch, "This organization's Pro plan has ended, so Trov's AI is paused until it is renewed." and a Plan and billing link (Org settings › General) when the plan is canceled (`AiSettings.planEnded`); **Providers**: whether this Trov has each provider's key, Anthropic and TypeSafe AI (`AiSettings.keys`) — "Key set" as a plain fact, or a No key mark and what its absence stops; **This month**: all four AI allowances against the plan — Summaries (`ai_summaries`), Written by Trov (`ai_runs`), Sift (`jev_checks`) and Ask Trov (`ai_chat`, weighted units, per seat on Pro) — each with its resume date when used up and "unlimited" with no cap; and **What is sent** — one list per provider, To Anthropic and To TypeSafe AI (`AiSettings.sends`, which grows as features land — every line since the AI passages were approved on 2026-10-16; `AI_LEGAL_DRAFT` would hold it to summaries and Sift; `web-ui.md` › Legal pages), and what is never sent. TypeSafe AI's model is "Sift" on the screen [`web/src/org-ai.ts`, `GET`/`PUT /api/o/:slug/ai/settings`, cookie only, the changes audited `org.ai` / `org.ai_chat_auto` (`ai.md`)] | everyone (read), admin+ (the switches; a member sees On / Off as words) |
 | General | the image; the name; the slug, read-only; the **Plan** — what it includes and the org's use of each limit [`web/src/org-plan.ts`]; for an owner, **Delete organization** (§8) | everyone (read), admin+ (image, rename); nobody changes the plan here; owner (delete) |
 
 General is a **bento** inside the tab's width (`.cnpy-org-gen` in `trov.css`, Settings' `.cnpy-tile`s on 12 columns; `generalTab` and `planBlock`), so its outer edges are the tab bar's and every other tab's: image + name is the tall tile on the left, Plan (name, billing, who changes it) and Slug the two short ones beside it, and the plan's **Limits** a tile across the page under them, three to a line. A read-only member has no field to make the first tile tall, so the three sit in one row (`.cnpy-org-gen--read`). It folds by the room the TAB has (a container query, as Settings does): under 900px the limits go two to a line, under 760px image + name takes a row and Slug | Plan the next, under 520px one column in DOM order. No tab narrows its own blocks (`test/render.org-settings.test.ts` walks them); a control inside a tile keeps its own measure.
@@ -325,7 +325,8 @@ Platform › **Usage** [`src/platform/usage.ts`, `org_usage_daily`]: per organiz
 tool calls by day, active people, what was created in the window (feed entries, tickets, doc versions,
 sprints, prompts, handoffs, artifacts), e-mails sent, the most-called tools, and sizes now (rows per kind,
 artifact bytes, tokens and connected apps) — and, when the deployment has an Anthropic key, AI runs (attempted,
-failed, capped) and tokens (`OrgUsage.ai`, `ai.md`). Platform › an organization shows the same for that one.
+failed, capped) and tokens, and when it has a TypeSafe AI key, Sift's checks and tokens, each on its own key
+(`OrgUsage.ai`, `ai.md`). Platform › an organization shows the same for that one.
 Requests are metered, not limited. What IS limited per organization — people, repositories, environments,
 stored artifacts, agent connections per person — is its plan's (`plans.md`).
 
@@ -442,9 +443,9 @@ at once; "kept" says why.
 
 | | Removed |
 |---|---|
-| Content | docs and every version (staged, rejected and older ones included), decisions (ADRs), the feed and its tags, the org's tag list and what agents suggested for it (`org_tags`, `org_tag_suggestions`), the triage queue, the agent-ingest ledger, the roadmap plan and its versions, sprints (resources, progress), tickets (assignees, links, comments, status history — mirrored ones too), handoffs, prompts and versions, artifacts (pages, versions, links, pending uploads — soft-deleted ones too), doc images, and every search index over them |
+| Content | docs and every version (staged, rejected and older ones included), decisions (ADRs), the feed and its tags, the org's tag list and what agents suggested for it (`org_tags`, `org_tag_suggestions`), the triage queue, the agent-ingest ledger, the roadmap plan and its versions, sprints (resources, progress), tickets (assignees, links, comments, status history — mirrored ones too), handoffs, prompts and versions, artifacts (pages, versions, links, pending uploads — soft-deleted ones too, and every file attached in Ask Trov), doc images, every member's Ask Trov conversations, write cards and Ask settings and Review's "Flagged in Ask" lines, and every search index over them |
 | Captured from GitHub | pull request and issue events and their AI summaries, unmatched-login tasks, the Repo dashboard's events, snapshots and metrics, Sync runs |
-| What Trov suggested | its suggestions (`ai_suggestions`) and every "Wrong?" pressed (`ai_feedback`) |
+| What Trov suggested | its suggestions (`ai_suggestions`), every "Wrong?" pressed (`ai_feedback`), and what the AI router marked stale (`ai_dirty`) |
 | Configuration and credentials | repositories, environments, every integration secret (encrypted) and the keys that sealed them, integration settings and their change history, the GitHub App binding and its repository list, the login-to-person attribution map |
 | People and access | memberships, invitations (any status), MCP tokens for it, OAuth codes and connections that could act only there (with their access and refresh tokens; a connection that can act elsewhere only loses this organization), each member's e-mail preferences for it |
 | E-mail | the digest outbox for it (and the rendered bodies kept in local/dev mode), its digest policy and schedule |
@@ -462,6 +463,7 @@ at once; "kept" says why.
 | R2 objects another organization (or person) also references | content-addressed: the same bytes are one object, still in use |
 | The GitHub App on the GitHub account | Trov cannot uninstall it; uninstall it on GitHub if no other organization uses it |
 | SaplingLearn's legacy `invites` table | pre-organization invitations for that one org; removed by the Phase 7 cleanup |
+| A Message Batch request still open for it (`ai_batch_requests`, a platform row: its `custom_id` names the org, a scope and a key — no content) | Anthropic ends a batch within 24 h and the next AI pass collects it: a result for an organization that no longer exists writes NOTHING, and the request row is deleted then (`ai.md` › Batches) |
 
 **An account**
 
@@ -477,8 +479,10 @@ at once; "kept" says why.
 | Support | the reports and messages they sent, signed in or signed out from one of their addresses |
 | Grants | an unused one is revoked (a paid one's subscription cancelled); none keeps their handle, login or address |
 | Rate limits | their counters (two days at most anyway) |
+| What the AI router marked for them | their brief's stale mark (`ai_dirty` scope `person:<handle>`) and their GitHub sessions' (`session:<repo>:<login>`), in every organization |
+| Ask Trov | their conversations in every organization (messages, write cards, attachment links, search rows), their Ask settings, and the files they attached that are still PRIVATE — every version, link and search row, referenced by a ticket or a doc or not (only they could read them). An attachment they published to the organization stays, as below (`ask.md` › Deletion and renames) |
 | Organizations nobody else is in | deleted whole, as above |
-| R2 | their photo, unless someone else's is the same bytes |
+| R2 | their photo and their private Ask attachments' files, each unless someone else's row points at the same bytes |
 | At Stripe | open checkouts they started are expired |
 
 | Kept | Why |
@@ -489,6 +493,10 @@ at once; "kept" says why.
 | Trov's billing mirror for a continuing organization's subscription they bought (cancelled to the period's end) | the organization's billing record; its buyer is the tombstone |
 | At Stripe: their customer record for any purchase (name, e-mail, address, tax id, card fingerprint, invoices) | Stripe's, for tax and accounting law; deletable in Stripe on request where the law allows |
 | Text people typed that mentions them — "@alice" in a comment, their name in a doc | other people's words (and their own prose) are never rewritten |
+| A file they attached in Ask Trov and then published to the organization, and every answer they saved as an artifact | library items the organization may rely on, like their other artifacts (the owner's ruling covers PRIVATE attachments) |
+
+Deleting ONE Ask Trov conversation (not an account) also deletes its attachments, except a file a ticket or a doc
+still refers to or one the person published — rows at once, bytes after the commit (`ask.md` › Deletion and renames).
 | Their GitHub login in activity captured from an organization's repositories (pull requests, issues, commits, checks, mirrored issues' authors) | a copy of that repository's history on GitHub, naming a GitHub account, not the Trov account; it follows GitHub (remove it there) |
 | Invitations another organization sent to their address or login and they never answered | that organization's record of whom it invited; it can revoke them. If they sign up again, they see them |
 | E-mails already delivered | in recipients' mailboxes and Resend's delivery logs (Resend's retention) |

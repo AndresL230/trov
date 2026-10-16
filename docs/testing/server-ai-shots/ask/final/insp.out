@@ -1,0 +1,83 @@
+
+=== AU-25 opened (Enter on a chip)
+{
+ "w": 480,
+ "head": "TICKET",
+ "threads": "hidden"
+}
+
+=== AU-25 ticket body
+TICKET ⏎ #1 ⏎ test-Login page is blank on Safari ⏎  ⏎ The login page renders blank on Safari 18 after the update. Console shows a CSP error. ⏎  ⏎ STATUS ⏎ In progress ⏎ PRIORITY ⏎ High ⏎ CATEGORY ⏎ Bug ⏎ ASSIGNEES ⏎ TM ⏎ Test Member ⏎ SPRINT ⏎ test-Sprint Hosting ⏎ Due Mon, Oct 19 ⏎ REQUESTER ⏎ TO ⏎ Test Owner ⏎ · opened Sep 26
+
+=== AU-25 inner openers
+3
+
+=== AU-25 after push
+{
+ "w": 480,
+ "head": "PERSON | from #1",
+ "threads": "hidden"
+}
+
+=== AU-25 after Back
+{
+ "w": 480,
+ "head": "TICKET",
+ "threads": "hidden"
+}
+
+=== AU-25 separator
+{
+ "role": "separator",
+ "label": "Resize inspector",
+ "now": "480",
+ "min": "380",
+ "max": "720",
+ "tab": 0
+}
+
+=== AU-25 after 30× ArrowLeft
+{
+ "w": 720,
+ "head": "TICKET",
+ "threads": "hidden"
+}
+
+=== AU-25 after 60× ArrowRight
+{
+ "w": 380,
+ "head": "TICKET",
+ "threads": "hidden"
+}
+
+=== AU-25 Home
+{
+ "w": 380,
+ "head": "TICKET",
+ "threads": "hidden"
+}
+
+=== AU-25 Open in page
+{
+ "label": "Open in page",
+ "href": null
+}
+
+=== AU-25 after Escape
+null
+
+=== AU-25 at 1500 (inspector closed): threads
+column
+
+=== AU-25 at 1500 with inspector: threads
+hidden
+
+=== AU-25 at 1100: threads
+hidden
+
+=== logs
+{
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}

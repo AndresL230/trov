@@ -10,6 +10,7 @@ import { OAUTH_TX_COOKIE, beginTx, callbackUrl, type TxMode } from "./tx";
 import { connectReturn, installReturn, isInstallReturn } from "../github-app/connect";
 import { buildAuthorizeUrl, exchangeCode, getUser, getPrimaryEmail } from "./github";
 import { buildGoogleAuthorizeUrl, exchangeGoogleCode, verifyGoogleIdToken } from "./google";
+import { devSignIn, devSignOut } from "./dev-signin";
 import { createSession, setSessionCookie, readSessionCookie, deleteSession, clearSessionCookie } from "./session";
 import { mintToken, listTokens, revokeToken } from "./tokens";
 import { getPerson, listIdentities, findIdentity, handleAvailable, createPerson, HandleTakenError, linkIdentity, unlinkIdentity, updateProfile, renamePerson, soleTitle } from "./persons";
@@ -206,6 +207,11 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     const redirect = await takeOAuthPending(c);
     return c.json({ ok: true, handle: parsed.data.handle, ...(redirect ? { redirect } : {}) });
   });
+
+  // ── LOCAL DEVELOPMENT ONLY: sign in as any seeded person (src/auth/dev-signin.ts; a bare 404 unless DEV_LOGIN is
+  // set, the request came to a loopback origin and no live Stripe key is held) ──
+  authApp.get("/dev/as", devSignIn);
+  authApp.get("/dev/out", devSignOut);
 
   // ── Session-gated ──
   authApp.get("/me", async (c) => {

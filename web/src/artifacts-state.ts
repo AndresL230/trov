@@ -5,6 +5,7 @@
 // all of this unchanged.
 
 import { esc, attr } from "./ui";
+import { tenantHref } from "./api";
 import { skeleton, skLine } from "./skeleton";
 import { artifactStatusMark } from "./marks";
 import type { PersonColor } from "@shared/rows";
@@ -133,6 +134,11 @@ export interface ArtProps {
   host: string;
   /** The filter menu (web/src/filter-menu.ts) that this render opens, if any — plays its entrance once. */
   fmOpening?: string | null;
+  /** The plain-language filter's applied line (ai-filter.ts `aiFilterLine`) above the library's toolbar; "" when
+   *  nothing typed is applied or the org's AI is off. */
+  aiFilter?: string;
+  /** The Filter menu's typed-filter row (ai-filter.ts `aiFilterMenuTop`) at the popover's top; "" when AI is off. */
+  aiFilterMenu?: string;
   /** The resolved theme — the mermaid cache is keyed by it (the diagram is drawn in its colours). */
   theme: string;
   tickets: ArtTicketRef[];
@@ -167,6 +173,39 @@ export function setArtFrameHeight(key: string, h: number): number {
   const v = Math.round(Math.max(160, Math.min(h, 40000)));
   frameHeights.set(key, v);
   return v;
+}
+
+// ── the raw route, and the framed preview (the viewer and Ask's inspector both draw it) ──
+
+/** The raw route for one version, under the CURRENT org: `/api/o/<org>/raw/a/<slug>@v<n>` (api.ts `tenantHref`).
+ *  The API's `raw_url` names the same route by its suffix (`/raw/a/<slug>@v<n>`), so it goes through the same prefix. */
+export const rawUrl = (slug: string, v: number): string => tenantHref(`/raw/a/${encodeURIComponent(slug)}@v${v}`);
+export const rawOf = (apiRawUrl: string | undefined, slug: string, v: number): string =>
+  apiRawUrl && apiRawUrl.startsWith("/raw/a/") ? tenantHref(apiRawUrl) : rawUrl(slug, v);
+
+/** The viewer's sandboxed frame for the kinds that load the raw route (html, image, pdf, svg), else null — the ONE
+ *  markup the viewer below and Ask's inspector (ask-inspector.ts, the artifact's live preview) both draw. */
+export function artifactFrame(o: { kind: string; title: string; raw: string; key: string }): string | null {
+  switch (o.kind) {
+    case "html": {
+      const h = frameHeight(o.key);
+      // allow-scripts WITHOUT allow-same-origin: the page runs in an opaque origin
+      // (no cookies, no parent DOM), and tells us its height by postMessage.
+      return `<div class="art-frame" data-art-key="${attr(o.key)}" style="position:relative;overflow:hidden;background:#fff;height:${h}px">
+        <iframe title="${attr(o.title)}" src="${attr(o.raw)}" sandbox="allow-scripts" referrerpolicy="no-referrer" style="display:block;width:100%;height:100%;border:0;background:#fff"></iframe>
+      </div>`;
+    }
+    case "svg":
+      // A drawing renders without script: `sandbox=""`, it can do nothing (the library card's rule).
+      return `<iframe title="${attr(o.title)}" src="${attr(o.raw)}" sandbox="" referrerpolicy="no-referrer" style="display:block;width:100%;height:320px;border:0;background:var(--bg)"></iframe>`;
+    case "image":
+      return `<div style="display:grid;place-items:center;padding:32px 24px;background:var(--bg)"><img src="${attr(o.raw)}" alt="${attr(o.title)}" style="display:block;max-width:100%;height:auto"></div>`;
+    case "pdf":
+      // NOT sandboxed — see the viewer's pdf case below for why that is safe.
+      return `<iframe title="${attr(o.title)}" src="${attr(o.raw)}" style="display:block;width:100%;height:78vh;min-height:480px;border:0;background:#fff"></iframe>`;
+    default:
+      return null;
+  }
 }
 
 // Mermaid: rendered post-paint (renderPendingMermaid, called by main.ts after each

@@ -19,7 +19,7 @@ import { requireRole, hasRole } from "../data/context";
 import { all, batch, fanOut, first, nowIso, stmt, type Stmt, type TenantContext } from "../data/sql";
 import { planFor, requirePlan } from "../plans/gate";
 import { resolveEntitlements } from "@shared/plans";
-import { JEV_ACTOR, aiEnabled, fitSummary, rememberRemovalStmt, reviewCounts, suggestAllowance } from "./tag-fit";
+import { JEV_ACTOR, fitSummary, rememberRemovalStmt, reviewCounts, siftSwitches, suggestAllowance } from "./tag-fit";
 
 /** A refused tag write. `message` is fixed text: it names the rule, never more than the tag's own name. */
 export class TagError extends Error {
@@ -129,9 +129,9 @@ export async function listTags(ctx: TenantContext, opts: { aiAvailable?: boolean
   const out: TagListDTO = { tags, used: liveNames.length, cap: resolveEntitlements(plan.plan, plan.overrides).tags, suggestions: [] };
   if (!hasRole(ctx, "admin")) return out;
   // What only an admin acts on: what agents suggested, the AI switch, and each tag's latest run (Jev tagging items).
-  const [suggestions, enabled, allowance, summary, review] = await Promise.all([pendingSuggestions(ctx, liveNames), aiEnabled(ctx), suggestAllowance(ctx), fitSummary(ctx), reviewCounts(ctx)]);
+  const [suggestions, switches, allowance, summary, review] = await Promise.all([pendingSuggestions(ctx, liveNames), siftSwitches(ctx), suggestAllowance(ctx), fitSummary(ctx), reviewCounts(ctx)]);
   out.suggestions = suggestions;
-  out.ai = { enabled, available: opts.aiAvailable === true, ...allowance };
+  out.ai = { enabled: switches.sift, org: switches.org, available: opts.aiAvailable === true, ...allowance };
   out.runs = Object.fromEntries(liveNames.filter((n) => summary.runs.has(n)).map((n) => [n, summary.runs.get(n)!]));
   out.review = Object.fromEntries(liveNames.filter((n) => review.has(n)).map((n) => [n, review.get(n)!]));
   return out;

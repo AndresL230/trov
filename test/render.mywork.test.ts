@@ -107,7 +107,7 @@ describe("libraryStrip", () => {
     handoffs,
   }, 12);
 
-  it("names the three cells; the third is the queued handoffs — the row opens it, the button copies it", () => {
+  it("names the three cells; the third is the queued handoffs — the row opens it, the button claims and copies it", () => {
     const html = lib({ load: "ok", count: 2, newest: { id: 9, title: "Finish the <b>gate</b> port", at: new Date().toISOString() } });
     expect(html).toContain("Docs you own");
     expect(html).toContain("1 not updated in 30 days");
@@ -117,8 +117,8 @@ describe("libraryStrip", () => {
     expect(html).toContain("2 for you");
     expect(html).toContain("Finish the &lt;b&gt;gate&lt;/b&gt; port");
     expect(html).toContain('data-act="openHandoff" data-arg="9"');
-    expect(html).toContain('data-act="mwHandoffCopy" data-arg="9"');
-    expect(html).toContain("Copy</button>");
+    expect(html).toContain('data-act="mwHandoffClaim" data-arg="9"');
+    expect(html).toContain("Claim &amp; copy</button>");
     expect(html).not.toContain(">Open<");
     // The prompt cell and its Copy path are gone.
     expect(html).not.toContain("Saved prompts");
@@ -148,6 +148,63 @@ describe("list tiles — the design's height", () => {
   });
 });
 
+describe("beside the brief (BR-OWNER-2/3): two rows each in fixed boxes, then 'N more', its place kept", () => {
+  const rv = (id: string, kind: "proposal" | "decision"): ReviewItem => ({ id, kind, eyebrow: "", title: `Item ${id}`, summary: "", agent: "kai", agentInitials: "KA", time: "1h ago" });
+  const rows = (h: string) => (h.match(/class="mw-row mw-side-row"/g) ?? []).length;
+  const pads = (h: string) => (h.match(/class="mw-side-row mw-side-pad" aria-hidden="true"/g) ?? []).length;
+
+  it("Needs your review: two rows, then 'N more in Review'; one row keeps the second slot and the line's place", () => {
+    const four = reviewTile(["1", "2", "3", "4"].map((i) => rv(i, "proposal")), "ok", 4, true);
+    expect(rows(four)).toBe(2);
+    expect(four).toContain("Item 2");
+    expect(four).not.toContain("Item 3");
+    expect(four).toMatch(/data-act="goReview" class="mw-more mw-side-foot"[^>]*>2 more in Review</);
+    expect(four).not.toContain("mw-scroll");
+    const one = reviewTile([rv("1", "decision")], "ok", 4, true);
+    expect([rows(one), pads(one)]).toEqual([1, 1]);
+    expect(one).toContain('class="mw-side-foot mw-side-foot-pad" aria-hidden="true"');
+    // Every state sits in the same fixed body.
+    for (const h of [four, one, reviewTile([], "ok", 4, true), reviewTile([], "pending", 4, true), reviewTile([], "error", 4, true)]) expect(h).toContain('class="mw-side-body" data-side="review"');
+    // Without the brief: exactly the three-row tile it was.
+    expect(reviewTile(["1", "2", "3", "4"].map((i) => rv(i, "proposal")), "ok", 5)).toContain("1 more in Review");
+  });
+
+  it("Tickets for you: two rows, then 'N more in the queue' to the queue filtered to me — no in-place 'Show N more'", () => {
+    const five = ticketsTile({ load: "ok", rows: [1, 2, 3, 4, 5].map((id) => makeTicket({ id, title: `T${id}` })), total: 7 }, false, 8, () => null, true);
+    expect(rows(five)).toBe(2);
+    expect(five).toContain("T2");
+    expect(five).not.toContain("T3");
+    expect(five).toMatch(/data-act="mwAllTickets" class="mw-more mw-side-foot"[^>]*>5 more in the queue/);
+    expect(five).not.toContain("mwMore");
+    expect(five).not.toContain("mw-scroll");
+    const one = ticketsTile({ load: "ok", rows: [makeTicket({ id: 1, title: "T1" })] }, false, 8, () => null, true);
+    expect([rows(one), pads(one)]).toEqual([1, 1]);
+    expect(one).toContain('class="mw-side-foot mw-side-foot-pad" aria-hidden="true"');
+    // A long title keeps its whole text as the row's tooltip; the box clamps it to two lines.
+    const long = "Token rotation & audit log for every connection and its secrets, end to end";
+    expect(ticketsTile({ load: "ok", rows: [makeTicket({ id: 1, title: long })] }, false, 8, () => null, true)).toContain(`class="mw-side-title" data-mtip="${long.replace("&", "&amp;")}"`);
+  });
+
+  it("Repo, narrow under Needs your review: two rows (titles truncate), then 'N more in Repo'", () => {
+    type Repo = NonNullable<Parameters<typeof repoTile>[0]>;
+    const pr = (number: number) => ({ number, title: `PR ${number}`, url: `https://github.com/o/r/pull/${number}`, author: { login: "x", handle: null, name: null, color: null }, branch: "feat/x", state: "review", checks: null, at: new Date().toISOString() });
+    const repo = (n: number, open: number) => ({ repo: "SaplingLearn/sapling", environments: { status: "not_connected" }, drift: { status: "not_connected" }, prs: { status: "ok", data: { openCount: open, rows: Array.from({ length: n }, (_, i) => pr(i + 1)) } } }) as unknown as Repo;
+    const four = repoTile(repo(4, 4), "ok", "prs", 4, { beside: true });
+    expect(four).toContain("PR 2");
+    expect(four).not.toContain("PR 3");
+    expect(four).toMatch(/data-act="goRepo" class="mw-more mw-side-foot"[^>]*>2 more in Repo</);
+    expect(four).toContain('class="mw-repo-swap mw-side-swap"');
+    const one = repoTile(repo(1, 1), "ok", "prs", 4, { beside: true });
+    expect(one).toContain('class="mw-side-foot mw-side-foot-pad" aria-hidden="true"');
+    // No repository: the empty layout, in the same fixed body.
+    expect(repoTile(null, "ok", "prs", 4, { beside: true, noRepo: true })).toContain('<div class="mw-side-swap">');
+    // Without the brief: three rows, no "N more".
+    const plain = repoTile(repo(4, 4), "ok", "prs", 6);
+    expect(plain).toContain("PR 3");
+    expect(plain).not.toContain("more in Repo");
+  });
+});
+
 describe("reviewTile", () => {
   const item = (id: string, kind: "proposal" | "decision"): ReviewItem => ({
     id, kind, eyebrow: "", title: `Item ${id}`, summary: "",
@@ -162,6 +219,13 @@ describe("reviewTile", () => {
     expect(html).toContain(">Promote<");
     expect(html).toContain(">Ratify<");
     expect(html).toContain("1 to promote, 1 to ratify");
+  });
+
+  it("never says the number twice: one kind reads '1' over 'to promote', not '1 to promote'", () => {
+    const one = reviewTile([item("d:a:2", "proposal")], "ok", 5);
+    expect(one).toContain(">to promote</span>");
+    expect(one).not.toContain("1 to promote");
+    expect(reviewTile([item("a:5", "decision"), item("a:6", "decision")], "ok", 5)).toContain(">to ratify</span>");
   });
 
   it("shows three and points to the rest", () => {
@@ -543,10 +607,11 @@ describe("My Work — audit fixes", () => {
   // 3. the greeting's claim
   it("says 'nothing is waiting on you' only when every contributing slice loaded ok", () => {
     expect(dateLine(render(loaded()))).toContain("nothing is waiting on you");
-    // Still loading: just the date.
+    // Still loading: no claim under the greeting; the date stays top right.
     const loading = render(loaded({ proposals: { status: "loading", data: [] } }));
     expect(loading).not.toContain("nothing is waiting on you");
-    expect(dateLine(loading)).not.toContain("·");
+    expect(loading).not.toMatch(/margin-top:6px;text-wrap:balance">[^<]*·/);
+    expect(loading).toMatch(/white-space:nowrap">\w+day, \w+ \d+</);
     expect(render(loaded({ mywork: { status: "loading", data: null } }))).not.toContain("nothing is waiting on you");
     expect(render(loaded({ handoffs: { status: "idle", data: [] } }))).not.toContain("nothing is waiting on you");
     // Failed: no claim either way.

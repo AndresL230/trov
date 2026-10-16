@@ -8,11 +8,9 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
 `notification_*` tables). Everything lives in `src/notifications/`:
 
 - **Registry in code, not D1** (`registry.ts` + `shared/notifications.ts`): one `NotificationKind` per digest
-  section — `my_work` (event spine: merged PRs in the window + open assigned issues, summarized exactly as My
-  Work does), `review_queue` (open Proposals + draft Decisions), `roadmap_plan` (diffs `plan_versions` in the
-  window against the last pre-window version; progress rows never surface), `ticketq` (the ticket queue, not
-  window-scoped: `submitted` tickets with no assignees org-wide + the recipient's own open assigned tickets via
-  `listAssignedTickets`, the same read My Work uses). A renderer is a **pure read**
+  section, in the e-mail's order — `my_work` ("Your brief", see The digest's shape), `week_recap` ("This week",
+  weekly only), then the queues' ONE line each: `review_queue` ("Review"), `roadmap_plan` ("Sprint"), `ticketq`
+  ("Tickets"). A renderer is a **pure read**
   (`render(ctx, userId, window)` → `Section | null` — `ctx` is the org's tenant context; null = nothing to say, dropped). Adding a kind = one entry +
   one renderer; `notification_policy` rows are PER ORG, seeded from the registry: `createOrg` writes one row
   per kind for a new org, and the digest cron tops each org up with any kind it has no row for
@@ -31,6 +29,22 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
 - **Cron** (`cron.ts`, `wrangler.toml [triggers]`): two hourly triggers (`0 * * * *` daily candidate,
   `0 * * * SUN,MON` weekly candidate) dispatched by expression in `scheduled()`, gated in code on
   `notification_settings.send_hour` + `timezone` at fire time (static crons cannot read D1 or follow DST).
+- **"Only when something needs me"** (`notification_person_prefs`, 0067; Settings › Email notifications, `PUT
+  /prefs { onlyWhenNeeded }`, own row, per org): with it on, `deliverRow` asks `needsMe` (`renderers/my-work.ts`)
+  BEFORE rendering — the brief has a Next item (with no brief: an assigned ticket), or a notable or breaking item
+  touched their work since their last send (Also's rule) — and marks the row `skipped` otherwise. A queue line alone
+  never sends it. It holds back the scheduled DAILY only (owner ruling Q46): the weekly, the admin preview and the
+  test send always go (the retry re-asks it for a daily row). While the person is unsubscribed the option stays in
+  Settings, dimmed, with its reason ("Not in use while you're unsubscribed from Trov email."; `aria-disabled`, the
+  toggle refused), never hidden.
+- **The brief pre-warm** (`prewarmDigests`, `cron.ts`; `ai.md` › The router): the repo tick ONE TICK BEFORE the hour
+  (`:50`) asks `dueCadence` for the coming hour, per org; for an org whose daily or weekly digest is due then, the
+  AI router marks every recipient's `person:<handle>` scope URGENT (it skips the debounce), so the AI pass that
+  follows on the same tick can write the brief the digest leads with. Rows only — no model, no mail.
+  The same `:50` tick also marks the WEEKLY's "This week" `WEEK_HIGHLIGHTS_LEAD_MS` (3 h) ahead: for an org whose
+  weekly is due then, with `week_recap` on and at least one recipient, ONE `digest:week:<YYYY-Www>:<send instant>`
+  scope (`weekScopeKey`). Since the pre-warm runs once an hour, that is one mark per org per week; the pass's
+  in-flight check and the job's "this week already has highlights" check make a second mark harmless.
 - **Delivery gate** (`resend.ts`): `NOTIFICATIONS_MODE` absent/`local` → bodies go to the dev-only
   `notification_outbox_bodies` table and Resend is NEVER called; `resend` requires `RESEND_API_KEY` (a config
   error otherwise, never a silent fallback). A message with an `unsubscribeUrl` (a NOTIFICATION — see Who
@@ -101,14 +115,72 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
   provider key before the cut. It is the one mail with a `Reply-To` (`OutboundMessage.replyTo` → Resend's
   `reply_to`): the reporter's provider-verified address — or, for a report sent signed out, the address typed,
   which is the ONLY use of it (nothing is ever sent to it) — so a reply answers them. Never throws.
+- **Previews** (`routes.ts` `GET /preview`, admin): `?cadence=` renders the caller's real digest (prefs ignored);
+  `?sample=index` lists the Phase E fixtures in `sample.ts` — `daily-ai`, `daily-off`, `daily-empty`,
+  `weekly-ai`, `weekly-off`, `only-when-needed` (a "Not sent" page: what the run does instead) — built with the
+  renderers' own pure halves, so they are the real markup. `sample=1` (and a sample test send) is `daily-ai`, or
+  `weekly-ai` for a weekly test send. Screenshots of each, light and dark, desktop and phone:
+  `docs/superpowers/specs/ai-screens-shots/email-*.png`.
 - **Deferred:** the digest's ledger layout (`EMAIL_CARD.item`) has no avatar chips today, so a person's
   color does not appear in email yet. When a chip is added there, take the color from `persons.color`
   via the light hex set documented in §7 of the identity design doc.
 - **Deletion** (`organizations.md` §8): an organization's deletion removes its policy, settings, every member's
-  prefs for it and its outbox (with the dev-only bodies); an account's deletion removes that person's prefs in
+  prefs (`notification_prefs`, `notification_person_prefs`) for it, its stored weekly highlights
+  (`digest_highlights`) and its outbox (with the dev-only bodies); an account's deletion removes that person's prefs in
   every org and every outbox row addressed to them (and local/dev bodies sent to their addresses). Nothing is
   mailed about either. A mail already delivered stays where it was delivered (and in Resend's logs).
 - Tests assert on outbox/bodies rows, never mocks (`test/notifications.*.test.ts`, `test/render.notifications.test.ts`).
+
+## The digest's shape (Phase E: shorter, led by the brief — `docs/superpowers/specs/2026-10-15-server-ai-build.md`)
+
+The same for everyone, AI on or off. The assembler (`assemble.ts`) puts the BLOCKS first (the brief, This week),
+then every queue's one line together (`Section.layout = "line"`, built by `queueLine`); an empty section is null
+and left out, so a quiet day can be one line. No per-event mail, no reply-to on digests, deep links only through the
+existing return-to sign-in; an in-app link inside a section is written `appHref("#tickets/14")` and resolved by the
+assembler to the org's address (`<origin>/<slug>/#…`).
+
+- **Daily** (aim: read in 20 seconds; `test/notifications.digest-length.test.ts` holds it under half the old
+  daily's words on one busy day):
+  - **Subject** (`subjectOf`, owner ruling Q41) — the brief's top Next item, "Netlify test failing, plus 1 more"
+    (`briefSubject`: N is the OTHER Next items, all of them, not only the 3 shown; no suffix when there is one); with
+    no brief to show, the same rule over the assigned tickets ("Login page is blank, plus 2 more"); with nothing next
+    at all, "Your Trov digest". The weekly keeps `Trov weekly, <range>`.
+  - **Your brief** (`my_work`) — the SAME stored brief My Work's `briefTile` shows (`storedBrief`, the
+    `DashboardData.brief` shape, so the AI switch, the key, "Wrong?" and staleness rules are My Work's): its Now line
+    and up to 3 Next items, each its own title linked to its first cite, with its one-line why — only a `ready`
+    brief. EVERY missing brief (owner ruling Q42) — none stored, an empty one, "Wrong?" on it, the switch off or no
+    key, the allowance used up (`capped`: its last version is NOT mailed), a stale one, any state but `ready` — gives
+    the 3 most recently updated tickets assigned to the person (`listAssignedTickets`), "In progress, in the Hosting
+    sprint, high priority" — under ASSIGNED TO YOU. A capped brief adds ONE footer line, to an admin or owner only
+    (`Section.footnote`, drawn above "You're getting…" in both parts): "Your brief is paused: this organization has
+    used this month's AI allowance; it resumes Nov 1 (Org settings › AI)." — or, for an ended plan, that the plan
+    has ended and AI is paused until it is renewed.
+  - **Also** (daily only; owner ruling Q43) — at most 3 items Sift rated notable or breaking SINCE THE PERSON'S LAST
+    SEND (their last `sent` daily in this org — a test send is not one — else the window's start; at most 14 days
+    back) that touch their work: a ticket they are assigned to or requested (a PR linked to it in `ticket_links`, or
+    a mirrored ticket's issue named by an entry), a pull request they authored, or a repository they pushed to in
+    the last 14 days (`repo_events` pushes; a PR's repository is read from its `html_url`, a Trov session digest's
+    from `ai_sessions.repo`). Merged PRs as `toMyWorkPr` maps them (`importance`) and feed entries as the Feed reads
+    them (`get_feed`: `importance`); merely being an entry's author is not a touch. Breaking first, then newest.
+    Each is a title with its mark and a link INTO Trov, never GitHub: their own PR → My Work, a PR on their ticket →
+    that ticket, a PR in their repository → its Repo dashboard (`#repo?repo=`), a feed entry → the Feed. Ratings made
+    while the switch was on still count with it off (stored facts; nothing new is sent).
+  - **One line per queue, only when it has something**: "Review: 3 waiting, 1 changes a decision" (the "changes a
+    decision" count is Sift's open `review.risk`, only under the AI read rule (the switch on and a key — `ai.md` › The read rule); with none the clause is dropped —
+    "Review: 3 waiting". Sent only to someone who can promote, `REVIEW_CONFIRMERS` — every role today,
+    organizations.md §4; owner ruling Q44), "Sprint: Hosting, due Fri, 2 of 5
+    done" (the person's sprint in progress, else the org's due soonest; "due Fri" within 6 days, "due Nov 2" past
+    that, "3 days late" when overdue; declined tickets do not count — it rides EVERY daily whatever `roadmap_plan`
+    resolves to, owner ruling Q45, `selectKinds`: that kind's cadence governs the weekly only, and only the org's
+    policy turning the kind off removes it; a daily is never sent for it alone), "Tickets: 2
+    waiting for someone, 3 assigned to you".
+  - **Removed**: the per-PR What / Why / Impact cards, the issue rows and labels, the full plan diff.
+- **Weekly** — the brief (it rides along on the weekly even for someone who gets it daily, when the weekly has
+  anything else: `selectKinds`), then **This week** (`week_recap`, `renderers/week-recap.ts`): at most 3 cited
+  highlights the AI pass's `digest.week` job stored for the week (`digest_highlights`, 0067; `ai.md` › The weekly
+  highlights) — shown only under the AI read rule (the switch on and a key), a row failing its schema is not shown — then ONE numbers line
+  the server computes: "12 pull requests merged, 4 tickets done, 9 entries in the Feed" (zero parts left out; the
+  PR count only with a repository connected — unknown is left out, never 0). Then the queue lines.
 
 ## Who gets what — notification or transactional
 

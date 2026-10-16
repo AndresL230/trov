@@ -112,8 +112,11 @@ export interface TagRunDTO {
 
 /** The org's switch for model suggestions, and where the month's allowance stands — admins only. */
 export interface TagAiDTO {
-  /** The org's switch (`org_ai_settings`, kind `tag.fit`). */
+  /** Sift's own switch (`org_ai_settings`, kind `tag.fit`). */
   enabled: boolean;
+  /** The organization's AI switch (`orgs.ai_automation`, Org settings › AI). Off stops Sift whatever its own
+   *  switch says. */
+  org: boolean;
   /** The platform can call a model at all (its key is set). */
   available: boolean;
   used: number;

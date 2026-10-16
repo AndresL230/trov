@@ -1,0 +1,36 @@
+event: thread
+data: {"id":9,"title":"","mode":"smart","auto":false,"origin":"page","contextRef":null}
+
+event: activity
+data: {"step":1,"tool":"query","icon":"search","label":"Searched docs for 'the customer say about SSO pricing on the last call'","state":"run"}
+
+event: activity
+data: {"step":1,"state":"done","resultLine":"No results"}
+
+event: activity
+data: {"step":2,"tool":"list_tickets","icon":"tickets","label":"Searched tickets and comments","state":"run"}
+
+event: activity
+data: {"step":2,"state":"done","resultLine":"No results"}
+
+event: activity
+data: {"step":3,"tool":"get_feed","icon":"feed","label":"Searched the feed since Sep 1","state":"run"}
+
+event: activity
+data: {"step":3,"state":"done","resultLine":"No results"}
+
+event: activity
+data: {"step":4,"tool":"show_not_found","icon":"search","label":"Checked what was searched","state":"run"}
+
+event: block
+data: {"kind":"not_found","notFound":{"query":"the customer say about SSO pricing on the last call","tries":["What do our docs say about pricing?","What's in the Release 0.30 notes?"],"searched":[{"area":"Docs","scope":"Technical and Product, 24 docs"},{"area":"Tickets and comments","scope":"31 tickets, 212 comments"},{"area":"Feed","scope":"41 entries since Sep 1"},{"area":"Artifacts","scope":"12 artifacts"}]}}
+
+event: activity
+data: {"step":4,"state":"done"}
+
+event: thread
+data: {"id":9,"title":"SSO pricing on the last call","mode":"smart","auto":false,"origin":"page","contextRef":null}
+
+event: done
+data: {"messageId":12,"questionId":11,"cites":[],"tokens":{"in":6900,"out":120,"cached":5800}}
+

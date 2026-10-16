@@ -1,0 +1,1772 @@
+{
+ "kind": "gate.state",
+ "source": "AndresL230/trov git history + Personal Dev (trov-dev) via the Trov MCP read tools (get_my_work cards, get_repo_dashboard ci/overview), read-only, 2026-10-15",
+ "cases": [
+  {
+   "id": "first-179",
+   "source": "#179 merged 2026-10-15T02:03 (Personal Dev card); open PRs from gh pr list",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": null,
+    "merged": [
+     {
+      "ref": "pr:179",
+      "title": "Tags of your own, sorted by Sift",
+      "what": "Each organization now gets its own tag list in Org settings, with six starter tags and add, rename, merge, retire, and restore actions. When an admin adds a tag or presses Find items, Sift checks the org's existing items and adds the tag automatically at 85% confidence or more, or suggests it at 60–85% for members to review on the tag page.",
+      "why": null,
+      "impact": "Teams can manage their own tagging vocabulary and have existing items tagged automatically, and agents' unrecognized tags become suggestions rather than leaving entries stuck in Unplaced."
+     }
+    ],
+    "digests": [],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     }
+    ],
+    "failedRuns": [],
+    "parts": [],
+    "deploys": [],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     },
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     }
+    }
+   },
+   "expected": true
+  },
+  {
+   "id": "add-180",
+   "source": "#180 merged after #179",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": {
+     "generatedAt": "2026-10-15T02:10:00Z",
+     "state": {
+      "headline": "Organizations now keep their own tag lists, sorted by Sift.",
+      "shipped": [
+       {
+        "text": "Each organization has its own tag list, and Sift tags existing items.",
+        "cites": [
+         {
+          "ref": "pr:179",
+          "label": "#179",
+          "href": "https://github.com/AndresL230/trov/pull/179"
+         }
+        ]
+       }
+      ],
+      "inFlight": [
+       {
+        "text": "Server-side AI screens and pipeline are in review.",
+        "cites": [
+         {
+          "ref": "pr:178",
+          "label": "#178",
+          "href": "https://github.com/AndresL230/trov/pull/178"
+         }
+        ]
+       }
+      ],
+      "attention": []
+     }
+    },
+    "merged": [
+     {
+      "ref": "pr:180",
+      "title": "Tag page bars in their own colours; header crumbs set like the title",
+      "what": "Bars on the tag page now take colour from the relevant person under Who writes about it, and from the other tag under Often seen with (falling back to the tag's own colour when unknown). Header breadcrumbs on child screens, including Artifacts, now render at 15px semibold to match the title before them.",
+      "why": "Follow-up to #179; the breadcrumb was 13px medium, which looked off next to the title.",
+      "impact": "Tag page bars are colour-coded by person or related tag, and the breadcrumb no longer looks mismatched beside the page title."
+     }
+    ],
+    "digests": [],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     }
+    ],
+    "failedRuns": [],
+    "parts": [],
+    "deploys": [],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:180": {
+      "ref": "pr:180",
+      "label": "#180",
+      "href": "https://github.com/AndresL230/trov/pull/180"
+     },
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     },
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     }
+    }
+   },
+   "expected": true
+  },
+  {
+   "id": "add-182-red-branch",
+   "source": "#182 merged; CI run 38674390889 failed on feat/hosting-screens (Personal Dev ci tab)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": {
+     "generatedAt": "2026-10-15T02:20:00Z",
+     "state": {
+      "headline": "Organizations now keep their own tag lists, sorted by Sift.",
+      "shipped": [
+       {
+        "text": "Each organization has its own tag list, and Sift tags existing items.",
+        "cites": [
+         {
+          "ref": "pr:179",
+          "label": "#179",
+          "href": "https://github.com/AndresL230/trov/pull/179"
+         }
+        ]
+       }
+      ],
+      "inFlight": [
+       {
+        "text": "Server-side AI screens and pipeline are in review.",
+        "cites": [
+         {
+          "ref": "pr:178",
+          "label": "#178",
+          "href": "https://github.com/AndresL230/trov/pull/178"
+         }
+        ]
+       }
+      ],
+      "attention": []
+     }
+    },
+    "merged": [
+     {
+      "ref": "pr:182",
+      "title": "To review: only the row you settle slides out, at once",
+      "what": "On a tag's To review tab, adding or dismissing a suggestion now removes only that row, sliding it out and closing the gap immediately while the other rows stay usable. The write runs in the background and the page refreshes without showing a loading state.",
+      "why": "Adding one suggestion turned every row's button to \"Adding…\", was slow, and made the page flash through its loading state, as reported by the owner.",
+      "impact": "Reviewing suggestions on a tag feels fast and stable, since only the row being acted on changes and a refused suggestion returns with a reason. Under reduced motion the row simply disappears."
+     }
+    ],
+    "digests": [],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     }
+    ],
+    "failedRuns": [],
+    "parts": [],
+    "deploys": [],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:182": {
+      "ref": "pr:182",
+      "label": "#182",
+      "href": "https://github.com/AndresL230/trov/pull/182"
+     },
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     },
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     }
+    }
+   },
+   "expected": true
+  },
+  {
+   "id": "add-184",
+   "source": "#184 merged; the toast follow-up to #182",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": {
+     "generatedAt": "2026-10-15T02:45:00Z",
+     "state": {
+      "headline": "Tag review is faster; hosting providers are on their branch.",
+      "shipped": [
+       {
+        "text": "Only the row you settle slides out on a tag's To review tab.",
+        "cites": [
+         {
+          "ref": "pr:182",
+          "label": "#182",
+          "href": "https://github.com/AndresL230/trov/pull/182"
+         }
+        ]
+       },
+       {
+        "text": "Each organization has its own tag list, and Sift tags existing items.",
+        "cites": [
+         {
+          "ref": "pr:179",
+          "label": "#179",
+          "href": "https://github.com/AndresL230/trov/pull/179"
+         }
+        ]
+       }
+      ],
+      "inFlight": [
+       {
+        "text": "Server-side AI screens and pipeline are in review.",
+        "cites": [
+         {
+          "ref": "pr:178",
+          "label": "#178",
+          "href": "https://github.com/AndresL230/trov/pull/178"
+         }
+        ]
+       }
+      ],
+      "attention": [
+       {
+        "text": "CI failed on the hosting branch's test suite.",
+        "cites": [
+         {
+          "ref": "run:38674390889",
+          "label": "CI run 38674390889",
+          "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "merged": [
+     {
+      "ref": "pr:184",
+      "title": "To review: a checkmark confirmation when you add or dismiss",
+      "what": "Adding or dismissing one of Sift's suggestions now shows a confirmation toast with a checkmark at the bottom of the screen, reading \"Added latency to “…”\" or \"Dismissed latency for “…”\", as the row slides out. If the action is refused, the row returns along with the error.",
+      "why": "Adding or dismissing a suggestion should be confirmed the way every other write is, based on the owner's review of #182.",
+      "impact": "People get immediate feedback that their add or dismiss action was applied, and they see the row restored if it failed."
+     }
+    ],
+    "digests": [],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     }
+    ],
+    "failedRuns": [],
+    "parts": [],
+    "deploys": [],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:184": {
+      "ref": "pr:184",
+      "label": "#184",
+      "href": "https://github.com/AndresL230/trov/pull/184"
+     },
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     },
+     "pr:182": {
+      "ref": "pr:182",
+      "label": "#182",
+      "href": "https://github.com/AndresL230/trov/pull/182"
+     },
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     },
+     "run:38674390889": {
+      "ref": "run:38674390889",
+      "label": "CI run 38674390889",
+      "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+     }
+    }
+   },
+   "expected": true
+  },
+  {
+   "id": "add-185",
+   "source": "#185 merged 06:43 (hosting providers); #186 opened as a draft",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": {
+     "generatedAt": "2026-10-15T03:50:00Z",
+     "state": {
+      "headline": "Tag review is faster; hosting providers are on their branch.",
+      "shipped": [
+       {
+        "text": "Only the row you settle slides out on a tag's To review tab.",
+        "cites": [
+         {
+          "ref": "pr:182",
+          "label": "#182",
+          "href": "https://github.com/AndresL230/trov/pull/182"
+         }
+        ]
+       },
+       {
+        "text": "Each organization has its own tag list, and Sift tags existing items.",
+        "cites": [
+         {
+          "ref": "pr:179",
+          "label": "#179",
+          "href": "https://github.com/AndresL230/trov/pull/179"
+         }
+        ]
+       }
+      ],
+      "inFlight": [
+       {
+        "text": "Server-side AI screens and pipeline are in review.",
+        "cites": [
+         {
+          "ref": "pr:178",
+          "label": "#178",
+          "href": "https://github.com/AndresL230/trov/pull/178"
+         }
+        ]
+       }
+      ],
+      "attention": [
+       {
+        "text": "CI failed on the hosting branch's test suite.",
+        "cites": [
+         {
+          "ref": "run:38674390889",
+          "label": "CI run 38674390889",
+          "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "merged": [
+     {
+      "ref": "pr:185",
+      "title": "Hosting providers: Vercel, Render, Netlify, Fly.io — backend + Org settings › Hosting + Repo › Hosting (#97–#101)",
+      "what": "Ships a unified hosting provider interface with Vercel (install or token), Render (API key), Netlify (OAuth or token), and Fly.io (read-only token), plus an Org settings > Hosting page for setup, environment parts, and provider connections. The repo dashboard's Usage tab gains a Hosting section showing each part's last deploy, recent deploy history, and traffic or CPU/memory usage. Hosting data is polled on the repo cron, and Vercel deploy webhooks trigger an immediate poll.",
+      "why": "The PR lands work for issues #97 through #101 on main and supersedes #107, adding the screens that previously existed only on a local branch.",
+      "impact": "Teams can connect their hosting providers and see deploy status and resource usage for every part of a repo in one place, while Cloudflare and Railway appear as legacy parts alongside them."
+     }
+    ],
+    "digests": [],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     },
+     {
+      "ref": "pr:186",
+      "title": "Repo setups: the Repo screen for every repo setup (handoff #11)",
+      "state": "draft"
+     }
+    ],
+    "failedRuns": [],
+    "parts": [],
+    "deploys": [],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:185": {
+      "ref": "pr:185",
+      "label": "#185",
+      "href": "https://github.com/AndresL230/trov/pull/185"
+     },
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     },
+     "pr:186": {
+      "ref": "pr:186",
+      "label": "#186",
+      "href": "https://github.com/AndresL230/trov/pull/186"
+     },
+     "pr:182": {
+      "ref": "pr:182",
+      "label": "#182",
+      "href": "https://github.com/AndresL230/trov/pull/182"
+     },
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     },
+     "run:38674390889": {
+      "ref": "run:38674390889",
+      "label": "CI run 38674390889",
+      "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+     }
+    }
+   },
+   "expected": true
+  },
+  {
+   "id": "digests-only",
+   "source": "Trov digests for the ai/screens pushes (Activity, 07:07–09:06)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": {
+     "generatedAt": "2026-10-15T06:50:00Z",
+     "state": {
+      "headline": "Tag review is faster; hosting providers are on their branch.",
+      "shipped": [
+       {
+        "text": "Only the row you settle slides out on a tag's To review tab.",
+        "cites": [
+         {
+          "ref": "pr:182",
+          "label": "#182",
+          "href": "https://github.com/AndresL230/trov/pull/182"
+         }
+        ]
+       },
+       {
+        "text": "Each organization has its own tag list, and Sift tags existing items.",
+        "cites": [
+         {
+          "ref": "pr:179",
+          "label": "#179",
+          "href": "https://github.com/AndresL230/trov/pull/179"
+         }
+        ]
+       }
+      ],
+      "inFlight": [
+       {
+        "text": "Server-side AI screens and pipeline are in review.",
+        "cites": [
+         {
+          "ref": "pr:178",
+          "label": "#178",
+          "href": "https://github.com/AndresL230/trov/pull/178"
+         }
+        ]
+       }
+      ],
+      "attention": [
+       {
+        "text": "CI failed on the hosting branch's test suite.",
+        "cites": [
+         {
+          "ref": "run:38674390889",
+          "label": "CI run 38674390889",
+          "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "merged": [],
+    "digests": [
+     {
+      "ref": "feed:501",
+      "summary": "Status: server-side AI phase B — the router, scopes and the pass",
+      "brief": "Trov now notes which parts of a team's work went stale so it can update its summaries in one pass."
+     },
+     {
+      "ref": "feed:502",
+      "summary": "Status: repo setups — the Repo screen for every repo setup",
+      "brief": "Teams with any repository layout will get a Repo screen that fits it."
+     }
+    ],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     },
+     {
+      "ref": "pr:186",
+      "title": "Repo setups: the Repo screen for every repo setup (handoff #11)",
+      "state": "draft"
+     }
+    ],
+    "failedRuns": [],
+    "parts": [],
+    "deploys": [],
+    "eventCount": 2,
+    "redMain": false,
+    "cites": {
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     },
+     "pr:186": {
+      "ref": "pr:186",
+      "label": "#186",
+      "href": "https://github.com/AndresL230/trov/pull/186"
+     },
+     "feed:501": {
+      "ref": "feed:501",
+      "label": "Status: server-side AI phase B — the router, scopes and the pass",
+      "href": "#feed"
+     },
+     "feed:502": {
+      "ref": "feed:502",
+      "label": "Status: repo setups — the Repo screen for every repo setup",
+      "href": "#feed"
+     },
+     "pr:182": {
+      "ref": "pr:182",
+      "label": "#182",
+      "href": "https://github.com/AndresL230/trov/pull/182"
+     },
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     },
+     "run:38674390889": {
+      "ref": "run:38674390889",
+      "label": "CI run 38674390889",
+      "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+     }
+    }
+   },
+   "expected": true
+  },
+  {
+   "id": "red-main",
+   "source": "CI test-suite failure as on run 38674390889, on main (the gate's red-main shape)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": {
+     "generatedAt": "2026-10-15T06:50:00Z",
+     "state": {
+      "headline": "Tag review is faster; hosting providers are on their branch.",
+      "shipped": [
+       {
+        "text": "Only the row you settle slides out on a tag's To review tab.",
+        "cites": [
+         {
+          "ref": "pr:182",
+          "label": "#182",
+          "href": "https://github.com/AndresL230/trov/pull/182"
+         }
+        ]
+       },
+       {
+        "text": "Each organization has its own tag list, and Sift tags existing items.",
+        "cites": [
+         {
+          "ref": "pr:179",
+          "label": "#179",
+          "href": "https://github.com/AndresL230/trov/pull/179"
+         }
+        ]
+       }
+      ],
+      "inFlight": [
+       {
+        "text": "Server-side AI screens and pipeline are in review.",
+        "cites": [
+         {
+          "ref": "pr:178",
+          "label": "#178",
+          "href": "https://github.com/AndresL230/trov/pull/178"
+         }
+        ]
+       }
+      ],
+      "attention": [
+       {
+        "text": "CI failed on the hosting branch's test suite.",
+        "cites": [
+         {
+          "ref": "run:38674390889",
+          "label": "CI run 38674390889",
+          "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "merged": [],
+    "digests": [],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     },
+     {
+      "ref": "pr:186",
+      "title": "Repo setups: the Repo screen for every repo setup (handoff #11)",
+      "state": "draft"
+     }
+    ],
+    "failedRuns": [
+     {
+      "ref": "run:38674390889",
+      "name": "CI",
+      "branch": "main"
+     }
+    ],
+    "parts": [],
+    "deploys": [],
+    "eventCount": 1,
+    "redMain": true,
+    "cites": {
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     },
+     "pr:186": {
+      "ref": "pr:186",
+      "label": "#186",
+      "href": "https://github.com/AndresL230/trov/pull/186"
+     },
+     "run:38674390889": {
+      "ref": "run:38674390889",
+      "label": "CI run 38674390889",
+      "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+     },
+     "pr:182": {
+      "ref": "pr:182",
+      "label": "#182",
+      "href": "https://github.com/AndresL230/trov/pull/182"
+     },
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     }
+    }
+   },
+   "expected": true
+  },
+  {
+   "id": "deploy-and-merge",
+   "source": "#185 merged with a production deploy of trov.dev; production health down (Personal Dev overview)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": {
+     "generatedAt": "2026-10-15T03:50:00Z",
+     "state": {
+      "headline": "Tag review is faster; hosting providers are on their branch.",
+      "shipped": [
+       {
+        "text": "Only the row you settle slides out on a tag's To review tab.",
+        "cites": [
+         {
+          "ref": "pr:182",
+          "label": "#182",
+          "href": "https://github.com/AndresL230/trov/pull/182"
+         }
+        ]
+       },
+       {
+        "text": "Each organization has its own tag list, and Sift tags existing items.",
+        "cites": [
+         {
+          "ref": "pr:179",
+          "label": "#179",
+          "href": "https://github.com/AndresL230/trov/pull/179"
+         }
+        ]
+       }
+      ],
+      "inFlight": [
+       {
+        "text": "Server-side AI screens and pipeline are in review.",
+        "cites": [
+         {
+          "ref": "pr:178",
+          "label": "#178",
+          "href": "https://github.com/AndresL230/trov/pull/178"
+         }
+        ]
+       }
+      ],
+      "attention": [
+       {
+        "text": "CI failed on the hosting branch's test suite.",
+        "cites": [
+         {
+          "ref": "run:38674390889",
+          "label": "CI run 38674390889",
+          "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "merged": [
+     {
+      "ref": "pr:185",
+      "title": "Hosting providers: Vercel, Render, Netlify, Fly.io — backend + Org settings › Hosting + Repo › Hosting (#97–#101)",
+      "what": "Ships a unified hosting provider interface with Vercel (install or token), Render (API key), Netlify (OAuth or token), and Fly.io (read-only token), plus an Org settings > Hosting page for setup, environment parts, and provider connections. The repo dashboard's Usage tab gains a Hosting section showing each part's last deploy, recent deploy history, and traffic or CPU/memory usage. Hosting data is polled on the repo cron, and Vercel deploy webhooks trigger an immediate poll.",
+      "why": "The PR lands work for issues #97 through #101 on main and supersedes #107, adding the screens that previously existed only on a local branch.",
+      "impact": "Teams can connect their hosting providers and see deploy status and resource usage for every part of a repo in one place, while Cloudflare and Railway appear as legacy parts alongside them."
+     }
+    ],
+    "digests": [],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     },
+     {
+      "ref": "pr:186",
+      "title": "Repo setups: the Repo screen for every repo setup (handoff #11)",
+      "state": "draft"
+     }
+    ],
+    "failedRuns": [],
+    "parts": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "provider": "cloudflare",
+      "latest": "error",
+      "poll": "failed"
+     }
+    ],
+    "deploys": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "state": "error",
+      "branch": "main",
+      "message": "Merge pull request #185"
+     }
+    ],
+    "eventCount": 2,
+    "redMain": false,
+    "cites": {
+     "pr:185": {
+      "ref": "pr:185",
+      "label": "#185",
+      "href": "https://github.com/AndresL230/trov/pull/185"
+     },
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     },
+     "pr:186": {
+      "ref": "pr:186",
+      "label": "#186",
+      "href": "https://github.com/AndresL230/trov/pull/186"
+     },
+     "deploy:production/web": {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "href": null
+     },
+     "pr:182": {
+      "ref": "pr:182",
+      "label": "#182",
+      "href": "https://github.com/AndresL230/trov/pull/182"
+     },
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     },
+     "run:38674390889": {
+      "ref": "run:38674390889",
+      "label": "CI run 38674390889",
+      "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+     }
+    }
+   },
+   "expected": true
+  },
+  {
+   "id": "merged-179",
+   "source": "#179 merged (card)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": null,
+    "merged": [
+     {
+      "ref": "pr:179",
+      "title": "Tags of your own, sorted by Sift",
+      "what": "Each organization now gets its own tag list in Org settings, with six starter tags and add, rename, merge, retire, and restore actions. When an admin adds a tag or presses Find items, Sift checks the org's existing items and adds the tag automatically at 85% confidence or more, or suggests it at 60–85% for members to review on the tag page.",
+      "why": null,
+      "impact": "Teams can manage their own tagging vocabulary and have existing items tagged automatically, and agents' unrecognized tags become suggestions rather than leaving entries stuck in Unplaced."
+     }
+    ],
+    "digests": [],
+    "openPrs": [],
+    "failedRuns": [],
+    "parts": [],
+    "deploys": [],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     }
+    }
+   },
+   "expected": true
+  },
+  {
+   "id": "merged-180",
+   "source": "#180 merged (card)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": null,
+    "merged": [
+     {
+      "ref": "pr:180",
+      "title": "Tag page bars in their own colours; header crumbs set like the title",
+      "what": "Bars on the tag page now take colour from the relevant person under Who writes about it, and from the other tag under Often seen with (falling back to the tag's own colour when unknown). Header breadcrumbs on child screens, including Artifacts, now render at 15px semibold to match the title before them.",
+      "why": "Follow-up to #179; the breadcrumb was 13px medium, which looked off next to the title.",
+      "impact": "Tag page bars are colour-coded by person or related tag, and the breadcrumb no longer looks mismatched beside the page title."
+     }
+    ],
+    "digests": [],
+    "openPrs": [],
+    "failedRuns": [],
+    "parts": [],
+    "deploys": [],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:180": {
+      "ref": "pr:180",
+      "label": "#180",
+      "href": "https://github.com/AndresL230/trov/pull/180"
+     }
+    }
+   },
+   "expected": true
+  },
+  {
+   "id": "merged-182",
+   "source": "#182 merged (card)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": null,
+    "merged": [
+     {
+      "ref": "pr:182",
+      "title": "To review: only the row you settle slides out, at once",
+      "what": "On a tag's To review tab, adding or dismissing a suggestion now removes only that row, sliding it out and closing the gap immediately while the other rows stay usable. The write runs in the background and the page refreshes without showing a loading state.",
+      "why": "Adding one suggestion turned every row's button to \"Adding…\", was slow, and made the page flash through its loading state, as reported by the owner.",
+      "impact": "Reviewing suggestions on a tag feels fast and stable, since only the row being acted on changes and a refused suggestion returns with a reason. Under reduced motion the row simply disappears."
+     }
+    ],
+    "digests": [],
+    "openPrs": [],
+    "failedRuns": [],
+    "parts": [],
+    "deploys": [],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:182": {
+      "ref": "pr:182",
+      "label": "#182",
+      "href": "https://github.com/AndresL230/trov/pull/182"
+     }
+    }
+   },
+   "expected": true
+  },
+  {
+   "id": "merged-184",
+   "source": "#184 merged (card)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": null,
+    "merged": [
+     {
+      "ref": "pr:184",
+      "title": "To review: a checkmark confirmation when you add or dismiss",
+      "what": "Adding or dismissing one of Sift's suggestions now shows a confirmation toast with a checkmark at the bottom of the screen, reading \"Added latency to “…”\" or \"Dismissed latency for “…”\", as the row slides out. If the action is refused, the row returns along with the error.",
+      "why": "Adding or dismissing a suggestion should be confirmed the way every other write is, based on the owner's review of #182.",
+      "impact": "People get immediate feedback that their add or dismiss action was applied, and they see the row restored if it failed."
+     }
+    ],
+    "digests": [],
+    "openPrs": [],
+    "failedRuns": [],
+    "parts": [],
+    "deploys": [],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:184": {
+      "ref": "pr:184",
+      "label": "#184",
+      "href": "https://github.com/AndresL230/trov/pull/184"
+     }
+    }
+   },
+   "expected": true
+  },
+  {
+   "id": "merged-185",
+   "source": "#185 merged (card)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": null,
+    "merged": [
+     {
+      "ref": "pr:185",
+      "title": "Hosting providers: Vercel, Render, Netlify, Fly.io — backend + Org settings › Hosting + Repo › Hosting (#97–#101)",
+      "what": "Ships a unified hosting provider interface with Vercel (install or token), Render (API key), Netlify (OAuth or token), and Fly.io (read-only token), plus an Org settings > Hosting page for setup, environment parts, and provider connections. The repo dashboard's Usage tab gains a Hosting section showing each part's last deploy, recent deploy history, and traffic or CPU/memory usage. Hosting data is polled on the repo cron, and Vercel deploy webhooks trigger an immediate poll.",
+      "why": "The PR lands work for issues #97 through #101 on main and supersedes #107, adding the screens that previously existed only on a local branch.",
+      "impact": "Teams can connect their hosting providers and see deploy status and resource usage for every part of a repo in one place, while Cloudflare and Railway appear as legacy parts alongside them."
+     }
+    ],
+    "digests": [],
+    "openPrs": [],
+    "failedRuns": [],
+    "parts": [],
+    "deploys": [],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:185": {
+      "ref": "pr:185",
+      "label": "#185",
+      "href": "https://github.com/AndresL230/trov/pull/185"
+     }
+    }
+   },
+   "expected": true
+  },
+  {
+   "id": "quiet-rn-link-185",
+   "source": "the production deploy of the trivial push commit b6fb168f on main (its digest skipped by gate.session)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": {
+     "generatedAt": "2026-10-15T06:50:00Z",
+     "state": {
+      "headline": "Tag review is faster; hosting providers are on their branch.",
+      "shipped": [
+       {
+        "text": "Only the row you settle slides out on a tag's To review tab.",
+        "cites": [
+         {
+          "ref": "pr:182",
+          "label": "#182",
+          "href": "https://github.com/AndresL230/trov/pull/182"
+         }
+        ]
+       },
+       {
+        "text": "Each organization has its own tag list, and Sift tags existing items.",
+        "cites": [
+         {
+          "ref": "pr:179",
+          "label": "#179",
+          "href": "https://github.com/AndresL230/trov/pull/179"
+         }
+        ]
+       }
+      ],
+      "inFlight": [
+       {
+        "text": "Server-side AI screens and pipeline are in review.",
+        "cites": [
+         {
+          "ref": "pr:178",
+          "label": "#178",
+          "href": "https://github.com/AndresL230/trov/pull/178"
+         }
+        ]
+       }
+      ],
+      "attention": [
+       {
+        "text": "CI failed on the hosting branch's test suite.",
+        "cites": [
+         {
+          "ref": "run:38674390889",
+          "label": "CI run 38674390889",
+          "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "merged": [],
+    "digests": [],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     },
+     {
+      "ref": "pr:186",
+      "title": "Repo setups: the Repo screen for every repo setup (handoff #11)",
+      "state": "draft"
+     }
+    ],
+    "failedRuns": [],
+    "parts": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "provider": "cloudflare",
+      "latest": "ready",
+      "poll": "ok"
+     }
+    ],
+    "deploys": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "state": "ready",
+      "branch": "main",
+      "message": "Release notes: link #185"
+     }
+    ],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     },
+     "pr:186": {
+      "ref": "pr:186",
+      "label": "#186",
+      "href": "https://github.com/AndresL230/trov/pull/186"
+     },
+     "deploy:production/web": {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "href": null
+     },
+     "pr:182": {
+      "ref": "pr:182",
+      "label": "#182",
+      "href": "https://github.com/AndresL230/trov/pull/182"
+     },
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     },
+     "run:38674390889": {
+      "ref": "run:38674390889",
+      "label": "CI run 38674390889",
+      "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+     }
+    }
+   },
+   "expected": false
+  },
+  {
+   "id": "quiet-rn-link-184-182",
+   "source": "the production deploy of the trivial push commits 3c173bcf, 1590ca61 on main (its digest skipped by gate.session)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": {
+     "generatedAt": "2026-10-15T06:50:00Z",
+     "state": {
+      "headline": "Tag review is faster; hosting providers are on their branch.",
+      "shipped": [
+       {
+        "text": "Only the row you settle slides out on a tag's To review tab.",
+        "cites": [
+         {
+          "ref": "pr:182",
+          "label": "#182",
+          "href": "https://github.com/AndresL230/trov/pull/182"
+         }
+        ]
+       },
+       {
+        "text": "Each organization has its own tag list, and Sift tags existing items.",
+        "cites": [
+         {
+          "ref": "pr:179",
+          "label": "#179",
+          "href": "https://github.com/AndresL230/trov/pull/179"
+         }
+        ]
+       }
+      ],
+      "inFlight": [
+       {
+        "text": "Server-side AI screens and pipeline are in review.",
+        "cites": [
+         {
+          "ref": "pr:178",
+          "label": "#178",
+          "href": "https://github.com/AndresL230/trov/pull/178"
+         }
+        ]
+       }
+      ],
+      "attention": [
+       {
+        "text": "CI failed on the hosting branch's test suite.",
+        "cites": [
+         {
+          "ref": "run:38674390889",
+          "label": "CI run 38674390889",
+          "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "merged": [],
+    "digests": [],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     },
+     {
+      "ref": "pr:186",
+      "title": "Repo setups: the Repo screen for every repo setup (handoff #11)",
+      "state": "draft"
+     }
+    ],
+    "failedRuns": [],
+    "parts": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "provider": "cloudflare",
+      "latest": "ready",
+      "poll": "ok"
+     }
+    ],
+    "deploys": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "state": "ready",
+      "branch": "main",
+      "message": "Release notes: link #184"
+     }
+    ],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     },
+     "pr:186": {
+      "ref": "pr:186",
+      "label": "#186",
+      "href": "https://github.com/AndresL230/trov/pull/186"
+     },
+     "deploy:production/web": {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "href": null
+     },
+     "pr:182": {
+      "ref": "pr:182",
+      "label": "#182",
+      "href": "https://github.com/AndresL230/trov/pull/182"
+     },
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     },
+     "run:38674390889": {
+      "ref": "run:38674390889",
+      "label": "CI run 38674390889",
+      "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+     }
+    }
+   },
+   "expected": false
+  },
+  {
+   "id": "quiet-rn-quote",
+   "source": "the production deploy of the trivial push commit df6af868 on main (its digest skipped by gate.session)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": {
+     "generatedAt": "2026-10-15T06:50:00Z",
+     "state": {
+      "headline": "Tag review is faster; hosting providers are on their branch.",
+      "shipped": [
+       {
+        "text": "Only the row you settle slides out on a tag's To review tab.",
+        "cites": [
+         {
+          "ref": "pr:182",
+          "label": "#182",
+          "href": "https://github.com/AndresL230/trov/pull/182"
+         }
+        ]
+       },
+       {
+        "text": "Each organization has its own tag list, and Sift tags existing items.",
+        "cites": [
+         {
+          "ref": "pr:179",
+          "label": "#179",
+          "href": "https://github.com/AndresL230/trov/pull/179"
+         }
+        ]
+       }
+      ],
+      "inFlight": [
+       {
+        "text": "Server-side AI screens and pipeline are in review.",
+        "cites": [
+         {
+          "ref": "pr:178",
+          "label": "#178",
+          "href": "https://github.com/AndresL230/trov/pull/178"
+         }
+        ]
+       }
+      ],
+      "attention": [
+       {
+        "text": "CI failed on the hosting branch's test suite.",
+        "cites": [
+         {
+          "ref": "run:38674390889",
+          "label": "CI run 38674390889",
+          "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "merged": [],
+    "digests": [],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     },
+     {
+      "ref": "pr:186",
+      "title": "Repo setups: the Repo screen for every repo setup (handoff #11)",
+      "state": "draft"
+     }
+    ],
+    "failedRuns": [],
+    "parts": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "provider": "cloudflare",
+      "latest": "ready",
+      "poll": "ok"
+     }
+    ],
+    "deploys": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "state": "ready",
+      "branch": "main",
+      "message": "Release notes: fix a quote that broke the file"
+     }
+    ],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     },
+     "pr:186": {
+      "ref": "pr:186",
+      "label": "#186",
+      "href": "https://github.com/AndresL230/trov/pull/186"
+     },
+     "deploy:production/web": {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "href": null
+     },
+     "pr:182": {
+      "ref": "pr:182",
+      "label": "#182",
+      "href": "https://github.com/AndresL230/trov/pull/182"
+     },
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     },
+     "run:38674390889": {
+      "ref": "run:38674390889",
+      "label": "CI run 38674390889",
+      "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+     }
+    }
+   },
+   "expected": false
+  },
+  {
+   "id": "quiet-rn-cite-133-132",
+   "source": "the production deploy of the trivial push commits 9222f07f, d218a96a on main (its digest skipped by gate.session)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": {
+     "generatedAt": "2026-10-15T06:50:00Z",
+     "state": {
+      "headline": "Tag review is faster; hosting providers are on their branch.",
+      "shipped": [
+       {
+        "text": "Only the row you settle slides out on a tag's To review tab.",
+        "cites": [
+         {
+          "ref": "pr:182",
+          "label": "#182",
+          "href": "https://github.com/AndresL230/trov/pull/182"
+         }
+        ]
+       },
+       {
+        "text": "Each organization has its own tag list, and Sift tags existing items.",
+        "cites": [
+         {
+          "ref": "pr:179",
+          "label": "#179",
+          "href": "https://github.com/AndresL230/trov/pull/179"
+         }
+        ]
+       }
+      ],
+      "inFlight": [
+       {
+        "text": "Server-side AI screens and pipeline are in review.",
+        "cites": [
+         {
+          "ref": "pr:178",
+          "label": "#178",
+          "href": "https://github.com/AndresL230/trov/pull/178"
+         }
+        ]
+       }
+      ],
+      "attention": [
+       {
+        "text": "CI failed on the hosting branch's test suite.",
+        "cites": [
+         {
+          "ref": "run:38674390889",
+          "label": "CI run 38674390889",
+          "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "merged": [],
+    "digests": [],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     },
+     {
+      "ref": "pr:186",
+      "title": "Repo setups: the Repo screen for every repo setup (handoff #11)",
+      "state": "draft"
+     }
+    ],
+    "failedRuns": [],
+    "parts": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "provider": "cloudflare",
+      "latest": "ready",
+      "poll": "ok"
+     }
+    ],
+    "deploys": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "state": "ready",
+      "branch": "main",
+      "message": "Release 0.24: cite #133"
+     }
+    ],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     },
+     "pr:186": {
+      "ref": "pr:186",
+      "label": "#186",
+      "href": "https://github.com/AndresL230/trov/pull/186"
+     },
+     "deploy:production/web": {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "href": null
+     },
+     "pr:182": {
+      "ref": "pr:182",
+      "label": "#182",
+      "href": "https://github.com/AndresL230/trov/pull/182"
+     },
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     },
+     "run:38674390889": {
+      "ref": "run:38674390889",
+      "label": "CI run 38674390889",
+      "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+     }
+    }
+   },
+   "expected": false
+  },
+  {
+   "id": "quiet-rn-link-177-176",
+   "source": "the production deploy of the trivial push commits fa687227, 6841e2ea, 8a466249 on main (its digest skipped by gate.session)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": {
+     "generatedAt": "2026-10-15T06:50:00Z",
+     "state": {
+      "headline": "Tag review is faster; hosting providers are on their branch.",
+      "shipped": [
+       {
+        "text": "Only the row you settle slides out on a tag's To review tab.",
+        "cites": [
+         {
+          "ref": "pr:182",
+          "label": "#182",
+          "href": "https://github.com/AndresL230/trov/pull/182"
+         }
+        ]
+       },
+       {
+        "text": "Each organization has its own tag list, and Sift tags existing items.",
+        "cites": [
+         {
+          "ref": "pr:179",
+          "label": "#179",
+          "href": "https://github.com/AndresL230/trov/pull/179"
+         }
+        ]
+       }
+      ],
+      "inFlight": [
+       {
+        "text": "Server-side AI screens and pipeline are in review.",
+        "cites": [
+         {
+          "ref": "pr:178",
+          "label": "#178",
+          "href": "https://github.com/AndresL230/trov/pull/178"
+         }
+        ]
+       }
+      ],
+      "attention": [
+       {
+        "text": "CI failed on the hosting branch's test suite.",
+        "cites": [
+         {
+          "ref": "run:38674390889",
+          "label": "CI run 38674390889",
+          "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "merged": [],
+    "digests": [],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     },
+     {
+      "ref": "pr:186",
+      "title": "Repo setups: the Repo screen for every repo setup (handoff #11)",
+      "state": "draft"
+     }
+    ],
+    "failedRuns": [],
+    "parts": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "provider": "cloudflare",
+      "latest": "ready",
+      "poll": "ok"
+     }
+    ],
+    "deploys": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "state": "ready",
+      "branch": "main",
+      "message": "Release notes: link #177"
+     }
+    ],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     },
+     "pr:186": {
+      "ref": "pr:186",
+      "label": "#186",
+      "href": "https://github.com/AndresL230/trov/pull/186"
+     },
+     "deploy:production/web": {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "href": null
+     },
+     "pr:182": {
+      "ref": "pr:182",
+      "label": "#182",
+      "href": "https://github.com/AndresL230/trov/pull/182"
+     },
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     },
+     "run:38674390889": {
+      "ref": "run:38674390889",
+      "label": "CI run 38674390889",
+      "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+     }
+    }
+   },
+   "expected": false
+  },
+  {
+   "id": "quiet-rn-cite-120-117",
+   "source": "the production deploy of the trivial push commits de770e8f, dd189dba on main (its digest skipped by gate.session)",
+   "input": {
+    "repo": "AndresL230/trov",
+    "readAt": "2026-10-15T09:00:00Z",
+    "since": "2026-10-14T00:00:00Z",
+    "previous": {
+     "generatedAt": "2026-10-15T06:50:00Z",
+     "state": {
+      "headline": "Tag review is faster; hosting providers are on their branch.",
+      "shipped": [
+       {
+        "text": "Only the row you settle slides out on a tag's To review tab.",
+        "cites": [
+         {
+          "ref": "pr:182",
+          "label": "#182",
+          "href": "https://github.com/AndresL230/trov/pull/182"
+         }
+        ]
+       },
+       {
+        "text": "Each organization has its own tag list, and Sift tags existing items.",
+        "cites": [
+         {
+          "ref": "pr:179",
+          "label": "#179",
+          "href": "https://github.com/AndresL230/trov/pull/179"
+         }
+        ]
+       }
+      ],
+      "inFlight": [
+       {
+        "text": "Server-side AI screens and pipeline are in review.",
+        "cites": [
+         {
+          "ref": "pr:178",
+          "label": "#178",
+          "href": "https://github.com/AndresL230/trov/pull/178"
+         }
+        ]
+       }
+      ],
+      "attention": [
+       {
+        "text": "CI failed on the hosting branch's test suite.",
+        "cites": [
+         {
+          "ref": "run:38674390889",
+          "label": "CI run 38674390889",
+          "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "merged": [],
+    "digests": [],
+    "openPrs": [
+     {
+      "ref": "pr:178",
+      "title": "Server-side AI: the screens, the pipeline, Jev, Ask Trov and shorter emails",
+      "state": "in review"
+     },
+     {
+      "ref": "pr:186",
+      "title": "Repo setups: the Repo screen for every repo setup (handoff #11)",
+      "state": "draft"
+     }
+    ],
+    "failedRuns": [],
+    "parts": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "provider": "cloudflare",
+      "latest": "ready",
+      "poll": "ok"
+     }
+    ],
+    "deploys": [
+     {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "state": "ready",
+      "branch": "main",
+      "message": "Release 0.23: cite #120 on its patch line"
+     }
+    ],
+    "eventCount": 1,
+    "redMain": false,
+    "cites": {
+     "pr:178": {
+      "ref": "pr:178",
+      "label": "#178",
+      "href": "https://github.com/AndresL230/trov/pull/178"
+     },
+     "pr:186": {
+      "ref": "pr:186",
+      "label": "#186",
+      "href": "https://github.com/AndresL230/trov/pull/186"
+     },
+     "deploy:production/web": {
+      "ref": "deploy:production/web",
+      "label": "Production web",
+      "href": null
+     },
+     "pr:182": {
+      "ref": "pr:182",
+      "label": "#182",
+      "href": "https://github.com/AndresL230/trov/pull/182"
+     },
+     "pr:179": {
+      "ref": "pr:179",
+      "label": "#179",
+      "href": "https://github.com/AndresL230/trov/pull/179"
+     },
+     "run:38674390889": {
+      "ref": "run:38674390889",
+      "label": "CI run 38674390889",
+      "href": "https://github.com/AndresL230/trov/actions/runs/38674390889"
+     }
+    }
+   },
+   "expected": false
+  }
+ ]
+}

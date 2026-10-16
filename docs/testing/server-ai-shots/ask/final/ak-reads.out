@@ -1,0 +1,717 @@
+
+=== AK-1 state ent
+{
+ "status": 200,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "enabled": true,
+  "eligibility": "no_key",
+  "plan": "enterprise",
+  "modes": [
+   {
+    "id": "fast",
+    "label": "Fast",
+    "hint": "Quick answers from what Trov has already indexed.",
+    "countsAs": 1
+   },
+   {
+    "id": "smart",
+    "label": "Smart",
+    "hint": "Reads the items it finds before answering. The default.",
+    "countsAs": 1
+   },
+   {
+    "id": "thinking",
+    "label": "Thinking",
+    "hint": "Works through harder questions first. Slower. Counts as 5 questions.",
+    "countsAs": 5
+   }
+  ],
+  "defaultMode": "fast",
+  "allowance": {
+   "used": 64,
+   "cap": null,
+   "resetsAt": "2026-11-01",
+   "low": false
+  },
+  "autoAllowed": true,
+  "attach": {
+   "maxFiles": 5,
+   "maxBytes": 10485760,
+   "kinds": [
+    "image",
+    "pdf",
+    "text"
+   ]
+  },
+  "starters": [
+   "What shipped this week?",
+   "Summarize ticket #4",
+   "What's blocking the test-Sprint Hosting work?",
+   "What's waiting on me?"
+  ],
+  "proPerSeat": 300
+ }
+}
+
+=== AK-2 state free
+{
+ "status": 200,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "enabled": true,
+  "eligibility": "no_key",
+  "plan": "free",
+  "modes": [
+   {
+    "id": "smart",
+    "label": "Smart",
+    "hint": "Reads the items it finds before answering. The default.",
+    "countsAs": 1
+   }
+  ],
+  "defaultMode": "smart",
+  "allowance": {
+   "used": 20,
+   "cap": 50,
+   "resetsAt": "2026-11-01",
+   "low": false
+  },
+  "autoAllowed": true,
+  "attach": {
+   "maxFiles": 5,
+   "maxBytes": 10485760,
+   "kinds": [
+    "image",
+    "pdf",
+    "text"
+   ]
+  },
+  "starters": [
+   "What shipped this week?",
+   "Summarize ticket #4",
+   "What's waiting on me?",
+   "What's blocking the hosting work?"
+  ],
+  "proPerSeat": 300
+ }
+}
+
+=== AK-8 peek
+{
+ "status": 200,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "items": [
+   {
+    "ref": "ticket:1",
+    "type": "ticket",
+    "num": 1,
+    "title": "test-Login page is blank on Safari",
+    "status": {
+     "word": "In progress",
+     "mark": "half",
+     "tone": "accent",
+     "tip": "In progress. Someone is working on it."
+    },
+    "owner": "test-member",
+    "updated": "2026-09-26T22:44:07.038Z",
+    "href": "#tickets/1",
+    "extra": {
+     "priority": "high",
+     "assignees": [
+      "test-member"
+     ],
+     "sprint": "test-Sprint Hosting"
+    }
+   },
+   {
+    "ref": "ticket:999",
+    "hidden": true
+   },
+   {
+    "ref": "doc:test-deploy-checklist",
+    "type": "doc",
+    "title": "test-Deploy checklist",
+    "status": {
+     "mark": "dot",
+     "tone": "green",
+     "word": "Live",
+     "tip": "Promoted. This is the version agents read."
+    },
+    "owner": "test-owner",
+    "updated": "2026-10-05T22:44:07.038Z",
+    "href": null,
+    "extra": {
+     "space": "technical",
+     "version": 1,
+     "owner": "test-owner",
+     "excerpt": "Before a Netlify deploy: check the redirect rules, the cache headers and the preview URL.",
+     "staged": false
+    }
+   },
+   {
+    "ref": "artifact:test-test-ent-private-notes",
+    "hidden": true
+   },
+   {
+    "ref": "person:test-admin",
+    "type": "person",
+    "title": "Test Admin",
+    "status": null,
+    "owner": "test-admin",
+    "href": null,
+    "extra": {
+     "handle": "test-admin",
+     "workingOn": []
+    }
+   },
+   {
+    "ref": "foo:1",
+    "hidden": true
+   }
+  ]
+ }
+}
+
+=== AK-11 item ticket:1
+{
+ "status": 200,
+ "view": {
+  "ref": "ticket:1",
+  "type": "ticket",
+  "title": "test-Login page is blank on Safari",
+  "status": {
+   "word": "In progress",
+   "mark": "half",
+   "tone": "accent",
+   "tip": "In progress. Someone is working on it."
+  }
+ },
+ "detailKeys": [
+  "ticket",
+  "artifacts",
+  "prs"
+ ],
+ "detail": "{\"ticket\":{\"id\":1,\"title\":\"test-Login page is blank on Safari\",\"body\":\"The login page renders blank on Safari 18 after the update. Console shows a CSP error.\",\"category\":\"bug\",\"priority\":\"high\",\"status\":\"in_progress\",\"requester\":\"test-owner\",\"parent_id\":null,\"sprint_id\":100101,\"created_at\":\"2026-09-26T22:44:07.038Z\",\"updated_at\":\"2026-09-26T22:44:07.038Z\",\"source\":\"canopy\",\"source_ref\":null,\"sourc"
+}
+
+=== AK-11 item pr:115
+{
+ "status": 200,
+ "view": {
+  "ref": "pr:115",
+  "type": "pr",
+  "title": "test-PR 115: auth change",
+  "status": {
+   "mark": "check",
+   "tone": "accent",
+   "word": "Merged",
+   "tip": "Merged."
+  }
+ },
+ "detailKeys": [
+  "what",
+  "why",
+  "impact",
+  "linkedTo",
+  "files",
+  "filePaths",
+  "filesComplete",
+  "additions",
+  "deletions"
+ ],
+ "detail": "{\"what\":\"test- what PR 115 changed\",\"why\":\"test- why\",\"impact\":\"test- impact\",\"linkedTo\":[],\"files\":null,\"filePaths\":[],\"filesComplete\":null,\"additions\":null,\"deletions\":null}"
+}
+
+=== AK-11 item doc:test-deploy-checklist
+{
+ "status": 200,
+ "view": {
+  "ref": "doc:test-deploy-checklist",
+  "type": "doc",
+  "title": "test-Deploy checklist",
+  "status": {
+   "mark": "dot",
+   "tone": "green",
+   "word": "Live",
+   "tip": "Promoted. This is the version agents read."
+  }
+ },
+ "detailKeys": [
+  "body",
+  "staged",
+  "versions"
+ ],
+ "detail": "{\"body\":\"# Deploy checklist\\n\\nBefore a Netlify deploy: check the redirect rules, the cache headers and the preview URL.\\n\\n## Rollback\\n\\nRedeploy the previous build.\",\"staged\":null,\"versions\":[{\"version\":1,\"status\":\"promoted\",\"created_by\":\"test-owner\",\"created_at\":\"2026-10-05T22:44:07.038Z\"}]}"
+}
+
+=== AK-11 item handoff:1
+{
+ "status": 200,
+ "view": {
+  "ref": "handoff:1",
+  "type": "handoff",
+  "title": "Finish the deploy checklist for the Netlify preview: the redirect rules and the cache headers.",
+  "status": {
+   "mark": "ring",
+   "tone": "blue",
+   "word": "Pending",
+   "tip": "Waiting for a session to claim it. Unclaimed handoffs expire after 7 days."
+  }
+ },
+ "detailKeys": [
+  "handoff"
+ ],
+ "detail": "{\"handoff\":{\"id\":1,\"sender\":\"test-member2\",\"recipient\":\"test-member\",\"status\":\"pending\",\"created_at\":\"2026-10-15T21:14:07.038Z\",\"claimed_at\":null,\"claimed_by\":null,\"claimed_by_session\":null,\"prompt\":null,\"body\":\"Finish the deploy checklist for the Netlify preview: the redirect rules and the cache headers.\",\"context\":{\"repo\":\"test-org/test-ent-repo\",\"branch\":\"main\",\"task\":\"Deploy checklist: Netlify"
+}
+
+=== AK-11 item feed:701005
+{
+ "status": 200,
+ "view": {
+  "ref": "feed:701005",
+  "type": "feed",
+  "title": "Shipped: test- the Netlify redirect fix",
+  "status": null
+ },
+ "detailKeys": [
+  "entry"
+ ],
+ "detail": "{\"entry\":{\"id\":701005,\"author\":\"test-member\",\"summary\":\"Shipped: test- the Netlify redirect fix\",\"body\":\"Redirects now keep the query string.\",\"artifacts\":\"{\\\"prs\\\":[],\\\"commits\\\":[],\\\"issues\\\":[]}\",\"created_at\":\"2026-10-15T21:44:07.038Z\",\"brief\":null,\"org_id\":\"org_test_ent\",\"importance\":\"breaking\",\"tags\":[\"infra\"]}}"
+}
+
+=== AK-11 item person:test-admin
+{
+ "status": 200,
+ "view": {
+  "ref": "person:test-admin",
+  "type": "person",
+  "title": "Test Admin",
+  "status": null
+ },
+ "detailKeys": [
+  "recentPrs"
+ ],
+ "detail": "{\"recentPrs\":[]}"
+}
+
+=== AK-11 item repo:test-org%2Ftest-ent-repo
+{
+ "status": 200,
+ "view": {
+  "ref": "repo:test-org/test-ent-repo",
+  "type": "repo",
+  "title": "test-org/test-ent-repo",
+  "status": null
+ },
+ "detailKeys": [],
+ "detail": "{}"
+}
+
+=== AK-11 item sprint:100103
+{
+ "status": 200,
+ "type": "sprint",
+ "detailKeys": [
+  "sprint"
+ ]
+}
+
+=== AK-12 item ticket:999
+{
+ "status": 404,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "ref": "ticket:999",
+  "hidden": true
+ }
+}
+
+=== AK-12 item private artifact
+{
+ "status": 404,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "ref": "artifact:test-test-ent-private-notes",
+  "hidden": true
+ }
+}
+
+=== AK-13 item %25
+{
+ "status": 404,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "ref": "%",
+  "hidden": true
+ }
+}
+
+=== AK-23 unknown key
+{
+ "status": 400,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "error": "invalid",
+  "issues": [
+   {
+    "code": "unrecognized_keys",
+    "keys": [
+     "nope"
+    ],
+    "path": [],
+    "message": "Unrecognized key: \"nope\""
+   }
+  ],
+  "hint": "The request is not one this route takes; `message` or `issues`, when present, says what. Nothing was changed."
+ }
+}
+
+=== AK-23 no mode
+{
+ "status": 400,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "error": "invalid",
+  "issues": [
+   {
+    "code": "invalid_value",
+    "values": [
+     "fast",
+     "smart",
+     "thinking"
+    ],
+    "path": [
+     "mode"
+    ],
+    "message": "Invalid option: expected one of \"fast\"|\"smart\"|\"thinking\""
+   }
+  ],
+  "hint": "The request is not one this route takes; `message` or `issues`, when present, says what. Nothing was changed."
+ }
+}
+
+=== AK-23 16001
+400
+
+=== AK-23 13 ctx
+400
+
+=== AK-23 6 att
+400
+
+=== AK-23 threadId 0
+400
+
+=== AK-24 member2 thread
+{
+ "status": 404,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "error": "not_found",
+  "hint": "Nothing at this address that you can see. A missing item and one in an organization you are not in answer the same, on purpose. Check the id or slug, or list what exists first."
+ }
+}
+
+=== AK-24 other org thread
+{
+ "status": 404,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "error": "not_found",
+  "hint": "Nothing at this address that you can see. A missing item and one in an organization you are not in answer the same, on purpose. Check the id or slug, or list what exists first."
+ }
+}
+
+=== AK-24 GET member2 thread
+404
+
+=== AK-30 threads
+{
+ "status": 200,
+ "threads": [
+  "801002|pinned|pinned=true|\"test-Pinned: sprint plan\"|2026-09-25T22:44:07.038Z",
+  "801005|today|pinned=false|\"\"|2026-10-15T22:39:07.038Z",
+  "801007|today|pinned=false|\"test-Panel thread about #1\"|2026-10-15T21:59:07.038Z",
+  "801001|today|pinned=false|\"test-What is blocking #1?\"|2026-10-15T21:54:07.038Z",
+  "801003|week|pinned=false|\"test-This week: webhook retries\"|2026-10-12T22:44:07.038Z",
+  "801004|earlier|pinned=false|\"test-<img src=x onerror=alert(1)> Résumé 🚀 日本語\"|2026-09-15T22:44:07.038Z"
+ ]
+}
+
+=== AK-31 q=webhook
+{
+ "status": 200,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "hits": [
+   {
+    "thread": {
+     "id": 801003,
+     "title": "test-This week: webhook retries",
+     "pinned": false,
+     "mode": "smart",
+     "auto": false,
+     "origin": "page",
+     "contextRef": null,
+     "hasDraft": false,
+     "group": "week",
+     "createdAt": "2026-10-12T22:44:07.038Z",
+     "updatedAt": "2026-10-12T22:44:07.038Z"
+    },
+    "snippet": {
+     "text": "Where are webhook retries?",
+     "matches": [
+      [
+       10,
+       17
+      ]
+     ]
+    },
+    "matchCount": 1
+   }
+  ]
+ }
+}
+
+=== AK-32 q="unbalanced
+{
+ "status": 200,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "hits": []
+ }
+}
+
+=== AK-33 thread 801001
+{
+ "status": 200,
+ "keys": [
+  "thread",
+  "messages"
+ ],
+ "messages": [
+  "801101|user",
+  "801102|assistant"
+ ],
+ "cards": []
+}
+
+=== AK-66 settings
+{
+ "status": 200,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "instructions": "test- Answer briefly, in bullet points.",
+  "defaultMode": "fast",
+  "modes": [
+   "fast",
+   "smart",
+   "thinking"
+  ]
+ }
+}
+
+=== AK-18 no_key
+{
+ "status": 200,
+ "type": "text/event-stream; charset=utf-8",
+ "events": [
+  {
+   "event": "error",
+   "data": {
+    "code": "no_key",
+    "message": "Ask Trov is not set up on this deployment."
+   }
+  }
+ ],
+ "ms": 19,
+ "bytes": 93
+}
+
+=== AK-19 search netlify
+{
+ "status": 200,
+ "type": "text/event-stream; charset=utf-8",
+ "events": [
+  {
+   "event": "thread",
+   "data": {
+    "id": 899010,
+    "title": "",
+    "mode": "smart",
+    "auto": false,
+    "origin": "page",
+    "contextRef": null
+   }
+  },
+  {
+   "event": "activity",
+   "data": {
+    "step": 1,
+    "tool": "search",
+    "icon": "search",
+    "label": "Searched Trov for '/search netlify'",
+    "state": "run"
+   }
+  },
+  {
+   "event": "activity",
+   "data": {
+    "step": 1,
+    "state": "done",
+    "results": [],
+    "resultLine": "No results"
+   }
+  },
+  {
+   "event": "text",
+   "data": {
+    "delta": "Nothing in Trov matches “/search netlify”."
+   }
+  },
+  {
+   "event": "thread",
+   "data": {
+    "id": 899010,
+    "title": "Search: /search netlify",
+    "mode": "smart",
+    "auto": false,
+    "origin": "page",
+    "contextRef": null
+   }
+  },
+  {
+   "event": "done",
+   "data": {
+    "messageId": 899120,
+    "questionId": 899119,
+    "cites": [],
+    "tokens": {
+     "in": 0,
+     "out": 0,
+     "cached": 0
+    }
+   }
+  }
+ ],
+ "ms": 45,
+ "bytes": 635
+}
+
+=== AK-20 search x
+{
+ "status": 200,
+ "type": "text/event-stream; charset=utf-8",
+ "events": [
+  {
+   "event": "thread",
+   "data": {
+    "id": 899011,
+    "title": "",
+    "mode": "smart",
+    "auto": false,
+    "origin": "page",
+    "contextRef": null
+   }
+  },
+  {
+   "event": "activity",
+   "data": {
+    "step": 1,
+    "tool": "search",
+    "icon": "search",
+    "label": "Searched Trov for 'x'",
+    "state": "run"
+   }
+  },
+  {
+   "event": "activity",
+   "data": {
+    "step": 1,
+    "state": "done",
+    "results": [],
+    "resultLine": "No results"
+   }
+  },
+  {
+   "event": "text",
+   "data": {
+    "delta": "Nothing in Trov matches “x”."
+   }
+  },
+  {
+   "event": "thread",
+   "data": {
+    "id": 899011,
+    "title": "Search: x",
+    "mode": "smart",
+    "auto": false,
+    "origin": "page",
+    "contextRef": null
+   }
+  },
+  {
+   "event": "done",
+   "data": {
+    "messageId": 899122,
+    "questionId": 899121,
+    "cites": [],
+    "tokens": {
+     "in": 0,
+     "out": 0,
+     "cached": 0
+    }
+   }
+  }
+ ],
+ "ms": 45,
+ "bytes": 593
+}
+
+=== console/failed
+{
+ "console": [
+  "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+  "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+  "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+  "error: Failed to load resource: the server responded with a status of 400 (Bad Request)",
+  "error: Failed to load resource: the server responded with a status of 400 (Bad Request)",
+  "error: Failed to load resource: the server responded with a status of 400 (Bad Request)",
+  "error: Failed to load resource: the server responded with a status of 400 (Bad Request)",
+  "error: Failed to load resource: the server responded with a status of 400 (Bad Request)",
+  "error: Failed to load resource: the server responded with a status of 400 (Bad Request)",
+  "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+  "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+  "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+ ],
+ "failed": [
+  "404 GET /api/o/test-ent/ask/item/ticket:999",
+  "404 GET /api/o/test-ent/ask/item/artifact:test-test-ent-private-notes",
+  "404 GET /api/o/test-ent/ask/item/%25",
+  "400 POST /api/o/test-ent/ask",
+  "400 POST /api/o/test-ent/ask",
+  "400 POST /api/o/test-ent/ask",
+  "400 POST /api/o/test-ent/ask",
+  "400 POST /api/o/test-ent/ask",
+  "400 POST /api/o/test-ent/ask",
+  "404 POST /api/o/test-ent/ask",
+  "404 POST /api/o/test-ent/ask",
+  "404 GET /api/o/test-ent/ask/threads/801006"
+ ],
+ "pageerrors": []
+}

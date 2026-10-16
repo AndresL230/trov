@@ -1,0 +1,552 @@
+{
+  "feed-118": {
+    "state": "Feed entry: Status: server-side AI Phase B landed on PR 178 (router, scopes, the pass, batches) plus the plain-language filter\n\nEvery write now marks what it made stale, and the AI pass has its machinery (debounce, grouping, gates, caching, batches); the plain-language filter works on Tickets, the Feed and Artifacts.\n\nHandoff 10, Phase B, on ai/screens (PR 178): - Router: one event→scope table in , rows via (outside so MCP writers can mark). 19 write paths call it. - The pass ( , ): stage order, Jev 1 item/request, Haiku ≤20/call, 12 Haiku + 60 Jev a tick, gates with rule fallbacks, the cached org prefix, section isolation, 3-attempt clearing, the Batch API ( ). Registry still empty. - Harness counts: 10 pushes + merge → 1 repo call; 25 ticket cards → 25 Jev, 0 Haiku; non-substantive burst → 1 Jev, 0 Haiku. 50 orgs use ~48 subrequests a tick of 900. - Plain-language filter ( 162): , the screen's own filter",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "notable",
+          "confidence": 0.89,
+          "probabilities": {
+            "routine": 0.05,
+            "notable": 0.93,
+            "breaking": 0.02
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 734,
+        "output_tokens": 40
+      }
+    }
+  },
+  "feed-117": {
+    "state": "Feed entry: Repo setups Phase 0: Org settings › Hosting shows one card per provider; old per-environment Railway tokens are leftovers, not connections\n\nFixed the three-Railway-cards bug: one status function for every hosting surface, leftovers shown inside the card with Remove old tokens, and Integrations / Hosting / Environments each own one thing.\n\nHandoff 11, branch feat/repo-setups (PR 186), merge c9441389. Cause of the bug: 0057 left SaplingLearn's per-environment Railway PROJECT tokens in orgsecrets (kind railway, scope = env key) and the connections list drew one card per (provider, scope), so two unread tokens read as Connected while the parts said Not connected. Fix: shared/hosting-status-core.ts is the one (provider, org-wide scope) status read by the card, part rows, checklist, lead, Test this part and the Repo dashboard. A scoped credential of an org-wide provider is a leftover: never a card, never counted, labelled \"Project to",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "notable",
+          "confidence": 0.73,
+          "probabilities": {
+            "routine": 0.16,
+            "notable": 0.82,
+            "breaking": 0.02
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 691,
+        "output_tokens": 40
+      }
+    }
+  },
+  "feed-116": {
+    "state": "Feed entry: andres left a handoff for andres: 12 Build Ask Trov's frontend from the Claude Design prototype, and fit Phase F to it\n\nTask: Build the Ask Trov frontend from Andres's Claude Design prototype and amend the Phase F contract to support it, stacked on PR 178",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "routine",
+          "confidence": 0.77,
+          "probabilities": {
+            "routine": 0.85,
+            "notable": 0.13,
+            "breaking": 0.02
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 522,
+        "output_tokens": 39
+      }
+    }
+  },
+  "feed-115": {
+    "state": "Feed entry: Status: server-side AI Phase A landed on PR 178 (Jev as a provider, Sift under the org switch, aichat allowance, Org settings › AI)\n\nTrov's AI now has one client with two providers, Sift obeys the org's AI switch, and Org settings › AI shows every AI allowance and both providers.\n\nHandoff 10, Phase A, on ai/screens (PR 178): - in maps each kind to or ; is the Jev provider (noul / choice / score, several questions per request). Only it names TypeSafe's URL. - Sift ( ) runs only while and its own switch are on, checked before every request. - allowance: Free/Personal 50, Pro 500 per paid seat ( ), Enterprise unlimited; unlisted. - Migration : and (0057 went to hosting, 185). - Org settings › AI: the switch, four allowances, Ask's Auto switch, what goes to Anthropic and TypeSafe AI. - Also merged: the handoff reading list ( 167) and main with 185. Verified live 2026-10-15:",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "notable",
+          "confidence": 0.95,
+          "probabilities": {
+            "routine": 0,
+            "notable": 0.97,
+            "breaking": 0.03
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 720,
+        "output_tokens": 40
+      }
+    }
+  },
+  "feed-114": {
+    "state": "Feed entry: andres left a handoff for anyone: 11 Build the Repo screen for every repo setup (feat/repo-setups)\n\nTask: Build the modular Repo screen from the Claude Design prototype on top of 185's hosting model, plus the Org settings fixes",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "routine",
+          "confidence": 0.92,
+          "probabilities": {
+            "routine": 0.95,
+            "notable": 0.05,
+            "breaking": 0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 515,
+        "output_tokens": 39
+      }
+    }
+  },
+  "feed-110": {
+    "state": "Feed entry: andres left a handoff for anyone: 7 Land the hosting providers work on main (Vercel, Render, Netlify, Fly.io; issues 97– 101)\n\nTask: Bring feat/hosting-screens (PR 107 backend + hosting screens) up to main, renumber its migration to 0056, open PR(s) ( )",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "routine",
+          "confidence": 0.66,
+          "probabilities": {
+            "routine": 0.77,
+            "notable": 0.14,
+            "breaking": 0.09
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 544,
+        "output_tokens": 39
+      }
+    }
+  },
+  "feed-108": {
+    "state": "Feed entry: Shipped: PR 176 opens — summaries move from Gemini to Claude Haiku 5.5 behind a provider-agnostic client\n\nPull request and issue summaries now go through one model client (Claude Haiku 5.5), the base every later AI feature will use. Same fields and storage, no migration; waits on ANTHROPICAPIKEY and a merge.\n\nWhat: src/ai/client.ts (AiProvider, providerFor(kind) — every kind maps to Claude today; never throws; refusal/maxtokens → null → excerpt) and src/ai/schema.ts (toClaudeSchema strips what structured outputs reject, closes every object). makeGeminiSummarizer → makeClaudeSummarizer; the gemini seam is ai; GEMINIAPIKEY → ANTHROPICAPIKEY; legal names Anthropic for summaries. Why: handoff 6 wave 1 — one client every AI feature goes through, proved on the one existing model call. Impact: src/mcp.ts no longer reaches the model client (progressFromIssueEvent moved to src/tools/progress.ts; test/secret",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "breaking",
+          "confidence": 0.85,
+          "probabilities": {
+            "routine": 0.06,
+            "notable": 0.04,
+            "breaking": 0.9
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 698,
+        "output_tokens": 39
+      }
+    }
+  },
+  "feed-104": {
+    "state": "Feed entry: andres left a handoff for anyone: 3 Performance plan for trov.dev is ready; nothing in it is built yet.",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "routine",
+          "confidence": 1,
+          "probabilities": {
+            "routine": 1,
+            "notable": 0,
+            "breaking": 0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 485,
+        "output_tokens": 39
+      }
+    }
+  },
+  "feed-103": {
+    "state": "Feed entry: andres left a handoff for andres: 2 Trov after release 0.28: what is live, what is built but not shipped, and what waits on a decision\n\nTask: Carry Trov on from release 0.28: ship hosting, then pick up the queued issues ( )",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "routine",
+          "confidence": 0.98,
+          "probabilities": {
+            "routine": 0.99,
+            "notable": 0.01,
+            "breaking": 0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 524,
+        "output_tokens": 39
+      }
+    }
+  },
+  "feed-102": {
+    "state": "Feed entry: andres left a handoff for andres: 1 Update the andresl.dev case study from Canopy to Trov\n\nTask: Rewrite the entry in src/data/projects.ts as Trov ( )",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "routine",
+          "confidence": 0.92,
+          "probabilities": {
+            "routine": 0.95,
+            "notable": 0.04,
+            "breaking": 0.01
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 501,
+        "output_tokens": 39
+      }
+    }
+  },
+  "pr-111": {
+    "state": "Pull request #111: An org's address is / / instead of /o/ /\n\nA merge deploys to production. No migration. What changes - An organization's page is (was ). The screen is still in the hash: . - Old links keep working: is a 301 to , query kept (the browser carries the hash across). The client still reads the old form too. - The app shell is served only for and where the segment is a valid org slug that is not reserved. Nothing deeper is a page. - ( ) now lists every root route of the Worker and every static page ( , , , , …), so an org can never shadow one. walks and fails if a first path segment is missing from the list. - Links Trov writes follow: MCP re",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "notable",
+          "confidence": 0.45,
+          "probabilities": {
+            "routine": 0.01,
+            "notable": 0.63,
+            "breaking": 0.36
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 622,
+        "output_tokens": 40
+      }
+    }
+  },
+  "pr-92": {
+    "state": "Pull request #92: Rename Canopy to Trov, with the new logo\n\nWhat this is The rename and the new logo, split out of the multitenancy branch ( ) so they can ship now. No multitenancy schema or code is in here. - Canopy → Trov across the app, landing page, emails, OAuth consent pages, MCP server name and tool descriptions, README / AGENTS / CLAUDE.md, and → . - Plugin moves to (0.7.0); the skill becomes . - Tokens: new ones mint as / / ; tokens still resolve. Browser keys move to once at boot. - Email: every address is ; migration moves the default sender to and leaves an admin-edited one alone. - Terms and Privacy pages at and , linked from the landing f",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "breaking",
+          "confidence": 0.98,
+          "probabilities": {
+            "routine": 0,
+            "notable": 0.01,
+            "breaking": 0.99
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 622,
+        "output_tokens": 39
+      }
+    }
+  },
+  "pr-112": {
+    "state": "Pull request #112: Plugin 0.7.1: connect to trov.dev/mcp\n\nThe plugin's MCP server still pointed at . That address now redirects to trov.dev, so signing in fails with \"Protected resource does not match expected - : - plugin version 0.7.0 → 0.7.1, homepage - the by-hand command in the skill and README, and an upgrade note in What's new 0.22 No Worker code changes; a merge still deploys. After merging: , reinstall or , then → trov → Authenticate. 🤖 Generated with Claude Code",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "breaking",
+          "confidence": 0.91,
+          "probabilities": {
+            "routine": 0.04,
+            "notable": 0.02,
+            "breaking": 0.94
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 583,
+        "output_tokens": 39
+      }
+    }
+  },
+  "pr-93": {
+    "state": "Pull request #93: Organizations: multi-tenant Trov, superadmin Platform area, org settings and keys\n\nWhat this is Trov becomes multi-tenant. A platform superadmin can add an organization and name its admin; that admin signs in, invites their team, connects a repository and configures their own keys. Nothing is shared between organizations. This branch also contains the rename and logo from 92. Merge 92 first if you want that to ship on its own; this PR then shows only the multitenancy work. Do not merge yet. Merging deploys to production and applies ten migrations, two of which rebuild 20 tables. The owner steps and the open decisions are below and in . What changed - Data layer — every query",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "breaking",
+          "confidence": 0.85,
+          "probabilities": {
+            "routine": 0.05,
+            "notable": 0.05,
+            "breaking": 0.9
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 619,
+        "output_tokens": 39
+      }
+    }
+  },
+  "pr-27": {
+    "state": "Pull request #27: fix(mywork): PR cards are structured-only — drop the legacy prsummaries.summary\n\nProblem On My Work → Previous activity, a PR card rendered a raw \"Summary\" excerpt row whenever the capture-time Workers-AI summary fell back to the excerpt (i.e. all null — as happened to PR 321). A prose \"Summary\" row is the issue/todo surface; PR cards should be What changed / Why / Impact only. Change — remove end-to-end - render ( ): renders / / only. A PR with no structured summary shows a \"No summary recorded\" placeholder — the raw excerpt is never rendered. - DTO/query: drop from ( ) and the PR /mapping ( ). - store ( ): no longer mirrors → ; a PR's excerpt fallback is now a content-le",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "notable",
+          "confidence": 0.38,
+          "probabilities": {
+            "routine": 0.05,
+            "notable": 0.59,
+            "breaking": 0.36
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 624,
+        "output_tokens": 40
+      }
+    }
+  },
+  "pr-179": {
+    "state": "Pull request #179: Tags of your own, sorted by Sift\n\nOne tag list per organization, and Sift (automatic tagging on TypeSafe AI's model) to find the existing items that fit a tag. What it adds - Org settings › Tags: one list per org (six starters, add / rename / merge / retire / restore, a colour and a one-line description each), one even row per tag, edited in place; New tag opens a short form; agents' unknown tags wait at the bottom as Suggested rows with Approve. - Sift: when an admin adds a tag (or presses Find items) it checks the org's items and ADDS the tag at 85% or more, SUGGESTS it at 60–85% (the tag page's To review tab: Add tag / Dism",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "notable",
+          "confidence": 1,
+          "probabilities": {
+            "routine": 0,
+            "notable": 1,
+            "breaking": 0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 635,
+        "output_tokens": 40
+      }
+    }
+  },
+  "pr-136": {
+    "state": "Pull request #136: Embedded checkout: pay for Pro inside Trov (off by default)\n\nBuying Pro can happen on a Trov page, in the same bannered card as the rest of signing up, instead of on Stripe's hosted page. It ships switched off: nothing changes for a buyer until is set. What it adds - : Stripe's embedded form mounted in the first-run card, then on to the existing \"Payment received\" step. The webhook is still the only thing that fulfils a purchase. - One switch, : on only when is a key whose mode matches the secret key's and the API base is real Stripe. Empty (the default) or mismatched means the hosted redirect, exactly as today. - A reload resumes the same session; a pa",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "notable",
+          "confidence": 0.64,
+          "probabilities": {
+            "routine": 0.23,
+            "notable": 0.76,
+            "breaking": 0.01
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 617,
+        "output_tokens": 40
+      }
+    }
+  },
+  "pr-69": {
+    "state": "Pull request #69: Add Handoffs and the Prompt Library\n\nAdds Handoffs (addressed messages from one session to the next) and the Prompt Library (versioned, reusable prompts), end to end: D1 storage, session-cookie routes, MCP tools, Claude Code skills and the SPA screens ported from the Claude Design (project ). The same port brings a tabbed Maintenance (Unplaced / Identity / People) and a Docs › New doc form. Verified: clean, 123 files / 1787 tests green, ok, and the write flows driven in a browser against (send → claim → second claim 409 → expire; save prompt → publish; FTS search; handoff → Promote to doc → staged v1 proposal in Review). Migratio",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "notable",
+          "confidence": 0.89,
+          "probabilities": {
+            "routine": 0,
+            "notable": 0.93,
+            "breaking": 0.07
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 623,
+        "output_tokens": 40
+      }
+    }
+  },
+  "pr-42": {
+    "state": "Pull request #42: feat: Google sign-in and person-centric identity\n\nBrings the Google sign-in / person-centric identity work (PR 41) into . 41 was merged into rather than , so the work has been sitting one branch short of the default branch — and was never deployed. This is that missing hop. What lands - Identity model ( ) — / / ; a person owns N provider identities. and repoint from to ; and are dropped. - Google provider — PKCE authorize, code exchange, JWKS-verified ID token; the shared sign-in fork ( ) plus link mode, so a Google identity can attach to an existing person. - Invites — invite store, admin invite routes, invite email through the existing deli",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "breaking",
+          "confidence": 0.49,
+          "probabilities": {
+            "routine": 0,
+            "notable": 0.34,
+            "breaking": 0.66
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 611,
+        "output_tokens": 39
+      }
+    }
+  },
+  "pr-184": {
+    "state": "Pull request #184: To review: a checkmark confirmation when you add or dismiss\n\nFrom the owner's review of 182: adding or dismissing one of Sift's suggestions should be confirmed the way every other write is. - The app's confirmation toast (the checkmark at the bottom) says \"Added latency to “…”\" or \"Dismissed latency for “…”\" the moment you click, while the row slides out. A refusal still brings the row back with the error. No migration. Typecheck, the tags and release tests pass. 🤖 Generated with Claude Code",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "notable",
+          "confidence": 0.25,
+          "probabilities": {
+            "routine": 0.5,
+            "notable": 0.5,
+            "breaking": 0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 587,
+        "output_tokens": 40
+      }
+    }
+  },
+  "pr-175": {
+    "state": "Pull request #175: Landing Docs mocks: the app's tree chevron instead of ▾ / ▸\n\nWhat - Both landing Docs mocks (the tour and the Explore Docs dialog) drew their tree disclosure with / text glyphs. They now use the app's own tree chevron ( 's ): a small stroked SVG, muted, accent on the open doc, turned 90° when open. One helper, , in . - The tour mock's tree titles stay on one line (ellipsis), and its column's side padding is 8px like the dialog mock's, so \"ADR-0012 · Retry budget\" fits instead of wrapping under its chevron. Verified - clean; , , , , , , , pass. - Looked at both mocks on a signed-out . 🤖 Generated with Claude Code",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "routine",
+          "confidence": 0.86,
+          "probabilities": {
+            "routine": 0.91,
+            "notable": 0.09,
+            "breaking": 0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 631,
+        "output_tokens": 39
+      }
+    }
+  },
+  "pr-130": {
+    "state": "Pull request #130: Emails: fit a phone (the card is fluid, not 680px)\n\nEvery Trov email was 680px wide on a phone. The card was a table; a table is at least as wide as its , so never applied and the client scaled the mail down or scrolled it sideways. - The card is fluid up to 680px ( ): with . Outlook ignores , so it alone gets a fixed-width wrapper through a conditional comment. - Under 520px ( ): the page gutter tightens, the banner's faint mark makes room for the headline, and the headline steps down from 25px to 22px. A client that drops still gets a card that fits. Measured (rendered samples in an iframe) Before After --- --- --- Page width in a 375px viewp",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "notable",
+          "confidence": 0.67,
+          "probabilities": {
+            "routine": 0.22,
+            "notable": 0.78,
+            "breaking": 0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 643,
+        "output_tokens": 40
+      }
+    }
+  },
+  "pr-116": {
+    "state": "Pull request #116: Landing page: the sample address has no /o/\n\nThe landing page's mock browser bar still showed after 111 dropped the prefix. It now reads . Code comments that described the old address are updated too; no behaviour changes. Typecheck and the landing tests pass. A merge deploys. 🤖 Generated with Claude Code",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "routine",
+          "confidence": 0.97,
+          "probabilities": {
+            "routine": 0.98,
+            "notable": 0.02,
+            "breaking": 0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 534,
+        "output_tokens": 39
+      }
+    }
+  },
+  "pr-35": {
+    "state": "Pull request #35: fix(cron): weekly digest trigger uses SUN,MON (Cloudflare weekdays are 1-7)\n\nThe PR 34 deploy uploaded the Worker but failed on the schedules step: Cloudflare's cron weekdays field accepts (1 = Sunday) or – , never , so was rejected. Switched the weekly candidate trigger to in , and CLAUDE.md. Tests pin the string from . Production has already been repaired out of band: migrations 0021/0022 were applied remotely (the merged code needs ; login was failing until then) and the corrected triggers were pushed with . Merging this makes CI agree with what is live. 🤖 Generated with Claude Code",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "routine",
+          "confidence": 0.85,
+          "probabilities": {
+            "routine": 0.9,
+            "notable": 0.02,
+            "breaking": 0.08
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 609,
+        "output_tokens": 39
+      }
+    }
+  },
+  "pr-13": {
+    "state": "Pull request #13: debug(summarize): temporary console.error on workersAiSummarizer failure\n\nDiagnosing a production failure mode: the retroactive resync succeeded for 47/146 PRs (real AI, ~16s/call) then started failing every subsequent call instantly (99 PRs in ~7s) — looks like a rate/subrequest/duration limit under sustained load, but the catch block swallows the actual error with no visibility. Logging it to find out, then removing this once identified.",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "importance": {
+          "type": "choice",
+          "choice": "routine",
+          "confidence": 0.97,
+          "probabilities": {
+            "routine": 0.98,
+            "notable": 0.02,
+            "breaking": 0
+          }
+        }
+      },
+      "usage": {
+        "input_tokens": 578,
+        "output_tokens": 39
+      }
+    }
+  }
+}

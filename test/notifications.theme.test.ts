@@ -52,7 +52,7 @@ describe("email shell — site theming", () => {
 
   it("keeps every section, its deep link and the unsubscribe link", () => {
     const { html, text, subject } = msg();
-    expect(subject).toBe("Trov daily, Sep 13");
+    expect(subject).toBe("Netlify test failing, plus 3 more"); // Phase E: the brief's top Next item
     for (const s of sampleSections()) {
       expect(html).toContain(s.heading);
       expect(html).toContain(`https://trov.example${s.deepLink}`);
@@ -130,16 +130,17 @@ describe("email spacing — 8pt grid with a 4pt sub-grid", () => {
     expect([...steps].sort((a, b) => a - b)).toEqual(steps);
   });
 
-  it("sections breathe at the largest step and section headings sit on a 20px line", () => {
+  it("a block sits at the large step and its heading on a 20px line; the queue lines share one quieter cell", () => {
     const { html } = msg();
-    expect(html).toContain(`padding:${EMAIL_SPACE.xl}px 28px ${EMAIL_SPACE.xl}px 28px;`); // section cell
-    expect(html).toMatch(/font-size:15px;line-height:20px;font-weight:600;[^"]*">My Work</);
+    expect(html).toContain(`data-section="block" style="padding:${EMAIL_SPACE.l}px 28px ${EMAIL_SPACE.l}px 28px;`);
+    expect(html).toMatch(/font-size:15px;line-height:20px;font-weight:600;[^"]*">Your brief</);
+    expect(html).toContain(`data-section="lines" style="padding:${EMAIL_SPACE.m}px 28px ${EMAIL_SPACE.m}px 28px;`);
   });
 
-  it("body rows use a 20px line and a 4pt row gap; group labels get 3× more space above than below", () => {
+  it("body rows use a 20px line and a 4pt row gap; group labels get more space above than below", () => {
     expect(EMAIL_STYLE.body).toContain("line-height:20px");
     const { html } = msg();
-    expect(html).toContain(`padding-top:${EMAIL_SPACE.l}px;padding-bottom:${EMAIL_SPACE.s}px;">MERGED</div>`);
+    expect(html).toContain(`padding-top:${EMAIL_SPACE.l}px;padding-bottom:${EMAIL_SPACE.xs}px;">ALSO</div>`);
   });
 });
 

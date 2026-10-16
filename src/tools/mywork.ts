@@ -1,8 +1,14 @@
 import type { DashboardData, MyWorkPr, MyWorkTodo, MyWorkTicket } from "@shared/dashboard";
 import type { EventRow, PersonRow } from "@shared/rows";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
+import { isFeedImportance } from "@shared/ai-core";
 import { type TenantContext, all, first } from "../data/sql";
 import { memberPerson, memberGithubLogins } from "../auth/persons";
+import { isIssueGone } from "./issue-gone";
+import { AI_STALE_DAYS, AiBriefSchema, aiItemRef, type AiBrief } from "@shared/ai";
+import { latestBrief } from "../data/person-brief";
+import { hiddenFor } from "../data/ai";
+import { aiShown } from "../plans/gate";
 import { ISSUE_GONE_ACTIONS } from "./issue-gone";
 
 // My Work: a D1-only projection over captured GitHub events (Task 6). No live
@@ -35,6 +41,8 @@ export interface PrEventJoinRow extends EventRow {
   s_what: string | null;
   s_why: string | null;
   s_impact: string | null;
+  /** `pr_summaries.importance` (0060), when the read selects it. */
+  s_importance?: string | null;
 }
 
 interface RawPr {
@@ -102,6 +110,8 @@ export function toMyWorkPr(row: PrEventJoinRow): MyWorkPr {
     why: row.s_why,
     impact: row.s_impact,
     baseRef: parsed.pr.base?.ref ?? null,
+    // Sift's rating, only when there is one: unknown is absent, never a guessed `routine`.
+    ...(isFeedImportance(row.s_importance) ? { importance: row.s_importance } : {}),
   };
 }
 
@@ -266,7 +276,60 @@ export async function countAssignedTickets(ctx: TenantContext, handle: string, s
  * Any D1 failure degrades the whole projection to empty with degraded:true
  * rather than throwing.
  */
-export async function getMyWork(ctx: TenantContext, handle: string): Promise<MyWork> {
+export async function getMyWork(ctx: TenantContext, handle: string, now: Date = new Date(), opts: { emptyWhenNone?: boolean } = {}): Promise<MyWork> {
+  const work = await myWorkProjection(ctx, handle);
+  if (work.degraded || work.person === null) return work;
+  // The brief is read on its own: a failed read leaves it out and never degrades the rest.
+  const brief = await storedBrief(ctx, handle, now, opts).catch(() => null);
+  return brief ? { ...work, brief } : work;
+}
+
+/** What the brief's stored content must look like (`person_brief.brief_json`) — the DTO without its meta. */
+const BriefContentSchema = AiBriefSchema.pick({ now: true, recently: true, next: true });
+
+/**
+ * THE read of a person's brief (0063_person_brief): the NEWEST row the AI pass stored for them — what My Work
+ * (`GET /me/dashboard`), MCP `get_my_work` and, from Phase E, the e-mail show. D1 only: no model, nothing from
+ * src/ai/ (this module is reachable from src/mcp.ts). Null — the field is ABSENT — when THE read rule hides it
+ * (`aiShown`: the org's AI switch off, or no Anthropic key on the deployment), nothing was stored, the newest is
+ * older than `AI_STALE_DAYS` (Q25: hidden, never shown as current), the stored row fails its schema, or this person pressed "Wrong?" on that very version
+ * (`aiItemRef.brief(generatedAt)`; the next version shows again). When the org's `ai_runs` are spent the LAST
+ * brief is shown as `capped`, with the day it resumes. A row the pass stored with no model is `empty`.
+ * `emptyWhenNone` (My Work's screen read — Q24; the key is the read rule's): someone with NO brief yet, or only a
+ * stale one, gets `empty` too (`capped` once the runs are spent), so the tile says when Trov writes it; MCP and the
+ * e-mail still read null.
+ */
+export async function storedBrief(ctx: TenantContext, handle: string, now: Date = new Date(), opts: { emptyWhenNone?: boolean } = {}): Promise<AiBrief | null> {
+  const [org, row] = await Promise.all([aiShown(ctx, now), latestBrief(ctx, handle)]);
+  if (!org.shown) return null;
+  // No brief to show — none written, or the newest is stale (Q25: read as missing): the screen's read says `empty`
+  // (`capped` once the runs are spent) so the tile says when Trov writes it (Q24); MCP and the e-mail read null.
+  const none = (): AiBrief | null => !opts.emptyWhenNone ? null : {
+    state: org.capped ? "capped" : "empty", generatedAt: null, model: null, resumesOn: org.resumesOn, upgrade: org.upgrade,
+    now: null, recently: null, next: { items: [] },
+  };
+  if (!row) return none();
+  let content: unknown;
+  try { content = JSON.parse(row.brief_json); } catch { return null; }
+  const parsed = BriefContentSchema.safeParse(content);
+  if (!parsed.success) return null;
+  // Older than `AI_STALE_DAYS` is NOT current (owner ruling Q25: a stale "Now" is a wrong claim): read as none — so
+  // the e-mail, too, falls back to the assigned items. An instant that does not parse is never shown either.
+  const age = now.getTime() - Date.parse(row.generated_at);
+  if (!(age <= AI_STALE_DAYS * 86_400_000)) return none();
+  const written = row.model !== null;
+  if (written && (await hiddenFor(ctx, handle, "brief")).has(aiItemRef.brief(row.generated_at))) return null;
+  return {
+    state: org.capped ? "capped" : written ? "ready" : "empty",
+    generatedAt: written ? row.generated_at : null,
+    model: row.model,
+    resumesOn: org.resumesOn,
+    upgrade: org.upgrade,
+    ...parsed.data,
+  };
+}
+
+async function myWorkProjection(ctx: TenantContext, handle: string): Promise<MyWork> {
   try {
     const me = await memberPerson(ctx, handle);
     if (!me) return EMPTY(false);
@@ -284,7 +347,7 @@ export async function getMyWork(ctx: TenantContext, handle: string): Promise<MyW
 
     const prRows = await all<PrEventJoinRow>(
       ctx,
-      `SELECT e.*, s.title AS s_title, s.what AS s_what, s.why AS s_why, s.impact AS s_impact
+      `SELECT e.*, s.title AS s_title, s.what AS s_what, s.why AS s_why, s.impact AS s_impact, s.importance AS s_importance
          FROM events e
          LEFT JOIN pr_summaries s ON s.semantic_key = e.semantic_key AND s.org_id = ?
         WHERE e.org_id = ?

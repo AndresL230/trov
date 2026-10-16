@@ -30,7 +30,7 @@ import type { QuickSearchResult } from "@shared/quick-search";
 // Person profiles (0036): the DTOs and caps are one zod-free contract with the Worker.
 import type { PersonSummary, PersonProfile } from "@shared/people";
 import type {
-  HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody,
+  HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody, HandoffClaimResult,
 } from "@shared/handoffs";
 
 export class Unauthorized extends Error {
@@ -144,6 +144,9 @@ async function call(path: string, init: RequestInit = {}): Promise<Response> {
   if (res.status === 404 && url.startsWith("/api/o/") && !url.endsWith("/me")) probeOrg();
   return res;
 }
+/** THE sender, for a module that reads the response itself (Ask's SSE stream, web/src/ask-api.ts): the same
+ *  prefix, cookie, 401 and org-gate handling as every other call. */
+export const apiFetch = (path: string, init: RequestInit = {}): Promise<Response> => call(path, init);
 /** A refused call's error code: the body's `error`, else the status. */
 async function refusal(res: Response): Promise<ApiError> {
   let msg = String(res.status);
@@ -176,14 +179,19 @@ const postJson = <T>(path: string, body: unknown = {}): Promise<T> => writeJson<
 const putJson = <T>(path: string, body: unknown = {}): Promise<T> => writeJson<T>("PUT", path, body);
 
 // ── reads ────────────────────────────────────────────────────────────────────
-export interface FeedQuery { author?: string; tags?: string[]; limit?: number; }
-export function getFeed(q: FeedQuery = {}): Promise<FeedRow[]> {
+/** `about`: with `author`, also the digests Trov wrote about that person (My Work › Your sessions, Q30). */
+export interface FeedQuery { author?: string; about?: boolean; tags?: string[]; limit?: number; }
+export function getFeed(q: FeedQuery = {}): Promise<FeedRow[]> { return getFeedPage(q).then((r) => r.feed); }
+/** The Feed's page with `aiOff`: true when it holds an entry Trov wrote but Trov writes no new ones (the org's switch
+ *  off, or no key) — the one-time "Trov now writes entries…" note is then not said (Q29). */
+export function getFeedPage(q: FeedQuery = {}): Promise<{ feed: FeedRow[]; aiOff: boolean }> {
   const p = new URLSearchParams();
   if (q.author) p.set("author", q.author);
+  if (q.author && q.about) p.set("about", "1");
   if (q.tags && q.tags.length) p.set("tags", q.tags.join(","));
   if (q.limit) p.set("limit", String(q.limit));
   const qs = p.toString();
-  return getJson<{ feed: FeedRow[] }>(`/feed${qs ? `?${qs}` : ""}`).then((r) => r.feed);
+  return getJson<{ feed: FeedRow[]; aiOff?: boolean }>(`/feed${qs ? `?${qs}` : ""}`).then((r) => ({ feed: r.feed, aiOff: r.aiOff === true }));
 }
 
 /** The Feed aside's "This week" (`GET /feed/stats`): the last `days` of the WHOLE
@@ -267,6 +275,10 @@ export interface PlanView {
   updated_at: string | null;
   updated_by: string | null;
   sprints: SprintView[];
+  /** What Trov wrote about where the work went against the plan; absent with AI off or nothing written. */
+  drift?: AiPlanDrift;
+  /** An admin's open Roadmap suggestions (a sprint draft, a narrative); absent for everyone else. */
+  suggestions?: AiSuggestion[];
 }
 export function getRoadmap(): Promise<PlanView> {
   return getJson<PlanView>("/roadmap");
@@ -276,7 +288,8 @@ export function listNeedsTriage(): Promise<NeedsTriageRow[]> {
   return getJson<{ items: NeedsTriageRow[] }>("/needs-triage").then((r) => r.items);
 }
 export function listAdrs(status?: string): Promise<AdrRow[]> {
-  return getJson<{ adrs: AdrRow[] }>(`/adrs${status ? `?status=${encodeURIComponent(status)}` : ""}`).then((r) => r.adrs);
+  return getJson<{ adrs: AdrRow[]; askFlags?: AskFlag[] }>(`/adrs${status ? `?status=${encodeURIComponent(status)}` : ""}`)
+    .then((r) => attachAskFlags(r.adrs, r.askFlags, (a) => `decision:${a.id}`));
 }
 export interface MeIdentity { provider: "github" | "google"; label: string; linked_at: string }
 /** `avatar_url` is already resolved (`avatarSrc`: an uploaded photo, else the provider's
@@ -337,6 +350,10 @@ import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView,
 import type * as IntT from "@shared/integrations";
 import type { BillingCheckoutRequest, BillingCheckoutResponse, BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
 import type * as GhT from "@shared/github-app";
+import type { AskFlag } from "@shared/ai-ask-core";
+import { AI_ROUTES, type AiAcceptBody, type AiFeedbackBody, type AiSettings, type AiSettingsPut, type AiPlanDrift, type AiSuggestion } from "@shared/ai-core";
+import { AI_FILTER_ROUTE, type AiFilterAnswer, type AiFilterBody } from "@shared/ai-filter-core";
+import { ASK_ROUTES, type AskSettings, type AskSettingsPut, type AskState } from "@shared/ai-ask-core";
 import type * as TagT from "@shared/tags-core";
 /** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
  *  `detail` the server's sentence, `field` the input it is about. */
@@ -408,6 +425,31 @@ export function getBillingStatus(sessionId: string): Promise<BillingStatusRespon
 /** What can be bought, and the caller's own paid organizations (public: the pricing page asks it signed out too). */
 export function getBillingConfig(): Promise<BillingConfigResponse> { return orgSend("GET", "/api/billing/config"); }
 export function getOrgSettings(slug: string): Promise<{ org: OrgT.OrgSettings; can_edit: boolean }> { return orgSend("GET", orgPath(slug, "/settings")); }
+
+// ── Trov's AI (shared/ai-core.ts `AI_ROUTES`; cookie only, never MCP) ─────────
+/** Org settings › AI: the switches, this month's use of each AI allowance, what is sent to whom (any member). */
+export function getAiSettings(slug: string): Promise<AiSettings> { return orgSend("GET", orgPath(slug, AI_ROUTES.settings)); }
+/** Flip the AI switch and/or Ask Trov's Auto switch (admin). Answers the settings as they now stand. */
+export function putAiSettings(slug: string, body: AiSettingsPut): Promise<AiSettings> { return orgSend("PUT", orgPath(slug, AI_ROUTES.settings), body); }
+/** Accept a suggestion; `value` replaces the suggested one (a renamed theme: `{ name }`). A kind with no
+ *  accept handler yet answers 409 `not_available` (`OrgApiError.message`), which the screen says. */
+export function acceptAiSuggestion(id: number, value?: unknown): Promise<unknown> {
+  const body: AiAcceptBody = value === undefined ? {} : { value };
+  return orgSend("POST", AI_ROUTES.accept(id), body);
+}
+export function dismissAiSuggestion(id: number): Promise<unknown> { return orgSend("POST", AI_ROUTES.dismiss(id), {}); }
+/** "Wrong?": hides the item for this person from now on; never edits the record. */
+export function sendAiFeedback(body: AiFeedbackBody): Promise<unknown> { return orgSend("POST", AI_ROUTES.feedback, body); }
+/** The plain-language filter (#162): a sentence → the screen's own filter fields, checked by the server. A refusal
+ *  is an `OrgApiError` whose `detail` is the sentence to show (`unreadable`, `off`, `no_key`), or the house 402 / 429. */
+export function runAiFilter(slug: string, body: AiFilterBody): Promise<AiFilterAnswer> { return orgSend("POST", orgPath(slug, AI_FILTER_ROUTE), body); }
+// ── Ask Trov: Settings › Trov (shared/ai-ask-core.ts `ASK_ROUTES`; cookie only) ──
+/** The composer's standing: the org's switch, the plan and the modes it offers (with their words). */
+export function getAskState(slug: string): Promise<AskState> { return orgSend("GET", orgPath(slug, ASK_ROUTES.state)); }
+/** My instructions and default mode in this org. */
+export function getAskSettings(slug: string): Promise<AskSettings> { return orgSend("GET", orgPath(slug, ASK_ROUTES.settings)); }
+/** Save them. A default mode the plan does not offer is refused (403 `mode_unavailable`). */
+export function putAskSettings(slug: string, body: AskSettingsPut): Promise<AskSettings> { return orgSend("PUT", orgPath(slug, ASK_ROUTES.settings), body); }
 export function putOrgSettings(slug: string, name: string): Promise<{ ok: true; org: OrgT.OrgSettings }> { return orgSend("PUT", orgPath(slug, "/settings"), { name }); }
 /** Upload the org's image (multipart `file`; the caller crops and downsizes it first — avatar.ts). Admin+.
  *  Refusals: `invalid_image` (400), `too_large` (413), `rate_limited` (429). Answers with the image that shows now. */
@@ -646,9 +688,23 @@ export interface StagedProposal {
   created_at: string;
   stagedBody: string;
   promotedBody: string;
+  /** Trov's open `review.risk` for it (src/ai/attach.ts); absent when there is none. */
+  ai?: AiSuggestion[];
+  /** "Flagged in Ask" on it: each reason and how often (never the thread). Absent when nobody flagged it. */
+  askFlags?: AskFlag[];
+}
+/** Review's reads carry the org's "Flagged in Ask" counts beside the rows (`askFlags`, handoff #12 § 2.14): give each
+ *  row its own (a proposal is `doc:<slug>`, a decision `decision:<id>`). A row with none is left as it was. */
+export function attachAskFlags<T extends object>(rows: T[], flags: AskFlag[] | undefined, refOf: (r: T) => string): (T & { askFlags?: AskFlag[] })[] {
+  if (!flags?.length) return rows;
+  return rows.map((r) => {
+    const mine = flags.filter((f) => f.ref === refOf(r));
+    return mine.length ? { ...r, askFlags: mine } : r;
+  });
 }
 export function listStagedProposals(): Promise<StagedProposal[]> {
-  return getJson<{ proposals: StagedProposal[] }>("/proposals").then((r) => r.proposals);
+  return getJson<{ proposals: StagedProposal[]; askFlags?: AskFlag[] }>("/proposals")
+    .then((r) => attachAskFlags(r.proposals, r.askFlags, (p) => `doc:${p.slug}`));
 }
 
 // Org settings › Members · Unmatched logins: pending unknown-login tasks, each with a small LIVE
@@ -727,7 +783,7 @@ export function restoreIdentity(login: string): Promise<{ ok: true; login: strin
 export function getNotificationPrefs(): Promise<PrefsView> {
   return getJson<PrefsView>("/api/notifications/prefs");
 }
-export interface PrefsWrite { email?: string; unsubscribed?: boolean; prefs?: Record<string, Cadence | null>; }
+export interface PrefsWrite { email?: string; unsubscribed?: boolean; prefs?: Record<string, Cadence | null>; onlyWhenNeeded?: boolean; }
 export function putNotificationPrefs(body: PrefsWrite): Promise<PrefsView> {
   return putJson<PrefsView>("/api/notifications/prefs", body);
 }
@@ -974,8 +1030,10 @@ export async function createHandoff(body: HandoffCreate): Promise<HandoffView> {
   return (await postJson<{ ok: true; handoff: HandoffView }>("/api/handoffs", body)).handoff;
 }
 /** 409 `{ error: "handoff is <status>" }` when someone got there first. */
-export async function claimHandoff(id: number, session: string): Promise<HandoffView> {
-  return (await postJson<{ ok: true; handoff: HandoffView }>(`/api/handoffs/${id}/claim`, { session })).handoff;
+/** Claim, and the claim's "Read these first (not complete)" list (#167) — `null` when it couldn't be built. */
+export async function claimHandoff(id: number, session: string): Promise<HandoffClaimResult> {
+  const r = await postJson<HandoffClaimResult>(`/api/handoffs/${id}/claim`, { session });
+  return { ...r, reading_list: Array.isArray(r.reading_list) ? r.reading_list : null };
 }
 export async function expireHandoff(id: number): Promise<HandoffView> {
   return (await postJson<{ ok: true; handoff: HandoffView }>(`/api/handoffs/${id}/expire`)).handoff;
@@ -1165,7 +1223,7 @@ export function resolveTagSuggestion(name: string, body: { resolution: TagT.Sugg
   return orgSend("POST", `/api/tags/suggestions/${encodeURIComponent(name)}/resolve`, body);
 }
 /** Look for existing items that fit a tag (admin; a model run in the background). `status` says whether it started. */
-export function findTagItems(name: string): Promise<{ ok: true; status: "started" | "off" | "no_key" | "busy" | "capped" | "not_found" }> { return orgSend("POST", tagPath(name, "/find-items")); }
+export function findTagItems(name: string): Promise<{ ok: true; status: "started" | "off" | "org_off" | "no_key" | "busy" | "capped" | "not_found" }> { return orgSend("POST", tagPath(name, "/find-items")); }
 /** The latest run for a tag, live (admin): what the Tags tab polls while it goes. */
 export function getTagRun(name: string): Promise<TagT.TagRunDTO | null> { return orgSend<{ run: TagT.TagRunDTO | null }>("GET", tagPath(name, "/run")).then((r) => r.run); }
 /** Undo a tag's latest run (admin): take the tag off exactly the items that run tagged. */

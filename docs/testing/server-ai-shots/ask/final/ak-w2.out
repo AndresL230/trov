@@ -1,0 +1,95 @@
+
+=== AK-48 args nope
+{
+ "status": 400,
+ "body": {
+  "error": "invalid",
+  "message": "not editable: nope",
+  "hint": "The request is not one this route takes; `message` or `issues`, when present, says what. Nothing was changed."
+ }
+}
+
+=== AK-48 state after nope
+id	state
+801203	proposed
+801204	proposed
+
+=== AK-48 edited
+{
+ "status": 200,
+ "results": [
+  {
+   "id": 801203,
+   "state": "confirmed",
+   "ref": "ticket:15",
+   "title": "test-Edited"
+  }
+ ]
+}
+
+=== AK-29 replace events
+[
+ "thread",
+ "activity",
+ "activity",
+ "text",
+ "block",
+ "done"
+]
+
+=== AK-29 messages
+id	role	replaced
+801101	user	1
+801102	assistant	1
+899127	user	0
+899128	assistant	0
+
+=== AK-29 cards
+id	state
+801201	expired
+801202	expired
+801203	confirmed
+801204	expired
+801205	expired
+801206	expired
+801207	expired
+801208	expired
+801209	confirmed
+801210	cancelled
+801211	auto
+801212	auto
+801214	expired
+
+=== AK-29 FTS 'blocking' (old question text) hits
+{
+ "hits": [
+  {
+   "thread": {
+    "id": 801001,
+    "title": "test-What is blocking #1?",
+    "pinned": false,
+    "mode": "smart",
+    "auto": false,
+    "origin": "page",
+    "contextRef": null,
+    "hasDraft": false,
+    "group": "today",
+    "createdAt": "2026-10-15T21:55:18.265Z",
+    "updatedAt": "2026-10-15T22:45:50.891Z"
+   },
+   "snippet": null,
+   "matchCount": 0
+  }
+ ]
+}
+
+=== console/failed
+{
+ "console": [
+  "error: Failed to load resource: the server responded with a status of 400 (Bad Request)"
+ ],
+ "failed": [
+  "400 POST /api/o/test-ent/ask/actions/801203/confirm"
+ ],
+ "pageerrors": []
+}

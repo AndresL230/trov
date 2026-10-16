@@ -1,0 +1,583 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`field absent — each screen renders exactly what it did before Phase C > Review (no row carries \`ai\`) 1`] = `
+"<div data-cnpy-theme="light" data-screen="review" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+    <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
+    <aside class="cnpy-aside" data-screen-label="Sidebar">
+    <div class="cnpy-logo">
+      <button data-act="goSite" aria-label="About Trov" data-tip="About Trov" class="cnpy-logo-b"><svg width="24" height="24" viewBox="0 0 100 100" aria-hidden="true" style="flex:none"><path fill="var(--mark,#616ACB)" d="M0 83.72H46.51V46.51H0ZM46.51 46.51H83.72V0H46.51ZM83.72 46.51V83.72H46.51V100H100V46.51Z"></path></svg><span class="cnpy-lbl cnpy-logo-t">Trov</span></button>
+    </div>
+    <div class="cnpy-orgslot"><div class="cnpy-orgsw" data-tip="SaplingLearn: switch organization">
+    <button type="button" data-act="orgsMenu" data-field="orgsMenu" data-orgsw-trigger class="cnpy-orgsw-b" style="border-radius:8px" aria-haspopup="dialog" aria-expanded="false" aria-controls="orgs-menu" aria-label="SaplingLearn: switch organization">
+      <span class="cnpy-orgtile" aria-hidden="true" style="position:relative;overflow:hidden;width:24px;height:24px;font-size:12px;border-radius:7px">S</span>
+      <span class="cnpy-lbl cnpy-orgsw-n">SaplingLearn</span>
+      <span class="cnpy-lbl cnpy-badge" data-n="0" title="Nothing waiting">0</span><span class="cnpy-dot" data-n="0"></span>
+      <svg class="cnpy-lbl" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;color:var(--fg-40)"><path d="m7 9 5-5 5 5"></path><path d="m7 15 5 5 5-5"></path></svg>
+    </button>
+  </div></div>
+    <nav class="cnpy-navlist" aria-label="Primary">
+      <div class="cnpy-searchwrap" data-tip="Search">
+        <div data-act="sideSearchFocus" class="cnpy-search">
+          <svg class="cnpy-nav-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+          <input data-act="sideSearch" data-field="sideSearch" class="cnpy-lbl cnpy-search-in" placeholder="Search Trov" aria-label="Search Trov" autocomplete="off" spellcheck="false" tabindex="0" />
+          <kbd class="cnpy-lbl cnpy-kbd">Ctrl K</kbd>
+        </div>
+      </div>
+      <div class="cnpy-sec is-first"><span class="cnpy-lbl">Workspace</span></div>
+      <div class="cnpy-navrow n-mywork" data-tip="My Work">
+      <button data-act="goMyWork" class="cnpy-nav-i" aria-label="My Work"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 12 12 3l9 9"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path></svg><span class="cnpy-lbl cnpy-nav-t">My Work</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-ask" data-tip="Trov">
+      <button data-act="goAsk" class="cnpy-nav-i" aria-label="Trov"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="2.6"></circle><circle cx="5" cy="5.5" r="1.9"></circle><circle cx="19" cy="6.5" r="1.9"></circle><circle cx="17.5" cy="19" r="1.9"></circle><circle cx="5.5" cy="17.5" r="1.9"></circle><path d="M10 10.2 6.4 6.9M14.2 10.7l3.3-2.7M13.6 14.1l2.7 3.3M10 13.8l-3.1 2.4"></path></svg><span class="cnpy-lbl cnpy-nav-t">Trov</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-tickets" data-tip="Tickets">
+      <button data-act="goTickets" class="cnpy-nav-i" aria-label="Tickets"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path></svg><span class="cnpy-lbl cnpy-nav-t">Tickets</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-roadmap" data-tip="Roadmap">
+      <button data-act="goRoadmap" class="cnpy-nav-i" aria-label="Roadmap"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg><span class="cnpy-lbl cnpy-nav-t">Roadmap</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-handoffs" data-tip="Handoffs">
+      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Handoffs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Handoffs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-sec"><span class="cnpy-lbl">Monitor</span></div>
+      <div class="cnpy-navrow n-repo" data-tip="Repo">
+      <button data-act="goRepo" class="cnpy-nav-i" aria-label="Repo"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span class="cnpy-lbl cnpy-nav-t">Repo</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-feed" data-tip="Feed">
+      <button data-act="goFeed" class="cnpy-nav-i" aria-label="Feed"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path></svg><span class="cnpy-lbl cnpy-nav-t">Feed</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-sec"><span class="cnpy-lbl">Knowledge</span></div>
+      <div class="cnpy-navrow n-docs" data-tip="Docs">
+      <button data-act="goDocs" class="cnpy-nav-i" aria-label="Docs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg><span class="cnpy-lbl cnpy-nav-t">Docs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button><button data-act="navToggle" data-arg="docs" class="cnpy-chev" aria-label="Show Docs pages" aria-expanded="false" tabindex="0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
+    </div><div class="cnpy-sub" data-open="0"><div class="cnpy-sub-clip"><div class="cnpy-sub-list"><button data-act="navSub" data-arg="docs:technical" class="cnpy-sub-i" tabindex="-1">Technical</button><button data-act="navSub" data-arg="docs:product" class="cnpy-sub-i" tabindex="-1">Product</button></div></div></div>
+      <div class="cnpy-navrow n-artifacts" data-tip="Artifacts">
+      <button data-act="goArtifacts" class="cnpy-nav-i" aria-label="Artifacts"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path></svg><span class="cnpy-lbl cnpy-nav-t">Artifacts</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-prompts" data-tip="Prompt Library">
+      <button data-act="goPrompts" class="cnpy-nav-i" aria-label="Prompt Library"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"></path><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"></path></svg><span class="cnpy-lbl cnpy-nav-t">Prompt Library</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-sec"><span class="cnpy-lbl">Triage</span></div>
+      <div class="cnpy-navrow n-review is-active" data-tip="Review">
+      <button data-act="goReview" class="cnpy-nav-i" aria-label="Review" aria-current="page"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m9 12.5 2 2 4-5"></path></svg><span class="cnpy-lbl cnpy-nav-t">Review</span><span class="cnpy-lbl cnpy-badge" data-n="2">2</span><span class="cnpy-dot" data-n="2"></span></button>
+    </div>
+      <div class="cnpy-navrow n-maintenance" data-tip="Unplaced">
+      <button data-act="goMaintenance" class="cnpy-nav-i" aria-label="Unplaced"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Unplaced</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-sec"><span class="cnpy-lbl">Help</span></div>
+      <div class="cnpy-navrow n-guide" data-tip="Guide">
+      <button data-act="goGuide" class="cnpy-nav-i" aria-label="Guide"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 4h7a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H2z"></path><path d="M22 4h-7a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H22z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Guide</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-releases" data-tip="What&#39;s new">
+      <button data-act="goReleases" class="cnpy-nav-i" aria-label="What&#39;s new"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path></svg><span class="cnpy-lbl cnpy-nav-t">What&#39;s new</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+    </nav>
+    <div class="cnpy-collapse" data-tip="Expand sidebar">
+      <button data-act="toggleCollapse" class="cnpy-nav-i" aria-label="Collapse sidebar" aria-expanded="true"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="M14.5 9.5 12 12l2.5 2.5"></path></svg><span class="cnpy-lbl cnpy-nav-t">Collapse</span></button>
+    </div>
+    <div class="cnpy-ghost cnpy-lbl">agents produce · humans confirm</div>
+    <div class="cnpy-foot" data-tip="Settings">
+      <button data-act="goSettings" aria-label="Settings" class="cnpy-chip">
+        <div class="cnpy-av" title="Alice" style="--c:var(--p-moss);position:relative;width:28px;height:28px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:10px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AL</div>
+        <div class="cnpy-lbl cnpy-chip-t"><div class="cnpy-chip-n">alice</div><div class="cnpy-chip-h"><span style="font-family:var(--sans);font-size:11px;font-weight:500;color:var(--p-moss)">@alice</span></div></div>
+        <svg class="cnpy-lbl" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="flex:none" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      </button>
+    </div>
+    <div class="cnpy-tip" role="tooltip" data-keep></div>
+  </aside>
+    <main data-morph="review" style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
+      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
+    <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
+      <button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button><h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0">Review</h1>
+      
+    </div>
+    <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
+      <div data-sync-slot="ctl" class="sync-slot"></div><button data-act="supportOpen" data-arg="bug" data-support-trigger="bug" title="Report a bug" aria-label="Report a bug" aria-haspopup="dialog" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="7" width="8" height="12" rx="4"></rect><path d="M12 12v7"></path><path d="M9.5 7.5a2.5 2.5 0 0 1 5 0"></path><path d="M4 13h4M16 13h4M5 7l3.2 2.6M19 7l-3.2 2.6M5 20l3.2-2.8M19 20l-3.2-2.8"></path></svg>
+    </button><button data-act="cycleTheme" title="Toggle theme" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"></path></svg>
+    </button>
+    </div>
+  </header>
+      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div class="cnpy-rv" data-pane="list" style="display:flex;height:100%;min-width:0">
+    <div class="cnpy-rv-list" style="width:376px;flex:none;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
+      <div style="padding:16px 20px 0">
+        <div style="font-size:12.5px;color:var(--fg-55)">Agent-produced changes waiting for a verdict.</div>
+        <div style="margin:12px 0 12px"><div class="cnpy-seg cnpy-seg--sm" data-seg="review-filter" data-morph-key="seg:review-filter" role="group" aria-label="Show"><span class="cnpy-seg-ind" aria-hidden="true" data-keep></span><button type="button" tabindex="0" data-field="seg:review-filter:all" class="cnpy-seg-btn is-on" aria-pressed="true">All<span class="cnpy-seg-n">2</span></button><button type="button" tabindex="-1" data-field="seg:review-filter:proposal" class="cnpy-seg-btn" data-act="reviewFilter" data-arg="proposal" aria-pressed="false">Proposals<span class="cnpy-seg-n">1</span></button><button type="button" tabindex="-1" data-field="seg:review-filter:decision" class="cnpy-seg-btn" data-act="reviewFilter" data-arg="decision" aria-pressed="false">Decisions<span class="cnpy-seg-n">1</span></button></div></div>
+      </div>
+      <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px"><div class="cnpy-rv-row" data-morph-key="rv:doc:auth-flow@3"><div class="cnpy-rv-row-in"><div class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox" data-rv-card="doc:auth-flow@3" aria-current="true">
+    <button aria-current="true" data-act="reviewSelect" data-arg="doc:auth-flow@3" class="cnpy-hit" aria-label="Auth flow"></button>
+    <span class="cnpy-selbar"></span>
+    <div class="cnpy-rv-card-in" style="position:relative">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="flex:1 1 auto;font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">Auth flow</div>
+        
+      </div>
+      <div style="font-size:12.5px;color:var(--fg-55);margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">Sessions now last 30 days</div>
+      <div class="cnpy-rv-meta" style="display:flex;align-items:center;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;gap:6px;margin-top:10px;height:20px;font-size:11.5px;line-height:20px;color:var(--fg-55);min-width:0">
+        <span data-slot="author" data-mtip="@andres" style="flex:none;display:inline-flex;align-items:center"><button data-act="openPerson" data-arg="andres" class="cnpy-personav" title="Andres" aria-label="@andres (Andres) — person card" style="display:flex;flex:none;padding:0;border-radius:50%"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div></button></span>
+        <span data-slot="kind" style="flex:none">Proposal</span><span style="color:var(--fg-40)">·</span>
+        <span data-slot="where" data-mtip="Technical / Reference" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis">Technical / Reference</span><span style="color:var(--fg-40)">·</span>
+        <span data-slot="time" style="flex:none;color:var(--fg-40)">4h ago</span>
+      </div>
+    </div>
+    <span class="cnpy-rv-verdict" aria-hidden="true"></span>
+  </div></div></div><div class="cnpy-rv-row" data-morph-key="rv:adr:5"><div class="cnpy-rv-row-in"><div class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox" data-rv-card="adr:5">
+    <button data-act="reviewSelect" data-arg="adr:5" class="cnpy-hit" aria-label="Use D1 for the search index"></button>
+    <span class="cnpy-selbar"></span>
+    <div class="cnpy-rv-card-in" style="position:relative">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="flex:1 1 auto;font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">Use D1 for the search index</div>
+        
+      </div>
+      <div style="font-size:12.5px;color:var(--fg-55);margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">Use D1&#39;s FTS5.</div>
+      <div class="cnpy-rv-meta" style="display:flex;align-items:center;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;gap:6px;margin-top:10px;height:20px;font-size:11.5px;line-height:20px;color:var(--fg-55);min-width:0">
+        <span data-slot="author" data-mtip="@andres" style="flex:none;display:inline-flex;align-items:center"><button data-act="openPerson" data-arg="andres" class="cnpy-personav" title="Andres" aria-label="@andres (Andres) — person card" style="display:flex;flex:none;padding:0;border-radius:50%"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div></button></span>
+        <span data-slot="kind" style="flex:none">Decision</span><span style="color:var(--fg-40)">·</span>
+        <span data-slot="where" data-mtip="ADR-005" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-family:var(--label);font-size:11px">ADR-005</span><span style="color:var(--fg-40)">·</span>
+        <span data-slot="time" style="flex:none;color:var(--fg-40)">5h ago</span>
+      </div>
+    </div>
+    <span class="cnpy-rv-verdict" aria-hidden="true"></span>
+  </div></div></div></div>
+    </div>
+    <div class="cnpy-scroll cnpy-rv-detail" style="flex:1;min-width:0;overflow-y:auto">
+      <button data-act="reviewBack" class="cnpy-rv-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>All items</button>
+      <div class="cnpy-rv-body" data-morph-key="rvd:doc:auth-flow@3" style="max-width:920px;padding:24px 32px 100px">
+    <div class="cnpy-rv-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
+      <div style="min-width:0">
+        <h2 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">Auth flow</h2>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:8px;font-size:12px;color:var(--fg-55)">
+          <span>Proposal</span>
+          <span style="color:var(--fg-40)">·</span><span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55)">Technical / Reference</span>
+          <span style="color:var(--fg-40)">·</span><span style="display:inline-flex;align-items:center;gap:6px"><button data-act="openPerson" data-arg="andres" class="cnpy-personchip" title="Andres" style="display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:calc(100% + 10px);text-align:left;padding:2px 8px 2px 2px;margin:-2px -8px -2px -2px;border-radius:7px"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div><span style=""><span style="font-family:var(--sans);font-size:12px;font-weight:500;color:var(--p-sky)">@andres</span></span></button></span>
+          <span style="color:var(--fg-40)">·</span><span style="color:var(--fg-40)">4h ago</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;flex:none;padding-top:2px">
+        
+        <button data-act="reviewReject" data-arg="doc:auth-flow@3" class="cnpy-rejectbtn" style="box-sizing:border-box;height:34px;display:inline-flex;align-items:center;border-radius:8px;font-size:12.5px;background:transparent;border:1px solid var(--border-strong);padding:0 14px;font-weight:500;color:var(--fg-70);transition:all .12s ease">Reject</button>
+        <button data-act="reviewAccept" data-arg="doc:auth-flow@3" class="cnpy-accentbtn" style="box-sizing:border-box;height:34px;display:inline-flex;align-items:center;border-radius:8px;font-size:12.5px;background:var(--accent);color:var(--accent-fg);border:1px solid var(--accent);padding:0 17px;font-weight:600">Promote</button>
+      </div>
+    </div>
+    
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:22px 0 10px">
+    <div style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">WHAT CHANGED</div>
+    <div class="cnpy-seg cnpy-seg--sm" data-seg="review-diff" data-morph-key="seg:review-diff" role="group" aria-label="How to show the change"><span class="cnpy-seg-ind" aria-hidden="true" data-keep></span><button type="button" tabindex="0" data-field="seg:review-diff:unified" class="cnpy-seg-btn is-on" aria-pressed="true">Unified</button><button type="button" tabindex="-1" data-field="seg:review-diff:split" class="cnpy-seg-btn" data-act="reviewDiffView" data-arg="split" aria-pressed="false">Side by side</button><button type="button" tabindex="-1" data-field="seg:review-diff:rendered" class="cnpy-seg-btn" data-act="reviewDiffView" data-arg="rendered" aria-pressed="false">Rendered</button></div>
+  </div>
+  <div class="cnpy-rv-diff" data-morph-key="diff:unified"><div class="cnpy-surface" style="overflow:hidden;padding:8px 0"><div style="font-family:var(--code);font-size:12.5px;line-height:1.75;padding:2px 16px 2px 12px;white-space:pre-wrap;color:var(--fg-55);border-left:2px solid transparent"><span style="display:inline-block;width:18px;flex:none;color:var(--fg-40)"> </span># Auth flow</div><div style="font-family:var(--code);font-size:12.5px;line-height:1.75;padding:2px 16px 2px 12px;white-space:pre-wrap;color:var(--fg-55);border-left:2px solid transparent"><span style="display:inline-block;width:18px;flex:none;color:var(--fg-40)"> </span></div><div style="font-family:var(--code);font-size:12.5px;line-height:1.75;padding:2px 16px 2px 12px;white-space:pre-wrap;color:var(--fg-55);border-left:2px solid transparent;border-left:2px solid var(--red);background:color-mix(in srgb,var(--red) 7%,transparent)"><span style="display:inline-block;width:18px;flex:none;color:var(--red)">−</span>A session lasts 7 days.</div><div style="font-family:var(--code);font-size:12.5px;line-height:1.75;padding:2px 16px 2px 12px;white-space:pre-wrap;color:var(--fg-55);border-left:2px solid transparent;border-left:2px solid var(--green);background:color-mix(in srgb,var(--green) 7%,transparent);color:var(--fg-70)"><span style="display:inline-block;width:18px;flex:none;color:var(--green)">+</span>A session lasts 30 days.</div><div style="font-family:var(--code);font-size:12.5px;line-height:1.75;padding:2px 16px 2px 12px;white-space:pre-wrap;color:var(--fg-55);border-left:2px solid transparent"><span style="display:inline-block;width:18px;flex:none;color:var(--fg-40)"> </span></div></div></div>
+  </div>
+    </div>
+  </div></div>
+    </main>
+    <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
+  </div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+  </div>"
+`;
+
+exports[`field absent — each screen renders exactly what it did before Phase C > Unplaced (no row carries \`ai\`) 1`] = `
+"<div data-cnpy-theme="light" data-screen="maintenance" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+    <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
+    <aside class="cnpy-aside" data-screen-label="Sidebar">
+    <div class="cnpy-logo">
+      <button data-act="goSite" aria-label="About Trov" data-tip="About Trov" class="cnpy-logo-b"><svg width="24" height="24" viewBox="0 0 100 100" aria-hidden="true" style="flex:none"><path fill="var(--mark,#616ACB)" d="M0 83.72H46.51V46.51H0ZM46.51 46.51H83.72V0H46.51ZM83.72 46.51V83.72H46.51V100H100V46.51Z"></path></svg><span class="cnpy-lbl cnpy-logo-t">Trov</span></button>
+    </div>
+    <div class="cnpy-orgslot"><div class="cnpy-orgsw" data-tip="SaplingLearn: switch organization">
+    <button type="button" data-act="orgsMenu" data-field="orgsMenu" data-orgsw-trigger class="cnpy-orgsw-b" style="border-radius:8px" aria-haspopup="dialog" aria-expanded="false" aria-controls="orgs-menu" aria-label="SaplingLearn: switch organization">
+      <span class="cnpy-orgtile" aria-hidden="true" style="position:relative;overflow:hidden;width:24px;height:24px;font-size:12px;border-radius:7px">S</span>
+      <span class="cnpy-lbl cnpy-orgsw-n">SaplingLearn</span>
+      <span class="cnpy-lbl cnpy-badge" data-n="0" title="Nothing waiting">0</span><span class="cnpy-dot" data-n="0"></span>
+      <svg class="cnpy-lbl" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;color:var(--fg-40)"><path d="m7 9 5-5 5 5"></path><path d="m7 15 5 5 5-5"></path></svg>
+    </button>
+  </div></div>
+    <nav class="cnpy-navlist" aria-label="Primary">
+      <div class="cnpy-searchwrap" data-tip="Search">
+        <div data-act="sideSearchFocus" class="cnpy-search">
+          <svg class="cnpy-nav-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+          <input data-act="sideSearch" data-field="sideSearch" class="cnpy-lbl cnpy-search-in" placeholder="Search Trov" aria-label="Search Trov" autocomplete="off" spellcheck="false" tabindex="0" />
+          <kbd class="cnpy-lbl cnpy-kbd">Ctrl K</kbd>
+        </div>
+      </div>
+      <div class="cnpy-sec is-first"><span class="cnpy-lbl">Workspace</span></div>
+      <div class="cnpy-navrow n-mywork" data-tip="My Work">
+      <button data-act="goMyWork" class="cnpy-nav-i" aria-label="My Work"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 12 12 3l9 9"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path></svg><span class="cnpy-lbl cnpy-nav-t">My Work</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-ask" data-tip="Trov">
+      <button data-act="goAsk" class="cnpy-nav-i" aria-label="Trov"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="2.6"></circle><circle cx="5" cy="5.5" r="1.9"></circle><circle cx="19" cy="6.5" r="1.9"></circle><circle cx="17.5" cy="19" r="1.9"></circle><circle cx="5.5" cy="17.5" r="1.9"></circle><path d="M10 10.2 6.4 6.9M14.2 10.7l3.3-2.7M13.6 14.1l2.7 3.3M10 13.8l-3.1 2.4"></path></svg><span class="cnpy-lbl cnpy-nav-t">Trov</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-tickets" data-tip="Tickets">
+      <button data-act="goTickets" class="cnpy-nav-i" aria-label="Tickets"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path></svg><span class="cnpy-lbl cnpy-nav-t">Tickets</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-roadmap" data-tip="Roadmap">
+      <button data-act="goRoadmap" class="cnpy-nav-i" aria-label="Roadmap"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg><span class="cnpy-lbl cnpy-nav-t">Roadmap</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-handoffs" data-tip="Handoffs">
+      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Handoffs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Handoffs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-sec"><span class="cnpy-lbl">Monitor</span></div>
+      <div class="cnpy-navrow n-repo" data-tip="Repo">
+      <button data-act="goRepo" class="cnpy-nav-i" aria-label="Repo"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span class="cnpy-lbl cnpy-nav-t">Repo</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-feed" data-tip="Feed">
+      <button data-act="goFeed" class="cnpy-nav-i" aria-label="Feed"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path></svg><span class="cnpy-lbl cnpy-nav-t">Feed</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-sec"><span class="cnpy-lbl">Knowledge</span></div>
+      <div class="cnpy-navrow n-docs" data-tip="Docs">
+      <button data-act="goDocs" class="cnpy-nav-i" aria-label="Docs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg><span class="cnpy-lbl cnpy-nav-t">Docs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button><button data-act="navToggle" data-arg="docs" class="cnpy-chev" aria-label="Show Docs pages" aria-expanded="false" tabindex="0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
+    </div><div class="cnpy-sub" data-open="0"><div class="cnpy-sub-clip"><div class="cnpy-sub-list"><button data-act="navSub" data-arg="docs:technical" class="cnpy-sub-i" tabindex="-1">Technical</button><button data-act="navSub" data-arg="docs:product" class="cnpy-sub-i" tabindex="-1">Product</button></div></div></div>
+      <div class="cnpy-navrow n-artifacts" data-tip="Artifacts">
+      <button data-act="goArtifacts" class="cnpy-nav-i" aria-label="Artifacts"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path></svg><span class="cnpy-lbl cnpy-nav-t">Artifacts</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-prompts" data-tip="Prompt Library">
+      <button data-act="goPrompts" class="cnpy-nav-i" aria-label="Prompt Library"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"></path><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"></path></svg><span class="cnpy-lbl cnpy-nav-t">Prompt Library</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-sec"><span class="cnpy-lbl">Triage</span></div>
+      <div class="cnpy-navrow n-review" data-tip="Review">
+      <button data-act="goReview" class="cnpy-nav-i" aria-label="Review"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m9 12.5 2 2 4-5"></path></svg><span class="cnpy-lbl cnpy-nav-t">Review</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-maintenance is-active" data-tip="Unplaced">
+      <button data-act="goMaintenance" class="cnpy-nav-i" aria-label="Unplaced" aria-current="page"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Unplaced</span><span class="cnpy-lbl cnpy-badge" data-n="2">2</span><span class="cnpy-dot" data-n="2"></span></button>
+    </div>
+      <div class="cnpy-sec"><span class="cnpy-lbl">Help</span></div>
+      <div class="cnpy-navrow n-guide" data-tip="Guide">
+      <button data-act="goGuide" class="cnpy-nav-i" aria-label="Guide"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 4h7a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H2z"></path><path d="M22 4h-7a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H22z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Guide</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-releases" data-tip="What&#39;s new">
+      <button data-act="goReleases" class="cnpy-nav-i" aria-label="What&#39;s new"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path></svg><span class="cnpy-lbl cnpy-nav-t">What&#39;s new</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+    </nav>
+    <div class="cnpy-collapse" data-tip="Expand sidebar">
+      <button data-act="toggleCollapse" class="cnpy-nav-i" aria-label="Collapse sidebar" aria-expanded="true"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="M14.5 9.5 12 12l2.5 2.5"></path></svg><span class="cnpy-lbl cnpy-nav-t">Collapse</span></button>
+    </div>
+    <div class="cnpy-ghost cnpy-lbl">agents produce · humans confirm</div>
+    <div class="cnpy-foot" data-tip="Settings">
+      <button data-act="goSettings" aria-label="Settings" class="cnpy-chip">
+        <div class="cnpy-av" title="Alice" style="--c:var(--p-moss);position:relative;width:28px;height:28px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:10px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AL</div>
+        <div class="cnpy-lbl cnpy-chip-t"><div class="cnpy-chip-n">alice</div><div class="cnpy-chip-h"><span style="font-family:var(--sans);font-size:11px;font-weight:500;color:var(--p-moss)">@alice</span></div></div>
+        <svg class="cnpy-lbl" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="flex:none" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      </button>
+    </div>
+    <div class="cnpy-tip" role="tooltip" data-keep></div>
+  </aside>
+    <main style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
+      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
+    <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
+      <button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button><h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0">Unplaced</h1>
+      
+    </div>
+    <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
+      <div data-sync-slot="ctl" class="sync-slot"></div><button data-act="supportOpen" data-arg="bug" data-support-trigger="bug" title="Report a bug" aria-label="Report a bug" aria-haspopup="dialog" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="7" width="8" height="12" rx="4"></rect><path d="M12 12v7"></path><path d="M9.5 7.5a2.5 2.5 0 0 1 5 0"></path><path d="M4 13h4M16 13h4M5 7l3.2 2.6M19 7l-3.2 2.6M5 20l3.2-2.8M19 20l-3.2-2.8"></path></svg>
+    </button><button data-act="cycleTheme" title="Toggle theme" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"></path></svg>
+    </button>
+    </div>
+  </header>
+      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">
+    <div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">Things an agent produced but couldn&#39;t place. Read one, then file it or throw it away.</div>
+    <div class="cnpy-surface" style="display:flex;flex-wrap:wrap;overflow:hidden;min-height:440px">
+    <div class="cnpy-scroll" style="flex:1 1 260px;min-width:0;max-width:100%;box-shadow:1px 0 0 var(--border);overflow-y:auto;overflow-x:hidden;max-height:640px"><button data-act="maintSelect" data-arg="7" class="cnpy-trow" style="display:block;width:100%;text-align:left;padding:13px 16px;border-bottom:1px solid var(--border);background:var(--hover);transition:background .12s ease">
+      <div style="font-size:13px;line-height:1.5;color:var(--fg);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">Deploy checklist</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11.5px;color:var(--fg-40);min-width:0;white-space:nowrap;overflow:hidden"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:16px;height:16px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div><span style="font-family:var(--sans);font-size:11px;font-weight:500;color:var(--p-sky)">@andres</span><span style="flex:none">&middot; 3h ago</span></div>
+    </button><button data-act="maintSelect" data-arg="8" class="cnpy-trow" style="display:block;width:100%;text-align:left;padding:13px 16px;border-bottom:1px solid var(--border);background:transparent;transition:background .12s ease">
+      <div style="font-size:13px;line-height:1.5;color:var(--fg);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">a free-form note</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11.5px;color:var(--fg-40);min-width:0;white-space:nowrap;overflow:hidden"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:16px;height:16px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div><span style="font-family:var(--sans);font-size:11px;font-weight:500;color:var(--p-sky)">@andres</span><span style="flex:none">&middot; 3h ago</span></div>
+    </button></div>
+    <div style="flex:2 1 380px;min-width:0;display:flex;flex-direction:column;padding:24px 28px;box-shadow:0 -1px 0 var(--border)">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--fg-55)">
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-70);white-space:nowrap"><svg width="9" height="9" viewBox="0 0 10 10" fill="none" style="flex:none;display:block;color:var(--amber)" aria-hidden="true"><path d="M5 .8 9.5 9H.5Z" fill="currentColor"/></svg>Flagged by an agent</span>
+        <span style="display:inline-flex;white-space:nowrap;min-width:0"><button data-act="openPerson" data-arg="andres" class="cnpy-personchip" title="Andres" style="display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:calc(100% + 10px);text-align:left;padding:2px 8px 2px 2px;margin:-2px -8px -2px -2px;border-radius:7px"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">Andres</span></button></span>
+        <span style="color:var(--fg-40);white-space:nowrap">&middot; 3h ago</span>
+        <span style="flex:1"></span>
+        <span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap">1 of 2</span>
+      </div>
+      <div style="font-size:18px;font-weight:500;line-height:1.5;letter-spacing:-0.01em;color:var(--fg);margin-top:16px;text-wrap:pretty">Deploy checklist</div><div style="font-size:13.5px;line-height:1.6;color:var(--fg-70);margin-top:8px">Before a deploy, run the migrations, then check the health endpoint.</div>
+      <div style="font-size:12.5px;line-height:1.55;color:var(--fg-40);margin-top:10px"><span style="color:var(--fg-55);font-weight:500">Why it wasn't placed:</span> section &#39;runbooks&#39; is not in the vocabulary</div>
+      <div data-item="7" style="margin-top:26px;padding-top:20px;border-top:1px solid var(--border)">
+    <div style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap;margin-bottom:10px">File it as</div>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><button data-act="maintAssignKind" data-arg="doc" style="padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;border:1px solid var(--border);color:var(--fg-55);background:transparent;font-family:inherit">Doc section</button><button data-act="maintAssignKind" data-arg="adr" style="padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;border:1px solid var(--border);color:var(--fg-55);background:transparent;font-family:inherit">Decision record</button><button data-act="maintAssignKind" data-arg="feed" style="padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;border:1px solid var(--border);color:var(--fg-55);background:transparent;font-family:inherit">Feed update</button></div>
+    
+  </div>
+      <div style="flex:1;min-height:24px"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-top:16px;border-top:1px solid var(--border)">
+        <button data-act="maintDiscard" data-arg="7" class="cnpy-mutelink" style="font-size:12.5px;font-weight:500;white-space:nowrap;color:var(--fg-55)">Discard</button>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <span style="font-size:12px;color:var(--fg-40)">Pick what it is first</span>
+          <button data-act="maintFile" data-arg="7" class="" style="background:transparent;color:var(--fg-40);border:1px solid var(--border);cursor:default;border-radius:8px;padding:7px 15px;font-size:12.5px;font-weight:600;transition:all .12s ease;padding:8px 16px">File it</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div></div>
+    </main>
+    <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
+  </div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+  </div>"
+`;
+
+exports[`field absent — each screen renders exactly what it did before Phase C > ticket detail (no \`ai\`) 1`] = `
+"<div data-cnpy-theme="light" data-screen="ticketdetail" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+    <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
+    <aside class="cnpy-aside" data-screen-label="Sidebar">
+    <div class="cnpy-logo">
+      <button data-act="goSite" aria-label="About Trov" data-tip="About Trov" class="cnpy-logo-b"><svg width="24" height="24" viewBox="0 0 100 100" aria-hidden="true" style="flex:none"><path fill="var(--mark,#616ACB)" d="M0 83.72H46.51V46.51H0ZM46.51 46.51H83.72V0H46.51ZM83.72 46.51V83.72H46.51V100H100V46.51Z"></path></svg><span class="cnpy-lbl cnpy-logo-t">Trov</span></button>
+    </div>
+    <div class="cnpy-orgslot"><div class="cnpy-orgsw" data-tip="SaplingLearn: switch organization">
+    <button type="button" data-act="orgsMenu" data-field="orgsMenu" data-orgsw-trigger class="cnpy-orgsw-b" style="border-radius:8px" aria-haspopup="dialog" aria-expanded="false" aria-controls="orgs-menu" aria-label="SaplingLearn: switch organization">
+      <span class="cnpy-orgtile" aria-hidden="true" style="position:relative;overflow:hidden;width:24px;height:24px;font-size:12px;border-radius:7px">S</span>
+      <span class="cnpy-lbl cnpy-orgsw-n">SaplingLearn</span>
+      <span class="cnpy-lbl cnpy-badge" data-n="0" title="Nothing waiting">0</span><span class="cnpy-dot" data-n="0"></span>
+      <svg class="cnpy-lbl" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;color:var(--fg-40)"><path d="m7 9 5-5 5 5"></path><path d="m7 15 5 5 5-5"></path></svg>
+    </button>
+  </div></div>
+    <nav class="cnpy-navlist" aria-label="Primary">
+      <div class="cnpy-searchwrap" data-tip="Search">
+        <div data-act="sideSearchFocus" class="cnpy-search">
+          <svg class="cnpy-nav-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+          <input data-act="sideSearch" data-field="sideSearch" class="cnpy-lbl cnpy-search-in" placeholder="Search Trov" aria-label="Search Trov" autocomplete="off" spellcheck="false" tabindex="0" />
+          <kbd class="cnpy-lbl cnpy-kbd">Ctrl K</kbd>
+        </div>
+      </div>
+      <div class="cnpy-sec is-first"><span class="cnpy-lbl">Workspace</span></div>
+      <div class="cnpy-navrow n-mywork" data-tip="My Work">
+      <button data-act="goMyWork" class="cnpy-nav-i" aria-label="My Work"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 12 12 3l9 9"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path></svg><span class="cnpy-lbl cnpy-nav-t">My Work</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-ask" data-tip="Trov">
+      <button data-act="goAsk" class="cnpy-nav-i" aria-label="Trov"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="2.6"></circle><circle cx="5" cy="5.5" r="1.9"></circle><circle cx="19" cy="6.5" r="1.9"></circle><circle cx="17.5" cy="19" r="1.9"></circle><circle cx="5.5" cy="17.5" r="1.9"></circle><path d="M10 10.2 6.4 6.9M14.2 10.7l3.3-2.7M13.6 14.1l2.7 3.3M10 13.8l-3.1 2.4"></path></svg><span class="cnpy-lbl cnpy-nav-t">Trov</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-tickets is-active" data-tip="Tickets">
+      <button data-act="goTickets" class="cnpy-nav-i" aria-label="Tickets" aria-current="page"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path></svg><span class="cnpy-lbl cnpy-nav-t">Tickets</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-roadmap" data-tip="Roadmap">
+      <button data-act="goRoadmap" class="cnpy-nav-i" aria-label="Roadmap"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg><span class="cnpy-lbl cnpy-nav-t">Roadmap</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-handoffs" data-tip="Handoffs">
+      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Handoffs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Handoffs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-sec"><span class="cnpy-lbl">Monitor</span></div>
+      <div class="cnpy-navrow n-repo" data-tip="Repo">
+      <button data-act="goRepo" class="cnpy-nav-i" aria-label="Repo"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span class="cnpy-lbl cnpy-nav-t">Repo</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-feed" data-tip="Feed">
+      <button data-act="goFeed" class="cnpy-nav-i" aria-label="Feed"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path></svg><span class="cnpy-lbl cnpy-nav-t">Feed</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-sec"><span class="cnpy-lbl">Knowledge</span></div>
+      <div class="cnpy-navrow n-docs" data-tip="Docs">
+      <button data-act="goDocs" class="cnpy-nav-i" aria-label="Docs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg><span class="cnpy-lbl cnpy-nav-t">Docs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button><button data-act="navToggle" data-arg="docs" class="cnpy-chev" aria-label="Show Docs pages" aria-expanded="false" tabindex="0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
+    </div><div class="cnpy-sub" data-open="0"><div class="cnpy-sub-clip"><div class="cnpy-sub-list"><button data-act="navSub" data-arg="docs:technical" class="cnpy-sub-i" tabindex="-1">Technical</button><button data-act="navSub" data-arg="docs:product" class="cnpy-sub-i" tabindex="-1">Product</button></div></div></div>
+      <div class="cnpy-navrow n-artifacts" data-tip="Artifacts">
+      <button data-act="goArtifacts" class="cnpy-nav-i" aria-label="Artifacts"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path></svg><span class="cnpy-lbl cnpy-nav-t">Artifacts</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-prompts" data-tip="Prompt Library">
+      <button data-act="goPrompts" class="cnpy-nav-i" aria-label="Prompt Library"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"></path><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"></path></svg><span class="cnpy-lbl cnpy-nav-t">Prompt Library</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-sec"><span class="cnpy-lbl">Triage</span></div>
+      <div class="cnpy-navrow n-review" data-tip="Review">
+      <button data-act="goReview" class="cnpy-nav-i" aria-label="Review"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m9 12.5 2 2 4-5"></path></svg><span class="cnpy-lbl cnpy-nav-t">Review</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-maintenance" data-tip="Unplaced">
+      <button data-act="goMaintenance" class="cnpy-nav-i" aria-label="Unplaced"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Unplaced</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-sec"><span class="cnpy-lbl">Help</span></div>
+      <div class="cnpy-navrow n-guide" data-tip="Guide">
+      <button data-act="goGuide" class="cnpy-nav-i" aria-label="Guide"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 4h7a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H2z"></path><path d="M22 4h-7a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H22z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Guide</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+      <div class="cnpy-navrow n-releases" data-tip="What&#39;s new">
+      <button data-act="goReleases" class="cnpy-nav-i" aria-label="What&#39;s new"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path></svg><span class="cnpy-lbl cnpy-nav-t">What&#39;s new</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+    </div>
+    </nav>
+    <div class="cnpy-collapse" data-tip="Expand sidebar">
+      <button data-act="toggleCollapse" class="cnpy-nav-i" aria-label="Collapse sidebar" aria-expanded="true"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="M14.5 9.5 12 12l2.5 2.5"></path></svg><span class="cnpy-lbl cnpy-nav-t">Collapse</span></button>
+    </div>
+    <div class="cnpy-ghost cnpy-lbl">agents produce · humans confirm</div>
+    <div class="cnpy-foot" data-tip="Settings">
+      <button data-act="goSettings" aria-label="Settings" class="cnpy-chip">
+        <div class="cnpy-av" title="Alice" style="--c:var(--p-moss);position:relative;width:28px;height:28px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:10px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AL</div>
+        <div class="cnpy-lbl cnpy-chip-t"><div class="cnpy-chip-n">alice</div><div class="cnpy-chip-h"><span style="font-family:var(--sans);font-size:11px;font-weight:500;color:var(--p-moss)">@alice</span></div></div>
+        <svg class="cnpy-lbl" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="flex:none" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      </button>
+    </div>
+    <div class="cnpy-tip" role="tooltip" data-keep></div>
+  </aside>
+    <main style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
+      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
+    <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
+      <button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button><h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0;white-space:nowrap;flex:none"><button data-act="ticketsBack" style="font-size:15px;font-weight:600;letter-spacing:-0.01em;padding:0;color:var(--fg-55);cursor:pointer">Tickets</button></h1>
+      <span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:15px">›</span><span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">Login page shows a blank screen on Safari</span></span>
+    </div>
+    <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
+      <button type="button" class="ask-ghostbtn ask-ghostbtn--outline" data-act="askCjOpen" aria-haspopup="dialog" aria-expanded="false" aria-keyshortcuts="Control+J"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><circle cx="12" cy="12" r="2.6"></circle><circle cx="5" cy="5.5" r="1.9"></circle><circle cx="19" cy="6.5" r="1.9"></circle><circle cx="17.5" cy="19" r="1.9"></circle><circle cx="5.5" cy="17.5" r="1.9"></circle><path d="M10 10.2 6.4 6.9M14.2 10.7l3.3-2.7M13.6 14.1l2.7 3.3M10 13.8l-3.1 2.4"></path></svg>Ask about this<kbd class="ask-kbd">Ctrl J</kbd></button><div data-sync-slot="ctl" class="sync-slot"></div><button data-act="supportOpen" data-arg="bug" data-support-trigger="bug" title="Report a bug" aria-label="Report a bug" aria-haspopup="dialog" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="7" width="8" height="12" rx="4"></rect><path d="M12 12v7"></path><path d="M9.5 7.5a2.5 2.5 0 0 1 5 0"></path><path d="M4 13h4M16 13h4M5 7l3.2 2.6M19 7l-3.2 2.6M5 20l3.2-2.8M19 20l-3.2-2.8"></path></svg>
+    </button><button data-act="cycleTheme" title="Toggle theme" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"></path></svg>
+    </button>
+    </div>
+  </header>
+      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div style="width:100%;max-width:1120px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px">
+    <div class="cnpy-td-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 258px;gap:34px;min-height:calc(100vh - 210px)">
+      <div style="min-width:0;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:flex-start;gap:10px;margin:0 0 22px">
+          <h2 style="margin:0;flex:1;min-width:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">Login page shows a blank screen on Safari</h2>
+          <button data-act="ticketEdit" title="Edit title and description" aria-label="Edit title and description" class="cnpy-iconbtn" style="width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--fg-40);transition:all .12s ease;flex:none;margin-top:3px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"></path><path d="M20 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5"></path></svg></button>
+        </div>
+        <div class="cnpy-md cnpy-td-body" style="font-size:13.5px;line-height:1.65;color:var(--fg-70);max-width:640px"><div class="mock-live-md">Since this morning the login page is blank on Safari 18. Chrome works.</div></div>
+        <div style="display:flex;align-items:baseline;gap:10px;margin-top:26px">
+      <div style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap;flex:none">Linked work</div>
+    </div><div style="display:flex;gap:8px;margin-top:10px">
+        <input data-act="ticketLinkDraft" data-field="ticketLinkDraft" value="" placeholder="Paste a GitHub or Figma URL, or #issue — it links on paste or Enter" style="flex:1;height:36px;padding:0 12px;border:1px solid var(--border-strong);border-radius:8px;background:transparent;color:var(--fg);font-size:12.5px;font-family:var(--label);outline:none" />
+        <button data-act="ticketLinkAdd" class="cnpy-outlinebtn" style="padding:0 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);transition:all .12s ease">Link</button>
+      </div>
+        <div data-screen-label="Attached artifacts" style="display:flex;align-items:baseline;gap:10px;margin-top:26px">
+      <div style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);flex:none">Artifacts</div>
+      <span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40)">–</span>
+    </div><div class="cnpy-skel" data-skel="ticket-artifacts" aria-busy="true" style="margin-top:10px"><span class="cnpy-sr" role="status">Loading artifacts&hellip;</span><div class="cnpy-skel-in" aria-hidden="true"><span class="cnpy-skl" style="height:18px"><span class="cnpy-sk" style="width:220px;height:9px"></span></span></div></div>
+        <div style="display:flex;flex-direction:column;flex:1;min-height:0">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:30px;padding-bottom:9px;border-bottom:1px solid var(--border-strong);flex:none">
+      <div style="font-family:var(--label);font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--fg-55);white-space:nowrap;flex:none">THREAD</div>
+      <div style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap;flex:none">0 comments</div>
+    </div>
+    <div style="flex:1;min-height:0"><div style="display:flex;align-items:center;gap:9px;padding:8px 0 8px 8px;border-bottom:1px solid var(--border)">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--border-strong);flex:none;margin:0 6px"></span>
+        <button data-act="openPerson" data-arg="alice" class="cnpy-personchip" title="Alice" style="display:inline-flex;align-items:center;gap:7px;min-width:0;max-width:calc(100% + 10px);text-align:left;padding:2px 8px 2px 2px;margin:-2px -8px -2px -2px;border-radius:7px"><div class="cnpy-av" title="Alice" style="--c:var(--p-moss);position:relative;width:16px;height:16px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AL</div><span style="font-size:12px;font-weight:600;color:var(--fg-70);white-space:nowrap">Alice</span></button>
+        <span style="font-size:12px;color:var(--fg-40);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">opened this ticket</span>
+        <span style="font-size:11px;color:var(--fg-40);margin-left:auto;flex:none;white-space:nowrap">2h ago</span>
+      </div></div>
+    <div class="cnpy-surface" style="position:relative;padding:12px;margin-top:16px;flex:none">
+      <div style="position:relative">
+        <textarea data-act="ticketComment" data-field="ticketComment" placeholder="Write a comment — @mention to loop someone in…" style="display:block;width:100%;height:96px;min-height:60px;padding:2px 0 36px;border:none;outline:none;background:transparent;color:var(--fg);font-size:13.5px;line-height:1.6;resize:none"></textarea>
+        
+      </div>
+      <button data-act="commentGrip" title="Drag to resize" aria-label="Resize the comment box" class="cnpy-grip" style="position:absolute;left:10px;bottom:10px;width:12px;height:12px;display:grid;place-items:center;color:var(--fg-40);cursor:ns-resize;touch-action:none"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M1 1 11 11"></path><path d="M1 6 6 11"></path></svg></button>
+      <button data-act="ticketCommentPost" data-arg="" class="" style="background:transparent;color:var(--fg-40);border:1px solid var(--border);cursor:default;border-radius:8px;padding:7px 15px;font-size:12.5px;font-weight:600;transition:all .12s ease;position:absolute;right:8px;bottom:8px">Comment</button>
+    </div>
+  </div>
+      </div>
+      <div style="border-left:1px solid var(--border);padding-left:26px;display:flex;flex-direction:column;gap:26px">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;height:22px;margin-bottom:6px"><div style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Properties</div></div>
+          <div style="display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center;height:30px"><div style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40)">STATUS</div><div style="min-width:0"><div style="position:relative;display:inline-flex">
+    <button data-act="ticketStatusMenu" data-arg="rail" title="Set status" aria-haspopup="menu" aria-expanded="false" class="cnpy-statusbtn" style="display:inline-flex;align-items:center;gap:6px;margin:-4px 0 -4px -6px;padding:4px 6px;border-radius:6px;font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;cursor:pointer">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex:none;display:block;color:var(--fg-55)" aria-hidden="true"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5" stroke-dasharray="2.4 1.9"/></svg>Triage
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="flex:none;color:var(--fg-40)"><path d="m6 9 6 6 6-6"></path></svg>
+    </button>
+  </div></div></div>
+          <div style="display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center;height:30px"><div style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40)">CATEGORY</div><div style="font-size:12.5px;color:var(--fg-70)">other</div></div>
+          <div style="display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center;height:30px"><div style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40)">PRIORITY</div><div><span data-mtip="Normal priority" style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--fg-70);white-space:nowrap"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="flex:none;display:block;color:var(--fg-70)" aria-hidden="true"><rect x="1.5" y="8" width="2.6" height="4.5" rx=".6" fill="currentColor"/><rect x="5.7" y="5" width="2.6" height="7.5" rx=".6" fill="currentColor"/><rect x="9.9" y="2" width="2.6" height="10.5" rx=".6" fill="currentColor" opacity=".25"/></svg>Normal</span></div></div>
+          <div style="display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center;height:30px"><div style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40)">REQUESTER</div><div style="display:flex;min-width:0"><button data-act="openPerson" data-arg="alice" class="cnpy-personchip" title="Alice" style="display:inline-flex;align-items:center;gap:7px;min-width:0;max-width:calc(100% + 10px);text-align:left;padding:2px 8px 2px 2px;margin:-2px -8px -2px -2px;border-radius:7px"><div class="cnpy-av" title="Alice" style="--c:var(--p-moss);position:relative;width:20px;height:20px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AL</div><span style="min-width:0;font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Alice</span></button></div></div>
+          
+          <div style="display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center;height:30px"><div style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40)">OPENED</div><div style="font-size:12.5px;color:var(--fg-70);white-space:nowrap">2h ago</div></div>
+        </div>
+        <div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;height:22px;margin-bottom:6px">
+      <div style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Assignees</div>
+      <div style="position:relative;display:flex;align-items:center"><button data-act="ticketAsgMenu" title="Add assignee" class="cnpy-iconbtn" style="width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--fg-40);transition:all .12s ease"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg></button></div>
+    </div><div style="display:flex;align-items:center;gap:10px;height:34px">
+        <div style="width:24px;height:24px;border-radius:50%;border:1px dashed var(--border-strong);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--fg-40);flex:none">–</div>
+        <span style="font-size:12.5px;color:var(--fg-40);font-style:italic">Unassigned</span>
+      </div>
+  </div>
+        <div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;height:22px;margin-bottom:6px">
+      <div style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Sprint</div>
+      <div style="position:relative;display:flex;align-items:center">
+        <button data-act="ticketSprintMenu" title="Change sprint" class="cnpy-iconbtn" style="width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--fg-40);transition:all .12s ease"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"></path><path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L13 14l-4 1 1-4z"></path></svg></button>
+      </div>
+    </div>
+    <button style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;height:38px;padding:0;cursor:default">
+      <span style="width:24px;height:24px;border-radius:6px;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--fg-55);flex:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg></span>
+      <span style="flex:1;min-width:0">
+        <span style="display:block;font-size:13px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Backlog</span>
+        <span style="display:block;font-family:var(--label);font-size:9.5px;font-weight:600;letter-spacing:.04em;color:var(--fg-40);white-space:nowrap;margin-top:2px">NO SPRINT</span>
+      </span>
+      
+    </button>
+  </div>
+        <div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;height:22px;margin-bottom:6px">
+      <div style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Relations</div>
+      <div style="position:relative;display:flex;align-items:center"></div>
+    </div><div style="display:flex;align-items:center;gap:10px;height:34px">
+        <div style="width:24px;height:24px;border-radius:6px;border:1px dashed var(--border-strong);display:grid;place-items:center;font-size:11px;color:var(--fg-40);flex:none">↳</div>
+        <span style="font-size:12.5px;color:var(--fg-40);font-style:italic">No linked tickets</span>
+      </div>
+  </div>
+        <div><button type="button" data-act="ticketDeleteArm" data-confirm-trigger class="cnpy-dangerbtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="ticket-delete-confirm" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-55);white-space:nowrap"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6M14 11v6"></path></svg>Delete ticket</button></div>
+      </div>
+    </div>
+  </div></div>
+    </main>
+    <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
+  </div>
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+  </div>"
+`;

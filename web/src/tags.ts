@@ -21,6 +21,7 @@ import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { confirmModal } from "./confirm";
+import { capReached, meterPct } from "@shared/plans";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -129,7 +130,10 @@ function inlineField(e: TagEdit): string {
 // ── Jev tagging existing items (issues #154–#158; no review step, the owner's call) ──
 
 const meter = (used: number, cap: number | null, label: string): string => cap === null || cap <= 0 ? ""
-  : `<div class="cnpy-tagshead-meter" role="meter" aria-label="${attr(label)}" aria-valuemin="0" aria-valuemax="${cap}" aria-valuenow="${Math.min(used, cap)}"${used >= cap ? ' data-full="1"' : ""}><span style="transform:scaleX(${Math.min(1, used / cap).toFixed(4)})"></span></div>`;
+  : `<div class="cnpy-tagshead-meter" role="meter" aria-label="${attr(label)}" aria-valuemin="0" aria-valuemax="${cap}" aria-valuenow="${Math.min(used, cap)}"${capReached(used, cap) ? ' data-full="1"' : ""}><span style="transform:scaleX(${(meterPct(used, cap) / 100).toFixed(2)})"></span></div>`;
+
+/** Sift stops with the organization's AI switch (Org settings › AI), whatever its own switch says. */
+const ORG_OFF = "Trov's AI is off for this organization (Org settings › AI), so nothing is sent.";
 
 /** The Jev cell of the tab's header: the switch, what it does in a few words, and the month's checks. What is
  *  SENT is one plain sentence in a small popover from "What is sent" (`aiInfo`; a click outside or Escape closes it). */
@@ -137,16 +141,17 @@ export function aiSection(ai: TagAiDTO, ui: TagsUi): string {
   const checks = ai.cap === null ? `${ai.used.toLocaleString("en-US")} checks used this month.`
     : `${ai.used.toLocaleString("en-US")} of ${ai.cap.toLocaleString("en-US")} checks used this month.`;
   const state = !ai.available ? "This Trov has no TypeSafe AI key set, so nothing is sent and nothing is tagged."
+    : !ai.org ? ORG_OFF
     : !ai.enabled ? "Off: nothing is sent."
     : ai.spent ? "This month's checks are used up: Trov stops looking for items until next month."
     : checks;
   return `<div class="cnpy-tagshead-cell cnpy-tagshead-jev" data-org-group="tag-ai" data-ai="${ai.enabled ? "on" : "off"}">
       <div class="cnpy-tagshead-k" id="org-tags-ai">Sift</div>
       <div class="cnpy-tagshead-jevrow">
-        <span style="flex:none">${switchBtn("tagAiToggle", null, ai.enabled).replace("<button ", `<button aria-label="Tag existing items for a new tag"${ui.aiBusy || !ai.available ? " disabled" : ""} `)}</span>
+        <span style="flex:none">${switchBtn("tagAiToggle", null, ai.enabled, "Tag existing items for a new tag", ui.aiBusy).replace("<button ", `<button${!ai.available ? " disabled" : ""} `)}</span>
         <span class="cnpy-tagshead-v">${ai.enabled ? "Tags existing items" : "Off"}</span>
       </div>
-      <div class="cnpy-tagshead-meterwrap"${ai.enabled && ai.available ? "" : ' data-off="1"'}>${meter(ai.used, ai.cap, "Checks used this month")}</div>
+      <div class="cnpy-tagshead-meterwrap"${ai.org && ai.enabled && ai.available ? "" : ' data-off="1"'}>${meter(ai.used, ai.cap, "Checks used this month")}</div>
       <div class="cnpy-tagshead-sub"><span data-ai-state>${esc(state)}</span>
         <span class="cnpy-tagshead-pop">
           <button type="button" data-act="tagAiInfo" data-field="tagAiInfo" aria-expanded="${ui.aiInfo}" aria-haspopup="dialog"${ui.aiInfo ? ' aria-controls="org-tags-ai-info"' : ""} class="cnpy-tagfind cnpy-tagshead-more">What is sent</button>
@@ -160,8 +165,8 @@ function aiInfo(): string {
   return `<p id="org-tags-ai-info" role="dialog" aria-label="What is sent" class="cnpy-tagshead-info" style="border-radius:11px">Sift sends the tag's name and description, and the title and first 400 characters of each item that may fit (code removed), to a model from TypeSafe AI. It adds the tag where it is sure, and suggests it where it is less sure, for a person to decide. You can undo a run or take the tag off any item.</p>`;
 }
 
-/** Can Jev look for items right now (the switch on, a key set, checks left this month)? */
-const canFind = (ai: TagAiDTO | undefined): boolean => !!ai && ai.enabled && ai.available && !ai.spent;
+/** Can Jev look for items right now (both switches on, a key set, checks left this month)? */
+const canFind = (ai: TagAiDTO | undefined): boolean => !!ai && ai.org && ai.enabled && ai.available && !ai.spent;
 
 /** A tag row's "Added by Jev" cell: the latest run's result ("7 added", with Undo; "None fit"; why it stopped),
  *  or the run drawn live. The same cell either way (web/src/fit-run.ts `fitCell`), so the row never changes shape. */
@@ -297,7 +302,7 @@ export function tagsTab(org: MyOrg, p: TagsTabProps): string {
   const ui = p.ui;
   const live = list.tags.filter((t) => !t.retired);
   const retired = list.tags.filter((t) => t.retired);
-  const full = list.cap !== null && list.used >= list.cap;
+  const full = capReached(list.used, list.cap);
   // The header: how full the list is, what agents suggested (admins), and Jev (admins) — one card of cells.
   const waiting = admin ? list.suggestions.length : 0;
   const head0 = `<section aria-label="Tags in ${attr(org.name)}"${surface("", { cls: "cnpy-tagshead" })}>
@@ -359,7 +364,7 @@ export function tagAddModal(ui: TagsUi, list: TagListDTO | null): string {
   const err = ui.addError ?? (problem || null);
   const ai = list.ai;
   const can = canFind(ai);
-  const why = !ai ? "" : !ai.available ? "This Trov has no TypeSafe AI key set." : !ai.enabled ? "Sift is off for this organization (the switch above the list)." : ai.spent ? "This month's checks are used up." : "";
+  const why = !ai ? "" : !ai.available ? "This Trov has no TypeSafe AI key set." : !ai.org ? ORG_OFF : !ai.enabled ? "Sift is off for this organization (the switch above the list)." : ai.spent ? "This month's checks are used up." : "";
   const scan = can && ui.addScan;
   const label = (forId: string, text: string) => `<label for="${forId}" class="cnpy-tagnew-l">${text}</label>`;
   const detail = `<div class="cnpy-tagnew">

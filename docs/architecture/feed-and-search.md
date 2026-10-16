@@ -16,7 +16,9 @@ sticky at the page's own top padding `--cols-pad-top`, one column under an 880px
 failed read is 503 `{ error }`, never a 500): `{ days: [{date, count}], total, people, topTags, topAuthors }`
 over the WHOLE team in the viewer's LOCAL days (UTC when `tz` is absent), every day listed so a zero is a
 true zero — two statements, loaded on entering the Feed, never on a filter change; its tag and author chips
-apply the Feed's own `setTag` / `setAuthor` filter; and **Waiting on review**, the Review queue from the
+apply the Feed's own `setTag` / `setAuthor` filter (as does the plain-language filter when the org's AI is on: the
+header's Filter menu opens on "Describe a filter", whose typed sentence sets Author, Tag and Time, with a
+"Filtered: …" line and Undo above the entries — `ai.md` › The plain-language filter); and **Waiting on review**, the Review queue from the
 boot-loaded proposals + draft ADRs as `reviewHeadsFromReads` heads (no diff), each row `mwOpenReview`. The `record-session` skill always writes a brief; the
 body's soft target is ~2,500 characters. Pre-0034 entries were filled once by
 `scripts/backfill-feed-briefs.mjs` (local, Gemini, dry run by default, `--apply` only `WHERE brief IS NULL`).
@@ -70,7 +72,8 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   legal pages name the provider, **TypeSafe AI**, because the privacy policy must name who receives the text
   (not the model). Code identifiers (`jevCell`, `jev_checks`, the reserved `jev` handle on provenance rows)
   are internal and keep the name.
-- **Tagging existing items — Jev ADDS the tag** (issues #154–#158, #166; `src/tools/classify.ts`, `src/tools/tag-fit.ts`).
+- **Tagging existing items — Jev ADDS the tag** (issues #154–#158, #166; the run `src/ai/sift.ts`, through the `tag.fit` kind's provider — the Jev provider
+  `src/tools/classify.ts`, handed out by `src/ai/client.ts` —; the rest `src/tools/tag-fit.ts`; `ai.md`).
   When an admin adds a tag (or accepts a suggested one), and on "Find items", Trov asks a model which of the
   org's EXISTING items fit it, and **adds the tag to each item it is sure fits** (≥ `FIT_APPLY`, 0.85) and **suggests
   it** for each it is less sure about (≥ `FIT_SUGGEST`, 0.60, below 0.85) — an `open` model row in
@@ -89,7 +92,9 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
     the org's switch on, only that org's items, and it only ever ADDS that one tag — it never removes or changes
     anything else. Every other rule holds: never on a render path (the route starts the run and hands its work to
     `waitUntil`); a fixed set of answers (a `noul` must be a number 0–1, anything else is no judgement); metered
-    (`jev_checks`, one per request, `plans.md`).
+    (`jev_checks`, one per request, `plans.md`). A run refused for a switch names WHICH one (`startTagFit`):
+    `org_off` — the organization's AI switch ("…An admin turns it on in Org settings › AI.") — or `off`, Sift's own
+    on the Tags tab ("Sift is off. Turn it on above, in Tags, first.").
   - **Provenance**: each tag a run adds keeps an `org_tag_suggestions` row — `source = 'model'`, `confidence`,
     `reason`, `model` (the version Jev reports, e.g. `jev-1.13.0`), `prompt_version` `jev-fit-1`, `state =
     'accepted'`, `resolved_by = 'jev'` (a reserved handle) and the run's `run_id` — written in the SAME batch as
@@ -122,9 +127,12 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   - **Not confirmed from TypeSafe's docs** (so the client is conservative): a maximum number of questions per
     request, a maximum `state` size, rate limits and pricing are not documented. Hence one item and one question
     per request, at most 4 at once, and states of at most ~600 characters (title ≤ 200 + excerpt ≤ 400).
-  - **Consent**: `org_ai_settings` (kind `tag.fit`), OFF by default, an admin's switch in Org settings › Tags
-    (`PUT /api/o/:slug/tag-settings`, audited `ai.enable` / `ai.disable`). Off, or no `TYPESAFE_API_KEY` → nothing
-    is sent (`startTagFit` answers `off` / `no_key`); turning it off mid-run stops the next call.
+  - **Consent**: TWO switches, both needed. Sift's own — `org_ai_settings` (kind `tag.fit`), OFF by default, an
+    admin's switch in Org settings › Tags (`PUT /api/o/:slug/tag-settings`, audited `ai.enable` / `ai.disable`) —
+    and the organization's AI switch (`orgs.ai_automation`, Org settings › AI), which covers every AI feature.
+    Either off, or no `TYPESAFE_API_KEY` → nothing is sent (`startTagFit` answers `off` / `no_key`); both are read
+    in one statement (`siftSwitches`) before EVERY request, so turning either off mid-run stops the next call. The
+    Tags tab says so when it is the org's switch (`TagAiDTO.org`: "Trov's AI is off for this organization").
   - **What is sent** (to TypeSafe AI only): the tag's name and description (in the question and its criteria), and
     per item its title (≤ 200) and an excerpt of ≤ 400 characters (topped-up items alike) (`excerptOf`: code blocks, inline code, link targets, URLs, markup and anything shaped like
     a credential removed). Candidates are picked WITHOUT the model: the org's own FTS (`feed_fts`, `docs_fts` —
@@ -138,14 +146,76 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   - **Agents' suggestions are separate and unchanged**: an AGENT's unknown tag (sent on a feed entry through the
     gate, `recordTagSuggestions`) still waits (`open`) for an admin to approve, map or dismiss it. They are drawn
     as suggested rows at the top of the tag list (`web-ui.md` › Tags).
-  - Not built: the content-hash cache of #155, the per-kind test set and the rates in Platform of #158.
+  - **Sift on NEW items** (Phase C, `src/ai/sift-items.ts`; `ai.md` › Jobs): when a doc is PROMOTED the router marks
+    `card:tagfit:doc:<slug>` (an artifact's `card:tagfit:artifact:<slug>` too — artifacts carry no tags yet, so its
+    card is written with no request; a feed entry is not marked for it). The AI pass then asks Jev ONE request about
+    that item: Sift's own question (`fitQuestion`, the same words a run sends) once per ACTIVE tag the item does not
+    carry and that nobody said no to on it (`itemFitInput`: no `dismissed`, `open`, `removed` or `undone` row — the
+    same rule as a run's candidates), the tags whose words the item's text matches first, at most
+    `NEW_ITEM_TAGS_MAX` = 60 (Jev answered 60 questions in one request, live). The state is what a run sends: the
+    title and the 400-character scrubbed excerpt. Each answer goes through the SAME bands and writer as a run
+    (`fitBand`, `storeFit`): ≥ 0.85 ADDS with provenance, 0.6–0.85 SUGGESTS, below nothing; never more added than
+    `ITEM_TAGS_MAX` allows (surest first). Each tag it touched is recorded as a ONE-ITEM RUN of that tag
+    (`storeNewItemFit`: `org_tag_runs`, `done`, 1 candidate, `started_by` the pass's `system`, one `tag.fit` audit
+    row naming the item), so the Tags tab shows it as that tag's latest run and its Undo takes exactly that tag off
+    that item. Both switches hold (the pass serves an org only with its AI switch on; the job reads `siftSwitches`
+    and sends nothing with Sift's off); metering is the pass's (`ai_suggest`, `jev_checks`); the reason is the
+    item's own words around the tag's (`evidenceOf` over the org's FTS), else Sift's score. Prompt version
+    `jev-fit-items-1`. Eval set: `test/ai-evals/tag.fit/`.
+  - Not built: the content-hash cache of #155 and the rates in Platform of #158.
 - Screens: `web-ui.md` › Tags.
 
+**Importance** (`FeedRow.importance?`, `0060_ai_importance`; `ai.md` › Jobs › `feed.importance`): how much an entry
+matters as Sift rated it — `routine`, `notable` or `breaking` — a COMPUTED fact the AI pass writes on `feed.importance`
+(and on `pr_summaries.importance` for a merged PR; My Work's `MyWorkPr.importance`). `get_feed` (the Feed and MCP)
+carries the key ONLY when the column is set: an unrated entry has no `importance` at all (`withImportance`), never a
+guessed `routine`. The Feed draws a quiet mark in the byline after the time and tags — notable an accent dot,
+breaking an amber triangle, each with its word and a tooltip saying it is Sift's rating and not official
+(`importanceMark`, `web/src/marks.ts`) — and NOTHING for routine or unrated, byte for byte
+(`test/render.feed-importance.test.ts`). The mark has no motion of its own: it enters with its row (the Feed's
+`.cnpy-stagger` entrance, on a route change only, off under reduced motion), so a rerender never replays it.
+`LOCAL_AI_PREVIEW` merges two rated agent entries (`feedImportanceFixtures`)
+into `/feed`; the dev seed rates a few entries and PRs. A stored rating is a RECORD, not a computed surface (owner
+ruling Q32): it keeps showing — the Feed's mark, `get_feed`, the daily e-mail's "Also" — with the org's AI switch
+off or no Anthropic key; off only stops NEW ratings (`test/ai.records-off.test.ts`).
+
 **Entries written by Trov** (`FeedRow.ai?`, `shared/ai-core.ts` `AiFeedMeta`: `origin: "ai"`, the person it was
-written for, its sources). An entry with no `ai` is an agent's — every entry today: nothing writes one yet, so
-`/feed` and `get_feed` carry no `ai` in production. `LOCAL_AI_PREVIEW` merges two sample entries into `/feed`
-by `created_at` (respecting `author` / `tags` / `since` / `limit`) under `wrangler dev` only, never over MCP
-(`ai.md`).
+written for, its sources). The SESSION DIGESTS (`ai.md` › Session digests): a `Shipped:` / `Status:` entry the AI
+pass writes from one person's burst of commits and PRs, through the gate, authored by `trov`
+(`ingestion-gate.md` › the one exception), with `feed.origin = 'ai'`, `feed.model` and `feed.subject` (0061). Every
+read of the feed (`get_feed`: `/feed` and MCP) folds those three columns into `ai` (`withAiMeta`,
+`src/tools/feed-ai.ts`) — `subject`, `sources` (the server's cites built from the entry's own `artifacts`: PRs, then
+commits, linked to the digest's repository from `ai_sessions`; no repository = no link, never a guess), the
+first `AI_FEED_SOURCES_SHOWN` (3) and `moreCount` the rest, `generatedAt` (`created_at`) and `model` — and drops them
+from the row; an agent's entry carries no `ai`, exactly as before. The entry is a record (owner ruling Q29): it keeps
+its `ai` with the org's switch off or no key — off writes no new one; only the web's one-time "Trov now writes…"
+note goes (it reads `GET /ai/settings`' `enabled` / `eligibility`). `/feed` and MCP `get_feed` both leave out a
+Trov entry the caller flagged "Wrong?" (`ai_feedback` item type `feed`, ref = the entry's id — `aiItemRef.feed`, what
+the Feed's button sends; for them only; the record stays) IN SQL, before the LIMIT (`get_feed`'s `viewer`: a
+`NOT EXISTS` on the primary key, set by each caller to its own authenticated person, never by a client), so a page is
+never short (owner ruling Q28; `test/ai.feed-wrong.test.ts`) and the separate "Wrong?" read is gone. Its `importance` is Phase C's `feed.importance` (Jev,
+`card:feed`), which the router's `feed_ingested` mark asks for like any entry. `LOCAL_AI_PREVIEW` merges two
+sample entries into `/feed` by `created_at` (respecting `author` / `about` / `tags` / `since` / `limit`) under `wrangler
+dev` only, never over MCP (`ai.md`); the local seed (`npm run seed`) has REAL Trov rows too — three digests with
+their `ai_sessions`, a skipped session and two `repo_state` versions (`fixtures/dev/ai.json`,
+`scripts/seed/build.mjs` › `aiStatements`; left out of the Guide demo), so the Feed and Repo › Summary show them
+without the preview. `test/ai.hookup.test.ts` proves the whole path on real rows.
+
+**Entries written by Trov** (`FeedRow.ai?`, `AiFeedMeta`). An entry with no `ai`, or `ai.origin === "agent"`, is an
+agent's and renders as before. One with `origin: "ai"` takes the AI mark as its avatar, "Trov" as the name and
+"for <subject>" (the subject through `people.ts`; a deleted account's is "Deleted user", plain text — Q31), its brief, then "From #173, 65b9f1f, a1c04e2 and 2 more" and
+"Wrong?" (hidden for that person at once). Only when at least one LOADED entry carries `ai` does the header gain a
+**Source** `segmented()` (All / Agents / Trov, `state.ai.feedSource`, client-side, beside For reading / For
+agents), and the list a one-time note above the first Trov entry on screen ("Trov now writes entries from your
+commits, about 45 minutes after your last push. Your agents can stick to decisions and findings." + AI settings
+→ Org settings › AI), dismissed per person with "Got it" (`trov.aiFeedNote`, a JSON list of handles in this
+browser's localStorage). Trov's entries are RECORDS: with the org's switch off (or no key) they keep their mark, byline
+and the Source switch; only the note, no longer true, is not drawn — `/feed` then answers `aiOff: true` beside a
+page that holds one (`getFeedPage`, `AiUi.feedAiOff`; Q29). Source = Trov over a page with no entry Trov wrote says "No Trov entries in this view."
+(`FEED_NO_TROV`, Q27) where any other filter says "No entries match this filter.". `?author=<handle>` is LITERAL —
+who wrote the entry, so never Trov's digest about them; `&about=1` (`FeedFilter.aboutAuthor`) adds the digests whose
+`subject` is that handle (one SQL clause, still bound to the org), which My Work › Your sessions reads (Q30). With no `ai` anywhere the Feed
+is byte-for-byte what it was (`test/render.ai-absent.test.ts`).
 
 ## Read side — FTS5 query engine
 

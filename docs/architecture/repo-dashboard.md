@@ -139,7 +139,13 @@ on. An org with no environment and no primary repository has no unit and costs n
   With no part anywhere `:40` has no heavy job and is a plain health tick (below).
 - `:50`, `:40` when no org has a part, and `:10`–`:30` of any other hour, ping health and nothing else — and then the AI pass
   (`src/ai/pass.ts`, `ai.md`) on what the pings left of the budget, on every tick with no heavy job. Its job
-  registry is empty, so today it reads and fetches nothing.
+  registry is empty, so today it reads and fetches nothing. At `:50` the digest pre-warm (`prewarmDigests`,
+  `notifications.md`) runs first: D1 only, it marks the briefs the coming hour's digests lead with.
+- The repo capture marks the AI router (`ai.md` › The router): a webhook delivery's written `repo_events` row marks
+  `session:<repo>:<actor>` (and `repo:<repo>` for a default-branch push, a deploy, a default-branch run failure;
+  the PR author's `person` for a failure on their branch), and a hosting deploy that lands or fails on an
+  environment's branch marks `repo:<repo>` (`upsertDeploys`, `src/hosting/poll.ts`). Reconcile's backfilled rows
+  mark nothing: a session is about a live burst.
 
 **The budget.** One invocation may spend `CRON_SUBREQUEST_BUDGET` = **900** outbound requests (Workers Paid
 allows 1,000 an invocation; D1 does not count) and `CRON_WALL_BUDGET_MS` = 8 minutes of wall clock. `health`
@@ -401,7 +407,7 @@ risk the invocation, while health and usage still run. The hosting arm runs only
 fits (`refreshSubrequests(N)` + a mint + Σ `providerPollCost` ≤ `SUBREQUEST_CAP` — 54 left for two environments), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
 (UNBOUNDED — the reason it has a tick of its own — and it feeds the Roadmap, not this dashboard),
 `pruneRepoCapture` (maintenance, not a refresh) and `runBackfill` / summaries (that is Sync GitHub: My Work's
-capture, with its own summary allowance). **That last exclusion has a visible cost**: `runBackfill` is also
+capture, with its own summary allowance, and under the org's AI switch: off, it writes no summary — `ai.md`). **That last exclusion has a visible cost**: `runBackfill` is also
 the ONLY non-webhook writer of the `events` issue snapshots, so the Overview's Open issues / Open bugs tiles
 and their deltas, Planning's Issues by label and the activity feed's issue lines do NOT move on a poll — they
 refresh with Sync GitHub, and the button's title says so. **Idempotent with the cron**: the pollers key on the HOUR FLOOR,
@@ -634,12 +640,32 @@ files a commit touched (`commit_paths`, by the commit's own `at`) and a PR's fil
 the read's `fetched_at`) go after 100 days (`COMMIT_PATHS_RETENTION_DAYS`, Phase E); a PR still open past that is read
 again.
 
-**Written by Trov — `state` and `themes`** (`shared/repo.ts`, typed in `shared/ai-core.ts`): Overview's first
-block ("State") and Planning's ("Where the work went", per range). They are NOT sections, so `REPO_TAB_SECTIONS`
-does not name them, and absent means off / nothing written — never a `not_connected` section. **Nothing writes
-them yet: production omits both** (`GET /repo/dashboard` and `get_repo_dashboard`); `LOCAL_AI_PREVIEW` fills
-them from the fixtures under `wrangler dev` only, never over MCP (`ai.md`). When the dashboard has them,
-`get_repo_dashboard` carries `state` with `tab: overview` (or no tab) and `themes` with `planning` (or no tab).
+**Written by Trov — `state` and `themes`** (`shared/repo.ts`, typed in `shared/ai-core.ts`): the screen's Summary
+tab ("State") and Planning's first block ("Where the work went", per range). They are NOT sections, so `REPO_TAB_SECTIONS`
+does not name them (Summary is a SCREEN tab, `REPO_SCREEN_TABS`, never a `RepoTab`: MCP's `tab` has no `summary`), and absent means off / nothing written — never a `not_connected` section. **`state` is the
+newest `repo_state` version** (0062; written by the AI pass's `repo.state` job — `ai.md` › Repo state), read by
+`readRepoState` (`src/tools/repo-state.ts`) beside the projection — `GET /repo/dashboard` (`src/routes.ts`) and
+`get_repo_dashboard` (`getRepoDashboardForAgent`) make the same read, never a model call. It is ABSENT with no
+repository, under the AI read rule's off (the org's switch off or no Anthropic key — `ai.md` › The read rule), for
+the person who flagged that version "Wrong?", or on any failed read (never a 500, never a degraded dashboard). With
+NOTHING written yet it is absent over MCP, but `GET /repo/dashboard` under the read rule carries an `empty` state
+(`readRepoState`'s `emptyWhenNone`; Q23: Summary says "Trov writes this after your next merge…"; `capped` instead
+once the runs are spent); `ready` otherwise, and `capped` (same
+content, `resumesOn`, `upgrade` on Free) once the month's `ai_runs` are spent. `eventCount` is the server's count
+of what the version was written from, and `ageDays` its whole days since it was written: an old state STAYS (owner
+ruling Q25) and the card says "Written N days ago." under the headline from `AI_STALE_DAYS` (7) on — a plain fact
+in the byline's ink (`.repo-state-age`), never a mark or a warning. **`themes` is written too** (`src/tools/themes.ts` `readRepoThemes`, called at
+the end of `getRepoDashboard`, so the route and `get_repo_dashboard` get the same field): a D1 aggregation on read —
+merged PRs per theme per UTC Monday week from `pr_themes`, a proposal's lane from the PRs it cited, the newest caption
+on the 8-week range — present only under the AI read rule (the switch on and a key) and while the repository has an
+active theme or a proposal waiting on an admin, `capped` (both ranges) once the month's `ai_runs` are spent; a failed read leaves it out and sets `degraded` (`ai.md` › Themes). `LOCAL_AI_PREVIEW`
+fills both from the fixtures under `wrangler dev` only, over the real state, never over MCP (`ai.md`).
+`get_repo_dashboard` carries `state` with `tab: overview` (or no tab) and `themes` with `planning` (or no tab);
+the `load-context` skill reads it FIRST, before any query. The screen is `web/src/repo-ai.ts` `repoStateSection`
+(the Summary tab, `summaryTab` in `repo.ts`); its "Wrong?" sends `itemRef = <repo>@<generatedAt>` (`aiItemRef.repoState`), the
+same ref the read checks, so the next read leaves that version out for that person only (`test/ai.hookup.test.ts`,
+real rows). The local seed writes the primary repository (`SaplingLearn/sapling`) and two versions
+(`fixtures/dev/ai.json`), so Repo › Summary shows a real State on localhost.
 
 **The Overview from facts** — whenever the payload carries `facts` (every Worker payload now, and the sample) the
 Overview is `overviewFacts` (`web/src/repo-overview.ts`), else the older section-built Overview: the composition, the
@@ -672,3 +698,51 @@ parity guard). Without `include_trends` each commit group in `facts` (not shippe
 (first 20, `groupCount` beside) and each part's `history` its newest 2 (`historyCount`); apps, environments and
 parts are never cut. The pure view is `src/tools/repo-agent-view.ts` (shared types only). Output: `{ repo,
 generatedAt, degraded, tab, range, sections, facts?, layout? }`.
+
+## Written by Trov: State and Where the work went (`web/src/repo-ai.ts`)
+
+Two OPTIONAL fields of the dashboard read, not `RepoSection`s (`shared/repo.ts`): `state?` (`AiRepoState`) and
+`themes?` (`Partial<Record<AiThemeRange, AiThemes>>`). Each is drawn as its own card, only on a live dashboard (never
+on sample data, never with no repository connected), and only when present — absent, the screen is byte-for-byte
+what it was (`test/render.ai-absent.test.ts`): State is the **Summary** tab's whole content, Where the work went sits
+ABOVE Planning's one panel (the mock's layout).
+
+**Summary — the repository's state as Trov wrote it, on its own tab** (the owner, 2026-10-15: "split up the
+overview for the repo state and the ai overview into different screens in the switcher"). The Overview is the
+computed dashboard only; Summary is the SECOND tab of `repoTabBar` (`REPO_SCREEN_TABS` in `shared/repo.ts`: Overview,
+Summary, Code, CI & Deploys, Usage, Team & Planning), its label followed by the AI mark (`aiMark`), at
+`#repo/summary` (`isRepoScreenTab`, `hash.ts`; quick search's "Repo › Summary"). It is offered only while
+`repoSummaryShown` (`web/src/repo.ts`): the LIVE read carries `state` and this person's "Wrong?" exit on it is not
+over — or, while the first read is still out, the address asks for it, so a deep link or a reload holds its tab
+and its address until the read says; a failed first read draws the dashboard's error block there. A COLD load
+(the Repo chunk not yet in) first paints the chunk's generic skeleton (`repoView` in `repo-lazy.ts`, about half a
+second locally) — the read usually lands before the chunk, so the State card's own shape (`repoStateSkeleton`,
+`data-ai-state="loading"`) is drawn only when the chunk is in and the read is still out (a warm switch to the tab);
+it is not promised on a cold load (owner, Q-F1, 2026-10-16). With the field absent — the org's AI off, no key, the
+version flagged "Wrong?", a failed state read — there is NO tab (nothing written yet, with a key, is an `empty` state:
+the tab shows its sentence, Q23) (the AI kit's rule: off is
+no row, never an "off" state, as the Filter menu's "Describe a filter"), and sample data never has one. An address
+that asks for Summary when there is none draws the Overview, and `rerender()` (`main.ts`) moves `state.repoTab` —
+and so the address — to `overview` with the tab switch's flash: a read landing without `state`, Preview with sample
+data, or the end of "Wrong?"'s exit on the tab. Summary holds no panel: no Group by, no not-connected footer; the
+sample / degraded banner sits above the card as on every tab, and "Poll now"'s strip in a panel of its own above
+it. A switch to or from it is the bar's one rerender (`setRepoTab`), the underline sliding and the card flashing
+in (`.repo-ai` is in the switch's `pendingFlash`); the card rises with the page's entrance on a deep link.
+
+- **Summary › State**: an 18px headline; three wrapping columns — Shipped recently (the done glyph, green), In
+  flight (the half glyph, blue), Needs attention (the warning glyph, amber) — each line with its sources; "Written
+  by Trov from N events, 2h ago" (no "from N events" when `eventCount` is null) and "Wrong?". Empty: "Trov writes
+  this after your next merge: what shipped, what is in flight, and what needs attention, each linked to its
+  source." Capped: the headline and "this state is from <day> and resumes <day>".
+- **Planning › Where the work went**: title, caption, "Themes and caption written by Trov from N pull requests",
+  an 8 weeks / Quarter `segmented()` switching between `themes["8w"]` and `themes.quarter` client-side
+  (`state.ai.themesRange`), and Edit themes for admins (it goes to the proposed themes; with none it says editing
+  is not available yet). A lane per theme in `--p-<colorKey>`, a band per week sized against the busiest week in
+  view (zero = no band), weeks labelled "Aug 24". Picking a lane (`aria-pressed`) fades the others and shows its
+  description and pull requests under the chart. **Proposed** lanes (`status: "proposed"`) are suggestions:
+  "Trov suggests these themes", each an `aiSuggestionChip` with Accept / Rename (an inline field, then accept
+  with `{ value: { name } }`) / Remove (dismiss) for admins; a member reads "Waiting for an admin to accept
+  themes". A 409 `not_available` shows "Not available yet". Empty: "Themes appear once this repo has 15 merged
+  pull requests." Accept / Rename / Remove are an admin's on the server too (the `themes.propose` handler's `role` and
+  `dismissRole`, `src/ai/themes-accept.ts`); production sends the field only when there is a lane to draw, so the
+  empty state is the preview's.

@@ -20,7 +20,7 @@ another account your login reaches.
 
 1. `npm test` and `npm run typecheck` are green locally (typecheck is not part of `npm test`), and CI is
    green on the pull request.
-2. The pull request's lines are in the top entry of `web/src/releases.ts`, with an `ops` line for every
+2. The pull request's one patch line is in the top entry of `web/src/releases.ts`, with an `ops` line for every
    migration, secret, var or trigger change it carries. The merging PR cuts the version (that file's header).
 3. A new migration is **additive and safe beside the Worker already running** (a new table, a nullable
    column, a column with a default), and its header says how to undo it by hand. See section 3 for why this
@@ -168,12 +168,13 @@ Cloudflare cron weekdays are 1–7 or SUN–SAT, never 0. `REPO_CRON` in `src/re
   person's `ref`).
 - **A secret:** put the previous value back (`wrangler secret put`); that redeploys (section 4).
 
-## 8. Live state as of release 0.25 (2026-10-09)
+## 8. Live state as of the old release 0.25 (2026-10-09; now part of 0.7)
 
-Facts from `wrangler.toml`, `web/src/releases.ts` (0.25 `ops`) and the checks in section 6. Re-check before
+Facts from `wrangler.toml`, `web/src/releases.ts` (the old 0.25's `ops`, folded by #190 into the entry that was
+0.25–0.29 and is now 0.7 after the renumbering; the full pre-#190 notes are in git history) and the checks in section 6. Re-check before
 relying on any of them.
 
-- **Release:** 0.25 is served.
+- **Release:** the old 0.25 (today part of 0.7) is served.
 - **Migrations:** through `0051_mcp_connection_orgs`. The numbers `0037`–`0040` and `0050` are unused: no
   such files exist, and none should be added under those numbers.
 - **Plans:** Free, Pro (plan id `team`) and Enterprise; Personal is a legacy id, no longer sold

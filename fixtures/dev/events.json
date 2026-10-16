@@ -16,7 +16,7 @@
       "semantic_key": "gh:pr:153:merged", "event_type": "pr_merged", "ref_number": 153, "subject_login": "AndresL230",
       "provenance": "backfill", "occurred_at": "2026-06-29T11:00:00Z", "recorded_at": "2026-06-29T11:01:00Z",
       "raw": { "pr": { "number": 153, "title": "Sprint progress bars on the Roadmap page", "body": "Each sprint renders a closed/total bar from the stored progress cache.", "html_url": "https://github.com/SaplingLearn/sapling/pull/153", "merged": true, "merged_at": "2026-06-29T11:00:00Z", "closed_at": "2026-06-29T11:00:00Z", "user": { "login": "AndresL230" }, "base": { "ref": "main" }, "milestone": null } },
-      "pr_summary": { "title": "Add sprint progress bars to the Roadmap", "what": "Rendered a closed/total progress bar per sprint from the stored progress cache.", "why": null, "impact": "The Roadmap now shows how far each sprint is along at a glance." }
+      "pr_summary": { "title": "Add sprint progress bars to the Roadmap", "what": "Rendered a closed/total progress bar per sprint from the stored progress cache.", "why": null, "impact": "The Roadmap now shows how far each sprint is along at a glance.", "importance": "notable" }
     },
     {
       "semantic_key": "gh:pr:149:merged", "event_type": "pr_merged", "ref_number": 149, "subject_login": "AndresL230",
@@ -84,13 +84,13 @@
       "semantic_key": "gh:pr:151:merged", "event_type": "pr_merged", "ref_number": 151, "subject_login": "octo-drifter",
       "provenance": "backfill", "occurred_at": "2026-06-22T16:00:00Z", "recorded_at": "2026-06-22T16:01:00Z",
       "raw": { "pr": { "number": 151, "title": "Fix typo in onboarding doc", "body": "One-line copy fix.", "html_url": "https://github.com/SaplingLearn/sapling/pull/151", "merged": true, "merged_at": "2026-06-22T16:00:00Z", "closed_at": "2026-06-22T16:00:00Z", "user": { "login": "octo-drifter" }, "base": { "ref": "main" }, "milestone": null } },
-      "pr_summary": { "title": "Fix a typo in the onboarding doc", "what": "Corrected a one-line typo in the onboarding documentation.", "why": null, "impact": null }
+      "pr_summary": { "title": "Fix a typo in the onboarding doc", "what": "Corrected a one-line typo in the onboarding documentation.", "why": null, "impact": null, "importance": "routine" }
     },
     {
       "semantic_key": "gh:pr:205:merged", "event_type": "pr_merged", "ref_number": 205, "subject_login": "sky-42",
       "provenance": "backfill", "occurred_at": "2026-06-21T13:00:00Z", "recorded_at": "2026-06-21T13:01:00Z",
       "raw": { "pr": { "number": 205, "title": "Bump lesson schema validator to v3", "body": "Upgrades the MDX frontmatter validator in the Sapling content pipeline.", "html_url": "https://github.com/SaplingLearn/sapling/pull/205", "merged": true, "merged_at": "2026-06-21T13:00:00Z", "closed_at": "2026-06-21T13:00:00Z", "user": { "login": "sky-42" }, "base": { "ref": "main" }, "milestone": null } },
-      "pr_summary": { "title": "Bump the lesson schema validator to v3", "what": "Upgraded the MDX frontmatter validator used by the content pipeline to v3.", "why": null, "impact": "Lessons are now validated against the newer frontmatter schema." }
+      "pr_summary": { "title": "Bump the lesson schema validator to v3", "what": "Upgraded the MDX frontmatter validator used by the content pipeline to v3.", "why": null, "impact": "Lessons are now validated against the newer frontmatter schema.", "importance": "breaking" }
     }
   ]
 }

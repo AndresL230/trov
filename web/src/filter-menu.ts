@@ -58,6 +58,9 @@ export interface FilterMenuProps {
   /** A Filter button on its own (the Feed): its own border and full corners. Without it
    *  the button is the right half of `searchFilterBar` — borderless, the bar draws the box. */
   standalone?: boolean;
+  /** Pre-rendered markup at the popover's top, above the options and categories: the typed filter's row
+   *  (ai-filter.ts `aiFilterMenuTop`) on Tickets, the Feed and Artifacts. Omitted or "" draws nothing. */
+  top?: string;
 }
 
 const ROW_H = 32;
@@ -118,7 +121,7 @@ export function filterMenu(p: FilterMenuProps): string {
 
   const anchor = p.align === "right" ? "right:0;width:340px;max-width:calc(100vw - 32px)" : "left:0;right:0;min-width:300px";
   const pop = `<div role="dialog" aria-label="${attr(p.ariaLabel)}" data-fm-pop="${attr(p.id)}" class="fm-pop${p.align === "right" ? " is-right" : ""}${p.opening ? " is-opening" : ""}" style="position:absolute;top:calc(100% + 6px);${anchor};z-index:30;background:var(--bg);border:1px solid var(--border-strong);border-radius:11px;box-shadow:0 14px 38px rgba(0,0,0,.3);display:flex;flex-direction:column;overflow:hidden">
-    <div style="display:grid;grid-template-columns:minmax(0,1fr) 136px;height:${bodyH}px">
+    ${p.top ?? ""}<div style="display:grid;grid-template-columns:minmax(0,1fr) 136px;height:${bodyH}px">
       <div class="fm-scroll" style="overflow-y:auto;padding:6px;min-width:0">${panels}</div>
       <div style="position:relative;border-left:1px solid var(--border);padding:6px;display:flex;flex-direction:column;gap:${ROW_GAP}px">
         <span class="fm-ind" aria-hidden="true" style="--ci:${ci};border-radius:7px"></span>

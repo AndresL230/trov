@@ -52,6 +52,7 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "Handoffs", hint: "Work left for the next session", keys: "inbox claim", steps: [["goHandoffs", null]] },
   { label: "New handoff", hint: "Leave work for someone", keys: "send create", steps: [["newHandoff", null]] },
   { label: "Repo › Overview", hint: "Environments, drift and health", keys: "dashboard github environments health deploys", steps: [["goRepo", "overview"]] },
+  { label: "Repo › Summary", hint: "Where the repo stands, written by Trov", keys: "ai state shipped in flight attention written", steps: [["goRepo", "summary"]] },
   { label: "Repo › Code", hint: "Pull requests, commits and branches", keys: "prs pull requests branches commits", steps: [["goRepo", "code"]] },
   { label: "Repo › CI", hint: "Deploys, failures, coverage and bundle", keys: "builds checks runs coverage failures deploys", steps: [["goRepo", "ci"]] },
   { label: "Repo › Usage", hint: "Requests, users and product metrics", keys: "cloudflare railway metrics active users", steps: [["goRepo", "usage"]] },

@@ -15,7 +15,7 @@
 // before a refusal, what the server would say.
 
 import {
-  GIFT_SOON_DAYS, LISTED_LIMIT_KEYS, LIMITS, PLANS, UPGRADE_PLAN, formatLimit, formatUse, giftDaysLeft, isSoloPlan, limitNoun, planRefusal, planRefusalSentence,
+  GIFT_SOON_DAYS, LISTED_LIMIT_KEYS, LIMITS, PLANS, UPGRADE_PLAN, capReached, formatLimit, formatUse, giftDaysLeft, isSoloPlan, limitNoun, planRefusal, planRefusalSentence,
   type LimitKey, type OrgPlanView, type PlanNext,
 } from "@shared/plans";
 import { billingDate, isPast, type PurchasablePlan } from "@shared/billing";
@@ -76,7 +76,7 @@ function limitRow(v: OrgPlanView, key: LimitKey): string {
   // A count nobody can do anything with is noise: an unlimited limit shows what is used, and "Unlimited".
   const use = cap === null ? `${formatLimit(key, v.usage[key])} used &middot; ${formatLimit(key, null)}` : esc(formatUse(key, v.usage[key], cap));
   // A monthly allowance that is used up (AI summaries) is not "over": the row says what happens instead.
-  const spent = d.period && d.atCap && cap !== null && v.usage[key] >= cap ? `<div data-limit-spent style="font-size:12px;line-height:1.45;color:var(--fg-70);margin-top:3px">${esc(d.atCap)}</div>` : "";
+  const spent = d.period && d.atCap && capReached(v.usage[key], cap) ? `<div data-limit-spent style="font-size:12px;line-height:1.45;color:var(--fg-70);margin-top:3px">${esc(d.atCap)}</div>` : "";
   return `<li class="cnpy-plan-row" data-limit="${key}"${over ? ' data-over="1"' : ""}>
     <div class="cnpy-plan-what">
       <div style="font-size:13px;font-weight:500;color:var(--fg)">${esc(d.label)}${d.per === "person" ? ` <span style="font-weight:400;color:var(--fg-40)">per person</span>` : ""}</div>

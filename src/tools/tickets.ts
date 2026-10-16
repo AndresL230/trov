@@ -19,11 +19,13 @@
 // The status machine is NOT re-declared here: `canTransition` in shared/tickets.ts
 // is the one table, shared with the SPA.
 
-import type { TicketCreate, TicketEdit, TicketStatus } from "@shared/tickets";
-import { canTransition, parseTicketLink, placeInColumn } from "@shared/tickets";
+import type { TicketCategory, TicketCreate, TicketEdit, TicketPriority, TicketStatus } from "@shared/tickets";
+import { canTransition, parseTicketLink, placeInColumn, TICKET_CATEGORIES, TICKET_PRIORITIES } from "@shared/tickets";
 import type { TicketRow } from "@shared/rows";
 import { type TenantContext, type Stmt, first, all, run, stmt, batch, nowIso } from "../data/sql";
 import { requireMember } from "../auth/persons";
+import { routeAi } from "./ai-route";
+import { supersedeOpenTicketSuggestions } from "../data/ai";
 
 /**
  * A typed failure the routes map onto an HTTP status:
@@ -172,7 +174,17 @@ export async function create_ticket(ctx: TenantContext, input: TicketCreate, req
     );
   }
 
-  return (await first<{ number: number }>(ctx, `SELECT number FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId))!.number;
+  const number = (await first<{ number: number }>(ctx, `SELECT number FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId))!.number;
+  await routeAi(ctx, { type: "ticket_created", number });
+  return number;
+}
+
+/** What closing a ticket also writes, for the status writer's own batch: a ticket that becomes `done` / `declined`
+ *  closes Trov's OPEN suggestions about it (owner ruling Q35: superseded — not shown, an Accept refused). Every status
+ *  writer uses it: `transition_ticket`, `move_ticket` and the GitHub mirror's forced status (./ticket-mirror.ts). */
+export function closingStmts(ctx: TenantContext, ticketId: number, from: TicketStatus, to: TicketStatus): Stmt[] {
+  const closed = (s: TicketStatus) => s === "done" || s === "declined";
+  return closed(to) && !closed(from) ? [supersedeOpenTicketSuggestions(ctx, ticketId)] : [];
 }
 
 /**
@@ -194,8 +206,12 @@ export async function transition_ticket(ctx: TenantContext, number: number, to: 
     ctx.orgId, id, who, t.status, to, now
   );
   // A move that is not a board drop clears the card's position: it lands at the
-  // TOP of its new column (`boardOrder`), where a person will see it.
-  await run(ctx, `UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ? WHERE id = ? AND org_id = ?`, to, now, id, ctx.orgId);
+  // TOP of its new column (`boardOrder`), where a person will see it. Closing it closes what Trov suggested about it.
+  await batch(ctx, [
+    stmt(ctx, `UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ? WHERE id = ? AND org_id = ?`, to, now, id, ctx.orgId),
+    ...closingStmts(ctx, id, t.status, to),
+  ]);
+  await routeAi(ctx, { type: "ticket_changed", ticketId: id });
 }
 
 /**
@@ -231,8 +247,10 @@ export async function move_ticket(ctx: TenantContext, number: number, to: Ticket
       ctx.orgId, id, who, t.status, to, now));
   }
   stmts.push(stmt(ctx, `UPDATE tickets SET status = ?, board_rank = ?, updated_at = ? WHERE id = ? AND org_id = ?`, to, rank, now, id, ctx.orgId));
+  stmts.push(...closingStmts(ctx, id, t.status, to));
   // D1 caps a batch well above a board column; chunk anyway so a huge Done column never trips it.
   for (let i = 0; i < stmts.length; i += 100) await batch(ctx, stmts.slice(i, i + 100));
+  if (to !== t.status) await routeAi(ctx, { type: "ticket_changed", ticketId: id });
 }
 
 /**
@@ -249,6 +267,7 @@ export async function toggle_assignee(ctx: TenantContext, number: number, login:
     await run(ctx, `DELETE FROM ticket_assignees WHERE ticket_id = ? AND login = ? AND org_id = ?`, id, handle, ctx.orgId);
   }
   await touch(ctx, id, nowIso());
+  await routeAi(ctx, { type: "ticket_changed", ticketId: id, people: on ? [] : [handle] });
 }
 
 /** Attach one linked-work reference, parsed by the SHARED parser the SPA also uses. */
@@ -308,12 +327,33 @@ export async function edit_ticket(ctx: TenantContext, number: number, patch: Tic
     title ?? t.title, patch.body ?? t.body, nowIso(), id, ctx.orgId);
 }
 
+/**
+ * Set a ticket's category and/or priority after it was filed — today ONLY Trov's suggestion Accept reaches it
+ * (`ticket.category` / `ticket.priority`, src/ai/jobs/accept.ts), as the person who pressed it. Not an MCP tool.
+ * A value outside the vocabulary, or a patch that sets neither, is `bad_request`; setting what the ticket already
+ * has writes nothing. No history row — `ticket_events` audits status moves only.
+ */
+export async function set_ticket_classification(
+  ctx: TenantContext, number: number, patch: { category?: TicketCategory; priority?: TicketPriority }, actor: string,
+): Promise<void> {
+  const t = await getTicketRow(ctx, number);
+  await requireMember(ctx, actor);
+  if (patch.category === undefined && patch.priority === undefined) throw new TicketError("bad_request", "nothing to set: pass category and/or priority");
+  if (patch.category !== undefined && !(TICKET_CATEGORIES as readonly string[]).includes(patch.category)) throw new TicketError("bad_request", `unknown category: ${patch.category}`);
+  if (patch.priority !== undefined && !(TICKET_PRIORITIES as readonly string[]).includes(patch.priority)) throw new TicketError("bad_request", `unknown priority: ${patch.priority}`);
+  const category = patch.category ?? t.category;
+  const priority = patch.priority ?? t.priority;
+  if (category === t.category && priority === t.priority) return;
+  await run(ctx, `UPDATE tickets SET category = ?, priority = ?, updated_at = ? WHERE id = ? AND org_id = ?`, category, priority, nowIso(), t.id, ctx.orgId);
+}
+
 /** Move a ticket into a sprint, or back to the backlog (`null`). */
 export async function set_ticket_sprint(ctx: TenantContext, number: number, sprintId: number | null): Promise<void> {
-  const { id } = await getTicketRow(ctx, number);
+  const { id, sprint_id: was } = await getTicketRow(ctx, number);
   if (sprintId !== null) await requireSprint(ctx, sprintId);
   const now = nowIso();
   await run(ctx, `UPDATE tickets SET sprint_id = ?, updated_at = ? WHERE id = ? AND org_id = ?`, sprintId, now, id, ctx.orgId);
+  await routeAi(ctx, { type: "ticket_changed", ticketId: id, sprints: [was] });
 }
 
 /**

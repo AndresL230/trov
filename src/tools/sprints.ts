@@ -26,6 +26,7 @@
 import type { SprintRow, SprintProgressRow, TicketRow } from "@shared/rows";
 import {
   toSprintView,
+  type SprintForecast,
   type SprintCreate,
   type SprintView,
   type SprintDetail,
@@ -34,12 +35,13 @@ import {
   type SprintTicketRow,
   type SprintResourceView,
 } from "@shared/sprints";
-import { normalizeSprintDate, sprintDatesProblem } from "@shared/sprints-core";
+import { isoDayKey, normalizeSprintDate, sprintDatesProblem } from "@shared/sprints-core";
 import { parseTicketLink } from "@shared/tickets";
 import { type TenantContext, first, all, run, stmt, batch, nowIso, ph, fanOut } from "../data/sql";
 import { getProgress } from "./progress";
 import { ticketLinkRepo, unusableLink } from "./tickets";
 import { requireMember } from "../auth/persons";
+import { sprintNotes } from "../data/org-insights";
 
 /**
  * A typed failure the sprint routes map onto an HTTP status — the same three
@@ -88,6 +90,55 @@ export function sprintProgress({ ticketsTotal, ticketsClosed }: SprintProgressIn
  *  A sprint with no `github_ref` never gets a cache row, so this is null for it. */
 export const sprintIssueCounts = (cache: SprintProgressRow | undefined | null): SprintIssueCounts | null =>
   cache ? { closed: cache.closed, total: cache.total } : null;
+
+// ── the forecast (Phase D, Feature E): ARITHMETIC, never a model ─────────────
+
+const DAY_MS = 86_400_000;
+
+export interface SprintForecastInput {
+  status: string;
+  /** YYYY-MM-DD, or null / unparseable: no forecast. */
+  start: string | null;
+  due: string | null;
+  closed: number;
+  total: number;
+}
+
+/**
+ * "At this pace, done Nov 2, 3 days late" — computed ON READ from the sprint's own tickets (the same
+ * tickets-only counts as `sprintProgress`), never stored and never asked of a model. Pure: the clock is
+ * injected. Calendar days are UTC.
+ *
+ *   pace      = tickets closed so far ÷ whole days since the start (the start day counts as day 1)
+ *   projected = today + ⌈open tickets ÷ pace⌉ days
+ *   daysLate  = projected − due, in days (null with no due day)
+ *
+ * NEVER A GUESS — null (no forecast at all) for: a sprint that is not ACTIVE (`in_progress`); no start day,
+ * or one in the future; no tickets; none still open (progress already says so); none closed yet (no pace to
+ * carry forward — never a pace of 0, which would project "never").
+ */
+export function sprintForecast(sp: SprintForecastInput, now: Date | number = Date.now()): SprintForecast | null {
+  if (sp.status !== "in_progress") return null;
+  const start = isoDayKey(sp.start);
+  if (start === null) return null;
+  const d = new Date(typeof now === "number" ? now : now.getTime());
+  const today = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  if (start > today) return null;
+  const total = Math.max(0, Math.floor(sp.total));
+  const closed = Math.max(0, Math.min(total, Math.floor(sp.closed)));
+  const remaining = total - closed;
+  if (total === 0 || remaining === 0 || closed === 0) return null;
+  const days = Math.round((today - start) / DAY_MS) + 1;
+  const perDay = closed / days;
+  const projectedKey = today + Math.ceil(remaining / perDay) * DAY_MS;
+  const due = isoDayKey(sp.due);
+  return {
+    remaining,
+    perDay,
+    projected: new Date(projectedKey).toISOString().slice(0, 10),
+    daysLate: due === null ? null : Math.round((projectedKey - due) / DAY_MS),
+  };
+}
 
 /**
  * Per-sprint ticket counts, in ONE grouped query (never per sprint). Pass `ids`
@@ -164,14 +215,26 @@ const SPRINT_ORDER = `ORDER BY CASE WHEN target_date IS NULL OR target_date = ''
  * how many sprints exist: the rows, the grouped ticket counts, the grouped
  * assignees, the progress cache. No N+1.
  */
-export async function list_sprints(ctx: TenantContext): Promise<SprintView[]> {
+export async function list_sprints(ctx: TenantContext, now: Date = new Date()): Promise<SprintView[]> {
   const rows = await all<SprintRow>(ctx, `SELECT * FROM sprints WHERE org_id = ? ${SPRINT_ORDER}`, ctx.orgId);
   if (rows.length === 0) return [];
 
-  // Three independent reads, side by side (one round trip's wait, not three).
-  const [counts, members, cache] = await Promise.all([ticketCountsBySprint(ctx), membersBySprint(ctx), getProgress(ctx)]);
+  // Four independent reads, side by side (one round trip's wait, not four). `notes`: what Trov wrote about each
+  // ACTIVE sprint (0065) — none with the org's AI switch off.
+  const [counts, members, cache, notes] = await Promise.all([
+    ticketCountsBySprint(ctx),
+    membersBySprint(ctx),
+    getProgress(ctx),
+    sprintNotes(ctx),
+  ]);
 
-  return rows.map((row) => viewOf(row, counts.get(row.id), cache.get(row.id), members.get(row.id) ?? []));
+  return rows.map((row) => withNote(viewOf(row, counts.get(row.id), cache.get(row.id), members.get(row.id) ?? [], now), notes));
+}
+
+/** A view with its note, when the sprint is ACTIVE and Trov wrote one (absent otherwise — never an empty note). */
+function withNote(view: SprintView, notes: Map<string, NonNullable<SprintView["note"]>>): SprintView {
+  const note = view.active ? notes.get(String(view.id)) : undefined;
+  return note ? { ...view, note } : view;
 }
 
 /** Assemble one SprintView from a row + its three computed inputs. The cache row
@@ -180,7 +243,8 @@ function viewOf(
   row: SprintRow,
   counts: { total: number; closed: number } | undefined,
   cache: SprintProgressRow | undefined,
-  members: string[]
+  members: string[],
+  now: Date | number = Date.now()
 ): SprintView {
   const progress = sprintProgress({
     ticketsTotal: counts?.total ?? 0,
@@ -188,7 +252,9 @@ function viewOf(
   });
   // toSprintView re-derives pct from closed/total with the same formula, so the
   // two can never disagree; sprintProgress stays the one place the RULE lives.
-  return toSprintView(row, { closed: progress.closed, total: progress.total }, members, sprintIssueCounts(cache));
+  const view = toSprintView(row, { closed: progress.closed, total: progress.total }, members, sprintIssueCounts(cache));
+  // The forecast is the same tickets-only counts carried forward (arithmetic, never a model): null when unknown.
+  return { ...view, forecast: sprintForecast({ status: row.status, start: row.start_date, due: view.due, closed: progress.closed, total: progress.total }, now) };
 }
 
 /**
@@ -317,7 +383,7 @@ export async function get_sprint(ctx: TenantContext, id: number): Promise<Sprint
   const closed = ordered.filter((t) => t.status === "done" || t.status === "declined").length;
   const cache = await first<SprintProgressRow>(ctx, `SELECT * FROM sprint_progress WHERE sprint_id = ? AND org_id = ?`, id, ctx.orgId);
   const members = await sprintMembers(ctx, id);
-  const view = viewOf(row, { total: ordered.length, closed }, cache ?? undefined, members);
+  const view = withNote(viewOf(row, { total: ordered.length, closed }, cache ?? undefined, members), await sprintNotes(ctx, id));
 
   return { ...view, tickets: ordered.map(out), resources };
 }

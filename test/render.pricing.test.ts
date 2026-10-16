@@ -368,6 +368,16 @@ describe("pricing — the limits are said once, on the cards", () => {
     for (const page of SITE_PAGES) expect(sitePageHtml(page), page.path).not.toMatch(/AI runs?/);
   });
 
+  it("does not list `ai_chat` (Ask Trov) yet either: no card, question, llms.txt plan or site page says AI chat or names its units", () => {
+    expect(LIMITS.ai_chat.listed).toBe(false);
+    expect(LISTED_LIMIT_KEYS).not.toContain("ai_chat");
+    const unlisted = /AI chats?|Ask Trov units?/i;
+    expect(html).not.toMatch(unlisted);
+    expect(JSON.stringify(pricingQuestions(Object.values(PLANS), PRICING))).not.toMatch(unlisted);
+    expect(pricingMarkdown()).not.toMatch(unlisted);
+    for (const page of SITE_PAGES) expect(sitePageHtml(page), page.path).not.toMatch(unlisted);
+  });
+
   it("lists what every plan includes, and says the by-conversation plan's limits can be set", () => {
     for (const line of EVERY_PLAN) expect(html).toContain(`<span>${line}</span>`);
     expect(html).toContain("Enterprise limits are where an organization starts");

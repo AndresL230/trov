@@ -1,0 +1,141 @@
+
+=== header controls
+[
+ "Open navigation 40x40",
+ "Trov 44x44",
+ "Open threads 44x44",
+ "New thread 44x44"
+]
+
+=== overflow
+{
+ "docW": 360,
+ "winW": 360,
+ "hscroll": false
+}
+
+=== targets under 44px
+[
+ {
+  "t": "Edit message",
+  "w": 57,
+  "h": 28
+ },
+ {
+  "t": "Ticket: #1 test-Login pa",
+  "w": 43,
+  "h": 24
+ },
+ {
+  "t": "Ticket: #2 test-Blank lo",
+  "w": 46,
+  "h": 24
+ },
+ {
+  "t": "Edit",
+  "w": 32,
+  "h": 21
+ },
+ {
+  "t": "Cancel",
+  "w": 65,
+  "h": 29
+ },
+ {
+  "t": "Confirm",
+  "w": 98,
+  "h": 31
+ },
+ {
+  "t": "Cancel",
+  "w": 65,
+  "h": 29
+ },
+ {
+  "t": "Confirm",
+  "w": 98,
+  "h": 31
+ },
+ {
+  "t": "Cancel",
+  "w": 65,
+  "h": 29
+ },
+ {
+  "t": "Confirm",
+  "w": 98,
+  "h": 31
+ },
+ {
+  "t": "Edit",
+  "w": 32,
+  "h": 21
+ },
+ {
+  "t": "Cancel",
+  "w": 65,
+  "h": 29
+ },
+ {
+  "t": "Confirm",
+  "w": 98,
+  "h": 31
+ },
+ {
+  "t": "Cancel",
+  "w": 65,
+  "h": 29
+ },
+ {
+  "t": "Confirm",
+  "w": 98,
+  "h": 31
+ }
+]
+
+=== drawer
+{
+ "w": 300,
+ "modal": "true",
+ "focusIn": true,
+ "text": "Threads | New thread | PINNED | test-Pinned: sprint plan | Sep 25 | TODAY | New thread | 18:50 | test-Panel thread about #1 | 18:10 | test-What is blocking #1? | 18:05 | THIS WEEK | test-This week: webhook retries | Mon | EARLIER | test-<img src=x onerror=alert(1)> Résumé 🚀 日本語 | Sep 15"
+}
+
+=== drawer keeps Tab
+true
+
+=== drawer after Escape
+{
+ "open": false,
+ "focus": "askPhDrawer"
+}
+
+=== plus menu
+Attach a file or photo | Mention a ticket, doc or person | Run a command | MODE | Fast | Smart | Thinking | Reads the items it finds before answering. The default. | CHANGES IN THIS THREAD | Ask before changes | Auto
+
+=== meta line
+Smart · Asks first
+
+=== sheet
+{
+ "sheet": "1",
+ "x": 0,
+ "w": 360,
+ "h": 780,
+ "top": 0,
+ "resize": false
+}
+
+=== overflow with sheet
+{
+ "docW": 360,
+ "winW": 360,
+ "hscroll": false
+}
+
+=== logs
+{
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}

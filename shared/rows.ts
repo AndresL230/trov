@@ -7,7 +7,8 @@ export type {
   TicketRow, TicketAssigneeRow, TicketLinkRow, TicketCommentRow, TicketEventRow,
   TicketCategory, TicketPriority, TicketStatus, TicketLinkKind,
 } from "./tickets";
-import type { AiFeedMeta } from "./ai-core";
+import type { AiFeedMeta, AiSuggestion, FeedImportance } from "./ai-core";
+import type { AskFlag } from "./ai-ask-core";
 import type { OutlineItem } from "./doc-outline";
 
 // Sprints (the table 0025_sprints.sql renamed in place) are defined ONCE, as Zod
@@ -79,6 +80,9 @@ export interface FeedRow {
   tags?: string[];
   /** Set only on an entry written by Trov (shared/ai-core.ts); absent on every agent entry. */
   ai?: AiFeedMeta;
+  /** How much it matters, as Sift rated it (0060, `feed.importance`): a computed fact. ABSENT when unknown (the
+   *  column is NULL) — `get_feed` drops a NULL, so a read without a rating is exactly what it was before. */
+  importance?: FeedImportance;
 }
 
 export interface AdrRow {
@@ -93,6 +97,11 @@ export interface AdrRow {
   created_at: string;
   created_by: string;
   content_hash: string | null;   // SHA-256 of title+context+decision+rationale — dedupe key (0009)
+  /** Review's read only (`GET /adrs`, src/ai/attach.ts): Trov's open `review.risk` for a drafted decision. Absent when
+   *  there is none, or the org's AI is off. */
+  ai?: AiSuggestion[];
+  /** Review's read only: "Flagged in Ask" on it (the reason and how often, never the thread). Absent with none. */
+  askFlags?: AskFlag[];
 }
 
 export interface EntryTagRow {
@@ -114,6 +123,9 @@ export interface NeedsTriageRow {
   resolved_by: string | null;
   resolution: "assigned" | "discarded" | null;
   assigned_ref: string | null;   // what an 'assigned' item materialized into (e.g. "doc:slug@2")
+  /** Unplaced's read only (`GET /needs-triage`, src/ai/attach.ts): Trov's open `unplaced.destination`. Absent when
+   *  there is none, or the org's AI is off. */
+  ai?: AiSuggestion[];
 }
 
 export const PERSON_COLORS = ["moss", "fern", "sky", "slate", "plum", "rose", "rust", "ochre", "clay", "stone"] as const;

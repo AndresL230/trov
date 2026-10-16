@@ -24,6 +24,8 @@ import type { Authority } from "./api";
 import type { HandoffStatus } from "@shared/handoffs";
 import type { ArtifactStatus } from "@shared/artifacts-core";
 import { tagLineParts, type TagColor } from "@shared/tags-core";
+import { TROV_MARK_PATH } from "@shared/mark";
+import type { FeedImportance } from "@shared/ai-core";
 
 /** `label` and `tip` arrive escaped. */
 const svg = (size: number, body: string, label: string | null, color: string, viewBox = "0 0 14 14", tip: string | null = null): string =>
@@ -204,6 +206,20 @@ export function artifactStatusMark(status: ArtifactStatus, size = 12): string {
   return stateMark(m.word, m.tone, m.shape, size, m.hint);
 }
 
+// ── how much it matters (feed.importance) ────────────────────────────────────
+
+/** Sift's rating of a feed entry (0060, `feed.importance`): notable is a quiet accent dot, breaking an amber
+ *  triangle (a warning). Routine — the normal state — and an unrated entry draw NOTHING. The ONE table. */
+export const IMPORTANCE_MARK: Record<Exclude<FeedImportance, "routine">, { word: string; tone: string; shape: MarkShape; hint: string }> = {
+  notable: { word: "Notable", tone: "var(--accent)", shape: "dot", hint: "Sift rates this worth knowing about: a new feature or a visible change. A rating, not official." },
+  breaking: { word: "Breaking", tone: "var(--amber)", shape: "triangle", hint: "Sift rates this a breaking change: something people or agents rely on works differently now. A rating, not official." },
+};
+/** The mark for a rating, or "" for routine and for none. */
+export function importanceMark(i: FeedImportance | null | undefined, size = 12): string {
+  const m = i && i !== "routine" ? IMPORTANCE_MARK[i] : undefined;
+  return m ? stateMark(m.word, m.tone, m.shape, size, m.hint) : "";
+}
+
 // ── who wrote it ─────────────────────────────────────────────────────────────
 
 const BOT = `<rect x="4" y="8" width="16" height="11" rx="2" stroke="currentColor" stroke-width="2"/><path d="M12 8V4M8.5 13h.01M15.5 13h.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>`;
@@ -212,6 +228,19 @@ const BOT = `<rect x="4" y="8" width="16" height="11" rx="2" stroke="currentColo
  *  feed's entries and the tour's mocks. `size` is the word's font size. */
 export function agentMark(size = 12): string {
   return `<span data-mtip="Written by an agent session, recorded as this person." style="display:inline-flex;align-items:center;gap:4px;font-size:${size}px;color:var(--fg-55);white-space:nowrap">${svg(Math.round(size), BOT, null, "currentColor", "0 0 24 24")}agent</span>`;
+}
+
+/** The Trov AI glyph: the brand logo (`shared/mark.ts` `TROV_MARK_PATH`), filled in the accent, so "Written by
+ *  Trov" carries Trov's own mark — the way the robot marks a thing an agent wrote. */
+export const AI_GLYPH = `<path d="${TROV_MARK_PATH}" fill="currentColor"/>`;
+/** The sentence every written thing's tooltip ends with. */
+export const AI_NOT_OFFICIAL = "Not official; check the sources.";
+
+/** "Trov wrote this": the AI glyph in the accent. `tip` (escaped here) says what it was written from —
+ *  "Written by Trov from your sessions, … Not official; check the sources." — and is the mark's
+ *  tooltip; `label` names it when it stands alone with no words beside it. */
+export function aiMark(size = 12, tip: string | null = null, label: string | null = null): string {
+  return svg(size, AI_GLYPH, label === null ? null : esc(label), "var(--accent)", "0 0 100 100", tip === null ? null : esc(tip));
 }
 
 // ── search authority ─────────────────────────────────────────────────────────

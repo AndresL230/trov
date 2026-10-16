@@ -46,12 +46,12 @@ export { ARTIFACT_AREAS, ARTIFACT_KINDS };
 // the lazy Artifacts chunk (artifacts-lazy.ts) and re-exports it unchanged.
 export {
   ART_FILTER_KEYS, initialArtCreate, initialArtUi, detailKey, diffKey, ART_ROUTE_NONE, setArtFrameHeight,
-  renderPendingMermaid, ticketArtifactsBlock,
+  renderPendingMermaid, ticketArtifactsBlock, rawUrl, artifactFrame,
   type ArtSlice, type ArtFilterKey, type ArtFilters, type ArtTicketRef, type ArtSprintRef, type ArtLinkDraft, type ArtFile,
   type ArtCreate, type ArtNewVersion, type ArtUi, type ArtScreen, type ArtRoute, type ArtPerson, type ArtProps,
 } from "./artifacts-state";
 import {
-  ART_FILTER_KEYS, detailKey, diffKey, NO_FILTERS, KIND_ICON, EYEBROW, frameHeight, mermaidSvgs, mermaidFailed, mermaidPending,
+  rawUrl, rawOf, artifactFrame, ART_FILTER_KEYS, detailKey, diffKey, NO_FILTERS, KIND_ICON, EYEBROW, frameHeight, mermaidSvgs, mermaidFailed, mermaidPending,
   type ArtSlice, type ArtFilterKey, type ArtSprintRef, type ArtLinkDraft, type ArtFile,
   ART_ROUTE_NONE, type ArtCreate, type ArtNewVersion, type ArtUi, type ArtScreen, type ArtProps, type ArtPerson, type ArtRoute,
 } from "./artifacts-state";
@@ -150,11 +150,6 @@ export function artFileName(slug: string, kind: ArtifactKind, v: ArtifactVersion
   const ext = isTextKind(kind) ? ARTIFACT_TEXT_EXT[kind] : BINARY_EXT[v.content_type.split(";")[0].trim().toLowerCase()] ?? "bin";
   return `${slug}-v${v.version_no}.${ext}`;
 }
-/** The raw route for one version, under the CURRENT org: `/api/o/<org>/raw/a/<slug>@v<n>` (api.ts `tenantHref`).
- *  The API's `raw_url` names the same route by its suffix (`/raw/a/<slug>@v<n>`), so it goes through the same prefix. */
-export const rawUrl = (slug: string, v: number): string => tenantHref(`/raw/a/${encodeURIComponent(slug)}@v${v}`);
-const rawOf = (apiRawUrl: string | undefined, slug: string, v: number): string =>
-  apiRawUrl && apiRawUrl.startsWith("/raw/a/") ? tenantHref(apiRawUrl) : rawUrl(slug, v);
 const withDownload = (u: string): string => `${u}${u.includes("?") ? "&" : "?"}download=1`;
 
 /** The create form's current text (paste / a text file / a fetched URL); "" for a binary file. */
@@ -369,7 +364,7 @@ function libraryView(p: ArtProps): string {
   const menu: FilterMenuProps = {
     id: "art", open: ui.filterOpen, opening: p.fmOpening === "art", cat: ui.filterCat, activeCount: active,
     showLabel: `Show ${rows.length} ${rows.length === 1 ? "artifact" : "artifacts"}`, clearAct: "artFilterClear",
-    align: "stretch", ariaLabel: "Filter artifacts",
+    align: "stretch", ariaLabel: "Filter artifacts", top: p.aiFilterMenu,
     groups: groups.map((g) => ({
       key: g.key, label: g.label, value: ui.f[g.key], none: "all",
       options: g.options.map((o) => {
@@ -384,7 +379,7 @@ function libraryView(p: ArtProps): string {
   };
 
 
-  const toolbar = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 4px">
+  const toolbar = `${p.aiFilter ?? ""}<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 4px">
     ${searchFilterBar({
       search: { act: "artQ", field: "artQ", value: ui.q, placeholder: "Search by title, area, kind or ticket", clearAct: "artClearQ" },
       menu,
@@ -458,14 +453,7 @@ function contentBlock(p: ArtProps, d: ArtifactDetailDTO): string {
   const raw = rawOf(d.raw_url, d.slug, ver.version_no);
   const key = `${d.slug}@${ver.version_no}`;
   switch (d.kind) {
-    case "html": {
-      const h = frameHeight(key);
-      // allow-scripts WITHOUT allow-same-origin: the page runs in an opaque origin
-      // (no cookies, no parent DOM), and tells us its height by postMessage.
-      return `<div class="art-frame" data-art-key="${attr(key)}" style="position:relative;overflow:hidden;background:#fff;height:${h}px">
-        <iframe title="${attr(d.title)}" src="${attr(raw)}" sandbox="allow-scripts" referrerpolicy="no-referrer" style="display:block;width:100%;height:100%;border:0;background:#fff"></iframe>
-      </div>`;
-    }
+    case "html": return artifactFrame({ kind: "html", title: d.title, raw, key })!;
     case "svg":
       return `<div class="art-svg" style="display:grid;place-items:center;padding:40px 24px;min-height:320px;background:var(--bg);color:var(--fg);overflow-x:auto">${sanitizeSvg(d.content ?? "")}</div>`;
     case "markdown":

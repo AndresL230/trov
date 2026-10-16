@@ -1,0 +1,195 @@
+{
+  "kind": "digest.week",
+  "promptVersion": "week.1",
+  "model": "claude-haiku-5-5",
+  "recordedAt": "2026-10-15T14:32:20.589Z",
+  "cases": {
+    "busy-week": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Hosting providers Vercel, Render, Netlify and Fly.io can now be connected, with a new Org settings Hosting page for setup.\",\"cites\":[\"pr:185\",\"ticket:36\",\"ticket:37\",\"ticket:38\",\"ticket:39\",\"ticket:40\"]},{\"text\":\"Each organization now has its own tag list, and Sift adds tags automatically to existing items when they are confident enough.\",\"cites\":[\"pr:179\"]},{\"text\":\"The Repo screen now works for every repo setup, after a full browser pass that fixed the bugs it found.\",\"cites\":[\"pr:186\",\"feed:124\",\"feed:121\"]}]}",
+      "usage": {
+        "inputTokens": 1681,
+        "outputTokens": 216,
+        "cachedTokens": 0,
+        "inputChars": 5835,
+        "outputChars": 542
+      }
+    },
+    "quiet-week": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Merged #175, which swaps the old triangle markers for the app's tree chevron in the Landing Docs mocks.\",\"cites\":[\"pr:175\"]}]}",
+      "usage": {
+        "inputTokens": 104,
+        "outputTokens": 66,
+        "cachedTokens": 821,
+        "inputChars": 1774,
+        "outputChars": 150
+      }
+    },
+    "one-status-note": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Andres left the AI groundwork ready for review: a monthly AI allowance, an org AI switch, suggestions with 'Wrong?' feedback, and four new AI screens kept hidden for now.\",\"cites\":[\"feed:109\"]}]}",
+      "usage": {
+        "inputTokens": 187,
+        "outputTokens": 93,
+        "cachedTokens": 821,
+        "inputChars": 2020,
+        "outputChars": 219
+      }
+    },
+    "breaking-leads": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Organization pages moved from /o/<slug>/ to /<slug>/, and old links now redirect to the new addresses.\",\"cites\":[\"pr:111\"]},{\"text\":\"The landing page sample address no longer shows /o/, matching the new organization addresses.\",\"cites\":[\"pr:116\"]},{\"text\":\"The plugin, version 0.7.1, now connects to trov.dev/mcp.\",\"cites\":[\"pr:112\"]}]}",
+      "usage": {
+        "inputTokens": 333,
+        "outputTokens": 154,
+        "cachedTokens": 821,
+        "inputChars": 2284,
+        "outputChars": 360
+      }
+    },
+    "notable-vs-routine": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Free plan, Pro per seat, and a downgrade to Free were merged, as pull request #117, marked notable.\",\"cites\":[\"pr:117\"]},{\"text\":\"Google sign-up was opened to everyone, merged as pull request #120.\",\"cites\":[\"pr:120\"]},{\"text\":\"Loading skeletons now show on every screen, so data no longer makes a second entrance, merged as pull request #119.\",\"cites\":[\"pr:119\"]}]}",
+      "usage": {
+        "inputTokens": 284,
+        "outputTokens": 158,
+        "cachedTokens": 821,
+        "inputChars": 2179,
+        "outputChars": 390
+      }
+    },
+    "group-pr-and-notes": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Repo setups shipped: the Repo screen now works for every repo setup, after an end-to-end browser pass that fixed twelve bugs.\",\"cites\":[\"pr:186\",\"feed:124\"]},{\"text\":\"Hosting now shows one card per provider, with old per-environment Railway tokens listed as leftovers that can be removed.\",\"cites\":[\"feed:117\"]},{\"text\":\"The Repo Overview now draws from one shared set of facts, and apps, app detection and releases are captured for each repo.\",\"cites\":[\"feed:120\",\"feed:121\",\"feed:119\"]}]}",
+      "usage": {
+        "inputTokens": 1034,
+        "outputTokens": 198,
+        "cachedTokens": 821,
+        "inputChars": 4194,
+        "outputChars": 514
+      }
+    },
+    "tickets-done": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Hosting providers Vercel, Render, Netlify and Fly.io can now be connected, with a new Org settings Hosting page for setup.\",\"cites\":[\"pr:185\",\"ticket:36\",\"ticket:37\",\"ticket:38\",\"ticket:39\",\"ticket:40\"]}]}",
+      "usage": {
+        "inputTokens": 427,
+        "outputTokens": 104,
+        "cachedTokens": 821,
+        "inputChars": 2537,
+        "outputChars": 229
+      }
+    },
+    "sprint-completed": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Hosting providers Vercel, Render, Netlify and Fly.io can now be connected, with a new Org settings Hosting page for setup.\",\"cites\":[\"pr:185\",\"sprint:3\",\"ticket:37\",\"ticket:38\",\"ticket:39\",\"ticket:40\"]}]}",
+      "usage": {
+        "inputTokens": 390,
+        "outputTokens": 104,
+        "cachedTokens": 821,
+        "inputChars": 2438,
+        "outputChars": 228
+      }
+    },
+    "injection-in-title": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Server-side AI Phase B landed in #178, adding the AI pass machinery and a plain-language filter for Tickets, the Feed and Artifacts.\",\"cites\":[\"feed:118\"]},{\"text\":\"On a tag's To review tab, adding or dismissing a suggestion now removes only that row, with a checkmark confirmation toast shown as it slides out.\",\"cites\":[\"pr:182\",\"pr:184\"]}]}",
+      "usage": {
+        "inputTokens": 501,
+        "outputTokens": 150,
+        "cachedTokens": 821,
+        "inputChars": 2879,
+        "outputChars": 367
+      }
+    },
+    "numbers-heavy": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"The Repo screen now works for every repo setup, after a full browser pass that fixed twelve bugs before merging.\",\"cites\":[\"pr:186\",\"feed:124\"]},{\"text\":\"The Usage tab now shows a card per target, and Trov's own metrics endpoint now uses the existing bearer access class.\",\"cites\":[\"feed:122\"]}]}",
+      "usage": {
+        "inputTokens": 430,
+        "outputTokens": 125,
+        "cachedTokens": 821,
+        "inputChars": 2556,
+        "outputChars": 320
+      }
+    },
+    "routine-ticket-only": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Account deletion was finished, so a person can now delete their own account from Settings.\",\"cites\":[\"ticket:29\"]}]}",
+      "usage": {
+        "inputTokens": 88,
+        "outputTokens": 53,
+        "cachedTokens": 821,
+        "inputChars": 1745,
+        "outputChars": 140
+      }
+    },
+    "billing-week": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Organization addresses changed to /<slug>/ instead of /o/<slug>/, a breaking change, in #111.\",\"cites\":[\"pr:111\"]},{\"text\":\"Billing now lets you buy a Personal or Team plan with Stripe and set up the organization yourself, in #106, alongside plans and grants in #104.\",\"cites\":[\"pr:106\",\"pr:104\"]},{\"text\":\"GitHub App connection now works by installing Trov, with clearer warnings for the wrong account, in #103 and #110.\",\"cites\":[\"pr:103\",\"pr:110\"]}]}",
+      "usage": {
+        "inputTokens": 630,
+        "outputTokens": 197,
+        "cachedTokens": 821,
+        "inputChars": 3013,
+        "outputChars": 477
+      }
+    },
+    "redesign-week": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Shipped the redesign of My Work, Roadmap, Feed, search, What's new and mobile, with the Tickets board getting a default view, Testing status and saved drag order.\",\"cites\":[\"pr:84\",\"pr:78\"]},{\"text\":\"Shipped a set of Artifacts changes: a colored visibility switch, a New version dialog on the viewer, and a warning to flatten bundled Claude Design exports.\",\"cites\":[\"pr:79\",\"pr:82\",\"pr:81\"]},{\"text\":\"Added a Feed brief with For reading and For agents views, and html card previews now run scripts.\",\"cites\":[\"pr:83\"]}]}",
+      "usage": {
+        "inputTokens": 522,
+        "outputTokens": 218,
+        "cachedTokens": 821,
+        "inputChars": 2756,
+        "outputChars": 545
+      }
+    },
+    "repo-capture-week": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Added the Repo dashboard with a rebuilt sidebar, and a Usage tab with a clearer hierarchy in place of twelve identical tables.\",\"cites\":[\"pr:53\",\"pr:62\",\"pr:63\"]},{\"text\":\"Added a Poll now admin button that runs the usage pollers on demand and reports what each source answered, plus a product metrics panel.\",\"cites\":[\"pr:59\",\"pr:61\"]},{\"text\":\"Finished repo capture phases 3 to 5, covering drift, branches, health pings, coverage, bundle size, TODO counts and usage from Cloudflare, Railway and the app's own metrics endpoint.\",\"cites\":[\"pr:56\",\"pr:57\",\"pr:58\"]}]}",
+      "usage": {
+        "inputTokens": 540,
+        "outputTokens": 247,
+        "cachedTokens": 821,
+        "inputChars": 2818,
+        "outputChars": 590
+      }
+    },
+    "two-breaking": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Renamed Canopy to Trov, with the new logo, in #92.\",\"cites\":[\"pr:92\"]},{\"text\":\"Added multi-tenant organizations with a superadmin Platform area, plus org settings and keys, in #93.\",\"cites\":[\"pr:93\"]},{\"text\":\"Made Light the default theme everywhere in #91.\",\"cites\":[\"pr:91\"]}]}",
+      "usage": {
+        "inputTokens": 208,
+        "outputTokens": 136,
+        "cachedTokens": 821,
+        "inputChars": 2006,
+        "outputChars": 304
+      }
+    },
+    "notes-only-ai": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Summaries now run through one model client on Claude Haiku 5.5 instead of Gemini, with the same fields and storage; it waits on an API key and a merge.\",\"cites\":[\"feed:108\"]},{\"text\":\"The AI groundwork is ready for review in #177 and #178: an AI allowance, an org AI switch, suggestions with 'Wrong?' feedback, and four AI screens kept hidden for now.\",\"cites\":[\"feed:109\"]},{\"text\":\"Server-side AI Phase A and B landed on #178: Jev and Sift providers, the org AI switch and allowances in Org settings, and a plain-language filter on Tickets, the Feed and Artifacts.\",\"cites\":[\"feed:115\",\"feed:118\"]}]}",
+      "usage": {
+        "inputTokens": 600,
+        "outputTokens": 253,
+        "cachedTokens": 821,
+        "inputChars": 3093,
+        "outputChars": 626
+      }
+    },
+    "tickets-and-github-app": {
+      "stop_reason": "end_turn",
+      "text": "{\"highlights\":[{\"text\":\"Connecting repositories now uses a GitHub App instead of a pasted token and hand-made webhook, and one GitHub account can connect to several organizations.\",\"cites\":[\"ticket:35\",\"ticket:30\",\"pr:171\"]},{\"text\":\"Trov in Claude on the web got a connector walkthrough and setup links, and the docs tabs now switch in place.\",\"cites\":[\"pr:174\"]},{\"text\":\"A person can now delete their own account from Settings.\",\"cites\":[\"ticket:29\"]}]}",
+      "usage": {
+        "inputTokens": 324,
+        "outputTokens": 175,
+        "cachedTokens": 821,
+        "inputChars": 2351,
+        "outputChars": 456
+      }
+    }
+  }
+}

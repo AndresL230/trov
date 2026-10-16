@@ -8,6 +8,7 @@
 // Purely presentational: props in, markup out; interactions dispatch `plat…` acts.
 
 import type { OrgUsage, PlatformUsageResponse, UsageActivity, UsageCreated, UsageDay, UsageSummaries } from "@shared/orgs";
+import type { AiUsage } from "@shared/ai-core";
 import { esc, attr, relTime, surface } from "./ui";
 import { kindMark } from "./marks";
 import { segmented } from "./segmented";
@@ -98,9 +99,27 @@ export function summariesFigures(s: UsageSummaries, month?: { month_used: number
 /** Said ONCE on the page when the deployment has no summaries key, instead of rows of zeros. */
 export const SUMMARIES_OFF = "AI summaries are off on this deployment (no ANTHROPIC_API_KEY).";
 
+/** AI runs in the window — attempted, failed, refused at the allowance — and the tokens they used
+ *  (`OrgUsage.ai` / `PlatformUsageResponse.ai`). Counts only. Absent `ai` draws nothing, never zeros. */
+export function aiFigures(a: AiUsage): string {
+  // Each provider's side only when the read carries it (each stands on its own key, owner ruling Q7) — a read
+  // without Sift's draws exactly what it did.
+  const opt = (label: string, v: number | undefined) => (v !== undefined ? FIGURE(label, formatNumber(v)) : "");
+  return `${opt("Runs", a.runs)}${opt("Failed", a.failed)}${opt("Capped", a.capped)}${opt("Tokens in", a.tokensIn)}${opt("Tokens out", a.tokensOut)}${opt("Cached", a.tokensCached)}${opt("Sift checks", a.jevChecks)}${opt("Sift tokens in", a.jevTokensIn)}${opt("Sift tokens out", a.jevTokensOut)}`;
+}
+/** The line's label: "AI runs" — or "Sift" when only TypeSafe AI's figures are there (no Anthropic key). */
+export const aiLabel = (a: AiUsage): string => (a.runs === undefined ? "Sift" : "AI runs");
+/** The AI runs line under the summaries line — only when the read carries `ai`. */
+const aiLine = (a: AiUsage | undefined, attrs: string): string => a
+  ? `
+    <div class="plat-breakdown-foot" ${attrs} style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;padding-top:10px;border-top:1px solid var(--border);${QUIET}">
+      <span style="${LABEL}">${aiLabel(a)}</span>${aiFigures(a)}
+    </div>`
+  : "";
+
 /** `summaries` (one organization's) adds its AI summaries line; `"off"` says the deployment has no
  *  summaries key, in Platform › Usage's own sentence; null / absent leaves the line out. */
-export function usageBreakdown(a: UsageActivity, days: number, summaries?: OrgUsage["summaries"] | "off" | null): string {
+export function usageBreakdown(a: UsageActivity, days: number, summaries?: OrgUsage["summaries"] | "off" | null, ai?: AiUsage): string {
   const created = CREATED_LABELS.map(([k, label]) =>
     `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:5px 0;border-top:1px solid var(--border)"><span style="font-size:12.5px;color:var(--fg-70)">${label}</span><span style="${NUM};font-size:12.5px;color:${a.created[k] ? "var(--fg)" : "var(--fg-40)"}">${formatNumber(a.created[k])}</span></div>`).join("");
   const peak = Math.max(1, ...a.top_tools.map((t) => t.count));
@@ -119,7 +138,7 @@ export function usageBreakdown(a: UsageActivity, days: number, summaries?: OrgUs
     </div>${summaries ? `
     <div class="plat-breakdown-foot" data-usage-summaries style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;padding-top:10px;border-top:1px solid var(--border);${QUIET}">
       <span style="${LABEL}">AI summaries</span>${summaries === "off" ? `<span>${esc(SUMMARIES_OFF)}</span>` : summariesFigures(summaries, summaries)}
-    </div>` : ""}
+    </div>` : ""}${aiLine(ai, "data-usage-ai")}
   </div>`;
 }
 
@@ -147,7 +166,7 @@ export function orgUsageBlock(u: OrgUsage, days: number, summariesOn = true): st
     ])}
     <div style="padding:16px 20px;border-top:1px solid var(--border)">
       ${noActivity(a) ? `<div style="${QUIET};margin-bottom:14px">No activity in the last ${days} days.</div>` : ""}
-      ${usageBreakdown(a, days, summariesOn ? u.summaries : "off")}
+      ${usageBreakdown(a, days, summariesOn ? u.summaries : "off", u.ai)}
       <div style="${LABEL};margin:18px 0 8px">Size now</div>
       <div class="plat-sizes">
         ${size("Docs", formatNumber(z.docs))}${size("Feed entries", formatNumber(z.feed_entries))}${size("Tickets", `${formatNumber(z.tickets_open)} open of ${formatNumber(z.tickets_total)}`)}
@@ -187,7 +206,7 @@ function orgRow(u: OrgUsage, days: number, open: boolean, summariesOn: boolean):
       ${cell("Artifacts", `<span style="white-space:nowrap">${num(z.artifacts)} <span style="${QUIET}">· ${formatBytes(z.artifact_bytes)}</span></span>`)}
       ${cell("Last activity", `<span style="font-size:12px;color:var(--fg-40);white-space:nowrap">${u.last_activity_at ? esc(relTime(u.last_activity_at)) : "Never"}</span>`)}
     </button>
-    ${open ? `<div id="${attr(id)}" style="padding:16px 20px 18px 41px;border-top:1px solid var(--border);background:var(--bg)" class="plat-urow-body">${usageBreakdown(a, days, summariesOn ? u.summaries : null)}
+    ${open ? `<div id="${attr(id)}" style="padding:16px 20px 18px 41px;border-top:1px solid var(--border);background:var(--bg)" class="plat-urow-body">${usageBreakdown(a, days, summariesOn ? u.summaries : null, u.ai)}
       <button type="button" data-act="platOpenOrg" data-arg="${attr(u.slug)}" class="cnpy-mutelink" style="margin-top:12px;padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">Open ${esc(u.name)}</button></div>` : ""}
   </div>`;
 }
@@ -239,5 +258,9 @@ export function usageView(p: UsageProps): string {
   const summaries = `<div data-usage-summaries="totals" style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;padding:12px 20px;border-top:1px solid var(--border);${QUIET}">
       <span style="${LABEL}">AI summaries</span>${u.summaries_enabled ? `${summariesFigures(u.summaries)}<span>last ${u.days} days, all organizations</span>` : `<span>${esc(SUMMARIES_OFF)}</span>`}
     </div>`;
-  return `${head}<div${surface("overflow:hidden", { cls: `plat-cq${p.status === "loading" ? " plat-busy" : ""}` })}>${top}${summaries}</div>${empty}${table}`;
+  // AI runs and tokens, all organizations — only when the read carries them.
+  const ai = u.ai ? `<div data-usage-ai="totals" style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;padding:12px 20px;border-top:1px solid var(--border);${QUIET}">
+      <span style="${LABEL}">${aiLabel(u.ai)}</span>${aiFigures(u.ai)}<span>last ${u.days} days, all organizations</span>
+    </div>` : "";
+  return `${head}<div${surface("overflow:hidden", { cls: `plat-cq${p.status === "loading" ? " plat-busy" : ""}` })}>${top}${summaries}${ai}</div>${empty}${table}`;
 }

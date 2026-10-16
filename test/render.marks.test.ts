@@ -158,6 +158,7 @@ describe("the signed-out site uses the app's marks — no pill anywhere", () => 
     expect(html).toContain(handoffMark("claimed", 11));
     expect(html).toContain(artifactStatusMark("ratified", 10.5));
     expect(featureMock("tickets")).toContain(ticketStatusMark("in_progress", 11));
-    for (const s of TICKET_STATUSES) expect(featureMock("tickets")).toContain(`${TICKET_STATUS_LABEL[s]}`);
+    // Every status the default view shows (declined is hidden there, as in the app — the owner's ruling).
+    for (const s of TICKET_STATUSES.filter((x) => x !== "declined")) expect(featureMock("tickets")).toContain(`${TICKET_STATUS_LABEL[s]}`);
   });
 });

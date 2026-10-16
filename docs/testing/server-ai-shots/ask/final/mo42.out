@@ -1,0 +1,20 @@
+
+=== MO-42 entrance (unique animations seen in 1.5s)
+[
+ "ask-h1|cnpy-screen",
+ "ask-screen|cnpy-screen",
+ "cnpy-skel-in|cnpy-skel-in",
+ "cnpy-sk|cnpy-skel-pulse",
+ "ask-empty|ask-fade-in",
+ "cnpy-rise|cnpy-rise",
+ "ask-empty-h|cnpy-rise",
+ "ask-starters|cnpy-rise"
+]
+
+=== MO-43 opening another thread: what animates (the screen's entrance must not)
+[
+ "ask-th-at|opacity",
+ "ask-th-more|opacity",
+ "ask-col|ask-fade-in",
+ "ask-composer|waapi"
+]

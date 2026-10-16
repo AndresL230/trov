@@ -103,8 +103,9 @@ export const ORG_AUDIT_ACTIONS = [
   // NULL, the org is gone), its slug as the target; a person's account deleted — the target is the tombstone
   // handle their content now carries, never the handle they had.
   "org.delete", "person.delete",
-  // The organization's AI switch (0055_ai, Org settings › AI): an admin turned it on or off.
-  "org.ai",
+  // The organization's AI switch (0055_ai) and its Auto switch for Ask Trov (0058_ai_dirty), both in Org
+  // settings › AI: an admin turned one on or off.
+  "org.ai", "org.ai_chat_auto",
   // Apps (0070_repo_apps, src/repo/apps.ts): an app written or removed by an admin.
   "app.set", "app.delete",
   // A repository's Repo-screen defaults (0071_repo_settings, src/data/repo-settings.ts): the Overview's Group by.

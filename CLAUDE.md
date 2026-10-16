@@ -100,6 +100,9 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
     by an owner, and Platform for a superadmin): an org's every `org_id` row goes in one batch
     (`ORG_TABLES`, held to the schema by a test), a person's own rows go and their handle becomes a
     `deleted-…` tombstone through `HANDLE_COLUMNS`; Stripe is cancelled first, R2 freed after the commit.
+    Ask Trov's PRIVATE attachments are hard-deleted with their conversation (unless a ticket or doc refers to
+    them), with the account, and one at a time when removed before it was ever sent, also only through
+    `src/deletion/` (`ask.md`).
     A new table with an `org_id` or a handle column must be added to `ORG_TABLES` / `HANDLE_COLUMNS`.
 12. **Credentials go through their one resolver; secrets never reach logs or responses.** A GitHub read
     uses `resolveGithubCredential`, any other integration `resolveCredential` — never a Worker secret or
@@ -107,6 +110,12 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
     `src/mcp.ts` may import `src/github-app/`.
 13. **A per-org limit goes in `PLANS` and is enforced with `requirePlan`** (402 `plan_limit`) — never an
     ad-hoc check.
+14. **A model is called only from five places**, all through `src/ai/client.ts`: the AI pass, the summary seams
+    (webhook and Sync), the Sift run, the Ask route and the plain-language filter route. Never on a render path;
+    nothing reachable from `src/mcp.ts` imports `src/ai/` (`test/secrets.mcp.test.ts` pins the list; `ai.md`).
+15. **The org AI switch (`orgs.ai_automation`) covers every AI feature** — the pass, Ask, the filter, Sift and
+    PR / issue summaries. Off means no call and nothing written.
+16. **A Jev reason is Trov's own evidence** (a snippet or a field of the item), never model text.
 
 ## Conventions & gotchas
 
@@ -133,9 +142,10 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
   - A clickable person goes through `web/src/people.ts`; a picture always through `avatarSrc`.
   - Never a button inside a button — use `hitArea`.
   - Motion is off under `prefers-reduced-motion`.
-- **Every shipped PR adds its lines to the top entry of `web/src/releases.ts`**: release notes in product
-  words, `ops` deploy steps, and patch lines ending `(#N)`. The merging PR cuts "Unreleased" into the next
-  `0.N` (the file's header says how).
+- **Every shipped PR adds ONE patch line to the top entry of `web/src/releases.ts`**: a user-visible change in
+  product words ending `(#N)` (not a paragraph, not an engineering log), its number in `prs`, and an `ops` line
+  only for a migration, secret, var, trigger or plugin version. Caps are tested. The merging PR cuts
+  "Unreleased" into the next `0.N` (the file's header says how).
 - **Deferred seams — do NOT activate:** Cloudflare Queue, Vectorize (`// SEAM:` comments only).
 - The product was renamed Canopy → Trov, but stored identifiers keep the old name on purpose: issued
   `canopy_mcp_` / `canopy_oat_` tokens (new: `trov_…`) and the `canopy/*` status contexts. Don't rename them.
@@ -163,9 +173,11 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | `src/hosting/`, hosting providers, environment parts, provider connections, the `:40` hosting job | `hosting-providers.md` |
 | Sync GitHub, `src/sync/`, the sync panel's copy | `sync.md` |
 | plans, limits, grants, the pricing page, the summarizer allowance | `plans.md` |
-| `src/ai/`, where a model may be called, the AI pass, `ai_runs`, the AI switch, suggestions / "Wrong?", `LOCAL_AI_PREVIEW` | `ai.md` |
+| `src/ai/`, where a model may be called, the router and the AI pass, the kinds and their evals, `ai_runs`, the AI switch, suggestions / "Wrong?", AI cost, `LOCAL_AI_PREVIEW` | `ai.md` |
+| Ask Trov: `src/ai/ask/`, the `/ask` routes and SSE contract, `chat_*` tables, `ai_chat`; the Ask screen (`web/src/ask-*.ts`) | `ask.md` |
 | Stripe, checkout, `src/billing/` | `billing.md` |
 | rate limits, the mail sender, what a stranger can do | `abuse-limits.md` |
 | the bug-report / support form, `support_reports`, Platform › Support | `support.md` |
 | secrets, vars, bindings, `REPO_ENVIRONMENTS` | `env.md` |
+| the local dev seed and its scenarios, `npm run seed` / `dev:seeded` / `dev:as`, signing in as anyone locally | `local-dev.md` |
 | where a file or migration lives | `layout.md` |

@@ -1,0 +1,162 @@
+
+=== phone text
+Trov
+›
+Hosting status
+Edit
+Image · 412 KB
+ci-failure.png
+#14
+What's blocking the hosting work? This is what I see in CI.
+Searched docs for 'hosting'
+· 3 results
+Read ticket #14
+· 4 results
+Checked CI on AndresL230/trov
+· 1 result
+Read PR #176
+· 2 results
+Looked at the Hosting sprint
+· 3 results
+
+Most of the hosting work is moving. What blocks it is narrow: 
+#14
+ waits on the Netlify connect step, and that step can't merge while one test fails on main.
+
+What is blocking
+The Netlify connect test fails on main since 
+#173 merged
+ changed the status marks it checks.
+AN
+@andres
+ owns the fix. It isn't filed as a ticket yet.
+Token refresh in 
+Hosting connections
+ is still described as automatic, which is no longer true.
+TICKET	STATUS	OWNER	WAITING ON
+
+#14
+	
+In progress	Maya Chen	PR #176
+
+#18
+	
+I
+
+=== phone overflow+logs
+{
+ "docW": 360,
+ "winW": 360,
+ "hscroll": false,
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}
+
+=== phone-plus text
+Trov
+›
+Hosting status
+Edit
+Image · 412 KB
+ci-failure.png
+#14
+What's blocking the hosting work? This is what I see in CI.
+Searched docs for 'hosting'
+· 3 results
+Read ticket #14
+· 4 results
+Checked CI on AndresL230/trov
+· 1 result
+Read PR #176
+· 2 results
+Looked at the Hosting sprint
+· 3 results
+
+Most of the hosting work is moving. What blocks it is narrow: 
+#14
+ waits on the Netlify connect step, and that step can't merge while one test fails on main.
+
+What is blocking
+The Netlify connect test fails on main since 
+#173 merged
+ changed the status marks it checks.
+AN
+@andres
+ owns the fix. It isn't filed as a ticket yet.
+Token refresh in 
+Hosting connections
+ is still described as automatic, which is no longer true.
+TICKET	STATUS	OWNER	WAITING ON
+
+#14
+	
+In progress	Maya Chen	PR #176
+
+#18
+	
+I
+
+=== phone-plus overflow+logs
+{
+ "docW": 360,
+ "winW": 360,
+ "hscroll": false,
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}
+
+=== phone-insp text
+Trov
+›
+Hosting status
+Edit
+Image · 412 KB
+ci-failure.png
+#14
+What's blocking the hosting work? This is what I see in CI.
+Searched docs for 'hosting'
+· 3 results
+Read ticket #14
+· 4 results
+Checked CI on AndresL230/trov
+· 1 result
+Read PR #176
+· 2 results
+Looked at the Hosting sprint
+· 3 results
+
+Most of the hosting work is moving. What blocks it is narrow: 
+#14
+ waits on the Netlify connect step, and that step can't merge while one test fails on main.
+
+What is blocking
+The Netlify connect test fails on main since 
+#173 merged
+ changed the status marks it checks.
+AN
+@andres
+ owns the fix. It isn't filed as a ticket yet.
+Token refresh in 
+Hosting connections
+ is still described as automatic, which is no longer true.
+TICKET	STATUS	OWNER	WAITING ON
+
+#14
+	
+In progress	Maya Chen	PR #176
+
+#18
+	
+I
+
+=== phone-insp overflow+logs
+{
+ "docW": 360,
+ "winW": 360,
+ "hscroll": false,
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}

@@ -14,12 +14,12 @@ import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, handoffsForMe, type MwRepoTab } from "./mywork";
 import type { SidebarBadges } from "@shared/badges";
 import {
-  render, initialState, reviewProps, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf,
+  render, initialState, reviewProps, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf, repoProps,
   FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
   stagedPrompts,
 } from "./render";
 import {
-  getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
+  getFeed, getFeedPage, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
   acceptRepoSuggestion, ignoreRepoSuggestion, undoRepoSuggestion,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
@@ -35,7 +35,7 @@ import {
   listTickets, getTicket, getTicketBadge, getBadges, createTicket, transitionTicket, moveTicket, toggleTicketAssignee,
   addTicketLink, editTicket, removeTicketLink, deleteTicket, setTicketSprint, setTicketParent, addTicketComment, listSprints,
   getSprint, createSprint, setSprintActive, addSprintResource,
-  type TicketDetail,
+  type TicketDetail, type TicketListItem,
   listArtifacts, getArtifact, getArtifactDiff, createArtifact, patchArtifact, ratifyArtifact, deleteArtifact, restoreArtifact, addArtifactLink, addArtifactVersion, fetchArtifactUrl,
   listHandoffs, getHandoff, listPrompts, getPrompt, getPromptVersions,
   createHandoff, claimHandoff, expireHandoff, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt, proposeDoc,
@@ -59,7 +59,8 @@ import {
   type TicketCategory, type TicketPriority, type TicketStatus,
 } from "@shared/tickets-core";
 import { decodeReviewId } from "./triage-map";
-import { QUEUE_FILTER_CATS, type QueueFilterCat } from "./tickets";
+import { QUEUE_FILTER_CATS, declinedLeavers, type QueueFilterCat } from "./tickets";
+import { AI_EXIT_MS } from "./ai-ui";
 import { initialOnboard, markAvatarFailed, AVATAR_IMG_CLASS } from "./people";
 import { prepareAvatar } from "./avatar";
 import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX } from "./mentions";
@@ -83,7 +84,7 @@ import { PLATFORM_PATH, isPlatformPath } from "./platform-core";
 import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";
 import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo-core";
 import { repoChunk } from "./repo-lazy";
-import { isRepoTab, REPO_RANGES, type RepoRange } from "@shared/repo";
+import { isRepoScreenTab, REPO_RANGES, type RepoRange } from "@shared/repo";
 // Artifacts is its own chunk (artifacts-lazy.ts): the reducer and the file pickers run once it is in.
 import {
   renderPendingMermaid, setArtFrameHeight, detailKey, diffKey, initialArtCreate, ART_ROUTE_NONE, ART_FILTER_KEYS,
@@ -93,6 +94,12 @@ import type { ArtEffect, ArtWrite } from "./artifacts";
 import { artifactsChunk } from "./artifacts-lazy";
 import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
+import { createAiController, readNoteSeen } from "./ai-actions";
+import { createAskController } from "./ask-controller";
+import { createTrovPrefs } from "./ask-settings-actions";
+import { createAiFilterController } from "./ai-filter-actions";
+import type { AiFilterSnapshot } from "./ai-filter";
+import type { AiFilterByScreen, AiFilterScreen, ArtifactsAiFilter, FeedAiFilter, TicketsAiFilter } from "@shared/ai-filter-core";
 import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
 import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
@@ -189,6 +196,87 @@ const tagsCtl = createTagsController({
   state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
   search: (q) => { openSearchScreen(q); }, planChanged: () => orgCtl.loadPlan(), goList: () => dispatch("orgGo", "tags", null),
 });
+// Trov's AI screens (web/src/ai-actions.ts): every `ai…` act — "Wrong?", the Feed's Source switch and
+// note, the themes' range and lane, Accept / Rename / Remove on a suggestion.
+const aiCtl = createAiController({
+  state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
+  flashNext: (sel) => { pendingFlash = sel; },
+  reloadRepo: () => { if (!state.repoSample && state.repo.status !== "loading") loadRepo(); },
+  // A decision went through and its exit is over (the controller waits for the last one, ai-ui.ts › Leaving): the
+  // screen it was on reads what it changed — the ticket, Unplaced, Review, or the Roadmap (an accepted sprint draft or
+  // narrative changed the plan; a dismissed card goes too).
+  decided: () => {
+    if (state.screen === "ticketdetail" && state.ticketId !== null) loadTicketDetail(state.ticketId);
+    else if (state.screen === "maintenance") loadNeedsTriage();
+    else if (state.screen === "review") { loadProposals(); loadDraftAdrs(); }
+    else if (state.screen === "roadmap") loadRoadmap();
+  },
+});
+// Ask Trov (web/src/ask-controller.ts): every `ask…` act, the screen's reads and streams, ⌘J over any page,
+// the hover cards, the inspector's edge, and the dev replay (`?askReplay=<scenario>`).
+const askCtl = createAskController({ state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
+  refreshTickets: () => { if (state.tickets.status !== "idle") loadTickets(); } });
+// The plain-language filter (web/src/ai-filter-actions.ts, #162): every `aiFilter…` act. Its answer is applied
+// to each screen's OWN filter state here — the same fields the Filter menu, the switch and the search box set.
+const aiFilterCtl = createAiFilterController({
+  state, rerender: () => rerender(), unauth: (e) => unauth(e),
+  role: () => currentOrg(state)?.role ?? null,
+  snapshot: (screen) => aiFilterSnapshot(screen),
+  apply: (screen, filter) => applyAiFilter(screen, filter),
+  restore: (screen, snap) => restoreAiFilter(screen, snap),
+  closeMenu: (screen) => closeFilterMenu(AI_FILTER_MENU[screen]),
+  leave: (key) => aiCtl.leave(key),
+  flash: (m) => flash(m),
+  names: () => ({
+    me: state.me?.handle ?? "",
+    person: (h) => state.persons.data.find((p) => p.handle.toLowerCase() === h.toLowerCase())?.name || h,
+    sprint: (id) => state.sprints.data.find((x) => String(x.id) === id)?.label ?? `Sprint #${id}`,
+  }),
+});
+/** Each typed filter's Filter menu (its `FILTER_MENUS` id, below). */
+const AI_FILTER_MENU: Record<AiFilterScreen, string> = { tickets: "queue", feed: "feed", artifacts: "art" };
+/** One screen's filter state, as Undo puts it back. */
+function aiFilterSnapshot(screen: AiFilterScreen): AiFilterSnapshot {
+  if (screen === "tickets") return { qSeg: state.qSeg, qAssignee: state.qAssignee, qPerson: state.qPerson, qCategory: state.qCategory, qPrio: state.qPrio, qSprint: state.qSprint, qQ: state.qQ };
+  if (screen === "feed") return { feedAuthor: state.feedAuthor, feedTag: state.feedTag, feedRange: state.feedRange };
+  return { q: state.art.q, f: { ...state.art.f } };
+}
+/** Put a screen's filter state back, and reload what the server filters. */
+function restoreAiFilter(screen: AiFilterScreen, snap: AiFilterSnapshot): void {
+  if (screen === "tickets") { Object.assign(state, snap); loadTickets(); return; }
+  if (screen === "feed") { Object.assign(state, snap); loadFeed(); return; }
+  Object.assign(state.art, snap);
+}
+/** Set a screen's filters to EXACTLY the answer: a field it leaves out is "no filter" (what Clear all sets),
+ *  so the screen shows what the sentence asked for and nothing left over from before. */
+function applyAiFilter<S extends AiFilterScreen>(screen: S, filter: AiFilterByScreen[S]): void {
+  if (screen === "tickets") {
+    const f = filter as TicketsAiFilter;
+    state.qSeg = f.status ?? "all";
+    // One person is `anyone` fetched and narrowed here, as the menu's `@handle` does.
+    state.qPerson = f.person ?? "";
+    state.qAssignee = f.person ? "anyone" : f.assignee ?? "anyone";
+    state.qCategory = f.category ?? "all";
+    state.qPrio = f.priority ?? "all";
+    state.qSprint = f.sprint ?? "all";
+    state.qQ = f.text ?? "";
+    loadTickets();
+    return;
+  }
+  if (screen === "feed") {
+    const f = filter as FeedAiFilter;
+    state.feedAuthor = f.author ?? "all";
+    state.feedTag = f.tag ?? "all";
+    state.feedRange = f.range ?? "all";
+    // The Author menu lists the authors of the unfiltered feed: the one picked is offered even when it is not.
+    if (f.author && !state.feedAuthors.includes(f.author)) state.feedAuthors = [...state.feedAuthors, f.author];
+    loadFeed();
+    return;
+  }
+  const f = filter as ArtifactsAiFilter;
+  state.art.q = f.text ?? "";
+  state.art.f = { area: f.area ?? "all", kind: f.kind ?? "all", author: f.author ?? "all", status: f.status ?? "all", sprint: f.sprint ?? "all" };
+}
 // Organizations as a person meets them (web/src/org-picker-actions.ts): the switcher's menu, the
 // picker, the create dialog — every `orgs…` act. Opening an org is a page load.
 const orgsCtl = createOrgsController({
@@ -236,6 +324,9 @@ const deletionCtl = createDeletion({
   },
 });
 
+// Settings › Trov (ask-settings-actions.ts): my Ask instructions and default mode in the org on screen.
+const trovPrefsCtl = createTrovPrefs({ state, rerender: () => rerender(), unauth: (e) => unauth(e), flash: (m, ms) => flash(m, ms) });
+
 // The dropdowns (web/src/dropdown.ts): opening, closing (with its exit), the keyboard, and
 // placing the open menu against its trigger. A pick is dispatched as the dropdown's own act.
 const dropdowns = createDropdowns({ state, mount, rerender: () => rerender(), dispatch: (act, arg, value) => dispatch(act, arg, value) });
@@ -247,6 +338,7 @@ try {
   const t = localStorage.getItem("trov.theme");
   if (t === "dark" || t === "light" || t === "system") state.theme = t;
   else if (t === "midnight") state.theme = "dark"; // Midnight was retired (2026-09-26) — its closest theme
+  state.ai.noteSeen = readNoteSeen();
   const fv = localStorage.getItem("trov.feedView");
   if (fv === "reading" || fv === "agents") state.feedView = fv;
   const pv = localStorage.getItem("trov.promptView");
@@ -415,6 +507,15 @@ function paintApp(): void {
   // A board drag holds the DOM: swapping <main> would drop the card mid-drag.
   // The held paint runs when the drag ends (clearBoardDrag).
   if (boardDrag) { rerenderHeld = true; return; }
+  // Repo › Summary exists only while the live read carries Trov's state (repo.ts `repoSummaryShown`, in the lazy Repo
+  // chunk — until it is in, the screen is its skeleton and the chunk's arrival paints again): a read that lands
+  // without it (AI off, nothing written, a failed read), sample data, or the end of its "Wrong?" exit moves the
+  // screen — and the address — to the Overview, which flashes in like a tab switch.
+  const repoMod = repoChunk.get();
+  if (repoMod && state.view === "app" && state.screen === "repo" && state.repoTab === "summary" && !repoMod.repoSummaryShown(repoProps(state))) {
+    state.repoTab = "overview";
+    if (state.repo.data) pendingFlash = ".repo-panel > :not(.repo-poll-strip)";
+  }
   // Help › What's new renders from its own chunk (releases-lazy.ts): a paint on the screen without
   // it draws the skeleton and starts the load, and its arrival paints again.
   if (state.view === "app" && state.screen === "releases" && !releasesLoaded() && !releasesFailed()) wantReleases();
@@ -475,6 +576,8 @@ function paintApp(): void {
   const scroll = captureScroll(mount, state.screen);
   // Review: a verdict button that had focus hands it to the same button of the item that follows.
   const rvFocus = active?.closest?.(".cnpy-rv-head") ? active.getAttribute("data-act") : null;
+  askCtl.beforePaint();   // Ask's scrollers: a paint's measuring layout must not move them (ask-motion.ts askKeepScroll)
+  aiFilterCtl.sync();     // a typed filter's line goes once its filters were changed by hand (ai-filter-actions.ts)
   paint(mount, render(state));
   syncReviewDetail(rvFocus);
   syncSegments(mount);
@@ -493,6 +596,7 @@ function paintApp(): void {
   dropdowns.afterPaint();
   welcomeCtl.afterPaint();
   syncCtl.afterPaint();
+  askCtl.afterPaint();
   if (pendingFlash) {
     for (const el of Array.from(mount.querySelectorAll(pendingFlash))) el.classList.add("cnpy-flash");
     pendingFlash = null;
@@ -558,6 +662,8 @@ window.addEventListener("hashchange", () => {
   if (r.screen === "org" && cur.screen === "org") { orgCtl.act("orgTab", r.orgTab ?? "integrations", "route"); return; }
   // Back / Forward between two steps of the guided setup: its reads are already in.
   if (r.screen === "welcome" && cur.screen === "welcome") { welcomeCtl.moved(); return; }
+  // Back from a thread to the bare `#ask`: a new thread, as the header's "Trov" does.
+  if (r.screen === "ask" && cur.screen === "ask" && !r.askThread) { askCtl.act("askShNew", null, null); return; }
   loadForScreen(r.screen);
 });
 
@@ -670,6 +776,7 @@ function currentRoute(): Route {
     if (state.org.tab === "repos" && state.org.repoPage) r.orgRepo = state.org.repoPage;
   }
   if (state.screen === "tag" && state.tagName) r.tagName = state.tagName;
+  if (state.screen === "ask" && state.ask.page.threadId !== null) r.askThread = state.ask.page.threadId;
   // The step ON SCREEN: a member who opens `#welcome` (the admin's first step) is on their own first.
   if (state.screen === "welcome") r.welcomeStep = effectiveWelcomeStep(state.welcome.step, welcomeStepsFor(currentOrg(state)?.role, state.org));
   return r;
@@ -712,8 +819,12 @@ function applyRoute(r: Route): void {
   // Org settings › Repositories: one repository's Apps page, or the list.
   if (r.screen === "org") state.org.repoPage = r.orgRepo ?? null;
   if (r.tagName) state.tagName = r.tagName;
+  if (r.screen === "ask") askRoute = r.askThread ?? null;
   if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
 }
+
+/** The thread `#ask/<id>` named on arrival (applyRoute), handed to the Ask controller by loadForScreen. */
+let askRoute: number | null = null;
 
 // Kick off the data load for a screen (mirrors the go* dispatch cases). Batched: a screen that
 // starts several reads (My Work starts eight) paints once, before this returns — not once per read.
@@ -746,6 +857,7 @@ function startScreenLoads(screen: Screen): void {
       platform.load(); break;
     case "org": loadOrgAdminExtras(); orgCtl.load(); break;
     case "welcome": welcomeCtl.enter(); break;
+    case "ask": askCtl.enter(askRoute); askRoute = null; break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
     case "newticket": loadSprintsIfNeeded(); rerender(); break;
@@ -1043,9 +1155,10 @@ function loadFeed(): void {
   rerender();
   const author = state.feedAuthor !== "all" ? state.feedAuthor : undefined;
   const tags = state.feedTag !== "all" ? [state.feedTag] : undefined;
-  getFeed({ author, tags })
-    .then((rows) => {
+  getFeedPage({ author, tags })
+    .then(({ feed: rows, aiOff }) => {
       state.feed = { status: "ok", data: rows };
+      state.ai.feedAiOff = aiOff;
       // Capture the author chip set only from the unfiltered view, so filtering doesn't shrink it.
       if (!author && !tags) state.feedAuthors = [...new Set(rows.map((r) => r.author))];
       rerenderSoon();
@@ -1057,6 +1170,7 @@ function loadFeed(): void {
     });
 }
 function loadFeedIfNeeded(): void {
+  aiFilterCtl.ensure(); // the plain-language filter's switch, once per org (no model)
   if (state.feed.status === "idle") loadFeed();
   else rerender();
 }
@@ -1100,13 +1214,13 @@ function loadMyWork(): void {
       rerenderSoon();
     });
 }
-/** Your sessions: MY two latest feed entries — My Work's own read, so the Feed
- *  screen's author/tag filters (which shape `state.feed`) never reach it. */
+/** Your sessions: MY two latest feed entries, and the session digests Trov wrote about me (Q30) — My Work's own
+ *  read, so the Feed screen's author/tag filters (which shape `state.feed`) never reach it. */
 function loadMwSessions(): void {
   const me = state.me?.handle;
   if (!me) return;
   state.mwSessions = { status: "loading", data: state.mwSessions.data };
-  getFeed({ author: me, limit: 2 })
+  getFeed({ author: me, about: true, limit: 2 })
     .then((rows) => { state.mwSessions = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
@@ -1251,6 +1365,7 @@ function loadSettingsReads(): void {
   orgCtl.loadPlan();
   void loadMyOrgs();
   void deletionCtl.loadAccount(); // what Delete account would do, and anything in its way (deletion.ts)
+  void trovPrefsCtl.load(); // Settings › Trov: my Ask instructions and default mode here (ask-settings.ts)
 }
 /** Why a change to a connection's scope was refused, in words (the route answers with a code). */
 const GRANT_SCOPE_REFUSALS: Record<string, string> = {
@@ -1773,7 +1888,11 @@ function loadTickets(): void {
   if (!ticketsLanded) state.tickets = { status: "loading", data: state.tickets.data };
   rerender();
   listTickets({ seg: state.qSeg, assignee: state.qAssignee, category: state.qCategory })
-    .then((rows) => { if (seq !== ticketsSeq) return; state.tickets = { status: "ok", data: rows }; ticketsLanded = true; rerenderSoon(); })
+    .then((rows) => {
+      if (seq !== ticketsSeq) return;
+      if (ticketsLanded) leaveDeclined(state.tickets.data, rows);
+      state.tickets = { status: "ok", data: rows }; ticketsLanded = true; rerenderSoon();
+    })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== ticketsSeq) return;
@@ -1781,7 +1900,27 @@ function loadTickets(): void {
       rerenderSoon();
     });
 }
+/** A refetch found tickets DECLINED that the queue on screen was showing, in a view that hides
+ *  declined (All, the default — tickets.ts `SEG_STATUSES`): each card leaves by the AI kit's one
+ *  exit (ai-ui.ts › Leaving — Review's exit on a screen rebuilt per paint), drawn as it was shown
+ *  for `AI_EXIT_MS`, then dropped. Every count already leaves it out. Only while the queue itself
+ *  is on screen; gone at once under reduced motion. */
+function leaveDeclined(prev: TicketListItem[], next: TicketListItem[]): void {
+  if (state.screen !== "tickets") return;
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  const gone = declinedLeavers(prev, next, state.qSeg);
+  if (gone.length === 0) return;
+  const at = Date.now();
+  const ids = new Set(gone.map((t) => t.id));
+  state.qLeaving = [...state.qLeaving.filter((l) => !ids.has(l.row.id) && at - l.at < AI_EXIT_MS), ...gone.map((row) => ({ row, at }))];
+  setTimeout(() => {
+    const before = state.qLeaving.length;
+    state.qLeaving = state.qLeaving.filter((l) => l.at !== at);
+    if (state.qLeaving.length !== before) rerender();
+  }, AI_EXIT_MS);
+}
 function loadTicketsIfNeeded(): void {
+  aiFilterCtl.ensure(); // the plain-language filter's switch, once per org (no model)
   if (state.tickets.status === "idle" || state.tickets.status === "error") loadTickets();
   else rerender();
 }
@@ -1905,6 +2044,9 @@ const claimTicketDetail = (): number => ++ticketDetailSeq;
  *  write/load has since claimed the slice — see `claimTicketDetail`), toast,
  *  refresh the badge, and refetch the queue when it is already on screen / cached. */
 function applyTicketWrite(t: TicketDetail, msg: string, seq: number): void {
+  // A write's answer is the bare detail: Trov's suggestions (`ai`, the cookie read's) stay until the next read.
+  const prev = state.ticketDetail.data;
+  if (prev?.ai && !t.ai && prev.id === t.id) t = { ...t, ai: prev.ai };
   if (seq === ticketDetailSeq) state.ticketDetail = { status: "ok", data: t };
   loadTicketBadge();
   if (state.tickets.status !== "idle") loadTickets();
@@ -2090,7 +2232,7 @@ function loadAttachTickets(): void {
  *  on screen) — used on navigation and after a write; a plain rerender never refetches. */
 function loadArtifactsIfNeeded(fresh = false): void {
   const r = state.artRoute;
-  if (state.screen === "artifacts") { loadArtifactList(fresh); loadSprintsIfNeeded(); loadAttachTickets(); }
+  if (state.screen === "artifacts") { aiFilterCtl.ensure(); loadArtifactList(fresh); loadSprintsIfNeeded(); loadAttachTickets(); }
   else if (state.screen === "artifactnew") loadSprintsIfNeeded();
   else if (state.screen === "artifact" && r.slug) {
     loadSprintsIfNeeded();
@@ -2596,16 +2738,17 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
 
     // ── Repo dashboard ───────────────────────────────────────────────────────
     // `arg` = the tab to land on (quick search's "Repo › …" entries); none = Overview.
-    case "goRepo": state.screen = "repo"; state.repoTab = arg && isRepoTab(arg) ? arg : "overview"; loadRepoIfNeeded(); return;
+    case "goRepo": state.screen = "repo"; state.repoTab = arg && isRepoScreenTab(arg) ? arg : "overview"; loadRepoIfNeeded(); return;
     // The page's tab bar: the one dashboard payload covers every tab, so a switch is ONE
     // rerender with nothing to load — goRepo's load would rebuild the bar and cut its slide.
     // The entrance is not replayed (markEnter), so the new tab's content flashes in instead:
-    // a short rise, and its sparklines / fills / bars grow again.
+    // a short rise, and its sparklines / fills / bars grow again — and what Trov wrote (Summary's State card,
+    // Planning › Where the work went above the panel, `.repo-ai`) with it.
     case "setRepoTab": {
       const tab = arg ?? "";
-      if (!isRepoTab(tab) || tab === state.repoTab) return;
+      if (!isRepoScreenTab(tab) || tab === state.repoTab) return;
       state.repoTab = tab;
-      pendingFlash = ".repo-panel > :not(.repo-poll-strip)";
+      pendingFlash = ".repo-panel > :not(.repo-poll-strip), .repo-ai";
       break;
     }
     case "repoRefresh": if (state.repo.status !== "loading") loadRepo(); return;
@@ -2785,6 +2928,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "goRoadmap": state.screen = "roadmap"; state.sprintId = null; loadRoadmapIfNeeded(); loadRoadmapFeed(); return;
 
     // ── Tickets: navigation ──────────────────────────────────────────────────
+    case "goAsk": state.screen = "ask"; askCtl.enter(null); return;
     case "goTickets": state.screen = "tickets"; state.ticketId = null; loadSprintsIfNeeded(); loadTicketsIfNeeded(); return;
     case "newTicket":
       state.screen = "newticket";
@@ -3489,18 +3633,25 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "goHandoffs": state.screen = "handoffs"; state.handoffId = null; loadHandoffs(); return;
     case "newHandoff": state.screen = "newhandoff"; state.nh = blankHandoff(primaryRepoName()); rerender(); return;
     case "openHandoff": { const id = Number(arg); if (!Number.isInteger(id) || id <= 0) return; state.screen = "handoff"; openHandoff(id); return; }
-    case "mwHandoffCopy": {
-      // My Work › Queued handoffs: the same "Copy as prompt" text as the handoff screen,
-      // from the inbox row already on hand — so the write stays inside the click.
+    case "mwHandoffClaim": {
+      // My Work › Queued handoffs: Claim & copy. The copy runs first, inside the click (the clipboard
+      // needs the gesture), from the inbox row on hand — the same "Copy as prompt" text as the handoff
+      // screen; then the claim, which is permanent and takes the handoff from everyone else.
       const h = state.handoffs.data.find((x) => x.id === Number(arg));
       if (!h) return;
-      copyToClipboard(handoffAsPrompt(h)).then((ok) => flash(ok ? "Copied as prompt" : "Couldn't reach the clipboard"));
+      const copied = copyToClipboard(handoffAsPrompt(h));
+      const session = "sess_web_" + Math.random().toString(36).slice(2, 10).toUpperCase();
+      claimHandoff(h.id, session)
+        .then((r) => { state.handoffReading = { id: r.handoff.id, items: r.reading_list }; return copied; })
+        .then((ok) => { loadHandoffs(); flash(ok ? `Claimed #${h.id} · copied as prompt` : `Claimed #${h.id} — couldn't reach the clipboard`); })
+        .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } writeErr(e, "Couldn't claim this handoff"); loadHandoffs(); });
       return;
     }
     case "handoffCopy": {
       const h = state.handoffDetail.data;
       if (!h || h.id !== Number(arg)) return;
-      copyToClipboard(handoffAsPrompt(h)).then((ok) => flash(ok ? "Copied as prompt" : "Couldn't reach the clipboard"));
+      const reading = state.handoffReading && state.handoffReading.id === h.id ? state.handoffReading.items ?? [] : [];
+      copyToClipboard(handoffAsPrompt(h, reading)).then((ok) => flash(ok ? "Copied as prompt" : "Couldn't reach the clipboard"));
       return;
     }
     case "handoffClaim": {
@@ -3508,8 +3659,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (!h || h.id !== Number(arg)) return;
       const session = "sess_web_" + Math.random().toString(36).slice(2, 10).toUpperCase();
       claimHandoff(h.id, session)
-        .then((nh) => copyToClipboard(handoffAsPrompt(nh)).then((ok) =>
-          applyHandoff(nh, ok ? `Claimed #${nh.id} · copied as prompt` : `Claimed #${nh.id} — couldn't reach the clipboard`)))
+        .then(({ handoff: nh, reading_list }) => {
+          // The claim's reading list (#167) shows on this page and rides along in the copied prompt.
+          // `at`: the list rises in once from here (handoffs.ts `readingListBlock`); this page is rebuilt per repaint,
+          // so each repaint inside the rise joins it where the last left off, and none after it replays it.
+          state.handoffReading = { id: nh.id, items: reading_list, at: Date.now() };
+          return copyToClipboard(handoffAsPrompt(nh, reading_list ?? [])).then((ok) =>
+            applyHandoff(nh, ok ? `Claimed #${nh.id} · copied as prompt` : `Claimed #${nh.id} — couldn't reach the clipboard`));
+        })
         .catch((e) => { writeErr(e, "Couldn't claim this handoff"); openHandoff(h.id); loadHandoffs(); });
       return;
     }
@@ -3886,6 +4043,12 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       writePrefs({ unsubscribed: next }, next ? "Email is off" : "Email is back on");
       return;
     }
+    case "toggleOnlyWhenNeeded": {
+      if (state.notifPrefs.data?.unsubscribed) return; // dimmed with its reason while unsubscribed (notifications.ts)
+      const next = !(state.notifPrefs.data?.onlyWhenNeeded ?? false);
+      writePrefs({ onlyWhenNeeded: next }, next ? "Digests only when something needs you" : "Every digest again");
+      return;
+    }
 
     // ── Org settings › Notifications (admin) ─────────────────────────────────
     case "policyToggle": {
@@ -4116,11 +4279,15 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
       // The support form, signed in or out: its controller repaints the dialog alone (support-actions.ts).
       if (act.startsWith("support")) { supportCtl.act(act, arg, value); return; }
+      // Settings › Trov (ask-settings-actions.ts).
+      if (act.startsWith("trovSet")) { trovPrefsCtl.act(act, arg, value); return; }
       // Deleting one's account or an organization (deletion-actions.ts) — before `org…` below.
       if (act.startsWith("acctDel") || act.startsWith("orgDel")) { deletionCtl.act(act, arg, value); return; }
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
       // `orgs…` (the switcher, the picker, the create dialog) before `org…` (Org settings).
       if (act.startsWith("welcome")) { welcomeCtl.act(act, arg); return; }
+      // Ask Trov (ask-controller.ts routes each `ask<Part>…` act to its part), which repaints itself.
+      if (act.startsWith("ask") && askCtl.act(act, arg, value)) return;
       // The org's tag list, a tag's page, a doc's Tags row (tags-actions.ts).
       if (act.startsWith("tag")) { tagsCtl.act(act, arg, value); return; }
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }
@@ -4134,6 +4301,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         orgCtl.act(act, arg, value);
         return;
       }
+      // Every AI act (ai-actions.ts), which rerenders itself.
+      if (act.startsWith("aiFilter")) { aiFilterCtl.act(act, arg, value); return; }
+      if (act.startsWith("ai")) { aiCtl.act(act, arg, value); return; }
       // Every Artifacts act goes to the one reducer in artifacts.ts.
       if (act.startsWith("art")) {
         const screen = state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact" ? state.screen : null;
@@ -4179,6 +4349,10 @@ const FILTER_MENUS: Record<string, FilterMenuSpec> = {
 };
 const FM_CLOSE_MS = 130;
 let fmClosing: string | null = null;
+/** The close in progress is the hover's own (the pointer left): only that one is revived when the pointer comes back.
+ *  A close that was asked for — Apply, Escape, the backdrop, the Filter button — runs to its end, even when the screen
+ *  repaints under a pointer still resting on the fading popover (that fires a pointerover without a move). */
+let fmClosingByHover = false;
 let hoverCloseTimer: ReturnType<typeof setTimeout> | null = null;
 const HOVER_INTENT_MS = 60;
 let hoverIntentTimer: ReturnType<typeof setTimeout> | null = null;
@@ -4200,18 +4374,24 @@ function openFilterMenu(id: string): void {
   }
   if (spec.isOpen()) return;
   spec.setOpen(true);
+  state.aiFilter.reveal = null;      // a menu always opens on its "Describe a filter" row, the field shut
   state.fmOpening = id;
   rerender();
   state.fmOpening = null;
 }
-function closeFilterMenu(id: string): void {
+/** `refocus`: the keyboard was in the menu (Escape) — focus goes back to its Filter button once it is shut. */
+function closeFilterMenu(id: string, refocus = false, byHover = false): void {
   const spec = FILTER_MENUS[id];
   if (!spec || !spec.isOpen() || fmClosing === id) return;
   cancelHoverClose();
-  const finish = () => { fmClosing = null; spec.setOpen(false); rerender(); };
+  const finish = () => {
+    fmClosing = null; spec.setOpen(false); rerender();
+    if (refocus) mount.querySelector<HTMLElement>(`[data-act="fmToggle"][data-arg="${id}"]`)?.focus({ preventScroll: true });
+  };
   const pop = livePopover(id);
   if (!pop || reducedMotion()) { finish(); return; }
   fmClosing = id;
+  fmClosingByHover = byHover;
   pop.classList.remove("is-opening");
   pop.classList.add("is-closing");
   setTimeout(() => { if (fmClosing === id) finish(); }, FM_CLOSE_MS);
@@ -4271,7 +4451,7 @@ mount.addEventListener("pointerover", (e) => {
   const id = menu?.dataset.hoverMenu ?? "";
   if (FILTER_MENUS[id]) {
     cancelHoverClose();
-    if (!FILTER_MENUS[id].isOpen() || fmClosing === id) { hoverOpenedAt = performance.now(); openFilterMenu(id); }
+    if (!FILTER_MENUS[id].isOpen() || (fmClosing === id && fmClosingByHover)) { hoverOpenedAt = performance.now(); openFilterMenu(id); }
   }
   // Hover intent: a row acts only once the pointer RESTS on it (~60 ms), so sweeping
   // across the categories toward the options doesn't flip through every one on the way.
@@ -4290,8 +4470,11 @@ mount.addEventListener("pointerout", (e) => {
   if (!FILTER_MENUS[id]) return;
   const to = e.relatedTarget as Element | null;
   if (to && to.closest?.(`[data-hover-menu="${id}"]`)) return;   // moving between its own children
+  // Typing a filter in it (ai-filter.ts): the menu stays while its field has focus; Escape, the backdrop or
+  // the Filter button close it.
+  if (menu?.querySelector(".fm-ai")?.contains(document.activeElement)) return;
   cancelHoverClose();
-  hoverCloseTimer = setTimeout(() => { hoverCloseTimer = null; closeFilterMenu(id); }, 200);
+  hoverCloseTimer = setTimeout(() => { hoverCloseTimer = null; closeFilterMenu(id, false, true); }, 200);
 });
 // `data-hover-blur` (the ticket queue's search + Filter pair): once a MOUSE leaves
 // it, it lets go — the search box drops its focus (and so its selected outline),
@@ -4303,7 +4486,8 @@ mount.addEventListener("pointerout", (e) => {
   const to = e.relatedTarget as Element | null;
   if (to && box.contains(to)) return;
   const focused = document.activeElement;
-  if (focused instanceof HTMLElement && box.contains(focused)) focused.blur();
+  // A filter being typed in the open Filter menu keeps its focus (the menu stays open for it, above).
+  if (focused instanceof HTMLElement && box.contains(focused) && !focused.closest(".fm-ai")) focused.blur();
 });
 // A switch's option widths (and a tab bar's tab widths) change with the viewport and once
 // the web fonts land: re-place every indicator where it sits, without a slide.
@@ -4315,10 +4499,33 @@ mount.addEventListener("keydown", onTabBarKey);
 // A segmented switch's keyboard: ←/→ move focus between its options, Home/End jump
 // (./segmented `onSegmentedKey`). On the document: a switch can sit in an overlay.
 document.addEventListener("keydown", onSegmentedKey);
-// Escape closes an open filter menu.
+// Escape closes an open filter menu — and when the keyboard was in it (a row, the typed filter's field, or
+// nowhere after a repaint), focus goes back to its Filter button.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  for (const [id, spec] of Object.entries(FILTER_MENUS)) if (spec.isOpen()) closeFilterMenu(id);
+  const active = document.activeElement;
+  for (const [id, spec] of Object.entries(FILTER_MENUS)) {
+    if (!spec.isOpen()) continue;
+    closeFilterMenu(id, !active || active === document.body || !!active.closest(`[data-hover-menu="${id}"]`));
+  }
+});
+// ↓ / ↑ walk an open filter menu's rows — the typed filter's "Describe a filter" first, then the shown options,
+// then the categories — from its Filter button, a row, or nowhere (a repaint drops focus). Enter on a row is its
+// click; a text field keeps its own arrows.
+document.addEventListener("keydown", (e) => {
+  if ((e.key !== "ArrowDown" && e.key !== "ArrowUp") || e.altKey || e.ctrlKey || e.metaKey) return;
+  const id = Object.keys(FILTER_MENUS).find((k) => FILTER_MENUS[k].isOpen() && fmClosing !== k);
+  const wrap = id ? mount.querySelector<HTMLElement>(`[data-hover-menu="${id}"]`) : null;
+  if (!wrap) return;
+  const t = e.target instanceof Element ? e.target : null;
+  if (t?.closest("input, textarea, select, [contenteditable]")) return;
+  if (t && t !== document.body && !wrap.contains(t)) return;
+  const rows = Array.from(wrap.querySelectorAll<HTMLElement>(".fm-pop .cnpy-menurow")).filter((r) => !r.closest("[hidden], [inert]"));
+  if (!rows.length) return;
+  e.preventDefault();
+  const at = rows.indexOf(document.activeElement as HTMLElement);
+  const next = at < 0 ? (e.key === "ArrowDown" ? 0 : rows.length - 1) : (at + (e.key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length;
+  rows[next].focus({ preventScroll: false });
 });
 
 mount.addEventListener("click", (e) => {

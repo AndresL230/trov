@@ -1,10 +1,10 @@
 // Handoffs + Prompt Library + New doc — the ported views over the real API shapes
 // (numeric handoff ids rendered `#12`, the write affordances each screen offers).
 import { describe, it, expect } from "vitest";
-import { handoffsView, handoffDetailView, handoffAsPrompt, docDraftFromHandoff, newHandoffView, blankHandoff } from "../web/src/handoffs";
+import { handoffsView, handoffDetailView, handoffAsPrompt, docDraftFromHandoff, newHandoffView, blankHandoff, readingListBlock, READING_RISE_MS } from "../web/src/handoffs";
 import { promptDetailView, promptLibraryView, filterPrompts, promptEditorView, blankPromptDraft } from "../web/src/prompts";
 import { newDocView, blankDoc } from "../web/src/newdoc";
-import type { HandoffView, PromptSummary, PromptDetail, PromptVersion } from "../shared/handoffs";
+import type { HandoffView, HandoffReadingItem, PromptSummary, PromptDetail, PromptVersion } from "../shared/handoffs";
 import { canDeletePrompt, render, initialState } from "../web/src/render";
 import confirmSrc from "../web/src/confirm.ts?raw";
 import { confirmKeyAction } from "../web/src/confirm";
@@ -315,5 +315,70 @@ describe("handoffs and prompts — people open their person card", () => {
     const detail: PromptDetail = { slug: "p", title: "P", description: "", tags: [], author: "Darkest-Teddy", version: 1, status: "published", updated_at: "2026-09-23T10:00:00Z", body: "b", use_count: 0, last_used_at: null };
     const page = promptDetailView({ status: "ok", prompt: detail, versions: [], persons, knownTags: [], diffVersion: null, tagMenu: false, tagDraft: "", promptView: "raw", canDelete: false, deleteArm: false });
     expect(page).toMatch(/<button data-act="openPerson" data-arg="Darkest-Teddy" class="cnpy-personchip"[^>]*>.*Jack<\/span>.*@Darkest-Teddy/s);
+  });
+});
+
+describe("the claim's reading list (#167)", () => {
+  const items: HandoffReadingItem[] = [
+    { kind: "doc", id: "sapling-document-pipeline", title: "Document Pipeline (Upload, OCR & Streaming)", snippet: "OCR pages" },
+    { kind: "decision", id: "6", title: "One Worker, one origin", snippet: "" },
+    { kind: "feed", id: "14", title: "Streaks moved to Durable Objects", snippet: "" },
+    { kind: "artifact", id: "ocr-notes", title: "OCR <notes>", snippet: "" },
+  ];
+  const claimed = h({ body: "Quiz agent still fails.", status: "claimed", claimed_by: "AndresL230", claimed_at: "2026-09-23T11:00:00Z" });
+
+  it("e2e MO-13: the list rises in once when a claim on the page draws it; a repaint inside the rise joins it; none after replays it", () => {
+    // The claim stamps when it drew the list; the page is rebuilt per repaint, so each repaint passes how long ago.
+    expect(mainSrc).toContain("state.handoffReading = { id: nh.id, items: reading_list, at: Date.now() };");
+    expect(readingListBlock(items, 28, 0)).toMatch(/^<div data-reading-list class="cnpy-flash" style="margin-top:28px;animation-delay:-0ms">/);
+    expect(readingListBlock(items, 28, 120)).toContain('class="cnpy-flash" style="margin-top:28px;animation-delay:-120ms"');
+    expect(readingListBlock(items, 28, READING_RISE_MS)).not.toContain("cnpy-flash"); // after the rise: still
+    expect(readingListBlock(items)).not.toContain("cnpy-flash"); // opened later (a reload, My Work's Claim & copy)
+    const view = (readingT: number | null) => handoffDetailView({ status: "ok", handoff: claimed, me: "AndresL230", persons, expireArm: false, promptView: "raw", reading: items, readingT });
+    expect(view(40)).toContain('class="cnpy-flash"');
+    expect(view(null)).not.toContain('class="cnpy-flash"');
+  });
+
+  it("an empty or missing list draws nothing", () => {
+    expect(readingListBlock([])).toBe("");
+    expect(readingListBlock(null)).toBe("");
+    expect(handoffDetailView({ status: "ok", handoff: claimed, me: "AndresL230", persons, expireArm: false, promptView: "raw", reading: [] })).not.toContain("data-reading-list");
+  });
+
+  it("a plain list under a heading that says it is not complete: the kind as a word, the title as a link", () => {
+    const html = readingListBlock(items);
+    expect(html).toContain("Read these first (not complete)");
+    expect(html).toContain("not everything that bears on the task");
+    expect(html).toContain('data-act="openDocFrom" data-arg="sapling-document-pipeline"');
+    expect(html).toContain('data-act="artOpen" data-arg="ocr-notes"');
+    expect(html).toContain('data-act="goFeed"');
+    expect(html).toContain("OCR &lt;notes&gt;"); // escaped
+    // A decision has no page: plain text, not a button.
+    expect(html).toMatch(/<div style="[^"]*"><span[^>]*>Decision<\/span><span[^>]*>One Worker, one origin<\/span><\/div>/);
+    // No pills: the kind is a plain word — no background or border of its own.
+    expect(html).toMatch(/<span style="flex:none;width:64px;font-size:12px;color:var\(--fg-40\)">Doc<\/span>/);
+  });
+
+  it("shows on a claimed handoff's page, never on a pending one", () => {
+    const shown = handoffDetailView({ status: "ok", handoff: claimed, me: "AndresL230", persons, expireArm: false, promptView: "raw", reading: items });
+    expect(shown).toContain("data-reading-list");
+    const pending = handoffDetailView({ status: "ok", handoff: h({ body: "Quiz agent still fails." }), me: "AndresL230", persons, expireArm: false, promptView: "raw", reading: items });
+    expect(pending).not.toContain("data-reading-list");
+  });
+
+  it("Copy as prompt carries the list last, under the same heading; with none it is unchanged", () => {
+    const text = handoffAsPrompt(claimed, items);
+    expect(text.endsWith([
+      "## Read these first (not complete)",
+      "- Doc: Document Pipeline (Upload, OCR & Streaming) (sapling-document-pipeline)",
+      "- Decision: One Worker, one origin (#6)",
+      "- Feed: Streaks moved to Durable Objects (#14)",
+      "- Artifact: OCR <notes> (ocr-notes)",
+    ].join("\n"))).toBe(true);
+    expect(handoffAsPrompt(claimed, [])).toBe(handoffAsPrompt(claimed));
+  });
+
+  it("the screen keeps the list its own claim returned, for that handoff only (main.ts)", () => {
+    expect(mainSrc).toMatch(/state\.handoffReading = \{ id: nh\.id, items: reading_list, at: Date\.now\(\) \}/);
   });
 });

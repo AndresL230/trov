@@ -90,7 +90,7 @@ function demoPeopleStatements() {
     "DELETE FROM org_login_map",
     "DELETE FROM memberships",
     "DELETE FROM identities",
-    "DELETE FROM persons WHERE handle <> 'github-webhook'",
+    "DELETE FROM persons WHERE handle NOT IN ('github-webhook', 'trov')",
     `UPDATE orgs SET name = ${q(DEMO_ORG.name)}, slug = ${q(DEMO_ORG.slug)} WHERE id = ${q(DEMO_ORG.id)}`,
   ];
   for (const p of DEMO_PEOPLE) {

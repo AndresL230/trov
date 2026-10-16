@@ -146,15 +146,17 @@ describe("the dialog's mockups — each screen drawn from the real one (landing-
     expect(rules).not.toMatch(/\.site-fx-mock[^{]*\{[^}]*(?:zoom|scale)/);
   });
 
-  it("Tickets: a column per real status, in the product's order, and the table's own groups and chips", () => {
+  it("Tickets: a column per status the default view shows (declined is hidden there, as in the app), in the product's order, and the table's own groups and chips", () => {
     const text = mockText("tickets").toLowerCase();
+    const shown = TICKET_STATUSES.filter((s) => s !== "declined");
     let at = -1;
-    for (const s of TICKET_STATUSES) {
+    for (const s of shown) {
       const next = text.indexOf(TICKET_STATUS_LABEL[s].toLowerCase(), at + 1);
       expect(next, TICKET_STATUS_LABEL[s]).toBeGreaterThan(at);
       at = next;
     }
-    expect(featureMock("tickets").match(/min-width:0;display:flex;flex-direction:column;gap:6px/g)?.length).toBe(TICKET_STATUSES.length);
+    expect(featureMock("tickets").match(/min-width:0;display:flex;flex-direction:column;gap:6px/g)?.length).toBe(shown.length);
+    expect(featureMock("tickets")).not.toContain(`${TICKET_STATUS_LABEL.declined}<span`); // no Declined column
     expect(renderSrc).toContain("Submit a ticket");
     expect(text).toContain("submit a ticket");
     for (const real of ["Unassigned", "sub-ticket", "Backlog", "GitHub #", "TITLE", "PRIORITY", "STATUS", "ASSIGNEE"]) {

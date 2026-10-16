@@ -304,8 +304,9 @@ The design's `RULES`, `decide`, `TABS` and `buildScreen`'s group-by override, mo
 
 When the payload carries `facts` — every Worker payload now (the empty facts on a failure), and the sample — the
 Overview is `overviewFacts` (`web/src/repo-overview.ts`), else the older section-built Overview. Top to bottom (the
-design's `buildScreen`): `<div data-repo-state-slot>` (#178's AI `state` block goes there, above the rule-picked
-opener), Needs attention, the connect card, the opener by `layout.opener` (found / unseen / release / production +
+design's `buildScreen`): `<div data-repo-state-slot>` (the design's place for #178's AI `state`, above the rule-picked
+opener — always EMPTY: the owner split State out to the Repo screen's Summary tab, `repo-dashboard.md` › Written by
+Trov), Needs attention, the connect card, the opener by `layout.opener` (found / unseen / release / production +
 previews / chain and envCards → environment cards + drift / appsTable), not shipped where a part has commit groups
 waiting, the week tiles, the links row (none under the found / unseen openers). "Repo-wide only" draws its own note
 instead of an opener. Every block is an `OverviewBlock` (`(f, x) => string`, `web/src/repo-overview-ctx.ts`) in its

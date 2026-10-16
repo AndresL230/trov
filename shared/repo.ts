@@ -26,6 +26,16 @@ export const REPO_TABS = [
 export type RepoTab = (typeof REPO_TABS)[number][0];
 export const isRepoTab = (v: string): v is RepoTab => REPO_TABS.some(([k]) => k === v);
 
+/** The Repo SCREEN's tabs: the dashboard's (above — what `REPO_TAB_SECTIONS` and MCP `get_repo_dashboard`'s `tab`
+ *  name) plus **Summary**, the repository's state as Trov wrote it (`RepoDashboard.state`, `ai.md` › Repo state) on
+ *  a tab of its own, second. It is not a section tab: it holds no `RepoSection`, and over MCP the state still
+ *  travels with `tab: overview`. The screen offers it only while the live read carries `state`
+ *  (`web/src/repo.ts` `repoSummaryShown`). */
+export const REPO_SUMMARY_TAB = "summary";
+export const REPO_SCREEN_TABS = [REPO_TABS[0], [REPO_SUMMARY_TAB, "Summary"], ...REPO_TABS.slice(1)] as const;
+export type RepoScreenTab = RepoTab | typeof REPO_SUMMARY_TAB;
+export const isRepoScreenTab = (v: string): v is RepoScreenTab => v === REPO_SUMMARY_TAB || isRepoTab(v);
+
 export const REPO_RANGES = ["24h", "7d", "30d"] as const;
 export type RepoRange = (typeof REPO_RANGES)[number];
 
@@ -340,7 +350,7 @@ export interface RepoDashboard {
   /** Overview's first section, "State". */
   state?: AiRepoState;
   /** Planning's first section, "Where the work went", per range (the screen switches client-side). */
-  themes?: Record<AiThemeRange, AiThemes>;
+  themes?: Partial<Record<AiThemeRange, AiThemes>>;
 
   // ── Repo setups (shared/repo-facts-core.ts) — NOT a section: absent = today's Overview ──
   /** The Overview's one facts object (`?repo=&app=` narrowed). The sample sets it now; the Worker adds it with

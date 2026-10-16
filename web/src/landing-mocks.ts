@@ -146,18 +146,18 @@ function ticketsMock(): string {
       <div style="font-size:11.5px;font-weight:600;line-height:1.35">${title}</div>
       <div style="margin-top:7px;display:flex;align-items:center;flex-wrap:wrap;gap:4px 5px;font-size:10.5px;color:var(--fg-40);min-height:18px">#${id}${prio ? `${SEP}${priorityMark(prio === "High" ? "high" : "low", 10.5)}` : ""}${mirrored ? GH : ""}<span style="margin-left:auto;display:flex">${who ? initials(who, 18, "7.5px") : nobody}</span></div>
     </div>`;
-  const cards: Record<TicketStatus, string[]> = {
+  // The app's default view (All) hides declined tickets, so the mock's board has no Declined column (tickets.md).
+  const cards: Record<Exclude<TicketStatus, "declined">, string[]> = {
     submitted: [card("Email digest lands twice on Mondays", 218, "", ""), card("Onboarding checklist is stale", 230, "Low", "SO", true)],
     in_progress: [card("Rate limiting on the public API", 212, "High", "LP")],
     testing: [card("Retry-After on 429 responses", 213, "", "MC")],
     done: [card("SSO step in the checklist", 209, "", "SO")],
-    declined: [card("Per-user rate limits", 205, "", "")],
   };
-  const column = (s: TicketStatus, i: number) => `<div${i > 2 ? ` class="fxm-wide"` : ""} style="min-width:0;display:flex;flex-direction:column;gap:6px">
+  const column = (s: Exclude<TicketStatus, "declined">, i: number) => `<div${i > 2 ? ` class="fxm-wide"` : ""} style="min-width:0;display:flex;flex-direction:column;gap:6px">
       <div style="display:flex;align-items:center;gap:6px;padding-bottom:5px;border-bottom:1px solid var(--border);font-size:11px;font-weight:600">${ticketStatusIcon(s, 12, false)}${TICKET_STATUS_LABEL[s]}<span style="margin-left:auto;font-size:10px;color:var(--fg-40)">${cards[s].length}</span></div>
       ${cards[s].join("")}
     </div>`;
-  const board = `<div class="fxm-board">${TICKET_STATUSES.map(column).join("")}</div>`;
+  const board = `<div class="fxm-board">${TICKET_STATUSES.filter((s): s is Exclude<TicketStatus, "declined"> => s !== "declined").map(column).join("")}</div>`;
 
   const COLS = "minmax(0,2.3fr) 66px 96px minmax(0,1fr)";
   const group = (name: string, meta: string, count: string, active: boolean) => `<div style="display:flex;align-items:center;gap:8px;padding:10px 14px 4px">${DOT(active ? "accent" : "border-strong")}${cap(name, "9px", active ? "accent" : "fg-55")}<span style="font-size:10px;color:var(--fg-40);white-space:nowrap">${meta}</span><span style="flex:1;height:1px;background:var(--border)"></span><span style="font-size:10px;color:var(--fg-40);white-space:nowrap">${count}</span></div>`;

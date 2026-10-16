@@ -1,0 +1,561 @@
+event: thread
+data: {"id":1,"title":"Hosting status","mode":"smart","auto":false,"origin":"page","contextRef":null}
+
+event: activity
+data: {"step":1,"tool":"query","icon":"search","label":"Searched docs for 'hosting'","state":"run"}
+
+event: activity
+data: {"step":1,"state":"done","results":["doc:hosting-connections","doc:performance-plan","doc:release-0-30-notes"],"resultLine":"3 results"}
+
+event: activity
+data: {"step":2,"tool":"get_ticket","icon":"tickets","label":"Read ticket #14","state":"run"}
+
+event: activity
+data: {"step":2,"state":"done","results":["ticket:14","sprint:7","person:maya","person:andres"]}
+
+event: activity
+data: {"step":3,"tool":"get_repo_dashboard","icon":"ci","label":"Checked CI on AndresL230/trov","state":"run"}
+
+event: activity
+data: {"step":3,"state":"done","results":["repo:AndresL230/trov"],"resultLine":"1 result"}
+
+event: activity
+data: {"step":4,"tool":"get_events","icon":"pr","label":"Read PR #176","state":"run"}
+
+event: activity
+data: {"step":4,"state":"done","results":["pr:176","pr:173"]}
+
+event: activity
+data: {"step":5,"tool":"get_sprint","icon":"sprint","label":"Looked at the Hosting sprint","state":"run"}
+
+event: activity
+data: {"step":5,"state":"done","results":["sprint:7","ticket:18","ticket:19"]}
+
+event: text
+data: {"delta":"Most "}
+
+event: text
+data: {"delta":"of "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"hosting "}
+
+event: text
+data: {"delta":"work "}
+
+event: text
+data: {"delta":"is "}
+
+event: text
+data: {"delta":"moving. "}
+
+event: text
+data: {"delta":"What "}
+
+event: text
+data: {"delta":"blocks "}
+
+event: text
+data: {"delta":"it "}
+
+event: text
+data: {"delta":"is "}
+
+event: text
+data: {"delta":"narrow: "}
+
+event: text
+data: {"delta":"[[ticket:14]] "}
+
+event: text
+data: {"delta":"waits "}
+
+event: text
+data: {"delta":"on "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"Netlify "}
+
+event: text
+data: {"delta":"connect "}
+
+event: text
+data: {"delta":"step, "}
+
+event: text
+data: {"delta":"and "}
+
+event: text
+data: {"delta":"that "}
+
+event: text
+data: {"delta":"step "}
+
+event: text
+data: {"delta":"can't "}
+
+event: text
+data: {"delta":"merge "}
+
+event: text
+data: {"delta":"while "}
+
+event: text
+data: {"delta":"one "}
+
+event: text
+data: {"delta":"test "}
+
+event: text
+data: {"delta":"fails "}
+
+event: text
+data: {"delta":"on "}
+
+event: text
+data: {"delta":"main.\n\n"}
+
+event: text
+data: {"delta":"## "}
+
+event: text
+data: {"delta":"What "}
+
+event: text
+data: {"delta":"is "}
+
+event: text
+data: {"delta":"blocking\n\n"}
+
+event: text
+data: {"delta":"- "}
+
+event: text
+data: {"delta":"The "}
+
+event: text
+data: {"delta":"Netlify "}
+
+event: text
+data: {"delta":"connect "}
+
+event: text
+data: {"delta":"test "}
+
+event: text
+data: {"delta":"fails "}
+
+event: text
+data: {"delta":"on "}
+
+event: text
+data: {"delta":"main "}
+
+event: text
+data: {"delta":"since "}
+
+event: text
+data: {"delta":"[[pr:173]] "}
+
+event: text
+data: {"delta":"changed "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"status "}
+
+event: text
+data: {"delta":"marks "}
+
+event: text
+data: {"delta":"it "}
+
+event: text
+data: {"delta":"checks.\n"}
+
+event: text
+data: {"delta":"- "}
+
+event: text
+data: {"delta":"[[person:andres]] "}
+
+event: text
+data: {"delta":"owns "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"fix. "}
+
+event: text
+data: {"delta":"It "}
+
+event: text
+data: {"delta":"isn't "}
+
+event: text
+data: {"delta":"filed "}
+
+event: text
+data: {"delta":"as "}
+
+event: text
+data: {"delta":"a "}
+
+event: text
+data: {"delta":"ticket "}
+
+event: text
+data: {"delta":"yet.\n"}
+
+event: text
+data: {"delta":"- "}
+
+event: text
+data: {"delta":"Token "}
+
+event: text
+data: {"delta":"refresh "}
+
+event: text
+data: {"delta":"in "}
+
+event: text
+data: {"delta":"[[doc:hosting-connections]] "}
+
+event: text
+data: {"delta":"is "}
+
+event: text
+data: {"delta":"still "}
+
+event: text
+data: {"delta":"described "}
+
+event: text
+data: {"delta":"as "}
+
+event: text
+data: {"delta":"automatic, "}
+
+event: text
+data: {"delta":"which "}
+
+event: text
+data: {"delta":"is "}
+
+event: text
+data: {"delta":"no "}
+
+event: text
+data: {"delta":"longer "}
+
+event: text
+data: {"delta":"true.\n\n"}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"Ticket "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"Status "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"Owner "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"Waiting "}
+
+event: text
+data: {"delta":"on "}
+
+event: text
+data: {"delta":"|\n"}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"--- "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"--- "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"--- "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"--- "}
+
+event: text
+data: {"delta":"|\n"}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"[[ticket:14]] "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"[[ticket:14|status]] "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"Maya "}
+
+event: text
+data: {"delta":"Chen "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"PR "}
+
+event: text
+data: {"delta":"#176 "}
+
+event: text
+data: {"delta":"|\n"}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"[[ticket:18]] "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"[[ticket:18|status]] "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"Andres "}
+
+event: text
+data: {"delta":"Lopez "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"PR "}
+
+event: text
+data: {"delta":"#176 "}
+
+event: text
+data: {"delta":"|\n"}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"[[ticket:19]] "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"[[ticket:19|status]] "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"Unassigned "}
+
+event: text
+data: {"delta":"| "}
+
+event: text
+data: {"delta":"#18 "}
+
+event: text
+data: {"delta":"|\n\n"}
+
+event: activity
+data: {"step":6,"tool":"show_items","icon":"read","label":"Showed items","state":"run"}
+
+event: block
+data: {"kind":"items","items":[{"ref":"ticket:14","type":"ticket","num":14,"title":"Guided repository setup","status":{"mark":"half","tone":"accent","word":"In progress","tip":"In progress. Someone is working on it."},"owner":"maya","updated":"2026-10-15T10:00:00.000Z","href":"#tickets/14","extra":{"priority":"high","assignees":["maya","andres"],"sprint":"Hosting"}},{"ref":"pr:176","type":"pr","num":176,"title":"Netlify connect step for guided setup","status":{"mark":"ring","tone":"blue","word":"In review","tip":"Waiting on a review."},"owner":"maya","updated":"2026-10-15T11:20:00.000Z","href":"https://github.com/AndresL230/trov/pull/176","extra":{"author":"maya","head":"maya/netlify-connect","base":"main","repo":"AndresL230/trov","checks":[{"name":"build","state":"success"},{"name":"typecheck","state":"success"},{"name":"netlify-connect.test","state":"failure"},{"name":"lint","state":"success"}]}},{"ref":"sprint:7","type":"sprint","num":7,"title":"Hosting","status":{"mark":"warn","tone":"amber","word":"3 days late","tip":"At this pace the sprint finishes after its due date."},"owner":"andres","updated":"2026-10-15T11:00:00.000Z","href":"#sprints/7","extra":{"start":"2026-10-05","due":"2026-10-30","progress":{"closed":7,"total":12}}}]}
+
+event: activity
+data: {"step":6,"state":"done","results":["ticket:14","pr:176","sprint:7"]}
+
+event: text
+data: {"delta":"## "}
+
+event: text
+data: {"delta":"Pace\n\n"}
+
+event: text
+data: {"delta":"Merged "}
+
+event: text
+data: {"delta":"PRs "}
+
+event: text
+data: {"delta":"hold "}
+
+event: text
+data: {"delta":"at "}
+
+event: text
+data: {"delta":"about "}
+
+event: text
+data: {"delta":"six "}
+
+event: text
+data: {"delta":"a "}
+
+event: text
+data: {"delta":"week. "}
+
+event: text
+data: {"delta":"Hosting "}
+
+event: text
+data: {"delta":"took "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"largest "}
+
+event: text
+data: {"delta":"share "}
+
+event: text
+data: {"delta":"of "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"last "}
+
+event: text
+data: {"delta":"eight "}
+
+event: text
+data: {"delta":"weeks.\n\n"}
+
+event: block
+data: {"kind":"chart","chart":{"title":"Merged PRs by week","total":48,"unit":"merged pull requests","query":"merged_prs_by_week","params":{"weeks":8},"rows":[{"label":"Aug 24","value":4},{"label":"Aug 31","value":6},{"label":"Sep 7","value":5},{"label":"Sep 14","value":8},{"label":"Sep 21","value":7},{"label":"Sep 28","value":3},{"label":"Oct 5","value":9},{"label":"Oct 12","value":6}]}}
+
+event: block
+data: {"kind":"themes","themes":{"title":"Where the time went, by theme","caption":"Share of merged PRs","weeks":["Aug 24","Aug 31","Sep 7","Sep 14","Sep 21","Sep 28","Oct 5","Oct 12"],"lanes":[{"theme":"Hosting","color":"sky","values":[0.2,0.35,0.5,0.6,0.7,0.8,0.9,0.85]},{"theme":"Repo setup","color":"moss","values":[0.6,0.5,0.4,0.5,0.6,0.55,0.4,0.5]},{"theme":"Status marks","color":"plum","values":[0,0.1,0.3,0.7,0.8,0.6,0.2,0.1]},{"theme":"Release 0.30","color":"ochre","values":[0,0,0,0.1,0.2,0.3,0.5,0.7]}]}}
+
+event: block
+data: {"kind":"diagram","diagram":{"title":"What waits on what","caption":"Each step waits on the one before it","layout":"chain","nodes":[{"id":"ci","eyebrow":"CI on main","label":"netlify-connect.test","ref":"repo:AndresL230/trov","view":{"ref":"repo:AndresL230/trov","type":"repo","title":"AndresL230/trov","status":null,"updated":"2026-10-15T11:20:00.000Z","href":"#repo","extra":{"facts":null}}},{"id":"pr","eyebrow":"Pull request","label":"#176 Netlify connect step","ref":"pr:176","view":{"ref":"pr:176","type":"pr","num":176,"title":"Netlify connect step for guided setup","status":{"mark":"ring","tone":"blue","word":"In review","tip":"Waiting on a review."},"owner":"maya","updated":"2026-10-15T11:20:00.000Z","href":"https://github.com/AndresL230/trov/pull/176","extra":{"author":"maya","head":"maya/netlify-connect","base":"main","repo":"AndresL230/trov","checks":[{"name":"build","state":"success"},{"name":"typecheck","state":"success"},{"name":"netlify-connect.test","state":"failure"},{"name":"lint","state":"success"}]}}},{"id":"t14","eyebrow":"Ticket","label":"#14 Guided repository setup","ref":"ticket:14","view":{"ref":"ticket:14","type":"ticket","num":14,"title":"Guided repository setup","status":{"mark":"half","tone":"accent","word":"In progress","tip":"In progress. Someone is working on it."},"owner":"maya","updated":"2026-10-15T10:00:00.000Z","href":"#tickets/14","extra":{"priority":"high","assignees":["maya","andres"],"sprint":"Hosting"}}},{"id":"sprint","eyebrow":"Sprint","label":"Hosting, due Oct 30","ref":"sprint:7","view":{"ref":"sprint:7","type":"sprint","num":7,"title":"Hosting","status":{"mark":"warn","tone":"amber","word":"3 days late","tip":"At this pace the sprint finishes after its due date."},"owner":"andres","updated":"2026-10-15T11:00:00.000Z","href":"#sprints/7","extra":{"start":"2026-10-05","due":"2026-10-30","progress":{"closed":7,"total":12}}}}],"edges":[["ci","pr"],["pr","t14"],["t14","sprint"]]}}
+
+event: text
+data: {"delta":"Fixing "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"test "}
+
+event: text
+data: {"delta":"unblocks "}
+
+event: text
+data: {"delta":"[[pr:176]], "}
+
+event: text
+data: {"delta":"which "}
+
+event: text
+data: {"delta":"closes "}
+
+event: text
+data: {"delta":"most "}
+
+event: text
+data: {"delta":"of "}
+
+event: text
+data: {"delta":"[[ticket:14]]. "}
+
+event: text
+data: {"delta":"Until "}
+
+event: text
+data: {"delta":"then "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"sprint "}
+
+event: text
+data: {"delta":"is "}
+
+event: text
+data: {"delta":"forecast "}
+
+event: text
+data: {"delta":"to "}
+
+event: text
+data: {"delta":"finish "}
+
+event: text
+data: {"delta":"3 "}
+
+event: text
+data: {"delta":"days "}
+
+event: text
+data: {"delta":"late."}
+
+event: followups
+data: {"items":["File a ticket for the failing test","Hand off the test fix to an agent","What changed in PR #173?"]}
+
+event: done
+data: {"messageId":2,"questionId":1,"cites":[{"ref":"ticket:14","type":"ticket","num":14,"title":"Guided repository setup","status":{"mark":"half","tone":"accent","word":"In progress","tip":"In progress. Someone is working on it."},"owner":"maya","updated":"2026-10-15T10:00:00.000Z","href":"#tickets/14","extra":{"priority":"high","assignees":["maya","andres"],"sprint":"Hosting"}},{"ref":"pr:173","type":"pr","num":173,"title":"Status marks replace pills","status":{"mark":"check","tone":"accent","word":"Merged","tip":"Merged."},"owner":"priya","updated":"2026-10-13T12:00:00.000Z","href":"https://github.com/AndresL230/trov/pull/173","extra":{"author":"priya","head":"priya/status-marks","base":"main","repo":"AndresL230/trov","checks":[{"name":"build","state":"success"},{"name":"typecheck","state":"success"},{"name":"test","state":"success"},{"name":"lint","state":"success"}]}},{"ref":"person:andres","type":"person","title":"Andres Lopez","status":null,"owner":"andres","href":null,"extra":{"handle":"andres","role":"Founder. Hosting and the gate.","workingOn":["ticket:18","ticket:29"]}},{"ref":"doc:hosting-connections","type":"doc","title":"Hosting connections","status":{"mark":"dot","tone":"green","word":"Live","tip":"Promoted. This is the version agents read."},"owner":"andres","updated":"2026-10-12T12:00:00.000Z","href":null,"extra":{"space":"technical","version":4,"owner":"andres","excerpt":"An org connects a hosting account once, in Org settings › Integrations. Trov keeps the token encrypted and polls the provider for deploys every 10 minutes.","staged":false}},{"ref":"ticket:18","type":"ticket","num":18,"title":"Hosting connections: Netlify and Vercel","status":{"mark":"half","tone":"accent","word":"In progress","tip":"In progress. Someone is working on it."},"owner":"andres","updated":"2026-10-15T07:00:00.000Z","href":"#tickets/18","extra":{"priority":"high","assignees":["andres"],"sprint":"Hosting"}},{"ref":"ticket:19","type":"ticket","num":19,"title":"Reconnect expired hosting tokens","status":{"mark":"todo","tone":"muted","word":"Triage","tip":"Triage. Filed, and waiting for someone to pick it up or decline it."},"owner":null,"updated":"2026-10-13T12:00:00.000Z","href":"#tickets/19","extra":{"priority":"normal","assignees":[],"sprint":"Hosting"}},{"ref":"pr:176","type":"pr","num":176,"title":"Netlify connect step for guided setup","status":{"mark":"ring","tone":"blue","word":"In review","tip":"Waiting on a review."},"owner":"maya","updated":"2026-10-15T11:20:00.000Z","href":"https://github.com/AndresL230/trov/pull/176","extra":{"author":"maya","head":"maya/netlify-connect","base":"main","repo":"AndresL230/trov","checks":[{"name":"build","state":"success"},{"name":"typecheck","state":"success"},{"name":"netlify-connect.test","state":"failure"},{"name":"lint","state":"success"}]}}],"tokens":{"in":18240,"out":1310,"cached":14902}}
+

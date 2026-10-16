@@ -1,0 +1,246 @@
+event: thread
+data: {"id":3,"title":"What shipped this week?","mode":"smart","auto":false,"origin":"page","contextRef":null}
+
+event: activity
+data: {"step":1,"tool":"get_feed","icon":"feed","label":"Read the feed for Oct 9 – Oct 15","state":"run"}
+
+event: activity
+data: {"step":1,"state":"done","results":["feed:41"]}
+
+event: activity
+data: {"step":2,"tool":"get_events","icon":"pr","label":"Checked merged PRs on AndresL230/trov","state":"run"}
+
+event: activity
+data: {"step":2,"state":"done","results":["pr:173","pr:171","pr:178"],"resultLine":"3 results"}
+
+event: text
+data: {"delta":"Four "}
+
+event: text
+data: {"delta":"things "}
+
+event: text
+data: {"delta":"shipped "}
+
+event: text
+data: {"delta":"this "}
+
+event: text
+data: {"delta":"week, "}
+
+event: text
+data: {"delta":"most "}
+
+event: text
+data: {"delta":"of "}
+
+event: text
+data: {"delta":"them "}
+
+event: text
+data: {"delta":"on "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"board "}
+
+event: text
+data: {"delta":"and "}
+
+event: text
+data: {"delta":"in "}
+
+event: text
+data: {"delta":"guided "}
+
+event: text
+data: {"delta":"setup.\n\n"}
+
+event: text
+data: {"delta":"- "}
+
+event: text
+data: {"delta":"[[pr:173]] "}
+
+event: text
+data: {"delta":"replaced "}
+
+event: text
+data: {"delta":"pills "}
+
+event: text
+data: {"delta":"with "}
+
+event: text
+data: {"delta":"status "}
+
+event: text
+data: {"delta":"marks "}
+
+event: text
+data: {"delta":"on "}
+
+event: text
+data: {"delta":"every "}
+
+event: text
+data: {"delta":"board "}
+
+event: text
+data: {"delta":"and "}
+
+event: text
+data: {"delta":"table.\n"}
+
+event: text
+data: {"delta":"- "}
+
+event: text
+data: {"delta":"[[pr:171]] "}
+
+event: text
+data: {"delta":"added "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"repository "}
+
+event: text
+data: {"delta":"picker, "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"first "}
+
+event: text
+data: {"delta":"step "}
+
+event: text
+data: {"delta":"of "}
+
+event: text
+data: {"delta":"[[ticket:14]].\n"}
+
+event: text
+data: {"delta":"- "}
+
+event: text
+data: {"delta":"Release "}
+
+event: text
+data: {"delta":"notes "}
+
+event: text
+data: {"delta":"for "}
+
+event: text
+data: {"delta":"0.30 "}
+
+event: text
+data: {"delta":"are "}
+
+event: text
+data: {"delta":"drafted "}
+
+event: text
+data: {"delta":"in "}
+
+event: text
+data: {"delta":"[[doc:release-0-30-notes]] "}
+
+event: text
+data: {"delta":"and "}
+
+event: text
+data: {"delta":"not "}
+
+event: text
+data: {"delta":"approved "}
+
+event: text
+data: {"delta":"yet.\n"}
+
+event: text
+data: {"delta":"- "}
+
+event: text
+data: {"delta":"[[handoff:11]] "}
+
+event: text
+data: {"delta":"went "}
+
+event: text
+data: {"delta":"out "}
+
+event: text
+data: {"delta":"so "}
+
+event: text
+data: {"delta":"an "}
+
+event: text
+data: {"delta":"agent "}
+
+event: text
+data: {"delta":"can "}
+
+event: text
+data: {"delta":"pick "}
+
+event: text
+data: {"delta":"up "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"performance "}
+
+event: text
+data: {"delta":"plan.\n\n"}
+
+event: block
+data: {"kind":"items","items":[{"ref":"pr:173","type":"pr","num":173,"title":"Status marks replace pills","status":{"mark":"check","tone":"accent","word":"Merged","tip":"Merged."},"owner":"priya","updated":"2026-10-13T12:00:00.000Z","href":"https://github.com/AndresL230/trov/pull/173","extra":{"author":"priya","head":"priya/status-marks","base":"main","repo":"AndresL230/trov","checks":[{"name":"build","state":"success"},{"name":"typecheck","state":"success"},{"name":"test","state":"success"},{"name":"lint","state":"success"}]}},{"ref":"pr:171","type":"pr","num":171,"title":"Guided setup: repository picker","status":{"mark":"check","tone":"accent","word":"Merged","tip":"Merged."},"owner":"maya","updated":"2026-10-14T12:00:00.000Z","href":"https://github.com/AndresL230/trov/pull/171","extra":{"author":"maya","head":"maya/repo-picker","base":"main","repo":"AndresL230/trov","checks":[{"name":"build","state":"success"},{"name":"typecheck","state":"success"},{"name":"test","state":"success"},{"name":"lint","state":"success"}]}},{"ref":"doc:release-0-30-notes","type":"doc","title":"Release 0.30 notes","status":{"mark":"ring","tone":"amber","word":"Staged, not approved","tip":"An agent proposed this version. A person has not approved it yet."},"owner":"priya","updated":"2026-10-15T10:00:00.000Z","href":null,"extra":{"space":"product","version":2,"owner":"priya","excerpt":"Status marks replace pills on every board, table and rail.","staged":true}}]}
+
+event: text
+data: {"delta":"Nothing "}
+
+event: text
+data: {"delta":"was "}
+
+event: text
+data: {"delta":"reverted. "}
+
+event: text
+data: {"delta":"[[person:priya]] "}
+
+event: text
+data: {"delta":"merged "}
+
+event: text
+data: {"delta":"3 "}
+
+event: text
+data: {"delta":"of "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"7 "}
+
+event: text
+data: {"delta":"PRs."}
+
+event: followups
+data: {"items":["What's still open for 0.30?","Summarize PR #173","What's blocking the hosting work?"]}
+
+event: done
+data: {"messageId":10,"questionId":9,"cites":[{"ref":"pr:173","type":"pr","num":173,"title":"Status marks replace pills","status":{"mark":"check","tone":"accent","word":"Merged","tip":"Merged."},"owner":"priya","updated":"2026-10-13T12:00:00.000Z","href":"https://github.com/AndresL230/trov/pull/173","extra":{"author":"priya","head":"priya/status-marks","base":"main","repo":"AndresL230/trov","checks":[{"name":"build","state":"success"},{"name":"typecheck","state":"success"},{"name":"test","state":"success"},{"name":"lint","state":"success"}]}},{"ref":"pr:171","type":"pr","num":171,"title":"Guided setup: repository picker","status":{"mark":"check","tone":"accent","word":"Merged","tip":"Merged."},"owner":"maya","updated":"2026-10-14T12:00:00.000Z","href":"https://github.com/AndresL230/trov/pull/171","extra":{"author":"maya","head":"maya/repo-picker","base":"main","repo":"AndresL230/trov","checks":[{"name":"build","state":"success"},{"name":"typecheck","state":"success"},{"name":"test","state":"success"},{"name":"lint","state":"success"}]}},{"ref":"ticket:14","type":"ticket","num":14,"title":"Guided repository setup","status":{"mark":"half","tone":"accent","word":"In progress","tip":"In progress. Someone is working on it."},"owner":"maya","updated":"2026-10-15T10:00:00.000Z","href":"#tickets/14","extra":{"priority":"high","assignees":["maya","andres"],"sprint":"Hosting"}},{"ref":"doc:release-0-30-notes","type":"doc","title":"Release 0.30 notes","status":{"mark":"ring","tone":"amber","word":"Staged, not approved","tip":"An agent proposed this version. A person has not approved it yet."},"owner":"priya","updated":"2026-10-15T10:00:00.000Z","href":null,"extra":{"space":"product","version":2,"owner":"priya","excerpt":"Status marks replace pills on every board, table and rail.","staged":true}},{"ref":"handoff:11","type":"handoff","num":11,"title":"Carry the performance plan forward","status":{"mark":"ring","tone":"blue","word":"Pending","tip":"Waiting for a session to claim it. Unclaimed handoffs expire after 7 days."},"owner":"andres","updated":"2026-10-15T09:00:00.000Z","href":"#handoffs/11","extra":{"from":"andres","to":"anyone","task":"Pick up the performance plan where the last session stopped: batch the D1 reads in the usage rollup, then measure the Repo dashboard again."}},{"ref":"person:priya","type":"person","title":"Priya Natarajan","status":null,"owner":"priya","href":null,"extra":{"handle":"priya","role":"Engineer. Board and status marks.","workingOn":["ticket:24"]}}],"tokens":{"in":7200,"out":410,"cached":6100}}
+

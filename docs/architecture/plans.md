@@ -25,15 +25,27 @@ means unlimited. Plan ids are stored and never renamed: **`team` is the plan use
 | `agent_connections` | 5 | 10 | unlimited | 5 | PER PERSON: that person's live MCP tokens for the org + their connected apps that hold a row for it (`oauth_grant_orgs`) — see below | `mintToken`, `issueAuthorization` (the OAuth consent), `setGrantOrg` / `setGrantMode` (Settings), `admitGrantOrg` (a follow-the-repository connection's first call into the org) |
 | `ai_summaries` | 300 | 3,000 | unlimited | 300 | PER CALENDAR MONTH (UTC): summarizer calls attempted for the org | `orgSummarizers` (`src/plans/summaries.ts`) — it refuses nothing: past it an item shows its excerpt (below) |
 | `ai_runs` | 250 | 2,000 | unlimited | 250 | PER CALENDAR MONTH (UTC): model calls the AI pass attempted for the org (`ai_run:*`) | the AI pass (`src/ai/pass.ts`, via `aiEligibility`) — it refuses nothing: past it no call is made (`ai.md`). **Not listed yet** (below) |
+| `ai_chat` | 50 | **300 per seat** (× the paid seats, else the members) | unlimited | 50 | PER CALENDAR MONTH (UTC): Ask Trov's QUESTIONS — a Fast or Smart question 1, a Thinking one 5 (`org_usage_daily` metric `ai_chat`) | nothing yet: Ask Trov is a later phase, so it reads 0 (`ai.md`). **Not listed yet** (below) |
 
-**A limit that is not listed** (`LimitDef.listed: false`): `ai_runs` is a limit like any other — resolved,
-overridable per org in Platform's limit fields, enforced — but nothing uses it yet (the AI pass has no job), so
-the pricing page's cards, its questions and its markdown, the Plan block (Org settings › General) and Settings ›
-Limits list `LISTED_LIMIT_KEYS` (every key but the unlisted) instead of `LIMIT_KEYS`. `OrgPlanView.usage` still
-carries `ai_runs` (this month's `ai_run:*`). To list it: drop the flag (`test/render.pricing.test.ts`,
-`render.plans.test.ts`, `render.settings-plan.test.ts` pin that it is absent today).
+**A limit that is not listed** (`LimitDef.listed: false`): `ai_runs` and `ai_chat` are limits like any other —
+resolved, overridable per org in Platform's limit fields, enforced — but nothing uses them yet (the AI pass has no
+job; Ask Trov is not built), so the pricing page's cards, its questions and its markdown, the Plan block (Org
+settings › General) and Settings › Limits list `LISTED_LIMIT_KEYS` (every key but the unlisted) instead of
+`LIMIT_KEYS`. `OrgPlanView.usage` still carries both (this month's `ai_run:*` and `ai_chat`). Org settings › AI
+shows them with `ai_summaries` and `jev_checks` (`organizations.md`). To list one: drop the flag
+(`test/render.pricing.test.ts`, `render.plans.test.ts`, `render.settings-plan.test.ts` pin that `ai_runs` is absent
+today; `render.pricing.test.ts` that no public page says "AI chat" or names Ask Trov's allowance).
 
-| `jev_checks` | 1,000 | 10,000 | unlimited | 1,000 | PER CALENDAR MONTH (UTC): Sift's checks (requests to TypeSafe AI's Jev — ONE request per candidate item; `org_usage_daily` metric `ai_suggest`) | `startTagFit` / `continueTagFit` (`src/tools/tag-fit.ts`) — it refuses nothing with a 402: past it a run stops (`capped`) and the Tags tab says so |
+**A per-seat limit** (`PlanDef.perSeat`). `LimitDef.per` is `org | person` and cannot say "per seat", so a PLAN
+names the limits it gives per seat: Pro's `["ai_chat"]`. Its `entitlements` value is the amount for ONE seat, and
+`resolveEntitlements` — THE resolution, so `planRefusal`, `OrgPlanView`, a grant's preview and Org settings › AI all
+agree — multiplies it by the PAID seats: the org's `seats` override (a paid Pro org's: the seats it pays for); with
+none (a gifted or granted Pro) by the org's MEMBERS, at least 1 (`OrgPlanState.members`, read by `PLAN_COLS`; a
+grant's preview, with no org yet, counts 1) — never the plan's 50-seat most (the owner's call, 2026-10-15). Unlimited
+seats make it unlimited. An override of the per-seat limit itself is the org's WHOLE cap and is never multiplied. A
+3-seat Pro org: 900 Ask Trov questions a month.
+
+| `jev_checks` | 1,000 | 10,000 | unlimited | 1,000 | PER CALENDAR MONTH (UTC): Sift's checks (requests to TypeSafe AI's Jev — ONE request per candidate item; `org_usage_daily` metric `ai_suggest`) | `startTagFit` / `continueTagFit` (the Sift run, `src/ai/sift.ts`) — it refuses nothing with a 402: past it a run stops (`capped`) and the Tags tab says so |
 | `tags` | 30 | 50 | unlimited | 30 | LIVE `org_tags` rows (a retired tag does not count) | `addTag`, `restoreTag`, `resolveSuggestion` accept (`src/tools/tags.ts`) |
 
 **Tag checks (`jev_checks`).** The owner's numbers (2026-10-14): 1,000 a month on Free and Personal, 10,000 on Pro,
@@ -95,7 +107,11 @@ make an org smaller.
 ## One question, one refusal
 
 `planRefusal(state, limit, used, adding)` (`shared/plans.ts`) answers "may this org add this now?" — `null`,
-or the typed refusal. Nothing else compares a count to a cap. The Worker throws it as `PlanLimitError`
+or the typed refusal. Nothing else compares a count to a cap: its comparison is THE cap test `capReached(used, cap,
+adding = 1)` (owner ruling Q11 — for one more, `used >= cap`), and every meter and "used up" line reads the same
+helper (`meterPct` is full ONLY at the cap, never by rounding: 99.6% draws 99 and no "Used up" line) — Org settings ›
+AI, the Plan tile, Settings › Plan, the Tags header, the summaries' spend, Ask Trov's composer block and its state
+route (whose per-mode `canSend` asks `planRefusal` with the mode's weight, Q50). The Worker throws it as `PlanLimitError`
 (`src/plans/state.ts`); a tenant write path calls `requirePlan(ctx, limit, adding)` (`gate.ts`), a seat is
 taken through `seatGate(p, orgId, "reserve" | "accept")` (`state.ts`).
 
@@ -159,9 +175,10 @@ allowance. Code: `src/plans/summaries.ts`, `src/data/meter.ts`; tests: `test/sum
 
 **The one choice.** `orgSummarizers(env, ctx, …)` is the only place a summarizer is chosen for an org — the
 webhook (`src/webhook.ts`) and Sync GitHub (`src/tools/backfill.ts`) both ask it. It answers the Claude
-summarizer, or `null` when the deployment has no key (`off`), the org's plan is canceled (`ended`), or the
-org has used its month's allowance (`capped`). The comparison is `planRefusal(state, "ai_summaries", used)`,
-like every other limit.
+summarizer, or `null` when the deployment has no key (`off`), the org's AI switch is off (`disabled` —
+`orgs.ai_automation`, read in the same statement; the seams then write nothing at all: `ai.md` › the org
+switch), the org's plan is canceled (`ended`), or the org has used its month's allowance (`capped`). The
+comparison is `planRefusal(state, "ai_summaries", used)`, like every other limit.
 
 **Nothing errors past the cap.** A `null` summarizer is what the code always had without a key: the item
 is stored with its **excerpt** (`pr_summaries.model = 'excerpt'`, a marker row; an issue's row holds the
@@ -407,7 +424,7 @@ person before any org exists. `org_grants.used_org` is deliberately not named `o
 
 | Route | Gate | Answers |
 |---|---|---|
-| `GET /api/o/:slug/plan` | any member | `OrgPlanView`: plan, name, status, `gift_until`, entitlements, `usage` (seats = members + pending; `agent_connections` = the caller's own; `ai_summaries` and `ai_runs` = this month's), `over` |
+| `GET /api/o/:slug/plan` | any member | `OrgPlanView`: plan, name, status, `gift_until`, entitlements, `usage` (seats = members + pending; `agent_connections` = the caller's own; `ai_summaries`, `ai_runs`, `jev_checks` and `ai_chat` = this month's; Pro's `ai_chat` entitlement is already per seat), `over` |
 | `GET /api/o/:slug/sync` | any member | `SyncStatusView` — its `summaries` is the allowance: status, used, cap, remaining, pending (`sync.md`) |
 | `GET /api/orgs` | signed in | each org with its `plan` and `paid`; adds `grants: MyGrant[]`, `can_create`, `free: { can_create, owned }` |
 | `POST /api/orgs` | holds a usable grant, or may own a Free org | 201 the org; 403 `no_grant` (a grant that is not theirs, a superadmin); 403 `free_org_limit` |

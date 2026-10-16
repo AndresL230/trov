@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<title>Ask Trov · Screens</title>
+<style>
+@font-face { font-family:'Geist'; font-style:normal; font-weight:100 900; font-display:swap; src:url("fonts/geist-latin.woff2") format("woff2"); }
+@font-face { font-family:'Archivo Narrow'; font-style:normal; font-weight:400 700; font-display:swap; src:url("fonts/archivo-narrow-latin.woff2") format("woff2"); }
+html, body { margin:0; padding:0; background:#e6e6ea; }
+* { box-sizing:border-box; }
+a { color:#525cc3; text-decoration:none; }
+a:hover { text-decoration:underline; }
+</style>
+</helmet>
+
+<section data-screen-label="Ask Trov screens" style="width:3080px;padding:72px 80px 120px;font-family:'Geist',system-ui,sans-serif;color:#16161a;display:flex;flex-direction:column;gap:64px">
+  <header style="max-width:1440px">
+    <div style="display:flex;align-items:center;gap:12px"><svg width="30" height="30" viewBox="0 0 100 100" aria-hidden="true"><path fill="#616ACB" d="M0 83.72H46.51V46.51H0ZM46.51 46.51H83.72V0H46.51ZM83.72 46.51V83.72H46.51V100H100V46.51Z"></path></svg><h1 style="margin:0;font-size:40px;font-weight:600;letter-spacing:-0.025em">{{ pageTitle }}</h1></div>
+    <p style="margin:12px 0 0;max-width:760px;font-size:17px;line-height:1.55;color:#4f4f58">Every artboard is the working prototype in one state. Chips open the inspector, cards and chips hover, the composer takes @ and /, and Stop, Confirm and Undo do what they say.</p>
+    <div style="display:flex;gap:20px;margin-top:12px;font-size:15px"><a href="Ask Trov.dc.html">Open the full prototype</a><a href="{{ otherHref }}">{{ otherLabel }}</a></div>
+  </header>
+
+  <sc-for list="{{ groups }}" as="g" hint-placeholder-count="5">
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <h2 style="margin:0;font-family:'Archivo Narrow',system-ui,sans-serif;font-size:15px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#6e6e78">{{ g.title }}</h2>
+      <div style="display:flex;flex-wrap:wrap;gap:56px 40px;align-items:flex-start">
+        <sc-for list="{{ g.items }}" as="v">
+          <article id="{{ v.id }}" style="display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:baseline;gap:10px;max-width:{{ v.w }}"><span style="display:inline-grid;place-items:center;min-width:30px;height:24px;padding:0 7px;border-radius:6px;background:#16161a;color:#fff;font-size:13px;font-weight:600;flex:none">{{ v.id }}</span><span style="font-size:17px;font-weight:600;white-space:nowrap">{{ v.name }}</span><span style="font-size:14px;color:#6e6e78;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ v.note }}</span></div>
+            <div style="position:relative;width:{{ v.w }};height:{{ v.h }};border-radius:{{ v.r }};overflow:hidden;background:#f6f6f7;border:{{ v.bd }};box-shadow:0 1px 2px rgba(20,20,30,.08), 0 24px 60px -20px rgba(20,20,30,.25)">
+              <iframe src="Ask%20Trov.dc.html?scenario={{ v.sc }}&amp;theme={{ v.theme }}" loading="lazy" title="{{ v.name }}" style="position:absolute;inset:0;width:100%;height:100%;border:0;display:block"></iframe>
+            </div>
+          </article>
+        </sc-for>
+      </div>
+    </div>
+  </sc-for>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const D = ['1440px', '900px', '12px', 'none'];
+    const I = ['480px', '800px', '12px', 'none'];
+    const P = ['390px', '844px', '28px', '6px solid #16161a'];
+    const C = (h) => ['760px', h, '12px', 'none'];
+    const raw = [
+      ['The conversation', [
+        ['1', 'New thread', 'Starters send. Type @ or / in the composer.', 'live', D],
+        ['2', 'Answering, streaming', 'Held mid-answer. Stop ends it.', 'streaming', D],
+        ['3', 'Thinking mode', 'Thinking… becomes Thought for 14s.', 'thinking', D],
+        ['4', 'A finished answer', 'Every block type. Scroll the thread, hover the chips.', 'answer', D],
+        ['4d', 'The same, dark', '', 'answer', D, 'dark'],
+        ['5', 'Inspector on a pull request', 'Back steps through #14, #176, #173. Drag the edge to resize.', 'answer-pr', D],
+      ]],
+      ['6 · Inspector views', [
+        ['6a', 'Ticket', '', 'insp:ticket', I], ['6b', 'Pull request', '', 'insp:pr', I], ['6c', 'Doc, staged', '', 'insp:doc', I], ['6d', 'Sprint', '', 'insp:sprint', I], ['6e', 'Repo', '', 'insp:repo', I], ['6f', 'Handoff', '', 'insp:handoff', I],
+        ['6g', 'Feed entry', '', 'insp:feed', I], ['6h', 'Person', '', 'insp:person', I], ['6i', 'Artifact, private', '', 'insp:artifact', I], ['6j', 'Uploaded attachment', '', 'insp:upload', I], ['6k', 'Chart', '', 'insp:chart', I],
+      ]],
+      ['Changes, artifacts, history', [
+        ['7', 'Ask before changes', 'Confirm, Cancel, or Edit the fields inline.', 'actions-ask', D],
+        ['8', 'Auto', 'Writes ran with Undo; the sixth change waits.', 'actions-auto', D],
+        ['9a', 'Save as artifact', 'Title, kind and who can see it.', 'artifact', D],
+        ['9b', 'Saved', 'Open shows it in the inspector.', 'artifact-saved', D],
+        ['10', 'Thread search and history', 'Query typed, a thread menu open.', 'search', D],
+        ['11', "Couldn't find it", 'What it searched, and how to rephrase.', 'notfound', D],
+        ['12', '⌘J over a ticket', 'Open as thread carries it over.', 'cmdj', D],
+        ['12d', '⌘J, dark', '', 'cmdj', D, 'dark'],
+        ['13', 'Settings › Trov', 'Instructions, default mode, what Ask can see.', 'settings', D],
+      ]],
+      ['14 · Composer states', [
+        ['14a', 'Allowance used', '', 'composer:quota', C('220px')], ['14b', 'Turned off by an admin', '', 'composer:off', C('220px')], ['14c', 'Auto turned off by an admin', '', 'composer:autoOff', C('260px')],
+        ['14d', 'Attachment too large', '', 'composer:tooLarge', C('260px')], ['14e', 'Error', '', 'composer:error', C('240px')], ['14f', '@ picker, keyboard selection', '', 'composer:at', C('520px')],
+        ['14g', '/ commands', '', 'composer:slash', C('420px')], ['14h', 'Files and context attached', '', 'composer:files', C('300px')], ['14i', 'Dragging files over', '', 'composer:drag', C('260px')],
+        ['14j', 'Free plan: no mode switch', '', 'composer:free', C('240px')], ['14k', 'Under 20% of the allowance left', '', 'composer:low', C('240px')],
+      ]],
+      ['15 · Phone, 390px', [
+        ['15a', 'Finished answer', '', 'phone', P], ['15b', 'The + menu', '', 'phone-plus', P], ['15c', 'Inspector as a sheet', '', 'phone-insp', P],
+      ]],
+    ];
+    const set = 'screens';
+    const keep = set === 'parts' ? [1, 3, 4] : [0, 2];
+    raw.splice(0, raw.length, ...raw.filter((g, i) => keep.includes(i)));
+    const other = set === 'parts' ? ['Ask Trov Screens.dc.html', 'Screens 1–5 and 7–13'] : ['Ask Trov Parts.dc.html', 'Inspector views, composer states and phone'];
+    return {
+      otherHref:other[0], otherLabel:other[1], pageTitle:set === 'parts' ? 'Ask Trov, parts' : 'Ask Trov',
+      groups:raw.map((g, gi) => ({ title:g[0], items:g[1].map((x, xi) => ({ delay:(gi * 6 + xi) * 450 + 100, id:x[0], name:x[1], note:x[2], sc:x[3], w:x[4][0], h:x[4][1], r:x[4][2], bd:x[4][3], theme:x[5] || 'light' })) })),
+    };
+  }
+}
+</script>
+</body>
+</html>

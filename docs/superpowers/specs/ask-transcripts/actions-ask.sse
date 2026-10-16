@@ -1,0 +1,63 @@
+event: thread
+data: {"id":1,"title":"Hosting status","mode":"smart","auto":false,"origin":"page","contextRef":null}
+
+event: activity
+data: {"step":1,"tool":"get_ticket","icon":"tickets","label":"Read ticket #18","state":"run"}
+
+event: activity
+data: {"step":1,"state":"done","results":["ticket:18","ticket:19"]}
+
+event: activity
+data: {"step":2,"tool":"get_doc","icon":"docs","label":"Read Hosting connections v4","state":"run"}
+
+event: activity
+data: {"step":2,"state":"done","results":["doc:hosting-connections"]}
+
+event: text
+data: {"delta":"Here "}
+
+event: text
+data: {"delta":"are "}
+
+event: text
+data: {"delta":"the "}
+
+event: text
+data: {"delta":"three "}
+
+event: text
+data: {"delta":"changes. "}
+
+event: text
+data: {"delta":"Nothing "}
+
+event: text
+data: {"delta":"happens "}
+
+event: text
+data: {"delta":"until "}
+
+event: text
+data: {"delta":"you "}
+
+event: text
+data: {"delta":"confirm "}
+
+event: text
+data: {"delta":"each "}
+
+event: text
+data: {"delta":"one."}
+
+event: action
+data: {"id":31,"groupId":"1-4-1","tool":"create_ticket","kind":"ticket","state":"proposed","note":null,"preview":{"title":"New ticket","item":null,"lines":[{"label":"Title","value":"Reconnect expired hosting tokens from Org settings"},{"label":"Description","value":"When a hosting token expires the connection stops without a sign. Show it as expired and offer Reconnect."},{"label":"Category","value":"bug"},{"label":"Priority","value":"high"},{"label":"Assignee","value":"@andres"},{"label":"Sprint","value":"Hosting"}]},"fields":{"title":"Reconnect expired hosting tokens from Org settings","body":"When a hosting token expires the connection stops without a sign. Show it as expired and offer Reconnect.","category":"bug","priority":"high","assignee":"andres","sprint_id":7},"editable":["title","category","priority","assignee"]}
+
+event: action
+data: {"id":32,"groupId":"1-4-2","tool":"send_handoff","kind":"handoff","state":"proposed","note":null,"preview":{"title":"New handoff","item":null,"lines":[{"label":"From","value":"@andres"},{"label":"To","value":"Anyone · any agent session can claim it"},{"label":"Task","value":"Fix the Netlify connect test on main"},{"label":"Done","value":"Traced the failure to the status-mark change in #173; Confirmed #176 is green except this test"},{"label":"Next","value":"Update the test to assert on the new marks; Re-run CI on main; Ask Maya to rebase #176"},{"label":"Files","value":"test/netlify-connect.test.ts, web/src/marks.ts"}]},"fields":{"recipient":"anyone","task":"Fix the Netlify connect test on main","done":["Traced the failure to the status-mark change in #173","Confirmed #176 is green except this test"],"next":["Update the test to assert on the new marks","Re-run CI on main","Ask Maya to rebase #176"],"files":["test/netlify-connect.test.ts","web/src/marks.ts"]},"editable":["recipient","task"]}
+
+event: action
+data: {"id":33,"groupId":"1-4-3","tool":"propose_doc_update","kind":"doc_edit","state":"proposed","note":null,"preview":{"title":"Doc edit: Hosting connections","item":{"ref":"doc:hosting-connections","type":"doc","title":"Hosting connections","status":{"mark":"dot","tone":"green","word":"Live","tip":"Promoted. This is the version agents read."},"owner":"andres","updated":"2026-10-12T12:00:00.000Z","href":null,"extra":{"space":"technical","version":4,"owner":"andres","excerpt":"An org connects a hosting account once, in Org settings › Integrations. Trov keeps the token encrypted and polls the provider for deploys every 10 minutes.","staged":false}},"lines":[{"label":"Doc","value":"Hosting connections"},{"label":"Version","value":"v4 → v5"},{"label":"Change","value":"Token refresh is manual for now"}],"hunks":[{"index":0,"heading":"## Tokens","before":"Trov refreshes hosting tokens automatically before they expire.","after":"Token refresh is manual for now. When a token expires, reconnect it in Org settings › Integrations."}]},"fields":{"slug":"hosting-connections","section":"architecture","title":null,"change_summary":"Token refresh is manual for now"},"editable":["hunks"]}
+
+event: done
+data: {"messageId":4,"questionId":3,"cites":[{"ref":"ticket:18","type":"ticket","num":18,"title":"Hosting connections: Netlify and Vercel","status":{"mark":"half","tone":"accent","word":"In progress","tip":"In progress. Someone is working on it."},"owner":"andres","updated":"2026-10-15T07:00:00.000Z","href":"#tickets/18","extra":{"priority":"high","assignees":["andres"],"sprint":"Hosting"}},{"ref":"doc:hosting-connections","type":"doc","title":"Hosting connections","status":{"mark":"dot","tone":"green","word":"Live","tip":"Promoted. This is the version agents read."},"owner":"andres","updated":"2026-10-12T12:00:00.000Z","href":null,"extra":{"space":"technical","version":4,"owner":"andres","excerpt":"An org connects a hosting account once, in Org settings › Integrations. Trov keeps the token encrypted and polls the provider for deploys every 10 minutes.","staged":false}},{"ref":"handoff:11","type":"handoff","num":11,"title":"Carry the performance plan forward","status":{"mark":"ring","tone":"blue","word":"Pending","tip":"Waiting for a session to claim it. Unclaimed handoffs expire after 7 days."},"owner":"andres","updated":"2026-10-15T09:00:00.000Z","href":"#handoffs/11","extra":{"from":"andres","to":"anyone","task":"Pick up the performance plan where the last session stopped: batch the D1 reads in the usage rollup, then measure the Repo dashboard again."}}],"tokens":{"in":9820,"out":640,"cached":8100}}
+

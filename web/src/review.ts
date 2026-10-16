@@ -7,13 +7,18 @@
 // Interactions dispatch via data-act / data-arg handled in main.ts. No fetching,
 // no inline data.
 
-import { esc, attr, MONO_LABEL, surface, SURFACE } from "./ui";
+import { esc, attr, MONO_LABEL, surface, SURFACE, HITBOX, hitArea } from "./ui";
 import { LOW_CONFIDENCE, kindMark } from "./marks";
 import { segmented } from "./segmented";
 import { renderedDoc } from "./review-rendered";
-import { personChip, personLink, handleTag } from "./people";
+import { personChip, personLink, personAvatarLink, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
 import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse } from "./skeleton";
+import type { AiSuggestion } from "@shared/ai-core";
+import { ASK_WRONG_LABELS, type AskFlag } from "@shared/ai-ask-core";
+import { reviewRiskLine, type AiChipUi } from "./ai-cards";
+
+const NO_AI_UI: AiChipUi = { busy: [], unavailable: [], reasonOpen: null };
 
 // ── prop shapes (loose for now — reshaped at wire time) ──────────────────────
 export type ReviewKind = "proposal" | "decision";
@@ -63,6 +68,11 @@ export interface ReviewItem {
   /** Nothing is live under this slug yet: the proposal is the doc's first version. */
   isNew?: boolean;
   adr?: AdrSection[]; // decisions
+  /** Trov's open `review.risk` for it (src/ai/attach.ts); absent when there is none — the card draws nothing then. */
+  ai?: AiSuggestion[];
+  /** "Flagged in Ask" (handoff #12 § 2.14): the reasons people gave on Ask answers that cited it, and how often —
+   *  never the question, the answer or who asked. Absent when nobody did. */
+  askFlags?: AskFlag[];
 }
 
 export interface ReviewProps {
@@ -78,6 +88,8 @@ export interface ReviewProps {
   /** The queue's first read is still out: the frame and filter are real, the list and
    *  the detail pane hold skeletons (never "Queue is clear" before it is known). */
   loading?: boolean;
+  /** Trov's risk line's state (`state.ai`): only read when an item carries `ai`. */
+  aiUi?: AiChipUi;
 }
 
 // ── list pane ────────────────────────────────────────────────────────────────
@@ -107,35 +119,47 @@ export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVer
   // that leaves can collapse and the cards under it glide up as the same elements. Its structure is
   // the same in every state — the selection bar and the verdict label are always emitted and shown
   // by attribute. A row with a verdict is `inert`: it is on its way out.
-  return `<div class="cnpy-rv-row" data-morph-key="rv:${attr(it.id)}"${verdict ? ` data-verdict="${verdict}" inert` : ""}><div class="cnpy-rv-row-in"><button data-act="reviewSelect" data-arg="${attr(it.id)}" class="cnpy-titem ${SURFACE} cnpy-card"${selected ? ` aria-current="true"` : ""}>
+  return `<div class="cnpy-rv-row" data-morph-key="rv:${attr(it.id)}"${verdict ? ` data-verdict="${verdict}" inert` : ""}><div class="cnpy-rv-row-in"><div class="cnpy-titem ${SURFACE} cnpy-card ${HITBOX}" data-rv-card="${attr(it.id)}"${selected ? ` aria-current="true"` : ""}>
+    ${hitArea("reviewSelect", it.id, it.title).replace("<button ", `<button${selected ? ` aria-current="true"` : ""} `)}
     <span class="cnpy-selbar"></span>
     <div class="cnpy-rv-card-in" style="position:relative">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-        <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">${esc(it.title)}</div>
-        ${it.flagged ? `<div style="flex:none;margin-top:1px">${LOW_CONFIDENCE(12)}</div>` : ""}
+        <div style="flex:1 1 auto;font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">${esc(it.title)}</div>
+        ${it.flagged ? `<div class="cnpy-rv-marks" style="flex:none;margin-top:1px">${LOW_CONFIDENCE(12)}</div>` : ""}
       </div>
       <div style="font-size:12.5px;color:var(--fg-55);margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(it.summary)}</div>
-      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:10px;font-size:11.5px;color:var(--fg-55)">
-        ${type ? `<span>${esc(type)}</span>` : ""}
-        ${id ? `${dot}<span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">${esc(id)}</span>` : ""}
-        ${dot}<span style="display:inline-flex;align-items:center;gap:6px">${agentBit(it, 18)}</span>
-        ${dot}<span style="color:var(--fg-40)">${esc(it.time)}</span>
-      </div>
+      ${reviewMetaRow(it, type, id, dot)}
     </div>
     <span class="cnpy-rv-verdict" aria-hidden="true">${verdict ? `${verdict === "rejected" ? X_ICON : CHECK_ICON}${VERDICT_LABEL[verdict]}` : ""}</span>
-  </button></div></div>`;
+  </div></div></div>`;
+}
+/** A card's meta row (the owner's layout, e2e RV-OWNER-1): ONE line, the same slots in the same order on every card —
+ *  the author's avatar alone (its handle in the tooltip and its accessible name; a button that opens their card when
+ *  they are a known person), then kind, where (the section path in sentence case, or the ADR number) and time. Only
+ *  "where" gives way: it ends in an ellipsis, the whole path in its tooltip. Nothing else joins the row, so a card with
+ *  a risk and one without stand the same height. */
+function reviewMetaRow(it: ReviewItem, type: string, id: string, dot: string): string {
+  const isAdr = /^ADR-/i.test(id);
+  return `<div class="cnpy-rv-meta" style="display:flex;align-items:center;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;gap:6px;margin-top:10px;height:20px;font-size:11.5px;line-height:20px;color:var(--fg-55);min-width:0">
+        <span data-slot="author" data-mtip="@${attr(it.agent)}" style="flex:none;display:inline-flex;align-items:center">${agentAvatar(it, 18)}</span>
+        <span data-slot="kind" style="flex:none">${esc(type)}</span>${dot}
+        <span data-slot="where"${id ? ` data-mtip="${attr(id)}"` : ""} style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis${isAdr ? ";font-family:var(--label);font-size:11px" : ""}">${esc(id)}</span>${dot}
+        <span data-slot="time" style="flex:none;color:var(--fg-40)">${esc(it.time)}</span>
+      </div>`;
+}
+/** The author as their avatar alone: the button to their card for a known person (people.ts), else the chip with
+ *  the handle as its accessible name. */
+function agentAvatar(it: ReviewItem, size: number): string {
+  const p = it.agentColor && it.agentHandle ? { handle: it.agentHandle, name: it.agentName, color: it.agentColor, avatar_url: it.agentAvatar } : null;
+  if (p) return personAvatarLink(p, it.agent, size).replace(/aria-label="[^"]*"/, `aria-label="${attr(`@${it.agent}${it.agentName ? ` (${it.agentName})` : ""} — person card`)}"`);
+  const chip = it.agentColor ? { handle: it.agent, color: it.agentColor, avatar_url: it.agentAvatar } : null;
+  return `<span role="img" aria-label="${attr(`@${it.agent}`)}" style="display:inline-flex">${personChip(chip, size, it.agent)}</span>`;
 }
 const CHECK_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>`;
 const X_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>`;
 
-/** The agent byline piece: a colored chip + handleTag when mapped to a person,
- *  else a bare muted handleTag (personChip falls back to initials). */
-function agentBit(it: ReviewItem, chipSize: number): string {
-  const p = it.agentColor ? { handle: it.agent, color: it.agentColor, avatar_url: it.agentAvatar } : null;
-  return `${personChip(p, chipSize, it.agent)}${handleTag(p, it.agent)}`;
-}
-/** The same pair as ONE chip that opens the person's card — the detail header's byline (the
- *  list card is itself a button that selects, so it keeps `agentBit`). Plain when unmapped. */
+/** The chip and handle as ONE button that opens the person's card — the detail header's byline (the list card shows
+ *  the avatar alone, `agentAvatar`). Plain when unmapped. */
 function agentLink(it: ReviewItem, chipSize: number): string {
   const p = it.agentColor ? { handle: it.agent, color: it.agentColor, avatar_url: it.agentAvatar } : null;
   const person = p && it.agentHandle ? { handle: it.agentHandle, name: it.agentName, color: p.color, avatar_url: p.avatar_url } : null;
@@ -272,15 +296,18 @@ export function adrRecord(sections: AdrSection[]): string {
 function splitEyebrow(eyebrow: string): { type: string; id: string } {
   const at = eyebrow.indexOf(" · ");
   const rawType = at === -1 ? eyebrow : eyebrow.slice(0, at);
-  const id = at === -1 ? "" : eyebrow.slice(at + 3);
+  const rawId = at === -1 ? "" : eyebrow.slice(at + 3);
   const type = rawType ? rawType.charAt(0) + rawType.slice(1).toLowerCase() : "";
+  // The section path is a fact: plain text, each part in sentence case ("Technical / Architecture"), never the
+  // mapper's UPPERCASE. An ADR number stays as it is ("ADR-005").
+  const id = /^ADR-/i.test(rawId) ? rawId : rawId.split(" / ").map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : p)).join(" / ");
   return { type, id };
 }
 
 // The header's status chips and its two buttons are ONE height, so the row reads as a set.
 const HEAD_BTN = "box-sizing:border-box;height:34px;display:inline-flex;align-items:center;border-radius:8px;font-size:12.5px";
 
-export function reviewDetail(it: ReviewItem, diffView: DiffViewMode): string {
+export function reviewDetail(it: ReviewItem, diffView: DiffViewMode, aiUi: AiChipUi = NO_AI_UI): string {
   const acceptLabel = it.kind === "decision" ? "Ratify" : "Promote";
   const content = it.kind === "decision"
     ? adrRecord(it.adr ?? [])
@@ -306,9 +333,17 @@ export function reviewDetail(it: ReviewItem, diffView: DiffViewMode): string {
         <button data-act="reviewAccept" data-arg="${attr(it.id)}" class="cnpy-accentbtn" style="${HEAD_BTN};background:var(--accent);color:var(--accent-fg);border:1px solid var(--accent);padding:0 17px;font-weight:600">${acceptLabel}</button>
       </div>
     </div>
-    ${it.stale && it.staleNote ? staleBaseWarning(it.staleNote) : ""}
+    ${it.ai ? reviewRiskLine(it.ai, aiUi) : ""}${it.askFlags?.length ? askFlagsLine(it.askFlags) : ""}${it.stale && it.staleNote ? staleBaseWarning(it.staleNote) : ""}
     ${content}
   </div>`;
+}
+
+/** "Flagged in Ask: A source is wrong (2) · It is out of date (1)" — most flagged first; the reason words are Ask's
+ *  own (`ASK_WRONG_LABELS`). Nothing from the thread is ever here. */
+export function askFlagsLine(flags: AskFlag[]): string {
+  const sorted = [...flags].sort((a, b) => b.count - a.count);
+  const words = sorted.map((f) => `${esc(ASK_WRONG_LABELS[f.reason] ?? f.reason)} (${f.count})`).join(" &middot; ");
+  return `<p class="cnpy-rv-askflags" style="margin:14px 0 0;font-size:12.5px;line-height:1.5;color:var(--fg-55)">Flagged in Ask: <span style="color:var(--fg-70)">${words}</span></p>`;
 }
 
 /** The list pane while the queue's first read is out: cards in the review card's box. */
@@ -383,7 +418,7 @@ export function reviewView(p: ReviewProps): string {
     </div>
     <div class="cnpy-scroll cnpy-rv-detail" style="flex:1;min-width:0;overflow-y:auto">
       <button data-act="reviewBack" class="cnpy-rv-back">${BACK_ICON}All items</button>
-      ${p.loading ? reviewDetailSkeleton() : sel ? reviewDetail(sel, p.diffView) : reviewQueueClear()}
+      ${p.loading ? reviewDetailSkeleton() : sel ? reviewDetail(sel, p.diffView, p.aiUi) : reviewQueueClear()}
     </div>
   </div>`;
 }

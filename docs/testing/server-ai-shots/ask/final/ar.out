@@ -1,0 +1,157 @@
+
+=== AR-2 index
+{
+ "status": 200,
+ "keys": [
+  "scenarios",
+  "questions",
+  "state",
+  "settings",
+  "threads",
+  "search",
+  "refs"
+ ],
+ "scenarios": [
+  "live",
+  "streaming",
+  "thinking",
+  "answer",
+  "answer-pr",
+  "actions-ask",
+  "actions-auto",
+  "artifact",
+  "artifact-saved",
+  "search",
+  "notfound",
+  "cmdj",
+  "ticket",
+  "settings",
+  "phone",
+  "phone-plus",
+  "phone-insp"
+ ],
+ "nScen": 17,
+ "stateKeys": [
+  "pro",
+  "free"
+ ]
+}
+
+=== AR-4 answer speed=0
+{
+ "status": 200,
+ "type": "text/event-stream; charset=utf-8",
+ "ms": 289,
+ "n": 187,
+ "first": "thread",
+ "last": "done"
+}
+
+=== AR-5 streaming
+{
+ "status": 200,
+ "n": 69,
+ "texts": 58,
+ "last": {
+  "event": "text",
+  "data": {
+   "delta": "filed "
+  }
+ },
+ "hasDone": false
+}
+
+=== AR-6 thinking speed=1
+{
+ "ms": 23767,
+ "thinking": [
+  {
+   "state": "run"
+  },
+  {
+   "state": "done",
+   "seconds": 14
+  }
+ ]
+}
+
+=== AR-7 live
+{
+ "status": 200,
+ "type": "text/event-stream; charset=utf-8",
+ "len": 0
+}
+
+=== AR-7 ticket
+{
+ "status": 200,
+ "type": "text/event-stream; charset=utf-8",
+ "len": 0
+}
+
+=== AR-7 settings
+{
+ "status": 200,
+ "type": "text/event-stream; charset=utf-8",
+ "len": 0
+}
+
+=== AR-8 /nope
+{
+ "status": 404,
+ "type": "application/json",
+ "disp": null,
+ "body": {
+  "error": "not_found",
+  "hint": "Nothing at this address that you can see. A missing item and one in an organization you are not in answer the same, on purpose. Check the id or slug, or list what exists first."
+ }
+}
+
+=== AR-9 speed=-3
+{
+ "status": 200,
+ "ms": 28,
+ "n": 189
+}
+
+=== AR-9 speed=abc
+{
+ "status": 200,
+ "ms": 21,
+ "n": 189
+}
+
+=== AR-9 speed=999
+{
+ "status": 200,
+ "ms": 386,
+ "n": 189
+}
+
+=== AR-10 ai-off answer
+{
+ "status": 200,
+ "n": 187,
+ "last": "done"
+}
+
+=== AR-3 http://127.0.0.1:8810
+{
+ "status": 200
+}
+
+=== AR-3 http://[::1]:8810
+{
+ "status": 404
+}
+
+=== console/failed
+{
+ "console": [
+  "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+ ],
+ "failed": [
+  "404 GET /api/o/test-ent/ai/ask-replay/nope"
+ ],
+ "pageerrors": []
+}

@@ -67,7 +67,7 @@ describe("the badge and the digest count native tickets only", () => {
     expect(await ticket_badge(systemCtx())).toBe(1);
   });
 
-  it("the ticketq digest lists neither half of a mirrored ticket", async () => {
+  it("the ticketq digest counts neither half of a mirrored ticket", async () => {
     await deliver(issueDelivery("opened", 1));                                   // unassigned mirrored
     await deliver(issueDelivery("assigned", 2, { assignees: ["AndresL230"] })); // mirrored, on AndresL230's plate
     const render = getKind("ticketq")!.render;
@@ -76,9 +76,8 @@ describe("the badge and the digest count native tickets only", () => {
     await native("Native unassigned");
     const section = await render(systemCtx(), "AndresL230", WINDOW);
     expect(section).not.toBeNull();
-    expect(section!.text).toContain("Native unassigned");
-    expect(section!.text).not.toContain("Issue 1");
-    expect(section!.text).not.toContain("Issue 2");
+    // Phase E: one line, counts only — the native ticket alone; the mirrored assigned one is not "assigned to you".
+    expect(section!.text).toBe("Tickets: 1 waiting for someone");
   });
 });
 

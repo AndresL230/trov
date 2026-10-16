@@ -13,7 +13,7 @@ const allowed = (text: string): string[] => (/^allowed-tools: (.*)$/m.exec(text)
 describe("the Trov plugin's skills and the organization a call acts in", () => {
   it("ships the ten skills, at the version the release notes name", () => {
     expect(Object.keys(SKILLS).sort()).toEqual(["artifacts", "handoff", "load-context", "my-work", "prompts", "read-plan", "record-session", "tickets", "trov", "update-plan"]);
-    expect(plugin.version).toBe("0.8.2");
+    expect(plugin.version).toBe("0.9.0");
   });
 
   it("every skill that calls Trov derives `repo` from the git remote, passes it on every call, and may ask where it is", () => {
@@ -32,7 +32,10 @@ describe("the Trov plugin's skills and the organization a call acts in", () => {
   it("load-context opens by asking where it is and saying so; nothing tells a person to add the server twice", () => {
     const lc = SKILLS["load-context"];
     expect(lc.indexOf("mcp__trov__get_connection` with it")).toBeGreaterThan(0);
-    expect(lc.indexOf("0. **Say where you are")).toBeLessThan(lc.indexOf("1. **Query focused.**"));
+    expect(lc.indexOf("0. **Say where you are")).toBeLessThan(lc.indexOf("2. **Query focused.**"));
+    // Phase D: the repository's written state is read FIRST, before any query.
+    expect(lc.indexOf("1. **Read where the repository stands")).toBeGreaterThan(lc.indexOf("0. **Say where you are"));
+    expect(lc.indexOf("1. **Read where the repository stands")).toBeLessThan(lc.indexOf("2. **Query focused.**"));
     expect(lc).toContain("If `organization` is null");
     const map = SKILLS.trov;
     for (const said of ["`get_connection`", "`switch_org <org>`", "follows the repository", "**`manual`.**", "It cannot add an organization"]) expect(map, said).toContain(said);

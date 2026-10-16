@@ -4,6 +4,7 @@ import type { IngestPayload, FeedEntry, DocProposal, AdrDraft, CapturedEvent } f
 // IngestPayload: subject_login is trustworthy only once the webhook has verified
 // the delivery's HMAC, so no bearer/cookie payload may route events through here.
 import { isSection } from "@shared/vocabulary";
+import { TROV_SYSTEM_HANDLE } from "@shared/ai-core";
 import type { DocRow, DocVersionRow, AdrRow, ProcessedItemRow } from "@shared/rows";
 import { type TenantContext, first, run, nowIso } from "./data/sql";
 import type { PlatformContext } from "./data/platform-sql";
@@ -16,8 +17,13 @@ import { type ReleaseCapture, RELEASE_NOTES_MAX, releaseRow, removeRelease, writ
 import { type CommitPathRow, writeCommitPaths } from "./repo/commit-paths";
 import { type PrFilesCapture, prFileRead, touchPrFileRead, writePrFiles } from "./repo/pr-files-store";
 import { applyArtifactLinks, type ArtifactLinkOutcome } from "./tools/artifacts-agent";
+import { routeAi } from "./tools/ai-route";
 import { docImageProblems } from "./tools/doc-images";
 import { recordTagSuggestions, sortAgentTags } from "./tools/tags";
+
+/** What marks a feed entry as written BY TROV (0061_ai_digests): the model that wrote it and the member it is for
+ *  (null when the session's GitHub login maps to no member). Only the AI pass's digest job passes it. */
+export interface AiFeedProvenance { model: string; subject: string | null }
 
 // Per-type, per-outcome counts surfaced on /ingest so a re-run reads, e.g.,
 // "3 docs: 1 staged, 2 unchanged".
@@ -117,7 +123,11 @@ async function ledgerRecord(
  *  have, and each other one is recorded as a SUGGESTION for the org's admins (who sent it, on which
  *  entry). Nothing here adds a tag to the list: only an admin does, over a cookie route. A replay is
  *  dropped by the ledger above before any of it runs, so a suggestion is recorded once per entry. */
-export async function ingestFeedEntry(ctx: TenantContext, entry: FeedEntry, author: string, ledger?: LedgerRef): Promise<FeedIngestResult> {
+export async function ingestFeedEntry(ctx: TenantContext, entry: FeedEntry, author: string, ledger?: LedgerRef, ai?: AiFeedProvenance): Promise<FeedIngestResult> {
+  // THE ONE EXCEPTION to "the author is the authenticated principal" (ingestion-gate.md): an entry Trov wrote is
+  // authored by the reserved system person and carries its provenance. The two go together or not at all, so no
+  // caller can write as `trov` without marking the entry as Trov's, nor mark a person's entry as Trov's.
+  if (!!ai !== (author === TROV_SYSTEM_HANDLE)) throw new Error("ingestFeedEntry: the trov author and AI provenance go together");
   if (ledger && (await ledgerLookup(ctx,ledger))) return { outcome: "unchanged" };
 
   const tags = await sortAgentTags(ctx, entry.tags);
@@ -128,9 +138,13 @@ export async function ingestFeedEntry(ctx: TenantContext, entry: FeedEntry, auth
     body: entry.body,
     artifacts: entry.artifacts,
     tags: tags.known,
+    ...(ai ? { ai } : {}),
   });
-  await recordTagSuggestions(ctx, tags.suggested, { type: "feed", id: String(id) }, author);
+  // Trov never SUGGESTS a tag: a tag of its entry that is not on the org's list is dropped, not sent to the admins.
+  if (!ai) await recordTagSuggestions(ctx, tags.suggested, { type: "feed", id: String(id) }, author);
   if (ledger) await ledgerRecord(ctx,ledger, "feed", "written", String(id));
+  // An entry Trov wrote is ABOUT its subject: their brief is what it makes stale (never `person:trov` when known).
+  await routeAi(ctx, { type: "feed_ingested", id, author: ai ? (ai.subject ?? author) : author });
   return {
     outcome: "written", id, tags: tags.known,
     ...(tags.suggested.length ? { suggested_tags: tags.suggested } : {}),
@@ -217,6 +231,7 @@ export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposa
     author
   );
   if (ledger) await ledgerRecord(ctx,ledger, "doc", "staged", `${res.slug}@${res.version}`);
+  await routeAi(ctx, { type: "proposal_staged", ref: `doc:${res.slug}:${res.version}` });
   return { outcome: "written", ...res, change_kind, base_version, low_confidence: lowConf };
 }
 
@@ -245,6 +260,7 @@ export async function ingestAdrDraft(ctx: TenantContext, draft: AdrDraft, author
 
   const id = await stage_adr(ctx,draft, author, hash);
   if (ledger) await ledgerRecord(ctx,ledger, "adr", "staged", String(id));
+  await routeAi(ctx, { type: "proposal_staged", ref: `adr:${id}` });
   return { outcome: "written", id };
 }
 
@@ -269,6 +285,7 @@ export async function ingestEvent(ctx: TenantContext, p: PlatformContext, event:
   // already landed either way — capture never depends on this.
   await ensure_identity_task(ctx, p, event.subject_login);
   if (ledger) await ledgerRecord(ctx,ledger, "event", written ? "written" : "unchanged", event.semantic_key);
+  if (written && event.event_type === "pr_merged" && event.ref_number) await routeAi(ctx, { type: "pr_merged", number: event.ref_number, author: event.subject_login ?? null });
   return written ? { outcome: "written", id: res.meta.last_row_id as number } : { outcome: "unchanged" };
 }
 

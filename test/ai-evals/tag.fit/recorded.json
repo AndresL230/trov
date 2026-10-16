@@ -1,0 +1,706 @@
+{
+  "trov-auth-identity-people": {
+    "state": "Auth, identity and people\n\nAuth, identity and people Source: , ( , , , , , ), , , , . Three auth classes — do not add a fourth Class Who Where --- --- --- Session cookie people the Hono app (every route except the public auth paths passes ) Bearer agents only HMAC GitHub the webhooks The Hono app is cookie-only. Two signed-token exceptions — the unsubscribe link and the artifact upload and download routes — sit in before th",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.61
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.97
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "usage": {
+        "input_tokens": 821,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-data-layer": {
+    "state": "The data layer: tenant and platform contexts\n\nThe data layer: tenant and platform contexts Source: , ( , , , , , , ), , , . The rule Trov is multi-tenant: many organizations share one D1 database. Isolation rests on one rule — every tenant statement binds — and on D1 being reachable only inside . Nothing else in names , , or . Two contexts Type Built by Query surface --- --- --- --- Tenant data (slug + membership), , , , Platform data Both su",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.08
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.86
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.83
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.16
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "usage": {
+        "input_tokens": 826,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-deploy-runbook": {
+    "state": "Deploy runbook and production gotchas\n\nDeploy runbook and production gotchas Source: (the repo's deploy runbook), , , , , the lines in , and the owner's own verification where noted. What production is One Cloudflare Worker named , on one origin ( ), with the D1 database and the R2 bucket . Deploys run through Cloudflare Workers Builds, connected to the GitHub repository . The commands - — the suite. The source of truth for \"is it gree",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.15
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.95
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "usage": {
+        "input_tokens": 828,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-environment": {
+    "state": "Environment: secrets, vars and bindings\n\nEnvironment: secrets, vars and bindings Source: , , , . This doc lists names only. Secret values live in Cloudflare ( ) and, for local development, in , which is never committed and never to be copied anywhere. Bindings Binding What Notes --- --- --- D1 database reached only inside the built SPA ( ) static assets R2 bucket binary artifacts, doc images, avatars, org images. The bucket must exist be",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.3
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.39
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.49
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.02
+        }
+      },
+      "usage": {
+        "input_tokens": 820,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-web-ui-rules": {
+    "state": "Web UI rules: repaint, switches, skeletons, empty layouts and corners\n\nWeb UI rules: repaint, switches, skeletons, empty layouts and corners Source: , ( , , , , , , , , , , , , , ). The SPA is TypeScript and Vite with no framework. holds state and acts, turns state into markup, there is one module per screen, holds the routes, and holds the styles. A repaint rebuilds the page unless the page opts out This is the root cause of \"it reloads when I type\". runs on every s",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.77
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.89
+        }
+      },
+      "usage": {
+        "input_tokens": 844,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-codebase-layout": {
+    "state": "Codebase layout and the release notes\n\nCodebase layout and the release notes Source: § Layout, (the full per-file and per-migration tour), , , the directory listing itself. Top level Path What --- --- the only code shared by the Worker and the SPA ( alias) the Cloudflare Worker the SPA — TypeScript and Vite, no framework numbered, append-only D1 SQL the Claude Code plugin and its skills per-area reference — read the matching file befor",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.82
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.21
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.07
+        }
+      },
+      "usage": {
+        "input_tokens": 824,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-overview": {
+    "state": "Trov overview: what it is, how it is built, and where to read next\n\nTrov overview: what it is, how it is built, and where to read next Source: , , , , and the files in . Start here; every section points to a doc with the detail. What Trov is Trov is a multi-tenant shared context store: a team's working memory. It holds the team's docs, decisions, roadmap, a ticket queue, artifacts, a prompt library, handoffs between sessions, and a running feed of what everyone — ",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.61
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.22
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "usage": {
+        "input_tokens": 840,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-invariants": {
+    "state": "The thirteen invariants, and why each exists\n\nThe thirteen invariants, and why each exists Source: § Invariants (the authoritative list — \"break none of these\"), with the reasons drawn from the files in . The wording of each rule below follows CLAUDE.md; the \"why\" is this doc's summary of the area docs. 1. Ingested content is gated; authored and computed writes are direct Agent-proposed knowledge — feed entries, doc proposals, ADR drafts, eve",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.37
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.06
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "usage": {
+        "input_tokens": 827,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-mcp-connection-modes": {
+    "state": "MCP connections: which organization a call acts in\n\nMCP connections: which organization a call acts in Source: § Bearer, , , ( ), , , migration . Shipped in release 0.25. The idea A credential names a person and a way of choosing among that person's organizations. is the only place that choice is made. Every organization it can come up with is read through : the person's membership today, of an org that is not suspended, with the role they hold the",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.5
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.72
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "usage": {
+        "input_tokens": 827,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-repo-dashboard": {
+    "state": "The Repo dashboard and the repo cron\n\nThe Repo dashboard and the repo cron Source: , § Background jobs, , , ( , , , , , , , ), , . What it is The Repo dashboard ( → ; screen , with tabs Overview, Code, CI, Usage, Planning) shows one organization's main repository: environments and deploys, CI, code activity, usage, product metrics and planning. It is the same class of read as My Work: D1-only, session-cookie, never a 500. A throw yiel",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.11
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.25
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.17
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.7
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.68
+        }
+      },
+      "usage": {
+        "input_tokens": 835,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-billing-stripe": {
+    "state": "Billing with Stripe\n\nBilling with Stripe Source: , , ( , , , , , , , , ), (the seam), , , . Migrations , . Tests: . What is sold One plan: Pro (plan id ), per seat, $10 per seat per month, no minimum, up to 50 seats. Free is never bought. Enterprise is arranged with Trov. Personal is no longer sold. Money correctness. Trov computes no amount, tax or proration and holds no price, card or address. A price is an opaque S",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.38
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.13
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.03
+        }
+      },
+      "usage": {
+        "input_tokens": 837,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-tickets": {
+    "state": "Tickets, the board, agent writes and the GitHub issue mirror\n\nTickets, the board, agent writes and the GitHub issue mirror Source: , , , , , . What a ticket is A ticket is somebody's request. It is an authored write: no vocabulary gate, no confidence, no staged state. A ticket write is visible to the whole org at once. Tickets are the largest authored surface in the product — the writers are in , behind fourteen session-cookie routes in . Writers: , , , (a b",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.41
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.08
+        }
+      },
+      "usage": {
+        "input_tokens": 828,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-handoffs-and-prompts": {
+    "state": "Handoffs and the Prompt Library\n\nHandoffs and the Prompt Library Source: , , , , , , migration . Both are direct writers, not the ingestion gate. Neither has vocabulary or confidence. Handoffs A handoff is an addressed message for the next session, not knowledge. It is written directly and never staged. Shape. An integer id shown as (the per-org number), a (a handle, or ), and a fixed object: . It may carry an inline prompt. It e",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.09
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.4
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.12
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "usage": {
+        "input_tokens": 825,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-notifications": {
+    "state": "Email notifications and digests\n\nEmail notifications and digests Source: , ( , , , , , , , , , , , , ), , . The shape Digests are a read-side projection, never a writer. They are assembled from D1 and sent through Resend. The pipeline writes only to its own tables. Kinds — a registry in code and define one per digest section: - — merged pull requests in the window plus open assigned issues, summarised exactly as My Work does. - —",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.8
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.02
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.2
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.07
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "usage": {
+        "input_tokens": 826,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-plans-limits-grants": {
+    "state": "Plans, limits, grants and gifts\n\nPlans, limits, grants and gifts Source: , , , ( , , , , , , , ), , . Migrations , . The model Every organization is on a plan. A plan is a name over a table of limits. The rule for the codebase: a per-org limit goes in and is enforced with — never an ad-hoc check. The numbers live in one place, in . Changing a number there changes it everywhere: enforcement, the settings screens and the pricing pa",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.05
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.66
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.36
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.12
+        }
+      },
+      "usage": {
+        "input_tokens": 830,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  },
+  "trov-feed-and-search": {
+    "state": "Feed, query and search\n\nFeed, query and search Source: , , , , . The feed The feed is the running record of what people and their agents did. A feed entry is ingested content: it goes through the gate ( ) via or . An entry has two readers, so it has three text fields: - — the one-line title. - — optional, one or two plain sentences on the problem solved, in product words, for people. The cap is = 280 characters; over it ",
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "t0": {
+          "type": "noul",
+          "noul": 0.1
+        },
+        "t1": {
+          "type": "noul",
+          "noul": 0.42
+        },
+        "t2": {
+          "type": "noul",
+          "noul": 0.03
+        },
+        "t3": {
+          "type": "noul",
+          "noul": 0.14
+        },
+        "t4": {
+          "type": "noul",
+          "noul": 0.04
+        },
+        "t5": {
+          "type": "noul",
+          "noul": 0.07
+        }
+      },
+      "usage": {
+        "input_tokens": 829,
+        "output_tokens": 106
+      }
+    },
+    "order": [
+      "api",
+      "architecture",
+      "auth",
+      "data",
+      "infra",
+      "ui"
+    ]
+  }
+}

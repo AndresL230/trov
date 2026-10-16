@@ -1,0 +1,21 @@
+
+=== held state
+{
+ "cursor": true,
+ "error": false,
+ "send": "stop",
+ "placeholder": "Trov is answering…"
+}
+
+=== after Stop
+{
+ "text": " 1 result\nRead PR #176\n· 2 results\nLooked at the Hosting sprint\n· 3 results\n\nMost of the hosting work is moving. What blocks it is narrow: \n#14\n waits on the Netlify connect step, and that step can't merge while one test fails on main.\n\nWhat is blocking\nThe Netlify connect test fails on main since \n#173 merged\n changed the status marks it checks.\nAN\n@andres\n owns the fix. It isn't filed\nStopped. The answer above is partial.\nSmart\nAsk before changes\nAuto\nEnter to send · Shift+Enter for a new line",
+ "cursor": false
+}
+
+=== logs
+{
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}

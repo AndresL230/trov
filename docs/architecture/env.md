@@ -60,8 +60,8 @@ seconds inside whichever test sends the file's first `/mcp` call, against its 5 
 Capture-time summaries call Anthropic's Messages API (`ANTHROPIC_API_KEY`, through the one model client
 `src/ai/client.ts`), never at render — not a Cloudflare binding,
 so there is no `[ai]` block.
-Automatic tagging of existing items (which existing items fit a new tag, which are then tagged: `src/tools/classify.ts`,
-`src/tools/tag-fit.ts`) use a DIFFERENT provider and key: TypeSafe AI's Jev over REST (`TYPESAFE_API_KEY`) — only
+Automatic tagging of existing items (Sift: which existing items fit a new tag, which are then tagged — the run `src/ai/sift.ts`,
+through the client's Jev provider `src/tools/classify.ts`) use a DIFFERENT provider and key: TypeSafe AI's Jev over REST (`TYPESAFE_API_KEY`) — only
 for an organization whose admin turned them on, in the background, each request counted against `jev_checks`
 (`feed-and-search.md` › Tags › Tagging existing items).
 
@@ -74,7 +74,7 @@ for an organization whose admin turned them on, in the background, each request 
 | `GOOGLE_CLIENT_ID` | secret | the Google OAuth client id (the second sign-in provider) | `/auth/google/login` answers 503 |
 | `GOOGLE_CLIENT_SECRET` | secret | its client secret | the redirect still happens, the exchange fails and `/auth/google/callback` 401s `exchange_failed` |
 | `COOKIE_SECRET` | secret | the HMAC key for the session cookie, the sealed onboarding / OAuth-transaction cookies, the unsubscribe token (`/u/…`), artifact download links, and the hashed client address of a signed-out support report | no session can be made or read |
-| `DEV_LOGIN` | local only (`.dev.vars`) | bypasses OAuth and acts as this seeded user; with it set, `/` is the app shell, never the prerendered landing | — never set in production |
+| `DEV_LOGIN` | local only (`.dev.vars`) | bypasses OAuth and acts as this seeded user; with it set, `/` is the app shell, never the prerendered landing. A session cookie wins over it, which is how the local dev sign-in (`/auth/dev/as`, `npm run dev:as`) switches person — `local-dev.md` | — never set in production |
 
 ### The GitHub App (`github-app.md`)
 
@@ -144,13 +144,16 @@ ignored. The Worker itself never reads it.
 
 ### Local development only
 
-`DEV_LOGIN` and `STRIPE_TEST_API_BASE` (above), and `LOCAL_UPSTREAM` — a loopback http stand-in for GitHub and
+`DEV_LOGIN` and `STRIPE_TEST_API_BASE` (above; the seeded local app, its scenarios and the dev sign-in are
+`local-dev.md`), and `LOCAL_UPSTREAM` — a loopback http stand-in for GitHub and
 Anthropic during a Sync (`src/sync/local-upstream.ts`); ignored unless it is `http://127.0.0.1` or
 `http://localhost`, and never honoured beside a live Stripe key. The two stand-ins are described in `.dev.vars.example`.
 `LOCAL_AI_PREVIEW` — `ready` | `empty` | `capped` | `proposed`: the AI screens' sample content (`src/ai/preview.ts`,
 `ai.md`) on `/me/dashboard`, `/repo/dashboard` and `/feed`, before anything writes it. The same rule as the stand-ins:
 honoured only for a request to a loopback `http://` origin (what `wrangler dev` serves on; a deployed Worker is never
-reached there) and never beside a live Stripe key; any other value is ignored, and MCP never sees it. Blank in the
+reached there) and never beside a live Stripe key; any other value is ignored, and MCP never sees it. It keeps the AI
+read rule (`ai.md` › The read rule): with the org's switch off or no `ANTHROPIC_API_KEY` in `.dev.vars` it shows the
+off state (no field) — set any value as the key to see the samples; the preview never sends it. Blank in the
 test pool (`vitest.config.ts`); a deployed Worker must not set it.
 
 ### Legacy — SaplingLearn's fallback, and two vars nothing reads

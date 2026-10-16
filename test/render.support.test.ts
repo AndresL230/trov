@@ -233,7 +233,7 @@ describe("the ways in — signed in", () => {
     expect(html).not.toContain("supportOpen");
     expect(html).not.toContain("Report a bug");
     expect(html).not.toContain("Contact support");
-    expect(html.match(/class="cnpy-navrow /g)).toHaveLength(13);
+    expect(html.match(/class="cnpy-navrow /g)).toHaveLength(14);   // 13 + Workspace › Trov (Ask, #178)
     // …and the rail's short-window steps are the ones it had.
     expect(css).not.toContain("@media (max-height: 1000px)");
     expect(css).toContain(`[data-phone="0"][data-collapsed="0"] .cnpy-sec { height:25px; padding-top:6px; }`);

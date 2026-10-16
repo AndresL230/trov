@@ -123,7 +123,7 @@ describe("the markup and the CSS", () => {
     const tag = (name: string): OrgTagDTO => ({ name, description: "", color: "sky", starter: false, retired: false, counts: { feed: 0, doc: 0, adr: 0 } });
     const list: TagListDTO = {
       tags: [...STARTER_TAGS.map((t) => ({ ...tag(t.name), starter: true, color: t.color })), tag("desktop")], used: 7, cap: 30, suggestions: [],
-      ai: { enabled: true, available: true, used: 0, cap: 300, spent: false }, runs: { desktop: run({ candidates: 20, checked: 4 }) },
+      ai: { enabled: true, org: true, available: true, used: 0, cap: 300, spent: false }, runs: { desktop: run({ candidates: 20, checked: 4 }) },
     };
     const ui = { ...initialTagsUi(), live: { desktop: live({ candidates: 20, checked: 4, added: 1, shown: 4 }) } };
     const html = tagsTab({ slug: "acme", name: "Acme", role: "owner" }, { list: { status: "ok", data: list }, ui });
@@ -136,14 +136,14 @@ describe("the markup and the CSS", () => {
   it("the New tag modal: Find the items that fit it now is ON by default when Jev may look, and says why when it can't", () => {
     const tagRow = (t: (typeof STARTER_TAGS)[number]) => ({ name: t.name, description: t.description, color: t.color, starter: true, retired: false, counts: { feed: 0, doc: 0, adr: 0 } });
     const l = (ai?: TagListDTO["ai"]): TagListDTO => ({ tags: STARTER_TAGS.map(tagRow), used: 6, cap: 30, suggestions: [], ...(ai ? { ai } : {}) });
-    const on = tagAddModal({ ...initialTagsUi(), addOpen: true, nameDraft: "desktop" }, l({ enabled: true, available: true, used: 0, cap: 300, spent: false }));
+    const on = tagAddModal({ ...initialTagsUi(), addOpen: true, nameDraft: "desktop" }, l({ enabled: true, org: true, available: true, used: 0, cap: 300, spent: false }));
     expect(on).toMatch(/data-act="tagNewScan"[^>]*role="switch" aria-checked="true"/);
     expect(on).toContain(">Add and find items<");
-    const off = tagAddModal({ ...initialTagsUi(), addOpen: true, nameDraft: "desktop", addScan: false }, l({ enabled: true, available: true, used: 0, cap: 300, spent: false }));
+    const off = tagAddModal({ ...initialTagsUi(), addOpen: true, nameDraft: "desktop", addScan: false }, l({ enabled: true, org: true, available: true, used: 0, cap: 300, spent: false }));
     expect(off).toMatch(/aria-checked="false"/);
     expect(off).toContain(">Add tag<");
     expect(off).toContain("Off: the tag is added to nothing.");
-    const noKey = tagAddModal({ ...initialTagsUi(), addOpen: true }, l({ enabled: true, available: false, used: 0, cap: 300, spent: false }));
+    const noKey = tagAddModal({ ...initialTagsUi(), addOpen: true }, l({ enabled: true, org: true, available: false, used: 0, cap: 300, spent: false }));
     expect(noKey).toContain("This Trov has no TypeSafe AI key set.");
     expect(noKey).toMatch(/<button [^>]*disabled[^>]*data-act="tagNewScan"/);
     expect(tagAddModal({ ...initialTagsUi(), addOpen: true }, l())).not.toContain("tagNewScan"); // a member's list carries no ai

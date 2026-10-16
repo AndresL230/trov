@@ -31,12 +31,13 @@ import { type PlatformContext, first, stmt, batch, nowIso } from "../data/platfo
 import { requireRole, type TenantContext } from "../data/context";
 import { checkedImage, readImage, sniffAvatarType, storeImage, type UploadedFile } from "../tools/people";
 import { sha256Hex } from "../tools/artifacts";
-import { scrubbedMessage } from "../repo/github";
+import { scrubbedMessage } from "../repo/gh-http";
 import { ORG_LOGO_MAX_BYTES, orgLogoOf, type OrgLogo, type OrgLogoSource } from "@shared/orgs";
-import { auditStmt } from "./repo";
+import { auditStmt } from "./audit";
+import { orgLogoKey } from "./logo-key";
 
 const SHA_RE = /^[0-9a-f]{64}$/;
-export const orgLogoKey = (sha: string): string => `org-logos/${sha}`;
+export { orgLogoKey };
 
 interface LogoRow { logo_sha: string | null; logo_source: OrgLogoSource | null; logo_by: string | null; logo_from: string | null; logo_at: string | null }
 const LOGO_COLS = `logo_sha, logo_source, logo_by, logo_from, logo_at`;

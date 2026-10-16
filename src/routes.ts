@@ -38,12 +38,13 @@ import {
 import { SprintCreate, SprintActiveSet, SprintResourceAdd } from "@shared/sprints";
 import { get_plan } from "./tools/plan";
 import {
-  listHandoffs, getHandoff, createHandoff, claimHandoff, expireHandoff, HandoffCreateInput, HandoffError, HANDOFF_ERROR_STATUS,
+  listHandoffs, getHandoff, createHandoff, claimHandoffWithReading, expireHandoff, HandoffCreateInput, HandoffError, HANDOFF_ERROR_STATUS,
 } from "./tools/handoffs";
 import { listPrompts, getPrompt, recordPromptUse, listPromptVersions, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt, PromptSaveInput, PromptError, PROMPT_ERROR_STATUS } from "./tools/prompts";
 import { isSection } from "@shared/vocabulary";
-import { HANDOFF_BOXES, type HandoffBox } from "@shared/handoffs";
+import { HANDOFF_BOXES, type HandoffBox, type HandoffClaimResult } from "@shared/handoffs";
 import { getMyWork } from "./tools/mywork";
+import { markMyWorkOpened } from "./data/person-brief";
 import { quickSearch } from "./tools/quick-search";
 import { QUICK_TYPES, type QuickType } from "@shared/quick-search";
 import { feedStats, isFeedStatsDays, isFeedStatsTz } from "./tools/feed-stats";
@@ -68,8 +69,14 @@ import { AVATAR_MAX_BYTES } from "@shared/people";
 import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
 import { aiApp } from "./ai/routes";
+import { askApp } from "./ai/ask/routes";
+import { askFlagsFor } from "./data/ask";
 import { repoSettingsApp } from "./repo/settings-routes";
-import { aiPreview, withPreviewFeed } from "./ai/preview";
+import { aiPreviewShown, previewFeedRows, withPreviewFeed, withPreviewRoadmap } from "./ai/preview";
+import { aiSwitchOn } from "./data/ai-cards";
+import { roadmapForPerson } from "./data/org-insights";
+import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions } from "./ai/attach";
+import { readRepoState } from "./tools/repo-state";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
 
 export const app = new Hono<AppEnv>();
@@ -266,15 +273,23 @@ tenantRoot.get("/feed", async (c) => {
   const limit = c.req.query("limit");
   const filter = {
     author: c.req.query("author"),
+    // `about=1` with an author: also Trov's digests whose subject is that person (My Work › Your sessions, Q30).
+    aboutAuthor: c.req.query("about") === "1",
     tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined,
     since: c.req.query("since"),
     limit: limit ? Number(limit) : undefined,
   };
-  const feed = await get_feed(c.var.ctx, filter);
-  // An entry written by Trov carries `ai` (shared/rows.ts). Nothing writes one yet, so production rows have
-  // none; under `wrangler dev` with LOCAL_AI_PREVIEW the sample entries are merged in (src/ai/preview.ts).
-  const preview = aiPreview(c.env, c.req.url);
-  return c.json({ feed: preview ? withPreviewFeed(feed, preview.feed, filter) : feed });
+  // An entry written by Trov carries `ai` (shared/rows.ts, 0061_ai_digests). One this person flagged "Wrong?" is
+  // hidden for them (and only them); the record stays. Under `wrangler dev` with LOCAL_AI_PREVIEW the sample entries
+  // are merged in (src/ai/preview.ts).
+  const feed = await get_feed(c.var.ctx, { ...filter, viewer: c.get("principal").handle });
+  const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
+  const rows = preview ? withPreviewFeed(feed, previewFeedRows(preview), filter) : feed;
+  // Trov's entries are records: they keep their mark whatever the switch says. Only the one-time note ("Trov now
+  // writes entries…") would be untrue with the switch off or no key — `aiOff` says so, and only on a page that has
+  // one of them (Q29). One more statement, only then (`aiSwitchOn` reads nothing without a key: the read rule).
+  const aiOff = rows.some((r) => r.ai?.origin === "ai") && !(await aiSwitchOn(c.var.ctx));
+  return c.json(aiOff ? { feed: rows, aiOff: true } : { feed: rows });
 });
 
 // The Feed aside's "This week": entry counts per day, people, top tags and authors over
@@ -343,9 +358,14 @@ tenantRoot.get("/search/quick", async (c) => {
 
 // SEAM: POST /ask — retrieve via query(), synthesize a grounded, slug-citing answer. Out of scope.
 
-tenantRoot.get("/needs-triage", async (c) => c.json({ items: await list_needs_triage(c.var.ctx) }));
+// Each item carries Trov's open `unplaced.destination` as `ai` when it has one (src/ai/attach.ts; Phase C).
+tenantRoot.get("/needs-triage", async (c) => c.json({ items: await withUnplacedSuggestions(c, await list_needs_triage(c.var.ctx)) }));
 
-tenantRoot.get("/adrs", async (c) => c.json({ adrs: await list_adrs(c.var.ctx, c.req.query("status")) }));
+tenantRoot.get("/adrs", async (c) => {
+  const adrs = (await withReviewSuggestions(c, [], await list_adrs(c.var.ctx, c.req.query("status")))).adrs;
+  // "Flagged in Ask" (docs/architecture/ask.md): the reason and a count per decision — never thread text or who.
+  return c.json({ adrs, askFlags: await askFlagsFor(c.var.ctx, adrs.map((a) => `decision:${a.id}`)) });
+});
 
 // ── Review group (session-cookie only, NEVER MCP): Proposals (staged doc
 // versions) + Decisions (ADR drafts) — GET /proposals, GET /adrs, and their
@@ -354,7 +374,12 @@ tenantRoot.get("/adrs", async (c) => c.json({ adrs: await list_adrs(c.var.ctx, c
 // The Proposals queue (Phase 3): staged doc versions newer than their live doc,
 // not rejected, server-joined with both bodies + reconciler metadata. Kills the
 // old web N+1 (audit G9) and is the data source Phase 4's detail pane renders.
-tenantRoot.get("/proposals", async (c) => c.json({ proposals: await list_proposals(c.var.ctx) }));
+// Each proposal (and each drafted decision on `/adrs`) carries Trov's open `review.risk` as `ai` (src/ai/attach.ts).
+tenantRoot.get("/proposals", async (c) => {
+  const proposals = (await withReviewSuggestions(c, await list_proposals(c.var.ctx), [])).proposals;
+  // "Flagged in Ask" (docs/architecture/ask.md): the reason and a count per doc — never thread text or who.
+  return c.json({ proposals, askFlags: await askFlagsFor(c.var.ctx, proposals.map((p) => `doc:${p.slug}`)) });
+});
 
 // ── Handoffs + Prompt Library (session-cookie; the MCP tools are the agent side) ──
 // A handoff is an addressed message, not knowledge: its writers are direct (NOT
@@ -397,7 +422,11 @@ tenantApi.post("/handoffs/:id/claim", async (c) => {
   if (id === null) return c.json({ error: "not found" }, 404);
   const body = (await c.req.json().catch(() => ({}))) as { session?: unknown };
   const session = typeof body.session === "string" && body.session.trim() ? body.session.trim().slice(0, 120) : `web_${crypto.randomUUID().slice(0, 8)}`;
-  try { return c.json({ ok: true, handoff: await claimHandoff(c.var.ctx, id, c.get("principal").handle, session) }); }
+  // The claim, plus its "Read these first (not complete)" list (#167) — built here, at the write, never on a read.
+  try {
+    const { handoff, reading_list } = await claimHandoffWithReading(c.var.ctx, id, c.get("principal").handle, session);
+    return c.json({ ok: true, handoff, reading_list } satisfies HandoffClaimResult);
+  }
   catch (e) { return handoffFail(c, e); }
 });
 tenantApi.post("/handoffs/:id/expire", async (c) => {
@@ -733,7 +762,16 @@ legacyOnly.post("/invites/:email/resend", async (c) => {
 
 // Roadmap read (session-gated): admin narrative + sprints in target-date order,
 // merged with cached progress from the plan store. No live GitHub, no per-user token.
-tenantRoot.get("/roadmap", async (c) => c.json(await get_plan(c.var.ctx)));
+// What Trov wrote (sprint notes, the drift) comes with it while the org's AI switch is on, minus what this
+// person pressed "Wrong?" on; an ADMIN also gets the open Roadmap suggestions (a sprint draft, a narrative) —
+// MCP's `get_roadmap` never does. LOCAL_AI_PREVIEW fills the samples under `wrangler dev` only.
+tenantRoot.get("/roadmap", async (c) => {
+  const ctx = c.var.ctx;
+  const admin = hasRole(ctx, "admin");
+  const plan = await roadmapForPerson(ctx, await get_plan(ctx), { admin });
+  const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
+  return c.json(preview ? withPreviewRoadmap(plan, preview.roadmap, { admin }) : plan);
+});
 
 // Personal dashboard (session-gated): the signed-in user's My Work projection —
 // previous activity (summarized merged/closed PRs), open assigned issues, and open
@@ -742,10 +780,16 @@ tenantRoot.get("/roadmap", async (c) => c.json(await get_plan(c.var.ctx)));
 tenantRoot.get("/me/dashboard", async (c) => {
   const login = c.get("principal").handle;
   try {
-    const data: DashboardData = await getMyWork(c.var.ctx, login);
-    // `brief` (shared/dashboard.ts) is omitted: nothing writes one yet. LOCAL_AI_PREVIEW shows the sample
-    // under `wrangler dev` only (src/ai/preview.ts); `get_my_work` never gets it.
-    const preview = aiPreview(c.env, c.req.url);
+    // Opening My Work is what makes a person's brief worth writing (src/data/person-brief.ts `briefWanted`): one
+    // timestamp, at most one write an hour, never a model call; a failed write never fails the read.
+    const [data] = await Promise.all([
+      // Under the AI read rule (a key, the switch on), someone with no brief yet reads `empty` (Q24): the tile says when Trov writes it.
+      getMyWork(c.var.ctx, login, new Date(), { emptyWhenNone: true }) as Promise<DashboardData>,
+      markMyWorkOpened(c.var.ctx, login).catch((e) => console.error("mywork opened", e instanceof Error ? e.name : "error", `org=${c.var.ctx.orgId}`)),
+    ]);
+    // `brief` is the newest stored one (src/tools/mywork.ts `storedBrief`), absent when there is none. LOCAL_AI_PREVIEW
+    // shows the sample instead under `wrangler dev` only (src/ai/preview.ts); `get_my_work` never gets the sample.
+    const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
     return c.json(preview ? { ...data, brief: preview.brief } : data);
   } catch {
     // Absolute backstop: never 500. Anything unexpected (D1) → empty degraded payload.
@@ -771,11 +815,18 @@ tenantRoot.get("/repo/dashboard", async (c) => {
     const [held, envs] = await Promise.all([heldP, orgEnvironments(c.var.ctx)]);
     if (held === null) return c.json({ error: "unknown repository" }, 404);
     const app = c.req.query("app") || null;
-    const dash = await getRepoDashboard(c.var.ctx, repo, Date.now(), envs, undefined, { app });
-    // `state` / `themes` (shared/repo.ts) are not sections and are omitted: nothing writes them yet.
-    // LOCAL_AI_PREVIEW shows the samples under `wrangler dev` only (src/ai/preview.ts).
-    const preview = aiPreview(c.env, c.req.url);
-    return c.json(preview ? { ...dash, state: preview.repoState, themes: preview.themes } : dash);
+    const [dash, state] = await Promise.all([
+      getRepoDashboard(c.var.ctx, repo, Date.now(), envs, undefined, { app }),
+      // `state` (shared/repo.ts, not a section): the newest version Trov wrote (0062_repo_state), absent when the
+      // switch is off or this person flagged it "Wrong?" (src/tools/repo-state.ts); with nothing written yet it is
+      // `empty` when the deployment has a key (Q23: Summary says when Trov writes it), else absent.
+      readRepoState(c.var.ctx, repo, { viewer: c.get("principal").handle, emptyWhenNone: true }),
+    ]);
+    const written = state ? { ...dash, state } : dash;
+    // `themes` (not a section) is there when the repo has themes (src/tools/themes.ts). LOCAL_AI_PREVIEW shows the
+    // samples under `wrangler dev` only (src/ai/preview.ts), over the real state.
+    const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
+    return c.json(preview ? { ...written, state: preview.repoState, themes: preview.themes } : written);
   } catch {
     await heldP.catch(() => undefined); // the repository's name, if its own read succeeded
     return c.json(emptyRepoDashboard(repo, true));
@@ -956,7 +1007,8 @@ tenantRoot.get("/tickets/:id", async (c) => {
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const ticket = await get_ticket(c.var.ctx, id);
   if (!ticket) return c.json({ error: "not found" }, 404);
-  return c.json(ticket);
+  // Trov's open suggestions for it, as `ai` (src/ai/attach.ts; Phase C) — this cookie read only, never MCP's get_ticket.
+  return c.json(await withTicketSuggestions(c, ticket));
 });
 
 // Edit the title and/or body — a mirrored ticket's too (seeded from the issue at
@@ -1218,6 +1270,7 @@ app.route("/api/o/:slug", scanApp); // Repositories › a repo › Apps: Scan ag
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
 app.route("/api/o/:slug", orgBillingApp); // an owner's billing for this org: the Stripe portal, a plan switch, a renewal (src/billing/routes.ts)
 app.route("/api/o/:slug", aiApp); // Org settings › AI, and the answers to a suggestion and to "Wrong?" — cookie only (src/ai/routes.ts)
+app.route("/api/o/:slug", askApp); // Ask Trov: the stream, threads, write cards, attachments, Settings › Trov — cookie only (src/ai/ask/routes.ts)
 app.route("/api/o/:slug", repoSettingsApp); // the Repo screen's per-repository defaults (0071_repo_settings) — admin, cookie only (src/repo/settings-routes.ts)
 // The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of
 // their own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name

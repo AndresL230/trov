@@ -1,0 +1,118 @@
+{
+  "kind": "brief.person",
+  "promptVersion": "brief.3",
+  "model": "claude-haiku-5-5",
+  "recordedAt": "2026-10-16T02:26:34.563Z",
+  "cases": {
+    "full-day": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":{\"text\":\"You have two open pull requests; #186 is a draft, and your latest note says server-side AI Phase B has landed on #178.\",\"cites\":[\"pr:186\",\"pr:178\",\"feed:118\"]},\"recently\":{\"text\":\"You merged hosting providers in #185 and the org-wide tag list in #179, plus several tag page and suggestion fixes.\",\"cites\":[\"pr:185\",\"pr:179\",\"pr:180\",\"pr:182\",\"pr:184\"]},\"next\":[{\"ref\":\"handoff:12\",\"why\":\"Nobody has claimed it yet, and you left it for yourself.\"},{\"ref\":\"ticket:33\",\"why\":\"Nothing can be tested until the local database has data.\"}]}",
+      "usage": {
+        "inputTokens": 1638,
+        "outputTokens": 227,
+        "cachedTokens": 0,
+        "inputChars": 6758,
+        "outputChars": 549
+      }
+    },
+    "next-only": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":null,\"recently\":null,\"next\":[{\"ref\":\"ticket:33\",\"why\":\"Blocks testing, since the local database is empty and needs hand-made data.\"}]}",
+      "usage": {
+        "inputTokens": 188,
+        "outputTokens": 59,
+        "cachedTokens": 1335,
+        "inputChars": 2759,
+        "outputChars": 141
+      }
+    },
+    "failing-pr": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":{\"text\":\"Your #179 has a failing test and a red typecheck, while the AI groundwork waits for review.\",\"cites\":[\"pr:179\",\"run:18412000001\",\"feed:109\"]},\"recently\":{\"text\":\"You opened #176, moving summaries to a Claude Haiku 5.5 model client, waiting on a key and merge.\",\"cites\":[\"feed:108\"]},\"next\":[{\"ref\":\"run:18412000001\",\"why\":\"Its last run failed, so your #179 is blocked.\"},{\"ref\":\"ticket:14\",\"why\":\"Unstarted and in no sprint yet; you filed it.\"}]}",
+      "usage": {
+        "inputTokens": 581,
+        "outputTokens": 1602,
+        "cachedTokens": 1335,
+        "inputChars": 3737,
+        "outputChars": 462
+      }
+    },
+    "recently-only": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":null,\"recently\":{\"text\":\"You shipped hosting providers for Vercel, Render, Netlify and Fly.io, and added a checkmark confirmation to Sift suggestions.\",\"cites\":[\"pr:185\",\"pr:184\"]},\"next\":[]}",
+      "usage": {
+        "inputTokens": 781,
+        "outputTokens": 89,
+        "cachedTokens": 1335,
+        "inputChars": 4402,
+        "outputChars": 198
+      }
+    },
+    "status-and-handoff": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":{\"text\":\"Your latest status note says server-side AI Phase A has landed on #178, with one AI client and two providers.\",\"cites\":[\"feed:115\"]},\"recently\":null,\"next\":[{\"ref\":\"handoff:10\",\"why\":\"Nobody has claimed it yet, and it replaces the older #9.\"}]}",
+      "usage": {
+        "inputTokens": 326,
+        "outputTokens": 106,
+        "cachedTokens": 1335,
+        "inputChars": 3072,
+        "outputChars": 260
+      }
+    },
+    "overdue-sprint": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":null,\"recently\":null,\"next\":[{\"ref\":\"ticket:33\",\"why\":\"Nothing can be tested until the local database has data.\"}]}",
+      "usage": {
+        "inputTokens": 206,
+        "outputTokens": 51,
+        "cachedTokens": 1335,
+        "inputChars": 2800,
+        "outputChars": 122
+      }
+    },
+    "someone-waiting": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":null,\"recently\":null,\"next\":[{\"ref\":\"handoff:3\",\"why\":\"Nobody has claimed it yet, and Andres left it for anyone to pick up.\"}]}",
+      "usage": {
+        "inputTokens": 189,
+        "outputTokens": 63,
+        "cachedTokens": 1335,
+        "inputChars": 2732,
+        "outputChars": 134
+      }
+    },
+    "cut-to-three": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":null,\"recently\":null,\"next\":[{\"ref\":\"ticket:2\",\"why\":\"It is due Oct 18 and has not been started yet.\"},{\"ref\":\"handoff:12\",\"why\":\"Nobody has claimed it, so it is waiting on you.\"},{\"ref\":\"ticket:33\",\"why\":\"Nothing can be tested until the local database has data.\"}]}",
+      "usage": {
+        "inputTokens": 328,
+        "outputTokens": 119,
+        "cachedTokens": 1335,
+        "inputChars": 3108,
+        "outputChars": 273
+      }
+    },
+    "numbers-heavy": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":{\"text\":\"You have #178 open for review, stacked on #176, with all checks green and the AI screens still hidden.\",\"cites\":[\"pr:178\",\"feed:109\"]},\"recently\":{\"text\":\"You opened #176, moving summaries to a new model client that waits on an API key and a merge.\",\"cites\":[\"feed:108\"]},\"next\":[]}",
+      "usage": {
+        "inputTokens": 445,
+        "outputTokens": 115,
+        "cachedTokens": 1335,
+        "inputChars": 3381,
+        "outputChars": 298
+      }
+    },
+    "draft-in-flight": {
+      "stop_reason": "end_turn",
+      "text": "{\"now\":{\"text\":\"You have one draft pull request open, the Repo screen for every repo setup, still in progress.\",\"cites\":[\"pr:186\"]},\"recently\":{\"text\":\"You finished Phase A of repo setups, adding apps, a GitHub hosting provider, and a commit on every deploy.\",\"cites\":[\"feed:119\"]},\"next\":[{\"ref\":\"ticket:33\",\"why\":\"Nothing can be tested until the local database has data.\"}]}",
+      "usage": {
+        "inputTokens": 388,
+        "outputTokens": 148,
+        "cachedTokens": 1335,
+        "inputChars": 3250,
+        "outputChars": 376
+      }
+    }
+  }
+}

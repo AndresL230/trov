@@ -281,7 +281,7 @@ export function createTagsController(host: TagsHost): TagsController {
     u.addBusy = true; u.addError = null;
     rerender();
     const ai = list.ai;
-    const scan = u.addScan && !!ai && ai.enabled && ai.available && !ai.spent;
+    const scan = u.addScan && !!ai && ai.org && ai.enabled && ai.available && !ai.spent;
     addOrgTag({ name, description: u.descDraft.trim(), color: u.addColor, scan })
       .then((r) => {
         u.addBusy = false; u.addOpen = false; u.nameDraft = ""; u.descDraft = "";
@@ -314,7 +314,7 @@ export function createTagsController(host: TagsHost): TagsController {
         if (state.feedTag === from) state.feedTag = r.name;
         if (state.tagName === from) state.tagName = r.name;
         const ai = state.tags.data?.ai;
-        if (ai && ai.enabled && ai.available && !ai.spent) {
+        if (ai && ai.org && ai.enabled && ai.available && !ai.spent) {
           ui().confirm = { what: "rerun", name: r.name, changed, busy: false };
           load();
           mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
@@ -374,7 +374,9 @@ export function createTagsController(host: TagsHost): TagsController {
   // ── Jev tagging existing items ─────────────────────────────────────────────
   const FIND_SAID: Record<string, string> = {
     started: "Looking for items that fit, and tagging them.",
-    off: "Suggestions are off. Turn them on above first.",
+    // Each "off" names the switch that is off (owner ruling Q9): Sift's own is on this tab, the org's in Org settings › AI.
+    off: "Sift is off. Turn it on above, in Tags, first.",
+    org_off: "Trov's AI is off for this organization. An admin turns it on in Org settings › AI.",
     no_key: "This Trov has no TypeSafe AI key set, so it cannot look for items.",
     busy: "Trov is already looking for items for this tag.",
     capped: "This month's checks are used up. Trov can look again next month.",

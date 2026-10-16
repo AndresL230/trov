@@ -1,0 +1,40 @@
+
+=== thread menu
+{
+ "a": {
+  "menu": "Rename|Unpin|Export as markdown|Delete",
+  "focus": "Rename",
+  "role": "menuitem"
+ },
+ "b": {
+  "focus": "Unpin",
+  "role": "menuitem"
+ },
+ "c": {
+  "focus": "Export as markdown",
+  "role": "menuitem",
+  "menu": true
+ }
+}
+
+=== mode menu
+{
+ "m1": {
+  "menu": true,
+  "focus": "FastQuick answers fr",
+  "role": "menuitemradio"
+ },
+ "m2": {
+  "focus": "SmartReads the items",
+  "role": "menuitemradio"
+ }
+}
+
+=== hover on focus
+{
+ "focused": "Ticket: #2 test-Blank login screen after the Safari update, Triage",
+ "hover": null
+}
+
+=== hover on pointer
+null

@@ -13,6 +13,20 @@ import type { Section, Window } from "@shared/notifications";
 import { escapeHtml } from "./html";
 import { localDate } from "./window";
 
+/**
+ * An in-app link inside a section (a ticket, the Feed): a renderer does not know the org's address, so it writes this
+ * token and the assembler swaps in `appBase` (the org's `<origin>/<slug>`). Deep links stay hash routes behind the
+ * existing return-to sign-in — the e-mail never carries a token of its own.
+ */
+export const APP_BASE_TOKEN = "{{trov-app}}";
+/** `#tickets/14` → the link the assembler resolves to `<appBase>/#tickets/14`. */
+export const appHref = (hash: string): string => `${APP_BASE_TOKEN}/${hash.replace(/^\/+/, "")}`;
+
+/** One queue's line (Phase E): "Review: 3 waiting, 1 changes a decision". `rest` is plain text (escaped here). */
+export function queueLine(o: { label: string; rest: string; deepLink: string; linkLabel: string }): Section {
+  return { heading: o.label, html: escapeHtml(o.rest), text: `${o.label}: ${o.rest}`, summary: `${o.label}: ${o.rest}`, deepLink: o.deepLink, linkLabel: o.linkLabel, layout: "line" };
+}
+
 export interface AssembledMessage {
   subject: string;
   html: string;
@@ -187,7 +201,8 @@ function dayLabel(d: Date, timeZone: string): { month: string; day: number } {
   return { month: MONTHS[l.month - 1], day: l.day };
 }
 
-/** `Trov daily, Sep 11` / `Trov weekly, Sep 7 to 11` (start to the last weekday before the send). */
+/** `Trov weekly, Sep 7 to 11` (start to the last weekday before the send); `Trov daily, Sep 11` is no subject any
+ *  more (`subjectOf`), but names a daily elsewhere. */
 export function subjectFor(window: Window, timeZone: string): string {
   return `Trov ${window.cadence}, ${dateRange(window, timeZone)}`;
 }
@@ -313,6 +328,17 @@ function header(cadence: Window["cadence"], range: string): string {
   return emailBanner(`${label} <span style="color:${BAND.dot};">&middot;</span> ${escapeHtml(range)}`);
 }
 
+/** The daily's subject when nothing is next for the person (owner ruling Q41). */
+export const DAILY_SUBJECT_FALLBACK = "Your Trov digest";
+
+/** The subject (owner ruling Q41): on a daily, the first section's offer — the top Next item of the brief, or (no brief
+ *  to show) of the assigned tickets, "plus N more" for the OTHER Next items, no suffix with one — and with nothing
+ *  next, "Your Trov digest". The weekly keeps `subjectFor`'s dated one. */
+export function subjectOf(sections: readonly Section[], window: Window, timeZone: string): string {
+  if (window.cadence !== "daily") return subjectFor(window, timeZone);
+  return sections.find((s) => s.subject)?.subject ?? DAILY_SUBJECT_FALLBACK;
+}
+
 export function assembleMessage(opts: {
   sections: Section[];
   window: Window;
@@ -324,28 +350,41 @@ export function assembleMessage(opts: {
   unsubscribeUrl: string;
 }): AssembledMessage {
   const { sections, window, timeZone, origin, login, unsubscribeUrl } = opts;
-  const subject = subjectFor(window, timeZone);
+  const subject = subjectOf(sections, window, timeZone);
   const range = dateRange(window, timeZone);
+  const base = opts.appBase ?? origin;
   // A section's deep link opens the org the digest is ABOUT (`<origin>/<slug>/#tickets`), not whichever org the browser last had.
-  const link = (s: Section) => `${opts.appBase ?? origin}${s.deepLink}`;
+  const link = (s: Section) => `${base}${s.deepLink}`;
   const label = (s: Section) => s.linkLabel ?? s.heading;
   const host = origin.replace(/^https?:\/\//, "") || "trov";
-  const preheader = sections.map((s) => s.summary).filter(Boolean).join(", ");
+  const preheader = sections.map((s) => s.summary).filter(Boolean).join(" · ");
+  // Phase E: the blocks (the brief, This week) first, then every queue's ONE line together.
+  const blocks = sections.filter((s) => s.layout !== "line");
+  const lines = sections.filter((s) => s.layout === "line");
+  // A section's one footer line (the brief paused, for an admin), above who the mail is for.
+  const footnotes = sections.map((s) => s.footnote).filter((f): f is string => !!f);
 
   const heading = `${SANS}font-size:15px;line-height:20px;font-weight:600;letter-spacing:-0.01em;color:${C.fg};`;
-  const summary = `${SANS}font-size:13px;line-height:20px;color:${C.fg55};padding-top:${SP.xs}px;`;
   const button = `display:inline-block;${SANS}font-size:13px;line-height:20px;font-weight:500;color:${C.accentText};text-decoration:none;padding:6px 12px;border:1px solid ${C.borderStrong};border-radius:8px;`;
-  const blocks = sections.map(
+  const rows = blocks.map(
     (s, i) =>
-      `<tr><td style="padding:${SP.xl}px 28px ${SP.xl}px 28px;${i === 0 ? "" : `border-top:1px solid ${C.border};`}">` +
+      `<tr><td data-section="block" style="padding:${SP.l}px 28px ${SP.l}px 28px;${i === 0 ? "" : `border-top:1px solid ${C.border};`}">` +
       `<div style="${heading}">${escapeHtml(s.heading)}</div>` +
-      (s.summary ? `<div style="${summary}">${escapeHtml(s.summary)}</div>` : "") +
       s.html +
-      `<div style="padding-top:${SP.l}px;"><a href="${escapeHtml(link(s))}" style="${button}">Open ${escapeHtml(label(s))} &rarr;</a></div>` +
+      `<div style="padding-top:${SP.m}px;"><a href="${escapeHtml(link(s))}" style="${button}">Open ${escapeHtml(label(s))} &rarr;</a></div>` +
       `</td></tr>`
   );
+  if (lines.length) {
+    rows.push(
+      `<tr><td data-section="lines" style="padding:${SP.m}px 28px ${SP.m}px 28px;${blocks.length ? `border-top:1px solid ${C.border};` : ""}">` +
+      lines.map((s) =>
+        `<div data-line style="${SANS}font-size:13px;line-height:20px;color:${C.fg70};padding:${SP.xs}px 0;">` +
+        `<a href="${escapeHtml(link(s))}" style="color:${C.fg70};text-decoration:none;"><span style="font-weight:600;color:${C.fg};">${escapeHtml(s.heading)}:</span> ${s.html} <span style="color:${C.accentText};">&rarr;</span></a></div>`).join("") +
+      `</td></tr>`
+    );
+  }
 
-  const html =
+  const html = (
     `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">` +
     `<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">` +
     `<title>${escapeHtml(subject)}</title>` +
@@ -355,32 +394,36 @@ export function assembleMessage(opts: {
     `<table ${EMAIL_STYLE.table} style="background-color:${C.ground};"><tr><td align="center" class="tm-pad" style="padding:36px 16px;">` +
     emailCardOpen() +
     header(window.cadence, range) +
-    blocks.join("") +
+    rows.join("") +
     `<tr><td style="padding:${SP.l}px 28px ${SP.l}px 28px;border-top:1px solid ${C.border};${SANS}font-size:12px;line-height:20px;color:${C.fg40};">` +
+    footnotes.map((f) => `<div data-footnote style="padding-bottom:${SP.xs}px;">${escapeHtml(f)}</div>`).join("") +
     `You're getting the ${window.cadence} Trov digest for ${escapeHtml(login)}. <a href="${escapeHtml(unsubscribeUrl)}" style="color:${C.fg40};text-decoration:underline;text-underline-offset:2px;">Unsubscribe</a><br>` +
     `Sent by Trov &middot; ${escapeHtml(host)}</td></tr>` +
-    EMAIL_CARD_CLOSE + `</td></tr></table></body></html>`;
+    EMAIL_CARD_CLOSE + `</td></tr></table></body></html>`
+  ).split(APP_BASE_TOKEN).join(escapeHtml(base));
 
   const title = `TROV ${window.cadence.toUpperCase()} — ${range.toUpperCase()}`;
   const text = [
     title,
     "=".repeat(title.length),
     "",
-    ...sections.flatMap((s) => [
+    ...blocks.flatMap((s) => [
       s.heading.toUpperCase(),
-      ...(s.summary ? [s.summary] : []),
       "",
       s.text,
       "",
       `  -> ${label(s)}: ${link(s)}`,
       "",
     ]),
+    ...lines.map((s) => `${s.text} -> ${link(s)}`),
+    ...(lines.length ? [""] : []),
     "-".repeat(title.length),
+    ...footnotes,
     `You're getting the ${window.cadence} Trov digest for ${login}.`,
     `Unsubscribe: ${unsubscribeUrl}`,
     `Sent by Trov — ${host}`,
     "",
-  ].join("\n");
+  ].join("\n").split(APP_BASE_TOKEN).join(base);
 
   return { subject, html, text };
 }

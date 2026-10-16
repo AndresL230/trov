@@ -17,13 +17,37 @@ export const RESET_STATEMENTS = [
   "DELETE FROM platform_outbox_bodies",
   // Support reports (0049_support_reports): a global table — no FK in or out.
   "DELETE FROM support_reports",
-  "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL, plan_gift_until = NULL, ai_automation = 1",
+  "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL, plan_gift_until = NULL, ai_automation = 1, ai_chat_auto = 1",
   "DELETE FROM abuse_counters",
   // Sync GitHub runs (0046_sync_runs) reference orgs.
   "DELETE FROM sync_runs",
   // AI (0055_ai): suggestions and "Wrong?" reference orgs.
   "DELETE FROM ai_suggestions",
   "DELETE FROM ai_feedback",
+  // AI (0058_ai_dirty): the router's stale scopes reference orgs.
+  "DELETE FROM ai_dirty",
+  // AI (0064_repo_themes): the repo themes, each PR's theme and the captions.
+  "DELETE FROM pr_themes",
+  "DELETE FROM repo_theme_captions",
+  "DELETE FROM repo_themes",
+  // AI (0061_ai_digests, 0062_repo_state): the session digests' bookkeeping and the written repo states.
+  "DELETE FROM ai_sessions",
+  "DELETE FROM repo_state",
+  // AI (0063_person_brief): each member's brief references orgs.
+  "DELETE FROM person_brief",
+  // AI (0065_org_insights): the org rollup's sprint notes and plan drift reference orgs.
+  "DELETE FROM org_insights",
+  // AI (0059_ai_batches): the pass's open Message Batches — platform tables, no org_id (requests first).
+  "DELETE FROM ai_batch_requests",
+  "DELETE FROM ai_batches",
+  // Ask Trov (0066_ask): cards, attachment links and messages hang off threads (chat_fts follows its messages by trigger).
+  "DELETE FROM chat_actions",
+  "DELETE FROM chat_artifacts",
+  "DELETE FROM chat_messages",
+  "DELETE FROM chat_fts",
+  "DELETE FROM chat_threads",
+  "DELETE FROM person_ask_settings",
+  "DELETE FROM ask_flags",
   "DELETE FROM org_usage_daily",
   "DELETE FROM org_admin_audit",
   "UPDATE orgs SET suspended_at = NULL, suspended_by = NULL, logo_sha = NULL, logo_source = NULL, logo_by = NULL, logo_from = NULL, logo_at = NULL",
@@ -119,6 +143,8 @@ export const RESET_STATEMENTS = [
   "DELETE FROM notification_outbox_bodies",
   "DELETE FROM notification_outbox",
   "DELETE FROM notification_prefs",
+  "DELETE FROM notification_person_prefs", // 0067_digest_email
+  "DELETE FROM digest_highlights", // 0067_digest_email
   "DELETE FROM notification_policy",
   "DELETE FROM notification_settings WHERE org_id <> 'org_saplinglearn'",
   "INSERT OR IGNORE INTO notification_settings (org_id, send_hour, timezone, from_address) VALUES ('org_saplinglearn', 8, 'America/New_York', 'Trov <hello@trov.dev>')",
@@ -153,6 +179,8 @@ export const RESET_STATEMENTS = [
   // …and the system person 0032 seeds: the GitHub mirror's fallback requester.
   // The DELETE FROM persons above wipes the migration's row, so it is re-seeded here.
   "INSERT INTO persons (handle, name, color, created_at, onboarded_at) VALUES ('github-webhook', 'GitHub', 'stone', '2026-09-24T00:00:00Z', '2026-09-24T00:00:00Z')",
+  // …and 0061_ai_digests's `trov`, the author of the entries Trov writes (never a member).
+  "INSERT INTO persons (handle, name, color, created_at, onboarded_at) VALUES ('trov', 'Trov', 'moss', '2026-10-15T00:00:00Z', '2026-10-15T00:00:00Z')",
   // The two seed orgs (multitenancy): SaplingLearn holds the six persons above — what 0042_organizations produces from
   // them, AndresL230 its owner — and `org_b` (Acme) is the empty neighbour the isolation suite fills.
   "INSERT OR IGNORE INTO orgs (id, slug, name, created_at, created_by, plan, plan_source) VALUES ('org_saplinglearn', 'saplinglearn', 'SaplingLearn', '2026-10-06T00:00:00.000Z', 'migration', 'enterprise', 'granted'), ('org_b', 'acme', 'Acme', '2026-10-06T00:00:00.000Z', 'migration', 'enterprise', 'granted')",
@@ -163,7 +191,7 @@ export const RESET_STATEMENTS = [
   "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'api', 'Routes and what they return', 'sky', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
   "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'ui', 'Screens and components', 'rose', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
   "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'data', 'Tables, migrations, storage', 'fern', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
-  "INSERT INTO memberships (org_id, user_id, role, title, responsibilities, created_at, created_by) SELECT 'org_saplinglearn', handle, CASE WHEN handle = 'AndresL230' THEN 'owner' ELSE 'member' END, role, responsibilities, created_at, 'seed' FROM persons WHERE handle <> 'github-webhook'",
+  "INSERT INTO memberships (org_id, user_id, role, title, responsibilities, created_at, created_by) SELECT 'org_saplinglearn', handle, CASE WHEN handle = 'AndresL230' THEN 'owner' ELSE 'member' END, role, responsibilities, created_at, 'seed' FROM persons WHERE handle NOT IN ('github-webhook', 'trov')",
   "INSERT INTO org_login_map (org_id, github_login, person, mapped_at, mapped_by) SELECT 'org_saplinglearn', subject, person, linked_at, 'seed' FROM identities WHERE provider = 'github'",
   "UPDATE identities SET verified_email = lower(label) WHERE provider = 'google'",
   // …and the one superadmin (0042_organizations), as production has it: the SaplingLearn owner.

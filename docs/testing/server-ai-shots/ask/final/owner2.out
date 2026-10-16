@@ -1,0 +1,458 @@
+
+=== AU-OWNER-2 desktop
+{
+ "steps": [
+  {
+   "label": "Shift+Enter ×3",
+   "frames": 40,
+   "heights": [
+    46,
+    47,
+    49,
+    54,
+    57,
+    59,
+    62,
+    66,
+    72,
+    77,
+    84,
+    88
+   ],
+   "overflowingFrames": 15,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden"
+   ]
+  },
+  {
+   "label": "a line that wraps",
+   "frames": 113,
+   "heights": [
+    106,
+    107,
+    128
+   ],
+   "overflowingFrames": 2,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden"
+   ]
+  },
+  {
+   "label": "paste 6 lines",
+   "frames": 27,
+   "heights": [
+    128,
+    132,
+    147,
+    176,
+    196,
+    208,
+    215,
+    218,
+    220
+   ],
+   "overflowingFrames": 27,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden",
+    "auto+full"
+   ]
+  },
+  {
+   "label": "paste 20 lines (past the cap)",
+   "frames": 27,
+   "heights": [
+    220
+   ],
+   "overflowingFrames": 27,
+   "flashFrames": 0,
+   "overflowY": [
+    "auto+full"
+   ]
+  },
+  {
+   "label": "shrink (select all, type one word)",
+   "frames": 29,
+   "heights": [
+    220,
+    213,
+    46
+   ],
+   "overflowingFrames": 0,
+   "flashFrames": 0,
+   "overflowY": [
+    "auto+full",
+    "hidden"
+   ]
+  },
+  {
+   "label": "Shift+Enter ×2 again",
+   "frames": 33,
+   "heights": [
+    46,
+    47,
+    49,
+    54,
+    62,
+    66,
+    72,
+    77,
+    80,
+    82,
+    83
+   ],
+   "overflowingFrames": 9,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden"
+   ]
+  }
+ ],
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}
+
+=== AU-OWNER-2 phone
+{
+ "steps": [
+  {
+   "label": "Shift+Enter ×3",
+   "frames": 40,
+   "heights": [
+    46,
+    47,
+    50,
+    56,
+    61,
+    63,
+    67,
+    71,
+    78,
+    84,
+    91,
+    95
+   ],
+   "overflowingFrames": 15,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden"
+   ]
+  },
+  {
+   "label": "a line that wraps",
+   "frames": 62,
+   "heights": [
+    115,
+    116,
+    140,
+    141,
+    165
+   ],
+   "overflowingFrames": 4,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden"
+   ]
+  },
+  {
+   "label": "paste 6 lines",
+   "frames": 27,
+   "heights": [
+    165,
+    167,
+    176,
+    193,
+    206,
+    213,
+    217,
+    219,
+    220
+   ],
+   "overflowingFrames": 27,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden",
+    "auto+full"
+   ]
+  },
+  {
+   "label": "paste 20 lines (past the cap)",
+   "frames": 28,
+   "heights": [
+    220
+   ],
+   "overflowingFrames": 28,
+   "flashFrames": 0,
+   "overflowY": [
+    "auto+full"
+   ]
+  },
+  {
+   "label": "shrink (select all, type one word)",
+   "frames": 28,
+   "heights": [
+    220,
+    213,
+    184,
+    130,
+    91,
+    68,
+    56,
+    49,
+    46
+   ],
+   "overflowingFrames": 0,
+   "flashFrames": 0,
+   "overflowY": [
+    "auto+full",
+    "hidden"
+   ]
+  },
+  {
+   "label": "Shift+Enter ×2 again",
+   "frames": 33,
+   "heights": [
+    46,
+    47,
+    50,
+    67,
+    71,
+    78,
+    84,
+    87,
+    89,
+    90
+   ],
+   "overflowingFrames": 8,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden"
+   ]
+  }
+ ],
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}
+
+=== AU-OWNER-2 reduced
+{
+ "steps": [
+  {
+   "label": "Shift+Enter ×3",
+   "frames": 39,
+   "heights": [
+    46,
+    61,
+    83,
+    106
+   ],
+   "overflowingFrames": 3,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden"
+   ]
+  },
+  {
+   "label": "a line that wraps",
+   "frames": 106,
+   "heights": [
+    106,
+    128
+   ],
+   "overflowingFrames": 1,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden"
+   ]
+  },
+  {
+   "label": "paste 6 lines",
+   "frames": 27,
+   "heights": [
+    128,
+    220
+   ],
+   "overflowingFrames": 27,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden",
+    "auto+full"
+   ]
+  },
+  {
+   "label": "paste 20 lines (past the cap)",
+   "frames": 27,
+   "heights": [
+    220
+   ],
+   "overflowingFrames": 27,
+   "flashFrames": 0,
+   "overflowY": [
+    "auto+full"
+   ]
+  },
+  {
+   "label": "shrink (select all, type one word)",
+   "frames": 28,
+   "heights": [
+    220,
+    46
+   ],
+   "overflowingFrames": 0,
+   "flashFrames": 0,
+   "overflowY": [
+    "auto+full",
+    "hidden"
+   ]
+  },
+  {
+   "label": "Shift+Enter ×2 again",
+   "frames": 32,
+   "heights": [
+    46,
+    61,
+    83
+   ],
+   "overflowingFrames": 2,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden"
+   ]
+  }
+ ],
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}
+
+=== AU-OWNER-2 cmdj
+{
+ "steps": [
+  {
+   "label": "Shift+Enter ×3",
+   "frames": 40,
+   "heights": [
+    46,
+    47,
+    49,
+    54,
+    57,
+    62,
+    66,
+    72,
+    77,
+    84,
+    88,
+    95
+   ],
+   "overflowingFrames": 14,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden"
+   ]
+  },
+  {
+   "label": "a line that wraps",
+   "frames": 87,
+   "heights": [
+    106,
+    107,
+    128,
+    129,
+    151,
+    152,
+    173
+   ],
+   "overflowingFrames": 6,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden"
+   ]
+  },
+  {
+   "label": "paste 6 lines",
+   "frames": 27,
+   "heights": [
+    173,
+    175,
+    183,
+    197,
+    208,
+    214,
+    217,
+    219,
+    220
+   ],
+   "overflowingFrames": 27,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden",
+    "auto+full"
+   ]
+  },
+  {
+   "label": "paste 20 lines (past the cap)",
+   "frames": 28,
+   "heights": [
+    220
+   ],
+   "overflowingFrames": 28,
+   "flashFrames": 0,
+   "overflowY": [
+    "auto+full"
+   ]
+  },
+  {
+   "label": "shrink (select all, type one word)",
+   "frames": 28,
+   "heights": [
+    220,
+    213,
+    46
+   ],
+   "overflowingFrames": 0,
+   "flashFrames": 0,
+   "overflowY": [
+    "auto+full",
+    "hidden"
+   ]
+  },
+  {
+   "label": "Shift+Enter ×2 again",
+   "frames": 33,
+   "heights": [
+    46,
+    47,
+    49,
+    54,
+    62,
+    66,
+    72,
+    77,
+    80,
+    82,
+    83
+   ],
+   "overflowingFrames": 9,
+   "flashFrames": 0,
+   "overflowY": [
+    "hidden"
+   ]
+  }
+ ],
+ "logs": {
+  "console": [],
+  "failed": [],
+  "pageerrors": []
+ }
+}

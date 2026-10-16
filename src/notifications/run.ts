@@ -6,7 +6,8 @@ import type { NotificationKind, RunCadence, Section, Window } from "@shared/noti
 import { type TenantContext, run, nowIso } from "../data/sql";
 import { type PlatformContext, all as platformAll } from "../data/platform-sql";
 import { REGISTRY } from "./registry";
-import { loadPolicies, loadPrefs, resolveWith } from "./resolve";
+import { loadOnlyWhenNeeded, loadPolicies, loadPrefs, selectKinds } from "./resolve";
+import { needsMe } from "./renderers/my-work";
 import { computeWindow } from "./window";
 import { assembleMessage } from "./assemble";
 import type { Delivery } from "./delivery";
@@ -57,6 +58,9 @@ export interface ClaimedRow {
   kinds: readonly NotificationKind<TenantContext>[];
   window: Window;
   timeZone: string;
+  /** The person chose "Only when something needs me" (0067): a DAILY is sent only when `needsMe` says so. The weekly,
+   *  the preview and the test send always go (owner ruling Q46). */
+  onlyWhenNeeded?: boolean;
 }
 
 /** Render every kind for a login/window and drop nulls. Pure read; throws on a renderer error. */
@@ -89,6 +93,12 @@ export async function deliverRow(ctx: TenantContext, row: ClaimedRow, opts: Deli
   let sections: Section[];
   let rendered: string[];
   try {
+    // "Only when something needs me" (the daily only, Q46): no Next item and nothing notable or breaking touched
+    // their work → skipped.
+    if (row.onlyWhenNeeded && row.window.cadence === "daily" && !presetSections && !(await needsMe(ctx, row.login, row.window))) {
+      await setStatus(ctx, row.key, { status: "skipped", kinds: [] });
+      return "skipped";
+    }
     if (presetSections) {
       sections = presetSections;
       rendered = row.kinds.map((k) => k.id);
@@ -129,8 +139,24 @@ export const outboxKey = (ctx: TenantContext, login: string, cadence: string, wi
  */
 export const preOrgOutboxKey = (login: string, cadence: string, windowId: string): string => `${login}:${cadence}:${windowId}`;
 
+/** A digest's recipients — the org's MEMBERS with an address on file who have not unsubscribed — in handle order. */
+function recipientRows(p: PlatformContext, orgId: string): Promise<Recipient[]> {
+  return platformAll<Recipient>(
+    p,
+    `SELECT p.handle AS github_login, p.email
+       FROM persons p JOIN memberships m ON p.handle = m.user_id AND m.org_id = ?
+      WHERE p.email IS NOT NULL AND p.email != '' AND p.email_unsubscribed = 0 ORDER BY p.handle`,
+    orgId
+  );
+}
+
+/** The handles a digest of this org would go to (what the brief pre-warm marks: ./cron.ts `prewarmDigests`). */
+export async function digestRecipients(p: PlatformContext, orgId: string): Promise<string[]> {
+  return (await recipientRows(p, orgId)).map((r) => r.github_login);
+}
+
 /**
- * `p` reads the people: the org's MEMBERS with an address on file who have not unsubscribed (the
+ * `p` reads the people:the org's MEMBERS with an address on file who have not unsubscribed (the
  * unsubscribe is global — one click stops every org's mail). Everything else is `ctx`'s org.
  */
 export async function runDigest(ctx: TenantContext, p: PlatformContext, cadence: RunCadence, now: Date, opts: RunOptions): Promise<RunReport> {
@@ -142,18 +168,12 @@ export async function runDigest(ctx: TenantContext, p: PlatformContext, cadence:
 
   const policies = await loadPolicies(ctx);
   // Eligibility is a hard gate above resolution: a member, an address on file, not unsubscribed.
-  const recipients = await platformAll<Recipient>(
-    p,
-    `SELECT p.handle AS github_login, p.email
-       FROM persons p JOIN memberships m ON p.handle = m.user_id AND m.org_id = ?
-      WHERE p.email IS NOT NULL AND p.email != '' AND p.email_unsubscribed = 0 ORDER BY p.handle`,
-    ctx.orgId
-  );
+  const recipients = await recipientRows(p, ctx.orgId);
 
   for (const who of recipients) {
     report.eligible++;
     const prefs = await loadPrefs(ctx, who.github_login);
-    const selected = registry.filter((k) => resolveWith(k, policies.get(k.id), prefs.get(k.id)) === cadence);
+    const selected = selectKinds(registry, policies, prefs, cadence);
 
     // The claim: the key is unique, so a second run of this window inserts nothing — and neither does
     // a window already sent under the pre-org key (see `preOrgOutboxKey`), checked in the same statement.
@@ -178,7 +198,8 @@ export async function runDigest(ctx: TenantContext, p: PlatformContext, cadence:
       continue;
     }
 
-    const outcome = await deliverRow(ctx, { key, login: who.github_login, email: who.email, kinds: selected, window, timeZone }, opts);
+    const onlyWhenNeeded = await loadOnlyWhenNeeded(ctx, who.github_login);
+    const outcome = await deliverRow(ctx, { key, login: who.github_login, email: who.email, kinds: selected, window, timeZone, onlyWhenNeeded }, opts);
     report[outcome]++;
   }
   return report;

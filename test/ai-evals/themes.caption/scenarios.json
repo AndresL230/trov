@@ -1,0 +1,12 @@
+{
+  "about": "Eight-week windows over the pr.theme eval set's real merged PRs (their merge dates and expected themes): the server's shares go in, the caption must keep the rules — no digit, only active themes (by id and by name), 20–280 characters. `inactive` are a removed and a proposed theme's names, the trap a caption must not name.",
+  "inactive": ["Docs reader", "Landing page"],
+  "scenarios": [
+    { "id": "2026-10-15", "now": "2026-10-15T12:00:00Z", "withUnthemed": true },
+    { "id": "2026-10-09", "now": "2026-10-09T12:00:00Z", "withUnthemed": false },
+    { "id": "2026-10-01", "now": "2026-10-01T12:00:00Z", "withUnthemed": true },
+    { "id": "2026-09-24", "now": "2026-09-24T12:00:00Z", "withUnthemed": true },
+    { "id": "2026-09-17", "now": "2026-09-17T12:00:00Z", "withUnthemed": false },
+    { "id": "2026-08-01", "now": "2026-08-01T12:00:00Z", "withUnthemed": true }
+  ]
+}

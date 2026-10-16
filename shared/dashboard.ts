@@ -4,7 +4,7 @@
 // (src/) and the web build (web/) agree on the shape.
 
 import type { TicketCategory, TicketPriority, TicketStatus } from "./tickets-core";
-import type { AiBrief } from "./ai-core";
+import type { AiBrief, FeedImportance } from "./ai-core";
 
 export interface MyWorkPr {
   number: number;
@@ -17,6 +17,9 @@ export interface MyWorkPr {
   why: string | null; // motivation, only when the PR body stated one
   impact: string | null; // plain-language outcome sentence (never a file list)
   baseRef: string | null; // PR base branch (footer "into main" suffix; hidden when null)
+  /** How much the merged PR matters, as Sift rated it (0060, `pr_summaries.importance`): a computed fact. ABSENT when
+   *  unknown — never a guessed `routine`. */
+  importance?: FeedImportance;
 }
 
 export interface MyWorkTodo {

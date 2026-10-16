@@ -5,7 +5,8 @@
 // Five tabs, each ONE bordered panel divided by hairlines (the design's rule:
 // lines, not cards), under an underline tab bar heading the page body
 // (`repoTabBar`; they were sub-pages under the sidebar's Repo entry until
-// 2026-09-27). Every block is a `RepoSection`, so each one renders four
+// 2026-09-27) — and a sixth, second in the bar, while the live read carries what
+// Trov wrote: Summary, the State card alone (`repoSummaryShown`, repo-ai.ts). Every block is a `RepoSection`, so each one renders four
 // ways — live, `empty`, `not_connected` (nothing captured for it yet) and, while the
 // fetch is out or failed, loading / error. The Worker decides which sections are
 // live (`src/tools/repo.ts`); nothing here invents a number.
@@ -15,20 +16,21 @@
 // an unrelated reason never replays them.
 
 import {
-  REPO_RANGES, REPO_TABS, REPO_TAB_SECTIONS,
+  REPO_RANGES, REPO_SCREEN_TABS, REPO_SUMMARY_TAB, REPO_TAB_SECTIONS,
   type RepoActivity, type RepoActivityKind, type RepoDashboard, type RepoDeployRow, type RepoPerson, type RepoPr, type RepoPrState,
-  type RepoProductEnv, type RepoRange, type RepoSection, type RepoTab, type RepoTone, type RepoTrend,
-  type PollOutcome, type RepoRefreshGithub, type RepoSectionName, type UsagePollSource,
+  type RepoProductEnv, type RepoRange, type RepoScreenTab, type RepoSection, type RepoTone, type RepoTrend,
+  type PollOutcome, type RepoRefreshGithub, type RepoRefreshResult, type RepoSectionName, type UsagePollSource,
 } from "@shared/repo";
 import type { HostingPollOutcome, HostingProviderId } from "@shared/hosting";
 import type { Loadable } from "./render";
 import { esc, attr, SURFACE } from "./ui";
-import { kindMark, glyphMark, type Glyph, type StateKind } from "./marks";
+import { aiMark, kindMark, glyphMark, type Glyph, type StateKind } from "./marks";
 import { personChip, personLink, personNameLink } from "./people";
 import type { PersonSummary } from "./api";
 import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { emptyLayout, emptyShapes, skeleton, skBar, skList, skW } from "./skeleton";
+import { repoStateSection, repoStateShown, repoStateSkeleton, themesSection, type RepoAiProps } from "./repo-ai";
 import { HOSTING_EMPTY, hostingBlank, hostingEmpty, hostingNotConnected, hostingParts, hostingSkeleton } from "./repo-hosting";
 import { targetsFromFacts, usageExtras, usageTargets } from "./repo-usage";
 import { REPO_WIDE, narrowFacts, layoutInputOf, type RepoFacts } from "@shared/repo-facts-core";
@@ -44,7 +46,8 @@ export { ago, repoUpdatedLabel, formatCount, repoPollFor, type RepoPollState } f
 import { ago, repoUpdatedLabel, type RepoPollState } from "./repo-core";
 
 export interface RepoProps {
-  tab: RepoTab;
+  /** The tab in view. `summary` draws only while `repoSummaryShown` — else the Overview (main.ts moves the route too). */
+  tab: RepoScreenTab;
   range: RepoRange;
   driftOpen: boolean;
   repo: Loadable<RepoDashboard | null>;
@@ -64,6 +67,9 @@ export interface RepoProps {
   persons?: PersonSummary[];
   /** Sync GitHub's line beside "updated …" (sync.ts `syncRepoLabel`: "synced 12m ago by @andres"); "" / absent = none. */
   synced?: string;
+  /** The AI screens' state (repo-ai.ts): the Summary tab (State) and Planning's Where the work went are drawn
+   *  only when the dashboard carries `state` / `themes` AND this is given. */
+  ai?: RepoAiProps;
   // ── the Overview from `facts` (repo-overview.ts) ──
   /** The App menu's narrowing (an app key, `REPO_WIDE`, or null for all apps) — from the address. */
   app?: string | null;
@@ -1109,7 +1115,7 @@ function planningTab(p: RepoProps): string {
 }
 
 // ── the screen ───────────────────────────────────────────────────────────────
-const SCREEN_LABEL: Record<RepoTab, string> = { overview: "Overview", code: "Code", ci: "CI and Deploys", usage: "Usage", planning: "Planning" };
+const SCREEN_LABEL: Record<RepoScreenTab, string> = { overview: "Overview", summary: "Summary", code: "Code", ci: "CI and Deploys", usage: "Usage", planning: "Planning" };
 
 /** Sections whose block says "nothing yet" in its own quiet words (one line and the way to set it up) rather
  *  than the dashed "Source not connected" box — Usage › Hosting (repo-hosting.ts `hostingNotConnected`). */
@@ -1119,19 +1125,33 @@ const QUIET_NC: readonly RepoSectionName[] = ["providers"];
  *  connected" (`drawn`), and the ones whose block says so quietly, by name (`quiet`). */
 function uncaptured(p: RepoProps): { drawn: boolean; quiet: RepoSectionName[] } {
   const d = p.repo.data;
-  if (!d) return { drawn: false, quiet: [] };
+  if (!d || p.tab === REPO_SUMMARY_TAB) return { drawn: false, quiet: [] };
   // The ONE section→tab mapping (shared with the MCP `get_repo_dashboard` tool).
   // `?? not_connected`: a payload from before a section existed lacks its key.
   const nc = REPO_TAB_SECTIONS[p.tab].filter((k) => ((d[k] as RepoSection<unknown> | undefined)?.status ?? "not_connected") === "not_connected");
   return { drawn: nc.some((k) => !QUIET_NC.includes(k)), quiet: nc.filter((k) => QUIET_NC.includes(k)) };
 }
 
+/** Whether the screen offers the Summary tab: the LIVE read carries Trov's state (never on sample data, never
+ *  with no repository) and this person has not pressed "Wrong?" on it — or, while the first read is still out,
+ *  the address asks for it (a deep link, a reload): its tab and the card's skeleton hold the place until the
+ *  read says. Off, nothing written, a flagged version or a failed read is the field ABSENT (`ai.md` › Repo
+ *  state), so there is no tab — the AI kit's rule: off is no row, never an "off" state. */
+export function repoSummaryShown(p: Pick<RepoProps, "tab" | "repo" | "sample" | "noRepo" | "ai">, now = Date.now()): boolean {
+  if (p.sample || p.noRepo || !p.ai) return false;
+  const d = p.repo.data;
+  if (!d) return p.tab === REPO_SUMMARY_TAB && p.repo.status !== "ok";
+  return !!d.state && repoStateShown(d.state, p.ai, now);
+}
+
 /** The page's tab bar: every tab is in the one dashboard payload, so a switch
- *  (`setRepoTab`) is ONE rerender with nothing to load, and the underline slides. */
-export function repoTabBar(tab: RepoTab): string {
+ *  (`setRepoTab`) is ONE rerender with nothing to load, and the underline slides. Summary, what Trov wrote,
+ *  carries the AI mark and is in the bar only while `summary` (`repoSummaryShown`). */
+export function repoTabBar(tab: RepoScreenTab, summary = false): string {
   return tabBar({
     id: "repo-tab", ariaLabel: "Repo sections", act: "setRepoTab", value: tab,
-    tabs: REPO_TABS.map(([value, label]) => ({ value, label })),
+    tabs: REPO_SCREEN_TABS.filter(([value]) => summary || value !== REPO_SUMMARY_TAB)
+      .map(([value, label]) => ({ value, label, trail: value === REPO_SUMMARY_TAB ? aiMark(12) : undefined })),
   });
 }
 
@@ -1170,6 +1190,25 @@ export const REPO_EMPTY = {
   member: "This organization has no repository connected yet; an admin connects one in Org settings. Preview with sample data shows every section filled in.",
 } as const;
 
+/** The tab's section Trov wrote (repo-ai.ts), above the panel: Planning's Where the work went. "" unless the
+ *  live dashboard carries the field — never on sample data. (State has a tab of its own: `summaryTab`.) */
+function repoAiSection(p: RepoProps): string {
+  const d = p.repo.data;
+  if (!p.ai || p.sample || !d) return "";
+  if (p.tab === "planning" && d.themes) return themesSection(d.themes, p.ai);
+  return "";
+}
+
+/** The Summary tab: the State card alone — every state of it as the read sends it (ready, empty, capped; leaving
+ *  after "Wrong?"), the card's shape while the first read is out, the dashboard's error block if that read failed.
+ *  No panel under it: it holds no section. */
+function summaryTab(p: RepoProps): string {
+  const d = p.repo.data;
+  if (d?.state && p.ai) return repoStateSection(d.state, p.ai);
+  if (phaseOf(p) === "error") return `<div class="repo-panel ${SURFACE}" style="${PANEL}"><div style="padding:6px 20px">${errorBlock()}</div></div>`;
+  return repoStateSkeleton();
+}
+
 /** In the sample, the Code / CI sections the picked App menu value draws (`sampleScopes`) — what the Worker's
  *  narrowing sends for that `?app=` (the sample never asks it). */
 function withSampleScope(p: RepoProps): RepoProps {
@@ -1179,9 +1218,12 @@ function withSampleScope(p: RepoProps): RepoProps {
 }
 
 export function repoView(props: RepoProps): string {
-  const p = withSampleScope(props);
+  const scoped = withSampleScope(props);
+  const summary = repoSummaryShown(scoped, scoped.now);
+  // An address that asks for Summary when there is none draws the Overview (main.ts moves the route there too).
+  const p: RepoProps = scoped.tab === REPO_SUMMARY_TAB && !summary ? { ...scoped, tab: "overview" } : scoped;
   sectionNo = 0;
-  const body = p.tab === "overview" ? overviewTab(p) : p.tab === "code" ? codeTab(p) : p.tab === "ci" ? ciTab(p)
+  const body = p.tab === REPO_SUMMARY_TAB ? "" : p.tab === "overview" ? overviewTab(p) : p.tab === "code" ? codeTab(p) : p.tab === "ci" ? ciTab(p)
     : p.tab === "usage" ? usageTab(p) : planningTab(p);
 
   const info = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="1.8" style="flex:none"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>`;
@@ -1220,7 +1262,7 @@ export function repoView(props: RepoProps): string {
     const sampleBtn = `<button type="button" data-act="repoSampleOn" class="cnpy-empty-act">Preview with sample data</button>`;
     const connectBtn = `<button type="button" data-act="orgGo" data-arg="repos" class="cnpy-accentbtn" style="height:30px;padding:0 13px;border-radius:8px;background:var(--accent);color:var(--accent-fg);border:1px solid transparent;font-size:12.5px;font-weight:600;white-space:nowrap">Open Org settings &rsaquo; Repositories</button>`;
     return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}" data-repo-empty>
-      ${repoTabBar(p.tab)}
+      ${repoTabBar(p.tab, summary)}
       <div${tabPanelAttrs("repo-tab", p.tab)} style="padding-top:20px">
         ${polled}
         ${emptyLayout("repo", {
@@ -1238,12 +1280,17 @@ export function repoView(props: RepoProps): string {
   // facts could draw either grouping. An admin who flipped it is offered "Make this the default" (never in the sample).
   const fx = p.tab === "overview" ? factsView(p) : null;
   const groupBy = fx ? groupByHtml(fx.layout, { offerDefault: !!p.groupFlipped && p.admin && !p.sample && fx.layout.group !== fx.f.groupDefault }) : "";
-  return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}">
-    ${repoTabBar(p.tab)}
-    <div${tabPanelAttrs("repo-tab", p.tab)} style="padding-top:20px">
-      ${banner}
+  // Summary holds no panel: "Poll now"'s strip, when there is one, sits in a panel of its own above the card.
+  const strip = canPollRepo(p) ? pollStrip(p.poll) : "";
+  const content = p.tab === REPO_SUMMARY_TAB
+    ? `${strip ? `<div class="repo-panel ${SURFACE}" style="${PANEL};margin-bottom:16px">${strip}</div>` : ""}${summaryTab(p)}`
+    : `${repoAiSection(p)}
       ${groupBy}
-      <div class="repo-panel ${SURFACE}" style="${PANEL}">${canPollRepo(p) ? pollStrip(p.poll) : ""}${body}</div>
+      <div class="repo-panel ${SURFACE}" style="${PANEL}">${strip}${body}</div>`;
+  return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}">
+    ${repoTabBar(p.tab, summary)}
+    <div${tabPanelAttrs("repo-tab", p.tab)} style="padding-top:20px">
+      ${banner}${content}
       ${footer}
     </div>
   </div>`;

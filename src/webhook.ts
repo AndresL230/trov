@@ -11,6 +11,7 @@ import { orgEnvironments } from "./repo/config";
 import { putMetric } from "./repo/store";
 import { fillFailedJob, refreshDrift, scrubbedMessage } from "./repo/github";
 import { mirrorIssue } from "./tools/ticket-mirror";
+import { routeAi } from "./tools/ai-route";
 import { writeGithubDeploys } from "./hosting/github-deploys";
 import { checkRollback } from "./hosting/rollback";
 import { commitPathsOnPush } from "./repo/path-capture";
@@ -318,6 +319,13 @@ export const RELEASE_EVENT_NAMES: readonly string[] = ["release", "create"];
  *  head commit's paths — no per-job capture is needed for it. */
 export const LATER_EVENT_NAMES: readonly string[] = ["workflow_job"];
 
+/** `repository.default_branch` of a delivery, or null when it does not say. */
+export function repoDefaultBranch(payload: unknown): string | null {
+  const repo = payload && typeof payload === "object" ? (payload as { repository?: { default_branch?: unknown } | null }).repository : null;
+  const b = repo && typeof repo === "object" ? repo.default_branch : null;
+  return typeof b === "string" && b ? b : null;
+}
+
 // ---------------------------------------------------------------------------
 // The capture of ONE VERIFIED delivery, for the org it was verified for. The
 // entry point (src/github-hook.ts) has already checked the HMAC against that
@@ -374,7 +382,7 @@ export async function captureDelivery(
     payload = null; // both derivations treat a non-object payload as []
   }
 
-  // THE summarizer choice for this org (src/plans/summaries.ts: the platform key, the plan's monthly
+  // THE summarizer choice for this org (src/plans/summaries.ts: the platform key, the org's AI switch, the plan's monthly
   // allowance, every call counted) — made at most once per delivery, and only by an event that needs
   // a summary. Metering rides `waitUntil` when the delivery has one.
   let chosen: Promise<OrgSummarizers> | null = null;
@@ -389,6 +397,9 @@ export async function captureDelivery(
       if (res.outcome !== "written") { unchanged++; continue; }
       captured++;
       if (ev.event_type === "pr_merged" || ev.event_type === "pr_closed") {
+        // The org's AI switch off (Org settings › AI): no call and NOTHING written — not even the
+        // excerpt marker, so a summary already stored stays as it was.
+        if (opts?.summarizer === undefined && (await summarizers()).switchedOff()) continue;
         // `!== undefined`, not `??`: an EXPLICIT `summarizer: null` means "no
         // summarizer" — `??` skips null as well and fell through to the org's one.
         const summarizer = opts?.summarizer !== undefined ? opts.summarizer : (await summarizers()).pr();
@@ -397,6 +408,7 @@ export async function captureDelivery(
       } else if (ev.event_type === "issue") {
         await progressSeam(ctx, payload);
         if (!issueNeedsSummary(ev)) continue;
+        if (opts?.issueSummarizer === undefined && (await summarizers()).switchedOff()) continue;
         const issueSummarizer = opts?.issueSummarizer !== undefined ? opts.issueSummarizer : (await summarizers()).issue();
         await summarizeIssueSeam(ctx, issueSummarizer, ev);
         if (!issueSummarizer && opts?.issueSummarizer === undefined) await (await summarizers()).skipped("issue");
@@ -459,10 +471,13 @@ export async function captureDelivery(
       }
       {
         // Every arm's repo_events rows — for a `status`, a non-`canopy/*` context as an untagged deploy signal.
+        // The repository's default branch, as the delivery names it (null = unknown): what the AI router reads.
+        const defaultBranch = repoDefaultBranch(payload);
         for (const ev of repoEventsFromDelivery(eventName, payload)) {
           const res = await ingestRepoEvent(ctx, ev);
           if (res.outcome !== "written") { repo.unchanged++; continue; }
           repo.captured++;
+          await routeAi(ctx, { type: "repo_activity", repo: scope.repo, ev, defaultBranch });
           // A `github` part's deploys come from these signals — ONLY through the part's own setting
           // (src/hosting/github-deploys.ts). Its own failure never costs the capture.
           if (ev.kind === "deploy" || ev.kind === "check" || ev.kind === "run") {

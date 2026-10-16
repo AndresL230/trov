@@ -46,6 +46,7 @@ import type { RepoEventRow, RepoPrRow } from "../repo/types";
 import { listAllParts, type PartRow } from "../hosting/parts";
 import { PROVIDERS } from "../hosting/registry";
 import type { HostingProvider } from "../hosting/types";
+import { readRepoThemes } from "./themes";
 
 // The Repo dashboard: a D1-ONLY read projection, in the same class as My Work —
 // no live GitHub, no per-user token, nothing written. It reads what the webhook,
@@ -947,6 +948,17 @@ export async function getRepoDashboard(
   // are the same ones, with the same conditions, as when they ran one after the other; only the order moved.
   // test/perf.round-trips.test.ts pins the chain.
 
+  // "Where the work went" (./themes.ts): a D1 aggregation, ABSENT when the switch is off or the repository has no
+  // theme. It depends on nothing above, so it runs beside the rest; it fails ALONE: a throw leaves the field out and
+  // the dashboard says it is degraded.
+  const themesP = readRepoThemes(ctx, repo, now).then(
+    (themes) => ({ themes, failed: false }),
+    (e) => {
+      console.error("repo dashboard", "themes", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
+      return { themes: undefined, failed: true };
+    },
+  );
+
   // Never on the render path: GitHub's GraphQL refs query is called off
   // reconcileRepo only — this only reads back the snapshot it wrote. No
   // snapshot yet → not_connected; a stale one is still shown, same as `drift`
@@ -1571,8 +1583,11 @@ export async function getRepoDashboard(
     console.error("repo dashboard", "facts", e instanceof Error ? e.message : String(e), `org=${ctx.orgId}`);
   }
 
+  const { themes, failed: themesFailed } = await themesP;
+
   return {
-    repo, generatedAt: nowAt, degraded: hostingFailed || factsFailed || scopeFailed, facts,
+    repo, generatedAt: nowAt, degraded: hostingFailed || factsFailed || scopeFailed || themesFailed, facts,
+    ...(themes ? { themes } : {}),
     usage: used.anyUsage ? ok(used.usage) : everAny(USAGE_METRICS) ? EMPTY : NOT_CONNECTED,
     providers: providerSection,
     product: produced.anyProduct ? ok(produced.product) : ever.has(`${PRODUCT_PREFIX}*`) ? EMPTY : NOT_CONNECTED,

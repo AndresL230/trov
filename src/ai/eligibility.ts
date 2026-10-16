@@ -9,7 +9,7 @@
 // from src/mcp.ts imports it.
 import type { Env } from "../env";
 import { nextMonthStart, type AiEligibility } from "@shared/ai";
-import { planRefusal, resolveEntitlements } from "@shared/plans";
+import { planRefusal, resolveEntitlements, type LimitKey } from "@shared/plans";
 import type { TenantContext } from "../data/context";
 import { planAndAiRuns } from "../plans/gate";
 import type { OrgPlan } from "../plans/state";
@@ -33,12 +33,22 @@ export interface AiAllowance {
  *  either way: the settings screen shows the switch and the month's use with or without a key. */
 export async function aiAllowance(ctx: TenantContext, env: Pick<Env, "ANTHROPIC_API_KEY">, now: Date = new Date()): Promise<AiAllowance> {
   const { plan, enabled, used } = await planAndAiRuns(ctx, now);
-  const cap = resolveEntitlements(plan.plan, plan.overrides).ai_runs;
+  const runs = allowanceUse(plan, "ai_runs", used, now);
+  return { eligibility: eligibilityOf(env, enabled, plan, used), enabled, used, cap: runs.cap, resumesOn: runs.resumesOn, plan };
+}
+
+/** THE answer, from what was read: no key, the switch off, the month's `ai_runs` used (or the plan ended), else ok. */
+export function eligibilityOf(env: Pick<Env, "ANTHROPIC_API_KEY">, enabled: boolean, plan: OrgPlan, runsUsed: number): AiEligibility {
   // The one question (shared/plans.ts): may this org add one more of `ai_runs`?
-  const refusal = planRefusal(plan, "ai_runs", used, 1);
-  const spent = !!refusal && plan.status !== "canceled";
-  const eligibility: AiEligibility = !env.ANTHROPIC_API_KEY ? "no_key" : !enabled ? "off" : refusal ? "capped" : "ok";
-  return { eligibility, enabled, used, cap, resumesOn: spent ? nextMonthStart(now) : null, plan };
+  return !env.ANTHROPIC_API_KEY ? "no_key" : !enabled ? "off" : planRefusal(plan, "ai_runs", runsUsed, 1) ? "capped" : "ok";
+}
+
+/** One monthly allowance as Org settings › AI shows it: the cap in force (`resolveEntitlements`, so Pro's
+ *  per-seat `ai_chat` is already its seats × the amount), and the day it resumes — only when it is the
+ *  ALLOWANCE that is used up (an ended plan resumes when it is renewed, not on a date). */
+export function allowanceUse(plan: OrgPlan, key: LimitKey, used: number, now: Date): { used: number; cap: number | null; resumesOn: string | null } {
+  const spent = !!planRefusal(plan, key, used, 1) && plan.status !== "canceled";
+  return { used, cap: resolveEntitlements(plan.plan, plan.overrides, plan.members)[key], resumesOn: spent ? nextMonthStart(now) : null };
 }
 
 /** `ok` | `off` | `no_key` | `capped`. Never throws: with no key nothing is read; a failed read is `off`. */

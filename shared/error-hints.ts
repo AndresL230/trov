@@ -77,6 +77,17 @@ export const API_ERROR_HINTS: Readonly<Record<string, string>> = {
     "The link has expired (upload and download links last 5 minutes) or was already used. An agent asks for a fresh one: artifact_get for a download, upload_asset or artifact_update for an upload.",
   "temporarily unavailable":
     "A service Trov depends on did not answer. Nothing was changed; try again in a moment.",
+  // ── The AI routes' own refusals (docs/architecture/ai.md; owner ruling F-1, 2026-10-16) ──
+  off:
+    "This organization's AI switch is off (Org settings › AI): nothing was sent to a model and nothing was changed. An admin or owner can turn it on there; retrying will not help until then.",
+  no_key:
+    "Trov's AI is not set up on this deployment (it has no model key), so nothing was sent and nothing was changed. Retrying will not help; whoever runs this Trov adds the key.",
+  unreadable:
+    "Trov could not turn those words into a filter on this screen; `message` says what this screen can filter by and which words were not a filter here. Nothing was changed. Rephrase and try again.",
+  auto_off:
+    "An admin turned Auto off for this organization (Org settings › AI), so Ask Trov asks before every change. Nothing was sent; ask again without Auto.",
+  mode_unavailable:
+    "That Ask Trov mode is not on this organization's plan; `modes`, when present, lists the ones it offers. Nothing was sent or changed; pick one of those.",
 };
 
 /** By HTTP status, for an error whose code has no line above. */

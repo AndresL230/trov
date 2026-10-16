@@ -6,14 +6,17 @@
  * forms, nothing captured is trusted as markup, and the sample set is labelled.
  */
 import { describe, it, expect } from "vitest";
-import { repoView, repoControls, repoCrumb, repoPollFor, repoUpdatedLabel, sparkPoints, ago, formatCount, type RepoProps } from "../web/src/repo";
+import { repoView, repoControls, repoCrumb, repoPollFor, repoSummaryShown, repoUpdatedLabel, sparkPoints, ago, formatCount, type RepoProps } from "../web/src/repo";
 import { repoSample } from "../web/src/repo-sample";
 import { productKeyInfo } from "../src/repo/product";
 import { render, initialState } from "../web/src/render";
 import { QUICK_SCREENS } from "../web/src/quicksearch";
 import mainSrc from "../web/src/main.ts?raw";
 import hashSrc from "../web/src/hash.ts?raw";
-import { REPO_TABS, type RepoDashboard, type RepoPerson, type RepoProductCount, type RepoProductEnv, type RepoRefreshResult } from "@shared/repo";
+import { repoStateFixture } from "@shared/ai-fixtures";
+import { aiHiddenKey, initialAiUi } from "../web/src/ai-ui";
+import { aiItemRef } from "@shared/ai-core";
+import { REPO_SCREEN_TABS, REPO_TABS, type RepoDashboard, type RepoPerson, type RepoProductCount, type RepoProductEnv, type RepoRefreshResult } from "@shared/repo";
 import { loadWebChunks } from "./helpers/web-chunks";
 
 // The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
@@ -534,11 +537,109 @@ describe("Repo — the tab bar heading the page (the sidebar has no sub-page lis
 
   it("quick search's Repo entries each land on their tab — goRepo with the tab, not the retired navSub", () => {
     const repo = QUICK_SCREENS.filter((s) => s.label.startsWith("Repo › "));
-    expect(repo.map((s) => s.steps)).toEqual(TABS.map((t) => [["goRepo", t]]));
-    expect(mainSrc).toMatch(/case "goRepo": state\.screen = "repo"; state\.repoTab = arg && isRepoTab\(arg\) \? arg : "overview";/);
+    expect(repo.map((s) => s.steps)).toEqual(REPO_SCREEN_TABS.map(([t]) => [["goRepo", t]]));
+    expect(mainSrc).toMatch(/case "goRepo": state\.screen = "repo"; state\.repoTab = arg && isRepoScreenTab\(arg\) \? arg : "overview";/);
     expect(mainSrc).not.toMatch(/g === "repo"/);
   });
 
+  it("appears only on Repo", () => {
+    expect(render({ ...initialState(), view: "app", screen: "feed" })).not.toContain('data-tabs="repo-tab"');
+  });
+});
+
+// The owner (2026-10-15): "split up the overview for the repo state and the ai overview into different screens in
+// the switcher". Trov's written state is the Summary tab, second in the bar; the Overview is the computed dashboard.
+describe("Repo › Summary — what Trov wrote, on its own tab", () => {
+  const REPO = "SaplingLearn/sapling";
+  const NOW = new Date("2026-10-15T12:00:00Z");
+  const st = repoStateFixture("ready", NOW);
+  const ai = (o: Partial<ReturnType<typeof initialAiUi>> = {}) => ({ ui: { ...initialAiUi(), ...o }, admin: true, repo: REPO });
+  const withState = (over: Partial<RepoProps> = {}) => props({ repo: { status: "ok", data: live({ state: st }) }, ai: ai(), ...over });
+  const tabs = (html: string) => {
+    const at = html.indexOf('data-tabs="repo-tab"');
+    return at < 0 ? "" : html.slice(at, html.indexOf("</div>", at));
+  };
+  const labels = (html: string) => [...tabs(html).matchAll(/role="tab" id="repo-tab-([a-z]+)"/g)].map((m) => m[1]);
+  const stateKey = aiHiddenKey("repo_state", aiItemRef.repoState(REPO, st.generatedAt ?? "state"));
+
+  it("is the second tab, with the AI mark, only while the live read carries `state`", () => {
+    expect(labels(repoView(withState()))).toEqual(["overview", "summary", "code", "ci", "usage", "planning"]);
+    expect(tabs(repoView(withState()))).toMatch(/id="repo-tab-summary" class="cnpy-tab" data-act="setRepoTab" data-arg="summary"[^>]*>Summary<svg/);
+    // Absent (AI off, nothing written, a failed read), sample data, no repository, no AI props: the five tabs, as before.
+    const five = ["overview", "code", "ci", "usage", "planning"];
+    expect(labels(repoView(props({ ai: ai() })))).toEqual(five);
+    expect(labels(repoView(withState({ sample: true, repo: { status: "ok", data: { ...repoSample(), state: st } } })))).toEqual(five);
+    expect(labels(repoView(withState({ noRepo: true })))).toEqual(five);
+    expect(labels(repoView(withState({ ai: undefined })))).toEqual(five);
+  });
+
+  it("the Overview no longer carries the State card; Summary is the card alone (no panel, no Group by, no footer)", () => {
+    const overview = repoView(withState());
+    expect(overview).not.toContain('data-ai="repo_state"');
+    expect(overview).toContain('class="repo-panel');
+    const summary = repoView(withState({ tab: "summary" }));
+    expect(tabs(summary)).toMatch(/id="repo-tab-summary" class="cnpy-tab is-on" aria-selected="true"/);
+    expect(summary).toContain('aria-labelledby="repo-tab-summary"');
+    expect(summary).toContain('data-screen-label="Summary"');
+    expect(summary).toContain('data-ai="repo_state" data-ai-state="ready"');
+    expect(summary.indexOf('data-ai="repo_state"')).toBeGreaterThan(summary.indexOf('id="repo-tab-panel"'));
+    expect(summary).not.toContain('class="repo-panel');
+    expect(summary).not.toContain('data-act="repoSampleOn"');
+    expect(summary).not.toContain("repo-groupby");
+  });
+
+  it("keeps every state of the card: empty, capped, the degraded banner, and Poll now's strip in a panel of its own", () => {
+    const empty = repoView(withState({ tab: "summary", repo: { status: "ok", data: live({ state: repoStateFixture("empty", NOW) }) } }));
+    expect(empty).toContain('data-ai-state="empty"');
+    const capped = repoView(withState({ tab: "summary", repo: { status: "ok", data: live({ state: repoStateFixture("capped", NOW) }) } }));
+    expect(capped).toContain('data-ai-state="capped"');
+    expect(capped).toContain("Monthly AI allowance used");
+    expect(repoView(withState({ tab: "summary", repo: { status: "ok", data: live({ state: st, degraded: true }) } }))).toContain("Some reads failed");
+    const polled = repoView(withState({ tab: "summary", admin: true, poll: { status: "busy" } }));
+    expect(polled.indexOf('class="repo-poll-strip"')).toBeGreaterThan(-1);
+    expect(polled.indexOf('class="repo-poll-strip"')).toBeLessThan(polled.indexOf('data-ai="repo_state"'));
+  });
+
+  it("a deep link holds its tab and the card's shape while the first read is out; a failed read says so", () => {
+    const loading = repoView(withState({ tab: "summary", repo: { status: "loading", data: null } }));
+    expect(labels(loading)).toEqual(["overview", "summary", "code", "ci", "usage", "planning"]);
+    expect(loading).toContain('data-ai-state="loading"');
+    expect(loading).toContain('data-skel="repo-summary"');
+    // On another tab the first read decides: no Summary tab until it lands with `state`.
+    expect(labels(repoView(withState({ repo: { status: "loading", data: null } })))).not.toContain("summary");
+    const failed = repoView(withState({ tab: "summary", repo: { status: "error", data: null, error: "boom" } }));
+    expect(failed).toContain("Couldn't load this section");
+  });
+
+  it("asked for with nothing to show, it draws the Overview — and main.ts moves the route there", () => {
+    for (const p of [props({ tab: "summary", ai: ai() }), withState({ tab: "summary", sample: true, repo: { status: "ok", data: { ...repoSample(), state: st } } })]) {
+      const html = repoView(p);
+      expect(labels(html)).not.toContain("summary");
+      expect(html).toContain('aria-labelledby="repo-tab-overview"');
+    }
+    expect(mainSrc).toMatch(/state\.repoTab === "summary" && !repoMod\.repoSummaryShown\(repoProps\(state\)\)\) \{\s*state\.repoTab = "overview";/);
+  });
+
+  it("\"Wrong?\": the card leaves by the kit's exit on its tab, then the tab is gone", () => {
+    const t = Date.now();
+    const leaving = withState({ tab: "summary", ai: ai({ hidden: [stateKey], leaving: [{ key: stateKey, at: t - 10 }] }) });
+    expect(repoSummaryShown(leaving, t)).toBe(true);
+    expect(repoView({ ...leaving, now: t })).toContain("cnpy-ai-leave");
+    const gone = withState({ tab: "summary", ai: ai({ hidden: [stateKey] }) });
+    expect(repoSummaryShown(gone)).toBe(false);
+    expect(labels(repoView(gone))).not.toContain("summary");
+  });
+
+  it("the route is #repo/summary, and it round-trips", () => {
+    expect(hashSrc).toContain("isRepoScreenTab(path[1])");
+  });
+
+  it("a switch to and from it flashes the card like any tab (`.repo-ai` is in the tab switch's flash)", () => {
+    expect(mainSrc).toContain('pendingFlash = ".repo-panel > :not(.repo-poll-strip), .repo-ai";');
+  });
+});
+
+describe("Repo — the tab bar appears only on Repo", () => {
   it("appears only on Repo", () => {
     expect(render({ ...initialState(), view: "app", screen: "feed" })).not.toContain('data-tabs="repo-tab"');
   });

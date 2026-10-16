@@ -1,0 +1,55 @@
+{
+  "_comment": "Phase D sample rows for the Roadmap and Review under `npm run seed:dev` (scripts/seed/ai-roadmap-dev.mjs): what the AI pass's org rollup and doc drift would have written, so the screens show them on localhost without a key. Times are relative (`*_ago_min`), stamped at seed time.",
+  "sprint_notes": [
+    { "sprint_id": 3, "text": "Ticket #3 is still in progress and #1 has no assignee; #4 closed this week.", "cites": [{ "ref": "ticket:3", "label": "#3", "href": "#tickets/3" }, { "ref": "ticket:1", "label": "#1", "href": "#tickets/1" }, { "ref": "ticket:4", "label": "#4", "href": "#tickets/4" }], "ago_min": 240 },
+    { "sprint_id": 4, "text": "Its one ticket, #2, is in progress; nothing in the feed names it this week.", "cites": [{ "ref": "ticket:2", "label": "#2", "href": "#tickets/2" }], "ago_min": 240 }
+  ],
+  "plan_drift": {
+    "text": "The last two weeks went mostly to Study streaks, which isn't in any sprint; Token rotation took a smaller share.",
+    "cites": [{ "ref": "theme:streaks", "label": "Study streaks", "href": "#repo/planning" }, { "ref": "theme:tokens", "label": "Token rotation", "href": "#repo/planning" }],
+    "window_days": 14,
+    "shares": [
+      { "themeId": "streaks", "theme": "Study streaks", "pct": 48, "inSprint": false },
+      { "themeId": "tokens", "theme": "Token rotation", "pct": 29, "inSprint": true },
+      { "themeId": "docs", "theme": "Docs reader", "pct": 23, "inSprint": false }
+    ],
+    "ago_min": 300
+  },
+  "backlog_tickets": [
+    { "id": 81, "title": "Streak freeze for missed days", "body": "Learners ask for one free missed day a week.", "category": "request", "priority": "normal", "requester": "sanaok" },
+    { "id": 82, "title": "Streak widget on the home screen", "body": "Show the current streak where a learner lands.", "category": "request", "priority": "low", "requester": "meilin" },
+    { "id": 83, "title": "Docs reader: table of contents on long docs", "body": "Long architecture docs need a contents list.", "category": "request", "priority": "normal", "requester": "meilin" }
+  ],
+  "suggestions": [
+    {
+      "kind": "sprint_draft",
+      "value": { "sprints": [
+        { "name": "Study streaks", "goal": "The streak features learners asked for: a freeze day and a home-screen widget.", "tickets": [81, 82] },
+        { "name": "Docs reader polish", "goal": "Make long docs easier to read.", "tickets": [83, 6] }
+      ] },
+      "reason": "these open tickets sit outside every sprint and group cleanly by what they touch.",
+      "cites": [{ "ref": "ticket:81", "label": "#81", "href": "#tickets/81" }, { "ref": "ticket:82", "label": "#82", "href": "#tickets/82" }, { "ref": "ticket:83", "label": "#83", "href": "#tickets/83" }],
+      "ago_min": 180
+    },
+    {
+      "kind": "plan_narrative",
+      "value": { "narrative": "**Now:** token rotation and the audit log, and structured My Work summaries. **Next:** the roadmap reading itself against reality. **Later:** semantic search ranking and the self-host guide." },
+      "reason": "the narrative predates the two active sprints and this week's streaks work.",
+      "cites": [{ "ref": "sprint:3", "label": "Token rotation & audit log", "href": "#sprints/3" }, { "ref": "sprint:4", "label": "Structured My Work summaries", "href": "#sprints/4" }],
+      "ago_min": 170
+    }
+  ],
+  "drift_feed": [
+    { "id": 901, "author": "Darkest-Teddy", "summary": "Baselined prod into the migration runner", "body": "Prod now has public.schema_migrations, baselined with every file through 0029, so python -m db.migrate is safe against prod.", "ago_min": 2880 },
+    { "id": 902, "author": "Jose-Gael-Cruz-Lopez", "summary": "Added migration 0030 for the streak indexes", "body": "backend/db/migrations/0030_streak_indexes.sql, applied through the runner.", "ago_min": 1440 }
+  ],
+  "doc_drift": {
+    "slug": "sapling-infrastructure",
+    "edits": [
+      { "find": "numbered SQL files (`0001`–`0029`)", "replace": "numbered SQL files (`0001`–`0030`)" },
+      { "find": "but **prod has no such table**", "replace": "and prod was baselined into it (every file through 0029)" }
+    ],
+    "change_summary": "Trov: the runner now tracks prod and the migrations run through 0030. From feed entries “Baselined prod into the migration runner”, “Added migration 0030 for the streak indexes”. Low confidence: check it against them before promoting.",
+    "ago_min": 600
+  }
+}

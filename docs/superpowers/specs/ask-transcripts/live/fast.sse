@@ -1,0 +1,324 @@
+event: thread
+data: {"id":1,"title":"","mode":"fast","auto":false,"origin":"page","contextRef":null}
+
+event: activity
+data: {"step":1,"tool":"list_tickets","icon":"tickets","label":"Searched tickets","state":"run"}
+
+event: activity
+data: {"step":1,"state":"done","results":["ticket:1"],"resultLine":"1 result"}
+
+event: activity
+data: {"step":2,"tool":"query","icon":"search","label":"Searched Trov for 'ticket 1'","state":"run"}
+
+event: activity
+data: {"step":2,"state":"done","resultLine":"No results"}
+
+event: activity
+data: {"step":3,"tool":"show_items","icon":"read","label":"Showed items","state":"run"}
+
+event: block
+data: {"kind":"items","items":[{"ref":"ticket:1","type":"ticket","num":1,"title":"Netlify connect test fails on main","status":{"word":"Triage","mark":"todo","tone":"muted","tip":"Triage. Filed, and waiting for someone to pick it up or decline it."},"owner":"andres-live","updated":"2026-10-15T08:27:51.563Z","href":"#tickets/1","extra":{"priority":"high","assignees":["andres-live"],"sprint":null}}]}
+
+event: activity
+data: {"step":3,"state":"done","results":["ticket:1"]}
+
+event: text
+data: {"delta":"Ticket #1 is a"}
+
+event: text
+data: {"delta":" high"}
+
+event: text
+data: {"delta":"-priority bug: \""}
+
+event: text
+data: {"delta":"Netlify connect test fails"}
+
+event: text
+data: {"delta":" on main.\" The"}
+
+event: text
+data: {"delta":" test"}
+
+event: text
+data: {"delta":" `netlify-connect."}
+
+event: text
+data: {"delta":"test.ts` asserts"}
+
+event: text
+data: {"delta":" on the old pill markup that"}
+
+event: text
+data: {"delta":" the status marks PR removed"}
+
+event: text
+data: {"delta":","}
+
+event: text
+data: {"delta":" so it"}
+
+event: text
+data: {"delta":" fails on main. ["}
+
+event: text
+data: {"delta":"[ticket:1]]"}
+
+event: text
+data: {"delta":"\n\nIts current"}
+
+event: text
+data: {"delta":" state"}
+
+event: text
+data: {"delta":":\n-"}
+
+event: text
+data: {"delta":" Status: subm"}
+
+event: text
+data: {"delta":"itted (not started"}
+
+event: text
+data: {"delta":")\n- Ass"}
+
+event: text
+data: {"delta":"igned to @"}
+
+event: text
+data: {"delta":"andres-live,"}
+
+event: text
+data: {"delta":" requested by A"}
+
+event: text
+data: {"delta":"ndresL230\n-"}
+
+event: text
+data: {"delta":" Not in a sprint"}
+
+event: text
+data: {"delta":"\n\n**What should happen next:"}
+
+event: text
+data: {"delta":"** some"}
+
+event: text
+data: {"delta":"one upd"}
+
+event: text
+data: {"delta":"ates the test's"}
+
+event: text
+data: {"delta":" assertions to"}
+
+event: text
+data: {"delta":" match the current"}
+
+event: text
+data: {"delta":" status"}
+
+event: text
+data: {"delta":" mark"}
+
+event: text
+data: {"delta":"up, then re-runs it"}
+
+event: text
+data: {"delta":" on main to confirm it pass"}
+
+event: text
+data: {"delta":"es. Since"}
+
+event: text
+data: {"delta":" the"}
+
+event: text
+data: {"delta":" ticket is still"}
+
+event: text
+data: {"delta":" un"}
+
+event: text
+data: {"delta":"st"}
+
+event: text
+data: {"delta":"arted, it's wor"}
+
+event: text
+data: {"delta":"th mo"}
+
+event: text
+data: {"delta":"ving it to in"}
+
+event: text
+data: {"delta":" prog"}
+
+event: text
+data: {"delta":"ress once"}
+
+event: text
+data: {"delta":" you p"}
+
+event: text
+data: {"delta":"ick it"}
+
+event: text
+data: {"delta":" up.\n\n**Proposed"}
+
+event: text
+data: {"delta":" follow-up ticket ("}
+
+event: text
+data: {"delta":"dra"}
+
+event: text
+data: {"delta":"ft, not fil"}
+
+event: text
+data: {"delta":"ed):**\n- Title:"}
+
+event: text
+data: {"delta":" Update net"}
+
+event: text
+data: {"delta":"lify-connect.test."}
+
+event: text
+data: {"delta":"ts to the"}
+
+event: text
+data: {"delta":" new status-"}
+
+event: text
+data: {"delta":"mar"}
+
+event: text
+data: {"delta":"ks-"}
+
+event: text
+data: {"delta":"PR-"}
+
+event: text
+data: {"delta":"removed markup\n- Category"}
+
+event: text
+data: {"delta":": bug\n- Priority"}
+
+event: text
+data: {"delta":": high\n- Body"}
+
+event: text
+data: {"delta":": Replace the ass"}
+
+event: text
+data: {"delta":"ertions on the old pill mark"}
+
+event: text
+data: {"delta":"up in `"}
+
+event: text
+data: {"delta":"netlify-connect.test"}
+
+event: text
+data: {"delta":".ts` with the current status"}
+
+event: text
+data: {"delta":"-marks-PR-remov"}
+
+event: text
+data: {"delta":"ed markup. Run"}
+
+event: text
+data: {"delta":" the su"}
+
+event: text
+data: {"delta":"ite on main and confirm it"}
+
+event: text
+data: {"delta":" passes.\n- Assign"}
+
+event: text
+data: {"delta":"ee: @andres-live"}
+
+event: text
+data: {"delta":"\n- Link: ["}
+
+event: text
+data: {"delta":"[ticket:1]]"}
+
+event: text
+data: {"delta":" as"}
+
+event: text
+data: {"delta":" the parent or"}
+
+event: text
+data: {"delta":" related item\n\nI can"}
+
+event: text
+data: {"delta":"'t file t"}
+
+event: text
+data: {"delta":"ickets from"}
+
+event: text
+data: {"delta":" this thread, so I can't"}
+
+event: text
+data: {"delta":" create this"}
+
+event: text
+data: {"delta":" as"}
+
+event: text
+data: {"delta":" a conf"}
+
+event: text
+data: {"delta":"irmable"}
+
+event: text
+data: {"delta":" card. You"}
+
+event: text
+data: {"delta":" can create it"}
+
+event: text
+data: {"delta":" from"}
+
+event: text
+data: {"delta":" the "}
+
+event: text
+data: {"delta":"ticket queue,"}
+
+event: text
+data: {"delta":" or t"}
+
+event: text
+data: {"delta":"ell me to"}
+
+event: text
+data: {"delta":" dra"}
+
+event: text
+data: {"delta":"ft it again"}
+
+event: text
+data: {"delta":" with chang"}
+
+event: text
+data: {"delta":"es."}
+
+event: text
+data: {"delta":"\n\n"}
+
+event: thread
+data: {"id":1,"title":"Netlify connect test failure ticket","mode":"fast","auto":false,"origin":"page","contextRef":null}
+
+event: followups
+data: {"items":["Which sprint should ticket #1 go in?","Who else owns the status markup change?","Show open high-priority bugs"]}
+
+event: done
+data: {"messageId":2,"cites":[{"ref":"ticket:1","type":"ticket","num":1,"title":"Netlify connect test fails on main","status":{"word":"Triage","mark":"todo","tone":"muted","tip":"Triage. Filed, and waiting for someone to pick it up or decline it."},"owner":"andres-live","updated":"2026-10-15T08:27:51.563Z","href":"#tickets/1","extra":{"priority":"high","assignees":["andres-live"],"sprint":null}}],"tokens":{"in":6992,"out":944,"cached":12288}}
+

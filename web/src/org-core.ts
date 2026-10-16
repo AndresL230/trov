@@ -22,11 +22,12 @@ import type { GithubNotice } from "./github-app";
 import type { HostingUi } from "./hosting";
 import type { RepoAppsUi } from "./repo-apps";
 import type { OrgRepoRoute } from "./hash";
+import type { AiSettings } from "@shared/ai-core";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
-export type OrgTab = "integrations" | "repos" | "environments" | "hosting" | "members" | "tags" | "notifications" | "general";
-export const ORG_TABS: readonly OrgTab[] = ["integrations", "repos", "environments", "hosting", "members", "tags", "notifications", "general"];
+export type OrgTab = "integrations" | "repos" | "environments" | "hosting" | "members" | "tags" | "notifications" | "ai" | "general";
+export const ORG_TABS: readonly OrgTab[] = ["integrations", "repos", "environments", "hosting", "members", "tags", "notifications", "ai", "general"];
 export const isOrgTab = (v: unknown): v is OrgTab => typeof v === "string" && (ORG_TABS as readonly string[]).includes(v);
 /** The tabs only an admin or an owner may open (their APIs are admin+). */
 const ADMIN_TABS: readonly OrgTab[] = ["integrations", "hosting", "notifications"];
@@ -129,6 +130,10 @@ export interface OrgUi {
   hosting: HostingUi;
   /** General › Delete organization (an owner's; deletion.ts, deletion-actions.ts). */
   del: DeleteUi<OrgDeletionPreview>;
+  /** AI (org-ai.ts): the switch, this month's runs, what is sent — everyone reads it; an admin flips it. */
+  ai: OrgSlice<AiSettings | null>;
+  /** The switch's write is out. */
+  aiSaving: boolean;
   /** Repositories › one repository's page (its Apps, an app, Add an app), from the route; null = the list. */
   repoPage: OrgRepoRoute | null;
   /** That page's read and drafts (repo-apps.ts, repo-apps-actions.ts). */
@@ -147,6 +152,7 @@ export function initialOrgUi(): OrgUi {
     secretForm: null, tests: {}, auditOpen: false, openRows: [], confirm: null, billing: initialOrgBillingUi(),
     hosting: initialHostingUi(),
     del: initialDeleteUi<OrgDeletionPreview>(),
+    ai: idle(null), aiSaving: false,
     repoPage: null, apps: initialRepoAppsUi(),
   };
 }

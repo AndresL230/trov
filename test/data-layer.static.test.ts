@@ -112,9 +112,21 @@ const PLATFORM_ALLOW: Allow[] = [
   { file: "src/orgs/repo.ts", fn: "removeMember", tables: ["mcp_tokens", "oauth_grants", "oauth_grant_orgs"], why: "member removal ends the person's credentials' reach into that org, atomically: tokens revoked, each connection's row for the org dropped, a connection left with no org revoked" },
   // Deleting an ACCOUNT (src/deletion/person.ts) is a person's act across every org they are in: their own
   // credentials, connections, digests and e-mail preferences go wherever they are — keyed by the person, never by an org.
-  { file: "src/deletion/person.ts", fn: "personStmts", tables: ["oauth_grants", "oauth_codes", "oauth_grant_orgs", "mcp_tokens", "notification_outbox_bodies", "notification_outbox", "notification_prefs", "org_login_map", "feed", "feed_fts"],
-    why: "an account's deletion removes the person's OWN rows in every org, in one batch — by person, never reading an org's content; the handoff sentence Trov generated with their handle names the tombstone" },
+  { file: "src/deletion/person.ts", fn: "personStmts", tables: ["oauth_grants", "oauth_codes", "oauth_grant_orgs", "mcp_tokens", "notification_outbox_bodies", "notification_outbox", "notification_prefs", "notification_person_prefs", "org_login_map", "feed", "feed_fts", "ai_dirty", "ai_sessions", "person_brief",
+    "chat_actions", "chat_artifacts", "chat_messages", "chat_threads", "person_ask_settings",
+    "artifact_upload_tokens", "artifact_links", "artifact_versions", "artifacts_fts", "artifact_pages"],
+    why: "an account's deletion removes the person's OWN rows in every org, in one batch — by person, never reading an org's content; the handoff sentence Trov generated with their handle names the tombstone; the AI router's scopes keyed on them (their brief, their GitHub sessions) go; their Ask Trov threads (0066_ask) are theirs alone, and so are their PRIVATE Ask attachments (the owner's ruling)" },
+  { file: "src/deletion/person.ts", fn: "ASK_ATTACHMENTS_OF", tables: ["artifact_pages", "chat_artifacts", "chat_threads"],
+    why: "the subquery naming the person's own PRIVATE Ask attachments in every org (their threads' attachment links, pages they authored, still private) — ids only" },
+  { file: "src/deletion/person.ts", fn: "askAttachmentKeys", tables: ["artifact_versions"],
+    why: "the R2 keys of those attachments, read before the account's batch so their bytes can be freed after it — keys only" },
   { file: "src/deletion/person.ts", fn: "addressesOf", tables: ["org_login_map"], why: "the GitHub logins orgs attribute to the person being deleted, so the audit trail can be scrubbed of them — logins only" },
+  // Ask's pending attachments (0068_ask_pending): the hourly sweep finds the links unsent past 24 h on the people's
+  // hidden holder threads, and the empty holders, in every org; each is then deleted as that org's system tenant.
+  { file: "src/deletion/ask-pending.ts", fn: "staleHolders", tables: ["chat_artifacts", "chat_threads"],
+    why: "the pending-attachment sweep's unit list — org, handle and link ids of unsent uploads past 24 h, no content" },
+  { file: "src/deletion/ask-pending.ts", fn: "emptyHolders", tables: ["chat_threads", "chat_artifacts"],
+    why: "the empty holder threads past 24 h — org and thread ids, no content" },
   // R2 after a deletion (src/deletion/r2.ts): content-addressed objects are shared across orgs, so whether ANY
   // row still points at an object is a cross-org yes/no — no content column is read.
   { file: "src/deletion/r2.ts", fn: "stillReferenced", tables: ["artifact_versions", "artifact_upload_tokens", "doc_images", "doc_image_upload_tokens"],

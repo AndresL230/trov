@@ -19,6 +19,10 @@ import { create_sprint, set_sprint_active } from "../src/tools/sprints";
 import { SprintCreate } from "@shared/sprints";
 import type { RepoEvent } from "../src/repo/types";
 import type { CapturedEvent } from "@shared/contract";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const NOW = Date.parse("2026-10-01T12:00:00Z");
 const ago = (days: number): string => new Date(NOW - days * 86_400_000).toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -80,7 +84,7 @@ const statuses =(d: object): Record<string, unknown> =>
 describe("D1 round trips", () => {
   // Before the reads ran as a dataflow: 42 serial of 58 (busy), 34 of 48 (nothing captured). The SAME
   // statements run — only their order changed — and the answer is the same bytes (the repo-dashboard suites).
-  it("the Repo dashboard, everything captured: 58 statements, a chain of 6", async () => {
+  it("the Repo dashboard, everything captured: 62 statements, a chain of 6", async () => {
     await seedBusyRepo();
     const c = countingEnv();
     const d = await getRepoDashboard(systemCtx(ORG_A, "system", c.env), "o/r", NOW, ENVS);
@@ -89,7 +93,9 @@ describe("D1 round trips", () => {
       prs: "ok", activity: "ok", ciFailures: "ok", environments: "ok", deploys: "ok", providers: "ok", health: "ok",
       sprint: "ok", coverage: "ok", branches: "ok", drift: "ok", contributors: "ok", bars: "ok",
     });
-    expect(c.total).toBe(58);
+    // 58 before #178: + Trov's themes (THE AI read rule's statement, the themes and their suggestions, the merged PRs and the caption,
+    // what the viewer hid — src/tools/themes.ts), read beside the rest, so the chain is unchanged.
+    expect(c.total).toBe(62);
     expect(c.serial).toBeLessThanOrEqual(6);
     // The same answer as through the plain binding.
     expect(JSON.stringify(d)).toBe(JSON.stringify(await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)));
@@ -113,15 +119,17 @@ describe("D1 round trips", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ degraded: false, prs: { status: "ok" }, environments: { status: "ok" } });
     // Was 40 of 54 before the dashboard's reads ran as a dataflow and the session gate read the membership in its own statement.
-    expect(c.total).toBe(53);
+    // + 1 since #178: Trov's written state for the repository (src/tools/repo-state.ts), read beside the dashboard.
+    expect(c.total).toBe(54);
     expect(c.serial).toBe(GATE + 1 + 5);
   });
 
-  it("the Repo dashboard, nothing captured: 48 statements, a chain of 7", async () => {
+  it("the Repo dashboard, nothing captured: 51 statements, a chain of 7", async () => {
     await setOrgEnvironments(ENVS, ORG_A);
     const c = countingEnv();
     await getRepoDashboard(systemCtx(ORG_A, "system", c.env), "o/r", NOW, ENVS);
-    expect(c.total).toBe(48);
+    // 48 before #178: + the themes read (./themes.ts), beside the rest.
+    expect(c.total).toBe(51);
     expect(c.serial).toBeLessThanOrEqual(7);
   });
 });

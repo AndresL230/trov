@@ -38,7 +38,9 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   `POST /api/artifacts/:slug/delete` stamps `deleted_at` / `deleted_by` and drops the page's `artifacts_fts` row in
   ONE batch — every version, every `artifact_links` row and the R2 bytes stay, so restore is lossless. (Only
   the deletion of the whole ORGANIZATION hard-deletes its artifacts, soft-deleted ones included, and frees their
-  bytes when no other org shares them: `organizations.md` §8.) Only the
+  bytes when no other org shares them: `organizations.md` §8 — and Ask Trov hard-deletes the PRIVATE files a person
+  attached, with the conversation unless a ticket or doc refers to them, and with their account: `ask.md` › Deletion
+  and renames.) Only the
   page's AUTHOR (case-insensitive) or an org ADMIN / owner, and only on a page they can SEE (an admin gets the plain
   404 on someone's private page); anyone else is 403 with nothing written. `VISIBLE_SQL` carries `p.deleted_at IS
   NULL`, so a deleted page is the ONE byte-identical not-found on EVERY surface — library, detail, diff, raw, MCP
@@ -66,6 +68,10 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
 - **Ratify is the human confirm gate**: `POST /api/artifacts/:slug/ratify {version}`, session cookie only, only
   the LATEST version of a `published` page, and it refuses any request carrying an `Authorization` header. There
   is NO MCP ratify tool.
+- **The library's filters** (area, kind, author, status, sprint and the search, client-side over the list) can also be
+  set in words: with the org's AI on, the Filter menu opens on "Describe a filter", whose typed sentence sets exactly
+  those, with a "Filtered: …" line and Undo above the toolbar
+  (`ai.md` › The plain-language filter).
 - **HTTP** (`src/artifacts/routes.ts`, mounted at `/api/artifacts`, session cookie): list (filters area, kind,
   author, status, sprint, ticket, q), get `?v=`, create (JSON text / multipart binary), PATCH, add version
   (content or `old_str`/`new_str`, which must match exactly once; multipart for binary), links add/remove,

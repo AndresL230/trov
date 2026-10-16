@@ -26,6 +26,12 @@ export type Window = z.infer<typeof Window>;
 // SPA (`/#mywork`); the assembler prefixes the origin. `summary` is the one-line
 // subline under the heading (also the preheader); `linkLabel` names the surface
 // the deep link opens ("Open My Work →").
+//
+// Phase E (the shorter e-mail): `layout: "line"` is a queue's ONE line ("Review: 3 waiting") — `heading` is its
+// label, `text` the whole line, `html` the part after the label; the assembler gathers every line into one block
+// after the others. `subject` is a subject line a section offers (the brief's top Next item): the first section
+// offering one names the mail. `footnote` is ONE plain-text line the section asks for in the mail's footer (the
+// brief's "paused" line, for an admin: owner ruling Q42).
 export const Section = z.object({
   heading: z.string().min(1),
   html: z.string().min(1),
@@ -33,6 +39,9 @@ export const Section = z.object({
   deepLink: z.string().min(1),
   summary: z.string().optional(),
   linkLabel: z.string().optional(),
+  layout: z.enum(["block", "line"]).optional(),
+  subject: z.string().min(1).optional(),
+  footnote: z.string().min(1).optional(),
 });
 export type Section = z.infer<typeof Section>;
 
@@ -76,6 +85,9 @@ export interface PrefsView {
   email: string | null;
   unsubscribed: boolean;
   kinds: PrefsKindView[]; // ENABLED kinds only — a policy-disabled kind is absent, never greyed
+  /** "Only when something needs me" (0067): a digest goes only when the brief has a Next item or a notable or
+   *  breaking item touched the person's work. Per organization; false when never set. */
+  onlyWhenNeeded: boolean;
 }
 
 /** One Maintenance policy row: registry metadata + the stored policy. */

@@ -1,0 +1,347 @@
+{
+  "source": "AndresL230/trov merged pull requests (gh pr list --state merged --limit 200, 2026-10-15); card = title + the body's first 300 characters, markdown removed; expected labels by the Phase D builder",
+  "themes": [
+    {
+      "name": "Repo dashboard",
+      "description": "Capturing the repository's activity for the Repo screen: PRs, CI, deploys, health checks, usage, product metrics and hosting providers."
+    },
+    {
+      "name": "Tickets and sprints",
+      "description": "Tickets, the board, sub-tickets, sprints and GitHub issues mirrored as tickets."
+    },
+    {
+      "name": "Billing and plans",
+      "description": "Plans and their limits, Stripe checkout, buying, gifting and downgrading a plan."
+    },
+    {
+      "name": "Organizations and sign-in",
+      "description": "Multi-tenant organizations, members and their addresses, the GitHub App install, and signing in with GitHub or Google."
+    },
+    {
+      "name": "Emails and digests",
+      "description": "The daily and weekly email digests, invites, and how Trov's emails look."
+    },
+    {
+      "name": "AI and summaries",
+      "description": "PR and issue summaries, the model client, and the AI features built on it."
+    },
+    {
+      "name": "Public site and docs",
+      "description": "The signed-out website: the landing and pricing pages, public docs, and their mockups."
+    }
+  ],
+  "cases": [
+    {
+      "number": 18,
+      "title": "Richer PR summaries + new issue summarizer",
+      "mergedAt": "2026-07-04T20:04:44Z",
+      "url": "https://github.com/AndresL230/trov/pull/18",
+      "what": "- Rewrites the PR summarizer's prompt from a terse structured What changed:/Why: markdown format to 2-3 sentences of richer plain prose that leads with the concrete change and grounds detail in the PR body. - Adds a brand-new issue summarizer (own prompt, own issuesummaries table) that generates a…",
+      "expected": "AI and summaries"
+    },
+    {
+      "number": 28,
+      "title": "feat(summarize): swap the capture-time summarizer from Workers AI → Gemini",
+      "mergedAt": "2026-07-07T08:28:23Z",
+      "url": "https://github.com/AndresL230/trov/pull/28",
+      "what": "Canopy's capture-time PR/issue summarizer used Cloudflare Workers AI (@cf/google/gemma-4-26b-a4b-it via env.AI) and started failing in production: after working 07-01→07-03 it began fast-failing (~1s) once the daily Neuron budget was exhausted, so every live capture silently regressed to the…",
+      "expected": "AI and summaries"
+    },
+    {
+      "number": 34,
+      "title": "feat: email notifications (daily/weekly digests via Resend)",
+      "mergedAt": "2026-09-11T08:24:41Z",
+      "url": "https://github.com/AndresL230/trov/pull/34",
+      "what": "Implements docs/superpowers/specs/2026-09-11-canopy-email.md (checked in with this PR) through step 5, plus the Settings / Maintenance / unsubscribe UI from the Canopy design project. Step 6 (domain + first live send) is a runbook: docs/superpowers/plans/2026-09-11-email-go-live.md. What lands -…",
+      "expected": "Emails and digests"
+    },
+    {
+      "number": 37,
+      "title": "feat: admin email preview and send-test-to-me",
+      "mergedAt": "2026-09-12T04:55:01Z",
+      "url": "https://github.com/AndresL230/trov/pull/37",
+      "what": "Adds two admin-only, cookie-gated tools under Maintenance › Notifications › Schedule: - Preview (GET /api/notifications/preview?cadence=daily|weekly[&format=text][&sample=1]): the caller's fully rendered digest over every policy-enabled kind, prefs ignored, for the window a run now would use. No…",
+      "expected": "Emails and digests"
+    },
+    {
+      "number": 38,
+      "title": "fix(web): keep the main pane's scroll position across rerenders",
+      "mergedAt": "2026-09-12T06:36:24Z",
+      "url": "https://github.com/AndresL230/trov/pull/38",
+      "what": "Problem Every state change rebuilds the whole SPA with mount.innerHTML = render(state), which discards the main scroll pane and creates a fresh one at scrollTop 0. Any button low on a long screen jumped the pane back to the top after each click — most visibly Settings › Email notifications (Edit /…",
+      "expected": null
+    },
+    {
+      "number": 42,
+      "title": "feat: Google sign-in and person-centric identity",
+      "mergedAt": "2026-09-16T00:43:57Z",
+      "url": "https://github.com/AndresL230/trov/pull/42",
+      "what": "Brings the Google sign-in / person-centric identity work (PR 41) into main. 41 was merged into feat/email-theme rather than main, so the work has been sitting one branch short of the default branch — and was never deployed. This is that missing hop. What lands - Identity model (0023persons.sql) —…",
+      "expected": "Organizations and sign-in"
+    },
+    {
+      "number": 43,
+      "title": "feat(notifications): brand band on every email, reworked invite",
+      "mergedAt": "2026-09-16T04:34:12Z",
+      "url": "https://github.com/AndresL230/trov/pull/43",
+      "what": "Three commits on the email layer: one shared banner, a wider shell, and an invite that actually introduces Canopy. What changed One banner, shared — the invite opened with a 15px text wordmark while the digests opened with the branded three-bar mark: two different front doors for the same product.…",
+      "expected": "Emails and digests"
+    },
+    {
+      "number": 55,
+      "title": "Repo capture, phase 2: environments, deploys, CI failures and check state",
+      "mergedAt": "2026-09-20T23:02:15Z",
+      "url": "https://github.com/AndresL230/trov/pull/55",
+      "what": "Phase 2 of docs/superpowers/plans/2026-09-20-repo-dashboard-capture.md. Stacked on 54 (which is stacked on 53) — merge in order, retargeting each to main. No migration in this PR. ⚠️ To make it light up The capture code is all here, but GitHub won't deliver these events until the webhook on…",
+      "expected": "Repo dashboard"
+    },
+    {
+      "number": 56,
+      "title": "Repo capture, phase 3: drift, branches, health pings, and a 10-minute cron",
+      "mergedAt": "2026-09-20T23:23:22Z",
+      "url": "https://github.com/AndresL230/trov/pull/56",
+      "what": "Phase 3 of docs/superpowers/plans/2026-09-20-repo-dashboard-capture.md. Targets main directly (Phases 1–2 are merged). No migration. No new secret. No GitHub settings change. ⚠️ One deploy-time thing to watch This PR changes wrangler.toml [triggers]: 0 /6 → /10 (trigger count stays at three). A bad…",
+      "expected": "Repo dashboard"
+    },
+    {
+      "number": 57,
+      "title": "Repo capture, phase 4: coverage, bundle size and TODO counts from CI commit statuses",
+      "mergedAt": "2026-09-21T02:36:12Z",
+      "url": "https://github.com/AndresL230/trov/pull/57",
+      "what": "Phase 4 of docs/superpowers/plans/2026-09-20-repo-dashboard-capture.md. Targets main. No migration, no cron change, no new secret. What it does Canopy can't measure another repo's test coverage, bundle size or TODO count — that repo's CI has to say. This gives it a way to, without a new endpoint or…",
+      "expected": "Repo dashboard"
+    },
+    {
+      "number": 58,
+      "title": "Repo capture, phase 5: usage from Cloudflare, Railway and the app's own metrics endpoint",
+      "mergedAt": "2026-09-21T02:37:46Z",
+      "url": "https://github.com/AndresL230/trov/pull/58",
+      "what": "Phase 5 — the last — of docs/superpowers/plans/2026-09-20-repo-dashboard-capture.md. Stacked on 57 (merge 57 first, then retarget this to main). No migration. No cron expression change (the /10 trigger already exists), so no wrangler triggers deploy is needed for this one. With this, every section…",
+      "expected": "Repo dashboard"
+    },
+    {
+      "number": 62,
+      "title": "Repo dashboard: MCP read tool + skills, Usage redesign, and Poll now for every source",
+      "mergedAt": "2026-09-21T20:35:48Z",
+      "url": "https://github.com/AndresL230/trov/pull/62",
+      "what": "Status: ready to merge. Every part reviewed; all review fixes in; main merged in; 1734/1734. One pull request, at the owner's request, combining three pieces. 63 has since merged; this PR now carries the MCP tool, Poll now for everything, and the feed fixes on top of it. No migration, no cron…",
+      "expected": "Repo dashboard"
+    },
+    {
+      "number": 65,
+      "title": "Delete sprints, and open sprint writes to every member",
+      "mergedAt": "2026-09-25T06:12:40Z",
+      "url": "https://github.com/AndresL230/trov/pull/65",
+      "what": "- Delete a sprint. A quiet Delete sprint at the bottom of the sprint screen's rail arms an inline confirm (\"Delete X for good? Its N tickets move to the backlog\"). Backed by POST /sprints/:id/delete (any signed-in member, like every other sprint route) and a new deletesprint MCP tool. - Hard…",
+      "expected": "Tickets and sprints"
+    },
+    {
+      "number": 73,
+      "title": "Refresh Get Started and the landing page for handoffs, artifacts and prompts",
+      "mergedAt": "2026-09-24T07:22:44Z",
+      "url": "https://github.com/AndresL230/trov/pull/73",
+      "what": "Get Started (guide) - Reorganized as an onboarding path: what Canopy is → sign in → connect your agent (plugin + token, bash/zsh and fish) → the skills → read / propose / confirm → a tour of every screen → troubleshooting. - Adds Handoffs, Artifacts and the Prompt Library, which shipped after the…",
+      "expected": "Public site and docs"
+    },
+    {
+      "number": 75,
+      "title": "Tickets: mirror every GitHub issue as a ticket (locked source link); sidebar labels in Archivo Narrow",
+      "mergedAt": "2026-09-25T05:30:50Z",
+      "url": "https://github.com/AndresL230/trov/pull/75",
+      "what": "Every GitHub issue in GITHUBREPO now appears as a Canopy ticket, linked to its issue by a locked link that can never be removed from Canopy. Also in this PR: the sidebar section labels (WORKSPACE, MONITOR, KNOWLEDGE, TRIAGE, HELP) switch from Geist Mono to Archivo Narrow: uppercase, weight 500,…",
+      "expected": "Tickets and sprints"
+    },
+    {
+      "number": 76,
+      "title": "Ticket queue filters: themed dropdowns instead of native selects",
+      "mergedAt": "2026-09-25T05:52:38Z",
+      "url": "https://github.com/AndresL230/trov/pull/76",
+      "what": "The Assignee and Category filters on the ticket queue were native <selects. Their trigger was styled, but the option list is the browser's own popup, so it came up as a light OS list even in dark theme and ignored Canopy's styling entirely. Now each is a button that looks like the old trigger…",
+      "expected": "Tickets and sprints"
+    },
+    {
+      "number": 78,
+      "title": "Tickets board: default view, Testing status, saved drag order, free moves",
+      "mergedAt": "2026-09-26T20:58:10Z",
+      "url": "https://github.com/AndresL230/trov/pull/78",
+      "what": "- Board is the tickets default, with All selected. The Table is the other view (sidebar lists Board first). - Search + Filter from the Artifacts library replace the two dropdowns: search matches title, number, people and sprint; the Filter menu has Assignee (anyone / me / unassigned / any one…",
+      "expected": "Tickets and sprints"
+    },
+    {
+      "number": 88,
+      "title": "Tickets: free moves out of Done, and delete native tickets",
+      "mergedAt": "2026-09-27T20:32:31Z",
+      "url": "https://github.com/AndresL230/trov/pull/88",
+      "what": "Two ticket changes. Free moves. Any status may move to any other, so a ticket marked Done or Declined by mistake can be dragged (or set from the status menu, or via MCP transitionticket) back to Triage / In progress / Testing. Only a move to the status a ticket already has is still a 409. -…",
+      "expected": "Tickets and sprints"
+    },
+    {
+      "number": 91,
+      "title": "Default the theme to Light everywhere",
+      "mergedAt": "2026-09-30T18:27:46Z",
+      "url": "https://github.com/AndresL230/trov/pull/91",
+      "what": "Canopy's default theme is now Light, both on the landing page (the marketing site) and in the app. - web/src/render.ts — initialState().theme changes from \"dark\" to \"light\". The landing page reads the same theme, so it opens light too. - web/src/releases.ts — adds a user-facing heads-up line and a…",
+      "expected": null
+    },
+    {
+      "number": 93,
+      "title": "Organizations: multi-tenant Trov, superadmin Platform area, org settings and keys",
+      "mergedAt": "2026-10-07T03:21:00Z",
+      "url": "https://github.com/AndresL230/trov/pull/93",
+      "what": "What this is Trov becomes multi-tenant. A platform superadmin can add an organization and name its admin; that admin signs in, invites their team, connects a repository and configures their own keys. Nothing is shared between organizations. This branch also contains the rename and logo from 92.…",
+      "expected": "Organizations and sign-in"
+    },
+    {
+      "number": 103,
+      "title": "GitHub App: connect repositories by installing Trov",
+      "mergedAt": "2026-10-07T16:23:22Z",
+      "url": "https://github.com/AndresL230/trov/pull/103",
+      "what": "What this is An organization connects its repositories by installing the Trov GitHub App, instead of pasting a personal access token and adding a webhook by hand. Closes most of 95. Sign-in already uses the same App. Do not merge until GITHUBAPPSLUG is filled in (wrangler.toml, currently empty) and…",
+      "expected": "Organizations and sign-in"
+    },
+    {
+      "number": 106,
+      "title": "Billing: buy a Personal or Team plan with Stripe and set the organization up yourself",
+      "mergedAt": "2026-10-07T17:14:32Z",
+      "url": "https://github.com/AndresL230/trov/pull/106",
+      "what": "What this is Stripe subscriptions for the Personal and Team plans. A person pays, and sets their own organization up with nobody at Trov in the loop. Stacked on 104; a payment becomes the same grant the superadmin gives by hand. Do not merge until the owner has a Stripe account and has decided…",
+      "expected": "Billing and plans"
+    },
+    {
+      "number": 110,
+      "title": "GitHub App: say when it is on the wrong account; replace an installation without a Disconnect",
+      "mergedAt": "2026-10-08T00:15:56Z",
+      "url": "https://github.com/AndresL230/trov/pull/110",
+      "what": "Follow-up from handoff 7. Do not merge without the owner: a merge deploys to production. No migration. What was wrong On 2026-10-07 the Trov App was installed on a personal account (AndresL230) while the tracked repository is SaplingLearn/sapling. Trov gave no hint: the repository just read…",
+      "expected": "Organizations and sign-in"
+    },
+    {
+      "number": 111,
+      "title": "An org's address is /<slug>/ instead of /o/<slug>/",
+      "mergedAt": "2026-10-08T01:23:28Z",
+      "url": "https://github.com/AndresL230/trov/pull/111",
+      "what": "A merge deploys to production. No migration. What changes - An organization's page is trov.dev/<slug/ (was trov.dev/o/<slug/). The screen is still in the hash: trov.dev/saplinglearn/feed. - Old links keep working: GET /o/<slug/… is a 301 to /<slug/, query kept (the browser carries the hash across).…",
+      "expected": "Organizations and sign-in"
+    },
+    {
+      "number": 114,
+      "title": "Emails in the brand's purple",
+      "mergedAt": "2026-10-08T01:52:29Z",
+      "url": "https://github.com/AndresL230/trov/pull/114",
+      "what": "The digest, invitation, grant and welcome emails still used Canopy's olive green on cream. They share one palette (src/notifications/assemble.ts), which is now the mark's purple (616acb) on the light theme's cool neutrals, with a matching dark column for dark mail clients. - Band and buttons:…",
+      "expected": "Emails and digests"
+    },
+    {
+      "number": 117,
+      "title": "Free plan, Pro per seat, and a downgrade to Free",
+      "mergedAt": "2026-10-08T07:17:13Z",
+      "url": "https://github.com/AndresL230/trov/pull/117",
+      "what": "Switches billing from flat to per-seat, adds a self-serve Free plan, and renames Team to Pro. Closes 94. What changes - Free plan (free, shared/plans.ts): 3 seats, 1 repo, 2 environments, 250 MB artifacts, 5 agent connections per person, 300 AI summaries/month. - POST /api/orgs with no grant…",
+      "expected": "Billing and plans"
+    },
+    {
+      "number": 119,
+      "title": "Loading skeletons on every screen, and no second entrance when data lands",
+      "mergedAt": "2026-10-08T17:22:23Z",
+      "url": "https://github.com/AndresL230/trov/pull/119",
+      "what": "Screens painted a bare \"Loading…\" line (or their empty state early) and then swapped wholesale to the content, replaying the staggered entrance when each read landed. Pages jumped and flashed, sometimes several times per screen. What changed One helper, web/src/skeleton.ts. Bars, text lines that…",
+      "expected": null
+    },
+    {
+      "number": 120,
+      "title": "Open Google sign-up",
+      "mergedAt": "2026-10-09T02:45:05Z",
+      "url": "https://github.com/AndresL230/trov/pull/120",
+      "what": "Any Google account with a verified address can now create a Trov account, the same as a GitHub account. The owner asked for this explicitly. What changes - completeSignIn sends an unknown Google account to onboarding. The pending-invite gate (hasPendingEmailInvite, OnboardPayload.inviteemail, 403…",
+      "expected": "Organizations and sign-in"
+    },
+    {
+      "number": 123,
+      "title": "Gift a plan: free until a date, then the organization moves to Free",
+      "mergedAt": "2026-10-09T02:35:34Z",
+      "url": "https://github.com/AndresL230/trov/pull/123",
+      "what": "Stacked on 122 (→ 121 → 120). Base: fix/org-settings-general-width. What it does A superadmin can give an organization a plan for free until a date. When the date passes the organization moves to Free by itself, with nothing deleted. No Stripe involved. - Give: Platform › an organization › Plan ›…",
+      "expected": "Billing and plans"
+    },
+    {
+      "number": 127,
+      "title": "Emails: the banner takes the shape of the first-run card",
+      "mergedAt": "2026-10-09T02:34:47Z",
+      "url": "https://github.com/AndresL230/trov/pull/127",
+      "what": "Stacked on 124. Every email's banner now has the shape of the app's first-run card: the brand top left, a label top right (\"Invitation\", \"Welcome\", \"Your organization\"), and the mail's headline reversed out of the purple band, over a gradient with a large faint mark at the right. The invitation,…",
+      "expected": "Emails and digests"
+    },
+    {
+      "number": 130,
+      "title": "Emails: fit a phone (the card is fluid, not 680px)",
+      "mergedAt": "2026-10-09T03:08:42Z",
+      "url": "https://github.com/AndresL230/trov/pull/130",
+      "what": "Every Trov email was 680px wide on a phone. The card was a width=\"680\" table; a table is at least as wide as its width, so max-width:100% never applied and the client scaled the mail down or scrolled it sideways. - The card is fluid up to 680px (emailCardOpen): width=\"100%\" with max-width. Outlook…",
+      "expected": "Emails and digests"
+    },
+    {
+      "number": 136,
+      "title": "Embedded checkout: pay for Pro inside Trov (off by default)",
+      "mergedAt": "2026-10-10T23:36:53Z",
+      "url": "https://github.com/AndresL230/trov/pull/136",
+      "what": "Buying Pro can happen on a Trov page, in the same bannered card as the rest of signing up, instead of on Stripe's hosted page. It ships switched off: nothing changes for a buyer until STRIPEPUBLISHABLEKEY is set. What it adds - /billing/checkout: Stripe's embedded form mounted in the first-run…",
+      "expected": "Billing and plans"
+    },
+    {
+      "number": 139,
+      "title": "The signed-out site on a phone: a menu, sheets, and mockups drawn for a narrow screen",
+      "mergedAt": "2026-10-10T23:34:08Z",
+      "url": "https://github.com/AndresL230/trov/pull/139",
+      "what": "The marketing site, made good on a phone instead of merely not broken. Signed-out surfaces only: the landing page and its dialogs, /pricing, /terms, /privacy. No backend change, no migration. What changes under 900px - Navigation: the bar is one row (mark, name, Get started, Menu). The menu is a…",
+      "expected": "Public site and docs"
+    },
+    {
+      "number": 168,
+      "title": "Fix: a new account that signed up to buy Pro goes on to checkout",
+      "mergedAt": "2026-10-10T23:26:29Z",
+      "url": "https://github.com/AndresL230/trov/pull/168",
+      "what": "The bug Someone new who chose Pro on the landing page signed up, picked a handle, and was dropped into the first-run setup. They never reached Stripe. Someone with an existing account was unaffected. Seen in production on 2026-10-10: a new account created and signed in within a tenth of a second,…",
+      "expected": "Billing and plans"
+    },
+    {
+      "number": 171,
+      "title": "One GitHub account, several orgs; connect with what you can read; Trov for Claude on the web",
+      "mergedAt": "2026-10-12T03:34:11Z",
+      "url": "https://github.com/AndresL230/trov/pull/171",
+      "what": "Closes 170 (with a wider rule than the issue asked for, at the owner's direction). GitHub App: several orgs, shared repositories, partial access - Any number of Trov orgs may connect the same GitHub App installation. An org still has one live installation. - Several orgs may track the same…",
+      "expected": "Organizations and sign-in"
+    },
+    {
+      "number": 175,
+      "title": "Landing Docs mocks: the app's tree chevron instead of ▾ / ▸",
+      "mergedAt": "2026-10-14T06:51:33Z",
+      "url": "https://github.com/AndresL230/trov/pull/175",
+      "what": "- Both landing Docs mocks (the tour and the Explore Docs dialog) drew their tree disclosure with ▾ / ▸ text glyphs. They now use the app's own tree chevron (docTreeRow's .cnpy-treechev): a small stroked SVG, muted, accent on the open doc, turned 90° when open. One helper, treeChev, in…",
+      "expected": "Public site and docs"
+    },
+    {
+      "number": 176,
+      "title": "Summaries move to Anthropic (Claude Haiku 5.5) behind a provider-agnostic client",
+      "mergedAt": "2026-10-14T21:38:56Z",
+      "url": "https://github.com/AndresL230/trov/pull/176",
+      "what": "PR and issue summaries move from Google Gemini to Claude Haiku 5.5 (claude-haiku-5-5) behind a new provider-agnostic model client. Same fields, prompts and storage; no migration. First of three stacked PRs for handoff 6 (this → ai/base → ai/screens). - src/ai/client.ts — AiProvider {…",
+      "expected": "AI and summaries"
+    },
+    {
+      "number": 177,
+      "title": "AI base: ai_runs allowance, org AI switch, empty AI pass, suggestions and feedback, screen contracts",
+      "mergedAt": "2026-10-14T21:40:08Z",
+      "url": "https://github.com/AndresL230/trov/pull/177",
+      "what": "The base any AI feature will need — and nothing that decides when the model runs or produces content. Second of three stacked PRs for handoff 6 (176 → this → ai/screens). Based on ai/anthropic-summaries (176); retarget to main once 176 merges. - Allowance — airuns in LIMITKEYS / PLANS: Free 250,…",
+      "expected": "AI and summaries"
+    },
+    {
+      "number": 185,
+      "title": "Hosting providers: Vercel, Render, Netlify, Fly.io — backend + Org settings › Hosting + Repo › Hosting (#97–#101)",
+      "mergedAt": "2026-10-15T06:43:12Z",
+      "url": "https://github.com/AndresL230/trov/pull/185",
+      "what": "Lands the hosting providers work (issues 97–101) on main. It replaces 107: it has the same backend, plus the screens that were only on a local branch until now. What it does - One provider interface (src/hosting/, shared/hosting.ts) with Vercel (install or token), Render (API key), Netlify (OAuth…",
+      "expected": "Repo dashboard"
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+{
+  "model": "jev-latest",
+  "recordedAt": "2026-10-15T20:19:42.297Z",
+  "responses": {
+    "18": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"AI and summaries\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":1.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":663,\"output_tokens\":99}}"
+    },
+    "28": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"AI and summaries\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":1.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":689,\"output_tokens\":99}}"
+    },
+    "34": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Emails and digests\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":1.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":649,\"output_tokens\":101}}"
+    },
+    "37": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Emails and digests\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":1.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":662,\"output_tokens\":101}}"
+    },
+    "38": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"(none of these)\",\"confidence\":0.9,\"probabilities\":{\"Repo dashboard\":0.03,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.01,\"Emails and digests\":0.04,\"AI and summaries\":0.0,\"Public site and docs\":0.01,\"(none of these)\":0.91}}},\"usage\":{\"input_tokens\":663,\"output_tokens\":101}}"
+    },
+    "42": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Organizations and sign-in\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":1.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":665,\"output_tokens\":103}}"
+    },
+    "43": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Emails and digests\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":1.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":662,\"output_tokens\":101}}"
+    },
+    "55": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Repo dashboard\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":1.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":671,\"output_tokens\":98}}"
+    },
+    "56": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Repo dashboard\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":1.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":678,\"output_tokens\":98}}"
+    },
+    "57": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Repo dashboard\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":1.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":663,\"output_tokens\":98}}"
+    },
+    "58": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Repo dashboard\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":1.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":673,\"output_tokens\":98}}"
+    },
+    "62": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Repo dashboard\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":1.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":680,\"output_tokens\":98}}"
+    },
+    "65": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Tickets and sprints\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":1.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":665,\"output_tokens\":100}}"
+    },
+    "73": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Public site and docs\",\"confidence\":0.99,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.99,\"(none of these)\":0.01}}},\"usage\":{\"input_tokens\":674,\"output_tokens\":100}}"
+    },
+    "75": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Tickets and sprints\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":1.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":681,\"output_tokens\":100}}"
+    },
+    "76": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Tickets and sprints\",\"confidence\":0.99,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.99,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.01}}},\"usage\":{\"input_tokens\":661,\"output_tokens\":100}}"
+    },
+    "78": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Tickets and sprints\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":1.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":667,\"output_tokens\":100}}"
+    },
+    "88": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Tickets and sprints\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":1.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":670,\"output_tokens\":100}}"
+    },
+    "91": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Public site and docs\",\"confidence\":0.83,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.85,\"(none of these)\":0.15}}},\"usage\":{\"input_tokens\":663,\"output_tokens\":100}}"
+    },
+    "93": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Organizations and sign-in\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":1.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":666,\"output_tokens\":103}}"
+    },
+    "103": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Organizations and sign-in\",\"confidence\":0.99,\"probabilities\":{\"Repo dashboard\":0.01,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.99,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":668,\"output_tokens\":103}}"
+    },
+    "106": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Billing and plans\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":1.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":669,\"output_tokens\":99}}"
+    },
+    "110": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Organizations and sign-in\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":1.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":686,\"output_tokens\":103}}"
+    },
+    "111": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Organizations and sign-in\",\"confidence\":0.98,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.98,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.01,\"(none of these)\":0.01}}},\"usage\":{\"input_tokens\":680,\"output_tokens\":103}}"
+    },
+    "114": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Emails and digests\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":1.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":663,\"output_tokens\":101}}"
+    },
+    "117": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Billing and plans\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":1.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":684,\"output_tokens\":99}}"
+    },
+    "119": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"(none of these)\",\"confidence\":0.94,\"probabilities\":{\"Repo dashboard\":0.04,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.01,\"(none of these)\":0.95}}},\"usage\":{\"input_tokens\":664,\"output_tokens\":101}}"
+    },
+    "120": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Organizations and sign-in\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":1.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":666,\"output_tokens\":103}}"
+    },
+    "123": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Billing and plans\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":1.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":678,\"output_tokens\":99}}"
+    },
+    "127": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Emails and digests\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":1.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":669,\"output_tokens\":101}}"
+    },
+    "130": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Emails and digests\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":1.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":694,\"output_tokens\":101}}"
+    },
+    "136": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Billing and plans\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":1.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":670,\"output_tokens\":99}}"
+    },
+    "139": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Public site and docs\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":1.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":679,\"output_tokens\":100}}"
+    },
+    "168": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Billing and plans\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":1.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":669,\"output_tokens\":99}}"
+    },
+    "171": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Organizations and sign-in\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":1.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":677,\"output_tokens\":103}}"
+    },
+    "175": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Public site and docs\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":1.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":684,\"output_tokens\":100}}"
+    },
+    "176": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"AI and summaries\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":1.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":685,\"output_tokens\":99}}"
+    },
+    "177": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"AI and summaries\",\"confidence\":0.99,\"probabilities\":{\"Repo dashboard\":0.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.01,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.99,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":695,\"output_tokens\":99}}"
+    },
+    "185": {
+      "status": 200,
+      "body": "{\"model\":\"jev-1.13.0\",\"answers\":{\"theme\":{\"type\":\"choice\",\"choice\":\"Repo dashboard\",\"confidence\":1.0,\"probabilities\":{\"Repo dashboard\":1.0,\"Tickets and sprints\":0.0,\"Billing and plans\":0.0,\"Organizations and sign-in\":0.0,\"Emails and digests\":0.0,\"AI and summaries\":0.0,\"Public site and docs\":0.0,\"(none of these)\":0.0}}},\"usage\":{\"input_tokens\":700,\"output_tokens\":98}}"
+    }
+  }
+}

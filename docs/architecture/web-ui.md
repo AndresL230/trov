@@ -13,7 +13,7 @@ itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
-Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
@@ -136,10 +136,28 @@ gone) says so — "Reload the page to try again" — and is not retried in a loo
 
 - **No app module imports releases.ts as a value** (`import type` only; a test reads every `web/src/*.ts`). The
   build-time readers keep the full import: `docs-changelog.ts` (the public `/docs/changelog`), and the tests.
+- **The record is kept short** (#190): 35 releases were folded into 11 entries (milestones; same-day versions
+  together), each ≤ 4 highlights and ≤ 20 patch lines in product words, held by `RELEASE_CAPS` in
+  `test/releases.test.ts`. The entries were then **renumbered in order, 0.1 … 0.11** (one `0.N` per milestone, no
+  gaps — the test holds it; the next batch is 0.12). Every old number (they ran to 0.34) is in its entry's
+  `formerly` (its own old version first, then the ones folded in), and `findRelease` resolves a slug by the CURRENT
+  versions first, then by `formerly`: an old `#releases/0.25` opens 0.7 and `#releases/0.34/patches` opens 0.11's
+  patch notes, while an old number that is a current one today (0.1–0.11, e.g. `#releases/0.4`, once Foundations)
+  opens the release that has that number now — current numbers win. `releaseName` is just `v0.N` (the meta row,
+  the crumb; an old slug's crumb names the entry it lands on once the chunk is in). The chunk went from ~131 kB to ~20 kB gzip (esbuild, the module with its imports). It stays ONE chunk:
+  the index draws every entry's title and headline, so splitting off the old entries would add a second request
+  and a loading state to save a few kB.
 - **The newest version is `release-latest.ts`** (`LATEST_VERSION`, and `LATEST_RELEASE` with its slug): the
   support form's attached version and the legacy `#releases/patches` route read it. It is kept by hand and pinned
   to `RELEASES[0]` by `test/releases.test.ts`: the PR that opens an "Unreleased" entry sets it to "Unreleased",
   and the PR that cuts it into `0.N` sets "0.N" (the releases.ts header says so).
+- **A release page is ONE two-column grid** (`releasePageView`, `.cnpy-reldoc-grid`; #188): the back link and the
+  Release notes / Patch notes switch across the top; down the left column the title block, the body card and the
+  newer / older links; down the right column the page's note (Heads-up on the notes, Upgrade notes on the patches),
+  a SIBLING of the body — never inside the header. From 900px of page the note's area spans the left column's rows
+  and the last row is `1fr`, so a note of any length runs beside the body and never pushes it down; it flows with
+  the page (no sticky box, no inner scroller). Under 900px it stacks in source order: title, note, body. Pinned by
+  `test/releases.test.ts` (the grid's children and the CSS areas).
 
 ## The app's bundles (`web/src/lazy-chunk.ts`, `web/src/landing-page.ts`)
 
@@ -465,6 +483,14 @@ dashboard, retention windows to verify) are listed in the release's `ops` and in
   and the paths from `shared/legal-core.ts`. Change the code, change the text, bump `updated`.
   `test/render.legal.test.ts` holds the facts most likely to drift (cookies and lifetimes, retention, processors,
   no Vercel / Netlify, no `read:org`, the refund policy's four rules).
+- **DRAFT passages, one flag.** The server-side AI build's text (#178 Phase G: Ask Trov, the typed filter, the AI
+  pass's notes and suggestions, the widened provider rows) was APPROVED on 2026-10-16, so `AI_LEGAL_DRAFT`
+  (`shared/legal-core.ts`) is false and no page shows a marker. Each passage still starts `${DRAFT}`, a visible
+  "DRAFT —" only while the flag is true. The same flag HOLDS Org settings › AI ›
+  What is sent (`AI_SENDS`, `shared/ai-core.ts`) to the approved lines — summaries and Sift — since the screen
+  repeats the Privacy rows' claims; `AI_SENDS_ALL` is the full list. Approving is ONE change (set the flag false,
+  bump `updated`), and the policy and the screen ship together (`test/render.legal.test.ts` › approve once, ship
+  both).
 - **Consent wherever an account can be made** — `consentHtml()`: "By continuing you agree to the Terms of Service
   and Privacy Policy, and confirm you are 16 or older." Under the landing's sign-in / Get started dialog (every
   mode and plan, `.site-signin-note`), on the refused-Google card, on the MCP OAuth sign-in page; onboarding (where
@@ -505,7 +531,8 @@ next. Nothing else changes — the `error` code, any `message`, the status and t
 were (the SPA and the tests read them).
 
 - **One table** (`shared/error-hints.ts`): `API_ERROR_HINTS` by the HTTP `error` code (the older sentence codes —
-  `"admin only"`, `"not found"`, `"invalid payload"` — included), `STATUS_HINTS` by status for any other code,
+  `"admin only"`, `"not found"`, `"invalid payload"` — included, and the AI routes' own refusals `off`, `no_key`,
+  `unreadable`, `auto_off`, `mode_unavailable`, so a 403 `off` no longer reads as a missing role), `STATUS_HINTS` by status for any other code,
   `MCP_ERROR_HINTS` by an MCP tool error's `code` (`not_found`, `forbidden`, `conflict`, `bad_request`,
   `too_large`, `gone`, `plan_limit`, `plan_feature`, and the connection's `repo_required`, `not_connected`,
   `ambiguous_org`, `org_unavailable`, `org_not_allowed`), and the two /mcp 401 hints. The MCP reference prints the
@@ -574,7 +601,9 @@ tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Org settings' and Platform'
 only the panel (`web/src/morph.ts` `data-morph` / `data-morph-key`); the Roadmap's Narrative / Timeline, `roadmapTabBar` in `render.ts`, the Timeline
 tab carrying the red overdue dot, in the same page frame on both tabs — `asideColumns`' optional `tabs` heads
 the Narrative's two columns with it — and New sprint staying in the header; the Repo dashboard's Overview / Code /
-CI & Deploys / Usage / Team & Planning, `repoTabBar`, in every state of the dashboard, its switch `setRepoTab`
+CI & Deploys / Usage / Team & Planning, `repoTabBar`, in every state of the dashboard — plus Summary, second, with the
+AI mark after its label, only while the live read carries what Trov wrote (`repoSummaryShown`; a tab that comes
+and goes with its DATA, unlike the sidebar, whose nodes never do — `repo-dashboard.md` › Written by Trov), its switch `setRepoTab`
 flashing the new tab's content in place of the entrance): text tabs at the top of the page BODY on a full-width hairline that is the line
 between the tabs and the content, the picked tab marked by a 2px accent underline on that line, 40px tabs (a
 badge never makes one taller), a row that does not fit scrolling inside the bar, `role="tablist"` / `"tab"` +
@@ -616,7 +645,7 @@ connection's scope dialog).
 
 When a person acts on a row and the row should go (a verdict in Review; Add tag / Dismiss on a tag's To
 review tab — `reviewItem` in `tags.ts`, `TagsUi.reviewLeaving`, the same `.cnpy-rv-row`, slower by the owner's call — `.cnpy-tagreview-row`, `TAG_REVIEW_EXIT_MS` .7s, and the card slides aside as it closes; the
-next screen that removes a row reuses this, it does not invent another), the row **confirms, collapses, and the rows
+next screen that removes a row reuses this, it does not invent another — everything Trov drew uses the AI kit's one exit, see The AI kit), the row **confirms, collapses, and the rows
 under it move up as the same elements**. Four parts, each in one place:
 
 1. **A keyed list** (`web/src/morph.ts`). The screen is `data-morph`ed, the list's container carries
@@ -769,6 +798,9 @@ will be — so nothing moves when the read lands. The rules:
   each region's clock by `key` and hands it to the fresh DOM as a negative delay (`--skel-t`, as `--enter-t` does
   for the entrance), and when a region's skeleton is gone it gives what stands in its place ONE short opacity fade
   (`.cnpy-settle`, 240 ms) — only if the skeleton had actually been visible. A change of page forgets every clock.
+  Content a read brings in somewhere OTHER than where its skeleton stood names that skeleton's key in
+  `data-settle-with` (space-separated) and takes the same fade with it: My Work's brief tile, which exists only once
+  the dashboard read lands and re-lays the bento, settles with `mw-tickets` (`BRIEF_SETTLE_WITH` in `mywork.ts`).
   All of it is off under `prefers-reduced-motion`.
 - **The entrance belongs to the route.** `markEnter` plays the staggered entrance once, when a page opens — over
   the skeleton if the data is still out. A read landing inside it joins it (`--enter-t`); one landing later gets
@@ -1038,6 +1070,108 @@ and the word, since mail clients render SVG unreliably; `EMAIL_CARD` has no chip
 `test/render.marks.test.ts` (no pill in a mark, on the page or in any mock; the site imports `marks.ts`;
 every mark explains itself; `placeTip`), and each screen's own tests pin its marks.
 
+## The AI kit — what Trov wrote, and how it says so (`web/src/ai-ui.ts`)
+
+Four screens show something Trov WROTE (shared/ai-core.ts; `docs/superpowers/specs/2026-10-14-ai-screens-mock.md`):
+My Work › Your brief, Repo › Summary (State), Repo › Planning › Where the work went, and Feed entries written by
+Trov. **Each is drawn ONLY when its read carries the field** (`DashboardData.brief`, `RepoDashboard.state` /
+`themes`, `FeedRow.ai`); off is the field missing, never a state, and with it absent the screen is byte-for-byte
+what it was (`test/render.ai-absent.test.ts`, snapshots written before the kit existed). Production omits every
+field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills them from `shared/ai-fixtures.ts`.
+
+- **The mark** is `aiMark` (`marks.ts`): the Trov logo (`shared/mark.ts` `TROV_MARK_PATH`, 100×100) filled in
+  `--accent` — "Written by Trov" carries Trov's own mark, as the robot (`agentMark`) marks a thing an agent wrote. Its `data-mtip` says what it was written from and ends "Not
+  official; check the sources." (`AI_TIP`, `AI_NOT_OFFICIAL`).
+- **Every written item** carries `aiByline` ("Written by Trov, 12m ago" — the app's `relTime`; "from 6 events"
+  when the server counted them, never a guessed 0), its sources (`aiCite`: a GitHub URL opens in a new tab, an
+  in-app route stays, anything else is text, never a link) and **"Wrong?"** (`aiWrongBtn`), a
+  28px thumbs-down icon button at the item's bottom right — no visible word; its `aria-label` and `data-mtip`
+  say "Wrong?" and what pressing it does. It POSTs
+  `/ai/feedback` and hides the item for that person at once (`state.ai.hidden`), back with a toast if the write
+  fails; it leaves by the kit's one exit (› Motion below) — on the Roadmap too. Nothing written is ever shown without the mark.
+  An importance mark's "Wrong?" (`aiRatingWrongBtn`: 24px, borderless, after the mark in the byline) is the one that
+  hides nothing: it tells Trov, for the evals, and stays pressed; the rating stays as rated (Q34; `ai.md`).
+- **Capped and empty** are the screen's own words (`aiCapped`, `AI_EMPTY`): "Monthly AI allowance used; <what>
+  resumes Nov 1." with "Upgrade to Pro" (to Org settings › General, where the plan is changed) only when
+  `upgrade` is true.
+- **The suggestion chip** (`aiSuggestionChip`, #157): "Suggested: X, because…" with Accept and Dismiss. It is
+  never styled like a value a person set: a dashed `--border-strong` outline, the mark, muted words. The
+  reason is a real disclosure button (`aria-expanded`, works on touch; `data-field="aiReason:<key>"`, so a page rebuilt
+  on the press gives it back its keyboard focus — the themes' lanes carry `aiThemesLane:<id>` for the same reason), the
+  chip a container of buttons (never
+  a button itself), and it wraps, so it fits a row, a card, a detail pane and a phone. A 409 `not_available`
+  (no accept handler for its kind) replaces the buttons with "Not available yet". It is used by Phase C's cards
+  (the ticket detail, Unplaced, Review's risk line — `web/src/ai-cards.ts`), the proposed themes and the Roadmap's
+  sprint-draft and narrative cards (`web/src/roadmap-ai.ts`).
+- **Motion** is the app's: State rises with the page (`.cnpy-rise`) and flashes in on a Repo tab
+  switch to Summary (`pendingFlash` includes `.repo-ai`); a Trov entry cascades in the feed's `.cnpy-stagger`, and the Source
+  switch flashes the list (`AiHost.flashNext`); Phase C's chips and the risk line rise with their screen
+  (`.cnpy-rise` + `--i`). **Leaving — ONE exit for the whole kit** (`ai-ui.ts` › Leaving): ONE state
+  (`state.ai.leaving`, key → when its exit began), ONE class (`.cnpy-ai-leave`, `[data-inline]` for a mark inside a
+  line), ONE constant (`AI_EXIT_MS`, 310 ms) and ONE helper (`aiLeaving`, over `aiLeavingT` / `aiLeave`). It covers
+  "Wrong?" on State, a Trov entry, the brief tile or a themes range (`aiHiddenKey`; on Where the work went the
+  caption, byline and chart leave INSIDE the card while the other range stays, else the whole card), "Got it" on the
+  Feed's note (`AI_NOTE_LEAVING`), and every
+  suggestion an Accept / Dismiss took — a chip, the risk line, a list row's mark, a proposed theme, a Roadmap card
+  (`aiSuggestionKey(id)`) — and a Roadmap note or the drift "Wrong?" took. The Tickets queue reuses `aiLeave` for a
+  card a refetch finds declined while All is up (its own `state.qLeaving`, `tickets.md` › The default view hides
+  declined). It is Review's exit (› A row leaving a list) on a screen REBUILT per paint: the item is
+  still drawn for `AI_EXIT_MS`, `inert`, dimmed .13s, then the one-track grid goes `1fr` → `0fr` and fades over
+  `--fx-fast` — a KEYFRAME clocked by `--leave-t` (the elapsed ms, negative — `--enter-t`'s trick), so a rebuild
+  mid-exit joins it instead of replaying it; it outranks `[data-enter] .cnpy-stagger > *`. "Wrong?" / "Got it" hide
+  the item in state at once (every count already leaves it out) and the exit's entry clears after `AI_EXIT_MS`; a
+  failed write stops it and the item is back. Accept / Dismiss is optimistic: the write goes out on the click and
+  the suggestion's exit starts at once, HELD (`hold`) — drawn collapsed until its screen's re-read drops it; the
+  controller makes ONE re-read once the LAST exit in flight is over (`AiHost.decided`, the themes' `reloadRepo`). The controller starts every exit (`ai-actions.ts` `leave`). Under reduced motion nothing leaves: it is
+  gone at once and the re-read goes out at once (`test/render.ai-motion.test.ts`, `test/render.roadmap-ai-exit.test.ts`, `test/render.ai-cards.test.ts` ›
+  motion).
+- **Acts** are `ai…`, in `web/src/ai-actions.ts`. The themes' Rename field keeps its draft WITHOUT a repaint
+  (the Repo screen is rebuilt on a paint, not morphed), so typing never rebuilds the page.
+- **Where the work went** draws lanes as `aria-pressed` buttons (no button inside: the proposals' actions sit in
+  their own list), a band per week sized against the busiest week in view (a zero week draws none), the chart
+  scrolling inside its box at phone width (`overflow-x:auto`, a min-width inner grid; the label column narrows
+  to 136px under 640px through `--lane-w`).
+- **Labels** in the brief's Now / Recently / Next and State's heading use `var(--label)` — the existing label
+  style, which is Geist outside the sidebar (Archivo Narrow stays the sidebar's face only).
+- Radii are inline, at values the corners block already scales; nothing new needed a line there.
+- **The brief's one shape** (BR-OWNER-1; `trov.css` `.mw-brief-*`, the caps `AI_BRIEF_*`): Now, Recently and Next
+  are always drawn ("Nothing new." in an empty part), in boxes of a FIXED height — a sentence in a two-line box (44px)
+  over its one row of sources, Next three rows of a one-line title over a one-line why (40px each), unused rows kept —
+  so the body is 300px for every brief, and the empty and capped states hold it (an unwritten brief holds the
+  byline's place too). It takes its own height, never the row's (the owner, 2026-10-16: the BR-OWNER-3 layout had
+  stretched it to 555px; Docs you own now sits under Needs your review so the sides match). A narrower bento
+  (≤1040px) gives three lines and two (404px); one column (≤700px) lets each box take its text's height. Text past a box is clamped (`line-clamp`) with its whole text as the tooltip
+  (`data-mtip`), so even an older, longer brief never overflows; the producer's caps mean a new one never needs it.
+  Next keeps one row per kind's group (`AI_NEXT_GROUP`) whatever an older brief stored, and an `overdue` item is
+  "Overdue" in the danger tone. Measured in Chromium through the real render, without a dev server: one height at
+  1440, 1280 and 1024 for the fixture, a brief at every cap, an older over-long one, a thin one, empty and capped,
+  and no tile in the bento scrolls at 1440, 1280, 1024 or 360.
+- **Motion** is the app's own: the brief tile rises with the bento's `.cnpy-stagger`; its Now / Recently / Next
+  (label and line on one `--i`), each Next item and the byline rise in order (`.cnpy-rise`), only under
+  `[data-enter]`, so a rerender never replays them; landing after the entrance, the tile takes the dashboard
+  skeleton's settle fade (`data-settle-with`, Loading skeletons above). Off under reduced motion
+  (`test/render.brief-motion.test.ts`). On "Wrong?" the tile leaves by the kit's one exit IN its bento slot
+  (`.mw-bento-brief > .cnpy-ai-leave` holds the brief's area); only then does the bento take its other layout, which
+  fades in (`pendingFlash` on `.mw-bento`). Under reduced motion it is simply gone (`test/render.ai-motion.test.ts`).
+- **The plain-language filter** (`web/src/ai-filter.ts`, #162) lives INSIDE the Filter menu of Tickets, the Feed and
+  Artifacts — no bar of its own. `FilterMenuProps.top` puts its section at the popover's top, over a hairline: a
+  `cnpy-menurow` "Describe a filter" with the AI mark and a chevron, and under it the field (input + Apply, the
+  search bar's look, `.fm-ai-field`), only when the org's AI is on (no row when off, never a disabled one).
+  Choosing the row opens the field ON THE LIVE POPOVER (`data-open`, `inert` off, focus to the input) — a one-track
+  grid `0fr` → `1fr` with a fade on `--fx-base` / `--fx-ease`, the chevron turning — so the menu's entrance never
+  replays; a repaint draws it already open. The row rises with the options on the paint that opens the menu
+  (`.is-opening`); all of it is off under reduced motion (the `.fm-pop *` rule). Typing keeps the draft WITHOUT a
+  repaint (Tickets and the Feed are rebuilt on a paint); a refusal is a `role="alert"` line under the field (a
+  floating error would be clipped by the popover), gone on the next keystroke. Keyboard: ↓ / ↑ walk the open
+  menu's rows from the Filter button, a row or nowhere (`.fm-pop .cnpy-menurow`, the typed filter first), Enter
+  on the row opens the field and Enter in it applies, Escape closes the menu and hands focus back to its Filter
+  button. A field with focus holds a hover-opened menu open, and the ticket queue's `data-hover-blur` leaves it be.
+  Once applied the menu closes on its exit and one plain line sits above the toolbar — "Filtered: Open · Assigned
+  to you. Not a filter here: “overdue”." — with Undo; after Undo it leaves by the kit's one exit. No pill, no select.
+- Tests: `test/render.ai.test.ts` (every screen in ready / empty / capped, themes proposed, admin vs member, the
+  chip, the cites, Org settings › AI, Platform's AI line), `test/render.ai-absent.test.ts`, `test/render.ai-motion.test.ts`,
+  `test/render.ai-filter.test.ts`.
+
 ## Fonts, contrast and focus — nothing from a third party, AA in both themes
 
 ### Fonts — self-hosted (`web/src/fonts/`, `shared/fonts.ts`)
@@ -1105,6 +1239,38 @@ regress silently:
   their `outline:none` is inline. The palette search's bar shows a 2px `--focus` line on its lower edge.
 - Rules use `:focus-visible`, so a mouse click on a button draws nothing new; a text field shows its ring on
   click too, as browsers do for fields.
+
+## Scrollbars — one for the whole app (`trov.css`, top of the file)
+
+Every scroller draws the same bar: no track, no arrows, a slim thumb (12px gutter, 4px of it transparent border) in
+`--sb-thumb` (the theme's `--fg` at 20%), `--sb-thumb-hover` / `--sb-thumb-active` under the pointer, where it also
+fills out to 6px. Chromium and Safari draw it from `::-webkit-scrollbar*`; Firefox from `scrollbar-width:thin` +
+`scrollbar-color`, declared ONLY inside `@supports (-moz-appearance:none)` — in Chromium either property on an
+element switches its pseudo-elements off, so never use them elsewhere (two Ask scrollers did; removed). A scroller
+that hides its bar on purpose (the sidebar list, tab bars, the composer, the tag menu…) sets
+`scrollbar-width:none` + `::-webkit-scrollbar { display:none }` after the global rule and wins. The thumb's radius
+goes through the corners block like any other, so at `.4` it reads square-ended. Headless Chromium hides
+scrollbars unless launched without `--hide-scrollbars`.
+
+## The thinking orb (`web/src/thinking-orb.ts`, engine in `web/src/orbs/`)
+
+thinking-orbs (Jakub Antalik, MIT; `web/src/orbs/LICENSE`) is vendored WITHOUT its Vue wrapper: `orbs/` is the
+upstream canvas engine and presets as they ship (six states × the 20 and 64 px presets), `thinking-orb.ts` the
+wrapper. `thinkingOrb(state, size, label)` returns a `<canvas data-orb>` whose width/height are set in the template
+for the device's pixel ratio, so a morph never rewrites them (setting either clears a canvas). ONE
+`requestAnimationFrame` loop paints every `canvas[data-orb]` in the document on one clock and stops when none is
+left; rendering an orb starts it. Ink follows the nearest `[data-cnpy-theme]` on every frame; under reduced motion
+each paint is one static frame. The ink is the theme's `--accent` (olive in dark; the owner, 2026-10-16: colour carries meaning only, so
+"working" has no hue of its own): `setInk` in
+`orbs/engine/core.ts` — the one local change to the vendored engine, marked — makes a dot's depth its opacity in that
+colour. Ask uses it in place of its spinner, clock and lone cursor (`ask.md`), and the running sweep's highlight is
+`--accent` too.
+`thinkingOrbTour(states, …)` is one canvas (`data-orb="tour"`, `data-orb-tour`) that shows each state in turn
+(`TOUR_SECONDS` each, on the same clock; its first under reduced motion).
+
+**Each orb means one thing** (the owner removed the picker, 2026-10-16): the cube ("solving") while Trov thinks, the
+ribbon ("composing") while it writes, the globe ("searching") while it searches, the orbits ("working") for other work;
+"listening" and "shaping" are the engine's, unused in Ask.
 
 ## Corners — tighter than the design file
 

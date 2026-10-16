@@ -8,7 +8,8 @@
 //  • `dropdownMenu(list, ui)` — the open one's MENU, rendered at the app ROOT as a `data-overlay`
 //    (like the org switcher's menu), so no `overflow:hidden` ancestor can clip it and morph.ts
 //    keeps it — and its focus — across rerenders. A `role="listbox"` of `.cnpy-menurow` options,
-//    the current one check-marked; an option may carry a one-line `hint`.
+//    the current one check-marked; an option may carry a one-line `hint` and an `icon` (a preview,
+//    shown in the trigger too while it is picked).
 // A screen renders the trigger where the control sits and passes the SAME props to
 // `dropdownMenu` among its root overlays.
 //
@@ -33,6 +34,9 @@ export interface DropdownOption {
   shown?: string;
   /** One short line under the label: what picking it means. */
   hint?: string;
+  /** Trusted MARKUP (never user text) drawn before the label, in the row and in the trigger while picked — a
+   *  preview of the choice (Settings › Trov's thinking orbs). */
+  icon?: string;
 }
 
 export interface DropdownProps {
@@ -82,7 +86,9 @@ export function dropdown(p: DropdownProps, ui: DropdownUi): string {
   const open = isOpen(p, ui) && !ui.closing;
   const name = p.labelledBy ? ` aria-labelledby="${attr(`${p.labelledBy} ${p.id}`)}"` : p.ariaLabel ? ` aria-label="${attr(`${p.ariaLabel}: ${text}`)}"` : "";
   const cls = `cnpy-dd${p.size === "sm" ? " is-sm" : ""}${p.fill ? " is-fill" : ""}${open ? " is-open" : ""}`;
-  return `<button type="button" id="${attr(p.id)}" data-field="${attr(p.id)}" data-dd="${attr(p.id)}"${p.disabled ? " disabled" : ` data-act="ddToggle" data-arg="${attr(p.id)}"`} class="${cls}" style="border-radius:8px" aria-haspopup="listbox" aria-expanded="${open}"${open ? ` aria-controls="${attr(`${p.id}-menu`)}"` : ""}${name}><span class="cnpy-dd-v">${esc(text)}</span>${CARET}</button>`;
+  const shown = `<span class="cnpy-dd-v">${esc(text)}</span>`;
+  const lead = cur?.icon ? `<span class="cnpy-dd-lead"><span class="cnpy-dd-icon" aria-hidden="true">${cur.icon}</span>${shown}</span>` : shown;
+  return `<button type="button" id="${attr(p.id)}" data-field="${attr(p.id)}" data-dd="${attr(p.id)}"${p.disabled ? " disabled" : ` data-act="ddToggle" data-arg="${attr(p.id)}"`} class="${cls}" style="border-radius:8px" aria-haspopup="listbox" aria-expanded="${open}"${open ? ` aria-controls="${attr(`${p.id}-menu`)}"` : ""}${name}>${lead}${CARET}</button>`;
 }
 
 /** The open dropdown's menu among `list` (a screen's dropdowns), as a root-level overlay — or "". */
@@ -92,8 +98,9 @@ export function dropdownMenu(list: readonly DropdownProps[], ui: DropdownUi): st
   const name = p.labelledBy ? ` aria-labelledby="${attr(p.labelledBy)}"` : p.ariaLabel ? ` aria-label="${attr(p.ariaLabel)}"` : "";
   const rows = p.options.map((o) => {
     const on = o.value === p.value;
+    const t = `<span class="cnpy-dd-optt"><span class="cnpy-dd-optl">${esc(o.label)}</span>${o.hint ? `<span class="cnpy-dd-opth">${esc(o.hint)}</span>` : ""}</span>`;
     return `<button type="button" role="option" aria-selected="${on}" tabindex="-1" data-act="ddPick" data-arg="${attr(o.value)}" data-dd-opt class="cnpy-menurow cnpy-dd-opt${on ? " is-on" : ""}" style="border-radius:7px">
-        <span class="cnpy-dd-optt"><span class="cnpy-dd-optl">${esc(o.label)}</span>${o.hint ? `<span class="cnpy-dd-opth">${esc(o.hint)}</span>` : ""}</span>${CHECK}
+        ${o.icon ? `<span class="cnpy-dd-lead"><span class="cnpy-dd-icon" aria-hidden="true">${o.icon}</span>${t}</span>` : t}${CHECK}
       </button>`;
   }).join("");
   return `<div data-overlay="dd-${attr(p.id)}" class="cnpy-dd-layer"${ui.closing ? " data-closing" : ""}>

@@ -11,7 +11,7 @@ import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, Tic
 import type { TicketPriority } from "@shared/tickets";
 import type { SidebarBadges } from "@shared/badges";
 import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
-import { agentMark, authorityMark, markShape, stateMark, tagWords } from "./marks";
+import { agentMark, aiMark, authorityMark, importanceMark, markShape, stateMark, tagWords } from "./marks";
 import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId } from "./sprints";
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline, timelineShapes } from "./timeline";
@@ -24,7 +24,7 @@ import { AVATAR_TYPES } from "@shared/people";
 import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
 import {
-  myWorkLayout, mwSpans, ticketsTile, reviewTile, sessionsTile, repoTile, libraryStrip, handoffsForMe,
+  myWorkLayout, mwSpans, ticketsTile, reviewTile, sessionsTile, repoTile, libraryStrip, libraryTiles, handoffsForMe, briefTile,
   type MwLoad, type MwSession, type MwHandoff, type MwLibrary, type MwRepoTab, type MwDue,
 } from "./mywork";
 import type { TagListDTO, TagPageDTO } from "@shared/tags-core";
@@ -37,6 +37,7 @@ import { releasesView, releaseCrumb } from "./releases-lazy";
 import { supportDialog, initialSupport, type SupportDraft } from "./support";
 import { accountDeleteModal, accountDeleteTile, initialDeleteUi, type DeleteUi } from "./deletion";
 import type { AccountDeletionPreview } from "@shared/deletion-core";
+import { trovSettingsTiles, initialTrovPrefs, type TrovPrefsUi } from "./ask-settings";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { repoUrl } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
@@ -50,7 +51,7 @@ import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, bl
 import type { PromptView } from "./prompt-box";
 import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
 import { newDocView, blankDoc, type NewDocDraft } from "./newdoc";
-import type { HandoffView, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
+import type { HandoffView, HandoffReadingItem, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
 import { emailNotificationsSection, switchBtn, type NotifAdminProps } from "./notifications";
 import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow } from "./api";
@@ -67,7 +68,7 @@ import {
   ticketArtifactsBlock, initialArtUi, ART_ROUTE_NONE,
   type ArtUi, type ArtRoute, type ArtScreen, type ArtProps,
 } from "./artifacts-state";
-import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
+import type { RepoDashboard, RepoScreenTab, RepoRange } from "@shared/repo";
 // Platform is its own chunk (platform-lazy.ts draws a skeleton until it is in); its state is platform-core.ts.
 import { platformView, platformOrgView, platformDialogs, platformPage } from "./platform-lazy";
 import { platformHeaderControls, platformCrumb, initialPlat, type PlatState } from "./platform-core";
@@ -88,6 +89,15 @@ import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, 
 import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type WelcomeUi } from "./welcome";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 import { previewBanner, previewState, type PreviewMode } from "./preview";
+import { aiItemRef } from "@shared/ai-core";
+import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiRatingWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, aiLeaving, AI_NOTE_LEAVING, AI_EXIT_MS, type AiUi } from "./ai-ui";
+import { driftLine, roadmapSuggestionCards } from "./roadmap-ai";
+import { aiFilterLine, aiFilterMenuTop, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
+import { initialAskUi, type AskUi } from "./ask-state";
+import { askScreenView, askHeader, askOverlays } from "./ask-screen";
+import { actionDropdowns } from "./ask-actions";
+import { phoneHeaderControls } from "./ask-phone";
+import { cmdjHeaderButton } from "./ask-cmdj";
 import { appRoot, railCollapsed, resolvedTheme, toastBlock, type ToastAction } from "./app-root";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
@@ -121,7 +131,9 @@ export type Screen =
   // Org settings: one screen, five tabs (`#org[/<tab>]`, web/src/org-settings.ts).
   | "org"
   // The guided first-run setup: a full page, no sidebar (`#welcome[/<step>]`, web/src/welcome.ts).
-  | "welcome";
+  | "welcome"
+  // Ask Trov (Workspace › Trov): threads, the conversation, the inspector (`#ask[/<thread id>]`, web/src/ask-*.ts).
+  | "ask";
 
 /** Async data slice: a screen's fetched payload plus its load status. */
 export interface Loadable<T> {
@@ -164,6 +176,9 @@ export interface AppState {
   support: SupportDraft;
   /** The guided first-run setup (welcome.ts): its step, and the by-hand disclosure. */
   welcome: WelcomeUi;
+  /** Ask Trov: the screen's reads, its two conversations (the page's and the ⌘J panel's) and every part's state
+   *  (web/src/ask-state.ts). The ⌘J panel opens over any screen, so this lives for the whole session. */
+  ask: AskUi;
   /** `/billing/done`: the waiting room a buyer lands in after Stripe Checkout (billing.ts). null everywhere else. */
   billingDone: BillingDoneUi | null;
   /** The payment page (`/billing/checkout`, embedded checkout): set at boot from the URL, else null. */
@@ -193,7 +208,7 @@ export interface AppState {
   navOpen: NavOpen;
   // ── Repo dashboard ─────────────────────────────────────────────────────────
   repo: Loadable<RepoDashboard | null>;
-  repoTab: RepoTab;
+  repoTab: RepoScreenTab;
   repoRange: RepoRange;
   /** Usage › Product: the environment picked this session (null = the default one). */
   repoProductEnv: string | null;
@@ -306,6 +321,8 @@ export interface AppState {
   handleCheck: "idle" | "checking" | "available" | "invalid" | "reserved" | "taken" | "same";
   /** Settings › Delete account (deletion.ts, deletion-actions.ts): what it would do, and its confirmation. */
   acctDelete: DeleteUi<AccountDeletionPreview>;
+  /** Settings › Trov (ask-settings.ts): my Ask instructions and default mode in the org on screen. */
+  trovPrefs: TrovPrefsUi;
   // Email notifications (Settings) — the user's resolved prefs + the address edit form.
   notifPrefs: Loadable<PrefsView | null>;
   emailEditing: boolean;
@@ -332,6 +349,10 @@ export interface AppState {
    *  counts itself — `badgeCount` is the one place that picks. */
   badges: Partial<SidebarBadges>;
   qSeg: TicketSeg;
+  /** Cards a refetch found DECLINED while a view that hides declined was up (main.ts
+   *  `leaveDeclined`): each as it was shown and when its exit began — drawn leaving for
+   *  `AI_EXIT_MS`, then dropped. Never under reduced motion. */
+  qLeaving: { row: TicketListItem; at: number }[];
   qAssignee: TicketAssigneeFilter;
   qCategory: TicketCategory | "all";
   qView: "table" | "board";
@@ -414,6 +435,10 @@ export interface AppState {
   handoffExpireArm: boolean;
   /** The handoff's prompt, expanded over the page. */
   handoffPromptOpen: boolean;
+  /** The reading list (#167) the last claim in this session returned, for that handoff only. Not
+   *  stored on the server and never recomputed on a read, so a reload drops it. */
+  /** `at`: when an in-page claim drew it (Date.now()) — the list rises in once from then (handoffs.ts `readingListBlock`). */
+  handoffReading: { id: number; items: HandoffReadingItem[] | null; at?: number } | null;
   nh: NewHandoffDraft;
   // ── Prompt Library ─────────────────────────────────────────────────────────
   /** The whole library; the search / tag / sort filter runs client-side over it. */
@@ -474,6 +499,10 @@ export interface AppState {
   /** The state preview (`?preview=empty` / `?preview=loading`, web/src/preview.ts): every screen
    *  paints its empty layout or its loading skeleton instead of its data. null = off. */
   preview: PreviewMode | null;
+  /** The AI screens (ai-ui.ts): what "Wrong?" hid, the Feed's Source, the themes' range and lane. */
+  ai: AiUi;
+  /** The plain-language filter in the Filter menus of Tickets, the Feed and Artifacts (ai-filter.ts; #162). */
+  aiFilter: AiFilterUi;
 }
 
 /** Project the app state onto the Sync GitHub control and panel (sync.ts never sees AppState). */
@@ -493,6 +522,7 @@ export function initialState(): AppState {
     orgsUi: initialOrgsUi(),
     support: initialSupport(),
     welcome: initialWelcomeUi(),
+    ask: initialAskUi(),
     billingDone: null,
     billingCheckout: null,
     screen: "mywork",
@@ -555,6 +585,7 @@ export function initialState(): AppState {
     handleDraft: "",
     handleCheck: "idle",
     acctDelete: initialDeleteUi<AccountDeletionPreview>(),
+    trovPrefs: initialTrovPrefs(),
     notifPrefs: { status: "idle", data: null },
     emailEditing: false,
     emailDraft: "",
@@ -574,7 +605,7 @@ export function initialState(): AppState {
     ticketId: null,
     ticketBadge: 0,
     badges: {},
-    qSeg: "all", qAssignee: "anyone", qCategory: "all", qView: "board",
+    qSeg: "all", qLeaving: [], qAssignee: "anyone", qCategory: "all", qView: "board",
     qQ: "", qPrio: "all", qSprint: "all", qPerson: "", qFilterOpen: false, qFilterCat: "assignee",
     fTitle: "", fCat: null, fPrio: "normal", fDesc: "", fAsgs: [], fLink: "", fSpr: null,
     commentDraft: "", mention: null, commentHeight: null, linkDraft: "",
@@ -588,7 +619,7 @@ export function initialState(): AppState {
     art: initialArtUi(),
     handoffs: { status: "idle", data: [] },
     handoffDetail: { status: "idle", data: null },
-    handoffId: null, handoffExpireArm: false, handoffPromptOpen: false,
+    handoffId: null, handoffExpireArm: false, handoffPromptOpen: false, handoffReading: null,
     nh: blankHandoff(),
     promptList: { status: "idle", data: [] },
     promptQ: "", promptTag: null, promptSort: "updated_desc", promptFilterOpen: false, promptFilterCat: "tag",
@@ -613,6 +644,8 @@ export function initialState(): AppState {
     myOrgs: { status: "idle", data: null },
     org: initialOrgUi(),
     preview: null,
+    ai: initialAiUi(),
+    aiFilter: initialAiFilterUi(),
   };
 }
 
@@ -630,6 +663,7 @@ export function reviewProps(s: AppState): ReviewProps {
     filter: s.reviewFilter,
     selectedId: s.reviewSel,
     diffView: s.reviewDiffView,
+    aiUi: s.ai,
   };
 }
 
@@ -645,6 +679,7 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
     assignSpace: s.assignSpace,
     assignTags: s.assignTags,
     people: peopleFromPersons(s.persons.data),
+    aiUi: s.ai,
   };
 }
 
@@ -897,6 +932,7 @@ function header(s: AppState): string {
     releases: "What's new",
     platform: "Platform", platformorg: "Platform",
     org: "Org settings", tag: "Tags",
+    ask: "Trov",
   };
   // dark = "show the moon icon".
   const dark = resolved(s) !== "light";
@@ -907,6 +943,8 @@ function header(s: AppState): string {
     id: "feed-view", ariaLabel: "Feed view", act: "setFeedView", value: s.feedView, inertOn: true,
     options: [{ value: "reading", label: "For reading" }, { value: "agents", label: "For agents" }],
   }) : "";
+  // The Source switch (All / Agents / Trov) sits beside it — only once a loaded entry carries `ai`.
+  const feedSourceSwitch = s.screen === "feed" && feedHasAi(s) ? feedSourceSeg(s) : "";
   const feedMenu = s.screen === "feed" ? feedFilterMenu(s) : null;
   const feedControls = feedMenu
     ? `<div style="position:relative;display:flex;align-items:stretch;height:32px">${filterMenuBackdrop(feedMenu)}${filterMenu(feedMenu)}</div>`
@@ -985,13 +1023,18 @@ function header(s: AppState): string {
   // `.cnpy-menubtn`), where the header also wraps its controls under the title (`.cnpy-hdr`).
   const menuBtn = `<button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="${s.drawer}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button>`;
 
+  // Ask Trov draws its own title ("Ask Trov", plain text — AU-OWNER-3), crumb (the thread) and, on a phone, the
+  // threads drawer and New thread (ask-screen.ts / ask-phone.ts). The Tickets page gains "Ask about this ⌘J".
+  const ask = s.screen === "ask" ? askHeader(s) : null;
+  const askControls = s.screen === "ask" ? phoneHeaderControls(s) : cmdjHeaderButton(s);
+
   return `<header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
     <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
-      ${menuBtn}${art ? art.title : title}
-      ${art ? art.crumb : crumb}
+      ${menuBtn}${ask ? `${ask.lead}${ask.title}` : art ? art.title : title}
+      ${ask ? ask.crumb : art ? art.crumb : crumb}
     </div>
     <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
-      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedViewSwitch}${bugBtn}${themeBtn}
+      ${askControls}${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedSourceSwitch}${feedViewSwitch}${bugBtn}${themeBtn}
     </div>
   </header>`;
 }
@@ -1000,7 +1043,7 @@ function header(s: AppState): string {
 /** The Feed page: the entries (`inner`) beside the sticky aside — This week + Waiting on
  *  review — in the Roadmap Narrative's two columns (ui.ts `asideColumns`). */
 function wrapFeed(s: AppState, inner: string, history = true): string {
-  return asideColumns(`${inner}
+  return asideColumns(`${aiFilterLine("feed", s.aiFilter, s.ai)}${inner}
     ${history ? `<div style="text-align:center;padding:18px 0;font-size:11.5px;color:var(--fg-40);font-family:var(--label)">&mdash; start of recorded history &mdash;</div>` : ""}`, feedAside(s));
 }
 
@@ -1172,7 +1215,7 @@ function feedFilterMenu(s: AppState): FilterMenuProps {
   return {
     id: "feed", open: s.feedFilterOpen, opening: s.fmOpening === "feed", cat: s.feedFilterCat, activeCount: active,
     showLabel: `Show ${shown} ${shown === 1 ? "entry" : "entries"}`, clearAct: "feedFilterClear",
-    align: "right", ariaLabel: "Filter the feed", standalone: true,
+    align: "right", ariaLabel: "Filter the feed", standalone: true, top: aiFilterMenuTop("feed", s.aiFilter),
     groups: [
       {
         key: "author", label: "Author", value: s.feedAuthor, none: "all",
@@ -1212,16 +1255,99 @@ function feedBrief(brief: string | null): string {
   return `<div class="cnpy-feed-brief" style="font-size:13.5px;color:var(--fg-70);line-height:1.6;margin-top:5px">${esc(brief)}</div>`;
 }
 
+/** Sift's rating in a byline (`feed.importance`): a dot and the mark for notable or breaking; NOTHING for routine or an
+ *  unrated entry, so a row without one is exactly what it was. After the mark, "Wrong?" (Q34): feedback for the evals
+ *  only — the rating is a computed fact, never edited, dismissed or hidden. */
+function feedImportance(s: AppState, e: FeedRow): string {
+  const m = importanceMark(e.importance);
+  if (!m) return "";
+  const body = aiFeedback("importance", aiItemRef.importance(e.id), "feed.importance", null);
+  const wrong = aiRatingWrongBtn(body, s.ai.ratedWrong.includes(aiHiddenKey("importance", body.itemRef)));
+  return `<span style="font-size:12px;color:var(--fg-40)">&middot;</span><span data-importance="${e.importance}" style="display:inline-flex;align-items:center;gap:2px">${m}${wrong}</span>`;
+}
+
 /** A feed entry's `@author`: a link to their person card when the author is a known person. */
 function feedAuthorTag(s: AppState, author: string): string {
   return handleLink(personFor(s, author), author);
+}
+
+// ── the Feed's entries written by Trov (ai-ui.ts) ────────────────────────────
+/** An entry Trov wrote. One with `ai.origin === "agent"` (or no `ai`) is an agent's, as before. */
+const isTrovEntry = (e: FeedRow): e is FeedRow & { ai: NonNullable<FeedRow["ai"]> } => e.ai?.origin === "ai";
+/** Any loaded entry carries `ai`: only then are the Source switch and the note drawn. */
+export const feedHasAi = (s: AppState): boolean => s.feed.data.some((e) => e.ai !== undefined);
+const feedNoteSeen = (s: AppState): boolean => !!s.me && s.ai.noteSeen.some((h) => h.toLowerCase() === s.me!.handle.toLowerCase());
+/** The rows on screen: the time filter, then the Source switch, then whatever "Wrong?" hid — an entry
+ *  still LEAVING (ai-ui.ts › Leaving) stays until its exit is over. */
+export function feedShown(s: AppState, now = Date.now()): FeedRow[] {
+  const rows = feedRows(s, now);
+  if (!feedHasAi(s)) return rows;
+  const src = s.ai.feedSource;
+  return rows.filter((e) => (src === "trov" ? isTrovEntry(e) : src === "agents" ? !isTrovEntry(e) : true)
+    && !(isTrovEntry(e) && aiIsHidden(s.ai, "feed", aiItemRef.feed(e.id)) && aiLeavingT(s.ai, aiHiddenKey("feed", aiItemRef.feed(e.id)), now) === null));
+}
+function feedSourceSeg(s: AppState): string {
+  return segmented({
+    id: "feed-source", ariaLabel: "Source", act: "aiFeedSource", value: s.ai.feedSource, inertOn: true,
+    options: [{ value: "all", label: "All" }, { value: "agents", label: "Agents" }, { value: "trov", label: "Trov" }],
+  });
+}
+/** Source = Trov with no entry Trov wrote on the page (Q27). */
+export const FEED_NO_TROV = "No Trov entries in this view.";
+/** Said once, above the first entry Trov wrote, until this person presses "Got it". */
+export const FEED_AI_NOTE = "Trov now writes entries from your commits, about 45 minutes after your last push. Your agents can stick to decisions and findings.";
+function feedAiNote(): string {
+  return `<aside aria-label="New" class="cnpy-ai-note" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 22%,transparent);border-radius:10px;padding:12px 16px;margin-bottom:12px">
+      <p style="margin:0;flex:1 1 320px;font-size:13.5px;line-height:1.55">${esc(FEED_AI_NOTE)} <button type="button" data-act="orgGo" data-arg="ai" class="cnpy-mutelink" style="padding:0;font:inherit;font-weight:500;color:var(--accent)">AI settings</button></p>
+      <button type="button" data-act="aiNoteGotIt" class="cnpy-ghostbtn" style="font-size:13px;font-weight:500;border:1px solid var(--border-strong);background:var(--surface);border-radius:6px;padding:5px 12px;min-height:32px">Got it</button>
+    </aside>`;
+}
+/** An entry Trov wrote: the AI mark as its avatar, "Trov" as the name, "for <subject>", and the
+ *  sources it was written from with "Wrong?" under the brief. */
+function feedTrovCard(s: AppState, e: FeedRow & { ai: NonNullable<FeedRow["ai"]> }): string {
+  const a = e.ai;
+  const tip = aiFeedTip(a.sources, a.moreCount);
+  const avatar = `<span aria-hidden="true" class="cnpy-ai-av" style="width:30px;height:30px;border-radius:7px;background:var(--accent-soft);display:inline-flex;align-items:center;justify-content:center;flex:none">${aiMark(15)}</span>`;
+  const subject = a.subject ? `<span data-mtip="${attr(tip)}" style="font-size:12px;color:var(--fg-55)">for ${handleLink(personFor(s, a.subject), a.subject)}</span>` : `<span data-mtip="${attr(tip)}" style="font-size:12px;color:var(--fg-55)">written by Trov</span>`;
+  const from = aiFromLine(a.sources, a.moreCount);
+  return `<div${surface("padding:16px 18px;margin-bottom:12px", { cls: "cnpy-ai-entry" })} data-ai="feed" data-feed-id="${e.id}">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div style="margin-top:1px">${avatar}</div>
+        <div style="flex:1;min-width:0">
+          <div class="cnpy-md-inline" style="font-size:14px;font-weight:500;line-height:1.5;letter-spacing:-0.005em">${renderMarkdownInline(e.summary)}</div>
+          ${s.feedView === "reading" ? feedBrief(e.brief) : feedBody(e.body) || feedBrief(e.brief)}
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px">
+            <span style="font-size:12px;font-weight:600;color:var(--fg)">Trov</span>
+            ${subject}
+            <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
+            <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>${feedImportance(s, e)}
+          </div>
+          <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-55)">
+            ${from || "<span></span>"}${aiWrongBtn(aiFeedback("feed", aiItemRef.feed(e.id), "feed", a.model), 12.5)}
+          </div>
+        </div>
+      </div>
+    </div>`;
 }
 
 function feedView(s: AppState): string {
   if ((s.feed.status === "loading" || s.feed.status === "idle") && s.feed.data.length === 0) return wrapFeed(s, feedSkeleton());
   if (s.feed.status === "error") return wrapFeed(s, notice("Couldn't load the feed."));
 
-  const cards = feedRows(s).map((e) => {
+  // Entries written by Trov (`ai.origin === "ai"`) get their own byline and footer; the Source switch
+  // and "Wrong?" narrow what is shown; the one-time note sits above the first of them on screen.
+  const now = Date.now();
+  const shown = feedShown(s, now);
+  // "Got it" and "Wrong?" take the note and an entry out with the one exit (ai-ui.ts › Leaving).
+  const noteT = aiLeavingT(s.ai, AI_NOTE_LEAVING, now);
+  // With the switch off (or no key) the note would be untrue: not drawn; the entries keep their mark (Q29).
+  const noteAt = feedHasAi(s) && !s.ai.feedAiOff && (!feedNoteSeen(s) || noteT !== null) ? shown.findIndex(isTrovEntry) : -1;
+  const cards = shown.map((e, i) => {
+    const note = i === noteAt ? (noteT === null ? feedAiNote() : aiLeave(feedAiNote(), noteT)) : "";
+    if (isTrovEntry(e)) {
+      const t = aiLeavingT(s.ai, aiHiddenKey("feed", aiItemRef.feed(e.id)), now);
+      return note + (t === null ? feedTrovCard(s, e) : aiLeave(feedTrovCard(s, e), t));
+    }
     const artifacts = feedArtifacts(e.artifacts);
     const artifactRow = artifacts.length
       ? `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">
@@ -1239,7 +1365,7 @@ function feedView(s: AppState): string {
             ${agentMark()}
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
             <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>
-            ${e.tags && e.tags.length ? `<span style="font-size:12px;color:var(--fg-40)">&middot;</span>${tagWords(e.tags)}` : ""}
+            ${e.tags && e.tags.length ? `<span style="font-size:12px;color:var(--fg-40)">&middot;</span>${tagWords(e.tags)}` : ""}${feedImportance(s, e)}
             <div style="flex:1"></div>
           </div>
           ${artifactRow}
@@ -1253,7 +1379,9 @@ function feedView(s: AppState): string {
   if (s.feed.status === "ok" && s.feed.data.length === 0 && s.feedAuthor === "all" && s.feedTag === "all") {
     return wrapFeed(s, emptyLayout("feed", { text: FEED_EMPTY, action: CONNECT_AGENT, sayStyle: "margin-bottom:12px", shapes: skList(3, feedCardShape) }), false);
   }
-  const empty = s.feed.status === "ok" && feedRows(s).length === 0 ? notice("No entries match this filter.") : "";
+  // Source = Trov over a page with no entry Trov wrote says so, not "match this filter" (Q27).
+  const empty = s.feed.status === "ok" && shown.length === 0
+    ? notice(feedHasAi(s) && s.ai.feedSource === "trov" ? FEED_NO_TROV : "No entries match this filter.") : "";
   return wrapFeed(s, `<div class="cnpy-stagger">${cards}</div>${empty}`);
 }
 
@@ -1519,7 +1647,7 @@ function roadmapSprintGroups(s: AppState): string {
   const renderGroup = (items: SprintView[], heading: string, color: string): string =>
     items.length === 0
       ? ""
-      : `${sectionHeading(heading, color)}<div class="cnpy-stagger">${items.map((sp) => sprintCard(sp, s.persons.data, { done: isDone(sp), nextUp: sp.id === nextId, now })).join("")}</div>`;
+      : `${sectionHeading(heading, color)}<div class="cnpy-stagger">${items.map((sp) => sprintCard(sp, s.persons.data, { done: isDone(sp), nextUp: sp.id === nextId, now, ai: s.ai })).join("")}</div>`;
 
   return `${renderGroup(inProgress, "In Progress", "var(--amber)")}
     ${renderGroup(upcoming, "Upcoming", "var(--blue)")}
@@ -1634,7 +1762,10 @@ function roadmapNewSprint(s: AppState): string {
  * tab has no aside.
  */
 function roadmapDigest(s: AppState): string {
-  return asideColumns(`${roadmapNewSprint(s)}${planNarrativeBlock(s.roadmap.data.narrative, renderMarkdown)}${roadmapSprintGroups(s)}`, roadmapAside(s),
+  // Trov's pieces (./roadmap-ai.ts), each "" when its field is absent: an admin's suggestion cards above the
+  // narrative, the drift line under it.
+  const d = s.roadmap.data;
+  return asideColumns(`${roadmapNewSprint(s)}${roadmapSuggestionCards(d.suggestions, s.ai)}${planNarrativeBlock(d.narrative, renderMarkdown)}${driftLine(d.drift, s.ai)}${roadmapSprintGroups(s)}`, roadmapAside(s),
     { bar: roadmapTabBar(s), panel: tabPanelAttrs("roadmap-tab", s.roadmapTab) });
 }
 
@@ -1956,7 +2087,7 @@ function guideView(s: AppState): string {
     ${gFig("mywork", `${gEm("My Work")}: your tickets, the review queue, your sessions, and the repo at a glance.`)}
 
     ${sub("Tickets")}
-    <p style="${gP}">The team's request queue. Anyone can file a bug, request, question, or access ask with ${gStrong("Submit a ticket")}. The ${gStrong("Board")} is the default view, one column per status: ${gStrong("Triage")}, ${gStrong("In progress")}, ${gStrong("Testing")}, ${gStrong("Done")}, and ${gStrong("Declined")}. Drag a card to change its status or its place in a column. An open ticket can move to any column, and Testing is optional. ${gStrong("Table")} lists the same tickets grouped by sprint (no sprint means ${gStrong("Backlog")}). Both have a search box and a ${gStrong("Filter")} menu.</p>
+    <p style="${gP}">The team's request queue. Anyone can file a bug, request, question, or access ask with ${gStrong("Submit a ticket")}. The ${gStrong("Board")} is the default view, one column per status: ${gStrong("Triage")}, ${gStrong("In progress")}, ${gStrong("Testing")}, and ${gStrong("Done")}. Declined tickets are left out of ${gStrong("All")}; pick ${gStrong("Closed")} to see them in their own ${gStrong("Declined")} column. Drag a card to change its status or its place in a column. An open ticket can move to any column, and Testing is optional. ${gStrong("Table")} lists the same tickets grouped by sprint (no sprint means ${gStrong("Backlog")}). Both have a search box and a ${gStrong("Filter")} menu.</p>
     ${gFig("board", `${gEm("Board")}: a column per status, in the order people dragged them.`)}
     ${gFig("tickets", `${gEm("Table")}: the same tickets grouped by sprint.`)}
     <p style="${gP};margin-top:14px">Issues in the product's GitHub repo also show up as tickets, each with a locked link back to its issue. Closing or reopening the issue closes or reopens its ticket; everything else about it is edited in Trov. Apart from that, only a person closes a ticket: a merged PR never does.</p>
@@ -2464,6 +2595,7 @@ function settingsView(s: AppState): string {
   //   Plan | Limits
   //   Organizations
   //   MCP access
+  //   Trov: How Trov should answer you | Default mode, then What Trov can see (ask-settings.ts)
   //   Email notifications
   // DOM order is the folded order — who I am, then the plan, then the rest, Sign out last —
   // and the wide layout places each tile by name, so the narrower ones need no reordering.
@@ -2481,6 +2613,8 @@ function settingsView(s: AppState): string {
     ${settingsOrgsTile({ orgs: s.myOrgs.data, mine: s.me?.orgs ?? [], status: s.myOrgs.status, current: s.orgSlug })}
 
     ${mcpAccessSection(s, org?.name ?? "")}
+
+    ${trovSettingsTiles(s.trovPrefs, s.orgSlug)}
 
     <section class="cnpy-tile cnpy-surface cnpy-set-appear">
       <div style="${SECTION_LABEL}">Appearance</div>
@@ -2550,7 +2684,7 @@ function myWorkView(s: AppState): string {
   const feedLoad = mwLoad(s.mwSessions.status, s.mwSessions.data.length > 0);
   const sessions: MwSession[] = s.mwSessions.data
     .slice(0, 2)
-    .map((e) => ({ id: e.id, summaryHtml: renderMarkdownInline(e.summary), brief: e.brief, at: e.created_at }));
+    .map((e) => ({ id: e.id, summaryHtml: renderMarkdownInline(e.summary), brief: e.brief, at: e.created_at, trov: e.ai?.origin === "ai" }));
   const handoffLoad = mwLoad(s.handoffs.status, s.handoffs.data.length > 0);
   const waiting: MwHandoff[] = handoffsForMe(s.handoffs.data, me)
     .map((h) => ({ id: h.id, title: firstLine(h.body) || `Handoff #${h.id}`, at: h.created_at }));
@@ -2607,24 +2741,47 @@ function myWorkView(s: AppState): string {
   // screen, and a tile never appears or leaves when a count crosses zero. A CLEAR review
   // queue (loaded, empty) steps out of the lead pair to sit beside Repo:
   // Tickets 7 | Sessions 5, then Repo 7 | Needs your review 5.
+  // Your brief (written by Trov) is a tile of its own, ONLY when the dashboard carries one and this
+  // person has not pressed "Wrong?" on it. With it the bento is laid out by AREA (trov.css
+  // `.mw-bento-brief`): Brief on the left beside Needs your review over Docs you own; Your sessions beside Tickets
+  // for you; Repo wide beside Queued handoffs.
   const reviewClear = reviewLoad === "ok" && reviewItems.length === 0;
-  const strips = ["library"];
-  const order = reviewClear ? ["tickets", "sessions", "repo", "review"] : ["tickets", "review", "sessions", "repo"];
-  const span = reviewClear
-    ? { tickets: 7, sessions: 5, repo: 7, review: 5, library: 12 }
-    : mwSpans(order, strips);
+  // "Wrong?" on it: the tile leaves by the AI kit's one exit IN its slot (`aiLeaving`), and only then does the bento
+  // take its other layout (ai-actions.ts fades that one in).
+  const briefKey = d?.brief ? aiHiddenKey("brief", aiItemRef.brief(d.brief.generatedAt ?? "brief")) : "";
+  const brief = d?.brief && (!s.ai.hidden.includes(briefKey) || aiLeavingT(s.ai, briefKey) !== null) ? d.brief : null;
+  const strips = brief ? [] : ["library"];
+  const order = brief
+    // In the visual order: Brief beside Needs your review over Docs you own (the owner, 2026-10-16: a short tile
+    // there keeps the brief its own height); Your sessions beside Tickets for you; Repo beside Queued handoffs.
+    // A phone reorders by CSS (trov.css `.mw-bento-brief` at 700px).
+    ? ["brief", "review", "docs", "sessions", "tickets", "repo", "handoffs"]
+    : reviewClear ? ["tickets", "sessions", "repo", "review"] : ["tickets", "review", "sessions", "repo"];
+  // With the brief, the areas place every tile; the spans only matter below the phone breakpoint (all 12).
+  const span: Record<string, number> = brief
+    ? Object.fromEntries(order.map((k) => [k, 12]))
+    : reviewClear
+      ? { tickets: 7, sessions: 5, repo: 7, review: 5, library: 12 }
+      : mwSpans(order, strips);
+  const libTiles = brief ? libraryTiles(library) : null;
   const tile: Record<string, () => string> = {
-    tickets: () => ticketsTile({ load: dLoad, rows: tickets, total: ticketsTotal, expanded: s.mwExpanded.tickets }, degraded, span.tickets, dueOf),
-    review: () => reviewTile(reviewItems, reviewLoad, span.review),
+    // Beside the brief, Needs your review and Tickets for you hold two rows each in fixed boxes (BR-OWNER-2).
+    tickets: () => ticketsTile({ load: dLoad, rows: tickets, total: ticketsTotal, expanded: s.mwExpanded.tickets }, degraded, span.tickets, dueOf, !!brief),
+    review: () => reviewTile(reviewItems, reviewLoad, span.review, !!brief),
     sessions: () => sessionsTile(sessions, feedLoad, waiting, span.sessions),
     repo: () => repoTile(s.repo.data, mwLoad(s.repo.status, !!s.repo.data), s.mwRepoTab, span.repo, { noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, admin: viewerIsAdmin(s) }),
     library: () => libraryStrip(library, span.library),
+    docs: () => libTiles?.docs ?? "",
+    handoffs: () => libTiles?.handoffs ?? "",
+    brief: () => (brief ? aiLeaving(s.ai, briefKey, briefTile(brief, false, span.brief)) : ""),
   };
 
   return myWorkLayout({
     greeting: `${greetingFor()}, ${esc(s.displayName || s.me?.name || s.me?.handle || "there")}`,
-    dateLine: stat ? `${esc(today)} · ${esc(stat)}` : esc(today),
+    date: esc(today),
+    stat: esc(stat),
     tiles: [...order, ...strips].map((k) => tile[k]()),
+    ...(brief ? { bento: "brief" as const } : {}),
   });
 }
 
@@ -2674,8 +2831,12 @@ function ticketsScreen(s: AppState): string {
     filterOpen: s.qFilterOpen,
     filterCat: s.qFilterCat,
     fmOpening: s.fmOpening,
+    aiFilter: aiFilterLine("tickets", s.aiFilter, s.ai),
+    aiFilterMenu: aiFilterMenuTop("tickets", s.aiFilter),
     // The first read is out: the toolbar is real, the columns / rows are skeletons.
     loading: slicePending(s.tickets),
+    // Cards declined while this view was up, mid-exit (the AI kit's clock: `--leave-t`).
+    leaving: s.qLeaving.map((l) => ({ row: l.row, t: Math.max(0, Date.now() - l.at) })).filter((l) => l.t < AI_EXIT_MS),
   });
 }
 
@@ -2717,6 +2878,7 @@ function ticketDetailScreen(s: AppState): string {
     artifactsBlock: ticketArtifactsBlock(s.art.ticketArts[slice.data.id]),
     edit: s.tdEdit,
     deleteArm: s.tdDeleteArm,
+    aiUi: s.ai,
   });
 }
 
@@ -2726,7 +2888,7 @@ function sprintScreenBody(s: AppState): string {
   if ((slice.status === "loading" || slice.status === "idle") && !slice.data) return sprintSkeleton();
   if (slice.status === "error") return notice("Couldn't load this sprint.");
   if (!slice.data) return notice("That sprint doesn't exist.");
-  return sprintScreen({ detail: slice.data, persons: s.persons.data, resourceDraft: s.linkDraft, deleteArmed: s.sprintDeleteArmed });
+  return sprintScreen({ detail: slice.data, persons: s.persons.data, resourceDraft: s.linkDraft, deleteArmed: s.sprintDeleteArmed, ai: s.ai });
 }
 
 /** The person card for `handle`: painted from the `GET /persons` summary, completed by the
@@ -2743,6 +2905,7 @@ function personCardFor(s: AppState, handle: string): string {
 function screenBody(s: AppState): string {
   switch (s.screen) {
     case "mywork": return myWorkView(s);
+    case "ask": return askScreenView(s);
     case "feed": return feedView(s);
     case "docs": return docsView(s);
     case "roadmap": return roadmapView(s);
@@ -2761,7 +2924,7 @@ function screenBody(s: AppState): string {
     case "artifactnew":
     case "artifact": return artifactsView(artProps(s, s.screen));
     case "handoffs": return handoffsView({ status: s.handoffs.status, handoffs: s.handoffs.data, me: s.me?.handle ?? "", persons: s.persons.data });
-    case "handoff": return handoffDetailView({ status: s.handoffDetail.status, handoff: s.handoffDetail.data, me: s.me?.handle ?? "", persons: s.persons.data, expireArm: s.handoffExpireArm, promptView: s.promptView });
+    case "handoff": return handoffDetailView({ status: s.handoffDetail.status, handoff: s.handoffDetail.data, me: s.me?.handle ?? "", persons: s.persons.data, expireArm: s.handoffExpireArm, promptView: s.promptView, reading: s.handoffReading && s.handoffDetail.data && s.handoffReading.id === s.handoffDetail.data.id ? s.handoffReading.items : null, readingT: s.handoffReading?.at === undefined ? null : Date.now() - s.handoffReading.at });
     case "newhandoff": return newHandoffView({ draft: s.nh, me: s.me?.handle ?? "", persons: s.persons.data, primaryRepo: s.orgMe.data?.repos.primary ?? null });
     case "prompts": return promptLibraryView({ status: s.promptList.status, prompts: s.promptList.data, q: s.promptQ, tag: s.promptTag, sort: s.promptSort, filterOpen: s.promptFilterOpen, filterCat: s.promptFilterCat, fmOpening: s.fmOpening, persons: s.persons.data });
     case "prompt": return promptDetailView({
@@ -2815,11 +2978,12 @@ function orgProps(s: AppState): OrgSettingsProps {
 }
 
 /** Project the app state onto the Repo dashboard's props (its components never see AppState). */
-function repoProps(s: AppState): RepoProps {
+export function repoProps(s: AppState): RepoProps {
   return {
     tab: s.repoTab, range: s.repoRange, driftOpen: s.repoDriftOpen, repo: s.repo, fetchedAt: s.repoFetchedAt, sample: s.repoSample,
     admin: viewerIsAdmin(s), noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, poll: s.repoPoll, productEnv: s.repoProductEnv, persons: s.persons.data,
     synced: syncRepoLabel(s.sync, Date.now()),
+    ai: { ui: s.ai, admin: viewerIsAdmin(s), repo: s.repo.data?.repo ?? "" },
     app: s.repoApp, group: s.repoGroup, groupFlipped: s.repoGroupFlipped, phone: s.phone, scenario: s.repoSample ? s.repoScenario : undefined, dd: s.dd, open: s.repoOpen,
   };
 }
@@ -2828,6 +2992,8 @@ function repoProps(s: AppState): RepoProps {
 function artProps(s: AppState, screen: ArtScreen): ArtProps {
   return {
     screen, route: s.artRoute, ui: s.art, me: s.me?.handle ?? "", admin: viewerIsAdmin(s), fmOpening: s.fmOpening,
+    aiFilter: screen === "artifacts" ? aiFilterLine("artifacts", s.aiFilter, s.ai) : "",
+    aiFilterMenu: screen === "artifacts" ? aiFilterMenuTop("artifacts", s.aiFilter) : "",
     orgName: viewerOrg(s)?.name ?? "", repos: s.orgMe.data?.repos.all ?? [],
     persons: s.persons.data, host: `${typeof location !== "undefined" ? location.host : "trov"}${s.orgSlug ? `/${s.orgSlug}` : ""}`,
     theme: resolved(s),
@@ -2853,7 +3019,14 @@ function appView(s: AppState): string {
     : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen
     // A tag's page too, by tag (another tag is another page): its To review list is keyed, so a row can leave with
     // its animation, and the numbers tick in place instead of the page being rebuilt under them.
-    : s.screen === "tag" ? `tag:${s.tagName ?? ""}` : "";
+    : s.screen === "tag" ? `tag:${s.tagName ?? ""}`
+    // Ask: a keystroke, a streamed word or a hover card never rebuilds the page (the composer keeps its caret,
+    // the conversation its scroll, and nothing that already entered replays its entrance).
+    : s.screen === "ask" ? "ask"
+    // The Roadmap's Narrative tab too: Trov's suggestion cards are a keyed list, so one an Accept / Dismiss took
+    // leaves with Review's exit, and a note or the drift collapses out the same way (roadmap-ai.ts › MOTION). The
+    // Timeline tab is rebuilt as before (another key, so a tab switch replaces the page).
+    : s.screen === "roadmap" && s.roadmapTab === "narrative" ? "roadmap:narrative" : "";
   // The skip link is the shell's first child (a fixed chip, out of the flex row): past the sidebar and the
   // header, to the screen itself. morph.ts patches the aside and swaps <main>; it never touches this.
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
@@ -2904,6 +3077,8 @@ export function render(real: AppState): string {
     ${s.billingCheckout ? billingCheckoutPage(s.billingCheckout, firstRunBackdrop()) : s.billingDone ? billingDonePage(s.billingDone, firstRunBackdrop()) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null, s.dd) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature, menuOpen: s.siteMenu }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
+    ${askOverlays(s)}
+    ${s.view === "app" && s.dd.open ? dropdownMenu(actionDropdowns(s), s.dd) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}

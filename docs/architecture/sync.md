@@ -66,6 +66,12 @@ When no summary can be attempted — the deployment has no `ANTHROPIC_API_KEY`, 
 a plan that is only **past due** still summarizes: `billing.md`), or its month's allowance is used up (`plans.md` › AI summaries) — an item with no summary gets its **excerpt**
 once and the run is a single batch. A later sync fills the excerpts in once summaries are allowed again.
 
+When the org's **AI switch** is off (`orgs.ai_automation`, Org settings › AI; `ai.md` › the org switch) a sync
+summarizes nothing and writes no summary row at all — not even the excerpt — and meters nothing; a summary
+already written is left exactly as it was. The run is a single batch, its items stay pending, and the panel says
+why ("This organization's AI switch is off (Org settings › AI), so nothing new is summarized." — the
+`disabled` status of `SyncSummariesView`). The first sync after the switch is back on summarizes them.
+
 How long it takes: a batch is two or more GitHub list requests plus up to 5 summary calls — a few seconds
 for a small repository, up to about a minute if every summary call times out. A full ten-batch run on a
 large backlog is a few minutes.

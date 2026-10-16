@@ -1,0 +1,141 @@
+
+=== AU-1 workspace rows
+[
+ "Trov",
+ "T\n      Test Enterprise\n      0",
+ "My Work0",
+ "Trov0",
+ "Tickets7",
+ "Roadmap0",
+ "Handoffs2",
+ "Repo0",
+ "Feed0",
+ "Docs0",
+ "Technical",
+ "Product"
+]
+
+=== AU-1 Trov row icon
+null
+
+=== AU-2 columns
+{
+ "threads": {
+  "w": 260,
+  "x": 228
+ },
+ "conv": {
+  "w": 942,
+  "x": 488
+ },
+ "col": {
+  "w": 720,
+  "x": 599
+ },
+ "insp": {
+  "w": 0,
+  "x": 0
+ },
+ "header": "Trov"
+}
+
+=== AU-3 groups
+[]
+
+=== AU-3 injection row html
+<span class="ask-th-title">test-&lt;img src=x onerror=alert(1)&gt; Résumé 🚀 日本語</span><span class="ask-th-at">Sep 15</span>
+
+=== AU-3 any <img> inside thread list
+0
+
+=== AU-5 hits
+{
+ "text": "New thread\n1 THREAD\ntest-This week: webhook retries\nMon\nWhere are webhook retries?\n1 match",
+ "marks": [
+  "webhook"
+ ]
+}
+
+=== AU-6 question align + chips
+{
+ "qRight": 1291,
+ "chips": [
+  {
+   "text": "#1",
+   "aria": "Ticket: #1 test-Login page is blank on Safari, In progress",
+   "lead": "<svg width=\"12\" height=\"12\" viewBox=\"0 0 14 14\" fill=\"none\" style=\"flex:none;dis"
+  },
+  {
+   "text": "#2",
+   "aria": "Ticket: #2 test-Blank login screen after the Safari update, Triage",
+   "lead": "<svg width=\"12\" height=\"12\" viewBox=\"0 0 14 14\" fill=\"none\" style=\"flex:none;dis"
+  }
+ ],
+ "header": "›test-What is blocking #1?"
+}
+
+=== AU-6 hover card
+Ticket #1
+test-Login page is blank on Safari
+In progress
+High
+TM
+Backlog
+Click to open beside the thread
+Open
+
+=== AU-7 footer
+Smart
+2 sources
+Copy
+Regenerate
+Save as artifact
+Wrong?
+
+=== AU-7 sources list
+1
+#1 test-Login page is blank on Safari
+Ticket
+2
+#2 test-Blank login screen after the Safari update
+Ticket
+
+=== AU-7 regenerate menu
+REGENERATE WITH
+Fast
+Quick answers from what Trov has already indexed.
+Smart
+Reads the items it finds before answering. The default.
+Thinking
+Works through harder questions first. Slower. Counts as 5 questions.
+
+=== AU-7 wrong row
+[
+ "A source is wrong",
+ "It is out of date",
+ "It missed something"
+]
+
+=== AU-32 injection
+{
+ "scripts": 0,
+ "imgs": 0,
+ "b": 0,
+ "jsLinks": 0,
+ "text": "Edit\n<script>alert('test-xss')</script> **bold** 日本語 🚀\n\nPlain answer with <b>tags</b>, [a link](javascript:alert(1)) and code.\n\nSmart\nNo sources\nCopy\nRegenerate\nSave as artifact\nWrong?\ntest- What changed since?\nSmart\nAsk before changes\nAuto\nEnter to send · Shift+Enter for a new line",
+ "crumb": "›test-<img src=x onerror=alert(1)> Résumé 🚀 日本語"
+}
+
+=== overflow
+{
+ "docW": 1440,
+ "winW": 1440,
+ "hscroll": false
+}
+
+=== logs
+{
+ "console": [],
+ "failed": [],
+ "pageerrors": []
+}

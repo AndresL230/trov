@@ -2,6 +2,10 @@
 // orgs, an owner for Acme, and a few audit entries. Appended by scripts/seed-dev.mjs AFTER the
 // shared seed (scripts/seed/build.mjs, which the tests pin) — never part of the test reset.
 // Deterministic for a given day: the figures come from a fixed sequence, not Math.random.
+//
+// `acme: false` leaves out everything outside SaplingLearn — Acme's (`org_b`) owner and usage, and the admin trail.
+// Acme exists only after the canonical reset (scripts/seed/reset.mjs); a freshly migrated D1 has SaplingLearn alone,
+// so the team scenario's plain (no --reset) load writes SaplingLearn's usage only (#189).
 
 const q = (v) => `'${String(v).replace(/'/g, "''")}'`;
 const DAY_MS = 86_400_000;
@@ -15,7 +19,7 @@ function sequence(seed) {
 
 const TOOLS = ["get_feed", "query", "get_doc", "list_tickets", "record_session", "get_my_work", "create_ticket"];
 
-export function platformDevStatements(now = new Date()) {
+export function platformDevStatements(now = new Date(), { acme = true } = {}) {
   const s = [];
   const rnd = sequence(42);
   const rows = [];
@@ -41,8 +45,8 @@ export function platformDevStatements(now = new Date()) {
     }
   }
   // Acme: a new org — an owner, and a first few quiet days.
-  s.push(`INSERT OR IGNORE INTO memberships (org_id, user_id, role, title, responsibilities, created_at, created_by) VALUES ('org_b', 'sanaok', 'owner', 'Founder', NULL, ${q(new Date(now.getTime() - 6 * DAY_MS).toISOString())}, 'AndresL230')`);
-  for (const back of [5, 3, 2, 0]) {
+  if (acme) s.push(`INSERT OR IGNORE INTO memberships (org_id, user_id, role, title, responsibilities, created_at, created_by) VALUES ('org_b', 'sanaok', 'owner', 'Founder', NULL, ${q(new Date(now.getTime() - 6 * DAY_MS).toISOString())}, 'AndresL230')`);
+  for (const back of acme ? [5, 3, 2, 0] : []) {
     const day = dayOf(now.getTime() - back * DAY_MS);
     usage("org_b", day, "api_read", "sanaok", 6 + back * 3);
     usage("org_b", day, "api_write", "sanaok", 1 + back);
@@ -54,8 +58,10 @@ export function platformDevStatements(now = new Date()) {
   // The administration trail behind that.
   const audit = (org, action, target, detail, back) =>
     s.push(`INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (${org ? q(org) : "NULL"}, 'AndresL230', ${q(action)}, ${q(target)}, ${q(JSON.stringify(detail))}, ${q(new Date(now.getTime() - back * DAY_MS).toISOString())})`);
-  audit("org_b", "org.create", "acme", { name: "Acme" }, 6);
-  audit("org_b", "member.add", "sanaok", { role: "owner" }, 6);
-  audit(null, "platform.org_limit", "meilin", { limit: 5 }, 2);
+  if (acme) {
+    audit("org_b", "org.create", "acme", { name: "Acme" }, 6);
+    audit("org_b", "member.add", "sanaok", { role: "owner" }, 6);
+    audit(null, "platform.org_limit", "meilin", { limit: 5 }, 2);
+  }
   return s;
 }

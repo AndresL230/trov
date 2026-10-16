@@ -12,7 +12,9 @@ never reissued; a ticket MIRRORED from a GitHub issue is a 403, since the mirror
 gate, no confidence, no staged state. Every write bumps `tickets.updated_at` (the queue's sort key); the
 status machine is `canTransition` in `shared/tickets-core.ts` (re-exported by `shared/tickets.ts`) and is
 never re-declared server-side; an illegal move or a nesting-rule break is a 409 that writes nothing;
-tickets nest exactly ONE level (`set_ticket_parent`'s four rejections).
+tickets nest exactly ONE level (`set_ticket_parent`'s four rejections). A ticket that CLOSES (done / declined) closes
+Trov's OPEN suggestions about it in the same batch (`closingStmts`: superseded — owner ruling Q35), on all three
+status writers: `transition_ticket`, `move_ticket` and the mirror's forced status (`ai.md` › The kinds).
 
 **The ticket board** (the queue's DEFAULT view, `web/src/tickets.ts` `boardView`; the Table is the other).
 Statuses are `submitted` (Triage) / `in_progress` / `testing` / `done` / `declined` — `testing` (0033) is an
@@ -34,9 +36,43 @@ one whose neighbours are too close to split. The drag is POINTER-driven (`web/sr
 drag-and-drop — the browser's drag image is a shrunken snapshot the page cannot size: a full-size clone
 follows the pointer, a slot the other cards slide around (FLIP) marks where it will land, rerenders are
 HELD for the whole drag, and the click a drag's release fires is swallowed. Mouse and pen only — touch
-scrolls. The queue's search box and Filter menu (Assignee incl. any one person, Category, Priority, Sprint)
+scrolls.
+
+**The default view hides declined** (owner's ruling, 2026-10-15). The queue opens on **All** (`qSeg: "all"`, the
+board), and All is every status BUT `declined`: `SEG_STATUSES` in `web/src/tickets.ts` is both what a segment shows
+and the board's columns, so the All board has four columns (Triage, In progress, Testing, Done) and the table no
+declined row. Done stays in All. Declined tickets — Ask Trov's undone ones included — are reached on purpose through
+**Closed** (Done + Declined), the existing switch; its options' tooltips say what each holds. The narrowing is
+client-side (`segRows`, the first step of `queueRows`): the server's `seg=all` still returns every status, so MCP
+`list_tickets`, the attach dialog and the plain-language filter's `status: all` read the same as before. Every count
+is over what is shown — "N shown", a sprint group's count, a column's count and the Filter menu's Priority, Sprint
+and person counts. To decline from the board, open Closed and drop on Declined, or use the status menu on the
+ticket. A card that a refetch finds DECLINED while a view that hides declined is up (the screen is `tickets`)
+leaves by the AI kit's one exit (`web-ui.md` › The AI kit — Review's exit on a screen rebuilt per paint):
+`declinedLeavers(prev, next, seg)` names the rows, `state.qLeaving` holds each as it was shown with when its exit
+began, `queueView` draws it in its old place inside `aiLeave` (`--leave-t`, `inert`) for `AI_EXIT_MS`, counted
+nowhere, then a timer drops it; nothing under reduced motion. The saved drag order is unaffected: a declined
+ticket keeps its `board_rank`, and a drop's placement is computed over its target column only
+(`test/render.tickets.test.ts` › the default view hides declined tickets).
+
+The queue's search box and Filter menu (Assignee incl. any one person, Category, Priority, Sprint)
 are the Artifacts library's; Assignee (anyone / me / unassigned) and Category filter server-side, a person,
-Priority, Sprint and search narrow the loaded rows (`queueRows`).
+Priority, Sprint and search narrow the loaded rows (`queueRows`). With the org's AI on, the Filter menu opens on a
+"Describe a filter" row (`ai.md` › The plain-language filter): the typed sentence's answer sets these same controls — the Open / Closed / All
+switch, Assignee or one person, Category, Priority, Sprint and the search — replacing what was set, with Undo.
+
+**Trov's suggestions on a ticket** (Phase C, `ai.md` › The kinds). With the org's AI on, the pass asks Jev ONE
+request per new ticket (`card:ticket:<n>`): its category while it is still `other`, its priority while it is still
+`normal` (what the form files when nobody picks — a value a person picked is never asked about or overwritten), and
+whether it is the same request as one of the top five full-text hits of the org (never itself, its parent or
+children, or a ticket it already links). The ticket detail's cookie read (`GET /tickets/:id`, `TicketDetail.ai?`;
+never MCP's `get_ticket`) carries the open ones, drawn as chips under Properties and above Linked work with Accept /
+Dismiss. Accepting a category or priority goes through `set_ticket_classification` (`src/tools/tickets.ts`: no MCP
+tool, no history row, a value outside the vocabulary is `bad_request`) as the person; accepting a possible duplicate
+only ADDS A LINK through `add_ticket_link` — to the other ticket's GitHub issue when it is mirrored, else to its
+in-app address (`<origin>/<org>/#tickets/<n>`, which `parseTicketLink` names `#<n>`, `TROV · TICKET`). Nothing
+closes, declines or merges either ticket (Invariant 5). Dismissed or accepted, a kind is never suggested again for
+that ticket.
 
 **The writer is a PERSON — over a cookie, or over their own bearer token.** Eight of those writers are also
 MCP tools (`src/tools/tickets-agent.ts`, the read side below), scoped so an agent writes only inside its

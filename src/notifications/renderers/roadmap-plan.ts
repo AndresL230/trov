@@ -1,93 +1,52 @@
-import type { SprintRow, PlanVersionRow } from "@shared/rows";
 import type { NotificationKind, Section, Window } from "@shared/notifications";
-import { type TenantContext, first } from "../../data/sql";
-import { escapeHtml, isoOf } from "../html";
-import { EMAIL_STYLE as S, EMAIL_CARD as K, EMAIL_SPACE as SP, type ChipTone } from "../assemble";
+import { sprintDueState } from "@shared/sprints-core";
+import { type TenantContext, all } from "../../data/sql";
+import { queueLine } from "../assemble";
 
 const DEEP_LINK = "/#roadmap";
-const PLAN_TONE: Record<PlanDiffLine["label"], ChipTone> = { added: "green", changed: "blue", reordered: "muted", done: "accent" };
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// Plan-layer diff between two sprint snapshots. Progress (sprint_progress) is not
-// in a snapshot, so a progress-only change can never surface here. The snapshots
-// are SprintRow[] — DB column names (title / target_date), not the DTO's
-// label / due.
-export interface PlanDiffLine {
-  label: "added" | "changed" | "reordered" | "done";
-  text: string;
-}
+interface SprintLineRow { id: number; title: string; target_date: string | null; mine: number; done: number; total: number }
 
-export function diffSprints(before: SprintRow[], after: SprintRow[]): PlanDiffLine[] {
-  const lines: PlanDiffLine[] = [];
-  const prev = new Map(before.map((m) => [m.id, m]));
-
-  for (const m of after) {
-    const old = prev.get(m.id);
-    if (!old) {
-      lines.push({ label: "added", text: `${m.title} — targeting ${m.target_date}` });
-      continue;
-    }
-    if (old.title !== m.title) lines.push({ label: "changed", text: `${old.title} → ${m.title} (renamed)` });
-    if ((old.description ?? "") !== (m.description ?? "")) lines.push({ label: "changed", text: `${m.title} — description updated` });
-    if (old.status !== "done" && m.status === "done") lines.push({ label: "done", text: `${m.title} — confirmed complete` });
-  }
-
-  // Reorder: the relative order of sprints present in BOTH snapshots changed
-  // (snapshots are target_date ASC, id ASC, so a date move shows up here).
-  const common = new Set(after.filter((m) => prev.has(m.id)).map((m) => m.id));
-  const beforeOrder = before.filter((m) => common.has(m.id)).map((m) => m.id);
-  const afterOrder = after.filter((m) => common.has(m.id)).map((m) => m.id);
-  const moved = afterOrder.filter((id, i) => beforeOrder[i] !== id);
-  if (moved.length) {
-    const titles = after.filter((m) => moved.includes(m.id)).map((m) => m.title);
-    lines.push({ label: "reordered", text: `${titles.join(", ")} — order changed` });
-  }
-  return lines;
+/** "due Fri" (within the week), "due today", "due Sep 18", "3 days late"; null with no (or an unreadable) due date. */
+export function dueWords(due: string | null, now: Date): string | null {
+  const s = sprintDueState(due, now);
+  const m = due?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!s || !m) return null;
+  if (s.overdue) return `${s.daysLate} ${s.daysLate === 1 ? "day" : "days"} late`;
+  if (s.daysLeft === 0) return "due today";
+  if (s.daysLeft <= 6) return `due ${WEEKDAYS[new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay()]}`;
+  return `due ${MONTHS[+m[2] - 1]} ${+m[3]}`;
 }
 
 /**
- * roadmap_plan — diff the latest plan version whose created_at falls in the
- * window against the last version BEFORE the window. No version in the window,
- * or no sprint-level change between the two, renders null.
+ * roadmap_plan — ONE line (Phase E): "Sprint: Hosting, due Fri, 2 of 5 done". The sprint in progress the person has
+ * tickets in (else the org's sprint in progress due soonest): its name, when it is due ("due Fri" within the week,
+ * "due Nov 2" past it, "3 days late" when overdue), and how many of its tickets a person marked done (declined ones do
+ * not count). It rides EVERY daily whatever this kind's cadence (owner ruling Q45, `selectKinds`); the cadence
+ * governs the weekly. The full plan diff it used to mail is gone. Null with no sprint in progress. Pure read.
  */
-async function render(ctx: TenantContext, _login: string, window: Window): Promise<Section | null> {
-  const start = isoOf(window.start);
-  const end = isoOf(window.end);
-  const latest = await first<PlanVersionRow>(
-    ctx,
-    `SELECT * FROM plan_versions
-      WHERE org_id = ? AND datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)
-      ORDER BY version DESC LIMIT 1`,
-    ctx.orgId,
-    start,
-    end
-  );
-  if (!latest) return null;
-  const baseline = await first<PlanVersionRow>(
-    ctx,
-    `SELECT * FROM plan_versions WHERE org_id = ? AND datetime(created_at) < datetime(?) ORDER BY version DESC LIMIT 1`,
-    ctx.orgId,
-    start
-  );
-
-  const before = baseline ? (JSON.parse(baseline.sprints_json) as SprintRow[]) : [];
-  const after = JSON.parse(latest.sprints_json) as SprintRow[];
-  const lines = diffSprints(before, after);
-  if (lines.length === 0) return null;
-
-  const html =
-    `<table ${S.table} style="margin-top:${SP.m}px;">` +
-    lines.map((l) => `<tr><td width="96" style="vertical-align:top;padding:${SP.xs}px 8px ${SP.xs}px 0;">${K.mark(l.label.charAt(0).toUpperCase() + l.label.slice(1), PLAN_TONE[l.label])}</td><td style="${S.body}">${escapeHtml(l.text)}</td></tr>`).join("") +
-    `</table>`;
-  const text = lines.map((l) => `  ${l.label.padEnd(10)} ${l.text}`).join("\n");
-  const n = lines.length;
-  const summary = `${n} plan ${n === 1 ? "change" : "changes"} this ${window.cadence === "weekly" ? "week" : "day"}`;
-  return { heading: "Roadmap plan changes", summary, html, text, deepLink: DEEP_LINK, linkLabel: "Roadmap" };
+async function render(ctx: TenantContext, handle: string, window: Window): Promise<Section | null> {
+  const rows = await all<SprintLineRow>(ctx,
+    `SELECT s.id, s.title, s.target_date,
+            EXISTS (SELECT 1 FROM tickets t JOIN ticket_assignees a ON a.ticket_id = t.id AND a.org_id = t.org_id
+                     WHERE t.org_id = s.org_id AND t.sprint_id = s.id AND a.login = ? COLLATE NOCASE) AS mine,
+            (SELECT COUNT(*) FROM tickets t WHERE t.org_id = s.org_id AND t.sprint_id = s.id AND t.status = 'done') AS done,
+            (SELECT COUNT(*) FROM tickets t WHERE t.org_id = s.org_id AND t.sprint_id = s.id AND t.status != 'declined') AS total
+       FROM sprints s WHERE s.org_id = ? AND s.status = 'in_progress'
+      ORDER BY mine DESC, s.target_date IS NULL, s.target_date ASC, s.id ASC LIMIT 1`,
+    handle, ctx.orgId);
+  const s = rows[0];
+  if (!s) return null;
+  const parts = [s.title, dueWords(s.target_date, window.end), s.total > 0 ? `${s.done} of ${s.total} done` : null].filter(Boolean);
+  return queueLine({ label: "Sprint", rest: parts.join(", "), deepLink: DEEP_LINK, linkLabel: "Roadmap" });
 }
 
 export const roadmapPlanKind: NotificationKind<TenantContext> = {
   id: "roadmap_plan",
-  label: "Roadmap plan changes",
-  description: "Sprint progress and slips.",
+  label: "Sprint",
+  description: "One line: the sprint in progress, when it is due and how much is done. It is in every daily digest; Weekly adds it to the weekly one.",
   defaultCadence: "weekly",
   allowedCadences: ["daily", "weekly", "off"],
   render,

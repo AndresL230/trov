@@ -1,0 +1,15 @@
+
+=== hover card
+{
+ "onFocus": "open",
+ "afterEsc": null,
+ "onHover": "open",
+ "both": {
+  "hc": "open",
+  "insp": true
+ },
+ "esc1": {
+  "hc": null,
+  "insp": true
+ }
+}

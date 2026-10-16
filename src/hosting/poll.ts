@@ -42,6 +42,7 @@ import { HOUR, HostingError, SETTLE_MS, asHostingError, hostFetch, hourFloor, is
 import { listAllParts, partRef, type PartRow } from "./parts";
 import { PROVIDERS } from "./registry";
 import type { HostingField, HostingProvider, PollResult } from "./types";
+import { routeAi } from "../tools/ai-route";
 import { REASON_STORED_MAX, upsertDeploys, type CleanDeploy } from "./deploy-store";
 import { joinShas } from "./sha-join";
 import { ROLLBACK_COMPARE_COST, checkRollback, newestReadyChanged } from "./rollback";
@@ -470,6 +471,10 @@ export async function pollPart(
     const newPoints = await putMetrics(ctx, [...clean.points, ...clean.extra]);
     const changedIds = await upsertDeploys(ctx, part, clean.deploys, now, "provider");
     const changedDeploys = changedIds.length;
+    // The AI router, after the batch committed: each deploy new or changed (src/tools/ai-route.ts decides which matter).
+    for (const d of clean.deploys) {
+      if (changedIds.includes(d.id)) await routeAi(ctx, { type: "hosting_deploy", env: part.env, branch: d.branch, state: d.state });
+    }
     // A deploy the provider gave no sha: the commit join (exactly one GitHub candidate, else none). Then the
     // rollback check of the newest production deploy, when this poll created or changed it — ONE compare at
     // most, through the org's GitHub credential. Neither ever fails the poll.

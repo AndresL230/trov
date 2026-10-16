@@ -20,9 +20,13 @@ const trackStyle = (on: boolean): string =>
   `width:36px;height:21px;border-radius:999px;border:1px solid ${on ? "var(--accent)" : "var(--border-strong)"};background:${on ? "var(--accent)" : "transparent"};position:relative;flex:none;padding:0;transition:all .15s ease;display:inline-block`;
 const knobStyle = (on: boolean): string =>
   `position:absolute;top:2px;left:${on ? "17px" : "2px"};width:15px;height:15px;border-radius:50%;background:${on ? "var(--accent-fg)" : "var(--fg-40)"};transition:left .15s ease,background .15s ease;display:block`;
-/** THE on/off switch (a `role="switch"` button): Settings' notification toggles and a connection's organizations. */
-export const switchBtn = (act: string, arg: string | null, on: boolean): string =>
-  `<button data-act="${act}"${arg ? ` data-arg="${attr(arg)}"` : ""} role="switch" aria-checked="${on ? "true" : "false"}" style="${trackStyle(on)}"><span style="${knobStyle(on)}"></span></button>`;
+/** THE on/off switch (a `role="switch"` button): Settings' notification toggles, a connection's organizations
+ *  and Org settings › AI. `label` names it when no visible label is bound to it; `busy` holds it while a
+ *  write is out — `aria-disabled`, never `disabled`: a disabled button drops the keyboard's focus to <body> the
+ *  moment Space or Enter toggles it (the caller's own guard refuses a second press). Without either the markup
+ *  is unchanged. */
+export const switchBtn = (act: string, arg: string | null, on: boolean, label?: string, busy = false): string =>
+  `<button data-act="${act}"${arg ? ` data-arg="${attr(arg)}"` : ""} role="switch" aria-checked="${on ? "true" : "false"}"${label ? ` aria-label="${attr(label)}"` : ""}${busy ? ' aria-disabled="true" aria-busy="true"' : ""} style="${trackStyle(on)}"><span style="${knobStyle(on)}"></span></button>`;
 
 const INPUT = `height:40px;padding:0 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:13.5px;${LABEL};outline:none`;
 const ACCENT_BTN = `padding:0 18px;height:40px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600`;
@@ -125,7 +129,19 @@ export function emailNotificationsSection(p: NotifSettingsProps): string {
         ${switchBtn("toggleAllOff", null, v.unsubscribed)}
       </div>
     </div>
-    <div class="cnpy-set-pairs" style="${listStyle}">${rows || `<div style="${TILE_ROW};font-size:12.5px;color:var(--fg-40)">No digests are enabled org-wide right now.</div>`}</div>
+    <div data-only-needed-row="${v.unsubscribed ? "unsubscribed" : "on"}" style="${TILE_ROW};display:flex;align-items:flex-start;justify-content:space-between;gap:16px;${listStyle}">
+      <div style="min-width:0">
+        <div style="font-size:13.5px;font-weight:500">Only when something needs me</div>
+        <div data-only-needed style="font-size:12px;color:var(--fg-55);margin-top:3px;line-height:1.5">Send the daily digest only when your brief has something next for you, or something notable or breaking touched your work. The weekly always comes.</div>
+        ${v.unsubscribed ? `<div id="only-needed-why" data-only-needed-why style="font-size:12px;color:var(--fg-70);margin-top:3px;line-height:1.5">Not in use while you're unsubscribed from Trov email.</div>` : ""}
+      </div>
+      ${v.unsubscribed
+        // Dimmed with its reason, never hidden (owner ruling Q46): it keeps its place and its state; `aria-disabled`
+        // (focus stays), and main.ts refuses the toggle.
+        ? switchBtn("toggleOnlyWhenNeeded", null, v.onlyWhenNeeded, "Only when something needs me").replace("<button ", '<button aria-disabled="true" aria-describedby="only-needed-why" ')
+        : switchBtn("toggleOnlyWhenNeeded", null, v.onlyWhenNeeded, "Only when something needs me")}
+    </div>
+    <div class="cnpy-set-pairs" style="${listStyle}">${rows ||`<div style="${TILE_ROW};font-size:12.5px;color:var(--fg-40)">No digests are enabled org-wide right now.</div>`}</div>
     <div style="padding-top:12px;border-top:1px solid var(--border)">
       <div style="font-size:11.5px;color:var(--fg-40);line-height:1.5">Digests send once per window, at the org's send hour. Cadence options vary per digest. Kinds turned off org-wide don't appear here at all. The Unsubscribe link at the bottom of every digest works without signing in.</div>
     </div>
@@ -258,7 +274,7 @@ export function notificationsAdminSections(p: NotifAdminProps): string {
   const tryIt = `<div${surface("overflow:hidden")}>
     <div class="cnpy-org-row" style="align-items:center">
       <div style="flex:1 1 240px;min-width:0"><div style="font-size:13.5px;font-weight:600">Preview</div><div style="font-size:12px;color:var(--fg-40);margin-top:1px">Your own digest in a new tab, with live data. Your preferences are ignored.</div></div>
-      <div class="cnpy-org-actions" style="align-items:center">${linkBtn("Daily", tenantHref("/api/notifications/preview?cadence=daily"))}${linkBtn("Weekly", tenantHref("/api/notifications/preview?cadence=weekly"))}${linkBtn("Sample data", tenantHref("/api/notifications/preview?cadence=daily&sample=1"))}</div>
+      <div class="cnpy-org-actions" style="align-items:center">${linkBtn("Daily", tenantHref("/api/notifications/preview?cadence=daily"))}${linkBtn("Weekly", tenantHref("/api/notifications/preview?cadence=weekly"))}${linkBtn("Sample data", tenantHref("/api/notifications/preview?sample=index"))}</div>
     </div>
     <div class="cnpy-org-row" style="align-items:center">
       <div style="flex:1 1 240px;min-width:0"><div style="font-size:13.5px;font-weight:600">Send a test to me</div><div style="font-size:12px;color:var(--fg-40);margin-top:1px">Through the real delivery path, to your address; it appears in the outbox. With nothing new it sends sample data.</div></div>

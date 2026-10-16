@@ -1,0 +1,30 @@
+{
+  "model": "claude-haiku-5-5",
+  "recordedAt": "2026-10-15T09:02:51.275Z",
+  "responses": {
+    "2026-10-15": {
+      "status": 200,
+      "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011Cg3kbDHVBmAtqqT3S72av\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"caption\\\":\\\"Emails and digests led the first half of the window, while the last four weeks spread work more evenly across organizations and sign-in, billing and plans, and tickets and sprints.\\\",\\\"theme_ids\\\":[5,4,3,2]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":863,\"cache_creation_input_tokens\":764,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":764,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":78,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\"},\"diagnostics\":null}"
+    },
+    "2026-10-09": {
+      "status": 200,
+      "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011Cg3kbQWv3j47pEQbo4qWn\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"caption\\\":\\\"Most of the work went to emails in the early weeks, then spread across repo dashboard, tickets, billing and sign-in, with emails and public site falling back.\\\",\\\"theme_ids\\\":[5,1,2,3,4,7]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":727,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":764,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":78,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\"},\"diagnostics\":null}"
+    },
+    "2026-10-01": {
+      "status": 200,
+      "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011Cg3kbXrCDmHDzciB4VAQA\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"caption\\\": \\\"Most merged work in the last four weeks split between the Repo dashboard and Tickets and sprints, with Emails and digests a smaller share. Earlier, the work was mostly in Emails and digests, and it moved toward the dashboard and tickets.\\\", \\\"theme_ids\\\": [1, 2, 5]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":659,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":764,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":106,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\"},\"diagnostics\":null}"
+    },
+    "2026-09-24": {
+      "status": 200,
+      "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011Cg3kbdkA8t7X8Ar7NuBGf\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"caption\\\":\\\"Most merged work went to emails and digests early on, then to the repo dashboard and tickets and sprints, which now share most of the output roughly evenly.\\\",\\\"theme_ids\\\":[5,1,2]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":591,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":764,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":70,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\"},\"diagnostics\":null}"
+    },
+    "2026-09-17": {
+      "status": 200,
+      "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011Cg3kbkHJJXFYiRue67UEr\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"caption\\\":\\\"Most of the merged work in the last four weeks went to emails and digests, with repo dashboard work close behind. Organizations and sign-in got a smaller share, and the other themes saw little or none.\\\",\\\"theme_ids\\\":[1,4,5]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":523,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":764,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":84,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\"},\"diagnostics\":null}"
+    },
+    "2026-08-01": {
+      "status": 200,
+      "body": "{\"model\":\"claude-haiku-5-5\",\"id\":\"msg_011Cg3kbqYpN4G5RN1QGp3a3\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"{\\\"caption\\\":\\\"Nearly all merged work went to AI and summaries, and that held steady across both halves of the window. Other themes saw little or no merged work.\\\",\\\"theme_ids\\\":[6]}\"}],\"container\":null,\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":591,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":764,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":62,\"output_tokens_details\":{\"thinking_tokens\":0},\"service_tier\":\"standard\",\"inference_geo\":\"global\"},\"diagnostics\":null}"
+    }
+  }
+}

@@ -4,7 +4,7 @@
 // caller's context (test/data-layer.static.test.ts). Nothing here calls a model, and nothing reachable
 // from src/mcp.ts imports it.
 import type { AiCite, AiFeedbackBody, AiSuggestion, AiSuggestionState } from "@shared/ai";
-import { all, batch, first, nowIso, run, stmt, type TenantContext } from "./sql";
+import { all, batch, first, nowIso, run, stmt, type Stmt, type TenantContext } from "./sql";
 
 // ── the switch ───────────────────────────────────────────────────────────────
 
@@ -14,6 +14,16 @@ export async function setAiAutomation(ctx: TenantContext, enabled: boolean, at: 
     stmt(ctx, `UPDATE orgs SET ai_automation = ? WHERE id = ?`, enabled ? 1 : 0, ctx.orgId),
     stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, 'org.ai', 'ai', ?, ?)`,
       ctx.orgId, ctx.userId, JSON.stringify({ enabled }), at),
+  ]);
+}
+
+/** Allow or disallow Ask Trov's Auto mode in the org (`orgs.ai_chat_auto`, 0058), audited (`org.ai_chat_auto`)
+ *  in the same batch. The caller has checked the role. */
+export async function setAiChatAuto(ctx: TenantContext, on: boolean, at: string = nowIso()): Promise<void> {
+  await batch(ctx, [
+    stmt(ctx, `UPDATE orgs SET ai_chat_auto = ? WHERE id = ?`, on ? 1 : 0, ctx.orgId),
+    stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, 'org.ai_chat_auto', 'ai', ?, ?)`,
+      ctx.orgId, ctx.userId, JSON.stringify({ chatAuto: on }), at),
   ]);
 }
 
@@ -83,6 +93,32 @@ export async function decideSuggestion(ctx: TenantContext, id: number, state: "a
   return (res.meta.changes ?? 0) > 0;
 }
 
+/**
+ * A decision about the ITEM closes what Trov suggested about it (owner rulings Q35, Q37): its OPEN suggestions are
+ * `superseded` — not shown again, and an Accept answers `not_open`. A decided one (accepted / dismissed) keeps the
+ * person's choice. ONE statement, for the deciding writer's own batch (or a `run` right after it):
+ *   • a ticket that closes (done / declined) — `ticket` + its NUMBER, the card kinds' item (src/ai/jobs/cards.ts
+ *     `CARD_ITEM_TYPES`), named by the ticket's row id so every status writer can use it;
+ *   • a drafted decision ratified or rejected, or a doc proposal promoted or rejected — `proposal` + Review's own id
+ *     (`reviewRef`), its risk.
+ */
+export function supersedeOpenTicketSuggestions(ctx: TenantContext, ticketId: number): Stmt {
+  return stmt(ctx,
+    `UPDATE ai_suggestions SET state = 'superseded' WHERE org_id = ?1 AND item_type = 'ticket' AND state = 'open'
+        AND item_ref = (SELECT CAST(number AS TEXT) FROM tickets WHERE id = ?2 AND org_id = ?1)`, ctx.orgId, ticketId);
+}
+/** A Review item's suggestions (`review.risk`): item type `proposal`, and Review's own ids (web/src/triage-map.ts;
+ *  src/ai/jobs/cards.ts writes them, src/ai/attach.ts reads them). */
+export const REVIEW_ITEM = "proposal";
+export const reviewRef = {
+  doc: (slug: string, version: number): string => `doc:${slug}@${version}`,
+  adr: (id: number): string => `adr:${id}`,
+} as const;
+export function supersedeOpenSuggestions(ctx: TenantContext, itemType: string, itemRef: string): Stmt {
+  return stmt(ctx, `UPDATE ai_suggestions SET state = 'superseded' WHERE org_id = ? AND item_type = ? AND item_ref = ? AND state = 'open'`,
+    ctx.orgId, itemType, itemRef);
+}
+
 /** Undo an accept whose handler failed: back to open, only if it is still the accept `by` just made. */
 export async function reopenSuggestion(ctx: TenantContext, id: number, by: string, at: string): Promise<void> {
   await run(ctx, `UPDATE ai_suggestions SET state = 'open', decided_by = NULL, decided_at = NULL
@@ -100,7 +136,10 @@ export function suggestionDto(r: AiSuggestionRow): AiSuggestion {
   const cites = parse<unknown>(r.cites_json, []);
   return {
     id: r.id, itemType: r.item_type, itemRef: r.item_ref, kind: r.kind, value,
-    label: typeof value === "string" ? value : JSON.stringify(value),
+    // A kind whose value is an object names itself in words with a `label` (Phase C: "#12 Login loops", "reference").
+    label: typeof value === "string" ? value
+      : value && typeof value === "object" && typeof (value as { label?: unknown }).label === "string" ? (value as { label: string }).label
+      : JSON.stringify(value),
     reason: r.reason, confidence: r.confidence, cites: Array.isArray(cites) ? (cites as AiCite[]) : [], state: r.state,
   };
 }

@@ -85,6 +85,14 @@ describe("the import graph", () => {
   });
 });
 
+describe("the org image module holds no credential (src/orgs/logo.ts: the token is resolved by its caller)", () => {
+  it("src/orgs/logo.ts reaches neither src/data/secrets.ts nor src/github-app/", () => {
+    const reach = reachable("src/orgs/logo.ts");
+    expect(reach.has("src/data/secrets.ts")).toBe(false);
+    expect([...reach].filter((f) => f.startsWith("src/github-app/"))).toEqual([]);
+  });
+});
+
 describe("billing is not an agent's", () => {
   it("nothing reachable from src/mcp.ts imports the Stripe client, or anything else of src/billing/", () => {
     const fromMcp = reachable("src/mcp.ts");
@@ -114,8 +122,8 @@ describe("deletion is a person's, never an agent's (invariant 2)", () => {
   });
 });
 
-describe("the model client is a capture-time seam and the AI pass's, never an agent's", () => {
-  it("nothing reachable from src/mcp.ts imports src/ai/, and only the summarizer and the AI pass import the client", () => {
+describe("the model client is the summary seams', the AI pass's, the Sift run's and the plain-language filter's, never an agent's (docs/architecture/ai.md)", () => {
+  it("nothing reachable from src/mcp.ts imports src/ai/ or the Jev provider; only the call sites import the client", () => {
     const fromMcp = reachable("src/mcp.ts");
     expect(SOURCES.has("src/ai/client.ts")).toBe(true);
     // The walker finds it from where it IS used: the webhook (and Sync, through the backfill).
@@ -124,13 +132,88 @@ describe("the model client is a capture-time seam and the AI pass's, never an ag
     // …and the repo tick, through the AI pass (docs/architecture/ai.md); the AI routes from the HTTP app.
     expect(reachable("src/repo/cron.ts").has("src/ai/pass.ts")).toBe(true);
     expect(reachable("src/routes.ts").has("src/ai/routes.ts")).toBe(true);
+    // …and the Sift run, from the Tags routes — and through it the Jev provider.
+    expect(reachable("src/routes.ts").has("src/ai/sift.ts")).toBe(true);
+    expect(reachable("src/ai/sift.ts").has("src/tools/classify.ts")).toBe(true);
+    // MCP reaches the tags module (and its Sift helpers), but no model client and no provider.
+    expect(fromMcp.has("src/tools/tag-fit.ts")).toBe(true);
     expect([...fromMcp].filter((f) => f.startsWith("src/ai/"))).toEqual([]);
+    expect(fromMcp.has("src/tools/classify.ts")).toBe(false);
+    // THE call sites (ai.md › Where a model call may happen): the summary seams, the AI pass (with its batch half
+    // and its job interface — types only — and Phase C's card logic, Jev's answer types only), the Sift run, the filter
+    // route — and the Ask route (docs/architecture/ask.md): its turn (the streamed answer) and its history (the one-time
+    // compaction of a long thread, by Fast).
     const importers = [...SOURCES.keys()].filter((f) => f !== "src/ai/client.ts" && reachableDirect(f).has("src/ai/client.ts")).sort();
-    expect(importers).toEqual(["src/ai/pass.ts", "src/tools/summarize.ts"]);
-    // The key is read where summaries are chosen, where AI eligibility is answered and the pass starts (and
-    // where Platform says whether they are on) — nowhere else.
+    expect(importers).toEqual([
+      "src/ai/ask/history.ts", "src/ai/ask/turn.ts",
+      "src/ai/batches.ts", "src/ai/filter.ts", "src/ai/jobs.ts", "src/ai/jobs/review-card.ts", "src/ai/jobs/ticket-card.ts", "src/ai/jobs/unplaced-card.ts",
+      "src/ai/pass.ts", "src/ai/sift.ts", "src/tools/summarize.ts",
+    ]);
+    expect(reachable("src/routes.ts").has("src/ai/ask/turn.ts")).toBe(true);
+    // …and those three import its TYPES only: no value of the client (no provider, no call) is in them.
+    for (const f of ["src/ai/jobs/review-card.ts", "src/ai/jobs/ticket-card.ts", "src/ai/jobs/unplaced-card.ts"]) {
+      expect(SOURCES.get(f), f).toMatch(/import type \{[^}]*\} from "\.\.\/client";/);
+      expect(SOURCES.get(f), f).not.toMatch(/import \{[^}]*\} from "\.\.\/client";/);
+    }
+    // The filter's ONE way in is its cookie route (src/ai/routes.ts `POST /ai/filter`): nothing else imports it.
+    expect(reachable("src/routes.ts").has("src/ai/filter.ts")).toBe(true);
+    expect([...SOURCES.keys()].filter((f) => reachableDirect(f).has("src/ai/filter.ts") && f !== "src/ai/filter.ts")).toEqual(["src/ai/routes.ts"]);
+    // THE ROUTER (Phase B) is what MCP's writers mark through — reachable from src/mcp.ts — and it lives OUTSIDE
+    // src/ai/ for exactly that reason: src/tools/ai-route.ts and src/data/ai-dirty.ts import nothing from src/ai/.
+    expect(fromMcp.has("src/tools/ai-route.ts")).toBe(true);
+    expect(fromMcp.has("src/data/ai-dirty.ts")).toBe(true);
+    for (const f of ["src/tools/ai-route.ts", "src/data/ai-dirty.ts"]) expect([...reachable(f)].filter((x) => x.startsWith("src/ai/")), f).toEqual([]);
+    // …and src/ai/router.ts (the AI side's name for it) only re-exports them.
+    expect([...reachableDirect("src/ai/router.ts")].sort()).toEqual(["src/data/ai-dirty.ts", "src/tools/ai-route.ts"]);
+    // The key is read where summaries are chosen, where AI eligibility is answered, the pass starts and the filter calls (and
+    // where Platform says whether they are on) — and, as ONE BIT (`aiKeySet`: is there a key?), by the data layer's
+    // context for THE read rule of the computed AI surfaces (src/plans/gate.ts `aiShown`) — nowhere else.
     const readers = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /\.ANTHROPIC_API_KEY\b/.test(text)).map(([f]) => f).sort();
-    expect(readers).toEqual(["src/ai/eligibility.ts", "src/ai/pass.ts", "src/plans/summaries.ts", "src/platform/routes.ts"]);
+    expect(readers).toEqual([
+      "src/ai/ask/history.ts", "src/ai/ask/routes.ts", "src/ai/ask/turn.ts",
+      "src/ai/eligibility.ts", "src/ai/filter.ts", "src/ai/pass.ts", "src/data/context.ts", "src/plans/summaries.ts", "src/platform/routes.ts",
+    ]);
+    // TypeSafe's key: the Sift run and the AI pass (its Jev jobs and gates) send with it; the Tags list says whether one is set.
+    const jevReaders = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /\.TYPESAFE_API_KEY\b/.test(text)).map(([f]) => f).sort();
+    // …and Org settings › AI (Q8: each provider's key status) and Platform › Usage (Q7: Sift's figures on its own key)
+    // say whether one is set.
+    expect(jevReaders).toEqual(["src/ai/pass.ts", "src/ai/routes.ts", "src/ai/sift.ts", "src/platform/routes.ts", "src/tags/routes.ts"]);
+  });
+
+  it("the Jev provider is the client's alone: only src/ai/client.ts imports it, and only it names TypeSafe's URL", () => {
+    const providerImporters = [...SOURCES.keys()].filter((f) => reachableDirect(f).has("src/tools/classify.ts")).sort();
+    expect(providerImporters).toEqual(["src/ai/client.ts"]);
+    const namers = [...SOURCES].filter(([, text]) => /typesafe\.ai/i.test(text)).map(([f]) => f).sort();
+    expect(namers).toEqual(["src/tools/classify.ts"]);
+    // …and the SPA never names its API host either (the browser never calls a model). The Privacy Policy may link
+    // TypeSafe AI's trust center (its subprocessors list); that is not the API.
+    const web = (import.meta as unknown as { glob: (pattern: string[], o: { query: string; import: string; eager: true }) => Record<string, string> })
+      .glob(["../web/src/**/*.ts"], { query: "?raw", import: "default", eager: true });
+    expect(Object.keys(web).length).toBeGreaterThan(20);
+    expect(Object.entries(web).filter(([, text]) => /api\.typesafe\.ai/i.test(text)).map(([f]) => f)).toEqual([]);
+  });
+});
+
+describe("Ask Trov's import boundary (docs/architecture/ask.md › Never reachable from Ask)", () => {
+  const askFiles = () => [...SOURCES.keys()].filter((f) => f.startsWith("src/ai/ask/"));
+
+  it("src/ai/ask/** reaches no secret, no GitHub App credential, no billing — and never src/mcp.ts", () => {
+    expect(askFiles().length).toBeGreaterThan(8);
+    for (const entry of askFiles()) {
+      const reach = reachable(entry);
+      expect(reach.has("src/data/secrets.ts"), `${entry} reaches src/data/secrets.ts`).toBe(false);
+      expect([...reach].filter((f) => f.startsWith("src/github-app/")), `${entry} reaches src/github-app/`).toEqual([]);
+      expect([...reach].filter((f) => f.startsWith("src/billing/")), `${entry} reaches src/billing/`).toEqual([]);
+      expect(reach.has("src/mcp.ts"), `${entry} reaches src/mcp.ts`).toBe(false);
+      expect([...reach].filter((f) => f.startsWith("src/integrations/") || f === "src/deletion/person.ts" || f === "src/deletion/org.ts"), entry).toEqual([]);
+    }
+    // …and no Ask file so much as names a decrypt path or the audit log.
+    for (const f of askFiles()) expect(SOURCES.get(f), f).not.toMatch(/\b(getSecret|resolveCredential|resolveGithubCredential|installationToken)\s*\(|\borg_audit\b|\borg_admin_audit\b/);
+  });
+
+  it("the walker finds Ask from the HTTP app, and MCP still reaches nothing under src/ai/", () => {
+    expect(reachable("src/routes.ts").has("src/ai/ask/routes.ts")).toBe(true);
+    expect([...reachable("src/mcp.ts")].filter((f) => f.startsWith("src/ai/"))).toEqual([]);
   });
 });
 

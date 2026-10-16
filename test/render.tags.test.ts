@@ -12,6 +12,7 @@ vi.mock("../web/src/markdown", () => ({
   renderMarkdownInline: (text: string) => mdMock(text),
 }));
 import css from "../web/src/trov.css?raw";
+import tagsActionsSrc from "../web/src/tags-actions.ts?raw";
 import { render, initialState, feedTagNames, type AppState } from "../web/src/render";
 import { tagMark, tagSquare, tagWords } from "../web/src/marks";
 import { tagsTab, tagPageView, tagWeeks, isTagPageTab, type TagPageTab, itemTagsRow, tagConfirmModal, initialTagsUi, tagDraftProblem, countsPhrase, aiSection, jevCell, tagAddModal, nextTagColor, type TagsUi } from "../web/src/tags";
@@ -596,9 +597,22 @@ describe("shared helpers", () => {
 });
 
 describe("tags added by Jev, on the Tags tab (the owner's call: no review step)", () => {
-  const ai = (o: Partial<TagAiDTO> = {}): TagAiDTO => ({ enabled: true, available: true, used: 12, cap: 300, spent: false, ...o });
+  const ai = (o: Partial<TagAiDTO> = {}): TagAiDTO => ({ enabled: true, org: true, available: true, used: 12, cap: 300, spent: false, ...o });
   const run = (o: Partial<TagRunDTO> = {}): TagRunDTO => ({ id: 4, status: "done", started_at: "t", ended_at: "t", candidates: 20, checked: 20, added: 7, undone_at: null, ...o });
   const t = (name: string): OrgTagDTO => tag(name, { color: "ochre" });
+
+  it("the switch keeps the keyboard's focus while its write is out: aria-disabled + aria-busy, never disabled (P-1, as switchBtn)", () => {
+    const sw = (html: string) => html.slice(html.indexOf('data-act="tagAiToggle"') - 8, html.indexOf("</button>", html.indexOf('data-act="tagAiToggle"')));
+    const busy = sw(aiSection(ai(), { ...initialTagsUi(), aiBusy: true }));
+    expect(busy).toContain(`aria-disabled="true" aria-busy="true"`);
+    expect(busy).not.toMatch(/\sdisabled[\s>]/);
+    expect(busy).toContain(`aria-label="Tag existing items for a new tag"`);
+    const idle = sw(aiSection(ai(), initialTagsUi()));
+    expect(idle).not.toContain("aria-disabled");
+    expect(idle).not.toMatch(/\sdisabled[\s>]/);
+    // Sift unavailable (no key or the org's switch off) is not a write in flight: the switch is plainly disabled.
+    expect(aiSection(ai({ available: false }), initialTagsUi())).toContain(`<button disabled data-act="tagAiToggle"`);
+  });
 
   it("the switch: OFF by default, one plain sentence on what is sent, to whom, and that the tag is ADDED — with the way back", () => {
     const off = aiSection(ai({ enabled: false }), initialTagsUi());
@@ -622,6 +636,10 @@ describe("tags added by Jev, on the Tags tab (the owner's call: no review step)"
     const nokey = aiSection(ai({ available: false, enabled: false }), initialTagsUi());
     expect(nokey).toContain("no TypeSafe AI key set, so nothing is sent and nothing is tagged");
     expect(nokey).toMatch(/role="switch"[^>]*disabled|disabled[^>]*role="switch"/);
+    // The organization's AI switch off: Sift's own may be on, but nothing is sent — and Find items is not offered.
+    const orgOff = aiSection(ai({ org: false }), initialTagsUi());
+    expect(orgOff).toContain("Trov&#39;s AI is off for this organization (Org settings › AI), so nothing is sent.");
+    expect(orgOff).toContain(`data-off="1"`);
   });
 
   it("after a run the row's Jev cell says what it did: \"7 added\" with Undo (confirmModal); none fit; nothing to check; undone; stopped", () => {
@@ -677,5 +695,14 @@ describe("tags added by Jev, on the Tags tab (the owner's call: no review step)"
     expect(member).not.toContain("data-fitrun");
     expect(member).not.toContain("Added by Sift");
     noPill(html);
+  });
+});
+
+// Q9 (owner ruling 2026-10-16): Find items said "Suggestions are off…" even when the ORG's switch was the cause.
+describe("Find items names the switch that is off", () => {
+  it("the org's switch → Org settings › AI; Sift's own → Tags", () => {
+    expect(tagsActionsSrc).toContain(`org_off: "Trov's AI is off for this organization. An admin turns it on in Org settings › AI.",`);
+    expect(tagsActionsSrc).toContain(`off: "Sift is off. Turn it on above, in Tags, first.",`);
+    expect(tagsActionsSrc).not.toContain("Suggestions are off. Turn them on above first.");
   });
 });

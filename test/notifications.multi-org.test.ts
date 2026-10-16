@@ -38,12 +38,15 @@ async function person(handle: string, orgs: string[], unsubscribed: 0 | 1 = 0): 
   for (const org of orgs) await ensureMember(handle, "member", org);
 }
 
-/** One pending decision and one unassigned ticket in `org`, every text field carrying its canary. */
-async function content(org: string, canary: string): Promise<void> {
+/** One pending decision, one unassigned ticket, and one ticket assigned to the org's members in `org`, every text
+ *  field carrying its canary. Phase E's e-mail names no decision (the Review line is a count); the assigned ticket's
+ *  title is what the brief's fallback lists, so it is the canary a body must carry. */
+async function content(org: string, canary: string, members: string[] = []): Promise<void> {
   await ingestAdrDraft(systemCtx(org), { title: `${canary} decision`, context: `${canary} context`, decision: `${canary} d`, rationale: `${canary} r`, confidence: "high" }, "agent");
   await seedPerson("filer", { github: false, member: false });
   await ensureMember("filer", "member", org);
   await create_ticket(systemCtx(org), TicketCreate.parse({ title: `${canary} ticket`, assignees: [] }), "filer");
+  if (members.length) await create_ticket(systemCtx(org), TicketCreate.parse({ title: `${canary} assigned`, assignees: members }), "filer");
 }
 
 async function twoOrgs(): Promise<void> {
@@ -52,8 +55,8 @@ async function twoOrgs(): Promise<void> {
   await person("alba", [ORG_A]);
   await person("bob", [ORG_B]);
   await run(env.DB, `UPDATE persons SET email = NULL WHERE handle = 'filer'`);
-  await content(ORG_A, "CANARY_A");
-  await content(ORG_B, "CANARY_B");
+  await content(ORG_A, "CANARY_A", ["dana", "alba"]);
+  await content(ORG_B, "CANARY_B", ["dana", "bob"]);
 }
 
 describe("the digest cron, two orgs", () => {
@@ -67,8 +70,8 @@ describe("the digest cron, two orgs", () => {
     for (const r of rows) {
       const [mine, theirs] = r.org_id === ORG_A ? ["CANARY_A", "CANARY_B"] : ["CANARY_B", "CANARY_A"];
       for (const body of [r.html, r.text]) {
-        expect(body, `${r.org_id} ${r.user_id}`).toContain(`${mine} decision`);
-        expect(body, `${r.org_id} ${r.user_id}`).toContain(`${mine} ticket`);
+        expect(body, `${r.org_id} ${r.user_id}`).toContain(`${mine} assigned`);
+        expect(body, `${r.org_id} ${r.user_id}`).toContain("Review:"); // the org's own decision, counted
         expect(body, `${r.org_id} ${r.user_id}`).not.toContain(theirs);
       }
       expect(r.to_address).toBe(`${r.user_id}@example.com`);

@@ -200,15 +200,35 @@
   `shared/sync.ts`): `docs/architecture/sync.md` — whether a sync can start is asked of the ONE GitHub credential
   source (`githubCredentialSource`, `src/github-app/credential.ts`), never of the token alone. The summarizer for an org is chosen ONLY by `orgSummarizers`
   (`src/plans/summaries.ts` — one platform key, each call metered per org, the monthly `ai_summaries` allowance).
-  AI (`docs/architecture/ai.md`): `src/ai/client.ts` (THE model client, `providerFor`) and `src/ai/schema.ts`;
-  `src/ai/pass.ts` (the AI pass in the repo tick — its job registry `AI_JOBS` is empty), `src/ai/eligibility.ts`
+  AI (`docs/architecture/ai.md`): `src/ai/client.ts` (THE model client: `KIND_PROVIDER`, the one table from a kind
+  to its provider — Claude or Jev — and `providerFor`) and `src/ai/schema.ts`; `src/tools/classify.ts` (the Jev
+  provider, the one file that names TypeSafe's URL; only the client imports it); `src/ai/sift.ts` (the Sift run —
+  the rest of Sift is `src/tools/tag-fit.ts`, which MCP reaches and which imports no client);
+  `src/ai/pass.ts` (the AI pass in the repo tick — its job registry `AI_JOBS`) with `src/ai/jobs.ts` (the
+  job interface), `src/ai/batches.ts` (its Message Batches half), `src/ai/prefix.ts` (the cached org prefix) and
+  `src/ai/sections.ts` (section isolation); THE ROUTER `src/tools/ai-route.ts` (event → scopes, `routeAi`) and
+  `src/data/ai-dirty.ts` (its rows) — outside `src/ai/` because MCP's writers call it — re-exported by
+  `src/ai/router.ts`; `src/data/ai-batches.ts` (the batches' platform rows); `src/ai/eligibility.ts`
   (`aiEligibility`: ok / off / no_key / capped), `src/ai/routes.ts` (Org settings › AI, accept / dismiss,
-  "Wrong?" — cookie only, `/api/o/:slug/ai/…`), `src/ai/suggestions.ts` (`AI_ACCEPT_HANDLERS`, empty),
+  "Wrong?" — cookie only, `/api/o/:slug/ai/…`), `src/ai/suggestions.ts` (`AI_ACCEPT_HANDLERS`; the handler contract in `src/ai/accept.ts`), the repo themes —
+  `src/ai/themes.ts` (the `pr.theme`, `themes.propose`, `themes.caption`, `themes.backfill` jobs),
+  `src/ai/themes-accept.ts` (an admin's Accept / Rename / Merge / Remove), `src/tools/themes.ts` (the read behind
+  `RepoDashboard.themes`, and `themeShares`) and `src/data/themes.ts` (their rows) —,
   `src/ai/preview.ts` (`LOCAL_AI_PREVIEW`, `wrangler dev` only); the tables' one repository `src/data/ai.ts`;
   the screens' contracts `shared/ai-core.ts` (zod-free) + `shared/ai.ts` and the preview's
   `shared/ai-fixtures.ts`. Migration `0055_ai` (`orgs.ai_automation`, the switch, and
-  `ai_suggestions`, `ai_feedback`); the monthly `ai_runs` allowance is in `PLANS`
+  `ai_suggestions`, `ai_feedback`), then `0058_server_ai` — ONE migration for the whole server-side AI build and
+  Ask Trov (#178), consolidated from eleven files before any reached production; each part keeps its old name as a
+  `-- ══ part … ══` marker and its own header and rollback: `0058_ai_dirty` (`ai_dirty`, the router's table, and
+  `orgs.ai_chat_auto`, Ask Trov's Auto switch), `0059_ai_batches` (the platform tables `ai_batches` /
+  `ai_batch_requests`, and `ai_dirty.marked_at` / `urgent`), `0060_ai_importance` … `0065_org_insights` (the
+  pass's written rows), `0064_repo_themes` (`repo_themes`, `pr_themes`, `repo_theme_captions`), `0066_ask` (Ask
+  Trov's tables), `0067_digest_email` and `0068_ask_pending`; the monthly `ai_runs` and `ai_chat` (Ask Trov, per seat on Pro)
+  allowances are in `PLANS`
   (not listed on the pricing page yet).
+  Its last part, `0068_ask_pending` (Ask Trov, the owner's ruling Q60) [`chat_threads.pending`: the person's hidden holder of
+  attachments uploaded before their conversation existed; swept 24 h unsent by `src/deletion/ask-pending.ts` on the
+  hourly digest trigger; additive] — `ask.md` › Attachments.
   Then `0057_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
   `hosting_poll_state`, and `org_secrets` REBUILT only to widen its kind CHECK to the five hosting kinds; rollback
   `scripts/hosting/0057_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.
@@ -293,21 +313,29 @@
   `#releases/<v>` (release notes — for USERS: no PRs, no migrations) and `#releases/<v>/patches` (patch notes — for
   builders: `ops` upgrade notes, Added / Changed / Fixed / Removed, PR links), flipped by a `segmented()` switch;
   `<v>` is `0.N` or `unreleased`; the old `#releases/patches` opens the newest release's patches. Static `RELEASES`
-  data (`0.N` per milestone, newest first) plus a pure renderer, loaded as its OWN chunk through
+  data (`0.N` per milestone, numbered 0.1 … in order, newest first; renumbered in October 2026 — each entry's old
+  numbers, which ran to 0.34, are in its `formerly`, so old links still resolve, current numbers first) plus a pure renderer, loaded as its OWN chunk through
   `releases-lazy.ts` (app modules import it as a type only); the newest version is `release-latest.ts`
-  (`LATEST_VERSION`, pinned to `RELEASES[0]` by `test/releases.test.ts`). **Every shipped PR adds its lines to the top
-  entry** (highlights / heads-up in product words, deploy steps in `ops`, patch lines ending `(#N)` to link the
-  PR) — and since a merge to `main` deploys, the PR that merges also CUTS "Unreleased" into the next `0.N`, so
-  main never shows a shipped batch as unreleased; the header comment says how.
+  (`LATEST_VERSION`, pinned to `RELEASES[0]` by `test/releases.test.ts`). **Every shipped PR adds ONE patch line to
+  the top entry** (a user-visible change in product words ending `(#N)`; deploy steps in `ops`; highlights only for
+  a batch's headline features; `RELEASE_CAPS` tested) — and since a merge to `main` deploys, the PR that merges
+  also CUTS "Unreleased" into the next `0.N`, so main never shows a shipped batch as unreleased; the header comment
+  says how.
   **The app's bundles** (`web-ui.md` › The app's bundles): `web/src/lazy-chunk.ts` is the loader every lazy screen
   shares; `app-root.ts` the root element and the toast (`render()` and the landing page both draw them). Each lazy
   chunk has a facade and an eager part: the landing in the app (`landing-lazy.ts`), Platform (`platform-chunk.ts`
   through `platform-lazy.ts`; eager `platform-core.ts`), Org settings (`org-chunk.ts` through `org-lazy.ts`; eager
   `org-core.ts` and `org-invite.ts`), Artifacts (`artifacts.ts` through `artifacts-lazy.ts`; eager
-  `artifacts-state.ts`), the Repo screen (`repo.ts` through `repo-lazy.ts`; eager `repo-core.ts`), and marked +
+  `artifacts-state.ts`, which also holds the raw route and `artifactFrame`, the framed preview Ask's inspector draws
+  too), the Repo screen (`repo.ts` through `repo-lazy.ts`; eager `repo-core.ts`), and marked +
   DOMPurify (`markdown-lib.ts`, loaded by `markdown-load.ts` for `markdown.ts` and `md-blocks.ts`).
   `sprint-state.ts` (a sprint state's mark) and `deletion-notice.ts` (the deletion notice's words) are their own
   modules so the landing page shares neither the Timeline nor the deletion controller.
+- `scripts/seed-dev.mjs` (`npm run seed`) + `scripts/seed/` — the LOCAL dev seed (`local-dev.md`): `scenarios.mjs` (the
+  named scenarios, each its own org), `team-rich.mjs` + `team-content.mjs` (the team's rich layer), `ai-showcase.mjs`,
+  `local-d1.mjs` (the only wrangler `--local` runner), the older layers it composes (`build.mjs`, `platform-dev.mjs`,
+  `themes-dev.mjs`, `brief-dev.mjs`, `ai-roadmap-dev.mjs`), and `reset.mjs` — the canonical TEST seed the harness runs
+  before every test. `scripts/dev/ensure-seeded.mjs` (run by `npm run dev`) and `scripts/dev/as.mjs` (`npm run dev:as`).
 - `THIRD-PARTY-NOTICES.txt` — the third-party software and fonts the browser bundle and the Worker ship, with
   their licences; GENERATED by `scripts/licenses/notices.mjs` (authoring-only, like `scripts/og/render.mjs`: rerun
   after a dependency change), served at `/third-party-notices.txt`. `LICENSE` is Trov's own AGPL-3.0.

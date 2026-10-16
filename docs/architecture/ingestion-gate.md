@@ -49,6 +49,18 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   trusted only post-HMAC — distinct from the writer.
 - **Author is ALWAYS the authenticated principal**, passed in by the caller. The client-supplied
   `session.author` is advisory and ignored. (This writer rule does NOT clobber an event's `subject_login`.)
+  **The ONE exception: what Trov writes itself.** A session digest (the AI pass's `digest.session` job,
+  `src/ai/digests.ts`; `ai.md` › Session digests) goes through `ingestFeedEntry` like any entry, authored by the
+  reserved system person `trov` (`TROV_SYSTEM_HANDLE`, its `persons` row from 0061 — never a member, never
+  listed, never deletable or renamable) with its provenance `ai = { model, subject }` → `feed.origin = 'ai'`,
+  `feed.model`, `feed.subject` (the member it is for; in `HANDLE_COLUMNS`). The author and the provenance go
+  TOGETHER or not at all — `ingestFeedEntry` throws on `trov` without `ai`, or `ai` with any other author — and
+  only the pass's job passes `ai` (no route, no MCP tool can: `/ingest` and `record_session` never do), so no
+  principal can write as Trov and no person's entry can be marked as Trov's. Its ledger key is the burst
+  (`ai:session:<repo>:<login>:<started_at>`, item 0), so a retried write replays instead of doubling; a tag of
+  Trov's entry that is not on the org's list is DROPPED (never recorded as a suggestion for the admins); and the
+  router marks `person:<subject>`, not `person:trov`. Phase D's doc-drift proposals (0065) will be the same
+  exception through `ingestDocProposal`.
 - **Repo capture is a SECOND, sibling gate to `ingestEvent`** — same reconciliation (a UNIQUE `semantic_key`
   written `INSERT OR IGNORE`, so a redelivery or a backfill overlap drops as `unchanged`) but deliberately
   NOT the `events` table: `ingestEvent` raises an `identity_tasks` row per unmapped `subject_login`, which is
@@ -102,10 +114,17 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
   copies it into the live doc and bumps `current_version` (non-destructive; prior versions remain).
   Reject (soft): `POST /doc/:slug/reject` flips a staged version to `status='rejected'`; the row
   and body remain (non-destructive). Idempotent.
+- Doc drift (#161, `src/ai/doc-drift.ts`; `ai.md` › Doc drift): when Trov finds a doc that recent feed entries show
+  is out of date, its edit is a doc proposal THROUGH THIS GATE — `ingestDocProposal` with `confidence: "low"`, so it
+  is staged and flagged like any low-confidence edit of an existing doc — authored by the reserved system person
+  `trov` (`TROV_SYSTEM_HANDLE`): the one documented exception to "the author is the authenticated principal",
+  because no person wrote it. Only a person promotes or rejects it in Review; Trov never does.
 - ADRs: an ADR draft arrives in a batch — `adr_drafts` of MCP `record_session` or of `POST /ingest` — and
   the gate's `ingestAdrDraft` stages it as a `draft` through the writer `stage_adr` (`src/tools/writes.ts`;
   a function, NOT an MCP tool — there is no per-entry ADR tool). `POST /adr/:id/ratify` flips it to `ratified`.
-  Reject (soft): `POST /adr/:id/reject` flips a draft to `status='rejected'`; the row remains.
+  Reject (soft): `POST /adr/:id/reject` flips a draft to `status='rejected'`; the row remains. Ratifying or rejecting
+  a draft — and promoting or rejecting a doc proposal — closes Trov's open risk on it in the same batch (superseded;
+  owner ruling Q37, `ai.md` › The kinds).
 - Sprints: **nothing about a sprint is ever staged.** 0025 dropped `milestone_proposals` and with it
   the whole agent-proposed-roadmap surface — the gate fn, the contract schema, the promote/reject
   routes, and the `"milestone"` triage-assign kind. A sprint is created and edited by the admin plan
@@ -132,3 +151,12 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
 - `GET /proposals` — server-joined queue of staged doc versions newer than the live doc (both bodies +
   reconciler metadata: `change_kind`, `low_confidence`, `base_version`). The web triage UI reads this
   instead of per-doc N+1 fetches. These are session-cookie HTTP routes, NEVER MCP tools.
+- **Trov's suggestions on Unplaced and Review** (Phase C, `ai.md` › The kinds) — information, never a gate decision.
+  With the org's AI on, an Unplaced item that is a doc (a slug and a body) gets ONE Jev request: which section
+  (the vocabulary's, less `needs-triage`) or "next to" which of the top three live docs (counted as that doc's
+  section). `GET /needs-triage` carries the open one as the row's `ai?`; **Accept files the item exactly as
+  "File it" does** — `assign_triage` as a `doc` in that section, through the SAME gate, as the person who pressed
+  it. A doc proposal or drafted ADR waiting in Review gets ONE request: does it change a decision, contradict a doc,
+  change a process, or is it routine. `GET /proposals` / `GET /adrs` carry a non-routine risk as `ai?`, drawn as a
+  quiet line on the card with Dismiss only: **a risk never promotes, rejects or ratifies anything** (no Accept
+  handler). Both are open suggestions only, only while the switch is on, cookie reads only.

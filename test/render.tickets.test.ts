@@ -31,7 +31,7 @@ vi.mock("../web/src/markdown", () => ({
 import { render, initialState, type AppState } from "../web/src/render";
 import {
   queueView, queueRows, newTicketView, ticketDetailView, ticketDeleteModal, relCandidates, queueGroups,
-  age, avatarStack, SEG_STATUSES,
+  age, avatarStack, SEG_STATUSES, declinedLeavers,
   type QueueProps, type NewTicketProps, type TicketDetailProps,
 } from "../web/src/tickets";
 import type { TicketListItem, TicketDetail, TicketLinkRow, TicketCommentRow, TicketEventRow } from "@shared/tickets";
@@ -219,7 +219,7 @@ describe("sidebar — the Tickets entry (design call #2)", () => {
     expect(html).toContain('data-collapsed="1"');
     expect(ticketsRow(html)).toContain('<span class="cnpy-dot" data-n="4"></span>');
     // review/maintenance counts are 0 here, so theirs stay hidden
-    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(13); // every other entry (the Unplaced queue included)
+    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(14); // every other entry (the Unplaced queue and Trov included)
   });
 
   it("lights Tickets on all three ticket screens", () => {
@@ -528,7 +528,151 @@ describe("queueView — the board card drags", () => {
     expect(html).toContain('data-tdrag="1" data-status="submitted"');
     expect(html).not.toContain('draggable="true"');   // pointer-driven, never the browser's drag image
     expect(html).toContain('data-tdrag="2" data-status="done"');
-    for (const st of ["submitted", "in_progress", "done", "declined"]) expect(html).toContain(`data-tdrop="${st}"`);
+    for (const st of ["submitted", "in_progress", "done"]) expect(html).toContain(`data-tdrop="${st}"`);
+    // Declined is a drop target only where it is shown: the Closed view (All hides it).
+    expect(html).not.toContain('data-tdrop="declined"');
+    const closed = queueView(queueProps({ view: "board", seg: "closed", tickets: [ticket({ id: 3, title: "X", status: "declined" })] }));
+    expect(closed).toContain('data-tdrag="3" data-status="declined"');
+    expect(closed).toContain('data-tdrop="declined"');
+  });
+});
+
+// Owner ruling (2026-10-15): declined tickets are hidden from the queue's DEFAULT views (All, board
+// and table); Closed is the deliberate way to them. Done stays in All.
+describe("queueView — the default view hides declined tickets", () => {
+  const rows = [
+    ticket({ id: 1, title: "Triage me", status: "submitted" }),
+    ticket({ id: 2, title: "Working", status: "in_progress", assignees: ["jose-a"] }),
+    ticket({ id: 3, title: "Shipped", status: "done" }),
+    ticket({ id: 4, title: "Undone by Ask", status: "declined", priority: "high" }),
+    ticket({ id: 5, title: "Won't do", status: "declined" }),
+  ];
+  const ids = (html: string) => [...html.matchAll(/data-act="openTicket" data-arg="(\d+)"/g)].map((m) => Number(m[1]));
+
+  it("the default board has no Declined column and no declined card", () => {
+    const html = queueView(queueProps({ tickets: rows, view: "board", seg: "all" }));
+    expect(html).not.toContain('data-tdrop="declined"');
+    expect(html).not.toContain(`${ticketStatusIcon("declined", 14, false)}Declined</span>`);
+    expect(html).not.toContain('data-status="declined"');
+    expect(html).not.toContain("Undone by Ask");
+    expect(html).not.toContain("Won&#39;t do");
+    expect(html).not.toContain("Won't do");
+    expect(ids(html).sort()).toEqual([1, 2, 3]);
+    expect(html).toContain("Shipped");   // done is left as it is
+  });
+
+  it("the default table has no declined row", () => {
+    const html = queueView(queueProps({ tickets: rows, view: "table", seg: "all" }));
+    expect(html).not.toContain("Undone by Ask");
+    expect(html).not.toContain(ticketStatusMark("declined"));
+    expect(ids(html).sort()).toEqual([1, 2, 3]);
+    expect(html).toContain("3 tickets");   // the group's count is what it shows
+  });
+
+  it("the counts agree with what is shown: the header, the filter menu's Priority and Sprint", () => {
+    for (const view of ["board", "table"] as const) {
+      const html = queueView(queueProps({ tickets: rows, view, seg: "all", unassignedCount: 1, filterOpen: true, filterCat: "priority" }));
+      expect(html).toContain("3 shown · 1 unassigned");
+      expect(html).toContain("Show 3 tickets");
+    }
+    expect(queueRows(queueProps({ tickets: rows, seg: "all" })).map((t) => t.id)).toEqual([1, 2, 3]);
+    // A search that matches only a declined ticket finds nothing in All.
+    expect(queueRows(queueProps({ tickets: rows, seg: "all", q: "undone" }))).toEqual([]);
+  });
+
+  it("Closed is the deliberate path: both views show the declined tickets there, beside Done", () => {
+    const board = queueView(queueProps({ tickets: rows, view: "board", seg: "closed" }));
+    expect(board).toContain('data-tdrop="declined"');
+    expect(board).toContain("Undone by Ask");
+    expect(board).toContain("Won");
+    expect(ids(board).sort()).toEqual([3, 4, 5]);
+    expect(board).toContain("3 shown");
+    const table = queueView(queueProps({ tickets: rows, view: "table", seg: "closed" }));
+    expect(table).toContain("Undone by Ask");
+    expect(table).toContain(ticketStatusMark("declined"));
+    expect(ids(table).sort()).toEqual([3, 4, 5]);
+  });
+
+  it("the switch says so: All's tooltip points to Closed", () => {
+    const html = queueView(queueProps({ tickets: rows, seg: "all" }));
+    expect(html).toContain('title="Everything but declined tickets. Closed shows those."');
+    expect(html).toContain('title="Done and declined"');
+  });
+
+  it("Open never showed declined, and still does not", () => {
+    const html = queueView(queueProps({ tickets: rows, view: "board", seg: "open" }));
+    expect(ids(html).sort()).toEqual([1, 2]);
+  });
+
+  it("SEG_STATUSES: All is every status but declined; Closed keeps it", () => {
+    expect(SEG_STATUSES.all).toEqual(["submitted", "in_progress", "testing", "done"]);
+    expect(SEG_STATUSES.closed).toEqual(["done", "declined"]);
+  });
+
+  it("saved drag order holds without the Declined column: a column is still in board order", () => {
+    const col = [
+      ticket({ id: 21, title: "R2", status: "done", board_rank: 2048 }),
+      ticket({ id: 22, title: "Gone", status: "declined", board_rank: 1536 }),
+      ticket({ id: 23, title: "R1", status: "done", board_rank: 1024 }),
+    ];
+    const html = queueView(queueProps({ tickets: col, view: "board", seg: "all" }));
+    expect([...html.matchAll(/data-tdrag="(\d+)"/g)].map((m) => Number(m[1]))).toEqual([23, 21]);
+  });
+});
+
+describe("queueView — a card declined while the default view is up leaves by the one exit", () => {
+  const was = ticket({ id: 7, title: "Made by Ask", status: "submitted" });
+  const now = { ...was, status: "declined" as const, updated_at: ago(0) };
+  const other = ticket({ id: 8, title: "Stays", status: "submitted" });
+
+  it("declinedLeavers: a row shown before and declined now, only where the view hides declined", () => {
+    expect(declinedLeavers([was, other], [now, other], "all")).toEqual([was]);
+    expect(declinedLeavers([was, other], [now, other], "closed")).toEqual([]);   // Closed shows it
+    expect(declinedLeavers([], [now], "all")).toEqual([]);                       // never shown
+    expect(declinedLeavers([{ ...was, status: "declined" }], [now], "all")).toEqual([]);
+  });
+
+  for (const view of ["board", "table"] as const) {
+    it(`${view}: the card is drawn as it was, inside the AI kit's exit, and counted nowhere`, () => {
+      const html = queueView(queueProps({ tickets: [now, other], view, seg: "all", leaving: [{ row: was, t: 120 }] }));
+      const exit = html.indexOf('class="cnpy-ai-leave"');
+      expect(exit).toBeGreaterThan(-1);
+      expect(html.slice(exit, exit + 200)).toContain("data-ai-leaving inert");
+      expect(html.slice(exit, exit + 200)).toContain("--leave-t:-120ms");
+      expect(html.slice(exit)).toContain("Made by Ask");
+      expect(html.match(/cnpy-ai-leave"/g)).toHaveLength(1);
+      expect(html).toContain("1 shown");
+      if (view === "board") expect(html.slice(html.indexOf('data-tdrop="submitted"'), html.indexOf('data-tdrop="in_progress"'))).toMatch(/white-space:nowrap;flex:none">1</);
+      else expect(html).toContain("1 ticket<");
+    });
+  }
+
+  it("no exit is drawn for a card the view was not showing (a search hid it) or one shown again", () => {
+    const hidden = queueView(queueProps({ tickets: [now, other], view: "board", seg: "all", q: "stays", leaving: [{ row: was, t: 50 }] }));
+    expect(hidden).not.toContain("cnpy-ai-leave");
+    const closed = queueView(queueProps({ tickets: [now, other], view: "board", seg: "closed", leaving: [{ row: was, t: 50 }] }));
+    expect(closed).not.toContain("cnpy-ai-leave");
+  });
+
+  it("the app's default Tickets screen (initialState: All, board) hides declined; state.qLeaving draws the exit, then nothing", () => {
+    const s = appState({ screen: "tickets", tickets: { status: "ok", data: [now, other] } });
+    expect(s.qSeg).toBe("all");
+    expect(s.qView).toBe("board");
+    const plain = render(s);
+    expect(plain).not.toContain('data-tdrop="declined"');
+    expect(plain).not.toContain("Made by Ask");
+    s.qLeaving = [{ row: was, at: Date.now() - 100 }];
+    const leaving = render(s);
+    expect(leaving).toContain("cnpy-ai-leave");
+    expect(leaving).toContain("Made by Ask");
+    s.qLeaving = [{ row: was, at: Date.now() - 5000 }];   // its exit is over
+    expect(render(s)).not.toContain("Made by Ask");
+  });
+
+  it("the last card leaving already has the empty state under it", () => {
+    const html = queueView(queueProps({ tickets: [now], view: "board", seg: "all", leaving: [{ row: was, t: 50 }] }));
+    expect(html).toContain("cnpy-ai-leave");
+    expect(html).toContain("0 shown");
   });
 });
 
@@ -595,10 +739,10 @@ describe("queueView — board columns follow the segment", () => {
     expect(columnLabels(html)).toEqual(["Done", "Declined"]);
   });
 
-  it("all → five columns in status order, Testing between In progress and Done", () => {
+  it("all → four columns in status order, Testing between In progress and Done — no Declined (owner, 2026-10-15)", () => {
     const html = queueView(queueProps({ tickets: rows, view: "board", seg: "all" }));
-    expect(columnLabels(html)).toEqual(["Triage", "In progress", "Testing", "Done", "Declined"]);
-    expect(html).toContain("grid-template-columns:repeat(5,minmax(0,1fr))");
+    expect(columnLabels(html)).toEqual(["Triage", "In progress", "Testing", "Done"]);
+    expect(html).toContain("grid-template-columns:repeat(4,minmax(0,1fr))");
   });
 
   it("orders a column by saved position: unpositioned (newest first) on top, then by rank", () => {

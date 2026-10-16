@@ -1,0 +1,30 @@
+{
+ "kind": "review.risk",
+ "model": "jev-1.13.0",
+ "recordedAt": "2026-10-15T09:05:15.608Z",
+ "accuracy": 0.6111111111111112,
+ "correct": 11,
+ "n": 18,
+ "written": 6,
+ "writtenRight": 6,
+ "decisions": {
+  "e0fcf08e": "decision",
+  "c59da495": "routine",
+  "8627bd11": "decision",
+  "34f48988": "decision",
+  "2d3f22ef": "decision",
+  "ba71b356": "decision",
+  "e5cf6051": "decision",
+  "d038dc2e": "routine",
+  "324a8e17": "routine",
+  "80fbe5cc": "routine",
+  "fddef5dc": "routine",
+  "dbe9fccb": "routine",
+  "9c783e4e": "routine",
+  "abb947a6": "routine",
+  "1034e547": "routine",
+  "ff330f51": "routine",
+  "8dc5706c": "routine",
+  "16cc68ff": "routine"
+ }
+}

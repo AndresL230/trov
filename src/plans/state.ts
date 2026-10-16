@@ -46,8 +46,10 @@ export interface OrgPlanRow {
   plan: string; plan_overrides: string; plan_source: string | null; plan_status: string;
   plan_period_end: string | null; billing_customer_id: string | null; billing_subscription_id: string | null;
   plan_gift_until: string | null;
+  /** The org's members (a subquery): what a per-seat limit multiplies by without a paid-seat count. */
+  plan_members?: number;
 }
-export const PLAN_COLS = `plan, plan_overrides, plan_source, plan_status, plan_period_end, billing_customer_id, billing_subscription_id, plan_gift_until`;
+export const PLAN_COLS = `plan, plan_overrides, plan_source, plan_status, plan_period_end, billing_customer_id, billing_subscription_id, plan_gift_until, (SELECT COUNT(*) FROM memberships pm WHERE pm.org_id = orgs.id) AS plan_members`;
 
 export interface OrgPlan extends OrgPlanState {
   source: PlanSource | null;
@@ -68,6 +70,7 @@ export function planOf(r: OrgPlanRow | null): OrgPlan {
     source: oneOf(PLAN_SOURCES, r?.plan_source), period_end: r?.plan_period_end ?? null,
     customer_id: r?.billing_customer_id ?? null, subscription_id: r?.billing_subscription_id ?? null,
     gift_until: r?.plan_gift_until ?? null,
+    ...(r?.plan_members !== undefined && r?.plan_members !== null ? { members: Number(r.plan_members) } : {}),
   };
 }
 
@@ -262,6 +265,6 @@ export async function platformOrgPlan(p: PlatformContext, orgId: string): Promis
   const [state, n] = await Promise.all([orgPlan(p, orgId), seatCounts(p, orgId)]);
   return {
     plan: state.plan, overrides: state.overrides, status: state.status, source: state.source,
-    entitlements: resolveEntitlements(state.plan, state.overrides), seats_used: n.members + n.pending,
+    entitlements: resolveEntitlements(state.plan, state.overrides, n.members), seats_used: n.members + n.pending,
   };
 }

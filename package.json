@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "build:web": "vite build --config web/vite.config.ts",
-    "dev": "npm run build:web && (npm run watch:web & wrangler dev)",
+    "dev": "npm run build:web && node scripts/dev/ensure-seeded.mjs && (npm run watch:web & wrangler dev)",
+    "dev:seeded": "npm run build:web && node scripts/dev/ensure-seeded.mjs --force && (npm run watch:web & wrangler dev)",
+    "dev:as": "node scripts/dev/as.mjs",
     "watch:web": "vite build --config web/vite.config.ts --watch --emptyOutDir false",
     "deploy": "npm run build:web && wrangler deploy",
     "deploy:preview": "wrangler d1 migrations apply trov-preview --remote --env preview && wrangler preview",
@@ -15,7 +17,8 @@
     "db:create": "wrangler d1 create trov",
     "db:migrate:local": "wrangler d1 migrations apply trov --local",
     "db:migrate:remote": "wrangler d1 migrations apply trov --remote",
-    "seed": "node scripts/seed-dev.mjs"
+    "seed": "node scripts/seed-dev.mjs",
+    "ask:gallery": "esbuild scripts/ask-gallery/build.ts --bundle --platform=node --format=esm --packages=external --outfile=.ask-gallery/build.mjs --log-level=warning && node .ask-gallery/build.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.133.0",

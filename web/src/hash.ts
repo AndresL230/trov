@@ -38,6 +38,7 @@
 //                       Add an app — all three on the Repositories tab
 //   #tags/<name>      → one tag's page: everything that carries it. The list itself is
 //                       Org settings › Tags (`#org/tags`), where a bare `#tags` lands
+//   #ask              → Ask Trov, a new thread; #ask/<id> one stored thread (its id, a positive integer)
 //   #welcome          → the guided first-run setup, at its first step; #welcome/agent,
 //                       #welcome/team and #welcome/done its others (welcome.ts)
 //   #<screen>         → every other screen, named exactly as the Screen union
@@ -46,7 +47,7 @@
 // had for a junk hash.
 
 import type { Screen } from "./render";
-import { isRepoTab, type RepoTab } from "@shared/repo";
+import { isRepoScreenTab, type RepoScreenTab } from "@shared/repo";
 import type { ArtRoute } from "./artifacts";
 import { parseSlugVersion } from "@shared/artifacts-core";
 import type { ReleasePage } from "./releases";
@@ -71,7 +72,7 @@ export interface Route {
   /** Set only on `sprint`. */
   sprintId: number | null;
   /** Set only on `repo` (absent everywhere else, so older routes compare equal). */
-  repoTab?: RepoTab;
+  repoTab?: RepoScreenTab;
   /** Set only on `repo`, when it reads a repository other than the primary (`?repo=owner/name`). */
   repoSlug?: string;
   /** Set only on `repo`, when the App menu narrows it (`?app=<key>`). */
@@ -104,6 +105,8 @@ export interface Route {
   welcomeStep?: WelcomeStep;
   /** Set only on `tag` (the tag's name). */
   tagName?: string;
+  /** Set only on `ask` with a stored thread open (`#ask/<id>`). */
+  askThread?: number;
 }
 
 /** One repository's page under Org settings › Repositories: its Apps (`apps`), one app (`app`), or Add an app (`new`). */
@@ -118,7 +121,7 @@ export function sameRoute(a: Route, b: Route): boolean {
     && a.handoffId === b.handoffId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.roadmapTab === b.roadmapTab
     && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
     && a.platTab === b.platTab && a.platOrg === b.platOrg && a.platReport === b.platReport
-    && a.orgTab === b.orgTab && a.welcomeStep === b.welcomeStep && a.tagName === b.tagName
+    && a.orgTab === b.orgTab && a.welcomeStep === b.welcomeStep && a.tagName === b.tagName && a.askThread === b.askThread
     && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null)
     && JSON.stringify(a.orgRepo ?? null) === JSON.stringify(b.orgRepo ?? null);
 }
@@ -129,8 +132,10 @@ export function sameRoute(a: Route, b: Route): boolean {
  * the same key are the same page: moving between them swaps the tab's body in place, with no
  * screen entrance and nothing to load again (main.ts `markEnter`, the hashchange handler).
  */
+// Ask's thread (`askThread`) is not a page of its own either: opening one, or a new thread being named mid-answer,
+// swaps the conversation in place and never replays the screen's entrance.
 export function pageKey(r: Route): string {
-  return hashForRoute({ ...r, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
+  return hashForRoute({ ...r, askThread: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
 }
 
 /** A URL path segment decoded, or null when it is malformed. */
@@ -201,7 +206,7 @@ export function parseHash(hash: string): Route {
     if (path[0] !== "repo") return none;
     if (path.length === 1) return { screen: "repo", ticketId: null, sprintId: null, repoTab: "overview", ...scope };
     // `#repo/overview` is not canonical (the bare `#repo` is), but it still resolves.
-    if (path.length === 2 && isRepoTab(path[1])) return { screen: "repo", ticketId: null, sprintId: null, repoTab: path[1], ...scope };
+    if (path.length === 2 && isRepoScreenTab(path[1])) return { screen: "repo", ticketId: null, sprintId: null, repoTab: path[1], ...scope };
     return none;
   }
   if (parts[0] === "artifacts") {
@@ -294,6 +299,12 @@ export function parseHash(hash: string): Route {
     const name = parts.length === 2 ? normalizeTagName(seg(parts[1])) : null;
     return name ? { screen: "tag", ...base, tagName: name } : none;
   }
+  // Ask Trov: a new thread, or one stored thread.
+  if (parts[0] === "ask") {
+    if (parts.length === 1) return { screen: "ask", ...base };
+    const id = parts.length === 2 ? intSeg(parts[1]) : null;
+    return id !== null ? { screen: "ask", ...base, askThread: id } : none;
+  }
   // The guided setup: `#welcome` is its first step (the canonical spelling; `#welcome/github` still
   // resolves). A step this person's flow does not have (a member's `#welcome/team`) shows their first.
   if (parts[0] === "welcome") {
@@ -349,6 +360,7 @@ export function hashForRoute(r: Route): string {
     return !r.orgTab || r.orgTab === "integrations" ? "#org" : `#org/${r.orgTab}`;
   }
   if (r.screen === "tag") return r.tagName ? `#tags/${encodeURIComponent(r.tagName)}` : "#org/tags";
+  if (r.screen === "ask") return r.askThread ? `#ask/${r.askThread}` : "#ask";
   if (r.screen === "welcome") return !r.welcomeStep || r.welcomeStep === "github" ? "#welcome" : `#welcome/${r.welcomeStep}`;
   return `#${r.screen}`;
 }

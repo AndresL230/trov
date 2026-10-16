@@ -34,6 +34,7 @@ import { type ProviderMap, hostingPollCost, pollPart, pollParts, providerPollCos
 import { PROVIDERS } from "../hosting/registry";
 import { expireGifts } from "../plans/gifts";
 import { runAiPass, type AiPassOpts } from "../ai/pass";
+import { prewarmDigests } from "../notifications/cron";
 
 export const REPO_CRON = "*/10 * * * *";
 
@@ -618,10 +619,14 @@ export async function handleRepoCron(
     const swept = await expireGifts(p, scheduledTime);
     if (swept.failed) console.error("repo cron", "plan gifts", `${swept.failed} failed; the next tick retries`);
   });
+  // The tick before the hour (`:50`, never a heavy one): the brief pre-warm — the AI router marks, URGENT, the
+  // `person` scope of everyone whose digest is due at the coming hour (src/notifications/cron.ts), so the pass
+  // below writes their brief before the `:00` send. D1 only.
+  if (minute === 50 && heavy === null) await safely("digest prewarm", () => prewarmDigests(env, when));
   // Every tick with no heavy job: the AI pass (src/ai/pass.ts, docs/architecture/ai.md), AFTER the health
-  // pings and on what they left of the SAME budget — at most `AI_RUNS_PER_TICK` model calls across every
-  // org. Its job registry is empty today, so it returns before reading anything. A heavy tick (the usage
-  // polls, progress, reconcile) keeps its invocation to itself, as before.
+  // pings and on what they left of the SAME budget — at most `AI_RUNS_PER_TICK` Haiku calls and
+  // `JEV_CALLS_PER_TICK` Jev requests across every org. Its job registry is empty today, so it returns before
+  // reading anything. A heavy tick (the usage polls, progress, reconcile) keeps its invocation to itself.
   if (heavy === null) await safely("ai pass", () => runAiPass(env, budget, { now: when, ...aiPass }));
 
   if (heavy === "usage") {

@@ -1,8 +1,10 @@
 import type { SprintRow, PlanRow } from "@shared/rows";
 import type { SprintView } from "@shared/sprints";
+import type { AiPlanDrift, AiSuggestion } from "@shared/ai-core";
 import { planNarrativeProblem, normalizeSprintDate, sprintDateProblem, sprintDatesProblem } from "@shared/sprints-core";
 import { type TenantContext, first, all, run, nowIso } from "../data/sql";
 import { list_sprints, sprintLead, SprintError } from "./sprints";
+import { planDrift } from "../data/org-insights";
 
 /**
  * One sprint as the ADMIN plan write receives it. This is the DTO vocabulary
@@ -36,6 +38,11 @@ export interface PlanView {
   updated_at: string | null;
   updated_by: string | null;
   sprints: SprintView[];
+  /** What Trov wrote about where the work went against the plan (0065); absent with the switch off, nothing
+   *  written, or a drift older than its window. */
+  drift?: AiPlanDrift;
+  /** The cookie read only, for an admin: the open Roadmap suggestions (a sprint draft, a narrative). Never MCP. */
+  suggestions?: AiSuggestion[];
 }
 
 const githubRefJson = (ref: number | number[] | null | undefined): string | null =>
@@ -189,9 +196,11 @@ export async function write_plan(
  * sprint's real distinct assignees.
  * One read model, shared by GET /roadmap, MCP get_roadmap and GET /sprints.
  */
-export async function get_plan(ctx: TenantContext): Promise<PlanView> {
+export async function get_plan(ctx: TenantContext, now: Date = new Date()): Promise<PlanView> {
   const plan = await first<PlanRow>(ctx, `SELECT * FROM plan WHERE org_id = ?`, ctx.orgId);
-  const sprints = await list_sprints(ctx);
+  const sprints = await list_sprints(ctx, now);
+  // What Trov wrote about where the work went (0065): absent with the switch off, nothing written, or aged out.
+  const drift = await planDrift(ctx, now);
 
   return {
     narrative: plan?.narrative ?? "",
@@ -199,5 +208,6 @@ export async function get_plan(ctx: TenantContext): Promise<PlanView> {
     updated_at: plan?.updated_at ?? null,
     updated_by: plan?.updated_by ?? null,
     sprints,
+    ...(drift ? { drift } : {}),
   };
 }
