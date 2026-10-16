@@ -106,6 +106,8 @@ export const RELEASES: Release[] = [
       "No migration, no secret or var, no trigger change.",
       "After the deploy, check that a hashed script is cached for a year and HTML is not: `curl -sI https://trov.dev$(curl -s https://trov.dev/ | grep -o '/assets/[^\"]*\\.js' | head -1) | grep -i cache-control` says `public, max-age=31536000, immutable`; then compare Workers Observability wall time for `/api/o/:slug/repo/dashboard`, `/auth/me` and a tenant route with the days before.",
       "From now on, the PR that opens an Unreleased entry or cuts a version also sets `LATEST_VERSION` in `web/src/release-latest.ts` to match (`test/releases.test.ts` fails until it does).",
+      "Apply `migrations/0075_identities_person_nocase.sql` (merging to main applies it): ADDITIVE — one index, `idx_identities_person_nocase` on `identities(person COLLATE NOCASE)`. Rollback: `DROP INDEX IF EXISTS idx_identities_person_nocase;`.",
+      "The Worker now deploys minified with its source map uploaded (`minify`, `upload_source_maps` in `wrangler.toml`), so Workers Logs stacks map back to the TypeScript. No secret, var or trigger change.",
     ],
     headsUp: [
       "Hosting tokens moved from Integrations to Hosting, and each environment's app metrics token to its parts' editor (Org settings › Repositories › a repository › Apps). Nothing was reset: every token you saved is still there.",
@@ -204,6 +206,11 @@ export const RELEASES: Release[] = [
         "`GET /docs` sends each doc's outline, built on the Worker (`shared/doc-outline.ts`), instead of its body (dev seed 119.9 KB → 12.4 KB); `GET /doc/:slug` sends its versions without bodies (250 KB → 125 KB over 15 docs); new `GET /doc/:slug/versions/:version` reads one version's body; all three answer 503 `{ error }` on a failed read; MCP `list_docs` / `get_doc` are unchanged (#187)",
         "`renderMarkdown` / `renderMarkdownInline` are cached in an LRU (`web/src/lru.ts`) keyed by repository, org and text; the Docs tree draws the outline the server sends (#187)",
         "Repo readers in `src/repo/reads.ts` / `src/repo/store.ts` `return await` their statement, so a parallel wave's failure never surfaces as an unhandled rejection (#187)",
+        "Worker bundle minified with uploaded source maps: 4.5 MB / 939 KB gz → 2.4 MB / 670 KB (`wrangler deploy --dry-run`) (#187)",
+        "`src/mcp.ts` loads on the first `/mcp` request (`import(\"./mcp\")` in `src/index.ts`), not at isolate startup — about 18% less startup CPU locally; `test/apply-migrations.ts` preloads it for the pool (#187)",
+        "Raw artifact previews: a numbered version on the per-org route (`/api/o/<org>/raw/a/<slug>@v<n>`) is `private, max-age=31536000, immutable` with `Vary: Cookie`; the latest version, errors and the one-org `/raw/a/…` alias are unchanged (`artifacts.md` records the trade-off) (#187)",
+        "`listOpenAssignedIssues` filters open, assigned issues in D1 (`json_extract` / `json_each` on each issue's latest snapshot) instead of reading every captured issue's raw JSON (#187)",
+        "`0075_identities_person_nocase`: `/auth/me` and every read of a person's identities search a NOCASE index instead of scanning `identities` (`test/perf.indexes.test.ts`) (#187)",
       ],
       fixed: [
         "A `github` part got deploys only from live webhook deliveries — never from the check runs and workflow runs reconcile backfills, nor from signals captured before the part (or its setting) existed: reconcile's `github_deploys` arm and `putPart` now replay the captured signals of 30 days through `signalMatchesPart` (`backfillGithubDeploys`, D1 only, no GitHub request)",
