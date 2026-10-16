@@ -1,5 +1,5 @@
 // The newest release's version, without the record. web/src/releases.ts (every release's notes and
-// patch lines, ~185 KB and growing with every PR) is loaded only when Help › What's new opens
+// patch lines, ~68 KB since #190 trimmed it) is loaded only when Help › What's new opens
 // (releases-lazy.ts), so what the app needs at boot reads this instead: the support form's attached
 // version (main.ts) and the legacy `#releases/patches` route (hash.ts).
 //
