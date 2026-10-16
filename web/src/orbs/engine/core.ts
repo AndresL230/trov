@@ -56,14 +56,23 @@ export function makeProj(yaw: number, tilt: number, cx: number, cy: number, scal
  * ink value is mirrored (1 - white) so near dots read bright — the same
  * depth language on an inverted substrate.
  */
+// Trov (a local change to the vendored engine): an optional ink colour. With one set, a dot's depth is its opacity in
+// that colour — near dots (low `white`) full, far ones faint — instead of a grey level; null keeps the upstream greys.
+let ink: readonly [number, number, number] | null = null;
+export function setInk(rgb: readonly [number, number, number] | null): void { ink = rgb; }
+
 export function paint(ctx: CanvasRenderingContext2D, dots: Dot[], dark: boolean, rMin = 0.3): void {
   dots.sort((a, b) => a.z - b.z);
   for (const d of dots) {
     const alpha = d.a ?? 1;
     if (alpha < 0.02) continue;
     const w = Math.min(1, Math.max(0, d.white));
-    const g = Math.round((dark ? 1 - w : w) * 255);
-    ctx.fillStyle = `rgba(${g},${g},${g},${alpha})`;
+    if (ink) {
+      ctx.fillStyle = `rgba(${ink[0]},${ink[1]},${ink[2]},${alpha * (0.22 + 0.78 * (1 - w))})`;
+    } else {
+      const g = Math.round((dark ? 1 - w : w) * 255);
+      ctx.fillStyle = `rgba(${g},${g},${g},${alpha})`;
+    }
     ctx.beginPath();
     ctx.arc(d.x, d.y, Math.max(rMin, d.r), 0, Math.PI * 2);
     ctx.fill();

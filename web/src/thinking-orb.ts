@@ -9,12 +9,14 @@
 //                             shared clock (so two orbs never drift apart), and stops itself when none is left.
 //                             Rendering an orb starts it. A canvas that is not laid out is skipped; a hidden tab
 //                             pauses it (rAF does).
-//   the theme                 read on every frame from the nearest [data-cnpy-theme]: light ink on dark, dark on light.
+//   the theme                 read on every frame from the nearest [data-cnpy-theme]; the ink is that theme's
+//                             --purple (purple = "Trov is working"), a dot's depth its opacity (orbs/engine/core.ts setInk).
 //   reduced motion            one static frame per paint and no loop (the upstream's frame at 0.6s).
 //   a tour                    `thinkingOrbTour(states, …)`: one orb that shows each state in turn (TOUR_SECONDS each),
 //                             on the same clock — a preview of "it changes with what it does" (Settings › Trov).
 
 import { MODE_DRAWS } from "./orbs/engine/registry";
+import { setInk } from "./orbs/engine/core";
 import { resolvePreset } from "./orbs/presets";
 import type { OrbSize, OrbState } from "./orbs/types";
 
@@ -39,6 +41,24 @@ export function tourState(states: readonly string[], tSec: number): string | und
   return states.length ? states[Math.floor(tSec / TOUR_SECONDS) % states.length] : undefined;
 }
 
+/** The orb's ink: its theme's `--purple` (#rgb / #rrggbb / rgb()), read off the canvas; null when it has none. */
+const inks = new Map<string, readonly [number, number, number] | null>();
+function inkOf(c: HTMLCanvasElement): readonly [number, number, number] | null {
+  const raw = getComputedStyle(c).getPropertyValue("--purple").trim();
+  if (inks.has(raw)) return inks.get(raw) ?? null;
+  let rgb: [number, number, number] | null = null;
+  const hex = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
+  if (hex) {
+    const h = hex.length === 3 ? hex.split("").map((x) => x + x).join("") : hex;
+    rgb = [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  } else {
+    const m = raw.match(/^rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)/i);
+    if (m) rgb = [Number(m[1]), Number(m[2]), Number(m[3])];
+  }
+  inks.set(raw, rgb);
+  return rgb;
+}
+
 function paint(c: HTMLCanvasElement, tSec: number): void {
   const state = c.dataset.orb === "tour" ? tourState((c.dataset.orbTour ?? "").split(" ").filter(Boolean), tSec) : c.dataset.orb;
   if (!state || !STATES.has(state)) return;
@@ -53,7 +73,10 @@ function paint(c: HTMLCanvasElement, tSec: number): void {
   const dark = c.closest("[data-cnpy-theme]")?.getAttribute("data-cnpy-theme") === "dark";
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   ctx.clearRect(0, 0, size, size);
+  // Purple means "Trov is working" (the owner): the orb draws in the theme's --purple, depth as its opacity.
+  setInk(inkOf(c));
   MODE_DRAWS[mode](ctx, size, tSec * speed, dark, opts);
+  setInk(null);
 }
 
 function tick(): void {
