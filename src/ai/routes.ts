@@ -29,7 +29,7 @@ import {
   isAskScenario,
 } from "@shared/ai-fixtures";
 import { acceptSuggestion, dismissSuggestion, type SuggestionAnswer } from "./suggestions";
-import { AI_FILTER_MESSAGES, AI_FILTER_ROUTE, AiFilterBodySchema, type AiFilterAnswer, type AiFilterErrorCode } from "@shared/ai-filter";
+import { AI_FILTER_MESSAGES, AI_FILTER_ROUTE, AiFilterBodySchema, aiFilterUnreadable, type AiFilterAnswer, type AiFilterErrorCode, type AiFilterScreen } from "@shared/ai-filter";
 import { planRefusal, resolveEntitlements, type PlanRefusal } from "@shared/plans";
 import { PLAN_LIMIT_STATUS } from "../plans/state";
 import { aiRunCappedMetric, meterBy } from "../data/meter";
@@ -124,10 +124,12 @@ aiApp.post(AI_ROUTES.feedback, async (c) => {
 const filterRefusal = (c: Context<AppEnv>, code: AiFilterErrorCode, status: 400 | 403 | 422 | 503, message: string = AI_FILTER_MESSAGES[code]) =>
   c.json({ error: code, message }, status);
 
-const filterAnswer = (c: Context<AppEnv>, a: AiFilterAnswer | null) => {
+/** An answer that sets nothing is `unreadable`, said in the words of THAT screen's filter schema (Q-F2: the Feed
+ *  has no status or priority to suggest). */
+const filterAnswer = (c: Context<AppEnv>, screen: AiFilterScreen, a: AiFilterAnswer | null) => {
   if (a && !isEmptyFilter(a)) return c.json(a);
   const not = a?.unmatched.length ? ` Not a filter here: ${a.unmatched.map((u) => `“${u}”`).join(", ")}.` : "";
-  return filterRefusal(c, "unreadable", 422, AI_FILTER_MESSAGES.unreadable + not);
+  return filterRefusal(c, "unreadable", 422, aiFilterUnreadable(screen) + not);
 };
 
 /** The preview's `capped`: the refusal a Free org at its month's runs would get. */
@@ -146,7 +148,7 @@ aiApp.post(AI_FILTER_ROUTE, async (c) => {
     // LOCAL DEVELOPMENT ONLY (./preview.ts): the fixture, checked exactly as a model's answer is.
     const preview = aiPreviewMode(c.env, c.req.url);
     if (preview === "capped") return c.json(previewCapped(a), PLAN_LIMIT_STATUS);
-    if (preview) return filterAnswer(c, await previewAiFilter(ctx, parsed.data, preview));
+    if (preview) return filterAnswer(c, parsed.data.screen, await previewAiFilter(ctx, parsed.data, preview));
     if (a.eligibility === "no_key") return filterRefusal(c, "no_key", 503);
     // THE allowance (shared/plans.ts `ai_runs`): one call is one run.
     const refusal = planRefusal(a.plan, "ai_runs", a.used, 1);
@@ -156,7 +158,7 @@ aiApp.post(AI_FILTER_ROUTE, async (c) => {
     }
     const limited = await rateLimited(c, "ai_filter");
     if (limited) return limited;
-    return filterAnswer(c, await runAiFilter(ctx, c.env, parsed.data));
+    return filterAnswer(c, parsed.data.screen, await runAiFilter(ctx, c.env, parsed.data));
   } catch (e) {
     console.error("ai filter", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
     return c.json({ error: "Couldn't read what the filter needs." }, 503);

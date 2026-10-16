@@ -716,7 +716,9 @@ the model cannot invent an item, because it returns no item. Three screens: Tick
   by likeness — or it is dropped. `unmatched` keeps only phrases quoted from the request (a dropped name too, when
   the request said it): the screen shows them as "Not a filter here: “overdue”", never model prose.
 - **Unreadable**: nothing left to set, a `refusal`, an answer cut at `max_tokens`, no JSON, or an error → 422
-  `{ error: "unreadable", message }` in plain words (naming the request's words that were no filter here).
+  `{ error: "unreadable", message }` in plain words, said per screen from that screen's schema (`aiFilterUnreadable`:
+  the Feed suggests a person, a tag or a time — never a status or priority it does not have), naming the request's
+  words that were no filter here.
 - **In the Filter menu** (`web/src/ai-filter.ts`, acts in `web/src/ai-filter-actions.ts`; `web-ui.md`): each
   screen's own Filter menu (`filter-menu.ts`; Tickets' `queue`, the Feed's `feed`, Artifacts' `art`) opens on a
   first row, "Describe a filter" with the AI mark (`aiFilterMenuTop`, passed as `FilterMenuProps.top`), shown only
